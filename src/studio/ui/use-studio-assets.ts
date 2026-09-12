@@ -1,8 +1,6 @@
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
 import { getAllAdminStudioAssetsFn } from '@/platform/admin-support.fn';
 import {
-  attestStudioReferencesFn,
-  classifyStudioReferenceFn,
   createStudioAssetsFn,
   deleteStudioAssetFn,
   draftStudioPromptFn,
@@ -14,14 +12,12 @@ import {
   studioCreateInputSchema,
   type StudioActivity,
   type StudioCreateInput,
-  type StudioReferenceAttestation,
   type StudioSort,
 } from '@/studio/schema';
 import {
   useInfiniteQuery,
   useMutation,
   useMutationState,
-  useQueries,
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
@@ -131,30 +127,6 @@ export function useCreateStudioAssets() {
   });
 }
 
-const referenceRightsKeys = {
-  all: ['studio-reference-rights'] as const,
-  url: (url: string) => [...referenceRightsKeys.all, url] as const,
-};
-
-/**
- * Rights check per gated reference image (#1581): whether this team has
- * already attested to it, and whether it shows a real person. Results are
- * one per `urls` entry, in order. Cached for the session — a still that was
- * classified once is not billed again when re-attached.
- */
-export function useStudioReferenceRights(urls: string[]) {
-  const { isAuthenticated } = useAuthGate();
-  return useQueries({
-    queries: urls.map((url) => ({
-      queryKey: referenceRightsKeys.url(url),
-      queryFn: () => classifyStudioReferenceFn({ data: { url } }),
-      enabled: isAuthenticated,
-      staleTime: Number.POSITIVE_INFINITY,
-      retry: false,
-    })),
-  });
-}
-
 /** Inputs of studio generations still being started, newest first (#1455). */
 export function useStudioPendingCreates(activity: StudioActivity) {
   return useMutationState({
@@ -206,20 +178,6 @@ export function useDraftStudioPrompt() {
       draftStudioPromptFn({ data: input }),
     onError: (error) => {
       if (isInsufficientCreditsError(error)) return;
-      toast.error(error.message);
-    },
-  });
-}
-
-/** Record the sign-off for gated stills; the rights checks re-ask and clear. */
-export function useAttestStudioReferences() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (attestations: StudioReferenceAttestation[]) =>
-      attestStudioReferencesFn({ data: { attestations } }),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: referenceRightsKeys.all }),
-    onError: (error) => {
       toast.error(error.message);
     },
   });

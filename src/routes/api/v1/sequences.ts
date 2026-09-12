@@ -95,6 +95,10 @@ export const Route = createFileRoute('/api/v1/sequences')({
             scopedDb: context.scopedDb,
             user: context.user,
             teamId: context.teamId,
+            request: {
+              ipAddress: request.headers.get('cf-connecting-ip'),
+              userAgent: request.headers.get('user-agent'),
+            },
           });
 
           // When `?wait` is set, share the create deadline across all new

@@ -178,25 +178,27 @@ export type NewContentProvenance = InferInsertModel<typeof contentProvenance>;
 // ============================================================================
 
 /**
- * What kind of upload was attested to. Human-likeness surfaces
- * (`talent`, `talent_media`) carry the portrait-rights obligation; the others
- * carry the narrower IP warranty.
+ * What kind of upload the row is about. Since #1581 every user-supplied
+ * image is keyed by `uploaded_image` (the SHA-256 of its stored URL) and only
+ * a real person's likeness is signed for; the other values predate that and
+ * are kept so old rows still read as evidence.
  */
-export const ATTESTATION_SUBJECT_TYPES = [
+const ATTESTATION_SUBJECT_TYPES = [
   'talent',
   'talent_media',
   'sequence_element',
   'avatar_asset',
   'style_reference',
-  /** A studio upload / pasted URL; `subjectId` is the SHA-256 of the URL (#1581). */
-  'studio_reference',
+  'uploaded_image',
 ] as const;
 export type AttestationSubjectType = (typeof ATTESTATION_SUBJECT_TYPES)[number];
 
 /**
  * A user's on-the-record warranty that they hold the rights to something they
- * uploaded — portrait/likeness authorization for a real person, or IP rights
- * for a logo, product shot, or avatar asset.
+ * uploaded — portrait/likeness authorization for a real person — or, for an
+ * `uploaded_image`, the likeness classifier's own finding (cleared, or
+ * detected and awaiting the sign-off). Older rows may carry the retired IP
+ * warranty.
  *
  * This is the row we produce when a rights-holder or a provider asks "on what
  * basis did you accept this image?". `statementSha256` pins the exact wording
@@ -220,7 +222,10 @@ export const uploadAttestations = snakeCase.table(
       .references(() => teams.id, { onDelete: 'restrict' }),
 
     subjectType: text({ length: 40 }).$type<AttestationSubjectType>().notNull(),
-    /** PK of the uploaded row (talent.id, talent_media.id, …). */
+    /**
+     * PK of the uploaded row (talent.id, talent_media.id, …), or for
+     * `uploaded_image` the SHA-256 hex of the stored URL.
+     */
     subjectId: text().notNull(),
 
     /** Semver-ish label of the attestation text, e.g. `portrait-rights-v1`. */
@@ -229,8 +234,9 @@ export const uploadAttestations = snakeCase.table(
     statementSha256: text({ length: 64 }).notNull(),
 
     /**
-     * True when the user declared the upload depicts a real, identifiable
-     * person — the trigger for the portrait-authorization requirement.
+     * True when the upload depicts a real, identifiable person — the user's
+     * declaration, or the classifier's verdict for an `uploaded_image` — the
+     * trigger for the portrait-authorization requirement.
      */
     depictsRealPerson: integer({ mode: 'boolean' }).default(false).notNull(),
     /**

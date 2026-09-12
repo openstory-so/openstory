@@ -152,13 +152,10 @@ export const presignLocationUploadFn = createServerFn({ method: 'POST' })
     const uploadId = generateId();
     const contentType = getMimeTypeFromExtension(ext);
 
-    const storagePath = data.locationId
-      ? `${context.teamId}/library/${uploadId}.${ext}`
-      : `${context.teamId}/temp/${uploadId}.${ext}`;
-
+    // Every upload lands in `temp/` (#1581); finalize gates it and moves it.
     return getSignedUploadUrl(
       STORAGE_BUCKETS.LOCATIONS,
-      storagePath,
+      `${context.teamId}/temp/${uploadId}.${ext}`,
       contentType
     );
   });
@@ -170,20 +167,26 @@ export const finalizeLocationUploadFn = createServerFn({ method: 'POST' })
       z.object({
         locationId: ulidSchema,
         publicUrl: mediaUrlSchema,
-        path: z.string().min(1),
       })
     )
   )
   .handler(async ({ context, data }) => {
-    if (!data.path.startsWith(`locations/${context.teamId}/`)) {
+    if (!data.publicUrl.startsWith(`/r2/locations/${context.teamId}/temp/`)) {
       throw new Error('Invalid storage path');
     }
 
     await requireLocation(context.scopedDb, data.locationId);
 
+    const [promoted] = await promoteLocationReferenceImages(
+      context.scopedDb,
+      [data.publicUrl],
+      context.teamId
+    );
+    if (!promoted) throw new Error('Invalid storage path');
+
     await context.scopedDb.locations.update(data.locationId, {
-      referenceImageUrl: data.publicUrl,
-      referenceImagePath: data.path,
+      referenceImageUrl: promoted.url,
+      referenceImagePath: promoted.path,
     });
 
     return { success: true };
@@ -203,6 +206,7 @@ export const addLocationSheetsFn = createServerFn({ method: 'POST' })
     const location = await requireLocation(context.scopedDb, data.locationId);
 
     const processedImages = await promoteLocationReferenceImages(
+      context.scopedDb,
       data.imageUrls,
       context.teamId
     );

@@ -7,11 +7,15 @@ const mockFileExists = vi.fn();
 const mockCreate = vi.fn();
 const mockEnsureUniqueToken = vi.fn();
 const mockUpdateVisionStatus = vi.fn();
+const mockRequireRights = vi.fn();
 
 vi.doMock('@/platform/server/workflow/client', () => ({
   triggerWorkflow: mockTriggerWorkflow,
 }));
 vi.doMock('#storage', () => ({ fileExists: mockFileExists }));
+vi.doMock('@/cast/server/upload-rights', () => ({
+  requireUploadRights: mockRequireRights,
+}));
 
 const {
   assertDraftElementUploadsAttachable,
@@ -195,6 +199,7 @@ describe('assertDraftElementUploadsAttachable', () => {
 
     await expect(
       assertDraftElementUploadsAttachable({
+        scopedDb: makeScopedDb(),
         teamId: 'team-1',
         uploads: [
           makeUpload(),
@@ -203,5 +208,34 @@ describe('assertDraftElementUploadsAttachable', () => {
       })
     ).rejects.toThrow(/no longer available in storage/);
     expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('refuses an image with no likeness clearance, and never checks a clip (#1581)', async () => {
+    mockFileExists.mockResolvedValue(true);
+    mockRequireRights.mockRejectedValueOnce(new Error('not checked'));
+
+    await expect(
+      assertDraftElementUploadsAttachable({
+        scopedDb: makeScopedDb(),
+        teamId: 'team-1',
+        uploads: [makeUpload()],
+      })
+    ).rejects.toThrow('not checked');
+    expect(mockRequireRights).toHaveBeenCalledWith(expect.anything(), [
+      '/r2/elements/team-1/uploads/up-1.png',
+    ]);
+
+    mockRequireRights.mockClear();
+    await assertDraftElementUploadsAttachable({
+      scopedDb: makeScopedDb(),
+      teamId: 'team-1',
+      uploads: [
+        makeUpload({
+          tempPath: 'elements/team-1/uploads/walk.mp4',
+          filename: 'walk.mp4',
+        }),
+      ],
+    });
+    expect(mockRequireRights).not.toHaveBeenCalled();
   });
 });

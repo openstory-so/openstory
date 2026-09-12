@@ -1,6 +1,7 @@
 import { fileExists } from '#storage';
 import { deriveTokenFromFilename } from '@/cast/derive-token';
 import { elementKindFromFilename } from '@/cast/element-kind';
+import { requireUploadRights } from '@/cast/server/upload-rights';
 import { measureStoredMediaDuration } from './media-duration';
 import type { DraftElementUploadInput } from '@/cast/draft-element-upload';
 import type { SequenceElement } from '@/platform/server/db/schema';
@@ -37,7 +38,8 @@ export async function triggerElementVision(params: {
 
 /**
  * Prove a client-supplied element key may back a row: inside the team's
- * namespace, and actually present in R2. The second check is not paranoia —
+ * namespace, actually present in R2, and — for an image — cleared or signed
+ * on the likeness ledger (#1581). The existence check is not paranoia —
  * the move it replaced (#1471) was the only thing proving the object existed,
  * and without it a row can point at a permanent 404 that nothing surfaces
  * until image generation fails hours later.
@@ -46,11 +48,12 @@ export async function triggerElementVision(params: {
  * draft attach at creation, finalize on an existing sequence, and replace.
  */
 export async function assertElementUploadAttachable(params: {
+  scopedDb: ScopedDb;
   path: string;
   filename: string;
   teamId: string;
 }): Promise<void> {
-  const { path, filename, teamId } = params;
+  const { scopedDb, path, filename, teamId } = params;
   if (!isValidElementStoragePath(path, teamId)) {
     throw new ValidationError(
       `Element "${filename}" could not be attached: its upload is outside this team's storage.`
@@ -60,6 +63,11 @@ export async function assertElementUploadAttachable(params: {
     throw new NotFoundError(
       `Element "${filename}" is no longer available in storage. Re-upload it and try again.`
     );
+  }
+  // An unknown extension predates #1559 and was an image; a clip or an audio
+  // file has no likeness to check.
+  if ((elementKindFromFilename(filename) ?? 'image') === 'image') {
+    await requireUploadRights(scopedDb, [elementImageUrlFromPath(path)]);
   }
 }
 
@@ -88,7 +96,7 @@ export async function attachElementUpload(params: {
 }): Promise<SequenceElement> {
   const { scopedDb, teamId, userId, sequenceId, path, filename } = params;
 
-  await assertElementUploadAttachable({ path, filename, teamId });
+  await assertElementUploadAttachable({ scopedDb, path, filename, teamId });
 
   const imageUrl = elementImageUrlFromPath(path);
   const token = await scopedDb.sequenceElements.ensureUniqueToken(
@@ -160,13 +168,15 @@ export async function attachElementUpload(params: {
  * workflow behind it.
  */
 export async function assertDraftElementUploadsAttachable(params: {
+  scopedDb: ScopedDb;
   teamId: string;
   uploads: DraftElementUploadInput[];
 }): Promise<void> {
-  const { teamId, uploads } = params;
+  const { scopedDb, teamId, uploads } = params;
   await Promise.all(
     uploads.map((upload) =>
       assertElementUploadAttachable({
+        scopedDb,
         path: upload.tempPath,
         filename: upload.filename,
         teamId,

@@ -1,0 +1,26 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "Analyze this talent reference: is the image already a character sheet? Describe the person.\nUploaded filename: broadcast-mic.jpg",
+        "model": "anthropic/claude-sonnet-5",
+        "turnIndex": 0,
+        "hasToolResult": false
+      },
+      "response": {
+        "content": "{\"isCharacterSheet\":false,\"subjectKind\":\"other\",\"suggestedName\":\"\",\"description\":\"A vintage broadcast microphone on a short desk stand: a rounded chrome-and-black capsule with a slotted grille, a black ring collar, and a heavy tapered base. No person is present.\",\"age\":\"\",\"gender\":\"\",\"ethnicity\":\"\",\"physicalDescription\":\"Chrome capsule with horizontal grille slots, matte black collar and mount, tapered black stand base.\",\"standardClothing\":\"Not applicable: an object made of chrome and black-finished metal.\",\"distinguishingFeatures\":\"Slotted chrome grille, ring collar, desk-stand base.\"}"
+      },
+      "recordedTimings": {
+        "ttftMs": 2902,
+        "interChunkDelaysMs": [
+          437, 122, 418, 124, 415, 133, 433, 107, 428, 122, 418, 133, 414, 124,
+          367, 52, 0, 3
+        ],
+        "totalDurationMs": 7152
+      },
+      "metadata": {
+        "systemHash": "67e7d0bd"
+      }
+    }
+  ]
+}

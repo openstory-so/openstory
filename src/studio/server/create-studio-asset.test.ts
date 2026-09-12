@@ -530,7 +530,7 @@ describe('createStudioAssets', () => {
   });
 });
 
-describe('reference rights gate (#1581)', () => {
+describe('upload rights gate (#1581)', () => {
   const uploadUrl = `/r2/talent/${TEAM_ID}/temp/01ABC.png`;
   const request = { ipAddress: '203.0.113.9', userAgent: 'vitest' };
   const base = {
@@ -541,30 +541,20 @@ describe('reference rights gate (#1581)', () => {
     resolution: '720p' as const,
     count: 1,
   };
+  const video = {
+    activity: 'video' as const,
+    prompt: 'the fox turns toward camera',
+    videoModel: 'seedance_v2' as const,
+    aspectRatio: '16:9' as const,
+    resolution: '720p' as const,
+    duration: 5,
+    count: 1,
+    referenceImages: [],
+    referenceVideos: [],
+    referenceAudio: [],
+  };
 
-  it('gates uploads and raw URLs, not library or generated stills', async () => {
-    const { needsReferenceAttestation } =
-      await import('@/studio/reference-rights');
-    expect(needsReferenceAttestation(uploadUrl)).toBe(true);
-    expect(needsReferenceAttestation('https://example.com/anyone.jpg')).toBe(
-      true
-    );
-    expect(needsReferenceAttestation(`/r2/talent/${TEAM_ID}/tal1/a.png`)).toBe(
-      false
-    );
-    expect(
-      needsReferenceAttestation('/r2/thumbnails/teams/t/studio/a/image.png')
-    ).toBe(false);
-    // System talent / locations ship from our own assets domain.
-    const { getPublicAssetsDomain } = await import('@/platform/public-assets');
-    expect(
-      needsReferenceAttestation(
-        `https://${getPublicAssetsDomain()}/talent/ava/sheet.webp`
-      )
-    ).toBe(false);
-  });
-
-  it('refuses an upload with no sign-off on record, before any credit hold', async () => {
+  it('refuses an unchecked upload before any credit hold', async () => {
     const { AttestationRequiredError } = await import('@/platform/errors');
     const scopedDb = createScopedDb(TEAM_ID, USER_ID);
 
@@ -576,48 +566,19 @@ describe('reference rights gate (#1581)', () => {
     expect(await db.select().from(generatedAssets)).toEqual([]);
   });
 
-  it('requires a basis for a real person, and refuses a still that needs no check', async () => {
+  it('refuses a detected person until signed, then generates', async () => {
     const { AttestationRequiredError } = await import('@/platform/errors');
-    const { attestStudioReferences } = await import('./reference-attestation');
+    const { attestUploads, recordLikenessFinding } =
+      await import('@/cast/server/upload-rights');
     const scopedDb = createScopedDb(TEAM_ID, USER_ID);
 
+    await recordLikenessFinding(scopedDb, [uploadUrl], 'human', request);
     await expect(
-      attestStudioReferences(
-        scopedDb,
-        [
-          {
-            url: uploadUrl,
-            statementVersion: 'portrait-rights-v1',
-            authorizationBasis: '   ',
-          },
-        ],
-        request
-      )
+      createStudioAssets(scopedDb, { ...base, referenceImages: [uploadUrl] })
     ).rejects.toBeInstanceOf(AttestationRequiredError);
-    await expect(
-      attestStudioReferences(
-        scopedDb,
-        [
-          {
-            url: `/r2/talent/${TEAM_ID}/tal1/a.png`,
-            statementVersion: 'portrait-rights-v1',
-            authorizationBasis: 'this is me',
-          },
-        ],
-        request
-      )
-    ).rejects.toThrow('needs no rights check');
-    expect(await db.select().from(uploadAttestations)).toEqual([]);
-  });
+    expect(mockReserveRunCredits).not.toHaveBeenCalled();
 
-  it('records the sign-off keyed by the URL hash; generate then passes and never re-asks', async () => {
-    const { sha256Hex } = await import('@/platform/compliance/hash');
-    const { PORTRAIT_RIGHTS_V1, statementHash } =
-      await import('@/platform/compliance/attestations');
-    const { attestStudioReferences } = await import('./reference-attestation');
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
-
-    await attestStudioReferences(
+    await attestUploads(
       scopedDb,
       [
         {
@@ -628,35 +589,6 @@ describe('reference rights gate (#1581)', () => {
       ],
       request
     );
-
-    const rows = await db.select().from(uploadAttestations);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({
-      teamId: TEAM_ID,
-      userId: USER_ID,
-      subjectType: 'studio_reference',
-      subjectId: await sha256Hex(uploadUrl),
-      statementVersion: PORTRAIT_RIGHTS_V1.version,
-      statementSha256: await statementHash(PORTRAIT_RIGHTS_V1),
-      depictsRealPerson: true,
-      authorizationBasis: 'this is me',
-      ipAddress: '203.0.113.9',
-      userAgent: 'vitest',
-    });
-
-    // Already on record: a second confirm is a no-op, generate goes through.
-    await attestStudioReferences(
-      scopedDb,
-      [
-        {
-          url: uploadUrl,
-          statementVersion: 'portrait-rights-v1',
-          authorizationBasis: 'again',
-        },
-      ],
-      request
-    );
-    expect(await db.select().from(uploadAttestations)).toHaveLength(1);
     await createStudioAssets(scopedDb, {
       ...base,
       referenceImages: [uploadUrl],
@@ -664,54 +596,31 @@ describe('reference rights gate (#1581)', () => {
     expect(mockTriggerWorkflow).toHaveBeenCalledTimes(1);
   });
 
-  it('a still the check cleared (no person) generates with nothing signed', async () => {
-    const { sha256Hex } = await import('@/platform/compliance/hash');
-    const { LIKENESS_CLEARED_V1 } =
-      await import('@/platform/compliance/attestations');
-    const { recordPortraitAttestation } =
-      await import('@/cast/server/likeness-upload');
+  it('a still the check cleared generates with nothing signed', async () => {
+    const { recordLikenessFinding } =
+      await import('@/cast/server/upload-rights');
     const scopedDb = createScopedDb(TEAM_ID, USER_ID);
     const logoUrl = `/r2/talent/${TEAM_ID}/temp/01LOGO.png`;
 
-    // What `classifyStudioReferenceFn` writes when it finds no person.
-    await recordPortraitAttestation({
-      scopedDb,
-      subjectType: 'studio_reference',
-      subjectId: await sha256Hex(logoUrl),
-      attestation: {
-        statementVersion: LIKENESS_CLEARED_V1.version,
-        authorizationBasis: '',
-      },
-      request,
-      depictsRealPerson: false,
-    });
-
+    await recordLikenessFinding(scopedDb, [logoUrl], 'other', request);
     await createStudioAssets(scopedDb, {
       ...base,
       referenceImages: [logoUrl],
     });
     expect(mockTriggerWorkflow).toHaveBeenCalledTimes(1);
-    expect(await db.select().from(uploadAttestations)).toMatchObject([
-      { depictsRealPerson: false, statementVersion: 'likeness-cleared-v1' },
-    ]);
   });
 
-  it('gates frames-mode stills too, and lets library stills through untouched', async () => {
+  it('gates the video paths too: reference mode and frames', async () => {
     const { AttestationRequiredError } = await import('@/platform/errors');
     const scopedDb = createScopedDb(TEAM_ID, USER_ID);
-    const video = {
-      activity: 'video' as const,
-      prompt: 'the fox turns toward camera',
-      videoModel: 'seedance_v2' as const,
-      aspectRatio: '16:9' as const,
-      resolution: '720p' as const,
-      duration: 5,
-      count: 1,
-      referenceImages: [],
-      referenceVideos: [],
-      referenceAudio: [],
-    };
 
+    await expect(
+      createStudioAssets(scopedDb, {
+        ...video,
+        mode: 'reference',
+        referenceImages: [uploadUrl],
+      })
+    ).rejects.toBeInstanceOf(AttestationRequiredError);
     await expect(
       createStudioAssets(scopedDb, {
         ...video,
@@ -719,7 +628,11 @@ describe('reference rights gate (#1581)', () => {
         startImageUrl: uploadUrl,
       })
     ).rejects.toBeInstanceOf(AttestationRequiredError);
+    expect(mockReserveRunCredits).not.toHaveBeenCalled();
+  });
 
+  it('lets library stills through untouched', async () => {
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
     await createStudioAssets(scopedDb, {
       ...video,
       mode: 'frames',
@@ -727,5 +640,27 @@ describe('reference rights gate (#1581)', () => {
     });
     expect(await db.select().from(uploadAttestations)).toEqual([]);
     expect(mockTriggerWorkflow).toHaveBeenCalledTimes(1);
+  });
+
+  it("another team's clearance does not cover this team", async () => {
+    const { AttestationRequiredError } = await import('@/platform/errors');
+    const { recordLikenessFinding } =
+      await import('@/cast/server/upload-rights');
+    const otherTeam = generateId();
+    await db.insert(teams).values([{ id: otherTeam, name: 'O', slug: 'o' }]);
+    const url = 'https://example.com/anyone.jpg';
+
+    await recordLikenessFinding(
+      createScopedDb(otherTeam, USER_ID),
+      [url],
+      'other',
+      request
+    );
+    await expect(
+      createStudioAssets(createScopedDb(TEAM_ID, USER_ID), {
+        ...base,
+        referenceImages: [url],
+      })
+    ).rejects.toBeInstanceOf(AttestationRequiredError);
   });
 });

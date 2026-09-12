@@ -64,20 +64,6 @@ const promptSchema = z
 
 const countSchema = z.number().int().min(1).max(4);
 
-/**
- * Portrait sign-off for one reference image that shows a real person
- * (#1581), recorded by `attestStudioReferencesFn` before generate. Keyed by
- * the URL the composer attached; the server hashes it into the row.
- */
-export const referenceAttestationSchema = z.object({
-  url: mediaUrlSchema,
-  statementVersion: z.string().min(1).max(60),
-  authorizationBasis: z.string().min(1).max(500),
-});
-export type StudioReferenceAttestation = z.infer<
-  typeof referenceAttestationSchema
->;
-
 export const studioActivitySchema = z.enum(['image', 'video']);
 export const studioSortSchema = z.enum(['newest', 'oldest']);
 export const studioReferenceKindSchema = z.enum(['image', 'video', 'audio']);

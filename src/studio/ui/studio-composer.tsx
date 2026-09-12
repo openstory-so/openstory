@@ -62,18 +62,20 @@ import {
   useCreateStudioAssets,
   useDraftStudioPrompt,
   useStudioPendingCreates,
-  useStudioReferenceRights,
   studioUploadKeys,
-  useAttestStudioReferences,
 } from './use-studio-assets';
 import { useQueryClient } from '@tanstack/react-query';
 import { useUploadTempMedia } from '@/cast/ui/use-talent';
 import { PortraitAttestationFields } from '@/cast/ui/talent-library/portrait-attestation-fields';
-import { statementFor } from '@/platform/compliance/attestations';
+import { PORTRAIT_RIGHTS_V1 } from '@/platform/compliance/attestations';
 import {
-  needsReferenceAttestation,
-  studioReferenceImages,
-} from '@/studio/reference-rights';
+  needsLikenessCheck,
+  type PortraitAttestation,
+} from '@/cast/upload-rights';
+import { useAttestUploads, useUploadRights } from '@/cast/ui/use-upload-rights';
+import { openAddCreditsDialog } from '@/billing/ui/use-add-credits-dialog';
+import { isInsufficientCreditsError } from '@/platform/errors';
+import { studioReferenceImages } from '@/studio/reference-rights';
 import {
   capReferenceImages,
   DEFAULT_IMAGE_MODEL,
@@ -100,11 +102,7 @@ import { VoiceInputButton } from '@/ui/voice/voice-input-button';
 import { useEditorDictation } from '@/ui/use-dictation';
 import { pickShufflePrompt, studioShufflePrompts } from './prompt-shuffle';
 import { parseStudioPaste } from './paste-import';
-import type {
-  StudioCreateInput,
-  StudioReferenceAttestation,
-  StudioReferenceKind,
-} from '@/studio/schema';
+import type { StudioCreateInput, StudioReferenceKind } from '@/studio/schema';
 import {
   renumberStudioReferences,
   snapStudioVideoDuration,
@@ -308,7 +306,7 @@ export function StudioComposer({
   const draft = useDraftStudioPrompt();
   const pendingCreates = useStudioPendingCreates(activity);
   const upload = useUploadTempMedia();
-  const attest = useAttestStudioReferences();
+  const attest = useAttestUploads();
   const queryClient = useQueryClient();
   const library = useStudioLibrary();
   const vias = useViaAvailability();
@@ -469,43 +467,43 @@ export function StudioComposer({
   };
 
   // --- rights (#1581) ---------------------------------------------------------
-  // Same rule the server gate applies: uploads and raw URLs get classified,
+  // Same rule the server gate applies: uploads and raw URLs get checked,
   // library rows do not. Logged out, nothing is asked until sign-in.
+  const tiles = [...references, startFrame, endFrame].filter(
+    (r): r is StudioReference => r !== null
+  );
   const gatedUrls = [
-    ...new Set(
-      studioReferenceImages(buildInput()).filter(needsReferenceAttestation)
-    ),
+    ...new Set(studioReferenceImages(buildInput()).filter(needsLikenessCheck)),
   ];
-  const rights = useStudioReferenceRights(gatedUrls);
+  const rights = useUploadRights(
+    gatedUrls.map((url) => ({
+      url,
+      filename: tiles.find((r) => r.url === url)?.label,
+    }))
+  );
   const checks = rights.flatMap((query, i) => {
     const url = gatedUrls[i];
     return url ? [{ url, query }] : [];
   });
-  const unattested = checks.filter(
-    (c) => c.query.data !== undefined && !c.query.data.attested
-  );
-  // Only a real person is ever unattested: the check clears everything else.
-  const portraitUrls = unattested.map((c) => c.url);
+  const owed = checks.filter((c) => c.query.data?.status === 'needs_portrait');
+  const portraitUrls = owed.map((c) => c.url);
   const portraitKey = portraitUrls.join('\n');
-  const portraitStatement = statementFor({
-    subjectType: 'studio_reference',
-    depictsRealPerson: true,
-  });
   const portraitTicked =
     portraitUrls.length > 0 && portraitTickedFor === portraitKey;
+  // `isLoading`, not `isPending`: a disabled (logged-out) check is pending
+  // forever and must not wear a spinner.
   const checking = new Set(
-    checks.filter((c) => c.query.isPending).map((c) => c.url)
+    checks.filter((c) => c.query.isLoading).map((c) => c.url)
   );
   // Generate waits for every check to land and every sign-off to be saved.
   const rightsReady =
     !isAuthenticated ||
-    (checks.every((c) => c.query.data !== undefined) &&
-      unattested.length === 0);
+    (checks.every((c) => c.query.data !== undefined) && owed.length === 0);
   const rightsTicked = portraitTicked && authorizationBasis.trim().length > 0;
-  const referenceAttestations: StudioReferenceAttestation[] = portraitUrls.map(
+  const referenceAttestations: PortraitAttestation[] = portraitUrls.map(
     (url) => ({
       url,
-      statementVersion: portraitStatement.version,
+      statementVersion: PORTRAIT_RIGHTS_V1.version,
       authorizationBasis: authorizationBasis.trim(),
     })
   );
@@ -930,6 +928,9 @@ export function StudioComposer({
       return;
     }
     requireAuth(() => {
+      // Logged out with uploads attached: sign-in starts the rights checks,
+      // and the panel (not a server rejection) asks for the sign-off.
+      if (!isAuthenticated && gatedUrls.length > 0) return;
       create.mutate(buildInput());
     });
   };
@@ -1126,21 +1127,34 @@ export function StudioComposer({
               .map((c) => (
                 <p key={c.url} className="text-xs text-destructive">
                   Couldn't check {badgeFor(c.url)}: {c.query.error?.message}{' '}
-                  <Button
-                    type="button"
-                    variant="link"
-                    size="sm"
-                    className="h-auto p-0 text-xs"
-                    onClick={() => void c.query.refetch()}
-                  >
-                    Retry
-                  </Button>
+                  {isInsufficientCreditsError(c.query.error) ? (
+                    <Button
+                      type="button"
+                      variant="link"
+                      size="sm"
+                      className="h-auto p-0 text-xs"
+                      onClick={() =>
+                        openAddCreditsDialog('studio-rights-check')
+                      }
+                    >
+                      Add credits
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="link"
+                      size="sm"
+                      className="h-auto p-0 text-xs"
+                      onClick={() => void c.query.refetch()}
+                    >
+                      Retry
+                    </Button>
+                  )}
                 </p>
               ))}
             {portraitUrls.length > 0 && (
               <PortraitAttestationFields
                 id="studio-portrait-attestation"
-                statement={portraitStatement}
                 attested={portraitTicked}
                 onAttestedChange={(checked) =>
                   setPortraitTickedFor(checked ? portraitKey : '')
@@ -1153,7 +1167,7 @@ export function StudioComposer({
                 </p>
               </PortraitAttestationFields>
             )}
-            {unattested.length > 0 && (
+            {owed.length > 0 && (
               <div className="flex justify-end">
                 <Button
                   type="button"

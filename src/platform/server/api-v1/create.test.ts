@@ -11,6 +11,15 @@ const mocks = vi.hoisted(() => ({
   enqueueLibraryLocationSheet: vi.fn(),
   enhanceScriptToString: vi.fn(),
   uploadFile: vi.fn(async () => undefined),
+  classifyUpload: vi.fn<
+    () => Promise<{ status: 'cleared' | 'signed' | 'needs_portrait' }>
+  >(async () => ({ status: 'cleared' })),
+  attestUploads: vi.fn(async () => undefined),
+}));
+
+vi.mock('@/cast/server/upload-rights', () => ({
+  classifyUpload: mocks.classifyUpload,
+  attestUploads: mocks.attestUploads,
 }));
 
 vi.mock('#storage', () => ({
@@ -77,7 +86,7 @@ function makeStyle(): Style {
 }
 
 const portraitAttestation = {
-  statementVersion: 'v1',
+  statementVersion: 'portrait-rights-v1' as const,
   authorizationBasis: 'self',
 };
 
@@ -103,6 +112,7 @@ describe('runOneShotCreate', () => {
   const ctx = {
     user: { id: 'user-1' },
     teamId: 'team-1',
+    request: { ipAddress: '203.0.113.9', userAgent: 'vitest' },
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- stub covering styles.list + talent/location list/delete
     scopedDb: {
       styles: { list: async () => [makeStyle()] },
@@ -286,6 +296,60 @@ describe('runOneShotCreate', () => {
     expect(mocks.createSequences).not.toHaveBeenCalled();
     expect(mocks.enqueueLibraryTalentSheet).not.toHaveBeenCalled();
     expect(talentDelete).not.toHaveBeenCalled();
+  });
+
+  it('refuses a real-person reference with no portraitAttestation before any insert (#1581)', async () => {
+    mocks.classifyUpload.mockResolvedValueOnce({ status: 'needs_portrait' });
+
+    await expect(
+      runOneShotCreate(
+        {
+          ...baseInput,
+          locations: [
+            {
+              name: 'Pier',
+              referenceImageUrls: ['https://cdn.example/pier-1.png'],
+            },
+          ],
+        },
+        ctx
+      )
+    ).rejects.toThrow(/Location "Pier" shows a real person/);
+
+    expect(mocks.attestUploads).not.toHaveBeenCalled();
+    expect(mocks.createLibraryLocation).not.toHaveBeenCalled();
+    expect(mocks.createSequences).not.toHaveBeenCalled();
+  });
+
+  it('records the portraitAttestation for a detected person, then creates (#1581)', async () => {
+    mocks.classifyUpload.mockResolvedValueOnce({ status: 'needs_portrait' });
+
+    await runOneShotCreate(
+      {
+        ...baseInput,
+        characters: [
+          {
+            name: 'Ada',
+            referenceImageUrls: ['https://cdn.example/ada-1.png'],
+            portraitAttestation,
+          },
+        ],
+      },
+      ctx
+    );
+
+    expect(mocks.attestUploads).toHaveBeenCalledWith(
+      expect.anything(),
+      [
+        expect.objectContaining({
+          url: expect.stringContaining('/r2/talent/team-1/temp/'),
+          statementVersion: 'portrait-rights-v1',
+          authorizationBasis: 'self',
+        }),
+      ],
+      ctx.request
+    );
+    expect(mocks.createLibraryTalent).toHaveBeenCalledTimes(1);
   });
 
   it('rolls back inline talents and does not enqueue sheets when sequence create fails', async () => {

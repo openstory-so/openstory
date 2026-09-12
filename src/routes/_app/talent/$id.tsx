@@ -2,9 +2,7 @@ import { useState } from 'react';
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
 import { routeParams } from '@/ui/layout/breadcrumbs';
 import { EditTalentDialog } from '@/cast/ui/talent-library/edit-talent-dialog';
-import { PortraitAttestationFields } from '@/cast/ui/talent-library/portrait-attestation-fields';
 import { TalentMediaUpload } from '@/cast/ui/talent-library/talent-media-upload';
-import { statementFor } from '@/platform/compliance/attestations';
 import { PageContainer } from '@/ui/layout/page-container';
 import { getCurrentUserProfileFn } from '@/platform/user.fn';
 import { PageDescription } from '@/ui/typography/page-description';
@@ -70,8 +68,6 @@ function TalentDetailPage() {
   const generateSheet = useGenerateTalentSheet();
   const setDefaultSheet = useSetDefaultSheet();
   const [dropFiles, setDropFiles] = useState<File[]>([]);
-  const [attested, setAttested] = useState(false);
-  const [authorizationBasis, setAuthorizationBasis] = useState('');
 
   const canManageTalent = Boolean(
     isAuthenticated &&
@@ -150,15 +146,6 @@ function TalentDetailPage() {
       </div>
     );
   }
-
-  // Only a real person's likeness is signed for (#1581).
-  const isHuman = talent.isHuman === true;
-  const uploadStatement = statementFor({
-    subjectType: 'talent',
-    depictsRealPerson: true,
-  });
-  const canUpload =
-    !isHuman || (attested && authorizationBasis.trim().length > 0);
 
   return (
     <div className="h-full overflow-auto">
@@ -395,41 +382,14 @@ function TalentDetailPage() {
             <h2 className="text-lg font-semibold">Drop a sheet or photos</h2>
             <p className="text-sm text-muted-foreground">
               Drop a character sheet to use it as-is, or drop photos to generate
-              a sheet.
+              a sheet. A photo of a real person asks for your rights sign-off
+              first.
             </p>
-            {dropFiles.length > 0 && isHuman ? (
-              <PortraitAttestationFields
-                statement={uploadStatement}
-                attested={attested}
-                onAttestedChange={setAttested}
-                authorizationBasis={authorizationBasis}
-                onAuthorizationBasisChange={setAuthorizationBasis}
-              />
-            ) : null}
             <TalentMediaUpload
               files={dropFiles}
-              onFilesChange={(next) => {
-                setDropFiles(next);
-                if (next.length === 0) {
-                  setAttested(false);
-                  setAuthorizationBasis('');
-                }
-              }}
+              onFilesChange={setDropFiles}
               talentId={talent.id}
-              requiresAttestation={isHuman}
-              portraitAttestation={
-                isHuman && canUpload
-                  ? {
-                      statementVersion: uploadStatement.version,
-                      authorizationBasis: authorizationBasis.trim(),
-                    }
-                  : undefined
-              }
-              onComplete={() => {
-                setDropFiles([]);
-                setAttested(false);
-                setAuthorizationBasis('');
-              }}
+              onComplete={() => setDropFiles([])}
             />
           </section>
         ) : null}

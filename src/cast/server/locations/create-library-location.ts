@@ -8,6 +8,10 @@
  */
 
 import { moveFile } from '#storage';
+import {
+  carryUploadRights,
+  requireUploadRights,
+} from '@/cast/server/upload-rights';
 import { generateId } from '@/platform/id';
 import type { LibraryLocation } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
@@ -27,12 +31,16 @@ export type ProcessedImage = { url: string; path: string };
 
 /**
  * Move temp-uploaded location images to permanent storage, returning only
- * successfully moved images. Shared with `addLocationSheetsFn`.
+ * successfully moved images. Every library write goes through here, so this
+ * is where the likeness gate runs (#1581): each still must be cleared or
+ * signed, and the library URL is covered by the same row.
  */
 export async function promoteLocationReferenceImages(
+  scopedDb: ScopedDb,
   tempUrls: string[],
   teamId: string
 ): Promise<ProcessedImage[]> {
+  await requireUploadRights(scopedDb, tempUrls);
   const results: ProcessedImage[] = [];
 
   for (const tempUrl of tempUrls) {
@@ -45,6 +53,7 @@ export async function promoteLocationReferenceImages(
 
     await moveFile(STORAGE_BUCKETS.LOCATIONS, tempPath, permanentPath);
     const url = getPublicUrl(STORAGE_BUCKETS.LOCATIONS, permanentPath);
+    await carryUploadRights(scopedDb, tempUrl, url);
     results.push({ url, path: permanentPath });
   }
 
@@ -95,6 +104,7 @@ export async function createLibraryLocation(
   options?: CreateLibraryLocationOptions
 ): Promise<CreateLibraryLocationResult> {
   const processedImages = await promoteLocationReferenceImages(
+    ctx.scopedDb,
     input.referenceImageUrls ?? [],
     ctx.teamId
   );

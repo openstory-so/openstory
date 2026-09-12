@@ -24,16 +24,8 @@ import {
   deleteFile,
   listFiles,
 } from '@/platform/server/storage/storage-cloudflare';
-import { attestStudioReferences } from '@/studio/server/reference-attestation';
 import { createStudioAssets } from '@/studio/server/create-studio-asset';
-import { analyzeTalentMediaForTeam } from '@/cast/server/talent/analyze-talent-media';
-import { sha256Hex } from '@/platform/compliance/hash';
-import { LIKENESS_CLEARED_V1 } from '@/platform/compliance/attestations';
-import { recordPortraitAttestation } from '@/cast/server/likeness-upload';
-import { needsReferenceAttestation } from '@/studio/reference-rights';
-import { getRequest } from '@tanstack/react-start/server';
 import {
-  referenceAttestationSchema,
   studioActivitySchema,
   studioCreateInputSchema,
   studioReferenceKindSchema,
@@ -52,28 +44,6 @@ export const createStudioAssetsFn = createServerFn({ method: 'POST' })
   .validator(zodValidator(studioCreateInputSchema))
   .handler(async ({ context, data }) => {
     return createStudioAssets(context.scopedDb, data);
-  });
-
-/**
- * Record the sign-off for gated reference images (#1581) — Confirm in the
- * composer. Generate then only checks the ledger.
- */
-export const attestStudioReferencesFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
-  .validator(
-    zodValidator(
-      z.object({
-        attestations: z.array(referenceAttestationSchema).min(1).max(11),
-      })
-    )
-  )
-  .handler(async ({ context, data }) => {
-    const request = getRequest();
-    await attestStudioReferences(context.scopedDb, data.attestations, {
-      ipAddress: request.headers.get('cf-connecting-ip'),
-      userAgent: request.headers.get('user-agent'),
-    });
-    return { attested: data.attestations.length };
   });
 
 /**
@@ -98,56 +68,6 @@ export const listStudioUploadsFn = createServerFn({ method: 'GET' })
         );
         return kind ? [{ url: `/r2/${file.id}`, label: file.name, kind }] : [];
       });
-  });
-
-/**
- * Rights check for one gated reference image (#1581): already on record
- * for this team (no vision call), or classified. A real person comes back
- * unattested so the composer asks for the portrait sign-off; anything else
- * is cleared on the spot — the finding is written to the ledger so Generate
- * never has to look again. Never defaults to human: the classifier decides.
- */
-export const classifyStudioReferenceFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
-  .validator(zodValidator(z.object({ url: mediaUrlSchema })))
-  .handler(async ({ context, data }) => {
-    if (!needsReferenceAttestation(data.url)) {
-      throw new Error('This reference needs no rights check');
-    }
-    const subjectId = await sha256Hex(data.url);
-    const [latest] =
-      await context.scopedDb.compliance.attestations.listForSubject(
-        'studio_reference',
-        subjectId
-      );
-    if (latest) {
-      return { attested: true, depictsRealPerson: latest.depictsRealPerson };
-    }
-    const analysis = await analyzeTalentMediaForTeam({
-      scopedDb: context.scopedDb,
-      userId: context.user.id,
-      imageUrls: [data.url],
-      idempotencyKey: `studio-vision:${data.url}`,
-    });
-    if (analysis.subjectKind === 'human') {
-      return { attested: false, depictsRealPerson: true };
-    }
-    const request = getRequest();
-    await recordPortraitAttestation({
-      scopedDb: context.scopedDb,
-      subjectType: 'studio_reference',
-      subjectId,
-      attestation: {
-        statementVersion: LIKENESS_CLEARED_V1.version,
-        authorizationBasis: '',
-      },
-      request: {
-        ipAddress: request.headers.get('cf-connecting-ip'),
-        userAgent: request.headers.get('user-agent'),
-      },
-      depictsRealPerson: false,
-    });
-    return { attested: true, depictsRealPerson: false };
   });
 
 const listStudioAssetsInputSchema = z.object({

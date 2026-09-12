@@ -9,11 +9,9 @@
 
 import { moveFile } from '#storage';
 import {
-  recordPortraitAttestation,
-  requireUploadAttestation,
-  type LikenessRequestContext,
-  type UploadAttestationInput,
-} from '@/cast/server/likeness-upload';
+  carryUploadRights,
+  requireUploadRights,
+} from '@/cast/server/upload-rights';
 import { generateId } from '@/platform/id';
 import type { Talent } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
@@ -44,15 +42,21 @@ export type CreateLibraryTalentInput = {
   description?: string;
   // Nullable to accept the drizzle-zod `createTalentSchema` shape directly.
   isFavorite?: boolean | null;
+  /**
+   * Only read when there are no reference images. With images, the likeness
+   * ledger decides (#1581): a signed portrait row makes the talent human.
+   */
   isHuman?: boolean | null;
-  /** Temp-upload URLs in the TALENT bucket; moved to permanent here. */
+  /**
+   * Temp-upload URLs in the TALENT bucket; moved to permanent here. Each must
+   * already be cleared or signed on the likeness ledger.
+   */
   referenceImageUrls?: string[];
   /**
    * Subset of `referenceImageUrls` already classified as a character sheet.
    * `undefined` means classify server-side; `[]` means none are sheets.
    */
   characterSheetImageUrls?: string[];
-  portraitAttestation?: UploadAttestationInput;
   /**
    * When false, insert the talent + media and return `deferredSheet` instead
    * of triggering the billed `/library-talent-sheet` workflow. Used by the
@@ -66,7 +70,6 @@ export type CreateLibraryTalentContext = {
   scopedDb: ScopedDb;
   user: { id: string };
   teamId: string;
-  request?: LikenessRequestContext;
 };
 
 export type CreateLibraryTalentResult = {
@@ -81,13 +84,13 @@ export async function createLibraryTalent(
   ctx: CreateLibraryTalentContext
 ): Promise<CreateLibraryTalentResult> {
   const tempUrls = input.referenceImageUrls ?? [];
-  const depictsRealPerson = input.isHuman === true;
-  const attestation = tempUrls.length
-    ? requireUploadAttestation({
-        depictsRealPerson,
-        attestation: input.portraitAttestation,
-      })
-    : null;
+  // The gate runs before the row: every still must be cleared or signed on
+  // the likeness ledger, and that ledger — not the client — says whether the
+  // talent is a real person.
+  const rights = await requireUploadRights(ctx.scopedDb, tempUrls);
+  const depictsRealPerson = tempUrls.length
+    ? [...rights.values()].some((r) => r.depictsRealPerson)
+    : input.isHuman === true;
 
   const newTalent = await ctx.scopedDb.talent.create({
     name: input.name,
@@ -96,18 +99,6 @@ export async function createLibraryTalent(
     isHuman: depictsRealPerson,
     isInTeamLibrary: true,
   });
-
-  if (attestation) {
-    // Recorded before media so a failed insert cannot leave likeness bytes
-    // without a warranty. The talent row exists either way.
-    await recordPortraitAttestation({
-      scopedDb: ctx.scopedDb,
-      subjectId: newTalent.id,
-      attestation,
-      request: ctx.request,
-      depictsRealPerson,
-    });
-  }
 
   // Move temp files to permanent location and create media records.
   const permanentUrls: string[] = [];
@@ -122,6 +113,7 @@ export async function createLibraryTalent(
     await moveFile(STORAGE_BUCKETS.TALENT, tempPath, permanentPath);
 
     const permanentUrl = getPublicUrl(STORAGE_BUCKETS.TALENT, permanentPath);
+    await carryUploadRights(ctx.scopedDb, tempUrl, permanentUrl);
     permanentUrls.push(permanentUrl);
     tempToPermanent.set(tempUrl, permanentUrl);
 

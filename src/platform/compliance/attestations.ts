@@ -1,12 +1,13 @@
 /**
- * Rights attestations for user uploads (#1180).
+ * Rights attestations for user uploads (#1180, #1581).
  *
- * When someone uploads an image of a real person, or an avatar asset, or a
- * brand logo, we require them to state on the record that they hold the rights
- * to it. This module is the single source of truth for that wording: the UI
- * renders these exact strings, and `upload_attestations` stores a hash of the
- * same string. One definition, so the text a user agreed to and the text we
- * later claim they agreed to cannot drift apart.
+ * Every image a user brings in is looked at by the likeness classifier before
+ * anything uses it. A real person needs the uploader's portrait statement on
+ * the record; anything else gets our own finding recorded instead. This
+ * module is the single source of truth for that wording: the UI renders
+ * these exact strings, and `upload_attestations` stores a hash of the same
+ * string. One definition, so the text a user agreed to and the text we later
+ * claim they agreed to cannot drift apart.
  *
  * Versioning rule: **never edit a statement's text in place.** Add a new
  * version and point the active constant at it. Editing v1's wording silently
@@ -15,7 +16,6 @@
  */
 
 import { sha256Hex } from './hash';
-import type { AttestationSubjectType } from '@/platform/server/db/schema/compliance';
 
 export type AttestationStatement = {
   version: string;
@@ -74,11 +74,11 @@ export const ASSET_RIGHTS_V1: AttestationStatement = {
 };
 
 /**
- * The automated finding recorded when a studio reference is checked and no
- * real person is found (#1581). Not a user statement: it is our own record
- * of why the upload was accepted with nothing signed, so a later "on what
- * basis did you take this image?" has an answer that names the check and
- * the moment. Nothing renders it.
+ * The automated finding recorded when an upload is checked and no real
+ * person is found (#1581). Not a user statement: it is our own record of why
+ * the upload was accepted with nothing signed, so a later "on what basis did
+ * you take this image?" has an answer that names the check and the moment.
+ * Nothing renders it.
  */
 export const LIKENESS_CLEARED_V1: AttestationStatement = {
   version: 'likeness-cleared-v1',
@@ -90,27 +90,29 @@ export const LIKENESS_CLEARED_V1: AttestationStatement = {
   requiresBasis: false,
 };
 
+/**
+ * The automated finding recorded when the check DID find a real person
+ * (#1581). Written by the classifier, never by the user; it is what makes a
+ * later re-check free (the verdict is on the ledger) and what the gate reads
+ * as "portrait sign-off still owed". Superseded by a `portrait-rights-v1` row
+ * once the user signs. Nothing renders it.
+ */
+export const LIKENESS_DETECTED_V1: AttestationStatement = {
+  version: 'likeness-detected-v1',
+  label: 'Real person detected',
+  text: [
+    'Automated likeness check: a real, identifiable person was detected in',
+    'this upload, so a likeness authorization is required before use.',
+  ].join(' '),
+  requiresBasis: false,
+};
+
 const STATEMENTS: readonly AttestationStatement[] = [
   PORTRAIT_RIGHTS_V1,
   ASSET_RIGHTS_V1,
   LIKENESS_CLEARED_V1,
+  LIKENESS_DETECTED_V1,
 ];
-
-/**
- * Which statement applies to an upload.
- *
- * Driven by what the upload *depicts*, not by which table it lands in: a
- * `talent` row is usually a real actor but can be a synthetic character, and a
- * `sequence_element` is usually a logo but can be a headshot. A real person
- * gets the portrait statement the user must affirm; anything else records
- * only the cleared finding, and only where a check ran (studio).
- */
-export function statementFor(opts: {
-  subjectType: AttestationSubjectType;
-  depictsRealPerson: boolean;
-}): AttestationStatement {
-  return opts.depictsRealPerson ? PORTRAIT_RIGHTS_V1 : LIKENESS_CLEARED_V1;
-}
 
 /** Look up a statement by stored version, for rendering historical evidence. */
 function statementByVersion(version: string): AttestationStatement | undefined {

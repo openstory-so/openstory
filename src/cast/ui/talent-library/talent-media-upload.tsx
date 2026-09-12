@@ -23,18 +23,11 @@ type TalentMediaUploadProps = {
   onFilesChange: (files: File[]) => void;
   /** Called with URLs when uploading to temp storage (no talentId) */
   onUploadedUrlsChange?: (urls: string[]) => void;
-  /** If provided, uploads directly to this talent instead of temp storage */
-  talentId?: string;
   /**
-   * Required by finalize when uploading onto an existing HUMAN talent; a
-   * non-person talent uploads straight away (#1581).
+   * If provided, each file is finalized onto this talent as it lands; a real
+   * person opens the rights sign-off dialog first (#1581).
    */
-  portraitAttestation?: {
-    statementVersion: string;
-    authorizationBasis?: string;
-  };
-  /** Whether uploads onto `talentId` wait for `portraitAttestation`. */
-  requiresAttestation?: boolean;
+  talentId?: string;
   /** Called when all uploads complete (for talentId mode) */
   onComplete?: () => void;
   /** Called after each successful upload with the stored URL. */
@@ -51,8 +44,6 @@ export const TalentMediaUpload: React.FC<TalentMediaUploadProps> = ({
   onFilesChange,
   onUploadedUrlsChange,
   talentId,
-  portraitAttestation,
-  requiresAttestation = true,
   onComplete,
   onFileUploaded,
   sheetFileKeys,
@@ -63,20 +54,9 @@ export const TalentMediaUpload: React.FC<TalentMediaUploadProps> = ({
     new Map()
   );
   const uploadedKeysRef = useRef(new Set<string>());
-  const pendingBatchesRef = useRef<
-    Array<{
-      files: File[];
-      onProgress: (file: File, percent: number) => void;
-      onSuccess: (file: File) => void;
-      onError: (file: File, error: Error) => void;
-    }>
-  >([]);
-  const flushingPendingRef = useRef(false);
   const { requireAuth } = useAuthGate();
   const uploadTempMedia = useUploadTempMedia();
   const uploadTalentMedia = useUploadTalentMedia();
-  const waitingForAttestation =
-    Boolean(talentId) && requiresAttestation && !portraitAttestation;
 
   useEffect(() => {
     onUploadedUrlsChange?.(Array.from(uploadedUrlsMap.values()));
@@ -112,15 +92,6 @@ export const TalentMediaUpload: React.FC<TalentMediaUploadProps> = ({
         }
         return;
       }
-      if (waitingForAttestation) {
-        pendingBatchesRef.current.push({
-          files: newFiles,
-          onProgress,
-          onSuccess,
-          onError,
-        });
-        return;
-      }
       const uploadPromises = newFiles.map(async (file) => {
         try {
           const type = file.type.startsWith('video/')
@@ -128,14 +99,12 @@ export const TalentMediaUpload: React.FC<TalentMediaUploadProps> = ({
             : ('image' as const);
 
           if (talentId) {
-            const result = await uploadTalentMedia.mutateAsync({
+            await uploadTalentMedia.mutateAsync({
               talentId,
               file,
               type,
               onProgress: (percent) => onProgress(file, percent),
-              portraitAttestation,
             });
-            onFileUploaded?.(file, result.url);
           } else {
             const result = await uploadTempMedia.mutateAsync({
               file,
@@ -177,8 +146,6 @@ export const TalentMediaUpload: React.FC<TalentMediaUploadProps> = ({
     [
       requireAuth,
       talentId,
-      portraitAttestation,
-      waitingForAttestation,
       uploadTempMedia,
       uploadTalentMedia,
       onComplete,
@@ -189,36 +156,8 @@ export const TalentMediaUpload: React.FC<TalentMediaUploadProps> = ({
   useEffect(() => {
     if (files.length === 0) {
       uploadedKeysRef.current.clear();
-      pendingBatchesRef.current = [];
     }
   }, [files.length]);
-
-  useEffect(() => {
-    if (waitingForAttestation || !talentId || !portraitAttestation) return;
-    if (flushingPendingRef.current) return;
-    const batches = pendingBatchesRef.current;
-    if (batches.length === 0) return;
-    pendingBatchesRef.current = [];
-    flushingPendingRef.current = true;
-    const currentKeys = new Set(files.map(getFileKey));
-    void (async () => {
-      try {
-        for (const batch of batches) {
-          const stillPresent = batch.files.filter((file) =>
-            currentKeys.has(getFileKey(file))
-          );
-          if (stillPresent.length === 0) continue;
-          await onUpload(stillPresent, {
-            onProgress: batch.onProgress,
-            onSuccess: batch.onSuccess,
-            onError: batch.onError,
-          });
-        }
-      } finally {
-        flushingPendingRef.current = false;
-      }
-    })();
-  }, [waitingForAttestation, talentId, portraitAttestation, files, onUpload]);
 
   return (
     <FileUpload

@@ -347,7 +347,6 @@ export const EditTalentDialog: React.FC<EditTalentDialogProps> = ({
               )}
               <AddTalentMediaDialog
                 talentId={talent.id}
-                isHuman={talent.isHuman === true}
                 trigger={
                   <Button type="button" variant="outline" size="sm">
                     <Plus className="h-4 w-4 mr-2" />

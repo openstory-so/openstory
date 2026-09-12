@@ -189,33 +189,6 @@ testWithUser.describe('Add Talent with Reference Media', () => {
   );
 
   testWithUser(
-    'subject toggle overrides vision and drops the attestation',
-    async ({ page, testUser }) => {
-      const uniqueName = uniqueTalentName('Override');
-      const dialog = await openAddTalentFromLibrary(page);
-
-      await dialog.getByLabel('Name').fill(uniqueName);
-      await uploadNamedTalentImage(page, 'test-image.jpg');
-      await waitForSubjectKind(page, 'Human');
-      await expect(dialog.getByLabel('Basis for authorization')).toBeVisible();
-
-      await dialog.getByRole('radio', { name: 'Animated' }).click();
-      await expect(
-        dialog.getByRole('radio', { name: 'Animated' })
-      ).toBeChecked();
-      await expect(dialog.getByLabel('Basis for authorization')).toHaveCount(0);
-
-      await submitAddTalent(page);
-
-      const card = page.getByRole('link', { name: uniqueName });
-      await expect(card).toBeVisible({ timeout: 10_000 });
-      await expect(card.getByText('AI', { exact: true })).toBeVisible();
-
-      await cleanupTalentByName(testUser.teamId, uniqueName);
-    }
-  );
-
-  testWithUser(
     'Generate from photos fills description from vision',
     async ({ page, testUser }) => {
       const uniqueName = uniqueTalentName('Generate');

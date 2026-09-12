@@ -56,6 +56,13 @@ import {
   resolveTalentIds,
 } from './resolve';
 import { ingestImageToBucket } from './safe-fetch';
+import {
+  attestUploads,
+  classifyUpload,
+  type LikenessRequestContext,
+} from '@/cast/server/upload-rights';
+import { AttestationRequiredError } from '@/platform/errors';
+import type { PortraitAttestation } from '@/cast/upload-rights';
 
 const logger = getLogger(['openstory', 'api-v1', 'create']);
 
@@ -63,6 +70,8 @@ export type OneShotContext = {
   scopedDb: ScopedDb;
   user: { id: string };
   teamId: string;
+  /** Recorded on any portrait sign-off the request carries. */
+  request: LikenessRequestContext;
 };
 
 /** One created sequence in the (non-`?wait`) create response. */
@@ -155,6 +164,42 @@ async function ingestReferenceImages(
   return ingested.map((i) => i.publicUrl);
 }
 
+/**
+ * The likeness gate for API-ingested images (#1581): every one is classified,
+ * and a real person needs the item's `portraitAttestation`, which is then
+ * recorded for each of that item's images. Runs before any library row.
+ */
+async function requireIngestedImageRights(
+  ctx: OneShotContext,
+  items: Array<{
+    label: string;
+    urls: string[];
+    attestation: Omit<PortraitAttestation, 'url'> | undefined;
+  }>
+): Promise<void> {
+  for (const item of items) {
+    for (const url of item.urls) {
+      const rights = await classifyUpload({
+        scopedDb: ctx.scopedDb,
+        userId: ctx.user.id,
+        url,
+        request: ctx.request,
+      });
+      if (rights.status !== 'needs_portrait') continue;
+      if (!item.attestation) {
+        throw new AttestationRequiredError(
+          `${item.label} shows a real person: portraitAttestation is required`
+        );
+      }
+      await attestUploads(
+        ctx.scopedDb,
+        [{ url, ...item.attestation }],
+        ctx.request
+      );
+    }
+  }
+}
+
 async function ingestInlineCharacterImages(
   items: ApiCreateSequenceInput['characters'],
   teamId: string
@@ -233,6 +278,23 @@ export async function runOneShotCreate(
       ingestInlineCharacterImages(input.characters, ctx.teamId),
       ingestInlineLocationImages(input.locations, ctx.teamId),
     ]);
+  await requireIngestedImageRights(ctx, [
+    ...inlineCreates<CharacterCreate>(input.characters).map((item) => ({
+      label: `Character "${item.name}"`,
+      urls: ingestedCharacters.get(item) ?? [],
+      attestation: item.portraitAttestation,
+    })),
+    ...inlineCreates<LocationCreate>(input.locations).map((item) => ({
+      label: `Location "${item.name}"`,
+      urls: ingestedLocations.get(item) ?? [],
+      attestation: item.portraitAttestation,
+    })),
+    ...elementUploads.map((upload, index) => ({
+      label: `Element "${upload.token ?? upload.filename}"`,
+      urls: [upload.tempPublicUrl],
+      attestation: input.elements?.[index]?.portraitAttestation,
+    })),
+  ]);
 
   let script = input.script;
   let enhancedScript: string | undefined;
@@ -279,7 +341,6 @@ export async function runOneShotCreate(
                 description: item.description,
                 isHuman: item.isHuman,
                 referenceImageUrls: ingestedCharacters.get(item) ?? [],
-                portraitAttestation: item.portraitAttestation,
                 enqueueSheet: false,
               },
               ctx

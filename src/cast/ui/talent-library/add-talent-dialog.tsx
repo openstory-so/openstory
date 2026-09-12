@@ -15,8 +15,10 @@ import { Label } from '@/ui/shadcn/label';
 import { Textarea } from '@/ui/shadcn/textarea';
 import { useHydrated } from '@/ui/use-hydrated';
 import { useAnalyzeTalentMedia, useCreateTalent } from '@/cast/ui/use-talent';
+import { useAttestUploads } from '@/cast/ui/use-upload-rights';
 import { getFileKey } from '@/ui/upload';
-import { statementFor } from '@/platform/compliance/attestations';
+import { PORTRAIT_RIGHTS_V1 } from '@/platform/compliance/attestations';
+import { Badge } from '@/ui/shadcn/badge';
 import type { Talent } from '@/platform/server/db/schema';
 import { sheetProgressCopy } from '@/cast/sheet-progress-copy';
 import {
@@ -25,7 +27,6 @@ import {
 } from '@/cast/subject-kind';
 import { Loader2, Plus, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
-import { ToggleGroup, ToggleGroupItem } from '@/ui/shadcn/toggle-group';
 import { PortraitAttestationFields } from './portrait-attestation-fields';
 import { TalentMediaUpload } from './talent-media-upload';
 
@@ -60,25 +61,23 @@ export const AddTalentDialog: React.FC<AddTalentDialogProps> = ({
   const [subjectKind, setSubjectKind] = useState<TalentSubjectKind | null>(
     null
   );
-  // Attestation is required whenever reference media is attached. Human →
-  // portrait statement + basis; animated/other → asset statement. `isHuman`
-  // is `subjectKind === 'human'`, not “has uploads”.
+  // The classifier's verdict is what the server trusts (#1581): a real person
+  // needs the portrait sign-off, recorded before create.
   const [attested, setAttested] = useState(false);
   const [authorizationBasis, setAuthorizationBasis] = useState('');
 
   const isHydrated = useHydrated();
   const { requireAuth } = useAuthGate();
   const createTalent = useCreateTalent();
+  const attest = useAttestUploads();
   const detectSheet = useAnalyzeTalentMedia();
   const generateDescription = useAnalyzeTalentMedia();
   const detectJobsRef = useRef(new Map<string, Promise<SheetDetectResult>>());
   const submitGenRef = useRef(0);
-  const subjectKindLockedRef = useRef(false);
 
   const closeAndReset = () => {
     submitGenRef.current += 1;
     detectJobsRef.current.clear();
-    subjectKindLockedRef.current = false;
     setFiles([]);
     setUploadedUrls([]);
     setName('');
@@ -122,11 +121,9 @@ export const AddTalentDialog: React.FC<AddTalentDialogProps> = ({
           };
         }
         const kind = result.subjectKind;
-        if (!subjectKindLockedRef.current) {
-          setSubjectKind((prev) =>
-            prev ? strongestSubjectKind([prev, kind]) : kind
-          );
-        }
+        setSubjectKind((prev) =>
+          prev ? strongestSubjectKind([prev, kind]) : kind
+        );
         if (result.isCharacterSheet) {
           setSheetFileKeys((prev) => new Set(prev).add(key));
           toast.success('Character sheet detected');
@@ -150,9 +147,8 @@ export const AddTalentDialog: React.FC<AddTalentDialogProps> = ({
         toast.warning(
           'Could not tell if this is a character sheet. We’ll generate one.'
         );
-        if (!subjectKindLockedRef.current) {
-          setSubjectKind('human');
-        }
+        // Unchecked: the safe reading is a person, and signing is always allowed.
+        setSubjectKind('human');
         return {
           url,
           isSheet: false,
@@ -186,7 +182,6 @@ export const AddTalentDialog: React.FC<AddTalentDialogProps> = ({
       return next.size === prev.size ? prev : next;
     });
     if (newFiles.length === 0) {
-      subjectKindLockedRef.current = false;
       setSubjectKind(null);
     }
   };
@@ -224,14 +219,16 @@ export const AddTalentDialog: React.FC<AddTalentDialogProps> = ({
       setSubjectKind(kind);
     }
 
+    // Every upload the check called a person, or could not check, is signed
+    // for; the server refuses create until each is cleared or signed.
+    const portraitUrls = detected
+      .filter((result) => result.subjectKind === 'human')
+      .map((result) => result.url)
+      .filter((url) => uploadedUrls.includes(url));
     const depictsRealPerson = kind === 'human';
-    const statement = statementFor({
-      subjectType: 'talent',
-      depictsRealPerson: true,
-    });
 
     // Only a real person's likeness is signed for (#1581).
-    if (uploadedUrls.length > 0 && depictsRealPerson) {
+    if (portraitUrls.length > 0 && depictsRealPerson) {
       if (!attested) {
         setCreatePhase('idle');
         toast.error(
@@ -248,23 +245,25 @@ export const AddTalentDialog: React.FC<AddTalentDialogProps> = ({
 
     setCreatePhase('creating');
     try {
+      if (portraitUrls.length > 0) {
+        await attest.mutateAsync(
+          portraitUrls.map((url) => ({
+            url,
+            statementVersion: PORTRAIT_RIGHTS_V1.version,
+            authorizationBasis: authorizationBasis.trim(),
+          }))
+        );
+        if (gen !== submitGenRef.current) return;
+      }
       const { talent, sheetWorkflowRunId } = await createTalent.mutateAsync({
         name: name.trim(),
         description: description.trim() || undefined,
-        isHuman: depictsRealPerson,
         referenceImageUrls: uploadedUrls,
         // Send an array after a successful client classify so create does not
         // re-classify every photo. Omit when classify failed so the server
         // runs vision. If a sheet URL is present, create still runs vision
         // once for sheet metadata.
         characterSheetImageUrls: classifiedAll ? sheetUrlList : undefined,
-        portraitAttestation:
-          uploadedUrls.length > 0 && depictsRealPerson
-            ? {
-                statementVersion: statement.version,
-                authorizationBasis: authorizationBasis.trim(),
-              }
-            : undefined,
       });
       if (gen !== submitGenRef.current) return;
       onCreated?.(talent);
@@ -380,16 +379,11 @@ export const AddTalentDialog: React.FC<AddTalentDialogProps> = ({
                           if (!name.trim() && result.suggestedName.trim()) {
                             setName(result.suggestedName.trim());
                           }
-                          if (!subjectKindLockedRef.current) {
-                            setSubjectKind((prev) =>
-                              prev
-                                ? strongestSubjectKind([
-                                    prev,
-                                    result.subjectKind,
-                                  ])
-                                : result.subjectKind
-                            );
-                          }
+                          setSubjectKind((prev) =>
+                            prev
+                              ? strongestSubjectKind([prev, result.subjectKind])
+                              : result.subjectKind
+                          );
                           toast.success('Description generated from photos');
                         },
                         onError: (error) => {
@@ -438,33 +432,15 @@ export const AddTalentDialog: React.FC<AddTalentDialogProps> = ({
 
             {uploadedUrls.length > 0 && subjectKind ? (
               <div className="flex flex-col gap-3">
-                <div className="flex flex-col gap-2">
-                  <Label id="subject-kind-label">Subject</Label>
-                  <ToggleGroup
-                    type="single"
-                    value={subjectKind}
-                    onValueChange={(next) => {
-                      if (
-                        next !== 'human' &&
-                        next !== 'animated' &&
-                        next !== 'other'
-                      ) {
-                        return;
-                      }
-                      subjectKindLockedRef.current = true;
-                      setSubjectKind(next);
-                      setAttested(false);
-                      setAuthorizationBasis('');
-                    }}
-                    variant="outline"
-                    size="sm"
-                    spacing={0}
-                    aria-labelledby="subject-kind-label"
-                  >
-                    <ToggleGroupItem value="human">Human</ToggleGroupItem>
-                    <ToggleGroupItem value="animated">Animated</ToggleGroupItem>
-                    <ToggleGroupItem value="other">Other</ToggleGroupItem>
-                  </ToggleGroup>
+                <div className="flex items-center gap-2">
+                  <Label>Subject</Label>
+                  <Badge variant="secondary" data-testid="subject-kind">
+                    {subjectKind === 'human'
+                      ? 'Human'
+                      : subjectKind === 'animated'
+                        ? 'Animated'
+                        : 'Other'}
+                  </Badge>
                 </div>
                 {subjectKind === 'human' ? (
                   <PortraitAttestationFields
