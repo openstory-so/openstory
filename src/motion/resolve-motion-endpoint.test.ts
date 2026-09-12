@@ -75,9 +75,10 @@ describe('resolveMotionEndpoint', () => {
   });
 
   it('does not send reference URLs for models that only substitute descriptions', () => {
-    expect(resolveMotionEndpoint('veo3_1', true)).toEqual({
+    // Grok's reference route is xAI-native only; on fal it is i2v alone.
+    expect(resolveMotionEndpoint('grok_imagine_video_1_5', true)).toEqual({
       via: 'fal',
-      endpointId: IMAGE_TO_VIDEO_MODELS.veo3_1.id,
+      endpointId: IMAGE_TO_VIDEO_MODELS.grok_imagine_video_1_5.id,
       references: 'none',
     });
   });
@@ -183,9 +184,9 @@ describe('reference-only', () => {
   );
 
   it('refuses a model with no reference-to-video route', () => {
-    expect(() => resolveMotionEndpoint('veo3_1', false, 'fal', true)).toThrow(
-      /cannot render without a start frame/
-    );
+    expect(() =>
+      resolveMotionEndpoint('grok_imagine_video_1_5', false, 'fal', true)
+    ).toThrow(/cannot render without a start frame/);
   });
 
   it('marks refs inline on the native vias so no still is pinned as a frame', () => {

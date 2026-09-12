@@ -132,81 +132,6 @@ describe('assembleMotionPrompt', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Google Veo 3.1 (audio-capable)
-  // ---------------------------------------------------------------------------
-
-  describe('Google Veo 3.1 (audio)', () => {
-    const model = 'veo3_1';
-
-    it('starts with fullPrompt as the base', () => {
-      const result = assembleMotionPrompt({
-        motionPrompt: makeMotionPrompt(),
-        model,
-      });
-
-      expect(result.startsWith(fullPromptText)).toBe(true);
-    });
-
-    it('appends dialogue as natural narrative with inline quotes', () => {
-      const result = assembleMotionPrompt({
-        motionPrompt: makeMotionPrompt(),
-        model,
-      });
-
-      expect(result).toContain(
-        'Sarah says in a firm commanding voice, "We need to reconsider the entire approach."'
-      );
-      expect(result).toContain('James says in a soft resigned voice,');
-    });
-
-    it('appends Audio: section with ambient and SFX', () => {
-      const result = assembleMotionPrompt({
-        motionPrompt: makeMotionPrompt(),
-        model,
-      });
-
-      expect(result).toContain('Audio:');
-      expect(result).toContain('quiet office hum');
-      expect(result).toContain('chair scrape');
-    });
-
-    it('keeps an Audio: section carrying the no-music direction when no audio data', () => {
-      const result = assembleMotionPrompt({
-        motionPrompt: makeMotionPrompt({ audio: undefined }),
-        model,
-      });
-
-      expect(result).toContain(
-        'Audio: No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.'
-      );
-      expect(result).not.toContain('quiet office hum');
-    });
-
-    it('suppresses model-generated music alongside the ambient and SFX', () => {
-      const result = assembleMotionPrompt({
-        motionPrompt: makeMotionPrompt(),
-        model,
-      });
-
-      expect(result).toContain(
-        'Audio: quiet office hum with keyboard clicks. chair scrape, paper rustling. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.'
-      );
-    });
-
-    it('omits dialogue when not present', () => {
-      const result = assembleMotionPrompt({
-        motionPrompt: makeMotionPrompt({
-          dialogue: { presence: false, lines: [] },
-        }),
-        model,
-      });
-
-      expect(result).not.toContain('Sarah says');
-      expect(result.startsWith(fullPromptText)).toBe(true);
-    });
-  });
-
-  // ---------------------------------------------------------------------------
   // ByteDance Seedance 2.0 / 2.5 (audio — prose-woven sound + in-prompt guards)
   // ---------------------------------------------------------------------------
 
@@ -335,24 +260,11 @@ describe('assembleMotionPrompt', () => {
   );
 
   // ---------------------------------------------------------------------------
-  // Non-audio models (Grok, MiniMax)
+  // Non-audio models (Grok)
   // ---------------------------------------------------------------------------
 
   describe('Grok Imagine Video 1.5 (no audio)', () => {
     const model = 'grok_imagine_video_1_5';
-
-    it('returns fullPrompt for non-audio model', () => {
-      const result = assembleMotionPrompt({
-        motionPrompt: makeMotionPrompt(),
-        model,
-      });
-
-      expect(result).toBe(fullPromptText);
-    });
-  });
-
-  describe('MiniMax Hailuo 2.3 (no audio)', () => {
-    const model = 'minimax_hailuo_02';
 
     it('returns fullPrompt for non-audio model', () => {
       const result = assembleMotionPrompt({
@@ -465,10 +377,10 @@ describe('assembleMotionPrompt', () => {
         motionPrompt: makeMotionPrompt({
           audio: { ambientSound: 'rain on windows', soundEffects: [] },
         }),
-        model: 'veo3_1',
+        model: 'kling_v3_pro',
       });
 
-      expect(result).toContain('Audio: rain on windows');
+      expect(result).toContain('Ambient sounds: rain on windows');
     });
 
     it('handles audio with only sound effects', () => {
@@ -476,10 +388,10 @@ describe('assembleMotionPrompt', () => {
         motionPrompt: makeMotionPrompt({
           audio: { ambientSound: '', soundEffects: ['door slam'] },
         }),
-        model: 'veo3_1',
+        model: 'kling_v3_pro',
       });
 
-      expect(result).toContain('Audio: door slam');
+      expect(result).toContain('Ambient sounds: door slam');
     });
 
     it('handles empty audio (no ambient, no SFX)', () => {
@@ -487,12 +399,13 @@ describe('assembleMotionPrompt', () => {
         motionPrompt: makeMotionPrompt({
           audio: { ambientSound: '', soundEffects: [] },
         }),
-        model: 'veo3_1',
+        model: 'kling_v3_pro',
       });
 
-      // Audio: section carries only the no-music direction
+      // Only the no-music direction remains
+      expect(result).not.toContain('Ambient sounds:');
       expect(result).toContain(
-        'Audio: No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.'
+        'No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.'
       );
     });
 

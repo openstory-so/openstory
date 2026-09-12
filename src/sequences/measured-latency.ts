@@ -61,10 +61,7 @@ export const VIDEO_WALL_CLOCK = {
   grok_imagine_video_1_5: { p50: 37, p90: 43, n: 20 },
   // No samples yet; Grok Imagine is the nearest fast native-provider i2v.
   gemini_omni_flash: { p50: 68, p90: 114, n: 55 },
-  ltx_2_3_pro: { p50: 128, p90: 201, n: 40 },
-  veo3_1: { p50: 155, p90: 166, n: 6 },
   kling_v3_pro: { p50: 233, p90: 573, n: 17 },
-  minimax_hailuo_02: { p50: 204, p90: 234, n: 14 },
   minimax_h3_max: { p50: 22, p90: 73, n: 427 },
   seedance_v2: { p50: 211, p90: 289, n: 631 },
   seedance_v2_5: { p50: 293, p90: 466, n: 11 },

@@ -51,7 +51,7 @@ export function availableResolutions(selection: Selection): Resolution[] {
  *
  *   - *below* — the model's ceiling is under the tier (Seedance 2.5 at 4K).
  *   - *above* — its floor is over it, so the shot costs more than was asked
- *     for, not less (LTX starts at 1080p, so it can't serve a 720p ask).
+ *     for, not less (a model whose floor is 1080p cannot serve a 720p ask).
  *   - *a fixed size* — the tier can't move this model at all, so it is not
  *     "lower than 720p", it is outside the scale. Either it takes no size we
  *     can steer (Nano Banana 2 Lite, and the models publishing no range we'd
@@ -80,8 +80,8 @@ export function resolutionCeilingNote(
       return;
     }
     if (tiers.includes(resolution)) return;
-    // A model can miss the tier from either side. LTX starts at 1080p, so a
-    // 720p ask renders *above* it — saying "below" there tells the user they
+    // A model can miss the tier from either side. A model whose floor is 1080p
+    // renders a 720p ask *above* it — saying "below" there tells the user they
     // are getting less while they are billed for more. `tiers` is non-empty
     // here (the fixed case returned above) and ordered low to high, so its
     // first entry is the model's floor.

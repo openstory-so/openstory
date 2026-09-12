@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   createSequenceSchema,
-  REFERENCE_ONLY_MODEL_ERROR,
   REFERENCE_ONLY_REQUIRES_MOTION_ERROR,
 } from './sequence.schemas';
 
@@ -176,30 +175,9 @@ describe('createSequenceSchema — reference-only', () => {
     expect(result.success).toBe(true);
   });
 
-  it('rejects a model that needs a start frame', () => {
-    const result = createSequenceSchema.safeParse({
-      ...base,
-      generateStartFrames: false,
-      videoModel: 'veo3_1',
-      videoModels: ['veo3_1'],
-    });
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.issues[0]?.message).toBe(REFERENCE_ONLY_MODEL_ERROR);
-    }
-  });
-
-  it('rejects when only a VARIANT model lacks the route', () => {
-    // Reference-only renders every selected model, not just the primary — a
-    // variant without a reference route would fail every shot it rendered.
-    const result = createSequenceSchema.safeParse({
-      ...base,
-      generateStartFrames: false,
-      videoModel: 'seedance_v2_5',
-      videoModels: ['seedance_v2_5', 'veo3_1'],
-    });
-    expect(result.success).toBe(false);
-  });
+  // Every catalog model renders reference-only on some via (#1511), so the
+  // reject path has no model to exercise it with; the schema still asks
+  // `referenceOnlyCapableWith` for every selected model.
 
   it('leaves motion model selection alone when start frames are on', () => {
     const result = createSequenceSchema.safeParse({

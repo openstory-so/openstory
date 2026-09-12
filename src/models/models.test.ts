@@ -100,7 +100,7 @@ describe('videoModelSupportsAudio', () => {
     expect(videoModelSupportsAudio('seedance_v2')).toBe(true);
     expect(videoModelSupportsAudio('seedance_v2_5')).toBe(true);
     expect(videoModelSupportsAudio('kling_v3_pro')).toBe(true);
-    expect(videoModelSupportsAudio('veo3_1')).toBe(true);
+    expect(videoModelSupportsAudio('minimax_h3_max')).toBe(true);
   });
 
   it('returns false for models without audio', () => {
@@ -134,7 +134,7 @@ describe('Model Validation', () => {
   describe('isValidImageToVideoModel', () => {
     it('returns true for valid model keys', () => {
       expect(isValidImageToVideoModel('kling_v3_pro')).toBe(true);
-      expect(isValidImageToVideoModel('veo3_1')).toBe(true);
+      expect(isValidImageToVideoModel('minimax_h3_max')).toBe(true);
       expect(isValidImageToVideoModel('seedance_v2')).toBe(true);
       expect(isValidImageToVideoModel('seedance_v2_5')).toBe(true);
     });
@@ -181,7 +181,7 @@ describe('Model Validation', () => {
   describe('safeImageToVideoModel', () => {
     it('returns the model key when valid', () => {
       expect(safeImageToVideoModel('kling_v3_pro')).toBe('kling_v3_pro');
-      expect(safeImageToVideoModel('veo3_1')).toBe('veo3_1');
+      expect(safeImageToVideoModel('minimax_h3_max')).toBe('minimax_h3_max');
     });
 
     it('returns default when invalid', () => {
@@ -192,7 +192,7 @@ describe('Model Validation', () => {
     });
 
     it('uses custom fallback when provided', () => {
-      const customFallback = 'veo3_1';
+      const customFallback = 'kling_v3_pro';
       expect(safeImageToVideoModel('invalid_model', customFallback)).toBe(
         customFallback
       );
@@ -239,7 +239,6 @@ describe('supportsReferenceOnlyMotion', () => {
     // Grok's fal route rides image-to-video, which requires `image_url` — a
     // reference-only shot has nowhere to go there. Kling qualifies via O3.
     expect(supportsReferenceOnlyMotion('grok_imagine_video_1_5')).toBe(false);
-    expect(supportsReferenceOnlyMotion('veo3_1')).toBe(false);
   });
 
   it('includes both Seedance tiers, H3 Max, Omni Flash and Kling O3', () => {

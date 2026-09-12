@@ -16,8 +16,6 @@ import {
   zKlingVideoO3ProReferenceToVideoInput,
   zKlingVideoO3ProTextToVideoInput,
   zKlingVideoV3ProImageToVideoInput,
-  zLtx23ImageToVideoInput,
-  zMinimaxHailuo23ProImageToVideoInput,
   zSeedance20EnterpriseV2ImageToVideoInput,
   zSeedance20EnterpriseV2ReferenceToVideoInput,
   zSeedance20EnterpriseV2TextToVideoInput,
@@ -27,7 +25,6 @@ import {
   zSeedance25ImageToVideoInput,
   zSeedance25ReferenceToVideoInput,
   zSeedance25TextToVideoInput,
-  zVeo31ImageToVideoInput,
 } from '@/motion/server/generated/zod.gen';
 
 import {
@@ -41,8 +38,6 @@ import {
   KlingVideoO3ProReferenceToVideoInputSchema,
   KlingVideoO3ProTextToVideoInputSchema,
   KlingVideoV3ProImageToVideoInputSchema,
-  Ltx23ImageToVideoInputSchema,
-  MinimaxHailuo23ProImageToVideoInputSchema,
   Seedance20EnterpriseV2ImageToVideoInputSchema,
   Seedance20EnterpriseV2ReferenceToVideoInputSchema,
   Seedance20EnterpriseV2TextToVideoInputSchema,
@@ -52,7 +47,6 @@ import {
   Seedance25ImageToVideoInputSchema,
   Seedance25ReferenceToVideoInputSchema,
   Seedance25TextToVideoInputSchema,
-  Veo31ImageToVideoInputSchema,
 } from '@/motion/server/generated/schemas.gen';
 
 export type MotionJSONSchema =
@@ -66,8 +60,6 @@ export type MotionJSONSchema =
   | typeof KlingVideoO3ProReferenceToVideoInputSchema
   | typeof KlingVideoO3ProTextToVideoInputSchema
   | typeof KlingVideoV3ProImageToVideoInputSchema
-  | typeof Ltx23ImageToVideoInputSchema
-  | typeof MinimaxHailuo23ProImageToVideoInputSchema
   | typeof Seedance20EnterpriseV2ImageToVideoInputSchema
   | typeof Seedance20EnterpriseV2ReferenceToVideoInputSchema
   | typeof Seedance20EnterpriseV2TextToVideoInputSchema
@@ -76,8 +68,7 @@ export type MotionJSONSchema =
   | typeof Seedance20MiniTextToVideoInputSchema
   | typeof Seedance25ImageToVideoInputSchema
   | typeof Seedance25ReferenceToVideoInputSchema
-  | typeof Seedance25TextToVideoInputSchema
-  | typeof Veo31ImageToVideoInputSchema;
+  | typeof Seedance25TextToVideoInputSchema;
 
 export const MOTION_INPUT_SCHEMAS = {
   'bytedance/seedance-2.0/enterprise/v2/image-to-video':
@@ -103,10 +94,6 @@ export const MOTION_INPUT_SCHEMAS = {
     zKlingVideoO3ProReferenceToVideoInput,
   'fal-ai/kling-video/o3/pro/text-to-video': zKlingVideoO3ProTextToVideoInput,
   'fal-ai/kling-video/v3/pro/image-to-video': zKlingVideoV3ProImageToVideoInput,
-  'fal-ai/ltx-2.3/image-to-video': zLtx23ImageToVideoInput,
-  'fal-ai/minimax/hailuo-2.3/pro/image-to-video':
-    zMinimaxHailuo23ProImageToVideoInput,
-  'fal-ai/veo3.1/image-to-video': zVeo31ImageToVideoInput,
   'minimax/h3-max/image-to-video': zH3MaxImageToVideoInput,
   'minimax/h3-max/reference-to-video': zH3MaxReferenceToVideoInput,
   'minimax/h3-max/text-to-video': zH3MaxTextToVideoInput,
@@ -153,10 +140,6 @@ export const MOTION_JSON_SCHEMAS = {
     KlingVideoO3ProTextToVideoInputSchema,
   'fal-ai/kling-video/v3/pro/image-to-video':
     KlingVideoV3ProImageToVideoInputSchema,
-  'fal-ai/ltx-2.3/image-to-video': Ltx23ImageToVideoInputSchema,
-  'fal-ai/minimax/hailuo-2.3/pro/image-to-video':
-    MinimaxHailuo23ProImageToVideoInputSchema,
-  'fal-ai/veo3.1/image-to-video': Veo31ImageToVideoInputSchema,
   'minimax/h3-max/image-to-video': H3MaxImageToVideoInputSchema,
   'minimax/h3-max/reference-to-video': H3MaxReferenceToVideoInputSchema,
   'minimax/h3-max/text-to-video': H3MaxTextToVideoInputSchema,
@@ -224,18 +207,6 @@ export const MOTION_TRANSFORMS = {
   'fal-ai/kling-video/v3/pro/image-to-video': motionTransform(
     zKlingVideoV3ProImageToVideoInput,
     KlingVideoV3ProImageToVideoInputSchema
-  ),
-  'fal-ai/ltx-2.3/image-to-video': motionTransform(
-    zLtx23ImageToVideoInput,
-    Ltx23ImageToVideoInputSchema
-  ),
-  'fal-ai/minimax/hailuo-2.3/pro/image-to-video': motionTransform(
-    zMinimaxHailuo23ProImageToVideoInput,
-    MinimaxHailuo23ProImageToVideoInputSchema
-  ),
-  'fal-ai/veo3.1/image-to-video': motionTransform(
-    zVeo31ImageToVideoInput,
-    Veo31ImageToVideoInputSchema
   ),
   'minimax/h3-max/image-to-video': motionTransform(
     zH3MaxImageToVideoInput,

@@ -65,7 +65,7 @@ function evenIntegerSplit(count: number, targetSeconds: number): number[] {
  * Assign one clip length per weight so the sum is as close as possible to
  * `targetSeconds`, using only values from `grid`. Relative weights keep
  * pacing (a longer hint stays longer). When the grid cannot hit the target
- * (7 × min-6s LTX clips cannot be 30s), returns the closest feasible sum.
+ * (7 × min-5s H3 Max clips cannot be 30s), returns the closest feasible sum.
  */
 export function allocateClipDurations(
   weights: readonly number[],

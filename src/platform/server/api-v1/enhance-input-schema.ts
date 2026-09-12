@@ -59,8 +59,8 @@ export const apiEnhanceScriptSchema = z
       .optional()
       .meta({
         description:
-          "Video (image-to-video) model catalog key. Scene duration labels are constrained to this model's clip grid (e.g. 6, 8 or 10 seconds for ltx_2_3_pro). Defaults to the platform default.",
-        examples: ['ltx_2_3_pro'],
+          "Video (image-to-video) model catalog key. Scene duration labels are constrained to this model's clip grid (e.g. 3 to 15 seconds for kling_v3_pro). Defaults to the platform default.",
+        examples: ['kling_v3_pro'],
       }),
 
     elements: z

@@ -54,10 +54,6 @@ describe('canRenderReferenceOnly', () => {
   it('accepts Kling — O3 Pro is a fal reference-to-video route', async () => {
     expect(await canRenderReferenceOnly('kling_v3_pro', noKeysDb)).toBe(true);
   });
-
-  it('rejects a model with no reference route on either via', async () => {
-    expect(await canRenderReferenceOnly('veo3_1', xaiKeyDb)).toBe(false);
-  });
 });
 
 describe('referenceOnlyCapableWith / referenceOnlyMotionModels', () => {

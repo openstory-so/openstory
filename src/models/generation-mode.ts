@@ -47,8 +47,6 @@ export const TURBO_IMAGE_MODELS = [
 /** Fast motion models. H3 Max is the turbo default. */
 export const TURBO_VIDEO_MODELS = [
   'minimax_h3_max',
-  'ltx_2_3_pro',
-  'minimax_hailuo_02',
   'grok_imagine_video_1_5',
 ] as const satisfies readonly ImageToVideoModel[];
 

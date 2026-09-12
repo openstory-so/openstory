@@ -99,7 +99,7 @@ export type GenerateMotionOptions = {
    *  tokens the endpoint advertises — a model that stops at 1080p serves a 4K
    *  ask with 1080p rather than rejecting it. */
   resolution?: Resolution;
-  /** For audio-capable models (kling v3, veo3), pass `false` to suppress
+  /** For audio-capable models (kling v3, seedance), pass `false` to suppress
    *  the model's native audio output (sfx/ambient/lip-sync). Omitting the
    *  flag lets the API schema default apply (true for audio-capable models). */
   generateAudio?: boolean;

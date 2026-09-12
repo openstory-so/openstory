@@ -22,7 +22,7 @@ import { micros } from './money';
 
 const IMAGE_MODEL: TextToImageModel = 'nano_banana_2';
 const VIDEO_A: ImageToVideoModel = 'kling_v3_pro';
-const VIDEO_B: ImageToVideoModel = 'veo3_1';
+const VIDEO_B: ImageToVideoModel = 'seedance_v2';
 // Two audio models with genuinely different pricing (ElevenLabs is billed
 // per-minute, ACE-Step per-second) so a mixed selection can't be a flat
 // multiple of either.
@@ -613,16 +613,16 @@ describe('the resolution tier sizes the estimate (#1449)', () => {
   it('prices a token-billed clip from the tier', () => {
     const tokenPriced = {
       ...FAL_PRICING,
-      'fal-ai/veo3.1/image-to-video': {
+      'bytedance/seedance-2.0/enterprise/v2/image-to-video': {
         unitPrice: micros(1_000),
         unit: '1000 tokens',
       },
     };
-    const at720 = estimateVideoCost('veo3_1', DURATION, {
+    const at720 = estimateVideoCost('seedance_v2', DURATION, {
       pricing: tokenPriced,
       resolution: '720p',
     });
-    const at4k = estimateVideoCost('veo3_1', DURATION, {
+    const at4k = estimateVideoCost('seedance_v2', DURATION, {
       pricing: tokenPriced,
       resolution: '4k',
     });

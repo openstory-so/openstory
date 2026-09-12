@@ -42,7 +42,7 @@ const QUALITY_OVERRIDES: Partial<
 
 /**
  * The `resolution` tokens an endpoint advertises, read off the generated fal
- * schema. Empty for an endpoint with no such field (Kling v3, Hailuo 2.3),
+ * schema. Empty for an endpoint with no such field (Kling v3),
  * whose output size is fixed.
  */
 export function motionResolutionTokens(endpointId: MotionEndpointId): string[] {
@@ -57,10 +57,10 @@ export function motionResolutionTokens(endpointId: MotionEndpointId): string[] {
 
 /**
  * The requested resolution tier (#1449) in the endpoint's own vocabulary —
- * `'768P'` on H3 Max, `'4k'` on Seedance 2.0, `'2160p'` on LTX. Read off the
+ * `'768P'` on H3 Max, `'4k'` on Seedance 2.0. Read off the
  * generated fal schema, so a new motion model needs no entry anywhere: it
  * inherits whatever its `resolution` enum advertises, and an endpoint with no
- * such field (Kling v3, Hailuo 2.3) keeps its fixed output.
+ * such field (Kling v3) keeps its fixed output.
  *
  * Empty when no tier was asked for, which leaves the schema default in place.
  */
@@ -87,7 +87,6 @@ function resolutionOverride(
 const NO_MUSIC_NEGATIVE_PROMPTS: Partial<Record<ImageToVideoModel, string>> = {
   kling_v3_pro:
     'blur, distort, and low quality, background music, musical score, soundtrack',
-  veo3_1: 'background music, musical score, soundtrack',
 };
 
 type ModelOutputMap = {

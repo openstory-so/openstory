@@ -783,14 +783,14 @@ describe('executeSmartRetry — per-asset model selection (#1066)', () => {
     });
     const { context } = makeContext(makeSequence(), [shotA], {
       video: new Map([['shot-a', 'seedance_v2']]),
-      failedVideo: new Map([['shot-a', 'veo3_1']]),
+      failedVideo: new Map([['shot-a', 'gemini_omni_flash']]),
     });
 
     await executeSmartRetry(context);
 
     expect(triggerWorkflowMock).toHaveBeenCalledWith(
       '/motion',
-      expect.objectContaining({ shotId: 'shot-a', model: 'veo3_1' })
+      expect.objectContaining({ shotId: 'shot-a', model: 'gemini_omni_flash' })
     );
   });
 

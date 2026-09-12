@@ -43,19 +43,6 @@ export const TEST_FAL_PRICING: Record<string, EffectiveFalPricing> = {
     unitPrice: micros(140_000),
     unit: 'seconds',
   },
-  'fal-ai/veo3.1/image-to-video': {
-    unitPrice: micros(400_000),
-    unit: 'seconds',
-  },
-  'fal-ai/ltx-2.3/image-to-video': {
-    unitPrice: micros(40_000),
-    unit: 'seconds',
-  },
-  'fal-ai/minimax/hailuo-2.3/pro/image-to-video': {
-    unitPrice: micros(490_000),
-    unit: 'units',
-    typicalUnitsPerCall: 1,
-  },
   'minimax/h3-max/image-to-video': {
     unitPrice: micros(25_000),
     unit: 'seconds',
