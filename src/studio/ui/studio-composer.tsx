@@ -63,7 +63,10 @@ import {
   useDraftStudioPrompt,
   useStudioPendingCreates,
   useStudioReferenceRights,
+  studioUploadKeys,
+  useAttestStudioReferences,
 } from './use-studio-assets';
+import { useQueryClient } from '@tanstack/react-query';
 import { useUploadTempMedia } from '@/cast/ui/use-talent';
 import { PortraitAttestationFields } from '@/cast/ui/talent-library/portrait-attestation-fields';
 import { statementFor } from '@/platform/compliance/attestations';
@@ -128,6 +131,7 @@ import {
   AudioLines,
   Film,
   ImagePlus,
+  Loader2,
   RotateCcw,
   Shuffle,
   SlidersHorizontal,
@@ -186,11 +190,14 @@ function Tile({
   badge,
   onRemove,
   removeLabel = `Remove ${reference.label}`,
+  checking = false,
 }: {
   reference: StudioReference;
   badge: string;
   onRemove: () => void;
   removeLabel?: string;
+  /** Rights check in flight (#1581): the still is being looked at. */
+  checking?: boolean;
 }) {
   return (
     <div
@@ -232,6 +239,18 @@ function Tile({
           height={160}
           className="h-full w-full object-cover"
         />
+      )}
+      {checking && (
+        <span
+          className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-background/75 text-[10px] font-medium"
+          aria-live="polite"
+        >
+          <Loader2
+            className="size-4 motion-safe:animate-spin"
+            aria-hidden="true"
+          />
+          Checking…
+        </span>
       )}
       <span className="absolute bottom-1 left-1 flex items-center gap-1 rounded bg-background/85 px-1 font-mono text-[10px] leading-4">
         {reference.kind === 'video' && (
@@ -287,6 +306,8 @@ export function StudioComposer({
   const draft = useDraftStudioPrompt();
   const pendingCreates = useStudioPendingCreates(activity);
   const upload = useUploadTempMedia();
+  const attest = useAttestStudioReferences();
+  const queryClient = useQueryClient();
   const library = useStudioLibrary();
 
   const [prompt, setPrompt] = useState('');
@@ -426,7 +447,6 @@ export function StudioComposer({
           effectiveMode === 'reference' ? audioRefs.map((r) => r.url) : [],
         startImageUrl: effectiveMode === 'frames' ? startFrame?.url : undefined,
         endImageUrl: effectiveMode === 'frames' ? endFrame?.url : undefined,
-        referenceAttestations: [],
       };
     }
     return {
@@ -437,7 +457,6 @@ export function StudioComposer({
       resolution,
       count,
       referenceImages: references.map((r) => r.url),
-      referenceAttestations: [],
     };
   };
 
@@ -476,12 +495,18 @@ export function StudioComposer({
   const portraitTicked =
     portraitUrls.length > 0 && portraitTickedFor === portraitKey;
   const assetTicked = assetUrls.length > 0 && assetTickedFor === assetKey;
+  const checking = new Set(
+    checks.filter((c) => c.query.isPending).map((c) => c.url)
+  );
+  // Generate waits for every check to land and every sign-off to be saved.
   const rightsReady =
     !isAuthenticated ||
     (checks.every((c) => c.query.data !== undefined) &&
-      (portraitUrls.length === 0 ||
-        (portraitTicked && authorizationBasis.trim().length > 0)) &&
-      (assetUrls.length === 0 || assetTicked));
+      unattested.length === 0);
+  const rightsTicked =
+    (portraitUrls.length === 0 ||
+      (portraitTicked && authorizationBasis.trim().length > 0)) &&
+    (assetUrls.length === 0 || assetTicked);
   const referenceAttestations: StudioReferenceAttestation[] = [
     ...portraitUrls.map((url) => ({
       url,
@@ -503,6 +528,15 @@ export function StudioComposer({
     return index >= 0 ? `@Image${index + 1}` : url;
   };
   const badges = (urls: string[]) => urls.map(badgeFor).join(', ');
+  const confirmRights = () => {
+    attest.mutate(referenceAttestations, {
+      onSuccess: () => {
+        setPortraitTickedFor('');
+        setAssetTickedFor('');
+        setAuthorizationBasis('');
+      },
+    });
+  };
 
   // Generate stays live on an empty prompt (#1393) — an empty click is the
   // cheapest place to open the login dialog or offer a random prompt. Only
@@ -635,6 +669,7 @@ export function StudioComposer({
           type: kind === 'audio' ? 'recording' : kind,
         });
         placeReference({ url, label: file.name, kind }, target);
+        void queryClient.invalidateQueries({ queryKey: studioUploadKeys.all });
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'Upload failed');
       } finally {
@@ -689,7 +724,7 @@ export function StudioComposer({
       ...items,
       ...library.cast.map((r) => libraryItem('cast', r)),
       ...library.locations.map((r) => libraryItem('locations', r)),
-      ...library.generations
+      ...[...library.uploads, ...library.generations]
         .filter((r) => slots[r.kind] > 0)
         .map((r) => libraryItem('images', r)),
     ];
@@ -907,17 +942,7 @@ export function StudioComposer({
       return;
     }
     requireAuth(() => {
-      create.mutate(
-        { ...buildInput(), referenceAttestations },
-        {
-          // The sign-offs are on record now; a later still gets its own tick.
-          onSuccess: () => {
-            setPortraitTickedFor('');
-            setAssetTickedFor('');
-            setAuthorizationBasis('');
-          },
-        }
-      );
+      create.mutate(buildInput());
     });
   };
 
@@ -1004,6 +1029,7 @@ export function StudioComposer({
                     key={`${reference.url}-${index}`}
                     reference={reference}
                     badge={`@Image${index + 1}`}
+                    checking={checking.has(reference.url)}
                     onRemove={() => removeReference('image', index)}
                   />
                 ))}
@@ -1037,6 +1063,7 @@ export function StudioComposer({
                   <Tile
                     reference={startFrame}
                     badge="Start"
+                    checking={checking.has(startFrame.url)}
                     removeLabel="Remove start frame"
                     onRemove={() => setStartFrame(null)}
                   />
@@ -1051,6 +1078,7 @@ export function StudioComposer({
                     <Tile
                       reference={endFrame}
                       badge="End"
+                      checking={checking.has(endFrame.url)}
                       removeLabel="Remove end frame"
                       onRemove={() => setEndFrame(null)}
                     />
@@ -1095,15 +1123,6 @@ export function StudioComposer({
 
       {isAuthenticated && checks.length > 0 && (
         <div className="flex shrink-0 flex-col gap-2">
-          {checks.some((c) => c.query.isPending) && (
-            <p className="text-xs text-muted-foreground" aria-live="polite">
-              Checking{' '}
-              {badges(
-                checks.filter((c) => c.query.isPending).map((c) => c.url)
-              )}{' '}
-              for real people…
-            </p>
-          )}
           {checks
             .filter((c) => c.query.isError)
             .map((c) => (
@@ -1151,6 +1170,18 @@ export function StudioComposer({
                 Uploaded: {badges(assetUrls)}
               </p>
             </PortraitAttestationFields>
+          )}
+          {unattested.length > 0 && (
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                size="sm"
+                disabled={!rightsTicked || attest.isPending}
+                onClick={confirmRights}
+              >
+                {attest.isPending ? 'Saving…' : 'Confirm rights'}
+              </Button>
+            </div>
           )}
         </div>
       )}

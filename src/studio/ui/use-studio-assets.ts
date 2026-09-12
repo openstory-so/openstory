@@ -1,17 +1,20 @@
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
 import { getAllAdminStudioAssetsFn } from '@/platform/admin-support.fn';
 import {
+  attestStudioReferencesFn,
   classifyStudioReferenceFn,
   createStudioAssetsFn,
   deleteStudioAssetFn,
   draftStudioPromptFn,
   listStudioAssetsFn,
+  listStudioUploadsFn,
   setStudioAssetFavoriteFn,
 } from '@/studio/studio-assets.fn';
 import {
   studioCreateInputSchema,
   type StudioActivity,
   type StudioCreateInput,
+  type StudioReferenceAttestation,
   type StudioSort,
 } from '@/studio/schema';
 import {
@@ -19,6 +22,7 @@ import {
   useMutation,
   useMutationState,
   useQueries,
+  useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
 import { isInsufficientCreditsError } from '@/platform/errors';
@@ -119,11 +123,7 @@ export function useCreateStudioAssets() {
     // list — the composer's spinner and the gallery's placeholder tiles
     // (#1455) hand off to the real queued tiles with no gap.
     onSuccess: () =>
-      Promise.all([
-        queryClient.invalidateQueries({ queryKey: studioAssetKeys.all }),
-        // The gate just recorded the sign-offs; re-ask so the blocks drop.
-        queryClient.invalidateQueries({ queryKey: referenceRightsKeys.all }),
-      ]),
+      queryClient.invalidateQueries({ queryKey: studioAssetKeys.all }),
     onError: (error) => {
       if (isInsufficientCreditsError(error)) return;
       toast.error(error.message);
@@ -208,5 +208,34 @@ export function useDraftStudioPrompt() {
       if (isInsufficientCreditsError(error)) return;
       toast.error(error.message);
     },
+  });
+}
+
+/** Record the sign-off for gated stills; the rights checks re-ask and clear. */
+export function useAttestStudioReferences() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (attestations: StudioReferenceAttestation[]) =>
+      attestStudioReferencesFn({ data: { attestations } }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: referenceRightsKeys.all }),
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
+}
+
+export const studioUploadKeys = {
+  all: ['studio-uploads'] as const,
+};
+
+/** The team's past composer uploads (the picker's Uploads tab). */
+export function useStudioUploads() {
+  const { isAuthenticated } = useAuthGate();
+  return useQuery({
+    queryKey: studioUploadKeys.all,
+    queryFn: () => listStudioUploadsFn(),
+    enabled: isAuthenticated,
+    staleTime: 60_000,
   });
 }

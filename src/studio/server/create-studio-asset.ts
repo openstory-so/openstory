@@ -26,16 +26,7 @@ import {
   reserveRunCredits,
 } from '@/billing/server/preflight';
 import { requireGenerationAllowed } from '@/platform/server/compliance/generation-gate';
-import {
-  recordPortraitAttestation,
-  requireUploadAttestation,
-  type LikenessRequestContext,
-} from '@/cast/server/likeness-upload';
-import { sha256Hex } from '@/platform/compliance/hash';
-import {
-  needsReferenceAttestation,
-  studioReferenceImages,
-} from '@/studio/reference-rights';
+import { requireReferenceRights } from './reference-attestation';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { GeneratedAssetInput } from '@/platform/server/db/schema';
 import { getLogger } from '@/platform/logger';
@@ -135,52 +126,11 @@ async function zeroUnusedReservations(
 }
 
 /**
- * Rights gate for the stills a run would feed the model (#1581). Every
- * upload / pasted URL needs an attestation on record for this team, keyed
- * by the URL's hash so the same still never re-prompts. Recorded before the
- * credit hold: a failed reserve leaves the warranty, which is the user's
- * own statement either way. The talent gate is the same shape.
- */
-async function requireReferenceRights(
-  scopedDb: ScopedDb,
-  input: StudioCreateInput,
-  request?: LikenessRequestContext
-): Promise<void> {
-  const gated = new Set(
-    studioReferenceImages(input).filter(needsReferenceAttestation)
-  );
-  for (const url of gated) {
-    const subjectId = await sha256Hex(url);
-    const existing = await scopedDb.compliance.attestations.listForSubject(
-      'studio_reference',
-      subjectId
-    );
-    if (existing.length > 0) continue;
-    const claim = input.referenceAttestations.find((a) => a.url === url);
-    // A missing claim throws inside; the default only picks the message.
-    const depictsRealPerson = claim?.depictsRealPerson ?? true;
-    const attestation = requireUploadAttestation({
-      depictsRealPerson,
-      attestation: claim,
-    });
-    await recordPortraitAttestation({
-      scopedDb,
-      subjectType: 'studio_reference',
-      subjectId,
-      attestation,
-      request,
-      depictsRealPerson,
-    });
-  }
-}
-
-/**
  * Reserve `count` studio rows and trigger a `/studio` run for each.
  */
 export async function createStudioAssets(
   scopedDb: ScopedDb,
-  input: StudioCreateInput,
-  request?: LikenessRequestContext
+  input: StudioCreateInput
 ): Promise<StudioCreateResult> {
   if (input.activity === 'video') {
     // Same answer the picker showed (`getViaAvailabilityFn`): a model gated
@@ -210,7 +160,7 @@ export async function createStudioAssets(
     userId: scopedDb.userId,
     teamId: scopedDb.teamId,
   });
-  await requireReferenceRights(scopedDb, input, request);
+  await requireReferenceRights(scopedDb, input);
 
   // Hold every item before inserting any row. A shared envelope would let
   // the first child to finish zero leftover for siblings; a later reserve
@@ -257,8 +207,7 @@ export async function createStudioAssets(
             assetId: row.id,
             reservationId,
             ownsReservation: true,
-            // The warranty is on record; the run has no use for the wording.
-            input: { ...input, referenceAttestations: [] },
+            input,
           };
 
           try {

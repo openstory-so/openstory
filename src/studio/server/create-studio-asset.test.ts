@@ -218,7 +218,6 @@ describe('createStudioAssets', () => {
         count: 1,
         mode: 'text',
         referenceImages: [],
-        referenceAttestations: [],
         referenceVideos: [],
         referenceAudio: [],
       })
@@ -244,7 +243,6 @@ describe('createStudioAssets', () => {
         resolution: '720p' as const,
         count: 1,
         referenceImages: [],
-        referenceAttestations: [],
       })
     ).rejects.toBeInstanceOf(AccountRestrictedError);
 
@@ -267,7 +265,6 @@ describe('createStudioAssets', () => {
         resolution: '720p' as const,
         count: 1,
         referenceImages: [],
-        referenceAttestations: [],
       })
     ).rejects.toThrow('Insufficient credits');
 
@@ -289,7 +286,6 @@ describe('createStudioAssets', () => {
       resolution: '720p' as const,
       count: 2,
       referenceImages: [],
-      referenceAttestations: [],
     });
 
     expect(result.assets).toHaveLength(2);
@@ -366,7 +362,6 @@ describe('createStudioAssets', () => {
         resolution: '720p' as const,
         count: 2,
         referenceImages: [],
-        referenceAttestations: [],
       })
     ).rejects.toBeInstanceOf(InsufficientCreditsError);
 
@@ -388,7 +383,6 @@ describe('createStudioAssets', () => {
         resolution: '720p' as const,
         count: 1,
         referenceImages: [],
-        referenceAttestations: [],
       })
     ).rejects.toThrow('binding exploded');
 
@@ -419,7 +413,6 @@ describe('createStudioAssets', () => {
         resolution: '720p' as const,
         count: 3,
         referenceImages: [],
-        referenceAttestations: [],
       })
     ).rejects.toThrow('binding exploded');
 
@@ -444,7 +437,6 @@ describe('createStudioAssets', () => {
       resolution: '720p' as const,
       count: 1,
       referenceImages: [],
-      referenceAttestations: [],
     });
     const second = await createStudioAssets(scopedDb, {
       activity: 'image',
@@ -454,7 +446,6 @@ describe('createStudioAssets', () => {
       resolution: '720p' as const,
       count: 1,
       referenceImages: [],
-      referenceAttestations: [],
     });
 
     const newest = await scopedDb.generatedAssets.list({
@@ -497,7 +488,6 @@ describe('createStudioAssets', () => {
       count: 1,
       mode: 'text',
       referenceImages: [],
-      referenceAttestations: [],
       referenceVideos: [],
       referenceAudio: [],
     });
@@ -542,6 +532,7 @@ describe('createStudioAssets', () => {
 
 describe('reference rights gate (#1581)', () => {
   const uploadUrl = `/r2/talent/${TEAM_ID}/temp/01ABC.png`;
+  const request = { ipAddress: '203.0.113.9', userAgent: 'vitest' };
   const base = {
     activity: 'image' as const,
     prompt: 'a red fox',
@@ -566,63 +557,70 @@ describe('reference rights gate (#1581)', () => {
     ).toBe(false);
   });
 
-  it('refuses an upload with no sign-off before any credit hold', async () => {
+  it('refuses an upload with no sign-off on record, before any credit hold', async () => {
     const { AttestationRequiredError } = await import('@/platform/errors');
     const scopedDb = createScopedDb(TEAM_ID, USER_ID);
 
     await expect(
-      createStudioAssets(scopedDb, {
-        ...base,
-        referenceImages: [uploadUrl],
-        referenceAttestations: [],
-      })
+      createStudioAssets(scopedDb, { ...base, referenceImages: [uploadUrl] })
     ).rejects.toBeInstanceOf(AttestationRequiredError);
 
     expect(mockReserveRunCredits).not.toHaveBeenCalled();
     expect(await db.select().from(generatedAssets)).toEqual([]);
   });
 
-  it('requires a basis for a real person', async () => {
+  it('requires a basis for a real person, and refuses a still that needs no check', async () => {
     const { AttestationRequiredError } = await import('@/platform/errors');
+    const { attestStudioReferences } = await import('./reference-attestation');
     const scopedDb = createScopedDb(TEAM_ID, USER_ID);
 
     await expect(
-      createStudioAssets(scopedDb, {
-        ...base,
-        referenceImages: [uploadUrl],
-        referenceAttestations: [
+      attestStudioReferences(
+        scopedDb,
+        [
           {
             url: uploadUrl,
             depictsRealPerson: true,
             statementVersion: 'portrait-rights-v1',
           },
         ],
-      })
+        request
+      )
     ).rejects.toBeInstanceOf(AttestationRequiredError);
-    expect(mockReserveRunCredits).not.toHaveBeenCalled();
+    await expect(
+      attestStudioReferences(
+        scopedDb,
+        [
+          {
+            url: `/r2/talent/${TEAM_ID}/tal1/a.png`,
+            depictsRealPerson: false,
+            statementVersion: 'asset-rights-v1',
+          },
+        ],
+        request
+      )
+    ).rejects.toThrow('needs no rights check');
+    expect(await db.select().from(uploadAttestations)).toEqual([]);
   });
 
-  it('records the sign-off keyed by the URL hash, then never re-asks for that still', async () => {
+  it('records the sign-off keyed by the URL hash; generate then passes and never re-asks', async () => {
     const { sha256Hex } = await import('@/platform/compliance/hash');
     const { PORTRAIT_RIGHTS_V1, statementHash } =
       await import('@/platform/compliance/attestations');
+    const { attestStudioReferences } = await import('./reference-attestation');
     const scopedDb = createScopedDb(TEAM_ID, USER_ID);
 
-    await createStudioAssets(
+    await attestStudioReferences(
       scopedDb,
-      {
-        ...base,
-        referenceImages: [uploadUrl],
-        referenceAttestations: [
-          {
-            url: uploadUrl,
-            depictsRealPerson: true,
-            statementVersion: 'portrait-rights-v1',
-            authorizationBasis: 'this is me',
-          },
-        ],
-      },
-      { ipAddress: '203.0.113.9', userAgent: 'vitest' }
+      [
+        {
+          url: uploadUrl,
+          depictsRealPerson: true,
+          statementVersion: 'portrait-rights-v1',
+          authorizationBasis: 'this is me',
+        },
+      ],
+      request
     );
 
     const rows = await db.select().from(uploadAttestations);
@@ -639,19 +637,25 @@ describe('reference rights gate (#1581)', () => {
       ipAddress: '203.0.113.9',
       userAgent: 'vitest',
     });
-    // The wording stays in the ledger, not in the run.
-    expect(
-      mockTriggerWorkflow.mock.calls[0]?.[1].input.referenceAttestations
-    ).toEqual([]);
 
-    // Same still again, no sign-off sent: already on record.
+    // Already on record: a second confirm is a no-op, generate goes through.
+    await attestStudioReferences(
+      scopedDb,
+      [
+        {
+          url: uploadUrl,
+          depictsRealPerson: false,
+          statementVersion: 'asset-rights-v1',
+        },
+      ],
+      request
+    );
+    expect(await db.select().from(uploadAttestations)).toHaveLength(1);
     await createStudioAssets(scopedDb, {
       ...base,
       referenceImages: [uploadUrl],
-      referenceAttestations: [],
     });
-    expect(await db.select().from(uploadAttestations)).toHaveLength(1);
-    expect(mockTriggerWorkflow).toHaveBeenCalledTimes(2);
+    expect(mockTriggerWorkflow).toHaveBeenCalledTimes(1);
   });
 
   it('gates frames-mode stills too, and lets library stills through untouched', async () => {
@@ -668,7 +672,6 @@ describe('reference rights gate (#1581)', () => {
       referenceImages: [],
       referenceVideos: [],
       referenceAudio: [],
-      referenceAttestations: [],
     };
 
     await expect(

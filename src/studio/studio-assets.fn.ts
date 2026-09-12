@@ -20,13 +20,18 @@ import {
   STORAGE_BUCKETS,
   r2KeyFromUrl,
 } from '@/platform/server/storage/buckets';
-import { deleteFile } from '@/platform/server/storage/storage-cloudflare';
+import {
+  deleteFile,
+  listFiles,
+} from '@/platform/server/storage/storage-cloudflare';
+import { attestStudioReferences } from '@/studio/server/reference-attestation';
 import { createStudioAssets } from '@/studio/server/create-studio-asset';
 import { analyzeTalentMediaForTeam } from '@/cast/server/talent/analyze-talent-media';
 import { sha256Hex } from '@/platform/compliance/hash';
 import { needsReferenceAttestation } from '@/studio/reference-rights';
 import { getRequest } from '@tanstack/react-start/server';
 import {
+  referenceAttestationSchema,
   studioActivitySchema,
   studioCreateInputSchema,
   studioReferenceKindSchema,
@@ -44,11 +49,53 @@ export const createStudioAssetsFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
   .validator(zodValidator(studioCreateInputSchema))
   .handler(async ({ context, data }) => {
+    return createStudioAssets(context.scopedDb, data);
+  });
+
+/**
+ * Record the sign-off for gated reference images (#1581) — Confirm in the
+ * composer. Generate then only checks the ledger.
+ */
+export const attestStudioReferencesFn = createServerFn({ method: 'POST' })
+  .middleware([authWithTeamMiddleware])
+  .validator(
+    zodValidator(
+      z.object({
+        attestations: z.array(referenceAttestationSchema).min(1).max(11),
+      })
+    )
+  )
+  .handler(async ({ context, data }) => {
     const request = getRequest();
-    return createStudioAssets(context.scopedDb, data, {
+    await attestStudioReferences(context.scopedDb, data.attestations, {
       ipAddress: request.headers.get('cf-connecting-ip'),
       userAgent: request.headers.get('user-agent'),
     });
+    return { attested: data.attestations.length };
+  });
+
+/**
+ * Everything this team has uploaded to the composer (or dropped on the talent
+ * dialog and never saved), newest first. Temp uploads have no DB row: the
+ * R2 prefix is the record, and the ULID key orders them by time.
+ */
+export const listStudioUploadsFn = createServerFn({ method: 'GET' })
+  .middleware([authWithTeamMiddleware])
+  .handler(async ({ context }) => {
+    const files = await listFiles(
+      STORAGE_BUCKETS.TALENT,
+      `${context.teamId}/temp`,
+      { limit: 1000 }
+    );
+    return files
+      .sort((a, b) => (a.id < b.id ? 1 : -1))
+      .slice(0, 100)
+      .flatMap((file) => {
+        const kind = (['image', 'video', 'audio'] as const).find((k) =>
+          file.metadata.mimetype.startsWith(`${k}/`)
+        );
+        return kind ? [{ url: `/r2/${file.id}`, label: file.name, kind }] : [];
+      });
   });
 
 /**
