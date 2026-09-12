@@ -337,7 +337,6 @@ export function StudioComposer({
   const { ref: promptEditorRef, voice: promptVoice } = useEditorDictation();
   const [replaceConfirm, setReplaceConfirm] = useState(false);
   const [emptyPrompt, setEmptyPrompt] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Reference is the default: it is what the tiles, @ list and picker are for.
   const [mode, setMode] = useState<StudioVideoMode>('reference');
@@ -1207,18 +1206,7 @@ export function StudioComposer({
           </Select>
         )}
 
-        {/* The model, on its own so the summary stays short on a phone. */}
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="max-w-[40vw] justify-start truncate font-medium md:max-w-none"
-          aria-label={`Model: ${activeModelName}. Change in settings`}
-          onClick={() => setSettingsOpen(true)}
-        >
-          <span className="truncate">{activeModelName}</span>
-        </Button>
-        <Popover open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <Popover>
           <PopoverTrigger asChild>
             <Button
               type="button"
@@ -1233,7 +1221,10 @@ export function StudioComposer({
                   size="sm"
                 />
               )}
-              <span className="font-mono text-xs">{summary.join(' · ')}</span>
+              <span className="font-mono text-xs">
+                <span className="hidden md:inline">{activeModelName} · </span>
+                {summary.join(' · ')}
+              </span>
               <SlidersHorizontal className="size-3.5 text-muted-foreground" />
             </Button>
           </PopoverTrigger>
