@@ -907,7 +907,21 @@ The style's camera, shot selection, pace, and energy decide coverage:
 2. Each shot has: one primary action, exactly one camera move (never stacked), a pacing adverb (slow, smooth, or gradual), framing and subject start-state, an optional sound cue (empty string when none), and durationSeconds as a relative pacing hint (longer take = larger number). The system assigns the real clip lengths so the film hits the target running time — do not try to make the seconds add up.
 3. Match camera move and framing to the style (handheld vs locked, wide vs insert, slow push vs static).
 4. sceneNumber MUST match the "## Scene N" heading you were given. Shot 1 is the opening take; later shots follow in story order.
-5. Do not invent vendor syntax (no Seedance/Kling tokens). Do not invent scenes that were not in the input.`,
+5. Do not invent vendor syntax (no Seedance/Kling tokens). Do not invent scenes that were not in the input.
+
+## Fields
+
+The schema is terse; this is what each field holds.
+
+- framing.shotSize — one of: extreme wide, wide, medium wide, medium, medium close-up, close-up, extreme close-up.
+- framing.angle — one of: eye level, low angle, high angle, overhead, dutch, over-the-shoulder.
+- framing.composition — how the frame is built: rule-of-thirds placement, depth, foreground/background, focal point.
+- framing.subjectStartState — the subject at the START of the shot: pose, position, expression, what they hold. This is the still the start frame captures.
+- action — the ONE thing that happens during the shot (e.g. "she turns and reaches for the door handle"). One action per shot.
+- cameraMovement.move — the single primary move: static, pan, tilt, dolly, truck, pedestal, zoom, push-in, pull-out, orbit. Never stacked ("pan then dolly" is two shots or one move).
+- cameraMovement.pacing — slow, smooth, or gradual. Fast moves make video models chaotic; keep it calm.
+- soundCue — the on-screen SFX / ambience hook for audio-capable models (e.g. "door creak, distant traffic"). Empty string when none.
+- durationSeconds — a relative pacing hint in seconds, at least 3. Longer take = larger number; the system snaps the real clip lengths.`,
     },
     {
       role: 'user',
