@@ -1,21 +1,24 @@
 /**
  * Rights gate for studio reference stills (#1581).
  *
- * Two halves, both keyed by the SHA-256 of the stored URL under the
- * `studio_reference` subject type so a still signed off once never
- * re-prompts:
+ * Every gated still ends up with one ledger row, keyed by the SHA-256 of
+ * the stored URL under the `studio_reference` subject type, so a still
+ * handled once never re-prompts:
  *
- *  - {@link attestStudioReferences} records the user's sign-off (Confirm in
- *    the composer) — portrait statement + basis for a real person, asset
- *    statement otherwise. Same shape as the talent gate.
- *  - {@link requireReferenceRights} is what `createStudioAssets` asks before
- *    any credit hold or row: every gated still must already be on record, so
- *    a direct server-fn call cannot skip the checkbox.
+ *  - a real person → the user's portrait sign-off + basis
+ *    ({@link attestStudioReferences}, Confirm in the composer);
+ *  - anything else → the classifier's own "no person detected" finding,
+ *    written by the check itself (`classifyStudioReferenceFn`). Nothing is
+ *    asked of the user.
+ *
+ * {@link requireReferenceRights} is what `createStudioAssets` asks before
+ * any credit hold or row: a row must exist, so a direct server-fn call
+ * cannot skip the checkbox and Generate never re-runs vision.
  */
 
 import {
   recordPortraitAttestation,
-  requireUploadAttestation,
+  requirePortraitAttestation,
   type LikenessRequestContext,
 } from '@/cast/server/likeness-upload';
 import { sha256Hex } from '@/platform/compliance/hash';
@@ -48,17 +51,12 @@ export async function attestStudioReferences(
       throw new Error('This reference needs no rights check');
     }
     if (await isAttested(scopedDb, claim.url)) continue;
-    const attestation = requireUploadAttestation({
-      depictsRealPerson: claim.depictsRealPerson,
-      attestation: claim,
-    });
     await recordPortraitAttestation({
       scopedDb,
       subjectType: 'studio_reference',
       subjectId: await sha256Hex(claim.url),
-      attestation,
+      attestation: requirePortraitAttestation(claim),
       request,
-      depictsRealPerson: claim.depictsRealPerson,
     });
   }
 }

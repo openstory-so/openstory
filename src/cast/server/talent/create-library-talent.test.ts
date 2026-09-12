@@ -308,23 +308,20 @@ describe('createLibraryTalent', () => {
     );
   });
 
-  it('records an asset attestation when the subject is not human', async () => {
+  it('asks for no attestation when the subject is not human (#1581)', async () => {
     await createLibraryTalent(
       {
         name: 'Eli',
         isHuman: false,
         referenceImageUrls: ['/r2/talent/team-1/temp/a.png'],
         characterSheetImageUrls: [],
-        portraitAttestation: {
-          statementVersion: 'asset-rights-v1',
-        },
       },
       makeCtx()
     );
 
     expect(mockRequireUpload).toHaveBeenCalledWith({
       depictsRealPerson: false,
-      attestation: { statementVersion: 'asset-rights-v1' },
+      attestation: undefined,
     });
     expect(mockCreate).toHaveBeenCalledWith(
       expect.objectContaining({ isHuman: false })

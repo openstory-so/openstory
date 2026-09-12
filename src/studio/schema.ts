@@ -65,15 +65,14 @@ const promptSchema = z
 const countSchema = z.number().int().min(1).max(4);
 
 /**
- * Rights sign-off for one gated reference image (#1581), recorded by
- * `attestStudioReferencesFn` before generate. Keyed by the URL the composer
- * attached; the server hashes it into the attestation row.
+ * Portrait sign-off for one reference image that shows a real person
+ * (#1581), recorded by `attestStudioReferencesFn` before generate. Keyed by
+ * the URL the composer attached; the server hashes it into the row.
  */
 export const referenceAttestationSchema = z.object({
   url: mediaUrlSchema,
-  depictsRealPerson: z.boolean(),
   statementVersion: z.string().min(1).max(60),
-  authorizationBasis: z.string().max(500).optional(),
+  authorizationBasis: z.string().min(1).max(500),
 });
 export type StudioReferenceAttestation = z.infer<
   typeof referenceAttestationSchema

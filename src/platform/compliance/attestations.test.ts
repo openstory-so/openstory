@@ -4,6 +4,7 @@ import {
   attestationMatchesShippedText,
   PORTRAIT_RIGHTS_V1,
   ASSET_RIGHTS_V1,
+  LIKENESS_CLEARED_V1,
   statementFor,
   statementHash,
 } from './attestations';
@@ -21,12 +22,12 @@ describe('attestations', () => {
     ).toBe(PORTRAIT_RIGHTS_V1.version);
     expect(
       statementFor({ subjectType: 'talent', depictsRealPerson: false }).version
-    ).toBe(ASSET_RIGHTS_V1.version);
+    ).toBe(LIKENESS_CLEARED_V1.version);
   });
 
   it('demands an authorization basis for likeness uploads only', () => {
     expect(PORTRAIT_RIGHTS_V1.requiresBasis).toBe(true);
-    expect(ASSET_RIGHTS_V1.requiresBasis).toBe(false);
+    expect(LIKENESS_CLEARED_V1.requiresBasis).toBe(false);
   });
 
   it('hashes the statement text verbatim', async () => {

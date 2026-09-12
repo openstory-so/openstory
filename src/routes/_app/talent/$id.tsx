@@ -151,13 +151,14 @@ function TalentDetailPage() {
     );
   }
 
+  // Only a real person's likeness is signed for (#1581).
+  const isHuman = talent.isHuman === true;
   const uploadStatement = statementFor({
     subjectType: 'talent',
-    depictsRealPerson: talent.isHuman === true,
+    depictsRealPerson: true,
   });
   const canUpload =
-    attested &&
-    (!uploadStatement.requiresBasis || authorizationBasis.trim().length > 0);
+    !isHuman || (attested && authorizationBasis.trim().length > 0);
 
   return (
     <div className="h-full overflow-auto">
@@ -396,7 +397,7 @@ function TalentDetailPage() {
               Drop a character sheet to use it as-is, or drop photos to generate
               a sheet.
             </p>
-            {dropFiles.length > 0 ? (
+            {dropFiles.length > 0 && isHuman ? (
               <PortraitAttestationFields
                 statement={uploadStatement}
                 attested={attested}
@@ -415,13 +416,12 @@ function TalentDetailPage() {
                 }
               }}
               talentId={talent.id}
+              requiresAttestation={isHuman}
               portraitAttestation={
-                canUpload
+                isHuman && canUpload
                   ? {
                       statementVersion: uploadStatement.version,
-                      authorizationBasis: uploadStatement.requiresBasis
-                        ? authorizationBasis.trim()
-                        : undefined,
+                      authorizationBasis: authorizationBasis.trim(),
                     }
                   : undefined
               }

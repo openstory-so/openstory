@@ -25,11 +25,16 @@ type TalentMediaUploadProps = {
   onUploadedUrlsChange?: (urls: string[]) => void;
   /** If provided, uploads directly to this talent instead of temp storage */
   talentId?: string;
-  /** Required by finalize when uploading onto an existing talent. */
+  /**
+   * Required by finalize when uploading onto an existing HUMAN talent; a
+   * non-person talent uploads straight away (#1581).
+   */
   portraitAttestation?: {
     statementVersion: string;
     authorizationBasis?: string;
   };
+  /** Whether uploads onto `talentId` wait for `portraitAttestation`. */
+  requiresAttestation?: boolean;
   /** Called when all uploads complete (for talentId mode) */
   onComplete?: () => void;
   /** Called after each successful upload with the stored URL. */
@@ -47,6 +52,7 @@ export const TalentMediaUpload: React.FC<TalentMediaUploadProps> = ({
   onUploadedUrlsChange,
   talentId,
   portraitAttestation,
+  requiresAttestation = true,
   onComplete,
   onFileUploaded,
   sheetFileKeys,
@@ -69,7 +75,8 @@ export const TalentMediaUpload: React.FC<TalentMediaUploadProps> = ({
   const { requireAuth } = useAuthGate();
   const uploadTempMedia = useUploadTempMedia();
   const uploadTalentMedia = useUploadTalentMedia();
-  const waitingForAttestation = Boolean(talentId) && !portraitAttestation;
+  const waitingForAttestation =
+    Boolean(talentId) && requiresAttestation && !portraitAttestation;
 
   useEffect(() => {
     onUploadedUrlsChange?.(Array.from(uploadedUrlsMap.values()));

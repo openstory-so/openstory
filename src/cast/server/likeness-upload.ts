@@ -44,36 +44,47 @@ export type LikenessRequestContext = {
 };
 
 /**
- * Gate for talent uploads. Human likeness needs the portrait statement
- * plus a basis; animated/other needs the asset statement (no basis).
+ * Gate for a real person's likeness: the portrait statement plus a basis.
  */
-export function requireUploadAttestation(opts: {
-  depictsRealPerson: boolean;
-  attestation: UploadAttestationInput | undefined;
-}): PortraitAttestationInput {
+export function requirePortraitAttestation(
+  attestation: UploadAttestationInput | undefined
+): PortraitAttestationInput {
   const statement = statementFor({
     subjectType: 'talent',
-    depictsRealPerson: opts.depictsRealPerson,
+    depictsRealPerson: true,
   });
-  if (!opts.attestation) {
+  if (!attestation) {
     throw new AttestationRequiredError(
       'A rights attestation is required for this upload'
     );
   }
-  if (opts.attestation.statementVersion !== statement.version) {
+  if (attestation.statementVersion !== statement.version) {
     throw new ValidationError(
       `Attestation version mismatch: expected ${statement.version}`
     );
   }
-  if (statement.requiresBasis && !opts.attestation.authorizationBasis?.trim()) {
+  if (statement.requiresBasis && !attestation.authorizationBasis?.trim()) {
     throw new AttestationRequiredError(
       'A rights attestation is required for this upload'
     );
   }
   return {
     statementVersion: statement.version,
-    authorizationBasis: opts.attestation.authorizationBasis?.trim() ?? '',
+    authorizationBasis: attestation.authorizationBasis?.trim() ?? '',
   };
+}
+
+/**
+ * Gate for talent uploads. Only a human likeness is signed for (#1581);
+ * animated/other uploads need nothing and get no row.
+ */
+export function requireUploadAttestation(opts: {
+  depictsRealPerson: boolean;
+  attestation: UploadAttestationInput | undefined;
+}): PortraitAttestationInput | null {
+  return opts.depictsRealPerson
+    ? requirePortraitAttestation(opts.attestation)
+    : null;
 }
 
 /** Persist the matching statement against the upload we just accepted. */

@@ -39,13 +39,13 @@ export const AddTalentMediaDialog: React.FC<AddTalentMediaDialogProps> = ({
     setOpen(false);
   };
 
+  // Only a real person's likeness is signed for (#1581).
   const statement = statementFor({
     subjectType: 'talent',
-    depictsRealPerson: isHuman,
+    depictsRealPerson: true,
   });
   const canUpload =
-    attested &&
-    (!statement.requiresBasis || authorizationBasis.trim().length > 0);
+    !isHuman || (attested && authorizationBasis.trim().length > 0);
 
   const isUploading = files.length > uploadCount;
 
@@ -66,25 +66,26 @@ export const AddTalentMediaDialog: React.FC<AddTalentMediaDialogProps> = ({
           </DialogDescription>
         </DialogHeader>
 
-        <PortraitAttestationFields
-          statement={statement}
-          attested={attested}
-          onAttestedChange={setAttested}
-          authorizationBasis={authorizationBasis}
-          onAuthorizationBasisChange={setAuthorizationBasis}
-        />
+        {isHuman ? (
+          <PortraitAttestationFields
+            statement={statement}
+            attested={attested}
+            onAttestedChange={setAttested}
+            authorizationBasis={authorizationBasis}
+            onAuthorizationBasisChange={setAuthorizationBasis}
+          />
+        ) : null}
 
         <TalentMediaUpload
           files={files}
           onFilesChange={setFiles}
           talentId={talentId}
+          requiresAttestation={isHuman}
           portraitAttestation={
-            canUpload
+            isHuman && canUpload
               ? {
                   statementVersion: statement.version,
-                  authorizationBasis: statement.requiresBasis
-                    ? authorizationBasis.trim()
-                    : undefined,
+                  authorizationBasis: authorizationBasis.trim(),
                 }
               : undefined
           }

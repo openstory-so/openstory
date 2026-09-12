@@ -120,12 +120,6 @@ export async function attestPortraitRights(page: Page): Promise<void> {
     .fill('E2E fixture image — synthetic, depicts no real person');
 }
 
-export async function attestAssetRights(page: Page): Promise<void> {
-  await addTalentDialog(page)
-    .getByRole('checkbox', { name: /hold the rights to this asset/i })
-    .check();
-}
-
 export async function submitAddTalent(page: Page): Promise<void> {
   const dialog = addTalentDialog(page);
   await dialog.getByRole('button', { name: 'Add Talent' }).click();

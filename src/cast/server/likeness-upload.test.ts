@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  ASSET_RIGHTS_V1,
-  PORTRAIT_RIGHTS_V1,
-} from '@/platform/compliance/attestations';
+import { PORTRAIT_RIGHTS_V1 } from '@/platform/compliance/attestations';
 import { requireUploadAttestation } from './likeness-upload';
 import { AttestationRequiredError, ValidationError } from '@/platform/errors';
 
@@ -39,24 +36,28 @@ describe('requireUploadAttestation', () => {
     });
   });
 
-  it('requires the asset statement and no basis for animated/other', () => {
+  it('asks nothing of animated/other uploads (#1581)', () => {
     expect(
       requireUploadAttestation({
         depictsRealPerson: false,
-        attestation: { statementVersion: ASSET_RIGHTS_V1.version },
+        attestation: undefined,
       })
-    ).toEqual({
-      statementVersion: ASSET_RIGHTS_V1.version,
-      authorizationBasis: '',
-    });
+    ).toBeNull();
+    // A stale client still sending the retired asset statement is ignored.
+    expect(
+      requireUploadAttestation({
+        depictsRealPerson: false,
+        attestation: { statementVersion: 'asset-rights-v1' },
+      })
+    ).toBeNull();
   });
 
   it('rejects the wrong statement version', () => {
     expect(() =>
       requireUploadAttestation({
-        depictsRealPerson: false,
+        depictsRealPerson: true,
         attestation: {
-          statementVersion: PORTRAIT_RIGHTS_V1.version,
+          statementVersion: 'asset-rights-v1',
           authorizationBasis: 'n/a',
         },
       })

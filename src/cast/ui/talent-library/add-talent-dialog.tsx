@@ -227,20 +227,19 @@ export const AddTalentDialog: React.FC<AddTalentDialogProps> = ({
     const depictsRealPerson = kind === 'human';
     const statement = statementFor({
       subjectType: 'talent',
-      depictsRealPerson,
+      depictsRealPerson: true,
     });
 
-    if (uploadedUrls.length > 0) {
+    // Only a real person's likeness is signed for (#1581).
+    if (uploadedUrls.length > 0 && depictsRealPerson) {
       if (!attested) {
         setCreatePhase('idle');
         toast.error(
-          depictsRealPerson
-            ? 'Confirm you have authorization for this person’s likeness'
-            : 'Confirm you hold the rights to this asset'
+          'Confirm you have authorization for this person’s likeness'
         );
         return;
       }
-      if (statement.requiresBasis && !authorizationBasis.trim()) {
+      if (!authorizationBasis.trim()) {
         setCreatePhase('idle');
         toast.error('Add a basis for authorization');
         return;
@@ -260,12 +259,10 @@ export const AddTalentDialog: React.FC<AddTalentDialogProps> = ({
         // once for sheet metadata.
         characterSheetImageUrls: classifiedAll ? sheetUrlList : undefined,
         portraitAttestation:
-          uploadedUrls.length > 0
+          uploadedUrls.length > 0 && depictsRealPerson
             ? {
                 statementVersion: statement.version,
-                authorizationBasis: statement.requiresBasis
-                  ? authorizationBasis.trim()
-                  : undefined,
+                authorizationBasis: authorizationBasis.trim(),
               }
             : undefined,
       });
@@ -469,16 +466,14 @@ export const AddTalentDialog: React.FC<AddTalentDialogProps> = ({
                     <ToggleGroupItem value="other">Other</ToggleGroupItem>
                   </ToggleGroup>
                 </div>
-                <PortraitAttestationFields
-                  statement={statementFor({
-                    subjectType: 'talent',
-                    depictsRealPerson: subjectKind === 'human',
-                  })}
-                  attested={attested}
-                  onAttestedChange={setAttested}
-                  authorizationBasis={authorizationBasis}
-                  onAuthorizationBasisChange={setAuthorizationBasis}
-                />
+                {subjectKind === 'human' ? (
+                  <PortraitAttestationFields
+                    attested={attested}
+                    onAttestedChange={setAttested}
+                    authorizationBasis={authorizationBasis}
+                    onAuthorizationBasisChange={setAuthorizationBasis}
+                  />
+                ) : null}
               </div>
             ) : null}
           </div>

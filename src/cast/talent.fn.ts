@@ -333,17 +333,18 @@ export const finalizeTalentUploadFn = createServerFn({ method: 'POST' })
       depictsRealPerson: talentRecord.isHuman === true,
       attestation: data.portraitAttestation,
     });
-    const request = getRequest();
-    await recordPortraitAttestation({
-      scopedDb: context.scopedDb,
-      subjectId: data.talentId,
-      attestation,
-      request: {
-        ipAddress: request.headers.get('cf-connecting-ip'),
-        userAgent: request.headers.get('user-agent'),
-      },
-      depictsRealPerson: talentRecord.isHuman === true,
-    });
+    if (attestation) {
+      const request = getRequest();
+      await recordPortraitAttestation({
+        scopedDb: context.scopedDb,
+        subjectId: data.talentId,
+        attestation,
+        request: {
+          ipAddress: request.headers.get('cf-connecting-ip'),
+          userAgent: request.headers.get('user-agent'),
+        },
+      });
+    }
 
     const storedUrl = `/r2/${data.path}`;
     await context.scopedDb.talent.media.create({

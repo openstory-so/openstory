@@ -28,6 +28,8 @@ import { attestStudioReferences } from '@/studio/server/reference-attestation';
 import { createStudioAssets } from '@/studio/server/create-studio-asset';
 import { analyzeTalentMediaForTeam } from '@/cast/server/talent/analyze-talent-media';
 import { sha256Hex } from '@/platform/compliance/hash';
+import { LIKENESS_CLEARED_V1 } from '@/platform/compliance/attestations';
+import { recordPortraitAttestation } from '@/cast/server/likeness-upload';
 import { needsReferenceAttestation } from '@/studio/reference-rights';
 import { getRequest } from '@tanstack/react-start/server';
 import {
@@ -99,9 +101,11 @@ export const listStudioUploadsFn = createServerFn({ method: 'GET' })
   });
 
 /**
- * Rights check for one gated reference image (#1581): already attested by
- * this team (no vision call), or classified so the composer can show the
- * matching statement. Never defaults to human — the classifier decides.
+ * Rights check for one gated reference image (#1581): already on record
+ * for this team (no vision call), or classified. A real person comes back
+ * unattested so the composer asks for the portrait sign-off; anything else
+ * is cleared on the spot — the finding is written to the ledger so Generate
+ * never has to look again. Never defaults to human: the classifier decides.
  */
 export const classifyStudioReferenceFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
@@ -110,10 +114,11 @@ export const classifyStudioReferenceFn = createServerFn({ method: 'POST' })
     if (!needsReferenceAttestation(data.url)) {
       throw new Error('This reference needs no rights check');
     }
+    const subjectId = await sha256Hex(data.url);
     const [latest] =
       await context.scopedDb.compliance.attestations.listForSubject(
         'studio_reference',
-        await sha256Hex(data.url)
+        subjectId
       );
     if (latest) {
       return { attested: true, depictsRealPerson: latest.depictsRealPerson };
@@ -124,10 +129,25 @@ export const classifyStudioReferenceFn = createServerFn({ method: 'POST' })
       imageUrls: [data.url],
       idempotencyKey: `studio-vision:${data.url}`,
     });
-    return {
-      attested: false,
-      depictsRealPerson: analysis.subjectKind === 'human',
-    };
+    if (analysis.subjectKind === 'human') {
+      return { attested: false, depictsRealPerson: true };
+    }
+    const request = getRequest();
+    await recordPortraitAttestation({
+      scopedDb: context.scopedDb,
+      subjectType: 'studio_reference',
+      subjectId,
+      attestation: {
+        statementVersion: LIKENESS_CLEARED_V1.version,
+        authorizationBasis: '',
+      },
+      request: {
+        ipAddress: request.headers.get('cf-connecting-ip'),
+        userAgent: request.headers.get('user-agent'),
+      },
+      depictsRealPerson: false,
+    });
+    return { attested: true, depictsRealPerson: false };
   });
 
 const listStudioAssetsInputSchema = z.object({

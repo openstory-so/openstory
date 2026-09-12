@@ -343,7 +343,6 @@ export function StudioComposer({
   // Rights sign-off (#1581). Each tick remembers the set of tiles it was
   // given for, so attaching another unattested still un-ticks it.
   const [portraitTickedFor, setPortraitTickedFor] = useState('');
-  const [assetTickedFor, setAssetTickedFor] = useState('');
   const [authorizationBasis, setAuthorizationBasis] = useState('');
 
   const isVideo = activity === 'video';
@@ -476,25 +475,15 @@ export function StudioComposer({
   const unattested = checks.filter(
     (c) => c.query.data !== undefined && !c.query.data.attested
   );
-  const portraitUrls = unattested
-    .filter((c) => c.query.data?.depictsRealPerson)
-    .map((c) => c.url);
-  const assetUrls = unattested
-    .filter((c) => !c.query.data?.depictsRealPerson)
-    .map((c) => c.url);
+  // Only a real person is ever unattested: the check clears everything else.
+  const portraitUrls = unattested.map((c) => c.url);
   const portraitKey = portraitUrls.join('\n');
-  const assetKey = assetUrls.join('\n');
   const portraitStatement = statementFor({
     subjectType: 'studio_reference',
     depictsRealPerson: true,
   });
-  const assetStatement = statementFor({
-    subjectType: 'studio_reference',
-    depictsRealPerson: false,
-  });
   const portraitTicked =
     portraitUrls.length > 0 && portraitTickedFor === portraitKey;
-  const assetTicked = assetUrls.length > 0 && assetTickedFor === assetKey;
   const checking = new Set(
     checks.filter((c) => c.query.isPending).map((c) => c.url)
   );
@@ -503,23 +492,14 @@ export function StudioComposer({
     !isAuthenticated ||
     (checks.every((c) => c.query.data !== undefined) &&
       unattested.length === 0);
-  const rightsTicked =
-    (portraitUrls.length === 0 ||
-      (portraitTicked && authorizationBasis.trim().length > 0)) &&
-    (assetUrls.length === 0 || assetTicked);
-  const referenceAttestations: StudioReferenceAttestation[] = [
-    ...portraitUrls.map((url) => ({
+  const rightsTicked = portraitTicked && authorizationBasis.trim().length > 0;
+  const referenceAttestations: StudioReferenceAttestation[] = portraitUrls.map(
+    (url) => ({
       url,
-      depictsRealPerson: true,
       statementVersion: portraitStatement.version,
       authorizationBasis: authorizationBasis.trim(),
-    })),
-    ...assetUrls.map((url) => ({
-      url,
-      depictsRealPerson: false,
-      statementVersion: assetStatement.version,
-    })),
-  ];
+    })
+  );
   const badgeFor = (url: string): string => {
     if (effectiveMode === 'frames') {
       return url === startFrame?.url ? 'Start frame' : 'End frame';
@@ -532,7 +512,6 @@ export function StudioComposer({
     attest.mutate(referenceAttestations, {
       onSuccess: () => {
         setPortraitTickedFor('');
-        setAssetTickedFor('');
         setAuthorizationBasis('');
       },
     });
@@ -1162,22 +1141,6 @@ export function StudioComposer({
               >
                 <p className="text-xs font-medium">
                   Real person in {badges(portraitUrls)}
-                </p>
-              </PortraitAttestationFields>
-            )}
-            {assetUrls.length > 0 && (
-              <PortraitAttestationFields
-                id="studio-asset-attestation"
-                statement={assetStatement}
-                attested={assetTicked}
-                onAttestedChange={(checked) =>
-                  setAssetTickedFor(checked ? assetKey : '')
-                }
-                authorizationBasis=""
-                onAuthorizationBasisChange={() => {}}
-              >
-                <p className="text-xs font-medium">
-                  Uploaded: {badges(assetUrls)}
                 </p>
               </PortraitAttestationFields>
             )}

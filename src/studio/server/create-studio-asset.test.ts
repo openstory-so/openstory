@@ -587,8 +587,8 @@ describe('reference rights gate (#1581)', () => {
         [
           {
             url: uploadUrl,
-            depictsRealPerson: true,
             statementVersion: 'portrait-rights-v1',
+            authorizationBasis: '   ',
           },
         ],
         request
@@ -600,8 +600,8 @@ describe('reference rights gate (#1581)', () => {
         [
           {
             url: `/r2/talent/${TEAM_ID}/tal1/a.png`,
-            depictsRealPerson: false,
-            statementVersion: 'asset-rights-v1',
+            statementVersion: 'portrait-rights-v1',
+            authorizationBasis: 'this is me',
           },
         ],
         request
@@ -622,7 +622,6 @@ describe('reference rights gate (#1581)', () => {
       [
         {
           url: uploadUrl,
-          depictsRealPerson: true,
           statementVersion: 'portrait-rights-v1',
           authorizationBasis: 'this is me',
         },
@@ -651,8 +650,8 @@ describe('reference rights gate (#1581)', () => {
       [
         {
           url: uploadUrl,
-          depictsRealPerson: false,
-          statementVersion: 'asset-rights-v1',
+          statementVersion: 'portrait-rights-v1',
+          authorizationBasis: 'again',
         },
       ],
       request
@@ -663,6 +662,38 @@ describe('reference rights gate (#1581)', () => {
       referenceImages: [uploadUrl],
     });
     expect(mockTriggerWorkflow).toHaveBeenCalledTimes(1);
+  });
+
+  it('a still the check cleared (no person) generates with nothing signed', async () => {
+    const { sha256Hex } = await import('@/platform/compliance/hash');
+    const { LIKENESS_CLEARED_V1 } =
+      await import('@/platform/compliance/attestations');
+    const { recordPortraitAttestation } =
+      await import('@/cast/server/likeness-upload');
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const logoUrl = `/r2/talent/${TEAM_ID}/temp/01LOGO.png`;
+
+    // What `classifyStudioReferenceFn` writes when it finds no person.
+    await recordPortraitAttestation({
+      scopedDb,
+      subjectType: 'studio_reference',
+      subjectId: await sha256Hex(logoUrl),
+      attestation: {
+        statementVersion: LIKENESS_CLEARED_V1.version,
+        authorizationBasis: '',
+      },
+      request,
+      depictsRealPerson: false,
+    });
+
+    await createStudioAssets(scopedDb, {
+      ...base,
+      referenceImages: [logoUrl],
+    });
+    expect(mockTriggerWorkflow).toHaveBeenCalledTimes(1);
+    expect(await db.select().from(uploadAttestations)).toMatchObject([
+      { depictsRealPerson: false, statementVersion: 'likeness-cleared-v1' },
+    ]);
   });
 
   it('gates frames-mode stills too, and lets library stills through untouched', async () => {
