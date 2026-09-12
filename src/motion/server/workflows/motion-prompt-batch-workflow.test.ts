@@ -284,6 +284,7 @@ describe('MotionPromptBatchWorkflow extra shots (#1486)', () => {
             action: 'opens the door',
             cameraMovement: { move: 'static', pacing: 'slow' },
             soundCue: '',
+            dialogue: [],
             durationSeconds: 7,
           },
           {
@@ -297,6 +298,7 @@ describe('MotionPromptBatchWorkflow extra shots (#1486)', () => {
             action: 'cut to the hallway',
             cameraMovement: { move: 'truck', pacing: 'smooth' },
             soundCue: '',
+            dialogue: [],
             durationSeconds: 6,
           },
         ],

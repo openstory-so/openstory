@@ -10,6 +10,8 @@ import {
   buildSceneWithShots,
   buildShotInserts,
   defaultSingleShot,
+  dialogueFromShots,
+  formatCastForShotList,
   formatDirectorStyleForShotList,
   formatScenesForShotListPrompt,
   isSingleShotScene,
@@ -60,6 +62,10 @@ const twoShotSpec = (n: number): ShotSpec => ({
     pacing: 'slow',
   },
   soundCue: n === 1 ? 'latch click' : 'echo',
+  dialogue:
+    n === 1
+      ? [{ character: 'Sarah', line: 'Hello?', tone: 'wary' }]
+      : [{ character: '', line: ' Come in. ', tone: '' }],
   durationSeconds: 4,
 });
 
@@ -87,9 +93,9 @@ describe('normalizeShots', () => {
 });
 
 describe('attachShotLists', () => {
-  it('falls back to one shot per scene when the pass is null', () => {
+  it('falls back to one shot per scene when the pass is empty', () => {
     const scenes = [makeScene(1, 'A man walks in.')];
-    const attached = attachShotLists(scenes, null);
+    const attached = attachShotLists(scenes, { scenes: [] });
     expect(attached).toHaveLength(1);
     expect(attached[0]?.shots).toHaveLength(1);
     expect(isSingleShotScene(firstAttached(attached))).toBe(true);
@@ -139,11 +145,84 @@ describe('attachShotLists', () => {
   });
 });
 
+describe('attachShotLists — dialogue from shots (#1585)', () => {
+  it('lands each line on its shot, trimmed, stamped when the scene has 2+ shots', () => {
+    const scene = makeScene(1, 'Sarah at the door.', {
+      originalScript: {
+        extract: 'Sarah at the door.',
+        dialogue: [{ character: 'STALE', line: 'regex preview', tone: '' }],
+      },
+    });
+    const pass: ShotListPassResult = {
+      scenes: [{ sceneNumber: 1, shots: [twoShotSpec(1), twoShotSpec(2)] }],
+    };
+    const [out] = attachShotLists([scene], pass);
+    expect(out?.originalScript.dialogue).toEqual([
+      { character: 'Sarah', line: 'Hello?', tone: 'wary', shotNumber: 1 },
+      { character: '', line: 'Come in.', tone: '', shotNumber: 2 },
+    ]);
+  });
+
+  it('leaves a one-shot scene unstamped and allows an empty list', () => {
+    const scene = makeScene(1, 'Sarah at the door.');
+    const [talky] = attachShotLists([scene], {
+      scenes: [{ sceneNumber: 1, shots: [twoShotSpec(1)] }],
+    });
+    expect(talky?.originalScript.dialogue).toEqual([
+      { character: 'Sarah', line: 'Hello?', tone: 'wary' },
+    ]);
+    const [silent] = attachShotLists([scene], {
+      scenes: [
+        { sceneNumber: 1, shots: [{ ...twoShotSpec(1), dialogue: [] }] },
+      ],
+    });
+    expect(silent?.originalScript.dialogue).toEqual([]);
+  });
+
+  it('keeps the regex preview on a scene the pass omitted', () => {
+    const scene = makeScene(2, 'Nobody home.', {
+      originalScript: {
+        extract: 'Nobody home.',
+        dialogue: [{ character: 'SARAH', line: 'Anyone?', tone: '' }],
+      },
+    });
+    const [out] = attachShotLists([scene], { scenes: [] });
+    expect(out?.originalScript.dialogue).toEqual([
+      { character: 'SARAH', line: 'Anyone?', tone: '' },
+    ]);
+  });
+
+  it('dialogueFromShots drops blank lines', () => {
+    expect(
+      dialogueFromShots([
+        {
+          ...twoShotSpec(1),
+          dialogue: [{ character: 'A', line: '  ', tone: '' }],
+        },
+      ])
+    ).toEqual([]);
+  });
+});
+
+describe('formatCastForShotList', () => {
+  it('lists every bible name and marks voice-only entries', () => {
+    expect(
+      formatCastForShotList([
+        { name: 'Sarah', voiceOnly: false },
+        { name: 'Narrator', voiceOnly: true },
+      ])
+    ).toBe('- Sarah\n- Narrator (voice only)');
+    expect(formatCastForShotList([])).toBe('(none)');
+  });
+});
+
 describe('applyTargetDurations', () => {
   const seedance = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 
   it('is a no-op without a target so existing tests stay identical', () => {
-    const attached = attachShotLists([makeScene(1, 'A man walks in.')], null);
+    const attached = attachShotLists([makeScene(1, 'A man walks in.')], {
+      scenes: [],
+    });
     expect(applyTargetDurations(attached, undefined, seedance)).toEqual(
       attached
     );
@@ -152,7 +231,7 @@ describe('applyTargetDurations', () => {
   it('spreads 30s across five one-shot scenes on the Seedance grid', () => {
     const scenes = [1, 2, 3, 4, 5].map((n) => makeScene(n, `Beat ${n}.`));
     const allocated = applyTargetDurations(
-      attachShotLists(scenes, null),
+      attachShotLists(scenes, { scenes: [] }),
       30,
       seedance
     );
@@ -203,7 +282,7 @@ describe('applyTargetDurations', () => {
 describe('buildShotInserts / shotDurationMs', () => {
   it('writes shotNumber 1 at the scene duration for a one-shot scene', () => {
     const scene = firstAttached(
-      attachShotLists([makeScene(1, 'A man walks in.')], null)
+      attachShotLists([makeScene(1, 'A man walks in.')], { scenes: [] })
     );
     const inserts = buildShotInserts(
       'seq-1',

@@ -889,7 +889,7 @@ IMPORTANT: each boundary's quote must be copied character-for-character from the
       role: 'system',
       content: `You are a director covering scenes for a video shoot. You will be called via a structured output tool. Follow the provided schema exactly.
 
-You receive scenes already sliced from a script (one location + time + story beat each) and a director style. Your job is to decide HOW TO SHOOT each scene — the camera setups, not a new story. You NEVER create, merge, or rewrite scenes. You NEVER re-emit the script.
+You receive scenes already sliced from a script (one location + time + story beat each), the cast, and a director style. Your job is to decide HOW TO SHOOT each scene — the camera setups, not a new story — and to place every spoken line in the shot it is spoken in. You NEVER create, merge, or rewrite scenes. You NEVER re-emit the script.
 
 A SHOT is one continuous camera take (one setup). A SCENE holds 1..N shots. You are not splitting the page; you are covering the action the way this director would.
 
@@ -909,6 +909,15 @@ The style's camera, shot selection, pace, and energy decide coverage:
 4. sceneNumber MUST match the "## Scene N" heading you were given. Shot 1 is the opening take; later shots follow in story order.
 5. Do not invent vendor syntax (no Seedance/Kling tokens). Do not invent scenes that were not in the input.
 
+## Dialogue
+
+Every line of speech in a scene goes in the \`dialogue\` of the shot it is spoken in, whatever shape the script gives it:
+- Screenplay cues: a name on its own line followed by the speech, or "NAME: speech".
+- Prose speech in any order: \`Lena says, “…”\`, \`“…,” says Lena\`, \`“…,” Lena replies, “…”\` (a quote split around an attribution is ONE line — join the parts).
+- Narration, voiceover, a voice on a phone or a tannoy: spoken by the matching "(voice only)" entry in <CHARACTERS>.
+
+Each line is spoken in exactly one shot — never repeat a line across shots. \`line\` is the spoken words copied verbatim: no paraphrase, no surrounding quotation marks, no attribution ("says Lena"). \`character\` is the speaker copied EXACTLY as <CHARACTERS> spells it (it is how the rest of the pipeline finds them); speech attributed only by a pronoun resolves to the nearest named character when that is unambiguous. Leave \`character\` empty only for a voice nobody could attribute. \`tone\` is the delivery the script implies ("whispered", "flat, exhausted"); empty when it implies none. Do NOT invent speech, do NOT report action or description as dialogue, and do NOT merge lines from different speakers. A shot with no speech has an empty \`dialogue\` array.
+
 ## Fields
 
 The schema is terse; this is what each field holds.
@@ -921,55 +930,24 @@ The schema is terse; this is what each field holds.
 - cameraMovement.move — the single primary move: static, pan, tilt, dolly, truck, pedestal, zoom, push-in, pull-out, orbit. Never stacked ("pan then dolly" is two shots or one move).
 - cameraMovement.pacing — slow, smooth, or gradual. Fast moves make video models chaotic; keep it calm.
 - soundCue — the on-screen SFX / ambience hook for audio-capable models (e.g. "door creak, distant traffic"). Empty string when none.
+- dialogue — the lines spoken during this shot, in order, as described above. Empty array when none.
 - durationSeconds — a relative pacing hint in seconds, at least 3. Longer take = larger number; the system snaps the real clip lengths.`,
     },
     {
       role: 'user',
-      content: `Cover each scene. The script is what happens; you decide the camera setups in this director's style. Copy sceneNumber from the "## Scene N" headings.
+      content: `Cover each scene. The script is what happens; you decide the camera setups in this director's style, and place every spoken line in the shot it is spoken in. Copy sceneNumber from the "## Scene N" headings.
 
 <DIRECTOR_STYLE>
 {{style}}
 </DIRECTOR_STYLE>
 
-<SCENES>
-{{scenes}}
-</SCENES>
-
-Respond with ONLY valid JSON matching the schema.`,
-    },
-  ],
-
-  'phase/dialogue-extraction-chat': [
-    {
-      role: 'system',
-      content: `You are a Dialogue Extractor. You will be called via a structured output tool. Follow the provided schema exactly.
-
-The script is provided with a numbered line gutter ("12: some text") — use it for every lineNumber you report. The gutter is NOT part of the script text.
-
-List EVERY line of speech in the script, in script order, whatever shape it takes:
-- Screenplay cues: a name on its own line followed by the speech, or "NAME: speech".
-- Prose speech in any order: \`Lena says, “…”\`, \`“…,” says Lena\`, \`“…,” Lena replies, “…”\` (a quote split around an attribution is ONE line — join the parts).
-- Narration / voiceover / an unnamed voice: report it with an empty character.
-
-For each line:
-- lineNumber: the gutter line the speech STARTS on.
-- character: the speaker. When the speaker is one of the cast in <CHARACTERS>, copy that name EXACTLY as listed (it is how the rest of the pipeline finds them); otherwise use the name as the script spells it. Speech attributed only by a pronoun ("she whispers") resolves to the nearest named character when that is unambiguous; otherwise leave it empty.
-- line: the spoken words copied verbatim — no paraphrase, no gutter, no surrounding quotation marks, no attribution ("says Lena").
-- tone: the delivery the script implies ("whispered", "shouting", "flat, exhausted"); empty when it implies none.
-
-Do NOT invent speech, do NOT report action or description as dialogue, and do NOT merge separate lines from different speakers.`,
-    },
-    {
-      role: 'user',
-      content: `Extract every line of dialogue from the script within the USER_SCRIPT tags. The script has a numbered line gutter ("N: ") — report lineNumbers from it, but never treat the gutter as script text.
-
 <CHARACTERS>
 {{characters}}
 </CHARACTERS>
 
-<USER_SCRIPT>
-{{script}}
-</USER_SCRIPT>
+<SCENES>
+{{scenes}}
+</SCENES>
 
 Respond with ONLY valid JSON matching the schema.`,
     },

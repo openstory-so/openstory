@@ -19,7 +19,7 @@ import { createSceneScriptVersionsMethods } from '@/shots/server/db/scene-script
 import { createScenesMethods } from '@/shots/server/db/scenes';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { plainSceneTitle } from '@/platform/markdown-plain';
-import { dialogueForShot } from '@/sequences/scene-dialogue';
+import { dialogueForShot } from '@/shots/shot-dialogue';
 
 /** A scene row plus its selected script — everything a `Scene` composes from. */
 export type SceneContext = {

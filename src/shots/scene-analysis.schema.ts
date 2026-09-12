@@ -550,10 +550,10 @@ export type MotionAudio = MotionPrompt['audio'];
 export type DialogueLine = z.infer<typeof dialogueLineSchema> & {
   voiceToken?: string;
   /**
-   * The shot this line is spoken in, stamped by scene split once the shot
-   * list exists (#1585, `assignDialogueToScenes`). Absent = every shot of
-   * the scene (a one-shot scene, or a line the split could not place), so
-   * pre-#1585 rows keep their old meaning. `dialogueForShot` is the filter.
+   * The shot this line is spoken in, stamped from the shot-list call's
+   * per-shot lines (#1585, `dialogueFromShots`). Absent = every shot of the
+   * scene (a one-shot scene), so pre-#1585 rows keep their old meaning.
+   * `dialogueForShot` is the filter.
    */
   shotNumber?: number;
 };

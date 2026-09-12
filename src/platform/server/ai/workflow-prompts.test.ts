@@ -39,20 +39,16 @@ describe('scene-shot-list-chat', () => {
     expect(prompt?.[1]?.content).toContain('{{style}}');
     expect(prompt?.[1]?.content).toContain('DIRECTOR_STYLE');
   });
-});
 
-describe('dialogue-extraction-chat (#1585)', () => {
-  it('is registered and takes the gutter script plus the bible cast', () => {
-    const prompt = WORKFLOW_CHAT_PROMPTS['phase/dialogue-extraction-chat'];
-    expect(prompt).toBeDefined();
+  it('extracts dialogue per shot from the bible cast (#1585)', () => {
+    const prompt = WORKFLOW_CHAT_PROMPTS['phase/scene-shot-list-chat'];
+    expect(prompt?.[0]?.content).toContain('## Dialogue');
     expect(prompt?.[0]?.content).toContain('copied verbatim');
-    expect(prompt?.[1]?.content).toContain('{{script}}');
+    expect(prompt?.[0]?.content).toContain('(voice only)');
     expect(prompt?.[1]?.content).toContain('{{characters}}');
     expect(prompt?.[1]?.content).toContain('<CHARACTERS>');
     // aimock routes recordings by this prefix (e2e/mocks/aimock-server.ts).
-    expect(String(prompt?.[1]?.content)).toMatch(
-      /^Extract every line of dialogue/
-    );
+    expect(String(prompt?.[1]?.content)).toMatch(/^Cover each scene\./);
   });
 });
 

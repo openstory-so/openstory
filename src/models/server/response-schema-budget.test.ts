@@ -31,7 +31,6 @@ import {
   musicDesignResultSchema,
   sceneDurationResponseSchema,
   sceneSplitBiblesResultSchema,
-  sceneSplitDialogueResultSchema,
   sceneSplitScenesResultSchema,
   styleRecommendationResponseSchema,
   talentMatchResponseSchema,
@@ -45,7 +44,6 @@ import { shotListPassResultSchema } from '@/shots/shot-list.schema';
 const MEASURED_SCHEMAS: Record<string, z.ZodType> = {
   sceneSplitScenesResultSchema,
   sceneSplitBiblesResultSchema,
-  sceneSplitDialogueResultSchema,
   talentMatchResponseSchema,
   locationMatchResponseSchema,
   musicDesignResultSchema,

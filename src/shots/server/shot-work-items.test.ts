@@ -57,6 +57,7 @@ function spec(
     action,
     cameraMovement: { move: 'static', pacing: 'slow' },
     soundCue: '',
+    dialogue: [],
     durationSeconds,
   };
 }

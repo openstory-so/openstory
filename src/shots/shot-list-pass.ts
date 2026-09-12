@@ -4,9 +4,11 @@
  *
  * Scene-split's boundary pass only decides WHERE each scene starts. This
  * module is the second analysis step: given those verbatim slices, cover
- * each scene with 1..N camera setups (from the LLM, or a single default
- * shot when the call fails / omits a scene). Coverage is a director
- * decision — the style's camera / pace / energy — not a script-split.
+ * each scene with 1..N camera setups from the LLM (a single default shot
+ * only for a scene the call omitted). Coverage is a director decision — the
+ * style's camera / pace / energy — not a script-split. The same call places
+ * every spoken line in the shot it is spoken in (#1585); the scene's
+ * `originalScript.dialogue` is rebuilt from those.
  *
  * A one-shot scene keeps today's duration (the slice label / estimate). Extra
  * shots take their duration from the spec. Prompts are assembled later by
@@ -16,6 +18,10 @@
 import type { NewShot } from '@/platform/server/db/schema';
 import { allocateClipDurations } from '@/motion/snap-duration';
 import type { StyleConfig } from '@/look/style-config';
+import type {
+  CharacterBibleEntry,
+  DialogueLine,
+} from '@/shots/scene-analysis.schema';
 import type { DbSceneId } from '@/shots/scene-id';
 import type { SceneSplittingScene } from '@/sequences/server/streaming-scene-parser';
 import {
@@ -38,6 +44,7 @@ export function defaultSingleShot(durationSeconds: number): ShotSpec {
     action: '',
     cameraMovement: { move: 'static', pacing: 'slow' },
     soundCue: '',
+    dialogue: [],
     durationSeconds: durationSeconds > 0 ? durationSeconds : 3,
   };
 }
@@ -67,25 +74,57 @@ export function normalizeShots(
 }
 
 /**
- * Copy each scene and attach a normalized shot list. Unmatched / invalid
- * pass entries fall back to one shot so a degraded LLM result still persists
- * the 1:1 path.
+ * A scene's dialogue as its shots spell it, in shot order (#1585). Each line
+ * is stamped with its shot when the scene has 2+ shots, so `dialogueForShot`
+ * hands each clip only its own lines; a one-shot scene leaves the stamp off
+ * (absent = every shot, the pre-#1585 meaning).
+ */
+export function dialogueFromShots(
+  shots: ReadonlyArray<ShotSpec>
+): DialogueLine[] {
+  const stamp = shots.length > 1;
+  return shots.flatMap((shot) =>
+    shot.dialogue
+      .filter((line) => line.line.trim().length > 0)
+      .map((line) => ({
+        character: line.character.trim(),
+        line: line.line.trim(),
+        tone: line.tone,
+        ...(stamp ? { shotNumber: shot.shotNumber } : {}),
+      }))
+  );
+}
+
+/**
+ * Copy each scene and attach a normalized shot list, rebuilding its dialogue
+ * from the shots. A scene the pass omitted keeps one default shot and the
+ * regex preview dialogue it streamed with — the best evidence left for it.
  */
 export function attachShotLists(
   scenes: ReadonlyArray<SceneSplittingScene>,
-  pass: ShotListPassResult | null | undefined
+  pass: ShotListPassResult
 ): SceneSplittingScene[] {
   const byNumber = new Map<number, ShotSpec[]>();
-  for (const entry of pass?.scenes ?? []) {
+  for (const entry of pass.scenes) {
     if (!Number.isFinite(entry.sceneNumber)) continue;
     byNumber.set(entry.sceneNumber, entry.shots);
   }
   return scenes.map((scene, index) => {
-    const listed =
-      byNumber.get(scene.sceneNumber) ?? byNumber.get(index + 1) ?? null;
+    const listed = byNumber.get(scene.sceneNumber) ?? byNumber.get(index + 1);
+    if (!listed) {
+      return {
+        ...scene,
+        shots: normalizeShots(null, sceneDurationSeconds(scene)),
+      };
+    }
+    const shots = normalizeShots(listed, sceneDurationSeconds(scene));
     return {
       ...scene,
-      shots: normalizeShots(listed, sceneDurationSeconds(scene)),
+      shots,
+      originalScript: {
+        ...scene.originalScript,
+        dialogue: dialogueFromShots(shots),
+      },
     };
   });
 }
@@ -198,6 +237,20 @@ export function formatDirectorStyleForShotList(
     lines.push(`References: ${style.references.slice(0, 4).join('; ')}`);
   }
   return lines.join('\n');
+}
+
+/**
+ * Cast list for the shot-list prompt: every bible name, spelled as the rest
+ * of the pipeline spells it, with voice-only entries marked so narration and
+ * off-screen speech have a speaker to be attributed to (#1585).
+ */
+export function formatCastForShotList(
+  cast: ReadonlyArray<Pick<CharacterBibleEntry, 'name' | 'voiceOnly'>>
+): string {
+  if (cast.length === 0) return '(none)';
+  return cast
+    .map((entry) => `- ${entry.name}${entry.voiceOnly ? ' (voice only)' : ''}`)
+    .join('\n');
 }
 
 /** User-prompt body: numbered slices the model must not re-author. */

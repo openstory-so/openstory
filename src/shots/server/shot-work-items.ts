@@ -14,7 +14,7 @@ import type { Scene } from '@/shots/scene-analysis.schema';
 import { deriveShots, type DerivedShot } from '@/shots/shot-list.derive';
 import type { ShotSpec } from '@/shots/shot-list.schema';
 import type { StyleConfig } from '@/look/style-config';
-import { dialogueForShot } from '@/sequences/scene-dialogue';
+import { dialogueForShot } from '@/shots/shot-dialogue';
 
 /** The scene as one clip sees it: only the dialogue spoken in that shot (#1585). */
 function sceneForShot(scene: Scene, shotNumber: number): Scene {

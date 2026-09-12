@@ -49,7 +49,7 @@ vi.doMock('@/billing/server/workflow-deduction', () => ({
 type StreamChunk = {
   done: boolean;
   accumulated: string;
-  parsed?: typeof SCENES_RESULT | typeof BIBLES_RESULT | DialogueResult;
+  parsed?: typeof SCENES_RESULT | typeof BIBLES_RESULT;
   usage?: undefined;
 };
 
@@ -61,17 +61,8 @@ type StreamChunk = {
  * mock, keyed on observationName).
  */
 let streamChunks: StreamChunk[] = [];
-let shotListParsed: { scenes: unknown[] } = { scenes: [] };
-type DialogueResult = {
-  lines: Array<{
-    lineNumber: number;
-    character: string;
-    line: string;
-    tone: string;
-  }>;
-};
-let dialogueParsed: DialogueResult = { lines: [] };
-let dialogueError: Error | undefined;
+let shotListParsed: { scenes: unknown[] } | undefined = { scenes: [] };
+let shotListError: Error | undefined;
 function singleDoneChunk(): StreamChunk[] {
   return [
     { done: true, accumulated: '{}', parsed: SCENES_RESULT, usage: undefined },
@@ -92,17 +83,8 @@ vi.doMock('@/models/server/llm-client', () => ({
         };
         return;
       }
-      if (params.observationName === 'phase-1-scene-dialogue') {
-        if (dialogueError) throw dialogueError;
-        yield {
-          done: true,
-          accumulated: '{}',
-          parsed: dialogueParsed,
-          usage: undefined,
-        };
-        return;
-      }
       if (params.observationName === 'phase-1-scene-shot-list') {
+        if (shotListError) throw shotListError;
         yield {
           done: true,
           accumulated: '{}',
@@ -351,57 +333,7 @@ const previewCalls = () =>
 
 beforeEach(() => {
   shotListParsed = { scenes: [] };
-  dialogueParsed = { lines: [] };
-  dialogueError = undefined;
-});
-
-describe('SceneSplitWorkflow dialogue extraction (#1585)', () => {
-  beforeEach(() => {
-    streamChunks = singleDoneChunk();
-  });
-
-  test('maps each extracted line to the scene owning its gutter line', async () => {
-    dialogueParsed = {
-      lines: [
-        { lineNumber: 1, character: 'Lena', line: 'Steady.', tone: 'calm' },
-        { lineNumber: 3, character: '', line: 'Lane four.', tone: '' },
-      ],
-    };
-    const result = await makeWorkflow().split(
-      makeEvent(),
-      makeStep(),
-      makeScopedDb()
-    );
-    expect(result.scenes.map((s) => s.originalScript.dialogue)).toEqual([
-      [{ character: 'Lena', line: 'Steady.', tone: 'calm' }],
-      [],
-      [{ character: '', line: 'Lane four.', tone: '' }],
-    ]);
-    expect(lastDoMock.mock.calls.map((c) => c[0])).toContain(
-      'deduct-llm-credits-scene-dialogue'
-    );
-    // The stream seeded the split version with the regex preview; the LLM
-    // lines must overwrite it (seedSplitVersions skips existing rows).
-    const seeds = updateSplitContent.mock.calls.at(-1)?.[0] ?? [];
-    expect(seeds.map((s) => s.content.dialogue.length)).toEqual([1, 0, 1]);
-  });
-
-  test('hands the bible cast to the dialogue prompt', async () => {
-    await makeWorkflow().split(makeEvent(), makeStep(), makeScopedDb());
-    const { getChatPrompt } =
-      await import('@/platform/server/ai/prompts-index');
-    expect(vi.mocked(getChatPrompt)).toHaveBeenCalledWith(
-      'phase/dialogue-extraction-chat',
-      expect.objectContaining({ characters: '(none)' })
-    );
-  });
-
-  test('a failed dialogue call fails the split — no regex fallback', async () => {
-    dialogueError = new Error('dialogue boom');
-    await expect(
-      makeWorkflow().split(makeEvent(), makeStep(), makeScopedDb())
-    ).rejects.toThrow('dialogue boom');
-  });
+  shotListError = undefined;
 });
 
 describe('SceneSplitWorkflow preview fan-out', () => {
@@ -692,6 +624,7 @@ function shotSpec(shotNumber: number, action: string) {
     action,
     cameraMovement: { move: 'static', pacing: 'slow' as const },
     soundCue: '',
+    dialogue: [] as Array<{ character: string; line: string; tone: string }>,
     durationSeconds: 4,
   };
 }
@@ -713,6 +646,66 @@ describe('SceneSplitWorkflow shot-list pass (#1486)', () => {
     );
     expect(result.shotMapping).toHaveLength(SCENES.length);
     expect(result.scenes.every((s) => (s.shots?.length ?? 1) === 1)).toBe(true);
+  });
+
+  test('a shot-list call with no payload fails the split — no one-shot degrade (#1585)', async () => {
+    shotListParsed = undefined;
+    await expect(
+      makeWorkflow().split(makeEvent(), makeStep(), makeScopedDb())
+    ).rejects.toThrow(/without a validated structured-output payload/);
+  });
+
+  test('a shot-list call that throws fails the split', async () => {
+    shotListError = new Error('shot list boom');
+    await expect(
+      makeWorkflow().split(makeEvent(), makeStep(), makeScopedDb())
+    ).rejects.toThrow('shot list boom');
+  });
+
+  test('hands the bible cast to the shot-list prompt, voice-only marked (#1585)', async () => {
+    await makeWorkflow().split(makeEvent(), makeStep(), makeScopedDb());
+    const { getChatPrompt } =
+      await import('@/platform/server/ai/prompts-index');
+    expect(vi.mocked(getChatPrompt)).toHaveBeenCalledWith(
+      'phase/scene-shot-list-chat',
+      expect.objectContaining({ characters: '(none)' })
+    );
+  });
+
+  test("persists each shot's lines on its scene, stamped per shot (#1585)", async () => {
+    shotListParsed = {
+      scenes: [
+        {
+          sceneNumber: 1,
+          shots: [
+            {
+              ...shotSpec(1, 'She opens the door'),
+              dialogue: [{ character: 'Lena', line: 'Steady.', tone: 'calm' }],
+            },
+            {
+              ...shotSpec(2, 'Cut to the hallway beyond'),
+              dialogue: [{ character: '', line: 'Lane four.', tone: '' }],
+            },
+          ],
+        },
+      ],
+    };
+    const result = await makeWorkflow().split(
+      makeEvent(),
+      makeStep(),
+      makeScopedDb()
+    );
+    expect(result.scenes[0]?.originalScript.dialogue).toEqual([
+      { character: 'Lena', line: 'Steady.', tone: 'calm', shotNumber: 1 },
+      { character: '', line: 'Lane four.', tone: '', shotNumber: 2 },
+    ]);
+    expect(lastDoMock.mock.calls.map((c) => c[0])).not.toContain(
+      'deduct-llm-credits-scene-dialogue'
+    );
+    // The stream seeded the split version with the regex preview; the
+    // shot-list lines must overwrite it (seedSplitVersions skips existing rows).
+    const seeds = updateSplitContent.mock.calls.at(-1)?.[0] ?? [];
+    expect(seeds.map((s) => s.content.dialogue.length)).toEqual([2, 0, 0]);
   });
 
   test('persists two shots on a scene with an internal cut', async () => {

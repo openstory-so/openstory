@@ -131,8 +131,8 @@ function cueName(trimmed: string): string {
 
 /**
  * Streaming PREVIEW value only. Understands screenplay cues (`SARAH` /
- * `NAME: line`), not prose speech. Superseded before persist by the LLM
- * dialogue-extraction pass (#1585, `assignDialogueToScenes`).
+ * `NAME: line`), not prose speech. Superseded before persist by the
+ * shot-list call's per-shot lines (#1585, `dialogueFromShots`).
  */
 export function extractDialogueFromSlice(slice: string): DialogueLine[] {
   const lines = slice.split('\n');

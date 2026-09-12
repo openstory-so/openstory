@@ -11,10 +11,10 @@ import { z } from 'zod';
 import { sceneIndexForLine } from '@/sequences/boundary-split';
 import {
   sceneSplitBiblesResultSchema,
-  sceneSplitDialogueResultSchema,
   sceneSplitScenesResultSchema,
 } from '@/sequences/response-schemas';
-import { assignDialogueToScenes } from '@/sequences/scene-dialogue';
+import { attachShotLists } from '@/shots/shot-list-pass';
+import { shotListPassResultSchema } from '@/shots/shot-list.schema';
 import type {
   ElementBibleEntry,
   LocationBibleEntry,
@@ -184,15 +184,13 @@ export function replayRecordedE2eScenes(): {
     locationBible,
     elementBible,
   });
-  // The dialogue pass (#1585) replaces the regex preview before persist.
-  const dialogue = sceneSplitDialogueResultSchema.parse(
-    parseJson(responseContent('script-dialogue/script-dialogue.json'))
-  );
-  const { scenes } = assignDialogueToScenes(
-    script,
-    assembled.resolution.offsets,
+  // The shot-list call's per-shot lines (#1585) replace the regex preview
+  // before persist.
+  const scenes = attachShotLists(
     tagged,
-    dialogue.lines
+    shotListPassResultSchema.parse(
+      parseJson(responseContent('script-shot-list/script-shot-list.json'))
+    )
   );
 
   // Analyze-script casts matched talent onto the bible BEFORE visual/motion

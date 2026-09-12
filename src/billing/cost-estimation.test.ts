@@ -102,14 +102,14 @@ describe('estimateStoryboardCost', () => {
         pricing: FAL_PRICING,
       })
     );
-    const llm = Number(estimateLLMCost(4));
+    const llm = Number(estimateLLMCost(3));
     expect(oneScene).toBe(llm + sheetsScaled + oneShot);
     expect(oneScene).toBeLessThan(llm + sheetsIfAlwaysThree + oneShot);
   });
 
   it('stopAt script is analysis-only', () => {
     expect(estimateStoryboardCost({ ...base, stopAt: 'script' })).toEqual(
-      estimateLLMCost(4)
+      estimateLLMCost(3)
     );
   });
 
@@ -120,7 +120,7 @@ describe('estimateStoryboardCost', () => {
         stopAt: 'script',
         pricing: {},
       })
-    ).toEqual(estimateLLMCost(4));
+    ).toEqual(estimateLLMCost(3));
   });
 
   it('stopAt music costs more than stopAt images', () => {
@@ -396,7 +396,7 @@ describe('estimateStoryboardCost', () => {
           }
         )
       );
-    const analysis = Number(estimateLLMCost(4)) + sheets;
+    const analysis = Number(estimateLLMCost(3)) + sheets;
     const stills = Number(
       estimateImageCost(IMAGE_MODEL, base.aspectRatio, SCENE_COUNT, {
         pricing: FAL_PRICING,
@@ -674,7 +674,7 @@ describe('gateEstimate', () => {
       estimateCharacterSheetCount(SCENE_COUNT) +
       estimateLocationSheetCount(SCENE_COUNT);
     const flooredImages = (sheets + SCENE_COUNT) * 100_000;
-    const llm = Number(estimateLLMCost(4));
+    const llm = Number(estimateLLMCost(3));
 
     expect(total).toBe(flooredImages + llm);
   });

@@ -33,7 +33,8 @@
  * ## Model-agnostic
  *
  * The analysis annotates a shot list with framing, one action, exactly one
- * camera move (paired with a pacing adverb), a sound cue and a duration. It
+ * camera move (paired with a pacing adverb), a sound cue, the lines spoken
+ * in the shot (#1585) and a duration. It
  * never emits vendor-specific syntax (Seedance/Kling/etc.) — the render layer
  * (#910 / #953) adapts per model capability.
  *
@@ -141,10 +142,23 @@ const shotCameraMovementSchema = z.object({
 });
 
 /**
+ * A line spoken during the shot (#1585). Dialogue is extracted here, on the
+ * shot-list call, because it already holds the sliced script and the cast,
+ * and which shot a line is spoken in is a coverage decision. The regex
+ * parser in `scene-from-slice.ts` only sees screenplay cues; this sees prose.
+ */
+const shotDialogueLineSchema = z.object({
+  character: z.string().meta({ description: 'Speaker, from the cast list' }),
+  line: z.string().meta({ description: 'Spoken words, verbatim' }),
+  tone: z.string().meta({ description: 'Delivery, empty if none' }),
+});
+
+/**
  * One structured shot. Carries exactly what a real shot-list entry has:
- * framing/start-state, one primary action, one camera move, a sound cue and a
- * duration. Visual + motion prompts are DERIVED from these fields plus the
- * parent scene's shared context (see `shot-list.derive.ts`).
+ * framing/start-state, one primary action, one camera move, a sound cue, the
+ * lines spoken in it and a duration. Visual + motion prompts are DERIVED from
+ * these fields plus the parent scene's shared context (see
+ * `shot-list.derive.ts`).
  */
 export const shotSpecSchema = z.object({
   shotNumber: z.number().meta({ description: '1-based within the scene' }),
@@ -152,6 +166,9 @@ export const shotSpecSchema = z.object({
   action: z.string().meta({ description: 'The ONE primary action' }),
   cameraMovement: shotCameraMovementSchema,
   soundCue: z.string().meta({ description: 'SFX/ambience, empty if none' }),
+  dialogue: z.array(shotDialogueLineSchema).meta({
+    description: 'Lines spoken in this shot, in order',
+  }),
   durationSeconds: z.number().meta({
     description: `Relative pacing hint, at least ${MIN_SHOT_DURATION_SECONDS}`,
   }),
