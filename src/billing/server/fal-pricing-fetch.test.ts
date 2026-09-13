@@ -11,6 +11,10 @@ import {
   fetchFalCatalogIds,
   fetchFalTypicalUnits,
   fetchFalUnitPrices,
+  fetchFalAdvertisedCallUsd,
+  llmsTxtPricingSection,
+  parseAdvertisedImageUsd,
+  parseSizeTableUsd,
 } from './fal-pricing-fetch';
 
 const MODELS_URL = 'https://api.fal.ai/v1/models';
@@ -401,5 +405,113 @@ describe('the pricing URL is unchanged', () => {
     });
     await fetchFalCatalogIds('key');
     expect(seen[0]?.startsWith(MODELS_URL)).toBe(true);
+  });
+});
+
+describe('llms.txt advertised price (#1605)', () => {
+  const LLMS = (pricing: string) =>
+    `# Model\n\n## Overview\n\nText.\n\n## Pricing\n\n${pricing}\n\nFor more details, see [fal.ai pricing](https://fal.ai/pricing).\n\n## API Information\n\nStuff.\n`;
+
+  it('reads the Pricing section only', () => {
+    expect(
+      llmsTxtPricingSection(LLMS('Your request will cost **$0.08** per image.'))
+    ).toBe(
+      'Your request will cost **$0.08** per image.\n\nFor more details, see [fal.ai pricing](https://fal.ai/pricing).'
+    );
+    expect(
+      llmsTxtPricingSection('# Model\n\n## Overview\n\nno pricing')
+    ).toBeNull();
+  });
+
+  it.each([
+    [
+      'Your request will cost **$0.08** per image. For **$1.00**, you can run this model **12** times.',
+      0.08,
+    ],
+    ['- **Price**: $0.075 per images', 0.075],
+    [
+      'Your request will cost **$0.09** per 1K image and **$0.18** per 4K image.',
+      0.09,
+    ],
+    ['Your request with cost **$0.05 per output image** for 1K', 0.05],
+    // A figure with a qualifier between it and the noun is not a price.
+    [
+      'Your request will cost **$0.04** (low) or **$0.06** (medium) per image for 1K',
+      null,
+    ],
+    [
+      'Tentative pricing is **$0.0675+ $(0.0045 x number of additional input images)** per output image',
+      null,
+    ],
+    [
+      'Text tokens (per 1M): **$5.00** input. Image tokens (per 1M): **$30.00** output.',
+      null,
+    ],
+    ['Video costs **$0.02** per second at **768p**.', null],
+  ])('%s → %s', (section, expected) => {
+    expect(parseAdvertisedImageUsd(section)).toBe(expected);
+  });
+
+  // The GPT Image 2.5 description as the playground HTML embeds it: rows
+  // joined by a literal backslash-n inside a JSON string, not newlines.
+  const ESCAPED_TABLE =
+    'standpoint.\\\\n| Size | low | medium | high | xhigh | max |\\\\n|---|---:|---:|---:|---:|---:|' +
+    '\\\\n| 1024×768 | $0.00402 | $0.00903 | $0.03612 | $0.06420 | $0.14445 |' +
+    '\\\\n| 1024×1024 | $0.00588 | $0.01317 | $0.05268 | $0.09366 | $0.21072 |' +
+    '\\\\n| 1920×1080 | $0.00441 | $0.01029 | $0.03960 | $0.07041 | $0.15840 |\\\\n\\\\n**This implies**';
+
+  it('reads the 1024×1024 row at the default quality from an escaped table', () => {
+    expect(parseSizeTableUsd(ESCAPED_TABLE, 'high')).toBe(0.05268);
+    expect(parseSizeTableUsd(ESCAPED_TABLE, 'medium')).toBe(0.01317);
+    expect(parseSizeTableUsd(ESCAPED_TABLE, 'ultra')).toBeNull();
+  });
+
+  it('reads a plain markdown table too', () => {
+    expect(
+      parseSizeTableUsd(
+        '| Size | High |\n|---|---|\n| 1024x1024 | $0.5 |\n',
+        'high'
+      )
+    ).toBe(0.5);
+  });
+
+  it('token-rate sections fall through to the page description table', async () => {
+    const html = `<html>${ESCAPED_TABLE}</html>`;
+    stubFetch((url) => {
+      if (url.endsWith('/llms.txt')) {
+        return new Response(
+          LLMS(
+            'Image tokens (per 1M): **$30.00** output. Changing the **quality** parameter significantly affects cost; by default we use **high**.'
+          )
+        );
+      }
+      if (
+        url === 'https://fal.ai/models/openai/gpt-image-2.5/flare/text-to-image'
+      ) {
+        return new Response(html);
+      }
+      return new Response('nope', { status: 404 });
+    });
+    const { advertised, failedEndpoints } = await fetchFalAdvertisedCallUsd([
+      'openai/gpt-image-2.5/flare/text-to-image',
+    ]);
+    expect(advertised.get('openai/gpt-image-2.5/flare/text-to-image')).toBe(
+      0.05268
+    );
+    expect(failedEndpoints.size).toBe(0);
+  });
+
+  it('a 404 is a failed fetch; an unparseable section is an honest absence', async () => {
+    stubFetch((url) =>
+      url.includes('gone')
+        ? new Response('', { status: 404 })
+        : new Response(LLMS('Video costs **$0.02** per second at **768p**.'))
+    );
+    const { advertised, failedEndpoints } = await fetchFalAdvertisedCallUsd([
+      'fal-ai/gone',
+      'minimax/h3-max/image-to-video',
+    ]);
+    expect(advertised.size).toBe(0);
+    expect([...failedEndpoints]).toEqual(['fal-ai/gone']);
   });
 });

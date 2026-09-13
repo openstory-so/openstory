@@ -12,6 +12,9 @@
  *    preserves the stored value rather than nulling it.
  * 3. `model_usage_observations` — median units per image from our own
  *    generations, the preferred estimation signal.
+ * 4. Each endpoint's llms.txt Pricing section — the advertised price, read
+ *    only for used per-call endpoints that have none of the above (a fresh
+ *    catalog id sits on a `units` × $1 stub with no history, #1605).
  *
  * Also appends `model_pricing_history` rows on price changes (and first
  * sight). Billing reads these prices, so a fal price move reaches real
@@ -27,11 +30,14 @@ import {
 import { listCatalogEndpointIds } from '@/models/catalog';
 import {
   type FalUnitPrice,
+  fetchFalAdvertisedCallUsd,
   fetchFalBilledRates,
   fetchFalCatalogIds,
   fetchFalTypicalUnits,
   fetchFalUnitPrices,
+  roundTypicalUnits,
 } from './fal-pricing-fetch';
+import { estimateStrategy, MIN_OBSERVED_SAMPLES } from '@/billing/fal-cost';
 import {
   FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP,
   FAL_UNVERIFIED_SIBLINGS,
@@ -90,6 +96,8 @@ export type FalPricingRefreshSummary = {
   /** Endpoints written to model_pricing (those with a price). */
   endpoints: number;
   priceChanges: number;
+  /** Used endpoints whose only unit-count signal is the llms.txt advertised price. */
+  advertisedEndpoints: number;
   observedEndpoints: number;
   observationSamples: number;
   prunedObservations: number;
@@ -610,20 +618,46 @@ export async function refreshFalPricing(
   await discardObservationsForRedenominatedEndpoints(db, existing, prices);
   const { observed, samples } = await collectObservedUnits(db);
 
+  // A failed typical fetch carries the stored value forward — absence of an
+  // answer is not an answer of "none". A genuine no-history reply uses the
+  // billed-units fallback (H3 Max 8/5s) when we have one, else nulls.
+  const historicalTypical = (p: FalUnitPrice): number | null => {
+    const fallbackTypical =
+      FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP[p.endpointId] ?? null;
+    return (
+      typicalUnits.get(p.endpointId) ??
+      (typicalDegraded || failedEndpoints.has(p.endpointId)
+        ? (existingTypicalByKey.get(pricingKey(p)) ?? fallbackTypical)
+        : fallbackTypical)
+    );
+  };
+
+  // llms.txt is the last resort, below the bill, our median and fal's
+  // history (#1605): read only for used per-call endpoints the estimator
+  // would otherwise report unknown for. Stored as units so the estimate
+  // stays `typical × unitPrice` — a $1 catalog stub yields fractional units.
+  const advertisedGaps = usedPrices.filter(
+    (p) =>
+      historicalTypical(p) == null &&
+      p.unitPriceUsd > 0 &&
+      estimateStrategy(p.endpointId, p.unit) === 'per_call' &&
+      (observed.get(p.endpointId)?.sampleCount ?? 0) < MIN_OBSERVED_SAMPLES
+  );
+  const { advertised, failedEndpoints: advertisedFailed } =
+    await fetchFalAdvertisedCallUsd(advertisedGaps.map((p) => p.endpointId));
+
   const now = new Date();
   const snapshotRows = prices.map((p) => {
     const obs = observed.get(p.endpointId);
     const key = pricingKey(p);
-    // A failed typical fetch carries the stored value forward — absence of an
-    // answer is not an answer of "none". A genuine no-history reply uses the
-    // billed-units fallback (H3 Max 8/5s) when we have one, else nulls.
-    const fallbackTypical =
-      FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP[p.endpointId] ?? null;
+    const advertisedUsd = advertised.get(p.endpointId);
     const typical =
-      typicalUnits.get(p.endpointId) ??
-      (typicalDegraded || failedEndpoints.has(p.endpointId)
-        ? (existingTypicalByKey.get(key) ?? fallbackTypical)
-        : fallbackTypical);
+      historicalTypical(p) ??
+      (advertisedUsd != null
+        ? roundTypicalUnits(advertisedUsd / p.unitPriceUsd)
+        : advertisedFailed.has(p.endpointId)
+          ? (existingTypicalByKey.get(key) ?? null)
+          : null);
     return {
       provider: 'fal' as const,
       endpointId: p.endpointId,
@@ -727,6 +761,7 @@ export async function refreshFalPricing(
     catalogSize: catalogIds.length,
     endpoints: snapshotRows.length,
     priceChanges: historyRows.length,
+    advertisedEndpoints: advertised.size,
     observedEndpoints: observed.size,
     observationSamples: samples,
     prunedObservations: pruneCount?.n ?? 0,

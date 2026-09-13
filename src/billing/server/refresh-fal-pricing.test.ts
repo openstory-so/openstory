@@ -253,6 +253,10 @@ describe('refreshFalPricing', () => {
       unitPriceUsd: number;
       costUsd: number;
     }[];
+    /** llms.txt advertised USD per call (#1605). */
+    advertised?: Record<string, number>;
+    /** Endpoints whose llms.txt fetch errored. */
+    advertisedFailed?: string[];
   }) {
     vi.resetModules();
     typicalCalledWith = undefined;
@@ -267,7 +271,13 @@ describe('refreshFalPricing', () => {
       getFalEndpointIds: () =>
         opts.used ?? opts.prices.map((p) => p.endpointId),
     }));
-    vi.doMock('./fal-pricing-fetch', () => ({
+    vi.doMock('./fal-pricing-fetch', async () => ({
+      ...(await vi.importActual('./fal-pricing-fetch')),
+      fetchFalAdvertisedCallUsd: () =>
+        Promise.resolve({
+          advertised: new Map(Object.entries(opts.advertised ?? {})),
+          failedEndpoints: new Set(opts.advertisedFailed ?? []),
+        }),
       fetchFalCatalogIds: () =>
         Promise.resolve(opts.catalog ?? opts.prices.map((p) => p.endpointId)),
       fetchFalUnitPrices: (_key: string, ids: string[]) => {
@@ -735,6 +745,129 @@ describe('refreshFalPricing', () => {
     expect(t2v?.unitPriceMicros).toBe(25_000);
     expect(t2v?.rateVerifiedAt).not.toBeNull();
     expect(t2v?.typicalUnitsPerCall).toBe(8);
+  });
+});
+
+describe('refreshFalPricing llms.txt advertised estimate (#1605)', () => {
+  const client = createClient({ url: ':memory:' });
+  const db = drizzle({ client });
+  const stub = {
+    endpointId: 'openai/gpt-image-2.5/flare/text-to-image',
+    unitPriceUsd: 1,
+    unit: 'units',
+  };
+
+  /** Same loader as above, minus the args the precedence tests never vary. */
+  async function load(opts: {
+    prices: { endpointId: string; unitPriceUsd: number; unit: string }[];
+    typical?: Record<string, number>;
+    advertised?: Record<string, number>;
+    advertisedFailed?: string[];
+  }) {
+    vi.resetModules();
+    advertisedAsked = undefined;
+    vi.doMock('#db-client', () => ({ getDb: () => db }));
+    vi.doMock('#env', () => ({ getEnv: () => ({ FAL_KEY: 'test-key' }) }));
+    vi.doMock('@/models/catalog', () => ({
+      listCatalogEndpointIds: () => Promise.resolve([]),
+    }));
+    vi.doMock('@/models/fal-endpoints', async () => ({
+      ...(await vi.importActual('@/models/fal-endpoints')),
+      getFalEndpointIds: () => opts.prices.map((p) => p.endpointId),
+    }));
+    vi.doMock('./fal-pricing-fetch', async () => ({
+      ...(await vi.importActual('./fal-pricing-fetch')),
+      fetchFalCatalogIds: () =>
+        Promise.resolve(opts.prices.map((p) => p.endpointId)),
+      fetchFalUnitPrices: () =>
+        Promise.resolve({ prices: opts.prices, failedEndpoints: [] }),
+      fetchFalBilledRates: () => Promise.resolve([]),
+      fetchFalTypicalUnits: () =>
+        Promise.resolve({
+          typicalUnits: new Map(Object.entries(opts.typical ?? {})),
+          failedEndpoints: new Set<string>(),
+        }),
+      fetchFalAdvertisedCallUsd: (ids: string[]) => {
+        advertisedAsked = ids;
+        return Promise.resolve({
+          advertised: new Map(Object.entries(opts.advertised ?? {})),
+          failedEndpoints: new Set(opts.advertisedFailed ?? []),
+        });
+      },
+    }));
+    return await import('./refresh-fal-pricing');
+  }
+  let advertisedAsked: string[] | undefined;
+
+  beforeEach(async () => {
+    await migrate(db, { migrationsFolder: './drizzle/migrations' });
+    await db.delete(modelPricing);
+    await db.delete(modelPricingHistory);
+    await db.delete(modelUsageObservations);
+  });
+
+  const typicalOf = async (endpointId: string) =>
+    (
+      await db
+        .select()
+        .from(modelPricing)
+        .where(eq(modelPricing.endpointId, endpointId))
+    )[0]?.typicalUnitsPerCall;
+
+  test('a catalog stub with no other signal takes the advertised price as units', async () => {
+    // GPT Image 2.5 on day one: "units" × $1, no fal history, no samples.
+    // llms.txt says $0.05268 per 1024×1024 high still → 0.05268 units, so
+    // the estimator's typical × unitPrice reproduces the advertised price.
+    const { refreshFalPricing } = await load({
+      prices: [stub],
+      advertised: { [stub.endpointId]: 0.05268 },
+    });
+    const summary = await refreshFalPricing({ apiKey: 'k', billingKey: 'b' });
+    expect(advertisedAsked).toEqual([stub.endpointId]);
+    expect(await typicalOf(stub.endpointId)).toBeCloseTo(0.05268, 6);
+    expect(summary.advertisedEndpoints).toBe(1);
+  });
+
+  test('fal history, our median, and parametric units all outrank llms.txt', async () => {
+    const withHistory = { ...stub, endpointId: 'fal-ai/with-history' };
+    const withMedian = { ...stub, endpointId: 'fal-ai/with-median' };
+    const perSecond = { ...stub, endpointId: 'fal-ai/veo', unit: 'seconds' };
+    await db.insert(modelUsageObservations).values(
+      Array.from({ length: 5 }, () => ({
+        provider: 'fal' as const,
+        endpointId: withMedian.endpointId,
+        unitsBilled: 0.2,
+        numImages: 1,
+      }))
+    );
+    const { refreshFalPricing } = await load({
+      prices: [withHistory, withMedian, perSecond, stub],
+      typical: { [withHistory.endpointId]: 0.22 },
+      advertised: { [withHistory.endpointId]: 9 },
+    });
+    await refreshFalPricing({ apiKey: 'k', billingKey: 'b' });
+    // Only the endpoint the estimator would otherwise call unknown is asked.
+    expect(advertisedAsked).toEqual([stub.endpointId]);
+    expect(await typicalOf(withHistory.endpointId)).toBe(0.22);
+    expect(await typicalOf(stub.endpointId)).toBeNull();
+  });
+
+  test('a failed llms.txt fetch keeps yesterday’s advertised units', async () => {
+    await db.insert(modelPricing).values({
+      provider: 'fal',
+      endpointId: stub.endpointId,
+      unit: stub.unit,
+      unitPriceMicros: 1_000_000,
+      typicalUnitsPerCall: 0.05268,
+      fetchedAt: new Date(),
+      updatedAt: new Date(),
+    });
+    const { refreshFalPricing } = await load({
+      prices: [stub],
+      advertisedFailed: [stub.endpointId],
+    });
+    await refreshFalPricing({ apiKey: 'k', billingKey: 'b' });
+    expect(await typicalOf(stub.endpointId)).toBeCloseTo(0.05268, 6);
   });
 });
 
