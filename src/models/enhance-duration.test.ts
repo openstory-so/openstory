@@ -67,6 +67,23 @@ describe('parseClipDurationLabels', () => {
     expect(parseClipDurationLabels(MULTI_SHOT_SCENE)).toEqual([4, 6]);
     expect(sumSceneDurations(MULTI_SHOT_SCENE)).toBe(10);
   });
+
+  it('counts mixed Enhance labels per scene, not film-wide (#1593)', () => {
+    const mixed = [
+      'Scene 1 — 10s',
+      'Shot 1 — 4s',
+      'She opens the door.',
+      'Shot 2 — 6s',
+      'Cut to the hallway beyond.',
+      'Scene 2 — 8s',
+      'She waits.',
+      'Scene 3 — 5s',
+      'A glance.',
+    ].join('\n');
+    // Shot labels anywhere used to drop the one-shot headings → [4, 6].
+    expect(parseClipDurationLabels(mixed)).toEqual([4, 6, 8, 5]);
+    expect(sumSceneDurations(mixed)).toBe(23);
+  });
 });
 
 describe('stripTotalLine / createTotalLineFilter', () => {

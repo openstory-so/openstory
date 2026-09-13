@@ -48,6 +48,7 @@ import {
 import { errorMessage, isInsufficientCreditsError } from '@/platform/errors';
 import { adjacentShotId } from './shot-walk';
 import { sequenceKeys, useSequence } from '@/sequences/ui/use-sequences';
+import { sumShotSeconds } from './scene-group';
 import {
   shotKeys,
   useDiscardVariant,
@@ -1478,6 +1479,8 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     generateStartFrames,
     styleName,
     staleShotIds: isGenerationActive ? undefined : staleShotIds,
+    targetDurationSeconds: sequence?.targetDurationSeconds,
+    isAnalyzing: isProcessing,
   };
 
   return (
@@ -1629,6 +1632,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                   stylePending={sequence?.styleConfig == null}
                   aspectRatio={aspectRatio}
                   resolution={sequence?.resolution}
+                  targetDurationSeconds={sequence?.targetDurationSeconds}
                   analysisModel={sequence?.analysisModel ?? undefined}
                 />
                 <div className="px-4 pb-4">
@@ -1667,6 +1671,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                     musicEditable={scope === 'sequence'}
                     scene={scriptScene}
                     scopeShots={scopeShots}
+                    filmSeconds={shots ? sumShotSeconds(shots) : undefined}
                     scopeStaleness={scopeStaleness}
                     scopeStalenessFailed={scopeStalenessFailed}
                     onSelectShot={handleSelectShot}

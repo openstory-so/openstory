@@ -971,26 +971,28 @@ describe('frameVariants pending claims (#1085)', () => {
 });
 
 describe("frameVariants kind: 'preview' (#1101)", () => {
-  it('records a preview keyed by scene text, with no prompt version and no storage path', async () => {
+  it('records a preview keyed by prompt hash, with no prompt version and an R2 storage path', async () => {
     const m = createFrameVariantsMethods(db);
 
     const preview = await m.recordPreview({
       frameId,
       sequenceId,
       model: 'flux_2_turbo',
-      url: 'https://fal.media/preview.png',
+      url: '/r2/teams/t/sequences/s/frames/f/preview.png',
+      storagePath: 'teams/t/sequences/s/frames/f/preview.png',
       promptHash: 'scene-text-hash',
       workflowRunId: 'run-preview-1',
     });
 
     expect(preview.kind).toBe('preview');
     expect(preview.status).toBe('completed');
-    expect(preview.url).toBe('https://fal.media/preview.png');
+    expect(preview.url).toBe('/r2/teams/t/sequences/s/frames/f/preview.png');
+    expect(preview.storagePath).toBe(
+      'teams/t/sequences/s/frames/f/preview.png'
+    );
     expect(preview.promptHash).toBe('scene-text-hash');
-    // A preview renders the raw scene text, never a prompt version — and it
-    // deliberately skips the R2 upload, so there is no storage path.
+    // A preview renders the raw scene text, never a prompt version.
     expect(preview.promptVersionId).toBeNull();
-    expect(preview.storagePath).toBeNull();
   });
 
   it('is idempotent per workflow run, so a step retry appends no second row', async () => {
@@ -1000,7 +1002,8 @@ describe("frameVariants kind: 'preview' (#1101)", () => {
       frameId,
       sequenceId,
       model: 'flux_2_turbo',
-      url: 'https://fal.media/preview.png',
+      url: '/r2/p.png',
+      storagePath: 'p.png',
       promptHash: null,
       workflowRunId: 'run-preview-1',
     });
@@ -1008,7 +1011,8 @@ describe("frameVariants kind: 'preview' (#1101)", () => {
       frameId,
       sequenceId,
       model: 'flux_2_turbo',
-      url: 'https://fal.media/preview.png',
+      url: '/r2/p.png',
+      storagePath: 'p.png',
       promptHash: null,
       workflowRunId: 'run-preview-1',
     });
@@ -1027,7 +1031,8 @@ describe("frameVariants kind: 'preview' (#1101)", () => {
       frameId,
       sequenceId,
       model: 'flux_2_turbo',
-      url: 'https://fal.media/preview.png',
+      url: '/r2/p.png',
+      storagePath: 'p.png',
       promptHash: null,
       workflowRunId: 'run-preview-1',
     });
@@ -1052,6 +1057,7 @@ describe("frameVariants kind: 'preview' (#1101)", () => {
       sequenceId,
       model: 'flux_2_turbo',
       url: 'https://fal.media/old.png',
+      storagePath: 'p.png',
       promptHash: null,
       workflowRunId: 'run-1',
     });
@@ -1060,6 +1066,7 @@ describe("frameVariants kind: 'preview' (#1101)", () => {
       sequenceId,
       model: 'flux_2_turbo',
       url: 'https://fal.media/new.png',
+      storagePath: 'p.png',
       promptHash: null,
       workflowRunId: 'run-2',
     });
@@ -1068,6 +1075,7 @@ describe("frameVariants kind: 'preview' (#1101)", () => {
       sequenceId: other.sequenceId,
       model: 'flux_2_turbo',
       url: 'https://fal.media/other.png',
+      storagePath: 'p.png',
       promptHash: null,
       workflowRunId: 'run-3',
     });
@@ -1093,7 +1101,8 @@ describe("frameVariants kind: 'preview' (#1101)", () => {
       frameId,
       sequenceId,
       model: 'flux_2_turbo',
-      url: 'https://fal.media/preview.png',
+      url: '/r2/p.png',
+      storagePath: 'p.png',
       promptHash: null,
       workflowRunId: 'run-preview-1',
     });
@@ -1169,6 +1178,7 @@ describe("frameVariants kind: 'preview' (#1101)", () => {
       sequenceId,
       model: 'flux_2_turbo',
       url: 'https://fal.media/real.png',
+      storagePath: 'p.png',
       promptHash: null,
       workflowRunId: 'run-ordering-1',
     });

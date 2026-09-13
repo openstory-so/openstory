@@ -60,6 +60,7 @@ Oh, hi Mom. Yeah, I'm fine. Just... working on a big project.`,
   generationCheckpoint: null,
   generateStartFrames: true,
   generateVoices: false,
+  targetDurationSeconds: null,
   suggestedTalentIds: null,
   suggestedLocationIds: null,
 };

@@ -98,14 +98,50 @@ export function parseShotDurationLabels(script: string): number[] {
 }
 
 /**
- * Clip durations for grid/sum arithmetic: shot labels when the writer
- * emitted them, otherwise scene labels (a one-shot scene's heading IS the
- * clip). Never sum both — that would double-count.
+ * Clip durations for grid/sum arithmetic, **per scene**: that scene's shot
+ * labels when present, otherwise its scene heading (a one-shot scene's
+ * heading IS the clip). Never sum a scene's heading with its own shot
+ * labels — that would double-count. Mixed Enhance output (multi-shot scenes
+ * labelled, one-shot scenes only a heading) is counted scene by scene, not
+ * film-wide: any `Shot N` anywhere used to drop every one-shot heading.
  */
 export function parseClipDurationLabels(script: string): number[] {
-  const shots = parseShotDurationLabels(script);
-  if (shots.length > 0) return shots;
-  return parseSceneDurationLabels(script);
+  const clips: number[] = [];
+  let sceneSeconds: number | null = null;
+  let shotSeconds: number[] = [];
+
+  const flush = () => {
+    if (shotSeconds.length > 0) {
+      clips.push(...shotSeconds);
+    } else if (sceneSeconds != null) {
+      clips.push(sceneSeconds);
+    }
+    sceneSeconds = null;
+    shotSeconds = [];
+  };
+
+  for (const line of script.split('\n')) {
+    const trimmed = line.trim();
+    const sceneMatch = trimmed.match(SCENE_DURATION_LINE);
+    if (sceneMatch) {
+      flush();
+      const seconds = Number(sceneMatch[4]);
+      if (Number.isFinite(seconds) && seconds > 0) sceneSeconds = seconds;
+      continue;
+    }
+    // A `Scene N` line without a duration still starts a new scene so
+    // following shot labels do not attach to the previous heading.
+    if (/^Scene\s+\d+\b/i.test(trimmed)) {
+      flush();
+      continue;
+    }
+    const shotMatch = trimmed.match(SHOT_DURATION_LINE);
+    if (!shotMatch?.[4]) continue;
+    const seconds = Number(shotMatch[4]);
+    if (Number.isFinite(seconds) && seconds > 0) shotSeconds.push(seconds);
+  }
+  flush();
+  return clips;
 }
 
 export function sumSceneDurations(script: string): number {
@@ -209,19 +245,17 @@ export function maybeRewriteDurationLabels(
 
 /**
  * What the script's own labels render to on this model's grid. There is
- * deliberately no "cannot fit the target" verdict here (#1523): the target is
- * an enhance-time input, not a property of the sequence — generation takes its
- * clip lengths from these labels — so an overshoot is a length, not a fault.
+ * deliberately no "cannot fit the target" verdict here (#1523, #1593): the
+ * target steers Enhance and the estimate, never generation — each scene's
+ * shots divide its own label — so an overshoot is a length, not a fault.
  */
 export function assessDurationFit(
   script: string,
   model: ImageToVideoModel
 ): DurationFit {
   const clipGrid = durationGridForModel(model);
-  // Shot labels are the clips when present (#1486); scene labels otherwise.
-  const shotLabels = parseShotDurationLabels(script);
-  const labels =
-    shotLabels.length > 0 ? shotLabels : parseSceneDurationLabels(script);
+  // Per scene: shot labels when that scene has them, else the scene heading.
+  const labels = parseClipDurationLabels(script);
   if (labels.length === 0) {
     return { snappedSeconds: null, clipGrid };
   }

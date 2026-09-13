@@ -163,10 +163,11 @@ export const createSequenceSchema = createInsertSchema(sequences, {
       )
       .min(1, 'At least one audio model must be selected')
       .optional(),
-    // Enhance / Generate duration chip (15 / 30 / 60 / 120 / 180 / 300). Pre-flight scene
+    // The Enhance target (#1593); only set when Enhance ran. Pre-flight scene
     // count + per-shot duration use this so client ActionCost and server
     // requireCredits stay aligned before Scene N headings exist (#1140).
-    targetDurationSeconds: z.number().min(5).max(300).optional(),
+    // No ceiling: a pasted feature script is as long as it is.
+    targetDurationSeconds: z.number().min(5).optional(),
     // Suggested talent IDs for AI-assisted casting during generation
     suggestedTalentIds: z.array(z.string()).optional(),
     // Suggested location IDs for visual consistency during generation
@@ -314,6 +315,10 @@ export const updateSequenceSchema = createUpdateSchema(sequences, {
   // while their prompts still assume one; off, no shot has a still and batch
   // motion finds nothing eligible. Regenerate instead of toggling.
   generateStartFrames: true,
+  // Chip-only write (`setSequenceTargetDurationFn`). The general update
+  // path must not set it: no 5s floor, and it is not an aspect-ratio-style
+  // regenerate trigger.
+  targetDurationSeconds: true,
   // Copied from the style row on styleId change — clients send styleId only.
   styleConfig: true,
   // Music fields - managed by workflow, not user input

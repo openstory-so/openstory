@@ -153,10 +153,10 @@ export function estimateSceneCount(
   script: string,
   opts?: { targetDurationSeconds?: number }
 ): number {
+  // Headings are ground truth — a pasted feature's 86 sluglines are 86
+  // scenes, not 30 (#1593). Only the word heuristic below is clamped.
   const labeled = countScriptSceneHeadings(script);
-  if (labeled > 0) {
-    return Math.max(MIN_SCENES, Math.min(MAX_SCENES, labeled));
-  }
+  if (labeled > 0) return labeled;
 
   const fromWords = estimateSceneCountFromWords(script);
   if (opts?.targetDurationSeconds != null && opts.targetDurationSeconds > 0) {

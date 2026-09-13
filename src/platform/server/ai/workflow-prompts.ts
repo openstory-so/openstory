@@ -919,8 +919,8 @@ The style's camera, shot selection, pace, and energy decide coverage:
 
 ## Rules
 
-1. Emit 1..5 shots per scene. Prefer fewer. A short scene with one action is usually one shot.
-2. Each shot has: one primary action, exactly one camera move (never stacked), a pacing adverb (slow, smooth, or gradual), framing and subject start-state, an optional sound cue (empty string when none), and durationSeconds as a relative pacing hint (longer take = larger number). The system assigns the real clip lengths so the film hits the target running time — do not try to make the seconds add up.
+1. Each scene's \`shots:\` line is its budget. "exactly N, as labelled in the script" means the script already marks the shots (\`Shot N — Xs\`): emit exactly those N, in that order, one per label — the labels are their durations. "up to N" means 1..N; prefer fewer, and a short scene with one action is usually one shot. "N to M" means at least N: the scene is longer than N-1 clips can hold, so cover it in N or more setups — never fewer.
+2. Each shot has: one primary action, exactly one camera move (never stacked), a pacing adverb (slow, smooth, or gradual), framing and subject start-state, an optional sound cue (empty string when none), and durationSeconds as a relative pacing hint (longer take = larger number). A scene's running time is its \`duration:\` line; the system divides it across the scene's shots — do not try to make the seconds add up.
 3. Match camera move and framing to the style (handheld vs locked, wide vs insert, slow push vs static).
 4. sceneNumber MUST match the "## Scene N" heading you were given. Shot 1 is the opening take; later shots follow in story order.
 5. Do not invent vendor syntax (no Seedance/Kling tokens). Do not invent scenes that were not in the input.
@@ -947,7 +947,7 @@ The schema is terse; this is what each field holds.
 - cameraMovement.pacing — slow, smooth, or gradual. Fast moves make video models chaotic; keep it calm.
 - soundCue — the on-screen SFX / ambience hook for audio-capable models (e.g. "door creak, distant traffic"). Empty string when none.
 - dialogue — the lines spoken during this shot, in order, as described above. Empty array when none.
-- durationSeconds — a relative pacing hint in seconds, at least 3. Longer take = larger number; the system snaps the real clip lengths.`,
+- durationSeconds — a relative pacing hint in seconds. Longer take = larger number; the system divides the scene's duration across its shots on the video model's clip grid.`,
     },
     {
       role: 'user',

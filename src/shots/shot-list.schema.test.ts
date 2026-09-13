@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
-  MAX_SCENE_DURATION_SECONDS,
-  MAX_SHOTS_PER_SCENE,
-  MIN_SHOT_DURATION_SECONDS,
   sceneWithShotsResultSchema,
   sceneWithShotsSchema,
   shotListPassResultSchema,
@@ -52,12 +49,6 @@ describe('shot-list schema — union budget', () => {
 });
 
 describe('shot-list schema — constraints', () => {
-  it('caps a scene at the multi-shot render ceiling', () => {
-    expect(MAX_SCENE_DURATION_SECONDS).toBe(15);
-    expect(MIN_SHOT_DURATION_SECONDS).toBe(3);
-    expect(MAX_SHOTS_PER_SCENE).toBe(5);
-  });
-
   it('parses a single-shot scene (short-scene regression)', () => {
     const result = sceneWithShotsSchema.safeParse({
       sceneId: 's1',
@@ -151,7 +142,7 @@ describe('shot-list schema — constraints', () => {
     expect(result.success).toBe(false);
   });
 
-  it('enforces the 1..MAX shots-per-scene bound at parse time', () => {
+  it('rejects an empty shots array; there is no parse-time ceiling (#1593)', () => {
     const validShot = {
       shotNumber: 1,
       framing: {
@@ -171,11 +162,12 @@ describe('shot-list schema — constraints', () => {
     expect(shots.safeParse([]).success).toBe(false);
     // One shot is fine.
     expect(shots.safeParse([validShot]).success).toBe(true);
-    // Over the ceiling is rejected (minItems/maxItems, still union-free).
-    const tooMany = Array.from({ length: MAX_SHOTS_PER_SCENE + 1 }, (_, i) => ({
+    // No ceiling on the schema (#1593): the scene label and the model's
+    // shortest clip cap the count post-parse (`allocateSceneShots`).
+    const many = Array.from({ length: 9 }, (_, i) => ({
       ...validShot,
       shotNumber: i + 1,
     }));
-    expect(shots.safeParse(tooMany).success).toBe(false);
+    expect(shots.safeParse(many).success).toBe(true);
   });
 });

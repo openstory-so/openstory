@@ -33,7 +33,13 @@ describe('scene-shot-list-chat', () => {
     expect(system).toContain('HOW TO SHOOT');
     expect(system).toContain('Style is the director');
     expect(system).toContain('You NEVER create, merge, or rewrite scenes');
-    expect(system).toContain('The system assigns the real clip lengths');
+    // Length is per scene (#1593): the budget line, not a film target.
+    expect(system).toContain('shots:');
+    expect(system).toContain('as labelled in the script');
+    expect(system).toContain(
+      'the system divides it across the scene\x27s shots'
+    );
+    expect(system).not.toContain('hits the target running time');
     expect(system).not.toContain('A scene with no internal cut is ONE shot');
     expect(prompt?.[1]?.content).toContain('{{scenes}}');
     expect(prompt?.[1]?.content).toContain('{{style}}');

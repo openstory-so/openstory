@@ -129,7 +129,10 @@ export interface ImageWorkflowInput extends SequenceWorkflowContext {
   promptVersionId?: string | null;
   /** Reference images for character consistency (auto-switches to edit endpoint) */
   referenceImages?: ReferenceImageDescription[];
-  /** Skip R2 upload and store fal.ai CDN URL directly (for ephemeral preview images) */
+  /**
+   * Preview path: no prompt-version row and no shot-status flip. Bytes are
+   * still uploaded to R2; the provider CDN URL is not kept.
+   */
   skipStorage?: boolean;
   /**
    * Per-scene snapshot for divergence detection. When present, the workflow
@@ -317,12 +320,6 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
    * off.
    */
   generateVoices?: boolean;
-  /**
-   * Duration chip from Enhance / Generate (e.g. 30). Scene-split assigns
-   * snapped clip lengths so the rendered shots sum as close as possible to
-   * this. Absent on retries that did not pass a chip — allocation is skipped.
-   */
-  targetSeconds?: number;
 }
 
 /**
@@ -400,8 +397,6 @@ export interface AnalyzeScriptWorkflowInput extends SequenceWorkflowContext {
   referenceOnly?: boolean;
   /** @see StoryboardWorkflowInput.generateVoices — passed straight through. */
   generateVoices?: boolean;
-  /** @see StoryboardWorkflowInput.targetSeconds — passed straight through. */
-  targetSeconds?: number;
 }
 
 /**
@@ -414,9 +409,11 @@ export type SceneSplitWorkflowInput = SequenceWorkflowContext & {
   script: string;
   /** User-uploaded elements to make the model aware of uppercase tokens */
   elements?: SequenceElementMinimal[];
-  /** @see StoryboardWorkflowInput.targetSeconds */
-  targetSeconds?: number;
-  /** Clip-grid for duration allocation. Absent → skip allocation. */
+  /**
+   * Clip grid for the shot-list pass (#1593): caps how many shots a scene's
+   * label can hold and spreads the label over them. Absent → no cap, an even
+   * integer split.
+   */
   videoModel?: ImageToVideoModel;
   /**
    * Director recipe for the shot-list pass (camera / pace / coverage).

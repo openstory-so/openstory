@@ -80,8 +80,8 @@ export function parseSceneHeading(firstLine: string): SceneHeading {
   };
 }
 
-function parseSceneDurationLabel(trimmed: string): number | null {
-  const match = trimmed.match(SCENE_DURATION_LABEL);
+function parseDurationLabel(trimmed: string, pattern: RegExp): number | null {
+  const match = trimmed.match(pattern);
   if (!match?.[1]) return null;
   const seconds = Number(match[1]);
   return Number.isFinite(seconds) ? seconds : null;
@@ -104,7 +104,7 @@ function sliceLead(slice: string): SliceLead {
     const trimmed = line.trim();
     if (trimmed.length === 0) continue;
     if (isDurationLabel(trimmed)) {
-      const labeled = parseSceneDurationLabel(trimmed);
+      const labeled = parseDurationLabel(trimmed, SCENE_DURATION_LABEL);
       if (labeled !== null && durationSeconds === null) {
         durationSeconds = labeled;
       }
@@ -113,6 +113,20 @@ function sliceLead(slice: string): SliceLead {
     return { headingLine: trimmed, durationSeconds };
   }
   return { headingLine: '', durationSeconds };
+}
+
+/**
+ * Every `Shot N — Xs` label in the slice, in script order (#1593). When
+ * enhance wrote them, they ARE the scene's shots: the shot-list pass keeps
+ * the count and these durations and only fills in the coverage.
+ */
+function parseShotLabelSeconds(slice: string): number[] {
+  const seconds: number[] = [];
+  for (const line of slice.split('\n')) {
+    const labeled = parseDurationLabel(line.trim(), SHOT_DURATION_LABEL);
+    if (labeled !== null) seconds.push(labeled);
+  }
+  return seconds;
 }
 
 function isSceneHeading(trimmed: string): boolean {
@@ -189,9 +203,16 @@ export function extractDialogueFromSlice(slice: string): DialogueLine[] {
   return dialogue;
 }
 
-function estimateDurationSeconds(slice: string): number {
-  const nonEmpty = slice.split('\n').filter((l) => l.trim().length > 0).length;
-  return Math.max(3, Math.min(10, Math.round(nonEmpty / 2)));
+/**
+ * Playing time of unlabelled screenplay text: the rule of thumb (a page is a
+ * minute, ~170 words) is about three words a second. No ceiling — a pasted
+ * feature's two-page scene is two minutes, and its shot budget follows
+ * (#1593). Floor keeps a one-liner renderable. The credit pre-flight applies
+ * the same rule to the whole script so its quote tracks the split.
+ */
+export function estimateSecondsFromText(text: string): number {
+  const words = text.split(/\s+/).filter(Boolean).length;
+  return Math.max(3, Math.round(words / 3));
 }
 
 export function buildSceneFromSlice(
@@ -204,10 +225,18 @@ export function buildSceneFromSlice(
   originalScript: { extract: string; dialogue: DialogueLine[] };
   metadata: SceneMetadata;
   continuity: Continuity;
+  shotLabelSeconds?: number[];
 } {
   const lead = sliceLead(slice);
   const heading = parseSceneHeading(lead.headingLine);
   const title = heading.title || `Scene ${index + 1}`;
+  const shotLabelSeconds = parseShotLabelSeconds(slice);
+  // Shot labels without a scene label: the scene is as long as its shots.
+  const labeledSeconds =
+    lead.durationSeconds ??
+    (shotLabelSeconds.length > 0
+      ? shotLabelSeconds.reduce((a, b) => a + b, 0)
+      : null);
   return {
     sceneId,
     sceneNumber: index + 1,
@@ -217,12 +246,13 @@ export function buildSceneFromSlice(
     },
     metadata: {
       title,
-      durationSeconds: lead.durationSeconds ?? estimateDurationSeconds(slice),
+      durationSeconds: labeledSeconds ?? estimateSecondsFromText(slice),
       location: heading.location,
       timeOfDay: heading.timeOfDay,
       storyBeat: '',
     },
     continuity: { ...EMPTY_CONTINUITY },
+    ...(shotLabelSeconds.length > 0 && { shotLabelSeconds }),
   };
 }
 

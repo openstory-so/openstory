@@ -436,12 +436,10 @@ export function estimateStoryboardRenderCost(
  * Includes: LLM analysis, character/location sheet images, per-shot images,
  * and optionally per-shot motion generation.
  *
- * `estimatedSceneCount` is treated as the number of **shot stills** to bill
- * (today the pipeline is ~1 still per scene). Callers should pass
- * `estimateSceneCount(script, { targetDurationSeconds })` so pre-Enhance
- * duration chips and enhanced "Scene N — 5s" headings both count accurately
- * (#1140). Prefer `estimateStoryboardPreflightCost` at server gates so
- * motion/music flags stay aligned with Generate ActionCost.
+ * `estimatedSceneCount` is the number of **shot stills / clips** to bill
+ * (#1593: a scene can hold many shots). Prefer
+ * `estimateStoryboardPreflightCost` at server gates so the count is shot
+ * labels when present, else headings, else playing time / typical clip.
  *
  * Always returns a number for gates: components with no honest estimate
  * contribute `UNKNOWN_ESTIMATE_FLOOR` per call. Generate's ActionCost and

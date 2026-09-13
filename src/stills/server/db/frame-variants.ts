@@ -542,15 +542,12 @@ export function createFrameVariantsMethods(db: Database) {
 
     /**
      * Record the pre-prompt stand-in for a frame (#1101): a `kind: 'preview'`
-     * row holding the raw fal CDN url the preview render returned. Keyed by the
-     * scene text it was rendered from (`promptHash`) — never by a prompt
-     * version, because a preview exists precisely BEFORE one does.
+     * row holding the R2 url the preview render returned. Keyed by the prompt
+     * text it was rendered from (`promptHash`) — never by a prompt version,
+     * because a preview exists precisely BEFORE one does.
      *
-     * `storagePath` stays null on purpose: the preview path skips the R2 upload
-     * to keep the progressive reveal fast (#1091), so the url expires. That is
-     * harmless only because this row is never selectable, never promotable and
-     * never snapshotted — it just has to outlive the window before the real
-     * still lands.
+     * Bytes are copied into R2 (`storagePath` is required): provider CDN URLs
+     * expire and an expired preview is a broken rail tile.
      *
      * Idempotent on `(frameId, workflowRunId)`: this is written inside a
      * workflow step, and a Cloudflare step retry after a partial failure would
@@ -561,6 +558,7 @@ export function createFrameVariantsMethods(db: Database) {
       sequenceId: string;
       model: string;
       url: string;
+      storagePath: string;
       promptHash: string | null;
       workflowRunId: string;
     }): Promise<FrameVariant> => {
@@ -583,7 +581,7 @@ export function createFrameVariantsMethods(db: Database) {
           kind: 'preview',
           model: input.model,
           url: input.url,
-          storagePath: null,
+          storagePath: input.storagePath,
           status: 'completed',
           generatedAt: new Date(),
           promptHash: input.promptHash,

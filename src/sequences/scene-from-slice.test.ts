@@ -157,7 +157,7 @@ describe('buildSceneFromSlice', () => {
     expect(scene.metadata.durationSeconds).toBe(5);
   });
 
-  it('skips shot duration labels and keeps the scene total', () => {
+  it('keeps the scene total and carries the shot labels as the shots (#1593)', () => {
     const slice = [
       'Scene 1 — 10s',
       'INT. HALLWAY - NIGHT',
@@ -169,6 +169,36 @@ describe('buildSceneFromSlice', () => {
     const scene = buildSceneFromSlice('scene_1', 0, slice);
     expect(scene.metadata.title).toBe('HALLWAY');
     expect(scene.metadata.durationSeconds).toBe(10);
+    expect(scene.shotLabelSeconds).toEqual([4, 6]);
+  });
+
+  it('shot labels with no scene label: the scene is as long as its shots', () => {
+    const scene = buildSceneFromSlice(
+      'scene_1',
+      0,
+      'INT. HALLWAY - NIGHT\nShot 1 — 4s\nShe opens the door.\nShot 2 — 6s\nBeyond.'
+    );
+    expect(scene.metadata.durationSeconds).toBe(10);
+    expect(scene.shotLabelSeconds).toEqual([4, 6]);
+  });
+
+  it('unlabelled scene length is its word count at three words a second, uncapped (#1593)', () => {
+    const page = Array.from(
+      { length: 30 },
+      () => 'She walks the long hall.'
+    ).join('\n');
+    // 150 words → 50s; the old 10s ceiling made every pasted feature scene one shot.
+    expect(
+      buildSceneFromSlice('scene_1', 0, page).metadata.durationSeconds
+    ).toBe(50);
+    expect(
+      buildSceneFromSlice('scene_1', 0, 'Dawn.').metadata.durationSeconds
+    ).toBe(3);
+  });
+
+  it('has no shotLabelSeconds when the slice is unlabelled', () => {
+    const scene = buildSceneFromSlice('scene_1', 0, 'A man walks in.');
+    expect('shotLabelSeconds' in scene).toBe(false);
   });
 });
 

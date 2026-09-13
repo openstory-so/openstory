@@ -327,6 +327,8 @@ export function createSequencesMethods(
       generateStartFrames?: boolean;
       /** Design a voice per speaking character (#1553); off by default. */
       generateVoices?: boolean;
+      /** Film length asked for (#1593); absent / null = auto. */
+      targetDurationSeconds?: number | null;
       suggestedTalentIds?: string[];
       suggestedLocationIds?: string[];
     }): Promise<Sequence> => {
@@ -358,6 +360,7 @@ export function createSequencesMethods(
         generationStopAt: params.generationStopAt,
         generateStartFrames: params.generateStartFrames ?? false,
         generateVoices: params.generateVoices ?? false,
+        targetDurationSeconds: params.targetDurationSeconds ?? null,
         suggestedTalentIds: params.suggestedTalentIds ?? null,
         suggestedLocationIds: params.suggestedLocationIds ?? null,
         status: 'draft',
@@ -458,6 +461,7 @@ export function createSequencesMethods(
       generationStopAt?: GenerationStage | null;
       pipelineStage?: GenerationStage | null;
       generationCheckpoint?: GenerationCheckpoint | null;
+      targetDurationSeconds?: number | null;
     }): Promise<Sequence> => {
       // Scoped by teamId like every other write here — `workflowRunId` in
       // particular is the generation-mutex column (#839), so a cross-team id

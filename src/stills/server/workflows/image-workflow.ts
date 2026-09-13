@@ -557,7 +557,18 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
           cancelled: true,
         };
       }
-    } else if (imageUrl && shotId && input.skipStorage) {
+    } else if (
+      imageUrl &&
+      shotId &&
+      sequenceId &&
+      teamId &&
+      input.skipStorage
+    ) {
+      // A preview lives in our bucket like every other generated asset: the
+      // provider URL expires, and an expired preview is a broken rail tile.
+      const upload = await step.do('upload-preview', async () => {
+        return uploadImageToStorage({ imageUrl, teamId, sequenceId, shotId });
+      });
       await step.do('record-preview-variant', async () => {
         const anchor = await this.resolveFrame(scopedDb, input);
         if (!anchor) {
@@ -570,30 +581,26 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
           return;
         }
 
-        // A preview is a render of the RAW SCENE TEXT, not of the frame's
-        // prompt (#1101) — it exists so something can appear during script
-        // analysis, before a prompt version does. So it lands as its own
-        // `kind: 'preview'` row: keyed by the scene text it came from, never
-        // paired with a prompt version, never selectable or promotable.
-        //
-        // `skipStorage` still skips the R2 upload, deliberately, to keep the
-        // progressive reveal fast (#1091). The url expires; that is harmless
-        // precisely because nothing durable can ever point at this row.
+        // A preview is a render of the caller's prompt (the scene slice for
+        // a 1-shot scene, spec text for 2+), not of the frame's visual prompt
+        // (#1101). It lands as its own `kind: 'preview'` row: keyed by that
+        // prompt's hash, never paired with a prompt version, never selectable
+        // or promotable. `skipStorage` names that (no version row, no status
+        // flip); the bytes are still copied into R2 above.
         await scopedDb.frameVariants.recordPreview({
           frameId: anchor.id,
           sequenceId: anchor.sequenceId,
           model: generation.params.model,
-          url: imageUrl,
+          url: upload.url,
+          storagePath: upload.path,
           promptHash: generation.prompt ? simpleHash(generation.prompt) : null,
           workflowRunId,
         });
 
-        if (sequenceId) {
-          await getGenerationChannel(sequenceId).emit(
-            'generation.image:progress',
-            { shotId, previewThumbnailUrl: imageUrl }
-          );
-        }
+        await getGenerationChannel(sequenceId).emit(
+          'generation.image:progress',
+          { shotId, previewThumbnailUrl: upload.url }
+        );
       });
     }
 
@@ -610,7 +617,30 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
     scopedDb: WorkflowScopedDb;
   }): Promise<void> {
     const input = event.payload;
-    if (input.skipStorage) return;
+    if (input.skipStorage) {
+      // Parent swallows the *trigger* (#1149). The child still has to tell
+      // the rail the tile failed — including after a billed generate + R2
+      // miss — or it sits empty forever.
+      if (input.sequenceId && input.shotId) {
+        try {
+          await getGenerationChannel(input.sequenceId).emit(
+            'generation.image:progress',
+            {
+              shotId: input.shotId,
+              status: 'failed',
+              model: input.model ?? DEFAULT_IMAGE_MODEL,
+              error,
+            }
+          );
+        } catch (emitError) {
+          logger.error(
+            `[ImageWorkflow] Failed to emit preview failure for sequence ${input.sequenceId} shot ${input.shotId}:`,
+            { err: emitError }
+          );
+        }
+      }
+      return;
+    }
     if (!input.shotId || !input.teamId) return;
 
     // Variant-only: leave the primary frame untouched on failure too — only

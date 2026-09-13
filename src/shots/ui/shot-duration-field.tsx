@@ -31,6 +31,7 @@ import {
 import { estimateSceneDurationFn } from '@/models/ai.fn';
 import { updateShotDurationFn } from '@/shots/shots.fn';
 import { sequenceKeys } from '@/sequences/ui/use-sequences';
+import { formatSeconds } from '@/sequences/ui/target-duration-chip';
 import { shotStalenessNamespace } from './use-shot-staleness';
 import { shotKeys } from './use-shots';
 import { videoModelDisplayName, type ImageToVideoModel } from '@/models/models';
@@ -49,6 +50,9 @@ type ShotDurationFieldProps = {
   motionModel: ImageToVideoModel;
   /** The scene's script — what the Estimate button reads. */
   scriptExtract?: string;
+  /** Sum of the scene's shots / of the whole cut (#1593) — shown as totals. */
+  sceneSeconds?: number;
+  filmSeconds?: number;
 };
 
 export const ShotDurationField: React.FC<ShotDurationFieldProps> = ({
@@ -56,6 +60,8 @@ export const ShotDurationField: React.FC<ShotDurationFieldProps> = ({
   sequenceId,
   motionModel,
   scriptExtract = '',
+  sceneSeconds,
+  filmSeconds,
 }) => {
   // `undefined` = no draft (the Select mirrors the saved value). Mount this
   // component with `key={shot.id}` so switching shots drops the draft.
@@ -179,6 +185,13 @@ export const ShotDurationField: React.FC<ShotDurationFieldProps> = ({
           )}
           {isEstimating ? 'Estimating…' : 'Estimate'}
         </Button>
+
+        {sceneSeconds !== undefined && filmSeconds !== undefined && (
+          <span className="text-xs tabular-nums text-muted-foreground">
+            Scene {formatSeconds(sceneSeconds)} · Film{' '}
+            {formatSeconds(filmSeconds)}
+          </span>
+        )}
 
         {isDirty && (
           <div className="flex items-center gap-2">

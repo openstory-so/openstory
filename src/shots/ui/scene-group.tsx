@@ -27,7 +27,9 @@ import {
   useSoftDeleteShot,
   useUpdateScene,
 } from './use-scene-structure';
-import { videoModelDisplayName } from '@/models/models';
+import { videoModelDisplayName, type ImageToVideoModel } from '@/models/models';
+import { durationGridForModel } from '@/motion/model-capabilities';
+import { formatSeconds } from '@/sequences/ui/target-duration-chip';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import type { SceneWithScript } from './use-scenes';
 import type { ShotVariant } from '@/platform/server/db/schema';
@@ -81,7 +83,18 @@ type SceneGroupProps = {
   onCompareDivergent?: (variant: ShotVariant) => void;
   /** Shots with stale prompts/image (#1077) — amber corner dot. */
   staleShotIds?: Set<string>;
+  /** Sizes a hand-added shot: the model's shortest clip (#1593). */
+  videoModel: ImageToVideoModel;
+  /** A run is on: a scene with no shots yet is still being listed (#1593). */
+  isAnalyzing?: boolean;
 };
+
+/** Running time of a shot list, from `shots.durationMs` (#1593). */
+export function sumShotSeconds(
+  shots: ReadonlyArray<{ durationMs: number | null }>
+): number {
+  return shots.reduce((sum, shot) => sum + (shot.durationMs ?? 0), 0) / 1000;
+}
 
 const SceneGroupComponent: React.FC<SceneGroupProps> = ({
   scene,
@@ -102,6 +115,8 @@ const SceneGroupComponent: React.FC<SceneGroupProps> = ({
   divergentByShotId,
   onCompareDivergent,
   staleShotIds,
+  videoModel,
+  isAnalyzing = false,
 }) => {
   const [expanded, setExpanded] = useState(true);
   const queryClient = useQueryClient();
@@ -166,6 +181,8 @@ const SceneGroupComponent: React.FC<SceneGroupProps> = ({
     const index = scene.orderIndex + 1;
     return plainSceneTitle(scene.title) || `Scene ${index}`;
   }, [scene.orderIndex, scene.title]);
+  // A scene's length IS the sum of its shots (#1593).
+  const sceneSeconds = sumShotSeconds(shots);
 
   const handleSceneClick = (e: React.MouseEvent) => {
     onSelectScene(scene.id, e.metaKey || e.ctrlKey);
@@ -188,8 +205,13 @@ const SceneGroupComponent: React.FC<SceneGroupProps> = ({
   };
 
   const handleAddShot = () => {
+    const minClipSeconds = Math.min(...durationGridForModel(videoModel));
     createShot.mutate(
-      { sceneId: scene.id },
+      {
+        sceneId: scene.id,
+        durationMs:
+          (Number.isFinite(minClipSeconds) ? minClipSeconds : 3) * 1000,
+      },
       {
         onSuccess: (shot) => onSelectShot(shot.id),
         onError: (error) =>
@@ -319,8 +341,10 @@ const SceneGroupComponent: React.FC<SceneGroupProps> = ({
           >
             <div className="flex items-center gap-2">
               <span className="truncate text-sm font-medium">{sceneLabel}</span>
-              <span className="shrink-0 text-xs text-muted-foreground">
-                {shots.length} {shots.length === 1 ? 'shot' : 'shots'}
+              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                {shots.length === 0 && isAnalyzing
+                  ? 'listing shots…'
+                  : `${shots.length} ${shots.length === 1 ? 'shot' : 'shots'} · ${formatSeconds(sceneSeconds)}`}
               </span>
             </div>
           </button>

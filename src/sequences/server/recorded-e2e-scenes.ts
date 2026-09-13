@@ -8,6 +8,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
+import { stripTotalLine } from '@/models/enhance-duration';
 import { sceneIndexForLine } from '@/sequences/boundary-split';
 import {
   sceneSplitBiblesResultSchema,
@@ -111,13 +112,17 @@ function block(source: string, tag: string): string {
 // The script the pipeline actually split is the LAST enhance turn: when the
 // clip labels missed the target, enhance-duration.ts sends a correction turn
 // ("Your clip duration labels sum to …") whose answer replaces the first.
+// The app strips the enhancer's closing `TOTAL: <sum>s` line before the
+// script is saved (enhance-script-turns.ts), so the split never sees it.
 function recordedEnhancedScript(): string {
   const correction = loadOpenrouterStage('script-enhance').find((file) =>
     file.fixtures[0]?.match.userMessage?.startsWith(
       'Your clip duration labels sum to'
     )
   )?.fixtures[0]?.response.content;
-  return correction ?? responseContent('script-enhance/script-enhance.json');
+  return stripTotalLine(
+    correction ?? responseContent('script-enhance/script-enhance.json')
+  );
 }
 
 function recordedSceneIds(): string[] {
@@ -129,14 +134,10 @@ function recordedSceneIds(): string[] {
   return scenes.map((s) => s.sceneId);
 }
 
-export function replayRecordedE2eScenes(): {
+/** The recorded split, sliced locally: what the shot-list call was handed. */
+export function recordedSplitScenes(): {
   script: string;
-  scenes: SceneSplittingScene[];
-  characterBible: z.infer<
-    typeof sceneSplitBiblesResultSchema
-  >['characterBible'];
-  locationBible: LocationBibleEntry[];
-  elementBible: ElementBibleEntry[];
+  assembled: ReturnType<typeof assembleScenes>;
 } {
   const script = recordedEnhancedScript();
   const split = sceneSplitScenesResultSchema.parse(
@@ -148,6 +149,19 @@ export function replayRecordedE2eScenes(): {
     if (!id) throw new Error(`No recorded scene id for index ${index}`);
     return id;
   });
+  return { script, assembled };
+}
+
+export function replayRecordedE2eScenes(): {
+  script: string;
+  scenes: SceneSplittingScene[];
+  characterBible: z.infer<
+    typeof sceneSplitBiblesResultSchema
+  >['characterBible'];
+  locationBible: LocationBibleEntry[];
+  elementBible: ElementBibleEntry[];
+} {
+  const { script, assembled } = recordedSplitScenes();
 
   const bibles = sceneSplitBiblesResultSchema.parse(
     parseJson(responseContent('script-bibles/script-bibles.json'))
@@ -186,11 +200,14 @@ export function replayRecordedE2eScenes(): {
   });
   // The shot-list call's per-shot lines (#1585) replace the regex preview
   // before persist.
+  // The grid is irrelevant here: the recorded script labels every shot, so
+  // the labels fix the durations (#1593).
   const scenes = attachShotLists(
     tagged,
     shotListPassResultSchema.parse(
       parseJson(responseContent('script-shot-list/script-shot-list.json'))
-    )
+    ),
+    []
   );
 
   // Analyze-script casts matched talent onto the bible BEFORE visual/motion

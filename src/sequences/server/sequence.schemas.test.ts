@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createSequenceSchema,
   REFERENCE_ONLY_REQUIRES_MOTION_ERROR,
+  updateSequenceSchema,
 } from './sequence.schemas';
 
 describe('createSequenceSchema', () => {
@@ -90,6 +91,16 @@ describe('createSequenceSchema', () => {
     if (result.success) {
       expect(result.data.targetDurationSeconds).toBe(30);
     }
+  });
+
+  it('has no target ceiling — a pasted feature script is as long as it is (#1593)', () => {
+    const result = createSequenceSchema.safeParse({
+      script: 'A valid length script here.',
+      styleId: 'style_1',
+      aspectRatio: '16:9',
+      targetDurationSeconds: 90 * 60,
+    });
+    expect(result.success).toBe(true);
   });
 
   it('rejects music without motion', () => {
@@ -262,5 +273,12 @@ describe('createSequenceSchema over-long reference gate', () => {
       elementUploads: [upload(10)],
     });
     expect(result.success).toBe(true);
+  });
+});
+
+describe('updateSequenceSchema', () => {
+  it('omits targetDurationSeconds from the general update path', () => {
+    const parsed = updateSequenceSchema.parse({ targetDurationSeconds: 30 });
+    expect(Object.keys(parsed)).not.toContain('targetDurationSeconds');
   });
 });

@@ -16,28 +16,39 @@
  *     finalizes scene k via a local slice, so scene cards appear with real
  *     script text in seconds.
  *   - `scene-bibles` — character/location/element bibles.
- *   - `scene-shot-list` — after slices exist, a second structured call covers
+ *   - `scene-shot-list-N` — after slices exist, structured calls cover
  *     each scene with 1..N setups (`shotListPassResultSchema`), directed by
- *     the snapshotted style, and places every spoken line in the shot it is
+ *     the snapshotted style, and place every spoken line in the shot it is
  *     spoken in (#1585), speakers named from the character bible. The regex
  *     parser in `scene-from-slice.ts` only sees screenplay cues, so this
- *     REPLACES `originalScript.dialogue`. Fails the run like the bibles
- *     call, and also when it omits a scene (`attachShotLists`): a one-shot
- *     fallback would silently leave that scene on the regex preview, which
- *     is empty for prose.
+ *     REPLACES `originalScript.dialogue`. The scenes go out in batches of
+ *     `SHOT_LIST_BATCH_SCENES`, one concurrent step each, so a feature-length
+ *     paste never puts one call's output at the token cap. Inside a call the
+ *     response streams: as soon as a scene's entry has settled its shots are
+ *     allocated, written, announced (`generation.shot:created`) and each
+ *     shot's preview fired — the rail fills scene by scene, not all at the end.
+ *     Fails the run like the bibles call, and also when a batch omits a scene
+ *     (`attachShotLists`): a one-shot fallback would silently leave that
+ *     scene on the regex preview, which is empty for prose. Each scene's
+ *     shots divide ITS label (#1593): the slice's `Shot N — Xs` labels fix
+ *     count and durations when present, otherwise the label is spread over
+ *     the shots on the video model's grid. No film-wide target enters the run.
  *
  * After the join, scene continuity tags are assigned from bibles ∩ slice
  * (`tag-reconcile.ts`) and bible `firstMention`s get their owning scene id
  * derived from the gutter line.
+ *
+ * No placeholder shot (#1593): the stream persists scene rows only, and a
+ * scene has zero shots until its shot-list entry lands. `persist-scenes`
+ * re-upserts the final set afterwards; `reconcile-shots` only stamps the
+ * title / workflow and assembles the result.
  *
  * Excessive *drops* trigger one retry with feedback; a second degraded
  * result keeps the first-pass LLM scenes (verbatim slices + metadata).
  * Fuzzy/normalized repairs that still produce a full partition are kept
  * without a second LLM call — #1218 timed out three times retrying 14
  * locally-repaired quotes with empty feedback. Dropped boundaries are
- * always logged and emitted as a non-fatal `generation.error`. Preview-image
- * triggers fire as each scene finalizes (one per boundary as it settles)
- * so a burst of boundaries does not wait on a metadata tail.
+ * always logged and emitted as a non-fatal `generation.error`.
  *
  * Infrastructure notes (unchanged from the previous version): per-chunk DB
  * writes + realtime emissions run inline inside the streaming step (a step
@@ -59,7 +70,7 @@ import {
   sceneSplitScenesResultSchema,
 } from '@/sequences/response-schemas';
 import {
-  applyTargetDurations,
+  attachSceneShots,
   attachShotLists,
   buildShotInserts,
   formatCastForShotList,
@@ -67,8 +78,8 @@ import {
   formatScenesForShotListPrompt,
 } from '@/shots/shot-list-pass';
 import {
-  type ShotListPassResult,
   shotListPassResultSchema,
+  shotListPassSceneSchema,
 } from '@/shots/shot-list.schema';
 import {
   addLineGutter,
@@ -79,15 +90,18 @@ import {
 import {
   assembleScenes,
   createStreamingSceneParser,
+  isRecord,
   type SceneSplittingScene,
+  settledPrefix,
+  stripCodeFences,
 } from '@/sequences/server/streaming-scene-parser';
 import { reconcileSceneTags } from '@/sequences/tag-reconcile';
 import type {
   ElementBibleEntry,
   LocationBibleEntry,
 } from '@/shots/scene-analysis.schema';
-import { addMicros, type Microdollars } from '@/billing/money';
-import type { TokenUsage } from '@tanstack/ai';
+import { addMicros, type Microdollars, ZERO_MICROS } from '@/billing/money';
+import { parsePartialJSON, type TokenUsage } from '@tanstack/ai';
 import { deductWorkflowCredits } from '@/billing/server/workflow-deduction';
 import {
   buildSceneInsert,
@@ -95,10 +109,7 @@ import {
 } from '@/sequences/server/scene-persistence';
 import { aspectRatioToImageSize } from '@/models/aspect-ratios';
 import { generateId } from '@/platform/id';
-import type { NewShot } from '@/platform/server/db/schema';
-import { dbSceneId } from '@/shots/scene-id';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
-import type { ShotWithAnchorFrame } from '@/shots/server/db/shots';
 import { durationGridForModel } from '@/motion/snap-duration';
 import {
   getChatPrompt,
@@ -109,7 +120,6 @@ import { getGenerationChannel } from '@/platform/realtime';
 import { previewImageDedupId } from '@/platform/server/workflow/dedup-ids';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
-import { WorkflowValidationError } from '@/platform/server/workflow/errors';
 import { handleLlmAuthFailure } from '@/platform/server/workflow/llm-auth-failure';
 import { sanitizeFailResponse } from '@/platform/server/workflow/sanitize-fail-response';
 import type {
@@ -171,20 +181,26 @@ const BIBLES_LOG_NAME = `phase-${PHASE.number}-${BIBLES_STEP_NAME}`;
 const SHOT_LIST_STEP_NAME = 'scene-shot-list';
 const SHOT_LIST_PROMPT_NAME = 'phase/scene-shot-list-chat';
 const SHOT_LIST_LOG_NAME = `phase-${PHASE.number}-${SHOT_LIST_STEP_NAME}`;
+/**
+ * Scenes per shot-list call. Small enough that a talky batch's output sits
+ * well under the model's cap; big enough that the recorded e2e script (4
+ * scenes) is one call with an unchanged prompt. Batches run concurrently.
+ */
+const SHOT_LIST_BATCH_SCENES = 8;
 
 /**
- * Persist one analysis scene as a `scenes` row and its first shot, linked via
- * `shots.sceneId`, as soon as the stream emits it. Without this the Scenes
- * spine (#986) only has flat unassigned shots until the late `persist-scenes`
- * step — the pre-#1055 look. The shot-list pass then upserts shots 2..N onto
- * the same scene row; shot 1 stays this row (conflict on sceneId+shotNumber).
+ * Persist one analysis scene as a `scenes` row as soon as the stream emits
+ * it, so the Scenes spine (#986) grows scene groups live. No shot row (#1593):
+ * the rail shows the scene as "listing shots…" until that scene's shot-list
+ * entry lands (`persistSceneShots`) — a placeholder shot 1 carried the scene
+ * label as its duration and had to be overwritten from the spec.
  */
-async function persistStreamedSceneAndShot(
+async function persistStreamedScene(
   scopedDb: WorkflowScopedDb,
   sequenceId: string,
   scene: SceneSplittingScene,
   orderIndex: number
-): Promise<ShotWithAnchorFrame> {
+): Promise<void> {
   const sceneRow = await scopedDb.scenes.upsert(
     buildSceneInsert(sequenceId, scene, orderIndex)
   );
@@ -199,28 +215,13 @@ async function persistStreamedSceneAndShot(
       createdAt: sceneRow.createdAt,
     },
   ]);
-  return scopedDb.shots.upsert({
-    sequenceId,
-    durationMs: Math.round((scene.metadata.durationSeconds || 3) * 1000),
-    sceneId: sceneRow.id,
-    shotNumber: 1,
-  } satisfies NewShot);
 }
 
 /**
- * Fire-and-forget preview image for one shot, routed through `triggerWorkflow`
- * so the engine registry picks whichever engine is configured for `/image` at
- * runtime. The deduplicationId makes a replay of the mega-step idempotent (see
- * dedup-ids.ts).
- *
- * Failures are swallowed by design (#1149). Previews are decorative
- * (`skipStorage: true`) and nothing downstream reads the result, but a throw
- * here fails `scene-splitting-stream` → `scene-split` → `analyze-script` → the
- * whole sequence, discarding every still that already rendered and cost money.
- * A content-checker hit on one of ~18 previews is a routine outcome, not a
- * reason to lose the run.
+ * Animatic text for a shot's preview: its spec (framing + action) when the
+ * scene has 2+ shots, else the scene's verbatim slice (or title). The
+ * recorded e2e fixtures are keyed on this text.
  */
-/** Animatic text for a shot: spec action/framing when the scene has 2+ shots. */
 function previewTextForShot(
   scene: SceneSplittingScene,
   shotNumber: number
@@ -242,6 +243,18 @@ function previewTextForShot(
   );
 }
 
+/**
+ * Fire-and-forget preview image for one shot. Failures are swallowed by
+ * design (#1149): a throw here fails the shot-list batch step, and with it
+ * the whole sequence, discarding every still that already rendered and cost
+ * money. A content-checker hit on one of ~18 previews is a routine outcome,
+ * not a reason to lose the run. The child still reports failure (see
+ * ImageWorkflow.onFailure skipStorage emit).
+ *
+ * `skipStorage: true` names the preview path (no prompt version, no status
+ * flip); the image workflow still copies bytes into R2. The deduplicationId
+ * makes a replay of the batch step idempotent (see dedup-ids.ts).
+ */
 async function triggerPreviewImage({
   input,
   sequenceId,
@@ -249,21 +262,15 @@ async function triggerPreviewImage({
   shot,
   scene,
   scopedDb,
-  previewText,
 }: {
   input: SceneSplitWorkflowInput;
   sequenceId: string;
   parentInstanceId: string;
-  shot: { id: string; frameId: string };
+  shot: { id: string; frameId: string; shotNumber: number };
   scene: SceneSplittingScene;
   scopedDb: WorkflowScopedDb;
-  previewText?: string;
 }): Promise<void> {
-  const sceneText =
-    previewText ??
-    (scene.originalScript.extract ||
-      scene.metadata.title ||
-      'A cinematic scene');
+  const sceneText = previewTextForShot(scene, shot.shotNumber);
 
   try {
     const enforcement = await scopedDb.liveRead.compliance.listEnforcementFor(
@@ -303,18 +310,11 @@ async function triggerPreviewImage({
 /**
  * Shape produced by the scenes streaming step (post JSON round-trip).
  * `offsets` are the resolved boundary offsets (used to derive owning scenes
- * for bible `firstMention` lines); `shotMapping` reflects only the shots
- * written inline during streaming.
+ * for bible `firstMention` lines).
  */
 type StreamResult = {
   scenes: SceneSplittingScene[];
   title: string;
-  shotMapping: Array<{
-    analysisSceneId: string;
-    shotId: string;
-    frameId: string | null;
-    shotNumber?: number;
-  }>;
   /** Raw-script start offset per final scene (a true partition of the script). */
   offsets: number[];
   /** Provider-reported cost for the LLM call(s), billed after reconciliation. */
@@ -335,35 +335,44 @@ type LlmStepBilling = {
 /** Shape produced by the bibles step (post JSON round-trip). */
 type BiblesStepResult = SceneSplitBiblesResult & LlmStepBilling;
 
-/** Shape produced by the shot-list step (post JSON round-trip). */
-type ShotListStepResult = ShotListPassResult & LlmStepBilling;
+/** Shape produced by one shot-list batch step (post JSON round-trip). */
+type ShotListStepResult = {
+  /** The batch's scenes with their shots attached, in order. */
+  scenes: SceneSplittingScene[];
+  shotMapping: SceneSplitWorkflowResult['shotMapping'];
+} & LlmStepBilling;
 
 /**
  * One structured call consumed to completion, shared by the bibles and
- * shot-list steps: the stream is drained for its final validated payload and
- * nothing is persisted or emitted per chunk (unlike `scene-splitting-stream`).
- * Same model, same failure mode: no validated payload = the step fails;
- * nothing falls back to a local guess.
+ * shot-list steps: the stream is drained for its final validated payload.
+ * `onAccumulated`, when given, sees the accumulated text at most once per
+ * PARSE_COALESCE_CHARS and once more at the end, so a caller can act on
+ * entries that have already settled (the shot list writes them). Same model,
+ * same failure mode: no validated payload = the step fails; nothing falls
+ * back to a local guess.
  */
 async function runStructuredCall<T extends object>({
   input,
   scopedDb,
   stepName,
+  logName = `phase-${PHASE.number}-${stepName}`,
   promptName,
   promptVars,
   responseSchema,
   maxTokens,
+  onAccumulated,
 }: {
   input: SceneSplitWorkflowInput;
   scopedDb: WorkflowScopedDb;
   stepName: string;
+  logName?: string;
   promptName: string;
   promptVars: Record<string, string>;
   responseSchema: z.ZodType<T>;
   maxTokens: number;
+  onAccumulated?: (accumulated: string, done: boolean) => Promise<void>;
 }): Promise<T & LlmStepBilling> {
   const { modelId } = input;
-  const logName = `phase-${PHASE.number}-${stepName}`;
   const { messages } = await getChatPrompt(promptName, promptVars);
   const llmKeyInfo = await scopedDb.credentials.resolveLlmKey(modelId);
 
@@ -377,6 +386,7 @@ async function runStructuredCall<T extends object>({
   let parsed: T | undefined;
   let usage: TokenUsage | undefined;
   let accumulatedLength = 0;
+  let parsedChars = 0;
   for await (const chunk of callLLMStream<T>({
     model: modelId,
     messages,
@@ -394,6 +404,13 @@ async function runStructuredCall<T extends object>({
     if (chunk.done) {
       parsed = chunk.parsed;
       usage = chunk.usage;
+    }
+    if (
+      onAccumulated &&
+      (chunk.done || accumulatedLength - parsedChars >= PARSE_COALESCE_CHARS)
+    ) {
+      parsedChars = accumulatedLength;
+      await onAccumulated(chunk.accumulated, chunk.done);
     }
   }
   if (!parsed) {
@@ -415,6 +432,80 @@ async function runStructuredCall<T extends object>({
     llmCostMicros: llmCostFromUsage(usage, modelId, llmKeyInfo.via),
     llmKeySource: llmKeyInfo.source,
   };
+}
+
+/**
+ * Write one scene's allocated shots and announce them (#1593): upsert the
+ * scene row (stable id via orderIndex — the stream wrote it, a boundary
+ * retry may not have), upsert its shots on `(sceneId, shotNumber)`, trim
+ * shots past the kept count, emit `generation.shot:created` per new shot and
+ * fire each new shot's preview (deduplicated per instance + shot, so a step
+ * replay is idempotent). `announcedShotIds` skips emit and preview for rows
+ * already announced this step so overwrite does not double-bill. Shot rows
+ * are still upserted and extras trimmed. Returns the scene's shot mapping.
+ */
+async function persistSceneShots({
+  input,
+  scopedDb,
+  sequenceId,
+  parentInstanceId,
+  scene,
+  orderIndex,
+  announcedShotIds,
+}: {
+  input: SceneSplitWorkflowInput;
+  scopedDb: WorkflowScopedDb;
+  sequenceId: string;
+  parentInstanceId: string;
+  scene: SceneSplittingScene;
+  orderIndex: number;
+  announcedShotIds?: ReadonlySet<string>;
+}): Promise<SceneSplitWorkflowResult['shotMapping']> {
+  const sceneRow = await scopedDb.scenes.upsert(
+    buildSceneInsert(sequenceId, scene, orderIndex)
+  );
+  const inserts = buildShotInserts(
+    sequenceId,
+    [scene],
+    new Map([[0, sceneRow.id]])
+  );
+  // `RETURNING` order is not guaranteed; every row here is this scene's, so
+  // only the shot number matters.
+  const rows = (await scopedDb.shots.bulkUpsert(inserts)).sort(
+    (a, b) => (a.shotNumber ?? 1) - (b.shotNumber ?? 1)
+  );
+  await scopedDb.shots.deleteFromShotNumber(sceneRow.id, inserts.length + 1);
+  for (const row of rows) {
+    const alreadyAnnounced = announcedShotIds?.has(row.id) === true;
+    if (!alreadyAnnounced) {
+      await getGenerationChannel(sequenceId).emit('generation.shot:created', {
+        shotId: row.id,
+        sceneId: scene.sceneId,
+        orderIndex,
+      });
+    }
+    if (!row.anchorFrameId || alreadyAnnounced) continue;
+    await triggerPreviewImage({
+      input,
+      sequenceId,
+      parentInstanceId,
+      shot: {
+        id: row.id,
+        frameId: row.anchorFrameId,
+        shotNumber: row.shotNumber ?? 1,
+      },
+      scene,
+      scopedDb,
+    });
+  }
+  return rows.map((row) => ({
+    analysisSceneId: scene.sceneId,
+    shotId: row.id,
+    // Anchor frame id captured from the same upsert — the batch prompt
+    // workflow reads it from here instead of querying the DB (#991).
+    frameId: row.anchorFrameId,
+    shotNumber: row.shotNumber ?? 1,
+  }));
 }
 
 async function reportDroppedBoundaries(
@@ -507,10 +598,7 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
         );
 
         const parser = createStreamingSceneParser(script, generateId);
-        const shotMapping: StreamResult['shotMapping'] = [];
-        const shotByIndex = new Map<number, { id: string; frameId: string }>();
-        const sceneByIndex = new Map<number, SceneSplittingScene>();
-        const previewTriggered = new Set<number>();
+        let streamedScenes = 0;
         let finalText = '';
         let chunkCount = 0;
         /** Buffer length at the last `parser.feed` — see PARSE_COALESCE_CHARS. */
@@ -551,7 +639,7 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
 
             if (chunkCount % 20 === 0) {
               logger.info(
-                `[SceneSplitWorkflow:cf] [Stream:${LOG_NAME}] chunk #${chunkCount} | ${finalText.length} chars | ${shotMapping.length} shots so far`
+                `[SceneSplitWorkflow:cf] [Stream:${LOG_NAME}] chunk #${chunkCount} | ${finalText.length} chars | ${streamedScenes} scenes so far`
               );
             }
 
@@ -583,28 +671,17 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
                 logger.info(
                   `[SceneSplitWorkflow:cf] [Stream:${LOG_NAME}] Scene ${ev.index + 1} finalized: ${ev.scene.originalScript.extract.length} chars (chunk #${chunkCount})`
                 );
-                sceneByIndex.set(ev.index, ev.scene);
+                streamedScenes++;
 
                 if (sequenceId) {
                   // Persist before emitting so cache invalidation from the
                   // realtime events cannot race ahead of the DB write (#1072).
-                  const shot = await persistStreamedSceneAndShot(
+                  await persistStreamedScene(
                     scopedDb,
                     sequenceId,
                     ev.scene,
                     ev.index
                   );
-                  shotByIndex.set(ev.index, {
-                    id: shot.id,
-                    frameId: shot.anchorFrameId,
-                  });
-                  shotMapping.push({
-                    analysisSceneId: ev.scene.sceneId,
-                    shotId: shot.id,
-                    // Anchor frame id captured from the same write (no read-back).
-                    frameId: shot.anchorFrameId,
-                    shotNumber: 1,
-                  });
 
                   await getGenerationChannel(sequenceId).emit(
                     'generation.scene:new',
@@ -616,28 +693,6 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
                       durationSeconds: ev.scene.metadata.durationSeconds,
                     }
                   );
-                  await getGenerationChannel(sequenceId).emit(
-                    'generation.shot:created',
-                    {
-                      shotId: shot.id,
-                      sceneId: ev.scene.sceneId,
-                      orderIndex: ev.index,
-                    }
-                  );
-                  if (!previewTriggered.has(ev.index)) {
-                    previewTriggered.add(ev.index);
-                    await triggerPreviewImage({
-                      input,
-                      sequenceId,
-                      parentInstanceId: event.instanceId,
-                      shot: {
-                        id: shot.id,
-                        frameId: shot.anchorFrameId,
-                      },
-                      scene: ev.scene,
-                      scopedDb,
-                    });
-                  }
                 }
               }
             }
@@ -654,7 +709,7 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
           throw new NonRetryableError(
             `[SceneSplitWorkflow:cf] [Stream:${LOG_NAME}] Stream ended without a validated structured-output payload. ` +
               `chunks=${chunkCount} chars=${finalText.length} ` +
-              `streamedScenes=${shotMapping.length} model=${SCENE_SPLIT_MODEL}. ` +
+              `streamedScenes=${streamedScenes} model=${SCENE_SPLIT_MODEL}. ` +
               `Likely cause: provider did not honor responseFormat:json_schema.`
           );
         }
@@ -762,25 +817,6 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
         const scenes = assembled.scenes;
         const offsets = assembled.resolution.offsets;
 
-        // Preview sweep: any scene persisted without a trigger (e.g. a
-        // replay that skipped the stream loop) still gets one.
-        if (sequenceId) {
-          for (const [index, shot] of shotByIndex) {
-            if (previewTriggered.has(index)) continue;
-            const scene = scenes[index] ?? sceneByIndex.get(index);
-            if (!scene) continue;
-            previewTriggered.add(index);
-            await triggerPreviewImage({
-              input,
-              sequenceId,
-              parentInstanceId: event.instanceId,
-              shot,
-              scene,
-              scopedDb,
-            });
-          }
-        }
-
         logger.info(
           `[SceneSplitWorkflow:cf] [Stream:${LOG_NAME}] Complete | ${chunkCount} chunks | ${scenes.length} scenes`
         );
@@ -788,7 +824,6 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
         const streamResult: StreamResult = {
           scenes,
           title: resolvedTitle || 'Untitled',
-          shotMapping,
           offsets,
           llmCostMicros,
           llmKeySource: llmKeyInfo.source,
@@ -825,7 +860,6 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
     const biblesResult: BiblesStepResult = JSON.parse(biblesResultJson);
     if (
       !Array.isArray(streamResult.scenes) ||
-      !Array.isArray(streamResult.shotMapping) ||
       !Array.isArray(biblesResult.characterBible)
     ) {
       throw new NonRetryableError(
@@ -887,176 +921,160 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
 
     // Step 2b (#1486 / #1585): 1..N shots inside each resolved scene slice,
     // each carrying the lines spoken in it, speakers named from the bible.
-    const shotListJson = await step.do(
-      SHOT_LIST_STEP_NAME,
-      async (): Promise<string> => {
-        const result = await runStructuredCall({
-          input,
-          scopedDb,
-          stepName: SHOT_LIST_STEP_NAME,
-          promptName: SHOT_LIST_PROMPT_NAME,
-          promptVars: {
-            scenes: formatScenesForShotListPrompt(reconciledScenes),
-            style: formatDirectorStyleForShotList(input.styleConfig),
-            characters: formatCastForShotList(biblesResult.characterBible),
-          },
-          responseSchema: shotListPassResultSchema,
-          maxTokens: shotListMaxTokens,
-        });
-        const shots = result.scenes.flatMap((scene) => scene.shots);
-        logger.info(
-          `[SceneSplitWorkflow:cf] [LLM:${SHOT_LIST_LOG_NAME}] Complete | ${result.scenes.length} scenes | ${shots.length} shots | ${shots.reduce((n, shot) => n + shot.dialogue.length, 0)} dialogue lines`
-        );
-        return JSON.stringify(result satisfies ShotListStepResult);
-      }
+    // The grid caps each scene's shot count and divides its label (#1593).
+    const clipGrid = input.videoModel
+      ? durationGridForModel(input.videoModel)
+      : [];
+    const batchStarts: number[] = [];
+    for (let i = 0; i < reconciledScenes.length; i += SHOT_LIST_BATCH_SCENES) {
+      batchStarts.push(i);
+    }
+    const batchSteps = await Promise.all(
+      batchStarts.map((start, batchIndex) =>
+        step.do(
+          `${SHOT_LIST_STEP_NAME}-${batchIndex + 1}`,
+          async (): Promise<string> => {
+            const batch = reconciledScenes.slice(
+              start,
+              start + SHOT_LIST_BATCH_SCENES
+            );
+            const attached = new Map<number, SceneSplittingScene>();
+            const shotMapping: SceneSplitWorkflowResult['shotMapping'] = [];
+            // A scene's entry has settled (a later entry started, or the
+            // stream ended): allocate, write, announce, preview — now, not
+            // after the whole batch. Matched on sceneNumber only; an entry
+            // that names no scene of this batch waits for the final
+            // positional match in `attachShotLists`.
+            const landScene = async (
+              scene: SceneSplittingScene,
+              orderIndex: number,
+              opts?: { overwrite?: boolean }
+            ): Promise<void> => {
+              const already = attached.has(scene.sceneNumber);
+              if (already && !opts?.overwrite) return;
+              const previous = shotMapping.filter(
+                (entry) => entry.analysisSceneId === scene.sceneId
+              );
+              attached.set(scene.sceneNumber, scene);
+              if (!sequenceId) return;
+              const mapping = await persistSceneShots({
+                input,
+                scopedDb,
+                sequenceId,
+                parentInstanceId: event.instanceId,
+                scene,
+                orderIndex,
+                announcedShotIds: new Set(
+                  previous.map((entry) => entry.shotId)
+                ),
+              });
+              const kept = shotMapping.filter(
+                (entry) => entry.analysisSceneId !== scene.sceneId
+              );
+              shotMapping.length = 0;
+              shotMapping.push(...kept, ...mapping);
+            };
+            const result = await runStructuredCall({
+              input,
+              scopedDb,
+              stepName: SHOT_LIST_STEP_NAME,
+              logName: SHOT_LIST_LOG_NAME,
+              promptName: SHOT_LIST_PROMPT_NAME,
+              promptVars: {
+                scenes: formatScenesForShotListPrompt(batch, clipGrid),
+                style: formatDirectorStyleForShotList(input.styleConfig),
+                characters: formatCastForShotList(biblesResult.characterBible),
+              },
+              responseSchema: shotListPassResultSchema,
+              maxTokens: shotListMaxTokens,
+              onAccumulated: async (accumulated, done) => {
+                // The done chunk is the validated payload's job: a complete
+                // last object would otherwise persist twice, and a truncated
+                // last object must not stick.
+                if (done) return;
+                const raw = parsePartialJSON(stripCodeFences(accumulated));
+                if (!isRecord(raw)) return;
+                for (const entry of settledPrefix(
+                  raw.scenes,
+                  shotListPassSceneSchema,
+                  done
+                )) {
+                  const index = batch.findIndex(
+                    (scene) => scene.sceneNumber === entry.sceneNumber
+                  );
+                  const scene = batch[index];
+                  if (!scene || attached.has(scene.sceneNumber)) continue;
+                  await landScene(
+                    attachSceneShots(scene, entry.shots, clipGrid),
+                    start + index
+                  );
+                }
+              },
+            });
+            // The validated payload is the authority: it throws on an omitted
+            // scene, lands anything the stream did not, and overwrites a
+            // streamed prefix so a half-spec cannot stick.
+            const final = attachShotLists(batch, result, clipGrid);
+            for (const [index, scene] of final.entries()) {
+              await landScene(scene, start + index, { overwrite: true });
+            }
+            const scenes = final;
+            const shots = scenes.flatMap((scene) => scene.shots ?? []);
+            logger.info(
+              `[SceneSplitWorkflow:cf] [LLM:${SHOT_LIST_LOG_NAME}] Batch ${batchIndex + 1}/${batchStarts.length} complete | ${scenes.length} scenes | ${shots.length} shots | ${shots.reduce((n, shot) => n + shot.dialogue.length, 0)} dialogue lines`
+            );
+            return JSON.stringify({
+              scenes,
+              shotMapping,
+              llmCostMicros: result.llmCostMicros,
+              llmKeySource: result.llmKeySource,
+            } satisfies ShotListStepResult);
+          }
+        )
+      )
     );
-    const shotListStep: ShotListStepResult = JSON.parse(shotListJson);
-    if (!Array.isArray(shotListStep.scenes)) {
+    const shotListBatches: ShotListStepResult[] = batchSteps.map((json) =>
+      JSON.parse(json)
+    );
+    if (
+      shotListBatches.some(
+        (batch) =>
+          !Array.isArray(batch.scenes) || !Array.isArray(batch.shotMapping)
+      )
+    ) {
       throw new NonRetryableError(
         'scene-shot-list returned a malformed result from cache',
         'WorkflowValidationError'
       );
     }
-    // `attachShotLists` also rebuilds each scene's dialogue from its shots,
-    // stamped per shot so `dialogueForShot` filters per clip downstream, and
-    // throws if the pass omitted a scene — the run fails rather than leave
-    // that scene on the regex preview.
-    const scenesWithShots = applyTargetDurations(
-      attachShotLists(reconciledScenes, shotListStep),
-      input.videoModel ? input.targetSeconds : undefined,
-      input.videoModel ? durationGridForModel(input.videoModel) : []
-    );
+    const scenesWithShots = shotListBatches.flatMap((batch) => batch.scenes);
+    const shotListStep: LlmStepBilling = {
+      llmCostMicros: shotListBatches.reduce(
+        (sum, batch) => addMicros(sum, batch.llmCostMicros),
+        ZERO_MICROS
+      ),
+      llmKeySource: shotListBatches[0]?.llmKeySource ?? 'platform',
+    };
 
-    // Step 3: Reconcile — ensure all shots exist (handles cached step replay).
+    // Step 3: title + workflow stamp, and the result the parent reads. The
+    // shot rows are already written and announced by the batch steps.
     const reconcileJson = await step.do(
       'reconcile-shots',
       async (): Promise<string> => {
-        const scenes = scenesWithShots;
         const resolvedTitle = streamResult.title || 'Untitled';
-
-        if (!sequenceId) {
-          return JSON.stringify({
-            scenes,
-            title: resolvedTitle,
-            shotMapping: streamResult.shotMapping,
-            characterBible: biblesResult.characterBible,
-            locationBible,
-            elementBible,
-          } satisfies SceneSplitWorkflowResult);
-        }
-
-        // Bulk upsert scenes first, then shots with sceneId links. Shots'
-        // onConflictDoUpdate overwrites sceneId from the insert payload —
-        // omitting it here would null out the stream-time links (#1072).
-        const sceneRows = [];
-        for (let index = 0; index < scenes.length; index++) {
-          const scene = scenes[index];
-          if (!scene) continue;
-          sceneRows.push(
-            await scopedDb.scenes.upsert(
-              buildSceneInsert(sequenceId, scene, index)
-            )
-          );
-        }
-        const sceneIdByOrderIndex = new Map(
-          sceneRows.map((row) => [row.orderIndex, row.id])
-        );
-
-        const shotInserts = buildShotInserts(
-          sequenceId,
-          scenes,
-          sceneIdByOrderIndex
-        );
-
-        // Correlate on the row's OWN scene link, never on array position:
-        // `bulkUpsert` builds its result from each chunk's `RETURNING`, whose
-        // row order SQLite does not guarantee (and `ON CONFLICT DO UPDATE`
-        // makes divergence likelier). A positional map would silently pair each
-        // shot with a neighbouring scene's script and prompts.
-        const analysisSceneIdByDbSceneId = new Map<string, string>();
-        for (const [index, scene] of scenes.entries()) {
-          const dbId = sceneIdByOrderIndex.get(index);
-          if (dbId) analysisSceneIdByDbSceneId.set(dbId, scene.sceneId);
-        }
-
-        const reconciledShots = await scopedDb.shots.bulkUpsert(shotInserts);
-        for (const [index, scene] of scenes.entries()) {
-          const dbSceneIdForScene = sceneIdByOrderIndex.get(index);
-          const kept = scene.shots?.length ?? 1;
-          if (dbSceneIdForScene) {
-            await scopedDb.shots.deleteFromShotNumber(
-              dbSceneIdForScene,
-              kept + 1
-            );
-          }
-        }
-        const reconciledMapping = reconciledShots.map((f) => {
-          const analysisSceneId = f.sceneId
-            ? analysisSceneIdByDbSceneId.get(dbSceneId(f.sceneId))
-            : undefined;
-          if (!analysisSceneId) {
-            // The shot came back without a resolvable scene link, so nothing
-            // downstream could address it. Fail loudly rather than emit a
-            // blank id that silently drops the shot from every later step.
-            throw new WorkflowValidationError(
-              `Shot ${f.id} has no resolvable analysis scene after reconcile (sceneId: ${f.sceneId ?? 'null'})`
-            );
-          }
-          return {
-            analysisSceneId,
-            shotId: f.id,
-            // Anchor frame id captured from the same bulkUpsert write — the batch
-            // prompt workflow reads it from here instead of querying the DB (#991).
-            frameId: f.anchorFrameId,
-            shotNumber: f.shotNumber ?? 1,
-          };
-        });
-
-        // Ensure title and workflow are set (status stays 'processing'
-        // until storyboard-workflow completes all phases).
-        await scopedDb.sequences.updateTitle(sequenceId, resolvedTitle);
-        await scopedDb.sequences.updateWorkflow(
-          sequenceId,
-          'analyze-script-shorter-prompts-batch-size-1'
-        );
-
-        // Emit shot:created and fire a preview for any shots the streaming
-        // step didn't cover (shot 2..N, or a scene that missed the stream).
-        const streamedShotIds = new Set(
-          streamResult.shotMapping.map((f) => f.shotId)
-        );
-        for (const {
-          analysisSceneId: sId,
-          shotId,
-          frameId,
-          shotNumber,
-        } of reconciledMapping) {
-          if (streamedShotIds.has(shotId)) continue;
-          const scene = scenes.find((s) => s.sceneId === sId);
-          await getGenerationChannel(sequenceId).emit(
-            'generation.shot:created',
-            {
-              shotId,
-              sceneId: sId,
-              orderIndex: scene?.sceneNumber ? scene.sceneNumber - 1 : 0,
-            }
-          );
-          if (!scene || !frameId) continue;
-          await triggerPreviewImage({
-            input,
+        if (sequenceId) {
+          // Status stays 'processing' until storyboard-workflow completes
+          // all phases.
+          await scopedDb.sequences.updateTitle(sequenceId, resolvedTitle);
+          await scopedDb.sequences.updateWorkflow(
             sequenceId,
-            parentInstanceId: event.instanceId,
-            shot: { id: shotId, frameId },
-            scene,
-            scopedDb,
-            previewText: previewTextForShot(scene, shotNumber ?? 1),
-          });
+            'analyze-script-shorter-prompts-batch-size-1'
+          );
         }
-
         return JSON.stringify({
-          scenes,
+          scenes: scenesWithShots,
           title: resolvedTitle,
-          shotMapping: reconciledMapping,
+          shotMapping: shotListBatches.flatMap((batch) => batch.shotMapping),
           characterBible: biblesResult.characterBible,
           locationBible,
           elementBible,
@@ -1095,10 +1113,10 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
     }
 
     // Step 4b (#908 / #1072 / #1486): authoritative upsert of `scenes` rows +
-    // shot links after reconcile. Streaming wrote shot 1; reconcile upserts
-    // 1..N. This step re-upserts the final set (stable ids via orderIndex),
-    // re-links shots, seeds scene_script_versions, and trims orphan tail
-    // rows if a re-analyze produced fewer scenes.
+    // shot links. Streaming wrote the scene rows; the shot-list batches
+    // already upserted shots 1..N. This step re-upserts the final scene set
+    // + shot links (stable ids via orderIndex), seeds scene_script_versions,
+    // and trims orphan tail rows if a re-analyze produced fewer scenes.
     //
     // Do NOT delete-then-recreate: `shots.scene_id` is a bare
     // `REFERENCES scenes(id)` in the migration (no ON DELETE SET NULL), so

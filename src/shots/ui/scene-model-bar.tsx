@@ -4,6 +4,7 @@ import { Button } from '@/ui/shadcn/button';
 import { SequenceImageModelSelector } from '@/models/ui/pickers/sequence-image-model-selector';
 import { SequenceVideoModelSelector } from '@/models/ui/pickers/sequence-video-model-selector';
 import { StyleBadge } from '@/look/ui/style-badge';
+import { TargetDurationChip } from '@/sequences/ui/target-duration-chip';
 import { Kbd } from '@/ui/shadcn/kbd';
 import type { ImageToVideoModel, TextToImageModel } from '@/models/models';
 import { getAspectRatioData, type AspectRatio } from '@/models/aspect-ratios';
@@ -42,6 +43,8 @@ type SceneModelBarProps = {
   stylePending?: boolean;
   aspectRatio?: AspectRatio;
   resolution?: Resolution;
+  /** `sequences.targetDurationSeconds`; null = auto. */
+  targetDurationSeconds?: number | null;
   /** The LLM that analysed the script into scenes. Fixed post-analysis. */
   analysisModel?: string;
 };
@@ -71,6 +74,7 @@ export const SceneModelBar: React.FC<SceneModelBarProps> = ({
   stylePending,
   aspectRatio,
   resolution,
+  targetDurationSeconds,
   analysisModel,
 }) => {
   const posthog = usePostHog();
@@ -121,6 +125,14 @@ export const SceneModelBar: React.FC<SceneModelBarProps> = ({
                 {RESOLUTION_OPTIONS.find((o) => o.value === resolution)
                   ?.label ?? resolution}
               </Badge>
+            </SettingRow>
+          )}
+          {sequenceId && (
+            <SettingRow label="Target length">
+              <TargetDurationChip
+                sequenceId={sequenceId}
+                targetDurationSeconds={targetDurationSeconds}
+              />
             </SettingRow>
           )}
           <SettingRow label="Script">
