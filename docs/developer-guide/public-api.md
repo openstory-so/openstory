@@ -95,6 +95,27 @@ Users review and revoke grants under **Settings → Developer → Authorized
 apps**. Revoking invalidates the refresh token immediately; an access token
 already issued runs out within the hour.
 
+## MCP (`POST /mcp`)
+
+Hosted MCP clients (Claude, Cursor, …) and CLIs that speak Streamable HTTP
+talk to `POST /mcp`, not the REST API. Each request is independent (MCP
+2026-07-28; no session store, no SSE transport).
+
+- **OAuth:** a 401 on `/mcp` carries
+  `WWW-Authenticate: Bearer resource_metadata="…/.well-known/oauth-protected-resource/mcp"`,
+  which is how `claude mcp add --transport http openstory https://<host>/mcp`
+  finds the authorization server. Tokens must be audience-bound to
+  `<origin>/mcp` (`resource=<origin>/mcp` on authorize).
+- **API key:** `Authorization: Bearer osk_…` lists tools without OAuth
+  (Claude Code `--header`). Keys are rate limited to 10 requests/second;
+  OAuth JWTs are rate limited per user.
+- **Origin:** browser clients must send an allowed `Origin` (the app host,
+  well-known hosted MCP clients, or loopback). Requests with no `Origin`
+  (curl, CLIs) are allowed. A disallowed `Origin` is `403`.
+
+The first tool is `whoami` (caller user + team) so a client can verify the
+connection before production tools land.
+
 ## Create a sequence
 
 `POST /api/v1/sequences` turns a script into a video sequence. Generation is

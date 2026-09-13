@@ -1,7 +1,7 @@
 /**
  * Resource-server side of the OAuth authorization server (#1456): verify the
  * JWT access tokens it issues when they arrive as `Authorization: Bearer` on
- * a protected resource (`/api/v1/*` today, `/mcp` in #1457).
+ * a protected resource (`/api/v1/*` today, `/mcp` via its own adapter).
  *
  * Verification is local — the signing keys are the `jwks` rows the `jwt`
  * plugin manages in D1, read through `auth.api.getJwks()` and cached per
@@ -61,8 +61,9 @@ export function looksLikeOAuthAccessToken(token: string): boolean {
 }
 
 /**
- * OAuth bearer JWTs are only a credential on the public API (and `/mcp` in
- * #1457). Internal routes (`/api/storage`, `/api/realtime`) stay cookie/`osk_`.
+ * OAuth bearer JWTs are only a credential on the public API. `/mcp` verifies
+ * tokens itself (audience `…/mcp`) in `src/platform/server/mcp/auth.ts`.
+ * Internal routes (`/api/storage`, `/api/realtime`) stay cookie/`osk_`.
  */
 export function isOAuthResourcePath(pathname: string): boolean {
   return pathname === '/api/v1' || pathname.startsWith('/api/v1/');

@@ -34,6 +34,7 @@ const SCOPED_FACTORY_ALLOWLIST = [
   'src/platform/middleware.fn.ts',
   'src/billing/stripe-webhook-middleware.fn.ts',
   'src/platform/server/workflow/base-workflow.ts',
+  'src/platform/server/mcp/auth.ts',
 ];
 
 function* walk(dir: string): Generator<string> {
