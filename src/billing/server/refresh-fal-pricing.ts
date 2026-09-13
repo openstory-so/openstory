@@ -92,11 +92,11 @@ const OBSERVATION_WINDOW_DAYS = 90;
 export const OBSERVATIONS_PER_ENDPOINT = 200;
 
 /**
- * D1 caps a query at 100 bound params. Snapshot upserts bind 14 columns per
- * row (the four rate-card columns bind too, as nulls) and history inserts 6
+ * D1 caps a query at 100 bound params. Snapshot upserts bind 15 columns per
+ * row (the five rate-card columns bind too, as nulls) and history inserts 6
  * (defaulted columns bind too) — chunk both.
  */
-export const UPSERT_CHUNK = 7;
+export const UPSERT_CHUNK = 6;
 export const HISTORY_CHUNK = 15;
 
 /**
@@ -430,6 +430,8 @@ type RateCardRow = {
   unit: string;
   rateCard: unknown;
   rateCardVerified: boolean;
+  rateCardSourceHash: string | null;
+  rateCardAttemptedAt: Date | null;
 };
 
 /** Stored JSON validated on read; a card outside the schema is absent. */
@@ -446,40 +448,59 @@ function storedRateCard(row: RateCardRow | undefined): StoredRateCard | null {
 }
 
 /**
+ * Hand cards were written knowing which request params the price turns on.
+ * An extraction that stops reading one of them (H3 Max's
+ * `reference_image_urls` surcharge) passed its own examples only because it
+ * never wrote one for that lever — keep the hand card.
+ */
+function leversDropped(hand: RateCard, extracted: RateCard): string[] {
+  const bound = new Set(Object.values(extracted.inputs).map((i) => i.param));
+  return Object.values(hand.inputs)
+    .map((i) => i.param)
+    .filter((param) => !bound.has(param));
+}
+
+type RateCardRefreshCounts = {
+  /** Cards stored this run. */
+  extracted: number;
+  /** Source fetch failures + extraction rejections (the summary's figure). */
+  rejected: number;
+  /** Model calls made, how many wrote a card we refused, how many never answered. */
+  extractions: number;
+  extractionsRejected: number;
+  extractionsTransient: number;
+  sourceFailures: number;
+};
+
+/**
  * Rate cards for the used endpoints (#1605). Per endpoint: seed the hand
  * card from the registry unless a newer verified extraction is stored; fetch
- * the priced text; skip when its hash matches the stored card and no promo
- * end has passed; otherwise extract, verify and store. A rejection keeps
- * whatever was stored — an absent card is an honest unknown, never a
- * neighbour's price.
+ * the priced text; skip when its hash was already processed (stored OR
+ * rejected — a temperature-0 model rewrites the same wrong card, and a
+ * persistent rejecter would otherwise take one of the nightly slots forever)
+ * and no promo end has passed since that attempt; otherwise extract, verify
+ * and store. A rejection keeps whatever was stored — an absent card is an
+ * honest unknown, never a neighbour's price.
  */
 async function refreshRateCards(
   db: PricingRefreshDb,
   rows: { endpointId: string; unit: string }[],
   existingByKey: Map<string, RateCardRow>,
   now: Date
-): Promise<{ extracted: number; rejected: number }> {
+): Promise<RateCardRefreshCounts> {
   const llmKey = getPlatformLlmKey(RATE_CARD_EXTRACTION_MODEL);
   if (!llmKey) {
     logger.warn(
       'no platform LLM key — rate cards are seeded from hand cards only, not extracted'
     );
   }
-  const write = async (
+  const update = async (
     row: { endpointId: string; unit: string },
-    stored: StoredRateCard
+    set: Partial<typeof modelPricing.$inferInsert>
   ) => {
     await db
       .update(modelPricing)
-      .set({
-        rateCard: stored.card,
-        rateCardSourceHash: stored.card.source.hash,
-        rateCardVerified: stored.verified,
-        rateCardExpiresAt: stored.card.source.expiresAt
-          ? new Date(stored.card.source.expiresAt)
-          : null,
-        updatedAt: now,
-      })
+      .set({ ...set, updatedAt: now })
       .where(
         and(
           eq(modelPricing.provider, 'fal'),
@@ -488,45 +509,85 @@ async function refreshRateCards(
         )
       );
   };
+  const write = (
+    row: { endpointId: string; unit: string },
+    stored: StoredRateCard,
+    attemptedAt: Date | null
+  ) =>
+    update(row, {
+      rateCard: stored.card,
+      rateCardSourceHash: stored.card.source.hash,
+      rateCardAttemptedAt: attemptedAt,
+      rateCardVerified: stored.verified,
+      rateCardExpiresAt: stored.card.source.expiresAt
+        ? new Date(stored.card.source.expiresAt)
+        : null,
+    });
+  /** Remember a rejected text so it is not re-extracted until it changes. */
+  const noteRejection = (
+    row: { endpointId: string; unit: string },
+    hash: string
+  ) => update(row, { rateCardSourceHash: hash, rateCardAttemptedAt: now });
 
-  let extracted = 0;
-  let rejected = 0;
-  let extractions = 0;
+  const counts: RateCardRefreshCounts = {
+    extracted: 0,
+    rejected: 0,
+    extractions: 0,
+    extractionsRejected: 0,
+    extractionsTransient: 0,
+    sourceFailures: 0,
+  };
   let costMicros = ZERO_MICROS;
   for (const row of rows) {
-    let current = storedRateCard(existingByKey.get(pricingKey(row)));
+    const existing = existingByKey.get(pricingKey(row));
+    let current = storedRateCard(existing);
+    let attemptedHash = existing?.rateCardSourceHash ?? null;
+    let attemptedAt = existing?.rateCardAttemptedAt ?? null;
     const hand = RATE_CARDS[row.endpointId];
+    // Re-seeding the hand card every night would also wipe the memory of a
+    // rejected extraction — only seed when the row does not hold it yet.
+    const holdsHand =
+      hand != null &&
+      current?.card.source.hash === hand.source.hash &&
+      current.card.source.extractedAt === hand.source.extractedAt;
     if (
       hand &&
+      !holdsHand &&
       (!current ||
         !current.verified ||
         current.card.source.extractedAt <= hand.source.extractedAt)
     ) {
       current = { card: hand, verified: true };
-      await write(row, current);
+      attemptedHash = hand.source.hash;
+      attemptedAt = null;
+      await write(row, current, attemptedAt);
     }
 
     const fetched = await fetchRateCardSource(row.endpointId);
     if (fetched.status === 'no-pricing') continue;
     if (fetched.status === 'failed') {
-      rejected++;
+      counts.rejected++;
+      counts.sourceFailures++;
       continue;
     }
     const { source } = fetched;
-    const expired =
-      current?.card.source.expiresAt != null &&
-      new Date(current.card.source.expiresAt) <= now;
-    if (current && current.card.source.hash === source.hash && !expired) {
+    const expiresAt = current?.card.source.expiresAt
+      ? new Date(current.card.source.expiresAt)
+      : null;
+    const expired = expiresAt != null && expiresAt <= now;
+    const attemptedSinceExpiry =
+      expired && attemptedAt != null && attemptedAt >= expiresAt;
+    if (attemptedHash === source.hash && (!expired || attemptedSinceExpiry)) {
       continue;
     }
     if (!llmKey) continue;
-    if (extractions >= MAX_RATE_CARD_EXTRACTIONS_PER_RUN) {
+    if (counts.extractions >= MAX_RATE_CARD_EXTRACTIONS_PER_RUN) {
       logger.info(
         `${row.endpointId}: rate-card extraction deferred to a later run`
       );
       continue;
     }
-    extractions++;
+    counts.extractions++;
     const result = await extractRateCard(source, {
       llmKey,
       now,
@@ -534,19 +595,32 @@ async function refreshRateCards(
     });
     costMicros = addMicros(costMicros, result.costMicros);
     if (result.status === 'rejected') {
-      rejected++;
+      counts.rejected++;
+      counts.extractionsRejected++;
+      if (result.transient) counts.extractionsTransient++;
+      else await noteRejection(row, source.hash);
       continue;
     }
-    await write(row, { card: result.card, verified: result.verified });
-    extracted++;
+    const dropped = hand ? leversDropped(hand, result.card) : [];
+    if (dropped.length > 0) {
+      logger.warn(
+        `${row.endpointId}: extraction dropped levers the hand card binds — keeping the hand card`,
+        { dropped }
+      );
+      counts.rejected++;
+      counts.extractionsRejected++;
+      await noteRejection(row, source.hash);
+      continue;
+    }
+    await write(row, { card: result.card, verified: result.verified }, now);
+    counts.extracted++;
   }
   logger.info('rate cards refreshed', {
     endpoints: rows.length,
-    extracted,
-    rejected,
+    ...counts,
     costMicros: Number(costMicros),
   });
-  return { extracted, rejected };
+  return counts;
 }
 
 function chunk<T>(items: T[], size: number): T[][] {
@@ -890,9 +964,15 @@ export async function refreshFalPricing(
     new Map(existing.map((row) => [pricingKey(row), row])),
     now
   );
+  // Source fetches are measured against the used set like typical units.
+  // An LLM outage is judged against the calls actually made — the nightly
+  // cap keeps those at ≤5, which no share of ~55 endpoints could ever trip.
+  // A card the model wrote and we refused is a normal night (warn-logged,
+  // remembered, in the summary), not a failed cron.
   const rateCardsDegraded =
-    rateCards.rejected / Math.max(usedPrices.length, 1) >
-    MAX_TYPICAL_FETCH_FAILURE_RATIO;
+    rateCards.sourceFailures / Math.max(usedPrices.length, 1) >
+      MAX_TYPICAL_FETCH_FAILURE_RATIO ||
+    rateCards.extractionsTransient * 2 > rateCards.extractions;
 
   // Sweep rows fal no longer prices (retired endpoints, re-denominated units)
   // — but never ones whose price fetch merely errored this run.
@@ -948,12 +1028,15 @@ export async function refreshFalPricing(
         'stored typicalUnitsPerCall values preserved'
     );
   }
-  // Same policy for rate cards: a broad rejection rate (LLM outage, a fal
-  // page format change) is a failed cron, not a quiet night.
+  // Same policy for rate cards: a broad failure (LLM outage, a fal page
+  // format change) is a failed cron, not a quiet night.
   if (rateCardsDegraded) {
     throw new Error(
       `refreshFalPricing: ${rateCards.rejected}/${usedPrices.length} rate-card ` +
-        'extractions failed — prices, medians and stored cards were written'
+        `refreshes failed (${rateCards.sourceFailures} source fetches, ` +
+        `${rateCards.extractionsRejected}/${rateCards.extractions} extractions, ` +
+        `${rateCards.extractionsTransient} calls failed) ` +
+        '— prices, medians and stored cards were written'
     );
   }
   return summary;

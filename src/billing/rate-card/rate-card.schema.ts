@@ -37,6 +37,19 @@ export const CORE_OPS = [
 
 export type CoreOp = (typeof CORE_OPS)[number];
 
+/**
+ * Levers no endpoint's Input Schema carries, supplied by the estimator
+ * beside the request body. Every other `input.param` an extracted card
+ * binds must be a real schema param — the model's own examples cannot
+ * verify a lever it invented (#1605).
+ */
+export const CARD_LEVEL_PARAMS: readonly string[] = [
+  /** Kling: driven from the prompt, priced as a tier. */
+  'voice_control',
+  /** H3 Max r2v: reference tokens scale with pixels the URL does not carry. */
+  'reference_image_pixels',
+];
+
 export type Expr =
   | number
   | string

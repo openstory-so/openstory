@@ -23,6 +23,8 @@ import {
   verifyRateCardExamples,
 } from '@/billing/rate-card/evaluate';
 import {
+  CARD_LEVEL_PARAMS,
+  type Expr,
   type RateCard,
   rateCardSchema,
 } from '@/billing/rate-card/rate-card.schema';
@@ -97,8 +99,51 @@ export async function buildExtractionMessages(
     descriptionTable: source.descriptionTable ?? '(none)',
     inputSchemaSection: source.inputSchemaSection || '(none)',
     jsonSchema: JSON.stringify(z.toJSONSchema(rateCardSchema)),
+    cardLevelParams: CARD_LEVEL_PARAMS.map((p) => `"${p}"`).join(', '),
     fewShot: fewShotText(),
   });
+}
+
+/** Param names an llms.txt `### Input Schema` section declares. */
+export function inputSchemaParams(inputSchemaSection: string): Set<string> {
+  return new Set(
+    [...inputSchemaSection.matchAll(/^- \*\*`([^`]+)`\*\*/gm)].flatMap((m) =>
+      m[1] ? [m[1]] : []
+    )
+  );
+}
+
+/**
+ * Verification is circular for a lever the model invented: it also writes
+ * the examples that exercise it. So every bound param and every example
+ * key must be a schema param (or a known card-level lever) — the card that
+ * dropped H3 Max's reference surcharge bound `reference_tokens` and passed
+ * its own examples 100%.
+ */
+function unknownParams(
+  card: Pick<RateCard, 'inputs' | 'examples'>,
+  schema: Set<string>
+): string[] {
+  const allowed = new Set([...schema, ...CARD_LEVEL_PARAMS]);
+  const bound = Object.values(card.inputs).map((i) => i.param);
+  const exampled = card.examples.flatMap((e) => Object.keys(e.params));
+  return [...new Set([...bound, ...exampled])].filter((p) => !allowed.has(p));
+}
+
+/** A `lookup` default is a neighbour's price for a shape the text never priced. */
+function hasLookupDefault(expr: Expr): boolean {
+  if (typeof expr !== 'object') return false;
+  if ('lookup' in expr) {
+    return (
+      expr.lookup.default !== undefined ||
+      expr.lookup.keys.some(hasLookupDefault)
+    );
+  }
+  return Object.values(expr).some((arg) =>
+    Array.isArray(arg)
+      ? arg.some(hasLookupDefault)
+      : arg !== undefined && hasLookupDefault(arg)
+  );
 }
 
 /** Strip a ```json fence if the model added one despite the instruction. */
@@ -118,6 +163,8 @@ export type RateCardExtraction =
   | {
       status: 'rejected';
       reason: string;
+      /** The call itself failed (outage, timeout) — retry tonight's text tomorrow. */
+      transient?: boolean;
       results?: ExampleResult[];
       costMicros: Microdollars;
     };
@@ -134,12 +181,12 @@ function defaultPriceUsd(card: RateCard): number | null {
   }
 }
 
-/** Run the model once; the raw parsed JSON and the call's cost. */
+/** Run the model once; its text and the call's cost. */
 async function callExtractionModel(
   source: RateCardSource,
   today: string,
   llmKey: LlmKeyInfo | undefined
-): Promise<{ raw: unknown; costMicros: Microdollars }> {
+): Promise<{ text: string; costMicros: Microdollars }> {
   const { messages } = await buildExtractionMessages(source, today);
   const systemPrompts = messages
     .filter((m) => m.role === 'system')
@@ -183,7 +230,7 @@ async function callExtractionModel(
   }
   throwNotedRunError(runError);
   return {
-    raw: parseJsonText(accumulated),
+    text: accumulated,
     costMicros: llmCostFromUsage(
       usageCapture.get(),
       RATE_CARD_EXTRACTION_MODEL,
@@ -213,23 +260,37 @@ export async function extractRateCard(
   const reject = (
     reason: string,
     costMicros: Microdollars,
-    results?: ExampleResult[]
+    results?: ExampleResult[],
+    transient = false
   ): RateCardExtraction => {
     logger.warn(`${endpointId}: rate card rejected — ${reason}`);
-    return { status: 'rejected', reason, costMicros, results };
+    return { status: 'rejected', reason, costMicros, results, transient };
   };
 
-  let raw: unknown;
+  let text: string;
   let costMicros: Microdollars = ZERO_MICROS;
   try {
-    ({ raw, costMicros } = await callExtractionModel(
+    ({ text, costMicros } = await callExtractionModel(
       source,
       today,
       opts.llmKey
     ));
   } catch (error) {
+    // The call, not the card: an outage is retried on the same text.
     return reject(
       `extraction call failed: ${error instanceof Error ? error.message : String(error)}`,
+      costMicros,
+      undefined,
+      true
+    );
+  }
+
+  let raw: unknown;
+  try {
+    raw = parseJsonText(text);
+  } catch (error) {
+    return reject(
+      `output is not JSON: ${error instanceof Error ? error.message : String(error)}`,
       costMicros
     );
   }
@@ -242,6 +303,22 @@ export async function extractRateCard(
     );
   }
   const { expiresAt, ...body } = parsed.data;
+  const unknown = unknownParams(
+    body,
+    inputSchemaParams(source.inputSchemaSection)
+  );
+  if (unknown.length > 0) {
+    return reject(
+      `binds params the Input Schema does not declare: ${unknown.join(', ')}`,
+      costMicros
+    );
+  }
+  if (hasLookupDefault(body.price)) {
+    return reject(
+      'a lookup carries a default — an unpriced shape must refuse, not borrow a neighbour',
+      costMicros
+    );
+  }
   // A promo end already behind us would force a re-extraction every night.
   const expires =
     expiresAt && new Date(expiresAt) > now

@@ -12,7 +12,7 @@ const SOURCE: RateCardSource = {
   url: 'https://fal.ai/models/fal-ai/nano-banana-2/llms.txt',
   pricingSection: 'Your request will cost **$0.08** per image.',
   inputSchemaSection:
-    '- **`num_images`** (`integer`, _optional_): Default value: `1`',
+    '- **`num_images`** (`integer`, _optional_): Default value: `1`\n- **`quality`** (`QualityEnum`, _optional_): Default value: `"high"`',
   text: 'Your request will cost **$0.08** per image.',
   hash: 'a'.repeat(64),
 };
@@ -151,6 +151,119 @@ describe('extractRateCard', () => {
   it('reports a model failure as a rejection, not a throw', async () => {
     const result = await extract('not json at all');
     expect(result.status).toBe('rejected');
+    expect(result.status === 'rejected' && result.transient).toBe(false);
+  });
+
+  it('marks a failed call transient so the same text is retried tomorrow', async () => {
+    vi.resetModules();
+    vi.doMock('@/platform/logger', () => ({ getLogger: () => logged }));
+    vi.doMock('@tanstack/ai', async () => ({
+      ...(await vi.importActual<typeof import('@tanstack/ai')>('@tanstack/ai')),
+      chat: () =>
+        (async function* () {
+          yield* [];
+          throw new Error('502 upstream');
+        })(),
+    }));
+    vi.doMock('@/models/server/create-adapter', () => ({
+      createAdapter: () => ({}),
+    }));
+    const { extractRateCard } = await import('./rate-card-extract');
+    const result = await extractRateCard(SOURCE, {
+      llmKey: { key: 'k', via: 'openrouter' },
+      now: NOW,
+    });
+    expect(result.status).toBe('rejected');
+    if (result.status !== 'rejected') return;
+    expect(result.transient).toBe(true);
+    expect(result.reason).toContain('502 upstream');
+  });
+
+  // The model writes both the card and the examples, so a lever it invents
+  // is "verified" by examples nobody could send. Real request: the H3 Max
+  // card that bound `reference_tokens` and dropped the reference surcharge.
+  it('rejects a lever bound to a param the Input Schema does not declare', async () => {
+    const result = await extract(
+      perImageCard({
+        inputs: {
+          num_images: { param: 'num_images', kind: 'number', default: 1 },
+          tokens: { param: 'reference_tokens', kind: 'number', default: 0 },
+        },
+        price: {
+          '+': [
+            { '*': [{ var: 'num_images' }, 0.08] },
+            { '*': [{ var: 'tokens' }, 0.00002] },
+          ],
+        },
+        examples: [
+          { params: {}, usd: 0.08, quote: '$0.08 per image' },
+          { params: { reference_tokens: 1000 }, usd: 0.1, quote: 'invented' },
+        ],
+      })
+    );
+    expect(result.status).toBe('rejected');
+    if (result.status !== 'rejected') return;
+    expect(result.reason).toContain('reference_tokens');
+  });
+
+  it('rejects an example keyed by a param the Input Schema does not declare', async () => {
+    const result = await extract(
+      perImageCard({
+        examples: [
+          { params: { output_tokens: 5 }, usd: 0.08, quote: 'made up' },
+        ],
+      })
+    );
+    expect(result.status).toBe('rejected');
+    if (result.status !== 'rejected') return;
+    expect(result.reason).toContain('output_tokens');
+  });
+
+  it('allows the known card-level levers no schema carries', async () => {
+    const result = await extract(
+      perImageCard({
+        inputs: {
+          num_images: { param: 'num_images', kind: 'number', default: 1 },
+          voice: { param: 'voice_control', kind: 'boolean', default: false },
+        },
+        price: {
+          '*': [{ var: 'num_images' }, { if: [{ var: 'voice' }, 0.1, 0.08] }],
+        },
+      })
+    );
+    expect(result.status).toBe('ok');
+  });
+
+  it('rejects a lookup with a default — an unpriced shape must refuse', async () => {
+    const result = await extract(
+      perImageCard({
+        inputs: {
+          num_images: { param: 'num_images', kind: 'number', default: 1 },
+          quality: {
+            param: 'quality',
+            kind: 'enum',
+            values: ['low', 'high'],
+            default: 'high',
+          },
+        },
+        tables: { per_image: { high: 0.08 } },
+        price: {
+          '*': [
+            { var: 'num_images' },
+            {
+              lookup: {
+                table: 'per_image',
+                keys: [{ var: 'quality' }],
+                default: 0.08,
+              },
+            },
+          ],
+        },
+      })
+    );
+    expect(result.status).toBe('rejected');
+    if (result.status !== 'rejected') return;
+    expect(result.reason).toContain('lookup');
   });
 
   it('warns when a re-extraction changes the card without the text changing', async () => {

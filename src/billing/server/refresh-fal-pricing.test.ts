@@ -1193,9 +1193,180 @@ describe('refreshFalPricing rate cards (#1605)', () => {
     });
     await expect(
       refreshFalPricing({ apiKey: 'k', billingKey: 'b' })
-    ).rejects.toThrow(/2\/5 rate-card extractions failed/);
+    ).rejects.toThrow(/2\/5 rate-card refreshes failed \(2 source fetches/);
     // The other three still landed.
     expect((await rowOf('fal-ai/x'))?.rateCardSourceHash).toBe(HASH);
+  });
+
+  test('throws when most of the model calls made failed, whatever the used set', async () => {
+    // The nightly cap keeps failures ≤ 5, so a share of the ~55 used
+    // endpoints could never trip; an LLM outage has to be judged against
+    // the calls actually made.
+    const { refreshFalPricing } = await load({
+      extract: (id) =>
+        id === 'fal-ai/d'
+          ? {
+              status: 'ok',
+              card: card({ extractedAt: NOW.toISOString() }),
+              verified: true,
+              results: [],
+              costMicros: 0,
+            }
+          : {
+              status: 'rejected',
+              reason: 'boom',
+              costMicros: 0,
+              transient: true,
+            },
+    });
+    await expect(
+      refreshFalPricing({ apiKey: 'k', billingKey: 'b' })
+    ).rejects.toThrow(/4\/5 extractions, 4 calls failed/);
+  });
+
+  test('a card the model wrote and we refused is a warn, not a failed cron', async () => {
+    const { refreshFalPricing } = await load({
+      prices: [price('fal-ai/x')],
+      extract: () => ({
+        status: 'rejected',
+        reason: 'bad card',
+        costMicros: 0,
+      }),
+    });
+    const summary = await refreshFalPricing({ apiKey: 'k', billingKey: 'b' });
+    expect(summary.rateCardsRejected).toBe(1);
+  });
+
+  test('a rejected text is not re-extracted until it changes, so the deferred tail gets a slot', async () => {
+    const sixPrices = [...fivePrices, price('fal-ai/e')];
+    const rejectX = (id: string) =>
+      id === 'fal-ai/x'
+        ? { status: 'rejected', reason: 'example failed', costMicros: 0 }
+        : {
+            status: 'ok',
+            card: card({ extractedAt: NOW.toISOString() }),
+            verified: true,
+            results: [],
+            costMicros: 0,
+          };
+    let mod = await load({ prices: sixPrices, extract: rejectX });
+    await mod.refreshFalPricing({ apiKey: 'k', billingKey: 'b' });
+    expect(extractCalls).toEqual([
+      'fal-ai/x',
+      'fal-ai/a',
+      'fal-ai/b',
+      'fal-ai/c',
+      'fal-ai/d',
+    ]);
+    const x = await rowOf('fal-ai/x');
+    expect(x?.rateCard).toBeNull();
+    expect(x?.rateCardSourceHash).toBe(HASH);
+    expect(x?.rateCardAttemptedAt).toEqual(NOW);
+
+    mod = await load({ prices: sixPrices, extract: rejectX });
+    await mod.refreshFalPricing({ apiKey: 'k', billingKey: 'b' });
+    expect(extractCalls).toEqual(['fal-ai/e']);
+
+    // The text changed: worth another call.
+    mod = await load({
+      prices: sixPrices,
+      extract: rejectX,
+      source: { 'fal-ai/x': 'c'.repeat(64) },
+    });
+    await mod.refreshFalPricing({ apiKey: 'k', billingKey: 'b' });
+    expect(extractCalls).toEqual(['fal-ai/x']);
+  });
+
+  test('a transient failure (outage) is retried on the same text', async () => {
+    const outage = () => ({
+      status: 'rejected',
+      reason: 'call failed',
+      costMicros: 0,
+      transient: true,
+    });
+    let mod = await load({ prices: [price('fal-ai/x')], extract: outage });
+    await expect(
+      mod.refreshFalPricing({ apiKey: 'k', billingKey: 'b' })
+    ).rejects.toThrow(/1\/1 extractions, 1 calls failed/);
+    expect((await rowOf('fal-ai/x'))?.rateCardSourceHash).toBeNull();
+
+    mod = await load({ prices: [price('fal-ai/x')], extract: outage });
+    await expect(
+      mod.refreshFalPricing({ apiKey: 'k', billingKey: 'b' })
+    ).rejects.toThrow();
+    expect(extractCalls).toEqual(['fal-ai/x']);
+  });
+
+  test('an expired promo card is re-extracted once, not every night it keeps failing', async () => {
+    await seedCard('fal-ai/x', card({ expiresAt: '2026-09-12T00:00:00.000Z' }));
+    const reject = () => ({
+      status: 'rejected',
+      reason: 'promo examples',
+      costMicros: 0,
+    });
+    let mod = await load({ prices: [price('fal-ai/x')], extract: reject });
+    await mod.refreshFalPricing({ apiKey: 'k', billingKey: 'b' });
+    expect(extractCalls).toEqual(['fal-ai/x']);
+    // The promo card stays stored (and still expired) for the read path to flag.
+    expect((await rowOf('fal-ai/x'))?.rateCardExpiresAt).toEqual(
+      new Date('2026-09-12T00:00:00.000Z')
+    );
+
+    mod = await load({ prices: [price('fal-ai/x')], extract: reject });
+    await mod.refreshFalPricing({ apiKey: 'k', billingKey: 'b' });
+    expect(extractCalls).toEqual([]);
+  });
+
+  test('keeps the hand card when the extraction drops a lever it binds', async () => {
+    const hand = {
+      ...card({ extractedAt: '2026-09-13T00:00:00Z' }),
+      inputs: {
+        num_images: {
+          param: 'num_images',
+          kind: 'number' as const,
+          default: 1,
+        },
+        refs: { param: 'reference_image_urls', kind: 'count' as const },
+      },
+      price: {
+        '+': [
+          { '*': [{ var: 'num_images' }, 0.08] },
+          { '*': [{ var: 'refs' }, 0.01] },
+        ],
+      },
+    };
+    const extract = () => ({
+      status: 'ok',
+      card: card({ extractedAt: NOW.toISOString(), hash: 'b'.repeat(64) }),
+      verified: true,
+      results: [],
+      costMicros: 0,
+    });
+    let mod = await load({
+      prices: [price('fal-ai/x')],
+      handCards: { 'fal-ai/x': hand },
+      source: { 'fal-ai/x': 'b'.repeat(64) },
+      extract,
+    });
+    let summary = await mod.refreshFalPricing({ apiKey: 'k', billingKey: 'b' });
+    expect(extractCalls).toEqual(['fal-ai/x']);
+    expect(summary.rateCardsExtracted).toBe(0);
+    let row = await rowOf('fal-ai/x');
+    expect(row?.rateCard?.inputs).toEqual(hand.inputs);
+    expect(row?.rateCardVerified).toBe(true);
+    expect(row?.rateCardSourceHash).toBe('b'.repeat(64));
+
+    // Seeding the hand card again must not forget that rejection.
+    mod = await load({
+      prices: [price('fal-ai/x')],
+      handCards: { 'fal-ai/x': hand },
+      source: { 'fal-ai/x': 'b'.repeat(64) },
+      extract,
+    });
+    summary = await mod.refreshFalPricing({ apiKey: 'k', billingKey: 'b' });
+    expect(extractCalls).toEqual([]);
+    row = await rowOf('fal-ai/x');
+    expect(row?.rateCard?.inputs).toEqual(hand.inputs);
   });
 
   test('a page with no Pricing section is an absence, not a failure', async () => {

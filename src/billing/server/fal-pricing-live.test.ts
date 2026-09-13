@@ -209,6 +209,42 @@ describe('BytePlus route aliasing', () => {
     expect(map['bytedance/seedance-2.5/text-to-video']?.unitPrice).toBe(10_700);
   });
 
+  it('moves the unit price, not the Ark card, onto the fal ids', async () => {
+    // The Ark card binds Ark param names; the fal id keeps the card the cron
+    // read from its own llms.txt, and gets none when it has none.
+    const falCard = {
+      inputs: {},
+      tables: {},
+      price: 0.5,
+      examples: [],
+      source: {
+        url: `https://fal.ai/models/${SEEDANCE_REF}/llms.txt`,
+        hash: 'b'.repeat(64),
+        extractedAt: '2026-09-13T00:00:00Z',
+      },
+    };
+    const { getEffectiveFalPricing } = await loadWithRows(
+      [
+        row({ endpointId: SEEDANCE_FAL, unit: '1000 tokens' }),
+        row({
+          endpointId: SEEDANCE_REF,
+          unit: '1000 tokens',
+          rateCard: falCard,
+          rateCardVerified: true,
+        }),
+      ],
+      { ARK_API_KEY: 'ark-test' }
+    );
+    const map = await getEffectiveFalPricing();
+    expect(map[SEEDANCE_REF]?.unitPrice).toBe(10_700);
+    expect(map[SEEDANCE_REF]?.rateCard).toEqual({
+      card: falCard,
+      verified: true,
+    });
+    expect(map[SEEDANCE_FAL]?.rateCard).toBeUndefined();
+    expect(map['dreamina-seedance-2-5-260628']?.rateCard?.verified).toBe(true);
+  });
+
   it('leaves models with no BytePlus via on their fal rate', async () => {
     const { getEffectiveFalPricing } = await loadWithRows(
       [
@@ -294,6 +330,24 @@ describe('rate cards on the pricing map (#1605)', () => {
     ]);
     const pricing = (await getEffectiveFalPricing())['fal-ai/nano-banana-2'];
     expect(pricing?.rateCard).toEqual({ card, verified: true });
+  });
+
+  it('a card past its promo end no longer reads as verified', async () => {
+    const { getEffectiveFalPricing } = await loadWithRows([
+      row({
+        endpointId: 'fal-ai/nano-banana-2',
+        rateCard: {
+          ...card,
+          source: { ...card.source, expiresAt: '2020-01-01T00:00:00Z' },
+        },
+        rateCardVerified: true,
+      }),
+    ]);
+    const pricing = (await getEffectiveFalPricing())['fal-ai/nano-banana-2'];
+    expect(pricing?.rateCard?.verified).toBe(false);
+    expect(pricing?.rateCard?.card.source.expiresAt).toBe(
+      '2020-01-01T00:00:00Z'
+    );
   });
 
   it('treats a stored card outside the schema as absent', async () => {

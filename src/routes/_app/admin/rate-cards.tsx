@@ -90,7 +90,11 @@ function RateCardRow({ row }: { row: RateCardAdminRow }) {
         </Badge>
       </td>
       <td className="px-4 py-3 text-xs tabular-nums text-muted-foreground">
-        <span>{card.expiresAt ? card.expiresAt.slice(0, 10) : '—'}</span>
+        <span className={card.expired ? 'text-destructive' : ''}>
+          {card.expiresAt
+            ? `${card.expired ? 'expired ' : ''}${card.expiresAt.slice(0, 10)}`
+            : '—'}
+        </span>
       </td>
       <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
         <a

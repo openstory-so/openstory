@@ -83,7 +83,13 @@ function readRateCard(
   verified: boolean
 ): EffectiveFalPricing['rateCard'] {
   const parsed = rateCardSchema.safeParse(stored);
-  if (parsed.success) return { card: parsed.data, verified };
+  if (parsed.success) {
+    // A promo card past its end prices at a rate nobody is charged any
+    // more; it stays stored (the cron re-extracts) but no longer vouches.
+    const { expiresAt } = parsed.data.source;
+    const expired = expiresAt != null && new Date(expiresAt) <= new Date();
+    return { card: parsed.data, verified: verified && !expired };
+  }
   logger.warn('model_pricing.rate_card does not fit the schema — ignored', {
     endpointId,
     issues: parsed.error.issues.slice(0, 3),
@@ -182,25 +188,36 @@ function applyBytePlusRouteAliases(
 ): void {
   if (!isBytePlusConfigured()) return;
 
+  // Only the unit price moves: the Ark card binds Ark param names, and the
+  // fal id keeps the card the cron read from its own llms.txt (a BYOK-fal
+  // team's request still goes to fal).
+  const alias = (
+    falId: string,
+    { rateCard: _ark, ...rate }: EffectiveFalPricing
+  ) => {
+    const own = map[falId]?.rateCard;
+    map[falId] = { ...rate, ...(own && { rateCard: own }) };
+  };
+
   for (const model of Object.values(IMAGE_MODELS)) {
     if (!('byteplusId' in model)) continue;
     const rate = map[model.byteplusId];
-    if (rate) map[model.id] = rate;
+    if (rate) alias(model.id, rate);
   }
 
   for (const [modelKey, model] of typedEntries(IMAGE_TO_VIDEO_MODELS)) {
     if (!('byteplusId' in model)) continue;
     const rate = map[model.byteplusId];
     if (!rate) continue;
-    map[model.id] = rate;
+    alias(model.id, rate);
     // Seedance with cast/element refs bills on a SEPARATE fal endpoint; on Ark
     // it is the same model id, so that endpoint aliases too — otherwise a
     // referenced shot silently quotes the fal rate.
     const referenceEndpoint = MOTION_REFERENCE_ENDPOINTS[modelKey];
     if (referenceEndpoint) {
-      map[referenceEndpoint.endpointId] = rate;
+      alias(referenceEndpoint.endpointId, rate);
       // Reference-only with no matched sheets bills on the t2v sibling (#1521).
-      map[referenceEndpoint.textToVideoEndpointId] = rate;
+      alias(referenceEndpoint.textToVideoEndpointId, rate);
     }
   }
 }

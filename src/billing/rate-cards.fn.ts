@@ -19,6 +19,8 @@ export type RateCardAdminRow = {
     sourceHash: string;
     extractedAt: string;
     expiresAt: string | null;
+    /** The promo end has passed; `verified` is false until re-extracted. */
+    expired: boolean;
     examples: {
       ok: boolean;
       expectedUsd: number;
@@ -48,6 +50,9 @@ export const listRateCardsFn = createServerFn({ method: 'GET' })
           sourceHash: card.source.hash,
           extractedAt: card.source.extractedAt,
           expiresAt: card.source.expiresAt ?? null,
+          expired:
+            card.source.expiresAt != null &&
+            new Date(card.source.expiresAt) <= new Date(),
           examples: verifyRateCardExamples(card).map((r) => ({
             ok: r.ok,
             expectedUsd: r.example.usd,

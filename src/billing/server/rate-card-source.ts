@@ -76,9 +76,14 @@ export async function sha256Hex(text: string): Promise<string> {
     .join('');
 }
 
+/** ~55 sequential GETs a night inside a 15-minute cron: one hung fal response must not eat it. */
+const FETCH_TIMEOUT_MS = 15_000;
+
 async function fetchText(url: string): Promise<string | null> {
   try {
-    const resp = await fetch(url);
+    const resp = await fetch(url, {
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
     if (!resp.ok) {
       logger.warn(`rate-card source: HTTP ${resp.status} for ${url}`);
       return null;

@@ -67,8 +67,19 @@ export const modelPricing = snakeCase.table(
      * `rateCardSchema` on read; null on rows the cron has not carded.
      */
     rateCard: text({ mode: 'json' }).$type<RateCard>(),
-    /** sha256 of the priced text the card was read from — unchanged = skip. */
+    /**
+     * sha256 of the priced text the cron last processed — stored OR
+     * rejected. Unchanged = skip, so a card the model keeps getting wrong
+     * (temperature 0 → same output) is retried only when the text changes
+     * and cannot eat the nightly extraction cap forever. The stored card's
+     * own hash is `rateCard.source.hash`.
+     */
     rateCardSourceHash: text({ length: 64 }),
+    /**
+     * When extraction last ran for this text. A promo that ended is
+     * re-extracted once (attempt before expiry), not every night.
+     */
+    rateCardAttemptedAt: integer({ mode: 'timestamp' }),
     /** True when every worked example in the source reproduced within 1%. */
     rateCardVerified: integer({ mode: 'boolean' }).default(false).notNull(),
     /** Promo end named in the source — re-extract after this. */
