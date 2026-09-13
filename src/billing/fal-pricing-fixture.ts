@@ -43,15 +43,17 @@ export const TEST_FAL_PRICING: Record<string, EffectiveFalPricing> = {
     unitPrice: micros(140_000),
     unit: 'seconds',
   },
+  // 768P bills 8 units per 5s clip on the 480p-second unit (#1382) — an
+  // observed median here, the way production learns it.
   'minimax/h3-max/image-to-video': {
     unitPrice: micros(25_000),
     unit: 'seconds',
-    typicalUnitsPerCall: 8,
+    observed: { medianUnits: 8, sampleCount: 5 },
   },
   'minimax/h3-max/text-to-video': {
     unitPrice: micros(25_000),
     unit: 'seconds',
-    typicalUnitsPerCall: 8,
+    observed: { medianUnits: 8, sampleCount: 5 },
   },
   'minimax/h3-max/reference-to-video': {
     unitPrice: micros(80_000),
@@ -60,27 +62,33 @@ export const TEST_FAL_PRICING: Record<string, EffectiveFalPricing> = {
   'bytedance/seedance-2.5/image-to-video': {
     unitPrice: micros(14_000),
     unit: 'units',
+    typicalUnitsPerCall: 108,
   },
   // Same unit rate as i2v today; listed so reference-route estimates resolve.
   'bytedance/seedance-2.5/reference-to-video': {
     unitPrice: micros(14_000),
     unit: 'units',
+    typicalUnitsPerCall: 108,
   },
   'bytedance/seedance-2.5/text-to-video': {
     unitPrice: micros(14_000),
     unit: 'units',
+    typicalUnitsPerCall: 108,
   },
   'bytedance/seedance-2.0/enterprise/v2/image-to-video': {
     unitPrice: micros(14_000),
     unit: 'units',
+    typicalUnitsPerCall: 108,
   },
   'bytedance/seedance-2.0/enterprise/v2/reference-to-video': {
     unitPrice: micros(14_000),
     unit: 'units',
+    typicalUnitsPerCall: 108,
   },
   'bytedance/seedance-2.0/enterprise/v2/text-to-video': {
     unitPrice: micros(14_000),
     unit: 'units',
+    typicalUnitsPerCall: 108,
   },
   'xai/grok-imagine-video/v1.5/image-to-video': {
     unitPrice: micros(50_000),

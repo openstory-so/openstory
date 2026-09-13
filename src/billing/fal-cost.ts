@@ -7,23 +7,23 @@
  * audio, duration, etc. in the unit count.
  *
  * `estimateFalCost` predicts a cost BEFORE a generation runs, for the
- * pre-flight credit gate. Preference order for the unit count (#1069):
- * our observed median (`MIN_OBSERVED_SAMPLES`+ generations), then fal's
- * historical estimate, then a billed-units fallback for endpoints whose
- * "seconds" unit is not 1:1 with duration (H3 Max, #1382), then **null**
- * ("unknown") — never a fabricated compute-seconds default or an advertised
- * USD against a $1 catalog stub (Lite). Callers gate conservatively /
- * display nothing for null.
+ * pre-flight credit gate. Precedence (#1605 / #1069):
+ *
+ * 1. A **verified rate card** evaluated against the request the caller is
+ *    about to send, times its calibration once enough observations back it.
+ * 2. Our observed median unit count (`MIN_OBSERVED_SAMPLES`+ generations).
+ * 3. fal's historical estimate.
+ * 4. **null** ("unknown") — never a fabricated default, never an advertised
+ *    USD against a $1 catalog stub, never a sibling's price. Callers gate
+ *    conservatively / display nothing for null.
  */
 
 // Type-only: the live pricing reader is server-only (D1). `falCostFromUnits`
 // (the billing half) lives in `@/billing/server/fal-cost-billing`.
 import type { EffectiveFalPricing } from '@/billing/server/fal-pricing-live';
-import {
-  FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP,
-  TYPICAL_VIDEO_CLIP_SECONDS,
-} from './fal-typical-units';
-import { type Microdollars, multiplyMicros } from './money';
+import { evaluateRateCard, RateCardError } from './rate-card/evaluate';
+import { RATE_CARD_DRIFT_BAND } from './billing-observability';
+import { type Microdollars, multiplyMicros, usdToMicros } from './money';
 import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'ai', 'fal-cost']);
@@ -33,27 +33,9 @@ export type { EffectiveFalPricing };
 /**
  * Observations needed before our own median outranks fal's historical
  * estimate — a single unrepresentative sample would under-gate by orders of
- * magnitude.
+ * magnitude. The same bar applies to a rate card's calibration.
  */
 export const MIN_OBSERVED_SAMPLES = 5;
-
-/** Assumed 16:9 output dimensions per resolution tier for token-priced models */
-const TOKEN_RESOLUTION_DIMENSIONS: Record<
-  string,
-  { width: number; height: number }
-> = {
-  '480p': { width: 854, height: 480 },
-  '720p': { width: 1280, height: 720 },
-  '1080p': { width: 1920, height: 1080 },
-  '4k': { width: 3840, height: 2160 },
-};
-
-/**
- * fal Seedance (and similar token-billed video endpoints) default to 720p
- * when the client omits `resolution`. Defaulting to 1080p here overstated
- * pre-flight costs by ~2.2× (#1140).
- */
-const DEFAULT_TOKEN_RESOLUTION = '720p';
 
 // ============================================================================
 // Pre-flight estimation — predicts a unit count from generation params
@@ -64,44 +46,39 @@ export type FalCostEstimateParams = {
   durationSeconds?: number;
   widthPx?: number;
   heightPx?: number;
-  fps?: number;
   resolution?: string;
+  /**
+   * The provider request body this estimate stands in for — the built fal
+   * input where the caller has one, else the levers it knows spelled with
+   * the endpoint's own param names (`duration`, `resolution`, `image_size`).
+   * A verified rate card is evaluated against it; without it the card is
+   * skipped rather than priced at defaults the caller never chose.
+   */
+  request?: Record<string, unknown>;
 };
 
 /**
- * How estimation predicts a unit count for an endpoint. Parametric strategies
- * compute from request params; `per_call` uses the observed/historical units
- * per call. Billing never reads this — it only multiplies `unitsBilled`.
+ * How estimation predicts a unit count for an endpoint without a card.
+ * Parametric strategies compute from request params; `per_call` uses the
+ * observed/historical units per call. Billing never reads this — it only
+ * multiplies `unitsBilled`.
  */
-type EstimateStrategy =
-  | 'per_call'
-  | 'megapixels'
-  | 'seconds'
-  | 'minutes'
-  | 'tokens';
+type EstimateStrategy = 'per_call' | 'megapixels' | 'seconds' | 'minutes';
 
 /**
  * Endpoints whose raw unit ("units") doesn't identify the estimation shape.
  */
 const ENDPOINT_STRATEGY: Record<string, EstimateStrategy> = {
   'fal-ai/ace-step-1.5': 'seconds',
-  'bytedance/seedance-2.0/enterprise/v2/image-to-video': 'tokens',
-  'bytedance/seedance-2.0/enterprise/v2/reference-to-video': 'tokens',
-  'bytedance/seedance-2.0/enterprise/v2/text-to-video': 'tokens',
-  'bytedance/seedance-2.5/image-to-video': 'tokens',
-  'bytedance/seedance-2.5/reference-to-video': 'tokens',
-  'bytedance/seedance-2.5/text-to-video': 'tokens',
-  'bytedance/seedance-2.0/mini/image-to-video': 'tokens',
-  'bytedance/seedance-2.0/mini/reference-to-video': 'tokens',
-  'bytedance/seedance-2.0/mini/text-to-video': 'tokens',
 };
 
 /**
  * Exact matches for the duration units, deliberately: fal's catalog also
  * reports "compute seconds", "5 seconds", "input seconds" — none of which are
  * the requested duration, and a wrong branch is off by orders of magnitude
- * (#1069). Everything unrecognised estimates per call, which reports unknown
- * until a signal exists.
+ * (#1069). Everything unrecognised (including the token-billed Seedance
+ * endpoints, whose formula now lives in their rate card) estimates per call,
+ * which reports unknown until a signal exists.
  */
 export function estimateStrategy(
   endpointId: string,
@@ -113,38 +90,11 @@ export function estimateStrategy(
   if (unit.includes('megapixel')) return 'megapixels';
   if (unit === 'seconds' || unit === 'second') return 'seconds';
   if (unit === 'minutes' || unit === 'minute') return 'minutes';
-  if (unit === '1000 tokens') return 'tokens';
   return 'per_call';
 }
 
 const isUsableCount = (n: number | undefined | null): n is number =>
   n != null && Number.isFinite(n) && n > 0;
-
-/**
- * Predicted unitsBilled for one call: our observed median first (once it has
- * `MIN_OBSERVED_SAMPLES` behind it), then fal's historical estimate, then a
- * known billed-units fallback (H3 Max 8 for a 5s clip — #1382).
- */
-export function knownUnitsPerCall(
-  pricing: EffectiveFalPricing,
-  endpointId?: string
-): number | undefined {
-  const { observed } = pricing;
-  if (
-    observed &&
-    observed.sampleCount >= MIN_OBSERVED_SAMPLES &&
-    isUsableCount(observed.medianUnits)
-  ) {
-    return observed.medianUnits;
-  }
-  if (isUsableCount(pricing.typicalUnitsPerCall)) {
-    return pricing.typicalUnitsPerCall;
-  }
-  const fallback = endpointId
-    ? FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP[endpointId]
-    : undefined;
-  return isUsableCount(fallback) ? fallback : undefined;
-}
 
 function trustedObservedUnits(
   pricing: EffectiveFalPricing
@@ -161,37 +111,75 @@ function trustedObservedUnits(
 }
 
 /**
- * Predicted billable units for a seconds-priced video call.
- *
- * Wall-clock duration is 1:1 for models like Veo. H3 Max (and any endpoint
- * in `FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP`) bills more units than seconds —
- * 768P is 1.6× the stored 480p unit — so observed/typical/fallback outranks
- * duration and scales from a 5s default clip (#1382).
- *
- * Fal's historical `typicalUnitsPerCall` for ordinary per-second models is
- * an average clip length and must not replace the requested duration.
+ * Predicted unitsBilled for one call: our observed median first (once it has
+ * `MIN_OBSERVED_SAMPLES` behind it), then fal's historical estimate.
  */
-function predictedSecondUnits(
-  endpointId: string,
-  duration: number,
+export function knownUnitsPerCall(
   pricing: EffectiveFalPricing
-): number {
-  const observedUnits = trustedObservedUnits(pricing);
-  const fallback = FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP[endpointId];
-
-  if (fallback != null) {
-    const known =
-      observedUnits ??
-      (isUsableCount(pricing.typicalUnitsPerCall)
-        ? pricing.typicalUnitsPerCall
-        : fallback);
-    return Math.max(duration, known * (duration / TYPICAL_VIDEO_CLIP_SECONDS));
+): number | undefined {
+  const observed = trustedObservedUnits(pricing);
+  if (observed != null) return observed;
+  if (isUsableCount(pricing.typicalUnitsPerCall)) {
+    return pricing.typicalUnitsPerCall;
   }
+  return undefined;
+}
 
-  if (observedUnits != null) {
-    return Math.max(duration, observedUnits);
+/**
+ * The verified card's USD for this request, times its calibration.
+ *
+ * Calibration maths: the hourly reconcile replays every recent observation
+ * that recorded its request levers through the same card and takes the
+ * median of `actual / card`, where `actual = unitsBilled × verified
+ * unitPrice`. That median is the multiplier — computed over the requests
+ * users really sent, not over one default shape — so a card that is
+ * systematically 5% under (fal's "roughly" per-second figures) or reads a
+ * promo that ended becomes calibrated rather than replaced. Below
+ * `MIN_OBSERVED_SAMPLES` the multiplier is 1. A median outside
+ * `RATE_CARD_DRIFT_BAND` means the card is misreading the page (a lever
+ * bound wrong, a promo the text no longer names): scaling it would keep a
+ * wrong shape, so the card is skipped and the unit counts — which the same
+ * samples back — take over until the cron re-extracts.
+ *
+ * Null when the card cannot stand behind a number: unverified, past its
+ * promo end, or refusing the request (a size the table does not price). The
+ * caller then falls through to the unit-count signals; a refusal is logged
+ * because it usually means a lever the card should bind.
+ */
+function rateCardEstimate(
+  endpointId: string,
+  pricing: EffectiveFalPricing,
+  request: Record<string, unknown>
+): Microdollars | null {
+  const rateCard = pricing.rateCard;
+  if (!rateCard?.verified) return null;
+  const { expiresAt } = rateCard.card.source;
+  if (expiresAt != null && new Date(expiresAt) <= new Date()) return null;
+  try {
+    const { usd } = evaluateRateCard(rateCard.card, request);
+    const calibration = pricing.rateCardCalibration;
+    if (!calibration || calibration.sampleCount < MIN_OBSERVED_SAMPLES) {
+      return usdToMicros(usd);
+    }
+    if (
+      calibration.ratio < RATE_CARD_DRIFT_BAND.min ||
+      calibration.ratio > RATE_CARD_DRIFT_BAND.max
+    ) {
+      return null;
+    }
+    return usdToMicros(usd * calibration.ratio);
+  } catch (error) {
+    logger.warn(
+      `${endpointId}: rate card refused the request — estimating from unit counts`,
+      {
+        reason:
+          error instanceof RateCardError
+            ? `${error.code}: ${error.message}`
+            : String(error),
+      }
+    );
+    return null;
   }
-  return duration;
 }
 
 /**
@@ -212,6 +200,11 @@ export function estimateFalCost(
     return null;
   }
 
+  if (params.request) {
+    const carded = rateCardEstimate(endpointId, pricing, params.request);
+    if (carded !== null) return carded;
+  }
+
   const numImages = params.numImages ?? 1;
   const duration = params.durationSeconds ?? 0;
 
@@ -220,7 +213,7 @@ export function estimateFalCost(
       // Covers flat rates, per-image "units" prices (gpt-image-2 bills ~0.22
       // units per image on a $1 unit), and compute-seconds models (~10 to
       // ~294 s/image across models — unknowable from request params).
-      const unitsPerCall = knownUnitsPerCall(pricing, endpointId);
+      const unitsPerCall = knownUnitsPerCall(pricing);
       if (unitsPerCall != null) {
         return multiplyMicros(pricing.unitPrice, unitsPerCall * numImages);
       }
@@ -242,34 +235,20 @@ export function estimateFalCost(
       return multiplyMicros(pricing.unitPrice, megapixels * numImages);
     }
 
-    case 'seconds':
+    case 'seconds': {
+      // Wall-clock duration is 1:1 for models like Veo. An endpoint that
+      // bills more units than seconds (H3 Max 768P is 1.6× its 480p unit)
+      // shows up in the observed median, which outranks duration. Fal's
+      // historical typical is an average clip length and must not replace
+      // the requested duration.
+      const observed = trustedObservedUnits(pricing);
       return multiplyMicros(
         pricing.unitPrice,
-        predictedSecondUnits(endpointId, duration, pricing)
+        observed != null ? Math.max(duration, observed) : duration
       );
+    }
 
     case 'minutes':
       return multiplyMicros(pricing.unitPrice, Math.ceil(duration / 60));
-
-    case 'tokens': {
-      // fal: tokens = (h × w × duration × fps) / 1024, billed per 1000 tokens
-      // (Seedance docs). Prefer explicit width/height, else resolution tier,
-      // else the platform default (720p — not 1080p).
-      const tier =
-        params.resolution && TOKEN_RESOLUTION_DIMENSIONS[params.resolution]
-          ? params.resolution
-          : DEFAULT_TOKEN_RESOLUTION;
-      const dims = TOKEN_RESOLUTION_DIMENSIONS[tier] ?? {
-        width: 1280,
-        height: 720,
-      };
-      const w = params.widthPx ?? dims.width;
-      const h = params.heightPx ?? dims.height;
-      const fps = params.fps ?? 24;
-      // ~5% overhead vs the nominal formula — matches observed billable units
-      // slightly above the pure geometric product on real generations.
-      const units = ((w * h * fps * duration) / 1024 / 1000) * 1.05;
-      return multiplyMicros(pricing.unitPrice, units);
-    }
   }
 }

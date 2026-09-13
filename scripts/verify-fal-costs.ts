@@ -247,6 +247,11 @@ function calculateImageCostForVariation(
         widthPx: dims.width,
         heightPx: dims.height,
         resolution: getImageCostResolution(modelKey, variation),
+        request: {
+          image_size: dims,
+          num_images: 1,
+          resolution: getImageCostResolution(modelKey, variation),
+        },
       },
       FAL_PRICING
     )
@@ -330,6 +335,7 @@ function buildVideoTasks(imageUrl: string): Task[] {
             {
               durationSeconds: duration,
               resolution,
+              request: input,
             },
             FAL_PRICING
           )
@@ -407,6 +413,7 @@ function buildAudioTasks(): Task[] {
             config.id,
             {
               durationSeconds: duration,
+              request: { duration },
             },
             FAL_PRICING
           )

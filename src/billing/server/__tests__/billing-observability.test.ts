@@ -13,9 +13,49 @@ vi.doMock('@/platform/server/observability/posthog-server', () => ({
 const {
   reportFlooredEstimate,
   reportMissingBillingCost,
+  reportRateCardDrift,
   reportReservationShort,
   reportSkippedDeduction,
 } = await import('@/billing/billing-observability');
+
+describe('reportRateCardDrift', () => {
+  it('captures a rate_card_drift event and warns only outside the band', () => {
+    loggerWarn.mockClear();
+    capture.mockClear();
+
+    reportRateCardDrift({
+      endpointId: 'fal-ai/kling-video/v3/pro/image-to-video',
+      sampleCount: 12,
+      refused: 1,
+      medianRatio: 1.02,
+      p90Ratio: 1.1,
+    });
+    expect(loggerWarn).not.toHaveBeenCalled();
+    expect(capture).toHaveBeenCalledWith({
+      distinctId: 'system',
+      event: 'rate_card_drift',
+      properties: {
+        endpoint_id: 'fal-ai/kling-video/v3/pro/image-to-video',
+        sample_count: 12,
+        refused: 1,
+        median_ratio: 1.02,
+        p90_ratio: 1.1,
+      },
+    });
+
+    reportRateCardDrift({
+      endpointId: 'minimax/h3-max/image-to-video',
+      sampleCount: 6,
+      refused: 0,
+      medianRatio: 1.6,
+      p90Ratio: 1.7,
+    });
+    expect(loggerWarn).toHaveBeenCalledWith(
+      'rate card drifts from fal billing',
+      expect.objectContaining({ medianRatio: 1.6 })
+    );
+  });
+});
 
 describe('reportFlooredEstimate', () => {
   it('captures a billing_estimate_floored event', () => {

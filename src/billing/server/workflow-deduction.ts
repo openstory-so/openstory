@@ -13,6 +13,7 @@
  */
 
 import { isBytePlusPricedModel } from '@/billing/byteplus-pricing';
+import { pricingLevers } from '@/billing/rate-card/levers';
 import { isElevenLabsPricedModel } from '@/billing/elevenlabs-pricing';
 import {
   isNativeGeminiImageEndpoint,
@@ -175,14 +176,22 @@ export type FalUsage = {
    * silently and file every music sample under a nonexistent provider.
    */
   billingProvider?: ModelPricingProvider;
+  /**
+   * The request body this call sent (#1605). Reduced to its price levers
+   * before it is stored, so the observation can be replayed through the
+   * endpoint's rate card without keeping a prompt or a URL. Never copied
+   * into the credit ledger.
+   */
+  requestParams?: Record<string, unknown>;
 };
 
 /**
  * Narrow a generation result's metadata to the usage fields. The result feeds
  * both the observation write (`recordFalUsage`) and the credit transaction's
- * metadata, so a charge can be traced back to the units behind it.
+ * metadata, so a charge can be traced back to the units behind it. The
+ * request body stays out of the ledger copy.
  */
-function falUsageMetadata(metadata: FalUsage): FalUsage {
+function falUsageMetadata(metadata: FalUsage): Omit<FalUsage, 'requestParams'> {
   return {
     endpointId: metadata.endpointId,
     unitsBilled: metadata.unitsBilled,
@@ -240,6 +249,9 @@ export async function recordFalUsage(
     endpointId: usage.endpointId,
     unitsBilled,
     numImages: usage.numImages,
+    requestParams: usage.requestParams
+      ? pricingLevers(usage.requestParams)
+      : undefined,
   });
 }
 
@@ -254,10 +266,13 @@ export async function recordFalUsageStep(
   scopedDb: WorkflowScopedDb | undefined,
   metadata: FalUsage,
   stepName = 'record-fal-usage'
-): Promise<FalUsage> {
+): Promise<Omit<FalUsage, 'requestParams'>> {
   const usage = falUsageMetadata(metadata);
   await step.do(stepName, async () => {
-    await recordFalUsage(scopedDb, usage);
+    await recordFalUsage(scopedDb, {
+      ...usage,
+      requestParams: metadata.requestParams,
+    });
   });
   return usage;
 }

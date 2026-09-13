@@ -1,5 +1,6 @@
 import { getEnv } from '#env';
 import { falCostFromUnits } from '@/billing/server/fal-cost-billing';
+import { type PricingLevers, pricingLevers } from '@/billing/rate-card/levers';
 import { FAL_GENERATION_TIMEOUT_MS } from '@/models/server/fal-deadline-fetch';
 import {
   AUDIO_MODELS,
@@ -54,6 +55,8 @@ export type MusicResult = {
      * ledger) and also spread into the transaction metadata as a billing
      * trail — see `recordFalUsageStep` (#1069). */
     unitsBilled?: number;
+    /** The fal body this call sent (#1605) — see image-generation.ts. */
+    requestParams?: PricingLevers;
     duration: number;
     cost: Microdollars;
     generatedAt: string;
@@ -243,6 +246,10 @@ async function callFalAudio(
       vendor: modelConfig.vendor,
       endpointId: modelConfig.id,
       unitsBilled: result.usage?.unitsBilled,
+      requestParams: pricingLevers({
+        duration: shape.duration,
+        ...shape.modelOptions,
+      }),
       duration: billedDuration,
       cost,
       generatedAt: new Date().toISOString(),

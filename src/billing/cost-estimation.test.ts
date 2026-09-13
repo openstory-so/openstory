@@ -18,7 +18,8 @@ import {
   estimateVideoCost,
   gateEstimate,
 } from './cost-estimation';
-import { micros } from './money';
+import { micros, usdToMicros } from './money';
+import { RATE_CARDS } from './rate-card/cards';
 import {
   estimateTtsCost,
   TYPICAL_DIALOGUE_CHARS_PER_SHOT,
@@ -329,10 +330,12 @@ describe('estimateStoryboardCost', () => {
       'bytedance/seedance-2.5/image-to-video': {
         unitPrice: micros(10_000),
         unit: 'units',
+        typicalUnitsPerCall: 108,
       },
       'bytedance/seedance-2.5/reference-to-video': {
         unitPrice: micros(20_000),
         unit: 'units',
+        typicalUnitsPerCall: 108,
       },
     };
     const model: ImageToVideoModel = 'seedance_v2_5';
@@ -462,10 +465,12 @@ describe('estimateVideoCost endpoint routing', () => {
       'bytedance/seedance-2.5/image-to-video': {
         unitPrice: micros(10_000),
         unit: 'units',
+        typicalUnitsPerCall: 108,
       },
       'bytedance/seedance-2.5/reference-to-video': {
         unitPrice: micros(20_000),
         unit: 'units',
+        typicalUnitsPerCall: 108,
       },
     };
     const i2v = estimateVideoCost('seedance_v2_5', 5, {
@@ -488,10 +493,12 @@ describe('estimateVideoCost endpoint routing', () => {
       'bytedance/seedance-2.5/image-to-video': {
         unitPrice: micros(10_000),
         unit: 'units',
+        typicalUnitsPerCall: 108,
       },
       'bytedance/seedance-2.5/reference-to-video': {
         unitPrice: micros(20_000),
         unit: 'units',
+        typicalUnitsPerCall: 108,
       },
     };
     const stillsOnly = Number(
@@ -532,7 +539,7 @@ describe('estimateVideoCost endpoint routing', () => {
     expect(without).toBe(micros(5 * 70_000));
   });
 
-  it('prices a 5s H3 Max clip at $0.20 (8 billed units, not duration)', () => {
+  it('prices a 5s H3 Max clip at $0.20 (8 observed units, not duration)', () => {
     expect(
       estimateVideoCost('minimax_h3_max', 5, { pricing: FAL_PRICING })
     ).toBe(micros(200_000));
@@ -618,25 +625,46 @@ describe('the resolution tier sizes the estimate (#1449)', () => {
     expect(at4k).toEqual(at720);
   });
 
-  it('prices a token-billed clip from the tier', () => {
-    const tokenPriced = {
+  it('prices a token-billed clip from the tier through its rate card', () => {
+    const endpointId = 'bytedance/seedance-2.0/enterprise/v2/image-to-video';
+    const card = RATE_CARDS[endpointId];
+    if (!card) throw new Error('no hand card');
+    const carded = {
       ...FAL_PRICING,
-      'bytedance/seedance-2.0/enterprise/v2/image-to-video': {
-        unitPrice: micros(1_000),
+      [endpointId]: {
+        unitPrice: micros(14_000),
         unit: '1000 tokens',
+        rateCard: { card, verified: true },
       },
     };
     const at720 = estimateVideoCost('seedance_v2', DURATION, {
-      pricing: tokenPriced,
+      pricing: carded,
       resolution: '720p',
     });
     const at4k = estimateVideoCost('seedance_v2', DURATION, {
-      pricing: tokenPriced,
+      pricing: carded,
       resolution: '4k',
     });
-    expect(at720).not.toBeNull();
+    // 720p 5s is the page's own $0.3024/s example.
+    expect(Number(at720)).toBe(Number(usdToMicros(0.3024 * DURATION)));
     // 3840×2160 against 1280×720 — nine times the pixels, nine times the bill.
     expect(Number(at4k)).toBeCloseTo(Number(at720) * 9, 0);
+  });
+
+  it('a token-billed clip with no card and no samples is unknown, not a formula', () => {
+    const tokenPriced = {
+      ...FAL_PRICING,
+      'bytedance/seedance-2.0/enterprise/v2/image-to-video': {
+        unitPrice: micros(14_000),
+        unit: '1000 tokens',
+      },
+    };
+    expect(
+      estimateVideoCost('seedance_v2', DURATION, {
+        pricing: tokenPriced,
+        resolution: '720p',
+      })
+    ).toBeNull();
   });
 });
 

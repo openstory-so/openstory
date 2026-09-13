@@ -14,6 +14,8 @@ type Row = {
   typicalUnitsPerCall: number | null;
   observedMedianUnits: number | null;
   observedSampleCount: number;
+  rateCard?: unknown;
+  rateCardVerified?: boolean;
   fetchedAt: Date;
   updatedAt: Date;
 };
@@ -125,7 +127,7 @@ describe('getEffectiveFalPricing', () => {
   it('keeps the static BytePlus rate card when the fal table is empty', async () => {
     const { getEffectiveFalPricing } = await loadWithRows([]);
     const map = await getEffectiveFalPricing();
-    expect(map['dreamina-seedance-2-5-260628']).toEqual({
+    expect(map['dreamina-seedance-2-5-260628']).toMatchObject({
       unitPrice: 10_700,
       unit: '1000 tokens',
     });
@@ -207,6 +209,40 @@ describe('BytePlus route aliasing', () => {
     expect(map['bytedance/seedance-2.5/text-to-video']?.unitPrice).toBe(10_700);
   });
 
+  it('moves the Ark card onto the fal ids with the unit price', async () => {
+    // The request bills on Ark, so the fal id quotes the Ark card, not the
+    // one the cron read from fal's own page.
+    const falCard = {
+      inputs: {},
+      tables: {},
+      price: 0.5,
+      examples: [],
+      source: {
+        url: `https://fal.ai/models/${SEEDANCE_REF}/llms.txt`,
+        hash: 'b'.repeat(64),
+        extractedAt: '2026-09-13T00:00:00Z',
+      },
+    };
+    const { getEffectiveFalPricing } = await loadWithRows(
+      [
+        row({ endpointId: SEEDANCE_FAL, unit: '1000 tokens' }),
+        row({
+          endpointId: SEEDANCE_REF,
+          unit: '1000 tokens',
+          rateCard: falCard,
+          rateCardVerified: true,
+        }),
+      ],
+      { ARK_API_KEY: 'ark-test' }
+    );
+    const map = await getEffectiveFalPricing();
+    const ark = map['dreamina-seedance-2-5-260628']?.rateCard;
+    expect(ark?.verified).toBe(true);
+    expect(map[SEEDANCE_REF]?.unitPrice).toBe(10_700);
+    expect(map[SEEDANCE_REF]?.rateCard).toBe(ark);
+    expect(map[SEEDANCE_FAL]?.rateCard).toBe(ark);
+  });
+
   it('leaves models with no BytePlus via on their fal rate', async () => {
     const { getEffectiveFalPricing } = await loadWithRows(
       [
@@ -230,19 +266,6 @@ describe('H3 Max t2v sibling rate (#1382)', () => {
     vi.resetModules();
   });
 
-  it('fills typical 8 when the i2v row has no fal history', async () => {
-    const { getEffectiveFalPricing } = await loadWithRows([
-      row({
-        endpointId: I2V,
-        unit: 'seconds',
-        unitPriceMicros: 25_000,
-        typicalUnitsPerCall: null,
-      }),
-    ]);
-    const pricing = (await getEffectiveFalPricing())[I2V];
-    expect(pricing?.typicalUnitsPerCall).toBe(8);
-  });
-
   it('points t2v at i2v’s billed seconds rate instead of compute seconds', async () => {
     const { getEffectiveFalPricing } = await loadWithRows([
       row({
@@ -264,5 +287,74 @@ describe('H3 Max t2v sibling rate (#1382)', () => {
       unit: 'seconds',
       typicalUnitsPerCall: 8,
     });
+  });
+});
+
+describe('rate cards on the pricing map (#1605)', () => {
+  const card = {
+    inputs: {
+      num_images: { param: 'num_images', kind: 'number', default: 1 },
+    },
+    tables: {},
+    price: { '*': [{ var: 'num_images' }, 0.08] },
+    examples: [],
+    source: {
+      url: 'https://fal.ai/models/fal-ai/nano-banana-2/llms.txt',
+      hash: 'a'.repeat(64),
+      extractedAt: '2026-09-13T00:00:00Z',
+    },
+  };
+
+  it('reads a stored card with its verified flag', async () => {
+    const { getEffectiveFalPricing } = await loadWithRows([
+      row({
+        endpointId: 'fal-ai/nano-banana-2',
+        rateCard: card,
+        rateCardVerified: true,
+      }),
+    ]);
+    const pricing = (await getEffectiveFalPricing())['fal-ai/nano-banana-2'];
+    expect(pricing?.rateCard).toEqual({ card, verified: true });
+  });
+
+  it('a card past its promo end no longer reads as verified', async () => {
+    const { getEffectiveFalPricing } = await loadWithRows([
+      row({
+        endpointId: 'fal-ai/nano-banana-2',
+        rateCard: {
+          ...card,
+          source: { ...card.source, expiresAt: '2020-01-01T00:00:00Z' },
+        },
+        rateCardVerified: true,
+      }),
+    ]);
+    const pricing = (await getEffectiveFalPricing())['fal-ai/nano-banana-2'];
+    expect(pricing?.rateCard?.verified).toBe(false);
+    expect(pricing?.rateCard?.card.source.expiresAt).toBe(
+      '2020-01-01T00:00:00Z'
+    );
+  });
+
+  it('treats a stored card outside the schema as absent', async () => {
+    // A hand edit or an older vocabulary must not reach the evaluator.
+    const { getEffectiveFalPricing } = await loadWithRows([
+      row({
+        endpointId: 'fal-ai/nano-banana-2',
+        rateCard: { ...card, price: { pow: [2, 2] } },
+        rateCardVerified: true,
+      }),
+    ]);
+    const pricing = (await getEffectiveFalPricing())['fal-ai/nano-banana-2'];
+    expect(pricing?.unit).toBe('images');
+    expect(pricing?.rateCard).toBeUndefined();
+  });
+
+  it('the BytePlus Seedance 2.5 card rides the static rate card', async () => {
+    const { getEffectiveFalPricing } = await loadWithRows([]);
+    const pricing = (await getEffectiveFalPricing())[
+      'dreamina-seedance-2-5-260628'
+    ];
+    expect(pricing?.rateCard?.verified).toBe(true);
+    expect(pricing?.rateCard?.card.examples.length).toBeGreaterThan(0);
   });
 });

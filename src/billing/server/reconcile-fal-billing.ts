@@ -10,6 +10,10 @@
  *    first use, not at the next nightly refresh.
  * 2. Reports per-transaction deltas (charged vs billed) via PostHog + error
  *    log. Report-only: no retroactive ledger adjustments.
+ * 3. Replays recent observations through each verified rate card and
+ *    reports the drift per endpoint (#1605), storing the median ratio as the
+ *    card's calibration. Needs no billing key: the actual cost is
+ *    `unitsBilled × verified unitPrice`, both already in D1.
  *
  * Windowing is stateless: each run covers [now-75min, now-5min). Events lag
  * completion by 1s–5min (the freshest 5min are excluded as still-settling),
@@ -24,16 +28,26 @@ import {
   type FalBillingEvent,
   fetchFalBillingEvents,
 } from './fal-pricing-fetch';
-import { reportBillingDrift } from '@/billing/billing-observability';
+import {
+  reportBillingDrift,
+  reportRateCardDrift,
+} from '@/billing/billing-observability';
 import { FAL_UNVERIFIED_SIBLINGS } from '@/billing/fal-typical-units';
-import { usdToMicros } from '@/billing/money';
+import { micros, microsToUsd, usdToMicros } from '@/billing/money';
+import { evaluateRateCard } from '@/billing/rate-card/evaluate';
+import {
+  hasUnpricedVideoInput,
+  pricingLeversSchema,
+} from '@/billing/rate-card/levers';
+import { rateCardSchema } from '@/billing/rate-card/rate-card.schema';
 import {
   modelPricing,
   modelPricingHistory,
+  modelUsageObservations,
   transactions,
 } from '@/platform/server/db/schema';
 import { getLogger } from '@/platform/logger';
-import { and, eq, gte, lte } from 'drizzle-orm';
+import { and, eq, gt, gte, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import {
   type PricingRefreshDb,
   writeObservedUnits,
@@ -61,6 +75,8 @@ export type FalBillingReconcileSummary = {
   rateCorrections: number;
   /** Endpoints whose observed_median_units were patched from our samples. */
   observedEndpoints: number;
+  /** Endpoints whose verified rate card was replayed against the bill (#1605). */
+  rateCardsCalibrated: number;
   /** Events with no matching transaction (scripts, unpriced $0 charges…). */
   unmatchedEvents: number;
 };
@@ -74,6 +90,11 @@ type UsageMetadata = {
 export async function reconcileFalBilling(
   deps: { db?: PricingRefreshDb; billingKey?: string; now?: Date } = {}
 ): Promise<FalBillingReconcileSummary | null> {
+  const db = deps.db ?? getDb();
+  const now = deps.now ?? new Date();
+  // Rate-card drift reads only D1, so it runs before the billing-key gate.
+  const rateCardsCalibrated = await calibrateRateCards(db, now);
+
   const billingKey =
     deps.billingKey ??
     (getEnv() as ReturnType<typeof getEnv> & { FAL_BILLING_KEY?: string })
@@ -85,8 +106,6 @@ export async function reconcileFalBilling(
     return null;
   }
 
-  const db = deps.db ?? getDb();
-  const now = deps.now ?? new Date();
   const end = new Date(now.getTime() - SETTLING_MS);
   const start = new Date(end.getTime() - WINDOW_MS);
 
@@ -97,6 +116,7 @@ export async function reconcileFalBilling(
     drifts: 0,
     rateCorrections: 0,
     observedEndpoints: 0,
+    rateCardsCalibrated,
     unmatchedEvents: 0,
   };
 
@@ -159,6 +179,152 @@ export async function reconcileFalBilling(
 
   logger.info('fal billing reconcile complete', { ...summary });
   return summary;
+}
+
+/** Same window and per-endpoint cap as the observed median. */
+const CALIBRATION_WINDOW_DAYS = 90;
+const CALIBRATION_SAMPLES_PER_ENDPOINT = 200;
+
+/** Raw-SQL JSON columns arrive as text; a malformed row fails the schema parse. */
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Sorted-list quantile, nearest rank. */
+function quantile(sorted: number[], q: number): number {
+  const index = Math.min(sorted.length - 1, Math.ceil(q * sorted.length) - 1);
+  return sorted[Math.max(0, index)] ?? 0;
+}
+
+/**
+ * Replay every recent observation that recorded its request levers through
+ * the endpoint's verified rate card and compare to what fal billed:
+ * `ratio = (unitsBilled × verified unitPrice) / card(requestParams)`. The
+ * median is stored as the card's calibration — the estimator multiplies by
+ * it once `MIN_OBSERVED_SAMPLES` back it — and every endpoint is reported
+ * (`rate_card_drift`), with a warn outside the drift band. Rows whose unit
+ * price is not bill-verified are skipped: an advertised rate would only
+ * compare the page with itself. So is a card past its promo end — the
+ * estimator no longer uses it (`readRateCard`), and replaying post-promo
+ * bills through it would only report the promo. Report + calibration only;
+ * no ledger change.
+ */
+export async function calibrateRateCards(
+  db: PricingRefreshDb,
+  now: Date
+): Promise<number> {
+  const rows = await db
+    .select()
+    .from(modelPricing)
+    .where(
+      and(
+        eq(modelPricing.provider, 'fal'),
+        eq(modelPricing.rateCardVerified, true),
+        isNotNull(modelPricing.rateCard),
+        isNotNull(modelPricing.rateVerifiedAt),
+        or(
+          isNull(modelPricing.rateCardExpiresAt),
+          gt(modelPricing.rateCardExpiresAt, now)
+        )
+      )
+    );
+  if (rows.length === 0) return 0;
+
+  const cutoff = new Date(
+    now.getTime() - CALIBRATION_WINDOW_DAYS * 24 * 60 * 60 * 1000
+  );
+  // Newest-first cap per endpoint in SQL (the `computeObservedUnits` shape):
+  // once every generation records levers, the window holds tens of
+  // thousands of JSON rows and a busy model must not pull them all into
+  // the Worker to keep 200.
+  const observations = await db.all<{
+    endpoint_id: string;
+    units_billed: number;
+    request_params: string;
+  }>(sql`
+    SELECT endpoint_id, units_billed, request_params FROM (
+      SELECT
+        ${modelUsageObservations.endpointId} AS endpoint_id,
+        ${modelUsageObservations.unitsBilled} AS units_billed,
+        ${modelUsageObservations.requestParams} AS request_params,
+        ROW_NUMBER() OVER (
+          PARTITION BY ${modelUsageObservations.endpointId}
+          ORDER BY ${modelUsageObservations.createdAt} DESC
+        ) AS rn
+      FROM ${modelUsageObservations}
+      WHERE ${modelUsageObservations.provider} = 'fal'
+        AND ${modelUsageObservations.requestParams} IS NOT NULL
+        AND ${modelUsageObservations.createdAt} > ${Math.floor(cutoff.getTime() / 1000)}
+    ) WHERE rn <= ${CALIBRATION_SAMPLES_PER_ENDPOINT}
+  `);
+  const byEndpoint = new Map<string, typeof observations>();
+  for (const observation of observations) {
+    const list = byEndpoint.get(observation.endpoint_id) ?? [];
+    list.push(observation);
+    byEndpoint.set(observation.endpoint_id, list);
+  }
+
+  let calibrated = 0;
+  for (const row of rows) {
+    const samples = byEndpoint.get(row.endpointId);
+    if (!samples?.length) continue;
+    const card = rateCardSchema.safeParse(row.rateCard);
+    if (!card.success) continue; // logged on the read path
+    const unitUsd = microsToUsd(micros(row.unitPriceMicros));
+    const ratios: number[] = [];
+    let refused = 0;
+    for (const sample of samples) {
+      const levers = pricingLeversSchema.safeParse(
+        parseJson(sample.request_params)
+      );
+      // A clip sample with no seconds lever would replay at the no-video
+      // rate and drag the median — refused, not guessed.
+      if (
+        !levers.success ||
+        sample.units_billed <= 0 ||
+        hasUnpricedVideoInput(levers.data)
+      ) {
+        refused++;
+        continue;
+      }
+      try {
+        const { usd } = evaluateRateCard(card.data, levers.data);
+        ratios.push((sample.units_billed * unitUsd) / usd);
+      } catch {
+        refused++;
+      }
+    }
+    if (ratios.length === 0) continue;
+    ratios.sort((a, b) => a - b);
+    const medianRatio = quantile(ratios, 0.5);
+    reportRateCardDrift({
+      endpointId: row.endpointId,
+      sampleCount: ratios.length,
+      refused,
+      medianRatio,
+      p90Ratio: quantile(ratios, 0.9),
+    });
+    await db
+      .update(modelPricing)
+      .set({
+        rateCardCalibration: medianRatio,
+        rateCardCalibrationSamples: ratios.length,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(modelPricing.provider, 'fal'),
+          eq(modelPricing.endpointId, row.endpointId),
+          eq(modelPricing.unit, row.unit)
+        )
+      );
+    calibrated++;
+  }
+  return calibrated;
 }
 
 /**

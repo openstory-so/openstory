@@ -1,0 +1,1 @@
+ALTER TABLE `model_pricing` ADD `rate_card_attempted_at` integer;

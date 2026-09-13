@@ -413,6 +413,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
           endpointId: billing.endpointId,
           unitsBilled: billing.unitsBilled,
           numImages: 1,
+          requestParams: job.requestParams,
         },
         'record-video-fal-usage'
       );

@@ -11,6 +11,7 @@ import {
   fetchFalCatalogIds,
   fetchFalTypicalUnits,
   fetchFalUnitPrices,
+  llmsTxtPricingSection,
 } from './fal-pricing-fetch';
 
 const MODELS_URL = 'https://api.fal.ai/v1/models';
@@ -401,5 +402,21 @@ describe('the pricing URL is unchanged', () => {
     });
     await fetchFalCatalogIds('key');
     expect(seen[0]?.startsWith(MODELS_URL)).toBe(true);
+  });
+});
+
+describe('llms.txt Pricing section (#1605)', () => {
+  const LLMS = (pricing: string) =>
+    `# Model\n\n## Overview\n\nText.\n\n## Pricing\n\n${pricing}\n\nFor more details, see [fal.ai pricing](https://fal.ai/pricing).\n\n## API Information\n\nStuff.\n`;
+
+  it('reads the Pricing section only', () => {
+    expect(
+      llmsTxtPricingSection(LLMS('Your request will cost **$0.08** per image.'))
+    ).toBe(
+      'Your request will cost **$0.08** per image.\n\nFor more details, see [fal.ai pricing](https://fal.ai/pricing).'
+    );
+    expect(
+      llmsTxtPricingSection('# Model\n\n## Overview\n\nno pricing')
+    ).toBeNull();
   });
 });

@@ -6,6 +6,9 @@
  * 2. GET /v1/models/pricing — unit_price + raw unit, batches of ≤50 ids.
  * 3. POST /v1/models/pricing/estimate — typical units per call, heavily
  *    rate-limited (~1 req/s), so only fetched for endpoints we actually use.
+ * 4. GET fal.ai/models/{id}/llms.txt — the advertised price fal shows humans
+ *    and agents, a static page. Only for used endpoints that have no other
+ *    unit-count signal (#1605).
  *
  * `unit` is stored verbatim — the catalog reports ~30 distinct strings
  * ("images", "compute seconds", "videos", "5 seconds", even ""). Billing never
@@ -500,4 +503,15 @@ export async function fetchFalTypicalUnits(
     if (i < unitPrices.length - 1) await sleep(ESTIMATE_DELAY_MS);
   }
   return { typicalUnits, failedEndpoints };
+}
+
+// ============================================================================
+// llms.txt (#1605)
+// ============================================================================
+
+/** The `## Pricing` section body of an llms.txt, or null when absent. */
+export function llmsTxtPricingSection(llmsTxt: string): string | null {
+  // Sentinel so the lazy body also ends at end-of-file (`$` is per-line here).
+  const match = `${llmsTxt}\n## `.match(/^## Pricing\s*\n([\s\S]*?)(?=\n## )/m);
+  return match?.[1]?.trim() || null;
 }

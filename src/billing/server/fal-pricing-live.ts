@@ -10,10 +10,7 @@ import { getDb } from '#db-client';
 import { isBytePlusConfigured } from '@/models/server/byteplus-config';
 import { BYTEPLUS_RATE_CARD } from '@/billing/byteplus-pricing';
 import { ELEVENLABS_RATE_CARD } from '@/billing/elevenlabs-pricing';
-import {
-  FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP,
-  FAL_UNVERIFIED_SIBLINGS,
-} from '@/billing/fal-typical-units';
+import { FAL_UNVERIFIED_SIBLINGS } from '@/billing/fal-typical-units';
 import {
   IMAGE_MODELS,
   IMAGE_TO_VIDEO_MODELS,
@@ -21,6 +18,10 @@ import {
 } from '@/models/models';
 import { typedEntries } from '@/platform/typed-object';
 import { micros, type Microdollars } from '@/billing/money';
+import {
+  type RateCard,
+  rateCardSchema,
+} from '@/billing/rate-card/rate-card.schema';
 import { modelPricing } from '@/platform/server/db/schema';
 import type { ObservedUnits } from '@/platform/server/db/schema/model-pricing';
 import { getLogger } from '@/platform/logger';
@@ -42,6 +43,20 @@ export type EffectiveFalPricing = {
    * `MIN_OBSERVED_SAMPLES` before trusting the median.
    */
   observed?: ObservedUnits;
+  /**
+   * The advertised price as JSONLogic (#1605), extracted from the
+   * endpoint's llms.txt by the nightly cron or seeded from a hand card.
+   * `verified` = every worked example in the source reproduced. Pre-flight
+   * estimate only — billing never reads it.
+   */
+  rateCard?: { card: RateCard; verified: boolean };
+  /**
+   * How the verified card compares to what fal billed for our own recent
+   * requests: median of `actual / card` with its sample count (#1605).
+   * The estimator multiplies the card's price by `ratio` once
+   * `MIN_OBSERVED_SAMPLES` back it. Written by the hourly reconcile.
+   */
+  rateCardCalibration?: { ratio: number; sampleCount: number };
 };
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -61,6 +76,31 @@ let cache: {
   updatedAt: Date | null;
 } | null = null;
 
+/**
+ * Stored JSON is a trust boundary: a card that no longer fits the schema
+ * (an older vocabulary, a hand edit) is logged and treated as absent rather
+ * than handed to the evaluator.
+ */
+function readRateCard(
+  endpointId: string,
+  stored: unknown,
+  verified: boolean
+): EffectiveFalPricing['rateCard'] {
+  const parsed = rateCardSchema.safeParse(stored);
+  if (parsed.success) {
+    // A promo card past its end prices at a rate nobody is charged any
+    // more; it stays stored (the cron re-extracts) but no longer vouches.
+    const { expiresAt } = parsed.data.source;
+    const expired = expiresAt != null && new Date(expiresAt) <= new Date();
+    return { card: parsed.data, verified: verified && !expired };
+  }
+  logger.warn('model_pricing.rate_card does not fit the schema — ignored', {
+    endpointId,
+    issues: parsed.error.issues.slice(0, 3),
+  });
+  return undefined;
+}
+
 /** Build the endpoint→pricing map from `model_pricing` rows. */
 export function buildFalPricingMap(
   rows: PricingRow[]
@@ -79,15 +119,26 @@ export function buildFalPricingMap(
     map[row.endpointId] = {
       unitPrice: micros(row.unitPriceMicros),
       unit: row.unit,
-      typicalUnitsPerCall:
-        row.typicalUnitsPerCall ??
-        FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP[row.endpointId],
+      typicalUnitsPerCall: row.typicalUnitsPerCall ?? undefined,
       // The DB CHECK keeps median and count consistent.
       ...(row.observedMedianUnits != null && {
         observed: {
           medianUnits: row.observedMedianUnits,
           sampleCount: row.observedSampleCount,
         } satisfies ObservedUnits,
+      }),
+      ...(row.rateCard != null && {
+        rateCard: readRateCard(
+          row.endpointId,
+          row.rateCard,
+          row.rateCardVerified
+        ),
+      }),
+      ...(row.rateCardCalibration != null && {
+        rateCardCalibration: {
+          ratio: row.rateCardCalibration,
+          sampleCount: row.rateCardCalibrationSamples,
+        },
       }),
     };
   }
@@ -145,25 +196,35 @@ function applyBytePlusRouteAliases(
 ): void {
   if (!isBytePlusConfigured()) return;
 
+  // The whole entry moves, card included: the Ark cards bind the fal-shaped
+  // levers the estimator hands them (`resolution`, `aspect_ratio`,
+  // `duration`, `image_size`), so the fal id quotes what Ark will bill
+  // rather than fal's own page. A BYOK-fal team's request still goes to fal
+  // and is quoted the Ark rate — the same trade-off the unit price already
+  // made (#1157).
+  const alias = (falId: string, rate: EffectiveFalPricing) => {
+    map[falId] = rate;
+  };
+
   for (const model of Object.values(IMAGE_MODELS)) {
     if (!('byteplusId' in model)) continue;
     const rate = map[model.byteplusId];
-    if (rate) map[model.id] = rate;
+    if (rate) alias(model.id, rate);
   }
 
   for (const [modelKey, model] of typedEntries(IMAGE_TO_VIDEO_MODELS)) {
     if (!('byteplusId' in model)) continue;
     const rate = map[model.byteplusId];
     if (!rate) continue;
-    map[model.id] = rate;
+    alias(model.id, rate);
     // Seedance with cast/element refs bills on a SEPARATE fal endpoint; on Ark
     // it is the same model id, so that endpoint aliases too — otherwise a
     // referenced shot silently quotes the fal rate.
     const referenceEndpoint = MOTION_REFERENCE_ENDPOINTS[modelKey];
     if (referenceEndpoint) {
-      map[referenceEndpoint.endpointId] = rate;
+      alias(referenceEndpoint.endpointId, rate);
       // Reference-only with no matched sheets bills on the t2v sibling (#1521).
-      map[referenceEndpoint.textToVideoEndpointId] = rate;
+      alias(referenceEndpoint.textToVideoEndpointId, rate);
     }
   }
 }
@@ -185,12 +246,15 @@ function applyUnverifiedSiblingRates(
       unitPrice: sourceRate.unitPrice,
       unit: sourceRate.unit,
       typicalUnitsPerCall:
-        targetRate?.typicalUnitsPerCall ??
-        sourceRate.typicalUnitsPerCall ??
-        FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP[target],
+        targetRate?.typicalUnitsPerCall ?? sourceRate.typicalUnitsPerCall,
       ...((targetRate?.observed ?? sourceRate.observed)
         ? { observed: targetRate?.observed ?? sourceRate.observed }
         : {}),
+      // The sibling has its own llms.txt, so its own card and calibration.
+      ...(targetRate?.rateCard && { rateCard: targetRate.rateCard }),
+      ...(targetRate?.rateCardCalibration && {
+        rateCardCalibration: targetRate.rateCardCalibration,
+      }),
     };
   }
 }

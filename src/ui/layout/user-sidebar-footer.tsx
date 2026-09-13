@@ -19,6 +19,7 @@ import {
   ChevronsUpDown,
   LogIn,
   LogOut,
+  Receipt,
   Settings,
   ShieldAlert,
   Wallet,
@@ -186,6 +187,12 @@ function AdminMenuItem() {
         <Link to="/admin/moderation">
           <ShieldAlert className="mr-2 h-4 w-4" />
           Moderation
+        </Link>
+      </DropdownMenuItem>
+      <DropdownMenuItem asChild>
+        <Link to="/admin/rate-cards">
+          <Receipt className="mr-2 h-4 w-4" />
+          Rate cards
         </Link>
       </DropdownMenuItem>
     </>

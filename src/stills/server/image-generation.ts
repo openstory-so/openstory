@@ -8,6 +8,7 @@ import {
 } from '@/models/server/byteplus-config';
 import { isContentRejectionError } from '@/models/content-rejection';
 import { falCostFromUnits } from '@/billing/server/fal-cost-billing';
+import { type PricingLevers, pricingLevers } from '@/billing/rate-card/levers';
 import { FAL_GENERATION_TIMEOUT_MS } from '@/models/server/fal-deadline-fetch';
 import { extractFalErrorMessage } from '@/models/fal-error';
 import {
@@ -88,6 +89,9 @@ export type ImageGenerationResult = {
     /** Images this one call rendered. `unitsBilled` covers all of them, so the
      * cron divides by it to get a per-image median (#1069). */
     numImages?: number;
+    /** The fal body this call sent — its price levers are recorded with the
+     * usage sample so the rate card can be checked against the bill (#1605). */
+    requestParams?: PricingLevers;
     dimensions: { width: number; height: number }[];
     file_sizes: number[];
     seed?: number;
@@ -222,6 +226,7 @@ async function generateImageInternal(
   let params: ImageGenerationParams = rawParams;
   let unitsBilled: number | undefined;
   let cost: Microdollars | undefined;
+  let requestParams: PricingLevers | undefined;
 
   switch (via) {
     case 'google': {
@@ -335,6 +340,7 @@ async function generateImageInternal(
       const { prompt, ...modelOptions } = built.input;
       endpoint = built.endpointId;
       usedOwnKey = key.source === 'team';
+      requestParams = pricingLevers(modelOptions);
 
       // Bound so a hung fal.subscribe fails the workflow step and CF can retry
       // (#826). Native activity `timeout` since @tanstack/ai@0.44 / ai-fal@0.10.
@@ -440,6 +446,7 @@ async function generateImageInternal(
       model: params.model,
       endpointId: endpoint,
       unitsBilled,
+      requestParams,
       // What the call actually returned, not what it was asked for: the median
       // divides `unitsBilled` by this, so a partial return (3 of 4 images)
       // recorded as 4 biases the per-image figure LOW — the direction that

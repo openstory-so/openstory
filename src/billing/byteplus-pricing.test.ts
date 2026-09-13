@@ -23,18 +23,18 @@ describe('BYTEPLUS_RATE_CARD', () => {
     }
   });
 
-  it('denominates video per 1000 tokens so the tokens estimator applies', () => {
+  it('denominates video per 1000 tokens, matching what Ark reports', () => {
     expect(BYTEPLUS_RATE_CARD['dreamina-seedance-2-5-260628']?.unit).toBe(
       '1000 tokens'
     );
   });
 
-  // `per_call` estimation returns null without a unit-count signal, which
-  // gates on the $0.10 floor instead of the real price.
-  it('gives the per-image model an exact units-per-call signal', () => {
-    expect(
-      BYTEPLUS_RATE_CARD['dola-seedream-5-0-pro-260628']?.typicalUnitsPerCall
-    ).toBe(1);
+  // Without a card a per-call id returns null, which gates on the $0.10
+  // floor instead of the real price (#1605).
+  it('carries a verified rate card on every entry', () => {
+    for (const [id, entry] of Object.entries(BYTEPLUS_RATE_CARD)) {
+      expect(entry.rateCard?.verified, id).toBe(true);
+    }
   });
 });
 
