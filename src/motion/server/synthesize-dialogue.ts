@@ -11,6 +11,7 @@ import { createElevenLabsSdk } from '@/models/server/elevenlabs-config';
 import {
   DIALOGUE_CLIP_TOKEN,
   DIALOGUE_TTS_MODEL,
+  dialogueClipSourceKey,
   ttsUtterance,
   type VoicedDialogueLine,
 } from '@/motion/dialogue-tts';
@@ -71,6 +72,7 @@ export async function synthesizeDialogueClip(
       url: uploaded.publicUrl,
       token: DIALOGUE_CLIP_TOKEN,
       durationSeconds,
+      sourceKey: dialogueClipSourceKey(input.lines),
     },
     characterCount,
   };

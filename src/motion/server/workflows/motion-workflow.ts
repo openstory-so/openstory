@@ -197,50 +197,55 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       );
     }
 
-    // Dialogue TTS (#1554) before the credit check: the clips raise duration
+    // Dialogue clips (#1554) before the credit check: they raise duration
     // (Seedance 2.5 is 4–30 s) and ride the request as audio refs, so both
-    // the video estimate and the manifest have to see them.
+    // the video estimate and the manifest have to see them. Prefer the
+    // References-stage clip snapshotted onto the payload; synthesise only
+    // when that is missing (standalone motion, stale lines, pre-#1554 rows).
     let prompt = input.prompt;
     let referenceImages = input.referenceImages;
     let durationHint = input.duration;
-    let audioClips: MotionAudioClip[] = [];
+    let audioClips: MotionAudioClip[] = input.audioClips ?? [];
     const voicedLines = input.voicedLines ?? [];
     if (voicedLines.length > 0 && input.shotId && input.sequenceId) {
       const shotId = input.shotId;
       const sequenceId = input.sequenceId;
-      const synthesized = await step.do(
-        'synthesize-dialogue-audio',
-        async () => {
-          const { key } = await scopedDb.credentials.resolveKey('elevenlabs');
-          const minDurationSeconds =
-            getMotionReferenceEndpoint(model)?.audioSeconds?.min;
-          const { clip, characterCount } = await synthesizeDialogueClip({
-            apiKey: key,
-            teamId: input.teamId,
-            sequenceId,
-            shotId,
-            lines: voicedLines,
-            minDurationSeconds,
-          });
-          await deductWorkflowCredits({
-            scopedDb,
-            costMicros: estimateTtsCost(characterCount),
-            usedOwnKey: false,
-            description: `Dialogue (${voicedLines.length} line${voicedLines.length === 1 ? '' : 's'})`,
-            idempotencyKey: `${workflowRunId}:dialogue-tts`,
-            reservationId: input.reservationId,
-            metadata: {
-              endpointId: ELEVENLABS_TTS_ENDPOINT,
-              model: 'eleven_v3',
-              characterCount,
-              clipCount: 1,
-            },
-            workflowName: 'MotionWorkflow',
-          });
-          return { clips: [clip], characterCount };
-        }
-      );
-      audioClips = synthesized.clips;
+      if (audioClips.length === 0) {
+        const synthesized = await step.do(
+          'synthesize-dialogue-audio',
+          async () => {
+            const { key } = await scopedDb.credentials.resolveKey('elevenlabs');
+            const minDurationSeconds =
+              getMotionReferenceEndpoint(model)?.audioSeconds?.min;
+            const { clip, characterCount } = await synthesizeDialogueClip({
+              apiKey: key,
+              teamId: input.teamId,
+              sequenceId,
+              shotId,
+              lines: voicedLines,
+              minDurationSeconds,
+            });
+            await deductWorkflowCredits({
+              scopedDb,
+              costMicros: estimateTtsCost(characterCount),
+              usedOwnKey: false,
+              description: `Dialogue (${voicedLines.length} line${voicedLines.length === 1 ? '' : 's'})`,
+              idempotencyKey: `${workflowRunId}:dialogue-tts`,
+              reservationId: input.reservationId,
+              metadata: {
+                endpointId: ELEVENLABS_TTS_ENDPOINT,
+                model: 'eleven_v3',
+                characterCount,
+                clipCount: 1,
+              },
+              workflowName: 'MotionWorkflow',
+            });
+            await scopedDb.shots.setAudioClips(shotId, [clip]);
+            return { clips: [clip], characterCount };
+          }
+        );
+        audioClips = synthesized.clips;
+      }
       referenceImages = [
         ...(input.referenceImages ?? []),
         ...dialogueClipsAsReferences(audioClips),

@@ -163,6 +163,9 @@ function makeScopedDb() {
         }),
       },
     },
+    shots: {
+      setAudioClips: vi.fn(async () => {}),
+    },
     shotPromptVersions,
     videoVariants,
     bytePlusAssets,

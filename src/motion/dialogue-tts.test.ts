@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   DIALOGUE_CLIP_TOKEN,
   DIALOGUE_TTS_MODEL,
+  dialogueClipSourceKey,
   dialogueTtsToken,
+  matchingDialogueClips,
   modelTakesDialogueAudio,
   dialogueVoicesForHash,
   dialogueVoicesHashBody,
@@ -209,5 +211,48 @@ describe('dialogueVoicesHashBody', () => {
       { voiceId: '', line: 'skip', ttsModel: DIALOGUE_TTS_MODEL },
     ]);
     expect(a).toEqual(b);
+  });
+});
+
+describe('matchingDialogueClips', () => {
+  const lines = voicedDialogueLines(
+    dialogue([{ character: 'SARAH', line: 'Stay down.' }]),
+    [sarah]
+  );
+  const key = dialogueClipSourceKey(lines);
+
+  it('reuses clips whose sourceKey still matches the lines', () => {
+    const clips = [
+      {
+        id: 'c1',
+        url: '/r2/a.wav',
+        token: DIALOGUE_CLIP_TOKEN,
+        durationSeconds: 2,
+        sourceKey: key,
+      },
+    ];
+    expect(matchingDialogueClips(clips, lines)).toEqual(clips);
+  });
+
+  it('drops clips minted without a key or from different lines', () => {
+    const unkeyed = [
+      {
+        id: 'c1',
+        url: '/r2/a.wav',
+        token: DIALOGUE_CLIP_TOKEN,
+        durationSeconds: 2,
+      },
+    ];
+    const otherKey = [
+      {
+        id: 'c1',
+        url: '/r2/a.wav',
+        token: DIALOGUE_CLIP_TOKEN,
+        durationSeconds: 2,
+        sourceKey: 'other',
+      },
+    ];
+    expect(matchingDialogueClips(unkeyed, lines)).toEqual([]);
+    expect(matchingDialogueClips(otherKey, lines)).toEqual([]);
   });
 });

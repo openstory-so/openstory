@@ -111,6 +111,7 @@ export async function refreshCheckpointFromCast(
       physicalDescription: c.physicalDescription,
       voiceOnly: c.voiceOnly,
       consistencyTag: c.consistencyTag,
+      voiceId: c.voiceId,
     }));
   }
   if (next.locationsWithSheets) {
@@ -126,6 +127,15 @@ export async function refreshCheckpointFromCast(
       consistencyTag: l.consistencyTag,
     }));
   }
+  if (next.dialogueClipsByShotId) {
+    const shotRows = await scopedDb.shots.listBySequence(sequenceId);
+    next.dialogueClipsByShotId = Object.fromEntries(
+      shotRows
+        .filter((shot) => shot.audioClips && shot.audioClips.length > 0)
+        .map((shot) => [shot.id, shot.audioClips ?? []])
+    );
+  }
+
   if (next.allElements) {
     next.allElements = elements.map((el) => ({
       id: el.id,
