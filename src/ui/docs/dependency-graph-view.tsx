@@ -9,11 +9,9 @@ import {
   UPDATE_STALE_DEPTH_LABELS,
 } from '@/shots/update-stale-depth';
 import {
-  BAND_LABELS,
-  BAND_ORDER,
+  BANDS,
   edgesForMode,
   GRAPH_NODES,
-  type Band,
   type GraphEdge,
   type GraphMode,
   type GraphNode,
@@ -23,7 +21,6 @@ import {
   staleAfterEdit,
   staleBecauseOf,
   type Tracking,
-  TRACKINGS,
 } from './dependency-graph';
 
 // --- Layout ---------------------------------------------------------------
@@ -40,16 +37,10 @@ const TOP = 28;
 type Placed = GraphNode & { x: number; y: number };
 
 /** Rows wrap at PER_ROW; bands stack with a gap wide enough for edges. */
-function place(): {
-  placed: Placed[];
-  bandY: Map<Band, number>;
-  height: number;
-} {
+function place(): Placed[] {
   const placed: Placed[] = [];
-  const bandY = new Map<Band, number>();
   let y = TOP;
-  for (const band of BAND_ORDER) {
-    bandY.set(band, y);
+  for (const [band] of BANDS) {
     const nodes = GRAPH_NODES.filter((n) => n.band === band);
     const rows = Math.ceil(nodes.length / PER_ROW);
     for (let r = 0; r < rows; r++) {
@@ -62,11 +53,14 @@ function place(): {
     }
     y += (rows - 1) * ROW_PITCH + BAND_GAP;
   }
-  return { placed, bandY, height: y - BAND_GAP + NH + 16 };
+  return placed;
 }
 
-const { placed: PLACED, bandY: BAND_Y, height: H } = place();
+const PLACED = place();
 const placedById = new Map(PLACED.map((n) => [n.id, n]));
+const H = Math.max(...PLACED.map((n) => n.y)) + NH + 16;
+/** A band's label sits above its first node. */
+const bandTop = (band: string) => PLACED.find((n) => n.band === band)?.y ?? TOP;
 
 /** Two lines at most; split at the space nearest the middle. */
 function wrapLabel(label: string): string[] {
@@ -92,22 +86,26 @@ function edgePath(e: GraphEdge): string {
   return `M${sx},${sy} C${sx},${sy + c} ${tx},${ty - c} ${tx},${ty}`;
 }
 
-/** One colour per edge kind; a lit edge keeps its colour and thickens. */
-const EDGE_STROKE: Record<Tracking, string> = {
-  hash: 'stroke-chart-1',
-  pointer: 'stroke-chart-4',
-  cascade: 'stroke-chart-3',
-  untracked: 'stroke-muted-foreground',
-  seeded: 'stroke-chart-5',
+/**
+ * Panel copy and edge colour per tracking kind. Hash and pointer share a
+ * colour: a pointer edge always leaves a versioned node, which the green
+ * border already says, so the graph draws both as "tracked" and the note
+ * on the edge carries the difference.
+ */
+const TRACKING: Record<Tracking, { copy: string; stroke: string }> = {
+  hash: { copy: 'in the input hash', stroke: 'stroke-chart-1' },
+  pointer: { copy: 'by selected version', stroke: 'stroke-chart-1' },
+  cascade: { copy: 'cascade only, never flagged', stroke: 'stroke-chart-3' },
+  untracked: { copy: 'not tracked', stroke: 'stroke-muted-foreground' },
+  seeded: { copy: 'seeded once, then yours', stroke: 'stroke-chart-5' },
 };
 
-const TRACKING_COPY: Record<Tracking, string> = {
-  hash: 'in the input hash',
-  pointer: 'by selected version',
-  cascade: 'cascade only, never flagged',
-  untracked: 'not tracked',
-  seeded: 'seeded once, then yours',
-};
+const LEGEND = [
+  ['tracked', TRACKING.hash.stroke],
+  ['cascade only, never flagged', TRACKING.cascade.stroke],
+  ['seeded once, then yours', TRACKING.seeded.stroke],
+  ['not tracked', TRACKING.untracked.stroke],
+] as const;
 
 // --- View -----------------------------------------------------------------
 
@@ -138,6 +136,7 @@ export const DependencyGraphView: React.FC<DependencyGraphViewProps> = ({
   const sideEdges = edges.filter(
     (e) => !propagates(e) && (e.from === active || e.to === active)
   );
+  const sideKeys = new Set(sideEdges.map(edgeKey));
 
   const select = (id: string) => onChange({ node: id });
 
@@ -163,22 +162,21 @@ export const DependencyGraphView: React.FC<DependencyGraphViewProps> = ({
           className="block h-auto w-full min-w-[640px] select-none text-[11px]"
         >
           <title>Dependency graph</title>
-          {BAND_ORDER.map((band) => (
+          {BANDS.map(([band, label]) => (
             <text
               key={band}
               x={12}
-              y={(BAND_Y.get(band) ?? 0) - 8}
+              y={bandTop(band) - 8}
               className="fill-muted-foreground text-[9px] font-medium uppercase tracking-wider"
             >
-              {BAND_LABELS[band]}
+              {label}
             </text>
           ))}
           <g fill="none">
             {edges.map((e) => {
               const key = edgeKey(e);
               const lit = litEdges.has(key);
-              const side =
-                !propagates(e) && (e.from === active || e.to === active);
+              const side = sideKeys.has(key);
               return (
                 <path
                   key={key}
@@ -186,7 +184,7 @@ export const DependencyGraphView: React.FC<DependencyGraphViewProps> = ({
                   strokeLinecap="round"
                   className={cn(
                     'transition-opacity motion-reduce:transition-none',
-                    EDGE_STROKE[e.tracking],
+                    TRACKING[e.tracking].stroke,
                     lit ? 'stroke-[2.5]' : side ? 'stroke-2' : 'opacity-25'
                   )}
                 />
@@ -293,8 +291,8 @@ const withNote = (copy: string, note: string | undefined) =>
 
 const Legend: React.FC = () => (
   <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-    {TRACKINGS.map((t) => (
-      <li key={t} className="flex items-center gap-1.5">
+    {LEGEND.map(([copy, stroke]) => (
+      <li key={copy} className="flex items-center gap-1.5">
         <svg width="28" height="8" aria-hidden="true">
           <line
             x1="1"
@@ -302,10 +300,10 @@ const Legend: React.FC = () => (
             x2="27"
             y2="4"
             strokeLinecap="round"
-            className={cn('stroke-[2.5]', EDGE_STROKE[t])}
+            className={cn('stroke-[2.5]', stroke)}
           />
         </svg>
-        {TRACKING_COPY[t]}
+        {copy}
       </li>
     ))}
     <li className="flex items-center gap-1.5">
@@ -434,7 +432,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
                   {e.from === node.id ? `→ ${o.label}` : `${o.label} →`}
                 </Button>
                 <span className="text-muted-foreground">
-                  {withNote(TRACKING_COPY[e.tracking], e.note)}
+                  {withNote(TRACKING[e.tracking].copy, e.note)}
                 </span>
               </li>
             );
@@ -517,7 +515,7 @@ const ReachList: React.FC<ReachListProps> = ({
               <span className="text-muted-foreground">
                 {withNote(
                   viaId === origin.id
-                    ? TRACKING_COPY[r.via.tracking]
+                    ? TRACKING[r.via.tracking].copy
                     : `via ${via?.label ?? viaId}`,
                   r.via.note
                 )}

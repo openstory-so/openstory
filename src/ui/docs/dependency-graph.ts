@@ -22,34 +22,17 @@ type NodeKind = 'input' | 'artifact';
  * (by the LLM) or from the library (by casting / matching), then yours to
  * edit. Artifacts flow down from there.
  */
-export type Band =
-  | 'settings'
-  | 'library'
-  | 'bibles'
-  | 'references'
-  | 'prompts'
-  | 'renders'
-  | 'cut';
+export const BANDS = [
+  ['settings', 'You write and set'],
+  ['library', 'Library · optional, reused across sequences'],
+  ['bibles', 'Bibles · seeded from the script or the library, then yours'],
+  ['references', 'References'],
+  ['prompts', 'Prompts'],
+  ['renders', 'Renders'],
+  ['cut', 'Cut'],
+] as const;
 
-export const BAND_ORDER: readonly Band[] = [
-  'settings',
-  'library',
-  'bibles',
-  'references',
-  'prompts',
-  'renders',
-  'cut',
-];
-
-export const BAND_LABELS: Record<Band, string> = {
-  settings: 'You write and set',
-  library: 'Library · optional, reused across sequences',
-  bibles: 'Bibles · seeded from the script or the library, then yours',
-  references: 'References',
-  prompts: 'Prompts',
-  renders: 'Renders',
-  cut: 'Cut',
-};
+type Band = (typeof BANDS)[number][0];
 
 export type GraphNode = {
   id: string;
@@ -86,7 +69,7 @@ export type GraphNode = {
  *                or casting / matching from the library) and then owned by
  *                the user. Later upstream edits never touch it.
  */
-export const TRACKINGS = [
+const TRACKINGS = [
   'hash',
   'pointer',
   'cascade',
@@ -808,8 +791,6 @@ export type Reach = {
   id: string;
   /** Edge that reached it, for the "via" copy. */
   via: GraphEdge;
-  /** Hops from the origin; 1 = direct. */
-  depth: number;
 };
 
 /**
@@ -845,20 +826,17 @@ function walk(
   const edges = edgesForMode(mode).filter(propagates);
   const seen = new Set<string>([origin]);
   const out: Reach[] = [];
-  let frontier = [origin];
-  for (let depth = 1; frontier.length > 0; depth++) {
-    const nextFrontier: string[] = [];
-    for (const from of frontier) {
-      for (const e of edges) {
-        if (key(e) !== from) continue;
-        const to = next(e);
-        if (seen.has(to)) continue;
-        seen.add(to);
-        out.push({ id: to, via: e, depth });
-        nextFrontier.push(to);
-      }
+  // for-of sees elements pushed during iteration, so the queue is the walk.
+  const queue = [origin];
+  for (const from of queue) {
+    for (const e of edges) {
+      if (key(e) !== from) continue;
+      const to = next(e);
+      if (seen.has(to)) continue;
+      seen.add(to);
+      out.push({ id: to, via: e });
+      queue.push(to);
     }
-    frontier = nextFrontier;
   }
   return out;
 }

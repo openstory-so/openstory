@@ -69,28 +69,14 @@ describe('dependency graph', () => {
   });
 
   it('upstream walk mirrors the downstream walk', () => {
-    expect(ids(staleBecauseOf('clip', 'start-frame'))).toEqual(
-      [
-        'analysisModel',
-        'aspectRatio',
-        'character',
-        'characterSheet',
-        'dialogue',
-        'element',
-        'imageModel',
-        'libraryLocation',
-        'libraryLocationReference',
-        'location',
-        'locationSheet',
-        'script',
-        'startFrameMode',
-        'still',
-        'style',
-        'talent',
-        'talentSheet',
-        'visualPrompt',
-        'motionPrompt',
-      ].sort()
-    );
+    for (const a of GRAPH_NODES) {
+      const down = ids(staleAfterEdit(a.id, 'start-frame'));
+      for (const b of GRAPH_NODES) {
+        const up = ids(staleBecauseOf(b.id, 'start-frame'));
+        expect(up.includes(a.id), `${a.id} → ${b.id}`).toBe(
+          down.includes(b.id)
+        );
+      }
+    }
   });
 });
