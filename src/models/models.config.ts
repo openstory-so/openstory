@@ -2,18 +2,33 @@
  * Registry of AI models available for script analysis.
  * Ordered by qualityRank (1 = best), which follows the LMArena text
  * leaderboard (arena.ai/leaderboard/text, snapshot 2026-09-13; best-scoring
- * variant per model). Re-rank when bumping models. Open-weight models noted
- * with license field.
+ * variant per model). GPT-6 Astra is pinned at 1 (flagship) despite a
+ * thin Text Arena Elo. Re-rank when bumping models. Open-weight models
+ * noted with license field.
  */
 
 export const SCRIPT_ANALYSIS_MODELS = [
+  {
+    id: 'openai/gpt-6-astra',
+    name: 'GPT-6 Astra',
+    vendor: 'OpenAI',
+    license: 'proprietary' as const,
+    // Pinned at 1 as the GPT-6 flagship. Text Arena 1480 (gpt-6-astra-max,
+    // 2.7k votes, ±12); Code Arena #1 at 1800.
+    qualityRank: 1,
+    contextWindow: 1_050_000,
+    maxOutputTokens: 128_000,
+    vision: true,
+    description:
+      'GPT-6 flagship: hardest end-to-end work, 1M context, no sampling params',
+  },
   {
     id: 'anthropic/claude-fable-5.1',
     name: 'Claude Fable 5.1',
     vendor: 'Anthropic',
     license: 'proprietary' as const,
     // Arena 1498 (claude-fable-5.1-max).
-    qualityRank: 1,
+    qualityRank: 2,
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
     vision: true,
@@ -25,7 +40,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
     vendor: 'Anthropic',
     license: 'proprietary' as const,
     // Arena 1493 (opus-5-high).
-    qualityRank: 2,
+    qualityRank: 3,
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
     vision: true,
@@ -37,7 +52,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
     vendor: 'Anthropic',
     license: 'proprietary' as const,
     // Not ranked separately — Opus 5 weights, faster output.
-    qualityRank: 3,
+    qualityRank: 4,
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
     vision: true,
@@ -49,7 +64,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
     vendor: 'Google',
     license: 'proprietary' as const,
     // Arena 1493 (gemini-3.8-flash-high, Preliminary).
-    qualityRank: 4,
+    qualityRank: 5,
     contextWindow: 1_048_576,
     maxOutputTokens: 65_536,
     vision: true,
@@ -61,7 +76,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
     vendor: 'Google',
     license: 'proprietary' as const,
     // Arena 1487.
-    qualityRank: 5,
+    qualityRank: 6,
     contextWindow: 1_048_576,
     maxOutputTokens: 65_536,
     vision: true,
@@ -73,7 +88,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
     vendor: 'OpenAI',
     license: 'proprietary' as const,
     // Arena 1483 (gpt-5.6-sol-xhigh).
-    qualityRank: 6,
+    qualityRank: 7,
     contextWindow: 1_050_000,
     maxOutputTokens: 128_000,
     vision: true,
@@ -86,7 +101,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
     vendor: 'OpenAI',
     license: 'proprietary' as const,
     // Arena 1482 (gpt-5.5-high).
-    qualityRank: 7,
+    qualityRank: 8,
     contextWindow: 1_050_000,
     maxOutputTokens: 128_000,
     vision: true,
@@ -100,25 +115,12 @@ export const SCRIPT_ANALYSIS_MODELS = [
     vendor: 'Anthropic',
     license: 'proprietary' as const,
     // Arena 1481 (opus-4-8-high).
-    qualityRank: 8,
+    qualityRank: 9,
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
     vision: true,
     description: 'Frontier reasoning and coding',
     hidden: true,
-  },
-  {
-    id: 'openai/gpt-6-astra',
-    name: 'GPT-6 Astra',
-    vendor: 'OpenAI',
-    license: 'proprietary' as const,
-    // Arena 1480 (gpt-6-astra-max) — 2.7k votes, ±12; re-rank when it settles.
-    qualityRank: 9,
-    contextWindow: 1_050_000,
-    maxOutputTokens: 128_000,
-    vision: true,
-    description:
-      'GPT-6 flagship: hardest end-to-end work, 1M context, no sampling params',
   },
   {
     id: 'x-ai/grok-4.20',
