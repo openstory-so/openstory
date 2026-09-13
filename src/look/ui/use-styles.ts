@@ -11,6 +11,7 @@ import {
 } from '@/look/styles.fn';
 import { usePublicOrTeamQuery } from '@/ui/use-public-or-team-query';
 import { useAuthSession } from '@/platform/ui/auth/session-query';
+import { useSequenceReady } from '@/sequences/ui/pending-sequence-create';
 import { publicStylesQueryKey } from './public-styles-query';
 import { simpleHash } from '@/platform/hash';
 import type { Style } from '@/platform/server/db/schema';
@@ -68,11 +69,12 @@ export function useStyle(id: string) {
  * team's sequence. `null` when the row is gone.
  */
 export function useSequenceStyle(sequenceId: string) {
+  const ready = useSequenceReady(sequenceId);
   return useQuery<Style | null>({
     queryKey: styleKeys.forSequence(sequenceId),
     queryFn: () => getSequenceStyleFn({ data: { sequenceId } }),
     staleTime: 10 * 60 * 1000,
-    enabled: !!sequenceId,
+    enabled: ready,
   });
 }
 

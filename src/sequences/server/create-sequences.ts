@@ -313,8 +313,8 @@ export const createSequences = createServerOnlyFn(
     const styleSource = await resolveStyleSource(context.scopedDb, styleId);
 
     const created = await Promise.all(
-      analysisModels.map(async (modelId) => {
-        const sequenceId = generateId();
+      analysisModels.map(async (modelId, index) => {
+        const sequenceId = data.ids?.[index] ?? generateId();
         const reservationId = allowsUnfundedGeneration(stopAt)
           ? undefined
           : await reserveRunCredits(context.scopedDb, envelopeCost, {

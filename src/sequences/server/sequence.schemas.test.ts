@@ -68,6 +68,29 @@ describe('createSequenceSchema', () => {
     }
   });
 
+  it('accepts client-minted ids for immediate navigation', () => {
+    const result = createSequenceSchema.safeParse({
+      script: 'A valid length script here.',
+      styleId: 'style_1',
+      aspectRatio: '16:9',
+      ids: ['01ARZ3NDEKTSV4RRFFQ69G5FAV'],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.ids).toEqual(['01ARZ3NDEKTSV4RRFFQ69G5FAV']);
+    }
+  });
+
+  it('rejects duplicate client-minted ids', () => {
+    const result = createSequenceSchema.safeParse({
+      script: 'A valid length script here.',
+      styleId: 'style_1',
+      aspectRatio: '16:9',
+      ids: ['01ARZ3NDEKTSV4RRFFQ69G5FAV', '01ARZ3NDEKTSV4RRFFQ69G5FAV'],
+    });
+    expect(result.success).toBe(false);
+  });
+
   it('accepts an explicit early stop in reference-only', () => {
     // A stop-at is a deliberate partial run, not a motion-off flag.
     const result = createSequenceSchema.safeParse({

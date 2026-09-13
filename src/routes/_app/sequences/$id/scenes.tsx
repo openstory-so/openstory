@@ -7,6 +7,7 @@ import {
 } from '@/sequences/sequences.fn';
 import { sceneKeys } from '@/shots/ui/use-scenes';
 import { shotKeys } from '@/shots/ui/use-shots';
+import { isPendingSequenceCreate } from '@/sequences/ui/pending-sequence-create';
 import { sequenceKeys } from '@/sequences/ui/use-sequences';
 import { scenesSearchSchema } from '@/shots/ui/scene-selection';
 import {
@@ -24,6 +25,9 @@ export const Route = createFileRoute('/_app/sequences/$id/scenes')({
   // shot list. Prefetch so the content banner is in the SSR HTML instead of
   // hydrating over a generic "Generation failed" from `shots ?? []`.
   loader: async ({ params, context: { queryClient } }) => {
+    if (isPendingSequenceCreate(params.id)) {
+      return;
+    }
     const [shots, scenes, sequence] = await Promise.all([
       queryClient.ensureQueryData({
         queryKey: shotKeys.list(params.id),

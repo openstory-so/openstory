@@ -23,7 +23,11 @@ vi.doMock('@/sequences/sequences.fn', () => ({ createSequenceFn }));
 const mutationOptions = new WeakMap<object, MutationOptions>();
 type MutationOptions = { mutationFn: (input: unknown) => Promise<unknown> };
 vi.doMock('@tanstack/react-query', () => ({
-  useQueryClient: () => ({ invalidateQueries: vi.fn(), setQueryData: vi.fn() }),
+  useQueryClient: () => ({
+    invalidateQueries: vi.fn(),
+    setQueryData: vi.fn(),
+    removeQueries: vi.fn(),
+  }),
   useMutation: (options: MutationOptions) => {
     const handle = {};
     mutationOptions.set(handle, options);
@@ -91,5 +95,13 @@ describe('useCreateSequence forwards the full input', () => {
     const sent = createSequenceFn.mock.calls[0]?.[0];
     expect(sent?.data.title).toBe('Untitled Sequence');
     expect(sent?.data.generateStartFrames).toBe(false);
+  });
+
+  it('forwards client-minted ids so the server inserts the navigated row', async () => {
+    createSequenceFn.mockClear();
+    const ids = ['01ARZ3NDEKTSV4RRFFQ69G5FAV'];
+    await mutationFnOf(useCreateSequence())({ ...INPUT, ids });
+    const sent = createSequenceFn.mock.calls[0]?.[0];
+    expect(sent?.data.ids).toEqual(ids);
   });
 });

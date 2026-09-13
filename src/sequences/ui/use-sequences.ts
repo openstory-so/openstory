@@ -27,6 +27,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePostHog } from '@posthog/react';
 import { toast } from 'sonner';
 
+import {
+  failSequenceCreate,
+  finishSequenceCreate,
+} from './optimistic-sequence';
+import { useSequenceReady } from './pending-sequence-create';
+
 import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'ui', 'use-sequences']);
@@ -57,6 +63,7 @@ export function useGenerationSliceEstimate(args: {
   stopAt: GenerationStage;
   enabled?: boolean;
 }): Microdollars | null | undefined {
+  const ready = useSequenceReady(args.sequenceId);
   const { data } = useQuery({
     queryKey:
       args.startFrom == null
@@ -76,7 +83,7 @@ export function useGenerationSliceEstimate(args: {
         },
       });
     },
-    enabled: Boolean(args.enabled ?? true) && args.startFrom != null,
+    enabled: Boolean(args.enabled ?? true) && args.startFrom != null && ready,
     staleTime: 60_000,
   });
   if (data === undefined) return undefined;
@@ -96,13 +103,14 @@ export const musicPromptStalenessKey = (sequenceId: string) =>
 // All music variant rows for a sequence (#546). Used by the music tab to
 // resolve playback through the active model's track.
 export function useSequenceAudioVariants(sequenceId?: string) {
+  const ready = useSequenceReady(sequenceId);
   return useQuery<SequenceMusicVariant[]>({
     queryKey: ['sequence-audio-variants', sequenceId ?? ''],
     queryFn: async () => {
       if (!sequenceId) throw new Error('sequenceId is required');
       return getSequenceAudioVariantsFn({ data: { sequenceId } });
     },
-    enabled: !!sequenceId,
+    enabled: ready,
     staleTime: 30_000,
   });
 }
@@ -204,6 +212,7 @@ export function useSequence(
   }
 ) {
   const { data: session } = useAuthSession();
+  const ready = useSequenceReady(id);
   return useQuery<Sequence>({
     queryKey: sequenceKeys.detail(id),
     queryFn: async () => {
@@ -212,7 +221,7 @@ export function useSequence(
     },
     throwOnError: true,
     staleTime: options?.staleTime ?? 1000,
-    enabled: !!id && !!session,
+    enabled: ready && !!session,
     refetchInterval: options?.refetchInterval ?? false,
     refetchOnMount: 'always',
     refetchOnWindowFocus: true,
@@ -250,7 +259,13 @@ export function useCreateSequence() {
         message: 'Sequence created successfully',
       };
     },
-    onSuccess: () => {
+    onSuccess: (result, variables) => {
+      const id = variables.ids?.[0];
+      if (id) {
+        const created =
+          result.data.find((sequence) => sequence.id === id) ?? result.data[0];
+        finishSequenceCreate(queryClient, id, created);
+      }
       queryClient
         .invalidateQueries({ queryKey: sequenceKeys.lists() })
         .catch((error) => {
@@ -262,7 +277,9 @@ export function useCreateSequence() {
     // A silent failure here is what produced 9 identical resubmissions in
     // #1259 — always tell the user why nothing happened. Insufficient
     // credits is the global mutation handler's job (low-balance toast).
-    onError: (error) => {
+    onError: (error, variables) => {
+      const id = variables.ids?.[0];
+      if (id) failSequenceCreate(queryClient, id);
       if (isInsufficientCreditsError(error)) return;
       toast.error(error.message || 'Generation failed to start.');
     },

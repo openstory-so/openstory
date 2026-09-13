@@ -4,6 +4,7 @@ import { RenameSequenceButton } from '@/sequences/ui/rename-sequence-button';
 import { SEQUENCE_HEADER_SLOT_ID } from '@/sequences/ui/sequence-header-slot';
 import { getDefaultSequenceTabPath } from '@/sequences/ui/sequence-tabs';
 import { getSequenceFn } from '@/sequences/sequences.fn';
+import { isPendingSequenceCreate } from '@/sequences/ui/pending-sequence-create';
 import { sequenceKeys, useSequence } from '@/sequences/ui/use-sequences';
 import { useUser } from '@/platform/ui/use-user';
 import { requireSessionOrRedirect } from '@/platform/ui/auth/route-guards';
@@ -24,6 +25,12 @@ export const Route = createFileRoute('/_app/sequences/$id')({
   loader: async ({ params, context: { queryClient } }) => {
     if (!isValidId(params.id)) {
       throw notFound();
+    }
+
+    // Generate seeds this cache and marks the id pending before navigate
+    // (#1601). Fetching here 404s until the insert lands.
+    if (isPendingSequenceCreate(params.id)) {
+      return;
     }
 
     await queryClient.ensureQueryData({
