@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Badge } from '@/ui/shadcn/badge';
 import { Button } from '@/ui/shadcn/button';
-import { ToggleGroup, ToggleGroupItem } from '@/ui/shadcn/toggle-group';
+import { Label } from '@/ui/shadcn/label';
+import { Switch } from '@/ui/shadcn/switch';
 import { cn } from '@/ui/utils';
 import {
   UPDATE_STALE_DEPTHS,
@@ -16,7 +17,6 @@ import {
   type GraphEdge,
   type GraphMode,
   type GraphNode,
-  isGraphMode,
   nodeById,
   propagates,
   type Reach,
@@ -133,19 +133,16 @@ export const DependencyGraphView: React.FC<DependencyGraphViewProps> = ({
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <ToggleGroup
-          type="single"
-          variant="outline"
-          size="sm"
-          value={mode}
-          onValueChange={(v) => isGraphMode(v) && onChange({ mode: v })}
-          aria-label="Render mode"
-        >
-          <ToggleGroupItem value="start-frame">Start frames</ToggleGroupItem>
-          <ToggleGroupItem value="reference-only">
-            Reference only
-          </ToggleGroupItem>
-        </ToggleGroup>
+        <div className="flex items-center gap-2">
+          <Switch
+            id="use-start-frames"
+            checked={mode === 'start-frame'}
+            onCheckedChange={(on) =>
+              onChange({ mode: on ? 'start-frame' : 'reference-only' })
+            }
+          />
+          <Label htmlFor="use-start-frames">Use start frames</Label>
+        </div>
         <Legend />
       </div>
 

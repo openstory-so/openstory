@@ -14,9 +14,6 @@ export const GRAPH_MODES = ['start-frame', 'reference-only'] as const;
 
 export type GraphMode = (typeof GRAPH_MODES)[number];
 
-export const isGraphMode = (v: string): v is GraphMode =>
-  (GRAPH_MODES as readonly string[]).includes(v);
-
 type NodeKind = 'input' | 'artifact';
 
 /** Band on the page: inputs sit in the first two, artifacts flow down. */
@@ -94,7 +91,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     band: 'story',
     summary: 'The scene text and its slugline, as split from your script.',
     counts: [
-      'Scene extract, line number and dialogue',
+      'Scene extract, line number and the dialogue spoken in this shot',
       'INT./EXT. heading',
       'Time of day',
       'Story beat',
@@ -111,7 +108,8 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     label: 'Character',
     kind: 'input',
     band: 'story',
-    summary: 'The character bible entry, after casting has rewritten it.',
+    summary:
+      'The character bible entry, after casting has rewritten it. A voice-only character (a narrator) has a row but never a sheet.',
     counts: [
       'Age, gender, ethnicity',
       'Physical description',
@@ -120,7 +118,12 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Personality and movement (motion prompt only)',
       'Consistency tag (sheet only)',
     ],
-    ignored: ['Name', 'First mention', 'Which library talent is cast'],
+    ignored: [
+      'Name',
+      'First mention',
+      'Which library talent is cast',
+      'Voice description',
+    ],
   },
   {
     id: 'talent',
@@ -247,8 +250,26 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Style config',
       'Image model',
     ],
-    ignored: ['Character name', 'Personality and movement'],
+    ignored: [
+      'Character name',
+      'Personality and movement',
+      'Voice-only characters never get one',
+    ],
     storedAs: 'characters.sheetInputHash',
+  },
+  {
+    id: 'voice',
+    label: 'Voice',
+    kind: 'artifact',
+    band: 'references',
+    summary:
+      'A designed ElevenLabs voice for a speaking character. Designed once and kept; nothing renders with it yet.',
+    counts: ['Nothing is compared today'],
+    ignored: [
+      'Voice description edits ("Generate voice" releases the old one and designs again)',
+      'Character bible edits',
+    ],
+    storedAs: 'characters.voiceId (no hash)',
   },
   {
     id: 'libraryLocationReference',
@@ -411,6 +432,18 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     note: 'the talent sheet hash is folded into the character sheet hash',
   },
   { from: 'style', to: 'characterSheet', tracking: 'hash' },
+  {
+    from: 'character',
+    to: 'voice',
+    tracking: 'untracked',
+    note: 'the voice description is drafted from the bible once',
+  },
+  {
+    from: 'talent',
+    to: 'voice',
+    tracking: 'untracked',
+    note: 'a library voice is copied onto the character at cast, not designed',
+  },
   { from: 'imageModel', to: 'characterSheet', tracking: 'hash' },
   { from: 'libraryLocation', to: 'libraryLocationReference', tracking: 'hash' },
   { from: 'style', to: 'libraryLocationReference', tracking: 'hash' },

@@ -54,6 +54,7 @@ describe('dependency graph', () => {
       'musicPrompt',
     ]);
     expect(ids(staleBecauseOf('musicTrack', 'start-frame'))).toEqual([]);
+    expect(ids(staleBecauseOf('voice', 'start-frame'))).toEqual([]);
   });
 
   it('upstream walk mirrors the downstream walk', () => {
