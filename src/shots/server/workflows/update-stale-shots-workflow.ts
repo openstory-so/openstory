@@ -638,10 +638,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             model,
           });
           const voicedLines = modelTakesDialogueAudio(model)
-            ? voicedDialogueLines(
-                motionVersion.dialogue,
-                plan.characterVoices ?? []
-              )
+            ? voicedDialogueLines(motionVersion.dialogue, plan.characterVoices)
             : [];
           const audioClips = matchingDialogueClips(
             shot.audioClips,
@@ -959,6 +956,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                       ? (startingFrameImageUrl ?? undefined)
                       : undefined,
                     referenceOnly: !target.usesStartFrame,
+                    characterVoices: plan.characterVoices,
                     targetVersionId: claims.motionVersionId ?? undefined,
                   },
                   spawnStepName: `spawn-motion-prompt-${target.shotId}`,

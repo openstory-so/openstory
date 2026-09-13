@@ -177,7 +177,6 @@ describe('shot_prompt_variants helper', () => {
       versionId: pending.id,
       shotId,
       text: 'animates the still',
-      inputHash: 'live-hash',
       analysisModel: 'anthropic/claude-haiku-4.5',
     });
     expect(completed?.usesStartFrame).toBe(true);
@@ -848,16 +847,59 @@ describe('shotPromptVersions.completePendingAiVersion', () => {
       versionId: claim.id,
       shotId,
       text: 'Regenerated motion prompt',
-      inputHash: 'live-hash',
       analysisModel: 'anthropic/claude-haiku-4.5',
     });
 
     expect(completed?.id).toBe(claim.id);
     expect(completed?.status).toBe('completed');
+    expect(completed?.inputHash).toBe('live-hash');
 
     const selected = await selectedMotionVersion();
     expect(selected?.id).toBe(claim.id);
     expect(selected?.text).toBe('Regenerated motion prompt');
+  });
+
+  it('persists the claim pendingInputHash, not a caller-supplied digest (#1616)', async () => {
+    const m = createShotPromptVersionsMethods(db);
+    const claim = await m.createPending({
+      usesStartFrame: true,
+      shotId,
+      pendingInputHash: 'verify-hash-at-trigger',
+    });
+    await m.markGenerating(claim.id, 'run-1');
+
+    const completed = await m.completePendingAiVersion({
+      usesStartFrame: true,
+      versionId: claim.id,
+      shotId,
+      text: 'Regenerated motion prompt',
+      analysisModel: 'anthropic/claude-haiku-4.5',
+    });
+
+    expect(completed?.inputHash).toBe('verify-hash-at-trigger');
+  });
+
+  it('refuses to complete a row with no pendingInputHash', async () => {
+    const m = createShotPromptVersionsMethods(db);
+    const written = await m.write({
+      shotId,
+      promptType: 'motion',
+      usesStartFrame: true,
+      text: 'already complete',
+      source: 'ai-generated',
+      inputHash: 'hash-1',
+      analysisModel: 'anthropic/claude-haiku-4.5',
+    });
+
+    await expect(
+      m.completePendingAiVersion({
+        usesStartFrame: true,
+        versionId: written.id,
+        shotId,
+        text: 'should not land',
+        analysisModel: 'anthropic/claude-haiku-4.5',
+      })
+    ).rejects.toThrow(/no pendingInputHash/);
   });
 
   it('a post-click user edit keeps the selection — the run completes to history only', async () => {
@@ -884,7 +926,7 @@ describe('shotPromptVersions.completePendingAiVersion', () => {
       versionId: claim.id,
       shotId,
       text: 'Older run output',
-      inputHash: 'other-hash',
+      inputHash: 'live-hash',
       analysisModel: 'anthropic/claude-haiku-4.5',
     });
 
@@ -921,7 +963,6 @@ describe('shotPromptVersions.completePendingAiVersion', () => {
       versionId: claim.id,
       shotId,
       text: 'Should be discarded',
-      inputHash: 'live-hash',
       analysisModel: 'anthropic/claude-haiku-4.5',
     });
 
@@ -958,7 +999,6 @@ describe('shotPromptVersions.completePendingAiVersion', () => {
       versionId: claim.id,
       shotId,
       text: 'Same output',
-      inputHash: 'hash-1',
       analysisModel: 'anthropic/claude-haiku-4.5',
     });
 
@@ -998,7 +1038,6 @@ describe('shotPromptVersions.completePendingAiVersion', () => {
       versionId: claim.id,
       shotId,
       text: 'New output',
-      inputHash: 'hash-1',
       analysisModel: 'anthropic/claude-haiku-4.5',
     });
 

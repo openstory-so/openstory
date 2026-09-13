@@ -25,7 +25,8 @@ import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
 import { getLogger } from '@/platform/logger';
 import { getGenerationChannel } from '@/platform/realtime';
-import { sha256Hex } from '@/shots/input-hash';
+import { hashMotionPromptInput } from '@/shots/input-hash';
+import { narrowShotPromptContext } from '@/shots/server/prompt-context';
 import {
   derivedShotForItem,
   shotWorkItems,
@@ -48,13 +49,14 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
       aspectRatio,
       characterBible,
       locationBible,
-      elementBible,
+      elementBible = [],
       styleConfig,
       analysisModelId,
       shotMapping,
       sequenceId,
       startingFrameImageUrls,
       referenceOnly = false,
+      characterVoices,
     } = input;
 
     // ============================================================
@@ -120,6 +122,7 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
           shotId: mapping.shotId || undefined,
           startingFrameImageUrl,
           referenceOnly,
+          characterVoices,
         };
 
         return spawnAndAwaitChild<
@@ -209,17 +212,32 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
           if (!motionPrompt?.fullPrompt) continue;
           let finalVersionId: string | null = null;
           if (item.mapping.shotId) {
+            const startingFrameImageUrl =
+              (item.mapping.shotId
+                ? startingFrameImageUrls?.[item.mapping.shotId]
+                : undefined) ??
+              startingFrameImageUrls?.[item.scene.sceneId] ??
+              null;
             const written = await scopedDb.shotPromptVersions.writeAiVersion({
               shotId: item.mapping.shotId,
               text: motionPrompt.fullPrompt,
               dialogue: motionPrompt.dialogue,
               audio: motionPrompt.audio,
               usesStartFrame: !referenceOnly,
-              inputHash: await sha256Hex({
-                kind: 'derived-shot-motion',
-                shotId: item.mapping.shotId,
-                text: motionPrompt.fullPrompt,
-              }),
+              inputHash: await hashMotionPromptInput(
+                narrowShotPromptContext({
+                  scene: item.scene,
+                  styleConfig,
+                  characterBible,
+                  locationBible,
+                  elementBible,
+                  aspectRatio,
+                  analysisModel: analysisModelId,
+                  startingFrameImageUrl,
+                  referenceOnly,
+                  characterVoices,
+                })
+              ),
               analysisModel: analysisModelId,
             });
             finalVersionId = written.id;

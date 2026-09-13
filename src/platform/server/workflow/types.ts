@@ -10,7 +10,7 @@ import type {
   TextToImageModel,
 } from '@/models/models';
 import type { AnalysisModelId } from '@/models/models.config';
-import type { VoicedDialogueLine } from '@/motion/dialogue-tts';
+import type { VoiceCharacter, VoicedDialogueLine } from '@/motion/dialogue-tts';
 import type {
   AssemblableMotionPrompt,
   CharacterBibleEntry,
@@ -1020,6 +1020,11 @@ export interface MotionPromptBatchWorkflowInput extends SequenceWorkflowContext 
    * in this mode a missing still is the design, not a failed image.
    */
   referenceOnly?: boolean;
+  /**
+   * Speakers with a designed voice, snapshotted at trigger (#1616). Required
+   * on the assembler — a missing field on replay fails the run, not `[]`.
+   */
+  characterVoices: VoiceCharacter[];
 }
 
 export interface MotionPromptWorkflowInput extends SequenceWorkflowContext {
@@ -1049,6 +1054,11 @@ export interface MotionPromptWorkflowInput extends SequenceWorkflowContext {
    * merely absent `startingFrameImageUrl`, which means "no still YET".
    */
   referenceOnly?: boolean;
+  /**
+   * Speakers with a designed voice, snapshotted at trigger (#1616). Required
+   * so the stamp hasher cannot omit them; verify always includes them.
+   */
+  characterVoices: VoiceCharacter[];
   /** See {@link FramePromptWorkflowInput.emitStreaming}. */
   emitStreaming?: boolean;
   /**
@@ -1613,6 +1623,8 @@ export interface MotionMusicPromptsWorkflowInput extends SequenceWorkflowContext
    * depended on the still.
    */
   referenceOnly?: boolean;
+  /** See {@link MotionPromptWorkflowInput.characterVoices}. */
+  characterVoices: VoiceCharacter[];
 }
 
 export interface MotionMusicPromptsWorkflowResult {

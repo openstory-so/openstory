@@ -16,6 +16,7 @@
  */
 
 import type { VisualPromptComponents } from '@/shots/scene-analysis.schema';
+import type { VisualPromptInputHash } from '@/shots/input-hash';
 import type { Database } from '@/platform/server/db/client';
 import { framePromptVersions, frames, user } from '@/platform/server/db/schema';
 import type { FramePromptVersion } from '@/platform/server/db/schema';
@@ -230,7 +231,7 @@ export function createFramePromptVersionsMethods(db: Database) {
       frameId: string;
       text: string;
       components?: VisualPromptComponents | null;
-      inputHash: string;
+      inputHash: VisualPromptInputHash;
       analysisModel: string;
       createdBy?: string | null;
     }): Promise<FramePromptVersion> => {
@@ -344,11 +345,13 @@ export function createFramePromptVersionsMethods(db: Database) {
 
     /**
      * Complete a pending claim in place: fill in the generated content, stamp
-     * the hash of the inputs actually used, and flip to 'completed'. Mirrors
-     * onto the frame ONLY when no newer completed version landed meanwhile —
-     * a post-click user edit must never be clobbered by an older run's output
-     * (#1085: "the system cannot lose an edit"). Returns null when the claim
-     * was cancelled mid-flight (the output is discarded).
+     * the claim's `pendingInputHash` (the verify hash captured at trigger),
+     * and flip to 'completed'. The workflow must not recompute from its
+     * payload — that is what left a voiced shot stale after Update all
+     * (#1616). Mirrors onto the frame ONLY when no newer completed version
+     * landed meanwhile — a post-click user edit must never be clobbered by an
+     * older run's output (#1085). Returns null when the claim was cancelled
+     * mid-flight (the output is discarded).
      *
      * If a completed row already carries this (frameId, inputHash), the claim
      * retires in favour of it when the text is identical; otherwise it
@@ -359,7 +362,12 @@ export function createFramePromptVersionsMethods(db: Database) {
       frameId: string;
       text: string;
       components?: VisualPromptComponents | null;
-      inputHash: string;
+      /**
+       * Fallback when a concurrent edit/restore demoted the claim
+       * (`pendingInputHash` nulled). Prefer the claim hash — that is the
+       * verify digest captured at trigger (#1616).
+       */
+      inputHash?: VisualPromptInputHash | string;
       analysisModel: string;
     }): Promise<FramePromptVersion | null> => {
       const [claim] = await db
@@ -377,6 +385,12 @@ export function createFramePromptVersionsMethods(db: Database) {
           `FramePromptVersion ${input.versionId} not found for frame ${input.frameId}`
         );
       }
+      const inputHash = claim.pendingInputHash ?? input.inputHash;
+      if (!inputHash) {
+        throw new Error(
+          `FramePromptVersion ${input.versionId} has no pendingInputHash; cannot complete`
+        );
+      }
 
       const [conflicting] = await db
         .select()
@@ -384,7 +398,7 @@ export function createFramePromptVersionsMethods(db: Database) {
         .where(
           and(
             eq(framePromptVersions.frameId, input.frameId),
-            eq(framePromptVersions.inputHash, input.inputHash),
+            eq(framePromptVersions.inputHash, inputHash),
             ne(framePromptVersions.id, input.versionId),
             ne(framePromptVersions.source, 'restored')
           )
@@ -423,7 +437,7 @@ export function createFramePromptVersionsMethods(db: Database) {
         .set({
           text: input.text,
           components: input.components ?? null,
-          inputHash: input.inputHash,
+          inputHash,
           analysisModel: input.analysisModel,
           status: 'completed',
         })

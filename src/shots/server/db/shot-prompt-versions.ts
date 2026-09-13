@@ -15,6 +15,7 @@ import type {
   MotionDialogue,
   MotionPromptParameters,
 } from '@/shots/scene-analysis.schema';
+import type { MotionPromptInputHash } from '@/shots/input-hash';
 import type { MotionAudioClip } from '@/platform/server/db/schema';
 import type { Database } from '@/platform/server/db/client';
 import { shotPromptVersions, shots, user } from '@/platform/server/db/schema';
@@ -279,7 +280,7 @@ export function createShotPromptVersionsMethods(db: Database) {
       dialogue?: MotionDialogue | null;
       audio?: MotionAudio | null;
       usesStartFrame: boolean;
-      inputHash: string;
+      inputHash: MotionPromptInputHash;
       analysisModel: string;
       createdBy?: string | null;
     }): Promise<ShotPromptVersion> => {
@@ -389,9 +390,11 @@ export function createShotPromptVersionsMethods(db: Database) {
 
     /**
      * Complete a pending motion claim in place. Same contract as
-     * `framePromptVersions.completePendingAiVersion`: mirrors onto the shot
-     * only when no newer completed row landed meanwhile (post-click edits are
-     * never clobbered); returns null when the claim was cancelled mid-flight;
+     * `framePromptVersions.completePendingAiVersion`: persists the claim's
+     * `pendingInputHash` (the verify hash captured at trigger), not a
+     * recompute from the payload (#1616). Mirrors onto the shot only when no
+     * newer completed row landed meanwhile (post-click edits are never
+     * clobbered); returns null when the claim was cancelled mid-flight;
      * handles the partial-unique-index collision like `write`.
      */
     completePendingAiVersion: async (input: {
@@ -403,7 +406,12 @@ export function createShotPromptVersionsMethods(db: Database) {
       dialogue?: MotionDialogue | null;
       audio?: MotionAudio | null;
       usesStartFrame: boolean;
-      inputHash: string;
+      /**
+       * Fallback when a concurrent edit/restore demoted the claim
+       * (`pendingInputHash` nulled). Prefer the claim hash — that is the
+       * verify digest captured at trigger (#1616).
+       */
+      inputHash?: MotionPromptInputHash | string;
       analysisModel: string;
     }): Promise<ShotPromptVersion | null> => {
       const [claim] = await db
@@ -421,6 +429,12 @@ export function createShotPromptVersionsMethods(db: Database) {
           `ShotPromptVersion ${input.versionId} not found for shot ${input.shotId}`
         );
       }
+      const inputHash = claim.pendingInputHash ?? input.inputHash;
+      if (!inputHash) {
+        throw new Error(
+          `ShotPromptVersion ${input.versionId} has no pendingInputHash; cannot complete`
+        );
+      }
 
       const [conflicting] = await db
         .select()
@@ -429,7 +443,7 @@ export function createShotPromptVersionsMethods(db: Database) {
           and(
             eq(shotPromptVersions.shotId, input.shotId),
             eq(shotPromptVersions.promptType, 'motion'),
-            eq(shotPromptVersions.inputHash, input.inputHash),
+            eq(shotPromptVersions.inputHash, inputHash),
             ne(shotPromptVersions.id, input.versionId),
             ne(shotPromptVersions.source, 'restored')
           )
@@ -467,7 +481,7 @@ export function createShotPromptVersionsMethods(db: Database) {
           dialogue: input.dialogue ?? null,
           audio: input.audio ?? null,
           usesStartFrame: input.usesStartFrame,
-          inputHash: input.inputHash,
+          inputHash,
           analysisModel: input.analysisModel,
           status: 'completed',
         })

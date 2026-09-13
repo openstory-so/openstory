@@ -12,8 +12,8 @@
 
 import type { Scene } from '@/shots/scene-analysis.schema';
 import {
-  computeMotionPromptInputHash,
-  computeVisualPromptInputHash,
+  hashMotionPromptInput,
+  hashVisualPromptInput,
 } from '@/shots/input-hash';
 import {
   loadNarrowShotPromptContext,
@@ -48,8 +48,8 @@ export async function buildUserEditProvenance(args: {
     return {
       inputHash:
         kind === 'motion'
-          ? await computeMotionPromptInputHash(ctx)
-          : await computeVisualPromptInputHash(ctx),
+          ? await hashMotionPromptInput(ctx)
+          : await hashVisualPromptInput(ctx),
       analysisModel: ctx.analysisModel,
     };
   } catch (err) {

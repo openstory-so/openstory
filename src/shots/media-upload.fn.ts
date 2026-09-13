@@ -22,7 +22,7 @@ import { getSignedUploadUrl } from '#storage';
 import {
   computeCharacterSheetInputHash,
   computeLocationSheetInputHash,
-  computeVisualPromptInputHash,
+  hashVisualPromptInput,
 } from './input-hash';
 import { resolveSheetImageModel } from '@/cast/sheet-image-model';
 import { requireUploadRights } from '@/cast/server/upload-rights';
@@ -378,7 +378,7 @@ export const replaceFrameContentFn = createServerFn({ method: 'POST' })
           scene,
           startingFrameImageUrl: await getFrameImageUrl(scopedDb, frame.id),
         });
-        promptInputHash = await computeVisualPromptInputHash(
+        promptInputHash = await hashVisualPromptInput(
           narrowShotPromptContext(ctx)
         );
         analysisModel = ctx.analysisModel;

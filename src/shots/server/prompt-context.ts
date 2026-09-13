@@ -3,56 +3,26 @@ import {
   sequenceElementsToBible,
   sequenceLocationsToBible,
 } from '@/cast/server/bibles-from-scoped';
-import { dialogueVoicesForHash } from '@/motion/dialogue-tts';
-import type { DialogueVoiceHashInput } from '@/motion/dialogue-tts';
+import type { VoiceCharacter } from '@/motion/dialogue-tts';
 import {
   DEFAULT_ANALYSIS_MODEL,
   getAnalysisModelById,
 } from '@/models/models.config';
-import type {
-  CharacterBibleEntry,
-  ElementBibleEntry,
-  LocationBibleEntry,
-  Scene,
-} from '@/shots/scene-analysis.schema';
+import type { Scene } from '@/shots/scene-analysis.schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { ValidationError } from '@/platform/errors';
-import type { StyleConfig } from '@/platform/server/db/schema';
 import { resolveSequenceStyleConfig } from '@/look/style-config';
+import type {
+  MotionPromptHashInput,
+  VisualPromptHashInput,
+} from '@/shots/input-hash';
 import {
   matchCharactersToScene,
   matchElementsToScene,
   matchLocationsToScene,
 } from '@/shots/scene-matching';
 
-export type ShotPromptContext = {
-  scene: Scene;
-  styleConfig: StyleConfig;
-  characterBible: CharacterBibleEntry[];
-  locationBible: LocationBibleEntry[];
-  elementBible: ElementBibleEntry[];
-  aspectRatio: string;
-  analysisModel: string;
-  /**
-   * URL of the rendered starting-shot image (`shots.thumbnailUrl`), when
-   * known. Only the motion-prompt hash consumes it (#929); pass it at sites
-   * that stamp or verify `motionPromptInputHash` so a re-rendered image
-   * re-stales the motion prompt. Left undefined for visual-only sites.
-   */
-  startingFrameImageUrl?: string | null;
-  /**
-   * Reference-only mode. Only the motion-prompt hash consumes it: the mode
-   * selects a different LLM template, so the same scene produces a different
-   * prompt under it and a mode flip must re-stale what is stored.
-   */
-  referenceOnly?: boolean;
-  /**
-   * Dialogue TTS (#1554). Only the motion-prompt hash consumes it, and only
-   * when a speaker has a designed voice. Loaded from every character row
-   * (including voice-only narrators that `listWithSheets` drops).
-   */
-  dialogueVoices?: DialogueVoiceHashInput[];
-};
+export type ShotPromptContext = MotionPromptHashInput;
 
 export type ShotPromptContextSequence = {
   id: string;
@@ -166,15 +136,13 @@ export async function loadShotPromptContext(args: {
     elementBible: sequenceElementsToBible(elements),
     aspectRatio: sequence.aspectRatio,
     analysisModel,
-    startingFrameImageUrl,
+    startingFrameImageUrl: startingFrameImageUrl ?? null,
     referenceOnly: sequence.referenceOnly,
-    dialogueVoices: dialogueVoicesForHash(
-      {
-        presence: scene.originalScript.dialogue.length > 0,
-        lines: scene.originalScript.dialogue,
-      },
-      voiceCharacters
-    ),
+    characterVoices: voiceCharacters.map((row): VoiceCharacter => ({
+      name: row.name,
+      voiceId: row.voiceId,
+      voiceOnly: row.voiceOnly,
+    })),
   };
 }
 
@@ -205,30 +173,31 @@ export async function loadNarrowShotPromptContext(args: {
 }
 
 /**
- * Filter an already-built `ShotPromptContext` down to the entities this
- * scene's `continuity` references. Pure function — exposed so workflows that
- * already received full bibles as inputs (visual/motion prompt scene workflows)
- * can narrow without re-fetching from the DB.
+ * Filter an already-built prompt context down to the entities this scene's
+ * `continuity` references. Pure function — exposed so workflows that already
+ * received full bibles as inputs (visual/motion prompt scene workflows) can
+ * narrow without re-fetching from the DB. Generic so a visual-only bag
+ * (no voices / start-frame) narrows without dummy motion channels.
  */
-export function narrowShotPromptContext(
-  ctx: ShotPromptContext
-): ShotPromptContext {
+export function narrowShotPromptContext<T extends VisualPromptHashInput>(
+  ctx: T
+): T {
   const { scene } = ctx;
   const continuity = scene.continuity;
   if (!continuity) return ctx;
 
   const characterBible = matchCharactersToScene(
-    ctx.characterBible,
+    [...ctx.characterBible],
     continuity.characterTags
   );
   const locationBible = matchLocationsToScene(
-    ctx.locationBible,
+    [...ctx.locationBible],
     continuity.environmentTag,
     scene.metadata?.location ?? '',
     scene.originalScript.extract
   );
   const elementBible = matchElementsToScene(
-    ctx.elementBible,
+    [...ctx.elementBible],
     continuity.elementTags ?? [],
     scene.originalScript.extract
   );

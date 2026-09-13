@@ -70,6 +70,7 @@ function makeInput(): MotionPromptBatchWorkflowInput {
     startingFrameImageUrls: Object.fromEntries(
       SCENE_IDS.map((id) => [id, `https://example.com/${id}.png`])
     ),
+    characterVoices: [],
   };
 }
 
@@ -115,9 +116,11 @@ function makeWorkflow(): Probe {
 // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- runImpl never touches scopedDb
 const SCOPED_DB = {
   shotPromptVersions: {
-    writeAiVersion: vi.fn(async (input: { shotId: string }) => ({
-      id: `mpv-derived-${input.shotId}`,
-    })),
+    writeAiVersion: vi.fn(
+      async (input: { shotId: string; inputHash: string }) => ({
+        id: `mpv-derived-${input.shotId}`,
+      })
+    ),
   },
 } as unknown as WorkflowScopedDb;
 
@@ -346,5 +349,8 @@ describe('MotionPromptBatchWorkflow multi-shot scenes (#1517)', () => {
     expect(result[0]?.finalVersionId).toBe('mpv-derived-sh-1');
     expect(result[1]?.shotId).toBe('sh-2');
     expect(result[1]?.motionPrompt.fullPrompt).toContain('cut to the hallway');
+    expect(SCOPED_DB.shotPromptVersions.writeAiVersion).toHaveBeenCalledTimes(
+      2
+    );
   });
 });

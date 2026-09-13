@@ -5,23 +5,21 @@ import type { ScopedDb } from '@/platform/server/db/scoped';
 
 const buildRegenerateShotSnapshot = vi.fn();
 const loadNarrowShotPromptContext = vi.fn();
-const computeVisualPromptInputHash = vi.fn();
-const computeMotionPromptInputHash = vi.fn();
+const hashVisualPromptInput = vi.fn();
+const hashMotionPromptInput = vi.fn();
 
 vi.doMock('@/shots/server/workflows/regenerate-shots-snapshot', () => ({
   buildRegenerateShotSnapshot,
 }));
 vi.doMock('./prompt-context', () => ({ loadNarrowShotPromptContext }));
 vi.doMock('@/shots/input-hash', () => ({
-  computeVisualPromptInputHash,
-  computeMotionPromptInputHash,
+  hashVisualPromptInput,
+  hashMotionPromptInput,
   visualPromptInputHashMatches: vi.fn(
-    async (stored: string | null) =>
-      stored === (await computeVisualPromptInputHash())
+    async (stored: string | null) => stored === (await hashVisualPromptInput())
   ),
   motionPromptInputHashMatches: vi.fn(
-    async (stored: string | null) =>
-      stored === (await computeMotionPromptInputHash())
+    async (stored: string | null) => stored === (await hashMotionPromptInput())
   ),
 }));
 
@@ -139,8 +137,8 @@ describe('computeShotStaleness', () => {
     // Thumbnail hashing blows up; the two prompt branches must still report.
     buildRegenerateShotSnapshot.mockRejectedValue(new Error('boom'));
     loadNarrowShotPromptContext.mockResolvedValue({});
-    computeVisualPromptInputHash.mockResolvedValue('visual-stored');
-    computeMotionPromptInputHash.mockResolvedValue('motion-moved');
+    hashVisualPromptInput.mockResolvedValue('visual-stored');
+    hashMotionPromptInput.mockResolvedValue('motion-moved');
 
     const result = await computeShotStaleness({
       scopedDb: makeScopedDb({ motionSelectedHash: 'motion-stored' }),
@@ -169,8 +167,8 @@ describe('computeShotStaleness', () => {
       snapshotInputHash: 'image-stored',
     });
     loadNarrowShotPromptContext.mockResolvedValue({});
-    computeVisualPromptInputHash.mockResolvedValue('visual-moved');
-    computeMotionPromptInputHash.mockResolvedValue('motion-moved');
+    hashVisualPromptInput.mockResolvedValue('visual-moved');
+    hashMotionPromptInput.mockResolvedValue('motion-moved');
 
     const result = await computeShotStaleness({
       scopedDb: makeScopedDb({
@@ -199,8 +197,8 @@ describe('computeShotStaleness', () => {
     });
     loadNarrowShotPromptContext.mockResolvedValue({});
     // Stored hashes diverge → would be stale without a claim.
-    computeVisualPromptInputHash.mockResolvedValue('visual-live');
-    computeMotionPromptInputHash.mockResolvedValue('motion-live');
+    hashVisualPromptInput.mockResolvedValue('visual-live');
+    hashMotionPromptInput.mockResolvedValue('motion-live');
 
     const result = await computeShotStaleness({
       scopedDb: makeScopedDb({
@@ -241,8 +239,8 @@ describe('computeShotStaleness', () => {
       snapshotInputHash: 'image-live',
     });
     loadNarrowShotPromptContext.mockResolvedValue({});
-    computeVisualPromptInputHash.mockResolvedValue('visual-live');
-    computeMotionPromptInputHash.mockResolvedValue('motion-live');
+    hashVisualPromptInput.mockResolvedValue('visual-live');
+    hashMotionPromptInput.mockResolvedValue('motion-live');
     const scopedDb = makeScopedDb({
       motionSelectedHash: 'motion-old',
       visualSelected: { inputHash: 'visual-old' },
@@ -250,7 +248,7 @@ describe('computeShotStaleness', () => {
     // The hash mocks are module-level and shared across tests; only calls made
     // by THIS one may count towards the assertions below.
     buildRegenerateShotSnapshot.mockClear();
-    computeVisualPromptInputHash.mockClear();
+    hashVisualPromptInput.mockClear();
 
     const result = await computeShotStaleness({
       scopedDb,
@@ -271,7 +269,7 @@ describe('computeShotStaleness', () => {
     // Short-circuits before any work: the batch fn runs this for every shot in
     // the sequence, on the poll loop that runs hardest during generation.
     expect(scopedDb.framePromptVersions.getSelected).not.toHaveBeenCalled();
-    expect(computeVisualPromptInputHash).not.toHaveBeenCalled();
+    expect(hashVisualPromptInput).not.toHaveBeenCalled();
     expect(buildRegenerateShotSnapshot).not.toHaveBeenCalled();
   });
 
@@ -282,8 +280,8 @@ describe('computeShotStaleness', () => {
         snapshotInputHash: 'image-live',
       });
       loadNarrowShotPromptContext.mockResolvedValue({});
-      computeVisualPromptInputHash.mockResolvedValue('visual-live');
-      computeMotionPromptInputHash.mockResolvedValue('motion-live');
+      hashVisualPromptInput.mockResolvedValue('visual-live');
+      hashMotionPromptInput.mockResolvedValue('motion-live');
 
       const result = await computeShotStaleness({
         scopedDb: makeScopedDb({
@@ -313,8 +311,8 @@ describe('computeShotStaleness', () => {
       snapshotInputHash: 'image-live',
     });
     loadNarrowShotPromptContext.mockResolvedValue({});
-    computeVisualPromptInputHash.mockResolvedValue('visual-stored');
-    computeMotionPromptInputHash.mockResolvedValue('motion-stored');
+    hashVisualPromptInput.mockResolvedValue('visual-stored');
+    hashMotionPromptInput.mockResolvedValue('motion-stored');
 
     const still = asStub<FrameVariant>({
       id: 'fv-1',
@@ -359,8 +357,8 @@ describe('computeShotStaleness', () => {
       snapshotInputHash: 'image-live',
     });
     loadNarrowShotPromptContext.mockResolvedValue({});
-    computeVisualPromptInputHash.mockResolvedValue('visual-stored');
-    computeMotionPromptInputHash.mockResolvedValue('motion-stored');
+    hashVisualPromptInput.mockResolvedValue('visual-stored');
+    hashMotionPromptInput.mockResolvedValue('motion-stored');
 
     const still = asStub<FrameVariant>({
       id: 'fv-1',
@@ -406,8 +404,8 @@ describe('staleness causes (#1194)', () => {
       snapshotInputHash: 'image-live',
     });
     loadNarrowShotPromptContext.mockResolvedValue({});
-    computeVisualPromptInputHash.mockResolvedValue('visual-stored');
-    computeMotionPromptInputHash.mockResolvedValue('motion-stored');
+    hashVisualPromptInput.mockResolvedValue('visual-stored');
+    hashMotionPromptInput.mockResolvedValue('motion-stored');
 
     const generated = new Date('2026-01-01T00:00:00Z');
     const before = new Date('2025-12-31T00:00:00Z');
@@ -491,8 +489,8 @@ describe('per-shot start-frame override', () => {
       snapshotInputHash: 'image-stored',
     });
     loadNarrowShotPromptContext.mockResolvedValue({});
-    computeVisualPromptInputHash.mockResolvedValue('visual-stored');
-    computeMotionPromptInputHash.mockResolvedValue('motion-stored');
+    hashVisualPromptInput.mockResolvedValue('visual-stored');
+    hashMotionPromptInput.mockResolvedValue('motion-stored');
   });
 
   it('hashes a reference-only SHOT with no still, on a start-frame sequence', async () => {

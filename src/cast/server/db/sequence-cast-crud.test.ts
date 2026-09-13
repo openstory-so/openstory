@@ -14,7 +14,7 @@
  */
 
 import { charactersToBible } from '@/cast/server/bibles-from-scoped';
-import { computeVisualPromptInputHash } from '@/shots/input-hash';
+import { hashVisualPromptInput } from '@/shots/input-hash';
 import type { StyleConfig } from '@/platform/server/db/schema';
 import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
@@ -121,7 +121,7 @@ const HASH_SCENE = {
  */
 async function liveVisualPromptHash(): Promise<string> {
   const cast = await createCharactersMethods(db).listWithSheets(sequenceId);
-  return await computeVisualPromptInputHash({
+  return await hashVisualPromptInput({
     scene: HASH_SCENE,
     styleConfig: STYLE_CONFIG,
     characterBible: charactersToBible(cast),

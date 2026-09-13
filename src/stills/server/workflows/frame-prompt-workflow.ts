@@ -15,7 +15,7 @@ import {
   isContentFilterFinish,
 } from '@/models/content-rejection';
 import { createAdapter } from '@/models/server/create-adapter';
-import { computeVisualPromptInputHash } from '@/shots/input-hash';
+import { hashVisualPromptInput } from '@/shots/input-hash';
 import {
   createUsageCapture,
   extractRunError,
@@ -384,9 +384,10 @@ export class FramePromptWorkflow extends OpenStoryWorkflowEntrypoint<FramePrompt
         );
       }
 
-      // Hash the same scene-scoped `narrowed` context the LLM was given above,
-      // so the stored hash equals the verify-time recompute by construction.
-      const inputHash = await computeVisualPromptInputHash(narrowed);
+      // One hasher for stamp and verify (#1616). completePending prefers
+      // the claim's pendingInputHash and uses this as fallback when a
+      // concurrent edit demoted the claim.
+      const inputHash = await hashVisualPromptInput(narrowed);
 
       finalVersionId = await step.do(
         'save-visual-prompt-to-db',

@@ -416,8 +416,14 @@ export async function talentSheetInputHashMatches(
 // different hash for identical inputs, since LLM output is non-deterministic.
 // ---------------------------------------------------------------------------
 
-import type { DialogueVoiceHashInput } from '@/motion/dialogue-tts';
-import { dialogueVoicesHashBody } from '@/motion/dialogue-tts';
+import type {
+  DialogueVoiceHashInput,
+  VoiceCharacter,
+} from '@/motion/dialogue-tts';
+import {
+  dialogueVoicesForHash,
+  dialogueVoicesHashBody,
+} from '@/motion/dialogue-tts';
 import type {
   CharacterBibleEntry,
   ElementBibleEntry,
@@ -430,58 +436,147 @@ import type {
   VideoManifestEntry,
 } from '@/platform/server/db/schema';
 import { styleConfigHashBody } from '@/look/style-config';
+import { z } from 'zod';
 
-export type PromptSceneContextHashInput = {
-  /**
-   * Scene the prompt is being generated for. `prompts` and `continuity` are
-   * stripped before hashing — they are downstream LLM output, not input.
-   */
+/**
+ * Visual-prompt assembler DTO (#1616). Every channel is required so stamp
+ * and verify cannot independently omit a field. Empty is spelled `[]`, not
+ * omitted — the hash *body* still drops empty motion-only channels
+ * (`LEGACY_HASH_UNTIL` 2026-09-28).
+ */
+export type VisualPromptHashInput = {
   scene: Scene;
-  /** Sequence style config (look/feel knobs that influence prompt phrasing). */
   styleConfig: StyleConfig;
-  /** Character bible entries; sorted by `characterId` before hashing. */
   characterBible: readonly CharacterBibleEntry[];
-  /** Location bible entries; sorted by `locationId` before hashing. */
   locationBible: readonly LocationBibleEntry[];
-  /** Element bible entries; sorted by `token` before hashing. */
-  elementBible?: readonly ElementBibleEntry[];
-  /** Aspect ratio influences composition guidance in the prompt. */
+  elementBible: readonly ElementBibleEntry[];
   aspectRatio: string;
-  /** Analysis model id (e.g. `anthropic/claude-haiku-4.5`). */
   analysisModel: string;
-  /**
-   * URL of the rendered starting-shot image this prompt was conditioned on
-   * (`shots.thumbnailUrl`), or null when no image has been rendered yet. Only
-   * the MOTION prompt consumes this — motion is now generated with the actual
-   * still as a vision input (#929). The stored URL embeds a fresh id per
-   * render, so re-rendering the still changes it and re-stales the motion
-   * prompt. The visual prompt ignores it (the visual prompt produces the
-   * image — it can't depend on it).
-   */
+};
+
+/**
+ * Motion-prompt assembler DTO. Extends the visual channels with the
+ * motion-only ones, all required. `characterVoices: []` is voiceless;
+ * the hasher projects dialogue + voices into the shape-stable body.
+ */
+export type MotionPromptHashInput = VisualPromptHashInput & {
+  startingFrameImageUrl: string | null;
+  referenceOnly: boolean;
+  characterVoices: readonly VoiceCharacter[];
+};
+
+export type VisualPromptInputHash = string & {
+  readonly __brand: 'VisualPromptInputHash';
+};
+export type MotionPromptInputHash = string & {
+  readonly __brand: 'MotionPromptInputHash';
+};
+
+/* oxlint-disable typescript/no-unsafe-type-assertion -- sole brand constructors */
+const visualPromptInputHash = (hex: string): VisualPromptInputHash =>
+  hex as VisualPromptInputHash;
+const motionPromptInputHash = (hex: string): MotionPromptInputHash =>
+  hex as MotionPromptInputHash;
+/* oxlint-enable typescript/no-unsafe-type-assertion */
+
+const voiceCharacterSchema = z.object({
+  name: z.string(),
+  voiceId: z.string().nullable().optional(),
+  voiceOnly: z.boolean().optional(),
+});
+
+/** Any non-null object — Scene / StyleConfig / bible rows are validated by TS. */
+const requiredObject = z.custom<object>(
+  (value) =>
+    value !== null && typeof value === 'object' && !Array.isArray(value),
+  { error: 'required object' }
+);
+
+const visualPromptHashInputSchema = z.object({
+  scene: requiredObject,
+  styleConfig: requiredObject,
+  characterBible: z.array(requiredObject),
+  locationBible: z.array(requiredObject),
+  elementBible: z.array(requiredObject),
+  aspectRatio: z.string(),
+  analysisModel: z.string(),
+});
+
+const motionPromptHashInputSchema = visualPromptHashInputSchema.extend({
+  startingFrameImageUrl: z.string().nullable(),
+  referenceOnly: z.boolean(),
+  characterVoices: z.array(voiceCharacterSchema),
+});
+
+/**
+ * Runtime-parse a visual assembler DTO. A missing channel on a durable JSON
+ * replay fails the run instead of hashing a different shape than verify.
+ */
+function assembleVisualPromptHashInput(raw: unknown): VisualPromptHashInput {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Zod object → assembler DTO
+  return visualPromptHashInputSchema.parse(raw) as VisualPromptHashInput;
+}
+
+/**
+ * Runtime-parse a motion assembler DTO. `characterVoices` is required with
+ * no default — omitting it on replay is a failed run, not `[]`.
+ */
+export function assembleMotionPromptHashInput(
+  raw: unknown
+): MotionPromptHashInput {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Zod object → assembler DTO
+  return motionPromptHashInputSchema.parse(raw) as MotionPromptHashInput;
+}
+
+/**
+ * Hash-body input. Motion-only channels stay optional HERE so empty/omitted
+ * is load-bearing (no stored voiceless digest moves). Callers never build
+ * this; they go through {@link MotionPromptHashInput} /
+ * {@link VisualPromptHashInput}.
+ */
+type PromptSceneContextHashInput = {
+  scene: Scene;
+  styleConfig: StyleConfig;
+  characterBible: readonly CharacterBibleEntry[];
+  locationBible: readonly LocationBibleEntry[];
+  elementBible?: readonly ElementBibleEntry[];
+  aspectRatio: string;
+  analysisModel: string;
   startingFrameImageUrl?: string | null;
-  /**
-   * Reference-only mode — the sequence renders straight to video with no start
-   * frames. Only the MOTION prompt consumes this: the mode picks a different
-   * LLM template (compose-the-frame-then-move-it, rather than animate-this-
-   * still), so the same scene yields a materially different prompt under it
-   * and flipping the mode must re-stale what is stored.
-   *
-   * Joins the hash body only when true, so every existing image-to-video row's
-   * digest is unchanged and no `PROMPT_INPUT_HASH_VERSION` bump or null-sweep
-   * migration is needed — the same shape-stable trick `styleConfigHashBody`
-   * uses for its optional refinements.
-   */
   referenceOnly?: boolean;
-  /**
-   * Dialogue TTS (#1554): voice id + line + TTS model, only for lines whose
-   * speaker has a designed voice. Joins the MOTION prompt hash only when a
-   * voice is present — the same shape-stable trick as `referenceOnly` — so
-   * editing a line or changing a voice re-stales the shot and no stored
-   * digest moves for a voiceless one. The visual prompt ignores it: a still
-   * does not speak.
-   */
   dialogueVoices?: readonly DialogueVoiceHashInput[];
 };
+
+function toVisualBodyInput(
+  input: VisualPromptHashInput
+): PromptSceneContextHashInput {
+  return {
+    scene: input.scene,
+    styleConfig: input.styleConfig,
+    characterBible: input.characterBible,
+    locationBible: input.locationBible,
+    elementBible: input.elementBible,
+    aspectRatio: input.aspectRatio,
+    analysisModel: input.analysisModel,
+  };
+}
+
+function toMotionBodyInput(
+  input: MotionPromptHashInput
+): PromptSceneContextHashInput {
+  return {
+    ...toVisualBodyInput(input),
+    startingFrameImageUrl: input.startingFrameImageUrl,
+    referenceOnly: input.referenceOnly,
+    dialogueVoices: dialogueVoicesForHash(
+      {
+        presence: input.scene.originalScript.dialogue.length > 0,
+        lines: input.scene.originalScript.dialogue,
+      },
+      input.characterVoices
+    ),
+  };
+}
 
 /**
  * Project a scene down to ONLY the fields that are genuine pre-prompt inputs.
@@ -692,17 +787,21 @@ function motionPromptHashBody(
   };
 }
 
-export function computeVisualPromptInputHash(
-  input: PromptSceneContextHashInput
-): Promise<string> {
-  return sha256Hex(visualPromptHashBody(input, 'current'));
+export async function hashVisualPromptInput(
+  raw: VisualPromptHashInput | MotionPromptHashInput
+): Promise<VisualPromptInputHash> {
+  const input = assembleVisualPromptHashInput(raw);
+  return visualPromptInputHash(
+    await sha256Hex(visualPromptHashBody(toVisualBodyInput(input), 'current'))
+  );
 }
 
 /** v4 digest. Verify/tests only — delete after {@link LEGACY_HASH_UNTIL}. */
-export function computeVisualPromptInputHashV4(
-  input: PromptSceneContextHashInput
+export async function computeVisualPromptInputHashV4(
+  raw: VisualPromptHashInput | MotionPromptHashInput
 ): Promise<string> {
-  return sha256Hex(visualPromptHashBody(input, 'v4'));
+  const input = assembleVisualPromptHashInput(raw);
+  return sha256Hex(visualPromptHashBody(toVisualBodyInput(input), 'v4'));
 }
 
 /**
@@ -711,9 +810,10 @@ export function computeVisualPromptInputHashV4(
  */
 export async function visualPromptInputHashMatches(
   stored: string | null,
-  input: PromptSceneContextHashInput
+  raw: VisualPromptHashInput | MotionPromptHashInput
 ): Promise<boolean> {
   if (!stored) return false;
+  const input = toVisualBodyInput(assembleVisualPromptHashInput(raw));
   const [current, v5titled, v5named, v4] = await Promise.all([
     sha256Hex(visualPromptHashBody(input, 'current')),
     sha256Hex(visualPromptHashBody(input, 'v5-titled')),
@@ -728,24 +828,29 @@ export async function visualPromptInputHashMatches(
   );
 }
 
-export function computeMotionPromptInputHash(
-  input: PromptSceneContextHashInput
-): Promise<string> {
-  return sha256Hex(motionPromptHashBody(input, 'current'));
+export async function hashMotionPromptInput(
+  raw: MotionPromptHashInput
+): Promise<MotionPromptInputHash> {
+  const input = assembleMotionPromptHashInput(raw);
+  return motionPromptInputHash(
+    await sha256Hex(motionPromptHashBody(toMotionBodyInput(input), 'current'))
+  );
 }
 
 /** v4 digest. Verify/tests only — delete after {@link LEGACY_HASH_UNTIL}. */
-export function computeMotionPromptInputHashV4(
-  input: PromptSceneContextHashInput
+export async function computeMotionPromptInputHashV4(
+  raw: MotionPromptHashInput
 ): Promise<string> {
-  return sha256Hex(motionPromptHashBody(input, 'v4'));
+  const input = assembleMotionPromptHashInput(raw);
+  return sha256Hex(motionPromptHashBody(toMotionBodyInput(input), 'v4'));
 }
 
 export async function motionPromptInputHashMatches(
   stored: string | null,
-  input: PromptSceneContextHashInput
+  raw: MotionPromptHashInput
 ): Promise<boolean> {
   if (!stored) return false;
+  const input = toMotionBodyInput(assembleMotionPromptHashInput(raw));
   const [current, v5titled, v5named, v4] = await Promise.all([
     sha256Hex(motionPromptHashBody(input, 'current')),
     sha256Hex(motionPromptHashBody(input, 'v5-titled')),

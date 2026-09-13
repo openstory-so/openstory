@@ -4,9 +4,9 @@ import {
   usesStartFrame,
 } from './use-start-frame';
 import {
-  computeMotionPromptInputHash,
+  hashMotionPromptInput,
   computeMusicPromptInputHash,
-  computeVisualPromptInputHash,
+  hashVisualPromptInput,
   motionPromptInputHashMatches,
   musicPromptInputHashMatches,
   visualPromptInputHashMatches,
@@ -359,8 +359,8 @@ export const saveShotPromptFn = createServerFn({ method: 'POST' })
         const narrowed = narrowShotPromptContext(ctx);
         inputHash =
           data.promptType === 'visual'
-            ? await computeVisualPromptInputHash(narrowed)
-            : await computeMotionPromptInputHash(narrowed);
+            ? await hashVisualPromptInput(narrowed)
+            : await hashMotionPromptInput(narrowed);
         analysisModel = ctx.analysisModel;
       } catch (error) {
         logger.warn(
@@ -556,8 +556,8 @@ export const regenerateShotPromptFn = createServerFn({ method: 'POST' })
     const narrowed = narrowShotPromptContext(ctx);
     const liveHash =
       data.promptType === 'visual'
-        ? await computeVisualPromptInputHash(narrowed)
-        : await computeMotionPromptInputHash(narrowed);
+        ? await hashVisualPromptInput(narrowed)
+        : await hashMotionPromptInput(narrowed);
     const storedHash =
       data.promptType === 'visual'
         ? ((await scopedDb.framePromptVersions.getSelected(frame.id))
@@ -648,9 +648,9 @@ export const regenerateShotPromptFn = createServerFn({ method: 'POST' })
       scene,
       aspectRatio: sequence.aspectRatio,
       resolution: sequence.resolution,
-      characterBible: ctx.characterBible,
-      locationBible: ctx.locationBible,
-      elementBible: ctx.elementBible,
+      characterBible: [...ctx.characterBible],
+      locationBible: [...ctx.locationBible],
+      elementBible: [...ctx.elementBible],
       styleConfig: ctx.styleConfig,
       analysisModelId:
         getAnalysisModelById(ctx.analysisModel)?.id ?? DEFAULT_ANALYSIS_MODEL,
@@ -729,6 +729,7 @@ export const regenerateShotPromptFn = createServerFn({ method: 'POST' })
                 // through the sequence row, so it has to reach the child too or
                 // the stamp and the verify disagree.
                 referenceOnly: shotReferenceOnly,
+                characterVoices: [...ctx.characterVoices],
                 sceneBefore,
                 sceneAfter,
                 targetVersionId: claim.id,

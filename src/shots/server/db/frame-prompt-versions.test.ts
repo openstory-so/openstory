@@ -399,7 +399,6 @@ describe('framePromptVersions.completePendingAiVersion', () => {
       versionId: claim.id,
       frameId,
       text: 'Regenerated prompt',
-      inputHash: 'live-hash',
       analysisModel: HAIKU,
     });
 
@@ -442,7 +441,7 @@ describe('framePromptVersions.completePendingAiVersion', () => {
       versionId: claim.id,
       frameId,
       text: 'Older run output',
-      inputHash: 'other-hash',
+      inputHash: 'live-hash',
       analysisModel: HAIKU,
     });
 
@@ -482,7 +481,6 @@ describe('framePromptVersions.completePendingAiVersion', () => {
       versionId: claim.id,
       frameId,
       text: 'Should be discarded',
-      inputHash: 'live-hash',
       analysisModel: HAIKU,
     });
 
@@ -521,7 +519,6 @@ describe('framePromptVersions.completePendingAiVersion', () => {
       versionId: claim.id,
       frameId,
       text: 'Same output',
-      inputHash: 'hash-1',
       analysisModel: HAIKU,
     });
 
@@ -560,7 +557,6 @@ describe('framePromptVersions.completePendingAiVersion', () => {
       versionId: claim.id,
       frameId,
       text: 'Fresh different output',
-      inputHash: 'hash-1',
       analysisModel: HAIKU,
     });
 
@@ -594,7 +590,6 @@ describe('framePromptVersions.completePendingAiVersion', () => {
         versionId: claim.id,
         frameId,
         text: 'Wrong frame',
-        inputHash: 'live-hash',
         analysisModel: HAIKU,
       })
     ).rejects.toThrow(/not found for frame/);

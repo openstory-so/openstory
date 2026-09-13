@@ -80,7 +80,8 @@ import {
   derivedShotForItem,
   shotWorkItems,
 } from '@/shots/server/shot-work-items';
-import { sha256Hex } from '@/shots/input-hash';
+import { hashVisualPromptInput } from '@/shots/input-hash';
+import { narrowShotPromptContext } from '@/shots/server/prompt-context';
 import {
   computeShotImagesHashFromDto,
   type ShotImageSceneSnapshot,
@@ -462,6 +463,14 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       characterBible,
       talentCharacterMatches
     );
+    const characterVoicesFromCast = castCharacterBible.map((character) => ({
+      name: character.name,
+      voiceId:
+        talentCharacterMatches.find(
+          (match) => match.characterId === character.characterId
+        )?.voiceId ?? null,
+      voiceOnly: character.voiceOnly,
+    }));
 
     // Cast, locations and script-detected elements land NOW, sheet-less, so a
     // run stopped at Script shows the whole bible for review before any
@@ -645,6 +654,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       scenesForPrompts: Scene[];
       startingFrameImageUrls: Record<string, string | null>;
       visualSummaryBySceneId: Record<string, string>;
+      characterVoices: MotionMusicPromptsWorkflowInput['characterVoices'];
     }) =>
       spawnAndAwaitChild<
         MotionMusicPromptsWorkflowInput,
@@ -673,6 +683,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           visualSummaryBySceneId: args.visualSummaryBySceneId,
           musicPromptSource: input.musicPromptSource,
           referenceOnly,
+          characterVoices: args.characterVoices,
         },
         spawnStepName: 'spawn-motion-music-prompts',
         awaitStepName: 'await-motion-music-prompts',
@@ -859,6 +870,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
                   scenes.map((scene) => [scene.sceneId, null])
                 ),
                 visualSummaryBySceneId: {},
+                characterVoices: characterVoicesFromCast,
               })
             : Promise.resolve(null),
         ])
@@ -1030,11 +1042,17 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           await scopedDb.framePromptVersions.writeAiVersion({
             frameId,
             text: derived.visualPrompt.fullPrompt,
-            inputHash: await sha256Hex({
-              kind: 'derived-shot-visual',
-              shotId: item.mapping.shotId,
-              text: derived.visualPrompt.fullPrompt,
-            }),
+            inputHash: await hashVisualPromptInput(
+              narrowShotPromptContext({
+                scene: item.scene,
+                styleConfig,
+                characterBible,
+                locationBible,
+                elementBible,
+                aspectRatio,
+                analysisModel: analysisModelId,
+              })
+            ),
             analysisModel: analysisModelId,
           });
           // Same refresh the frame-prompt child emits after its write: the
@@ -1176,6 +1194,14 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
                   scenesForPrompts: scenesWithVisualPrompts,
                   startingFrameImageUrls,
                   visualSummaryBySceneId: visualPromptBySceneId,
+                  characterVoices:
+                    charactersWithSheets.length > 0
+                      ? charactersWithSheets.map((row) => ({
+                          name: row.name,
+                          voiceId: row.voiceId ?? null,
+                          voiceOnly: row.voiceOnly,
+                        }))
+                      : characterVoicesFromCast,
                 }),
               ])
             )[0];

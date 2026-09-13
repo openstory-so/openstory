@@ -12,8 +12,8 @@ import {
 import { z } from 'zod';
 import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/models/models';
 import {
-  computeMotionPromptInputHash,
-  computeVisualPromptInputHash,
+  hashMotionPromptInput,
+  hashVisualPromptInput,
   motionPromptInputHashMatches,
   visualPromptInputHashMatches,
 } from '@/shots/input-hash';
@@ -291,7 +291,7 @@ export async function computeShotStaleness(args: {
           analysisModelOverride: latest?.analysisModel ?? null,
           refs,
         });
-        const liveHash = await computeVisualPromptInputHash(ctx);
+        const liveHash = await hashVisualPromptInput(ctx);
         liveHashes.visualPrompt = liveHash;
         visualPrompt = (await visualPromptInputHashMatches(referenceHash, ctx))
           ? 'fresh'
@@ -342,7 +342,7 @@ export async function computeShotStaleness(args: {
           startingFrameImageUrl: motionStartingFrameUrl,
           refs,
         });
-        const liveHash = await computeMotionPromptInputHash(ctx);
+        const liveHash = await hashMotionPromptInput(ctx);
         liveHashes.motionPrompt = liveHash;
         motionPrompt = (await motionPromptInputHashMatches(referenceHash, ctx))
           ? 'fresh'

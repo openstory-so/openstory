@@ -238,9 +238,11 @@ export type UpdateStalePlan = {
   promptContext: PlanPromptContext | null;
   /**
    * Speakers with a designed voice at click time (#1554). Snapshotted so the
-   * motion child never re-reads `characters.voiceId`.
+   * motion child never re-reads `characters.voiceId`. Required — omitting it
+   * type-checks as "voiceless" and is how Update all left a voiced shot stale
+   * (#1616).
    */
-  characterVoices?: {
+  characterVoices: {
     name: string;
     voiceId: string;
     voiceOnly: boolean;
@@ -335,6 +337,7 @@ export async function computePlan(args: {
     sequence: toPlanSequence(sequence),
     music,
     promptContext: null,
+    characterVoices: [],
     targets: [],
     skipped: [],
   };
@@ -440,9 +443,9 @@ export async function computePlan(args: {
         : []
     ),
     promptContext: {
-      characterBible: ctx.characterBible,
-      locationBible: ctx.locationBible,
-      elementBible: ctx.elementBible,
+      characterBible: [...ctx.characterBible],
+      locationBible: [...ctx.locationBible],
+      elementBible: [...ctx.elementBible],
       styleConfig: ctx.styleConfig,
       analysisModelId:
         getAnalysisModelById(ctx.analysisModel)?.id ?? DEFAULT_ANALYSIS_MODEL,

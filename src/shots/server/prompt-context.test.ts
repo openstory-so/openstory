@@ -13,8 +13,8 @@ import {
   sequenceLocationsToBible,
 } from '@/cast/server/bibles-from-scoped';
 import {
-  computeMotionPromptInputHash,
-  computeVisualPromptInputHash,
+  hashMotionPromptInput,
+  hashVisualPromptInput,
 } from '@/shots/input-hash';
 import { narrowShotPromptContext } from './prompt-context';
 import type {
@@ -191,14 +191,17 @@ describe('narrowed hash stability (the user-reported bug)', () => {
     elementBible: [logo],
     aspectRatio: '16:9',
     analysisModel: 'anthropic/claude-haiku-4.5',
+    startingFrameImageUrl: null,
+    referenceOnly: false,
+    characterVoices: [],
   };
 
   it('adding an unreferenced element does NOT change the visual hash', async () => {
-    const before = await computeVisualPromptInputHash(
+    const before = await hashVisualPromptInput(
       narrowShotPromptContext(baseCtx)
     );
     // Simulate uploading a new element that no scene references yet.
-    const after = await computeVisualPromptInputHash(
+    const after = await hashVisualPromptInput(
       narrowShotPromptContext({
         ...baseCtx,
         elementBible: [logo, bottle],
@@ -208,10 +211,10 @@ describe('narrowed hash stability (the user-reported bug)', () => {
   });
 
   it('adding an unreferenced character does NOT change the visual hash', async () => {
-    const before = await computeVisualPromptInputHash(
+    const before = await hashVisualPromptInput(
       narrowShotPromptContext(baseCtx)
     );
-    const after = await computeVisualPromptInputHash(
+    const after = await hashVisualPromptInput(
       narrowShotPromptContext({
         ...baseCtx,
         characterBible: [alice, bob],
@@ -221,10 +224,10 @@ describe('narrowed hash stability (the user-reported bug)', () => {
   });
 
   it('adding an unreferenced location does NOT change the motion hash', async () => {
-    const before = await computeMotionPromptInputHash(
+    const before = await hashMotionPromptInput(
       narrowShotPromptContext(baseCtx)
     );
-    const after = await computeMotionPromptInputHash(
+    const after = await hashMotionPromptInput(
       narrowShotPromptContext({
         ...baseCtx,
         locationBible: [beach, forest],
@@ -234,14 +237,14 @@ describe('narrowed hash stability (the user-reported bug)', () => {
   });
 
   it('referencing a new element via continuity tags DOES change the hash', async () => {
-    const before = await computeVisualPromptInputHash(
+    const before = await hashVisualPromptInput(
       narrowShotPromptContext({
         ...baseCtx,
         elementBible: [logo, bottle],
       })
     );
     // Same bibles, but now the scene's continuity additionally references BOTTLE.
-    const after = await computeVisualPromptInputHash(
+    const after = await hashVisualPromptInput(
       narrowShotPromptContext({
         ...baseCtx,
         scene: sceneReferencing({
@@ -266,13 +269,13 @@ describe('narrowed hash stability (the user-reported bug)', () => {
       environmentTag: 'beach',
       elementTags: ['LOGO'],
     };
-    const before = await computeVisualPromptInputHash(
+    const before = await hashVisualPromptInput(
       narrowShotPromptContext({
         ...baseCtx,
         scene: sceneReferencing({ ...continuityTags, durationSeconds: 7 }),
       })
     );
-    const after = await computeVisualPromptInputHash(
+    const after = await hashVisualPromptInput(
       narrowShotPromptContext({
         ...baseCtx,
         scene: sceneReferencing({ ...continuityTags, durationSeconds: 8 }),
@@ -287,13 +290,13 @@ describe('narrowed hash stability (the user-reported bug)', () => {
       environmentTag: 'beach',
       elementTags: ['LOGO'],
     };
-    const before = await computeMotionPromptInputHash(
+    const before = await hashMotionPromptInput(
       narrowShotPromptContext({
         ...baseCtx,
         scene: sceneReferencing({ ...continuityTags, durationSeconds: 7 }),
       })
     );
-    const after = await computeMotionPromptInputHash(
+    const after = await hashMotionPromptInput(
       narrowShotPromptContext({
         ...baseCtx,
         scene: sceneReferencing({ ...continuityTags, durationSeconds: 8 }),
@@ -315,13 +318,16 @@ describe('prompt-driving projection (#867 §4.2)', () => {
     elementBible: [],
     aspectRatio: '16:9',
     analysisModel: 'anthropic/claude-haiku-4.5',
+    startingFrameImageUrl: null,
+    referenceOnly: false,
+    characterVoices: [],
   };
 
   it('a consistencyTag change on a referenced character does NOT move the visual hash', async () => {
-    const before = await computeVisualPromptInputHash(
+    const before = await hashVisualPromptInput(
       narrowShotPromptContext(baseCtx)
     );
-    const after = await computeVisualPromptInputHash(
+    const after = await hashVisualPromptInput(
       narrowShotPromptContext({
         ...baseCtx,
         characterBible: [{ ...alice, consistencyTag: 'alice_recast_xyz' }],
@@ -331,10 +337,10 @@ describe('prompt-driving projection (#867 §4.2)', () => {
   });
 
   it('a firstMention change on a referenced location does NOT move the motion hash', async () => {
-    const before = await computeMotionPromptInputHash(
+    const before = await hashMotionPromptInput(
       narrowShotPromptContext(baseCtx)
     );
-    const after = await computeMotionPromptInputHash(
+    const after = await hashMotionPromptInput(
       narrowShotPromptContext({
         ...baseCtx,
         locationBible: [
@@ -349,10 +355,10 @@ describe('prompt-driving projection (#867 §4.2)', () => {
   });
 
   it('a rename on a referenced location does NOT move the visual hash', async () => {
-    const before = await computeVisualPromptInputHash(
+    const before = await hashVisualPromptInput(
       narrowShotPromptContext(baseCtx)
     );
-    const after = await computeVisualPromptInputHash(
+    const after = await hashVisualPromptInput(
       narrowShotPromptContext({
         ...baseCtx,
         locationBible: [{ ...beach, name: 'The Shore' }],
@@ -362,10 +368,10 @@ describe('prompt-driving projection (#867 §4.2)', () => {
   });
 
   it('a rename on a referenced character does NOT move the visual hash', async () => {
-    const before = await computeVisualPromptInputHash(
+    const before = await hashVisualPromptInput(
       narrowShotPromptContext(baseCtx)
     );
-    const after = await computeVisualPromptInputHash(
+    const after = await hashVisualPromptInput(
       narrowShotPromptContext({
         ...baseCtx,
         characterBible: [{ ...alice, name: 'Alicia' }],
@@ -375,10 +381,10 @@ describe('prompt-driving projection (#867 §4.2)', () => {
   });
 
   it('a physicalDescription change on a referenced character DOES move the visual hash', async () => {
-    const before = await computeVisualPromptInputHash(
+    const before = await hashVisualPromptInput(
       narrowShotPromptContext(baseCtx)
     );
-    const after = await computeVisualPromptInputHash(
+    const after = await hashVisualPromptInput(
       narrowShotPromptContext({
         ...baseCtx,
         characterBible: [{ ...alice, physicalDescription: 'now bearded' }],
@@ -477,6 +483,9 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
       elementBible: [],
       aspectRatio: '16:9',
       analysisModel: 'anthropic/claude-haiku-4.5',
+      startingFrameImageUrl: null,
+      referenceOnly: false,
+      characterVoices: [],
     });
 
   it('stamp (cast bible fed to prompt) equals verify (cast bible read from the DB)', async () => {
@@ -484,15 +493,15 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
     if (!castSarah) throw new Error('expected one cast entry');
     const verifyBible = charactersToBible([makeCharacter(castSarah)]);
 
-    const stampHash = await computeVisualPromptInputHash(ctxWith([castSarah]));
-    const verifyHash = await computeVisualPromptInputHash(ctxWith(verifyBible));
+    const stampHash = await hashVisualPromptInput(ctxWith([castSarah]));
+    const verifyHash = await hashVisualPromptInput(ctxWith(verifyBible));
     expect(stampHash).toBe(verifyHash);
   });
 
   it('hashing the raw pre-cast bible (the old behaviour) diverged from the DB', async () => {
     const cast = buildCastCharacterBible([rawSarah], [match]);
-    const rawHash = await computeVisualPromptInputHash(ctxWith([rawSarah]));
-    const castHash = await computeVisualPromptInputHash(ctxWith(cast));
+    const rawHash = await hashVisualPromptInput(ctxWith([rawSarah]));
+    const castHash = await hashVisualPromptInput(ctxWith(cast));
     // physicalDescription + age/gender/ethnicity differ between raw and cast, so
     // the pre-fix stamp could never match the cast DB row — permanent staleness.
     expect(rawHash).not.toBe(castHash);
@@ -508,15 +517,15 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
     if (!castSarah) throw new Error('expected one cast entry');
     const verifyBible = charactersToBible([makeCharacter(castSarah)]);
 
-    const stampHash = await computeMotionPromptInputHash(ctxWith([castSarah]));
-    const verifyHash = await computeMotionPromptInputHash(ctxWith(verifyBible));
+    const stampHash = await hashMotionPromptInput(ctxWith([castSarah]));
+    const verifyHash = await hashMotionPromptInput(ctxWith(verifyBible));
     expect(stampHash).toBe(verifyHash);
   });
 
   it('motion: hashing the raw pre-cast bible diverged from the cast DB row', async () => {
     const cast = buildCastCharacterBible([rawSarah], [match]);
-    const rawHash = await computeMotionPromptInputHash(ctxWith([rawSarah]));
-    const castHash = await computeMotionPromptInputHash(ctxWith(cast));
+    const rawHash = await hashMotionPromptInput(ctxWith([rawSarah]));
+    const castHash = await hashMotionPromptInput(ctxWith(cast));
     expect(rawHash).not.toBe(castHash);
   });
 });
@@ -615,12 +624,8 @@ describe('location/element bible round-trip — stamp matches verify (#867)', ()
       const verifyBible = sequenceLocationsToBible([
         makeLocationRow(stampLocation),
       ]);
-      const stamp = await computeVisualPromptInputHash(
-        ctxWith([stampLocation], [])
-      );
-      const verify = await computeVisualPromptInputHash(
-        ctxWith(verifyBible, [])
-      );
+      const stamp = await hashVisualPromptInput(ctxWith([stampLocation], []));
+      const verify = await hashVisualPromptInput(ctxWith(verifyBible, []));
       expect(stamp).toBe(verify);
     }
   );
@@ -642,17 +647,15 @@ describe('location/element bible round-trip — stamp matches verify (#867)', ()
         firstMention: { sceneId: '', text: '', lineNumber: 0 },
       }),
     ]);
-    const stamp = await computeVisualPromptInputHash(
-      ctxWith([stampLocation], [])
-    );
-    const verify = await computeVisualPromptInputHash(ctxWith(dbReadback, []));
+    const stamp = await hashVisualPromptInput(ctxWith([stampLocation], []));
+    const verify = await hashVisualPromptInput(ctxWith(dbReadback, []));
     expect(stamp).toBe(verify);
   });
 
   it('element: stamp == verify through the DB readback', async () => {
     const verifyBible = sequenceElementsToBible([makeElementRow(logo)]);
-    const stamp = await computeVisualPromptInputHash(ctxWith([], [logo]));
-    const verify = await computeVisualPromptInputHash(ctxWith([], verifyBible));
+    const stamp = await hashVisualPromptInput(ctxWith([], [logo]));
+    const verify = await hashVisualPromptInput(ctxWith([], verifyBible));
     expect(stamp).toBe(verify);
   });
 
@@ -664,8 +667,8 @@ describe('location/element bible round-trip — stamp matches verify (#867)', ()
         firstMention: { sceneId: '', text: '', lineNumber: 0 },
       }),
     ]);
-    const stamp = await computeVisualPromptInputHash(ctxWith([], [logo]));
-    const verify = await computeVisualPromptInputHash(ctxWith([], dbReadback));
+    const stamp = await hashVisualPromptInput(ctxWith([], [logo]));
+    const verify = await hashVisualPromptInput(ctxWith([], dbReadback));
     expect(stamp).toBe(verify);
   });
 });
