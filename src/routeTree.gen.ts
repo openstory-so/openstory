@@ -43,6 +43,7 @@ import { Route as OauthConsentStartRouteImport } from './routes/oauth/consent-st
 import { Route as OauthLoginRouteImport } from './routes/oauth/login'
 import { Route as R2SplatRouteImport } from './routes/r2.$'
 import { Route as AppAdminModerationRouteImport } from './routes/_app/admin/moderation'
+import { Route as AppAdminRateCardsRouteImport } from './routes/_app/admin/rate-cards'
 import { Route as AppAdminUsageRouteImport } from './routes/_app/admin/usage'
 import { Route as AppGalleryIndexRouteImport } from './routes/_app/gallery/index'
 import { Route as AppImagesIndexRouteImport } from './routes/_app/images/index'
@@ -266,6 +267,11 @@ const R2SplatRoute = R2SplatRouteImport.update({
 const AppAdminModerationRoute = AppAdminModerationRouteImport.update({
   id: '/moderation',
   path: '/moderation',
+  getParentRoute: () => AppAdminRouteRoute,
+} as any)
+const AppAdminRateCardsRoute = AppAdminRateCardsRouteImport.update({
+  id: '/rate-cards',
+  path: '/rate-cards',
   getParentRoute: () => AppAdminRouteRoute,
 } as any)
 const AppAdminUsageRoute = AppAdminUsageRouteImport.update({
@@ -588,6 +594,7 @@ export interface FileRoutesByFullPath {
   '/docs/': typeof DocsIndexRoute
   '/sequences/$id': typeof AppSequencesIdRouteRouteWithChildren
   '/admin/moderation': typeof AppAdminModerationRoute
+  '/admin/rate-cards': typeof AppAdminRateCardsRoute
   '/admin/usage': typeof AppAdminUsageRoute
   '/locations/$locationId': typeof AppLocationsLocationIdRoute
   '/models/$': typeof AppModelsSplatRoute
@@ -676,6 +683,7 @@ export interface FileRoutesByTo {
   '/docs': typeof DocsIndexRoute
   '/sequences/$id': typeof AppSequencesIdRouteRouteWithChildren
   '/admin/moderation': typeof AppAdminModerationRoute
+  '/admin/rate-cards': typeof AppAdminRateCardsRoute
   '/admin/usage': typeof AppAdminUsageRoute
   '/locations/$locationId': typeof AppLocationsLocationIdRoute
   '/models/$': typeof AppModelsSplatRoute
@@ -769,6 +777,7 @@ export interface FileRoutesById {
   '/docs/': typeof DocsIndexRoute
   '/_app/sequences/$id': typeof AppSequencesIdRouteRouteWithChildren
   '/_app/admin/moderation': typeof AppAdminModerationRoute
+  '/_app/admin/rate-cards': typeof AppAdminRateCardsRoute
   '/_app/admin/usage': typeof AppAdminUsageRoute
   '/_app/locations/$locationId': typeof AppLocationsLocationIdRoute
   '/_app/models/$': typeof AppModelsSplatRoute
@@ -861,6 +870,7 @@ export interface FileRouteTypes {
     | '/docs/'
     | '/sequences/$id'
     | '/admin/moderation'
+    | '/admin/rate-cards'
     | '/admin/usage'
     | '/locations/$locationId'
     | '/models/$'
@@ -949,6 +959,7 @@ export interface FileRouteTypes {
     | '/docs'
     | '/sequences/$id'
     | '/admin/moderation'
+    | '/admin/rate-cards'
     | '/admin/usage'
     | '/locations/$locationId'
     | '/models/$'
@@ -1041,6 +1052,7 @@ export interface FileRouteTypes {
     | '/docs/'
     | '/_app/sequences/$id'
     | '/_app/admin/moderation'
+    | '/_app/admin/rate-cards'
     | '/_app/admin/usage'
     | '/_app/locations/$locationId'
     | '/_app/models/$'
@@ -1368,6 +1380,13 @@ declare module '@tanstack/react-router' {
       path: '/moderation'
       fullPath: '/admin/moderation'
       preLoaderRoute: typeof AppAdminModerationRouteImport
+      parentRoute: typeof AppAdminRouteRoute
+    }
+    '/_app/admin/rate-cards': {
+      id: '/_app/admin/rate-cards'
+      path: '/rate-cards'
+      fullPath: '/admin/rate-cards'
+      preLoaderRoute: typeof AppAdminRateCardsRouteImport
       parentRoute: typeof AppAdminRouteRoute
     }
     '/_app/admin/usage': {
@@ -1767,11 +1786,13 @@ declare module '@tanstack/react-router' {
 
 interface AppAdminRouteRouteChildren {
   AppAdminModerationRoute: typeof AppAdminModerationRoute
+  AppAdminRateCardsRoute: typeof AppAdminRateCardsRoute
   AppAdminUsageRoute: typeof AppAdminUsageRoute
 }
 
 const AppAdminRouteRouteChildren: AppAdminRouteRouteChildren = {
   AppAdminModerationRoute: AppAdminModerationRoute,
+  AppAdminRateCardsRoute: AppAdminRateCardsRoute,
   AppAdminUsageRoute: AppAdminUsageRoute,
 }
 
@@ -2017,7 +2038,6 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
 import type { getRouter } from './router.tsx'
 import type { startInstance } from './start.ts'
 declare module '@tanstack/react-start' {
