@@ -12,7 +12,7 @@
  */
 
 import { getAuth } from './config';
-import { resolveOAuthIssuer } from './oauth-provider';
+import { resolveOAuthIssuer, rewriteAuthorizationIss } from './oauth-provider';
 import { resolveOAuthQuery } from '@/platform/auth/oauth-query-snapshot';
 import { OAUTH_SCOPE_DESCRIPTIONS } from './oauth-scopes';
 import {
@@ -294,7 +294,7 @@ export async function decideOAuthConsent(input: {
       accept: input.accept,
       clientId: queryParams.get('client_id'),
     });
-    return { url: redirect };
+    return { url: rewriteAuthorizationIss(redirect, origin) };
   }
   logger.warn('oauth consent rejected', {
     hasSig: queryParams.has('sig'),

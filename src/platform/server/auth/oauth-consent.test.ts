@@ -264,6 +264,25 @@ describe('decideOAuthConsent', () => {
     expect(result.url).toBe('http://127.0.0.1:8765/cb?code=5');
   });
 
+  it('rewrites RFC 9207 iss on the callback to the loopback request origin', async () => {
+    authHandler.mockResolvedValueOnce(
+      jsonRes({
+        url: 'http://127.0.0.1:53100/callback?code=6&iss=http://localhost:3000',
+      })
+    );
+    const result = await decideOAuthConsent({
+      userId: 'user_1',
+      teamId: 'team_1',
+      accept: true,
+      oauthQuery: 'client_id=c1',
+      headers: new Headers({ origin: 'http://localhost:3002' }),
+    });
+    expect(new URL(result.url).searchParams.get('iss')).toBe(
+      'http://localhost:3002'
+    );
+    expect(new URL(result.url).searchParams.get('code')).toBe('6');
+  });
+
   it('strips a leading ? and returns the provider redirect', async () => {
     authHandler.mockResolvedValueOnce(
       jsonRes({ url: 'http://127.0.0.1:8765/cb?code=1' })

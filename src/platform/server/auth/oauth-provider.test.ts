@@ -21,6 +21,7 @@ const {
   pickOAuthIssuer,
   resolveConfiguredOAuthIssuer,
   resolveOAuthIssuer,
+  rewriteAuthorizationIss,
 } = await import('./oauth-provider');
 const { OAUTH_API_SCOPES, OAUTH_SCOPE_DESCRIPTIONS, OAUTH_SCOPES } =
   await import('./oauth-scopes');
@@ -56,7 +57,7 @@ const session = {
 };
 
 beforeEach(() => {
-  delete envState.VITE_APP_URL;
+  envState.VITE_APP_URL = '';
   resolveUserTeam.mockReset();
 });
 
@@ -134,7 +135,7 @@ describe('createOAuthProviderPlugins', () => {
   });
 
   it('uses a loopback dummy issuer at init when VITE_APP_URL is unset', () => {
-    envState.VITE_APP_URL = undefined;
+    envState.VITE_APP_URL = '';
     const jwtPlugin = createOAuthProviderPlugins().find(
       (plugin) => plugin.id === 'jwt'
     );
@@ -198,5 +199,32 @@ describe('createOAuthProviderPlugins', () => {
     expect(options.loginPage).toBe('/oauth/login');
     expect(options.consentPage).toBe('/oauth/consent-start');
     expect(options.postLogin?.page).toBe('/oauth/consent-start');
+  });
+});
+
+describe('rewriteAuthorizationIss', () => {
+  const callback =
+    'http://127.0.0.1:53100/callback?code=abc&state=s&iss=http%3A%2F%2Flocalhost%3A3000';
+
+  it('rewrites a pinned :3000 iss to the loopback request origin', () => {
+    const rewritten = rewriteAuthorizationIss(
+      callback,
+      'http://localhost:3002'
+    );
+    expect(new URL(rewritten).searchParams.get('iss')).toBe(
+      'http://localhost:3002'
+    );
+    expect(new URL(rewritten).searchParams.get('code')).toBe('abc');
+  });
+
+  it('leaves production callbacks alone even when iss differs', () => {
+    expect(rewriteAuthorizationIss(callback, 'https://openstory.so')).toBe(
+      callback
+    );
+  });
+
+  it('leaves URLs without iss unchanged', () => {
+    const url = 'http://127.0.0.1:53100/callback?code=abc';
+    expect(rewriteAuthorizationIss(url, 'http://localhost:3002')).toBe(url);
   });
 });

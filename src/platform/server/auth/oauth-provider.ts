@@ -71,6 +71,32 @@ export function isLoopbackOrigin(origin: string): boolean {
 }
 
 /**
+ * RFC 9207: the authorization-response `iss` must equal the issuer the
+ * client discovered. Discovery advertises the request origin on loopback
+ * (worktree Vite on :3002 while `VITE_APP_URL` stays :3000), but the jwt
+ * plugin still stamps `iss` from the init-time issuer. Rewrite the query
+ * param so the callback is not rejected as a mix-up.
+ *
+ * Production is unchanged: only loopback request origins are rewritten, so
+ * a spoofed `Host` cannot retarget a deployed issuer.
+ */
+export function rewriteAuthorizationIss(
+  url: string,
+  requestOrigin: string
+): string {
+  if (!isLoopbackOrigin(requestOrigin)) return url;
+  try {
+    const parsed = new URL(url);
+    if (!parsed.searchParams.has('iss')) return url;
+    if (parsed.searchParams.get('iss') === requestOrigin) return url;
+    parsed.searchParams.set('iss', requestOrigin);
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
+/**
  * The OAuth issuer: the app origin, no path. RFC 8414 then puts the metadata
  * at `/.well-known/oauth-authorization-server` on the root, which is where MCP
  * clients look first.
