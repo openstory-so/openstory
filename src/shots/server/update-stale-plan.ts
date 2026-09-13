@@ -236,6 +236,15 @@ export type UpdateStalePlan = {
   /** Non-null only at depth 'music'. */
   music: MusicPlan | null;
   promptContext: PlanPromptContext | null;
+  /**
+   * Speakers with a designed voice at click time (#1554). Snapshotted so the
+   * motion child never re-reads `characters.voiceId`.
+   */
+  characterVoices?: {
+    name: string;
+    voiceId: string;
+    voiceOnly: boolean;
+  }[];
   targets: PlanTarget[];
   skipped: SkippedShot[];
 };
@@ -413,11 +422,23 @@ export async function computePlan(args: {
     scene: sceneForBibles,
   });
 
+  const voiceRows = await scopedDb.characters.list(sequence.id);
   return {
     aspectRatio: sequence.aspectRatio,
     resolution: sequence.resolution,
     sequence: toPlanSequence(sequence),
     music,
+    characterVoices: voiceRows.flatMap((row) =>
+      row.voiceId
+        ? [
+            {
+              name: row.name,
+              voiceId: row.voiceId,
+              voiceOnly: row.voiceOnly,
+            },
+          ]
+        : []
+    ),
     promptContext: {
       characterBible: ctx.characterBible,
       locationBible: ctx.locationBible,

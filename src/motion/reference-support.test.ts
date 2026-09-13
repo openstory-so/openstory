@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { DIALOGUE_CLIP_TOKEN, VIDEO_MODEL_VOICE_TOKEN } from './dialogue-tts';
 import {
   assertReferencesUsable,
+  missingVoiceLines,
   motionReferenceSupport,
   referenceUsability,
   unusableReferenceLines,
@@ -248,5 +250,39 @@ describe('referenceUsability', () => {
     expect(
       referenceUsability({ kind: 'audio', durationSeconds: null }).level
     ).toBe('limited');
+  });
+});
+
+describe('missingVoiceLines', () => {
+  const gone = {
+    character: 'SARAH',
+    voiceToken: 'GONE_VOICE',
+  };
+
+  it('flags a deleted element token on an audio-capable model', () => {
+    expect(missingVoiceLines('seedance_v2_5', { lines: [gone] }, [])).toEqual([
+      "GONE_VOICE, the voice on SARAH's line, was deleted — pick another voice.",
+    ]);
+  });
+
+  it('ignores conversation-clip and video-model sentinels', () => {
+    expect(
+      missingVoiceLines(
+        'seedance_v2_5',
+        {
+          lines: [
+            { character: 'SARAH', voiceToken: DIALOGUE_CLIP_TOKEN },
+            { character: 'Al', voiceToken: VIDEO_MODEL_VOICE_TOKEN },
+          ],
+        },
+        []
+      )
+    ).toEqual([]);
+  });
+
+  it('is empty when the model takes no audio', () => {
+    expect(missingVoiceLines('kling_v3_pro', { lines: [gone] }, [])).toEqual(
+      []
+    );
   });
 });

@@ -24,6 +24,7 @@ import type { MotionPromptWorkflowResult } from './motion-prompt-workflow';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
 import { getLogger } from '@/platform/logger';
+import { getGenerationChannel } from '@/platform/realtime';
 import { sha256Hex } from '@/shots/input-hash';
 import {
   derivedShotForItem,
@@ -70,11 +71,18 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
 
     const childBinding = this.env.MOTION_PROMPT_WORKFLOW;
     const clipItems = shotWorkItems(scenes, shotMapping);
-    const headItems = clipItems.filter((item) => item.isSceneHead);
+    // A 2+ shot scene assembles every clip's prompt from its shot-list spec
+    // (#1517); the LLM only authors 1-shot scenes.
+    const derivedItems = clipItems.filter(
+      (item) => !item.isSceneHead || derivedShotForItem(item, styleConfig)
+    );
+    const headItems = clipItems.filter(
+      (item) => item.isSceneHead && !derivedItems.includes(item)
+    );
 
     // ============================================================
-    // PHASE 3: Motion Prompt Generation — LLM per scene-head, derived
-    // extras (#1486 one clip per shot).
+    // PHASE 3: Motion Prompt Generation — LLM per 1-shot scene, derived
+    // clips for the rest (#1486 one clip per shot).
     // ============================================================
     const settled = await Promise.allSettled(
       headItems.map((item) => {
@@ -178,7 +186,6 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
       );
     }
 
-    const extraItems = clipItems.filter((item) => !item.isSceneHead);
     const extras = await step.do(
       'derive-extra-shot-motion-prompts',
       async (): Promise<MotionPromptWorkflowResult[]> => {
@@ -186,10 +193,18 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
         const headByScene = new Map(
           results.map((result) => [result.sceneId, result])
         );
-        for (const item of extraItems) {
+        for (const item of derivedItems) {
           const derived = derivedShotForItem(item, styleConfig);
+          // Reference-only has no still, so the framing the visual prompt
+          // would have fixed rides in the motion prompt instead — the same
+          // inversion the reference-only LLM template makes.
           const motionPrompt =
-            derived?.motionPrompt ??
+            (derived && referenceOnly
+              ? {
+                  ...derived.motionPrompt,
+                  fullPrompt: `${derived.visualPrompt.fullPrompt}. ${derived.motionPrompt.fullPrompt}`,
+                }
+              : derived?.motionPrompt) ??
             headByScene.get(item.scene.sceneId)?.motionPrompt;
           if (!motionPrompt?.fullPrompt) continue;
           let finalVersionId: string | null = null;
@@ -208,6 +223,16 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
               analysisModel: analysisModelId,
             });
             finalVersionId = written.id;
+            // Same refresh the LLM child emits after its write: the prompt
+            // lives on the `shot.motionPrompt` mirror, not in metadata.
+            await getGenerationChannel(sequenceId).emit(
+              'generation.shot:updated',
+              {
+                shotId: item.mapping.shotId,
+                updateType: 'motion-prompt',
+                metadata: item.scene,
+              }
+            );
           }
           out.push({
             sceneId: item.scene.sceneId,

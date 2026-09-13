@@ -20,6 +20,10 @@ import {
 } from './cost-estimation';
 import { micros, usdToMicros } from './money';
 import { RATE_CARDS } from './rate-card/cards';
+import {
+  estimateTtsCost,
+  TYPICAL_DIALOGUE_CHARS_PER_SHOT,
+} from './elevenlabs-pricing';
 
 const IMAGE_MODEL: TextToImageModel = 'nano_banana_2';
 const VIDEO_A: ImageToVideoModel = 'kling_v3_pro';
@@ -104,8 +108,9 @@ describe('estimateStoryboardCost', () => {
       })
     );
     const llm = Number(estimateLLMCost(3));
-    expect(oneScene).toBe(llm + sheetsScaled + oneShot);
-    expect(oneScene).toBeLessThan(llm + sheetsIfAlwaysThree + oneShot);
+    const tts = Number(estimateTtsCost(TYPICAL_DIALOGUE_CHARS_PER_SHOT));
+    expect(oneScene).toBe(llm + sheetsScaled + oneShot + tts);
+    expect(oneScene).toBeLessThan(llm + sheetsIfAlwaysThree + oneShot + tts);
   });
 
   it('stopAt script is analysis-only', () => {
@@ -399,7 +404,10 @@ describe('estimateStoryboardCost', () => {
           }
         )
       );
-    const analysis = Number(estimateLLMCost(3)) + sheets;
+    const analysis =
+      Number(estimateLLMCost(3)) +
+      sheets +
+      Number(estimateTtsCost(SCENE_COUNT * TYPICAL_DIALOGUE_CHARS_PER_SHOT));
     const stills = Number(
       estimateImageCost(IMAGE_MODEL, base.aspectRatio, SCENE_COUNT, {
         pricing: FAL_PRICING,
@@ -703,8 +711,11 @@ describe('gateEstimate', () => {
       estimateLocationSheetCount(SCENE_COUNT);
     const flooredImages = (sheets + SCENE_COUNT) * 100_000;
     const llm = Number(estimateLLMCost(3));
+    const tts = Number(
+      estimateTtsCost(SCENE_COUNT * TYPICAL_DIALOGUE_CHARS_PER_SHOT)
+    );
 
-    expect(total).toBe(flooredImages + llm);
+    expect(total).toBe(flooredImages + llm + tts);
   });
 });
 

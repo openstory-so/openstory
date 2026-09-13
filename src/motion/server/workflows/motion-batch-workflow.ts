@@ -152,6 +152,10 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
         // Cast/element reference images (#873) — carried by every model, on
         // the wire or as substituted descriptions.
         referenceImages: shot.referenceImages,
+        voicedLines: shot.voicedLines,
+        audioClips: shot.audioClips,
+        motionPrompt: shot.motionPrompt,
+        characterTags: shot.characterTags,
         // Add-model (#547) batches generate alternates only — the child must
         // not write the legacy `shots.video*` columns.
         variantOnly: input.variantOnly,

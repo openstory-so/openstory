@@ -36,7 +36,8 @@ import { shotStalenessNamespace } from './use-shot-staleness';
 import { shotKeys } from './use-shots';
 import { videoModelDisplayName, type ImageToVideoModel } from '@/models/models';
 import { durationGridForModel } from '@/motion/model-capabilities';
-import { snapDuration } from '@/motion/snap-duration';
+import { dialogueExceedsShotDuration } from '@/motion/resolve-shot-duration';
+import { snapDuration, snapDurationUp } from '@/motion/snap-duration';
 import type { Shot } from '@/platform/server/db/schema';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Sparkles } from 'lucide-react';
@@ -53,6 +54,8 @@ type ShotDurationFieldProps = {
   /** Sum of the scene's shots / of the whole cut (#1593) — shown as totals. */
   sceneSeconds?: number;
   filmSeconds?: number;
+  /** References-stage take length. Noted only when it exceeds the shot. */
+  dialogueSeconds?: number | null;
 };
 
 export const ShotDurationField: React.FC<ShotDurationFieldProps> = ({
@@ -62,6 +65,7 @@ export const ShotDurationField: React.FC<ShotDurationFieldProps> = ({
   scriptExtract = '',
   sceneSeconds,
   filmSeconds,
+  dialogueSeconds,
 }) => {
   // `undefined` = no draft (the Select mirrors the saved value). Mount this
   // component with `key={shot.id}` so switching shots drops the draft.
@@ -91,6 +95,14 @@ export const ShotDurationField: React.FC<ShotDurationFieldProps> = ({
   const isDirty = editedSeconds !== undefined && editedSeconds !== savedSeconds;
   const rendersSnapped =
     savedSeconds !== undefined && snappedSavedSeconds !== savedSeconds;
+  const dialogueLonger = dialogueExceedsShotDuration(
+    dialogueSeconds,
+    currentSeconds
+  );
+  const raisedForDialogue =
+    dialogueLonger && dialogueSeconds != null
+      ? snapDurationUp(dialogueSeconds, motionModel)
+      : null;
 
   const saveMutation = useMutation({
     mutationFn: async (durationSeconds: number) => {
@@ -192,6 +204,11 @@ export const ShotDurationField: React.FC<ShotDurationFieldProps> = ({
             {formatSeconds(filmSeconds)}
           </span>
         )}
+        {dialogueLonger && dialogueSeconds != null && (
+          <span className="text-xs tabular-nums text-muted-foreground">
+            Dialogue {formatSeconds(dialogueSeconds)}
+          </span>
+        )}
 
         {isDirty && (
           <div className="flex items-center gap-2">
@@ -229,6 +246,15 @@ export const ShotDurationField: React.FC<ShotDurationFieldProps> = ({
           renders it at {snappedSavedSeconds}s.
         </p>
       ) : null}
+      {dialogueLonger &&
+        dialogueSeconds != null &&
+        raisedForDialogue != null && (
+          <p className="text-xs text-muted-foreground">
+            {raisedForDialogue < dialogueSeconds
+              ? `Dialogue is ${formatSeconds(dialogueSeconds)} — ${videoModelDisplayName(motionModel)} maxes at ${formatSeconds(raisedForDialogue)}, so the take won't attach.`
+              : `Dialogue is ${formatSeconds(dialogueSeconds)} — this shot is ${formatSeconds(currentSeconds)}. Generate will render at ${formatSeconds(raisedForDialogue)}.`}
+          </p>
+        )}
     </div>
   );
 };

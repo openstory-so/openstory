@@ -6,6 +6,10 @@
 
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_VIDEO_MODEL } from '@/models/models';
+import {
+  dialogueClipSourceKey,
+  voicedDialogueLines,
+} from '@/motion/dialogue-tts';
 import type { MotionPrompt, Scene } from '@/shots/scene-analysis.schema';
 import type {
   CharacterMinimal,
@@ -204,6 +208,59 @@ describe('buildStoryboardMotionBatchShots', () => {
         elements: [],
       })
     ).toThrow(WorkflowValidationError);
+  });
+
+  it('attaches matching References-stage dialogue clips (#1554)', () => {
+    const dialogue = {
+      presence: true as const,
+      lines: [{ character: 'SARAH', line: 'Stay down.', tone: 'urgent' }],
+    };
+    const motion: MotionPrompt = {
+      fullPrompt: 'two shot',
+      dialogue,
+      audio: { ambientSound: '', soundEffects: [] },
+    };
+    const voiced = voicedDialogueLines(dialogue, [
+      { name: 'SARAH', voiceId: 'voice-sarah' },
+    ]);
+    const clip = {
+      id: 'clip-1',
+      url: '/r2/a.wav',
+      token: 'DIALOGUE',
+      durationSeconds: 2.2,
+      sourceKey: dialogueClipSourceKey(voiced),
+    };
+    const shots = buildStoryboardMotionBatchShots({
+      scenes: [scene('sc-1')],
+      shotMapping: [
+        { analysisSceneId: 'sc-1', shotId: 'shot-1', frameId: 'fr-1' },
+      ],
+      imageUrls: ['https://cdn/a.png'],
+      frameVersionIds: ['fv-1'],
+      motionPromptsBySceneId: { 'sc-1': motion },
+      motionPromptVersionIdsBySceneId: { 'sc-1': 'mpv-1' },
+      videoModel: 'seedance_v2_5',
+      aspectRatio: '16:9',
+      characters: [
+        {
+          id: 'c1',
+          characterId: 'char_001',
+          name: 'SARAH',
+          sheetImageUrl: null,
+          sheetStatus: 'completed',
+          sheetInputHash: null,
+          selectedSheetVersionId: null,
+          physicalDescription: null,
+          voiceOnly: false,
+          consistencyTag: 'sarah',
+          voiceId: 'voice-sarah',
+        },
+      ],
+      elements: [],
+      dialogueClipsByShotId: { 'shot-1': [clip] },
+    });
+    expect(shots[0]?.audioClips).toEqual([clip]);
+    expect(shots[0]?.voicedLines).toHaveLength(1);
   });
 });
 

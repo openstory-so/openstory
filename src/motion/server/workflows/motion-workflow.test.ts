@@ -129,6 +129,7 @@ function makeStep(): WorkflowStep & { names: string[] } {
 function makeScopedDb() {
   const shotPromptVersions = {
     write: vi.fn(async () => ({ id: 'spv-soft' })),
+    setAudioClips: vi.fn(async () => {}),
   };
   const videoVariants = {
     appendVersion: vi.fn(async () => ({ id: 'vv-1' })),
@@ -161,6 +162,9 @@ function makeScopedDb() {
           analysisModel: 'anthropic/claude-haiku-4.5',
         }),
       },
+    },
+    shots: {
+      setAudioClips: vi.fn(async () => {}),
     },
     shotPromptVersions,
     videoVariants,

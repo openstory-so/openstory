@@ -541,14 +541,12 @@ export type MotionAudio = MotionPrompt['audio'];
 /**
  * A dialogue line, plus the voice the USER bound to it (#1559).
  *
- * `voiceToken` names an audio element — `SARAH_VOICE` — whose file supplies
- * that character's timbre, accent and delivery. It is deliberately NOT on
- * `dialogueLineSchema`: the LLM never authors a voice binding, and publishing
- * the field on the wire schema would invite it to invent a token that matches
- * no element. So it is absent on every line the analysis writes, and present
- * only on one a user bound in the editor — which is also why it is optional
- * rather than required: every line stored before this shipped genuinely has
- * no answer, not a null one.
+ * `voiceToken` is optional and off the LLM wire schema so analysis cannot
+ * invent a token. Meanings: unset = generated TTS when the speaker has a
+ * voiceId; `DIALOGUE` = bind the conversation clip; `__video_model__` =
+ * the video model invents the voice; any other string = a user-uploaded
+ * audio element (`SARAH_VOICE`). The picker writes the same value onto
+ * every line of the shot.
  */
 export type DialogueLine = z.infer<typeof dialogueLineSchema> & {
   voiceToken?: string;

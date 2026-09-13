@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nImage 2 walks against the commuter flow as traffic begins rolling behind her.. Camera: smooth truck\n\noverall_soundscape: crosswalk signal, traffic, city crowd and bicycle bells. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nReference images:\nImage 3: CORAL_LIPSTICK - A compact luxury lipstick with a slim cylindrical tube in satin black metal — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/d67b5d0a155f5512cc21a75f1e9735dad468dc41195c46c417110412e750c893.mp4",
+            "content_type": "video/mp4",
+            "file_name": "dhrJk_ufOEEKF3FzNJwDc_minimax-h3.mp4",
+            "file_size": 10893560
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the young blonde woman in <Picture 1>, wearing black sunglasses, a black turtleneck, black trousers, and black platform boots, carrying a beige tote bag.\n<Subject 2> is the crowd of commuters in <Picture 1>, consisting of people in business casual and casual streetwear walking across the zebra crossing in the same direction as <Subject 1>.\n<Subject 3> is the coral-red lipstick in <Picture 3>, a slim compact luxury tube in satin black metal with visible text \"CORAL_LIPSTIC\" on the side.\n\nsummary:\n[reference generation + keyframe completion] The target video shows <Subject 1> walking confidently against the flow of <Subject 2> on a busy city crosswalk as city traffic begins rolling behind her. The smooth tracking camera follows the subject while emphasizing the product <Subject 3>, which is presented as the beauty source for her coral lips.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - her full appearance, including her black outfit, sunglasses, and coral lips, must remain visually consistent with <Picture 1>.\n<Subject 2> (appears in [Shot 1], [Shot 2]): partially_preserved - the composition and general movement of the crowd remain consistent with <Picture 1>.\n<Subject 3> (appears in [Shot 3]): fully_preserved - the lipstick product is reproduced with the same black metal cylindrical tube and coral-red color as in <Picture 3>.\n<Picture 1> (appears in [Shot 1]): fully_preserved - it serves as the exact compositional starting keyframe for the video.\n\ndetailed_description:\nThe video presents a high-end fashion and beauty commercial aesthetic with sharp, realistic cinematography, natural daylight, and urban city energy in a 16:9 aspect ratio.\n\n[Shot 1]\nThe shot opens precisely at the framing of <Picture 1>. <Subject 1> is at the foreground of a wide city crosswalk, walking forward. <Subject 2> surrounds her, moving toward the right of the frame, creating a counter-flow. The camera executes a smooth Truck Left with small amplitude and slow speed, moving alongside <Subject 1>. In the background, yellow buses and cars begin to roll into the intersection. The environment is filled with the continuous buzz of the city.\n\n[Shot 2] At 00:03.000, the shot remains continuous as the camera continues its smooth lateral movement, keeping <Subject 1> centered while <Subject 2> continues to pass by her on both sides. Her expression is confident, her long blonde hair swaying slightly with each step. The coral-red color on her lips from <Picture 2> is prominent and serves as a visual focal point against her all-black outfit. The focus pulls slightly to emphasize the movement of the surrounding traffic, including the distinct sound of bicycle bells and crosswalk signals.\n\n[Shot 3] At 00:05.000, the shot cuts abruptly to a clean, minimalist studio background. <Subject 3> is displayed as a static hero shot on a soft beige surface. The satin black metal tube of the lipstick catches a soft, diffused top light. The on-screen text \"CORAL_LIPSTIC\" remains clearly visible on the side of the tube. The scene features no movement, only a subtle change in the ambient light reflecting off the product's matte finish.\n\noverall_soundscape:\nThe soundscape is dominated by realistic urban transit, including the rhythmic cadence of crosswalk signals, the low rumble of city traffic, and distant crowd chatter. Bicycle bells and pedestrian footfalls provide secondary action sounds. The final shot transitions into a neutral, silent studio environment.\n\nnon_diegetic_music:\nN/A",
+          "seed": 1331380512,
+          "timings": {
+            "inference": 6.02393664594274
+          }
+        },
+        "status": 200,
+        "billableUnits": 9.830400000000001
+      }
+    }
+  ]
+}

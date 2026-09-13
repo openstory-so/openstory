@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { STALE_SERVER_FN_HEADER } from '@/platform/stale-server-fn';
 
 type PreloadHandler = (event: {
   payload: unknown;
@@ -7,8 +8,13 @@ type PreloadHandler = (event: {
 
 const store = new Map<string, string>();
 const reload = vi.fn();
+const origFetch = vi.fn();
 let handler: PreloadHandler | undefined;
 let isReloadPending: () => boolean;
+let win: {
+  addEventListener: (type: string, fn: PreloadHandler) => void;
+  fetch: typeof fetch;
+};
 
 /** Dispatch what Vite's preload helper dispatches. */
 function firePreloadError() {
@@ -20,12 +26,15 @@ function firePreloadError() {
 beforeEach(async () => {
   store.clear();
   reload.mockClear();
+  origFetch.mockReset();
   handler = undefined;
-  vi.stubGlobal('window', {
+  win = {
     addEventListener: (_type: string, fn: PreloadHandler) => {
       handler = fn;
     },
-  });
+    fetch: origFetch,
+  };
+  vi.stubGlobal('window', win);
   vi.stubGlobal('sessionStorage', {
     getItem: (k: string) => store.get(k) ?? null,
     setItem: (k: string, v: string) => void store.set(k, v),
@@ -68,5 +77,29 @@ describe('installChunkReload', () => {
     expect(reload).not.toHaveBeenCalled();
     expect(preventDefault).not.toHaveBeenCalled();
     expect(isReloadPending()).toBe(false);
+  });
+
+  it('reloads on a marked stale server-fn response and does not return it', async () => {
+    origFetch.mockResolvedValue(
+      new Response('stale server function', {
+        status: 404,
+        headers: { [STALE_SERVER_FN_HEADER]: '1' },
+      })
+    );
+    const pending = win.fetch('/_serverFn/old-id');
+    await vi.waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+    expect(isReloadPending()).toBe(true);
+    const raced = await Promise.race([
+      pending.then(() => 'resolved'),
+      Promise.resolve('hung'),
+    ]);
+    expect(raced).toBe('hung');
+  });
+
+  it('passes through ordinary fetch responses', async () => {
+    const ok = new Response('ok', { status: 200 });
+    origFetch.mockResolvedValue(ok);
+    await expect(win.fetch('/_serverFn/current')).resolves.toBe(ok);
+    expect(reload).not.toHaveBeenCalled();
   });
 });

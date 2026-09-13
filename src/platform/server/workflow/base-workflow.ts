@@ -44,6 +44,7 @@ import { NonRetryableError } from 'cloudflare:workflows';
 import { flushAnalytics } from '@/platform/server/observability/flush-analytics';
 import { captureProductEvent } from '@/platform/server/observability/product-events';
 import { getLogger, serializeError } from '@/platform/logger';
+import { isContentRejectionError } from '@/models/content-rejection';
 
 const logger = getLogger(['openstory', 'workflow', 'cf', 'base']);
 
@@ -198,9 +199,15 @@ export abstract class OpenStoryWorkflowEntrypoint<
       // property — so a wrapped driver error (e.g. D1 under DrizzleQueryError)
       // is logged rather than dropped. Note the chain is only intact if the
       // error hasn't already crossed a CF step boundary (#864).
-      logger.error(`[${this.constructor.name}] Failure: ${sanitized}`, {
-        err: serializeError(error),
-      });
+      if (isContentRejectionError(sanitized)) {
+        logger.warn(`[${this.constructor.name}] Failure: ${sanitized}`, {
+          err: serializeError(error),
+        });
+      } else {
+        logger.error(`[${this.constructor.name}] Failure: ${sanitized}`, {
+          err: serializeError(error),
+        });
+      }
 
       // Every user-visible generation failure funnels through this one catch,
       // so this is the only place a "user hit an error" alert needs to fire

@@ -25,6 +25,22 @@ export function snapDuration(
   return nearest(requested ?? firstValue, validValues);
 }
 
+/**
+ * Smallest grid value that still covers `requested` (#1554). Seedance 2.5
+ * clips are 4–30 s; a 6.2 s audio bed must not snap down to 6. Over the
+ * max, the max is the clip — leftover audio overflows the reference cap.
+ */
+export function snapDurationUp(
+  requested: number,
+  modelKey: ImageToVideoModel
+): number {
+  const validValues = durationGridForModel(modelKey);
+  const firstValue = validValues[0];
+  if (firstValue === undefined) return Math.max(1, Math.ceil(requested));
+  const cover = validValues.find((value) => value >= requested);
+  return cover ?? validValues[validValues.length - 1] ?? firstValue;
+}
+
 /** Nearest value in a non-empty grid (ties keep the earlier, smaller value). */
 function nearest(target: number, grid: readonly number[]): number {
   return grid.reduce((prev, curr) =>

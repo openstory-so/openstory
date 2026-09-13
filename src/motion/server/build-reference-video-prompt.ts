@@ -186,6 +186,7 @@ function exceedsDuration(
 ): boolean {
   const seconds = ref.durationSeconds;
   if (!limit || seconds == null) return false;
+  if (limit.min !== undefined && seconds < limit.min) return true;
   if (limit.max !== undefined && seconds > limit.max) return true;
   return (
     limit.maxCombined !== undefined &&

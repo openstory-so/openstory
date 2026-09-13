@@ -5,6 +5,7 @@ import {
   safeTextToImageModel,
 } from '@/models/models';
 import { resolveUpscaleModel } from '@/models/resolve-asset-models';
+import { requireGenerationPrompt } from '@/shots/generation-prompt';
 import { shotPromptSequence } from '@/shots/use-start-frame';
 import {
   estimateImageCost,
@@ -126,6 +127,16 @@ export const generateShotImageFn = createServerFn({ method: 'POST' })
       scene: resolvedScene,
       script,
     } = context;
+
+    // Refuse before credits: an empty/whitespace visual prompt has nothing
+    // to render. A missing override falls through to the stored selected
+    // prompt so a stale tab matches the button (#1594).
+    const storedVisualPrompt =
+      data.prompt === undefined
+        ? ((await context.scopedDb.framePromptVersions.getSelected(frame.id))
+            ?.text ?? null)
+        : undefined;
+    requireGenerationPrompt(data.prompt, storedVisualPrompt);
 
     // Auto-link any element/cast/location tags the user mentioned in their
     // edited prompt before computing reference attachment, so a freshly-

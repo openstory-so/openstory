@@ -21,8 +21,9 @@ import type { Frame, Shot } from '@/platform/server/db/schema';
 vi.doMock('@/billing/server/fal-pricing-live', () => ({
   getEffectiveFalPricing: async () => ({}),
 }));
+const requireCredits = vi.fn(async () => undefined);
 vi.doMock('@/billing/server/preflight', () => ({
-  requireCredits: async () => undefined,
+  requireCredits,
 }));
 
 // Dynamic import so the mocks above apply (vi.doMock is not hoisted).
@@ -181,5 +182,23 @@ describe('prepareShotImageWorkflowInput still reads what it does consume', () =>
     expect(getSelectedVariant).toHaveBeenCalledWith(FRAME_ID);
     expect(getLastFailed).toHaveBeenCalledWith(FRAME_ID);
     expect(input.model).toBe('seedream_v5');
+  });
+});
+
+describe('prepareShotImageWorkflowInput refuses a blank prompt before credits', () => {
+  it('throws on a whitespace-only override without reserving credits', async () => {
+    requireCredits.mockClear();
+    const { scopedDb } = makeScopedDb();
+
+    await expect(
+      prepareShotImageWorkflowInput({
+        ...baseArgs(scopedDb),
+        promptOverride: '   ',
+        promptVersionOverride: 'fpv_from_caller',
+        modelOverride: 'nano_banana_pro',
+      })
+    ).rejects.toThrow('Shot has no prompt or description to regenerate from');
+
+    expect(requireCredits).not.toHaveBeenCalled();
   });
 });

@@ -69,6 +69,12 @@ export type VideoManifestEntry = {
   frameVersionId: string | null;
   usesStartFrame: boolean;
   durationMs: number;
+  /**
+   * Dialogue TTS clips this render consumed (#1554). Stamped, never inferred
+   * — same rule as `usesStartFrame`. Absent on rows written before the field
+   * existed (treated as no clips). Empty array = a voiceless render.
+   */
+  audioClipIds?: string[];
 };
 
 /** Ordered, one entry per covered shot. @public consumed from #990+ */

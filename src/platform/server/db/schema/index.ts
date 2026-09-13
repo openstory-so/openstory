@@ -264,6 +264,7 @@ export type {
   ShotPromptVersion,
   ShotPromptVersionComponents,
   PromptVariantSource,
+  MotionAudioClip,
 } from './shot-prompt-versions';
 
 // Sequence Music Prompt Versions (music prompt history; renamed from

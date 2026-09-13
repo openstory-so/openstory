@@ -21,7 +21,15 @@ import {
 } from '@/billing/cost-estimation';
 import { creditsShortStatusError } from '@/billing/credits-short';
 import { addMicros, microsToUsd, multiplyMicros } from '@/billing/money';
-import { VOICE_DESIGN_COST } from '@/billing/elevenlabs-pricing';
+import {
+  estimateTtsCost,
+  TYPICAL_DIALOGUE_CHARS_PER_SHOT,
+  VOICE_DESIGN_COST,
+} from '@/billing/elevenlabs-pricing';
+import {
+  dialogueAudioMinSeconds,
+  voicedDialogueLines,
+} from '@/motion/dialogue-tts';
 import { speakingCharacterIds } from '@/cast/voice';
 import { gateStoryboardRenders } from '@/billing/server/storyboard-render-gate';
 import { reusesTalentSheet } from '@/cast/server/talent/reuse-talent-sheet';
@@ -37,6 +45,8 @@ import type {
   AnalyzeScriptWorkflowInput,
   BatchMotionMusicWorkflowInput,
   CharacterBibleWorkflowInput,
+  DialogueAudioWorkflowInput,
+  DialogueAudioWorkflowResult,
   ElementSheetEntry,
   ElementSheetWorkflowInput,
   ElementSheetWorkflowResult,
@@ -80,6 +90,7 @@ import { deriveAutoStyle } from '@/look/server/workflows/auto-style-step';
 import { waitForElementVision } from '@/cast/server/workflows/wait-for-sheets';
 import type {
   CharacterMinimal,
+  MotionAudioClip,
   SequenceElementMinimal,
   SequenceLocationMinimal,
 } from '@/platform/server/db/schema';
@@ -572,7 +583,14 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           pricing,
         }),
         addMicros(
-          multiplyMicros(VOICE_DESIGN_COST, billedVoices),
+          addMicros(
+            multiplyMicros(VOICE_DESIGN_COST, billedVoices),
+            estimateTtsCost(
+              runReferences
+                ? scenes.length * TYPICAL_DIALOGUE_CHARS_PER_SHOT
+                : 0
+            )
+          ),
           estimateReferenceSheetCost({
             imageModel,
             characterSheets: billedCharacterSheets,
@@ -908,6 +926,47 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       ? dedupeById([...generatedElements, ...knownElements])
       : dedupeById([...(checkpoint?.allElements ?? []), ...elementsMinimal]);
 
+    // Dialogue clips are audio references: they need designed voices (the
+    // bible child above) and belong in this stage, not mid-motion-submit.
+    let dialogueClipsByShotId: Record<string, MotionAudioClip[]> =
+      checkpoint?.dialogueClipsByShotId ?? {};
+    if (runReferences && sequenceId) {
+      const jobs = shotWorkItems(scenes, shotMapping).flatMap((item) => {
+        if (!item.mapping.shotId) return [];
+        const lines = voicedDialogueLines(
+          {
+            presence: item.scene.originalScript.dialogue.length > 0,
+            lines: item.scene.originalScript.dialogue,
+          },
+          charactersWithSheets
+        );
+        return lines.length > 0 ? [{ shotId: item.mapping.shotId, lines }] : [];
+      });
+      if (jobs.length > 0) {
+        const result = await spawnAndAwaitChild<
+          DialogueAudioWorkflowInput,
+          DialogueAudioWorkflowResult
+        >(step, {
+          binding: this.env.DIALOGUE_AUDIO_WORKFLOW,
+          parentBindingName: PARENT_BINDING_NAME,
+          parentInstanceId,
+          childId: `dialogue-audio:${sequenceId}`,
+          childPayload: {
+            userId: input.userId,
+            teamId: input.teamId,
+            sequenceId,
+            reservationId: input.reservationId,
+            shots: jobs,
+            minDurationSeconds: dialogueAudioMinSeconds(videoModels),
+          },
+          spawnStepName: 'spawn-dialogue-audio',
+          awaitStepName: 'await-dialogue-audio',
+          timeout: '60 minutes',
+        });
+        dialogueClipsByShotId = result.clipsByShotId;
+      }
+    }
+
     if (runReferences) {
       await persistProgress({
         completedStage: 'references',
@@ -923,6 +982,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         allElements,
         visualPromptBySceneId,
         scenesWithVisualPrompts,
+        dialogueClipsByShotId,
       });
       if (stopAt === 'references') {
         await recordDuration('references');
@@ -946,11 +1006,25 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     }
 
     const clipItems = shotWorkItems(scenesWithVisualPrompts, shotMapping);
+    // Every clip of a 2+ shot scene assembles its prompts from the shot-list
+    // spec (#1517); null on the 1-shot LLM path. Aligned to `clipItems`.
+    const derivedShots = clipItems.map((item) =>
+      derivedShotForItem(item, styleConfig)
+    );
+    // The music prompt grounds on one visual per scene; a derived scene has
+    // no LLM visual, so its head's assembled prompt stands in.
+    for (const [index, item] of clipItems.entries()) {
+      const derived = derivedShots[index];
+      if (derived && item.isSceneHead) {
+        visualPromptBySceneId[item.scene.sceneId] =
+          derived.visualPrompt.fullPrompt;
+      }
+    }
 
     if (!referenceOnly) {
       await step.do('persist-derived-visual-prompts', async () => {
-        for (const item of clipItems) {
-          const derived = derivedShotForItem(item, styleConfig);
+        for (const [index, item] of clipItems.entries()) {
+          const derived = derivedShots[index];
           const frameId = item.mapping.frameId;
           if (!derived || !frameId) continue;
           await scopedDb.framePromptVersions.writeAiVersion({
@@ -963,36 +1037,48 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
             }),
             analysisModel: analysisModelId,
           });
+          // Same refresh the frame-prompt child emits after its write: the
+          // prompt lives on the `frame.imagePrompt` mirror, not in metadata.
+          await getGenerationChannel(sequenceId).emit(
+            'generation.shot:updated',
+            {
+              shotId: item.mapping.shotId,
+              updateType: 'visual-prompt',
+              metadata: item.scene,
+            }
+          );
         }
       });
     }
 
     // One snapshot per clip. 1-shot films omit `shotId` so the batch hash
-    // stays byte-identical; extras carry shotId + the derived visual prompt.
-    const sceneSnapshots: ShotImageSceneSnapshot[] = clipItems.map((item) => {
-      const derived = derivedShotForItem(item, styleConfig);
-      const visualPrompt =
-        derived?.visualPrompt.fullPrompt ??
-        visualPromptBySceneId[item.scene.sceneId] ??
-        '';
-      const refs = resolveSceneShotImageReferences({
-        scene: item.scene,
-        visualPrompt,
-        characters: charactersWithSheets,
-        locations: locationsWithSheets,
-        elements: allElements,
-      });
-      return {
-        sceneId: item.scene.sceneId,
-        ...(item.hasSiblingShots && item.mapping.shotId
-          ? { shotId: item.mapping.shotId }
-          : {}),
-        visualPrompt,
-        characterSheetHashes: refs.characterSheetHashes,
-        locationSheetHashes: refs.locationSheetHashes,
-        elementReferenceHashes: refs.elementReferenceHashes,
-      };
-    });
+    // stays byte-identical; derived clips carry shotId + the assembled prompt.
+    const sceneSnapshots: ShotImageSceneSnapshot[] = clipItems.map(
+      (item, index) => {
+        const derived = derivedShots[index];
+        const visualPrompt =
+          derived?.visualPrompt.fullPrompt ??
+          visualPromptBySceneId[item.scene.sceneId] ??
+          '';
+        const refs = resolveSceneShotImageReferences({
+          scene: item.scene,
+          visualPrompt,
+          characters: charactersWithSheets,
+          locations: locationsWithSheets,
+          elements: allElements,
+        });
+        return {
+          sceneId: item.scene.sceneId,
+          ...(item.hasSiblingShots && item.mapping.shotId
+            ? { shotId: item.mapping.shotId }
+            : {}),
+          visualPrompt,
+          characterSheetHashes: refs.characterSheetHashes,
+          locationSheetHashes: refs.locationSheetHashes,
+          elementReferenceHashes: refs.elementReferenceHashes,
+        };
+      }
+    );
 
     const shotImagesPayload: ShotImagesWorkflowInput = {
       userId: input.userId,
@@ -1178,6 +1264,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         // still, it is the only thing establishing the set.
         locations: locationsWithSheets,
         referenceOnly,
+        dialogueClipsByShotId,
       });
 
       await step.do('phase-5-start', async () => {

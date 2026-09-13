@@ -198,7 +198,10 @@ function buildScopedDb(
     shotPromptVersions: {
       getSelectedMotionByShots: () => Promise.resolve(new Map()),
     },
-    characters: { listWithSheets: () => Promise.resolve([]) },
+    characters: {
+      listWithSheets: () => Promise.resolve([]),
+      list: () => Promise.resolve([]),
+    },
     sequenceLocations: { listWithReferences: () => Promise.resolve([]) },
     sequenceElements: { list: () => Promise.resolve([]) },
     styles: { getById: () => Promise.resolve(null) },

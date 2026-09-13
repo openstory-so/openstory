@@ -9,7 +9,11 @@ import {
   estimateCharacterSheetCount,
   estimateStoryboardCost,
 } from './cost-estimation';
-import { VOICE_DESIGN_COST } from './elevenlabs-pricing';
+import {
+  estimateTtsCost,
+  TYPICAL_DIALOGUE_CHARS_PER_SHOT,
+  VOICE_DESIGN_COST,
+} from './elevenlabs-pricing';
 import { multiplyMicros } from './money';
 import { estimateStoryboardPreflightCost } from './storyboard-preflight-cost';
 import { estimateSceneCount } from '@/sequences/time-estimate';
@@ -281,11 +285,9 @@ describe('estimateStoryboardPreflightCost', () => {
       stopAt: 'references',
       generateVoices: true,
     });
+    const scenes = estimateSceneCount(script);
     expect(on - off).toBe(
-      multiplyMicros(
-        VOICE_DESIGN_COST,
-        estimateCharacterSheetCount(estimateSceneCount(script))
-      )
+      multiplyMicros(VOICE_DESIGN_COST, estimateCharacterSheetCount(scenes))
     );
     // Not in the slice → not billed.
     expect(
@@ -304,5 +306,45 @@ describe('estimateStoryboardPreflightCost', () => {
         stopAt: 'images',
       })
     );
+  });
+
+  it('reserves TTS on the references slice even when Voices is off (#1554)', () => {
+    const script = 'Scene 1 — 5s\nA room.\n\nScene 2 — 5s\nAnother room.';
+    const scriptOnly = estimateStoryboardPreflightCost({
+      ...base,
+      script,
+      stopAt: 'script',
+    });
+    const refs = estimateStoryboardPreflightCost({
+      ...base,
+      script,
+      stopAt: 'references',
+    });
+    const scenes = estimateSceneCount(script);
+    expect(refs - scriptOnly).toBeGreaterThanOrEqual(
+      estimateTtsCost(scenes * TYPICAL_DIALOGUE_CHARS_PER_SHOT)
+    );
+  });
+
+  it('does not reserve TTS in the motion slice — clips are References artifacts (#1554)', () => {
+    const script = 'Scene 1 — 5s\nA room.\n\nScene 2 — 5s\nAnother room.';
+    const off = estimateStoryboardPreflightCost({
+      ...base,
+      script,
+      startFrom: 'motion',
+      stopAt: 'motion',
+      autoGenerateMotion: true,
+      videoModels: [DEFAULT_VIDEO_MODEL],
+    });
+    const on = estimateStoryboardPreflightCost({
+      ...base,
+      script,
+      startFrom: 'motion',
+      stopAt: 'motion',
+      autoGenerateMotion: true,
+      videoModels: [DEFAULT_VIDEO_MODEL],
+      generateVoices: true,
+    });
+    expect(on).toBe(off);
   });
 });

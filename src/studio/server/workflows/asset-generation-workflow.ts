@@ -28,6 +28,7 @@ import {
   createDeadlineFetch,
   FAL_REQUEST_TIMEOUT_MS,
 } from '@/models/server/fal-deadline-fetch';
+import { isContentRejectionError } from '@/models/content-rejection';
 import { extractFalErrorMessage } from '@/models/fal-error';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type {
@@ -384,9 +385,15 @@ export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGe
       assetId: event.payload.assetId,
       error,
     });
-    logger.error(
-      `[AssetGenerationWorkflow] Asset ${event.payload.assetId} failed: ${error}`
-    );
+    if (isContentRejectionError(error)) {
+      logger.warn(
+        `[AssetGenerationWorkflow] Asset ${event.payload.assetId} failed: ${error}`
+      );
+    } else {
+      logger.error(
+        `[AssetGenerationWorkflow] Asset ${event.payload.assetId} failed: ${error}`
+      );
+    }
   }
 }
 
