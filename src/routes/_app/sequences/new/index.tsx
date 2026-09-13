@@ -12,7 +12,7 @@ const searchSchema = z.object({
   from: z.string().optional(),
 });
 
-export const Route = createFileRoute('/_app/sequences/new')({
+export const Route = createFileRoute('/_app/sequences/new/')({
   validateSearch: searchSchema,
   beforeLoad: async ({ context: { queryClient }, location }) => {
     // Home is at `/` for everyone; this path is the signed-in alias

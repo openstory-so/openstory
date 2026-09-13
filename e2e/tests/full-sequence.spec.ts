@@ -316,9 +316,12 @@ SUPER:  CORAL.  OUT NOW.
       await stopAtAlert.getByRole('button', { name: /^Generate$/i }).click();
 
       // Generate kicks off the scene-split workflow before the redirect lands.
-      await page.waitForURL(/\/sequences\/[^/]+\/scenes/, {
-        timeout: t(30_000),
-      });
+      await page.waitForURL(
+        /\/sequences\/[0-7][0-9A-HJKMNP-TV-Z]{25}\/scenes/,
+        {
+          timeout: t(30_000),
+        }
+      );
       const match = page.url().match(/\/sequences\/([^/]+)\/scenes/);
       const sequenceId = match?.[1];
       if (!sequenceId) {

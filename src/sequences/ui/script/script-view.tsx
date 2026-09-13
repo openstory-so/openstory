@@ -63,7 +63,7 @@ import {
   type DraftElementUpload,
 } from '@/cast/ui/use-sequence-elements';
 import { useSequenceLocations } from '@/cast/ui/use-sequence-locations';
-import { useCreateSequence } from '@/sequences/ui/use-sequences';
+
 import {
   useRecommendedStyles,
   useStyle,
@@ -79,6 +79,11 @@ import {
 } from '@/models/enhance-duration';
 import { toEnhanceInputs } from '@/models/enhance-inputs';
 import { useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from '@tanstack/react-router';
+import {
+  parkCreatingSequence,
+  peekCreatingSequence,
+} from '@/sequences/ui/creating-sequence';
 import {
   DEFAULT_IMAGE_MODEL,
   DEFAULT_MUSIC_MODEL,
@@ -259,7 +264,6 @@ export const ScriptView: FC<{
   teamId,
   sequence,
   loading = false,
-  onSuccess,
   flat,
   className,
   onCancel,
@@ -335,12 +339,7 @@ export const ScriptView: FC<{
   } = useGenerationSettings();
 
   // Load draft from localStorage (script, style, talent, location)
-  const {
-    draft,
-    isLoaded: draftLoaded,
-    saveDraft,
-    clearDraft,
-  } = useSequenceDraft();
+  const { draft, isLoaded: draftLoaded, saveDraft } = useSequenceDraft();
 
   // Which video models can render reference-only for this team — resolved
   // server-side and seeded by the `_app` route loader.
@@ -835,7 +834,7 @@ export const ScriptView: FC<{
     value: (typeof enhanceUI)[K]
   ) => setEnhanceUI((s) => ({ ...s, [key]: value }));
 
-  const createSequenceMutation = useCreateSequence();
+  const navigate = useNavigate();
   const { requireAuth, isAuthenticated } = useAuthGate();
   const { needsBillingSetup, showGate } = useBillingGate();
 
@@ -918,52 +917,52 @@ export const ScriptView: FC<{
     const flags = flagsFromStopAt(runUntil);
     // sequence_generated is captured server-side in createSequences (#1088)
     // so dashboard + public API both feed #product-alerts once.
-    createSequenceMutation.mutate(
-      {
-        title: undefined,
-        teamId,
-        script: script ?? baseScript ?? '',
-        styleId: styleId || sequence?.styleId || undefined,
-        aspectRatio,
-        resolution,
-        analysisModels,
-        imageModels,
-        videoModels,
-        videoModel: videoModels[0] ?? DEFAULT_VIDEO_MODEL,
-        stopAt: runUntil,
-        autoGenerateMotion: flags.autoGenerateMotion,
-        autoGenerateMusic: flags.autoGenerateMusic,
-        generateStartFrames,
-        generateVoices,
-        musicModel: audioModels[0] ?? DEFAULT_MUSIC_MODEL,
-        audioModels,
-        targetDurationSeconds: targetDuration,
-        suggestedTalentIds:
-          selectedTalentIds.length > 0 ? selectedTalentIds : undefined,
-        suggestedLocationIds:
-          selectedLocationIds.length > 0 ? selectedLocationIds : undefined,
-        elementUploads:
-          draftElements.length > 0
-            ? draftElements.map((el) => ({
-                tempPath: el.tempPath,
-                tempPublicUrl: el.tempPublicUrl,
-                filename: el.filename,
-                token: el.token,
-                description: el.description,
-                consistencyTag: el.consistencyTag,
-              }))
-            : undefined,
-        sourceSequenceId: isEditing ? sequence.id : undefined,
-      },
-      {
-        onSuccess: (result) => {
-          clearDraft();
-          if (onSuccess) {
-            onSuccess(result.data.map((seq) => seq.id));
-          }
-        },
-      }
-    );
+    const payload = {
+      title: undefined,
+      teamId,
+      script: script ?? baseScript ?? '',
+      styleId: styleId || sequence?.styleId || undefined,
+      aspectRatio,
+      resolution,
+      analysisModels,
+      imageModels,
+      videoModels,
+      videoModel: videoModels[0] ?? DEFAULT_VIDEO_MODEL,
+      stopAt: runUntil,
+      autoGenerateMotion: flags.autoGenerateMotion,
+      autoGenerateMusic: flags.autoGenerateMusic,
+      generateStartFrames,
+      generateVoices,
+      musicModel: audioModels[0] ?? DEFAULT_MUSIC_MODEL,
+      audioModels,
+      targetDurationSeconds: targetDuration,
+      suggestedTalentIds:
+        selectedTalentIds.length > 0 ? selectedTalentIds : undefined,
+      suggestedLocationIds:
+        selectedLocationIds.length > 0 ? selectedLocationIds : undefined,
+      elementUploads:
+        draftElements.length > 0
+          ? draftElements.map((el) => ({
+              tempPath: el.tempPath,
+              tempPublicUrl: el.tempPublicUrl,
+              filename: el.filename,
+              token: el.token,
+              description: el.description,
+              consistencyTag: el.consistencyTag,
+            }))
+          : undefined,
+      sourceSequenceId: isEditing ? sequence.id : undefined,
+    };
+    // Leave the composer on this tick (#1601). Create runs on
+    // `/sequences/new/scenes`; that page replace()s in the real id.
+    if (peekCreatingSequence()) return;
+    parkCreatingSequence({
+      payload,
+      script: payload.script,
+      stopAt: runUntil,
+      generateStartFrames,
+    });
+    void navigate({ to: '/sequences/new/scenes' });
   };
 
   const requestGenerate = () => {
@@ -1169,7 +1168,7 @@ export const ScriptView: FC<{
   const isReady =
     Boolean(styleId || sequence?.styleId) && analysisModels.length > 0;
 
-  const isSubmitting = createSequenceMutation.isPending;
+  const isSubmitting = peekCreatingSequence() !== null;
   const isDisabled = !isReady || isSubmitting || isEnhancing || isElementBusy;
 
   const isMobile = useIsMobile();
