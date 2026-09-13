@@ -586,7 +586,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           addMicros(
             multiplyMicros(VOICE_DESIGN_COST, billedVoices),
             estimateTtsCost(
-              runReferences && generateVoices
+              runReferences
                 ? scenes.length * TYPICAL_DIALOGUE_CHARS_PER_SHOT
                 : 0
             )

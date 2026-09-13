@@ -520,9 +520,9 @@ export function createShotPromptVersionsMethods(db: Database) {
     },
 
     /**
-     * Stamp the synthesised dialogue clips a motion run just produced onto
-     * the prompt version it rendered from (#1554). Provenance, not a new
-     * version — the text did not change.
+     * Stamp the clips this render consumed onto the prompt version
+     * (#1554) — References working set or fallback TTS. Provenance, not
+     * a new version: the text did not change.
      */
     setAudioClips: async (
       versionId: string,

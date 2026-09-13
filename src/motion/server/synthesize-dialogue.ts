@@ -51,9 +51,15 @@ export async function synthesizeDialogueClip(
     inputs: turns,
   });
   let wav = await collectStream(stream);
+  if (wav.byteLength === 0) {
+    throw new Error('Dialogue TTS returned an empty audio body');
+  }
   let durationSeconds = wavDurationSeconds(wav);
+  if (durationSeconds == null) {
+    throw new Error('Dialogue TTS returned audio that is not a PCM WAV');
+  }
   const min = input.minDurationSeconds;
-  if (min != null && durationSeconds != null && durationSeconds < min) {
+  if (min != null) {
     const padded = padWavToMinDuration(wav, min);
     wav = padded.bytes;
     durationSeconds = padded.durationSeconds;

@@ -1,8 +1,8 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "527c55ab-4231-455a-bb11-2bf9aeb8d1d4",
-  "prevIds": ["880bef72-f98b-4ef2-9b84-7ad9d2df33f2"],
+  "id": "4a0883cc-42bb-418f-933a-a7a138cc2a57",
+  "prevIds": ["938cb573-ffc5-4556-b904-cab58807eb1c"],
   "ddl": [
     {
       "name": "account",
@@ -6095,6 +6095,16 @@
       "default": "false",
       "generated": null,
       "name": "generate_voices",
+      "entityType": "columns",
+      "table": "sequences"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "target_duration_seconds",
       "entityType": "columns",
       "table": "sequences"
     },

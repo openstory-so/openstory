@@ -1,10 +1,7 @@
 /**
- * Dialogue TTS for the motion run (#1554).
- *
- * Client-safe: matching a speaker to a designed voice, minting the token
- * `assembleMotionPrompt` / `buildReferenceVideoPrompt` bind, mapping a line's
- * tone onto an eleven_v3 audio tag, and the hash projection that folds into
- * the motion-prompt digest only when a voice is present.
+ * Client-safe dialogue-audio helpers (#1554): speaker→voice, the shared
+ * `DIALOGUE` token, v3 tone tags, picker sentinels, and the shape-stable
+ * hash body.
  */
 
 import { matchSpeaker } from '@/cast/voice';
@@ -33,6 +30,9 @@ export const DIALOGUE_CLIP_TOKEN = 'DIALOGUE';
  */
 export const VIDEO_MODEL_VOICE_TOKEN = '__video_model__';
 
+/** UI-only picker value; persist as no `voiceToken` so Text to Dialogue still runs. */
+export const GENERATED_VOICE = '__generated__';
+
 /** True when `voiceToken` names a user-uploaded audio element. */
 export function isElementVoiceToken(
   token: string | null | undefined
@@ -40,8 +40,48 @@ export function isElementVoiceToken(
   return (
     Boolean(token) &&
     token !== DIALOGUE_CLIP_TOKEN &&
-    token !== VIDEO_MODEL_VOICE_TOKEN
+    token !== VIDEO_MODEL_VOICE_TOKEN &&
+    token !== GENERATED_VOICE
   );
+}
+
+function tokenToPickerValue(voiceToken: string | undefined): string {
+  if (!voiceToken || voiceToken === DIALOGUE_CLIP_TOKEN) return GENERATED_VOICE;
+  if (voiceToken === VIDEO_MODEL_VOICE_TOKEN) return VIDEO_MODEL_VOICE_TOKEN;
+  return voiceToken;
+}
+
+/** One value for the shot. Mixed legacy per-line bindings read as Generated. */
+export function shotPickerValue(
+  lines: readonly { voiceToken?: string }[]
+): string {
+  const first = tokenToPickerValue(lines[0]?.voiceToken);
+  return lines.every((line) => tokenToPickerValue(line.voiceToken) === first)
+    ? first
+    : GENERATED_VOICE;
+}
+
+export function persistToken(value: string): string | undefined {
+  if (value === GENERATED_VOICE) return undefined;
+  if (value === VIDEO_MODEL_VOICE_TOKEN) return VIDEO_MODEL_VOICE_TOKEN;
+  return value;
+}
+
+/** Element tokens on the lines that no longer exist in the library. */
+export function orphanedVoiceTokens(
+  lines: readonly { voiceToken?: string }[],
+  liveTokens: ReadonlySet<string>
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const line of lines) {
+    const token = line.voiceToken;
+    if (!isElementVoiceToken(token) || liveTokens.has(token) || seen.has(token))
+      continue;
+    seen.add(token);
+    out.push(token);
+  }
+  return out;
 }
 
 /** True when this model’s reference-to-video route takes uploaded audio. */
@@ -71,13 +111,13 @@ export type VoiceCharacter = {
 };
 
 /**
- * One dialogue line that will be synthesised and handed to the video model
- * as a reference audio. Snapshotted onto the motion payload at trigger time.
+ * One turn in the shot's Text to Dialogue conversation. Snapshotted onto
+ * the References child and, as a motion fallback, onto `voicedLines`.
  */
 export type VoicedDialogueLine = {
-  /** Index in the shot's dialogue array — the token's identity. */
+  /** Index in the shot's dialogue array — maps the clip token onto that line. */
   index: number;
-  /** Canonical token the assembled prompt names (`SARAH_L1`). */
+  /** Always `DIALOGUE_CLIP_TOKEN`; one conversation clip binds as `@Audio1`. */
   token: string;
   voiceId: string;
   text: string;
@@ -90,14 +130,14 @@ export type VoicedDialogueLine = {
 export type DialogueVoiceHashInput = {
   voiceId: string;
   line: string;
+  tone: string;
   ttsModel: string;
 };
 
 /**
- * Map a free-text tone ("calm serious", "whispered") onto an eleven_v3
- * audio tag. v3 reads `[whispering]` at the start of the utterance; unknown
- * tones are wrapped as-is so the model still gets a delivery hint rather
- * than dropping it. Empty / punctuation-only tones produce no tag.
+ * Map a free-text tone onto an eleven_v3 audio tag. The tone is lowercased
+ * and wrapped (`whispered` → `[whispered]`); unknown tones are not rewritten
+ * to v3's example vocabulary. Empty / punctuation-only tones produce no tag.
  */
 export function toneToV3AudioTag(tone: string): string | null {
   const cleaned = tone
@@ -107,7 +147,6 @@ export function toneToV3AudioTag(tone: string): string | null {
     .replace(/\s+/g, ' ')
     .trim();
   if (!cleaned) return null;
-  // Keep the tag short: v3 examples are one or two words.
   const words = cleaned.split(' ').slice(0, 3).join(' ');
   return `[${words}]`;
 }
@@ -120,9 +159,8 @@ export function ttsUtterance(text: string, tone: string): string {
 }
 
 /**
- * Deterministic token for line `index` so assembly at trigger and TTS at
- * submit agree without a round trip. Character names become UPPER_SNAKE;
- * a blank speaker is `VOICE`.
+ * Compatibility token for pre-conversation-clip rows (`SARAH_L1`). Live
+ * assembly and TTS agree on `DIALOGUE_CLIP_TOKEN`.
  */
 export function dialogueTtsToken(character: string, index: number): string {
   const slug = character
@@ -178,12 +216,16 @@ export function dialogueClipSourceKey(
     lines.map((line) => ({
       voiceId: line.voiceId,
       line: line.text,
+      tone: line.tone,
       ttsModel: line.ttsModel,
     }))
   );
   if (!body) return '';
   return body
-    .map((voice) => `${voice.voiceId}\t${voice.line}\t${voice.ttsModel}`)
+    .map(
+      (voice) =>
+        `${voice.voiceId}\t${voice.line}\t${voice.tone}\t${voice.ttsModel}`
+    )
     .join('\n');
 }
 
@@ -248,6 +290,7 @@ export function dialogueVoicesHashBody(
     .map((voice) => ({
       voiceId: voice.voiceId.trim(),
       line: voice.line.trim(),
+      tone: voice.tone.trim(),
       ttsModel: voice.ttsModel.trim(),
     }))
     .filter((voice) => voice.voiceId && voice.line && voice.ttsModel)
@@ -255,7 +298,9 @@ export function dialogueVoicesHashBody(
       const byVoice = a.voiceId.localeCompare(b.voiceId);
       if (byVoice !== 0) return byVoice;
       const byLine = a.line.localeCompare(b.line);
-      return byLine !== 0 ? byLine : a.ttsModel.localeCompare(b.ttsModel);
+      if (byLine !== 0) return byLine;
+      const byTone = a.tone.localeCompare(b.tone);
+      return byTone !== 0 ? byTone : a.ttsModel.localeCompare(b.ttsModel);
     });
   return projected.length > 0 ? projected : undefined;
 }
@@ -268,6 +313,7 @@ export function dialogueVoicesForHash(
     voicedDialogueLines(dialogue, characters).map((line) => ({
       voiceId: line.voiceId,
       line: line.text,
+      tone: line.tone,
       ttsModel: line.ttsModel,
     }))
   );

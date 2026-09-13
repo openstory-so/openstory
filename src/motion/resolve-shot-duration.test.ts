@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  dialogueExceedsShotDuration,
   raiseShotDurationToCoverAudio,
   resolveShotDuration,
 } from './resolve-shot-duration';
@@ -48,5 +49,15 @@ describe('raiseShotDurationToCoverAudio', () => {
   });
   it('raises onto the next grid step that covers the audio', () => {
     expect(raiseShotDurationToCoverAudio(5, 6.2, 'seedance_v2_5')).toBe(7);
+  });
+});
+
+describe('dialogueExceedsShotDuration', () => {
+  it('is true only when the take is longer than the shot', () => {
+    expect(dialogueExceedsShotDuration(6.2, 5)).toBe(true);
+    expect(dialogueExceedsShotDuration(5, 5)).toBe(false);
+    expect(dialogueExceedsShotDuration(2.4, 5)).toBe(false);
+    expect(dialogueExceedsShotDuration(null, 5)).toBe(false);
+    expect(dialogueExceedsShotDuration(6.2, undefined)).toBe(false);
   });
 });

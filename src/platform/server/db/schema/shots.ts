@@ -75,11 +75,11 @@ export const shots = snakeCase.table(
     // the shot is first rendered/assigned. Deliberately `set null` (not cascade)
     // so deleting a segment orphans its shots rather than vanishing them.
     renderSegmentId: text().references(() => renderSegments.id),
-    // Music is sequence-level (`sequences.music*`). Dialogue clips (#1554)
-    // are audio references generated in the References stage after Voice
-    // Design — same class as a character sheet, pointers to R2 not bytes.
-    // Motion attaches them; it does not synthesise them. Null until
-    // References ran with voices.
+    // Working set (#1554): the References-stage conversation clip, same
+    // class as a character sheet (pointers to R2, not bytes). Motion
+    // attaches it, and synthesises only when the clip is missing or the
+    // lines/voices moved. Null until References ran with voices. The
+    // prompt-version column is provenance of a render, not this working set.
     audioClips: text({ mode: 'json' }).$type<MotionAudioClip[]>(),
     // Soft-delete (#1108 Phase 1, undoable): excluded from default lists /
     // staleness plans / export / theatre, but the row, its frames, versions

@@ -240,9 +240,9 @@ export function createShotsMethods(db: Database) {
     },
 
     /**
-     * Stamp the References-stage dialogue clip onto the shot (#1554). The
-     * clip is an audio reference, like a character sheet — motion only
-     * attaches it.
+     * Stamp the References-stage dialogue clip onto the shot (#1554).
+     * Working set: motion attaches it, and synthesises only when the
+     * stored clip is missing or the lines/voices moved.
      */
     setAudioClips: async (
       shotId: string,

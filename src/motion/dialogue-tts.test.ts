@@ -2,12 +2,16 @@ import { describe, expect, it } from 'vitest';
 import {
   DIALOGUE_CLIP_TOKEN,
   DIALOGUE_TTS_MODEL,
+  GENERATED_VOICE,
   VIDEO_MODEL_VOICE_TOKEN,
   isElementVoiceToken,
   dialogueClipSourceKey,
   dialogueTtsToken,
   matchingDialogueClips,
   modelTakesDialogueAudio,
+  orphanedVoiceTokens,
+  persistToken,
+  shotPickerValue,
   dialogueVoicesForHash,
   dialogueVoicesHashBody,
   toneToV3AudioTag,
@@ -95,6 +99,46 @@ describe('isElementVoiceToken', () => {
     expect(isElementVoiceToken(undefined)).toBe(false);
     expect(isElementVoiceToken(DIALOGUE_CLIP_TOKEN)).toBe(false);
     expect(isElementVoiceToken(VIDEO_MODEL_VOICE_TOKEN)).toBe(false);
+    expect(isElementVoiceToken(GENERATED_VOICE)).toBe(false);
+  });
+});
+
+describe('persistToken / shotPickerValue', () => {
+  it('persists Generated as unset so TTS still runs', () => {
+    expect(persistToken(GENERATED_VOICE)).toBeUndefined();
+    expect(persistToken(VIDEO_MODEL_VOICE_TOKEN)).toBe(VIDEO_MODEL_VOICE_TOKEN);
+    expect(persistToken('SARAH_VOICE')).toBe('SARAH_VOICE');
+  });
+
+  it('reads mixed legacy per-line bindings as Generated', () => {
+    expect(
+      shotPickerValue([
+        { voiceToken: 'SARAH_VOICE' },
+        { voiceToken: undefined },
+      ])
+    ).toBe(GENERATED_VOICE);
+    expect(
+      shotPickerValue([
+        { voiceToken: VIDEO_MODEL_VOICE_TOKEN },
+        { voiceToken: VIDEO_MODEL_VOICE_TOKEN },
+      ])
+    ).toBe(VIDEO_MODEL_VOICE_TOKEN);
+  });
+});
+
+describe('orphanedVoiceTokens', () => {
+  it('lists deleted element tokens and ignores sentinels', () => {
+    expect(
+      orphanedVoiceTokens(
+        [
+          { voiceToken: 'GONE' },
+          { voiceToken: DIALOGUE_CLIP_TOKEN },
+          { voiceToken: VIDEO_MODEL_VOICE_TOKEN },
+          { voiceToken: 'GONE' },
+        ],
+        new Set()
+      )
+    ).toEqual(['GONE']);
   });
 });
 
@@ -228,15 +272,35 @@ describe('dialogueVoicesHashBody', () => {
 
   it('is order-insensitive and drops blank rows', () => {
     const a = dialogueVoicesHashBody([
-      { voiceId: 'b', line: 'two', ttsModel: DIALOGUE_TTS_MODEL },
-      { voiceId: 'a', line: 'one', ttsModel: DIALOGUE_TTS_MODEL },
+      { voiceId: 'b', line: 'two', tone: '', ttsModel: DIALOGUE_TTS_MODEL },
+      { voiceId: 'a', line: 'one', tone: '', ttsModel: DIALOGUE_TTS_MODEL },
     ]);
     const b = dialogueVoicesHashBody([
-      { voiceId: 'a', line: 'one', ttsModel: DIALOGUE_TTS_MODEL },
-      { voiceId: 'b', line: 'two', ttsModel: DIALOGUE_TTS_MODEL },
-      { voiceId: '', line: 'skip', ttsModel: DIALOGUE_TTS_MODEL },
+      { voiceId: 'a', line: 'one', tone: '', ttsModel: DIALOGUE_TTS_MODEL },
+      { voiceId: 'b', line: 'two', tone: '', ttsModel: DIALOGUE_TTS_MODEL },
+      { voiceId: '', line: 'skip', tone: '', ttsModel: DIALOGUE_TTS_MODEL },
     ]);
     expect(a).toEqual(b);
+  });
+
+  it('treats a tone-only change as a different body', () => {
+    const whispered = dialogueVoicesHashBody([
+      {
+        voiceId: 'a',
+        line: 'Stay down.',
+        tone: 'whispered',
+        ttsModel: DIALOGUE_TTS_MODEL,
+      },
+    ]);
+    const shouted = dialogueVoicesHashBody([
+      {
+        voiceId: 'a',
+        line: 'Stay down.',
+        tone: 'shouting',
+        ttsModel: DIALOGUE_TTS_MODEL,
+      },
+    ]);
+    expect(whispered).not.toEqual(shouted);
   });
 });
 
@@ -280,5 +344,13 @@ describe('matchingDialogueClips', () => {
     ];
     expect(matchingDialogueClips(unkeyed, lines)).toEqual([]);
     expect(matchingDialogueClips(otherKey, lines)).toEqual([]);
+  });
+
+  it('does not reuse a clip when only the tone moved', () => {
+    const whispered = voicedDialogueLines(
+      dialogue([{ character: 'SARAH', line: 'Stay down.', tone: 'whispered' }]),
+      [sarah]
+    );
+    expect(matchingDialogueClips([{ sourceKey: key }], whispered)).toEqual([]);
   });
 });

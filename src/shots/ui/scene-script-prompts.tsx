@@ -1795,6 +1795,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                 : undefined
             }
             filmSeconds={filmSeconds}
+            dialogueSeconds={shot?.audioClips?.[0]?.durationSeconds ?? null}
           />
 
           {/* Thinking bar while the model reasons, before the regenerated
@@ -1925,6 +1926,11 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
               dialogue={shot.motionPrompt.dialogue}
               elements={elements}
               clip={shot.audioClips?.[0] ?? null}
+              shotSeconds={
+                shot.durationMs && shot.durationMs > 0
+                  ? shot.durationMs / 1000
+                  : undefined
+              }
               onChange={
                 motionTakesAudioReferences
                   ? (next) =>
@@ -1948,6 +1954,11 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
               }}
               elements={elements}
               clip={shot?.audioClips?.[0] ?? null}
+              shotSeconds={
+                shot?.durationMs && shot.durationMs > 0
+                  ? shot.durationMs / 1000
+                  : undefined
+              }
               onChange={null}
               source="script"
             />

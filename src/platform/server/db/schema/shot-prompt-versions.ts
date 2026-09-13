@@ -24,9 +24,14 @@ import type {
 } from '@/shots/scene-analysis.schema';
 
 /**
- * One synthesised dialogue clip parked in R2 (#1554). Stamped on the motion
- * prompt version after TTS so the optimised-prompt preview can rebuild the
- * audio refs for paste-into-Videos. Ids also ride `VideoManifestEntry`.
+ * One synthesised dialogue clip parked in R2 (#1554).
+ *
+ * Same type on two columns with different lifecycles:
+ * - `shots.audioClips` — working set from References (rewritten when
+ *   lines/voices change).
+ * - `shot_prompt_versions.audioClips` — clips THIS render consumed,
+ *   stamped at submit. Regenerating the working set must not rewrite
+ *   an old take. Ids also ride `VideoManifestEntry.audioClipIds`.
  */
 export type MotionAudioClip = {
   id: string;
@@ -118,10 +123,9 @@ export const shotPromptVersions = snakeCase.table(
 
     source: text().$type<PromptVariantSource>().notNull(),
 
-    // Motion-only: synthesised dialogue clips this version was rendered with
-    // (#1554). Copied from the shot's References-stage clip at render time.
-    // Null until a render stamps them; empty array = ran and there was
-    // nothing to speak. Provenance, never inferred.
+    // Provenance of this render (#1554): copied from `shots.audioClips`
+    // (or fallback TTS) at submit. Null until stamped; [] = ran and
+    // there was nothing to speak. Never inferred from the shot.
     audioClips: text({ mode: 'json' }).$type<MotionAudioClip[]>(),
     // Motion-only: which template authored this text — true for the
     // image-to-video prompt ("the model already sees the still"), false for

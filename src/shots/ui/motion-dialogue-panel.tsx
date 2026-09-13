@@ -13,15 +13,15 @@
 
 import { formatElementDuration } from '@/cast/element-kind';
 import {
-  DIALOGUE_CLIP_TOKEN,
+  GENERATED_VOICE,
   VIDEO_MODEL_VOICE_TOKEN,
-  isElementVoiceToken,
+  orphanedVoiceTokens,
+  persistToken,
+  shotPickerValue,
 } from '@/motion/dialogue-tts';
+import { dialogueExceedsShotDuration } from '@/motion/resolve-shot-duration';
 import type { SequenceElementMinimal } from '@/platform/server/db/schema';
-import type {
-  DialogueLine,
-  MotionDialogue,
-} from '@/shots/scene-analysis.schema';
+import type { MotionDialogue } from '@/shots/scene-analysis.schema';
 import {
   Select,
   SelectContent,
@@ -29,9 +29,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/ui/shadcn/select';
-
-/** UI-only: persist as no `voiceToken` so Text to Dialogue still runs. */
-const GENERATED_VOICE = '__generated__';
 
 type DialogueClip = {
   url: string;
@@ -41,26 +38,6 @@ type DialogueClip = {
 function voiceLabel(element: SequenceElementMinimal): string {
   const length = formatElementDuration(element.durationSeconds);
   return length ? `${element.token} · ${length}` : element.token;
-}
-
-function tokenToPickerValue(voiceToken: string | undefined): string {
-  if (!voiceToken || voiceToken === DIALOGUE_CLIP_TOKEN) return GENERATED_VOICE;
-  if (voiceToken === VIDEO_MODEL_VOICE_TOKEN) return VIDEO_MODEL_VOICE_TOKEN;
-  return voiceToken;
-}
-
-/** One value for the shot. Mixed legacy per-line bindings read as Generated. */
-function shotPickerValue(lines: readonly DialogueLine[]): string {
-  const first = tokenToPickerValue(lines[0]?.voiceToken);
-  return lines.every((line) => tokenToPickerValue(line.voiceToken) === first)
-    ? first
-    : GENERATED_VOICE;
-}
-
-function persistToken(value: string): string | undefined {
-  if (value === GENERATED_VOICE) return undefined;
-  if (value === VIDEO_MODEL_VOICE_TOKEN) return VIDEO_MODEL_VOICE_TOKEN;
-  return value;
 }
 
 export const MotionDialoguePanel: React.FC<{
@@ -73,7 +50,17 @@ export const MotionDialoguePanel: React.FC<{
   source: 'prompt' | 'script';
   /** References-stage take for this shot, when one exists. */
   clip?: DialogueClip | null;
-}> = ({ dialogue, elements, onChange, disabled, source, clip }) => {
+  /** Shot duration in seconds — noted only when the take is longer. */
+  shotSeconds?: number;
+}> = ({
+  dialogue,
+  elements,
+  onChange,
+  disabled,
+  source,
+  clip,
+  shotSeconds,
+}) => {
   const lines = dialogue?.presence ? dialogue.lines : [];
   if (lines.length === 0) return null;
 
@@ -82,24 +69,29 @@ export const MotionDialoguePanel: React.FC<{
     const length = formatElementDuration(clip?.durationSeconds ?? null);
     return length ? `Generated · ${length}` : 'Generated';
   })();
+  const value = shotPickerValue(lines);
+  const boundElement = voices.find((el) => el.token === value);
+  const orphans =
+    elements === undefined
+      ? []
+      : orphanedVoiceTokens(lines, new Set(voices.map((el) => el.token)));
   const voiceItems: Record<string, string> = {
     [GENERATED_VOICE]: generatedLabel,
     [VIDEO_MODEL_VOICE_TOKEN]: 'Video model',
     ...Object.fromEntries(voices.map((el) => [el.token, voiceLabel(el)])),
+    ...Object.fromEntries(
+      orphans.map((token) => [token, `${token} (deleted)`])
+    ),
   };
-
-  const value = shotPickerValue(lines);
-  const boundElement = voices.find((el) => el.token === value);
-  const elementToken = isElementVoiceToken(
-    value === GENERATED_VOICE || value === VIDEO_MODEL_VOICE_TOKEN
-      ? undefined
-      : value
-  );
-  const orphaned = elements !== undefined && elementToken && !boundElement;
   const playbackUrl =
     value === GENERATED_VOICE
       ? (clip?.url ?? null)
       : (boundElement?.imageUrl ?? null);
+  const audioSeconds =
+    value === GENERATED_VOICE
+      ? (clip?.durationSeconds ?? null)
+      : (boundElement?.durationSeconds ?? null);
+  const dialogueLonger = dialogueExceedsShotDuration(audioSeconds, shotSeconds);
 
   const setShotVoice = (next: string) => {
     if (!onChange) return;
@@ -124,7 +116,7 @@ export const MotionDialoguePanel: React.FC<{
         <div className="flex flex-col gap-2 rounded-md border p-3">
           {onChange && (
             <Select
-              value={orphaned ? GENERATED_VOICE : value}
+              value={value}
               items={voiceItems}
               onValueChange={(next) => {
                 if (typeof next === 'string') setShotVoice(next);
@@ -150,13 +142,25 @@ export const MotionDialoguePanel: React.FC<{
                     <span>{voiceLabel(el)}</span>
                   </SelectItem>
                 ))}
+                {orphans.map((token) => (
+                  <SelectItem key={token} value={token}>
+                    <span>{token} (deleted)</span>
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           )}
-          {orphaned && (
+          {orphans.length > 0 && (
             <p className="text-xs text-warning">
-              {value} was deleted — pick another source, or this shot won't
-              render.
+              {orphans.join(', ')} was deleted — pick another source, or this
+              shot won't render.
+            </p>
+          )}
+          {dialogueLonger && audioSeconds != null && shotSeconds != null && (
+            <p className="text-xs text-muted-foreground">
+              Dialogue is {formatElementDuration(audioSeconds)} — this shot is{' '}
+              {formatElementDuration(shotSeconds)}. Generate will stretch the
+              shot to cover it.
             </p>
           )}
           {playbackUrl ? (

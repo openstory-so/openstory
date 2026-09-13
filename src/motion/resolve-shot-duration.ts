@@ -35,3 +35,17 @@ export function raiseShotDurationToCoverAudio(
   if (!(audioSeconds > durationSeconds)) return durationSeconds;
   return snapDurationUp(audioSeconds, model);
 }
+
+/** True when the take is longer than the shot — shorter audio is a no-op. */
+export function dialogueExceedsShotDuration(
+  dialogueSeconds: number | null | undefined,
+  shotSeconds: number | null | undefined
+): boolean {
+  return (
+    dialogueSeconds != null &&
+    shotSeconds != null &&
+    Number.isFinite(dialogueSeconds) &&
+    Number.isFinite(shotSeconds) &&
+    dialogueSeconds > shotSeconds
+  );
+}

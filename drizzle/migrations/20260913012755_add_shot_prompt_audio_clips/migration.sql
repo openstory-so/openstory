@@ -1,1 +1,0 @@
-ALTER TABLE `shot_prompt_versions` ADD `audio_clips` text;

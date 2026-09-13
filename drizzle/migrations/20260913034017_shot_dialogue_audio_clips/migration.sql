@@ -1,1 +1,0 @@
-ALTER TABLE `shots` ADD `audio_clips` text;

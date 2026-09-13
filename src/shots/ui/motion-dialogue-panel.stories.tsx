@@ -66,3 +66,13 @@ export const VideoModel: Story = {
     },
   },
 };
+
+export const DialogueExceedsShot: Story = {
+  args: {
+    shotSeconds: 4,
+    clip: {
+      url: 'https://www.w3.org/WAI/content-assets/wcag-act-rules/test-assets/moon-audio.mp3',
+      durationSeconds: 6.2,
+    },
+  },
+};

@@ -670,6 +670,7 @@ describe('prompt input hashes', () => {
         {
           voiceId: 'voice-sarah',
           line: 'Stay down.',
+          tone: '',
           ttsModel: 'eleven_v3',
         },
       ],
@@ -687,7 +688,9 @@ describe('prompt input hashes', () => {
     expect(
       await computeMotionPromptInputHash({
         ...sceneCtx,
-        dialogueVoices: [{ voiceId: '', line: 'x', ttsModel: 'eleven_v3' }],
+        dialogueVoices: [
+          { voiceId: '', line: 'x', tone: '', ttsModel: 'eleven_v3' },
+        ],
       })
     ).toBe(await computeMotionPromptInputHash(sceneCtx));
     expect(
@@ -697,6 +700,7 @@ describe('prompt input hashes', () => {
           {
             voiceId: 'voice-sarah',
             line: 'Stay down.',
+            tone: '',
             ttsModel: 'eleven_v3',
           },
         ],
@@ -708,11 +712,25 @@ describe('prompt input hashes', () => {
           {
             voiceId: 'voice-other',
             line: 'Stay down.',
+            tone: '',
             ttsModel: 'eleven_v3',
           },
         ],
       })
     );
+    expect(
+      await computeMotionPromptInputHash({
+        ...sceneCtx,
+        dialogueVoices: [
+          {
+            voiceId: 'voice-sarah',
+            line: 'Stay down.',
+            tone: 'whispered',
+            ttsModel: 'eleven_v3',
+          },
+        ],
+      })
+    ).not.toBe(await computeMotionPromptInputHash(voiced));
   });
 
   it('leaves every stored image-to-video digest unchanged', async () => {
