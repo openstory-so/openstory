@@ -1,30 +1,21 @@
 /**
- * Reload once when a lazy chunk fails to import after a deploy (#1395).
+ * Reload once after a deploy leaves this tab on stale assets (#1395, #1557).
  *
- * A deploy replaces every hashed chunk filename, but an already-loaded tab
- * still points at the old ones. The next lazy import — a route chunk on
- * navigation, a `React.lazy` component — 404s, and the user sits on
- * "Something went wrong" until they refresh by hand. Reloading fetches fresh
- * HTML, which points at chunks that exist; there is no lighter repair, since
- * the missing chunk is what the render needed.
+ * Two failure modes share one cooldown:
  *
- * Vite's preload helper wraps every dynamic import and dispatches a cancelable
- * `vite:preloadError` when either the dep preload or the module import
- * rejects — so the event already *means* "a chunk failed to load". We
- * deliberately don't sniff the error message on top of it: the wording is
- * browser-specific ("Failed to fetch dynamically imported module" /
- * "Importing a module script failed"), so a matcher can only ever go stale
- * and silently stop firing.
+ * 1. A lazy chunk 404s (`vite:preloadError`). Vite's preload helper wraps
+ *    every dynamic import, so one window listener covers them. We don't sniff
+ *    the error message: the wording is browser-specific.
+ * 2. A server function id from the previous build 404s with
+ *    `x-os-stale-server-fn`. TanStack Start would otherwise treat the bare
+ *    `HTTPError` JSON as the call's payload and resolve `undefined`.
  *
- * The page keeps running for a beat after `location.reload()`, and
- * `preventDefault()` makes the helper *resolve* the failed import with
- * `undefined` instead of throwing. The router then reads `.component` off it,
- * the route boundary catches that, and — before #1513 — reported it as a
- * fresh TypeError from `lazyRouteComponent`. It is the death rattle of a page
- * we are already leaving; `isReloadPending` lets the boundary tell.
+ * Reloading fetches fresh HTML. The page keeps running for a beat after
+ * `location.reload()`; `isReloadPending` lets the route boundary stay quiet.
  */
 
 import { getLogger } from '@/platform/logger';
+import { STALE_SERVER_FN_HEADER } from '@/platform/stale-server-fn';
 
 const logger = getLogger(['openstory', 'ui', 'chunk-reload']);
 
@@ -43,21 +34,39 @@ export function isReloadPending(): boolean {
   return reloadPending;
 }
 
+function tryReload(reason: string, err?: unknown): boolean {
+  const now = Date.now();
+  try {
+    if (now - Number(sessionStorage.getItem(KEY) ?? 0) < RETRY_WINDOW_MS) {
+      return false;
+    }
+    sessionStorage.setItem(KEY, String(now));
+  } catch {
+    // No sessionStorage means no loop guard — surface the error instead.
+    return false;
+  }
+  logger.warn(reason, err ? { err } : undefined);
+  reloadPending = true;
+  location.reload();
+  return true;
+}
+
 export function installChunkReload(): void {
   if (typeof window === 'undefined') return;
   window.addEventListener('vite:preloadError', (event) => {
-    const now = Date.now();
-    try {
-      if (now - Number(sessionStorage.getItem(KEY) ?? 0) < RETRY_WINDOW_MS)
-        return;
-      sessionStorage.setItem(KEY, String(now));
-    } catch {
-      // No sessionStorage means no loop guard — surface the error instead.
-      return;
+    if (tryReload('stale chunk after deploy, reloading', event.payload)) {
+      event.preventDefault(); // Suppress the throw; we're leaving the page.
     }
-    logger.warn('stale chunk after deploy, reloading', { err: event.payload });
-    event.preventDefault(); // Suppress the throw; we're leaving the page.
-    reloadPending = true;
-    location.reload();
   });
+
+  const origFetch = window.fetch.bind(window);
+  window.fetch = async (input, init) => {
+    const response = await origFetch(input, init);
+    if (response.headers.get(STALE_SERVER_FN_HEADER) !== '1') return response;
+    if (tryReload('stale server function after deploy, reloading')) {
+      // Don't let Start treat the 404 body as the fn result.
+      return new Promise(() => {});
+    }
+    return response;
+  };
 }

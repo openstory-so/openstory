@@ -89,10 +89,15 @@ const VERY_SLOW_THRESHOLD_MS = 2000;
  * log at `warn`. Add a code here only when a spike of it would NOT be worth
  * paging on — everything else must stay at `error`.
  */
-const EXPECTED_REJECTION_CODES = new Set([
+export const EXPECTED_REJECTION_CODES = new Set([
   'INSUFFICIENT_CREDITS',
   'VALIDATION_ERROR',
   'NOT_FOUND',
+  // Upload-rights gate (#1581): the client is supposed to attest first; a
+  // miss is a 400 the user can complete, not a fault.
+  'ATTESTATION_REQUIRED',
+  // Same Stripe card already unlocked the welcome grant on another team.
+  'WELCOME_CARD_ALREADY_CLAIMED',
 ]);
 const serverFnLogger = getLogger(['openstory', 'serverFn']);
 

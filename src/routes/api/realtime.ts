@@ -1,6 +1,10 @@
 import { getEnv } from '#env';
 import { createFileRoute } from '@tanstack/react-router';
 import { authRequestMiddleware } from '@/platform/middleware.fn';
+import {
+  createPendingWriteGate,
+  MERGED_SSE_MAX_PENDING,
+} from '@/platform/server/realtime/merged-sse';
 
 /**
  * SSE subscription endpoint. One request carries *many* channels: the client
@@ -101,16 +105,24 @@ export const Route = createFileRoute('/api/realtime')({
 
         let closed = false;
         // Writes are chained so frames from different channels can never
-        // interleave mid-frame on the merged stream.
+        // interleave mid-frame on the merged stream. Cap the queue: a stalled
+        // EventSource plus a chatty billing channel otherwise buffers every
+        // subsequent event in this Worker isolate (OOM).
         let tail: Promise<unknown> = Promise.resolve();
+        const pendingWrites = createPendingWriteGate(
+          MERGED_SSE_MAX_PENDING,
+          () => close()
+        );
         const send = (payload: unknown): void => {
           if (closed) return;
+          if (!pendingWrites.tryAcquire()) return;
+          const frame = encoder.encode(`data: ${JSON.stringify(payload)}\n\n`);
           tail = tail
-            .then(() =>
-              writer.write(
-                encoder.encode(`data: ${JSON.stringify(payload)}\n\n`)
-              )
-            )
+            .then(() => {
+              if (closed) return;
+              return writer.write(frame);
+            })
+            .then(() => pendingWrites.release())
             .catch(() => close());
         };
 

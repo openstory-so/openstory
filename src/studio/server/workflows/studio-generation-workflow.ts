@@ -531,8 +531,14 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
       });
     }
     await scopedDb.generatedAssets.markFailed(assetId, error);
-    logger.error(
-      `[StudioGenerationWorkflow] Asset ${assetId} failed: ${error}`
-    );
+    if (isContentRejectionError(error)) {
+      logger.warn(
+        `[StudioGenerationWorkflow] Asset ${assetId} failed: ${error}`
+      );
+    } else {
+      logger.error(
+        `[StudioGenerationWorkflow] Asset ${assetId} failed: ${error}`
+      );
+    }
   }
 }
