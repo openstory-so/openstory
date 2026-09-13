@@ -545,8 +545,8 @@ describe('canonical serialization', () => {
     expect(ordered).toBe(shuffled);
   });
 
-  it('rejects non-finite numbers rather than collapsing them to null', () => {
-    expect(
+  it('rejects non-finite numbers rather than collapsing them to null', async () => {
+    await expect(
       computeShotAudioInputHash({
         musicPrompt: 'test',
         tags: [],
@@ -554,7 +554,7 @@ describe('canonical serialization', () => {
         audioModel: 'cassette-v1',
       })
     ).rejects.toThrow(/non-finite/);
-    expect(
+    await expect(
       computeShotAudioInputHash({
         musicPrompt: 'test',
         tags: [],

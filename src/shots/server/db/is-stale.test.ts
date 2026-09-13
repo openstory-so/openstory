@@ -246,9 +246,9 @@ describe('shotVariants.isStale', () => {
     return variant;
   }
 
-  it('throws when the variant does not exist', () => {
+  it('throws when the variant does not exist', async () => {
     const m = createShotVariantsMethods(db);
-    expect(m.isStale(generateId(), 'h')).rejects.toThrow(/not found/);
+    await expect(m.isStale(generateId(), 'h')).rejects.toThrow(/not found/);
   });
 
   it('returns false when stored hash is null', async () => {

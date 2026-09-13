@@ -684,7 +684,7 @@ describe('talent-sheet-variants promoteAtomically negative cases', () => {
       divergedAt: new Date('2026-04-29T00:00:00Z'),
     });
 
-    expect(
+    await expect(
       methods.promoteAtomically(
         generateId(),
         {
@@ -702,7 +702,7 @@ describe('talent-sheet-variants promoteAtomically negative cases', () => {
 
   it('throws when the variant does not exist; talent_sheets is not updated', async () => {
     const methods = createTalentSheetVariantsMethods(db, team.id);
-    expect(
+    await expect(
       methods.promoteAtomically(
         talentSheetId,
         {
