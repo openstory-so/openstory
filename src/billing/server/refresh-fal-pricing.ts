@@ -382,13 +382,14 @@ function overlaySiblingBilledRates(
 }
 
 /**
- * A Workers cron run has a 15-minute wall clock, the price + typical-units
- * phases already take minutes, and one extraction measured ~75 s (Gemini
- * 3.1 Pro, 2026-09-13). ponytail: per-run cap; the rest pick up on later
- * nights because an unchanged hash skips. Shard across runs if the used
- * set grows.
+ * A Workers cron run has a 15-minute wall clock and the price + typical-units
+ * phases already take minutes. One extraction measured 6–13 s on Opus 5's
+ * priority tier (2026-09-14; it was ~75 s on Gemini 3.1 Pro), so 30 is
+ * ~7 min worst case and cards the ~55 used endpoints in two nights.
+ * ponytail: per-run cap; the rest pick up later because an unchanged hash
+ * skips. Shard across runs if the used set grows.
  */
-export const MAX_RATE_CARD_EXTRACTIONS_PER_RUN = 5;
+export const MAX_RATE_CARD_EXTRACTIONS_PER_RUN = 30;
 
 type StoredRateCard = { card: RateCard; verified: boolean };
 

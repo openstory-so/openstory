@@ -36,6 +36,7 @@ import {
   computeObservedUnits,
   FAL_PRICING_CRON,
   HISTORY_CHUNK,
+  MAX_RATE_CARD_EXTRACTIONS_PER_RUN,
   OBSERVATIONS_PER_ENDPOINT,
   UPSERT_CHUNK,
 } from './refresh-fal-pricing';
@@ -838,6 +839,14 @@ describe('refreshFalPricing rate cards (#1605)', () => {
     'fal-ai/c',
     'fal-ai/d',
   ].map(price);
+  /** Exactly one night's extraction cap: 'fal-ai/x' first, then fillers. */
+  const capPrices = [
+    'fal-ai/x',
+    ...Array.from(
+      { length: MAX_RATE_CARD_EXTRACTIONS_PER_RUN - 1 },
+      (_, i) => `fal-ai/p${i}`
+    ),
+  ].map(price);
 
   let extractCalls: string[];
   let extractResult: (endpointId: string) => unknown;
@@ -1080,7 +1089,7 @@ describe('refreshFalPricing rate cards (#1605)', () => {
   });
 
   test('a rejected text is not re-extracted until it changes, so the deferred tail gets a slot', async () => {
-    const sixPrices = [...fivePrices, price('fal-ai/e')];
+    const sixPrices = [...capPrices, price('fal-ai/e')];
     const rejectX = (id: string) =>
       id === 'fal-ai/x'
         ? { status: 'rejected', reason: 'example failed', costMicros: 0 }
@@ -1093,13 +1102,7 @@ describe('refreshFalPricing rate cards (#1605)', () => {
           };
     let mod = await load({ prices: sixPrices, extract: rejectX });
     await mod.refreshFalPricing({ apiKey: 'k', billingKey: 'b' });
-    expect(extractCalls).toEqual([
-      'fal-ai/x',
-      'fal-ai/a',
-      'fal-ai/b',
-      'fal-ai/c',
-      'fal-ai/d',
-    ]);
+    expect(extractCalls).toEqual(capPrices.map((p) => p.endpointId));
     const x = await rowOf('fal-ai/x');
     expect(x?.rateCard).toBeNull();
     expect(x?.rateCardSourceHash).toBe(HASH);

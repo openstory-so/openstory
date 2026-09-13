@@ -545,7 +545,7 @@ function buildLlmtrModelOptions(params: LLMRequestParams) {
  * `requireParameters: true` yields "No endpoints found that can handle the
  * requested parameters". Image-variant GPT-5 ids still take sampling.
  */
-function modelAllowsClassicSampling(model: string): boolean {
+export function modelAllowsClassicSampling(model: string): boolean {
   return !(model.startsWith('openai/gpt-5') && !model.includes('image'));
 }
 
@@ -588,7 +588,20 @@ export function openRouterProviderForModel(
  * is an accepted alias for it. Scoped to the OpenRouter route by construction:
  * native xAI/Gemini and the LLMTR gateway build their own options.
  */
-const SERVICE_TIER = 'priority' as const;
+const OPENROUTER_SERVICE_TIER = 'priority' as const;
+
+/**
+ * What every OpenRouter call carries: the vendor pin and the priority tier.
+ * `buildModelOptions` adds it for `baseChatOptions`; a direct `chat()` caller
+ * (rate-card extraction) spreads it itself. The dedicated `-fast` model slugs
+ * are deprecated (2026-09-01): fast mode is this tier on the plain model id.
+ */
+export function openRouterCallOptions(model: string) {
+  return {
+    provider: openRouterProviderForModel(model),
+    serviceTier: OPENROUTER_SERVICE_TIER,
+  };
+}
 
 function buildModelOptions(params: LLMRequestParams) {
   const provider: ProviderPreferences = {
@@ -612,7 +625,7 @@ function buildModelOptions(params: LLMRequestParams) {
       : {};
   return {
     provider,
-    serviceTier: SERVICE_TIER,
+    serviceTier: OPENROUTER_SERVICE_TIER,
     ...reasoningOptions,
     // `maxTokens`, not `maxCompletionTokens`: DeepSeek endpoints advertise only
     // `max_tokens`, so `max_completion_tokens` + requireParameters empties the

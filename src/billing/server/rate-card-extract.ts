@@ -34,6 +34,8 @@ import {
   createUsageCapture,
   extractRunError,
   llmCostFromUsage,
+  modelAllowsClassicSampling,
+  openRouterCallOptions,
   throwNotedRunError,
 } from '@/models/server/llm-client';
 import { getChatPrompt } from '@/platform/server/ai/prompts-index';
@@ -43,9 +45,15 @@ import type { RateCardSource } from './rate-card-source';
 
 const logger = getLogger(['openstory', 'ai', 'rate-card-extract']);
 
-/** Strong reasoning model: the card is a small program, not a summary. */
-export const RATE_CARD_EXTRACTION_MODEL: TextModel =
-  'google/gemini-3.1-pro-preview';
+/**
+ * Opus 5 on OpenRouter's priority ("fast") service tier — the only model that
+ * was both fast and clean on every shape in the 2026-09-14 bake-off (6–13 s a
+ * card; Gemini 3.1 Pro and DeepSeek V4 Pro took 30 s to 2+ min, GPT 5.5 /
+ * Sonnet 5 / GLM misread the rounding rule, Flash wrote no examples). The tier
+ * is a request field (`openRouterCallOptions`), not a `-fast` model slug.
+ * ~$0.10–0.27 a card, paid only when the text changes.
+ */
+export const RATE_CARD_EXTRACTION_MODEL: TextModel = 'anthropic/claude-opus-5';
 
 /** Bounds on the price of a default request — outside is a misread card. */
 export const DEFAULT_PRICE_BOUNDS_USD = { min: 0.0001, max: 50 };
@@ -199,6 +207,12 @@ async function callExtractionModel(
   );
 
   const adapter = createAdapter(model, llmKey);
+  // Same options the main client path sends on this route (vendor pin +
+  // priority tier); native xAI / Gemini keys take neither. Opus 5 rejects
+  // sampling params, so temperature rides the same guard as llm-client.
+  const via = llmKey?.via ?? 'openrouter';
+  const routeOptions =
+    via === 'openrouter' || via === 'fal' ? openRouterCallOptions(model) : {};
   const usageCapture = createUsageCapture();
   let accumulated = '';
   let runError = null;
@@ -207,7 +221,11 @@ async function callExtractionModel(
     systemPrompts,
     messages: chatMessages,
     stream: true,
-    modelOptions: { temperature: 0, streamOptions: { includeUsage: true } },
+    modelOptions: {
+      ...routeOptions,
+      ...(modelAllowsClassicSampling(model) && { temperature: 0 }),
+      streamOptions: { includeUsage: true },
+    },
     middleware: [
       ...aiObservabilityMiddleware({
         observationName: 'rate-card-extraction',
