@@ -21,6 +21,7 @@ export type RateCardErrorCode =
   | 'bad-input'
   | 'missing-key'
   | 'not-a-number'
+  | 'not-comparable'
   | 'bad-result';
 
 export class RateCardError extends Error {
@@ -49,6 +50,25 @@ function readVar(vars: Vars, path: string): unknown {
     value = value[key];
   }
   return value;
+}
+
+/**
+ * `==` is strict, unlike JSONLogic's loose `==`: a number against a string
+ * (Kling's `duration` "5" is bound as 5) refuses instead of quietly taking
+ * the wrong branch.
+ */
+function same(a: unknown, b: unknown): boolean {
+  const kind = (v: unknown) =>
+    typeof v === 'number' || typeof v === 'string' || typeof v === 'boolean'
+      ? typeof v
+      : undefined;
+  if (kind(a) === undefined || kind(a) !== kind(b)) {
+    throw new RateCardError(
+      'not-comparable',
+      `${JSON.stringify(a)} vs ${JSON.stringify(b)}`
+    );
+  }
+  return a === b;
 }
 
 const truthy = (v: unknown): boolean =>
@@ -151,9 +171,9 @@ function evaluate(
     case 'floor':
       return Math.floor(num(arg(0)));
     case '==':
-      return ev(arg(0)) === ev(arg(1));
+      return same(ev(arg(0)), ev(arg(1)));
     case '!=':
-      return ev(arg(0)) !== ev(arg(1));
+      return !same(ev(arg(0)), ev(arg(1)));
     case '<':
       return num(arg(0)) < num(arg(1));
     case '<=':

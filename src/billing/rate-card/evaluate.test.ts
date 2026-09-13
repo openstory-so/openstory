@@ -165,6 +165,22 @@ describe('refusals', () => {
       'missing-key',
     ],
     ['non-numeric operand', { '+': [{ var: 'x' }, 'text'] }, 'not-a-number'],
+    // JSONLogic's == is loose; ours refuses a type mismatch instead of returning false.
+    [
+      '== across types',
+      { if: [{ '==': [{ var: 'x' }, '4'] }, 1, 2] },
+      'not-comparable',
+    ],
+    [
+      '!= across types',
+      { if: [{ '!=': [{ var: 'x' }, '4'] }, 1, 2] },
+      'not-comparable',
+    ],
+    [
+      '== on a list',
+      { if: [{ '==': [{ missing: ['x'] }, 0] }, 1, 2] },
+      'not-comparable',
+    ],
     ['zero price', { '-': [{ var: 'x' }, 4] }, 'bad-result'],
     ['negative price', { '-': [1, { var: 'x' }] }, 'bad-result'],
     ['non-finite price', { '/': [{ var: 'x' }, 0] }, 'bad-result'],
@@ -175,6 +191,42 @@ describe('refusals', () => {
 
   it('schema rejects an op outside the vocabulary', () => {
     expect(rateCardSchema.safeParse(cardFor(unknownOp)).success).toBe(false);
+  });
+
+  it('schema rejects a lookup node carrying a sibling op (would be stripped silently)', () => {
+    const price: Expr = JSON.parse(
+      '{"lookup":{"table":"t","keys":["a","p"]},"+":[1,2]}'
+    );
+    expect(rateCardSchema.safeParse(cardFor(price)).success).toBe(false);
+  });
+
+  it.each<[string, Partial<RateCard>]>([
+    [
+      'enum default outside values',
+      {
+        inputs: {
+          r: { param: 'r', kind: 'enum', values: ['a'], default: 'zzz' },
+        },
+      },
+    ],
+    [
+      'dimensions default that is not a preset',
+      {
+        inputs: {
+          s: { param: 's', kind: 'dimensions', presets: {}, default: 'nope' },
+        },
+      },
+    ],
+    [
+      'extractedAt that is not a date',
+      { source: { ...source, extractedAt: 'yesterday' } },
+    ],
+    [
+      'expiresAt that is not a date',
+      { source: { ...source, expiresAt: 'soon' } },
+    ],
+  ])('schema rejects %s', (_name, extra) => {
+    expect(rateCardSchema.safeParse(cardFor(1, extra)).success).toBe(false);
   });
 });
 

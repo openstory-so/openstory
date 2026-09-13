@@ -3,6 +3,12 @@ import { RATE_CARDS } from './cards';
 import { evaluateRateCard, verifyRateCardExamples } from './evaluate';
 import { type RateCard, rateCardSchema } from './rate-card.schema';
 
+const MINIMAL_REQUEST: Record<string, Record<string, unknown>> = {
+  'xai/grok-imagine-video/v1.5/reference-to-video': {
+    reference_image_urls: ['a'],
+  },
+};
+
 // Six pages of different shapes (per-second tiers, per-image multipliers,
 // token allowances, size × quality tables, token formulas with a minimum
 // charge). Every worked example reproducing is the proof the vocabulary is
@@ -27,9 +33,11 @@ describe.each(Object.entries(RATE_CARDS))(
       ).toEqual([]);
     });
 
-    it('prices the default request from input defaults alone', () => {
-      // Every input either has a default or is a count (0 when absent).
-      const { usd } = evaluateRateCard(card, {});
+    it('prices the smallest request the endpoint accepts', () => {
+      // Every input has a default or is a count; a required list param
+      // (Grok r2v needs 1–7 reference images) is supplied so the priced
+      // request is one fal would actually run.
+      const { usd } = evaluateRateCard(card, MINIMAL_REQUEST[endpointId] ?? {});
       expect(usd).toBeGreaterThan(0);
     });
   }

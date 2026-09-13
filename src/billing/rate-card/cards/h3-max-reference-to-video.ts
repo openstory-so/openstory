@@ -19,9 +19,10 @@ import type { RateCard } from '../rate-card.schema';
  * Reference tokens scale with pixels (1024² = 1K, 2048² = 4K). The request
  * carries URLs, not sizes, so `reference_image_pixels` is a card-level
  * lever the caller supplies from the sheets it uploaded; it defaults to
- * 1024². Excess tokens bill per started 1K — that is what makes both of the
- * page's per-image examples ($0.02 for the 5th 1024², $0.08 for the 2nd
- * 2048²) exact instead of 2–4% off.
+ * 1024². Excess tokens are billed per started 1K (`ceil`); the page's
+ * examples ($0.02 for the 5th 1024², $0.08 for the 2nd 2048²) are within
+ * 1% either way, so they do not distinguish this from pro-rata billing —
+ * per-started-1K is the conservative reading.
  */
 export const H3_MAX_REFERENCE_TO_VIDEO: RateCard = {
   inputs: {

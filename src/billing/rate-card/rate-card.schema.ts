@@ -49,8 +49,10 @@ const exprSchema: z.ZodType<Expr> = z.lazy(() =>
     z.number(),
     z.string(),
     z.boolean(),
-    z.object({
-      lookup: z.object({
+    // strict: a sibling core op next to `lookup` would otherwise be stripped
+    // silently, storing a different price than written.
+    z.strictObject({
+      lookup: z.strictObject({
         table: z.string(),
         keys: z.array(exprSchema).min(1),
         default: exprSchema.optional(),
@@ -83,12 +85,17 @@ const inputSchema = z.discriminatedUnion('kind', [
     kind: z.literal('number'),
     default: z.number().optional(),
   }),
-  z.object({
-    ...inputBase,
-    kind: z.literal('enum'),
-    values: z.array(z.string()).min(1),
-    default: z.string().optional(),
-  }),
+  z
+    .object({
+      ...inputBase,
+      kind: z.literal('enum'),
+      values: z.array(z.string()).min(1),
+      default: z.string().optional(),
+    })
+    .refine(
+      (i) => i.default === undefined || i.values.includes(i.default),
+      'default must be one of values'
+    ),
   z.object({
     ...inputBase,
     kind: z.literal('boolean'),
@@ -97,12 +104,19 @@ const inputSchema = z.discriminatedUnion('kind', [
   /** Length of a list param (`image_urls`), 0 when absent. */
   z.object({ ...inputBase, kind: z.literal('count') }),
   /** `{width, height}` or a preset name; binds `<name>.width` / `<name>.height`. */
-  z.object({
-    ...inputBase,
-    kind: z.literal('dimensions'),
-    presets: z.record(z.string(), z.tuple([z.number(), z.number()])).optional(),
-    default: z.string().optional(),
-  }),
+  z
+    .object({
+      ...inputBase,
+      kind: z.literal('dimensions'),
+      presets: z
+        .record(z.string(), z.tuple([z.number(), z.number()]))
+        .optional(),
+      default: z.string().optional(),
+    })
+    .refine(
+      (i) => i.default === undefined || i.presets?.[i.default] !== undefined,
+      'default must be a preset name'
+    ),
 ]);
 
 const rateCardExampleSchema = z.object({
@@ -125,9 +139,11 @@ export const rateCardSchema = z.object({
     url: z.string().url(),
     /** sha256 of the source text the card was read from. */
     hash: z.string().regex(/^[0-9a-f]{64}$/),
-    extractedAt: z.string().meta({ format: 'date-time' }),
+    // Real ISO dates: an LLM-emitted "soon" would never compare past `now`,
+    // so a promo card would never be re-extracted.
+    extractedAt: z.iso.datetime(),
     /** When the text names a promo end — re-extract after this. */
-    expiresAt: z.string().meta({ format: 'date-time' }).optional(),
+    expiresAt: z.iso.datetime().optional(),
   }),
 });
 

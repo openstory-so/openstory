@@ -170,7 +170,8 @@ export const BYTEPLUS_SEEDANCE_2_5: RateCard = {
     {
       params: { resolution: '1080p', ratio: '16:9', duration: 5 },
       usd: 2.843,
-      quote: '1080p 16:9 5s: 2.843 per video',
+      quote:
+        '1080p 16:9 5s: 2.843 per video (list price; the 28%-off promo until Sep 17 is not applied — see header)',
     },
     {
       params: {
