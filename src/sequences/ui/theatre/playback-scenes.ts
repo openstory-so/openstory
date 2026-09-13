@@ -18,7 +18,27 @@ export function toPlaybackScenes(
     if (!url) continue;
     scenes.push({ orderIndex: scenes.length, videoUrl: url });
   }
-  return scenes;
+  return collapseConsecutivePlaybackUrls(scenes);
+}
+
+/**
+ * Packed in-clip renders (#1510) share one video URL across every covered
+ * shot. Consecutive copies would play the clip twice; collapse them so the
+ * stitch is one generation, not N.
+ */
+export function collapseConsecutiveUrls(urls: readonly string[]): string[] {
+  const out: string[] = [];
+  for (const url of urls) {
+    if (out[out.length - 1] !== url) out.push(url);
+  }
+  return out;
+}
+
+function collapseConsecutivePlaybackUrls(
+  scenes: readonly SceneInput[]
+): SceneInput[] {
+  const urls = collapseConsecutiveUrls(scenes.map((s) => s.videoUrl));
+  return urls.map((videoUrl, orderIndex) => ({ orderIndex, videoUrl }));
 }
 
 /**

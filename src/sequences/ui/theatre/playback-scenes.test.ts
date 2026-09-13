@@ -25,6 +25,19 @@ describe('toPlaybackScenes', () => {
       { orderIndex: 1, videoUrl: '/c.mp4' },
     ]);
   });
+
+  it('collapses consecutive packed-segment copies into one clip (#1510)', () => {
+    expect(
+      toPlaybackScenes([
+        shot('/packed.mp4'),
+        shot('/packed.mp4'),
+        shot('/b.mp4'),
+      ])
+    ).toEqual([
+      { orderIndex: 0, videoUrl: '/packed.mp4' },
+      { orderIndex: 1, videoUrl: '/b.mp4' },
+    ]);
+  });
 });
 
 describe('scenePlaybackKey', () => {

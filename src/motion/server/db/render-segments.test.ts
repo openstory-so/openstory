@@ -186,3 +186,69 @@ describe('ensureForShot', () => {
     ).rejects.toThrow(/no scene/i);
   });
 });
+
+describe('ensureForShots', () => {
+  it('falls through to ensureForShot for a single member', async () => {
+    const segmentId = await methods.ensureForShots([
+      {
+        id: shotId,
+        sceneId,
+        sequenceId,
+        renderSegmentId: null,
+      },
+    ]);
+    expect(segmentId).toBe(shotId);
+  });
+
+  it('creates a shared segment and points every member at it', async () => {
+    const shotB = generateId();
+    await db.insert(shots).values([
+      {
+        id: shotB,
+        sequenceId,
+        sceneId,
+        shotNumber: 2,
+        renderSegmentId: null,
+      },
+    ]);
+
+    const segmentId = await methods.ensureForShots([
+      { id: shotId, sceneId, sequenceId, renderSegmentId: null },
+      { id: shotB, sceneId, sequenceId, renderSegmentId: null },
+    ]);
+
+    expect(segmentId).not.toBe(shotId);
+    expect(segmentId).not.toBe(shotB);
+    const pointed = await db
+      .select({ id: shots.id, renderSegmentId: shots.renderSegmentId })
+      .from(shots)
+      .where(eq(shots.sequenceId, sequenceId));
+    expect(new Set(pointed.map((s) => s.renderSegmentId))).toEqual(
+      new Set([segmentId])
+    );
+  });
+
+  it('reuses a live shared pointer instead of minting another segment', async () => {
+    const shotB = generateId();
+    await db.insert(shots).values([
+      {
+        id: shotB,
+        sequenceId,
+        sceneId,
+        shotNumber: 2,
+        renderSegmentId: null,
+      },
+    ]);
+    const first = await methods.ensureForShots([
+      { id: shotId, sceneId, sequenceId, renderSegmentId: null },
+      { id: shotB, sceneId, sequenceId, renderSegmentId: null },
+    ]);
+    const again = await methods.ensureForShots([
+      { id: shotId, sceneId, sequenceId, renderSegmentId: first },
+      { id: shotB, sceneId, sequenceId, renderSegmentId: first },
+    ]);
+    expect(again).toBe(first);
+    const all = await db.select().from(renderSegments);
+    expect(all).toHaveLength(1);
+  });
+});

@@ -357,6 +357,11 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       why: 'Shot deleted mid-run is a stand-down, not a failure.',
     },
     {
+      read: 'shots.getByIds',
+      bucket: 'EXISTENCE-GUARD',
+      why: 'Packed in-clip members (#1510) deleted mid-run must not be assigned to the shared segment; existence of the live set, not a selection pointer.',
+    },
+    {
       read: 'shotPromptVersions.getByIdForShot',
       bucket: 'CLAIM-BY-ID',
       why: 'The motion prompt version this clip renders from, named by the trigger snapshot — its hash + model are copied onto the softened row (#1373), as soften-image-prompt does for stills.',

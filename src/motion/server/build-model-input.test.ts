@@ -58,6 +58,22 @@ describe('buildModelInput', () => {
       const result = build('kling_v3_pro', { generateAudio: false });
       expect(result.generate_audio).toBe(false);
     });
+
+    it('sends multi_prompt and omits prompt for a packed clip (#1510)', () => {
+      const result = build('kling_v3_pro', {
+        multiPrompt: [
+          { prompt: 'opens the door', duration: '4' },
+          { prompt: 'the hallway', duration: '6' },
+        ],
+        duration: 10,
+      });
+      expect(result.multi_prompt).toEqual([
+        { prompt: 'opens the door', duration: '4' },
+        { prompt: 'the hallway', duration: '6' },
+      ]);
+      expect(result.shot_type).toBe('customize');
+      expect(result).not.toHaveProperty('prompt');
+    });
   });
 
   describe('Grok Imagine Video 1.5 (default)', () => {

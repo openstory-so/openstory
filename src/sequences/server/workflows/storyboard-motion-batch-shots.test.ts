@@ -67,6 +67,7 @@ describe('buildStoryboardMotionBatchShots', () => {
     expect(shots).toHaveLength(2);
     expect(shots[0]).toMatchObject({
       shotId: 'shot-1',
+      sceneId: 'sc-1',
       imageUrl: 'https://cdn/a.png',
       frameVersionId: 'fv-1',
       motionPromptVersionId: 'mpv-1',

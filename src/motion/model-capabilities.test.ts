@@ -75,6 +75,15 @@ describe('baked motion capabilities stay in lockstep with fal schemas', () => {
     }
   });
 
+  it('every model declares supportsInClipMultiShot', () => {
+    for (const key of keys) {
+      expect(
+        typeof IMAGE_TO_VIDEO_MODELS[key].supportsInClipMultiShot,
+        `${key} must declare supportsInClipMultiShot`
+      ).toBe('boolean');
+    }
+  });
+
   it('covers every catalog model', () => {
     expect(Object.keys(MOTION_DURATION_GRID).sort()).toEqual(
       keys.slice().sort()

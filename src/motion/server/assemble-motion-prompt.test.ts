@@ -7,7 +7,10 @@ import {
   DIALOGUE_CLIP_TOKEN,
   VIDEO_MODEL_VOICE_TOKEN,
 } from '@/motion/dialogue-tts';
-import { assembleMotionPrompt } from './assemble-motion-prompt';
+import {
+  assembleMotionPrompt,
+  assemblePackedMotionPrompt,
+} from './assemble-motion-prompt';
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -274,6 +277,17 @@ describe('assembleMotionPrompt', () => {
         );
       });
 
+      it('drops the no-cuts pin when the clip is a packed multi-shot', () => {
+        const result = assembleMotionPrompt({
+          motionPrompt: makeMotionPrompt(),
+          model,
+          singleTake: false,
+        });
+
+        expect(result).toContain('No BGM, no music.');
+        expect(result).not.toContain('Single continuous shot, no cuts.');
+      });
+
       it('adds the jitter guard only when the scene has characters', () => {
         const withCharacters = assembleMotionPrompt({
           motionPrompt: makeMotionPrompt(),
@@ -319,6 +333,25 @@ describe('assembleMotionPrompt', () => {
         model,
       });
 
+      expect(result).toBe(fullPromptText);
+    });
+  });
+
+  describe('Gemini Omni Flash (oner pin)', () => {
+    it('pins a 1-shot clip as a single unbroken scene', () => {
+      const result = assembleMotionPrompt({
+        motionPrompt: makeMotionPrompt(),
+        model: 'gemini_omni_flash',
+      });
+      expect(result).toBe(`${fullPromptText}\n\nSingle unbroken scene.`);
+    });
+
+    it('does not pin a packed multi-shot', () => {
+      const result = assembleMotionPrompt({
+        motionPrompt: makeMotionPrompt(),
+        model: 'gemini_omni_flash',
+        singleTake: false,
+      });
       expect(result).toBe(fullPromptText);
     });
   });
@@ -464,5 +497,84 @@ describe('assembleMotionPrompt', () => {
 
       expect(result).not.toContain('No BGM');
     });
+  });
+});
+
+describe('assemblePackedMotionPrompt', () => {
+  const shot = (
+    fullPrompt: string,
+    durationSeconds: number
+  ): {
+    durationSeconds: number;
+    motionPrompt: MotionPrompt;
+  } => ({
+    durationSeconds,
+    motionPrompt: {
+      fullPrompt,
+      dialogue: { presence: false, lines: [] },
+      audio: { ambientSound: '', soundEffects: [] },
+    },
+  });
+
+  it('a 1-shot list is the existing single-take Seedance path', () => {
+    const packed = assemblePackedMotionPrompt({
+      shots: [shot('opens the door', 4)],
+      model: 'seedance_v2',
+    });
+    expect(packed.prompt).toContain('Single continuous shot, no cuts.');
+    expect(packed.multiPrompt).toBeUndefined();
+  });
+
+  it('Seedance 2.0 packs with Shot N prose and cut to, no oner pin', () => {
+    const packed = assemblePackedMotionPrompt({
+      shots: [shot('opens the door', 4), shot('the hallway beyond', 6)],
+      model: 'seedance_v2',
+    });
+    expect(packed.prompt).toContain('Shot 1: opens the door');
+    expect(packed.prompt).toContain('cut to');
+    expect(packed.prompt).toContain('Shot 2: the hallway beyond');
+    expect(packed.prompt).not.toContain('Single continuous shot, no cuts.');
+  });
+
+  it('Seedance 2.5 adds timestamps on the packed list', () => {
+    const packed = assemblePackedMotionPrompt({
+      shots: [shot('opens the door', 4), shot('the hallway beyond', 6)],
+      model: 'seedance_v2_5',
+    });
+    expect(packed.prompt).toContain('0-4 seconds: Shot 1:');
+    expect(packed.prompt).toContain('4-10 seconds: Shot 2:');
+  });
+
+  it('H3 Max uses a timed shot list', () => {
+    const packed = assemblePackedMotionPrompt({
+      shots: [shot('opens the door', 4), shot('the hallway beyond', 6)],
+      model: 'minimax_h3_max',
+    });
+    expect(packed.prompt).toContain('Shot 1 (0-4s):');
+    expect(packed.prompt).toContain('Shot 2 (4-10s):');
+  });
+
+  it('Kling v3 returns multi_prompt with per-shot durations', () => {
+    const packed = assemblePackedMotionPrompt({
+      shots: [shot('opens the door', 4), shot('the hallway beyond', 6)],
+      model: 'kling_v3_pro',
+    });
+    expect(packed.multiPrompt).toEqual([
+      { prompt: expect.stringContaining('opens the door'), duration: '4' },
+      {
+        prompt: expect.stringContaining('the hallway beyond'),
+        duration: '6',
+      },
+    ]);
+  });
+
+  it('Omni Flash packed list has no oner pin', () => {
+    const packed = assemblePackedMotionPrompt({
+      shots: [shot('opens the door', 4), shot('the hallway beyond', 6)],
+      model: 'gemini_omni_flash',
+    });
+    expect(packed.prompt).toContain('Shot 1: opens the door');
+    expect(packed.prompt).toContain('cut to');
+    expect(packed.prompt).not.toContain('Single unbroken scene.');
   });
 });

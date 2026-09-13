@@ -20,7 +20,8 @@
 import type { Database } from '@/platform/server/db/client';
 import { renderSegments, shots } from '@/platform/server/db/schema';
 import type { RenderSegment } from '@/platform/server/db/schema';
-import { and, eq } from 'drizzle-orm';
+import { generateId } from '@/platform/id';
+import { and, eq, inArray } from 'drizzle-orm';
 
 /** The shot fields {@link createRenderSegmentsMethods.ensureForShot} needs. */
 export type ShotForSegment = {
@@ -31,7 +32,7 @@ export type ShotForSegment = {
 };
 
 export function createRenderSegmentsMethods(db: Database) {
-  return {
+  const methods = {
     getById: async (segmentId: string): Promise<RenderSegment | null> => {
       const result = await db
         .select()
@@ -93,6 +94,49 @@ export function createRenderSegmentsMethods(db: Database) {
       return shot.id;
     },
 
+    /**
+     * Materialize a shared segment covering several shots of one scene
+     * (#1510). Reuses the pointer when every member already shares a live
+     * segment; otherwise inserts a fresh id (not a shot id) and points every
+     * member at it. A 1-shot list falls through to {@link ensureForShot}.
+     */
+    ensureForShots: async (members: ShotForSegment[]): Promise<string> => {
+      const first = members[0];
+      if (!first) {
+        throw new Error('Cannot create a render segment with no shots');
+      }
+      if (members.length === 1) return methods.ensureForShot(first);
+
+      const sharedId = first.renderSegmentId;
+      if (
+        sharedId &&
+        members.every((shot) => shot.renderSegmentId === sharedId)
+      ) {
+        const existing = await db
+          .select({ id: renderSegments.id })
+          .from(renderSegments)
+          .where(eq(renderSegments.id, sharedId));
+        if (existing[0]) return existing[0].id;
+      }
+      if (!first.sceneId) {
+        throw new Error(
+          `Shot ${first.id} has no scene; cannot create a render segment`
+        );
+      }
+      const segmentId = generateId();
+      await db.insert(renderSegments).values({
+        id: segmentId,
+        sceneId: first.sceneId,
+        sequenceId: first.sequenceId,
+      });
+      const memberIds = members.map((shot) => shot.id);
+      await db
+        .update(shots)
+        .set({ renderSegmentId: segmentId, updatedAt: new Date() })
+        .where(inArray(shots.id, memberIds));
+      return segmentId;
+    },
+
     deleteBySequence: async (sequenceId: string): Promise<number> => {
       const result = await db
         .delete(renderSegments)
@@ -134,6 +178,7 @@ export function createRenderSegmentsMethods(db: Database) {
         );
     },
   };
+  return methods;
 }
 
 /**

@@ -58,6 +58,12 @@ type AssembleOptions = {
    * always renders an audio track, so `false` is written into its prompt.
    */
   generateAudio?: boolean;
+  /**
+   * Pin a one-take clip. Seedance otherwise invents cuts; Omni Flash
+   * otherwise defaults to multi-shot. Packed in-clip renders pass `false`
+   * (#1510). Default true so existing 1-shot callers stay byte-identical.
+   */
+  singleTake?: boolean;
 };
 
 /**
@@ -72,6 +78,7 @@ export function assembleMotionPrompt({
   model,
   characterTags,
   generateAudio,
+  singleTake = true,
 }: AssembleOptions): string {
   const { dialogue, audio, fullPrompt } = motionPrompt;
   const supportsAudio = videoModelSupportsAudio(model);
@@ -82,6 +89,10 @@ export function assembleMotionPrompt({
   // Non-audio models: fullPrompt is already great, no enrichment needed
   if (!supportsAudio) {
     assembled = fullPrompt;
+    // Omni Flash defaults to multi-shot; pin a oner only on a 1-shot segment.
+    if (singleTake && model === 'gemini_omni_flash') {
+      assembled = `${fullPrompt}\n\nSingle unbroken scene.`;
+    }
   } else {
     // Audio-capable models: enrich fullPrompt with dialogue + audio sections.
     // Stored rows and UI overrides may still be null; the LLM schema uses
@@ -99,7 +110,8 @@ export function assembleMotionPrompt({
           fullPrompt,
           dialogueData,
           audioData,
-          characterTags
+          characterTags,
+          singleTake
         );
         break;
       case 'MiniMax':
@@ -118,6 +130,126 @@ export function assembleMotionPrompt({
   }
 
   return assembled;
+}
+
+/** One shot inside a packed in-clip generation (#1510). */
+export type PackedMotionPromptShot = {
+  durationSeconds: number;
+  motionPrompt?: AssemblableMotionPrompt;
+  /** Fallback when no structured prompt was snapshotted (manual paths). */
+  prompt?: string;
+  characterTags?: readonly string[];
+  generateAudio?: boolean;
+};
+
+type KlingMultiPromptElement = {
+  prompt: string;
+  duration: string;
+};
+
+export type PackedMotionPrompt = {
+  prompt: string;
+  /** Kling only: structured `multi_prompt[]`. Absent on other vendors. */
+  multiPrompt?: KlingMultiPromptElement[];
+};
+
+/**
+ * Assemble one generation covering several shots of a scene. Per-shot bodies
+ * come from {@link assembleMotionPrompt}; this only adds vendor cut syntax
+ * and timings. A 1-shot list is the existing single-take path.
+ */
+export function assemblePackedMotionPrompt({
+  shots,
+  model,
+  generateAudio,
+}: {
+  shots: readonly PackedMotionPromptShot[];
+  model: ImageToVideoModel;
+  generateAudio?: boolean;
+}): PackedMotionPrompt {
+  const first = shots[0];
+  if (!first) return { prompt: '' };
+  if (shots.length === 1) {
+    return {
+      prompt: assembleOnePackedShot(first, model, generateAudio, true),
+    };
+  }
+
+  const bodies = shots.map((shot) =>
+    assembleOnePackedShot(shot, model, generateAudio, false)
+  );
+  if (model === 'kling_v3_pro') {
+    return {
+      prompt: bodies.join('\ncut to\n'),
+      multiPrompt: shots.map((shot, i) => ({
+        prompt: bodies[i] ?? '',
+        duration: klingMultiPromptDuration(shot.durationSeconds),
+      })),
+    };
+  }
+
+  return { prompt: formatPackedShotList(model, shots, bodies) };
+}
+
+function assembleOnePackedShot(
+  shot: PackedMotionPromptShot,
+  model: ImageToVideoModel,
+  generateAudio: boolean | undefined,
+  singleTake: boolean
+): string {
+  if (shot.motionPrompt) {
+    return assembleMotionPrompt({
+      motionPrompt: shot.motionPrompt,
+      model,
+      characterTags: shot.characterTags,
+      generateAudio: shot.generateAudio ?? generateAudio,
+      singleTake,
+    });
+  }
+  const fallback = shot.prompt ?? '';
+  if (singleTake && model === 'gemini_omni_flash' && fallback.length > 0) {
+    return `${fallback}\n\nSingle unbroken scene.`;
+  }
+  return fallback;
+}
+
+function formatPackedShotList(
+  model: ImageToVideoModel,
+  shots: readonly PackedMotionPromptShot[],
+  bodies: readonly string[]
+): string {
+  let elapsed = 0;
+  const labeled = shots.map((shot, i) => {
+    const dur = Math.max(1, Math.round(shot.durationSeconds));
+    const start = elapsed;
+    const end = elapsed + dur;
+    elapsed = end;
+    const n = i + 1;
+    const body = bodies[i] ?? '';
+    if (model === 'seedance_v2_5') {
+      return `${start}-${end} seconds: Shot ${n}: ${body}`;
+    }
+    if (model === 'minimax_h3_max') {
+      return `Shot ${n} (${start}-${end}s): ${body}`;
+    }
+    return `Shot ${n}: ${body}`;
+  });
+
+  if (
+    model === 'seedance_v2' ||
+    model === 'seedance_v2_mini' ||
+    model === 'seedance_v2_5' ||
+    model === 'gemini_omni_flash'
+  ) {
+    return labeled.join('\ncut to\n');
+  }
+  return labeled.join('\n\n');
+}
+
+/** Kling `multi_prompt[].duration` is the string enum `'1'`…`'15'`. */
+function klingMultiPromptDuration(seconds: number): string {
+  const n = Math.min(15, Math.max(1, Math.round(seconds)));
+  return String(n);
 }
 
 // ---------------------------------------------------------------------------
@@ -183,7 +315,8 @@ function buildSeedancePrompt(
   fullPrompt: string,
   dialogue: MotionDialogue | undefined,
   audio: MotionAudio | undefined,
-  characterTags: readonly string[] | undefined
+  characterTags: readonly string[] | undefined,
+  singleTake: boolean
 ): string {
   const parts = [fullPrompt];
 
@@ -208,8 +341,11 @@ function buildSeedancePrompt(
 
   // Constraint words, which the ByteDance guide asks for at the end of the
   // prompt. Seedance invents edits otherwise, conflicting with
-  // one-scene-one-take.
-  const guards = [NO_MUSIC_DIRECTION, 'Single continuous shot, no cuts.'];
+  // one-scene-one-take — omit that pin when the clip is a packed multi-shot.
+  const guards = [NO_MUSIC_DIRECTION];
+  if (singleTake) {
+    guards.push('Single continuous shot, no cuts.');
+  }
   // Standard guard from the ByteDance prompt guide for scenes with characters
   if (characterTags && characterTags.length > 0) {
     guards.push('Avoid jitter and bent limbs.');
