@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nShot 1 (0-6s): Image 2 tears open the coral lipstick carton while ignoring the vibrating phone.. Camera: smooth push-in\n\noverall_soundscape: phone vibration, faint bathroom ambience. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nShot 2 (6-12s): Image 2 twists the lipstick bullet upward and turns it in the sunlight.. Camera: gradual push-in\n\noverall_soundscape: subtle click and twist of the lipstick tube. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/665008c0c28b3377f83cdb68d9f455b4654553428d34dad9cb9cf1d47545d6e6.mp4",
+            "content_type": "video/mp4",
+            "file_name": "GQebs2HjF34xP4ikOqZtd_minimax-h3.mp4",
+            "file_size": 12441265
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the woman based on <Picture 2>, featuring long blonde wavy hair, a black ribbed turtleneck sweater, grey tailored trousers, and a minimalist aesthetic.\n<Subject 2> is the coral lipstick carton visible in <Picture 1>, a small, vibrant red-orange packaging box being held by <Subject 1>.\n<Video 1> is the primary visual reference, depicting a bathroom scene with a black granite sink, white subway tiles, a stainless steel faucet, and a smartphone resting in the sink.\n\nsummary:\n[reference generation] The target video presents a 12-second commercial-style cinematic sequence where <Subject 1> interacts with <Subject 2> in a modern bathroom setting referenced by <Video 1>.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1], [Shot 2]): fully_preserved - Maintaining the blonde hair and black sweater appearance.\n<Subject 2> (appears in [Shot 1], [Shot 2]): fully_preserved - Preserving the specific coral color and box design.\n<Video 1> (appears in [Shot 1], [Shot 2]): fully_preserved - Replicating the black sink, white tiles, and smartphone placement.\n\ndetailed_description:\nThe video showcases a high-end fashion product demonstration with a cinematic, realistic look, featuring natural sunlight and sharp focus.\n\n[Shot 1] The video begins with a static composition where the scene is established from the perspective of <Video 1>. <Subject 1> is seen from a side-rear angle, positioned on the right side of the frame. In the center, a smartphone vibrates and ripples the water inside the black granite sink. <Subject 1> holds <Subject 2> with a steady hand, staring at it with a calm expression, effectively ignoring the phone. The camera performs a smooth Push In with small amplitude at a slow speed, gradually focusing on the coral box. The lighting is bright, casting distinct shadows on the white subway tiles.\n\n[Shot 2] At 00:06.000, the shot cuts to a tighter close-up of <Subject 1>'s hand and the lipstick. <Subject 1> performs an action of twisting the metallic base of the tube, causing the coral lipstick bullet to rise upward. She slowly rotates the tube in the sunlight, creating a glossy sheen on the product. The camera executes a gradual Push In at a slow speed, moving closer to the lipstick to highlight its texture and color. The environment remains the same bathroom setting from <Video 1>, maintaining visual continuity.\n\noverall_soundscape:\nFaint bathroom ambience and the rhythmic electronic buzzing of a vibrating smartphone dominate the first half. Subtle mechanical clicks and the wet sound of the lipstick tube being twisted are captured in the second half.\n\nnon_diegetic_music:\nN/A",
+          "seed": 1195123724,
+          "timings": {
+            "inference": 14.604382926016115
+          }
+        },
+        "status": 200,
+        "billableUnits": 19.200000000000003
+      }
+    }
+  ]
+}

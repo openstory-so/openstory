@@ -384,7 +384,9 @@ SUPER:  CORAL.  OUT NOW.
         .toBe(true);
 
       // 11. Per-clip playback: click each shot and assert the ScenePlayer
-      //     <video> is decodable. One clip per shot (#1486).
+      //     <video> is decodable. Packed in-clip renders (#1510) share one
+      //     URL across a scene's shots when they fit the model cap; those
+      //     siblings must still play, they just must not require a src switch.
       //
       //     The player only shows the scene's <video> on a video tab; the
       //     default "Variants" tab (the multi-model scene-review UX, #545)
@@ -419,13 +421,21 @@ SUPER:  CORAL.  OUT NOW.
       // the DOM, so a bare `video` locator resolves to the prefetch.
       const playerVideo = page.locator('video:visible').first();
       let assertedSrc = '';
+      let previousVideoUrl: string | null = null;
       for (const clip of clips) {
         await page.locator(`[data-shot-id="${clip.id}"]`).click();
-        assertedSrc = await expectSceneVideoPlayable(
-          playerVideo,
-          assertedSrc,
-          `scene ${clip.orderIndex + 1} shot ${clip.shotNumber} video`
-        );
+        const label = `scene ${clip.orderIndex + 1} shot ${clip.shotNumber} video`;
+        // Packed siblings share a clip URL; do not wait for a src switch.
+        if (clip.videoUrl && clip.videoUrl === previousVideoUrl) {
+          await expectPlayableMedia(playerVideo, label);
+        } else {
+          assertedSrc = await expectSceneVideoPlayable(
+            playerVideo,
+            assertedSrc,
+            label
+          );
+        }
+        previousVideoUrl = clip.videoUrl;
       }
 
       // 12. Music playback in the Scenes editor Music facet (#986).
