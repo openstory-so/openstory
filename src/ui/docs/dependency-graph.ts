@@ -58,6 +58,11 @@ export type GraphNode = {
   storedAs?: string;
   /** Only exists under this condition; drawn dashed. */
   optional?: string;
+  /**
+   * Append-only version rows with a selection pointer. Regenerating adds a
+   * row; the pointer decides what downstream sees. Drawn as a stack.
+   */
+  versionedIn?: string;
 };
 
 /**
@@ -88,6 +93,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
   // --- You write -----------------------------------------------------------
   {
     id: 'script',
+    versionedIn: 'scene_script_versions',
     label: 'Script',
     kind: 'input',
     band: 'story',
@@ -235,6 +241,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
   // --- References ----------------------------------------------------------
   {
     id: 'talentSheet',
+    versionedIn: 'talent_sheet_variants',
     optional: 'when a character is cast as library talent',
     label: 'Talent sheet',
     kind: 'artifact',
@@ -246,6 +253,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
   },
   {
     id: 'characterSheet',
+    versionedIn: 'character_sheet_variants',
     label: 'Character sheet',
     kind: 'artifact',
     band: 'references',
@@ -280,6 +288,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
   },
   {
     id: 'libraryLocationReference',
+    versionedIn: 'location_sheet_variants',
     optional: 'when a location is linked to the library',
     label: 'Library location ref',
     kind: 'artifact',
@@ -296,6 +305,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
   },
   {
     id: 'locationSheet',
+    versionedIn: 'location_sheet_variants',
     label: 'Location sheet',
     kind: 'artifact',
     band: 'references',
@@ -315,6 +325,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
   // --- Prompts -------------------------------------------------------------
   {
     id: 'visualPrompt',
+    versionedIn: 'frame_prompt_versions',
     label: 'Visual prompt',
     kind: 'artifact',
     band: 'prompts',
@@ -331,6 +342,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
   },
   {
     id: 'motionPrompt',
+    versionedIn: 'shot_prompt_versions',
     label: 'Motion prompt',
     kind: 'artifact',
     band: 'prompts',
@@ -346,6 +358,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
   },
   {
     id: 'musicPrompt',
+    versionedIn: 'sequence_music_prompt_versions',
     label: 'Music prompt',
     kind: 'artifact',
     band: 'prompts',
@@ -361,6 +374,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
   // --- Renders -------------------------------------------------------------
   {
     id: 'still',
+    versionedIn: 'frame_variants',
     label: 'Still',
     kind: 'artifact',
     band: 'renders',
@@ -378,6 +392,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
   },
   {
     id: 'clip',
+    versionedIn: 'video_variants',
     label: 'Clip',
     kind: 'artifact',
     band: 'renders',
@@ -395,6 +410,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
   },
   {
     id: 'musicTrack',
+    versionedIn: 'sequence_music_variants',
     optional: 'when music is on',
     label: 'Music track',
     kind: 'artifact',

@@ -222,6 +222,16 @@ export const DependencyGraphView: React.FC<DependencyGraphViewProps> = ({
                   onBlur={() => setHovered(null)}
                 >
                   <title>{n.summary}</title>
+                  {n.versionedIn && (
+                    <rect
+                      x={4}
+                      y={-4}
+                      width={NW}
+                      height={NH}
+                      rx={8}
+                      className="fill-chart-2/10 stroke-chart-2/40"
+                    />
+                  )}
                   <rect
                     width={NW}
                     height={NH}
@@ -229,7 +239,11 @@ export const DependencyGraphView: React.FC<DependencyGraphViewProps> = ({
                     strokeDasharray={n.optional ? '4 3' : undefined}
                     className={cn(
                       'transition-[fill,stroke] motion-reduce:transition-none group-focus-visible:stroke-ring group-focus-visible:stroke-2',
-                      n.kind === 'input' ? 'fill-background' : 'fill-muted',
+                      n.versionedIn
+                        ? 'fill-chart-2/15'
+                        : n.kind === 'input'
+                          ? 'fill-background'
+                          : 'fill-muted',
                       isActive
                         ? 'stroke-primary stroke-2'
                         : isStale
@@ -302,6 +316,13 @@ const Legend: React.FC = () => (
       </li>
     ))}
     <li className="flex items-center gap-1.5">
+      <span className="relative inline-block size-3">
+        <span className="absolute -top-0.5 left-0.5 size-3 rounded-sm border border-chart-2/40 bg-chart-2/10" />
+        <span className="absolute top-0 left-0 size-3 rounded-sm border border-border bg-chart-2/15" />
+      </span>
+      versioned
+    </li>
+    <li className="flex items-center gap-1.5">
       <span className="inline-block size-3 rounded-sm border border-dashed border-foreground" />
       optional
     </li>
@@ -343,6 +364,11 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
         <Badge variant="outline">
           {node.kind === 'input' ? 'you edit' : 'generated'}
         </Badge>
+        {node.versionedIn && (
+          <Badge variant="outline" className="border-chart-2/60 bg-chart-2/10">
+            versioned — {node.versionedIn}
+          </Badge>
+        )}
         {node.optional && (
           <Badge variant="outline" className="border-dashed">
             optional — {node.optional}
