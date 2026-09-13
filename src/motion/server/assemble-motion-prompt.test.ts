@@ -3,6 +3,7 @@ import type {
   MotionDialogue,
   MotionPrompt,
 } from '@/shots/scene-analysis.schema';
+import { VIDEO_MODEL_VOICE_TOKEN } from '@/motion/dialogue-tts';
 import { assembleMotionPrompt } from './assemble-motion-prompt';
 
 // ---------------------------------------------------------------------------
@@ -205,6 +206,28 @@ describe('assembleMotionPrompt', () => {
         expect(result).toContain(
           "James says in a soft resigned voice: {I couldn't agree more.}"
         );
+      });
+
+      it('does not treat video-model as a recording', () => {
+        const result = assembleMotionPrompt({
+          motionPrompt: makeMotionPrompt({
+            dialogue: {
+              presence: true,
+              lines: dialogueWithTone.lines.map((line, index) =>
+                index === 0
+                  ? { ...line, voiceToken: VIDEO_MODEL_VOICE_TOKEN }
+                  : line
+              ),
+            },
+          }),
+          model,
+        });
+
+        expect(result).toContain(
+          'Sarah says in a firm commanding voice: {We need to reconsider the entire approach.}'
+        );
+        expect(result).not.toContain(VIDEO_MODEL_VOICE_TOKEN);
+        expect(result).not.toContain('recorded in');
       });
 
       it('emits no voice binding when no line has one', () => {

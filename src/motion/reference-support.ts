@@ -25,6 +25,7 @@ import {
   type ImageToVideoModel,
 } from '@/models/models';
 import { isNativeGrokVideoModel } from '@/models/grok-native';
+import { isElementVoiceToken } from '@/motion/dialogue-tts';
 
 type ReferenceKind = 'image' | 'video' | 'audio';
 
@@ -335,7 +336,7 @@ export function missingVoiceLines(
   if (!motionReferenceSupport(model).audio) return [];
   const live = new Set(elements.map((el) => el.token));
   return (dialogue?.lines ?? []).flatMap((line) =>
-    line.voiceToken && !live.has(line.voiceToken)
+    isElementVoiceToken(line.voiceToken) && !live.has(line.voiceToken)
       ? [
           `${line.voiceToken}, the voice on ${line.character || 'the narrator'}'s line, was deleted — pick another voice.`,
         ]

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   DIALOGUE_CLIP_TOKEN,
   DIALOGUE_TTS_MODEL,
+  VIDEO_MODEL_VOICE_TOKEN,
+  isElementVoiceToken,
   dialogueClipSourceKey,
   dialogueTtsToken,
   matchingDialogueClips,
@@ -87,6 +89,15 @@ describe('dialogueTtsToken', () => {
   });
 });
 
+describe('isElementVoiceToken', () => {
+  it('is only true for a user-uploaded audio element token', () => {
+    expect(isElementVoiceToken('SARAH_VOICE')).toBe(true);
+    expect(isElementVoiceToken(undefined)).toBe(false);
+    expect(isElementVoiceToken(DIALOGUE_CLIP_TOKEN)).toBe(false);
+    expect(isElementVoiceToken(VIDEO_MODEL_VOICE_TOKEN)).toBe(false);
+  });
+});
+
 describe('voicedDialogueLines', () => {
   it('pairs each line with the speaker’s designed voice', () => {
     expect(
@@ -127,6 +138,21 @@ describe('voicedDialogueLines', () => {
             character: 'SARAH',
             line: 'Stay down.',
             voiceToken: 'SARAH_VOICE',
+          },
+        ]),
+        [sarah]
+      )
+    ).toEqual([]);
+  });
+
+  it('skips a line opted into the video model inventing the voice', () => {
+    expect(
+      voicedDialogueLines(
+        dialogue([
+          {
+            character: 'SARAH',
+            line: 'Stay down.',
+            voiceToken: VIDEO_MODEL_VOICE_TOKEN,
           },
         ]),
         [sarah]
