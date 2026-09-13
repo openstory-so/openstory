@@ -21,6 +21,10 @@ import {
 import { Button } from '@/ui/shadcn/button';
 import { Checkbox } from '@/ui/shadcn/checkbox';
 import { setShotUseStartFrameFn } from '@/shots/shots.fn';
+import {
+  EMPTY_GENERATION_PROMPT_MESSAGE,
+  isBlankPrompt,
+} from '@/shots/generation-prompt';
 import { canUseStartFrame, usesStartFrame } from '@/shots/use-start-frame';
 import {
   Select,
@@ -859,6 +863,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
 
   const handleRegenerate = useCallback(async () => {
     if (!shot?.id || !shot.sequenceId) return;
+    if (isBlankPrompt(editedImagePrompt)) return;
 
     const promptOverride = editedImagePrompt || undefined;
 
@@ -944,6 +949,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
 
   const handleRegenerateMotion = useCallback(async () => {
     if (!shot?.id || !shot.sequenceId) return;
+    if (isBlankPrompt(editedMotionPrompt)) return;
 
     onRegenerateStart(shot.id, 'motion');
 
@@ -1255,6 +1261,10 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   // the mode, so it is also right for a shot whose prompt generation failed.
   const visualPromptAction = imagePrompt?.trim() ? 'Regenerate' : 'Generate';
   const motionPromptAction = rawMotionPrompt.trim() ? 'Regenerate' : 'Generate';
+  // Generate Image / Generate Motion spend credits; an empty (or whitespace)
+  // base prompt has nothing to render. Generate Prompt above is the way out.
+  const hasVisualPrompt = !isBlankPrompt(editedImagePrompt);
+  const hasMotionPrompt = !isBlankPrompt(editedMotionPrompt);
 
   // Check if image is currently generating
   const isGenerating =
@@ -1722,7 +1732,9 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                 }
                 void handleRegenerate();
               }}
-              disabled={isGenerating || variantIsGenerating || !shot}
+              disabled={
+                isGenerating || variantIsGenerating || !shot || !hasVisualPrompt
+              }
               className="w-full"
             >
               {(isGenerating || variantIsGenerating) && (
@@ -1734,6 +1746,18 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                   ? 'Regenerate Image'
                   : 'Generate Image'}
             </Button>
+            <p
+              className={
+                shot &&
+                !hasVisualPrompt &&
+                !isGenerating &&
+                !variantIsGenerating
+                  ? 'text-xs text-muted-foreground'
+                  : 'hidden'
+              }
+            >
+              {EMPTY_GENERATION_PROMPT_MESSAGE}
+            </p>
             <ActionCost estimate={imageCostEstimate} />
           </div>
 
@@ -2162,7 +2186,8 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                 isGeneratingMotion ||
                 videoVariantIsGenerating ||
                 unusableElementLines.length > 0 ||
-                !shot
+                !shot ||
+                !hasMotionPrompt
               }
               className="w-full"
             >
@@ -2175,6 +2200,19 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                   ? 'Regenerate Motion'
                   : 'Generate Motion'}
             </Button>
+            <p
+              className={
+                shot &&
+                !hasMotionPrompt &&
+                !isGenerating &&
+                !isGeneratingMotion &&
+                !videoVariantIsGenerating
+                  ? 'text-xs text-muted-foreground'
+                  : 'hidden'
+              }
+            >
+              {EMPTY_GENERATION_PROMPT_MESSAGE}
+            </p>
             <ActionCost estimate={motionCostEstimate} />
           </div>
 

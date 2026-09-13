@@ -2,6 +2,7 @@ import type { SceneWithScript } from './use-scenes';
 import { dbSceneId } from '@/shots/scene-id';
 import { frameFixture, frameVariantFixture } from '@/mocks/frame-fixtures';
 import { toShotView, type ShotView } from '@/shots/shot-view';
+import { UploadRightsGateStub } from '@/cast/ui/upload-rights-gate';
 import type { Meta, StoryObj } from '@storybook/react';
 import { fn } from 'storybook/test';
 import {
@@ -104,9 +105,11 @@ const meta: Meta<typeof SceneScriptPrompts> = {
   },
   decorators: [
     (Story) => (
-      <div className="w-[600px]">
-        <Story />
-      </div>
+      <UploadRightsGateStub>
+        <div className="w-[600px]">
+          <Story />
+        </div>
+      </UploadRightsGateStub>
     ),
   ],
 };
@@ -193,6 +196,13 @@ export const ImagePromptTab: Story = {
   },
 };
 
+export const EmptyImagePrompt: Story = {
+  args: {
+    shot: mockShot,
+    selectedTab: 'image-prompt',
+  },
+};
+
 export const MotionPromptTab: Story = {
   args: {
     shot: {
@@ -200,6 +210,29 @@ export const MotionPromptTab: Story = {
       motionPrompt: {
         fullPrompt:
           'Slow push in as Sarah types; her eyes flick to the silenced phone.',
+        dialogue: {
+          presence: true,
+          lines: [
+            {
+              character: 'SARAH',
+              line: 'This deadline is going to kill me.',
+              tone: '',
+            },
+          ],
+        },
+        audio: null,
+      },
+    },
+    selectedTab: 'motion-prompt',
+  },
+};
+
+export const EmptyMotionPrompt: Story = {
+  args: {
+    shot: {
+      ...mockShot,
+      motionPrompt: {
+        fullPrompt: '',
         dialogue: {
           presence: true,
           lines: [
