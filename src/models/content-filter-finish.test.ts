@@ -28,6 +28,15 @@ describe('isContentFilterFinish', () => {
     ).toBe(true);
   });
 
+  it('reads the finish reason chat() moves to metadata.tanstack', () => {
+    expect(
+      isContentFilterFinish({
+        type: 'RUN_FINISHED',
+        metadata: { tanstack: { finishReason: 'content_filter' } },
+      })
+    ).toBe(true);
+  });
+
   it('ignores a normal completion', () => {
     expect(
       isContentFilterFinish({ type: 'RUN_FINISHED', finishReason: 'stop' })

@@ -323,6 +323,39 @@ describe('llm-client', () => {
       );
     });
 
+    it('fails fast on a content-filter stop instead of a JSON parse error', async () => {
+      // The event order chat() yields when OpenAI stops GPT-5.6 Luna mid-JSON.
+      mockChat.mockReturnValue(
+        (async function* () {
+          yield { type: 'TEXT_MESSAGE_CONTENT', delta: '{"scenes":[{"sce' };
+          yield {
+            type: 'RUN_FINISHED',
+            metadata: { tanstack: { finishReason: 'content_filter' } },
+          };
+          yield {
+            type: 'RUN_ERROR',
+            message: 'Failed to parse structured output as JSON.',
+            code: 'structured-output-parse-failed',
+          };
+        })()
+      );
+
+      await expect(
+        drain(
+          callLLMStream({
+            model: 'openai/gpt-5.6-luna',
+            messages: [{ role: 'user', content: 'test' }],
+            responseSchema: z.object({ scenes: z.array(z.unknown()) }),
+          })
+        )
+      ).rejects.toMatchObject({
+        name: 'NonRetryableError',
+        message: expect.stringMatching(
+          /Blocked by the content checker: Script/
+        ),
+      });
+    });
+
     it('drains chat() after RUN_ERROR so otel onError can end the span', async () => {
       let cancelled = false;
       mockChat.mockReturnValue({

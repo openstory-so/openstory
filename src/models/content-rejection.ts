@@ -109,21 +109,24 @@ const CONTENT_FILTER_FINISH_REASONS: ReadonlySet<string> = new Set([
 
 /**
  * True when a `RUN_FINISHED` stream event ended on a safety-classifier stop.
+ * `chat()` moves the adapter's `finishReason` to `metadata.tanstack` before
+ * yielding, so both spots are read (as TanStack's own otel middleware does).
  * Read defensively: the yielded event union is wide and a malformed provider
  * shot can carry a non-string `finishReason`.
  */
 export function isContentFilterFinish(event: unknown): boolean {
-  if (
-    !event ||
-    typeof event !== 'object' ||
-    !('type' in event) ||
-    event.type !== 'RUN_FINISHED' ||
-    !('finishReason' in event) ||
-    typeof event.finishReason !== 'string'
-  ) {
-    return false;
-  }
-  return CONTENT_FILTER_FINISH_REASONS.has(event.finishReason);
+  if (!isRecord(event) || event.type !== 'RUN_FINISHED') return false;
+  const metadata = isRecord(event.metadata) ? event.metadata : {};
+  const tanstack = isRecord(metadata.tanstack) ? metadata.tanstack : {};
+  const finishReason = event.finishReason ?? tanstack.finishReason;
+  return (
+    typeof finishReason === 'string' &&
+    CONTENT_FILTER_FINISH_REASONS.has(finishReason)
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
 
 /** Overlay / list title — not "Generation failed". */
