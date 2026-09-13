@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { TriangleAlert } from 'lucide-react';
 import { Badge } from '@/ui/shadcn/badge';
 import { Button } from '@/ui/shadcn/button';
 import { Label } from '@/ui/shadcn/label';
@@ -15,6 +16,7 @@ import {
   type GraphEdge,
   type GraphMode,
   type GraphNode,
+  type IgnoredItem,
   nodeById,
   propagates,
   type Reach,
@@ -465,11 +467,11 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
   </section>
 );
 
-const FieldList: React.FC<{ title: string; hint: string; items: string[] }> = ({
-  title,
-  hint,
-  items,
-}) => (
+const FieldList: React.FC<{
+  title: string;
+  hint: string;
+  items: IgnoredItem[];
+}> = ({ title, hint, items }) => (
   <div className="flex flex-col gap-2">
     <div>
       <h3 className="text-sm font-medium">{title}</h3>
@@ -479,9 +481,19 @@ const FieldList: React.FC<{ title: string; hint: string; items: string[] }> = ({
       <p className="text-sm text-muted-foreground">Nothing.</p>
     ) : (
       <ul className="list-disc pl-5 text-sm text-muted-foreground">
-        {items.map((item) => (
-          <li key={item}>{item}</li>
-        ))}
+        {items.map((item) =>
+          typeof item === 'string' ? (
+            <li key={item}>{item}</li>
+          ) : (
+            <li key={item.gap} className="text-chart-5">
+              <TriangleAlert
+                aria-label="A gap: this should count"
+                className="mr-1 inline size-3.5 -translate-y-px"
+              />
+              {item.gap}
+            </li>
+          )
+        )}
       </ul>
     )}
   </div>

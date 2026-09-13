@@ -34,6 +34,8 @@ export const BANDS = [
 
 type Band = (typeof BANDS)[number][0];
 
+export type IgnoredItem = string | { gap: string };
+
 export type GraphNode = {
   id: string;
   label: string;
@@ -43,8 +45,11 @@ export type GraphNode = {
   summary: string;
   /** What the hash (or pointer) actually reads. */
   counts: string[];
-  /** Edited freely without anything going stale. */
-  ignored: string[];
+  /**
+   * Edited freely without anything going stale. A `{ gap }` entry is one
+   * that SHOULD make something stale and does not — drawn with a warning.
+   */
+  ignored: IgnoredItem[];
   /** Where the verdict is stored, for artifacts. */
   storedAs?: string;
   /** Only exists under this condition; drawn dashed. */
@@ -177,7 +182,11 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Image (still)',
       'Audio or video clip: sent as a reference when the video model takes one',
     ],
-    ignored: [],
+    ignored: [
+      {
+        gap: 'A changed audio or video clip never flags the clip that used it',
+      },
+    ],
   },
   // --- You set -------------------------------------------------------------
   {
@@ -265,7 +274,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     band: 'settings',
     summary: 'The model that renders the score.',
     counts: ['Nothing is compared today'],
-    ignored: ['In the track hash, which nothing reads'],
+    ignored: [{ gap: 'In the track hash, which nothing reads' }],
   },
   {
     id: 'duration',
@@ -369,6 +378,9 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Character name',
       'Personality and movement',
       'Voice-only characters never get one',
+      {
+        gap: 'A reference-only clip drawn from it stays fresh when a new version is selected',
+      },
     ],
     storedAs: 'characters.sheetInputHash',
   },
@@ -421,6 +433,9 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     ignored: [
       'Name',
       'Type, time of day, architectural style, key features, colour palette, lighting, ambiance',
+      {
+        gap: 'A reference-only clip drawn from it stays fresh when a new version is selected',
+      },
     ],
     storedAs: 'sequence_locations.referenceInputHash',
   },
@@ -470,7 +485,12 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Per scene: the visual prompt text',
       'Script model',
     ],
-    ignored: ['Scene titles'],
+    ignored: [
+      'Scene titles',
+      {
+        gap: 'The music track never reads stale from it; only Update all regenerates it',
+      },
+    ],
     storedAs: 'sequences.musicPromptInputHash',
   },
   // --- Renders -------------------------------------------------------------
@@ -506,7 +526,12 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     ignored: [
       'Duration',
       'Video model (a different model is a different segment, not a stale one)',
-      'Reference sheets (reference-only mode)',
+      {
+        gap: 'Reference sheets it was drawn from (reference-only mode): the manifest records no sheet versions',
+      },
+      {
+        gap: 'Audio or video elements it was sent as references: the manifest does not record them',
+      },
     ],
     storedAs: 'video_variants.manifest',
   },
@@ -519,7 +544,11 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     band: 'renders',
     summary: 'The generated score.',
     counts: ['Nothing is compared today'],
-    ignored: ['Music prompt edits, tags, duration, music model'],
+    ignored: [
+      {
+        gap: 'Music prompt, tags, duration and music model: the hash is written and never compared',
+      },
+    ],
     storedAs: 'sequences.musicInputHash (written, never read)',
   },
   // --- Cut -----------------------------------------------------------------
