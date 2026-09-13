@@ -482,10 +482,11 @@ export function estimateStoryboardCost(opts: StoryboardCostOpts): Microdollars {
   const sceneCount = opts.estimatedSceneCount ?? DEFAULT_ESTIMATED_SCENE_COUNT;
   const { pricing } = opts;
 
-  // The script stage runs five LLM calls: scene-split's scenes / bibles /
-  // shot-list (which also carries the dialogue, #1585), then talent and
-  // location matching. Three $0.02 stand-ins is a deliberate under-count —
-  // talent and location matching are short outputs.
+  // The script stage always runs scene-split's three calls: scenes, bibles,
+  // shot-list (which also carries the dialogue, #1585). Talent and location
+  // matching only call the LLM when the user pre-cast talent or has library
+  // locations, and those outputs are short, so three stand-ins cover the
+  // common case.
   const llmCalls = estimateRunsStage(opts, 'script') ? 3 : 0;
   const llmCost = estimateLLMCost(llmCalls);
 

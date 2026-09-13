@@ -128,7 +128,7 @@ import { SceneElementsTab } from './scene-elements-tab';
 import { SceneLocationTab } from './scene-location-tab';
 import { SceneMusicFacet } from './scene-music-facet';
 import { MotionDialoguePanel } from './motion-dialogue-panel';
-import { dialogueForShot } from '@/shots/shot-dialogue';
+import { dialogueForShot } from '@/shots/shot-list-pass';
 import { SceneScriptTab } from './scene-script-tab';
 import { ShotDurationField } from './shot-duration-field';
 
@@ -1922,6 +1922,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                   : null
               }
               disabled={saveMotionPrompt.isPending || isAwaitingMotionPrompt}
+              source="prompt"
             />
           ) : (
             <MotionDialoguePanel

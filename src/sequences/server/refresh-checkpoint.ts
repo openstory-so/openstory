@@ -107,6 +107,7 @@ export async function refreshCheckpointFromCast(
       sheetInputHash: c.sheetInputHash,
       selectedSheetVersionId: c.selectedSheetVersionId,
       physicalDescription: c.physicalDescription,
+      voiceOnly: c.voiceOnly,
       consistencyTag: c.consistencyTag,
     }));
   }

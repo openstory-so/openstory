@@ -340,7 +340,7 @@ genuine pre-prompt inputs, so no downstream field can leak in:
 {
   sceneId,
   sceneNumber,
-  originalScript: { extract, dialogue: [{ character, line, tone }] },  // ← the script
+  originalScript: { extract, dialogue: [{ character, line, tone }] },  // ← the script, dialogue already filtered to this shot (#1585, stamps stripped)
   metadata: { title, location, timeOfDay, storyBeat },                 // no durationSeconds
 }
 // Everything else on the scene — prompts, continuity, musicDesign, audioDesign,

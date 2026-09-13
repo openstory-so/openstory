@@ -27,6 +27,12 @@ export async function buildRegenerateCharacterSheetPayload(params: {
   imageModel?: string | null;
 }): Promise<CharacterSheetWorkflowInput> {
   const { scopedDb, userId, teamId, sequence, character } = params;
+  // The UI hides the button; this is the guard for every other caller.
+  if (character.voiceOnly) {
+    throw new Error(
+      `${character.name} is voice-only (#1585): heard, never seen, no sheet to generate`
+    );
+  }
   const style =
     sequence.styleConfig == null && sequence.styleId
       ? await scopedDb.styles.getById(sequence.styleId)

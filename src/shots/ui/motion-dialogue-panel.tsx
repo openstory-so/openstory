@@ -47,8 +47,8 @@ export const MotionDialoguePanel: React.FC<{
   onChange: ((next: MotionDialogue) => void) | null;
   disabled?: boolean;
   /** Where the lines come from: the shot's motion prompt, or the scene script before one exists. */
-  source?: 'prompt' | 'script';
-}> = ({ dialogue, elements, onChange, disabled, source = 'prompt' }) => {
+  source: 'prompt' | 'script';
+}> = ({ dialogue, elements, onChange, disabled, source }) => {
   const lines = dialogue?.presence ? dialogue.lines : [];
   if (lines.length === 0) return null;
 

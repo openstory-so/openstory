@@ -232,15 +232,12 @@ describe('sceneScriptVersions.updateSplitContent', () => {
     expect(scene?.selectedScriptVersionId).toBe(userVersion.id);
   });
 
-  it('is a no-op for a scene with no split row', async () => {
+  it('throws for a scene with no split row rather than leave it on the preview', async () => {
     const methods = createSceneScriptVersionsMethods(db);
-    await methods.updateSplitContent([
-      { sceneId, content: { extract: 'x', dialogue: [] } },
-    ]);
-    const rows = await db
-      .select()
-      .from(sceneScriptVersions)
-      .where(eq(sceneScriptVersions.sceneId, sceneId));
-    expect(rows).toEqual([]);
+    await expect(
+      methods.updateSplitContent([
+        { sceneId, content: { extract: 'x', dialogue: [] } },
+      ])
+    ).rejects.toThrow(/updated 0\/1 split versions/);
   });
 });

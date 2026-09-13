@@ -10,8 +10,9 @@
  *     contract: the LLM returns `{ hintLine, quote }` anchors against a
  *     line-gutter copy of the script (no per-scene metadata). The ORIGINAL
  *     script is sliced locally (`boundary-split.ts`); title/location/
- *     dialogue/duration come from each slice (`scene-from-slice.ts`). Scene
- *     ids/numbers are minted server-side. Streaming: boundary k+1 arriving
+ *     duration come from each slice (`scene-from-slice.ts`), plus a regex
+ *     dialogue preview the shot-list call replaces. Scene ids/numbers are
+ *     minted server-side. Streaming: boundary k+1 arriving
  *     finalizes scene k via a local slice, so scene cards appear with real
  *     script text in seconds.
  *   - `scene-bibles` — character/location/element bibles.
@@ -21,8 +22,9 @@
  *     spoken in (#1585), speakers named from the character bible. The regex
  *     parser in `scene-from-slice.ts` only sees screenplay cues, so this
  *     REPLACES `originalScript.dialogue`. Fails the run like the bibles
- *     call: a one-shot fallback would also silently empty every scene's
- *     dialogue.
+ *     call, and also when it omits a scene (`attachShotLists`): a one-shot
+ *     fallback would silently leave that scene on the regex preview, which
+ *     is empty for prose.
  *
  * After the join, scene continuity tags are assigned from bibles ∩ slice
  * (`tag-reconcile.ts`) and bible `firstMention`s get their owning scene id
@@ -188,7 +190,8 @@ async function persistStreamedSceneAndShot(
   );
   // Seed the split script version as soon as the scene lands so composed
   // script / the Scenes script view have text mid-stream. Idempotent: the
-  // final persist-scenes step re-seeds without duplicating.
+  // final persist-scenes step re-seeds without duplicating, then overwrites
+  // the content with the shot-list call's dialogue (#1585).
   await scopedDb.sceneScriptVersions.seedSplitVersions([
     {
       sceneId: sceneRow.id,
@@ -339,8 +342,8 @@ type ShotListStepResult = ShotListPassResult & LlmStepBilling;
  * One structured call consumed to completion, shared by the bibles and
  * shot-list steps: the stream is drained for its final validated payload and
  * nothing is persisted or emitted per chunk (unlike `scene-splitting-stream`).
- * Same script, same model, same failure mode: no validated payload = the
- * step fails; nothing falls back to a local guess.
+ * Same model, same failure mode: no validated payload = the step fails;
+ * nothing falls back to a local guess.
  */
 async function runStructuredCall<T extends object>({
   input,
@@ -795,7 +798,7 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
     );
 
     const biblesStep = step.do(BIBLES_STEP_NAME, async (): Promise<string> => {
-      const result = await runStructuredCall<SceneSplitBiblesResult>({
+      const result = await runStructuredCall({
         input,
         scopedDb,
         stepName: BIBLES_STEP_NAME,
@@ -887,7 +890,7 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
     const shotListJson = await step.do(
       SHOT_LIST_STEP_NAME,
       async (): Promise<string> => {
-        const result = await runStructuredCall<ShotListPassResult>({
+        const result = await runStructuredCall({
           input,
           scopedDb,
           stepName: SHOT_LIST_STEP_NAME,
@@ -915,7 +918,9 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
       );
     }
     // `attachShotLists` also rebuilds each scene's dialogue from its shots,
-    // stamped per shot so `dialogueForShot` filters per clip downstream.
+    // stamped per shot so `dialogueForShot` filters per clip downstream, and
+    // throws if the pass omitted a scene — the run fails rather than leave
+    // that scene on the regex preview.
     const scenesWithShots = applyTargetDurations(
       attachShotLists(reconciledScenes, shotListStep),
       input.videoModel ? input.targetSeconds : undefined,

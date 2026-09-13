@@ -1,5 +1,7 @@
 import { BibleField } from '@/cast/ui/bible-field';
 import { Button } from '@/ui/shadcn/button';
+import { Checkbox } from '@/ui/shadcn/checkbox';
+import { Label } from '@/ui/shadcn/label';
 import { useUpdateSequenceCharacter } from '@/cast/ui/use-sequence-characters';
 import type { CharacterWithSheet } from '@/platform/server/db/schema';
 import { errorMessage } from '@/platform/errors';
@@ -17,6 +19,8 @@ const characterFormSchema = z.object({
   distinguishingFeatures: z.string().max(2000).default(''),
   personality: z.string().max(2000),
   movement: z.string().max(2000).default(''),
+  // A checked box submits 'on'; an unchecked one is absent from FormData.
+  voiceOnly: z.preprocess((v) => v === 'on', z.boolean()),
 });
 
 /**
@@ -121,6 +125,18 @@ export const CharacterBibleForm: React.FC<{
           textarea
         />
       )}
+      {/* The way back from a bible call that misfiled an on-screen character
+          as a voice (#1585): untick, save, then generate the sheet. */}
+      <div className="flex items-center gap-2">
+        <Checkbox
+          id="character-voiceOnly"
+          name="voiceOnly"
+          defaultChecked={character.voiceOnly}
+        />
+        <Label htmlFor="character-voiceOnly">
+          Voice only — heard, never seen
+        </Label>
+      </div>
       <BibleField
         idPrefix="character"
         label={character.voiceOnly ? 'Voice' : 'Personality'}

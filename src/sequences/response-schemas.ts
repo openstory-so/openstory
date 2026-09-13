@@ -76,22 +76,25 @@ export const locationMatchResponseSchema = z.object({
 });
 
 /**
- * Phase 1: Scene Splitting (#1035 — two parallel calls).
+ * Phase 1: Scene Splitting (#1035 — two parallel calls, then the shot list).
  *
  * The old single mega-call compiled to an 8.2KB JSON-Schema grammar, which
  * every Anthropic model rejects under native strict output (~3.6KB budget).
  * It is replaced by two independent calls over the same script, run
- * concurrently:
+ * concurrently, and a third after the join:
  *
  *   1. Scenes call — BOUNDARY ANNOTATION ONLY (#1218). The LLM never
  *      re-emits script text or per-scene metadata: it returns
  *      `{ hintLine, quote }` anchors against a line-gutter copy of the
  *      script. `boundary-split.ts` slices the ORIGINAL script into
- *      byte-verbatim adjacent extracts; title/location/dialogue/duration
- *      are derived locally from each slice; continuity tags are assigned
+ *      byte-verbatim adjacent extracts; title/location/duration are
+ *      derived locally from each slice; continuity tags are assigned
  *      from bibles ∩ slice after the join. Scene ids / numbers are minted
  *      server-side.
  *   2. Bibles call — character/location/element bibles only.
+ *   3. Shot-list call (`shot-list.schema.ts`) — 1..N shots per slice, each
+ *      carrying the lines spoken in it (#1585); it is what fills
+ *      `originalScript.dialogue`.
  */
 export const sceneBoundarySchema = z.object({
   hintLine: z.number().meta({

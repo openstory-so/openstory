@@ -61,7 +61,15 @@ type StreamChunk = {
  * mock, keyed on observationName).
  */
 let streamChunks: StreamChunk[] = [];
-let shotListParsed: { scenes: unknown[] } | undefined = { scenes: [] };
+/** One shot per scene: the pass must cover every scene or the split fails (#1585). */
+const fullCover = () => ({
+  scenes: SCENES.map((_, i) => ({
+    sceneNumber: i + 1,
+    shots: [shotSpec(1, 'default')],
+  })),
+});
+// Set in the top-level beforeEach: `SCENES` is declared further down.
+let shotListParsed: { scenes: unknown[] } | undefined;
 let shotListError: Error | undefined;
 function singleDoneChunk(): StreamChunk[] {
   return [
@@ -332,7 +340,7 @@ const previewCalls = () =>
   triggerWorkflow.mock.calls.filter((call) => call[0] === '/image');
 
 beforeEach(() => {
-  shotListParsed = { scenes: [] };
+  shotListParsed = fullCover();
   shotListError = undefined;
 });
 
@@ -634,11 +642,11 @@ describe('SceneSplitWorkflow shot-list pass (#1486)', () => {
     triggerWorkflow.mockReset();
     triggerWorkflow.mockResolvedValue('run_1');
     streamChunks = singleDoneChunk();
-    shotListParsed = { scenes: [] };
+    shotListParsed = fullCover();
     feed.mockReset();
   });
 
-  test('defaults to one shot per scene when the pass emits nothing', async () => {
+  test('one shot per scene when the pass lists one each', async () => {
     const result = await makeWorkflow().split(
       makeEvent(),
       makeStep(),
@@ -646,6 +654,13 @@ describe('SceneSplitWorkflow shot-list pass (#1486)', () => {
     );
     expect(result.shotMapping).toHaveLength(SCENES.length);
     expect(result.scenes.every((s) => (s.shots?.length ?? 1) === 1)).toBe(true);
+  });
+
+  test('a pass that omits a scene fails the split — no regex-preview degrade (#1585)', async () => {
+    shotListParsed = { scenes: fullCover().scenes.slice(0, 2) };
+    await expect(
+      makeWorkflow().split(makeEvent(), makeStep(), makeScopedDb())
+    ).rejects.toThrow(/missing scene\(s\) 3/);
   });
 
   test('a shot-list call with no payload fails the split — no one-shot degrade (#1585)', async () => {
@@ -688,6 +703,7 @@ describe('SceneSplitWorkflow shot-list pass (#1486)', () => {
             },
           ],
         },
+        ...fullCover().scenes.slice(1),
       ],
     };
     const result = await makeWorkflow().split(
@@ -718,6 +734,7 @@ describe('SceneSplitWorkflow shot-list pass (#1486)', () => {
             shotSpec(2, 'Cut to the hallway beyond'),
           ],
         },
+        ...fullCover().scenes.slice(1),
       ],
     };
     const result = await makeWorkflow().split(

@@ -46,6 +46,7 @@ export type CharacterBibleUpdate = Partial<
     | 'distinguishingFeatures'
     | 'personality'
     | 'movement'
+    | 'voiceOnly'
     | 'consistencyTag'
   >
 >;
@@ -335,7 +336,7 @@ export function createCharactersMethods(db: Database) {
       if (!existing) {
         throw new Error(`SequenceCharacter ${id} not found`);
       }
-      const prev: Record<string, string | null> = {};
+      const prev: Record<string, string | boolean | null> = {};
       for (const [key, value] of typedEntries(data)) {
         if (value === undefined) continue;
         prev[key] = existing[key] ?? null;

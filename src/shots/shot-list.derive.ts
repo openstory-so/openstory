@@ -99,9 +99,9 @@ export function deriveMotionPrompt(
   const fullPrompt = joinParts([action, `Camera: ${cameraPhrase}`], '. ');
 
   // Dialogue presence is a scene-level hint; the start-frame visual carries the
-  // performance, the motion prompt carries the move + sound. Lines themselves
-  // are sourced from originalScript downstream (audio models), so here we only
-  // signal presence and the on-screen sound cue.
+  // performance, the motion prompt carries the move + sound. The lines are the
+  // scene's `originalScript` ones, already filtered to this shot by the caller
+  // (`sceneForShot` → `dialogueForShot`, #1585).
   return {
     fullPrompt,
     dialogue: scene.dialoguePresent

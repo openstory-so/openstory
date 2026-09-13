@@ -138,6 +138,7 @@ export type CharacterMinimal = Pick<
   | 'sheetInputHash'
   | 'selectedSheetVersionId'
   | 'physicalDescription'
+  | 'voiceOnly'
   | 'consistencyTag'
 >;
 

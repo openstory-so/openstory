@@ -14,15 +14,37 @@ import type { Scene } from '@/shots/scene-analysis.schema';
 import { deriveShots, type DerivedShot } from '@/shots/shot-list.derive';
 import type { ShotSpec } from '@/shots/shot-list.schema';
 import type { StyleConfig } from '@/look/style-config';
-import { dialogueForShot } from '@/shots/shot-dialogue';
+import { dialogueForShot } from '@/shots/shot-list-pass';
 
-/** The scene as one clip sees it: only the dialogue spoken in that shot (#1585). */
-function sceneForShot(scene: Scene, shotNumber: number): Scene {
+/**
+ * The scene as one clip sees it: only the dialogue spoken in that shot
+ * (#1585), stamps stripped. Every prompt and every prompt-input hash goes
+ * through here or `composeSceneForShot`, never the raw split scene — the
+ * visual-prompt batch included, which is per scene but stores and verifies
+ * against the anchor shot.
+ */
+export function sceneForShot(scene: Scene, shotNumber: number): Scene {
   return {
     ...scene,
     originalScript: {
       ...scene.originalScript,
       dialogue: dialogueForShot(scene.originalScript.dialogue, shotNumber),
+    },
+  };
+}
+
+/**
+ * A neighbouring scene as prompt context: every line, stamps stripped. Not
+ * hashed, but it is prompt text, and the stamp is a storage fact.
+ */
+export function sceneAsContext(scene: Scene): Scene {
+  return {
+    ...scene,
+    originalScript: {
+      ...scene.originalScript,
+      dialogue: scene.originalScript.dialogue.map(
+        ({ shotNumber: _stamp, ...line }) => line
+      ),
     },
   };
 }

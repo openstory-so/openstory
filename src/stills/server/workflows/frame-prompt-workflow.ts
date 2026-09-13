@@ -132,11 +132,13 @@ export class FramePromptWorkflow extends OpenStoryWorkflowEntrypoint<FramePrompt
             : '(none)',
           scene: JSON.stringify(scene, null, 2),
           // Performance drives motion only and is not in the visual hash, so
-          // the visual LLM must not see it either (#1561).
+          // the visual LLM must not see it either (#1561). A voice-only
+          // character is heard, never framed (#1585): the motion prompt keeps
+          // it for delivery, the still never sees it.
           characterBible: JSON.stringify(
-            narrowed.characterBible.map(
-              ({ personality: _p, movement: _m, ...c }) => c
-            ),
+            narrowed.characterBible
+              .filter((c) => !c.voiceOnly)
+              .map(({ personality: _p, movement: _m, ...c }) => c),
             null,
             2
           ),

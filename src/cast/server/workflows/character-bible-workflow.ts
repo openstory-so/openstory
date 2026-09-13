@@ -97,7 +97,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       );
     }
 
-    // Step 2: Fan out one CharacterSheetWorkflow child per character. Spawns
+    // Step 2: Fan out one CharacterSheetWorkflow child per on-screen character. Spawns
     // happen in parallel via Promise.all; the awaits use Promise.allSettled
     // so a single timed-out child does not tank the entire parent run.
     const spawnPromises = sheetCharacters.map(async (character, index) => {
@@ -212,6 +212,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         selectedSheetVersionId: childResult.sheetVersionId ?? null,
         physicalDescription:
           castingAttrs?.physicalDescription ?? character.physicalDescription,
+        voiceOnly: false,
         consistencyTag:
           castingAttrs?.consistencyTag ?? character.consistencyTag,
       });
@@ -219,7 +220,12 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
 
     for (const character of voiceOnlyCharacters) {
       const characterDbId = characterIdToDbId.get(character.characterId);
-      if (!characterDbId) continue;
+      if (!characterDbId) {
+        throw new WorkflowValidationError(
+          `[CharacterBibleWorkflow:cf] No DB id found for voice-only character ${character.characterId}; ` +
+            `create-character-records did not return a matching row`
+        );
+      }
       seqCharacters.push({
         id: characterDbId,
         characterId: character.characterId,
@@ -229,6 +235,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         sheetInputHash: null,
         selectedSheetVersionId: null,
         physicalDescription: character.physicalDescription,
+        voiceOnly: true,
         consistencyTag: character.consistencyTag,
       });
     }

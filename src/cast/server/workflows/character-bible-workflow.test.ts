@@ -83,13 +83,15 @@ const narrator = entry({
   voiceOnly: true,
 });
 
-function makeEvent(): Readonly<WorkflowEvent<CharacterBibleWorkflowInput>> {
+function makeEvent(
+  characterBible: CharacterBibleEntry[] = [sam, narrator]
+): Readonly<WorkflowEvent<CharacterBibleWorkflowInput>> {
   return {
     payload: {
       userId: 'u1',
       teamId: 'team-1',
       sequenceId: 'seq-1',
-      characterBible: [sam, narrator],
+      characterBible,
     },
     instanceId: 'run-1',
     workflowName: 'character-bible',
@@ -145,5 +147,16 @@ describe('CharacterBibleWorkflow voice-only characters', () => {
         selectedSheetVersionId: null,
       }),
     ]);
+  });
+
+  it('blames the right character when a sheet fails with the narrator listed first', async () => {
+    mockSpawnAndAwaitChild.mockRejectedValueOnce(new Error('fal 500'));
+    await expect(
+      makeWorkflow().runBody(
+        makeEvent([narrator, sam]),
+        makeStep(),
+        makeScopedDb()
+      )
+    ).rejects.toThrow(/Sam/);
   });
 });

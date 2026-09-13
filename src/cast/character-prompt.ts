@@ -46,8 +46,10 @@ const buildCharacterDescription = (character: CharacterMinimal): string => {
 export const buildCharacterReferenceImages = (
   characters: CharacterMinimal[]
 ): ReferenceImageDescription[] => {
+  // A voice-only character has no face to anchor (#1585); a sheet left over
+  // from before it was reclassified must not ride along as a reference.
   return characters
-    .filter((c) => c.sheetImageUrl)
+    .filter((c) => c.sheetImageUrl && !c.voiceOnly)
     .map((c) => ({
       referenceImageUrl: c.sheetImageUrl ?? '',
       description: buildCharacterDescription(c),

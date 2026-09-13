@@ -210,7 +210,8 @@ const motionPromptParametersSchema = z.object({
 
 const dialogueLineSchema = z.object({
   character: z.string().meta({
-    description: 'Character name speaking the line, or empty for narrator',
+    description:
+      'Speaker, spelled as the cast list spells it; empty only for a voice nobody could attribute',
   }),
   line: z.string(),
   tone: z.string().meta({
@@ -511,7 +512,9 @@ export const sceneAnalysisSchema = z.object({
 export type SceneAnalysis = z.infer<typeof sceneAnalysisSchema>;
 /**
  * Analysis scene. `shots` is attached after the shot-list pass (#1486) and is
- * not part of the (unused) `sceneSchema` LLM wire shape.
+ * not part of the (unused) `sceneSchema` LLM wire shape. `originalScript` is
+ * overridden for the same reason: its stored lines carry `shotNumber` /
+ * `voiceToken`, which the wire schema never publishes (see `DialogueLine`).
  */
 export type Scene = Omit<z.infer<typeof sceneSchema>, 'originalScript'> & {
   originalScript: { extract: string; dialogue: DialogueLine[] };
@@ -550,10 +553,10 @@ export type MotionAudio = MotionPrompt['audio'];
 export type DialogueLine = z.infer<typeof dialogueLineSchema> & {
   voiceToken?: string;
   /**
-   * The shot this line is spoken in, stamped from the shot-list call's
-   * per-shot lines (#1585, `dialogueFromShots`). Absent = every shot of the
-   * scene (a one-shot scene), so pre-#1585 rows keep their old meaning.
-   * `dialogueForShot` is the filter.
+   * The shot this line is spoken in, stamped on every line by the shot-list
+   * call (#1585, `dialogueFromShots`). Absent only on rows from before
+   * #1585, which keep their old meaning: every shot of the scene.
+   * `dialogueForShot` is the filter and strips the stamp on the way out.
    */
   shotNumber?: number;
 };

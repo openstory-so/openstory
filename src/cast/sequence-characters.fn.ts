@@ -131,7 +131,9 @@ export const createSequenceCharacterFn = createServerFn({ method: 'POST' })
 /**
  * Edit a character's bible fields. Only provided fields change; prompts and
  * the character sheet that project them re-stale purely by hash derivation
- * (no flag written). Casting stays on `recastCharacterFn`.
+ * (no flag written). Casting stays on `recastCharacterFn`. `voiceOnly` is
+ * required (#1585): it is the way back from a bible call that misfiled an
+ * on-screen character as a voice, so the form always states it.
  */
 export const updateSequenceCharacterFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
@@ -141,6 +143,7 @@ export const updateSequenceCharacterFn = createServerFn({ method: 'POST' })
         sequenceId: ulidSchema,
         characterId: ulidSchema,
         name: z.string().trim().min(1).max(255).optional(),
+        voiceOnly: z.boolean(),
       })
     )
   )
@@ -324,6 +327,11 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
     );
     if (!character) {
       throw new NotFoundError('Character not found');
+    }
+    if (character.voiceOnly) {
+      throw new Error(
+        `${character.name} is voice-only (#1585): there is no face to cast`
+      );
     }
 
     // Fetch the sequence's style for character sheet generation
