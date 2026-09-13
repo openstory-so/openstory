@@ -63,7 +63,6 @@ import {
   type DraftElementUpload,
 } from '@/cast/ui/use-sequence-elements';
 import { useSequenceLocations } from '@/cast/ui/use-sequence-locations';
-import { beginSequenceCreate } from '@/sequences/ui/optimistic-sequence';
 import { useCreateSequence } from '@/sequences/ui/use-sequences';
 import {
   useRecommendedStyles,
@@ -912,7 +911,6 @@ export const ScriptView: FC<{
       generateVoices,
       videoModels,
     } = run;
-    if (createSequenceMutation.isPending) return;
     if (needsBillingSetup && !allowsUnfundedGeneration(runUntil)) {
       showGate();
       return;
@@ -920,51 +918,52 @@ export const ScriptView: FC<{
     const flags = flagsFromStopAt(runUntil);
     // sequence_generated is captured server-side in createSequences (#1088)
     // so dashboard + public API both feed #product-alerts once.
-    const payload = {
-      title: undefined,
-      teamId,
-      script: script ?? baseScript ?? '',
-      styleId: styleId || sequence?.styleId || undefined,
-      aspectRatio,
-      resolution,
-      analysisModels,
-      imageModels,
-      videoModels,
-      videoModel: videoModels[0] ?? DEFAULT_VIDEO_MODEL,
-      stopAt: runUntil,
-      autoGenerateMotion: flags.autoGenerateMotion,
-      autoGenerateMusic: flags.autoGenerateMusic,
-      generateStartFrames,
-      generateVoices,
-      musicModel: audioModels[0] ?? DEFAULT_MUSIC_MODEL,
-      audioModels,
-      targetDurationSeconds: targetDuration,
-      suggestedTalentIds:
-        selectedTalentIds.length > 0 ? selectedTalentIds : undefined,
-      suggestedLocationIds:
-        selectedLocationIds.length > 0 ? selectedLocationIds : undefined,
-      elementUploads:
-        draftElements.length > 0
-          ? draftElements.map((el) => ({
-              tempPath: el.tempPath,
-              tempPublicUrl: el.tempPublicUrl,
-              filename: el.filename,
-              token: el.token,
-              description: el.description,
-              consistencyTag: el.consistencyTag,
-            }))
-          : undefined,
-      sourceSequenceId: isEditing ? sequence.id : undefined,
-    };
-    // Navigate on this tick with a client-minted id (#1601). The create
-    // request starts first so the insert is in flight as the URL changes;
-    // waiting for it was the pause after Generate.
-    const { ids } = beginSequenceCreate(queryClient, payload);
     createSequenceMutation.mutate(
-      { ...payload, ids },
-      { onSuccess: () => clearDraft() }
+      {
+        title: undefined,
+        teamId,
+        script: script ?? baseScript ?? '',
+        styleId: styleId || sequence?.styleId || undefined,
+        aspectRatio,
+        resolution,
+        analysisModels,
+        imageModels,
+        videoModels,
+        videoModel: videoModels[0] ?? DEFAULT_VIDEO_MODEL,
+        stopAt: runUntil,
+        autoGenerateMotion: flags.autoGenerateMotion,
+        autoGenerateMusic: flags.autoGenerateMusic,
+        generateStartFrames,
+        generateVoices,
+        musicModel: audioModels[0] ?? DEFAULT_MUSIC_MODEL,
+        audioModels,
+        targetDurationSeconds: targetDuration,
+        suggestedTalentIds:
+          selectedTalentIds.length > 0 ? selectedTalentIds : undefined,
+        suggestedLocationIds:
+          selectedLocationIds.length > 0 ? selectedLocationIds : undefined,
+        elementUploads:
+          draftElements.length > 0
+            ? draftElements.map((el) => ({
+                tempPath: el.tempPath,
+                tempPublicUrl: el.tempPublicUrl,
+                filename: el.filename,
+                token: el.token,
+                description: el.description,
+                consistencyTag: el.consistencyTag,
+              }))
+            : undefined,
+        sourceSequenceId: isEditing ? sequence.id : undefined,
+      },
+      {
+        onSuccess: (result) => {
+          clearDraft();
+          if (onSuccess) {
+            onSuccess(result.data.map((seq) => seq.id));
+          }
+        },
+      }
     );
-    onSuccess?.(ids);
   };
 
   const requestGenerate = () => {

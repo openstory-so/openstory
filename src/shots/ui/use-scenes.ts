@@ -9,7 +9,6 @@ import { sceneFacetKeys } from './use-scene-facets';
 import { sequenceKeys } from '@/sequences/ui/use-sequences';
 import { shotStalenessNamespace } from './use-shot-staleness';
 import { shotKeys } from './use-shots';
-import { useSequenceReady } from '@/sequences/ui/pending-sequence-create';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 export const sceneKeys = {
@@ -21,14 +20,13 @@ export const sceneKeys = {
 
 /** Composed sequence script from selected scene versions (#1030). */
 export function useComposedScript(sequenceId?: string) {
-  const ready = useSequenceReady(sequenceId);
   return useQuery({
     queryKey: sceneKeys.composedScript(sequenceId ?? ''),
     queryFn: async () => {
       if (!sequenceId) throw new Error('sequenceId is required');
       return getComposedScriptFn({ data: { sequenceId } });
     },
-    enabled: ready,
+    enabled: !!sequenceId,
     staleTime: 30_000,
   });
 }
@@ -40,14 +38,13 @@ export type SceneWithScript = SceneRow & {
 
 /** Ordered scenes for a sequence — the editor groups shots under these (#909). */
 export function useScenesBySequence(sequenceId?: string) {
-  const ready = useSequenceReady(sequenceId);
   return useQuery<SceneWithScript[]>({
     queryKey: sceneKeys.list(sequenceId ?? ''),
     queryFn: async () => {
       if (!sequenceId) throw new Error('sequenceId is required');
       return getScenesFn({ data: { sequenceId } });
     },
-    enabled: ready,
+    enabled: !!sequenceId,
     staleTime: 30_000,
   });
 }

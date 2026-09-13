@@ -1,6 +1,5 @@
 import { getShotStalenessBatchFn, getShotStalenessFn } from '@/shots/shots.fn';
 import type { ArtifactStaleness } from '@/shots/server/shot-staleness';
-import { useSequenceReady } from '@/sequences/ui/pending-sequence-create';
 import {
   type QueryClient,
   useQuery,
@@ -195,11 +194,10 @@ export function useSequenceShotStaleness(args: {
 }) {
   const { sequenceId, enabled = true } = args;
   const queryClient = useQueryClient();
-  const ready = useSequenceReady(sequenceId);
   return useQuery<Record<string, ShotStaleness>>({
     queryKey: sequenceShotStalenessKey(sequenceId),
     queryFn: () => fetchAndPrimeBatch(queryClient, { sequenceId }),
-    enabled: enabled && ready,
+    enabled: enabled && !!sequenceId,
     staleTime: 30_000,
   });
 }

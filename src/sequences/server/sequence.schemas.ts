@@ -26,10 +26,7 @@ import {
   acceptsReference,
   unusableReferenceLines,
 } from '@/motion/reference-support';
-import {
-  ulidSchema,
-  ulidSchemaOptional,
-} from '@/platform/server/schemas/id.schemas';
+import { ulidSchemaOptional } from '@/platform/server/schemas/id.schemas';
 import { createInsertSchema, createUpdateSchema } from 'drizzle-orm/zod';
 import { draftElementUploadSchema } from '@/cast/draft-element-upload';
 import { z } from 'zod';
@@ -186,20 +183,10 @@ export const createSequenceSchema = createInsertSchema(sequences, {
     // When regenerating from an existing sequence, copy its elements onto the
     // newly created sequence so the user doesn't have to re-upload references.
     sourceSequenceId: ulidSchemaOptional,
-    // Client-minted ids so Generate can navigate before this request returns
-    // (#1601). One per analysis model; omitted ids are allocated server-side.
-    ids: z.array(ulidSchema).optional(),
   })
   // Legacy-flag checks only apply when the caller did not pick a stop-at
   // (#1408): an explicit early stop is a deliberate partial run.
   .superRefine((data, ctx) => {
-    if (data.ids && new Set(data.ids).size !== data.ids.length) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['ids'],
-        message: 'Sequence ids must be unique',
-      });
-    }
     if (data.stopAt) return;
     if (data.autoGenerateMusic && data.autoGenerateMotion === false) {
       ctx.addIssue({

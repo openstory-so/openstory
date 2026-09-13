@@ -29,7 +29,6 @@ import {
   type ShotImageVersionRow,
   type ShotVideoVersionRow,
 } from '@/stills/shot-image.fn';
-import { useSequenceReady } from '@/sequences/ui/pending-sequence-create';
 import { promptVariantKeys } from './use-prompt-variants';
 import { segmentKeys } from './use-segments';
 import { shotStalenessNamespace } from './use-shot-staleness';
@@ -67,14 +66,13 @@ export const shotKeys = {
 // Drives the header image-model dropdown (#547). Flat key matches the
 // image:progress cache invalidation in query-cache-updater.
 export function useSequenceImageModels(sequenceId?: string) {
-  const ready = useSequenceReady(sequenceId);
   return useQuery<string[]>({
     queryKey: ['sequence-image-models', sequenceId ?? ''],
     queryFn: async () => {
       if (!sequenceId) throw new Error('sequenceId is required');
       return getSequenceImageModelsFn({ data: { sequenceId } });
     },
-    enabled: ready,
+    enabled: !!sequenceId,
     staleTime: 30_000,
   });
 }
@@ -83,14 +81,13 @@ export function useSequenceImageModels(sequenceId?: string) {
 // Drives the header video-model dropdown. The realtime video:progress handler
 // invalidates `['sequence-video-models', sequenceId]`, matching this key's tail.
 export function useSequenceVideoModels(sequenceId?: string) {
-  const ready = useSequenceReady(sequenceId);
   return useQuery<string[]>({
     queryKey: ['sequence-video-models', sequenceId ?? ''],
     queryFn: async () => {
       if (!sequenceId) throw new Error('sequenceId is required');
       return getSequenceVideoModelsFn({ data: { sequenceId } });
     },
-    enabled: ready,
+    enabled: !!sequenceId,
     staleTime: 30_000,
   });
 }
@@ -98,14 +95,13 @@ export function useSequenceVideoModels(sequenceId?: string) {
 // All video ShotVariant rows for a sequence (#545). Used by the scenes view to
 // resolve each shot's displayed video through the active model's variant.
 export function useSequenceVideoVariants(sequenceId?: string) {
-  const ready = useSequenceReady(sequenceId);
   return useQuery<ShotVariant[]>({
     queryKey: ['sequence-video-variants', sequenceId ?? ''],
     queryFn: async () => {
       if (!sequenceId) throw new Error('sequenceId is required');
       return getSequenceVideoVariantsFn({ data: { sequenceId } });
     },
-    enabled: ready,
+    enabled: !!sequenceId,
     staleTime: 30_000,
   });
 }
@@ -115,14 +111,13 @@ export function useSequenceVideoVariants(sequenceId?: string) {
 // dropdown for sequence-wide per-model coverage, and by the scenes view to
 // resolve each shot's displayed image through the active model's variant.
 export function useSequenceImageVariants(sequenceId?: string) {
-  const ready = useSequenceReady(sequenceId);
   return useQuery<ImageVariantWithShot[]>({
     queryKey: ['sequence-image-variants', sequenceId ?? ''],
     queryFn: async () => {
       if (!sequenceId) throw new Error('sequenceId is required');
       return getSequenceImageVariantsFn({ data: { sequenceId } });
     },
-    enabled: ready,
+    enabled: !!sequenceId,
     staleTime: 30_000,
   });
 }
@@ -133,7 +128,6 @@ export function useSequenceImageVariants(sequenceId?: string) {
 // the realtime image:progress + video:progress handlers, since a completed
 // convergent render repoints the selection.
 export function useSequenceSelectedModels(sequenceId?: string) {
-  const ready = useSequenceReady(sequenceId);
   return useQuery({
     // Flat key, matching the sibling per-model queries — the realtime
     // image/video progress handlers invalidate this exact shape.
@@ -142,7 +136,7 @@ export function useSequenceSelectedModels(sequenceId?: string) {
       if (!sequenceId) throw new Error('sequenceId is required');
       return getSequenceSelectedModelsFn({ data: { sequenceId } });
     },
-    enabled: ready,
+    enabled: !!sequenceId,
     staleTime: 30_000,
   });
 }
@@ -153,14 +147,13 @@ export function useDivergentVariants(
   sequenceId?: string,
   options?: { refetchInterval?: number | false }
 ) {
-  const ready = useSequenceReady(sequenceId);
   return useQuery<ShotVariant[]>({
     queryKey: shotKeys.divergentVariants(sequenceId ?? ''),
     queryFn: async () => {
       if (!sequenceId) throw new Error('sequenceId is required');
       return getDivergentVariantsFn({ data: { sequenceId } });
     },
-    enabled: ready,
+    enabled: !!sequenceId,
     staleTime: 30_000,
     refetchInterval: options?.refetchInterval ?? false,
   });
@@ -237,7 +230,6 @@ export function useShotsBySequence(
     staleTime?: number;
   }
 ) {
-  const ready = useSequenceReady(sequenceId);
   return useQuery<ShotView[]>({
     queryKey: shotKeys.list(sequenceId ?? ''),
     queryFn: async () => {
@@ -252,7 +244,7 @@ export function useShotsBySequence(
     refetchInterval: options?.refetchInterval ?? false,
     refetchOnMount: 'always', // Always refetch on mount to ensure fresh data
     refetchOnWindowFocus: true, // Refetch when window regains focus
-    enabled: ready,
+    enabled: !!sequenceId,
   });
 }
 
