@@ -140,7 +140,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     kind: 'input',
     band: 'library',
     summary:
-      'A library person. Cast onto a character automatically at the Script stage or by hand; casting copies their look, performance and voice onto the character. A character can also be saved to the library as new talent.',
+      'A library person. Cast onto a character automatically at the Script stage or by hand; casting copies their look, performance and voice onto the character once. These fields only reach a sequence through a regenerated talent sheet: edit the description and the character keeps the old face until the sheet is redone.',
     counts: ['Description', 'Reference photos'],
     ignored: ['Name'],
   },
@@ -164,7 +164,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     kind: 'input',
     band: 'library',
     summary:
-      'A reusable location from the team library, matched onto a sequence location automatically or by hand.',
+      'A reusable location from the team library, matched onto a sequence location automatically or by hand. Its fields only reach a sequence through a regenerated reference image.',
     counts: ['Description', 'Reference photos'],
     ignored: ['Name'],
   },
@@ -349,7 +349,8 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     label: 'Talent sheet',
     kind: 'artifact',
     band: 'references',
-    summary: 'Turnaround sheet for a library person.',
+    summary:
+      'The talent as a sequence sees it. A cast character usually reuses this sheet as its own and always draws from it, so "the talent changed" means "the selected talent sheet changed".',
     counts: ['Talent description', 'Reference photo hashes', 'Image model'],
     ignored: ['Talent name'],
     storedAs: 'talent_sheets.inputHash',
@@ -360,7 +361,8 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     label: 'Character sheet',
     kind: 'artifact',
     band: 'references',
-    summary: 'Turnaround sheet for a character in this sequence.',
+    summary:
+      "Turnaround sheet for a character in this sequence. When cast, it is usually the talent sheet reused; a costumed one is generated only when the role's clothing or features diverge from the talent.",
     counts: [
       'Character bible (age, gender, ethnicity, description, clothing, features, consistency tag)',
       'Talent sheet hash, when cast',
@@ -396,7 +398,8 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     label: 'Library location ref',
     kind: 'artifact',
     band: 'references',
-    summary: 'Reference image for a library location.',
+    summary:
+      'The library location as a sequence sees it: the location sheet draws from it and folds its hash in.',
     counts: [
       'Library location description',
       'Reference photo hashes',
