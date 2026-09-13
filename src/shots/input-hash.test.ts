@@ -663,6 +663,58 @@ describe('prompt input hashes', () => {
     ).toBe(await computeVisualPromptInputHash(sceneCtx));
   });
 
+  it('dialogue voices re-stale the motion prompt only, and only when present (#1554)', async () => {
+    const voiced = {
+      ...sceneCtx,
+      dialogueVoices: [
+        {
+          voiceId: 'voice-sarah',
+          line: 'Stay down.',
+          ttsModel: 'eleven_v3',
+        },
+      ],
+    };
+    expect(await computeMotionPromptInputHash(voiced)).not.toBe(
+      await computeMotionPromptInputHash(sceneCtx)
+    );
+    expect(await computeVisualPromptInputHash(voiced)).toBe(
+      await computeVisualPromptInputHash(sceneCtx)
+    );
+    // Shape-stable: omitted, empty, and blank rows hash exactly as before.
+    expect(
+      await computeMotionPromptInputHash({ ...sceneCtx, dialogueVoices: [] })
+    ).toBe(await computeMotionPromptInputHash(sceneCtx));
+    expect(
+      await computeMotionPromptInputHash({
+        ...sceneCtx,
+        dialogueVoices: [{ voiceId: '', line: 'x', ttsModel: 'eleven_v3' }],
+      })
+    ).toBe(await computeMotionPromptInputHash(sceneCtx));
+    expect(
+      await computeMotionPromptInputHash({
+        ...sceneCtx,
+        dialogueVoices: [
+          {
+            voiceId: 'voice-sarah',
+            line: 'Stay down.',
+            ttsModel: 'eleven_v3',
+          },
+        ],
+      })
+    ).not.toBe(
+      await computeMotionPromptInputHash({
+        ...sceneCtx,
+        dialogueVoices: [
+          {
+            voiceId: 'voice-other',
+            line: 'Stay down.',
+            ttsModel: 'eleven_v3',
+          },
+        ],
+      })
+    );
+  });
+
   it('leaves every stored image-to-video digest unchanged', async () => {
     // The flag joins the hash body only when true, so no existing row's
     // digest moves and no hash-version bump is needed.

@@ -3,6 +3,7 @@ import {
   allocateClipDurations,
   durationGridForModel,
   snapDuration,
+  snapDurationUp,
 } from './snap-duration';
 
 describe('durationGridForModel', () => {
@@ -26,6 +27,12 @@ describe('snapDuration', () => {
 
   it('keeps a value already on the grid', () => {
     expect(snapDuration(8, 'minimax_h3_max')).toBe(8);
+  });
+
+  it('covers a fractional audio bed instead of snapping down (#1554)', () => {
+    expect(snapDurationUp(6.2, 'seedance_v2_5')).toBe(7);
+    expect(snapDurationUp(4, 'seedance_v2_5')).toBe(4);
+    expect(snapDurationUp(40, 'seedance_v2_5')).toBe(30);
   });
 
   it('snaps Omni Flash onto the integer 3–10s grid', () => {

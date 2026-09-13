@@ -46,6 +46,9 @@ import {
   unusableShotReferenceLines,
 } from '@/motion/reference-support';
 import { resolveShotDuration } from '@/motion/resolve-shot-duration';
+import { dialogueClipsAsReferences } from '@/motion/server/synthesize-dialogue';
+import { dialogueTtsToken } from '@/motion/dialogue-tts';
+import type { MotionAudioClip } from '@/platform/server/db/schema';
 import { buildReferenceImagePrompt } from '@/stills/reference-image-prompt';
 
 export type BoundPromptImage = {
@@ -200,19 +203,39 @@ export function buildShotPromptPreview(input: {
   elements: SequenceElementMinimal[];
   locations: SequenceLocationMinimal[];
   byteplusEnabled?: boolean;
+  /** Dialogue TTS clips already parked for this prompt version (#1554). */
+  audioClips?: MotionAudioClip[];
 }): ShotPromptPreview {
   const byteplusEnabled = input.byteplusEnabled ?? isBytePlusConfigured();
+  const audioClips = input.audioClips ?? [];
+  const clipByToken = new Map(audioClips.map((clip) => [clip.token, clip]));
+  const motionPrompt =
+    audioClips.length > 0 && input.motionPrompt?.dialogue
+      ? {
+          ...input.motionPrompt,
+          dialogue: {
+            ...input.motionPrompt.dialogue,
+            lines: input.motionPrompt.dialogue.lines.map((line, index) => {
+              if (line.voiceToken) return line;
+              const token = dialogueTtsToken(line.character, index);
+              return clipByToken.has(token)
+                ? { ...line, voiceToken: token }
+                : line;
+            }),
+          },
+        }
+      : input.motionPrompt;
   const assembledMotionPrompt = resolveMotionPrompt(
     {
-      motionPrompt: input.motionPrompt,
+      motionPrompt,
       characterTags: input.scene?.continuity?.characterTags,
       description: input.scene?.originalScript?.extract ?? null,
       generateAudio: input.generateAudio,
     },
     input.videoModel
   );
-  const motionRefs = absolutizeRefs(
-    buildMotionReferenceImages({
+  const motionRefs = absolutizeRefs([
+    ...buildMotionReferenceImages({
       scene: input.scene,
       characters: input.characters,
       elements: input.elements,
@@ -223,8 +246,9 @@ export function buildShotPromptPreview(input: {
       motionPrompt: assembledMotionPrompt,
       referenceOnly: !input.usesStartFrame,
       locations: input.locations,
-    })
-  );
+    }),
+    ...dialogueClipsAsReferences(audioClips),
+  ]);
 
   return {
     image: buildImagePreview({

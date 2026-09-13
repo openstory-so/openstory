@@ -158,7 +158,10 @@ export type CharacterMinimal = Pick<
   | 'physicalDescription'
   | 'voiceOnly'
   | 'consistencyTag'
->;
+> & {
+  /** Designed ElevenLabs voice, when the row has one (#1554). */
+  voiceId?: string | null;
+};
 
 // Composite types for API responses
 export type CharacterWithTalent = CharacterWithSheet & {

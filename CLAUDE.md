@@ -450,8 +450,8 @@ voice-only entry — `extractDialogueFromSlice` is only the streaming preview
 and never reaches the matcher. A voice-only character (`voiceOnly`, no
 sheet) is the usual narrator and gets a voice like anyone else. The child
 runs for each such character that resolves true and has no `voiceId` yet.
-A failed voice child is logged and the run continues — a voice anchors
-nothing downstream. The LLM drafts `voiceDescription` when empty
+A failed voice child is logged and the run continues — that character's
+lines just have no designed voice for TTS. The LLM drafts `voiceDescription` when empty
 (`phase/voice-design-chat`), Voice Design's previews are parked in R2
 (`characters.voicePreviews`, AUDIO bucket) and the first is saved as the
 voice; "Use" on another take saves it instead (`chooseCharacterVoiceTakeFn`,
@@ -471,7 +471,22 @@ delete, and the upsert keeps a voice the row already holds. Billed at
 estimated character (`generateVoices` on `estimateStoryboardCost`), the
 in-run gate the real speaking count.
 
-Out of scope here: voice cloning from an uploaded sample, realtime/agents.
+**Dialogue TTS (#1554).** A step in `MotionWorkflow` (before submit) synthesises
+each dialogue line whose speaker has a `voiceId` (`eleven_v3`, tone mapped to
+v3 audio tags) and stores one clip per line in R2. User-bound `voiceToken`
+elements already ride as `@AudioN` and are not re-synthesised. Voice ids +
+lines + TTS model fold into the motion-prompt hash **only when a voice is
+present** (same shape-stable trick as `usesStartFrame` / `referenceOnly`).
+Shot duration is raised to cover the audio (Seedance 2.5 clips are 4–30 s).
+Voiced lines are snapshotted onto the payload at trigger time; credentials via
+`resolveKey('elevenlabs')`. Preflight reserves the TTS cost (static card).
+Clip ids are stamped on `VideoManifestEntry.audioClipIds` and
+`shot_prompt_versions.audioClips` (provenance, never inferred). The
+optimised-prompt JSON carries those audio refs for paste-into-Videos. Models
+with no audio reference slot (Grok, Omni Flash, Kling) skip TTS.
+
+Out of scope here: voice cloning from an uploaded sample, realtime/agents,
+auditioning/regenerating a single line from the scene panel.
 
 ### Native Grok (xAI)
 

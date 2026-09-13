@@ -379,6 +379,7 @@ export function arkStillsForMotion(
     stills.push({ storedUrl: options.imageUrl, slot: 'frame' });
   for (const ref of options.referenceImages ?? []) {
     if (ref.role === 'location' || ref.role === 'element') continue;
+    if (ref.kind === 'audio' || ref.kind === 'video') continue;
     // Cast sheets are the pool's long-lived residents — evicting one costs
     // every shot that binds it.
     stills.push({ storedUrl: ref.referenceImageUrl, slot: 'library' });

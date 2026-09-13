@@ -15,6 +15,7 @@ import type {
   MotionDialogue,
   MotionPromptParameters,
 } from '@/shots/scene-analysis.schema';
+import type { MotionAudioClip } from '@/platform/server/db/schema';
 import type { Database } from '@/platform/server/db/client';
 import { shotPromptVersions, shots, user } from '@/platform/server/db/schema';
 import type {
@@ -516,6 +517,21 @@ export function createShotPromptVersionsMethods(db: Database) {
         );
       }
       return row?.version ?? null;
+    },
+
+    /**
+     * Stamp the synthesised dialogue clips a motion run just produced onto
+     * the prompt version it rendered from (#1554). Provenance, not a new
+     * version — the text did not change.
+     */
+    setAudioClips: async (
+      versionId: string,
+      audioClips: MotionAudioClip[]
+    ): Promise<void> => {
+      await db
+        .update(shotPromptVersions)
+        .set({ audioClips })
+        .where(eq(shotPromptVersions.id, versionId));
     },
 
     /**
