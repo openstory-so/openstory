@@ -6,6 +6,9 @@
  * 2. GET /v1/models/pricing — unit_price + raw unit, batches of ≤50 ids.
  * 3. POST /v1/models/pricing/estimate — typical units per call, heavily
  *    rate-limited (~1 req/s), so only fetched for endpoints we actually use.
+ * 4. GET fal.ai/models/{id}/llms.txt — the advertised price fal shows humans
+ *    and agents, a static page. Only for used endpoints that have no other
+ *    unit-count signal (#1605).
  *
  * `unit` is stored verbatim — the catalog reports ~30 distinct strings
  * ("images", "compute seconds", "videos", "5 seconds", even ""). Billing never
@@ -460,7 +463,7 @@ async function fetchHistoricalCostUsd(
 }
 
 /** Stable precision for typical units (avoids float noise in diffs). */
-function roundTypicalUnits(n: number): number {
+export function roundTypicalUnits(n: number): number {
   return Math.round(n * 1_000_000) / 1_000_000;
 }
 
@@ -500,4 +503,144 @@ export async function fetchFalTypicalUnits(
     if (i < unitPrices.length - 1) await sleep(ESTIMATE_DELAY_MS);
   }
   return { typicalUnits, failedEndpoints };
+}
+
+// ============================================================================
+// Advertised per-call price from llms.txt (#1605)
+// ============================================================================
+
+/**
+ * "Your request will cost **$0.08** per image." Only bold markers and
+ * whitespace may sit between the figure and the noun: "$0.04 (low) or $0.06
+ * (medium) per image" and "$0.0675+ $(0.0045 × inputs) per output image" are
+ * deliberately NOT matched — a wrong figure is worse than none.
+ */
+const PER_IMAGE_USD = /\$(\d+(?:\.\d+)?)\**\s+per (?:output |1K )?images?\b/i;
+
+/** "by default we use **high**" — the quality column a size table is read at. */
+const DEFAULT_QUALITY = /by default we use \**([a-z]+)\**/i;
+
+/**
+ * The canonical 1K still. Token-priced endpoints (GPT Image 2.5) publish a
+ * size × quality USD table instead of a per-image price; this row at the
+ * endpoint's default quality is the advertised starting estimate.
+ */
+const TABLE_SIZE = '1024×1024';
+
+/** The `## Pricing` section body of an llms.txt, or null when absent. */
+export function llmsTxtPricingSection(llmsTxt: string): string | null {
+  // Sentinel so the lazy body also ends at end-of-file (`$` is per-line here).
+  const match = `${llmsTxt}\n## `.match(/^## Pricing\s*\n([\s\S]*?)(?=\n## )/m);
+  return match?.[1]?.trim() || null;
+}
+
+/** Advertised USD per image from a Pricing section, or null if not a plain "$X per image". */
+export function parseAdvertisedImageUsd(pricingSection: string): number | null {
+  const usd = Number(pricingSection.match(PER_IMAGE_USD)?.[1]);
+  return Number.isFinite(usd) && usd > 0 ? usd : null;
+}
+
+/**
+ * Read `| Size | low | medium | high | … |` at `size` × `quality`. The table
+ * lives in the model description, which the playground HTML embeds as a
+ * JSON-escaped markdown string — so rows may be split by a literal `\\n`
+ * rather than a newline, and `×` may be spelled `x`.
+ */
+export function parseSizeTableUsd(
+  text: string,
+  quality: string,
+  size: string = TABLE_SIZE
+): number | null {
+  const lines = text.split(/\\+n|\n/);
+  const cells = (line: string) =>
+    line
+      .split('|')
+      .map((c) => c.trim().toLowerCase())
+      .filter(Boolean);
+  const normalise = (s: string) => s.replace(/x/g, '×');
+  const headerIdx = lines.findIndex((l) => {
+    const c = cells(l);
+    return c[0] === 'size' && c.includes(quality.toLowerCase());
+  });
+  if (headerIdx < 0) return null;
+  const header = cells(lines[headerIdx] ?? '');
+  const column = header.indexOf(quality.toLowerCase());
+  for (const line of lines.slice(headerIdx + 1)) {
+    if (!line.trimStart().startsWith('|')) break;
+    const c = cells(line);
+    if (normalise(c[0] ?? '') !== normalise(size.toLowerCase())) continue;
+    const usd = Number(c[column]?.replace(/^\$/, ''));
+    return Number.isFinite(usd) && usd > 0 ? usd : null;
+  }
+  return null;
+}
+
+export type FalAdvertisedCallUsd = {
+  /** Endpoints whose advertised price parsed. */
+  advertised: Map<string, number>;
+  /** Endpoints whose page could not be fetched — callers preserve stored values. */
+  failedEndpoints: Set<string>;
+};
+
+async function fetchPageText(url: string): Promise<string | null> {
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) {
+      logger.warn(`llms.txt pricing: HTTP ${resp.status} for ${url}`);
+      return null;
+    }
+    return await resp.text();
+  } catch (error) {
+    logger.warn(`llms.txt pricing: request failed for ${url}`, { err: error });
+    return null;
+  }
+}
+
+/**
+ * Advertised USD per call from each endpoint's llms.txt Pricing section — a
+ * starting estimate for endpoints with no bill, no observed median and no
+ * fal history (a fresh catalog id, #1605). Unparseable sections log a warn
+ * and are absent from both outputs: an estimate stays unknown rather than
+ * made up. Never a billing input.
+ */
+export async function fetchFalAdvertisedCallUsd(
+  endpointIds: string[]
+): Promise<FalAdvertisedCallUsd> {
+  const advertised = new Map<string, number>();
+  const failedEndpoints = new Set<string>();
+  for (const endpointId of endpointIds) {
+    const llmsTxt = await fetchPageText(
+      `https://fal.ai/models/${endpointId}/llms.txt`
+    );
+    if (llmsTxt == null) {
+      failedEndpoints.add(endpointId);
+      continue;
+    }
+    const section = llmsTxtPricingSection(llmsTxt);
+    if (!section) {
+      logger.warn(`${endpointId}: llms.txt has no Pricing section`);
+      continue;
+    }
+    let usd = parseAdvertisedImageUsd(section);
+    // Token-rate sections defer to "the description at the bottom of this
+    // page" — the size table only the playground HTML carries.
+    const quality = section.match(DEFAULT_QUALITY)?.[1];
+    if (usd == null && quality) {
+      const html = await fetchPageText(`https://fal.ai/models/${endpointId}`);
+      if (html == null) {
+        failedEndpoints.add(endpointId);
+        continue;
+      }
+      usd = parseSizeTableUsd(html, quality);
+    }
+    if (usd == null) {
+      logger.warn(
+        `${endpointId}: could not read an advertised per-image price from llms.txt — estimate stays unknown`,
+        { pricing: section.slice(0, 300) }
+      );
+      continue;
+    }
+    advertised.set(endpointId, usd);
+  }
+  return { advertised, failedEndpoints };
 }

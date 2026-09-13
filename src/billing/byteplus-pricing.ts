@@ -22,6 +22,7 @@
  */
 
 import { micros } from './money';
+import { BYTEPLUS_SEEDANCE_2_5 } from './rate-card/cards/byteplus-seedance-2-5';
 import type { EffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 
 /**
@@ -55,6 +56,10 @@ export const BYTEPLUS_RATE_CARD: Record<string, EffectiveFalPricing> = {
   'dreamina-seedance-2-5-260628': {
     unitPrice: micros(10_700),
     unit: '1000 tokens',
+    // The page's full tariff as a card (#1605): per-resolution rates, the
+    // with-video tier and its minimum charge. Hand-transcribed, so it lives
+    // here rather than in `model_pricing` — the cron reads fal pages only.
+    rateCard: { card: BYTEPLUS_SEEDANCE_2_5, verified: true },
   },
   // Seedance 2.0 — $7.00 per 1M tokens without video input ($4.30 with).
   // Same no-video-input over-estimate policy as 2.5. Read 2026-09-07.

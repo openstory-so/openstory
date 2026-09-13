@@ -12,6 +12,13 @@
  *    preserves the stored value rather than nulling it.
  * 3. `model_usage_observations` — median units per image from our own
  *    generations, the preferred estimation signal.
+ * 4. Each endpoint's llms.txt Pricing section — the advertised price, read
+ *    only for used per-call endpoints that have none of the above (a fresh
+ *    catalog id sits on a `units` × $1 stub with no history, #1605).
+ * 5. A rate card per used endpoint (#1605): the same Pricing text as
+ *    JSONLogic, LLM-extracted only when the text changes, verified against
+ *    the page's own worked examples, seeded from the hand cards in
+ *    `rate-card/cards`. Pre-flight estimate only.
  *
  * Also appends `model_pricing_history` rows on price changes (and first
  * sight). Billing reads these prices, so a fal price move reaches real
@@ -27,16 +34,30 @@ import {
 import { listCatalogEndpointIds } from '@/models/catalog';
 import {
   type FalUnitPrice,
+  fetchFalAdvertisedCallUsd,
   fetchFalBilledRates,
   fetchFalCatalogIds,
   fetchFalTypicalUnits,
   fetchFalUnitPrices,
+  roundTypicalUnits,
 } from './fal-pricing-fetch';
+import { estimateStrategy, MIN_OBSERVED_SAMPLES } from '@/billing/fal-cost';
 import {
   FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP,
   FAL_UNVERIFIED_SIBLINGS,
 } from '@/billing/fal-typical-units';
-import { usdToMicros } from '@/billing/money';
+import { addMicros, usdToMicros, ZERO_MICROS } from '@/billing/money';
+import { RATE_CARDS } from '@/billing/rate-card/cards';
+import {
+  type RateCard,
+  rateCardSchema,
+} from '@/billing/rate-card/rate-card.schema';
+import { getPlatformLlmKey } from '@/models/server/create-adapter';
+import {
+  extractRateCard,
+  RATE_CARD_EXTRACTION_MODEL,
+} from './rate-card-extract';
+import { fetchRateCardSource } from './rate-card-source';
 import {
   modelPricing,
   modelPricingHistory,
@@ -71,10 +92,11 @@ const OBSERVATION_WINDOW_DAYS = 90;
 export const OBSERVATIONS_PER_ENDPOINT = 200;
 
 /**
- * D1 caps a query at 100 bound params. Snapshot upserts bind 10 columns per
- * row and history inserts 6 (defaulted columns bind too) — chunk both.
+ * D1 caps a query at 100 bound params. Snapshot upserts bind 15 columns per
+ * row (the five rate-card columns bind too, as nulls) and history inserts 6
+ * (defaulted columns bind too) — chunk both.
  */
-export const UPSERT_CHUNK = 9;
+export const UPSERT_CHUNK = 6;
 export const HISTORY_CHUNK = 15;
 
 /**
@@ -90,6 +112,12 @@ export type FalPricingRefreshSummary = {
   /** Endpoints written to model_pricing (those with a price). */
   endpoints: number;
   priceChanges: number;
+  /** Used endpoints whose only unit-count signal is the llms.txt advertised price. */
+  advertisedEndpoints: number;
+  /** Rate cards extracted and stored this run (#1605). */
+  rateCardsExtracted: number;
+  /** Rate-card extractions that failed or were refused this run. */
+  rateCardsRejected: number;
   observedEndpoints: number;
   observationSamples: number;
   prunedObservations: number;
@@ -386,6 +414,218 @@ function overlaySiblingBilledRates(
   }
 }
 
+/**
+ * A Workers cron run has a 15-minute wall clock, the price + typical-units
+ * phases already take minutes, and one extraction measured ~75 s (Gemini
+ * 3.1 Pro, 2026-09-13). ponytail: per-run cap; the rest pick up on later
+ * nights because an unchanged hash skips. Shard across runs if the used
+ * set grows.
+ */
+export const MAX_RATE_CARD_EXTRACTIONS_PER_RUN = 5;
+
+type StoredRateCard = { card: RateCard; verified: boolean };
+
+type RateCardRow = {
+  endpointId: string;
+  unit: string;
+  rateCard: unknown;
+  rateCardVerified: boolean;
+  rateCardSourceHash: string | null;
+  rateCardAttemptedAt: Date | null;
+};
+
+/** Stored JSON validated on read; a card outside the schema is absent. */
+function storedRateCard(row: RateCardRow | undefined): StoredRateCard | null {
+  if (!row?.rateCard) return null;
+  const parsed = rateCardSchema.safeParse(row.rateCard);
+  if (parsed.success) {
+    return { card: parsed.data, verified: row.rateCardVerified };
+  }
+  logger.warn('stored rate card does not fit the schema — re-extracting', {
+    endpointId: row.endpointId,
+  });
+  return null;
+}
+
+/**
+ * Hand cards were written knowing which request params the price turns on.
+ * An extraction that stops reading one of them (H3 Max's
+ * `reference_image_urls` surcharge) passed its own examples only because it
+ * never wrote one for that lever — keep the hand card.
+ */
+function leversDropped(hand: RateCard, extracted: RateCard): string[] {
+  const bound = new Set(Object.values(extracted.inputs).map((i) => i.param));
+  return Object.values(hand.inputs)
+    .map((i) => i.param)
+    .filter((param) => !bound.has(param));
+}
+
+type RateCardRefreshCounts = {
+  /** Cards stored this run. */
+  extracted: number;
+  /** Source fetch failures + extraction rejections (the summary's figure). */
+  rejected: number;
+  /** Model calls made, how many wrote a card we refused, how many never answered. */
+  extractions: number;
+  extractionsRejected: number;
+  extractionsTransient: number;
+  sourceFailures: number;
+};
+
+/**
+ * Rate cards for the used endpoints (#1605). Per endpoint: seed the hand
+ * card from the registry unless a newer verified extraction is stored; fetch
+ * the priced text; skip when its hash was already processed (stored OR
+ * rejected — a temperature-0 model rewrites the same wrong card, and a
+ * persistent rejecter would otherwise take one of the nightly slots forever)
+ * and no promo end has passed since that attempt; otherwise extract, verify
+ * and store. A rejection keeps whatever was stored — an absent card is an
+ * honest unknown, never a neighbour's price.
+ */
+async function refreshRateCards(
+  db: PricingRefreshDb,
+  rows: { endpointId: string; unit: string }[],
+  existingByKey: Map<string, RateCardRow>,
+  now: Date
+): Promise<RateCardRefreshCounts> {
+  const llmKey = getPlatformLlmKey(RATE_CARD_EXTRACTION_MODEL);
+  if (!llmKey) {
+    logger.warn(
+      'no platform LLM key — rate cards are seeded from hand cards only, not extracted'
+    );
+  }
+  const update = async (
+    row: { endpointId: string; unit: string },
+    set: Partial<typeof modelPricing.$inferInsert>
+  ) => {
+    await db
+      .update(modelPricing)
+      .set({ ...set, updatedAt: now })
+      .where(
+        and(
+          eq(modelPricing.provider, 'fal'),
+          eq(modelPricing.endpointId, row.endpointId),
+          eq(modelPricing.unit, row.unit)
+        )
+      );
+  };
+  const write = (
+    row: { endpointId: string; unit: string },
+    stored: StoredRateCard,
+    attemptedAt: Date | null
+  ) =>
+    update(row, {
+      rateCard: stored.card,
+      rateCardSourceHash: stored.card.source.hash,
+      rateCardAttemptedAt: attemptedAt,
+      rateCardVerified: stored.verified,
+      rateCardExpiresAt: stored.card.source.expiresAt
+        ? new Date(stored.card.source.expiresAt)
+        : null,
+    });
+  /** Remember a rejected text so it is not re-extracted until it changes. */
+  const noteRejection = (
+    row: { endpointId: string; unit: string },
+    hash: string
+  ) => update(row, { rateCardSourceHash: hash, rateCardAttemptedAt: now });
+
+  const counts: RateCardRefreshCounts = {
+    extracted: 0,
+    rejected: 0,
+    extractions: 0,
+    extractionsRejected: 0,
+    extractionsTransient: 0,
+    sourceFailures: 0,
+  };
+  let costMicros = ZERO_MICROS;
+  for (const row of rows) {
+    const existing = existingByKey.get(pricingKey(row));
+    let current = storedRateCard(existing);
+    let attemptedHash = existing?.rateCardSourceHash ?? null;
+    let attemptedAt = existing?.rateCardAttemptedAt ?? null;
+    const hand = RATE_CARDS[row.endpointId];
+    // Re-seeding the hand card every night would also wipe the memory of a
+    // rejected extraction — only seed when the row does not hold it yet.
+    const holdsHand =
+      hand != null &&
+      current?.card.source.hash === hand.source.hash &&
+      current.card.source.extractedAt === hand.source.extractedAt;
+    if (
+      hand &&
+      !holdsHand &&
+      (!current ||
+        !current.verified ||
+        current.card.source.extractedAt <= hand.source.extractedAt)
+    ) {
+      current = { card: hand, verified: true };
+      attemptedHash = hand.source.hash;
+      attemptedAt = null;
+      await write(row, current, attemptedAt);
+    }
+
+    const fetched = await fetchRateCardSource(row.endpointId);
+    if (fetched.status === 'no-pricing') continue;
+    if (fetched.status === 'failed') {
+      counts.rejected++;
+      counts.sourceFailures++;
+      continue;
+    }
+    const { source } = fetched;
+    const expiresAt = current?.card.source.expiresAt
+      ? new Date(current.card.source.expiresAt)
+      : null;
+    const expired = expiresAt != null && expiresAt <= now;
+    const attemptedSinceExpiry =
+      expired && attemptedAt != null && attemptedAt >= expiresAt;
+    if (attemptedHash === source.hash && (!expired || attemptedSinceExpiry)) {
+      continue;
+    }
+    if (!llmKey) continue;
+    if (counts.extractions >= MAX_RATE_CARD_EXTRACTIONS_PER_RUN) {
+      logger.info(
+        `${row.endpointId}: rate-card extraction deferred to a later run`
+      );
+      continue;
+    }
+    counts.extractions++;
+    const result = await extractRateCard(source, {
+      llmKey,
+      now,
+      previous: current?.card,
+    });
+    costMicros = addMicros(costMicros, result.costMicros);
+    if (result.status === 'rejected') {
+      counts.rejected++;
+      counts.extractionsRejected++;
+      if (result.transient) counts.extractionsTransient++;
+      else await noteRejection(row, source.hash);
+      continue;
+    }
+    // An unverified extraction stored over the hand card would be re-seeded
+    // tomorrow (hand outranks unverified), wiping the attempt memory and
+    // re-extracting every night — keep the hand card and remember the text.
+    const dropped = hand ? leversDropped(hand, result.card) : [];
+    if (hand && (dropped.length > 0 || !result.verified)) {
+      logger.warn(
+        `${row.endpointId}: extraction ${dropped.length > 0 ? 'dropped levers the hand card binds' : 'has no worked example'} — keeping the hand card`,
+        { dropped }
+      );
+      counts.rejected++;
+      counts.extractionsRejected++;
+      await noteRejection(row, source.hash);
+      continue;
+    }
+    await write(row, { card: result.card, verified: result.verified }, now);
+    counts.extracted++;
+  }
+  logger.info('rate cards refreshed', {
+    endpoints: rows.length,
+    ...counts,
+    costMicros: Number(costMicros),
+  });
+  return counts;
+}
+
 function chunk<T>(items: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < items.length; i += size) {
@@ -610,20 +850,46 @@ export async function refreshFalPricing(
   await discardObservationsForRedenominatedEndpoints(db, existing, prices);
   const { observed, samples } = await collectObservedUnits(db);
 
+  // A failed typical fetch carries the stored value forward — absence of an
+  // answer is not an answer of "none". A genuine no-history reply uses the
+  // billed-units fallback (H3 Max 8/5s) when we have one, else nulls.
+  const historicalTypical = (p: FalUnitPrice): number | null => {
+    const fallbackTypical =
+      FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP[p.endpointId] ?? null;
+    return (
+      typicalUnits.get(p.endpointId) ??
+      (typicalDegraded || failedEndpoints.has(p.endpointId)
+        ? (existingTypicalByKey.get(pricingKey(p)) ?? fallbackTypical)
+        : fallbackTypical)
+    );
+  };
+
+  // llms.txt is the last resort, below the bill, our median and fal's
+  // history (#1605): read only for used per-call endpoints the estimator
+  // would otherwise report unknown for. Stored as units so the estimate
+  // stays `typical × unitPrice` — a $1 catalog stub yields fractional units.
+  const advertisedGaps = usedPrices.filter(
+    (p) =>
+      historicalTypical(p) == null &&
+      p.unitPriceUsd > 0 &&
+      estimateStrategy(p.endpointId, p.unit) === 'per_call' &&
+      (observed.get(p.endpointId)?.sampleCount ?? 0) < MIN_OBSERVED_SAMPLES
+  );
+  const { advertised, failedEndpoints: advertisedFailed } =
+    await fetchFalAdvertisedCallUsd(advertisedGaps.map((p) => p.endpointId));
+
   const now = new Date();
   const snapshotRows = prices.map((p) => {
     const obs = observed.get(p.endpointId);
     const key = pricingKey(p);
-    // A failed typical fetch carries the stored value forward — absence of an
-    // answer is not an answer of "none". A genuine no-history reply uses the
-    // billed-units fallback (H3 Max 8/5s) when we have one, else nulls.
-    const fallbackTypical =
-      FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP[p.endpointId] ?? null;
+    const advertisedUsd = advertised.get(p.endpointId);
     const typical =
-      typicalUnits.get(p.endpointId) ??
-      (typicalDegraded || failedEndpoints.has(p.endpointId)
-        ? (existingTypicalByKey.get(key) ?? fallbackTypical)
-        : fallbackTypical);
+      historicalTypical(p) ??
+      (advertisedUsd != null
+        ? roundTypicalUnits(advertisedUsd / p.unitPriceUsd)
+        : advertisedFailed.has(p.endpointId)
+          ? (existingTypicalByKey.get(key) ?? null)
+          : null);
     return {
       provider: 'fal' as const,
       endpointId: p.endpointId,
@@ -692,6 +958,25 @@ export async function refreshFalPricing(
       });
   }
 
+  // Rate cards after the upsert so every used row exists to hang one on. The
+  // upsert's `set` never names the rate-card columns, so yesterday's card
+  // survives a price refresh untouched (#1605).
+  const rateCards = await refreshRateCards(
+    db,
+    snapshotRows.filter((row) => usedSet.has(row.endpointId)),
+    new Map(existing.map((row) => [pricingKey(row), row])),
+    now
+  );
+  // Source fetches are measured against the used set like typical units.
+  // An LLM outage is judged against the calls actually made — the nightly
+  // cap keeps those at ≤5, which no share of ~55 endpoints could ever trip.
+  // A card the model wrote and we refused is a normal night (warn-logged,
+  // remembered, in the summary), not a failed cron.
+  const rateCardsDegraded =
+    rateCards.sourceFailures / Math.max(usedPrices.length, 1) >
+      MAX_TYPICAL_FETCH_FAILURE_RATIO ||
+    rateCards.extractionsTransient * 2 > rateCards.extractions;
+
   // Sweep rows fal no longer prices (retired endpoints, re-denominated units)
   // — but never ones whose price fetch merely errored this run.
   const freshKeys = new Set(snapshotRows.map((row) => pricingKey(row)));
@@ -727,6 +1012,9 @@ export async function refreshFalPricing(
     catalogSize: catalogIds.length,
     endpoints: snapshotRows.length,
     priceChanges: historyRows.length,
+    advertisedEndpoints: advertised.size,
+    rateCardsExtracted: rateCards.extracted,
+    rateCardsRejected: rateCards.rejected,
     observedEndpoints: observed.size,
     observationSamples: samples,
     prunedObservations: pruneCount?.n ?? 0,
@@ -741,6 +1029,17 @@ export async function refreshFalPricing(
       `refreshFalPricing: ${failedEndpoints.size}/${usedPrices.length} historical ` +
         'estimate fetches failed — prices and observed medians were written and ' +
         'stored typicalUnitsPerCall values preserved'
+    );
+  }
+  // Same policy for rate cards: a broad failure (LLM outage, a fal page
+  // format change) is a failed cron, not a quiet night.
+  if (rateCardsDegraded) {
+    throw new Error(
+      `refreshFalPricing: ${rateCards.rejected}/${usedPrices.length} rate-card ` +
+        `refreshes failed (${rateCards.sourceFailures} source fetches, ` +
+        `${rateCards.extractionsRejected}/${rateCards.extractions} extractions, ` +
+        `${rateCards.extractionsTransient} calls failed) ` +
+        '— prices, medians and stored cards were written'
     );
   }
   return summary;
