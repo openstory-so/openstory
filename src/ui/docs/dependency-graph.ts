@@ -16,18 +16,25 @@ export type GraphMode = (typeof GRAPH_MODES)[number];
 
 type NodeKind = 'input' | 'artifact';
 
-/** Band on the page: inputs sit in the first two, artifacts flow down. */
+/**
+ * Band on the page. Inputs sit in the first three: what you write and set,
+ * the optional team library, and the bibles — seeded once from the script
+ * (by the LLM) or from the library (by casting / matching), then yours to
+ * edit. Artifacts flow down from there.
+ */
 export type Band =
-  | 'story'
   | 'settings'
+  | 'library'
+  | 'bibles'
   | 'references'
   | 'prompts'
   | 'renders'
   | 'cut';
 
 export const BAND_ORDER: readonly Band[] = [
-  'story',
   'settings',
+  'library',
+  'bibles',
   'references',
   'prompts',
   'renders',
@@ -35,8 +42,9 @@ export const BAND_ORDER: readonly Band[] = [
 ];
 
 export const BAND_LABELS: Record<Band, string> = {
-  story: 'You write',
-  settings: 'You set',
+  settings: 'You write and set',
+  library: 'Library · optional, reused across sequences',
+  bibles: 'Bibles · seeded from the script or the library, then yours',
   references: 'References',
   prompts: 'Prompts',
   renders: 'Renders',
@@ -74,8 +82,17 @@ export type GraphNode = {
  * - `cascade`  — never flagged stale on its own; Update all regenerates it
  *                only when the upstream artifact regenerates in the same run.
  * - `untracked`— feeds the generation, but no staleness check reads it.
+ * - `seeded`   — generated ONCE from upstream (the LLM at the Script stage,
+ *                or casting / matching from the library) and then owned by
+ *                the user. Later upstream edits never touch it.
  */
-export const TRACKINGS = ['hash', 'pointer', 'cascade', 'untracked'] as const;
+export const TRACKINGS = [
+  'hash',
+  'pointer',
+  'cascade',
+  'untracked',
+  'seeded',
+] as const;
 
 export type Tracking = (typeof TRACKINGS)[number];
 
@@ -96,7 +113,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     versionedIn: 'scene_script_versions',
     label: 'Script',
     kind: 'input',
-    band: 'story',
+    band: 'settings',
     summary: 'The scene text and its slugline, as split from your script.',
     counts: [
       'Scene extract, line number and the dialogue spoken in this shot',
@@ -115,9 +132,9 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     id: 'character',
     label: 'Character',
     kind: 'input',
-    band: 'story',
+    band: 'bibles',
     summary:
-      'The character bible entry, after casting has rewritten it. A voice-only character (a narrator) has a row but never a sheet.',
+      'Extracted from the script at the Script stage, rewritten by casting when a talent is matched, then yours to edit. A voice-only character (a narrator) has a row but never a sheet.',
     counts: [
       'Age, gender, ethnicity',
       'Physical description',
@@ -129,7 +146,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     ignored: [
       'Name',
       'First mention',
-      'Which library talent is cast',
+      'The talent id itself (its look is copied into the fields above, and those count)',
       'Voice description',
     ],
   },
@@ -138,8 +155,9 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     optional: 'when a character is cast as library talent',
     label: 'Talent',
     kind: 'input',
-    band: 'story',
-    summary: 'A library person a character is cast as.',
+    band: 'library',
+    summary:
+      'A library person. Cast onto a character automatically at the Script stage or by hand; casting copies their look, performance and voice onto the character. A character can also be saved to the library as new talent.',
     counts: ['Description', 'Reference photos'],
     ignored: ['Name'],
   },
@@ -147,8 +165,9 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     id: 'location',
     label: 'Location',
     kind: 'input',
-    band: 'story',
-    summary: 'The location bible entry for this sequence.',
+    band: 'bibles',
+    summary:
+      'Extracted from the script at the Script stage, linked to a library location when one matches, then yours to edit.',
     counts: [
       'Description',
       'Type, time of day, architectural style, key features, colour palette, lighting, ambiance (prompts only)',
@@ -160,8 +179,9 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     optional: 'when a location is linked to the library',
     label: 'Library location',
     kind: 'input',
-    band: 'story',
-    summary: 'A reusable location from the team library.',
+    band: 'library',
+    summary:
+      'A reusable location from the team library, matched onto a sequence location automatically or by hand.',
     counts: ['Description', 'Reference photos'],
     ignored: ['Name'],
   },
@@ -170,8 +190,9 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     optional: 'when the shot references one',
     label: 'Element',
     kind: 'input',
-    band: 'story',
-    summary: 'A prop or effect referenced by @token.',
+    band: 'bibles',
+    summary:
+      'A prop or effect referenced by @token. Detected in the script at the Script stage or added by hand, then yours to edit.',
     counts: ['Token and description (prompts)', 'Image (still)'],
     ignored: [],
   },
@@ -180,8 +201,9 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     id: 'style',
     label: 'Style',
     kind: 'input',
-    band: 'settings',
-    summary: 'The look and motion config snapshotted onto the sequence.',
+    band: 'bibles',
+    summary:
+      'The look and motion config snapshotted onto the sequence: derived from the script by the auto style, or picked from the catalog.',
     counts: [
       'Mood, art style, lighting, colour palette, colour grading',
       'Camera work, reference films',
@@ -191,6 +213,17 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Style name and description',
       'Edits to the catalog style once the sequence has its own snapshot',
     ],
+  },
+  {
+    id: 'catalogStyle',
+    label: 'Catalog style',
+    kind: 'input',
+    band: 'library',
+    optional: 'when the style was picked rather than derived',
+    summary:
+      'A team or system style in the catalog. Picking it copies its config onto the sequence; the catalog row is never read again.',
+    counts: ['Nothing directly'],
+    ignored: ['Everything, once snapshotted onto the sequence'],
   },
   {
     id: 'aspectRatio',
@@ -446,6 +479,49 @@ const bibleToPrompt: GraphEdge[] = ['visualPrompt', 'motionPrompt'].flatMap(
 );
 
 export const GRAPH_EDGES: readonly GraphEdge[] = [
+  // Bibles — seeded once, never re-staled
+  {
+    from: 'script',
+    to: 'style',
+    tracking: 'seeded',
+    note: 'the auto style derives a config from the script at the Script stage',
+  },
+  {
+    from: 'catalogStyle',
+    to: 'style',
+    tracking: 'seeded',
+    note: 'picking a style copies its config onto the sequence',
+  },
+  {
+    from: 'script',
+    to: 'character',
+    tracking: 'seeded',
+    note: 'the bibles call extracts the cast at the Script stage',
+  },
+  {
+    from: 'talent',
+    to: 'character',
+    tracking: 'seeded',
+    note: 'casting copies the talent look, performance and voice onto the bible',
+  },
+  {
+    from: 'script',
+    to: 'location',
+    tracking: 'seeded',
+    note: 'the bibles call extracts locations at the Script stage',
+  },
+  {
+    from: 'libraryLocation',
+    to: 'location',
+    tracking: 'seeded',
+    note: 'matching links the sequence location to the library one',
+  },
+  {
+    from: 'script',
+    to: 'element',
+    tracking: 'seeded',
+    note: 'the bibles call detects elements at the Script stage',
+  },
   // References
   { from: 'talent', to: 'talentSheet', tracking: 'hash' },
   { from: 'imageModel', to: 'talentSheet', tracking: 'hash' },

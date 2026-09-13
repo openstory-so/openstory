@@ -9,13 +9,22 @@ import {
 const ids = (reach: { id: string }[]) => reach.map((r) => r.id).sort();
 
 describe('dependency graph', () => {
-  it('every edge joins two known nodes and inputs have no inputs', () => {
+  it('every edge joins two known nodes; only seeded edges may land on an input', () => {
     const known = new Set(GRAPH_NODES.map((n) => n.id));
     for (const e of GRAPH_EDGES) {
       expect(known.has(e.from), e.from).toBe(true);
       expect(known.has(e.to), e.to).toBe(true);
-      expect(GRAPH_NODES.find((n) => n.id === e.to)?.kind).toBe('artifact');
+      const to = GRAPH_NODES.find((n) => n.id === e.to);
+      if (e.tracking !== 'seeded') expect(to?.kind).toBe('artifact');
     }
+  });
+
+  it('a script edit never re-stales a bible', () => {
+    const after = ids(staleAfterEdit('script', 'start-frame'));
+    for (const bible of ['style', 'character', 'location', 'element']) {
+      expect(after).not.toContain(bible);
+    }
+    expect(after).toContain('visualPrompt');
   });
 
   it('is acyclic in both modes', () => {

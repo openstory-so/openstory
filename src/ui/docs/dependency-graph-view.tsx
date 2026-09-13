@@ -34,11 +34,12 @@ const NH = 40;
 const GAP = 8;
 const BAND_Y: Record<Band, number> = {
   settings: 28,
-  story: 108,
-  references: 208,
-  prompts: 308,
-  renders: 408,
-  cut: 508,
+  library: 128,
+  bibles: 228,
+  references: 328,
+  prompts: 428,
+  renders: 528,
+  cut: 628,
 };
 const H = BAND_Y.cut + NH + 16;
 
@@ -89,6 +90,7 @@ const DASH: Record<Tracking, string | undefined> = {
   pointer: '7 4',
   cascade: '2 4',
   untracked: '1 5',
+  seeded: '14 6',
 };
 
 const TRACKING_COPY: Record<Tracking, string> = {
@@ -96,6 +98,7 @@ const TRACKING_COPY: Record<Tracking, string> = {
   pointer: 'by selected version',
   cascade: 'cascade only, never flagged',
   untracked: 'not tracked',
+  seeded: 'seeded once, then yours',
 };
 
 // --- View -----------------------------------------------------------------
@@ -415,7 +418,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
 
     {sideEdges.length > 0 && (
       <div className="flex flex-col gap-2">
-        <h3 className="text-sm font-medium">Feeds it, but not tracked</h3>
+        <h3 className="text-sm font-medium">Connected, but not tracked</h3>
         <ul className="flex flex-col gap-1 text-sm">
           {sideEdges.map((e) => {
             const other = e.from === node.id ? e.to : e.from;
