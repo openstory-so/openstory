@@ -441,8 +441,9 @@ The launcher refuses the flag when `isElevenLabsConfigured()` is false and
 the Generate dialog hides the switch (`getVoiceDesignAvailableFn`).
 `CharacterBibleWorkflow` spawns a `CharacterVoiceWorkflow` child per
 _speaking_ character (`speakingCharacterIds()`: a bible name sharing a
-non-stopword token with a dialogue speaker cue — articles and honorifics
-never match; every character when a blank cue is present, which the
+non-stopword token with a dialogue speaker cue, or equal to it once
+NFKC-normalized, so any script and one-character names such as 李 match —
+articles and honorifics never match; every character when a blank cue is present, which the
 shot-list call (#1585) emits only for a voice nobody could attribute; nobody
 when there is no dialogue at all). Cues are the shot-list call's per-shot
 lines, spelled as the cast list spells them, with narration spoken by the

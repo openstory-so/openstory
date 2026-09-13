@@ -35,11 +35,26 @@ const STOP_TOKENS = new Set([
 
 // ponytail: a shared first name still matches ("Sarah" / "Sarah's Mother");
 // per-cue disambiguation is the upgrade path if that bills in practice.
+// NFKC folds full-width Latin ("ＳＡＲＡＨ") onto ASCII; the split keeps every
+// script's letters, digits and combining marks (#1609).
+const normalizeName = (name: string): string =>
+  name.normalize('NFKC').toLowerCase().trim();
+
 const nameTokens = (name: string): string[] =>
-  name
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
+  normalizeName(name)
+    .split(/[^\p{L}\p{N}\p{M}]+/u)
     .filter((token) => token.length >= 2 && !STOP_TOKENS.has(token));
+
+/** Whole normalized names are equal — how a one-character name ("李") matches. */
+const sameName = (cue: string, name: string): boolean => {
+  const a = normalizeName(cue);
+  return a !== '' && a === normalizeName(name);
+};
+
+const sharesToken = (cue: string, name: string): boolean => {
+  const tokens = nameTokens(name);
+  return nameTokens(cue).some((token) => tokens.includes(token));
+};
 
 /**
  * Bible ids of the characters with a dialogue line in the analysed scenes.
@@ -57,14 +72,18 @@ export function speakingCharacterIds(
   bible: readonly Pick<CharacterBibleEntry, 'characterId' | 'name'>[],
   scenes: readonly Pick<Scene, 'originalScript'>[]
 ): string[] {
-  const lines = scenes.flatMap((scene) => scene.originalScript.dialogue);
-  const spoken = new Set(lines.flatMap((line) => nameTokens(line.character)));
-  if (lines.some((line) => line.character.trim() === '')) {
+  const cues = scenes.flatMap((scene) =>
+    scene.originalScript.dialogue.map((line) => line.character)
+  );
+  if (cues.some((cue) => cue.trim() === '')) {
     return bible.map((c) => c.characterId);
   }
   return bible
     .filter((character) =>
-      nameTokens(character.name).some((token) => spoken.has(token))
+      cues.some(
+        (cue) =>
+          sameName(cue, character.name) || sharesToken(cue, character.name)
+      )
     )
     .map((character) => character.characterId);
 }
@@ -74,18 +93,19 @@ export function speakingCharacterIds(
  *
  * Blank cues are narration: they match only when exactly one voice-only
  * character is in the list (the usual narrator). Matching everyone would
- * synthesise the same line in every voice.
+ * synthesise the same line in every voice. A whole-name match wins over a
+ * shared token ("Sarah" over "Sarah's Mother"), whatever the cast order.
  */
 export function matchSpeaker<T extends { name: string; voiceOnly?: boolean }>(
   speaker: string,
   characters: readonly T[]
 ): T | undefined {
-  const cue = nameTokens(speaker);
-  if (cue.length === 0) {
+  if (speaker.trim() === '') {
     const narrators = characters.filter((character) => character.voiceOnly);
     return narrators.length === 1 ? narrators[0] : undefined;
   }
-  return characters.find((character) =>
-    nameTokens(character.name).some((token) => cue.includes(token))
+  return (
+    characters.find((character) => sameName(speaker, character.name)) ??
+    characters.find((character) => sharesToken(speaker, character.name))
   );
 }

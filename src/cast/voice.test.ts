@@ -70,6 +70,20 @@ describe('speakingCharacterIds', () => {
       'al',
     ]);
   });
+  it('matches names in any script, including one-character names (#1609)', () => {
+    const cast = [
+      { characterId: 'taro', name: '太郎' },
+      { characterId: 'li', name: '李' },
+      { characterId: 'kim', name: '김철수' },
+      { characterId: 'sarah', name: 'Sarah' },
+    ];
+    expect(
+      speakingCharacterIds(cast, [
+        scene(['太郎', '李']),
+        scene(['김철수', 'ＳＡＲＡＨ']),
+      ])
+    ).toEqual(['taro', 'li', 'kim', 'sarah']);
+  });
 });
 
 describe('matchSpeaker', () => {
@@ -89,5 +103,25 @@ describe('matchSpeaker', () => {
     expect(
       matchSpeaker('', [...cast, { name: 'Announcer', voiceOnly: true }])
     ).toBeUndefined();
+  });
+  it('a non-ASCII cue is a name, not narration (#1609)', () => {
+    const voices = [
+      { name: '太郎', voiceOnly: false },
+      { name: '李', voiceOnly: false },
+      { name: 'Narrator', voiceOnly: true },
+    ];
+    expect(matchSpeaker('太郎', voices)?.name).toBe('太郎');
+    expect(matchSpeaker('李', voices)?.name).toBe('李');
+    expect(matchSpeaker('太郎', voices.slice(0, 1))?.name).toBe('太郎');
+  });
+  it('an unknown one-character cue matches nobody, narrator or not', () => {
+    expect(matchSpeaker('X', cast)).toBeUndefined();
+  });
+  it('prefers the whole name over a shared token, whatever the order', () => {
+    const family = [
+      { name: "Sarah's Mother", voiceOnly: false },
+      { name: 'Sarah', voiceOnly: false },
+    ];
+    expect(matchSpeaker('SARAH', family)?.name).toBe('Sarah');
   });
 });
