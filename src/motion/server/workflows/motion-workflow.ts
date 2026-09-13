@@ -19,7 +19,7 @@ import { assembleMotionPrompt } from '@/motion/server/assemble-motion-prompt';
 import { withVoicedLineTokens } from '@/motion/dialogue-tts';
 import {
   dialogueClipsAsReferences,
-  synthesizeDialogueLine,
+  synthesizeDialogueClip,
 } from '@/motion/server/synthesize-dialogue';
 import { raiseShotDurationToCoverAudio } from '@/motion/resolve-shot-duration';
 import {
@@ -214,37 +214,30 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           const { key } = await scopedDb.credentials.resolveKey('elevenlabs');
           const minDurationSeconds =
             getMotionReferenceEndpoint(model)?.audioSeconds?.min;
-          const clips: MotionAudioClip[] = [];
-          let characterCount = 0;
-          for (const [index, line] of voicedLines.entries()) {
-            const result = await synthesizeDialogueLine({
-              apiKey: key,
-              teamId: input.teamId,
-              sequenceId,
-              shotId,
-              line,
-              minDurationSeconds,
-              previousText: voicedLines[index - 1]?.text,
-              nextText: voicedLines[index + 1]?.text,
-            });
-            clips.push(result.clip);
-            characterCount += result.characterCount;
-          }
+          const { clip, characterCount } = await synthesizeDialogueClip({
+            apiKey: key,
+            teamId: input.teamId,
+            sequenceId,
+            shotId,
+            lines: voicedLines,
+            minDurationSeconds,
+          });
           await deductWorkflowCredits({
             scopedDb,
             costMicros: estimateTtsCost(characterCount),
             usedOwnKey: false,
-            description: `Dialogue TTS (${clips.length} line${clips.length === 1 ? '' : 's'})`,
+            description: `Dialogue (${voicedLines.length} line${voicedLines.length === 1 ? '' : 's'})`,
             idempotencyKey: `${workflowRunId}:dialogue-tts`,
             reservationId: input.reservationId,
             metadata: {
               endpointId: ELEVENLABS_TTS_ENDPOINT,
+              model: 'eleven_v3',
               characterCount,
-              clipCount: clips.length,
+              clipCount: 1,
             },
             workflowName: 'MotionWorkflow',
           });
-          return { clips, characterCount };
+          return { clips: [clip], characterCount };
         }
       );
       audioClips = synthesized.clips;
