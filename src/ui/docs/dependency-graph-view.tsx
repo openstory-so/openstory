@@ -92,12 +92,13 @@ function edgePath(e: GraphEdge): string {
   return `M${sx},${sy} C${sx},${sy + c} ${tx},${ty - c} ${tx},${ty}`;
 }
 
-const DASH: Record<Tracking, string | undefined> = {
-  hash: undefined,
-  pointer: '7 4',
-  cascade: '2 4',
-  untracked: '1 5',
-  seeded: '14 6',
+/** One colour per edge kind; a lit edge keeps its colour and thickens. */
+const EDGE_STROKE: Record<Tracking, string> = {
+  hash: 'stroke-chart-1',
+  pointer: 'stroke-chart-4',
+  cascade: 'stroke-chart-3',
+  untracked: 'stroke-muted-foreground',
+  seeded: 'stroke-chart-5',
 };
 
 const TRACKING_COPY: Record<Tracking, string> = {
@@ -178,22 +179,15 @@ export const DependencyGraphView: React.FC<DependencyGraphViewProps> = ({
               const lit = litEdges.has(key);
               const side =
                 !propagates(e) && (e.from === active || e.to === active);
-              const toStale = lit && staleIds.has(e.to);
               return (
                 <path
                   key={key}
                   d={edgePath(e)}
-                  strokeDasharray={DASH[e.tracking]}
                   strokeLinecap="round"
                   className={cn(
-                    'transition-[opacity,stroke] motion-reduce:transition-none',
-                    lit
-                      ? toStale
-                        ? 'stroke-warning stroke-2'
-                        : 'stroke-primary stroke-2'
-                      : side
-                        ? 'stroke-muted-foreground stroke-[1.5]'
-                        : 'stroke-border opacity-60'
+                    'transition-opacity motion-reduce:transition-none',
+                    EDGE_STROKE[e.tracking],
+                    lit ? 'stroke-[2.5]' : side ? 'stroke-2' : 'opacity-25'
                   )}
                 />
               );
@@ -305,9 +299,8 @@ const Legend: React.FC = () => (
             y1="4"
             x2="27"
             y2="4"
-            strokeDasharray={DASH[t]}
             strokeLinecap="round"
-            className="stroke-foreground stroke-[1.5]"
+            className={cn('stroke-[2.5]', EDGE_STROKE[t])}
           />
         </svg>
         {TRACKING_COPY[t]}
