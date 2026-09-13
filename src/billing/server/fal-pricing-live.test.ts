@@ -64,6 +64,21 @@ describe('getEffectiveFalPricing', () => {
     expect(pricing?.typicalUnitsPerCall).toBeUndefined();
   });
 
+  it('fills GPT Image 2.5 typical units when the catalog stub has none', async () => {
+    const { getEffectiveFalPricing } = await loadWithRows([
+      row({
+        endpointId: 'openai/gpt-image-2.5/flare/edit',
+        unit: 'units',
+        typicalUnitsPerCall: null,
+      }),
+    ]);
+
+    const pricing = (await getEffectiveFalPricing())[
+      'openai/gpt-image-2.5/flare/edit'
+    ];
+    expect(pricing?.typicalUnitsPerCall).toBe(0.22);
+  });
+
   it('drops an endpoint with two rows rather than billing an arbitrary rate', async () => {
     // Legitimate mid-re-denomination state: the map is keyed by endpointId
     // alone, so picking either row would multiply unitsBilled by an arbitrary

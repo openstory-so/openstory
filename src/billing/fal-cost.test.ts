@@ -107,6 +107,30 @@ describe('estimateFalCost', () => {
     ).toBe(micros(3_080_000));
   });
 
+  test('gpt-image-2.5 catalog stub uses the typical-units fallback, not $1/image', () => {
+    // Prod D1 has fal's stub (units × $1, no typical) after the 2 → 2.5 bump.
+    const stub = {
+      'openai/gpt-image-2.5/flare/edit': {
+        unitPrice: micros(1_000_000),
+        unit: 'units',
+      },
+      'openai/gpt-image-2.5/flare/text-to-image': {
+        unitPrice: micros(1_000_000),
+        unit: 'units',
+      },
+    };
+    expect(
+      estimateFalCost('openai/gpt-image-2.5/flare/edit', { numImages: 1 }, stub)
+    ).toBe(micros(220_000));
+    expect(
+      estimateFalCost(
+        'openai/gpt-image-2.5/flare/text-to-image',
+        { numImages: 1 },
+        stub
+      )
+    ).toBe(micros(220_000));
+  });
+
   test('per-second scales by duration (ignores historical typical duration)', () => {
     expect(
       estimateFalCost(

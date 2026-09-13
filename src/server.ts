@@ -31,6 +31,10 @@ import { ensureLocalModelPricingSeeded } from '@/billing/server/seed-model-prici
 import { ensureSystemTemplatesSeeded } from '@/platform/server/db/seed-system-templates';
 
 import { getLogger, toErrorPayload } from '@/platform/logger';
+import {
+  isStaleServerFnPath,
+  rewriteStaleServerFnResponse,
+} from '@/platform/stale-server-fn';
 import { drizzle } from 'drizzle-orm/d1';
 
 const logger = getLogger(['openstory', 'server']);
@@ -155,9 +159,14 @@ const exportedHandler: ExportedHandler<WorkerEnv> = {
       if (markdown !== null) return markdownResponse(markdown, request.method);
     }
 
-    const response = await handler.fetch(
+    let response = await handler.fetch(
       wantsMarkdown ? withHtmlAccept(request) : request
     );
+    // Stale server-fn id after a deploy: Start throws outside its serializer
+    // and the client would otherwise resolve `undefined` (#1557).
+    if (isStaleServerFnPath(pathname)) {
+      response = await rewriteStaleServerFnResponse(response);
+    }
     // RFC 8288 Link headers on document responses for agent discovery.
     return withDiscoveryLinkHeader(response, pathname);
   },
