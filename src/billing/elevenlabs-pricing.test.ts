@@ -4,6 +4,7 @@ import {
   ELEVENLABS_TTS_ENDPOINT,
   ELEVENLABS_VOICE_DESIGN_ENDPOINT,
   elevenLabsTtsUnitsBilled,
+  estimateTtsCost,
   isElevenLabsPricedModel,
 } from './elevenlabs-pricing';
 
@@ -51,4 +52,13 @@ describe('elevenLabsTtsUnitsBilled', () => {
       expect(elevenLabsTtsUnitsBilled(value)).toBeUndefined();
     }
   );
+});
+
+describe('estimateTtsCost', () => {
+  it('prices 1000 characters at the card’s $0.10', () => {
+    expect(estimateTtsCost(1000)).toBe(100_000);
+  });
+  it('is zero for empty dialogue', () => {
+    expect(estimateTtsCost(0)).toBe(0);
+  });
 });

@@ -10,6 +10,7 @@ import type {
   TextToImageModel,
 } from '@/models/models';
 import type { AnalysisModelId } from '@/models/models.config';
+import type { VoicedDialogueLine } from '@/motion/dialogue-tts';
 import type {
   AssemblableMotionPrompt,
   CharacterBibleEntry,
@@ -566,6 +567,19 @@ export interface MotionWorkflowInput extends SequenceWorkflowContext {
    * descriptions, so they are never ignored — only carried differently.
    */
   referenceImages?: ReferenceImageDescription[];
+  /**
+   * Dialogue lines to synthesise before submit (#1554). Snapshotted at the
+   * trigger from the shot's dialogue + each speaker's `voiceId` — the run
+   * must not re-read characters. Empty / omitted = voiceless shot.
+   */
+  voicedLines?: VoicedDialogueLine[];
+  /**
+   * Structured motion prompt so the TTS step can re-assemble with audio
+   * tokens after the clips exist. Absent on paths that only pass `prompt`.
+   */
+  motionPrompt?: AssemblableMotionPrompt;
+  /** Scene character tags, for per-model re-assembly after TTS. */
+  characterTags?: string[];
   /**
    * Variant-only mode (#547). When true, the run NEVER touches the legacy
    * `shots.video*` / `motionModel` columns — it writes only this model's
@@ -1431,6 +1445,8 @@ export interface BatchMotionMusicWorkflowInput extends SequenceWorkflowContext {
     priorMotion?: PriorMotionDirection;
     /** See `MotionWorkflowInput.referenceImages` (#873). */
     referenceImages?: ReferenceImageDescription[];
+    /** See `MotionWorkflowInput.voicedLines`. */
+    voicedLines?: VoicedDialogueLine[];
   }>;
   /**
    * Video models to generate for every shot (#545). First is primary (its

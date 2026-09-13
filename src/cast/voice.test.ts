@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { speakingCharacterIds, usesVoice } from './voice';
+import { matchSpeaker, speakingCharacterIds, usesVoice } from './voice';
 
 const scene = (speakers: string[]) => ({
   originalScript: {
@@ -69,5 +69,25 @@ describe('speakingCharacterIds', () => {
     expect(speakingCharacterIds(bible, [scene(['AL']), scene([])])).toEqual([
       'al',
     ]);
+  });
+});
+
+describe('matchSpeaker', () => {
+  const cast = [
+    { name: 'Detective Sarah Chen', voiceOnly: false },
+    { name: 'Al', voiceOnly: false },
+    { name: 'Narrator', voiceOnly: true },
+  ];
+  it('matches a cue to the full name on a shared token', () => {
+    expect(matchSpeaker('SARAH', cast)?.name).toBe('Detective Sarah Chen');
+    expect(matchSpeaker('Al', cast)?.name).toBe('Al');
+  });
+  it('attributes a blank cue to the unique voice-only narrator', () => {
+    expect(matchSpeaker('', cast)?.name).toBe('Narrator');
+  });
+  it('does not guess a blank cue when two narrators are present', () => {
+    expect(
+      matchSpeaker('', [...cast, { name: 'Announcer', voiceOnly: true }])
+    ).toBeUndefined();
   });
 });

@@ -15,6 +15,18 @@ import {
 import { arkAssetIdentities } from '@/models/server/byteplus-asset-pool';
 import { ingestArkAssets } from '@/models/server/byteplus-asset-steps';
 import { extractFalErrorMessage } from '@/models/fal-error';
+import { assembleMotionPrompt } from '@/motion/server/assemble-motion-prompt';
+import { withVoicedLineTokens } from '@/motion/dialogue-tts';
+import {
+  dialogueClipsAsReferences,
+  synthesizeDialogueLine,
+} from '@/motion/server/synthesize-dialogue';
+import { raiseShotDurationToCoverAudio } from '@/motion/resolve-shot-duration';
+import {
+  ELEVENLABS_TTS_ENDPOINT,
+  estimateTtsCost,
+} from '@/billing/elevenlabs-pricing';
+import type { MotionAudioClip } from '@/platform/server/db/schema';
 import { computeVideoManifestInputHash } from '@/shots/input-hash';
 import {
   DEFAULT_VIDEO_MODEL,
@@ -185,6 +197,83 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       );
     }
 
+    // Dialogue TTS (#1554) before the credit check: the clips raise duration
+    // (Seedance 2.5 is 4–30 s) and ride the request as audio refs, so both
+    // the video estimate and the manifest have to see them.
+    let prompt = input.prompt;
+    let referenceImages = input.referenceImages;
+    let durationHint = input.duration;
+    let audioClips: MotionAudioClip[] = [];
+    const voicedLines = input.voicedLines ?? [];
+    if (voicedLines.length > 0 && input.shotId && input.sequenceId) {
+      const shotId = input.shotId;
+      const sequenceId = input.sequenceId;
+      const synthesized = await step.do(
+        'synthesize-dialogue-audio',
+        async () => {
+          const { key } = await scopedDb.credentials.resolveKey('elevenlabs');
+          const clips: MotionAudioClip[] = [];
+          let characterCount = 0;
+          for (const line of voicedLines) {
+            const result = await synthesizeDialogueLine({
+              apiKey: key,
+              teamId: input.teamId,
+              sequenceId,
+              shotId,
+              line,
+            });
+            clips.push(result.clip);
+            characterCount += result.characterCount;
+          }
+          await deductWorkflowCredits({
+            scopedDb,
+            costMicros: estimateTtsCost(characterCount),
+            usedOwnKey: false,
+            description: `Dialogue TTS (${clips.length} line${clips.length === 1 ? '' : 's'})`,
+            idempotencyKey: `${workflowRunId}:dialogue-tts`,
+            reservationId: input.reservationId,
+            metadata: {
+              endpointId: ELEVENLABS_TTS_ENDPOINT,
+              characterCount,
+              clipCount: clips.length,
+            },
+            workflowName: 'MotionWorkflow',
+          });
+          return { clips, characterCount };
+        }
+      );
+      audioClips = synthesized.clips;
+      referenceImages = [
+        ...(input.referenceImages ?? []),
+        ...dialogueClipsAsReferences(audioClips),
+      ];
+      if (input.motionPrompt) {
+        prompt = assembleMotionPrompt({
+          motionPrompt: {
+            ...input.motionPrompt,
+            dialogue: withVoicedLineTokens(
+              input.motionPrompt.dialogue,
+              voicedLines
+            ),
+          },
+          model,
+          characterTags: input.characterTags,
+          generateAudio: input.generateAudio,
+        });
+      }
+      const audioSeconds = audioClips.reduce(
+        (sum, clip) => sum + (clip.durationSeconds ?? 0),
+        0
+      );
+      const baseDuration =
+        durationHint && durationHint > 0 ? durationHint : audioSeconds;
+      durationHint = raiseShotDurationToCoverAudio(
+        baseDuration,
+        audioSeconds,
+        model
+      );
+    }
+
     // Step 0: Estimate cost and check the team can afford it. The estimate only
     // gates affordability — the exact charge is computed from fal's billed
     // units after the clip completes (see actualCost below).
@@ -195,10 +284,10 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           {
             imageUrl: input.imageUrl,
             referenceOnly: input.referenceOnly,
-            referenceImages: input.referenceImages,
-            prompt: input.prompt,
+            referenceImages,
+            prompt,
             model,
-            duration: input.duration,
+            duration: durationHint,
             fps: input.fps,
             motionBucket: input.motionBucket,
             aspectRatio: input.aspectRatio,
@@ -283,6 +372,15 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           writtenMotionPromptVersionId = written.id;
         }
 
+        const promptVersionId =
+          writtenMotionPromptVersionId ?? input.motionPromptVersionId ?? null;
+        if (promptVersionId && audioClips.length > 0) {
+          await scopedDb.shotPromptVersions.setAudioClips(
+            promptVersionId,
+            audioClips
+          );
+        }
+
         // Open an append-only `video_variants` *version* for this render (#990,
         // replaces the retired `shot_variants` video slice). It is keyed by
         // (renderSegmentId, model); per-shot rendering is the degenerate
@@ -328,6 +426,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
               // of the null-`frameVersionId` encoding above.
               usesStartFrame: !input.referenceOnly,
               durationMs: duration * 1000,
+              audioClipIds: audioClips.map((clip) => clip.id),
             },
           ]);
           const inputHash = await computeVideoManifestInputHash(
@@ -436,18 +535,19 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     // list when references moved to the O3 reference-to-video endpoint
     // (#1498); the old inline `elements` path never sent them to Kling. So the
     // guard above has to cover both halves of the request, not one.
-    const referenceImages = await step.do(
+    referenceImages = await step.do(
       'prepare-reference-images',
       async (): Promise<MotionWorkflowInput['referenceImages']> => {
-        const refs = input.referenceImages ?? [];
+        const refs = referenceImages ?? [];
         if (
           refs.length === 0 ||
           IMAGE_TO_VIDEO_MODELS[model].vendor !== 'Kling'
         ) {
-          return input.referenceImages;
+          return referenceImages;
         }
         return await Promise.all(
           refs.map(async (ref) => {
+            if ((ref.kind ?? 'image') !== 'image') return ref;
             if (!ref.referenceImageUrl) return ref;
             const compressed = await ensureImageUnderLimit(
               ref.referenceImageUrl,
@@ -486,7 +586,6 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     // prompt was flagged, the fallback video model when the still was (a
     // flagged still cannot be reseeded or softened away). Both feed the final
     // error text so the user learns which input to change.
-    let prompt = input.prompt;
     let activeModel = model;
     let softened = false;
     // The manifest the in-flight version currently carries — repointed at the
@@ -560,7 +659,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
               workflowRunId,
               sequenceId: input.sequenceId,
               userId: input.userId,
-              prompt: input.prompt,
+              prompt,
               rejection: lastRejection ?? 'unknown rejection',
               analysisModelId:
                 getAnalysisModelById(provenance.analysisModel ?? '')?.id ??
@@ -672,7 +771,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
               prefix: `motion${tag}`,
               stills: arkStillsForMotion({
                 imageUrl: startImageUrl ?? undefined,
-                referenceImages: input.referenceImages,
+                referenceImages,
               }),
               ledger: scopedDb.bytePlusAssets,
               credentials: scopedDb.credentials,
@@ -713,7 +812,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             referenceOnly: input.referenceOnly,
             prompt,
             model: activeModel,
-            duration: input.duration,
+            duration,
             fps: input.fps,
             motionBucket: input.motionBucket,
             aspectRatio: input.aspectRatio,
@@ -998,7 +1097,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         hasReferenceImages:
           bindableReferences(
             getMotionReferenceEndpoint(job.modelKey),
-            input.referenceImages ?? [],
+            referenceImages ?? [],
             Boolean(input.imageUrl)
           ).length > 0,
         referenceOnly: input.referenceOnly,

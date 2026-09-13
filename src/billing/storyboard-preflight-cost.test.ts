@@ -9,7 +9,11 @@ import {
   estimateCharacterSheetCount,
   estimateStoryboardCost,
 } from './cost-estimation';
-import { VOICE_DESIGN_COST } from './elevenlabs-pricing';
+import {
+  estimateTtsCost,
+  TYPICAL_DIALOGUE_CHARS_PER_SHOT,
+  VOICE_DESIGN_COST,
+} from './elevenlabs-pricing';
 import { multiplyMicros } from './money';
 import { estimateStoryboardPreflightCost } from './storyboard-preflight-cost';
 import { estimateSceneCount } from '@/sequences/time-estimate';
@@ -183,6 +187,31 @@ describe('estimateStoryboardPreflightCost', () => {
         startFrom: 'images',
         stopAt: 'images',
       })
+    );
+  });
+
+  it('reserves TTS in the motion slice when voices are on (#1554)', () => {
+    const script = 'Scene 1 — 5s\nA room.\n\nScene 2 — 5s\nAnother room.';
+    const off = estimateStoryboardPreflightCost({
+      ...base,
+      script,
+      startFrom: 'motion',
+      stopAt: 'motion',
+      autoGenerateMotion: true,
+      videoModels: [DEFAULT_VIDEO_MODEL],
+    });
+    const on = estimateStoryboardPreflightCost({
+      ...base,
+      script,
+      startFrom: 'motion',
+      stopAt: 'motion',
+      autoGenerateMotion: true,
+      videoModels: [DEFAULT_VIDEO_MODEL],
+      generateVoices: true,
+    });
+    const scenes = estimateSceneCount(script);
+    expect(on - off).toBe(
+      estimateTtsCost(scenes * TYPICAL_DIALOGUE_CHARS_PER_SHOT)
     );
   });
 });

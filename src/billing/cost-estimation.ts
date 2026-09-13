@@ -34,7 +34,11 @@ import {
   type GenerationStage,
 } from '@/sequences/pipeline';
 import { reportFlooredEstimate } from './billing-observability';
-import { VOICE_DESIGN_COST } from './elevenlabs-pricing';
+import {
+  estimateTtsCost,
+  TYPICAL_DIALOGUE_CHARS_PER_SHOT,
+  VOICE_DESIGN_COST,
+} from './elevenlabs-pricing';
 import { type Microdollars, addMicros, micros, multiplyMicros } from './money';
 
 const logger = getLogger(['openstory', 'billing', 'cost-estimation']);
@@ -411,6 +415,15 @@ export function estimateStoryboardRenderCost(
       totalCost = addMicros(
         totalCost,
         multiplyMicros(perShotMotion, sceneCount)
+      );
+    }
+    // Dialogue TTS (#1554) rides the motion stage: one clip per line, billed
+    // per character. Pre-flight cannot see the lines, so it prices a long
+    // line per estimated shot; the trigger reservation uses the real count.
+    if (opts.generateVoices) {
+      totalCost = addMicros(
+        totalCost,
+        estimateTtsCost(sceneCount * TYPICAL_DIALOGUE_CHARS_PER_SHOT)
       );
     }
   }

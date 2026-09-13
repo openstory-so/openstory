@@ -23,7 +23,7 @@
  * line when bumping.
  */
 
-import { micros } from './money';
+import { micros, multiplyMicros, type Microdollars } from './money';
 import type { EffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 
 /** Billing id for native ElevenLabs TTS (`eleven_v3` / multilingual v2). */
@@ -86,3 +86,22 @@ export function elevenLabsTtsUnitsBilled(
   }
   return characterCount / 1000;
 }
+
+/**
+ * Pre-flight TTS cost from a known character count. Uses the rate card
+ * denomination (`1000 characters`) so the gate and the exact charge agree.
+ */
+export function estimateTtsCost(characterCount: number): Microdollars {
+  const units = elevenLabsTtsUnitsBilled(characterCount);
+  if (units == null || units <= 0) return micros(0);
+  const price = ELEVENLABS_RATE_CARD[ELEVENLABS_TTS_ENDPOINT]?.unitPrice;
+  if (price == null) return micros(0);
+  return multiplyMicros(price, units);
+}
+
+/**
+ * Conservative stand-in when pre-flight cannot see the dialogue yet
+ * (storyboard before scene-split). ~200 characters is a long line; the
+ * in-run reservation uses the real count.
+ */
+export const TYPICAL_DIALOGUE_CHARS_PER_SHOT = 200;

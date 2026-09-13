@@ -256,6 +256,7 @@ function motionVersionFixture(
     parameters: null,
     dialogue: null,
     audio: null,
+    audioClips: null,
     usesStartFrame: true,
     source: 'ai-generated',
     inputHash: null,
@@ -308,6 +309,7 @@ function makeContext(
       )
   );
   const listWithSheets = vi.fn(async () => []);
+  const listCharacters = vi.fn(async () => []);
   // Model identity lives on the version that produced each asset (#1066); an
   // empty map means nothing has been rendered yet → shots inherit the sequence
   // default, preserving the legacy single-model path.
@@ -370,7 +372,7 @@ function makeContext(
           )
       ),
     },
-    characters: { listWithSheets },
+    characters: { listWithSheets, list: listCharacters },
     shotPromptVersions: { getSelectedMotionByShots },
     sequence: vi.fn(() => ({ updateStatus, updateMusicFields })),
     teamManagement: {

@@ -22,6 +22,18 @@ import type {
   MotionPromptParameters,
   VisualPromptComponents,
 } from '@/shots/scene-analysis.schema';
+
+/**
+ * One synthesised dialogue clip parked in R2 (#1554). Stamped on the motion
+ * prompt version after TTS so the optimised-prompt preview can rebuild the
+ * audio refs for paste-into-Videos. Ids also ride `VideoManifestEntry`.
+ */
+export type MotionAudioClip = {
+  id: string;
+  url: string;
+  token: string;
+  durationSeconds: number | null;
+};
 import { type InferSelectModel, sql } from 'drizzle-orm';
 import {
   index,
@@ -100,6 +112,10 @@ export const shotPromptVersions = snakeCase.table(
 
     source: text().$type<PromptVariantSource>().notNull(),
 
+    // Motion-only: synthesised dialogue clips this version was rendered with
+    // (#1554). Null until a motion run TTSes the lines; empty array = ran and
+    // there was nothing to speak. Provenance, never inferred.
+    audioClips: text({ mode: 'json' }).$type<MotionAudioClip[]>(),
     // Motion-only: which template authored this text — true for the
     // image-to-video prompt ("the model already sees the still"), false for
     // the reference-only one (composes the opening frame itself). The two

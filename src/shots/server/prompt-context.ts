@@ -3,6 +3,8 @@ import {
   sequenceElementsToBible,
   sequenceLocationsToBible,
 } from '@/cast/server/bibles-from-scoped';
+import { dialogueVoicesForHash } from '@/motion/dialogue-tts';
+import type { DialogueVoiceHashInput } from '@/motion/dialogue-tts';
 import {
   DEFAULT_ANALYSIS_MODEL,
   getAnalysisModelById,
@@ -44,6 +46,12 @@ export type ShotPromptContext = {
    * prompt under it and a mode flip must re-stale what is stored.
    */
   referenceOnly?: boolean;
+  /**
+   * Dialogue TTS (#1554). Only the motion-prompt hash consumes it, and only
+   * when a speaker has a designed voice. Loaded from every character row
+   * (including voice-only narrators that `listWithSheets` drops).
+   */
+  dialogueVoices?: DialogueVoiceHashInput[];
 };
 
 export type ShotPromptContextSequence = {
@@ -72,6 +80,12 @@ export type ShotPromptContextSequence = {
  */
 export type ShotPromptContextRefs = {
   characters: Awaited<ReturnType<ScopedDb['characters']['listWithSheets']>>;
+  /**
+   * Every character on the sequence, including voice-only narrators that
+   * `listWithSheets` drops. The motion-prompt hash matches speakers against
+   * these. When absent, `loadShotPromptContext` reads `characters.list`.
+   */
+  voiceCharacters?: Awaited<ReturnType<ScopedDb['characters']['list']>>;
   locations: Awaited<
     ReturnType<ScopedDb['sequenceLocations']['listWithReferences']>
   >;
@@ -114,8 +128,14 @@ export async function loadShotPromptContext(args: {
     );
   }
 
-  const [characters, locations, elements, style] = refs
-    ? [refs.characters, refs.locations, refs.elements, refs.style]
+  const [characters, locations, elements, style, voiceCharacters] = refs
+    ? [
+        refs.characters,
+        refs.locations,
+        refs.elements,
+        refs.style,
+        refs.voiceCharacters ?? refs.characters,
+      ]
     : await Promise.all([
         scopedDb.characters.listWithSheets(sequence.id),
         scopedDb.sequenceLocations.listWithReferences(sequence.id),
@@ -123,6 +143,7 @@ export async function loadShotPromptContext(args: {
         hasSnapshot || !sequence.styleId
           ? Promise.resolve(null)
           : scopedDb.styles.getById(sequence.styleId),
+        scopedDb.characters.list(sequence.id),
       ]);
 
   if (!hasSnapshot && !style) {
@@ -147,6 +168,13 @@ export async function loadShotPromptContext(args: {
     analysisModel,
     startingFrameImageUrl,
     referenceOnly: sequence.referenceOnly,
+    dialogueVoices: dialogueVoicesForHash(
+      {
+        presence: scene.originalScript.dialogue.length > 0,
+        lines: scene.originalScript.dialogue,
+      },
+      voiceCharacters
+    ),
   };
 }
 

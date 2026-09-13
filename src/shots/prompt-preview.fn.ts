@@ -87,5 +87,6 @@ export const previewShotPromptsFn = createServerFn({ method: 'POST' })
       elements,
       locations,
       byteplusEnabled: isBytePlusConfigured(),
+      audioClips: selectedMotion?.audioClips ?? [],
     });
   });

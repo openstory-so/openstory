@@ -50,11 +50,21 @@ import { resolveVideoModel } from '@/models/resolve-asset-models';
 import type { Scene } from '@/shots/scene-analysis.schema';
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import { estimateVideoCost, gateEstimate } from '@/billing/cost-estimation';
+import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
+import { addMicros } from '@/billing/money';
+import {
+  modelTakesDialogueAudio,
+  ttsUtterance,
+  voicedDialogueLines,
+} from '@/motion/dialogue-tts';
 import { requireCredits } from '@/billing/server/preflight';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { isInsufficientCreditsError } from '@/platform/errors';
 import { buildMotionReferenceImages } from '@/motion/server/build-motion-references';
-import { resolveMotionPromptFromVersion } from '@/motion/server/resolve-motion-prompt';
+import {
+  motionPromptFromVersion,
+  resolveMotionPromptFromVersion,
+} from '@/motion/server/resolve-motion-prompt';
 import { resolveShotDuration } from '@/motion/resolve-shot-duration';
 import { getAnchorImageUrl } from '@/shots/server/frame-image';
 import type {
@@ -626,19 +636,32 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             durationMs: target.durationMs,
             model,
           });
+          const voicedLines = modelTakesDialogueAudio(model)
+            ? voicedDialogueLines(
+                motionVersion.dialogue,
+                plan.characterVoices ?? []
+              )
+            : [];
+          const ttsChars = voicedLines.reduce(
+            (sum, line) => sum + ttsUtterance(line.text, line.tone).length,
+            0
+          );
           try {
             await requireCredits(
               scopedDb.liveRead,
-              gateEstimate(
-                estimateVideoCost(model, duration, {
-                  pricing: await getEffectiveFalPricing(),
-                  resolution: plan.resolution,
-                  // Same route the submit below takes, or a reference-only
-                  // shot is gated at the image-to-video rate.
-                  referenceOnly: !target.usesStartFrame,
-                  hasReferenceImages: referenceImages.length > 0,
-                }),
-                { model, operation: 'update-stale-shots:video' }
+              addMicros(
+                gateEstimate(
+                  estimateVideoCost(model, duration, {
+                    pricing: await getEffectiveFalPricing(),
+                    resolution: plan.resolution,
+                    // Same route the submit below takes, or a reference-only
+                    // shot is gated at the image-to-video rate.
+                    referenceOnly: !target.usesStartFrame,
+                    hasReferenceImages: referenceImages.length > 0,
+                  }),
+                  { model, operation: 'update-stale-shots:video' }
+                ),
+                estimateTtsCost(ttsChars)
               ),
               {
                 errorMessage: 'Insufficient credits for video generation',
@@ -675,6 +698,9 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             sceneTitle: scene?.metadata?.title,
             sequenceTitle: sequenceSnapshot.title,
             referenceImages,
+            voicedLines,
+            motionPrompt: motionPromptFromVersion(motionVersion),
+            characterTags: scene?.continuity?.characterTags,
           };
           return JSON.stringify(motionInput);
         }

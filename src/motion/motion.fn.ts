@@ -25,6 +25,13 @@ import { REFERENCE_ONLY_MODEL_ERROR } from '@/sequences/server/sequence.schemas'
 import { resolveVideoModel } from '@/models/resolve-asset-models';
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import { estimateVideoCost, gateEstimate } from '@/billing/cost-estimation';
+import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
+import { addMicros } from '@/billing/money';
+import {
+  modelTakesDialogueAudio,
+  ttsUtterance,
+  voicedDialogueLines,
+} from '@/motion/dialogue-tts';
 import {
   estimateBatchMotionCost,
   resolveBatchShotVideoModel,
@@ -176,18 +183,20 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
     // those with a reference-to-video route send them on the wire, the rest
     // substitute the tokens with descriptions. Matches the continuity AFTER
     // any rescan above.
-    const [characters, elements, locations] = await Promise.all([
-      context.scopedDb.characters.listWithSheets(sequence.id),
-      // A clip with no known length passes every length gate unchecked.
-      context.scopedDb.sequenceElements
-        .list(sequence.id)
-        .then((rows) => withMeasuredDurations(context.scopedDb, rows)),
-      // Reference-only additionally needs the location sheet: with no still,
-      // it is the only thing establishing the set.
-      referenceOnly
-        ? context.scopedDb.sequenceLocations.listWithReferences(sequence.id)
-        : Promise.resolve([]),
-    ]);
+    const [characters, voiceCharacters, elements, locations] =
+      await Promise.all([
+        context.scopedDb.characters.listWithSheets(sequence.id),
+        context.scopedDb.characters.list(sequence.id),
+        // A clip with no known length passes every length gate unchecked.
+        context.scopedDb.sequenceElements
+          .list(sequence.id)
+          .then((rows) => withMeasuredDurations(context.scopedDb, rows)),
+        // Reference-only additionally needs the location sheet: with no still,
+        // it is the only thing establishing the set.
+        referenceOnly
+          ? context.scopedDb.sequenceLocations.listWithReferences(sequence.id)
+          : Promise.resolve([]),
+      ]);
     const referenceImages = buildMotionReferenceImages({
       scene: context.scene
         ? { ...context.scene, continuity: effectiveContinuity }
@@ -220,16 +229,27 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
       model,
     });
 
+    const voicedLines = modelTakesDialogueAudio(model)
+      ? voicedDialogueLines(selectedMotion?.dialogue, voiceCharacters)
+      : [];
+    const ttsChars = voicedLines.reduce(
+      (sum, line) => sum + ttsUtterance(line.text, line.tone).length,
+      0
+    );
+
     const reservationId = await reserveRunCredits(
       context.scopedDb,
-      gateEstimate(
-        estimateVideoCost(model, duration, {
-          pricing: await getEffectiveFalPricing(),
-          resolution: sequence.resolution,
-          hasReferenceImages: referenceImages.length > 0,
-          referenceOnly,
-        }),
-        { model, operation: 'motion' }
+      addMicros(
+        gateEstimate(
+          estimateVideoCost(model, duration, {
+            pricing: await getEffectiveFalPricing(),
+            resolution: sequence.resolution,
+            hasReferenceImages: referenceImages.length > 0,
+            referenceOnly,
+          }),
+          { model, operation: 'motion' }
+        ),
+        estimateTtsCost(ttsChars)
       ),
       {
         errorMessage: 'Insufficient credits for motion generation',
@@ -294,6 +314,11 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
                   }
                 : undefined,
               referenceImages,
+              voicedLines,
+              motionPrompt: selectedMotion
+                ? motionPromptFromVersion(selectedMotion)
+                : undefined,
+              characterTags: context.scene?.continuity?.characterTags,
             },
           ],
         };
@@ -425,16 +450,18 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
     // Resolve cast/element reference images once for the whole batch (#873) —
     // before credit pre-flight so Seedance prices the reference-to-video
     // endpoint when refs will actually be sent.
-    const [characters, elements, batchLocations] = await Promise.all([
-      context.scopedDb.characters.listWithSheets(sequence.id),
-      context.scopedDb.sequenceElements
-        .list(sequence.id)
-        .then((rows) => withMeasuredDurations(context.scopedDb, rows)),
-      // Reference-only only: with no still, the location sheet is the set.
-      anyReferenceOnly
-        ? context.scopedDb.sequenceLocations.listWithReferences(sequence.id)
-        : Promise.resolve([]),
-    ]);
+    const [characters, voiceCharacters, elements, batchLocations] =
+      await Promise.all([
+        context.scopedDb.characters.listWithSheets(sequence.id),
+        context.scopedDb.characters.list(sequence.id),
+        context.scopedDb.sequenceElements
+          .list(sequence.id)
+          .then((rows) => withMeasuredDurations(context.scopedDb, rows)),
+        // Reference-only only: with no still, the location sheet is the set.
+        anyReferenceOnly
+          ? context.scopedDb.sequenceLocations.listWithReferences(sequence.id)
+          : Promise.resolve([]),
+      ]);
 
     // Same pre-credit rejection as the single-shot path, but it matters more
     // here: the reservation covers the whole batch, so one doomed model would
@@ -518,8 +545,24 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
     );
     if (unusable.size > 0) throw new Error([...unusable].join(' '));
 
+    const ttsChars = eligibleShots.reduce((sum, shot) => {
+      const model = resolveShotVideoModel(shot);
+      if (!modelTakesDialogueAudio(model)) return sum;
+      const lines = voicedDialogueLines(
+        selectedMotionByShot.get(shot.id)?.dialogue,
+        voiceCharacters
+      );
+      return (
+        sum +
+        lines.reduce(
+          (n, line) => n + ttsUtterance(line.text, line.tone).length,
+          0
+        )
+      );
+    }, 0);
+
     // Sum per-shot costs — shots may render with different (priced) models.
-    const estimatedCost = estimateBatchMotionCost(
+    const videoCost = estimateBatchMotionCost(
       eligibleShots,
       shotModels,
       sequence,
@@ -547,6 +590,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
         },
       }
     );
+    const estimatedCost = addMicros(videoCost, estimateTtsCost(ttsChars));
 
     const includeMusic =
       (data.includeMusic ?? false) && sequence.musicStatus !== 'generating';
@@ -654,6 +698,13 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
                 referenceOnly: shotIsReferenceOnly(shot),
                 locations: batchLocations,
               }),
+              voicedLines: modelTakesDialogueAudio(shotModel)
+                ? voicedDialogueLines(selectedMotion?.dialogue, voiceCharacters)
+                : [],
+              motionPrompt: selectedMotion
+                ? motionPromptFromVersion(selectedMotion)
+                : undefined,
+              characterTags: scene?.continuity?.characterTags,
             };
           }),
           music: musicConfig,

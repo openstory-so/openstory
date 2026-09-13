@@ -416,6 +416,8 @@ export async function talentSheetInputHashMatches(
 // different hash for identical inputs, since LLM output is non-deterministic.
 // ---------------------------------------------------------------------------
 
+import type { DialogueVoiceHashInput } from '@/motion/dialogue-tts';
+import { dialogueVoicesHashBody } from '@/motion/dialogue-tts';
 import type {
   CharacterBibleEntry,
   ElementBibleEntry,
@@ -470,6 +472,15 @@ export type PromptSceneContextHashInput = {
    * uses for its optional refinements.
    */
   referenceOnly?: boolean;
+  /**
+   * Dialogue TTS (#1554): voice id + line + TTS model, only for lines whose
+   * speaker has a designed voice. Joins the MOTION prompt hash only when a
+   * voice is present — the same shape-stable trick as `referenceOnly` — so
+   * editing a line or changing a voice re-stales the shot and no stored
+   * digest moves for a voiceless one. The visual prompt ignores it: a still
+   * does not speak.
+   */
+  dialogueVoices?: readonly DialogueVoiceHashInput[];
 };
 
 /**
@@ -666,6 +677,7 @@ function motionPromptHashBody(
     named: flags.named,
     performance: true,
   });
+  const dialogueVoices = dialogueVoicesHashBody(input.dialogueVoices);
   return {
     artifact: 'shot:motion-prompt',
     hashVersion: flags.hashVersion,
@@ -676,6 +688,7 @@ function motionPromptHashBody(
     analysisModel: trim(input.analysisModel),
     startingFrameImageUrl: trim(input.startingFrameImageUrl),
     ...(input.referenceOnly ? { referenceOnly: true } : {}),
+    ...(dialogueVoices ? { dialogueVoices } : {}),
   };
 }
 

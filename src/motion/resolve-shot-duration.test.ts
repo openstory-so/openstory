@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { resolveShotDuration } from './resolve-shot-duration';
+import {
+  raiseShotDurationToCoverAudio,
+  resolveShotDuration,
+} from './resolve-shot-duration';
 
 // kling_v3_pro accepts integer seconds 1..15 (one entry per integer).
 // gemini_omni_flash accepts only 3..10 — useful for asserting snap behavior.
@@ -36,5 +39,14 @@ describe('resolveShotDuration', () => {
       model: 'gemini_omni_flash',
     });
     expect(result).toBe(10);
+  });
+});
+
+describe('raiseShotDurationToCoverAudio', () => {
+  it('leaves the clip alone when the audio already fits', () => {
+    expect(raiseShotDurationToCoverAudio(8, 6.2, 'seedance_v2_5')).toBe(8);
+  });
+  it('raises onto the next grid step that covers the audio', () => {
+    expect(raiseShotDurationToCoverAudio(5, 6.2, 'seedance_v2_5')).toBe(7);
   });
 });

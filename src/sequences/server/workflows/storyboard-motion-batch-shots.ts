@@ -22,6 +22,10 @@ import type {
   SequenceElementMinimal,
   SequenceLocationMinimal,
 } from '@/platform/server/db/schema';
+import {
+  modelTakesDialogueAudio,
+  voicedDialogueLines,
+} from '@/motion/dialogue-tts';
 import { assembleMotionPrompt } from '@/motion/server/assemble-motion-prompt';
 import { buildMotionReferenceImages } from '@/motion/server/build-motion-references';
 import { getLogger } from '@/platform/logger';
@@ -104,6 +108,9 @@ export function buildStoryboardMotionBatchShots(input: {
       model: input.videoModel,
       characterTags,
     });
+    const voicedLines = modelTakesDialogueAudio(input.videoModel)
+      ? voicedDialogueLines(motionPromptData.dialogue, input.characters)
+      : [];
 
     return {
       shotId: mapping.shotId,
@@ -127,6 +134,7 @@ export function buildStoryboardMotionBatchShots(input: {
         referenceOnly: input.referenceOnly,
         locations: input.locations,
       }),
+      voicedLines,
     };
   });
 }
