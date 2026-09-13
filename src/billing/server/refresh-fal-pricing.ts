@@ -415,11 +415,13 @@ function overlaySiblingBilledRates(
 }
 
 /**
- * A Workers cron run has a 15-minute wall clock, and one extraction is a
- * reasoning call. ponytail: per-run cap; the rest pick up on later nights
- * because an unchanged hash skips. Raise or shard if the used set grows.
+ * A Workers cron run has a 15-minute wall clock, the price + typical-units
+ * phases already take minutes, and one extraction measured ~75 s (Gemini
+ * 3.1 Pro, 2026-09-13). ponytail: per-run cap; the rest pick up on later
+ * nights because an unchanged hash skips. Shard across runs if the used
+ * set grows.
  */
-export const MAX_RATE_CARD_EXTRACTIONS_PER_RUN = 15;
+export const MAX_RATE_CARD_EXTRACTIONS_PER_RUN = 5;
 
 type StoredRateCard = { card: RateCard; verified: boolean };
 
