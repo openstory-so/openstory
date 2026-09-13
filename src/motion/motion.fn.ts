@@ -60,6 +60,7 @@ import {
   resolveMotionPrompt,
   resolveMotionPromptFromVersion,
 } from '@/motion/server/resolve-motion-prompt';
+import { requireGenerationPrompt } from '@/shots/generation-prompt';
 import {
   rendersReferenceOnly,
   shotPromptSequence,
@@ -135,6 +136,10 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
     const userEditedPrompt = Boolean(data.prompt);
     const selectedMotion =
       await context.scopedDb.shotPromptVersions.getSelectedMotion(shot.id);
+    // Empty base prompt is empty even when assembly would append dialogue
+    // and audio direction. Refuse before credits so a stale tab matches
+    // the disabled button (#1594).
+    requireGenerationPrompt(data.prompt, selectedMotion?.text);
     // An edit replaces the version's `fullPrompt`; model assembly (dialogue
     // tags, audio direction, no-music) still goes on top — the same thing the
     // editor's optimised-prompt preview shows. So what fal receives (`prompt`)

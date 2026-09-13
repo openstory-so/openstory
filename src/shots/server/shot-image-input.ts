@@ -157,7 +157,7 @@ export async function prepareShotImageWorkflowInput(args: {
     ? await scopedDb.framePromptVersions.getSelected(frame.id)
     : null;
   const prompt = promptOverride || selectedPrompt?.text || scriptExtract;
-  if (!prompt) {
+  if (!prompt.trim()) {
     throw new Error('Shot has no prompt or description to regenerate from');
   }
 
