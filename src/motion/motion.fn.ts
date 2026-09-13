@@ -28,8 +28,9 @@ import { estimateVideoCost, gateEstimate } from '@/billing/cost-estimation';
 import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
 import { addMicros } from '@/billing/money';
 import {
+  matchingDialogueClips,
   modelTakesDialogueAudio,
-  ttsUtterance,
+  ttsCharacterCount,
   voicedDialogueLines,
 } from '@/motion/dialogue-tts';
 import {
@@ -232,10 +233,8 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
     const voicedLines = modelTakesDialogueAudio(model)
       ? voicedDialogueLines(selectedMotion?.dialogue, voiceCharacters)
       : [];
-    const ttsChars = voicedLines.reduce(
-      (sum, line) => sum + ttsUtterance(line.text, line.tone).length,
-      0
-    );
+    const audioClips = matchingDialogueClips(shot.audioClips, voicedLines);
+    const ttsChars = audioClips.length > 0 ? 0 : ttsCharacterCount(voicedLines);
 
     const reservationId = await reserveRunCredits(
       context.scopedDb,
@@ -315,6 +314,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
                 : undefined,
               referenceImages,
               voicedLines,
+              audioClips: audioClips.length > 0 ? audioClips : undefined,
               motionPrompt: selectedMotion
                 ? motionPromptFromVersion(selectedMotion)
                 : undefined,
@@ -552,13 +552,8 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
         selectedMotionByShot.get(shot.id)?.dialogue,
         voiceCharacters
       );
-      return (
-        sum +
-        lines.reduce(
-          (n, line) => n + ttsUtterance(line.text, line.tone).length,
-          0
-        )
-      );
+      const clips = matchingDialogueClips(shot.audioClips, lines);
+      return sum + (clips.length > 0 ? 0 : ttsCharacterCount(lines));
     }, 0);
 
     // Sum per-shot costs — shots may render with different (priced) models.
@@ -653,6 +648,9 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
             const shotModel = resolveShotVideoModel(shot);
             const scene = sceneOf(shot);
             const selectedMotion = selectedMotionByShot.get(shot.id);
+            const voicedLines = modelTakesDialogueAudio(shotModel)
+              ? voicedDialogueLines(selectedMotion?.dialogue, voiceCharacters)
+              : [];
             return {
               shotId: shot.id,
               sceneId: shot.sceneId,
@@ -698,9 +696,8 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
                 referenceOnly: shotIsReferenceOnly(shot),
                 locations: batchLocations,
               }),
-              voicedLines: modelTakesDialogueAudio(shotModel)
-                ? voicedDialogueLines(selectedMotion?.dialogue, voiceCharacters)
-                : [],
+              voicedLines,
+              audioClips: matchingDialogueClips(shot.audioClips, voicedLines),
               motionPrompt: selectedMotion
                 ? motionPromptFromVersion(selectedMotion)
                 : undefined,

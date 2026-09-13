@@ -31,6 +31,21 @@ export function modelTakesDialogueAudio(model: ImageToVideoModel): boolean {
   return (getMotionReferenceEndpoint(model)?.maxAudio ?? 0) > 0;
 }
 
+/**
+ * Pad floor for a References-stage clip so the strictest selected model
+ * (H3 Max 2s) can attach it. Defaults to 2s when nothing publishes a min.
+ */
+export function dialogueAudioMinSeconds(
+  models: readonly ImageToVideoModel[]
+): number {
+  let min = 2;
+  for (const model of models) {
+    const floor = getMotionReferenceEndpoint(model)?.audioSeconds?.min;
+    if (floor != null && floor > min) min = floor;
+  }
+  return min;
+}
+
 export type VoiceCharacter = {
   name: string;
   voiceId?: string | null;
@@ -134,6 +149,54 @@ export function voicedDialogueLines(
     });
   });
   return voiced;
+}
+
+/** Stable key stamped on a synthesised clip so motion can reuse it. */
+export function dialogueClipSourceKey(
+  lines: readonly VoicedDialogueLine[]
+): string {
+  const body = dialogueVoicesHashBody(
+    lines.map((line) => ({
+      voiceId: line.voiceId,
+      line: line.text,
+      ttsModel: line.ttsModel,
+    }))
+  );
+  if (!body) return '';
+  return body
+    .map((voice) => `${voice.voiceId}\t${voice.line}\t${voice.ttsModel}`)
+    .join('\n');
+}
+
+function clipSourceKey(clip: unknown): string | undefined {
+  if (clip === null || typeof clip !== 'object' || !('sourceKey' in clip)) {
+    return undefined;
+  }
+  const key = clip.sourceKey;
+  return typeof key === 'string' ? key : undefined;
+}
+
+/**
+ * Stored clips that were synthesised from exactly these lines. Empty when
+ * the clip is missing, was minted without a key, or the lines/voices moved.
+ */
+export function matchingDialogueClips<T>(
+  clips: readonly T[] | null | undefined,
+  lines: readonly VoicedDialogueLine[]
+): T[] {
+  if (!clips?.length || lines.length === 0) return [];
+  const key = dialogueClipSourceKey(lines);
+  if (!key) return [];
+  return clips.every((clip) => clipSourceKey(clip) === key) ? [...clips] : [];
+}
+
+export function ttsCharacterCount(
+  lines: readonly VoicedDialogueLine[]
+): number {
+  return lines.reduce(
+    (sum, line) => sum + ttsUtterance(line.text, line.tone).length,
+    0
+  );
 }
 
 /** Copy TTS tokens onto the matching lines so `spokenLine` binds them. */

@@ -56,6 +56,7 @@ import type {
   CharacterMinimal,
   GeneratedAssetActivity,
   GeneratedAssetInput,
+  MotionAudioClip,
   SequenceElementMinimal,
   SequenceLocationMinimal,
   StyleConfig,
@@ -470,6 +471,25 @@ export interface ElementSheetWorkflowResult {
 }
 
 /**
+ * Per-shot Text to Dialogue in the References stage (#1554). One acted
+ * conversation clip per shot, persisted on `shots.audioClips` so motion
+ * only attaches it.
+ */
+export interface DialogueAudioWorkflowInput extends UserWorkflowContext {
+  sequenceId: string;
+  shots: Array<{
+    shotId: string;
+    lines: VoicedDialogueLine[];
+  }>;
+  /** Provider per-file floor (H3 Max 2s). Short one-liners are padded. */
+  minDurationSeconds?: number;
+}
+
+export interface DialogueAudioWorkflowResult {
+  clipsByShotId: Record<string, MotionAudioClip[]>;
+}
+
+/**
  * Motion generation workflow input
  */
 export interface MotionWorkflowInput extends SequenceWorkflowContext {
@@ -573,6 +593,12 @@ export interface MotionWorkflowInput extends SequenceWorkflowContext {
    * must not re-read characters. Empty / omitted = voiceless shot.
    */
   voicedLines?: VoicedDialogueLine[];
+  /**
+   * Dialogue clips already synthesised in the References stage (#1554).
+   * When present, motion attaches them and does not call ElevenLabs.
+   * Snapshotted at the trigger from `shots.audioClips`.
+   */
+  audioClips?: MotionAudioClip[];
   /**
    * Structured motion prompt so the TTS step can re-assemble with audio
    * tokens after the clips exist. Absent on paths that only pass `prompt`.
@@ -1447,6 +1473,8 @@ export interface BatchMotionMusicWorkflowInput extends SequenceWorkflowContext {
     referenceImages?: ReferenceImageDescription[];
     /** See `MotionWorkflowInput.voicedLines`. */
     voicedLines?: VoicedDialogueLine[];
+    /** See `MotionWorkflowInput.audioClips`. */
+    audioClips?: MotionAudioClip[];
   }>;
   /**
    * Video models to generate for every shot (#545). First is primary (its

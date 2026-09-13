@@ -15,6 +15,7 @@ import { generateId } from '@/platform/id';
 import { renderSegments } from './render-segments';
 import { scenes } from './scenes';
 import { sequences } from './sequences';
+import type { MotionAudioClip } from './shot-prompt-versions';
 
 export const SHOT_GENERATION_STATUSES = [
   'pending',
@@ -74,9 +75,12 @@ export const shots = snakeCase.table(
     // the shot is first rendered/assigned. Deliberately `set null` (not cascade)
     // so deleting a segment orphans its shots rather than vanishing them.
     renderSegmentId: text().references(() => renderSegments.id),
-    // A shot owns no audio columns (#1067): per-shot audio was never built —
-    // music is sequence-level (`sequences.music*`) and dialogue rides inside
-    // the video.
+    // Music is sequence-level (`sequences.music*`). Dialogue clips (#1554)
+    // are audio references generated in the References stage after Voice
+    // Design — same class as a character sheet, pointers to R2 not bytes.
+    // Motion attaches them; it does not synthesise them. Null until
+    // References ran with voices.
+    audioClips: text({ mode: 'json' }).$type<MotionAudioClip[]>(),
     // Soft-delete (#1108 Phase 1, undoable): excluded from default lists /
     // staleness plans / export / theatre, but the row, its frames, versions
     // and hashes are all retained for a lossless restore. `shotNumber` keeps

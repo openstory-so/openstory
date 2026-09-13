@@ -53,8 +53,9 @@ import { estimateVideoCost, gateEstimate } from '@/billing/cost-estimation';
 import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
 import { addMicros } from '@/billing/money';
 import {
+  matchingDialogueClips,
   modelTakesDialogueAudio,
-  ttsUtterance,
+  ttsCharacterCount,
   voicedDialogueLines,
 } from '@/motion/dialogue-tts';
 import { requireCredits } from '@/billing/server/preflight';
@@ -642,10 +643,12 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                 plan.characterVoices ?? []
               )
             : [];
-          const ttsChars = voicedLines.reduce(
-            (sum, line) => sum + ttsUtterance(line.text, line.tone).length,
-            0
+          const audioClips = matchingDialogueClips(
+            shot.audioClips,
+            voicedLines
           );
+          const ttsChars =
+            audioClips.length > 0 ? 0 : ttsCharacterCount(voicedLines);
           try {
             await requireCredits(
               scopedDb.liveRead,
@@ -699,6 +702,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             sequenceTitle: sequenceSnapshot.title,
             referenceImages,
             voicedLines,
+            audioClips: audioClips.length > 0 ? audioClips : undefined,
             motionPrompt: motionPromptFromVersion(motionVersion),
             characterTags: scene?.continuity?.characterTags,
           };

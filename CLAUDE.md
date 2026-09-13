@@ -470,21 +470,23 @@ delete, and the upsert keeps a voice the row already holds. Billed at
 estimated character (`generateVoices` on `estimateStoryboardCost`), the
 in-run gate the real speaking count.
 
-**Dialogue audio (#1554).** A step in `MotionWorkflow` (before submit) runs
-ElevenLabs **Text to Dialogue** (`eleven_v3`) over every line whose speaker
-has a `voiceId` — one acted conversation clip per shot, not one file per
-line. Tone maps to v3 audio tags on each turn. User-bound `voiceToken`
-elements already ride as `@AudioN` and are not re-synthesised. The clip
-binds as `DIALOGUE` / `@Audio1`. Voice ids + lines + TTS model fold into the
-motion-prompt hash **only when a voice is present** (same shape-stable trick
-as `usesStartFrame` / `referenceOnly`). Shot duration is raised to cover the
-audio; a clip under the provider floor (H3 Max 2s) is padded with silence.
-Voiced lines are snapshotted onto the payload at trigger time; credentials
-via `resolveKey('elevenlabs')`. Preflight reserves the TTS cost (static
-card). Clip ids are stamped on `VideoManifestEntry.audioClipIds` and
-`shot_prompt_versions.audioClips`. The optimised-prompt JSON carries those
-audio refs for paste-into-Videos. Models with no audio reference slot
-(Grok, Omni Flash, Kling) skip TTS.
+**Dialogue audio (#1554).** An audio reference, like a character sheet: the
+References stage (after Voice Design) runs ElevenLabs **Text to Dialogue**
+(`eleven_v3`) over every line whose speaker has a `voiceId` — one acted
+conversation clip per shot, parked on `shots.audioClips`. Motion only
+attaches the stored clip (synthesising only if it is missing or the
+voice/lines moved). Tone maps to v3 audio tags on each turn. User-bound
+`voiceToken` elements already ride as `@AudioN` and are not re-synthesised.
+The clip binds as `DIALOGUE` / `@Audio1`. Voice ids + lines + TTS model fold
+into the motion-prompt hash **only when a voice is present** (same
+shape-stable trick as `usesStartFrame` / `referenceOnly`). Shot duration is
+raised to cover the audio; a clip under the provider floor (H3 Max 2s) is
+padded with silence. Preflight reserves the TTS cost on the references
+slice (static card). Clip ids are stamped on
+`VideoManifestEntry.audioClipIds` and `shot_prompt_versions.audioClips`.
+The optimised-prompt JSON carries those audio refs for paste-into-Videos.
+Models with no audio reference slot (Grok, Omni Flash, Kling) skip
+attaching the clip.
 
 Out of scope here: voice cloning from an uploaded sample, realtime/agents,
 auditioning/regenerating a single line from the scene panel.

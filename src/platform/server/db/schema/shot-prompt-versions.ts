@@ -33,6 +33,12 @@ export type MotionAudioClip = {
   url: string;
   token: string;
   durationSeconds: number | null;
+  /**
+   * Voice+line+model key this clip was synthesised from (#1554). Motion
+   * reuses the clip only when it still matches; a missing key (rows minted
+   * before this field) never matches and is regenerated.
+   */
+  sourceKey?: string;
 };
 import { type InferSelectModel, sql } from 'drizzle-orm';
 import {
@@ -113,8 +119,9 @@ export const shotPromptVersions = snakeCase.table(
     source: text().$type<PromptVariantSource>().notNull(),
 
     // Motion-only: synthesised dialogue clips this version was rendered with
-    // (#1554). Null until a motion run TTSes the lines; empty array = ran and
-    // there was nothing to speak. Provenance, never inferred.
+    // (#1554). Copied from the shot's References-stage clip at render time.
+    // Null until a render stamps them; empty array = ran and there was
+    // nothing to speak. Provenance, never inferred.
     audioClips: text({ mode: 'json' }).$type<MotionAudioClip[]>(),
     // Motion-only: which template authored this text — true for the
     // image-to-video prompt ("the model already sees the still"), false for

@@ -40,8 +40,9 @@ import {
 import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
 import { addMicros } from '@/billing/money';
 import {
+  matchingDialogueClips,
   modelTakesDialogueAudio,
-  ttsUtterance,
+  ttsCharacterCount,
   voicedDialogueLines,
 } from '@/motion/dialogue-tts';
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
@@ -399,10 +400,9 @@ export async function executeSmartRetry(context: SmartRetryContext) {
       const voicedLines = modelTakesDialogueAudio(shotVideoModel)
         ? voicedDialogueLines(selectedMotion?.dialogue, voiceCharacters)
         : [];
-      const ttsChars = voicedLines.reduce(
-        (sum, line) => sum + ttsUtterance(line.text, line.tone).length,
-        0
-      );
+      const audioClips = matchingDialogueClips(shot.audioClips, voicedLines);
+      const ttsChars =
+        audioClips.length > 0 ? 0 : ttsCharacterCount(voicedLines);
       const motionCost = addMicros(
         gateEstimate(
           estimateVideoCost(
@@ -466,6 +466,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
         resolution: sequence.resolution,
         duration: shot.durationMs ? shot.durationMs / 1000 : undefined,
         voicedLines,
+        audioClips: audioClips.length > 0 ? audioClips : undefined,
         motionPrompt: selectedMotion
           ? motionPromptFromVersion(selectedMotion)
           : undefined,

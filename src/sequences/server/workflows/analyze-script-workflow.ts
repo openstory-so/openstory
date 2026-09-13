@@ -21,7 +21,15 @@ import {
 } from '@/billing/cost-estimation';
 import { creditsShortStatusError } from '@/billing/credits-short';
 import { addMicros, microsToUsd, multiplyMicros } from '@/billing/money';
-import { VOICE_DESIGN_COST } from '@/billing/elevenlabs-pricing';
+import {
+  estimateTtsCost,
+  TYPICAL_DIALOGUE_CHARS_PER_SHOT,
+  VOICE_DESIGN_COST,
+} from '@/billing/elevenlabs-pricing';
+import {
+  dialogueAudioMinSeconds,
+  voicedDialogueLines,
+} from '@/motion/dialogue-tts';
 import { speakingCharacterIds } from '@/cast/voice';
 import { gateStoryboardRenders } from '@/billing/server/storyboard-render-gate';
 import { reusesTalentSheet } from '@/cast/server/talent/reuse-talent-sheet';
@@ -37,6 +45,8 @@ import type {
   AnalyzeScriptWorkflowInput,
   BatchMotionMusicWorkflowInput,
   CharacterBibleWorkflowInput,
+  DialogueAudioWorkflowInput,
+  DialogueAudioWorkflowResult,
   ElementSheetEntry,
   ElementSheetWorkflowInput,
   ElementSheetWorkflowResult,
@@ -80,6 +90,7 @@ import { deriveAutoStyle } from '@/look/server/workflows/auto-style-step';
 import { waitForElementVision } from '@/cast/server/workflows/wait-for-sheets';
 import type {
   CharacterMinimal,
+  MotionAudioClip,
   SequenceElementMinimal,
   SequenceLocationMinimal,
 } from '@/platform/server/db/schema';
@@ -565,7 +576,14 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           pricing,
         }),
         addMicros(
-          multiplyMicros(VOICE_DESIGN_COST, billedVoices),
+          addMicros(
+            multiplyMicros(VOICE_DESIGN_COST, billedVoices),
+            estimateTtsCost(
+              runReferences && generateVoices
+                ? scenes.length * TYPICAL_DIALOGUE_CHARS_PER_SHOT
+                : 0
+            )
+          ),
           estimateReferenceSheetCost({
             imageModel,
             characterSheets: billedCharacterSheets,
@@ -901,6 +919,47 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       ? dedupeById([...generatedElements, ...knownElements])
       : dedupeById([...(checkpoint?.allElements ?? []), ...elementsMinimal]);
 
+    // Dialogue clips are audio references: they need designed voices (the
+    // bible child above) and belong in this stage, not mid-motion-submit.
+    let dialogueClipsByShotId: Record<string, MotionAudioClip[]> =
+      checkpoint?.dialogueClipsByShotId ?? {};
+    if (runReferences && sequenceId) {
+      const jobs = shotWorkItems(scenes, shotMapping).flatMap((item) => {
+        if (!item.mapping.shotId) return [];
+        const lines = voicedDialogueLines(
+          {
+            presence: item.scene.originalScript.dialogue.length > 0,
+            lines: item.scene.originalScript.dialogue,
+          },
+          charactersWithSheets
+        );
+        return lines.length > 0 ? [{ shotId: item.mapping.shotId, lines }] : [];
+      });
+      if (jobs.length > 0) {
+        const result = await spawnAndAwaitChild<
+          DialogueAudioWorkflowInput,
+          DialogueAudioWorkflowResult
+        >(step, {
+          binding: this.env.DIALOGUE_AUDIO_WORKFLOW,
+          parentBindingName: PARENT_BINDING_NAME,
+          parentInstanceId,
+          childId: `dialogue-audio:${sequenceId}`,
+          childPayload: {
+            userId: input.userId,
+            teamId: input.teamId,
+            sequenceId,
+            reservationId: input.reservationId,
+            shots: jobs,
+            minDurationSeconds: dialogueAudioMinSeconds(videoModels),
+          },
+          spawnStepName: 'spawn-dialogue-audio',
+          awaitStepName: 'await-dialogue-audio',
+          timeout: '60 minutes',
+        });
+        dialogueClipsByShotId = result.clipsByShotId;
+      }
+    }
+
     if (runReferences) {
       await persistProgress({
         completedStage: 'references',
@@ -916,6 +975,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         allElements,
         visualPromptBySceneId,
         scenesWithVisualPrompts,
+        dialogueClipsByShotId,
       });
       if (stopAt === 'references') {
         await recordDuration('references');
@@ -1171,6 +1231,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         // still, it is the only thing establishing the set.
         locations: locationsWithSheets,
         referenceOnly,
+        dialogueClipsByShotId,
       });
 
       await step.do('phase-5-start', async () => {

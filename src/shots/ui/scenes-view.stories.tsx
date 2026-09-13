@@ -245,6 +245,7 @@ const mockShot = (spec: {
       durationMs: 5000,
       useStartFrame: null,
       selectedMotionPromptVersionId: null,
+      audioClips: null,
       renderSegmentId: null,
       deletedAt: null,
       createdAt: now,

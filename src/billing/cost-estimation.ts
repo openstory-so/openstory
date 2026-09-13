@@ -417,15 +417,6 @@ export function estimateStoryboardRenderCost(
         multiplyMicros(perShotMotion, sceneCount)
       );
     }
-    // Dialogue TTS (#1554) rides the motion stage: one clip per line, billed
-    // per character. Pre-flight cannot see the lines, so it prices a long
-    // line per estimated shot; the trigger reservation uses the real count.
-    if (opts.generateVoices) {
-      totalCost = addMicros(
-        totalCost,
-        estimateTtsCost(sceneCount * TYPICAL_DIALOGUE_CHARS_PER_SHOT)
-      );
-    }
   }
 
   if (estimateRunsStage(opts, 'music') && opts.audioModels?.length) {
@@ -526,9 +517,16 @@ export function estimateStoryboardCost(opts: StoryboardCostOpts): Microdollars {
           estimateCharacterSheetCount(sceneCount)
         )
       : micros(0);
+  // Dialogue clips are References-stage audio refs (#1554). Pre-flight
+  // cannot see the lines, so it prices a long line per estimated shot;
+  // the in-run deduct uses the real count.
+  const ttsCost =
+    runsReferences && opts.generateVoices
+      ? estimateTtsCost(sceneCount * TYPICAL_DIALOGUE_CHARS_PER_SHOT)
+      : micros(0);
 
   return addMicros(
-    addMicros(llmCost, addMicros(sheetCost, voiceCost)),
+    addMicros(llmCost, addMicros(sheetCost, addMicros(voiceCost, ttsCost))),
     estimateStoryboardRenderCost(opts)
   );
 }

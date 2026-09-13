@@ -14,7 +14,7 @@ import {
   TYPICAL_DIALOGUE_CHARS_PER_SHOT,
   VOICE_DESIGN_COST,
 } from './elevenlabs-pricing';
-import { multiplyMicros } from './money';
+import { addMicros, multiplyMicros } from './money';
 import { estimateStoryboardPreflightCost } from './storyboard-preflight-cost';
 import { estimateSceneCount } from '@/sequences/time-estimate';
 
@@ -165,10 +165,11 @@ describe('estimateStoryboardPreflightCost', () => {
       stopAt: 'references',
       generateVoices: true,
     });
+    const scenes = estimateSceneCount(script);
     expect(on - off).toBe(
-      multiplyMicros(
-        VOICE_DESIGN_COST,
-        estimateCharacterSheetCount(estimateSceneCount(script))
+      addMicros(
+        multiplyMicros(VOICE_DESIGN_COST, estimateCharacterSheetCount(scenes)),
+        estimateTtsCost(scenes * TYPICAL_DIALOGUE_CHARS_PER_SHOT)
       )
     );
     // Not in the slice → not billed.
@@ -190,7 +191,7 @@ describe('estimateStoryboardPreflightCost', () => {
     );
   });
 
-  it('reserves TTS in the motion slice when voices are on (#1554)', () => {
+  it('does not reserve TTS in the motion slice — clips are References artifacts (#1554)', () => {
     const script = 'Scene 1 — 5s\nA room.\n\nScene 2 — 5s\nAnother room.';
     const off = estimateStoryboardPreflightCost({
       ...base,
@@ -209,9 +210,6 @@ describe('estimateStoryboardPreflightCost', () => {
       videoModels: [DEFAULT_VIDEO_MODEL],
       generateVoices: true,
     });
-    const scenes = estimateSceneCount(script);
-    expect(on - off).toBe(
-      estimateTtsCost(scenes * TYPICAL_DIALOGUE_CHARS_PER_SHOT)
-    );
+    expect(on).toBe(off);
   });
 });
