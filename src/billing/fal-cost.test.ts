@@ -5,6 +5,10 @@ import {
   MIN_OBSERVED_SAMPLES,
   type EffectiveFalPricing,
 } from './fal-cost';
+import { aspectRatioToImageSize } from '@/models/aspect-ratios';
+import { buildMotionRequest } from '@/motion/server/build-model-input';
+import { buildImageRequest } from '@/stills/build-image-request';
+import { BYTEPLUS_RATE_CARD } from './byteplus-pricing';
 import { micros, usdToMicros, ZERO_MICROS } from './money';
 import { RATE_CARDS } from './rate-card/cards';
 import type { RateCard } from './rate-card/rate-card.schema';
@@ -349,31 +353,135 @@ describe('estimateFalCost with a rate card (#1605)', () => {
   });
 
   test('calibration multiplies the card once enough observations back it', () => {
-    // The reconcile measured fal billing 1.6× what the card says.
+    // The reconcile measured fal billing 1.2× what the card says.
     expect(
       estimateFalCost(
         H3,
         { durationSeconds: 5, request },
         carded({
           rateCardCalibration: {
-            ratio: 1.6,
+            ratio: 1.2,
             sampleCount: MIN_OBSERVED_SAMPLES,
           },
         })
       )
-    ).toBe(usd(0.32));
+    ).toBe(usd(0.24));
     expect(
       estimateFalCost(
         H3,
         { durationSeconds: 5, request },
         carded({
           rateCardCalibration: {
-            ratio: 1.6,
+            ratio: 1.2,
             sampleCount: MIN_OBSERVED_SAMPLES - 1,
           },
         })
       )
     ).toBe(usd(0.2));
+  });
+
+  test('a calibration outside the drift band skips the card instead of scaling a misread', () => {
+    // A lever bound wrong (or an ended promo) reads 0.000001 or 4×: the
+    // observed units the same samples back take over — never $0.0000002.
+    for (const ratio of [0.000001, 0.5, 4]) {
+      expect(
+        estimateFalCost(
+          H3,
+          { durationSeconds: 5, request },
+          carded({
+            rateCardCalibration: { ratio, sampleCount: MIN_OBSERVED_SAMPLES },
+          })
+        )
+      ).toBe(usd(0.2));
+    }
+  });
+
+  test('an Ark-aliased Seedance card prices the portrait and square shots the app builds', () => {
+    // What `applyBytePlusRouteAliases` installs on the fal ids in prod. The
+    // card used to refuse every non-16:9 request (`dims[720p][9:16]`) and
+    // send the shot to the $0.10 floor.
+    const ark = BYTEPLUS_RATE_CARD['dreamina-seedance-2-5-260628'];
+    if (!ark) throw new Error('no Ark 2.5 entry');
+    for (const aspectRatio of ['16:9', '9:16', '1:1'] as const) {
+      const { endpointId, input } = buildMotionRequest(
+        {
+          imageUrl: 'https://example.com/still.jpg',
+          prompt: 'A person walking',
+          model: 'seedance_v2_5',
+          duration: 5,
+          aspectRatio,
+          resolution: '720p',
+        },
+        'seedance_v2_5'
+      );
+      expect(
+        Number(
+          estimateFalCost(
+            endpointId,
+            { durationSeconds: 5, request: input },
+            { [endpointId]: ark }
+          )
+        )
+      ).toBeCloseTo(1_155_600, -2);
+    }
+    const ark20 = BYTEPLUS_RATE_CARD['dreamina-seedance-2-0-260128'];
+    if (!ark20) throw new Error('no Ark 2.0 entry');
+    const fourK = buildMotionRequest(
+      {
+        imageUrl: 'https://example.com/still.jpg',
+        prompt: 'A person walking',
+        model: 'seedance_v2',
+        duration: 5,
+        aspectRatio: '9:16',
+        resolution: '4k',
+      },
+      'seedance_v2'
+    );
+    expect(
+      estimateFalCost(
+        fourK.endpointId,
+        { durationSeconds: 5, request: fourK.input },
+        { [fourK.endpointId]: ark20 }
+      )
+    ).not.toBeNull();
+  });
+
+  test('the GPT Image 2.5 card prices the sizes buildImageRequest actually sends', () => {
+    const GPT = 'openai/gpt-image-2.5/flare/text-to-image';
+    const card = RATE_CARDS[GPT];
+    if (!card) throw new Error('no GPT hand card');
+    const live = {
+      [GPT]: {
+        unitPrice: micros(1_000_000),
+        unit: 'units',
+        rateCard: { card, verified: true },
+      },
+    };
+    const price = (
+      aspectRatio: '16:9' | '9:16' | '1:1',
+      resolution?: '720p' | '1080p' | '4k'
+    ) =>
+      estimateFalCost(
+        GPT,
+        {
+          request: buildImageRequest({
+            model: 'gpt_image_2',
+            prompt: '',
+            imageSize: aspectRatioToImageSize(aspectRatio),
+            numImages: 1,
+            resolution,
+          }).input,
+        },
+        live
+      );
+    // Presets (no tier) and tier pixels, by band row.
+    expect(price('16:9')).toBe(usd(0.03612));
+    expect(price('9:16')).toBe(usd(0.04116));
+    expect(price('1:1')).toBe(usd(0.05268));
+    expect(price('16:9', '720p')).toBe(usd(0.03612));
+    expect(price('16:9', '1080p')).toBe(usd(0.0396));
+    expect(price('16:9', '4k')).toBe(usd(0.10008));
+    expect(price('9:16', '4k')).toBe(usd(0.10008));
   });
 
   test('no request → the card is skipped, not priced at its defaults', () => {

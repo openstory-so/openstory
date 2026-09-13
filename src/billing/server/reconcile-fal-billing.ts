@@ -35,7 +35,10 @@ import {
 import { FAL_UNVERIFIED_SIBLINGS } from '@/billing/fal-typical-units';
 import { micros, microsToUsd, usdToMicros } from '@/billing/money';
 import { evaluateRateCard } from '@/billing/rate-card/evaluate';
-import { pricingLeversSchema } from '@/billing/rate-card/levers';
+import {
+  hasUnpricedVideoInput,
+  pricingLeversSchema,
+} from '@/billing/rate-card/levers';
 import { rateCardSchema } from '@/billing/rate-card/rate-card.schema';
 import {
   modelPricing,
@@ -44,7 +47,7 @@ import {
   transactions,
 } from '@/platform/server/db/schema';
 import { getLogger } from '@/platform/logger';
-import { and, desc, eq, gte, isNotNull, lte } from 'drizzle-orm';
+import { and, eq, gt, gte, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import {
   type PricingRefreshDb,
   writeObservedUnits,
@@ -182,6 +185,15 @@ export async function reconcileFalBilling(
 const CALIBRATION_WINDOW_DAYS = 90;
 const CALIBRATION_SAMPLES_PER_ENDPOINT = 200;
 
+/** Raw-SQL JSON columns arrive as text; a malformed row fails the schema parse. */
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
 /** Sorted-list quantile, nearest rank. */
 function quantile(sorted: number[], q: number): number {
   const index = Math.min(sorted.length - 1, Math.ceil(q * sorted.length) - 1);
@@ -196,7 +208,10 @@ function quantile(sorted: number[], q: number): number {
  * it once `MIN_OBSERVED_SAMPLES` back it — and every endpoint is reported
  * (`rate_card_drift`), with a warn outside the drift band. Rows whose unit
  * price is not bill-verified are skipped: an advertised rate would only
- * compare the page with itself. Report + calibration only; no ledger change.
+ * compare the page with itself. So is a card past its promo end — the
+ * estimator no longer uses it (`readRateCard`), and replaying post-promo
+ * bills through it would only report the promo. Report + calibration only;
+ * no ledger change.
  */
 export async function calibrateRateCards(
   db: PricingRefreshDb,
@@ -210,7 +225,11 @@ export async function calibrateRateCards(
         eq(modelPricing.provider, 'fal'),
         eq(modelPricing.rateCardVerified, true),
         isNotNull(modelPricing.rateCard),
-        isNotNull(modelPricing.rateVerifiedAt)
+        isNotNull(modelPricing.rateVerifiedAt),
+        or(
+          isNull(modelPricing.rateCardExpiresAt),
+          gt(modelPricing.rateCardExpiresAt, now)
+        )
       )
     );
   if (rows.length === 0) return 0;
@@ -218,27 +237,35 @@ export async function calibrateRateCards(
   const cutoff = new Date(
     now.getTime() - CALIBRATION_WINDOW_DAYS * 24 * 60 * 60 * 1000
   );
-  const observations = await db
-    .select({
-      endpointId: modelUsageObservations.endpointId,
-      unitsBilled: modelUsageObservations.unitsBilled,
-      requestParams: modelUsageObservations.requestParams,
-    })
-    .from(modelUsageObservations)
-    .where(
-      and(
-        eq(modelUsageObservations.provider, 'fal'),
-        isNotNull(modelUsageObservations.requestParams),
-        gte(modelUsageObservations.createdAt, cutoff)
-      )
-    )
-    .orderBy(desc(modelUsageObservations.createdAt));
+  // Newest-first cap per endpoint in SQL (the `computeObservedUnits` shape):
+  // once every generation records levers, the window holds tens of
+  // thousands of JSON rows and a busy model must not pull them all into
+  // the Worker to keep 200.
+  const observations = await db.all<{
+    endpoint_id: string;
+    units_billed: number;
+    request_params: string;
+  }>(sql`
+    SELECT endpoint_id, units_billed, request_params FROM (
+      SELECT
+        ${modelUsageObservations.endpointId} AS endpoint_id,
+        ${modelUsageObservations.unitsBilled} AS units_billed,
+        ${modelUsageObservations.requestParams} AS request_params,
+        ROW_NUMBER() OVER (
+          PARTITION BY ${modelUsageObservations.endpointId}
+          ORDER BY ${modelUsageObservations.createdAt} DESC
+        ) AS rn
+      FROM ${modelUsageObservations}
+      WHERE ${modelUsageObservations.provider} = 'fal'
+        AND ${modelUsageObservations.requestParams} IS NOT NULL
+        AND ${modelUsageObservations.createdAt} > ${Math.floor(cutoff.getTime() / 1000)}
+    ) WHERE rn <= ${CALIBRATION_SAMPLES_PER_ENDPOINT}
+  `);
   const byEndpoint = new Map<string, typeof observations>();
   for (const observation of observations) {
-    const list = byEndpoint.get(observation.endpointId) ?? [];
-    if (list.length >= CALIBRATION_SAMPLES_PER_ENDPOINT) continue;
+    const list = byEndpoint.get(observation.endpoint_id) ?? [];
     list.push(observation);
-    byEndpoint.set(observation.endpointId, list);
+    byEndpoint.set(observation.endpoint_id, list);
   }
 
   let calibrated = 0;
@@ -251,14 +278,22 @@ export async function calibrateRateCards(
     const ratios: number[] = [];
     let refused = 0;
     for (const sample of samples) {
-      const levers = pricingLeversSchema.safeParse(sample.requestParams);
-      if (!levers.success || sample.unitsBilled <= 0) {
+      const levers = pricingLeversSchema.safeParse(
+        parseJson(sample.request_params)
+      );
+      // A clip sample with no seconds lever would replay at the no-video
+      // rate and drag the median — refused, not guessed.
+      if (
+        !levers.success ||
+        sample.units_billed <= 0 ||
+        hasUnpricedVideoInput(levers.data)
+      ) {
         refused++;
         continue;
       }
       try {
         const { usd } = evaluateRateCard(card.data, levers.data);
-        ratios.push((sample.unitsBilled * unitUsd) / usd);
+        ratios.push((sample.units_billed * unitUsd) / usd);
       } catch {
         refused++;
       }

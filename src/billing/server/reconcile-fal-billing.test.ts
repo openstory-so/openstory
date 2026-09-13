@@ -339,6 +339,44 @@ describe('reconcileFalBilling', () => {
       expect(rateCardReports).toHaveLength(0);
     });
 
+    test('a card past its promo end is not calibrated — the estimator no longer uses it', async () => {
+      await db
+        .insert(modelPricing)
+        .values(klingRow({ rateCardExpiresAt: new Date(Date.now() - 1000) }));
+      await db
+        .insert(modelUsageObservations)
+        .values([observation(0, 6, { duration: '5', generate_audio: true })]);
+      const { reconcileFalBilling } = await load([]);
+
+      const summary = await reconcileFalBilling({ billingKey: 'admin' });
+
+      expect(summary?.rateCardsCalibrated).toBe(0);
+      expect(rateCardReports).toHaveLength(0);
+    });
+
+    test('a clip sample with no seconds lever is refused, not replayed at the no-video rate', async () => {
+      await db.insert(modelPricing).values(klingRow());
+      await db.insert(modelUsageObservations).values([
+        observation(0, 6, { duration: '5', generate_audio: true }),
+        observation(1, 6, {
+          duration: '5',
+          generate_audio: true,
+          video_urls: [null],
+        }),
+        observation(2, 6, {
+          duration: '5',
+          generate_audio: true,
+          video_urls: [null],
+          input_video_duration: 0.0001,
+        }),
+      ]);
+      const { reconcileFalBilling } = await load([]);
+
+      await reconcileFalBilling({ billingKey: 'admin' });
+
+      expect(rateCardReports[0]).toMatchObject({ sampleCount: 2, refused: 1 });
+    });
+
     test('runs without a billing key — the bill is already in D1', async () => {
       await db.insert(modelPricing).values(klingRow());
       await db

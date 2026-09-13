@@ -111,8 +111,12 @@ export type RateCardDriftContext = {
   p90Ratio: number;
 };
 
-/** Outside this band the card is misreading the page, not just "roughly". */
-const RATE_CARD_DRIFT_BAND = { min: 0.75, max: 1.33 };
+/**
+ * Outside this band the card is misreading the page, not just "roughly":
+ * the reconcile warns, and the estimator stops applying the card
+ * (`rateCardEstimate`) rather than scaling a misread by a misread.
+ */
+export const RATE_CARD_DRIFT_BAND = { min: 0.75, max: 1.33 };
 
 /**
  * How a verified rate card compares to what fal billed for the requests we

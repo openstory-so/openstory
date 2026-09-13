@@ -20,7 +20,11 @@ import { bytePlusVideoUnitsBilled } from '@/billing/byteplus-pricing';
 import { withBytePlusQuotaRetry } from '@/models/server/quota-retry';
 import { falCostFromUnits } from '@/billing/server/fal-cost-billing';
 import { estimateFalCost, type EffectiveFalPricing } from '@/billing/fal-cost';
-import { type PricingLevers, pricingLevers } from '@/billing/rate-card/levers';
+import {
+  type PricingLevers,
+  pricingLevers,
+  videoInputLever,
+} from '@/billing/rate-card/levers';
 import {
   createDeadlineFetch,
   FAL_REQUEST_TIMEOUT_MS,
@@ -360,8 +364,12 @@ async function submitFalMotionJob(
     usedOwnKey: key.source === 'team',
     endpointId: endpoint.endpointId,
     // Levers only: the body carries stills that can be data URIs, and this
-    // rides a durable step payload.
-    requestParams: pricingLevers(modelInput),
+    // rides a durable step payload. Clip seconds are a card-level lever the
+    // body does not carry.
+    requestParams: {
+      ...pricingLevers(modelInput),
+      ...videoInputLever(options.referenceImages ?? []),
+    },
   };
 }
 
@@ -918,8 +926,9 @@ export function calculateMotionMetadata(
         'resolution' in input && typeof input.resolution === 'string'
           ? input.resolution
           : undefined,
-      // The exact body fal will receive — a rate card binds its levers.
-      request: input,
+      // The exact body fal will receive — a rate card binds its levers —
+      // plus the clips' seconds, which the body carries only as URLs.
+      request: { ...input, ...videoInputLever(options.referenceImages ?? []) },
     },
     pricing
   );

@@ -12,7 +12,10 @@ import {
   BYTEPLUS_SEEDANCE_2_0_MINI,
 } from './byteplus-seedance-2-0';
 import { BYTEPLUS_SEEDREAM_5_0_PRO } from './byteplus-seedream-5-0-pro';
-import { GPT_IMAGE_2_5_FLARE_TEXT_TO_IMAGE } from './gpt-image-2-5-flare-text-to-image';
+import {
+  GPT_IMAGE_2_5_FLARE_EDIT,
+  GPT_IMAGE_2_5_FLARE_TEXT_TO_IMAGE,
+} from './gpt-image-2-5-flare-text-to-image';
 import { GROK_IMAGINE_VIDEO_REFERENCE_TO_VIDEO } from './grok-imagine-video-reference-to-video';
 import {
   H3_MAX_IMAGE_TO_VIDEO,
@@ -33,6 +36,7 @@ export const RATE_CARDS: Readonly<Record<string, RateCard>> = {
   'minimax/h3-max/reference-to-video': H3_MAX_REFERENCE_TO_VIDEO,
   'fal-ai/nano-banana-2': NANO_BANANA_2,
   'openai/gpt-image-2.5/flare/text-to-image': GPT_IMAGE_2_5_FLARE_TEXT_TO_IMAGE,
+  'openai/gpt-image-2.5/flare/edit': GPT_IMAGE_2_5_FLARE_EDIT,
   ...SEEDANCE_FAL_RATE_CARDS,
 };
 

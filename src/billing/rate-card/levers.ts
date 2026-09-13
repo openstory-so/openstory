@@ -60,3 +60,38 @@ export function pricingLevers(body: Record<string, unknown>): PricingLevers {
   }
   return out;
 }
+
+/** Request list fields that carry reference clips. */
+const VIDEO_LIST_PARAMS = ['video_urls', 'reference_video_urls'] as const;
+
+/**
+ * The card-level lever for reference clips: `input_video_duration`, the
+ * clips' total seconds. Not a provider param — the body carries only URLs —
+ * so it is added to the levers the estimator and the observation see, never
+ * to the request. Empty when no clip is attached, so a card without the
+ * input is unaffected.
+ */
+export function videoInputLever(
+  references: ReadonlyArray<{
+    kind?: string;
+    durationSeconds?: number | null;
+  }>
+): { input_video_duration?: number } {
+  const seconds = references
+    .filter((ref) => ref.kind === 'video')
+    .reduce((sum, ref) => sum + (ref.durationSeconds ?? 0), 0);
+  return seconds > 0 ? { input_video_duration: seconds } : {};
+}
+
+/**
+ * True when the request carried clips but recorded no `input_video_duration`
+ * (studio does not know its clips' lengths): the card would replay it at the
+ * no-video rate, so calibration counts it as refused instead.
+ */
+export function hasUnpricedVideoInput(levers: PricingLevers): boolean {
+  if (levers.input_video_duration != null) return false;
+  return VIDEO_LIST_PARAMS.some((param) => {
+    const list = levers[param];
+    return Array.isArray(list) && list.length > 0;
+  });
+}

@@ -22,6 +22,7 @@
 // (the billing half) lives in `@/billing/server/fal-cost-billing`.
 import type { EffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import { evaluateRateCard, RateCardError } from './rate-card/evaluate';
+import { RATE_CARD_DRIFT_BAND } from './billing-observability';
 import { type Microdollars, multiplyMicros, usdToMicros } from './money';
 import { getLogger } from '@/platform/logger';
 
@@ -134,7 +135,11 @@ export function knownUnitsPerCall(
  * users really sent, not over one default shape — so a card that is
  * systematically 5% under (fal's "roughly" per-second figures) or reads a
  * promo that ended becomes calibrated rather than replaced. Below
- * `MIN_OBSERVED_SAMPLES` the multiplier is 1.
+ * `MIN_OBSERVED_SAMPLES` the multiplier is 1. A median outside
+ * `RATE_CARD_DRIFT_BAND` means the card is misreading the page (a lever
+ * bound wrong, a promo the text no longer names): scaling it would keep a
+ * wrong shape, so the card is skipped and the unit counts — which the same
+ * samples back — take over until the cron re-extracts.
  *
  * Null when the card cannot stand behind a number: unverified, past its
  * promo end, or refusing the request (a size the table does not price). The
@@ -153,11 +158,16 @@ function rateCardEstimate(
   try {
     const { usd } = evaluateRateCard(rateCard.card, request);
     const calibration = pricing.rateCardCalibration;
-    const factor =
-      calibration && calibration.sampleCount >= MIN_OBSERVED_SAMPLES
-        ? calibration.ratio
-        : 1;
-    return usdToMicros(usd * factor);
+    if (!calibration || calibration.sampleCount < MIN_OBSERVED_SAMPLES) {
+      return usdToMicros(usd);
+    }
+    if (
+      calibration.ratio < RATE_CARD_DRIFT_BAND.min ||
+      calibration.ratio > RATE_CARD_DRIFT_BAND.max
+    ) {
+      return null;
+    }
+    return usdToMicros(usd * calibration.ratio);
   } catch (error) {
     logger.warn(
       `${endpointId}: rate card refused the request — estimating from unit counts`,

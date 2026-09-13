@@ -54,7 +54,17 @@ honest unknown; a made-up number is a wrong credit gate.
   `BYTEPLUS_RATE_CARD` in code, keyed by Ark model id, and are aliased onto
   the fal endpoint ids (with the unit price) when Ark is configured. They
   bind the fal-shaped levers the estimator builds, not Ark's `size`
-  template.
+  template. Their dimension tables are keyed by resolution alone: Ark sizes
+  a resolution class to the same pixel area whatever the ratio (frame jobs
+  send `adaptive_<resolution>` and let the still pick it), the token
+  formula reads only w × h, and BytePlus publishes no per-ratio sizes — so
+  a 9:16 or 1:1 shot prices at the 16:9 area instead of refusing.
+- **Sizes outside a table.** GPT Image 2.5 prices a canonical size × quality
+  table, and the app sends fal presets or tier pixels (1280×720, 1072×1072)
+  that are not in it; the table is not linear in area, so a size cannot be
+  priced from the token rate. The card quotes the canonical row of the
+  request's size band (large rows by area, 1024 rows by orientation) — the
+  page's nearest stated figure — and calibration corrects the band.
 
 ## Verification
 
@@ -107,7 +117,17 @@ So the card is checked against the bill continuously:
   p90; the median outside [0.75, 1.33] warn-logs.
 - The estimator multiplies the card's USD by the median once
   `MIN_OBSERVED_SAMPLES` back it. "Advertised" becomes "calibrated" over
-  time without replacing the card's shape.
+  time without replacing the card's shape. A median outside the band means
+  the card is misreading the page (a lever bound wrong, an ended promo):
+  the estimator then skips the card rather than scaling a misread, and the
+  unit counts the same samples back take over until the cron re-extracts.
+- Reference clips are a card-level lever: the body carries only URLs, so
+  `videoInputLever` adds `input_video_duration` (the clips' total seconds)
+  to the levers the estimator and the observation see — never to the
+  request. A sample that carried clips but no seconds (studio does not know
+  its clips' lengths) is counted as refused, not replayed at the no-video
+  rate. Cards past their promo end are not calibrated either; the estimator
+  no longer uses them. The per-endpoint sample cap is applied in SQL.
 
 Rows whose unit price is not bill-verified are skipped — comparing the page
 with itself would always read 1.0. Ark units are not fal observations, so
