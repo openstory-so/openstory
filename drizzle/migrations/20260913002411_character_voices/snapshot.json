@@ -1,8 +1,8 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "13f02176-1836-441e-99ac-82ebda5740d9",
-  "prevIds": ["7ecafcb2-4fe3-4c76-b60a-6e0f1c8a2d55"],
+  "id": "1f1d872f-118d-4db1-905a-d320080341c4",
+  "prevIds": ["43704b42-3418-4981-b1c2-e0ce362892cb"],
   "ddl": [
     {
       "name": "account",
@@ -1085,6 +1085,16 @@
       "default": null,
       "generated": null,
       "name": "movement",
+      "entityType": "columns",
+      "table": "characters"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "false",
+      "generated": null,
+      "name": "voice_only",
       "entityType": "columns",
       "table": "characters"
     },
