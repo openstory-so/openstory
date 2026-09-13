@@ -1,0 +1,17 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "wide, eye level, Scarlett (Image 1) steps into the crowded crosswalk in a black-and-neutral outfit, carrying her tote with relaxed posture and coral lips as the bright focal point., Scarlett (Image 1) crosses through the center of a broad 16:9 street frame, surrounded by commuters, taxis, delivery bikes, and mirrored towers., downtown_crosswalk, Bright late-morning daylight reflects off mirrored towers, car windows, and taxi surfaces. Sunlight flashes across moving vehicles while the pedestrian space remains evenly lit., Neutral black, gray, cream, glass blue, asphalt charcoal, taxi yellow, muted canvas, and Scarlett (Image 1)'s vivid coral lipstick as the primary saturated fashion color., Scarlett (Image 1), Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.\nImage 2 (location): Downtown Crosswalk - A busy downtown intersection framed by a broad pedestrian crosswalk",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/be22bf2ed4f33abed1857e9d04b2a646214afc5ae51ea09c6a227c0ee3b1f587.jpeg",
+          "mime_type": "image/jpeg"
+        }
+      }
+    }
+  ]
+}

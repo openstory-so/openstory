@@ -1,0 +1,23 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Instrumental cinematic electronic underscore that begins with a sparse, focused pulse in a bright apartment, gradually builds through a purposeful hallway and energized downtown crosswalk, then opens into a warm, uplifting rooftop finale. Use crisp rhythmic percussion, pulsing bass, glowing synth pads, and a spacious sense of forward motion without overpowering the visuals.",
+        "model": "fal-ai/elevenlabs/music"
+      },
+      "response": {
+        "json": {
+          "audio": {
+            "url": "https://assets.openstory.so/e2e/686af1e4922dea7aba33335222dd85c56ca7bcfff3f274cdbf6a917d8614b152.mp3",
+            "content_type": "audio/mpeg",
+            "file_name": "music_generated.mp3",
+            "file_size": 863966
+          }
+        },
+        "status": 200,
+        "billableUnits": 1
+      }
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "medium wide, eye level, Scarlett (Image 1) strides toward camera through the hallway, carrying the lipstick in one hand and a canvas tote in the other, phone still on the radiator shelf behind her., Scarlett (Image 1) stays centered against cream hallway walls, her coral lips and lipstick hand as the focal points while the tote and radiator shelf create depth behind her., apartment_hallway, Soft-to-moderate natural daylight enters from the building's windows or distant exit, producing an even corridor illumination rather than dramatic contrast., Warm cream walls, muted white and gray radiator metal, dark clothing, natural canvas, and vivid coral accents., Scarlett (Image 1), Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.\nImage 2 (location): Apartment Hallway",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/b660e85e57caecee53a84a65190cdefb24066136a8b879eac7495cb0e12cef67.jpeg",
+          "mime_type": "image/jpeg"
+        }
+      }
+    }
+  ]
+}

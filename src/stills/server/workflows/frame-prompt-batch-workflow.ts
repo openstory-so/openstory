@@ -14,7 +14,12 @@
 
 import { contentRejectionSummary } from '@/models/content-rejection';
 import type { Scene, VisualPrompt } from '@/shots/scene-analysis.schema';
-import { sceneAsContext, sceneForShot } from '@/shots/server/shot-work-items';
+import {
+  derivedShotForItem,
+  sceneAsContext,
+  sceneForShot,
+  shotWorkItems,
+} from '@/shots/server/shot-work-items';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
@@ -62,14 +67,27 @@ export class FramePromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<FrameP
 
     const visualPromptSceneBinding = this.env.FRAME_PROMPT_WORKFLOW;
 
+    // A 2+ shot scene assembles every clip's prompt from its shot-list spec
+    // (#1517) — analyze-script persists those; the LLM only authors 1-shot
+    // scenes, so those stay byte-identical.
+    const derivedSceneIds = new Set(
+      shotWorkItems(scenes, shotMapping)
+        .filter((item) => derivedShotForItem(item, styleConfig))
+        .map((item) => item.scene.sceneId)
+    );
+    const llmScenes = scenes.filter(
+      (scene) => !derivedSceneIds.has(scene.sceneId)
+    );
+
     // ============================================================
     // PHASE 3: Visual Prompt Generation — fan out one
-    // FramePromptWorkflow child per scene. Spawns happen in parallel
+    // FramePromptWorkflow child per 1-shot scene. Spawns happen in parallel
     // via Promise.all; the awaits are wrapped in Promise.allSettled so a
     // single timed-out child does not tank the entire parent run (each child
     // carries its own retry budget via spawnAndAwaitChild).
     // ============================================================
-    const spawnPromises = scenes.map(async (scene, sceneIndex) => {
+    const spawnPromises = llmScenes.map(async (scene) => {
+      const sceneIndex = scenes.indexOf(scene);
       const sceneBefore = sceneIndex > 0 ? scenes[sceneIndex - 1] : undefined;
       const sceneAfter =
         sceneIndex < scenes.length - 1 ? scenes[sceneIndex + 1] : undefined;
@@ -133,7 +151,7 @@ export class FramePromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<FrameP
         const failures: Array<{ name: string; reason: string }> = [];
 
         for (const [index, outcome] of settled.entries()) {
-          const scene = scenes[index];
+          const scene = llmScenes[index];
           if (outcome.status === 'rejected') {
             logger.error(
               `[FramePromptBatchWorkflow:cf] Child frame-prompt failed for scene ${scene?.sceneId ?? `index ${index}`}:`,
@@ -179,7 +197,7 @@ export class FramePromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<FrameP
         // parent pipeline threads them to the next phase rather than re-reading
         // the racy DB mirror.
         const visualPromptsBySceneId: Record<string, VisualPrompt> = {};
-        for (const scene of scenes) {
+        for (const scene of llmScenes) {
           const enrichment = successResults.find(
             (s) => s.childResult.sceneId === scene.sceneId
           );
@@ -188,7 +206,7 @@ export class FramePromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<FrameP
               `Scene ID mismatch in visual prompts: expected "${scene.sceneId}" but AI returned [${successResults
                 .map((s) => s.childResult.sceneId)
                 .join(', ')}]. ` +
-                `Input had [${scenes.map((s) => s.sceneId).join(', ')}].`,
+                `Input had [${llmScenes.map((s) => s.sceneId).join(', ')}].`,
               'WorkflowValidationError'
             );
           }

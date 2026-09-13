@@ -65,9 +65,9 @@ export type ShotWorkItem = {
     frameId: string | null;
     shotNumber: number;
   };
-  /** First mapping row for this scene — keeps the LLM prompt path. */
+  /** First mapping row for this scene — the LLM prompt path when 1-shot. */
   isSceneHead: boolean;
-  /** This scene has 2+ mapping rows. */
+  /** This scene has 2+ mapping rows: every clip derives its prompts (#1517). */
   hasSiblingShots: boolean;
 };
 
@@ -154,14 +154,17 @@ function specForItem(
 }
 
 /**
- * Assembled visual + motion prompts for a non-head shot. Null when the scene
- * is 1-shot (LLM path) or the spec is missing.
+ * Assembled visual + motion prompts for a clip of a 2+ shot scene (#1517):
+ * every shot, the head included, comes from the shot-list spec — the
+ * visual-prompt / motion-prompt LLMs never re-author it. Null when the scene
+ * is 1-shot (LLM path, byte-identical to before shot lists) or the spec is
+ * missing.
  */
 export function derivedShotForItem(
   item: ShotWorkItem,
   styleConfig: StyleConfig
 ): DerivedShot | null {
-  if (!item.hasSiblingShots || item.isSceneHead) return null;
+  if (!item.hasSiblingShots) return null;
   const specs = item.scene.shots;
   if (!specs || specs.length <= 1) return null;
   const derived = deriveShots(

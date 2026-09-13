@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nImage 2 snaps the lipstick shut, puts it in the tote, and doubles back for her phone.. Camera: smooth truck\n\noverall_soundscape: lipstick click, quick footsteps, phone vibration. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/788c6391cf69a3e250c69e016bc5cb8fa18a08847bfb360fac7190a6dc4daecf.mp4",
+            "content_type": "video/mp4",
+            "file_name": "_3qMioNjOy_ac6-JY4wPd_minimax-h3.mp4",
+            "file_size": 6478610
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the young blonde woman in <Picture 1>, characterized by wavy shoulder-length hair, dark sunglasses, bright red lipstick, a black turtleneck, black trousers, a gold ring, a gold bracelet, a black boot, and a white canvas tote.\n<Subject 2> is the red lipstick held by <Subject 1> in <Picture 1>.\n<Subject 3> is the black smartphone resting on the white ledge in <Picture 1>, which will be on <Subject 1>'s person.\n\nsummary:\n[keyframe completion + video continuation] The target video shows <Subject 1> standing in a hallway, snapping <Subject 2> shut and placing it into the white tote bag on her shoulder. She then doubles back toward the ledge to retrieve <Subject 3>, with a smooth camera truck tracking the actions.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - maintaining her outfit, hair, and facial features throughout the sequence.\n<Subject 2> (appears in [Shot 1], [Shot 2]): fully_preserved - the red lipstick is the focus of the first action.\n<Subject 3> (appears in [Shot 3]): fully_preserved - retrieved from the ledge to conclude the motion.\n\ndetailed_description:\nThe video presents a cinematic, realistic lifestyle aesthetic set in a minimalist hallway with neutral cream walls and soft natural lighting. The action is quick, deliberate, and stylish.\n[Shot 1] The frame begins as a static shot from <Picture 1>. <Subject 1> stands centered, holding <Subject 2> in her right hand at chest level. Her gaze is steady forward through her sunglasses.\n[Shot 2] At 00:02.000, the shot cuts to a smooth tracking shot that trucks right with medium amplitude at a moderate speed. <Subject 1> performs a crisp, rhythmic \"snap\" motion with <Subject 2>, followed immediately by her lowering the lipstick into the white tote bag hanging on her left shoulder. Her head shifts slightly as she adjusts the bag.\n[Shot 3] At 00:04.000, the shot cuts to a smooth tracking shot that trucks left with small amplitude at a slow speed. <Subject 1> pivots sharply and walks a few steps back toward the white ledge. She reaches out and picks up <Subject 3> from the shelf with a snappy motion, ending in a confident, poised stance holding her phone.\n\noverall_soundscape:\nThe soundscape is minimalist and rhythmic, focusing on the sharp \"snap\" of the lipstick case, the soft rustle of the canvas tote, and the crisp \"clack\" of heels on the floor. A distinct electronic vibration is heard in the final shot. No dialogue or background music is present.\n\nnon_diegetic_music:\nN/A",
+          "seed": 1504520741,
+          "timings": {
+            "inference": 5.7829792849952355
+          }
+        },
+        "status": 200,
+        "billableUnits": 9.600000000000001
+      }
+    }
+  ]
+}

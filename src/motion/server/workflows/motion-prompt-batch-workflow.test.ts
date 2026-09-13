@@ -245,8 +245,8 @@ describe('MotionPromptBatchWorkflow reference-only', () => {
   });
 });
 
-describe('MotionPromptBatchWorkflow extra shots (#1486)', () => {
-  test('LLM-spawns once per scene and derives extras', async () => {
+describe('MotionPromptBatchWorkflow multi-shot scenes (#1517)', () => {
+  test('derives every clip from the spec, no LLM call', async () => {
     spawnAndAwaitChild.mockReset();
     spawnAndAwaitChild.mockImplementation(
       (_step: unknown, args: { childId: string }) =>
@@ -338,9 +338,12 @@ describe('MotionPromptBatchWorkflow extra shots (#1486)', () => {
 
     const result = await makeWorkflow().batch(event, makeStep(), SCOPED_DB);
 
-    expect(spawnAndAwaitChild).toHaveBeenCalledTimes(1);
+    // The head is a spec clip like any other: no per-scene re-author.
+    expect(spawnAndAwaitChild).not.toHaveBeenCalled();
     expect(result).toHaveLength(2);
     expect(result[0]?.shotId).toBe('sh-1');
+    expect(result[0]?.motionPrompt.fullPrompt).toContain('opens the door');
+    expect(result[0]?.finalVersionId).toBe('mpv-derived-sh-1');
     expect(result[1]?.shotId).toBe('sh-2');
     expect(result[1]?.motionPrompt.fullPrompt).toContain('cut to the hallway');
   });
