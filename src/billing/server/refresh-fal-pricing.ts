@@ -601,10 +601,13 @@ async function refreshRateCards(
       else await noteRejection(row, source.hash);
       continue;
     }
+    // An unverified extraction stored over the hand card would be re-seeded
+    // tomorrow (hand outranks unverified), wiping the attempt memory and
+    // re-extracting every night — keep the hand card and remember the text.
     const dropped = hand ? leversDropped(hand, result.card) : [];
-    if (dropped.length > 0) {
+    if (hand && (dropped.length > 0 || !result.verified)) {
       logger.warn(
-        `${row.endpointId}: extraction dropped levers the hand card binds — keeping the hand card`,
+        `${row.endpointId}: extraction ${dropped.length > 0 ? 'dropped levers the hand card binds' : 'has no worked example'} — keeping the hand card`,
         { dropped }
       );
       counts.rejected++;

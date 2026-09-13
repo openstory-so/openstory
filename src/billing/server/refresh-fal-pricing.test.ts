@@ -1369,6 +1369,43 @@ describe('refreshFalPricing rate cards (#1605)', () => {
     expect(row?.rateCard?.inputs).toEqual(hand.inputs);
   });
 
+  test('an unverified extraction never replaces the hand card, and is not retried on the same text', async () => {
+    const hand = card({ extractedAt: '2026-09-13T00:00:00Z' });
+    const unverified = () => ({
+      status: 'ok',
+      card: card({
+        extractedAt: NOW.toISOString(),
+        hash: 'b'.repeat(64),
+        rate: 0.09,
+      }),
+      verified: false,
+      results: [],
+      costMicros: 0,
+    });
+    const opts = {
+      prices: [price('fal-ai/x')],
+      handCards: { 'fal-ai/x': hand },
+      source: { 'fal-ai/x': 'b'.repeat(64) },
+      extract: unverified,
+    };
+    let mod = await load(opts);
+    await mod.refreshFalPricing({ apiKey: 'k', billingKey: 'b' });
+    expect(extractCalls).toEqual(['fal-ai/x']);
+    let row = await rowOf('fal-ai/x');
+    expect(row?.rateCard?.price).toEqual({
+      '*': [{ var: 'num_images' }, 0.08],
+    });
+    expect(row?.rateCardVerified).toBe(true);
+
+    mod = await load(opts);
+    await mod.refreshFalPricing({ apiKey: 'k', billingKey: 'b' });
+    expect(extractCalls).toEqual([]);
+    row = await rowOf('fal-ai/x');
+    expect(row?.rateCard?.price).toEqual({
+      '*': [{ var: 'num_images' }, 0.08],
+    });
+  });
+
   test('a page with no Pricing section is an absence, not a failure', async () => {
     const { refreshFalPricing } = await load({
       prices: [price('fal-ai/x')],
