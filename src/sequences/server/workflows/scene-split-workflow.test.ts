@@ -855,11 +855,43 @@ describe('SceneSplitWorkflow shot-list pass (#1486)', () => {
       scopedDb
     );
     expect(writes.mock.calls[0]?.[0]).toHaveLength(1);
+    expect(writes.mock.calls.some((call) => call[0]?.length === 2)).toBe(true);
     expect(result.scenes[0]?.shots).toHaveLength(2);
     expect(result.scenes[0]?.shots?.map((s) => s.action)).toEqual(['a', 'b']);
     expect(
       result.shotMapping.filter((m) => m.analysisSceneId === 'scene_1')
     ).toHaveLength(2);
+    // Stream announced shot 1; overwrite announces only the new shot 2;
+    // scenes 2–3 one each. Same 4 as a clean 4-shot run — not 5 (double
+    // announce of shot 1) and not 3 (skipping new shots on overwrite).
+    expect(
+      emit.mock.calls.filter((call) => call[0] === 'generation.shot:created')
+    ).toHaveLength(4);
+    expect(previewCalls()).toHaveLength(4);
+  });
+
+  test('overwrite trims a streamed list that shrank', async () => {
+    const streamed = {
+      sceneNumber: 1,
+      shots: [shotSpec(1, 'a'), shotSpec(2, 'b')],
+    };
+    const finalScene1 = {
+      sceneNumber: 1,
+      shots: [shotSpec(1, 'only')],
+    };
+    shotListParsed = { scenes: [finalScene1, ...fullCover().scenes.slice(1)] };
+    shotListPartials = [
+      `{"scenes":[${JSON.stringify(streamed)},{"sceneNumber":2,"shots":[{"shotNumber":1,"action":"${'x'.repeat(300)}`,
+    ];
+    const scopedDb = makeScopedDb();
+    const trim = vi.spyOn(scopedDb.shots, 'deleteFromShotNumber');
+    const result = await makeWorkflow().split(
+      makeEvent(),
+      makeStep(),
+      scopedDb
+    );
+    expect(result.scenes[0]?.shots).toHaveLength(1);
+    expect(trim).toHaveBeenCalledWith('dbscene_0', 2);
   });
 
   test('trims leftover shots when a scene list shrinks (#1593)', async () => {

@@ -438,9 +438,11 @@ async function runStructuredCall<T extends object>({
  * Write one scene's allocated shots and announce them (#1593): upsert the
  * scene row (stable id via orderIndex — the stream wrote it, a boundary
  * retry may not have), upsert its shots on `(sceneId, shotNumber)`, trim
- * shots past the kept count, emit `generation.shot:created` per shot and
- * fire each shot's preview (deduplicated per instance + shot, so a step
- * replay is idempotent). Returns the scene's shot mapping.
+ * shots past the kept count, emit `generation.shot:created` per new shot and
+ * fire each new shot's preview (deduplicated per instance + shot, so a step
+ * replay is idempotent). `announcedShotIds` skips emit and preview for rows
+ * already announced this step so overwrite does not double-bill. Shot rows
+ * are still upserted and extras trimmed. Returns the scene's shot mapping.
  */
 async function persistSceneShots({
   input,

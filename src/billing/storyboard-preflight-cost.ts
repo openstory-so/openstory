@@ -54,8 +54,10 @@ export type StoryboardPreflightInput = {
    */
   targetDurationSeconds?: number;
   /**
-   * Known shot count (continue / in-run grow). Wins over script heuristics
-   * so a multi-shot scene is billed as N clips, not 1 heading.
+   * Known shot count from continue (`shots.listBySequence`). Wins over
+   * script heuristics so a multi-shot board is billed as N clips, not 1
+   * heading. In-run grow uses `estimateStoryboardRenderCost.estimatedSceneCount`
+   * instead.
    */
   shotCount?: number;
   pricing: Record<string, EffectiveFalPricing>;
@@ -83,8 +85,8 @@ export function estimateStoryboardPreflightCost(
       : undefined;
   const scriptSeconds =
     targetSeconds ?? labeledSeconds ?? estimateSecondsFromText(opts.script);
-  // Shots to bill. A known count (continue, after split) wins. Else clip
-  // labels (`Shot N — Xs`, falling back to `Scene N — Xs`). An unlabelled
+  // Shots to bill. A known count from continue wins. Else per-scene clip
+  // labels (`Shot N — Xs` in that scene, else `Scene N — Xs`). An unlabelled
   // paste holds at least one typical clip per its playing time — a 90-minute
   // script is hundreds of shots, not 30 headings.
   const headingCount = estimateSceneCount(opts.script, {
@@ -93,14 +95,16 @@ export function estimateStoryboardPreflightCost(
   const grid = durationGridForModel(primaryVideo);
   const typicalClip = grid[Math.floor(grid.length / 2)] ?? 5;
   const clipCount = parseClipDurationLabels(opts.script).length;
-  const sceneCount =
-    opts.shotCount != null && opts.shotCount > 0
-      ? opts.shotCount
-      : clipCount > 0
-        ? clipCount
-        : targetSeconds == null && labeledSeconds == null
-          ? Math.max(headingCount, Math.ceil(scriptSeconds / typicalClip))
-          : headingCount;
+  let sceneCount: number;
+  if (opts.shotCount != null && opts.shotCount > 0) {
+    sceneCount = opts.shotCount;
+  } else if (clipCount > 0) {
+    sceneCount = clipCount;
+  } else if (targetSeconds == null && labeledSeconds == null) {
+    sceneCount = Math.max(headingCount, Math.ceil(scriptSeconds / typicalClip));
+  } else {
+    sceneCount = headingCount;
+  }
 
   const startFrom = opts.startFrom ?? 'script';
   const motionOn = opts.stopAt

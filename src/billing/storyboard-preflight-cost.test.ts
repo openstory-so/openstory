@@ -70,6 +70,55 @@ describe('estimateStoryboardPreflightCost', () => {
     expect(quote(twoShot)).toBeGreaterThan(quote(oneShot));
   });
 
+  it('bills mixed Enhance labels as per-scene clips, not film-wide shot labels', () => {
+    const oneShotScenes = [
+      'Scene 1 — 10s',
+      'She opens the door.',
+      'Scene 2 — 8s',
+      'She waits.',
+      'Scene 3 — 5s',
+      'A glance.',
+    ].join('\n');
+    const mixed = [
+      'Scene 1 — 10s',
+      'Shot 1 — 4s',
+      'She opens the door.',
+      'Shot 2 — 6s',
+      'Cut to the hallway beyond.',
+      'Scene 2 — 8s',
+      'She waits.',
+      'Scene 3 — 5s',
+      'A glance.',
+    ].join('\n');
+    const quote = (script: string) =>
+      Number(
+        estimateStoryboardPreflightCost({
+          ...base,
+          script,
+          autoGenerateMotion: true,
+          videoModels: [DEFAULT_VIDEO_MODEL],
+        })
+      );
+    // 4 clips (2+1+1) must quote more than 3 one-shot headings. Film-wide
+    // parseClipDurationLabels used to return only [4, 6] and under-bill.
+    expect(quote(mixed)).toBeGreaterThan(quote(oneShotScenes));
+  });
+
+  it('a known shotCount wins over heading count', () => {
+    const script = 'Scene 1 — 10s\nINT. HALL - NIGHT\nShe opens the door.';
+    const quote = (shotCount?: number) =>
+      Number(
+        estimateStoryboardPreflightCost({
+          ...base,
+          script,
+          autoGenerateMotion: true,
+          videoModels: [DEFAULT_VIDEO_MODEL],
+          shotCount,
+        })
+      );
+    expect(quote(5)).toBeGreaterThan(quote());
+  });
+
   it('treats a target under 5s as auto', () => {
     const script = 'A detective finds a letter under the door.';
     const auto = estimateStoryboardPreflightCost({
@@ -84,6 +133,13 @@ describe('estimateStoryboardPreflightCost', () => {
       autoGenerateMotion: false,
     });
     expect(zero).toBe(auto);
+    const underFloor = estimateStoryboardPreflightCost({
+      ...base,
+      script,
+      targetDurationSeconds: 4,
+      autoGenerateMotion: false,
+    });
+    expect(underFloor).toBe(auto);
   });
 
   it('quotes a long unlabelled paste by its playing time, not a 30-scene cap (#1593)', () => {
