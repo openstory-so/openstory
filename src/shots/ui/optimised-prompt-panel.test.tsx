@@ -4,8 +4,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 const selected: OptimisedPromptPreview = {
-  modelName: 'GPT Image 2',
-  endpointId: 'openai/gpt-image-2',
+  modelName: 'GPT Image 2.5',
+  endpointId: 'openai/gpt-image-2.5/flare/text-to-image',
   prompt: 'Sarah types at a sunlit coffee shop',
   json: JSON.stringify(
     { prompt: 'SECRET_JSON_MARKER', image_size: 'landscape_16_9' },

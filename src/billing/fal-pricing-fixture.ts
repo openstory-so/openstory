@@ -24,7 +24,7 @@ export const TEST_FAL_PRICING: Record<string, EffectiveFalPricing> = {
     unit: 'images',
     typicalUnitsPerCall: 1,
   },
-  'openai/gpt-image-2': {
+  'openai/gpt-image-2.5/flare/text-to-image': {
     unitPrice: micros(1_000_000),
     unit: 'units',
     typicalUnitsPerCall: 0.22,
