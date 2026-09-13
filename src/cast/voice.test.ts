@@ -55,14 +55,15 @@ describe('speakingCharacterIds', () => {
       speakingCharacterIds(cast, [scene(['THE STRANGER', 'DR. CHEN'])])
     ).toEqual(['stranger', 'chen']);
   });
-  it('treats everyone as speaking when no cue names a speaker', () => {
-    const everyone = ['sarah', 'al', 'extra'];
-    expect(speakingCharacterIds(bible, [scene(['']), scene([])])).toEqual(
-      everyone
-    );
-    expect(speakingCharacterIds(bible, [scene([]), scene([])])).toEqual(
-      everyone
-    );
+  it('a blank cue alone still means anyone could speak', () => {
+    expect(speakingCharacterIds(bible, [scene(['']), scene([])])).toEqual([
+      'sarah',
+      'al',
+      'extra',
+    ]);
+  });
+  it('no dialogue at all means no voices', () => {
+    expect(speakingCharacterIds(bible, [scene([]), scene([])])).toEqual([]);
   });
   it('fully attributed cues narrow to the speakers', () => {
     expect(speakingCharacterIds(bible, [scene(['AL']), scene([])])).toEqual([

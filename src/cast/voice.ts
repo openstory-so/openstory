@@ -45,24 +45,21 @@ const nameTokens = (name: string): string[] =>
  * Bible ids of the characters with a dialogue line in the analysed scenes.
  * Speaker cues are the LLM's spelling of the name ("SARAH"), the bible's is
  * the full one ("Detective Sarah Chen"), so they match on a shared name
- * token rather than exact text. Every character is treated as speaking when
- * the cues cannot narrow it: no cue names anyone (the slice parser found no
- * speech it recognises — prose it does not parse still produces this), or a
- * blank cue is present (`extractDialogueFromSlice` leaves "A voice from
- * below says, …" unattributed: that line could be anyone). Voices was
- * switched on, and no voice at all is the worse miss.
+ * token rather than exact text. The lines come from the shot-list call
+ * (#1585), which sees the cast list and is told to spell speakers as it
+ * does, to speak narration through the voice-only entry, and to leave the
+ * speaker empty ONLY for a voice nobody could attribute — so a blank cue
+ * means "could be anyone", and every character is treated as speaking.
+ * No dialogue at all (montage, pure narration with no narrator entry) means
+ * no voices: Voices on is not a request to design voices nobody uses.
  */
-// ponytail: a montage / pure-narration script therefore designs a voice for
-// everyone (one $0.30 call each); a "no speech at all" signal from the
-// parser is the upgrade path if that over-spend shows up.
 export function speakingCharacterIds(
   bible: readonly Pick<CharacterBibleEntry, 'characterId' | 'name'>[],
   scenes: readonly Pick<Scene, 'originalScript'>[]
 ): string[] {
   const lines = scenes.flatMap((scene) => scene.originalScript.dialogue);
   const spoken = new Set(lines.flatMap((line) => nameTokens(line.character)));
-  const unattributed = lines.some((line) => line.character.trim() === '');
-  if (spoken.size === 0 || unattributed) {
+  if (lines.some((line) => line.character.trim() === '')) {
     return bible.map((c) => c.characterId);
   }
   return bible

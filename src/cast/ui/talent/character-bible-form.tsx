@@ -140,7 +140,7 @@ export const CharacterBibleForm: React.FC<{
       </div>
       <BibleField
         idPrefix="character"
-        label={character.voiceOnly ? 'Voice' : 'Personality'}
+        label="Personality"
         name="personality"
         defaultValue={character.personality}
         textarea

@@ -441,13 +441,13 @@ the Generate dialog hides the switch (`getVoiceDesignAvailableFn`).
 `CharacterBibleWorkflow` spawns a `CharacterVoiceWorkflow` child per
 _speaking_ character (`speakingCharacterIds()`: a bible name sharing a
 non-stopword token with a dialogue speaker cue — articles and honorifics
-never match; every character when the cues cannot narrow it: none names a
-speaker, or a blank cue is present). Cues come from
-`extractDialogueFromSlice`, which reads screenplay cues AND the prose form
-the enhancer writes (`Mara says, “…”`; a pronoun subject resolves to the
-last name mentioned in the slice; "A voice from below says" stays blank =
-unattributed, could be anyone) — before #1553 every enhanced script read as
-silent, so the everyone-speaks fallback fired on all of them. The child
+never match; every character when a blank cue is present, which the
+shot-list call (#1585) emits only for a voice nobody could attribute; nobody
+when there is no dialogue at all). Cues are the shot-list call's per-shot
+lines, spelled as the cast list spells them, with narration spoken by the
+voice-only entry — `extractDialogueFromSlice` is only the streaming preview
+and never reaches the matcher. A voice-only character (`voiceOnly`, no
+sheet) is the usual narrator and gets a voice like anyone else. The child
 runs for each such character that resolves true and has no `voiceId` yet.
 A failed voice child is logged and the run continues — a voice anchors
 nothing downstream. The LLM drafts `voiceDescription` when empty
