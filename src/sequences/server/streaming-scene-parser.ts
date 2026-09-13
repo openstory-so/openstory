@@ -63,8 +63,32 @@ export function stripCodeFences(text: string): string {
   return text.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
 }
 
-function isRecord(v: unknown): v is Record<string, unknown> {
+export function isRecord(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+
+/**
+ * The entries of a partially-streamed JSON array that have finished
+ * arriving, validated in order. A partially-streamed trailing entry parses
+ * as a truncated object (parsePartialJSON completes a mid-string quote with
+ * partial content), so an entry has settled only once something follows it:
+ * a later entry, or the stream's end (`closed`). Stops at the first entry
+ * the schema rejects.
+ */
+export function settledPrefix<T>(
+  value: unknown,
+  schema: z.ZodType<T>,
+  closed: boolean
+): T[] {
+  if (!Array.isArray(value)) return [];
+  const settled = closed ? value.length : value.length - 1;
+  const out: T[] = [];
+  for (let i = 0; i < settled; i++) {
+    const parsed = schema.safeParse(value[i]);
+    if (!parsed.success) break;
+    out.push(parsed.data);
+  }
+  return out;
 }
 
 /**
@@ -147,26 +171,6 @@ export function createStreamingSceneParser(
           events.push({ type: 'title', title: pm.title });
         }
       }
-
-      // A partially-streamed trailing array entry parses as a truncated
-      // object (parsePartialJSON completes a mid-string quote with partial
-      // content), so an entry has settled only once something follows it:
-      // a later entry, or the stream's end.
-      const settledPrefix = <T>(
-        value: unknown,
-        schema: z.ZodType<T>,
-        closed: boolean
-      ): T[] => {
-        if (!Array.isArray(value)) return [];
-        const settled = closed ? value.length : value.length - 1;
-        const out: T[] = [];
-        for (let i = 0; i < settled; i++) {
-          const parsed = schema.safeParse(value[i]);
-          if (!parsed.success) break;
-          out.push(parsed.data);
-        }
-        return out;
-      };
 
       const boundaries: BoundaryAnnotation[] = settledPrefix(
         raw.boundaries,

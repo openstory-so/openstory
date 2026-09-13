@@ -74,6 +74,19 @@ export function maxShotsForScene(
   return Math.max(1, Math.floor(sceneSeconds / minClip));
 }
 
+/**
+ * How many shots a scene NEEDS: one per longest clip, so the label is
+ * reachable without any shot running past the grid. No grid → 1.
+ */
+export function minShotsForScene(
+  sceneSeconds: number,
+  grid: readonly number[]
+): number {
+  const maxClip = Math.max(...grid.filter((n) => n > 0));
+  if (!Number.isFinite(maxClip)) return 1;
+  return Math.max(1, Math.ceil(sceneSeconds / maxClip));
+}
+
 /** First `count` shots; the dialogue of the cut ones moves to the last kept (#1585). */
 function keepShots(
   ordered: ReadonlyArray<ShotSpec>,
@@ -101,9 +114,11 @@ function keepShots(
  *   Anthropic rejects `maxItems`), a lone shot takes the whole label, and
  *   several split it with `allocateClipDurations` on the model grid, the
  *   LLM's `durationSeconds` as relative weights. A label the grid cannot
- *   reach exactly (one 18s scene on a 15s-max model, or a 12s label on a
- *   {5, 10} grid) puts the residual on the last shot: the scene's length is
- *   the label, and `resolveShotDuration` snaps at submit.
+ *   reach exactly (a 12s label on a {5, 10} grid) puts the residual on the
+ *   last shot, and `resolveShotDuration` snaps at submit — but no shot ever
+ *   runs past the model's longest clip: when the pass sends fewer shots than
+ *   the label needs (ten for a 16-minute scene), the scene comes up short
+ *   rather than ending on a 14-minute "clip".
  */
 export function allocateSceneShots(
   shots: ReadonlyArray<ShotSpec> | null | undefined,
@@ -139,10 +154,14 @@ export function allocateSceneShots(
       }
     }
   }
+  const maxClip = Math.max(...grid.filter((n) => n > 0));
   return kept.map((shot, index) => ({
     ...shot,
     shotNumber: index + 1,
-    durationSeconds: seconds[index] ?? shot.durationSeconds,
+    durationSeconds: Math.min(
+      maxClip > 0 ? maxClip : Number.POSITIVE_INFINITY,
+      seconds[index] ?? shot.durationSeconds
+    ),
   }));
 }
 
@@ -191,11 +210,34 @@ export function dialogueForShot(
 }
 
 /**
- * Copy each scene and attach its allocated shot list (`allocateSceneShots`
- * on `grid`), rebuilding its dialogue from the shots. Throws when the pass
- * omits a scene: the omitted scene would otherwise keep its streamed regex
- * preview — empty for prose — with nothing telling anyone, the degrade #1585
- * removed. The transient `shotLabelSeconds` is consumed here and dropped.
+ * One scene with the pass's shots attached: allocated over its label
+ * (`allocateSceneShots` on `grid`), its dialogue rebuilt from them. The
+ * transient `shotLabelSeconds` is consumed here and dropped.
+ */
+export function attachSceneShots(
+  scene: SceneSplittingScene,
+  listed: ReadonlyArray<ShotSpec>,
+  grid: readonly number[]
+): SceneSplittingScene {
+  const shots = allocateSceneShots(listed, scene, grid);
+  const { shotLabelSeconds: _labels, ...rest } = scene;
+  return {
+    ...rest,
+    shots,
+    originalScript: {
+      ...scene.originalScript,
+      dialogue: dialogueFromShots(shots),
+    },
+  };
+}
+
+/**
+ * Copy each scene and attach its shot list (`attachSceneShots`). Entries
+ * match on `sceneNumber`; when the pass returned exactly one entry per
+ * scene they also match by position, so a mis-numbered entry still lands.
+ * Throws when the pass omits a scene: the omitted scene would otherwise
+ * keep its streamed regex preview — empty for prose — with nothing telling
+ * anyone, the degrade #1585 removed.
  */
 export function attachShotLists(
   scenes: ReadonlyArray<SceneSplittingScene>,
@@ -207,31 +249,21 @@ export function attachShotLists(
     if (!Number.isFinite(entry.sceneNumber)) continue;
     byNumber.set(entry.sceneNumber, entry.shots);
   }
+  const positional = pass.scenes.length === scenes.length;
+  const listedFor = (scene: SceneSplittingScene, index: number) =>
+    byNumber.get(scene.sceneNumber) ??
+    (positional ? pass.scenes[index]?.shots : undefined);
   const missing = scenes
-    .filter(
-      (scene, index) =>
-        !byNumber.has(scene.sceneNumber) && !byNumber.has(index + 1)
-    )
+    .filter((scene, index) => !listedFor(scene, index))
     .map((scene) => scene.sceneNumber);
   if (missing.length > 0) {
     throw new Error(
       `Shot-list pass covered ${pass.scenes.length}/${scenes.length} scenes; missing scene(s) ${missing.join(', ')}`
     );
   }
-  return scenes.map((scene, index) => {
-    const listed =
-      byNumber.get(scene.sceneNumber) ?? byNumber.get(index + 1) ?? [];
-    const shots = allocateSceneShots(listed, scene, grid);
-    const { shotLabelSeconds: _labels, ...rest } = scene;
-    return {
-      ...rest,
-      shots,
-      originalScript: {
-        ...scene.originalScript,
-        dialogue: dialogueFromShots(shots),
-      },
-    };
-  });
+  return scenes.map((scene, index) =>
+    attachSceneShots(scene, listedFor(scene, index) ?? [], grid)
+  );
 }
 
 /** Duration written onto `shots.durationMs`: the allocated spec duration. */
@@ -302,7 +334,9 @@ export function formatCastForShotList(
 
 /**
  * The `shots:` budget line for one scene (#1593): the labelled shots when
- * enhance wrote them, else how many of the model's shortest clips fit.
+ * enhance wrote them, else the range the label allows — at least one per
+ * longest clip, at most one per shortest. Without the floor the model reads
+ * "up to N" as licence for a handful and a long scene ends on one huge shot.
  */
 function shotBudgetLine(
   scene: Pick<SceneSplittingScene, 'metadata' | 'shotLabelSeconds'>,
@@ -312,9 +346,13 @@ function shotBudgetLine(
   if (labels.length > 0) {
     return `shots: exactly ${labels.length}, as labelled in the script (${labels.map((s) => `${s}s`).join(', ')})`;
   }
-  const cap = maxShotsForScene(scene.metadata.durationSeconds || 3, grid);
+  const seconds = scene.metadata.durationSeconds || 3;
+  const cap = maxShotsForScene(seconds, grid);
   if (!Number.isFinite(cap)) return undefined;
-  return cap === 1 ? 'shots: exactly 1' : `shots: up to ${cap}`;
+  const floor = Math.min(cap, minShotsForScene(seconds, grid));
+  if (cap === 1) return 'shots: exactly 1';
+  if (floor === cap) return `shots: exactly ${cap}`;
+  return floor > 1 ? `shots: ${floor} to ${cap}` : `shots: up to ${cap}`;
 }
 
 /** User-prompt body: numbered slices the model must not re-author. */

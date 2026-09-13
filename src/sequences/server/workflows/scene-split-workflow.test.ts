@@ -1,8 +1,8 @@
 /**
  * Blast-radius test for the preview-image fan-out (#1149).
  *
- * `scene-split` fires one decorative preview image per scene, on shot 1
- * (`skipStorage: true`, nothing downstream reads the result). Before this fix a single one of
+ * `scene-split` fires one decorative preview image per shot
+ * (`skipStorage: true`: a preview variant, no prompt version). Before this fix a single one of
  * them throwing — a content-checker hit on ~15% of runs in the #1143 load test
  * — failed `scene-splitting-stream`, and with it `scene-split` →
  * `analyze-script` → the whole sequence, discarding every still that had
@@ -71,6 +71,10 @@ const fullCover = () => ({
 // Set in the top-level beforeEach: `SCENES` is declared further down.
 let shotListParsed: { scenes: unknown[] } | undefined;
 let shotListError: Error | undefined;
+/** Partial chunks yielded before the shot-list call's done chunk. */
+let shotListPartials: string[] = [];
+/** Runs just before the shot-list call's done chunk is yielded. */
+let beforeShotListDone: () => void = () => {};
 function singleDoneChunk(): StreamChunk[] {
   return [
     { done: true, accumulated: '{}', parsed: SCENES_RESULT, usage: undefined },
@@ -93,6 +97,10 @@ vi.doMock('@/models/server/llm-client', () => ({
       }
       if (params.observationName === 'phase-1-scene-shot-list') {
         if (shotListError) throw shotListError;
+        for (const accumulated of shotListPartials) {
+          yield { done: false, accumulated, delta: accumulated };
+        }
+        beforeShotListDone();
         yield {
           done: true,
           accumulated: '{}',
@@ -340,6 +348,8 @@ const previewCalls = () =>
 beforeEach(() => {
   shotListParsed = fullCover();
   shotListError = undefined;
+  shotListPartials = [];
+  beforeShotListDone = () => {};
 });
 
 describe('SceneSplitWorkflow preview fan-out', () => {
@@ -348,7 +358,7 @@ describe('SceneSplitWorkflow preview fan-out', () => {
     feed.mockReset();
   });
 
-  test('triggers one preview per scene on the happy path', async () => {
+  test('triggers one preview per shot on the happy path', async () => {
     triggerWorkflow.mockReset();
     triggerWorkflow.mockResolvedValue('run_1');
 
@@ -751,19 +761,22 @@ describe('SceneSplitWorkflow shot-list pass (#1486)', () => {
     expect(
       result.shotMapping.filter((m) => m.analysisSceneId === 'scene_1')
     ).toHaveLength(2);
-    // One preview per scene, on shot 1, from the scene's slice text.
-    expect(previewCalls()).toHaveLength(SCENES.length);
-    const scenePreview = previewCalls().find((call) => {
+    // One preview per shot: a multi-shot scene's shots render their spec,
+    // a lone shot renders the scene's slice text.
+    expect(previewCalls()).toHaveLength(4);
+    const promptOf = (
+      call: (typeof previewCalls extends () => infer R ? R : never)[number]
+    ) => {
       const body = call[1];
-      return (
-        typeof body === 'object' &&
-        body !== null &&
-        'prompt' in body &&
-        typeof body.prompt === 'string' &&
-        body.prompt.includes('Scene 1 action')
-      );
-    });
-    expect(scenePreview).toBeDefined();
+      return typeof body === 'object' && body !== null && 'prompt' in body
+        ? String(body.prompt)
+        : '';
+    };
+    const prompts = previewCalls().map(promptOf);
+    expect(prompts.some((p) => p.includes('Cut to the hallway beyond'))).toBe(
+      true
+    );
+    expect(prompts.some((p) => p.includes('Scene 2 action'))).toBe(true);
     // Every shot:created is announced by reconcile, none by the stream.
     expect(
       emit.mock.calls.filter((call) => call[0] === 'generation.shot:created')
@@ -772,16 +785,51 @@ describe('SceneSplitWorkflow shot-list pass (#1486)', () => {
 
   test('no shot row exists until the shot-list pass has run (#1593)', async () => {
     // The scoped-db stub has no `shots.upsert`: a stream-time shot write
-    // would throw. The only shot write is reconcile's bulk upsert, after the
-    // shot-list step.
+    // would throw. Shot rows are written per scene, inside the shot-list
+    // step, as each scene's entry lands.
     const scopedDb = makeScopedDb();
     const writes = vi.spyOn(scopedDb.shots, 'bulkUpsert');
     await makeWorkflow().split(makeEvent(), makeStep(), scopedDb);
     const steps = lastDoMock.mock.calls.map((c) => c[0]);
-    expect(writes).toHaveBeenCalledTimes(1);
+    expect(writes).toHaveBeenCalledTimes(SCENES.length);
     expect(steps.indexOf('reconcile-shots')).toBeGreaterThan(
-      steps.indexOf('scene-shot-list')
+      steps.indexOf('scene-shot-list-1')
     );
+  });
+
+  test("a scene's shots are written and announced as soon as its entry settles, before the stream ends", async () => {
+    const scene1 = {
+      sceneNumber: 1,
+      shots: [shotSpec(1, 'a'), shotSpec(2, 'b')],
+    };
+    shotListParsed = { scenes: [scene1, ...fullCover().scenes.slice(1)] };
+    // Scene 1 has settled (scene 2 has started); scene 2 is still arriving.
+    // Padded past the parse-coalesce threshold so the chunk is parsed.
+    shotListPartials = [
+      `{"scenes":[${JSON.stringify(scene1)},{"sceneNumber":2,"shots":[{"shotNumber":1,"action":"${'x'.repeat(300)}`,
+    ];
+    const scopedDb = makeScopedDb();
+    const writes = vi.spyOn(scopedDb.shots, 'bulkUpsert');
+    let writesBeforeDone = -1;
+    let emitsBeforeDone = -1;
+    beforeShotListDone = () => {
+      writesBeforeDone = writes.mock.calls.length;
+      emitsBeforeDone = emit.mock.calls.filter(
+        (c) => c[0] === 'generation.shot:created'
+      ).length;
+    };
+    const result = await makeWorkflow().split(
+      makeEvent(),
+      makeStep(),
+      scopedDb
+    );
+    expect(writesBeforeDone).toBe(1);
+    expect(writes.mock.calls[0]?.[0]).toHaveLength(2);
+    expect(emitsBeforeDone).toBe(2);
+    // The final payload lands the rest exactly once.
+    expect(writes).toHaveBeenCalledTimes(SCENES.length);
+    expect(result.shotMapping).toHaveLength(SCENES.length + 1);
+    expect(result.scenes[0]?.shots).toHaveLength(2);
   });
 
   test("a scene's shots sum to its label on the model grid (#1593)", async () => {

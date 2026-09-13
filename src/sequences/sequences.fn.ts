@@ -492,7 +492,7 @@ export const setSequenceTargetDurationFn = createServerFn({ method: 'POST' })
     zodValidator(
       z.object({
         sequenceId: ulidSchema,
-        targetDurationSeconds: z.int().min(5).max(300).nullable(),
+        targetDurationSeconds: z.int().min(5).nullable(),
       })
     )
   )

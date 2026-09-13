@@ -44,6 +44,28 @@ describe('estimateStoryboardPreflightCost', () => {
     ).toBeGreaterThan(estimateSceneCount(script));
   });
 
+  it('quotes a long unlabelled paste by its playing time, not a 30-scene cap (#1593)', () => {
+    // ~20 pages of screenplay: 40 sluglines, ~3,600 words ≈ 20 minutes.
+    const scene =
+      'INT. HALL - NIGHT\n' + 'She walks the long hall. '.repeat(18);
+    const feature = Array.from({ length: 40 }, () => scene).join('\n\n');
+    const quote = (script: string) =>
+      Number(
+        estimateStoryboardPreflightCost({
+          ...base,
+          script,
+          autoGenerateMotion: true,
+          videoModels: [DEFAULT_VIDEO_MODEL],
+          autoGenerateMusic: true,
+          audioModels: [DEFAULT_MUSIC_MODEL],
+        })
+      );
+    // Capped at 30 stills × 5s clips, the film quoted barely above a 30-scene
+    // short. By playing time it is hundreds of clips.
+    expect(quote(feature)).toBeGreaterThan(5 * quote(scene.repeat(3)));
+    expect(estimateSceneCount(feature)).toBe(40);
+  });
+
   it('only bills motion when autoGenerateMotion is true', () => {
     const script = 'Scene 1 — 5s\nA room.\n\nScene 2 — 5s\nAnother room.';
     const stills = Number(

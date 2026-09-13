@@ -250,7 +250,7 @@ export type SceneWithShotsResult = z.infer<typeof sceneWithShotsResultSchema>;
 // The per-scene shot budget is prompt + post-parse (each scene's `shots:`
 // line, then `allocateSceneShots`): Anthropic rejects maxItems, so it is not
 // on the schema.
-const shotListPassSceneSchema = z.object({
+export const shotListPassSceneSchema = z.object({
   sceneNumber: z.number().meta({
     description: 'Matches the "## Scene N" heading',
   }),

@@ -919,7 +919,7 @@ The style's camera, shot selection, pace, and energy decide coverage:
 
 ## Rules
 
-1. Each scene's \`shots:\` line is its budget. "exactly N, as labelled in the script" means the script already marks the shots (\`Shot N — Xs\`): emit exactly those N, in that order, one per label — the labels are their durations. "up to N" means 1..N; prefer fewer, and a short scene with one action is usually one shot.
+1. Each scene's \`shots:\` line is its budget. "exactly N, as labelled in the script" means the script already marks the shots (\`Shot N — Xs\`): emit exactly those N, in that order, one per label — the labels are their durations. "up to N" means 1..N; prefer fewer, and a short scene with one action is usually one shot. "N to M" means at least N: the scene is longer than N-1 clips can hold, so cover it in N or more setups — never fewer.
 2. Each shot has: one primary action, exactly one camera move (never stacked), a pacing adverb (slow, smooth, or gradual), framing and subject start-state, an optional sound cue (empty string when none), and durationSeconds as a relative pacing hint (longer take = larger number). A scene's running time is its \`duration:\` line; the system divides it across the scene's shots — do not try to make the seconds add up.
 3. Match camera move and framing to the style (handheld vs locked, wide vs insert, slow push vs static).
 4. sceneNumber MUST match the "## Scene N" heading you were given. Shot 1 is the opening take; later shots follow in story order.

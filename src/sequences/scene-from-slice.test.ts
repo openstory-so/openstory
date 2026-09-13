@@ -182,6 +182,20 @@ describe('buildSceneFromSlice', () => {
     expect(scene.shotLabelSeconds).toEqual([4, 6]);
   });
 
+  it('unlabelled scene length is its word count at three words a second, uncapped (#1593)', () => {
+    const page = Array.from(
+      { length: 30 },
+      () => 'She walks the long hall.'
+    ).join('\n');
+    // 150 words → 50s; the old 10s ceiling made every pasted feature scene one shot.
+    expect(
+      buildSceneFromSlice('scene_1', 0, page).metadata.durationSeconds
+    ).toBe(50);
+    expect(
+      buildSceneFromSlice('scene_1', 0, 'Dawn.').metadata.durationSeconds
+    ).toBe(3);
+  });
+
   it('has no shotLabelSeconds when the slice is unlabelled', () => {
     const scene = buildSceneFromSlice('scene_1', 0, 'A man walks in.');
     expect('shotLabelSeconds' in scene).toBe(false);

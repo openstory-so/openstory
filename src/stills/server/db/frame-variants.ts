@@ -561,6 +561,7 @@ export function createFrameVariantsMethods(db: Database) {
       sequenceId: string;
       model: string;
       url: string;
+      storagePath: string;
       promptHash: string | null;
       workflowRunId: string;
     }): Promise<FrameVariant> => {
@@ -583,7 +584,7 @@ export function createFrameVariantsMethods(db: Database) {
           kind: 'preview',
           model: input.model,
           url: input.url,
-          storagePath: null,
+          storagePath: input.storagePath,
           status: 'completed',
           generatedAt: new Date(),
           promptHash: input.promptHash,

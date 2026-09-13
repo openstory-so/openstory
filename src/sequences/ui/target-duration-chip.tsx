@@ -1,16 +1,19 @@
 /**
- * Film-length chip on the scene rail (#1593): the cut's running time — the
- * sum of every shot's `durationMs` — next to the sequence target. Click to
- * change the target (presets, or Auto = null, "as long as the script needs").
- * The target steers Enhance and the credit estimate only; it never rebalances
- * shots, so the chip is where the two numbers meet.
+ * Film-length chip (#1593). On the scene rail it shows the cut's running time
+ * — the sum of every shot's `durationMs` — next to the sequence target; in
+ * Sequence settings it shows the target alone. Click to change the target
+ * (presets, any number of seconds, or Auto = null, "as long as the script
+ * needs"). Only Enhance sets it at create; it steers Enhance and the credit
+ * estimate and never rebalances shots.
  */
 
 import { Popover, PopoverContent, PopoverTrigger } from '@/ui/shadcn/popover';
 import { ToggleGroup, ToggleGroupItem } from '@/ui/shadcn/toggle-group';
+import { Input } from '@/ui/shadcn/input';
 import { useSetSequenceTargetDuration } from './use-sequences';
 import { errorMessage } from '@/platform/errors';
 import { toast } from 'sonner';
+import { useId } from 'react';
 
 export const TARGET_DURATION_PRESETS = [
   { value: '15', label: '15s', seconds: 15 },
@@ -32,17 +35,30 @@ export function formatSeconds(seconds: number): string {
 
 export const TargetDurationChip: React.FC<{
   sequenceId: string;
-  /** Sum of `shots.durationMs` across the live cut. */
-  totalSeconds: number;
+  /** Sum of `shots.durationMs` across the live cut; omit to show the target alone. */
+  totalSeconds?: number;
   /** `sequences.targetDurationSeconds`; null / undefined = auto. */
   targetDurationSeconds: number | null | undefined;
 }> = ({ sequenceId, totalSeconds, targetDurationSeconds }) => {
   const setTarget = useSetSequenceTargetDuration(sequenceId);
+  const customId = useId();
   const target = targetDurationSeconds ?? null;
+  const targetLabel = target === null ? 'Auto' : formatSeconds(target);
   const label =
-    target === null
-      ? formatSeconds(totalSeconds)
-      : `${formatSeconds(totalSeconds)} · target ${formatSeconds(target)}`;
+    totalSeconds === undefined
+      ? targetLabel
+      : target === null
+        ? formatSeconds(totalSeconds)
+        : `${formatSeconds(totalSeconds)} · target ${targetLabel}`;
+  const commit = (next: number | null) => {
+    if (next === target) return;
+    setTarget.mutate(next, {
+      onError: (error) =>
+        toast.error('Failed to set target length', {
+          description: errorMessage(error),
+        }),
+    });
+  };
 
   return (
     <Popover>
@@ -50,7 +66,11 @@ export const TargetDurationChip: React.FC<{
         <button
           type="button"
           className="rounded-md px-1.5 py-0.5 text-xs tabular-nums text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-          aria-label={`Running time ${label}. Change target length`}
+          aria-label={
+            totalSeconds === undefined
+              ? `Target length ${label}. Change`
+              : `Running time ${label}. Change target length`
+          }
           data-testid="film-length-chip"
         >
           {label}
@@ -64,14 +84,7 @@ export const TargetDurationChip: React.FC<{
             value={target === null ? 'auto' : String(target)}
             onValueChange={(value) => {
               if (!value) return;
-              const next = value === 'auto' ? null : Number(value);
-              if (next === target) return;
-              setTarget.mutate(next, {
-                onError: (error) =>
-                  toast.error('Failed to set target length', {
-                    description: errorMessage(error),
-                  }),
-              });
+              commit(value === 'auto' ? null : Number(value));
             }}
             variant="outline"
             size="sm"
@@ -84,6 +97,29 @@ export const TargetDurationChip: React.FC<{
               </ToggleGroupItem>
             ))}
           </ToggleGroup>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <label htmlFor={customId}>Custom</label>
+            <Input
+              id={customId}
+              key={target ?? 'auto'}
+              type="number"
+              inputMode="numeric"
+              min={5}
+              step={1}
+              defaultValue={target ?? ''}
+              placeholder="seconds"
+              className="h-8 w-24 text-base md:text-sm"
+              onBlur={(e) => {
+                const n = Number(e.currentTarget.value);
+                if (e.currentTarget.value === '') commit(null);
+                else if (Number.isInteger(n) && n >= 5) commit(n);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur();
+              }}
+            />
+            s
+          </div>
           <p className="text-xs text-muted-foreground">
             Steers Enhance and the estimate. Shots keep their lengths.
           </p>

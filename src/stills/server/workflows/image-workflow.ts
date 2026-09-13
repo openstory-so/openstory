@@ -557,7 +557,18 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
           cancelled: true,
         };
       }
-    } else if (imageUrl && shotId && input.skipStorage) {
+    } else if (
+      imageUrl &&
+      shotId &&
+      sequenceId &&
+      teamId &&
+      input.skipStorage
+    ) {
+      // A preview lives in our bucket like every other generated asset: the
+      // provider URL expires, and an expired preview is a broken rail tile.
+      const upload = await step.do('upload-preview', async () => {
+        return uploadImageToStorage({ imageUrl, teamId, sequenceId, shotId });
+      });
       await step.do('record-preview-variant', async () => {
         const anchor = await this.resolveFrame(scopedDb, input);
         if (!anchor) {
@@ -575,25 +586,22 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
         // analysis, before a prompt version does. So it lands as its own
         // `kind: 'preview'` row: keyed by the scene text it came from, never
         // paired with a prompt version, never selectable or promotable.
-        //
-        // `skipStorage` still skips the R2 upload, deliberately, to keep the
-        // progressive reveal fast (#1091). The url expires; that is harmless
-        // precisely because nothing durable can ever point at this row.
+        // `skipStorage` names that (no version row, no status flip); the
+        // bytes are still copied into R2 above.
         await scopedDb.frameVariants.recordPreview({
           frameId: anchor.id,
           sequenceId: anchor.sequenceId,
           model: generation.params.model,
-          url: imageUrl,
+          url: upload.url,
+          storagePath: upload.path,
           promptHash: generation.prompt ? simpleHash(generation.prompt) : null,
           workflowRunId,
         });
 
-        if (sequenceId) {
-          await getGenerationChannel(sequenceId).emit(
-            'generation.image:progress',
-            { shotId, previewThumbnailUrl: imageUrl }
-          );
-        }
+        await getGenerationChannel(sequenceId).emit(
+          'generation.image:progress',
+          { shotId, previewThumbnailUrl: upload.url }
+        );
       });
     }
 

@@ -6,7 +6,12 @@
  * `autoGenerateMotion`, music only when motion+music are both on.
  */
 
-import { estimateMotionDurations } from '@/models/enhance-duration';
+import {
+  assessDurationFit,
+  estimateMotionDurations,
+} from '@/models/enhance-duration';
+import { durationGridForModel, snapDuration } from '@/motion/snap-duration';
+import { estimateSecondsFromText } from '@/sequences/scene-from-slice';
 import type { EffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import {
   DEFAULT_VIDEO_MODEL,
@@ -41,8 +46,8 @@ export type StoryboardPreflightInput = {
   /** One Voice Design call per estimated character (#1553). */
   generateVoices?: boolean;
   /**
-   * Enhance / Generate duration chip (15 / 30 / 60 / 120 / 180 / 300). Used for scene-count
-   * pre-Enhance and for per-shot / music duration when motion or music is on.
+   * The Enhance target when Enhance ran (#1593). Without it the script's own
+   * length is used: its labels, else its text at three words a second.
    */
   targetDurationSeconds?: number;
   pricing: Record<string, EffectiveFalPricing>;
@@ -54,9 +59,33 @@ export type StoryboardPreflightInput = {
 export function estimateStoryboardPreflightCost(
   opts: StoryboardPreflightInput
 ): Microdollars {
-  const sceneCount = estimateSceneCount(opts.script, {
+  const primaryVideo = opts.videoModels?.[0] ?? DEFAULT_VIDEO_MODEL;
+  // How long the script plays: the Enhance target when Enhance ran, else its
+  // labels, else the text at three words a second — the rule the scene split
+  // applies to an unlabelled scene (#1593).
+  const labeledSeconds = assessDurationFit(
+    opts.script,
+    primaryVideo
+  ).snappedSeconds;
+  const scriptSeconds =
+    opts.targetDurationSeconds ??
+    labeledSeconds ??
+    estimateSecondsFromText(opts.script);
+  // Shots to bill. Labelled scripts count their headings. An unlabelled one
+  // holds at least one typical clip (the grid's middle length) per its
+  // playing time — a 90-minute paste is hundreds of shots, not 30.
+  const headingCount = estimateSceneCount(opts.script, {
     targetDurationSeconds: opts.targetDurationSeconds,
   });
+  const grid = durationGridForModel(primaryVideo);
+  const typicalClip = snapDuration(
+    grid[Math.floor(grid.length / 2)],
+    primaryVideo
+  );
+  const sceneCount =
+    opts.targetDurationSeconds == null && labeledSeconds == null
+      ? Math.max(headingCount, Math.ceil(scriptSeconds / typicalClip))
+      : headingCount;
 
   const startFrom = opts.startFrom ?? 'script';
   const motionOn = opts.stopAt
@@ -68,18 +97,14 @@ export function estimateStoryboardPreflightCost(
       Boolean(opts.audioModels?.length)
     : Boolean(motionOn && opts.autoGenerateMusic && opts.audioModels?.length);
 
-  const primaryVideo = opts.videoModels?.[0] ?? DEFAULT_VIDEO_MODEL;
-  const motionDurations =
-    motionOn &&
-    opts.targetDurationSeconds != null &&
-    opts.targetDurationSeconds > 0
-      ? estimateMotionDurations({
-          script: opts.script,
-          targetSeconds: opts.targetDurationSeconds,
-          sceneCount,
-          model: primaryVideo,
-        })
-      : undefined;
+  const motionDurations = motionOn
+    ? estimateMotionDurations({
+        script: opts.script,
+        targetSeconds: scriptSeconds,
+        sceneCount,
+        model: primaryVideo,
+      })
+    : undefined;
 
   return estimateStoryboardCost({
     imageModel: opts.imageModel,
@@ -97,7 +122,7 @@ export function estimateStoryboardPreflightCost(
     generateVoices: opts.generateVoices,
     audioModels: musicOn ? opts.audioModels : undefined,
     audioDurationSeconds: musicOn
-      ? (motionDurations?.totalSeconds ?? opts.targetDurationSeconds)
+      ? (motionDurations?.totalSeconds ?? scriptSeconds)
       : undefined,
     pricing: opts.pricing,
   });

@@ -16,6 +16,7 @@ import {
   formatDirectorStyleForShotList,
   formatScenesForShotListPrompt,
   maxShotsForScene,
+  minShotsForScene,
   shotDurationMs,
 } from './shot-list-pass';
 
@@ -103,6 +104,15 @@ describe('maxShotsForScene', () => {
   });
 });
 
+describe('minShotsForScene', () => {
+  it('is how many longest clips the label needs, at least one', () => {
+    expect(minShotsForScene(993, SEEDANCE)).toBe(67);
+    expect(minShotsForScene(18, SEEDANCE)).toBe(2);
+    expect(minShotsForScene(5, SEEDANCE)).toBe(1);
+    expect(minShotsForScene(30, NO_GRID)).toBe(1);
+  });
+});
+
 describe('allocateSceneShots (#1593)', () => {
   const scene = (durationSeconds: number, shotLabelSeconds?: number[]) => ({
     metadata: { ...makeScene(1, 'x').metadata, durationSeconds },
@@ -129,11 +139,15 @@ describe('allocateSceneShots (#1593)', () => {
     expect(out.map((s) => s.durationSeconds)).toEqual([4, 6]);
   });
 
-  it('a lone shot takes the whole label, on or off the grid', () => {
+  it('a lone shot takes the whole label, up to the longest clip', () => {
+    expect(
+      allocateSceneShots([twoShotSpec(1)], scene(12), SEEDANCE)[0]
+        ?.durationSeconds
+    ).toBe(12);
     expect(
       allocateSceneShots([twoShotSpec(1)], scene(18), SEEDANCE)[0]
         ?.durationSeconds
-    ).toBe(18);
+    ).toBe(15);
     expect(
       allocateSceneShots([twoShotSpec(1)], scene(3), SEEDANCE)[0]
         ?.durationSeconds
@@ -157,6 +171,15 @@ describe('allocateSceneShots (#1593)', () => {
       [5, 10]
     );
     expect(out.reduce((sum, s) => sum + s.durationSeconds, 0)).toBe(12);
+  });
+
+  it('too few shots for the label leave the scene short, never a shot past the longest clip', () => {
+    const out = allocateSceneShots(
+      [1, 2, 3].map((n) => ({ ...twoShotSpec(n), shotNumber: n })),
+      scene(993),
+      SEEDANCE
+    );
+    expect(out.map((s) => s.durationSeconds)).toEqual([15, 15, 15]);
   });
 
   it('caps the count at what the label can hold; cut shots hand their lines to the last kept', () => {
@@ -529,6 +552,16 @@ describe('formatScenesForShotListPrompt', () => {
       SEEDANCE
     );
     expect(tiny).toContain('duration: 5s\nshots: exactly 1');
+    // 993s on a 4..15s grid needs 67 clips and holds 248.
+    const long = formatScenesForShotListPrompt(
+      [
+        makeScene(4, 'Siege.', {
+          metadata: { ...makeScene(4, '').metadata, durationSeconds: 993 },
+        }),
+      ],
+      SEEDANCE
+    );
+    expect(long).toContain('duration: 993s\nshots: 67 to 248');
     // No grid: no budget line.
     expect(
       formatScenesForShotListPrompt([makeScene(3, 'x')], NO_GRID)

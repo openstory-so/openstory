@@ -92,6 +92,16 @@ describe('createSequenceSchema', () => {
     }
   });
 
+  it('has no target ceiling — a pasted feature script is as long as it is (#1593)', () => {
+    const result = createSequenceSchema.safeParse({
+      script: 'A valid length script here.',
+      styleId: 'style_1',
+      aspectRatio: '16:9',
+      targetDurationSeconds: 90 * 60,
+    });
+    expect(result.success).toBe(true);
+  });
+
   it('rejects music without motion', () => {
     const result = createSequenceSchema.safeParse({
       script: 'A valid length script here.',

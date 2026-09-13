@@ -399,8 +399,8 @@ export async function runOneShotCreate(
       // reference-only (the app default) cannot exist without it.
       generateStartFrames: true,
       audioModels: input.audioModels,
-      // Same duration chip as Enhance / dashboard Generate ActionCost (#1140).
-      targetDurationSeconds: input.targetSeconds,
+      // Only Enhance sets the target (#1593); a verbatim script is auto.
+      targetDurationSeconds: enhancedScript ? input.targetSeconds : undefined,
       suggestedTalentIds: suggestedTalentIds.length
         ? suggestedTalentIds
         : undefined,

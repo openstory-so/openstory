@@ -203,9 +203,16 @@ export function extractDialogueFromSlice(slice: string): DialogueLine[] {
   return dialogue;
 }
 
-function estimateDurationSeconds(slice: string): number {
-  const nonEmpty = slice.split('\n').filter((l) => l.trim().length > 0).length;
-  return Math.max(3, Math.min(10, Math.round(nonEmpty / 2)));
+/**
+ * Playing time of unlabelled screenplay text: the rule of thumb (a page is a
+ * minute, ~170 words) is about three words a second. No ceiling — a pasted
+ * feature's two-page scene is two minutes, and its shot budget follows
+ * (#1593). Floor keeps a one-liner renderable. The credit pre-flight applies
+ * the same rule to the whole script so its quote tracks the split.
+ */
+export function estimateSecondsFromText(text: string): number {
+  const words = text.split(/\s+/).filter(Boolean).length;
+  return Math.max(3, Math.round(words / 3));
 }
 
 export function buildSceneFromSlice(
@@ -239,7 +246,7 @@ export function buildSceneFromSlice(
     },
     metadata: {
       title,
-      durationSeconds: labeledSeconds ?? estimateDurationSeconds(slice),
+      durationSeconds: labeledSeconds ?? estimateSecondsFromText(slice),
       location: heading.location,
       timeOfDay: heading.timeOfDay,
       storyBeat: '',

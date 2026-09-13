@@ -801,6 +801,9 @@ export const ScriptView: FC<{
   }, [styleCategory, videoModels]);
 
   const [targetDuration, setTargetDuration] = useState(30);
+  // Only Enhance sets the sequence's target (#1593): a pasted script's length
+  // is its own. Set when an enhance stream finishes, cleared by Undo.
+  const [enhancedTarget, setEnhancedTarget] = useState<number | null>(null);
   const [enhancePopoverOpen, setEnhancePopoverOpen] = useState(false);
   // Thinking is streamed on its own channel and kept out of `enhanceUI` — it
   // updates per token, and re-rendering the whole enhance state object on every
@@ -928,7 +931,7 @@ export const ScriptView: FC<{
       generateVoices,
       musicModel: audioModels[0] ?? DEFAULT_MUSIC_MODEL,
       audioModels,
-      targetDurationSeconds: targetDuration,
+      targetDurationSeconds: enhancedTarget ?? undefined,
       suggestedTalentIds:
         selectedTalentIds.length > 0 ? selectedTalentIds : undefined,
       suggestedLocationIds:
@@ -1115,6 +1118,7 @@ export const ScriptView: FC<{
         setScript(accumulated);
       }
       setEnhance('canUndoEnhance', true);
+      setEnhancedTarget(targetDuration);
       // Charge lands when the stream finishes — keep the credit chip in sync
       // even if the billing SSE is delayed or dropped on this request path.
       void queryClient.invalidateQueries({
@@ -1142,6 +1146,7 @@ export const ScriptView: FC<{
   const handleUndoEnhance = () => {
     setScript(previousScriptRef.current);
     setEnhance('canUndoEnhance', false);
+    setEnhancedTarget(null);
   };
 
   useEffect(() => {
@@ -1259,7 +1264,7 @@ export const ScriptView: FC<{
     audioModels,
     aspectRatio,
     resolution,
-    targetDurationSeconds: targetDuration,
+    targetDurationSeconds: enhancedTarget ?? undefined,
   };
   // The scope line names the current stop-at, and the estimate matches it.
   const storyboardCostEstimate = useDraftGenerationEstimate({
