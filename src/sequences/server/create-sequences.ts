@@ -302,7 +302,8 @@ export const createSequences = createServerOnlyFn(
       audioModels,
       referenceOnly: !generateStartFrames,
       generateVoices,
-      // Align with Generate ActionCost (duration chip → scene count + clip length).
+      // Align with Generate ActionCost (Enhance target when set; otherwise
+      // the script's own length).
       targetDurationSeconds,
       pricing: await getEffectiveFalPricing(),
     });

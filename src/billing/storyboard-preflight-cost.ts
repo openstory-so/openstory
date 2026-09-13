@@ -2,15 +2,17 @@
  * Storyboard credit pre-flight shared by create / regenerate / retry (#1140).
  *
  * Keeps UI ActionCost and server `requireCredits` on the same composition:
- * scene count (labels + optional target duration), motion only when
- * `autoGenerateMotion`, music only when motion+music are both on.
+ * shot count (clip labels, else headings, else playing time / typical clip),
+ * motion only when `autoGenerateMotion`, music only when motion+music are both
+ * on. `estimatedSceneCount` is shot stills/clips, not narrative scenes (#1593).
  */
 
 import {
   assessDurationFit,
   estimateMotionDurations,
+  parseClipDurationLabels,
 } from '@/models/enhance-duration';
-import { durationGridForModel, snapDuration } from '@/motion/snap-duration';
+import { durationGridForModel } from '@/motion/snap-duration';
 import { estimateSecondsFromText } from '@/sequences/scene-from-slice';
 import type { EffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import {
@@ -48,8 +50,14 @@ export type StoryboardPreflightInput = {
   /**
    * The Enhance target when Enhance ran (#1593). Without it the script's own
    * length is used: its labels, else its text at three words a second.
+   * Values below 5s are treated as auto (same floor as the chip).
    */
   targetDurationSeconds?: number;
+  /**
+   * Known shot count (continue / in-run grow). Wins over script heuristics
+   * so a multi-shot scene is billed as N clips, not 1 heading.
+   */
+  shotCount?: number;
   pricing: Record<string, EffectiveFalPricing>;
 };
 
@@ -67,25 +75,32 @@ export function estimateStoryboardPreflightCost(
     opts.script,
     primaryVideo
   ).snappedSeconds;
+  // 0 / 1–4 are not auto in JS (`??` keeps them) but they are not a legal
+  // chip value either. Treat anything under the 5s floor as auto.
+  const targetSeconds =
+    opts.targetDurationSeconds != null && opts.targetDurationSeconds >= 5
+      ? opts.targetDurationSeconds
+      : undefined;
   const scriptSeconds =
-    opts.targetDurationSeconds ??
-    labeledSeconds ??
-    estimateSecondsFromText(opts.script);
-  // Shots to bill. Labelled scripts count their headings. An unlabelled one
-  // holds at least one typical clip (the grid's middle length) per its
-  // playing time — a 90-minute paste is hundreds of shots, not 30.
+    targetSeconds ?? labeledSeconds ?? estimateSecondsFromText(opts.script);
+  // Shots to bill. A known count (continue, after split) wins. Else clip
+  // labels (`Shot N — Xs`, falling back to `Scene N — Xs`). An unlabelled
+  // paste holds at least one typical clip per its playing time — a 90-minute
+  // script is hundreds of shots, not 30 headings.
   const headingCount = estimateSceneCount(opts.script, {
-    targetDurationSeconds: opts.targetDurationSeconds,
+    targetDurationSeconds: targetSeconds,
   });
   const grid = durationGridForModel(primaryVideo);
-  const typicalClip = snapDuration(
-    grid[Math.floor(grid.length / 2)],
-    primaryVideo
-  );
+  const typicalClip = grid[Math.floor(grid.length / 2)] ?? 5;
+  const clipCount = parseClipDurationLabels(opts.script).length;
   const sceneCount =
-    opts.targetDurationSeconds == null && labeledSeconds == null
-      ? Math.max(headingCount, Math.ceil(scriptSeconds / typicalClip))
-      : headingCount;
+    opts.shotCount != null && opts.shotCount > 0
+      ? opts.shotCount
+      : clipCount > 0
+        ? clipCount
+        : targetSeconds == null && labeledSeconds == null
+          ? Math.max(headingCount, Math.ceil(scriptSeconds / typicalClip))
+          : headingCount;
 
   const startFrom = opts.startFrom ?? 'script';
   const motionOn = opts.stopAt

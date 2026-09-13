@@ -315,6 +315,10 @@ export const updateSequenceSchema = createUpdateSchema(sequences, {
   // while their prompts still assume one; off, no shot has a still and batch
   // motion finds nothing eligible. Regenerate instead of toggling.
   generateStartFrames: true,
+  // Chip-only write (`setSequenceTargetDurationFn`). The general update
+  // path must not set it: no 5s floor, and it is not an aspect-ratio-style
+  // regenerate trigger.
+  targetDurationSeconds: true,
   // Copied from the style row on styleId change — clients send styleId only.
   styleConfig: true,
   // Music fields - managed by workflow, not user input

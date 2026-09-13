@@ -971,7 +971,7 @@ describe('frameVariants pending claims (#1085)', () => {
 });
 
 describe("frameVariants kind: 'preview' (#1101)", () => {
-  it('records a preview keyed by scene text, with no prompt version and no storage path', async () => {
+  it('records a preview keyed by prompt hash, with no prompt version and an R2 storage path', async () => {
     const m = createFrameVariantsMethods(db);
 
     const preview = await m.recordPreview({

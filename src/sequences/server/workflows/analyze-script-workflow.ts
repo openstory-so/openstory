@@ -496,10 +496,18 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
 
     const runReferences = shouldRunStage(startFrom, stopAt, 'references');
 
-    const totalDurationSeconds = scenes.reduce(
-      (sum, scene) => sum + (scene.metadata?.durationSeconds || 5),
-      0
-    );
+    const allocatedShots = scenes.flatMap((scene) => scene.shots ?? []);
+    const shotCount = Math.max(shotMapping.length, allocatedShots.length, 1);
+    const totalDurationSeconds =
+      allocatedShots.length > 0
+        ? allocatedShots.reduce(
+            (sum, shot) => sum + (shot.durationSeconds || 0),
+            0
+          )
+        : scenes.reduce(
+            (sum, scene) => sum + (scene.metadata?.durationSeconds || 5),
+            0
+          );
 
     // The reference sheets phase 3 is about to bill, counted EXACTLY rather
     // than guessed. Casting has resolved, so this is one sheet per bible entry
@@ -547,15 +555,15 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           imageModelCount: imageModels.length,
           aspectRatio,
           resolution,
-          estimatedSceneCount: scenes.length,
+          estimatedSceneCount: shotCount,
           autoGenerateMotion,
           stopAt,
           startFrom,
           referenceOnly,
           videoModels: autoGenerateMotion ? videoModels : undefined,
           videoDurationSeconds: Math.max(
-            5,
-            Math.round(totalDurationSeconds / Math.max(scenes.length, 1))
+            1,
+            Math.round(totalDurationSeconds / shotCount)
           ),
           autoGenerateMusic: autoGenerateMusic && autoGenerateMotion,
           audioModels:

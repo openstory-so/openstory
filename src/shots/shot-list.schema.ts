@@ -58,9 +58,9 @@ import {
 } from './scene-analysis.schema';
 
 // There are no shot-count or clip-length constants here (#1593): a scene's
-// length is its script label and its shots divide it, so the only cap is
-// how many of the video model's shortest clips fit in the label
-// (`maxShotsForScene` in shot-list-pass.ts).
+// length is its script label and its shots divide it. The prompt budget is
+// `minShotsForScene`..`maxShotsForScene` (floor = longest clip, cap =
+// shortest); `allocateSceneShots` applies that after parse.
 
 // ============================================================================
 // Scene-level shared continuity (strict, union-free)

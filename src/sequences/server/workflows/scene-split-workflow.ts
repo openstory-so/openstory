@@ -191,8 +191,8 @@ const SHOT_LIST_BATCH_SCENES = 8;
 /**
  * Persist one analysis scene as a `scenes` row as soon as the stream emits
  * it, so the Scenes spine (#986) grows scene groups live. No shot row (#1593):
- * the rail shows the scene as "listing shots…" until `reconcile-shots` has
- * written the shot-list pass's rows — a placeholder shot 1 carried the scene
+ * the rail shows the scene as "listing shots…" until that scene's shot-list
+ * entry lands (`persistSceneShots`) — a placeholder shot 1 carried the scene
  * label as its duration and had to be overwritten from the spec.
  */
 async function persistStreamedScene(
@@ -217,20 +217,6 @@ async function persistStreamedScene(
   ]);
 }
 
-/**
- * Fire-and-forget preview image for one shot, routed through `triggerWorkflow`
- * so the engine registry picks whichever engine is configured for `/image` at
- * runtime. The deduplicationId makes a replay of the mega-step idempotent (see
- * dedup-ids.ts).
- *
- * Failures are swallowed by design (#1149). Previews are decorative
- * (`skipStorage: true` — a `kind: 'preview'` variant, never a prompt version;
- * the image workflow still copies it into R2), but a throw here fails
- * `scene-splitting-stream` → `scene-split` → `analyze-script` → the whole
- * sequence, discarding every still that already rendered and cost money. A
- * content-checker hit on one of ~18 previews is a routine outcome, not a
- * reason to lose the run.
- */
 /**
  * Animatic text for a shot's preview: its spec (framing + action) when the
  * scene has 2+ shots, else the scene's verbatim slice (or title). The
@@ -257,6 +243,18 @@ function previewTextForShot(
   );
 }
 
+/**
+ * Fire-and-forget preview image for one shot. Failures are swallowed by
+ * design (#1149): a throw here fails the shot-list batch step, and with it
+ * the whole sequence, discarding every still that already rendered and cost
+ * money. A content-checker hit on one of ~18 previews is a routine outcome,
+ * not a reason to lose the run. The child still reports failure (see
+ * ImageWorkflow.onFailure skipStorage emit).
+ *
+ * `skipStorage: true` names the preview path (no prompt version, no status
+ * flip); the image workflow still copies bytes into R2. The deduplicationId
+ * makes a replay of the batch step idempotent (see dedup-ids.ts).
+ */
 async function triggerPreviewImage({
   input,
   sequenceId,
@@ -451,6 +449,7 @@ async function persistSceneShots({
   parentInstanceId,
   scene,
   orderIndex,
+  announcedShotIds,
 }: {
   input: SceneSplitWorkflowInput;
   scopedDb: WorkflowScopedDb;
@@ -458,6 +457,7 @@ async function persistSceneShots({
   parentInstanceId: string;
   scene: SceneSplittingScene;
   orderIndex: number;
+  announcedShotIds?: ReadonlySet<string>;
 }): Promise<SceneSplitWorkflowResult['shotMapping']> {
   const sceneRow = await scopedDb.scenes.upsert(
     buildSceneInsert(sequenceId, scene, orderIndex)
@@ -474,12 +474,15 @@ async function persistSceneShots({
   );
   await scopedDb.shots.deleteFromShotNumber(sceneRow.id, inserts.length + 1);
   for (const row of rows) {
-    await getGenerationChannel(sequenceId).emit('generation.shot:created', {
-      shotId: row.id,
-      sceneId: scene.sceneId,
-      orderIndex,
-    });
-    if (!row.anchorFrameId) continue;
+    const alreadyAnnounced = announcedShotIds?.has(row.id) === true;
+    if (!alreadyAnnounced) {
+      await getGenerationChannel(sequenceId).emit('generation.shot:created', {
+        shotId: row.id,
+        sceneId: scene.sceneId,
+        orderIndex,
+      });
+    }
+    if (!row.anchorFrameId || alreadyAnnounced) continue;
     await triggerPreviewImage({
       input,
       sequenceId,
@@ -942,21 +945,32 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
             // positional match in `attachShotLists`.
             const landScene = async (
               scene: SceneSplittingScene,
-              orderIndex: number
+              orderIndex: number,
+              opts?: { overwrite?: boolean }
             ): Promise<void> => {
-              if (attached.has(scene.sceneNumber)) return;
+              const already = attached.has(scene.sceneNumber);
+              if (already && !opts?.overwrite) return;
+              const previous = shotMapping.filter(
+                (entry) => entry.analysisSceneId === scene.sceneId
+              );
               attached.set(scene.sceneNumber, scene);
               if (!sequenceId) return;
-              shotMapping.push(
-                ...(await persistSceneShots({
-                  input,
-                  scopedDb,
-                  sequenceId,
-                  parentInstanceId: event.instanceId,
-                  scene,
-                  orderIndex,
-                }))
+              const mapping = await persistSceneShots({
+                input,
+                scopedDb,
+                sequenceId,
+                parentInstanceId: event.instanceId,
+                scene,
+                orderIndex,
+                announcedShotIds: new Set(
+                  previous.map((entry) => entry.shotId)
+                ),
+              });
+              const kept = shotMapping.filter(
+                (entry) => entry.analysisSceneId !== scene.sceneId
               );
+              shotMapping.length = 0;
+              shotMapping.push(...kept, ...mapping);
             };
             const result = await runStructuredCall({
               input,
@@ -972,6 +986,10 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
               responseSchema: shotListPassResultSchema,
               maxTokens: shotListMaxTokens,
               onAccumulated: async (accumulated, done) => {
+                // The done chunk is the validated payload's job: a complete
+                // last object would otherwise persist twice, and a truncated
+                // last object must not stick.
+                if (done) return;
                 const raw = parsePartialJSON(stripCodeFences(accumulated));
                 if (!isRecord(raw)) return;
                 for (const entry of settledPrefix(
@@ -992,16 +1010,13 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
               },
             });
             // The validated payload is the authority: it throws on an omitted
-            // scene and lands anything the stream did not (positional matches,
-            // a provider that sent no partial chunks).
+            // scene, lands anything the stream did not, and overwrites a
+            // streamed prefix so a half-spec cannot stick.
             const final = attachShotLists(batch, result, clipGrid);
             for (const [index, scene] of final.entries()) {
-              await landScene(scene, start + index);
+              await landScene(scene, start + index, { overwrite: true });
             }
-            // What was written is what is returned.
-            const scenes = final.map(
-              (scene) => attached.get(scene.sceneNumber) ?? scene
-            );
+            const scenes = final;
             const shots = scenes.flatMap((scene) => scene.shots ?? []);
             logger.info(
               `[SceneSplitWorkflow:cf] [LLM:${SHOT_LIST_LOG_NAME}] Batch ${batchIndex + 1}/${batchStarts.length} complete | ${scenes.length} scenes | ${shots.length} shots | ${shots.reduce((n, shot) => n + shot.dialogue.length, 0)} dialogue lines`
@@ -1096,10 +1111,10 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
     }
 
     // Step 4b (#908 / #1072 / #1486): authoritative upsert of `scenes` rows +
-    // shot links after reconcile. Streaming wrote the scene rows; reconcile
-    // upserts shots 1..N. This step re-upserts the final set (stable ids via orderIndex),
-    // re-links shots, seeds scene_script_versions, and trims orphan tail
-    // rows if a re-analyze produced fewer scenes.
+    // shot links. Streaming wrote the scene rows; the shot-list batches
+    // already upserted shots 1..N. This step re-upserts the final scene set
+    // + shot links (stable ids via orderIndex), seeds scene_script_versions,
+    // and trims orphan tail rows if a re-analyze produced fewer scenes.
     //
     // Do NOT delete-then-recreate: `shots.scene_id` is a bare
     // `REFERENCES scenes(id)` in the migration (no ON DELETE SET NULL), so

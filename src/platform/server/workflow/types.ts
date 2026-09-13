@@ -129,7 +129,10 @@ export interface ImageWorkflowInput extends SequenceWorkflowContext {
   promptVersionId?: string | null;
   /** Reference images for character consistency (auto-switches to edit endpoint) */
   referenceImages?: ReferenceImageDescription[];
-  /** Skip R2 upload and store fal.ai CDN URL directly (for ephemeral preview images) */
+  /**
+   * Preview path: no prompt-version row and no shot-status flip. Bytes are
+   * still uploaded to R2; the provider CDN URL is not kept.
+   */
   skipStorage?: boolean;
   /**
    * Per-scene snapshot for divergence detection. When present, the workflow

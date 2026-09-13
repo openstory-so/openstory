@@ -142,7 +142,7 @@ describe('shot-list schema — constraints', () => {
     expect(result.success).toBe(false);
   });
 
-  it('enforces the 1..MAX shots-per-scene bound at parse time', () => {
+  it('rejects an empty shots array; there is no parse-time ceiling (#1593)', () => {
     const validShot = {
       shotNumber: 1,
       framing: {

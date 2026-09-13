@@ -44,6 +44,48 @@ describe('estimateStoryboardPreflightCost', () => {
     ).toBeGreaterThan(estimateSceneCount(script));
   });
 
+  it('bills a labelled multi-shot scene as N clips, not 1 heading (#1593)', () => {
+    const oneShot = [
+      'Scene 1 — 10s',
+      'INT. HALLWAY - NIGHT',
+      'She opens the door.',
+    ].join('\n');
+    const twoShot = [
+      'Scene 1 — 10s',
+      'INT. HALLWAY - NIGHT',
+      'Shot 1 — 4s',
+      'She opens the door.',
+      'Shot 2 — 6s',
+      'Cut to the hallway beyond.',
+    ].join('\n');
+    const quote = (script: string) =>
+      Number(
+        estimateStoryboardPreflightCost({
+          ...base,
+          script,
+          autoGenerateMotion: true,
+          videoModels: [DEFAULT_VIDEO_MODEL],
+        })
+      );
+    expect(quote(twoShot)).toBeGreaterThan(quote(oneShot));
+  });
+
+  it('treats a target under 5s as auto', () => {
+    const script = 'A detective finds a letter under the door.';
+    const auto = estimateStoryboardPreflightCost({
+      ...base,
+      script,
+      autoGenerateMotion: false,
+    });
+    const zero = estimateStoryboardPreflightCost({
+      ...base,
+      script,
+      targetDurationSeconds: 0,
+      autoGenerateMotion: false,
+    });
+    expect(zero).toBe(auto);
+  });
+
   it('quotes a long unlabelled paste by its playing time, not a 30-scene cap (#1593)', () => {
     // ~20 pages of screenplay: 40 sluglines, ~3,600 words ≈ 20 minutes.
     const scene =

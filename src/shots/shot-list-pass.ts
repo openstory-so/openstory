@@ -17,9 +17,10 @@
  * and durations fixed, the LLM fills the coverage. Otherwise the LLM may
  * split, capped at how many of the video model's shortest clips fit the
  * label, and `allocateClipDurations` spreads the label over them. The film
- * target never enters here: the model grid is a submit-time constraint
- * (`resolveShotDuration`), never an authoring rule. Prompts are assembled
- * later by `deriveShots` — this pass does not re-author them.
+ * target never enters here. The model grid *does*: it budgets the prompt,
+ * divides the label, and clamps each clip; `resolveShotDuration` only snaps
+ * again at submit. Prompts are assembled later by `deriveShots` — this pass
+ * does not re-author them.
  */
 
 import type { NewShot } from '@/platform/server/db/schema';
@@ -108,8 +109,8 @@ function keepShots(
  * Sort, re-number 1..n, and give every shot its clip length from the SCENE
  * (#1593). Empty / missing → one default shot at the scene's length.
  *
- * - Enhance's shot labels, when the pass returned that many shots, are the
- *   durations verbatim (`shotLabelSeconds`).
+ * - Enhance's shot labels, when the pass returned that many shots, are used
+ *   as-is, then clamped to the model's longest clip (`shotLabelSeconds`).
  * - Otherwise the list is capped at `maxShotsForScene` (post-parse only —
  *   Anthropic rejects `maxItems`), a lone shot takes the whole label, and
  *   several split it with `allocateClipDurations` on the model grid, the
@@ -350,7 +351,6 @@ function shotBudgetLine(
   const cap = maxShotsForScene(seconds, grid);
   if (!Number.isFinite(cap)) return undefined;
   const floor = Math.min(cap, minShotsForScene(seconds, grid));
-  if (cap === 1) return 'shots: exactly 1';
   if (floor === cap) return `shots: exactly ${cap}`;
   return floor > 1 ? `shots: ${floor} to ${cap}` : `shots: up to ${cap}`;
 }

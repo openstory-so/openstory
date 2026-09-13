@@ -257,6 +257,7 @@ export const continueGenerationFn = createServerFn({ method: 'POST' })
       data.stopAt
     );
 
+    const shots = await context.scopedDb.shots.listBySequence(sequence.id);
     const reservationId = allowsUnfundedGeneration(data.stopAt)
       ? undefined
       : await reserveRunCredits(
@@ -282,6 +283,7 @@ export const continueGenerationFn = createServerFn({ method: 'POST' })
               safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL),
             ],
             targetDurationSeconds: sequence.targetDurationSeconds ?? undefined,
+            shotCount: shots.length > 0 ? shots.length : undefined,
             pricing: await getEffectiveFalPricing(),
           }),
           {

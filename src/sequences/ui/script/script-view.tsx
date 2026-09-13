@@ -192,8 +192,6 @@ function useSequenceDraft() {
   return { draft, isLoaded, saveDraft, clearDraft };
 }
 
-const DURATION_PRESETS = TARGET_DURATION_PRESETS;
-
 /** Empty-composer copy (#1255): visible until the user types or shuffles.
  *  Keep this to ~1–2 lines so it fits the phone editor floor. */
 const COMPOSER_SCRIPT_PLACEHOLDER =
@@ -1341,7 +1339,7 @@ export const ScriptView: FC<{
                 size="sm"
                 spacing={0}
               >
-                {DURATION_PRESETS.map((preset) => (
+                {TARGET_DURATION_PRESETS.map((preset) => (
                   <ToggleGroupItem key={preset.value} value={preset.value}>
                     {preset.label}
                   </ToggleGroupItem>
@@ -1741,7 +1739,7 @@ export const ScriptView: FC<{
               size="sm"
               spacing={0}
             >
-              {DURATION_PRESETS.map((preset) => (
+              {TARGET_DURATION_PRESETS.map((preset) => (
                 <ToggleGroupItem key={preset.value} value={preset.value}>
                   {preset.label}
                 </ToggleGroupItem>

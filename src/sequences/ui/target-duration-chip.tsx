@@ -16,12 +16,12 @@ import { toast } from 'sonner';
 import { useId } from 'react';
 
 export const TARGET_DURATION_PRESETS = [
-  { value: '15', label: '15s', seconds: 15 },
-  { value: '30', label: '30s', seconds: 30 },
-  { value: '60', label: '1m', seconds: 60 },
-  { value: '120', label: '2m', seconds: 120 },
-  { value: '180', label: '3m', seconds: 180 },
-  { value: '300', label: '5m', seconds: 300 },
+  { value: '15', label: '15s' },
+  { value: '30', label: '30s' },
+  { value: '60', label: '1m' },
+  { value: '120', label: '2m' },
+  { value: '180', label: '3m' },
+  { value: '300', label: '5m' },
 ] as const;
 
 /** "48s" / "1m 12s" — the chip's unit, not the raw second count. */
@@ -44,12 +44,13 @@ export const TargetDurationChip: React.FC<{
   const customId = useId();
   const target = targetDurationSeconds ?? null;
   const targetLabel = target === null ? 'Auto' : formatSeconds(target);
-  const label =
-    totalSeconds === undefined
-      ? targetLabel
-      : target === null
+  let label = targetLabel;
+  if (totalSeconds !== undefined) {
+    label =
+      target === null
         ? formatSeconds(totalSeconds)
         : `${formatSeconds(totalSeconds)} · target ${targetLabel}`;
+  }
   const commit = (next: number | null) => {
     if (next === target) return;
     setTarget.mutate(next, {
@@ -110,9 +111,17 @@ export const TargetDurationChip: React.FC<{
               placeholder="seconds"
               className="h-8 w-24 text-base md:text-sm"
               onBlur={(e) => {
-                const n = Number(e.currentTarget.value);
-                if (e.currentTarget.value === '') commit(null);
-                else if (Number.isInteger(n) && n >= 5) commit(n);
+                const raw = e.currentTarget.value;
+                if (raw === '') {
+                  commit(null);
+                  return;
+                }
+                const n = Number(raw);
+                if (Number.isInteger(n) && n >= 5) {
+                  commit(n);
+                  return;
+                }
+                e.currentTarget.value = target === null ? '' : String(target);
               }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') e.currentTarget.blur();

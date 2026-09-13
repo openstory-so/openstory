@@ -261,7 +261,8 @@ function makeScopedDb(
       updateSplitContent: updateSplitContent,
     },
     shots: {
-      // No stream-time `upsert` (#1593): the first shot rows are reconcile's.
+      // No stream-time `shots.upsert` (#1593): the first shot rows are
+      // `persistSceneShots` inside each `scene-shot-list-N` step.
       bulkUpsert: (
         rows: Array<{ sceneId: string | null; shotNumber?: number }>
       ) =>
@@ -777,7 +778,7 @@ describe('SceneSplitWorkflow shot-list pass (#1486)', () => {
       true
     );
     expect(prompts.some((p) => p.includes('Scene 2 action'))).toBe(true);
-    // Every shot:created is announced by reconcile, none by the stream.
+    // Every shot:created is announced as that scene's shot-list entry lands.
     expect(
       emit.mock.calls.filter((call) => call[0] === 'generation.shot:created')
     ).toHaveLength(4);
@@ -826,10 +827,52 @@ describe('SceneSplitWorkflow shot-list pass (#1486)', () => {
     expect(writesBeforeDone).toBe(1);
     expect(writes.mock.calls[0]?.[0]).toHaveLength(2);
     expect(emitsBeforeDone).toBe(2);
-    // The final payload lands the rest exactly once.
-    expect(writes).toHaveBeenCalledTimes(SCENES.length);
+    // Stream wrote scene 1; the validated payload upserts every scene,
+    // including overwriting scene 1 so a half-spec cannot stick.
+    expect(writes).toHaveBeenCalledTimes(SCENES.length + 1);
     expect(result.shotMapping).toHaveLength(SCENES.length + 1);
     expect(result.scenes[0]?.shots).toHaveLength(2);
+  });
+
+  test('the validated shot-list payload overwrites a streamed prefix', async () => {
+    const streamed = {
+      sceneNumber: 1,
+      shots: [shotSpec(1, 'partial-only')],
+    };
+    const finalScene1 = {
+      sceneNumber: 1,
+      shots: [shotSpec(1, 'a'), shotSpec(2, 'b')],
+    };
+    shotListParsed = { scenes: [finalScene1, ...fullCover().scenes.slice(1)] };
+    shotListPartials = [
+      `{"scenes":[${JSON.stringify(streamed)},{"sceneNumber":2,"shots":[{"shotNumber":1,"action":"${'x'.repeat(300)}`,
+    ];
+    const scopedDb = makeScopedDb();
+    const writes = vi.spyOn(scopedDb.shots, 'bulkUpsert');
+    const result = await makeWorkflow().split(
+      makeEvent(),
+      makeStep(),
+      scopedDb
+    );
+    expect(writes.mock.calls[0]?.[0]).toHaveLength(1);
+    expect(result.scenes[0]?.shots).toHaveLength(2);
+    expect(result.scenes[0]?.shots?.map((s) => s.action)).toEqual(['a', 'b']);
+    expect(
+      result.shotMapping.filter((m) => m.analysisSceneId === 'scene_1')
+    ).toHaveLength(2);
+  });
+
+  test('trims leftover shots when a scene list shrinks (#1593)', async () => {
+    shotListParsed = {
+      scenes: [
+        { sceneNumber: 1, shots: [shotSpec(1, 'only')] },
+        ...fullCover().scenes.slice(1),
+      ],
+    };
+    const scopedDb = makeScopedDb();
+    const trim = vi.spyOn(scopedDb.shots, 'deleteFromShotNumber');
+    await makeWorkflow().split(makeEvent(), makeStep(), scopedDb);
+    expect(trim).toHaveBeenCalledWith('dbscene_0', 2);
   });
 
   test("a scene's shots sum to its label on the model grid (#1593)", async () => {
