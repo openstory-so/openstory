@@ -15,7 +15,10 @@ import {
 import { arkAssetIdentities } from '@/models/server/byteplus-asset-pool';
 import { ingestArkAssets } from '@/models/server/byteplus-asset-steps';
 import { extractFalErrorMessage } from '@/models/fal-error';
-import { assembleMotionPrompt } from '@/motion/server/assemble-motion-prompt';
+import {
+  assembleMotionPrompt,
+  assemblePackedMotionPrompt,
+} from '@/motion/server/assemble-motion-prompt';
 import { withVoicedLineTokens } from '@/motion/dialogue-tts';
 import {
   dialogueClipsAsReferences,
@@ -203,6 +206,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     // References-stage clip snapshotted onto the payload; synthesise only
     // when that is missing (standalone motion, stale lines, pre-#1554 rows).
     let prompt = input.prompt;
+    let multiPrompt = input.multiPrompt;
     let referenceImages = input.referenceImages;
     let durationHint = input.duration;
     let audioClips: MotionAudioClip[] = input.audioClips ?? [];
@@ -250,7 +254,29 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         ...(input.referenceImages ?? []),
         ...dialogueClipsAsReferences(audioClips),
       ];
-      if (input.motionPrompt) {
+      if (input.coveredShots && input.coveredShots.length > 1) {
+        const packed = assemblePackedMotionPrompt({
+          shots: input.coveredShots.map((member) => ({
+            durationSeconds: member.duration ?? durationHint ?? 3,
+            motionPrompt: member.motionPrompt
+              ? {
+                  ...member.motionPrompt,
+                  dialogue: withVoicedLineTokens(
+                    member.motionPrompt.dialogue,
+                    member.voicedLines ?? voicedLines
+                  ),
+                }
+              : undefined,
+            prompt: member.prompt ?? prompt,
+            characterTags: member.characterTags ?? input.characterTags,
+            generateAudio: input.generateAudio,
+          })),
+          model,
+          generateAudio: input.generateAudio,
+        });
+        prompt = packed.prompt;
+        if (packed.multiPrompt) multiPrompt = packed.multiPrompt;
+      } else if (input.motionPrompt) {
         prompt = assembleMotionPrompt({
           motionPrompt: {
             ...input.motionPrompt,
@@ -396,42 +422,80 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         let openedVideoVersionId: string | null = null;
         let manifest: VideoManifest | null = null;
         if (input.sequenceId) {
+          const sequenceId = input.sequenceId;
           if (!renderSceneId) {
             throw new WorkflowValidationError(
               `Shot ${input.shotId} has no scene; cannot open a video render version`
             );
           }
           // Resolve (materializing on first use) the shot's render segment —
-          // per-shot rendering is the degenerate one-shot segment.
-          const renderSegmentId = await scopedDb.renderSegments.ensureForShot({
-            id: shot.id,
-            sceneId: renderSceneId,
-            sequenceId: input.sequenceId,
-            renderSegmentId: shot.renderSegmentId,
-          });
+          // per-shot rendering is the degenerate one-shot segment. A packed
+          // in-clip job (#1510) assigns every covered shot to one shared
+          // segment so playback is one clip, not a stitch of copies.
+          const covered = input.coveredShots;
+          const liveMembers =
+            covered && covered.length > 1
+              ? await scopedDb.liveRead.shots.getByIds(
+                  covered.map((member) => member.shotId)
+                )
+              : [shot];
+          const renderSegmentId =
+            liveMembers.length > 1
+              ? await scopedDb.renderSegments.ensureForShots(
+                  liveMembers.map((member) => ({
+                    id: member.id,
+                    sceneId: member.sceneId ?? renderSceneId,
+                    sequenceId,
+                    renderSegmentId: member.renderSegmentId,
+                  }))
+                )
+              : await scopedDb.renderSegments.ensureForShot({
+                  id: shot.id,
+                  sceneId: renderSceneId,
+                  sequenceId,
+                  renderSegmentId: shot.renderSegmentId,
+                });
           // Both version ids are pinned at the trigger. There is deliberately no
           // live fallback for the frame: re-reading the anchor's pointer would
           // name whatever is selected NOW, and a concurrent select/upscale makes
           // that a different still than the one this clip rendered from (the
           // render consumes `input.imageUrl`, snapshotted at the trigger). A
           // payload without it records null provenance, as pre-#1067 rows do.
-          manifest = buildVideoManifest([
-            {
-              shotId: input.shotId,
-              // No selection-pointer fallback: a payload without the field
-              // records null provenance rather than whatever is selected now.
-              motionPromptVersionId:
-                writtenMotionPromptVersionId ??
-                input.motionPromptVersionId ??
-                null,
-              frameVersionId: input.frameVersionId ?? null,
-              // Provenance stamp: the mode this render ran in, independent
-              // of the null-`frameVersionId` encoding above.
-              usesStartFrame: !input.referenceOnly,
-              durationMs: duration * 1000,
-              audioClipIds: audioClips.map((clip) => clip.id),
-            },
-          ]);
+          const coveredEntries =
+            covered && covered.length > 1
+              ? covered.map((member) => ({
+                  shotId: member.shotId,
+                  motionPromptVersionId:
+                    member.shotId === input.shotId
+                      ? (writtenMotionPromptVersionId ??
+                        member.motionPromptVersionId ??
+                        null)
+                      : (member.motionPromptVersionId ?? null),
+                  frameVersionId: member.frameVersionId ?? null,
+                  usesStartFrame: !member.referenceOnly,
+                  durationMs: Math.round((member.duration ?? 3) * 1000),
+                  audioClipIds: (member.audioClips ?? []).map(
+                    (clip) => clip.id
+                  ),
+                }))
+              : [
+                  {
+                    shotId: input.shotId,
+                    // No selection-pointer fallback: a payload without the field
+                    // records null provenance rather than whatever is selected now.
+                    motionPromptVersionId:
+                      writtenMotionPromptVersionId ??
+                      input.motionPromptVersionId ??
+                      null,
+                    frameVersionId: input.frameVersionId ?? null,
+                    // Provenance stamp: the mode this render ran in, independent
+                    // of the null-`frameVersionId` encoding above.
+                    usesStartFrame: !input.referenceOnly,
+                    durationMs: duration * 1000,
+                    audioClipIds: audioClips.map((clip) => clip.id),
+                  },
+                ];
+          manifest = buildVideoManifest(coveredEntries);
           const inputHash = await computeVideoManifestInputHash(
             manifest,
             model
@@ -828,6 +892,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             referenceImages,
             scopedDb: scopedDb.credentials,
             arkAssets,
+            multiPrompt,
           });
           return { ok: true as const, job };
         } catch (error) {

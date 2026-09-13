@@ -18,6 +18,7 @@ import {
   supportsReferenceImages,
   supportsReferenceOnlyMotion,
   videoModelSupportsAudio,
+  videoModelSupportsInClipMultiShot,
 } from './models';
 import { MOTION_TRANSFORMS } from '@/motion/server/endpoint-map';
 import { typedEntries } from '@/platform/typed-object';
@@ -108,6 +109,23 @@ describe('videoModelSupportsAudio', () => {
     // Omni Flash always emits audio but has no generate_audio API field, so
     // the scene-editor SFX toggle must stay hidden.
     expect(videoModelSupportsAudio('gemini_omni_flash')).toBe(false);
+  });
+});
+
+describe('videoModelSupportsInClipMultiShot', () => {
+  it('is true for Seedance, H3 Max, Kling, and Omni Flash', () => {
+    expect(videoModelSupportsInClipMultiShot('seedance_v2')).toBe(true);
+    expect(videoModelSupportsInClipMultiShot('seedance_v2_5')).toBe(true);
+    expect(videoModelSupportsInClipMultiShot('seedance_v2_mini')).toBe(true);
+    expect(videoModelSupportsInClipMultiShot('minimax_h3_max')).toBe(true);
+    expect(videoModelSupportsInClipMultiShot('kling_v3_pro')).toBe(true);
+    expect(videoModelSupportsInClipMultiShot('gemini_omni_flash')).toBe(true);
+  });
+
+  it('is false for Grok Imagine (one take per clip)', () => {
+    expect(videoModelSupportsInClipMultiShot('grok_imagine_video_1_5')).toBe(
+      false
+    );
   });
 });
 

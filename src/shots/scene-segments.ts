@@ -8,7 +8,7 @@
  * `selectedVideoVersionId` pointing at the chosen one. Per-shot rendering is the
  * degenerate one-shot-per-segment case that's true for every scene today (the
  * analysis pipeline still emits one shot per scene), so this view degrades to
- * "one segment == one shot" until multi-shot analysis (#910) lands.
+ * "one segment == one shot" until packing (#1510) assigns a shared segment.
  *
  * `SequenceSegment` is what `getSequenceSegmentsFn` returns; membership
  * (`shotIds`) is authoritative and ordered. The UI groups its already-loaded

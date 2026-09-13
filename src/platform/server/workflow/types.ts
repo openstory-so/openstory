@@ -611,7 +611,32 @@ export interface MotionWorkflowInput extends SequenceWorkflowContext {
    * primary video. Promotion happens later via an explicit "Set".
    */
   variantOnly?: boolean;
+  /**
+   * In-clip multi-shot (#1510). When this generation covers several shots of
+   * one scene, these are the members in story order. Shot 1 still anchors
+   * i2v (`imageUrl` / `referenceOnly` on this payload). Absent on 1-shot jobs.
+   */
+  coveredShots?: PackedMotionCoveredShot[];
+  /**
+   * Kling v3 packed `multi_prompt[]`. When set, submit sends this instead of
+   * `prompt`. Re-assembled after dialogue TTS the same way `prompt` is.
+   */
+  multiPrompt?: Array<{ prompt: string; duration: string }>;
 }
+
+/** One member of a packed in-clip generation (#1510). */
+type PackedMotionCoveredShot = {
+  shotId: string;
+  duration?: number;
+  motionPrompt?: AssemblableMotionPrompt;
+  motionPromptVersionId?: string | null;
+  frameVersionId?: string | null;
+  referenceOnly: boolean;
+  audioClips?: MotionAudioClip[];
+  voicedLines?: VoicedDialogueLine[];
+  prompt?: string;
+  characterTags?: string[];
+};
 
 /**
  * Character sheet generation workflow input
@@ -1472,6 +1497,8 @@ export interface BatchMotionMusicWorkflowInput extends SequenceWorkflowContext {
     voicedLines?: VoicedDialogueLine[];
     /** See `MotionWorkflowInput.audioClips`. */
     audioClips?: MotionAudioClip[];
+    /** See `MotionWorkflowInput.coveredShots`. */
+    coveredShots?: PackedMotionCoveredShot[];
   }>;
   /**
    * Video models to generate for every shot (#545). First is primary (its

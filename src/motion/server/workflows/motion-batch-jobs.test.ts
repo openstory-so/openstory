@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_VIDEO_MODEL, type ImageToVideoModel } from '@/models/models';
+import { packMotionBatchShots } from '@/motion/server/pack-motion-jobs';
 import { buildMotionJobs } from './motion-batch-jobs';
 
 type Shot = { shotId: string; model?: ImageToVideoModel };
@@ -64,5 +65,31 @@ describe('buildMotionJobs', () => {
 
   it('returns no jobs for no shots', () => {
     expect(buildMotionJobs([], [A, B])).toEqual([]);
+  });
+});
+
+describe('packMotionBatchShots then buildMotionJobs (#1510)', () => {
+  it('fans one job per packed segment per model', () => {
+    const sceneShots = [
+      { shotId: 'a', sceneId: 'sc-1', duration: 4, model: B },
+      { shotId: 'b', sceneId: 'sc-1', duration: 6, model: B },
+    ];
+    const packed = packMotionBatchShots(sceneShots, [B]);
+    const jobs = buildMotionJobs(packed, [B]);
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]?.shot.shotId).toBe('a');
+    expect(jobs[0]?.shot.duration).toBe(10);
+    expect(jobs[0]?.model).toBe(B);
+  });
+
+  it('keeps two Grok jobs for the same scene', () => {
+    const grok: ImageToVideoModel = 'grok_imagine_video_1_5';
+    const sceneShots = [
+      { shotId: 'a', sceneId: 'sc-1', duration: 4, model: grok },
+      { shotId: 'b', sceneId: 'sc-1', duration: 6, model: grok },
+    ];
+    const packed = packMotionBatchShots(sceneShots, [grok]);
+    const jobs = buildMotionJobs(packed, [grok]);
+    expect(jobs.map((j) => j.shot.shotId)).toEqual(['a', 'b']);
   });
 });
