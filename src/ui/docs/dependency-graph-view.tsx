@@ -29,36 +29,43 @@ import {
 // --- Layout ---------------------------------------------------------------
 
 const W = 760;
-const NW = 112;
+const NW = 100;
 const NH = 40;
-const GAP = 8;
-const BAND_Y: Record<Band, number> = {
-  settings: 28,
-  library: 128,
-  bibles: 228,
-  references: 328,
-  prompts: 428,
-  renders: 528,
-  cut: 628,
-};
-const H = BAND_Y.cut + NH + 16;
+const GAP = 6;
+const PER_ROW = 7;
+const ROW_PITCH = 52;
+const BAND_GAP = 100;
+const TOP = 28;
 
 type Placed = GraphNode & { x: number; y: number };
 
-function place(): Placed[] {
-  return BAND_ORDER.flatMap((band) => {
-    const row = GRAPH_NODES.filter((n) => n.band === band);
-    const total = row.length * NW + (row.length - 1) * GAP;
-    const start = (W - total) / 2;
-    return row.map((n, i) => ({
-      ...n,
-      x: start + i * (NW + GAP),
-      y: BAND_Y[band],
-    }));
-  });
+/** Rows wrap at PER_ROW; bands stack with a gap wide enough for edges. */
+function place(): {
+  placed: Placed[];
+  bandY: Map<Band, number>;
+  height: number;
+} {
+  const placed: Placed[] = [];
+  const bandY = new Map<Band, number>();
+  let y = TOP;
+  for (const band of BAND_ORDER) {
+    bandY.set(band, y);
+    const nodes = GRAPH_NODES.filter((n) => n.band === band);
+    const rows = Math.ceil(nodes.length / PER_ROW);
+    for (let r = 0; r < rows; r++) {
+      const row = nodes.slice(r * PER_ROW, (r + 1) * PER_ROW);
+      const total = row.length * NW + (row.length - 1) * GAP;
+      const start = (W - total) / 2;
+      row.forEach((n, i) =>
+        placed.push({ ...n, x: start + i * (NW + GAP), y: y + r * ROW_PITCH })
+      );
+    }
+    y += (rows - 1) * ROW_PITCH + BAND_GAP;
+  }
+  return { placed, bandY, height: y - BAND_GAP + NH + 16 };
 }
 
-const PLACED = place();
+const { placed: PLACED, bandY: BAND_Y, height: H } = place();
 const placedById = new Map(PLACED.map((n) => [n.id, n]));
 
 /** Two lines at most; split at the space nearest the middle. */
@@ -159,7 +166,7 @@ export const DependencyGraphView: React.FC<DependencyGraphViewProps> = ({
             <text
               key={band}
               x={12}
-              y={BAND_Y[band] - 8}
+              y={(BAND_Y.get(band) ?? 0) - 8}
               className="fill-muted-foreground text-[9px] font-medium uppercase tracking-wider"
             >
               {BAND_LABELS[band]}
@@ -225,16 +232,6 @@ export const DependencyGraphView: React.FC<DependencyGraphViewProps> = ({
                   onBlur={() => setHovered(null)}
                 >
                   <title>{n.summary}</title>
-                  {n.versionedIn && (
-                    <rect
-                      x={4}
-                      y={-4}
-                      width={NW}
-                      height={NH}
-                      rx={8}
-                      className="fill-chart-2/10 stroke-chart-2/40"
-                    />
-                  )}
                   <rect
                     width={NW}
                     height={NH}
@@ -242,18 +239,16 @@ export const DependencyGraphView: React.FC<DependencyGraphViewProps> = ({
                     strokeDasharray={n.optional ? '4 3' : undefined}
                     className={cn(
                       'transition-[fill,stroke] motion-reduce:transition-none group-focus-visible:stroke-ring group-focus-visible:stroke-2',
-                      n.versionedIn
-                        ? 'fill-chart-2/15'
-                        : n.kind === 'input'
-                          ? 'fill-background'
-                          : 'fill-muted',
+                      n.kind === 'input' ? 'fill-background' : 'fill-muted',
                       isActive
                         ? 'stroke-primary stroke-2'
                         : isStale
                           ? 'fill-warning/15 stroke-warning stroke-[1.5]'
                           : isCause
                             ? 'fill-primary/10 stroke-primary/70 stroke-[1.5]'
-                            : 'stroke-border'
+                            : n.versionedIn
+                              ? 'stroke-chart-2'
+                              : 'stroke-border'
                     )}
                   />
                   <text
@@ -319,10 +314,7 @@ const Legend: React.FC = () => (
       </li>
     ))}
     <li className="flex items-center gap-1.5">
-      <span className="relative inline-block size-3">
-        <span className="absolute -top-0.5 left-0.5 size-3 rounded-sm border border-chart-2/40 bg-chart-2/10" />
-        <span className="absolute top-0 left-0 size-3 rounded-sm border border-border bg-chart-2/15" />
-      </span>
+      <span className="inline-block size-3 rounded-sm border border-chart-2" />
       versioned
     </li>
     <li className="flex items-center gap-1.5">
@@ -368,7 +360,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
           {node.kind === 'input' ? 'you edit' : 'generated'}
         </Badge>
         {node.versionedIn && (
-          <Badge variant="outline" className="border-chart-2/60 bg-chart-2/10">
+          <Badge variant="outline" className="border-chart-2">
             versioned — {node.versionedIn}
           </Badge>
         )}
@@ -385,8 +377,20 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
     </header>
 
     <div className="grid gap-5 sm:grid-cols-2">
-      <FieldList title="Counts" items={node.counts} />
-      <FieldList title="Does not count" items={node.ignored} />
+      <FieldList
+        title="Counts"
+        hint={
+          node.kind === 'input'
+            ? 'Change one of these and what depends on it goes stale.'
+            : 'The check compares these. Change one upstream and this goes stale.'
+        }
+        items={node.counts}
+      />
+      <FieldList
+        title="Does not count"
+        hint="Change these freely. Nothing goes stale."
+        items={node.ignored}
+      />
     </div>
 
     <div className="grid gap-5 sm:grid-cols-2">
@@ -446,12 +450,16 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
   </section>
 );
 
-const FieldList: React.FC<{ title: string; items: string[] }> = ({
+const FieldList: React.FC<{ title: string; hint: string; items: string[] }> = ({
   title,
+  hint,
   items,
 }) => (
   <div className="flex flex-col gap-2">
-    <h3 className="text-sm font-medium">{title}</h3>
+    <div>
+      <h3 className="text-sm font-medium">{title}</h3>
+      <p className="text-xs text-muted-foreground">{hint}</p>
+    </div>
     {items.length === 0 ? (
       <p className="text-sm text-muted-foreground">Nothing.</p>
     ) : (

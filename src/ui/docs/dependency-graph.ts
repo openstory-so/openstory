@@ -192,8 +192,12 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     kind: 'input',
     band: 'bibles',
     summary:
-      'A prop or effect referenced by @token. Detected in the script at the Script stage or added by hand, then yours to edit.',
-    counts: ['Token and description (prompts)', 'Image (still)'],
+      'A prop, effect, sound or clip referenced by @token. Detected in the script at the Script stage or added by hand, then yours to edit.',
+    counts: [
+      'Token and description (prompts)',
+      'Image (still)',
+      'Audio or video clip: sent as a reference when the video model takes one',
+    ],
     ignored: [],
   },
   // --- You set -------------------------------------------------------------
@@ -232,7 +236,18 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     band: 'settings',
     summary: 'The sequence frame shape.',
     counts: ['The ratio itself'],
-    ignored: ['Resolution tier'],
+    ignored: [],
+  },
+  {
+    id: 'resolution',
+    label: 'Resolution',
+    kind: 'input',
+    band: 'settings',
+    summary: 'The render tier a clip is asked for.',
+    counts: ['Nothing is compared today'],
+    ignored: [
+      'Stamped on each clip version so a 4K re-roll stays legible next to the 720p draft, but never compared',
+    ],
   },
   {
     id: 'analysisModel',
@@ -253,6 +268,27 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     ignored: [],
   },
   {
+    id: 'videoModel',
+    label: 'Video model',
+    kind: 'input',
+    band: 'settings',
+    summary:
+      'The model that renders clips. Also decides which durations a shot can snap to and whether it can hear dialogue or take reference clips.',
+    counts: ['Nothing is compared today'],
+    ignored: [
+      'Switching model starts a new render segment; the old clips stay, nothing reads stale',
+    ],
+  },
+  {
+    id: 'musicModel',
+    label: 'Music model',
+    kind: 'input',
+    band: 'settings',
+    summary: 'The model that renders the score.',
+    counts: ['Nothing is compared today'],
+    ignored: ['In the track hash, which nothing reads'],
+  },
+  {
     id: 'duration',
     label: 'Shot duration',
     kind: 'input',
@@ -270,6 +306,57 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Animate a rendered still, or render straight from the reference sheets.',
     counts: ['On or off (motion prompt)'],
     ignored: [],
+  },
+  {
+    id: 'voicesOn',
+    label: 'Voices',
+    kind: 'input',
+    band: 'settings',
+    summary:
+      'Design an ElevenLabs voice for each speaking character. Per-character override on the card.',
+    counts: ['Nothing is compared today'],
+    ignored: ['Only decides whether a voice is designed at all'],
+  },
+  {
+    id: 'musicOn',
+    label: 'Music',
+    kind: 'input',
+    band: 'settings',
+    summary: 'Include the score in the cut.',
+    counts: ['On or off (export)'],
+    ignored: [],
+  },
+  {
+    id: 'sfxDialogue',
+    label: 'SFX & dialogue',
+    kind: 'input',
+    band: 'settings',
+    summary:
+      'Append the dialogue lines and audio direction to the motion prompt when the video model can hear. Chosen per render in the scene editor.',
+    counts: ['Nothing is compared today'],
+    ignored: ['A render-time option; it is not stored on the shot'],
+  },
+  {
+    id: 'stopAt',
+    label: 'Stop at',
+    kind: 'input',
+    band: 'settings',
+    summary:
+      'How far a generation run goes: script, references, images, motion or music.',
+    counts: ['Nothing'],
+    ignored: ['It picks how far a run goes, never what is stale'],
+  },
+  {
+    id: 'dialogue',
+    label: 'Dialogue',
+    kind: 'input',
+    band: 'bibles',
+    summary:
+      'The lines spoken in a shot, assigned by the shot-list call at the Script stage. They ride on the motion prompt version and are appended at render; the panel binds a voice element to a line.',
+    counts: [
+      'Which voice is bound to which line (writes a new motion prompt version)',
+    ],
+    ignored: ['The wording: lines come from the script, edit them there'],
   },
   // --- References ----------------------------------------------------------
   {
@@ -522,6 +609,12 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     tracking: 'seeded',
     note: 'the bibles call detects elements at the Script stage',
   },
+  {
+    from: 'script',
+    to: 'dialogue',
+    tracking: 'seeded',
+    note: 'the shot-list call assigns every spoken line to a shot',
+  },
   // References
   { from: 'talent', to: 'talentSheet', tracking: 'hash' },
   { from: 'imageModel', to: 'talentSheet', tracking: 'hash' },
@@ -638,6 +731,48 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     note: 'a re-snapped duration must not flag every clip',
   },
   {
+    from: 'dialogue',
+    to: 'clip',
+    tracking: 'pointer',
+    note: 'binding a voice writes a new motion prompt version, which the manifest records',
+  },
+  {
+    from: 'element',
+    to: 'clip',
+    tracking: 'untracked',
+    note: 'an audio or video element goes as a reference when the model takes one; the manifest does not record it',
+  },
+  {
+    from: 'resolution',
+    to: 'clip',
+    tracking: 'untracked',
+    note: 'stamped on the version, never compared',
+  },
+  {
+    from: 'videoModel',
+    to: 'clip',
+    tracking: 'untracked',
+    note: 'a different model is a different segment, never a stale one',
+  },
+  {
+    from: 'sfxDialogue',
+    to: 'clip',
+    tracking: 'untracked',
+    note: 'a render-time option, not stored',
+  },
+  {
+    from: 'musicModel',
+    to: 'musicTrack',
+    tracking: 'untracked',
+    note: 'in the track hash, which nothing reads',
+  },
+  {
+    from: 'voicesOn',
+    to: 'voice',
+    tracking: 'untracked',
+    note: 'decides whether a voice is designed at all',
+  },
+  {
     from: 'musicPrompt',
     to: 'musicTrack',
     tracking: 'cascade',
@@ -651,6 +786,12 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     note: 'the selected clip URL',
   },
   { from: 'musicTrack', to: 'export', tracking: 'hash', note: 'the music URL' },
+  {
+    from: 'musicOn',
+    to: 'export',
+    tracking: 'hash',
+    note: 'the music URL joins the export hash only when music is on',
+  },
 ];
 
 export const nodeById = (id: string): GraphNode | undefined =>

@@ -64,6 +64,8 @@ describe('dependency graph', () => {
     ]);
     expect(ids(staleBecauseOf('musicTrack', 'start-frame'))).toEqual([]);
     expect(ids(staleBecauseOf('voice', 'start-frame'))).toEqual([]);
+    expect(ids(staleAfterEdit('videoModel', 'start-frame'))).toEqual([]);
+    expect(ids(staleAfterEdit('musicOn', 'start-frame'))).toEqual(['export']);
   });
 
   it('upstream walk mirrors the downstream walk', () => {
@@ -73,6 +75,7 @@ describe('dependency graph', () => {
         'aspectRatio',
         'character',
         'characterSheet',
+        'dialogue',
         'element',
         'imageModel',
         'libraryLocation',
