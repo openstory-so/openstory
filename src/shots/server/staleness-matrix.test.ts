@@ -84,6 +84,7 @@ function videoHash(state: PipelineState): Promise<string | null> {
       frameVersionId: state.selectedFrameVersionId,
       usesStartFrame: true,
       durationMs: state.durationMs,
+      audioClipIds: [],
     },
   ];
   return computeVideoManifestInputHash(manifest, state.videoModel);

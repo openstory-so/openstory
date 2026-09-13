@@ -17,6 +17,7 @@ const entry = (
   frameVersionId: 'fv1',
   usesStartFrame: true,
   durationMs: 3000,
+  audioClipIds: [],
   ...overrides,
 });
 
@@ -69,5 +70,25 @@ describe('computeVideoManifestInputHash', () => {
       'veo3_1'
     );
     expect(ab).not.toBe(ba);
+  });
+
+  it('rejects omitted audioClipIds; empty hashes as voiceless (#1616 DAG)', async () => {
+    const voiceless = await computeVideoManifestInputHash(
+      [entry({ audioClipIds: [] })],
+      'veo3_1'
+    );
+    const voiced = await computeVideoManifestInputHash(
+      [entry({ audioClipIds: ['clip-1'] })],
+      'veo3_1'
+    );
+    expect(voiceless).not.toBe(voiced);
+    const { audioClipIds: _dropped, ...without } = entry();
+    expect(() =>
+      computeVideoManifestInputHash(
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- incomplete assembler
+        [without] as VideoManifestEntry[],
+        'veo3_1'
+      )
+    ).toThrow();
   });
 });

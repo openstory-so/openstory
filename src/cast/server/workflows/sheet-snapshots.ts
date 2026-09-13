@@ -450,6 +450,8 @@ export function computeShotImageSceneHash(
     visualPrompt: scene.visualPrompt,
     imageModel,
     aspectRatio,
+    size: null,
+    seed: null,
     characterSheetHashes: scene.characterSheetHashes,
     locationSheetHashes: scene.locationSheetHashes,
     elementReferenceHashes: scene.elementReferenceHashes,

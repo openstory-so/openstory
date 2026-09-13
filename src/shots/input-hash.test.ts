@@ -58,6 +58,10 @@ const baseThumbnail: ShotImageHashInput = {
 
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 
+/** Incomplete assembler payload for "omitted field throws" tests. */
+// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test-only incomplete DTO
+const incomplete = <T>(value: object): T => value as T;
+
 describe('computeShotImageInputHash (thumbnail)', () => {
   it('produces a 64-char hex SHA-256 digest', async () => {
     const hash = await computeShotImageInputHash(baseThumbnail);
@@ -145,22 +149,26 @@ describe('computeShotImageInputHash (thumbnail)', () => {
     expect(new Set([a, loc, el]).size).toBe(3);
   });
 
-  it('treats null and missing optional scalars identically', async () => {
+  it('rejects omitted size/seed; null is the explicit empty', async () => {
     const explicitNulls = await computeShotImageInputHash({
       ...baseThumbnail,
       size: null,
       seed: null,
     });
-    const omitted = await computeShotImageInputHash({
-      kind: baseThumbnail.kind,
-      visualPrompt: baseThumbnail.visualPrompt,
-      imageModel: baseThumbnail.imageModel,
-      aspectRatio: baseThumbnail.aspectRatio,
-      characterSheetHashes: baseThumbnail.characterSheetHashes,
-      locationSheetHashes: baseThumbnail.locationSheetHashes,
-      elementReferenceHashes: baseThumbnail.elementReferenceHashes,
-    });
-    expect(explicitNulls).toBe(omitted);
+    expect(() =>
+      computeShotImageInputHash(
+        incomplete<ShotImageHashInput>({
+          kind: baseThumbnail.kind,
+          visualPrompt: baseThumbnail.visualPrompt,
+          imageModel: baseThumbnail.imageModel,
+          aspectRatio: baseThumbnail.aspectRatio,
+          characterSheetHashes: baseThumbnail.characterSheetHashes,
+          locationSheetHashes: baseThumbnail.locationSheetHashes,
+          elementReferenceHashes: baseThumbnail.elementReferenceHashes,
+        })
+      )
+    ).toThrow();
+    expect(explicitNulls).toMatch(SHA256_HEX);
   });
 });
 
@@ -351,17 +359,21 @@ describe('computeCharacterSheetInputHash', () => {
     expect(new Set([a, talent, style, model]).size).toBe(4);
   });
 
-  it('treats null and missing talent hash identically', async () => {
+  it('rejects omitted talentSheetHash; null is the explicit empty', async () => {
     const nullHash = await computeCharacterSheetInputHash({
       ...base,
       talentSheetHash: null,
     });
-    const omitted = await computeCharacterSheetInputHash({
-      characterBible: base.characterBible,
-      styleConfigHash: base.styleConfigHash,
-      imageModel: base.imageModel,
-    });
-    expect(nullHash).toBe(omitted);
+    expect(() =>
+      computeCharacterSheetInputHash(
+        incomplete<CharacterSheetHashInput>({
+          characterBible: base.characterBible,
+          styleConfigHash: base.styleConfigHash,
+          imageModel: base.imageModel,
+        })
+      )
+    ).toThrow();
+    expect(nullHash).toMatch(SHA256_HEX);
   });
 });
 
@@ -411,6 +423,7 @@ describe('computeLibraryLocationReferenceInputHash', () => {
     locationBible: { name: 'Office', description: 'Modern open-plan, glass' },
     styleConfigHash: 'style-sha',
     imageModel: 'flux-pro-v1.1',
+    referenceMediaHashes: [],
   };
 
   it('is stable, distinct from sheet hash, and reacts to model', async () => {
@@ -427,6 +440,15 @@ describe('computeLibraryLocationReferenceInputHash', () => {
     expect(ref).toBe(refSame);
     expect(ref).not.toBe(sheetEquivalent);
     expect(ref).not.toBe(refModel);
+    expect(() =>
+      computeLibraryLocationReferenceInputHash(
+        incomplete<LibraryLocationReferenceHashInput>({
+          locationBible: base.locationBible,
+          styleConfigHash: base.styleConfigHash,
+          imageModel: base.imageModel,
+        })
+      )
+    ).toThrow();
     expect(await libraryLocationReferenceInputHashMatches(ref, base)).toBe(
       true
     );
@@ -550,22 +572,22 @@ describe('canonical serialization', () => {
   });
 
   it('rejects non-finite numbers rather than collapsing them to null', async () => {
-    await expect(
+    expect(() =>
       computeShotAudioInputHash({
         musicPrompt: 'test',
         tags: [],
         durationSeconds: Number.NaN,
         audioModel: 'cassette-v1',
       })
-    ).rejects.toThrow(/non-finite/);
-    await expect(
+    ).toThrow();
+    expect(() =>
       computeShotAudioInputHash({
         musicPrompt: 'test',
         tags: [],
         durationSeconds: Number.POSITIVE_INFINITY,
         audioModel: 'cassette-v1',
       })
-    ).rejects.toThrow(/non-finite/);
+    ).toThrow();
   });
 });
 

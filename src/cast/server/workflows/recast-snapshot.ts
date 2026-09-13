@@ -247,6 +247,8 @@ export async function mergeRecastSheetIntoSnapshots(params: {
           visualPrompt: snapshot.imagePrompt,
           imageModel,
           aspectRatio,
+          size: null,
+          seed: null,
           characterSheetHashes,
           locationSheetHashes,
           elementReferenceHashes: snapshot.elementReferenceHashes,

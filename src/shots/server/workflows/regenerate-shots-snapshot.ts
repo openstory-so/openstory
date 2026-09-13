@@ -107,6 +107,8 @@ export async function buildRegenerateShotSnapshot(params: {
     visualPrompt: effectivePrompt,
     imageModel,
     aspectRatio,
+    size: null,
+    seed: null,
     characterSheetHashes: refs.characterSheetHashes,
     locationSheetHashes: refs.locationSheetHashes,
     elementReferenceHashes: refs.elementReferenceHashes,

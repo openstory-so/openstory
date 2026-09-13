@@ -96,6 +96,7 @@ describe('buildVideoManifest', () => {
           frameVersionId: 'fv1',
           usesStartFrame: true,
           durationMs: 3000,
+          audioClipIds: [],
         },
         {
           shotId: 's2',
@@ -103,6 +104,7 @@ describe('buildVideoManifest', () => {
           frameVersionId: null,
           usesStartFrame: true,
           durationMs: 4000,
+          audioClipIds: [],
         },
       ])
     ).toEqual([
@@ -112,6 +114,7 @@ describe('buildVideoManifest', () => {
         frameVersionId: 'fv1',
         usesStartFrame: true,
         durationMs: 3000,
+        audioClipIds: [],
       },
       {
         shotId: 's2',
@@ -119,6 +122,7 @@ describe('buildVideoManifest', () => {
         frameVersionId: null,
         usesStartFrame: true,
         durationMs: 4000,
+        audioClipIds: [],
       },
     ]);
   });

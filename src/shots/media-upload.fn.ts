@@ -508,6 +508,7 @@ export const setShotVideoFromUploadFn = createServerFn({ method: 'POST' })
         // so it agrees with the pointer above.
         usesStartFrame: shotUsesStartFrame,
         durationMs,
+        audioClipIds: [],
       },
     ]);
     const inputHash = await computeVideoManifestInputHash(
