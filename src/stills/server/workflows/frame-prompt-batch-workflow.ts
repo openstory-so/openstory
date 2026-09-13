@@ -14,6 +14,7 @@
 
 import { contentRejectionSummary } from '@/models/content-rejection';
 import type { Scene, VisualPrompt } from '@/shots/scene-analysis.schema';
+import { sceneAsContext, sceneForShot } from '@/shots/server/shot-work-items';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
@@ -79,9 +80,11 @@ export class FramePromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<FrameP
 
       const childPayload: FramePromptWorkflowInput = {
         reservationId: input.reservationId,
-        scene,
-        sceneBefore,
-        sceneAfter,
+        // The prompt is stored on the anchor shot and verified against the
+        // scene composed for it (#1585), so hand the child that same view.
+        scene: sceneForShot(scene, mappingEntry?.shotNumber ?? 1),
+        sceneBefore: sceneBefore && sceneAsContext(sceneBefore),
+        sceneAfter: sceneAfter && sceneAsContext(sceneAfter),
         aspectRatio,
         characterBible,
         locationBible,

@@ -93,6 +93,8 @@ export function sheetMetadataFromAnalysis(
     // A photo carries no performance; cast reads the talent row's (Edit talent).
     personality: '',
     movement: '',
+    // A talent photo is a face by definition.
+    voiceOnly: false,
     consistencyTag: slug,
   };
 }

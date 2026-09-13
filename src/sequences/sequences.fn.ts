@@ -1048,8 +1048,9 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
               scopedDb,
               sequence.id
             );
-            const sceneOf = (s: Pick<Shot, 'sceneId' | 'durationMs'>) =>
-              resolveSceneForShot(s, sceneContext).scene;
+            const sceneOf = (
+              s: Pick<Shot, 'sceneId' | 'durationMs' | 'shotNumber'>
+            ) => resolveSceneForShot(s, sceneContext).scene;
 
             // No pre-seeded `video_variants` version here (mirrors the image branch
             // below, #990): each shot's motion child opens its own in-flight

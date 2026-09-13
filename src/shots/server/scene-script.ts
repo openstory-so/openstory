@@ -19,6 +19,7 @@ import { createSceneScriptVersionsMethods } from '@/shots/server/db/scene-script
 import { createScenesMethods } from '@/shots/server/db/scenes';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { plainSceneTitle } from '@/platform/markdown-plain';
+import { dialogueForShot } from '@/shots/shot-list-pass';
 
 /** A scene row plus its selected script — everything a `Scene` composes from. */
 export type SceneContext = {
@@ -29,18 +30,25 @@ export type SceneContext = {
 /**
  * Build the analysis `Scene` view from the rows that own it.
  *
- * Per-shot because `durationSeconds` is the one genuinely shot-scoped field: it
- * derives from `shots.durationMs` rather than being stored twice.
+ * Per-shot because `durationSeconds` derives from `shots.durationMs` rather
+ * than being stored twice, and because the scene's dialogue is filtered to
+ * the lines spoken in this shot (#1585) — the same filter `shotWorkItems`
+ * applies at trigger time, so prompt-input hashes agree at verify time.
  */
 function composeSceneForShot(
-  shot: Pick<Shot, 'durationMs'>,
+  shot: Pick<Shot, 'durationMs' | 'shotNumber'>,
   ctx: SceneContext
 ): Scene {
   const { scene, script } = ctx;
   return {
     sceneId: scene.id,
     sceneNumber: scene.orderIndex + 1,
-    originalScript: script ?? { extract: '', dialogue: [] },
+    originalScript: script
+      ? {
+          ...script,
+          dialogue: dialogueForShot(script.dialogue, shot.shotNumber ?? 1),
+        }
+      : { extract: '', dialogue: [] },
     metadata: {
       title: plainSceneTitle(scene.title),
       durationSeconds: (shot.durationMs ?? 3000) / 1000,
@@ -76,7 +84,7 @@ type SceneContextSource =
  * gone — resolves to null, which every caller already handles.
  */
 export function resolveSceneForShot<
-  T extends Pick<Shot, 'sceneId' | 'durationMs'>,
+  T extends Pick<Shot, 'sceneId' | 'durationMs' | 'shotNumber'>,
 >(
   shot: T,
   source: SceneContextSource
@@ -93,7 +101,7 @@ export function resolveSceneForShot<
 
 /** Db-backed variant for single-shot middleware and handlers. */
 export async function resolveSceneForShotFromDb(
-  shot: Pick<Shot, 'sceneId' | 'durationMs'>,
+  shot: Pick<Shot, 'sceneId' | 'durationMs' | 'shotNumber'>,
   scopedDb: Pick<ScopedDb, 'scenes' | 'sceneScriptVersions'>
 ): Promise<{ scene: Scene | null; script: Scene['originalScript'] | null }> {
   if (!shot.sceneId) return { scene: null, script: null };

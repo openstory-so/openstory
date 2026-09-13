@@ -50,6 +50,7 @@ function makeCharacter(
     sheetInputHash: null,
     selectedSheetVersionId: null,
     physicalDescription: null,
+    voiceOnly: false,
     consistencyTag: null,
     ...overrides,
   };

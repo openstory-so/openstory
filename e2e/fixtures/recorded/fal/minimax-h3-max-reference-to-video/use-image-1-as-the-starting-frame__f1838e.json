@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nImage 2 checks the time, grabs her sunglasses, and sweeps out of frame.. Camera: smooth static\n\nImage 2 says in a softly tone: <d>[English] Okay. City’s waiting.</d>\n\noverall_soundscape: distant subway rumble, soft footsteps. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/712fe53d2b97b4cf3a55bfd0564a14acb65fbb0fbf7e31c3b5dba2a10da11859.mp4",
+            "content_type": "video/mp4",
+            "file_name": "hmNvId3ntACBkrhb2y19R_minimax-h3.mp4",
+            "file_size": 5873821
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the blonde woman from <Picture 1>, wearing a black turtleneck, dark grey trousers, and red lipstick, with wavy wavy shoulder-length blonde hair.\n<Subject 2> is the black smartphone and pair of aviator sunglasses resting on the dark marble bathroom counter in <Picture 1>.\n<Subject 3> is the black-framed sunglasses shown on the character in <Picture 2>, which <Subject 1> picks up from the counter.\n\nsummary:\n[reference generation + keyframe completion] Use <Picture 1> as the static starting frame. <Subject 1> glances at <Subject 2>, picks up <Subject 3> with a soft dialogue delivery, and exits the frame to the right in a single continuous 6-second cinematic take.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1]): fully_preserved - Maintains the facial features, hair texture, black turtleneck, and red lipstick from <Picture 1>, with the confident posture from <Picture 2>.\n<Subject 2> (appears in [Shot 1]): fully_preserved - The smartphone and sunglasses remain on the counter as distinct props before the character grabs them.\n<Subject 3> (appears in [Shot 1]): partially_preserved - The sunglasses' dark frames and size match the reference in <Picture 2>, and <Subject 1> holds them as she moves away.\n\ndetailed_description:\nThe video adopts a realistic cinematic style with high lighting clarity, utilizing a fixed camera perspective to capture a high-end streetwear look.\n\n[Shot 1] The shot begins with the exact frame from <Picture 1>, featuring <Subject 1> standing in a modern white-tiled bathroom with natural morning light illuminating the scene. <Subject 1> (S1) holds a red lipstick in her right hand near her cheek, her expression composed and confident as she faces the camera. <Subject 2> is placed centrally on the dark marble countertop in the foreground. The camera executes a Static Shot with no amplitude, at a steady speed, keeping the composition locked onto <Subject 1>. At 00:01.000, <Subject 1> (S1) briefly shifts her gaze from the camera to <Subject 2>, checking the time with a calm, professional demeanor. She delivers the line, “<d>[English] Okay. City’s waiting.</d>”. Her voice is soft and steady, matching the poise of <Picture 2>. At 00:02.200, <Subject 1> (S1) lowers the lipstick and extends her hand to pick up <Subject 3>. At 00:03.500, she places the lipstick onto the counter beside her phone. She takes a single, decisive step to the right, her black turtleneck and dark grey trousers reflecting the studio lighting of <Picture 2>. By 00:04.500, <Subject 1> (S1) sweeps out of the right side of the frame, her movement smooth and purposeful. The shot remains on the empty bathroom and the remaining <Subject 2> on the counter until the video ends at 00:06.000.\n\noverall_soundscape:\nThe ambience consists of a quiet, high-end bathroom environment with distant, low-frequency subway rumble and the soft, sharp sound of high-quality leather shoes on tile. At 00:03.500, a subtle \"clack\" is heard as the lipstick is placed down, followed by the rhythmic sound of <Subject 1> (S1)'s footsteps as she exits.\n\nnon_diegetic_music:\nN/A",
+          "seed": 724081252,
+          "timings": {
+            "inference": 5.7558272989990655
+          }
+        },
+        "status": 200,
+        "billableUnits": 9.600000000000001
+      }
+    }
+  ]
+}

@@ -13,6 +13,11 @@
  * element supplies a character's timbre — because nothing else in the app can
  * express that, and the reference file is useless to the model until a line
  * claims it.
+ *
+ * Before the shot has a motion prompt the caller hands in the scene's own
+ * lines instead (#1585): they exist from the Script stage, so a misattributed
+ * speaker is visible before anything downstream is billed. Voice binding
+ * waits for the prompt row it is stored on, so `onChange` is null then.
  */
 
 import { formatElementDuration } from '@/cast/element-kind';
@@ -41,7 +46,9 @@ export const MotionDialoguePanel: React.FC<{
   /** Null while the model takes no audio at all — the lines still show. */
   onChange: ((next: MotionDialogue) => void) | null;
   disabled?: boolean;
-}> = ({ dialogue, elements, onChange, disabled }) => {
+  /** Where the lines come from: the shot's motion prompt, or the scene script before one exists. */
+  source: 'prompt' | 'script';
+}> = ({ dialogue, elements, onChange, disabled, source }) => {
   const lines = dialogue?.presence ? dialogue.lines : [];
   if (lines.length === 0) return null;
 
@@ -68,7 +75,9 @@ export const MotionDialoguePanel: React.FC<{
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-sm font-medium">Dialogue</span>
         <span className="text-xs text-muted-foreground">
-          Appended to the prompt at render
+          {source === 'prompt'
+            ? 'Appended to the prompt at render'
+            : 'From the script — bind voices once the motion prompt exists'}
         </span>
       </div>
       <ul className="flex flex-col gap-2 rounded-md border p-3">
@@ -147,7 +156,7 @@ export const MotionDialoguePanel: React.FC<{
           Upload an audio element to give a character a voice.
         </p>
       )}
-      {!onChange && (
+      {!onChange && source === 'prompt' && (
         <p className="text-xs text-muted-foreground">
           This model generates its own voices — it takes no audio reference.
         </p>

@@ -889,7 +889,7 @@ IMPORTANT: each boundary's quote must be copied character-for-character from the
       role: 'system',
       content: `You are a director covering scenes for a video shoot. You will be called via a structured output tool. Follow the provided schema exactly.
 
-You receive scenes already sliced from a script (one location + time + story beat each) and a director style. Your job is to decide HOW TO SHOOT each scene — the camera setups, not a new story. You NEVER create, merge, or rewrite scenes. You NEVER re-emit the script.
+You receive scenes already sliced from a script (one location + time + story beat each), the cast, and a director style. Your job is to decide HOW TO SHOOT each scene — the camera setups, not a new story — and to place every spoken line in the shot it is spoken in. You NEVER create, merge, or rewrite scenes. You NEVER re-emit the script.
 
 A SHOT is one continuous camera take (one setup). A SCENE holds 1..N shots. You are not splitting the page; you are covering the action the way this director would.
 
@@ -907,15 +907,43 @@ The style's camera, shot selection, pace, and energy decide coverage:
 2. Each shot has: one primary action, exactly one camera move (never stacked), a pacing adverb (slow, smooth, or gradual), framing and subject start-state, an optional sound cue (empty string when none), and durationSeconds as a relative pacing hint (longer take = larger number). The system assigns the real clip lengths so the film hits the target running time — do not try to make the seconds add up.
 3. Match camera move and framing to the style (handheld vs locked, wide vs insert, slow push vs static).
 4. sceneNumber MUST match the "## Scene N" heading you were given. Shot 1 is the opening take; later shots follow in story order.
-5. Do not invent vendor syntax (no Seedance/Kling tokens). Do not invent scenes that were not in the input.`,
+5. Do not invent vendor syntax (no Seedance/Kling tokens). Do not invent scenes that were not in the input.
+
+## Dialogue
+
+Every line of speech in a scene goes in the \`dialogue\` of the shot it is spoken in, whatever shape the script gives it:
+- Screenplay cues: a name on its own line followed by the speech, or "NAME: speech".
+- Prose speech in any order: \`Lena says, “…”\`, \`“…,” says Lena\`, \`“…,” Lena replies, “…”\` (a quote split around an attribution is ONE line — join the parts).
+- Narration, voiceover, a voice on a phone or a tannoy: spoken by the matching "(voice only)" entry in <CHARACTERS>.
+
+Each line is spoken in exactly one shot — never repeat a line across shots. \`line\` is the spoken words copied verbatim: no paraphrase, no surrounding quotation marks, no attribution ("says Lena"). \`character\` is the speaker copied EXACTLY as <CHARACTERS> spells it (it is how the rest of the pipeline finds them); speech attributed only by a pronoun resolves to the nearest named character when that is unambiguous. Leave \`character\` empty only for a voice nobody could attribute. \`tone\` is the delivery the script implies ("whispered", "flat, exhausted"); empty when it implies none. Do NOT invent speech, do NOT report action or description as dialogue, and do NOT merge lines from different speakers. A shot with no speech has an empty \`dialogue\` array.
+
+## Fields
+
+The schema is terse; this is what each field holds.
+
+- framing.shotSize — one of: extreme wide, wide, medium wide, medium, medium close-up, close-up, extreme close-up.
+- framing.angle — one of: eye level, low angle, high angle, overhead, dutch, over-the-shoulder.
+- framing.composition — how the frame is built: rule-of-thirds placement, depth, foreground/background, focal point.
+- framing.subjectStartState — the subject at the START of the shot: pose, position, expression, what they hold. This is the still the start frame captures.
+- action — the ONE thing that happens during the shot (e.g. "she turns and reaches for the door handle"). One action per shot.
+- cameraMovement.move — the single primary move: static, pan, tilt, dolly, truck, pedestal, zoom, push-in, pull-out, orbit. Never stacked ("pan then dolly" is two shots or one move).
+- cameraMovement.pacing — slow, smooth, or gradual. Fast moves make video models chaotic; keep it calm.
+- soundCue — the on-screen SFX / ambience hook for audio-capable models (e.g. "door creak, distant traffic"). Empty string when none.
+- dialogue — the lines spoken during this shot, in order, as described above. Empty array when none.
+- durationSeconds — a relative pacing hint in seconds, at least 3. Longer take = larger number; the system snaps the real clip lengths.`,
     },
     {
       role: 'user',
-      content: `Cover each scene. The script is what happens; you decide the camera setups in this director's style. Copy sceneNumber from the "## Scene N" headings.
+      content: `Cover each scene. The script is what happens; you decide the camera setups in this director's style, and place every spoken line in the shot it is spoken in. Copy sceneNumber from the "## Scene N" headings.
 
 <DIRECTOR_STYLE>
 {{style}}
 </DIRECTOR_STYLE>
+
+<CHARACTERS>
+{{characters}}
+</CHARACTERS>
 
 <SCENES>
 {{scenes}}
@@ -945,6 +973,7 @@ Build a complete character bible. For each character:
 - movement — how the body moves: gait, posture, energy, habitual gestures, a limp, a tremor. Drives blocking and action.
   Extract both from the script, and infer where the script only implies them ("fidgets with his tie" → personality: anxious, eager to please; movement: restless hands, shoulders tight). Never repeat appearance in either field.
 - consistencyTag — HARD FORMAT CONTRACT: the snake_case slug of the character's name AS WRITTEN IN THE SCRIPT ("GIRL ONE" → "girl_one"). Optional descriptive context may follow the name slug ("jack_denim_weathered"), but the tag MUST start with the name slug. An independent system joins scene tags against these.
+- voiceOnly — true only for a voice that is heard but NEVER seen: a narrator, a voiceover, a radio or phone voice with no face on screen. Each distinct such voice is its own entry, named as the script names it, or "Narrator" for unnamed narration. Its personality describes the VOICE — register, warmth, pace, attitude. Age may be a guess if the voice implies one, otherwise empty; gender, ethnicity, physicalDescription, standardClothing, distinguishingFeatures and movement are empty strings. Create none when nobody speaks off screen. A character who is off screen for a moment, or seen in another scene, has a face: voiceOnly false, full appearance.
 
 Track first mentions:
 - "a man walks in" → the character first appears as "a man"
@@ -1008,11 +1037,12 @@ The following user-uploaded elements are available. Produce an elementBible entr
 {{script}}
 </USER_SCRIPT>
 
-For each character that appears:
+For each character that appears on screen:
 1. Provide COMPLETE physical descriptions for visual consistency
 2. Include clothing details that define the character
 3. Add distinguishing features
 4. Create a consistencyTag starting with the character's name slug
+A voice that is only heard gets its own entry with voiceOnly true, a voice description in personality, and empty appearance fields.
 
 For each unique location:
 1. Provide COMPLETE visual descriptions for visual consistency

@@ -173,7 +173,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
     context.scopedDb,
     sequence.id
   );
-  const sceneOf = (s: Pick<Shot, 'sceneId' | 'durationMs'>) =>
+  const sceneOf = (s: Pick<Shot, 'sceneId' | 'durationMs' | 'shotNumber'>) =>
     resolveSceneForShot(s, sceneContext).scene;
   const scenesById = new Map(
     [...sceneContext].map(([sceneId, ctx]) => [sceneId, ctx.scene])

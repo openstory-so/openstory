@@ -209,6 +209,7 @@ describe('buildShotImageWorkflowInput — reference images', () => {
       sheetInputHash: 'hash-jack',
       selectedSheetVersionId: null,
       physicalDescription: 'tall',
+      voiceOnly: false,
       consistencyTag: null,
     };
     const input = await buildShotImageWorkflowInput({
@@ -243,6 +244,7 @@ describe('buildShotImageWorkflowInput — reference images', () => {
       sheetInputHash: 'hash-scarlett',
       selectedSheetVersionId: null,
       physicalDescription: 'red coat',
+      voiceOnly: false,
       consistencyTag: null,
     };
     const input = await buildShotImageWorkflowInput({

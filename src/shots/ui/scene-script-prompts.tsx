@@ -128,6 +128,7 @@ import { SceneElementsTab } from './scene-elements-tab';
 import { SceneLocationTab } from './scene-location-tab';
 import { SceneMusicFacet } from './scene-music-facet';
 import { MotionDialoguePanel } from './motion-dialogue-panel';
+import { dialogueForShot } from '@/shots/shot-list-pass';
 import { SceneScriptTab } from './scene-script-tab';
 import { ShotDurationField } from './shot-duration-field';
 
@@ -1903,21 +1904,40 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
 
           {/* The dialogue that assembly appends to the prompt above (#1559).
               Read-only lines — they come from the script — plus the one thing
-              only this panel can say: whose recorded voice speaks them. */}
-          <MotionDialoguePanel
-            dialogue={shot?.motionPrompt?.dialogue}
-            elements={elements}
-            onChange={
-              motionTakesAudioReferences
-                ? (next) =>
-                    handleSaveMotionPrompt(
-                      editedMotionPrompt || rawMotionPrompt,
-                      next
-                    )
-                : null
-            }
-            disabled={saveMotionPrompt.isPending || isAwaitingMotionPrompt}
-          />
+              only this panel can say: whose recorded voice speaks them. Until
+              the shot has a motion prompt, the scene's own lines for this
+              shot show instead (#1585), with no voice picker: a binding is
+              stored on the prompt row. */}
+          {shot?.motionPrompt?.dialogue ? (
+            <MotionDialoguePanel
+              dialogue={shot.motionPrompt.dialogue}
+              elements={elements}
+              onChange={
+                motionTakesAudioReferences
+                  ? (next) =>
+                      handleSaveMotionPrompt(
+                        editedMotionPrompt || rawMotionPrompt,
+                        next
+                      )
+                  : null
+              }
+              disabled={saveMotionPrompt.isPending || isAwaitingMotionPrompt}
+              source="prompt"
+            />
+          ) : (
+            <MotionDialoguePanel
+              dialogue={{
+                presence: true,
+                lines: dialogueForShot(
+                  scene?.script?.dialogue,
+                  shot?.shotNumber ?? 1
+                ),
+              }}
+              elements={elements}
+              onChange={null}
+              source="script"
+            />
+          )}
 
           {/* Model selector — per-asset (#1066): seeded from the shot's selected
               video version; a pick applies to the next generation. */}

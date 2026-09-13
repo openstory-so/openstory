@@ -57,6 +57,10 @@ export const characters = snakeCase.table(
     // rows that predate the fields, and `bibleField` clears `''` to NULL.
     personality: text(),
     movement: text(),
+    // Heard but never seen (#1585): a narrator or an off-screen voice. No
+    // sheet is ever generated. Existing rows are all on-screen cast, so the
+    // default is honest.
+    voiceOnly: integer({ mode: 'boolean' }).default(false).notNull(),
     consistencyTag: text(), // e.g. "char_001: Jack-denim-jacket"
     // First appearance in script
     firstMentionSceneId: text(),
@@ -134,6 +138,7 @@ export type CharacterMinimal = Pick<
   | 'sheetInputHash'
   | 'selectedSheetVersionId'
   | 'physicalDescription'
+  | 'voiceOnly'
   | 'consistencyTag'
 >;
 

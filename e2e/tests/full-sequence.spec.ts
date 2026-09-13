@@ -29,6 +29,7 @@ import {
   createTestStyle,
   getTestSequenceShots,
   getTestSequenceStatus,
+  getTestShot,
 } from '../fixtures/sequence.fixture';
 import {
   getSystemTalentByName,
@@ -474,6 +475,26 @@ SUPER:  CORAL.  OUT NOW.
       for (const shot of finalShots) {
         expect(shot.videoUrl, `shot ${shot.id} missing video`).toBeTruthy();
       }
+
+      // 15. Drain the variant grids. They are fire-and-forget, so nothing
+      //     above waits on them — and a record run that ends while one is
+      //     still at api.x.ai never writes that fixture (#1585 lost scene 1
+      //     shot 3's contact sheet that way). Instant on replay.
+      await expect
+        .poll(
+          async () => {
+            const grids = await Promise.all(
+              finalShots.map((shot) => getTestShot(shot.id))
+            );
+            return grids.every(
+              (grid) =>
+                grid?.variantImageStatus === 'completed' ||
+                grid?.variantImageStatus === 'failed'
+            );
+          },
+          { timeout: t(60_000), message: 'every shot variant grid settled' }
+        )
+        .toBe(true);
 
       // Log any captured browser issues so they're visible in stdout / the
       // HTML report, but don't fail the test on them. Driving this list to

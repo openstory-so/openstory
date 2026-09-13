@@ -9,6 +9,7 @@ import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
 import {
   frames,
+  sceneScriptVersions,
   scenes,
   sequenceEvents,
   sequences,
@@ -35,6 +36,7 @@ let actorId = '';
 async function seed() {
   await db.delete(sequenceEvents);
   await db.delete(frames);
+  await db.delete(sceneScriptVersions);
   await db.delete(shots);
   await db.delete(scenes);
   await db.delete(sequences);
@@ -259,6 +261,51 @@ describe('reorder over live rows (deleted rows renumbered into the tail band)', 
     expect(byId.get(s1.id)).toBe(2);
     expect(byId.get(s2.id)).toBe(3);
     expect(await eventKinds()).toContain('shots.reordered');
+  });
+
+  it('shots: dialogue stamps in every script version follow their shot (#1585)', async () => {
+    const shotMethods = createShotsMethods(db);
+    const { sceneShots, scene } = await seedScene(0, 2);
+    const [s1, s2] = sceneShots;
+    if (!s1 || !s2) throw new Error('setup');
+    const line = (n: number, extra = {}) => ({
+      character: 'A',
+      line: `spoken in ${n}`,
+      tone: '',
+      shotNumber: n,
+      ...extra,
+    });
+    const legacy = { character: 'B', line: 'everywhere', tone: '' };
+    await db.insert(sceneScriptVersions).values([
+      {
+        id: scene.id,
+        sceneId: scene.id,
+        source: 'split',
+        content: { extract: 'x', dialogue: [line(1), line(2), legacy] },
+      },
+      {
+        id: generateId(),
+        sceneId: scene.id,
+        source: 'edit',
+        content: { extract: 'y', dialogue: [line(2, { voiceToken: 'V' })] },
+      },
+    ]);
+
+    await shotMethods.reorderInScene(scene.id, [s2.id, s1.id], { actorId });
+
+    const rows = await db
+      .select()
+      .from(sceneScriptVersions)
+      .where(eq(sceneScriptVersions.sceneId, scene.id));
+    const bySource = new Map(rows.map((r) => [r.source, r.content.dialogue]));
+    expect(bySource.get('split')).toEqual([
+      { ...line(1), shotNumber: 2 },
+      { ...line(2), shotNumber: 1 },
+      legacy,
+    ]);
+    expect(bySource.get('edit')).toEqual([
+      { ...line(2, { voiceToken: 'V' }), shotNumber: 1 },
+    ]);
   });
 });
 

@@ -21,6 +21,7 @@ const character = (
   sheetInputHash: 'hash',
   selectedSheetVersionId: null,
   physicalDescription: `${name} is tall`,
+  voiceOnly: false,
   consistencyTag: name.toLowerCase(),
 });
 

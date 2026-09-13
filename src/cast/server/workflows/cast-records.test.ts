@@ -82,6 +82,7 @@ describe('createCastRecords', () => {
           distinguishingFeatures: '',
           personality: '',
           movement: '',
+          voiceOnly: false,
           consistencyTag: 'sarah',
         },
       ],
@@ -180,6 +181,7 @@ describe('createCastRecords (talent match, #1561)', () => {
     distinguishingFeatures: '',
     personality: 'anxious',
     movement: 'restless hands',
+    voiceOnly: false,
     consistencyTag: 'sarah',
   };
   const match = {
@@ -222,6 +224,49 @@ describe('createCastRecords (talent match, #1561)', () => {
     expect(await run('', '')).toMatchObject({
       personality: 'anxious',
       movement: 'restless hands',
+    });
+  });
+});
+
+describe('createCastRecords (voice only, #1585)', () => {
+  test('a narrator persists with voiceOnly true and no talent', async () => {
+    const characterCreate = vi.fn(async (row: { id: string }) => row);
+    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal stub
+    const scopedDb = {
+      characters: { create: characterCreate },
+      sequenceLocations: { createBulk: vi.fn(async () => []) },
+      sequenceElements: { create: vi.fn() },
+      liveRead: { sequenceElements: { getByToken: vi.fn(async () => null) } },
+    } as unknown as WorkflowScopedDb;
+    await createCastRecords(scopedDb, {
+      sequenceId: 'seq_1',
+      characterBible: [
+        {
+          characterId: 'narrator',
+          name: 'Narrator',
+          age: '',
+          gender: '',
+          ethnicity: '',
+          physicalDescription: '',
+          standardClothing: '',
+          distinguishingFeatures: '',
+          personality: 'dry, unhurried, faintly amused',
+          movement: '',
+          voiceOnly: true,
+          consistencyTag: 'narrator',
+        },
+      ],
+      talentMatches: [],
+      locationBible: [],
+      locationMatches: [],
+      elementBible: [],
+      existingElements: [],
+    });
+    expect(characterCreate.mock.calls[0]?.[0]).toMatchObject({
+      characterId: 'narrator',
+      voiceOnly: true,
+      sheetStatus: 'pending',
+      talentId: null,
     });
   });
 });

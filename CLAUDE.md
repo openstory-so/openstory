@@ -370,7 +370,7 @@ Frames are the core content unit — each represents one scene from script analy
 frame.metadata = {
   sceneId,
   sceneNumber,
-  originalScript: { extract, lineNumber, dialogue },
+  originalScript: { extract, dialogue: [{ character, line, tone, shotNumber?, voiceToken? }] },
   metadata: { title, durationSeconds, location, timeOfDay, storyBeat },
   variants: { cameraAngles, movementStyles, moodTreatments }, // A/B/C options
   selectedVariant: { cameraAngle, movementStyle, moodTreatment, rationale },

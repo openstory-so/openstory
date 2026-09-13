@@ -124,6 +124,7 @@ export function useUpdateSequenceCharacter() {
         sequenceId: string;
         characterId: string;
         name?: string;
+        voiceOnly: boolean;
       } & CharacterBibleInput
     ) => updateSequenceCharacterFn({ data }),
     onSuccess: (_character, { sequenceId }) => {

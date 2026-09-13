@@ -4,9 +4,12 @@
  *
  * Scene-split's boundary pass only decides WHERE each scene starts. This
  * module is the second analysis step: given those verbatim slices, cover
- * each scene with 1..N camera setups (from the LLM, or a single default
- * shot when the call fails / omits a scene). Coverage is a director
- * decision — the style's camera / pace / energy — not a script-split.
+ * each scene with 1..N camera setups from the LLM. A scene the call omits
+ * fails the pass: it carries the dialogue too. Coverage is a director
+ * decision — the style's camera / pace / energy — not a script-split. The
+ * same call places every spoken line in the shot it is spoken in (#1585);
+ * the scene's `originalScript.dialogue` is rebuilt from those, each line
+ * stamped with its shot.
  *
  * A one-shot scene keeps today's duration (the slice label / estimate). Extra
  * shots take their duration from the spec. Prompts are assembled later by
@@ -16,6 +19,10 @@
 import type { NewShot } from '@/platform/server/db/schema';
 import { allocateClipDurations } from '@/motion/snap-duration';
 import type { StyleConfig } from '@/look/style-config';
+import type {
+  CharacterBibleEntry,
+  DialogueLine,
+} from '@/shots/scene-analysis.schema';
 import type { DbSceneId } from '@/shots/scene-id';
 import type { SceneSplittingScene } from '@/sequences/server/streaming-scene-parser';
 import {
@@ -38,6 +45,7 @@ export function defaultSingleShot(durationSeconds: number): ShotSpec {
     action: '',
     cameraMovement: { move: 'static', pacing: 'slow' },
     soundCue: '',
+    dialogue: [],
     durationSeconds: durationSeconds > 0 ? durationSeconds : 3,
   };
 }
@@ -48,7 +56,9 @@ function sceneDurationSeconds(scene: SceneSplittingScene): number {
 
 /**
  * Sort, re-number 1..n, and cap at MAX_SHOTS_PER_SCENE. Empty / missing → one
- * default shot whose duration is the scene's.
+ * default shot whose duration is the scene's. The cap is post-parse only
+ * (Anthropic rejects `maxItems`), and since dialogue rides on shots (#1585)
+ * the lines of a cut shot move to the last kept one rather than vanish.
  */
 export function normalizeShots(
   shots: ReadonlyArray<ShotSpec> | null | undefined,
@@ -57,35 +67,103 @@ export function normalizeShots(
   if (!shots || shots.length === 0) {
     return [defaultSingleShot(sceneDurationSeconds)];
   }
-  const ordered = [...shots]
-    .sort((a, b) => a.shotNumber - b.shotNumber)
-    .slice(0, MAX_SHOTS_PER_SCENE);
-  return ordered.map((shot, index) => ({
+  const ordered = [...shots].sort((a, b) => a.shotNumber - b.shotNumber);
+  const kept = ordered.slice(0, MAX_SHOTS_PER_SCENE);
+  const cut = ordered.slice(MAX_SHOTS_PER_SCENE);
+  const last = kept[kept.length - 1];
+  if (cut.length > 0 && last) {
+    kept[kept.length - 1] = {
+      ...last,
+      dialogue: [...last.dialogue, ...cut.flatMap((shot) => shot.dialogue)],
+    };
+  }
+  return kept.map((shot, index) => ({
     ...shot,
     shotNumber: index + 1,
   }));
 }
 
 /**
- * Copy each scene and attach a normalized shot list. Unmatched / invalid
- * pass entries fall back to one shot so a degraded LLM result still persists
- * the 1:1 path.
+ * A scene's dialogue as its shots spell it, in shot order (#1585). Every
+ * line is stamped with its shot — a one-shot scene's lines with `1` — so an
+ * absent stamp means exactly one thing downstream: a row from before #1585.
+ * `dialogueForShot` is the filter.
+ */
+export function dialogueFromShots(
+  shots: ReadonlyArray<ShotSpec>
+): DialogueLine[] {
+  return shots.flatMap((shot) =>
+    shot.dialogue
+      .filter((line) => line.line.trim().length > 0)
+      .map((line) => ({
+        character: line.character.trim(),
+        line: line.line.trim(),
+        tone: line.tone,
+        shotNumber: shot.shotNumber,
+      }))
+  );
+}
+
+/**
+ * The lines spoken in one shot: those stamped with its number, plus any with
+ * no stamp at all (rows from before #1585, when every clip carried the whole
+ * scene). The stamp is stripped on the way out because it is a storage fact:
+ * the prompt, its input hash and the stored motion dialogue never see it.
+ * Tolerates a missing list: pre-#1030 scene metadata did not always carry
+ * one.
+ *
+ * Stamps follow the shot, not the number: `shots.reorderInScene` rewrites
+ * them when it renumbers. A soft-deleted shot keeps its lines (restore is
+ * lossless), and a shot added by hand starts with none.
+ */
+export function dialogueForShot(
+  lines: ReadonlyArray<DialogueLine> | undefined,
+  shotNumber: number
+): DialogueLine[] {
+  return (lines ?? [])
+    .filter(
+      (line) => line.shotNumber === undefined || line.shotNumber === shotNumber
+    )
+    .map(({ shotNumber: _stamp, ...line }) => line);
+}
+
+/**
+ * Copy each scene and attach a normalized shot list, rebuilding its dialogue
+ * from the shots. Throws when the pass omits a scene: the omitted scene would
+ * otherwise keep its streamed regex preview — empty for prose — with nothing
+ * telling anyone, the degrade #1585 removed.
  */
 export function attachShotLists(
   scenes: ReadonlyArray<SceneSplittingScene>,
-  pass: ShotListPassResult | null | undefined
+  pass: ShotListPassResult
 ): SceneSplittingScene[] {
   const byNumber = new Map<number, ShotSpec[]>();
-  for (const entry of pass?.scenes ?? []) {
+  for (const entry of pass.scenes) {
     if (!Number.isFinite(entry.sceneNumber)) continue;
     byNumber.set(entry.sceneNumber, entry.shots);
   }
+  const missing = scenes
+    .filter(
+      (scene, index) =>
+        !byNumber.has(scene.sceneNumber) && !byNumber.has(index + 1)
+    )
+    .map((scene) => scene.sceneNumber);
+  if (missing.length > 0) {
+    throw new Error(
+      `Shot-list pass covered ${pass.scenes.length}/${scenes.length} scenes; missing scene(s) ${missing.join(', ')}`
+    );
+  }
   return scenes.map((scene, index) => {
     const listed =
-      byNumber.get(scene.sceneNumber) ?? byNumber.get(index + 1) ?? null;
+      byNumber.get(scene.sceneNumber) ?? byNumber.get(index + 1) ?? [];
+    const shots = normalizeShots(listed, sceneDurationSeconds(scene));
     return {
       ...scene,
-      shots: normalizeShots(listed, sceneDurationSeconds(scene)),
+      shots,
+      originalScript: {
+        ...scene.originalScript,
+        dialogue: dialogueFromShots(shots),
+      },
     };
   });
 }
@@ -198,6 +276,20 @@ export function formatDirectorStyleForShotList(
     lines.push(`References: ${style.references.slice(0, 4).join('; ')}`);
   }
   return lines.join('\n');
+}
+
+/**
+ * Cast list for the shot-list prompt: every bible name, spelled as the rest
+ * of the pipeline spells it, with voice-only entries marked so narration and
+ * off-screen speech have a speaker to be attributed to (#1585).
+ */
+export function formatCastForShotList(
+  cast: ReadonlyArray<Pick<CharacterBibleEntry, 'name' | 'voiceOnly'>>
+): string {
+  if (cast.length === 0) return '(none)';
+  return cast
+    .map((entry) => `- ${entry.name}${entry.voiceOnly ? ' (voice only)' : ''}`)
+    .join('\n');
 }
 
 /** User-prompt body: numbered slices the model must not re-author. */
