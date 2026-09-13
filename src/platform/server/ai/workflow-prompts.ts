@@ -1308,4 +1308,51 @@ Two rejection classes:
 </REJECTION>`,
     },
   ],
+  // Rate-card extraction (#1605): one call per fal endpoint whose Pricing
+  // text changed. The output is validated against the rate-card zod schema
+  // and every worked example is re-evaluated before anything is stored.
+  'billing/rate-card-extraction-chat': [
+    {
+      role: 'system',
+      content: `You transcribe a model provider's advertised price into a RATE CARD: a small JSONLogic program that computes the USD cost of ONE request from the request's parameters. The card is evaluated by a strict interpreter with no code execution. Today is {{today}}.
+
+Return ONLY a JSON object with these keys — no prose, no markdown fences:
+- "inputs": the price levers. Each key is a lever name; each value binds it to a REAL request parameter from the Input Schema: {"param": "<exact param name>", "kind": "number" | "enum" | "boolean" | "count" | "dimensions", ...}. "enum" needs "values" (the schema's options) and should carry the schema's "default"; "number" and "boolean" carry the schema's default; "count" is the length of a list param (image_urls) and has no default; "dimensions" binds {width,height} or a preset name via "presets": {"name": [w, h]} plus a "default" preset. A lever the schema has no field for (e.g. voice control driven from the prompt) may bind an invented param name with a default of "off".
+- "tables": named lookup tables of numbers, nested by key, e.g. {"rate": {"720p": {"video": 6.4}}}.
+- "price": the JSONLogic expression yielding USD. Allowed ops ONLY: var, missing, +, -, *, /, max, min, if, ==, !=, <, <=, >, >=, and, or, ceil, floor, and {"lookup": {"table": "<name>", "keys": [<expr>...], "default": <expr>?}}. One op per node. "var" reads a lever ("duration") or a dimension ("image_size.width"). Comparisons are strict: compare a number lever to numbers, a string lever to strings.
+- "examples": EVERY worked example stated in the text, copied VERBATIM: [{"params": {<request params exactly as the endpoint receives them>}, "usd": <number>, "quote": "<the sentence from the text>"}]. Include per-unit statements as examples with the smallest concrete request they imply (e.g. "$0.08 per image" → params {} usd 0.08). Never invent an example the text does not support. An empty list is acceptable when the text states no figure that a request can reproduce.
+- "expiresAt": ISO-8601 datetime with timezone (e.g. "2026-09-14T00:00:00Z") when the text names a promotion END date that is still in the future relative to today; otherwise null.
+
+Rules:
+1. Bind every lever to a parameter name that appears in the Input Schema, spelled exactly. Use the schema's default values as the card's defaults.
+2. Price what the text says. Do not average, guess or copy a sibling model's rate. A size, tier or shape the text does not price must be ABSENT from the tables so the lookup refuses, rather than filled with a neighbour's value.
+3. Multipliers, surcharges, free allowances, per-unit formulas, rounding ("rounded up to the minute" → ceil) and minimum charges are all expressed in "price".
+4. Promotions: if the promo has ALREADY ENDED relative to today, price at the post-promo (list) rate and set "expiresAt" to null. If it is still running, price at the rate the text's own worked examples use and set "expiresAt" to the end date.
+5. Tables of size × quality prices are looked up by the request's width, height and quality. Key numeric table paths as strings ("1024").
+6. Enum durations arrive as strings ("5"); bind them with kind "number" — the interpreter converts.
+
+The schema the JSON must satisfy (the "source" object is added by the caller, omit it):
+{{jsonSchema}}
+
+{{fewShot}}`,
+    },
+    {
+      role: 'user',
+      content: `Endpoint: {{endpointId}}
+
+<PRICING>
+{{pricingSection}}
+</PRICING>
+
+<DESCRIPTION_TABLE>
+{{descriptionTable}}
+</DESCRIPTION_TABLE>
+
+<INPUT_SCHEMA>
+{{inputSchemaSection}}
+</INPUT_SCHEMA>
+
+Write the rate card JSON.`,
+    },
+  ],
 };
