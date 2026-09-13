@@ -5,11 +5,17 @@
 
 import { bearerChallengeHeaders } from '@/platform/server/auth/oauth-bearer';
 import { getOAuthProtectedResourceMetadataUrl } from '@modelcontextprotocol/server';
-import { mcpResourceIdentifier } from '@/platform/server/auth/oauth-provider';
+import {
+  mcpResourceIdentifier,
+  mcpResourceIdentifierForRequest,
+} from '@/platform/server/auth/oauth-provider';
 
-/** RFC 9728 document the MCP plugin serves at `/.well-known/oauth-protected-resource/mcp`. */
-export function mcpResourceMetadataUrl(): string {
-  return getOAuthProtectedResourceMetadataUrl(new URL(mcpResourceIdentifier()));
+/** RFC 9728 document at `/.well-known/oauth-protected-resource/mcp`. */
+export function mcpResourceMetadataUrl(request?: Request): string {
+  const resource = request
+    ? mcpResourceIdentifierForRequest(request)
+    : mcpResourceIdentifier();
+  return getOAuthProtectedResourceMetadataUrl(new URL(resource));
 }
 
 export function mcpJsonRpcError(
@@ -40,6 +46,7 @@ export function mcpUnauthorized(
   options: {
     invalidToken?: boolean;
     message?: string;
+    request?: Request;
   } = {}
 ): Response {
   const invalidToken = options.invalidToken === true;
@@ -51,7 +58,7 @@ export function mcpUnauthorized(
         : 'Authentication required'),
     {
       headers: bearerChallengeHeaders({
-        resourceMetadataUrl: mcpResourceMetadataUrl(),
+        resourceMetadataUrl: mcpResourceMetadataUrl(options.request),
         error: invalidToken ? 'invalid_token' : undefined,
       }),
     }

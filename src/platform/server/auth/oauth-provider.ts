@@ -61,6 +61,15 @@ function isLoopbackHost(hostname: string): boolean {
   );
 }
 
+/** True when `origin` is an HTTP(S) loopback origin (any port). */
+export function isLoopbackOrigin(origin: string): boolean {
+  try {
+    return isLoopbackHost(new URL(origin).hostname);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * The OAuth issuer: the app origin, no path. RFC 8414 then puts the metadata
  * at `/.well-known/oauth-authorization-server` on the root, which is where MCP
@@ -114,6 +123,40 @@ export function mcpResourceIdentifier(issuer = resolveOAuthIssuer()): string {
   return `${issuer}/mcp`;
 }
 
+/**
+ * Resource identifier Grok/Claude should see for *this* request.
+ *
+ * Worktrees bind Vite on :3001/:3002 when :3000 is taken, while
+ * `VITE_APP_URL` stays `:3000`. Grok requires the RFC 9728 metadata URL
+ * in `WWW-Authenticate` to be same-origin as the MCP server, so a
+ * challenge that names `:3000` while the client is on `:3002` is
+ * discarded as "no authorization support". Loopback requests therefore
+ * advertise the request origin; production keeps the deploy-time issuer.
+ */
+export function mcpResourceIdentifierForRequest(request: Request): string {
+  const origin = new URL(request.url).origin;
+  if (isLoopbackOrigin(origin)) return `${origin}/mcp`;
+  return mcpResourceIdentifier();
+}
+
+/**
+ * Extra loopback `/mcp` resource identifiers so DCR/authorize on a
+ * worktree port (`:3002`) is a configured resource, not `invalid_target`.
+ * Production never lists these.
+ */
+export function loopbackMcpResourceAliases(
+  canonical = mcpResourceIdentifier()
+): string[] {
+  if (!import.meta.env.DEV) return [];
+  const ports = [
+    3000, 3001, 3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009, 3010,
+  ];
+  const hosts = ['localhost', '127.0.0.1'];
+  return hosts
+    .flatMap((host) => ports.map((port) => `http://${host}:${port}/mcp`))
+    .filter((identifier) => identifier !== canonical);
+}
+
 /** RFC 8707 resource identifier for the public REST API. */
 export function apiResourceIdentifier(issuer = resolveOAuthIssuer()): string {
   return `${issuer}/api/v1`;
@@ -140,6 +183,24 @@ export function buildApiResourceMetadata() {
 }
 
 /**
+ * RFC 9728 protected-resource document for `/mcp`. Served by
+ * `routes/[.]well-known/$.ts` so the `resource` field can follow the
+ * request origin on loopback (see `mcpResourceIdentifierForRequest`).
+ */
+export function buildMcpResourceMetadata(request: Request) {
+  const resource = mcpResourceIdentifierForRequest(request);
+  const authorizationServer = new URL(resource).origin;
+  return {
+    resource,
+    authorization_servers: [authorizationServer],
+    bearer_methods_supported: ['header'],
+    scopes_supported: [...OAUTH_API_SCOPES],
+    resource_name: 'OpenStory MCP',
+    resource_documentation: resource,
+  };
+}
+
+/**
  * The Better Auth plugins that make OpenStory an authorization server. Order
  * matters: `mcp()` looks up the `jwt()` plugin for signing keys and the
  * issuer.
@@ -147,6 +208,8 @@ export function buildApiResourceMetadata() {
 export function createOAuthProviderPlugins() {
   const issuer = resolveOAuthIssuer();
   const apiResource = apiResourceIdentifier(issuer);
+  const mcpResource = mcpResourceIdentifier(issuer);
+  const loopbackMcp = loopbackMcpResourceAliases(mcpResource);
 
   return [
     jwt({
@@ -156,7 +219,7 @@ export function createOAuthProviderPlugins() {
       disableSettingJwtHeader: true,
     }),
     mcp({
-      resource: mcpResourceIdentifier(issuer),
+      resource: mcpResource,
       loginPage: OAUTH_LOGIN_PATH,
       consentPage: OAUTH_CONSENT_START_PATH,
       scopes: [...OAUTH_SCOPES],
@@ -166,11 +229,16 @@ export function createOAuthProviderPlugins() {
           name: 'OpenStory API',
           allowedScopes: [...OAUTH_API_SCOPES],
         },
+        ...loopbackMcp.map((identifier) => ({
+          identifier,
+          name: 'OpenStory MCP',
+          allowedScopes: [...OAUTH_API_SCOPES],
+        })),
       ],
       // Dynamically registered clients (hosted MCP clients, forks) may request
       // tokens for the API as well as the MCP resource, which the plugin
-      // appends on its own.
-      clientRegistrationDefaultResources: [apiResource],
+      // appends on its own. Loopback aliases cover worktree ports.
+      clientRegistrationDefaultResources: [apiResource, ...loopbackMcp],
       clientRegistrationDefaultScopes: [...OAUTH_SCOPES],
       // RFC 7591, open registration — the MCP spec's expectation. The
       // endpoint is throttled per IP in the auth catch-all route.

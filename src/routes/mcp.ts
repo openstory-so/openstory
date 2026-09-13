@@ -8,6 +8,7 @@
  */
 
 import {
+  handleMcpGet,
   handleMcpOptions,
   handleMcpPost,
   mcpMethodNotAllowed,
@@ -19,8 +20,8 @@ export const Route = createFileRoute('/mcp')({
     handlers: {
       POST: ({ request }) => handleMcpPost(request),
       OPTIONS: ({ request }) => handleMcpOptions(request),
-      GET: () => mcpMethodNotAllowed(),
-      HEAD: () => mcpMethodNotAllowed(),
+      GET: ({ request }) => handleMcpGet(request),
+      HEAD: ({ request }) => handleMcpGet(request),
       DELETE: () => mcpMethodNotAllowed(),
     },
   },

@@ -17,7 +17,12 @@ import {
   verifyOAuthAccessToken,
   type OAuthAccessToken,
 } from '@/platform/server/auth/oauth-bearer';
-import { mcpResourceIdentifier } from '@/platform/server/auth/oauth-provider';
+import {
+  isLoopbackOrigin,
+  mcpResourceIdentifier,
+  mcpResourceIdentifierForRequest,
+  resolveOAuthIssuer,
+} from '@/platform/server/auth/oauth-provider';
 import { PUBLIC_API_KEY_PREFIX } from '@/platform/server/auth/public-api-key';
 import { restrictionNotice } from '@/platform/server/compliance/enforcement';
 import { loadComplianceState } from '@/platform/server/compliance/generation-gate';
@@ -124,7 +129,20 @@ export async function authenticateMcpRequest(
   if (bearer && looksLikeOAuthAccessToken(bearer)) {
     let token: OAuthAccessToken | null;
     try {
-      token = await verifyOAuthAccessToken(bearer, mcpResourceIdentifier());
+      const origin = new URL(request.url).origin;
+      const audiences = [
+        ...new Set([
+          mcpResourceIdentifier(),
+          mcpResourceIdentifierForRequest(request),
+        ]),
+      ];
+      const issuers = [
+        ...new Set([
+          resolveOAuthIssuer(),
+          ...(isLoopbackOrigin(origin) ? [origin] : []),
+        ]),
+      ];
+      token = await verifyOAuthAccessToken(bearer, audiences, issuers);
     } catch (error) {
       if (error instanceof Response) return error;
       logger.error('MCP OAuth JWKS load or verify failed: {message}', {
@@ -133,11 +151,11 @@ export async function authenticateMcpRequest(
       });
       return mcpInternalError();
     }
-    if (!token) return mcpUnauthorized({ invalidToken: true });
+    if (!token) return mcpUnauthorized({ invalidToken: true, request });
 
     const { internalAdapter } = await auth.$context;
     const user = await internalAdapter.findUserById(token.userId);
-    if (!user) return mcpUnauthorized({ invalidToken: true });
+    if (!user) return mcpUnauthorized({ invalidToken: true, request });
 
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- adapter row matches getSession's user
     const ctx = await resolveTeamContext(user as User, token);
@@ -147,7 +165,7 @@ export async function authenticateMcpRequest(
 
   try {
     const session = await auth.api.getSession({ headers: request.headers });
-    if (!session?.user) return mcpUnauthorized();
+    if (!session?.user) return mcpUnauthorized({ request });
     const ctx = await resolveTeamContext(session.user, null);
     if (ctx instanceof Response) return ctx;
     const presented =
@@ -172,7 +190,7 @@ export async function authenticateMcpRequest(
       error instanceof APIError &&
       (error.statusCode === 401 || error.statusCode === 403)
     ) {
-      return mcpUnauthorized({ invalidToken: true });
+      return mcpUnauthorized({ invalidToken: true, request });
     }
     logger.error('MCP session resolution failed: {message}', {
       message: error instanceof Error ? error.message : String(error),

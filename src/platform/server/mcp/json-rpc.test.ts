@@ -14,6 +14,15 @@ describe('mcpResourceMetadataUrl', () => {
       'https://openstory.test/.well-known/oauth-protected-resource/mcp'
     );
   });
+
+  it('is same-origin as a loopback worktree request', () => {
+    const request = new Request('http://localhost:3002/mcp', {
+      method: 'POST',
+    });
+    expect(mcpResourceMetadataUrl(request)).toBe(
+      'http://localhost:3002/.well-known/oauth-protected-resource/mcp'
+    );
+  });
 });
 
 describe('mcpUnauthorized', () => {
@@ -34,6 +43,15 @@ describe('mcpUnauthorized', () => {
     expect(body.jsonrpc).toBe('2.0');
     expect(body.id).toBeNull();
     expect(body.error.code).toBe(-32000);
+  });
+
+  it('names the request origin on a worktree port so Grok same-origin checks pass', () => {
+    const res = mcpUnauthorized({
+      request: new Request('http://localhost:3002/mcp'),
+    });
+    expect(res.headers.get('WWW-Authenticate')).toContain(
+      'resource_metadata="http://localhost:3002/.well-known/oauth-protected-resource/mcp"'
+    );
   });
 
   it('marks a bad token as invalid_token', () => {

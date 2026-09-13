@@ -15,7 +15,9 @@ vi.doMock('@/platform/server/db/scoped', () => ({ resolveUserTeam }));
 const {
   apiResourceIdentifier,
   createOAuthProviderPlugins,
+  loopbackMcpResourceAliases,
   mcpResourceIdentifier,
+  mcpResourceIdentifierForRequest,
   pickOAuthIssuer,
   resolveOAuthIssuer,
 } = await import('./oauth-provider');
@@ -88,6 +90,16 @@ describe('resolveOAuthIssuer', () => {
     envState.VITE_APP_URL = 'https://openstory.so';
     expect(mcpResourceIdentifier()).toBe('https://openstory.so/mcp');
     expect(apiResourceIdentifier()).toBe('https://openstory.so/api/v1');
+  });
+
+  it('advertises the request origin as the MCP resource on loopback', () => {
+    envState.VITE_APP_URL = 'https://openstory.so';
+    expect(
+      mcpResourceIdentifierForRequest(new Request('http://localhost:3002/mcp'))
+    ).toBe('http://localhost:3002/mcp');
+    expect(
+      mcpResourceIdentifierForRequest(new Request('https://openstory.so/mcp'))
+    ).toBe('https://openstory.so/mcp');
   });
 });
 
@@ -165,6 +177,9 @@ describe('createOAuthProviderPlugins', () => {
     expect(identifiers).toContain('https://openstory.so/mcp');
     expect(options.clientRegistrationDefaultResources).toContain(
       'https://openstory.so/api/v1'
+    );
+    expect(loopbackMcpResourceAliases('https://openstory.so/mcp')).toContain(
+      'http://localhost:3002/mcp'
     );
     expect(options.allowDynamicClientRegistration).toBe(true);
     expect(options.allowUnauthenticatedClientRegistration).toBe(true);

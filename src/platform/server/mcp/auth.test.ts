@@ -123,7 +123,8 @@ describe('authenticateMcpRequest', () => {
     expect(ctx.keyHint).toBe('jwt:jti_1');
     expect(verifyOAuthAccessToken).toHaveBeenCalledWith(
       jwt,
-      'https://openstory.test/mcp'
+      ['https://openstory.test/mcp'],
+      ['https://openstory.test']
     );
     expect(getUserTeamMembership).toHaveBeenCalledWith('user_1', 'team_1');
     expect(getSession).not.toHaveBeenCalled();

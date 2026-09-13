@@ -42,6 +42,21 @@ export function mcpMethodNotAllowed(): Response {
   });
 }
 
+/**
+ * GET/HEAD on `/mcp` are not Streamable HTTP methods, but OAuth clients
+ * (Grok's anonymous-access probe) probe the resource URL. Unauthenticated
+ * GET must be 401 + `WWW-Authenticate`, not 405 with no challenge — Grok
+ * treats the latter as "does not support OAuth".
+ */
+export async function handleMcpGet(request: Request): Promise<Response> {
+  const origin = originOf(request);
+  const rejected = mcpOriginRejection(request);
+  if (rejected) return rejected;
+  const auth = await authenticateMcpRequest(request);
+  if (auth instanceof Response) return withCors(auth, origin);
+  return withCors(mcpMethodNotAllowed(), origin);
+}
+
 export function handleMcpOptions(request: Request): Response {
   const rejected = mcpOriginRejection(request);
   if (rejected) return rejected;

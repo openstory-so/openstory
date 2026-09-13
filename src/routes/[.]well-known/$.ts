@@ -11,16 +11,27 @@
  */
 
 import { getAuth } from '@/platform/server/auth/config';
-import { buildApiResourceMetadata } from '@/platform/server/auth/oauth-provider';
+import {
+  buildApiResourceMetadata,
+  buildMcpResourceMetadata,
+} from '@/platform/server/auth/oauth-provider';
 import { createFileRoute } from '@tanstack/react-router';
 
 const API_RESOURCE_METADATA_PATH =
   '/.well-known/oauth-protected-resource/api/v1';
+const MCP_RESOURCE_METADATA_PATH = '/.well-known/oauth-protected-resource/mcp';
 
 const handle = ({ request }: { request: Request }) => {
   const pathname = new URL(request.url).pathname.replace(/\/+$/, '');
-  if (pathname === API_RESOURCE_METADATA_PATH) {
-    const body = JSON.stringify(buildApiResourceMetadata());
+  if (
+    pathname === API_RESOURCE_METADATA_PATH ||
+    pathname === MCP_RESOURCE_METADATA_PATH
+  ) {
+    const doc =
+      pathname === MCP_RESOURCE_METADATA_PATH
+        ? buildMcpResourceMetadata(request)
+        : buildApiResourceMetadata();
+    const body = JSON.stringify(doc);
     return new Response(request.method === 'HEAD' ? null : body, {
       status: 200,
       headers: {

@@ -113,11 +113,15 @@ export function resetOAuthJwksCache(): void {
  */
 export async function verifyOAuthAccessToken(
   token: string,
-  audience: string
+  audience: string | readonly string[],
+  issuers?: string | readonly string[]
 ): Promise<OAuthAccessToken | null> {
-  const issuer = resolveOAuthIssuer();
+  const issuer = issuers ?? resolveOAuthIssuer();
   const verify = (set: ReturnType<typeof createLocalJWKSet>) =>
-    jwtVerify(token, set, { issuer, audience });
+    jwtVerify(token, set, {
+      issuer: typeof issuer === 'string' ? issuer : [...issuer],
+      audience: typeof audience === 'string' ? audience : [...audience],
+    });
 
   const verifyWith = async (forceRefresh: boolean) => {
     const set = await loadJwkSet(forceRefresh);

@@ -15,7 +15,7 @@ vi.doMock('./auth', async () => {
   return { ...actual, authenticateMcpRequest };
 });
 
-const { handleMcpOptions, handleMcpPost, mcpMethodNotAllowed } =
+const { handleMcpGet, handleMcpOptions, handleMcpPost, mcpMethodNotAllowed } =
   await import('./handle');
 const { resetMcpHttpHandler } = await import('./server');
 const { Route } = await import('@/routes/mcp');
@@ -173,9 +173,36 @@ describe('CORS and methods', () => {
     );
   });
 
-  it('405s GET', () => {
+  it('405s DELETE', () => {
     expect(mcpMethodNotAllowed().status).toBe(405);
     expect(mcpMethodNotAllowed().headers.get('Allow')).toBe('POST, OPTIONS');
+  });
+
+  it('401s unauthenticated GET with a same-origin RFC 9728 challenge', async () => {
+    authenticateMcpRequest.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          error: { code: -32000, message: 'Authentication required' },
+          id: null,
+        }),
+        {
+          status: 401,
+          headers: {
+            'WWW-Authenticate':
+              'Bearer resource_metadata="http://localhost:3002/.well-known/oauth-protected-resource/mcp"',
+            'Content-Type': 'application/json',
+          },
+        }
+      )
+    );
+    const res = await handleMcpGet(
+      new Request('http://localhost:3002/mcp', { method: 'GET' })
+    );
+    expect(res.status).toBe(401);
+    expect(res.headers.get('WWW-Authenticate')).toContain(
+      'http://localhost:3002/.well-known/oauth-protected-resource/mcp'
+    );
   });
 });
 
@@ -191,8 +218,8 @@ describe('POST /mcp route', () => {
     });
     expect(preflight).toBeInstanceOf(Response);
     expect((await Promise.resolve(preflight)).status).toBe(204);
-    expect(get({ request: new Request('https://openstory.test/mcp') })).toEqual(
-      expect.objectContaining({ status: 405 })
-    );
+    expect(
+      (await get({ request: new Request('https://openstory.test/mcp') })).status
+    ).toBe(405);
   });
 });
