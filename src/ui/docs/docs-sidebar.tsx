@@ -10,16 +10,17 @@ import { SECTION_ORDER } from './sections';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { allDocs } from 'content-collections';
 
-type NavItem = { slug: string; title: string };
+type NavItem = { slug: string; title: string; order: number };
 
 // Pages that live as routes (not content-collections markdown) but belong in
 // the docs nav. The FAQ renders from FAQ_ITEMS so it stays in sync with
-// llms.txt; the dependency graph is interactive (#1595).
+// llms.txt; the dependency graph is interactive (#1595). `order` slots them
+// among the markdown docs' frontmatter `order`.
 const EXTRA_NAV_ITEMS: Record<string, NavItem[]> = {
   'Developer Guide': [
-    { slug: 'dependency-graph', title: 'What goes stale when' },
+    { slug: 'dependency-graph', title: 'Dependency graph', order: 6 },
   ],
-  Support: [{ slug: 'faq', title: 'FAQ' }],
+  Support: [{ slug: 'faq', title: 'FAQ', order: 99 }],
 };
 
 function buildNavTree() {
@@ -34,17 +35,13 @@ function buildNavTree() {
     }
   }
 
-  for (const items of grouped.values()) {
-    items.sort((a, b) => a.order - b.order);
-  }
-
   return SECTION_ORDER.reduce<{ section: string; items: NavItem[] }[]>(
     (acc, section) => {
       const docs = grouped.get(section) ?? [];
       const items = [
-        ...docs.map(({ slug, title }) => ({ slug, title })),
+        ...docs.map(({ slug, title, order }) => ({ slug, title, order })),
         ...(EXTRA_NAV_ITEMS[section] ?? []),
-      ];
+      ].sort((a, b) => a.order - b.order);
       if (items.length > 0) {
         acc.push({ section, items });
       }

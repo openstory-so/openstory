@@ -5,7 +5,7 @@ section: Developer Guide
 order: 5
 ---
 
-End-to-end pipeline that transforms a user's script into a complete storyboard with images, motion video, and music. For what an edit makes stale afterwards, use the interactive [What goes stale when](/docs/dependency-graph) map.
+End-to-end pipeline that transforms a user's script into a complete storyboard with images, motion video, and music. For what an edit makes stale afterwards, use the interactive [Dependency graph](/docs/dependency-graph).
 
 ## High-Level Overview
 

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { DependencyGraphView } from '@/ui/docs/dependency-graph-view';
 import { GRAPH_MODES, nodeById } from '@/ui/docs/dependency-graph';
 
-const title = 'What goes stale when';
+const title = 'Dependency graph';
 const description =
   'Interactive map of the generation graph: pick anything you can edit and see which prompts, sheets, stills and clips go stale.';
 
