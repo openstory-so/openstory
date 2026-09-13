@@ -257,7 +257,7 @@ export const DependencyGraphView: React.FC<DependencyGraphViewProps> = ({
                       'transition-[fill,stroke] motion-reduce:transition-none group-focus-visible:stroke-ring group-focus-visible:stroke-2',
                       // Border = provenance (green versioned, dashed
                       // optional). State lives on the fill so they combine.
-                      n.versionedIn ? 'stroke-chart-4' : 'stroke-border',
+                      n.versionedIn ? 'stroke-chart-2' : 'stroke-border',
                       isActive
                         ? 'fill-primary/20 stroke-[2.5]'
                         : isStale
@@ -331,7 +331,7 @@ const Legend: React.FC = () => (
       </li>
     ))}
     <li className="flex items-center gap-1.5">
-      <span className="inline-block size-3 rounded-sm border border-chart-4" />
+      <span className="inline-block size-3 rounded-sm border border-chart-2" />
       versioned
     </li>
     <li className="flex items-center gap-1.5">
@@ -377,7 +377,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
           {node.kind === 'input' ? 'you edit' : 'generated'}
         </Badge>
         {node.versionedIn && (
-          <Badge variant="outline" className="border-chart-4">
+          <Badge variant="outline" className="border-chart-2">
             versioned — {node.versionedIn}
           </Badge>
         )}
