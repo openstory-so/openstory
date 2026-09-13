@@ -14,6 +14,7 @@
  *
  * The cap is sourced per-model from the model's JSON Schema duration set (the
  * same source `snapDuration` snaps to), never a hardcoded constant.
+ * `packMotionBatchShots` is the live caller (#1510).
  *
  * See docs/architecture/scene-shot-frame-redesign.md.
  */

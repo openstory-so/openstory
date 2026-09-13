@@ -121,6 +121,11 @@ export type GenerateMotionOptions = {
    * `imageUrl` must be absent whenever this is true.
    */
   referenceOnly?: boolean;
+  /**
+   * Kling v3 packed multi-shot (#1510). When set, the fal request sends
+   * `multi_prompt[]` + `shot_type: customize` and omits `prompt`.
+   */
+  multiPrompt?: Array<{ prompt: string; duration: string }>;
 };
 
 export type MotionJobSubmission = {

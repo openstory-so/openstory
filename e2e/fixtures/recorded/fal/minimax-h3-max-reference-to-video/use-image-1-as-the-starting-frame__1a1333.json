@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nShot 1 (0-6s): Image 2 applies a quick lipstick touch-up using her phone's dark reflection.. Camera: smooth orbit\n\noverall_soundscape: rooftop wind, elevated train rattling in the distance. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nShot 2 (6-12s): Image 2 catches the lipstick, pockets it, and walks toward the glowing skyline.. Camera: gradual truck\n\noverall_soundscape: wind gust, elevated train fading, soft rooftop footsteps. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nReference images:\nImage 3: CORAL_LIPSTICK - A compact luxury lipstick with a slim cylindrical tube in satin black metal — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/13cbc101b5ae442f5437c4d6682daa28dbbdce664fed3712176e47d2c543c7ef.mp4",
+            "content_type": "video/mp4",
+            "file_name": "GYUUHOMzo-1TyP7XnW7cD_minimax-h3.mp4",
+            "file_size": 16964275
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the blonde woman in <Picture 2>, featuring wavy hair, black sunglasses, a black turtleneck, and dark trousers, maintaining a consistent face and outfit.\n<Subject 2> is the luxury lipstick in <Picture 3> (labeled \"CORAL_LIPSTICK\"), a slim black cylindrical tube with a coral-red bullet.\n<Subject 3> is the smartphone in the woman's hand, matching the device shown in <Picture 1>.\n<Picture 1> represents the rooftop scene and the starting frame layout.\n\nsummary:\n[keyframe completion + reference generation] The target video shows <Subject 1> on a sunny high-rise rooftop, touching up her lipstick using her smartphone screen as a mirror, then pocketing the lipstick and walking toward the city skyline.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1], [Shot 2]): fully_preserved - Identical facial features and wardrobe to <Picture 2>.\n<Subject 2> (appears in [Shot 1], [Shot 2]): partially_preserved - Visible in hand then inserted into waist pocket.\n<Picture 1> (appears in [Shot 1]): attribute_transfer - Provides the specific rooftop setting and lighting.\n<Picture 3> (appears in [Shot 1], [Shot 2]): fully_preserved - Exact product design maintained.\n\ndetailed_description:\nThe video is a cinematic, 12-second live-action commercial set on a modern urban rooftop during the late afternoon with warm, golden sunlight.\n[Shot 1]\nThe shot begins with <Subject 1> standing on a rooftop terrace, her hair blowing in the wind. She holds a smartphone in her left hand and a small black lipstick tube in her right. The camera performs a smooth Arc Shot with a small amplitude at a moderate speed, moving around her face to show her reflection in the dark screen of her phone. She uses the phone as a mirror to apply a quick touch-up to her lips. The <Subject 2> is clearly visible in her hand, matching its appearance in <Picture 3> with its compact black design and white text. The background features blurred skyscrapers and tall rooftop ornamental grasses swaying in the breeze.\n[Shot 2] At 00:05.800, the shot cuts to a medium-full shot of <Subject 1>. She finishes the application, pushes the lipstick bullet into the case with a sharp \"click\" sound, and tucks the <Subject 2> into the side pocket of her dark trousers with a practiced motion. She turns her body toward the city horizon. The camera performs a steady Truck Forward (Push In) at a slow speed, following her movement as she walks confidently toward a brightly glowing, out-of-focus city skyline in the background. The golden hour light creates a soft halo around her silhouette, and the fabric of her clothing flows naturally with her stride.\n\noverall_soundscape:\nThe video features a consistent urban wind ambience and a distant elevated train rumbling in the background of the first shot. In the second shot, the audio transitions to the mechanical click of the lipstick closing and the rhythmic, crisp sound of black leather boots stepping on concrete.\n\nnon_diegetic_music:\nN/A",
+          "seed": 1638439105,
+          "timings": {
+            "inference": 15.000370087014744
+          }
+        },
+        "status": 200,
+        "billableUnits": 19.430400000000002
+      }
+    }
+  ]
+}

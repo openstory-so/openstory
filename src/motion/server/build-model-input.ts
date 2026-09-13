@@ -145,9 +145,36 @@ export function buildModelInput<T extends ImageToVideoModel>(
     // shot happens to take decide whether the clip has sound (#1498). Models
     // with no `generate_audio` field strip it during apiSchema.parse.
     generate_audio: options.generateAudio ?? videoModelSupportsAudio(modelKey),
+    ...(options.multiPrompt &&
+      options.multiPrompt.length > 0 && {
+        multi_prompt: options.multiPrompt,
+        shot_type: 'customize',
+      }),
   }) as ModelOutputMap[T];
 
-  return result;
+  return applyKlingMultiPrompt(result, options.multiPrompt);
+}
+
+/**
+ * Kling rejects `prompt` and `multi_prompt` together. The transform always
+ * requires a prompt string, so a packed job still parses one and then this
+ * drops it.
+ */
+function applyKlingMultiPrompt<T extends { prompt?: unknown }>(
+  input: T,
+  multiPrompt: GenerateMotionOptions['multiPrompt']
+): T {
+  if (!multiPrompt?.length) return input;
+  const { prompt: _prompt, ...rest } = input;
+  // Kling forbids prompt + multi_prompt together; the transform still
+  // requires a prompt string, so strip it after parse.
+  const packed = {
+    ...rest,
+    multi_prompt: multiPrompt,
+    shot_type: 'customize' as const,
+  };
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- packed Kling body is T minus prompt
+  return packed as unknown as T;
 }
 
 /** Output of any registered fal transform: the reference-to-video and
@@ -241,8 +268,16 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
       ...resolutionOverride(endpointId, options.resolution),
       generate_audio:
         options.generateAudio ?? videoModelSupportsAudio(modelKey),
+      ...(options.multiPrompt &&
+        options.multiPrompt.length > 0 && {
+          multi_prompt: options.multiPrompt,
+          shot_type: 'customize',
+        }),
     });
-    return { endpointId, input };
+    return {
+      endpointId,
+      input: applyKlingMultiPrompt(input, options.multiPrompt),
+    };
   }
 
   if (endpoint.references !== 'endpoint') {
@@ -311,7 +346,15 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
     ...QUALITY_OVERRIDES[modelKey],
     ...resolutionOverride(endpointId, options.resolution),
     generate_audio: options.generateAudio ?? videoModelSupportsAudio(modelKey),
+    ...(options.multiPrompt &&
+      options.multiPrompt.length > 0 && {
+        multi_prompt: options.multiPrompt,
+        shot_type: 'customize',
+      }),
   });
 
-  return { endpointId: endpoint.endpointId, input };
+  return {
+    endpointId: endpoint.endpointId,
+    input: applyKlingMultiPrompt(input, options.multiPrompt),
+  };
 }

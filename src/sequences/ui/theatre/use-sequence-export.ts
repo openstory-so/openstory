@@ -9,6 +9,7 @@ import {
   listSequenceExportsFn,
 } from '@/sequences/sequence-exports.fn';
 import { useShotsBySequence } from '@/shots/ui/use-shots';
+import { collapseConsecutiveUrls } from './playback-scenes';
 import {
   effectiveExportMusicUrl,
   hashSequenceExportInputs,
@@ -81,7 +82,7 @@ export function useSequenceExport(
     }
     if (sceneUrls.length === 0) return null;
     return {
-      sceneUrls,
+      sceneUrls: collapseConsecutiveUrls(sceneUrls),
       musicUrl: effectiveExportMusicUrl(
         sequence.includeMusic,
         sequence.musicUrl

@@ -40,6 +40,7 @@ import {
   effectiveExportMusicUrl,
   hashSequenceExportInputs,
 } from '@/sequences/ui/theatre/source-shots-hash';
+import { collapseConsecutiveUrls } from '@/sequences/ui/theatre/playback-scenes';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import type { SequenceExportWorkflowInput } from '@/platform/server/workflow/types';
 import { createFileRoute } from '@tanstack/react-router';
@@ -155,20 +156,21 @@ export const Route = createFileRoute('/api/v1/sequences/$id/exports')({
             await context.scopedDb.videoVariants.getSelectedByShotIds(
               shots.map((s) => s.id)
             );
-          const scenes = shots
-            .flatMap((s) => {
-              const url = selectedVideoByShot.get(s.id)?.url;
-              return url ? [url] : [];
-            })
-            .map((videoUrl, orderIndex) => ({ orderIndex, videoUrl }));
-          if (scenes.length === 0) {
-            throw new ValidationError('No scene videos are ready yet');
-          }
-          if (scenes.length !== shots.length) {
+          const shotUrls = shots.map(
+            (s) => selectedVideoByShot.get(s.id)?.url ?? null
+          );
+          if (shotUrls.some((url) => !url)) {
+            const missing = shotUrls.filter((url) => !url).length;
             throw new ValidationError(
-              `${shots.length - scenes.length} of ${shots.length} scenes are still generating`
+              missing === shots.length
+                ? 'No scene videos are ready yet'
+                : `${missing} of ${shots.length} scenes are still generating`
             );
           }
+          // Packed in-clip renders share one URL across covered shots (#1510).
+          const scenes = collapseConsecutiveUrls(
+            shotUrls.filter((url): url is string => Boolean(url))
+          ).map((videoUrl, orderIndex) => ({ orderIndex, videoUrl }));
 
           // Hash is computed here, not accepted from the client — a wrong
           // client cache key would mark a stale MP4 as current (#1253 / #1406).

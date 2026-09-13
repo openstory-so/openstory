@@ -20,7 +20,11 @@ import { isBytePlusAssetsConfigured } from '@/models/server/byteplus-config';
 import { isNativeBytePlusVideoModel } from '@/models/models';
 import { resolveAudioModels } from '@/models/resolve-audio-models';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
-import { assembleMotionPrompt } from '@/motion/server/assemble-motion-prompt';
+import {
+  assembleMotionPrompt,
+  assemblePackedMotionPrompt,
+} from '@/motion/server/assemble-motion-prompt';
+import { packMotionBatchShots } from '@/motion/server/pack-motion-jobs';
 import { getGenerationChannel } from '@/platform/realtime';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
@@ -110,20 +114,46 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
     // the rest are alternates in `shot_variants`. Pattern 3 spawns + awaits
     // each child via `spawnAndAwaitChild`; Promise.allSettled lets a single
     // failing (shot, model) not poison the rest of the batch.
-    const motionJobs = buildMotionJobs(input.shots, input.videoModels);
+    const packedShots = packMotionBatchShots(input.shots, input.videoModels);
+    const motionJobs = buildMotionJobs(packedShots, input.videoModels);
 
     const motionAwaits = motionJobs.map(({ shot, shotIndex, model }) => {
       // Per-model prompt: re-assemble from the structured motion prompt when
       // present so audio-capable models get dialogue/audio sections, falling
       // back to the pre-assembled `prompt` for manual single-model paths.
-      const prompt = shot.motionPrompt
-        ? assembleMotionPrompt({
-            motionPrompt: shot.motionPrompt,
-            model,
-            characterTags: shot.characterTags,
-            generateAudio: shot.generateAudio,
-          })
-        : shot.prompt;
+      // Packed in-clip jobs (#1510) compose every member's prompt with that
+      // model's cut syntax; a 1-shot job stays the existing path.
+      const members = shot.coveredShots;
+      const packed =
+        members && members.length > 1
+          ? assemblePackedMotionPrompt({
+              shots: members.map((member) => ({
+                durationSeconds: member.duration ?? shot.duration ?? 3,
+                motionPrompt: member.motionPrompt,
+                prompt: member.prompt ?? shot.prompt,
+                characterTags: member.characterTags ?? shot.characterTags,
+                generateAudio: shot.generateAudio,
+              })),
+              model,
+              generateAudio: shot.generateAudio,
+            })
+          : null;
+      const prompt = packed
+        ? packed.prompt
+        : shot.motionPrompt
+          ? assembleMotionPrompt({
+              motionPrompt: shot.motionPrompt,
+              model,
+              characterTags: shot.characterTags,
+              generateAudio: shot.generateAudio,
+            })
+          : shot.prompt;
+      const voicedLines = members
+        ? members.flatMap((member) => member.voicedLines ?? [])
+        : shot.voicedLines;
+      const audioClips = members
+        ? members.flatMap((member) => member.audioClips ?? [])
+        : shot.audioClips;
 
       const motionBody: MotionWorkflowInput = {
         userId: input.userId,
@@ -152,14 +182,17 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
         // Cast/element reference images (#873) — carried by every model, on
         // the wire or as substituted descriptions.
         referenceImages: shot.referenceImages,
-        voicedLines: shot.voicedLines,
-        audioClips: shot.audioClips,
+        voicedLines,
+        audioClips:
+          audioClips && audioClips.length > 0 ? audioClips : undefined,
         motionPrompt: shot.motionPrompt,
         characterTags: shot.characterTags,
         // Add-model (#547) batches generate alternates only — the child must
         // not write the legacy `shots.video*` columns.
         variantOnly: input.variantOnly,
         reservationId: input.reservationId,
+        coveredShots: members,
+        multiPrompt: packed?.multiPrompt,
       };
 
       return spawnAndAwaitChild<MotionWorkflowInput, MotionWorkflowResult>(

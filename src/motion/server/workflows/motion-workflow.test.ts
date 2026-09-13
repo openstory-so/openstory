@@ -146,13 +146,22 @@ function makeScopedDb() {
         getById: async () => ({
           id: 'shot-1',
           sceneId: 'scene-1',
+          sequenceId: 'seq-1',
           renderSegmentId: null,
         }),
+        getByIds: async (ids: string[]) =>
+          ids.map((id) => ({
+            id,
+            sceneId: 'scene-1',
+            sequenceId: 'seq-1',
+            renderSegmentId: null,
+          })),
       },
       billing: { hasEnoughCredits: async () => true },
     },
     renderSegments: {
       ensureForShot: async () => 'seg-1',
+      ensureForShots: async () => 'seg-packed',
       setPendingPromoteVersionId: async () => {},
     },
     claims: {
