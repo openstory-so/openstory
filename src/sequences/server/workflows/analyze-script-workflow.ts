@@ -946,11 +946,25 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     }
 
     const clipItems = shotWorkItems(scenesWithVisualPrompts, shotMapping);
+    // Every clip of a 2+ shot scene assembles its prompts from the shot-list
+    // spec (#1517); null on the 1-shot LLM path. Aligned to `clipItems`.
+    const derivedShots = clipItems.map((item) =>
+      derivedShotForItem(item, styleConfig)
+    );
+    // The music prompt grounds on one visual per scene; a derived scene has
+    // no LLM visual, so its head's assembled prompt stands in.
+    for (const [index, item] of clipItems.entries()) {
+      const derived = derivedShots[index];
+      if (derived && item.isSceneHead) {
+        visualPromptBySceneId[item.scene.sceneId] =
+          derived.visualPrompt.fullPrompt;
+      }
+    }
 
     if (!referenceOnly) {
       await step.do('persist-derived-visual-prompts', async () => {
-        for (const item of clipItems) {
-          const derived = derivedShotForItem(item, styleConfig);
+        for (const [index, item] of clipItems.entries()) {
+          const derived = derivedShots[index];
           const frameId = item.mapping.frameId;
           if (!derived || !frameId) continue;
           await scopedDb.framePromptVersions.writeAiVersion({
@@ -963,36 +977,48 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
             }),
             analysisModel: analysisModelId,
           });
+          // Same refresh the frame-prompt child emits after its write: the
+          // prompt lives on the `frame.imagePrompt` mirror, not in metadata.
+          await getGenerationChannel(sequenceId).emit(
+            'generation.shot:updated',
+            {
+              shotId: item.mapping.shotId,
+              updateType: 'visual-prompt',
+              metadata: item.scene,
+            }
+          );
         }
       });
     }
 
     // One snapshot per clip. 1-shot films omit `shotId` so the batch hash
-    // stays byte-identical; extras carry shotId + the derived visual prompt.
-    const sceneSnapshots: ShotImageSceneSnapshot[] = clipItems.map((item) => {
-      const derived = derivedShotForItem(item, styleConfig);
-      const visualPrompt =
-        derived?.visualPrompt.fullPrompt ??
-        visualPromptBySceneId[item.scene.sceneId] ??
-        '';
-      const refs = resolveSceneShotImageReferences({
-        scene: item.scene,
-        visualPrompt,
-        characters: charactersWithSheets,
-        locations: locationsWithSheets,
-        elements: allElements,
-      });
-      return {
-        sceneId: item.scene.sceneId,
-        ...(item.hasSiblingShots && item.mapping.shotId
-          ? { shotId: item.mapping.shotId }
-          : {}),
-        visualPrompt,
-        characterSheetHashes: refs.characterSheetHashes,
-        locationSheetHashes: refs.locationSheetHashes,
-        elementReferenceHashes: refs.elementReferenceHashes,
-      };
-    });
+    // stays byte-identical; derived clips carry shotId + the assembled prompt.
+    const sceneSnapshots: ShotImageSceneSnapshot[] = clipItems.map(
+      (item, index) => {
+        const derived = derivedShots[index];
+        const visualPrompt =
+          derived?.visualPrompt.fullPrompt ??
+          visualPromptBySceneId[item.scene.sceneId] ??
+          '';
+        const refs = resolveSceneShotImageReferences({
+          scene: item.scene,
+          visualPrompt,
+          characters: charactersWithSheets,
+          locations: locationsWithSheets,
+          elements: allElements,
+        });
+        return {
+          sceneId: item.scene.sceneId,
+          ...(item.hasSiblingShots && item.mapping.shotId
+            ? { shotId: item.mapping.shotId }
+            : {}),
+          visualPrompt,
+          characterSheetHashes: refs.characterSheetHashes,
+          locationSheetHashes: refs.locationSheetHashes,
+          elementReferenceHashes: refs.elementReferenceHashes,
+        };
+      }
+    );
 
     const shotImagesPayload: ShotImagesWorkflowInput = {
       userId: input.userId,

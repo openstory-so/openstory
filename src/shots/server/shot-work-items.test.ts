@@ -224,6 +224,29 @@ describe('derivedShotForItem', () => {
     expect(item && derivedShotForItem(item, styleConfig)).toBeNull();
   });
 
+  it('assembles the head of a 2+ shot scene too (#1517)', () => {
+    const [head] = shotWorkItems(
+      [scene('sc-1', 13, [spec(1, 7, 'opens the door'), spec(2, 6, 'cut')])],
+      [
+        {
+          analysisSceneId: 'sc-1',
+          shotId: 'sh-1',
+          frameId: 'fr-1',
+          shotNumber: 1,
+        },
+        {
+          analysisSceneId: 'sc-1',
+          shotId: 'sh-2',
+          frameId: 'fr-2',
+          shotNumber: 2,
+        },
+      ]
+    );
+    const derived = head && derivedShotForItem(head, styleConfig);
+    expect(derived?.shotNumber).toBe(1);
+    expect(derived?.motionPrompt.fullPrompt).toContain('opens the door');
+  });
+
   it('assembles visual + motion from the extra shot spec', () => {
     const shots = [
       spec(1, 7, 'opens the door'),
