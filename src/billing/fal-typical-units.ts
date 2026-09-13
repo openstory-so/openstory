@@ -1,14 +1,10 @@
 /**
- * Billed units for one default-length call when `model_pricing` has no
- * `typicalUnitsPerCall` and no observed median yet.
+ * Endpoints whose fal unit is "seconds" but billed units are not 1:1 with
+ * wall-clock duration (#1382). MiniMax H3 Max stores the 480p second as the
+ * unit ($0.025); 768P (our default) is 1.6×, so a 5s clip bills 8 units.
  *
- * Video (#1382): MiniMax H3 Max stores the 480p second as the unit ($0.025);
- * 768P (our default) is 1.6×, so a 5s clip bills 8 units.
- *
- * Image: GPT Image 2.5's fal row is a catalog stub (`units` × $1, no
- * typical). Observed gpt-image-2 generations billed ~0.22 units/image
- * (~$0.22). Without this fallback every studio estimate logs
- * "No unit-count signal" and gates on the $0.10 floor.
+ * Values are billed units for a default-length call
+ * (`TYPICAL_VIDEO_CLIP_SECONDS`).
  */
 export const TYPICAL_VIDEO_CLIP_SECONDS = 5;
 
@@ -17,8 +13,6 @@ export const FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP: Readonly<
 > = {
   'minimax/h3-max/image-to-video': 8,
   'minimax/h3-max/text-to-video': 8,
-  'openai/gpt-image-2.5/flare/text-to-image': 0.22,
-  'openai/gpt-image-2.5/flare/edit': 0.22,
 };
 
 /**
