@@ -205,9 +205,9 @@ describe('frames.resolveCurrent', () => {
 });
 
 describe('frames.isStale', () => {
-  it('throws when the frame does not exist', () => {
+  it('throws when the frame does not exist', async () => {
     const m = createFramesMethods(db);
-    expect(m.isStale(generateId(), 'h')).rejects.toThrow(/not found/);
+    await expect(m.isStale(generateId(), 'h')).rejects.toThrow(/not found/);
   });
 
   it('null stored hash → not stale; match → not stale; differ → stale', async () => {

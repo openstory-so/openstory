@@ -269,8 +269,8 @@ describe('buildRegenerateShotSnapshot', () => {
   // The `metadata.prompts.visual` fallback was removed (#713): the visual
   // prompt lives solely on `frame.imagePrompt`, passed in as `imagePrompt`.
 
-  it('throws when imagePrompt is absent', () => {
-    expect(
+  it('throws when imagePrompt is absent', async () => {
+    await expect(
       buildRegenerateShotSnapshot({
         shot: makeShot(),
         scene: makeScene(),
@@ -284,8 +284,8 @@ describe('buildRegenerateShotSnapshot', () => {
     ).rejects.toThrow(/has no visual prompt/);
   });
 
-  it('throws when imagePrompt is an empty string', () => {
-    expect(
+  it('throws when imagePrompt is an empty string', async () => {
+    await expect(
       buildRegenerateShotSnapshot({
         shot: makeShot(),
         scene: makeScene(),
