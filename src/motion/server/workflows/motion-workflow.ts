@@ -212,15 +212,20 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         'synthesize-dialogue-audio',
         async () => {
           const { key } = await scopedDb.credentials.resolveKey('elevenlabs');
+          const minDurationSeconds =
+            getMotionReferenceEndpoint(model)?.audioSeconds?.min;
           const clips: MotionAudioClip[] = [];
           let characterCount = 0;
-          for (const line of voicedLines) {
+          for (const [index, line] of voicedLines.entries()) {
             const result = await synthesizeDialogueLine({
               apiKey: key,
               teamId: input.teamId,
               sequenceId,
               shotId,
               line,
+              minDurationSeconds,
+              previousText: voicedLines[index - 1]?.text,
+              nextText: voicedLines[index + 1]?.text,
             });
             clips.push(result.clip);
             characterCount += result.characterCount;
