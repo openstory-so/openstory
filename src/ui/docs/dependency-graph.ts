@@ -283,7 +283,12 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     band: 'settings',
     summary: 'Seconds per shot, snapped to the video model.',
     counts: ['Seconds (music prompt)'],
-    ignored: ['Visual and motion prompts', 'The clip, once rendered'],
+    ignored: [
+      'Visual and motion prompts',
+      {
+        gap: 'The clip, once rendered: a user edit is a real change, but the compare ignores duration since a re-snap flagged every clip (#767)',
+      },
+    ],
   },
   {
     id: 'startFrameMode',
@@ -524,7 +529,9 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Which still version it rendered (start-frame mode)',
     ],
     ignored: [
-      'Duration',
+      {
+        gap: 'Duration: recorded in the manifest, ignored by the compare since a re-snap flagged every clip (#767)',
+      },
       'Video model (a different model is a different segment, not a stale one)',
       {
         gap: 'Reference sheets it was drawn from (reference-only mode): the manifest records no sheet versions',
@@ -741,7 +748,8 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     from: 'duration',
     to: 'clip',
     tracking: 'untracked',
-    note: 'a re-snapped duration must not flag every clip',
+    gap: true,
+    note: 'the manifest records it but the compare ignores it, because a pipeline re-snap flagged every clip (#767); snapping both sides would fix that',
   },
   {
     from: 'dialogue',
