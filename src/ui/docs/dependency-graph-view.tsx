@@ -226,6 +226,7 @@ export const DependencyGraphView: React.FC<DependencyGraphViewProps> = ({
                     width={NW}
                     height={NH}
                     rx={8}
+                    strokeDasharray={n.optional ? '4 3' : undefined}
                     className={cn(
                       'transition-[fill,stroke] motion-reduce:transition-none group-focus-visible:stroke-ring group-focus-visible:stroke-2',
                       n.kind === 'input' ? 'fill-background' : 'fill-muted',
@@ -301,6 +302,10 @@ const Legend: React.FC = () => (
       </li>
     ))}
     <li className="flex items-center gap-1.5">
+      <span className="inline-block size-3 rounded-sm border border-dashed border-foreground" />
+      optional
+    </li>
+    <li className="flex items-center gap-1.5">
       <span className="inline-block size-3 rounded-sm border border-warning bg-warning/15" />
       goes stale
     </li>
@@ -338,6 +343,11 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
         <Badge variant="outline">
           {node.kind === 'input' ? 'you edit' : 'generated'}
         </Badge>
+        {node.optional && (
+          <Badge variant="outline" className="border-dashed">
+            optional — {node.optional}
+          </Badge>
+        )}
         {node.storedAs && (
           <code className="text-xs text-muted-foreground">{node.storedAs}</code>
         )}

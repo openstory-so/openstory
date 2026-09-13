@@ -56,6 +56,8 @@ export type GraphNode = {
   ignored: string[];
   /** Where the verdict is stored, for artifacts. */
   storedAs?: string;
+  /** Only exists under this condition; drawn dashed. */
+  optional?: string;
 };
 
 /**
@@ -127,6 +129,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
   },
   {
     id: 'talent',
+    optional: 'when a character is cast as library talent',
     label: 'Talent',
     kind: 'input',
     band: 'story',
@@ -148,6 +151,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
   },
   {
     id: 'libraryLocation',
+    optional: 'when a location is linked to the library',
     label: 'Library location',
     kind: 'input',
     band: 'story',
@@ -157,6 +161,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
   },
   {
     id: 'element',
+    optional: 'when the shot references one',
     label: 'Element',
     kind: 'input',
     band: 'story',
@@ -230,6 +235,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
   // --- References ----------------------------------------------------------
   {
     id: 'talentSheet',
+    optional: 'when a character is cast as library talent',
     label: 'Talent sheet',
     kind: 'artifact',
     band: 'references',
@@ -259,6 +265,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
   },
   {
     id: 'voice',
+    optional: 'when voices are on for a speaking character',
     label: 'Voice',
     kind: 'artifact',
     band: 'references',
@@ -273,6 +280,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
   },
   {
     id: 'libraryLocationReference',
+    optional: 'when a location is linked to the library',
     label: 'Library location ref',
     kind: 'artifact',
     band: 'references',
@@ -387,6 +395,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
   },
   {
     id: 'musicTrack',
+    optional: 'when music is on',
     label: 'Music track',
     kind: 'artifact',
     band: 'renders',

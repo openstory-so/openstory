@@ -30,7 +30,7 @@ export const Route = createFileRoute('/docs/dependency-graph')({
 });
 
 function DependencyGraphArticle() {
-  const { node = 'character', mode = 'start-frame' } = Route.useSearch();
+  const { node = 'character', mode = 'reference-only' } = Route.useSearch();
   const navigate = Route.useNavigate();
 
   return (
