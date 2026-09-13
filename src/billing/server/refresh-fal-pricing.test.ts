@@ -29,7 +29,7 @@
 
 import { createClient } from '@libsql/client';
 import { readFileSync } from 'node:fs';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   collectObservedUnits,
   computeLedgerObservedUnits,
@@ -298,6 +298,10 @@ describe('refreshFalPricing', () => {
           failedEndpoints: new Set(opts.failed ?? []),
         });
       },
+    }));
+    // No rate-card source here: an absence is neither a card nor a failure.
+    vi.doMock('./rate-card-source', () => ({
+      fetchRateCardSource: () => Promise.resolve({ status: 'no-pricing' }),
     }));
     return await import('./refresh-fal-pricing');
   }
@@ -795,6 +799,9 @@ describe('refreshFalPricing llms.txt advertised estimate (#1605)', () => {
         });
       },
     }));
+    vi.doMock('./rate-card-source', () => ({
+      fetchRateCardSource: () => Promise.resolve({ status: 'no-pricing' }),
+    }));
     return await import('./refresh-fal-pricing');
   }
   let advertisedAsked: string[] | undefined;
@@ -929,6 +936,304 @@ describe('computeLedgerObservedUnits', () => {
     expect(observed.get('minimax/h3-max/image-to-video')).toEqual({
       medianUnits: 8,
       sampleCount: 1,
+    });
+  });
+});
+
+/**
+ * Rate cards (#1605). The refresh seeds hand cards, skips extraction while
+ * the priced text is unchanged and no promo has ended, and never lets one
+ * rejected card fail the run — only a broad rejection rate does.
+ */
+describe('refreshFalPricing rate cards (#1605)', () => {
+  const client = createClient({ url: ':memory:' });
+  const db = drizzle({ client });
+  const NOW = new Date('2026-09-13T03:17:00Z');
+  const HASH = 'a'.repeat(64);
+
+  const card = (
+    overrides: Partial<{
+      hash: string;
+      extractedAt: string;
+      expiresAt: string;
+      rate: number;
+    }> = {}
+  ) => ({
+    inputs: {
+      num_images: { param: 'num_images', kind: 'number' as const, default: 1 },
+    },
+    tables: {},
+    price: { '*': [{ var: 'num_images' }, overrides.rate ?? 0.08] },
+    examples: [
+      {
+        params: {},
+        usd: overrides.rate ?? 0.08,
+        quote: `$${overrides.rate ?? 0.08} per image`,
+      },
+    ],
+    source: {
+      url: 'https://fal.ai/models/fal-ai/x/llms.txt',
+      hash: overrides.hash ?? HASH,
+      extractedAt: overrides.extractedAt ?? '2026-09-10T00:00:00.000Z',
+      ...(overrides.expiresAt && { expiresAt: overrides.expiresAt }),
+    },
+  });
+
+  const price = (endpointId: string) => ({
+    endpointId,
+    unitPriceUsd: 1,
+    unit: 'units',
+  });
+  const fivePrices = [
+    'fal-ai/x',
+    'fal-ai/a',
+    'fal-ai/b',
+    'fal-ai/c',
+    'fal-ai/d',
+  ].map(price);
+
+  let extractCalls: string[];
+  let extractResult: (endpointId: string) => unknown;
+
+  /** Same loader as above with the source fetch and the extractor stubbed. */
+  async function load(opts: {
+    prices?: { endpointId: string; unitPriceUsd: number; unit: string }[];
+    /** Source hash per endpoint (default HASH); 'failed' / 'no-pricing' statuses. */
+    source?: Record<string, string>;
+    handCards?: Record<string, unknown>;
+    extract?: (endpointId: string) => unknown;
+  }) {
+    vi.resetModules();
+    extractCalls = [];
+    extractResult =
+      opts.extract ??
+      (() => ({
+        status: 'ok',
+        card: card({ extractedAt: NOW.toISOString() }),
+        verified: true,
+        results: [],
+        costMicros: 0,
+      }));
+    const prices = opts.prices ?? fivePrices;
+    vi.doMock('#db-client', () => ({ getDb: () => db }));
+    vi.doMock('#env', () => ({
+      getEnv: () => ({ FAL_KEY: 'test-key', OPENROUTER_KEY: 'sk-or' }),
+    }));
+    vi.doMock('@/models/catalog', () => ({
+      listCatalogEndpointIds: () => Promise.resolve([]),
+    }));
+    vi.doMock('@/models/fal-endpoints', async () => ({
+      ...(await vi.importActual('@/models/fal-endpoints')),
+      getFalEndpointIds: () => prices.map((p) => p.endpointId),
+    }));
+    vi.doMock('@/billing/rate-card/cards', () => ({
+      RATE_CARDS: opts.handCards ?? {},
+    }));
+    vi.doMock('./fal-pricing-fetch', async () => ({
+      ...(await vi.importActual('./fal-pricing-fetch')),
+      fetchFalCatalogIds: () =>
+        Promise.resolve(prices.map((p) => p.endpointId)),
+      fetchFalUnitPrices: () =>
+        Promise.resolve({ prices, failedEndpoints: [] }),
+      fetchFalBilledRates: () => Promise.resolve([]),
+      fetchFalTypicalUnits: () =>
+        Promise.resolve({
+          typicalUnits: new Map<string, number>(),
+          failedEndpoints: new Set<string>(),
+        }),
+      fetchFalAdvertisedCallUsd: () =>
+        Promise.resolve({
+          advertised: new Map<string, number>(),
+          failedEndpoints: new Set<string>(),
+        }),
+    }));
+    vi.doMock('./rate-card-source', () => ({
+      fetchRateCardSource: (endpointId: string) => {
+        const status = opts.source?.[endpointId];
+        if (status === 'failed' || status === 'no-pricing') {
+          return Promise.resolve({ status });
+        }
+        return Promise.resolve({
+          status: 'ok',
+          source: {
+            endpointId,
+            url: `https://fal.ai/models/${endpointId}/llms.txt`,
+            pricingSection: 'p',
+            inputSchemaSection: 's',
+            text: 'p',
+            hash: status ?? HASH,
+          },
+        });
+      },
+    }));
+    vi.doMock('./rate-card-extract', () => ({
+      RATE_CARD_EXTRACTION_MODEL: 'google/gemini-3.1-pro-preview',
+      extractRateCard: (source: { endpointId: string }) => {
+        extractCalls.push(source.endpointId);
+        return Promise.resolve(extractResult(source.endpointId));
+      },
+    }));
+    return await import('./refresh-fal-pricing');
+  }
+
+  const rowOf = async (endpointId: string) =>
+    (
+      await db
+        .select()
+        .from(modelPricing)
+        .where(eq(modelPricing.endpointId, endpointId))
+    )[0];
+
+  const seedCard = async (
+    endpointId: string,
+    stored: ReturnType<typeof card>,
+    verified = true
+  ) => {
+    await db.insert(modelPricing).values({
+      provider: 'fal',
+      endpointId,
+      unit: 'units',
+      unitPriceMicros: 1_000_000,
+      rateCard: stored,
+      rateCardSourceHash: stored.source.hash,
+      rateCardVerified: verified,
+      rateCardExpiresAt: stored.source.expiresAt
+        ? new Date(stored.source.expiresAt)
+        : null,
+      fetchedAt: NOW,
+      updatedAt: NOW,
+    });
+  };
+
+  beforeEach(async () => {
+    await migrate(db, { migrationsFolder: './drizzle/migrations' });
+    await db.delete(modelPricing);
+    await db.delete(modelPricingHistory);
+    await db.delete(modelUsageObservations);
+    vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test('extracts, verifies and stores a card for a used endpoint with none', async () => {
+    const { refreshFalPricing } = await load({});
+    const summary = await refreshFalPricing({ apiKey: 'k', billingKey: 'b' });
+
+    expect(extractCalls).toHaveLength(5);
+    expect(summary.rateCardsExtracted).toBe(5);
+    expect(summary.rateCardsRejected).toBe(0);
+    const row = await rowOf('fal-ai/x');
+    expect(row?.rateCardVerified).toBe(true);
+    expect(row?.rateCardSourceHash).toBe(HASH);
+    expect(row?.rateCard?.price).toEqual({
+      '*': [{ var: 'num_images' }, 0.08],
+    });
+  });
+
+  test('skips extraction while the source hash is unchanged', async () => {
+    await seedCard('fal-ai/x', card());
+    const { refreshFalPricing } = await load({ prices: [price('fal-ai/x')] });
+    await refreshFalPricing({ apiKey: 'k', billingKey: 'b' });
+
+    expect(extractCalls).toEqual([]);
+    // The price upsert must not have wiped the stored card.
+    expect((await rowOf('fal-ai/x'))?.rateCardSourceHash).toBe(HASH);
+  });
+
+  test('a changed source hash re-extracts', async () => {
+    await seedCard('fal-ai/x', card());
+    const { refreshFalPricing } = await load({
+      prices: [price('fal-ai/x')],
+      source: { 'fal-ai/x': 'b'.repeat(64) },
+    });
+    await refreshFalPricing({ apiKey: 'k', billingKey: 'b' });
+    expect(extractCalls).toEqual(['fal-ai/x']);
+  });
+
+  test('a passed expiresAt forces re-extraction even with the same hash', async () => {
+    await seedCard('fal-ai/x', card({ expiresAt: '2026-09-12T00:00:00.000Z' }));
+    const { refreshFalPricing } = await load({ prices: [price('fal-ai/x')] });
+    await refreshFalPricing({ apiKey: 'k', billingKey: 'b' });
+
+    expect(extractCalls).toEqual(['fal-ai/x']);
+    expect((await rowOf('fal-ai/x'))?.rateCardExpiresAt).toBeNull();
+  });
+
+  test('a rejected extraction keeps the stored card and is counted', async () => {
+    await seedCard('fal-ai/x', card({ rate: 0.07 }));
+    const { refreshFalPricing } = await load({
+      prices: fivePrices,
+      source: { 'fal-ai/x': 'b'.repeat(64) },
+      extract: (id) =>
+        id === 'fal-ai/x'
+          ? { status: 'rejected', reason: 'example failed', costMicros: 0 }
+          : {
+              status: 'ok',
+              card: card({ extractedAt: NOW.toISOString() }),
+              verified: false,
+              results: [],
+              costMicros: 0,
+            },
+    });
+    const summary = await refreshFalPricing({ apiKey: 'k', billingKey: 'b' });
+
+    expect(summary.rateCardsRejected).toBe(1);
+    expect(summary.rateCardsExtracted).toBe(4);
+    expect((await rowOf('fal-ai/x'))?.rateCard?.price).toEqual({
+      '*': [{ var: 'num_images' }, 0.07],
+    });
+    expect((await rowOf('fal-ai/a'))?.rateCardVerified).toBe(false);
+  });
+
+  test('throws after writing when more than a quarter of used endpoints failed', async () => {
+    const { refreshFalPricing } = await load({
+      source: { 'fal-ai/a': 'failed', 'fal-ai/b': 'failed' },
+    });
+    await expect(
+      refreshFalPricing({ apiKey: 'k', billingKey: 'b' })
+    ).rejects.toThrow(/2\/5 rate-card extractions failed/);
+    // The other three still landed.
+    expect((await rowOf('fal-ai/x'))?.rateCardSourceHash).toBe(HASH);
+  });
+
+  test('a page with no Pricing section is an absence, not a failure', async () => {
+    const { refreshFalPricing } = await load({
+      prices: [price('fal-ai/x')],
+      source: { 'fal-ai/x': 'no-pricing' },
+    });
+    const summary = await refreshFalPricing({ apiKey: 'k', billingKey: 'b' });
+    expect(summary.rateCardsRejected).toBe(0);
+    expect((await rowOf('fal-ai/x'))?.rateCard).toBeNull();
+  });
+
+  test('seeds the hand card and skips extraction when its hash matches the source', async () => {
+    const hand = card({ extractedAt: '2026-09-13T00:00:00Z' });
+    const { refreshFalPricing } = await load({
+      prices: [price('fal-ai/x')],
+      handCards: { 'fal-ai/x': hand },
+    });
+    await refreshFalPricing({ apiKey: 'k', billingKey: 'b' });
+
+    expect(extractCalls).toEqual([]);
+    const row = await rowOf('fal-ai/x');
+    expect(row?.rateCardVerified).toBe(true);
+    expect(row?.rateCard?.source.extractedAt).toBe('2026-09-13T00:00:00Z');
+  });
+
+  test('a newer verified extraction outranks the hand card', async () => {
+    await seedCard(
+      'fal-ai/x',
+      card({ rate: 0.09, extractedAt: '2026-09-14T00:00:00.000Z' })
+    );
+    const { refreshFalPricing } = await load({
+      prices: [price('fal-ai/x')],
+      handCards: { 'fal-ai/x': card({ extractedAt: '2026-09-13T00:00:00Z' }) },
+    });
+    await refreshFalPricing({ apiKey: 'k', billingKey: 'b' });
+    expect((await rowOf('fal-ai/x'))?.rateCard?.price).toEqual({
+      '*': [{ var: 'num_images' }, 0.09],
     });
   });
 });

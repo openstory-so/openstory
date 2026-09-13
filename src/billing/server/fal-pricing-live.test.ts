@@ -14,6 +14,8 @@ type Row = {
   typicalUnitsPerCall: number | null;
   observedMedianUnits: number | null;
   observedSampleCount: number;
+  rateCard?: unknown;
+  rateCardVerified?: boolean;
   fetchedAt: Date;
   updatedAt: Date;
 };
@@ -125,7 +127,7 @@ describe('getEffectiveFalPricing', () => {
   it('keeps the static BytePlus rate card when the fal table is empty', async () => {
     const { getEffectiveFalPricing } = await loadWithRows([]);
     const map = await getEffectiveFalPricing();
-    expect(map['dreamina-seedance-2-5-260628']).toEqual({
+    expect(map['dreamina-seedance-2-5-260628']).toMatchObject({
       unitPrice: 10_700,
       unit: '1000 tokens',
     });
@@ -264,5 +266,56 @@ describe('H3 Max t2v sibling rate (#1382)', () => {
       unit: 'seconds',
       typicalUnitsPerCall: 8,
     });
+  });
+});
+
+describe('rate cards on the pricing map (#1605)', () => {
+  const card = {
+    inputs: {
+      num_images: { param: 'num_images', kind: 'number', default: 1 },
+    },
+    tables: {},
+    price: { '*': [{ var: 'num_images' }, 0.08] },
+    examples: [],
+    source: {
+      url: 'https://fal.ai/models/fal-ai/nano-banana-2/llms.txt',
+      hash: 'a'.repeat(64),
+      extractedAt: '2026-09-13T00:00:00Z',
+    },
+  };
+
+  it('reads a stored card with its verified flag', async () => {
+    const { getEffectiveFalPricing } = await loadWithRows([
+      row({
+        endpointId: 'fal-ai/nano-banana-2',
+        rateCard: card,
+        rateCardVerified: true,
+      }),
+    ]);
+    const pricing = (await getEffectiveFalPricing())['fal-ai/nano-banana-2'];
+    expect(pricing?.rateCard).toEqual({ card, verified: true });
+  });
+
+  it('treats a stored card outside the schema as absent', async () => {
+    // A hand edit or an older vocabulary must not reach the evaluator.
+    const { getEffectiveFalPricing } = await loadWithRows([
+      row({
+        endpointId: 'fal-ai/nano-banana-2',
+        rateCard: { ...card, price: { pow: [2, 2] } },
+        rateCardVerified: true,
+      }),
+    ]);
+    const pricing = (await getEffectiveFalPricing())['fal-ai/nano-banana-2'];
+    expect(pricing?.unit).toBe('images');
+    expect(pricing?.rateCard).toBeUndefined();
+  });
+
+  it('the BytePlus Seedance 2.5 card rides the static rate card', async () => {
+    const { getEffectiveFalPricing } = await loadWithRows([]);
+    const pricing = (await getEffectiveFalPricing())[
+      'dreamina-seedance-2-5-260628'
+    ];
+    expect(pricing?.rateCard?.verified).toBe(true);
+    expect(pricing?.rateCard?.card.examples.length).toBeGreaterThan(0);
   });
 });

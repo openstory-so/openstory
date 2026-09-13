@@ -22,6 +22,7 @@ import {
 } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 import { generateId } from '@/platform/id';
+import type { RateCard } from '@/billing/rate-card/rate-card.schema';
 
 export type ModelPricingProvider = 'fal' | 'openrouter';
 
@@ -59,6 +60,19 @@ export const modelPricing = snakeCase.table(
      * mispriced endpoints ~59× (Grok, #1069); only newer billed data can.
      */
     rateVerifiedAt: integer({ mode: 'timestamp' }),
+    /**
+     * Rate card (#1605): the endpoint's advertised price as JSONLogic, read
+     * from its llms.txt by the nightly cron or seeded from a hand card.
+     * Pre-flight estimate only — billing never reads it. Validated with
+     * `rateCardSchema` on read; null on rows the cron has not carded.
+     */
+    rateCard: text({ mode: 'json' }).$type<RateCard>(),
+    /** sha256 of the priced text the card was read from — unchanged = skip. */
+    rateCardSourceHash: text({ length: 64 }),
+    /** True when every worked example in the source reproduced within 1%. */
+    rateCardVerified: integer({ mode: 'boolean' }).default(false).notNull(),
+    /** Promo end named in the source — re-extract after this. */
+    rateCardExpiresAt: integer({ mode: 'timestamp' }),
     /** When the provider's pricing API was last fetched successfully. */
     fetchedAt: integer({ mode: 'timestamp' }).notNull(),
     updatedAt: integer({ mode: 'timestamp' })

@@ -21,6 +21,10 @@ import {
 } from '@/models/models';
 import { typedEntries } from '@/platform/typed-object';
 import { micros, type Microdollars } from '@/billing/money';
+import {
+  type RateCard,
+  rateCardSchema,
+} from '@/billing/rate-card/rate-card.schema';
 import { modelPricing } from '@/platform/server/db/schema';
 import type { ObservedUnits } from '@/platform/server/db/schema/model-pricing';
 import { getLogger } from '@/platform/logger';
@@ -42,6 +46,13 @@ export type EffectiveFalPricing = {
    * `MIN_OBSERVED_SAMPLES` before trusting the median.
    */
   observed?: ObservedUnits;
+  /**
+   * The advertised price as JSONLogic (#1605), extracted from the
+   * endpoint's llms.txt by the nightly cron or seeded from a hand card.
+   * `verified` = every worked example in the source reproduced. Pre-flight
+   * estimate only — billing never reads it.
+   */
+  rateCard?: { card: RateCard; verified: boolean };
 };
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -60,6 +71,25 @@ let cache: {
   map: Record<string, EffectiveFalPricing>;
   updatedAt: Date | null;
 } | null = null;
+
+/**
+ * Stored JSON is a trust boundary: a card that no longer fits the schema
+ * (an older vocabulary, a hand edit) is logged and treated as absent rather
+ * than handed to the evaluator.
+ */
+function readRateCard(
+  endpointId: string,
+  stored: unknown,
+  verified: boolean
+): EffectiveFalPricing['rateCard'] {
+  const parsed = rateCardSchema.safeParse(stored);
+  if (parsed.success) return { card: parsed.data, verified };
+  logger.warn('model_pricing.rate_card does not fit the schema — ignored', {
+    endpointId,
+    issues: parsed.error.issues.slice(0, 3),
+  });
+  return undefined;
+}
 
 /** Build the endpoint→pricing map from `model_pricing` rows. */
 export function buildFalPricingMap(
@@ -88,6 +118,13 @@ export function buildFalPricingMap(
           medianUnits: row.observedMedianUnits,
           sampleCount: row.observedSampleCount,
         } satisfies ObservedUnits,
+      }),
+      ...(row.rateCard != null && {
+        rateCard: readRateCard(
+          row.endpointId,
+          row.rateCard,
+          row.rateCardVerified
+        ),
       }),
     };
   }
@@ -191,6 +228,8 @@ function applyUnverifiedSiblingRates(
       ...((targetRate?.observed ?? sourceRate.observed)
         ? { observed: targetRate?.observed ?? sourceRate.observed }
         : {}),
+      // The sibling has its own llms.txt, so its own card.
+      ...(targetRate?.rateCard && { rateCard: targetRate.rateCard }),
     };
   }
 }
