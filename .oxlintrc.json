@@ -191,8 +191,7 @@
       "files": [
         "src/platform/middleware.fn.ts",
         "src/billing/stripe-webhook-middleware.fn.ts",
-        "src/platform/server/workflow/base-workflow.ts",
-        "src/platform/server/mcp/auth.ts"
+        "src/platform/server/workflow/base-workflow.ts"
       ],
       "rules": { "boundaries/no-scoped-factory": "off" }
     },

@@ -46,7 +46,6 @@ const auth = {
   },
   teamId: 'team_1',
   teamName: "Ada's Team",
-  scopedDb: { teamId: 'team_1', userId: 'user_1' },
   session: null,
   oauth: null,
   kind: 'api_key' as const,

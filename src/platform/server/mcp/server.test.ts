@@ -127,6 +127,29 @@ describe('tools/list and whoami', () => {
     });
   });
 
+  it('server/discover returns name, version, and tools capability', async () => {
+    const { status, body } = await rpc('server/discover');
+    expect(status).toBe(200);
+    const result = z
+      .object({
+        supportedVersions: z.array(z.string()),
+        capabilities: z.object({ tools: z.unknown() }),
+        _meta: z.object({
+          'io.modelcontextprotocol/serverInfo': z.object({
+            name: z.string(),
+            version: z.string(),
+          }),
+        }),
+      })
+      .parse(body.result);
+    expect(result.supportedVersions).toContain(PROTOCOL);
+    expect(result.capabilities.tools).toBeDefined();
+    expect(result._meta['io.modelcontextprotocol/serverInfo']).toEqual({
+      name: MCP_SERVER_NAME,
+      version: MCP_SERVER_VERSION,
+    });
+  });
+
   it('rejects a 2025-era initialize (legacy: reject)', async () => {
     resetMcpHttpHandler();
     const res = await getMcpHttpHandler().fetch(

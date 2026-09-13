@@ -27,10 +27,8 @@ import { PUBLIC_API_KEY_PREFIX } from '@/platform/server/auth/public-api-key';
 import { restrictionNotice } from '@/platform/server/compliance/enforcement';
 import { loadComplianceState } from '@/platform/server/compliance/generation-gate';
 import {
-  createScopedDb,
   getUserTeamMembership,
   resolveUserTeam,
-  type ScopedDb,
 } from '@/platform/server/db/scoped';
 import { getLogger, toErrorPayload } from '@/platform/logger';
 import { APIError } from 'better-auth/api';
@@ -48,7 +46,6 @@ export type McpCallerIdentity = {
 };
 
 export type McpAuthContext = McpCallerIdentity & {
-  scopedDb: ScopedDb;
   session: Session | null;
   oauth: OAuthAccessToken | null;
   kind: McpAuthKind;
@@ -104,7 +101,6 @@ async function resolveTeamContext(
     user,
     teamId: team.teamId,
     teamName: team.teamName,
-    scopedDb: createScopedDb(team.teamId, user.id),
     session: null,
     oauth,
     kind,

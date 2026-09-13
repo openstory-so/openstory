@@ -7,10 +7,6 @@ const getSession = vi.fn();
 const findUserById = vi.fn();
 const resolveUserTeam = vi.fn();
 const getUserTeamMembership = vi.fn();
-const createScopedDb = vi.fn((teamId: string, userId: string) => ({
-  teamId,
-  userId,
-}));
 const loadComplianceState = vi.fn();
 
 vi.doMock('#env', () => ({
@@ -31,7 +27,6 @@ vi.doMock('@/platform/server/auth/config', () => ({
 vi.doMock('@/platform/server/db/scoped', () => ({
   resolveUserTeam,
   getUserTeamMembership,
-  createScopedDb,
 }));
 vi.doMock('@/platform/server/compliance/generation-gate', () => ({
   loadComplianceState,
@@ -66,10 +61,6 @@ beforeEach(() => {
   loadComplianceState.mockResolvedValue({
     enforcement: { canAccess: true, canWrite: true },
   });
-  createScopedDb.mockImplementation((teamId: string, userId: string) => ({
-    teamId,
-    userId,
-  }));
   resolveUserTeam.mockResolvedValue(team);
   getUserTeamMembership.mockResolvedValue(team);
 });
@@ -105,7 +96,6 @@ describe('authenticateMcpRequest', () => {
     expect(ctx.teamId).toBe('team_1');
     expect(ctx.keyHint).toBe('osk_…XXXX');
     expect(verifyOAuthAccessToken).not.toHaveBeenCalled();
-    expect(createScopedDb).toHaveBeenCalledWith('team_1', 'user_1');
   });
 
   it('verifies a JWT against the MCP audience and uses team_id', async () => {

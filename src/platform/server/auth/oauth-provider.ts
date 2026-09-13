@@ -252,12 +252,12 @@ export function buildMcpResourceMetadata(request: Request) {
  * issuer.
  */
 export function createOAuthProviderPlugins() {
-  // Plugin init has no request. `VITE_APP_URL` when set; otherwise a
-  // loopback dummy. Live discovery documents (`buildMcpResourceMetadata`,
-  // the well-known issuer rewrite) use the request origin so a missing
-  // `VITE_APP_URL` or a worktree on :3002 still advertises the URL Grok
+  // Plugin init has no request. Production throws if `VITE_APP_URL` is
+  // missing/invalid; `vite dev` may fall back to loopback. Live discovery
+  // (`buildMcpResourceMetadata`, the well-known issuer rewrite) still uses
+  // the request origin so a worktree on :3002 advertises the URL the client
   // connected to.
-  const issuer = resolveConfiguredOAuthIssuer() ?? DEV_ISSUER;
+  const issuer = resolveOAuthIssuer();
   const apiResource = apiResourceIdentifier(issuer);
   const mcpResource = mcpResourceIdentifier(issuer);
   const loopbackMcp = loopbackMcpResourceAliases(mcpResource);

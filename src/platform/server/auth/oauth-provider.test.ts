@@ -134,7 +134,7 @@ describe('createOAuthProviderPlugins', () => {
     expect(jwtPlugin?.options.disableSettingJwtHeader).toBe(true);
   });
 
-  it('uses a loopback dummy issuer at init when VITE_APP_URL is unset', () => {
+  it('falls back to a loopback dummy issuer at init in DEV when VITE_APP_URL is unset', () => {
     envState.VITE_APP_URL = '';
     const jwtPlugin = createOAuthProviderPlugins().find(
       (plugin) => plugin.id === 'jwt'
