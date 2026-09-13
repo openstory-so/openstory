@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nShot 1 (0-6s): Image 2 snaps the lipstick shut, puts it in the tote, and doubles back for her phone.. Camera: smooth truck\n\noverall_soundscape: lipstick click, quick footsteps, phone vibration. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nShot 2 (6-12s): Image 2 descends two flights and turns her chin toward her reflection in the wired-glass window.. Camera: smooth pan\n\noverall_soundscape: stairwell footfalls, distant city ambience. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/f2d533d9a72b36f01ed62939632f0e2162024958cbc09c6bc34857e350d7fe09.mp4",
+            "content_type": "video/mp4",
+            "file_name": "lb_y8tfnOni1h__kmnAh8_minimax-h3.mp4",
+            "file_size": 14759561
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the blonde-haired woman seen in <Picture 1> and <Picture 2>, wearing a black long-sleeve turtleneck, dark gray tailored trousers, black sunglasses, and black ankle boots, and carrying a beige canvas tote bag.\n<Subject 2> is the black smartphone resting on the white radiator shelf in <Picture 1>.\n<Subject 3> is the silver-and-gold lipstick held near <Subject 1>'s mouth in <Picture 1>.\n<Product Reference> is the beige canvas tote bag held by <Subject 1> in both <Picture 1> and <Picture 2>.\n\nsummary:\n[keyframe completion + reference generation] The target video opens with <Subject 1> in the hallway frame of <Picture 1> while <Subject 3> is applied to her lips; she snaps the lipstick shut, drops it into <Product Reference>, and doubles back to pick up <Subject 2>. A hard cut sends her down two flights of stairs, after which she pauses at a wired-glass window and turns her chin toward her own reflection, with the wardrobe and product identity remaining consistent with <Picture 2>.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1], [Shot 2]): fully_preserved - face, hair, black turtleneck, gray trousers, sunglasses, tote, and boots follow <Picture 1> and <Picture 2>.\n<Subject 2> (appears in [Shot 1]): fully_preserved - the phone remains in the same hallway, on the same white radiator shelf, and is retrieved by <Subject 1>.\n<Subject 3> (appears in [Shot 1]): fully_preserved - the silver-and-gold lipstick is the one being applied, clicked shut, and placed into <Product Reference>.\n<Product Reference> (appears in [Shot 1], [Shot 2]): fully_preserved - the same beige canvas tote from <Picture 2> is worn on <Subject 1>'s shoulder/hip throughout.\n\ndetailed_description:\nCinematic, realistic 12-second handheld-lite sequence in 16:9; natural cool-neutral daylight of an upscale apartment hallway shifting to a moody concrete stairwell, with clean, modern styling and shallow depth of field. The starting frame matches <Picture 1> exactly: <Subject 1> stands mid-hallway, <Subject 3> at her lips, <Subject 2> resting on the white radiator shelf to her left.\n\n[Shot 1] <Subject 1> finishes a final dab of <Subject 3> on her lower lip, then snaps the cap shut with a crisp click and slips the lipstick into <Product Reference> with her right hand. She steps forward a pace, realizing she left <Subject 2>, and pivots. The camera opens as a Static Shot on the exact <Picture 1> frame, then executes a smooth Truck Right with medium amplitude at moderate speed, sliding laterally to track her as she doubles back, her black boots scuffing softly on the wood. Just as she reaches for <Subject 2>, a short, single-tone phone vibration buzzes against the white shelf. The move is brisk and confident; her sunglasses stay on, gold hoop earrings catching the light, and the beige tote sways gently with her steps.\n\n[Shot 2] At 00:06.000, the shot cuts to a medium tracking frame on <Subject 1> as she descends two flights of a concrete and steel apartment stairwell, her <Product Reference> still on her shoulder and the silver-and-gold lipstick no longer in hand. The camera performs a smooth Pan Left with medium amplitude at moderate speed, holding her in frame as black boots strike each step in a steady cadence, her hair swaying. At the bottom of the second flight the staircase opens into a landing beside a large wired-glass window; distant soft city ambience hums below. She stops, and, without turning her head fully, she tilts her chin upward and slightly forward, framing her face against her own reflection in the pane; the gold hoops and black turtleneck read crisply against the muted glass, and the shot holds on her composed, confident expression as the city light wraps around her silhouette.\n\noverall_soundscape:\nCrisp lipstick click, soft scuff of black boots on hallway wood, a short single-tone phone vibration, then continuous rhythmic footfalls echoing in a concrete stairwell, with faint distant urban traffic and ambient city hum beneath. No music, no BGM; only diegetic action, environmental, and object sounds.\n\nnon_diegetic_music:\nN/A",
+          "seed": 1648935901,
+          "timings": {
+            "inference": 14.553370843001176
+          }
+        },
+        "status": 200,
+        "billableUnits": 19.200000000000003
+      }
+    }
+  ]
+}
