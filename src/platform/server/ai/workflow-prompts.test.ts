@@ -39,6 +39,17 @@ describe('scene-shot-list-chat', () => {
     expect(prompt?.[1]?.content).toContain('{{style}}');
     expect(prompt?.[1]?.content).toContain('DIRECTOR_STYLE');
   });
+
+  it('extracts dialogue per shot from the bible cast (#1585)', () => {
+    const prompt = WORKFLOW_CHAT_PROMPTS['phase/scene-shot-list-chat'];
+    expect(prompt?.[0]?.content).toContain('## Dialogue');
+    expect(prompt?.[0]?.content).toContain('copied verbatim');
+    expect(prompt?.[0]?.content).toContain('(voice only)');
+    expect(prompt?.[1]?.content).toContain('{{characters}}');
+    expect(prompt?.[1]?.content).toContain('<CHARACTERS>');
+    // aimock routes recordings by this prefix (e2e/mocks/aimock-server.ts).
+    expect(String(prompt?.[1]?.content)).toMatch(/^Cover each scene\./);
+  });
 });
 
 describe('script/enhance — two levels (#1486)', () => {

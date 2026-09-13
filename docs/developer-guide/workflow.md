@@ -165,7 +165,7 @@ Uses streaming LLM output to create frames progressively as scenes arrive, plus 
 
 **Steps:**
 
-Since #1035 the split runs as **two parallel LLM calls** (sibling `step.do`s via `Promise.all`), both over the same line-gutter copy of the script, and the LLM never re-emits script text. #1486 adds a third call after slices exist, so a scene can own 1..N shots:
+Since #1035 the split runs as **two parallel LLM calls** (sibling `step.do`s via `Promise.all`), both over the same line-gutter copy of the script, and the LLM never re-emits script text. #1486 adds a third call after slices exist, so a scene can own 1..N shots; since #1585 that call also carries every spoken line, so `originalScript.dialogue` comes from it (the slice regex is only a streaming preview):
 
 1. **`scene-splitting-stream`** — the scenes call, a **boundary-annotation** contract: the model returns `boundaries[] = { hintLine, quote }`, and `boundary-split.ts` resolves each verbatim quote to a raw offset (exact → normalized → fuzzy, monotonic cursor) and slices the ORIGINAL script — extracts are byte-verbatim adjacent substrings (`concat(slices) === script`, asserted). The stream is fed through `createStreamingSceneParser()`:
    - On each finalized boundary: persists the scene + shot 1, emits `generation.scene:new` / `generation.shot:created`
@@ -173,13 +173,13 @@ Since #1035 the split runs as **two parallel LLM calls** (sibling `step.do`s via
    - Preview image per streamed scene (fire-and-forget via `triggerWorkflow`); pass 2 fires another for each extra shot it creates
    - Excessive anchor repairs → one retry with feedback; a second degraded result keeps the first-pass LLM scenes. Dropped boundaries are logged and emitted as a non-fatal `generation.error`
    - A cut inside one location/beat is **not** a new scene (the ONE SHOT RULE is gone)
-2. **`scene-bibles`** — the bibles call: `{ characterBible[], locationBible[], elementBible[] }`. Location/element `firstMention` is `{ text, lineNumber }` on the wire; the owning scene id is derived server-side from the gutter line. After the join, scene continuity tags are canonicalized onto bible tags (`tag-reconcile.ts`) since two independent calls can disagree.
-3. **`scene-shot-list`** — lists 1..N structured shots inside each resolved slice (`shotListPassResultSchema`, union-free). Failure degrades to one shot per scene so the 1-shot path stays identical. `deriveShots` assembles visual/motion prompts from scene continuity + shot specs (wired for #953; 1-shot scenes still take the existing LLM prompt path). Stage 1 still renders **one video clip per shot** (no in-clip packing).
+2. **`scene-bibles`** — the bibles call: `{ characterBible[], locationBible[], elementBible[] }`. Location/element `firstMention` is `{ text, lineNumber }` on the wire; the owning scene id is derived server-side from the gutter line. A character entry carries `voiceOnly` (#1585): a narrator or off-screen voice gets a row but no sheet, no talent match, and no place in the still prompt. After the join, scene continuity tags are canonicalized onto bible tags (`tag-reconcile.ts`) since two independent calls can disagree.
+3. **`scene-shot-list`** — lists 1..N structured shots inside each resolved slice (`shotListPassResultSchema`, union-free), each shot carrying the `dialogue` spoken in it, speakers spelled as the cast list spells them. `attachShotLists` rebuilds each scene's `originalScript.dialogue` from the shots with every line stamped `shotNumber`; `dialogueForShot` hands each clip only its own lines. Failure — no payload, or a scene the pass omits — fails the run: a one-shot fallback would silently leave scenes on the regex preview, which is empty for prose. `deriveShots` assembles visual/motion prompts from scene continuity + shot specs (wired for #953; 1-shot scenes still take the existing LLM prompt path). Stage 1 still renders **one video clip per shot** (no in-clip packing).
 4. **`reconcile-shots`** / **`persist-scenes`** — replay-safe bulk upserts of scenes + N shots per scene (idempotent on `(sceneId, shotNumber)`). Extra shots from a prior run are trimmed with `deleteFromShotNumber`.
 5. **`deduct-llm-credits-scene-splitting`** / **`deduct-llm-credits-scene-bibles`** / **`deduct-llm-credits-scene-shot-list`** — one credit deduction per LLM call
 
 - **Prompts:** `phase/scene-splitting-boundaries-chat` + `phase/scene-bibles-chat` + `phase/scene-shot-list-chat`
-- **Variables:** `{ aspectRatio, script, elements }` (script is sanitized and line-guttered); shot-list gets `{ scenes }` (formatted slices)
+- **Variables:** `{ aspectRatio, script, elements }` (script is sanitized and line-guttered); shot-list gets `{ scenes, style, characters }` (formatted slices, director style, the cast list with voice-only entries marked)
 - **Response schemas:** `sceneSplitScenesResultSchema` + `sceneSplitBiblesResultSchema` + `shotListPassResultSchema` — all under the ~3KB Anthropic strict-output grammar budget enforced by `response-schema-budget.test.ts`
 - **Output:** `{ scenes[], title, shotMapping[], characterBible[], locationBible[], elementBible[] }` — `shotMapping` maps each analysis shot (`analysisSceneId` + `shotNumber`) to `shotId/frameId` used throughout remaining phases. A 1-shot scene still has exactly one mapping row.
 
@@ -199,7 +199,7 @@ flowchart LR
 
 Bibles already exist from Phase 1. This workflow only matches.
 
-1. Uses `input.characterBible` from scene-split (no character-extraction LLM)
+1. Uses `input.characterBible` from scene-split (no character-extraction LLM), minus voice-only entries (#1585): a narrator has no face to cast, so it is never offered to the matcher, and `build-matches` drops any match that names one
 2. **Talent matching** (skipped if no `suggestedTalentIds`):
    - Loads talent records from DB by IDs
    - LLM matches characters to talent
@@ -231,10 +231,11 @@ flowchart LR
 
 **Character Bible Workflow** (`src/cast/server/workflows/character-bible-workflow.ts`):
 
-- Generates a reference sheet image for each character (parallel per character)
+- Creates the `characters` DB rows (upsert on `(sequenceId, characterId)`; the Script stage already made them sheet-less)
+- Generates a reference sheet image for each on-screen character (one `CharacterSheetWorkflow` child per character, in parallel); a failed child fails the whole run (#939)
+- A voice-only character (#1585) gets no child: its row is created `completed` with no sheet version, it is left out of the billed sheet count, and it never reaches the still prompt or the reference images. The motion prompt still sees it, for delivery
 - Uses talent match images as reference when available
 - Uploads sheets to R2 storage
-- Creates `sequence_characters` DB records
 
 **Location Bible Workflow** (`src/cast/server/workflows/location-bible-workflow.ts`):
 
@@ -413,7 +414,7 @@ Per-scene fan-out (image, variant, motion) uses `Promise.allSettled` over `spawn
 | `src/models/server/llm-call-helper.ts`                         | `durableLLMCallCf` / `durableStreamingLLMCallCf`                    |
 | `src/sequences/server/workflows/storyboard-workflow.ts`        | Wrapper: verify, clear, poster, spawn analyze-script                |
 | `src/sequences/server/workflows/analyze-script-workflow.ts`    | Core orchestration (phases 1-5)                                     |
-| `src/sequences/server/workflows/scene-split-workflow.ts`       | Phase 1: two parallel LLM calls, boundary split + preview images    |
+| `src/sequences/server/workflows/scene-split-workflow.ts`       | Phase 1: scenes + bibles in parallel, then the shot list; previews  |
 | `src/sequences/boundary-split.ts`                              | Anchor resolution + verbatim script slicing                         |
 | `src/sequences/tag-reconcile.ts`                               | Canonicalize scene continuity tags onto bible tags after the join   |
 | `src/sequences/server/streaming-scene-parser.ts`               | Incremental JSON parser for the boundary-annotation stream          |

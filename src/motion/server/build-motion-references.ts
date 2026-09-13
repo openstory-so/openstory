@@ -6,15 +6,14 @@
  * (`buildFrameImageWorkflowInput` / `resolveSceneFrameImageReferences`) so
  * motion attaches the SAME cast/element refs the image step does — otherwise
  * characters and elements that look right in the start frame degrade across the
- * generated clip. The result is consumed by `buildKlingElementsInput` and
- * `buildReferenceVideoPrompt`.
+ * generated clip. The result is consumed by `buildReferenceVideoPrompt`.
  *
  * LOCATIONS are excluded on the image-to-video path (out of scope for #873,
  * and redundant there: the still already fixes the environment, so a location
  * sheet only competes with it for reference slots). Reference-only mode has no
  * still, which makes the location sheet the ONLY thing standing between the
  * prompt's words and an invented set — so those callers pass
- * `includeLocations` and the matched location sheets ride along.
+ * `referenceOnly` and the matched location sheets ride along.
  *
  * Accepts the structural scene shape both the strict `Scene` and the looser
  * `frame.metadata` satisfy, so the single-frame, batch, and full-pipeline
@@ -27,12 +26,15 @@ import type {
   SequenceLocationMinimal,
 } from '@/platform/server/db/schema';
 import { buildCharacterReferenceImages } from '@/cast/character-prompt';
-import { buildElementReferenceImages } from '@/cast/element-prompt';
+import {
+  buildElementReferenceImages,
+  buildElementStillReferences,
+} from '@/cast/element-prompt';
 import { buildLocationReferenceImages } from '@/cast/location-prompt';
 import type { ReferenceImageDescription } from '@/stills/reference-image-prompt';
 import {
   matchCharactersToShotImage,
-  matchElementsToScene,
+  matchElementsToMotion,
   matchElementsToShotImage,
   matchLocationsToScene,
 } from '@/shots/scene-matching';
@@ -67,11 +69,12 @@ export function buildMotionReferenceImages(params: {
    */
   motionPrompt: string | null;
   /**
-   * Reference-only mode: also attach the scene's location sheet. With no start
-   * frame there is nothing else establishing the set, and the same matcher the
-   * image step uses (`matchLocationsToScene`) picks it.
+   * Reference-only mode. Also attaches the scene's location sheet — with no
+   * start frame there is nothing else establishing the set, and the same
+   * matcher the image step uses (`matchLocationsToScene`) picks it — and lets
+   * the prompt alone decide the elements (`matchElementsToMotion`).
    */
-  includeLocations?: boolean;
+  referenceOnly?: boolean;
   locations?: SequenceLocationMinimal[];
 }): ReferenceImageDescription[] {
   const {
@@ -79,7 +82,7 @@ export function buildMotionReferenceImages(params: {
     characters,
     elements,
     motionPrompt,
-    includeLocations,
+    referenceOnly,
     locations,
   } = params;
 
@@ -90,24 +93,16 @@ export function buildMotionReferenceImages(params: {
     characterTags: scene?.continuity?.characterTags,
     visualPrompt: motionPrompt,
   });
-  // Elements are ADDITIVE here, not prompt-wins like the still: the
-  // image-to-video template forbids naming what the start frame already shows,
-  // so a prop the motion prompt omits is still in the shot. Tags/extract stay
-  // primary; the prompt only adds what they missed. (Characters get the same
-  // union for free — `matchCharactersToShotImage` is already additive.)
-  const taggedElements = matchElementsToScene(
-    elements,
-    scene?.continuity?.elementTags ?? [],
-    scene?.originalScript?.extract ?? ''
-  );
-  const matchedElements = [
-    ...new Set([
-      ...taggedElements,
-      ...matchElementsToScene(elements, [], motionPrompt ?? ''),
-    ]),
-  ];
+  // Reference-only: the prompt decides; with a start frame, additive. See
+  // `matchElementsToMotion`.
+  const matchedElements = matchElementsToMotion(elements, {
+    elementTags: scene?.continuity?.elementTags,
+    sceneExtract: scene?.originalScript?.extract,
+    motionPrompt,
+    referenceOnly: referenceOnly ?? false,
+  });
   const matchedLocations =
-    includeLocations && locations
+    referenceOnly && locations
       ? matchLocationsToScene(
           locations,
           scene?.continuity?.environmentTag ?? '',
@@ -164,6 +159,8 @@ export function buildShotImageReferenceImages(params: {
   return [
     ...buildCharacterReferenceImages(matchedCharacters),
     ...buildLocationReferenceImages(matchedLocations),
-    ...buildElementReferenceImages(matchedElements),
+    // Stills only: an image endpoint has nowhere to put a clip or an audio
+    // element (#1559).
+    ...buildElementStillReferences(matchedElements),
   ];
 }

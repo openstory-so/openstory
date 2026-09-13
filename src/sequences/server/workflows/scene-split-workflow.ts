@@ -1,23 +1,30 @@
 /**
- * Scene-split workflow (#1035: two parallel LLM calls, boundary annotation).
+ * Scene-split workflow (#1035: boundary annotation, several small LLM calls).
  *
  * The old single mega-call (scenes + bibles in one 8.2KB schema) exceeded
  * Anthropic's native strict-output grammar budget and re-emitted the entire
- * script through the LLM. It is replaced by two independent calls over the
- * same script, run concurrently as sibling `step.do`s:
+ * script through the LLM. It is replaced by three calls over the same script:
+ * two concurrent siblings (scenes, bibles), then the shot list after the join:
  *
  *   - `scene-splitting-stream` — the scenes call. A boundary-annotation
  *     contract: the LLM returns `{ hintLine, quote }` anchors against a
  *     line-gutter copy of the script (no per-scene metadata). The ORIGINAL
  *     script is sliced locally (`boundary-split.ts`); title/location/
- *     dialogue/duration come from each slice (`scene-from-slice.ts`). Scene
- *     ids/numbers are minted server-side. Streaming: boundary k+1 arriving
+ *     duration come from each slice (`scene-from-slice.ts`), plus a regex
+ *     dialogue preview the shot-list call replaces. Scene ids/numbers are
+ *     minted server-side. Streaming: boundary k+1 arriving
  *     finalizes scene k via a local slice, so scene cards appear with real
  *     script text in seconds.
  *   - `scene-bibles` — character/location/element bibles.
  *   - `scene-shot-list` — after slices exist, a second structured call covers
  *     each scene with 1..N setups (`shotListPassResultSchema`), directed by
- *     the snapshotted style. Failure degrades to one shot.
+ *     the snapshotted style, and places every spoken line in the shot it is
+ *     spoken in (#1585), speakers named from the character bible. The regex
+ *     parser in `scene-from-slice.ts` only sees screenplay cues, so this
+ *     REPLACES `originalScript.dialogue`. Fails the run like the bibles
+ *     call, and also when it omits a scene (`attachShotLists`): a one-shot
+ *     fallback would silently leave that scene on the regex preview, which
+ *     is empty for prose.
  *
  * After the join, scene continuity tags are assigned from bibles ∩ slice
  * (`tag-reconcile.ts`) and bible `firstMention`s get their owning scene id
@@ -55,6 +62,7 @@ import {
   applyTargetDurations,
   attachShotLists,
   buildShotInserts,
+  formatCastForShotList,
   formatDirectorStyleForShotList,
   formatScenesForShotListPrompt,
 } from '@/shots/shot-list-pass';
@@ -115,6 +123,7 @@ import type {
   WorkflowStepConfig,
 } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
+import type { z } from 'zod';
 import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'scene-split']);
@@ -181,7 +190,8 @@ async function persistStreamedSceneAndShot(
   );
   // Seed the split script version as soon as the scene lands so composed
   // script / the Scenes script view have text mid-stream. Idempotent: the
-  // final persist-scenes step re-seeds without duplicating.
+  // final persist-scenes step re-seeds without duplicating, then overwrites
+  // the content with the shot-list call's dialogue (#1585).
   await scopedDb.sceneScriptVersions.seedSplitVersions([
     {
       sceneId: sceneRow.id,
@@ -317,11 +327,95 @@ type StreamResult = {
   llmKeySource: 'team' | 'platform';
 };
 
-/** Shape produced by the bibles step (post JSON round-trip). */
-type BiblesStepResult = SceneSplitBiblesResult & {
+type LlmStepBilling = {
   llmCostMicros: Microdollars;
   llmKeySource: 'team' | 'platform';
 };
+
+/** Shape produced by the bibles step (post JSON round-trip). */
+type BiblesStepResult = SceneSplitBiblesResult & LlmStepBilling;
+
+/** Shape produced by the shot-list step (post JSON round-trip). */
+type ShotListStepResult = ShotListPassResult & LlmStepBilling;
+
+/**
+ * One structured call consumed to completion, shared by the bibles and
+ * shot-list steps: the stream is drained for its final validated payload and
+ * nothing is persisted or emitted per chunk (unlike `scene-splitting-stream`).
+ * Same model, same failure mode: no validated payload = the step fails;
+ * nothing falls back to a local guess.
+ */
+async function runStructuredCall<T extends object>({
+  input,
+  scopedDb,
+  stepName,
+  promptName,
+  promptVars,
+  responseSchema,
+  maxTokens,
+}: {
+  input: SceneSplitWorkflowInput;
+  scopedDb: WorkflowScopedDb;
+  stepName: string;
+  promptName: string;
+  promptVars: Record<string, string>;
+  responseSchema: z.ZodType<T>;
+  maxTokens: number;
+}): Promise<T & LlmStepBilling> {
+  const { modelId } = input;
+  const logName = `phase-${PHASE.number}-${stepName}`;
+  const { messages } = await getChatPrompt(promptName, promptVars);
+  const llmKeyInfo = await scopedDb.credentials.resolveLlmKey(modelId);
+
+  logger.info(`[SceneSplitWorkflow:cf] [LLM:${logName}] Starting call`, {
+    model: modelId,
+    keySource: llmKeyInfo.source,
+    keyVia: llmKeyInfo.via,
+    messageCount: messages.length,
+  });
+
+  let parsed: T | undefined;
+  let usage: TokenUsage | undefined;
+  let accumulatedLength = 0;
+  for await (const chunk of callLLMStream<T>({
+    model: modelId,
+    messages,
+    max_tokens: maxTokens,
+    responseSchema,
+    apiKey: llmKeyInfo,
+    reasoning: PROMPT_REASONING,
+    observationName: logName,
+    tags: [stepName, `phase-${PHASE.number}`, 'analysis'],
+    metadata: LOG_METADATA,
+    userId: input.userId,
+    sessionId: input.sequenceId,
+  })) {
+    accumulatedLength = chunk.accumulated.length;
+    if (chunk.done) {
+      parsed = chunk.parsed;
+      usage = chunk.usage;
+    }
+  }
+  if (!parsed) {
+    // Truncation at the token cap and a provider dropping the stream end the
+    // same way (no validated payload); the numbers tell them apart.
+    const completionTokens = usage?.completionTokens;
+    const atCap =
+      completionTokens !== undefined && completionTokens >= maxTokens;
+    logger.error(
+      `[SceneSplitWorkflow:cf] [LLM:${logName}] Stream ended without a validated structured-output payload`,
+      { model: modelId, maxTokens, completionTokens, accumulatedLength, atCap }
+    );
+    throw new NonRetryableError(
+      `[SceneSplitWorkflow:cf] [LLM:${logName}] Stream ended without a validated structured-output payload (model=${modelId}${atCap ? ', output hit the token cap' : ''})`
+    );
+  }
+  return {
+    ...parsed,
+    llmCostMicros: llmCostFromUsage(usage, modelId, llmKeyInfo.via),
+    llmKeySource: llmKeyInfo.source,
+  };
+}
 
 async function reportDroppedBoundaries(
   sequenceId: string | undefined,
@@ -363,19 +457,29 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
             .map((el) => {
               // analyzeScriptWorkflow refuses to start while any element
               // is pending/analyzing, so a null description here means
-              // vision genuinely failed for this row.
-              const desc = el.description
-                ? `: ${el.description}`
-                : ' (no visual reference available)';
-              return `- ${el.token}${desc}`;
+              // vision genuinely failed for this row — or, for a clip or an
+              // audio element (#1559), that nobody described it: those never
+              // run vision, and what they ARE is the user's to say.
+              const kind = el.kind ?? 'image';
+              const fallback =
+                kind === 'image'
+                  ? ' (no visual reference available)'
+                  : ` (${kind} reference, not described)`;
+              const desc = el.description ? `: ${el.description}` : fallback;
+              const media = kind === 'image' ? '' : ` [${kind}]`;
+              return `- ${el.token}${media}${desc}`;
             })
             .join('\n')
         : '(none)';
-    // Both calls see the same numbered-gutter copy of the script: the scenes
-    // call reports hintLine against it, the bibles call firstMention lines.
+    // Both script calls see the same numbered-gutter copy: scenes report
+    // hintLine, bibles firstMention.lineNumber against it.
     const gutteredScript = addLineGutter(script);
     const splitMaxTokens = getMaxOutputTokens(SCENE_SPLIT_MODEL, 0.65);
     const biblesMaxTokens = getMaxOutputTokens(modelId, 0.65);
+    // The shot list re-emits every spoken line verbatim (#1585), so on a
+    // talky script it is the longest output of the phase; give it the
+    // model's full ceiling.
+    const shotListMaxTokens = getMaxOutputTokens(modelId, 1);
 
     // The two LLM calls are independent given the script, so their steps run
     // concurrently — output length drives latency and the scenes stream is
@@ -694,58 +798,19 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
     );
 
     const biblesStep = step.do(BIBLES_STEP_NAME, async (): Promise<string> => {
-      const { messages } = await getChatPrompt(BIBLES_PROMPT_NAME, {
-        script: gutteredScript,
-        elements: elementsBlock,
-      });
-      const llmKeyInfo = await scopedDb.credentials.resolveLlmKey(modelId);
-
-      logger.info(
-        `[SceneSplitWorkflow:cf] [LLM:${BIBLES_LOG_NAME}] Starting call`,
-        {
-          model: modelId,
-          keySource: llmKeyInfo.source,
-          keyVia: llmKeyInfo.via,
-          messageCount: messages.length,
-        }
-      );
-
-      let parsed: SceneSplitBiblesResult | undefined;
-      let usage: TokenUsage | undefined;
-      for await (const chunk of callLLMStream<SceneSplitBiblesResult>({
-        model: modelId,
-        messages,
-        max_tokens: biblesMaxTokens,
+      const result = await runStructuredCall({
+        input,
+        scopedDb,
+        stepName: BIBLES_STEP_NAME,
+        promptName: BIBLES_PROMPT_NAME,
+        promptVars: { script: gutteredScript, elements: elementsBlock },
         responseSchema: sceneSplitBiblesResultSchema,
-        apiKey: llmKeyInfo,
-        reasoning: PROMPT_REASONING,
-        observationName: BIBLES_LOG_NAME,
-        tags: [BIBLES_STEP_NAME, `phase-${PHASE.number}`, 'analysis'],
-        metadata: LOG_METADATA,
-        userId: input.userId,
-        sessionId: input.sequenceId,
-      })) {
-        if (chunk.done) {
-          parsed = chunk.parsed;
-          usage = chunk.usage;
-        }
-      }
-      if (!parsed) {
-        throw new NonRetryableError(
-          `[SceneSplitWorkflow:cf] [LLM:${BIBLES_LOG_NAME}] Stream ended without a validated structured-output payload (model=${modelId})`
-        );
-      }
-
+        maxTokens: biblesMaxTokens,
+      });
       logger.info(
-        `[SceneSplitWorkflow:cf] [LLM:${BIBLES_LOG_NAME}] Complete | ${parsed.characterBible.length} characters | ${parsed.locationBible.length} locations | ${parsed.elementBible.length} elements`
+        `[SceneSplitWorkflow:cf] [LLM:${BIBLES_LOG_NAME}] Complete | ${result.characterBible.length} characters | ${result.locationBible.length} locations | ${result.elementBible.length} elements`
       );
-
-      const result: BiblesStepResult = {
-        ...parsed,
-        llmCostMicros: llmCostFromUsage(usage, modelId, llmKeyInfo.via),
-        llmKeySource: llmKeyInfo.source,
-      };
-      return JSON.stringify(result);
+      return JSON.stringify(result satisfies BiblesStepResult);
     });
 
     const [streamResultJson, biblesResultJson] = await Promise.all([
@@ -820,88 +885,44 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
       });
     }
 
-    // Step 2b (#1486): list 1..N shots inside each resolved scene slice.
-    // Failure degrades to one shot per scene so the 1-shot path stays intact.
-    const shotListMaxTokens = getMaxOutputTokens(modelId, 0.65);
+    // Step 2b (#1486 / #1585): 1..N shots inside each resolved scene slice,
+    // each carrying the lines spoken in it, speakers named from the bible.
     const shotListJson = await step.do(
       SHOT_LIST_STEP_NAME,
       async (): Promise<string> => {
-        type ShotListStepResult = {
-          result: ShotListPassResult | null;
-          llmCostMicros: Microdollars;
-          llmKeySource: 'team' | 'platform';
-        };
-        const fallback = (
-          llmCostMicros: Microdollars,
-          llmKeySource: 'team' | 'platform'
-        ): string =>
-          JSON.stringify({
-            result: null,
-            llmCostMicros,
-            llmKeySource,
-          } satisfies ShotListStepResult);
-
-        const { messages } = await getChatPrompt(SHOT_LIST_PROMPT_NAME, {
-          scenes: formatScenesForShotListPrompt(reconciledScenes),
-          style: formatDirectorStyleForShotList(input.styleConfig),
+        const result = await runStructuredCall({
+          input,
+          scopedDb,
+          stepName: SHOT_LIST_STEP_NAME,
+          promptName: SHOT_LIST_PROMPT_NAME,
+          promptVars: {
+            scenes: formatScenesForShotListPrompt(reconciledScenes),
+            style: formatDirectorStyleForShotList(input.styleConfig),
+            characters: formatCastForShotList(biblesResult.characterBible),
+          },
+          responseSchema: shotListPassResultSchema,
+          maxTokens: shotListMaxTokens,
         });
-        const llmKeyInfo = await scopedDb.credentials.resolveLlmKey(modelId);
-        let parsed: ShotListPassResult | undefined;
-        let usage: TokenUsage | undefined;
-        try {
-          for await (const chunk of callLLMStream<ShotListPassResult>({
-            model: modelId,
-            messages,
-            max_tokens: shotListMaxTokens,
-            responseSchema: shotListPassResultSchema,
-            apiKey: llmKeyInfo,
-            reasoning: PROMPT_REASONING,
-            observationName: SHOT_LIST_LOG_NAME,
-            tags: [SHOT_LIST_STEP_NAME, `phase-${PHASE.number}`, 'analysis'],
-            metadata: LOG_METADATA,
-            userId: input.userId,
-            sessionId: input.sequenceId,
-          })) {
-            if (chunk.done) {
-              parsed = chunk.parsed;
-              usage = chunk.usage;
-            }
-          }
-        } catch (error) {
-          logger.warn(
-            '[SceneSplitWorkflow:cf] Shot-list pass failed; defaulting to one shot per scene',
-            { sequenceId, err: error }
-          );
-          return fallback(
-            llmCostFromUsage(usage, modelId, llmKeyInfo.via),
-            llmKeyInfo.source
-          );
-        }
-        const validated = shotListPassResultSchema.safeParse(parsed);
-        if (!validated.success) {
-          logger.warn(
-            '[SceneSplitWorkflow:cf] Shot-list pass returned an invalid payload; defaulting to one shot per scene',
-            { sequenceId }
-          );
-          return fallback(
-            llmCostFromUsage(usage, modelId, llmKeyInfo.via),
-            llmKeyInfo.source
-          );
-        }
-        return JSON.stringify({
-          result: validated.data,
-          llmCostMicros: llmCostFromUsage(usage, modelId, llmKeyInfo.via),
-          llmKeySource: llmKeyInfo.source,
-        } satisfies ShotListStepResult);
+        const shots = result.scenes.flatMap((scene) => scene.shots);
+        logger.info(
+          `[SceneSplitWorkflow:cf] [LLM:${SHOT_LIST_LOG_NAME}] Complete | ${result.scenes.length} scenes | ${shots.length} shots | ${shots.reduce((n, shot) => n + shot.dialogue.length, 0)} dialogue lines`
+        );
+        return JSON.stringify(result satisfies ShotListStepResult);
       }
     );
-    const shotListStep: {
-      result: ShotListPassResult | null;
-      llmCostMicros: Microdollars;
-      llmKeySource: 'team' | 'platform';
-    } = JSON.parse(shotListJson);
+    const shotListStep: ShotListStepResult = JSON.parse(shotListJson);
+    if (!Array.isArray(shotListStep.scenes)) {
+      throw new NonRetryableError(
+        'scene-shot-list returned a malformed result from cache',
+        'WorkflowValidationError'
+      );
+    }
+    // `attachShotLists` also rebuilds each scene's dialogue from its shots,
+    // stamped per shot so `dialogueForShot` filters per clip downstream, and
+    // throws if the pass omitted a scene — the run fails rather than leave
+    // that scene on the regex preview.
     const scenesWithShots = applyTargetDurations(
-      attachShotLists(reconciledScenes, shotListStep.result),
+      attachShotLists(reconciledScenes, shotListStep),
       input.videoModel ? input.targetSeconds : undefined,
       input.videoModel ? durationGridForModel(input.videoModel) : []
     );
@@ -1153,6 +1174,10 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
         );
 
         await scopedDb.sceneScriptVersions.seedSplitVersions(scriptSeeds);
+        // The stream seeded each split version with the regex dialogue
+        // preview; the shot-list call's lines (#1585) are what has to land
+        // in the row.
+        await scopedDb.sceneScriptVersions.updateSplitContent(scriptSeeds);
       });
     }
 

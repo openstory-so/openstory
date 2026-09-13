@@ -278,8 +278,7 @@ export type WelcomeGrantSource =
   | 'setup_checkout'
   | 'setup_intent'
   | 'claim'
-  | 'purchase'
-  | 'phone';
+  | 'purchase';
 
 export async function teamHasSavedCard(scopedDb: ScopedDb): Promise<boolean> {
   const settings = await scopedDb.billing.getBillingSettings();
@@ -327,7 +326,7 @@ export async function grantWelcomeCreditsForTeam(opts: {
   teamId: string;
   userId: string;
   source: WelcomeGrantSource;
-  /** Stripe payment-method fingerprint (card, Alipay, WeChat Pay) or the hashed phone number (#1539). */
+  /** Stripe payment-method fingerprint (card, Alipay, WeChat Pay). */
   fingerprint: string;
 }): Promise<{ granted: boolean }> {
   const reserved = await opts.scopedDb.billing.claimWelcomeCardFingerprint(

@@ -12,6 +12,12 @@
  *   against recorded fixtures under `fixtures/recorded/fal/`. No `mount()`
  *   needed — the library handles it.
  *
+ * Native ElevenLabs TTS is built into aimock (`POST /v1/text-to-speech/{id}`,
+ * `onElevenLabsTTS`). Playwright points `ELEVENLABS_BASE_URL` at this host
+ * (no `/v1` suffix — the SDK paths include it). Fixtures live under
+ * `fixtures/recorded/elevenlabs/`. Voice Design (`/v1/text-to-voice/*`) is
+ * not in aimock yet — that lands with the first product call.
+ *
  * Browser-side mocks (R2, QStash) remain in handlers.ts via Playwright routes.
  */
 
@@ -56,10 +62,15 @@ const XAI_FIXTURE_DIR = resolve(
   import.meta.dirname,
   '../fixtures/recorded/xai'
 );
+const ELEVENLABS_FIXTURE_DIR = resolve(
+  import.meta.dirname,
+  '../fixtures/recorded/elevenlabs'
+);
 // aimock's recorder writes flat into a single directory; we point it here and
 // `sortStagingFixtures()` (run on shutdown) classifies each new file by its
-// provider-key prefix (`openai-…` vs `fal-…`) and moves it into the right
-// sibling subfolder of `fixtures/recorded/` (`openrouter/<stage>/` or `fal/`).
+// provider-key prefix (`openai-…` vs `fal-…` vs `elevenlabs-…`) and moves it
+// into the right sibling subfolder of `fixtures/recorded/` (`openrouter/<stage>/`,
+// `fal/`, or `elevenlabs/`).
 const RECORD_STAGING_DIR = resolve(
   import.meta.dirname,
   '../fixtures/recorded/_unsorted'
@@ -481,7 +492,10 @@ export async function startAimockServer(): Promise<string> {
     // stage subfolders post-run so they don't pollute the curated layout.
     ...(E2E_RECORDING && {
       record: {
-        providers: { openai: 'https://openrouter.ai/api/v1' },
+        providers: {
+          openai: 'https://openrouter.ai/api/v1',
+          elevenlabs: 'https://api.elevenlabs.io',
+        },
         fixturePath: RECORD_STAGING_DIR,
         // Reasoning models (e.g. Grok 4.5 + structured output under concurrent
         // load) routinely leave 30s+ gaps between SSE chunks while thinking,
@@ -516,6 +530,13 @@ export async function startAimockServer(): Promise<string> {
   // record-providers entry is needed.
   if (existsSync(FAL_FIXTURE_DIR)) {
     mockServer.addFixtures(loadFixturesRecursive(FAL_FIXTURE_DIR));
+  }
+
+  // Native ElevenLabs TTS (`POST /v1/text-to-speech/{voice_id}`). aimock
+  // dispatches this on the same server as OpenRouter/fal — the path does
+  // not collide. Voice Design is not a built-in aimock endpoint.
+  if (existsSync(ELEVENLABS_FIXTURE_DIR)) {
+    mockServer.addFixtures(loadFixturesRecursive(ELEVENLABS_FIXTURE_DIR));
   }
 
   const url = await mockServer.start();
@@ -686,7 +707,7 @@ function fixtureContentHash(userMessage: string): string {
 // can't get a hash-free name because nothing in its body is a stable key.
 function stableBaseName(
   userMessage: string,
-  kind: 'openrouter' | 'fal'
+  kind: 'openrouter' | 'fal' | 'elevenlabs'
 ): string {
   const sceneId = /\bscene_(\d+)\b/.exec(userMessage)?.[0];
 
@@ -696,8 +717,8 @@ function stableBaseName(
     return sceneId ?? '';
   }
 
-  // fal: lead with the scene id when present, then a slug of the first line of
-  // the prompt, then a short content hash to disambiguate + track input drift.
+  // fal / elevenlabs: lead with the scene id when present, then a slug of the
+  // first line of the prompt, then a short content hash to disambiguate.
   const firstLine = userMessage.split('\n', 1)[0] ?? '';
   const lead = slugify(firstLine);
   const hash = fixtureContentHash(userMessage);
@@ -808,6 +829,12 @@ function sortStagingFixtures(): void {
       continue;
     }
     const userMessage = readUserMessage(src);
+    if (name.startsWith('elevenlabs-')) {
+      const base = stableBaseName(userMessage, 'elevenlabs');
+      moveToStableName(src, ELEVENLABS_FIXTURE_DIR, base, userMessage);
+      sorted++;
+      continue;
+    }
     if (name.startsWith('fal-')) {
       const modelSlug = classifyFalModel(src);
       const destDir = modelSlug

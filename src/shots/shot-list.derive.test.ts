@@ -51,6 +51,7 @@ function makeScene(overrides: Partial<SceneWithShots> = {}): SceneWithShots {
         action: 'Sarah walks toward the door',
         cameraMovement: { move: 'dolly', pacing: 'slow' },
         soundCue: 'distant hum, footsteps',
+        dialogue: [],
         durationSeconds: 6,
       },
       {
@@ -64,6 +65,7 @@ function makeScene(overrides: Partial<SceneWithShots> = {}): SceneWithShots {
         action: 'she turns the handle and pushes',
         cameraMovement: { move: 'push-in', pacing: 'gradual' },
         soundCue: 'handle click, hinge creak',
+        dialogue: [],
         durationSeconds: 6,
       },
     ],
@@ -188,6 +190,7 @@ describe('deriveShots — single-shot regression', () => {
           action: 'clouds drift over the towers',
           cameraMovement: { move: 'static', pacing: 'slow' },
           soundCue: 'city ambience',
+          dialogue: [],
           durationSeconds: 4,
         },
       ],

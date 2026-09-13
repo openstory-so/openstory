@@ -16,6 +16,7 @@
 
 import {
   computeCharacterSheetInputHash,
+  computeMotionPromptInputHash,
   computeVideoManifestInputHash,
   computeVisualPromptInputHash,
   type CharacterBibleHashFields,
@@ -236,6 +237,9 @@ const ALICE: CharacterBibleEntry = {
   physicalDescription: 'tall, brown hair',
   standardClothing: '',
   distinguishingFeatures: '',
+  personality: '',
+  movement: '',
+  voiceOnly: false,
   consistencyTag: 'alice_tag',
 };
 const BOB: CharacterBibleEntry = {
@@ -448,6 +452,32 @@ describe('staleness matrix — cast/location bible mutations (§4.2, Phase 2)', 
       consistencyTag: ALICE.consistencyTag,
     });
     expect(renamed).toBe(stamped);
+  });
+
+  it('personality / movement edit re-stales the motion prompt, never the visual prompt or the sheet (#1561)', async () => {
+    const edited: BibleState = {
+      ...BIBLE_BASE,
+      characterBible: [
+        {
+          ...ALICE,
+          personality: 'anxious, eager to please',
+          movement: 'restless hands',
+        },
+      ],
+    };
+    const motionHash = (state: BibleState) =>
+      computeMotionPromptInputHash({
+        scene: SCENE,
+        styleConfig: STYLE,
+        characterBible: state.characterBible,
+        locationBible: state.locationBible,
+        elementBible: [],
+        aspectRatio: '16:9',
+        analysisModel: 'anthropic/claude-haiku-4.5',
+      });
+    expect(await motionHash(edited)).not.toBe(await motionHash(BIBLE_BASE));
+    expect(await promptHash(edited)).toBe(await promptHash(BIBLE_BASE));
+    // The sheet hash never takes the fields at all (`CharacterBibleHashFields`).
   });
 
   it('bible edit re-stales the character sheet (sheet hash embeds the bible fields)', async () => {

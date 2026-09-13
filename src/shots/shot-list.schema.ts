@@ -33,7 +33,8 @@
  * ## Model-agnostic
  *
  * The analysis annotates a shot list with framing, one action, exactly one
- * camera move (paired with a pacing adverb), a sound cue and a duration. It
+ * camera move (paired with a pacing adverb), a sound cue, the lines spoken
+ * in the shot (#1585) and a duration. It
  * never emits vendor-specific syntax (Seedance/Kling/etc.) — the render layer
  * (#910 / #953) adapts per model capability.
  *
@@ -119,22 +120,15 @@ const shotListContinuitySchema = z.object({
  * Framing / start-state — what the start frame shows. Feeds the start-frame
  * visual prompt alongside the scene context.
  */
+// Descriptions are short labels on purpose: they count toward the Anthropic
+// grammar budget, so the vocabulary and rules live in the system prompt
+// (`phase/scene-shot-list-chat`), which is not budgeted.
 const shotFramingSchema = z.object({
-  shotSize: z.string().meta({
-    description:
-      'Shot size: extreme wide, wide, medium wide, medium, medium close-up, close-up, extreme close-up',
-  }),
-  angle: z.string().meta({
-    description:
-      'Camera angle: eye level, low angle, high angle, overhead, dutch, over-the-shoulder',
-  }),
-  composition: z.string().meta({
-    description:
-      'How the frame is composed: rule-of-thirds placement, depth, foreground/background, focal point',
-  }),
+  shotSize: z.string().meta({ description: 'Shot size' }),
+  angle: z.string().meta({ description: 'Camera angle' }),
+  composition: z.string().meta({ description: 'Frame composition' }),
   subjectStartState: z.string().meta({
-    description:
-      "The subject's state at the START of the shot: pose, position, expression, what they hold — the still the start frame captures",
+    description: 'Subject pose/position/expression at the START of the shot',
   }),
 });
 
@@ -143,42 +137,40 @@ const shotFramingSchema = z.object({
  * stacked (no "pan then dolly"). Feeds the motion prompt.
  */
 const shotCameraMovementSchema = z.object({
-  move: z.string().meta({
-    description:
-      'The single primary camera move: static, pan, tilt, dolly, truck, pedestal, zoom, push-in, pull-out, orbit. Exactly one — never stacked.',
-  }),
-  pacing: z.enum(['slow', 'smooth', 'gradual']).meta({
-    description:
-      'Pacing adverb for the move: slow, smooth, or gradual. Keeps motion calm and avoids the chaotic output fast moves trigger in video models.',
-  }),
+  move: z.string().meta({ description: 'The single camera move' }),
+  pacing: z.enum(['slow', 'smooth', 'gradual']),
+});
+
+/**
+ * A line spoken during the shot (#1585). Dialogue is extracted here, on the
+ * shot-list call, because it already holds the sliced script and the cast,
+ * and which shot a line is spoken in is a coverage decision. The regex
+ * parser in `scene-from-slice.ts` only sees screenplay cues; this sees prose.
+ */
+const shotDialogueLineSchema = z.object({
+  character: z.string().meta({ description: 'Speaker, from the cast list' }),
+  line: z.string().meta({ description: 'Spoken words, verbatim' }),
+  tone: z.string().meta({ description: 'Delivery, empty if none' }),
 });
 
 /**
  * One structured shot. Carries exactly what a real shot-list entry has:
- * framing/start-state, one primary action, one camera move, a sound cue and a
- * duration. Visual + motion prompts are DERIVED from these fields plus the
- * parent scene's shared context (see `shot-list.derive.ts`).
+ * framing/start-state, one primary action, one camera move, a sound cue, the
+ * lines spoken in it and a duration. Visual + motion prompts are DERIVED from
+ * these fields plus the parent scene's shared context (see
+ * `shot-list.derive.ts`).
  */
 export const shotSpecSchema = z.object({
-  shotNumber: z.number().meta({
-    description: '1-based order of this shot within its scene',
-  }),
-  framing: shotFramingSchema.meta({
-    description: 'Framing and subject start-state for the start frame',
-  }),
-  action: z.string().meta({
-    description:
-      'The ONE primary action that happens during this shot (e.g. "she turns and reaches for the door handle"). One action per shot.',
-  }),
-  cameraMovement: shotCameraMovementSchema.meta({
-    description: 'Exactly one camera move paired with a pacing adverb',
-  }),
-  soundCue: z.string().meta({
-    description:
-      'On-screen SFX / ambience hook for audio-capable models (e.g. "door creak, distant traffic"). Empty string when none.',
+  shotNumber: z.number().meta({ description: '1-based within the scene' }),
+  framing: shotFramingSchema,
+  action: z.string().meta({ description: 'The ONE primary action' }),
+  cameraMovement: shotCameraMovementSchema,
+  soundCue: z.string().meta({ description: 'SFX/ambience, empty if none' }),
+  dialogue: z.array(shotDialogueLineSchema).meta({
+    description: 'Lines spoken in this shot, in order',
   }),
   durationSeconds: z.number().meta({
-    description: `Relative clip length in seconds (pacing hint, at least ${MIN_SHOT_DURATION_SECONDS}). The system snaps clips to the video-model grid so the film hits the target running time.`,
+    description: `Relative pacing hint, at least ${MIN_SHOT_DURATION_SECONDS}`,
   }),
 });
 
@@ -275,16 +267,17 @@ export type SceneWithShotsResult = z.infer<typeof sceneWithShotsResultSchema>;
  * One scene's shot list as returned by the second analysis pass. `sceneNumber`
  * matches the already-assembled scene; the pass cannot create or merge scenes.
  */
+// The ${MAX_SHOTS_PER_SCENE} cap is prompt + post-parse: Anthropic rejects
+// maxItems, so it is not on the schema.
 const shotListPassSceneSchema = z.object({
   sceneNumber: z.number().meta({
-    description:
-      '1-based scene number matching the SCENE N heading in the prompt',
+    description: 'Matches the "## Scene N" heading',
   }),
   shots: z
     .array(shotSpecSchema)
     .min(1)
     .meta({
-      description: `Ordered list of 1..${MAX_SHOTS_PER_SCENE} shots. A scene with no internal cut is a single shot. The 5-shot cap is prompt + post-parse (Anthropic rejects maxItems).`,
+      description: `1..${MAX_SHOTS_PER_SCENE} shots in story order`,
     }),
 });
 
@@ -294,8 +287,7 @@ const shotListPassSceneSchema = z.object({
  */
 export const shotListPassResultSchema = z.object({
   scenes: z.array(shotListPassSceneSchema).meta({
-    description:
-      'One entry per input scene, in scene-number order, each owning 1..N shots',
+    description: 'One entry per input scene, in order',
   }),
 });
 

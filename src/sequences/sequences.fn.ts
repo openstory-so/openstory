@@ -52,11 +52,13 @@ import { triggerWorkflow } from '@/platform/server/workflow/client';
 import { triggerStoryboard } from '@/sequences/server/launchers';
 import { ValidationError } from '@/platform/errors';
 import {
+  allowsUnfundedGeneration,
   continueStageSchema,
   flagsFromStopAt,
   generationStageSchema,
   includesStage,
   nextStageAfter,
+  resolveStopAt,
   stageIndex,
 } from './pipeline';
 import type {
@@ -253,33 +255,37 @@ export const continueGenerationFn = createServerFn({ method: 'POST' })
       data.stopAt
     );
 
-    const reservationId = await reserveRunCredits(
-      context.scopedDb,
-      estimateStoryboardPreflightCost({
-        script: sequence.script ?? '',
-        imageModel: safeTextToImageModel(
-          sequence.imageModel,
-          DEFAULT_IMAGE_MODEL
-        ),
-        aspectRatio: sequence.aspectRatio,
-        resolution: sequence.resolution,
-        autoGenerateMotion,
-        stopAt: data.stopAt,
-        startFrom: data.startFrom,
-        referenceOnly: !sequence.generateStartFrames,
-        videoModels: [
-          safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
-        ],
-        autoGenerateMusic,
-        audioModels: [safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)],
-        pricing: await getEffectiveFalPricing(),
-      }),
-      {
-        providers: ['fal', 'openrouter'],
-        errorMessage: 'Insufficient credits to continue generation',
-        sequenceId: data.sequenceId,
-      }
-    );
+    const reservationId = allowsUnfundedGeneration(data.stopAt)
+      ? undefined
+      : await reserveRunCredits(
+          context.scopedDb,
+          estimateStoryboardPreflightCost({
+            script: sequence.script ?? '',
+            imageModel: safeTextToImageModel(
+              sequence.imageModel,
+              DEFAULT_IMAGE_MODEL
+            ),
+            aspectRatio: sequence.aspectRatio,
+            resolution: sequence.resolution,
+            autoGenerateMotion,
+            stopAt: data.stopAt,
+            startFrom: data.startFrom,
+            referenceOnly: !sequence.generateStartFrames,
+            videoModels: [
+              safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
+            ],
+            autoGenerateMusic,
+            audioModels: [
+              safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL),
+            ],
+            pricing: await getEffectiveFalPricing(),
+          }),
+          {
+            providers: ['fal', 'openrouter'],
+            errorMessage: 'Insufficient credits to continue generation',
+            sequenceId: data.sequenceId,
+          }
+        );
 
     await context.scopedDb.sequences.update({
       id: data.sequenceId,
@@ -377,34 +383,41 @@ export const updateSequenceFn = createServerFn({ method: 'POST' })
     }
 
     if (needsRegeneration) {
-      const reservationId = await reserveRunCredits(
-        context.scopedDb,
-        estimateStoryboardPreflightCost({
-          script: sequence.script ?? '',
-          imageModel: safeTextToImageModel(
-            sequence.imageModel,
-            DEFAULT_IMAGE_MODEL
-          ),
-          aspectRatio: sequence.aspectRatio,
-          resolution: sequence.resolution,
-          autoGenerateMotion: sequence.autoGenerateMotion,
-          stopAt: sequence.generationStopAt ?? undefined,
-          videoModels: [
-            safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
-          ],
-          autoGenerateMusic: sequence.autoGenerateMusic,
-          audioModels: [
-            safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL),
-          ],
-          referenceOnly: !sequence.generateStartFrames,
-          pricing: await getEffectiveFalPricing(),
-        }),
-        {
-          providers: ['fal', 'openrouter'],
-          errorMessage: 'Insufficient credits to regenerate storyboard',
-          sequenceId,
-        }
-      );
+      const stopAt = resolveStopAt({
+        generationStopAt: sequence.generationStopAt,
+        autoGenerateMotion: sequence.autoGenerateMotion,
+        autoGenerateMusic: sequence.autoGenerateMusic,
+      });
+      const reservationId = allowsUnfundedGeneration(stopAt)
+        ? undefined
+        : await reserveRunCredits(
+            context.scopedDb,
+            estimateStoryboardPreflightCost({
+              script: sequence.script ?? '',
+              imageModel: safeTextToImageModel(
+                sequence.imageModel,
+                DEFAULT_IMAGE_MODEL
+              ),
+              aspectRatio: sequence.aspectRatio,
+              resolution: sequence.resolution,
+              autoGenerateMotion: sequence.autoGenerateMotion,
+              stopAt,
+              videoModels: [
+                safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
+              ],
+              autoGenerateMusic: sequence.autoGenerateMusic,
+              audioModels: [
+                safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL),
+              ],
+              referenceOnly: !sequence.generateStartFrames,
+              pricing: await getEffectiveFalPricing(),
+            }),
+            {
+              providers: ['fal', 'openrouter'],
+              errorMessage: 'Insufficient credits to regenerate storyboard',
+              sequenceId,
+            }
+          );
 
       // Owns the generation mutex, the 'processing' status write, the run-id
       // persistence (#839), and the trigger-time content snapshot. Regeneration
@@ -522,31 +535,41 @@ export const retryStoryboardFn = createServerFn({ method: 'POST' })
       throw new Error('Only failed sequences can be retried');
     }
 
-    const reservationId = await reserveRunCredits(
-      context.scopedDb,
-      estimateStoryboardPreflightCost({
-        script: sequence.script ?? '',
-        imageModel: safeTextToImageModel(
-          sequence.imageModel,
-          DEFAULT_IMAGE_MODEL
-        ),
-        aspectRatio: sequence.aspectRatio,
-        resolution: sequence.resolution,
-        autoGenerateMotion: sequence.autoGenerateMotion,
-        videoModels: [
-          safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
-        ],
-        autoGenerateMusic: sequence.autoGenerateMusic,
-        audioModels: [safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)],
-        referenceOnly: !sequence.generateStartFrames,
-        pricing: await getEffectiveFalPricing(),
-      }),
-      {
-        providers: ['fal', 'openrouter'],
-        errorMessage: 'Insufficient credits to retry storyboard',
-        sequenceId: sequence.id,
-      }
-    );
+    const stopAt = resolveStopAt({
+      generationStopAt: sequence.generationStopAt,
+      autoGenerateMotion: sequence.autoGenerateMotion,
+      autoGenerateMusic: sequence.autoGenerateMusic,
+    });
+    const reservationId = allowsUnfundedGeneration(stopAt)
+      ? undefined
+      : await reserveRunCredits(
+          context.scopedDb,
+          estimateStoryboardPreflightCost({
+            script: sequence.script ?? '',
+            imageModel: safeTextToImageModel(
+              sequence.imageModel,
+              DEFAULT_IMAGE_MODEL
+            ),
+            aspectRatio: sequence.aspectRatio,
+            resolution: sequence.resolution,
+            autoGenerateMotion: sequence.autoGenerateMotion,
+            stopAt,
+            videoModels: [
+              safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
+            ],
+            autoGenerateMusic: sequence.autoGenerateMusic,
+            audioModels: [
+              safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL),
+            ],
+            referenceOnly: !sequence.generateStartFrames,
+            pricing: await getEffectiveFalPricing(),
+          }),
+          {
+            providers: ['fal', 'openrouter'],
+            errorMessage: 'Insufficient credits to retry storyboard',
+            sequenceId: sequence.id,
+          }
+        );
 
     const workflowInput: StoryboardTriggerInput = {
       userId: user.id,
@@ -562,7 +585,7 @@ export const retryStoryboardFn = createServerFn({ method: 'POST' })
       },
       autoGenerateMotion: sequence.autoGenerateMotion,
       autoGenerateMusic: sequence.autoGenerateMusic,
-      stopAt: sequence.generationStopAt ?? undefined,
+      stopAt,
     };
 
     // Owns the generation mutex, the 'processing' status write, and the
@@ -986,6 +1009,13 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
       const reservationId = await reserveRunCredits(
         scopedDb,
         // Per shot: a reference-only shot prices the reference-to-video route.
+        // So does a start-frame shot once sheets exist — the payload below
+        // attaches cast/element refs to EVERY shot, and on a model whose refs
+        // switch endpoint (Kling O3, Seedance, H3 Max) that is a different,
+        // dearer row. Asked at sequence granularity because the per-shot match
+        // needs scene context that is only loaded after the reservation; a
+        // shot that matches nothing merely over-reserves, which is refunded,
+        // where under-reserving fails the run mid-flight.
         eligible.reduce(
           (sum, shot) =>
             addMicros(
@@ -995,6 +1025,8 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
                   pricing,
                   resolution: sequence.resolution,
                   referenceOnly: shotIsReferenceOnly(shot),
+                  hasReferenceImages:
+                    characters.length > 0 || elements.length > 0,
                 }),
                 { model, operation: 'add-video-model' }
               )
@@ -1016,8 +1048,9 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
               scopedDb,
               sequence.id
             );
-            const sceneOf = (s: Pick<Shot, 'sceneId' | 'durationMs'>) =>
-              resolveSceneForShot(s, sceneContext).scene;
+            const sceneOf = (
+              s: Pick<Shot, 'sceneId' | 'durationMs' | 'shotNumber'>
+            ) => resolveSceneForShot(s, sceneContext).scene;
 
             // No pre-seeded `video_variants` version here (mirrors the image branch
             // below, #990): each shot's motion child opens its own in-flight
@@ -1064,7 +1097,7 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
                     characters,
                     elements,
                     motionPrompt: selectedMotion?.text ?? null,
-                    includeLocations: referenceOnly,
+                    referenceOnly,
                     locations,
                   }),
                   prompt: resolveMotionPrompt(
@@ -1263,8 +1296,7 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
  * Promote a model to the live primary across the WHOLE sequence (#547) — the
  * sequence-wide "Set" that pairs with the header image/video dropdowns. For
  * every shot that has a completed `shot_variants` row for `model`, copies that
- * row onto the legacy primary columns (the per-scene `setImageFromVariantFn` /
- * `setVideoFromVariantFn` applied in bulk, reusing `buildPromoteUpdate`). Shots
+ * row onto the legacy primary columns (reusing `buildPromoteUpdate`). Shots
  * the model never generated are left on their current primary. Image promotion
  * invalidates each affected shot's video (the start image changed); video
  * promotion is terminal. Audio is per-sequence — use `setMusicFromVariantFn`.

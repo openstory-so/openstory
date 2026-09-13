@@ -4,20 +4,18 @@
  * Most models have a single image-to-video endpoint (`modelConfig.id`). A few
  * accept cast/element reference images only on a SEPARATE reference-to-video
  * endpoint that takes an image list bound to per-model prompt tokens and has
- * no single start-frame `image_url` — see `MOTION_REFERENCE_ENDPOINTS`. When a
+ * an optional (Kling O3) or absent (Seedance, H3 Max) start frame — see
+ * `MOTION_REFERENCE_ENDPOINTS`. When a
  * scene actually has references AND the model has such an endpoint, route there;
  * a reference-only scene with no references goes to that model's text-to-video
  * sibling; otherwise stay on the normal image-to-video endpoint.
  *
  * `references` is the request shape — how the images ride, or that nothing
  * rides at all:
- *  | {
-      via: 'fal';
-      endpointId: MotionEndpointId;
-      references: 'endpoint'; - `endpoint` — dedicated reference-to-video endpoint (Seedance, H3 Max,
- *     Omni Flash)
- *   - `inline` — URLs on the same generations call (Kling `elements`, Grok
- *     Imagine 1.5 native `reference`/`character` prompt parts)
+ *   - `endpoint` — dedicated reference-to-video endpoint (Seedance, H3 Max,
+ *     Kling O3, Omni Flash)
+ *   - `inline` — URLs on the same generations call (Grok Imagine 1.5 native
+ *     `reference`/`character` prompt parts; Ark / Google vias)
  *   - `none` — URLs are not sent; tokens become descriptions in the prompt
  *   - `text-to-video` — nothing to send: a reference-only shot that matched no
  *     sheets goes to the model's prompt-only sibling (#1521). Every fal
@@ -35,7 +33,6 @@ import { NATIVE_GEMINI_VIDEO_MODEL } from '@/models/gemini-native';
 import { NATIVE_GROK_VIDEO_MODEL } from '@/models/grok-native';
 import {
   IMAGE_TO_VIDEO_MODELS,
-  attachesInlineReferences,
   getBytePlusVideoModelId,
   getMotionReferenceEndpoint,
   type ImageToVideoModel,
@@ -73,9 +70,11 @@ export function resolveMotionEndpoint(
   if (via === 'xai') {
     // Imagine 1.5 reference-to-video rides the same `/videos/generations`
     // endpoint as image-to-video: extra images go on the generateVideo prompt
-    // as `metadata.role: 'reference' | 'character'` parts. xAI forbids mixing
-    // a start frame with `reference_images`, so submit drops start_frame and
-    // sends the still as the first reference when this is `'inline'`.
+    // as `metadata.role: 'reference' | 'character'` parts, and the rendered
+    // still is PINNED as the opening frame alongside them (xAI documents
+    // `image` + `reference_images` as the matching first-frame pin). It used
+    // to be demoted into the first reference slot on the belief that the two
+    // could not be combined — see `GROK_VIDEO_REFERENCE_CONFIG`.
     return {
       via: 'xai',
       endpointId: NATIVE_GROK_VIDEO_MODEL,
@@ -144,13 +143,6 @@ export function resolveMotionEndpoint(
       throw new Error(
         `Motion model "${modelKey}" has no reference-to-video endpoint and cannot render without a start frame`
       );
-    }
-    if (attachesInlineReferences(modelKey)) {
-      return {
-        via: 'fal',
-        endpointId: IMAGE_TO_VIDEO_MODELS[modelKey].id,
-        references: 'inline',
-      };
     }
   }
   return {

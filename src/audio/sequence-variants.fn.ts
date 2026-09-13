@@ -127,7 +127,7 @@ const setMusicFromVariantInputSchema = z.object({
 
 /**
  * Switch the sequence's live primary music to the selected model's track
- * ("Set Music"), the per-sequence analog of `setVideoFromVariantFn`. Resolves
+ * ("Set Music"). Resolves
  * the model to its own live (non-divergent, non-discarded) completed variant
  * and copies it onto `sequences.music*` without discarding the row, so the
  * model stays available to switch back to. Emits a terminal `audio:progress`

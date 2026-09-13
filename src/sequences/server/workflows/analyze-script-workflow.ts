@@ -238,6 +238,8 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       description: el.description,
       imageUrl: el.imageUrl,
       consistencyTag: el.consistencyTag,
+      kind: el.kind,
+      durationSeconds: el.durationSeconds,
     }));
 
     if (pendingAutoStyleId && !sequenceId) {
@@ -506,9 +508,11 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     // only phase-1 output. Every location gets a sheet: a library match
     // supplies a reference image but the styled sheet is still generated.
     // A continue that starts after References bills no sheets (#1408).
+    // A voice-only character has no sheet at all (#1585).
     const billedCharacterSheets = runReferences
       ? castCharacterBible.filter(
           (character) =>
+            !character.voiceOnly &&
             !reusesTalentSheet(
               character,
               talentCharacterMatches.find(

@@ -31,8 +31,8 @@ describe('nativeGeminiTextModel', () => {
     expect(nativeGeminiTextModel('google/gemini-3-flash-preview')).toBe(
       'gemini-3-flash-preview'
     );
-    expect(nativeGeminiTextModel('google/gemini-3.7-flash')).toBe(
-      'gemini-3.7-flash'
+    expect(nativeGeminiTextModel('google/gemini-3.8-flash')).toBe(
+      'gemini-3.8-flash'
     );
   });
 
@@ -85,7 +85,7 @@ describe('geminiImageCost', () => {
 describe('isNativeGeminiVideoModel', () => {
   it('claims only the Omni Flash registry key', () => {
     expect(isNativeGeminiVideoModel('gemini_omni_flash')).toBe(true);
-    expect(isNativeGeminiVideoModel('veo3_1')).toBe(false);
+    expect(isNativeGeminiVideoModel('seedance_v2')).toBe(false);
     expect(isNativeGeminiVideoModel('grok_imagine_video_1_5')).toBe(false);
   });
 });
@@ -122,6 +122,13 @@ describe('geminiTextCostFromUsage', () => {
         'gemini-3-flash-preview'
       )
     ).toBe(3_500_000);
+  });
+
+  it('prices 3.8 Flash at the published Standard intro list — it has no long-context tier', () => {
+    // 1M prompt @ $0.75/1M + 1M completion @ $3.75/1M = $4.50
+    expect(
+      geminiTextCostFromUsage(usage(1_000_000, 1_000_000), 'gemini-3.8-flash')
+    ).toBe(4_500_000);
   });
 
   it('returns undefined when the adapter reported no usage at all', () => {

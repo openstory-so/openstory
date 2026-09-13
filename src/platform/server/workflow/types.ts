@@ -510,7 +510,7 @@ export interface MotionWorkflowInput extends SequenceWorkflowContext {
   aspectRatio?: AspectRatio; // "16:9", "9:16", "1:1"
   resolution?: Resolution;
   /**
-   * For audio-capable models (kling v3, veo3), pass `false` to suppress the
+   * For audio-capable models (kling v3, seedance), pass `false` to suppress the
    * model's native audio output (sfx/ambient/lip-sync). Omit to use the API
    * schema default (true for audio-capable models).
    */
@@ -552,8 +552,10 @@ export interface MotionWorkflowInput extends SequenceWorkflowContext {
   /**
    * Character + element reference images for identity consistency across the
    * clip (#873). Resolved at trigger time from the scene's continuity tags +
-   * the cast/element library. Only consumed by Kling v3 Pro (emitted as its
-   * `elements` field); every other model ignores them.
+   * the cast/element library. Sent on the wire by every model with a
+   * reference-to-video route (`MOTION_REFERENCE_ENDPOINTS`) and by the native
+   * xAI / Ark / Google inline vias; the rest substitute the tokens with bible
+   * descriptions, so they are never ignored — only carried differently.
    */
   referenceImages?: ReferenceImageDescription[];
   /**
@@ -770,6 +772,11 @@ export type TalentCharacterMatch = {
   sheetMetadata?: CharacterBibleEntry;
   /** Talent library description, snapshotted at match time for reuse checks. */
   talentDescription?: string;
+  // Talent performance (#1561) from the trigger-time snapshot; `''` = library
+  // has none, use the script's (`||` in buildCastingAttributes, which also
+  // tolerates pre-#1561 checkpoints that lack the keys).
+  personality: string;
+  movement: string;
 };
 
 /**
@@ -779,8 +786,8 @@ export interface TalentMatchingWorkflowInput extends SequenceWorkflowContext {
   analysisModelId: AnalysisModelId;
   suggestedTalentIds?: string[];
   /**
-   * Name/description per suggested talent, snapshotted at the trigger. The
-   * workflow re-reads the talent rows only for `defaultSheet.imageUrl`, which
+   * Name/description/performance per suggested talent, snapshotted at the
+   * trigger. The workflow re-reads the talent rows only for `defaultSheet.imageUrl`, which
    * genuinely arrives late (fire-and-forget `/library-talent-sheet`); the
    * casting identity itself must not drift mid-run.
    */
@@ -794,6 +801,8 @@ type SuggestedTalentSnapshot = {
   talentId: string;
   name: string;
   description: string | null;
+  personality: string;
+  movement: string;
 };
 
 /** @see LocationMatchingWorkflowInput.suggestedLocations */

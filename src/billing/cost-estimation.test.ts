@@ -22,7 +22,7 @@ import { micros } from './money';
 
 const IMAGE_MODEL: TextToImageModel = 'nano_banana_2';
 const VIDEO_A: ImageToVideoModel = 'kling_v3_pro';
-const VIDEO_B: ImageToVideoModel = 'veo3_1';
+const VIDEO_B: ImageToVideoModel = 'seedance_v2';
 // Two audio models with genuinely different pricing (ElevenLabs is billed
 // per-minute, ACE-Step per-second) so a mixed selection can't be a flat
 // multiple of either.
@@ -317,7 +317,8 @@ describe('estimateStoryboardCost', () => {
 
   it('prices reference-only motion at the reference-to-video rate', () => {
     // Unequal i2v vs r2v rates so a route regression cannot hide behind a
-    // model that happens to price both the same (VIDEO_A does).
+    // model that happens to price both the same (Kling's storyboard path
+    // prices O3 for refs and for reference-only, so those rates match).
     const pricing = {
       ...FAL_PRICING,
       'bytedance/seedance-2.5/image-to-video': {
@@ -510,7 +511,7 @@ describe('estimateVideoCost endpoint routing', () => {
     expect(withMotion - stillsOnly).toBe(refPerShot * SCENE_COUNT);
   });
 
-  it('leaves Kling on image-to-video even with refs (inline elements path)', () => {
+  it('prices Kling with refs on O3 Pro reference-to-video', () => {
     const withRefs = estimateVideoCost('kling_v3_pro', 5, {
       pricing: FAL_PRICING,
       hasReferenceImages: true,
@@ -519,8 +520,8 @@ describe('estimateVideoCost endpoint routing', () => {
       pricing: FAL_PRICING,
       hasReferenceImages: false,
     });
-    expect(withRefs).toBe(without);
-    expect(withRefs).toBe(micros(5 * 70_000));
+    expect(withRefs).toBe(micros(5 * 140_000));
+    expect(without).toBe(micros(5 * 70_000));
   });
 
   it('prices a 5s H3 Max clip at $0.20 (8 billed units, not duration)', () => {
@@ -612,16 +613,16 @@ describe('the resolution tier sizes the estimate (#1449)', () => {
   it('prices a token-billed clip from the tier', () => {
     const tokenPriced = {
       ...FAL_PRICING,
-      'fal-ai/veo3.1/image-to-video': {
+      'bytedance/seedance-2.0/enterprise/v2/image-to-video': {
         unitPrice: micros(1_000),
         unit: '1000 tokens',
       },
     };
-    const at720 = estimateVideoCost('veo3_1', DURATION, {
+    const at720 = estimateVideoCost('seedance_v2', DURATION, {
       pricing: tokenPriced,
       resolution: '720p',
     });
-    const at4k = estimateVideoCost('veo3_1', DURATION, {
+    const at4k = estimateVideoCost('seedance_v2', DURATION, {
       pricing: tokenPriced,
       resolution: '4k',
     });

@@ -57,6 +57,7 @@ export function useAddCharacterToLibrary() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: { globalError: true },
     mutationFn: (characterId: string) =>
       addCharacterToLibraryFn({ data: { characterId } }),
     onSuccess: () => {
@@ -91,6 +92,8 @@ type CharacterBibleInput = {
   physicalDescription?: string;
   standardClothing?: string;
   distinguishingFeatures?: string;
+  personality?: string;
+  movement?: string;
 };
 
 /** Manual character create (#1108 Phase 2) — sheet-less until recast. */
@@ -121,6 +124,7 @@ export function useUpdateSequenceCharacter() {
         sequenceId: string;
         characterId: string;
         name?: string;
+        voiceOnly: boolean;
       } & CharacterBibleInput
     ) => updateSequenceCharacterFn({ data }),
     onSuccess: (_character, { sequenceId }) => {
@@ -215,6 +219,7 @@ export function useRecastCharacter() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: { globalError: true },
     mutationFn: (data: { characterId: string; talentId: string }) =>
       recastCharacterFn({ data }),
     onSuccess: () => {

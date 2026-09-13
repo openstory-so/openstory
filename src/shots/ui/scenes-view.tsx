@@ -35,8 +35,6 @@ import {
 } from '@/sequences/pipeline';
 import { getDivergentVariantPromptDiffFn } from '@/shots/prompt-variants.fn';
 import { smartRetryFn } from '@/sequences/smart-retry.fn';
-import { useActiveImageModel } from '@/models/ui/use-active-image-model';
-import { useActiveVideoModel } from '@/models/ui/use-active-video-model';
 import { BILLING_BALANCE_KEY } from '@/billing/ui/use-billing-balance';
 import { notifyInsufficientCredits } from '@/billing/ui/notify-insufficient-credits';
 import { useSceneSelection } from './use-scene-selection';
@@ -66,8 +64,6 @@ import {
   DEFAULT_IMAGE_MODEL,
   DEFAULT_MUSIC_MODEL,
   DEFAULT_VIDEO_MODEL,
-  IMAGE_MODELS,
-  isValidTextToImageModel,
   safeAudioModel,
   safeImageToVideoModel,
   safeTextToImageModel,
@@ -89,7 +85,6 @@ import {
   resolveVideoModel,
 } from '@/models/resolve-asset-models';
 import { DEFAULT_ASPECT_RATIO } from '@/models/aspect-ratios';
-import { isSetImageOffered } from './set-image-offer';
 import type {
   FrameVariant,
   ShotVariant,
@@ -586,12 +581,9 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   // Fetch image variants for this sequence (frame_variants kind:'model', #989)
   const { data: imageVariants } = useSequenceImageVariants(sequenceId);
 
-  // Video variants + viewer-local active video model (#545). When the viewer
-  // pins a model in the header dropdown, the player resolves every shot's
-  // video through that model's variant; "Mixed" (null) keeps each shot's own
-  // (legacy) video.
+  // Video variants (#545) — per-model coverage and the inspector's
+  // per-model state. The player always shows each shot's current version.
   const { data: videoVariants } = useSequenceVideoVariants(sequenceId);
-  const { activeVideoModel } = useActiveVideoModel(sequenceId);
 
   // Render segments (#986/#990) — group the shot strip into per-video segments
   // and drive the segment-aware Video tab. Poll while motion is in flight so a
@@ -617,10 +609,6 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     return map;
   }, [videoVariants]);
 
-  // Viewer-local active image model (#547). When pinned, the player shows that
-  // model's image for each shot (falling back to the legacy thumbnail when the
-  // model has no completed image for a shot).
-  const { activeImageModel } = useActiveImageModel(sequenceId);
   // Image variants are frame_variants now; each carries its owning `shotId`
   // (frame ids ≠ shot ids, #989), so key the map by shot id. The query already
   // returns only kind:'model', non-discarded rows.
@@ -634,31 +622,6 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     }
     return map;
   }, [imageVariants]);
-
-  // Scenes the pinned image model has NOT generated yet (#547). When a model is
-  // pinned, the player + scene list flag these so a viewer isn't shown the
-  // primary image as if it were the pinned model's output.
-  const activeImageModelLabel =
-    activeImageModel && isValidTextToImageModel(activeImageModel)
-      ? IMAGE_MODELS[activeImageModel].name
-      : null;
-  const shotsMissingActiveImage = useMemo(() => {
-    const missing = new Set<string>();
-    if (!activeImageModel || !shots) return missing;
-    for (const f of shots) {
-      const hasModel = imageVariantsByShot
-        .get(f.id)
-        ?.some(
-          (v) =>
-            v.model === activeImageModel &&
-            v.discardedAt === null &&
-            v.status === 'completed' &&
-            v.url
-        );
-      if (!hasModel) missing.add(f.id);
-    }
-    return missing;
-  }, [activeImageModel, shots, imageVariantsByShot]);
 
   // Divergent alternates + realtime stale:detected wiring (issue #625).
   // Mirror the shots-list polling fallback so the corner-dot still updates
@@ -1014,16 +977,11 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   }, [imageVariants, curSelectedShotId]);
 
   // The image-prompt tab targets the shot's resolved look model (#1066); its
-  // variant + Set/Generate state track that model. The header pin (#547) stays
-  // a viewer-local *display* concern, handled in the player remap below.
+  // variant + Generate state track that model.
   const effectiveImageModel = resolvedImageModel;
 
-  // Newest-first match for the tab model. `.find` on oldest-first order used to
-  // return the EARLIEST version, so "Set Image" appeared whenever the latest
-  // (selected) still didn't match v1's url — the opposite of what setImage
-  // actually applies (latest completed). Prefer an in-flight row so Regenerate
-  // shows Generating… mid-roll; else the latest completed (matches
-  // `setImageFromVariantFn`).
+  // Newest-first match for the tab model. Prefer an in-flight row so
+  // Regenerate shows Generating… mid-roll; else the latest completed.
   const variantForSelectedModel = useMemo(() => {
     if (!selectedShotVariants) return undefined;
     const forModel = selectedShotVariants.filter(
@@ -1039,7 +997,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   }, [selectedShotVariants, effectiveImageModel]);
 
   // Motion mirror: the shot's resolved video model (#1066) drives the
-  // motion-prompt tab's variant + Set/Generate state. Excludes divergent /
+  // motion-prompt tab's variant + Generate state. Excludes divergent /
   // discarded alternates so only the primary per-model row is matched.
   const effectiveVideoModel = resolvedVideoModel;
 
@@ -1059,8 +1017,8 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   // the *next* generation (#1066) — do NOT swap the canvas to another model's
   // still/clip while browsing models. That showed non-current media (and often
   // looked like the wrong model) and fought the "applies to the next
-  // generation" copy. Set Image / Set Video in the inspector still repoint
-  // selection when the user opts in.
+  // generation" copy. Switching to another model's existing output is a
+  // history pick, like any other version.
   const { previewVariantUrl, previewVariantVideoUrl, playerBadgeMessage } =
     useMemo(() => {
       const none = {
@@ -1075,24 +1033,14 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
           selectedShot.image?.model,
           DEFAULT_IMAGE_MODEL
         );
-        // Same rule as the inspector Set Image button: only when the dropdown
-        // model is not the one that produced the current primary still.
-        // Uploads are already current — don't ask to Set Image (that would
-        // revert to an older generation).
         if (
-          isSetImageOffered({
-            variantCompleted:
-              variantForSelectedModel?.status === 'completed' &&
-              !!variantForSelectedModel.url,
-            currentImageUrl: selectedShot.image?.url,
-            currentKind: selectedShot.image?.kind,
-            currentModel: selectedShot.image?.model,
-            dropdownModel: effectiveImageModel,
-          })
+          effectiveImageModel !== currentImageModel &&
+          variantForSelectedModel?.status === 'completed' &&
+          variantForSelectedModel.url
         ) {
           return {
             ...none,
-            playerBadgeMessage: 'Click Set Image to use this model',
+            playerBadgeMessage: 'Pick it in History to use this model',
           };
         }
         if (
@@ -1119,7 +1067,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
         ) {
           return {
             ...none,
-            playerBadgeMessage: 'Click Set Video to use this model',
+            playerBadgeMessage: 'Pick it in History to use this model',
           };
         }
         if (
@@ -1143,75 +1091,6 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       effectiveVideoModel,
       videoVariantForSelectedModel,
     ]);
-
-  // Shots as shown by the player: when an image and/or video model is pinned,
-  // swap each shot's image / video for that model's variant. Only the player
-  // display is remapped — every other consumer keeps the raw `shots`
-  // (generation status, selection, the per-shot preview overlay, etc.).
-  const playerShots = useMemo(() => {
-    if (!shots) return shots;
-    // Wait for the relevant variants query before remapping, so we don't blank
-    // a pinned type while its data is still loading. The image pin is suppressed
-    // on the image-prompt tab, where the per-shot preview overlay + prompt
-    // panel govern the displayed image (avoids desyncing them from the header).
-    const pinImage =
-      activeImageModel && imageVariants && effectiveTab !== 'image-prompt';
-    const pinVideo = activeVideoModel && videoVariants;
-    if (!pinImage && !pinVideo) return shots;
-    return shots.map((f) => {
-      let next = f;
-      if (pinImage) {
-        // Image: swap the displayed image; fall back to the legacy thumbnail
-        // when the pinned model has no completed image for this shot (never
-        // leave a shot imageless).
-        const iv = imageVariantsByShot
-          .get(f.id)
-          ?.find(
-            (v) =>
-              v.model === activeImageModel &&
-              v.discardedAt === null &&
-              v.status === 'completed' &&
-              v.url
-          );
-        if (iv?.url) next = { ...next, image: iv };
-      }
-      if (pinVideo) {
-        // Video: show only the pinned model's output (no fallback — a missing
-        // variant means that model hasn't produced this shot yet).
-        const vv = videoVariantsByShot
-          .get(f.id)
-          ?.find(
-            (v) =>
-              v.model === activeVideoModel &&
-              v.divergedAt === null &&
-              v.discardedAt === null
-          );
-        next = vv
-          ? {
-              ...next,
-              // The pinned model's clip rides on the shot's own version row —
-              // `shot_variants` is a different table, so there is no
-              // `video_variants` row to point at.
-              video:
-                vv.status === 'completed' && next.video
-                  ? { ...next.video, url: vv.url, model: vv.model }
-                  : null,
-              videoStatus: vv.status,
-            }
-          : { ...next, video: null, videoStatus: 'pending' as const };
-      }
-      return next;
-    });
-  }, [
-    shots,
-    effectiveTab,
-    activeImageModel,
-    imageVariants,
-    imageVariantsByShot,
-    activeVideoModel,
-    videoVariants,
-    videoVariantsByShot,
-  ]);
 
   const setterForType = useCallback((type: RegenerationType) => {
     switch (type) {
@@ -1598,8 +1477,6 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     styleCategory,
     generateStartFrames,
     styleName,
-    modelMissingShotIds: shotsMissingActiveImage,
-    modelMissingLabel: activeImageModelLabel,
     staleShotIds: isGenerationActive ? undefined : staleShotIds,
   };
 
@@ -1667,21 +1544,12 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                   shots={shots}
                   scenes={scenes}
                   loadError={shotsError}
-                  playerShots={playerShots}
                   sequence={sequence}
                   aspectRatio={aspectRatio}
                   selectedTab={effectiveTab}
                   overrideImageUrl={previewVariantUrl}
                   overrideVideoUrl={previewVariantVideoUrl}
                   badgeMessage={playerBadgeMessage}
-                  modelMismatchLabel={
-                    effectiveTab === 'image-prompt' &&
-                    activeImageModelLabel &&
-                    curSelectedShotId &&
-                    shotsMissingActiveImage.has(curSelectedShotId)
-                      ? `Not generated with ${activeImageModelLabel}`
-                      : null
-                  }
                   staleLabel={
                     !isGenerationActive &&
                     effectiveTab === 'image-prompt' &&

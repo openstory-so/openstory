@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nImage 2 turns toward camera, raises the lipstick, and grins before disappearing into the office crowd.. Camera: smooth pull-out\n\nImage 2 says in a bright and confident tone: <d>[English] Same city. Better color</d>\n\noverall_soundscape: walk signal, taxi passing, surrounding city traffic. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nReference images:\nImage 3: CORAL_LIPSTICK - A compact luxury lipstick with a slim cylindrical tube in satin black metal — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/5d0cabbd6305c57d77088584824c018fae6581584432a3a8212866a4ade65990.mp4",
+            "content_type": "video/mp4",
+            "file_name": "Z3-1x3AX6PwJznV99OmwZ_minimax-h3.mp4",
+            "file_size": 13162834
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the blonde woman in <Picture 1>, with long wavy hair, black sunglasses, a black turtleneck, and grey trousers.\n<Subject 2> is the coral lipstick in <Picture 3>, a compact luxury product with a slim cylindrical satin-black metal tube and a reddish-pink slanted bullet.\n<Subject 3> is the city scene from <Picture 1>, featuring a pedestrian crosswalk, pedestrians, yellow cabs, and modern skyscrapers.\n<Subject 4> is the clothing style details in <Picture 2>, defining the precise fit, black turtleneck, grey trousers, and black loafers of <Subject 1>.\n\nsummary:\n[keyframe completion + reference generation] The target video starts with the frame from <Picture 1>, showing <Subject 1> in <Subject 3>. She interacts with <Subject 2> while <Picture 2> is used to ensure her fashion look is consistent. The scene features a pull-out camera movement as she moves into the background.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1]): fully_preserved - The central character and her physical presence in the environment.\n<Subject 2> (appears in [Shot 1]): fully_preserved - The featured product, transitioning from her hand to a display gesture.\n<Subject 3> (appears in [Shot 1]): fully_preserved - The urban environment and its dynamic elements (traffic and pedestrians).\n<Subject 4> (appears in [Shot 1]): attribute_transfer - Serving as the visual guide for the character's wardrobe and styling.\n\ndetailed_description:\nThe video is a high-quality cinematic commercial captured in bright, natural daylight with a clean, modern aesthetic and a 16:9 aspect ratio.\n[Shot 1] The shot begins as a medium shot using <Picture 1> as the starting frame featuring <Subject 1> walking confidently toward the camera on a city street. <Subject 1> is wearing a black ribbed turtleneck, grey tailored trousers, and black loafers strictly aligned with the styling reference in <Picture 2>. In her right hand, she holds <Subject 2>, a sleek black tube with the text \"CORAL_LIPSTICK\" visible near the base. The camera performs a smooth pull-out with medium amplitude at a slow speed, widening the frame to reveal the vibrant context of <Subject 3>. As the frame expands, <Subject 1> executes a smooth pivot, turning her body to face the lens directly. She lifts <Subject 2> to chest level, presenting the product with a confident, bright grin. <Subject 1> (S1) delivers a confident, bright line of dialogue. She continues her forward trajectory, passing by a cluster of office workers on a crosswalk. The shot concludes as <Subject 1> moves deeper into the background, becoming integrated into the bustling urban crowd. The visual focus shifts to the dynamic depth of <Subject 3> as the camera remains stationary in its final pull-out position.\n\noverall_soundscape:\nUrban environmental atmosphere dominated by the rhythmic \"beep-beep\" of a pedestrian walk signal and the whooshing sounds of passing yellow cabs. Low-frequency city traffic, distant traffic horns, and the constant hum of pedestrian footsteps provide a realistic street-level soundscape.\n\nnon_diegetic_music:\nN/A",
+          "seed": 559408100,
+          "timings": {
+            "inference": 5.83455126802437
+          }
+        },
+        "status": 200,
+        "billableUnits": 9.830400000000001
+      }
+    }
+  ]
+}

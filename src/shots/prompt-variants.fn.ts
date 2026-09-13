@@ -33,6 +33,7 @@ import { getFrameImageUrl } from '@/shots/server/frame-image';
 import { simpleHash } from '@/platform/hash';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import { terminateSingleArtifactRun } from '@/platform/server/workflow/run-outcome';
+import { storedMotionDialogueSchema } from './scene-analysis.schema';
 import type { Scene } from './scene-analysis.schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type {
@@ -292,6 +293,13 @@ const shotSaveInput = z.object({
   shotId: ulidSchema,
   promptType: promptTypeSchema,
   text: z.string().min(1),
+  /**
+   * Replaces the carried-forward dialogue direction on a motion save (#1559).
+   * The editor sends it when the user binds a voice element to a line; every
+   * other save omits it and the selected version's dialogue rides across
+   * unchanged. Motion-only — a visual row has no dialogue.
+   */
+  dialogue: storedMotionDialogueSchema.optional(),
 });
 
 export const saveShotPromptFn = createServerFn({ method: 'POST' })
@@ -316,7 +324,17 @@ export const saveShotPromptFn = createServerFn({ method: 'POST' })
         ? ((await scopedDb.framePromptVersions.getSelected(frame.id))?.text ??
           null)
         : (selectedMotion?.text ?? null);
-    if (currentPrompt !== null && currentPrompt === text) {
+    // A voice binding changes the dialogue, not the text, so the text-only
+    // guard would swallow it (#1559).
+    const dialogue =
+      data.dialogue !== undefined
+        ? data.dialogue
+        : (selectedMotion?.dialogue ?? null);
+    const dialogueUnchanged =
+      data.dialogue === undefined ||
+      JSON.stringify(selectedMotion?.dialogue ?? null) ===
+        JSON.stringify(data.dialogue);
+    if (currentPrompt !== null && currentPrompt === text && dialogueUnchanged) {
       return { unchanged: true } as const;
     }
 
@@ -372,7 +390,7 @@ export const saveShotPromptFn = createServerFn({ method: 'POST' })
       shotId: shot.id,
       promptType: 'motion',
       text,
-      dialogue: selectedMotion?.dialogue ?? null,
+      dialogue,
       audio: selectedMotion?.audio ?? null,
       source: 'user-edit',
       usesStartFrame: usesStartFrame(shot, sequence),

@@ -1,0 +1,17 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "Wide eye-level street composition on a 35mm lens, framed for 16:9. Scarlett (Image 1) stands at the near curb with weight shifted forward and one foot poised above the first crosswalk stripe, natural canvas tote in hand, eyes fixed toward the far sidewalk as commuters stream the opposite direction. Yellow taxis and delivery bikes wait in traffic lanes behind her, ready to roll, while mirrored office towers rise on both sides of the downtown intersection. Bright late-morning daylight reflects across glass, asphalt, car windows, and taxi surfaces, evenly lighting the pedestrian space. The applied lipstick from (CORAL_LIPSTICK) provides the sole vivid coral accent. Fresh, clean social-first editorial photography, true-to-life color, crisp shadows, airy lifted contrast.\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.\nImage 2 (location): Downtown Crosswalk - A busy downtown intersection framed by a broad pedestrian crosswalk",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/c7d35d8bdfe70215280116f0a508c82f607f68b4b48ff3f9e1d25b5631d57a45.jpeg",
+          "mime_type": "image/jpeg"
+        }
+      }
+    }
+  ]
+}

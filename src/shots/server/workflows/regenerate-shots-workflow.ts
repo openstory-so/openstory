@@ -147,6 +147,7 @@ export class RegenerateShotsWorkflow extends OpenStoryWorkflowEntrypoint<Regener
           prompt: snapshot.imagePrompt,
           model: imageModel,
           imageSize: aspectRatioToImageSize(aspectRatio),
+          resolution,
           numImages: 1,
           referenceImages,
         };

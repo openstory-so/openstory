@@ -173,7 +173,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
     context.scopedDb,
     sequence.id
   );
-  const sceneOf = (s: Pick<Shot, 'sceneId' | 'durationMs'>) =>
+  const sceneOf = (s: Pick<Shot, 'sceneId' | 'durationMs' | 'shotNumber'>) =>
     resolveSceneForShot(s, sceneContext).scene;
   const scenesById = new Map(
     [...sceneContext].map(([sceneId, ctx]) => [sceneId, ctx.scene])
@@ -289,7 +289,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
       (!shotUsesStartFrame(f) || f.image?.url) &&
       f.motionPrompt?.fullPrompt
   );
-  // Loaded once for the batch; `includeLocations` still decides per shot.
+  // Loaded once for the batch; `referenceOnly` still decides per shot.
   const anyReferenceOnly = shotViews.some((f) => !shotUsesStartFrame(f));
   const hasMusicFailure =
     sequence.musicStatus === 'failed' && sequence.musicPrompt;
@@ -343,6 +343,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
         prompt,
         model: imageModel,
         imageSize: aspectRatioToImageSize(sequence.aspectRatio),
+        resolution: sequence.resolution,
         numImages: 1,
         shotId: shot.id,
         // The anchor + the prompt version `prompt` came from, snapshotted here
@@ -420,7 +421,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
                 characters: motionCharacters,
                 elements: motionElements,
                 motionPrompt: selectedMotion?.text ?? null,
-                includeLocations: true,
+                referenceOnly: true,
                 locations: motionLocations,
               }),
             }

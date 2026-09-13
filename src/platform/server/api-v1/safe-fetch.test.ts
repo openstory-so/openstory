@@ -4,7 +4,7 @@ import {
   IMAGE_FETCH_TIMEOUT_MS,
   MAX_IMAGE_REDIRECTS,
   assertSafeImageUrl,
-  ingestImageToTempBucket,
+  ingestImageToBucket,
 } from './safe-fetch';
 
 const { uploadFileMock } = vi.hoisted(() => ({
@@ -68,7 +68,7 @@ function redirectResponse(location: string, status = 302): Response {
   return new Response(null, { status, headers: { location } });
 }
 
-describe('ingestImageToTempBucket', () => {
+describe('ingestImageToBucket', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.clearAllMocks();
@@ -89,7 +89,7 @@ describe('ingestImageToTempBucket', () => {
 
     const url = 'https://slow.example/portrait.png';
     await expect(
-      ingestImageToTempBucket(url, 'talent', 'team-1', {
+      ingestImageToBucket(url, 'talent', 'team-1', 'temp', {
         label: 'Character "Ada" reference image #2',
       })
     ).rejects.toSatisfy((error: unknown) => {
@@ -110,10 +110,11 @@ describe('ingestImageToTempBucket', () => {
       .mockResolvedValueOnce(pngResponse());
     vi.stubGlobal('fetch', fetchMock);
 
-    const ingested = await ingestImageToTempBucket(
+    const ingested = await ingestImageToBucket(
       'https://share.example.com/x',
       'talent',
       'team-1',
+      'temp',
       { label: 'Character "Ada" reference image #1' }
     );
 
@@ -132,10 +133,11 @@ describe('ingestImageToTempBucket', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(
-      ingestImageToTempBucket(
+      ingestImageToBucket(
         'https://share.example.com/x',
         'talent',
         'team-1',
+        'temp',
         { label: 'Character "Ada" reference image #2' }
       )
     ).rejects.toThrow(
@@ -151,10 +153,11 @@ describe('ingestImageToTempBucket', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(
-      ingestImageToTempBucket(
+      ingestImageToBucket(
         'https://share.example.com/start',
         'talent',
-        'team-1'
+        'team-1',
+        'temp'
       )
     ).rejects.toThrow(/redirect blocked/);
     expect(fetchMock).toHaveBeenCalledTimes(MAX_IMAGE_REDIRECTS + 1);

@@ -5,6 +5,8 @@ import {
   buildReferenceVideoPrompt,
   type ReferencePromptBinding,
 } from './build-reference-video-prompt';
+import { assembleMotionPrompt } from './assemble-motion-prompt';
+import { buildMotionReferenceImages } from './build-motion-references';
 
 const STILL = 'https://example.com/still.png';
 
@@ -130,26 +132,35 @@ describe.each([
     });
 
     it('caps attached images at maxImages and substitutes overflow tokens with descriptions', () => {
-      const refs = Array.from({ length: 10 }, (_, i) =>
+      // Two more refs than the endpoint's budget, whatever that budget is —
+      // 2.0 and 2.5 differ (9 vs 30), and pinning a literal here would just
+      // re-break the day a provider raises one.
+      const budget = seedanceConfig.maxImages;
+      const overflowing = budget + 1;
+      const refs = Array.from({ length: overflowing }, (_, i) =>
         ref(
           `https://example.com/${i}.png`,
           `Ref ${i} - person ${i}`,
           `REF_${i}`
         )
       );
+      const last = overflowing - 1;
       const result = buildReferenceVideoPrompt(
         seedanceConfig,
-        'REF_0 waves while REF_9 walks away',
+        `REF_0 waves while REF_${last} walks away`,
         STILL,
         refs
       );
-      // still + 8 refs = 9 images; REF_8 and REF_9 overflow.
-      expect(result.imageUrls).toHaveLength(9);
+      // The still takes one slot, so `budget - 1` refs attach and the rest
+      // overflow into prose.
+      expect(result.imageUrls).toHaveLength(budget);
       expect(result.imageUrls[0]).toBe(STILL);
       // Attached + mentioned → inline tag; overflow + mentioned → description.
       expect(result.prompt).toContain('@Image2 waves');
-      expect(result.prompt).toContain('Ref 9 (person 9) walks away');
-      expect(result.prompt).not.toContain('@Image10');
+      expect(result.prompt).toContain(
+        `Ref ${last} (person ${last}) walks away`
+      );
+      expect(result.prompt).not.toContain(`@Image${budget + 1}`);
     });
 
     it('truncates the base prompt (never the legend or start line) to fit the limit', () => {
@@ -331,5 +342,221 @@ describe('reference-only (no start frame)', () => {
 
     expect(result.prompt).toBe('A slow dolly across an empty room');
     expect(result.imageUrls).toEqual([]);
+  });
+});
+
+// #1559 — clips and audio ride their own lists and their own tag namespaces.
+describe('buildReferenceVideoPrompt with clip and audio references', () => {
+  const media = (
+    kind: 'video' | 'audio',
+    token: string
+  ): ReferenceImageDescription => ({
+    referenceImageUrl: `https://example.com/${token.toLowerCase()}.${kind === 'audio' ? 'mp3' : 'mp4'}`,
+    description: `${token} [${kind}, 4s]`,
+    role: 'element',
+    kind,
+    token,
+  });
+
+  it('numbers each kind from 1 and binds it inline', () => {
+    const result = buildReferenceVideoPrompt(
+      seedanceV25Config,
+      'SCARLETT says STEVE_LINE_3 while moving like PUPPET_WALK',
+      STILL,
+      [
+        ref('https://example.com/a.png', 'Scarlett - athletic', 'SCARLETT'),
+        media('audio', 'STEVE_LINE_3'),
+        media('video', 'PUPPET_WALK'),
+      ]
+    );
+
+    // The still holds @Image1, so the sheet is @Image2 — but the clip and the
+    // audio each start their own numbering at 1.
+    expect(result.prompt).toContain(
+      '@Image2 says @Audio1 while moving like @Video1'
+    );
+    expect(result.imageUrls).toEqual([STILL, 'https://example.com/a.png']);
+    expect(result.videoUrls).toEqual(['https://example.com/puppet_walk.mp4']);
+    expect(result.audioUrls).toEqual(['https://example.com/steve_line_3.mp3']);
+  });
+
+  it('inlines the description when the endpoint takes no clips or audio', () => {
+    const noMedia: ReferencePromptBinding = {
+      tag: (n) => `@Image${n}`,
+      maxImages: 7,
+    };
+    const result = buildReferenceVideoPrompt(
+      noMedia,
+      'Play THEME_MUSIC under the shot',
+      STILL,
+      [media('audio', 'THEME_MUSIC')]
+    );
+
+    expect(result.audioUrls).toEqual([]);
+    expect(result.prompt).toContain('THEME_MUSIC [audio, 4s]');
+  });
+
+  it('refuses to send audio as the only reference', () => {
+    // Every reference endpoint requires at least one image or video; a
+    // reference-only shot whose sole attachment is a voice line describes it
+    // instead, and routes to the prompt-only sibling.
+    const result = buildReferenceVideoPrompt(
+      seedanceV25Config,
+      'Under THEME_MUSIC, the room empties',
+      null,
+      [media('audio', 'THEME_MUSIC')]
+    );
+
+    expect(result.audioUrls).toEqual([]);
+    expect(result.imageUrls).toEqual([]);
+    expect(result.prompt).toContain('THEME_MUSIC [audio, 4s]');
+  });
+
+  it('honours the endpoint combined file cap across kinds', () => {
+    // H3 Max: 9 images / 3 clips / 3 audio per list, but 12 files total.
+    const h3 = getMotionReferenceEndpoint('minimax_h3_max');
+    if (!h3) throw new Error('minimax_h3_max must have a reference endpoint');
+    const images = Array.from({ length: 9 }, (_, i) =>
+      ref(`https://example.com/${i}.png`, `Ref ${i}`, `REF_${i}`)
+    );
+    const result = buildReferenceVideoPrompt(h3, 'A shot', STILL, [
+      ...images,
+      media('video', 'CLIP_A'),
+      media('video', 'CLIP_B'),
+      media('audio', 'LINE_A'),
+    ]);
+
+    expect(
+      result.imageUrls.length +
+        result.videoUrls.length +
+        result.audioUrls.length
+    ).toBe(12);
+    // The still plus 8 sheets fills the image list; the clips take the rest.
+    expect(result.imageUrls).toHaveLength(9);
+    expect(result.videoUrls).toHaveLength(2);
+    expect(result.audioUrls).toHaveLength(1);
+  });
+});
+
+// #1559 — a reference the provider would reject for length never goes on the
+// request; it becomes prose, like any other overflow.
+describe('buildReferenceVideoPrompt duration limits', () => {
+  const clip = (
+    token: string,
+    durationSeconds: number | null
+  ): ReferenceImageDescription => ({
+    referenceImageUrl: `https://example.com/${token.toLowerCase()}.mp4`,
+    description: `${token} - a clip`,
+    role: 'element',
+    kind: 'video',
+    durationSeconds,
+    token,
+  });
+
+  it('drops a clip longer than the per-file ceiling', () => {
+    // Omni Flash: "up to 3 seconds each".
+    const omni = getMotionReferenceEndpoint('gemini_omni_flash');
+    if (!omni) throw new Error('gemini_omni_flash must have a config');
+    const result = buildReferenceVideoPrompt(
+      omni,
+      'Move like LONG_TAKE then like SHORT_TAKE',
+      STILL,
+      [clip('LONG_TAKE', 10), clip('SHORT_TAKE', 2)]
+    );
+
+    expect(result.videoUrls).toEqual(['https://example.com/short_take.mp4']);
+    expect(result.prompt).toContain('LONG_TAKE (a clip)');
+    expect(result.prompt).not.toContain('LONG_TAKE (a clip) (a clip)');
+  });
+
+  it('stops taking clips once the combined ceiling is reached', () => {
+    // H3 Max: 15s each, 15s combined.
+    const h3 = getMotionReferenceEndpoint('minimax_h3_max');
+    if (!h3) throw new Error('minimax_h3_max must have a config');
+    const result = buildReferenceVideoPrompt(
+      h3,
+      'Move like FIRST, then SECOND, then THIRD',
+      STILL,
+      [clip('FIRST', 10), clip('SECOND', 4), clip('THIRD', 4)]
+    );
+
+    // 10 + 4 fits; the third would reach 18s, past the 15s combined ceiling.
+    expect(result.videoUrls).toHaveLength(2);
+    expect(result.prompt).toContain('THIRD (a clip)');
+  });
+
+  it('attaches a clip whose length we never learned', () => {
+    // Guessing would drop a reference the provider might have accepted.
+    const omni = getMotionReferenceEndpoint('gemini_omni_flash');
+    if (!omni) throw new Error('gemini_omni_flash must have a config');
+    const result = buildReferenceVideoPrompt(omni, 'A shot', STILL, [
+      clip('UNKNOWN', null),
+    ]);
+
+    expect(result.videoUrls).toEqual(['https://example.com/unknown.mp4']);
+  });
+});
+
+// #1559 — the dialogue→voice join, end to end. A voice binding is worth
+// nothing unless the token assembly emits survives matching and lands on the
+// audio list, and the three steps live in three modules, so nothing else would
+// catch a break in the middle.
+describe('a dialogue line bound to a voice element', () => {
+  const voiceElement = {
+    id: '01J000000000000000000VOICE',
+    token: 'SARAH_VOICE',
+    description: 'Sarah, dry and clipped',
+    imageUrl: 'https://example.com/sarah_voice.mp3',
+    consistencyTag: 'sarah_voice',
+    kind: 'audio' as const,
+    durationSeconds: 6,
+  };
+
+  const scene = {
+    continuity: { characterTags: [], elementTags: [], environmentTag: null },
+    originalScript: { extract: 'Sarah delivers the bad news.' },
+  };
+
+  it('reaches the request as @Audio1 with the file attached', () => {
+    const prompt = assembleMotionPrompt({
+      motionPrompt: {
+        fullPrompt: 'Slow push in on Sarah at the window.',
+        dialogue: {
+          presence: true,
+          lines: [
+            {
+              character: 'Sarah',
+              line: 'It is already done.',
+              tone: 'flat',
+              voiceToken: 'SARAH_VOICE',
+            },
+          ],
+        },
+        audio: { ambientSound: '', soundEffects: [] },
+      },
+      model: 'seedance_v2_5',
+    });
+
+    // The matchers scan the ASSEMBLED prompt — the token appears nowhere else.
+    const references = buildMotionReferenceImages({
+      scene,
+      characters: [],
+      elements: [voiceElement],
+      motionPrompt: prompt,
+    });
+    expect(references.map((r) => r.token)).toEqual(['SARAH_VOICE']);
+
+    const result = buildReferenceVideoPrompt(
+      seedanceV25Config,
+      prompt,
+      STILL,
+      references
+    );
+
+    expect(result.audioUrls).toEqual(['https://example.com/sarah_voice.mp3']);
+    expect(result.prompt).toContain(
+      'Sarah speaks this line exactly as recorded in @Audio1: {It is already done.}'
+    );
+    expect(result.prompt).not.toContain('SARAH_VOICE');
   });
 });

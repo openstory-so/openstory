@@ -14,7 +14,7 @@ import { typedEntries } from '@/platform/typed-object';
 import type { TokenUsage } from '@tanstack/ai';
 
 const NATIVE_TEXT_MODELS = {
-  'google/gemini-3.7-flash': 'gemini-3.7-flash',
+  'google/gemini-3.8-flash': 'gemini-3.8-flash',
   'google/gemini-3.1-pro-preview': 'gemini-3.1-pro-preview',
   'google/gemini-3-flash-preview': 'gemini-3-flash-preview',
 } as const satisfies Partial<Record<AnalysisModelId, string>>;
@@ -86,7 +86,7 @@ export function isNativeGeminiImageEndpoint(endpointId: string): boolean {
 
 /**
  * Published Google rates (ai.google.dev/gemini-api/docs/pricing, read
- * 2026-08-27). Transcribed provider rates, not estimates: the Gemini adapter
+ * 2026-09-11). Transcribed provider rates, not estimates: the Gemini adapter
  * reports token counts but no cost, so without these a native call bills $0.
  *
  * `highTierFrom` is the prompt-token count at which Google's long-context
@@ -117,9 +117,9 @@ const TEXT_RATES: Record<
     outputHigh: 3,
     highTierFrom: Number.POSITIVE_INFINITY,
   },
-  // Introductory rate; Google lists $1.50/$7.50 from 2027-01-01. The
-  // model-freshness routine (or whoever lands past the expiry) bumps this.
-  'gemini-3.7-flash': {
+  // gemini-3.8-flash intro $0.75/$3.75 through 2026-12-31; Google lists
+  // $1.50/$7.50 from 2027-01-01.
+  'gemini-3.8-flash': {
     input: 0.75,
     output: 3.75,
     inputHigh: 0.75,

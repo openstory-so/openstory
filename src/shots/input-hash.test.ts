@@ -591,6 +591,9 @@ describe('prompt input hashes', () => {
     physicalDescription: '',
     standardClothing: '',
     distinguishingFeatures: '',
+    personality: '',
+    movement: '',
+    voiceOnly: false,
     consistencyTag: '',
   };
 
@@ -670,6 +673,42 @@ describe('prompt input hashes', () => {
     });
     expect(explicitFalse).toBe(omitted);
     expect(await motionPromptInputHashMatches(omitted, sceneCtx)).toBe(true);
+  });
+
+  it('personality / movement re-stale the motion prompt only, and only when set (#1561)', async () => {
+    const withPerformance = {
+      ...sceneCtx,
+      characterBible: [
+        { ...aliceCharacter, personality: 'guarded', movement: 'limps' },
+      ],
+    };
+    // Motion reads them: gait and delivery change the prompt.
+    expect(await computeMotionPromptInputHash(withPerformance)).not.toBe(
+      await computeMotionPromptInputHash(sceneCtx)
+    );
+    // A still does not walk: the visual prompt ignores both.
+    expect(await computeVisualPromptInputHash(withPerformance)).toBe(
+      await computeVisualPromptInputHash(sceneCtx)
+    );
+    // Shape-stable: a character with neither hashes exactly as before the
+    // fields existed, so no stored motion digest moves.
+    const whitespace = {
+      ...sceneCtx,
+      characterBible: [{ ...aliceCharacter, personality: '  ', movement: '' }],
+    };
+    expect(await computeMotionPromptInputHash(whitespace)).toBe(
+      await computeMotionPromptInputHash(sceneCtx)
+    );
+    // Pre-#1561 JSON (checkpoints, sheet metadata) has no keys at all.
+    const { personality: _p, movement: _m, ...legacyAlice } = aliceCharacter;
+    const legacy = {
+      ...sceneCtx,
+      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stored JSON that predates the fields
+      characterBible: [legacyAlice as CharacterBibleEntry],
+    };
+    expect(await computeMotionPromptInputHash(legacy)).toBe(
+      await computeMotionPromptInputHash(sceneCtx)
+    );
   });
 
   it('omitting startingFrameImageUrl equals passing null (legacy shots)', async () => {

@@ -44,6 +44,9 @@ export type CharacterBibleUpdate = Partial<
     | 'physicalDescription'
     | 'standardClothing'
     | 'distinguishingFeatures'
+    | 'personality'
+    | 'movement'
+    | 'voiceOnly'
     | 'consistencyTag'
   >
 >;
@@ -207,6 +210,9 @@ export function createCharactersMethods(db: Database) {
             physicalDescription: data.physicalDescription,
             standardClothing: data.standardClothing,
             distinguishingFeatures: data.distinguishingFeatures,
+            personality: data.personality,
+            movement: data.movement,
+            voiceOnly: data.voiceOnly,
             consistencyTag: data.consistencyTag,
             // Sheet OUTPUT is not re-written here (#1419). A re-analysis used
             // to blank `sheetImageUrl` while leaving the version rows intact,
@@ -330,7 +336,7 @@ export function createCharactersMethods(db: Database) {
       if (!existing) {
         throw new Error(`SequenceCharacter ${id} not found`);
       }
-      const prev: Record<string, string | null> = {};
+      const prev: Record<string, string | boolean | null> = {};
       for (const [key, value] of typedEntries(data)) {
         if (value === undefined) continue;
         prev[key] = existing[key] ?? null;

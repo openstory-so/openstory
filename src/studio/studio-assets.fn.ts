@@ -20,7 +20,10 @@ import {
   STORAGE_BUCKETS,
   r2KeyFromUrl,
 } from '@/platform/server/storage/buckets';
-import { deleteFile } from '@/platform/server/storage/storage-cloudflare';
+import {
+  deleteFile,
+  listFiles,
+} from '@/platform/server/storage/storage-cloudflare';
 import { createStudioAssets } from '@/studio/server/create-studio-asset';
 import {
   studioActivitySchema,
@@ -41,6 +44,30 @@ export const createStudioAssetsFn = createServerFn({ method: 'POST' })
   .validator(zodValidator(studioCreateInputSchema))
   .handler(async ({ context, data }) => {
     return createStudioAssets(context.scopedDb, data);
+  });
+
+/**
+ * Everything this team has uploaded to the composer (or dropped on the talent
+ * dialog and never saved), newest first. Temp uploads have no DB row: the
+ * R2 prefix is the record, and the ULID key orders them by time.
+ */
+export const listStudioUploadsFn = createServerFn({ method: 'GET' })
+  .middleware([authWithTeamMiddleware])
+  .handler(async ({ context }) => {
+    const files = await listFiles(
+      STORAGE_BUCKETS.TALENT,
+      `${context.teamId}/temp`,
+      { limit: 1000 }
+    );
+    return files
+      .sort((a, b) => (a.id < b.id ? 1 : -1))
+      .slice(0, 100)
+      .flatMap((file) => {
+        const kind = (['image', 'video', 'audio'] as const).find((k) =>
+          file.metadata.mimetype.startsWith(`${k}/`)
+        );
+        return kind ? [{ url: `/r2/${file.id}`, label: file.name, kind }] : [];
+      });
   });
 
 const listStudioAssetsInputSchema = z.object({

@@ -69,6 +69,8 @@ describe('buildElementDescription', () => {
       description: entry.description,
       imageUrl: 'https://example.com/el.png',
       consistencyTag: entry.consistencyTag,
+      kind: 'image',
+      durationSeconds: null,
     });
 
     expect(result).toBe(

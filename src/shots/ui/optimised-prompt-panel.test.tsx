@@ -4,8 +4,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 const selected: OptimisedPromptPreview = {
-  modelName: 'GPT Image 2',
-  endpointId: 'openai/gpt-image-2',
+  modelName: 'GPT Image 2.5',
+  endpointId: 'openai/gpt-image-2.5/flare/text-to-image',
   prompt: 'Sarah types at a sunlit coffee shop',
   json: JSON.stringify(
     { prompt: 'SECRET_JSON_MARKER', image_size: 'landscape_16_9' },
@@ -100,5 +100,25 @@ describe('OptimisedPromptPanel', () => {
     expect(html).toContain('Copy @Image2 image');
     expect(html).toContain('https://cdn.example/still.png');
     expect(html).toContain('https://cdn.example/cast.png');
+  });
+
+  it('lists images, clips and audio in one wrapping row; only images copy', () => {
+    const html = renderPanel(
+      {
+        ...selected,
+        modelName: 'Seedance 2.5',
+        images: [{ label: '@Image1', url: 'https://cdn.example/still.png' }],
+        videos: [{ label: '@Video1', url: 'https://cdn.example/clip.mp4' }],
+        audio: [{ label: '@Audio1', url: 'https://cdn.example/line.wav' }],
+      },
+      { defaultOpen: true }
+    );
+    expect(html.match(/<ul/g)).toHaveLength(1);
+    expect(html).toContain('flex-wrap');
+    expect(html).toContain('Copy @Image1 image');
+    expect(html).toContain('Play @Video1');
+    expect(html).toContain('Play @Audio1');
+    expect(html).not.toContain('Copy @Video1');
+    expect(html).not.toContain('Copy @Audio1');
   });
 });

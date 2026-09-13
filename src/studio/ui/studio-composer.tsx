@@ -62,18 +62,32 @@ import {
   useCreateStudioAssets,
   useDraftStudioPrompt,
   useStudioPendingCreates,
+  studioUploadKeys,
 } from './use-studio-assets';
+import { useQueryClient } from '@tanstack/react-query';
 import { useUploadTempMedia } from '@/cast/ui/use-talent';
+import { PortraitAttestationFields } from '@/cast/ui/talent-library/portrait-attestation-fields';
+import { PORTRAIT_RIGHTS_V1 } from '@/platform/compliance/attestations';
+import {
+  needsLikenessCheck,
+  type PortraitAttestation,
+} from '@/cast/upload-rights';
+import { useAttestUploads, useUploadRights } from '@/cast/ui/use-upload-rights';
+import { openAddCreditsDialog } from '@/billing/ui/use-add-credits-dialog';
+import { isInsufficientCreditsError } from '@/platform/errors';
+import { studioReferenceImages } from '@/studio/reference-rights';
 import {
   capReferenceImages,
   DEFAULT_IMAGE_MODEL,
   DEFAULT_VIDEO_MODEL,
   getCompatibleModel,
   IMAGE_TO_VIDEO_MODELS,
+  isOfferedVideoModel,
   supportsReferenceImages,
   type ImageToVideoModel,
   type TextToImageModel,
 } from '@/models/models';
+import { useViaAvailability } from '@/models/ui/use-via-availability';
 import {
   estimateImageCost,
   estimateStudioVideoCost,
@@ -117,6 +131,7 @@ import {
   AudioLines,
   Film,
   ImagePlus,
+  Loader2,
   RotateCcw,
   Shuffle,
   SlidersHorizontal,
@@ -175,11 +190,14 @@ function Tile({
   badge,
   onRemove,
   removeLabel = `Remove ${reference.label}`,
+  checking = false,
 }: {
   reference: StudioReference;
   badge: string;
   onRemove: () => void;
   removeLabel?: string;
+  /** Rights check in flight (#1581): the still is being looked at. */
+  checking?: boolean;
 }) {
   return (
     <div
@@ -221,6 +239,18 @@ function Tile({
           height={160}
           className="h-full w-full object-cover"
         />
+      )}
+      {checking && (
+        <span
+          className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-background/75 text-[10px] font-medium"
+          aria-live="polite"
+        >
+          <Loader2
+            className="size-4 motion-safe:animate-spin"
+            aria-hidden="true"
+          />
+          Checking…
+        </span>
       )}
       <span className="absolute bottom-1 left-1 flex items-center gap-1 rounded bg-background/85 px-1 font-mono text-[10px] leading-4">
         {reference.kind === 'video' && (
@@ -276,13 +306,22 @@ export function StudioComposer({
   const draft = useDraftStudioPrompt();
   const pendingCreates = useStudioPendingCreates(activity);
   const upload = useUploadTempMedia();
+  const attest = useAttestUploads();
+  const queryClient = useQueryClient();
   const library = useStudioLibrary();
+  const vias = useViaAvailability();
 
   const [prompt, setPrompt] = useState('');
   const [imageModel, setImageModel] =
     useState<TextToImageModel>(DEFAULT_IMAGE_MODEL);
-  const [videoModel, setVideoModel] =
-    useState<ImageToVideoModel>(DEFAULT_VIDEO_MODEL);
+  // Seedance 2.5 where the BytePlus via is live (it has no fal endpoint);
+  // the platform default otherwise. The via query is warmed by the `_app`
+  // loader, so a signed-in user gets the right answer on first paint.
+  const [videoModel, setVideoModel] = useState<ImageToVideoModel>(() =>
+    isOfferedVideoModel('seedance_v2_5', vias)
+      ? 'seedance_v2_5'
+      : DEFAULT_VIDEO_MODEL
+  );
   const [aspectRatio, setAspectRatio] =
     useState<AspectRatio>(DEFAULT_ASPECT_RATIO);
   const [pickedResolution, setResolution] =
@@ -308,6 +347,10 @@ export function StudioComposer({
   const [picker, setPicker] = useState<PickerTarget | null>(null);
   const [dragging, setDragging] = useState(false);
   const dragDepth = useRef(0);
+  // Rights sign-off (#1581). Each tick remembers the set of tiles it was
+  // given for, so attaching another unattested still un-ticks it.
+  const [portraitTickedFor, setPortraitTickedFor] = useState('');
+  const [authorizationBasis, setAuthorizationBasis] = useState('');
 
   const isVideo = activity === 'video';
   const compatibleVideoModel = getCompatibleModel(videoModel, aspectRatio);
@@ -389,10 +432,102 @@ export function StudioComposer({
     (effectiveMode === 'reference' &&
       references.length + videoRefs.length > 0) ||
     (effectiveMode === 'frames' && startFrame !== null);
+
+  const buildInput = (): StudioCreateInput => {
+    if (activity === 'video') {
+      return {
+        activity: 'video',
+        prompt: trimmed,
+        videoModel: compatibleVideoModel,
+        aspectRatio,
+        resolution,
+        duration: snappedDuration,
+        count,
+        generateAudio: audioCapable ? generateAudio : undefined,
+        mode: effectiveMode,
+        referenceImages:
+          effectiveMode === 'reference' ? references.map((r) => r.url) : [],
+        referenceVideos:
+          effectiveMode === 'reference' ? videoRefs.map((r) => r.url) : [],
+        referenceAudio:
+          effectiveMode === 'reference' ? audioRefs.map((r) => r.url) : [],
+        startImageUrl: effectiveMode === 'frames' ? startFrame?.url : undefined,
+        endImageUrl: effectiveMode === 'frames' ? endFrame?.url : undefined,
+      };
+    }
+    return {
+      activity: 'image',
+      prompt: trimmed,
+      imageModel,
+      aspectRatio,
+      resolution,
+      count,
+      referenceImages: references.map((r) => r.url),
+    };
+  };
+
+  // --- rights (#1581) ---------------------------------------------------------
+  // Same rule the server gate applies: uploads and raw URLs get checked,
+  // library rows do not. Logged out, nothing is asked until sign-in.
+  const tiles = [...references, startFrame, endFrame].filter(
+    (r): r is StudioReference => r !== null
+  );
+  const gatedUrls = [
+    ...new Set(studioReferenceImages(buildInput()).filter(needsLikenessCheck)),
+  ];
+  const rights = useUploadRights(
+    gatedUrls.map((url) => ({
+      url,
+      filename: tiles.find((r) => r.url === url)?.label,
+    }))
+  );
+  const checks = rights.flatMap((query, i) => {
+    const url = gatedUrls[i];
+    return url ? [{ url, query }] : [];
+  });
+  const owed = checks.filter((c) => c.query.data?.status === 'needs_portrait');
+  const portraitUrls = owed.map((c) => c.url);
+  const portraitKey = portraitUrls.join('\n');
+  const portraitTicked =
+    portraitUrls.length > 0 && portraitTickedFor === portraitKey;
+  // `isLoading`, not `isPending`: a disabled (logged-out) check is pending
+  // forever and must not wear a spinner.
+  const checking = new Set(
+    checks.filter((c) => c.query.isLoading).map((c) => c.url)
+  );
+  // Generate waits for every check to land and every sign-off to be saved.
+  const rightsReady =
+    !isAuthenticated ||
+    (checks.every((c) => c.query.data !== undefined) && owed.length === 0);
+  const rightsTicked = portraitTicked && authorizationBasis.trim().length > 0;
+  const referenceAttestations: PortraitAttestation[] = portraitUrls.map(
+    (url) => ({
+      url,
+      statementVersion: PORTRAIT_RIGHTS_V1.version,
+      authorizationBasis: authorizationBasis.trim(),
+    })
+  );
+  const badgeFor = (url: string): string => {
+    if (effectiveMode === 'frames') {
+      return url === startFrame?.url ? 'Start frame' : 'End frame';
+    }
+    const index = references.findIndex((r) => r.url === url);
+    return index >= 0 ? `@Image${index + 1}` : url;
+  };
+  const badges = (urls: string[]) => urls.map(badgeFor).join(', ');
+  const confirmRights = () => {
+    attest.mutate(referenceAttestations, {
+      onSuccess: () => {
+        setPortraitTickedFor('');
+        setAuthorizationBasis('');
+      },
+    });
+  };
+
   // Generate stays live on an empty prompt (#1393) — an empty click is the
   // cheapest place to open the login dialog or offer a random prompt. Only
-  // an unready mode or an in-flight upload actually disables it.
-  const canSubmit = modeReady && uploading === 0;
+  // an unready mode, an in-flight upload, or a missing sign-off disables it.
+  const canSubmit = modeReady && uploading === 0 && rightsReady;
   // The prompt, not the button, is what pulses while its generation runs
   // (#1455) — and typing anything else stops it, even mid-generation.
   const generating =
@@ -520,6 +655,7 @@ export function StudioComposer({
           type: kind === 'audio' ? 'recording' : kind,
         });
         placeReference({ url, label: file.name, kind }, target);
+        void queryClient.invalidateQueries({ queryKey: studioUploadKeys.all });
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'Upload failed');
       } finally {
@@ -574,7 +710,7 @@ export function StudioComposer({
       ...items,
       ...library.cast.map((r) => libraryItem('cast', r)),
       ...library.locations.map((r) => libraryItem('locations', r)),
-      ...library.generations
+      ...[...library.uploads, ...library.generations]
         .filter((r) => slots[r.kind] > 0)
         .map((r) => libraryItem('images', r)),
     ];
@@ -779,39 +915,6 @@ export function StudioComposer({
     setEndFrame(null);
   };
 
-  const buildInput = (): StudioCreateInput => {
-    if (activity === 'video') {
-      return {
-        activity: 'video',
-        prompt: trimmed,
-        videoModel: compatibleVideoModel,
-        aspectRatio,
-        resolution,
-        duration: snappedDuration,
-        count,
-        generateAudio: audioCapable ? generateAudio : undefined,
-        mode: effectiveMode,
-        referenceImages:
-          effectiveMode === 'reference' ? references.map((r) => r.url) : [],
-        referenceVideos:
-          effectiveMode === 'reference' ? videoRefs.map((r) => r.url) : [],
-        referenceAudio:
-          effectiveMode === 'reference' ? audioRefs.map((r) => r.url) : [],
-        startImageUrl: effectiveMode === 'frames' ? startFrame?.url : undefined,
-        endImageUrl: effectiveMode === 'frames' ? endFrame?.url : undefined,
-      };
-    }
-    return {
-      activity: 'image',
-      prompt: trimmed,
-      imageModel,
-      aspectRatio,
-      resolution,
-      count,
-      referenceImages: references.map((r) => r.url),
-    };
-  };
-
   const submit = () => {
     if (!canSubmit || create.isPending) return;
     if (trimmed.length === 0) {
@@ -825,6 +928,9 @@ export function StudioComposer({
       return;
     }
     requireAuth(() => {
+      // Logged out with uploads attached: sign-in starts the rights checks,
+      // and the panel (not a server rejection) asks for the sign-off.
+      if (!isAuthenticated && gatedUrls.length > 0) return;
       create.mutate(buildInput());
     });
   };
@@ -912,6 +1018,7 @@ export function StudioComposer({
                     key={`${reference.url}-${index}`}
                     reference={reference}
                     badge={`@Image${index + 1}`}
+                    checking={checking.has(reference.url)}
                     onRemove={() => removeReference('image', index)}
                   />
                 ))}
@@ -945,6 +1052,7 @@ export function StudioComposer({
                   <Tile
                     reference={startFrame}
                     badge="Start"
+                    checking={checking.has(startFrame.url)}
                     removeLabel="Remove start frame"
                     onRemove={() => setStartFrame(null)}
                   />
@@ -959,6 +1067,7 @@ export function StudioComposer({
                     <Tile
                       reference={endFrame}
                       badge="End"
+                      checking={checking.has(endFrame.url)}
                       removeLabel="Remove end frame"
                       onRemove={() => setEndFrame(null)}
                     />
@@ -1000,6 +1109,78 @@ export function StudioComposer({
           }}
         />
       </div>
+
+      {isAuthenticated &&
+        checks.length > 0 && (
+          // oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- Enter in the basis field confirms rights, not Generate (the outer form)
+          <div
+            className="flex shrink-0 flex-col gap-2"
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter') return;
+              if (!(event.target instanceof HTMLInputElement)) return;
+              event.preventDefault();
+              if (rightsTicked && !attest.isPending) confirmRights();
+            }}
+          >
+            {checks
+              .filter((c) => c.query.isError)
+              .map((c) => (
+                <p key={c.url} className="text-xs text-destructive">
+                  Couldn't check {badgeFor(c.url)}: {c.query.error?.message}{' '}
+                  {isInsufficientCreditsError(c.query.error) ? (
+                    <Button
+                      type="button"
+                      variant="link"
+                      size="sm"
+                      className="h-auto p-0 text-xs"
+                      onClick={() =>
+                        openAddCreditsDialog('studio-rights-check')
+                      }
+                    >
+                      Add credits
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="link"
+                      size="sm"
+                      className="h-auto p-0 text-xs"
+                      onClick={() => void c.query.refetch()}
+                    >
+                      Retry
+                    </Button>
+                  )}
+                </p>
+              ))}
+            {portraitUrls.length > 0 && (
+              <PortraitAttestationFields
+                id="studio-portrait-attestation"
+                attested={portraitTicked}
+                onAttestedChange={(checked) =>
+                  setPortraitTickedFor(checked ? portraitKey : '')
+                }
+                authorizationBasis={authorizationBasis}
+                onAuthorizationBasisChange={setAuthorizationBasis}
+              >
+                <p className="text-xs font-medium">
+                  Real person in {badges(portraitUrls)}
+                </p>
+              </PortraitAttestationFields>
+            )}
+            {owed.length > 0 && (
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={!rightsTicked || attest.isPending}
+                  onClick={confirmRights}
+                >
+                  {attest.isPending ? 'Saving…' : 'Confirm rights'}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
 
       <div className="flex shrink-0 flex-wrap items-center gap-2">
         {isVideo && (
@@ -1054,7 +1235,10 @@ export function StudioComposer({
                   size="sm"
                 />
               )}
-              <span className="font-mono text-xs">{summary.join(' · ')}</span>
+              <span className="font-mono text-xs">
+                <span className="hidden md:inline">{activeModelName} · </span>
+                {summary.join(' · ')}
+              </span>
               <SlidersHorizontal className="size-3.5 text-muted-foreground" />
             </Button>
           </PopoverTrigger>
@@ -1123,31 +1307,34 @@ export function StudioComposer({
                   <Separator />
                   <section className="flex flex-col gap-2">
                     <h3 className="text-sm font-medium">Duration</h3>
-                    <ToggleGroup
-                      type="single"
+                    <Select
                       value={String(snappedDuration)}
                       onValueChange={(value) => {
                         const next = Number(value);
                         if (Number.isFinite(next) && next > 0)
                           setDuration(next);
                       }}
-                      variant="outline"
-                      spacing={0}
-                      className="flex-wrap"
-                      aria-label="Clip duration"
                     >
-                      {studioVideoDurations(compatibleVideoModel).map(
-                        (value) => (
-                          <ToggleGroupItem
-                            key={value}
-                            value={String(value)}
-                            className="px-3 font-mono text-xs"
-                          >
-                            {value}s
-                          </ToggleGroupItem>
-                        )
-                      )}
-                    </ToggleGroup>
+                      <SelectTrigger
+                        aria-label="Clip duration"
+                        className="w-28 font-mono text-xs"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {studioVideoDurations(compatibleVideoModel).map(
+                          (value) => (
+                            <SelectItem
+                              key={value}
+                              value={String(value)}
+                              className="font-mono text-xs"
+                            >
+                              {value}s
+                            </SelectItem>
+                          )
+                        )}
+                      </SelectContent>
+                    </Select>
                   </section>
                 </>
               )}

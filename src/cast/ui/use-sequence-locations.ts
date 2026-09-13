@@ -247,6 +247,7 @@ export function useRecastLocation() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: { globalError: true },
     mutationFn: (data: {
       locationId: string;
       libraryLocationId: string;

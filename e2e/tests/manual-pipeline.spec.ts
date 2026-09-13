@@ -13,7 +13,7 @@
  */
 
 import path from 'node:path';
-import { expect } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
 import { test as testWithUser } from '../fixtures/auth.fixture';
 import { setupMockRoutes } from '../mocks/handlers';
 import {
@@ -22,6 +22,20 @@ import {
   getTestSequenceShots,
   type TestSequence,
 } from '../fixtures/sequence.fixture';
+
+/** Sign the rights dialog the likeness check opens for a real-person upload. */
+async function confirmPortraitRights(page: Page): Promise<void> {
+  const dialog = page.getByRole('dialog', { name: 'Real person detected' });
+  await expect(dialog).toBeVisible({ timeout: 20_000 });
+  await dialog
+    .getByRole('checkbox', { name: /authorization to use this person/i })
+    .check();
+  await dialog
+    .getByLabel('Basis for authorization')
+    .fill('E2E fixture image — synthetic, depicts no real person');
+  await dialog.getByRole('button', { name: 'Confirm rights' }).click();
+  await expect(dialog).not.toBeVisible({ timeout: 10_000 });
+}
 
 const IMAGE_FIXTURE = path.join(
   import.meta.dirname,
@@ -137,6 +151,9 @@ testWithUser.describe('Manual pipeline (no storyboard)', () => {
         .getByRole('tabpanel', { name: 'Start Frame' })
         .locator('input[type="file"]')
         .setInputFiles(IMAGE_FIXTURE);
+      // The fixture photo shows a person, so the likeness check (#1581) asks
+      // for the portrait sign-off before the still is stored.
+      await confirmPortraitRights(page);
       await expect(page.getByText('Image replaced')).toBeVisible({
         timeout: 20_000,
       });

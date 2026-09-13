@@ -131,7 +131,17 @@ export class FramePromptWorkflow extends OpenStoryWorkflowEntrypoint<FramePrompt
             ? JSON.stringify(sceneAfter, null, 2)
             : '(none)',
           scene: JSON.stringify(scene, null, 2),
-          characterBible: JSON.stringify(narrowed.characterBible, null, 2),
+          // Performance drives motion only and is not in the visual hash, so
+          // the visual LLM must not see it either (#1561). A voice-only
+          // character is heard, never framed (#1585): the motion prompt keeps
+          // it for delivery, the still never sees it.
+          characterBible: JSON.stringify(
+            narrowed.characterBible
+              .filter((c) => !c.voiceOnly)
+              .map(({ personality: _p, movement: _m, ...c }) => c),
+            null,
+            2
+          ),
           locationBible: JSON.stringify(narrowed.locationBible, null, 2),
           elementBible: JSON.stringify(narrowed.elementBible, null, 2),
           styleConfig: JSON.stringify(styleConfig, null, 2),

@@ -2,8 +2,9 @@
  * Local scene fields derived from a verbatim script slice (#1218).
  *
  * Scene-split's LLM call only annotates boundaries. Title, location,
- * time of day, duration, and dialogue are read off the slice the splitter
- * already cut — no second generation, no re-emitted script text.
+ * time of day and duration are read off the slice the splitter already
+ * cut — no second generation, no re-emitted script text. Dialogue is only
+ * previewed here (screenplay cues); the shot-list call supplies it (#1585).
  * Continuity tags are assigned later from bibles ∩ slice.
  */
 
@@ -129,6 +130,12 @@ function cueName(trimmed: string): string {
   return trimmed.replace(/\s*\([^)]*\)\s*$/, '').trim();
 }
 
+/**
+ * Streaming PREVIEW value only. Understands screenplay cues (`SARAH` /
+ * `NAME: line`), not prose speech. Seeded into the split script version
+ * mid-stream, then overwritten in `persist-scenes` by the shot-list call's
+ * per-shot lines (#1585, `dialogueFromShots`).
+ */
 export function extractDialogueFromSlice(slice: string): DialogueLine[] {
   const lines = slice.split('\n');
   const dialogue: DialogueLine[] = [];

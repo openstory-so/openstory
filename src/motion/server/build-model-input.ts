@@ -7,10 +7,17 @@
  * with correctly-typed duration values.
  */
 
-import { IMAGE_TO_VIDEO_MODELS, type ImageToVideoModel } from '@/models/models';
+import {
+  getMotionReferenceEndpoint,
+  IMAGE_TO_VIDEO_MODELS,
+  type ImageToVideoModel,
+  videoModelSupportsAudio,
+} from '@/models/models';
 import type { z } from 'zod';
-import { buildKlingElementsInput } from './build-kling-elements';
-import { buildReferenceVideoPrompt } from './build-reference-video-prompt';
+import {
+  bindableReferences,
+  buildReferenceVideoPrompt,
+} from './build-reference-video-prompt';
 import {
   inlineReferenceDescription,
   substituteReferenceTags,
@@ -21,6 +28,7 @@ import {
   MOTION_TRANSFORMS,
   type MotionEndpointId,
 } from './endpoint-map';
+import { hasStartFrameField } from './motion-transform';
 import { resolveMotionEndpoint } from '@/motion/resolve-motion-endpoint';
 import type { GenerateMotionOptions } from './motion-generation';
 
@@ -34,7 +42,7 @@ const QUALITY_OVERRIDES: Partial<
 
 /**
  * The `resolution` tokens an endpoint advertises, read off the generated fal
- * schema. Empty for an endpoint with no such field (Kling v3, Hailuo 2.3),
+ * schema. Empty for an endpoint with no such field (Kling v3),
  * whose output size is fixed.
  */
 export function motionResolutionTokens(endpointId: MotionEndpointId): string[] {
@@ -49,10 +57,10 @@ export function motionResolutionTokens(endpointId: MotionEndpointId): string[] {
 
 /**
  * The requested resolution tier (#1449) in the endpoint's own vocabulary —
- * `'768P'` on H3 Max, `'4k'` on Seedance 2.0, `'2160p'` on LTX. Read off the
+ * `'768P'` on H3 Max, `'4k'` on Seedance 2.0. Read off the
  * generated fal schema, so a new motion model needs no entry anywhere: it
  * inherits whatever its `resolution` enum advertises, and an endpoint with no
- * such field (Kling v3, Hailuo 2.3) keeps its fixed output.
+ * such field (Kling v3) keeps its fixed output.
  *
  * Empty when no tier was asked for, which leaves the schema default in place.
  */
@@ -79,7 +87,6 @@ function resolutionOverride(
 const NO_MUSIC_NEGATIVE_PROMPTS: Partial<Record<ImageToVideoModel, string>> = {
   kling_v3_pro:
     'blur, distort, and low quality, background music, musical score, soundtrack',
-  veo3_1: 'background music, musical score, soundtrack',
 };
 
 type ModelOutputMap = {
@@ -101,25 +108,15 @@ export function buildModelInput<T extends ImageToVideoModel>(
       `No motion transform registered for endpoint: ${endpointId}`
     );
   }
-  // Reference images (#873): only Kling v3 Pro accepts them on this path, via
-  // its `elements` field — canonical entity tokens in the prompt are bound
-  // inline as `@ElementN`. For every other model the images can't be attached,
-  // so tokens are substituted with their bible descriptions instead — a prompt
-  // written as "SCARLETT lifts the CORAL_LIPSTICK" stays self-contained. No
-  // `elements` key is passed for those models (the apiSchema would strip it
-  // anyway).
+  // This builder is the image-to-video path: a start frame is required, and
+  // reference images are not attached here. Models with a dedicated
+  // reference-to-video sibling (Seedance, H3 Max, Kling O3, Omni Flash) are
+  // routed there by `buildMotionRequest` before this runs. Tokens in the
+  // prompt are substituted with bible descriptions so a line written as
+  // "SCARLETT lifts the CORAL_LIPSTICK" stays self-contained.
   const references = options.referenceImages ?? [];
-  const kling =
-    modelKey === 'kling_v3_pro' && references.length > 0
-      ? buildKlingElementsInput(
-          options.prompt,
-          references,
-          modelConfig.maxPromptLength
-        )
-      : undefined;
   const prompt =
-    kling?.prompt ??
-    (references.length > 0
+    references.length > 0
       ? substituteReferenceTags(
           options.prompt,
           references.map((ref) => ({
@@ -127,8 +124,7 @@ export function buildModelInput<T extends ImageToVideoModel>(
             render: inlineReferenceDescription(ref),
           }))
         ).prompt
-      : options.prompt);
-  const elements = kling?.elements.length ? kling.elements : undefined;
+      : options.prompt;
 
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion safe to cast here because we know the transform is valid
   const result = transform.parse({
@@ -143,13 +139,12 @@ export function buildModelInput<T extends ImageToVideoModel>(
     ...(NO_MUSIC_NEGATIVE_PROMPTS[modelKey] && {
       negative_prompt: NO_MUSIC_NEGATIVE_PROMPTS[modelKey],
     }),
-    ...(elements && { elements }),
-    // Pass-through `generate_audio` for audio-capable models. The schema-driven
-    // transform forwards unknown keys; models without `generate_audio` strip
-    // it during apiSchema.parse.
-    ...(options.generateAudio !== undefined && {
-      generate_audio: options.generateAudio,
-    }),
+    // Resolved from the catalog, never inherited from the schema default: a
+    // model's routes can disagree (Kling v3 image-to-video defaults true, its
+    // O3 reference/text siblings default false), which would let the route a
+    // shot happens to take decide whether the clip has sound (#1498). Models
+    // with no `generate_audio` field strip it during apiSchema.parse.
+    generate_audio: options.generateAudio ?? videoModelSupportsAudio(modelKey),
   }) as ModelOutputMap[T];
 
   return result;
@@ -170,14 +165,42 @@ type RegisteredMotionOutput = z.output<
  * fetchable ones first.
  *
  * When `resolveMotionEndpoint` routes to a dedicated reference-to-video
- * endpoint (Seedance / H3 Max with cast/element refs), the still goes
- * first in the image-list field with the sheets after it — there is no
- * separate start-frame `image_url` on that endpoint. In reference-only mode
- * (`options.referenceOnly`) there is no still at all: the sheets fill that
- * field from slot 1 and the prompt carries the composition. A reference-only
- * shot that matched no sheets is prompt-only and goes to the model's
- * text-to-video sibling (#1521) — the reference endpoints reject an empty list.
+ * endpoint (Seedance / H3 Max / Kling O3 / Omni Flash with cast/element
+ * refs), how the still rides depends on whether the endpoint has a real
+ * start-frame field. Seedance, H3 Max and Omni Flash have none, so the still
+ * goes first in the image-list field with the sheets after it and the prompt
+ * declares it as the opening frame. Kling O3 has `start_image_url`, so the
+ * still is pinned there instead (#1498): the frame is guaranteed rather than
+ * requested in prose, the whole image list stays available for sheets, and
+ * `usesStartFrame: true` keeps meaning what it says.
+ *
+ * In reference-only mode (`options.referenceOnly`) there is no still at all:
+ * the sheets fill the image list from slot 1 and the prompt carries the
+ * composition. A reference-only shot that matched no sheets is prompt-only
+ * and goes to the model's text-to-video sibling (#1521) — the reference
+ * endpoints reject an empty list.
  */
+/**
+ * Does this reference-to-video submission pin the still in its own
+ * start-frame field rather than spending the first image slot on it?
+ *
+ * Only true where the endpoint actually has such a field (Kling O3) and the
+ * shot actually rendered a still. Exported so the over-cap check in
+ * `submitFalMotionJob` computes the same reference budget the builder does —
+ * the two disagreeing would mean warning about drops that never happened, or
+ * missing the ones that did.
+ */
+export function pinsDedicatedStartFrame(
+  endpointId: MotionEndpointId,
+  options: Pick<GenerateMotionOptions, 'imageUrl' | 'referenceOnly'>
+): boolean {
+  return (
+    !options.referenceOnly &&
+    Boolean(options.imageUrl) &&
+    hasStartFrameField(MOTION_JSON_SCHEMAS[endpointId])
+  );
+}
+
 export function buildMotionRequest<T extends ImageToVideoModel>(
   options: GenerateMotionOptions,
   modelKey: T
@@ -186,9 +209,16 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
   input: ModelOutputMap[T] | RegisteredMotionOutput;
 } {
   const modelConfig = IMAGE_TO_VIDEO_MODELS[modelKey];
+  // "Has references" means references this endpoint can actually carry
+  // (#1559): a shot whose only attachment is an audio clip has nothing to send
+  // a reference-to-video endpoint, which rejects an empty image list.
   const endpoint = resolveMotionEndpoint(
     modelKey,
-    (options.referenceImages?.length ?? 0) > 0,
+    bindableReferences(
+      getMotionReferenceEndpoint(modelKey),
+      options.referenceImages ?? [],
+      Boolean(options.imageUrl)
+    ).length > 0,
     'fal',
     options.referenceOnly ?? false
   );
@@ -209,9 +239,8 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
       aspectRatio: options.aspectRatio,
       ...QUALITY_OVERRIDES[modelKey],
       ...resolutionOverride(endpointId, options.resolution),
-      ...(options.generateAudio !== undefined && {
-        generate_audio: options.generateAudio,
-      }),
+      generate_audio:
+        options.generateAudio ?? videoModelSupportsAudio(modelKey),
     });
     return { endpointId, input };
   }
@@ -245,28 +274,43 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
     );
   }
 
-  const { prompt, imageUrls } = buildReferenceVideoPrompt(
+  const pinsStartFrame = pinsDedicatedStartFrame(endpointId, options);
+
+  const { prompt, imageUrls, videoUrls, audioUrls } = buildReferenceVideoPrompt(
     endpoint.referenceConfig,
     options.prompt,
-    options.imageUrl ?? null,
+    // Pinned in its own field, the still is not part of the image list: the
+    // binding is then exactly the reference-only shape — sheets from slot 1,
+    // no "Use @Image1 as the starting frame." line, because the frame is
+    // guaranteed by the request rather than asked for in prose.
+    pinsStartFrame ? null : (options.imageUrl ?? null),
     options.referenceImages ?? [],
     modelConfig.maxPromptLength
   );
 
-  const imageField = endpoint.referenceConfig.imageField ?? 'image_urls';
+  const config = endpoint.referenceConfig;
+  const imageField = config.imageField ?? 'image_urls';
 
   const input = transform.parse({
     prompt,
     duration: options.duration,
     aspectRatio: options.aspectRatio,
-    // Never empty here: a reference-only shot with nothing matched resolved to
-    // the text-to-video branch above, because fal rejects an empty list.
+    // Never empty here unless clips carry the shot instead: a reference-only
+    // shot with nothing bindable resolved to the text-to-video branch above,
+    // because fal rejects a request with no reference image OR video.
     [imageField]: imageUrls,
+    // The transform maps `imageUrl` onto the schema's start-frame field
+    // (`start_image_url` on Kling O3, the only reference endpoint with one).
+    ...(pinsStartFrame && { imageUrl: options.imageUrl }),
+    ...(videoUrls.length > 0 && {
+      [config.videoField ?? 'video_urls']: videoUrls,
+    }),
+    ...(audioUrls.length > 0 && {
+      [config.audioField ?? 'audio_urls']: audioUrls,
+    }),
     ...QUALITY_OVERRIDES[modelKey],
     ...resolutionOverride(endpointId, options.resolution),
-    ...(options.generateAudio !== undefined && {
-      generate_audio: options.generateAudio,
-    }),
+    generate_audio: options.generateAudio ?? videoModelSupportsAudio(modelKey),
   });
 
   return { endpointId: endpoint.endpointId, input };

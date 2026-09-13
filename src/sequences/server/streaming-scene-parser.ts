@@ -5,7 +5,8 @@
  * boundaries[] }` — from a partial JSON stream. The LLM never authors
  * script text or per-scene metadata: as soon as boundary k+1 has fully
  * streamed, scene k is a local verbatim slice of the ORIGINAL script with
- * heading/dialogue/duration derived from that slice (`scene-from-slice.ts`).
+ * heading/duration derived from that slice (`scene-from-slice.ts`) and a
+ * regex dialogue preview the shot-list call later replaces (#1585).
  *
  * Scene ids/numbers are minted here (server-side), never by the LLM.
  */

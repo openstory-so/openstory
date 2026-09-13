@@ -126,6 +126,56 @@ describe('submitStudioVideoJob', () => {
     );
   });
 
+  it('forwards selected resolution on fal text-to-video (#1570)', async () => {
+    mockGenerateVideo.mockResolvedValue({
+      jobId: 't2v-1080',
+      model: 'bytedance/seedance-2.5/text-to-video',
+    });
+
+    await submitStudioVideoJob({
+      arkAssets: registeredAssets,
+      prompt: 'A red fox turns toward camera',
+      model: 'seedance_v2_5',
+      duration: 5,
+      aspectRatio: '9:16',
+      resolution: '1080p',
+    });
+
+    expect(mockGenerateVideo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelOptions: expect.objectContaining({
+          resolution: '1080p',
+        }),
+      })
+    );
+  });
+
+  it('forwards selected resolution on fal frames (#1570)', async () => {
+    mockGenerateVideo.mockResolvedValue({
+      jobId: 'i2v-1080',
+      model: 'bytedance/seedance-2.0/enterprise/v2/image-to-video',
+    });
+
+    await submitStudioVideoJob({
+      arkAssets: registeredAssets,
+      prompt: 'Camera pushes in',
+      model: 'seedance_v2',
+      mode: 'frames',
+      startImageUrl: 'https://example.com/start.jpg',
+      duration: 5,
+      aspectRatio: '16:9',
+      resolution: '1080p',
+    });
+
+    expect(mockGenerateVideo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelOptions: expect.objectContaining({
+          resolution: '1080p',
+        }),
+      })
+    );
+  });
+
   it('submits H3 Max reference mode to r2v with Image N tags', async () => {
     mockGenerateVideo.mockResolvedValue({
       jobId: 'h3-r2v',

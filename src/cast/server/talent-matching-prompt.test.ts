@@ -11,6 +11,9 @@ const character: CharacterBibleEntry = {
   physicalDescription: 'Wiry, sunburnt',
   standardClothing: 'dusty leather duster and a cowboy hat',
   distinguishingFeatures: 'scar on left cheek',
+  personality: '',
+  movement: '',
+  voiceOnly: false,
   consistencyTag: 'jack',
 };
 
@@ -28,6 +31,9 @@ const talent = {
       physicalDescription: 'Wiry',
       standardClothing: 'grey shirt',
       distinguishingFeatures: '',
+      personality: '',
+      movement: '',
+      voiceOnly: false,
       consistencyTag: 'sam',
     },
   },

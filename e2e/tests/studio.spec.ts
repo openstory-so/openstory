@@ -75,6 +75,28 @@ test.describe('Images and Videos studio', () => {
     await expect(page).toHaveURL(/\/images/);
   });
 
+  test('remembered support mode does not break a non-admin list', async ({
+    page,
+  }) => {
+    await page.goto('/images');
+    await page.evaluate(() => {
+      localStorage.setItem(
+        'openstory:studio-list:v1',
+        JSON.stringify({
+          search: '',
+          supportMode: true,
+          hideInternal: false,
+        })
+      );
+    });
+    await page.goto('/images');
+
+    await expect(
+      page.getByRole('button', { name: 'Generate image' })
+    ).toBeVisible({ timeout: HYDRATION_TIMEOUT });
+    await expect(page.getByText('Failed to load')).toHaveCount(0);
+  });
+
   test('empty-prompt Generate offers a random prompt (#1393)', async ({
     page,
   }) => {

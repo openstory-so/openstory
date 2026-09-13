@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import { BibleField } from '@/cast/ui/bible-field';
 import { SheetComparisonDialog } from '@/cast/ui/sheets/sheet-comparison-dialog';
 import { SheetStalenessBanners } from '@/cast/ui/sheets/sheet-staleness-banners';
 import { Button } from '@/ui/shadcn/button';
@@ -156,20 +157,22 @@ export const EditTalentDialog: React.FC<EditTalentDialogProps> = ({
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    const nameValue = formData.get('name');
-    const descriptionValue = formData.get('description');
+    const text = (key: string) => {
+      const value = formData.get(key);
+      return typeof value === 'string' ? value.trim() : '';
+    };
 
-    const name = typeof nameValue === 'string' ? nameValue : '';
-    const description =
-      typeof descriptionValue === 'string' ? descriptionValue : '';
-
-    if (!name.trim()) return;
+    const name = text('name');
+    if (!name) return;
 
     updateTalent.mutate(
       {
         talentId: talent.id,
-        name: name.trim(),
-        description: description.trim() || undefined,
+        name,
+        description: text('description') || undefined,
+        // null clears the column; `''` would store an empty string.
+        personality: text('personality') || null,
+        movement: text('movement') || null,
       },
       {
         onSuccess: () => setOpen(false),
@@ -285,6 +288,21 @@ export const EditTalentDialog: React.FC<EditTalentDialogProps> = ({
               />
             </div>
 
+            <BibleField
+              idPrefix="talent"
+              label="Personality"
+              name="personality"
+              defaultValue={talent.personality}
+              textarea
+            />
+            <BibleField
+              idPrefix="talent"
+              label="Body movement"
+              name="movement"
+              defaultValue={talent.movement}
+              textarea
+            />
+
             <div className="flex flex-col gap-2">
               <Label>Reference Media</Label>
               {talent.media.length > 0 ? (
@@ -329,7 +347,6 @@ export const EditTalentDialog: React.FC<EditTalentDialogProps> = ({
               )}
               <AddTalentMediaDialog
                 talentId={talent.id}
-                isHuman={talent.isHuman === true}
                 trigger={
                   <Button type="button" variant="outline" size="sm">
                     <Plus className="h-4 w-4 mr-2" />

@@ -11,6 +11,16 @@ import { z } from 'zod';
 export const SEQUENCE_DRAFT_STORAGE_KEY = 'openstory:sequence-draft:v1';
 const EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
 
+/**
+ * Persisted verbatim to localStorage, so these field names are a wire
+ * contract: `readSequenceDraft` below `safeParse`s the whole draft and returns
+ * `null` on any mismatch, which means renaming one field silently discards the
+ * entire saved draft (script and style included), not just its elements. Bump
+ * the `:v1` in `SEQUENCE_DRAFT_STORAGE_KEY` instead. The shared server-side
+ * twin is `draftElementUploadSchema` in `src/cast/draft-element-upload.ts`.
+ *
+ * `tempPath` is historical — the object it names is permanent (#1471).
+ */
 const draftElementSchema = z.object({
   tempPath: z.string(),
   tempPublicUrl: z.string(),
@@ -18,6 +28,9 @@ const draftElementSchema = z.object({
   token: z.string(),
   description: z.string().nullable().default(null),
   consistencyTag: z.string().nullable().default(null),
+  // Clip length for an audio/video element (#1559); null for an image, and for
+  // a draft saved before this field existed.
+  durationSeconds: z.number().nullable().default(null),
 });
 
 const sequenceDraftSchema = z.object({

@@ -135,7 +135,6 @@ export function AddCreditsDialog() {
   };
 
   const purchaseMutation = useMutation({
-    meta: { inlineError: true },
     mutationFn: (input: {
       amountUsd: number;
       paymentMethodId: string;
@@ -165,7 +164,6 @@ export function AddCreditsDialog() {
   });
 
   const checkoutMutation = useMutation({
-    meta: { inlineError: true },
     mutationFn: (checkoutAmountUsd: number) =>
       createCheckoutSessionFn({
         data: {
@@ -284,7 +282,7 @@ export function AddCreditsDialog() {
                 })),
                 {
                   value: NEW_CARD,
-                  label: 'Enter at checkout',
+                  label: 'Pay at checkout',
                 },
               ]}
               onValueChange={(value) => {
@@ -305,7 +303,7 @@ export function AddCreditsDialog() {
                 ))}
                 <SelectItem value={NEW_CARD}>
                   <Plus className="size-4 text-muted-foreground" />
-                  Enter at checkout
+                  Pay at checkout
                 </SelectItem>
               </SelectContent>
             </Select>

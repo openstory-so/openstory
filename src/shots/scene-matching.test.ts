@@ -8,7 +8,9 @@ import {
   matchCharacterToShotTags,
   matchCharactersToScene,
   matchCharactersToShotImage,
+  matchElementsToMotion,
   matchElementsToScene,
+  matchElementsToShot,
   matchElementsToShotImage,
 } from './scene-matching';
 
@@ -19,6 +21,8 @@ const elements: SequenceElementMinimal[] = [
     description: 'A red hex logo',
     imageUrl: 'https://example.com/logo.png',
     consistencyTag: 'red-hex-logo',
+    kind: 'image',
+    durationSeconds: null,
   },
   {
     id: '2',
@@ -26,6 +30,8 @@ const elements: SequenceElementMinimal[] = [
     description: 'Silver water bottle',
     imageUrl: 'https://example.com/bottle.png',
     consistencyTag: 'silver-bottle',
+    kind: 'image',
+    durationSeconds: null,
   },
 ];
 
@@ -44,6 +50,7 @@ function makeCharacter(
     sheetInputHash: null,
     selectedSheetVersionId: null,
     physicalDescription: null,
+    voiceOnly: false,
     consistencyTag: null,
     ...overrides,
   };
@@ -305,6 +312,95 @@ describe('matchElementsToShotImage', () => {
       visualPrompt: '   ',
       elementTags: ['LOGO'],
       sceneExtract: 'The BOTTLE sits on the counter.',
+    });
+    expect(result.map((e) => e.token).sort()).toEqual(['BOTTLE', 'LOGO']);
+  });
+});
+
+// #1559 — a voice line bound to dialogue is named nowhere in the image prompt,
+// so the still's matcher alone left it off the shot's Elements tab.
+describe('matchElementsToShot', () => {
+  const voice: SequenceElementMinimal = {
+    id: '3',
+    token: 'MATEO_SHOT_1',
+    description: null,
+    imageUrl: 'https://example.com/mateo.m4a',
+    consistencyTag: null,
+    kind: 'audio',
+    durationSeconds: 3.75,
+  };
+  const all = [...elements, voice];
+
+  it('includes the voice a dialogue line is bound to', () => {
+    const result = matchElementsToShot(all, {
+      visualPrompt: 'Close-up of the LOGO on the wall.',
+      motionPrompt: 'Slow push in.',
+      voiceTokens: ['MATEO_SHOT_1'],
+      referenceOnly: false,
+    });
+    expect(result.map((e) => e.token).sort()).toEqual(['LOGO', 'MATEO_SHOT_1']);
+  });
+
+  it('includes what only the motion prompt mentions', () => {
+    const result = matchElementsToShot(all, {
+      visualPrompt: 'Close-up of her face.',
+      motionPrompt: 'She lifts the BOTTLE to drink.',
+      referenceOnly: false,
+    });
+    expect(result.map((e) => e.token)).toEqual(['BOTTLE']);
+  });
+
+  it('lists an element both renders use once', () => {
+    const result = matchElementsToShot(all, {
+      visualPrompt: 'The LOGO glows.',
+      motionPrompt: 'The LOGO pulses.',
+      referenceOnly: false,
+    });
+    expect(result.map((e) => e.token)).toEqual(['LOGO']);
+  });
+
+  it('drops a reference-only element the prompt no longer mentions', () => {
+    const result = matchElementsToShot(all, {
+      visualPrompt: '',
+      elementTags: ['LOGO'],
+      sceneExtract: 'A tee printed with the LOGO.',
+      motionPrompt: 'He halts mid-stride and grins.',
+      voiceTokens: ['MATEO_SHOT_1'],
+      referenceOnly: true,
+    });
+    expect(result.map((e) => e.token)).toEqual(['MATEO_SHOT_1']);
+  });
+});
+
+describe('matchElementsToMotion', () => {
+  const scene = {
+    elementTags: ['LOGO'],
+    sceneExtract: 'A tee printed with the LOGO.',
+  };
+
+  it('reference-only: the prompt decides, over tags and script', () => {
+    const result = matchElementsToMotion(elements, {
+      ...scene,
+      motionPrompt: 'She lifts the BOTTLE to drink.',
+      referenceOnly: true,
+    });
+    expect(result.map((e) => e.token)).toEqual(['BOTTLE']);
+  });
+
+  it('reference-only with no prompt yet falls back to tags and script', () => {
+    const result = matchElementsToMotion(elements, {
+      ...scene,
+      motionPrompt: null,
+      referenceOnly: true,
+    });
+    expect(result.map((e) => e.token)).toEqual(['LOGO']);
+  });
+
+  it('with a start frame, keeps what the prompt omits', () => {
+    const result = matchElementsToMotion(elements, {
+      ...scene,
+      motionPrompt: 'She lifts the BOTTLE to drink.',
+      referenceOnly: false,
     });
     expect(result.map((e) => e.token).sort()).toEqual(['BOTTLE', 'LOGO']);
   });

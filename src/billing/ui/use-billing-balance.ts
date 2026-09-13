@@ -11,8 +11,8 @@ import { getBillingBalanceFn } from '@/billing/billing.fn';
 export const BILLING_BALANCE_KEY = ['billing-balance'] as const;
 export const BILLING_PAYMENT_METHODS_KEY = ['billing-payment-methods'] as const;
 
-/** Seeded in the app shell's beforeLoad so the welcome dialog (and its
- *  card/SMS options) paints on first render instead of after a client fetch. */
+/** Seeded in the app shell's beforeLoad so the welcome dialog paints on
+ *  first render instead of after a client fetch. */
 export const billingBalanceQueryOptions = queryOptions({
   queryKey: [...BILLING_BALANCE_KEY],
   queryFn: () => getBillingBalanceFn(),
@@ -43,8 +43,6 @@ export function useBillingBalance() {
     reserved,
     teamId: query.data?.teamId,
     stripeEnabled: query.data?.stripeEnabled ?? false,
-    phoneVerificationEnabled: query.data?.phoneVerificationEnabled ?? false,
-    phoneCountry: query.data?.phoneCountry ?? null,
     hasUsedCredits: query.data?.hasUsedCredits ?? false,
     hasSignupGrant: query.data?.hasSignupGrant ?? false,
     hasOtherCredits: query.data?.hasOtherCredits ?? false,

@@ -492,6 +492,29 @@ describe('listLastFailedModelsBySequence (#1066)', () => {
     );
   });
 
+  // An old failure outranked the selected version forever, so the editor
+  // stayed on the failed model after a newer render on another one succeeded.
+  it('drops a failure once a newer version succeeds', async () => {
+    await methods.appendVersion(
+      versionInput({ model: 'seedance_v2_5', status: 'failed', url: null })
+    );
+    await methods.appendVersion(versionInput({ model: 'minimax_h3_max' }));
+
+    expect(await methods.listLastFailedModelsBySequence(sequenceId)).toEqual(
+      new Map()
+    );
+    expect(await methods.getLastFailedByShot(shotId)).toBeNull();
+  });
+
+  it('getLastFailedByShot returns the newest version when it failed', async () => {
+    await methods.appendVersion(versionInput({ model: 'minimax_h3_max' }));
+    const failed = await methods.appendVersion(
+      versionInput({ model: 'seedance_v2_5', status: 'failed', url: null })
+    );
+
+    expect((await methods.getLastFailedByShot(shotId))?.id).toBe(failed.id);
+  });
+
   it('never returns a shot from another sequence', async () => {
     const other = await seedSecondSequence();
     await methods.appendVersion(

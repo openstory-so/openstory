@@ -9,8 +9,17 @@ import {
   renameSequenceElementTokenFn,
   replaceSequenceElementFn,
   restoreSequenceElementFn,
+  setSequenceElementDescriptionFn,
 } from '@/cast/sequence-elements.fn';
+import {
+  elementKindFromFile,
+  readMediaDuration,
+  type SequenceElementKind,
+} from '@/cast/element-kind';
+import { deriveTokenFromFilename } from '@/cast/derive-token';
+import { normalizeElementFile } from '@/cast/ui/element/normalize-element-file';
 import { putToR2 } from '@/ui/upload';
+import { useUploadRightsGate } from '@/cast/ui/upload-rights-gate';
 import { sceneKeys } from '@/shots/ui/use-scenes';
 import { shotStalenessNamespace } from '@/shots/ui/use-shot-staleness';
 import {
@@ -54,27 +63,35 @@ export function useSequenceElements(sequenceId: string | undefined) {
  */
 export function useUploadElementToSequence() {
   const queryClient = useQueryClient();
+  const { ensureUploadRights } = useUploadRightsGate();
   return useMutation({
     mutationFn: async (data: {
       file: File;
       sequenceId: string;
       onProgress?: (percent: number) => void;
     }) => {
+      // MP3 / WAV audio only reaches a model (#1559) — convert the rest here.
+      const file = await normalizeElementFile(data.file);
       const presign = await presignElementUploadFn({
-        data: { filename: data.file.name, sequenceId: data.sequenceId },
+        data: { filename: file.name, sequenceId: data.sequenceId },
       });
       await putToR2(
         presign.uploadUrl,
-        data.file,
+        file,
         presign.contentType,
         data.onProgress
       );
+      if (elementKindFromFile(file) === 'image') {
+        await ensureUploadRights([
+          { url: presign.publicUrl, filename: file.name },
+        ]);
+      }
       const element = await finalizeElementUploadFn({
         data: {
           sequenceId: data.sequenceId,
-          publicUrl: presign.publicUrl,
           path: presign.path,
-          filename: data.file.name,
+          filename: file.name,
+          durationSeconds: await fileDuration(file),
         },
       });
       return element;
@@ -87,27 +104,42 @@ export function useUploadElementToSequence() {
   });
 }
 
+/** The clip length, measured client-side; null for an image or an undecodable file. */
+async function fileDuration(file: File): Promise<number | null> {
+  const kind: SequenceElementKind = elementKindFromFile(file) ?? 'image';
+  return readMediaDuration(file, kind);
+}
+
 export type DraftElementUpload = {
   tempPath: string;
   tempPublicUrl: string;
   filename: string;
+  /**
+   * Vision's suggested token for an image; for a clip or an audio file (no
+   * vision pass) the filename-derived one, which is what the server would
+   * fall back to anyway.
+   */
   token: string;
   /**
-   * Vision-LLM description, populated during draft upload. `useUploadDraftElement`
-   * rejects if vision fails, so successful uploads always carry both fields —
-   * but `promoteTempElements` still accepts nullable values for backwards-compat
-   * with E2E fixture paths and falls back to the async vision workflow there.
+   * Vision-LLM description, populated during draft upload of an IMAGE.
+   * `useUploadDraftElement` rejects if vision fails, so a successful image
+   * upload always carries both fields — but `attachElementUpload` still
+   * accepts nullable values for backwards-compat with E2E fixture paths (and
+   * for clips and audio, which have no vision pass) and falls back to the
+   * async vision workflow there.
    */
   description: string | null;
   consistencyTag: string | null;
+  /** Clip length in seconds; null for an image. */
+  durationSeconds: number | null;
 };
 
 /**
  * Upload an element file as a *draft* (before a sequence exists). Returns the
- * temp storage path + public URL so the caller can persist it in local state
- * and pass it to the createSequence mutation for promotion.
+ * permanent storage path + public URL so the caller can persist it in local
+ * state and pass it to the createSequence mutation, which points a row at it.
  *
- * Runs vision analysis inline after the upload resolves so promoteTempElements
+ * Runs vision analysis inline after the upload resolves so `attachElementUpload`
  * can write the row in `completed` state with description + consistencyTag
  * already populated. The mutation rejects on vision failure — the element
  * selector surfaces this as an error entry and the user must retry or remove
@@ -115,21 +147,46 @@ export type DraftElementUpload = {
  * element from reaching the analyze workflow and poisoning prompt hashes.)
  */
 export function useUploadDraftElement() {
+  const { ensureUploadRights } = useUploadRightsGate();
   return useMutation({
     mutationFn: async (data: {
       file: File;
       onProgress?: (percent: number) => void;
       onAnalyzingChange?: (analyzing: boolean) => void;
     }): Promise<DraftElementUpload> => {
+      // MP3 / WAV audio only reaches a model (#1559) — convert the rest here.
+      const file = await normalizeElementFile(data.file);
+      const kind: SequenceElementKind = elementKindFromFile(file) ?? 'image';
       const presign = await presignDraftElementUploadFn({
-        data: { filename: data.file.name },
+        data: { filename: file.name },
       });
       await putToR2(
         presign.uploadUrl,
-        data.file,
+        file,
         presign.contentType,
         data.onProgress
       );
+      const durationSeconds = await readMediaDuration(file, kind);
+
+      // Vision reads pixels: a clip or an audio file skips it entirely and is
+      // ready the moment the bytes land (#1559).
+      if (kind !== 'image') {
+        return {
+          tempPath: presign.path,
+          tempPublicUrl: presign.publicUrl,
+          filename: file.name,
+          token: deriveTokenFromFilename(file.name),
+          description: null,
+          consistencyTag: null,
+          durationSeconds,
+        };
+      }
+
+      // A real person opens the sign-off dialog; declining fails the upload.
+      await ensureUploadRights([
+        { url: presign.publicUrl, filename: file.name },
+      ]);
+
       data.onAnalyzingChange?.(true);
       let result: {
         description: string;
@@ -140,7 +197,7 @@ export function useUploadDraftElement() {
         result = await analyzeDraftElementFn({
           data: {
             publicUrl: presign.publicUrl,
-            filename: data.file.name,
+            filename: file.name,
           },
         });
       } finally {
@@ -150,12 +207,30 @@ export function useUploadDraftElement() {
       return {
         tempPath: presign.path,
         tempPublicUrl: presign.publicUrl,
-        filename: data.file.name,
+        filename: file.name,
         token: result.suggestedToken,
         description: result.description,
         consistencyTag: result.consistencyTag,
+        durationSeconds,
       };
     },
+  });
+}
+
+/**
+ * Write an element's description by hand (#1559) — the only source for a clip
+ * or an audio file, which vision never looks at.
+ */
+export function useSetSequenceElementDescription() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      sequenceId: string;
+      elementId: string;
+      description: string;
+    }) => setSequenceElementDescriptionFn({ data }),
+    onSuccess: (_res, variables) =>
+      invalidateElementMembership(queryClient, variables.sequenceId),
   });
 }
 
@@ -204,6 +279,7 @@ function invalidateElementMembership(
 export function useRenameSequenceElementToken() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { globalError: true },
     mutationFn: (data: {
       elementId: string;
       sequenceId: string;
@@ -254,6 +330,7 @@ export function useShotCountsForAllElements(sequenceId: string | undefined) {
  */
 export function useReplaceSequenceElement() {
   const queryClient = useQueryClient();
+  const { ensureUploadRights } = useUploadRightsGate();
   return useMutation({
     mutationFn: async (data: {
       file: File;
@@ -261,22 +338,29 @@ export function useReplaceSequenceElement() {
       elementId: string;
       onProgress?: (percent: number) => void;
     }) => {
+      // MP3 / WAV audio only reaches a model (#1559) — convert the rest here.
+      const file = await normalizeElementFile(data.file);
       const presign = await presignElementUploadFn({
-        data: { filename: data.file.name, sequenceId: data.sequenceId },
+        data: { filename: file.name, sequenceId: data.sequenceId },
       });
       await putToR2(
         presign.uploadUrl,
-        data.file,
+        file,
         presign.contentType,
         data.onProgress
       );
+      if (elementKindFromFile(file) === 'image') {
+        await ensureUploadRights([
+          { url: presign.publicUrl, filename: file.name },
+        ]);
+      }
       return await replaceSequenceElementFn({
         data: {
           sequenceId: data.sequenceId,
           elementId: data.elementId,
-          publicUrl: presign.publicUrl,
           path: presign.path,
-          filename: data.file.name,
+          filename: file.name,
+          durationSeconds: await fileDuration(file),
         },
       });
     },

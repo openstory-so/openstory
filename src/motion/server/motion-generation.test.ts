@@ -164,22 +164,22 @@ describe('Motion Service', () => {
       ).rejects.toThrow('API error');
     });
 
-    it('should submit job with Veo 3.1 model options', async () => {
+    it('should submit job with Seedance 2.0 model options', async () => {
       mockGenerateVideo.mockResolvedValue({
-        jobId: 'test-veo3-1-request-id',
-        model: 'fal-ai/veo3.1/image-to-video',
+        jobId: 'test-seedance-request-id',
+        model: 'bytedance/seedance-2.0/enterprise/v2/image-to-video',
       });
 
       const result = await submitMotionJob({
         arkAssets: registeredAssets,
         imageUrl: 'https://example.com/image.jpg',
         prompt: 'Smooth camera movement',
-        model: 'veo3_1',
+        model: 'seedance_v2',
         duration: 8,
       });
 
-      expect(result.jobId).toBe('test-veo3-1-request-id');
-      expect(result.modelKey).toBe('veo3_1');
+      expect(result.jobId).toBe('test-seedance-request-id');
+      expect(result.modelKey).toBe('seedance_v2');
 
       expect(mockGenerateVideo).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -507,6 +507,88 @@ describe('Motion Service', () => {
     });
   });
 
+  // #1559 — an over-long reference is the user's own file with an obvious fix,
+  // so submit refuses instead of quietly rendering a clip that ignored it.
+  describe('over-long reference guard', () => {
+    it('refuses rather than silently dropping the clip', async () => {
+      await expect(
+        submitMotionJob({
+          arkAssets: registeredAssets,
+          imageUrl: 'https://example.com/still.jpg',
+          prompt: 'Move like LONG_TAKE',
+          model: 'gemini_omni_flash',
+          duration: 5,
+          referenceImages: [
+            {
+              referenceImageUrl: 'https://example.com/long.mp4',
+              description: 'LONG_TAKE - a long clip',
+              role: 'element',
+              kind: 'video',
+              durationSeconds: 10,
+              token: 'LONG_TAKE',
+            },
+          ],
+        })
+      ).rejects.toThrow("can't use LONG_TAKE — 10s, over its 3s limit");
+
+      expect(mockGenerateVideo).not.toHaveBeenCalled();
+    });
+
+    it('submits when the clip is inside the ceiling', async () => {
+      mockGenerateVideo.mockResolvedValue({
+        jobId: 'omni-ok',
+        model: 'gemini-omni-1.1-flash',
+      });
+
+      await submitMotionJob({
+        arkAssets: registeredAssets,
+        imageUrl: 'https://example.com/still.jpg',
+        prompt: 'Move like SHORT_TAKE',
+        model: 'gemini_omni_flash',
+        duration: 5,
+        referenceImages: [
+          {
+            referenceImageUrl: 'https://example.com/short.mp4',
+            description: 'SHORT_TAKE - a short clip',
+            role: 'element',
+            kind: 'video',
+            durationSeconds: 2,
+            token: 'SHORT_TAKE',
+          },
+        ],
+      });
+
+      expect(mockGenerateVideo).toHaveBeenCalled();
+    });
+
+    it('submits a reference whose length was never measured', async () => {
+      mockGenerateVideo.mockResolvedValue({
+        jobId: 'omni-unknown',
+        model: 'gemini-omni-1.1-flash',
+      });
+
+      await submitMotionJob({
+        arkAssets: registeredAssets,
+        imageUrl: 'https://example.com/still.jpg',
+        prompt: 'Move like MYSTERY',
+        model: 'gemini_omni_flash',
+        duration: 5,
+        referenceImages: [
+          {
+            referenceImageUrl: 'https://example.com/mystery.mp4',
+            description: 'MYSTERY - unknown length',
+            role: 'element',
+            kind: 'video',
+            durationSeconds: null,
+            token: 'MYSTERY',
+          },
+        ],
+      });
+
+      expect(mockGenerateVideo).toHaveBeenCalled();
+    });
+  });
+
   describe('native xAI submit (issue #1167)', () => {
     it('submits a Grok clip to xAI when a key is present', async () => {
       testEnv.XAI_API_KEY = 'platform-xai';
@@ -575,7 +657,7 @@ describe('Motion Service', () => {
       );
     });
 
-    it('sends library refs as reference/character parts and tags the prompt', async () => {
+    it('pins the still as the opening frame and tags refs from <IMAGE_0>', async () => {
       testEnv.XAI_API_KEY = 'platform-xai';
       mockGenerateVideo.mockResolvedValue({
         jobId: 'xai-job-refs',
@@ -604,19 +686,17 @@ describe('Motion Service', () => {
         ],
       });
 
+      // xAI documents `image` + `reference_images` as the matching first-frame
+      // pin, so the still stays a pinned frame instead of being demoted into
+      // reference slot 0 (a reference does not lock the first frame). It rides
+      // modelOptions to get past the SDK's stale guard.
       expect(mockGenerateVideo).toHaveBeenCalledWith(
         expect.objectContaining({
+          modelOptions: { image: { url: 'https://example.com/still.jpg' } },
           prompt: [
             {
               type: 'text',
-              content: expect.stringMatching(
-                /Use <IMAGE_0> as the starting frame\.\n<IMAGE_1> lifts the <IMAGE_2>/
-              ),
-            },
-            {
-              type: 'image',
-              source: { type: 'url', value: 'https://example.com/still.jpg' },
-              metadata: { role: 'reference' },
+              content: '<IMAGE_0> lifts the <IMAGE_1>',
             },
             {
               type: 'image',

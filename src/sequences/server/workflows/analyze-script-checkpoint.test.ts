@@ -74,6 +74,8 @@ const TALENT_MATCH = {
   characterId: 'c1',
   talentId: 'tal_1',
   talentName: 'Ada',
+  personality: '',
+  movement: '',
   sheetImageUrl: '/r2/ada.png',
 };
 const LOCATION_MATCH = {
@@ -91,6 +93,7 @@ const CHARACTER_ROW: CharacterMinimal = {
   sheetInputHash: 'hash_ada',
   selectedSheetVersionId: 'csv_1',
   physicalDescription: 'tall',
+  voiceOnly: false,
   consistencyTag: 'ADA',
 };
 const LOCATION_ROW: SequenceLocationMinimal = {
@@ -404,6 +407,45 @@ describe('AnalyzeScriptWorkflow script checkpoint', () => {
     expect(childPayload('spawn-location-bible')).toMatchObject({
       locationBible: SPLIT.locationBible,
       libraryLocationMatches: [LOCATION_MATCH],
+    });
+  });
+
+  test('startFrom references: a voice-only character rides the checkpoint bible into the sheets stage (#1585)', async () => {
+    const narrator = {
+      characterId: 'narrator',
+      name: 'Narrator',
+      age: '',
+      gender: '',
+      ethnicity: '',
+      physicalDescription: '',
+      standardClothing: '',
+      distinguishingFeatures: '',
+      personality: 'dry, unhurried',
+      movement: '',
+      voiceOnly: true,
+      consistencyTag: 'narrator',
+    };
+    const event = makeEvent({
+      ...noStyle,
+      startFrom: 'references',
+      stopAt: 'references',
+      checkpoint: {
+        completedStage: 'script',
+        ...SPLIT,
+        characterBible: [narrator],
+        talentMatches: [],
+        locationMatches: [],
+      },
+    });
+
+    await makeWorkflow().invokeRunImpl(
+      event,
+      makeStep(),
+      makeScopedDb(vi.fn())
+    );
+
+    expect(childPayload('spawn-character-bible')).toMatchObject({
+      characterBible: [expect.objectContaining({ voiceOnly: true })],
     });
   });
 

@@ -53,7 +53,13 @@ type BytePlusPromptPart =
       type: 'image';
       source: { type: 'url'; value: string };
       metadata?: { role: 'start_frame' | 'reference' };
-    };
+    }
+  // Reference clips and audio (#1559). The adapter maps these to Ark's
+  // `video_url` / `audio_url` content parts with the `reference_video` /
+  // `reference_audio` roles — the same reference side of the mix-ban the
+  // stills are on, so a shot carrying either can never also pin a frame.
+  | { type: 'video'; source: { type: 'url'; value: string } }
+  | { type: 'audio'; source: { type: 'url'; value: string } };
 
 export type BytePlusVideoRequest = {
   /** BytePlus Ark model id (not a fal endpoint). */
@@ -161,7 +167,7 @@ export function buildBytePlusVideoRequest(
   // so it leads the reference list and the prompt names it as the opening
   // frame — the binding `buildReferenceVideoPrompt` already writes for fal.
   const referenceConfig = getMotionReferenceEndpoint(modelKey);
-  const { prompt, imageUrls } = referenceConfig
+  const { prompt, imageUrls, videoUrls, audioUrls } = referenceConfig
     ? buildReferenceVideoPrompt(
         referenceConfig,
         options.prompt,
@@ -171,7 +177,7 @@ export function buildBytePlusVideoRequest(
         { skipLegend: true }
       )
     : // A model with a BytePlus route but no reference-tag convention can't
-      // bind images to prompt positions; inline the descriptions instead so
+      // bind media to prompt positions; inline the descriptions instead so
       // the prompt stays self-contained and send the still alone.
       {
         prompt: truncate(
@@ -185,6 +191,8 @@ export function buildBytePlusVideoRequest(
           config.maxPromptLength
         ),
         imageUrls: startFrameUrl ? [startFrameUrl] : [],
+        videoUrls: [],
+        audioUrls: [],
       };
 
   return {
@@ -195,6 +203,14 @@ export function buildBytePlusVideoRequest(
         type: 'image',
         source: { type: 'url', value: url },
         metadata: { role: 'reference' },
+      })),
+      ...videoUrls.map((url): BytePlusPromptPart => ({
+        type: 'video',
+        source: { type: 'url', value: url },
+      })),
+      ...audioUrls.map((url): BytePlusPromptPart => ({
+        type: 'audio',
+        source: { type: 'url', value: url },
       })),
     ],
     size,

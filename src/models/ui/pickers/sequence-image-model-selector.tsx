@@ -2,15 +2,14 @@ import { AddModelMenuSection } from './add-model-menu';
 import { Badge } from '@/ui/shadcn/badge';
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/ui/shadcn/dropdown-menu';
 import { ModelCoverageMarker } from './model-coverage-marker';
 import { SetModelButton } from './set-model-button';
-import { useActiveImageModel } from '@/models/ui/use-active-image-model';
 import {
   useSequenceImageModels,
   useSequenceImageVariants,
@@ -26,10 +25,11 @@ function imageModelName(model: string): string {
 }
 
 /**
- * Sequence-wide image-model switcher. Lists the distinct image models that have
- * generated for this sequence (shot_variants) and lets the viewer pick which
- * model's image the scenes view shows; also hosts the "Add a model" picker
- * (#547) and the sequence-wide Set.
+ * Sequence-wide image models. Lists the distinct image models that have
+ * generated for this sequence, each with its coverage and the sequence-wide
+ * Set; also hosts the "Add a model" picker (#547). It never changes what the
+ * scenes view shows: every shot shows its current still, which history
+ * repoints.
  *
  * Lives in the Scenes inspector at sequence scope as the ONLY image-model
  * control there, styled as a badge to match the Style / Script rows beside it.
@@ -52,8 +52,6 @@ export const SequenceImageModelSelector = ({
   const { data: models } = useSequenceImageModels(sequenceId);
   const { data: variants } = useSequenceImageVariants(sequenceId);
   const { data: shots } = useShotsBySequence(sequenceId);
-  const { activeImageModel, selectImageModel } =
-    useActiveImageModel(sequenceId);
 
   // Map shots → their parent scene so coverage counts at scene granularity (#909).
   const shotToScene = useMemo(() => {
@@ -96,11 +94,8 @@ export const SequenceImageModelSelector = ({
   }
 
   const firstModel = models[0];
-  const activeLabel = activeImageModel
-    ? imageModelName(activeImageModel)
-    : models.length === 1 && firstModel
-      ? imageModelName(firstModel)
-      : 'Mixed';
+  const activeLabel =
+    models.length === 1 && firstModel ? imageModelName(firstModel) : 'Mixed';
 
   const dropdown = (
     <DropdownMenu>
@@ -120,28 +115,12 @@ export const SequenceImageModelSelector = ({
         <DropdownMenuLabel className="text-xs">
           Image model
           <span className="block font-normal text-muted-foreground">
-            View a model across the sequence; Set applies it to every scene.
+            Set applies a model to every scene.
           </span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        {models.length > 1 && (
-          <DropdownMenuCheckboxItem
-            checked={activeImageModel === null}
-            onCheckedChange={() => selectImageModel(null)}
-            onSelect={(e) => e.preventDefault()}
-            className="cursor-pointer"
-          >
-            Mixed (per scene)
-          </DropdownMenuCheckboxItem>
-        )}
         {models.filter(isValidTextToImageModel).map((model) => (
-          <DropdownMenuCheckboxItem
-            key={model}
-            checked={activeImageModel === model}
-            onCheckedChange={() => selectImageModel(model)}
-            onSelect={(e) => e.preventDefault()}
-            className="cursor-pointer"
-          >
+          <DropdownMenuItem key={model} onSelect={(e) => e.preventDefault()}>
             <span className="flex w-full items-center justify-between gap-2">
               <span className="truncate">{imageModelName(model)}</span>
               <span className="flex shrink-0 items-center gap-1.5">
@@ -155,7 +134,7 @@ export const SequenceImageModelSelector = ({
                 />
               </span>
             </span>
-          </DropdownMenuCheckboxItem>
+          </DropdownMenuItem>
         ))}
         <AddModelMenuSection
           sequenceId={sequenceId}

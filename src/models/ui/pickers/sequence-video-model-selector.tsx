@@ -1,8 +1,8 @@
 import { Badge } from '@/ui/shadcn/badge';
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -10,7 +10,6 @@ import {
 import { AddModelMenuSection } from './add-model-menu';
 import { ModelCoverageMarker } from './model-coverage-marker';
 import { SetModelButton } from './set-model-button';
-import { useActiveVideoModel } from '@/models/ui/use-active-video-model';
 import {
   useSequenceVideoModels,
   useSequenceVideoVariants,
@@ -31,14 +30,12 @@ function videoModelName(model: string): string {
 }
 
 /**
- * Sequence-wide video-model switcher (#545). Lists the distinct models that
- * have generated a video for this sequence (derived from shot_variants) and
- * lets the viewer pick which model's output to display; also hosts "Add a
- * model" and the sequence-wide Set. The view selection is viewer-local
- * (localStorage via useActiveVideoModel).
+ * Sequence-wide video models (#545). Lists the distinct models that have
+ * generated a video for this sequence, with each one's coverage and the
+ * sequence-wide Set; also hosts "Add a model". It does not change what plays:
+ * each shot plays its current version, which history repoints.
  *
- * "Mixed" is shown when more than one model has output and the viewer has not
- * pinned a specific one — i.e. each scene shows its own model's video.
+ * "Mixed" is shown when more than one model has output.
  *
  * Lives in the Scenes inspector at sequence scope as the ONLY video-model
  * control there, styled as a badge to match the rows beside it. Degrades to a
@@ -57,8 +54,6 @@ export const SequenceVideoModelSelector = ({
   const { data: models } = useSequenceVideoModels(sequenceId);
   const { data: variants } = useSequenceVideoVariants(sequenceId);
   const { data: shots } = useShotsBySequence(sequenceId);
-  const { activeVideoModel, selectVideoModel } =
-    useActiveVideoModel(sequenceId);
 
   // Map shots → their parent scene so coverage counts at scene granularity (#909).
   const shotToScene = useMemo(() => {
@@ -100,11 +95,8 @@ export const SequenceVideoModelSelector = ({
   }
 
   const firstModel = models[0];
-  const activeLabel = activeVideoModel
-    ? videoModelName(activeVideoModel)
-    : models.length === 1 && firstModel
-      ? videoModelName(firstModel)
-      : 'Mixed';
+  const activeLabel =
+    models.length === 1 && firstModel ? videoModelName(firstModel) : 'Mixed';
 
   const dropdown = (
     <DropdownMenu>
@@ -124,28 +116,12 @@ export const SequenceVideoModelSelector = ({
         <DropdownMenuLabel className="text-xs">
           Video model
           <span className="block font-normal text-muted-foreground">
-            View a model across the sequence; Set applies it to every scene.
+            Set applies a model to every scene.
           </span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        {models.length > 1 && (
-          <DropdownMenuCheckboxItem
-            checked={activeVideoModel === null}
-            onCheckedChange={() => selectVideoModel(null)}
-            onSelect={(e) => e.preventDefault()}
-            className="cursor-pointer"
-          >
-            Mixed (per scene)
-          </DropdownMenuCheckboxItem>
-        )}
         {models.filter(isValidImageToVideoModel).map((model) => (
-          <DropdownMenuCheckboxItem
-            key={model}
-            checked={activeVideoModel === model}
-            onCheckedChange={() => selectVideoModel(model)}
-            onSelect={(e) => e.preventDefault()}
-            className="cursor-pointer"
-          >
+          <DropdownMenuItem key={model} onSelect={(e) => e.preventDefault()}>
             <span className="flex w-full items-center justify-between gap-2">
               <span className="truncate">{videoModelName(model)}</span>
               <span className="flex shrink-0 items-center gap-1.5">
@@ -159,7 +135,7 @@ export const SequenceVideoModelSelector = ({
                 />
               </span>
             </span>
-          </DropdownMenuCheckboxItem>
+          </DropdownMenuItem>
         ))}
         <AddModelMenuSection
           sequenceId={sequenceId}

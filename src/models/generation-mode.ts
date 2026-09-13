@@ -32,7 +32,7 @@ export type SelectorGroup = (typeof SELECTOR_GROUP_ORDER)[number];
 export const TURBO_ANALYSIS_MODELS = [
   'openai/gpt-5.6-luna',
   'anthropic/claude-opus-5-fast',
-  'google/gemini-3.7-flash',
+  'google/gemini-3.8-flash',
   'z-ai/glm-5.3-flash',
 ] as const satisfies readonly AnalysisModelId[];
 
@@ -47,8 +47,6 @@ export const TURBO_IMAGE_MODELS = [
 /** Fast motion models. H3 Max is the turbo default. */
 export const TURBO_VIDEO_MODELS = [
   'minimax_h3_max',
-  'ltx_2_3_pro',
-  'minimax_hailuo_02',
   'grok_imagine_video_1_5',
 ] as const satisfies readonly ImageToVideoModel[];
 

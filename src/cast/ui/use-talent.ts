@@ -17,6 +17,7 @@ import {
   deleteTalentMediaFn,
 } from '@/cast/talent.fn';
 import { usePublicOrTeamQuery } from '@/ui/use-public-or-team-query';
+import { useUploadRightsGate } from '@/cast/ui/upload-rights-gate';
 import { putToR2 } from '@/ui/upload';
 import type {
   CreateTalentInput,
@@ -101,6 +102,7 @@ export function useUpdateTalent() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: { globalError: true },
     mutationFn: (data: UpdateTalentInput & { talentId: string }) =>
       updateTalentFn({ data }),
     onSuccess: (_, variables) => {
@@ -138,6 +140,7 @@ export function useToggleTalentFavorite() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: { globalError: true },
     mutationFn: (talentId: string) =>
       toggleTalentFavoriteFn({ data: { talentId } }),
     onSuccess: (data) => {
@@ -150,10 +153,13 @@ export function useToggleTalentFavorite() {
 }
 
 /**
- * Hook to upload talent media via presigned URL
+ * Upload media onto an existing talent: presign → R2 → likeness check (a
+ * real person opens the sign-off dialog) → finalize, which moves the object
+ * under the talent.
  */
 export function useUploadTalentMedia() {
   const queryClient = useQueryClient();
+  const { ensureUploadRights } = useUploadRightsGate();
 
   return useMutation({
     mutationFn: async (data: {
@@ -161,10 +167,6 @@ export function useUploadTalentMedia() {
       type: 'image' | 'video' | 'recording';
       file: File;
       onProgress?: (percent: number) => void;
-      portraitAttestation?: {
-        statementVersion: string;
-        authorizationBasis?: string;
-      };
     }) => {
       const presign = await presignTalentUploadFn({
         data: {
@@ -181,22 +183,22 @@ export function useUploadTalentMedia() {
         data.onProgress
       );
 
+      if (data.type === 'image') {
+        await ensureUploadRights([
+          { url: presign.publicUrl, filename: data.file.name },
+        ]);
+      }
+
       await finalizeTalentUploadFn({
         data: {
           talentId: data.talentId,
           type: data.type,
           mediaId: presign.mediaId,
           publicUrl: presign.publicUrl,
-          path: presign.path,
-          portraitAttestation: data.portraitAttestation,
         },
       });
 
-      return {
-        url: presign.publicUrl,
-        path: presign.path,
-        mediaId: presign.mediaId,
-      };
+      return { mediaId: presign.mediaId };
     },
     onSuccess: (_, variables) => {
       void queryClient.invalidateQueries({
@@ -242,6 +244,7 @@ export function useDeleteTalentMedia() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: { globalError: true },
     mutationFn: (data: { mediaId: string; talentId: string }) =>
       deleteTalentMediaFn({ data: { mediaId: data.mediaId } }),
     onSuccess: (_, variables) => {
@@ -282,6 +285,7 @@ export function useSetDefaultSheet() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    meta: { globalError: true },
     mutationFn: (data: { sheetId: string; talentId: string }) =>
       setDefaultSheetFn({ data: { sheetId: data.sheetId } }),
     onSuccess: (_, variables) => {

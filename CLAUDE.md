@@ -217,8 +217,9 @@ method removed — so a mid-run read is a type error. The few reads that cannot 
 snapshotted reach the run through three **named hatches**, so the spelling at
 the call site is the justification:
 
-- `scopedDb.credentials.resolveKey('fal')` / `.resolveLlmKey()` — a secret, not a
-  row. Resolved inside the step that spends it.
+- `scopedDb.credentials.resolveKey('fal')` / `.resolveKey('elevenlabs')` /
+  `.resolveLlmKey()` — a secret, not a row. Resolved inside the step that
+  spends it. `'elevenlabs'` is platform-only (not on `API_KEY_PROVIDERS`).
 - `scopedDb.claims.<domain>.getById…(id)` — an append-only row by an id this run
   already holds (its own claim, or the row that claim retired into). Cannot
   express a selection pointer, which is the point.
@@ -250,7 +251,8 @@ render-only switch: it picks the motion-prompt template and folds into the
 motion hash, so flipping it re-stales that shot's motion prompt.
 
 **Two capability questions, don't mix them.** `supportsReferenceOnlyMotion` is
-the model-only floor (fal `reference-to-video`: Seedance 2.0 / 2.5, H3 Max, Omni Flash);
+the model-only floor (fal `reference-to-video`: Seedance 2.0 / 2.5, H3 Max,
+Omni Flash, Kling O3 Pro);
 `referenceOnlyCapableWith(model, vias)` is its isomorphic via-aware form, which
 `createSequenceSchema` asks with `{ xai: true }` for **every** selected video
 model, not just the primary. Anywhere a team's keys are
@@ -368,7 +370,7 @@ Frames are the core content unit — each represents one scene from script analy
 frame.metadata = {
   sceneId,
   sceneNumber,
-  originalScript: { extract, lineNumber, dialogue },
+  originalScript: { extract, dialogue: [{ character, line, tone, shotNumber?, voiceToken? }] },
   metadata: { title, durationSeconds, location, timeOfDay, storyBeat },
   variants: { cameraAngles, movementStyles, moodTreatments }, // A/B/C options
   selectedVariant: { cameraAngle, movementStyle, moodTreatment, rationale },
@@ -383,7 +385,7 @@ frame.metadata = {
 
 Access via `frameService.getSceneData(frame)`, `getVisualPrompt(frame)`, `getMotionPrompt(frame)`, or directly: `frame.metadata.metadata.title`, `frame.metadata.prompts.visual.fullPrompt`. Storing the full scene lets us regenerate without re-analyzing the script and preserves variants for retries.
 
-## Media vias: fal + BytePlus + xAI + Google
+## Media vias: fal + BytePlus + xAI + Google + ElevenLabs
 
 fal is the default **via** for every image / video / audio model. Catalog **vendor** is who trained the model (ByteDance, Kling, …). **Seedance (video) and Seedream (image) also have a native BytePlus Ark via (#1157)** — see below. Grok has a native xAI via, and Gemini (chat + Omni Flash video) a native Google via. Everything after this paragraph in the fal section applies to the fal via only.
 
@@ -397,10 +399,41 @@ Two vias, one catalog key. `IMAGE_TO_VIDEO_MODELS.seedance_v2` / `seedance_v2_5`
 - **Ark quotas are per-ACCOUNT** (shared by every team), where fal's are per-key — so the backpressure is 429 classification + exponential backoff in `quota-retry.ts` (`withBytePlusQuotaRetry` lives inside the byteplus via case; `withLlmRateLimitRetry` is the same loop for the LLM providers), which deliberately does **not** consume the content-flag retry budget. Deliberately **not** a per-run fan-out cap: #1143 deleted that mechanism because it is per workflow RUN. Real admission control has to live where it can see the whole system. Every rejection emits a `byteplus_quota_backoff` PostHog event (`byteplus-observability.ts`) — un-deduped. Watch the `exhausted: true` rate: non-zero means it is time for a bounded queue in front of Ark (#891).
 - **The Assets OpenAPI is paced by a Durable Object (#1519).** `BytePlusGovernor` (`byteplus-governor.do.ts`, binding `BYTEPLUS_GOVERNOR`, migration tag `v3` in all three env blocks) holds a token bucket per account. **CreateAsset is 3/min per account** (`BYTEPLUS_ASSET_WRITE_QPM`), so registering stills is a sequence of durable workflow steps, not part of submit: `ingestArkAssets` (`byteplus-asset-steps.ts`) claims a pool slot, reserves a create turn in the DO, `step.sleep`s the delay (free while idle, survives eviction), then creates — and hands `submitMotionJob` / `submitStudioVideoJob` an `arkAssets` map they only look up (`arkUrlFor` throws on a miss). Only stills that can carry a face are registered: the start frame and character sheets (`arkStillsForMotion`); location/element sheets go as plain URLs; studio registers every user image (`arkStillsForStudio`). Reads (`ListAssets`, `GetAsset` polls) are paced in-step on a separate bucket (`BYTEPLUS_OPENAPI_QPM`, default 60), with the backoff retry underneath.
 - **Asset groups are per deployment, and swept hourly (#1519).** The AIGC group is `openstory-virtual-<app host>` (`aigcGroupName`, from `VITE_APP_URL`; `BYTEPLUS_ASSET_GROUP_ID` pins one by id), so production and each preview own separate groups on the shared account. `reconcileBytePlusAssets` (`src/models/server/reconcile-byteplus-assets.ts`, cron `53 * * * *` in both blocks) diffs the group against `byteplus_assets` both ways: an Ark asset the ledger does not know and older than the 45-minute lease window is deleted (a closed preview's D1 takes its ledger with it, its assets stayed); a ledger row whose asset is gone is forgotten so the slot counts as free. Nothing is deleted from Ark after a video — assets are a reusable working set, only their lease is released. The preview patch splices the container's `v2` between `v1` and `v3` — wrangler applies migrations in array order after the last-applied tag. **Never fall back**: a failed ingest fails the shot, and an Ark portrait rejection is thrown as an Ark error — a quiet hop to fal (or to a public URL) is how a throttled ingest showed up as a fal error the user could not act on.
-- **Photorealistic faces (including generated ones).** Seedance 2.5/2.0 reject a public URL that _may contain a real person_ (`InputImageSensitiveContentDetected.PrivacyInformation`). Advanced Creation Rights unlock the **virtual** portrait library. Submit registers **every still** as `asset://` (`BYTEPLUS_ACCESS_KEY` / `BYTEPLUS_SECRET_KEY`) — start frame and all references. If ingest is missing or Ark still 400s, fal fallback remains. Do **not** fold it into the content-flag re-roll.
+- **Photorealistic faces (including generated ones).** Seedance 2.5/2.0 reject a public URL that _may contain a real person_ (`InputImageSensitiveContentDetected.PrivacyInformation`). Advanced Creation Rights unlock the **virtual** portrait library. Submit registers **every still** as `asset://` (`BYTEPLUS_ACCESS_KEY` / `BYTEPLUS_SECRET_KEY`) — start frame and all references. If ingest is missing or Ark still 400s, fal fallback remains. Do **not** fold it into the content-flag re-roll. **Every user upload is checked for a real person before any of this (#1581):** each image a user brings in anywhere (talent, location, element, shot still or sheet, studio reference, the public API) is classified once by `classifyUpload` (`src/cast/server/upload-rights.ts`), its verdict recorded on `upload_attestations` keyed by the SHA-256 of the stored URL, and a real person needs the portrait sign-off (`attestUploads`) before the finalize / create / generate that `requireUploadRights` guards. A talent's `isHuman` is derived from that ledger, never taken off the client. Library rows passed the gate when saved, so at generate time only raw URLs and unsaved `temp/` / `uploads/` objects are re-checked (`needsLikenessCheck`). Client side: `useUploadRightsGate().ensureUploadRights()` opens the one sign-off dialog from any upload hook; the studio composer keeps its inline panel on `useUploadRights`.
 - **ACR slots are a working set, not a library (#1361).** ~50 resident assets per BytePlus **account** (`BYTEPLUS_ASSET_SLOTS`), shared by every team — the same shape as the Ark quotas. `byteplus-asset-pool.ts` reuses by identity (the **stored** URL, hashed), evicts the least-recently-used **unleased** slot when full (start frames before cast/location sheets), and refuses when everything is leased, which falls through to fal. The lease is a `byteplus_assets` row with a CAS delete as the mutex: deleting an `asset://` a job is still polling 400s that job, so the lease must cover submit **through** poll. `MotionWorkflow` releases on BOTH exits — success and `onFailure`, the lease twin of the batch's `zeroReservation` — and the TTL only covers a run that reached neither. A parent must never sweep its fan-out's leases: a terminal parent does not imply dead children (#839). LRU is our own `lastUsedAt`, never Ark's `LastInferenceTime` (absent ≠ never used). `MotionBatchWorkflow` counts the batch's distinct stills against `free + evictable` before fanning out (`liveRead.bytePlusAssets.getAdmission`, bucket `POOL-CAPACITY` — occupancy is shared with every other team, so it cannot be snapshotted at the trigger). Every statement lives in `scopedDb.bytePlusAssets`; like `modelUsage` it is platform-global, so nothing is team-scoped, and `claimSlot` is a write that happens to read.
 - **Ark keys are region-scoped** and Seedance is served only from `ap-southeast`; an EU key fails at request time, not startup.
 - **E2E stays on fal.** `isBytePlusConfigured()` returns false under `E2E_TEST` unless `ARK_BASE_URL` is also set. Recording Ark fixtures needs a real Ark key.
+
+### Native ElevenLabs
+
+Character TTS and Voice Design go to `api.elevenlabs.io` via
+`@tanstack/ai-elevenlabs` (`elevenlabsSpeech`) and `@elevenlabs/elevenlabs-js`
+(Voice Design / create-voice — the adapter does not wrap those). **Platform
+key only** (`ELEVENLABS_API_KEY`): designed voices live in the account that
+created them, so there is no team BYOK and `'elevenlabs'` is not on
+`API_KEY_PROVIDERS` (same shape as `ARK_API_KEY`). Workflows spend the key
+through `scopedDb.credentials.resolveKey('elevenlabs')`.
+
+`ELEVENLABS_BASE_URL` is the e2e hook on both the TanStack TTS adapter and
+the official SDK (default `https://api.elevenlabs.io`, no `/v1` suffix —
+paths include it). Playwright points it at the main aimock on `:4010`,
+which already dispatches `POST /v1/text-to-speech/{voice_id}`
+(`onElevenLabsTTS`). Fixtures live under
+`e2e/fixtures/recorded/elevenlabs/`. Replay injects
+`ELEVENLABS_API_KEY=test-mock-key`; record uses the real key from
+`.env.local` and aimock's `providers.elevenlabs` proxy. Voice Design
+(`/v1/text-to-voice/*`) is not in aimock yet. Under `E2E_TEST` the via
+stays off unless the base URL is also set, so a laptop key cannot bill
+replay.
+
+Pricing is a static card (`src/billing/elevenlabs-pricing.ts`), merged into
+the effective map like BytePlus: TTS per 1000 characters (v3 / Multilingual v2
+$0.10, advertised **2026-09-11**), Voice Design per call ($0.30, a
+conservative 3 × 1000-char preview over-estimate). `recordFalUsage: false`,
+unaudited like xAI/Google/Ark spend. Do not alias onto
+`fal-ai/elevenlabs/music` — that is a different product.
+
+Out of scope here: voice cloning from an uploaded sample, realtime/agents.
 
 ### Native Grok (xAI)
 
@@ -599,6 +632,7 @@ Refs: [drizzle-orm#3065](https://github.com/drizzle-team/drizzle-orm/issues/3065
 - **Loading:** inline `<Skeleton />` fallbacks that mirror final content (no separate skeleton components).
 - **Visibility:** CSS `hidden`/`block` (pre-render) rather than conditional mounting, to avoid layout shift.
 - **Forms:** TanStack Query mutations + Zod (`safeParse`) — no controlled-input boilerplate, use `FormData`.
+- **Mutation errors:** the global error toast in `src/ui/query-client.ts` is opt-in via `meta: { globalError: true }` (#1571). Default is off because nearly every mutation surfaces its own failure (titled toast, inline state, try/catch). Set it on a hook whose callers do nothing with the error.
 - **Routing:** TanStack Router `createFileRoute`, params via `Route.useParams()`. URL reflects state via search params.
 - **Files:** `kebab-case.tsx`, named exports, vanilla TS (`.ts`) for logic. `@/` alias. No default exports.
 
@@ -716,7 +750,7 @@ const { thingUnderTest } = await import('./thing-under-test');
 
 When re-mocking inside an `it()` block to test a different code path, call `vi.resetModules()` first — otherwise the dynamic import returns the cached module from the prior mock.
 
-**E2E:** Playwright drives `vite dev` (cf-plugin → Workerd) on port 3001 with `E2E_TEST=true`. `bun test:e2e:setup` applies D1 migrations against the isolated `[env.test]` block in `wrangler.jsonc` and seeds via `getPlatformProxy()`. Aimock (`:4010`) intercepts LLM/fal calls. R2 is NOT mocked: uploads do real puts into the local Miniflare R2 binding (asset bytes come from the real `fal.media` URLs recorded in aimock fixtures) and reads are served by the worker's `/r2/$` route. Recording (`E2E_RECORD=1`) hits real LLM/fal; locally-served URLs sent to real providers are made fetchable via `fal.storage.upload` / data-URIs (`src/platform/server/storage/external-url.ts`).
+**E2E:** Playwright drives `vite dev` (cf-plugin → Workerd) on port 3001 with `E2E_TEST=true`. `bun test:e2e:setup` applies D1 migrations against the isolated `[env.test]` block in `wrangler.jsonc` and seeds via `getPlatformProxy()`. Aimock (`:4010`) intercepts LLM/fal calls. R2 is NOT mocked: uploads do real puts into the local Miniflare R2 binding (asset bytes come from durable `assets.openstory.so/e2e/…` URLs that `scripts/mirror-e2e-fixture-media.ts` vendors after every record — provider CDNs like `fal.media` / `imgen.x.ai` expire) and reads are served by the worker's `/r2/$` route. Recording (`E2E_RECORD=1`) hits real LLM/fal then mirrors; locally-served URLs sent to real providers are made fetchable via `fal.storage.upload` / data-URIs (`src/platform/server/storage/external-url.ts`). `src/platform/e2e-recorded-fixture-media.test.ts` fails if a fixture still points at a provider host.
 
 ## Platform & Deployment
 

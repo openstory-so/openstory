@@ -1,3 +1,4 @@
+import { elementKindFromFilename } from '@/cast/element-kind';
 import { ThinkingBar } from '@/ui/ai/thinking-bar';
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
 import { ActionCost } from '@/billing/ui/action-cost';
@@ -46,6 +47,7 @@ import { BILLING_TRANSACTIONS_KEY } from '@/billing/ui/use-billing-balance-realt
 import { useBillingGate } from '@/billing/ui/use-billing-gate';
 import { useGenerationSettings } from '@/sequences/ui/use-generation-settings';
 import {
+  allowsUnfundedGeneration,
   DEFAULT_GENERATION_STOP_AT,
   flagsFromStopAt,
   includesStage,
@@ -635,6 +637,7 @@ export const ScriptView: FC<{
               description: el.description,
               imageUrl: el.tempPublicUrl,
               consistencyTag: el.consistencyTag,
+              kind: elementKindFromFilename(el.filename) ?? 'image',
             })),
             locations: [],
           }),
@@ -895,6 +898,10 @@ export const ScriptView: FC<{
     > = genSettings
   ) => {
     const { stopAt: runUntil, generateStartFrames, videoModels } = run;
+    if (needsBillingSetup && !allowsUnfundedGeneration(runUntil)) {
+      showGate();
+      return;
+    }
     const flags = flagsFromStopAt(runUntil);
     // sequence_generated is captured server-side in createSequences (#1088)
     // so dashboard + public API both feed #product-alerts once.
@@ -946,7 +953,12 @@ export const ScriptView: FC<{
   };
 
   const requestGenerate = () => {
-    if (savedSettings.rememberStopAt) {
+    // Remembered paid stop + no credits: open the slider instead of firing
+    // Generate (the credit gate still runs on confirm).
+    if (
+      savedSettings.rememberStopAt &&
+      !(needsBillingSetup && !allowsUnfundedGeneration(stopAt))
+    ) {
       executeRegeneration();
       return;
     }
@@ -991,11 +1003,6 @@ export const ScriptView: FC<{
       return;
     }
 
-    if (needsBillingSetup) {
-      showGate();
-      return;
-    }
-
     if (isEditing) {
       if (savedSettings.rememberStopAt) {
         setEnhance('showRegenerateConfirm', true);
@@ -1034,11 +1041,6 @@ export const ScriptView: FC<{
     // (#1286).
     if (!requireAuth()) {
       if (!isEditing) markPendingIntent('enhance');
-      return;
-    }
-
-    if (needsBillingSetup) {
-      showGate();
       return;
     }
 

@@ -1,12 +1,13 @@
 /**
- * Rights attestations for user uploads (#1180).
+ * Rights attestations for user uploads (#1180, #1581).
  *
- * When someone uploads an image of a real person, or an avatar asset, or a
- * brand logo, we require them to state on the record that they hold the rights
- * to it. This module is the single source of truth for that wording: the UI
- * renders these exact strings, and `upload_attestations` stores a hash of the
- * same string. One definition, so the text a user agreed to and the text we
- * later claim they agreed to cannot drift apart.
+ * Every image a user brings in is looked at by the likeness classifier before
+ * anything uses it. A real person needs the uploader's portrait statement on
+ * the record; anything else gets our own finding recorded instead. This
+ * module is the single source of truth for that wording: the UI renders
+ * these exact strings, and `upload_attestations` stores a hash of the same
+ * string. One definition, so the text a user agreed to and the text we later
+ * claim they agreed to cannot drift apart.
  *
  * Versioning rule: **never edit a statement's text in place.** Add a new
  * version and point the active constant at it. Editing v1's wording silently
@@ -15,7 +16,6 @@
  */
 
 import { sha256Hex } from './hash';
-import type { AttestationSubjectType } from '@/platform/server/db/schema/compliance';
 
 export type AttestationStatement = {
   version: string;
@@ -54,14 +54,10 @@ export const PORTRAIT_RIGHTS_V1: AttestationStatement = {
 };
 
 /**
- * Original-work / IP rights — the statement for uploads that are not a real
- * person: logos, product shots, synthetic avatars, style references.
- *
- * Mirrors the substance of the ownership declaration a model provider requires
- * of us for custom asset uploads, so what our users warrant to us is at least
- * as strong as what we warrant upstream. Notably includes the "not similar to
- * any real person" clause, which is what makes a synthetic-avatar upload
- * distinguishable from an unlicensed likeness.
+ * Original-work / IP rights — RETIRED (#1581). Until then every non-person
+ * upload (logos, product shots, synthetic avatars) had to affirm this; the
+ * per-upload IP warranty now lives in the Terms alone and only a real
+ * person's likeness is signed for. Kept so stored v1 hashes still verify.
  */
 export const ASSET_RIGHTS_V1: AttestationStatement = {
   version: 'asset-rights-v1',
@@ -77,26 +73,46 @@ export const ASSET_RIGHTS_V1: AttestationStatement = {
   requiresBasis: false,
 };
 
+/**
+ * The automated finding recorded when an upload is checked and no real
+ * person is found (#1581). Not a user statement: it is our own record of why
+ * the upload was accepted with nothing signed, so a later "on what basis did
+ * you take this image?" has an answer that names the check and the moment.
+ * Nothing renders it.
+ */
+export const LIKENESS_CLEARED_V1: AttestationStatement = {
+  version: 'likeness-cleared-v1',
+  label: 'No real person detected',
+  text: [
+    'Automated likeness check: no real, identifiable person was detected in',
+    'this upload, so no likeness authorization was required.',
+  ].join(' '),
+  requiresBasis: false,
+};
+
+/**
+ * The automated finding recorded when the check DID find a real person
+ * (#1581). Written by the classifier, never by the user; it is what makes a
+ * later re-check free (the verdict is on the ledger) and what the gate reads
+ * as "portrait sign-off still owed". Superseded by a `portrait-rights-v1` row
+ * once the user signs. Nothing renders it.
+ */
+export const LIKENESS_DETECTED_V1: AttestationStatement = {
+  version: 'likeness-detected-v1',
+  label: 'Real person detected',
+  text: [
+    'Automated likeness check: a real, identifiable person was detected in',
+    'this upload, so a likeness authorization is required before use.',
+  ].join(' '),
+  requiresBasis: false,
+};
+
 const STATEMENTS: readonly AttestationStatement[] = [
   PORTRAIT_RIGHTS_V1,
   ASSET_RIGHTS_V1,
+  LIKENESS_CLEARED_V1,
+  LIKENESS_DETECTED_V1,
 ];
-
-/**
- * Which statement applies to an upload.
- *
- * Driven by what the upload *depicts*, not by which table it lands in: a
- * `talent` row is usually a real actor but can be a synthetic character, and a
- * `sequence_element` is usually a logo but can be a headshot. The caller passes
- * what the user told us, and the stronger statement applies whenever a real
- * person is involved.
- */
-export function statementFor(opts: {
-  subjectType: AttestationSubjectType;
-  depictsRealPerson: boolean;
-}): AttestationStatement {
-  return opts.depictsRealPerson ? PORTRAIT_RIGHTS_V1 : ASSET_RIGHTS_V1;
-}
 
 /** Look up a statement by stored version, for rendering historical evidence. */
 function statementByVersion(version: string): AttestationStatement | undefined {

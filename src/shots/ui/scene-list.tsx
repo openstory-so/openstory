@@ -166,8 +166,6 @@ export type SceneListProps = {
    */
   generateStartFrames?: boolean;
   styleName?: string;
-  modelMissingShotIds?: Set<string>;
-  modelMissingLabel?: string | null;
   /** Shots with stale prompts/image (#1077) — amber dots on every rail thumbnail. */
   staleShotIds?: Set<string>;
   /** Sizing from the host — sidebar width on desktop, `w-full` in a sheet. */
@@ -206,8 +204,6 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   styleCategory,
   generateStartFrames = false,
   styleName,
-  modelMissingShotIds,
-  modelMissingLabel,
   staleShotIds,
   className,
   scrollToSelection = false,
@@ -612,8 +608,6 @@ const SceneListComponent: React.FC<SceneListProps> = ({
               regeneratingMotion={regeneratingMotion}
               divergentByShotId={divergentByShotId}
               onCompareDivergent={onCompareDivergent}
-              modelMissingShotIds={modelMissingShotIds}
-              modelMissingLabel={modelMissingLabel}
               staleShotIds={staleShotIds}
             />
           ))}
@@ -633,11 +627,6 @@ const SceneListComponent: React.FC<SceneListProps> = ({
                 onCompareDivergent={
                   divergent ? () => onCompareDivergent?.(divergent) : undefined
                 }
-                modelMissing={
-                  !!modelMissingLabel &&
-                  (modelMissingShotIds?.has(shot.id) ?? false)
-                }
-                modelMissingLabel={modelMissingLabel}
                 isStale={staleShotIds?.has(shot.id) ?? false}
               />
             );
@@ -832,8 +821,6 @@ const areEqual = (
     prevProps.initialImageModel !== nextProps.initialImageModel ||
     prevProps.styleCategory !== nextProps.styleCategory ||
     prevProps.styleName !== nextProps.styleName ||
-    prevProps.modelMissingLabel !== nextProps.modelMissingLabel ||
-    prevProps.modelMissingShotIds !== nextProps.modelMissingShotIds ||
     prevProps.staleShotIds !== nextProps.staleShotIds ||
     prevProps.className !== nextProps.className
   ) {

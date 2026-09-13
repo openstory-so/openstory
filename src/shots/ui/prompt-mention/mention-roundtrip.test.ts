@@ -37,6 +37,7 @@ const element: MentionElementInput = {
   token: 'red-hex-logo',
   description: 'A red hex logo',
   imageUrl: '',
+  kind: 'image',
   consistencyTag: null,
 };
 
@@ -54,6 +55,8 @@ const elementMinimal: SequenceElementMinimal = {
   description: element.description ?? '',
   imageUrl: element.imageUrl,
   consistencyTag: element.consistencyTag,
+  kind: 'image',
+  durationSeconds: null,
 };
 
 const baseExisting = {

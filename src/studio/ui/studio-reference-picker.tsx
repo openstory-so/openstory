@@ -29,7 +29,7 @@ import {
   useSequencesWithShots,
   type SequenceWithShots,
 } from '@/sequences/ui/use-sequences-with-shots';
-import { useStudioAssets } from './use-studio-assets';
+import { useStudioAssets, useStudioUploads } from './use-studio-assets';
 import { useTalent } from '@/cast/ui/use-talent';
 import { isBrowserDisplayableStillUrl } from '@/shots/shot-view';
 import {
@@ -44,6 +44,7 @@ import {
   Check,
   Clapperboard,
   Film,
+  FolderUp,
   MapPin,
   Sparkles,
   Upload,
@@ -69,6 +70,8 @@ type StudioSequenceSummary = Pick<SequenceWithShots, 'id' | 'title'> & {
 
 export type StudioLibrary = {
   generations: StudioReference[];
+  /** Past composer uploads, newest first (#1581). */
+  uploads: StudioReference[];
   sequences: StudioSequenceSummary[];
   cast: StudioReference[];
   locations: StudioReference[];
@@ -76,10 +79,17 @@ export type StudioLibrary = {
 
 type StudioReferenceSlots = Record<StudioReferenceKind, number>;
 
-type Source = 'generations' | 'sequences' | 'cast' | 'locations' | 'audio';
+type Source =
+  | 'generations'
+  | 'uploads'
+  | 'sequences'
+  | 'cast'
+  | 'locations'
+  | 'audio';
 
 const SOURCES: { key: Source; label: string; icon: typeof Sparkles }[] = [
   { key: 'generations', label: 'Generations', icon: Sparkles },
+  { key: 'uploads', label: 'Uploads', icon: FolderUp },
   { key: 'sequences', label: 'Sequences', icon: Clapperboard },
   { key: 'cast', label: 'Talent', icon: Users },
   { key: 'locations', label: 'Locations', icon: MapPin },
@@ -89,6 +99,7 @@ const SOURCES: { key: Source; label: string; icon: typeof Sparkles }[] = [
 const EMPTY: Record<Exclude<Source, 'audio'>, string> = {
   generations:
     'No generations yet — make an image or clip and it shows up here.',
+  uploads: 'Nothing uploaded yet — anything you upload or paste lands here.',
   sequences: 'No sequences yet.',
   cast: 'No talent with a headshot yet.',
   locations: 'No locations with a reference image yet.',
@@ -121,6 +132,7 @@ export function useStudioLibrary(): StudioLibrary {
   const { data: sequences } = useSequencesWithShots();
   const images = useStudioAssets({ activity: 'image' });
   const videos = useStudioAssets({ activity: 'video' });
+  const { data: uploads } = useStudioUploads();
 
   return useMemo((): StudioLibrary => {
     const generations = [
@@ -146,6 +158,7 @@ export function useStudioLibrary(): StudioLibrary {
 
     return {
       generations,
+      uploads: uploads ?? [],
       sequences: sequences.map((sequence) => {
         const shots = shotReferences(sequence);
         return {
@@ -171,7 +184,7 @@ export function useStudioLibrary(): StudioLibrary {
           : []
       ),
     };
-  }, [talent, locations, sequences, images.data, videos.data]);
+  }, [talent, locations, sequences, images.data, videos.data, uploads]);
 }
 
 type TileGridProps = {

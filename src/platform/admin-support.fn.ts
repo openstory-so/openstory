@@ -25,3 +25,21 @@ export const getAdminShotsFn = createServerFn({ method: 'GET' })
   .handler(async ({ context, data }) => {
     return context.adminScopedDb.admin.getShotsForSequence(data.sequenceId);
   });
+
+export const getAllAdminStudioAssetsFn = createServerFn({ method: 'GET' })
+  .middleware([systemAdminMiddleware])
+  .validator(
+    zodValidator(
+      z.object({
+        activity: z.enum(['image', 'video']).optional(),
+        search: z.string().max(200).optional(),
+        favoritesOnly: z.boolean().optional(),
+        order: z.enum(['newest', 'oldest']).optional(),
+        limit: z.number().int().min(1).max(100).optional(),
+        cursor: ulidSchema.optional(),
+      })
+    )
+  )
+  .handler(async ({ context, data }) => {
+    return context.adminScopedDb.admin.getAllStudioAssets(data);
+  });

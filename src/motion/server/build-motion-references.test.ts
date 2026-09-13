@@ -21,6 +21,7 @@ const character = (
   sheetInputHash: 'hash',
   selectedSheetVersionId: null,
   physicalDescription: `${name} is tall`,
+  voiceOnly: false,
   consistencyTag: name.toLowerCase(),
 });
 
@@ -30,6 +31,8 @@ const element = (token: string, imageUrl: string): SequenceElementMinimal => ({
   description: `${token} description`,
   imageUrl,
   consistencyTag: token.toLowerCase(),
+  kind: 'image',
+  durationSeconds: null,
 });
 
 describe('buildMotionReferenceImages', () => {
@@ -61,6 +64,8 @@ describe('buildMotionReferenceImages', () => {
         referenceImageUrl: 'https://example.com/logo.png',
         description: 'LOGO - LOGO description',
         role: 'element',
+        kind: 'image',
+        durationSeconds: null,
         token: 'LOGO',
       },
     ]);
@@ -189,7 +194,7 @@ describe('buildMotionReferenceImages — reference-only', () => {
       scene,
       characters,
       elements: [],
-      includeLocations: true,
+      referenceOnly: true,
       locations,
     });
 
@@ -205,7 +210,7 @@ describe('buildMotionReferenceImages — reference-only', () => {
       scene,
       characters,
       elements: [],
-      includeLocations: true,
+      referenceOnly: true,
     });
 
     expect(refs.map((r) => r.role)).toEqual(['character']);

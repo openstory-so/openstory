@@ -26,24 +26,25 @@ import { z } from 'zod';
 // Character Bible Schemas
 // ============================================================================
 
-// Descriptions here count toward Anthropic's strict-output grammar budget
-// (#1035): keep only the constraint-bearing ones — the detailed field guidance
-// lives in the prompts (`workflow-prompts.ts`).
+// Descriptions are short labels on purpose: they count toward Anthropic's
+// strict-output grammar budget (#1035), so the vocabulary and format rules
+// live in the `phase/scene-bibles-chat` prompt, which is not budgeted.
 export const characterBibleEntrySchema = z.object({
   characterId: z.string(),
   name: z.string(),
-  age: z.string().meta({
-    description: 'Age as number (e.g., 35) or range (e.g., "30s", "early 40s")',
-  }),
+  age: z.string().meta({ description: 'Number or range' }),
   gender: z.string(),
   ethnicity: z.string(),
   physicalDescription: z.string(),
   standardClothing: z.string(),
   distinguishingFeatures: z.string(),
-  consistencyTag: z.string().meta({
-    description:
-      'Snake_case slug of the character name as written in the script (e.g., "detective_sarah"); optional descriptive context may follow the name slug',
-  }),
+  // Performance (#1561). Guidance lives in the bible prompt (grammar budget).
+  personality: z.string(),
+  movement: z.string(),
+  // Narrator, radio voice, a caller on the phone: a voice with no face, so no
+  // sheet, no talent match, no place in an image prompt (#1585).
+  voiceOnly: z.boolean().meta({ description: 'Heard but never seen' }),
+  consistencyTag: z.string().meta({ description: 'snake_case name slug' }),
 });
 
 // ============================================================================
@@ -59,20 +60,13 @@ export const characterBibleEntrySchema = z.object({
  */
 const firstMentionSchema = z.object({
   text: z.string(),
-  lineNumber: z
-    .number()
-    .meta({ description: '1-based line number from the script gutter' }),
+  lineNumber: z.number().meta({ description: 'Gutter line' }),
 });
 
 export const elementBibleEntrySchema = z.object({
-  token: z.string().meta({
-    description:
-      'Uppercase token used in the script to reference this element (e.g. "LOGO", "BOTTLE")',
-  }),
+  token: z.string().meta({ description: 'UPPERCASE script token' }),
   description: z.string(),
-  consistencyTag: z.string().meta({
-    description: 'Short slug tag for image generation (e.g. "red-hex-logo")',
-  }),
+  consistencyTag: z.string().meta({ description: 'Short slug' }),
   firstMention: firstMentionSchema,
 });
 
@@ -82,10 +76,7 @@ export const elementBibleEntrySchema = z.object({
 
 export const locationBibleEntrySchema = z.object({
   locationId: z.string(),
-  name: z.string().meta({
-    description:
-      'Location name as written in the script (e.g., "INT. OFFICE - DAY")',
-  }),
+  name: z.string().meta({ description: 'As written in the script' }),
   type: z.enum(['interior', 'exterior', 'both']),
   timeOfDay: z.string(),
   description: z.string(),
@@ -94,10 +85,7 @@ export const locationBibleEntrySchema = z.object({
   colorPalette: z.string(),
   lightingSetup: z.string(),
   ambiance: z.string(),
-  consistencyTag: z.string().meta({
-    description:
-      'Short snake_case prompt tag for image generation (e.g., "office_modern_steel_glass")',
-  }),
+  consistencyTag: z.string().meta({ description: 'snake_case name slug' }),
   firstMention: firstMentionSchema,
 });
 
@@ -222,7 +210,8 @@ const motionPromptParametersSchema = z.object({
 
 const dialogueLineSchema = z.object({
   character: z.string().meta({
-    description: 'Character name speaking the line, or empty for narrator',
+    description:
+      'Speaker, spelled as the cast list spells it; empty only for a voice nobody could attribute',
   }),
   line: z.string(),
   tone: z.string().meta({
@@ -238,6 +227,19 @@ const dialogueSchema = z.object({
   lines: z
     .array(dialogueLineSchema)
     .meta({ description: 'Array of dialogue lines in the scene' }),
+});
+
+/**
+ * The dialogue shape as STORED and as the editor sends it back (#1559) —
+ * `dialogueSchema` plus the voice element a user bound to each line. Kept
+ * apart from the wire schema above so `voiceToken` never reaches the LLM,
+ * which has no way to know which elements exist and would invent a token.
+ */
+export const storedMotionDialogueSchema = z.object({
+  presence: z.boolean(),
+  lines: z.array(
+    dialogueLineSchema.extend({ voiceToken: z.string().optional() })
+  ),
 });
 
 const motionAudioSchema = z.object({
@@ -510,9 +512,12 @@ export const sceneAnalysisSchema = z.object({
 export type SceneAnalysis = z.infer<typeof sceneAnalysisSchema>;
 /**
  * Analysis scene. `shots` is attached after the shot-list pass (#1486) and is
- * not part of the (unused) `sceneSchema` LLM wire shape.
+ * not part of the (unused) `sceneSchema` LLM wire shape. `originalScript` is
+ * overridden for the same reason: its stored lines carry `shotNumber` /
+ * `voiceToken`, which the wire schema never publishes (see `DialogueLine`).
  */
-export type Scene = z.infer<typeof sceneSchema> & {
+export type Scene = Omit<z.infer<typeof sceneSchema>, 'originalScript'> & {
+  originalScript: { extract: string; dialogue: DialogueLine[] };
   shots?: import('./shot-list.schema').ShotSpec[];
 };
 export type CharacterBibleEntry = z.infer<typeof characterBibleEntrySchema>;
@@ -532,8 +537,33 @@ export type VisualPromptComponents = z.infer<
   typeof visualPromptComponentsSchema
 >;
 export type MotionPrompt = z.infer<typeof motionPromptSchema>;
-export type MotionDialogue = MotionPrompt['dialogue'];
 export type MotionAudio = MotionPrompt['audio'];
+/**
+ * A dialogue line, plus the voice the USER bound to it (#1559).
+ *
+ * `voiceToken` names an audio element — `SARAH_VOICE` — whose file supplies
+ * that character's timbre, accent and delivery. It is deliberately NOT on
+ * `dialogueLineSchema`: the LLM never authors a voice binding, and publishing
+ * the field on the wire schema would invite it to invent a token that matches
+ * no element. So it is absent on every line the analysis writes, and present
+ * only on one a user bound in the editor — which is also why it is optional
+ * rather than required: every line stored before this shipped genuinely has
+ * no answer, not a null one.
+ */
+export type DialogueLine = z.infer<typeof dialogueLineSchema> & {
+  voiceToken?: string;
+  /**
+   * The shot this line is spoken in, stamped on every line by the shot-list
+   * call (#1585, `dialogueFromShots`). Absent only on rows from before
+   * #1585, which keep their old meaning: every shot of the scene.
+   * `dialogueForShot` is the filter and strips the stamp on the way out.
+   */
+  shotNumber?: number;
+};
+export type MotionDialogue = {
+  presence: boolean;
+  lines: DialogueLine[];
+};
 /**
  * The fields model-specific assembly (`assembleMotionPrompt`) actually consumes:
  * the narrative base plus the dialogue/audio direction appended for audio-capable
@@ -552,6 +582,5 @@ export type MotionPromptComponents = z.infer<
 export type MotionPromptParameters = z.infer<
   typeof motionPromptParametersSchema
 >;
-export type DialogueLine = z.infer<typeof dialogueLineSchema>;
 export type Continuity = z.infer<typeof continuitySchema>;
 export type SceneMetadata = z.infer<typeof sceneMetadataSchema>;

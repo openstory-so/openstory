@@ -86,6 +86,9 @@ const characterMetadata: CharacterBibleEntry = {
   physicalDescription: '',
   standardClothing: 'duster',
   distinguishingFeatures: '',
+  personality: '',
+  movement: '',
+  voiceOnly: false,
   consistencyTag: 'sam',
 };
 

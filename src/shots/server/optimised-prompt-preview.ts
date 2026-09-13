@@ -18,6 +18,7 @@ import { isNativeGrokVideoModel } from '@/models/grok-native';
 import {
   getBytePlusImageModelId,
   getBytePlusVideoModelId,
+  getMotionReferenceEndpoint,
   IMAGE_MODELS,
   IMAGE_TO_VIDEO_MODELS,
   videoModelSupportsAudio,
@@ -40,6 +41,10 @@ import {
   buildShotImageReferenceImages,
 } from '@/motion/server/build-motion-references';
 import { resolveMotionPrompt } from '@/motion/server/resolve-motion-prompt';
+import {
+  missingVoiceLines,
+  unusableShotReferenceLines,
+} from '@/motion/reference-support';
 import { resolveShotDuration } from '@/motion/resolve-shot-duration';
 import { buildReferenceImagePrompt } from '@/stills/reference-image-prompt';
 
@@ -56,11 +61,24 @@ export type OptimisedPromptPreview = {
   promptLength: number;
   maxPromptLength: number;
   images?: BoundPromptImage[];
+  /**
+   * Reference clips and audio riding the request (#1559), each labelled with
+   * the tag the prompt binds it by — the same `@Video1` / `Audio 1` the
+   * provider reads, so the preview is the request and not an approximation.
+   */
+  videos?: BoundPromptImage[];
+  audio?: BoundPromptImage[];
 };
 
 export type ShotPromptPreview = {
   image: OptimisedPromptPreview | null;
   motion: OptimisedPromptPreview | null;
+  /**
+   * Why submit would refuse this shot on this model (#1559) — the same lines,
+   * from the same references and start-frame state, so the warning before
+   * Generate is exactly the refusal it prevents. Empty when it would render.
+   */
+  motionUnusable: string[];
   assembledMotionPrompt: string | null;
   motionHasReferenceImages: boolean;
 };
@@ -110,11 +128,28 @@ export function imageUrlsFromFalInput(input: unknown): string[] {
   return urls;
 }
 
-export function imageUrlsFromPromptParts(parts: unknown): string[] {
+/** The URL list in the first of `fields` the fal input carries. */
+function falUrlList(input: unknown, fields: readonly string[]): string[] {
+  if (!isRecord(input)) return [];
+  for (const field of fields) {
+    const value = input[field];
+    if (Array.isArray(value)) {
+      return value.filter(
+        (url): url is string => typeof url === 'string' && url.length > 0
+      );
+    }
+  }
+  return [];
+}
+
+export function imageUrlsFromPromptParts(
+  parts: unknown,
+  type: 'image' | 'video' | 'audio' = 'image'
+): string[] {
   if (!Array.isArray(parts)) return [];
   const urls: string[] = [];
   for (const part of parts) {
-    if (!isRecord(part) || part.type !== 'image' || !isRecord(part.source)) {
+    if (!isRecord(part) || part.type !== type || !isRecord(part.source)) {
       continue;
     }
     if (typeof part.source.value === 'string' && part.source.value.length > 0) {
@@ -154,7 +189,6 @@ export function buildShotPromptPreview(input: {
   videoModel: ImageToVideoModel;
   imagePrompt: string;
   motionPrompt: AssemblableMotionPrompt | null;
-  motionPromptText: string | null;
   shotDurationMs: number | null;
   startFrameUrl: string | null;
   usesStartFrame: boolean;
@@ -182,8 +216,12 @@ export function buildShotPromptPreview(input: {
       scene: input.scene,
       characters: input.characters,
       elements: input.elements,
-      motionPrompt: input.motionPromptText,
-      includeLocations: !input.usesStartFrame,
+      // The ASSEMBLED prompt, exactly as submit passes it (#1559). A voice
+      // bound to a dialogue line is named only in what assembly appends, so
+      // matching the raw text dropped it here while submit sent it — the
+      // preview showed `MATEO_SHOT_1` where the provider got `Audio 1`.
+      motionPrompt: assembledMotionPrompt,
+      referenceOnly: !input.usesStartFrame,
       locations: input.locations,
     })
   );
@@ -214,6 +252,18 @@ export function buildShotPromptPreview(input: {
     }),
     assembledMotionPrompt,
     motionHasReferenceImages: motionRefs.length > 0,
+    motionUnusable: [
+      ...unusableShotReferenceLines(
+        input.videoModel,
+        motionRefs,
+        input.usesStartFrame
+      ),
+      ...missingVoiceLines(
+        input.videoModel,
+        input.motionPrompt?.dialogue,
+        input.elements
+      ),
+    ],
   };
 }
 
@@ -374,6 +424,14 @@ function buildMotionPreview(input: {
           imageUrlsFromPromptParts(ark.prompt),
           (position) => `@Image${position}`
         ),
+        videos: boundPromptImages(
+          imageUrlsFromPromptParts(ark.prompt, 'video'),
+          (position) => `@Video${position}`
+        ),
+        audio: boundPromptImages(
+          imageUrlsFromPromptParts(ark.prompt, 'audio'),
+          (position) => `@Audio${position}`
+        ),
       };
     }
     if (isNativeGeminiVideoModel(input.model)) {
@@ -417,6 +475,11 @@ function buildMotionPreview(input: {
       },
       input.model
     );
+    // Label with the tags of the endpoint the request actually hit: H3 Max
+    // binds `Image 1` / `Audio 1`, Seedance `@Image1` / `@Audio1`. A label
+    // the prompt does not use would make the preview lie about the binding.
+    const refConfig = getMotionReferenceEndpoint(input.model);
+    const onRefEndpoint = refConfig?.endpointId === request.endpointId;
     return {
       modelName: config.name,
       endpointId: request.endpointId,
@@ -426,7 +489,17 @@ function buildMotionPreview(input: {
       maxPromptLength: config.maxPromptLength,
       images: boundPromptImages(
         imageUrlsFromFalInput(request.input),
-        (position) => `@Image${position}`
+        onRefEndpoint && refConfig
+          ? refConfig.tag
+          : (position) => `@Image${position}`
+      ),
+      videos: boundPromptImages(
+        falUrlList(request.input, ['video_urls', 'reference_video_urls']),
+        refConfig?.videoTag ?? ((position) => `@Video${position}`)
+      ),
+      audio: boundPromptImages(
+        falUrlList(request.input, ['audio_urls', 'reference_audio_urls']),
+        refConfig?.audioTag ?? ((position) => `@Audio${position}`)
       ),
     };
   } catch {

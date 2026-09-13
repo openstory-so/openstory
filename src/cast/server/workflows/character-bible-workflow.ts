@@ -55,7 +55,9 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
 
         // Upsert on (sequenceId, characterId): the Script stage already
         // created these rows sheet-less, so this keeps their ids and flips
-        // them to `generating`.
+        // them to `generating`. A voice-only character (#1585) is completed
+        // by design with no sheet version, so nothing waits on it — unlike
+        // the #939 case, which was a FAILED sheet left `completed`.
         const results: Array<{ id: string; characterId: string }> = [];
         for (const character of input.characterBible) {
           const created = await scopedDb.characters.create(
@@ -63,7 +65,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
               sequenceId: input.sequenceId,
               character,
               talentMatch: matchMap.get(character.characterId),
-              sheetStatus: 'generating',
+              sheetStatus: character.voiceOnly ? 'completed' : 'generating',
             })
           );
           results.push({ id: created.id, characterId: created.characterId });
@@ -85,10 +87,20 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
 
     const imageModel = input.imageModel ?? DEFAULT_IMAGE_MODEL;
 
-    // Step 2: Fan out one CharacterSheetWorkflow child per character. Spawns
+    // Voice-only characters get no child: nothing to draw (#1585).
+    const sheetCharacters = input.characterBible.filter((c) => !c.voiceOnly);
+    const voiceOnlyCharacters = input.characterBible.filter((c) => c.voiceOnly);
+    if (voiceOnlyCharacters.length > 0) {
+      logger.info(
+        `[CharacterBibleWorkflow:cf] Skipping sheets for ${voiceOnlyCharacters.length} voice-only character(s): ` +
+          voiceOnlyCharacters.map((c) => c.name).join(', ')
+      );
+    }
+
+    // Step 2: Fan out one CharacterSheetWorkflow child per on-screen character. Spawns
     // happen in parallel via Promise.all; the awaits use Promise.allSettled
     // so a single timed-out child does not tank the entire parent run.
-    const spawnPromises = input.characterBible.map(async (character, index) => {
+    const spawnPromises = sheetCharacters.map(async (character, index) => {
       const characterDbId = characterIdToDbId.get(character.characterId);
       if (!characterDbId) {
         throw new WorkflowValidationError(
@@ -102,6 +114,8 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         ? buildCastingAttributes(character, {
             sheetMetadata: talentMatch.sheetMetadata,
             talentName: talentMatch.talentName,
+            personality: talentMatch.personality,
+            movement: talentMatch.movement,
           })
         : null;
 
@@ -169,7 +183,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         // rather than completing it unanchored (#939). The child's own
         // `onFailure` already wrote the failed status + emitted the realtime
         // event for the affected character row.
-        const character = input.characterBible[index];
+        const character = sheetCharacters[index];
         const name = character?.name ?? `index ${index}`;
         const reason =
           outcome.reason instanceof Error
@@ -198,8 +212,31 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         selectedSheetVersionId: childResult.sheetVersionId ?? null,
         physicalDescription:
           castingAttrs?.physicalDescription ?? character.physicalDescription,
+        voiceOnly: false,
         consistencyTag:
           castingAttrs?.consistencyTag ?? character.consistencyTag,
+      });
+    }
+
+    for (const character of voiceOnlyCharacters) {
+      const characterDbId = characterIdToDbId.get(character.characterId);
+      if (!characterDbId) {
+        throw new WorkflowValidationError(
+          `[CharacterBibleWorkflow:cf] No DB id found for voice-only character ${character.characterId}; ` +
+            `create-character-records did not return a matching row`
+        );
+      }
+      seqCharacters.push({
+        id: characterDbId,
+        characterId: character.characterId,
+        name: character.name,
+        sheetImageUrl: null,
+        sheetStatus: 'completed' as const,
+        sheetInputHash: null,
+        selectedSheetVersionId: null,
+        physicalDescription: character.physicalDescription,
+        voiceOnly: true,
+        consistencyTag: character.consistencyTag,
       });
     }
 

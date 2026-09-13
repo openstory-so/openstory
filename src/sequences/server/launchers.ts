@@ -36,6 +36,7 @@
  * separately.
  */
 
+import { withMeasuredDurations } from '@/cast/server/sequence-elements/media-duration';
 import {
   DEFAULT_IMAGE_MODEL,
   DEFAULT_VIDEO_MODEL,
@@ -157,7 +158,12 @@ async function resolveStoryboardPayload(
   const pendingAutoStyleId =
     !hasSnapshot && style?.sequenceId === sequenceId ? style.id : undefined;
 
-  const elements = await scopedDb.sequenceElements.list(sequenceId);
+  // Snapshotted for the whole run, so a clip's length has to be known here
+  // or no gate downstream can check it (#1559).
+  const elements = await withMeasuredDurations(
+    scopedDb,
+    await scopedDb.sequenceElements.list(sequenceId)
+  );
 
   // Casting identity is snapshotted here, alongside every other frozen field:
   // the matching workflows only re-read these rows for the late-arriving sheet
@@ -183,6 +189,8 @@ async function resolveStoryboardPayload(
       talentId: t.id,
       name: t.name,
       description: t.description,
+      personality: t.personality ?? '',
+      movement: t.movement ?? '',
     })),
     suggestedLocations: suggestedLocationRows.map((l) => ({
       locationId: l.id,

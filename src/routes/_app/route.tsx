@@ -30,8 +30,8 @@ export const Route = createFileRoute('/_app')({
     // a team, and the hook's conservative fallback is the right answer for
     // them. Never fatal: a failure here must not take down the app shell over
     // an advisory capability hint.
-    // The balance seed is what lets the welcome dialog decide card vs SMS
-    // (and whether to open at all) on first paint (#1539).
+    // The balance seed is what lets the welcome dialog decide whether to
+    // open at all on first paint.
     if (session) {
       await Promise.all([
         queryClient

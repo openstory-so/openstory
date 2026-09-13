@@ -100,15 +100,12 @@ The AI model for generating scene images. You can select **multiple image models
 
 The AI model for image-to-video animation. Toggle **Auto-generate motion** to automatically create video clips for each scene after images are generated.
 
-| Model                  | Vendor     | Est. Time                          |
-| ---------------------- | ---------- | ---------------------------------- |
-| MiniMax H3 Max         | MiniMax    | ~10s (Turbo default; native audio) |
-| Seedance 2.0           | ByteDance  | ~3.5 min (Quality default; audio)  |
-| Grok Imagine Video 1.5 | SpaceXAI   | ~30s                               |
-| LTX 2.3 Pro            | Lightricks | ~2 min (open weight)               |
-| Veo 3.1                | Google     | ~2.5 min                           |
-| MiniMax Hailuo 2.3     | MiniMax    | ~3 min                             |
-| Kling v3 Pro           | Kling      | ~5 min                             |
+| Model                  | Vendor    | Est. Time                          |
+| ---------------------- | --------- | ---------------------------------- |
+| MiniMax H3 Max         | MiniMax   | ~10s (Turbo default; native audio) |
+| Seedance 2.0           | ByteDance | ~3.5 min (Quality default; audio)  |
+| Grok Imagine Video 1.5 | SpaceXAI  | ~30s                               |
+| Kling 3.0 Omni         | Kling     | ~5 min                             |
 
 ### Music Model
 

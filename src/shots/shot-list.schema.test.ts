@@ -92,6 +92,7 @@ describe('shot-list schema — constraints', () => {
           action: 'he walks toward the desk',
           cameraMovement: { move: 'dolly', pacing: 'slow' },
           soundCue: 'footsteps',
+          dialogue: [],
           durationSeconds: 4,
         },
       ],
@@ -112,6 +113,7 @@ describe('shot-list schema — constraints', () => {
       action: 'turns',
       cameraMovement: { move: 'pan', pacing: 'smooth' } as const,
       soundCue: '',
+      dialogue: [],
       durationSeconds: 3,
     };
     const result = sceneWithShotsSchema.safeParse({
@@ -161,6 +163,7 @@ describe('shot-list schema — constraints', () => {
       action: 'turns',
       cameraMovement: { move: 'pan', pacing: 'smooth' as const },
       soundCue: '',
+      dialogue: [],
       durationSeconds: 3,
     };
     const shots = sceneWithShotsSchema.shape.shots;

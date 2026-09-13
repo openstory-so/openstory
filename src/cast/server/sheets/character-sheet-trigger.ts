@@ -6,26 +6,11 @@
 import type { CharacterBibleEntry } from '@/shots/scene-analysis.schema';
 import type { CharacterWithSheet } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
+import { characterToBible } from '@/cast/server/bibles-from-scoped';
 import { resolveSheetImageModel } from '@/cast/sheet-image-model';
 import { resolveSequenceStyleConfig } from '@/look/style-config';
 import type { CharacterSheetWorkflowInput } from '@/platform/server/workflow/types';
 import { computeCharacterSheetHashFromDto } from '@/cast/server/workflows/sheet-snapshots';
-
-export function toCharacterMetadata(
-  character: CharacterWithSheet
-): CharacterBibleEntry {
-  return {
-    characterId: character.characterId,
-    name: character.name,
-    age: character.age ?? '',
-    gender: character.gender ?? '',
-    ethnicity: character.ethnicity ?? '',
-    physicalDescription: character.physicalDescription ?? '',
-    standardClothing: character.standardClothing ?? '',
-    distinguishingFeatures: character.distinguishingFeatures ?? '',
-    consistencyTag: character.consistencyTag ?? '',
-  };
-}
 
 export async function buildRegenerateCharacterSheetPayload(params: {
   scopedDb: ScopedDb;
@@ -42,6 +27,12 @@ export async function buildRegenerateCharacterSheetPayload(params: {
   imageModel?: string | null;
 }): Promise<CharacterSheetWorkflowInput> {
   const { scopedDb, userId, teamId, sequence, character } = params;
+  // The UI hides the button; this is the guard for every other caller.
+  if (character.voiceOnly) {
+    throw new Error(
+      `${character.name} is voice-only (#1585): heard, never seen, no sheet to generate`
+    );
+  }
   const style =
     sequence.styleConfig == null && sequence.styleId
       ? await scopedDb.styles.getById(sequence.styleId)
@@ -81,7 +72,7 @@ export async function buildRegenerateCharacterSheetPayload(params: {
     sequenceId: sequence.id,
     characterDbId: character.id,
     characterName: character.name,
-    characterMetadata: toCharacterMetadata(character),
+    characterMetadata: characterToBible(character),
     imageModel: resolveSheetImageModel({
       explicit: params.imageModel,
       liveVersionModel: liveVersion?.model,

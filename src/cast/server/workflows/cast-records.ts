@@ -40,6 +40,8 @@ export function buildCharacterInsert(args: {
     ? buildCastingAttributes(character, {
         sheetMetadata: talentMatch.sheetMetadata,
         talentName: talentMatch.talentName,
+        personality: talentMatch.personality,
+        movement: talentMatch.movement,
       })
     : null;
   return {
@@ -54,6 +56,9 @@ export function buildCharacterInsert(args: {
       castingAttrs?.physicalDescription ?? character.physicalDescription,
     standardClothing: character.standardClothing,
     distinguishingFeatures: character.distinguishingFeatures,
+    personality: castingAttrs?.personality ?? character.personality,
+    movement: castingAttrs?.movement ?? character.movement,
+    voiceOnly: character.voiceOnly,
     consistencyTag: castingAttrs?.consistencyTag ?? character.consistencyTag,
     firstMentionSceneId: null,
     firstMentionText: null,
@@ -218,6 +223,8 @@ export async function createCastRecords(
       description: row.description,
       imageUrl: row.imageUrl,
       consistencyTag: row.consistencyTag,
+      kind: row.kind,
+      durationSeconds: row.durationSeconds,
     });
   }
   return { elements };

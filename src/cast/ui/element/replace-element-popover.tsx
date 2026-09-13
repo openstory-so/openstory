@@ -7,7 +7,11 @@ import {
   snapshotDataTransfer,
   toastDragImportCorsError,
 } from '@/ui/drag-images';
-import { Loader2, RefreshCw, Upload, X } from 'lucide-react';
+import { AudioLines, Film, Loader2, RefreshCw, Upload, X } from 'lucide-react';
+import {
+  ELEMENT_UPLOAD_ACCEPT,
+  elementKindFromFile,
+} from '@/cast/element-kind';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -71,14 +75,19 @@ export const ReplaceElementPopover: React.FC<ReplaceElementPopoverProps> = ({
     if (!open) setPendingFile(null);
   }, [open]);
 
+  const pendingKind = pendingFile ? elementKindFromFile(pendingFile) : null;
+
   const clearPending = useCallback(() => {
     setPendingFile(null);
   }, []);
 
   const handleFiles = useCallback((files: File[]) => {
-    const image = files.find((f) => f.type.startsWith('image/'));
-    if (!image) return;
-    setPendingFile(image);
+    // Any element kind can be replaced, including by one of a different kind
+    // (#1559) — swapping a still for the clip it was grabbed from is a
+    // replacement, not a new element.
+    const picked = files.find((f) => elementKindFromFile(f) !== null);
+    if (!picked) return;
+    setPendingFile(picked);
   }, []);
 
   const handleConfirm = useCallback(() => {
@@ -132,10 +141,10 @@ export const ReplaceElementPopover: React.FC<ReplaceElementPopoverProps> = ({
             variant="outline"
             className="flex-1"
             disabled={disabled}
-            aria-label={`Replace ${token} image`}
+            aria-label={`Replace ${token}`}
           >
             <RefreshCw className="h-4 w-4" />
-            Replace image
+            Replace
           </Button>
         ) : (
           <Button
@@ -143,8 +152,8 @@ export const ReplaceElementPopover: React.FC<ReplaceElementPopoverProps> = ({
             variant="ghost"
             size="icon"
             disabled={disabled}
-            aria-label={`Replace ${token} image`}
-            title="Replace image"
+            aria-label={`Replace ${token}`}
+            title="Replace"
           >
             <RefreshCw className="size-4" />
           </Button>
@@ -165,20 +174,32 @@ export const ReplaceElementPopover: React.FC<ReplaceElementPopoverProps> = ({
                         : ''
                     } that use it will show as out of date until you update them.`
                   : `This replaces the reference image for ${token}.`
-                : `Drop a new image to replace ${token}. You'll get a chance to confirm before anything changes.`}
+                : `Drop a new file to replace ${token}. You'll get a chance to confirm before anything changes.`}
             </p>
           </div>
 
           {pendingFile && previewUrl ? (
             <div className="flex flex-col gap-3">
               <div className="relative aspect-video overflow-hidden rounded-md border bg-muted">
-                {/* Local object-URL preview — not a remote asset. */}
-                {/* biome-ignore lint/performance/noImgElement: blob: preview */}
-                <img
-                  src={previewUrl}
-                  alt={pendingFile.name}
-                  className="size-full object-contain"
-                />
+                {pendingKind === 'image' ? (
+                  <>
+                    {/* Local object-URL preview — not a remote asset. */}
+                    {/* biome-ignore lint/performance/noImgElement: blob: preview */}
+                    <img
+                      src={previewUrl}
+                      alt={pendingFile.name}
+                      className="size-full object-contain"
+                    />
+                  </>
+                ) : (
+                  <div className="flex size-full items-center justify-center">
+                    {pendingKind === 'audio' ? (
+                      <AudioLines className="size-8 text-muted-foreground/50" />
+                    ) : (
+                      <Film className="size-8 text-muted-foreground/50" />
+                    )}
+                  </div>
+                )}
                 {!isPending && (
                   <Button
                     type="button"
@@ -309,7 +330,7 @@ export const ReplaceElementPopover: React.FC<ReplaceElementPopoverProps> = ({
         <input
           ref={inputRef}
           type="file"
-          accept="image/*"
+          accept={ELEMENT_UPLOAD_ACCEPT}
           className="sr-only"
           onChange={(e) => {
             const files = Array.from(e.target.files ?? []);

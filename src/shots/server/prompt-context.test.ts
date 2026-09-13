@@ -43,6 +43,9 @@ const alice: CharacterBibleEntry = {
   physicalDescription: '',
   standardClothing: '',
   distinguishingFeatures: '',
+  personality: '',
+  movement: '',
+  voiceOnly: false,
   consistencyTag: '',
 };
 const bob: CharacterBibleEntry = { ...alice, characterId: 'bob', name: 'Bob' };
@@ -395,6 +398,9 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
     physicalDescription: 'Tall, blonde hair, blue eyes',
     standardClothing: 'Dark trench coat',
     distinguishingFeatures: 'Scar on left cheek',
+    personality: '',
+    movement: '',
+    voiceOnly: false,
     consistencyTag: 'detective_sarah_blonde_30s',
   };
   const talentSheet: CharacterBibleEntry = {
@@ -406,11 +412,16 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
     physicalDescription: 'Dark hair, sideburns, athletic build',
     standardClothing: 'White jumpsuit',
     distinguishingFeatures: 'Sideburns',
+    personality: '',
+    movement: '',
+    voiceOnly: false,
     consistencyTag: 'elvis_presley',
   };
   const match = {
     characterId: 'char_001',
     talentName: 'Elvis Presley',
+    personality: '',
+    movement: '',
     sheetMetadata: talentSheet,
   };
   // Scene references the character by name slug (matching is name-based, stable
@@ -434,6 +445,9 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
     physicalDescription: b.physicalDescription,
     standardClothing: b.standardClothing,
     distinguishingFeatures: b.distinguishingFeatures,
+    personality: '',
+    movement: '',
+    voiceOnly: b.voiceOnly,
     consistencyTag: b.consistencyTag,
     firstMentionSceneId: null,
     firstMentionText: null,
@@ -566,6 +580,8 @@ describe('location/element bible round-trip — stamp matches verify (#867)', ()
     id: `row_${e.token}`,
     sequenceId: 'seq_1',
     uploadedFilename: 'logo.png',
+    kind: 'image',
+    durationSeconds: null,
     token: e.token,
     description: e.description,
     consistencyTag: e.consistencyTag,

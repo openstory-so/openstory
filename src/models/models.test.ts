@@ -19,6 +19,7 @@ import {
   supportsReferenceOnlyMotion,
   videoModelSupportsAudio,
 } from './models';
+import { MOTION_TRANSFORMS } from '@/motion/server/endpoint-map';
 import { typedEntries } from '@/platform/typed-object';
 
 describe('turbo image models (#1390)', () => {
@@ -70,6 +71,14 @@ describe('Seedance catalog split', () => {
     expect(MOTION_REFERENCE_ENDPOINTS.minimax_h3_max?.imageField).toBe(
       'reference_image_urls'
     );
+    expect(MOTION_REFERENCE_ENDPOINTS.kling_v3_pro?.endpointId).toBe(
+      'fal-ai/kling-video/o3/pro/reference-to-video'
+    );
+    expect(MOTION_REFERENCE_ENDPOINTS.kling_v3_pro?.maxImages).toBe(4);
+    expect(IMAGE_TO_VIDEO_MODELS.kling_v3_pro.name).toBe('Kling 3.0 Omni');
+    for (const config of Object.values(MOTION_REFERENCE_ENDPOINTS)) {
+      expect(MOTION_TRANSFORMS).toHaveProperty(config.endpointId);
+    }
     expect(isNativeBytePlusVideoModel('seedance_v2_5')).toBe(true);
     expect(isNativeBytePlusVideoModel('seedance_v2')).toBe(true);
     expect(isNativeBytePlusVideoModel('seedance_v2_mini')).toBe(true);
@@ -91,7 +100,7 @@ describe('videoModelSupportsAudio', () => {
     expect(videoModelSupportsAudio('seedance_v2')).toBe(true);
     expect(videoModelSupportsAudio('seedance_v2_5')).toBe(true);
     expect(videoModelSupportsAudio('kling_v3_pro')).toBe(true);
-    expect(videoModelSupportsAudio('veo3_1')).toBe(true);
+    expect(videoModelSupportsAudio('minimax_h3_max')).toBe(true);
   });
 
   it('returns false for models without audio', () => {
@@ -125,7 +134,7 @@ describe('Model Validation', () => {
   describe('isValidImageToVideoModel', () => {
     it('returns true for valid model keys', () => {
       expect(isValidImageToVideoModel('kling_v3_pro')).toBe(true);
-      expect(isValidImageToVideoModel('veo3_1')).toBe(true);
+      expect(isValidImageToVideoModel('minimax_h3_max')).toBe(true);
       expect(isValidImageToVideoModel('seedance_v2')).toBe(true);
       expect(isValidImageToVideoModel('seedance_v2_5')).toBe(true);
     });
@@ -172,7 +181,7 @@ describe('Model Validation', () => {
   describe('safeImageToVideoModel', () => {
     it('returns the model key when valid', () => {
       expect(safeImageToVideoModel('kling_v3_pro')).toBe('kling_v3_pro');
-      expect(safeImageToVideoModel('veo3_1')).toBe('veo3_1');
+      expect(safeImageToVideoModel('minimax_h3_max')).toBe('minimax_h3_max');
     });
 
     it('returns default when invalid', () => {
@@ -183,7 +192,7 @@ describe('Model Validation', () => {
     });
 
     it('uses custom fallback when provided', () => {
-      const customFallback = 'veo3_1';
+      const customFallback = 'kling_v3_pro';
       expect(safeImageToVideoModel('invalid_model', customFallback)).toBe(
         customFallback
       );
@@ -227,14 +236,12 @@ describe('supportsReferenceOnlyMotion', () => {
   });
 
   it('excludes models whose only route needs a start frame', () => {
-    // Kling's `elements` and Grok's fal route both ride image-to-video, which
-    // requires `image_url` — a reference-only shot has nowhere to go there.
-    expect(supportsReferenceOnlyMotion('kling_v3_pro')).toBe(false);
+    // Grok's fal route rides image-to-video, which requires `image_url` — a
+    // reference-only shot has nowhere to go there. Kling qualifies via O3.
     expect(supportsReferenceOnlyMotion('grok_imagine_video_1_5')).toBe(false);
-    expect(supportsReferenceOnlyMotion('veo3_1')).toBe(false);
   });
 
-  it('includes both Seedance tiers, H3 Max and Omni Flash', () => {
+  it('includes both Seedance tiers, H3 Max, Omni Flash and Kling O3', () => {
     expect(supportsReferenceOnlyMotion('seedance_v2')).toBe(true);
     expect(supportsReferenceOnlyMotion('seedance_v2_5')).toBe(true);
     // H3 Max's reference-to-video route requires only `prompt` — no still.
@@ -242,8 +249,12 @@ describe('supportsReferenceOnlyMotion', () => {
     // Omni Flash qualifies on its fal reference-to-video route, so it needs no
     // Google key — unlike Grok, which is reference-only ONLY on the native via.
     expect(supportsReferenceOnlyMotion('gemini_omni_flash')).toBe(true);
+    // Kling v3 Pro's start-frame shots stay on i2v; refs and reference-only
+    // route to Kling O3 Pro, whose start frame is optional.
+    expect(supportsReferenceOnlyMotion('kling_v3_pro')).toBe(true);
     expect(referenceOnlyMotionModels().sort()).toEqual([
       'gemini_omni_flash',
+      'kling_v3_pro',
       'minimax_h3_max',
       'seedance_v2',
       'seedance_v2_5',

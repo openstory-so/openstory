@@ -1,9 +1,11 @@
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
+import { getAllAdminStudioAssetsFn } from '@/platform/admin-support.fn';
 import {
   createStudioAssetsFn,
   deleteStudioAssetFn,
   draftStudioPromptFn,
   listStudioAssetsFn,
+  listStudioUploadsFn,
   setStudioAssetFavoriteFn,
 } from '@/studio/studio-assets.fn';
 import {
@@ -16,8 +18,10 @@ import {
   useInfiniteQuery,
   useMutation,
   useMutationState,
+  useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
+import { isInsufficientCreditsError } from '@/platform/errors';
 import { toast } from 'sonner';
 
 type StudioAssetFilters = {
@@ -32,14 +36,20 @@ const studioAssetKeys = {
     [...studioAssetKeys.all, 'list', filters] as const,
 };
 
+const adminStudioAssetKeys = {
+  all: ['admin-support', 'studio-assets'] as const,
+  list: (filters: StudioAssetFilters & { search?: string }) =>
+    [...adminStudioAssetKeys.all, 'list', filters] as const,
+};
+
 const PAGE_SIZE = 40;
 
-export function useStudioAssets(filters: StudioAssetFilters) {
+export function useStudioAssets(filters: StudioAssetFilters, enabled = true) {
   const { isAuthenticated } = useAuthGate();
 
   return useInfiniteQuery({
     queryKey: studioAssetKeys.list(filters),
-    enabled: isAuthenticated,
+    enabled: isAuthenticated && enabled,
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam }) =>
       listStudioAssetsFn({
@@ -65,6 +75,36 @@ export function useStudioAssets(filters: StudioAssetFilters) {
   });
 }
 
+/** Cross-team studio gallery for support mode. Gated by the caller on isAdmin. */
+export function useAdminStudioAssets(
+  filters: StudioAssetFilters & { search?: string },
+  enabled: boolean
+) {
+  const trimmedSearch = filters.search?.trim() || undefined;
+
+  return useInfiniteQuery({
+    queryKey: adminStudioAssetKeys.list({
+      ...filters,
+      search: trimmedSearch,
+    }),
+    enabled,
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam }) =>
+      getAllAdminStudioAssetsFn({
+        data: {
+          activity: filters.activity,
+          favoritesOnly: filters.favoritesOnly,
+          order: filters.order,
+          search: trimmedSearch,
+          limit: PAGE_SIZE,
+          cursor: pageParam,
+        },
+      }),
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    staleTime: 60_000,
+  });
+}
+
 // Module-level so pending creates can be found by identity (no `mutationKey`:
 // a keyed mutation would stop the global cache from refreshing the balance).
 const createStudioAssets = (input: StudioCreateInput) =>
@@ -81,6 +121,7 @@ export function useCreateStudioAssets() {
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: studioAssetKeys.all }),
     onError: (error) => {
+      if (isInsufficientCreditsError(error)) return;
       toast.error(error.message);
     },
   });
@@ -136,7 +177,23 @@ export function useDraftStudioPrompt() {
     mutationFn: (input: Parameters<typeof draftStudioPromptFn>[0]['data']) =>
       draftStudioPromptFn({ data: input }),
     onError: (error) => {
+      if (isInsufficientCreditsError(error)) return;
       toast.error(error.message);
     },
+  });
+}
+
+export const studioUploadKeys = {
+  all: ['studio-uploads'] as const,
+};
+
+/** The team's past composer uploads (the picker's Uploads tab). */
+export function useStudioUploads() {
+  const { isAuthenticated } = useAuthGate();
+  return useQuery({
+    queryKey: studioUploadKeys.all,
+    queryFn: () => listStudioUploadsFn(),
+    enabled: isAuthenticated,
+    staleTime: 60_000,
   });
 }

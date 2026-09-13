@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import type { MotionPrompt } from '@/shots/scene-analysis.schema';
+import type {
+  MotionDialogue,
+  MotionPrompt,
+} from '@/shots/scene-analysis.schema';
 import { assembleMotionPrompt } from './assemble-motion-prompt';
 
 // ---------------------------------------------------------------------------
 // Test fixtures
 // ---------------------------------------------------------------------------
 
-const dialogueWithTone: NonNullable<MotionPrompt['dialogue']> = {
+const dialogueWithTone: MotionDialogue = {
   presence: true,
   lines: [
     {
@@ -129,81 +132,6 @@ describe('assembleMotionPrompt', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Google Veo 3.1 (audio-capable)
-  // ---------------------------------------------------------------------------
-
-  describe('Google Veo 3.1 (audio)', () => {
-    const model = 'veo3_1';
-
-    it('starts with fullPrompt as the base', () => {
-      const result = assembleMotionPrompt({
-        motionPrompt: makeMotionPrompt(),
-        model,
-      });
-
-      expect(result.startsWith(fullPromptText)).toBe(true);
-    });
-
-    it('appends dialogue as natural narrative with inline quotes', () => {
-      const result = assembleMotionPrompt({
-        motionPrompt: makeMotionPrompt(),
-        model,
-      });
-
-      expect(result).toContain(
-        'Sarah says in a firm commanding voice, "We need to reconsider the entire approach."'
-      );
-      expect(result).toContain('James says in a soft resigned voice,');
-    });
-
-    it('appends Audio: section with ambient and SFX', () => {
-      const result = assembleMotionPrompt({
-        motionPrompt: makeMotionPrompt(),
-        model,
-      });
-
-      expect(result).toContain('Audio:');
-      expect(result).toContain('quiet office hum');
-      expect(result).toContain('chair scrape');
-    });
-
-    it('keeps an Audio: section carrying the no-music direction when no audio data', () => {
-      const result = assembleMotionPrompt({
-        motionPrompt: makeMotionPrompt({ audio: undefined }),
-        model,
-      });
-
-      expect(result).toContain(
-        'Audio: No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.'
-      );
-      expect(result).not.toContain('quiet office hum');
-    });
-
-    it('suppresses model-generated music alongside the ambient and SFX', () => {
-      const result = assembleMotionPrompt({
-        motionPrompt: makeMotionPrompt(),
-        model,
-      });
-
-      expect(result).toContain(
-        'Audio: quiet office hum with keyboard clicks. chair scrape, paper rustling. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.'
-      );
-    });
-
-    it('omits dialogue when not present', () => {
-      const result = assembleMotionPrompt({
-        motionPrompt: makeMotionPrompt({
-          dialogue: { presence: false, lines: [] },
-        }),
-        model,
-      });
-
-      expect(result).not.toContain('Sarah says');
-      expect(result.startsWith(fullPromptText)).toBe(true);
-    });
-  });
-
-  // ---------------------------------------------------------------------------
   // ByteDance Seedance 2.0 / 2.5 (audio — prose-woven sound + in-prompt guards)
   // ---------------------------------------------------------------------------
 
@@ -219,30 +147,73 @@ describe('assembleMotionPrompt', () => {
         expect(result.startsWith(fullPromptText)).toBe(true);
       });
 
-      it('weaves sound as prose without labeled sections', () => {
+      it('weaves ambience as prose and marks each effect with <>', () => {
         const result = assembleMotionPrompt({
           motionPrompt: makeMotionPrompt(),
           model,
         });
 
+        // Ambience is one continuous bed, so it stays prose; the effects are
+        // discrete and separately timed, so each gets ByteDance's `<>` marker.
         expect(result).toContain('quiet office hum with keyboard clicks.');
-        expect(result).toContain('chair scrape, paper rustling.');
+        expect(result).toContain('<chair scrape> <paper rustling>');
         expect(result).not.toContain('Audio:');
         expect(result).not.toContain('Ambient sounds:');
       });
 
-      it('formats dialogue as X says "…" in a [tone] voice', () => {
+      it("wraps the spoken words in ByteDance's {} dialogue markers", () => {
         const result = assembleMotionPrompt({
           motionPrompt: makeMotionPrompt(),
           model,
         });
 
         expect(result).toContain(
-          'Sarah says "We need to reconsider the entire approach." in a firm commanding voice.'
+          'Sarah says in a firm commanding voice: {We need to reconsider the entire approach.}'
         );
         expect(result).toContain(
-          'James says "I couldn\'t agree more." in a soft resigned voice.'
+          "James says in a soft resigned voice: {I couldn't agree more.}"
         );
+        // Plain quotes let narrative words either side leak into the take.
+        expect(result).not.toContain('says "');
+      });
+
+      it('speaks a recorded line once, from the recording', () => {
+        const result = assembleMotionPrompt({
+          motionPrompt: makeMotionPrompt({
+            dialogue: {
+              presence: true,
+              lines: dialogueWithTone.lines.map((line, index) =>
+                index === 0 ? { ...line, voiceToken: 'SARAH_VOICE' } : line
+              ),
+            },
+          }),
+          model,
+        });
+
+        // Raw token: `buildReferenceVideoPrompt` swaps it for `@Audio1` when
+        // the element rides, or for a description when it cannot.
+        expect(result).toContain(
+          'Sarah speaks this line exactly as recorded in SARAH_VOICE: {We need to reconsider the entire approach.}'
+        );
+        // ONE speaking event: a second "says" for the same line invites the
+        // model to say it twice, and a tone beside a recording contradicts it.
+        expect(
+          result.split('We need to reconsider the entire approach.').length - 1
+        ).toBe(1);
+        expect(result).not.toContain('firm commanding');
+        // The unbound line keeps its tone and plain form.
+        expect(result).toContain(
+          "James says in a soft resigned voice: {I couldn't agree more.}"
+        );
+      });
+
+      it('emits no voice binding when no line has one', () => {
+        const result = assembleMotionPrompt({
+          motionPrompt: makeMotionPrompt(),
+          model,
+        });
+
+        expect(result).not.toContain('as recorded in');
       });
 
       it('always appends the no-music and single-continuous-shot guards', () => {
@@ -289,24 +260,11 @@ describe('assembleMotionPrompt', () => {
   );
 
   // ---------------------------------------------------------------------------
-  // Non-audio models (Grok, MiniMax)
+  // Non-audio models (Grok)
   // ---------------------------------------------------------------------------
 
   describe('Grok Imagine Video 1.5 (no audio)', () => {
     const model = 'grok_imagine_video_1_5';
-
-    it('returns fullPrompt for non-audio model', () => {
-      const result = assembleMotionPrompt({
-        motionPrompt: makeMotionPrompt(),
-        model,
-      });
-
-      expect(result).toBe(fullPromptText);
-    });
-  });
-
-  describe('MiniMax Hailuo 2.3 (no audio)', () => {
-    const model = 'minimax_hailuo_02';
 
     it('returns fullPrompt for non-audio model', () => {
       const result = assembleMotionPrompt({
@@ -419,10 +377,10 @@ describe('assembleMotionPrompt', () => {
         motionPrompt: makeMotionPrompt({
           audio: { ambientSound: 'rain on windows', soundEffects: [] },
         }),
-        model: 'veo3_1',
+        model: 'kling_v3_pro',
       });
 
-      expect(result).toContain('Audio: rain on windows');
+      expect(result).toContain('Ambient sounds: rain on windows');
     });
 
     it('handles audio with only sound effects', () => {
@@ -430,10 +388,10 @@ describe('assembleMotionPrompt', () => {
         motionPrompt: makeMotionPrompt({
           audio: { ambientSound: '', soundEffects: ['door slam'] },
         }),
-        model: 'veo3_1',
+        model: 'kling_v3_pro',
       });
 
-      expect(result).toContain('Audio: door slam');
+      expect(result).toContain('Ambient sounds: door slam');
     });
 
     it('handles empty audio (no ambient, no SFX)', () => {
@@ -441,12 +399,13 @@ describe('assembleMotionPrompt', () => {
         motionPrompt: makeMotionPrompt({
           audio: { ambientSound: '', soundEffects: [] },
         }),
-        model: 'veo3_1',
+        model: 'kling_v3_pro',
       });
 
-      // Audio: section carries only the no-music direction
+      // Only the no-music direction remains
+      expect(result).not.toContain('Ambient sounds:');
       expect(result).toContain(
-        'Audio: No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.'
+        'No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.'
       );
     });
 

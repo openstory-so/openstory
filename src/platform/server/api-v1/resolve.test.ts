@@ -69,6 +69,8 @@ function makeTalent(
     teamId: 'team-1',
     name: 'Ada Lovelace',
     description: null,
+    personality: null,
+    movement: null,
     imageUrl: null,
     imagePath: null,
     isFavorite: false,
@@ -268,21 +270,21 @@ describe('ingestElements', () => {
     expect(await ingestElements('team-1', [])).toEqual([]);
   });
 
-  it('uploads to a temp path and returns a promotable upload (vision deferred)', async () => {
+  it('uploads to the permanent uploads prefix and defers vision', async () => {
     const [upload] = await ingestElements('team-1', [
       { url: 'https://host/logo.png', filename: 'logo.png', token: 'LOGO' },
     ]);
 
     expect(uploadFileMock).toHaveBeenCalledWith(
       'elements',
-      'team-1/temp/gen-1.png',
+      'team-1/uploads/gen-1.png',
       expect.any(Uint8Array),
       { contentType: 'image/png' }
     );
     // No description/consistencyTag: vision runs in the element-vision workflow.
     expect(upload).toEqual({
-      tempPath: 'elements/team-1/temp/gen-1.png',
-      tempPublicUrl: 'https://cdn.test/elements/team-1/temp/gen-1.png',
+      tempPath: 'elements/team-1/uploads/gen-1.png',
+      tempPublicUrl: 'https://cdn.test/elements/team-1/uploads/gen-1.png',
       filename: 'logo.png',
       token: 'LOGO',
     });

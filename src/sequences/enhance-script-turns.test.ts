@@ -45,14 +45,14 @@ async function drain(
 }
 
 describe('runEnhanceScriptTurns', () => {
-  it('streams an on-target LTX script and strips TOTAL without a second turn', async () => {
+  it('streams an on-target H3 Max script and strips TOTAL without a second turn', async () => {
     const body = scriptFromLabels([6, 6, 6, 6, 6]);
     const generate = generateFrom([`${body}\nTOTAL: 30s`]);
     const { script } = await drain(
       runEnhanceScriptTurns({
         messages: [{ role: 'user', content: 'brief' }],
         targetSeconds: 30,
-        videoModel: 'ltx_2_3_pro',
+        videoModel: 'minimax_h3_max',
         generate,
       })
     );
@@ -74,7 +74,7 @@ describe('runEnhanceScriptTurns', () => {
       runEnhanceScriptTurns({
         messages: [{ role: 'user', content: 'nine beats plus a title card' }],
         targetSeconds: 30,
-        videoModel: 'ltx_2_3_pro',
+        videoModel: 'minimax_h3_max',
         generate,
       })
     );
@@ -88,20 +88,20 @@ describe('runEnhanceScriptTurns', () => {
     expect(script).not.toContain('TOTAL:');
   });
 
-  it('corrects off-grid 5s labels on LTX even when they already sum to 30s', async () => {
-    const first = `${scriptFromLabels([5, 5, 5, 5, 5, 5])}\nTOTAL: 30s`;
+  it('corrects off-grid 4s labels on H3 Max even when they already sum to 30s', async () => {
+    const first = `${scriptFromLabels([4, 4, 4, 4, 4, 5, 5])}\nTOTAL: 30s`;
     const second = `${scriptFromLabels([6, 6, 6, 6, 6])}\nTOTAL: 30s`;
     const generate = generateFrom([first, second]);
     const { script } = await drain(
       runEnhanceScriptTurns({
         messages: [{ role: 'user', content: 'brief' }],
         targetSeconds: 30,
-        videoModel: 'ltx_2_3_pro',
+        videoModel: 'minimax_h3_max',
         generate,
       })
     );
     expect(
-      parseSceneDurationLabels(script).every((s) => [6, 8, 10].includes(s))
+      parseSceneDurationLabels(script).every((s) => s >= 5 && s <= 15)
     ).toBe(true);
     expect(sumSceneDurations(script)).toBe(30);
   });

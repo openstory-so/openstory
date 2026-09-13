@@ -116,6 +116,7 @@ describe('buildStoryboardMotionBatchShots', () => {
               action: 'opens the door',
               cameraMovement: { move: 'static', pacing: 'slow' },
               soundCue: '',
+              dialogue: [],
               durationSeconds: 7,
             },
             {
@@ -129,6 +130,7 @@ describe('buildStoryboardMotionBatchShots', () => {
               action: 'cut to the hallway',
               cameraMovement: { move: 'truck', pacing: 'smooth' },
               soundCue: '',
+              dialogue: [],
               durationSeconds: 6,
             },
           ],

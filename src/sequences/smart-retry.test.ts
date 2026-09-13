@@ -783,14 +783,14 @@ describe('executeSmartRetry — per-asset model selection (#1066)', () => {
     });
     const { context } = makeContext(makeSequence(), [shotA], {
       video: new Map([['shot-a', 'seedance_v2']]),
-      failedVideo: new Map([['shot-a', 'veo3_1']]),
+      failedVideo: new Map([['shot-a', 'gemini_omni_flash']]),
     });
 
     await executeSmartRetry(context);
 
     expect(triggerWorkflowMock).toHaveBeenCalledWith(
       '/motion',
-      expect.objectContaining({ shotId: 'shot-a', model: 'veo3_1' })
+      expect.objectContaining({ shotId: 'shot-a', model: 'gemini_omni_flash' })
     );
   });
 
@@ -809,6 +809,29 @@ describe('executeSmartRetry — per-asset model selection (#1066)', () => {
     expect(triggerWorkflowMock).toHaveBeenCalledWith(
       '/image',
       expect.objectContaining({ shotId: 'shot-a', model: 'nano_banana_2' })
+    );
+  });
+});
+
+describe('executeSmartRetry — resolution forwarding (#1570)', () => {
+  test('forwards the sequence resolution onto the still-generation workflow input', async () => {
+    resetMocks();
+    const shot = makeShot({
+      imageStatus: 'failed',
+      imagePrompt: 'A cinematic shot of the lab',
+    });
+    const { context } = makeContext(makeSequence({ resolution: '1080p' }), [
+      shot,
+    ]);
+
+    await executeSmartRetry(context);
+
+    expect(triggerWorkflowMock).toHaveBeenCalledWith(
+      '/image',
+      expect.objectContaining({
+        shotId: 'shot-1',
+        resolution: '1080p',
+      })
     );
   });
 });

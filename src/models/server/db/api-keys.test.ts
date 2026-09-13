@@ -16,6 +16,7 @@
  */
 
 import type { Database } from '@/platform/server/db/client';
+import type { ResolvableProvider } from './api-keys';
 import { generateId } from '@/platform/id';
 import { teamApiKeys, teams, user } from '@/platform/server/db/schema';
 import { relations } from '@/platform/server/db/schema/relations';
@@ -39,12 +40,18 @@ const testEnv: {
   FAL_KEY: string | undefined;
   XAI_API_KEY: string | undefined;
   GEMINI_API_KEY: string | undefined;
+  ELEVENLABS_API_KEY: string | undefined;
+  ELEVENLABS_BASE_URL: string | undefined;
+  E2E_TEST: string | undefined;
 } = {
   API_KEY_ENCRYPTION_KEY: 'test-secret-for-api-keys-memoization',
   OPENROUTER_KEY: 'platform-openrouter-key',
   FAL_KEY: 'platform-fal-key',
   XAI_API_KEY: undefined,
   GEMINI_API_KEY: undefined,
+  ELEVENLABS_API_KEY: undefined,
+  ELEVENLABS_BASE_URL: undefined,
+  E2E_TEST: undefined,
 };
 
 vi.doMock('#env', () => ({
@@ -118,6 +125,9 @@ beforeEach(async () => {
   testEnv.FAL_KEY = 'platform-fal-key';
   testEnv.XAI_API_KEY = undefined;
   testEnv.GEMINI_API_KEY = undefined;
+  testEnv.ELEVENLABS_API_KEY = undefined;
+  testEnv.ELEVENLABS_BASE_URL = undefined;
+  testEnv.E2E_TEST = undefined;
   await seed();
 });
 
@@ -774,6 +784,49 @@ describe('resolveOptionalKey', () => {
     const scope = createApiKeysReadMethods(db, teamId);
     expect(await scope.resolveOptionalKey('fal')).toEqual({
       key: 'platform-fal-key',
+      source: 'platform',
+    });
+  });
+});
+
+describe('resolveKey elevenlabs (platform-only, #1552)', () => {
+  it('returns the platform key without reading team_api_keys', async () => {
+    testEnv.ELEVENLABS_API_KEY = 'el-platform';
+    const { db: cdb, selects } = countingDb();
+    const scope = createApiKeysReadMethods(cdb, teamId);
+
+    const provider: ResolvableProvider = 'elevenlabs';
+    expect(await scope.resolveKey(provider)).toEqual({
+      key: 'el-platform',
+      source: 'platform',
+    });
+    expect(selects()).toBe(0);
+  });
+
+  it('never returns source: team — designed voices live on the platform account', async () => {
+    testEnv.ELEVENLABS_API_KEY = 'el-platform';
+    const scope = createApiKeysReadMethods(db, teamId);
+    const resolved = await scope.resolveOptionalKey('elevenlabs');
+    expect(resolved?.source).toBe('platform');
+  });
+
+  it('throws from resolveKey when the platform key is missing', async () => {
+    const scope = createApiKeysReadMethods(db, teamId);
+    expect(await scope.resolveOptionalKey('elevenlabs')).toBeUndefined();
+    await expect(scope.resolveKey('elevenlabs')).rejects.toThrow(
+      /No API key available for provider: elevenlabs/
+    );
+  });
+
+  it('stays unresolved under E2E_TEST unless a mock host is wired', async () => {
+    testEnv.ELEVENLABS_API_KEY = 'el-platform';
+    testEnv.E2E_TEST = 'true';
+    const scope = createApiKeysReadMethods(db, teamId);
+    expect(await scope.resolveOptionalKey('elevenlabs')).toBeUndefined();
+
+    testEnv.ELEVENLABS_BASE_URL = 'http://localhost:4010';
+    expect(await scope.resolveKey('elevenlabs')).toEqual({
+      key: 'el-platform',
       source: 'platform',
     });
   });

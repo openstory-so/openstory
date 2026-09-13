@@ -13,7 +13,6 @@ import {
 } from '../fixtures/talent.fixture';
 import {
   addTalentDialog,
-  attestAssetRights,
   attestPortraitRights,
   dropNamedTalentImage,
   openAddTalentFromLibrary,
@@ -154,13 +153,7 @@ testWithUser.describe('Add Talent with Reference Media', () => {
         timeout: 15_000,
       });
       await waitForSubjectKind(page, 'Animated');
-      await expect(
-        dialog.getByRole('checkbox', {
-          name: /hold the rights to this asset/i,
-        })
-      ).toBeVisible();
       await expect(dialog.getByLabel('Basis for authorization')).toHaveCount(0);
-      await attestAssetRights(page);
       await submitAddTalent(page);
 
       await expect(
@@ -176,7 +169,7 @@ testWithUser.describe('Add Talent with Reference Media', () => {
   );
 
   testWithUser(
-    'classifies a creature as Other and uses asset rights',
+    'classifies a creature as Other and asks for no rights',
     async ({ page, testUser }) => {
       const uniqueName = uniqueTalentName('Creature');
       const dialog = await openAddTalentFromLibrary(page);
@@ -184,46 +177,12 @@ testWithUser.describe('Add Talent with Reference Media', () => {
       await dialog.getByLabel('Name').fill(uniqueName);
       await uploadNamedTalentImage(page, 'creature.jpg');
       await waitForSubjectKind(page, 'Other');
-      await attestAssetRights(page);
       await submitAddTalent(page);
 
       const card = page.getByRole('link', { name: uniqueName });
       await expect(card).toBeVisible({ timeout: 10_000 });
       await expect(card.getByText('AI', { exact: true })).toBeVisible();
       await expect(card.getByText('Human')).toHaveCount(0);
-
-      await cleanupTalentByName(testUser.teamId, uniqueName);
-    }
-  );
-
-  testWithUser(
-    'subject toggle overrides vision and swaps attestation',
-    async ({ page, testUser }) => {
-      const uniqueName = uniqueTalentName('Override');
-      const dialog = await openAddTalentFromLibrary(page);
-
-      await dialog.getByLabel('Name').fill(uniqueName);
-      await uploadNamedTalentImage(page, 'test-image.jpg');
-      await waitForSubjectKind(page, 'Human');
-      await expect(dialog.getByLabel('Basis for authorization')).toBeVisible();
-
-      await dialog.getByRole('radio', { name: 'Animated' }).click();
-      await expect(
-        dialog.getByRole('radio', { name: 'Animated' })
-      ).toBeChecked();
-      await expect(
-        dialog.getByRole('checkbox', {
-          name: /hold the rights to this asset/i,
-        })
-      ).toBeVisible();
-      await expect(dialog.getByLabel('Basis for authorization')).toHaveCount(0);
-
-      await attestAssetRights(page);
-      await submitAddTalent(page);
-
-      const card = page.getByRole('link', { name: uniqueName });
-      await expect(card).toBeVisible({ timeout: 10_000 });
-      await expect(card.getByText('AI', { exact: true })).toBeVisible();
 
       await cleanupTalentByName(testUser.teamId, uniqueName);
     }
@@ -249,7 +208,6 @@ testWithUser.describe('Add Talent with Reference Media', () => {
         page.getByText('Description generated from photos')
       ).toBeVisible();
 
-      await attestAssetRights(page);
       await submitAddTalent(page);
       await expect(page.getByText(uniqueName)).toBeVisible({ timeout: 10_000 });
 

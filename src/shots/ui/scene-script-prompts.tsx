@@ -8,6 +8,16 @@ import { PromptHistorySheet } from '@/shots/ui/prompts/prompt-history-sheet';
 import { DivergentAlternateBanner } from '@/shots/ui/staleness/divergent-alternate-banner';
 import { StalenessIndicator } from '@/shots/ui/staleness/staleness-indicator';
 import { Alert, AlertDescription } from '@/ui/shadcn/alert';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/ui/shadcn/alert-dialog';
 import { Button } from '@/ui/shadcn/button';
 import { Checkbox } from '@/ui/shadcn/checkbox';
 import { setShotUseStartFrameFn } from '@/shots/shots.fn';
@@ -33,12 +43,7 @@ import { notifyInsufficientCredits } from '@/billing/ui/notify-insufficient-cred
 import { useFalBillingGate } from '@/billing/ui/use-billing-gate';
 import { useFalPricing } from '@/billing/ui/use-fal-pricing';
 import { segmentKeys } from './use-segments';
-import {
-  shotKeys,
-  useSelectSegmentVideoVersion,
-  useSetImageFromVariant,
-  useSetVideoFromVariant,
-} from './use-shots';
+import { shotKeys, useSelectSegmentVideoVersion } from './use-shots';
 import {
   SegmentVideoPanel,
   segmentPanelIsInformative,
@@ -48,7 +53,6 @@ import { useReplaceFrameImage, useReplaceShotVideo } from './use-media-upload';
 import type { SequenceSegment } from '@/shots/scene-segments';
 import type { UpdateStaleDepth } from '@/shots/update-stale-depth';
 import { copyTextToClipboard } from '@/ui/clipboard';
-import { isSetImageOffered } from './set-image-offer';
 import {
   type ShotStaleness,
   markArtifactFresh,
@@ -92,12 +96,23 @@ import {
   isContentRejectionError,
 } from '@/models/content-rejection';
 import { resolveShotDuration } from '@/motion/resolve-shot-duration';
-import type { AssemblableMotionPrompt } from '@/shots/scene-analysis.schema';
+import { motionReferenceSupport } from '@/motion/reference-support';
+import type {
+  AssemblableMotionPrompt,
+  MotionDialogue,
+} from '@/shots/scene-analysis.schema';
 
 import { useShotPromptStream } from './use-shot-prompt-stream';
 import type { ShotView } from '@/shots/shot-view';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CopyIcon, History, Loader2, Minimize2, RefreshCw } from 'lucide-react';
+import {
+  AlertTriangle,
+  CopyIcon,
+  History,
+  Loader2,
+  Minimize2,
+  RefreshCw,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
@@ -112,6 +127,8 @@ import { SceneStaleShots } from './scene-stale-shots';
 import { SceneElementsTab } from './scene-elements-tab';
 import { SceneLocationTab } from './scene-location-tab';
 import { SceneMusicFacet } from './scene-music-facet';
+import { MotionDialoguePanel } from './motion-dialogue-panel';
+import { dialogueForShot } from '@/shots/shot-list-pass';
 import { SceneScriptTab } from './scene-script-tab';
 import { ShotDurationField } from './shot-duration-field';
 
@@ -351,6 +368,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     setEditPrompts((s) => ({ ...s, motionPrompt: v }));
   // SFX/dialogue toggle for audio-capable models (kling v3, veo3, etc.)
   const [generateAudio, setGenerateAudio] = useState(true);
+  const [confirmSilentOpen, setConfirmSilentOpen] = useState(false);
 
   // Script tab edit state — `undefined` means "no draft" (textarea mirrors the
   // saved value); a string means "user has typed". We reset to `undefined` when
@@ -395,8 +413,6 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   }, [shot?.id]);
 
   const queryClient = useQueryClient();
-  const setImageFromVariant = useSetImageFromVariant();
-  const setVideoFromVariant = useSetVideoFromVariant();
   const selectSegmentVideoVersion = useSelectSegmentVideoVersion();
   const replaceFrameImage = useReplaceFrameImage();
   const replaceShotVideo = useReplaceShotVideo();
@@ -464,8 +480,11 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     ]
   );
 
-  const { items: mentionItems, onMentionRename } =
-    useSequenceMentionItems(sequenceId);
+  const {
+    items: mentionItems,
+    elements,
+    onMentionRename,
+  } = useSequenceMentionItems(sequenceId);
   // The realtime hook owns the per-prompt-type stream status — `'pending'`
   // covers the window between a successful enqueue and the first delta, so
   // the button stays in its busy state without a sibling useState to sync.
@@ -590,32 +609,38 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
 
   const handleSaveVisualPrompt = useCallback(
     (text: string) => {
-      saveVisualPrompt.mutate(text, {
-        onSuccess: (r) => {
-          dirtyImageRef.current = false;
-          toast.success(r.unchanged ? 'No changes to save' : 'Prompt saved');
-        },
-        onError: (e) =>
-          toast.error('Save failed', {
-            description: e instanceof Error ? e.message : 'Unknown error',
-          }),
-      });
+      saveVisualPrompt.mutate(
+        { text },
+        {
+          onSuccess: (r) => {
+            dirtyImageRef.current = false;
+            toast.success(r.unchanged ? 'No changes to save' : 'Prompt saved');
+          },
+          onError: (e) =>
+            toast.error('Save failed', {
+              description: e instanceof Error ? e.message : 'Unknown error',
+            }),
+        }
+      );
     },
     [saveVisualPrompt]
   );
 
   const handleSaveMotionPrompt = useCallback(
-    (text: string) => {
-      saveMotionPrompt.mutate(text, {
-        onSuccess: (r) => {
-          dirtyMotionRef.current = false;
-          toast.success(r.unchanged ? 'No changes to save' : 'Prompt saved');
-        },
-        onError: (e) =>
-          toast.error('Save failed', {
-            description: e instanceof Error ? e.message : 'Unknown error',
-          }),
-      });
+    (text: string, dialogue?: MotionDialogue) => {
+      saveMotionPrompt.mutate(
+        { text, dialogue },
+        {
+          onSuccess: (r) => {
+            dirtyMotionRef.current = false;
+            toast.success(r.unchanged ? 'No changes to save' : 'Prompt saved');
+          },
+          onError: (e) =>
+            toast.error('Save failed', {
+              description: e instanceof Error ? e.message : 'Unknown error',
+            }),
+        }
+      );
     },
     [saveMotionPrompt]
   );
@@ -758,22 +783,15 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       ? DEFAULT_VIDEO_MODEL
       : aspectCompatibleMotion;
   const regenMotionModel = effectiveMotionModel;
+  // Can this model carry a voice reference at all? Without an audio slot the
+  // binding would substitute to prose and the file would never ride, so the
+  // dialogue panel shows the lines but offers no voice picker (#1559).
+  const motionTakesAudioReferences =
+    motionReferenceSupport(effectiveMotionModel).audio;
+
   const imagePrompt = shot?.imagePromptVersion?.text ?? undefined;
 
-  const variantIsCompleted =
-    variantForSelectedModel?.status === 'completed' &&
-    !!variantForSelectedModel.url;
   const variantIsGenerating = variantForSelectedModel?.status === 'generating';
-  // Set Image only when the dropdown model differs from the model that
-  // produced the *current* primary still. Uploads are already the selected
-  // version — offering Set Image would revert them to an older generation.
-  const offerSetImage = isSetImageOffered({
-    variantCompleted: variantIsCompleted,
-    currentImageUrl: shot?.image?.url,
-    currentKind: shot?.image?.kind,
-    currentModel: shot?.image?.model,
-    dropdownModel: effectiveImageModel,
-  });
 
   // Has the selected image model produced an image for this scene — drives
   // Generate vs Regenerate (mirror of videoModelGenerated). Variant row (any
@@ -783,55 +801,8 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     !!variantForSelectedModel ||
     (!!shot?.image?.url && effectiveImageModel === imageModel);
 
-  const handleSetImageFromVariant = useCallback(async () => {
-    if (!shot?.id || !shot.sequenceId) return;
-
-    try {
-      await setImageFromVariant.mutateAsync({
-        sequenceId: shot.sequenceId,
-        shotId: shot.id,
-        model: effectiveImageModel,
-      });
-    } catch (error) {
-      toast.error('Failed to set image', {
-        description: errorMessage(error),
-      });
-    }
-  }, [shot, effectiveImageModel, setImageFromVariant]);
-
-  // Video equivalents (#545): drive the "Set Video" action from the selected
-  // scene's video variant for the picked model.
-  const videoVariantIsCompleted =
-    videoVariantForSelectedModel?.status === 'completed' &&
-    !!videoVariantForSelectedModel.url;
   const videoVariantIsGenerating =
     videoVariantForSelectedModel?.status === 'generating';
-  // Same rule as image: Set Video only when the dropdown model isn't the one
-  // that produced the current primary clip (not URL equality to latest).
-  const currentVideoModel = safeImageToVideoModel(
-    shot?.video?.model,
-    DEFAULT_VIDEO_MODEL
-  );
-  const videoVariantAlreadySet =
-    videoVariantIsCompleted &&
-    !!shot?.video?.url &&
-    effectiveMotionModel === currentVideoModel;
-
-  const handleSetVideoFromVariant = useCallback(async () => {
-    if (!shot?.id || !shot.sequenceId) return;
-
-    try {
-      await setVideoFromVariant.mutateAsync({
-        sequenceId: shot.sequenceId,
-        shotId: shot.id,
-        model: effectiveMotionModel,
-      });
-    } catch (error) {
-      toast.error('Failed to set video', {
-        description: errorMessage(error),
-      });
-    }
-  }, [shot, effectiveMotionModel, setVideoFromVariant]);
 
   const handleShortenPrompt = useCallback(async () => {
     setShortenStatus({ loading: false, error: null, success: null });
@@ -1100,6 +1071,12 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       }),
     enabled: Boolean(shot?.id),
   });
+  // Clips and voice lines this shot attaches that the selected model cannot
+  // use, or a voice line with nothing to ride alongside (#1559). No fallback:
+  // submit refuses these, so say it here and hold Generate rather than let
+  // the click come back as a failed job. Computed server-side from the exact
+  // references the render will bind.
+  const unusableElementLines = promptPreview?.motionUnusable ?? [];
   useEffect(() => {
     if (promptPreviewError) {
       toast.error('Prompt preview failed', {
@@ -1110,6 +1087,13 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   const assembledPrompt = promptPreview?.assembledMotionPrompt ?? null;
   const imageRequestPreview = promptPreview?.image ?? null;
   const motionRequestPreview = promptPreview?.motion ?? null;
+  // A bound voice line with SFX & dialogue off renders a clip with no audio
+  // track at all — the line is sent and never heard. Asked, not refused: the
+  // toggle is the user's call.
+  const silencedVoiceLines =
+    videoModelSupportsAudio(effectiveMotionModel) && !generateAudio
+      ? (motionRequestPreview?.audio ?? []).map((track) => track.label)
+      : [];
 
   // Transparent pricing under Generate Image / Generate Motion (#1140).
   const { pricing: falPricing } = useFalPricing();
@@ -1200,11 +1184,12 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
 
   // Has the *currently-selected* video model produced a video for this scene —
   // drives Generate vs Regenerate (NOT whether the shot has any video, which
-  // could be from a different model). A variant row (any status) means it was
-  // attempted; the legacy fallback covers pre-#545 shots that carry a primary
-  // video but no variant row.
+  // could be from a different model). Only a COMPLETED row counts: a failed
+  // attempt produced nothing to regenerate, and "Regenerate" after a failure
+  // promised a video the shot never had. The legacy fallback covers pre-#545
+  // shots that carry a primary video but no variant row.
   const videoModelGenerated =
-    !!videoVariantForSelectedModel ||
+    videoVariantForSelectedModel?.status === 'completed' ||
     (!!shot?.video?.url &&
       effectiveMotionModel ===
         safeImageToVideoModel(shot.video.model, DEFAULT_VIDEO_MODEL));
@@ -1722,43 +1707,31 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             />
           )}
 
-          {/* Image action button — variant-aware */}
-          {offerSetImage ? (
+          {/* Image action button. Switching to another model's existing
+              still is a history pick, like any other version. */}
+          <div className="flex flex-col gap-1">
             <Button
-              onClick={() => void handleSetImageFromVariant()}
-              disabled={setImageFromVariant.isPending || !shot}
+              onClick={() => {
+                if (falNeedsBillingSetup) {
+                  showFalGate();
+                  return;
+                }
+                void handleRegenerate();
+              }}
+              disabled={isGenerating || variantIsGenerating || !shot}
               className="w-full"
             >
-              {setImageFromVariant.isPending && (
+              {(isGenerating || variantIsGenerating) && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
-              {setImageFromVariant.isPending ? 'Setting…' : 'Set Image'}
+              {isGenerating || variantIsGenerating
+                ? 'Generating…'
+                : imageModelGenerated
+                  ? 'Regenerate Image'
+                  : 'Generate Image'}
             </Button>
-          ) : (
-            <div className="flex flex-col gap-1">
-              <Button
-                onClick={() => {
-                  if (falNeedsBillingSetup) {
-                    showFalGate();
-                    return;
-                  }
-                  void handleRegenerate();
-                }}
-                disabled={isGenerating || variantIsGenerating || !shot}
-                className="w-full"
-              >
-                {(isGenerating || variantIsGenerating) && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
-                {isGenerating || variantIsGenerating
-                  ? 'Generating…'
-                  : imageModelGenerated
-                    ? 'Regenerate Image'
-                    : 'Generate Image'}
-              </Button>
-              <ActionCost estimate={imageCostEstimate} />
-            </div>
-          )}
+            <ActionCost estimate={imageCostEstimate} />
+          </div>
 
           {/* Manual still inject (#1108) — upload replaces the selected image;
               a pending prompt edit is saved atomically with it (§4.3 C). */}
@@ -1929,6 +1902,43 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             )}
           </div>
 
+          {/* The dialogue that assembly appends to the prompt above (#1559).
+              Read-only lines — they come from the script — plus the one thing
+              only this panel can say: whose recorded voice speaks them. Until
+              the shot has a motion prompt, the scene's own lines for this
+              shot show instead (#1585), with no voice picker: a binding is
+              stored on the prompt row. */}
+          {shot?.motionPrompt?.dialogue ? (
+            <MotionDialoguePanel
+              dialogue={shot.motionPrompt.dialogue}
+              elements={elements}
+              onChange={
+                motionTakesAudioReferences
+                  ? (next) =>
+                      handleSaveMotionPrompt(
+                        editedMotionPrompt || rawMotionPrompt,
+                        next
+                      )
+                  : null
+              }
+              disabled={saveMotionPrompt.isPending || isAwaitingMotionPrompt}
+              source="prompt"
+            />
+          ) : (
+            <MotionDialoguePanel
+              dialogue={{
+                presence: true,
+                lines: dialogueForShot(
+                  scene?.script?.dialogue,
+                  shot?.shotNumber ?? 1
+                ),
+              }}
+              elements={elements}
+              onChange={null}
+              source="script"
+            />
+          )}
+
           {/* Model selector — per-asset (#1066): seeded from the shot's selected
               video version; a pick applies to the next generation. */}
           <div className="space-y-2">
@@ -2096,50 +2106,75 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             </p>
           )}
 
-          {/* Motion action button — variant-aware (#545), mirror of the image
-              tab: when the picked model already has a completed video for this
-              scene, offer to Set it; otherwise Generate/Regenerate. */}
-          {videoVariantIsCompleted && !videoVariantAlreadySet ? (
+          {unusableElementLines.length > 0 && (
+            <Alert className="text-warning">
+              <AlertTriangle />
+              <AlertDescription className="flex flex-col gap-1">
+                {unusableElementLines.map((line) => (
+                  <span key={line}>{line}</span>
+                ))}
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Motion action button. Switching to another model's existing
+              clip is a history pick, like any other version. */}
+          <div className="flex flex-col gap-1">
             <Button
-              onClick={() => void handleSetVideoFromVariant()}
-              disabled={setVideoFromVariant.isPending || !shot}
+              onClick={() => {
+                if (falNeedsBillingSetup) {
+                  showFalGate();
+                  return;
+                }
+                if (silencedVoiceLines.length > 0) {
+                  setConfirmSilentOpen(true);
+                  return;
+                }
+                void handleRegenerateMotion();
+              }}
+              disabled={
+                isGenerating ||
+                isGeneratingMotion ||
+                videoVariantIsGenerating ||
+                unusableElementLines.length > 0 ||
+                !shot
+              }
               className="w-full"
             >
-              {setVideoFromVariant.isPending && (
+              {(isGeneratingMotion || videoVariantIsGenerating) && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
-              {setVideoFromVariant.isPending ? 'Setting…' : 'Set Video'}
+              {isGeneratingMotion || videoVariantIsGenerating
+                ? 'Generating…'
+                : videoModelGenerated
+                  ? 'Regenerate Motion'
+                  : 'Generate Motion'}
             </Button>
-          ) : (
-            <div className="flex flex-col gap-1">
-              <Button
-                onClick={() => {
-                  if (falNeedsBillingSetup) {
-                    showFalGate();
-                    return;
-                  }
-                  void handleRegenerateMotion();
-                }}
-                disabled={
-                  isGenerating ||
-                  isGeneratingMotion ||
-                  videoVariantIsGenerating ||
-                  !shot
-                }
-                className="w-full"
-              >
-                {(isGeneratingMotion || videoVariantIsGenerating) && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
-                {isGeneratingMotion || videoVariantIsGenerating
-                  ? 'Generating…'
-                  : videoModelGenerated
-                    ? 'Regenerate Motion'
-                    : 'Generate Motion'}
-              </Button>
-              <ActionCost estimate={motionCostEstimate} />
-            </div>
-          )}
+            <ActionCost estimate={motionCostEstimate} />
+          </div>
+
+          <AlertDialog
+            open={confirmSilentOpen}
+            onOpenChange={setConfirmSilentOpen}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Generate without audio?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  SFX &amp; dialogue is off, so {silencedVoiceLines.join(', ')}{' '}
+                  won&apos;t be heard. The clip will be silent.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => void handleRegenerateMotion()}
+                >
+                  Generate silent
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
           {/* Cancel the in-flight render (#1108 Phase 4). Needs the
               generating version's id — the projected variant row carries it. */}
@@ -2182,7 +2217,11 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       </TabsContent>
 
       <TabsContent value="elements">
-        <SceneElementsTab sequenceId={sequenceId} shotIds={facetShotIds} />
+        <SceneElementsTab
+          sequenceId={sequenceId}
+          shotIds={facetShotIds}
+          motionModel={effectiveMotionModel}
+        />
       </TabsContent>
 
       <TabsContent value="music">

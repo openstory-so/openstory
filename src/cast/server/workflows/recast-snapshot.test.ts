@@ -43,6 +43,9 @@ function makeCharacter(
     physicalDescription: null,
     standardClothing: null,
     distinguishingFeatures: null,
+    personality: null,
+    movement: null,
+    voiceOnly: false,
     consistencyTag: 'jack-the-pi',
     sheetImageUrl: 'https://example.com/jack-old.png',
     sheetImagePath: null,
@@ -284,5 +287,45 @@ describe('mergeRecastSheetIntoSnapshots', () => {
     // no-op, so a step replay cannot double-substitute.
     expect(remerged.snapshotInputHash).toBe(merged.snapshotInputHash);
     expect(merged.snapshotInputHash).not.toBe(PENDING_SHEET_HASH);
+  });
+
+  it('carries a voice-only character (no sheet, #1585) through untouched', async () => {
+    const narrator = makeCharacter({
+      id: 'c2',
+      characterId: 'narrator',
+      name: 'Narrator',
+      voiceOnly: true,
+      sheetImageUrl: null,
+      sheetInputHash: null,
+      consistencyTag: 'narrator',
+    });
+    const build = (jack: CharacterWithSheet) =>
+      buildRegenerateShotSnapshot({
+        ...BUILD_DEFAULTS,
+        characters: [jack, narrator],
+        locations: [makeLocation()],
+      });
+    const pending = await build(
+      makeCharacter({
+        sheetImageUrl: PENDING_SHEET_URL,
+        sheetInputHash: PENDING_SHEET_HASH,
+      })
+    );
+    const expected = await build(
+      makeCharacter({
+        sheetImageUrl: NEW_SHEET_URL,
+        sheetInputHash: NEW_SHEET_HASH,
+      })
+    );
+
+    const merged = await mergeRecastSheetIntoSnapshots({
+      ...MERGE_DEFAULTS,
+      shotSnapshots: [pending],
+      sheetImageUrl: NEW_SHEET_URL,
+      sheetInputHash: NEW_SHEET_HASH,
+    });
+
+    expect(merged.shotSnapshots).toEqual([expected]);
+    expect(narrator.voiceOnly).toBe(true);
   });
 });

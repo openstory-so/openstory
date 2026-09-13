@@ -8,16 +8,15 @@
         "hasToolResult": false
       },
       "response": {
-        "content": "{\"isCharacterSheet\":true,\"subjectKind\":\"animated\",\"suggestedName\":\"\",\"description\":\"A small, chibi-proportioned robot with a large spherical helmet-like head and stubby humanoid body. It has a glossy silver-gray metallic shell, wide black visor eyes with glowing cyan ring pupils, a round camera-lens ear/sensor on each side of its head, and a glowing cyan chest orb. Limbs are stocky with black joint segments and articulated hands, standing on rounded boot-like feet.\",\"age\":\"\",\"gender\":\"\",\"ethnicity\":\"\",\"physicalDescription\":\"Spherical head dominated by a wide black visor screen with two glowing cyan ring-shaped eyes; small round lens-like sensor on the side of the head; compact rounded torso and stubby limbs with visible mechanical joints in dark gray/black rubBer-like material.\",\"standardClothing\":\"No clothing; body is entirely constructed of brushed silver metallic plating with black joint segments, a chest-mounted circular glowing cyan light, and dark rubberized accents at elbows, knees, and hands.\",\"distinguishingFeatures\":\"Glowing cyan ring eyes and matching chest light orb; camera-lens style ear sensors; segmented black joint plating contrasting with polished silver shell.\"}"
+        "content": "{\"isCharacterSheet\":true,\"subjectKind\":\"animated\",\"suggestedName\":\"\",\"description\":\"A small, chibi-proportioned robot with an oversized spherical helmet-like head and a compact humanoid body. It has a black visor face featuring two glowing teal ring-shaped eyes, a rounded silver chrome shell, articulated black joints at shoulders, elbows, hips and knees, and stubby metallic limbs ending in simple clawed hands and boxy feet with a chest-mounted glowing teal light.\",\"age\":\"\",\"gender\":\"\",\"ethnicity\":\"\",\"physicalDescription\":\"Round bulbous silver head with a black visor screen, teal glowing ring eyes, small side-mounted circular sensor/ear pieces, compact torso with visible mechanical paneling, short thick limbs with black flexible joint segments, and stubby three-fingered hands.\",\"standardClothing\":\"No clothing; body is a molded silver-gray metallic plastic/chrome shell with black rubberized joint segments and a glowing teal chest light and eyes.\",\"distinguishingFeatures\":\"Glowing teal ring-shaped eyes and matching chest light; small circular ear-like sensors on sides of head; segmented black joint plating contrasting with silver shell.\"}"
       },
       "recordedTimings": {
-        "ttftMs": 3902,
+        "ttftMs": 3140,
         "interChunkDelaysMs": [
-          0, 1, 0, 0, 0, 0, 128, 1, 0, 377, 143, 326, 197, 347, 198, 407, 99,
-          395, 230, 431, 20, 497, 50, 477, 77, 446, 139, 424, 77, 421, 412, 110,
-          1, 0
+          315, 188, 383, 142, 398, 127, 420, 128, 501, 89, 437, 112, 416, 125,
+          419, 129, 417, 130, 183, 34, 3, 0
         ],
-        "totalDurationMs": 10333
+        "totalDurationMs": 8236
       },
       "metadata": {
         "systemHash": "67e7d0bd"

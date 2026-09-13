@@ -8,15 +8,15 @@
         "hasToolResult": false
       },
       "response": {
-        "content": "{\"isCharacterSheet\": false, \"subjectKind\": \"human\", \"suggestedName\": \"\", \"description\": \"A woman with long, wavy blonde hair parted at the side, striking light blue-gray eyes, and defined eyebrows. She has fair, sun-touched skin with visible natural texture, high cheekbones, a straight nose, and full lips. She wears minimal makeup and a dark, possibly black blazer or jacket, photographed against a dark neutral backdrop.\", \"age\": \"30s\", \"gender\": \"female\", \"ethnicity\": \"Caucasian\", \"physicalDescription\": \"Oval face with high cheekbones, straight nose, full lips, and light blue-gray eyes. Long wavy blonde hair with subtle highlights, parted to one side. Fair skin with natural texture and slight sun exposure. Slim neck and shoulders visible.\", \"standardClothing\": \"Dark blazer or jacket with a structured collar\", \"distinguishingFeatures\": \"\"}"
+        "content": "{\"isCharacterSheet\":false,\"subjectKind\":\"human\",\"suggestedName\":\"\",\"description\":\"A woman with long, wavy blonde hair parted to the side, striking light blue-gray eyes, and defined brows. She has fair, sun-touched skin, a straight nose, and full lips set in a neutral, intense expression. She wears a dark, possibly black blazer or jacket with a structured collar visible at the shoulders.\",\"age\":\"30s\",\"gender\":\"female\",\"ethnicity\":\"Caucasian\",\"physicalDescription\":\"Long wavy blonde hair with lighter highlights, light blue-gray eyes, fair complexion with visible natural texture, straight nose, full lips, slender neck, defined cheekbones.\",\"standardClothing\":\"Dark colored blazer or jacket with structured shoulder and collar.\",\"distinguishingFeatures\":\"\"}"
       },
       "recordedTimings": {
-        "ttftMs": 3853,
+        "ttftMs": 5995,
         "interChunkDelaysMs": [
-          0, 0, 0, 0, 0, 1, 0, 0, 415, 228, 492, 89, 441, 0, 418, 120, 509, 72,
-          447, 75, 453, 248, 39, 0, 1
+          27, 420, 144, 417, 129, 418, 136, 424, 143, 402, 114, 425, 32, 39, 0,
+          9
         ],
-        "totalDurationMs": 7901
+        "totalDurationMs": 9274
       },
       "metadata": {
         "systemHash": "67e7d0bd"

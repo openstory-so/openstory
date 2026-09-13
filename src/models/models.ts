@@ -50,26 +50,6 @@ export const IMAGE_TO_VIDEO_MODELS = {
     supportsAudio: false,
     performance: { estimatedGenerationTime: 33, quality: 'best' as const },
   },
-  ltx_2_3_pro: {
-    id: 'fal-ai/ltx-2.3/image-to-video',
-    name: 'LTX 2.3 Pro',
-    vendor: 'Lightricks',
-    license: 'open-weight' as const,
-    qualityRank: 2,
-    maxPromptLength: 2500,
-    supportsAudio: true,
-    performance: { estimatedGenerationTime: 126, quality: 'best' as const },
-  },
-  veo3_1: {
-    id: 'fal-ai/veo3.1/image-to-video',
-    name: 'Veo 3.1',
-    vendor: 'Google',
-    license: 'proprietary' as const,
-    qualityRank: 2,
-    maxPromptLength: 20000,
-    supportsAudio: true,
-    performance: { estimatedGenerationTime: 147, quality: 'best' as const },
-  },
   gemini_omni_flash: {
     id: 'fal-ai/gemini-omni-1.1-flash/image-to-video',
     name: 'Gemini Omni Flash 1.1',
@@ -86,23 +66,13 @@ export const IMAGE_TO_VIDEO_MODELS = {
   },
   kling_v3_pro: {
     id: 'fal-ai/kling-video/v3/pro/image-to-video',
-    name: 'Kling v3 Pro',
+    name: 'Kling 3.0 Omni',
     vendor: 'Kling',
     license: 'proprietary' as const,
     qualityRank: 3,
     maxPromptLength: 2500,
     supportsAudio: true,
     performance: { estimatedGenerationTime: 306, quality: 'best' as const },
-  },
-  minimax_hailuo_02: {
-    id: 'fal-ai/minimax/hailuo-2.3/pro/image-to-video',
-    name: 'MiniMax Hailuo 2.3',
-    vendor: 'MiniMax',
-    license: 'proprietary' as const,
-    qualityRank: 5,
-    maxPromptLength: 2500,
-    supportsAudio: false,
-    performance: { estimatedGenerationTime: 199, quality: 'best' as const },
   },
   minimax_h3_max: {
     id: 'minimax/h3-max/image-to-video',
@@ -203,12 +173,13 @@ export const IMAGE_MODELS = {
     maxPromptLength: 50000,
   },
   gpt_image_2: {
-    id: 'openai/gpt-image-2' as const,
-    name: 'GPT Image 2',
+    id: 'openai/gpt-image-2.5/flare/text-to-image' as const,
+    name: 'GPT Image 2.5',
     vendor: 'OpenAI',
     license: 'proprietary' as const,
     qualityRank: 2,
-    description: 'Near-perfect text rendering, UI fidelity, up to 4K',
+    description:
+      'Default GPT Image 2.5 — fast, rich textures, typography, up to 4K',
     maxPromptLength: 32000,
   },
   grok_imagine_image: {
@@ -421,7 +392,7 @@ export function isValidImageToVideoModel(
 }
 
 /**
- * Friendly display name for a video model id ("Kling v3 Pro"); returns the raw
+ * Friendly display name for a video model id ("Kling 3.0 Omni"); returns the raw
  * id for an unrecognized (e.g. retired) model rather than hiding it.
  */
 export function videoModelDisplayName(model: string): string {
@@ -659,7 +630,7 @@ export const EDIT_ENDPOINTS: Partial<Record<TextToImageModel, string>> = {
   // advertises as $0 compute-seconds.
   nano_banana_2_lite: 'google/nano-banana-lite/edit',
   nano_banana_pro: 'fal-ai/nano-banana-pro/edit',
-  gpt_image_2: 'openai/gpt-image-2/edit',
+  gpt_image_2: 'openai/gpt-image-2.5/flare/edit',
   grok_imagine_image: 'xai/grok-imagine-image/v2.0/edit',
   grok_imagine_image_quality: 'xai/grok-imagine-image/quality/edit',
   flux_2_max: 'fal-ai/flux-2-max/edit',
@@ -744,6 +715,50 @@ export type MotionReferenceEndpointConfig = {
    * uses `reference_image_urls`. Defaults to `image_urls`.
    */
   imageField?: 'image_urls' | 'reference_image_urls';
+  /**
+   * Reference CLIPS and AUDIO the endpoint takes (#1559) — a dialogue line, a
+   * music bed, a performance or camera move to copy, uploaded as a sequence
+   * element and bound by `@` mention. 0 (the default) means the endpoint takes
+   * none, and an attached one is inlined as prose instead of dropped.
+   */
+  maxVideos?: number;
+  maxAudio?: number;
+  /** Defaults to `video_urls` / `audio_urls`. */
+  videoField?: 'video_urls' | 'reference_video_urls';
+  audioField?: 'audio_urls' | 'reference_audio_urls';
+  /** Default `@VideoN` / `@AudioN`, as with `tag`. */
+  videoTag?: (position: number) => string;
+  audioTag?: (position: number) => string;
+  /**
+   * Combined stills + clips + audio cap. fal's H3 Max r2v rejects more than 12
+   * files even when each list is inside its own max (9/3/3 = 15).
+   */
+  maxCombined?: number;
+  /**
+   * Length limits on reference clips and audio (#1559), per file and summed.
+   * A reference that busts one is rejected by the provider outright, so the
+   * binding leaves it off the request and describes it in prose instead —
+   * the same treatment as any other overflow, and disclosed by the scene
+   * panel rather than dropped in silence.
+   *
+   * Omitted where the provider states none. An element whose length we never
+   * learned (`durationSeconds: null`) is always attached: guessing it is over
+   * would drop a reference the provider might have accepted.
+   */
+  videoSeconds?: MediaDurationLimit;
+  audioSeconds?: MediaDurationLimit;
+};
+
+export type MediaDurationLimit = {
+  /**
+   * Shortest single file (#1559). A clip under it is rejected by the provider
+   * just like one over `max`, so it is refused before Generate the same way.
+   */
+  min?: number;
+  /** Longest single file. */
+  max?: number;
+  /** Longest total across every file of this kind. */
+  maxCombined?: number;
 };
 
 /**
@@ -751,13 +766,15 @@ export type MotionReferenceEndpointConfig = {
  *
  * Some motion models accept cast/element reference images only on a dedicated
  * endpoint that takes an image list (bound to prompt tokens — see
- * `MotionReferenceEndpointConfig.tag`) and has NO single start-frame
- * `image_url`. This is the motion analogue of `EDIT_ENDPOINTS` on the image
+ * `MotionReferenceEndpointConfig.tag`) and whose start frame is optional or
+ * absent. This is the motion analogue of `EDIT_ENDPOINTS` on the image
  * side: when a scene has references AND the model is listed here, motion
  * routes to this endpoint and passes the rendered still as the first image
- * plus cast/element refs after it (see `resolveMotionEndpoint`). Models that
- * emit references inline on their normal endpoint (e.g. Kling v3 Pro's
- * `elements` field) are NOT listed here.
+ * plus cast/element refs after it (see `resolveMotionEndpoint`).
+ *
+ * Kling v3 Pro's start-frame-only shots stay on image-to-video; shots with
+ * references (and reference-only shots) route to Kling O3 Pro, the sibling
+ * that actually has a reference-to-video endpoint (#1498).
  */
 export const MOTION_REFERENCE_ENDPOINTS: Partial<
   Record<ImageToVideoModel, MotionReferenceEndpointConfig>
@@ -767,18 +784,43 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
     textToVideoEndpointId: 'bytedance/seedance-2.0/enterprise/v2/text-to-video',
     tag: (position) => `@Image${position}`,
     maxImages: 9,
+    maxVideos: 3,
+    maxAudio: 3,
+    maxCombined: 12,
+    // 2.0 states its clip window as a COMBINED range (2–15s), not per file.
+    // ponytail: the 2s floor is checked per clip, which refuses two 1.5s clips
+    // the provider would take together; check the sum if that ever matters.
+    videoSeconds: { min: 2, maxCombined: 15 },
+    audioSeconds: { maxCombined: 15 },
   },
   seedance_v2_5: {
     endpointId: 'bytedance/seedance-2.5/reference-to-video',
     textToVideoEndpointId: 'bytedance/seedance-2.5/text-to-video',
     tag: (position) => `@Image${position}`,
-    maxImages: 9,
+    // 2.5 is far roomier than the 2.0 family and was previously pinned to
+    // 2.0's numbers, which quietly threw away most of its reference budget.
+    // fal's schema: 30 images / 10 clips / 10 audio, 50 files total. Ark
+    // documents the same 50 as "a free combination of images, videos and
+    // audio", so the per-kind splits are its floor, not a stricter ceiling.
+    maxImages: 30,
+    maxVideos: 10,
+    maxAudio: 10,
+    maxCombined: 50,
+    // "Each video must be 1.8 to 30.2 seconds"; audio the same.
+    videoSeconds: { min: 1.8, max: 30.2, maxCombined: 30.2 },
+    audioSeconds: { min: 1.8, max: 30.2, maxCombined: 30.2 },
   },
   seedance_v2_mini: {
     endpointId: 'bytedance/seedance-2.0/mini/reference-to-video',
     textToVideoEndpointId: 'bytedance/seedance-2.0/mini/text-to-video',
     tag: (position) => `@Image${position}`,
     maxImages: 9,
+    maxVideos: 3,
+    maxAudio: 3,
+    maxCombined: 12,
+    // Same combined 2–15s clip window as 2.0 — see the ponytail note there.
+    videoSeconds: { min: 2, maxCombined: 15 },
+    audioSeconds: { maxCombined: 15 },
   },
   gemini_omni_flash: {
     endpointId: 'fal-ai/gemini-omni-1.1-flash/reference-to-video',
@@ -789,6 +831,39 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
     // caps a request at 7 reference images.
     tag: (position) => `<IMAGE_REF_${position - 1}>`,
     maxImages: 7,
+    // Reference CLIPS, on both vias (#1559): fal's `reference_video_urls`
+    // (3 max, each ≤3s) proxies the same Interactions content blocks the
+    // native adapter sends. No `<VIDEO_REF_n>` token is documented, so a clip
+    // is named in prose — an invented tag would be a literal string binding
+    // nothing.
+    //
+    // Audio is absent because the API has not shipped it, NOT because the
+    // model lacks it: Omni is marketed as natively multimodal over audio and
+    // generates its own track, but ai.google.dev/gemini-api/docs/omni says
+    // "uploading audio references is unsupported in the current version of
+    // the API", fal exposes no audio field, and the Gemini adapter throws on
+    // audio prompt parts. Expect that to change — when it does this is
+    // `maxAudio` plus an `audioField`, and the binding already handles the
+    // rest.
+    maxVideos: 3,
+    videoField: 'reference_video_urls',
+    videoTag: (position) => `reference video ${position}`,
+    // "Video references support a maximum of 3 clips, up to 3 seconds each."
+    videoSeconds: { max: 3 },
+  },
+  // fal documents the 4-image cap as `elements` + reference images "when
+  // using video"; applied unconditionally rather than tracking a second
+  // budget. The start frame is neither, and rides `start_image_url` on this
+  // endpoint, so all 4 go to sheets — the same budget the inline `elements`
+  // path allowed before #1498. Worth re-checking against a live 4-sheet
+  // request if fal ever turns out to count the start frame too.
+  kling_v3_pro: {
+    endpointId: 'fal-ai/kling-video/o3/pro/reference-to-video',
+    // The O3 tier, not v3: `fal-pricing-live.ts` aliases this row to the
+    // reference endpoint's rate, and Studio prices v3 text-to-video itself.
+    textToVideoEndpointId: 'fal-ai/kling-video/o3/pro/text-to-video',
+    tag: (position) => `@Image${position}`,
+    maxImages: 4,
   },
   // Schema caps images at 9 (videos 3, audio 3; combined 12 files).
   minimax_h3_max: {
@@ -797,17 +872,18 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
     tag: (position) => `Image ${position}`,
     maxImages: 9,
     imageField: 'reference_image_urls',
+    maxVideos: 3,
+    maxAudio: 3,
+    maxCombined: 12,
+    videoField: 'reference_video_urls',
+    audioField: 'reference_audio_urls',
+    videoTag: (position) => `Video ${position}`,
+    audioTag: (position) => `Audio ${position}`,
+    // "2-15 seconds each" for both clips and audio.
+    videoSeconds: { min: 2, max: 15, maxCombined: 15 },
+    audioSeconds: { min: 2, max: 15, maxCombined: 15 },
   },
 };
-
-/**
- * Models that attach reference images on the normal image-to-video endpoint
- * (Kling's `elements` field). Distinct from `MOTION_REFERENCE_ENDPOINTS`,
- * which switch to a different endpoint.
- */
-const MOTION_INLINE_REFERENCE_MODELS = {
-  kling_v3_pro: true,
-} as const satisfies Partial<Record<ImageToVideoModel, true>>;
 
 /**
  * Get the reference-to-video endpoint config for a motion model, if it has one.
@@ -819,29 +895,24 @@ export function getMotionReferenceEndpoint(
   return MOTION_REFERENCE_ENDPOINTS[model] ?? null;
 }
 
-export function attachesInlineReferences(model: ImageToVideoModel): boolean {
-  return model in MOTION_INLINE_REFERENCE_MODELS;
-}
-
 /**
  * Can this model render a shot from reference images alone — no start frame?
  *
  * Reference-only mode (see `docs/architecture/reference-only-motion.md`) skips
  * still generation entirely, so the model must have a route whose start frame
  * is optional. That is exactly the `MOTION_REFERENCE_ENDPOINTS` set: fal's
- * `reference-to-video` endpoints have no `image_url` field at all (the image
- * list is schema-optional but rejected when empty — a shot with nothing
- * matched goes to `textToVideoEndpointId`, #1521), and the same models'
+ * `reference-to-video` endpoints never require a start frame — Seedance and
+ * H3 Max have no such field, Kling O3's `start_image_url` is optional (the
+ * image list is schema-optional but rejected when empty — a shot with nothing
+ * matched goes to `textToVideoEndpointId`, #1521) — and the same models'
  * BytePlus Ark route sends every image as a `reference` role (Ark's
  * frame/reference mix-ban means the still was never a frame there either).
  *
  * Keyed on the MODEL alone, so it is true on EVERY via — the floor, safe to
- * call anywhere including a pure isomorphic schema. Kling is excluded: its
- * `elements` ride on the image-to-video endpoint, which requires `image_url`.
- * Grok Imagine is excluded here too, but only because its fal id is
- * `xai/grok-imagine-video/v1.5/image-to-video` — it DOES accept references
- * with no start frame on the native xAI via. Where the via is known, ask
- * {@link referenceOnlyCapableWith} instead.
+ * call anywhere including a pure isomorphic schema. Grok Imagine is excluded
+ * here because its fal id is `xai/grok-imagine-video/v1.5/image-to-video` —
+ * it DOES accept references with no start frame on the native xAI via. Where
+ * the via is known, ask {@link referenceOnlyCapableWith} instead.
  */
 export function supportsReferenceOnlyMotion(model: ImageToVideoModel): boolean {
   return model in MOTION_REFERENCE_ENDPOINTS;

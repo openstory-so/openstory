@@ -8,15 +8,15 @@
         "hasToolResult": false
       },
       "response": {
-        "content": "{\"isCharacterSheet\":true,\"subjectKind\":\"animated\",\"suggestedName\":\"\",\"description\":\"A small, chibi-proportioned robot with an oversized spherical helmet-style head and compact humanoid body. Its face is a black visor featuring two glowing cyan ring-shaped eyes. The body is built from polished silver-gray metallic plating with black joint segments at shoulders, elbows, hips, and knees, and a glowing cyan orb centered on its chest.\",\"age\":\"\",\"gender\":\"\",\"ethnicity\":\"\",\"physicalDescription\":\"Round bulbous head disproportionate to a short stocky body, glossy silver metal plating throughout, black rubberized joints, side-mounted circular ear/sensor units on the head, articulated hands with metallic fingers, stubby legs ending in rounded boot-like feet.\",\"standardClothing\":\"No clothing; body is composed of brushed silver metal armor plating with black accent joints and a glowing cyan chest light and eye rings.\",\"distinguishingFeatures\":\"Glowing teal ring eyes, glowing cyan chest orb, side-mounted lens/sensor on head resembling an ear, visible panel seams and small vents on the head and torso.\"}"
+        "content": "{\"isCharacterSheet\":true,\"subjectKind\":\"animated\",\"suggestedName\":\"\",\"description\":\"A small, chubby robot character with a large spherical head and compact humanoid body, rendered in polished silver-gray metal with black joint accents. It has a wide black visor-like face with two glowing teal ring-shaped eyes, a round camera-lens ear on each side of its head, and a glowing teal orb on its chest. Its limbs are stubby with articulated black joints and clawed metallic hands and feet.\",\"age\":\"\",\"gender\":\"\",\"ethnicity\":\"\",\"physicalDescription\":\"Round bulbous head disproportionately large compared to its short, stocky body; smooth silver metallic shell with black recessed panels at joints; black oval face visor housing two glowing teal ring eyes; small circular lens-like protrusions on either side of the head resembling ears or sensors.\",\"standardClothing\":\"No clothing; body is entirely composed of brushed silver metal plating with black rubberized joint segments and a glowing teal chest light and eye rings.\",\"distinguishingFeatures\":\"Glowing teal circular eyes and matching chest orb light; lens-like side sensors on head; segmented black joints at shoulders, elbows, hips, and knees.\"}"
       },
       "recordedTimings": {
-        "ttftMs": 4177,
+        "ttftMs": 3342,
         "interChunkDelaysMs": [
-          0, 0, 0, 1, 0, 0, 0, 0, 0, 329, 419, 351, 127, 345, 413, 172, 463, 91,
-          433, 204, 419, 61, 419, 142, 419, 107, 381, 73, 1, 0
+          339, 150, 420, 126, 436, 109, 420, 135, 409, 131, 420, 128, 428, 110,
+          420, 133, 414, 126, 422, 83, 33, 2, 1
         ],
-        "totalDurationMs": 9547
+        "totalDurationMs": 8737
       },
       "metadata": {
         "systemHash": "67e7d0bd"

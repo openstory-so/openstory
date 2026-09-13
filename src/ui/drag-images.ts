@@ -102,6 +102,7 @@ export function dataTransferHasImages(dataTransfer: DataTransfer): boolean {
  * handler; subsequent async access returns empty strings).
  */
 export type DragImageSnapshot = {
+  /** Local files from the drag, any type. The caller filters by what it takes. */
   files: File[];
   uriList: string;
   html: string;
@@ -112,9 +113,16 @@ export function snapshotDataTransfer(
   dataTransfer: DataTransfer
 ): DragImageSnapshot {
   return {
-    files: Array.from(dataTransfer.files).filter((f) =>
-      f.type.startsWith('image/')
-    ),
+    // Every local file, unfiltered (#1559). This used to keep `image/*` only,
+    // which silently swallowed a dropped clip or voice line: the caller saw an
+    // empty result, so it neither uploaded anything NOR reached its auth gate,
+    // and a logged-out drag produced no login prompt and no error either.
+    //
+    // Kind is the CALLER's question and every one of them already asks it
+    // (`elementKindFromFile` / `fileKind`), so filtering here could only ever
+    // throw away files a caller would have accepted. The URL fallback below
+    // stays image-only — that path fetches an <img> src off a dragged web page.
+    files: Array.from(dataTransfer.files),
     uriList: dataTransfer.getData('text/uri-list'),
     html: dataTransfer.getData('text/html'),
     plain: dataTransfer.getData('text/plain'),

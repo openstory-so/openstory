@@ -18,8 +18,15 @@ import {
   useDeleteSequenceElement,
   useRenameSequenceElementToken,
   useSequenceElements,
+  useSetSequenceElementDescription,
   useShotCountsForAllElements,
 } from '@/cast/ui/use-sequence-elements';
+import { formatElementDuration } from '@/cast/element-kind';
+import {
+  ElementSupportBadge,
+  elementSupportSummary,
+} from './element-support-badge';
+import { Textarea } from '@/ui/shadcn/textarea';
 import { cn } from '@/ui/utils';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { ArrowLeft, ImagePlus, Loader2, Trash2 } from 'lucide-react';
@@ -59,6 +66,7 @@ export const ElementDetailView: React.FC<ElementDetailViewProps> = ({
   const { data: shotCounts } = useShotCountsForAllElements(sequenceId);
   const deleteElement = useDeleteSequenceElement();
   const renameToken = useRenameSequenceElementToken();
+  const setDescription = useSetSequenceElementDescription();
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   const element = elements?.find((el) => el.id === elementId);
@@ -183,7 +191,22 @@ export const ElementDetailView: React.FC<ElementDetailViewProps> = ({
                 <p className="text-sm text-muted-foreground">Analyzing…</p>
               </div>
             ) : null}
-            {element.imageUrl ? (
+            {element.kind === 'video' && element.imageUrl ? (
+              <video
+                src={element.imageUrl}
+                controls
+                playsInline
+                className="h-full w-full object-contain"
+              >
+                <track kind="captions" />
+              </video>
+            ) : element.kind === 'audio' && element.imageUrl ? (
+              <div className="flex h-full w-full flex-col items-center justify-center gap-3 p-4">
+                <audio src={element.imageUrl} controls className="w-full">
+                  <track kind="captions" />
+                </audio>
+              </div>
+            ) : element.imageUrl ? (
               <AppImage
                 src={element.imageUrl}
                 alt={element.token}
@@ -239,8 +262,77 @@ export const ElementDetailView: React.FC<ElementDetailViewProps> = ({
               <p className="text-sm text-destructive">
                 Vision failed: {element.visionError ?? 'unknown error'}
               </p>
-            ) : (
+            ) : element.kind === 'image' ? (
               <DetailRow label="Description" value={element.description} />
+            ) : (
+              // Nothing looked at this file, so the description is the user's
+              // to write (#1559): a transcript, "upbeat synth bed", "puppet
+              // walk cycle". How it is USED stays in the script around the
+              // mention.
+              <div className="space-y-1">
+                <dt className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Description
+                </dt>
+                <dd>
+                  <Textarea
+                    key={element.id}
+                    defaultValue={element.description ?? ''}
+                    rows={3}
+                    placeholder={
+                      element.kind === 'audio'
+                        ? 'What is this? e.g. a transcript, or "upbeat synth bed"'
+                        : 'What is this? e.g. "handheld walk cycle, side on"'
+                    }
+                    disabled={setDescription.isPending}
+                    onBlur={(event) => {
+                      const next = event.target.value.trim();
+                      if (next === (element.description ?? '')) return;
+                      setDescription.mutate(
+                        { sequenceId, elementId, description: next },
+                        {
+                          onError: (err) =>
+                            toast.error("Couldn't save the description", {
+                              description:
+                                err instanceof Error
+                                  ? err.message
+                                  : 'Unknown error',
+                            }),
+                        }
+                      );
+                    }}
+                  />
+                </dd>
+              </div>
+            )}
+            {element.kind !== 'image' && (
+              <>
+                <DetailRow
+                  label="Length"
+                  value={formatElementDuration(element.durationSeconds)}
+                />
+                <div className="space-y-1">
+                  <dt className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Model support
+                  </dt>
+                  <dd className="flex items-start gap-2 text-sm leading-relaxed">
+                    <ElementSupportBadge
+                      token={element.token}
+                      url={element.imageUrl}
+                      kind={element.kind}
+                      durationSeconds={element.durationSeconds}
+                      variant="inline"
+                      className="mt-0.5 shrink-0"
+                    />
+                    <span>
+                      {elementSupportSummary(
+                        element.kind,
+                        element.durationSeconds,
+                        element.imageUrl
+                      )}
+                    </span>
+                  </dd>
+                </div>
+              </>
             )}
             {affectedShotCount > 0 ? (
               <DetailRow

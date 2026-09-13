@@ -13,6 +13,8 @@ import {
   sceneSplitBiblesResultSchema,
   sceneSplitScenesResultSchema,
 } from '@/sequences/response-schemas';
+import { attachShotLists } from '@/shots/shot-list-pass';
+import { shotListPassResultSchema } from '@/shots/shot-list.schema';
 import type {
   ElementBibleEntry,
   LocationBibleEntry,
@@ -177,11 +179,19 @@ export function replayRecordedE2eScenes(): {
     })
   );
 
-  const { scenes } = reconcileSceneTags(assembled.scenes, {
+  const { scenes: tagged } = reconcileSceneTags(assembled.scenes, {
     characterBible: bibles.characterBible,
     locationBible,
     elementBible,
   });
+  // The shot-list call's per-shot lines (#1585) replace the regex preview
+  // before persist.
+  const scenes = attachShotLists(
+    tagged,
+    shotListPassResultSchema.parse(
+      parseJson(responseContent('script-shot-list/script-shot-list.json'))
+    )
+  );
 
   // Analyze-script casts matched talent onto the bible BEFORE visual/motion
   // prompts (#867). Replay the recorded Maisie → Sienna Blake match so
@@ -201,6 +211,8 @@ export function replayRecordedE2eScenes(): {
     talentCast.matches.map((match) => ({
       characterId: match.characterId,
       talentName: 'Sienna Blake',
+      personality: '',
+      movement: '',
     }))
   );
 

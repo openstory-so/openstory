@@ -1,0 +1,17 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "9-panel cinematic storyboard CONTACT SHEET derived from Image 1. Mix Wide, Medium, and Tight shots of the same scene.\n\nLayout: a rigid 3x3 grid of 9 equal rectangular cells in a 16:9 landscape image. Each cell is exactly 1/3 of the width and 1/3 of the height. Separate cells with a thin black gutter.\n- Content must not cross, bleed, or overlap a gutter. No collage.\n- Each cell is a complete, independently framed shot — not a crop of a larger scene.\n\nScene: extreme close-up, slightly above, Scarlett (Image 2)'s hands hold the closed lipstick tube over the sink, one hand gripping the tube and the other ready to twist it., The lipstick tube and Scarlett (Image 2)'s fingers occupy the center against glossy white tile, with a stripe of sunlight isolating the coral bullet., downtown_apartment_bathroom, Hard, directional morning sunlight cuts across the tile and sink, creating crisp highlights, clean shadows, and bright reflections in the mirror and on the lipstick., Glossy white tile, charcoal and black stone, brushed metal fixtures, neutral gray accents, and vivid coral as the sole saturated color., Scarlett (Image 2), Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save\n\nEvery panel is a shot of the same scene as Image 1 — keep the characters, wardrobe, lighting, color grade, and texture consistent across all panels.\n\nNo text, dialogue bubbles, scene numbers, or watermarks.\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.\nImage 1 (primary): Primary source scene — generate 9 variant shots from this image\nImage 3 (location): Downtown Apartment Bathroom - A compact",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/a636465c50d7325279c7d401e3c228da24e0aad46b59af7969730f73f30a9a2a.png",
+          "mime_type": "image/png"
+        }
+      }
+    }
+  ]
+}

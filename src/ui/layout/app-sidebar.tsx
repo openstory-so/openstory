@@ -45,6 +45,7 @@ import { UserSidebarFooter } from './user-sidebar-footer';
  * does not debit, so that path never looks like a balance drop).
  */
 
+import { shouldOfferWelcomeClaim } from '@/billing/constants';
 import { showLowBalanceToast } from '@/billing/ui/low-balance-toast';
 import { typicalShortCostUsd } from '@/billing/ui/typical-short-cost';
 import { subscribeInsufficientCredits } from '@/billing/ui/notify-insufficient-credits';
@@ -52,10 +53,19 @@ import { openAddCreditsDialog } from '@/billing/ui/use-add-credits-dialog';
 import { openBillingGate } from '@/billing/ui/use-billing-gate-dialog';
 import { useBillingBalance } from '@/billing/ui/use-billing-balance';
 import { useFalPricing } from '@/billing/ui/use-fal-pricing';
+import { useWelcomeCreditsGate } from '@/billing/ui/welcome-credits-dialog';
 
 function useLowBalanceWarning() {
-  const { balance, isLowBalance, isZeroBalance, lowBalanceThreshold } =
-    useBillingBalance();
+  const {
+    balance,
+    isLowBalance,
+    isZeroBalance,
+    lowBalanceThreshold,
+    stripeEnabled,
+    hasSignupGrant,
+    hasOtherCredits,
+  } = useBillingBalance();
+  const { reopen: reopenWelcomeCredits } = useWelcomeCreditsGate();
   const { pricing } = useFalPricing();
   const posthog = usePostHog();
   const prevBalanceRef = useRef<number | null>(null);
@@ -63,6 +73,16 @@ function useLowBalanceWarning() {
 
   const fireToast = useCallback(
     (source: 'balance_drop' | 'insufficient_credits') => {
+      if (
+        shouldOfferWelcomeClaim({
+          stripeEnabled,
+          hasSignupGrant,
+          hasOtherCredits,
+        })
+      ) {
+        reopenWelcomeCredits();
+        return;
+      }
       const balanceUsd = balance ?? 0;
       const zero = balance === null ? true : isZeroBalance;
       const props = {
@@ -89,7 +109,16 @@ function useLowBalanceWarning() {
         },
       });
     },
-    [balance, isZeroBalance, posthog, pricing]
+    [
+      balance,
+      isZeroBalance,
+      posthog,
+      pricing,
+      stripeEnabled,
+      hasSignupGrant,
+      hasOtherCredits,
+      reopenWelcomeCredits,
+    ]
   );
 
   useEffect(() => {

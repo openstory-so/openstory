@@ -6,8 +6,8 @@ import {
 
 describe('availableResolutions', () => {
   it('offers only what a video model can render', () => {
-    // Veo 3.1 serves all three; Seedance 2.5 stops at 1080p.
-    expect(availableResolutions({ videoModels: ['veo3_1'] })).toEqual([
+    // Seedance 2.0 serves all three; Seedance 2.5 stops at 1080p.
+    expect(availableResolutions({ videoModels: ['seedance_v2'] })).toEqual([
       '720p',
       '1080p',
       '4k',
@@ -16,9 +16,11 @@ describe('availableResolutions', () => {
       '720p',
       '1080p',
     ]);
-    // H3 Max is the Turbo default and tops out at 768P.
+    // H3 Max is the Turbo default; fal added 1080P (latent refinement from a
+    // native 768P source) alongside 480P/768P.
     expect(availableResolutions({ videoModels: ['minimax_h3_max'] })).toEqual([
       '720p',
+      '1080p',
     ]);
   });
 
@@ -58,7 +60,7 @@ describe('availableResolutions', () => {
 describe('resolutionCeilingNote', () => {
   it('is silent when every model serves the tier', () => {
     expect(
-      resolutionCeilingNote('1080p', { videoModels: ['veo3_1'] })
+      resolutionCeilingNote('1080p', { videoModels: ['seedance_v2'] })
     ).toBeNull();
   });
 
@@ -75,7 +77,7 @@ describe('resolutionCeilingNote', () => {
     expect(
       resolutionCeilingNote('720p', {
         imageModels: ['nano_banana_2_lite'],
-        videoModels: ['veo3_1'],
+        videoModels: ['seedance_v2'],
       })
     ).toBe('Nano Banana 2 Lite renders at a fixed size');
     expect(
@@ -89,33 +91,24 @@ describe('resolutionCeilingNote', () => {
   });
 
   it('calls a one-tier model fixed, even when the ask matches that tier', () => {
-    // H3 Max advertises 480P and 768P, which both land in the 720p band — so
-    // the tier never moves it. Staying silent because 720p "matches" left the
-    // picker showing a lone 720p pill that did nothing.
+    // Seedance 2.0 Mini advertises 480p and 720p, which both land in the 720p
+    // band — so the tier never moves it. Staying silent because 720p "matches"
+    // left the picker showing a lone 720p pill that did nothing.
     expect(
-      resolutionCeilingNote('720p', { videoModels: ['minimax_h3_max'] })
-    ).toBe('MiniMax H3 Max renders at a fixed size');
+      resolutionCeilingNote('720p', { videoModels: ['seedance_v2_mini'] })
+    ).toBe('Seedance 2.0 Mini renders at a fixed size');
     // The screenshot case: a fixed image model plus a one-tier video model
     // leaves nothing to choose, so the caption has to carry the whole row.
     expect(
       resolutionCeilingNote('720p', {
         imageModels: ['nano_banana_2_lite'],
-        videoModels: ['minimax_h3_max'],
+        videoModels: ['seedance_v2_mini'],
       })
-    ).toBe('Nano Banana 2 Lite and MiniMax H3 Max render at a fixed size');
+    ).toBe('Nano Banana 2 Lite and Seedance 2.0 Mini render at a fixed size');
   });
 
-  it('says "above" for a model whose floor is over the tier', () => {
-    // LTX starts at 1080p, so a 720p ask renders ABOVE it — and costs more.
-    // Calling that "below 720p" told the user they were getting less while
-    // they were billed for more.
-    expect(
-      resolutionCeilingNote('720p', {
-        imageModels: ['gpt_image_2'],
-        videoModels: ['ltx_2_3_pro'],
-      })
-    ).toBe('LTX 2.3 Pro renders above 720p');
-  });
+  // No catalog model currently has a floor above 720p, so the "renders above"
+  // branch has no live case to pin (LTX 2.3 Pro, 1080p floor, was retired in #1511).
 
   it('reads the aspect ratio — a tier can be out of reach at one shape only', () => {
     // Seedream's documented pixel range puts 720p out of reach when square,

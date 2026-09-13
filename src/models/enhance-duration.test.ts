@@ -154,58 +154,62 @@ describe('maybeRewriteDurationLabels', () => {
     const script =
       'Scene 1 — 6s\nA.\n\nScene 2 — 6s\nB.\n\nScene 3 — 6s\nC.\n\nScene 4 — 6s\nD.\n\nScene 5 — 8s\nE.';
     expect(sumSceneDurations(script)).toBe(32);
-    expect(maybeRewriteDurationLabels(script, 'ltx_2_3_pro')).toBe(script);
+    expect(maybeRewriteDurationLabels(script, 'minimax_h3_max')).toBe(script);
   });
 
-  it('rewrites illegal 5s labels onto the LTX grid', () => {
-    const rewritten = maybeRewriteDurationLabels(FIVE_SCENES, 'ltx_2_3_pro');
-    expect(parseSceneDurationLabels(rewritten)).toEqual([6, 6, 6, 6, 6]);
-    expect(rewritten).toContain('Scene 1 — 6s');
-    expect(rewritten).not.toContain('Scene 1 — 5s');
+  it('rewrites illegal 4s labels onto the H3 Max grid', () => {
+    const rewritten = maybeRewriteDurationLabels(
+      FIVE_SCENES.replaceAll('5s', '4s'),
+      'minimax_h3_max'
+    );
+    expect(parseSceneDurationLabels(rewritten)).toEqual([5, 5, 5, 5, 5]);
+    expect(rewritten).toContain('Scene 1 — 5s');
+    expect(rewritten).not.toContain('Scene 1 — 4s');
   });
 
   it('snaps shot labels and leaves the scene total line alone', () => {
-    const script = `Scene 1 — 10s
-Shot 1 — 5s
+    const script = `Scene 1 — 8s
+Shot 1 — 4s
 A.
-Shot 2 — 5s
+Shot 2 — 4s
 B.`;
-    const rewritten = maybeRewriteDurationLabels(script, 'ltx_2_3_pro');
-    expect(parseShotDurationLabels(rewritten)).toEqual([6, 6]);
-    expect(rewritten).toContain('Scene 1 — 10s');
-    expect(rewritten).toContain('Shot 1 — 6s');
+    const rewritten = maybeRewriteDurationLabels(script, 'minimax_h3_max');
+    expect(parseShotDurationLabels(rewritten)).toEqual([5, 5]);
+    expect(rewritten).toContain('Scene 1 — 8s');
+    expect(rewritten).toContain('Shot 1 — 5s');
   });
 });
 
 describe('assessDurationFit', () => {
   it('reports the snapped total, off-grid labels included', () => {
-    // 9 × 5s labels snap up to the LTX 6s floor — the script renders at 54s
-    // whatever the enhance target was.
-    expect(assessDurationFit(NINE_SCENES, 'ltx_2_3_pro').snappedSeconds).toBe(
-      54
-    );
+    // 9 × 4s labels snap up to the H3 Max 5s floor — the script renders at
+    // 45s whatever the enhance target was.
     expect(
-      assessDurationFit(FIVE_SCENES.replaceAll('5s', '6s'), 'ltx_2_3_pro')
+      assessDurationFit(NINE_SCENES.replaceAll('5s', '4s'), 'minimax_h3_max')
+        .snappedSeconds
+    ).toBe(45);
+    expect(
+      assessDurationFit(FIVE_SCENES.replaceAll('5s', '6s'), 'minimax_h3_max')
         .snappedSeconds
     ).toBe(30);
   });
 
   it('reports no total for an unlabeled script', () => {
-    const fit = assessDurationFit('A door opens.', 'ltx_2_3_pro');
+    const fit = assessDurationFit('A door opens.', 'minimax_h3_max');
     expect(fit.snappedSeconds).toBeNull();
-    expect(fit.clipGrid).toEqual([6, 8, 10]);
+    expect(fit.clipGrid).toEqual([5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
   });
 });
 
 describe('buildDurationPromptParagraph', () => {
-  it('requires a hard sum, the LTX grid, a TOTAL line, and title-card substitution', () => {
+  it('requires a hard sum, the model grid, a TOTAL line, and title-card substitution', () => {
     const paragraph = buildDurationPromptParagraph({
       targetSeconds: 30,
-      videoModel: 'ltx_2_3_pro',
+      videoModel: 'minimax_h3_max',
     });
     expect(paragraph).toContain('Target video duration: 30 seconds');
-    expect(paragraph).toContain('about 4-5 clips');
-    expect(paragraph).toContain('Clip durations MUST be 6, 8 or 10 seconds');
+    expect(paragraph).toContain('about 4-6 clips');
+    expect(paragraph).toContain('Clip durations MUST be 5–15 seconds');
     expect(paragraph).toContain('MUST add up to 30 seconds');
     expect(paragraph).toContain('TOTAL: <sum>s');
     expect(paragraph).toContain('title card');
@@ -221,13 +225,13 @@ describe('buildDurationCorrectionPrompt', () => {
     const prompt = buildDurationCorrectionPrompt({
       sum: 43,
       targetSeconds: 30,
-      grid: [6, 8, 10],
+      grid: [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
       sceneCount: 9,
     });
     expect(prompt).toContain('sum to 43s');
     expect(prompt).toContain('target is 30s');
-    expect(prompt).toContain('6, 8 or 10 seconds');
-    expect(prompt).toContain('9 scenes at ≥6s is at least 54s');
+    expect(prompt).toContain('5–15 seconds');
+    expect(prompt).toContain('9 scenes at ≥5s is at least 45s');
     expect(prompt).toContain('clip duration labels');
   });
 });
@@ -246,7 +250,7 @@ describe('estimateMotionDurations', () => {
       script: FIVE_SCENES.replaceAll('5s', '6s'),
       targetSeconds: 30,
       sceneCount: 5,
-      model: 'ltx_2_3_pro',
+      model: 'minimax_h3_max',
     });
     expect(totalSeconds).toBe(30);
     expect(perShotSeconds).toBe(6);
@@ -256,10 +260,10 @@ describe('estimateMotionDurations', () => {
     const { perShotSeconds } = estimateMotionDurations({
       script: 'a one-liner',
       targetSeconds: 30,
-      sceneCount: 6,
-      model: 'ltx_2_3_pro',
+      sceneCount: 8,
+      model: 'minimax_h3_max',
     });
-    // 30/6 = 5 → LTX 6
-    expect(perShotSeconds).toBe(6);
+    // 30/8 = 3.75 → H3 Max floor 5
+    expect(perShotSeconds).toBe(5);
   });
 });

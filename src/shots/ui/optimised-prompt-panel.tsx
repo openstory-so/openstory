@@ -5,6 +5,7 @@
  */
 
 import { AppImage } from '@/ui/shadcn/app-image';
+import { ElementThumbnail } from '@/cast/ui/element/element-thumbnail';
 import { Button } from '@/ui/shadcn/button';
 import {
   Collapsible,
@@ -131,9 +132,13 @@ export const OptimisedPromptPanel: React.FC<{
               {preview.endpointId}
             </span>
           )}
-          {preview.images && preview.images.length > 0 && (
-            <BoundImageStrip images={preview.images} />
-          )}
+          {/* Clips and audio ride the request too (#1559) — listed under the
+              tag the prompt binds them by, so the preview is the request. */}
+          <BoundMediaList
+            images={preview.images ?? []}
+            clips={preview.videos ?? []}
+            audio={preview.audio ?? []}
+          />
           {showingJson ? (
             <pre
               id={previewId}
@@ -160,12 +165,14 @@ export const OptimisedPromptPanel: React.FC<{
   );
 };
 
-const BoundImageStrip: React.FC<{
-  images: BoundPromptImage[];
-}> = ({ images }) => {
-  const [copiedLabel, setCopiedLabel] = useState<string | null>(null);
+/**
+ * Copy a bound image as PNG bytes. Clips and audio get no button: browsers
+ * only put PNG and text on the clipboard, so there is nothing to paste.
+ */
+const CopyImageButton: React.FC<{ image: BoundPromptImage }> = ({ image }) => {
+  const [copied, setCopied] = useState(false);
 
-  const handleCopyImage = async (image: BoundPromptImage) => {
+  const handleCopy = async () => {
     if (!(await copyImageToClipboard(image.url))) {
       toast.error('Failed to copy image', {
         description:
@@ -173,56 +180,115 @@ const BoundImageStrip: React.FC<{
       });
       return;
     }
-    setCopiedLabel(image.label);
-    window.setTimeout(() => setCopiedLabel(null), 2000);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2000);
   };
 
   return (
-    <ul
-      className="flex gap-2 overflow-x-auto"
-      aria-label="Bound reference images"
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      className="absolute top-0.5 right-0.5 h-6 w-6 bg-background/80"
+      onClick={() => void handleCopy()}
+      aria-label={
+        copied ? `Copied ${image.label}` : `Copy ${image.label} image`
+      }
     >
-      {images.map((image) => {
-        const copied = copiedLabel === image.label;
-        return (
-          <li key={`${image.label}-${image.url}`} className="shrink-0">
-            <figure className="flex flex-col items-center gap-1">
-              <div className="relative size-16 overflow-hidden rounded-sm border bg-muted">
-                <AppImage
-                  src={image.url}
-                  alt=""
-                  width={64}
-                  height={64}
-                  className="size-16 object-cover"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="absolute top-0.5 right-0.5 h-6 w-6 bg-background/80"
-                  onClick={() => void handleCopyImage(image)}
-                  aria-label={
-                    copied
-                      ? `Copied ${image.label}`
-                      : `Copy ${image.label} image`
-                  }
-                >
-                  {copied ? (
-                    <span aria-hidden className="text-xs">
-                      ✓
-                    </span>
-                  ) : (
-                    <CopyIcon className="h-3.5 w-3.5" />
-                  )}
-                </Button>
-              </div>
-              <figcaption className="font-mono text-xs text-muted-foreground">
-                {image.label}
-              </figcaption>
-            </figure>
-          </li>
-        );
-      })}
+      {copied ? (
+        <span aria-hidden className="text-xs">
+          ✓
+        </span>
+      ) : (
+        <CopyIcon className="h-3.5 w-3.5" />
+      )}
+    </Button>
+  );
+};
+
+const BoundMediaList: React.FC<{
+  images: BoundPromptImage[];
+  clips: BoundPromptImage[];
+  audio: BoundPromptImage[];
+}> = ({ images, clips, audio }) => {
+  if (images.length + clips.length + audio.length === 0) return null;
+  return (
+    <ul className="flex flex-wrap gap-2" aria-label="Bound references">
+      {images.map((image) => (
+        <li key={`${image.label}-${image.url}`} className="shrink-0">
+          <figure className="flex flex-col items-center gap-1">
+            <div className="relative size-16 overflow-hidden rounded-sm border bg-muted">
+              <AppImage
+                src={image.url}
+                alt=""
+                width={64}
+                height={64}
+                className="size-16 object-cover"
+              />
+              <CopyImageButton image={image} />
+            </div>
+            <figcaption className="font-mono text-xs text-muted-foreground">
+              {image.label}
+            </figcaption>
+          </figure>
+        </li>
+      ))}
+      {clips.map((clip) => (
+        <HoverPlayTile
+          key={`${clip.label}-${clip.url}`}
+          kind="video"
+          media={clip}
+        />
+      ))}
+      {audio.map((track) => (
+        <HoverPlayTile
+          key={`${track.label}-${track.url}`}
+          kind="audio"
+          media={track}
+        />
+      ))}
     </ul>
+  );
+};
+
+/**
+ * A 64px reference tile that plays while hovered or focused — the style-icon
+ * pattern, because a native player squeezed into a tile has no room for its
+ * own controls. A click toggles it for touch, where there is no hover.
+ */
+const HoverPlayTile: React.FC<{
+  kind: 'video' | 'audio';
+  media: BoundPromptImage;
+}> = ({ kind, media }) => {
+  const [playing, setPlaying] = useState(false);
+  return (
+    <li className="shrink-0">
+      <figure className="flex flex-col items-center gap-1">
+        <button
+          type="button"
+          className="relative size-16 overflow-hidden rounded-sm border bg-muted outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          aria-label={`${playing ? 'Stop' : 'Play'} ${media.label}`}
+          aria-pressed={playing}
+          // Hover is a mouse thing: a tap fires an emulated enter AND a
+          // click, which would start and stop it in one touch. Touch and
+          // keyboard (Enter / Space) toggle through the click instead.
+          onPointerEnter={(e) => e.pointerType === 'mouse' && setPlaying(true)}
+          onPointerLeave={(e) => e.pointerType === 'mouse' && setPlaying(false)}
+          onBlur={() => setPlaying(false)}
+          onClick={() => setPlaying((was) => !was)}
+        >
+          <ElementThumbnail
+            kind={kind}
+            url={media.url}
+            label={media.label}
+            fit="cover"
+            playing={playing}
+          />
+        </button>
+        <figcaption className="font-mono text-xs text-muted-foreground">
+          {media.label}
+        </figcaption>
+      </figure>
+    </li>
   );
 };

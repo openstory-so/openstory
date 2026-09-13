@@ -241,6 +241,41 @@ export function createSceneScriptVersionsMethods(db: Database) {
 
       return inserted;
     },
+
+    /**
+     * Overwrite the system-owned `split` version's content (#1585). The
+     * streaming step seeds it with the regex dialogue preview; the shot-list
+     * call's lines land later, and `seedSplitVersions` skips rows that
+     * exist. The split row reuses the scene id, so this touches only that
+     * row — a user's own revisions are separate rows. In place, no new
+     * version: nothing has hashed the split row yet when this runs, straight
+     * after the seed in `persist-scenes`. Throws when a row is missing, so a
+     * scene can never silently keep the preview.
+     */
+    updateSplitContent: async (
+      seeds: ReadonlyArray<Pick<SeedSplitVersionInput, 'sceneId' | 'content'>>
+    ): Promise<number> => {
+      let updated = 0;
+      for (const seed of seeds) {
+        const rows = await db
+          .update(sceneScriptVersions)
+          .set({ content: seed.content })
+          .where(
+            and(
+              eq(sceneScriptVersions.id, seed.sceneId),
+              eq(sceneScriptVersions.source, 'split')
+            )
+          )
+          .returning({ id: sceneScriptVersions.id });
+        updated += rows.length;
+      }
+      if (updated !== seeds.length) {
+        throw new Error(
+          `updateSplitContent updated ${updated}/${seeds.length} split versions`
+        );
+      }
+      return updated;
+    },
   };
 
   return methods;

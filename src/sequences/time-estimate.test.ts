@@ -107,7 +107,7 @@ describe('estimateTotalSeconds', () => {
     // Image/video p90s from PostHog (30d ending 2026-09-01). Analysis falls
     // back to DEFAULT_ANALYSIS_MODEL (Luna, fast) like the other wall clocks,
     // so the default pair is deliberately mixed-tier.
-    expect(estimateTotalSeconds(6)).toBe(641);
+    expect(estimateTotalSeconds(6)).toBe(644);
   });
 
   test('uses default scene count for 0', () => {
@@ -122,15 +122,15 @@ describe('estimateTotalSeconds', () => {
     expect(estimateTotalSeconds(5, 10)).toBe(estimateTotalSeconds(5));
   });
 
-  test('turbo Lite + H3 Max is ~2.5 min, not a Seedance-class 11 min', () => {
+  test('turbo Lite + H3 Max is ~4 min, not a Seedance-class 11 min', () => {
     const defaults = estimateTotalSeconds(5);
     const turbo = estimateTotalSeconds(5, undefined, undefined, {
       analysisModel: 'openai/gpt-5.6-luna',
       imageModel: 'nano_banana_2_lite',
       videoModel: 'minimax_h3_max',
     });
-    expect(defaults).toBe(635);
-    expect(turbo).toBe(151);
+    expect(defaults).toBe(638);
+    expect(turbo).toBe(231);
     expect(turbo).toBeLessThan(defaults / 2);
   });
 
@@ -177,19 +177,18 @@ describe('estimateTotalSeconds', () => {
 
 describe('estimateMotionSeconds', () => {
   test('Seedance 5 clips is one p90 wave, not the old 210s floor', () => {
-    expect(estimateMotionSeconds('seedance_v2', 5)).toBe(288);
+    expect(estimateMotionSeconds('seedance_v2', 5)).toBe(289);
   });
 
   test('Seedance 12 clips adds a second p50 wave', () => {
-    expect(estimateMotionSeconds('seedance_v2', 12)).toBe(496);
+    expect(estimateMotionSeconds('seedance_v2', 12)).toBe(500);
   });
 
-  test('H3 Max 5 clips is ~10s p90, not a 3.5 min floor', () => {
-    expect(estimateMotionSeconds('minimax_h3_max', 5)).toBe(10);
-  });
-
-  test('Hailuo stays Seedance-class even though it is in the turbo picker', () => {
-    expect(estimateMotionSeconds('minimax_hailuo_02', 5)).toBe(228);
+  test('H3 Max 5 clips is ~1 min p90, not a 3.5 min floor', () => {
+    // It was 10s (PostHog); production renders take 22s typical, 73s slow.
+    // At 10s the countdown hit zero and sat on "Finishing up…" for most of
+    // every clip.
+    expect(estimateMotionSeconds('minimax_h3_max', 5)).toBe(73);
   });
 });
 

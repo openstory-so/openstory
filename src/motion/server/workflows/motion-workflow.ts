@@ -16,7 +16,12 @@ import { arkAssetIdentities } from '@/models/server/byteplus-asset-pool';
 import { ingestArkAssets } from '@/models/server/byteplus-asset-steps';
 import { extractFalErrorMessage } from '@/models/fal-error';
 import { computeVideoManifestInputHash } from '@/shots/input-hash';
-import { DEFAULT_VIDEO_MODEL, IMAGE_TO_VIDEO_MODELS } from '@/models/models';
+import {
+  DEFAULT_VIDEO_MODEL,
+  getMotionReferenceEndpoint,
+  IMAGE_TO_VIDEO_MODELS,
+} from '@/models/models';
+import { bindableReferences } from '@/motion/server/build-reference-video-prompt';
 import {
   DEFAULT_ANALYSIS_MODEL,
   getAnalysisModelById,
@@ -197,6 +202,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             fps: input.fps,
             motionBucket: input.motionBucket,
             aspectRatio: input.aspectRatio,
+            resolution: input.resolution,
             generateAudio: input.generateAudio,
           },
           await getEffectiveFalPricing()
@@ -395,8 +401,10 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         // a step result is persisted and replayed as JSON, where `undefined`
         // has no representation and comes back as `null` anyway — returning it
         // outright keeps the declared type true on the replay path too.
-        // (Kling is not reference-only capable, but the empty check has to come
-        // first regardless.) Trimmed to agree with the entry guard above, so a
+        // Kling reference-only shots return here too since #1498, so they skip
+        // the compression below — there is no still to compress, and their
+        // sheets are handled by `prepare-reference-images`. Trimmed to agree
+        // with the entry guard above, so a
         // whitespace-only URL can't slip past as a real still and shift every
         // reference tag down a slot.
         if (!input.imageUrl?.trim()) {
@@ -420,6 +428,38 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         );
 
         return compressed.url;
+      }
+    );
+
+    // Kling enforces its 10MB-per-image limit on every URL in the reference
+    // list, not just the start frame — and sheets only started riding that
+    // list when references moved to the O3 reference-to-video endpoint
+    // (#1498); the old inline `elements` path never sent them to Kling. So the
+    // guard above has to cover both halves of the request, not one.
+    const referenceImages = await step.do(
+      'prepare-reference-images',
+      async (): Promise<MotionWorkflowInput['referenceImages']> => {
+        const refs = input.referenceImages ?? [];
+        if (
+          refs.length === 0 ||
+          IMAGE_TO_VIDEO_MODELS[model].vendor !== 'Kling'
+        ) {
+          return input.referenceImages;
+        }
+        return await Promise.all(
+          refs.map(async (ref) => {
+            if (!ref.referenceImageUrl) return ref;
+            const compressed = await ensureImageUnderLimit(
+              ref.referenceImageUrl,
+              KLING_MAX_IMAGE_BYTES
+            );
+            if (!compressed) return ref;
+            logger.info(
+              `[MotionWorkflow:cf] Reference image ${(compressed.originalSizeBytes / 1024 / 1024).toFixed(1)}MB exceeds limit, using Cloudflare Image Resizing`
+            );
+            return { ...ref, referenceImageUrl: compressed.url };
+          })
+        );
       }
     );
 
@@ -679,8 +719,11 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             aspectRatio: input.aspectRatio,
             ...(input.resolution && { resolution: input.resolution }),
             generateAudio: input.generateAudio,
-            // Cast/element reference images (#873) — only Kling v3 Pro emits them.
-            referenceImages: input.referenceImages,
+            // Cast/element reference images (#873) — emitted by every model
+            // with a reference-to-video route (`MOTION_REFERENCE_ENDPOINTS`)
+            // and by the native xAI / Ark / Google inline vias; the rest
+            // substitute tokens with descriptions.
+            referenceImages,
             scopedDb: scopedDb.credentials,
             arkAssets,
           });
@@ -949,7 +992,15 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     const billing = await step.do('price-motion-generation', async () =>
       motionCostFromUsage(job.via, billedUsage, {
         modelKey: job.modelKey,
-        hasReferenceImages: (input.referenceImages?.length ?? 0) > 0,
+        // The same question submit asked (#1559): references this model can
+        // actually carry. A shot whose only attachment is an audio element
+        // went to the prompt-only endpoint, and must be billed at its rate.
+        hasReferenceImages:
+          bindableReferences(
+            getMotionReferenceEndpoint(job.modelKey),
+            input.referenceImages ?? [],
+            Boolean(input.imageUrl)
+          ).length > 0,
         referenceOnly: input.referenceOnly,
       })
     );

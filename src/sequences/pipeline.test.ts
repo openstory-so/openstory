@@ -15,6 +15,7 @@ import {
   flagsFromStopAt,
   GENERATION_STAGES,
   includesStage,
+  allowsUnfundedGeneration,
   isGenerationStage,
   nextActionFromArtifacts,
   nextStageAfter,
@@ -106,6 +107,14 @@ describe('generation pipeline stages', () => {
     expect(includesStage('references', 'references')).toBe(true);
     expect(includesStage('references', 'images')).toBe(false);
     expect(stagesUpTo('references')).toEqual(['script', 'references']);
+  });
+
+  it('lets unfunded teams run script analysis, not sheets or later stages', () => {
+    expect(allowsUnfundedGeneration('script')).toBe(true);
+    expect(allowsUnfundedGeneration('references')).toBe(false);
+    expect(allowsUnfundedGeneration('images')).toBe(false);
+    expect(allowsUnfundedGeneration('motion')).toBe(false);
+    expect(allowsUnfundedGeneration('music')).toBe(false);
   });
 
   it('runs only the slice from startFrom through stopAt', () => {

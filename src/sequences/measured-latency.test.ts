@@ -30,10 +30,12 @@ describe('measured latency catalogs', () => {
     expect(imageWallClock('nope')).toEqual(IMAGE_WALL_CLOCK.gpt_image_2);
   });
 
-  test('Lite with no samples proxies Flux Turbo', () => {
-    expect(imageWallClock('nano_banana_2_lite').p90).toBe(
+  test('Lite uses its own production samples, not Flux Turbo', () => {
+    // It copied Flux Turbo's 8s until production had 305 Lite stills taking
+    // 15s typical / 29s slow — the countdown ran out four times too early.
+    expect(IMAGE_WALL_CLOCK.nano_banana_2_lite.n).toBeGreaterThan(0);
+    expect(imageWallClock('nano_banana_2_lite').p90).not.toBe(
       IMAGE_WALL_CLOCK.flux_2_turbo.p90
     );
-    expect(IMAGE_WALL_CLOCK.nano_banana_2_lite.n).toBe(0);
   });
 });

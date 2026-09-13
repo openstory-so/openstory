@@ -282,19 +282,18 @@ export async function copyFile(
   }
 }
 
+/**
+ * `false` means R2 answered "no such key". An R2 failure propagates: callers
+ * turn a `false` into "re-upload it", which is the wrong instruction for a
+ * transient error.
+ */
 export async function fileExists(
   bucket: StorageBucket,
   path: string
 ): Promise<boolean> {
   const r2 = getR2Bucket();
-  const key = buildR2Key(bucket, path);
-
-  try {
-    const head = await r2.head(key);
-    return head !== null;
-  } catch {
-    return false;
-  }
+  const head = await r2.head(buildR2Key(bucket, path));
+  return head !== null;
 }
 
 /**
@@ -317,6 +316,16 @@ export async function readStorageObject(
     bytes: new Uint8Array(await object.arrayBuffer()),
     contentType: object.httpMetadata?.contentType ?? '',
   };
+}
+
+/**
+ * Size in bytes of a storage object by key (`<bucket>/<path>`), or null when
+ * there is no such key. What a ranged reader needs up front — e.g. a demuxer
+ * reading a clip's header without downloading the clip.
+ */
+export async function storageObjectSize(key: string): Promise<number | null> {
+  const head = await getR2Bucket().head(key);
+  return head?.size ?? null;
 }
 
 /**

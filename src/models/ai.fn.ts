@@ -11,7 +11,6 @@
  * bodies, which the compiler strips.
  */
 
-import { mediaUrlSchema } from '@/platform/schemas/media-url.schemas';
 import {
   callLLMStream,
   llmCostFromUsage,
@@ -26,6 +25,7 @@ import {
 } from '@/sequences/response-schemas';
 import type { StyleRecommendationResponse } from '@/sequences/response-schemas';
 import {
+  enhanceElementSchema,
   RateLimiter,
   scriptEnhancementRateLimiter,
 } from '@/sequences/script-enhancer';
@@ -220,7 +220,12 @@ export const estimateSceneDurationFn = createServerFn({ method: 'POST' })
         { role: 'system' as const, content: ESTIMATE_SCENE_DURATION_SYSTEM },
         { role: 'user' as const, content: userPrompt },
       ],
-      max_tokens: 50,
+      // The answer is ~20 tokens, but this runs on the sequence's own model,
+      // and a thinking model (Gemini 3.x Flash thinks by default when no
+      // reasoning is sent) spends its hidden pass from the same budget — 50
+      // cut the reply off before the JSON. Reasoning stays unset: turning it
+      // on for Claude carries a minimum budget of its own.
+      max_tokens: 2048,
       temperature: 0.2,
       observationName: 'estimateSceneDuration',
       userId: context.user.id,
@@ -277,15 +282,7 @@ const enhanceScriptInputSchema = z
       .optional(),
     analysisModel: z.string().optional(),
     aspectRatio: aspectRatioSchema.optional(),
-    elements: z
-      .array(
-        z.object({
-          token: z.string().min(1),
-          description: z.string().nullable().optional(),
-          imageUrl: mediaUrlSchema,
-        })
-      )
-      .optional(),
+    elements: z.array(enhanceElementSchema).optional(),
   })
   .refine(
     (input) => input.invent === true || input.script.trim().length >= 10,

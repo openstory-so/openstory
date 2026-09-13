@@ -14,6 +14,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/ui/shadcn/alert-dialog';
+import { Badge } from '@/ui/shadcn/badge';
 import { Button } from '@/ui/shadcn/button';
 import { Skeleton } from '@/ui/shadcn/skeleton';
 import { facetIdsForShots, useSceneFacetMaps } from './use-scene-facets';
@@ -26,7 +27,7 @@ import type { CharacterWithSheet } from '@/platform/server/db/schema';
 import { errorMessage } from '@/platform/errors';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { Film, Trash2, User } from 'lucide-react';
+import { Film, Mic, Trash2, User } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { AppImage } from '@/ui/shadcn/app-image';
@@ -67,7 +68,11 @@ const CastCard: React.FC<CastCardProps> = ({
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center">
-              <User className="h-12 w-12 text-muted-foreground/20" />
+              {character.voiceOnly ? (
+                <Mic className="h-12 w-12 text-muted-foreground/20" />
+              ) : (
+                <User className="h-12 w-12 text-muted-foreground/20" />
+              )}
             </div>
           )}
 
@@ -79,6 +84,9 @@ const CastCard: React.FC<CastCardProps> = ({
             <h3 className="text-sm font-medium tracking-wider text-white uppercase">
               {character.name}
             </h3>
+            {character.voiceOnly && (
+              <Badge variant="secondary">Voice only</Badge>
+            )}
             {(character.age || character.gender) && (
               <p className="mt-1 text-xs text-white/70">
                 {[character.age, character.gender].filter(Boolean).join(' · ')}
@@ -87,11 +95,15 @@ const CastCard: React.FC<CastCardProps> = ({
           </div>
         </div>
 
-        {/* Description below card */}
-        {character.physicalDescription && (
+        {/* Description below card — the voice, for a character never seen */}
+        {(character.voiceOnly
+          ? character.personality
+          : character.physicalDescription) && (
           <div className="p-3 border-t border-border/50">
             <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
-              {character.physicalDescription}
+              {character.voiceOnly
+                ? character.personality
+                : character.physicalDescription}
             </p>
           </div>
         )}

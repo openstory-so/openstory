@@ -6,8 +6,10 @@ import {
 } from './snap-duration';
 
 describe('durationGridForModel', () => {
-  it('returns LTX 2.3 Pro discrete 6/8/10s clips', () => {
-    expect(durationGridForModel('ltx_2_3_pro')).toEqual([6, 8, 10]);
+  it('returns H3 Max contiguous 5–15s clips', () => {
+    expect(durationGridForModel('minimax_h3_max')).toEqual([
+      5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+    ]);
   });
 
   it('returns Seedance 2.0 contiguous 4–15s, dropping auto', () => {
@@ -18,12 +20,12 @@ describe('durationGridForModel', () => {
 });
 
 describe('snapDuration', () => {
-  it('snaps 5s onto LTX 6s', () => {
-    expect(snapDuration(5, 'ltx_2_3_pro')).toBe(6);
+  it('snaps 4s onto the H3 Max 5s floor', () => {
+    expect(snapDuration(4, 'minimax_h3_max')).toBe(5);
   });
 
   it('keeps a value already on the grid', () => {
-    expect(snapDuration(8, 'ltx_2_3_pro')).toBe(8);
+    expect(snapDuration(8, 'minimax_h3_max')).toBe(8);
   });
 
   it('snaps Omni Flash onto the integer 3–10s grid', () => {
@@ -39,7 +41,8 @@ describe('snapDuration', () => {
 
 describe('allocateClipDurations', () => {
   const seedance = durationGridForModel('seedance_v2');
-  const ltx = durationGridForModel('ltx_2_3_pro');
+  // A sparse grid (no catalog model has one any more) still pins the allocator.
+  const sparse = [6, 8, 10];
 
   it('hits 30s with five equal Seedance clips', () => {
     const clips = allocateClipDurations([1, 1, 1, 1, 1], 30, seedance);
@@ -53,19 +56,19 @@ describe('allocateClipDurations', () => {
     expect(clips.every((s) => seedance.includes(s))).toBe(true);
   });
 
-  it('hits 30s with five LTX 6s clips', () => {
-    const clips = allocateClipDurations([1, 1, 1, 1, 1], 30, ltx);
+  it('hits 30s with five 6s clips on a sparse grid', () => {
+    const clips = allocateClipDurations([1, 1, 1, 1, 1], 30, sparse);
     expect(clips).toEqual([6, 6, 6, 6, 6]);
   });
 
-  it('hits 30s with four LTX clips on the 6/8/10 grid', () => {
-    const clips = allocateClipDurations([1, 1, 1, 1], 30, ltx);
+  it('hits 30s with four clips on the 6/8/10 grid', () => {
+    const clips = allocateClipDurations([1, 1, 1, 1], 30, sparse);
     expect(clips.reduce((a, b) => a + b, 0)).toBe(30);
-    expect(clips.every((s) => ltx.includes(s))).toBe(true);
+    expect(clips.every((s) => sparse.includes(s))).toBe(true);
   });
 
-  it('cannot fit 7 LTX clips into 30s — returns the shortest feasible film', () => {
-    const clips = allocateClipDurations(Array(7).fill(1), 30, ltx);
+  it('cannot fit 7 sparse-grid clips into 30s — returns the shortest feasible film', () => {
+    const clips = allocateClipDurations(Array(7).fill(1), 30, sparse);
     expect(clips).toEqual([6, 6, 6, 6, 6, 6, 6]);
     expect(clips.reduce((a, b) => a + b, 0)).toBe(42);
   });

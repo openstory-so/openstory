@@ -8,6 +8,9 @@ import {
   buildCharacterSheetPrompt,
 } from './character-prompt';
 
+/** #1561: the talent library carries no performance, so the role's stands. */
+const noTalentPerformance = { personality: '', movement: '' };
+
 const scriptEntry: CharacterBibleEntry = {
   characterId: 'char_001',
   name: 'Detective Sarah',
@@ -17,6 +20,9 @@ const scriptEntry: CharacterBibleEntry = {
   physicalDescription: 'Tall, blonde hair, blue eyes',
   standardClothing: 'Dark trench coat, badge on belt',
   distinguishingFeatures: 'Small scar on left cheek',
+  personality: '',
+  movement: '',
+  voiceOnly: false,
   consistencyTag: 'detective_sarah_blonde_30s',
 };
 
@@ -29,6 +35,9 @@ const talentMetadata: CharacterBibleEntry = {
   physicalDescription: 'Dark hair, sideburns, athletic build',
   standardClothing: 'White jumpsuit',
   distinguishingFeatures: 'Signature sideburns',
+  personality: '',
+  movement: '',
+  voiceOnly: false,
   consistencyTag: 'elvis_presley',
 };
 
@@ -37,6 +46,7 @@ describe('buildCastingAttributes', () => {
     const result = buildCastingAttributes(scriptEntry, {
       sheetMetadata: talentMetadata,
       talentName: 'Elvis Presley',
+      ...noTalentPerformance,
     });
 
     expect(result.age).toBe('25');
@@ -47,10 +57,44 @@ describe('buildCastingAttributes', () => {
     );
   });
 
+  test("performance: the talent's own wins, else the role's (#1561)", () => {
+    const role = {
+      ...scriptEntry,
+      personality: 'anxious',
+      movement: 'restless hands',
+    };
+    const fromTalent = buildCastingAttributes(role, {
+      sheetMetadata: talentMetadata,
+      talentName: 'Elvis Presley',
+      personality: 'swaggering',
+      movement: 'hip swivel',
+    });
+    expect(fromTalent.personality).toBe('swaggering');
+    expect(fromTalent.movement).toBe('hip swivel');
+
+    const fromRole = buildCastingAttributes(role, {
+      sheetMetadata: talentMetadata,
+      talentName: 'Elvis Presley',
+      ...noTalentPerformance,
+    });
+    expect(fromRole.personality).toBe('anxious');
+    expect(fromRole.movement).toBe('restless hands');
+
+    const blank = buildCastingAttributes(role, {
+      sheetMetadata: talentMetadata,
+      talentName: 'Elvis Presley',
+      personality: '  ',
+      movement: '\n',
+    });
+    expect(blank.personality).toBe('anxious');
+    expect(blank.movement).toBe('restless hands');
+  });
+
   test('keeps costume and distinguishing features from script', () => {
     const result = buildCastingAttributes(scriptEntry, {
       sheetMetadata: talentMetadata,
       talentName: 'Elvis Presley',
+      ...noTalentPerformance,
     });
 
     expect(result.standardClothing).toBe('Dark trench coat, badge on belt');
@@ -61,6 +105,7 @@ describe('buildCastingAttributes', () => {
     const result = buildCastingAttributes(scriptEntry, {
       sheetMetadata: talentMetadata,
       talentName: 'Elvis Presley',
+      ...noTalentPerformance,
     });
 
     expect(result.consistencyTag).toBe('char_001_elvis_presley');
@@ -69,6 +114,7 @@ describe('buildCastingAttributes', () => {
   test('falls back to script attributes when talent metadata is missing', () => {
     const result = buildCastingAttributes(scriptEntry, {
       talentName: 'Elvis Presley',
+      ...noTalentPerformance,
     });
 
     expect(result.age).toBe('30s');
@@ -85,6 +131,7 @@ describe('buildCastingAttributes', () => {
     const result = buildCastingAttributes(scriptEntry, {
       sheetMetadata: sparseMetadata,
       talentName: 'Elvis Presley',
+      ...noTalentPerformance,
     });
 
     // Naming a person + "match exactly" trips OpenAI's likeness moderation —
@@ -97,10 +144,12 @@ describe('buildCastingAttributes', () => {
     const result1 = buildCastingAttributes(scriptEntry, {
       sheetMetadata: talentMetadata,
       talentName: 'Elvis Presley',
+      ...noTalentPerformance,
     });
     const result2 = buildCastingAttributes(scriptEntry, {
       sheetMetadata: talentMetadata,
       talentName: 'Elvis Presley',
+      ...noTalentPerformance,
     });
 
     expect(result1.consistencyTag).toBe(result2.consistencyTag);
@@ -118,6 +167,7 @@ describe('buildCastingAttributes', () => {
     const result = buildCastingAttributes(scriptEntry, {
       sheetMetadata: partialMeta,
       talentName: 'Test Actor',
+      ...noTalentPerformance,
     });
 
     expect(result.age).toBe('40');
@@ -137,6 +187,9 @@ describe('buildCastCharacterBible', () => {
     physicalDescription: 'Short, dark hair',
     standardClothing: 'Grey suit',
     distinguishingFeatures: 'Glasses',
+    personality: '',
+    movement: '',
+    voiceOnly: false,
     consistencyTag: 'bob_grey_suit',
   };
 
@@ -147,6 +200,7 @@ describe('buildCastCharacterBible', () => {
         {
           characterId: 'char_001',
           talentName: 'Elvis Presley',
+          ...noTalentPerformance,
           sheetMetadata: talentMetadata,
         },
       ]
@@ -159,10 +213,12 @@ describe('buildCastCharacterBible', () => {
     const expected = buildCastingAttributes(scriptEntry, {
       sheetMetadata: talentMetadata,
       talentName: 'Elvis Presley',
+      ...noTalentPerformance,
     });
     expect(cast).toEqual({
       characterId: 'char_001',
       name: 'Detective Sarah',
+      voiceOnly: false,
       ...expected,
     });
     expect(cast.physicalDescription).toBe(
@@ -177,6 +233,7 @@ describe('buildCastCharacterBible', () => {
       {
         characterId: 'char_001',
         talentName: 'Elvis Presley',
+        ...noTalentPerformance,
         sheetMetadata: talentMetadata,
       },
     ]);
@@ -193,7 +250,13 @@ describe('buildCastCharacterBible', () => {
   test('preserves characterId and name when casting', () => {
     const [cast] = buildCastCharacterBible(
       [scriptEntry],
-      [{ characterId: 'char_001', talentName: 'Elvis Presley' }]
+      [
+        {
+          characterId: 'char_001',
+          talentName: 'Elvis Presley',
+          ...noTalentPerformance,
+        },
+      ]
     );
     if (!cast) throw new Error('expected one cast entry');
     expect(cast.characterId).toBe('char_001');

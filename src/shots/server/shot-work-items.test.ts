@@ -57,11 +57,56 @@ function spec(
     action,
     cameraMovement: { move: 'static', pacing: 'slow' },
     soundCue: '',
+    dialogue: [],
     durationSeconds,
   };
 }
 
 describe('shotWorkItems', () => {
+  it('hands each clip only the dialogue spoken in its shot (#1585)', () => {
+    const multi = scene('sc-1', 15, [spec(1, 7, 'a'), spec(2, 8, 'b')]);
+    multi.originalScript.dialogue = [
+      {
+        character: 'Mara',
+        line: 'My sister is dead.',
+        tone: '',
+        shotNumber: 1,
+      },
+      { character: 'Mara', line: 'You’re not Eliza.', tone: '', shotNumber: 2 },
+      { character: '', line: 'A voice, anywhere.', tone: '' },
+    ];
+    const items = shotWorkItems(
+      [multi],
+      [
+        {
+          analysisSceneId: 'sc-1',
+          shotId: 'sh-1a',
+          frameId: 'fr-1a',
+          shotNumber: 1,
+        },
+        {
+          analysisSceneId: 'sc-1',
+          shotId: 'sh-1b',
+          frameId: 'fr-1b',
+          shotNumber: 2,
+        },
+      ]
+    );
+    expect(
+      items.map((item) => item.scene.originalScript.dialogue.map((l) => l.line))
+    ).toEqual([
+      ['My sister is dead.', 'A voice, anywhere.'],
+      ['You’re not Eliza.', 'A voice, anywhere.'],
+    ]);
+    const second = items[1];
+    if (!second) throw new Error('expected two items');
+    const derived = derivedShotForItem(second, styleConfig);
+    expect(derived?.motionPrompt.dialogue.lines.map((l) => l.line)).toEqual([
+      'You’re not Eliza.',
+      'A voice, anywhere.',
+    ]);
+  });
+
   it('is one item per scene when mapping is 1:1', () => {
     const scenes = [scene('sc-1'), scene('sc-2')];
     const items = shotWorkItems(scenes, [

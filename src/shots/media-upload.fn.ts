@@ -25,6 +25,7 @@ import {
   computeVisualPromptInputHash,
 } from './input-hash';
 import { resolveSheetImageModel } from '@/cast/sheet-image-model';
+import { requireUploadRights } from '@/cast/server/upload-rights';
 import { StyleConfigSchema } from '@/look/style-config';
 import { NotFoundError } from '@/platform/errors';
 import { computeStyleConfigHash } from '@/cast/server/workflows/sheet-snapshots';
@@ -219,8 +220,8 @@ async function emitUploadCompleted(
  * `replaceFrameContentFn`.
  *
  * Appends a `frame_variants.kind:'upload'` version stamped against the CURRENT
- * selected visual prompt + sheets, then `select`s it — the exact repoint
- * `setImageFromVariantFn` performs, so the mirror, `image.selected` event,
+ * selected visual prompt + sheets, then `select`s it — the same repoint a
+ * history pick performs, so the mirror, `image.selected` event,
  * pending-promote clear, and prompt pairing all behave identically. The visual
  * prompt is NOT touched; downstream video reads stale by manifest derivation.
  */
@@ -324,6 +325,8 @@ export const replaceFrameContentFn = createServerFn({ method: 'POST' })
       STORAGE_BUCKETS.THUMBNAILS,
       teamId
     );
+    // A user still must be cleared or signed on the likeness ledger (#1581).
+    await requireUploadRights(scopedDb, [data.publicUrl]);
 
     const selectedPrompt = await scopedDb.framePromptVersions.getSelected(
       frame.id
@@ -701,6 +704,7 @@ export const setCharacterSheetFromUploadFn = createServerFn({ method: 'POST' })
       STORAGE_BUCKETS.CHARACTERS,
       context.teamId
     );
+    await requireUploadRights(scopedDb, [data.publicUrl]);
     const character = await scopedDb.characters.getById(data.characterId);
     if (!character || character.sequenceId !== sequence.id) {
       throw new NotFoundError('Character not found');
@@ -810,6 +814,7 @@ export const setLocationSheetFromUploadFn = createServerFn({ method: 'POST' })
       STORAGE_BUCKETS.LOCATIONS,
       context.teamId
     );
+    await requireUploadRights(scopedDb, [data.publicUrl]);
     const location = await scopedDb.sequenceLocations.getById(
       data.locationDbId
     );

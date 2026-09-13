@@ -554,6 +554,21 @@ function projectCharacterForPromptV4(c: CharacterBibleEntry) {
   return { name: trim(c.name), ...projectCharacterForPrompt(c) };
 }
 
+/**
+ * Performance fields (#1561) drive the MOTION prompt only — a still does not
+ * walk, so the visual prompt and the sheet never hash them. Each joins the
+ * body only when set, the same shape-stable trick as `referenceOnly`: no
+ * stored digest moves for a character that has neither.
+ */
+function projectCharacterPerformance(c: CharacterBibleEntry) {
+  const personality = trim(c.personality);
+  const movement = trim(c.movement);
+  return {
+    ...(personality ? { personality } : {}),
+    ...(movement ? { movement } : {}),
+  };
+}
+
 function projectLocationForPrompt(l: LocationBibleEntry) {
   return {
     type: l.type,
@@ -601,7 +616,7 @@ function sortedBibles(input: PromptSceneContextHashInput) {
 
 function promptBibleProjection(
   input: PromptSceneContextHashInput,
-  named: boolean
+  { named, performance }: { named: boolean; performance: boolean }
 ) {
   const bibles = sortedBibles(input);
   const character = named
@@ -611,7 +626,10 @@ function promptBibleProjection(
     ? projectLocationForPromptV4
     : projectLocationForPrompt;
   return {
-    characterBible: bibles.characterBible.map(character),
+    characterBible: bibles.characterBible.map((c) => ({
+      ...character(c),
+      ...(performance ? projectCharacterPerformance(c) : {}),
+    })),
     locationBible: bibles.locationBible.map(location),
     elementBible: bibles.elementBible
       ? bibles.elementBible.map(projectElementForPrompt)
@@ -624,7 +642,10 @@ function visualPromptHashBody(
   kind: PromptHashKind
 ): unknown {
   const flags = promptHashFlags(kind);
-  const bibles = promptBibleProjection(input, flags.named);
+  const bibles = promptBibleProjection(input, {
+    named: flags.named,
+    performance: false,
+  });
   return {
     artifact: 'shot:visual-prompt',
     hashVersion: flags.hashVersion,
@@ -641,7 +662,10 @@ function motionPromptHashBody(
   kind: PromptHashKind
 ): unknown {
   const flags = promptHashFlags(kind);
-  const bibles = promptBibleProjection(input, flags.named);
+  const bibles = promptBibleProjection(input, {
+    named: flags.named,
+    performance: true,
+  });
   return {
     artifact: 'shot:motion-prompt',
     hashVersion: flags.hashVersion,

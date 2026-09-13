@@ -6,7 +6,7 @@
  *   - `reference` — reference-to-video: up to N stills bound in the prompt as
  *                   `@Image1`…`@ImageN`
  *   - `frames`    — image-to-video: a start frame, plus an end frame where the
- *                   endpoint has `end_image_url` (Kling, LTX, Seedance, H3 Max,
+ *                   endpoint has `end_image_url` (Kling, Seedance, H3 Max,
  *                   Omni Flash)
  *
  * Client-safe: no env, no adapters.
@@ -23,11 +23,8 @@ import {
 
 const STUDIO_TEXT_TO_VIDEO_ENDPOINTS = {
   grok_imagine_video_1_5: 'xai/grok-imagine-video/v1.5/text-to-video',
-  ltx_2_3_pro: 'fal-ai/ltx-2.3/text-to-video',
-  veo3_1: 'fal-ai/veo3.1',
   gemini_omni_flash: 'fal-ai/gemini-omni-1.1-flash',
   kling_v3_pro: 'fal-ai/kling-video/v3/pro/text-to-video',
-  minimax_hailuo_02: 'fal-ai/minimax/hailuo-2.3/pro/text-to-video',
   minimax_h3_max: 'minimax/h3-max/text-to-video',
   seedance_v2: 'bytedance/seedance-2.0/enterprise/v2/text-to-video',
   seedance_v2_5: 'bytedance/seedance-2.5/text-to-video',
@@ -40,11 +37,8 @@ const RANGE = (min: number, max: number): readonly number[] =>
 /** Seconds the T2V sibling accepts. Empty = duration is not a request field. */
 const STUDIO_VIDEO_DURATIONS = {
   grok_imagine_video_1_5: RANGE(1, 15),
-  ltx_2_3_pro: [6, 8, 10],
-  veo3_1: [4, 6, 8],
   gemini_omni_flash: RANGE(3, 10),
   kling_v3_pro: RANGE(3, 15),
-  minimax_hailuo_02: [],
   minimax_h3_max: RANGE(5, 15),
   seedance_v2: RANGE(4, 15),
   seedance_v2_5: RANGE(4, 30),
@@ -54,11 +48,8 @@ const STUDIO_VIDEO_DURATIONS = {
 /** Of our `AspectRatio` set, the ones the T2V sibling accepts. */
 const STUDIO_VIDEO_ASPECTS = {
   grok_imagine_video_1_5: ['16:9', '1:1', '9:16'],
-  ltx_2_3_pro: ['16:9', '9:16'],
-  veo3_1: ['16:9', '9:16'],
   gemini_omni_flash: ['16:9', '9:16'],
   kling_v3_pro: ['16:9', '9:16', '1:1'],
-  minimax_hailuo_02: [],
   minimax_h3_max: ['16:9', '1:1', '9:16'],
   seedance_v2: ['16:9', '1:1', '9:16'],
   seedance_v2_5: ['16:9', '1:1', '9:16'],
@@ -67,11 +58,8 @@ const STUDIO_VIDEO_ASPECTS = {
 
 const STUDIO_VIDEO_HAS_AUDIO = {
   grok_imagine_video_1_5: false,
-  ltx_2_3_pro: true,
-  veo3_1: true,
   gemini_omni_flash: false,
   kling_v3_pro: true,
-  minimax_hailuo_02: false,
   minimax_h3_max: false,
   seedance_v2: true,
   seedance_v2_5: true,
@@ -113,7 +101,7 @@ const atVideo = (n: number): string => `@Video${n}`;
 const atAudio = (n: number): string => `@Audio${n}`;
 const h3Image = (n: number): string => `Image ${n}`;
 
-/** Reference-to-video siblings. LTX and Hailuo have none. */
+/** Reference-to-video siblings. */
 const STUDIO_REFERENCE_ENDPOINTS: Partial<
   Record<ImageToVideoModel, StudioReferenceEndpoint>
 > = {
@@ -157,16 +145,7 @@ const STUDIO_REFERENCE_ENDPOINTS: Partial<
     maxImages: 4,
     maxVideos: 0,
     maxAudio: 0,
-    note: 'Reference mode runs on Kling O3 Pro, the tier with a reference endpoint.',
-  },
-  veo3_1: {
-    endpointId: 'fal-ai/veo3.1/reference-to-video',
-    imageField: 'image_urls',
-    // Veo has no token syntax; name the still in prose.
-    imageTag: (n) => `reference image ${n}`,
-    maxImages: 3,
-    maxVideos: 0,
-    maxAudio: 0,
+    note: 'Reference mode runs on Kling O3 Pro, the tier with a reference endpoint. Start and end frames are not available in this mode.',
   },
   gemini_omni_flash: {
     endpointId: 'fal-ai/gemini-omni-1.1-flash/reference-to-video',
@@ -203,7 +182,6 @@ export function studioReferenceEndpoint(
 /** Image-to-video endpoints whose schema has `end_image_url`. */
 const STUDIO_END_FRAME_MODELS = {
   kling_v3_pro: true,
-  ltx_2_3_pro: true,
   minimax_h3_max: true,
   seedance_v2: true,
   seedance_v2_5: true,
@@ -363,8 +341,6 @@ function encodeDuration(
     case 'seedance_v2_5':
     case 'seedance_v2_mini':
       return String(seconds);
-    case 'veo3_1':
-      return `${seconds}s`;
     default:
       return seconds;
   }

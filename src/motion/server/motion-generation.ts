@@ -39,6 +39,7 @@ import {
 import {
   DEFAULT_VIDEO_MODEL,
   getBytePlusVideoModelId,
+  getMotionReferenceEndpoint,
   IMAGE_TO_VIDEO_MODELS,
   isNativeBytePlusVideoModel,
   referenceOnlyCapableWith,
@@ -61,6 +62,8 @@ import {
   ensureExternallyFetchableUrl,
   toDataOrCdnUrl,
 } from '@/platform/server/storage/external-url';
+import { bindableReferences } from './build-reference-video-prompt';
+import { assertReferencesUsable } from '@/motion/reference-support';
 import { generateVideo, type TokenUsage } from '@tanstack/ai';
 import { getVideoJobStatus } from './video-job-status';
 import { falVideo } from '@tanstack/ai-fal';
@@ -70,7 +73,10 @@ import { buildBytePlusVideoRequest } from './build-byteplus-video-request';
 import { buildGeminiVideoRequest } from './build-gemini-video-request';
 import { getGeminiFileState, isGeminiFilesVideoUrl } from './video-storage';
 import { buildGrokVideoRequest } from './build-grok-video-request';
-import { buildMotionRequest } from './build-model-input';
+import {
+  buildMotionRequest,
+  pinsDedicatedStartFrame,
+} from './build-model-input';
 import { resolveMotionEndpoint } from '@/motion/resolve-motion-endpoint';
 
 const logger = getLogger(['openstory', 'motion', 'generation']);
@@ -93,14 +99,14 @@ export type GenerateMotionOptions = {
    *  tokens the endpoint advertises — a model that stops at 1080p serves a 4K
    *  ask with 1080p rather than rejecting it. */
   resolution?: Resolution;
-  /** For audio-capable models (kling v3, veo3), pass `false` to suppress
+  /** For audio-capable models (kling v3, seedance), pass `false` to suppress
    *  the model's native audio output (sfx/ambient/lip-sync). Omitting the
    *  flag lets the API schema default apply (true for audio-capable models). */
   generateAudio?: boolean;
   /**
    * Character + element reference images for identity consistency across the
    * clip (#873). Emitted when `resolveMotionEndpoint` says they go on the
-   * wire: Kling `elements`, Seedance `image_urls[]`, H3 Max
+   * wire: Seedance / Kling O3 `image_urls[]`, H3 Max
    * `reference_image_urls[]`, and Grok Imagine 1.5 native
    * `metadata.role: 'reference' | 'character'` prompt parts. Other models
    * substitute tokens with descriptions instead.
@@ -262,7 +268,27 @@ async function submitFalMotionJob(
   options: GenerateMotionOptions,
   modelKey: ImageToVideoModel
 ): Promise<{ jobId: string; usedOwnKey: boolean; endpointId: string }> {
-  const hasReferenceImages = (options.referenceImages?.length ?? 0) > 0;
+  // A clip or voice line this model cannot use — it takes no reference of
+  // that kind, or not one that long — is a refusal, not a degradation
+  // (#1559). Describing it in the prompt instead would bill a clip that
+  // ignored what the user attached, silently, once per shot across a batch.
+  // The panel and the trigger say the same thing before Generate, so reaching
+  // here means the model changed underneath the shot.
+  assertReferencesUsable(
+    modelKey,
+    options.referenceImages ?? [],
+    Boolean(options.imageUrl)
+  );
+
+  // References this model can actually carry (#1559): a shot whose only
+  // attachment is an audio element has nothing to send a reference endpoint,
+  // which rejects a request with no reference image or video.
+  const hasReferenceImages =
+    bindableReferences(
+      getMotionReferenceEndpoint(modelKey),
+      options.referenceImages ?? [],
+      Boolean(options.imageUrl)
+    ).length > 0;
   const endpoint = resolveMotionEndpoint(
     modelKey,
     hasReferenceImages,
@@ -377,7 +403,27 @@ export async function submitMotionJob(
       ? await resolveOptionalGoogleKey(options.scopedDb)
       : undefined;
 
-  const hasReferenceImages = (options.referenceImages?.length ?? 0) > 0;
+  // A clip or voice line this model cannot use — it takes no reference of
+  // that kind, or not one that long — is a refusal, not a degradation
+  // (#1559). Describing it in the prompt instead would bill a clip that
+  // ignored what the user attached, silently, once per shot across a batch.
+  // The panel and the trigger say the same thing before Generate, so reaching
+  // here means the model changed underneath the shot.
+  assertReferencesUsable(
+    modelKey,
+    options.referenceImages ?? [],
+    Boolean(options.imageUrl)
+  );
+
+  // References this model can actually carry (#1559): a shot whose only
+  // attachment is an audio element has nothing to send a reference endpoint,
+  // which rejects a request with no reference image or video.
+  const hasReferenceImages =
+    bindableReferences(
+      getMotionReferenceEndpoint(modelKey),
+      options.referenceImages ?? [],
+      Boolean(options.imageUrl)
+    ).length > 0;
 
   const endpoint = resolveMotionEndpoint(
     modelKey,
@@ -408,6 +454,52 @@ export async function submitMotionJob(
         endpointId: endpoint.endpointId,
       },
     });
+  }
+
+  // The image list is capped per endpoint, so references past the cap never
+  // reach the model. Their tokens degrade to plain descriptions, and one whose
+  // token was never in the prompt leaves no trace at all — no image, no
+  // description, no legend line. Kling O3's cap of 4 is the tightest of any
+  // reference model, so a large cast reaches it in ordinary use. Warned rather
+  // than thrown for the same reason as above — the request is valid, the clip
+  // just comes back missing someone.
+  if (endpoint.references === 'endpoint') {
+    // The still only spends a slot where it rides the image list; pinned in
+    // its own start-frame field it does not (#1498).
+    const budget =
+      endpoint.referenceConfig.maxImages -
+      (pinsDedicatedStartFrame(endpoint.referenceConfig.endpointId, options)
+        ? 0
+        : options.imageUrl
+          ? 1
+          : 0);
+    const attachable = (options.referenceImages ?? []).filter(
+      (ref) => ref.referenceImageUrl
+    ).length;
+    if (attachable > budget) {
+      logger.warn(
+        'Motion references exceed the endpoint image cap; the overflow is not attached',
+        {
+          modelKey,
+          endpointId: endpoint.endpointId,
+          attachable,
+          budget,
+          dropped: attachable - budget,
+        }
+      );
+      getPostHogClient()?.capture({
+        distinctId: 'system',
+        event: 'motion_references_over_cap',
+        properties: {
+          model: modelKey,
+          via: endpoint.via,
+          endpointId: endpoint.endpointId,
+          attachable,
+          budget,
+          dropped: attachable - budget,
+        },
+      });
+    }
   }
 
   let jobId: string;
@@ -442,6 +534,9 @@ export async function submitMotionJob(
         prompt: input.prompt,
         duration: input.duration,
         ...(input.size && { size: input.size }),
+        // Carries the pinned opening frame on a shot that has both a still
+        // and references — see `GROK_VIDEO_REFERENCE_CONFIG`.
+        ...(input.modelOptions && { modelOptions: input.modelOptions }),
         timeout: FAL_REQUEST_TIMEOUT_MS,
         debug: false,
       });

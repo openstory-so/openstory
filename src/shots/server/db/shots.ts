@@ -4,7 +4,12 @@
  */
 
 import type { Database } from '@/platform/server/db/client';
-import { frames, scenes, shots } from '@/platform/server/db/schema';
+import {
+  frames,
+  sceneScriptVersions,
+  scenes,
+  shots,
+} from '@/platform/server/db/schema';
 import { dbSceneId } from '@/shots/scene-id';
 import type { NewFrame, Shot, NewShot } from '@/platform/server/db/schema';
 import type { Sequence } from '@/platform/server/db/schema/sequences';
@@ -376,7 +381,9 @@ export function createShotsMethods(db: Database) {
      * (relative order kept) so `(sceneId, shotNumber)` can never collide with
      * a hidden row. Two passes (negative park, then final) in ONE `db.batch()`
      * + a `shots.reordered` event carrying the prior order. A pure reorder
-     * changes no content hash.
+     * changes no content hash — which is why the dialogue stamps in every
+     * script version of the scene (#1585, `dialogueFromShots`) are rewritten
+     * in the same batch: a line follows its shot, not its old number.
      */
     reorderInScene: async (
       sceneId: string,
@@ -420,6 +427,43 @@ export function createShotsMethods(db: Database) {
       if (changed.length === 0) return;
 
       const now = new Date();
+      const renumbered = new Map(
+        allRows.flatMap((r) => {
+          const next = finalOrder.find((f) => f.id === r.id)?.shotNumber;
+          return r.shotNumber != null && next !== undefined
+            ? [[r.shotNumber, next] as const]
+            : [];
+        })
+      );
+      const versions = await db
+        .select({
+          id: sceneScriptVersions.id,
+          content: sceneScriptVersions.content,
+        })
+        .from(sceneScriptVersions)
+        .where(eq(sceneScriptVersions.sceneId, dbSceneId(sceneId)));
+      const restamp = versions.flatMap((version) => {
+        const dialogue = version.content.dialogue.map((line) =>
+          line.shotNumber === undefined
+            ? line
+            : {
+                ...line,
+                shotNumber: renumbered.get(line.shotNumber) ?? line.shotNumber,
+              }
+        );
+        const moved = dialogue.some(
+          (line, i) =>
+            line.shotNumber !== version.content.dialogue[i]?.shotNumber
+        );
+        return moved
+          ? [
+              db
+                .update(sceneScriptVersions)
+                .set({ content: { ...version.content, dialogue } })
+                .where(eq(sceneScriptVersions.id, version.id)),
+            ]
+          : [];
+      });
       const park = finalOrder.map((f, i) =>
         db
           .update(shots)
@@ -453,6 +497,7 @@ export function createShotsMethods(db: Database) {
         }),
         ...park,
         ...place,
+        ...restamp,
       ]);
     },
 

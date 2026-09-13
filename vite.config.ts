@@ -11,6 +11,7 @@ import tailwindcss from '@tailwindcss/vite';
 import { devtools } from '@tanstack/devtools-vite';
 import viteReact from '@vitejs/plugin-react';
 import { worktreeAuthCookiePrefix } from './src/platform/auth/cookie-prefix.ts';
+import { createServerFnIdGenerator } from './src/platform/server-fn-id.ts';
 
 const isDev = process.env.NODE_ENV !== 'production';
 // Per-worktree auth cookie name (#1288). Set on process.env so Vite's usual
@@ -232,6 +233,11 @@ export default defineConfig({
       srcDirectory: 'src',
       router: {
         routesDirectory: 'routes',
+      },
+      serverFns: {
+        // Seed production ids on the function name only, so moving a file
+        // doesn't 500 every tab open across the deploy (#1549).
+        generateFunctionId: createServerFnIdGenerator(),
       },
     }),
     viteReact(),
