@@ -84,10 +84,12 @@ const seedanceUnequalPricing = {
   'bytedance/seedance-2.5/image-to-video': {
     unitPrice: micros(10_000),
     unit: 'units',
+    typicalUnitsPerCall: 108,
   },
   'bytedance/seedance-2.5/reference-to-video': {
     unitPrice: micros(20_000),
     unit: 'units',
+    typicalUnitsPerCall: 108,
   },
 };
 

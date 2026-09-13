@@ -37,9 +37,10 @@ import type { RateCard } from '../rate-card.schema';
  *   price is 9 s of tokens (4 s in + 5 s out) at that resolution. Any other
  *   with-video shape refuses.
  *
- * Bound to the calculator's levers, not Ark's `size` template
- * (`${ratio}_${resolution}`): the estimator splits `size` before handing the
- * request to the card. `input_video_duration` is the reference clip's
+ * Bound to the fal-shaped levers the estimator hands every video card
+ * (`resolution`, `aspect_ratio`, `duration`), not Ark's `size` template
+ * (`${ratio}_${resolution}`) — the fal endpoint ids alias to this card when
+ * Ark is configured (#1157). `input_video_duration` is the reference clip's
  * length in seconds, 0 when the input has no video.
  */
 export const BYTEPLUS_SEEDANCE_2_5: RateCard = {
@@ -51,7 +52,7 @@ export const BYTEPLUS_SEEDANCE_2_5: RateCard = {
       default: '720p',
     },
     ratio: {
-      param: 'ratio',
+      param: 'aspect_ratio',
       kind: 'enum',
       values: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'],
       default: '16:9',
@@ -158,17 +159,17 @@ export const BYTEPLUS_SEEDANCE_2_5: RateCard = {
   },
   examples: [
     {
-      params: { resolution: '720p', ratio: '16:9', duration: 5 },
+      params: { resolution: '720p', aspect_ratio: '16:9', duration: 5 },
       usd: 1.156,
       quote: '720p 16:9 5s: 1.156 per video',
     },
     {
-      params: { resolution: '480p', ratio: '16:9', duration: 5 },
+      params: { resolution: '480p', aspect_ratio: '16:9', duration: 5 },
       usd: 0.514,
       quote: '480p 16:9 5s: 0.514 per video',
     },
     {
-      params: { resolution: '1080p', ratio: '16:9', duration: 5 },
+      params: { resolution: '1080p', aspect_ratio: '16:9', duration: 5 },
       usd: 2.843,
       quote:
         '1080p 16:9 5s: 2.843 per video (list price; the 28%-off promo until Sep 17 is not applied — see header)',
@@ -176,7 +177,7 @@ export const BYTEPLUS_SEEDANCE_2_5: RateCard = {
     {
       params: {
         resolution: '480p',
-        ratio: '16:9',
+        aspect_ratio: '16:9',
         duration: 5,
         input_video_duration: 2,
       },
@@ -187,7 +188,7 @@ export const BYTEPLUS_SEEDANCE_2_5: RateCard = {
     {
       params: {
         resolution: '480p',
-        ratio: '16:9',
+        aspect_ratio: '16:9',
         duration: 5,
         input_video_duration: 30,
       },
@@ -198,7 +199,7 @@ export const BYTEPLUS_SEEDANCE_2_5: RateCard = {
     {
       params: {
         resolution: '720p',
-        ratio: '16:9',
+        aspect_ratio: '16:9',
         duration: 5,
         input_video_duration: 4,
       },
@@ -208,7 +209,7 @@ export const BYTEPLUS_SEEDANCE_2_5: RateCard = {
     {
       params: {
         resolution: '720p',
-        ratio: '16:9',
+        aspect_ratio: '16:9',
         duration: 5,
         input_video_duration: 30,
       },
@@ -218,7 +219,7 @@ export const BYTEPLUS_SEEDANCE_2_5: RateCard = {
     {
       params: {
         resolution: '1080p',
-        ratio: '16:9',
+        aspect_ratio: '16:9',
         duration: 5,
         input_video_duration: 3,
       },
@@ -228,7 +229,7 @@ export const BYTEPLUS_SEEDANCE_2_5: RateCard = {
     {
       params: {
         resolution: '1080p',
-        ratio: '16:9',
+        aspect_ratio: '16:9',
         duration: 5,
         input_video_duration: 30,
       },

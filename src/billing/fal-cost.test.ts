@@ -6,6 +6,8 @@ import {
   type EffectiveFalPricing,
 } from './fal-cost';
 import { micros, usdToMicros, ZERO_MICROS } from './money';
+import { RATE_CARDS } from './rate-card/cards';
+import type { RateCard } from './rate-card/rate-card.schema';
 
 const usd = (n: number) => usdToMicros(n);
 
@@ -136,41 +138,6 @@ describe('estimateFalCost', () => {
     ).toBe(usd(1.6));
   });
 
-  test('H3 Max 5s clip estimates 8 units at the billed 480p-second rate', () => {
-    // 768P default bills 1.6× the stored $0.025 unit → 8 units × $0.025 = $0.20.
-    // Using duration (5) as units was 37% low (#1382).
-    const live = {
-      'minimax/h3-max/image-to-video': {
-        unitPrice: micros(25_000),
-        unit: 'seconds',
-      },
-    };
-    expect(
-      estimateFalCost(
-        'minimax/h3-max/image-to-video',
-        { durationSeconds: 5 },
-        live
-      )
-    ).toBe(usd(0.2));
-  });
-
-  test('H3 Max scales the 5s typical with requested duration', () => {
-    const live = {
-      'minimax/h3-max/image-to-video': {
-        unitPrice: micros(25_000),
-        unit: 'seconds',
-        typicalUnitsPerCall: 8,
-      },
-    };
-    expect(
-      estimateFalCost(
-        'minimax/h3-max/image-to-video',
-        { durationSeconds: 10 },
-        live
-      )
-    ).toBe(usd(0.4));
-  });
-
   test('H3 Max observed median outranks duration for seconds-priced video', () => {
     const live = {
       'minimax/h3-max/image-to-video': {
@@ -186,24 +153,6 @@ describe('estimateFalCost', () => {
         live
       )
     ).toBe(usd(0.2));
-  });
-
-  test('H3 Max t2v compute-seconds still has a unit-count signal', () => {
-    // Before the sibling alias copies i2v's verified rate, t2v sat on
-    // "compute seconds × $0.00017" and logged "No unit-count signal".
-    const live = {
-      'minimax/h3-max/text-to-video': {
-        unitPrice: micros(170),
-        unit: 'compute seconds',
-      },
-    };
-    expect(
-      estimateFalCost(
-        'minimax/h3-max/text-to-video',
-        { durationSeconds: 5 },
-        live
-      )
-    ).not.toBeNull();
   });
 
   test('per-minute rounds up', () => {
@@ -342,44 +291,6 @@ describe('estimateFalCost', () => {
     ).toBeNull();
   });
 
-  test('tokens estimate uses 720p default (Seedance platform default, not 1080p)', () => {
-    // tokens = 1280×720×24×5 / 1024 = 108_000 → 108 × 1.05 units × $0.014
-    const expected720p = micros(1_587_600);
-    expect(
-      estimateFalCost(
-        'bytedance/seedance-2.5/image-to-video',
-        { durationSeconds: 5 },
-        PRICING
-      )
-    ).toBe(expected720p);
-    expect(
-      estimateFalCost(
-        'bytedance/seedance-2.5/image-to-video',
-        { durationSeconds: 5, resolution: '720p' },
-        PRICING
-      )
-    ).toBe(expected720p);
-  });
-
-  test('tokens estimate scales with explicit 1080p resolution', () => {
-    // 1080p pixel area is 2.25× 720p → cost scales the same way
-    const at1080 = Number(
-      estimateFalCost(
-        'bytedance/seedance-2.5/image-to-video',
-        { durationSeconds: 5, resolution: '1080p' },
-        PRICING
-      )
-    );
-    const at720 = Number(
-      estimateFalCost(
-        'bytedance/seedance-2.5/image-to-video',
-        { durationSeconds: 5, resolution: '720p' },
-        PRICING
-      )
-    );
-    expect(at1080 / at720).toBeCloseTo((1920 * 1080) / (1280 * 720), 5);
-  });
-
   test('a catalog unit we have no strategy for estimates per call', () => {
     // Catalog-wide refresh stores raw units like "videos" or "5 seconds" —
     // these estimate from observed/typical units, or report unknown.
@@ -399,5 +310,137 @@ describe('estimateFalCost', () => {
     expect(
       estimateFalCost('unknown/model', { numImages: 1 }, PRICING)
     ).toBeNull();
+  });
+});
+
+describe('estimateFalCost with a rate card (#1605)', () => {
+  const H3 = 'minimax/h3-max/image-to-video';
+  const h3Card = (): RateCard => {
+    const card = RATE_CARDS[H3];
+    if (!card) throw new Error('no H3 Max hand card');
+    return card;
+  };
+  const carded = (
+    overrides: Partial<EffectiveFalPricing> = {}
+  ): Record<string, EffectiveFalPricing> => ({
+    [H3]: {
+      unitPrice: micros(25_000),
+      unit: 'seconds',
+      observed: { medianUnits: 8, sampleCount: MIN_OBSERVED_SAMPLES },
+      rateCard: { card: h3Card(), verified: true },
+      ...overrides,
+    },
+  });
+  const request = { duration: 5, resolution: '1080P' };
+
+  test('a verified card prices the request it is handed, ahead of every unit count', () => {
+    // 1080P 5s off the page's per-second row; the observed 8 units × $0.025
+    // would have said $0.20 whatever the resolution.
+    expect(estimateFalCost(H3, { durationSeconds: 5, request }, carded())).toBe(
+      usd(0.2)
+    );
+    expect(
+      estimateFalCost(
+        H3,
+        { durationSeconds: 5, request: { duration: 5, resolution: '480P' } },
+        carded()
+      )
+    ).toBe(usd(0.0625));
+  });
+
+  test('calibration multiplies the card once enough observations back it', () => {
+    // The reconcile measured fal billing 1.6× what the card says.
+    expect(
+      estimateFalCost(
+        H3,
+        { durationSeconds: 5, request },
+        carded({
+          rateCardCalibration: {
+            ratio: 1.6,
+            sampleCount: MIN_OBSERVED_SAMPLES,
+          },
+        })
+      )
+    ).toBe(usd(0.32));
+    expect(
+      estimateFalCost(
+        H3,
+        { durationSeconds: 5, request },
+        carded({
+          rateCardCalibration: {
+            ratio: 1.6,
+            sampleCount: MIN_OBSERVED_SAMPLES - 1,
+          },
+        })
+      )
+    ).toBe(usd(0.2));
+  });
+
+  test('no request → the card is skipped, not priced at its defaults', () => {
+    // Observed 8 units outrank the 5s duration on the seconds path.
+    expect(estimateFalCost(H3, { durationSeconds: 5 }, carded())).toBe(
+      usd(0.2)
+    );
+    expect(
+      estimateFalCost(
+        H3,
+        { durationSeconds: 10 },
+        carded({ observed: undefined })
+      )
+    ).toBe(usd(0.25));
+  });
+
+  test('an unverified or expired card falls through to the unit counts', () => {
+    const unverified = carded({
+      rateCard: { card: h3Card(), verified: false },
+    });
+    expect(
+      estimateFalCost(H3, { durationSeconds: 5, request }, unverified)
+    ).toBe(usd(0.2));
+    const expired = carded({
+      rateCard: {
+        card: {
+          ...h3Card(),
+          source: { ...h3Card().source, expiresAt: '2020-01-01T00:00:00Z' },
+        },
+        verified: true,
+      },
+    });
+    expect(estimateFalCost(H3, { durationSeconds: 5, request }, expired)).toBe(
+      usd(0.2)
+    );
+  });
+
+  test('a request the card refuses falls through rather than inventing a tier', () => {
+    expect(
+      estimateFalCost(
+        H3,
+        { durationSeconds: 5, request: { duration: 5, resolution: '4K' } },
+        carded()
+      )
+    ).toBe(usd(0.2));
+  });
+
+  test('a card on a catalog stub is the estimate the stub never had', () => {
+    // GPT Image 2.5 day one: "units" × $1, no history, no samples — null
+    // before; the size × quality table now prices the default request.
+    const GPT = 'openai/gpt-image-2.5/flare/text-to-image';
+    const card = RATE_CARDS[GPT];
+    if (!card) throw new Error('no GPT hand card');
+    const live = {
+      [GPT]: {
+        unitPrice: micros(1_000_000),
+        unit: 'units',
+        rateCard: { card, verified: true },
+      },
+    };
+    expect(estimateFalCost(GPT, { numImages: 1 }, live)).toBeNull();
+    expect(
+      estimateFalCost(
+        GPT,
+        { numImages: 2, request: { num_images: 2, quality: 'high' } },
+        live
+      )
+    ).toBe(usd(0.07224));
   });
 });

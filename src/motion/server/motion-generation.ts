@@ -20,6 +20,7 @@ import { bytePlusVideoUnitsBilled } from '@/billing/byteplus-pricing';
 import { withBytePlusQuotaRetry } from '@/models/server/quota-retry';
 import { falCostFromUnits } from '@/billing/server/fal-cost-billing';
 import { estimateFalCost, type EffectiveFalPricing } from '@/billing/fal-cost';
+import { type PricingLevers, pricingLevers } from '@/billing/rate-card/levers';
 import {
   createDeadlineFetch,
   FAL_REQUEST_TIMEOUT_MS,
@@ -142,6 +143,12 @@ export type MotionJobSubmission = {
   via: MediaVia;
   usedOwnKey: boolean;
   submittedAt: number;
+  /**
+   * Price levers of the fal body this job sent (#1605), recorded with the
+   * usage sample once the bill is known. Only the fal via sets it — native
+   * vias record no fal observation.
+   */
+  requestParams?: PricingLevers;
 };
 
 async function resolveFalMotionKey(
@@ -267,7 +274,12 @@ async function resolveOptionalFalKey(
 async function submitFalMotionJob(
   options: GenerateMotionOptions,
   modelKey: ImageToVideoModel
-): Promise<{ jobId: string; usedOwnKey: boolean; endpointId: string }> {
+): Promise<{
+  jobId: string;
+  usedOwnKey: boolean;
+  endpointId: string;
+  requestParams: PricingLevers;
+}> {
   // A clip or voice line this model cannot use — it takes no reference of
   // that kind, or not one that long — is a refusal, not a degradation
   // (#1559). Describing it in the prompt instead would bill a clip that
@@ -347,6 +359,9 @@ async function submitFalMotionJob(
     jobId: job.jobId,
     usedOwnKey: key.source === 'team',
     endpointId: endpoint.endpointId,
+    // Levers only: the body carries stills that can be data URIs, and this
+    // rides a durable step payload.
+    requestParams: pricingLevers(modelInput),
   };
 }
 
@@ -504,6 +519,7 @@ export async function submitMotionJob(
 
   let jobId: string;
   let usedOwnKey: boolean;
+  let requestParams: PricingLevers | undefined;
   let stampedVia: MediaVia = endpoint.via;
   let stampedEndpointId = endpoint.endpointId;
 
@@ -586,6 +602,7 @@ export async function submitMotionJob(
       jobId = fal.jobId;
       usedOwnKey = fal.usedOwnKey;
       stampedEndpointId = fal.endpointId;
+      requestParams = fal.requestParams;
       break;
     }
     case 'byteplus': {
@@ -657,6 +674,7 @@ export async function submitMotionJob(
     via: stampedVia,
     usedOwnKey,
     submittedAt: Date.now(),
+    ...(requestParams && { requestParams }),
   };
 }
 
@@ -900,6 +918,8 @@ export function calculateMotionMetadata(
         'resolution' in input && typeof input.resolution === 'string'
           ? input.resolution
           : undefined,
+      // The exact body fal will receive — a rate card binds its levers.
+      request: input,
     },
     pricing
   );

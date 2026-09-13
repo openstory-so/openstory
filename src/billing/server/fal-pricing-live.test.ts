@@ -209,9 +209,9 @@ describe('BytePlus route aliasing', () => {
     expect(map['bytedance/seedance-2.5/text-to-video']?.unitPrice).toBe(10_700);
   });
 
-  it('moves the unit price, not the Ark card, onto the fal ids', async () => {
-    // The Ark card binds Ark param names; the fal id keeps the card the cron
-    // read from its own llms.txt, and gets none when it has none.
+  it('moves the Ark card onto the fal ids with the unit price', async () => {
+    // The request bills on Ark, so the fal id quotes the Ark card, not the
+    // one the cron read from fal's own page.
     const falCard = {
       inputs: {},
       tables: {},
@@ -236,13 +236,11 @@ describe('BytePlus route aliasing', () => {
       { ARK_API_KEY: 'ark-test' }
     );
     const map = await getEffectiveFalPricing();
+    const ark = map['dreamina-seedance-2-5-260628']?.rateCard;
+    expect(ark?.verified).toBe(true);
     expect(map[SEEDANCE_REF]?.unitPrice).toBe(10_700);
-    expect(map[SEEDANCE_REF]?.rateCard).toEqual({
-      card: falCard,
-      verified: true,
-    });
-    expect(map[SEEDANCE_FAL]?.rateCard).toBeUndefined();
-    expect(map['dreamina-seedance-2-5-260628']?.rateCard?.verified).toBe(true);
+    expect(map[SEEDANCE_REF]?.rateCard).toBe(ark);
+    expect(map[SEEDANCE_FAL]?.rateCard).toBe(ark);
   });
 
   it('leaves models with no BytePlus via on their fal rate', async () => {
@@ -266,19 +264,6 @@ describe('H3 Max t2v sibling rate (#1382)', () => {
 
   beforeEach(() => {
     vi.resetModules();
-  });
-
-  it('fills typical 8 when the i2v row has no fal history', async () => {
-    const { getEffectiveFalPricing } = await loadWithRows([
-      row({
-        endpointId: I2V,
-        unit: 'seconds',
-        unitPriceMicros: 25_000,
-        typicalUnitsPerCall: null,
-      }),
-    ]);
-    const pricing = (await getEffectiveFalPricing())[I2V];
-    expect(pricing?.typicalUnitsPerCall).toBe(8);
   });
 
   it('points t2v at i2v’s billed seconds rate instead of compute seconds', async () => {

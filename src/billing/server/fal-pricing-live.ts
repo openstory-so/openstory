@@ -10,10 +10,7 @@ import { getDb } from '#db-client';
 import { isBytePlusConfigured } from '@/models/server/byteplus-config';
 import { BYTEPLUS_RATE_CARD } from '@/billing/byteplus-pricing';
 import { ELEVENLABS_RATE_CARD } from '@/billing/elevenlabs-pricing';
-import {
-  FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP,
-  FAL_UNVERIFIED_SIBLINGS,
-} from '@/billing/fal-typical-units';
+import { FAL_UNVERIFIED_SIBLINGS } from '@/billing/fal-typical-units';
 import {
   IMAGE_MODELS,
   IMAGE_TO_VIDEO_MODELS,
@@ -53,6 +50,13 @@ export type EffectiveFalPricing = {
    * estimate only — billing never reads it.
    */
   rateCard?: { card: RateCard; verified: boolean };
+  /**
+   * How the verified card compares to what fal billed for our own recent
+   * requests: median of `actual / card` with its sample count (#1605).
+   * The estimator multiplies the card's price by `ratio` once
+   * `MIN_OBSERVED_SAMPLES` back it. Written by the hourly reconcile.
+   */
+  rateCardCalibration?: { ratio: number; sampleCount: number };
 };
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -115,9 +119,7 @@ export function buildFalPricingMap(
     map[row.endpointId] = {
       unitPrice: micros(row.unitPriceMicros),
       unit: row.unit,
-      typicalUnitsPerCall:
-        row.typicalUnitsPerCall ??
-        FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP[row.endpointId],
+      typicalUnitsPerCall: row.typicalUnitsPerCall ?? undefined,
       // The DB CHECK keeps median and count consistent.
       ...(row.observedMedianUnits != null && {
         observed: {
@@ -131,6 +133,12 @@ export function buildFalPricingMap(
           row.rateCard,
           row.rateCardVerified
         ),
+      }),
+      ...(row.rateCardCalibration != null && {
+        rateCardCalibration: {
+          ratio: row.rateCardCalibration,
+          sampleCount: row.rateCardCalibrationSamples,
+        },
       }),
     };
   }
@@ -188,15 +196,14 @@ function applyBytePlusRouteAliases(
 ): void {
   if (!isBytePlusConfigured()) return;
 
-  // Only the unit price moves: the Ark card binds Ark param names, and the
-  // fal id keeps the card the cron read from its own llms.txt (a BYOK-fal
-  // team's request still goes to fal).
-  const alias = (
-    falId: string,
-    { rateCard: _ark, ...rate }: EffectiveFalPricing
-  ) => {
-    const own = map[falId]?.rateCard;
-    map[falId] = { ...rate, ...(own && { rateCard: own }) };
+  // The whole entry moves, card included: the Ark cards bind the fal-shaped
+  // levers the estimator hands them (`resolution`, `aspect_ratio`,
+  // `duration`, `image_size`), so the fal id quotes what Ark will bill
+  // rather than fal's own page. A BYOK-fal team's request still goes to fal
+  // and is quoted the Ark rate — the same trade-off the unit price already
+  // made (#1157).
+  const alias = (falId: string, rate: EffectiveFalPricing) => {
+    map[falId] = rate;
   };
 
   for (const model of Object.values(IMAGE_MODELS)) {
@@ -239,14 +246,15 @@ function applyUnverifiedSiblingRates(
       unitPrice: sourceRate.unitPrice,
       unit: sourceRate.unit,
       typicalUnitsPerCall:
-        targetRate?.typicalUnitsPerCall ??
-        sourceRate.typicalUnitsPerCall ??
-        FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP[target],
+        targetRate?.typicalUnitsPerCall ?? sourceRate.typicalUnitsPerCall,
       ...((targetRate?.observed ?? sourceRate.observed)
         ? { observed: targetRate?.observed ?? sourceRate.observed }
         : {}),
-      // The sibling has its own llms.txt, so its own card.
+      // The sibling has its own llms.txt, so its own card and calibration.
       ...(targetRate?.rateCard && { rateCard: targetRate.rateCard }),
+      ...(targetRate?.rateCardCalibration && {
+        rateCardCalibration: targetRate.rateCardCalibration,
+      }),
     };
   }
 }

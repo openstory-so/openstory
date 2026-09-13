@@ -19,12 +19,19 @@ import {
   type TextToImageModel,
 } from '@/models/models';
 import type { AspectRatio } from '@/models/aspect-ratios';
-import { aspectRatioToDimensions } from '@/models/aspect-ratios';
+import {
+  aspectRatioToDimensions,
+  aspectRatioToImageSize,
+} from '@/models/aspect-ratios';
 import type { Resolution } from '@/models/resolutions';
-import { imageRequestDimensions } from '@/stills/build-image-request';
+import {
+  buildImageRequest,
+  imageRequestDimensions,
+} from '@/stills/build-image-request';
 import { resolveMotionEndpoint } from '@/motion/resolve-motion-endpoint';
 import {
   studioVideoEndpointId,
+  studioVideoResolution,
   type StudioVideoMode,
 } from '@/studio/text-to-video';
 import { getLogger } from '@/platform/logger';
@@ -152,6 +159,18 @@ export function estimateImageCost(
     imageRequestDimensions(model, aspectRatio, opts.resolution) ??
     aspectRatioToDimensions(aspectRatio);
 
+  // The request the generation will send, built by the same builder, so a
+  // rate card reads the real `image_size` / `resolution` / `num_images`
+  // (#1605). The prompt is not a price lever; one placeholder reference
+  // picks the edit endpoint the way a real reference would.
+  const built = buildImageRequest({
+    model,
+    prompt: '',
+    imageSize: aspectRatioToImageSize(aspectRatio),
+    numImages,
+    resolution: opts.resolution,
+    ...(opts.edit && { referenceImageUrls: ['reference'] }),
+  });
   // Always the fal catalog id: when the platform routes this model to BytePlus
   // Ark, the pricing map already aliases that id to the Ark rate (#1157), so
   // no call site has to know the route.
@@ -162,6 +181,7 @@ export function estimateImageCost(
       widthPx: width,
       heightPx: height,
       resolution: opts.resolution,
+      request: built.input,
     },
     opts.pricing
   );
@@ -219,9 +239,26 @@ export function estimateVideoCost(
     {
       durationSeconds,
       resolution: opts.resolution,
+      request: videoLevers(model, durationSeconds, opts.resolution),
     },
     opts.pricing
   );
+}
+
+/**
+ * The levers a video rate card reads, spelled as the endpoint spells them:
+ * `duration` in seconds and the model's own resolution token (`768P`,
+ * `1080p`) for the tier. Callers here have no built request — the still,
+ * references and prompt are not known yet — and every other lever keeps its
+ * card default.
+ */
+function videoLevers(
+  model: ImageToVideoModel,
+  durationSeconds: number,
+  resolution: Resolution | undefined
+): Record<string, unknown> {
+  const token = studioVideoResolution(model, resolution);
+  return { duration: durationSeconds, ...(token && { resolution: token }) };
 }
 
 /** Pre-flight cost of a studio clip; `mode` picks the endpoint priced. */
@@ -236,7 +273,11 @@ export function estimateStudioVideoCost(
 ): Microdollars | null {
   return estimateFalCost(
     studioVideoEndpointId(model, opts.mode),
-    { durationSeconds, resolution: opts.resolution },
+    {
+      durationSeconds,
+      resolution: opts.resolution,
+      request: videoLevers(model, durationSeconds, opts.resolution),
+    },
     opts.pricing
   );
 }
@@ -251,7 +292,7 @@ export function estimateAudioCost(
 ): Microdollars | null {
   return estimateFalCost(
     AUDIO_MODELS[model].id,
-    { durationSeconds },
+    { durationSeconds, request: { duration: durationSeconds } },
     opts.pricing
   );
 }
