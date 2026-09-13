@@ -147,17 +147,25 @@ export function createComplianceMethods(
         subjectType: AttestationSubjectType,
         subjectId: string
       ): Promise<UploadAttestation[]> {
-        return db
-          .select()
-          .from(uploadAttestations)
-          .where(
-            and(
-              eq(uploadAttestations.teamId, teamId),
-              eq(uploadAttestations.subjectType, subjectType),
-              eq(uploadAttestations.subjectId, subjectId)
+        return (
+          db
+            .select()
+            .from(uploadAttestations)
+            .where(
+              and(
+                eq(uploadAttestations.teamId, teamId),
+                eq(uploadAttestations.subjectType, subjectType),
+                eq(uploadAttestations.subjectId, subjectId)
+              )
             )
-          )
-          .orderBy(desc(uploadAttestations.attestedAt));
+            // Image identity is the WHERE (`subjectType` + `subjectId`). Tied
+            // seconds then follow the row's monotonic ULID so a sign-off in the
+            // same second as its finding still wins (#1610).
+            .orderBy(
+              desc(uploadAttestations.attestedAt),
+              desc(uploadAttestations.id)
+            )
+        );
       },
     },
 
@@ -596,7 +604,7 @@ export function createModerationMethods(db: Database) {
       .select()
       .from(uploadAttestations)
       .where(eq(uploadAttestations.teamId, subjectTeamId))
-      .orderBy(desc(uploadAttestations.attestedAt))
+      .orderBy(desc(uploadAttestations.attestedAt), desc(uploadAttestations.id))
       .limit(opts?.limit ?? 100);
   }
 

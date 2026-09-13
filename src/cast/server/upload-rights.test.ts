@@ -177,6 +177,43 @@ describe('attestUploads', () => {
     );
     expect(mockAnalyze).not.toHaveBeenCalled();
   });
+
+  it('keeps a same-second portrait sign-off as signed even if the finding row is inserted later', async () => {
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const subjectId = await sha256Hex(url);
+    const attestedAt = new Date('2026-09-14T12:00:00.000Z');
+    const findingId = generateId();
+    const portraitId = generateId();
+
+    const base = {
+      userId: USER_ID,
+      teamId: TEAM_ID,
+      subjectType: 'uploaded_image' as const,
+      subjectId,
+      attestedAt,
+      depictsRealPerson: true,
+    };
+    await db.insert(uploadAttestations).values({
+      ...base,
+      id: portraitId,
+      statementVersion: PORTRAIT_RIGHTS_V1.version,
+      statementSha256: await statementHash(PORTRAIT_RIGHTS_V1),
+      authorizationBasis: 'self',
+    });
+    await db.insert(uploadAttestations).values({
+      ...base,
+      id: findingId,
+      statementVersion: LIKENESS_DETECTED_V1.version,
+      statementSha256: await statementHash(LIKENESS_DETECTED_V1),
+    });
+
+    expect(
+      await classifyUpload({ scopedDb, userId: USER_ID, url, request })
+    ).toEqual({ status: 'signed' });
+    expect(await requireUploadRights(scopedDb, [url])).toEqual(
+      new Map([[url, { depictsRealPerson: true }]])
+    );
+  });
 });
 
 describe('carryUploadRights', () => {
