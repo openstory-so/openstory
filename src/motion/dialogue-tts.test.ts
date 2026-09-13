@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DIALOGUE_CLIP_TOKEN,
   DIALOGUE_TTS_MODEL,
   dialogueTtsToken,
   modelTakesDialogueAudio,
@@ -97,7 +98,7 @@ describe('voicedDialogueLines', () => {
     ).toEqual([
       {
         index: 0,
-        token: 'SARAH_L1',
+        token: DIALOGUE_CLIP_TOKEN,
         voiceId: 'voice-sarah',
         text: 'Stay down.',
         tone: 'urgent',
@@ -106,7 +107,7 @@ describe('voicedDialogueLines', () => {
       },
       {
         index: 1,
-        token: 'AL_L2',
+        token: DIALOGUE_CLIP_TOKEN,
         voiceId: 'voice-al',
         text: 'I see it.',
         tone: '',
@@ -146,7 +147,7 @@ describe('voicedDialogueLines', () => {
       [sarah, narrator]
     );
     expect(line?.voiceId).toBe('voice-narrator');
-    expect(line?.token).toBe('VOICE_L1');
+    expect(line?.token).toBe(DIALOGUE_CLIP_TOKEN);
   });
 
   it('does not guess when two voice-only characters could narrate', () => {
@@ -156,6 +157,20 @@ describe('voicedDialogueLines', () => {
         { name: 'Announcer', voiceId: 'voice-announcer', voiceOnly: true },
       ])
     ).toEqual([]);
+  });
+
+  it('binds every voiced line to one DIALOGUE token so Text to Dialogue is a single audio ref', () => {
+    const lines = voicedDialogueLines(
+      dialogue([
+        { character: 'SARAH', line: 'Stay down.' },
+        { character: 'Al', line: 'I see it.' },
+      ]),
+      [sarah, al]
+    );
+    expect(lines.map((line) => line.token)).toEqual([
+      DIALOGUE_CLIP_TOKEN,
+      DIALOGUE_CLIP_TOKEN,
+    ]);
   });
 });
 
@@ -167,7 +182,7 @@ describe('withVoicedLineTokens', () => {
     ]);
     const voiced = voicedDialogueLines(original, [sarah, al]);
     const tagged = withVoicedLineTokens(original, voiced);
-    expect(tagged?.lines[0]?.voiceToken).toBe('SARAH_L1');
+    expect(tagged?.lines[0]?.voiceToken).toBe(DIALOGUE_CLIP_TOKEN);
     expect(tagged?.lines[1]?.voiceToken).toBe('AL_VOICE');
   });
 });

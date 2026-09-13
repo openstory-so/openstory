@@ -47,7 +47,12 @@ import {
 } from '@/motion/reference-support';
 import { resolveShotDuration } from '@/motion/resolve-shot-duration';
 import { dialogueClipsAsReferences } from '@/motion/server/synthesize-dialogue';
-import { dialogueTtsToken } from '@/motion/dialogue-tts';
+import {
+  DIALOGUE_CLIP_TOKEN,
+  dialogueTtsToken,
+  voicedDialogueLines,
+  withVoicedLineTokens,
+} from '@/motion/dialogue-tts';
 import type { MotionAudioClip } from '@/platform/server/db/schema';
 import { buildReferenceImagePrompt } from '@/stills/reference-image-prompt';
 
@@ -209,20 +214,29 @@ export function buildShotPromptPreview(input: {
   const byteplusEnabled = input.byteplusEnabled ?? isBytePlusConfigured();
   const audioClips = input.audioClips ?? [];
   const clipByToken = new Map(audioClips.map((clip) => [clip.token, clip]));
+  const conversation = clipByToken.get(DIALOGUE_CLIP_TOKEN);
   const motionPrompt =
     audioClips.length > 0 && input.motionPrompt?.dialogue
       ? {
           ...input.motionPrompt,
-          dialogue: {
-            ...input.motionPrompt.dialogue,
-            lines: input.motionPrompt.dialogue.lines.map((line, index) => {
-              if (line.voiceToken) return line;
-              const token = dialogueTtsToken(line.character, index);
-              return clipByToken.has(token)
-                ? { ...line, voiceToken: token }
-                : line;
-            }),
-          },
+          dialogue: conversation
+            ? withVoicedLineTokens(
+                input.motionPrompt.dialogue,
+                voicedDialogueLines(
+                  input.motionPrompt.dialogue,
+                  input.characters
+                )
+              )
+            : {
+                ...input.motionPrompt.dialogue,
+                lines: input.motionPrompt.dialogue.lines.map((line, index) => {
+                  if (line.voiceToken) return line;
+                  const token = dialogueTtsToken(line.character, index);
+                  return clipByToken.has(token)
+                    ? { ...line, voiceToken: token }
+                    : line;
+                }),
+              },
         }
       : input.motionPrompt;
   const assembledMotionPrompt = resolveMotionPrompt(

@@ -20,6 +20,12 @@ import type {
 /** ElevenLabs model every dialogue clip is synthesised with. */
 export const DIALOGUE_TTS_MODEL = 'eleven_v3';
 
+/**
+ * One token for the whole shot conversation so Text to Dialogue’s single
+ * clip binds as `@Audio1` / `Audio 1` on every voiced line.
+ */
+export const DIALOGUE_CLIP_TOKEN = 'DIALOGUE';
+
 /** True when this model’s reference-to-video route takes uploaded audio. */
 export function modelTakesDialogueAudio(model: ImageToVideoModel): boolean {
   return (getMotionReferenceEndpoint(model)?.maxAudio ?? 0) > 0;
@@ -119,7 +125,7 @@ export function voicedDialogueLines(
     if (!match?.voiceId) return;
     voiced.push({
       index,
-      token: dialogueTtsToken(line.character, index),
+      token: DIALOGUE_CLIP_TOKEN,
       voiceId: match.voiceId,
       text,
       tone: line.tone ?? '',
