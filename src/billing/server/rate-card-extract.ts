@@ -187,7 +187,8 @@ function defaultPriceUsd(card: RateCard): number | null {
 async function callExtractionModel(
   source: RateCardSource,
   today: string,
-  llmKey: LlmKeyInfo | undefined
+  llmKey: LlmKeyInfo | undefined,
+  model: TextModel
 ): Promise<{ text: string; costMicros: Microdollars }> {
   const { messages } = await buildExtractionMessages(source, today);
   const systemPrompts = messages
@@ -197,7 +198,7 @@ async function callExtractionModel(
     m.role === 'system' ? [] : [{ role: m.role, content: m.content }]
   );
 
-  const adapter = createAdapter(RATE_CARD_EXTRACTION_MODEL, llmKey);
+  const adapter = createAdapter(model, llmKey);
   const usageCapture = createUsageCapture();
   let accumulated = '';
   let runError = null;
@@ -233,11 +234,7 @@ async function callExtractionModel(
   throwNotedRunError(runError);
   return {
     text: accumulated,
-    costMicros: llmCostFromUsage(
-      usageCapture.get(),
-      RATE_CARD_EXTRACTION_MODEL,
-      llmKey?.via
-    ),
+    costMicros: llmCostFromUsage(usageCapture.get(), model, llmKey?.via),
   };
 }
 
@@ -254,6 +251,8 @@ export async function extractRateCard(
     today?: string;
     previous?: RateCard;
     now?: Date;
+    /** Extraction model; the cron uses `RATE_CARD_EXTRACTION_MODEL`. */
+    model?: TextModel;
   } = {}
 ): Promise<RateCardExtraction> {
   const now = opts.now ?? new Date();
@@ -275,7 +274,8 @@ export async function extractRateCard(
     ({ text, costMicros } = await callExtractionModel(
       source,
       today,
-      opts.llmKey
+      opts.llmKey,
+      opts.model ?? RATE_CARD_EXTRACTION_MODEL
     ));
   } catch (error) {
     // The call, not the card: an outage is retried on the same text.
