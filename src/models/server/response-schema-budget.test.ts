@@ -10,7 +10,9 @@
  *
  * The sweep test walks `src/` for `responseSchema:` / `outputSchema:` call
  * sites and fails if one names a schema this file doesn't measure — add new
- * schemas to MEASURED_SCHEMAS.
+ * schemas to MEASURED_SCHEMAS. MCP `registerTool` `outputSchema` is the
+ * protocol contract for tool results, not Anthropic structured output, so
+ * `src/platform/server/mcp/` is skipped (#1457).
  */
 
 import { readdirSync, readFileSync } from 'node:fs';
@@ -84,6 +86,8 @@ describe('structured-output schema budget', () => {
         const full = join(dir, entry.name);
         if (entry.isDirectory()) {
           if (entry.name === '__tests__') continue;
+          // MCP tool outputSchema is not sent to Anthropic (#1035).
+          if (entry.name === 'mcp') continue;
           walk(full);
         } else if (
           entry.name.endsWith('.ts') &&
