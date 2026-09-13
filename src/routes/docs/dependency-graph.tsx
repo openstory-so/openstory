@@ -48,7 +48,7 @@ function DependencyGraphArticle() {
           Staleness is never a flag we set: on every read we recompute the hash
           from the current inputs and compare. A mismatch is{' '}
           <strong>stale</strong>. A row with no stored hash is{' '}
-          <strong>untracked</strong> and never stale. Versioned things (green
+          <strong>untracked</strong> and never stale. Versioned things (purple
           border) keep every generation as a row and a pointer picks one.
           Renders record which <em>version</em> of a prompt or sheet they used,
           so selecting a different version is what makes them stale, not editing

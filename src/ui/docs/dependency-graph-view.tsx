@@ -87,24 +87,46 @@ function edgePath(e: GraphEdge): string {
 }
 
 /**
- * Panel copy and edge colour per tracking kind. Hash and pointer share a
- * colour: a pointer edge always leaves a versioned node, which the green
- * border already says, so the graph draws both as "tracked" and the note
- * on the edge carries the difference.
+ * Edge colour is a verdict: green tracked, red a gap, grey deliberately
+ * untracked, blue seeded (provenance, not a verdict). Hash and pointer are
+ * both "tracked": a pointer edge always leaves a versioned node, which the
+ * border already says, and the note on the edge carries the difference.
  */
-const TRACKING: Record<Tracking, { copy: string; stroke: string }> = {
-  hash: { copy: 'in the input hash', stroke: 'stroke-chart-1' },
-  pointer: { copy: 'by selected version', stroke: 'stroke-chart-1' },
-  cascade: { copy: 'cascade only, never flagged', stroke: 'stroke-chart-3' },
-  untracked: { copy: 'not tracked', stroke: 'stroke-muted-foreground' },
-  seeded: { copy: 'seeded once, then yours', stroke: 'stroke-chart-5' },
+const STROKE = {
+  tracked: 'stroke-chart-2',
+  gap: 'stroke-chart-5',
+  byDesign: 'stroke-muted-foreground',
+  seeded: 'stroke-chart-1',
+} as const;
+
+const edgeStroke = (e: GraphEdge): string =>
+  e.tracking === 'seeded'
+    ? STROKE.seeded
+    : e.tracking === 'untracked'
+      ? e.gap
+        ? STROKE.gap
+        : STROKE.byDesign
+      : STROKE.tracked;
+
+const TRACKING_COPY: Record<Tracking, string> = {
+  hash: 'in the input hash',
+  pointer: 'by selected version',
+  untracked: 'not tracked',
+  seeded: 'seeded once, then yours',
 };
 
+const edgeCopy = (e: GraphEdge): string =>
+  e.tracking === 'untracked'
+    ? e.gap
+      ? 'not tracked — a gap'
+      : 'not tracked, by design'
+    : TRACKING_COPY[e.tracking];
+
 const LEGEND = [
-  ['tracked', TRACKING.hash.stroke],
-  ['cascade only, never flagged', TRACKING.cascade.stroke],
-  ['seeded once, then yours', TRACKING.seeded.stroke],
-  ['not tracked', TRACKING.untracked.stroke],
+  ['tracked', STROKE.tracked],
+  ['not tracked — a gap', STROKE.gap],
+  ['not tracked, by design', STROKE.byDesign],
+  ['seeded once, then yours', STROKE.seeded],
 ] as const;
 
 // --- View -----------------------------------------------------------------
@@ -184,7 +206,7 @@ export const DependencyGraphView: React.FC<DependencyGraphViewProps> = ({
                   strokeLinecap="round"
                   className={cn(
                     'transition-opacity motion-reduce:transition-none',
-                    TRACKING[e.tracking].stroke,
+                    edgeStroke(e),
                     lit ? 'stroke-[2.5]' : side ? 'stroke-2' : 'opacity-25'
                   )}
                 />
@@ -233,7 +255,7 @@ export const DependencyGraphView: React.FC<DependencyGraphViewProps> = ({
                       'transition-[fill,stroke] motion-reduce:transition-none group-focus-visible:stroke-ring group-focus-visible:stroke-2',
                       // Border = provenance (green versioned, dashed
                       // optional). State lives on the fill so they combine.
-                      n.versionedIn ? 'stroke-chart-2' : 'stroke-border',
+                      n.versionedIn ? 'stroke-chart-4' : 'stroke-border',
                       isActive
                         ? 'fill-primary/20 stroke-[2.5]'
                         : isStale
@@ -307,7 +329,7 @@ const Legend: React.FC = () => (
       </li>
     ))}
     <li className="flex items-center gap-1.5">
-      <span className="inline-block size-3 rounded-sm border border-chart-2" />
+      <span className="inline-block size-3 rounded-sm border border-chart-4" />
       versioned
     </li>
     <li className="flex items-center gap-1.5">
@@ -353,7 +375,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
           {node.kind === 'input' ? 'you edit' : 'generated'}
         </Badge>
         {node.versionedIn && (
-          <Badge variant="outline" className="border-chart-2">
+          <Badge variant="outline" className="border-chart-4">
             versioned — {node.versionedIn}
           </Badge>
         )}
@@ -432,7 +454,7 @@ const DetailPanel: React.FC<DetailPanelProps> = ({
                   {e.from === node.id ? `→ ${o.label}` : `${o.label} →`}
                 </Button>
                 <span className="text-muted-foreground">
-                  {withNote(TRACKING[e.tracking].copy, e.note)}
+                  {withNote(edgeCopy(e), e.note)}
                 </span>
               </li>
             );
@@ -515,7 +537,7 @@ const ReachList: React.FC<ReachListProps> = ({
               <span className="text-muted-foreground">
                 {withNote(
                   viaId === origin.id
-                    ? TRACKING[r.via.tracking].copy
+                    ? edgeCopy(r.via)
                     : `via ${via?.label ?? viaId}`,
                   r.via.note
                 )}

@@ -58,7 +58,7 @@ describe('dependency graph', () => {
     ]);
   });
 
-  it('cascade and untracked edges do not propagate', () => {
+  it('untracked edges do not propagate, gap or not', () => {
     expect(ids(staleAfterEdit('duration', 'start-frame'))).toEqual([
       'musicPrompt',
     ]);

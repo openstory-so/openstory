@@ -62,20 +62,14 @@ export type GraphNode = {
  * - `pointer`  — the artifact records which VERSION it used; selecting a
  *                different version makes it stale. Editing the version's
  *                inputs does nothing until a new version is selected.
- * - `cascade`  — never flagged stale on its own; Update all regenerates it
- *                only when the upstream artifact regenerates in the same run.
  * - `untracked`— feeds the generation, but no staleness check reads it.
+ *                `gap` marks the ones that should be tracked and are not;
+ *                the rest are deliberate.
  * - `seeded`   — generated ONCE from upstream (the LLM at the Script stage,
  *                or casting / matching from the library) and then owned by
  *                the user. Later upstream edits never touch it.
  */
-const TRACKINGS = [
-  'hash',
-  'pointer',
-  'cascade',
-  'untracked',
-  'seeded',
-] as const;
+const TRACKINGS = ['hash', 'pointer', 'untracked', 'seeded'] as const;
 
 export type Tracking = (typeof TRACKINGS)[number];
 
@@ -83,6 +77,8 @@ export type GraphEdge = {
   from: string;
   to: string;
   tracking: Tracking;
+  /** An untracked edge that ought to be tracked. Drawn red. */
+  gap?: true;
   /** Only present in this mode; absent = both modes. */
   mode?: GraphMode;
   /** Short reason shown in the detail panel. */
@@ -700,6 +696,7 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     from: 'characterSheet',
     to: 'clip',
     tracking: 'untracked',
+    gap: true,
     mode: 'reference-only',
     note: 'the sheets are the video references, but the manifest does not record them',
   },
@@ -707,6 +704,7 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     from: 'locationSheet',
     to: 'clip',
     tracking: 'untracked',
+    gap: true,
     mode: 'reference-only',
     note: 'the sheets are the video references, but the manifest does not record them',
   },
@@ -726,6 +724,7 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     from: 'element',
     to: 'clip',
     tracking: 'untracked',
+    gap: true,
     note: 'an audio or video element goes as a reference when the model takes one; the manifest does not record it',
   },
   {
@@ -750,6 +749,7 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     from: 'musicModel',
     to: 'musicTrack',
     tracking: 'untracked',
+    gap: true,
     note: 'in the track hash, which nothing reads',
   },
   {
@@ -761,8 +761,9 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
   {
     from: 'musicPrompt',
     to: 'musicTrack',
-    tracking: 'cascade',
-    note: 'Update all at music depth regenerates the track when the prompt regenerates',
+    tracking: 'untracked',
+    gap: true,
+    note: 'the track is never flagged; Update all at music depth regenerates it when the prompt regenerates',
   },
   // Cut
   {
@@ -798,7 +799,7 @@ export type Reach = {
 
 /**
  * Everything that goes stale when `id` changes, in BFS order. Follows only
- * edges that propagate; a cascade/untracked edge stops the walk, which is the
+ * edges that propagate; an untracked or seeded edge stops the walk, which is the
  * whole point of drawing them differently.
  */
 export function staleAfterEdit(id: string, mode: GraphMode): Reach[] {
