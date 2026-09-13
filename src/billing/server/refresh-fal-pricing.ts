@@ -12,13 +12,11 @@
  *    preserves the stored value rather than nulling it.
  * 3. `model_usage_observations` — median units per image from our own
  *    generations, the preferred estimation signal.
- * 4. Each endpoint's llms.txt Pricing section — the advertised price, read
- *    only for used per-call endpoints that have none of the above (a fresh
- *    catalog id sits on a `units` × $1 stub with no history, #1605).
- * 5. A rate card per used endpoint (#1605): the same Pricing text as
- *    JSONLogic, LLM-extracted only when the text changes, verified against
- *    the page's own worked examples, seeded from the hand cards in
- *    `rate-card/cards`. Pre-flight estimate only.
+ * 4. A rate card per used endpoint (#1605): the endpoint's llms.txt Pricing
+ *    section as JSONLogic, LLM-extracted only when the text changes,
+ *    verified against the page's own worked examples, seeded from the hand
+ *    cards in `rate-card/cards`. Pre-flight estimate only — and the first
+ *    signal for a fresh catalog id that sits on a `units` × $1 stub.
  *
  * Also appends `model_pricing_history` rows on price changes (and first
  * sight). Billing reads these prices, so a fal price move reaches real
@@ -34,18 +32,12 @@ import {
 import { listCatalogEndpointIds } from '@/models/catalog';
 import {
   type FalUnitPrice,
-  fetchFalAdvertisedCallUsd,
   fetchFalBilledRates,
   fetchFalCatalogIds,
   fetchFalTypicalUnits,
   fetchFalUnitPrices,
-  roundTypicalUnits,
 } from './fal-pricing-fetch';
-import { estimateStrategy, MIN_OBSERVED_SAMPLES } from '@/billing/fal-cost';
-import {
-  FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP,
-  FAL_UNVERIFIED_SIBLINGS,
-} from '@/billing/fal-typical-units';
+import { FAL_UNVERIFIED_SIBLINGS } from '@/billing/fal-typical-units';
 import { addMicros, usdToMicros, ZERO_MICROS } from '@/billing/money';
 import { RATE_CARDS } from '@/billing/rate-card/cards';
 import {
@@ -92,11 +84,11 @@ const OBSERVATION_WINDOW_DAYS = 90;
 export const OBSERVATIONS_PER_ENDPOINT = 200;
 
 /**
- * D1 caps a query at 100 bound params. Snapshot upserts bind 15 columns per
- * row (the five rate-card columns bind too, as nulls) and history inserts 6
+ * D1 caps a query at 100 bound params. Snapshot upserts bind 17 columns per
+ * row (the seven rate-card columns bind too, as nulls) and history inserts 6
  * (defaulted columns bind too) — chunk both.
  */
-export const UPSERT_CHUNK = 6;
+export const UPSERT_CHUNK = 5;
 export const HISTORY_CHUNK = 15;
 
 /**
@@ -112,8 +104,6 @@ export type FalPricingRefreshSummary = {
   /** Endpoints written to model_pricing (those with a price). */
   endpoints: number;
   priceChanges: number;
-  /** Used endpoints whose only unit-count signal is the llms.txt advertised price. */
-  advertisedEndpoints: number;
   /** Rate cards extracted and stored this run (#1605). */
   rateCardsExtracted: number;
   /** Rate-card extractions that failed or were refused this run. */
@@ -302,9 +292,9 @@ export async function collectObservedUnits(
 }
 
 /**
- * Patch `observed_median_units` (and a missing H3 Max typical) onto existing
- * `model_pricing` rows. Used by the hourly reconcile so a day's samples do
- * not wait until 03:17 UTC to feed the estimator.
+ * Patch `observed_median_units` onto existing `model_pricing` rows. Used by
+ * the hourly reconcile so a day's samples do not wait until 03:17 UTC to
+ * feed the estimator.
  */
 export async function writeObservedUnits(
   db: PricingRefreshDb,
@@ -321,16 +311,11 @@ export async function writeObservedUnits(
   for (const [endpointId, obs] of observed) {
     const row = rowsByEndpoint.get(endpointId);
     if (!row) continue;
-    const fallbackTypical =
-      FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP[endpointId] ?? null;
     await db
       .update(modelPricing)
       .set({
         observedMedianUnits: obs.medianUnits,
         observedSampleCount: obs.sampleCount,
-        ...(row.typicalUnitsPerCall == null && fallbackTypical != null
-          ? { typicalUnitsPerCall: fallbackTypical }
-          : {}),
         updatedAt: now,
       })
       .where(
@@ -341,24 +326,6 @@ export async function writeObservedUnits(
         )
       );
     written++;
-  }
-
-  for (const [endpointId, typical] of Object.entries(
-    FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP
-  )) {
-    const row = rowsByEndpoint.get(endpointId);
-    if (!row || row.typicalUnitsPerCall != null) continue;
-    if (observed.has(endpointId)) continue;
-    await db
-      .update(modelPricing)
-      .set({ typicalUnitsPerCall: typical, updatedAt: now })
-      .where(
-        and(
-          eq(modelPricing.provider, 'fal'),
-          eq(modelPricing.endpointId, endpointId),
-          eq(modelPricing.unit, row.unit)
-        )
-      );
   }
   return written;
 }
@@ -522,6 +489,9 @@ async function refreshRateCards(
       rateCardExpiresAt: stored.card.source.expiresAt
         ? new Date(stored.card.source.expiresAt)
         : null,
+      // Ratios measured against the previous card say nothing about this one.
+      rateCardCalibration: null,
+      rateCardCalibrationSamples: 0,
     });
   /** Remember a rejected text so it is not re-extracted until it changes. */
   const noteRejection = (
@@ -851,45 +821,18 @@ export async function refreshFalPricing(
   const { observed, samples } = await collectObservedUnits(db);
 
   // A failed typical fetch carries the stored value forward — absence of an
-  // answer is not an answer of "none". A genuine no-history reply uses the
-  // billed-units fallback (H3 Max 8/5s) when we have one, else nulls.
-  const historicalTypical = (p: FalUnitPrice): number | null => {
-    const fallbackTypical =
-      FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP[p.endpointId] ?? null;
-    return (
-      typicalUnits.get(p.endpointId) ??
-      (typicalDegraded || failedEndpoints.has(p.endpointId)
-        ? (existingTypicalByKey.get(pricingKey(p)) ?? fallbackTypical)
-        : fallbackTypical)
-    );
-  };
-
-  // llms.txt is the last resort, below the bill, our median and fal's
-  // history (#1605): read only for used per-call endpoints the estimator
-  // would otherwise report unknown for. Stored as units so the estimate
-  // stays `typical × unitPrice` — a $1 catalog stub yields fractional units.
-  const advertisedGaps = usedPrices.filter(
-    (p) =>
-      historicalTypical(p) == null &&
-      p.unitPriceUsd > 0 &&
-      estimateStrategy(p.endpointId, p.unit) === 'per_call' &&
-      (observed.get(p.endpointId)?.sampleCount ?? 0) < MIN_OBSERVED_SAMPLES
-  );
-  const { advertised, failedEndpoints: advertisedFailed } =
-    await fetchFalAdvertisedCallUsd(advertisedGaps.map((p) => p.endpointId));
+  // answer is not an answer of "none". A genuine no-history reply nulls; the
+  // rate card (below) is what prices such an endpoint.
+  const historicalTypical = (p: FalUnitPrice): number | null =>
+    typicalUnits.get(p.endpointId) ??
+    (typicalDegraded || failedEndpoints.has(p.endpointId)
+      ? (existingTypicalByKey.get(pricingKey(p)) ?? null)
+      : null);
 
   const now = new Date();
   const snapshotRows = prices.map((p) => {
     const obs = observed.get(p.endpointId);
-    const key = pricingKey(p);
-    const advertisedUsd = advertised.get(p.endpointId);
-    const typical =
-      historicalTypical(p) ??
-      (advertisedUsd != null
-        ? roundTypicalUnits(advertisedUsd / p.unitPriceUsd)
-        : advertisedFailed.has(p.endpointId)
-          ? (existingTypicalByKey.get(key) ?? null)
-          : null);
+    const typical = historicalTypical(p);
     return {
       provider: 'fal' as const,
       endpointId: p.endpointId,
@@ -1012,7 +955,6 @@ export async function refreshFalPricing(
     catalogSize: catalogIds.length,
     endpoints: snapshotRows.length,
     priceChanges: historyRows.length,
-    advertisedEndpoints: advertised.size,
     rateCardsExtracted: rateCards.extracted,
     rateCardsRejected: rateCards.rejected,
     observedEndpoints: observed.size,

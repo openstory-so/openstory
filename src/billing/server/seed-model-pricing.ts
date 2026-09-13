@@ -9,10 +9,6 @@
  */
 
 import { getFalEndpointIds } from '@/models/fal-endpoints';
-import {
-  FAL_ADVERTISED_CALL_USD,
-  FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP,
-} from '@/billing/fal-typical-units';
 import { usdToMicros } from '@/billing/money';
 import { modelPricing } from '@/platform/server/db/schema';
 import { getDb } from '#db-client';
@@ -47,12 +43,9 @@ const units = (unitPriceUsd: number, typicalUnitsPerCall = 1): SeedPrice => ({
 export const LOCAL_FAL_PRICING_SEED: Record<string, SeedPrice> = {
   'fal-ai/nano-banana-2': img(0.08, 1.5),
   'fal-ai/nano-banana-2/edit': img(0.08, 1.5),
-  'google/nano-banana-2-lite': img(
-    FAL_ADVERTISED_CALL_USD['google/nano-banana-2-lite']
-  ),
-  'google/nano-banana-lite/edit': img(
-    FAL_ADVERTISED_CALL_USD['google/nano-banana-lite/edit']
-  ),
+  // Advertised ~$0.04 per 1K still (token-priced on fal, $37.50 / 1M).
+  'google/nano-banana-2-lite': img(0.04),
+  'google/nano-banana-lite/edit': img(0.04),
   'fal-ai/nano-banana-pro': img(0.14, 1.5),
   'fal-ai/nano-banana-pro/edit': img(0.14, 1.5),
   'openai/gpt-image-2.5/flare/text-to-image': units(1, 0.22),
@@ -126,14 +119,12 @@ export const LOCAL_FAL_PRICING_SEED: Record<string, SeedPrice> = {
   'minimax/h3-max/image-to-video': {
     unit: 'seconds',
     unitPriceUsd: 0.025,
-    typicalUnitsPerCall:
-      FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP['minimax/h3-max/image-to-video'] ?? 8,
+    typicalUnitsPerCall: 8,
   },
   'minimax/h3-max/text-to-video': {
     unit: 'seconds',
     unitPriceUsd: 0.025,
-    typicalUnitsPerCall:
-      FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP['minimax/h3-max/text-to-video'] ?? 8,
+    typicalUnitsPerCall: 8,
   },
   // Advertised $0.08/s of output video (plus ref-token billing after four
   // 1024² images — we do not invent a per-ref surcharge).

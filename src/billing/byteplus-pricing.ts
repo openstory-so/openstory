@@ -8,77 +8,66 @@
  * immediately: there is no window where Ark generations bill $0 because a
  * seed step has not run (#1069's failure mode).
  *
- * The card is keyed by BytePlus model id and reuses the fal pricing shape, so
+ * Each entry carries two things (#1605): the **unit price** billing
+ * multiplies (`unitsBilled × unitPrice`, Ark reports tokens ÷ 1000 or an
+ * image count), and the page's full tariff as a **rate card** in
+ * `rate-card/cards/` — per-resolution rates, the with-video tier, the
+ * pixel tiers — which the estimator evaluates against the request. The
+ * cards are keyed by BytePlus model id and reuse the fal pricing shape, so
  * every downstream consumer — pre-flight estimation, the exact charge, the
- * /pricing page, ActionCost labels — works unchanged. The ids cannot collide
- * with fal endpoint ids (`fal-ai/…`, `bytedance/…`).
+ * /pricing page, ActionCost labels — works unchanged. The ids cannot
+ * collide with fal endpoint ids (`fal-ai/…`, `bytedance/…`).
  *
- * RATES ARE ADVERTISED, NOT BILL-VERIFIED, and were read off the BytePlus
- * pricing pages on **2026-08-12**. fal's own pricing API mispriced Grok
- * Imagine by ~59x (#1069), and third-party resale rates for these models vary
- * two-fold. Confirm each rate against a real BytePlus invoice before leaning
- * on it, and re-date this line when bumping. (Seedance re-read **2026-08-19**
- * for the 2.5 bump.)
+ * RATES ARE ADVERTISED, NOT BILL-VERIFIED, read off the BytePlus pricing
+ * page on **2026-09-13** (each card quotes its text). fal's own pricing API
+ * mispriced Grok Imagine by ~59x (#1069), and third-party resale rates for
+ * these models vary two-fold. Confirm each rate against a real BytePlus
+ * invoice before leaning on it, and re-date this line when bumping.
  */
 
 import { micros } from './money';
-import { BYTEPLUS_SEEDANCE_2_5 } from './rate-card/cards/byteplus-seedance-2-5';
+import { BYTEPLUS_CARDS } from './rate-card/cards';
 import type { EffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 
+const card = (id: string): EffectiveFalPricing['rateCard'] => {
+  const stored = BYTEPLUS_CARDS[id];
+  if (!stored) throw new Error(`no BytePlus rate card for ${id}`);
+  return { card: stored, verified: true };
+};
+
 /**
- * Per-model Ark rates.
+ * Per-model Ark unit prices, for billing.
  *
  * Video bills in tokens: `tokens = (h x w x fps x duration) / 1024`, charged
- * per 1000 tokens — the same denomination and formula fal uses for the
- * Seedance endpoints it proxies, which is why `'1000 tokens'` here reuses the
- * existing `tokens` estimation strategy verbatim.
+ * per 1000 tokens — the same denomination fal uses for the Seedance
+ * endpoints it proxies. The unit price is the no-video-input rate for the
+ * 720p the sequence builder pins; the card prices every other shape.
  *
- * Image bills per image. Seedream 5.0 Pro (`dola-seedream-5-0-pro-260628`)
- * is two-tier: $0.045 at or below 2.36 megapixels, $0.09 above. We render
- * at 2K, which straddles that boundary (2048x1152 is 2.36MP → lower tier;
- * a square 2K is 4.19MP → higher). The card carries the HIGHER tier
- * deliberately: an over-estimate makes the credit gate slightly
- * conservative, while an under-estimate lets a team spend past its
- * balance, which is the failure mode #1069 exists to prevent. Re-read
- * **2026-08-27** when bumping lite → Pro. The invoice check (see header)
- * is what settles which rate our id actually bills at.
+ * Image bills per image. Seedream 5.0 Pro is two-tier ($0.045 at or below
+ * 2.61 megapixels, $0.09 above); the unit price carries the HIGHER tier
+ * deliberately, so a charge never lands under the bill (#1069) while the
+ * card quotes the tier the request actually falls in.
  */
 export const BYTEPLUS_RATE_CARD: Record<string, EffectiveFalPricing> = {
-  // Seedance 2.5 — $10.70 per 1M tokens for 480p/720p output without video
-  // input, confirmed against the official rate table + its worked example
-  // (720p 16:9 5s = 108,000 tokens = $1.156). This is the EXACT rate for our
-  // requests: the sequence builder pins 720p. Studio reference-to-video can
-  // send clip/audio refs (a cheaper `$6.40/1M` tier with video input) — we
-  // keep the no-video-input rate so the credit gate over-estimates. The
-  // other tiers are cheaper-or-different ($6.40/1M with video input;
-  // $11.70/1M for 1080p) — revisit this entry if either the builder's
-  // resolution or the reference modes change.
   'dreamina-seedance-2-5-260628': {
     unitPrice: micros(10_700),
     unit: '1000 tokens',
-    // The page's full tariff as a card (#1605): per-resolution rates, the
-    // with-video tier and its minimum charge. Hand-transcribed, so it lives
-    // here rather than in `model_pricing` — the cron reads fal pages only.
-    rateCard: { card: BYTEPLUS_SEEDANCE_2_5, verified: true },
+    rateCard: card('dreamina-seedance-2-5-260628'),
   },
-  // Seedance 2.0 — $7.00 per 1M tokens without video input ($4.30 with).
-  // Same no-video-input over-estimate policy as 2.5. Read 2026-09-07.
   'dreamina-seedance-2-0-260128': {
     unitPrice: micros(7_000),
     unit: '1000 tokens',
+    rateCard: card('dreamina-seedance-2-0-260128'),
   },
-  // Seedance 2.0 Mini — $3.50 per 1M tokens without video input ($2.10
-  // with); 480p/720p only. Read 2026-09-07.
   'dreamina-seedance-2-0-mini-260615': {
     unitPrice: micros(3_500),
     unit: '1000 tokens',
+    rateCard: card('dreamina-seedance-2-0-mini-260615'),
   },
-  // Seedream 5.0 Pro — $0.09 per image above 2.36MP. Exactly one image per
-  // unit, so the per-call estimate is exact rather than a historical guess.
   'dola-seedream-5-0-pro-260628': {
     unitPrice: micros(90_000),
     unit: 'images',
-    typicalUnitsPerCall: 1,
+    rateCard: card('dola-seedream-5-0-pro-260628'),
   },
 };
 
