@@ -1,8 +1,8 @@
 /**
  * Blast-radius test for the preview-image fan-out (#1149).
  *
- * `scene-split` fires one decorative preview image per shot (`skipStorage:
- * true`, nothing downstream reads the result). Before this fix a single one of
+ * `scene-split` fires one decorative preview image per scene, on shot 1
+ * (`skipStorage: true`, nothing downstream reads the result). Before this fix a single one of
  * them throwing — a content-checker hit on ~15% of runs in the #1143 load test
  * — failed `scene-splitting-stream`, and with it `scene-split` →
  * `analyze-script` → the whole sequence, discarding every still that had
@@ -37,7 +37,7 @@ vi.doMock('@/platform/server/ai/prompts-index', () => ({
   ),
 }));
 
-const emit = vi.fn(() => Promise.resolve());
+const emit = vi.fn((_event: string, _data: unknown) => Promise.resolve());
 vi.doMock('@/platform/realtime', () => ({
   getGenerationChannel: vi.fn(() => ({ emit })),
 }));
@@ -220,8 +220,7 @@ function makeScopedDb(
     shotSeq++;
     return { id: `shot_${shotSeq}`, anchorFrameId: `frame_${shotSeq}` };
   };
-  // Same (sceneId, shotNumber) must return the stream-time row on reconcile
-  // so shot 1 is not treated as a new pass-2 shot (and re-previewed).
+  // Same (sceneId, shotNumber) returns the same row on replay.
   const shotByKey = new Map<string, { id: string; anchorFrameId: string }>();
   const shotFor = (sceneId: string | null | undefined, shotNumber?: number) => {
     const key = `${sceneId ?? 'none'}:${shotNumber ?? 1}`;
@@ -254,8 +253,7 @@ function makeScopedDb(
       updateSplitContent: updateSplitContent,
     },
     shots: {
-      upsert: (data: { sceneId?: string | null; shotNumber?: number }) =>
-        Promise.resolve(shotFor(data.sceneId, data.shotNumber)),
+      // No stream-time `upsert` (#1593): the first shot rows are reconcile's.
       bulkUpsert: (
         rows: Array<{ sceneId: string | null; shotNumber?: number }>
       ) =>
@@ -350,7 +348,7 @@ describe('SceneSplitWorkflow preview fan-out', () => {
     feed.mockReset();
   });
 
-  test('triggers one preview per shot on the happy path', async () => {
+  test('triggers one preview per scene on the happy path', async () => {
     triggerWorkflow.mockReset();
     triggerWorkflow.mockResolvedValue('run_1');
 
@@ -644,6 +642,7 @@ describe('SceneSplitWorkflow shot-list pass (#1486)', () => {
     streamChunks = singleDoneChunk();
     shotListParsed = fullCover();
     feed.mockReset();
+    emit.mockClear();
   });
 
   test('one shot per scene when the pass lists one each', async () => {
@@ -752,19 +751,92 @@ describe('SceneSplitWorkflow shot-list pass (#1486)', () => {
     expect(
       result.shotMapping.filter((m) => m.analysisSceneId === 'scene_1')
     ).toHaveLength(2);
-    // Stream previews shot 1 of each scene; pass 2 previews the extra shot.
-    expect(previewCalls()).toHaveLength(4);
-    const extraPreview = previewCalls().find((call) => {
+    // One preview per scene, on shot 1 — its spec text for a 2-shot scene.
+    expect(previewCalls()).toHaveLength(SCENES.length);
+    const scenePreview = previewCalls().find((call) => {
       const body = call[1];
       return (
         typeof body === 'object' &&
         body !== null &&
         'prompt' in body &&
         typeof body.prompt === 'string' &&
-        body.prompt.includes('Cut to the hallway beyond')
+        body.prompt.includes('She opens the door')
       );
     });
-    expect(extraPreview).toBeDefined();
+    expect(scenePreview).toBeDefined();
+    // Every shot:created is announced by reconcile, none by the stream.
+    expect(
+      emit.mock.calls.filter((call) => call[0] === 'generation.shot:created')
+    ).toHaveLength(4);
+  });
+
+  test('no shot row exists until the shot-list pass has run (#1593)', async () => {
+    // The scoped-db stub has no `shots.upsert`: a stream-time shot write
+    // would throw. The only shot write is reconcile's bulk upsert, after the
+    // shot-list step.
+    const scopedDb = makeScopedDb();
+    const writes = vi.spyOn(scopedDb.shots, 'bulkUpsert');
+    await makeWorkflow().split(makeEvent(), makeStep(), scopedDb);
+    const steps = lastDoMock.mock.calls.map((c) => c[0]);
+    expect(writes).toHaveBeenCalledTimes(1);
+    expect(steps.indexOf('reconcile-shots')).toBeGreaterThan(
+      steps.indexOf('scene-shot-list')
+    );
+  });
+
+  test("a scene's shots sum to its label on the model grid (#1593)", async () => {
+    // Enhance-shaped script: scene 1 labels its shots, scene 2 is free to
+    // split, scene 3 (5s) cannot hold two 4s clips.
+    const script = [
+      'Scene 1 — 12s',
+      'Shot 1 — 4s',
+      'Scene 1 action',
+      'Shot 2 — 8s',
+      'More.',
+      'Scene 2 — 10s',
+      'Scene 2 action',
+      'Scene 3 — 5s',
+      'Scene 3 action',
+    ].join('\n');
+    streamChunks = [
+      {
+        done: true,
+        accumulated: '{}',
+        parsed: {
+          projectMetadata: { title: 'Labelled' },
+          boundaries: [
+            { hintLine: 1, quote: 'Scene 1 — 12s' },
+            { hintLine: 6, quote: 'Scene 2 — 10s' },
+            { hintLine: 8, quote: 'Scene 3 — 5s' },
+          ],
+        },
+        usage: undefined,
+      },
+    ];
+    shotListParsed = {
+      scenes: [
+        { sceneNumber: 1, shots: [shotSpec(1, 'a'), shotSpec(2, 'b')] },
+        { sceneNumber: 2, shots: [shotSpec(1, 'c'), shotSpec(2, 'd')] },
+        // Two shots asked for a 5s scene on a 4s-minimum grid: only one fits.
+        { sceneNumber: 3, shots: [shotSpec(1, 'e'), shotSpec(2, 'f')] },
+      ],
+    };
+    const result = await makeWorkflow().split(
+      makeEvent({ ...INPUT, script, videoModel: 'seedance_v2' }),
+      makeStep(),
+      makeScopedDb()
+    );
+    expect(result.scenes.map((s) => s.metadata?.durationSeconds)).toEqual([
+      12, 10, 5,
+    ]);
+    const seconds = result.scenes.map((scene) =>
+      (scene.shots ?? []).map((shot) => shot.durationSeconds)
+    );
+    expect(seconds).toEqual([[4, 8], [5, 5], [5]]);
+    expect(result.shotMapping).toHaveLength(5);
+    expect(result.scenes.every((scene) => !('shotLabelSeconds' in scene))).toBe(
+      true
+    );
   });
 
   test('runs the shot-list call on the analysis model', async () => {

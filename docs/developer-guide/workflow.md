@@ -15,7 +15,7 @@ flowchart TD
     Poster["<b>Generate Poster</b> · non-critical<br/>IN: title, script, styleConfig<br/>OUT: posterUrl on sequence"] --> SceneSplit
 
     subgraph "Phase 1 — Script Analysis · ~3min"
-        SceneSplit["<b>Scene Splitting</b> · two parallel LLM calls · ~3min<br/>IN: script, aspectRatio, autoGenerateMotion<br/>OUT: scenes[], title, shotMapping[], bibles[]<br/><i>shots + preview images created progressively</i>"]
+        SceneSplit["<b>Scene Splitting</b> · two parallel LLM calls · ~3min<br/>IN: script, aspectRatio, autoGenerateMotion<br/>OUT: scenes[], title, shotMapping[], bibles[]<br/><i>scene rows stream in; shots + one preview per scene land after the shot-list pass</i>"]
     end
 
     SceneSplit --> P2
@@ -161,25 +161,24 @@ This is the core orchestration workflow. It runs durable units via `step.do()`, 
 
 **Sub-workflow:** `sceneSplitWorkflow` (`src/sequences/server/workflows/scene-split-workflow.ts`)
 
-Uses streaming LLM output to create frames progressively as scenes arrive, plus triggers preview image generation for each scene.
+Uses streaming LLM output to create scene rows progressively as scenes arrive. Shots exist only once the shot-list pass has run (#1593); each scene then gets one preview image, on shot 1.
 
 **Steps:**
 
 Since #1035 the split runs as **two parallel LLM calls** (sibling `step.do`s via `Promise.all`), both over the same line-gutter copy of the script, and the LLM never re-emits script text. #1486 adds a third call after slices exist, so a scene can own 1..N shots; since #1585 that call also carries every spoken line, so `originalScript.dialogue` comes from it (the slice regex is only a streaming preview):
 
 1. **`scene-splitting-stream`** — the scenes call, a **boundary-annotation** contract: the model returns `boundaries[] = { hintLine, quote }`, and `boundary-split.ts` resolves each verbatim quote to a raw offset (exact → normalized → fuzzy, monotonic cursor) and slices the ORIGINAL script — extracts are byte-verbatim adjacent substrings (`concat(slices) === script`, asserted). The stream is fed through `createStreamingSceneParser()`:
-   - On each finalized boundary: persists the scene + shot 1, emits `generation.scene:new` / `generation.shot:created`
+   - On each finalized boundary: persists the scene row + split script version, emits `generation.scene:new`. **No shot row** (#1593): the rail shows the scene as "listing shots…" until the shot-list pass lands
    - On title detection: updates the sequence title, emits `generation.updated`
-   - Preview image per streamed scene (fire-and-forget via `triggerWorkflow`); pass 2 fires another for each extra shot it creates
    - Excessive anchor repairs → one retry with feedback; a second degraded result keeps the first-pass LLM scenes. Dropped boundaries are logged and emitted as a non-fatal `generation.error`
    - A cut inside one location/beat is **not** a new scene (the ONE SHOT RULE is gone)
 2. **`scene-bibles`** — the bibles call: `{ characterBible[], locationBible[], elementBible[] }`. Location/element `firstMention` is `{ text, lineNumber }` on the wire; the owning scene id is derived server-side from the gutter line. A character entry carries `voiceOnly` (#1585): a narrator or off-screen voice gets a row but no sheet, no talent match, and no place in the still prompt. After the join, scene continuity tags are canonicalized onto bible tags (`tag-reconcile.ts`) since two independent calls can disagree.
-3. **`scene-shot-list`** — lists 1..N structured shots inside each resolved slice (`shotListPassResultSchema`, union-free), each shot carrying the `dialogue` spoken in it, speakers spelled as the cast list spells them. `attachShotLists` rebuilds each scene's `originalScript.dialogue` from the shots with every line stamped `shotNumber`; `dialogueForShot` hands each clip only its own lines. Failure — no payload, or a scene the pass omits — fails the run: a one-shot fallback would silently leave scenes on the regex preview, which is empty for prose. `deriveShots` assembles visual/motion prompts from scene continuity + shot specs (wired for #953; 1-shot scenes still take the existing LLM prompt path). Stage 1 still renders **one video clip per shot** (no in-clip packing).
-4. **`reconcile-shots`** / **`persist-scenes`** — replay-safe bulk upserts of scenes + N shots per scene (idempotent on `(sceneId, shotNumber)`). Extra shots from a prior run are trimmed with `deleteFromShotNumber`.
+3. **`scene-shot-list`** — lists 1..N structured shots inside each resolved slice (`shotListPassResultSchema`, union-free), each shot carrying the `dialogue` spoken in it, speakers spelled as the cast list spells them. **Length is per scene (#1593):** a scene's running time is its script label (`metadata.durationSeconds`, from `Scene N — Xs`) and its shots divide it. The prompt gives each scene a `shots:` budget — `exactly N, as labelled` when enhance wrote `Shot N — Xs` labels (those ARE the shots: count and durations fixed, the LLM fills the coverage), else `up to N` = how many of the video model's shortest clips fit the label. `allocateSceneShots` then spreads the label over the returned shots with `allocateClipDurations` on the model grid (a lone shot takes the whole label; a residual the grid cannot reach lands on the last shot). No film-wide target enters the run — `sequences.targetDurationSeconds` steers Enhance and the credit estimate only. `attachShotLists` rebuilds each scene's `originalScript.dialogue` from the shots with every line stamped `shotNumber`; `dialogueForShot` hands each clip only its own lines. Failure — no payload, or a scene the pass omits — fails the run: a one-shot fallback would silently leave scenes on the regex preview, which is empty for prose. `deriveShots` assembles visual/motion prompts from scene continuity + shot specs (wired for #953; 1-shot scenes still take the existing LLM prompt path). Stage 1 still renders **one video clip per shot** (no in-clip packing).
+4. **`reconcile-shots`** / **`persist-scenes`** — replay-safe bulk upserts of scenes + N shots per scene (idempotent on `(sceneId, shotNumber)`). These are the first shot rows of the run: reconcile emits `generation.shot:created` per shot and fires one preview image per scene, on shot 1 (fire-and-forget via `triggerWorkflow`, deduplicated per instance + shot). Extra shots from a prior run are trimmed with `deleteFromShotNumber`.
 5. **`deduct-llm-credits-scene-splitting`** / **`deduct-llm-credits-scene-bibles`** / **`deduct-llm-credits-scene-shot-list`** — one credit deduction per LLM call
 
 - **Prompts:** `phase/scene-splitting-boundaries-chat` + `phase/scene-bibles-chat` + `phase/scene-shot-list-chat`
-- **Variables:** `{ aspectRatio, script, elements }` (script is sanitized and line-guttered); shot-list gets `{ scenes, style, characters }` (formatted slices, director style, the cast list with voice-only entries marked)
+- **Variables:** `{ aspectRatio, script, elements }` (script is sanitized and line-guttered); shot-list gets `{ scenes, style, characters }` (formatted slices with their `duration:` + `shots:` budget lines, director style, the cast list with voice-only entries marked)
 - **Response schemas:** `sceneSplitScenesResultSchema` + `sceneSplitBiblesResultSchema` + `shotListPassResultSchema` — all under the ~3KB Anthropic strict-output grammar budget enforced by `response-schema-budget.test.ts`
 - **Output:** `{ scenes[], title, shotMapping[], characterBible[], locationBible[], elementBible[] }` — `shotMapping` maps each analysis shot (`analysisSceneId` + `shotNumber`) to `shotId/frameId` used throughout remaining phases. A 1-shot scene still has exactly one mapping row.
 

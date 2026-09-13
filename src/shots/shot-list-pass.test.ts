@@ -5,7 +5,7 @@ import { deriveShots } from './shot-list.derive';
 import type { ShotListPassResult, ShotSpec } from './shot-list.schema';
 import type { SceneSplittingScene } from '@/sequences/server/streaming-scene-parser';
 import {
-  applyTargetDurations,
+  allocateSceneShots,
   attachShotLists,
   buildSceneWithShots,
   buildShotInserts,
@@ -15,10 +15,14 @@ import {
   formatCastForShotList,
   formatDirectorStyleForShotList,
   formatScenesForShotListPrompt,
-  isSingleShotScene,
-  normalizeShots,
+  maxShotsForScene,
   shotDurationMs,
 } from './shot-list-pass';
+
+/** Seedance 2.0 clip grid: 4..15s. */
+const SEEDANCE = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+/** No video model: no cap, even integer split. */
+const NO_GRID: number[] = [];
 
 function makeScene(
   n: number,
@@ -90,55 +94,140 @@ function oneShotEach(
   };
 }
 
-describe('normalizeShots', () => {
+describe('maxShotsForScene', () => {
+  it('is how many shortest clips fit the label, at least one', () => {
+    expect(maxShotsForScene(18, SEEDANCE)).toBe(4);
+    expect(maxShotsForScene(5, SEEDANCE)).toBe(1);
+    expect(maxShotsForScene(3, SEEDANCE)).toBe(1);
+    expect(maxShotsForScene(30, NO_GRID)).toBe(Number.POSITIVE_INFINITY);
+  });
+});
+
+describe('allocateSceneShots (#1593)', () => {
+  const scene = (durationSeconds: number, shotLabelSeconds?: number[]) => ({
+    metadata: { ...makeScene(1, 'x').metadata, durationSeconds },
+    ...(shotLabelSeconds && { shotLabelSeconds }),
+  });
+
   it('defaults an empty list to one shot at the scene duration', () => {
-    const [shot] = normalizeShots([], 8);
+    const [shot] = allocateSceneShots([], scene(8), SEEDANCE);
     expect(shot).toEqual(defaultSingleShot(8));
-    expect(shot?.shotNumber).toBe(1);
-    expect(shot?.durationSeconds).toBe(8);
   });
 
-  it('re-numbers out-of-order specs and caps at MAX_SHOTS_PER_SCENE', () => {
+  it('re-numbers out-of-order specs', () => {
     const shots = [twoShotSpec(2), twoShotSpec(1), twoShotSpec(3)];
-    const normalized = normalizeShots(shots, 8);
-    expect(normalized.map((s) => s.shotNumber)).toEqual([1, 2, 3]);
+    const out = allocateSceneShots(shots, scene(18), SEEDANCE);
+    expect(out.map((s) => s.shotNumber)).toEqual([1, 2, 3]);
   });
 
-  it('moves the dialogue of shots past the cap onto the last kept shot', () => {
-    const shots = [1, 2, 3, 4, 5, 6, 7].map((n) => ({
+  it("enhance's shot labels ARE the shots: count and durations verbatim", () => {
+    const out = allocateSceneShots(
+      [twoShotSpec(1), twoShotSpec(2)],
+      scene(10, [4, 6]),
+      SEEDANCE
+    );
+    expect(out.map((s) => s.durationSeconds)).toEqual([4, 6]);
+  });
+
+  it('a lone shot takes the whole label, on or off the grid', () => {
+    expect(
+      allocateSceneShots([twoShotSpec(1)], scene(18), SEEDANCE)[0]
+        ?.durationSeconds
+    ).toBe(18);
+    expect(
+      allocateSceneShots([twoShotSpec(1)], scene(3), SEEDANCE)[0]
+        ?.durationSeconds
+    ).toBe(3);
+  });
+
+  it('divides the label across shots on the grid, summing to the label', () => {
+    const out = allocateSceneShots(
+      [twoShotSpec(1), { ...twoShotSpec(2), durationSeconds: 8 }],
+      scene(12),
+      SEEDANCE
+    );
+    expect(out.map((s) => s.durationSeconds)).toEqual([4, 8]);
+    expect(out.reduce((sum, s) => sum + s.durationSeconds, 0)).toBe(12);
+  });
+
+  it('a label the grid cannot reach exactly lands its residual on the last shot', () => {
+    const out = allocateSceneShots(
+      [twoShotSpec(1), twoShotSpec(2)],
+      scene(12),
+      [5, 10]
+    );
+    expect(out.reduce((sum, s) => sum + s.durationSeconds, 0)).toBe(12);
+  });
+
+  it('caps the count at what the label can hold; cut shots hand their lines to the last kept', () => {
+    const shots = [1, 2, 3, 4].map((n) => ({
       ...twoShotSpec(2),
       shotNumber: n,
       dialogue: [{ character: 'A', line: `line ${n}`, tone: '' }],
     }));
-    const normalized = normalizeShots(shots, 8);
-    expect(normalized).toHaveLength(5);
-    expect(normalized[4]?.dialogue.map((l) => l.line)).toEqual([
-      'line 5',
-      'line 6',
-      'line 7',
+    // 5s on a 4s-minimum grid: one shot.
+    const out = allocateSceneShots(shots, scene(5), SEEDANCE);
+    expect(out).toHaveLength(1);
+    expect(out[0]?.durationSeconds).toBe(5);
+    expect(out[0]?.dialogue.map((l) => l.line)).toEqual([
+      'line 1',
+      'line 2',
+      'line 3',
+      'line 4',
     ]);
+  });
+
+  it('labels that do not match the returned count fall back to dividing the label', () => {
+    const out = allocateSceneShots(
+      [twoShotSpec(1), twoShotSpec(2), twoShotSpec(3)],
+      scene(12, [4, 8]),
+      SEEDANCE
+    );
+    expect(out).toHaveLength(3);
+    expect(out.reduce((sum, s) => sum + s.durationSeconds, 0)).toBe(12);
+  });
+
+  it('with no grid, splits the label into even integers', () => {
+    const out = allocateSceneShots(
+      [twoShotSpec(1), twoShotSpec(2), twoShotSpec(3)],
+      scene(10),
+      NO_GRID
+    );
+    expect(out.map((s) => s.durationSeconds)).toEqual([4, 3, 3]);
   });
 });
 
 describe('attachShotLists', () => {
   it('fails when the pass omits a scene instead of leaving it on the regex preview', () => {
     const scenes = [makeScene(1, 'A man walks in.'), makeScene(2, 'Nobody.')];
-    expect(() => attachShotLists(scenes, { scenes: [] })).toThrow(
+    expect(() => attachShotLists(scenes, { scenes: [] }, SEEDANCE)).toThrow(
       /covered 0\/2 scenes; missing scene\(s\) 1, 2/
     );
     expect(() =>
-      attachShotLists(scenes, {
-        scenes: [{ sceneNumber: 1, shots: [twoShotSpec(1)] }],
-      })
+      attachShotLists(
+        scenes,
+        { scenes: [{ sceneNumber: 1, shots: [twoShotSpec(1)] }] },
+        SEEDANCE
+      )
     ).toThrow(/missing scene\(s\) 2/);
   });
 
   it('single default shot from the pass keeps the scene duration', () => {
     const scenes = [makeScene(1, 'A man walks in.')];
-    const attached = attachShotLists(scenes, oneShotEach(scenes));
+    const attached = attachShotLists(scenes, oneShotEach(scenes), SEEDANCE);
     expect(attached[0]?.shots).toHaveLength(1);
-    expect(isSingleShotScene(firstAttached(attached))).toBe(true);
     expect(attached[0]?.shots?.[0]?.durationSeconds).toBe(8);
+  });
+
+  it('drops the transient shot labels once they have been applied', () => {
+    const scenes = [makeScene(1, 'Cut.', { shotLabelSeconds: [4, 4] })];
+    const [out] = attachShotLists(
+      scenes,
+      { scenes: [{ sceneNumber: 1, shots: [twoShotSpec(1), twoShotSpec(2)] }] },
+      SEEDANCE
+    );
+    expect(out?.shots?.map((s) => s.durationSeconds)).toEqual([4, 4]);
+    expect(out && 'shotLabelSeconds' in out).toBe(false);
   });
 
   it('attaches two shots to a scene with an internal cut', () => {
@@ -152,13 +241,14 @@ describe('attachShotLists', () => {
         },
       ],
     };
-    const scene = firstAttached(attachShotLists(scenes, pass));
+    const scene = firstAttached(attachShotLists(scenes, pass, SEEDANCE));
     expect(scene.shots).toHaveLength(2);
     expect(scene.shots?.map((s) => s.action)).toEqual([
       'She opens the door',
       'Cut to the hallway beyond',
     ]);
-    expect(isSingleShotScene(scene)).toBe(false);
+    // Two shots divide the 8s label: on a 4s-minimum grid that is 4 + 4.
+    expect(scene.shots?.map((s) => s.durationSeconds)).toEqual([4, 4]);
   });
 
   it('a one-shot default from the pass keeps that scene duration', () => {
@@ -180,7 +270,7 @@ describe('attachShotLists', () => {
         { sceneNumber: 2, shots: [defaultSingleShot(5)] },
       ],
     };
-    const attached = attachShotLists(scenes, pass);
+    const attached = attachShotLists(scenes, pass, SEEDANCE);
     expect(attached[0]?.shots).toHaveLength(1);
     expect(attached[1]?.shots).toHaveLength(1);
     expect(attached[1]?.shots?.[0]?.durationSeconds).toBe(5);
@@ -198,7 +288,7 @@ describe('attachShotLists — dialogue from shots (#1585)', () => {
     const pass: ShotListPassResult = {
       scenes: [{ sceneNumber: 1, shots: [twoShotSpec(1), twoShotSpec(2)] }],
     };
-    const [out] = attachShotLists([scene], pass);
+    const [out] = attachShotLists([scene], pass, SEEDANCE);
     expect(out?.originalScript.dialogue).toEqual([
       { character: 'Sarah', line: 'Hello?', tone: 'wary', shotNumber: 1 },
       { character: '', line: 'Come in.', tone: '', shotNumber: 2 },
@@ -207,17 +297,23 @@ describe('attachShotLists — dialogue from shots (#1585)', () => {
 
   it('stamps a one-shot scene too and allows an empty list', () => {
     const scene = makeScene(1, 'Sarah at the door.');
-    const [talky] = attachShotLists([scene], {
-      scenes: [{ sceneNumber: 1, shots: [twoShotSpec(1)] }],
-    });
+    const [talky] = attachShotLists(
+      [scene],
+      { scenes: [{ sceneNumber: 1, shots: [twoShotSpec(1)] }] },
+      SEEDANCE
+    );
     expect(talky?.originalScript.dialogue).toEqual([
       { character: 'Sarah', line: 'Hello?', tone: 'wary', shotNumber: 1 },
     ]);
-    const [silent] = attachShotLists([scene], {
-      scenes: [
-        { sceneNumber: 1, shots: [{ ...twoShotSpec(1), dialogue: [] }] },
-      ],
-    });
+    const [silent] = attachShotLists(
+      [scene],
+      {
+        scenes: [
+          { sceneNumber: 1, shots: [{ ...twoShotSpec(1), dialogue: [] }] },
+        ],
+      },
+      SEEDANCE
+    );
     expect(silent?.originalScript.dialogue).toEqual([]);
   });
 
@@ -228,11 +324,15 @@ describe('attachShotLists — dialogue from shots (#1585)', () => {
         dialogue: [{ character: 'SARAH', line: 'Anyone?', tone: '' }],
       },
     });
-    const [out] = attachShotLists([scene], {
-      scenes: [
-        { sceneNumber: 2, shots: [{ ...twoShotSpec(1), dialogue: [] }] },
-      ],
-    });
+    const [out] = attachShotLists(
+      [scene],
+      {
+        scenes: [
+          { sceneNumber: 2, shots: [{ ...twoShotSpec(1), dialogue: [] }] },
+        ],
+      },
+      SEEDANCE
+    );
     expect(out?.originalScript.dialogue).toEqual([]);
   });
 
@@ -277,72 +377,55 @@ describe('formatCastForShotList', () => {
   });
 });
 
-describe('applyTargetDurations', () => {
-  const seedance = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
-
-  it('is a no-op without a target so existing tests stay identical', () => {
-    const scenes = [makeScene(1, 'A man walks in.')];
-    const attached = attachShotLists(scenes, oneShotEach(scenes));
-    expect(applyTargetDurations(attached, undefined, seedance)).toEqual(
-      attached
-    );
-  });
-
-  it('spreads 30s across five one-shot scenes on the Seedance grid', () => {
-    const scenes = [1, 2, 3, 4, 5].map((n) => makeScene(n, `Beat ${n}.`));
-    const allocated = applyTargetDurations(
-      attachShotLists(scenes, oneShotEach(scenes)),
-      30,
-      seedance
-    );
-    const seconds = allocated.flatMap(
-      (scene) => scene.shots?.map((shot) => shot.durationSeconds) ?? []
-    );
-    expect(seconds).toEqual([6, 6, 6, 6, 6]);
-    expect(allocated[0]?.metadata.durationSeconds).toBe(6);
-    const inserts = buildShotInserts(
-      'seq-1',
-      allocated,
-      new Map(allocated.map((_, i) => [i, dbSceneId(`scene-row-${i + 1}`)]))
-    );
-    expect(inserts.map((row) => row.durationMs)).toEqual([
-      6000, 6000, 6000, 6000, 6000,
-    ]);
-  });
-
-  it('keeps two shots in one scene and still hits 30s across the film', () => {
+describe('film length is the sum of the scene labels (#1593)', () => {
+  it('whatever the shot count the pass emits, each scene sums to its label', () => {
     const scenes = [
       makeScene(1, 'She opens the door. Cut to the hallway beyond.'),
-      makeScene(2, 'She walks on.'),
-      makeScene(3, 'She stops.'),
-      makeScene(4, 'She smiles.'),
+      makeScene(2, 'She walks on.', {
+        metadata: { ...makeScene(2, '').metadata, durationSeconds: 12 },
+      }),
+      makeScene(3, 'She stops.', {
+        metadata: { ...makeScene(3, '').metadata, durationSeconds: 5 },
+      }),
     ];
     const pass: ShotListPassResult = {
       scenes: [
         { sceneNumber: 1, shots: [twoShotSpec(1), twoShotSpec(2)] },
-        { sceneNumber: 2, shots: [twoShotSpec(1)] },
-        { sceneNumber: 3, shots: [twoShotSpec(1)] },
-        { sceneNumber: 4, shots: [twoShotSpec(1)] },
+        {
+          sceneNumber: 2,
+          shots: [twoShotSpec(1), twoShotSpec(2), twoShotSpec(3)],
+        },
+        // Asked for two on a 5s scene: a 4s-minimum grid holds one.
+        { sceneNumber: 3, shots: [twoShotSpec(1), twoShotSpec(2)] },
       ],
     };
-    const allocated = applyTargetDurations(
-      attachShotLists(scenes, pass),
-      30,
-      seedance
+    const attached = attachShotLists(scenes, pass, SEEDANCE);
+    const perScene = attached.map((scene) =>
+      (scene.shots ?? []).reduce((sum, shot) => sum + shot.durationSeconds, 0)
     );
-    const seconds = allocated.flatMap(
-      (scene) => scene.shots?.map((shot) => shot.durationSeconds) ?? []
+    expect(perScene).toEqual([8, 12, 5]);
+    expect(attached.map((scene) => scene.shots?.length)).toEqual([2, 3, 1]);
+    // Scene labels never move.
+    expect(attached.map((scene) => scene.metadata.durationSeconds)).toEqual([
+      8, 12, 5,
+    ]);
+    const inserts = buildShotInserts(
+      'seq-1',
+      attached,
+      new Map(attached.map((_, i) => [i, dbSceneId(`scene-row-${i + 1}`)]))
     );
-    expect(seconds).toHaveLength(5);
-    expect(seconds.reduce((a, b) => a + b, 0)).toBe(30);
-    expect(allocated[0]?.shots).toHaveLength(2);
+    expect(inserts.reduce((sum, row) => sum + (row.durationMs ?? 0), 0)).toBe(
+      25_000
+    );
   });
 });
 
 describe('buildShotInserts / shotDurationMs', () => {
   it('writes shotNumber 1 at the scene duration for a one-shot scene', () => {
     const scenes = [makeScene(1, 'A man walks in.')];
-    const scene = firstAttached(attachShotLists(scenes, oneShotEach(scenes)));
+    const scene = firstAttached(
+      attachShotLists(scenes, oneShotEach(scenes), SEEDANCE)
+    );
     const inserts = buildShotInserts(
       'seq-1',
       [scene],
@@ -357,14 +440,18 @@ describe('buildShotInserts / shotDurationMs', () => {
       },
     ]);
     const shot = scene.shots?.[0] ?? defaultSingleShot(8);
-    expect(shotDurationMs(scene, shot)).toBe(8000);
+    expect(shotDurationMs(shot)).toBe(8000);
   });
 
-  it('writes N rows with spec durations for a multi-shot scene', () => {
+  it('writes N rows with allocated durations for a multi-shot scene', () => {
     const scene = firstAttached(
-      attachShotLists([makeScene(1, 'Cut.')], {
-        scenes: [{ sceneNumber: 1, shots: [twoShotSpec(1), twoShotSpec(2)] }],
-      })
+      attachShotLists(
+        [makeScene(1, 'Cut.')],
+        {
+          scenes: [{ sceneNumber: 1, shots: [twoShotSpec(1), twoShotSpec(2)] }],
+        },
+        SEEDANCE
+      )
     );
     const inserts = buildShotInserts(
       'seq-1',
@@ -414,14 +501,38 @@ describe('formatDirectorStyleForShotList', () => {
 });
 
 describe('formatScenesForShotListPrompt', () => {
-  it('numbers slices with title, location, and duration', () => {
-    const text = formatScenesForShotListPrompt([
-      makeScene(1, 'She opens the door. Cut to the hallway beyond.'),
-    ]);
+  it('numbers slices with title, location, duration and shot budget', () => {
+    const text = formatScenesForShotListPrompt(
+      [makeScene(1, 'She opens the door. Cut to the hallway beyond.')],
+      SEEDANCE
+    );
     expect(text).toContain('## Scene 1 — Scene 1');
     expect(text).toContain('INT. HALLWAY - NIGHT');
-    expect(text).toContain('duration: 8s');
+    expect(text).toContain('duration: 8s\nshots: up to 2');
     expect(text).toContain('She opens the door. Cut to the hallway beyond.');
+  });
+
+  it('labelled shots are the budget; a label too short for two clips is exactly 1', () => {
+    const labelled = formatScenesForShotListPrompt(
+      [makeScene(1, 'Cut.', { shotLabelSeconds: [4, 4] })],
+      SEEDANCE
+    );
+    expect(labelled).toContain(
+      'shots: exactly 2, as labelled in the script (4s, 4s)'
+    );
+    const tiny = formatScenesForShotListPrompt(
+      [
+        makeScene(2, 'Blink.', {
+          metadata: { ...makeScene(2, '').metadata, durationSeconds: 5 },
+        }),
+      ],
+      SEEDANCE
+    );
+    expect(tiny).toContain('duration: 5s\nshots: exactly 1');
+    // No grid: no budget line.
+    expect(
+      formatScenesForShotListPrompt([makeScene(3, 'x')], NO_GRID)
+    ).not.toContain('shots:');
   });
 });
 
@@ -432,7 +543,8 @@ describe('derive from attached shots — acceptance fixture', () => {
         [makeScene(1, 'She opens the door. Cut to the hallway beyond.')],
         {
           scenes: [{ sceneNumber: 1, shots: [twoShotSpec(1), twoShotSpec(2)] }],
-        }
+        },
+        SEEDANCE
       )
     );
     const styleConfig = migrateStyleConfigV1ToV2({

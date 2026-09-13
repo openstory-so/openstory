@@ -209,9 +209,9 @@ export function maybeRewriteDurationLabels(
 
 /**
  * What the script's own labels render to on this model's grid. There is
- * deliberately no "cannot fit the target" verdict here (#1523): the target is
- * an enhance-time input, not a property of the sequence — generation takes its
- * clip lengths from these labels — so an overshoot is a length, not a fault.
+ * deliberately no "cannot fit the target" verdict here (#1523, #1593): the
+ * target steers Enhance and the estimate, never generation — each scene's
+ * shots divide its own label — so an overshoot is a length, not a fault.
  */
 export function assessDurationFit(
   script: string,

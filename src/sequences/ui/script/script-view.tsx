@@ -63,7 +63,7 @@ import {
   type DraftElementUpload,
 } from '@/cast/ui/use-sequence-elements';
 import { useSequenceLocations } from '@/cast/ui/use-sequence-locations';
-
+import { TARGET_DURATION_PRESETS } from '@/sequences/ui/target-duration-chip';
 import {
   useRecommendedStyles,
   useStyle,
@@ -192,14 +192,7 @@ function useSequenceDraft() {
   return { draft, isLoaded, saveDraft, clearDraft };
 }
 
-const DURATION_PRESETS = [
-  { value: '15', label: '15s', seconds: 15 },
-  { value: '30', label: '30s', seconds: 30 },
-  { value: '60', label: '1m', seconds: 60 },
-  { value: '120', label: '2m', seconds: 120 },
-  { value: '180', label: '3m', seconds: 180 },
-  { value: '300', label: '5m', seconds: 300 },
-] as const;
+const DURATION_PRESETS = TARGET_DURATION_PRESETS;
 
 /** Empty-composer copy (#1255): visible until the user types or shuffles.
  *  Keep this to ~1–2 lines so it fits the phone editor floor. */

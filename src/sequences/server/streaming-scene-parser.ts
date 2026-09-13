@@ -42,6 +42,13 @@ export type SceneSplittingScene = {
   continuity: Continuity;
   /** Filled by the shot-list pass (#1486). Absent until that step runs. */
   shots?: ShotSpec[];
+  /**
+   * Enhance's `Shot N — Xs` labels for this slice (#1593), present only when
+   * it has them. Rides the in-memory list from the split step to the shot-list
+   * step, where they fix the shot count and durations; `attachShotLists`
+   * drops the field, so nothing downstream or stored ever sees it.
+   */
+  shotLabelSeconds?: number[];
 };
 
 export type StreamedSceneEvent =

@@ -11,9 +11,15 @@
  * the scene's `originalScript.dialogue` is rebuilt from those, each line
  * stamped with its shot.
  *
- * A one-shot scene keeps today's duration (the slice label / estimate). Extra
- * shots take their duration from the spec. Prompts are assembled later by
- * `deriveShots` — this pass does not re-author them.
+ * Length is per scene (#1593). A scene's running time is its script label
+ * (`metadata.durationSeconds`); its shots divide it and never extend it.
+ * When enhance labelled the shots (`Shot N — Xs`) those ARE the shots: count
+ * and durations fixed, the LLM fills the coverage. Otherwise the LLM may
+ * split, capped at how many of the video model's shortest clips fit the
+ * label, and `allocateClipDurations` spreads the label over them. The film
+ * target never enters here: the model grid is a submit-time constraint
+ * (`resolveShotDuration`), never an authoring rule. Prompts are assembled
+ * later by `deriveShots` — this pass does not re-author them.
  */
 
 import type { NewShot } from '@/platform/server/db/schema';
@@ -25,11 +31,10 @@ import type {
 } from '@/shots/scene-analysis.schema';
 import type { DbSceneId } from '@/shots/scene-id';
 import type { SceneSplittingScene } from '@/sequences/server/streaming-scene-parser';
-import {
-  MAX_SHOTS_PER_SCENE,
-  type SceneWithShots,
-  type ShotListPassResult,
-  type ShotSpec,
+import type {
+  SceneWithShots,
+  ShotListPassResult,
+  ShotSpec,
 } from './shot-list.schema';
 
 /** Fallback shot covering a whole scene when the pass emits nothing. */
@@ -50,26 +55,32 @@ export function defaultSingleShot(durationSeconds: number): ShotSpec {
   };
 }
 
-function sceneDurationSeconds(scene: SceneSplittingScene): number {
+function sceneDurationSeconds(
+  scene: Pick<SceneSplittingScene, 'metadata'>
+): number {
   return scene.metadata.durationSeconds || 3;
 }
 
 /**
- * Sort, re-number 1..n, and cap at MAX_SHOTS_PER_SCENE. Empty / missing → one
- * default shot whose duration is the scene's. The cap is post-parse only
- * (Anthropic rejects `maxItems`), and since dialogue rides on shots (#1585)
- * the lines of a cut shot move to the last kept one rather than vanish.
+ * How many shots a scene can hold: one per shortest clip the video model
+ * renders, never fewer than one. No grid (no video model) → no cap.
  */
-export function normalizeShots(
-  shots: ReadonlyArray<ShotSpec> | null | undefined,
-  sceneDurationSeconds: number
+export function maxShotsForScene(
+  sceneSeconds: number,
+  grid: readonly number[]
+): number {
+  const minClip = Math.min(...grid.filter((n) => n > 0));
+  if (!Number.isFinite(minClip)) return Number.POSITIVE_INFINITY;
+  return Math.max(1, Math.floor(sceneSeconds / minClip));
+}
+
+/** First `count` shots; the dialogue of the cut ones moves to the last kept (#1585). */
+function keepShots(
+  ordered: ReadonlyArray<ShotSpec>,
+  count: number
 ): ShotSpec[] {
-  if (!shots || shots.length === 0) {
-    return [defaultSingleShot(sceneDurationSeconds)];
-  }
-  const ordered = [...shots].sort((a, b) => a.shotNumber - b.shotNumber);
-  const kept = ordered.slice(0, MAX_SHOTS_PER_SCENE);
-  const cut = ordered.slice(MAX_SHOTS_PER_SCENE);
+  const kept = ordered.slice(0, count);
+  const cut = ordered.slice(count);
   const last = kept[kept.length - 1];
   if (cut.length > 0 && last) {
     kept[kept.length - 1] = {
@@ -77,9 +88,61 @@ export function normalizeShots(
       dialogue: [...last.dialogue, ...cut.flatMap((shot) => shot.dialogue)],
     };
   }
+  return kept;
+}
+
+/**
+ * Sort, re-number 1..n, and give every shot its clip length from the SCENE
+ * (#1593). Empty / missing → one default shot at the scene's length.
+ *
+ * - Enhance's shot labels, when the pass returned that many shots, are the
+ *   durations verbatim (`shotLabelSeconds`).
+ * - Otherwise the list is capped at `maxShotsForScene` (post-parse only —
+ *   Anthropic rejects `maxItems`), a lone shot takes the whole label, and
+ *   several split it with `allocateClipDurations` on the model grid, the
+ *   LLM's `durationSeconds` as relative weights. A label the grid cannot
+ *   reach exactly (one 18s scene on a 15s-max model, or a 12s label on a
+ *   {5, 10} grid) puts the residual on the last shot: the scene's length is
+ *   the label, and `resolveShotDuration` snaps at submit.
+ */
+export function allocateSceneShots(
+  shots: ReadonlyArray<ShotSpec> | null | undefined,
+  scene: Pick<SceneSplittingScene, 'metadata' | 'shotLabelSeconds'>,
+  grid: readonly number[]
+): ShotSpec[] {
+  const sceneSeconds = sceneDurationSeconds(scene);
+  if (!shots || shots.length === 0) {
+    return [defaultSingleShot(sceneSeconds)];
+  }
+  const ordered = [...shots].sort((a, b) => a.shotNumber - b.shotNumber);
+  const labels = scene.shotLabelSeconds ?? [];
+  let kept: ShotSpec[];
+  let seconds: number[];
+  if (labels.length > 0 && labels.length === ordered.length) {
+    kept = ordered;
+    seconds = labels;
+  } else {
+    kept = keepShots(ordered, maxShotsForScene(sceneSeconds, grid));
+    if (kept.length === 1) {
+      seconds = [sceneSeconds];
+    } else {
+      seconds = allocateClipDurations(
+        kept.map((shot) => Math.max(1, shot.durationSeconds || 1)),
+        sceneSeconds,
+        grid
+      );
+      const residual = sceneSeconds - seconds.reduce((a, b) => a + b, 0);
+      const lastIndex = seconds.length - 1;
+      const last = seconds[lastIndex];
+      if (residual !== 0 && last !== undefined) {
+        seconds[lastIndex] = Math.max(1, last + residual);
+      }
+    }
+  }
   return kept.map((shot, index) => ({
     ...shot,
     shotNumber: index + 1,
+    durationSeconds: seconds[index] ?? shot.durationSeconds,
   }));
 }
 
@@ -128,14 +191,16 @@ export function dialogueForShot(
 }
 
 /**
- * Copy each scene and attach a normalized shot list, rebuilding its dialogue
- * from the shots. Throws when the pass omits a scene: the omitted scene would
- * otherwise keep its streamed regex preview — empty for prose — with nothing
- * telling anyone, the degrade #1585 removed.
+ * Copy each scene and attach its allocated shot list (`allocateSceneShots`
+ * on `grid`), rebuilding its dialogue from the shots. Throws when the pass
+ * omits a scene: the omitted scene would otherwise keep its streamed regex
+ * preview — empty for prose — with nothing telling anyone, the degrade #1585
+ * removed. The transient `shotLabelSeconds` is consumed here and dropped.
  */
 export function attachShotLists(
   scenes: ReadonlyArray<SceneSplittingScene>,
-  pass: ShotListPassResult
+  pass: ShotListPassResult,
+  grid: readonly number[]
 ): SceneSplittingScene[] {
   const byNumber = new Map<number, ShotSpec[]>();
   for (const entry of pass.scenes) {
@@ -156,9 +221,10 @@ export function attachShotLists(
   return scenes.map((scene, index) => {
     const listed =
       byNumber.get(scene.sceneNumber) ?? byNumber.get(index + 1) ?? [];
-    const shots = normalizeShots(listed, sceneDurationSeconds(scene));
+    const shots = allocateSceneShots(listed, scene, grid);
+    const { shotLabelSeconds: _labels, ...rest } = scene;
     return {
-      ...scene,
+      ...rest,
       shots,
       originalScript: {
         ...scene.originalScript,
@@ -168,66 +234,8 @@ export function attachShotLists(
   });
 }
 
-export function isSingleShotScene(
-  scene: Pick<SceneSplittingScene, 'shots'>
-): boolean {
-  return (scene.shots?.length ?? 1) <= 1;
-}
-
-/**
- * Rewrite every attached shot's duration so the film sums as close as
- * possible to `targetSeconds` on the video-model clip grid. Scene metadata
- * totals follow the shot sum so the 1-shot persist path (`shotDurationMs`
- * reads scene duration) stays in lockstep.
- *
- * No-op when targetSeconds is missing/non-positive or there are no shots —
- * existing tests and retries without a duration chip stay byte-identical.
- */
-export function applyTargetDurations(
-  scenes: ReadonlyArray<SceneSplittingScene>,
-  targetSeconds: number | undefined,
-  grid: readonly number[]
-): SceneSplittingScene[] {
-  if (targetSeconds == null || !(targetSeconds > 0)) {
-    return [...scenes];
-  }
-  const specs = scenes.flatMap((scene) => scene.shots ?? []);
-  if (specs.length === 0) return [...scenes];
-
-  const allocated = allocateClipDurations(
-    specs.map((shot) => Math.max(1, shot.durationSeconds || 1)),
-    targetSeconds,
-    grid
-  );
-  let i = 0;
-  return scenes.map((scene) => {
-    const list = scene.shots;
-    if (!list || list.length === 0) return scene;
-    const nextShots = list.map((shot) => ({
-      ...shot,
-      durationSeconds: allocated[i++] ?? shot.durationSeconds,
-    }));
-    const sceneTotal = nextShots.reduce(
-      (sum, shot) => sum + shot.durationSeconds,
-      0
-    );
-    return {
-      ...scene,
-      shots: nextShots,
-      metadata: { ...scene.metadata, durationSeconds: sceneTotal },
-    };
-  });
-}
-
-/** Duration written onto `shots.durationMs`: scene label for 1-shot, spec otherwise. */
-export function shotDurationMs(
-  scene: SceneSplittingScene,
-  shot: ShotSpec
-): number {
-  const shots = scene.shots ?? [shot];
-  if (shots.length <= 1) {
-    return Math.round(sceneDurationSeconds(scene) * 1000);
-  }
+/** Duration written onto `shots.durationMs`: the allocated spec duration. */
+export function shotDurationMs(shot: ShotSpec): number {
   return Math.round((shot.durationSeconds || 3) * 1000);
 }
 
@@ -254,7 +262,7 @@ export function buildShotInserts(
         sequenceId,
         sceneId,
         shotNumber: shot.shotNumber,
-        durationMs: shotDurationMs({ ...scene, shots }, shot),
+        durationMs: shotDurationMs(shot),
       });
     }
   }
@@ -292,11 +300,32 @@ export function formatCastForShotList(
     .join('\n');
 }
 
+/**
+ * The `shots:` budget line for one scene (#1593): the labelled shots when
+ * enhance wrote them, else how many of the model's shortest clips fit.
+ */
+function shotBudgetLine(
+  scene: Pick<SceneSplittingScene, 'metadata' | 'shotLabelSeconds'>,
+  grid: readonly number[]
+): string | undefined {
+  const labels = scene.shotLabelSeconds ?? [];
+  if (labels.length > 0) {
+    return `shots: exactly ${labels.length}, as labelled in the script (${labels.map((s) => `${s}s`).join(', ')})`;
+  }
+  const cap = maxShotsForScene(scene.metadata.durationSeconds || 3, grid);
+  if (!Number.isFinite(cap)) return undefined;
+  return cap === 1 ? 'shots: exactly 1' : `shots: up to ${cap}`;
+}
+
 /** User-prompt body: numbered slices the model must not re-author. */
 export function formatScenesForShotListPrompt(
   scenes: ReadonlyArray<
-    Pick<SceneSplittingScene, 'sceneNumber' | 'metadata' | 'originalScript'>
-  >
+    Pick<
+      SceneSplittingScene,
+      'sceneNumber' | 'metadata' | 'originalScript' | 'shotLabelSeconds'
+    >
+  >,
+  grid: readonly number[]
 ): string {
   return scenes
     .map((scene) => {
@@ -306,6 +335,8 @@ export function formatScenesForShotListPrompt(
       if (scene.metadata.durationSeconds) {
         lines.push(`duration: ${scene.metadata.durationSeconds}s`);
       }
+      const budget = shotBudgetLine(scene, grid);
+      if (budget) lines.push(budget);
       return `${lines.join('\n')}\n\n${scene.originalScript.extract.trim()}`;
     })
     .join('\n\n---\n\n');

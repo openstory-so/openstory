@@ -74,13 +74,16 @@ export function useCreateScene(sequenceId: string) {
   });
 }
 
-/** Append a shot to a scene (server auto-numbers the slot). */
+/**
+ * Append a shot to a scene (server auto-numbers the slot). The caller passes
+ * the length — the video model's shortest clip (#1593) — so the film total
+ * grows by exactly that and the chips say so; nothing else is rebalanced.
+ */
 export function useCreateShot(sequenceId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { sceneId: string }) =>
-      // durationMs omitted so the column's 3000ms default applies.
-      createShotFn({ data: { sequenceId, sceneId: input.sceneId } }),
+    mutationFn: (input: { sceneId: string; durationMs: number }) =>
+      createShotFn({ data: { sequenceId, ...input } }),
     onSuccess: () => invalidateStructure(queryClient, sequenceId),
   });
 }

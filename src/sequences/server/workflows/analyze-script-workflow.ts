@@ -302,7 +302,6 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           script: sanitizeScriptContent(script),
           modelId: analysisModelId,
           elements: elementsMinimal,
-          targetSeconds: input.targetSeconds,
           videoModel: primaryVideoModel,
           // Shot-list covers scenes in this recipe. Auto-style derives in
           // parallel, so a first auto run still has the placeholder here.

@@ -1,0 +1,1 @@
+ALTER TABLE `sequences` ADD `target_duration_seconds` integer;

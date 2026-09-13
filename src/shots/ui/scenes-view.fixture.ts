@@ -64,6 +64,7 @@ export const fixtureSequence: Sequence = {
   generationCheckpoint: null,
   generateStartFrames: true,
   generateVoices: false,
+  targetDurationSeconds: null,
   posterUrl: null,
   readyEmailSentAt: null,
   suggestedTalentIds: null,

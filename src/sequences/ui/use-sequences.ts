@@ -8,6 +8,7 @@ import {
   getSequenceFn,
   getSequencesFn,
   renameSequenceFn,
+  setSequenceTargetDurationFn,
   setSequenceModelFn,
   setSequenceMusicFn,
   unarchiveSequenceFn,
@@ -324,6 +325,23 @@ export function useRenameSequence(sequenceId: string) {
         queryKey: sequenceKeys.detail(sequenceId),
       });
       void queryClient.invalidateQueries({ queryKey: sequenceKeys.lists() });
+    },
+  });
+}
+
+/** Set the film-length target (#1593); null = auto. Refreshes the detail the rail chip reads. */
+export function useSetSequenceTargetDuration(sequenceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (targetDurationSeconds: number | null) =>
+      setSequenceTargetDurationFn({
+        data: { sequenceId, targetDurationSeconds },
+      }),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(sequenceKeys.detail(sequenceId), updated);
+      void queryClient.invalidateQueries({
+        queryKey: sequenceKeys.detail(sequenceId),
+      });
     },
   });
 }

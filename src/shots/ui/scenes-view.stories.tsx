@@ -74,6 +74,7 @@ const mockSequence: Sequence = {
   generationCheckpoint: null,
   generateStartFrames: true,
   generateVoices: false,
+  targetDurationSeconds: null,
   suggestedTalentIds: null,
   suggestedLocationIds: null,
 };

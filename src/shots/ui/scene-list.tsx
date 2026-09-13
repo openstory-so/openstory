@@ -62,7 +62,8 @@ import {
   useState,
 } from 'react';
 import { toast } from 'sonner';
-import { SceneGroup } from './scene-group';
+import { SceneGroup, sumShotSeconds } from './scene-group';
+import { TargetDurationChip } from '@/sequences/ui/target-duration-chip';
 import { SceneListItem } from './scene-list-item';
 
 const CONTINUE_ICON = {
@@ -172,6 +173,10 @@ export type SceneListProps = {
   className?: string;
   /** Scroll the selected shot/scene into view on mount (mobile sheet). */
   scrollToSelection?: boolean;
+  /** `sequences.targetDurationSeconds` for the rail chip (#1593); null = auto. */
+  targetDurationSeconds?: number | null;
+  /** A run is on: scenes with no shots yet read "listing shots…" (#1593). */
+  isAnalyzing?: boolean;
 };
 
 const SceneListComponent: React.FC<SceneListProps> = ({
@@ -207,6 +212,8 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   staleShotIds,
   className,
   scrollToSelection = false,
+  targetDurationSeconds,
+  isAnalyzing = false,
 }) => {
   const rootRef = useRef<HTMLDivElement>(null);
   const divergentByShotId = useMemo(() => {
@@ -533,6 +540,13 @@ const SceneListComponent: React.FC<SceneListProps> = ({
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           Scenes
         </h2>
+        {shots && (
+          <TargetDurationChip
+            sequenceId={sequenceId}
+            totalSeconds={sumShotSeconds(shots)}
+            targetDurationSeconds={targetDurationSeconds}
+          />
+        )}
       </div>
 
       <button
@@ -609,6 +623,8 @@ const SceneListComponent: React.FC<SceneListProps> = ({
               divergentByShotId={divergentByShotId}
               onCompareDivergent={onCompareDivergent}
               staleShotIds={staleShotIds}
+              videoModel={videoModel}
+              isAnalyzing={isAnalyzing}
             />
           ))}
 

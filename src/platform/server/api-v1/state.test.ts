@@ -160,6 +160,7 @@ function makeSequence(overrides: Partial<Sequence> = {}): Sequence {
     generationCheckpoint: null,
     generateStartFrames: true,
     generateVoices: false,
+    targetDurationSeconds: null,
     suggestedTalentIds: null,
     suggestedLocationIds: null,
     ...overrides,

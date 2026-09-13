@@ -131,6 +131,7 @@ import { MotionDialoguePanel } from './motion-dialogue-panel';
 import { dialogueForShot } from '@/shots/shot-list-pass';
 import { SceneScriptTab } from './scene-script-tab';
 import { ShotDurationField } from './shot-duration-field';
+import { sumShotSeconds } from './scene-group';
 
 import { getLogger } from '@/platform/logger';
 
@@ -292,6 +293,8 @@ type SceneScriptPromptsProps = {
    * stale-shot summary above the tabs.
    */
   scopeShots?: ShotView[];
+  /** Whole-cut running time for the totals beside the duration select (#1593). */
+  filmSeconds?: number;
   scopeStaleness?: Record<string, ShotStaleness>;
   /** The batched staleness request failed — surfaced instead of "all clear". */
   scopeStalenessFailed?: boolean;
@@ -331,6 +334,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   musicEditable = false,
   scene,
   scopeShots,
+  filmSeconds,
   scopeStaleness,
   scopeStalenessFailed,
   onSelectShot,
@@ -1783,6 +1787,14 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             sequenceId={sequenceId}
             motionModel={effectiveMotionModel}
             scriptExtract={scriptText}
+            sceneSeconds={
+              shot && scopeShots
+                ? sumShotSeconds(
+                    scopeShots.filter((s) => s.sceneId === shot.sceneId)
+                  )
+                : undefined
+            }
+            filmSeconds={filmSeconds}
           />
 
           {/* Thinking bar while the model reasons, before the regenerated

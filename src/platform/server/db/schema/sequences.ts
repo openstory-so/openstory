@@ -180,6 +180,14 @@ export const sequences = snakeCase.table(
     // storyboard payload at the trigger like `generateStartFrames`.
     generateVoices: integer({ mode: 'boolean' }).default(false).notNull(),
 
+    // Film length the user asked for, in seconds (#1593). NULL = auto: as
+    // long as the script needs. Written from the Enhance / Generate target at
+    // creation, editable from the rail chip. Nothing in the pipeline reads
+    // it: each scene's length is its script label and its shots divide that;
+    // this is the enhance target, the credit estimate's duration and the
+    // "48s · target 30s" chip.
+    targetDurationSeconds: integer(),
+
     // Auto-generation flags (derived from generationStopAt at trigger time).
     // Kept so existing readers (progress banner, smart-retry, API v1) keep
     // working; stop-at is the source of truth (#1408).

@@ -281,6 +281,7 @@ export const continueGenerationFn = createServerFn({ method: 'POST' })
             audioModels: [
               safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL),
             ],
+            targetDurationSeconds: sequence.targetDurationSeconds ?? undefined,
             pricing: await getEffectiveFalPricing(),
           }),
           {
@@ -414,6 +415,8 @@ export const updateSequenceFn = createServerFn({ method: 'POST' })
               ],
               referenceOnly: !sequence.generateStartFrames,
               generateVoices: sequence.generateVoices,
+              targetDurationSeconds:
+                sequence.targetDurationSeconds ?? undefined,
               pricing: await getEffectiveFalPricing(),
             }),
             {
@@ -474,6 +477,29 @@ export const setSequenceMusicFn = createServerFn({ method: 'POST' })
     return await context.scopedDb.sequences.update({
       id: data.sequenceId,
       includeMusic: data.includeMusic,
+    });
+  });
+
+/**
+ * Persist the film-length target (#1593): seconds, or null for auto. The
+ * pipeline never reads it (a scene's length is its script label); it is the
+ * enhance target, the credit estimate's duration and the rail chip. Separate
+ * from {@link updateSequenceFn} for the reasons {@link setSequenceMusicFn} is.
+ */
+export const setSequenceTargetDurationFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(
+    zodValidator(
+      z.object({
+        sequenceId: ulidSchema,
+        targetDurationSeconds: z.int().min(5).max(300).nullable(),
+      })
+    )
+  )
+  .handler(async ({ data, context }) => {
+    return await context.scopedDb.sequences.update({
+      id: data.sequenceId,
+      targetDurationSeconds: data.targetDurationSeconds,
     });
   });
 
@@ -567,6 +593,7 @@ export const retryStoryboardFn = createServerFn({ method: 'POST' })
             ],
             referenceOnly: !sequence.generateStartFrames,
             generateVoices: sequence.generateVoices,
+            targetDurationSeconds: sequence.targetDurationSeconds ?? undefined,
             pricing: await getEffectiveFalPricing(),
           }),
           {

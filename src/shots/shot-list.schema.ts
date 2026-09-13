@@ -57,27 +57,10 @@ import {
   sceneMetadataSchema,
 } from './scene-analysis.schema';
 
-// ============================================================================
-// Constraints (issue #908)
-// ============================================================================
-
-/**
- * Multi-shot render ceiling. A scene must stay renderable as ONE call on a
- * capable model (Seedance 2.0 / Kling cap at 15s; Seedance 2.5 allows 30s), so the sum of its shot
- * durations is capped here.
- */
-export const MAX_SCENE_DURATION_SECONDS = 15;
-/** Floor on an individual shot so a scene can't degenerate into micro-cuts. */
-export const MIN_SHOT_DURATION_SECONDS = 3;
-/**
- * Derived ceiling on shots per scene: with a 3s floor and a 15s scene cap a
- * scene holds at most 5 shots. Richer shot lists are allowed (more shots =
- * more image credits, documented in the PR), but never beyond what the scene
- * can render as one call.
- */
-export const MAX_SHOTS_PER_SCENE = Math.floor(
-  MAX_SCENE_DURATION_SECONDS / MIN_SHOT_DURATION_SECONDS
-);
+// There are no shot-count or clip-length constants here (#1593): a scene's
+// length is its script label and its shots divide it, so the only cap is
+// how many of the video model's shortest clips fit in the label
+// (`maxShotsForScene` in shot-list-pass.ts).
 
 // ============================================================================
 // Scene-level shared continuity (strict, union-free)
@@ -170,7 +153,7 @@ export const shotSpecSchema = z.object({
     description: 'Lines spoken in this shot, in order',
   }),
   durationSeconds: z.number().meta({
-    description: `Relative pacing hint, at least ${MIN_SHOT_DURATION_SECONDS}`,
+    description: 'Relative pacing hint in seconds',
   }),
 });
 
@@ -210,17 +193,14 @@ export const sceneWithShotsSchema = z.object({
     description:
       'Whether this scene continues directly from the previous one without a hard cut (a continuous-transition hint for the render layer). False for the first scene.',
   }),
-  // `.min(1).max()` compile to JSON-Schema minItems/maxItems — NOT an `anyOf`
-  // union — so the count bound is enforced at parse time without touching the
-  // zero-union budget (asserted in the union-budget test). Clip lengths are
-  // assigned after parse (`applyTargetDurations`); the field is a pacing hint.
-  shots: z
-    .array(shotSpecSchema)
-    .min(1)
-    .max(MAX_SHOTS_PER_SCENE)
-    .meta({
-      description: `Ordered list of 1..${MAX_SHOTS_PER_SCENE} shots. A short scene with no internal cut is a single shot.`,
-    }),
+  // `.min(1)` compiles to JSON-Schema minItems — NOT an `anyOf` union — so
+  // the bound is enforced at parse time without touching the zero-union
+  // budget (asserted in the union-budget test). Clip lengths are assigned
+  // after parse per scene (`allocateSceneShots`); the field is a pacing hint.
+  shots: z.array(shotSpecSchema).min(1).meta({
+    description:
+      'Ordered list of shots. A short scene with no internal cut is a single shot.',
+  }),
 });
 
 export type SceneWithShots = z.infer<typeof sceneWithShotsSchema>;
@@ -267,18 +247,16 @@ export type SceneWithShotsResult = z.infer<typeof sceneWithShotsResultSchema>;
  * One scene's shot list as returned by the second analysis pass. `sceneNumber`
  * matches the already-assembled scene; the pass cannot create or merge scenes.
  */
-// The ${MAX_SHOTS_PER_SCENE} cap is prompt + post-parse: Anthropic rejects
-// maxItems, so it is not on the schema.
+// The per-scene shot budget is prompt + post-parse (each scene's `shots:`
+// line, then `allocateSceneShots`): Anthropic rejects maxItems, so it is not
+// on the schema.
 const shotListPassSceneSchema = z.object({
   sceneNumber: z.number().meta({
     description: 'Matches the "## Scene N" heading',
   }),
-  shots: z
-    .array(shotSpecSchema)
-    .min(1)
-    .meta({
-      description: `1..${MAX_SHOTS_PER_SCENE} shots in story order`,
-    }),
+  shots: z.array(shotSpecSchema).min(1).meta({
+    description: "Shots in story order, within the scene's shots: budget",
+  }),
 });
 
 /**
