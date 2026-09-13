@@ -1,34 +1,19 @@
 /**
  * Registry of AI models available for script analysis.
  * Ordered by qualityRank (1 = best), which follows the LMArena text
- * leaderboard (arena.ai/leaderboard/text, snapshot 2026-08-27; best-scoring
+ * leaderboard (arena.ai/leaderboard/text, snapshot 2026-09-13; best-scoring
  * variant per model). Re-rank when bumping models. Open-weight models noted
  * with license field.
  */
 
 export const SCRIPT_ANALYSIS_MODELS = [
   {
-    id: 'openai/gpt-6-astra',
-    name: 'GPT-6 Astra',
-    vendor: 'OpenAI',
-    license: 'proprietary' as const,
-    // No Arena score yet (released 2026-09-03). Ranked as OpenAI's GPT-6
-    // flagship — claimed SOTA on computer use / coding / math; re-rank when
-    // Arena publishes.
-    qualityRank: 1,
-    contextWindow: 1_050_000,
-    maxOutputTokens: 128_000,
-    vision: true,
-    description:
-      'GPT-6 flagship: hardest end-to-end work, 1M context, no sampling params',
-  },
-  {
     id: 'anthropic/claude-fable-5.1',
     name: 'Claude Fable 5.1',
     vendor: 'Anthropic',
     license: 'proprietary' as const,
-    // Arena 1507 (Fable 5 — no 5.1 score published yet; rank unchanged).
-    qualityRank: 2,
+    // Arena 1498 (claude-fable-5.1-max).
+    qualityRank: 1,
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
     vision: true,
@@ -39,8 +24,8 @@ export const SCRIPT_ANALYSIS_MODELS = [
     name: 'Claude Opus 5',
     vendor: 'Anthropic',
     license: 'proprietary' as const,
-    // Arena 1492 (opus-5-high).
-    qualityRank: 3,
+    // Arena 1493 (opus-5-high).
+    qualityRank: 2,
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
     vision: true,
@@ -52,7 +37,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
     vendor: 'Anthropic',
     license: 'proprietary' as const,
     // Not ranked separately — Opus 5 weights, faster output.
-    qualityRank: 4,
+    qualityRank: 3,
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
     vision: true,
@@ -63,8 +48,8 @@ export const SCRIPT_ANALYSIS_MODELS = [
     name: 'Gemini 3.8 Flash',
     vendor: 'Google',
     license: 'proprietary' as const,
-    // Arena 1490 (gemini-3.7-flash-high). No 3.8 score yet; rank unchanged.
-    qualityRank: 5,
+    // Arena 1493 (gemini-3.8-flash-high, Preliminary).
+    qualityRank: 4,
     contextWindow: 1_048_576,
     maxOutputTokens: 65_536,
     vision: true,
@@ -76,7 +61,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
     vendor: 'Google',
     license: 'proprietary' as const,
     // Arena 1487.
-    qualityRank: 6,
+    qualityRank: 5,
     contextWindow: 1_048_576,
     maxOutputTokens: 65_536,
     vision: true,
@@ -87,8 +72,8 @@ export const SCRIPT_ANALYSIS_MODELS = [
     name: 'GPT-5.6 Sol',
     vendor: 'OpenAI',
     license: 'proprietary' as const,
-    // Arena 1482 (gpt-5.6-sol-xhigh).
-    qualityRank: 7,
+    // Arena 1483 (gpt-5.6-sol-xhigh).
+    qualityRank: 6,
     contextWindow: 1_050_000,
     maxOutputTokens: 128_000,
     vision: true,
@@ -101,7 +86,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
     vendor: 'OpenAI',
     license: 'proprietary' as const,
     // Arena 1482 (gpt-5.5-high).
-    qualityRank: 8,
+    qualityRank: 7,
     contextWindow: 1_050_000,
     maxOutputTokens: 128_000,
     vision: true,
@@ -115,12 +100,25 @@ export const SCRIPT_ANALYSIS_MODELS = [
     vendor: 'Anthropic',
     license: 'proprietary' as const,
     // Arena 1481 (opus-4-8-high).
-    qualityRank: 9,
+    qualityRank: 8,
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
     vision: true,
     description: 'Frontier reasoning and coding',
     hidden: true,
+  },
+  {
+    id: 'openai/gpt-6-astra',
+    name: 'GPT-6 Astra',
+    vendor: 'OpenAI',
+    license: 'proprietary' as const,
+    // Arena 1480 (gpt-6-astra-max) — 2.7k votes, ±12; re-rank when it settles.
+    qualityRank: 9,
+    contextWindow: 1_050_000,
+    maxOutputTokens: 128_000,
+    vision: true,
+    description:
+      'GPT-6 flagship: hardest end-to-end work, 1M context, no sampling params',
   },
   {
     id: 'x-ai/grok-4.20',
@@ -136,26 +134,12 @@ export const SCRIPT_ANALYSIS_MODELS = [
     hidden: true,
   },
   {
-    id: 'google/gemini-3-flash-preview',
-    name: 'Gemini 3 Flash',
-    vendor: 'Google',
-    license: 'proprietary' as const,
-    // Arena 1474.
-    qualityRank: 11,
-    contextWindow: 1_048_576,
-    maxOutputTokens: 65_536,
-    vision: true,
-    description: 'Fast multimodal with 1M context',
-    // Retired 2026-08-28 for Gemini 3.7 Flash (now 3.8); kept for sequences that stored it.
-    hidden: true,
-  },
-  {
     id: 'z-ai/glm-5.3-flash',
     name: 'GLM-5.3 Flash',
     vendor: 'Z.ai',
     license: 'open-weight' as const,
-    // Arena 1469 ±12 — only 2.4k votes, released 2026-08-26.
-    qualityRank: 12,
+    // Arena 1475 (glm-5.3-flash).
+    qualityRank: 11,
     contextWindow: 1_048_576,
     maxOutputTokens: 131_072,
     // Replaced GLM-5.2 (#1367): GLM-5.3 proper has no OpenRouter endpoint with
@@ -166,6 +150,20 @@ export const SCRIPT_ANALYSIS_MODELS = [
     // fallback.
     vision: true,
     description: 'Native multimodal, 1M context, long-horizon agents',
+  },
+  {
+    id: 'google/gemini-3-flash-preview',
+    name: 'Gemini 3 Flash',
+    vendor: 'Google',
+    license: 'proprietary' as const,
+    // Arena 1474.
+    qualityRank: 12,
+    contextWindow: 1_048_576,
+    maxOutputTokens: 65_536,
+    vision: true,
+    description: 'Fast multimodal with 1M context',
+    // Retired 2026-08-28 for Gemini 3.7 Flash (now 3.8); kept for sequences that stored it.
+    hidden: true,
   },
   {
     id: 'openai/gpt-5.6-terra',
@@ -184,7 +182,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
     name: 'DeepSeek V4 Pro',
     vendor: 'DeepSeek',
     license: 'open-weight' as const,
-    // Arena 1462 (v4-pro-high).
+    // Arena 1463 (v4-pro-high-20260813).
     qualityRank: 14,
     contextWindow: 1_048_576,
     maxOutputTokens: 943_717,
@@ -209,7 +207,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
     name: 'Grok 4.6',
     vendor: 'SpaceXAI',
     license: 'proprietary' as const,
-    // Arena 1461 ±10 (grok-4.6-high) — only 3.5k votes, released 2026-08-12.
+    // Arena 1456 (grok-4.6-high).
     qualityRank: 16,
     contextWindow: 500_000,
     maxOutputTokens: 450_000,
