@@ -14,8 +14,11 @@ type NavItem = { slug: string; title: string };
 
 // Pages that live as routes (not content-collections markdown) but belong in
 // the docs nav. The FAQ renders from FAQ_ITEMS so it stays in sync with
-// llms.txt.
+// llms.txt; the dependency graph is interactive (#1595).
 const EXTRA_NAV_ITEMS: Record<string, NavItem[]> = {
+  'Developer Guide': [
+    { slug: 'dependency-graph', title: 'What goes stale when' },
+  ],
   Support: [{ slug: 'faq', title: 'FAQ' }],
 };
 

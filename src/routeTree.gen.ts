@@ -31,6 +31,7 @@ import { Route as ApiRealtimeRouteImport } from './routes/api/realtime'
 import { Route as ApiTestRouteRouteImport } from './routes/api/test/route'
 import { Route as DocsIndexRouteImport } from './routes/docs/index'
 import { Route as DocsSplatRouteImport } from './routes/docs/$'
+import { Route as DocsDependencyGraphRouteImport } from './routes/docs/dependency-graph'
 import { Route as DocsFaqRouteImport } from './routes/docs/faq'
 import { Route as DocsLlmsDotmdRouteImport } from './routes/docs/llms[.]md'
 import { Route as GiftCodeRouteImport } from './routes/gift/$code'
@@ -203,6 +204,11 @@ const DocsIndexRoute = DocsIndexRouteImport.update({
 const DocsSplatRoute = DocsSplatRouteImport.update({
   id: '/$',
   path: '/$',
+  getParentRoute: () => DocsRoute,
+} as any)
+const DocsDependencyGraphRoute = DocsDependencyGraphRouteImport.update({
+  id: '/dependency-graph',
+  path: '/dependency-graph',
   getParentRoute: () => DocsRoute,
 } as any)
 const DocsFaqRoute = DocsFaqRouteImport.update({
@@ -556,6 +562,7 @@ export interface FileRoutesByFullPath {
   '/verify': typeof AuthVerifyRoute
   '/api/realtime': typeof ApiRealtimeRoute
   '/docs/$': typeof DocsSplatRoute
+  '/docs/dependency-graph': typeof DocsDependencyGraphRoute
   '/docs/faq': typeof DocsFaqRoute
   '/docs/llms.md': typeof DocsLlmsDotmdRoute
   '/gift/$code': typeof GiftCodeRoute
@@ -641,6 +648,7 @@ export interface FileRoutesByTo {
   '/verify': typeof AuthVerifyRoute
   '/api/realtime': typeof ApiRealtimeRoute
   '/docs/$': typeof DocsSplatRoute
+  '/docs/dependency-graph': typeof DocsDependencyGraphRoute
   '/docs/faq': typeof DocsFaqRoute
   '/docs/llms.md': typeof DocsLlmsDotmdRoute
   '/gift/$code': typeof GiftCodeRoute
@@ -730,6 +738,7 @@ export interface FileRoutesById {
   '/_auth/verify': typeof AuthVerifyRoute
   '/api/realtime': typeof ApiRealtimeRoute
   '/docs/$': typeof DocsSplatRoute
+  '/docs/dependency-graph': typeof DocsDependencyGraphRoute
   '/docs/faq': typeof DocsFaqRoute
   '/docs/llms.md': typeof DocsLlmsDotmdRoute
   '/gift/$code': typeof GiftCodeRoute
@@ -820,6 +829,7 @@ export interface FileRouteTypes {
     | '/verify'
     | '/api/realtime'
     | '/docs/$'
+    | '/docs/dependency-graph'
     | '/docs/faq'
     | '/docs/llms.md'
     | '/gift/$code'
@@ -905,6 +915,7 @@ export interface FileRouteTypes {
     | '/verify'
     | '/api/realtime'
     | '/docs/$'
+    | '/docs/dependency-graph'
     | '/docs/faq'
     | '/docs/llms.md'
     | '/gift/$code'
@@ -993,6 +1004,7 @@ export interface FileRouteTypes {
     | '/_auth/verify'
     | '/api/realtime'
     | '/docs/$'
+    | '/docs/dependency-graph'
     | '/docs/faq'
     | '/docs/llms.md'
     | '/gift/$code'
@@ -1247,6 +1259,13 @@ declare module '@tanstack/react-router' {
       path: '/$'
       fullPath: '/docs/$'
       preLoaderRoute: typeof DocsSplatRouteImport
+      parentRoute: typeof DocsRoute
+    }
+    '/docs/dependency-graph': {
+      id: '/docs/dependency-graph'
+      path: '/dependency-graph'
+      fullPath: '/docs/dependency-graph'
+      preLoaderRoute: typeof DocsDependencyGraphRouteImport
       parentRoute: typeof DocsRoute
     }
     '/docs/faq': {
@@ -1844,6 +1863,7 @@ const AuthRouteRouteWithChildren = AuthRouteRoute._addFileChildren(
 
 interface DocsRouteChildren {
   DocsSplatRoute: typeof DocsSplatRoute
+  DocsDependencyGraphRoute: typeof DocsDependencyGraphRoute
   DocsFaqRoute: typeof DocsFaqRoute
   DocsLlmsDotmdRoute: typeof DocsLlmsDotmdRoute
   DocsIndexRoute: typeof DocsIndexRoute
@@ -1851,6 +1871,7 @@ interface DocsRouteChildren {
 
 const DocsRouteChildren: DocsRouteChildren = {
   DocsSplatRoute: DocsSplatRoute,
+  DocsDependencyGraphRoute: DocsDependencyGraphRoute,
   DocsFaqRoute: DocsFaqRoute,
   DocsLlmsDotmdRoute: DocsLlmsDotmdRoute,
   DocsIndexRoute: DocsIndexRoute,

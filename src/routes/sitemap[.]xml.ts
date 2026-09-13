@@ -14,6 +14,7 @@ const SITEMAP_PAGES = [
   '/talent',
   '/locations',
   '/docs/faq',
+  '/docs/dependency-graph',
   '/terms',
   '/privacy',
   '/report',
