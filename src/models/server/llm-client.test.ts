@@ -792,21 +792,24 @@ describe('llm-client', () => {
         });
       });
 
-      it('drops temperature for GPT-5 chat models that advertise no sampling params', async () => {
-        mockChat.mockReturnValue(textStream());
+      it.each(['openai/gpt-5.6-luna', 'openai/gpt-6-astra'] as const)(
+        'drops temperature for %s (no sampling params)',
+        async (model) => {
+          mockChat.mockReturnValue(textStream());
 
-        await drain(
-          callLLMStream({
-            model: 'openai/gpt-5.6-luna',
-            messages: [{ role: 'user', content: 'test' }],
-            temperature: 0.7,
-          })
-        );
+          await drain(
+            callLLMStream({
+              model,
+              messages: [{ role: 'user', content: 'test' }],
+              temperature: 0.7,
+            })
+          );
 
-        const options = mockChat.mock.calls[0]?.[0]?.modelOptions;
-        expect(options.temperature).toBeUndefined();
-        expect(options.topP).toBeUndefined();
-      });
+          const options = mockChat.mock.calls[0]?.[0]?.modelOptions;
+          expect(options.temperature).toBeUndefined();
+          expect(options.topP).toBeUndefined();
+        }
+      );
 
       it('keeps temperature for models that support classic sampling', async () => {
         mockChat.mockReturnValue(textStream());

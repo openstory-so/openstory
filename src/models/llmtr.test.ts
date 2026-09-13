@@ -91,6 +91,7 @@ describe('llmtrTextModel', () => {
   });
 
   it('sends every OpenAI model and Grok to /v1/responses', () => {
+    expect(llmtrCompatibleApi('openai/gpt-6-astra')).toBe('responses');
     expect(llmtrCompatibleApi('openai/gpt-5.6-luna')).toBe('responses');
     expect(llmtrCompatibleApi('openai/gpt-5.4-mini')).toBe('responses');
     expect(llmtrCompatibleApi('x-ai/grok-4.6')).toBe('responses');

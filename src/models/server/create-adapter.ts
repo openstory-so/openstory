@@ -121,6 +121,13 @@ export const CATALOG_LAG_MODELS = [
     input: ['text', 'image'],
     features: ['reasoning', 'structured_outputs'],
   }),
+  // OpenRouter listed openai/gpt-6-astra on 2026-09-03; the installed
+  // @tanstack/ai-openrouter catalog still stops at GPT-5.6. Prune when
+  // Dependabot lands a catalog that includes this id.
+  createModel('openai/gpt-6-astra', {
+    input: ['text', 'image'],
+    features: ['reasoning', 'structured_outputs'],
+  }),
 ] as const;
 
 const openRouterTextExtended = extendAdapter(

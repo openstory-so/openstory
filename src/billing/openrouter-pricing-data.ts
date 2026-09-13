@@ -44,6 +44,12 @@ export const OPENROUTER_PRICING: Record<string, OpenRouterPricing> = {
     completionPerMillionTokens: 12,
     webSearchPerQuery: 0.014,
   },
+  'openai/gpt-6-astra': {
+    name: 'OpenAI: GPT-6 Astra',
+    promptPerMillionTokens: 10,
+    completionPerMillionTokens: 50,
+    webSearchPerQuery: 0.01,
+  },
   'openai/gpt-5.6-sol': {
     name: 'OpenAI: GPT-5.6 Sol',
     promptPerMillionTokens: 2,

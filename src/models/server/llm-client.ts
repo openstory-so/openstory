@@ -285,6 +285,7 @@ const STRUCTURED_OUTPUT_MODELS = new Set([
   'z-ai/glm-5.3-flash',
   'google/gemini-3.1-pro-preview',
   'openai/gpt-5.5',
+  'openai/gpt-6-astra',
   'openai/gpt-5.6-sol',
   'openai/gpt-5.6-terra',
   'openai/gpt-5.6-luna',
@@ -540,13 +541,17 @@ function buildLlmtrModelOptions(params: LLMRequestParams) {
 }
 
 /**
- * GPT-5 chat models (Luna/Sol/Terra/…) advertise no `temperature` / `top_p`
- * / penalty params on any OpenRouter endpoint. Sending them with
- * `requireParameters: true` yields "No endpoints found that can handle the
- * requested parameters". Image-variant GPT-5 ids still take sampling.
+ * GPT-5/GPT-6 chat models (Astra/Luna/Sol/Terra/…) advertise no
+ * `temperature` / `top_p` / penalty params on any OpenRouter endpoint.
+ * Sending them with `requireParameters: true` yields "No endpoints found
+ * that can handle the requested parameters". Image-variant GPT-5 ids still
+ * take sampling. GPT-6 Astra also rejects custom temperature / top_p.
  */
 function modelAllowsClassicSampling(model: string): boolean {
-  return !(model.startsWith('openai/gpt-5') && !model.includes('image'));
+  const isGptChat =
+    (model.startsWith('openai/gpt-5') || model.startsWith('openai/gpt-6')) &&
+    !model.includes('image');
+  return !isGptChat;
 }
 
 /**
