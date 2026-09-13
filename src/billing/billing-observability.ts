@@ -100,6 +100,46 @@ export function reportBillingDrift(ctx: BillingDriftContext): void {
   });
 }
 
+export type RateCardDriftContext = {
+  endpointId: string;
+  /** Observations replayed through the card. */
+  sampleCount: number;
+  /** Observations the card refused (a lever outside its tables). */
+  refused: number;
+  /** Median of `billed / card` — 1.0 means the card prices what fal bills. */
+  medianRatio: number;
+  p90Ratio: number;
+};
+
+/** Outside this band the card is misreading the page, not just "roughly". */
+const RATE_CARD_DRIFT_BAND = { min: 0.75, max: 1.33 };
+
+/**
+ * How a verified rate card compares to what fal billed for the requests we
+ * really sent (hourly reconcile, #1605). Report-only: the ratio becomes the
+ * card's calibration, the ledger is never touched.
+ */
+export function reportRateCardDrift(ctx: RateCardDriftContext): void {
+  if (
+    ctx.medianRatio < RATE_CARD_DRIFT_BAND.min ||
+    ctx.medianRatio > RATE_CARD_DRIFT_BAND.max
+  ) {
+    logger.warn('rate card drifts from fal billing', ctx);
+  }
+
+  captureBillingEvent({
+    distinctId: 'system',
+    event: 'rate_card_drift',
+    properties: {
+      endpoint_id: ctx.endpointId,
+      sample_count: ctx.sampleCount,
+      refused: ctx.refused,
+      median_ratio: ctx.medianRatio,
+      p90_ratio: ctx.p90Ratio,
+    },
+  });
+}
+
 export type SkippedDeductionContext = {
   teamId?: string;
   workflowName?: string;

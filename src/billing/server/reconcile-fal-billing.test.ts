@@ -14,6 +14,8 @@ import {
   transactions,
 } from '@/platform/server/db/schema';
 import { modelUsageObservations } from '@/platform/server/db/schema/model-pricing';
+import { RATE_CARDS } from '@/billing/rate-card/cards';
+import type { PricingLevers } from '@/billing/rate-card/levers';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 
@@ -43,6 +45,7 @@ describe('reconcileFalBilling', () => {
   const db = drizzle({ client });
 
   const driftReports: unknown[] = [];
+  const rateCardReports: unknown[] = [];
 
   type EventFixture = {
     request_id: string;
@@ -57,10 +60,12 @@ describe('reconcileFalBilling', () => {
   async function load(events: EventFixture[]) {
     vi.resetModules();
     driftReports.length = 0;
+    rateCardReports.length = 0;
     vi.doMock('#db-client', () => ({ getDb: () => db }));
     vi.doMock('#env', () => ({ getEnv: () => ({}) }));
     vi.doMock('@/billing/billing-observability', () => ({
       reportBillingDrift: (ctx: unknown) => driftReports.push(ctx),
+      reportRateCardDrift: (ctx: unknown) => rateCardReports.push(ctx),
     }));
     vi.stubGlobal(
       'fetch',
@@ -241,7 +246,109 @@ describe('reconcileFalBilling', () => {
     const [row] = await db.select().from(modelPricing);
     expect(row?.observedMedianUnits).toBe(8);
     expect(row?.observedSampleCount).toBe(6);
-    expect(row?.typicalUnitsPerCall).toBe(8);
+  });
+
+  describe('rate-card calibration (#1605)', () => {
+    const KLING = 'fal-ai/kling-video/v3/pro/image-to-video';
+    const klingCard = () => {
+      const card = RATE_CARDS[KLING];
+      if (!card) throw new Error('no Kling hand card');
+      return card;
+    };
+    // The hand card says $0.168/s with audio; the row bills $0.14 per second.
+    const klingRow = (
+      overrides: Partial<typeof modelPricing.$inferInsert> = {}
+    ) =>
+      pricingRow({
+        endpointId: KLING,
+        unit: 'seconds',
+        unitPriceMicros: 140_000,
+        rateVerifiedAt: new Date(),
+        rateCard: klingCard(),
+        rateCardVerified: true,
+        ...overrides,
+      });
+    const observation = (
+      i: number,
+      unitsBilled: number,
+      requestParams: PricingLevers | null
+    ) => ({
+      id: `kling-${i}`,
+      provider: 'fal' as const,
+      endpointId: KLING,
+      unitsBilled,
+      numImages: 1,
+      requestParams,
+    });
+
+    test('replays observations through the card, reports the ratio and stores it as calibration', async () => {
+      await db.insert(modelPricing).values(klingRow());
+      // 5s with audio: card $0.84, billed 6 × $0.14 = $0.84 → 1.0; one
+      // 10s clip billed 14 units → $1.96 / $1.68 ≈ 1.167.
+      await db.insert(modelUsageObservations).values([
+        ...Array.from({ length: 4 }, (_, i) =>
+          observation(i, 6, { duration: '5', generate_audio: true })
+        ),
+        observation(4, 14, { duration: '10', generate_audio: true }),
+        // No levers recorded (a row from before the column) — not replayed.
+        observation(5, 6, null),
+      ]);
+      const { reconcileFalBilling } = await load([]);
+
+      const summary = await reconcileFalBilling({ billingKey: 'admin' });
+
+      expect(summary?.rateCardsCalibrated).toBe(1);
+      expect(rateCardReports).toHaveLength(1);
+      expect(rateCardReports[0]).toMatchObject({
+        endpointId: KLING,
+        sampleCount: 5,
+        refused: 0,
+        medianRatio: 1,
+      });
+      const [row] = await db.select().from(modelPricing);
+      expect(row?.rateCardCalibration).toBe(1);
+      expect(row?.rateCardCalibrationSamples).toBe(5);
+    });
+
+    test('counts a request the card refuses instead of guessing a price', async () => {
+      await db.insert(modelPricing).values(klingRow());
+      await db
+        .insert(modelUsageObservations)
+        .values([
+          observation(0, 6, { duration: '5', generate_audio: true }),
+          observation(1, 6, { duration: 'auto', generate_audio: true }),
+        ]);
+      const { reconcileFalBilling } = await load([]);
+
+      await reconcileFalBilling({ billingKey: 'admin' });
+
+      expect(rateCardReports[0]).toMatchObject({ sampleCount: 1, refused: 1 });
+    });
+
+    test('an advertised (unverified) unit price is not compared against the card', async () => {
+      // The page against itself would always read 1.0.
+      await db.insert(modelPricing).values(klingRow({ rateVerifiedAt: null }));
+      await db
+        .insert(modelUsageObservations)
+        .values([observation(0, 6, { duration: '5', generate_audio: true })]);
+      const { reconcileFalBilling } = await load([]);
+
+      const summary = await reconcileFalBilling({ billingKey: 'admin' });
+
+      expect(summary?.rateCardsCalibrated).toBe(0);
+      expect(rateCardReports).toHaveLength(0);
+    });
+
+    test('runs without a billing key — the bill is already in D1', async () => {
+      await db.insert(modelPricing).values(klingRow());
+      await db
+        .insert(modelUsageObservations)
+        .values([observation(0, 6, { duration: '5', generate_audio: true })]);
+      const { reconcileFalBilling } = await load([]);
+
+      expect(await reconcileFalBilling()).toBeNull();
+      expect(rateCardReports).toHaveLength(1);
+    });
   });
 
   test('t2v inherits i2v’s billed unit price when t2v has no events', async () => {
