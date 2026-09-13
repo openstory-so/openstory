@@ -60,6 +60,9 @@ const SEQUENCE_LEVEL_BY_DESIGN: Record<string, string> = {
   'src/shots/server/update-stale-plan.ts': 'snapshots the sequence default',
   // The composer edits the SEQUENCE default before any shot exists.
   'src/sequences/ui/script/script-view.tsx': 'composer editing the default',
+  // Create-in-flight shell: parked composer default, no shot exists yet.
+  'src/routes/_app/sequences/new/scenes.tsx':
+    'create-time default — no shot exists yet',
   // Holds the row for the page and hands the default to the per-shot
   // resolvers (`rendersReferenceOnly`, `sequenceReferenceOnly`); the phase
   // config it builds is for the whole run.
