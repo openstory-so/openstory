@@ -485,6 +485,27 @@ describe('buildReferenceVideoPrompt duration limits', () => {
     expect(result.prompt).toContain('THIRD (a clip)');
   });
 
+  it('drops audio shorter than H3 Max’s 2s floor', () => {
+    const h3 = getMotionReferenceEndpoint('minimax_h3_max');
+    if (!h3) throw new Error('minimax_h3_max must have a config');
+    const short: ReferenceImageDescription = {
+      referenceImageUrl: 'https://example.com/erica_l2.wav',
+      description: 'Erica’s line',
+      role: 'character',
+      kind: 'audio',
+      durationSeconds: 1.306122,
+      token: 'ERICA_L2',
+    };
+    const result = buildReferenceVideoPrompt(
+      h3,
+      'ERICA_L2 lands dryly',
+      STILL,
+      [short]
+    );
+    expect(result.audioUrls).toEqual([]);
+    expect(result.prompt).toContain('Erica’s line');
+  });
+
   it('attaches a clip whose length we never learned', () => {
     // Guessing would drop a reference the provider might have accepted.
     const omni = getMotionReferenceEndpoint('gemini_omni_flash');

@@ -8,7 +8,6 @@ import { generateSpeech } from '@tanstack/ai';
 import { generateId } from '@/platform/id';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import { uploadFile } from '#storage';
-import { measureStoredMediaDuration } from '@/cast/server/sequence-elements/media-duration';
 import {
   elevenLabsAdapterConfig,
   loadElevenLabsSpeech,
@@ -18,6 +17,11 @@ import {
   ttsUtterance,
   type VoicedDialogueLine,
 } from '@/motion/dialogue-tts';
+import {
+  padWavToMinDuration,
+  pcmToWav,
+  wavDurationSeconds,
+} from './pad-dialogue-audio';
 import type { MotionAudioClip } from '@/platform/server/db/schema';
 import type { ReferenceImageDescription } from '@/stills/reference-image-prompt';
 
@@ -27,6 +31,15 @@ export type SynthesizeDialogueInput = {
   sequenceId: string;
   shotId: string;
   line: VoicedDialogueLine;
+  /**
+   * Provider per-file floor (H3 Max 2s, Seedance 2.5 1.8s). Short lines are
+   * padded with silence so the clip still rides as a reference instead of
+   * 400ing the shot.
+   */
+  minDurationSeconds?: number;
+  /** Adjacent lines in the same shot — ElevenLabs stitching. */
+  previousText?: string;
+  nextText?: string;
 };
 
 export async function synthesizeDialogueLine(
@@ -39,22 +52,36 @@ export async function synthesizeDialogueLine(
     timeoutInSeconds: config.timeoutInSeconds,
     ...(config.baseURL ? { baseURL: config.baseURL } : {}),
   });
+  // Raw PCM so we can wrap a WAV header and pad short lines with silence
+  // in-process — Workers has no ffmpeg, and `format: 'wav'` on generateSpeech
+  // falls through to mp3.
   const result = await generateSpeech({
     adapter,
     text: utterance,
     voice: input.line.voiceId,
-    format: 'mp3',
+    modelOptions: {
+      outputFormat: 'pcm_44100',
+      ...(input.previousText ? { previousText: input.previousText } : {}),
+      ...(input.nextText ? { nextText: input.nextText } : {}),
+    },
   });
 
+  const pcm = new Uint8Array(Buffer.from(result.audio, 'base64'));
+  let wav = pcmToWav(pcm);
+  let durationSeconds = wavDurationSeconds(wav);
+  const min = input.minDurationSeconds;
+  if (min != null && durationSeconds != null && durationSeconds < min) {
+    const padded = padWavToMinDuration(wav, min);
+    wav = padded.bytes;
+    durationSeconds = padded.durationSeconds;
+  }
+
   const id = generateId();
-  const path = `${input.teamId}/${input.sequenceId}/${input.shotId}/${id}.mp3`;
-  const uploaded = await uploadFile(
-    STORAGE_BUCKETS.AUDIO,
-    path,
-    Buffer.from(result.audio, 'base64'),
-    { contentType: result.contentType || 'audio/mpeg', upsert: true }
-  );
-  const durationSeconds = await measureStoredMediaDuration(path);
+  const path = `${input.teamId}/${input.sequenceId}/${input.shotId}/${id}.wav`;
+  const uploaded = await uploadFile(STORAGE_BUCKETS.AUDIO, path, wav, {
+    contentType: 'audio/wav',
+    upsert: true,
+  });
 
   return {
     clip: {
