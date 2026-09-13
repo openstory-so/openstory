@@ -19,6 +19,7 @@ const {
   mcpResourceIdentifier,
   mcpResourceIdentifierForRequest,
   pickOAuthIssuer,
+  resolveConfiguredOAuthIssuer,
   resolveOAuthIssuer,
 } = await import('./oauth-provider');
 const { OAUTH_API_SCOPES, OAUTH_SCOPE_DESCRIPTIONS, OAUTH_SCOPES } =
@@ -69,10 +70,13 @@ describe('resolveOAuthIssuer', () => {
 
   it('falls back to localhost when unset or a plain-HTTP LAN address', () => {
     expect(resolveOAuthIssuer()).toBe('http://localhost:3000');
+    expect(resolveConfiguredOAuthIssuer()).toBeNull();
     envState.VITE_APP_URL = 'http://192.168.1.20:3000';
     expect(resolveOAuthIssuer()).toBe('http://localhost:3000');
+    expect(resolveConfiguredOAuthIssuer()).toBeNull();
     envState.VITE_APP_URL = 'not a url';
     expect(resolveOAuthIssuer()).toBe('http://localhost:3000');
+    expect(resolveConfiguredOAuthIssuer()).toBeNull();
   });
 
   it('throws in production when the URL is missing, invalid, or plain HTTP', () => {
@@ -127,6 +131,14 @@ describe('createOAuthProviderPlugins', () => {
       (plugin) => plugin.id === 'jwt'
     );
     expect(jwtPlugin?.options.disableSettingJwtHeader).toBe(true);
+  });
+
+  it('uses a loopback dummy issuer at init when VITE_APP_URL is unset', () => {
+    envState.VITE_APP_URL = undefined;
+    const jwtPlugin = createOAuthProviderPlugins().find(
+      (plugin) => plugin.id === 'jwt'
+    );
+    expect(jwtPlugin?.options.jwt?.issuer).toBe('http://localhost:3000');
   });
 
   it('disables the jwt plugin GET /token path on the auth config', () => {

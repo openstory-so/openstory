@@ -58,6 +58,17 @@ describe('GET /.well-known/*', () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
+  it('serves the unsuffixed protected-resource document from the request origin', async () => {
+    const request = new Request(
+      'http://localhost:3002/.well-known/oauth-protected-resource'
+    );
+    const res = await get({ request });
+    expect(res.status).toBe(200);
+    expect(handler).not.toHaveBeenCalled();
+    const body = z.object({ resource: z.string() }).parse(await res.json());
+    expect(body.resource).toBe('http://localhost:3002/mcp');
+  });
+
   it('serves the /mcp protected-resource document from the request origin', async () => {
     const request = new Request(
       'http://localhost:3002/.well-known/oauth-protected-resource/mcp'
@@ -86,5 +97,34 @@ describe('GET /.well-known/*', () => {
     expect(res.status).toBe(200);
     expect(await res.text()).toBe('forwarded');
     expect(handler).toHaveBeenCalledWith(request);
+  });
+
+  it('rewrites authorization-server issuer to the request origin', async () => {
+    handler.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          issuer: 'http://localhost:3000',
+          authorization_endpoint:
+            'http://localhost:3002/api/auth/oauth2/authorize',
+        }),
+        { headers: { 'Content-Type': 'application/json' } }
+      )
+    );
+    const res = await get({
+      request: new Request(
+        'http://localhost:3002/.well-known/oauth-authorization-server'
+      ),
+    });
+    expect(res.status).toBe(200);
+    const body = z
+      .object({
+        issuer: z.string(),
+        authorization_endpoint: z.string(),
+      })
+      .parse(await res.json());
+    expect(body.issuer).toBe('http://localhost:3002');
+    expect(body.authorization_endpoint).toBe(
+      'http://localhost:3002/api/auth/oauth2/authorize'
+    );
   });
 });

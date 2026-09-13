@@ -114,6 +114,26 @@ export function pickOAuthIssuer(
   );
 }
 
+/**
+ * Deploy-time issuer from `VITE_APP_URL`, or `null` when it is missing /
+ * not a valid HTTPS-or-loopback origin. Callers that have a request should
+ * prefer {@link mcpResourceIdentifierForRequest} / the request origin
+ * instead of inventing `:3000`.
+ */
+export function resolveConfiguredOAuthIssuer(): string | null {
+  const candidate = getEnv().VITE_APP_URL.replace(/\/$/, '');
+  if (!candidate) return null;
+  try {
+    const url = new URL(candidate);
+    if (url.protocol === 'https:' || isLoopbackHost(url.hostname)) {
+      return candidate;
+    }
+  } catch {
+    // invalid URL
+  }
+  return null;
+}
+
 export function resolveOAuthIssuer(): string {
   return pickOAuthIssuer(getEnv().VITE_APP_URL, import.meta.env.DEV);
 }
@@ -206,7 +226,12 @@ export function buildMcpResourceMetadata(request: Request) {
  * issuer.
  */
 export function createOAuthProviderPlugins() {
-  const issuer = resolveOAuthIssuer();
+  // Plugin init has no request. `VITE_APP_URL` when set; otherwise a
+  // loopback dummy. Live discovery documents (`buildMcpResourceMetadata`,
+  // the well-known issuer rewrite) use the request origin so a missing
+  // `VITE_APP_URL` or a worktree on :3002 still advertises the URL Grok
+  // connected to.
+  const issuer = resolveConfiguredOAuthIssuer() ?? DEV_ISSUER;
   const apiResource = apiResourceIdentifier(issuer);
   const mcpResource = mcpResourceIdentifier(issuer);
   const loopbackMcp = loopbackMcpResourceAliases(mcpResource);
