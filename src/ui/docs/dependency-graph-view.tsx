@@ -233,16 +233,18 @@ export const DependencyGraphView: React.FC<DependencyGraphViewProps> = ({
                     strokeDasharray={n.optional ? '4 3' : undefined}
                     className={cn(
                       'transition-[fill,stroke] motion-reduce:transition-none group-focus-visible:stroke-ring group-focus-visible:stroke-2',
-                      n.kind === 'input' ? 'fill-background' : 'fill-muted',
+                      // Border = provenance (green versioned, dashed
+                      // optional). State lives on the fill so they combine.
+                      n.versionedIn ? 'stroke-chart-2' : 'stroke-border',
                       isActive
-                        ? 'stroke-primary stroke-2'
+                        ? 'fill-primary/20 stroke-[2.5]'
                         : isStale
-                          ? 'fill-warning/15 stroke-warning stroke-[1.5]'
+                          ? 'fill-warning/30'
                           : isCause
-                            ? 'fill-primary/10 stroke-primary/70 stroke-[1.5]'
-                            : n.versionedIn
-                              ? 'stroke-chart-2'
-                              : 'stroke-border'
+                            ? 'fill-primary/10'
+                            : n.kind === 'input'
+                              ? 'fill-background'
+                              : 'fill-muted'
                     )}
                   />
                   <text
@@ -315,11 +317,11 @@ const Legend: React.FC = () => (
       optional
     </li>
     <li className="flex items-center gap-1.5">
-      <span className="inline-block size-3 rounded-sm border border-warning bg-warning/15" />
+      <span className="inline-block size-3 rounded-sm border border-border bg-warning/30" />
       goes stale
     </li>
     <li className="flex items-center gap-1.5">
-      <span className="inline-block size-3 rounded-sm border border-primary/70 bg-primary/10" />
+      <span className="inline-block size-3 rounded-sm border border-border bg-primary/10" />
       makes it stale
     </li>
   </ul>
