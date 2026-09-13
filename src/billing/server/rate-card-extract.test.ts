@@ -219,7 +219,10 @@ describe('extractRateCard', () => {
     expect(result.reason).toContain('output_tokens');
   });
 
-  it('allows the known card-level levers no schema carries', async () => {
+  // The Kling / H3 Max hand cards bind card-level levers (`voice_control`,
+  // `reference_image_pixels`); an extraction may not — the live H3 Max run
+  // bound the pixels lever as a total budget and dropped the URL count.
+  it('rejects a card-level lever a hand card may bind', async () => {
     const result = await extract(
       perImageCard({
         inputs: {
@@ -231,7 +234,9 @@ describe('extractRateCard', () => {
         },
       })
     );
-    expect(result.status).toBe('ok');
+    expect(result.status).toBe('rejected');
+    if (result.status !== 'rejected') return;
+    expect(result.reason).toContain('voice_control');
   });
 
   it('rejects a lookup with a default — an unpriced shape must refuse', async () => {

@@ -23,7 +23,6 @@ import {
   verifyRateCardExamples,
 } from '@/billing/rate-card/evaluate';
 import {
-  CARD_LEVEL_PARAMS,
   type Expr,
   type RateCard,
   rateCardSchema,
@@ -57,17 +56,20 @@ const extractionOutputSchema = rateCardSchema.omit({ source: true }).extend({
 });
 
 /**
- * Two hand cards of different shapes (per-second tiers with a lever the
- * schema has no field for; per-image multipliers + surcharges) shown with
- * the text they were read from, so the model sees a finished transcription.
+ * Two hand cards of different shapes (per-second tiers + a per-reference
+ * surcharge read off a list param's length; per-image multipliers +
+ * surcharges) shown with the text they were read from, so the model sees a
+ * finished transcription. Both bind schema params only — the Kling and H3
+ * Max hand cards carry card-level levers (`voice_control`,
+ * `reference_image_pixels`) an extraction may not.
  */
 const FEW_SHOT: { endpointId: string; pricing: string; schema: string }[] = [
   {
-    endpointId: 'fal-ai/kling-video/v3/pro/image-to-video',
+    endpointId: 'xai/grok-imagine-video/v1.5/reference-to-video',
     pricing:
-      'For every second of video you generated, you will be charged **$0.112** (audio off) or **$0.168** (audio on), if voice control is used while generating audio you will be charged **$0.196**. For example, a 5s video with audio on and voice control will cost **$0.98**',
+      'Priced per second of output video, by resolution: **480p** at **$0.08** per sec, **720p** at **$0.14** per sec. A 5-second 480p clip costs **$0.40**; 720p costs **$0.70**. Cost scales linearly with duration. Each reference image adds **$0.01** (1–7 supported). A reference audio clip, if provided, is included',
     schema:
-      '- **`duration`** (`DurationEnum`, _optional_): The duration of the generated video in seconds Default value: `"5"`\n  - Options: `"3"`, `"4"`, `"5"`, …, `"15"`\n- **`generate_audio`** (`boolean`, _optional_): Whether to generate native audio for the video. Default value: `true`',
+      '- **`reference_image_urls`** (`list<string>`, _required_): One or more reference image URLs. Maximum 7 images.\n- **`duration`** (`integer`, _optional_): Video duration in seconds. Default value: `8`\n  - Range: `1` to `15`\n- **`resolution`** (`ResolutionEnum`, _optional_): Default value: `"480p"`\n  - Options: `"480p"`, `"720p"`',
   },
   {
     endpointId: 'fal-ai/nano-banana-2',
@@ -99,7 +101,6 @@ export async function buildExtractionMessages(
     descriptionTable: source.descriptionTable ?? '(none)',
     inputSchemaSection: source.inputSchemaSection || '(none)',
     jsonSchema: JSON.stringify(z.toJSONSchema(rateCardSchema)),
-    cardLevelParams: CARD_LEVEL_PARAMS.map((p) => `"${p}"`).join(', '),
     fewShot: fewShotText(),
   });
 }
@@ -116,18 +117,19 @@ export function inputSchemaParams(inputSchemaSection: string): Set<string> {
 /**
  * Verification is circular for a lever the model invented: it also writes
  * the examples that exercise it. So every bound param and every example
- * key must be a schema param (or a known card-level lever) — the card that
- * dropped H3 Max's reference surcharge bound `reference_tokens` and passed
- * its own examples 100%.
+ * key must be a schema param — the card that dropped H3 Max's reference
+ * surcharge bound `reference_tokens` and passed its own examples 100%;
+ * allowed the hand card's `reference_image_pixels`, it bound that as a
+ * total instead of the URL count. Hand cards may carry such levers;
+ * extractions may not.
  */
 function unknownParams(
   card: Pick<RateCard, 'inputs' | 'examples'>,
   schema: Set<string>
 ): string[] {
-  const allowed = new Set([...schema, ...CARD_LEVEL_PARAMS]);
   const bound = Object.values(card.inputs).map((i) => i.param);
   const exampled = card.examples.flatMap((e) => Object.keys(e.params));
-  return [...new Set([...bound, ...exampled])].filter((p) => !allowed.has(p));
+  return [...new Set([...bound, ...exampled])].filter((p) => !schema.has(p));
 }
 
 /** A `lookup` default is a neighbour's price for a shape the text never priced. */
