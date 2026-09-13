@@ -1912,6 +1912,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             <MotionDialoguePanel
               dialogue={shot.motionPrompt.dialogue}
               elements={elements}
+              clip={shot.audioClips?.[0] ?? null}
               onChange={
                 motionTakesAudioReferences
                   ? (next) =>
@@ -1934,6 +1935,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                 ),
               }}
               elements={elements}
+              clip={shot?.audioClips?.[0] ?? null}
               onChange={null}
               source="script"
             />

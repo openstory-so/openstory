@@ -26,6 +26,24 @@ export const DIALOGUE_TTS_MODEL = 'eleven_v3';
  */
 export const DIALOGUE_CLIP_TOKEN = 'DIALOGUE';
 
+/**
+ * Persisted on a line the user opted out of the generated take: the video
+ * model invents the voice. Not an element token — matching, assembly and
+ * orphan warnings must ignore it.
+ */
+export const VIDEO_MODEL_VOICE_TOKEN = '__video_model__';
+
+/** True when `voiceToken` names a user-uploaded audio element. */
+export function isElementVoiceToken(
+  token: string | null | undefined
+): token is string {
+  return (
+    Boolean(token) &&
+    token !== DIALOGUE_CLIP_TOKEN &&
+    token !== VIDEO_MODEL_VOICE_TOKEN
+  );
+}
+
 /** True when this model’s reference-to-video route takes uploaded audio. */
 export function modelTakesDialogueAudio(model: ImageToVideoModel): boolean {
   return (getMotionReferenceEndpoint(model)?.maxAudio ?? 0) > 0;
@@ -118,7 +136,8 @@ export function dialogueTtsToken(character: string, index: number): string {
 /**
  * Dialogue lines whose speaker has a designed ElevenLabs voice and no
  * user-bound audio element (`voiceToken`). Those elements already ride as
- * `@AudioN`; synthesising over them would double the line.
+ * `@AudioN`; synthesising over them would double the line. A line opted
+ * into {@link VIDEO_MODEL_VOICE_TOKEN} is skipped the same way.
  */
 export function voicedDialogueLines(
   dialogue: MotionDialogue | null | undefined,

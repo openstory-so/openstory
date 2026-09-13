@@ -20,6 +20,10 @@ import {
   type ImageToVideoModel,
   videoModelSupportsAudio,
 } from '@/models/models';
+import {
+  DIALOGUE_CLIP_TOKEN,
+  isElementVoiceToken,
+} from '@/motion/dialogue-tts';
 
 /**
  * Music is a sequence-level track (`sequences.music*`) the user can mute, swap
@@ -294,7 +298,10 @@ function spokenLine(
   toneNoun: 'voice' | 'tone'
 ): string {
   const subject = line.character || 'A voice';
-  if (line.voiceToken) {
+  if (
+    line.voiceToken === DIALOGUE_CLIP_TOKEN ||
+    isElementVoiceToken(line.voiceToken)
+  ) {
     return `${subject} speaks this line exactly as recorded in ${line.voiceToken}: ${words}`;
   }
   const tone = line.tone ? ` in a ${line.tone} ${toneNoun}` : '';
