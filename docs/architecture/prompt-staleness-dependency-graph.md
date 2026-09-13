@@ -36,6 +36,9 @@ All three defects below are now **fixed**; §5/§6 are kept as the rationale.
 
 ---
 
+> Interactive version: `/docs/dependency-graph` in the app (#1595), data in
+> `src/ui/docs/dependency-graph.ts`. Keep it in step with `input-hash.ts`.
+
 ## 1. The model in one paragraph
 
 Every generated artifact stores a **SHA-256 hash of its inputs** in a nullable

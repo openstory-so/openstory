@@ -237,10 +237,10 @@ export function AppSidebar() {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild tooltip="Guide">
+            <SidebarMenuButton asChild tooltip="Docs">
               <Link to="/docs">
                 <LifeBuoy />
-                <span>Guide</span>
+                <span>Docs</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
