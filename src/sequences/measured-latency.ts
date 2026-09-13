@@ -49,7 +49,7 @@ export const MOTION_PROMPT_P90_SECONDS = 17;
 /**
  * Script analysis (phase 1) is several sequential LLM calls. Quality
  * `base + perScene` is fit to the 11-scene 151s wall-clock plus p1 p90.
- * Fast is Opus 5 Fast split (~6s) plus a Luna/GLM-class enhance — Luna
+ * Fast is Opus 5 priority-tier split (~6s) plus a Luna/GLM-class enhance — Luna
  * itself has no samples yet.
  */
 export const ANALYSIS_QUALITY = { base: 55, perScene: 9 };

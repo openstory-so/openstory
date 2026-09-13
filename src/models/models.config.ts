@@ -56,7 +56,7 @@ export const SCRIPT_ANALYSIS_MODELS = [
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
     vision: true,
-    description: 'Opus 5 low-latency; used for scene-split',
+    description: 'Opus 5 low-latency',
   },
   {
     id: 'google/gemini-3.8-flash',
@@ -429,11 +429,12 @@ export const DEFAULT_ANALYSIS_MODEL: AnalysisModelId = 'openai/gpt-5.6-luna';
  * Boundary-annotation scenes call only. Grok 4.6 + medium reasoning
  * spends minutes thinking before the first boundary token. Opus 5 Fast
  * split a prose product-ad in 2.4s (9 beats) and a 19-heading screenplay
- * in 4s with exact quotes. Bibles and later prompt calls keep the
- * sequence's analysis model.
+ * in 4s with exact quotes. The speed now comes from the priority service
+ * tier every OpenRouter call requests (`SERVICE_TIER` in llm-client), so
+ * this is plain Opus 5 rather than the separate Fast id. Bibles and later
+ * prompt calls keep the sequence's analysis model.
  */
-export const SCENE_SPLIT_MODEL: AnalysisModelId =
-  'anthropic/claude-opus-5-fast';
+export const SCENE_SPLIT_MODEL: AnalysisModelId = 'anthropic/claude-opus-5';
 
 /**
  * Image generation models are now in src/models/models.ts

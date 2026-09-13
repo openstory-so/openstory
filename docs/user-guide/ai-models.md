@@ -15,8 +15,8 @@ These LLM models analyze your script, extract scenes, characters, and locations,
 | ------------------ | --------- | -------------- | ------------------------- |
 | **GPT-5.6 Luna**   | OpenAI    | 1M tokens      | Proprietary (default)     |
 | Claude Fable 5     | Anthropic | 1M tokens      | Proprietary               |
-| Claude Opus 5      | Anthropic | 1M tokens      | Proprietary               |
-| Claude Opus 5 Fast | Anthropic | 1M tokens      | Proprietary (scene-split) |
+| Claude Opus 5      | Anthropic | 1M tokens      | Proprietary (scene-split) |
+| Claude Opus 5 Fast | Anthropic | 1M tokens      | Proprietary               |
 | Gemini 3.7 Flash   | Google    | 1M tokens      | Proprietary               |
 | Gemini 3.1 Pro     | Google    | 1M tokens      | Proprietary               |
 | GPT-5.6 Sol        | OpenAI    | 1M tokens      | Proprietary               |

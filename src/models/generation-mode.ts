@@ -5,7 +5,7 @@
  * (top) model in that section — it does not hide the other catalog. Pickers
  * show Fast and Quality groups, each ordered by our recommendation.
  *
- * Scene-split stays on SCENE_SPLIT_MODEL (Opus 5 Fast) regardless of mode —
+ * Scene-split stays on SCENE_SPLIT_MODEL (Opus 5, priority tier) regardless of mode —
  * that call is pinned in the workflow, not the composer picker.
  */
 import type { AnalysisModelId } from './models.config';

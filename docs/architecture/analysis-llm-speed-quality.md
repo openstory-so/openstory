@@ -49,7 +49,9 @@ Interactive Chart.js version: `scripts/eval-analysis-speed-quality.ts` writes `.
 
 Pareto on quality × total latency: **Luna, Terra, Opus 5 Fast**.
 
-## Scene-split (why we pin Opus 5 Fast)
+## Scene-split (why we pin Opus 5)
+
+Measured on Opus 5 Fast. Scene-split now runs plain Opus 5 on OpenRouter's priority service tier, which every OpenRouter call requests.
 
 | Model                                   | Quality |         Time |
 | --------------------------------------- | ------: | -----------: |
