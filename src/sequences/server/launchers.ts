@@ -48,6 +48,7 @@ import {
   getAnalysisModelById,
 } from '@/models/models.config';
 import { generateId } from '@/platform/id';
+import { isElevenLabsConfigured } from '@/models/server/elevenlabs-config';
 import { NotFoundError, ValidationError } from '@/platform/errors';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Sequence } from '@/platform/server/db/schema';
@@ -143,6 +144,13 @@ async function resolveStoryboardPayload(
   const hasSnapshot = sequence.styleConfig != null;
   if (!hasSnapshot && !sequence.styleId) {
     throw new ValidationError('Sequence has no style selected');
+  }
+  // Voices need the platform ElevenLabs key (#1553). Refuse here, at the one
+  // choke point every run passes, rather than fail the bible stage mid-run.
+  if (sequence.generateVoices && !isElevenLabsConfigured()) {
+    throw new ValidationError(
+      'Voice design is not configured on this deployment. Turn Voices off to generate.'
+    );
   }
 
   const style = hasSnapshot

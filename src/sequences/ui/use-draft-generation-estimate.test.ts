@@ -43,6 +43,7 @@ const INPUT = {
   aspectRatio: '9:16' as const,
   stopAt: 'motion' as const,
   generateStartFrames: false,
+  generateVoices: false,
 };
 
 describe('useDraftGenerationEstimate', () => {

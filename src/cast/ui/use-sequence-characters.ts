@@ -15,6 +15,7 @@ import {
   getSequenceCharactersFn,
   recastCharacterFn,
   regenerateCharacterSheetFn,
+  chooseCharacterVoiceTakeFn,
   generateCharacterVoiceFn,
   setCharacterVoiceEnabledFn,
   restoreSequenceCharacterFn,
@@ -115,6 +116,22 @@ export function useSetCharacterVoiceEnabled() {
       characterId: string;
       enabled: boolean;
     }) => setCharacterVoiceEnabledFn({ data }),
+    onSuccess: (_result, { sequenceId }) => {
+      void queryClient.invalidateQueries({
+        queryKey: sequenceCharacterKeys.list(sequenceId),
+      });
+    },
+  });
+}
+
+export function useChooseCharacterVoiceTake() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      sequenceId: string;
+      characterId: string;
+      generatedVoiceId: string;
+    }) => chooseCharacterVoiceTakeFn({ data }),
     onSuccess: (_result, { sequenceId }) => {
       void queryClient.invalidateQueries({
         queryKey: sequenceCharacterKeys.list(sequenceId),

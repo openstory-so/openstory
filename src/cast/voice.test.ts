@@ -31,10 +31,42 @@ describe('speakingCharacterIds', () => {
   ];
   it('matches a cue to the bible name on a shared token', () => {
     expect(
-      speakingCharacterIds(bible, [scene(['SARAH', '']), scene(['Al'])])
+      speakingCharacterIds(bible, [scene(['SARAH']), scene(['Al'])])
     ).toEqual(['sarah', 'al']);
   });
-  it('does not match on substrings or the narrator', () => {
-    expect(speakingCharacterIds(bible, [scene(['Sally', ''])])).toEqual([]);
+  it('does not match on substrings', () => {
+    expect(speakingCharacterIds(bible, [scene(['Sally'])])).toEqual([]);
+  });
+  it('an unattributed line beside named ones means anyone could speak', () => {
+    expect(speakingCharacterIds(bible, [scene(['SARAH', ''])])).toEqual([
+      'sarah',
+      'al',
+      'extra',
+    ]);
+  });
+  it('ignores articles and honorifics shared across the cast', () => {
+    const cast = [
+      { characterId: 'stranger', name: 'The Stranger' },
+      { characterId: 'barista', name: 'The Barista' },
+      { characterId: 'chen', name: 'Dr. Chen' },
+      { characterId: 'patel', name: 'Dr. Patel' },
+    ];
+    expect(
+      speakingCharacterIds(cast, [scene(['THE STRANGER', 'DR. CHEN'])])
+    ).toEqual(['stranger', 'chen']);
+  });
+  it('treats everyone as speaking when no cue names a speaker', () => {
+    const everyone = ['sarah', 'al', 'extra'];
+    expect(speakingCharacterIds(bible, [scene(['']), scene([])])).toEqual(
+      everyone
+    );
+    expect(speakingCharacterIds(bible, [scene([]), scene([])])).toEqual(
+      everyone
+    );
+  });
+  it('fully attributed cues narrow to the speakers', () => {
+    expect(speakingCharacterIds(bible, [scene(['AL']), scene([])])).toEqual([
+      'al',
+    ]);
   });
 });

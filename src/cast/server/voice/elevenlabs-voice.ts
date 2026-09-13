@@ -32,7 +32,37 @@ export async function designVoicePreviews(
   }));
 }
 
-/** Spends one account-wide voice slot. Release with `deleteElevenLabsVoice`. */
+/** HTTP status of an SDK error, if it carried one. */
+export function elevenLabsStatus(error: unknown): number | undefined {
+  return typeof error === 'object' &&
+    error !== null &&
+    'statusCode' in error &&
+    typeof error.statusCode === 'number'
+    ? error.statusCode
+    : undefined;
+}
+
+/** ElevenLabs' own `detail.message` (or `detail.status`) from an SDK error body. */
+export function elevenLabsDetail(error: unknown): string | undefined {
+  if (typeof error !== 'object' || error === null || !('body' in error)) return;
+  const body: unknown = error.body;
+  if (typeof body !== 'object' || body === null || !('detail' in body)) return;
+  const detail: unknown = body.detail;
+  if (typeof detail === 'string') return detail;
+  if (typeof detail !== 'object' || detail === null) return;
+  for (const key of ['message', 'status'] as const) {
+    if (key in detail) {
+      const value: unknown = Reflect.get(detail, key);
+      if (typeof value === 'string' && value) return value;
+    }
+  }
+  return;
+}
+
+/**
+ * Spends one account-wide voice slot. Release through
+ * `releaseVoiceIfUnreferenced` (`release-voice.ts`), never this file's delete.
+ */
 export async function saveDesignedVoice(
   apiKey: string,
   args: {
@@ -55,11 +85,7 @@ export async function deleteElevenLabsVoice(
   try {
     await client.voices.delete(voiceId);
   } catch (error) {
-    const status =
-      typeof error === 'object' && error !== null && 'statusCode' in error
-        ? error.statusCode
-        : undefined;
-    if (status === 404) return;
+    if (elevenLabsStatus(error) === 404) return;
     throw error;
   }
 }

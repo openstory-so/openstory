@@ -2,6 +2,7 @@ import { elementKindFromFilename } from '@/cast/element-kind';
 import { ThinkingBar } from '@/ui/ai/thinking-bar';
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
 import { ActionCost } from '@/billing/ui/action-cost';
+import { useVoiceDesignAvailable } from '@/cast/ui/use-voice-design-available';
 import { useWelcomeCreditsGate } from '@/billing/ui/welcome-credits-dialog';
 import { PremiumCard } from '@/ui/cards/premium-card';
 import {
@@ -270,6 +271,7 @@ export const ScriptView: FC<{
 }) => {
   const queryClient = useQueryClient();
   const isEditing = !!sequence?.id;
+  const voiceDesignAvailable = useVoiceDesignAvailable();
   const { data: composedScriptData } = useComposedScript(sequence?.id);
   const composedScript = composedScriptData?.script;
   // Analyzed sequences derive the document from scene versions (#1030), so the
@@ -966,10 +968,13 @@ export const ScriptView: FC<{
 
   const requestGenerate = () => {
     // Remembered paid stop + no credits: open the slider instead of firing
-    // Generate (the credit gate still runs on confirm).
+    // Generate (the credit gate still runs on confirm). Same when Voices is
+    // on but this deployment cannot design one (#1553): the launcher would
+    // refuse, and the dialog is the only place the flag can be turned off.
     if (
       savedSettings.rememberStopAt &&
-      !(needsBillingSetup && !allowsUnfundedGeneration(stopAt))
+      !(needsBillingSetup && !allowsUnfundedGeneration(stopAt)) &&
+      !(generateVoices && voiceDesignAvailable === false)
     ) {
       executeRegeneration();
       return;
@@ -1269,6 +1274,7 @@ export const ScriptView: FC<{
     ...draftEstimateBase,
     stopAt,
     generateStartFrames,
+    generateVoices,
   });
   const generateScopeLabel = runScopeLabel(stopAt);
 

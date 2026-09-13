@@ -28,7 +28,15 @@ import {
   releaseCharacterVoice,
   releaseVoiceIfUnreferenced,
 } from '@/cast/server/voice/release-voice';
-import { isElevenLabsConfigured } from '@/models/server/elevenlabs-config';
+import {
+  getElevenLabsApiKey,
+  isElevenLabsConfigured,
+} from '@/models/server/elevenlabs-config';
+import {
+  elevenLabsDetail,
+  elevenLabsStatus,
+  saveDesignedVoice,
+} from '@/cast/server/voice/elevenlabs-voice';
 import {
   DEFAULT_ANALYSIS_MODEL,
   getAnalysisModelById,
@@ -253,6 +261,78 @@ export const setCharacterVoiceEnabledFn = createServerFn({ method: 'POST' })
     });
     if (!data.enabled) await releaseCharacterVoice(context.scopedDb, character);
     return { characterId: character.id, useVoice: data.enabled };
+  });
+
+/**
+ * Make one of the parked Voice Design takes the saved voice (#1553). Order:
+ * save the take, write the row, then release the old voice — a failed save
+ * leaves the row untouched, and a failed release leaves the new id on the
+ * row with the old one still on the account for the next release to retry
+ * (never two slots with no pointer). The chosen take moves to the front:
+ * while `voiceId` is set, `voicePreviews[0]` is the saved voice. A 404 from
+ * ElevenLabs means the preview id aged out; any other 4xx carries the
+ * provider's reason (slot limit, description rejected).
+ */
+export const chooseCharacterVoiceTakeFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(
+    zodValidator(characterIdInput.extend({ generatedVoiceId: z.string() }))
+  )
+  .handler(async ({ context, data }) => {
+    const apiKey = getElevenLabsApiKey();
+    if (!apiKey || !isElevenLabsConfigured()) {
+      throw new ValidationError('Voice design is not configured');
+    }
+    const character = await context.scopedDb.characters.getById(
+      data.characterId
+    );
+    if (!character || character.sequenceId !== data.sequenceId) {
+      throw new NotFoundError('Character not found');
+    }
+    const previews = character.voicePreviews ?? [];
+    const take = previews.find(
+      (p) => p.generatedVoiceId === data.generatedVoiceId
+    );
+    if (!take) throw new NotFoundError('Take not found');
+    if (previews[0] === take && character.voiceId) {
+      return { characterId: character.id, voiceId: character.voiceId };
+    }
+    let voiceId: string;
+    try {
+      voiceId = await saveDesignedVoice(apiKey, {
+        voiceName: `${character.name} · ${character.sequenceId.slice(-6)}`,
+        voiceDescription: character.voiceDescription ?? '',
+        generatedVoiceId: take.generatedVoiceId,
+      });
+    } catch (error) {
+      const status = elevenLabsStatus(error);
+      if (status === 404) {
+        throw new ValidationError(
+          'This take has expired. Regenerate the voice for fresh takes.'
+        );
+      }
+      // 429 is not the user's doing and clears on retry, so it stays a
+      // plain error rather than a "could not save" verdict.
+      if (
+        status !== undefined &&
+        status >= 400 &&
+        status < 500 &&
+        status !== 429
+      ) {
+        throw new ValidationError(
+          `Could not save this take: ${elevenLabsDetail(error) ?? `ElevenLabs returned ${status}`}`
+        );
+      }
+      throw error;
+    }
+    await context.scopedDb.characters.update(character.id, {
+      voiceId,
+      voicePreviews: [take, ...previews.filter((p) => p !== take)],
+    });
+    if (character.voiceId && character.voiceId !== voiceId) {
+      await releaseVoiceIfUnreferenced(context.scopedDb, character.voiceId);
+    }
+    return { characterId: character.id, voiceId };
   });
 
 /** Undo a character soft-delete. */

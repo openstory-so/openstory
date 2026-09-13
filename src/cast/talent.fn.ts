@@ -144,15 +144,21 @@ export const deleteTalentFn = createServerFn({ method: 'POST' })
     const existing = await context.scopedDb.talent.getWithRelations(
       data.talentId
     );
-    const deleted = await context.scopedDb.talent.delete(data.talentId);
-    if (!deleted) {
+    if (!existing || !isTeamWritableTalent(existing, context.teamId)) {
       throw new Error(
         'Talent not found, is read-only, or you do not have permission to delete it'
       );
     }
-    // Row is gone, so the count now says whether a character still uses it.
-    if (existing?.voiceId) {
-      await releaseVoiceIfUnreferenced(context.scopedDb, existing.voiceId);
+    // Slot first, row second (#1553): a failed ElevenLabs delete keeps the
+    // pointer on this row, so the next attempt can release it. This row is
+    // the one reference the count must ignore.
+    if (existing.voiceId) {
+      await releaseVoiceIfUnreferenced(context.scopedDb, existing.voiceId, {
+        heldBy: 1,
+      });
+    }
+    if (!(await context.scopedDb.talent.delete(data.talentId))) {
+      throw new Error('Talent not found');
     }
 
     return { success: true };

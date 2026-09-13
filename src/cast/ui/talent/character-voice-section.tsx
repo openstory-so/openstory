@@ -3,6 +3,7 @@ import { ActionCost } from '@/billing/ui/action-cost';
 import { usesVoice } from '@/cast/voice';
 import {
   sequenceCharacterKeys,
+  useChooseCharacterVoiceTake,
   useGenerateCharacterVoice,
   useSetCharacterVoiceEnabled,
 } from '@/cast/ui/use-sequence-characters';
@@ -30,6 +31,7 @@ export const CharacterVoiceSection: React.FC<{
   const queryClient = useQueryClient();
   const generate = useGenerateCharacterVoice();
   const setEnabled = useSetCharacterVoiceEnabled();
+  const chooseTake = useChooseCharacterVoiceTake();
   const [isDesigning, setIsDesigning] = useState(false);
   const enabled = usesVoice(character, { generateVoices });
 
@@ -110,11 +112,36 @@ export const CharacterVoiceSection: React.FC<{
                     src={preview.url}
                     className="min-w-0 flex-1"
                   />
-                  <span className="w-12 text-xs text-muted-foreground">
-                    {index === 0 && character.voiceId
-                      ? 'Saved'
-                      : `Take ${index + 1}`}
-                  </span>
+                  {index === 0 && character.voiceId ? (
+                    <span className="w-12 text-xs text-muted-foreground">
+                      Saved
+                    </span>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-12"
+                      aria-label={`Use take ${index + 1}`}
+                      disabled={busy || chooseTake.isPending}
+                      onClick={() =>
+                        chooseTake.mutate(
+                          {
+                            sequenceId,
+                            characterId: character.id,
+                            generatedVoiceId: preview.generatedVoiceId,
+                          },
+                          {
+                            onError: (error) =>
+                              toast.error('Failed to save take', {
+                                description: errorMessage(error),
+                              }),
+                          }
+                        )
+                      }
+                    >
+                      Use
+                    </Button>
+                  )}
                 </li>
               ))}
             </ul>

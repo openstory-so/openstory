@@ -34,6 +34,7 @@ import {
   type GenerationStage,
 } from '@/sequences/pipeline';
 import { reportFlooredEstimate } from './billing-observability';
+import { VOICE_DESIGN_COST } from './elevenlabs-pricing';
 import { type Microdollars, addMicros, micros, multiplyMicros } from './money';
 
 const logger = getLogger(['openstory', 'billing', 'cost-estimation']);
@@ -338,6 +339,12 @@ export type StoryboardCostOpts = {
    * generates, which is most of what makes reference-only cheaper.
    */
   referenceOnly?: boolean;
+  /**
+   * Voices (#1553): one Voice Design call per speaking character in the
+   * references stage. Pre-flight cannot know who speaks, so it prices every
+   * estimated character — the in-run gate replaces that with the real count.
+   */
+  generateVoices?: boolean;
   /** Live pricing map from `getEffectiveFalPricing()`. */
   pricing: FalPricingMap;
 };
@@ -490,7 +497,8 @@ export function estimateStoryboardCost(opts: StoryboardCostOpts): Microdollars {
   const llmCalls = estimateRunsStage(opts, 'script') ? 3 : 0;
   const llmCost = estimateLLMCost(llmCalls);
 
-  const sheetCost = estimateRunsStage(opts, 'references')
+  const runsReferences = estimateRunsStage(opts, 'references');
+  const sheetCost = runsReferences
     ? estimateReferenceSheetCost({
         imageModel: opts.imageModel,
         characterSheets: estimateCharacterSheetCount(sceneCount),
@@ -498,9 +506,16 @@ export function estimateStoryboardCost(opts: StoryboardCostOpts): Microdollars {
         pricing,
       })
     : micros(0);
+  const voiceCost =
+    runsReferences && opts.generateVoices
+      ? multiplyMicros(
+          VOICE_DESIGN_COST,
+          estimateCharacterSheetCount(sceneCount)
+        )
+      : micros(0);
 
   return addMicros(
-    addMicros(llmCost, sheetCost),
+    addMicros(llmCost, addMicros(sheetCost, voiceCost)),
     estimateStoryboardRenderCost(opts)
   );
 }

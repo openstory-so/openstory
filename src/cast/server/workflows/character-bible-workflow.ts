@@ -186,8 +186,10 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     });
 
     // Voices (#1553) ride alongside the sheets: one child per speaking
-    // character that resolves `usesVoice()` true and has none yet. A failure
-    // fails the run like a sheet does — voices were asked for.
+    // character that resolves `usesVoice()` true and has none yet. Unlike a
+    // sheet, a voice anchors nothing downstream yet, so a failed child is
+    // logged (its own `onFailure` emitted the realtime `failed` event for the
+    // card) and the run goes on; the character just has no voice.
     const sequenceId = input.sequenceId;
     const voicePromises = createdCharacters
       .filter(
@@ -212,23 +214,30 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           voiceDescription: row.voiceDescription ?? '',
           analysisModelId: input.analysisModelId,
         };
-        await spawnAndAwaitChild<
-          CharacterVoiceWorkflowInput,
-          CharacterVoiceWorkflowResult
-        >(step, {
-          binding: this.env.CHARACTER_VOICE_WORKFLOW,
-          parentBindingName: PARENT_BINDING_NAME,
-          parentInstanceId: event.instanceId,
-          childId: `character-voice:${row.id}`,
-          childPayload,
-          spawnStepName: `spawn-character-voice-${row.characterId}`,
-          awaitStepName: `await-character-voice-${row.characterId}`,
-          timeout: '30 minutes',
-        });
+        try {
+          await spawnAndAwaitChild<
+            CharacterVoiceWorkflowInput,
+            CharacterVoiceWorkflowResult
+          >(step, {
+            binding: this.env.CHARACTER_VOICE_WORKFLOW,
+            parentBindingName: PARENT_BINDING_NAME,
+            parentInstanceId: event.instanceId,
+            childId: `character-voice:${row.id}`,
+            childPayload,
+            spawnStepName: `spawn-character-voice-${row.characterId}`,
+            awaitStepName: `await-character-voice-${row.characterId}`,
+            timeout: '30 minutes',
+          });
+        } catch (err) {
+          logger.error(
+            `[CharacterBibleWorkflow:cf] Child character-voice failed for ${character.name}:`,
+            { err }
+          );
+        }
       });
 
     const settled = await Promise.allSettled(spawnPromises);
-    const voiceSettled = await Promise.allSettled(voicePromises);
+    await Promise.all(voicePromises);
 
     const seqCharacters: CharacterMinimal[] = [];
     const failures: { name: string; reason: string }[] = [];
@@ -300,18 +309,6 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         voiceOnly: true,
         consistencyTag: character.consistencyTag,
       });
-    }
-
-    for (const outcome of voiceSettled) {
-      if (outcome.status !== 'rejected') continue;
-      const reason =
-        outcome.reason instanceof Error
-          ? outcome.reason.message
-          : String(outcome.reason);
-      logger.error('[CharacterBibleWorkflow:cf] Child character-voice failed', {
-        err: outcome.reason,
-      });
-      failures.push({ name: 'voice', reason });
     }
 
     if (failures.length > 0) {

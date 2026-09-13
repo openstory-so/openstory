@@ -16,6 +16,7 @@ import {
   type DraftGenerationEstimateInput,
 } from '@/sequences/ui/use-draft-generation-estimate';
 import type { GenerationStage } from '@/sequences/pipeline';
+import { useVoiceDesignAvailable } from '@/cast/ui/use-voice-design-available';
 import { useEffect, useState, type FC } from 'react';
 
 type GenerationStopAlertProps = {
@@ -39,7 +40,7 @@ type GenerationStopAlertProps = {
   /** Shared with the Generate footer so slider ticks reuse the same query. */
   estimateBase?: Omit<
     DraftGenerationEstimateInput,
-    'stopAt' | 'generateStartFrames'
+    'stopAt' | 'generateStartFrames' | 'generateVoices'
   > | null;
 };
 
@@ -68,12 +69,20 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
     setDraftRemember(remember);
   }, [open, stopAt, generateStartFrames, generateVoices, remember]);
 
+  // Deployment fact (platform ElevenLabs key), not a team one. When known to
+  // be absent, the switch is hidden and the flag forced off so a remembered
+  // `true` never reaches the launcher, which refuses it. While still unknown
+  // the draft stands — forcing it off here would persist the drop.
+  const voicesUnavailable = useVoiceDesignAvailable() === false;
+  const voices = voicesUnavailable ? false : draftVoices;
+
   const estimate = useDraftGenerationEstimate(
     open && estimateBase
       ? {
           ...estimateBase,
           stopAt: draftStopAt,
           generateStartFrames: draftStartFrames,
+          generateVoices: voices,
         }
       : null
   );
@@ -92,8 +101,10 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
           onChange={setDraftStopAt}
           generateStartFrames={draftStartFrames}
           onGenerateStartFramesChange={setDraftStartFrames}
-          generateVoices={draftVoices}
-          onGenerateVoicesChange={setDraftVoices}
+          generateVoices={voices}
+          onGenerateVoicesChange={
+            voicesUnavailable ? undefined : setDraftVoices
+          }
         />
         <AlertDialogFooter className="sm:items-start">
           {/* "Don't ask again" lives in the button bar, opposite the buttons,
@@ -117,7 +128,7 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
                 onConfirm({
                   stopAt: draftStopAt,
                   generateStartFrames: draftStartFrames,
-                  generateVoices: draftVoices,
+                  generateVoices: voices,
                   remember: draftRemember,
                 })
               }

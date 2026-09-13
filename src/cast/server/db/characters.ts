@@ -271,9 +271,13 @@ export function createCharactersMethods(db: Database) {
 
     /**
      * Rows (any team — the id is the ElevenLabs account's) still pointing at
-     * a voice, across characters AND talent. Zero = the slot can be freed.
+     * a voice, across characters AND talent, soft-deleted rows included:
+     * soft-delete stamps `deletedAt` and THEN releases (provider first, row
+     * second), so a deleted row still holding an id is a release that
+     * failed, and the voice it names is still on the account. `get` prefix
+     * on purpose: it is a read, so the workflow surface strips it.
      */
-    countVoiceReferences: async (voiceId: string): Promise<number> => {
+    getVoiceReferenceCount: async (voiceId: string): Promise<number> => {
       const [chars] = await db
         .select({ n: count() })
         .from(characters)
