@@ -1,5 +1,4 @@
 {
-  "_comment": "Hand-assembled after the 2026-09-12 record (#1585): this contact-sheet call for scene 1 shot 3 was still in flight at api.x.ai when the spec finished, so aimock never recorded it. Match text is the exact replayed request; the response reuses the sibling contact sheet recorded for scene 2 shot 1 (openai-2026-09-12T22-30-28-975Z-9a3e3bfd.json). Nothing in the spec reads the grid image. The next full record replaces it.",
   "fixtures": [
     {
       "match": {
@@ -9,7 +8,7 @@
       },
       "response": {
         "image": {
-          "url": "https://assets.openstory.so/e2e/1654bb13caa2e13f3c49feb740c1f89f950755c70f1b0c8867278a05d1df6d1b.png",
+          "url": "https://assets.openstory.so/e2e/979caa3570e92163d6973750e1f17c237ea20185243d593d0995c2a829f43ce0.png",
           "mime_type": "image/png"
         }
       }

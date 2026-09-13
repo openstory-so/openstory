@@ -48,36 +48,6 @@ export type FixtureFile = z.infer<typeof fixtureFileSchema>;
 
 const sceneIdRowSchema = z.object({ sceneId: z.string() });
 
-export const recordedCurrentSceneSchema = z.object({
-  sceneId: z.string(),
-  sceneNumber: z.number(),
-  originalScript: z.object({
-    extract: z.string(),
-    dialogue: z.array(
-      z.object({
-        character: z.string(),
-        line: z.string(),
-        tone: z.string(),
-      })
-    ),
-  }),
-  metadata: z.object({
-    title: z.string(),
-    durationSeconds: z.number(),
-    location: z.string(),
-    timeOfDay: z.string(),
-    storyBeat: z.string(),
-  }),
-  continuity: z.object({
-    characterTags: z.array(z.string()),
-    environmentTag: z.string(),
-    elementTags: z.array(z.string()).nullable(),
-    colorPalette: z.string(),
-    lightingSetup: z.string(),
-    styleTag: z.string(),
-  }),
-});
-
 function parseJson(raw: string): unknown {
   return JSON.parse(raw);
 }
@@ -260,11 +230,3 @@ export function extractTaggedJson<T>(
 ): T {
   return schema.parse(parseJson(block(userMessage, tag)));
 }
-
-export const visualPromptResponseSchema = z.object({
-  visual: z
-    .object({
-      fullPrompt: z.string().optional(),
-    })
-    .optional(),
-});
