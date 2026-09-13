@@ -1,0 +1,34 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Animatic frame. medium wide. eye level. Scarlett strides toward camera through the hallway, carrying the lipstick in one hand and a canvas tote in the other, phone still on the radiator shelf behind her.. Scarlett snaps the lipstick shut, puts it in the tote, and doubles back for her phone.. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+        "model": "fal-ai/krea-2/turbo"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://assets.openstory.so/e2e/60ecb4d4eb6b274f4bb3e38a02af984def4273014ab8f7be2de831097e791950.png",
+              "content_type": "image/png",
+              "file_name": "TnzS9PgCilg48wedNjOh-_libOYDmv.png",
+              "file_size": null,
+              "width": 1024,
+              "height": 576
+            }
+          ],
+          "timings": {
+            "inference": 1.037491990995477
+          },
+          "seed": 655931251,
+          "has_nsfw_concepts": [false],
+          "prompt": "Animatic frame. medium wide. eye level. Scarlett strides toward camera through the hallway, carrying the lipstick in one hand and a canvas tote in the other, phone still on the radiator shelf behind her.. Scarlett snaps the lipstick shut, puts it in the tote, and doubles back for her phone.. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+          "actual_prompt": null
+        },
+        "status": 200,
+        "billableUnits": 0.5625
+      }
+    }
+  ]
+}

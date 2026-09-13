@@ -1,0 +1,34 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Animatic frame. medium close-up. over-the-shoulder. Scarlett stands at the sink in a black turtleneck, holding a sealed coral lipstick carton in one hand while her phone rests beside the faucet.. Scarlett tears open the coral lipstick carton while ignoring the vibrating phone.. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+        "model": "fal-ai/krea-2/turbo"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://assets.openstory.so/e2e/92486e69107a626f5d4337304c739bf271973275b202049ee8890469680c3a6f.png",
+              "content_type": "image/png",
+              "file_name": "i3xiQYR4UzBYdyKPHl74T_rnhJVOg8.png",
+              "file_size": null,
+              "width": 1024,
+              "height": 576
+            }
+          ],
+          "timings": {
+            "inference": 0.8085078939911909
+          },
+          "seed": 384189664,
+          "has_nsfw_concepts": [false],
+          "prompt": "Animatic frame. medium close-up. over-the-shoulder. Scarlett stands at the sink in a black turtleneck, holding a sealed coral lipstick carton in one hand while her phone rests beside the faucet.. Scarlett tears open the coral lipstick carton while ignoring the vibrating phone.. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+          "actual_prompt": null
+        },
+        "status": 200,
+        "billableUnits": 0.5625
+      }
+    }
+  ]
+}
