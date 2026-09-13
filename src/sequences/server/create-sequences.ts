@@ -146,6 +146,7 @@ export const createSequences = createServerOnlyFn(
       autoGenerateMotion,
       autoGenerateMusic,
       generateStartFrames = false,
+      generateVoices = false,
       musicModel,
       audioModels: audioModelsInput,
       targetDurationSeconds,
@@ -300,6 +301,7 @@ export const createSequences = createServerOnlyFn(
       autoGenerateMusic,
       audioModels,
       referenceOnly: !generateStartFrames,
+      generateVoices,
       // Align with Generate ActionCost (duration chip → scene count + clip length).
       targetDurationSeconds,
       pricing: await getEffectiveFalPricing(),
@@ -353,6 +355,7 @@ export const createSequences = createServerOnlyFn(
               autoGenerateMusic,
               generationStopAt: stopAt,
               generateStartFrames,
+              generateVoices,
               suggestedTalentIds: suggestedTalentIds?.length
                 ? suggestedTalentIds
                 : undefined,

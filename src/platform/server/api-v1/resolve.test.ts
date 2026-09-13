@@ -71,6 +71,8 @@ function makeTalent(
     description: null,
     personality: null,
     movement: null,
+    voiceId: null,
+    voiceDescription: null,
     imageUrl: null,
     imagePath: null,
     isFavorite: false,

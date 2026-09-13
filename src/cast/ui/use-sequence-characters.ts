@@ -15,6 +15,9 @@ import {
   getSequenceCharactersFn,
   recastCharacterFn,
   regenerateCharacterSheetFn,
+  chooseCharacterVoiceTakeFn,
+  generateCharacterVoiceFn,
+  setCharacterVoiceEnabledFn,
   restoreSequenceCharacterFn,
   softDeleteSequenceCharacterFn,
   updateSequenceCharacterFn,
@@ -94,7 +97,48 @@ type CharacterBibleInput = {
   distinguishingFeatures?: string;
   personality?: string;
   movement?: string;
+  voiceDescription?: string;
 };
+
+/** Voice design (#1553): the workflow's realtime events refresh the list. */
+export function useGenerateCharacterVoice() {
+  return useMutation({
+    mutationFn: (data: { sequenceId: string; characterId: string }) =>
+      generateCharacterVoiceFn({ data }),
+  });
+}
+
+export function useSetCharacterVoiceEnabled() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      sequenceId: string;
+      characterId: string;
+      enabled: boolean;
+    }) => setCharacterVoiceEnabledFn({ data }),
+    onSuccess: (_result, { sequenceId }) => {
+      void queryClient.invalidateQueries({
+        queryKey: sequenceCharacterKeys.list(sequenceId),
+      });
+    },
+  });
+}
+
+export function useChooseCharacterVoiceTake() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      sequenceId: string;
+      characterId: string;
+      generatedVoiceId: string;
+    }) => chooseCharacterVoiceTakeFn({ data }),
+    onSuccess: (_result, { sequenceId }) => {
+      void queryClient.invalidateQueries({
+        queryKey: sequenceCharacterKeys.list(sequenceId),
+      });
+    },
+  });
+}
 
 /** Manual character create (#1108 Phase 2) — sheet-less until recast. */
 export function useCreateSequenceCharacter() {

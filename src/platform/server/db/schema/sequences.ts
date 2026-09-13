@@ -173,6 +173,13 @@ export const sequences = snakeCase.table(
     // so flipping it re-stales the prompts rather than mixing two styles.
     generateStartFrames: integer({ mode: 'boolean' }).default(false).notNull(),
 
+    // Sequence default for "design an ElevenLabs voice per speaking
+    // character" (#1553). `characters.useVoice` overrides it per character,
+    // NULL = inherit; resolve with `usesVoice()`. Off by default: a saved
+    // voice spends an account-wide ElevenLabs slot. Snapshotted onto the
+    // storyboard payload at the trigger like `generateStartFrames`.
+    generateVoices: integer({ mode: 'boolean' }).default(false).notNull(),
+
     // Auto-generation flags (derived from generationStopAt at trigger time).
     // Kept so existing readers (progress banner, smart-retry, API v1) keep
     // working; stop-at is the source of truth (#1408).

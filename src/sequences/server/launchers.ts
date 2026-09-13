@@ -48,6 +48,7 @@ import {
   getAnalysisModelById,
 } from '@/models/models.config';
 import { generateId } from '@/platform/id';
+import { isElevenLabsConfigured } from '@/models/server/elevenlabs-config';
 import { NotFoundError, ValidationError } from '@/platform/errors';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Sequence } from '@/platform/server/db/schema';
@@ -144,6 +145,13 @@ async function resolveStoryboardPayload(
   if (!hasSnapshot && !sequence.styleId) {
     throw new ValidationError('Sequence has no style selected');
   }
+  // Voices need the platform ElevenLabs key (#1553). Refuse here, at the one
+  // choke point every run passes, rather than fail the bible stage mid-run.
+  if (sequence.generateVoices && !isElevenLabsConfigured()) {
+    throw new ValidationError(
+      'Voice design is not configured on this deployment. Turn Voices off to generate.'
+    );
+  }
 
   const style = hasSnapshot
     ? null
@@ -191,6 +199,8 @@ async function resolveStoryboardPayload(
       description: t.description,
       personality: t.personality ?? '',
       movement: t.movement ?? '',
+      voiceId: t.voiceId,
+      voiceDescription: t.voiceDescription,
     })),
     suggestedLocations: suggestedLocationRows.map((l) => ({
       locationId: l.id,
@@ -219,6 +229,7 @@ async function resolveStoryboardPayload(
     // Pinned like every other generation setting: a toggle mid-run must not
     // leave one half of the pipeline rendering stills and the other half not.
     referenceOnly: !sequence.generateStartFrames,
+    generateVoices: sequence.generateVoices,
     ownerEmail: await scopedDb.teamManagement.getMemberEmail(input.userId),
     sequenceUrl: sequenceScenesUrl(sequenceId),
     // Pin stop-at from this click, else the sequence snapshot — never let

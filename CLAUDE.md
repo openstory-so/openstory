@@ -433,6 +433,43 @@ conservative 3 × 1000-char preview over-estimate). `recordFalUsage: false`,
 unaudited like xAI/Google/Ark spend. Do not alias onto
 `fal-ai/elevenlabs/music` — that is a different product.
 
+**Character voices (#1553).** `sequences.generateVoices` (Generate dialog
+"Voices" switch, off by default) is the sequence default; `characters.useVoice`
+overrides it per character (NULL = inherit) — resolve with `usesVoice()`.
+The launcher refuses the flag when `isElevenLabsConfigured()` is false and
+the Generate dialog hides the switch (`getVoiceDesignAvailableFn`).
+`CharacterBibleWorkflow` spawns a `CharacterVoiceWorkflow` child per
+_speaking_ character (`speakingCharacterIds()`: a bible name sharing a
+non-stopword token with a dialogue speaker cue — articles and honorifics
+never match; every character when a blank cue is present, which the
+shot-list call (#1585) emits only for a voice nobody could attribute; nobody
+when there is no dialogue at all). Cues are the shot-list call's per-shot
+lines, spelled as the cast list spells them, with narration spoken by the
+voice-only entry — `extractDialogueFromSlice` is only the streaming preview
+and never reaches the matcher. A voice-only character (`voiceOnly`, no
+sheet) is the usual narrator and gets a voice like anyone else. The child
+runs for each such character that resolves true and has no `voiceId` yet.
+A failed voice child is logged and the run continues — a voice anchors
+nothing downstream. The LLM drafts `voiceDescription` when empty
+(`phase/voice-design-chat`), Voice Design's previews are parked in R2
+(`characters.voicePreviews`, AUDIO bucket) and the first is saved as the
+voice; "Use" on another take saves it instead (`chooseCharacterVoiceTakeFn`,
+which writes the new id then releases the old, and moves the take to the
+front — while `voiceId` is set, `voicePreviews[0]` is the saved voice; a 404
+is reported as an expired take). Previews cost no slot; a saved voice is an
+**account-wide** ElevenLabs slot, so the id is shared by copy (talent ↔
+character at cast / save-to-library) and freed only through
+`releaseVoiceIfUnreferenced` (`getVoiceReferenceCount` over both tables,
+**provider delete first, row write second** so a failed delete stays
+retryable; `heldBy: 1` when the caller's own row still holds the id) on
+character soft-delete, per-character switch-off, choose-take, recast to a
+talent with a different voice, sequence archive (before the status flip, so
+a failed release is retryable), talent delete and regenerate — never a bare
+delete, and the upsert keeps a voice the row already holds. Billed at
+`VOICE_DESIGN_COST` per design call; pre-flight prices one call per
+estimated character (`generateVoices` on `estimateStoryboardCost`), the
+in-run gate the real speaking count.
+
 Out of scope here: voice cloning from an uploaded sample, realtime/agents.
 
 ### Native Grok (xAI)

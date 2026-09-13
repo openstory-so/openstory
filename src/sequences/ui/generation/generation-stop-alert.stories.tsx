@@ -10,6 +10,7 @@ function OpenAlert() {
       onOpenChange={setOpen}
       stopAt="music"
       generateStartFrames={false}
+      generateVoices={false}
       remember={false}
       onConfirm={() => setOpen(false)}
     />

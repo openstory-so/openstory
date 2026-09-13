@@ -16,6 +16,7 @@ export type DraftGenerationEstimateInput = {
   resolution?: Resolution;
   stopAt: GenerationStage;
   generateStartFrames: boolean;
+  generateVoices: boolean;
   targetDurationSeconds?: number;
 };
 
@@ -47,6 +48,7 @@ export function useDraftGenerationEstimate(
       input?.resolution,
       input?.stopAt,
       input?.generateStartFrames,
+      input?.generateVoices,
       input?.targetDurationSeconds,
     ],
     queryFn: async () => {
@@ -61,6 +63,7 @@ export function useDraftGenerationEstimate(
           resolution: input.resolution,
           stopAt: input.stopAt,
           generateStartFrames: input.generateStartFrames,
+          generateVoices: input.generateVoices,
           targetDurationSeconds: input.targetDurationSeconds,
         },
       });

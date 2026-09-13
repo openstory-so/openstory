@@ -670,6 +670,7 @@ export function updateQueryCacheFromEvent(
     }
 
     case 'generation.character-sheet:progress':
+    case 'generation.character-voice:progress':
     case 'generation.talent:matched':
       // Cast was created / cast / had its sheet generated during a run.
       // Refresh the character list so the cast grid (TalentView) and the

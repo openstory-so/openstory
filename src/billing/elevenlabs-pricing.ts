@@ -49,6 +49,9 @@ export const ELEVENLABS_VOICE_DESIGN_ENDPOINT = 'elevenlabs-voice-design';
  * without a unit-count signal, which gates on the $0.10 floor instead of
  * the real price.
  */
+/** One Voice Design call (#1553): three previews, no slot. */
+export const VOICE_DESIGN_COST = micros(300_000);
+
 export const ELEVENLABS_RATE_CARD: Record<string, EffectiveFalPricing> = {
   // eleven_v3 / eleven_multilingual_v2 — $0.10 per 1,000 characters.
   // Flash / Turbo is $0.05; we keep the quality-tier rate so the credit
@@ -59,7 +62,7 @@ export const ELEVENLABS_RATE_CARD: Record<string, EffectiveFalPricing> = {
     typicalUnitsPerCall: 1,
   },
   [ELEVENLABS_VOICE_DESIGN_ENDPOINT]: {
-    unitPrice: micros(300_000),
+    unitPrice: VOICE_DESIGN_COST,
     unit: 'generations',
     typicalUnitsPerCall: 1,
   },

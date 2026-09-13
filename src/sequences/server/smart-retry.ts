@@ -207,6 +207,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
         autoGenerateMusic: sequence.autoGenerateMusic,
         audioModels: [safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)],
         referenceOnly: !sequence.generateStartFrames,
+        generateVoices: sequence.generateVoices,
         pricing: await getEffectiveFalPricing(),
       }),
       {

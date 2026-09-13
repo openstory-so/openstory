@@ -32,6 +32,7 @@ import {
 import type { LibraryTalentSheetWorkflowInput } from '@/platform/server/workflow/types';
 import { computeLibraryTalentSheetHashFromDto } from '@/cast/server/workflows/sheet-snapshots';
 import { characterToBible } from '@/cast/server/bibles-from-scoped';
+import { releaseVoiceIfUnreferenced } from '@/cast/server/voice/release-voice';
 import { isTeamWritableTalent } from '@/cast/server/db/talent';
 import { createLibraryTalent } from '@/cast/server/talent/create-library-talent';
 import { analyzeTalentMediaForTeam } from '@/cast/server/talent/analyze-talent-media';
@@ -140,11 +141,24 @@ export const deleteTalentFn = createServerFn({ method: 'POST' })
   .handler(async ({ context, data }) => {
     await requireTeamAdminAccess(context.user.id, context.teamId);
 
-    const deleted = await context.scopedDb.talent.delete(data.talentId);
-    if (!deleted) {
+    const existing = await context.scopedDb.talent.getWithRelations(
+      data.talentId
+    );
+    if (!existing || !isTeamWritableTalent(existing, context.teamId)) {
       throw new Error(
         'Talent not found, is read-only, or you do not have permission to delete it'
       );
+    }
+    // Slot first, row second (#1553): a failed ElevenLabs delete keeps the
+    // pointer on this row, so the next attempt can release it. This row is
+    // the one reference the count must ignore.
+    if (existing.voiceId) {
+      await releaseVoiceIfUnreferenced(context.scopedDb, existing.voiceId, {
+        heldBy: 1,
+      });
+    }
+    if (!(await context.scopedDb.talent.delete(data.talentId))) {
+      throw new Error('Talent not found');
     }
 
     return { success: true };
@@ -480,6 +494,9 @@ export const addCharacterToLibraryFn = createServerFn({ method: 'POST' })
       description: character.physicalDescription ?? undefined,
       personality: character.personality ?? undefined,
       movement: character.movement ?? undefined,
+      // Same ElevenLabs voice on both rows (#1553) — released when the last goes.
+      voiceId: character.voiceId ?? undefined,
+      voiceDescription: character.voiceDescription ?? undefined,
       imageUrl: character.sheetImageUrl ?? undefined,
       imagePath: character.sheetImagePath ?? undefined,
       isFavorite: false,

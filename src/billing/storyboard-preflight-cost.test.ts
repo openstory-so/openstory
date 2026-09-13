@@ -5,7 +5,12 @@ import {
   DEFAULT_MUSIC_MODEL,
   DEFAULT_VIDEO_MODEL,
 } from '@/models/models';
-import { estimateStoryboardCost } from './cost-estimation';
+import {
+  estimateCharacterSheetCount,
+  estimateStoryboardCost,
+} from './cost-estimation';
+import { VOICE_DESIGN_COST } from './elevenlabs-pricing';
+import { multiplyMicros } from './money';
 import { estimateStoryboardPreflightCost } from './storyboard-preflight-cost';
 import { estimateSceneCount } from '@/sequences/time-estimate';
 
@@ -141,5 +146,43 @@ describe('estimateStoryboardPreflightCost', () => {
         })
       )
     ).toBe(0);
+  });
+
+  it('prices one Voice Design call per estimated character when voices are on (#1553)', () => {
+    const script = 'Scene 1 — 5s\nA room.\n\nScene 2 — 5s\nAnother room.';
+    const off = estimateStoryboardPreflightCost({
+      ...base,
+      script,
+      stopAt: 'references',
+    });
+    const on = estimateStoryboardPreflightCost({
+      ...base,
+      script,
+      stopAt: 'references',
+      generateVoices: true,
+    });
+    expect(on - off).toBe(
+      multiplyMicros(
+        VOICE_DESIGN_COST,
+        estimateCharacterSheetCount(estimateSceneCount(script))
+      )
+    );
+    // Not in the slice → not billed.
+    expect(
+      estimateStoryboardPreflightCost({
+        ...base,
+        script,
+        startFrom: 'images',
+        stopAt: 'images',
+        generateVoices: true,
+      })
+    ).toBe(
+      estimateStoryboardPreflightCost({
+        ...base,
+        script,
+        startFrom: 'images',
+        stopAt: 'images',
+      })
+    );
   });
 });

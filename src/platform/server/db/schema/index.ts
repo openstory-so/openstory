@@ -293,6 +293,7 @@ export type {
   Character,
   CharacterMinimal,
   CharacterWithTalent,
+  VoicePreview,
   NewCharacter,
   SheetStatus,
 } from './characters';

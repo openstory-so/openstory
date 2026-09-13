@@ -21,8 +21,11 @@ import type {
   CharacterBibleWorkflowInput,
   CharacterSheetWorkflowInput,
   CharacterSheetWorkflowResult,
+  CharacterVoiceWorkflowInput,
+  CharacterVoiceWorkflowResult,
   TalentCharacterMatch,
 } from '@/platform/server/workflow/types';
+import { usesVoice } from '@/cast/voice';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { getLogger } from '@/platform/logger';
 
@@ -58,7 +61,17 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         // them to `generating`. A voice-only character (#1585) is completed
         // by design with no sheet version, so nothing waits on it — unlike
         // the #939 case, which was a FAILED sheet left `completed`.
-        const results: Array<{ id: string; characterId: string }> = [];
+        // The upsert's returned row is the one read of live state here: it
+        // says whether the character already holds a voice (never design a
+        // second — a saved voice is an account-wide slot) and whether the
+        // user switched voices off for it while the run was stopped.
+        const results: Array<{
+          id: string;
+          characterId: string;
+          voiceId: string | null;
+          voiceDescription: string | null;
+          useVoice: boolean | null;
+        }> = [];
         for (const character of input.characterBible) {
           const created = await scopedDb.characters.create(
             buildCharacterInsert({
@@ -68,7 +81,13 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
               sheetStatus: character.voiceOnly ? 'completed' : 'generating',
             })
           );
-          results.push({ id: created.id, characterId: created.characterId });
+          results.push({
+            id: created.id,
+            characterId: created.characterId,
+            voiceId: created.voiceId,
+            voiceDescription: created.voiceDescription,
+            useVoice: created.useVoice,
+          });
         }
         return results;
       }
@@ -166,7 +185,59 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       };
     });
 
+    // Voices (#1553) ride alongside the sheets: one child per speaking
+    // character that resolves `usesVoice()` true and has none yet. Unlike a
+    // sheet, a voice anchors nothing downstream yet, so a failed child is
+    // logged (its own `onFailure` emitted the realtime `failed` event for the
+    // card) and the run goes on; the character just has no voice.
+    const sequenceId = input.sequenceId;
+    const voicePromises = createdCharacters
+      .filter(
+        (row) =>
+          sequenceId !== undefined &&
+          input.speakingCharacterIds.includes(row.characterId) &&
+          usesVoice(row, { generateVoices: input.generateVoices }) &&
+          !row.voiceId
+      )
+      .map(async (row) => {
+        const character = input.characterBible.find(
+          (c) => c.characterId === row.characterId
+        );
+        if (!character || sequenceId === undefined) return;
+        const childPayload: CharacterVoiceWorkflowInput = {
+          userId: input.userId,
+          teamId: input.teamId,
+          sequenceId,
+          reservationId: input.reservationId,
+          characterDbId: row.id,
+          characterBible: character,
+          voiceDescription: row.voiceDescription ?? '',
+          analysisModelId: input.analysisModelId,
+        };
+        try {
+          await spawnAndAwaitChild<
+            CharacterVoiceWorkflowInput,
+            CharacterVoiceWorkflowResult
+          >(step, {
+            binding: this.env.CHARACTER_VOICE_WORKFLOW,
+            parentBindingName: PARENT_BINDING_NAME,
+            parentInstanceId: event.instanceId,
+            childId: `character-voice:${row.id}`,
+            childPayload,
+            spawnStepName: `spawn-character-voice-${row.characterId}`,
+            awaitStepName: `await-character-voice-${row.characterId}`,
+            timeout: '30 minutes',
+          });
+        } catch (err) {
+          logger.error(
+            `[CharacterBibleWorkflow:cf] Child character-voice failed for ${character.name}:`,
+            { err }
+          );
+        }
+      });
+
     const settled = await Promise.allSettled(spawnPromises);
+    await Promise.all(voicePromises);
 
     const seqCharacters: CharacterMinimal[] = [];
     const failures: { name: string; reason: string }[] = [];

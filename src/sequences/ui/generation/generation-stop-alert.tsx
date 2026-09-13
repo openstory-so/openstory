@@ -16,6 +16,7 @@ import {
   type DraftGenerationEstimateInput,
 } from '@/sequences/ui/use-draft-generation-estimate';
 import type { GenerationStage } from '@/sequences/pipeline';
+import { useVoiceDesignAvailable } from '@/cast/ui/use-voice-design-available';
 import { useEffect, useState, type FC } from 'react';
 
 type GenerationStopAlertProps = {
@@ -24,10 +25,13 @@ type GenerationStopAlertProps = {
   stopAt: GenerationStage;
   /** Start frames on/off rides with the stop-at: off hides the Images stop. */
   generateStartFrames: boolean;
+  /** Design a voice per speaking character (#1553). */
+  generateVoices: boolean;
   remember: boolean;
   onConfirm: (next: {
     stopAt: GenerationStage;
     generateStartFrames: boolean;
+    generateVoices: boolean;
     remember: boolean;
   }) => void;
   /** Extra copy — e.g. Generate Copy warning. */
@@ -36,7 +40,7 @@ type GenerationStopAlertProps = {
   /** Shared with the Generate footer so slider ticks reuse the same query. */
   estimateBase?: Omit<
     DraftGenerationEstimateInput,
-    'stopAt' | 'generateStartFrames'
+    'stopAt' | 'generateStartFrames' | 'generateVoices'
   > | null;
 };
 
@@ -45,6 +49,7 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
   onOpenChange,
   stopAt,
   generateStartFrames,
+  generateVoices,
   remember,
   onConfirm,
   description,
@@ -53,14 +58,23 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
 }) => {
   const [draftStopAt, setDraftStopAt] = useState(stopAt);
   const [draftStartFrames, setDraftStartFrames] = useState(generateStartFrames);
+  const [draftVoices, setDraftVoices] = useState(generateVoices);
   const [draftRemember, setDraftRemember] = useState(remember);
 
   useEffect(() => {
     if (!open) return;
     setDraftStopAt(stopAt);
     setDraftStartFrames(generateStartFrames);
+    setDraftVoices(generateVoices);
     setDraftRemember(remember);
-  }, [open, stopAt, generateStartFrames, remember]);
+  }, [open, stopAt, generateStartFrames, generateVoices, remember]);
+
+  // Deployment fact (platform ElevenLabs key), not a team one. When known to
+  // be absent, the switch is hidden and the flag forced off so a remembered
+  // `true` never reaches the launcher, which refuses it. While still unknown
+  // the draft stands — forcing it off here would persist the drop.
+  const voicesUnavailable = useVoiceDesignAvailable() === false;
+  const voices = voicesUnavailable ? false : draftVoices;
 
   const estimate = useDraftGenerationEstimate(
     open && estimateBase
@@ -68,6 +82,7 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
           ...estimateBase,
           stopAt: draftStopAt,
           generateStartFrames: draftStartFrames,
+          generateVoices: voices,
         }
       : null
   );
@@ -86,6 +101,10 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
           onChange={setDraftStopAt}
           generateStartFrames={draftStartFrames}
           onGenerateStartFramesChange={setDraftStartFrames}
+          generateVoices={voices}
+          onGenerateVoicesChange={
+            voicesUnavailable ? undefined : setDraftVoices
+          }
         />
         <AlertDialogFooter className="sm:items-start">
           {/* "Don't ask again" lives in the button bar, opposite the buttons,
@@ -109,6 +128,7 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
                 onConfirm({
                   stopAt: draftStopAt,
                   generateStartFrames: draftStartFrames,
+                  generateVoices: voices,
                   remember: draftRemember,
                 })
               }

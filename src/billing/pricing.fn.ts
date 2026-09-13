@@ -108,6 +108,7 @@ const estimateDraftGenerationInputSchema = z.object({
   resolution: resolutionSchema.optional(),
   stopAt: generationStageSchema,
   generateStartFrames: z.boolean(),
+  generateVoices: z.boolean(),
   targetDurationSeconds: z.number().int().positive().optional(),
 });
 
@@ -147,6 +148,7 @@ export const estimateDraftGenerationFn = createServerFn({ method: 'POST' })
       autoGenerateMotion: true,
       autoGenerateMusic: true,
       referenceOnly: !data.generateStartFrames,
+      generateVoices: data.generateVoices,
       targetDurationSeconds: data.targetDurationSeconds,
       pricing,
     });

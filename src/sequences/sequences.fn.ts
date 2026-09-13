@@ -67,6 +67,7 @@ import type {
   StoryboardTriggerInput,
 } from '@/platform/server/workflow/types';
 import { createServerFn } from '@tanstack/react-start';
+import { releaseCharacterVoice } from '@/cast/server/voice/release-voice';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import {
@@ -177,6 +178,7 @@ export const estimateGenerationSliceFn = createServerFn({ method: 'GET' })
       startFrom: data.startFrom,
       stopAt: data.stopAt,
       referenceOnly: !sequence.generateStartFrames,
+      generateVoices: sequence.generateVoices,
       autoGenerateMotion: motionOn,
       videoModels: motionOn ? [videoModel] : undefined,
       videoDurationSeconds: motionOn ? perShotSeconds : undefined,
@@ -271,6 +273,7 @@ export const continueGenerationFn = createServerFn({ method: 'POST' })
             stopAt: data.stopAt,
             startFrom: data.startFrom,
             referenceOnly: !sequence.generateStartFrames,
+            generateVoices: sequence.generateVoices,
             videoModels: [
               safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
             ],
@@ -410,6 +413,7 @@ export const updateSequenceFn = createServerFn({ method: 'POST' })
                 safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL),
               ],
               referenceOnly: !sequence.generateStartFrames,
+              generateVoices: sequence.generateVoices,
               pricing: await getEffectiveFalPricing(),
             }),
             {
@@ -562,6 +566,7 @@ export const retryStoryboardFn = createServerFn({ method: 'POST' })
               safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL),
             ],
             referenceOnly: !sequence.generateStartFrames,
+            generateVoices: sequence.generateVoices,
             pricing: await getEffectiveFalPricing(),
           }),
           {
@@ -605,6 +610,17 @@ export const archiveSequenceFn = createServerFn({ method: 'POST' })
   .handler(async ({ context }) => {
     const prevStatus = context.sequence.status;
     if (prevStatus === 'archived') return { success: true };
+    // Archive is the product's delete: free the cast's voice slots (#1553).
+    // Descriptions and previews stay, so an unarchive can regenerate. Runs
+    // BEFORE the status flip: a failed release throws past it, the sequence
+    // stays live, and the next click retries the rows still holding an id.
+    // Known gap: a voice child still running lands its id after this loop;
+    // that slot is only freed by a later soft-delete or regenerate.
+    for (const character of await context.scopedDb.characters.list(
+      context.sequence.id
+    )) {
+      await releaseCharacterVoice(context.scopedDb, character);
+    }
     await context.scopedDb
       .sequence(context.sequence.id)
       .updateStatus('archived');

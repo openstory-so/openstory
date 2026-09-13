@@ -2,6 +2,7 @@ import { elementKindFromFilename } from '@/cast/element-kind';
 import { ThinkingBar } from '@/ui/ai/thinking-bar';
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
 import { ActionCost } from '@/billing/ui/action-cost';
+import { useVoiceDesignAvailable } from '@/cast/ui/use-voice-design-available';
 import { useWelcomeCreditsGate } from '@/billing/ui/welcome-credits-dialog';
 import { PremiumCard } from '@/ui/cards/premium-card';
 import {
@@ -270,6 +271,7 @@ export const ScriptView: FC<{
 }) => {
   const queryClient = useQueryClient();
   const isEditing = !!sequence?.id;
+  const voiceDesignAvailable = useVoiceDesignAvailable();
   const { data: composedScriptData } = useComposedScript(sequence?.id);
   const composedScript = composedScriptData?.script;
   // Analyzed sequences derive the document from scene versions (#1030), so the
@@ -363,6 +365,7 @@ export const ScriptView: FC<{
     videoModels: ImageToVideoModel[];
     stopAt: GenerationStage;
     generateStartFrames: boolean;
+    generateVoices: boolean;
     audioModels: AudioModel[];
   }>(() => ({
     generationMode: savedSettings.generationMode,
@@ -385,6 +388,9 @@ export const ScriptView: FC<{
     generateStartFrames: isEditing
       ? sequence.generateStartFrames
       : savedSettings.generateStartFrames,
+    generateVoices: isEditing
+      ? sequence.generateVoices
+      : savedSettings.generateVoices,
     audioModels:
       isEditing && sequence.musicModel
         ? [safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)]
@@ -397,6 +403,7 @@ export const ScriptView: FC<{
     videoModels,
     stopAt,
     generateStartFrames,
+    generateVoices,
     audioModels,
   } = genSettings;
   // Derived, not stored: the picker only offers tiers the chosen models serve,
@@ -737,6 +744,7 @@ export const ScriptView: FC<{
         videoModels: savedSettings.videoModels,
         stopAt: savedSettings.stopAt,
         generateStartFrames: savedSettings.generateStartFrames,
+        generateVoices: savedSettings.generateVoices,
         audioModels: savedSettings.audioModels,
       });
       hasSyncedRef.current = true;
@@ -894,10 +902,15 @@ export const ScriptView: FC<{
   const executeRegeneration = (
     run: Pick<
       typeof genSettings,
-      'stopAt' | 'generateStartFrames' | 'videoModels'
+      'stopAt' | 'generateStartFrames' | 'generateVoices' | 'videoModels'
     > = genSettings
   ) => {
-    const { stopAt: runUntil, generateStartFrames, videoModels } = run;
+    const {
+      stopAt: runUntil,
+      generateStartFrames,
+      generateVoices,
+      videoModels,
+    } = run;
     if (needsBillingSetup && !allowsUnfundedGeneration(runUntil)) {
       showGate();
       return;
@@ -921,6 +934,7 @@ export const ScriptView: FC<{
         autoGenerateMotion: flags.autoGenerateMotion,
         autoGenerateMusic: flags.autoGenerateMusic,
         generateStartFrames,
+        generateVoices,
         musicModel: audioModels[0] ?? DEFAULT_MUSIC_MODEL,
         audioModels,
         targetDurationSeconds: targetDuration,
@@ -954,10 +968,13 @@ export const ScriptView: FC<{
 
   const requestGenerate = () => {
     // Remembered paid stop + no credits: open the slider instead of firing
-    // Generate (the credit gate still runs on confirm).
+    // Generate (the credit gate still runs on confirm). Same when Voices is
+    // on but this deployment cannot design one (#1553): the launcher would
+    // refuse, and the dialog is the only place the flag can be turned off.
     if (
       savedSettings.rememberStopAt &&
-      !(needsBillingSetup && !allowsUnfundedGeneration(stopAt))
+      !(needsBillingSetup && !allowsUnfundedGeneration(stopAt)) &&
+      !(generateVoices && voiceDesignAvailable === false)
     ) {
       executeRegeneration();
       return;
@@ -1257,6 +1274,7 @@ export const ScriptView: FC<{
     ...draftEstimateBase,
     stopAt,
     generateStartFrames,
+    generateVoices,
   });
   const generateScopeLabel = runScopeLabel(stopAt);
 
@@ -1766,6 +1784,7 @@ export const ScriptView: FC<{
         onOpenChange={setShowStopAlert}
         stopAt={stopAt}
         generateStartFrames={generateStartFrames}
+        generateVoices={generateVoices}
         remember={savedSettings.rememberStopAt}
         confirmLabel={
           stopAlertMode === 'edit'
@@ -1783,10 +1802,11 @@ export const ScriptView: FC<{
         onConfirm={({
           stopAt: nextStopAt,
           generateStartFrames: nextStartFrames,
+          generateVoices: nextVoices,
           remember,
         }) => {
           const next = withStartFrames(
-            { ...genSettings, stopAt: nextStopAt },
+            { ...genSettings, stopAt: nextStopAt, generateVoices: nextVoices },
             nextStartFrames
           );
           setGenSettings(next);

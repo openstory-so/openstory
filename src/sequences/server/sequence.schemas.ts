@@ -143,6 +143,9 @@ export const createSequenceSchema = createInsertSchema(sequences, {
     // both read the parsed value, and leaving it `undefined` would make "off"
     // indistinguishable from "unset".
     generateStartFrames: z.boolean().default(false).optional(),
+    // Design an ElevenLabs voice per speaking character (#1553). Off by
+    // default: each saved voice is an account-wide slot.
+    generateVoices: z.boolean().default(false).optional(),
     // Music model selection (model key, not full ID) — primary / first of audioModels
     musicModel: z
       .string()

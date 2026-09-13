@@ -153,3 +153,11 @@ export const musicDesignResultSchema = z.object({
       '1-2 sentence music prompt describing the overall mood and progression',
   }),
 });
+
+/** Voice Design brief (#1553) — one sentence ElevenLabs casts from. */
+export const voiceDescriptionSchema = z.object({
+  voiceDescription: z.string().meta({
+    description:
+      'One 20–60 word sentence describing only what can be heard: age, gender, accent, pitch, texture, pace, attitude',
+  }),
+});

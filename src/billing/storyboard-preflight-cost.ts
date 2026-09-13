@@ -38,6 +38,8 @@ export type StoryboardPreflightInput = {
   audioModels?: AudioModel[];
   /** Renders straight to video — no shot stills to bill. */
   referenceOnly?: boolean;
+  /** One Voice Design call per estimated character (#1553). */
+  generateVoices?: boolean;
   /**
    * Enhance / Generate duration chip (15 / 30 / 60 / 120 / 180 / 300). Used for scene-count
    * pre-Enhance and for per-shot / music duration when motion or music is on.
@@ -92,6 +94,7 @@ export function estimateStoryboardPreflightCost(
     videoDurationSeconds: motionDurations?.perShotSeconds,
     autoGenerateMusic: musicOn,
     referenceOnly: opts.referenceOnly,
+    generateVoices: opts.generateVoices,
     audioModels: musicOn ? opts.audioModels : undefined,
     audioDurationSeconds: musicOn
       ? (motionDurations?.totalSeconds ?? opts.targetDurationSeconds)

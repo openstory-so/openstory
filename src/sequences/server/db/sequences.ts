@@ -325,6 +325,8 @@ export function createSequencesMethods(
       generationStopAt?: GenerationStage;
       /** Opt-in to the frame-based workflow; off = reference-only (the default). */
       generateStartFrames?: boolean;
+      /** Design a voice per speaking character (#1553); off by default. */
+      generateVoices?: boolean;
       suggestedTalentIds?: string[];
       suggestedLocationIds?: string[];
     }): Promise<Sequence> => {
@@ -355,6 +357,7 @@ export function createSequencesMethods(
         autoGenerateMusic: params.autoGenerateMusic ?? false,
         generationStopAt: params.generationStopAt,
         generateStartFrames: params.generateStartFrames ?? false,
+        generateVoices: params.generateVoices ?? false,
         suggestedTalentIds: params.suggestedTalentIds ?? null,
         suggestedLocationIds: params.suggestedLocationIds ?? null,
         status: 'draft',
