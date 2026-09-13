@@ -15,9 +15,13 @@ vi.doMock('@/platform/server/db/scoped', () => ({ resolveUserTeam }));
 const {
   apiResourceIdentifier,
   createOAuthProviderPlugins,
+  loopbackMcpResourceAliases,
   mcpResourceIdentifier,
+  mcpResourceIdentifierForRequest,
   pickOAuthIssuer,
+  resolveConfiguredOAuthIssuer,
   resolveOAuthIssuer,
+  rewriteAuthorizationIss,
 } = await import('./oauth-provider');
 const { OAUTH_API_SCOPES, OAUTH_SCOPE_DESCRIPTIONS, OAUTH_SCOPES } =
   await import('./oauth-scopes');
@@ -53,7 +57,7 @@ const session = {
 };
 
 beforeEach(() => {
-  delete envState.VITE_APP_URL;
+  envState.VITE_APP_URL = '';
   resolveUserTeam.mockReset();
 });
 
@@ -67,10 +71,13 @@ describe('resolveOAuthIssuer', () => {
 
   it('falls back to localhost when unset or a plain-HTTP LAN address', () => {
     expect(resolveOAuthIssuer()).toBe('http://localhost:3000');
+    expect(resolveConfiguredOAuthIssuer()).toBeNull();
     envState.VITE_APP_URL = 'http://192.168.1.20:3000';
     expect(resolveOAuthIssuer()).toBe('http://localhost:3000');
+    expect(resolveConfiguredOAuthIssuer()).toBeNull();
     envState.VITE_APP_URL = 'not a url';
     expect(resolveOAuthIssuer()).toBe('http://localhost:3000');
+    expect(resolveConfiguredOAuthIssuer()).toBeNull();
   });
 
   it('throws in production when the URL is missing, invalid, or plain HTTP', () => {
@@ -88,6 +95,16 @@ describe('resolveOAuthIssuer', () => {
     envState.VITE_APP_URL = 'https://openstory.so';
     expect(mcpResourceIdentifier()).toBe('https://openstory.so/mcp');
     expect(apiResourceIdentifier()).toBe('https://openstory.so/api/v1');
+  });
+
+  it('advertises the request origin as the MCP resource on loopback', () => {
+    envState.VITE_APP_URL = 'https://openstory.so';
+    expect(
+      mcpResourceIdentifierForRequest(new Request('http://localhost:3002/mcp'))
+    ).toBe('http://localhost:3002/mcp');
+    expect(
+      mcpResourceIdentifierForRequest(new Request('https://openstory.so/mcp'))
+    ).toBe('https://openstory.so/mcp');
   });
 });
 
@@ -115,6 +132,14 @@ describe('createOAuthProviderPlugins', () => {
       (plugin) => plugin.id === 'jwt'
     );
     expect(jwtPlugin?.options.disableSettingJwtHeader).toBe(true);
+  });
+
+  it('falls back to a loopback dummy issuer at init in DEV when VITE_APP_URL is unset', () => {
+    envState.VITE_APP_URL = '';
+    const jwtPlugin = createOAuthProviderPlugins().find(
+      (plugin) => plugin.id === 'jwt'
+    );
+    expect(jwtPlugin?.options.jwt?.issuer).toBe('http://localhost:3000');
   });
 
   it('disables the jwt plugin GET /token path on the auth config', () => {
@@ -166,10 +191,40 @@ describe('createOAuthProviderPlugins', () => {
     expect(options.clientRegistrationDefaultResources).toContain(
       'https://openstory.so/api/v1'
     );
+    expect(loopbackMcpResourceAliases('https://openstory.so/mcp')).toContain(
+      'http://localhost:3002/mcp'
+    );
     expect(options.allowDynamicClientRegistration).toBe(true);
     expect(options.allowUnauthenticatedClientRegistration).toBe(true);
     expect(options.loginPage).toBe('/oauth/login');
     expect(options.consentPage).toBe('/oauth/consent-start');
     expect(options.postLogin?.page).toBe('/oauth/consent-start');
+  });
+});
+
+describe('rewriteAuthorizationIss', () => {
+  const callback =
+    'http://127.0.0.1:53100/callback?code=abc&state=s&iss=http%3A%2F%2Flocalhost%3A3000';
+
+  it('rewrites a pinned :3000 iss to the loopback request origin', () => {
+    const rewritten = rewriteAuthorizationIss(
+      callback,
+      'http://localhost:3002'
+    );
+    expect(new URL(rewritten).searchParams.get('iss')).toBe(
+      'http://localhost:3002'
+    );
+    expect(new URL(rewritten).searchParams.get('code')).toBe('abc');
+  });
+
+  it('leaves production callbacks alone even when iss differs', () => {
+    expect(rewriteAuthorizationIss(callback, 'https://openstory.so')).toBe(
+      callback
+    );
+  });
+
+  it('leaves URLs without iss unchanged', () => {
+    const url = 'http://127.0.0.1:53100/callback?code=abc';
+    expect(rewriteAuthorizationIss(url, 'http://localhost:3002')).toBe(url);
   });
 });

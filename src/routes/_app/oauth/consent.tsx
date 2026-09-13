@@ -31,6 +31,7 @@ import {
 } from '@/platform/auth/oauth-query-snapshot';
 import { requireSessionOrRedirect } from '@/platform/ui/auth/route-guards';
 import { errorMessage } from '@/platform/errors';
+import { useHydrated } from '@/ui/use-hydrated';
 import { useMutation } from '@tanstack/react-query';
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { createIsomorphicFn } from '@tanstack/react-start';
@@ -134,6 +135,7 @@ function ConsentDecision({
   consent: OAuthConsentContext;
   oauthQuery: string;
 }) {
+  const hydrated = useHydrated();
   const [outcome, setOutcome] = useState<'granted' | 'denied' | null>(null);
 
   const decide = useMutation({
@@ -229,13 +231,16 @@ function ConsentDecision({
       <div className="flex justify-end gap-2">
         <Button
           variant="outline"
-          disabled={decide.isPending}
+          disabled={!hydrated || decide.isPending}
           onClick={() => decide.mutate(false)}
         >
           Deny
         </Button>
-        <Button disabled={decide.isPending} onClick={() => decide.mutate(true)}>
-          {decide.isPending ? 'Working…' : 'Approve'}
+        <Button
+          disabled={!hydrated || decide.isPending}
+          onClick={() => decide.mutate(true)}
+        >
+          {!hydrated ? 'Loading…' : decide.isPending ? 'Working…' : 'Approve'}
         </Button>
       </div>
     </div>

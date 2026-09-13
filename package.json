@@ -108,6 +108,7 @@
     "@fontsource-variable/geist": "^5.3.0",
     "@logtape/logtape": "^2.3.2",
     "@logtape/redaction": "^2.3.2",
+    "@modelcontextprotocol/server": "2.0.0",
     "@openrouter/sdk": "0.13.20",
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/exporter-metrics-otlp-http": "^0.221.0",

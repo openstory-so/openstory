@@ -138,6 +138,7 @@
         "src/routes/api/**",
         "src/routes/*well-known/**",
         "src/routes/oauth/login.ts",
+        "src/routes/mcp.ts",
         "src/routes/r2.$.ts",
         "src/routes/llms*.ts",
         "src/**/*.test.ts",

@@ -111,6 +111,14 @@
       "namespace_id": "1219",
       "simple": { "limit": 30, "period": 60 },
     },
+    // Per-user throttle for OAuth JWTs on POST /mcp (#1457). `osk_` keys
+    // reuse the api-key plugin limiter (10/s) instead. Not inherited by env
+    // blocks — redeclared below. 100 / 10s matches the key limiter.
+    {
+      "name": "MCP_JWT_RATE_LIMITER",
+      "namespace_id": "1457",
+      "simple": { "limit": 100, "period": 10 },
+    },
   ],
   "workflows": [
     // All durable async work runs on Cloudflare Workflows. Each class is
@@ -378,12 +386,18 @@
           "name": "SEND_EMAIL",
         },
       ],
-      // Device-code login throttle (not inherited; see top-level block).
+      // Device-code login throttle and MCP JWT throttle (not inherited;
+      // see top-level block).
       "ratelimits": [
         {
           "name": "DEVICE_LOGIN_RATE_LIMITER",
           "namespace_id": "1219",
           "simple": { "limit": 30, "period": 60 },
+        },
+        {
+          "name": "MCP_JWT_RATE_LIMITER",
+          "namespace_id": "1457",
+          "simple": { "limit": 100, "period": 10 },
         },
       ],
       // Workflow bindings are NOT inherited from the top-level block, so
@@ -688,12 +702,18 @@
           "name": "SEND_EMAIL",
         },
       ],
-      // Device-code login throttle (not inherited; see top-level block).
+      // Device-code login throttle and MCP JWT throttle (not inherited;
+      // see top-level block).
       "ratelimits": [
         {
           "name": "DEVICE_LOGIN_RATE_LIMITER",
           "namespace_id": "1219",
           "simple": { "limit": 30, "period": 60 },
+        },
+        {
+          "name": "MCP_JWT_RATE_LIMITER",
+          "namespace_id": "1457",
+          "simple": { "limit": 100, "period": 10 },
         },
       ],
       // Workflow bindings are NOT inherited from the top-level block, so
