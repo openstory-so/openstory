@@ -751,7 +751,7 @@ describe('SceneSplitWorkflow shot-list pass (#1486)', () => {
     expect(
       result.shotMapping.filter((m) => m.analysisSceneId === 'scene_1')
     ).toHaveLength(2);
-    // One preview per scene, on shot 1 — its spec text for a 2-shot scene.
+    // One preview per scene, on shot 1, from the scene's slice text.
     expect(previewCalls()).toHaveLength(SCENES.length);
     const scenePreview = previewCalls().find((call) => {
       const body = call[1];
@@ -760,7 +760,7 @@ describe('SceneSplitWorkflow shot-list pass (#1486)', () => {
         body !== null &&
         'prompt' in body &&
         typeof body.prompt === 'string' &&
-        body.prompt.includes('She opens the door')
+        body.prompt.includes('Scene 1 action')
       );
     });
     expect(scenePreview).toBeDefined();

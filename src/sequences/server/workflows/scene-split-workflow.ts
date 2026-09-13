@@ -217,20 +217,12 @@ async function persistStreamedScene(
  * A content-checker hit on one of ~18 previews is a routine outcome, not a
  * reason to lose the run.
  */
-/** Animatic text for a scene's preview, on shot 1: its spec when the scene has 2+ shots. */
+/**
+ * Animatic text for a scene's preview: its verbatim slice (or title). The
+ * slice, not shot 1's spec — the preview stands in for the whole scene on
+ * the rail, and the recorded e2e fixtures are keyed on it.
+ */
 function previewTextForScene(scene: SceneSplittingScene): string {
-  const spec = scene.shots?.find((shot) => shot.shotNumber === 1);
-  if (spec && (scene.shots?.length ?? 1) > 1) {
-    const parts = [
-      spec.framing.shotSize,
-      spec.framing.angle,
-      spec.framing.subjectStartState,
-      spec.action,
-    ]
-      .map((part) => part.trim())
-      .filter((part) => part.length > 0);
-    if (parts.length > 0) return parts.join('. ');
-  }
   return (
     scene.originalScript.extract || scene.metadata.title || 'A cinematic scene'
   );
