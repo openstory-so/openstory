@@ -1040,6 +1040,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           // The adapter's jobId is fal's request id — joins this charge to its
           // billing-events record for the hourly reconcile.
           requestId: job.jobId,
+          requestParams: job.requestParams,
         })
       : {};
 

@@ -311,6 +311,34 @@ describe('recordFalUsage', () => {
     });
   });
 
+  it('stores the request as price levers — no prompt, no URLs, lists as lengths', async () => {
+    const { scopedDb, recordUsage } = makeScopedDb();
+
+    await recordFalUsageImpl(scopedDb, {
+      endpointId: 'minimax/h3-max/reference-to-video',
+      unitsBilled: 8,
+      requestParams: {
+        prompt: 'a long prompt with spaces',
+        reference_image_urls: ['https://a/1.png', 'data:image/png;base64,xx'],
+        duration: 5,
+        resolution: '768P',
+        image_size: { width: 1024, height: 768 },
+      },
+    });
+
+    expect(recordUsage.mock.calls[0]?.[0]).toMatchObject({
+      requestParams: {
+        reference_image_urls: [null, null],
+        duration: 5,
+        resolution: '768P',
+        image_size: { width: 1024, height: 768 },
+      },
+    });
+    expect(recordUsage.mock.calls[0]?.[0].requestParams).not.toHaveProperty(
+      'prompt'
+    );
+  });
+
   it('does not file BytePlus Ark units as fal observations', async () => {
     const { scopedDb, recordUsage } = makeScopedDb();
 

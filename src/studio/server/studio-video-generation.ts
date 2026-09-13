@@ -23,6 +23,7 @@ import {
   isBytePlusPortraitFilterError,
 } from '@/models/server/byteplus-portrait-filter';
 import { bytePlusVideoUnitsBilled } from '@/billing/byteplus-pricing';
+import { type PricingLevers, pricingLevers } from '@/billing/rate-card/levers';
 import { withBytePlusQuotaRetry } from '@/models/server/quota-retry';
 import { falCostFromUnits } from '@/billing/server/fal-cost-billing';
 import {
@@ -105,6 +106,8 @@ export type StudioVideoJobSubmission = {
   endpointId: string;
   via: MediaVia;
   usedOwnKey: boolean;
+  /** Price levers of the fal body (#1605) — see `MotionJobSubmission`. */
+  requestParams?: PricingLevers;
 };
 
 async function resolveFalKey(
@@ -258,6 +261,7 @@ async function submitFalStudioVideoJob(
       endpointId,
       via: 'fal',
       usedOwnKey: key.source === 'team',
+      requestParams: pricingLevers(built.modelOptions),
     };
   }
   const built = buildStudioVideoInput({
@@ -283,6 +287,7 @@ async function submitFalStudioVideoJob(
     endpointId,
     via: 'fal',
     usedOwnKey: key.source === 'team',
+    requestParams: pricingLevers(built.modelOptions),
   };
 }
 

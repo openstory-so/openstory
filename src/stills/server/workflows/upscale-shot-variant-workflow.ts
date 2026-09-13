@@ -368,6 +368,7 @@ export class UpscaleShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<Upsc
         usedOwnKey: result.metadata.usedOwnKey,
         endpointId: result.metadata.endpointId,
         unitsBilled: result.metadata.unitsBilled,
+        requestParams: result.metadata.requestParams,
         versionId,
       };
     });

@@ -13,6 +13,7 @@
 import type { Database } from '@/platform/server/db/client';
 import { modelUsageObservations } from '@/platform/server/db/schema';
 import type { ModelPricingProvider } from '@/platform/server/db/schema/model-pricing';
+import type { PricingLevers } from '@/billing/rate-card/levers';
 
 export function createModelUsageMethods(db: Database) {
   return {
@@ -22,12 +23,15 @@ export function createModelUsageMethods(db: Database) {
       endpointId: string;
       unitsBilled: number;
       numImages?: number;
+      /** Price levers of the request (#1605); absent = not known. */
+      requestParams?: PricingLevers;
     }): Promise<void> {
       await db.insert(modelUsageObservations).values({
         provider: sample.provider,
         endpointId: sample.endpointId,
         unitsBilled: sample.unitsBilled,
         numImages: sample.numImages ?? 1,
+        requestParams: sample.requestParams ?? null,
       });
     },
   };

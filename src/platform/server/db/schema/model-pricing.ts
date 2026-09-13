@@ -23,6 +23,7 @@ import {
 import { sql } from 'drizzle-orm';
 import { generateId } from '@/platform/id';
 import type { RateCard } from '@/billing/rate-card/rate-card.schema';
+import type { PricingLevers } from '@/billing/rate-card/levers';
 
 export type ModelPricingProvider = 'fal' | 'openrouter';
 
@@ -84,6 +85,17 @@ export const modelPricing = snakeCase.table(
     rateCardVerified: integer({ mode: 'boolean' }).default(false).notNull(),
     /** Promo end named in the source — re-extract after this. */
     rateCardExpiresAt: integer({ mode: 'timestamp' }),
+    /**
+     * Calibration of the verified card against what fal actually billed
+     * (#1605): median over recent observations of
+     * `(unitsBilled × verified unitPrice) / card(requestParams)`. The
+     * estimator multiplies the card's price by it once
+     * `rateCardCalibrationSamples` reaches `MIN_OBSERVED_SAMPLES`. Written by
+     * the hourly reconcile; reset when a new card is stored.
+     */
+    rateCardCalibration: real(),
+    /** Observations behind `rateCardCalibration`. */
+    rateCardCalibrationSamples: integer().default(0).notNull(),
     /** When the provider's pricing API was last fetched successfully. */
     fetchedAt: integer({ mode: 'timestamp' }).notNull(),
     updatedAt: integer({ mode: 'timestamp' })
@@ -122,6 +134,13 @@ export const modelUsageObservations = snakeCase.table(
     unitsBilled: real().notNull(),
     /** Assets this one call rendered; the median divides by it (#1069). */
     numImages: integer().default(1).notNull(),
+    /**
+     * The price levers of the request this call sent (#1605) — `pricingLevers`
+     * of the built body, so no prompt or URL is kept. The hourly reconcile
+     * replays them through the endpoint's rate card to measure drift. Null on
+     * rows from before the column and on callers that had no request body.
+     */
+    requestParams: text({ mode: 'json' }).$type<PricingLevers>(),
     createdAt: integer({ mode: 'timestamp' })
       .$defaultFn(() => new Date())
       .notNull(),
