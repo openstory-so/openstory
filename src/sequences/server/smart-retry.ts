@@ -37,6 +37,14 @@ import {
   estimateVideoCost,
   gateEstimate,
 } from '@/billing/cost-estimation';
+import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
+import { addMicros } from '@/billing/money';
+import {
+  matchingDialogueClips,
+  modelTakesDialogueAudio,
+  ttsCharacterCount,
+  voicedDialogueLines,
+} from '@/motion/dialogue-tts';
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import {
   releaseReservationOnThrow,
@@ -372,13 +380,15 @@ export async function executeSmartRetry(context: SmartRetryContext) {
     // retry that forwarded none would silently resubmit as text-to-video —
     // different characters, different set, at the same price. Loaded once for
     // the whole batch; the image-to-video path keeps its existing behaviour.
-    const [motionCharacters, motionElements, motionLocations] = anyReferenceOnly
-      ? await Promise.all([
-          context.scopedDb.characters.listWithSheets(sequence.id),
-          context.scopedDb.sequenceElements.list(sequence.id),
-          context.scopedDb.sequenceLocations.listWithReferences(sequence.id),
-        ])
-      : [[], [], []];
+    const [motionCharacters, motionElements, motionLocations, voiceCharacters] =
+      anyReferenceOnly
+        ? await Promise.all([
+            context.scopedDb.characters.listWithSheets(sequence.id),
+            context.scopedDb.sequenceElements.list(sequence.id),
+            context.scopedDb.sequenceLocations.listWithReferences(sequence.id),
+            context.scopedDb.characters.list(sequence.id),
+          ])
+        : [[], [], [], await context.scopedDb.characters.list(sequence.id)];
     let triggeredMotion = 0;
     for (const shot of failedMotionShots) {
       const imageUrl = shot.image?.url;
@@ -388,13 +398,22 @@ export async function executeSmartRetry(context: SmartRetryContext) {
       const shotVideoModel = videoModelFor(shot);
       const scene = sceneOf(shot);
       const selectedMotion = selectedMotionByShot.get(shot.id) ?? null;
-      const motionCost = gateEstimate(
-        estimateVideoCost(
-          shotVideoModel,
-          snapDuration(undefined, shotVideoModel),
-          { pricing, resolution: sequence.resolution, referenceOnly }
+      const voicedLines = modelTakesDialogueAudio(shotVideoModel)
+        ? voicedDialogueLines(selectedMotion?.dialogue, voiceCharacters)
+        : [];
+      const audioClips = matchingDialogueClips(shot.audioClips, voicedLines);
+      const ttsChars =
+        audioClips.length > 0 ? 0 : ttsCharacterCount(voicedLines);
+      const motionCost = addMicros(
+        gateEstimate(
+          estimateVideoCost(
+            shotVideoModel,
+            snapDuration(undefined, shotVideoModel),
+            { pricing, resolution: sequence.resolution, referenceOnly }
+          ),
+          { model: shotVideoModel, operation: 'smart-retry:motion' }
         ),
-        { model: shotVideoModel, operation: 'smart-retry:motion' }
+        estimateTtsCost(ttsChars)
       );
       const reservationId =
         motionCost > 0
@@ -447,6 +466,12 @@ export async function executeSmartRetry(context: SmartRetryContext) {
         aspectRatio: sequence.aspectRatio,
         resolution: sequence.resolution,
         duration: shot.durationMs ? shot.durationMs / 1000 : undefined,
+        voicedLines,
+        audioClips: audioClips.length > 0 ? audioClips : undefined,
+        motionPrompt: selectedMotion
+          ? motionPromptFromVersion(selectedMotion)
+          : undefined,
+        characterTags: scene?.continuity?.characterTags,
       };
 
       await releaseReservationOnThrow(context.scopedDb, reservationId, () =>

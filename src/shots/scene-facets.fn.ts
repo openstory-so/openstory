@@ -28,6 +28,7 @@ import {
   matchElementsToShot,
   matchLocationsToScene,
 } from './scene-matching';
+import { isElementVoiceToken } from '@/motion/dialogue-tts';
 import { rendersReferenceOnly } from './use-start-frame';
 import { createServerFn } from '@tanstack/react-start';
 
@@ -91,7 +92,7 @@ export const getSceneFacetMapsFn = createServerFn({ method: 'GET' })
         sceneExtract: scene?.originalScript?.extract,
         motionPrompt: motion?.text,
         voiceTokens: motion?.dialogue?.lines.flatMap((line) =>
-          line.voiceToken ? [line.voiceToken] : []
+          isElementVoiceToken(line.voiceToken) ? [line.voiceToken] : []
         ),
         referenceOnly: rendersReferenceOnly(shot, sequence),
       }).map((e) => e.id);

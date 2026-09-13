@@ -19,6 +19,8 @@ const createShotSchema = createInsertSchema(shots, {
   deletedAt: true,
   createdAt: true,
   updatedAt: true,
+  // Dialogue clips are References-stage artifacts (#1554), never a client write.
+  audioClips: true,
 });
 
 export const updateShotSchema = createUpdateSchema(shots, {
@@ -30,6 +32,8 @@ export const updateShotSchema = createUpdateSchema(shots, {
     deletedAt: true,
     createdAt: true,
     updatedAt: true,
+    // Dialogue clips are References-stage artifacts (#1554), never a client write.
+    audioClips: true,
   })
   // Neither prompt is a `shots` column any more — the image prompt lives on the
   // anchor frame (#989) and the motion prompt on its selected version (#713).

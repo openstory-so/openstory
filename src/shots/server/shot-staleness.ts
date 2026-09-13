@@ -420,6 +420,7 @@ export async function computeShotStaleness(args: {
     try {
       const resolvedRefs: ShotStalenessRefs = refs ?? {
         characters: await scopedDb.characters.listWithSheets(sequence.id),
+        voiceCharacters: await scopedDb.characters.list(sequence.id),
         locations: await scopedDb.sequenceLocations.listWithReferences(
           sequence.id
         ),

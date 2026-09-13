@@ -22,6 +22,12 @@ import type {
   SequenceElementMinimal,
   SequenceLocationMinimal,
 } from '@/platform/server/db/schema';
+import {
+  matchingDialogueClips,
+  modelTakesDialogueAudio,
+  voicedDialogueLines,
+} from '@/motion/dialogue-tts';
+import type { MotionAudioClip } from '@/platform/server/db/schema';
 import { assembleMotionPrompt } from '@/motion/server/assemble-motion-prompt';
 import { buildMotionReferenceImages } from '@/motion/server/build-motion-references';
 import { getLogger } from '@/platform/logger';
@@ -63,6 +69,8 @@ export function buildStoryboardMotionBatchShots(input: {
    * design and the missing-still skip below must not eat every shot.
    */
   referenceOnly?: boolean;
+  /** References-stage dialogue clips, keyed by shot id (#1554). */
+  dialogueClipsByShotId?: Record<string, MotionAudioClip[]>;
 }): BatchMotionMusicWorkflowInput['shots'] {
   const items = shotWorkItems(input.scenes, input.shotMapping);
   return items.flatMap((item, index) => {
@@ -104,6 +112,15 @@ export function buildStoryboardMotionBatchShots(input: {
       model: input.videoModel,
       characterTags,
     });
+    const voicedLines = modelTakesDialogueAudio(input.videoModel)
+      ? voicedDialogueLines(motionPromptData.dialogue, input.characters)
+      : [];
+    const audioClips = matchingDialogueClips(
+      mapping.shotId
+        ? input.dialogueClipsByShotId?.[mapping.shotId]
+        : undefined,
+      voicedLines
+    );
 
     return {
       shotId: mapping.shotId,
@@ -127,6 +144,8 @@ export function buildStoryboardMotionBatchShots(input: {
         referenceOnly: input.referenceOnly,
         locations: input.locations,
       }),
+      voicedLines,
+      ...(audioClips.length > 0 ? { audioClips } : {}),
     };
   });
 }

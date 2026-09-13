@@ -34,7 +34,11 @@ import {
   type GenerationStage,
 } from '@/sequences/pipeline';
 import { reportFlooredEstimate } from './billing-observability';
-import { VOICE_DESIGN_COST } from './elevenlabs-pricing';
+import {
+  estimateTtsCost,
+  TYPICAL_DIALOGUE_CHARS_PER_SHOT,
+  VOICE_DESIGN_COST,
+} from './elevenlabs-pricing';
 import { type Microdollars, addMicros, micros, multiplyMicros } from './money';
 
 const logger = getLogger(['openstory', 'billing', 'cost-estimation']);
@@ -511,9 +515,17 @@ export function estimateStoryboardCost(opts: StoryboardCostOpts): Microdollars {
           estimateCharacterSheetCount(sceneCount)
         )
       : micros(0);
+  // Dialogue clips are References-stage audio refs (#1554). TTS runs
+  // whenever a speaker already has a voiceId (talent copy), not only
+  // when Voices is on — so the stand-in is on the references slice,
+  // not gated on generateVoices. Pre-flight cannot see the lines;
+  // the in-run deduct uses the real count.
+  const ttsCost = runsReferences
+    ? estimateTtsCost(sceneCount * TYPICAL_DIALOGUE_CHARS_PER_SHOT)
+    : micros(0);
 
   return addMicros(
-    addMicros(llmCost, addMicros(sheetCost, voiceCost)),
+    addMicros(llmCost, addMicros(sheetCost, addMicros(voiceCost, ttsCost))),
     estimateStoryboardRenderCost(opts)
   );
 }

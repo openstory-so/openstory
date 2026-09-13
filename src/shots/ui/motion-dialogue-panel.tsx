@@ -1,26 +1,25 @@
 /**
  * The dialogue an audio-capable video model will be told to speak (#1559).
  *
- * It was invisible before this: the LLM extracts dialogue into
- * `shot_prompt_versions.dialogue`, `assembleMotionPrompt` appends it at render
- * time, and the prompt box shows only `fullPrompt` — so the only surface a
- * line ever appeared on was the collapsed optimised-prompt preview. A user
- * could not tell whether a line was captured, mis-attributed, or dropped.
- *
- * Lines are READ-ONLY: they come from the script, so the script is where they
- * are fixed, and an editable copy here would be a second source of truth for
- * the same words. The one thing this panel owns is the VOICE — which audio
- * element supplies a character's timbre — because nothing else in the app can
- * express that, and the reference file is useless to the model until a line
- * claims it.
+ * Lines are READ-ONLY: they come from the script. Audio is one choice for
+ * the whole shot (#1554): the generated take, a user-uploaded audio
+ * element, or the video model inventing the voices. Per-line binding was
+ * the old grain; the take is a conversation, not a character.
  *
  * Before the shot has a motion prompt the caller hands in the scene's own
- * lines instead (#1585): they exist from the Script stage, so a misattributed
- * speaker is visible before anything downstream is billed. Voice binding
- * waits for the prompt row it is stored on, so `onChange` is null then.
+ * lines instead (#1585). Voice binding waits for the prompt row it is
+ * stored on, so `onChange` is null then.
  */
 
 import { formatElementDuration } from '@/cast/element-kind';
+import {
+  GENERATED_VOICE,
+  VIDEO_MODEL_VOICE_TOKEN,
+  orphanedVoiceTokens,
+  persistToken,
+  shotPickerValue,
+} from '@/motion/dialogue-tts';
+import { dialogueExceedsShotDuration } from '@/motion/resolve-shot-duration';
 import type { SequenceElementMinimal } from '@/platform/server/db/schema';
 import type { MotionDialogue } from '@/shots/scene-analysis.schema';
 import {
@@ -31,10 +30,11 @@ import {
   SelectValue,
 } from '@/ui/shadcn/select';
 
-/** The sentinel `<SelectItem>` value for "no voice bound" — an empty value is not selectable. */
-const NO_VOICE = '__none__';
+type DialogueClip = {
+  url: string;
+  durationSeconds: number | null;
+};
 
-/** "SARAH_VOICE · 6s" — the token, and how long the file runs when we know. */
 function voiceLabel(element: SequenceElementMinimal): string {
   const length = formatElementDuration(element.durationSeconds);
   return length ? `${element.token} · ${length}` : element.token;
@@ -48,25 +48,57 @@ export const MotionDialoguePanel: React.FC<{
   disabled?: boolean;
   /** Where the lines come from: the shot's motion prompt, or the scene script before one exists. */
   source: 'prompt' | 'script';
-}> = ({ dialogue, elements, onChange, disabled, source }) => {
+  /** References-stage take for this shot, when one exists. */
+  clip?: DialogueClip | null;
+  /** Shot duration in seconds — noted only when the take is longer. */
+  shotSeconds?: number;
+}> = ({
+  dialogue,
+  elements,
+  onChange,
+  disabled,
+  source,
+  clip,
+  shotSeconds,
+}) => {
   const lines = dialogue?.presence ? dialogue.lines : [];
   if (lines.length === 0) return null;
 
-  // Only audio elements can carry a voice. A clip or a still in this list
-  // would bind to a slot the endpoint rejects.
   const voices = (elements ?? []).filter((el) => el.kind === 'audio');
+  const generatedLabel = (() => {
+    const length = formatElementDuration(clip?.durationSeconds ?? null);
+    return length ? `Generated · ${length}` : 'Generated';
+  })();
+  const value = shotPickerValue(lines);
+  const boundElement = voices.find((el) => el.token === value);
+  const orphans =
+    elements === undefined
+      ? []
+      : orphanedVoiceTokens(lines, new Set(voices.map((el) => el.token)));
   const voiceItems: Record<string, string> = {
-    [NO_VOICE]: 'Model\u2019s own voice',
+    [GENERATED_VOICE]: generatedLabel,
+    [VIDEO_MODEL_VOICE_TOKEN]: 'Video model',
     ...Object.fromEntries(voices.map((el) => [el.token, voiceLabel(el)])),
+    ...Object.fromEntries(
+      orphans.map((token) => [token, `${token} (deleted)`])
+    ),
   };
+  const playbackUrl =
+    value === GENERATED_VOICE
+      ? (clip?.url ?? null)
+      : (boundElement?.imageUrl ?? null);
+  const audioSeconds =
+    value === GENERATED_VOICE
+      ? (clip?.durationSeconds ?? null)
+      : (boundElement?.durationSeconds ?? null);
+  const dialogueLonger = dialogueExceedsShotDuration(audioSeconds, shotSeconds);
 
-  const setVoice = (index: number, token: string | undefined) => {
+  const setShotVoice = (next: string) => {
     if (!onChange) return;
+    const voiceToken = persistToken(next);
     onChange({
       presence: true,
-      lines: lines.map((line, i) =>
-        i === index ? { ...line, voiceToken: token } : line
-      ),
+      lines: lines.map((line) => ({ ...line, voiceToken })),
     });
   };
 
@@ -77,85 +109,90 @@ export const MotionDialoguePanel: React.FC<{
         <span className="text-xs text-muted-foreground">
           {source === 'prompt'
             ? 'Appended to the prompt at render'
-            : 'From the script — bind voices once the motion prompt exists'}
+            : 'From the script — bind audio once the motion prompt exists'}
         </span>
       </div>
-      <ul className="flex flex-col gap-2 rounded-md border p-3">
-        {lines.map((line, index) => {
-          // A line can outlive its voice: delete the element and the binding
-          // still names it. The picker must never hold a value none of its
-          // options has — Base UI then ignores the next pick, which is how a
-          // new upload could not be chosen at all (#1559) — so an orphaned
-          // binding shows as unbound, and the line says what happened.
-          const bound = voices.some((el) => el.token === line.voiceToken);
-          // `elements` is undefined until the list loads, and every binding
-          // looks deleted until then — which flashed the warning on refresh.
-          const orphaned =
-            elements !== undefined && Boolean(line.voiceToken) && !bound;
-          return (
-            <li
-              key={`${line.character}-${index}`}
-              className="flex flex-col gap-1.5"
+      {(onChange || playbackUrl) && (
+        <div className="flex flex-col gap-2 rounded-md border p-3">
+          {onChange && (
+            <Select
+              value={value}
+              items={voiceItems}
+              onValueChange={(next) => {
+                if (typeof next === 'string') setShotVoice(next);
+              }}
+              disabled={disabled}
             >
-              <p className="text-sm">
-                <span className="font-medium">
-                  {line.character || 'Narrator'}
-                </span>
-                {line.tone && (
-                  <span className="text-muted-foreground"> · {line.tone}</span>
-                )}
-              </p>
-              <p className="text-sm text-muted-foreground">“{line.line}”</p>
-              {orphaned && (
-                <p className="text-xs text-warning">
-                  {line.voiceToken} was deleted — pick another voice, or this
-                  shot won't render.
-                </p>
-              )}
-              {onChange && voices.length > 0 && (
-                <Select
-                  value={bound ? line.voiceToken : NO_VOICE}
-                  // Base UI renders the raw value in the trigger unless it has
-                  // labels to map it to — without this it showed `__none__`.
-                  items={voiceItems}
-                  onValueChange={(value) =>
-                    setVoice(
-                      index,
-                      typeof value === 'string' && value !== NO_VOICE
-                        ? value
-                        : undefined
-                    )
-                  }
-                  disabled={disabled}
-                >
-                  <SelectTrigger
-                    size="sm"
-                    className="w-full"
-                    aria-label={`Voice for ${line.character || 'Narrator'}`}
-                  >
-                    <SelectValue placeholder="Model's own voice" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NO_VOICE}>
-                      Model&rsquo;s own voice
-                    </SelectItem>
-                    {voices.map((el) => (
-                      <SelectItem key={el.id} value={el.token}>
-                        <span>{voiceLabel(el)}</span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-      {onChange && voices.length === 0 && (
-        <p className="text-xs text-muted-foreground">
-          Upload an audio element to give a character a voice.
-        </p>
+              <SelectTrigger
+                size="sm"
+                className="w-full"
+                aria-label="Shot audio"
+              >
+                <SelectValue placeholder="Generated" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={GENERATED_VOICE}>
+                  {generatedLabel}
+                </SelectItem>
+                <SelectItem value={VIDEO_MODEL_VOICE_TOKEN}>
+                  Video model
+                </SelectItem>
+                {voices.map((el) => (
+                  <SelectItem key={el.id} value={el.token}>
+                    <span>{voiceLabel(el)}</span>
+                  </SelectItem>
+                ))}
+                {orphans.map((token) => (
+                  <SelectItem key={token} value={token}>
+                    <span>{token} (deleted)</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {orphans.length > 0 && (
+            <p className="text-xs text-warning">
+              {orphans.join(', ')} was deleted — pick another source, or this
+              shot won't render.
+            </p>
+          )}
+          {dialogueLonger && audioSeconds != null && shotSeconds != null && (
+            <p className="text-xs text-muted-foreground">
+              Dialogue is {formatElementDuration(audioSeconds)} — this shot is{' '}
+              {formatElementDuration(shotSeconds)}. Generate will stretch the
+              shot to cover it.
+            </p>
+          )}
+          {playbackUrl ? (
+            // oxlint-disable-next-line jsx-a11y/media-has-caption -- generated or uploaded take; the transcript is the lines below
+            <audio
+              controls
+              preload="none"
+              src={playbackUrl}
+              className="w-full"
+              aria-label="Shot dialogue audio"
+            />
+          ) : null}
+        </div>
       )}
+      <ul className="flex flex-col gap-2 rounded-md border p-3">
+        {lines.map((line, index) => (
+          <li
+            key={`${line.character}-${index}`}
+            className="flex flex-col gap-1.5"
+          >
+            <p className="text-sm">
+              <span className="font-medium">
+                {line.character || 'Narrator'}
+              </span>
+              {line.tone && (
+                <span className="text-muted-foreground"> · {line.tone}</span>
+              )}
+            </p>
+            <p className="text-sm text-muted-foreground">“{line.line}”</p>
+          </li>
+        ))}
+      </ul>
       {!onChange && source === 'prompt' && (
         <p className="text-xs text-muted-foreground">
           This model generates its own voices — it takes no audio reference.

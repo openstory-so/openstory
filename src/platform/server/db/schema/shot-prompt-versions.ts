@@ -22,6 +22,29 @@ import type {
   MotionPromptParameters,
   VisualPromptComponents,
 } from '@/shots/scene-analysis.schema';
+
+/**
+ * One synthesised dialogue clip parked in R2 (#1554).
+ *
+ * Same type on two columns with different lifecycles:
+ * - `shots.audioClips` — working set from References (rewritten when
+ *   lines/voices change).
+ * - `shot_prompt_versions.audioClips` — clips THIS render consumed,
+ *   stamped at submit. Regenerating the working set must not rewrite
+ *   an old take. Ids also ride `VideoManifestEntry.audioClipIds`.
+ */
+export type MotionAudioClip = {
+  id: string;
+  url: string;
+  token: string;
+  durationSeconds: number | null;
+  /**
+   * Voice+line+model key this clip was synthesised from (#1554). Motion
+   * reuses the clip only when it still matches; a missing key (rows minted
+   * before this field) never matches and is regenerated.
+   */
+  sourceKey?: string;
+};
 import { type InferSelectModel, sql } from 'drizzle-orm';
 import {
   index,
@@ -100,6 +123,10 @@ export const shotPromptVersions = snakeCase.table(
 
     source: text().$type<PromptVariantSource>().notNull(),
 
+    // Provenance of this render (#1554): copied from `shots.audioClips`
+    // (or fallback TTS) at submit. Null until stamped; [] = ran and
+    // there was nothing to speak. Never inferred from the shot.
+    audioClips: text({ mode: 'json' }).$type<MotionAudioClip[]>(),
     // Motion-only: which template authored this text — true for the
     // image-to-video prompt ("the model already sees the still"), false for
     // the reference-only one (composes the opening frame itself). The two

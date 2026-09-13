@@ -186,11 +186,15 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     });
 
     // Voices (#1553) ride alongside the sheets: one child per speaking
-    // character that resolves `usesVoice()` true and has none yet. Unlike a
-    // sheet, a voice anchors nothing downstream yet, so a failed child is
-    // logged (its own `onFailure` emitted the realtime `failed` event for the
-    // card) and the run goes on; the character just has no voice.
+    // character that resolves `usesVoice()` true and has none yet. A failed
+    // child is logged (its own `onFailure` emitted the realtime `failed`
+    // event for the card) and the run goes on — that character's lines just
+    // have no designed voice for dialogue TTS (#1554).
     const sequenceId = input.sequenceId;
+    const voiceByCharacterId = new Map<string, string>();
+    for (const row of createdCharacters) {
+      if (row.voiceId) voiceByCharacterId.set(row.characterId, row.voiceId);
+    }
     const voicePromises = createdCharacters
       .filter(
         (row) =>
@@ -215,7 +219,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           analysisModelId: input.analysisModelId,
         };
         try {
-          await spawnAndAwaitChild<
+          const result = await spawnAndAwaitChild<
             CharacterVoiceWorkflowInput,
             CharacterVoiceWorkflowResult
           >(step, {
@@ -228,6 +232,9 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
             awaitStepName: `await-character-voice-${row.characterId}`,
             timeout: '30 minutes',
           });
+          if (result?.voiceId) {
+            voiceByCharacterId.set(row.characterId, result.voiceId);
+          }
         } catch (err) {
           logger.error(
             `[CharacterBibleWorkflow:cf] Child character-voice failed for ${character.name}:`,
@@ -284,6 +291,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         physicalDescription:
           castingAttrs?.physicalDescription ?? character.physicalDescription,
         voiceOnly: false,
+        voiceId: voiceByCharacterId.get(character.characterId) ?? null,
         consistencyTag:
           castingAttrs?.consistencyTag ?? character.consistencyTag,
       });
@@ -307,6 +315,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         selectedSheetVersionId: null,
         physicalDescription: character.physicalDescription,
         voiceOnly: true,
+        voiceId: voiceByCharacterId.get(character.characterId) ?? null,
         consistencyTag: character.consistencyTag,
       });
     }

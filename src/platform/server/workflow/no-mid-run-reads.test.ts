@@ -242,6 +242,18 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       why: 'Re-resolved inside each step that talks to fal, because a replayed step may run in a fresh isolate with an unconfigured singleton.',
     },
   ],
+  'dialogue-audio-workflow.ts': [
+    {
+      read: 'resolveKey',
+      bucket: 'CREDENTIAL',
+      why: 'The platform ElevenLabs key, resolved inside the synthesise step that spends it (#1554).',
+    },
+    {
+      read: 'shots.getById',
+      bucket: 'EXISTENCE-GUARD',
+      why: 'Idempotency: a replayed or retried run must not re-bill a clip whose sourceKey still matches.',
+    },
+  ],
   'element-sheet-workflow.ts': [
     {
       read: 'sequenceElements.getById',

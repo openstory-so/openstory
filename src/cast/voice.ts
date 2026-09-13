@@ -68,3 +68,24 @@ export function speakingCharacterIds(
     )
     .map((character) => character.characterId);
 }
+
+/**
+ * The character a speaker cue names, or undefined when nobody matches.
+ *
+ * Blank cues are narration: they match only when exactly one voice-only
+ * character is in the list (the usual narrator). Matching everyone would
+ * synthesise the same line in every voice.
+ */
+export function matchSpeaker<T extends { name: string; voiceOnly?: boolean }>(
+  speaker: string,
+  characters: readonly T[]
+): T | undefined {
+  const cue = nameTokens(speaker);
+  if (cue.length === 0) {
+    const narrators = characters.filter((character) => character.voiceOnly);
+    return narrators.length === 1 ? narrators[0] : undefined;
+  }
+  return characters.find((character) =>
+    nameTokens(character.name).some((token) => cue.includes(token))
+  );
+}

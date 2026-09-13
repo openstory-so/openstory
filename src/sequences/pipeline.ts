@@ -16,6 +16,7 @@ import type {
   Scene,
 } from '@/shots/scene-analysis.schema';
 import type { CharacterMinimal } from '@/platform/server/db/schema/characters';
+import type { MotionAudioClip } from '@/platform/server/db/schema/shot-prompt-versions';
 import type { SequenceElementMinimal } from '@/platform/server/db/schema/sequence-elements';
 import type { SequenceLocationMinimal } from '@/platform/server/db/schema/sequence-locations';
 import type {
@@ -339,6 +340,8 @@ export type GenerationCheckpoint = {
   allElements?: SequenceElementMinimal[];
   visualPromptBySceneId?: Record<string, string>;
   scenesWithVisualPrompts?: Scene[];
+  /** Per-shot Text to Dialogue clips from the References stage (#1554). */
+  dialogueClipsByShotId?: Record<string, MotionAudioClip[]>;
 };
 
 /**
