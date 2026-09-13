@@ -86,6 +86,12 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
   .handler(async ({ data, context }) => {
     const { shot, frame, sequence, teamId } = context;
 
+    // Explicit empty/whitespace override is refused before still/model
+    // guards so a stale tab gets the same sentence as the disabled button.
+    if (data.prompt !== undefined) {
+      requireGenerationPrompt(data.prompt, undefined);
+    }
+
     // The still lives on the anchor frame's SELECTED version (#989/#1067).
     // Resolved as the whole row, not just the URL: the render manifest records
     // WHICH version the clip rendered from, and re-reading the pointer in the

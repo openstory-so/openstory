@@ -1746,16 +1746,19 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                   ? 'Regenerate Image'
                   : 'Generate Image'}
             </Button>
-            {shot &&
-            !hasVisualPrompt &&
-            !isGenerating &&
-            !variantIsGenerating ? (
-              <p className="text-xs text-muted-foreground">
-                {EMPTY_GENERATION_PROMPT_MESSAGE}
-              </p>
-            ) : (
-              <ActionCost estimate={imageCostEstimate} />
-            )}
+            <p
+              className={
+                shot &&
+                !hasVisualPrompt &&
+                !isGenerating &&
+                !variantIsGenerating
+                  ? 'text-xs text-muted-foreground'
+                  : 'hidden'
+              }
+            >
+              {EMPTY_GENERATION_PROMPT_MESSAGE}
+            </p>
+            <ActionCost estimate={imageCostEstimate} />
           </div>
 
           {/* Manual still inject (#1108) — upload replaces the selected image;
@@ -2197,17 +2200,20 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                   ? 'Regenerate Motion'
                   : 'Generate Motion'}
             </Button>
-            {shot &&
-            !hasMotionPrompt &&
-            !isGenerating &&
-            !isGeneratingMotion &&
-            !videoVariantIsGenerating ? (
-              <p className="text-xs text-muted-foreground">
-                {EMPTY_GENERATION_PROMPT_MESSAGE}
-              </p>
-            ) : (
-              <ActionCost estimate={motionCostEstimate} />
-            )}
+            <p
+              className={
+                shot &&
+                !hasMotionPrompt &&
+                !isGenerating &&
+                !isGeneratingMotion &&
+                !videoVariantIsGenerating
+                  ? 'text-xs text-muted-foreground'
+                  : 'hidden'
+              }
+            >
+              {EMPTY_GENERATION_PROMPT_MESSAGE}
+            </p>
+            <ActionCost estimate={motionCostEstimate} />
           </div>
 
           <AlertDialog

@@ -15,9 +15,9 @@ export function isBlankPrompt(text: string | null | undefined): boolean {
 }
 
 /**
- * Resolve the prompt a generate click will render: an explicit override
+ * Assert a generate click has a base prompt. An explicit override
  * (including `''` / whitespace) wins; otherwise the stored selected prompt.
- * Throws before credits are reserved.
+ * Call before credits are reserved.
  */
 export function requireGenerationPrompt(
   override: string | undefined,
