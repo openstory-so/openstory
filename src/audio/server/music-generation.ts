@@ -1,5 +1,11 @@
 import { getEnv } from '#env';
+import { uploadFile } from '#storage';
 import { falCostFromUnits } from '@/billing/server/fal-cost-billing';
+import {
+  ELEVENLABS_MUSIC_ENDPOINT,
+  ELEVENLABS_MUSIC_MODEL,
+  estimateMusicCost,
+} from '@/billing/elevenlabs-pricing';
 import { FAL_GENERATION_TIMEOUT_MS } from '@/models/server/fal-deadline-fetch';
 import {
   AUDIO_MODELS,
@@ -7,8 +13,16 @@ import {
   type AudioModel,
   type AudioModelConfig,
 } from '@/models/models';
+import {
+  elevenLabsAdapterConfig,
+  getElevenLabsApiKey,
+  isElevenLabsConfigured,
+  loadElevenLabsAudio,
+} from '@/models/server/elevenlabs-config';
 import type { Microdollars } from '@/billing/money';
+import { generateId } from '@/platform/id';
 import type { CredentialScopedDb } from '@/platform/server/db/scoped-workflow';
+import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import { isContentRejectionError } from '@/models/content-rejection';
 import { extractFalErrorMessage } from '@/models/fal-error';
 import {
@@ -39,15 +53,28 @@ export type GenerateMusicOptions = {
   model?: AudioModel;
   /** Number of diffusion steps (default: 27) */
   steps?: number;
+  /**
+   * Native ElevenLabs returns inline bytes, not a URL. Park them in R2
+   * before the workflow step returns — Cloudflare Workflows cap `step.do`
+   * payloads at 1 MiB, and a 60s MP3 as base64 exceeds that.
+   */
+  teamId?: string;
+  sequenceId?: string;
 };
 
 export type MusicResult = {
   success: boolean;
   audioUrl?: string;
+  /**
+   * R2 object path when native ElevenLabs already parked the bytes.
+   * Present so the workflow can skip a second download of a relative `/r2/`
+   * URL (Workers `fetch` has no origin to resolve against).
+   */
+  storagePath?: string;
   metadata: {
     model: string;
     vendor: string;
-    /** Fal endpoint submitted to (billing denominator). */
+    /** Provider endpoint submitted to (billing denominator). */
     endpointId: string;
     /** Fal-reported billed unit count. Recorded as a `model_usage_observations`
      * sample (the pricing cron's median reads that table, not the credit
@@ -75,9 +102,9 @@ type AudioCallShape = {
   prompt: string;
   /**
    * Pass `duration` (seconds) only for models whose API actually accepts a
-   * duration field — falAudio maps this to `music_length_ms` for ElevenLabs
-   * and to bare `duration` elsewhere. Models without a duration parameter
-   * (Lyria 2, Minimax Music v2) must omit this or fal will 422.
+   * duration field — falAudio maps this to bare `duration` (or the model's
+   * own field). Models without a duration parameter (Lyria 2, Minimax Music
+   * v2) must omit this or fal will 422.
    */
   duration?: number;
   modelOptions: Record<string, unknown>;
@@ -123,26 +150,19 @@ const AUDIO_CALL_BUILDERS: Partial<Record<AudioModel, AudioCallBuilder>> = {
       },
     };
   },
-
-  // fal-ai/elevenlabs/music: adapter maps `duration` -> `music_length_ms` (ms).
-  elevenlabs_music: (options, config) => ({
-    prompt: options.prompt,
-    duration: clampDuration(options.duration, config),
-    modelOptions: {
-      force_instrumental: options.instrumental ?? true,
-    },
-  }),
 };
 
 /**
- * Generate music/audio via TanStack AI's `generateAudio` activity using the
- * `falAudio` adapter.
+ * Generate music/audio via TanStack AI's `generateAudio` activity.
+ * ElevenLabs Music goes through `elevenlabsAudio` (#1640); ACE-Step stays
+ * on `falAudio`.
  */
 export async function generateMusic(
   options: GenerateMusicOptions
 ): Promise<MusicResult> {
   const modelKey = options.model || DEFAULT_MUSIC_MODEL;
   const modelConfig = AUDIO_MODELS[modelKey];
+  const via = modelKey === 'elevenlabs_music' ? 'elevenlabs' : 'fal';
 
   // Recorded out here rather than as middleware — see
   // recordMediaGenerationSpan.
@@ -154,11 +174,14 @@ export async function generateMusic(
   };
 
   try {
-    const result = await callFalAudio(options, modelConfig);
+    const result =
+      via === 'elevenlabs'
+        ? await callElevenLabsAudio(options, modelConfig)
+        : await callFalAudio(options, modelConfig);
     recordMediaGenerationSpan({
       ...attribution,
       model: modelKey,
-      provider: 'fal',
+      provider: via,
       activity: 'audio',
       durationMs: Date.now() - startedAt,
       costMicros: result.metadata.cost,
@@ -172,7 +195,7 @@ export async function generateMusic(
     recordMediaGenerationSpan({
       ...attribution,
       model: modelKey,
-      provider: 'fal',
+      provider: via,
       activity: 'audio',
       durationMs: Date.now() - startedAt,
       prompt: options.prompt,
@@ -183,6 +206,117 @@ export async function generateMusic(
     });
     throw error;
   }
+}
+
+/** Same wall-clock budget as fal.subscribe, in the SDK's seconds unit. */
+const ELEVENLABS_MUSIC_TIMEOUT_SECONDS = FAL_GENERATION_TIMEOUT_MS / 1000;
+
+async function callElevenLabsAudio(
+  options: GenerateMusicOptions,
+  modelConfig: AudioModelConfig
+): Promise<MusicResult> {
+  if (!isElevenLabsConfigured()) {
+    throw new Error(
+      'ElevenLabs Music requires ELEVENLABS_API_KEY. ACE-Step remains available without it.'
+    );
+  }
+
+  const billedDuration = clampDuration(options.duration, modelConfig);
+  logger.info(`Generating music with model: ${ELEVENLABS_MUSIC_MODEL}`, {
+    vendor: modelConfig.vendor,
+    promptLength: options.prompt.length,
+    duration: billedDuration,
+  });
+
+  const apiKeyInfo = options.scopedDb
+    ? await options.scopedDb.resolveKey('elevenlabs')
+    : (() => {
+        const key = getElevenLabsApiKey();
+        if (!key) {
+          throw new Error(
+            'ElevenLabs Music requires ELEVENLABS_API_KEY. ACE-Step remains available without it.'
+          );
+        }
+        return { key, source: 'platform' as const };
+      })();
+
+  const adapterConfig = elevenLabsAdapterConfig(
+    apiKeyInfo.key,
+    ELEVENLABS_MUSIC_TIMEOUT_SECONDS
+  );
+  const createElevenLabsAudio = await loadElevenLabsAudio();
+  const adapter = createElevenLabsAudio(
+    ELEVENLABS_MUSIC_MODEL,
+    apiKeyInfo.key,
+    {
+      timeoutInSeconds: adapterConfig.timeoutInSeconds,
+      ...(adapterConfig.baseURL && { baseURL: adapterConfig.baseURL }),
+    }
+  );
+  const result = await generateAudio({
+    adapter,
+    prompt: options.prompt,
+    duration: billedDuration,
+    modelOptions: {
+      forceInstrumental: options.instrumental ?? true,
+    },
+    timeout: FAL_GENERATION_TIMEOUT_MS,
+    debug: false,
+  });
+
+  const b64 = result.audio.b64Json;
+  if (!b64) {
+    logger.error('No audio body in ElevenLabs result:', { result });
+    throw new Error('No audio returned from ElevenLabs music generation');
+  }
+
+  const parked = await parkNativeMusic(options, b64, result.audio.contentType);
+  const unitsBilled = Math.ceil(billedDuration / 60);
+
+  return {
+    success: true,
+    audioUrl: parked.url,
+    storagePath: parked.path,
+    requestId: result.id,
+    metadata: {
+      model: ELEVENLABS_MUSIC_MODEL,
+      vendor: modelConfig.vendor,
+      endpointId: ELEVENLABS_MUSIC_ENDPOINT,
+      unitsBilled,
+      duration: billedDuration,
+      cost: estimateMusicCost(billedDuration),
+      generatedAt: new Date().toISOString(),
+      usedOwnKey: false,
+    },
+  };
+}
+
+async function parkNativeMusic(
+  options: GenerateMusicOptions,
+  b64Json: string,
+  contentType: string | undefined
+): Promise<{ url: string; path: string }> {
+  const bytes = Buffer.from(b64Json, 'base64');
+  if (bytes.byteLength === 0) {
+    throw new Error('ElevenLabs music generation returned an empty audio body');
+  }
+  const path = nativeMusicStoragePath(options);
+  const uploaded = await uploadFile(STORAGE_BUCKETS.AUDIO, path, bytes, {
+    contentType: contentType || 'audio/mpeg',
+    upsert: true,
+  });
+  return { url: uploaded.publicUrl, path };
+}
+
+function nativeMusicStoragePath(options: GenerateMusicOptions): string {
+  const id = generateId();
+  if (options.teamId && options.sequenceId) {
+    return `${options.teamId}/${options.sequenceId}/music/${id}.mp3`;
+  }
+  if (options.teamId) {
+    return `${options.teamId}/music/${id}.mp3`;
+  }
+  return `music/${id}.mp3`;
 }
 
 async function callFalAudio(

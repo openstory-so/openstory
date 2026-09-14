@@ -1,20 +1,25 @@
 import { describe, expect, it } from 'vitest';
+import { AUDIO_MODELS } from '@/models/models';
 import {
+  ELEVENLABS_MUSIC_ENDPOINT,
   ELEVENLABS_RATE_CARD,
   ELEVENLABS_TTS_ENDPOINT,
   ELEVENLABS_VOICE_DESIGN_ENDPOINT,
   elevenLabsTtsUnitsBilled,
+  estimateMusicCost,
   estimateTtsCost,
   isElevenLabsPricedModel,
 } from './elevenlabs-pricing';
 
 describe('ELEVENLABS_RATE_CARD', () => {
-  it('prices TTS and Voice Design so a fresh deploy never bills $0', () => {
+  it('prices TTS, Voice Design, and Music so a fresh deploy never bills $0', () => {
     expect(isElevenLabsPricedModel(ELEVENLABS_TTS_ENDPOINT)).toBe(true);
     expect(isElevenLabsPricedModel(ELEVENLABS_VOICE_DESIGN_ENDPOINT)).toBe(
       true
     );
+    expect(isElevenLabsPricedModel(ELEVENLABS_MUSIC_ENDPOINT)).toBe(true);
     expect(isElevenLabsPricedModel('fal-ai/elevenlabs/music')).toBe(false);
+    expect(AUDIO_MODELS.elevenlabs_music.id).toBe(ELEVENLABS_MUSIC_ENDPOINT);
   });
 
   it('denominates TTS per 1000 characters so billing can divide a char count', () => {
@@ -60,5 +65,17 @@ describe('estimateTtsCost', () => {
   });
   it('is zero for empty dialogue', () => {
     expect(estimateTtsCost(0)).toBe(0);
+  });
+});
+
+describe('estimateMusicCost', () => {
+  it('prices a 60s track at the card’s $0.15', () => {
+    expect(estimateMusicCost(60)).toBe(150_000);
+  });
+  it('rounds 61s up to two minutes', () => {
+    expect(estimateMusicCost(61)).toBe(300_000);
+  });
+  it('is zero for an empty duration', () => {
+    expect(estimateMusicCost(0)).toBe(0);
   });
 });
