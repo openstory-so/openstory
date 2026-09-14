@@ -582,11 +582,9 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
         }
 
         // A preview is a render of the caller's shot-spec prompt (#1642),
-        // not of the frame's visual prompt (#1101). Visual prompts only exist
-        // on the start-frame path, where a real still is about to replace this
-        // tile; the default reference-only path never writes one. It lands as
-        // its own `kind: 'preview'` row: keyed by that prompt's hash, never
-        // paired with a prompt version, never selectable or promotable.
+        // not of the frame's visual prompt (#1101). It lands as its own
+        // `kind: 'preview'` row: keyed by that prompt's hash, never paired
+        // with a prompt version, never selectable or promotable.
         // `skipStorage` names that (no version row, no status flip); the
         // bytes are still copied into R2 above.
         await scopedDb.frameVariants.recordPreview({

@@ -105,6 +105,22 @@ describe('previewTextForShot', () => {
     const text = previewTextForShot(scene(), 1);
     expect(text).not.toContain('..');
   });
+
+  it('drops ALL-CAPS sluglines so they are not drawn as signage', () => {
+    const text = previewTextForShot(
+      scene({
+        metadata: {
+          title: 'The hallway',
+          location: 'DOWNTOWN CROSSWALK',
+          timeOfDay: 'LATE MORNING',
+        },
+      }),
+      1
+    );
+    expect(text).not.toContain('DOWNTOWN CROSSWALK');
+    expect(text).not.toContain('LATE MORNING');
+    expect(text).toContain('She fills the right third, doorway left');
+  });
 });
 
 describe('buildPreviewPrompt', () => {

@@ -248,7 +248,7 @@ async function triggerPreviewImage({
   scene: SceneSplittingScene;
   scopedDb: WorkflowScopedDb;
 }): Promise<void> {
-  const sceneText = previewTextForShot(scene, shot.shotNumber);
+  const shotText = previewTextForShot(scene, shot.shotNumber);
 
   try {
     const enforcement = await scopedDb.liveRead.compliance.listEnforcementFor(
@@ -261,7 +261,7 @@ async function triggerPreviewImage({
         userId: input.userId,
         teamId: input.teamId,
         sequenceId,
-        prompt: buildPreviewPrompt(sceneText),
+        prompt: buildPreviewPrompt(shotText),
         model: PREVIEW_IMAGE_MODEL,
         imageSize: aspectRatioToImageSize(input.aspectRatio),
         numImages: 1,

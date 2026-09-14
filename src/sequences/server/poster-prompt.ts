@@ -68,14 +68,18 @@ export function buildPosterPrompt(
   return clampPrompt(parts.join(' '));
 }
 
+/** Drop ALL-CAPS sluglines — they read as signage against NO_TEXT_SUFFIX. */
+function previewPart(value: string): string {
+  const trimmed = value.trim().replace(/\.+$/, '');
+  const letters = trimmed.replace(/[^A-Za-z]/g, '');
+  if (letters.length > 0 && letters === letters.toUpperCase()) return '';
+  return trimmed;
+}
+
 /**
- * Animatic text for one shot's preview (#1642).
- *
- * The shot spec is the source of truth — including on a 1-shot scene, which
- * used to fall through to the verbatim slice and draw the whole scene instead
- * of this setup. Style / bible look stay out: a photoreal style would pull
- * the sketch toward the final still (#1277), and visual prompts only exist
- * on the start-frame path, where a real still is about to replace the tile.
+ * Animatic text for one shot's preview (#1642). Shot spec is the source of
+ * truth, including on a 1-shot scene; the scene slice is the empty-spec
+ * fallback. Style stays out (#1277).
  */
 export function previewTextForShot(
   scene: PreviewShotScene,
@@ -92,7 +96,7 @@ export function previewTextForShot(
       scene.metadata.location,
       scene.metadata.timeOfDay,
     ]
-      .map((part) => part.trim().replace(/\.+$/, ''))
+      .map(previewPart)
       .filter((part) => part.length > 0);
     if (parts.length > 0) return parts.join('. ');
   }
@@ -102,7 +106,7 @@ export function previewTextForShot(
 }
 
 /**
- * Build an image generation prompt for a fast scene preview.
+ * Build an image generation prompt for a fast shot preview.
  *
  * Previews are stand-ins rendered before any character/location reference
  * exists, so anything rendered "for real" is wrong by construction and reads
@@ -112,8 +116,8 @@ export function previewTextForShot(
  * Deliberately ignores the style config for the same reason — a photoreal
  * style would pull the sketch back toward realism.
  */
-export function buildPreviewPrompt(sceneText: string): string {
-  const excerpt = sceneText
+export function buildPreviewPrompt(shotText: string): string {
+  const excerpt = shotText
     .slice(0, MAX_SHOT_TEXT_LENGTH)
     .trim()
     .replace(/\.+$/, '');
