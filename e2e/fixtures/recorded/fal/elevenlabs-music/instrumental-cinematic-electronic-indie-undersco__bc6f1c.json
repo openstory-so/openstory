@@ -1,0 +1,23 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Instrumental cinematic electronic-indie underscore that begins with a crisp, pulsing sense of morning urgency, drives through the crowded city with rhythmic momentum, then gradually opens into warm piano, pads, and restrained strings for an intimate diner pause and hopeful rooftop sunset. Keep the progression cohesive, tactile, stylish, and lightly triumphant without overpowering the visuals.",
+        "model": "fal-ai/elevenlabs/music"
+      },
+      "response": {
+        "json": {
+          "audio": {
+            "url": "https://assets.openstory.so/e2e/ebae4c0dae322c39ead586d17825c0436cf135bb6f0c3c04009a2eba4e18964f.mp3",
+            "content_type": "audio/mpeg",
+            "file_name": "music_generated.mp3",
+            "file_size": 960515
+          }
+        },
+        "status": 200,
+        "billableUnits": 2
+      }
+    }
+  ]
+}

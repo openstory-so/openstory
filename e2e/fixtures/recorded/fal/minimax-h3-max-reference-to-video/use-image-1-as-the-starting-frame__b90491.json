@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nImage 2 walks against the flow as a gust catches her scarf and she grabs it. Camera: smooth handheld truck\n\noverall_soundscape: city traffic, crowd wash, scarf flutter, crosswalk signal. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nReference images:\nImage 3: Passing cyclist - An athletic adult cyclist with a lean build — keep visually consistent throughout the shot.\nImage 4: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/0d3306c3888a6ad64de1f40af655727f87d0782584c9b37df7497536a4cc7061.mp4",
+            "content_type": "video/mp4",
+            "file_name": "8VWL6--y7VjF7o0SDeYD6_minimax-h3.mp4",
+            "file_size": 12575384
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the young woman from <Picture 1> and <Picture 2>, with long wavy blonde hair, wearing a black overcoat over a black turtleneck, a floral patterned scarf (red, black, and grey), and black slip-on shoes.\n<Subject 2> is the athletic cyclist from <Picture 1> and <Picture 3>, with dark hair, a black cycling helmet, a black thermal windbreaker jacket, black cycling tights, and black cycling shoes.\n<Subject 3> is the coral lipstick from <Picture 4>, a slim tube with a coral body, silver inner ring, and \"WARM CORAL\" text on the packaging.\n\nsummary:\n[keyframe completion + reference generation] The target video shows <Subject 1> walking briskly against the flow of pedestrian traffic at a lively city crosswalk. As she moves, a sudden gust of wind catches her floral scarf, sending the fringes fluttering, causing her to grab the fabric to keep it secure. <Subject 2> rides a bicycle past her, maintaining visual consistency. The scene captures a candid, commercial-style moment in a dynamic urban environment.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1]): fully_preserved - Her facial features, blonde hair, black coat, and floral scarf are kept exactly as in the reference images.\n<Subject 2> (appears in [Shot 1]): fully_preserved - The cyclist's helmet, black athletic wear, and lean build remain consistent with the reference.\n<Subject 3> (appears in [Shot 1]): attribute_transfer - The specific coral color of <Subject 3> influences the visual palette, ensuring the red/terracotta tones in the scarf and cityscape match the product's \"WARM CORAL\" shade.\n<Picture 1> (appears in [Shot 1]): fully_preserved - Used as the primary keyframe for composition, establishing the high-angle perspective and the positions of the subjects.\n<Picture 2> (appears in [Shot 1]): fully_preserved - Provides the definitive character reference for <Subject 1>.\n<Picture 3> (appears in [Shot 1]): fully_preserved - Provides the definitive character reference for <Subject 2>.\n<Picture 4> (appears in [Shot 1]): reference - Used as a color palette and thematic reference for the scene.\n\ndetailed_description:\nThe video is a 6-second, 16:9 cinematic commercial-style clip with high color saturation, emphasizing a warm coral and high-contrast black aesthetic. The scene takes place on a sunny day at a bustling New York City crosswalk, characterized by sharp shadows and bright daylight.\n\n[Shot 1] The shot opens exactly on the frame from <Picture 1>: a high-angle medium shot of <Subject 1> walking towards the camera at a fast clip. She holds a smartphone in her right hand and a white coffee cup in her left, which displays the text \"Bío Ynsuí\". Behind her, <Subject 2> is biking forward, moving from the mid-right background towards the foreground. At 00:01.000, a sudden gust of wind sweeps across the frame from right to left. <Subject 1>'s floral scarf (matching the coral tones seen in <Subject 4>) lifts and flutters dramatically. As it threatens to slip or fly away, <Subject 1> immediately extends her hand to grab the fabric, pulling it tighter around her neck. The camera performs a smooth handheld Truck Left movement with small amplitude and steady speed, tracking her forward motion against the flow of background pedestrians. The city traffic and distant high-rises remain consistent, with yellow taxis visible in the background. <Subject 1> maintains a professional yet surprised expression, reacting to the wind.\n\noverall_soundscape:\nLoud city traffic and a constant wash of crowd noise form the baseline. Distinct swishing sounds of the scarf fluttering in the wind and the rhythmic clicking of a crosswalk signal are audible throughout the clip.\n\nnon_diegetic_music:\nN/A",
+          "seed": 1630910813,
+          "timings": {
+            "inference": 6.291640601004474
+          }
+        },
+        "status": 200,
+        "billableUnits": 10.560000000000002
+      }
+    }
+  ]
+}

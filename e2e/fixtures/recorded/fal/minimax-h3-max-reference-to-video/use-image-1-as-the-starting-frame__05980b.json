@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nImage 2 closes the lipstick, catches the florist comparing her lips to the flowers, and grins as the elevator drops through bands of sunlight. Camera: smooth orbit\n\noverall_soundscape: elevator jolt, descending motor, parcel rustle. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nReference images:\nImage 3: Tired florist — keep visually consistent throughout the shot.\nImage 4: Courier - An adult courier of average height with a compact — keep visually consistent throughout the shot.\nImage 5: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/385073534d47f4bb6673758933e9bb5f749ba1480a40b811c92cd27d6444b45d.mp4",
+            "content_type": "video/mp4",
+            "file_name": "4IXkr2t8ODHX7_I0kLTwM_minimax-h3.mp4",
+            "file_size": 13049371
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the blonde woman in <Picture 1> and <Picture 2>, wearing a black turtleneck, a patterned scarf, and a black coat, with vibrant red coral lipstick.\n<Subject 2> is the tired florist in <Picture 3>, with hair in a messy bun, wearing a beige shirt and a dark work apron, holding a galvanized bucket of pink ranunculus flowers.\n<Subject 3> is the young courier in <Picture 4>, with dark curly hair, wearing a black hooded jacket and carrying a tall stack of brown cardboard parcels.\n<Subject 4> is the coral lipstick in <Picture 5>, featuring a warm coral bullet, a silver ring, a coral body, and a matching cap.\n\nsummary:\n[reference generation + keyframe completion] The target video is a 7-second 16:9 cinematic shot set in an elevator. Starting from <Picture 1>, <Subject 1> closes <Subject 4>, while <Subject 2> playfully compares her own lips to the flowers she is holding. As the elevator descends with a jolt, the camera performs a smooth orbit, and <Subject 1> (S1) grins as bands of sunlight stream across the elevator's metallic interior.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1]): fully_preserved - maintains the specific facial features, hair, and outfit of the woman from <Picture 1> and <Picture 2>.\n<Subject 2> (appears in [Shot 1]): fully_preserved - maintains the characteristic tired appearance, apron, and floral bucket from <Picture 3>.\n<Subject 3> (appears in [Shot 1]): fully_preserved - maintains the courier's appearance and the stack of parcels from <Picture 4>.\n<Subject 4> (appears in [Shot 1]): fully_preserved - preserves the product design and color of the lipstick from <Picture 5>.\n<Picture 1> (appears in [Shot 1]): fully_preserved - serves as the accurate starting keyframe for the scene.\n\ndetailed_description:\nThe video presents a high-end cinematic aesthetic with high-resolution textures and soft, natural light filtering through an elevator shaft. [Shot 1] begins with the scene exactly as depicted in <Picture 1>, featuring <Subject 1>, <Subject 2>, and <Subject 3> in a brushed-metal elevator. <Subject 1> holds the open <Subject 4>, which matches her red lips. <Subject 2> stands on the left, eyeing <Subject 1>'s application while holding the bucket of ranunculus, while <Subject 3> on the right shifts the weight of his parcels. As <Subject 1> smoothly pushes the cap of <Subject 4> shut, <Subject 2> (S2) turns to <Subject 1> with a playful look, <d>[English] Your lips are just like these flowers, but a lot more tired.</d> The elevator floor jolts slightly as the descent begins, and the metallic walls vibrate with a low hum. <Subject 1> watches <Subject 2> for a beat, then smiles broadly, looking directly at the camera. The camera begins a smooth Arc Shot with medium amplitude, moving at a steady, slow speed from a frontal 3/4 angle to a profile view. As the camera orbits, horizontal bands of warm sunlight slide down the reflective elevator walls like a cinematic iris, casting sharp shadows and highlighting the coral tone of <Subject 4> and the texture of the flowers. <Subject 1> (S1) grins into the light, <d>[English] I'll say that too.</d> The descent continues with a rhythmic motor buzz, concluding the 7-second sequence.\n\noverall_soundscape:\nThe audio features a low, resonant hum of the descending elevator motor, a distinct metallic jolt at the start of the movement, and the subtle rustling of the paper-wrapped parcels and clothing.\n\nnon_diegetic_music:\nN/A",
+          "seed": 1730888217,
+          "timings": {
+            "inference": 7.87455044395756
+          }
+        },
+        "status": 200,
+        "billableUnits": 12.889600000000002
+      }
+    }
+  ]
+}

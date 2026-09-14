@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nImage 2 finds the subway card beneath the folded scarf, tears open the coral lipstick box, twists up the bullet, and presses it once to the back of her hand. Camera: smooth truck\n\noverall_soundscape: paper box tear, lipstick twist, bright bathroom ambience. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nReference images:\nImage 3: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/03785137f225c782c6dbfe353e26af0f7b1d2bf8d3ce7a1de32d19f392576cda.mp4",
+            "content_type": "video/mp4",
+            "file_name": "llI3Sy4Uj1wRAtMHfIkhB_minimax-h3.mp4",
+            "file_size": 8342542
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the woman in <Picture 1> and <Picture 2>, a blonde woman wearing a black turtleneck and a grey scarf with a floral pattern, characterized by her focused expression, small hoop earrings, and natural facial features.\n<Subject 2> is the coral lipstick product in <Picture 3>, a matte coral tube with a silver metallic band and a tip labeled \"SHADE 03 WARM CORAL\".\n<Subject 3> is the slim paper box in <Picture 3> labeled \"CORAL LIPSTICK\" in a light coral color.\n<Subject 4> is the subway card, a blue credit-style membership card, hidden inside the folds of the wearer's scarf.\n\nsummary:\n[keyframe completion] The target video begins with the static first frame from <Picture 1> and shows the woman in a bathroom setting. She uncovers a hidden subway card in <Picture 1>, tears open the coral lipstick box in <Picture 3>, and applies the lipstick from <Picture 3> to the back of her hand. The camera movement is a smooth truck right motion, staying at a medium shot throughout the 6-second video.\n\nretention_analysis:\n<Subject 1> (appears in all scenes): fully_preserved - The woman’s facial features, black turtleneck, and grey scarf with a floral pattern from <Picture 1> remain consistent throughout the video.\n<Subject 2> (appears in action phase): fully_preserved - The matte coral lipstick body, the silver metallic band, and the tip's \"SHADE 03 WARM CORAL\" label from <Picture 3> remain identical during the twisting and application.\n<Subject 3> (appears in action phase): fully_preserved - The box's light coral color, its thin paper structure, and its \"CORAL LIPSTICK\" label in <Picture 3> remain clear before and during the tearing.\n<Subject 4> (appears in discovery phase): fully_preserved - The blue plastic subway card’s blue surface and clean edges remain crisp when pulled from the folds of the scarf.\n\ndetailed_description:\nThe video's overall style is an intimate, realistic product showcase and narrative scene within a bright, modern domestic bathroom, featuring smooth cinematic motion and naturally lit, soft skin tones, shot in a horizontal 16:9 aspect ratio.\n[Shot 1]\nThe opening frame is a direct match to the first frame of <Picture 1>. A static medium shot frames a white-tiled bathroom vanity. <Subject 1> stands at the sink with a focused, contemplative expression. On the counter, the slim coral box labeled \"CORAL LIPSTICK\" sits next to her grey floral scarf. Her right hand rests on the scarf's edge.\n[Shot 2]\nAt 00:01.500, the camera begins a smooth Truck Right movement. <Subject 1>’s expression shifts from focus to realization. Her right hand reaches into the folds of the grey scarf. She slowly pulls out <Subject 4>, the blue subway card, holding its thin card edge. The card slides completely out of the scarf layers onto the counter. Her gaze travels from the card to the coral box.\n[Shot 3]\nAt 00:03.000, as the Truck Right motion continues, <Subject 1> picks up <Subject 3> with her right hand. She uses both hands to apply gentle pressure to the seam of the coral box and gently tears it open. The top flap of the cardstock box separates along the score line.\n[Shot 4]\nAt 00:04.500, in a continuous shot while still trucking right, <Subject 1> lifts <Subject 2> out of the open box. Holding the lipstick base between her thumbs, she twists up the silver metallic cap until the coral bullet emerges fully. Her eyes track the lipstick's upward motion with a subtle, satisfied smile.\n[Shot 5]\nAt 00:05.500, the camera completes the Truck Right to a tight medium close-up of her hands. <Subject 1> presses the bright coral bullet of <Subject 2> once and firmly across the back of her left hand, drawing a short coral line of makeup.\n\noverall_soundscape:\nBright and airy domestic bathroom ambience characterized by faint sounds of moving air. Distinct physical sound effects layer over the ambient base: a rustling of fabric as the sweater moves, the crisp crinkle of tearing thin cardboard, the mechanical clicking sound of the lipstick tube twisting up, and a brief, soft swish as the tube touches and slides lightly across the skin.\n\nnon_diegetic_music:\nN/A",
+          "seed": 767247845,
+          "timings": {
+            "inference": 6.023717561998637
+          }
+        },
+        "status": 200,
+        "billableUnits": 9.830400000000001
+      }
+    }
+  ]
+}

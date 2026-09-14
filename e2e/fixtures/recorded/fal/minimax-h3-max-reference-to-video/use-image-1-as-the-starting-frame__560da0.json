@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nImage 2 photographs the coral print on the paper cup, then caps the lipstick and tucks it into Image 3’s jacket pocket. Camera: smooth push-in\n\nImage 3 says in a surprised tone: <d>[English] You’re giving me this?</d> Image 2 says in a warmly teasing tone: <d>[English] You need it more.</d>\n\noverall_soundscape: camera shutter, check placed on table, diner ambience. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nReference images:\nImage 4: Server - An adult diner server of average height and build with a practical — keep visually consistent throughout the shot.\nImage 5: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/e116521dacff13839c9f7539db43271832c09d485e4a25092db331dab19283f9.mp4",
+            "content_type": "video/mp4",
+            "file_name": "IWywAC_07RPISXRCE4__0_minimax-h3.mp4",
+            "file_size": 8189960
+          },
+          "expanded_prompt": "Based on the provided reference images and the instructions, here is the rewritten prompt in the official MiniMax H3 Full-Reference Mode format:\n\nsubject_definitions:\n<Subject 1> is the blonde woman with wavy hair wearing a black coat and multi-colored floral scarf shown in <Picture 1> and <Picture 2>, who acts as the speaker S1.\n<Subject 2> is the brunette woman with tousled hair wearing a green hooded jacket shown in <Picture 1> and <Picture 3>, who acts as the speaker S2.\n<Subject 3> is the brunette woman with her hair in a bun wearing a white shirt and black apron shown in <Picture 1> and <Picture 4>, serving as a visual reference for the diner staff.\n<Subject 4> is the slender coral lipstick with a silver base shown in <Picture 5>, which features the product box text \"CORAL LIPSTICK\" and \"SHADE 03 WARM CORAL\".\n\nsummary:\n[keyframe completion + reference generation] The target video features a warm, cinematic diner scene where <Subject 1> applies <Subject 4> to <Subject 2>. The sequence begins by matching the starting frame of <Picture 1>, transitioning into a close-up of the coral color, and concludes with <Subject 1> tucking the lipstick into <Subject 2>'s jacket pocket.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - maintaining facial features, hairstyle, and the black coat with floral scarf as depicted in <Picture 1> and <Picture 2>.\n<Subject 2> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - maintaining the green jacket and tousled hair look from <Picture 1> and <Picture 3>.\n<Subject 3> (appears in [Shot 1]): attribute_transfer - matching the server's attire and profile from <Picture 4> and the background of <Picture 1>.\n<Subject 4> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - maintaining the coral color and silver base seen in <Picture 5> and the box text \"CORAL LIPSTICK\".\n\ndetailed_description:\nThe video is a high-resolution, cinematic sequence set in a softly lit restaurant, utilizing natural colors and warm directional lighting that evokes a cozy urban atmosphere.\n\n[Shot 1] The scene opens in a medium shot at a diner booth. <Subject 1> holds <Subject 4> up to <Subject 2>'s mouth, who is smiling as the coral color is applied. <Subject 3> sits to the right, gazing at them. On the table between them is a paper cup with a red design and a bill labeled \"SERVER\" (Image 1). The camera maintains a stable framing as <Subject 2> looks slightly to the side with a surprised expression. <Subject 2> (S2) says in a surprised tone: <d>[English] You’re giving me this?</d> The environment is filled with the low hum of the diner and the sharp \"click\" of a camera shutter.\n\n[Shot 2] At 00:02.000, the shot cuts to an extreme close-up of the lipstick. The camera Push In with small amplitude at a fast speed, focusing specifically on the texture of the coral print and the silver casing of <Subject 4>. The lighting highlights the smooth, matte surface of the coral lipstick. In the background, <Subject 1> (S1) responds in a warmly teasing tone: <d>[English] You need it more.</d> The sound of a paper check being slid across a wooden table punctuates the start of this shot.\n\n[Shot 3] At 00:04.000, the shot cuts back to a medium close-up of the two women. The camera trucks slightly Right with medium amplitude at a slow speed. <Subject 1> takes the lid of the lipstick and twists it closed, then smooths her floral scarf as she reaches out. She tucks <Subject 4> into a side pocket of <Subject 2>'s green jacket (referencing the pocket placement shown in <Picture 3>). <Subject 2> looks down at the pocket and then back at <Subject 1>, a soft smile on her face. The ambient sound of the diner continues, accompanied by the muffled sound of the lipstick cap being secured.\n\noverall_soundscape:\nThe soundscape includes the soft murmur of a busy cafe, the rhythmic sound of dishes, and the specific mechanical clicks of the lipstick casing. A crisp camera shutter sound occurs during the first interaction, followed by the tactile sound of a paper check placed on the table.\n\nnon_diegetic_music:\nN/A",
+          "seed": 33064305,
+          "timings": {
+            "inference": 6.9446307440521196
+          }
+        },
+        "status": 200,
+        "billableUnits": 11.289600000000002
+      }
+    }
+  ]
+}

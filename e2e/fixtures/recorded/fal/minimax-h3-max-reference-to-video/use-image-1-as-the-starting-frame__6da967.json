@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nImage 3 borrows the lipstick, applies it using the dark window as a mirror, and presses her lips together. Camera: smooth handheld truck\n\noverall_soundscape: diner room tone, rain on glass, paper cup movement. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nReference images:\nImage 2: Scarlett — keep visually consistent throughout the shot.\nImage 4: Server - An adult diner server of average height and build with a practical — keep visually consistent throughout the shot.\nImage 5: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/6114b121b984f1e1522f41c50021542dbf701d1c74b0ccc3aae88289ae2918ac.mp4",
+            "content_type": "video/mp4",
+            "file_name": "KdflXvvYXQnHdFhzxMa93_minimax-h3.mp4",
+            "file_size": 11637904
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the blonde woman (Scarlett) in <Picture 2>, a medium-skinned woman with long wavy blonde hair, gold hoop earrings, a black turtleneck sweater, a black wool coat, and a grey/red floral patterned scarf.\n<Subject 2> is the dark-haired woman in <Picture 3>, a medium-skinned woman with a messy wavy chestnut bob, wearing an olive green utility jacket over a black t-shirt and dark grey jeans.\n<Subject 3> is the diner server in <Picture 4>, an adult woman of average build with dark hair pulled back in a bun, wearing a crisp white button-down shirt, black trousers, a black apron with a red horizontal stripe, and black shoes.\n<Subject 4> is the lipstick in <Picture 5>, a cylindrical tube with a matte coral-pink finish and a silver metal ring, revealing a light-coral bullet.\n<Picture 1> is the establishing frame of a retro diner interior featuring red leather banquettes, a beige table with metal trim, a paper-lined food tray, and a large rain-streaked window.\n\nsummary:\n[reference generation] The target video is a cinematic, continuous 6-second shot of three women in a rain-soaked retro diner. <Subject 1> and <Subject 2> sit in a booth while <Subject 3> stands at the table. <Subject 2> picks up <Subject 4> and uses the dark, rainy window as a mirror to apply the product, showcasing the coral color. The scene is lit by warm interior lights and the soft, grey glow of a rainy outdoor dusk.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1]): fully_preserved - Identity, facial features, and specific clothing from <Picture 2> are maintained.\n<Subject 2> (appears in [Shot 1]): fully_preserved - Identity, facial features, and specific clothing from <Picture 3> are maintained.\n<Subject 3> (appears in [Shot 1]): fully_preserved - Identity and uniform details from <Picture 4> are maintained.\n<Subject 4> (appears in [Shot 1]): fully_preserved - The specific design, shade, and packaging of <Picture 5> are maintained.\n<Picture 1> (appears in [Shot 1]): fully_preserved - The physical layout, booth styling, and window framing of the starting frame are maintained.\n\ndetailed_description:\nThe video follows a warm, cinematic style with soft focus and high-fidelity textures, capturing an intimate moment in a retro diner.\n\n[Shot 1] The shot begins as a continuous medium shot in a vibrant diner matching <Picture 1>. <Subject 1> sits on the left side of the red leather booth, smiling toward <Subject 2>. <Subject 2>, sitting on the right, looks down at a tray of French fries on the beige table. In the center, <Subject 3> stands between the two, holding a menu with a neutral expression. Rain streaks the large glass window behind them, reflecting the warm interior. <Subject 2> reaches forward and picks up <Subject 4> from the table. With a smooth, steady movement, she uncaps the tube and brings it to the dark, reflective surface of the window glass. Using the window as a makeshift mirror, she carefully glides the coral bullet across her lips. As she applies the color, <Subject 1> turns her head to observe, while <Subject 3> watches with a professional, curious gaze. The camera executes a smooth, handheld-style truck to the right at a medium-to-slow speed, keeping the three subjects in a balanced composition while subtly enhancing the parallax of the rain on the glass. <Subject 2> gently presses her lips together and holds the look, a subtle smile forming on her face.\n\noverall_soundscape:\nThe soundscape is an immersive \"room tone\" of a quiet diner. It includes the soft, rhythmic sound of rain hitting the large glass window, a low ambient hum of the restaurant, and the subtle physical sounds of the paper cup being set down or shifted. The application of the lipstick produces a very faint, high-fidelity swish.\n\nnon_diegetic_music:\nN/A",
+          "seed": 1967923177,
+          "timings": {
+            "inference": 7.161817827960476
+          }
+        },
+        "status": 200,
+        "billableUnits": 11.289600000000002
+      }
+    }
+  ]
+}

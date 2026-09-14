@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nThe Image 3 steadies the coffee, and Image 2 wipes the tiny coral mark from the cup rim with her thumb. Camera: gradual push-in\n\nImage 2 says in a amused tone: <d>[English] Still here.</d>\n\noverall_soundscape: bicycle brake squeak, coffee lid pop, passing traffic. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nReference images:\nImage 4: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/5b1b57348417bfdbba819abbaed57f1d35759555fd5529fe9ed151d8d308485d.mp4",
+            "content_type": "video/mp4",
+            "file_name": "lokLmnudshL_UwzY5x2HB_minimax-h3.mp4",
+            "file_size": 10399619
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the young woman in <Picture 2> (panels 1–3), with long blonde hair, wearing a black wool coat, black turtleneck, and a floral scarf, characterized by a bright smile.\n<Subject 2> is the young cyclist in <Picture 3>, wearing a black cycling suit, black gloves, and a black helmet.\n<Subject 3> is the white paper coffee cup with a black lid, bearing a circular coral logo on the body, seen in the interaction in <Picture 1>.\n<Subject 4> is the visual color reference for the coral lipstick mark, matching the \"Warm Coral\" shade in <Picture 4>.\n\nsummary:\n[keyframe completion + reference generation] The target video is a 6-second cinematic urban scene in 16:9. It begins with the exact composition of <Picture 1>, where <Subject 2> (S1) extends <Subject 3> toward <Subject 1>. The camera executes a slow push-in as <Subject 2> steadies the cup against a slight spill, while <Subject 1> reacts with a playful smile and wipes a small coral mark from the cup's rim using her thumb. The audio features a natural urban soundscape with a specific dialogue line delivered by <Subject 1>.\n\nretention_analysis:\n<Picture 1> (appears in [Shot 1]): fully_preserved - serves as the mandatory starting frame for the visual composition.\n<Subject 1> (appears in [Shot 1]): fully_preserved - maintains facial features, hair, and clothing from <Picture 2>.\n<Subject 2> (appears in [Shot 1]): fully_preserved - maintains facial features, helmet, and cycling gear from <Picture 3>.\n<Subject 3> (appears in [Shot 1]): fully_preserved - keeps the design and coral logo of the cup from <Picture 1>.\n<Subject 4> (appears in [Shot 1]): attribute_transfer - the specific coral color from <Picture 4> defines the visual tone of the lipstick mark.\n\ndetailed_description:\nThe video captures a candid, sunlit moment of urban interaction with high-resolution detail and natural lighting. [Shot 1] opens with the exact frame of <Picture 1>, showing <Subject 2> on a bicycle in the foreground and <Subject 1> in the background. <Subject 2> (S1) leans forward, extending his gloved hand to offer <Subject 3> to <Subject 1>. As the camera performs a slow Push In with small amplitude toward the coffee cup, <Subject 2> gently tilts and steadies the cup to prevent a spill. In response, <Subject 1> (S2) looks up from her phone, her expression shifting from surprise to an amused smile. She extends her thumb, which has a visible coral tint, to carefully wipe a tiny mark from the rim of <Subject 3>. The mark matches the \"Warm Coral\" color from <Subject 4>. <Subject 1> (S2) delivers a playful yet teasing line: <d>[English] Still here.</d>\n\noverall_soundscape:\nThe environment features a subtle squeak of bicycle brakes, the faint hiss of city traffic, and a distinct plastic \"pop\" sound as <Subject 2> adjusts the lid of the coffee cup.\n\nnon_diegetic_music:\nN/A",
+          "seed": 1481566296,
+          "timings": {
+            "inference": 6.340477752004517
+          }
+        },
+        "status": 200,
+        "billableUnits": 10.560000000000002
+      }
+    }
+  ]
+}

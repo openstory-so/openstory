@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nImage 3 closes her fingers around the lipstick, takes Image 2’s hand, and pulls her toward the stairwell. Camera: smooth pull-out\n\noverall_soundscape: train rushing past, laughter, wind, footsteps toward stairwell. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nReference images:\nImage 4: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/9509309ae90a61982b3978ee74822cda54561bf8cfb10140dca1a2e3c58a8183.mp4",
+            "content_type": "video/mp4",
+            "file_name": "d7uGXrvnVGmgExx-SEA7i_minimax-h3.mp4",
+            "file_size": 9904837
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the woman with wavy brown hair wearing a green jacket and black shirt in <Picture 1>, holding the lipstick and pulling her friend.\n<Subject 2> is the woman with blonde hair wearing a black coat and a floral scarf in <Picture 1>, smiling and following her friend.\n<Subject 3> is the coral lipstick with a black base and gold collar shown in <Picture 1> and <Picture 4>, kept visually consistent throughout the video.\n<Scene 1> is the outdoor rooftop area overlooking a city and railway tracks shown in <Picture 1>, bathed in warm sunset light.\n\nsummary:\n[keyframe completion + reference generation] The target video opens with the starting frame of <Picture 1>, depicting <Subject 1> and <Subject 2> on a rooftop at sunset. <Subject 1> holds <Subject 3> for <Subject 2>, then grabs her hand and pulls her off-screen downward as the camera performs a smooth pull-out.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1]): fully_preserved - The woman from <Picture 1> maintains her green jacket and hair.\n<Subject 2> (appears in [Shot 1]): fully_preserved - The woman from <Picture 1> maintains her black coat and floral scarf.\n<Subject 3> (appears in [Shot 1]): fully_preserved - The lipstick is consistently styled according to <Picture 4>.\n<Scene 1> (appears in [Shot 1]): fully_preserved - The city environment from <Picture 1> serves as the setting.\n\ndetailed_description:\nThe scene is shot in a cinematic style with warm golden-hour lighting, capturing a candid and intimate moment on an urban rooftop.\n[Shot 1] The video begins with <Scene 1> as the backdrop. In the center, <Subject 1>, as depicted in <Picture 1>, smiles warmly while holding out <Subject 3> toward <Subject 2>. <Subject 2>, matching the appearance in <Picture 1>, reaches out toward the <Subject 3>. As the camera begins a pull-out with large amplitude at a slow speed, <Subject 1> quickly closes her fingers around the <Subject 3>, securing it. <Subject 1> then grabs <Subject 2> by the hand and pulls her forcefully downward and toward the left, as if heading toward a stairwell. The movement of the lipstick is smooth from the open palm to a closed grip. The warm sunset light continues to illuminate the city skyline and the track behind them.\n[Shot 2] At 00:04.000, the shot cuts to a medium shot. The framing pulls back further to show more of <Scene 1> as <Subject 1> and <Subject 2> continue their quick movement toward the foreground. <Subject 1>'s green jacket <Picture 1> flutters slightly with the motion, and the <Subject 3> remains clearly visible in her hand. The pull-out concludes as the two figures move out of the frame's focus.\n\noverall_soundscape:\nThe scene is filled with the rhythmic hum of a train rushing past on the tracks and the ambient wind of the sunset. Sharp, rhythmic footsteps are heard on the concrete as the characters move toward the stairwell, accompanied by soft, joyful laughter. No music is present in the video.\n\nnon_diegetic_music:\nN/A",
+          "seed": 1320319002,
+          "timings": {
+            "inference": 6.358980379998684
+          }
+        },
+        "status": 200,
+        "billableUnits": 10.560000000000002
+      }
+    }
+  ]
+}

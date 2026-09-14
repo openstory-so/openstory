@@ -1,0 +1,26 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "Split the script within the USER_SCRIPT tags into logical scenes by emitting boundary annotations. The script has a numbered line gutter (\"N: \") — quotes must copy the script text WITHOUT the gutter.\n\n<USER_SCRIPT>\n1: Scene 1 — 12s\n2: \n3: INT. DOWNTOWN APARTMENT BATHROOM — MORNING\n4: \n5: Hard sunlight cuts across white tile and a narrow sink. Scarlett, 27, in a black turtleneck and yesterday’s silver hoop earrings, hurriedly searches for a missing subway card while a coral lipstick box waits beside the faucet. She finds the card under a folded scarf, then notices the lipstick and pauses.\n6: \n7: She tears open the box with her teeth, twists the coral bullet upward, and presses it once to the back of her hand. The color lands vivid against her skin. She smiles at the unexpected match.\n8: \n9: Cut to: Scarlett applies the lipstick in the moving reflection of the medicine-cabinet mirror, one hand steadying herself as the apartment door swings shut behind her.\n10: \n11: She says softly, “Okay. This works.”\n12: \n13: Scene 2 — 12s\n14: \n15: INT. DOWNTOWN APARTMENT HALLWAY AND ELEVATOR — MORNING\n16: \n17: Scarlett bursts into the narrow hallway, coat over one arm, lipstick still in hand. She catches the closing elevator doors with her shoulder. Inside, a tired florist holds a bucket of coral ranunculus; a courier balances a stack of parcels; everyone is squeezed into the mirrored box.\n18: \n19: Scarlett twists the cap closed as the elevator jolts downward. The florist notices her lips, then glances at the flowers. Scarlett catches the comparison and grins.\n20: \n21: The elevator drops through changing bands of sunlight. Scarlett’s reflection slides across the mirrored walls while the camera drifts with her, the coral package bright against black wool.\n22: \n23: Scene 3 — 12s\n24: \n25: EXT. DOWNTOWN CROSSWALK — LATE MORNING\n26: \n27: The elevator opens directly into a rush of city movement. Scarlett steps into a crowded crosswalk as taxis surge behind her and office towers flash in the glass. She walks against the flow for a few strides, filming herself with one hand while the other keeps her coffee level.\n28: \n29: A gust catches her scarf. She grabs it, laughs, and the coffee lid pops loose. Before a drop can reach her coat, a passing cyclist brakes and steadies the cup with one gloved hand.\n30: \n31: Scarlett looks from the rescued coffee to the camera, then wipes a tiny coral mark from the cup’s rim with her thumb.\n32: \n33: She says, “Still here.”\n34: \n35: She keeps walking as the light changes and the crowd streams around her.\n36: \n37: Scene 4 — 12s\n38: \n39: INT. NEIGHBORHOOD DINER — AFTERNOON\n40: \n41: Warm late-afternoon light pours through a window streaked with rain. Scarlett slides into a red vinyl booth with a young woman in a green utility jacket, her longtime friend Mina. Between them: fries, two paper cups, and the open coral lipstick.\n42: \n43: Mina borrows it without asking, applies it using the dark window as a mirror, then presses her lips together and hands it back. Scarlett watches Mina’s face change from exhausted to amused.\n44: \n45: The two women compare the shade in the window reflection. A server drops a check beside them; Mina reaches for it, leaving a coral print on the paper cup.\n46: \n47: Scarlett snaps a quick photo of the accidental mark, then caps the lipstick and tucks it into Mina’s jacket pocket.\n48: \n49: Mina says, “You’re giving me this?”\n50: \n51: Scarlett answers, “You need it more.”\n52: \n53: Scene 5 — 12s\n54: \n55: EXT. DOWNTOWN ROOFTOP — SUNSET\n56: \n57: On a rooftop above the traffic, Scarlett and Mina lean against a low concrete wall while a commuter train rattles across the distance. The city glows peach, white, and deep green beneath them.\n58: \n59: Mina pulls the coral lipstick from her pocket and applies one final swipe, then turns toward Scarlett. Scarlett adjusts Mina’s collar, and the two laugh as wind lifts their hair.\n60: \n61: The lipstick rests briefly in Mina’s open palm, catching the last sun. She closes her fingers around it instead of setting it down.\n62: \n63: A train flashes behind them. Mina takes Scarlett’s hand and pulls her toward the stairwell, both women moving into the warm rooftop light with the coral color bright between them.\n</USER_SCRIPT>\n\nIMPORTANT: each boundary's quote must be copied character-for-character from the script (no gutter, no paraphrase, no smart-quote substitution). Respond with ONLY valid JSON matching the schema.",
+        "model": "anthropic/claude-opus-5",
+        "turnIndex": 0,
+        "hasToolResult": false
+      },
+      "response": {
+        "content": "{\"projectMetadata\":{\"title\":\"Coral Lipstick\"},\"boundaries\":[{\"hintLine\":1,\"quote\":\"Scene 1 — 12s\"},{\"hintLine\":13,\"quote\":\"Scene 2 — 12s\"},{\"hintLine\":23,\"quote\":\"Scene 3 — 12s\"},{\"hintLine\":37,\"quote\":\"Scene 4 — 12s\"},{\"hintLine\":53,\"quote\":\"Scene 5 — 12s\"}]}"
+      },
+      "recordedTimings": {
+        "ttftMs": 1485,
+        "interChunkDelaysMs": [
+          1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 306, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0
+        ],
+        "totalDurationMs": 1796
+      },
+      "metadata": {
+        "systemHash": "c7b41c06"
+      }
+    }
+  ]
+}

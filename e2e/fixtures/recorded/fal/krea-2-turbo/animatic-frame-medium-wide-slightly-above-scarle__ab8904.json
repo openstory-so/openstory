@@ -1,0 +1,34 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Animatic frame. medium wide. slightly above. Scarlett stands hurriedly at the narrow sink in a black turtleneck and silver hoop earrings, searching among the scarf and bathroom counter items. Scarlett finds the subway card beneath the folded scarf, tears open the coral lipstick box, twists up the bullet, and presses it once to the back of her hand. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+        "model": "fal-ai/krea-2/turbo"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://assets.openstory.so/e2e/464532be5771c46b955e1a02153ceab8e9eeb1bb187aa680d02fc15402f7d83c.png",
+              "content_type": "image/png",
+              "file_name": "n2E7dP-W2fGBPYJwJiPqp_EtDg2gtT.png",
+              "file_size": null,
+              "width": 1024,
+              "height": 576
+            }
+          ],
+          "timings": {
+            "inference": 0.8191098830138799
+          },
+          "seed": 315385141,
+          "has_nsfw_concepts": [false],
+          "prompt": "Animatic frame. medium wide. slightly above. Scarlett stands hurriedly at the narrow sink in a black turtleneck and silver hoop earrings, searching among the scarf and bathroom counter items. Scarlett finds the subway card beneath the folded scarf, tears open the coral lipstick box, twists up the bullet, and presses it once to the back of her hand. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+          "actual_prompt": null
+        },
+        "status": 200,
+        "billableUnits": 0.5625
+      }
+    }
+  ]
+}

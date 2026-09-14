@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nImage 2 catches the closing elevator doors with her shoulder. Camera: smooth truck\n\noverall_soundscape: hurried footsteps, elevator chime, door motor. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nReference images:\nImage 3: Tired florist — keep visually consistent throughout the shot.\nImage 4: Courier - An adult courier of average height with a compact — keep visually consistent throughout the shot.\nImage 5: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/25dade6a7dee52a46c1ac3ee86e01e1c59b1f4dda40cd2eb2e394aad39ecc1ea.mp4",
+            "content_type": "video/mp4",
+            "file_name": "og_8edcw7qNEx26t5VfUI_minimax-h3.mp4",
+            "file_size": 6775699
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the young blonde woman from <Image 1>, the primary protagonist, with long wavy blonde hair, wearing a black turtleneck, a rust and dark floral scarf, and black trousers. She holds a slim, matte coral lipstick tube in her hand.\n<Subject 2> is the tired florist from <Image 1> and <Image 3>, a middle-aged woman with dark hair in a messy bun, wearing a stained, beige work shirt, a dark, textured apron, and dark pants.\n<Subject 3> is the adult male courier from <Image 1> and <Image 4>, an average-height man with dark curly hair, wearing a black hooded tactical jacket, black cargo pants, and carrying a black crossbody messenger bag.\n<Subject 4> is a tall stack of kraft cardboard boxes held by <Subject 3>.\n\nsummary:\n[keyframe completion + reference generation] The target video begins with a specific starting frame from <Image 1> and performs a smooth trucking camera movement as <Subject 1> enters an elevator. <Subject 1> is positioned in the foreground, having just caught the elevator doors with her shoulder. Behind her, <Subject 2> and <Subject 3> stand inside the elevator, looking at <Subject 1> as the doors close. The overall aesthetic is clean, modern, and cinematic, focusing on the interaction in the elevator.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1]): fully_preserved - Matches the appearance, hair, and outfit in <Image 1> throughout the video.\n<Subject 2> (appears in [Shot 1]): fully_preserved - Retains the specific worn clothing and apron from <Image 3> as shown in <Image 1>.\n<Subject 3> (appears in [Shot 1]): fully_preserved - Retains the tactical clothing and bag from <Image 4> as shown in <Image 1>.\n<Subject 4> (appears in [Shot 1]): fully_preserved - The boxes remain structurally consistent with the reference.\n\ndetailed_description:\nCinematic high-quality video with a clean, realistic style and soft indoor lighting. The scene takes place in a modern building elevator lobby and \n[Shot 1]\nThe scene opens on <Subject 1>, who stands in the foreground facing right, in the act of catching the metallic elevator doors with her shoulder. She is smiling brightly and looks at <Subject 2> and <Subject 3> inside the cab. Her hair is slightly windswept, suggesting she has just run up. <Subject 1> holds a slim, matte coral lipstick tube in her right hand, kept at chest level to show the \"CORAL LIPSTICK\" branding while her left hand is tucked into the front of her black turtleneck or a fold of her scarf. Inside the elevator, <Subject 2> stands in the center holding a metal bucket of pink ranunculus, her face showing a mix of exhaustion and surprise. To the right, <Subject 3> stands holding <Subject 4>, staring blankly toward <Subject 1>. The camera executes a smooth truck right with small amplitude at a moderate speed, following <Subject 1> as she steps into the space between the closing doors. The metallic elevator doors begin to slide shut from both sides, the silver surface reflecting the ceiling lights. The environment is pristine, with high-quality concrete walls and a modern floor.\n\noverall_soundscape:\nThe environmental sound is dominated by the rhythmic, urgent thudding of <Subject 1>'s footsteps on a hard surface, which abruptly stops as she catches the doors. A smooth, heavy mechanical whine of the elevator door motor is followed by a bright, high-pitched digital chime as the doors reach the center of the frame.\n\nnon_diegetic_music:\nN/A",
+          "seed": 2081105702,
+          "timings": {
+            "inference": 5.241805799072608
+          }
+        },
+        "status": 200,
+        "billableUnits": 9.6896
+      }
+    }
+  ]
+}

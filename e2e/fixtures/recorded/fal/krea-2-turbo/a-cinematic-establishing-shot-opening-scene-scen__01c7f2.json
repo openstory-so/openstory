@@ -1,0 +1,34 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "A cinematic establishing shot. Opening scene: Scene 1 — 12s\n\nINT. DOWNTOWN APARTMENT BATHROOM — MORNING\n\nHard sunlight cuts across white tile and a narrow sink. Scarlett, 27, in a black turtleneck and yesterday’s silver hoop earrings, hurriedly searches for a missing subway card while a coral lipstick box waits beside the faucet. She finds the card under a folded scarf, then notices the lipstick and pauses.\n\nShe tears open the box with her teeth, twists the coral bullet upward, and presses it once to the back of her hand. The color lands vi Art style: Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save. Mood: Fresh, sensory, and effortlessly cool. Lighting: Bright natural window light with clean directional shadows. Direct on-camera flash for punchy editorial energy on select shots. No heavy diffusion -- let light feel real and immediate. Warm late-afternoon glow for lifestyle moments. High-key and airy overall with pops of contrast. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+        "model": "fal-ai/krea-2/turbo"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://assets.openstory.so/e2e/1917ba16d5d2bf705b77e36e49f31d3e3979a2c6339504d5c280ed0bcfd4cd68.png",
+              "content_type": "image/png",
+              "file_name": "Xn9XJcLOtlBYoAsF0a8TT_pWdAU0ZV.png",
+              "file_size": null,
+              "width": 1024,
+              "height": 576
+            }
+          ],
+          "timings": {
+            "inference": 0.8311648019999893
+          },
+          "seed": 938767129,
+          "has_nsfw_concepts": [false],
+          "prompt": "A cinematic establishing shot. Opening scene: Scene 1 — 12s\n\nINT. DOWNTOWN APARTMENT BATHROOM — MORNING\n\nHard sunlight cuts across white tile and a narrow sink. Scarlett, 27, in a black turtleneck and yesterday’s silver hoop earrings, hurriedly searches for a missing subway card while a coral lipstick box waits beside the faucet. She finds the card under a folded scarf, then notices the lipstick and pauses.\n\nShe tears open the box with her teeth, twists the coral bullet upward, and presses it once to the back of her hand. The color lands vi Art style: Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save. Mood: Fresh, sensory, and effortlessly cool. Lighting: Bright natural window light with clean directional shadows. Direct on-camera flash for punchy editorial energy on select shots. No heavy diffusion -- let light feel real and immediate. Warm late-afternoon glow for lifestyle moments. High-key and airy overall with pops of contrast. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+          "actual_prompt": null
+        },
+        "status": 200,
+        "billableUnits": 0.5625
+      }
+    }
+  ]
+}

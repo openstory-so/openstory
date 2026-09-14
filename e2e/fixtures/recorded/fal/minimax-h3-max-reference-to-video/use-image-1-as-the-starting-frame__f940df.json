@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nImage 3 pulls out the lipstick, applies one final swipe, and turns toward Image 2. Camera: smooth orbit\n\noverall_soundscape: rooftop wind, distant traffic, commuter train approaching. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nReference images:\nImage 4: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/2e5a185929fda55e23eb3f97cb286907ae71e39d1d62d0e85d6ba127cf8e1da9.mp4",
+            "content_type": "video/mp4",
+            "file_name": "clRwY3cPrnyTFkPjJeoU6_minimax-h3.mp4",
+            "file_size": 10031493
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the young woman in <Picture 1> wearing a black wool coat and a patterned scarf, identified as the blonde subject.\n<Subject 2> is the young woman in <Picture 1> wearing a sage green jacket over a black t-shirt, identified as the brunette subject.\n<Subject 3> is the slim coral lipstick with silver base and cap shown in <Picture 4> and held in <Picture 2> <Picture 3>.\n\nsummary:\n[keyframe completion + reference generation] The target video opens on the rooftop scene from <Picture 1> and transitions into a close-up action where <Subject 2> identifies and wears <Subject 3>, turning back to <Subject 1> in a smooth orbiting shot.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1], [Shot 2]): fully_preserved - Identity, hairstyle, and black coat/scarf outfit are consistent with <Picture 1>.\n<Subject 2> (appears in [Shot 1], [Shot 2]): fully_preserved - Identity, hairstyle, and green jacket outfit are consistent with <Picture 1>.\n<Subject 3> (appears in [Shot 1], [Shot 2]): fully_preserved - Coral color, silver metallic rings, and cylindrical shape match <Picture 4>.\n<Picture 1> (appears in [Shot 1]): fully_preserved - Serves as the exact visual starting frame for the environment and character poses.\n\ndetailed_description:\nThe video is a cinematic 6-second product integration shot set on a rooftop at sunset, featuring natural lighting and high-fidelity character consistency.\n\n[Shot 1] We open with a static medium shot strictly identical to <Picture 1>. <Subject 1> (S1) stands on the left, leaning against a concrete rail, smiling at <Subject 2> (S2). <Subject 2> looks off into the distance as a silver train moves on the tracks behind them. A coral lipstick is already tucked into the front pocket of <Subject 2>'s green jacket.\n\n[Shot 2] At 00:03.000, the shot transitions into a smooth orbit with small amplitude at a moderate speed. As the camera tracks around the pair to the right, <Subject 2> pulls out the lipstick, matching the design of <Subject 3>, and applies one final, precise swipe of warm coral to her lips. She maintains a confident expression, then turns her body toward <Subject 1>. <Subject 1> (S1) laughs softly.\n<Subject 1> (S1): <d>[English] That is a perfect finish.</d>\n\noverall_soundscape:\nAmbience consists of a low rooftop wind hum and the high-pitched, distant roar of a commuter train passing on elevated tracks. The primary action sound is the crisp glide of the lipstick texture on lips and the subtle click of the product cap.\n\nnon_diegetic_music:\nN/A",
+          "seed": 567729122,
+          "timings": {
+            "inference": 6.348155332962051
+          }
+        },
+        "status": 200,
+        "billableUnits": 10.560000000000002
+      }
+    }
+  ]
+}
