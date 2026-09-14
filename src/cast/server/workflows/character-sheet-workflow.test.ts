@@ -88,6 +88,7 @@ const characterMetadata: CharacterBibleEntry = {
   distinguishingFeatures: '',
   personality: '',
   movement: '',
+  voiceDescription: '',
   voiceOnly: false,
   consistencyTag: 'sam',
 };

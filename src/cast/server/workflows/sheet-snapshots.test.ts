@@ -86,6 +86,7 @@ describe('character-sheet hash', () => {
       distinguishingFeatures: '',
       personality: '',
       movement: '',
+      voiceDescription: '',
       voiceOnly: false,
       consistencyTag: 'jack',
     },

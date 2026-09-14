@@ -45,6 +45,7 @@ const alice: CharacterBibleEntry = {
   distinguishingFeatures: '',
   personality: '',
   movement: '',
+  voiceDescription: '',
   voiceOnly: false,
   consistencyTag: '',
 };
@@ -404,6 +405,7 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
     distinguishingFeatures: 'Scar on left cheek',
     personality: '',
     movement: '',
+    voiceDescription: '',
     voiceOnly: false,
     consistencyTag: 'detective_sarah_blonde_30s',
   };
@@ -418,6 +420,7 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
     distinguishingFeatures: 'Sideburns',
     personality: '',
     movement: '',
+    voiceDescription: '',
     voiceOnly: false,
     consistencyTag: 'elvis_presley',
   };
@@ -453,7 +456,7 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
     movement: '',
     voiceOnly: b.voiceOnly,
     voiceId: null,
-    voiceDescription: null,
+    voiceDescription: b.voiceDescription || null,
     voicePreviews: null,
     useVoice: null,
     consistencyTag: b.consistencyTag,

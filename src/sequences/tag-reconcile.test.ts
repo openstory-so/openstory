@@ -40,6 +40,7 @@ const characterBible = [
     distinguishingFeatures: '',
     personality: '',
     movement: '',
+    voiceDescription: '',
     voiceOnly: false,
     consistencyTag: 'jack_denim_weathered',
   },

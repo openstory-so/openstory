@@ -41,6 +41,12 @@ export const characterBibleEntrySchema = z.object({
   // Performance (#1561). Guidance lives in the bible prompt (grammar budget).
   personality: z.string(),
   movement: z.string(),
+  // Hearable Voice Design brief (#1629). Drafted with the rest of the bible
+  // so the Voice field is filled at Script, and Generate uses it as-is.
+  voiceDescription: z.string().meta({
+    description:
+      'Hearable Voice Design brief: Native language, gender, age, Excellent quality, persona, emotion, timbre, pacing. No appearance',
+  }),
   // Narrator, radio voice, a caller on the phone: a voice with no face, so no
   // sheet, no talent match, no place in an image prompt (#1585).
   voiceOnly: z.boolean().meta({ description: 'Heard but never seen' }),

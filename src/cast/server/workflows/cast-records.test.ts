@@ -82,6 +82,7 @@ describe('createCastRecords', () => {
           distinguishingFeatures: '',
           personality: '',
           movement: '',
+          voiceDescription: '',
           voiceOnly: false,
           consistencyTag: 'sarah',
         },
@@ -181,6 +182,7 @@ describe('createCastRecords (talent match, #1561)', () => {
     distinguishingFeatures: '',
     personality: 'anxious',
     movement: 'restless hands',
+    voiceDescription: '',
     voiceOnly: false,
     consistencyTag: 'sarah',
   };
@@ -254,6 +256,7 @@ describe('createCastRecords (voice only, #1585)', () => {
           distinguishingFeatures: '',
           personality: 'dry, unhurried, faintly amused',
           movement: '',
+          voiceDescription: '',
           voiceOnly: true,
           consistencyTag: 'narrator',
         },
@@ -266,9 +269,51 @@ describe('createCastRecords (voice only, #1585)', () => {
     });
     expect(characterCreate.mock.calls[0]?.[0]).toMatchObject({
       characterId: 'narrator',
+      voiceDescription: null,
       voiceOnly: true,
       sheetStatus: 'pending',
       talentId: null,
+    });
+  });
+
+  test('persists the bible Voice Design brief', async () => {
+    const characterCreate = vi.fn(async (row: { id: string }) => row);
+    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal stub
+    const scopedDb = {
+      characters: { create: characterCreate },
+      sequenceLocations: { createBulk: vi.fn(async () => []) },
+      sequenceElements: { create: vi.fn() },
+      liveRead: { sequenceElements: { getByToken: vi.fn(async () => null) } },
+    } as unknown as WorkflowScopedDb;
+    await createCastRecords(scopedDb, {
+      sequenceId: 'seq_1',
+      characterBible: [
+        {
+          characterId: 'narrator',
+          name: 'Narrator',
+          age: '',
+          gender: '',
+          ethnicity: '',
+          physicalDescription: '',
+          standardClothing: '',
+          distinguishingFeatures: '',
+          personality: 'dry, unhurried, faintly amused',
+          movement: '',
+          voiceDescription:
+            'Native English. Male, 50s. Excellent quality. Persona: dry narrator. Emotion: unhurried, amused. Warm low timbre, conversational pace.',
+          voiceOnly: true,
+          consistencyTag: 'narrator',
+        },
+      ],
+      talentMatches: [],
+      locationBible: [],
+      locationMatches: [],
+      elementBible: [],
+      existingElements: [],
+    });
+    expect(characterCreate.mock.calls[0]?.[0]).toMatchObject({
+      voiceDescription:
+        'Native English. Male, 50s. Excellent quality. Persona: dry narrator. Emotion: unhurried, amused. Warm low timbre, conversational pace.',
     });
   });
 });

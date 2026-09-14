@@ -425,6 +425,7 @@ describe('AnalyzeScriptWorkflow script checkpoint', () => {
       distinguishingFeatures: '',
       personality: 'dry, unhurried',
       movement: '',
+      voiceDescription: '',
       voiceOnly: true,
       consistencyTag: 'narrator',
     };

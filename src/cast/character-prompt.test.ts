@@ -22,6 +22,7 @@ const scriptEntry: CharacterBibleEntry = {
   distinguishingFeatures: 'Small scar on left cheek',
   personality: '',
   movement: '',
+  voiceDescription: '',
   voiceOnly: false,
   consistencyTag: 'detective_sarah_blonde_30s',
 };
@@ -37,6 +38,7 @@ const talentMetadata: CharacterBibleEntry = {
   distinguishingFeatures: 'Signature sideburns',
   personality: '',
   movement: '',
+  voiceDescription: '',
   voiceOnly: false,
   consistencyTag: 'elvis_presley',
 };
@@ -189,6 +191,7 @@ describe('buildCastCharacterBible', () => {
     distinguishingFeatures: 'Glasses',
     personality: '',
     movement: '',
+    voiceDescription: '',
     voiceOnly: false,
     consistencyTag: 'bob_grey_suit',
   };
@@ -218,6 +221,7 @@ describe('buildCastCharacterBible', () => {
     expect(cast).toEqual({
       characterId: 'char_001',
       name: 'Detective Sarah',
+      voiceDescription: '',
       voiceOnly: false,
       ...expected,
     });

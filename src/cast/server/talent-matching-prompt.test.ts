@@ -13,6 +13,7 @@ const character: CharacterBibleEntry = {
   distinguishingFeatures: 'scar on left cheek',
   personality: '',
   movement: '',
+  voiceDescription: '',
   voiceOnly: false,
   consistencyTag: 'jack',
 };
@@ -33,6 +34,7 @@ const talent = {
       distinguishingFeatures: '',
       personality: '',
       movement: '',
+      voiceDescription: '',
       voiceOnly: false,
       consistencyTag: 'sam',
     },

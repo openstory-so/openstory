@@ -63,7 +63,9 @@ export function buildCharacterInsert(args: {
     // Cast copies the talent's voice (#1553); the upsert keeps a voice the
     // row already holds.
     voiceId: talentMatch?.voiceId ?? null,
-    voiceDescription: talentMatch?.voiceDescription ?? null,
+    voiceDescription:
+      talentMatch?.voiceDescription ??
+      (character.voiceDescription.trim() || null),
     firstMentionSceneId: null,
     firstMentionText: null,
     firstMentionLine: null,

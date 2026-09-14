@@ -66,6 +66,7 @@ const entry = (
   distinguishingFeatures: '',
   personality: '',
   movement: '',
+  voiceDescription: '',
   voiceOnly: false,
   consistencyTag: overrides.characterId,
   ...overrides,

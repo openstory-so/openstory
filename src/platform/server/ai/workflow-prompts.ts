@@ -109,6 +109,7 @@ For each character determine:
 - Personality: temperament, how they react under pressure (not appearance)
 - Movement: gait, posture, habitual gestures, a limp (not appearance)
 - Consistency tag: short unique reference (e.g., "Jack-denim-weathered")
+- Voice: hearable Voice Design brief (Native language, gender, age, Excellent quality, persona, emotion, timbre) — not appearance
 
 ## First Mention Tracking
 
@@ -131,6 +132,7 @@ For each character determine:
     "distinguishingFeatures": "Small scar above left eyebrow, silver watch",
     "personality": "Guarded, dry humour, slow to anger and slower to forgive",
     "movement": "Heavy deliberate stride, favours his left knee, hands stay in jacket pockets",
+    "voiceDescription": "Native English. Male, mid-30s. Excellent quality. Persona: weary cowboy. Emotion: dry, unhurried. Low gravel timbre, conversational pace.",
     "consistencyTag": "Jack-denim-weathered"
   }]
 }`,
@@ -407,6 +409,7 @@ For each character determine:
 - Clothing: complete outfit that defines the character
 - Distinguishing features: scars, tattoos, jewelry, accessories
 - Consistency tag: short unique reference (e.g., "Jack-denim-weathered")
+- Voice: hearable Voice Design brief (Native language, gender, age, Excellent quality, persona, emotion, timbre) — not appearance
 
 ## First Mention Tracking
 
@@ -1001,6 +1004,7 @@ Build a complete character bible. For each character:
 - personality — who they are, NOT what they look like: temperament, archetype, how they react under pressure, comic register. Drives expressions, reactions, pacing and delivery.
 - movement — how the body moves: gait, posture, energy, habitual gestures, a limp, a tremor. Drives blocking and action.
   Extract both from the script, and infer where the script only implies them ("fidgets with his tie" → personality: anxious, eager to please; movement: restless hands, shoulders tight). Never repeat appearance in either field.
+- voiceDescription — what can be HEARD. ElevenLabs Voice Design brief, 40–90 words, this shape: Native <language>. <gender>, <age>. Excellent quality. Persona: <2–5 words>. Emotion: <2–3 adjectives>. Then 1–2 sentences on timbre, pacing, delivery. Infer from dialogue, personality and movement. No appearance, clothing, or FX words (reverb/echo/phone). Always fill this — it is the Voice field and the brief Generate casts from.
 - consistencyTag — HARD FORMAT CONTRACT: the snake_case slug of the character's name AS WRITTEN IN THE SCRIPT ("GIRL ONE" → "girl_one"). Optional descriptive context may follow the name slug ("jack_denim_weathered"), but the tag MUST start with the name slug. An independent system joins scene tags against these.
 - voiceOnly — true only for a voice that is heard but NEVER seen: a narrator, a voiceover, a radio or phone voice with no face on screen. Each distinct such voice is its own entry, named as the script names it, or "Narrator" for unnamed narration. Its personality describes the VOICE — register, warmth, pace, attitude. Age may be a guess if the voice implies one, otherwise empty; gender, ethnicity, physicalDescription, standardClothing, distinguishingFeatures and movement are empty strings. Create none when nobody speaks off screen. A character who is off screen for a moment, or seen in another scene, has a face: voiceOnly false, full appearance.
 
@@ -1071,7 +1075,7 @@ For each character that appears on screen:
 2. Include clothing details that define the character
 3. Add distinguishing features
 4. Create a consistencyTag starting with the character's name slug
-A voice that is only heard gets its own entry with voiceOnly true, a voice description in personality, and empty appearance fields.
+A voice that is only heard gets its own entry with voiceOnly true, a voiceDescription, personality as register/attitude, and empty appearance fields.
 
 For each unique location:
 1. Provide COMPLETE visual descriptions for visual consistency

@@ -87,6 +87,7 @@ const characterBible: CharacterBibleEntry = {
   distinguishingFeatures: '',
   personality: '',
   movement: '',
+  voiceDescription: '',
   voiceOnly: false,
   consistencyTag: 'sam',
 };

@@ -241,6 +241,7 @@ const ALICE: CharacterBibleEntry = {
   distinguishingFeatures: '',
   personality: '',
   movement: '',
+  voiceDescription: '',
   voiceOnly: false,
   consistencyTag: 'alice_tag',
 };
