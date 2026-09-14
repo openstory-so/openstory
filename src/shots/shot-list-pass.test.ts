@@ -113,10 +113,9 @@ describe('minShotsForScene', () => {
   });
 });
 
-describe('allocateSceneShots (#1593)', () => {
-  const scene = (durationSeconds: number, shotLabelSeconds?: number[]) => ({
+describe('allocateSceneShots (#1593, #1621)', () => {
+  const scene = (durationSeconds: number) => ({
     metadata: { ...makeScene(1, 'x').metadata, durationSeconds },
-    ...(shotLabelSeconds && { shotLabelSeconds }),
   });
 
   it('defaults an empty list to one shot at the scene duration', () => {
@@ -128,15 +127,6 @@ describe('allocateSceneShots (#1593)', () => {
     const shots = [twoShotSpec(2), twoShotSpec(1), twoShotSpec(3)];
     const out = allocateSceneShots(shots, scene(18), SEEDANCE);
     expect(out.map((s) => s.shotNumber)).toEqual([1, 2, 3]);
-  });
-
-  it("enhance's shot labels ARE the shots: count and durations verbatim", () => {
-    const out = allocateSceneShots(
-      [twoShotSpec(1), twoShotSpec(2)],
-      scene(10, [4, 6]),
-      SEEDANCE
-    );
-    expect(out.map((s) => s.durationSeconds)).toEqual([4, 6]);
   });
 
   it('a lone shot takes the whole label, up to the longest clip', () => {
@@ -200,16 +190,6 @@ describe('allocateSceneShots (#1593)', () => {
     ]);
   });
 
-  it('labels that do not match the returned count fall back to dividing the label', () => {
-    const out = allocateSceneShots(
-      [twoShotSpec(1), twoShotSpec(2), twoShotSpec(3)],
-      scene(12, [4, 8]),
-      SEEDANCE
-    );
-    expect(out).toHaveLength(3);
-    expect(out.reduce((sum, s) => sum + s.durationSeconds, 0)).toBe(12);
-  });
-
   it('with no grid, splits the label into even integers', () => {
     const out = allocateSceneShots(
       [twoShotSpec(1), twoShotSpec(2), twoShotSpec(3)],
@@ -240,17 +220,6 @@ describe('attachShotLists', () => {
     const attached = attachShotLists(scenes, oneShotEach(scenes), SEEDANCE);
     expect(attached[0]?.shots).toHaveLength(1);
     expect(attached[0]?.shots?.[0]?.durationSeconds).toBe(8);
-  });
-
-  it('drops the transient shot labels once they have been applied', () => {
-    const scenes = [makeScene(1, 'Cut.', { shotLabelSeconds: [4, 4] })];
-    const [out] = attachShotLists(
-      scenes,
-      { scenes: [{ sceneNumber: 1, shots: [twoShotSpec(1), twoShotSpec(2)] }] },
-      SEEDANCE
-    );
-    expect(out?.shots?.map((s) => s.durationSeconds)).toEqual([4, 4]);
-    expect(out && 'shotLabelSeconds' in out).toBe(false);
   });
 
   it('attaches two shots to a scene with an internal cut', () => {
@@ -535,14 +504,7 @@ describe('formatScenesForShotListPrompt', () => {
     expect(text).toContain('She opens the door. Cut to the hallway beyond.');
   });
 
-  it('labelled shots are the budget; a label too short for two clips is exactly 1', () => {
-    const labelled = formatScenesForShotListPrompt(
-      [makeScene(1, 'Cut.', { shotLabelSeconds: [4, 4] })],
-      SEEDANCE
-    );
-    expect(labelled).toContain(
-      'shots: exactly 2, as labelled in the script (4s, 4s)'
-    );
+  it('a label too short for two clips is exactly 1; a very long one needs a floor', () => {
     const tiny = formatScenesForShotListPrompt(
       [
         makeScene(2, 'Blink.', {

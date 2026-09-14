@@ -146,7 +146,6 @@ export async function* streamScriptEnhancement(
     style: data.style,
     aspectRatio: data.aspectRatio,
     targetDuration: targetSeconds,
-    videoModel,
     elements: elements.length > 0 ? elements : undefined,
   });
 
@@ -260,7 +259,6 @@ export async function* streamScriptEnhancement(
   yield* runEnhanceScriptTurns({
     messages,
     targetSeconds,
-    videoModel,
     generate,
   });
 

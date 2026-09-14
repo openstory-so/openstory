@@ -907,9 +907,12 @@ describe('SceneSplitWorkflow shot-list pass (#1486)', () => {
     expect(trim).toHaveBeenCalledWith('dbscene_0', 2);
   });
 
-  test("a scene's shots sum to its label on the model grid (#1593)", async () => {
-    // Enhance-shaped script: scene 1 labels its shots, scene 2 is free to
-    // split, scene 3 (5s) cannot hold two 4s clips.
+  test("a scene's shots sum to its label on the model grid (#1593, #1621)", async () => {
+    // A legacy-shaped script: scene 1 still carries the OLD `Shot N — Xs`
+    // lines Enhance used to write — Enhance no longer emits these (#1621),
+    // so they are now just prose the split ignores; the shot-list pass
+    // divides scene 1's label exactly like scene 2's. Scene 3 (5s) still
+    // cannot hold two 4s clips.
     const script = [
       'Scene 1 — 12s',
       'Shot 1 — 4s',
@@ -955,7 +958,10 @@ describe('SceneSplitWorkflow shot-list pass (#1486)', () => {
     const seconds = result.scenes.map((scene) =>
       (scene.shots ?? []).map((shot) => shot.durationSeconds)
     );
-    expect(seconds).toEqual([[4, 8], [5, 5], [5]]);
+    // Scene 1's stray Shot labels no longer fix [4, 8] — both shots carry the
+    // same weight (`shotSpec`'s default), so its 12s label splits evenly,
+    // same as scene 2's unlabelled 10s.
+    expect(seconds).toEqual([[6, 6], [5, 5], [5]]);
     expect(result.shotMapping).toHaveLength(5);
     expect(result.scenes.every((scene) => !('shotLabelSeconds' in scene))).toBe(
       true

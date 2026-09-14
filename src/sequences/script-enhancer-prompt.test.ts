@@ -1,7 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { z } from 'zod';
 import { migrateStyleConfigV1ToV2 } from '@/look/style-config';
 import { DEFAULT_STYLE_TEMPLATES } from '@/look/style-templates';
 import { toEnhanceInputs } from '@/models/enhance-inputs';
@@ -41,19 +38,18 @@ describe('createUserPrompt (issue #855)', () => {
     expect(prompt).not.toContain('Non-negotiables');
   });
 
-  it('anchors length to scene count, clip grid, and a hard sum (#1374)', () => {
+  it('anchors length to scene count and a hard sum, with no clip grid (#1374, #1621)', () => {
     const prompt = createUserPrompt('a brief', {
       targetDuration: 60,
-      videoModel: 'kling_v3_pro',
     });
     expect(prompt).toContain('Target video duration: 1 minute');
-    // Kling min clip 3s caps 60s at 20 clips; preferred 8–12 stays 8–12.
-    expect(prompt).toContain('about 8-12 clips');
+    expect(prompt).toContain('about 8-12 scenes');
     expect(prompt).not.toMatch(/~\s*\d+\s*words/);
-    expect(prompt).toContain('Clip durations MUST be 3–15 seconds');
     expect(prompt).toContain('MUST add up to 60 seconds');
     expect(prompt).toContain('TOTAL: <sum>s');
-    expect(prompt).toContain('Each SHOT is one video clip');
+    // Enhance no longer knows the video model's clip grid (#1621).
+    expect(prompt).not.toMatch(/clip durations must be/i);
+    expect(prompt).not.toContain('Each SHOT is one video clip');
   });
 
   it('threads style name/category/tags so the genre drives the events', () => {
@@ -95,7 +91,13 @@ describe('createUserPrompt (issue #855)', () => {
     expect(prompt).not.toContain('Energy:');
   });
 
-  it('matches the recorded full-pipeline enhance fixture for the city script', () => {
+  // #1621: Enhance's duration paragraph dropped the clip-grid rule, so the
+  // prompt this builds no longer matches the recorded full-pipeline fixture
+  // byte-for-byte (that fixture's response was a live model reacting to the
+  // OLD, grid-aware prompt). The fixture needs a live re-record
+  // (`bun run test:e2e:full:record`) to pick up the new Enhance behavior —
+  // this test instead pins the new prompt's shape directly.
+  it('builds the enhance prompt for the city script with no clip-grid rule', () => {
     const productAd = DEFAULT_STYLE_TEMPLATES.find(
       (style) => style.name === 'Product Ad'
     );
@@ -140,27 +142,12 @@ SUPER:  CORAL.  OUT NOW.`;
       },
       aspectRatio: '16:9',
       targetDuration: 60,
-      // The full-pipeline recording runs on MiniMax H3 Max (5–15s clips).
-      videoModel: 'minimax_h3_max',
     });
-    const fixture = z
-      .object({
-        fixtures: z.array(
-          z.object({ match: z.object({ userMessage: z.string() }) })
-        ),
-      })
-      .parse(
-        JSON.parse(
-          readFileSync(
-            resolve(
-              import.meta.dirname,
-              '../../e2e/fixtures/recorded/openrouter/script-enhance/script-enhance.json'
-            ),
-            'utf8'
-          )
-        )
-      );
-    expect(prompt).toBe(fixture.fixtures[0]?.match.userMessage);
+    expect(prompt).toContain(`<USER_SCRIPT>\n${script}\n</USER_SCRIPT>`);
+    expect(prompt).toContain('Target video duration: 1 minute');
+    expect(prompt).toContain('about 8-12 scenes');
+    expect(prompt).toContain('MUST add up to 60 seconds');
+    expect(prompt).not.toMatch(/clip durations must be/i);
   });
 
   it('renders authored motion refinements when present', () => {

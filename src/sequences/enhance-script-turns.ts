@@ -1,6 +1,6 @@
 /**
  * Multi-turn script-enhance generation: first pass, optional duration
- * correction, grid rewrite, TOTAL strip. Billing / model choice stay in
+ * correction, TOTAL strip. Billing / model choice stay in
  * `script-enhancement.ts`; this module is the testable loop.
  */
 
@@ -8,13 +8,9 @@ import {
   buildDurationCorrectionPrompt,
   createTotalLineFilter,
   durationCorrectionNeeded,
-  maybeRewriteDurationLabels,
-  parseClipDurationLabels,
-  parseShotDurationLabels,
+  parseSceneDurationLabels,
   stripTotalLine,
 } from '@/models/enhance-duration';
-import type { ImageToVideoModel } from '@/models/models';
-import { durationGridForModel } from '@/motion/snap-duration';
 import type { ChatMessage } from '@/platform/server/ai/prompts-index';
 
 type EnhanceTextDelta = { delta: string; reasoning?: string };
@@ -52,19 +48,14 @@ async function* streamTurn(
 export async function* runEnhanceScriptTurns(opts: {
   messages: ChatMessage[];
   targetSeconds: number;
-  videoModel: ImageToVideoModel;
   generate: EnhanceGenerate;
 }): AsyncGenerator<EnhanceChunk> {
-  const grid = durationGridForModel(opts.videoModel);
-
   const first = yield* streamTurn(opts.generate, opts.messages, true);
 
-  let script = first;
-  const labels = parseClipDurationLabels(script);
+  const labels = parseSceneDurationLabels(first);
   const needsCorrection = durationCorrectionNeeded({
     labels,
     targetSeconds: opts.targetSeconds,
-    grid,
   });
 
   if (needsCorrection) {
@@ -72,11 +63,9 @@ export async function* runEnhanceScriptTurns(opts: {
     const correction = buildDurationCorrectionPrompt({
       sum,
       targetSeconds: opts.targetSeconds,
-      grid,
       sceneCount: labels.length,
-      usingShotLabels: parseShotDurationLabels(script).length > 0,
     });
-    script = yield* streamTurn(
+    const corrected = yield* streamTurn(
       opts.generate,
       [
         ...opts.messages,
@@ -85,10 +74,6 @@ export async function* runEnhanceScriptTurns(opts: {
       ],
       false
     );
-  }
-
-  const rewritten = maybeRewriteDurationLabels(script, opts.videoModel);
-  if (needsCorrection || rewritten !== first) {
-    yield { delta: rewritten, replace: true };
+    yield { delta: corrected, replace: true };
   }
 }

@@ -4,6 +4,14 @@
  * the block the fixture was (re)written with — including the per-scene
  * `shots:` budget lines (#1593). This is what keeps the recorded e2e replay
  * green when the prompt formatter changes.
+ *
+ * The recorded enhanced script still carries the OLD `Shot N — Xs` labels
+ * Enhance used to write (#1486/#1593 era) — they are frozen fixture text.
+ * Since #1621 the split no longer reads them as a coverage lock, so the
+ * fixture's `shots:` lines were hand-updated to the grid-derived budget the
+ * current code computes; the LLM's own shot-list response (and the resulting
+ * shot durations, unchanged here because the old labels already landed on
+ * the model's clip grid) did not need to change.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -36,10 +44,10 @@ describe('recorded shot-list fixture', () => {
     ).toBe(fixtureScenesBlock());
   });
 
-  it("labels every recorded scene's shots, so the grid never enters the replay", () => {
+  it('carries no shotLabelSeconds: Enhance no longer locks shot count (#1621)', () => {
     const { assembled } = recordedSplitScenes();
     for (const scene of assembled.scenes) {
-      expect(scene.shotLabelSeconds?.length).toBeGreaterThan(0);
+      expect('shotLabelSeconds' in scene).toBe(false);
     }
     // Unused import guard: the helper is part of this module's public surface.
     expect(typeof extractTaggedJson).toBe('function');

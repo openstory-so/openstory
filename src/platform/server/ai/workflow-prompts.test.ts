@@ -34,8 +34,10 @@ describe('scene-shot-list-chat', () => {
     expect(system).toContain('Style is the director');
     expect(system).toContain('You NEVER create, merge, or rewrite scenes');
     // Length is per scene (#1593): the budget line, not a film target.
+    // Enhance no longer labels shots itself (#1621), so the budget is always
+    // grid-derived, never "as labelled in the script".
     expect(system).toContain('shots:');
-    expect(system).toContain('as labelled in the script');
+    expect(system).not.toContain('as labelled in the script');
     expect(system).toContain(
       'the system divides it across the scene\x27s shots'
     );
@@ -69,10 +71,12 @@ describe('script/enhance — two levels (#1486)', () => {
     expect(enhance).toContain('Cut to: the hallway beyond');
   });
 
-  it('labels scene totals and per-shot clip durations', () => {
-    expect(enhance).toContain('Shot 1 — 6s');
-    expect(enhance).toContain('one-shot scene needs only the scene label');
+  it('labels only scene totals, never shots or clip lengths (#1621)', () => {
+    expect(enhance).toContain('Scene 2 — 12s');
+    expect(enhance).toContain("scene's playing time, not a clip length");
     expect(enhance).toContain('TOTAL: <sum>s');
+    expect(enhance).not.toMatch(/Shot \d+ — \d+s/);
+    expect(enhance).toContain('Do not label shots or clip lengths');
   });
 
   it('treats each shot as one video clip, not a packed multi-shot render', () => {

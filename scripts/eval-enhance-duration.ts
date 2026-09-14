@@ -1,15 +1,16 @@
 #!/usr/bin/env bun
 /**
- * Duration-sum eval for `script/enhance` (issue #1374).
+ * Duration-sum eval for `script/enhance` (issue #1374, #1621).
  *
  * Replays a 9-beat + title-card brief through the live enhance user prompt
- * (clip grid + hard sum + TOTAL: self-check) and reports whether labeled
- * scene durations land within ±2s of the target.
+ * (scene labels + hard sum + TOTAL: self-check) and reports whether labeled
+ * scene durations land within ±2s of the target. Enhance is model-agnostic
+ * since #1621 — it labels scenes, not clips, so this eval no longer takes a
+ * video model.
  *
  * Usage:
  *   bun scripts/eval-enhance-duration.ts
  *   bun scripts/eval-enhance-duration.ts --runs 3
- *   bun scripts/eval-enhance-duration.ts --video-model kling_v3_pro
  *
  * Needs OPENROUTER_KEY. Report-only — never writes to the DB.
  */
@@ -23,11 +24,6 @@ import {
   stripTotalLine,
   sumSceneDurations,
 } from '@/models/enhance-duration';
-import {
-  DEFAULT_VIDEO_MODEL,
-  isValidImageToVideoModel,
-  type ImageToVideoModel,
-} from '@/models/models';
 import { createUserPrompt } from '@/sequences/script-enhancer';
 import { WORKFLOW_TEXT_PROMPTS } from '@/platform/server/ai/workflow-prompts';
 
@@ -55,12 +51,6 @@ function parseArg(name: string): string | undefined {
 }
 
 const RUNS = Math.max(1, Number(parseArg('runs') ?? '3'));
-const videoArg = parseArg('video-model') ?? DEFAULT_VIDEO_MODEL;
-if (!isValidImageToVideoModel(videoArg)) {
-  console.error(`Invalid --video-model "${videoArg}"`);
-  process.exit(1);
-}
-const VIDEO_MODEL: ImageToVideoModel = videoArg;
 
 const openRouterKey = process.env.OPENROUTER_KEY;
 if (!openRouterKey) {
@@ -75,7 +65,6 @@ Return ONLY the enhanced script text. No JSON, no markdown formatting, no explan
 async function enhanceOnce(): Promise<string> {
   const userPrompt = createUserPrompt(BRIEF, {
     targetDuration: TARGET,
-    videoModel: VIDEO_MODEL,
     aspectRatio: '16:9',
   });
   return callLLM({
@@ -94,9 +83,7 @@ async function enhanceOnce(): Promise<string> {
 const sums: number[] = [];
 let failed = 0;
 
-console.log(
-  `eval-enhance-duration  runs=${RUNS}  target=${TARGET}s  model=${VIDEO_MODEL}`
-);
+console.log(`eval-enhance-duration  runs=${RUNS}  target=${TARGET}s`);
 
 for (let i = 0; i < RUNS; i++) {
   const raw = await enhanceOnce();

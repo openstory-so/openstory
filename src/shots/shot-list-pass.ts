@@ -12,15 +12,15 @@
  * stamped with its shot.
  *
  * Length is per scene (#1593). A scene's running time is its script label
- * (`metadata.durationSeconds`); its shots divide it and never extend it.
- * When enhance labelled the shots (`Shot N — Xs`) those ARE the shots: count
- * and durations fixed, the LLM fills the coverage. Otherwise the LLM may
- * split, capped at how many of the video model's shortest clips fit the
- * label, and `allocateClipDurations` spreads the label over them. The film
- * target never enters here. The model grid *does*: it budgets the prompt,
- * divides the label, and clamps each clip; `resolveShotDuration` only snaps
- * again at submit. Prompts are assembled later by `deriveShots` — this pass
- * does not re-author them.
+ * (`metadata.durationSeconds`); its shots divide it and never extend it. The
+ * LLM decides coverage — how many shots, 1..N — capped at how many of the
+ * video model's shortest clips fit the label, and `allocateClipDurations`
+ * spreads the label over them. Enhance no longer labels shots (#1621): the
+ * shot-list pass is the only place shot count and durations are decided. The
+ * film target never enters here. The model grid *does*: it budgets the
+ * prompt, divides the label, and clamps each clip; `resolveShotDuration`
+ * only snaps again at submit. Prompts are assembled later by `deriveShots` —
+ * this pass does not re-author them.
  */
 
 import type { NewShot } from '@/platform/server/db/schema';
@@ -109,21 +109,19 @@ function keepShots(
  * Sort, re-number 1..n, and give every shot its clip length from the SCENE
  * (#1593). Empty / missing → one default shot at the scene's length.
  *
- * - Enhance's shot labels, when the pass returned that many shots, are used
- *   as-is, then clamped to the model's longest clip (`shotLabelSeconds`).
- * - Otherwise the list is capped at `maxShotsForScene` (post-parse only —
- *   Anthropic rejects `maxItems`), a lone shot takes the whole label, and
- *   several split it with `allocateClipDurations` on the model grid, the
- *   LLM's `durationSeconds` as relative weights. A label the grid cannot
- *   reach exactly (a 12s label on a {5, 10} grid) puts the residual on the
- *   last shot, and `resolveShotDuration` snaps at submit — but no shot ever
- *   runs past the model's longest clip: when the pass sends fewer shots than
- *   the label needs (ten for a 16-minute scene), the scene comes up short
- *   rather than ending on a 14-minute "clip".
+ * The list is capped at `maxShotsForScene` (post-parse only — Anthropic
+ * rejects `maxItems`), a lone shot takes the whole label, and several split
+ * it with `allocateClipDurations` on the model grid, the LLM's
+ * `durationSeconds` as relative weights. A label the grid cannot reach
+ * exactly (a 12s label on a {5, 10} grid) puts the residual on the last
+ * shot, and `resolveShotDuration` snaps at submit — but no shot ever runs
+ * past the model's longest clip: when the pass sends fewer shots than the
+ * label needs (ten for a 16-minute scene), the scene comes up short rather
+ * than ending on a 14-minute "clip".
  */
 export function allocateSceneShots(
   shots: ReadonlyArray<ShotSpec> | null | undefined,
-  scene: Pick<SceneSplittingScene, 'metadata' | 'shotLabelSeconds'>,
+  scene: Pick<SceneSplittingScene, 'metadata'>,
   grid: readonly number[]
 ): ShotSpec[] {
   const sceneSeconds = sceneDurationSeconds(scene);
@@ -131,28 +129,21 @@ export function allocateSceneShots(
     return [defaultSingleShot(sceneSeconds)];
   }
   const ordered = [...shots].sort((a, b) => a.shotNumber - b.shotNumber);
-  const labels = scene.shotLabelSeconds ?? [];
-  let kept: ShotSpec[];
+  const kept = keepShots(ordered, maxShotsForScene(sceneSeconds, grid));
   let seconds: number[];
-  if (labels.length > 0 && labels.length === ordered.length) {
-    kept = ordered;
-    seconds = labels;
+  if (kept.length === 1) {
+    seconds = [sceneSeconds];
   } else {
-    kept = keepShots(ordered, maxShotsForScene(sceneSeconds, grid));
-    if (kept.length === 1) {
-      seconds = [sceneSeconds];
-    } else {
-      seconds = allocateClipDurations(
-        kept.map((shot) => Math.max(1, shot.durationSeconds || 1)),
-        sceneSeconds,
-        grid
-      );
-      const residual = sceneSeconds - seconds.reduce((a, b) => a + b, 0);
-      const lastIndex = seconds.length - 1;
-      const last = seconds[lastIndex];
-      if (residual !== 0 && last !== undefined) {
-        seconds[lastIndex] = Math.max(1, last + residual);
-      }
+    seconds = allocateClipDurations(
+      kept.map((shot) => Math.max(1, shot.durationSeconds || 1)),
+      sceneSeconds,
+      grid
+    );
+    const residual = sceneSeconds - seconds.reduce((a, b) => a + b, 0);
+    const lastIndex = seconds.length - 1;
+    const last = seconds[lastIndex];
+    if (residual !== 0 && last !== undefined) {
+      seconds[lastIndex] = Math.max(1, last + residual);
     }
   }
   const maxClip = Math.max(...grid.filter((n) => n > 0));
@@ -212,8 +203,7 @@ export function dialogueForShot(
 
 /**
  * One scene with the pass's shots attached: allocated over its label
- * (`allocateSceneShots` on `grid`), its dialogue rebuilt from them. The
- * transient `shotLabelSeconds` is consumed here and dropped.
+ * (`allocateSceneShots` on `grid`), its dialogue rebuilt from them.
  */
 export function attachSceneShots(
   scene: SceneSplittingScene,
@@ -221,9 +211,8 @@ export function attachSceneShots(
   grid: readonly number[]
 ): SceneSplittingScene {
   const shots = allocateSceneShots(listed, scene, grid);
-  const { shotLabelSeconds: _labels, ...rest } = scene;
   return {
-    ...rest,
+    ...scene,
     shots,
     originalScript: {
       ...scene.originalScript,
@@ -334,19 +323,17 @@ export function formatCastForShotList(
 }
 
 /**
- * The `shots:` budget line for one scene (#1593): the labelled shots when
- * enhance wrote them, else the range the label allows — at least one per
- * longest clip, at most one per shortest. Without the floor the model reads
- * "up to N" as licence for a handful and a long scene ends on one huge shot.
+ * The `shots:` budget line for one scene (#1593, #1621): the range the
+ * scene's label allows on the model grid — at least one per longest clip, at
+ * most one per shortest. Without the floor the model reads "up to N" as
+ * licence for a handful and a long scene ends on one huge shot. The
+ * shot-list LLM decides coverage within this range on its own — Enhance no
+ * longer locks the count via its own shot labels.
  */
 function shotBudgetLine(
-  scene: Pick<SceneSplittingScene, 'metadata' | 'shotLabelSeconds'>,
+  scene: Pick<SceneSplittingScene, 'metadata'>,
   grid: readonly number[]
 ): string | undefined {
-  const labels = scene.shotLabelSeconds ?? [];
-  if (labels.length > 0) {
-    return `shots: exactly ${labels.length}, as labelled in the script (${labels.map((s) => `${s}s`).join(', ')})`;
-  }
   const seconds = scene.metadata.durationSeconds || 3;
   const cap = maxShotsForScene(seconds, grid);
   if (!Number.isFinite(cap)) return undefined;
@@ -358,10 +345,7 @@ function shotBudgetLine(
 /** User-prompt body: numbered slices the model must not re-author. */
 export function formatScenesForShotListPrompt(
   scenes: ReadonlyArray<
-    Pick<
-      SceneSplittingScene,
-      'sceneNumber' | 'metadata' | 'originalScript' | 'shotLabelSeconds'
-    >
+    Pick<SceneSplittingScene, 'sceneNumber' | 'metadata' | 'originalScript'>
   >,
   grid: readonly number[]
 ): string {

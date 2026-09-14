@@ -30,9 +30,10 @@
  *     Fails the run like the bibles call, and also when a batch omits a scene
  *     (`attachShotLists`): a one-shot fallback would silently leave that
  *     scene on the regex preview, which is empty for prose. Each scene's
- *     shots divide ITS label (#1593): the slice's `Shot N — Xs` labels fix
- *     count and durations when present, otherwise the label is spread over
- *     the shots on the video model's grid. No film-wide target enters the run.
+ *     shots divide ITS label (#1593): the LLM decides coverage (1..N shots,
+ *     within a range the model grid allows) and the label is spread over
+ *     them (#1621 — Enhance no longer labels shots itself). No film-wide
+ *     target enters the run.
  *
  * After the join, scene continuity tags are assigned from bibles ∩ slice
  * (`tag-reconcile.ts`) and bible `firstMention`s get their owning scene id

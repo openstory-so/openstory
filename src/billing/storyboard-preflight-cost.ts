@@ -2,7 +2,9 @@
  * Storyboard credit pre-flight shared by create / regenerate / retry (#1140).
  *
  * Keeps UI ActionCost and server `requireCredits` on the same composition:
- * shot count (clip labels, else headings, else playing time / typical clip),
+ * shot count (scene labels, else headings, else playing time / typical clip —
+ * Enhance no longer labels shots itself, #1621, so a scene label is the best
+ * pre-flight guess at shot count; the shot-list pass decides the real one),
  * motion only when `autoGenerateMotion`, music only when motion+music are both
  * on. `estimatedSceneCount` is shot stills/clips, not narrative scenes (#1593).
  */
@@ -10,7 +12,7 @@
 import {
   assessDurationFit,
   estimateMotionDurations,
-  parseClipDurationLabels,
+  parseSceneDurationLabels,
 } from '@/models/enhance-duration';
 import { durationGridForModel } from '@/motion/snap-duration';
 import { estimateSecondsFromText } from '@/sequences/scene-from-slice';
@@ -85,16 +87,17 @@ export function estimateStoryboardPreflightCost(
       : undefined;
   const scriptSeconds =
     targetSeconds ?? labeledSeconds ?? estimateSecondsFromText(opts.script);
-  // Shots to bill. A known count from continue wins. Else per-scene clip
-  // labels (`Shot N — Xs` in that scene, else `Scene N — Xs`). An unlabelled
-  // paste holds at least one typical clip per its playing time — a 90-minute
-  // script is hundreds of shots, not 30 headings.
+  // Shots to bill. A known count from continue wins. Else the scene labels
+  // (`Scene N — Xs`) — one guessed shot per scene; the shot-list pass decides
+  // the real coverage. An unlabelled paste holds at least one typical clip
+  // per its playing time — a 90-minute script is hundreds of shots, not 30
+  // headings.
   const headingCount = estimateSceneCount(opts.script, {
     targetDurationSeconds: targetSeconds,
   });
   const grid = durationGridForModel(primaryVideo);
   const typicalClip = grid[Math.floor(grid.length / 2)] ?? 5;
-  const clipCount = parseClipDurationLabels(opts.script).length;
+  const clipCount = parseSceneDurationLabels(opts.script).length;
   let sceneCount: number;
   if (opts.shotCount != null && opts.shotCount > 0) {
     sceneCount = opts.shotCount;

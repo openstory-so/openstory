@@ -157,7 +157,7 @@ describe('buildSceneFromSlice', () => {
     expect(scene.metadata.durationSeconds).toBe(5);
   });
 
-  it('keeps the scene total and carries the shot labels as the shots (#1593)', () => {
+  it('keeps the scene total; a stray "Shot N — Xs" line is just prose now (#1621)', () => {
     const slice = [
       'Scene 1 — 10s',
       'INT. HALLWAY - NIGHT',
@@ -169,17 +169,16 @@ describe('buildSceneFromSlice', () => {
     const scene = buildSceneFromSlice('scene_1', 0, slice);
     expect(scene.metadata.title).toBe('HALLWAY');
     expect(scene.metadata.durationSeconds).toBe(10);
-    expect(scene.shotLabelSeconds).toEqual([4, 6]);
+    expect('shotLabelSeconds' in scene).toBe(false);
   });
 
-  it('shot labels with no scene label: the scene is as long as its shots', () => {
+  it('no scene label and only stray shot-shaped lines: falls to the word-count estimate (#1621)', () => {
     const scene = buildSceneFromSlice(
       'scene_1',
       0,
       'INT. HALLWAY - NIGHT\nShot 1 — 4s\nShe opens the door.\nShot 2 — 6s\nBeyond.'
     );
-    expect(scene.metadata.durationSeconds).toBe(10);
-    expect(scene.shotLabelSeconds).toEqual([4, 6]);
+    expect(scene.metadata.durationSeconds).toBe(6);
   });
 
   it('unlabelled scene length is its word count at three words a second, uncapped (#1593)', () => {

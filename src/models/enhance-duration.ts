@@ -11,9 +11,6 @@ import { durationGridForModel, snapDuration } from '@/motion/snap-duration';
 /** Enhancer labels: `Scene 3 — 5s` (hyphen / en / em dash). */
 const SCENE_DURATION_LINE = /^(Scene\s+\d+\s*)([–—-])(\s*)(\d+)(\s*s\b.*)$/i;
 
-/** Multi-shot labels: `Shot 1 — 6s`. Clip-grid arithmetic uses these when present. */
-const SHOT_DURATION_LINE = /^(Shot\s+\d+\s*)([–—-])(\s*)(\d+)(\s*s\b.*)$/i;
-
 const TOTAL_LINE =
   /^\s*(?:\*{1,2}|#{1,6}\s+)?TOTAL:\s*\d+\s*(?:s|seconds?)?\s*\.?\s*(?:\*{1,2})?\s*$/i;
 
@@ -39,27 +36,9 @@ function preferredMinMax(targetSeconds: number): [number, number] {
   return [20, 30];
 }
 
-/** Clip-count guidance (shots, or one-shot scenes), intersected with the grid. */
-export function sceneRangeText(targetSeconds: number, grid: number[]): string {
-  let [min, max] = preferredMinMax(targetSeconds);
-  const minClip = grid[0];
-  const maxClip = grid[grid.length - 1];
-  if (minClip !== undefined && maxClip !== undefined) {
-    const feasibleMin = Math.max(1, Math.ceil(targetSeconds / maxClip));
-    const feasibleMax = Math.max(
-      feasibleMin,
-      Math.floor(targetSeconds / minClip)
-    );
-    const lo = Math.max(min, feasibleMin);
-    const hi = Math.min(max, feasibleMax);
-    if (lo <= hi) {
-      min = lo;
-      max = hi;
-    } else {
-      min = feasibleMin;
-      max = feasibleMax;
-    }
-  }
+/** Scene-count guidance. Not clip-grid-bound: a scene's shots (and their legal lengths) are decided later, by the shot-list pass. */
+export function sceneRangeText(targetSeconds: number): string {
+  const [min, max] = preferredMinMax(targetSeconds);
   return min === max ? `${min}` : `${min}-${max}`;
 }
 
@@ -93,59 +72,8 @@ export function parseSceneDurationLabels(script: string): number[] {
   return parseLabeledDurations(script, SCENE_DURATION_LINE);
 }
 
-export function parseShotDurationLabels(script: string): number[] {
-  return parseLabeledDurations(script, SHOT_DURATION_LINE);
-}
-
-/**
- * Clip durations for grid/sum arithmetic, **per scene**: that scene's shot
- * labels when present, otherwise its scene heading (a one-shot scene's
- * heading IS the clip). Never sum a scene's heading with its own shot
- * labels — that would double-count. Mixed Enhance output (multi-shot scenes
- * labelled, one-shot scenes only a heading) is counted scene by scene, not
- * film-wide: any `Shot N` anywhere used to drop every one-shot heading.
- */
-export function parseClipDurationLabels(script: string): number[] {
-  const clips: number[] = [];
-  let sceneSeconds: number | null = null;
-  let shotSeconds: number[] = [];
-
-  const flush = () => {
-    if (shotSeconds.length > 0) {
-      clips.push(...shotSeconds);
-    } else if (sceneSeconds != null) {
-      clips.push(sceneSeconds);
-    }
-    sceneSeconds = null;
-    shotSeconds = [];
-  };
-
-  for (const line of script.split('\n')) {
-    const trimmed = line.trim();
-    const sceneMatch = trimmed.match(SCENE_DURATION_LINE);
-    if (sceneMatch) {
-      flush();
-      const seconds = Number(sceneMatch[4]);
-      if (Number.isFinite(seconds) && seconds > 0) sceneSeconds = seconds;
-      continue;
-    }
-    // A `Scene N` line without a duration still starts a new scene so
-    // following shot labels do not attach to the previous heading.
-    if (/^Scene\s+\d+\b/i.test(trimmed)) {
-      flush();
-      continue;
-    }
-    const shotMatch = trimmed.match(SHOT_DURATION_LINE);
-    if (!shotMatch?.[4]) continue;
-    const seconds = Number(shotMatch[4]);
-    if (Number.isFinite(seconds) && seconds > 0) shotSeconds.push(seconds);
-  }
-  flush();
-  return clips;
-}
-
 export function sumSceneDurations(script: string): number {
-  return parseClipDurationLabels(script).reduce((a, b) => a + b, 0);
+  return parseSceneDurationLabels(script).reduce((a, b) => a + b, 0);
 }
 
 function isTotalLine(line: string): boolean {
@@ -192,55 +120,20 @@ export function createTotalLineFilter(): {
   };
 }
 
-function rewriteLabeledDurations(
-  script: string,
-  pattern: RegExp,
-  durations: number[]
-): string {
-  let i = 0;
-  return script
-    .split('\n')
-    .map((line) => {
-      const match = line.match(pattern);
-      if (!match) return line;
-      const next = durations[i++];
-      if (next === undefined) return line;
-      return `${match[1]}${match[2]}${match[3]}${next}${match[5]}`;
-    })
-    .join('\n');
-}
-
+/**
+ * Scene labels are narrative time, not clip lengths (#1621) — there is no
+ * model grid to be "off" against here. Only the sum-vs-target check applies.
+ */
 export function durationCorrectionNeeded(opts: {
   labels: number[];
   targetSeconds: number;
-  grid: number[];
 }): boolean {
   if (opts.labels.length === 0) return false;
   const sum = opts.labels.reduce((a, b) => a + b, 0);
-  const offSum =
+  return (
     Math.abs(sum - opts.targetSeconds) >
-    opts.targetSeconds * DURATION_SUM_TOLERANCE_RATIO;
-  const offGrid =
-    opts.grid.length > 0 && opts.labels.some((s) => !opts.grid.includes(s));
-  return offSum || offGrid;
-}
-
-/** Snap illegal clip labels onto the model grid. On-grid values are left alone. */
-export function maybeRewriteDurationLabels(
-  script: string,
-  model: ImageToVideoModel
-): string {
-  const shotLabels = parseShotDurationLabels(script);
-  if (shotLabels.length > 0) {
-    const next = shotLabels.map((s) => snapDuration(s, model));
-    if (next.every((v, i) => v === shotLabels[i])) return script;
-    return rewriteLabeledDurations(script, SHOT_DURATION_LINE, next);
-  }
-  const labels = parseSceneDurationLabels(script);
-  if (labels.length === 0) return script;
-  const next = labels.map((s) => snapDuration(s, model));
-  if (next.every((v, i) => v === labels[i])) return script;
-  return rewriteLabeledDurations(script, SCENE_DURATION_LINE, next);
+    opts.targetSeconds * DURATION_SUM_TOLERANCE_RATIO
+  );
 }
 
 /**
@@ -254,8 +147,7 @@ export function assessDurationFit(
   model: ImageToVideoModel
 ): DurationFit {
   const clipGrid = durationGridForModel(model);
-  // Per scene: shot labels when that scene has them, else the scene heading.
-  const labels = parseClipDurationLabels(script);
+  const labels = parseSceneDurationLabels(script);
   if (labels.length === 0) {
     return { snappedSeconds: null, clipGrid };
   }
@@ -279,44 +171,27 @@ function formatDuration(seconds: number): string {
   return `${mins} minute${mins > 1 ? 's' : ''} ${secs} seconds`;
 }
 
-/** Duration paragraph injected into the enhance user prompt. */
+/**
+ * Duration paragraph injected into the enhance user prompt. Scene-only
+ * (#1621): Enhance writes narrative scene lengths, never clip lengths — it
+ * does not know the video model's grid. Coverage (how many shots a scene
+ * needs, and their legal lengths) is decided later, by the shot-list pass.
+ */
 export function buildDurationPromptParagraph(opts: {
   targetSeconds: number;
-  videoModel: ImageToVideoModel;
 }): string {
-  const grid = durationGridForModel(opts.videoModel);
-  const rangeText = sceneRangeText(opts.targetSeconds, grid);
-  const gridText = formatClipGrid(grid);
-  const exampleClip = grid[0] ?? 5;
-  const clipRule =
-    gridText.length > 0
-      ? `Each SHOT is one video clip. Clip durations MUST be ${gridText} — those are the only lengths the selected video model can render.`
-      : `Give each shot a realistic clip duration — most around 5 seconds, a few up to ~8 when the motion genuinely needs it.`;
+  const rangeText = sceneRangeText(opts.targetSeconds);
+  const exampleSeconds = Math.max(4, Math.round(opts.targetSeconds / 4));
 
-  return `Target video duration: ${formatDuration(opts.targetSeconds)} (about ${rangeText} clips). Group clips that share a location and beat into one scene — a scene may hold several shots. ${clipRule} Label every scene (e.g. a "Scene 3 — ${exampleClip}s" heading). When a scene has more than one shot, also label each shot (e.g. "Shot 1 — ${exampleClip}s"); shot labels in a scene MUST add up to the scene label. A one-shot scene needs only the scene label — that label IS the clip duration. The clip labels (shot labels when present, otherwise scene labels) MUST add up to ${opts.targetSeconds} seconds (±${DURATION_PROMPT_TOLERANCE_SECONDS} seconds). Count the clips, add the labels, and do not return until they sum to the target. Reach the target through the number of shots, not by stretching illegal clip lengths. If the brief asks for a title card, logo, SUPER, or on-screen text, do not write that card — the image model cannot render text. Substitute a final living beat with a real subject. End with a single line: TOTAL: <sum>s`;
+  return `Target video duration: ${formatDuration(opts.targetSeconds)} (about ${rangeText} scenes). Group content that shares a location and beat into one scene. Label every scene with its intended duration (e.g. a "Scene 3 — ${exampleSeconds}s" heading) — that is the scene's playing time, not a clip length. Scene labels MUST add up to ${opts.targetSeconds} seconds (±${DURATION_PROMPT_TOLERANCE_SECONDS} seconds). Count the scenes, add the labels, and do not return until they sum to the target. Reach the target through the number of scenes, not by stretching one scene's length. If the brief asks for a title card, logo, SUPER, or on-screen text, do not write that card — the image model cannot render text. Substitute a final living beat with a real subject. End with a single line: TOTAL: <sum>s`;
 }
 
 export function buildDurationCorrectionPrompt(opts: {
   sum: number;
   targetSeconds: number;
-  grid: number[];
   sceneCount: number;
-  /** True when the labels being corrected are `Shot N — Xs`. */
-  usingShotLabels?: boolean;
 }): string {
-  const gridText = formatClipGrid(opts.grid);
-  const minClip = opts.grid[0];
-  const minTotal = minClip !== undefined ? opts.sceneCount * minClip : opts.sum;
-  const cannotFit = minClip !== undefined && minTotal > opts.targetSeconds;
-  const unit = opts.usingShotLabels ? 'shots' : 'scenes';
-  const clipRule =
-    gridText.length > 0
-      ? `Each clip duration MUST be one of: ${gridText}.`
-      : '';
-  const action = cannotFit
-    ? `${opts.sceneCount} ${unit} at ≥${minClip}s is at least ${minTotal}s. Drop or merge beats so the labels add up to ${opts.targetSeconds}s (±${DURATION_PROMPT_TOLERANCE_SECONDS}s).`
-    : `Revise the durations and/or ${opts.usingShotLabels ? 'shot' : 'scene'} count so the labels add up to ${opts.targetSeconds}s (±${DURATION_PROMPT_TOLERANCE_SECONDS}s).`;
-  return `Your clip duration labels sum to ${opts.sum}s, but the target is ${opts.targetSeconds}s. ${clipRule} ${action} Keep the story. If the brief asked for a title card, keep the living-beat substitution — do not write a title card. End with a single line: TOTAL: <sum>s. Return ONLY the revised script.`;
+  return `Your scene duration labels sum to ${opts.sum}s, but the target is ${opts.targetSeconds}s. Revise the durations and/or scene count so the labels add up to ${opts.targetSeconds}s (±${DURATION_PROMPT_TOLERANCE_SECONDS}s). Keep the story. If the brief asked for a title card, keep the living-beat substitution — do not write a title card. End with a single line: TOTAL: <sum>s. Return ONLY the revised script.`;
 }
 
 /**
@@ -330,7 +205,7 @@ export function estimateMotionDurations(opts: {
   sceneCount: number;
   model: ImageToVideoModel;
 }): { perShotSeconds: number; totalSeconds: number } {
-  const labels = parseClipDurationLabels(opts.script);
+  const labels = parseSceneDurationLabels(opts.script);
   if (labels.length > 0) {
     const snapped = labels.map((s) => snapDuration(s, opts.model));
     const totalSeconds = snapped.reduce((a, b) => a + b, 0);

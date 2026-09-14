@@ -48,13 +48,16 @@ describe('estimateStoryboardPreflightCost', () => {
     ).toBeGreaterThan(estimateSceneCount(script));
   });
 
-  it('bills a labelled multi-shot scene as N clips, not 1 heading (#1593)', () => {
+  it('a stray legacy "Shot N — Xs" line no longer inflates the clip count (#1621)', () => {
+    // Enhance stopped emitting these (#1621); pre-flight now bills one guessed
+    // shot per scene label until the shot-list pass runs, whether or not the
+    // script still carries old shot-shaped lines.
     const oneShot = [
       'Scene 1 — 10s',
       'INT. HALLWAY - NIGHT',
       'She opens the door.',
     ].join('\n');
-    const twoShot = [
+    const legacyTwoShotLines = [
       'Scene 1 — 10s',
       'INT. HALLWAY - NIGHT',
       'Shot 1 — 4s',
@@ -71,10 +74,10 @@ describe('estimateStoryboardPreflightCost', () => {
           videoModels: [DEFAULT_VIDEO_MODEL],
         })
       );
-    expect(quote(twoShot)).toBeGreaterThan(quote(oneShot));
+    expect(quote(legacyTwoShotLines)).toBe(quote(oneShot));
   });
 
-  it('bills mixed Enhance labels as per-scene clips, not film-wide shot labels', () => {
+  it('bills by scene labels, one guessed shot per scene, regardless of stray shot-shaped lines', () => {
     const oneShotScenes = [
       'Scene 1 — 10s',
       'She opens the door.',
@@ -83,7 +86,7 @@ describe('estimateStoryboardPreflightCost', () => {
       'Scene 3 — 5s',
       'A glance.',
     ].join('\n');
-    const mixed = [
+    const withLegacyShotLines = [
       'Scene 1 — 10s',
       'Shot 1 — 4s',
       'She opens the door.',
@@ -103,9 +106,9 @@ describe('estimateStoryboardPreflightCost', () => {
           videoModels: [DEFAULT_VIDEO_MODEL],
         })
       );
-    // 4 clips (2+1+1) must quote more than 3 one-shot headings. Film-wide
-    // parseClipDurationLabels used to return only [4, 6] and under-bill.
-    expect(quote(mixed)).toBeGreaterThan(quote(oneShotScenes));
+    // Same 3 scene labels either way: the shot-list pass, not Enhance, now
+    // owns coverage, so pre-flight cannot see the eventual 2nd shot yet.
+    expect(quote(withLegacyShotLines)).toBe(quote(oneShotScenes));
   });
 
   it('a known shotCount wins over heading count', () => {

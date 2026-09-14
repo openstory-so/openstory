@@ -23,8 +23,13 @@ const TIME_SUFFIX = new RegExp(
 );
 /** Enhancer labels like `Scene 3 — 5s` — scene total, not a location heading. */
 const SCENE_DURATION_LABEL = /^Scene\s+\d+\s*[–—-]\s*(\d+)\s*s\b/i;
-/** `Shot 1 — 4s` — clip duration; skip as a heading, don't steal the scene total. */
-const SHOT_DURATION_LABEL = /^Shot\s+\d+\s*[–—-]\s*(\d+)\s*s\b/i;
+/**
+ * `Shot 1 — 4s` — a label Enhance no longer writes (#1621), but still shows
+ * up in already-enhanced scripts from before this change. Recognized only to
+ * skip past it while hunting for the real heading line below it — never
+ * parsed for a value, never used to lock shot count or duration.
+ */
+const LEGACY_SHOT_LABEL_LINE = /^Shot\s+\d+\s*[–—-]\s*\d+\s*s\b/i;
 const TRANSITION =
   /^(?:CUT TO:|DISSOLVE TO:|FADE IN:|FADE OUT[.:]?|SMASH CUT TO:|MATCH CUT TO:|WIPE TO:)\s*$/i;
 const PARENTHETICAL = /^\([^)]+\)$/;
@@ -89,7 +94,7 @@ function parseDurationLabel(trimmed: string, pattern: RegExp): number | null {
 
 function isDurationLabel(trimmed: string): boolean {
   return (
-    SCENE_DURATION_LABEL.test(trimmed) || SHOT_DURATION_LABEL.test(trimmed)
+    SCENE_DURATION_LABEL.test(trimmed) || LEGACY_SHOT_LABEL_LINE.test(trimmed)
   );
 }
 
@@ -113,20 +118,6 @@ function sliceLead(slice: string): SliceLead {
     return { headingLine: trimmed, durationSeconds };
   }
   return { headingLine: '', durationSeconds };
-}
-
-/**
- * Every `Shot N — Xs` label in the slice, in script order (#1593). When
- * enhance wrote them, they ARE the scene's shots: the shot-list pass keeps
- * the count and these durations and only fills in the coverage.
- */
-function parseShotLabelSeconds(slice: string): number[] {
-  const seconds: number[] = [];
-  for (const line of slice.split('\n')) {
-    const labeled = parseDurationLabel(line.trim(), SHOT_DURATION_LABEL);
-    if (labeled !== null) seconds.push(labeled);
-  }
-  return seconds;
 }
 
 function isSceneHeading(trimmed: string): boolean {
@@ -225,18 +216,10 @@ export function buildSceneFromSlice(
   originalScript: { extract: string; dialogue: DialogueLine[] };
   metadata: SceneMetadata;
   continuity: Continuity;
-  shotLabelSeconds?: number[];
 } {
   const lead = sliceLead(slice);
   const heading = parseSceneHeading(lead.headingLine);
   const title = heading.title || `Scene ${index + 1}`;
-  const shotLabelSeconds = parseShotLabelSeconds(slice);
-  // Shot labels without a scene label: the scene is as long as its shots.
-  const labeledSeconds =
-    lead.durationSeconds ??
-    (shotLabelSeconds.length > 0
-      ? shotLabelSeconds.reduce((a, b) => a + b, 0)
-      : null);
   return {
     sceneId,
     sceneNumber: index + 1,
@@ -246,13 +229,12 @@ export function buildSceneFromSlice(
     },
     metadata: {
       title,
-      durationSeconds: labeledSeconds ?? estimateSecondsFromText(slice),
+      durationSeconds: lead.durationSeconds ?? estimateSecondsFromText(slice),
       location: heading.location,
       timeOfDay: heading.timeOfDay,
       storyBeat: '',
     },
     continuity: { ...EMPTY_CONTINUITY },
-    ...(shotLabelSeconds.length > 0 && { shotLabelSeconds }),
   };
 }
 
