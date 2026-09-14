@@ -1,5 +1,11 @@
 import { useElevenLabsVoices } from '@/cast/ui/use-elevenlabs-voices';
-import type { CatalogVoice, CatalogVoiceSource } from '@/cast/voice';
+import type {
+  CatalogVoice,
+  CatalogVoiceFilters,
+  VoiceAgeFilter,
+  VoiceGenderFilter,
+  VoiceQualityFilter,
+} from '@/cast/voice';
 import { Button } from '@/ui/shadcn/button';
 import {
   Dialog,
@@ -11,7 +17,6 @@ import {
 import { Input } from '@/ui/shadcn/input';
 import { ScrollArea } from '@/ui/shadcn/scroll-area';
 import { Skeleton } from '@/ui/shadcn/skeleton';
-import { Tabs, TabsList, TabsTrigger } from '@/ui/shadcn/tabs';
 import { cn } from '@/ui/utils';
 import { Library, Search } from 'lucide-react';
 import { useRef, useState } from 'react';
@@ -22,7 +27,25 @@ type VoiceLibraryDialogProps = {
   selectedVoiceId?: string | null;
   onSelect: (voice: CatalogVoice) => void;
   pending?: boolean;
+  characterName: string;
+  recommended: CatalogVoiceFilters;
 };
+
+const QUALITY_OPTIONS: { value: VoiceQualityFilter; label: string }[] = [
+  { value: 'studio', label: 'Studio' },
+];
+
+const GENDER_OPTIONS: { value: VoiceGenderFilter; label: string }[] = [
+  { value: 'male', label: 'Male' },
+  { value: 'female', label: 'Female' },
+  { value: 'neutral', label: 'Neutral' },
+];
+
+const AGE_OPTIONS: { value: VoiceAgeFilter; label: string }[] = [
+  { value: 'young', label: 'Young' },
+  { value: 'middle_aged', label: 'Middle aged' },
+  { value: 'old', label: 'Old' },
+];
 
 const VoiceRow: React.FC<{
   voice: CatalogVoice;
@@ -69,28 +92,75 @@ const VoiceRow: React.FC<{
   </li>
 );
 
+function FilterPills<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: T | undefined;
+  options: { value: T; label: string }[];
+  onChange: (value: T | undefined) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <p className="text-sm font-medium">{label}</p>
+      <div className="flex flex-wrap justify-end gap-1">
+        {options.map((option) => (
+          <Button
+            key={option.value}
+            type="button"
+            size="sm"
+            variant={value === option.value ? 'default' : 'secondary'}
+            onClick={() => onChange(option.value)}
+          >
+            {option.label}
+          </Button>
+        ))}
+        <Button
+          type="button"
+          size="sm"
+          variant={value === undefined ? 'default' : 'secondary'}
+          onClick={() => onChange(undefined)}
+        >
+          Any
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function sameFilters(a: CatalogVoiceFilters, b: CatalogVoiceFilters): boolean {
+  return a.gender === b.gender && a.age === b.age && a.quality === b.quality;
+}
+
 export const VoiceLibraryDialog: React.FC<VoiceLibraryDialogProps> = ({
   open,
   onOpenChange,
   selectedVoiceId,
   onSelect,
   pending = false,
+  characterName,
+  recommended,
 }) => {
-  const [source, setSource] = useState<CatalogVoiceSource>('premade');
   const [input, setInput] = useState('');
   const [search, setSearch] = useState('');
+  const [filters, setFilters] = useState<CatalogVoiceFilters>(recommended);
   const searchTimer = useRef<number>(0);
 
-  const query = useElevenLabsVoices(source, search, open);
+  const query = useElevenLabsVoices(search, filters, open);
   const voices = query.data?.pages.flatMap((page) => page.voices) ?? [];
   const empty = !query.isFetching && voices.length === 0;
   const lastPage = query.data?.pages.at(-1);
+  const showingRecommended = !search && sameFilters(filters, recommended);
+  const hasFilters = Boolean(filters.gender || filters.age || filters.quality);
 
   const reset = () => {
     window.clearTimeout(searchTimer.current);
     setInput('');
     setSearch('');
-    setSource('premade');
+    setFilters(recommended);
   };
 
   const handleSearchChange = (value: string) => {
@@ -109,38 +179,62 @@ export const VoiceLibraryDialog: React.FC<VoiceLibraryDialogProps> = ({
         onOpenChange(next);
       }}
     >
-      <DialogContent className="flex max-h-[min(90vh,40rem)] w-full flex-col gap-3 sm:max-w-lg">
+      <DialogContent className="flex max-h-[min(90vh,44rem)] w-full flex-col gap-3 sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Voice library</DialogTitle>
           <DialogDescription>
-            Default ElevenLabs voices cost no slot. Voice Library picks are
-            copied onto the platform account.
+            {showingRecommended && (recommended.gender || recommended.age)
+              ? `Recommended for ${characterName} from the character bible. Search or change filters to browse everyone.`
+              : 'ElevenLabs Voice Library. Studio quality is the high-fidelity subset.'}
           </DialogDescription>
         </DialogHeader>
-        <Tabs
-          value={source}
-          onValueChange={(value) => {
-            if (value !== 'premade' && value !== 'library') return;
-            setSource(value);
-          }}
-        >
-          <TabsList>
-            <TabsTrigger value="premade">Default</TabsTrigger>
-            <TabsTrigger value="library">Voice Library</TabsTrigger>
-          </TabsList>
-        </Tabs>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="search"
             autoComplete="off"
-            placeholder="Search voices…"
+            placeholder={`Search voices${characterName ? ` for ${characterName}` : ''}…`}
             value={input}
             onChange={(event) => handleSearchChange(event.target.value)}
             className="pl-9"
           />
         </div>
-        <ScrollArea className="h-[24rem]">
+        <div className="flex flex-col gap-2">
+          <FilterPills
+            label="Quality"
+            value={filters.quality}
+            options={QUALITY_OPTIONS}
+            onChange={(quality) =>
+              setFilters((current) => ({ ...current, quality }))
+            }
+          />
+          <FilterPills
+            label="Gender"
+            value={filters.gender}
+            options={GENDER_OPTIONS}
+            onChange={(gender) =>
+              setFilters((current) => ({ ...current, gender }))
+            }
+          />
+          <FilterPills
+            label="Age"
+            value={filters.age}
+            options={AGE_OPTIONS}
+            onChange={(age) => setFilters((current) => ({ ...current, age }))}
+          />
+          {hasFilters && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="self-end"
+              onClick={() => setFilters({})}
+            >
+              Clear filters
+            </Button>
+          )}
+        </div>
+        <ScrollArea className="h-[20rem]">
           {query.isFetching && voices.length === 0 ? (
             <div className="flex flex-col gap-2 p-1">
               {Array.from({ length: 4 }).map((_, index) => (
@@ -151,8 +245,8 @@ export const VoiceLibraryDialog: React.FC<VoiceLibraryDialogProps> = ({
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <Library className="h-10 w-10 text-muted-foreground/30" />
               <p className="mt-3 text-sm text-muted-foreground">
-                {search
-                  ? 'No voices matching your search'
+                {search || hasFilters
+                  ? 'No voices matching these filters'
                   : 'No voices available'}
               </p>
             </div>
@@ -170,7 +264,7 @@ export const VoiceLibraryDialog: React.FC<VoiceLibraryDialogProps> = ({
             </ul>
           )}
         </ScrollArea>
-        {source === 'library' && lastPage?.hasMore && (
+        {lastPage?.hasMore && (
           <Button
             type="button"
             variant="outline"

@@ -11,7 +11,6 @@ import {
 import {
   getElevenLabsVoice,
   listLibraryVoices,
-  listPremadeVoices,
 } from '@/cast/server/voice/elevenlabs-voice';
 import { authWithTeamMiddleware } from '@/platform/middleware.fn';
 import { ValidationError } from '@/platform/errors';
@@ -38,23 +37,25 @@ export const listElevenLabsVoicesFn = createServerFn({ method: 'GET' })
   .validator(
     zodValidator(
       z.object({
-        source: z.enum(['premade', 'library']),
         search: z.string().trim().max(200).optional(),
         page: z.number().int().min(0).optional(),
-        nextPageToken: z.string().min(1).optional(),
+        gender: z.enum(['male', 'female', 'neutral']).optional(),
+        age: z.enum(['young', 'middle_aged', 'old']).optional(),
+        quality: z.enum(['studio', 'any']).optional(),
       })
     )
   )
   .handler(async ({ data }) => {
     const apiKey = requireElevenLabsKey();
-    const search = data.search || undefined;
-    if (data.source === 'premade') {
-      return listPremadeVoices(apiKey, {
-        search,
-        nextPageToken: data.nextPageToken,
-      });
-    }
-    return listLibraryVoices(apiKey, { search, page: data.page });
+    return listLibraryVoices(apiKey, {
+      search: data.search || undefined,
+      page: data.page,
+      filters: {
+        gender: data.gender,
+        age: data.age,
+        quality: data.quality,
+      },
+    });
   });
 
 export const getElevenLabsVoiceFn = createServerFn({ method: 'GET' })

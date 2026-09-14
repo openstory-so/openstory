@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   designedTakeIsInUse,
+  inferVoiceAge,
+  inferVoiceGender,
   matchSpeaker,
+  recommendVoiceFilters,
   speakingCharacterIds,
   toCatalogVoiceFromLibrary,
   toCatalogVoiceFromPremade,
@@ -193,5 +196,37 @@ describe('catalog voice mapping', () => {
     expect(mapped.source).toBe('library');
     expect(mapped.publicOwnerId).toBe('owner-1');
     expect(mapped.labels).toEqual(['male', 'middle aged', 'british']);
+  });
+  it('treats a premade row from the shared library as premade', () => {
+    expect(
+      toCatalogVoiceFromLibrary({
+        voiceId: 'rachel',
+        publicOwnerId: 'eleven',
+        name: 'Rachel',
+        category: 'premade',
+      }).source
+    ).toBe('premade');
+  });
+});
+
+describe('recommendVoiceFilters', () => {
+  it('maps bible gender without treating female as male', () => {
+    expect(inferVoiceGender('Female')).toBe('female');
+    expect(inferVoiceGender('woman')).toBe('female');
+    expect(inferVoiceGender('male')).toBe('male');
+    expect(inferVoiceGender('non-binary')).toBe('neutral');
+    expect(inferVoiceGender('')).toBeUndefined();
+  });
+  it('maps bible age bands onto library filters', () => {
+    expect(inferVoiceAge('20s')).toBe('young');
+    expect(inferVoiceAge('35')).toBe('middle_aged');
+    expect(inferVoiceAge('elderly')).toBe('old');
+    expect(inferVoiceAge('young adult')).toBe('young');
+  });
+  it('opens Browse on the character shortlist', () => {
+    expect(recommendVoiceFilters({ gender: 'woman', age: '40s' })).toEqual({
+      gender: 'female',
+      age: 'middle_aged',
+    });
   });
 });

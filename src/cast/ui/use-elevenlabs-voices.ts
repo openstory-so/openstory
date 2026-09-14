@@ -1,28 +1,37 @@
 import { getElevenLabsVoiceFn, listElevenLabsVoicesFn } from '@/cast/voice.fn';
-import type { CatalogVoiceSource, SavedVoiceMeta } from '@/cast/voice';
+import type { CatalogVoiceFilters, SavedVoiceMeta } from '@/cast/voice';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 
 export const elevenLabsVoiceKeys = {
   all: ['elevenlabs-voices'] as const,
-  list: (source: CatalogVoiceSource, search: string) =>
-    [...elevenLabsVoiceKeys.all, 'list', source, search] as const,
+  list: (search: string, filters: CatalogVoiceFilters) =>
+    [
+      ...elevenLabsVoiceKeys.all,
+      'list',
+      search,
+      filters.gender ?? '',
+      filters.age ?? '',
+      filters.quality ?? '',
+    ] as const,
   saved: (characterId: string, voiceId = '') =>
     [...elevenLabsVoiceKeys.all, 'saved', characterId, voiceId] as const,
 };
 
 export function useElevenLabsVoices(
-  source: CatalogVoiceSource,
   search: string,
+  filters: CatalogVoiceFilters,
   enabled: boolean
 ) {
   return useInfiniteQuery({
-    queryKey: elevenLabsVoiceKeys.list(source, search),
+    queryKey: elevenLabsVoiceKeys.list(search, filters),
     queryFn: ({ pageParam }) =>
       listElevenLabsVoicesFn({
         data: {
-          source,
           ...(search ? { search } : {}),
-          ...(source === 'library' ? { page: pageParam } : {}),
+          page: pageParam,
+          ...(filters.gender ? { gender: filters.gender } : {}),
+          ...(filters.age ? { age: filters.age } : {}),
+          ...(filters.quality ? { quality: filters.quality } : {}),
         },
       }),
     initialPageParam: 0,

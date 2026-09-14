@@ -2,6 +2,7 @@ import { VOICE_DESIGN_COST } from '@/billing/elevenlabs-pricing';
 import { ActionCost } from '@/billing/ui/action-cost';
 import {
   designedTakeIsInUse,
+  recommendVoiceFilters,
   usesVoice,
   type CatalogVoice,
 } from '@/cast/voice';
@@ -267,6 +268,8 @@ export const CharacterVoiceSection: React.FC<{
             selectedVoiceId={character.voiceId}
             pending={assignVoice.isPending}
             onSelect={handleAssign}
+            characterName={character.name}
+            recommended={recommendVoiceFilters(character)}
           />
         </>
       )}

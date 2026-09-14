@@ -6,8 +6,8 @@
 
 import {
   toCatalogVoiceFromLibrary,
-  toCatalogVoiceFromPremade,
   voiceConsumesAccountSlot,
+  type CatalogVoiceFilters,
   type CatalogVoicePage,
   type SavedVoiceMeta,
 } from '@/cast/voice';
@@ -131,47 +131,26 @@ export async function getElevenLabsVoice(
   }
 }
 
-export async function listPremadeVoices(
-  apiKey: string,
-  args: { search?: string; nextPageToken?: string } = {}
-): Promise<CatalogVoicePage> {
-  const client = await createElevenLabsSdk(apiKey);
-  const result = await client.voices.search({
-    voiceType: 'default',
-    pageSize: 100,
-    sort: 'name',
-    sortDirection: 'asc',
-    ...(args.search && { search: args.search }),
-    ...(args.nextPageToken && { nextPageToken: args.nextPageToken }),
-  });
-  return {
-    voices: result.voices.map((voice) =>
-      toCatalogVoiceFromPremade({
-        voiceId: voice.voiceId,
-        name: voice.name,
-        description: voice.description,
-        previewUrl: voice.previewUrl,
-        category: voice.category,
-        labels: voice.labels,
-      })
-    ),
-    hasMore: result.hasMore,
-    nextPageToken: result.nextPageToken,
-  };
-}
-
 export async function listLibraryVoices(
   apiKey: string,
-  args: { search?: string; page?: number } = {}
+  args: {
+    search?: string;
+    page?: number;
+    filters?: CatalogVoiceFilters;
+  } = {}
 ): Promise<CatalogVoicePage> {
   const client = await createElevenLabsSdk(apiKey);
   const page = args.page ?? 0;
+  const filters = args.filters ?? {};
   const result = await client.voices.getShared({
     pageSize: 30,
     page,
     sort: args.search ? 'usage_character_count_1y' : 'trending',
     includeCustomRates: false,
     ...(args.search && { search: args.search }),
+    ...(filters.gender && { gender: filters.gender }),
+    ...(filters.age && { age: filters.age }),
+    ...(filters.quality === 'studio' && { category: 'high_quality' }),
   });
   return {
     voices: result.voices.map((voice) =>

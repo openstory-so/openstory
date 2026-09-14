@@ -111,7 +111,64 @@ export function matchSpeaker<T extends { name: string; voiceOnly?: boolean }>(
 }
 
 /** Where a catalog pick came from (#1629). */
-export type CatalogVoiceSource = 'premade' | 'library';
+type CatalogVoiceSource = 'premade' | 'library';
+
+export type VoiceGenderFilter = 'male' | 'female' | 'neutral';
+export type VoiceAgeFilter = 'young' | 'middle_aged' | 'old';
+export type VoiceQualityFilter = 'studio' | 'any';
+
+/** Filters the unified ElevenLabs Voice Library understands. */
+export type CatalogVoiceFilters = {
+  gender?: VoiceGenderFilter;
+  age?: VoiceAgeFilter;
+  quality?: VoiceQualityFilter;
+};
+
+export function inferVoiceGender(
+  gender: string | null | undefined
+): VoiceGenderFilter | undefined {
+  const value = gender?.normalize('NFKC').toLowerCase() ?? '';
+  if (!value) return;
+  if (/female|woman|girl|she\b|her\b|actress/.test(value) || value === 'f') {
+    return 'female';
+  }
+  if (/non[- ]?binary|neutral|androgyn|agender/.test(value)) {
+    return 'neutral';
+  }
+  if (/male|man|boy|he\b|him\b|actor/.test(value) || value === 'm') {
+    return 'male';
+  }
+  return;
+}
+
+export function inferVoiceAge(
+  age: string | null | undefined
+): VoiceAgeFilter | undefined {
+  const value = age?.normalize('NFKC').toLowerCase().trim() ?? '';
+  if (!value) return;
+  if (/old|elder|senior|retire/.test(value)) return 'old';
+  if (/child|teen|young|youth|adolesc/.test(value)) return 'young';
+  if (/middle/.test(value)) return 'middle_aged';
+  if (/twenties/.test(value)) return 'young';
+  if (/thirties|forties|fifties|adult/.test(value)) return 'middle_aged';
+  const years = value.match(/\d{1,3}/);
+  if (!years) return;
+  const n = Number.parseInt(years[0], 10);
+  if (n >= 60) return 'old';
+  if (n < 30) return 'young';
+  return 'middle_aged';
+}
+
+/** Bible → library filters so Browse opens on a shortlist for this character. */
+export function recommendVoiceFilters(character: {
+  gender?: string | null;
+  age?: string | null;
+}): CatalogVoiceFilters {
+  return {
+    gender: inferVoiceGender(character.gender),
+    age: inferVoiceAge(character.age),
+  };
+}
 
 /** One ElevenLabs default or Voice Library entry the picker can assign. */
 export type CatalogVoice = {
@@ -226,7 +283,7 @@ export function toCatalogVoiceFromLibrary(input: {
     previewUrl: input.previewUrl ?? null,
     labels: labelsFromLibrary(input),
     category: input.category,
-    source: 'library',
+    source: input.category === 'premade' ? 'premade' : 'library',
   };
 }
 
