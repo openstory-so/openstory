@@ -1,6 +1,7 @@
 import { VOICE_DESIGN_COST } from '@/billing/elevenlabs-pricing';
 import { ActionCost } from '@/billing/ui/action-cost';
 import {
+  catalogVoiceBrief,
   designedTakeIsInUse,
   recommendVoiceFilters,
   usesVoice,
@@ -129,6 +130,7 @@ export const CharacterVoiceSection: React.FC<{
         voiceId: voice.voiceId,
         publicOwnerId: voice.publicOwnerId,
         name: voice.name,
+        description: catalogVoiceBrief(voice),
       },
       {
         onSuccess: () => setLibraryOpen(false),

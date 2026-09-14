@@ -352,6 +352,7 @@ export const assignCharacterVoiceFn = createServerFn({ method: 'POST' })
         voiceId: z.string().min(1).max(128),
         publicOwnerId: z.string().min(1).max(128).optional(),
         name: z.string().trim().min(1).max(255).optional(),
+        description: z.string().trim().max(2000).optional(),
       })
     )
   )
@@ -405,7 +406,11 @@ export const assignCharacterVoiceFn = createServerFn({ method: 'POST' })
     if (character.voiceId === voiceId) {
       return { characterId: character.id, voiceId };
     }
-    await context.scopedDb.characters.update(character.id, { voiceId });
+    const voiceDescription = (data.description ?? data.name)?.trim();
+    await context.scopedDb.characters.update(character.id, {
+      voiceId,
+      ...(voiceDescription ? { voiceDescription } : {}),
+    });
     if (character.voiceId) {
       await releaseVoiceIfUnreferenced(context.scopedDb, character.voiceId);
     }

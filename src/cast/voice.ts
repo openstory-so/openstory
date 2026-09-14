@@ -396,6 +396,21 @@ export function voiceConsumesAccountSlot(
   return category !== 'premade';
 }
 
+/** Short bible line for a catalog pick so the Voice field is not left blank. */
+export function catalogVoiceBrief(voice: {
+  name: string;
+  description?: string;
+  labels: string[];
+}): string {
+  const parts = [voice.name.trim()].filter(Boolean);
+  if (voice.labels.length > 0) parts.push(voice.labels.join(', '));
+  const description = voice.description?.trim();
+  if (description && description !== voice.name.trim()) {
+    parts.push(description);
+  }
+  return parts.join('. ');
+}
+
 /**
  * A Voice Design take is in use only when the saved voice is still that
  * designed voice (category `generated`, or unknown while metadata loads)

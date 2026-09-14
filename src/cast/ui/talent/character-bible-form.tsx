@@ -155,6 +155,7 @@ export const CharacterBibleForm: React.FC<{
         />
       )}
       <BibleField
+        key={`${character.id}-voice-${character.voiceDescription ?? ''}`}
         idPrefix="character"
         label="Voice"
         name="voiceDescription"

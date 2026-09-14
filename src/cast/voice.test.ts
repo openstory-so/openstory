@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   OTHER_VOICE_LANGUAGES,
   VOICE_NATIONALITIES,
+  catalogVoiceBrief,
   designedTakeIsInUse,
   inferVoiceAccent,
   inferVoiceAge,
@@ -253,5 +254,17 @@ describe('recommendVoiceFilters', () => {
       accent: 'british',
     });
     expect(parseVoiceLocale('fr')).toEqual({ language: 'fr' });
+  });
+});
+
+describe('catalogVoiceBrief', () => {
+  it('joins name, labels, and description for the bible Voice field', () => {
+    expect(
+      catalogVoiceBrief({
+        name: 'Rachel',
+        description: 'Calm narrator',
+        labels: ['female', 'american'],
+      })
+    ).toBe('Rachel. female, american. Calm narrator');
   });
 });

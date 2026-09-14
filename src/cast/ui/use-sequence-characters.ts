@@ -155,6 +155,7 @@ export function useAssignCharacterVoice() {
       voiceId: string;
       publicOwnerId?: string;
       name?: string;
+      description?: string;
     }) => assignCharacterVoiceFn({ data }),
     onSuccess: (_result, { sequenceId, characterId }) => {
       void queryClient.invalidateQueries({
