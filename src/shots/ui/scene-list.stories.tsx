@@ -274,6 +274,77 @@ export const PerSegmentVideo: Story = {
   },
 };
 
+const plannedDurationsMs = [4000, 6000, 5000, 4000, 4000];
+
+const plannedShots: ShotView[] = PS_SHOT_CONFIGS.filter(
+  (cfg) => cfg.sceneId === PS_SCENE_1
+).map((cfg, index) => {
+  const base = psBases[index];
+  if (!base) throw new Error(`missing mock shot base at ${index}`);
+  return {
+    ...base,
+    id: `shot-planned-${index}`,
+    sequenceId: PS_SEQ,
+    sceneId: cfg.sceneId,
+    shotNumber: cfg.shotNumber,
+    durationMs: plannedDurationsMs[index] ?? 3000,
+    renderSegmentId: null,
+    frame: {
+      ...base.frame,
+      imageStatus: 'completed' as const,
+      imageError: null,
+    },
+    image: base.image ? { ...base.image, url: cfg.img } : null,
+    video: null,
+    primaryVideo: null,
+    videoStatus: 'pending' as const,
+  };
+});
+
+const plannedScene = perSegmentScenes[0];
+const mixedRenderedSegment = perSegmentSegments[0];
+if (!plannedScene || !mixedRenderedSegment) {
+  throw new Error('per-segment story fixtures missing scene 1');
+}
+
+/**
+ * Planned packs (#1510): no video yet. Seedance 2.0's 15s cap tiles the five
+ * unrendered shots into two dashed brackets (4+6+5s, then 4+4s). Switch the
+ * footer model to Grok to collapse them, or Seedance 2.5 to join into one.
+ */
+export const PlannedPacks: Story = {
+  args: {
+    shots: plannedShots,
+    scenes: [plannedScene],
+    segments: [],
+    initialVideoModel: 'seedance_v2',
+    selection: { sceneIds: [] },
+  },
+};
+
+const mixedShots: ShotView[] = [
+  ...perSegmentShots.slice(0, 3),
+  ...plannedShots.slice(3).map((shot, index) => ({
+    ...shot,
+    id: `shot-mixed-${index + 3}`,
+    shotNumber: index + 4,
+  })),
+];
+
+/**
+ * Scene 1 shots 1–3 already share a clip (solid bracket); 4–5 have no video
+ * and dash-pack under the generate-picker model.
+ */
+export const MixedRenderedAndPlanned: Story = {
+  args: {
+    shots: mixedShots,
+    scenes: [plannedScene],
+    segments: [mixedRenderedSegment],
+    initialVideoModel: 'seedance_v2',
+    selection: { sceneIds: [] },
+  },
+};
+
 export const NoSelectedScene: Story = {
   args: {
     shots: mockShots,

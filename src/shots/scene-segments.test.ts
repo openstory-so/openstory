@@ -4,6 +4,7 @@ import {
   assembleSequenceSegments,
   formatShotSpan,
   groupShotsBySegment,
+  groupShotsForSceneList,
   isSelectedVersionStale,
   type SegmentShotInput,
   type SegmentVersionInput,
@@ -13,13 +14,15 @@ import {
 const shot = (
   id: string,
   shotNumber: number,
-  renderSegmentId: string | null
+  renderSegmentId: string | null,
+  durationMs = 3000
 ): ShotView =>
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- minimal fixture: grouping reads only id/renderSegmentId/shotNumber
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- minimal fixture: grouping reads only id/renderSegmentId/shotNumber/durationMs
   ({
     id,
     shotNumber,
     renderSegmentId,
+    durationMs,
   }) as ShotView;
 
 const segment = (id: string, shotIds: string[]): SequenceSegment => ({
@@ -70,6 +73,126 @@ describe('groupShotsBySegment', () => {
     const groups = groupShotsBySegment([shot('a', 1, 'seg-x')], new Map());
     expect(groups[0]?.segmentId).toBe('seg-x');
     expect(groups[0]?.segment).toBeNull();
+  });
+});
+
+describe('groupShotsForSceneList', () => {
+  it('tiles unrendered shots into a planned pack under the model cap', () => {
+    const groups = groupShotsForSceneList(
+      [
+        shot('a', 1, null, 4000),
+        shot('b', 2, null, 6000),
+        shot('c', 3, null, 5000),
+      ],
+      new Map(),
+      'seedance_v2'
+    );
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.plannedModel).toBe('seedance_v2');
+    expect(groups[0]?.shots.map((s) => s.id)).toEqual(['a', 'b', 'c']);
+    expect(groups[0]?.segment).toBeNull();
+  });
+
+  it('splits a planned pack when timings exceed the cap', () => {
+    const groups = groupShotsForSceneList(
+      [
+        shot('a', 1, null, 8000),
+        shot('b', 2, null, 8000),
+        shot('c', 3, null, 5000),
+      ],
+      new Map(),
+      'seedance_v2'
+    );
+    expect(groups.map((g) => g.shots.map((s) => s.id))).toEqual([
+      ['a'],
+      ['b', 'c'],
+    ]);
+    expect(groups[0]?.plannedModel).toBeUndefined();
+    expect(groups[1]?.plannedModel).toBe('seedance_v2');
+  });
+
+  it('keeps a 1-shot tile unwrapped', () => {
+    const groups = groupShotsForSceneList(
+      [shot('a', 1, null, 4000)],
+      new Map(),
+      'seedance_v2'
+    );
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.plannedModel).toBeUndefined();
+    expect(groups[0]?.shots.map((s) => s.id)).toEqual(['a']);
+  });
+
+  it('does not plan packs for a model that cannot cut inside a clip', () => {
+    const groups = groupShotsForSceneList(
+      [
+        shot('a', 1, null, 4000),
+        shot('b', 2, null, 6000),
+        shot('c', 3, null, 5000),
+      ],
+      new Map(),
+      'grok_imagine_video_1_5'
+    );
+    expect(groups).toHaveLength(3);
+    expect(groups.every((g) => g.plannedModel === undefined)).toBe(true);
+  });
+
+  it('leaves a persisted render segment untouched', () => {
+    const groups = groupShotsForSceneList(
+      [
+        shot('a', 1, 'seg-a', 4000),
+        shot('b', 2, 'seg-a', 6000),
+        shot('c', 3, 'seg-a', 5000),
+      ],
+      new Map([['seg-a', segment('seg-a', ['a', 'b', 'c'])]]),
+      'seedance_v2'
+    );
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.segment?.id).toBe('seg-a');
+    expect(groups[0]?.plannedModel).toBeUndefined();
+  });
+
+  it('plans only the unrendered run next to a persisted segment', () => {
+    const groups = groupShotsForSceneList(
+      [
+        shot('a', 1, 'seg-a', 4000),
+        shot('b', 2, 'seg-a', 6000),
+        shot('c', 3, null, 4000),
+        shot('d', 4, null, 4000),
+      ],
+      new Map([['seg-a', segment('seg-a', ['a', 'b'])]]),
+      'seedance_v2'
+    );
+    expect(groups.map((g) => g.shots.map((s) => s.id))).toEqual([
+      ['a', 'b'],
+      ['c', 'd'],
+    ]);
+    expect(groups[0]?.segment?.id).toBe('seg-a');
+    expect(groups[1]?.plannedModel).toBe('seedance_v2');
+  });
+
+  it('does not coalesce a dangling renderSegmentId into a planned pack', () => {
+    const groups = groupShotsForSceneList(
+      [shot('a', 1, 'seg-x', 4000), shot('b', 2, null, 4000)],
+      new Map(),
+      'seedance_v2'
+    );
+    expect(groups.map((g) => g.shots.map((s) => s.id))).toEqual([['a'], ['b']]);
+    expect(groups.every((g) => g.plannedModel === undefined)).toBe(true);
+  });
+
+  it('uses the longer cap for Seedance 2.5', () => {
+    const groups = groupShotsForSceneList(
+      [
+        shot('a', 1, null, 8000),
+        shot('b', 2, null, 8000),
+        shot('c', 3, null, 5000),
+      ],
+      new Map(),
+      'seedance_v2_5'
+    );
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.plannedModel).toBe('seedance_v2_5');
+    expect(groups[0]?.shots.map((s) => s.id)).toEqual(['a', 'b', 'c']);
   });
 });
 

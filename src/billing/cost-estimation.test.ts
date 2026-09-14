@@ -544,13 +544,19 @@ describe('estimateVideoCost endpoint routing', () => {
     ).toBe(micros(200_000));
   });
 
-  it('prices H3 Max reference-to-video at the advertised $0.08/s', () => {
+  it('prices H3 Max reference-to-video at the advertised $0.08/s ($4.80/min)', () => {
     expect(
       estimateVideoCost('minimax_h3_max', 5, {
         pricing: FAL_PRICING,
         hasReferenceImages: true,
       })
     ).toBe(micros(400_000));
+    expect(
+      estimateVideoCost('minimax_h3_max', 60, {
+        pricing: FAL_PRICING,
+        hasReferenceImages: true,
+      })
+    ).toBe(micros(4_800_000));
     expect(
       estimateStudioVideoCost('minimax_h3_max', 5, {
         pricing: FAL_PRICING,

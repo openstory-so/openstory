@@ -41,6 +41,8 @@ type VideoPlayerSurfaceProps = {
   chaptersUrl?: string;
   posterSrc?: string | null;
   autoPlay?: boolean;
+  /** Seek here when the value changes (packed-clip shot windows). */
+  seekTo?: number | null;
   onLoadedMetadata?: (duration: number) => void;
   onTimeUpdate?: (currentTime: number) => void;
   onPause?: () => void;
@@ -54,6 +56,7 @@ const VideoPlayerInner: React.FC<VideoPlayerSurfaceProps> = ({
   chaptersUrl,
   posterSrc,
   autoPlay = false,
+  seekTo,
   onLoadedMetadata,
   onTimeUpdate,
   onPause,
@@ -134,6 +137,19 @@ const VideoPlayerInner: React.FC<VideoPlayerSurfaceProps> = ({
       // Autoplay blocked or interrupted — the on-player control remains.
     });
   }, [autoPlay, media]);
+
+  useEffect(() => {
+    if (seekTo == null || !media || !isVideoMedia(media)) return;
+    const apply = () => {
+      if (Math.abs(media.currentTime - seekTo) <= 0.05) return;
+      // HTMLMediaElement seek — useMedia() is the element, not React state.
+      // oxlint-disable-next-line react/immutability
+      media.currentTime = seekTo;
+    };
+    apply();
+    media.addEventListener('loadedmetadata', apply);
+    return () => media.removeEventListener('loadedmetadata', apply);
+  }, [seekTo, media]);
 
   return (
     <MinimalVideoSkin>

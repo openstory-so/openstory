@@ -21,6 +21,10 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { migrateStyleConfigV1ToV2 } from '@/look/style-config';
 import { DEFAULT_IMAGE_MODEL, DEFAULT_VIDEO_MODEL } from '@/models/models';
 import { DEFAULT_ANALYSIS_MODEL } from '@/models/models.config';
+import { hashVisualPromptInput, sha256Hex } from '@/shots/input-hash';
+import { narrowShotPromptContext } from '@/shots/server/prompt-context';
+import { shotWorkItems } from '@/shots/server/shot-work-items';
+import type { Scene } from '@/shots/scene-analysis.schema';
 import type {
   WorkflowEvent,
   WorkflowStep,
@@ -205,6 +209,12 @@ type UpdateMock = ReturnType<
   typeof vi.fn<(args: SequenceUpdate) => Promise<void>>
 >;
 
+const writeVisualPrompt = vi.fn(
+  async (input: { frameId: string; inputHash?: string; text?: string }) => ({
+    id: `fpv-${input.frameId}`,
+  })
+);
+
 function makeScopedDb(update: UpdateMock): WorkflowScopedDb {
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal stub: the run stops at the script stage
   return {
@@ -213,6 +223,7 @@ function makeScopedDb(update: UpdateMock): WorkflowScopedDb {
       updateAnalysisDurationMs: vi.fn(async () => undefined),
     },
     liveRead: { sequenceElements: { listByIds: vi.fn(async () => []) } },
+    framePromptVersions: { writeAiVersion: writeVisualPrompt },
   } as unknown as WorkflowScopedDb;
 }
 
@@ -265,6 +276,7 @@ describe('AnalyzeScriptWorkflow script checkpoint', () => {
     deriveAutoStyle.mockClear();
     spawnAndAwaitChild.mockClear();
     createCastRecords.mockClear();
+    writeVisualPrompt.mockClear();
   });
 
   test('persists the split checkpoint before a style failure fails the run', async () => {
@@ -484,6 +496,123 @@ describe('AnalyzeScriptWorkflow script checkpoint', () => {
       charactersWithSheets: [CHARACTER_ROW],
       locationsWithSheets: [LOCATION_ROW],
     });
+  });
+
+  test('startFrom images: derived visual prompts stamp the verify hash, not the prompt text', async () => {
+    const twoShot: Scene = {
+      sceneId: 'as_1',
+      sceneNumber: 1,
+      originalScript: { extract: 'a beat', dialogue: [] },
+      metadata: {
+        title: 'Hallway',
+        durationSeconds: 13,
+        location: '',
+        timeOfDay: '',
+        storyBeat: '',
+      },
+      continuity: {
+        characterTags: [],
+        environmentTag: '',
+        colorPalette: '',
+        lightingSetup: '',
+        styleTag: '',
+      },
+      shots: [
+        {
+          shotNumber: 1,
+          framing: {
+            shotSize: 'wide',
+            angle: 'eye level',
+            composition: '',
+            subjectStartState: '',
+          },
+          action: 'opens the door',
+          cameraMovement: { move: 'static', pacing: 'slow' },
+          soundCue: '',
+          dialogue: [],
+          durationSeconds: 7,
+        },
+        {
+          shotNumber: 2,
+          framing: {
+            shotSize: 'medium',
+            angle: 'eye level',
+            composition: '',
+            subjectStartState: '',
+          },
+          action: 'cut to the hallway',
+          cameraMovement: { move: 'truck', pacing: 'smooth' },
+          soundCue: '',
+          dialogue: [],
+          durationSeconds: 6,
+        },
+      ],
+    };
+    const shotMapping = [
+      {
+        analysisSceneId: 'as_1',
+        shotId: 'sh-1',
+        frameId: 'fr-1',
+        shotNumber: 1,
+      },
+      {
+        analysisSceneId: 'as_1',
+        shotId: 'sh-2',
+        frameId: 'fr-2',
+        shotNumber: 2,
+      },
+    ];
+    const event = makeEvent({
+      ...noStyle,
+      startFrom: 'images',
+      stopAt: 'images',
+      checkpoint: {
+        completedStage: 'references',
+        ...SPLIT,
+        scenes: [twoShot],
+        shotMapping,
+        scenesWithVisualPrompts: [twoShot],
+        charactersWithSheets: [CHARACTER_ROW],
+        locationsWithSheets: [LOCATION_ROW],
+        allElements: [],
+        visualPromptBySceneId: { as_1: 'wide shot of the hallway' },
+      },
+    });
+
+    await makeWorkflow().invokeRunImpl(
+      event,
+      makeStep(),
+      makeScopedDb(vi.fn())
+    );
+
+    const items = shotWorkItems([twoShot], shotMapping);
+    expect(writeVisualPrompt).toHaveBeenCalledTimes(2);
+    for (const [index, call] of writeVisualPrompt.mock.calls.entries()) {
+      const item = items[index];
+      const written = call[0];
+      if (!item) {
+        throw new Error(`missing derived visual write at ${index}`);
+      }
+      expect(written.frameId).toBe(item.mapping.frameId);
+      const verifyHash = await hashVisualPromptInput(
+        narrowShotPromptContext({
+          scene: item.scene,
+          styleConfig: event.payload.styleConfig,
+          characterBible: SPLIT.characterBible,
+          locationBible: SPLIT.locationBible,
+          elementBible: SPLIT.elementBible,
+          aspectRatio: event.payload.aspectRatio,
+          analysisModel: event.payload.analysisModelId,
+        })
+      );
+      const textDigest = await sha256Hex({
+        kind: 'derived-shot-visual',
+        shotId: item.mapping.shotId,
+        text: written.text,
+      });
+      expect(written.inputHash).toBe(verifyHash);
+      expect(written.inputHash).not.toBe(textDigest);
+    }
   });
 
   test('startFrom references without a checkpoint refuses before any child spawns', async () => {

@@ -135,8 +135,10 @@ export const LOCAL_FAL_PRICING_SEED: Record<string, SeedPrice> = {
     typicalUnitsPerCall:
       FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP['minimax/h3-max/text-to-video'] ?? 8,
   },
-  // Advertised $0.08/s of output video (plus ref-token billing after four
-  // 1024² images — we do not invent a per-ref surcharge).
+  // fal llms.txt (768P default, our H3 Max pick): $0.05/s 480p, $0.08/s 768p
+  // ($4.80/min), $0.16/s 1080p. A 5s 768p clip is $0.40. Extra ref tokens
+  // after the included 4096 (four 1024² images) are $0.02/1K — not seeded;
+  // billing uses fal's unitsBilled, and we do not invent a per-ref surcharge.
   'minimax/h3-max/reference-to-video': {
     unit: 'seconds',
     unitPriceUsd: 0.08,

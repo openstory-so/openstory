@@ -122,6 +122,25 @@ function groupByScene<S extends PackableMotionShot>(
   return groups;
 }
 
+/**
+ * Members of the in-clip generation that covers `shotId`, in story order.
+ * A 1-shot (or Grok) job is `[that shot]`.
+ */
+export function coveredMembersForShot<S extends PackableMotionShot>(
+  shots: readonly S[],
+  shotId: string,
+  videoModels: readonly ImageToVideoModel[]
+): S[] {
+  const packed = packMotionBatchShots(shots, videoModels);
+  for (const job of packed) {
+    const members = job.coveredShots ?? [job];
+    if (members.some((member) => member.shotId === shotId)) {
+      return members;
+    }
+  }
+  return shots.filter((shot) => shot.shotId === shotId);
+}
+
 function durationMsOf(shot: PackableMotionShot): number {
   const seconds = shot.duration;
   if (typeof seconds === 'number' && Number.isFinite(seconds) && seconds > 0) {

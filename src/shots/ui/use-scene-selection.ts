@@ -86,9 +86,10 @@ export function useSceneSelection({
 
   const handleSelectShot = useCallback(
     (shotId: string) => {
+      if (selection.shotId === shotId) return;
       setSelection(selectShot(shotId));
     },
-    [setSelection]
+    [selection.shotId, setSelection]
   );
 
   const handleClearSelection = useCallback(() => {

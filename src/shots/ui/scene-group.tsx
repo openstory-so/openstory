@@ -35,9 +35,10 @@ import type { SceneWithScript } from './use-scenes';
 import type { ShotVariant } from '@/platform/server/db/schema';
 import { errorMessage } from '@/platform/errors';
 import {
-  groupShotsBySegment,
+  groupShotsForSceneList,
   type SequenceSegment,
 } from '@/shots/scene-segments';
+import { packedClipWindows } from '@/shots/packed-clip-window';
 import type { ShotView } from '@/shots/shot-view';
 import { cn } from '@/ui/utils';
 import { plainSceneTitle } from '@/platform/markdown-plain';
@@ -53,7 +54,15 @@ import {
   Plus,
   Trash2,
 } from 'lucide-react';
-import { Fragment, memo, useCallback, useMemo, useRef, useState } from 'react';
+import {
+  Fragment,
+  memo,
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { toast } from 'sonner';
 import { SceneListItem } from './scene-list-item';
 
@@ -95,6 +104,69 @@ export function sumShotSeconds(
 ): number {
   return shots.reduce((sum, shot) => sum + (shot.durationMs ?? 0), 0) / 1000;
 }
+
+type SegmentBracketProps = {
+  kind: 'rendered' | 'planned';
+  model: string | null;
+  shotCount: number;
+  stale?: boolean;
+  children: ReactNode;
+};
+
+/**
+ * Film frame around shots that share one clip — solid for a clip that exists,
+ * dashed for the pack generate will submit (#1510).
+ */
+const SegmentBracket: React.FC<SegmentBracketProps> = ({
+  kind,
+  model,
+  shotCount,
+  stale = false,
+  children,
+}) => {
+  const planned = kind === 'planned';
+  const modelName = model ? videoModelDisplayName(model) : null;
+  const label = modelName ?? 'Video';
+  return (
+    <div
+      data-testid="segment-bracket"
+      data-segment-kind={kind}
+      aria-label={
+        planned
+          ? `Will generate with ${label}, ${shotCount} shots`
+          : `${label}${shotCount > 1 ? `, ${shotCount} shots` : ''}`
+      }
+      className={cn(
+        'flex flex-col gap-2 rounded-md border p-2',
+        planned
+          ? 'border-dashed border-border/60'
+          : 'border-border/60 bg-muted/20'
+      )}
+    >
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Film className="h-3 w-3 shrink-0" />
+        <span
+          className={cn(
+            'truncate font-medium',
+            planned ? 'text-muted-foreground' : 'text-foreground'
+          )}
+        >
+          {label}
+        </span>
+        {shotCount > 1 && <span className="shrink-0">{shotCount} shots</span>}
+        {!planned && stale && (
+          <Badge
+            variant="outline"
+            className="ml-auto shrink-0 px-1 py-0 text-[10px]"
+          >
+            Stale
+          </Badge>
+        )}
+      </div>
+      {children}
+    </div>
+  );
+};
 
 const SceneGroupComponent: React.FC<SceneGroupProps> = ({
   scene,
@@ -171,10 +243,12 @@ const SceneGroupComponent: React.FC<SceneGroupProps> = ({
 
   // Group the scene's shots into their render segments; every rendered segment
   // is bracketed as its own video (the video model lives on the segment, not the
-  // scene), so the model shows here — even for a single shot (#986).
+  // scene), so the model shows here — even for a single shot (#986). Unrendered
+  // runs are tiled with the generate-picker model so a dashed bracket previews
+  // the next pack (#1510).
   const shotGroups = useMemo(
-    () => groupShotsBySegment(shots, segmentsById),
-    [shots, segmentsById]
+    () => groupShotsForSceneList(shots, segmentsById, videoModel),
+    [shots, segmentsById, videoModel]
   );
 
   const sceneLabel = useMemo(() => {
@@ -405,6 +479,10 @@ const SceneGroupComponent: React.FC<SceneGroupProps> = ({
       {expanded && shots.length > 0 && (
         <div className="flex flex-col gap-2 border-t px-3 py-2">
           {shotGroups.map((group) => {
+            const windows =
+              group.segment && group.shots.length > 1
+                ? packedClipWindows(group.shots)
+                : [];
             const items = group.shots.map((shot) => {
               const divergent = divergentByShotId.get(shot.id);
               const shotIndex = shots.findIndex((s) => s.id === shot.id);
@@ -436,48 +514,44 @@ const SceneGroupComponent: React.FC<SceneGroupProps> = ({
                       : undefined
                   }
                   onRequestDelete={() => setPendingShotDelete(shot)}
+                  videoStartSeconds={
+                    windows.find((window) => window.id === shot.id)
+                      ?.startSeconds
+                  }
                 />
               );
             });
 
             const key = group.segmentId ?? `unassigned-${group.shots[0]?.id}`;
-            // No segment yet (shot never rendered) → render flat; there's no
-            // video / model to label.
-            if (!group.segment) {
-              return <Fragment key={key}>{items}</Fragment>;
+            // Rendered clip → solid bracket. Planned pack (2+ unrendered shots
+            // that generate will cover) → the same chrome, dashed. A lonely
+            // unrendered shot stays flat — the footer already shows the model.
+            if (group.segment) {
+              return (
+                <SegmentBracket
+                  key={key}
+                  kind="rendered"
+                  model={group.segment.model}
+                  shotCount={group.shots.length}
+                  stale={group.segment.stale}
+                >
+                  {items}
+                </SegmentBracket>
+              );
             }
-            // Every rendered segment is bracketed as one video — even a single
-            // shot — so its video model (a per-segment fact) always shows. The
-            // shot count is only spelled out when a video spans more than one.
-            const segment = group.segment;
-            const modelName = segment.model
-              ? videoModelDisplayName(segment.model)
-              : null;
-            return (
-              <div
-                key={key}
-                className="flex flex-col gap-2 rounded-md border border-border/60 bg-muted/20 p-2"
-              >
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Film className="h-3 w-3 shrink-0" />
-                  <span className="truncate font-medium text-foreground">
-                    {modelName ?? 'Video'}
-                  </span>
-                  {group.shots.length > 1 && (
-                    <span className="shrink-0">{group.shots.length} shots</span>
-                  )}
-                  {segment.stale && (
-                    <Badge
-                      variant="outline"
-                      className="ml-auto shrink-0 px-1 py-0 text-[10px]"
-                    >
-                      Stale
-                    </Badge>
-                  )}
-                </div>
-                {items}
-              </div>
-            );
+            if (group.plannedModel) {
+              return (
+                <SegmentBracket
+                  key={key}
+                  kind="planned"
+                  model={group.plannedModel}
+                  shotCount={group.shots.length}
+                >
+                  {items}
+                </SegmentBracket>
+              );
+            }
+            return <Fragment key={key}>{items}</Fragment>;
           })}
         </div>
       )}

@@ -20,6 +20,11 @@
  */
 
 import { IMAGE_TO_VIDEO_MODELS, type ImageToVideoModel } from '@/models/models';
+import {
+  DEFAULT_SEGMENT_CAP_MS,
+  tileSceneIntoSegments,
+  type SegmentShot,
+} from '@/motion/tile-segments';
 import type {
   VideoManifest,
   VideoManifestEntry,
@@ -27,20 +32,7 @@ import type {
 import { MOTION_JSON_SCHEMAS } from './endpoint-map';
 import { getDurationValues, numericOf } from './motion-transform';
 
-/** Fallback segment cap when a model's schema exposes no duration set. */
-export const DEFAULT_SEGMENT_CAP_MS = 15_000;
-
-/** A shot as the tiler sees it: an id and its duration. */
-export type SegmentShot = {
-  id: string;
-  durationMs: number;
-};
-
-/** A tiled segment: the ordered shots it covers and their summed duration. */
-export type TiledSegment = {
-  shotIds: string[];
-  durationMs: number;
-};
+export { DEFAULT_SEGMENT_CAP_MS, tileSceneIntoSegments, type SegmentShot };
 
 /**
  * The maximum single-render duration (ms) for a model — the largest value in
@@ -54,38 +46,6 @@ export function resolveSegmentCapMs(model: ImageToVideoModel): number {
   const values = getDurationValues(jsonSchema).map(numericOf);
   if (values.length === 0) return DEFAULT_SEGMENT_CAP_MS;
   return Math.max(...values) * 1000;
-}
-
-/**
- * Tile an ordered list of shots into contiguous segments, each ≤ `maxSegmentMs`.
- * Greedy contiguous fill: a shot joins the current segment while the running
- * total stays within the cap, otherwise it opens a new one. A single shot
- * longer than the cap becomes its own (over-cap) segment — that's the model's
- * problem to enforce, not the tiler's, and silently dropping or splitting it
- * would lose content.
- *
- * Order is preserved (segment identity depends on it); shots are never sorted.
- */
-export function tileSceneIntoSegments(
-  shots: readonly SegmentShot[],
-  maxSegmentMs: number
-): TiledSegment[] {
-  const cap = maxSegmentMs > 0 ? maxSegmentMs : DEFAULT_SEGMENT_CAP_MS;
-  const segments: TiledSegment[] = [];
-  let current: TiledSegment | null = null;
-
-  for (const shot of shots) {
-    const dur = Math.max(0, shot.durationMs);
-    if (current && current.durationMs + dur <= cap) {
-      current.shotIds.push(shot.id);
-      current.durationMs += dur;
-    } else {
-      current = { shotIds: [shot.id], durationMs: dur };
-      segments.push(current);
-    }
-  }
-
-  return segments;
 }
 
 /**

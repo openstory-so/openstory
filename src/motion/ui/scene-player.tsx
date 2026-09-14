@@ -27,7 +27,14 @@ import { AppImage } from '@/ui/shadcn/app-image';
 import { playerPosterSrc } from './player-poster';
 import { usePostHog } from '@posthog/react';
 import { Download, Link, Loader2, Share2, VideoIcon } from 'lucide-react';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  generatePackedShotChaptersVTT,
+  packedClipWindows,
+  packedPlaybackGroup,
+  shotIdAtTime,
+  windowForShot,
+} from '@/shots/packed-clip-window';
 import { toast } from 'sonner';
 import { VideoPlayer } from './video-player';
 import { VideoStateOverlay } from './video-state-overlay';
@@ -71,9 +78,8 @@ type ScenePlayerProps = {
   selectedShotId?: string;
   aspectRatio: AspectRatio;
   /**
-   * Accepted but unused: the player no longer auto-advances between scenes
-   * (single-scene review shouldn't roll into the next clip — use Theatre for
-   * continuous playback). Shot selection is driven by the scene list.
+   * Packed in-clip chapters (#1510) call this when the playhead crosses a
+   * cut. Theatre still owns continuous playback across scenes.
    */
   onSelectShot?: (shotId: string) => void;
   className?: string;
@@ -129,8 +135,10 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
   frameOverlay,
   onTimeUpdate,
   onEnded,
+  onSelectShot,
 }) => {
   const [shouldAutoPlay, setShouldAutoPlay] = useState(false);
+  const [playhead, setPlayhead] = useState(0);
   const posthog = usePostHog();
 
   const imageDimensions = aspectRatioToDimensions(aspectRatio);
@@ -151,6 +159,38 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
             index > currentShotIndex
         )
       : undefined;
+
+  const packedGroup = useMemo(() => {
+    if (!selectedShotId || !shots) return [];
+    const current = shots.find((shot) => shot.id === selectedShotId);
+    if (!current) return [];
+    return packedPlaybackGroup(shots, current);
+  }, [shots, selectedShotId]);
+  const packedWindows = useMemo(
+    () => (packedGroup.length > 1 ? packedClipWindows(packedGroup) : []),
+    [packedGroup]
+  );
+  const packedChaptersVtt =
+    packedWindows.length > 1
+      ? generatePackedShotChaptersVTT(packedGroup)
+      : null;
+  const chaptersUrl = usePackedChaptersUrl(packedChaptersVtt);
+  const currentVideoUrl = currentShot?.video?.url ?? '';
+  useEffect(() => {
+    setPlayhead(0);
+  }, [currentVideoUrl]);
+
+  const handlePackedTimeUpdate = useCallback(
+    (currentTime: number) => {
+      setPlayhead(currentTime);
+      const memberId = shotIdAtTime(packedWindows, currentTime);
+      if (memberId && memberId !== selectedShotId) {
+        onSelectShot?.(memberId);
+      }
+      onTimeUpdate?.(currentTime);
+    },
+    [packedWindows, selectedShotId, onSelectShot, onTimeUpdate]
+  );
 
   const handleCopyImageUrl = useCallback(async () => {
     if (!currentShot?.image?.url) return;
@@ -368,6 +408,15 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
     ? ''
     : (overrideVideoUrl ?? currentShot.video?.url ?? '');
 
+  const selectedWindow = windowForShot(packedWindows, currentShot.id);
+  const windowSeek =
+    selectedWindow &&
+    (playhead < selectedWindow.startSeconds ||
+      playhead >= selectedWindow.endSeconds)
+      ? selectedWindow.startSeconds
+      : null;
+  const seekTo = packedWindows.length > 1 ? windowSeek : null;
+
   const displayImage = showsStillImage
     ? (overrideImageUrl ??
       currentShot.image?.url ??
@@ -506,11 +555,13 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
             />
           )}
           <VideoPlayer
-            // Remount when the selected shot OR the displayed media changes.
-            // Image-tab stills use an empty src, so keying only on playbackVideoUrl
-            // reused the previous shot's poster after a shot switch (#1070).
-            key={`${currentShot.id}:${playbackVideoUrl || displayImage || ''}`}
+            // Packed members share one URL — keep the player mounted and
+            // seek. Image-tab stills use an empty src, so key the shot when
+            // there is no clip or the poster would stick after a switch (#1070).
+            key={playbackVideoUrl || `${currentShot.id}:${displayImage || ''}`}
             src={playbackVideoUrl}
+            chaptersUrl={chaptersUrl}
+            seekTo={seekTo}
             posterSrc={playbackVideoUrl ? null : displayImage}
             aspectRatio={aspectRatio}
             className="h-full w-full"
@@ -518,7 +569,9 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
             playSource="canvas"
             sequenceId={currentShot.sequenceId}
             shotId={currentShot.id}
-            onTimeUpdate={onTimeUpdate}
+            onTimeUpdate={
+              packedWindows.length > 1 ? handlePackedTimeUpdate : onTimeUpdate
+            }
             onPause={handlePause}
             onEnded={handleEnded}
           />
@@ -586,3 +639,22 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
     </div>
   );
 };
+
+function usePackedChaptersUrl(vtt: string | null): string | undefined {
+  const url = useMemo(() => {
+    if (
+      !vtt ||
+      typeof Blob === 'undefined' ||
+      typeof URL === 'undefined' ||
+      typeof URL.createObjectURL !== 'function'
+    ) {
+      return undefined;
+    }
+    return URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' }));
+  }, [vtt]);
+  useEffect(() => {
+    if (!url) return;
+    return () => URL.revokeObjectURL(url);
+  }, [url]);
+  return url;
+}

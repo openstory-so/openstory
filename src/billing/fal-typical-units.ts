@@ -1,7 +1,9 @@
 /**
  * Endpoints whose fal unit is "seconds" but billed units are not 1:1 with
- * wall-clock duration (#1382). MiniMax H3 Max stores the 480p second as the
- * unit ($0.025); 768P (our default) is 1.6×, so a 5s clip bills 8 units.
+ * wall-clock duration (#1382). MiniMax H3 Max i2v/t2v store the 480p second
+ * as the unit ($0.025); 768P (our default) is 1.6×, so a 5s clip bills 8
+ * units. The reference-to-video sibling is NOT in this table: fal bills
+ * wall-clock seconds at the resolution rate ($0.08/s 768p = $4.80/min).
  *
  * Values are billed units for a default-length call
  * (`TYPICAL_VIDEO_CLIP_SECONDS`).

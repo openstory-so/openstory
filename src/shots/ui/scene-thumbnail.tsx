@@ -13,6 +13,7 @@ import { AlertCircle, Info } from 'lucide-react';
 import { AppImage } from '@/ui/shadcn/app-image';
 import { memo } from 'react';
 import { hasUpscaleOverlay, UpscaleOverlay } from './upscale-overlay';
+import { videoPosterSrc } from '@/shots/packed-clip-window';
 
 type SceneThumbnailProps = {
   thumbnailUrl?: string | null;
@@ -26,6 +27,12 @@ type SceneThumbnailProps = {
    * exists, IS the clip's first frame, so this changes nothing on that path.
    */
   videoUrl?: string | null;
+  /**
+   * In-point (seconds) inside a packed multi-shot clip (#1510). Later
+   * members pin the poster to their window instead of the shared first
+   * frame. Ignored when `videoUrl` is unset.
+   */
+  videoStartSeconds?: number;
   /** Provider error for a failed still — content flags render as a warning. */
   generationError?: string | null;
   alt: string;
@@ -78,6 +85,7 @@ const SceneThumbnailComponent: React.FC<SceneThumbnailProps> = ({
   pendingUpscaleIndex,
   pendingUpscaleUrl,
   videoUrl,
+  videoStartSeconds = 0,
 }) => {
   const showOverlay = hasUpscaleOverlay({
     gridUrl: gridSheetUrl,
@@ -117,11 +125,12 @@ const SceneThumbnailComponent: React.FC<SceneThumbnailProps> = ({
 
       {showVideoFrame &&
         !showOverlay && (
-          // `#t=0.001` pins the poster to the first frame; `preload="metadata"`
-          // keeps it to headers plus that frame rather than the whole clip.
+          // `#t=` pins the poster to this shot's window in a packed clip
+          // (t=0.001 for the first member); `preload="metadata"` keeps it to
+          // headers plus that frame rather than the whole clip.
           // Muted + playsInline + no controls: this is a thumbnail, not a player.
           <video
-            src={`${videoUrl}#t=0.001`}
+            src={videoPosterSrc(videoUrl ?? '', videoStartSeconds)}
             className="h-full w-full object-cover"
             preload="metadata"
             muted

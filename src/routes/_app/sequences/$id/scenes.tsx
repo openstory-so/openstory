@@ -14,6 +14,12 @@ import {
   artifactsFromSequenceState,
   DEFAULT_GENERATION_STOP_AT,
 } from '@/sequences/pipeline';
+import { getCompatibleModel } from '@/models/models';
+import {
+  resolveImageModel,
+  resolveVideoModel,
+} from '@/models/resolve-asset-models';
+import { shotPromptPreviewQueryOptions } from '@/shots/ui/shot-prompt-preview-query';
 import { createFileRoute } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/_app/sequences/$id/scenes')({
@@ -23,7 +29,8 @@ export const Route = createFileRoute('/_app/sequences/$id/scenes')({
   // FailureSummaryBanner classifies content-checker vs full-retry from the
   // shot list. Prefetch so the content banner is in the SSR HTML instead of
   // hydrating over a generic "Generation failed" from `shots ?? []`.
-  loader: async ({ params, context: { queryClient } }) => {
+  loaderDeps: ({ search }) => ({ shot: search.shot }),
+  loader: async ({ params, context: { queryClient }, deps }) => {
     const [shots, scenes, sequence] = await Promise.all([
       queryClient.ensureQueryData({
         queryKey: shotKeys.list(params.id),
@@ -62,6 +69,37 @@ export const Route = createFileRoute('/_app/sequences/$id/scenes')({
             },
           }),
       });
+    }
+
+    // Optimised prompt lives in the shot inspector. Prefetch the selected
+    // shot's request so the collapsed header is in the SSR HTML instead of
+    // popping in after a client fetch (same pattern as the failure banner).
+    const selectedShot = deps.shot
+      ? shots.find((shot) => shot.id === deps.shot)
+      : undefined;
+    if (selectedShot) {
+      const imageModel = resolveImageModel({
+        selectedVersionModel: selectedShot.image?.model,
+        sequenceModel: sequence.imageModel,
+      });
+      const videoModel = getCompatibleModel(
+        resolveVideoModel({
+          selectedVersionModel: selectedShot.video?.model,
+          sequenceModel: sequence.videoModel,
+        }),
+        sequence.aspectRatio
+      );
+      await queryClient.ensureQueryData(
+        shotPromptPreviewQueryOptions({
+          sequenceId: params.id,
+          shotId: selectedShot.id,
+          imageModel,
+          videoModel,
+          imagePrompt: selectedShot.imagePromptVersion?.text ?? '',
+          motionPrompt: selectedShot.motionPrompt?.fullPrompt ?? '',
+          generateAudio: true,
+        })
+      );
     }
   },
 });

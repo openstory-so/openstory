@@ -32,6 +32,20 @@ function renderPanel(
 }
 
 describe('OptimisedPromptPanel', () => {
+  it('SSRs the collapsed header with no preview so the inspector does not pop the row in', () => {
+    const html = renderToStaticMarkup(
+      <OptimisedPromptPanel
+        preview={null}
+        copiedKey={null}
+        onCopy={() => undefined}
+        idPrefix="motion-request"
+      />
+    );
+    expect(html).toContain('Optimised prompt');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain('GPT Image');
+  });
+
   it('SSRs a collapsed header for the selected model only', () => {
     const html = renderPanel(selected);
 

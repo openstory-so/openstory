@@ -53,6 +53,11 @@ type SceneListItemProps = {
   onMoveUp?: () => void;
   onMoveDown?: () => void;
   onRequestDelete?: () => void;
+  /**
+   * Packed-clip in-point for the thumbnail poster (#1510). Only used when
+   * the tile shows the shared video instead of a still.
+   */
+  videoStartSeconds?: number;
 };
 
 const SceneListItemComponent: React.FC<SceneListItemProps> = ({
@@ -70,6 +75,7 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
   onMoveUp,
   onMoveDown,
   onRequestDelete,
+  videoStartSeconds,
 }) => {
   const hasShotMenu = !!(onMoveUp || onMoveDown || onRequestDelete);
   // Divergent alternate takes precedence: promoting it resolves staleness too.
@@ -185,6 +191,7 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
                 previewThumbnailUrl={shot?.previewThumbnailUrl}
                 thumbnailStatus={shot?.frame.imageStatus || undefined}
                 videoUrl={hasVideo ? shot.video?.url : null}
+                videoStartSeconds={videoStartSeconds}
                 generationError={shot?.frame.imageError}
                 alt={linkLabel ?? 'Shot thumbnail'}
                 aspectRatio={aspectRatio}

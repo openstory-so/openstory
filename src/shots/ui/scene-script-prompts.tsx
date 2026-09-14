@@ -92,7 +92,7 @@ import {
 import { DEFAULT_ASPECT_RATIO, type AspectRatio } from '@/models/aspect-ratios';
 import type { Resolution } from '@/models/resolutions';
 import { getStorageDomainFn } from '@/platform/storage-config.fn';
-import { previewShotPromptsFn } from '@/shots/prompt-preview.fn';
+import { shotPromptPreviewQueryOptions } from './shot-prompt-preview-query';
 import { OptimisedPromptPanel } from './optimised-prompt-panel';
 import {
   CONTENT_REJECTION_USER_HINT,
@@ -100,6 +100,7 @@ import {
   isContentRejectionError,
 } from '@/models/content-rejection';
 import { resolveShotDuration } from '@/motion/resolve-shot-duration';
+import { motionGenerateLabel } from '@/shots/packed-clip-window';
 import { motionReferenceSupport } from '@/motion/reference-support';
 import type {
   AssemblableMotionPrompt,
@@ -108,7 +109,12 @@ import type {
 
 import { useShotPromptStream } from './use-shot-prompt-stream';
 import type { ShotView } from '@/shots/shot-view';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import {
   AlertTriangle,
   CopyIcon,
@@ -964,11 +970,14 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     onRegenerateStart,
   ]);
 
+  const packedShotIdsRef = useRef<string[] | null>(null);
+
   const handleRegenerateMotion = useCallback(async () => {
     if (!shot?.id || !shot.sequenceId) return;
     if (isBlankPrompt(editedMotionPrompt)) return;
 
-    onRegenerateStart(shot.id, 'motion');
+    const generatingIds = packedShotIdsRef.current ?? [shot.id];
+    for (const id of generatingIds) onRegenerateStart(id, 'motion');
 
     const withEditedPrompt = (
       current: AssemblableMotionPrompt | null
@@ -986,12 +995,16 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       shotKeys.list(shot.sequenceId),
       (oldShots) => {
         if (!oldShots) return oldShots;
+        const generating = new Set(generatingIds);
         return oldShots.map((f) =>
-          f.id === shot.id
+          generating.has(f.id)
             ? {
                 ...f,
                 videoStatus: 'generating' as const,
-                motionPrompt: withEditedPrompt(f.motionPrompt),
+                motionPrompt:
+                  f.id === shot.id
+                    ? withEditedPrompt(f.motionPrompt)
+                    : f.motionPrompt,
                 video: f.video ? { ...f.video, model: regenMotionModel } : null,
               }
             : f
@@ -1074,29 +1087,17 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   }, [editedImagePrompt, editedMotionPrompt]);
 
   const { data: promptPreview, error: promptPreviewError } = useQuery({
-    queryKey: [
-      'shot-prompt-preview',
+    ...shotPromptPreviewQueryOptions({
       sequenceId,
-      shot?.id,
-      effectiveImageModel,
-      effectiveMotionModel,
-      debouncedImagePrompt || imagePrompt || '',
-      debouncedMotionPrompt || rawMotionPrompt,
+      shotId: shot?.id ?? '',
+      imageModel: effectiveImageModel,
+      videoModel: effectiveMotionModel,
+      imagePrompt: debouncedImagePrompt || imagePrompt || '',
+      motionPrompt: debouncedMotionPrompt || rawMotionPrompt,
       generateAudio,
-    ],
-    queryFn: () =>
-      previewShotPromptsFn({
-        data: {
-          sequenceId,
-          shotId: shot?.id ?? '',
-          imageModel: effectiveImageModel,
-          videoModel: effectiveMotionModel,
-          imagePrompt: debouncedImagePrompt || imagePrompt || undefined,
-          motionPrompt: debouncedMotionPrompt || rawMotionPrompt || undefined,
-          generateAudio,
-        },
-      }),
+    }),
     enabled: Boolean(shot?.id),
+    placeholderData: keepPreviousData,
   });
   // Clips and voice lines this shot attaches that the selected model cannot
   // use, or a voice line with nothing to ride alongside (#1559). No fallback:
@@ -1114,6 +1115,9 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   const assembledPrompt = promptPreview?.assembledMotionPrompt ?? null;
   const imageRequestPreview = promptPreview?.image ?? null;
   const motionRequestPreview = promptPreview?.motion ?? null;
+  const packedShotIds = promptPreview?.packedShotIds ?? null;
+  const packedShotCount = packedShotIds?.length ?? 1;
+  packedShotIdsRef.current = packedShotIds;
   // A bound voice line with SFX & dialogue off renders a clip with no audio
   // track at all — the line is sent and never heard. Asked, not refused: the
   // toggle is the user's call.
@@ -1136,7 +1140,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   const motionCostEstimate = useMemo(() => {
     if (!falPricing || !shot) return null;
     const duration = resolveShotDuration({
-      durationMs: shot.durationMs,
+      durationMs: promptPreview?.packedDurationMs ?? shot.durationMs,
       model: effectiveMotionModel,
     });
     const referenceOnly = !usesStartFrame(shot, {
@@ -1157,6 +1161,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     resolution,
     sequenceGeneratesStartFrames,
     promptPreview?.motionHasReferenceImages,
+    promptPreview?.packedDurationMs,
   ]);
 
   // CDN-backed deployments absolutize stored /r2/ URLs at submit. The
@@ -1654,21 +1659,20 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             </p>
           </div>
 
-          {/* Optimised prompt — selected image model only, collapsed
-              until the user wants the assembled payload (#1242). */}
-          {imageRequestPreview && (
-            <OptimisedPromptPanel
-              idPrefix="image-request"
-              preview={imageRequestPreview}
-              copiedKey={copiedTab}
-              onCopy={(text, key) => void handleCopy(text, key)}
-              footnote={
-                !storageDomain
-                  ? 'Relative /r2/ image URLs are made publicly fetchable at submit'
-                  : null
-              }
-            />
-          )}
+          {/* Always in the inspector layout (#1242) so SSR / first paint
+              reserve the collapsed header instead of popping it in after
+              the preview query resolves. */}
+          <OptimisedPromptPanel
+            idPrefix="image-request"
+            preview={imageRequestPreview}
+            copiedKey={copiedTab}
+            onCopy={(text, key) => void handleCopy(text, key)}
+            footnote={
+              !storageDomain
+                ? 'Relative /r2/ image URLs are made publicly fetchable at submit'
+                : null
+            }
+          />
 
           {/* Shorten + History buttons */}
           <div className="flex gap-2">
@@ -2027,37 +2031,41 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             </p>
           </div>
 
-          {/* Optimised prompt — selected video model only (#1242). When
-              the request cannot be built (no still yet), fall back to the
-              assembled prompt text if it differs from the editable field. */}
-          {motionRequestPreview ? (
-            <OptimisedPromptPanel
-              idPrefix="motion-request"
-              preview={motionRequestPreview}
-              copiedKey={copiedTab}
-              onCopy={(text, key) => void handleCopy(text, key)}
-              footnote={
+          {/* Always in the inspector layout — packed multi-shot requests
+              (#1510) are what submit sends, and the collapsed header's
+              character count is how long that payload is. */}
+          <OptimisedPromptPanel
+            idPrefix="motion-request"
+            preview={
+              motionRequestPreview ??
+              (assembledPrompt && assembledPrompt !== editedMotionPrompt
+                ? {
+                    modelName: IMAGE_TO_VIDEO_MODELS[effectiveMotionModel].name,
+                    endpointId: IMAGE_TO_VIDEO_MODELS[effectiveMotionModel].id,
+                    prompt: assembledPrompt,
+                    json: null,
+                    promptLength: assembledPrompt.length,
+                    maxPromptLength:
+                      IMAGE_TO_VIDEO_MODELS[effectiveMotionModel]
+                        .maxPromptLength,
+                  }
+                : null)
+            }
+            copiedKey={copiedTab}
+            onCopy={(text, key) => void handleCopy(text, key)}
+            footnote={
+              [
+                promptPreview?.packedSpanLabel
+                  ? `${promptPreview.packedSpanLabel} · one generation`
+                  : null,
                 !storageDomain
                   ? 'Relative /r2/ image URLs are made publicly fetchable at submit'
-                  : null
-              }
-            />
-          ) : assembledPrompt && assembledPrompt !== editedMotionPrompt ? (
-            <OptimisedPromptPanel
-              idPrefix="motion-assembled"
-              preview={{
-                modelName: IMAGE_TO_VIDEO_MODELS[effectiveMotionModel].name,
-                endpointId: IMAGE_TO_VIDEO_MODELS[effectiveMotionModel].id,
-                prompt: assembledPrompt,
-                json: null,
-                promptLength: assembledPrompt.length,
-                maxPromptLength:
-                  IMAGE_TO_VIDEO_MODELS[effectiveMotionModel].maxPromptLength,
-              }}
-              copiedKey={copiedTab}
-              onCopy={(text, key) => void handleCopy(text, key)}
-            />
-          ) : null}
+                  : null,
+              ]
+                .filter((line): line is string => line != null)
+                .join('. ') || null
+            }
+          />
 
           {/* History button */}
           <Button
@@ -2213,9 +2221,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
               )}
               {isGeneratingMotion || videoVariantIsGenerating
                 ? 'Generating…'
-                : videoModelGenerated
-                  ? 'Regenerate Motion'
-                  : 'Generate Motion'}
+                : motionGenerateLabel(packedShotCount, videoModelGenerated)}
             </Button>
             <p
               className={

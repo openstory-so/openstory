@@ -26,7 +26,7 @@ import { toast } from 'sonner';
 type PreviewView = 'prompt' | 'json';
 
 export const OptimisedPromptPanel: React.FC<{
-  preview: OptimisedPromptPreview;
+  preview: OptimisedPromptPreview | null;
   copiedKey: string | null;
   onCopy: (text: string | undefined, key: string) => void;
   footnote?: string | null;
@@ -35,12 +35,14 @@ export const OptimisedPromptPanel: React.FC<{
 }> = ({ preview, copiedKey, onCopy, footnote, idPrefix, defaultOpen }) => {
   const [open, setOpen] = useState(defaultOpen ?? false);
   const [view, setView] = useState<PreviewView>('prompt');
-  const overLimit = preview.promptLength > preview.maxPromptLength;
+  const overLimit = preview
+    ? preview.promptLength > preview.maxPromptLength
+    : false;
   const headingId = `${idPrefix}-heading`;
   const previewId = `${idPrefix}-preview`;
   const copyKey = `${idPrefix}-${view}`;
-  const showingJson = view === 'json' && preview.json !== null;
-  const copyText = showingJson ? preview.json : preview.prompt;
+  const showingJson = view === 'json' && preview?.json != null;
+  const copyText = showingJson ? preview.json : preview?.prompt;
 
   return (
     <Collapsible
@@ -66,100 +68,104 @@ export const OptimisedPromptPanel: React.FC<{
             </span>
             <span className="flex min-w-0 items-baseline gap-2">
               <span className="truncate text-xs font-normal text-muted-foreground">
-                {preview.modelName}
+                {preview?.modelName ?? ''}
               </span>
-              <span
-                className={cn(
-                  'shrink-0 text-xs font-normal tabular-nums',
-                  overLimit
-                    ? 'font-medium text-destructive'
-                    : 'text-muted-foreground'
-                )}
-              >
-                {preview.promptLength}&nbsp;/&nbsp;{preview.maxPromptLength}
-              </span>
+              {preview && (
+                <span
+                  className={cn(
+                    'shrink-0 text-xs font-normal tabular-nums',
+                    overLimit
+                      ? 'font-medium text-destructive'
+                      : 'text-muted-foreground'
+                  )}
+                >
+                  {preview.promptLength}&nbsp;/&nbsp;{preview.maxPromptLength}
+                </span>
+              )}
             </span>
           </span>
         </button>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className="flex flex-col gap-2 border-t px-3 py-2">
-          <div className="flex items-center justify-between gap-2">
-            {preview.json !== null ? (
-              <ToggleGroup
-                type="single"
-                value={view}
-                onValueChange={(next) => {
-                  if (next === 'prompt' || next === 'json') setView(next);
-                }}
-                variant="outline"
-                size="sm"
-                spacing={0}
-                aria-label="Optimised prompt view"
+        {preview && (
+          <div className="flex flex-col gap-2 border-t px-3 py-2">
+            <div className="flex items-center justify-between gap-2">
+              {preview.json !== null ? (
+                <ToggleGroup
+                  type="single"
+                  value={view}
+                  onValueChange={(next) => {
+                    if (next === 'prompt' || next === 'json') setView(next);
+                  }}
+                  variant="outline"
+                  size="sm"
+                  spacing={0}
+                  aria-label="Optimised prompt view"
+                >
+                  <ToggleGroupItem value="prompt">Prompt</ToggleGroupItem>
+                  <ToggleGroupItem value="json">JSON</ToggleGroupItem>
+                </ToggleGroup>
+              ) : (
+                <span className="font-mono text-xs text-muted-foreground">
+                  {preview.endpointId}
+                </span>
+              )}
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={() => onCopy(copyText ?? undefined, copyKey)}
+                disabled={!copyText}
+                aria-label={
+                  showingJson
+                    ? `Copy ${preview.modelName} request JSON`
+                    : `Copy ${preview.modelName} optimised prompt`
+                }
               >
-                <ToggleGroupItem value="prompt">Prompt</ToggleGroupItem>
-                <ToggleGroupItem value="json">JSON</ToggleGroupItem>
-              </ToggleGroup>
-            ) : (
+                {copiedKey === copyKey ? (
+                  <span aria-hidden className="text-xs">
+                    ✓
+                  </span>
+                ) : (
+                  <CopyIcon className="h-3.5 w-3.5" />
+                )}
+              </Button>
+            </div>
+            {preview.json !== null && (
               <span className="font-mono text-xs text-muted-foreground">
                 {preview.endpointId}
               </span>
             )}
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              onClick={() => onCopy(copyText ?? undefined, copyKey)}
-              disabled={!copyText}
-              aria-label={
-                showingJson
-                  ? `Copy ${preview.modelName} request JSON`
-                  : `Copy ${preview.modelName} optimised prompt`
-              }
-            >
-              {copiedKey === copyKey ? (
-                <span aria-hidden className="text-xs">
-                  ✓
-                </span>
-              ) : (
-                <CopyIcon className="h-3.5 w-3.5" />
-              )}
-            </Button>
-          </div>
-          {preview.json !== null && (
-            <span className="font-mono text-xs text-muted-foreground">
-              {preview.endpointId}
-            </span>
-          )}
-          {/* Clips and audio ride the request too (#1559) — listed under the
+            {/* Clips and audio ride the request too (#1559) — listed under the
               tag the prompt binds them by, so the preview is the request. */}
-          <BoundMediaList
-            images={preview.images ?? []}
-            clips={preview.videos ?? []}
-            audio={preview.audio ?? []}
-          />
-          {showingJson ? (
-            <pre
-              id={previewId}
-              aria-labelledby={headingId}
-              className="max-h-96 overflow-auto whitespace-pre-wrap rounded-md bg-muted/50 p-3 font-mono text-xs leading-relaxed text-foreground"
-            >
-              {preview.json}
-            </pre>
-          ) : (
-            <p
-              id={previewId}
-              aria-labelledby={headingId}
-              className="max-h-96 overflow-auto whitespace-pre-wrap rounded-md bg-muted/50 p-3 text-sm leading-relaxed text-foreground"
-            >
-              {preview.prompt}
-            </p>
-          )}
-          {footnote && (
-            <p className="text-xs text-muted-foreground">{footnote}</p>
-          )}
-        </div>
+            <BoundMediaList
+              images={preview.images ?? []}
+              clips={preview.videos ?? []}
+              audio={preview.audio ?? []}
+            />
+            {showingJson ? (
+              <pre
+                id={previewId}
+                aria-labelledby={headingId}
+                className="max-h-96 overflow-auto whitespace-pre-wrap rounded-md bg-muted/50 p-3 font-mono text-xs leading-relaxed text-foreground"
+              >
+                {preview.json}
+              </pre>
+            ) : (
+              <p
+                id={previewId}
+                aria-labelledby={headingId}
+                className="max-h-96 overflow-auto whitespace-pre-wrap rounded-md bg-muted/50 p-3 text-sm leading-relaxed text-foreground"
+              >
+                {preview.prompt}
+              </p>
+            )}
+            {footnote && (
+              <p className="text-xs text-muted-foreground">{footnote}</p>
+            )}
+          </div>
+        )}
       </CollapsibleContent>
     </Collapsible>
   );

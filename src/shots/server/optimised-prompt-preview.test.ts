@@ -128,6 +128,162 @@ describe('buildShotPromptPreview', () => {
     expect(result.image).not.toBeNull();
     expect(result.image?.prompt).toContain('Sarah types');
     expect(result.motionHasReferenceImages).toBe(false);
+    expect(result.packedSpanLabel).toBeNull();
+    expect(result.packedShotIds).toBeNull();
+    expect(result.packedDurationMs).toBeNull();
+  });
+
+  it('packs Seedance 2.5 siblings into the in-clip request the model receives', () => {
+    const result = buildShotPromptPreview({
+      imageModel: 'nano_banana_2',
+      videoModel: 'seedance_v2_5',
+      imagePrompt: 'Sarah types',
+      motionPrompt: {
+        fullPrompt: 'the hallway beyond',
+        dialogue: null,
+        audio: null,
+      },
+      shotDurationMs: 6000,
+      startFrameUrl: 'https://cdn.example/shot-2.jpg',
+      usesStartFrame: true,
+      generateAudio: true,
+      aspectRatio: '16:9',
+      scene: {
+        originalScript: { extract: 'Sarah walks the hall.' },
+        continuity: { characterTags: [] },
+        metadata: { location: 'hall' },
+      },
+      characters: [],
+      elements: [],
+      locations: [],
+      byteplusEnabled: false,
+      packedMembers: [
+        {
+          shotId: 'shot-1',
+          shotNumber: 1,
+          durationMs: 4000,
+          motionPrompt: {
+            fullPrompt: 'opens the door',
+            dialogue: null,
+            audio: null,
+          },
+          usesStartFrame: true,
+          startFrameUrl: 'https://cdn.example/shot-1.jpg',
+        },
+        {
+          shotId: 'shot-2',
+          shotNumber: 2,
+          durationMs: 6000,
+          motionPrompt: {
+            fullPrompt: 'the hallway beyond',
+            dialogue: null,
+            audio: null,
+          },
+          usesStartFrame: true,
+          startFrameUrl: 'https://cdn.example/shot-2.jpg',
+        },
+      ],
+    });
+
+    expect(result.packedSpanLabel).toBe('Shots 1–2');
+    expect(result.packedShotIds).toEqual(['shot-1', 'shot-2']);
+    expect(result.packedDurationMs).toBe(10_000);
+    expect(result.assembledMotionPrompt).toContain('0-4 seconds: Shot 1:');
+    expect(result.assembledMotionPrompt).toContain('opens the door');
+    expect(result.assembledMotionPrompt).toContain('cut to');
+    expect(result.assembledMotionPrompt).toContain('4-10 seconds: Shot 2:');
+    expect(result.assembledMotionPrompt).not.toContain(
+      'Single continuous shot, no cuts.'
+    );
+    // Shot 1 still anchors i2v even when inspecting shot 2.
+    expect(result.motion?.json).toContain('https://cdn.example/shot-1.jpg');
+    expect(result.motion?.json).not.toContain('https://cdn.example/shot-2.jpg');
+  });
+
+  it('puts Kling packed shots on multi_prompt and omits prompt', () => {
+    const result = buildShotPromptPreview({
+      imageModel: 'nano_banana_2',
+      videoModel: 'kling_v3_pro',
+      imagePrompt: 'Sarah types',
+      motionPrompt: {
+        fullPrompt: 'the hallway beyond',
+        dialogue: null,
+        audio: null,
+      },
+      shotDurationMs: 6000,
+      startFrameUrl: 'https://cdn.example/shot-1.jpg',
+      usesStartFrame: true,
+      generateAudio: true,
+      aspectRatio: '16:9',
+      scene: {
+        originalScript: { extract: 'Sarah walks the hall.' },
+        continuity: { characterTags: [] },
+        metadata: { location: 'hall' },
+      },
+      characters: [],
+      elements: [],
+      locations: [],
+      byteplusEnabled: false,
+      packedMembers: [
+        {
+          shotId: 'shot-1',
+          shotNumber: 1,
+          durationMs: 4000,
+          motionPrompt: {
+            fullPrompt: 'opens the door',
+            dialogue: null,
+            audio: null,
+          },
+          usesStartFrame: true,
+          startFrameUrl: 'https://cdn.example/shot-1.jpg',
+        },
+        {
+          shotId: 'shot-2',
+          shotNumber: 2,
+          durationMs: 6000,
+          motionPrompt: {
+            fullPrompt: 'the hallway beyond',
+            dialogue: null,
+            audio: null,
+          },
+          usesStartFrame: true,
+          startFrameUrl: 'https://cdn.example/shot-1.jpg',
+        },
+      ],
+    });
+
+    const parsed: unknown = JSON.parse(result.motion?.json ?? '{}');
+    expect(parsed).toEqual(
+      expect.objectContaining({
+        multi_prompt: [
+          expect.objectContaining({ duration: '4' }),
+          expect.objectContaining({ duration: '6' }),
+        ],
+      })
+    );
+    expect(parsed).toEqual(
+      expect.not.objectContaining({ prompt: expect.anything() })
+    );
+    if (
+      typeof parsed !== 'object' ||
+      parsed === null ||
+      !('multi_prompt' in parsed) ||
+      !Array.isArray(parsed.multi_prompt)
+    ) {
+      throw new Error('expected Kling multi_prompt body');
+    }
+    const first = parsed.multi_prompt[0];
+    const second = parsed.multi_prompt[1];
+    expect(first).toEqual(
+      expect.objectContaining({
+        prompt: expect.stringContaining('opens the door'),
+      })
+    );
+    expect(second).toEqual(
+      expect.objectContaining({
+        prompt: expect.stringContaining('the hallway beyond'),
+      })
+    );
   });
 
   it('returns no image preview when the visual prompt is empty', () => {

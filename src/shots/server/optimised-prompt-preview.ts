@@ -32,6 +32,10 @@ import {
 import type { Resolution } from '@/models/resolutions';
 import { buildBytePlusImageRequest } from '@/stills/build-byteplus-image-request';
 import { buildImageRequest } from '@/stills/build-image-request';
+import {
+  assemblePackedMotionPrompt,
+  type PackedMotionPromptShot,
+} from '@/motion/server/assemble-motion-prompt';
 import { buildBytePlusVideoRequest } from '@/motion/server/build-byteplus-video-request';
 import { buildGeminiVideoRequest } from '@/motion/server/build-gemini-video-request';
 import { buildGrokVideoRequest } from '@/motion/server/build-grok-video-request';
@@ -41,6 +45,7 @@ import {
   buildShotImageReferenceImages,
 } from '@/motion/server/build-motion-references';
 import { resolveMotionPrompt } from '@/motion/server/resolve-motion-prompt';
+import { formatShotSpan } from '@/shots/scene-segments';
 import {
   missingVoiceLines,
   unusableShotReferenceLines,
@@ -89,6 +94,26 @@ export type ShotPromptPreview = {
   motionUnusable: string[];
   assembledMotionPrompt: string | null;
   motionHasReferenceImages: boolean;
+  /**
+   * Packed in-clip span this motion request covers ("Shots 1–2"), or null
+   * when the request is a single shot. The inspector footnote uses this so
+   * the packed payload is labelled as one generation.
+   */
+  packedSpanLabel: string | null;
+  /** Shot ids this packed generation covers, story order. Null when 1-shot. */
+  packedShotIds: string[] | null;
+  /** Sum of member durations for the packed generation. Null when 1-shot. */
+  packedDurationMs: number | null;
+};
+
+/** One scene-sibling the packed motion request will cover (#1510). */
+export type PackedPreviewMember = {
+  shotId: string;
+  shotNumber: number;
+  durationMs: number | null;
+  motionPrompt: AssemblableMotionPrompt | null;
+  usesStartFrame: boolean;
+  startFrameUrl: string | null;
 };
 
 type SceneReferenceInput = {
@@ -210,6 +235,13 @@ export function buildShotPromptPreview(input: {
   byteplusEnabled?: boolean;
   /** Dialogue TTS clips already parked for this prompt version (#1554). */
   audioClips?: MotionAudioClip[];
+  /**
+   * Scene siblings this generation will cover when the model packs in-clip
+   * (#1510). Absent or length 1 keeps the single-shot request. The current
+   * shot's prompt/duration/still already sit on the top-level fields; members
+   * are story-ordered and include this shot.
+   */
+  packedMembers?: readonly PackedPreviewMember[];
 }): ShotPromptPreview {
   const byteplusEnabled = input.byteplusEnabled ?? isBytePlusConfigured();
   const audioClips = input.audioClips ?? [];
@@ -239,15 +271,48 @@ export function buildShotPromptPreview(input: {
               },
         }
       : input.motionPrompt;
-  const assembledMotionPrompt = resolveMotionPrompt(
-    {
-      motionPrompt,
-      characterTags: input.scene?.continuity?.characterTags,
-      description: input.scene?.originalScript?.extract ?? null,
-      generateAudio: input.generateAudio,
-    },
-    input.videoModel
-  );
+  const packedMembers = input.packedMembers ?? [];
+  const isPacked = packedMembers.length > 1;
+  const packedFirst = packedMembers[0];
+  const packed = isPacked
+    ? assemblePackedMotionPrompt({
+        shots: packedMembers.map((member): PackedMotionPromptShot => ({
+          durationSeconds: Math.max(
+            1,
+            Math.round((member.durationMs ?? 3000) / 1000)
+          ),
+          motionPrompt: member.motionPrompt ?? undefined,
+          prompt: member.motionPrompt?.fullPrompt,
+          characterTags: input.scene?.continuity?.characterTags,
+          generateAudio: input.generateAudio,
+        })),
+        model: input.videoModel,
+        generateAudio: input.generateAudio,
+      })
+    : null;
+  const assembledMotionPrompt = packed
+    ? packed.prompt
+    : resolveMotionPrompt(
+        {
+          motionPrompt,
+          characterTags: input.scene?.continuity?.characterTags,
+          description: input.scene?.originalScript?.extract ?? null,
+          generateAudio: input.generateAudio,
+        },
+        input.videoModel
+      );
+  const motionUsesStartFrame = packedFirst
+    ? packedFirst.usesStartFrame
+    : input.usesStartFrame;
+  const motionStartFrameUrl = packedFirst
+    ? packedFirst.startFrameUrl
+    : input.startFrameUrl;
+  const motionDurationMs = isPacked
+    ? packedMembers.reduce(
+        (sum, member) => sum + (member.durationMs ?? 3000),
+        0
+      )
+    : input.shotDurationMs;
   const motionRefs = absolutizeRefs([
     ...buildMotionReferenceImages({
       scene: input.scene,
@@ -258,7 +323,7 @@ export function buildShotPromptPreview(input: {
       // matching the raw text dropped it here while submit sent it — the
       // preview showed `MATEO_SHOT_1` where the provider got `Audio 1`.
       motionPrompt: assembledMotionPrompt,
-      referenceOnly: !input.usesStartFrame,
+      referenceOnly: !motionUsesStartFrame,
       locations: input.locations,
     }),
     ...dialogueClipsAsReferences(audioClips),
@@ -279,22 +344,30 @@ export function buildShotPromptPreview(input: {
     motion: buildMotionPreview({
       model: input.videoModel,
       assembledPrompt: assembledMotionPrompt,
-      shotDurationMs: input.shotDurationMs,
-      startFrameUrl: input.startFrameUrl,
-      usesStartFrame: input.usesStartFrame,
+      shotDurationMs: motionDurationMs,
+      startFrameUrl: motionStartFrameUrl,
+      usesStartFrame: motionUsesStartFrame,
       generateAudio: input.generateAudio,
       aspectRatio: input.aspectRatio,
       resolution: input.resolution,
       referenceImages: motionRefs,
       byteplusEnabled,
+      multiPrompt: packed?.multiPrompt,
     }),
     assembledMotionPrompt,
     motionHasReferenceImages: motionRefs.length > 0,
+    packedSpanLabel: isPacked
+      ? formatShotSpan(packedMembers.map((member) => member.shotNumber))
+      : null,
+    packedShotIds: isPacked
+      ? packedMembers.map((member) => member.shotId)
+      : null,
+    packedDurationMs: isPacked ? motionDurationMs : null,
     motionUnusable: [
       ...unusableShotReferenceLines(
         input.videoModel,
         motionRefs,
-        input.usesStartFrame
+        motionUsesStartFrame
       ),
       ...missingVoiceLines(
         input.videoModel,
@@ -392,6 +465,7 @@ function buildMotionPreview(input: {
   resolution?: Resolution;
   referenceImages: ReturnType<typeof buildMotionReferenceImages>;
   byteplusEnabled: boolean;
+  multiPrompt?: Array<{ prompt: string; duration: string }>;
 }): OptimisedPromptPreview | null {
   const modelPrompt = input.assembledPrompt;
   if (!modelPrompt) return null;
@@ -510,6 +584,7 @@ function buildMotionPreview(input: {
           : undefined,
         referenceImages: input.referenceImages,
         referenceOnly: !input.usesStartFrame,
+        multiPrompt: input.multiPrompt,
       },
       input.model
     );

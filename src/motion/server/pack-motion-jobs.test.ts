@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ImageToVideoModel } from '@/models/models';
 import {
   batchPacksInClipMultiShot,
+  coveredMembersForShot,
   packMotionBatchShots,
 } from './pack-motion-jobs';
 
@@ -121,5 +122,37 @@ describe('packMotionBatchShots', () => {
       undefined
     );
     expect(packed.map((s) => s.shotId)).toEqual(['a', 'b']);
+  });
+});
+
+describe('coveredMembersForShot', () => {
+  it('returns both members when clicking either shot of a packed pair', () => {
+    const shots = [shot('a', 'sc-1', 4), shot('b', 'sc-1', 6)];
+    expect(
+      coveredMembersForShot(shots, 'a', ['seedance_v2']).map((s) => s.shotId)
+    ).toEqual(['a', 'b']);
+    expect(
+      coveredMembersForShot(shots, 'b', ['seedance_v2']).map((s) => s.shotId)
+    ).toEqual(['a', 'b']);
+  });
+
+  it('returns only the clicked shot when Grok cannot pack', () => {
+    const shots = [shot('a', 'sc-1', 4), shot('b', 'sc-1', 6)];
+    expect(
+      coveredMembersForShot(shots, 'b', ['grok_imagine_video_1_5']).map(
+        (s) => s.shotId
+      )
+    ).toEqual(['b']);
+  });
+
+  it('does not pull the next tile when the scene splits on the cap', () => {
+    const shots = [
+      shot('a', 'sc-1', 10),
+      shot('b', 'sc-1', 10),
+      shot('c', 'sc-1', 5),
+    ];
+    expect(
+      coveredMembersForShot(shots, 'a', ['minimax_h3_max']).map((s) => s.shotId)
+    ).toEqual(['a']);
   });
 });

@@ -31,6 +31,8 @@ type VideoPlayerProps = {
   aspectRatio: AspectRatio;
   className?: string;
   autoPlay?: boolean;
+  /** Seek here when the value changes (packed-clip shot windows). */
+  seekTo?: number | null;
   onLoadedMetadata?: (duration: number) => void;
   onTimeUpdate?: (currentTime: number) => void;
   onPause?: () => void;
@@ -85,6 +87,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   aspectRatio,
   className,
   autoPlay = false,
+  seekTo,
   onLoadedMetadata,
   onTimeUpdate,
   onPause,
@@ -178,6 +181,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             chaptersUrl={chaptersUrl}
             posterSrc={null}
             autoPlay={autoPlay}
+            seekTo={seekTo}
             onLoadedMetadata={(duration) => {
               tracker.setDuration(duration);
               onLoadedMetadata?.(duration);
