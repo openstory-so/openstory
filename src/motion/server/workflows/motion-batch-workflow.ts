@@ -174,10 +174,13 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
           childPayload: motionBody,
           spawnStepName: `spawn-motion-${shotIndex}-${model}`,
           awaitStepName: `await-motion-${shotIndex}-${model}`,
-          // Must exceed the child's own budget: motion polls fal for up to
-          // 30 minutes (MAX_BATCHES in motion-workflow.ts) plus submit/
-          // compress/persist steps and notify lag under a burst.
-          timeout: '45 minutes',
+          // Must exceed the child's own budget: motion polls for up to 30
+          // minutes (MAX_BATCHES in motion-workflow.ts), and a BytePlus shot
+          // first ingests its stills — up to 20 minutes waiting on another
+          // run's create (CLAIM_RETRIES) plus the governor's 15-minute
+          // CreateAsset queue — then submit/compress/persist steps and notify
+          // lag under a burst.
+          timeout: '90 minutes',
         }
       );
     });

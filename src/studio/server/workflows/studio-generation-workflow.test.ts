@@ -286,6 +286,15 @@ describe('StudioGenerationWorkflow video', () => {
     );
   });
 
+  it('a release that never lands does not fail a rendered clip', async () => {
+    const { scopedDb, generatedAssets, bytePlusAssets } = makeScopedDb();
+    bytePlusAssets.releaseOwner.mockRejectedValueOnce(new Error('D1 down'));
+
+    await makeWorkflow().runBody(makeEvent(VIDEO), makeStep(), scopedDb);
+
+    expect(generatedAssets.markCompleted).toHaveBeenCalled();
+  });
+
   it('gives up after three content flags without billing', async () => {
     mockSubmit.mockRejectedValue(new Error('flagged by a content checker'));
     const { scopedDb } = makeScopedDb();
@@ -329,6 +338,16 @@ describe('StudioGenerationWorkflow onFailure', () => {
     const { scopedDb, bytePlusAssets } = makeScopedDb();
     await makeWorkflow().fail(makeEvent(VIDEO), scopedDb);
     expect(bytePlusAssets.releaseOwner).toHaveBeenCalledWith('studio:run-1');
+  });
+
+  it('a failed release throws after marking the row, so emit-failure retries it', async () => {
+    const { scopedDb, generatedAssets, bytePlusAssets } = makeScopedDb();
+    bytePlusAssets.releaseOwner.mockRejectedValueOnce(new Error('D1 down'));
+
+    await expect(
+      makeWorkflow().fail(makeEvent(VIDEO), scopedDb)
+    ).rejects.toThrow('D1 down');
+    expect(generatedAssets.markFailed).toHaveBeenCalledWith('asset-1', 'boom');
   });
 
   it('records a video failure span on the resolved via', async () => {

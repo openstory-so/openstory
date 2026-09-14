@@ -1,0 +1,11 @@
+-- #1531 — copy every resident slot's Ark id into the nullable `ark_asset_id`
+-- before the next migration drops the NOT NULL `asset_id`.
+--
+-- HAND-WRITTEN ON PURPOSE. A data backfill has no schema diff, so drizzle-kit
+-- cannot emit it; generated with `bun db:generate --custom`.
+--
+-- WHY A NEW COLUMN: a reservation is a row with no Ark id yet, and SQLite
+-- cannot drop NOT NULL in place. drizzle-kit's answer is a table rebuild,
+-- which the migration-safety check refuses (#612). Add, copy, drop is three
+-- native ALTERs instead.
+UPDATE `byteplus_assets` SET `ark_asset_id` = `asset_id`;

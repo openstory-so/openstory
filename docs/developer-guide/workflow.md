@@ -384,7 +384,7 @@ Every workflow extends `OpenStoryWorkflowEntrypoint` (`src/platform/server/workf
 
 Child workflows (image, motion, music, character bible, location bible, talent matching, location matching, frame-images, motion-batch) each implement their own `onFailure` that updates the relevant record's status to `'failed'`.
 
-**BytePlus ACR leases (#1361, #1531).** `MotionWorkflow` and `StudioGenerationWorkflow` lease every still they register on Ark under an owner of `motion:<instanceId>` / `studio:<instanceId>` (`assetLeaseOwner`). Both release by that owner on success (step `release-byteplus-asset-leases`, whichever via the clip finally rendered on) and in `onFailure` (best-effort), via `scopedDb.bytePlusAssets.releaseOwner`. That drops the run's own leases and any reservation it never finalized; another run's lease on the same still is untouched. A batch parent never releases for its children.
+**BytePlus ACR leases (#1361, #1531).** `MotionWorkflow` and `StudioGenerationWorkflow` lease every still they register on Ark under an owner of `motion:<instanceId>` / `studio:<instanceId>` (`assetLeaseOwner`). Both release by that owner on success (step `release-byteplus-asset-leases`, whichever via the clip finally rendered on; a release that exhausts its retries is logged, never fails the rendered clip) and at the end of `onFailure` (inside the base class's retried `emit-failure` step), via `scopedDb.bytePlusAssets.releaseOwner`. That drops the run's own leases and any reservation it never finalized; another run's lease on the same still is untouched. A batch parent never releases for its children. Every claim and finalize renews all of the run's leases, so a still leased early cannot expire while a later still waits. Ingest per still is `-url` (fal key + fetchable URL) → `-claim` (the only retried-for-minutes step) → `-evict` (an already-deleted asset counts as done) → `-slot` → `-wait` → `-create`. Motion's parents (motion-batch, update-stale-shots) await a motion child for 90 minutes, and analyze-script awaits motion-batch for 120.
 
 ### Retry Strategy
 
@@ -395,7 +395,7 @@ Under Cloudflare Workflows, retries are configured per `step.do()` (and on the w
 | Individual `step.do()` steps               | engine default  | Managed by the Workflows engine                           |
 | LLM-call steps (`durableLLMCallCf`)        | via `step.do`   | Engine-managed                                            |
 | Child workflows (`spawnAndAwaitChild`)     | own step budget | Awaited with a `timeout`; the child retries its own steps |
-| Ark still claim (`<prefix>-ark-<n>-claim`) | 90 × 30s        | Constant — waits out another run's create or a full pool  |
+| Ark still claim (`<prefix>-ark-<n>-claim`) | 40 × 30s        | Constant — waits out another run's create or a full pool  |
 
 Per-scene fan-out (image, variant, motion) uses `Promise.allSettled` over `spawnAndAwaitChild`, so one scene's failure or timeout doesn't kill the rest of the batch — failures are collected and surfaced as a single error.
 

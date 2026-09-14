@@ -26,8 +26,8 @@
  *
  * BytePlus `InputImageSensitiveContentDetected.PrivacyInformation` is NOT
  * in this set on purpose. It is a provenance 400 on the still (public URL
- * vs `asset://`); reseeding cannot change it. Submit falls back to fal —
- * see `byteplus-portrait-filter.ts`.
+ * vs `asset://`); reseeding cannot change it. Submit fails the shot with
+ * its own message — see `byteplus-portrait-filter.ts`.
  */
 
 import { extractFalErrorMessage } from './fal-error';

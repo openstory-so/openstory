@@ -20,7 +20,10 @@ const mockSoften = vi.fn();
 const mockDeductWorkflowCredits = vi.fn();
 const mockCalculateMotionMetadata = vi.fn(() => ({ cost: 0, duration: 5 }));
 const mockResolveMotionVia = vi.fn(
-  async (): Promise<'fal' | 'google'> => 'fal'
+  async (): Promise<'fal' | 'google' | 'byteplus'> => 'fal'
+);
+const mockIngestArkAssets = vi.fn(
+  async (_step: unknown, _args: { owner: string }) => ({})
 );
 const mockRecordMediaGenerationSpan = vi.fn();
 const emit = vi.fn(async () => {});
@@ -37,6 +40,10 @@ vi.doMock('@/motion/server/motion-generation', () => ({
     recordFalUsage: false,
   }),
   resolveMotionVia: mockResolveMotionVia,
+  arkStillsForMotion: () => [],
+}));
+vi.doMock('@/models/server/byteplus-asset-steps', () => ({
+  ingestArkAssets: mockIngestArkAssets,
 }));
 vi.doMock('@/billing/server/fal-pricing-live', () => ({
   getEffectiveFalPricing: async () => ({}),
@@ -509,6 +516,37 @@ describe('MotionWorkflow onFailure observation', () => {
 
     expect(step.names).toContain('release-byteplus-asset-leases');
     expect(bytePlusAssets.releaseOwner).toHaveBeenCalledWith('motion:run-1');
+  });
+
+  it('leases stills under the same owner it releases', async () => {
+    mockResolveMotionVia.mockResolvedValueOnce('byteplus');
+    const { scopedDb, bytePlusAssets } = makeScopedDb();
+
+    await makeWorkflow().runBody(makeEvent(), makeStep(), scopedDb);
+
+    // An owner that drifted between the two would release nothing, and every
+    // lease would sit out its full TTL with no error anywhere.
+    const owner = mockIngestArkAssets.mock.calls[0]?.[1].owner;
+    expect(owner).toBe('motion:run-1');
+    expect(bytePlusAssets.releaseOwner).toHaveBeenCalledWith(owner);
+  });
+
+  it('a release that never lands does not fail a rendered clip', async () => {
+    const { scopedDb, bytePlusAssets, videoVariants } = makeScopedDb();
+    bytePlusAssets.releaseOwner.mockRejectedValueOnce(new Error('D1 down'));
+
+    await makeWorkflow().runBody(makeEvent(), makeStep(), scopedDb);
+
+    expect(videoVariants.appendVersion).toHaveBeenCalled();
+  });
+
+  it('a failed release in onFailure throws, so the emit-failure step retries it', async () => {
+    const { scopedDb, bytePlusAssets } = makeScopedDb();
+    bytePlusAssets.releaseOwner.mockRejectedValueOnce(new Error('D1 down'));
+
+    await expect(makeWorkflow().fail(makeEvent(), scopedDb)).rejects.toThrow(
+      'D1 down'
+    );
   });
 });
 

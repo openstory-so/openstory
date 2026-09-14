@@ -62,8 +62,9 @@ export const bytePlusAssets = snakeCase.table(
     /** The run creating this slot's asset. NULL once `assetId` is set. */
     reservedBy: text(),
     /**
-     * When a pending reservation may be taken over — the backstop for a run
-     * that died between claim and create. NULL once `assetId` is set.
+     * When a pending reservation may be taken over, or evicted for another
+     * still — the backstop for a run that died between claim and create.
+     * NULL once `assetId` is set.
      */
     reservedUntil: integer({ mode: 'timestamp' }),
     createdAt: integer({ mode: 'timestamp' })
@@ -79,8 +80,10 @@ export const bytePlusAssets = snakeCase.table(
  * own lease, so the first to finish cannot unpin the sheet under the other.
  *
  * `owner` is the workflow run (`motion:<instanceId>` / `studio:<instanceId>`);
- * a run releases everything it holds by owner on both exits. `expiresAt` is
- * the backstop for a run that reached neither.
+ * a run releases everything it holds by owner on both exits, and renews all of
+ * them on every claim and finalize. `expiresAt` is the backstop for a run
+ * that reached neither. `legacy:<slot id>` rows are pre-#1531 leases carried
+ * over by the backfill; nothing releases them, they just expire.
  */
 export const bytePlusAssetLeases = snakeCase.table(
   'byteplus_asset_leases',

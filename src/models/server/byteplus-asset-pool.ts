@@ -1,5 +1,5 @@
 /**
- * The BytePlus ACR asset pool (#1361) — FIFO-by-use reuse of a fixed number
+ * The BytePlus ACR asset pool (#1361) — least-recently-used reuse of a fixed number
  * of account-wide slots.
  *
  * #1157 registers a still as `asset://` and reuses an Active asset with the
@@ -27,6 +27,7 @@
  * and what to do when the answer is "none".
  */
 
+import { NonRetryableError } from 'cloudflare:workflows';
 import { getEnv } from '#env';
 import type { BytePlusAssetSlot } from '@/platform/server/db/schema/byteplus-assets';
 import type { createBytePlusAssetsMethods } from '@/models/server/db/byteplus-assets';
@@ -36,6 +37,8 @@ import {
   deleteAsset,
   hashAssetIdentity,
   ingestAigcAsset,
+  listAssetsInGroup,
+  resolveAigcGroupId,
   type BytePlusAssetKind,
 } from './byteplus-assets';
 import type { BytePlusOpenApiConfig } from './byteplus-openapi';
@@ -56,7 +59,7 @@ export type AssetPoolLedger = Pick<Ledger, 'claimSlot' | 'finalizeSlot'>;
  * relayed in #1361; NOT verified against a live 429, so `BYTEPLUS_ASSET_SLOTS`
  * overrides it without a code change when the tier moves. Under-setting it is
  * safe (we evict early); over-setting it just means `CreateAsset` refuses and
- * the shot falls back to fal.
+ * the shot fails with Ark's error.
  *
  * Not to be confused with Seedance 2.5's 50 references, which is per REQUEST.
  */
@@ -66,11 +69,13 @@ const DEFAULT_BYTEPLUS_ASSET_SLOTS = 50;
  * How long a submitted still stays pinned when nobody releases it.
  *
  * Motion and studio runs release by owner on both exits, so this only covers
- * runs that died mid-flight. It must outlast a poll budget (30 minutes of
- * batches) or the backstop would free a slot under a job that is still
- * running — the exact 400 the lease exists to prevent. It is also how long a
- * reservation may wait for its create before another run can take it over,
- * and how long the claim step waits on another run's create.
+ * runs that died mid-flight. Every claim and finalize renews ALL of the run's
+ * leases, so it is measured from the run's last ingest step: it must outlast
+ * submit plus a poll budget (30 minutes of batches) and the governor's
+ * longest CreateAsset wait (15 minutes), or the backstop would free a slot
+ * under a job that is still running — the exact 400 the lease exists to
+ * prevent. It is also how long a reservation may wait for its create before
+ * another run can take it over.
  */
 const LEASE_TTL_MS = 45 * 60 * 1000;
 
@@ -107,11 +112,11 @@ export function assetLeaseOwner(
 }
 
 const ASSET_POOL_EXHAUSTED_MESSAGE =
-  'BytePlus asset pool is full and every slot is leased by an in-flight job';
+  'BytePlus asset pool is full: every slot is held by a running shot. Retry once they finish.';
 
 /** Thrown while another run is creating the same still; the step retries. */
 const ASSET_PENDING_MESSAGE =
-  'BytePlus asset is still being registered by another job';
+  'BytePlus is still registering this image for another shot. Retry in a few minutes.';
 
 export type PooledAssetClaim =
   | { kind: 'hit'; uri: string }
@@ -161,12 +166,26 @@ export async function claimPooledAsset(
  * the delete and never moves on to create; once it has succeeded, a retried
  * create never deletes twice. A run that exhausts the retries leaves the asset
  * on Ark with no ledger row, which the hourly sweep deletes.
+ *
+ * An asset that is already gone is done, not a failure: the delete landed on
+ * an attempt whose result was lost, or the sweep got there first. Ark's
+ * not-found code is not documented, so a failed delete is settled by looking
+ * for the asset in the group rather than by matching the error.
  */
 export async function evictPooledAsset(
   config: BytePlusOpenApiConfig,
-  input: { assetId: string; slot: BytePlusAssetSlot }
+  input: { assetId: string; slot: BytePlusAssetSlot; groupId?: string }
 ): Promise<void> {
-  await deleteAsset(config, input.assetId);
+  try {
+    await deleteAsset(config, input.assetId);
+  } catch (error) {
+    const groupId = await resolveAigcGroupId(config, input.groupId);
+    const assets = await listAssetsInGroup(config, groupId);
+    if (assets.some((asset) => asset.Id === input.assetId)) throw error;
+    logger.info('BytePlus evicted asset was already deleted', {
+      assetId: input.assetId,
+    });
+  }
   reportBytePlusAssetPool({ outcome: 'evicted', slot: input.slot });
 }
 
@@ -197,19 +216,26 @@ export async function createPooledAsset(
     ...(input.groupId && { groupId: input.groupId }),
   });
 
+  if (!uri.startsWith('asset://')) {
+    throw new Error(`BytePlus CreateAsset returned an unexpected id: ${uri}`);
+  }
+  const assetId = uri.slice('asset://'.length);
   const finalized = await ledger.finalizeSlot({
     identity: input.claim.identity,
     owner: input.owner,
-    assetId: uri.slice('asset://'.length),
+    assetId,
+    slot: input.slot,
     leaseMs: LEASE_TTL_MS,
   });
   if (!finalized) {
-    logger.warn('BytePlus asset reservation was taken over before create', {
+    // Retrying would find the same other asset on the row every time.
+    logger.warn('BytePlus slot already holds a different asset', {
       identity: input.claim.identity,
       owner: input.owner,
+      assetId,
     });
-    throw new Error(
-      'BytePlus asset reservation expired before CreateAsset finished'
+    throw new NonRetryableError(
+      'BytePlus registered this image twice at once. Retry the shot.'
     );
   }
   reportBytePlusAssetPool({ outcome: 'created', slot: input.slot });

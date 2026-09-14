@@ -727,6 +727,9 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           childPayload: motionInput,
           spawnStepName: `spawn-video-${target.shotId}`,
           awaitStepName: `await-video-${target.shotId}`,
+          // Same budget as motion-batch's motion children: 30 minutes of
+          // polling plus BytePlus still ingest.
+          timeout: '90 minutes',
         }
       );
       counters.videos += 1;

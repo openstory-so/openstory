@@ -1,5 +1,5 @@
 -- #1531 — carry every unexpired single-row lease on `byteplus_assets` over to
--- a `byteplus_asset_leases` row before the next migration drops the column.
+-- a `byteplus_asset_leases` row before a later migration drops the column.
 --
 -- HAND-WRITTEN ON PURPOSE. A data backfill has no schema diff, so drizzle-kit
 -- cannot emit it; generated with `bun db:generate --custom`.

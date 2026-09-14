@@ -27,6 +27,7 @@ import {
 import { relations } from '@/platform/server/db/schema/relations';
 import { createBytePlusAssetsMethods } from '@/models/server/db/byteplus-assets';
 import { generateId } from '@/platform/id';
+import { eq } from 'drizzle-orm';
 import { hashAssetIdentity } from './byteplus-assets';
 import type { BytePlusOpenApiConfig } from './byteplus-openapi';
 
@@ -35,6 +36,7 @@ vi.mock('@/platform/server/observability/posthog-server', () => ({
   getPostHogClient: () => undefined,
 }));
 
+const { NonRetryableError } = await import('cloudflare:workflows');
 const {
   arkAssetIdentities,
   bytePlusAssetSlots,
@@ -48,8 +50,11 @@ let client: Client;
 let db: Database;
 let ledger: ReturnType<typeof createBytePlusAssetsMethods>;
 
-/** Ark stub: CreateAsset mints an id, GetAsset reports it Active. */
-function arkStub(): {
+/**
+ * Ark stub: CreateAsset mints an id, GetAsset reports it Active. `deleteFails`
+ * makes DeleteAsset error; `listed` is what ListAssets reports in the group.
+ */
+function arkStub(options: { deleteFails?: boolean; listed?: string[] } = {}): {
   config: BytePlusOpenApiConfig;
   deleted: string[];
   created: () => number;
@@ -74,18 +79,27 @@ function arkStub(): {
           case 'ListAssetGroups':
             return { Items: [{ Id: 'group-1', Name: aigcGroupName() }] };
           case 'ListAssets':
-            return { Items: [] };
+            return { Items: (options.listed ?? []).map((Id) => ({ Id })) };
           case 'CreateAsset':
             return { Id: `ark-${++next}` };
           case 'GetAsset':
             return { Id: body.Id, Status: 'Active' };
           case 'DeleteAsset':
+            if (options.deleteFails) return undefined;
             deleted.push(String(body.Id));
             return {};
           default:
             return {};
         }
       })();
+      if (result === undefined) {
+        return new Response(
+          JSON.stringify({
+            ResponseMetadata: { Error: { Code: 'Unknown', Message: 'nope' } },
+          }),
+          { status: 400 }
+        );
+      }
       return new Response(JSON.stringify({ Result: result }), { status: 200 });
     },
   };
@@ -97,8 +111,10 @@ async function seedSlot(input: {
   assetId: string;
   slot: 'frame' | 'library';
   lastUsedAt: Date;
-  /** A run holding a live lease on it. */
+  /** A run holding a lease on it. */
   leasedBy?: string;
+  /** When that lease runs out. Defaults to well in the future. */
+  leaseExpiresAt?: Date;
 }) {
   const identity = await hashAssetIdentity(input.url);
   await db.insert(bytePlusAssets).values({
@@ -112,7 +128,7 @@ async function seedSlot(input: {
     await db.insert(bytePlusAssetLeases).values({
       identity,
       owner: input.leasedBy,
-      expiresAt: FUTURE,
+      expiresAt: input.leaseExpiresAt ?? FUTURE,
     });
   }
 }
@@ -154,6 +170,50 @@ async function claim(url: string, owner: string, capacity = 3) {
     capacity,
     leaseMs: 45 * 60_000,
   });
+}
+
+/**
+ * The ledger over a db that runs `hook` just before the first UPDATE of
+ * `byteplus_assets` executes — in a full-pool miss, that is the eviction CAS,
+ * so the hook lands between the candidate scan and the CAS.
+ */
+function ledgerWithHookBeforeEviction(hook: () => Promise<void>) {
+  let fired = false;
+  const runOnce = async () => {
+    if (fired) return;
+    fired = true;
+    await hook();
+  };
+  const hooked = new Proxy(db, {
+    get(target, prop, receiver) {
+      const value: unknown = Reflect.get(target, prop, receiver);
+      if (prop !== 'update' || typeof value !== 'function') return value;
+      return (table: unknown) => {
+        const builder = Reflect.apply(value, target, [table]);
+        return table === bytePlusAssets ? beforeThen(builder) : builder;
+      };
+    },
+  });
+  function beforeThen(query: object): object {
+    return new Proxy(query, {
+      get(target, prop) {
+        const value: unknown = Reflect.get(target, prop);
+        if (typeof value !== 'function') return value;
+        if (prop === 'then') {
+          return (
+            resolve: (v: unknown) => void,
+            reject: (e: unknown) => void
+          ) =>
+            runOnce()
+              .then(() => Reflect.apply(value, target, [resolve, reject]))
+              .catch(reject);
+        }
+        return (...args: unknown[]) =>
+          beforeThen(Reflect.apply(value, target, args));
+      },
+    });
+  }
+  return createBytePlusAssetsMethods(hooked);
 }
 
 /** What the batch workflow spells inline at its `liveRead` call site. */
@@ -235,7 +295,7 @@ describe('claimPooledAsset + createPooledAsset', () => {
     await seedSlot({ url: 'c', assetId: 'ark-c', slot: 'library', lastUsedAt: ago(70), leasedBy: 'motion:other' }); // prettier-ignore
 
     await expect(ingest(config, 'https://cdn/new.png')).rejects.toThrow(
-      /every slot is leased/
+      /every slot is held by a running shot/
     );
     expect(deleted).toEqual([]);
     expect(await db.select().from(bytePlusAssets)).toHaveLength(3);
@@ -251,7 +311,7 @@ describe('claimPooledAsset + createPooledAsset', () => {
 
     await expect(
       ingest(config, 'https://cdn/sheet.png', 'motion:second')
-    ).rejects.toThrow(/being registered by another job/);
+    ).rejects.toThrow(/still registering this image for another shot/);
 
     if (reserved.kind !== 'reserved') throw new Error('expected a reservation');
     const uri = await createPooledAsset(config, ledger, {
@@ -337,7 +397,7 @@ describe('reservations (#1531)', () => {
     });
   });
 
-  it('an abandoned reservation is taken over, and its old owner cannot finalize', async () => {
+  it('an abandoned reservation is taken over; whichever create lands is recorded', async () => {
     const identity = await hashAssetIdentity('x');
     await db.insert(bytePlusAssets).values({
       identity,
@@ -345,36 +405,175 @@ describe('reservations (#1531)', () => {
       reservedBy: 'motion:dead',
       reservedUntil: PAST,
     });
+    const finalize = (owner: string, assetId: string) =>
+      ledger.finalizeSlot({ identity, owner, assetId, slot: 'frame', leaseMs: 60_000 }); // prettier-ignore
 
     expect(await claim('x', 'motion:alive')).toEqual({
       kind: 'reserved',
       evictedAssetId: null,
     });
+    // The slow run's asset exists on Ark, so the ledger records it...
+    expect(await finalize('motion:dead', 'ark-late')).toBe(true);
+    // ...and the taker's create, which finds it by name, finalizes the same id.
+    expect(await finalize('motion:alive', 'ark-late')).toBe(true);
+    // Only a DIFFERENT asset for the same still is refused.
+    expect(await finalize('motion:alive', 'ark-other')).toBe(false);
+    const [row] = await db.select().from(bytePlusAssets);
+    expect(row).toMatchObject({ assetId: 'ark-late', reservedBy: null });
+  });
+
+  it('finalize records an asset whose slot row is gone', async () => {
+    // A reservation from before #1531 wrote no row; one that expired can be
+    // evicted for another still. Either way the asset exists on Ark.
+    const identity = await hashAssetIdentity('x');
+
     expect(
-      await ledger.finalizeSlot({
-        identity,
-        owner: 'motion:dead',
-        assetId: 'ark-late',
-        leaseMs: 60_000,
-      })
-    ).toBe(false);
-    expect(
-      await ledger.finalizeSlot({
-        identity,
-        owner: 'motion:alive',
-        assetId: 'ark-new',
-        leaseMs: 60_000,
-      })
+      await ledger.finalizeSlot({ identity, owner: 'motion:a', assetId: 'ark-x', slot: 'library', leaseMs: 60_000 }) // prettier-ignore
     ).toBe(true);
-    // A replayed create step finalizes the same asset again without failing.
+
+    expect(await db.select().from(bytePlusAssets)).toEqual([
+      expect.objectContaining({ assetId: 'ark-x', slot: 'library' }),
+    ]);
+    expect(await db.select().from(bytePlusAssetLeases)).toEqual([
+      expect.objectContaining({ identity, owner: 'motion:a' }),
+    ]);
+  });
+
+  it('a lease that lands between the candidate scan and the eviction wins', async () => {
+    await seedSlot({ url: 'a', assetId: 'ark-a', slot: 'frame', lastUsedAt: ago(90) }); // prettier-ignore
+    await seedSlot({ url: 'b', assetId: 'ark-b', slot: 'frame', lastUsedAt: ago(1), leasedBy: 'motion:other' }); // prettier-ignore
+    await seedSlot({ url: 'c', assetId: 'ark-c', slot: 'frame', lastUsedAt: ago(1), leasedBy: 'motion:other' }); // prettier-ignore
+    const racing = ledgerWithHookBeforeEviction(async () => {
+      // Another run hits 'a' and pins it before it submits asset://ark-a.
+      await db.insert(bytePlusAssetLeases).values({
+        identity: await hashAssetIdentity('a'),
+        owner: 'motion:hitter',
+        expiresAt: FUTURE,
+      });
+    });
+
     expect(
-      await ledger.finalizeSlot({
-        identity,
-        owner: 'motion:alive',
-        assetId: 'ark-new',
-        leaseMs: 60_000,
+      await racing.claimSlot({
+        identity: await hashAssetIdentity('new'),
+        slot: 'frame',
+        owner: 'motion:evictor',
+        capacity: 3,
+        leaseMs: 45 * 60_000,
       })
-    ).toBe(true);
+    ).toEqual({ kind: 'exhausted' });
+    const [a] = await db
+      .select()
+      .from(bytePlusAssets)
+      .where(eq(bytePlusAssets.identity, await hashAssetIdentity('a')));
+    expect(a).toMatchObject({ assetId: 'ark-a' });
+  });
+
+  it('an expired lease no longer pins its slot', async () => {
+    await seedSlot({ url: 'a', assetId: 'ark-a', slot: 'frame', lastUsedAt: ago(1), leasedBy: 'motion:dead', leaseExpiresAt: PAST }); // prettier-ignore
+    await seedSlot({ url: 'b', assetId: 'ark-b', slot: 'frame', lastUsedAt: ago(90), leasedBy: 'motion:other' }); // prettier-ignore
+    await seedSlot({ url: 'c', assetId: 'ark-c', slot: 'frame', lastUsedAt: ago(90), leasedBy: 'motion:other' }); // prettier-ignore
+
+    expect(await admissionFor(['new'])).toMatchObject({ evictable: 1, fits: true }); // prettier-ignore
+    expect(await claim('new', 'motion:run')).toEqual({
+      kind: 'reserved',
+      evictedAssetId: 'ark-a',
+    });
+  });
+
+  it('two runs creating the same new still into a full pool reserve it once', async () => {
+    await seedSlot({ url: 'a', assetId: 'ark-a', slot: 'frame', lastUsedAt: ago(90) }); // prettier-ignore
+    await seedSlot({ url: 'b', assetId: 'ark-b', slot: 'frame', lastUsedAt: ago(80) }); // prettier-ignore
+    await seedSlot({ url: 'c', assetId: 'ark-c', slot: 'frame', lastUsedAt: ago(1), leasedBy: 'motion:other' }); // prettier-ignore
+
+    // Y has scanned its candidates; X reserves 'new' (taking 'a') before Y's
+    // CAS runs. Y's next candidate, 'b', must not become a second 'new' row.
+    const racing = ledgerWithHookBeforeEviction(async () => {
+      expect(await claim('new', 'motion:x')).toEqual({
+        kind: 'reserved',
+        evictedAssetId: 'ark-a',
+      });
+    });
+
+    expect(
+      await racing.claimSlot({
+        identity: await hashAssetIdentity('new'),
+        slot: 'frame',
+        owner: 'motion:y',
+        capacity: 3,
+        leaseMs: 45 * 60_000,
+      })
+    ).toEqual({ kind: 'pending' });
+    const rows = await db.select().from(bytePlusAssets);
+    // 'new' (reserved, no asset yet) replaced 'a'; 'b' was not handed over.
+    expect(rows.map((row) => row.assetId ?? 'reserved').sort((x, y) => x.localeCompare(y))).toEqual(['ark-b', 'ark-c', 'reserved']); // prettier-ignore
+  });
+});
+
+describe('lease renewal', () => {
+  const expiryOf = async (url: string, owner: string) => {
+    const [lease] = await db
+      .select()
+      .from(bytePlusAssetLeases)
+      .where(eq(bytePlusAssetLeases.identity, await hashAssetIdentity(url)));
+    expect(lease?.owner).toBe(owner);
+    return lease?.expiresAt.getTime() ?? 0;
+  };
+
+  it('a claim renews every lease the run already holds', async () => {
+    // Leased early, about to run out while the run waits on a later still.
+    await seedSlot({ url: 'early', assetId: 'ark-early', slot: 'library', lastUsedAt: ago(1), leasedBy: 'motion:run', leaseExpiresAt: new Date(Date.now() + 60_000) }); // prettier-ignore
+
+    await claim('later', 'motion:run');
+
+    expect(await expiryOf('early', 'motion:run')).toBeGreaterThan(
+      Date.now() + 40 * 60_000
+    );
+  });
+
+  it('finalize renews every lease the run already holds', async () => {
+    await seedSlot({ url: 'early', assetId: 'ark-early', slot: 'library', lastUsedAt: ago(1), leasedBy: 'motion:run', leaseExpiresAt: new Date(Date.now() + 60_000) }); // prettier-ignore
+
+    await ledger.finalizeSlot({ identity: await hashAssetIdentity('later'), owner: 'motion:run', assetId: 'ark-later', slot: 'frame', leaseMs: 45 * 60_000 }); // prettier-ignore
+
+    expect(await expiryOf('early', 'motion:run')).toBeGreaterThan(
+      Date.now() + 40 * 60_000
+    );
+  });
+});
+
+describe('evictPooledAsset', () => {
+  it('an asset already gone from Ark counts as evicted', async () => {
+    const { config } = arkStub({ deleteFails: true, listed: ['ark-other'] });
+
+    await expect(
+      evictPooledAsset(config, { assetId: 'ark-gone', slot: 'frame' })
+    ).resolves.toBeUndefined();
+  });
+
+  it('a failed delete of an asset still on Ark fails the step', async () => {
+    const { config } = arkStub({ deleteFails: true, listed: ['ark-here'] });
+
+    await expect(
+      evictPooledAsset(config, { assetId: 'ark-here', slot: 'frame' })
+    ).rejects.toThrow(/DeleteAsset failed/);
+  });
+});
+
+describe('createPooledAsset', () => {
+  it('refuses without retrying when the slot already holds a different asset', async () => {
+    const { config } = arkStub();
+    await seedSlot({ url: 'https://cdn/x.png', assetId: 'ark-first', slot: 'frame', lastUsedAt: ago(1) }); // prettier-ignore
+
+    const error = await createPooledAsset(config, ledger, {
+      claim: { kind: 'reserved', identity: await hashAssetIdentity('https://cdn/x.png'), evictedAssetId: null }, // prettier-ignore
+      owner: 'motion:run',
+      storedUrl: 'https://cdn/x.png',
+      publicUrl: 'https://fal/x.png',
+      assetType: 'Image',
+      slot: 'frame',
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(NonRetryableError);
   });
 });
 

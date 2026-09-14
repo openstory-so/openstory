@@ -32,9 +32,13 @@ vi.doMock('./byteplus-asset-ingest', () => ({
 
 const { ingestArkAssets } = await import('./byteplus-asset-steps');
 
-/** Records step names in order; `do` runs inline, `sleep` records its delay. */
+/**
+ * Records step names in order (and each step's config); `do` runs inline,
+ * `sleep` records its delay.
+ */
 function fakeStep() {
   const trace: string[] = [];
+  const configs: Record<string, unknown> = {};
   const step = {
     do: async (
       name: string,
@@ -42,6 +46,7 @@ function fakeStep() {
       maybeFn?: () => Promise<unknown>
     ) => {
       trace.push(name);
+      if (maybeFn) configs[name] = configOrFn;
       const fn = maybeFn ?? configOrFn;
       if (typeof fn !== 'function') throw new Error('no step callback');
       return fn();
@@ -51,7 +56,7 @@ function fakeStep() {
     },
   };
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- only do/sleep are exercised
-  return { step: step as unknown as WorkflowStep, trace };
+  return { step: step as unknown as WorkflowStep, trace, configs };
 }
 
 const ledger: AssetPoolLedger = {
@@ -82,7 +87,7 @@ describe('ingestArkAssets', () => {
     });
 
     expect(map).toEqual({ 'https://cdn/a.png': 'asset://resident' });
-    expect(trace).toEqual(['motion-ark-0-claim']);
+    expect(trace).toEqual(['motion-ark-0-url', 'motion-ark-0-claim']);
     expect(mockReserve).not.toHaveBeenCalled();
   });
 
@@ -102,6 +107,7 @@ describe('ingestArkAssets', () => {
 
     expect(map).toEqual({ 'https://cdn/new.png': 'asset://created' });
     expect(trace).toEqual([
+      'motion-retry-1-ark-0-url',
       'motion-retry-1-ark-0-claim',
       'motion-retry-1-ark-0-slot',
       'motion-retry-1-ark-0-wait:40000',
@@ -145,6 +151,7 @@ describe('ingestArkAssets', () => {
     // A failed delete retries this step and never reaches create; a retried
     // create never deletes twice.
     expect(trace).toEqual([
+      'p-ark-0-url',
       'p-ark-0-claim',
       'p-ark-0-evict',
       'p-ark-0-slot',
@@ -176,7 +183,12 @@ describe('ingestArkAssets', () => {
       credentials,
     });
 
-    expect(trace).toEqual(['p-ark-0-claim', 'p-ark-0-slot', 'p-ark-0-create']);
+    expect(trace).toEqual([
+      'p-ark-0-url',
+      'p-ark-0-claim',
+      'p-ark-0-slot',
+      'p-ark-0-create',
+    ]);
   });
 
   it('without IAM keys sends the plain URL and touches neither pool nor governor', async () => {
@@ -192,7 +204,7 @@ describe('ingestArkAssets', () => {
     });
 
     expect(map).toEqual({ 'https://cdn/a.png': 'https://cdn/a.png' });
-    expect(trace).toEqual(['p-ark-0-claim']);
+    expect(trace).toEqual(['p-ark-0-url', 'p-ark-0-claim']);
     expect(mockClaim).not.toHaveBeenCalled();
   });
 
@@ -209,5 +221,25 @@ describe('ingestArkAssets', () => {
         credentials,
       })
     ).rejects.toThrow('every slot is leased');
+  });
+
+  it('only the claim waits out another run — the url step keeps the default retries', async () => {
+    mockClaim.mockResolvedValue({ kind: 'hit', uri: 'asset://resident' });
+    const { step, configs } = fakeStep();
+
+    await ingestArkAssets(step, {
+      prefix: 'p',
+      stills: [{ storedUrl: 'https://cdn/a.png', slot: 'library' }],
+      ledger,
+      owner: 'motion:run-1',
+      credentials,
+    });
+
+    // A bad fal key or a failed upload must not sit through minutes of
+    // claim retries before the shot fails.
+    expect(configs['p-ark-0-url']).toBeUndefined();
+    expect(configs['p-ark-0-claim']).toEqual({
+      retries: expect.objectContaining({ limit: 40, delay: '30 seconds' }),
+    });
   });
 });

@@ -17,7 +17,7 @@
  * Every transition is ONE conditional statement (or one `db.batch`), because
  * D1 has no interactive transaction: the lease insert, the capacity-checked
  * reservation insert, the eviction UPDATE that refuses a leased slot, and the
- * token-checked finalize. A read before one of them only picks a candidate;
+ * finalize that never overwrites a different asset. A read before one of them only picks a candidate;
  * the statement re-checks everything it depends on.
  *
  * `claimSlot` is a WRITE, not a read with a write attached. It answers "this
@@ -129,6 +129,11 @@ export function createBytePlusAssetsMethods(db: Database) {
      * eviction that committed before it has already changed the row we are
      * about to read. That ordering is the whole mutex.
      *
+     * Every other lease the owner holds is renewed with it. A run ingests its
+     * stills one at a time and may wait on this claim for many minutes; a
+     * still it leased earlier must not expire (and be evicted) before the job
+     * that submits it has even started polling.
+     *
      * Eviction is LRU by OUR `lastUsedAt`, never Ark's `LastInferenceTime` —
      * absent there means "no job since BytePlus started recording it", not
      * "never used", and would evict the talent sheet every shot binds. Frames
@@ -145,17 +150,20 @@ export function createBytePlusAssetsMethods(db: Database) {
       const now = new Date();
       const until = new Date(now.getTime() + input.leaseMs);
 
-      await db
-        .insert(bytePlusAssetLeases)
-        .values({
-          identity: input.identity,
-          owner: input.owner,
-          expiresAt: until,
-        })
-        .onConflictDoUpdate({
-          target: [bytePlusAssetLeases.identity, bytePlusAssetLeases.owner],
-          set: { expiresAt: until },
-        });
+      await db.batch([
+        db
+          .insert(bytePlusAssetLeases)
+          .values({
+            identity: input.identity,
+            owner: input.owner,
+            expiresAt: until,
+          })
+          .onConflictDoNothing(),
+        db
+          .update(bytePlusAssetLeases)
+          .set({ expiresAt: until })
+          .where(eq(bytePlusAssetLeases.owner, input.owner)),
+      ]);
 
       const [row] = await db
         .select()
@@ -173,7 +181,9 @@ export function createBytePlusAssetsMethods(db: Database) {
 
       if (row) {
         // A replayed claim step (committed, crashed before returning) finds
-        // its own reservation and carries on.
+        // its own reservation and carries on. If that lost attempt had
+        // evicted a slot, its DeleteAsset is lost with it: the asset stays on
+        // Ark, unknown to the ledger, until the hourly sweep deletes it.
         if (row.reservedBy === input.owner) {
           return { kind: 'reserved', evictedAssetId: null };
         }
@@ -274,20 +284,26 @@ export function createBytePlusAssetsMethods(db: Database) {
      * (the governor wait may have eaten into them). One batch, so the asset
      * is never resident without its lease.
      *
-     * Returns false when the reservation is no longer this owner's — taken
-     * over after it expired. The asset then belongs to nobody in the ledger;
-     * the next claim for the still finds it on Ark by name, or the sweep
-     * deletes it.
+     * The asset exists on Ark by now, so the ledger records it whoever holds
+     * the row: a reservation another run took over (its create finds this
+     * asset by name and finalizes the same id), or no row at all (evicted for
+     * another still after it expired, or reserved by a run from before #1531,
+     * which wrote no reservation row). The latter can put the ledger one over
+     * capacity; the next claim evicts back under it.
+     *
+     * Returns false only when the row already holds a DIFFERENT asset — two
+     * creates that both ran before either was visible by name.
      */
     async finalizeSlot(input: {
       identity: string;
       owner: string;
       assetId: string;
+      slot: BytePlusAssetSlot;
       leaseMs: number;
     }): Promise<boolean> {
       const now = new Date();
       const until = new Date(now.getTime() + input.leaseMs);
-      const [finalized] = await db.batch([
+      const [finalized, recorded] = await db.batch([
         db
           .update(bytePlusAssets)
           .set({
@@ -300,15 +316,23 @@ export function createBytePlusAssetsMethods(db: Database) {
             and(
               eq(bytePlusAssets.identity, input.identity),
               or(
+                isNull(bytePlusAssets.assetId),
                 // A replayed create step already finalized this very asset.
-                eq(bytePlusAssets.assetId, input.assetId),
-                and(
-                  isNull(bytePlusAssets.assetId),
-                  eq(bytePlusAssets.reservedBy, input.owner)
-                )
+                eq(bytePlusAssets.assetId, input.assetId)
               )
             )
           )
+          .returning({ id: bytePlusAssets.id }),
+        db
+          .insert(bytePlusAssets)
+          .values({
+            identity: input.identity,
+            assetId: input.assetId,
+            slot: input.slot,
+            lastUsedAt: now,
+            createdAt: now,
+          })
+          .onConflictDoNothing()
           .returning({ id: bytePlusAssets.id }),
         db
           .insert(bytePlusAssetLeases)
@@ -323,7 +347,7 @@ export function createBytePlusAssetsMethods(db: Database) {
           .set({ expiresAt: until })
           .where(eq(bytePlusAssetLeases.owner, input.owner)),
       ]);
-      return finalized.length > 0;
+      return finalized.length + recorded.length > 0;
     },
 
     /**

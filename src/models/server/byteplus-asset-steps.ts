@@ -6,6 +6,7 @@
  * turn is therefore minutes, not milliseconds, and it must not hold a Worker
  * open or eat a step's 10-minute budget. Per still:
  *
+ *   url     step.do   the URL CreateAsset can fetch (fal key, upload)
  *   claim   step.do   lease the still; a hit is done (no create needed).
  *                     Retries while another run is creating the same still
  *   evict   step.do   DeleteAsset the slot's previous asset, if it had one
@@ -21,8 +22,9 @@
  * the workflow what it was already told. No alarm, no race with a wait that
  * has not been reached yet.
  *
- * Nothing here falls back. A full pool, a refused token, a failed create —
- * each fails the shot with its own message.
+ * Nothing here falls back. A full pool or a still another run is creating
+ * waits out the claim step's retries first; a refused token or a failed
+ * create fails the shot with its own message.
  */
 
 import type { WorkflowStep, WorkflowStepConfig } from 'cloudflare:workers';
@@ -52,11 +54,13 @@ export type ArkAssetMap = Record<string, string>;
 
 /**
  * The claim throws while another run is creating the same still, or while
- * every slot is leased. Wait on it about as long as a lease lasts: by then
- * the other run has finished, or its reservation can be taken over.
+ * every slot is leased. Wait out the other run's create: up to the governor's
+ * 15-minute CreateAsset queue plus the create itself. Nothing else runs in
+ * this step, so a permanent error elsewhere (a bad fal key, an upload) never
+ * waits this long. The motion batch's child timeout budgets for it.
  */
 const CLAIM_RETRIES: WorkflowStepConfig = {
-  retries: { limit: 90, delay: '30 seconds', backoff: 'constant' },
+  retries: { limit: 40, delay: '30 seconds', backoff: 'constant' },
 };
 
 function requireConfig() {
@@ -93,12 +97,17 @@ export async function ingestArkAssets(
     if (map[still.storedUrl]) continue;
     const name = `${args.prefix}-ark-${index}`;
 
+    const publicUrl = await step.do(`${name}-url`, async () => {
+      const falKey = await args.credentials.resolveOptionalKey('fal');
+      return toArkFetchableUrl(still.storedUrl, falKey?.key);
+    });
+
+    // Same name and result shape as before the url step split off, so a run
+    // in flight across the deploy replays its cached claim.
     const claim = await step.do(
       `${name}-claim`,
       CLAIM_RETRIES,
       async (): Promise<ClaimOutcome> => {
-        const falKey = await args.credentials.resolveOptionalKey('fal');
-        const publicUrl = await toArkFetchableUrl(still.storedUrl, falKey?.key);
         // No IAM keys, or a data URI CreateAsset cannot fetch: Ark gets the
         // URL as is and decides. That is the documented no-ACR path, not a
         // fallback from a failed ingest.
@@ -122,12 +131,14 @@ export async function ingestArkAssets(
 
     const { evictedAssetId } = claim.pending.claim;
     if (evictedAssetId) {
-      await step.do(`${name}-evict`, async () =>
-        evictPooledAsset(requireConfig(), {
+      await step.do(`${name}-evict`, async () => {
+        const config = requireConfig();
+        await evictPooledAsset(config, {
           assetId: evictedAssetId,
           slot: still.slot,
-        })
-      );
+          groupId: config.groupId,
+        });
+      });
     }
 
     const delayMs = await step.do(`${name}-slot`, () =>

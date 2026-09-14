@@ -72,7 +72,10 @@ import { recordMediaGenerationSpan } from '@/platform/server/observability/ai-ot
 import { getLogger } from '@/platform/logger';
 import { getGenerationChannel } from '@/platform/realtime';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
-import { WorkflowValidationError } from '@/platform/server/workflow/errors';
+import {
+  isEngineAbortError,
+  WorkflowValidationError,
+} from '@/platform/server/workflow/errors';
 import type { MotionWorkflowInput } from '@/platform/server/workflow/types';
 import {
   persistMotionCompletion,
@@ -91,7 +94,7 @@ const POLL_INTERVAL_MS = 3_000;
  * fal queue alone can hold a job past 15 minutes (the June 7 sample run lost
  * 13 shots to the old 30-batch budget while ~95% of jobs completed fine), so
  * the budget must absorb provider-side queueing — motion-batch's per-child
- * await (45 minutes) stays comfortably above it.
+ * await (90 minutes, which also covers BytePlus still ingest) stays above it.
  */
 const MAX_BATCHES = 60;
 /** Kling rejects start shot images over 10MB — use 9.5MB safety margin */
@@ -1063,11 +1066,23 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     // earlier attempt may have leased stills on Ark and then re-rolled onto a
     // model that is not there (#1531). Released by this run's owner, so a
     // sibling shot still polling the same sheet keeps its own lease.
-    await step.do('release-byteplus-asset-leases', async () =>
-      scopedDb.bytePlusAssets.releaseOwner(
-        assetLeaseOwner('motion', event.instanceId)
-      )
-    );
+    //
+    // Caught OUTSIDE the step (so its retries still run): a release that
+    // never lands must not throw away a rendered, paid-for clip. The lease
+    // TTL frees the stills instead.
+    try {
+      await step.do('release-byteplus-asset-leases', async () =>
+        scopedDb.bytePlusAssets.releaseOwner(
+          assetLeaseOwner('motion', event.instanceId)
+        )
+      );
+    } catch (releaseError) {
+      if (isEngineAbortError(releaseError)) throw releaseError;
+      logger.error(
+        `[MotionWorkflow:cf] Failed to release BytePlus asset leases for shot ${input.shotId}; the lease TTL frees them`,
+        { err: releaseError }
+      );
+    }
 
     // Exact charge from the via's reported usage (the check-credits `cost`
     // was only an estimate for the affordability gate). The via owns endpoint
@@ -1285,27 +1300,6 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     const input = event.payload;
     const model = input.model || DEFAULT_VIDEO_MODEL;
 
-    // Unpin this shot's ACR slots (#1361), the lease half of what
-    // `zeroReservation` does for credits in the batch's own onFailure. Without
-    // it a failed run holds its slots for the full TTL, which is how a bad
-    // batch starves the next good one. Best-effort: a throw here would replace
-    // the real failure message, and the TTL is still behind it.
-    //
-    // Only this run's own leases. The batch parent must NOT sweep the whole
-    // fan-out here — a terminal parent does not imply dead children (#839),
-    // and unpinning a slot a live sibling is still polling is exactly the 400
-    // the lease exists to prevent.
-    try {
-      await scopedDb.bytePlusAssets.releaseOwner(
-        assetLeaseOwner('motion', event.instanceId)
-      );
-    } catch (releaseError) {
-      logger.warn(
-        `[MotionWorkflow:cf] Failed to release BytePlus asset leases for shot ${input.shotId}:`,
-        { err: releaseError }
-      );
-    }
-
     // The success span is recorded in runImpl, which every failure exit skips
     // (submit 422, hard poll failure, poll-budget timeout, content-rejection
     // exhaustion, step-retry exhaustion). Emitting here — the one choke point
@@ -1366,6 +1360,21 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         }
       );
     }
+
+    // Unpin this shot's ACR slots (#1361), the lease half of what
+    // `zeroReservation` does for credits in the batch's own onFailure. Without
+    // it a failed run holds its slots for the full TTL, which is how a bad
+    // batch starves the next good one. Last, and not caught: this runs inside
+    // the base class's `emit-failure` step, so a throw retries the step, and
+    // the base class keeps the real failure message if it never succeeds.
+    //
+    // Only this run's own leases. The batch parent must NOT sweep the whole
+    // fan-out here — a terminal parent does not imply dead children (#839),
+    // and unpinning a slot a live sibling is still polling is exactly the 400
+    // the lease exists to prevent.
+    await scopedDb.bytePlusAssets.releaseOwner(
+      assetLeaseOwner('motion', event.instanceId)
+    );
 
     logger.error(
       `[MotionWorkflow:cf] Motion generation failed for shot ${input.shotId}: ${error}`

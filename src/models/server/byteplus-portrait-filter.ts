@@ -7,8 +7,9 @@
  * Advanced Creation Rights do not lift the check on a URL. They unlock the
  * **virtual** portrait library (AIGC groups). Submit registers the still
  * via the Assets API (`BYTEPLUS_ACCESS_KEY` / `BYTEPLUS_SECRET_KEY`) and
- * sends `asset://<id>`. If ingest is not configured or still 400s, we
- * resubmit on fal. Do not fold this into the content-flag re-roll.
+ * sends `asset://<id>`. If ingest is not configured or Ark still 400s, the
+ * shot fails with {@link BYTEPLUS_PORTRAIT_FILTER_MESSAGE} — never a quiet hop
+ * to fal. Do not fold this into the content-flag re-roll.
  */
 
 /** Exact Ark code on the 400 the user sees. */
@@ -19,8 +20,8 @@ const PORTRAIT_FILTER_CODE =
 const PORTRAIT_FILTER_MESSAGE = /may contain real person/i;
 
 /**
- * Thrown when Ark blocks the still and there is no fal key to fall back to.
- * Surfaces on `sequence.statusError` / studio failure banners.
+ * Thrown when Ark blocks the still. Surfaces on `sequence.statusError` /
+ * studio failure banners.
  */
 export const BYTEPLUS_PORTRAIT_FILTER_MESSAGE =
   'BytePlus Ark blocked a still as a possible real person (photorealistic generated faces trip this too). Seedance only accepts those faces as asset:// IDs from the virtual portrait library — set BYTEPLUS_ACCESS_KEY / BYTEPLUS_SECRET_KEY and check Advanced Creation Rights on the account.';

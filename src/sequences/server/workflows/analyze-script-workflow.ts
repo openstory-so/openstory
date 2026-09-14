@@ -1302,9 +1302,9 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         spawnStepName: 'spawn-motion-batch',
         awaitStepName: 'await-motion-batch',
         // Must exceed the child's own await budget: motion-batch waits up to
-        // 45 minutes per motion/music grandchild (in parallel) plus queue
-        // backlog under a many-sequence burst.
-        timeout: '90 minutes',
+        // 90 minutes per motion grandchild (in parallel) plus queue backlog
+        // under a many-sequence burst.
+        timeout: '120 minutes',
       });
 
       await persistProgress({

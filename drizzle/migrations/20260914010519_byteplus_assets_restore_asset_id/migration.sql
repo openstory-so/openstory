@@ -1,0 +1,1 @@
+ALTER TABLE `byteplus_assets` RENAME COLUMN `ark_asset_id` TO `asset_id`;

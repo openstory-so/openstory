@@ -1,8 +1,8 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "25bdfafb-cd2f-4e77-92f3-5fd9fd5a876f",
-  "prevIds": ["ceaa1723-0da8-4376-bafa-70ff4c06c624"],
+  "id": "41d15a2d-0215-41ac-b689-25b780ff55ca",
+  "prevIds": ["1e7167a6-12a9-435e-82ec-71b4929cc706"],
   "ddl": [
     {
       "name": "account",
@@ -12681,5 +12681,5 @@
       "table": "model_pricing"
     }
   ],
-  "renames": []
+  "renames": ["byteplus_assets.ark_asset_id->byteplus_assets.asset_id"]
 }
