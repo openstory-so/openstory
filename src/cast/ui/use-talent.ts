@@ -18,7 +18,7 @@ import {
 } from '@/cast/talent.fn';
 import { usePublicOrTeamQuery } from '@/ui/use-public-or-team-query';
 import { useUploadRightsGate } from '@/cast/ui/upload-rights-gate';
-import { putToR2 } from '@/ui/upload';
+import { putToR2, snapshotFile } from '@/ui/upload';
 import type {
   CreateTalentInput,
   UpdateTalentInput,
@@ -168,9 +168,10 @@ export function useUploadTalentMedia() {
       file: File;
       onProgress?: (percent: number) => void;
     }) => {
+      const file = await snapshotFile(data.file);
       const presign = await presignTalentUploadFn({
         data: {
-          filename: data.file.name,
+          filename: file.name,
           type: data.type,
           talentId: data.talentId,
         },
@@ -178,7 +179,7 @@ export function useUploadTalentMedia() {
 
       await putToR2(
         presign.uploadUrl,
-        data.file,
+        file,
         presign.contentType,
         data.onProgress
       );
@@ -219,16 +220,17 @@ export function useUploadTempMedia() {
       type: 'image' | 'video' | 'recording';
       onProgress?: (percent: number) => void;
     }) => {
+      const file = await snapshotFile(data.file);
       const presign = await presignTalentUploadFn({
         data: {
-          filename: data.file.name,
+          filename: file.name,
           type: data.type,
         },
       });
 
       await putToR2(
         presign.uploadUrl,
-        data.file,
+        file,
         presign.contentType,
         data.onProgress
       );

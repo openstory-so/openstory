@@ -15,6 +15,7 @@ import {
 } from 'radix-ui';
 import * as React from 'react';
 import { cn } from '@/ui/utils';
+import { snapshotFile } from '@/ui/upload';
 import { useAsRef } from '@/ui/use-as-ref';
 import { useLazyRef } from '@/ui/use-lazy-ref';
 
@@ -825,13 +826,16 @@ function FileUploadDropzone(props: FileUploadDropzoneProps) {
       const inputElement = context.inputRef.current;
       if (!inputElement) return;
 
-      const dataTransfer = new DataTransfer();
-      for (const file of files) {
-        dataTransfer.items.add(file);
-      }
-
-      inputElement.files = dataTransfer.files;
-      inputElement.dispatchEvent(new Event('change', { bubbles: true }));
+      // Clipboard Files go inert after an await. Read bytes now, before
+      // presign, or xhr.send hangs and the UI stays on "Uploading…".
+      void Promise.all(files.map(snapshotFile)).then((stable) => {
+        const dataTransfer = new DataTransfer();
+        for (const file of stable) {
+          dataTransfer.items.add(file);
+        }
+        inputElement.files = dataTransfer.files;
+        inputElement.dispatchEvent(new Event('change', { bubbles: true }));
+      });
     },
     [store, context.inputRef, propsRef]
   );

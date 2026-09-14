@@ -28,6 +28,19 @@ export function getFileKey(file: File): string {
   return `${file.name}-${file.lastModified}`;
 }
 
+/**
+ * Clipboard `File`s (paste) often become unreadable after the first `await`
+ * (presign, React render). `xhr.send` then hangs and the dialog stays on
+ * "Uploading…". Copy the bytes into a real File before any network.
+ */
+export async function snapshotFile(file: File): Promise<File> {
+  const bytes = await file.arrayBuffer();
+  return new File([bytes], file.name, {
+    type: file.type,
+    lastModified: file.lastModified,
+  });
+}
+
 // Single-PUT below this; multipart at/above. Kept under Cloudflare's ~100MB
 // request-body limit with headroom.
 const MULTIPART_THRESHOLD = 90 * 1024 * 1024; // 90 MiB

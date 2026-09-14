@@ -20,7 +20,7 @@ import {
   updateLibraryLocationFn,
 } from '@/cast/location-library.fn';
 import { usePublicOrTeamQuery } from '@/ui/use-public-or-team-query';
-import { putToR2 } from '@/ui/upload';
+import { putToR2, snapshotFile } from '@/ui/upload';
 import { useUploadRightsGate } from '@/cast/ui/upload-rights-gate';
 import {
   libraryLocationKeys,
@@ -145,16 +145,17 @@ export function useUploadLocationMedia() {
       locationId?: string;
       onProgress?: (percent: number) => void;
     }) => {
+      const file = await snapshotFile(data.file);
       const presign = await presignLocationUploadFn({
         data: {
-          filename: data.file.name,
+          filename: file.name,
           locationId: data.locationId,
         },
       });
 
       await putToR2(
         presign.uploadUrl,
-        data.file,
+        file,
         presign.contentType,
         data.onProgress
       );
