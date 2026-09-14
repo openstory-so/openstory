@@ -127,21 +127,4 @@ describe('reconcileBytePlusAssets', () => {
     const rows = await db.select().from(bytePlusAssets);
     expect(rows.map((r) => r.assetId)).toEqual(['present']);
   });
-
-  it('does not delete Ark assets on a preview (shared group, not this D1)', async () => {
-    env.VITE_APP_URL = 'https://pr-1520.openstory.workers.dev';
-    arkAssets = [
-      { Id: 'someone-elses', CreateTime: hoursAgo(5).toISOString() },
-    ];
-
-    const summary = await reconcileBytePlusAssets({ now: NOW });
-
-    expect(deleted).toEqual([]);
-    expect(summary).toEqual({
-      arkAssets: 0,
-      ledgerRows: 0,
-      swept: 0,
-      forgotten: 0,
-    });
-  });
 });

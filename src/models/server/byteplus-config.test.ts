@@ -13,7 +13,6 @@ const {
   isBytePlusAssetsConfigured,
   isBytePlusConfigured,
   isPreviewPrAssetGroupName,
-  PREVIEW_AIGC_GROUP_NAME,
 } = await import('./byteplus-config');
 
 describe('claimBytePlusVia', () => {
@@ -135,16 +134,19 @@ describe('aigcGroupName', () => {
     env.VITE_IS_PREVIEW = undefined;
   });
 
-  it('shares one group across every PR preview', () => {
+  it('is per preview host so the D1 ledger stays 1 group ↔ 1 D1', () => {
     env.VITE_APP_URL = 'https://pr-1520.openstory.workers.dev';
     expect(aigcGroupScope()).toBe('preview');
-    expect(aigcGroupName()).toBe(PREVIEW_AIGC_GROUP_NAME);
+    expect(aigcGroupName()).toBe(
+      'openstory-virtual-pr-1520-openstory-workers-dev'
+    );
   });
 
-  it('treats VITE_IS_PREVIEW as preview even when the host is not pr-N', () => {
+  it('treats VITE_IS_PREVIEW as preview without changing the host-derived name', () => {
     env.VITE_APP_URL = 'https://example.workers.dev';
     env.VITE_IS_PREVIEW = 'true';
-    expect(aigcGroupName()).toBe(PREVIEW_AIGC_GROUP_NAME);
+    expect(aigcGroupScope()).toBe('preview');
+    expect(aigcGroupName()).toBe('openstory-virtual-example-workers-dev');
   });
 
   it('keeps production per-host so the ledger sweep stays 1 group ↔ 1 D1', () => {
@@ -161,7 +163,7 @@ describe('aigcGroupName', () => {
 });
 
 describe('isPreviewPrAssetGroupName', () => {
-  it('matches leftover per-PR groups and not the shared preview group', () => {
+  it('matches per-PR groups and not production or local names', () => {
     expect(
       isPreviewPrAssetGroupName(
         'openstory-virtual-pr-1520-openstory-workers-dev'
@@ -179,7 +181,7 @@ describe('isPreviewPrAssetGroupName', () => {
         152
       )
     ).toBe(false);
-    expect(isPreviewPrAssetGroupName(PREVIEW_AIGC_GROUP_NAME)).toBe(false);
+    expect(isPreviewPrAssetGroupName('openstory-virtual-preview')).toBe(false);
     expect(isPreviewPrAssetGroupName('openstory-virtual-openstory-so')).toBe(
       false
     );

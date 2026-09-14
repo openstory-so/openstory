@@ -192,8 +192,8 @@ const exportedHandler: ExportedHandler<WorkerEnv> = {
       return;
     }
     // Hourly diff of this deployment's BytePlus asset group against the
-    // ledger (#1519). Production also age-sweeps the shared preview group
-    // and leftover per-PR groups (#1635).
+    // ledger (#1519). Production also deletes leftover per-PR groups whose
+    // PRs are closed (#1635).
     if (controller.cron === BYTEPLUS_ASSETS_RECONCILE_CRON) {
       ctx.waitUntil(
         (async () => {

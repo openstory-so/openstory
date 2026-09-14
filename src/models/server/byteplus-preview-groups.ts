@@ -1,11 +1,18 @@
 /**
- * Preview Ark asset-group policy (#1635).
+ * Preview Ark asset-group teardown (#1635).
  *
- * Every PR preview shares `openstory-virtual-preview`. Production is the
- * only long-lived Worker that may delete from that group or tear down the
- * leftover per-PR groups (`openstory-virtual-pr-<n>-…`) that predate the
- * shared name. Eviction and the per-deployment ledger sweep still delete
- * one asset at a time and must not call DeleteAssetGroup.
+ * Each preview owns `openstory-virtual-pr-<n>-…`, 1:1 with that preview's
+ * D1 ledger. Eviction and the hourly ledger sweep delete one asset at a
+ * time and must not call DeleteAssetGroup. The group itself is deleted:
+ *
+ *   1. On PR close, from CI (`deleteMatchingPreviewPrGroups`).
+ *   2. From production's hourly cron, for any `openstory-virtual-pr-*`
+ *      group whose PR is not open (and older than the lease window, so a
+ *      just-opened PR missing from GitHub is not wiped).
+ *
+ * Localhost / the pre-host `openstory-virtual` group have no live Worker
+ * sweep. Production age-sweeps those the same tick — they occupy the
+ * account pool and nobody else will.
  */
 
 import { reportBytePlusAssetPool } from '@/models/server/byteplus-observability';
@@ -20,20 +27,25 @@ import {
   aigcGroupScope,
   bytePlusOpenApiConfig,
   isPreviewPrAssetGroupName,
-  PREVIEW_AIGC_GROUP_NAME,
+  previewPrNumberFromGroupName,
 } from '@/models/server/byteplus-config';
 import { getLogger } from '@/platform/logger';
+import { workersSafeFetch } from '@/platform/server/ai/workers-safe-fetch';
 import type { BytePlusOpenApiConfig } from './byteplus-openapi';
 
 const logger = getLogger(['openstory', 'cron', 'byteplus-preview-groups']);
 
+const OPENSTORY_PULLS_URL =
+  'https://api.github.com/repos/openstory-so/openstory/pulls';
+
+/** Matches the pool lease TTL: an in-flight create is not an orphan. */
+export const PREVIEW_GROUP_GRACE_MS = 45 * 60 * 1000;
+
 /**
- * Idle preview stills older than this are dropped from the shared group so
- * they stop occupying the account's 50-asset pool. Matches nothing a live
- * job is polling: the lease window is 45 minutes. A preview that generates
- * again re-ingests by identity.
+ * Localhost / pre-host leftover stills older than this are dropped. Those
+ * groups have no hourly Worker. 24h keeps a live `bun dev` session intact.
  */
-export const PREVIEW_GROUP_ASSET_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+export const UNOWNED_GROUP_ASSET_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 export type PreviewPrGroupDeleteSummary = {
   deleted: string[];
@@ -43,6 +55,7 @@ export type PreviewPrGroupDeleteSummary = {
 export type PreviewAssetGroupSweepSummary = {
   leftoverGroupsDeleted: number;
   leftoverGroupsFailed: number;
+  leftoverGroupsSkippedOpen: number;
   unownedAssetsSwept: number;
 };
 
@@ -75,12 +88,51 @@ export async function deleteMatchingPreviewPrGroups(
   return { deleted, failed };
 }
 
+async function listOpenPullRequestNumbers(
+  fetchImpl: typeof fetch = workersSafeFetch
+): Promise<Set<number>> {
+  const numbers = new Set<number>();
+  for (let page = 1; page <= 10; page += 1) {
+    const response = await fetchImpl(
+      `${OPENSTORY_PULLS_URL}?state=open&per_page=100&page=${page}`,
+      {
+        headers: {
+          Accept: 'application/vnd.github+json',
+          'User-Agent': 'openstory-byteplus-preview-sweep',
+        },
+      }
+    );
+    if (!response.ok) {
+      throw new Error(
+        `GitHub list open PRs failed (${response.status}): ${response.statusText}`
+      );
+    }
+    const body: unknown = await response.json();
+    if (!Array.isArray(body) || body.length === 0) break;
+    for (const item of body) {
+      if (
+        typeof item === 'object' &&
+        item !== null &&
+        'number' in item &&
+        typeof item.number === 'number'
+      ) {
+        numbers.add(item.number);
+      }
+    }
+    if (body.length < 100) break;
+  }
+  return numbers;
+}
+
 /**
- * Production-only backstop. No-ops on previews and local: listing then
- * deleting from the shared preview group is how one PR used to wipe another.
+ * Production-only backstop. No-ops on previews and local: a preview must
+ * never DeleteAssetGroup for another PR.
  */
 export async function sweepOrphanedPreviewBytePlusGroups(
-  deps: { now?: Date } = {}
+  deps: {
+    now?: Date;
+    openPullRequests?: () => Promise<ReadonlySet<number>>;
+  } = {}
 ): Promise<PreviewAssetGroupSweepSummary | null> {
   if (aigcGroupScope() !== 'production') return null;
   const config = bytePlusOpenApiConfig();
@@ -92,23 +144,43 @@ export async function sweepOrphanedPreviewBytePlusGroups(
     host: config.host,
   };
 
+  let openPrs: ReadonlySet<number> | undefined;
+  try {
+    openPrs = await (deps.openPullRequests ?? listOpenPullRequestNumbers)();
+  } catch (error) {
+    logger.warn(
+      'BytePlus preview sweep: could not list open PRs, skipping per-PR group deletes',
+      { error: error instanceof Error ? error.message : String(error) }
+    );
+  }
+
   const ownedName = aigcGroupName();
   const groups = await listAigcAssetGroups(ark, 'openstory-virtual');
   let leftoverGroupsDeleted = 0;
   let leftoverGroupsFailed = 0;
+  let leftoverGroupsSkippedOpen = 0;
   let unownedAssetsSwept = 0;
 
   for (const group of groups) {
     const id = group.Id;
     const name = group.Name;
     if (!id || !name) continue;
-    // This deployment's group is the D1 ledger's job, not ours.
     if (name === ownedName) continue;
 
-    const dropGroup = isPreviewPrAssetGroupName(name);
-    const keepGroup = name === PREVIEW_AIGC_GROUP_NAME;
-
-    if (dropGroup) {
+    const prNumber = previewPrNumberFromGroupName(name);
+    if (prNumber !== undefined) {
+      if (!openPrs) continue;
+      if (openPrs.has(prNumber)) {
+        leftoverGroupsSkippedOpen += 1;
+        continue;
+      }
+      const created = group.CreateTime ? Date.parse(group.CreateTime) : NaN;
+      if (
+        !Number.isFinite(created) ||
+        now.getTime() - created < PREVIEW_GROUP_GRACE_MS
+      ) {
+        continue;
+      }
       try {
         await deleteAssetGroup(ark, id);
         leftoverGroupsDeleted += 1;
@@ -130,7 +202,7 @@ export async function sweepOrphanedPreviewBytePlusGroups(
       const created = asset.CreateTime ? Date.parse(asset.CreateTime) : NaN;
       if (
         !Number.isFinite(created) ||
-        now.getTime() - created < PREVIEW_GROUP_ASSET_MAX_AGE_MS
+        now.getTime() - created < UNOWNED_GROUP_ASSET_MAX_AGE_MS
       ) {
         young += 1;
         continue;
@@ -149,9 +221,7 @@ export async function sweepOrphanedPreviewBytePlusGroups(
       }
     }
 
-    // localhost / the pre-host `openstory-virtual` group have no live D1
-    // ledger. Once every still is older than the TTL, drop the group too.
-    if (!keepGroup && young === 0) {
+    if (young === 0) {
       try {
         await deleteAssetGroup(ark, id);
         leftoverGroupsDeleted += 1;
@@ -169,8 +239,9 @@ export async function sweepOrphanedPreviewBytePlusGroups(
   const summary = {
     leftoverGroupsDeleted,
     leftoverGroupsFailed,
+    leftoverGroupsSkippedOpen,
     unownedAssetsSwept,
   };
-  logger.info('BytePlus unowned asset groups swept', summary);
+  logger.info('BytePlus leftover preview asset groups swept', summary);
   return summary;
 }

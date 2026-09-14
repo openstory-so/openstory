@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
 /**
- * Tear down leftover per-PR BytePlus Ark asset groups (#1635).
+ * Tear down a PR preview's BytePlus Ark asset group (#1635).
  *
- * PR previews share `openstory-virtual-preview` and must not delete that
- * group. This only deletes `openstory-virtual-pr-<n>-…` names left over
- * from the per-PR era (or a preview that raced a deploy of this change).
+ * Each preview owns `openstory-virtual-pr-<n>-…`. Deleting the group wipes
+ * every asset in it. Never pass production's group. Production's hourly
+ * sweep is the backstop if this step is skipped.
  *
  *   bun scripts/delete-preview-byteplus-group.ts --pr 1635
  *

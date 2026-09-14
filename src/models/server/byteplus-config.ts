@@ -94,16 +94,12 @@ export function isBytePlusAssetsConfigured(): boolean {
 }
 
 /**
- * Shared AIGC group for every PR preview (#1635). Ark quotas are
- * per-account, so a group per preview did not isolate capacity — it only
- * multiplied groups and orphaned them when the preview Worker/D1 died.
- * All previews therefore share one group. Production's hourly job age-sweeps
- * it; a preview must never run that orphan-delete against this group, or it
- * would wipe another PR's sheets. `BYTEPLUS_ASSET_GROUP_ID` still pins a
+ * Per-PR preview groups are `openstory-virtual-pr-<n>-…` (#1635). The
+ * group is 1:1 with that preview's D1 ledger (FIFO/LRU eviction, hourly
+ * orphan sweep). Teardown deletes the group; production's backstop deletes
+ * any whose PR is no longer open. `BYTEPLUS_ASSET_GROUP_ID` still pins a
  * group by id and skips the name entirely.
  */
-export const PREVIEW_AIGC_GROUP_NAME = 'openstory-virtual-preview';
-
 const PREVIEW_PR_GROUP_NAME = /^openstory-virtual-pr-(\d+)(?:-|$)/;
 
 export type AigcGroupScope = 'preview' | 'local' | 'production';
@@ -134,27 +130,29 @@ export function aigcGroupScope(): AigcGroupScope {
   return 'production';
 }
 
-/**
- * Legacy per-PR group names (`openstory-virtual-pr-<n>-…`). New previews
- * no longer create these; teardown and the production backstop delete them.
- */
+export function previewPrNumberFromGroupName(name: string): number | undefined {
+  const match = PREVIEW_PR_GROUP_NAME.exec(name);
+  if (!match) return undefined;
+  const parsed = Number.parseInt(match[1] ?? '', 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 export function isPreviewPrAssetGroupName(
   name: string,
   prNumber?: number
 ): boolean {
-  const match = PREVIEW_PR_GROUP_NAME.exec(name);
-  if (!match) return false;
+  const parsed = previewPrNumberFromGroupName(name);
+  if (parsed === undefined) return false;
   if (prNumber === undefined) return true;
-  return match[1] === String(prNumber);
+  return parsed === prNumber;
 }
 
 /**
- * The AIGC asset group this deployment owns. Production and local stay
- * per-host (`openstory-virtual-<host>`) so the hourly ledger sweep is
- * 1 group ↔ 1 D1. Previews share {@link PREVIEW_AIGC_GROUP_NAME}.
+ * The AIGC asset group this deployment owns, `openstory-virtual-<host>`.
+ * Production, local, and each preview keep their own group so the D1
+ * ledger sweep and LRU eviction stay 1 group ↔ 1 D1.
  */
 export function aigcGroupName(): string {
-  if (aigcGroupScope() === 'preview') return PREVIEW_AIGC_GROUP_NAME;
   const slug = appHost()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')

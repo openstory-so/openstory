@@ -12,11 +12,10 @@
  *   The ledger has it, Ark does not → a ghost row. The slot counts as
  *   occupied while nothing is there. Forgotten, so it counts as free.
  *
- * Safe only when 1 group ↔ 1 D1. Production and local keep per-host groups.
- * Previews share `openstory-virtual-preview` (#1635), so this sweep is a
- * no-op there — otherwise one PR's empty ledger would delete another's
- * sheets. Production's `sweepOrphanedPreviewBytePlusGroups` age-sweeps the
- * shared group and tears down leftover `openstory-virtual-pr-*` groups.
+ * The group is per deployment (`aigcGroupName`), which is what makes the
+ * first direction safe: a preview only ever sees its own assets. Closed
+ * previews never run this again — production's
+ * `sweepOrphanedPreviewBytePlusGroups` deletes those leftover groups (#1635).
  */
 
 import { getDb } from '#db-client';
@@ -26,10 +25,7 @@ import {
   listAssetsInGroup,
   resolveAigcGroupId,
 } from '@/models/server/byteplus-assets';
-import {
-  aigcGroupScope,
-  bytePlusOpenApiConfig,
-} from '@/models/server/byteplus-config';
+import { bytePlusOpenApiConfig } from '@/models/server/byteplus-config';
 import { createBytePlusAssetsMethods } from '@/models/server/db/byteplus-assets';
 import { getLogger } from '@/platform/logger';
 
@@ -60,12 +56,6 @@ export async function reconcileBytePlusAssets(
 ): Promise<BytePlusAssetsReconcileSummary | null> {
   const config = bytePlusOpenApiConfig();
   if (!config) return null;
-  if (aigcGroupScope() === 'preview') {
-    logger.info(
-      'BytePlus asset reconcile skipped: shared preview group is swept from production'
-    );
-    return { arkAssets: 0, ledgerRows: 0, swept: 0, forgotten: 0 };
-  }
   const now = deps.now ?? new Date();
   const ark = {
     accessKey: config.accessKey,
