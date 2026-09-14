@@ -1,5 +1,5 @@
 import { mediaUrlSchema } from '@/platform/schemas/media-url.schemas';
-import { deleteFile, getSignedUploadUrl, moveFile } from '#storage';
+import { deleteFile, getSignedUploadUrl } from '#storage';
 import { requireTeamAdminAccess } from '@/platform/server/auth/action-utils';
 import { generateId } from '@/platform/id';
 import {
@@ -8,10 +8,13 @@ import {
 } from '@/platform/server/db/scoped';
 import type { TalentWithSheets } from '@/platform/server/db/schema';
 import {
-  carryUploadRights,
   recordLikenessFinding,
   requireUploadRights,
 } from '@/cast/server/upload-rights';
+import {
+  assertTeamUserUploadAttachable,
+  teamUserUploadStoragePath,
+} from '@/cast/server/team-user-upload';
 import { getRequest } from '@tanstack/react-start/server';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import {
@@ -20,11 +23,7 @@ import {
   listTalentFilterSchema,
   updateTalentSchema,
 } from '@/cast/server/talent.schemas';
-import {
-  STORAGE_BUCKETS,
-  getPathFromUrl,
-  getPublicUrl,
-} from '@/platform/server/storage/buckets';
+import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import {
   getExtensionFromUrl,
   getMimeTypeFromExtension,
@@ -277,9 +276,10 @@ export const deleteTalentMediaFn = createServerFn({ method: 'POST' })
 const mediaTypeSchema = z.enum(['image', 'video', 'recording']);
 
 /**
- * Every talent upload lands in `temp/` (#1581): finalize is what checks the
- * likeness ledger and moves the object under the talent, so the talent's
- * own folder only ever holds gated media and generated sheets.
+ * Every talent upload lands in `uploads/` and stays there (#1634). Finalize
+ * checks the likeness ledger then points the media row at that key — same
+ * contract as elements (#1471). Generated sheets/headshots still live under
+ * the talent id.
  */
 export const presignTalentUploadFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
@@ -311,7 +311,7 @@ export const presignTalentUploadFn = createServerFn({ method: 'POST' })
 
     const result = await getSignedUploadUrl(
       STORAGE_BUCKETS.TALENT,
-      `${context.teamId}/temp/${mediaId}.${ext}`,
+      teamUserUploadStoragePath(context.teamId, mediaId, ext),
       contentType
     );
 
@@ -342,26 +342,24 @@ export const finalizeTalentUploadFn = createServerFn({ method: 'POST' })
       );
     }
 
-    // A still must be cleared or signed before it is stored under the talent;
-    // a clip or a recording has no likeness check.
-    if (data.type === 'image') {
-      await requireUploadRights(context.scopedDb, [data.publicUrl]);
-    }
+    const { path, url } = await assertTeamUserUploadAttachable({
+      url: data.publicUrl,
+      bucket: STORAGE_BUCKETS.TALENT,
+      teamId: context.teamId,
+    });
 
-    const tempPath = getPathFromUrl(data.publicUrl, STORAGE_BUCKETS.TALENT);
-    const path = `${context.teamId}/${data.talentId}/${data.mediaId}.${getExtensionFromUrl(data.publicUrl)}`;
-    await moveFile(STORAGE_BUCKETS.TALENT, tempPath, path);
-    const storedUrl = getPublicUrl(STORAGE_BUCKETS.TALENT, path);
+    // A still must be cleared or signed before the row points at it; a clip
+    // or a recording has no likeness check.
     if (data.type === 'image') {
-      await carryUploadRights(context.scopedDb, data.publicUrl, storedUrl);
+      await requireUploadRights(context.scopedDb, [url]);
     }
 
     await context.scopedDb.talent.media.create({
       id: data.mediaId,
       talentId: data.talentId,
       type: data.type,
-      url: storedUrl,
-      path: `talent/${path}`,
+      url,
+      path,
     });
 
     if (data.type === 'image') {
@@ -370,7 +368,7 @@ export const finalizeTalentUploadFn = createServerFn({ method: 'POST' })
         userId: context.user.id,
         teamId: context.teamId,
         talentId: data.talentId,
-        imageUrl: storedUrl,
+        imageUrl: url,
       });
     }
 

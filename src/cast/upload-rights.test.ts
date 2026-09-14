@@ -8,6 +8,10 @@ describe('needsLikenessCheck', () => {
     expect(needsLikenessCheck('http://example.com/anyone.jpg')).toBe(true);
     expect(needsLikenessCheck('/r2/talent/team1/temp/01A.png')).toBe(true);
     expect(needsLikenessCheck('/r2/locations/team1/temp/01A.png')).toBe(true);
+    expect(needsLikenessCheck('/r2/talent/team1/uploads/01A.png')).toBe(true);
+    expect(needsLikenessCheck('/r2/locations/team1/uploads/01A.png')).toBe(
+      true
+    );
     expect(needsLikenessCheck('/r2/elements/team1/uploads/01A.png')).toBe(true);
   });
 

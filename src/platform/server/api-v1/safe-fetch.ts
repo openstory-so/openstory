@@ -240,13 +240,12 @@ export type ImageFetchSource = {
  * two values have opposite durability contracts, and the reclaimable one would
  * be what a caller got by forgetting an argument.
  *
- * - `temp` — talent and location creates move the object to a permanent key of
- *   their own, so whatever is left here is abandoned by definition.
- * - `uploads` — elements are never moved; the row points at this key forever
- *   (#1471). See `DRAFT_ELEMENT_UPLOAD_PREFIX`.
+ * - `uploads` — user uploads are never moved; the row points at this key
+ *   forever (elements #1471, talent/location #1634).
+ * - `temp` — leftover prefix from before #1634. Still a valid ingest folder
+ *   for tests; new talent/location ingest uses `uploads`.
  *
- * Nothing sweeps `temp/` today, and nothing ever has — abandoned ingests leak.
- * That is a known cost, not a mechanism to rely on.
+ * Nothing sweeps abandoned `uploads/` or leftover `temp/` today.
  */
 export type IngestPrefix = 'temp' | 'uploads';
 

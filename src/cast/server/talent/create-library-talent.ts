@@ -1,27 +1,19 @@
 /**
- * Shared core for creating a library talent: inserts the row, promotes any
- * reference images temp→permanent, and triggers the `/library-talent-sheet`
- * workflow (which writes `talent.defaultSheet`). Used by `createTalentFn` (the
- * dashboard serverFn) and the public API's one-shot resolver, so on-the-fly
- * talent created via the API gets a sheet generated — and the storyboard
- * workflow's `waitForTalentSheets` gate waits for it before casting.
+ * Shared core for creating a library talent: inserts the row, points media
+ * at the already-uploaded `uploads/` keys (#1634), and triggers the
+ * `/library-talent-sheet` workflow (which writes `talent.defaultSheet`).
+ * Used by `createTalentFn` (the dashboard serverFn) and the public API's
+ * one-shot resolver, so on-the-fly talent created via the API gets a sheet
+ * generated — and the storyboard workflow's `waitForTalentSheets` gate
+ * waits for it before casting.
  */
 
-import { moveFile } from '#storage';
-import {
-  carryUploadRights,
-  requireUploadRights,
-} from '@/cast/server/upload-rights';
-import { generateId } from '@/platform/id';
+import { requireUploadRights } from '@/cast/server/upload-rights';
+import { assertTeamUserUploadAttachable } from '@/cast/server/team-user-upload';
 import type { Talent } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { getLogger } from '@/platform/logger';
-import {
-  STORAGE_BUCKETS,
-  getPathFromUrl,
-  getPublicUrl,
-} from '@/platform/server/storage/buckets';
-import { getExtensionFromUrl } from '@/platform/server/storage/file';
+import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import type { LibraryTalentSheetWorkflowInput } from '@/platform/server/workflow/types';
 import { computeLibraryTalentSheetHashFromDto } from '@/cast/server/workflows/sheet-snapshots';
 import type { CharacterBibleEntry } from '@/shots/scene-analysis.schema';
@@ -48,8 +40,8 @@ export type CreateLibraryTalentInput = {
    */
   isHuman?: boolean | null;
   /**
-   * Temp-upload URLs in the TALENT bucket; moved to permanent here. Each must
-   * already be cleared or signed on the likeness ledger.
+   * User-upload URLs in the TALENT bucket (`uploads/`, leftover `temp/`).
+   * Each must already be cleared or signed. The object stays at that key.
    */
   referenceImageUrls?: string[];
   /**
@@ -83,14 +75,25 @@ export async function createLibraryTalent(
   input: CreateLibraryTalentInput,
   ctx: CreateLibraryTalentContext
 ): Promise<CreateLibraryTalentResult> {
-  const tempUrls = input.referenceImageUrls ?? [];
+  const uploadUrls = input.referenceImageUrls ?? [];
   // The gate runs before the row: every still must be cleared or signed on
   // the likeness ledger, and that ledger — not the client — says whether the
   // talent is a real person.
-  const rights = await requireUploadRights(ctx.scopedDb, tempUrls);
-  const depictsRealPerson = tempUrls.length
+  const rights = await requireUploadRights(ctx.scopedDb, uploadUrls);
+  const depictsRealPerson = uploadUrls.length
     ? [...rights.values()].some((r) => r.depictsRealPerson)
     : input.isHuman === true;
+
+  const attached: Array<{ url: string; path: string }> = [];
+  for (const url of uploadUrls) {
+    attached.push(
+      await assertTeamUserUploadAttachable({
+        url,
+        bucket: STORAGE_BUCKETS.TALENT,
+        teamId: ctx.teamId,
+      })
+    );
+  }
 
   const newTalent = await ctx.scopedDb.talent.create({
     name: input.name,
@@ -100,28 +103,14 @@ export async function createLibraryTalent(
     isInTeamLibrary: true,
   });
 
-  // Move temp files to permanent location and create media records.
   const permanentUrls: string[] = [];
-  const tempToPermanent = new Map<string, string>();
-
-  for (const tempUrl of tempUrls) {
-    const tempPath = getPathFromUrl(tempUrl, STORAGE_BUCKETS.TALENT);
-    const ext = getExtensionFromUrl(tempUrl);
-    const mediaId = generateId();
-    const permanentPath = `${ctx.teamId}/${newTalent.id}/${mediaId}.${ext}`;
-
-    await moveFile(STORAGE_BUCKETS.TALENT, tempPath, permanentPath);
-
-    const permanentUrl = getPublicUrl(STORAGE_BUCKETS.TALENT, permanentPath);
-    await carryUploadRights(ctx.scopedDb, tempUrl, permanentUrl);
-    permanentUrls.push(permanentUrl);
-    tempToPermanent.set(tempUrl, permanentUrl);
-
+  for (const { url, path } of attached) {
+    permanentUrls.push(url);
     await ctx.scopedDb.talent.media.create({
       talentId: newTalent.id,
       type: 'image',
-      url: permanentUrl,
-      path: permanentPath,
+      url,
+      path,
     });
   }
 
@@ -129,11 +118,10 @@ export async function createLibraryTalent(
   let uploadedSheetMetadata: CharacterBibleEntry | undefined;
 
   if (permanentUrls.length > 0) {
-    const classifiedTempUrls = input.characterSheetImageUrls;
-    if (classifiedTempUrls) {
-      uploadedSheetUrl = classifiedTempUrls
-        .map((url) => tempToPermanent.get(url))
-        .find((url): url is string => Boolean(url));
+    const classifiedUrls = input.characterSheetImageUrls;
+    if (classifiedUrls) {
+      const known = new Set(permanentUrls);
+      uploadedSheetUrl = classifiedUrls.find((url) => known.has(url));
     } else if (input.enqueueSheet !== false) {
       // One call for every reference: N sequential vision round-trips hung
       // the public-API request (~9s each) and billed before the sequence

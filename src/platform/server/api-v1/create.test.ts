@@ -342,7 +342,7 @@ describe('runOneShotCreate', () => {
       expect.anything(),
       [
         expect.objectContaining({
-          url: expect.stringContaining('/r2/talent/team-1/temp/'),
+          url: expect.stringContaining('/r2/talent/team-1/uploads/'),
           statementVersion: 'portrait-rights-v1',
           authorizationBasis: 'self',
         }),

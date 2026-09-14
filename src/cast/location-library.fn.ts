@@ -10,6 +10,10 @@ import type { LibraryLocation } from '@/platform/server/db/schema';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import {
+  isTeamUserUploadUrl,
+  teamUserUploadStoragePath,
+} from '@/cast/server/team-user-upload';
+import {
   getExtensionFromUrl,
   getMimeTypeFromExtension,
 } from '@/platform/server/storage/file';
@@ -152,10 +156,11 @@ export const presignLocationUploadFn = createServerFn({ method: 'POST' })
     const uploadId = generateId();
     const contentType = getMimeTypeFromExtension(ext);
 
-    // Every upload lands in `temp/` (#1581); finalize gates it and moves it.
+    // Lands in `uploads/` and stays there (#1634). Finalize gates on the
+    // likeness ledger, then points the row at this key.
     return getSignedUploadUrl(
       STORAGE_BUCKETS.LOCATIONS,
-      `${context.teamId}/temp/${uploadId}.${ext}`,
+      teamUserUploadStoragePath(context.teamId, uploadId, ext),
       contentType
     );
   });
@@ -171,7 +176,13 @@ export const finalizeLocationUploadFn = createServerFn({ method: 'POST' })
     )
   )
   .handler(async ({ context, data }) => {
-    if (!data.publicUrl.startsWith(`/r2/locations/${context.teamId}/temp/`)) {
+    if (
+      !isTeamUserUploadUrl(
+        data.publicUrl,
+        STORAGE_BUCKETS.LOCATIONS,
+        context.teamId
+      )
+    ) {
       throw new Error('Invalid storage path');
     }
 

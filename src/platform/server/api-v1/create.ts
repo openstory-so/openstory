@@ -144,7 +144,7 @@ function inlineCreates<T>(items: readonly (string | T)[] | undefined): T[] {
   return items.filter((item): item is T => typeof item !== 'string');
 }
 
-/** Ingest hosted reference image URLs into a bucket's temp area → temp URLs. */
+/** Ingest hosted reference image URLs into the team's `uploads/` folder. */
 async function ingestReferenceImages(
   urls: string[] | undefined,
   bucket: StorageBucket,
@@ -154,9 +154,7 @@ async function ingestReferenceImages(
   if (!urls || urls.length === 0) return [];
   const ingested = await Promise.all(
     urls.map((url, index) =>
-      // Talent and location creates move the object to a permanent key of
-      // their own, so `temp` is the honest folder for them.
-      ingestImageToBucket(url, bucket, teamId, 'temp', {
+      ingestImageToBucket(url, bucket, teamId, 'uploads', {
         label: labelFor(index),
       })
     )

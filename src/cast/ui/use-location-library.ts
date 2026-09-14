@@ -132,10 +132,10 @@ export function useDeleteLibraryLocation() {
 }
 
 /**
- * Upload a location image: presign → R2 → likeness check (a real person
- * opens the sign-off dialog) → finalize when a location already exists.
- * Without `locationId` the temp URL is handed back for the create call,
- * already cleared or signed.
+ * Upload a location image: presign → R2 (`uploads/`) → likeness check (a
+ * real person opens the sign-off dialog) → finalize when a location already
+ * exists. Without `locationId` the upload URL is handed back for the create
+ * call, already cleared or signed.
  */
 export function useUploadLocationMedia() {
   const { ensureUploadRights } = useUploadRightsGate();

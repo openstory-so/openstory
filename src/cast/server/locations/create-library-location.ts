@@ -1,26 +1,19 @@
 /**
- * Shared core for creating a library location: promotes reference images
- * temp→permanent, inserts the row + location sheets, and triggers the
- * `/library-location-sheet` workflow (which sets `location.referenceImageUrl`).
- * Used by `createLibraryLocationFn` (dashboard) and the public API's one-shot
- * resolver, so an on-the-fly location gets a reference generated — and the
- * storyboard workflow's `waitForLocationReferences` gate waits for it.
+ * Shared core for creating a library location: points reference images at
+ * the already-uploaded `uploads/` keys (#1634), inserts the row + location
+ * sheets, and triggers the `/library-location-sheet` workflow (which sets
+ * `location.referenceImageUrl`). Used by `createLibraryLocationFn`
+ * (dashboard) and the public API's one-shot resolver, so an on-the-fly
+ * location gets a reference generated — and the storyboard workflow's
+ * `waitForLocationReferences` gate waits for it.
  */
 
-import { moveFile } from '#storage';
-import {
-  carryUploadRights,
-  requireUploadRights,
-} from '@/cast/server/upload-rights';
-import { generateId } from '@/platform/id';
+import { requireUploadRights } from '@/cast/server/upload-rights';
+import { assertTeamUserUploadAttachable } from '@/cast/server/team-user-upload';
 import type { LibraryLocation } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { getLogger } from '@/platform/logger';
-import {
-  STORAGE_BUCKETS,
-  getPublicUrl,
-} from '@/platform/server/storage/buckets';
-import { getExtensionFromUrl } from '@/platform/server/storage/file';
+import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import type { LibraryLocationSheetWorkflowInput } from '@/platform/server/workflow/types';
 import { computeLibraryLocationSheetHashFromDto } from '@/cast/server/workflows/sheet-snapshots';
@@ -30,31 +23,26 @@ const logger = getLogger(['openstory', 'locations', 'create-library-location']);
 export type ProcessedImage = { url: string; path: string };
 
 /**
- * Move temp-uploaded location images to permanent storage, returning only
- * successfully moved images. Every library write goes through here, so this
- * is where the likeness gate runs (#1581): each still must be cleared or
- * signed, and the library URL is covered by the same row.
+ * Accept already-uploaded location images. Every library write goes through
+ * here, so this is where the likeness gate runs (#1581): each still must be
+ * cleared or signed. The object stays at its `uploads/` key (#1634).
  */
 export async function promoteLocationReferenceImages(
   scopedDb: ScopedDb,
-  tempUrls: string[],
+  uploadUrls: string[],
   teamId: string
 ): Promise<ProcessedImage[]> {
-  await requireUploadRights(scopedDb, tempUrls);
+  await requireUploadRights(scopedDb, uploadUrls);
   const results: ProcessedImage[] = [];
 
-  for (const tempUrl of tempUrls) {
-    const tempPathMatch = tempUrl.match(/\/locations\/(.+)$/);
-    const tempPath = tempPathMatch?.[1];
-    if (!tempPath) continue;
-
-    const ext = getExtensionFromUrl(tempUrl);
-    const permanentPath = `${teamId}/library/${generateId()}.${ext}`;
-
-    await moveFile(STORAGE_BUCKETS.LOCATIONS, tempPath, permanentPath);
-    const url = getPublicUrl(STORAGE_BUCKETS.LOCATIONS, permanentPath);
-    await carryUploadRights(scopedDb, tempUrl, url);
-    results.push({ url, path: permanentPath });
+  for (const url of uploadUrls) {
+    results.push(
+      await assertTeamUserUploadAttachable({
+        url,
+        bucket: STORAGE_BUCKETS.LOCATIONS,
+        teamId,
+      })
+    );
   }
 
   return results;
@@ -63,7 +51,7 @@ export async function promoteLocationReferenceImages(
 export type CreateLibraryLocationInput = {
   name: string;
   description?: string;
-  /** Temp-upload URLs in the LOCATIONS bucket; moved to permanent here. */
+  /** User-upload URLs in the LOCATIONS bucket (`uploads/`); not moved. */
   referenceImageUrls?: string[];
 };
 

@@ -16,11 +16,10 @@ const mockTriggerWorkflow =
   >();
 const mockAnalyze = vi.fn();
 const mockEmit = vi.fn();
-const mockMoveFile = vi.fn();
+const mockFileExists = vi.fn();
 const mockCreate = vi.fn();
 const mockMediaCreate = vi.fn();
 const mockRequireRights = vi.fn();
-const mockCarryRights = vi.fn();
 
 vi.doMock('@/platform/server/workflow/client', () => ({
   triggerWorkflow: mockTriggerWorkflow,
@@ -29,11 +28,10 @@ vi.doMock('@/platform/realtime', () => ({
   getTalentChannel: () => ({ emit: mockEmit }),
 }));
 vi.doMock('#storage', () => ({
-  moveFile: mockMoveFile,
+  fileExists: mockFileExists,
 }));
 vi.doMock('@/cast/server/upload-rights', () => ({
   requireUploadRights: mockRequireRights,
-  carryUploadRights: mockCarryRights,
 }));
 vi.doMock('./analyze-talent-media', () => ({
   analyzeTalentMediaForTeam: mockAnalyze,
@@ -85,14 +83,13 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockTriggerWorkflow.mockResolvedValue('run-1');
   mockEmit.mockResolvedValue(undefined);
-  mockMoveFile.mockResolvedValue(undefined);
+  mockFileExists.mockResolvedValue(true);
   mockMediaCreate.mockResolvedValue({});
-  // Every temp URL is signed for unless a test says otherwise.
+  // Every upload URL is signed for unless a test says otherwise.
   mockRequireRights.mockImplementation(
     async (_db: unknown, urls: string[]) =>
       new Map(urls.map((u) => [u, { depictsRealPerson: true }]))
   );
-  mockCarryRights.mockResolvedValue(undefined);
   mockAnalyze.mockResolvedValue({
     isCharacterSheet: false,
     subjectKind: 'human',
@@ -132,7 +129,7 @@ describe('createLibraryTalent', () => {
     await createLibraryTalent(
       {
         name: 'Sam',
-        referenceImageUrls: ['/r2/talent/team-1/temp/a.png'],
+        referenceImageUrls: ['/r2/talent/team-1/uploads/a.png'],
         characterSheetImageUrls: [],
       },
       makeCtx()
@@ -142,27 +139,26 @@ describe('createLibraryTalent', () => {
     expect(lastTrigger().payload.uploadedSheetUrl).toBeUndefined();
   });
 
-  it('maps client-asserted sheet temp URLs onto the permanent key', async () => {
+  it('uses the upload URL as the sheet key (no move)', async () => {
     await createLibraryTalent(
       {
         name: 'Sam',
-        referenceImageUrls: ['/r2/talent/team-1/temp/a.png'],
-        characterSheetImageUrls: ['/r2/talent/team-1/temp/a.png'],
+        referenceImageUrls: ['/r2/talent/team-1/uploads/a.png'],
+        characterSheetImageUrls: ['/r2/talent/team-1/uploads/a.png'],
       },
       makeCtx()
     );
 
     const { payload } = lastTrigger();
     expect(payload.sheetName).toBe('Uploaded Sheet');
-    expect(payload.uploadedSheetUrl).toMatch(/^\/r2\/talent\/team-1\/tal-1\//);
-    expect(payload.uploadedSheetUrl).not.toBe('/r2/talent/team-1/temp/a.png');
+    expect(payload.uploadedSheetUrl).toBe('/r2/talent/team-1/uploads/a.png');
   });
 
   it('ignores characterSheetImageUrls that were not in this upload', async () => {
     await createLibraryTalent(
       {
         name: 'Sam',
-        referenceImageUrls: ['/r2/talent/team-1/temp/a.png'],
+        referenceImageUrls: ['/r2/talent/team-1/uploads/a.png'],
         characterSheetImageUrls: ['/r2/talent/other-team/x.png'],
       },
       makeCtx()
@@ -189,7 +185,7 @@ describe('createLibraryTalent', () => {
     await createLibraryTalent(
       {
         name: 'Sam',
-        referenceImageUrls: ['/r2/talent/team-1/temp/a.png'],
+        referenceImageUrls: ['/r2/talent/team-1/uploads/a.png'],
       },
       makeCtx()
     );
@@ -197,7 +193,7 @@ describe('createLibraryTalent', () => {
     expect(mockAnalyze).toHaveBeenCalled();
     const { payload } = lastTrigger();
     expect(payload.sheetName).toBe('Uploaded Sheet');
-    expect(payload.uploadedSheetUrl).toMatch(/^\/r2\/talent\/team-1\/tal-1\//);
+    expect(payload.uploadedSheetUrl).toBe('/r2/talent/team-1/uploads/a.png');
   });
 
   it('still triggers generate when vision throws', async () => {
@@ -206,7 +202,7 @@ describe('createLibraryTalent', () => {
     await createLibraryTalent(
       {
         name: 'Sam',
-        referenceImageUrls: ['/r2/talent/team-1/temp/a.png'],
+        referenceImageUrls: ['/r2/talent/team-1/uploads/a.png'],
       },
       makeCtx()
     );
@@ -235,9 +231,9 @@ describe('createLibraryTalent', () => {
       {
         name: 'Sam',
         referenceImageUrls: [
-          '/r2/talent/team-1/temp/a.png',
-          '/r2/talent/team-1/temp/b.png',
-          '/r2/talent/team-1/temp/c.png',
+          '/r2/talent/team-1/uploads/a.png',
+          '/r2/talent/team-1/uploads/b.png',
+          '/r2/talent/team-1/uploads/c.png',
         ],
       },
       makeCtx()
@@ -260,9 +256,9 @@ describe('createLibraryTalent', () => {
       {
         name: 'Sam',
         referenceImageUrls: [
-          '/r2/talent/team-1/temp/a.png',
-          '/r2/talent/team-1/temp/b.png',
-          '/r2/talent/team-1/temp/c.png',
+          '/r2/talent/team-1/uploads/a.png',
+          '/r2/talent/team-1/uploads/b.png',
+          '/r2/talent/team-1/uploads/c.png',
         ],
         enqueueSheet: false,
       },
@@ -280,13 +276,15 @@ describe('createLibraryTalent', () => {
 
   it('derives isHuman from the likeness ledger, never the client (#1581)', async () => {
     mockRequireRights.mockResolvedValueOnce(
-      new Map([['/r2/talent/team-1/temp/a.png', { depictsRealPerson: false }]])
+      new Map([
+        ['/r2/talent/team-1/uploads/a.png', { depictsRealPerson: false }],
+      ])
     );
     await createLibraryTalent(
       {
         name: 'Eli',
         isHuman: true,
-        referenceImageUrls: ['/r2/talent/team-1/temp/a.png'],
+        referenceImageUrls: ['/r2/talent/team-1/uploads/a.png'],
         characterSheetImageUrls: [],
       },
       makeCtx()
@@ -294,10 +292,11 @@ describe('createLibraryTalent', () => {
     expect(mockCreate).toHaveBeenCalledWith(
       expect.objectContaining({ isHuman: false })
     );
-    expect(mockCarryRights).toHaveBeenCalledWith(
-      expect.anything(),
-      '/r2/talent/team-1/temp/a.png',
-      expect.stringMatching(/^\/r2\/talent\/team-1\/tal-1\//)
+    expect(mockMediaCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: '/r2/talent/team-1/uploads/a.png',
+        path: 'team-1/uploads/a.png',
+      })
     );
   });
 
@@ -307,14 +306,14 @@ describe('createLibraryTalent', () => {
       createLibraryTalent(
         {
           name: 'Eli',
-          referenceImageUrls: ['/r2/talent/team-1/temp/a.png'],
+          referenceImageUrls: ['/r2/talent/team-1/uploads/a.png'],
           characterSheetImageUrls: [],
         },
         makeCtx()
       )
     ).rejects.toThrow('not checked');
     expect(mockCreate).not.toHaveBeenCalled();
-    expect(mockMoveFile).not.toHaveBeenCalled();
+    expect(mockFileExists).not.toHaveBeenCalled();
   });
 
   it('honours isHuman only when there is nothing to check', async () => {

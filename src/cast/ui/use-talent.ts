@@ -153,9 +153,9 @@ export function useToggleTalentFavorite() {
 }
 
 /**
- * Upload media onto an existing talent: presign → R2 → likeness check (a
- * real person opens the sign-off dialog) → finalize, which moves the object
- * under the talent.
+ * Upload media onto an existing talent: presign → R2 (`uploads/`) → likeness
+ * check (a real person opens the sign-off dialog) → finalize, which points
+ * the media row at that key.
  */
 export function useUploadTalentMedia() {
   const queryClient = useQueryClient();
@@ -209,7 +209,8 @@ export function useUploadTalentMedia() {
 }
 
 /**
- * Hook to upload temporary talent media (before talent record exists)
+ * Upload talent media before the talent row exists. Lands in `uploads/`
+ * (#1634); create points the media row at this URL after the likeness gate.
  */
 export function useUploadTempMedia() {
   return useMutation({
