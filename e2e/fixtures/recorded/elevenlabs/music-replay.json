@@ -1,0 +1,26 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "audio-gen",
+        "userMessage": "Instrumental cinematic electronic underscore that begins with a sparse, focused pulse in a bright apartment, gradually builds through a purposeful hallway and energized downtown crosswalk, then opens into a warm, uplifting rooftop finale. Use crisp rhythmic percussion, pulsing bass, glowing synth pads, and a spacious sense of forward motion without overpowering the visuals.",
+        "model": "music_v1"
+      },
+      "response": {
+        "audio": "SUQzZmFrZS1lMmUtbXVzaWM=",
+        "format": "mp3"
+      }
+    },
+    {
+      "match": {
+        "endpoint": "audio-gen",
+        "userMessage": "Instrumental cinematic electronic-indie underscore that begins with a crisp, pulsing sense of morning urgency, drives through the crowded city with rhythmic momentum, then gradually opens into warm piano, pads, and restrained strings for an intimate diner pause and hopeful rooftop sunset. Keep the progression cohesive, tactile, stylish, and lightly triumphant without overpowering the visuals.",
+        "model": "music_v1"
+      },
+      "response": {
+        "audio": "SUQzZmFrZS1lMmUtbXVzaWM=",
+        "format": "mp3"
+      }
+    }
+  ]
+}
