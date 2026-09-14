@@ -36,16 +36,17 @@ const empty: PipelineArtifacts = {
 };
 
 describe('generation pipeline stages', () => {
-  it('orders script → references → images → motion → music', () => {
+  it('orders script → references → images → dialogue → motion → music', () => {
     expect([...GENERATION_STAGES]).toEqual([
       'script',
       'references',
       'images',
+      'dialogue',
       'motion',
       'music',
     ]);
     expect(stageIndex('script')).toBe(0);
-    expect(stageIndex('music')).toBe(4);
+    expect(stageIndex('music')).toBe(5);
   });
 
   it('defaults stop-at to music (stills + motion + music aha)', () => {
@@ -113,6 +114,7 @@ describe('generation pipeline stages', () => {
     expect(allowsUnfundedGeneration('script')).toBe(true);
     expect(allowsUnfundedGeneration('references')).toBe(false);
     expect(allowsUnfundedGeneration('images')).toBe(false);
+    expect(allowsUnfundedGeneration('dialogue')).toBe(false);
     expect(allowsUnfundedGeneration('motion')).toBe(false);
     expect(allowsUnfundedGeneration('music')).toBe(false);
   });
@@ -139,7 +141,8 @@ describe('nextStageAfter', () => {
   it('walks the DAG in order and ends at music', () => {
     expect(nextStageAfter('script')).toBe('references');
     expect(nextStageAfter('references')).toBe('images');
-    expect(nextStageAfter('images')).toBe('motion');
+    expect(nextStageAfter('images')).toBe('dialogue');
+    expect(nextStageAfter('dialogue')).toBe('motion');
     expect(nextStageAfter('motion')).toBe('music');
     expect(nextStageAfter('music')).toBe(null);
   });
@@ -229,6 +232,7 @@ describe('completedStageFromArtifacts / nextActionFromArtifacts', () => {
   it('labels the continue button with the next stage verb', () => {
     expect(actionLabelForStage('script')).toBe('Analyze Script');
     expect(actionLabelForStage('images')).toBe('Generate Images');
+    expect(actionLabelForStage('dialogue')).toBe('Generate Dialogue');
     expect(actionLabelForStage('motion')).toBe('Generate Motion');
     // The `music` stop runs motion too, so the verb must say both.
     expect(actionLabelForStage('music')).toBe('Generate Motion & Music');
@@ -268,6 +272,13 @@ describe('completedStageFromArtifacts / nextActionFromArtifacts', () => {
       'images',
       'motion',
     ]);
+    expect(bannerStagesForStopAt('music', { generateVoices: true })).toEqual([
+      'script',
+      'references',
+      'images',
+      'dialogue',
+      'motion',
+    ]);
   });
 
   it('slider folds music into the last stop (Motion & Music)', () => {
@@ -290,6 +301,7 @@ describe('completedStageFromArtifacts / nextActionFromArtifacts', () => {
       'Stops after References & Prompts'
     );
     expect(runScopeLabel('images')).toBe('Stops after Images');
+    expect(runScopeLabel('dialogue')).toBe('Stops after Dialogue');
   });
 
   it('slider has no Images stop in reference-only', () => {
@@ -299,5 +311,20 @@ describe('completedStageFromArtifacts / nextActionFromArtifacts', () => {
     expect(sliderThumbIndex('images', stages)).toBe(2);
     expect(stopAtFromSliderIndex(2, stages)).toBe('music');
     expect(sliderThumbIndex('references', stages)).toBe(1);
+  });
+
+  it('slider inserts Dialogue before motion when Voices is on', () => {
+    const stages = sliderStages(false, true);
+    expect(stages).toEqual([
+      'script',
+      'references',
+      'images',
+      'dialogue',
+      'motion',
+    ]);
+    expect(stopAtFromSliderIndex(3, stages)).toBe('dialogue');
+    expect(stopAtFromSliderIndex(4, stages)).toBe('music');
+    expect(sliderStopLabel('dialogue')).toBe('Dialogue');
+    expect(stopAfterSentence('dialogue')).toBe('Stop after dialogue');
   });
 });

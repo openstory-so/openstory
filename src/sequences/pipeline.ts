@@ -29,6 +29,7 @@ export const GENERATION_STAGES = [
   'script',
   'references',
   'images',
+  'dialogue',
   'motion',
   'music',
 ] as const;
@@ -90,15 +91,22 @@ export const GENERATION_STAGE_META: Record<
     description: 'Generating images and writing motion & music prompts',
     actionLabel: 'Generate Images',
   },
-  motion: {
+  dialogue: {
     phase: 4,
+    name: 'Generating dialogue\u2026',
+    shortName: 'Dialogue',
+    description: 'Synthesizing spoken lines for each shot',
+    actionLabel: 'Generate Dialogue',
+  },
+  motion: {
+    phase: 5,
     name: 'Generating motion\u2026',
     shortName: 'Motion',
     description: 'Generating motion video',
     actionLabel: 'Generate Motion',
   },
   music: {
-    phase: 5,
+    phase: 6,
     name: 'Generating music\u2026',
     shortName: 'Music',
     description: 'Generating the sequence music track',
@@ -234,6 +242,7 @@ export function completedStageFromArtifacts(
   // the whole board behind a finished pipeline.
   if (artifacts.hasMusic && artifacts.hasMotion) return 'music';
   if (artifacts.hasMotion) return 'motion';
+  if (coerceStage(artifacts.pipelineStage) === 'dialogue') return 'dialogue';
   if (artifacts.hasImages) return 'images';
   if (artifacts.hasVisualPrompts) return 'references';
   if (artifacts.hasScenes || coerceStage(artifacts.pipelineStage) === 'script')
@@ -250,7 +259,12 @@ export function nextActionFromArtifacts(
 ): GenerationStage | null {
   const completed = completedStageFromArtifacts(artifacts);
   if (completed === null) return null;
-  return nextStageAfter(completed);
+  let next = nextStageAfter(completed);
+  // Dialogue is a stop on the slider when Voices is on, but the scene-list
+  // continue CTA jumps it: clips synthesize before motion in the full run,
+  // and the motion footer covers a stop after images.
+  if (next === 'dialogue') next = nextStageAfter(next);
+  return next;
 }
 
 /**
@@ -340,7 +354,7 @@ export type GenerationCheckpoint = {
   allElements?: SequenceElementMinimal[];
   visualPromptBySceneId?: Record<string, string>;
   scenesWithVisualPrompts?: Scene[];
-  /** Per-shot Text to Dialogue clips from the References stage (#1554). */
+  /** Per-shot Text to Dialogue clips from the Dialogue stage (#1554 / #1629). */
   dialogueClipsByShotId?: Record<string, MotionAudioClip[]>;
 };
 
@@ -350,23 +364,33 @@ export type GenerationCheckpoint = {
  * segments — the last one labelled "Motion & Music".
  */
 export function bannerStagesForStopAt(
-  stopAt: GenerationStage
+  stopAt: GenerationStage,
+  opts: { referenceOnly?: boolean; generateVoices?: boolean } = {}
 ): GenerationStage[] {
-  const stages = stagesUpTo(stopAt);
-  return includesStage(stopAt, 'music')
-    ? stages.filter((stage) => stage !== 'music')
-    : stages;
+  let stages = stagesUpTo(stopAt);
+  if (includesStage(stopAt, 'music')) {
+    stages = stages.filter((stage) => stage !== 'music');
+  }
+  if (opts.referenceOnly) {
+    stages = stages.filter((stage) => stage !== 'images');
+  }
+  if (!opts.generateVoices) {
+    stages = stages.filter((stage) => stage !== 'dialogue');
+  }
+  return stages;
 }
 
 /**
  * Generate-dialog / continue-slider stops. Same as a full-run banner — the
  * last thumb is Motion & Music (`stopAt: 'music'`). Reference-only has no
- * Images stop: nothing renders there, so the thumb goes References → Motion.
+ * Images stop. Voices off has no Dialogue stop — clips still run before
+ * motion when a talent already holds a voiceId.
  */
-export function sliderStages(referenceOnly: boolean): GenerationStage[] {
-  return bannerStagesForStopAt('music').filter(
-    (stage) => !(referenceOnly && stage === 'images')
-  );
+export function sliderStages(
+  referenceOnly: boolean,
+  generateVoices = false
+): GenerationStage[] {
+  return bannerStagesForStopAt('music', { referenceOnly, generateVoices });
 }
 
 export function sliderThumbIndex(
@@ -408,6 +432,7 @@ const STOP_AFTER_SENTENCE: Record<GenerationStage, string> = {
   script: 'Stop after casting',
   references: 'Stop after references & prompts',
   images: 'Stop after images',
+  dialogue: 'Stop after dialogue',
   motion: 'Don’t stop',
   music: 'Don’t stop',
 };

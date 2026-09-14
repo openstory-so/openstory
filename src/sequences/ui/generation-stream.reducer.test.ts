@@ -187,7 +187,7 @@ describe('generationStreamReducer — stop-at banner (#1408)', () => {
 
     const next = apply(references, {
       type: 'PHASE_START',
-      payload: { phase: 4, phaseName: 'Generating motion & music…' },
+      payload: { phase: 5, phaseName: 'Generating motion & music…' },
     });
 
     expect(next.phases.map((p) => p.shortName)).toEqual([
@@ -200,7 +200,7 @@ describe('generationStreamReducer — stop-at banner (#1408)', () => {
       'completed',
       'active',
     ]);
-    expect(next.currentPhase).toBe(4);
+    expect(next.currentPhase).toBe(5);
   });
 });
 
@@ -223,7 +223,7 @@ describe('progress phases in reference-only', () => {
       createInitialState({ stopAt: 'music', referenceOnly: true }).phases.map(
         (p) => p.phase
       )
-    ).toEqual([1, 2, 4]);
+    ).toEqual([1, 2, 5]);
   });
 
   it('leaves the image-rendering modes alone', () => {
@@ -231,6 +231,13 @@ describe('progress phases in reference-only', () => {
       'Casting',
       'References',
       'Images',
+      'Motion & Music',
+    ]);
+    expect(shortNames({ stopAt: 'music', generateVoices: true })).toEqual([
+      'Casting',
+      'References',
+      'Images',
+      'Dialogue',
       'Motion & Music',
     ]);
   });
@@ -242,7 +249,7 @@ describe('progress phases in reference-only', () => {
       createInitialState({ stopAt: 'music', referenceOnly: true }),
       {
         type: 'PHASE_START',
-        payload: { phase: 4, phaseName: 'Generating motion & music…' },
+        payload: { phase: 5, phaseName: 'Generating motion & music…' },
       }
     );
 

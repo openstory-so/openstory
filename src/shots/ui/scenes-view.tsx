@@ -435,12 +435,14 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       autoGenerateMotion: sequence?.autoGenerateMotion ?? false,
       autoGenerateMusic: sequence?.autoGenerateMusic ?? false,
       referenceOnly: !(sequence?.generateStartFrames ?? false),
+      generateVoices: sequence?.generateVoices ?? false,
     }),
     [
       sequence?.generationStopAt,
       sequence?.autoGenerateMotion,
       sequence?.autoGenerateMusic,
       sequence?.generateStartFrames,
+      sequence?.generateVoices,
     ]
   );
 

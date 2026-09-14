@@ -47,7 +47,7 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
   onGenerateVoicesChange,
   disabled = false,
 }) => {
-  const stages = sliderStages(!generateStartFrames);
+  const stages = sliderStages(!generateStartFrames, generateVoices);
   const lastStop = stages.length - 1;
   const minIndex = minStage ? sliderThumbIndex(minStage, stages) : 0;
   const clampedIndex = Math.max(minIndex, sliderThumbIndex(value, stages));
@@ -127,7 +127,7 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
                 onGenerateStartFramesChange(next);
                 // Off drops the Images stop; a thumb sitting on it moves up to
                 // Motion & Music so the parent's value matches the slider.
-                const nextStages = sliderStages(!next);
+                const nextStages = sliderStages(!next, generateVoices);
                 const moved = stopAtFromSliderIndex(
                   sliderThumbIndex(value, nextStages),
                   nextStages
@@ -153,7 +153,15 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
             <Switch
               id="generate-voices"
               checked={generateVoices}
-              onCheckedChange={onGenerateVoicesChange}
+              onCheckedChange={(next) => {
+                onGenerateVoicesChange(next);
+                const nextStages = sliderStages(!generateStartFrames, next);
+                const moved = stopAtFromSliderIndex(
+                  sliderThumbIndex(value, nextStages),
+                  nextStages
+                );
+                if (moved !== value) onChange(moved);
+              }}
               disabled={disabled}
             />
             <Label htmlFor="generate-voices" className="text-sm">

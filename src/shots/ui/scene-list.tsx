@@ -48,6 +48,7 @@ import {
   FileText,
   Images,
   Loader2,
+  Mic,
   Music,
   Plus,
   Video,
@@ -70,6 +71,7 @@ const CONTINUE_ICON = {
   script: FileText,
   references: Images,
   images: Images,
+  dialogue: Mic,
   motion: Video,
   music: Music,
 } as const;

@@ -82,6 +82,7 @@ function CreatingScenesPage() {
       script={parked.script}
       stopAt={parked.stopAt}
       generateStartFrames={parked.generateStartFrames}
+      generateVoices={parked.payload.generateVoices}
     />
   );
 }

@@ -311,25 +311,25 @@ describe('estimateStoryboardPreflightCost', () => {
     );
   });
 
-  it('reserves TTS on the references slice even when Voices is off (#1554)', () => {
+  it('reserves TTS on the dialogue slice even when Voices is off (#1554)', () => {
     const script = 'Scene 1 — 5s\nA room.\n\nScene 2 — 5s\nAnother room.';
-    const scriptOnly = estimateStoryboardPreflightCost({
+    const images = estimateStoryboardPreflightCost({
       ...base,
       script,
-      stopAt: 'script',
+      stopAt: 'images',
     });
-    const refs = estimateStoryboardPreflightCost({
+    const dialogue = estimateStoryboardPreflightCost({
       ...base,
       script,
-      stopAt: 'references',
+      stopAt: 'dialogue',
     });
     const scenes = estimateSceneCount(script);
-    expect(refs - scriptOnly).toBeGreaterThanOrEqual(
+    expect(dialogue - images).toBeGreaterThanOrEqual(
       estimateTtsCost(scenes * TYPICAL_DIALOGUE_CHARS_PER_SHOT)
     );
   });
 
-  it('does not reserve TTS in the motion slice — clips are References artifacts (#1554)', () => {
+  it('does not reserve TTS in the motion slice — clips already ran (#1554)', () => {
     const script = 'Scene 1 — 5s\nA room.\n\nScene 2 — 5s\nAnother room.';
     const off = estimateStoryboardPreflightCost({
       ...base,

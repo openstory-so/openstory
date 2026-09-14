@@ -170,6 +170,7 @@ export type GenerationPhaseConfig = {
    * ever waits is one the user watches for no reason.
    */
   referenceOnly?: boolean;
+  generateVoices?: boolean;
 };
 
 /**
@@ -210,18 +211,19 @@ export function createInitialState(
 ): GenerationStreamState {
   const stopAt = resolveStopAt(config ?? {});
   const combinedMusic = stopAt === 'music';
-  const phases: GenerationPhase[] = bannerStagesForStopAt(stopAt)
-    .filter((stage) => !(config?.referenceOnly && stage === 'images'))
-    .map((stage) => {
-      const meta = GENERATION_STAGE_META[stage];
-      const isCombinedLast = combinedMusic && stage === 'motion';
-      return {
-        phase: meta.phase,
-        phaseName: isCombinedLast ? 'Generating motion & music…' : meta.name,
-        shortName: isCombinedLast ? 'Motion & Music' : meta.shortName,
-        status: 'pending' as const,
-      };
-    });
+  const phases: GenerationPhase[] = bannerStagesForStopAt(stopAt, {
+    referenceOnly: config?.referenceOnly,
+    generateVoices: config?.generateVoices,
+  }).map((stage) => {
+    const meta = GENERATION_STAGE_META[stage];
+    const isCombinedLast = combinedMusic && stage === 'motion';
+    return {
+      phase: meta.phase,
+      phaseName: isCombinedLast ? 'Generating motion & music…' : meta.name,
+      shortName: isCombinedLast ? 'Motion & Music' : meta.shortName,
+      status: 'pending' as const,
+    };
+  });
 
   return {
     currentPhase: 0,

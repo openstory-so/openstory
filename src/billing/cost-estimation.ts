@@ -515,12 +515,11 @@ export function estimateStoryboardCost(opts: StoryboardCostOpts): Microdollars {
           estimateCharacterSheetCount(sceneCount)
         )
       : micros(0);
-  // Dialogue clips are References-stage audio refs (#1554). TTS runs
-  // whenever a speaker already has a voiceId (talent copy), not only
-  // when Voices is on — so the stand-in is on the references slice,
-  // not gated on generateVoices. Pre-flight cannot see the lines;
-  // the in-run deduct uses the real count.
-  const ttsCost = runsReferences
+  // Dialogue clips (#1554 / #1629) run in the Dialogue stage, just before
+  // motion. TTS still runs when a speaker already has a voiceId (talent
+  // copy), not only when Voices is on — so the stand-in is on the
+  // dialogue slice, not gated on generateVoices.
+  const ttsCost = estimateRunsStage(opts, 'dialogue')
     ? estimateTtsCost(sceneCount * TYPICAL_DIALOGUE_CHARS_PER_SHOT)
     : micros(0);
 

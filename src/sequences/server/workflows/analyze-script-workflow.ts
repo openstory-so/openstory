@@ -588,7 +588,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           addMicros(
             multiplyMicros(VOICE_DESIGN_COST, billedVoices),
             estimateTtsCost(
-              runReferences
+              shouldRunStage(startFrom, stopAt, 'dialogue')
                 ? scenes.length * TYPICAL_DIALOGUE_CHARS_PER_SHOT
                 : 0
             )
@@ -928,46 +928,8 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       ? dedupeById([...generatedElements, ...knownElements])
       : dedupeById([...(checkpoint?.allElements ?? []), ...elementsMinimal]);
 
-    // Dialogue clips are audio references: they need designed voices (the
-    // bible child above) and belong in this stage, not mid-motion-submit.
     let dialogueClipsByShotId: Record<string, MotionAudioClip[]> =
       checkpoint?.dialogueClipsByShotId ?? {};
-    if (runReferences && sequenceId) {
-      const jobs = shotWorkItems(scenes, shotMapping).flatMap((item) => {
-        if (!item.mapping.shotId) return [];
-        const lines = voicedDialogueLines(
-          {
-            presence: item.scene.originalScript.dialogue.length > 0,
-            lines: item.scene.originalScript.dialogue,
-          },
-          charactersWithSheets
-        );
-        return lines.length > 0 ? [{ shotId: item.mapping.shotId, lines }] : [];
-      });
-      if (jobs.length > 0) {
-        const result = await spawnAndAwaitChild<
-          DialogueAudioWorkflowInput,
-          DialogueAudioWorkflowResult
-        >(step, {
-          binding: this.env.DIALOGUE_AUDIO_WORKFLOW,
-          parentBindingName: PARENT_BINDING_NAME,
-          parentInstanceId,
-          childId: `dialogue-audio:${sequenceId}`,
-          childPayload: {
-            userId: input.userId,
-            teamId: input.teamId,
-            sequenceId,
-            reservationId: input.reservationId,
-            shots: jobs,
-            minDurationSeconds: dialogueAudioMinSeconds(videoModels),
-          },
-          spawnStepName: 'spawn-dialogue-audio',
-          awaitStepName: 'await-dialogue-audio',
-          timeout: '60 minutes',
-        });
-        dialogueClipsByShotId = result.clipsByShotId;
-      }
-    }
 
     if (runReferences) {
       await persistProgress({
@@ -1228,6 +1190,66 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     });
     if (stopAt === 'images') {
       return completeScenes;
+    }
+
+    // ----------------------------------------------------------------------
+    // Dialogue clips (#1554 / #1629): after images, before motion. Voices
+    // (designed in References, or already on talent) are the speakers.
+    // ----------------------------------------------------------------------
+    const runDialogue = shouldRunStage(startFrom, stopAt, 'dialogue');
+    if (runDialogue && sequenceId) {
+      await step.do('phase-dialogue-start', async () => {
+        await getGenerationChannel(sequenceId).emit('generation.phase:start', {
+          phase: GENERATION_STAGE_META.dialogue.phase,
+          phaseName: GENERATION_STAGE_META.dialogue.name,
+        });
+      });
+      const jobs = shotWorkItems(completeScenes, shotMapping).flatMap(
+        (item) => {
+          if (!item.mapping.shotId) return [];
+          const lines = voicedDialogueLines(
+            {
+              presence: item.scene.originalScript.dialogue.length > 0,
+              lines: item.scene.originalScript.dialogue,
+            },
+            charactersWithSheets
+          );
+          return lines.length > 0
+            ? [{ shotId: item.mapping.shotId, lines }]
+            : [];
+        }
+      );
+      if (jobs.length > 0) {
+        const result = await spawnAndAwaitChild<
+          DialogueAudioWorkflowInput,
+          DialogueAudioWorkflowResult
+        >(step, {
+          binding: this.env.DIALOGUE_AUDIO_WORKFLOW,
+          parentBindingName: PARENT_BINDING_NAME,
+          parentInstanceId,
+          childId: `dialogue-audio:${sequenceId}`,
+          childPayload: {
+            userId: input.userId,
+            teamId: input.teamId,
+            sequenceId,
+            reservationId: input.reservationId,
+            shots: jobs,
+            minDurationSeconds: dialogueAudioMinSeconds(videoModels),
+          },
+          spawnStepName: 'spawn-dialogue-audio',
+          awaitStepName: 'await-dialogue-audio',
+          timeout: '60 minutes',
+        });
+        dialogueClipsByShotId = result.clipsByShotId;
+      }
+      await persistProgress({
+        ...(checkpoint ?? { completedStage: 'dialogue' }),
+        completedStage: 'dialogue',
+        dialogueClipsByShotId,
+      });
+      if (stopAt === 'dialogue') {
+        return completeScenes;
+      }
     }
 
     // ----------------------------------------------------------------------

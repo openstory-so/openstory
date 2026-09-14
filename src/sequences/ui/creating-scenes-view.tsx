@@ -19,12 +19,14 @@ type CreatingScenesViewProps = {
   script: string;
   stopAt: GenerationStage;
   generateStartFrames: boolean;
+  generateVoices?: boolean;
 };
 
 export function CreatingScenesView({
   script,
   stopAt,
   generateStartFrames,
+  generateVoices = false,
 }: CreatingScenesViewProps) {
   const generationState = useMemo(() => {
     const flags = flagsFromStopAt(stopAt);
@@ -33,6 +35,7 @@ export function CreatingScenesView({
       autoGenerateMotion: flags.autoGenerateMotion,
       autoGenerateMusic: flags.autoGenerateMusic,
       referenceOnly: !generateStartFrames,
+      generateVoices,
     };
     const state = createInitialState(config);
     const first = state.phases[0];
@@ -44,7 +47,7 @@ export function CreatingScenesView({
         index === 0 ? { ...phase, status: 'active' as const } : phase
       ),
     };
-  }, [stopAt, generateStartFrames]);
+  }, [stopAt, generateStartFrames, generateVoices]);
 
   return (
     <div className="flex h-full flex-col">
