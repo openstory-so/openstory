@@ -18,9 +18,11 @@ vi.doMock('./byteplus-governor', () => ({
 
 const mockClaim = vi.fn();
 const mockCreate = vi.fn(async () => 'asset://created');
+const mockEvict = vi.fn(async () => {});
 vi.doMock('./byteplus-asset-pool', () => ({
   claimPooledAsset: mockClaim,
   createPooledAsset: mockCreate,
+  evictPooledAsset: mockEvict,
 }));
 
 vi.doMock('./byteplus-asset-ingest', () => ({
@@ -34,8 +36,14 @@ const { ingestArkAssets } = await import('./byteplus-asset-steps');
 function fakeStep() {
   const trace: string[] = [];
   const step = {
-    do: async (name: string, fn: () => Promise<unknown>) => {
+    do: async (
+      name: string,
+      configOrFn: unknown,
+      maybeFn?: () => Promise<unknown>
+    ) => {
       trace.push(name);
+      const fn = maybeFn ?? configOrFn;
+      if (typeof fn !== 'function') throw new Error('no step callback');
       return fn();
     },
     sleep: async (name: string, ms: number) => {
@@ -48,7 +56,7 @@ function fakeStep() {
 
 const ledger: AssetPoolLedger = {
   claimSlot: async () => ({ kind: 'exhausted' }),
-  recordSlot: async () => {},
+  finalizeSlot: async () => true,
 };
 // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- only resolveOptionalKey is called
 const credentials = {
@@ -69,6 +77,7 @@ describe('ingestArkAssets', () => {
       prefix: 'motion',
       stills: [{ storedUrl: 'https://cdn/a.png', slot: 'library' }],
       ledger,
+      owner: 'motion:run-1',
       credentials,
     });
 
@@ -87,6 +96,7 @@ describe('ingestArkAssets', () => {
       prefix: 'motion-retry-1',
       stills: [{ storedUrl: 'https://cdn/new.png', slot: 'frame' }],
       ledger,
+      owner: 'motion:run-1',
       credentials,
     });
 
@@ -97,15 +107,52 @@ describe('ingestArkAssets', () => {
       'motion-retry-1-ark-0-wait:40000',
       'motion-retry-1-ark-0-create',
     ]);
+    expect(mockClaim).toHaveBeenCalledWith(ledger, {
+      identity: 'https://cdn/new.png',
+      slot: 'frame',
+      owner: 'motion:run-1',
+    });
     expect(mockCreate).toHaveBeenCalledWith(
-      { accessKey: 'AK', secretKey: 'SK', host: undefined },
+      { accessKey: 'AK', secretKey: 'SK' },
       ledger,
       expect.objectContaining({
         claim,
+        owner: 'motion:run-1',
         storedUrl: 'https://cdn/new.png',
         publicUrl: 'https://cdn/new.png',
         slot: 'frame',
       })
+    );
+  });
+
+  it('deletes an evicted asset in its own step before waiting for a turn', async () => {
+    mockClaim.mockResolvedValue({
+      kind: 'reserved',
+      identity: 'h',
+      evictedAssetId: 'ark-old',
+    });
+    mockReserve.mockResolvedValue(0);
+    const { step, trace } = fakeStep();
+
+    await ingestArkAssets(step, {
+      prefix: 'p',
+      stills: [{ storedUrl: 'https://cdn/x.png', slot: 'frame' }],
+      ledger,
+      owner: 'motion:run-1',
+      credentials,
+    });
+
+    // A failed delete retries this step and never reaches create; a retried
+    // create never deletes twice.
+    expect(trace).toEqual([
+      'p-ark-0-claim',
+      'p-ark-0-evict',
+      'p-ark-0-slot',
+      'p-ark-0-create',
+    ]);
+    expect(mockEvict).toHaveBeenCalledWith(
+      { accessKey: 'AK', secretKey: 'SK' },
+      { assetId: 'ark-old', slot: 'frame' }
     );
   });
 
@@ -125,6 +172,7 @@ describe('ingestArkAssets', () => {
         { storedUrl: 'https://cdn/x.png', slot: 'library' },
       ],
       ledger,
+      owner: 'motion:run-1',
       credentials,
     });
 
@@ -139,6 +187,7 @@ describe('ingestArkAssets', () => {
       prefix: 'p',
       stills: [{ storedUrl: 'https://cdn/a.png', slot: 'library' }],
       ledger,
+      owner: 'motion:run-1',
       credentials,
     });
 
@@ -156,6 +205,7 @@ describe('ingestArkAssets', () => {
         prefix: 'p',
         stills: [{ storedUrl: 'https://cdn/a.png', slot: 'library' }],
         ledger,
+        owner: 'motion:run-1',
         credentials,
       })
     ).rejects.toThrow('every slot is leased');

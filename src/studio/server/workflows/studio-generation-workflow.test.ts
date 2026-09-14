@@ -104,13 +104,17 @@ function makeScopedDb() {
     markCompleted: vi.fn(async () => {}),
     markFailed: vi.fn(async () => {}),
   };
+  const bytePlusAssets = {
+    releaseOwner: vi.fn(async (_owner: string) => {}),
+  };
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the surface runImpl touches
   const scopedDb = {
     generatedAssets,
+    bytePlusAssets,
     provenance: {},
     credentials: {},
   } as unknown as WorkflowScopedDb;
-  return { scopedDb, generatedAssets };
+  return { scopedDb, generatedAssets, bytePlusAssets };
 }
 
 const IMAGE: StudioCreateInput = {
@@ -237,7 +241,7 @@ describe('StudioGenerationWorkflow video', () => {
       .mockRejectedValueOnce(new Error('flagged by a content checker'))
       .mockRejectedValueOnce(new Error('flagged by a content checker'));
     const step = makeStep();
-    const { scopedDb, generatedAssets } = makeScopedDb();
+    const { scopedDb, generatedAssets, bytePlusAssets } = makeScopedDb();
 
     await makeWorkflow().runBody(makeEvent(VIDEO), step, scopedDb);
 
@@ -252,6 +256,8 @@ describe('StudioGenerationWorkflow video', () => {
       'resolve-video-via-retry-2',
       'submit-video-retry-2',
       'video-poll-batch-2-0',
+      // Unpins every still the run leased on Ark, whatever via won (#1531).
+      'release-byteplus-asset-leases',
       'price-video-generation',
       'deduct-video-credits',
       'upload-video',
@@ -259,6 +265,7 @@ describe('StudioGenerationWorkflow video', () => {
       'record-provenance',
       'persist-result',
     ]);
+    expect(bytePlusAssets.releaseOwner).toHaveBeenCalledWith('studio:run-1');
     expect(mockDeductWorkflowCredits).toHaveBeenCalledWith(
       expect.objectContaining({
         costMicros: 70_000,
@@ -316,6 +323,12 @@ describe('StudioGenerationWorkflow onFailure', () => {
     expect(generatedAssets.markFailed).toHaveBeenCalledWith('asset-1', 'boom');
     // Image failures are recorded inside generateImageWithProvider.
     expect(mockRecordMediaGenerationSpan).not.toHaveBeenCalled();
+  });
+
+  it('unpins the ACR stills a failed video run leased (#1531)', async () => {
+    const { scopedDb, bytePlusAssets } = makeScopedDb();
+    await makeWorkflow().fail(makeEvent(VIDEO), scopedDb);
+    expect(bytePlusAssets.releaseOwner).toHaveBeenCalledWith('studio:run-1');
   });
 
   it('records a video failure span on the resolved via', async () => {

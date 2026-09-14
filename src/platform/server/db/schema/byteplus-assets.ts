@@ -1,14 +1,19 @@
 /**
- * BytePlus ACR asset pool ledger (#1361).
+ * BytePlus ACR asset pool ledger (#1361, #1531).
  *
  * Advanced Creation Rights gives the *account* a fixed number of resident
  * asset slots (see `BYTEPLUS_ASSET_SLOTS`), shared by every OpenStory team.
  * `CreateAsset` only ever fails once they are full, so the pool needs
- * eviction — and eviction needs two facts Ark cannot give us:
+ * eviction — and eviction needs facts Ark cannot give us:
  *
- *   - **A lease.** An in-flight Seedance job pins every `asset://` it
+ *   - **Leases.** An in-flight Seedance job pins every `asset://` it
  *     submitted; deleting one mid-poll 400s that job. Workers hold no memory
- *     between requests, so the lease is a row and the mutex is a CAS delete.
+ *     between requests, so each job's pin is a `byteplus_asset_leases` row and
+ *     eviction is a conditional UPDATE that refuses a slot with a live lease.
+ *   - **Reservations.** `CreateAsset` waits minutes for a governor turn. The
+ *     slot it will fill is claimed up front as a row with no `assetId`, so it
+ *     counts against capacity and a second job for the same still waits for
+ *     it instead of creating a duplicate.
  *   - **What the slot is for.** `LastInferenceTime` on `GetAsset` cannot say
  *     whether a still is a one-off start frame (churns every regen, cheap to
  *     re-ingest) or a talent/location sheet (used by every shot). We evict
@@ -42,8 +47,11 @@ export const bytePlusAssets = snakeCase.table(
       .notNull(),
     /** SHA-256 of the stored URL — the reuse key. */
     identity: text().notNull(),
-    /** Ark asset id, i.e. the `asset://<id>` we submit. */
-    assetId: text().notNull(),
+    /**
+     * Ark asset id, i.e. the `asset://<id>` we submit. NULL while the slot is
+     * reserved and its CreateAsset has not finished — there is no id yet.
+     */
+    assetId: text(),
     slot: text({ enum: ['frame', 'library'] })
       .$type<BytePlusAssetSlot>()
       .notNull(),
@@ -51,22 +59,45 @@ export const bytePlusAssets = snakeCase.table(
     lastUsedAt: integer({ mode: 'timestamp' })
       .$defaultFn(() => new Date())
       .notNull(),
+    /** The run creating this slot's asset. NULL once `assetId` is set. */
+    reservedBy: text(),
     /**
-     * Until when this slot is pinned by an in-flight job. Released early by
-     * the motion workflow; the expiry is the backstop for a run that died
-     * before it could release.
+     * When a pending reservation may be taken over — the backstop for a run
+     * that died between claim and create. NULL once `assetId` is set.
      */
-    leaseExpiresAt: integer({ mode: 'timestamp' }).notNull(),
+    reservedUntil: integer({ mode: 'timestamp' }),
     createdAt: integer({ mode: 'timestamp' })
       .$defaultFn(() => new Date())
       .notNull(),
   },
+  (table) => [uniqueIndex('uq_byteplus_assets_identity').on(table.identity)]
+);
+
+/**
+ * One job's pin on one still (#1531). Keyed by `(identity, owner)`, not by
+ * identity alone: two shots binding the same talent sheet each hold their
+ * own lease, so the first to finish cannot unpin the sheet under the other.
+ *
+ * `owner` is the workflow run (`motion:<instanceId>` / `studio:<instanceId>`);
+ * a run releases everything it holds by owner on both exits. `expiresAt` is
+ * the backstop for a run that reached neither.
+ */
+export const bytePlusAssetLeases = snakeCase.table(
+  'byteplus_asset_leases',
+  {
+    id: text()
+      .$defaultFn(() => generateId())
+      .primaryKey()
+      .notNull(),
+    identity: text().notNull(),
+    owner: text().notNull(),
+    expiresAt: integer({ mode: 'timestamp' }).notNull(),
+  },
   (table) => [
-    uniqueIndex('uq_byteplus_assets_identity').on(table.identity),
-    // The eviction scan: unleased rows, oldest use first.
-    index('idx_byteplus_assets_eviction').on(
-      table.leaseExpiresAt,
-      table.lastUsedAt
+    uniqueIndex('uq_byteplus_asset_leases_identity_owner').on(
+      table.identity,
+      table.owner
     ),
+    index('idx_byteplus_asset_leases_owner').on(table.owner),
   ]
 );

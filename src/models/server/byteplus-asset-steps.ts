@@ -6,10 +6,15 @@
  * turn is therefore minutes, not milliseconds, and it must not hold a Worker
  * open or eat a step's 10-minute budget. Per still:
  *
- *   claim   step.do   lease a pool slot; a hit is done (no create needed)
+ *   claim   step.do   lease the still; a hit is done (no create needed).
+ *                     Retries while another run is creating the same still
+ *   evict   step.do   DeleteAsset the slot's previous asset, if it had one
  *   slot    step.do   reserve a CreateAsset token in the governor DO
  *   wait    step.sleep  the token's delay — durable, free while idle
- *   create  step.do   CreateAsset + poll Active + record the slot
+ *   create  step.do   CreateAsset + poll Active + finalize the slot
+ *
+ * Every lease and reservation is held by `owner` (the workflow run), and the
+ * run releases them all by owner on both exits (#1531).
  *
  * `step.sleep` rather than an event: with a token bucket the delay is known
  * at reservation time, so an alarm that later sent an event could only tell
@@ -20,13 +25,14 @@
  * each fails the shot with its own message.
  */
 
-import type { WorkflowStep } from 'cloudflare:workers';
+import type { WorkflowStep, WorkflowStepConfig } from 'cloudflare:workers';
 import type { CredentialScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { BytePlusAssetSlot } from '@/platform/server/db/schema/byteplus-assets';
 import { isHttpUrl, toArkFetchableUrl } from './byteplus-asset-ingest';
 import {
   claimPooledAsset,
   createPooledAsset,
+  evictPooledAsset,
   type AssetPoolLedger,
   type PooledAssetClaim,
 } from './byteplus-asset-pool';
@@ -44,6 +50,21 @@ export type ArkStill = {
 /** Stored URL → the URL Ark receives (`asset://…`, or a plain fetchable URL). */
 export type ArkAssetMap = Record<string, string>;
 
+/**
+ * The claim throws while another run is creating the same still, or while
+ * every slot is leased. Wait on it about as long as a lease lasts: by then
+ * the other run has finished, or its reservation can be taken over.
+ */
+const CLAIM_RETRIES: WorkflowStepConfig = {
+  retries: { limit: 90, delay: '30 seconds', backoff: 'constant' },
+};
+
+function requireConfig() {
+  const config = bytePlusOpenApiConfig();
+  if (!config) throw new Error('BytePlus IAM keys were removed mid-run');
+  return config;
+}
+
 type ClaimOutcome =
   | { ready: string }
   | {
@@ -60,6 +81,8 @@ export async function ingestArkAssets(
     prefix: string;
     stills: ArkStill[];
     ledger: AssetPoolLedger;
+    /** The run holding the leases — see `assetLeaseOwner`. */
+    owner: string;
     credentials: CredentialScopedDb;
   }
 ): Promise<ArkAssetMap> {
@@ -72,6 +95,7 @@ export async function ingestArkAssets(
 
     const claim = await step.do(
       `${name}-claim`,
+      CLAIM_RETRIES,
       async (): Promise<ClaimOutcome> => {
         const falKey = await args.credentials.resolveOptionalKey('fal');
         const publicUrl = await toArkFetchableUrl(still.storedUrl, falKey?.key);
@@ -84,6 +108,7 @@ export async function ingestArkAssets(
         const pooled = await claimPooledAsset(args.ledger, {
           identity: still.storedUrl,
           slot: still.slot,
+          owner: args.owner,
         });
         if (pooled.kind === 'hit') return { ready: pooled.uri };
         return { pending: { claim: pooled, publicUrl } };
@@ -95,32 +120,32 @@ export async function ingestArkAssets(
       continue;
     }
 
+    const { evictedAssetId } = claim.pending.claim;
+    if (evictedAssetId) {
+      await step.do(`${name}-evict`, async () =>
+        evictPooledAsset(requireConfig(), {
+          assetId: evictedAssetId,
+          slot: still.slot,
+        })
+      );
+    }
+
     const delayMs = await step.do(`${name}-slot`, () =>
       reserveBytePlusCreateSlot()
     );
     if (delayMs > 0) await step.sleep(`${name}-wait`, delayMs);
 
     map[still.storedUrl] = await step.do(`${name}-create`, async () => {
-      const config = bytePlusOpenApiConfig();
-      if (!config) {
-        throw new Error('BytePlus IAM keys were removed mid-run');
-      }
-      return createPooledAsset(
-        {
-          accessKey: config.accessKey,
-          secretKey: config.secretKey,
-          host: config.host,
-        },
-        args.ledger,
-        {
-          claim: claim.pending.claim,
-          storedUrl: still.storedUrl,
-          publicUrl: claim.pending.publicUrl,
-          assetType: still.kind ?? 'Image',
-          slot: still.slot,
-          groupId: config.groupId,
-        }
-      );
+      const config = requireConfig();
+      return createPooledAsset(config, args.ledger, {
+        claim: claim.pending.claim,
+        owner: args.owner,
+        storedUrl: still.storedUrl,
+        publicUrl: claim.pending.publicUrl,
+        assetType: still.kind ?? 'Image',
+        slot: still.slot,
+        groupId: config.groupId,
+      });
     });
   }
   return map;

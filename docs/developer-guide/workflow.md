@@ -384,15 +384,18 @@ Every workflow extends `OpenStoryWorkflowEntrypoint` (`src/platform/server/workf
 
 Child workflows (image, motion, music, character bible, location bible, talent matching, location matching, frame-images, motion-batch) each implement their own `onFailure` that updates the relevant record's status to `'failed'`.
 
+**BytePlus ACR leases (#1361, #1531).** `MotionWorkflow` and `StudioGenerationWorkflow` lease every still they register on Ark under an owner of `motion:<instanceId>` / `studio:<instanceId>` (`assetLeaseOwner`). Both release by that owner on success (step `release-byteplus-asset-leases`, whichever via the clip finally rendered on) and in `onFailure` (best-effort), via `scopedDb.bytePlusAssets.releaseOwner`. That drops the run's own leases and any reservation it never finalized; another run's lease on the same still is untouched. A batch parent never releases for its children.
+
 ### Retry Strategy
 
 Under Cloudflare Workflows, retries are configured per `step.do()` (and on the workflow class), not on the trigger — the legacy `retries`/`retryDelay` options on `triggerWorkflow()` are accepted for back-compat but are **no-ops**.
 
-| Level                                  | Retries         | Backoff                                                   |
-| -------------------------------------- | --------------- | --------------------------------------------------------- |
-| Individual `step.do()` steps           | engine default  | Managed by the Workflows engine                           |
-| LLM-call steps (`durableLLMCallCf`)    | via `step.do`   | Engine-managed                                            |
-| Child workflows (`spawnAndAwaitChild`) | own step budget | Awaited with a `timeout`; the child retries its own steps |
+| Level                                      | Retries         | Backoff                                                   |
+| ------------------------------------------ | --------------- | --------------------------------------------------------- |
+| Individual `step.do()` steps               | engine default  | Managed by the Workflows engine                           |
+| LLM-call steps (`durableLLMCallCf`)        | via `step.do`   | Engine-managed                                            |
+| Child workflows (`spawnAndAwaitChild`)     | own step budget | Awaited with a `timeout`; the child retries its own steps |
+| Ark still claim (`<prefix>-ark-<n>-claim`) | 90 × 30s        | Constant — waits out another run's create or a full pool  |
 
 Per-scene fan-out (image, variant, motion) uses `Promise.allSettled` over `spawnAndAwaitChild`, so one scene's failure or timeout doesn't kill the rest of the batch — failures are collected and surfaced as a single error.
 

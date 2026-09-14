@@ -33,6 +33,7 @@ import { aspectRatioToImageSize } from '@/models/aspect-ratios';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { GeneratedAssetOutput } from '@/platform/server/db/schema';
 import { generateImageWithProvider } from '@/stills/server/image-generation';
+import { assetLeaseOwner } from '@/models/server/byteplus-asset-pool';
 import { ingestArkAssets } from '@/models/server/byteplus-asset-steps';
 import { resolveMotionVia } from '@/motion/server/motion-generation';
 import { videoUrlFitsWorkflowCheckpoint } from '@/motion/server/video-storage';
@@ -223,6 +224,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
               prefix: `studio${tag}`,
               stills: arkStillsForStudio(input),
               ledger: scopedDb.bytePlusAssets,
+              owner: assetLeaseOwner('studio', event.instanceId),
               credentials: scopedDb.credentials,
             })
           : {};
@@ -400,6 +402,14 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
     }
     const job = succeededJob;
 
+    // The clip is rendered: unpin every still this run leased (#1361, #1531),
+    // whichever via the last attempt used. The failure half is in onFailure.
+    await step.do('release-byteplus-asset-leases', async () =>
+      scopedDb.bytePlusAssets.releaseOwner(
+        assetLeaseOwner('studio', event.instanceId)
+      )
+    );
+
     const billing = await step.do('price-video-generation', async () =>
       studioVideoCostFromUsage(job, billedUsage)
     );
@@ -510,6 +520,18 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
   }): Promise<void> {
     const { assetId, userId, input } = event.payload;
     if (input.activity === 'video') {
+      // Unpin this run's ACR stills (#1531). Best-effort: a throw here would
+      // replace the real failure message, and the lease TTL is still behind it.
+      try {
+        await scopedDb.bytePlusAssets.releaseOwner(
+          assetLeaseOwner('studio', event.instanceId)
+        );
+      } catch (releaseError) {
+        logger.warn(
+          `[StudioGenerationWorkflow] Failed to release BytePlus asset leases for ${assetId}:`,
+          { err: releaseError }
+        );
+      }
       // Image failures are already recorded inside generateImageWithProvider.
       recordMediaGenerationSpan({
         model: input.videoModel,

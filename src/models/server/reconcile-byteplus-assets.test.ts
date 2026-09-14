@@ -70,7 +70,6 @@ async function seedRow(assetId: string) {
     assetId,
     slot: 'library',
     lastUsedAt: NOW,
-    leaseExpiresAt: new Date(0),
   });
 }
 

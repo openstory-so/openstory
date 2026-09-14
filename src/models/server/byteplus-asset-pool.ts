@@ -9,21 +9,22 @@
  *
  * Three rules, in the order they decide:
  *
- *   1. **Hit** — the identity is already resident. Renew its lease, return the
+ *   1. **Hit** — the identity is already resident. Lease it, return the
  *      existing `asset://`. No Ark call at all.
- *   2. **Miss with room** — `CreateAsset`, wait Active, record the slot.
- *   3. **Miss when full** — evict the *unleased* slot with the oldest use,
- *      frames before library sheets, then create. Nothing evictable means
- *      every slot is pinned by an in-flight job: refuse, and let the caller
- *      fall back to fal.
+ *   2. **Miss with room** — reserve the slot, `CreateAsset`, wait Active,
+ *      finalize the slot.
+ *   3. **Miss when full** — hand the *unleased* slot with the oldest use to
+ *      this still, frames before library sheets, delete its asset, then
+ *      create. Nothing evictable means every slot is pinned by an in-flight
+ *      job: refuse.
  *
  * The lease is the load-bearing part. Slots are per BytePlus ACCOUNT, shared
  * by every team, and an in-flight Seedance job pins every `asset://` it
  * submitted — deleting one mid-poll 400s that job. Workers hold nothing
- * between requests, so the lease is a D1 row and the mutex is a CAS delete;
- * both live in `scopedDb.bytePlusAssets`, which owns every statement. This
- * module owns only the policy: how many slots, how long a lease lasts, and
- * what to do when the answer is "none".
+ * between requests, so each run's lease is a D1 row keyed by (still, run) and
+ * released by run (#1531); every statement lives in `scopedDb.bytePlusAssets`.
+ * This module owns only the policy: how many slots, how long a lease lasts,
+ * and what to do when the answer is "none".
  */
 
 import { getEnv } from '#env';
@@ -43,8 +44,8 @@ const logger = getLogger(['openstory', 'ai', 'byteplus-asset-pool']);
 
 type Ledger = ReturnType<typeof createBytePlusAssetsMethods>;
 
-/** Reserve + record, as `scopedDb.bytePlusAssets` — both writes, no hatch. */
-export type AssetPoolLedger = Pick<Ledger, 'claimSlot' | 'recordSlot'>;
+/** Reserve + finalize, as `scopedDb.bytePlusAssets` — both writes, no hatch. */
+export type AssetPoolLedger = Pick<Ledger, 'claimSlot' | 'finalizeSlot'>;
 
 /**
  * Resident asset slots on the BytePlus account.
@@ -64,10 +65,12 @@ const DEFAULT_BYTEPLUS_ASSET_SLOTS = 50;
 /**
  * How long a submitted still stays pinned when nobody releases it.
  *
- * The motion workflow releases explicitly on success, so this only covers
+ * Motion and studio runs release by owner on both exits, so this only covers
  * runs that died mid-flight. It must outlast a poll budget (30 minutes of
  * batches) or the backstop would free a slot under a job that is still
- * running — the exact 400 the lease exists to prevent.
+ * running — the exact 400 the lease exists to prevent. It is also how long a
+ * reservation may wait for its create before another run can take it over,
+ * and how long the claim step waits on another run's create.
  */
 const LEASE_TTL_MS = 45 * 60 * 1000;
 
@@ -80,17 +83,10 @@ export function bytePlusAssetSlots(): number {
 }
 
 /**
- * For the one caller with no D1 at all (`scripts/generate-style-hover-videos`).
- * Refusing beats creating: a run that cannot record a slot could never release
- * one either, so it would burn the account's pool permanently. The ingest
- * catches this and sends the public URL, exactly as it did before the pool.
- */
-/**
- * The ledger's key for each distinct stored URL. Exported so a workflow can
+ * The ledger's key for each distinct stored URL. Exported so the batch can
  * spell its pool call as `scopedDb.liveRead.bytePlusAssets.getAdmission(...)`
- * / `scopedDb.bytePlusAssets.releaseLeases(...)` at the call site — handing
- * the domain object to a helper instead would hide the read from the
- * `no-mid-run-reads` audit.
+ * at the call site — handing the domain object to a helper instead would hide
+ * the read from the `no-mid-run-reads` audit.
  */
 export async function arkAssetIdentities(
   storedUrls: readonly string[]
@@ -99,8 +95,23 @@ export async function arkAssetIdentities(
   return Promise.all(unique.map((url) => hashAssetIdentity(url)));
 }
 
+/**
+ * The lease owner for one workflow run. Prefixed by workflow so an owner
+ * string in the ledger says which kind of run to look for.
+ */
+export function assetLeaseOwner(
+  workflow: 'motion' | 'studio',
+  instanceId: string
+): string {
+  return `${workflow}:${instanceId}`;
+}
+
 const ASSET_POOL_EXHAUSTED_MESSAGE =
   'BytePlus asset pool is full and every slot is leased by an in-flight job';
+
+/** Thrown while another run is creating the same still; the step retries. */
+const ASSET_PENDING_MESSAGE =
+  'BytePlus asset is still being registered by another job';
 
 export type PooledAssetClaim =
   | { kind: 'hit'; uri: string }
@@ -110,40 +121,65 @@ export type PooledAssetClaim =
  * Lease a pool slot for one still. `identity` is the STORED url — a one-off
  * fal scratch URL would burn a fresh slot on every submit. A hit is the
  * `asset://` to send; a reservation is the go-ahead to create (the workflow
- * waits for a CreateAsset token first, #1519); a full pool with nothing
- * evictable throws — there is no public-URL fallback.
+ * waits for a CreateAsset token first, #1519). A still another run is
+ * creating, or a full pool with nothing evictable, throws — the claim step
+ * retries until the other run finishes or a lease frees. There is no
+ * public-URL fallback.
  */
 export async function claimPooledAsset(
   ledger: AssetPoolLedger,
-  input: { identity: string; slot: BytePlusAssetSlot }
+  input: { identity: string; slot: BytePlusAssetSlot; owner: string }
 ): Promise<PooledAssetClaim> {
   const identity = await hashAssetIdentity(input.identity);
   const claim = await ledger.claimSlot({
     identity,
     slot: input.slot,
+    owner: input.owner,
     capacity: bytePlusAssetSlots(),
     leaseMs: LEASE_TTL_MS,
   });
-  if (claim.kind === 'hit') {
-    reportBytePlusAssetPool({ outcome: 'hit', slot: input.slot });
-    return { kind: 'hit', uri: `asset://${claim.assetId}` };
+  switch (claim.kind) {
+    case 'hit':
+      reportBytePlusAssetPool({ outcome: 'hit', slot: input.slot });
+      return { kind: 'hit', uri: `asset://${claim.assetId}` };
+    case 'pending':
+      throw new Error(ASSET_PENDING_MESSAGE);
+    case 'exhausted':
+      reportBytePlusAssetPool({ outcome: 'exhausted' });
+      throw new Error(ASSET_POOL_EXHAUSTED_MESSAGE);
+    case 'reserved':
+      return {
+        kind: 'reserved',
+        identity,
+        evictedAssetId: claim.evictedAssetId,
+      };
   }
-  if (claim.kind === 'exhausted') {
-    reportBytePlusAssetPool({ outcome: 'exhausted' });
-    throw new Error(ASSET_POOL_EXHAUSTED_MESSAGE);
-  }
-  return { kind: 'reserved', identity, evictedAssetId: claim.evictedAssetId };
+}
+
+/**
+ * Delete the asset a reservation evicted. Its own step, so a failure retries
+ * the delete and never moves on to create; once it has succeeded, a retried
+ * create never deletes twice. A run that exhausts the retries leaves the asset
+ * on Ark with no ledger row, which the hourly sweep deletes.
+ */
+export async function evictPooledAsset(
+  config: BytePlusOpenApiConfig,
+  input: { assetId: string; slot: BytePlusAssetSlot }
+): Promise<void> {
+  await deleteAsset(config, input.assetId);
+  reportBytePlusAssetPool({ outcome: 'evicted', slot: input.slot });
 }
 
 /**
  * Create the asset a reservation from {@link claimPooledAsset} made room
- * for, and record the slot. Runs after the governor's CreateAsset token.
+ * for, and finalize the slot. Runs after the governor's CreateAsset token.
  */
 export async function createPooledAsset(
   config: BytePlusOpenApiConfig,
   ledger: AssetPoolLedger,
   input: {
     claim: Extract<PooledAssetClaim, { kind: 'reserved' }>;
+    owner: string;
     storedUrl: string;
     publicUrl: string;
     assetType: BytePlusAssetKind;
@@ -151,24 +187,9 @@ export async function createPooledAsset(
     groupId?: string;
   }
 ): Promise<string> {
-  if (input.claim.evictedAssetId) {
-    try {
-      await deleteAsset(config, input.claim.evictedAssetId);
-    } catch (error) {
-      // ponytail: the Ark asset outlives our ledger row, so the account is one
-      // slot tighter than we think until CreateAsset refuses and the shot
-      // fails. Reconciling against ListAssets is the upgrade if this shows up
-      // in the pool events.
-      logger.warn('BytePlus DeleteAsset failed; slot may leak on Ark', {
-        assetId: input.claim.evictedAssetId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-    reportBytePlusAssetPool({ outcome: 'evicted', slot: input.slot });
-  }
-
-  // `ingestAigcAsset` still checks Ark by name first, which is what heals a
-  // ledger that lost rows (a wiped preview DB) without duplicating the asset.
+  // `ingestAigcAsset` checks Ark by name first, which is what makes a retried
+  // create (lost response, crash before finalize) reuse the asset instead of
+  // making a second one, and what heals a ledger that lost rows.
   const uri = await ingestAigcAsset(config, {
     identity: input.storedUrl,
     publicUrl: input.publicUrl,
@@ -176,12 +197,21 @@ export async function createPooledAsset(
     ...(input.groupId && { groupId: input.groupId }),
   });
 
-  await ledger.recordSlot({
+  const finalized = await ledger.finalizeSlot({
     identity: input.claim.identity,
+    owner: input.owner,
     assetId: uri.slice('asset://'.length),
-    slot: input.slot,
     leaseMs: LEASE_TTL_MS,
   });
+  if (!finalized) {
+    logger.warn('BytePlus asset reservation was taken over before create', {
+      identity: input.claim.identity,
+      owner: input.owner,
+    });
+    throw new Error(
+      'BytePlus asset reservation expired before CreateAsset finished'
+    );
+  }
   reportBytePlusAssetPool({ outcome: 'created', slot: input.slot });
   return uri;
 }
