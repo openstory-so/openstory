@@ -377,6 +377,14 @@ export class SequencePlayerEngine {
     return null;
   }
 
+  getVolume(): number {
+    return this.volume;
+  }
+
+  getMuted(): boolean {
+    return this.muted;
+  }
+
   setVolume(volume: number): void {
     this.volume = Math.max(0, Math.min(1, volume));
     this.applyGain();

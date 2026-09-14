@@ -436,8 +436,8 @@ SUPER:  CORAL.  OUT NOW.
       );
 
       // 13. Whole-sequence playback in the Scenes canvas (#986) — nothing
-      //     selected uses SequencePlayer (mediabunny → <canvas>). Play only
-      //     mounts after prepare() resolves.
+      //     selected uses SequencePlayer (mediabunny canvas + Video.js skin,
+      //     #1258). Play only mounts after prepare() resolves.
       await page.goto(`/sequences/${sequenceId}/scenes`);
 
       // Wait for either the Play button (success) or the player error state.

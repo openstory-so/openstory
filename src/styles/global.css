@@ -11,6 +11,15 @@
     min-height: 44px;
   }
 }
+
+/* Theatre stitcher renders a canvas, not <video>. The skin only sizes video. */
+.media-minimal-skin canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: var(--media-object-fit, contain);
+  object-position: var(--media-object-position, center);
+}
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
 @import '@fontsource-variable/geist';
