@@ -280,4 +280,31 @@ describe('continue after a finished run', () => {
     expect(next.currentPhase).toBe(2);
     expect(next.phases.map((p) => p.status)).toEqual(['completed', 'active']);
   });
+
+  it('RESET rebuilds the banner for the Continue stop-at before phase:start', () => {
+    // The chip mounts the moment status flips to processing, which is
+    // seconds before the workflow emits the next phase:start. Without a
+    // RESET the leftover isComplete unmounts it immediately (#1641).
+    const done = apply(createInitialState({ stopAt: 'script' }), {
+      type: 'COMPLETE',
+      payload: { sequenceId: 'seq' },
+    });
+    expect(done.isComplete).toBe(true);
+    expect(done.phases.map((p) => p.shortName)).toEqual(['Casting']);
+
+    const next = apply(done, {
+      type: 'RESET',
+      payload: { stopAt: 'music' },
+    });
+    expect(next.isComplete).toBe(false);
+    expect(next.isFailed).toBe(false);
+    expect(next.currentPhase).toBe(0);
+    expect(next.phases.every((p) => p.status === 'pending')).toBe(true);
+    expect(next.phases.map((p) => p.shortName)).toEqual([
+      'Casting',
+      'References',
+      'Images',
+      'Motion & Music',
+    ]);
+  });
 });

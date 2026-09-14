@@ -113,6 +113,21 @@ export type GenerationStreamState = {
   shotRetries: Map<string, ShotRetryState>;
 };
 
+export type GenerationPhaseConfig = {
+  stopAt?: GenerationStage;
+  autoGenerateMotion?: boolean;
+  autoGenerateMusic?: boolean;
+  /**
+   * Straight-to-video: no shot-images stage. Reference-only renders straight
+   * to video, so the images stage never runs and its motion prompts are
+   * folded into references alongside the sheets. The step is DROPPED rather
+   * than relabelled: it has no work left of its own, and a chip that only
+   * ever waits is one the user watches for no reason.
+   */
+  referenceOnly?: boolean;
+  generateVoices?: boolean;
+};
+
 export type GenerationStreamAction =
   | {
       type: 'PHASE_START';
@@ -156,22 +171,7 @@ export type GenerationStreamAction =
     }
   | { type: 'LOCATION_MATCHED'; payload: { matches: LocationMatch[] } }
   | { type: 'PREVIEW_REPLACED'; payload: { newSceneCount: number } }
-  | { type: 'RESET' };
-
-export type GenerationPhaseConfig = {
-  stopAt?: GenerationStage;
-  autoGenerateMotion?: boolean;
-  autoGenerateMusic?: boolean;
-  /**
-   * Straight-to-video: no shot-images stage. Reference-only renders straight
-   * to video, so the images stage never runs and its motion prompts are
-   * folded into references alongside the sheets. The step is DROPPED rather
-   * than relabelled: it has no work left of its own, and a chip that only
-   * ever waits is one the user watches for no reason.
-   */
-  referenceOnly?: boolean;
-  generateVoices?: boolean;
-};
+  | { type: 'RESET'; payload?: GenerationPhaseConfig };
 
 /**
  * Apply a retry signal (or its absence) to the per-shot retry map for one
@@ -238,9 +238,6 @@ export function createInitialState(
     shotRetries: new Map(),
   };
 }
-
-const initialGenerationStreamState: GenerationStreamState =
-  createInitialState();
 
 export function generationStreamReducer(
   state: GenerationStreamState,
@@ -457,7 +454,7 @@ export function generationStreamReducer(
       };
 
     case 'RESET':
-      return initialGenerationStreamState;
+      return createInitialState(action.payload);
 
     default:
       return state;

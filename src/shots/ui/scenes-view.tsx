@@ -30,6 +30,7 @@ import {
 import {
   artifactsFromSequenceState,
   continueStageFromState,
+  flagsFromStopAt,
   type ContinueStage,
   type GenerationStage,
 } from '@/sequences/pipeline';
@@ -1373,8 +1374,31 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       // and triggers the workflow before it returns.
       const key = sequenceKeys.detail(sequenceId);
       const previous = queryClient.getQueryData<Sequence>(key);
+      const { autoGenerateMotion, autoGenerateMusic } = flagsFromStopAt(
+        args.stopAt
+      );
+      // Reset the stream before the status flip so the chip's first paint is
+      // a new run, not the leftover COMPLETE that would exit it (#1641).
+      resetGenerationStream({
+        stopAt: args.stopAt,
+        autoGenerateMotion,
+        autoGenerateMusic,
+        referenceOnly: !generateStartFrames,
+        generateVoices: sequence?.generateVoices ?? false,
+      });
+      // Flip status AND stop-at together so the chip sizes for the Continue
+      // (Casting → References, etc.) instead of the finished run.
       queryClient.setQueryData<Sequence>(key, (old) =>
-        old ? { ...old, status: 'processing', updatedAt: new Date() } : old
+        old
+          ? {
+              ...old,
+              status: 'processing',
+              updatedAt: new Date(),
+              generationStopAt: args.stopAt,
+              autoGenerateMotion,
+              autoGenerateMusic,
+            }
+          : old
       );
       try {
         await continueGenerationFn({
@@ -1398,7 +1422,14 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
         queryKey: sequenceKeys.detail(sequenceId),
       });
     },
-    [sequenceId, leftoverGrokShotIds, queryClient]
+    [
+      sequenceId,
+      leftoverGrokShotIds,
+      queryClient,
+      generateStartFrames,
+      sequence?.generateVoices,
+      resetGenerationStream,
+    ]
   );
 
   const handleGenerateMusic = useCallback(
