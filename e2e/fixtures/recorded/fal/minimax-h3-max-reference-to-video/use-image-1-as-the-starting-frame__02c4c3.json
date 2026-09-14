@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nEXT. DOWNTOWN ROOFTOP — SUNSET. Low golden sunset light washes across the roof and catches the lipstick's surface. The final train flash adds a brief bright horizontal accent behind the women.. Peach sunset, white city lights, deep green distance, warm concrete gray, black clothing, green jacket, and vivid coral.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\n\nnon_diegetic_music: N/A\n\nAvoid jitter and bent limbs.\n\nShot 1 (0-6s): Image 3 pulls out the lipstick, applies one final swipe, and turns toward Image 2. Camera: smooth orbit\n\noverall_soundscape: rooftop wind, distant traffic, commuter train approaching.\n\nShot 2 (6-12s): Image 3 closes her fingers around the lipstick, takes Image 2’s hand, and pulls her toward the stairwell. Camera: smooth pull-out\n\noverall_soundscape: train rushing past, laughter, wind, footsteps toward stairwell.\n\nReference images:\nImage 4: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/23065c7dd757a802b20afe5bc8d5431bc213ed82fbe5f9dabac3ac3445dfc0ff.mp4",
+            "content_type": "video/mp4",
+            "file_name": "y_ghmpnSlDuQWbFZpd5hZ_minimax-h3.mp4",
+            "file_size": 15318983
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the woman in black coat and gray scarf from <Picture 2>, with blonde hair and a radiant smile.\n<Subject 2> is the woman in green jacket and black top from <Picture 3>, with short dark brown hair.\n<Subject 3> is the slim coral lipstick prop from <Picture 4>, featuring a coral bullet, silver cap, and orange case.\n<Picture 1> is the establishing scene reference, defining the sunset rooftop composition and character positioning.\n\nsummary:\n[reference generation] The target video is a 12-second cinematic sequence set on a sunset rooftop, where two female characters enact a casual yet stylish interaction. The visual style is a warm, golden-hour lifestyle ad featuring a peach sunset cityscape. <Subject 3> is the central product. The sequence shows <Subject 2> completing a look and then leading <Subject 1> away toward a stairwell, capturing a sense of urban intimacy and movement.\n\nretention_analysis:\n<Picture 1> (appears in [Shot 1]): attribute_transfer - Provides the compositional layout, character placement (leaning on the parapet), and the sunset atmospheric background.\n<Picture 2> (appears in [Shot 1], [Shot 2]): fully_preserved - Identity, blonde hair, black coat, and gray fringed scarf are maintained in all visible frames.\n<Picture 3> (appears in [Shot 1], [Shot 2]): fully_preserved - Identity, short dark hair, green jacket, and black top are maintained in all visible frames.\n<Picture 4> (appears in [Shot 1], [Shot 2]): fully_preserved - The lipstick's coral color, silver cap details, and overall slim geometry are consistent.\n\ndetailed_description:\nOverall Style: A high-fidelity lifestyle commercial with a cinematic \"golden hour\" aesthetic. The lighting is warm and low, casting soft orange and pink hues over a gray concrete rooftop. The depth of field is shallow, keeping the subjects sharp while rendering the distant city lights as soft bokeh. The visual tone is premium and urban.\n\n[Shot 1] (0:00–0:06). The shot opens as a keyframe completion of <Picture 1>, showing a medium two-shot of <Subject 2> and <Subject 1> leaning on the concrete rooftop parapet against a peach sunset sky. <Subject 2>, wearing a green jacket, reaches into her chest pocket and smoothly retrieves <Subject 3>. She applies the coral lipstick to her lips with a deliberate swipe. Her wind-blown hair frames her face as she turns her head slightly toward <Subject 1>. In the background, a commuter train with bright horizontal accent lights moves along the tracks. Camera: Arc Shot with medium amplitude at slow speed, circling slightly from the left to capture the profile of both characters.\n\n[Shot 2] At 00:06.000, the shot cuts to a mid-plan of the two women. <Subject 3> is now closed in her hand, her fingers gripping the orange case firmly. <Subject 2> reaches out and takes <Subject 1>'s hand in a confident, steady motion. She begins to lead <Subject 1> off the rooftop toward the left, toward the stairwell. The lighting shifts subtly as they move, with the city lights providing a shimmering white glow in the deep green distance. Camera: Pull Out with small amplitude at a steady speed, tracking their movement toward the stairwell door.\n\noverall_soundscape:\nThe ambient layer consists of a rhythmic, steady rooftop wind cutting through the city air. Distant traffic hums from far below. In the first half, the rising buzz of an approaching commuter train builds in intensity. At the 00:06.000 mark, the train rushes past with a loud, wooshing thunder. The soundscape concludes with the distinct clatter of boots on concrete and a soft, intimate giggle from <Subject 2>.\n\nnon_diegetic_music:\nN/A",
+          "seed": 444993037,
+          "timings": {
+            "inference": 15.568416084977798
+          }
+        },
+        "status": 200,
+        "billableUnits": 20.160000000000004
+      }
+    }
+  ]
+}

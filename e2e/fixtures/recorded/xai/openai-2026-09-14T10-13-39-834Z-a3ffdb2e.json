@@ -1,0 +1,17 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "medium wide, eye level, Scarlett (Image 1) bursts into the hallway with her coat over one arm and the lipstick in hand as the elevator doors begin closing, The narrow hallway leads into the elevator, with Scarlett (Image 1) entering on the left and the closing doors framing the Tired florist (Image 2), Courier (Image 3), and mirrored interior, INT. DOWNTOWN APARTMENT HALLWAY AND ELEVATOR — MORNING, morning, downtown_apartment_hallway_and_elevator (Image 4), Morning sunlight cuts into the elevator in moving bands as it drops through the building, creating shifting highlights across the mirrored walls and faces., Polished silver, cool gray, black wool, muted commuter clothing, green foliage, and bright coral., Scarlett (Image 1), tired_florist, Courier (Image 3), Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/baaacf74d4b4c29d5433c5b732ddf5581114bc5573efa9beec9d068c26d6d8a6.jpeg",
+          "mime_type": "image/jpeg"
+        }
+      }
+    }
+  ]
+}

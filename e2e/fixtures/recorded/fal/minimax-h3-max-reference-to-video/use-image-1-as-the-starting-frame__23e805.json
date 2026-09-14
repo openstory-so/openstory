@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nINT. DOWNTOWN APARTMENT BATHROOM — MORNING. morning. Hard morning sunlight cuts diagonally across the white tile and sink, producing crisp highlights and strong graphic shadows. The mirror catches shifting reflections as Image 2 moves.. White tile, pale neutrals, black clothing, metallic silver accents, and vivid coral as the dominant color accent.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\n\nnon_diegetic_music: N/A\n\nAvoid jitter and bent limbs.\n\nShot 1 (0-6s): Image 2 finds the subway card beneath the folded scarf, tears open the coral lipstick box, twists up the bullet, and presses it once to the back of her hand. Camera: smooth truck\n\noverall_soundscape: paper box tear, lipstick twist, bright bathroom ambience.\n\nShot 2 (6-12s): Image 2 applies the lipstick in the moving reflection as the apartment door swings shut behind her. Camera: smooth push-in\n\nImage 2 says in a softly tone: <d>[English] Okay. This works.</d>\n\noverall_soundscape: door latch, soft lipstick movement, fading apartment ambience.\n\nReference images:\nImage 3: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/11178966250e4d930a4cd063e349e6d76f7305ae75409a69e12dadffc341de50.mp4",
+            "content_type": "video/mp4",
+            "file_name": "AT5cR91_F4H_jfXZahgHj_minimax-h3.mp4",
+            "file_size": 14802235
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the bathroom sink scene from <Picture 1>, featuring white subway tiles, hard diagonal morning sunlight, a silver faucet, and a grey scarf resting on the white sink countertop.\n<Subject 2> is the blonde woman in <Picture 2>, wearing a black turtleneck top, black trousers, and a gray striped scarf; she has distinctive freckles and wears a white subway card.\n<Subject 3> is the coral-colored lipstick in <Picture 3>, featuring a slim matte warm coral cylindrical casing, metallic silver accents, and a matching slim \"CORAL LIPSTICK\" box.\n\nsummary:\n[keyframe completion + reference generation] This 12-second cinematic video depicts a woman in a downtown apartment bathroom during hard morning light, using a subway card and applying coral lipstick before leaving. <Subject 1> establishes the environment, while <Subject 2> is the protagonist and <Subject 3> is the visual product focus. The video follows <Subject 2> as she prepares to leave, applying the product in the mirror's reflection as the apartment door shuts.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1], [Shot 2]): fully_preserved - The white tile, silver sink fixture, and morning light composition remain as the primary background.\n<Subject 2> (appears in [Shot 1], [Shot 2]): fully_preserved - The woman's facial features, black outfit, and gray scarf are maintained throughout.\n<Subject 3> (appears in [Shot 1], [Shot 2]): fully_preserved - The coral casing and box remain visually consistent with the reference image.\n\ndetailed_description:\nThe video utilizes a high-definition cinematic style with high contrast, focusing on the sharp interplay of hard morning sunlight and white tile surfaces. The color palette is dominated by the white of the walls, the black of the protagonist's clothing, and the vivid coral accent of the lipstick.\n\n[Shot 1] The shot begins on <Subject 1>, a quiet, bright downtown apartment bathroom. Hard morning light cuts diagonally through the window, casting crisp shadows across the sink. <Subject 2> (S1) stands at the vanity. She reaches into the folds of her gray striped scarf and extracts a white subway card. She then picks up <Subject 3>—the coral lipstick box. With a gentle, deliberate motion, she tears open the top of the box and twists up the bullet of the lipstick. She presses the coral bullet once into the back of her hand for a color reference. The camera performs a smooth Truck Right at slow speed with small amplitude, capturing the tactile interaction with the product.\n\n[Shot 2] At 00:06.000, the shot cuts to a closer perspective. <Subject 2> (S1) is now facing the bathroom mirror. She applies the coral lipstick to her lips while looking at her own moving reflection. The metallic silver of the lipstick tub glints in the light. As she finishes smoothing her lips, the apartment door in the background swings shut, and the heavy latch clicks. <Subject 2> looks toward the door, then back at the mirror with a composed expression. The camera executes a smooth Push In at slow speed with medium amplitude, focusing on her face and the product application. <Subject 2> (S1) says in a soft tone: <d>[English] Okay. This works.</d>\n\noverall_soundscape:\nThe scene features crisp, dry sounds of the lipstick box tearing and the metal twist mechanism. The background includes the subtle ambient hum of an early morning apartment, culminating in the distinct, final sound of a door latch clicking shut.\n\nnon_diegetic_music:\nN/A.",
+          "seed": 1432088032,
+          "timings": {
+            "inference": 15.035785375046544
+          }
+        },
+        "status": 200,
+        "billableUnits": 19.430400000000002
+      }
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nINT. DOWNTOWN APARTMENT HALLWAY AND ELEVATOR — MORNING. morning. Morning sunlight cuts into the elevator in moving bands as it drops through the building, creating shifting highlights across the mirrored walls and faces.. Polished silver, cool gray, black wool, muted commuter clothing, green foliage, and bright coral.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\n\nnon_diegetic_music: N/A\n\nAvoid jitter and bent limbs.\n\nShot 1 (0-5s): Image 2 catches the closing elevator doors with her shoulder. Camera: smooth truck\n\noverall_soundscape: hurried footsteps, elevator chime, door motor.\n\nShot 2 (5-12s): Image 2 closes the lipstick, catches the florist comparing her lips to the flowers, and grins as the elevator drops through bands of sunlight. Camera: smooth orbit\n\noverall_soundscape: elevator jolt, descending motor, parcel rustle.\n\nReference images:\nImage 3: Tired florist — keep visually consistent throughout the shot.\nImage 4: Courier - An adult courier of average height with a compact — keep visually consistent throughout the shot.\nImage 5: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/fd7950eba0b0c7448ff4f9ba10365bbf8f5e925323f0c9118834dc666dd1375e.mp4",
+            "content_type": "video/mp4",
+            "file_name": "gybb4xpbAWf_K9KoJGtSJ_minimax-h3.mp4",
+            "file_size": 15972416
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the young blonde woman wearing a black turtleneck, charcoal scarf, and black wool coat, found in <Picture 1> and <Picture 2>.\n<Subject 2> is the mature dark-haired florist in a beige shirt and dark apron, holding a bucket of coral roses, found in <Picture 1> and <Picture 3>.\n<Subject 3> is the young adult male courier with dark hair, a black jacket, and a shoulder bag, carrying stacked boxes, found in <Picture 1> and <Picture 4>.\n<Subject 4> is a slim coral lipstick with silver-rimmed packaging, shown in the user's hand and as a static product in <Picture 5>.\n\nsummary:\n[keyframe completion + reference generation] The target video shows a 12-second cinematic scene in a morning-lit elevator where <Subject 1> ducks into the closing doors alongside <Subject 2> and <Subject 3>. As the elevator descends through bands of sunlight, <Subject 1> interacts with <Subject 2> over the shade of <Subject 4>. The scene focuses on natural performance and shifting interior lighting.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1], [Shot 2]): fully_preserved - Maintains the facial features and black outfit from <Picture 1> and <Picture 2>.\n<Subject 2> (appears in [Shot 1], [Shot 2]): fully_preserved - Maintains the tired expression and apron details from <Picture 3>.\n<Subject 3> (appears in [Shot 1], [Shot 2]): fully_preserved - Maintains the dark clothing and parcel stack from <Picture 4>.\n<Subject 4> (appears in [Shot 1], [Shot 2]): attribute_transfer - Integrates the \"CORAL LIPSTICK\" branding from <Picture 5> into the character's props.\n\ndetailed_description:\nThe video features a clean, high-end advertising aesthetic with a 16:9 cinematic aspect ratio. The environment is polished and professional, featuring chrome mirrors, white hallway walls, and a palette of cool grays, black wool, and vibrant coral accents.\n\n[Shot 1]\nThe shot opens on the keyframe of <Picture 1> in a downtown apartment hallway. <Subject 1> runs with urgency into the elevator, her shoulder hitting the door just as it begins to close. <Subject 2> and <Subject 3> stand inside, already holding a bucket of roses and cardboard parcels respectively. The camera performs a smooth Truck Right with small amplitude, following the door as it slides shut while morning sunlight creates moving horizontal bands across the mirrored walls. <d>[English] Oh no, wait!</d>\n\n[Shot 2] At 00:05.000, the shot cuts to a smooth Arc Shot from inside the elevator, orbiting the three individuals with small amplitude at a steady speed. As the elevator begins its descent, the light shifts into long, moving shadows. <Subject 1> closes the cap of the <Subject 4> she is holding, then notices <Subject 2>’s expression. <Subject 2> catches <Subject 1>'s gaze and compares the color of her own lips to the bright coral roses she is holding, a tired yet amusing smirk crossing her face. Seeing this, <Subject 1> breaks into a wide, bright grin. <d>[English] Are those... my shade?</d> The scene concludes as the elevator hits a minor mechanical jolt.\n\noverall_soundscape:\nThe ambience is defined by the resonant \"ding\" of the elevator chime and the steady, low-frequency hum of a descending industrial motor. Physical sounds include the quick, rhythmic slap of high-heeled boots against linoleum, the metallic screech of the door motor, and the subtle rustling of cardboard parcels and floral stems inside the cabin.\n\nnon_diegetic_music:\nN/A.",
+          "seed": 1669925390,
+          "timings": {
+            "inference": 16.812649209052324
+          }
+        },
+        "status": 200,
+        "billableUnits": 20.8896
+      }
+    }
+  ]
+}

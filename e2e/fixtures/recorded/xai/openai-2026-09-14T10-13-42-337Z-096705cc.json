@@ -1,0 +1,17 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "close-up, slightly above, Mina (Image 2) holds the coral lipstick open in her palm while facing Scarlett (Image 1), both women smiling beside the rooftop wall, Mina (Image 2)’s open palm and coral lipstick sit in the sunlit foreground while Scarlett (Image 1) and the glowing skyline fall softly behind, EXT. DOWNTOWN ROOFTOP — SUNSET, downtown_rooftop (Image 3), Low golden sunset light washes across the roof and catches the lipstick's surface. The final train flash adds a brief bright horizontal accent behind the women., Peach sunset, white city lights, deep green distance, warm concrete gray, black clothing, green jacket, and vivid coral., Scarlett (Image 1), Mina (Image 2), Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/7b5458827ebf5702c53cbf69aaec0fca8a8c84de7cd11a9c3f20899401d9c55b.jpeg",
+          "mime_type": "image/jpeg"
+        }
+      }
+    }
+  ]
+}

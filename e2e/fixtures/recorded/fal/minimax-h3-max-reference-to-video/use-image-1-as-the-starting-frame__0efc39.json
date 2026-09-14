@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nEXT. DOWNTOWN CROSSWALK — LATE MORNING. late morning. Bright late-morning daylight reflects sharply from office glass and vehicle surfaces. Wind and changing light keep the scene visually active as the crowd passes.. Concrete gray, taxi colors, reflective blue-gray glass, black and charcoal clothing, warm skin tones, and small coral accents.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\n\nnon_diegetic_music: N/A\n\nAvoid jitter and bent limbs.\n\nShot 1 (0-6s): Image 2 walks against the flow as a gust catches her scarf and she grabs it. Camera: smooth handheld truck\n\noverall_soundscape: city traffic, crowd wash, scarf flutter, crosswalk signal.\n\nShot 2 (6-12s): The Image 3 steadies the coffee, and Image 2 wipes the tiny coral mark from the cup rim with her thumb. Camera: gradual push-in\n\nImage 2 says in a amused tone: <d>[English] Still here.</d>\n\noverall_soundscape: bicycle brake squeak, coffee lid pop, passing traffic.\n\nReference images:\nImage 4: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/ef2fea729bddc617be75774089de3f40b0b7ca5789f81d9a85df852417e09181.mp4",
+            "content_type": "video/mp4",
+            "file_name": "5NoViju24iCfQ79ibZlsT_minimax-h3.mp4",
+            "file_size": 18527598
+          },
+          "expanded_prompt": "subject_definitions\n<Subject 1> is the blonde woman in <Picture 1> and <Picture 2>, with long wavy hair, bright coral lipstick, a black turtleneck, black coat, grey scarf, black trousers, and black shoes, holding a white paper coffee cup.\n<Subject 2> is the young male cyclist in <Picture 1> and <Picture 3>, with a black bicycle helmet, black zip-up jacket, black trousers, black gloves, and black sneakers, holding a paper coffee cup.\n<Subject 3> is the coral lipstick in <Picture 4>, with a silver base and matte coral bullet, providing the signature coral accent color for <Subject 1>'s lips and the coffee cup rim mark.\n\nsummary\n[keyframe completion + reference generation]\n\nretention_analysis\n<Subject 1> (appears in [Shot 1], [Shot 2]): fully_preserved\n<Subject 2> (appears in [Shot 1], [Shot 2]): fully_preserved\n<Subject 3> (appears in [Shot 2]): attribute_transfer\n\ndetailed_description\nThe video is set in a bright, late-morning downtown crosswalk. Cinematic handheld footage captures high-motion, natural interaction. Visuals prioritize concrete grey, reflective glass, and the contrast of black clothing against the coral accents. The characters remain visually consistent and avoid jitter or bent limbs.\n[Shot 1]\nAt 00:00.000, the camera employs a static shot, using <Picture 1> as the exact starting frame. The camera is positioned eye-level, slightly left of center. The frame focuses on <Subject 1> (S1) and <Subject 2>.\nVisuals: In the foreground, <Subject 1> faces the camera with a slight smile, her blonde hair swaying gently. Her coral lipstick is a vivid contrast. In the mid-ground, <Subject 2> rides a black bicycle from the left, his helmet secured and his expression focused.\nAction: A strong gust of wind enters from the right. It catches the grey scarf around <Subject 1>'s neck, causing the fabric to flutter rapidly. <Subject 1> quickly reaches up with her left hand to grip the end of the scarf, stabilizing it while continuing to hold the coffee cup in her right hand. <Subject 2> brakes subtly as he passes, leaning slightly against the wind.\nCamera: Static with subtle handheld micro-tremors.\nSound: Wind swish, bicycle chain, and distant traffic.\nDialogue: None.\n\n[Shot 2]\nAt 00:06.000, the camera cuts to a tighter framing, transitioning smoothly from the previous action.\nVisuals: <Subject 1> and <Subject 2> are now stationary. <Subject 2> positions his coffee near <Subject 1>'s.\nAction: <Subject 2> reaches out with his gloved hand to steady the lid of <Subject 1>'s coffee cup, preventing a spill. As he retracts, a small drop of coral-colored lipstick mark is visible on the cup rim. <Subject 1> looks at the mark, then at <Subject 2>. She raises her right hand and, with a light smile, wipes the tiny coral mark from the rim using her thumb. As she does this, a small \"pop\" sound is heard from the cup lid.\nCamera: A gradual Push In at a slow speed, moving from a medium shot to a medium two-shot to emphasize the interaction.\nSound: Bicycle brake squeak, coffee lid pop, and soft city ambience.\nDialogue:\n<Subject 1> (S1): <d>[English] Still here.</d>\n\noverall_soundscape\nThe ambience consists of continuous late-morning city traffic, the steady wash of crowd noise, and sharp physical sounds like wind gusts, metal-on-metal bicycle squeaks, and the soft click of a coffee lid.\n\nnon_diegetic_music\nN/A",
+          "seed": 192441102,
+          "timings": {
+            "inference": 15.663344400003552
+          }
+        },
+        "status": 200,
+        "billableUnits": 20.160000000000004
+      }
+    }
+  ]
+}
