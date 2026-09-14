@@ -2058,6 +2058,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                 promptPreview?.packedSpanLabel
                   ? `${promptPreview.packedSpanLabel} · one generation`
                   : null,
+                promptPreview?.packedLimitWarning,
                 !storageDomain
                   ? 'Relative /r2/ image URLs are made publicly fetchable at submit'
                   : null,
@@ -2191,6 +2192,19 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             </Alert>
           )}
 
+          {promptPreview?.packedLimitWarning && (
+            <Alert
+              className={
+                promptPreview.packedPromptOverflow ? 'text-warning' : undefined
+              }
+            >
+              <AlertTriangle />
+              <AlertDescription>
+                {promptPreview.packedLimitWarning}
+              </AlertDescription>
+            </Alert>
+          )}
+
           {/* Motion action button. Switching to another model's existing
               clip is a history pick, like any other version. */}
           <div className="flex flex-col gap-1">
@@ -2211,6 +2225,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                 isGeneratingMotion ||
                 videoVariantIsGenerating ||
                 unusableElementLines.length > 0 ||
+                Boolean(promptPreview?.packedPromptOverflow) ||
                 !shot ||
                 !hasMotionPrompt
               }

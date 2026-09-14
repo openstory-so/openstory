@@ -64,6 +64,11 @@ type AssembleOptions = {
    * (#1510). Default true so existing 1-shot callers stay byte-identical.
    */
   singleTake?: boolean;
+  /**
+   * Packed members omit clip-wide constraints (no-music, jitter). The pack
+   * header states those once so they are not repeated per shot.
+   */
+  omitSharedConstraints?: boolean;
 };
 
 /**
@@ -79,6 +84,7 @@ export function assembleMotionPrompt({
   characterTags,
   generateAudio,
   singleTake = true,
+  omitSharedConstraints = false,
 }: AssembleOptions): string {
   const { dialogue, audio, fullPrompt } = motionPrompt;
   const supportsAudio = videoModelSupportsAudio(model);
@@ -103,7 +109,12 @@ export function assembleMotionPrompt({
 
     switch (vendor) {
       case 'Kling':
-        assembled = buildKlingPrompt(fullPrompt, dialogueData, audioData);
+        assembled = buildKlingPrompt(
+          fullPrompt,
+          dialogueData,
+          audioData,
+          omitSharedConstraints
+        );
         break;
       case 'ByteDance':
         assembled = buildSeedancePrompt(
@@ -111,7 +122,8 @@ export function assembleMotionPrompt({
           dialogueData,
           audioData,
           characterTags,
-          singleTake
+          singleTake,
+          omitSharedConstraints
         );
         break;
       case 'MiniMax':
@@ -119,12 +131,18 @@ export function assembleMotionPrompt({
           fullPrompt,
           dialogueData,
           audioData,
-          generateAudio
+          generateAudio,
+          omitSharedConstraints
         );
         break;
       case 'Google':
       default:
-        assembled = buildVeoPrompt(fullPrompt, dialogueData, audioData);
+        assembled = buildVeoPrompt(
+          fullPrompt,
+          dialogueData,
+          audioData,
+          omitSharedConstraints
+        );
         break;
     }
   }
@@ -142,6 +160,70 @@ export type PackedMotionPromptShot = {
   generateAudio?: boolean;
 };
 
+/**
+ * Scene-level look stated once at the top of a packed prompt. Per-shot bodies
+ * then only describe action, camera, dialogue, and SFX — Seedance 2.5 (and
+ * the other in-clip models) want environment first, not repeated in every
+ * shot.
+ */
+export type PackedMotionSceneHeader = {
+  location?: string | null;
+  timeOfDay?: string | null;
+  lightingSetup?: string | null;
+  colorPalette?: string | null;
+  look?: string | null;
+};
+
+/** Bytes reserved for the start-frame line and reference legend after packing. */
+const PACKED_PROMPT_RESERVE = 256;
+
+export function packedSceneFromScene(
+  scene:
+    | {
+        metadata?: { location?: string; timeOfDay?: string } | null;
+        continuity?: {
+          lightingSetup?: string;
+          colorPalette?: string;
+          styleTag?: string;
+        } | null;
+      }
+    | null
+    | undefined
+): PackedMotionSceneHeader | undefined {
+  if (!scene) return undefined;
+  const header: PackedMotionSceneHeader = {
+    location: scene.metadata?.location,
+    timeOfDay: scene.metadata?.timeOfDay,
+    lightingSetup: scene.continuity?.lightingSetup,
+    colorPalette: scene.continuity?.colorPalette,
+    look: scene.continuity?.styleTag,
+  };
+  if (
+    !header.location &&
+    !header.timeOfDay &&
+    !header.lightingSetup &&
+    !header.colorPalette &&
+    !header.look
+  ) {
+    return undefined;
+  }
+  return header;
+}
+
+/** True when this packed payload fits the model's prompt budget. */
+export function packedPromptFitsLimit(
+  packed: PackedMotionPrompt,
+  maxPromptLength: number
+): boolean {
+  const budget = Math.max(1, maxPromptLength - PACKED_PROMPT_RESERVE);
+  if (packed.multiPrompt && packed.multiPrompt.length > 0) {
+    return packed.multiPrompt.every(
+      (element) => element.prompt.length <= budget
+    );
+  }
+  return packed.prompt.length <= budget;
+}
+
 type KlingMultiPromptElement = {
   prompt: string;
   duration: string;
@@ -157,45 +239,110 @@ export type PackedMotionPrompt = {
  * Assemble one generation covering several shots of a scene. Per-shot bodies
  * come from {@link assembleMotionPrompt}; this only adds vendor cut syntax
  * and timings. A 1-shot list is the existing single-take path.
+ *
+ * A 2+ shot clip is a scene header (environment, no-music, jitter) once,
+ * then short per-shot bodies. Truncating the joined prompt would drop a
+ * whole trailing shot — callers split membership instead.
  */
 export function assemblePackedMotionPrompt({
   shots,
   model,
   generateAudio,
+  scene,
 }: {
   shots: readonly PackedMotionPromptShot[];
   model: ImageToVideoModel;
   generateAudio?: boolean;
+  scene?: PackedMotionSceneHeader;
 }): PackedMotionPrompt {
   const first = shots[0];
   if (!first) return { prompt: '' };
   if (shots.length === 1) {
     return {
-      prompt: assembleOnePackedShot(first, model, generateAudio, true),
+      prompt: assembleOnePackedShot(first, model, generateAudio, true, false),
     };
   }
 
+  const characterTags = uniqueCharacterTags(shots);
+  const header = formatPackedHeader({
+    scene,
+    characterTags,
+    model,
+    generateAudio,
+  });
   const bodies = shots.map((shot) =>
-    assembleOnePackedShot(shot, model, generateAudio, false)
+    assembleOnePackedShot(shot, model, generateAudio, false, true)
   );
   if (model === 'kling_v3_pro') {
+    // Kling rejects `prompt` + `multi_prompt` together, so the header has to
+    // live on the first element. Later shots stay action-only.
     return {
-      prompt: bodies.join('\ncut to\n'),
+      prompt: joinPacked(header, bodies.join('\ncut to\n')),
       multiPrompt: shots.map((shot, i) => ({
-        prompt: bodies[i] ?? '',
+        prompt:
+          i === 0 ? joinPacked(header, bodies[i] ?? '') : (bodies[i] ?? ''),
         duration: klingMultiPromptDuration(shot.durationSeconds),
       })),
     };
   }
 
-  return { prompt: formatPackedShotList(model, shots, bodies) };
+  return {
+    prompt: joinPacked(header, formatPackedShotList(model, shots, bodies)),
+  };
+}
+
+function uniqueCharacterTags(
+  shots: readonly PackedMotionPromptShot[]
+): string[] {
+  return [...new Set(shots.flatMap((shot) => shot.characterTags ?? []))];
+}
+
+function joinPacked(header: string, body: string): string {
+  if (header.length === 0) return body;
+  if (body.length === 0) return header;
+  return `${header}\n\n${body}`;
+}
+
+function formatPackedHeader(input: {
+  scene?: PackedMotionSceneHeader;
+  characterTags: readonly string[];
+  model: ImageToVideoModel;
+  generateAudio?: boolean;
+}): string {
+  const env = [
+    input.scene?.location,
+    input.scene?.timeOfDay,
+    input.scene?.lightingSetup,
+    input.scene?.colorPalette,
+    input.scene?.look,
+  ]
+    .map((part) => part?.trim())
+    .filter((part): part is string => Boolean(part && part.length > 0))
+    .join('. ');
+  const parts: string[] = [];
+  if (env.length > 0) parts.push(asSentence(env));
+  if (input.model === 'minimax_h3_max' && input.generateAudio === false) {
+    parts.push(
+      'overall_soundscape: Silent. No dialogue, no sound effects, no music.\nnon_diegetic_music: N/A'
+    );
+  } else {
+    parts.push(NO_MUSIC_DIRECTION);
+    if (input.model === 'minimax_h3_max') {
+      parts.push('non_diegetic_music: N/A');
+    }
+  }
+  if (input.characterTags.length > 0) {
+    parts.push('Avoid jitter and bent limbs.');
+  }
+  return parts.join('\n\n');
 }
 
 function assembleOnePackedShot(
   shot: PackedMotionPromptShot,
   model: ImageToVideoModel,
   generateAudio: boolean | undefined,
-  singleTake: boolean
+  singleTake: boolean,
+  omitSharedConstraints: boolean
 ): string {
   if (shot.motionPrompt) {
     return assembleMotionPrompt({
@@ -204,6 +351,7 @@ function assembleOnePackedShot(
       characterTags: shot.characterTags,
       generateAudio: shot.generateAudio ?? generateAudio,
       singleTake,
+      omitSharedConstraints,
     });
   }
   const fallback = shot.prompt ?? '';
@@ -260,7 +408,8 @@ function klingMultiPromptDuration(seconds: number): string {
 function buildKlingPrompt(
   fullPrompt: string,
   dialogue: MotionDialogue | undefined,
-  audio: MotionAudio | undefined
+  audio: MotionAudio | undefined,
+  omitSharedConstraints: boolean
 ): string {
   const parts = [fullPrompt];
 
@@ -274,11 +423,17 @@ function buildKlingPrompt(
   if (audio?.ambientSound) ambientParts.push(audio.ambientSound);
   if (audio && audio.soundEffects.length > 0)
     ambientParts.push(audio.soundEffects.join(', '));
-  parts.push(
-    ambientParts.length > 0
-      ? `Ambient sounds: ${ambientParts.join('. ')}. ${NO_MUSIC_DIRECTION}`
-      : NO_MUSIC_DIRECTION
-  );
+  if (omitSharedConstraints) {
+    if (ambientParts.length > 0) {
+      parts.push(`Ambient sounds: ${ambientParts.join('. ')}.`);
+    }
+  } else {
+    parts.push(
+      ambientParts.length > 0
+        ? `Ambient sounds: ${ambientParts.join('. ')}. ${NO_MUSIC_DIRECTION}`
+        : NO_MUSIC_DIRECTION
+    );
+  }
 
   return parts.join('\n\n');
 }
@@ -316,7 +471,8 @@ function buildSeedancePrompt(
   dialogue: MotionDialogue | undefined,
   audio: MotionAudio | undefined,
   characterTags: readonly string[] | undefined,
-  singleTake: boolean
+  singleTake: boolean,
+  omitSharedConstraints: boolean
 ): string {
   const parts = [fullPrompt];
 
@@ -337,6 +493,10 @@ function buildSeedancePrompt(
         .map((line) => spokenLine(line, `{${line.line}}`, 'voice'))
         .join(' ')
     );
+  }
+
+  if (omitSharedConstraints) {
+    return parts.join('\n\n');
   }
 
   // Constraint words, which the ByteDance guide asks for at the end of the
@@ -369,15 +529,19 @@ function buildMinimaxH3Prompt(
   fullPrompt: string,
   dialogue: MotionDialogue | undefined,
   audio: MotionAudio | undefined,
-  generateAudio: boolean | undefined
+  generateAudio: boolean | undefined,
+  omitSharedConstraints: boolean
 ): string {
   const parts = [fullPrompt];
 
   // No API switch: "off" is a silent soundscape and no dialogue lines.
+  // Packed clips put that clip-wide silence in the header.
   if (generateAudio === false) {
-    parts.push(
-      'overall_soundscape: Silent. No dialogue, no sound effects, no music.\nnon_diegetic_music: N/A'
-    );
+    if (!omitSharedConstraints) {
+      parts.push(
+        'overall_soundscape: Silent. No dialogue, no sound effects, no music.\nnon_diegetic_music: N/A'
+      );
+    }
     return parts.join('\n\n');
   }
 
@@ -397,6 +561,12 @@ function buildMinimaxH3Prompt(
   if (audio?.ambientSound) soundscape.push(asSentence(audio.ambientSound));
   if (audio && audio.soundEffects.length > 0)
     soundscape.push(asSentence(audio.soundEffects.join(', ')));
+  if (omitSharedConstraints) {
+    if (soundscape.length > 0) {
+      parts.push(`overall_soundscape: ${soundscape.join(' ')}`);
+    }
+    return parts.join('\n\n');
+  }
   soundscape.push(NO_MUSIC_DIRECTION);
   parts.push(
     `overall_soundscape: ${soundscape.join(' ')}\nnon_diegetic_music: N/A`
@@ -453,7 +623,8 @@ function spokenLine(
 function buildVeoPrompt(
   fullPrompt: string,
   dialogue: MotionDialogue | undefined,
-  audio: MotionAudio | undefined
+  audio: MotionAudio | undefined,
+  omitSharedConstraints: boolean
 ): string {
   const parts = [fullPrompt];
 
@@ -474,6 +645,12 @@ function buildVeoPrompt(
   if (audio?.ambientSound) audioParts.push(audio.ambientSound);
   if (audio && audio.soundEffects.length > 0)
     audioParts.push(audio.soundEffects.join(', '));
+  if (omitSharedConstraints) {
+    if (audioParts.length > 0) {
+      parts.push(`Audio: ${audioParts.join('. ')}.`);
+    }
+    return parts.join('\n\n');
+  }
   parts.push(
     audioParts.length > 0
       ? `Audio: ${audioParts.join('. ')}. ${NO_MUSIC_DIRECTION}`

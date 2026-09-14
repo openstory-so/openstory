@@ -125,6 +125,80 @@ describe('packMotionBatchShots', () => {
   });
 });
 
+describe('packMotionBatchShots — sticky membership', () => {
+  it('does not absorb neighbours into a persisted 4-shot clip', () => {
+    const packed = packMotionBatchShots(
+      [
+        { ...shot('a', 'sc-1', 2), renderSegmentId: 'seg-4' },
+        { ...shot('b', 'sc-1', 2), renderSegmentId: 'seg-4' },
+        { ...shot('c', 'sc-1', 2), renderSegmentId: 'seg-4' },
+        { ...shot('d', 'sc-1', 2), renderSegmentId: 'seg-4' },
+        shot('e', 'sc-1', 2),
+        shot('f', 'sc-1', 2),
+      ],
+      ['seedance_v2']
+    );
+    expect(packed).toHaveLength(2);
+    expect(packed[0]?.coveredShots?.map((s) => s.shotId)).toEqual([
+      'a',
+      'b',
+      'c',
+      'd',
+    ]);
+    expect(packed[1]?.coveredShots?.map((s) => s.shotId)).toEqual(['e', 'f']);
+  });
+
+  it('does not pack a 1:1 rendered shot with unrendered neighbours', () => {
+    const packed = packMotionBatchShots(
+      [
+        { ...shot('a', 'sc-1', 4), renderSegmentId: 'a' },
+        shot('b', 'sc-1', 4),
+        shot('c', 'sc-1', 4),
+      ],
+      ['seedance_v2']
+    );
+    expect(packed.map((s) => s.shotId)).toEqual(['a', 'b']);
+    expect(packed[0]?.coveredShots).toBeUndefined();
+    expect(packed[1]?.coveredShots?.map((s) => s.shotId)).toEqual(['b', 'c']);
+  });
+});
+
+describe('packMotionBatchShots — prompt length', () => {
+  it('peels trailing shots when the assembled prompt would overflow', () => {
+    const packed = packMotionBatchShots(
+      [shot('a', 'sc-1', 4), shot('b', 'sc-1', 4), shot('c', 'sc-1', 4)],
+      ['seedance_v2'],
+      {
+        promptFits: (members) => members.length <= 2,
+      }
+    );
+    expect(packed).toHaveLength(2);
+    expect(packed[0]?.coveredShots?.map((s) => s.shotId)).toEqual(['a', 'b']);
+    expect(packed[1]?.shotId).toBe('c');
+    expect(packed[1]?.coveredShots).toBeUndefined();
+  });
+
+  it('does not peel a persisted clip when the prompt no longer fits', () => {
+    const packed = packMotionBatchShots(
+      [
+        { ...shot('a', 'sc-1', 3), renderSegmentId: 'seg-4' },
+        { ...shot('b', 'sc-1', 3), renderSegmentId: 'seg-4' },
+        { ...shot('c', 'sc-1', 3), renderSegmentId: 'seg-4' },
+        { ...shot('d', 'sc-1', 3), renderSegmentId: 'seg-4' },
+      ],
+      ['seedance_v2'],
+      { promptFits: (members) => members.length <= 3 }
+    );
+    expect(packed).toHaveLength(1);
+    expect(packed[0]?.coveredShots?.map((s) => s.shotId)).toEqual([
+      'a',
+      'b',
+      'c',
+      'd',
+    ]);
+  });
+});
+
 describe('coveredMembersForShot', () => {
   it('returns both members when clicking either shot of a packed pair', () => {
     const shots = [shot('a', 'sc-1', 4), shot('b', 'sc-1', 6)];
@@ -154,5 +228,19 @@ describe('coveredMembersForShot', () => {
     expect(
       coveredMembersForShot(shots, 'a', ['minimax_h3_max']).map((s) => s.shotId)
     ).toEqual(['a']);
+  });
+
+  it('regenerating a persisted 4-shot clip does not extend to 6', () => {
+    const shots = [
+      { ...shot('a', 'sc-1', 2), renderSegmentId: 'seg-4' },
+      { ...shot('b', 'sc-1', 2), renderSegmentId: 'seg-4' },
+      { ...shot('c', 'sc-1', 2), renderSegmentId: 'seg-4' },
+      { ...shot('d', 'sc-1', 2), renderSegmentId: 'seg-4' },
+      shot('e', 'sc-1', 2),
+      shot('f', 'sc-1', 2),
+    ];
+    expect(
+      coveredMembersForShot(shots, 'b', ['seedance_v2']).map((s) => s.shotId)
+    ).toEqual(['a', 'b', 'c', 'd']);
   });
 });

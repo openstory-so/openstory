@@ -22,6 +22,21 @@ export type PackableMotionShot = {
   sceneId?: string | null;
   duration?: number;
   model?: ImageToVideoModel;
+  /**
+   * Persisted clip membership. Consecutive shots sharing a non-null id stay
+   * that clip on regenerate; null runs are tiled fresh. A 1:1 segment uses
+   * the shot's own id, so it does not absorb neighbours.
+   */
+  renderSegmentId?: string | null;
+};
+
+export type PackMotionOptions<S extends PackableMotionShot> = {
+  /**
+   * After duration tiling, peel the last member while this is false. A
+   * 1-shot tile is always emitted even when it does not fit — that shot is
+   * the existing per-shot truncate path, not a packed clip.
+   */
+  promptFits?: (members: readonly S[]) => boolean;
 };
 
 export type PackedMotionMember<S> = S & {
@@ -50,7 +65,8 @@ export function batchPacksInClipMultiShot(
  */
 export function packMotionBatchShots<S extends PackableMotionShot>(
   shots: readonly S[],
-  videoModels: readonly ImageToVideoModel[] | undefined
+  videoModels: readonly ImageToVideoModel[] | undefined,
+  options?: PackMotionOptions<S>
 ): PackedMotionMember<S>[] {
   if (shots.length === 0) return [];
 
@@ -62,14 +78,24 @@ export function packMotionBatchShots<S extends PackableMotionShot>(
   const capMs = Math.min(...models.map(resolveSegmentCapMs));
   const packed: PackedMotionMember<S>[] = [];
   for (const group of groupByScene(shots)) {
-    const tiles = tileSceneIntoSegments(
-      group.map((shot) => ({
-        id: shot.shotId,
-        durationMs: durationMsOf(shot),
-      })),
-      capMs
-    );
-    const byId = new Map(group.map((shot) => [shot.shotId, shot]));
+    packed.push(...packSceneGroup(group, capMs, options?.promptFits));
+  }
+  return packed;
+}
+
+function packSceneGroup<S extends PackableMotionShot>(
+  group: readonly S[],
+  capMs: number,
+  promptFits: PackMotionOptions<S>['promptFits']
+): PackedMotionMember<S>[] {
+  const packed: PackedMotionMember<S>[] = [];
+  for (const run of splitStickyRuns(group)) {
+    const sticky = (run[0]?.renderSegmentId ?? null) !== null;
+    const byId = new Map(run.map((shot) => [shot.shotId, shot]));
+    // A persisted clip is atomic: peeling a member would leave it on the
+    // old segment with a video it was not in. Unrendered (null) runs may
+    // split on duration and prompt length; those shots become the next clip.
+    const tiles = sticky ? [tileOf(run)] : fitRun(run, capMs, promptFits);
     for (const tile of tiles) {
       const members = tile.shotIds.flatMap((id) => {
         const shot = byId.get(id);
@@ -89,6 +115,80 @@ export function packMotionBatchShots<S extends PackableMotionShot>(
     }
   }
   return packed;
+}
+
+/**
+ * Consecutive shots that share a `renderSegmentId` (including a run of
+ * nulls) stay together. Distinct ids — a 1:1 degenerate segment uses the
+ * shot's own id — never coalesce with their neighbours.
+ */
+function splitStickyRuns<S extends PackableMotionShot>(
+  group: readonly S[]
+): S[][] {
+  const runs: S[][] = [];
+  for (const shot of group) {
+    const last = runs[runs.length - 1];
+    const id = shot.renderSegmentId ?? null;
+    const lastId = last?.[0]?.renderSegmentId ?? null;
+    if (last && (id ?? '') === (lastId ?? '')) {
+      last.push(shot);
+      continue;
+    }
+    runs.push([shot]);
+  }
+  return runs;
+}
+
+function fitRun<S extends PackableMotionShot>(
+  shots: readonly S[],
+  capMs: number,
+  promptFits: PackMotionOptions<S>['promptFits']
+): { shotIds: string[]; durationMs: number }[] {
+  const durationTiles = tileSceneIntoSegments(
+    shots.map((shot) => ({
+      id: shot.shotId,
+      durationMs: durationMsOf(shot),
+    })),
+    capMs
+  );
+  if (!promptFits) return durationTiles;
+  const byId = new Map(shots.map((shot) => [shot.shotId, shot]));
+  return durationTiles.flatMap((tile) =>
+    splitTileByPrompt(tile, byId, promptFits)
+  );
+}
+
+function splitTileByPrompt<S extends PackableMotionShot>(
+  tile: { shotIds: string[]; durationMs: number },
+  byId: ReadonlyMap<string, S>,
+  promptFits: (members: readonly S[]) => boolean
+): { shotIds: string[]; durationMs: number }[] {
+  const members = tile.shotIds.flatMap((id) => {
+    const shot = byId.get(id);
+    return shot ? [shot] : [];
+  });
+  const out: { shotIds: string[]; durationMs: number }[] = [];
+  let current: S[] = [];
+  for (const shot of members) {
+    const candidate = [...current, shot];
+    if (current.length > 0 && !promptFits(candidate)) {
+      out.push(tileOf(current));
+      current = [shot];
+      continue;
+    }
+    current = candidate;
+  }
+  if (current.length > 0) out.push(tileOf(current));
+  return out;
+}
+
+function tileOf<S extends PackableMotionShot>(
+  members: readonly S[]
+): { shotIds: string[]; durationMs: number } {
+  return {
+    shotIds: members.map((shot) => shot.shotId),
+    durationMs: members.reduce((sum, shot) => sum + durationMsOf(shot), 0),
+  };
 }
 
 function resolveBatchModels<S extends PackableMotionShot>(
@@ -129,9 +229,10 @@ function groupByScene<S extends PackableMotionShot>(
 export function coveredMembersForShot<S extends PackableMotionShot>(
   shots: readonly S[],
   shotId: string,
-  videoModels: readonly ImageToVideoModel[]
+  videoModels: readonly ImageToVideoModel[],
+  options?: PackMotionOptions<S>
 ): S[] {
-  const packed = packMotionBatchShots(shots, videoModels);
+  const packed = packMotionBatchShots(shots, videoModels, options);
   for (const job of packed) {
     const members = job.coveredShots ?? [job];
     if (members.some((member) => member.shotId === shotId)) {

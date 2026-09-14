@@ -10,6 +10,7 @@ import {
 import {
   assembleMotionPrompt,
   assemblePackedMotionPrompt,
+  packedPromptFitsLimit,
 } from './assemble-motion-prompt';
 
 // ---------------------------------------------------------------------------
@@ -576,5 +577,57 @@ describe('assemblePackedMotionPrompt', () => {
     expect(packed.prompt).toContain('Shot 1: opens the door');
     expect(packed.prompt).toContain('cut to');
     expect(packed.prompt).not.toContain('Single unbroken scene.');
+  });
+
+  it('states environment and clip-wide guards once, then short shot bodies', () => {
+    const packed = assemblePackedMotionPrompt({
+      shots: [
+        {
+          ...shot('opens the door', 4),
+          characterTags: ['sarah'],
+        },
+        {
+          ...shot('the hallway beyond', 6),
+          characterTags: ['sarah'],
+        },
+      ],
+      model: 'seedance_v2_5',
+      scene: {
+        location: 'INT. HALLWAY - NIGHT',
+        lightingSetup: 'single overhead bulb',
+        look: 'neo-noir',
+      },
+    });
+    expect(packed.prompt).toMatch(
+      /^INT\. HALLWAY - NIGHT\. single overhead bulb\. neo-noir\./
+    );
+    expect(packed.prompt.split('No BGM').length).toBe(2);
+    expect(packed.prompt.split('Avoid jitter and bent limbs.').length).toBe(2);
+    expect(packed.prompt.indexOf('INT. HALLWAY')).toBeLessThan(
+      packed.prompt.indexOf('Shot 1:')
+    );
+    expect(packed.prompt).not.toContain('Single continuous shot, no cuts.');
+  });
+
+  it('puts the Kling header on the first multi_prompt element only', () => {
+    const packed = assemblePackedMotionPrompt({
+      shots: [shot('opens the door', 4), shot('the hallway beyond', 6)],
+      model: 'kling_v3_pro',
+      scene: { location: 'INT. HALLWAY - NIGHT' },
+    });
+    expect(packed.multiPrompt?.[0]?.prompt).toContain('INT. HALLWAY - NIGHT');
+    expect(packed.multiPrompt?.[0]?.prompt).toContain('No BGM');
+    expect(packed.multiPrompt?.[1]?.prompt).not.toContain('INT. HALLWAY');
+    expect(packed.multiPrompt?.[1]?.prompt).not.toContain('No BGM');
+    expect(packed.multiPrompt?.[1]?.prompt).toContain('the hallway beyond');
+  });
+
+  it('packedPromptFitsLimit leaves headroom under the model cap', () => {
+    const packed = assemblePackedMotionPrompt({
+      shots: [shot('opens the door', 4), shot('the hallway beyond', 6)],
+      model: 'seedance_v2_5',
+    });
+    expect(packedPromptFitsLimit(packed, 4096)).toBe(true);
+    expect(packedPromptFitsLimit(packed, packed.prompt.length)).toBe(false);
   });
 });

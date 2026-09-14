@@ -17,12 +17,16 @@ import {
 } from '@/models/server/byteplus-asset-pool';
 import { reportBytePlusAssetPool } from '@/models/server/byteplus-observability';
 import { isBytePlusAssetsConfigured } from '@/models/server/byteplus-config';
-import { isNativeBytePlusVideoModel } from '@/models/models';
+import {
+  IMAGE_TO_VIDEO_MODELS,
+  isNativeBytePlusVideoModel,
+} from '@/models/models';
 import { resolveAudioModels } from '@/models/resolve-audio-models';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import {
   assembleMotionPrompt,
   assemblePackedMotionPrompt,
+  packedPromptFitsLimit,
 } from '@/motion/server/assemble-motion-prompt';
 import { packMotionBatchShots } from '@/motion/server/pack-motion-jobs';
 import { getGenerationChannel } from '@/platform/realtime';
@@ -113,7 +117,33 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
     // the rest are alternates in `shot_variants`. Pattern 3 spawns + awaits
     // each child via `spawnAndAwaitChild`; Promise.allSettled lets a single
     // failing (shot, model) not poison the rest of the batch.
-    const packedShots = packMotionBatchShots(input.shots, input.videoModels);
+    const packedShots = packMotionBatchShots(input.shots, input.videoModels, {
+      promptFits: (members) => {
+        const models = input.videoModels?.length
+          ? [...new Set(input.videoModels)]
+          : members[0]?.model
+            ? [members[0].model]
+            : [];
+        if (models.length === 0) return true;
+        return models.every((packModel) =>
+          packedPromptFitsLimit(
+            assemblePackedMotionPrompt({
+              shots: members.map((member) => ({
+                durationSeconds: member.duration ?? 3,
+                motionPrompt: member.motionPrompt,
+                prompt: member.prompt,
+                characterTags: member.characterTags,
+                generateAudio: member.generateAudio,
+              })),
+              model: packModel,
+              generateAudio: members[0]?.generateAudio,
+              scene: members[0]?.packedScene,
+            }),
+            IMAGE_TO_VIDEO_MODELS[packModel].maxPromptLength
+          )
+        );
+      },
+    });
     const motionJobs = buildMotionJobs(packedShots, input.videoModels);
 
     const motionAwaits = motionJobs.map(({ shot, shotIndex, model }) => {
@@ -135,6 +165,7 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
               })),
               model,
               generateAudio: shot.generateAudio,
+              scene: shot.packedScene ?? members[0]?.packedScene,
             })
           : null;
       const prompt = packed
@@ -186,6 +217,7 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
           audioClips && audioClips.length > 0 ? audioClips : undefined,
         motionPrompt: shot.motionPrompt,
         characterTags: shot.characterTags,
+        packedScene: shot.packedScene,
         // Add-model (#547) batches generate alternates only — the child must
         // not write the legacy `shots.video*` columns.
         variantOnly: input.variantOnly,

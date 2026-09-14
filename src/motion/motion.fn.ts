@@ -20,8 +20,14 @@ import { z } from 'zod';
 
 import {
   AUDIO_MODELS,
+  IMAGE_TO_VIDEO_MODELS,
   videoModelSupportsInClipMultiShot,
 } from '@/models/models';
+import {
+  assemblePackedMotionPrompt,
+  packedPromptFitsLimit,
+  packedSceneFromScene,
+} from '@/motion/server/assemble-motion-prompt';
 import { coveredMembersForShot } from '@/motion/server/pack-motion-jobs';
 import { canRenderReferenceOnly } from '@/motion/server/motion-generation';
 import { toWorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
@@ -126,23 +132,77 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
       sequenceModel: sequence.videoModel,
     });
     // Same tiling the Optimised prompt preview uses (#1510): Generate
-    // Motion on one shot submits every sibling that clip covers.
+    // Motion on one shot submits every sibling that clip covers. Persisted
+    // renderSegmentId membership is sticky (regenerate a 4-shot clip stays
+    // 4); prompt length can only shrink a tile, never grow it.
     const sceneShots =
       shot.sceneId && videoModelSupportsInClipMultiShot(model)
         ? (await context.scopedDb.shots.listBySequence(sequence.id)).filter(
             (row) => row.sceneId === shot.sceneId
           )
         : [shot];
+    const sceneMotionByShot =
+      sceneShots.length > 1
+        ? await context.scopedDb.shotPromptVersions.getSelectedMotionByShots(
+            sceneShots.map((row) => row.id)
+          )
+        : new Map();
+    const packedScene = packedSceneFromScene(context.scene);
+    const packableSceneShots = sceneShots.map((row) => ({
+      ...row,
+      shotId: row.id,
+      duration: (row.durationMs ?? 3000) / 1000,
+      model,
+    }));
+    const promptFitsPacked = (
+      members: readonly (typeof packableSceneShots)[number][]
+    ) =>
+      packedPromptFitsLimit(
+        assemblePackedMotionPrompt({
+          shots: members.map((member) => {
+            const version = sceneMotionByShot.get(member.shotId);
+            return {
+              durationSeconds: resolveShotDuration({
+                durationMs: member.durationMs,
+                model,
+              }),
+              motionPrompt:
+                member.shotId === shot.id && data.prompt
+                  ? {
+                      fullPrompt: data.prompt,
+                      dialogue: version?.dialogue ?? null,
+                      audio: version?.audio ?? null,
+                    }
+                  : version
+                    ? motionPromptFromVersion(version)
+                    : undefined,
+              characterTags: context.scene?.continuity?.characterTags,
+            };
+          }),
+          model,
+          generateAudio: data.generateAudio,
+          scene: packedScene,
+        }),
+        IMAGE_TO_VIDEO_MODELS[model].maxPromptLength
+      );
     const covered = coveredMembersForShot(
-      sceneShots.map((row) => ({
-        ...row,
-        shotId: row.id,
-        duration: (row.durationMs ?? 3000) / 1000,
-        model,
-      })),
+      packableSceneShots,
       shot.id,
-      [model]
+      [model],
+      { promptFits: promptFitsPacked }
     );
+    const stickyId = covered[0]?.renderSegmentId ?? null;
+    if (
+      covered.length > 1 &&
+      stickyId &&
+      covered.every((member) => member.renderSegmentId === stickyId) &&
+      !promptFitsPacked(covered)
+    ) {
+      const config = IMAGE_TO_VIDEO_MODELS[model];
+      throw new Error(
+        `This ${covered.length}-shot clip's prompt exceeds ${config.name}'s ${config.maxPromptLength}-character limit. Shorten a shot prompt to generate it as one clip.`
+      );
+    }
     const packedShotIds = covered.map((row) => row.shotId);
     const firstMember = covered[0] ?? {
       ...shot,
@@ -288,14 +348,6 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
     // unsnapped value (e.g. legacy `durationMs` from a different model) gets
     // priced at the raw seconds while the workflow bills against the snapped
     // value, leaving the two paths inconsistent.
-    const siblingIds = packedShotIds.filter((id) => id !== shot.id);
-    const siblingMotions =
-      siblingIds.length > 0
-        ? await context.scopedDb.shotPromptVersions.getSelectedMotionByShots(
-            siblingIds
-          )
-        : new Map();
-
     const clickedDuration = resolveShotDuration({
       explicit: data.duration,
       durationMs: shot.durationMs,
@@ -324,7 +376,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
         if (member.shotId === shot.id || !modelTakesDialogueAudio(model)) {
           return sum;
         }
-        const version = siblingMotions.get(member.shotId);
+        const version = sceneMotionByShot.get(member.shotId);
         const lines = voicedDialogueLines(version?.dialogue, voiceCharacters);
         const clips = matchingDialogueClips(member.audioClips, lines);
         return sum + (clips.length > 0 ? 0 : ttsCharacterCount(lines));
@@ -377,6 +429,8 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
         const clickedPayload = {
           shotId: shot.id,
           sceneId: shot.sceneId,
+          renderSegmentId: shot.renderSegmentId,
+          packedScene,
           imageUrl: firstMember.shotId === shot.id ? firstImageUrl : imageUrl,
           referenceOnly,
           frameVersionId:
@@ -415,7 +469,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
           covered
             .filter((member) => member.shotId !== shot.id)
             .map(async (member) => {
-              const version = siblingMotions.get(member.shotId);
+              const version = sceneMotionByShot.get(member.shotId);
               const memberReferenceOnly = rendersReferenceOnly(
                 member,
                 sequence
@@ -452,6 +506,8 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
               return {
                 shotId: member.shotId,
                 sceneId: member.sceneId,
+                renderSegmentId: member.renderSegmentId,
+                packedScene,
                 imageUrl: memberImageUrl,
                 referenceOnly: memberReferenceOnly,
                 frameVersionId: memberFrameVersionId,
@@ -841,6 +897,8 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
             return {
               shotId: shot.id,
               sceneId: shot.sceneId,
+              renderSegmentId: shot.renderSegmentId,
+              packedScene: packedSceneFromScene(scene),
               // Reference-only carries no still; every other shot passed the
               // eligibility filter above, which requires one.
               imageUrl: shotIsReferenceOnly(shot)

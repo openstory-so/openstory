@@ -628,11 +628,25 @@ export interface MotionWorkflowInput extends SequenceWorkflowContext {
    */
   coveredShots?: PackedMotionCoveredShot[];
   /**
+   * Scene look for the packed prompt header (environment first, once).
+   * Snapshotted at the trigger — the run must not re-read the scene.
+   */
+  packedScene?: PackedMotionSceneHeader;
+  /**
    * Kling v3 packed `multi_prompt[]`. When set, submit sends this instead of
    * `prompt`. Re-assembled after dialogue TTS the same way `prompt` is.
    */
   multiPrompt?: Array<{ prompt: string; duration: string }>;
 }
+
+/** Scene look stated once at the top of a packed in-clip prompt (#1510). */
+type PackedMotionSceneHeader = {
+  location?: string | null;
+  timeOfDay?: string | null;
+  lightingSetup?: string | null;
+  colorPalette?: string | null;
+  look?: string | null;
+};
 
 /** One member of a packed in-clip generation (#1510). */
 type PackedMotionCoveredShot = {
@@ -1472,6 +1486,10 @@ export interface BatchMotionMusicWorkflowInput extends SequenceWorkflowContext {
     shotId: string;
     /** See `MotionWorkflowInput.sceneId`. */
     sceneId?: string | null;
+    /** Persisted clip membership — packing keeps this group on regenerate. */
+    renderSegmentId?: string | null;
+    /** See `MotionWorkflowInput.packedScene`. */
+    packedScene?: PackedMotionSceneHeader;
     /** The start frame. Absent only when `referenceOnly` is set. */
     imageUrl?: string;
     /** See `MotionWorkflowInput.referenceOnly`. Required for the same reason. */

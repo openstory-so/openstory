@@ -28,7 +28,10 @@ import {
   voicedDialogueLines,
 } from '@/motion/dialogue-tts';
 import type { MotionAudioClip } from '@/platform/server/db/schema';
-import { assembleMotionPrompt } from '@/motion/server/assemble-motion-prompt';
+import {
+  assembleMotionPrompt,
+  packedSceneFromScene,
+} from '@/motion/server/assemble-motion-prompt';
 import { buildMotionReferenceImages } from '@/motion/server/build-motion-references';
 import { getLogger } from '@/platform/logger';
 import { WorkflowValidationError } from '@/platform/server/workflow/errors';
@@ -125,6 +128,7 @@ export function buildStoryboardMotionBatchShots(input: {
     return {
       shotId: mapping.shotId,
       sceneId: scene.sceneId,
+      packedScene: packedSceneFromScene(scene),
       ...(input.referenceOnly
         ? { referenceOnly: true as const }
         : { referenceOnly: false as const, imageUrl: imageUrl ?? undefined }),

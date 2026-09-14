@@ -18,6 +18,7 @@ import { extractFalErrorMessage } from '@/models/fal-error';
 import {
   assembleMotionPrompt,
   assemblePackedMotionPrompt,
+  packedPromptFitsLimit,
 } from '@/motion/server/assemble-motion-prompt';
 import {
   audioSourceKeyFromVoicedLines,
@@ -262,7 +263,14 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           })),
           model,
           generateAudio: input.generateAudio,
+          scene: input.packedScene,
         });
+        const maxPromptLength = IMAGE_TO_VIDEO_MODELS[model].maxPromptLength;
+        if (!packedPromptFitsLimit(packed, maxPromptLength)) {
+          throw new WorkflowValidationError(
+            `This ${input.coveredShots.length}-shot clip's prompt exceeds ${IMAGE_TO_VIDEO_MODELS[model].name}'s ${maxPromptLength}-character limit. Shorten a shot prompt to generate it as one clip.`
+          );
+        }
         prompt = packed.prompt;
         if (packed.multiPrompt) multiPrompt = packed.multiPrompt;
       } else if (input.motionPrompt) {

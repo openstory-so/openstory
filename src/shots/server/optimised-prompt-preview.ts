@@ -34,6 +34,8 @@ import { buildBytePlusImageRequest } from '@/stills/build-byteplus-image-request
 import { buildImageRequest } from '@/stills/build-image-request';
 import {
   assemblePackedMotionPrompt,
+  packedPromptFitsLimit,
+  packedSceneFromScene,
   type PackedMotionPromptShot,
 } from '@/motion/server/assemble-motion-prompt';
 import { buildBytePlusVideoRequest } from '@/motion/server/build-byteplus-video-request';
@@ -104,6 +106,17 @@ export type ShotPromptPreview = {
   packedShotIds: string[] | null;
   /** Sum of member durations for the packed generation. Null when 1-shot. */
   packedDurationMs: number | null;
+  /**
+   * Why this clip covers fewer shots than the duration cap would allow,
+   * or why a persisted clip cannot generate on this model. Null when the
+   * packed request fits.
+   */
+  packedLimitWarning: string | null;
+  /**
+   * Persisted clip whose packed prompt exceeds this model's limit. Generate
+   * must not run — peeling a member would leave it on the old segment.
+   */
+  packedPromptOverflow: boolean;
 };
 
 /** One scene-sibling the packed motion request will cover (#1510). */
@@ -121,9 +134,12 @@ type SceneReferenceInput = {
     characterTags?: string[];
     elementTags?: string[] | null;
     environmentTag?: string | null;
+    lightingSetup?: string;
+    colorPalette?: string;
+    styleTag?: string;
   } | null;
   originalScript?: { extract?: string } | null;
-  metadata?: { location?: string } | null;
+  metadata?: { location?: string; timeOfDay?: string } | null;
 } | null;
 
 export function boundPromptImages(
@@ -133,6 +149,25 @@ export function boundPromptImages(
   return urls
     .filter((url) => url.length > 0)
     .map((url, index) => ({ label: tag(index + 1), url }));
+}
+
+function packedLimitWarning(
+  model: ImageToVideoModel,
+  packedNumbers: readonly number[],
+  durationNumbers: readonly number[] | undefined,
+  promptOverflow: boolean
+): string | null {
+  const config = IMAGE_TO_VIDEO_MODELS[model];
+  if (promptOverflow && packedNumbers.length > 1) {
+    return `This ${packedNumbers.length}-shot clip's prompt exceeds ${config.name}'s ${config.maxPromptLength}-character limit. Shorten a shot prompt to generate it as one clip.`;
+  }
+  if (!durationNumbers || durationNumbers.length <= packedNumbers.length) {
+    return null;
+  }
+  const packedSet = new Set(packedNumbers);
+  const excluded = durationNumbers.filter((n) => !packedSet.has(n));
+  if (excluded.length === 0) return null;
+  return `${config.name}'s ${config.maxPromptLength}-character prompt limit kept ${formatShotSpan(excluded)} out of this clip.`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -242,6 +277,11 @@ export function buildShotPromptPreview(input: {
    * are story-ordered and include this shot.
    */
   packedMembers?: readonly PackedPreviewMember[];
+  /**
+   * Shot numbers duration tiling would have packed, used to explain a
+   * prompt-length shrink. Absent when duration and prompt membership match.
+   */
+  packedDurationShotNumbers?: readonly number[];
 }): ShotPromptPreview {
   const byteplusEnabled = input.byteplusEnabled ?? isBytePlusConfigured();
   const audioClips = input.audioClips ?? [];
@@ -288,6 +328,7 @@ export function buildShotPromptPreview(input: {
         })),
         model: input.videoModel,
         generateAudio: input.generateAudio,
+        scene: packedSceneFromScene(input.scene),
       })
     : null;
   const assembledMotionPrompt = packed
@@ -313,6 +354,13 @@ export function buildShotPromptPreview(input: {
         0
       )
     : input.shotDurationMs;
+  const packedPromptOverflow = Boolean(
+    packed &&
+    !packedPromptFitsLimit(
+      packed,
+      IMAGE_TO_VIDEO_MODELS[input.videoModel].maxPromptLength
+    )
+  );
   const motionRefs = absolutizeRefs([
     ...buildMotionReferenceImages({
       scene: input.scene,
@@ -363,6 +411,13 @@ export function buildShotPromptPreview(input: {
       ? packedMembers.map((member) => member.shotId)
       : null,
     packedDurationMs: isPacked ? motionDurationMs : null,
+    packedPromptOverflow,
+    packedLimitWarning: packedLimitWarning(
+      input.videoModel,
+      packedMembers.map((member) => member.shotNumber),
+      input.packedDurationShotNumbers,
+      packedPromptOverflow
+    ),
     motionUnusable: [
       ...unusableShotReferenceLines(
         input.videoModel,
