@@ -104,15 +104,20 @@ function FilterPills<T extends string>({
   onChange: (value: T | undefined) => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <p className="text-sm font-medium">{label}</p>
-      <div className="flex flex-wrap justify-end gap-1">
+    <div className="flex items-center justify-between gap-2">
+      <p className="w-16 shrink-0 text-sm font-medium">{label}</p>
+      <div className="flex min-w-0 flex-nowrap justify-end gap-1">
         {options.map((option) => (
           <Button
             key={option.value}
             type="button"
             size="sm"
-            variant={value === option.value ? 'default' : 'secondary'}
+            variant="secondary"
+            aria-pressed={value === option.value}
+            className={cn(
+              'shrink-0',
+              value === option.value && 'bg-foreground text-background'
+            )}
             onClick={() => onChange(option.value)}
           >
             {option.label}
@@ -121,7 +126,12 @@ function FilterPills<T extends string>({
         <Button
           type="button"
           size="sm"
-          variant={value === undefined ? 'default' : 'secondary'}
+          variant="secondary"
+          aria-pressed={value === undefined}
+          className={cn(
+            'shrink-0',
+            value === undefined && 'bg-foreground text-background'
+          )}
           onClick={() => onChange(undefined)}
         >
           Any
@@ -129,10 +139,6 @@ function FilterPills<T extends string>({
       </div>
     </div>
   );
-}
-
-function sameFilters(a: CatalogVoiceFilters, b: CatalogVoiceFilters): boolean {
-  return a.gender === b.gender && a.age === b.age && a.quality === b.quality;
 }
 
 export const VoiceLibraryDialog: React.FC<VoiceLibraryDialogProps> = ({
@@ -153,7 +159,6 @@ export const VoiceLibraryDialog: React.FC<VoiceLibraryDialogProps> = ({
   const voices = query.data?.pages.flatMap((page) => page.voices) ?? [];
   const empty = !query.isFetching && voices.length === 0;
   const lastPage = query.data?.pages.at(-1);
-  const showingRecommended = !search && sameFilters(filters, recommended);
   const hasFilters = Boolean(filters.gender || filters.age || filters.quality);
 
   const reset = () => {
@@ -179,13 +184,11 @@ export const VoiceLibraryDialog: React.FC<VoiceLibraryDialogProps> = ({
         onOpenChange(next);
       }}
     >
-      <DialogContent className="flex max-h-[min(90vh,44rem)] w-full flex-col gap-3 sm:max-w-lg">
+      <DialogContent className="flex h-[min(90vh,44rem)] w-full flex-col gap-3 sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Voice library</DialogTitle>
-          <DialogDescription>
-            {showingRecommended && (recommended.gender || recommended.age)
-              ? `Recommended for ${characterName} from the character bible. Search or change filters to browse everyone.`
-              : 'ElevenLabs Voice Library. Studio quality is the high-fidelity subset.'}
+          <DialogDescription className="sr-only">
+            Pick an ElevenLabs voice for {characterName}.
           </DialogDescription>
         </DialogHeader>
         <div className="relative">
@@ -222,19 +225,18 @@ export const VoiceLibraryDialog: React.FC<VoiceLibraryDialogProps> = ({
             options={AGE_OPTIONS}
             onChange={(age) => setFilters((current) => ({ ...current, age }))}
           />
-          {hasFilters && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="self-end"
-              onClick={() => setFilters({})}
-            >
-              Clear filters
-            </Button>
-          )}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="self-end"
+            disabled={!hasFilters}
+            onClick={() => setFilters({})}
+          >
+            Clear filters
+          </Button>
         </div>
-        <ScrollArea className="h-[20rem]">
+        <ScrollArea className="min-h-0 flex-1">
           {query.isFetching && voices.length === 0 ? (
             <div className="flex flex-col gap-2 p-1">
               {Array.from({ length: 4 }).map((_, index) => (
@@ -264,21 +266,23 @@ export const VoiceLibraryDialog: React.FC<VoiceLibraryDialogProps> = ({
             </ul>
           )}
         </ScrollArea>
-        {lastPage?.hasMore && (
-          <Button
-            type="button"
-            variant="outline"
-            disabled={query.isFetchingNextPage}
-            onClick={() => void query.fetchNextPage()}
-          >
-            {query.isFetchingNextPage ? 'Loading…' : 'Load more'}
-          </Button>
-        )}
-        {query.isError && (
-          <p className="text-sm text-destructive">
-            Could not load voices. Try again in a moment.
-          </p>
-        )}
+        <div className="h-8">
+          {lastPage?.hasMore ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full"
+              disabled={query.isFetchingNextPage}
+              onClick={() => void query.fetchNextPage()}
+            >
+              {query.isFetchingNextPage ? 'Loading…' : 'Load more'}
+            </Button>
+          ) : null}
+        </div>
+        <p className="h-5 text-sm text-destructive empty:invisible">
+          {query.isError ? 'Could not load voices. Try again in a moment.' : ''}
+        </p>
       </DialogContent>
     </Dialog>
   );
