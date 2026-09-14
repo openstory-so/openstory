@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { TEST_FAL_PRICING as FAL_PRICING } from './fal-pricing-fixture';
-import type {
-  AudioModel,
-  ImageToVideoModel,
-  TextToImageModel,
+import {
+  DEFAULT_IMAGE_MODEL,
+  PREVIEW_IMAGE_MODEL,
+  type AudioModel,
+  type ImageToVideoModel,
+  type TextToImageModel,
 } from '@/models/models';
 import {
   estimateAudioCost,
@@ -748,5 +750,36 @@ describe('estimateReferenceSheetCost', () => {
       pricing: FAL_PRICING,
     });
     expect(Number(withoutElements)).toBe(Number(withZeroElements));
+  });
+});
+
+describe('preview image vs still cost (#1642)', () => {
+  const aspectRatio = '16:9' as const;
+  const preview = Number(
+    estimateImageCost(PREVIEW_IMAGE_MODEL, aspectRatio, 1, {
+      pricing: FAL_PRICING,
+    })
+  );
+  const defaultStill = Number(
+    estimateImageCost(DEFAULT_IMAGE_MODEL, aspectRatio, 1, {
+      pricing: FAL_PRICING,
+    })
+  );
+  const cheapestStill = Number(
+    estimateImageCost('nano_banana_2_lite', aspectRatio, 1, {
+      pricing: FAL_PRICING,
+    })
+  );
+
+  it('is priced so a krea sketch stays worth firing next to a real still', () => {
+    expect(preview).toBeGreaterThan(0);
+    expect(defaultStill).toBeGreaterThan(0);
+    expect(cheapestStill).toBeGreaterThan(0);
+    // Default still (GPT Image 2.5) is the usual generate-time image. A
+    // sketch at more than ~1/5 of that is no longer a cheap rail stand-in.
+    expect(preview).toBeLessThan(defaultStill * 0.2);
+    // Lite is the cheapest picker still. Two sketches would approach it;
+    // that's why we do not re-fire after the visual prompt exists.
+    expect(preview).toBeLessThan(cheapestStill * 0.5);
   });
 });

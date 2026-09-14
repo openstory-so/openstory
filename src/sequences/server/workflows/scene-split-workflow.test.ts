@@ -762,8 +762,8 @@ describe('SceneSplitWorkflow shot-list pass (#1486)', () => {
     expect(
       result.shotMapping.filter((m) => m.analysisSceneId === 'scene_1')
     ).toHaveLength(2);
-    // One preview per shot: a multi-shot scene's shots render their spec,
-    // a lone shot renders the scene's slice text.
+    // One preview per shot: every shot renders its spec (#1642), including
+    // a lone shot — the scene slice is only a fallback when the spec is empty.
     expect(previewCalls()).toHaveLength(4);
     const promptOf = (
       call: (typeof previewCalls extends () => infer R ? R : never)[number]
@@ -777,7 +777,8 @@ describe('SceneSplitWorkflow shot-list pass (#1486)', () => {
     expect(prompts.some((p) => p.includes('Cut to the hallway beyond'))).toBe(
       true
     );
-    expect(prompts.some((p) => p.includes('Scene 2 action'))).toBe(true);
+    expect(prompts.some((p) => p.includes('centered'))).toBe(true);
+    expect(prompts.some((p) => p.includes('Scene 2 action'))).toBe(false);
     // Every shot:created is announced as that scene's shot-list entry lands.
     expect(
       emit.mock.calls.filter((call) => call[0] === 'generation.shot:created')

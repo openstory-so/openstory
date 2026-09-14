@@ -116,7 +116,10 @@ import {
   getChatPrompt,
   type ChatMessage,
 } from '@/platform/server/ai/prompts-index';
-import { buildPreviewPrompt } from '@/sequences/server/poster-prompt';
+import {
+  buildPreviewPrompt,
+  previewTextForShot,
+} from '@/sequences/server/poster-prompt';
 import { getGenerationChannel } from '@/platform/realtime';
 import { previewImageDedupId } from '@/platform/server/workflow/dedup-ids';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
@@ -219,32 +222,6 @@ async function persistStreamedScene(
 }
 
 /**
- * Animatic text for a shot's preview: its spec (framing + action) when the
- * scene has 2+ shots, else the scene's verbatim slice (or title). The
- * recorded e2e fixtures are keyed on this text.
- */
-function previewTextForShot(
-  scene: SceneSplittingScene,
-  shotNumber: number
-): string {
-  const spec = scene.shots?.find((shot) => shot.shotNumber === shotNumber);
-  if (spec && (scene.shots?.length ?? 1) > 1) {
-    const parts = [
-      spec.framing.shotSize,
-      spec.framing.angle,
-      spec.framing.subjectStartState,
-      spec.action,
-    ]
-      .map((part) => part.trim())
-      .filter((part) => part.length > 0);
-    if (parts.length > 0) return parts.join('. ');
-  }
-  return (
-    scene.originalScript.extract || scene.metadata.title || 'A cinematic scene'
-  );
-}
-
-/**
  * Fire-and-forget preview image for one shot. Failures are swallowed by
  * design (#1149): a throw here fails the shot-list batch step, and with it
  * the whole sequence, discarding every still that already rendered and cost
@@ -271,7 +248,7 @@ async function triggerPreviewImage({
   scene: SceneSplittingScene;
   scopedDb: WorkflowScopedDb;
 }): Promise<void> {
-  const sceneText = previewTextForShot(scene, shot.shotNumber);
+  const shotText = previewTextForShot(scene, shot.shotNumber);
 
   try {
     const enforcement = await scopedDb.liveRead.compliance.listEnforcementFor(
@@ -284,7 +261,7 @@ async function triggerPreviewImage({
         userId: input.userId,
         teamId: input.teamId,
         sequenceId,
-        prompt: buildPreviewPrompt(sceneText),
+        prompt: buildPreviewPrompt(shotText),
         model: PREVIEW_IMAGE_MODEL,
         imageSize: aspectRatioToImageSize(input.aspectRatio),
         numImages: 1,

@@ -3,7 +3,7 @@
     {
       "match": {
         "endpoint": "fal",
-        "userMessage": "Animatic frame. medium close-up. eye level. Scarlett stands beside the rooftop wall holding the opened lipstick, wind lifting loose strands of her hair while her phone is ready in her other hand.. Scarlett applies a quick lipstick touch-up using her phone's dark reflection.. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+        "userMessage": "Animatic frame. medium close-up. eye level. Scarlett stands against pale sky and glass towers, with rooftop grasses in the foreground and the coral lipstick held prominently near her face. Scarlett stands beside the rooftop wall holding the opened lipstick, wind lifting loose strands of her hair while her phone is ready in her other hand. Scarlett applies a quick lipstick touch-up using her phone's dark reflection. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
         "model": "fal-ai/krea-2/turbo"
       },
       "response": {
@@ -23,7 +23,7 @@
           },
           "seed": 924062265,
           "has_nsfw_concepts": [false],
-          "prompt": "Animatic frame. medium close-up. eye level. Scarlett stands beside the rooftop wall holding the opened lipstick, wind lifting loose strands of her hair while her phone is ready in her other hand.. Scarlett applies a quick lipstick touch-up using her phone's dark reflection.. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+          "prompt": "Animatic frame. medium close-up. eye level. Scarlett stands against pale sky and glass towers, with rooftop grasses in the foreground and the coral lipstick held prominently near her face. Scarlett stands beside the rooftop wall holding the opened lipstick, wind lifting loose strands of her hair while her phone is ready in her other hand. Scarlett applies a quick lipstick touch-up using her phone's dark reflection. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
           "actual_prompt": null
         },
         "status": 200,

@@ -13,15 +13,21 @@
  * shot durations) did not need to change.
  */
 
+import { readdirSync, readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import { DEFAULT_VIDEO_MODEL } from '@/models/models';
 import { durationGridForModel } from '@/motion/model-capabilities';
 import { getChatPrompt } from '@/platform/server/ai/prompts-index';
 import { formatScenesForShotListPrompt } from '@/shots/shot-list-pass';
+import { buildPreviewPrompt, previewTextForShot } from './poster-prompt';
 import {
   extractTaggedJson,
   loadOpenrouterStage,
   recordedSplitScenes,
+  replayRecordedE2eScenes,
 } from './recorded-e2e-scenes';
 
 function fixtureScenesBlock(): string {
@@ -79,5 +85,44 @@ describe('recorded shot-list fixture', () => {
     }
     // Unused import guard: the helper is part of this module's public surface.
     expect(typeof extractTaggedJson).toBe('function');
+  });
+});
+
+describe('recorded krea preview fixtures (#1642)', () => {
+  it('match the shot-spec animatic prompt the split now fires', () => {
+    const kreaDir = resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      '../../../e2e/fixtures/recorded/fal/krea-2-turbo'
+    );
+    const kreaFileSchema = z.object({
+      fixtures: z.array(
+        z.object({ match: z.object({ userMessage: z.string().optional() }) })
+      ),
+    });
+    const prompts = new Set(
+      readdirSync(kreaDir)
+        .filter((name) => name.endsWith('.json'))
+        .map((name) => {
+          const raw = kreaFileSchema.parse(
+            JSON.parse(readFileSync(resolve(kreaDir, name), 'utf8'))
+          );
+          return raw.fixtures[0]?.match.userMessage ?? '';
+        })
+    );
+    const { scenes } = replayRecordedE2eScenes();
+    const missing: string[] = [];
+    for (const scene of scenes) {
+      for (const shot of scene.shots ?? []) {
+        const prompt = buildPreviewPrompt(
+          previewTextForShot(scene, shot.shotNumber)
+        );
+        if (!prompts.has(prompt)) {
+          missing.push(
+            `scene ${scene.sceneNumber} shot ${shot.shotNumber}: ${prompt.slice(0, 80)}`
+          );
+        }
+      }
+    }
+    expect(missing).toEqual([]);
   });
 });
