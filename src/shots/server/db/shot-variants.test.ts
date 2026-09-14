@@ -26,6 +26,7 @@ import {
 } from '@/platform/server/db/schema';
 import { relations } from '@/platform/server/db/schema/relations';
 import type { Database } from '@/platform/server/db/client';
+import { shotImageInputHash } from '@/shots/input-hash';
 import { createShotVariantsMethods } from './shot-variants';
 
 let client: Client;
@@ -214,7 +215,7 @@ describe('createShotVariantsMethods', () => {
       model: 'nano_banana_2',
       url: 'https://example.com/divergent.png',
       status: 'completed',
-      inputHash: 'divergent-hash',
+      inputHash: shotImageInputHash('divergent-hash'),
       divergedAt: new Date('2026-04-29T00:00:00Z'),
     });
 
@@ -251,7 +252,7 @@ describe('createShotVariantsMethods', () => {
       model: 'nano_banana_2',
       url: 'https://example.com/divergent.png',
       status: 'completed',
-      inputHash: 'divergent-hash',
+      inputHash: shotImageInputHash('divergent-hash'),
       divergedAt,
     });
     expect(first.id).toBeDefined();
@@ -266,7 +267,7 @@ describe('createShotVariantsMethods', () => {
       model: 'nano_banana_2',
       url: 'https://example.com/divergent.png',
       status: 'completed',
-      inputHash: 'divergent-hash',
+      inputHash: shotImageInputHash('divergent-hash'),
       divergedAt,
     });
     expect(second.id).toBe(first.id);

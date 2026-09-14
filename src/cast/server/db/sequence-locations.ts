@@ -23,6 +23,7 @@ import {
   resolveSceneForShot,
 } from '@/shots/server/scene-script';
 import { typedEntries } from '@/platform/typed-object';
+import type { LocationSheetInputHash } from '@/shots/input-hash';
 import { matchLocationsToScene } from '@/shots/scene-matching';
 import { createLocationSheetVariantsMethods } from './location-sheet-variants';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
@@ -292,7 +293,7 @@ export function createSequenceLocationsMethods(db: Database) {
       id: string,
       imageUrl: string,
       imagePath: string,
-      inputHash: string | null = null,
+      inputHash: LocationSheetInputHash | null = null,
       opts?: { model?: string; workflowRunId?: string | null }
     ): Promise<SequenceLocation> => {
       const { location } = await createLocationSheetVariantsMethods(

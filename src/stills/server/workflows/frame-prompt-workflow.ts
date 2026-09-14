@@ -83,7 +83,7 @@ export class FramePromptWorkflow extends OpenStoryWorkflowEntrypoint<FramePrompt
       aspectRatio,
       characterBible,
       locationBible,
-      elementBible = [],
+      elementBible,
       styleConfig,
       analysisModelId,
       shotId,

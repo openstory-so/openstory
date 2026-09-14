@@ -11,6 +11,7 @@
  */
 
 import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/models/models';
+import type { ShotImageInputHash } from '@/shots/input-hash';
 import type { Scene } from '@/shots/scene-analysis.schema';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import type {
@@ -110,7 +111,7 @@ export async function computeUploadedStillInputHash(args: {
   locations: SequenceLocationWithReference[];
   elements: SequenceElement[];
   aspectRatio: AspectRatio;
-}): Promise<string | null> {
+}): Promise<ShotImageInputHash | null> {
   if (!args.promptText || args.promptText.length === 0) return null;
   const snapshot = await buildRegenerateShotSnapshot({
     shot: { id: args.shotId },

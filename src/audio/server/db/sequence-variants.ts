@@ -18,6 +18,7 @@ import type {
 } from '@/platform/server/db/schema';
 import { and, eq, sql } from 'drizzle-orm';
 import { insertDivergentRaceTolerant } from '@/platform/server/db/scoped/divergent-insert';
+import type { SequenceMusicInputHash } from '@/shots/input-hash';
 
 export type WriteVariantResult<T> = { variant: T; divergent: boolean };
 
@@ -102,7 +103,10 @@ export function createSequenceVariantsMethods(db: Database) {
   };
 
   const insertDivergentMusic = async (
-    data: NewSequenceMusicVariant & { inputHash: string; divergedAt: Date }
+    data: NewSequenceMusicVariant & {
+      inputHash: SequenceMusicInputHash;
+      divergedAt: Date;
+    }
   ): Promise<SequenceMusicVariant> => {
     const findExisting = () =>
       db
@@ -163,7 +167,7 @@ export function createSequenceVariantsMethods(db: Database) {
      * when `divergent` is true.
      */
     writeMusicVariant: async (
-      data: NewSequenceMusicVariant & { inputHash: string }
+      data: NewSequenceMusicVariant & { inputHash: SequenceMusicInputHash }
     ): Promise<WriteVariantResult<SequenceMusicVariant>> => {
       const existing = await getMusicPrimary(data.sequenceId, data.model);
       const isDivergent =

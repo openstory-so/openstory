@@ -23,6 +23,15 @@ import {
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { insertDivergentRaceTolerant } from '@/platform/server/db/scoped/divergent-insert';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
+import type {
+  LibraryLocationReferenceInputHash,
+  LocationSheetInputHash,
+} from '@/shots/input-hash';
+
+/** Sequence location sheets and library location references share this table. */
+type LocationSheetVariantInputHash =
+  | LocationSheetInputHash
+  | LibraryLocationReferenceInputHash;
 
 type PromoteLocationUpdate = {
   referenceImageUrl: string | null;
@@ -151,7 +160,7 @@ export function createLocationSheetVariantsMethods(db: Database) {
       locationDbId: string;
       url: string;
       storagePath: string;
-      inputHash: string | null;
+      inputHash: LocationSheetInputHash | null;
       model: string;
       workflowRunId?: string | null;
     }): Promise<{
@@ -311,7 +320,7 @@ export function createLocationSheetVariantsMethods(db: Database) {
      */
     insertDivergent: async (
       values: NewLocationSheetVariant & {
-        inputHash: string;
+        inputHash: LocationSheetVariantInputHash;
         divergedAt: Date;
       }
     ): Promise<LocationSheetVariant> => {

@@ -19,6 +19,7 @@ import {
 } from '@/platform/server/db/schema';
 import type { SequenceMusicPromptVersion } from '@/platform/server/db/schema';
 import { and, desc, eq } from 'drizzle-orm';
+import type { MusicPromptInputHash } from '@/shots/input-hash';
 
 type WriteSequenceMusicPromptVersionBase = {
   sequenceId: string;
@@ -45,7 +46,7 @@ export type WriteSequenceMusicPromptVersionInput =
     (
       | {
           source: 'ai-generated' | 'regenerated';
-          inputHash: string;
+          inputHash: MusicPromptInputHash;
           analysisModel: string;
         }
       | {

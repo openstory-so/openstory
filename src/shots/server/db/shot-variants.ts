@@ -5,6 +5,7 @@
 
 import type { Database } from '@/platform/server/db/client';
 import type { ShotVariant, NewShotVariant } from '@/platform/server/db/schema';
+import type { ShotImageInputHash } from '@/shots/input-hash';
 import { shotVariants } from '@/platform/server/db/schema';
 import type { VariantType } from '@/platform/server/db/schema/shot-variants';
 import { and, eq, sql } from 'drizzle-orm';
@@ -167,7 +168,10 @@ export function createShotVariantsMethods(db: Database) {
      * being absorbed.
      */
     insertDivergent: async (
-      data: NewShotVariant & { inputHash: string; divergedAt: Date }
+      data: NewShotVariant & {
+        inputHash: ShotImageInputHash;
+        divergedAt: Date;
+      }
     ): Promise<ShotVariant> => {
       const existing = await db
         .select()

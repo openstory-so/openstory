@@ -26,6 +26,7 @@
 
 import type { NewShot, NewVideoVariant } from '@/platform/server/db/schema';
 import type { RecordEventInput } from '@/sequences/server/db/sequence-events';
+import type { VideoManifestInputHash } from '@/shots/input-hash';
 
 export type MotionStorageResult = { url: string; path: string };
 
@@ -89,7 +90,11 @@ export type PersistMotionScopedDb = {
       workflowRunId: string,
       error: string
     ) => Promise<number>;
-    appendVersion: (data: NewVideoVariant) => Promise<{ id: string }>;
+    appendVersion: (
+      data: Omit<NewVideoVariant, 'inputHash'> & {
+        inputHash?: VideoManifestInputHash | null;
+      }
+    ) => Promise<{ id: string }>;
   };
   renderSegments: {
     setPendingPromoteVersionId: (

@@ -36,6 +36,7 @@ import {
   matchElementsToShotImage,
   matchLocationsToScene,
 } from '@/shots/scene-matching';
+import type { ShotImageInputHash } from '@/shots/input-hash';
 import {
   computeShotImageSceneHash,
   computeShotImagesHashFromDto,
@@ -203,7 +204,7 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
     const snapshotHashByKey = await step.do(
       'compute-snapshot-hashes',
       async () => {
-        const out: Record<string, string | undefined> = {};
+        const out: Record<string, ShotImageInputHash | undefined> = {};
         for (const item of items) {
           const snap = sceneSnapshotsById.get(imageSnapshotKey(item));
           for (const model of imageModels) {

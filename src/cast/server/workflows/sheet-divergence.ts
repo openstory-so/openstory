@@ -14,6 +14,12 @@
  */
 
 import type { ScopedDb } from '@/platform/server/db/scoped';
+import type {
+  CharacterSheetInputHash,
+  LibraryLocationReferenceInputHash,
+  LocationSheetInputHash,
+  TalentSheetInputHash,
+} from '@/shots/input-hash';
 import type { LocationSheetVariantParentType } from '@/platform/server/db/schema';
 // `ScopedDb` is imported for type extraction only; the helpers themselves
 // take a narrower `SheetDivergenceScopedDb` shape (defined below).
@@ -48,14 +54,14 @@ export type SheetDivergenceScopedDb = {
   };
 };
 
-export type SheetDivergenceDecision =
+export type SheetDivergenceDecision<H extends string = string> =
   | { kind: 'convergent' }
-  | { kind: 'divergent'; snapshotInputHash: string; currentInputHash: string };
+  | { kind: 'divergent'; snapshotInputHash: H; currentInputHash: string };
 
-export function decideSheetDivergence(
-  snapshotInputHash: string | null | undefined,
+export function decideSheetDivergence<H extends string>(
+  snapshotInputHash: H | null | undefined,
   currentInputHash: string | null | undefined
-): SheetDivergenceDecision {
+): SheetDivergenceDecision<H> {
   // Either side missing → can't prove divergence; treat as convergent. Matches
   // the project-wide "null hash = unknown, never stale" policy applied to
   // pre-hash-tracking rows (see workflow/types.ts on `RegenerateShotSnapshot`).
@@ -81,7 +87,7 @@ export type SaveDivergentCharacterSheetArgs = {
   url: string;
   storagePath?: string;
   workflowRunId?: string;
-  snapshotInputHash: string;
+  snapshotInputHash: CharacterSheetInputHash;
 };
 
 export async function saveDivergentCharacterSheet({
@@ -160,7 +166,7 @@ export type SaveDivergentLocationSheetArgs = {
   url: string;
   storagePath?: string;
   workflowRunId?: string;
-  snapshotInputHash: string;
+  snapshotInputHash: LocationSheetInputHash | LibraryLocationReferenceInputHash;
 };
 
 export async function saveDivergentLocationSheet({
@@ -233,7 +239,7 @@ export type SaveDivergentTalentSheetArgs = {
   url: string;
   storagePath?: string;
   workflowRunId?: string;
-  snapshotInputHash: string;
+  snapshotInputHash: TalentSheetInputHash;
 };
 
 export async function saveDivergentTalentSheet({

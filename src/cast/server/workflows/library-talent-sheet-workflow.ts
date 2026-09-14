@@ -26,6 +26,7 @@ import type {
   LibraryTalentSheetWorkflowInput,
   LibraryTalentSheetWorkflowResult,
 } from '@/platform/server/workflow/types';
+import type { TalentSheetInputHash } from '@/shots/input-hash';
 import {
   computeLibraryTalentSheetHashCurrent,
   computeLibraryTalentSheetHashFromDto,
@@ -212,7 +213,8 @@ export class LibraryTalentSheetWorkflow extends OpenStoryWorkflowEntrypoint<Libr
     // the artifact as a parented sheet against the snapshot identity that
     // triggered this run) and stop before the headshot + talent.update steps
     // so this now-stale run cannot overwrite the talent's primary identity.
-    const snapshotHash: string | null = input.snapshotInputHash ?? null;
+    const snapshotHash: TalentSheetInputHash | null =
+      input.snapshotInputHash ?? null;
     const sheetReconcile = await step.do(
       'reconcile-create-sheet',
       async (): Promise<{

@@ -22,6 +22,7 @@
 
 import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
+import { musicPromptInputHash } from '@/shots/input-hash';
 import {
   shotPromptVersions,
   shots,
@@ -1136,7 +1137,7 @@ describe('sequence_music_prompt_variants helper', () => {
       prompt: 'AI music v1',
       tags: 'epic',
       source: firstSource,
-      inputHash: 'music-hash-v1',
+      inputHash: musicPromptInputHash('music-hash-v1'),
       analysisModel: 'anthropic/claude-haiku-4.5',
     });
 
@@ -1149,7 +1150,7 @@ describe('sequence_music_prompt_variants helper', () => {
       prompt: 'AI music v2',
       tags: 'epic,driving',
       source: secondSource,
-      inputHash: 'music-hash-v2',
+      inputHash: musicPromptInputHash('music-hash-v2'),
       analysisModel: 'anthropic/claude-haiku-4.5',
     });
 
@@ -1176,7 +1177,7 @@ describe('sequence_music_prompt_variants helper', () => {
       prompt: 'AI music',
       tags: 'epic',
       source: 'ai-generated',
-      inputHash: 'music-hash-1',
+      inputHash: musicPromptInputHash('music-hash-1'),
       analysisModel: 'anthropic/claude-haiku-4.5',
     });
 
@@ -1185,7 +1186,7 @@ describe('sequence_music_prompt_variants helper', () => {
       prompt: 'AI music',
       tags: 'epic',
       source: 'ai-generated',
-      inputHash: 'music-hash-1',
+      inputHash: musicPromptInputHash('music-hash-1'),
       analysisModel: 'anthropic/claude-haiku-4.5',
     });
 
@@ -1203,7 +1204,7 @@ describe('sequence_music_prompt_variants helper', () => {
       prompt: 'AI music v2',
       tags: 'epic',
       source: 'regenerated',
-      inputHash: 'music-context-hash',
+      inputHash: musicPromptInputHash('music-context-hash'),
       analysisModel: 'anthropic/claude-haiku-4.5',
     });
 
@@ -1240,7 +1241,7 @@ describe('sequence_music_prompt_variants helper', () => {
       prompt: 'belongs to sequence A',
       tags: 'epic',
       source: 'ai-generated',
-      inputHash: 'music-hash-A',
+      inputHash: musicPromptInputHash('music-hash-A'),
       analysisModel: 'anthropic/claude-haiku-4.5',
     });
 
@@ -1265,7 +1266,7 @@ describe('sequence_music_prompt_variants helper', () => {
       prompt: 'AI music v1',
       tags: 'epic',
       source: 'ai-generated',
-      inputHash: 'music-hash-v1',
+      inputHash: musicPromptInputHash('music-hash-v1'),
       analysisModel: 'anthropic/claude-haiku-4.5',
     });
 

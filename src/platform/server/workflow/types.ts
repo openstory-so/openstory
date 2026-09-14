@@ -22,6 +22,13 @@ import type {
   Scene,
   VisualPrompt,
 } from '@/shots/scene-analysis.schema';
+import type {
+  CharacterSheetInputHash,
+  LibraryLocationReferenceInputHash,
+  LocationSheetInputHash,
+  ShotImageInputHash,
+  TalentSheetInputHash,
+} from '@/shots/input-hash';
 
 /**
  * Structured motion direction (dialogue + audio) carried forward onto a
@@ -151,7 +158,7 @@ export interface ImageWorkflowInput extends SequenceWorkflowContext {
   aspectRatio?: AspectRatio;
   resolution?: Resolution;
   /** Hash over `(prompt, model, aspectRatio, sceneSnapshot)`; validated at start. */
-  snapshotInputHash?: string;
+  snapshotInputHash?: ShotImageInputHash;
   /**
    * Present when `prompt` is a real user edit (typed in the UI, and different
    * from the prompt version currently selected) — absent on auto paths
@@ -647,7 +654,7 @@ export interface CharacterSheetWorkflowInput extends SequenceWorkflowContext {
    */
   talentSheetInputHash?: string | null;
   /** Hash over the inlined DTO; validated by the snapshot middleware. */
-  snapshotInputHash?: string;
+  snapshotInputHash?: CharacterSheetInputHash;
 }
 
 /**
@@ -690,7 +697,7 @@ export type RegenerateShotSnapshot = {
    * at write time and compared to a freshly recomputed hash to detect
    * divergence.
    */
-  snapshotInputHash: string;
+  snapshotInputHash: ShotImageInputHash;
 };
 
 /**
@@ -941,7 +948,11 @@ export interface FramePromptBatchWorkflowInput extends SequenceWorkflowContext {
   aspectRatio: AspectRatio;
   characterBible: CharacterBibleEntry[];
   locationBible: LocationBibleEntry[];
-  elementBible?: ElementBibleEntry[];
+  /**
+   * Required (`[]` if the sequence has none). Omitting it defaulted to `[]`
+   * at destructure and hashed a different shape than verify (#1616).
+   */
+  elementBible: ElementBibleEntry[];
   styleConfig: StyleConfig;
   analysisModelId: AnalysisModelId;
   /** Maps sceneId to shotId for DB persistence after visual prompt generation */
@@ -968,7 +979,11 @@ export interface FramePromptWorkflowInput extends SequenceWorkflowContext {
   aspectRatio: AspectRatio;
   characterBible: CharacterBibleEntry[];
   locationBible: LocationBibleEntry[];
-  elementBible?: ElementBibleEntry[];
+  /**
+   * Required (`[]` if the sequence has none). Omitting it defaulted to `[]`
+   * at destructure and hashed a different shape than verify (#1616).
+   */
+  elementBible: ElementBibleEntry[];
   styleConfig: StyleConfig;
   analysisModelId: AnalysisModelId;
   shotId?: string;
@@ -1003,7 +1018,11 @@ export interface MotionPromptBatchWorkflowInput extends SequenceWorkflowContext 
   aspectRatio: AspectRatio;
   characterBible: CharacterBibleEntry[];
   locationBible: LocationBibleEntry[];
-  elementBible?: ElementBibleEntry[];
+  /**
+   * Required (`[]` if the sequence has none). Omitting it defaulted to `[]`
+   * at destructure and hashed a different shape than verify (#1616).
+   */
+  elementBible: ElementBibleEntry[];
   styleConfig: StyleConfig;
   analysisModelId: AnalysisModelId;
   shotMapping?: ShotMapping;
@@ -1034,7 +1053,11 @@ export interface MotionPromptWorkflowInput extends SequenceWorkflowContext {
   aspectRatio: AspectRatio;
   characterBible: CharacterBibleEntry[];
   locationBible: LocationBibleEntry[];
-  elementBible?: ElementBibleEntry[];
+  /**
+   * Required (`[]` if the sequence has none). Omitting it defaulted to `[]`
+   * at destructure and hashed a different shape than verify (#1616).
+   */
+  elementBible: ElementBibleEntry[];
   styleConfig: StyleConfig;
   analysisModelId: AnalysisModelId;
   shotId?: string;
@@ -1172,7 +1195,7 @@ export interface LibraryTalentSheetWorkflowInput extends UserWorkflowContext {
   /** Appearance metadata extracted from the uploaded sheet, when available. */
   uploadedSheetMetadata?: CharacterBibleEntry;
   /** Hash over the inlined DTO; validated by the snapshot middleware. */
-  snapshotInputHash?: string;
+  snapshotInputHash?: TalentSheetInputHash;
 }
 
 export interface LibraryTalentSheetWorkflowResult {
@@ -1208,7 +1231,7 @@ export interface LocationSheetWorkflowInput extends SequenceWorkflowContext {
    */
   libraryLocationReferenceHash?: string | null;
   /** Hash over the inlined DTO; validated by the snapshot middleware. */
-  snapshotInputHash?: string;
+  snapshotInputHash?: LocationSheetInputHash;
 }
 
 export interface LocationSheetWorkflowResult {
@@ -1247,7 +1270,7 @@ export interface LibraryLocationSheetWorkflowInput extends UserWorkflowContext {
    * gated on it: if the location was renamed/re-described mid-run the sheet is
    * parked as a divergent variant instead of becoming the live reference.
    */
-  snapshotInputHash?: string;
+  snapshotInputHash?: LibraryLocationReferenceInputHash;
 }
 
 export interface LibraryLocationSheetWorkflowResult {
@@ -1590,7 +1613,11 @@ export interface MotionMusicPromptsWorkflowInput extends SequenceWorkflowContext
   aspectRatio: AspectRatio;
   characterBible: CharacterBibleEntry[];
   locationBible: LocationBibleEntry[];
-  elementBible?: ElementBibleEntry[];
+  /**
+   * Required (`[]` if the sequence has none). Omitting it defaulted to `[]`
+   * at destructure and hashed a different shape than verify (#1616).
+   */
+  elementBible: ElementBibleEntry[];
   styleConfig: StyleConfig;
   analysisModelId: AnalysisModelId;
   videoModel?: ImageToVideoModel;

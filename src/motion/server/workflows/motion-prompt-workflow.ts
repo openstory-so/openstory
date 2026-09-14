@@ -56,7 +56,7 @@ export class MotionPromptWorkflow extends OpenStoryWorkflowEntrypoint<MotionProm
       aspectRatio,
       characterBible,
       locationBible,
-      elementBible = [],
+      elementBible,
       styleConfig,
       analysisModelId,
       sequenceId,

@@ -20,8 +20,13 @@ import {
   locationSheetInputHashMatches,
   sha256Hex,
   type CharacterBibleHashFields,
-  type ShotImageHashInput,
+  type CharacterSheetInputHash,
+  type LibraryLocationReferenceInputHash,
   type LocationBibleHashFields,
+  type LocationSheetInputHash,
+  type ShotImageHashInput,
+  type ShotImageInputHash,
+  type TalentSheetInputHash,
 } from '@/shots/input-hash';
 import { DEFAULT_IMAGE_MODEL } from '@/models/models';
 import { styleConfigHashBody } from '@/look/style-config';
@@ -147,7 +152,7 @@ function characterSheetHashInput(
 
 export async function computeCharacterSheetHashFromDto(
   input: CharacterSheetWorkflowInput & { talentSheetInputHash?: string | null }
-): Promise<string> {
+): Promise<CharacterSheetInputHash> {
   return computeCharacterSheetInputHash({
     ...characterSheetHashInput(input),
     styleConfigHash: await computeStyleConfigHash(input.styleConfig),
@@ -175,7 +180,7 @@ export async function characterSheetHashMatchesStored(
 export async function computeCharacterSheetHashCurrent(
   input: CharacterSheetWorkflowInput,
   scopedDb: SheetSnapshotReadDb
-): Promise<string> {
+): Promise<CharacterSheetInputHash> {
   const talentSheetInputHash = await resolveTalentSheetHash(
     scopedDb,
     input.characterDbId
@@ -213,7 +218,7 @@ export async function computeLocationSheetHashFromDto(
   input: LocationSheetWorkflowInput & {
     libraryLocationReferenceHash?: string | null;
   }
-): Promise<string> {
+): Promise<LocationSheetInputHash> {
   return computeLocationSheetInputHash({
     ...locationSheetHashInput(input),
     styleConfigHash: await computeStyleConfigHash(input.styleConfig),
@@ -236,7 +241,7 @@ export async function locationSheetHashMatchesStored(
 export async function computeLocationSheetHashCurrent(
   input: LocationSheetWorkflowInput,
   scopedDb: SheetSnapshotReadDb
-): Promise<string> {
+): Promise<LocationSheetInputHash> {
   const libraryLocationReferenceHash =
     await resolveLibraryLocationReferenceHash(scopedDb, input.locationDbId);
   return computeLocationSheetHashFromDto({
@@ -255,7 +260,7 @@ export async function computeLocationSheetHashCurrent(
  */
 export async function computeLibraryTalentSheetHashFromDto(
   input: LibraryTalentSheetWorkflowInput
-): Promise<string> {
+): Promise<TalentSheetInputHash> {
   // Sort here so callers that forget to pre-sort get a stable hash. The
   // `Current` helper sorts the live media URLs the same way; without sorting
   // here, an unsorted DTO would diverge against a sorted DB read on every run.
@@ -273,7 +278,7 @@ export async function computeLibraryTalentSheetHashFromDto(
 export async function computeLibraryTalentSheetHashCurrent(
   input: LibraryTalentSheetWorkflowInput,
   scopedDb: SheetSnapshotReadDb
-): Promise<string> {
+): Promise<TalentSheetInputHash> {
   const talent = await scopedDb.talent.getWithRelations(input.talentId);
   // Fall back to the payload when the talent row vanished mid-flight — the
   // workflow will fail downstream on the missing record, but we shouldn't mask
@@ -312,7 +317,7 @@ export async function computeLibraryTalentSheetHashCurrent(
  */
 export async function computeLibraryLocationSheetHashFromDto(
   input: LibraryLocationSheetWorkflowInput
-): Promise<string> {
+): Promise<LibraryLocationReferenceInputHash> {
   return computeLibraryLocationReferenceInputHash({
     locationBible: {
       name: input.locationName,
@@ -335,7 +340,7 @@ export async function computeLibraryLocationSheetHashFromDto(
 export async function computeLibraryLocationSheetHashCurrent(
   input: LibraryLocationSheetWorkflowInput,
   scopedDb: SheetSnapshotReadDb
-): Promise<string> {
+): Promise<LibraryLocationReferenceInputHash> {
   const location = await scopedDb.locations.getById(input.locationDbId);
   return computeLibraryLocationSheetHashFromDto({
     ...input,
@@ -444,7 +449,7 @@ export function computeShotImageSceneHash(
   scene: ShotImageSceneSnapshot,
   imageModel: string,
   aspectRatio: string
-): Promise<string> {
+): Promise<ShotImageInputHash> {
   const hashInput: ShotImageHashInput = {
     kind: 'thumbnail',
     visualPrompt: scene.visualPrompt,

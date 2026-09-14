@@ -17,6 +17,7 @@ import {
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { insertDivergentRaceTolerant } from '@/platform/server/db/scoped/divergent-insert';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
+import type { CharacterSheetInputHash } from '@/shots/input-hash';
 
 export function createCharacterSheetVariantsMethods(db: Database) {
   return {
@@ -134,7 +135,7 @@ export function createCharacterSheetVariantsMethods(db: Database) {
       url: string;
       storagePath: string;
       /** Verify-mirrored current-inputs hash on parent and version row. */
-      inputHash: string | null;
+      inputHash: CharacterSheetInputHash | null;
       model: string;
       workflowRunId?: string | null;
     }): Promise<{ character: Character; version: CharacterSheetVariant }> => {
@@ -290,7 +291,7 @@ export function createCharacterSheetVariantsMethods(db: Database) {
      */
     insertDivergent: async (
       values: NewCharacterSheetVariant & {
-        inputHash: string;
+        inputHash: CharacterSheetInputHash;
         divergedAt: Date;
       }
     ): Promise<CharacterSheetVariant> => {

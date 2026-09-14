@@ -20,6 +20,12 @@ import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import { generateId } from '@/platform/id';
 import {
+  characterSheetInputHash,
+  libraryLocationReferenceInputHash,
+  locationSheetInputHash,
+  talentSheetInputHash,
+} from '@/shots/input-hash';
+import {
   characterSheetVariants,
   characters,
   locationLibrary,
@@ -142,7 +148,7 @@ describe('character-sheet-variants insertDivergent', () => {
       model: 'flux-pro',
       url: 'https://example.com/divergent-1.png',
       status: 'completed',
-      inputHash: 'hash-snap',
+      inputHash: characterSheetInputHash('hash-snap'),
       divergedAt,
     });
 
@@ -151,7 +157,7 @@ describe('character-sheet-variants insertDivergent', () => {
       model: 'flux-pro',
       url: 'https://example.com/divergent-1.png',
       status: 'completed',
-      inputHash: 'hash-snap',
+      inputHash: characterSheetInputHash('hash-snap'),
       divergedAt,
     });
 
@@ -169,7 +175,7 @@ describe('character-sheet-variants insertDivergent', () => {
       model: 'flux-pro',
       url: 'https://example.com/divergent-a.png',
       status: 'completed',
-      inputHash: 'hash-a',
+      inputHash: characterSheetInputHash('hash-a'),
       divergedAt,
     });
     await methods.insertDivergent({
@@ -177,7 +183,7 @@ describe('character-sheet-variants insertDivergent', () => {
       model: 'flux-pro',
       url: 'https://example.com/divergent-b.png',
       status: 'completed',
-      inputHash: 'hash-b',
+      inputHash: characterSheetInputHash('hash-b'),
       divergedAt,
     });
 
@@ -213,7 +219,7 @@ describe('character-sheet-variants insertDivergent', () => {
       model: 'flux-pro',
       url: 'https://example.com/loser.png',
       status: 'completed',
-      inputHash: 'hash-race',
+      inputHash: characterSheetInputHash('hash-race'),
       divergedAt,
     });
 
@@ -236,7 +242,7 @@ describe('location-sheet-variants insertDivergent', () => {
       model: 'flux-pro',
       url: 'https://example.com/divergent.png',
       status: 'completed',
-      inputHash: 'hash-snap',
+      inputHash: libraryLocationReferenceInputHash('hash-snap'),
       divergedAt,
     });
     const second = await methods.insertDivergent({
@@ -245,7 +251,7 @@ describe('location-sheet-variants insertDivergent', () => {
       model: 'flux-pro',
       url: 'https://example.com/divergent.png',
       status: 'completed',
-      inputHash: 'hash-snap',
+      inputHash: libraryLocationReferenceInputHash('hash-snap'),
       divergedAt,
     });
 
@@ -265,7 +271,7 @@ describe('location-sheet-variants insertDivergent', () => {
       model: 'flux-pro',
       url: 'https://example.com/seq.png',
       status: 'completed',
-      inputHash: 'hash',
+      inputHash: locationSheetInputHash('hash'),
       divergedAt,
     });
     await methods.insertDivergent({
@@ -274,7 +280,7 @@ describe('location-sheet-variants insertDivergent', () => {
       model: 'flux-pro',
       url: 'https://example.com/lib.png',
       status: 'completed',
-      inputHash: 'hash',
+      inputHash: libraryLocationReferenceInputHash('hash'),
       divergedAt,
     });
 
@@ -293,7 +299,7 @@ describe('talent-sheet-variants insertDivergent', () => {
       model: 'flux-pro',
       url: 'https://example.com/divergent.png',
       status: 'completed',
-      inputHash: 'hash-snap',
+      inputHash: talentSheetInputHash('hash-snap'),
       divergedAt,
     });
     const second = await methods.insertDivergent({
@@ -301,7 +307,7 @@ describe('talent-sheet-variants insertDivergent', () => {
       model: 'flux-pro',
       url: 'https://example.com/divergent.png',
       status: 'completed',
-      inputHash: 'hash-snap',
+      inputHash: talentSheetInputHash('hash-snap'),
       divergedAt,
     });
 
@@ -320,7 +326,7 @@ describe('character-sheet-variants discard / undiscard / promote', () => {
       model: 'flux-pro',
       url: 'https://example.com/divergent.png',
       status: 'completed',
-      inputHash: 'hash',
+      inputHash: characterSheetInputHash('hash'),
       divergedAt,
     });
 
@@ -345,7 +351,7 @@ describe('character-sheet-variants discard / undiscard / promote', () => {
       model: 'flux-pro',
       url: 'https://example.com/a.png',
       status: 'completed',
-      inputHash: 'hash-a',
+      inputHash: characterSheetInputHash('hash-a'),
       divergedAt,
     });
     await methods.insertDivergent({
@@ -353,7 +359,7 @@ describe('character-sheet-variants discard / undiscard / promote', () => {
       model: 'flux-pro',
       url: 'https://example.com/b.png',
       status: 'completed',
-      inputHash: 'hash-b',
+      inputHash: characterSheetInputHash('hash-b'),
       divergedAt,
     });
     await methods.discard(a.id);
@@ -375,7 +381,7 @@ describe('location-sheet-variants discard / promote', () => {
       model: 'flux-pro',
       url: 'https://example.com/x.png',
       status: 'completed',
-      inputHash: 'hash',
+      inputHash: libraryLocationReferenceInputHash('hash'),
       divergedAt,
     });
 
@@ -398,7 +404,7 @@ describe('talent-sheet-variants discard / promote', () => {
       url: 'https://example.com/promoted.png',
       storagePath: '/r2/promoted.png',
       status: 'completed',
-      inputHash: 'hash-promoted',
+      inputHash: talentSheetInputHash('hash-promoted'),
       divergedAt,
     });
 
@@ -467,7 +473,7 @@ describe('location-sheet-variants promoteAtomically (library only)', () => {
       url: 'https://example.com/lib.png',
       storagePath: '/r2/lib.png',
       status: 'completed',
-      inputHash: 'h',
+      inputHash: libraryLocationReferenceInputHash('h'),
       divergedAt: new Date('2026-04-29T00:00:00Z'),
     });
 
@@ -503,7 +509,7 @@ describe('location-sheet-variants promoteAtomically (library only)', () => {
       model: 'flux-pro',
       url: 'https://example.com/x.png',
       status: 'completed',
-      inputHash: 'h',
+      inputHash: locationSheetInputHash('h'),
       divergedAt: new Date('2026-04-29T00:00:00Z'),
     });
 
@@ -532,7 +538,7 @@ describe('location-sheet-variants promoteAtomically (library only)', () => {
       model: 'flux-pro',
       url: 'https://example.com/x.png',
       status: 'completed',
-      inputHash: 'h',
+      inputHash: libraryLocationReferenceInputHash('h'),
       divergedAt: new Date('2026-04-29T00:00:00Z'),
     });
 
@@ -605,7 +611,7 @@ describe('sheet-variants list filters and empty-input short-circuits', () => {
       model: 'flux-pro',
       url: 'https://example.com/seq.png',
       status: 'completed',
-      inputHash: 'hs',
+      inputHash: locationSheetInputHash('hs'),
       divergedAt,
     });
     const libVariant = await methods.insertDivergent({
@@ -614,7 +620,7 @@ describe('sheet-variants list filters and empty-input short-circuits', () => {
       model: 'flux-pro',
       url: 'https://example.com/lib.png',
       status: 'completed',
-      inputHash: 'hl',
+      inputHash: libraryLocationReferenceInputHash('hl'),
       divergedAt,
     });
 
@@ -651,7 +657,7 @@ describe('sheet-variants list filters and empty-input short-circuits', () => {
       model: 'flux-pro',
       url: 'https://example.com/a.png',
       status: 'completed',
-      inputHash: 'h-a',
+      inputHash: characterSheetInputHash('h-a'),
       divergedAt,
     });
     await methods.insertDivergent({
@@ -659,7 +665,7 @@ describe('sheet-variants list filters and empty-input short-circuits', () => {
       model: 'flux-pro',
       url: 'https://example.com/b.png',
       status: 'completed',
-      inputHash: 'h-b',
+      inputHash: characterSheetInputHash('h-b'),
       divergedAt,
     });
     await methods.discard(v1.id);
@@ -680,7 +686,7 @@ describe('talent-sheet-variants promoteAtomically negative cases', () => {
       model: 'flux-pro',
       url: 'https://example.com/x.png',
       status: 'completed',
-      inputHash: 'h',
+      inputHash: talentSheetInputHash('h'),
       divergedAt: new Date('2026-04-29T00:00:00Z'),
     });
 
@@ -744,7 +750,7 @@ describe('character sheet versions (append + select)', () => {
       characterId,
       url: 'https://example.com/new.png',
       storagePath: '/new.png',
-      inputHash: 'hash-new',
+      inputHash: characterSheetInputHash('hash-new'),
       model: 'nano_banana_2',
     });
 
@@ -770,14 +776,14 @@ describe('character sheet versions (append + select)', () => {
       characterId,
       url: 'https://example.com/a.png',
       storagePath: '/a.png',
-      inputHash: 'hash-a',
+      inputHash: characterSheetInputHash('hash-a'),
       model: 'nano_banana_2',
     });
     const second = await methods.applyConvergent({
       characterId,
       url: 'https://example.com/b.png',
       storagePath: '/b.png',
-      inputHash: 'hash-b',
+      inputHash: characterSheetInputHash('hash-b'),
       model: 'nano_banana_2',
     });
     expect(second.character.selectedSheetVersionId).toBe(second.version.id);

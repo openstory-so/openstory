@@ -9,6 +9,7 @@ import type {
   ImageWorkflowInput,
   RegenerateShotsWorkflowInput,
 } from '@/platform/server/workflow/types';
+import { shotImageInputHash } from '@/shots/input-hash';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 
 const spawnAndAwaitChild =
@@ -81,7 +82,7 @@ function makeEvent(): Readonly<WorkflowEvent<RegenerateShotsWorkflowInput>> {
           elementReferenceHashes: [],
           characterRefs: [],
           locationRefs: [],
-          snapshotInputHash: 'hash-1',
+          snapshotInputHash: shotImageInputHash('hash-1'),
         },
       ],
     },

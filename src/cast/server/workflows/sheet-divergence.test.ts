@@ -1,4 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  characterSheetInputHash,
+  libraryLocationReferenceInputHash,
+  locationSheetInputHash,
+  talentSheetInputHash,
+} from '@/shots/input-hash';
 import type { SheetDivergenceScopedDb } from './sheet-divergence';
 
 const generationEmit = vi.fn(async () => undefined);
@@ -105,7 +111,7 @@ describe('saveDivergentCharacterSheet', () => {
       url: 'https://r2/sheet.png',
       storagePath: 'team/seq-1/char-1/x.png',
       workflowRunId: 'run-1',
-      snapshotInputHash: 'hash-snap',
+      snapshotInputHash: characterSheetInputHash('hash-snap'),
     });
 
     expect(variantId).toBe('character-variant-id');
@@ -142,7 +148,7 @@ describe('saveDivergentLocationSheet', () => {
       parent: { type: 'sequence_location', id: 'loc-1', sequenceId: 'seq-9' },
       model: 'flux-pro',
       url: 'https://r2/loc.png',
-      snapshotInputHash: 'hash-loc',
+      snapshotInputHash: locationSheetInputHash('hash-loc'),
     });
 
     expect(variantId).toBe('location-variant-id');
@@ -175,7 +181,7 @@ describe('saveDivergentLocationSheet', () => {
       parent: { type: 'library_location', id: 'lib-loc-1' },
       model: 'flux-pro',
       url: 'https://r2/loc.png',
-      snapshotInputHash: 'hash-loc',
+      snapshotInputHash: libraryLocationReferenceInputHash('hash-loc'),
     });
 
     const [firstLibLocCall] = locationInsertDivergent.mock.calls;
@@ -208,7 +214,7 @@ describe('saveDivergentTalentSheet', () => {
       talentId: 'talent-1',
       model: 'flux-pro',
       url: 'https://r2/talent.png',
-      snapshotInputHash: 'hash-tal',
+      snapshotInputHash: talentSheetInputHash('hash-tal'),
     });
 
     expect(variantId).toBe('talent-variant-id');

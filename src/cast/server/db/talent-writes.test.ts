@@ -8,6 +8,7 @@ import { type Client, createClient } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import { generateId } from '@/platform/id';
+import { talentSheetInputHash } from '@/shots/input-hash';
 import {
   talent,
   talentMedia,
@@ -164,7 +165,7 @@ describe('scoped talent sheet variant write ACL', () => {
         model: 'flux-pro',
         url: 'https://example.com/divergent.png',
         status: 'completed',
-        inputHash: 'hash-1',
+        inputHash: talentSheetInputHash('hash-1'),
         divergedAt: new Date(),
       })
     ).rejects.toThrow(/permission to modify/);

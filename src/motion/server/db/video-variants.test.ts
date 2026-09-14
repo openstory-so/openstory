@@ -19,6 +19,10 @@ import { and, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import { generateId } from '@/platform/id';
+import {
+  videoManifestInputHash,
+  type VideoManifestInputHash,
+} from '@/shots/input-hash';
 import type { Database } from '@/platform/server/db/client';
 import {
   renderSegments,
@@ -158,8 +162,12 @@ async function seedSecondSequence() {
 }
 
 function versionInput(
-  overrides: Partial<NewVideoVariant> = {}
-): NewVideoVariant {
+  overrides: Partial<Omit<NewVideoVariant, 'inputHash'>> & {
+    inputHash?: VideoManifestInputHash | null;
+  } = {}
+): Omit<NewVideoVariant, 'inputHash'> & {
+  inputHash?: VideoManifestInputHash | null;
+} {
   return {
     renderSegmentId: segmentId,
     sequenceId,
@@ -177,7 +185,7 @@ function versionInput(
     status: 'completed',
     url: 'https://r2/v.mp4',
     storagePath: 'team/seq/v.mp4',
-    inputHash: 'hash-1',
+    inputHash: videoManifestInputHash('hash-1'),
     ...overrides,
   };
 }
@@ -613,7 +621,7 @@ describe('batch getters chunk past D1s parameter ceiling (#1019)', () => {
 describe('isStale', () => {
   it('compares the stored input hash; null stored is never stale', async () => {
     const hashed = await methods.appendVersion(
-      versionInput({ inputHash: 'h1' })
+      versionInput({ inputHash: videoManifestInputHash('h1') })
     );
     expect(await methods.isStale(hashed.id, 'h1')).toBe(false);
     expect(await methods.isStale(hashed.id, 'h2')).toBe(true);
@@ -626,7 +634,7 @@ describe('isStale', () => {
 
   it('treats a null live hash as unknown-not-stale (#1380)', async () => {
     const hashed = await methods.appendVersion(
-      versionInput({ inputHash: 'h1' })
+      versionInput({ inputHash: videoManifestInputHash('h1') })
     );
     expect(await methods.isStale(hashed.id, null)).toBe(false);
   });

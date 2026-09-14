@@ -36,6 +36,7 @@ import type {
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { buildRenderSegmentSelect } from './render-segments';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
+import type { VideoManifestInputHash } from '@/shots/input-hash';
 
 /** The grouping key that makes a flat row set read as a "variant" (segment). */
 export type VideoVariantGroup = {
@@ -100,7 +101,11 @@ export function createVideoVariantsMethods(db: Database) {
      * carries a fresh run id); only a retry of the same run reuses its row.
      * Mirrors `frameVariants.appendVersion`.
      */
-    appendVersion: async (data: NewVideoVariant): Promise<VideoVariant> => {
+    appendVersion: async (
+      data: Omit<NewVideoVariant, 'inputHash'> & {
+        inputHash?: VideoManifestInputHash | null;
+      }
+    ): Promise<VideoVariant> => {
       if (data.status === 'generating' && data.workflowRunId) {
         const [existing] = await db
           .select()
@@ -142,7 +147,7 @@ export function createVideoVariantsMethods(db: Database) {
       manifest: VideoManifest;
       url: string;
       storagePath: string;
-      inputHash: string | null;
+      inputHash: VideoManifestInputHash | null;
       actorId: string | null;
     }): Promise<VideoVariant> => {
       const versionId = generateId();

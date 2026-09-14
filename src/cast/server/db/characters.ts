@@ -34,6 +34,7 @@ import {
 import { typedEntries } from '@/platform/typed-object';
 import { matchCharacterToShotTags } from '@/shots/scene-matching';
 import { createCharacterSheetVariantsMethods } from './character-sheet-variants';
+import type { CharacterSheetInputHash } from '@/shots/input-hash';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
 
 /**
@@ -323,7 +324,7 @@ export function createCharactersMethods(db: Database) {
       id: string,
       imageUrl: string,
       imagePath: string,
-      inputHash: string | null = null,
+      inputHash: CharacterSheetInputHash | null = null,
       opts?: { model?: string; workflowRunId?: string | null }
     ): Promise<Character> => {
       const { character } = await createCharacterSheetVariantsMethods(

@@ -12,6 +12,7 @@ import type {
   NewLibraryLocation,
   NewLocationSheet,
 } from '@/platform/server/db/schema';
+import type { LibraryLocationReferenceInputHash } from '@/shots/input-hash';
 
 // Columns callers must never set through the scoped write methods.
 // id/teamId/createdBy/createdAt/updatedAt are injected here or by the
@@ -241,7 +242,7 @@ export function createLocationsMethods(
       id: string,
       referenceImageUrl: string,
       referenceImagePath: string,
-      inputHash?: string
+      inputHash?: LibraryLocationReferenceInputHash
     ): Promise<LibraryLocation> => {
       const [location] = await db
         .update(locationLibrary)

@@ -21,6 +21,7 @@
  */
 
 import type { Database } from '@/platform/server/db/client';
+import type { ShotImageInputHash } from '@/shots/input-hash';
 import type { Resolution } from '@/models/resolutions';
 import { generateId } from '@/platform/id';
 import {
@@ -236,7 +237,11 @@ export function createFrameVariantsMethods(db: Database) {
      * retry of the same run reuses its row. Current upscale triggers mint
      * the version at click and pass `versionId`; they never hit this path.
      */
-    appendVersion: async (data: NewFrameVariant): Promise<FrameVariant> => {
+    appendVersion: async (
+      data: Omit<NewFrameVariant, 'inputHash'> & {
+        inputHash?: ShotImageInputHash | null;
+      }
+    ): Promise<FrameVariant> => {
       if (data.status === 'generating' && data.workflowRunId) {
         const [existing] = await db
           .select()
@@ -277,7 +282,7 @@ export function createFrameVariantsMethods(db: Database) {
       model: string;
       url: string;
       storagePath: string;
-      inputHash: string | null;
+      inputHash: ShotImageInputHash | null;
       /** Selected prompt version the hash was computed against, if any. */
       promptVersionId: string | null;
       /** Text of that prompt (for the promptHash pairing column). */
@@ -351,7 +356,7 @@ export function createFrameVariantsMethods(db: Database) {
         url: string;
         storagePath: string;
         /** Hash computed from the NEW prompt text + current sheets. */
-        inputHash: string | null;
+        inputHash: ShotImageInputHash | null;
       };
     }): Promise<{
       promptVersion: FramePromptVersion;

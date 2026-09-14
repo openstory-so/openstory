@@ -75,6 +75,68 @@ export async function sha256Hex(input: unknown): Promise<string> {
   return hex;
 }
 
+/**
+ * Branded artifact digests (#1616). Hasher return types and the write APIs
+ * that persist them take the brand, so `sha256Hex({ kind, text })` cannot be
+ * stored as an `inputHash`. Constructors are the sole mint besides the
+ * hasher — tests use them for fixture rows.
+ */
+export type ShotImageInputHash = string & {
+  readonly __brand: 'ShotImageInputHash';
+};
+export type ShotVideoInputHash = string & {
+  readonly __brand: 'ShotVideoInputHash';
+};
+export type VideoManifestInputHash = string & {
+  readonly __brand: 'VideoManifestInputHash';
+};
+export type ShotAudioInputHash = string & {
+  readonly __brand: 'ShotAudioInputHash';
+};
+export type CharacterSheetInputHash = string & {
+  readonly __brand: 'CharacterSheetInputHash';
+};
+export type LocationSheetInputHash = string & {
+  readonly __brand: 'LocationSheetInputHash';
+};
+export type LibraryLocationReferenceInputHash = string & {
+  readonly __brand: 'LibraryLocationReferenceInputHash';
+};
+export type TalentSheetInputHash = string & {
+  readonly __brand: 'TalentSheetInputHash';
+};
+export type MusicPromptInputHash = string & {
+  readonly __brand: 'MusicPromptInputHash';
+};
+export type SequenceMusicInputHash = string & {
+  readonly __brand: 'SequenceMusicInputHash';
+};
+
+/* oxlint-disable typescript/no-unsafe-type-assertion -- sole brand constructors */
+export const shotImageInputHash = (hex: string): ShotImageInputHash =>
+  hex as ShotImageInputHash;
+const shotVideoInputHash = (hex: string): ShotVideoInputHash =>
+  hex as ShotVideoInputHash;
+export const videoManifestInputHash = (hex: string): VideoManifestInputHash =>
+  hex as VideoManifestInputHash;
+const shotAudioInputHash = (hex: string): ShotAudioInputHash =>
+  hex as ShotAudioInputHash;
+export const characterSheetInputHash = (hex: string): CharacterSheetInputHash =>
+  hex as CharacterSheetInputHash;
+export const locationSheetInputHash = (hex: string): LocationSheetInputHash =>
+  hex as LocationSheetInputHash;
+export const libraryLocationReferenceInputHash = (
+  hex: string
+): LibraryLocationReferenceInputHash =>
+  hex as LibraryLocationReferenceInputHash;
+export const talentSheetInputHash = (hex: string): TalentSheetInputHash =>
+  hex as TalentSheetInputHash;
+export const musicPromptInputHash = (hex: string): MusicPromptInputHash =>
+  hex as MusicPromptInputHash;
+export const sequenceMusicInputHash = (hex: string): SequenceMusicInputHash =>
+  hex as SequenceMusicInputHash;
+/* oxlint-enable typescript/no-unsafe-type-assertion */
+
 const trim = (s: string | null | undefined): string => (s ?? '').trim();
 
 /** Sort an unordered set of strings so the hash is order-insensitive. */
@@ -113,7 +175,7 @@ const shotImageHashInputSchema = z.object({
 
 export function computeShotImageInputHash(
   raw: ShotImageHashInput
-): Promise<string> {
+): Promise<ShotImageInputHash> {
   const input = shotImageHashInputSchema.parse(raw);
   return sha256Hex({
     artifact: `shot:${input.kind}`,
@@ -125,7 +187,7 @@ export function computeShotImageInputHash(
     characterSheetHashes: sortedRefs(input.characterSheetHashes),
     locationSheetHashes: sortedRefs(input.locationSheetHashes),
     elementReferenceHashes: sortedRefs(input.elementReferenceHashes),
-  });
+  }).then(shotImageInputHash);
 }
 
 /**
@@ -161,7 +223,7 @@ const shotVideoHashInputSchema = z.object({
 
 export function computeShotVideoInputHash(
   raw: ShotVideoHashInput
-): Promise<string> {
+): Promise<ShotVideoInputHash> {
   const input = shotVideoHashInputSchema.parse(raw);
   const sourceImage =
     input.sourceImage.kind === 'variantHash'
@@ -175,7 +237,7 @@ export function computeShotVideoInputHash(
     durationSeconds: input.durationSeconds,
     fps: input.fps,
     aspectRatio: input.aspectRatio,
-  });
+  }).then(shotVideoInputHash);
 }
 
 /**
@@ -216,7 +278,7 @@ function canonicalizeManifestEntry(
 export function computeVideoManifestInputHash(
   manifest: readonly VideoManifestEntry[],
   model: string
-): Promise<string | null> {
+): Promise<VideoManifestInputHash | null> {
   const entries = z.array(videoManifestHashEntrySchema).parse(manifest);
   // A hash over null/null immediately diverges from a live hash built from
   // the selected still + prompt — that's how storyboard clips were born
@@ -235,7 +297,7 @@ export function computeVideoManifestInputHash(
     artifact: 'video:manifest',
     model,
     manifest: entries.map(canonicalizeManifestEntry),
-  });
+  }).then(videoManifestInputHash);
 }
 
 export type ShotAudioHashInput = {
@@ -255,7 +317,7 @@ const shotAudioHashInputSchema = z.object({
 
 export function computeShotAudioInputHash(
   raw: ShotAudioHashInput
-): Promise<string> {
+): Promise<ShotAudioInputHash> {
   const input = shotAudioHashInputSchema.parse(raw);
   return sha256Hex({
     artifact: 'shot:audio',
@@ -263,7 +325,7 @@ export function computeShotAudioInputHash(
     tags: sortedRefs(input.tags),
     durationSeconds: input.durationSeconds,
     audioModel: input.audioModel,
-  });
+  }).then(shotAudioInputHash);
 }
 
 export type CharacterBibleHashFields = {
@@ -328,9 +390,11 @@ const characterSheetHashInputSchema = z.object({
 
 export function computeCharacterSheetInputHash(
   raw: CharacterSheetHashInput
-): Promise<string> {
+): Promise<CharacterSheetInputHash> {
   const input = characterSheetHashInputSchema.parse(raw);
-  return sha256Hex(characterSheetHashBody(input, false));
+  return sha256Hex(characterSheetHashBody(input, false)).then(
+    characterSheetInputHash
+  );
 }
 
 /** Named-bible digest. Verify/tests only — delete after {@link LEGACY_HASH_UNTIL}. */
@@ -398,9 +462,11 @@ const locationSheetHashInputSchema = z.object({
 
 export function computeLocationSheetInputHash(
   raw: LocationSheetHashInput
-): Promise<string> {
+): Promise<LocationSheetInputHash> {
   const input = locationSheetHashInputSchema.parse(raw);
-  return sha256Hex(locationSheetHashBody(input, false));
+  return sha256Hex(locationSheetHashBody(input, false)).then(
+    locationSheetInputHash
+  );
 }
 
 export async function locationSheetInputHashMatches(
@@ -449,9 +515,11 @@ const libraryLocationReferenceHashInputSchema = z.object({
 
 export function computeLibraryLocationReferenceInputHash(
   raw: LibraryLocationReferenceHashInput
-): Promise<string> {
+): Promise<LibraryLocationReferenceInputHash> {
   const input = libraryLocationReferenceHashInputSchema.parse(raw);
-  return sha256Hex(libraryLocationReferenceHashBody(input, false));
+  return sha256Hex(libraryLocationReferenceHashBody(input, false)).then(
+    libraryLocationReferenceInputHash
+  );
 }
 
 export async function libraryLocationReferenceInputHashMatches(
@@ -503,9 +571,11 @@ const talentSheetHashInputSchema = z.object({
 
 export function computeTalentSheetInputHash(
   raw: TalentSheetHashInput
-): Promise<string> {
+): Promise<TalentSheetInputHash> {
   const input = talentSheetHashInputSchema.parse(raw);
-  return sha256Hex(talentSheetHashBody(input, false));
+  return sha256Hex(talentSheetHashBody(input, false)).then(
+    talentSheetInputHash
+  );
 }
 
 /** Named-talent digest. Verify/tests only — delete after {@link LEGACY_HASH_UNTIL}. */
@@ -1032,9 +1102,11 @@ const musicPromptInputHashInputSchema = z.object({
 
 export function computeMusicPromptInputHash(
   raw: MusicPromptInputHashInput
-): Promise<string> {
+): Promise<MusicPromptInputHash> {
   musicPromptInputHashInputSchema.parse(raw);
-  return sha256Hex(musicPromptHashBody(raw, 'current'));
+  return sha256Hex(musicPromptHashBody(raw, 'current')).then(
+    musicPromptInputHash
+  );
 }
 
 /** v4 digest. Verify/tests only — delete after {@link LEGACY_HASH_UNTIL}. */
@@ -1076,7 +1148,7 @@ const sequenceMusicHashInputSchema = z.object({
 
 export function computeSequenceMusicInputHash(
   raw: SequenceMusicHashInput
-): Promise<string> {
+): Promise<SequenceMusicInputHash> {
   const input = sequenceMusicHashInputSchema.parse(raw);
   return sha256Hex({
     artifact: 'sequence:music',
@@ -1084,5 +1156,5 @@ export function computeSequenceMusicInputHash(
     tags: trim(input.tags),
     durationSeconds: input.durationSeconds,
     audioModel: input.audioModel,
-  });
+  }).then(sequenceMusicInputHash);
 }

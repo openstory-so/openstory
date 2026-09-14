@@ -23,6 +23,10 @@ import {
   user,
 } from '@/platform/server/db/schema';
 import type { NewFrameVariant } from '@/platform/server/db/schema';
+import {
+  shotImageInputHash,
+  type ShotImageInputHash,
+} from '@/shots/input-hash';
 import { relations } from '@/platform/server/db/schema/relations';
 import { type Client, createClient } from '@libsql/client';
 import { eq } from 'drizzle-orm';
@@ -133,8 +137,12 @@ async function seedSecondSequence() {
 }
 
 function variantInput(
-  overrides: Partial<NewFrameVariant> = {}
-): NewFrameVariant {
+  overrides: Partial<Omit<NewFrameVariant, 'inputHash'>> & {
+    inputHash?: ShotImageInputHash | null;
+  } = {}
+): Omit<NewFrameVariant, 'inputHash'> & {
+  inputHash?: ShotImageInputHash | null;
+} {
   return {
     frameId,
     sequenceId,
@@ -144,7 +152,7 @@ function variantInput(
     url: 'https://cdn/img.png',
     storagePath: 'r2/img.png',
     generatedAt: new Date('2026-06-26T00:00:00Z'),
-    inputHash: 'hash-1',
+    inputHash: shotImageInputHash('hash-1'),
     ...overrides,
   };
 }
@@ -225,7 +233,7 @@ describe('frameVariants.select', () => {
         model: 'm2',
         url: 'https://cdn/v2.png',
         storagePath: 'r2/v2.png',
-        inputHash: 'hash-2',
+        inputHash: shotImageInputHash('hash-2'),
       })
     );
     const actorId = generateId();
@@ -303,7 +311,7 @@ describe('frameVariants.select', () => {
       variantInput({
         url: 'https://cdn/old.png',
         storagePath: 'r2/old.png',
-        inputHash: 'image-hash-old',
+        inputHash: shotImageInputHash('image-hash-old'),
         promptVersionId: oldPrompt.id,
       })
     );
@@ -311,7 +319,7 @@ describe('frameVariants.select', () => {
       variantInput({
         url: 'https://cdn/new.png',
         storagePath: 'r2/new.png',
-        inputHash: 'image-hash-new',
+        inputHash: shotImageInputHash('image-hash-new'),
         promptVersionId: newPrompt.id,
       })
     );
@@ -408,7 +416,10 @@ describe('frameVariants.select', () => {
       .where(eq(frames.id, frameId));
 
     const v = await m.appendVersion(
-      variantInput({ promptVersionId: null, inputHash: 'img' })
+      variantInput({
+        promptVersionId: null,
+        inputHash: shotImageInputHash('img'),
+      })
     );
     await m.select(frameId, v.id, { actorId: null });
 
@@ -774,7 +785,7 @@ describe('frameVariants.isStale', () => {
     expect(await m.isStale(noHash.id, 'anything')).toBe(false);
 
     const hashed = await m.appendVersion(
-      variantInput({ inputHash: 'h-match' })
+      variantInput({ inputHash: shotImageInputHash('h-match') })
     );
     expect(await m.isStale(hashed.id, 'h-match')).toBe(false);
     expect(await m.isStale(hashed.id, 'h-new')).toBe(true);

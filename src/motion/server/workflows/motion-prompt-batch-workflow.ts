@@ -49,7 +49,7 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
       aspectRatio,
       characterBible,
       locationBible,
-      elementBible = [],
+      elementBible,
       styleConfig,
       analysisModelId,
       shotMapping,

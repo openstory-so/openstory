@@ -12,6 +12,7 @@ import { talentSheetVariants, talentSheets } from '@/platform/server/db/schema';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { insertDivergentRaceTolerant } from '@/platform/server/db/scoped/divergent-insert';
 import { assertTalentSheetWritableForTeam } from './talent';
+import type { TalentSheetInputHash } from '@/shots/input-hash';
 
 type PromoteTalentSheetUpdate = {
   imageUrl: string | null;
@@ -143,7 +144,7 @@ export function createTalentSheetVariantsMethods(db: Database, teamId: string) {
      */
     insertDivergent: async (
       values: NewTalentSheetVariant & {
-        inputHash: string;
+        inputHash: TalentSheetInputHash;
         divergedAt: Date;
       }
     ): Promise<TalentSheetVariant> => {

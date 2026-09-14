@@ -11,6 +11,7 @@ import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import { eq } from 'drizzle-orm';
 import { generateId } from '@/platform/id';
+import { sequenceMusicInputHash } from '@/shots/input-hash';
 import {
   sequenceMusicVariants,
   sequences,
@@ -94,7 +95,7 @@ describe('createSequenceVariantsMethods — music', () => {
       status: 'completed',
       generatedAt: new Date(),
       error: null,
-      inputHash: 'm-hash-1',
+      inputHash: sequenceMusicInputHash('m-hash-1'),
     });
     const second = await methods.writeMusicVariant({
       sequenceId,
@@ -107,7 +108,7 @@ describe('createSequenceVariantsMethods — music', () => {
       status: 'completed',
       generatedAt: new Date(),
       error: null,
-      inputHash: 'm-hash-2',
+      inputHash: sequenceMusicInputHash('m-hash-2'),
     });
     expect(second.divergent).toBe(true);
 
@@ -143,7 +144,7 @@ describe('createSequenceVariantsMethods — music', () => {
       status: 'completed',
       generatedAt: new Date('2026-04-29T00:00:00Z'),
       error: null,
-      inputHash: 'new-hash',
+      inputHash: sequenceMusicInputHash('new-hash'),
       divergedAt: new Date('2026-04-29T00:00:00Z'),
     });
 
@@ -207,7 +208,7 @@ describe('createSequenceVariantsMethods — music', () => {
       status: 'completed',
       generatedAt: new Date(),
       error: null,
-      inputHash: 'd-hash',
+      inputHash: sequenceMusicInputHash('d-hash'),
       divergedAt,
     });
     const second = await methods.insertDivergentMusic({
@@ -221,7 +222,7 @@ describe('createSequenceVariantsMethods — music', () => {
       status: 'completed',
       generatedAt: new Date(),
       error: null,
-      inputHash: 'd-hash',
+      inputHash: sequenceMusicInputHash('d-hash'),
       divergedAt,
     });
     expect(second.id).toBe(first.id);

@@ -12,7 +12,10 @@
  */
 
 import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/models/models';
-import { computeVideoManifestInputHash } from '@/shots/input-hash';
+import {
+  computeVideoManifestInputHash,
+  shotImageInputHash,
+} from '@/shots/input-hash';
 import type { Scene } from '@/shots/scene-analysis.schema';
 import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
@@ -157,7 +160,7 @@ async function seedSelectedImage(inputHash: string) {
     url: '/r2/thumbnails/old.png',
     storagePath: 'old.png',
     generatedAt: new Date(),
-    inputHash,
+    inputHash: shotImageInputHash(inputHash),
   });
   await images.select(frameId, version.id, { actorId });
   return version;
