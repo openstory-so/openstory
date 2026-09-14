@@ -103,9 +103,7 @@ export async function createLibraryTalent(
     isInTeamLibrary: true,
   });
 
-  const permanentUrls: string[] = [];
   for (const { url, path } of attached) {
-    permanentUrls.push(url);
     await ctx.scopedDb.talent.media.create({
       talentId: newTalent.id,
       type: 'image',
@@ -113,14 +111,15 @@ export async function createLibraryTalent(
       path,
     });
   }
+  const attachedUrls = attached.map((image) => image.url);
 
   let uploadedSheetUrl: string | undefined;
   let uploadedSheetMetadata: CharacterBibleEntry | undefined;
 
-  if (permanentUrls.length > 0) {
+  if (attachedUrls.length > 0) {
     const classifiedUrls = input.characterSheetImageUrls;
     if (classifiedUrls) {
-      const known = new Set(permanentUrls);
+      const known = new Set(attachedUrls);
       uploadedSheetUrl = classifiedUrls.find((url) => known.has(url));
     } else if (input.enqueueSheet !== false) {
       // One call for every reference: N sequential vision round-trips hung
@@ -132,15 +131,11 @@ export async function createLibraryTalent(
         const analysis = await analyzeTalentMediaForTeam({
           scopedDb: ctx.scopedDb,
           userId: ctx.user.id,
-          imageUrls: permanentUrls,
+          imageUrls: attachedUrls,
           idempotencyKey: `talent-vision:create:${newTalent.id}`,
         });
-        const [onlyUrl] = permanentUrls;
-        if (
-          analysis.isCharacterSheet &&
-          onlyUrl &&
-          permanentUrls.length === 1
-        ) {
+        const [onlyUrl] = attachedUrls;
+        if (analysis.isCharacterSheet && onlyUrl && attachedUrls.length === 1) {
           uploadedSheetUrl = onlyUrl;
           uploadedSheetMetadata = sheetMetadataFromAnalysis(
             newTalent.name,
@@ -190,7 +185,7 @@ export async function createLibraryTalent(
     talentId: newTalent.id,
     talentName: newTalent.name,
     talentDescription: newTalent.description ?? undefined,
-    referenceImageUrls: [...permanentUrls].sort(),
+    referenceImageUrls: [...attachedUrls].sort(),
     sheetName: uploadedSheetUrl ? 'Uploaded Sheet' : 'Default Sheet',
     uploadedSheetUrl,
     uploadedSheetMetadata,

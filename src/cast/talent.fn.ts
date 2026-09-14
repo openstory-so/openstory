@@ -331,10 +331,6 @@ export const finalizeTalentUploadFn = createServerFn({ method: 'POST' })
     )
   )
   .handler(async ({ context, data }) => {
-    if (!isTeamTalentStoredUrl(data.publicUrl, context.teamId)) {
-      throw new Error('Invalid storage path');
-    }
-
     const talentRecord = await context.scopedDb.talent.getById(data.talentId);
     if (!talentRecord || !isTeamWritableTalent(talentRecord, context.teamId)) {
       throw new Error(

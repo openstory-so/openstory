@@ -47,10 +47,6 @@ export const LocationMediaUpload: React.FC<LocationMediaUploadProps> = ({
     onUploadedUrlsChange?.(Array.from(uploadedUrlsMap.values()));
   }, [uploadedUrlsMap, onUploadedUrlsChange]);
 
-  useEffect(() => {
-    onUploadingChange?.(uploadMedia.isPending);
-  }, [uploadMedia.isPending, onUploadingChange]);
-
   const handleValueChange = useCallback(
     (newFiles: File[]) => {
       onFilesChange(newFiles);
@@ -82,34 +78,39 @@ export const LocationMediaUpload: React.FC<LocationMediaUploadProps> = ({
         }
         return;
       }
-      const uploadPromises = newFiles.map(async (file) => {
-        try {
-          const result = await uploadMedia.mutateAsync({
-            file,
-            locationId,
-            onProgress: (percent) => onProgress(file, percent),
-          });
+      onUploadingChange?.(true);
+      try {
+        const uploadPromises = newFiles.map(async (file) => {
+          try {
+            const result = await uploadMedia.mutateAsync({
+              file,
+              locationId,
+              onProgress: (percent) => onProgress(file, percent),
+            });
 
-          setUploadedUrlsMap((prev) =>
-            new Map(prev).set(getFileKey(file), result.url)
-          );
+            setUploadedUrlsMap((prev) =>
+              new Map(prev).set(getFileKey(file), result.url)
+            );
 
-          onProgress(file, 100);
-          onSuccess(file);
-        } catch (error) {
-          onError(
-            file,
-            error instanceof Error ? error : new Error('Upload failed')
-          );
+            onProgress(file, 100);
+            onSuccess(file);
+          } catch (error) {
+            onError(
+              file,
+              error instanceof Error ? error : new Error('Upload failed')
+            );
+          }
+        });
+
+        await Promise.all(uploadPromises);
+        if (locationId) {
+          onComplete?.();
         }
-      });
-
-      await Promise.all(uploadPromises);
-      if (locationId) {
-        onComplete?.();
+      } finally {
+        onUploadingChange?.(false);
       }
     },
-    [requireAuth, locationId, uploadMedia, onComplete]
+    [requireAuth, locationId, uploadMedia, onComplete, onUploadingChange]
   );
 
   return (

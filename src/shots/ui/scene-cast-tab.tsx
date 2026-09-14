@@ -30,6 +30,8 @@ import { Link } from '@tanstack/react-router';
 import { Film, Mic, Trash2, User } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { talentSquareImageClassName } from '@/cast/talent-preview';
+import { cn } from '@/ui/utils';
 import { AppImage } from '@/ui/shadcn/app-image';
 
 type SceneCastTabProps = {
@@ -64,7 +66,10 @@ const CastCard: React.FC<CastCardProps> = ({
               alt={character.name}
               width={160}
               height={160}
-              className="h-full w-full object-cover object-[37.5%_top] transition-transform duration-500 group-hover:scale-105"
+              className={cn(
+                talentSquareImageClassName(true),
+                'transition-transform duration-500 group-hover:scale-105'
+              )}
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center">

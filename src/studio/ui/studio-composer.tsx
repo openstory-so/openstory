@@ -65,7 +65,7 @@ import {
   studioUploadKeys,
 } from './use-studio-assets';
 import { useQueryClient } from '@tanstack/react-query';
-import { useUploadTempMedia } from '@/cast/ui/use-talent';
+import { useUploadTalentUserMedia } from '@/cast/ui/use-talent';
 import { PortraitAttestationFields } from '@/cast/ui/talent-library/portrait-attestation-fields';
 import { PORTRAIT_RIGHTS_V1 } from '@/platform/compliance/attestations';
 import {
@@ -305,7 +305,7 @@ export function StudioComposer({
   const create = useCreateStudioAssets();
   const draft = useDraftStudioPrompt();
   const pendingCreates = useStudioPendingCreates(activity);
-  const upload = useUploadTempMedia();
+  const upload = useUploadTalentUserMedia();
   const attest = useAttestUploads();
   const queryClient = useQueryClient();
   const library = useStudioLibrary();

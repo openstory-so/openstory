@@ -14,14 +14,17 @@ import {
   type FileUploadProps,
 } from '@/ui/shadcn/file-upload';
 import { Badge } from '@/ui/shadcn/badge';
-import { useUploadTalentMedia, useUploadTempMedia } from '@/cast/ui/use-talent';
+import {
+  useUploadTalentMedia,
+  useUploadTalentUserMedia,
+} from '@/cast/ui/use-talent';
 import { getFileKey } from '@/ui/upload';
 import { Upload, X } from 'lucide-react';
 
 type TalentMediaUploadProps = {
   files: File[];
   onFilesChange: (files: File[]) => void;
-  /** Called with URLs when uploading to temp storage (no talentId) */
+  /** Called with URLs when uploading before the talent row exists. */
   onUploadedUrlsChange?: (urls: string[]) => void;
   /**
    * If provided, each file is finalized onto this talent as it lands; a real
@@ -59,17 +62,12 @@ export const TalentMediaUpload: React.FC<TalentMediaUploadProps> = ({
   const [failedKeys, setFailedKeys] = useState<Set<string>>(new Set());
   const uploadedKeysRef = useRef(new Set<string>());
   const { requireAuth } = useAuthGate();
-  const uploadTempMedia = useUploadTempMedia();
+  const uploadUserMedia = useUploadTalentUserMedia();
   const uploadTalentMedia = useUploadTalentMedia();
 
   useEffect(() => {
     onUploadedUrlsChange?.(Array.from(uploadedUrlsMap.values()));
   }, [uploadedUrlsMap, onUploadedUrlsChange]);
-
-  const isUploading = uploadTempMedia.isPending || uploadTalentMedia.isPending;
-  useEffect(() => {
-    onUploadingChange?.(isUploading);
-  }, [isUploading, onUploadingChange]);
 
   const handleValueChange = useCallback(
     (newFiles: File[]) => {
@@ -105,65 +103,71 @@ export const TalentMediaUpload: React.FC<TalentMediaUploadProps> = ({
         }
         return;
       }
-      const uploadPromises = newFiles.map(async (file) => {
-        try {
-          const type = file.type.startsWith('video/')
-            ? ('video' as const)
-            : ('image' as const);
+      onUploadingChange?.(true);
+      try {
+        const uploadPromises = newFiles.map(async (file) => {
+          try {
+            const type = file.type.startsWith('video/')
+              ? ('video' as const)
+              : ('image' as const);
 
-          if (talentId) {
-            await uploadTalentMedia.mutateAsync({
-              talentId,
-              file,
-              type,
-              onProgress: (percent) => onProgress(file, percent),
-            });
-          } else {
-            const result = await uploadTempMedia.mutateAsync({
-              file,
-              type,
-              onProgress: (percent) => onProgress(file, percent),
-            });
+            if (talentId) {
+              await uploadTalentMedia.mutateAsync({
+                talentId,
+                file,
+                type,
+                onProgress: (percent) => onProgress(file, percent),
+              });
+            } else {
+              const result = await uploadUserMedia.mutateAsync({
+                file,
+                type,
+                onProgress: (percent) => onProgress(file, percent),
+              });
 
-            setUploadedUrlsMap((prev) =>
-              new Map(prev).set(getFileKey(file), result.url)
-            );
-            onFileUploaded?.(file, result.url);
+              setUploadedUrlsMap((prev) =>
+                new Map(prev).set(getFileKey(file), result.url)
+              );
+              onFileUploaded?.(file, result.url);
+            }
+
+            uploadedKeysRef.current.add(getFileKey(file));
+            onProgress(file, 100);
+            onSuccess(file);
+          } catch (error) {
+            const err =
+              error instanceof Error ? error : new Error('Upload failed');
+            setFailedKeys((prev) => new Set(prev).add(getFileKey(file)));
+            onError(file, err);
+            throw err;
           }
+        });
 
-          uploadedKeysRef.current.add(getFileKey(file));
-          onProgress(file, 100);
-          onSuccess(file);
-        } catch (error) {
-          const err =
-            error instanceof Error ? error : new Error('Upload failed');
-          setFailedKeys((prev) => new Set(prev).add(getFileKey(file)));
-          onError(file, err);
-          throw err;
+        const results = await Promise.allSettled(uploadPromises);
+        const failed = results.filter((r) => r.status === 'rejected');
+        if (failed.length > 0) {
+          toast.error(
+            failed.length === newFiles.length
+              ? 'Upload failed'
+              : `${failed.length} of ${newFiles.length} files failed to upload`
+          );
+          return;
         }
-      });
-
-      const results = await Promise.allSettled(uploadPromises);
-      const failed = results.filter((r) => r.status === 'rejected');
-      if (failed.length > 0) {
-        toast.error(
-          failed.length === newFiles.length
-            ? 'Upload failed'
-            : `${failed.length} of ${newFiles.length} files failed to upload`
-        );
-        return;
-      }
-      if (talentId) {
-        onComplete?.();
+        if (talentId) {
+          onComplete?.();
+        }
+      } finally {
+        onUploadingChange?.(false);
       }
     },
     [
       requireAuth,
       talentId,
-      uploadTempMedia,
+      uploadUserMedia,
       uploadTalentMedia,
       onComplete,
       onFileUploaded,
+      onUploadingChange,
     ]
   );
 

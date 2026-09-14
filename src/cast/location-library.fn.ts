@@ -9,10 +9,7 @@ import {
 import type { LibraryLocation } from '@/platform/server/db/schema';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
-import {
-  isTeamUserUploadUrl,
-  teamUserUploadStoragePath,
-} from '@/cast/server/team-user-upload';
+import { teamUserUploadStoragePath } from '@/cast/server/team-user-upload';
 import {
   getExtensionFromUrl,
   getMimeTypeFromExtension,
@@ -21,8 +18,8 @@ import { triggerWorkflow } from '@/platform/server/workflow/client';
 import type { LibraryLocationSheetWorkflowInput } from '@/platform/server/workflow/types';
 import { computeLibraryLocationSheetHashFromDto } from '@/cast/server/workflows/sheet-snapshots';
 import {
+  attachLocationReferenceImages,
   createLibraryLocation,
-  promoteLocationReferenceImages,
 } from '@/cast/server/locations/create-library-location';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
@@ -176,28 +173,18 @@ export const finalizeLocationUploadFn = createServerFn({ method: 'POST' })
     )
   )
   .handler(async ({ context, data }) => {
-    if (
-      !isTeamUserUploadUrl(
-        data.publicUrl,
-        STORAGE_BUCKETS.LOCATIONS,
-        context.teamId
-      )
-    ) {
-      throw new Error('Invalid storage path');
-    }
-
     await requireLocation(context.scopedDb, data.locationId);
 
-    const [promoted] = await promoteLocationReferenceImages(
+    const [attached] = await attachLocationReferenceImages(
       context.scopedDb,
       [data.publicUrl],
       context.teamId
     );
-    if (!promoted) throw new Error('Invalid storage path');
+    if (!attached) throw new Error('Invalid storage path');
 
     await context.scopedDb.locations.update(data.locationId, {
-      referenceImageUrl: promoted.url,
-      referenceImagePath: promoted.path,
+      referenceImageUrl: attached.url,
+      referenceImagePath: attached.path,
     });
 
     return { success: true };
@@ -216,7 +203,7 @@ export const addLocationSheetsFn = createServerFn({ method: 'POST' })
   .handler(async ({ context, data }) => {
     const location = await requireLocation(context.scopedDb, data.locationId);
 
-    const processedImages = await promoteLocationReferenceImages(
+    const processedImages = await attachLocationReferenceImages(
       context.scopedDb,
       data.imageUrls,
       context.teamId

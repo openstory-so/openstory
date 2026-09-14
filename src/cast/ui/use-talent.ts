@@ -210,10 +210,10 @@ export function useUploadTalentMedia() {
 }
 
 /**
- * Upload talent media before the talent row exists. Lands in `uploads/`
+ * Upload talent user media before the talent row exists. Lands in `uploads/`
  * (#1634); create points the media row at this URL after the likeness gate.
  */
-export function useUploadTempMedia() {
+export function useUploadTalentUserMedia() {
   return useMutation({
     mutationFn: async (data: {
       file: File;

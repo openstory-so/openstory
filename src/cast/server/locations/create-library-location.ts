@@ -27,7 +27,7 @@ export type ProcessedImage = { url: string; path: string };
  * here, so this is where the likeness gate runs (#1581): each still must be
  * cleared or signed. The object stays at its `uploads/` key (#1634).
  */
-export async function promoteLocationReferenceImages(
+export async function attachLocationReferenceImages(
   scopedDb: ScopedDb,
   uploadUrls: string[],
   teamId: string
@@ -91,7 +91,7 @@ export async function createLibraryLocation(
   ctx: CreateLibraryLocationContext,
   options?: CreateLibraryLocationOptions
 ): Promise<CreateLibraryLocationResult> {
-  const processedImages = await promoteLocationReferenceImages(
+  const processedImages = await attachLocationReferenceImages(
     ctx.scopedDb,
     input.referenceImageUrls ?? [],
     ctx.teamId

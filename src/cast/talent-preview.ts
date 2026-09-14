@@ -56,12 +56,14 @@ export function talentSquarePreview(
 }
 
 /**
- * 4-panel sheets are landscape. In a square tile, pin to panel 2 (close-up):
- * columns sit at 0/25/50/75%, so panel 2's centre is 37.5% from the left,
- * and the close-up is composed from the top of that column.
+ * 4-panel sheets are 4:1 landscape. `object-cover` in a square shows exactly
+ * one panel. `object-position: X%` maps that point of the image onto the
+ * same point of the box, so the image shifts by `X% × (1 − 4) = −3X%` of
+ * the box. Panel 2 starts one box-width in (`−100%`), so X = 1/3 — not
+ * 37.5% (the panel centre), which would window ~28–53%.
  */
 const TALENT_SHEET_SQUARE_IMAGE_CLASS =
-  'h-full w-full object-cover object-[37.5%_top]';
+  'h-full w-full object-cover object-[33.333%_top]';
 
 /** Dedicated headshot — object-top so a tall copied portrait is not centre-cropped. */
 const TALENT_HEADSHOT_SQUARE_IMAGE_CLASS =
