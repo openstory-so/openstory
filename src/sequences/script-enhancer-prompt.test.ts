@@ -43,7 +43,6 @@ describe('createUserPrompt (issue #855)', () => {
       targetDuration: 60,
     });
     expect(prompt).toContain('Target video duration: 1 minute');
-    expect(prompt).toContain('about 8-12 scenes');
     expect(prompt).not.toMatch(/~\s*\d+\s*words/);
     expect(prompt).toContain('MUST add up to 60 seconds');
     expect(prompt).toContain('TOTAL: <sum>s');
@@ -145,7 +144,6 @@ SUPER:  CORAL.  OUT NOW.`;
     });
     expect(prompt).toContain(`<USER_SCRIPT>\n${script}\n</USER_SCRIPT>`);
     expect(prompt).toContain('Target video duration: 1 minute');
-    expect(prompt).toContain('about 8-12 scenes');
     expect(prompt).toContain('MUST add up to 60 seconds');
     expect(prompt).not.toMatch(/clip durations must be/i);
   });

@@ -9,7 +9,6 @@ import {
   estimateMotionDurations,
   formatClipGrid,
   parseSceneDurationLabels,
-  sceneRangeText,
   stripTotalLine,
   sumSceneDurations,
 } from './enhance-duration';
@@ -79,7 +78,7 @@ describe('stripTotalLine / createTotalLineFilter', () => {
   });
 });
 
-describe('formatClipGrid / sceneRangeText', () => {
+describe('formatClipGrid', () => {
   it('joins a discrete LTX grid', () => {
     expect(formatClipGrid([6, 8, 10])).toBe('6, 8 or 10 seconds');
   });
@@ -88,10 +87,6 @@ describe('formatClipGrid / sceneRangeText', () => {
     expect(formatClipGrid([4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15])).toBe(
       '4–15 seconds'
     );
-  });
-
-  it('is not clip-grid-bound (#1621): a 30s target is always about 4-6 scenes', () => {
-    expect(sceneRangeText(30)).toBe('4-6');
   });
 });
 
@@ -149,7 +144,6 @@ describe('buildDurationPromptParagraph', () => {
   it('requires a hard sum, a TOTAL line, and title-card substitution — no clip grid (#1621)', () => {
     const paragraph = buildDurationPromptParagraph({ targetSeconds: 30 });
     expect(paragraph).toContain('Target video duration: 30 seconds');
-    expect(paragraph).toContain('about 4-6 scenes');
     expect(paragraph).toContain('MUST add up to 30 seconds');
     expect(paragraph).toContain('TOTAL: <sum>s');
     expect(paragraph).toContain('title card');

@@ -28,20 +28,6 @@ export type DurationFit = {
   clipGrid: number[];
 };
 
-function preferredMinMax(targetSeconds: number): [number, number] {
-  if (targetSeconds <= 15) return [2, 3];
-  if (targetSeconds <= 30) return [4, 6];
-  if (targetSeconds <= 60) return [8, 12];
-  if (targetSeconds <= 120) return [15, 20];
-  return [20, 30];
-}
-
-/** Scene-count guidance. Not clip-grid-bound: a scene's shots (and their legal lengths) are decided later, by the shot-list pass. */
-export function sceneRangeText(targetSeconds: number): string {
-  const [min, max] = preferredMinMax(targetSeconds);
-  return min === max ? `${min}` : `${min}-${max}`;
-}
-
 /** Human clip-grid phrase: "6, 8 or 10 seconds", "4–15 seconds". */
 export function formatClipGrid(values: number[]): string {
   if (values.length === 0) return '';
@@ -180,10 +166,9 @@ function formatDuration(seconds: number): string {
 export function buildDurationPromptParagraph(opts: {
   targetSeconds: number;
 }): string {
-  const rangeText = sceneRangeText(opts.targetSeconds);
   const exampleSeconds = Math.max(4, Math.round(opts.targetSeconds / 4));
 
-  return `Target video duration: ${formatDuration(opts.targetSeconds)} (about ${rangeText} scenes). Group content that shares a location and beat into one scene. Label every scene with its intended duration (e.g. a "Scene 3 — ${exampleSeconds}s" heading) — that is the scene's playing time, not a clip length. Scene labels MUST add up to ${opts.targetSeconds} seconds (±${DURATION_PROMPT_TOLERANCE_SECONDS} seconds). Count the scenes, add the labels, and do not return until they sum to the target. Reach the target through the number of scenes, not by stretching one scene's length. If the brief asks for a title card, logo, SUPER, or on-screen text, do not write that card — the image model cannot render text. Substitute a final living beat with a real subject. End with a single line: TOTAL: <sum>s`;
+  return `Target video duration: ${formatDuration(opts.targetSeconds)}. Group content that shares a location and beat into one scene. Label every scene with its intended duration (e.g. a "Scene 3 — ${exampleSeconds}s" heading) — that is the scene's playing time, not a clip length. Scene labels MUST add up to ${opts.targetSeconds} seconds (±${DURATION_PROMPT_TOLERANCE_SECONDS} seconds). Count the scenes, add the labels, and do not return until they sum to the target. Reach the target through the number of scenes, not by stretching one scene's length. If the brief asks for a title card, logo, SUPER, or on-screen text, do not write that card — the image model cannot render text. Substitute a final living beat with a real subject. End with a single line: TOTAL: <sum>s`;
 }
 
 export function buildDurationCorrectionPrompt(opts: {
