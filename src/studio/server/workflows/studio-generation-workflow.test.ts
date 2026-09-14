@@ -195,7 +195,7 @@ beforeEach(() => {
 });
 
 describe('StudioGenerationWorkflow image', () => {
-  it('deducts before upload and persists last', async () => {
+  it('stores inside the generate step and persists last', async () => {
     const step = makeStep();
     const { scopedDb, generatedAssets } = makeScopedDb();
 
@@ -203,9 +203,11 @@ describe('StudioGenerationWorkflow image', () => {
 
     expect(step.names).toEqual([
       'set-running',
+      // The upload rides `generate-image`: an inline-bytes result has no URL
+      // to hand to a separate step, and the image would ride the 1 MiB
+      // checkpoint between them (#1645).
       'generate-image',
       'deduct-credits',
-      'upload-image',
       'record-provenance',
       'persist-result',
     ]);

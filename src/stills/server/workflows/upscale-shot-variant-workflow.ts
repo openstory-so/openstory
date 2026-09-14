@@ -362,8 +362,24 @@ export class UpscaleShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<Upsc
         },
         { scopedDb: scopedDb.credentials }
       );
+      // Stored in the same step: an inline-bytes result has no URL to pass
+      // to a later one, and the image would ride the checkpoint (#1645).
+      const generatedUrl = result.imageUrls[0];
+      if (!generatedUrl) {
+        throw new Error('Upscale did not return an image URL');
+      }
+      const uploaded = await uploadImageToStorage({
+        imageUrl: generatedUrl,
+        teamId,
+        sequenceId,
+        shotId,
+      });
+      if (!uploaded.url) {
+        throw new Error('Failed to upload upscaled image to storage');
+      }
       return {
-        imageUrl: result.imageUrls[0],
+        url: uploaded.url,
+        path: uploaded.path,
         cost: result.metadata.cost ?? ZERO_MICROS,
         usedOwnKey: result.metadata.usedOwnKey,
         endpointId: result.metadata.endpointId,
@@ -396,21 +412,10 @@ export class UpscaleShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<Upsc
       });
     });
 
-    const storageResult = await step.do('upload-to-storage', async () => {
-      if (!upscaleResult.imageUrl) {
-        throw new Error('Upscale did not return an image URL');
-      }
-      const result = await uploadImageToStorage({
-        imageUrl: upscaleResult.imageUrl,
-        teamId,
-        sequenceId,
-        shotId,
-      });
-      if (!result.url) {
-        throw new Error('Failed to upload upscaled image to storage');
-      }
-      return { url: result.url, path: result.path };
-    });
+    const storageResult = {
+      url: upscaleResult.url,
+      path: upscaleResult.path,
+    };
 
     // Provenance (#1180). The upscale is a new frame_variant in R2 — same
     // kind as a still, different persist path. Recorded before select so a

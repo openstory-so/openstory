@@ -28,11 +28,15 @@ const {
 const { NonRetryableError } = await import('cloudflare:workflows');
 
 const stepNames: string[] = [];
+/** Every value a step handed back — what Workflows would checkpoint. */
+const stepOutputs: unknown[] = [];
 // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- helper only uses `do`
 const step = {
   do: async <T>(name: string, fn: () => Promise<T>) => {
     stepNames.push(name);
-    return fn();
+    const output = await fn();
+    stepOutputs.push(output);
+    return output;
   },
 } as unknown as WorkflowStep;
 
@@ -94,6 +98,8 @@ function run(
     subject: 'sheet for Harry Potter',
     stepName: 'generate-sheet-image',
     params: PARAMS,
+    store: (result: ImageGenerationResult) =>
+      Promise.resolve({ url: result.imageUrls[0] ?? '', path: 'p' }),
     ...overrides,
   });
 }
@@ -235,5 +241,47 @@ describe('generateImageSoftening', () => {
       promptVariables: { prompt: 'authored' },
     });
     expect(out.params.prompt).toBe('softened | Image 1: HARRY');
+  });
+});
+
+/**
+ * #1638 / #1645: the bound that actually matters. Cloudflare Workflows
+ * serialises every `step.do` result into its durable checkpoint at 1 MiB, and
+ * a via that answers with inline base64 (native Gemini always) puts the whole
+ * image in `imageUrls`. Storing inside the generating step is what keeps that
+ * off the checkpoint — so assert on the value the step hands back, not on
+ * `generateImageWithProvider`'s return.
+ */
+/**
+ * #1638 / #1645: the bound that actually matters. Cloudflare Workflows
+ * serialises every `step.do` result into its durable checkpoint at 1 MiB, and
+ * a via that answers with inline base64 (native Gemini always) puts the whole
+ * image in `imageUrls`. Storing inside the generating step is what keeps that
+ * off the checkpoint — so assert on the value the step hands back, not on
+ * `generateImageWithProvider`'s return.
+ */
+describe('step-result bound', () => {
+  const STEP_RESULT_CAP = 1024 * 1024;
+  /** ~2 MB of base64 — a 4K still, over the cap on its own. */
+  const BIG_B64 = 'A'.repeat(2 * 1024 * 1024);
+
+  it('keeps a multi-MB inline result out of what the step returns', async () => {
+    generateImageWithProvider.mockImplementationOnce(
+      async (p: ImageGenerationParams) => ({
+        ...okResult(p),
+        imageUrls: [`data:image/png;base64,${BIG_B64}`],
+      })
+    );
+
+    const generation = await run({
+      // What every real caller does: persist to the final key, right here.
+      store: () =>
+        Promise.resolve({ url: '/r2/characters/t/s/c/01.png', path: 'p' }),
+    });
+
+    expect(generation.stored.url).toBe('/r2/characters/t/s/c/01.png');
+    for (const output of stepOutputs) {
+      expect(JSON.stringify(output).length).toBeLessThan(STEP_RESULT_CAP);
+    }
   });
 });

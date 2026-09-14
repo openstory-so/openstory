@@ -168,6 +168,14 @@ export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariant
       return { variantImageUrl: '' };
     }
 
+    // Destination is resolved BEFORE generating: the image is stored inside
+    // the generating step so its bytes never reach a checkpoint (#1645).
+    const { shotId, sequenceId, teamId } = input;
+    if (!shotId || !sequenceId || !teamId || !prep.versionId) {
+      throw new Error('Missing required IDs for variant storage');
+    }
+    const versionId = prep.versionId;
+
     // Reseeds on a content flag, then one softened prompt rebuilt with the
     // same reference legend (#1293).
     const generation = await generateImageSoftening({
@@ -196,21 +204,39 @@ export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariant
         };
       },
       meta: { shotId: input.shotId },
+      store: async (result) => {
+        const generatedImageUrl = result.imageUrls[0];
+        if (!generatedImageUrl) {
+          throw new Error('Image generation did not return any image URLs');
+        }
+        const uploaded = await uploadImageToStorage({
+          imageUrl: generatedImageUrl,
+          teamId,
+          sequenceId,
+          shotId,
+        });
+        if (!uploaded.url) {
+          throw new Error('Failed to upload image to storage');
+        }
+        return { url: uploaded.url, path: uploaded.path };
+      },
     });
-    const imageResult = generation.result;
+    const uploadResult = generation.stored;
+    const imageMetadata = generation.metadata;
+    const imageVia = generation.via;
 
     // Before the deduction guard — see recordFalUsageStep (#1069). Native
     // xAI images have no fal units; sampling them would corrupt fal medians.
     const falUsage: { requestId?: string } =
-      imageResult.via === 'fal'
-        ? await recordFalUsageStep(step, scopedDb, imageResult.metadata)
+      imageVia === 'fal'
+        ? await recordFalUsageStep(step, scopedDb, imageMetadata)
         : {};
 
     await step.do('deduct-credits', async () => {
       await deductWorkflowCredits({
         scopedDb,
-        costMicros: extractImageCost(imageResult.metadata),
-        usedOwnKey: imageResult.metadata.usedOwnKey,
+        costMicros: extractImageCost(imageMetadata),
+        usedOwnKey: imageMetadata.usedOwnKey,
         description: `Variant grid generation (${prep.params.model})`,
         idempotencyKey: `${event.instanceId}:variant-image`,
         metadata: {
@@ -223,53 +249,35 @@ export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariant
       });
     });
 
-    const generatedImageUrl = imageResult.imageUrls[0];
-    if (!generatedImageUrl) {
-      throw new Error('Image generation did not return any image URLs');
-    }
-    let imageUrl: string = generatedImageUrl;
+    let imageUrl: string = uploadResult.url;
 
-    if (input.shotId && input.sequenceId && input.teamId && prep.versionId) {
-      const uploadResult = await step.do('upload-to-storage', async () => {
-        if (!input.shotId || !input.sequenceId || !input.teamId) {
-          throw new Error('Missing required IDs for storage upload');
-        }
-        const result = await uploadImageToStorage({
-          imageUrl: generatedImageUrl,
-          teamId: input.teamId,
-          sequenceId: input.sequenceId,
-          shotId: input.shotId,
-        });
-        if (!result.url) {
-          throw new Error('Failed to upload image to storage');
-        }
-
-        // Complete the framing-sheet version. No selection — the sheet is the
-        // picker source, not the frame's primary still.
-        await scopedDb.frameVariants.update(prep.versionId, {
+    {
+      // Complete the framing-sheet version. No selection — the sheet is the
+      // picker source, not the frame's primary still.
+      await step.do('persist-variant', async () => {
+        await scopedDb.frameVariants.update(versionId, {
           status: 'completed',
-          url: result.url,
-          storagePath: result.path || null,
+          url: uploadResult.url,
+          storagePath: uploadResult.path || null,
           generatedAt: new Date(),
           error: null,
         });
 
-        await getGenerationChannel(input.sequenceId).emit(
+        await getGenerationChannel(sequenceId).emit(
           'generation.variant-image:progress',
           {
-            shotId: input.shotId,
+            shotId,
             status: 'completed',
-            variantImageUrl: result.url,
+            variantImageUrl: uploadResult.url,
           }
         );
 
         logger.info(
-          `[ShotVariantWorkflow] Grid sheet uploaded: ${result.path}`
+          `[ShotVariantWorkflow] Grid sheet uploaded: ${uploadResult.path}`
         );
-        return { url: result.url };
       });
 
-      if (uploadResult.url) imageUrl = uploadResult.url;
+      imageUrl = uploadResult.url;
 
       // Provenance (#1180). The 3×3 grid is a frame_variant (`kind: framing`)
       // — not the retired `shot_variants` table. storageKey is derived from
@@ -278,18 +286,18 @@ export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariant
       await step.do('record-provenance', async () => {
         const storageKey = r2KeyFromUrl(uploadResult.url);
         if (!storageKey) {
-          throw new Error(`Uploaded grid for ${prep.versionId} has no R2 key`);
+          throw new Error(`Uploaded grid for ${versionId} has no R2 key`);
         }
         await recordProvenance(scopedDb.provenance, {
           teamId: input.teamId,
           userId: input.userId,
           assetKind: 'frame_variant',
-          assetId: prep.versionId,
+          assetId: versionId,
           storageKey,
-          provider: imageResult.via,
+          provider: imageVia,
           model: prep.params.model,
           providerRequestId:
-            falUsage.requestId ?? imageResult.metadata.requestId ?? null,
+            falUsage.requestId ?? imageMetadata.requestId ?? null,
           workflowRunId,
           prompt: prep.params.prompt,
           sequenceId: input.sequenceId,

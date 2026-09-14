@@ -143,14 +143,41 @@ export class LibraryTalentSheetWorkflow extends OpenStoryWorkflowEntrypoint<Libr
         stepName: 'generate-sheet-image',
         params: generationParams,
         meta: { talentId: input.talentId },
+        store: async (result) => {
+          const imageUrl = result.imageUrls[0];
+          if (!imageUrl) {
+            throw new Error('No image URL returned from generation');
+          }
+          logger.info(
+            `[LibraryTalentSheetWorkflow:cf] Uploading sheet to storage`
+          );
+          const response = await fetchGeneratedImage(imageUrl);
+          if (!response.ok) {
+            throw new Error(
+              `Failed to fetch generated image: ${response.status}`
+            );
+          }
+          // Minted inside the step: this ULID becomes the sheet row's id, so
+          // it must survive replay rather than be regenerated.
+          const sheetId = generateId();
+          const storagePath = `${input.teamId}/${input.talentId}/${sheetId}.png`;
+          const uploaded = await uploadResponse(
+            response,
+            STORAGE_BUCKETS.TALENT,
+            storagePath,
+            { contentType: 'image/png' }
+          );
+          return { sheetId, url: uploaded.publicUrl, path: uploaded.path };
+        },
       });
-      const imageResult = generation.result;
+      storageResult = generation.stored;
+      const imageMetadata = generation.metadata;
 
       // Before the deduction guard — see recordFalUsageStep (#1069).
       sheetUsage = await recordFalUsageStep(
         step,
         scopedDb,
-        imageResult.metadata,
+        imageMetadata,
         'record-fal-usage-sheet'
       );
 
@@ -158,8 +185,8 @@ export class LibraryTalentSheetWorkflow extends OpenStoryWorkflowEntrypoint<Libr
       await step.do('deduct-credits-sheet', async () => {
         await deductWorkflowCredits({
           scopedDb,
-          costMicros: extractImageCost(imageResult.metadata),
-          usedOwnKey: imageResult.metadata.usedOwnKey,
+          costMicros: extractImageCost(imageMetadata),
+          usedOwnKey: imageMetadata.usedOwnKey,
           description: `Talent sheet (${input.imageModel ?? DEFAULT_IMAGE_MODEL})`,
           idempotencyKey: `${event.instanceId}:sheet`,
           metadata: {
@@ -169,43 +196,6 @@ export class LibraryTalentSheetWorkflow extends OpenStoryWorkflowEntrypoint<Libr
           },
           workflowName: 'LibraryTalentSheetWorkflow',
         });
-      });
-
-      const imageUrl = imageResult.imageUrls[0];
-      if (!imageUrl) {
-        throw new Error('No image URL returned from generation');
-      }
-
-      // Step 3: Upload to R2 storage
-      storageResult = await step.do('upload-to-storage', async () => {
-        logger.info(
-          `[LibraryTalentSheetWorkflow:cf] Uploading sheet to storage`
-        );
-
-        // Fetch and stream directly to R2
-        const response = await fetchGeneratedImage(imageUrl);
-        if (!response.ok) {
-          throw new Error(
-            `Failed to fetch generated image: ${response.status}`
-          );
-        }
-
-        // Build storage path
-        const sheetId = generateId();
-        const storagePath = `${input.teamId}/${input.talentId}/${sheetId}.png`;
-
-        const result = await uploadResponse(
-          response,
-          STORAGE_BUCKETS.TALENT,
-          storagePath,
-          { contentType: 'image/png' }
-        );
-
-        return {
-          sheetId,
-          url: result.publicUrl,
-          path: result.path,
-        };
       });
     }
 

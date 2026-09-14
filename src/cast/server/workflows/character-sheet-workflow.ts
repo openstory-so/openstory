@@ -267,6 +267,18 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       }
     );
 
+    // Destination is resolved BEFORE generating, because the image is stored
+    // inside the generating step (#1645). `characterDbId` and `teamId` are
+    // required on the payload; `sequenceId` is optional on the shared context
+    // but the trigger always sets it, and the run cannot write its row or
+    // emit progress without it.
+    const characterDbId = input.characterDbId;
+    const teamId = input.teamId;
+    const sequenceId = input.sequenceId;
+    if (!sequenceId) {
+      throw new WorkflowValidationError('sequenceId is required');
+    }
+
     // Step 2: Generate the sheet — same-model reseeds on a content flag
     // (#881/#939), then one softened prompt (#1293). The sheet anchors a
     // character's identity across cuts (#801), so exhaustion is a HARD
@@ -284,10 +296,36 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       subject: `sheet for ${input.characterName}`,
       stepName: 'generate-sheet-image',
       params: builtParams,
-      meta: { characterDbId: input.characterDbId },
+      meta: { characterDbId },
+      store: async (result) => {
+        const imageUrl = result.imageUrls[0];
+        if (!imageUrl) {
+          throw new Error('No image URL returned from generation');
+        }
+
+        logger.info(
+          `[CharacterSheetWorkflow:cf] Uploading sheet to storage for ${input.characterName}`
+        );
+
+        const response = await fetchGeneratedImage(imageUrl);
+        if (!response.ok) {
+          throw new Error(
+            `Failed to fetch generated image: ${response.status}`
+          );
+        }
+
+        // characters/{teamId}/{sequenceId}/{characterDbId}/{uniqueId}.png
+        const storagePath = `${teamId}/${sequenceId}/${characterDbId}/${generateId()}.png`;
+        const uploaded = await uploadResponse(
+          response,
+          STORAGE_BUCKETS.CHARACTERS,
+          storagePath,
+          { contentType: 'image/png' }
+        );
+        return { url: uploaded.publicUrl, path: uploaded.path };
+      },
       onRetry: async (retry) => {
-        if (!input.sequenceId || !input.characterDbId) return;
-        await getGenerationChannel(input.sequenceId).emit(
+        await getGenerationChannel(sequenceId).emit(
           'generation.character-sheet:progress',
           {
             characterId: input.characterDbId,
@@ -298,22 +336,19 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         );
       },
     });
-    const imageResult = generation.result;
+    const storageResult = generation.stored;
+    const imageMetadata = generation.metadata;
     const generationParams = generation.params;
 
     // Before the deduction guard — see recordFalUsageStep (#1069).
-    const falUsage = await recordFalUsageStep(
-      step,
-      scopedDb,
-      imageResult.metadata
-    );
+    const falUsage = await recordFalUsageStep(step, scopedDb, imageMetadata);
 
     // Deduct credits for image generation (skip if team used own fal key)
     await step.do('deduct-credits', async () => {
       await deductWorkflowCredits({
         scopedDb,
-        costMicros: extractImageCost(imageResult.metadata),
-        usedOwnKey: imageResult.metadata.usedOwnKey,
+        costMicros: extractImageCost(imageMetadata),
+        usedOwnKey: imageMetadata.usedOwnKey,
         description: `Character sheet (${generationParams.model})`,
         idempotencyKey: `${event.instanceId}:sheet`,
         reservationId: input.reservationId,
@@ -327,58 +362,11 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       });
     });
 
-    const initialSheetImageUrl = imageResult.imageUrls[0];
-    if (!initialSheetImageUrl) {
-      throw new Error('Character sheet generation did not return an image URL');
-    }
-    let sheetImageUrl: string = initialSheetImageUrl;
-    let sheetImagePath: string | undefined = undefined;
+    let sheetImageUrl: string = storageResult.url;
+    const sheetImagePath: string = storageResult.path;
     let sheetVersionId: string | null = null;
 
-    if (input.characterDbId && input.teamId && input.sequenceId) {
-      // Capture narrowed values so inner async closures see `string`, not
-      // `string | undefined`.
-      const characterDbId = input.characterDbId;
-      const sequenceId = input.sequenceId;
-
-      // Step 3: Upload to R2 storage
-      const storageResult = await step.do('upload-to-storage', async () => {
-        const imageUrl = imageResult.imageUrls[0];
-        if (!imageUrl) {
-          throw new Error('No image URL returned from generation');
-        }
-
-        logger.info(
-          `[CharacterSheetWorkflow:cf] Uploading sheet to storage for ${input.characterName}`
-        );
-
-        // Fetch and stream directly to R2
-        const response = await fetchGeneratedImage(imageUrl);
-        if (!response.ok) {
-          throw new Error(
-            `Failed to fetch generated image: ${response.status}`
-          );
-        }
-
-        // Build storage path: characters/{teamId}/{sequenceId}/{characterDbId}/{uniqueId}.png
-        const uniqueId = generateId();
-        const storagePath = `${input.teamId}/${input.sequenceId}/${input.characterDbId}/${uniqueId}.png`;
-
-        const result = await uploadResponse(
-          response,
-          STORAGE_BUCKETS.CHARACTERS,
-          storagePath,
-          {
-            contentType: 'image/png',
-          }
-        );
-
-        return {
-          url: result.publicUrl,
-          path: result.path,
-        };
-      });
-
+    {
       // Provenance (#1180) — recorded even when the run later diverges: the
       // sheet is in R2 either way. Own step so a retry of reconcile cannot
       // double-insert.
@@ -459,9 +447,6 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       if (reconcileOutcome.kind === 'convergent') {
         sheetVersionId = reconcileOutcome.versionId;
       }
-
-      sheetImagePath = storageResult.path;
-      sheetImageUrl = storageResult.url;
 
       if (reconcileOutcome.kind === 'divergent') {
         // Helper already emitted `stale:detected` on the sequence channel.

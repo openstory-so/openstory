@@ -101,11 +101,14 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
     const { imageModel } = input;
     const imageSize = aspectRatioToImageSize(input.aspectRatio);
 
-    const imageResult = await step.do('generate-image', async () => {
+    // Generate and store in ONE step: a via that answers with inline bytes
+    // has no URL to pass on, and the whole image would otherwise ride the
+    // 1 MiB checkpoint between the two (#1638, #1645).
+    const generated = await step.do('generate-image', async () => {
       logger.info(
         `[StudioGenerationWorkflow] Generating image ${assetId} with ${imageModel}`
       );
-      return generateImageWithProvider(
+      const result = await generateImageWithProvider(
         {
           model: imageModel,
           prompt: input.referenceImages.length
@@ -128,25 +131,34 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
           },
         }
       );
+
+      const generatedImageUrl = result.imageUrls[0];
+      if (!generatedImageUrl) {
+        throw new Error('Image generation did not return any image URLs');
+      }
+      const upload = await uploadStudioImage({
+        imageUrl: generatedImageUrl,
+        teamId,
+        assetId,
+      });
+      return { upload, metadata: result.metadata, via: result.via };
     });
 
-    const generatedImageUrl = imageResult.imageUrls[0];
-    if (!generatedImageUrl) {
-      throw new Error('Image generation did not return any image URLs');
-    }
+    const upload = generated.upload;
+    const imageMetadata = generated.metadata;
 
-    const imageCost = imageResult.metadata.cost ?? ZERO_MICROS;
+    const imageCost = imageMetadata.cost ?? ZERO_MICROS;
     const falUsage =
-      imageResult.via === 'fal'
-        ? await recordFalUsageStep(step, scopedDb, imageResult.metadata)
+      generated.via === 'fal'
+        ? await recordFalUsageStep(step, scopedDb, imageMetadata)
         : {};
 
-    if (imageCost > 0 && !imageResult.metadata.usedOwnKey) {
+    if (imageCost > 0 && !imageMetadata.usedOwnKey) {
       await step.do('deduct-credits', async () => {
         await deductWorkflowCredits({
           scopedDb,
           costMicros: imageCost,
-          usedOwnKey: imageResult.metadata.usedOwnKey,
+          usedOwnKey: imageMetadata.usedOwnKey,
           description: `Studio image (${imageModel})`,
           idempotencyKey: `${event.instanceId}:studio-image`,
           reservationId: event.payload.reservationId,
@@ -160,14 +172,6 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
       });
     }
 
-    const upload = await step.do('upload-image', async () => {
-      return uploadStudioImage({
-        imageUrl: generatedImageUrl,
-        teamId,
-        assetId,
-      });
-    });
-
     const outputs: GeneratedAssetOutput[] = [
       { url: upload.url, contentType: upload.contentType },
     ];
@@ -179,9 +183,9 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
         assetKind: 'generated_asset',
         assetId,
         storageKey: upload.path,
-        provider: imageResult.via,
-        model: imageResult.metadata.endpointId,
-        providerRequestId: imageResult.metadata.requestId,
+        provider: generated.via,
+        model: imageMetadata.endpointId,
+        providerRequestId: imageMetadata.requestId,
         workflowRunId: event.instanceId,
         prompt: input.prompt,
       });

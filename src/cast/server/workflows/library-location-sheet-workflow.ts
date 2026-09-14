@@ -96,14 +96,38 @@ export class LibraryLocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<Li
       stepName: 'generate-sheet-image',
       params: generationParams,
       meta: { locationDbId: input.locationDbId },
+      store: async (result) => {
+        const imageUrl = result.imageUrls[0];
+        if (!imageUrl) {
+          throw new Error('No image URL returned from generation');
+        }
+        logger.info(
+          `[LibraryLocationSheetWorkflow:cf] Uploading sheet to storage for ${input.locationName}`
+        );
+        const response = await fetchGeneratedImage(imageUrl);
+        if (!response.ok) {
+          throw new Error(
+            `Failed to fetch generated image: ${response.status}`
+          );
+        }
+        const storagePath = `${input.teamId}/${input.sequenceId}/${input.locationDbId}/sheet_${generateId()}.png`;
+        const uploaded = await uploadResponse(
+          response,
+          STORAGE_BUCKETS.LOCATIONS,
+          storagePath,
+          { contentType: 'image/png' }
+        );
+        return { url: uploaded.publicUrl, path: uploaded.path };
+      },
     });
-    const imageResult = sheetGeneration.result;
+    const storageResult = sheetGeneration.stored;
+    const imageMetadata = sheetGeneration.metadata;
 
     // Before the deduction guard — see recordFalUsageStep (#1069).
     const sheetUsage = await recordFalUsageStep(
       step,
       scopedDb,
-      imageResult.metadata,
+      imageMetadata,
       'record-fal-usage-sheet'
     );
 
@@ -111,8 +135,8 @@ export class LibraryLocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<Li
     await step.do('deduct-credits-sheet', async () => {
       await deductWorkflowCredits({
         scopedDb,
-        costMicros: extractImageCost(imageResult.metadata),
-        usedOwnKey: imageResult.metadata.usedOwnKey,
+        costMicros: extractImageCost(imageMetadata),
+        usedOwnKey: imageMetadata.usedOwnKey,
         description: `Library location sheet (${generationParams.model})`,
         idempotencyKey: `${event.instanceId}:sheet`,
         metadata: {
@@ -123,42 +147,6 @@ export class LibraryLocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<Li
         },
         workflowName: 'LibraryLocationSheetWorkflow',
       });
-    });
-
-    // Step 3: Upload sheet to R2 storage
-    const storageResult = await step.do('upload-to-storage', async () => {
-      const imageUrl = imageResult.imageUrls[0];
-      if (!imageUrl) {
-        throw new Error('No image URL returned from generation');
-      }
-
-      logger.info(
-        `[LibraryLocationSheetWorkflow:cf] Uploading sheet to storage for ${input.locationName}`
-      );
-
-      // Fetch and stream directly to R2
-      const response = await fetchGeneratedImage(imageUrl);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch generated image: ${response.status}`);
-      }
-
-      // Build storage path: locations/{teamId}/{sequenceId}/{locationDbId}/sheet_{uniqueId}.png
-      const uniqueId = generateId();
-      const storagePath = `${input.teamId}/${input.sequenceId}/${input.locationDbId}/sheet_${uniqueId}.png`;
-
-      const result = await uploadResponse(
-        response,
-        STORAGE_BUCKETS.LOCATIONS,
-        storagePath,
-        {
-          contentType: 'image/png',
-        }
-      );
-
-      return {
-        url: result.publicUrl,
-        path: result.path,
-      };
     });
 
     // The 3x3 grid is an intermediate artifact, NOT a usable reference: it was
@@ -195,14 +183,38 @@ export class LibraryLocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<Li
       stepName: 'generate-preview-image',
       params: previewParams,
       meta: { locationDbId: input.locationDbId },
+      store: async (result) => {
+        const previewUrl = result.imageUrls[0];
+        if (!previewUrl) {
+          throw new Error('No preview URL returned from generation');
+        }
+        logger.info(
+          `[LibraryLocationSheetWorkflow:cf] Uploading preview to storage for ${input.locationName}`
+        );
+        const response = await fetchGeneratedImage(previewUrl);
+        if (!response.ok) {
+          throw new Error(
+            `Failed to fetch generated preview: ${response.status}`
+          );
+        }
+        const previewPath = `${input.teamId}/${input.sequenceId}/${input.locationDbId}/preview.png`;
+        const uploaded = await uploadResponse(
+          response,
+          STORAGE_BUCKETS.LOCATIONS,
+          previewPath,
+          { contentType: 'image/png' }
+        );
+        return { url: uploaded.publicUrl, path: uploaded.path };
+      },
     });
-    const previewResult = previewGeneration.result;
+    const previewStorageResult = previewGeneration.stored;
+    const previewMetadata = previewGeneration.metadata;
 
     // Before the deduction guard — see recordFalUsageStep (#1069).
     const previewUsage = await recordFalUsageStep(
       step,
       scopedDb,
-      previewResult.metadata,
+      previewMetadata,
       'record-fal-usage-preview'
     );
 
@@ -210,8 +222,8 @@ export class LibraryLocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<Li
     await step.do('deduct-credits-preview', async () => {
       await deductWorkflowCredits({
         scopedDb,
-        costMicros: extractImageCost(previewResult.metadata),
-        usedOwnKey: previewResult.metadata.usedOwnKey,
+        costMicros: extractImageCost(previewMetadata),
+        usedOwnKey: previewMetadata.usedOwnKey,
         description: `Location preview (${input.imageModel ?? DEFAULT_IMAGE_MODEL})`,
         idempotencyKey: `${event.instanceId}:preview`,
         metadata: {
@@ -222,42 +234,6 @@ export class LibraryLocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<Li
         workflowName: 'LibraryLocationSheetWorkflow',
       });
     });
-
-    const previewUrl = previewResult.imageUrls[0];
-    if (!previewUrl) {
-      throw new Error('No preview URL returned from generation');
-    }
-
-    // Step 5: Upload preview to R2 storage
-    const previewStorageResult = await step.do(
-      'upload-preview-to-storage',
-      async () => {
-        logger.info(
-          `[LibraryLocationSheetWorkflow:cf] Uploading preview to storage for ${input.locationName}`
-        );
-
-        const response = await fetchGeneratedImage(previewUrl);
-        if (!response.ok) {
-          throw new Error(
-            `Failed to fetch generated preview: ${response.status}`
-          );
-        }
-
-        const previewPath = `${input.teamId}/${input.sequenceId}/${input.locationDbId}/preview.png`;
-
-        const result = await uploadResponse(
-          response,
-          STORAGE_BUCKETS.LOCATIONS,
-          previewPath,
-          { contentType: 'image/png' }
-        );
-
-        return {
-          url: result.publicUrl,
-          path: result.path,
-        };
-      }
-    );
 
     // Both the 3×3 grid and the preview land in R2. Record each: the grid is
     // an intermediate but still shareable object; the preview is the live

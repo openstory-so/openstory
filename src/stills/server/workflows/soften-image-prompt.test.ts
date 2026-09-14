@@ -8,6 +8,17 @@ import type { ImageGenerationResult } from '@/stills/server/image-generation';
 import type { ImageWorkflowInput } from '@/platform/server/workflow/types';
 import type { WorkflowStep } from 'cloudflare:workers';
 
+/**
+ * Real callers upload to the final key here, inside the generating step
+ * (#1645). Echo the provider URL back so assertions still read as "this is
+ * the render that won".
+ */
+const STORE = (result: { imageUrls: string[] }) =>
+  Promise.resolve({
+    url: result.imageUrls[0] ?? '',
+    path: 'teams/t/sequences/s/frames/f/01.png',
+  });
+
 const generateImageWithProvider = vi.fn();
 vi.doMock('@/stills/server/image-generation', async () => {
   const real = await vi.importActual<
@@ -116,6 +127,7 @@ const BASE_ARGS = {
   params: PARAMS,
   versionId: 'var-1',
   snapshotInputHash: 'snap-original',
+  store: STORE,
 };
 
 describe('generateImageWithContentRetry', () => {
@@ -141,7 +153,7 @@ describe('generateImageWithContentRetry', () => {
     expect(out.prompt).toBe('A graphic fight in the alley');
     expect(out.snapshotInputHash).toBe('snap-original');
     expect(out.versionId).toBe('var-1');
-    expect(out.result.imageUrls[0]).toBe('https://cdn/img.jpg');
+    expect(out.stored.url).toBe('https://cdn/img.jpg');
   });
 
   it('reseeds the same prompt on a content rejection and skips soften when a later attempt lands', async () => {

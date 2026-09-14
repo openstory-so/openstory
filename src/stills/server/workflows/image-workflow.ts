@@ -317,6 +317,12 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
     // Transient errors still throw so CF retries the named generate step.
     // A deterministic checker hit that survives all three is
     // NonRetryableError — onFailure records the real message.
+    // Destination is resolved BEFORE generating: the still is stored inside
+    // the generating step so its bytes never reach a checkpoint (#1645).
+    const { teamId, shotId, sequenceId } = input;
+    if (!teamId || !shotId || !sequenceId) {
+      throw new Error('Missing required IDs for image storage');
+    }
     const generation = await generateImageWithContentRetry({
       step,
       scopedDb,
@@ -325,25 +331,37 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
       params: prep.params,
       versionId: prep.versionId,
       snapshotInputHash: snapshotHash,
+      store: async (result) => {
+        const generatedImageUrl = result.imageUrls[0];
+        if (!generatedImageUrl) {
+          throw new Error('Image generation did not return any image URLs');
+        }
+        return uploadImageToStorage({
+          imageUrl: generatedImageUrl,
+          teamId,
+          sequenceId,
+          shotId,
+        });
+      },
     });
-    const imageResult = generation.result;
+    const upload = generation.stored;
+    const imageMetadata = generation.metadata;
     const snapshotInputHash = generation.snapshotInputHash;
 
-    const imageCostMicros = imageResult.metadata.cost ?? ZERO_MICROS;
-    const { teamId, shotId, sequenceId } = input;
+    const imageCostMicros = imageMetadata.cost ?? ZERO_MICROS;
     // Before the deduction guard — see recordFalUsageStep (#1069). Native
     // xAI images have no fal units; sampling them would corrupt fal medians.
     const falUsage: { requestId?: string } =
-      imageResult.via === 'fal'
-        ? await recordFalUsageStep(step, scopedDb, imageResult.metadata)
+      generation.via === 'fal'
+        ? await recordFalUsageStep(step, scopedDb, imageMetadata)
         : {};
 
-    if (imageCostMicros > 0 && teamId && !imageResult.metadata.usedOwnKey) {
+    if (imageCostMicros > 0 && teamId && !imageMetadata.usedOwnKey) {
       await step.do('deduct-credits', async () => {
         await deductWorkflowCredits({
           scopedDb,
           costMicros: imageCostMicros,
-          usedOwnKey: imageResult.metadata.usedOwnKey,
+          usedOwnKey: imageMetadata.usedOwnKey,
           description: `Image generation (${generation.params.model})`,
           idempotencyKey: `${event.instanceId}:image`,
           reservationId: input.reservationId,
@@ -358,18 +376,10 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
       });
     }
 
-    const generatedImageUrl = imageResult.imageUrls[0];
-    if (!generatedImageUrl) {
-      throw new Error('Image generation did not return any image URLs');
-    }
-    let imageUrl: string = generatedImageUrl;
+    let imageUrl: string = upload.url;
     let frameVersionId: string | null = prep.versionId || null;
 
-    if (imageUrl && shotId && sequenceId && teamId && !input.skipStorage) {
-      const upload = await step.do('upload-image', async () => {
-        return uploadImageToStorage({ imageUrl, teamId, sequenceId, shotId });
-      });
-
+    if (!input.skipStorage) {
       const writeResult = await step.do(
         'persist-result',
         async (): Promise<{
@@ -535,10 +545,10 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
           assetKind: 'frame_variant',
           assetId: generation.versionId || prep.versionId,
           storageKey: buildR2Key(STORAGE_BUCKETS.THUMBNAILS, upload.path),
-          provider: imageResult.via,
+          provider: generation.via,
           model: generation.params.model,
           providerRequestId:
-            falUsage.requestId ?? imageResult.metadata.requestId ?? null,
+            falUsage.requestId ?? imageMetadata.requestId ?? null,
           workflowRunId: event.instanceId,
           prompt: generation.params.prompt,
           sequenceId,
@@ -557,18 +567,9 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
           cancelled: true,
         };
       }
-    } else if (
-      imageUrl &&
-      shotId &&
-      sequenceId &&
-      teamId &&
-      input.skipStorage
-    ) {
+    } else {
       // A preview lives in our bucket like every other generated asset: the
       // provider URL expires, and an expired preview is a broken rail tile.
-      const upload = await step.do('upload-preview', async () => {
-        return uploadImageToStorage({ imageUrl, teamId, sequenceId, shotId });
-      });
       await step.do('record-preview-variant', async () => {
         const anchor = await this.resolveFrame(scopedDb, input);
         if (!anchor) {

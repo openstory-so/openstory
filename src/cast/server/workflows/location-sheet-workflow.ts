@@ -61,7 +61,7 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
 
     // Emit realtime event that generation has started
     await step.do('emit-start-event', async () => {
-      if (input.sequenceId && input.locationDbId) {
+      if (input.sequenceId) {
         await getGenerationChannel(input.sequenceId).emit(
           'generation.location-sheet:progress',
           {
@@ -117,8 +117,22 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
       }
     );
 
+    // Destination is resolved BEFORE generating, because the image is stored
+    // inside the generating step (#1645). `locationDbId` and `teamId` are
+    // required on the payload; `sequenceId` is optional on the shared context
+    // but the trigger always sets it, and the run cannot write its row or
+    // emit progress without it.
+    const locationDbId = input.locationDbId;
+    const teamId = input.teamId;
+    const sequenceId = input.sequenceId;
+    if (!sequenceId) {
+      throw new WorkflowValidationError('sequenceId is required');
+    }
+
     // Step 2: Generate the location reference image — reseeds on a content
-    // flag, then one softened prompt (#1293).
+    // flag, then one softened prompt (#1293). The upload rides the same step:
+    // a via that answers with inline bytes has no URL to pass on, and the
+    // whole image would otherwise ride the 1 MiB checkpoint (#1638).
     const generation = await generateImageSoftening({
       step,
       scopedDb,
@@ -131,67 +145,9 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
       subject: `reference for ${input.locationName}`,
       stepName: 'generate-reference-image',
       params: builtParams,
-      meta: { locationDbId: input.locationDbId },
-      onRetry: async (retry) => {
-        if (!input.sequenceId || !input.locationDbId) return;
-        await getGenerationChannel(input.sequenceId).emit(
-          'generation.location-sheet:progress',
-          {
-            locationId: input.locationDbId,
-            status: 'generating',
-            phase: 'retrying',
-            ...retry,
-          }
-        );
-      },
-    });
-    const imageResult = generation.result;
-    const generationParams = generation.params;
-
-    // Before the deduction guard — see recordFalUsageStep (#1069).
-    const falUsage = await recordFalUsageStep(
-      step,
-      scopedDb,
-      imageResult.metadata
-    );
-
-    // Deduct credits for image generation (skip if team used own fal key)
-    await step.do('deduct-credits', async () => {
-      await deductWorkflowCredits({
-        scopedDb,
-        costMicros: extractImageCost(imageResult.metadata),
-        usedOwnKey: imageResult.metadata.usedOwnKey,
-        description: `Location sheet (${generationParams.model})`,
-        idempotencyKey: `${event.instanceId}:sheet`,
-        reservationId: input.reservationId,
-        metadata: {
-          ...falUsage,
-          model: generationParams.model,
-          locationName: input.locationName,
-          locationDbId: input.locationDbId,
-        },
-        workflowName: 'LocationSheetWorkflow',
-      });
-    });
-
-    const initialReferenceImageUrl = imageResult.imageUrls[0];
-    if (!initialReferenceImageUrl) {
-      throw new Error('Location sheet generation did not return an image URL');
-    }
-    let referenceImageUrl: string = initialReferenceImageUrl;
-    let referenceImagePath: string | undefined = undefined;
-    let sheetVersionId: string | null = null;
-
-    if (input.locationDbId && input.teamId && input.sequenceId) {
-      // Capture narrowed values so inner async closures see `string`, not
-      // `string | undefined`.
-      const locationDbId = input.locationDbId;
-      const sequenceId = input.sequenceId;
-      const teamId = input.teamId;
-
-      // Step 3: Upload to R2 storage
-      const storageResult = await step.do('upload-to-storage', async () => {
-        const imageUrl = imageResult.imageUrls[0];
+      meta: { locationDbId },
+      store: async (result) => {
+        const imageUrl = result.imageUrls[0];
         if (!imageUrl) {
           throw new Error('No image URL returned from generation');
         }
@@ -200,7 +156,6 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
           `[LocationSheetWorkflow:cf] Uploading reference to storage for ${input.locationName}`
         );
 
-        // Fetch and stream directly to R2
         const response = await fetchGeneratedImage(imageUrl);
         if (!response.ok) {
           throw new Error(
@@ -208,25 +163,59 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
           );
         }
 
-        // Build storage path: locations/{teamId}/{sequenceId}/{locationDbId}/{uniqueId}.png
-        const uniqueId = generateId();
-        const storagePath = `${teamId}/${sequenceId}/${locationDbId}/${uniqueId}.png`;
-
-        const result = await uploadResponse(
+        // locations/{teamId}/{sequenceId}/{locationDbId}/{uniqueId}.png
+        const storagePath = `${teamId}/${sequenceId}/${locationDbId}/${generateId()}.png`;
+        const uploaded = await uploadResponse(
           response,
           STORAGE_BUCKETS.LOCATIONS,
           storagePath,
+          { contentType: 'image/png' }
+        );
+        return { url: uploaded.publicUrl, path: uploaded.path };
+      },
+      onRetry: async (retry) => {
+        await getGenerationChannel(sequenceId).emit(
+          'generation.location-sheet:progress',
           {
-            contentType: 'image/png',
+            locationId: locationDbId,
+            status: 'generating',
+            phase: 'retrying',
+            ...retry,
           }
         );
+      },
+    });
+    const storageResult = generation.stored;
+    const imageMetadata = generation.metadata;
+    const generationParams = generation.params;
 
-        return {
-          url: result.publicUrl,
-          path: result.path,
-        };
+    // Before the deduction guard — see recordFalUsageStep (#1069).
+    const falUsage = await recordFalUsageStep(step, scopedDb, imageMetadata);
+
+    // Deduct credits for image generation (skip if team used own fal key)
+    await step.do('deduct-credits', async () => {
+      await deductWorkflowCredits({
+        scopedDb,
+        costMicros: extractImageCost(imageMetadata),
+        usedOwnKey: imageMetadata.usedOwnKey,
+        description: `Location sheet (${generationParams.model})`,
+        idempotencyKey: `${event.instanceId}:sheet`,
+        reservationId: input.reservationId,
+        metadata: {
+          ...falUsage,
+          model: generationParams.model,
+          locationName: input.locationName,
+          locationDbId,
+        },
+        workflowName: 'LocationSheetWorkflow',
       });
+    });
 
+    let referenceImageUrl: string = storageResult.url;
+    const referenceImagePath: string = storageResult.path;
+    let sheetVersionId: string | null = null;
+
+    {
       await step.do('record-provenance', async () => {
         await recordProvenance(scopedDb.provenance, {
           teamId,
@@ -309,9 +298,6 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
         sheetVersionId = reconcileOutcome.versionId;
       }
 
-      referenceImagePath = storageResult.path;
-      referenceImageUrl = storageResult.url;
-
       if (reconcileOutcome.kind === 'divergent') {
         // Helper already emitted `stale:detected` on the sequence channel.
         // Settle the primary reference status so the UI does not stay wedged
@@ -348,16 +334,14 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
 
     // Emit realtime event that generation is complete
     await step.do('emit-complete-event', async () => {
-      if (input.sequenceId && input.locationDbId) {
-        await getGenerationChannel(input.sequenceId).emit(
-          'generation.location-sheet:progress',
-          {
-            locationId: input.locationDbId,
-            status: 'completed',
-            referenceImageUrl,
-          }
-        );
-      }
+      await getGenerationChannel(sequenceId).emit(
+        'generation.location-sheet:progress',
+        {
+          locationId: locationDbId,
+          status: 'completed',
+          referenceImageUrl,
+        }
+      );
     });
 
     logger.info(
@@ -367,7 +351,7 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
     const result: LocationSheetWorkflowResult = {
       referenceImageUrl,
       referenceImagePath,
-      locationDbId: input.locationDbId,
+      locationDbId,
       sheetVersionId,
     };
 

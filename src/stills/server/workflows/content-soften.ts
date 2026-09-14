@@ -141,7 +141,7 @@ async function softenRejectedPrompt(
   return softened;
 }
 
-export type GenerateImageSofteningArgs = {
+export type GenerateImageSofteningArgs<S extends Record<string, string>> = {
   step: WorkflowStep;
   scopedDb: WorkflowScopedDb;
   workflowRunId: string;
@@ -161,6 +161,14 @@ export type GenerateImageSofteningArgs = {
    */
   stepName: string;
   params: ImageGenerationParams;
+  /**
+   * Persist the rendered image to its final key. Runs INSIDE the generating
+   * step, on purpose (#1645): a provider that answers with inline bytes has
+   * no URL to hand across a step boundary, and Workflows checkpoints every
+   * `step.do` result at 1 MiB — the whole image would ride it. Storing here
+   * means only this small record ever crosses.
+   */
+  store: (result: ImageGenerationResult) => Promise<S>;
   /** Authored prompt to soften. Defaults to `params.prompt`. */
   prompt?: string;
   /**
@@ -187,20 +195,30 @@ type RetryInfo = {
   promptSoftened: boolean;
 };
 
-export type GenerateImageSofteningResult = {
-  result: ImageGenerationResult;
+export type GenerateImageSofteningResult<S extends Record<string, string>> = {
+  /** What `store` returned, from inside the generating step. */
+  stored: S;
+  /** Provider metadata — billing, usage and provenance. Always small. */
+  metadata: ImageGenerationResult['metadata'];
+  /** Which API served it — fal units are only sampled for `'fal'`. */
+  via: ImageGenerationResult['via'];
   /** Params actually rendered — a different model and/or prompt on rescue. */
   params: ImageGenerationParams;
   softened: boolean;
 };
 
-type Outcome =
-  | { ok: true; result: ImageGenerationResult }
+type Outcome<S extends Record<string, string>> =
+  | {
+      ok: true;
+      stored: S;
+      metadata: ImageGenerationResult['metadata'];
+      via: ImageGenerationResult['via'];
+    }
   | { ok: false; rejection: string };
 
-export async function generateImageSoftening(
-  args: GenerateImageSofteningArgs
-): Promise<GenerateImageSofteningResult> {
+export async function generateImageSoftening<S extends Record<string, string>>(
+  args: GenerateImageSofteningArgs<S>
+): Promise<GenerateImageSofteningResult<S>> {
   const { step, scopedDb, logTag, subject, stepName } = args;
   const meta = { kind: args.kind, sequenceId: args.sequenceId, ...args.meta };
   const prompt = args.prompt ?? args.params.prompt;
@@ -225,27 +243,43 @@ export async function generateImageSoftening(
     }
   };
 
-  const generateOnce = (
+  const generateOnce = async (
     name: string,
     params: ImageGenerationParams,
     attempt: number
-  ) =>
-    step.do(name, async (): Promise<Outcome> => {
-      logger.info(
-        `${logTag} Generating ${subject} with model ${params.model} (attempt ${attempt}/${maxAttempts})`
-      );
-      try {
-        const result = await generateImageWithProvider(params, {
-          scopedDb: scopedDb.credentials,
-        });
-        return { ok: true, result };
-      } catch (error) {
-        if (isContentRejectionError(error)) {
-          return { ok: false, rejection: extractFalErrorMessage(error) };
+  ): Promise<Outcome<S>> => {
+    const outcome = await step.do(
+      name,
+      async (): Promise<Outcome<Record<string, string>>> => {
+        logger.info(
+          `${logTag} Generating ${subject} with model ${params.model} (attempt ${attempt}/${maxAttempts})`
+        );
+        try {
+          const result = await generateImageWithProvider(params, {
+            scopedDb: scopedDb.credentials,
+          });
+          // Same step, deliberately — see `store` on the args.
+          const stored = await args.store(result);
+          return {
+            ok: true,
+            stored,
+            metadata: result.metadata,
+            via: result.via,
+          };
+        } catch (error) {
+          if (isContentRejectionError(error)) {
+            return { ok: false, rejection: extractFalErrorMessage(error) };
+          }
+          throw error;
         }
-        throw error;
       }
-    });
+    );
+    // `store` returned an `S`; the checkpoint round-trips it verbatim. The
+    // step is typed on the concrete record because Workflows' `Serializable`
+    // cannot be resolved through an unbound generic.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- see above
+    return outcome as Outcome<S>;
+  };
 
   let params = args.params;
   let lastRejection: string | null = null;
@@ -270,7 +304,13 @@ export async function generateImageSoftening(
           }
         );
       }
-      return { result: outcome.result, params, softened: false };
+      return {
+        stored: outcome.stored,
+        metadata: outcome.metadata,
+        via: outcome.via,
+        params,
+        softened: false,
+      };
     }
     lastRejection = outcome.rejection;
     logger.warn(
@@ -305,7 +345,13 @@ export async function generateImageSoftening(
         model: params.model,
         ...meta,
       });
-      return { result: outcome.result, params, softened: false };
+      return {
+        stored: outcome.stored,
+        metadata: outcome.metadata,
+        via: outcome.via,
+        params,
+        softened: false,
+      };
     }
     lastRejection = outcome.rejection;
     logger.warn(
@@ -363,7 +409,13 @@ export async function generateImageSoftening(
       model: params.model,
       ...meta,
     });
-    return { result: outcome.result, params, softened: true };
+    return {
+      stored: outcome.stored,
+      metadata: outcome.metadata,
+      via: outcome.via,
+      params,
+      softened: true,
+    };
   }
 
   logger.error(

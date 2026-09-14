@@ -111,7 +111,7 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
       : await step.do('generate-poster', async () => {
           try {
             const prompt = buildPosterPrompt(title, script, styleConfig);
-            return await generateImageWithProvider(
+            const result = await generateImageWithProvider(
               {
                 model: PREVIEW_IMAGE_MODEL,
                 prompt,
@@ -119,6 +119,17 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
               },
               { scopedDb: scopedDb.credentials }
             );
+            const generatedPosterUrl = result.imageUrls[0];
+            if (!generatedPosterUrl) return null;
+            // Stored here rather than in a later step: an inline-bytes
+            // result has no URL to pass on (#1645). Still non-critical — an
+            // upload outage drops the poster rather than failing the run.
+            const upload = await uploadPosterToStorage({
+              imageUrl: generatedPosterUrl,
+              teamId,
+              sequenceId,
+            });
+            return { url: upload.url, metadata: result.metadata };
           } catch (error) {
             logger.warn('[StoryboardWorkflow:cf] Poster generation failed:', {
               err: error,
@@ -128,29 +139,8 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
         });
 
     if (posterResult) {
-      const generatedPosterUrl = posterResult.imageUrls[0];
-      if (generatedPosterUrl) {
-        // The provider URL is ephemeral — persist the bytes into R2 so the
-        // stored row keeps resolving after the CDN link expires (#1117).
-        // Non-critical like the generation above: an upload outage falls back
-        // to the provider URL (today's behaviour) rather than failing the run.
-        const storedPosterUrl = await step.do('upload-poster', async () => {
-          try {
-            const upload = await uploadPosterToStorage({
-              imageUrl: generatedPosterUrl,
-              teamId,
-              sequenceId,
-            });
-            return upload.url;
-          } catch (error) {
-            logger.warn('[StoryboardWorkflow:cf] Poster upload failed:', {
-              err: error,
-            });
-            return null;
-          }
-        });
-
-        const savedPosterUrl = storedPosterUrl ?? generatedPosterUrl;
+      {
+        const savedPosterUrl = posterResult.url;
         posterUrl = savedPosterUrl;
 
         await step.do('save-poster', async () => {

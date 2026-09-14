@@ -47,10 +47,6 @@ import {
   toVisionImageSource,
 } from '@/platform/server/storage/external-url';
 import {
-  isDataImageUrl,
-  stashBase64Image,
-} from '@/platform/server/storage/inline-image';
-import {
   generateImage,
   type ImageGenerationResult as AiImageGenerationResult,
 } from '@tanstack/ai';
@@ -209,44 +205,6 @@ async function resolveOptionalGoogleKey(
   if (scopedDb) return scopedDb.resolveOptionalKey('google');
   const platformKey = getEnv().GEMINI_API_KEY;
   return platformKey ? { key: platformKey, source: 'platform' } : undefined;
-}
-
-/**
- * Stands in for a reference whose only form is inline bytes. Arity is what
- * `parameters.referenceImageUrls` is read for (the provenance reference
- * count), so an elided entry holds its place rather than disappearing.
- */
-const ELIDED_INLINE_REFERENCE = 'inline:image';
-
-/**
- * Reference URLs as authored, for the returned `parameters` record: the
- * xAI / BytePlus request paths swap stored `/r2/` refs for inline `data:`
- * URIs, and those bytes have no business in a checkpointed step result
- * (#1638). Only inlined entries are rewritten — a fal-storage swap stays,
- * since that URL is what the provider was actually handed.
- *
- * The authored URL is the preferred replacement, but it is not trusted to
- * be one: `mediaUrlSchema` rejects `data:` at every validated entry point
- * today, and this bug is exactly what assuming a field holds a URL costs.
- * An inline authored value is elided instead, so the bound holds by
- * construction rather than by every caller staying well-behaved.
- */
-function withoutInlineReferences(
-  params: ImageGenerationParams,
-  rawParams: ImageGenerationParams
-): ImageGenerationParams {
-  const sent = params.referenceImageUrls;
-  if (!sent?.some(isDataImageUrl)) return params;
-  return {
-    ...params,
-    referenceImageUrls: sent.map((url, i) => {
-      if (!isDataImageUrl(url)) return url;
-      const authored = rawParams.referenceImageUrls?.[i];
-      return authored && !isDataImageUrl(authored)
-        ? authored
-        : ELIDED_INLINE_REFERENCE;
-    }),
-  };
 }
 
 async function generateImageInternal(
@@ -437,21 +395,18 @@ async function generateImageInternal(
   }
 
   // Native Gemini always answers with inline base64 and no hosted URL, and
-  // BytePlus can. Every caller runs this inside a `step.do`, whose result
-  // Workflows checkpoints at 1 MiB — a 1K still base64-encodes well past
-  // that, so the generation succeeds and the CHECKPOINT fails (#1638). Park
-  // those bytes in R2 here, before returning, so the result is a short URL
-  // whatever the via returned. The video twin is
-  // `videoUrlFitsWorkflowCheckpoint`.
-  const imageUrls = (
-    await Promise.all(
-      result.images.map(async (img) => {
-        if (img.url) return img.url;
-        if (img.b64Json) return stashBase64Image(img.b64Json, 'image/png');
-        return undefined;
-      })
-    )
-  ).filter((url): url is string => !!url);
+  // BytePlus can — so a result is not guaranteed to hold a URL at all. That
+  // is safe to represent inline only because no caller passes this value
+  // between workflow steps: each stores the image in the same `step.do` that
+  // generated it, so the bytes never reach a 1 MiB checkpoint (#1638,
+  // #1645). `fetchGeneratedImage` is what opens either form for upload.
+  const imageUrls = result.images
+    .map((img) => {
+      if (img.url) return img.url;
+      if (img.b64Json) return `data:image/png;base64,${img.b64Json}`;
+      return undefined;
+    })
+    .filter((url): url is string => !!url);
 
   if (imageUrls.length === 0) {
     throw new Error('No images returned from generation');
@@ -482,10 +437,7 @@ async function generateImageInternal(
 
   return {
     imageUrls,
-    // The xAI and BytePlus paths inline reference images as `data:` URIs for
-    // the request; those bytes must not ride the checkpoint back out either
-    // (#1638). The authored URL says the same thing in a few dozen chars.
-    parameters: withoutInlineReferences(params, rawParams),
+    parameters: params,
     generatedAt: new Date().toISOString(),
     processingTimeMs,
     via,

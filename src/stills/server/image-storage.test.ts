@@ -27,8 +27,7 @@ const uploadFile = vi.fn(
       contentType: options?.contentType,
     })
 );
-const openStorageObject = vi.fn();
-vi.doMock('#storage', () => ({ uploadFile, openStorageObject }));
+vi.doMock('#storage', () => ({ uploadFile }));
 vi.doMock('#env', () => ({ getEnv: () => ({}) }));
 
 // Dynamic import so the mocks apply (vi.doMock is not hoisted).
@@ -57,7 +56,6 @@ function respondWith(
 beforeEach(() => {
   fetchMock.mockReset();
   uploadFile.mockClear();
-  openStorageObject.mockReset();
 });
 
 describe('uploadPosterToStorage', () => {
@@ -226,33 +224,10 @@ describe('content-type precedence', () => {
 
 /**
  * #1638: native Gemini answers with inline base64 and BytePlus can, so the
- * generation hands back bytes rather than a URL — and those are parked in R2
- * so the workflow step result stays under the 1 MiB checkpoint cap. Neither
- * form is reachable by a plain `fetch`, which is what this uploader used to
- * do.
+ * generation hands back bytes rather than a URL — which a plain `fetch`
+ * cannot read, and this uploader used to do exactly that.
  */
 describe('inline and stored sources', () => {
-  it('uploads a stashed /r2/ image off the binding, not by fetching', async () => {
-    openStorageObject.mockResolvedValue({
-      body: new Response(PNG_BYTES).body,
-      contentType: 'image/png',
-      size: PNG_BYTES.byteLength,
-    });
-
-    const result = await uploadImageToStorage({
-      imageUrl: '/r2/thumbnails/scratch/01ABC.png',
-      teamId: 'team_1',
-      sequenceId: 'seq_1',
-      shotId: 'shot_1',
-    });
-
-    expect(openStorageObject).toHaveBeenCalledWith(
-      'thumbnails/scratch/01ABC.png'
-    );
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(result.path).toMatch(/\.png$/);
-  });
-
   it('uploads inline data: bytes without a network call', async () => {
     const dataUri = `data:image/png;base64,${btoa(String.fromCharCode(...PNG_BYTES))}`;
 

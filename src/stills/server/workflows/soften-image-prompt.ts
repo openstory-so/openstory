@@ -50,7 +50,12 @@ const logger = getLogger(['openstory', 'workflow', 'image', 'soften']);
 const MAX_IMAGE_ATTEMPTS = 3;
 
 export type GenerateImageWithContentRetryResult = {
-  result: ImageGenerationResult;
+  /** Where `store` put the image, from inside the generating step. */
+  stored: { url: string; path: string };
+  /** Provider metadata — billing and provenance. Always small. */
+  metadata: ImageGenerationResult['metadata'];
+  /** Which API served it. */
+  via: ImageGenerationResult['via'];
   params: ImageGenerationParams;
   /** Authored prompt actually rendered (not the Image-N enhanced form). */
   prompt: string;
@@ -68,6 +73,15 @@ export type GenerateImageWithContentRetryResult = {
 };
 
 type GenerateArgs = {
+  /**
+   * Persist the still to its final key, INSIDE the generating step (#1645):
+   * a via that answers with inline bytes has no URL to hand to a later step,
+   * and Workflows checkpoints every step result at 1 MiB.
+   */
+  store: (result: ImageGenerationResult) => Promise<{
+    url: string;
+    path: string;
+  }>;
   step: WorkflowStep;
   scopedDb: WorkflowScopedDb;
   workflowRunId: string;
@@ -78,7 +92,12 @@ type GenerateArgs = {
 };
 
 type GenerateOutcome =
-  | { ok: true; result: ImageGenerationResult }
+  | {
+      ok: true;
+      stored: { url: string; path: string };
+      metadata: ImageGenerationResult['metadata'];
+      via: ImageGenerationResult['via'];
+    }
   | { ok: false; rejection: string };
 
 function analysisModelFor(stored: string | null | undefined): AnalysisModelId {
@@ -203,7 +222,9 @@ async function generateOnce(
           },
         },
       });
-      return { ok: true, result };
+      // Same step, deliberately — see `store` on the args.
+      const stored = await args.store(result);
+      return { ok: true, stored, metadata: result.metadata, via: result.via };
     } catch (error) {
       if (isContentRejectionError(error)) {
         return { ok: false, rejection: extractFalErrorMessage(error) };
@@ -245,7 +266,7 @@ export async function generateImageWithContentRetry(
   const maxAttempts = MAX_IMAGE_ATTEMPTS + (canFallback ? 1 : 0) + 1;
 
   let lastRejection: string | null = null;
-  let result: ImageGenerationResult | null = null;
+  let ok: Extract<GenerateOutcome, { ok: true }> | null = null;
 
   for (let attempt = 0; attempt < MAX_IMAGE_ATTEMPTS; attempt++) {
     const tag = attempt === 0 ? '' : `-retry-${attempt}`;
@@ -258,7 +279,7 @@ export async function generateImageWithContentRetry(
       maxAttempts
     );
     if (outcome.ok) {
-      result = outcome.result;
+      ok = outcome;
       if (attempt > 0) {
         logger.info(
           `[ImageWorkflow] content-flag retry rescued frame ${input.shotId} on attempt ${attempt + 1}`,
@@ -281,7 +302,7 @@ export async function generateImageWithContentRetry(
     );
   }
 
-  if (!result && lastRejection && canFallback) {
+  if (!ok && lastRejection && canFallback) {
     const selectedModel = params.model;
     logger.warn(
       `[ImageWorkflow] same-prompt reseeds exhausted; falling back to ${IMAGE_CONTENT_FALLBACK_MODEL} for shot ${input.shotId}`,
@@ -362,7 +383,7 @@ export async function generateImageWithContentRetry(
       maxAttempts
     );
     if (outcome.ok) {
-      result = outcome.result;
+      ok = outcome;
       logger.info(
         `[ImageWorkflow] fallback model rescued frame ${input.shotId}`,
         {
@@ -383,7 +404,7 @@ export async function generateImageWithContentRetry(
     }
   }
 
-  if (!result && lastRejection) {
+  if (!ok && lastRejection) {
     logger.warn(
       `[ImageWorkflow] ${canFallback ? 'fallback flagged' : 'same-prompt reseeds exhausted'}; softening prompt for shot ${input.shotId}`,
       {
@@ -469,7 +490,7 @@ export async function generateImageWithContentRetry(
       maxAttempts
     );
     if (outcome.ok) {
-      result = outcome.result;
+      ok = outcome;
       logger.info(
         `[ImageWorkflow] softened prompt rescued frame ${input.shotId}`,
         {
@@ -503,12 +524,20 @@ export async function generateImageWithContentRetry(
     }
   }
 
-  if (!result) {
+  if (!ok) {
     throw new NonRetryableError(
       `Image rejected by content filter after ${MAX_IMAGE_ATTEMPTS} attempts: ${lastRejection ?? 'unknown rejection'}`,
       'ContentRejectionExhausted'
     );
   }
 
-  return { result, params, prompt, snapshotInputHash, versionId };
+  return {
+    stored: ok.stored,
+    metadata: ok.metadata,
+    via: ok.via,
+    params,
+    prompt,
+    snapshotInputHash,
+    versionId,
+  };
 }
