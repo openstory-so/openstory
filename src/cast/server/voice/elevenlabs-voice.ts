@@ -150,6 +150,8 @@ export async function listLibraryVoices(
     ...(args.search && { search: args.search }),
     ...(filters.gender && { gender: filters.gender }),
     ...(filters.age && { age: filters.age }),
+    ...(filters.language && { language: filters.language }),
+    ...(filters.accent && { accent: filters.accent }),
     ...(filters.quality === 'studio' && { category: 'high_quality' }),
   });
   return {

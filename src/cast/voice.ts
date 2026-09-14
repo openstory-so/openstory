@@ -117,11 +117,71 @@ export type VoiceGenderFilter = 'male' | 'female' | 'neutral';
 export type VoiceAgeFilter = 'young' | 'middle_aged' | 'old';
 export type VoiceQualityFilter = 'studio' | 'any';
 
+export const DEFAULT_VOICE_LANGUAGE = 'en';
+
+export const VOICE_LANGUAGES = [
+  { value: 'en', label: 'English' },
+  { value: 'es', label: 'Spanish' },
+  { value: 'fr', label: 'French' },
+  { value: 'de', label: 'German' },
+  { value: 'it', label: 'Italian' },
+  { value: 'pt', label: 'Portuguese' },
+  { value: 'pl', label: 'Polish' },
+  { value: 'hi', label: 'Hindi' },
+  { value: 'ja', label: 'Japanese' },
+  { value: 'zh', label: 'Chinese' },
+  { value: 'ko', label: 'Korean' },
+  { value: 'ar', label: 'Arabic' },
+  { value: 'nl', label: 'Dutch' },
+  { value: 'tr', label: 'Turkish' },
+  { value: 'sv', label: 'Swedish' },
+  { value: 'id', label: 'Indonesian' },
+  { value: 'ru', label: 'Russian' },
+  { value: 'uk', label: 'Ukrainian' },
+  { value: 'cs', label: 'Czech' },
+  { value: 'el', label: 'Greek' },
+  { value: 'fi', label: 'Finnish' },
+  { value: 'ro', label: 'Romanian' },
+  { value: 'da', label: 'Danish' },
+  { value: 'fil', label: 'Filipino' },
+] as const;
+
+export const VOICE_NATIONALITIES = [
+  { value: 'american', label: 'American' },
+  { value: 'british', label: 'British' },
+  { value: 'australian', label: 'Australian' },
+  { value: 'canadian', label: 'Canadian' },
+  { value: 'irish', label: 'Irish' },
+  { value: 'scottish', label: 'Scottish' },
+  { value: 'welsh', label: 'Welsh' },
+  { value: 'indian', label: 'Indian' },
+  { value: 'south african', label: 'South African' },
+  { value: 'new zealand', label: 'New Zealand' },
+  { value: 'french', label: 'French' },
+  { value: 'german', label: 'German' },
+  { value: 'italian', label: 'Italian' },
+  { value: 'spanish', label: 'Spanish' },
+  { value: 'mexican', label: 'Mexican' },
+  { value: 'brazilian', label: 'Brazilian' },
+  { value: 'portuguese', label: 'Portuguese' },
+  { value: 'chinese', label: 'Chinese' },
+  { value: 'japanese', label: 'Japanese' },
+  { value: 'korean', label: 'Korean' },
+  { value: 'russian', label: 'Russian' },
+  { value: 'arabic', label: 'Arabic' },
+] as const;
+
+export type VoiceLanguageFilter = (typeof VOICE_LANGUAGES)[number]['value'];
+export type VoiceNationalityFilter =
+  (typeof VOICE_NATIONALITIES)[number]['value'];
+
 /** Filters the unified ElevenLabs Voice Library understands. */
 export type CatalogVoiceFilters = {
   gender?: VoiceGenderFilter;
   age?: VoiceAgeFilter;
   quality?: VoiceQualityFilter;
+  language?: VoiceLanguageFilter;
+  accent?: VoiceNationalityFilter;
 };
 
 export function inferVoiceGender(
@@ -159,14 +219,35 @@ export function inferVoiceAge(
   return 'middle_aged';
 }
 
+export function inferVoiceAccent(
+  ethnicity: string | null | undefined
+): VoiceNationalityFilter | undefined {
+  const value = ethnicity?.normalize('NFKC').toLowerCase() ?? '';
+  if (!value) return;
+  for (const { value: accent, label } of VOICE_NATIONALITIES) {
+    if (value.includes(accent) || value.includes(label.toLowerCase())) {
+      return accent;
+    }
+  }
+  if (/\buk\b|united kingdom|england|english/.test(value)) return 'british';
+  if (/\busa\b|united states|\bus\b/.test(value)) return 'american';
+  return;
+}
+
 /** Bible → library filters so Browse opens on a shortlist for this character. */
 export function recommendVoiceFilters(character: {
   gender?: string | null;
   age?: string | null;
+  ethnicity?: string | null;
 }): CatalogVoiceFilters {
+  const gender = inferVoiceGender(character.gender);
+  const age = inferVoiceAge(character.age);
+  const accent = inferVoiceAccent(character.ethnicity);
   return {
-    gender: inferVoiceGender(character.gender),
-    age: inferVoiceAge(character.age),
+    language: DEFAULT_VOICE_LANGUAGE,
+    ...(gender ? { gender } : {}),
+    ...(age ? { age } : {}),
+    ...(accent ? { accent } : {}),
   };
 }
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   designedTakeIsInUse,
+  inferVoiceAccent,
   inferVoiceAge,
   inferVoiceGender,
   matchSpeaker,
@@ -223,10 +224,16 @@ describe('recommendVoiceFilters', () => {
     expect(inferVoiceAge('elderly')).toBe('old');
     expect(inferVoiceAge('young adult')).toBe('young');
   });
-  it('opens Browse on the character shortlist', () => {
+  it('opens Browse on the character shortlist in English', () => {
     expect(recommendVoiceFilters({ gender: 'woman', age: '40s' })).toEqual({
+      language: 'en',
       gender: 'female',
       age: 'middle_aged',
     });
+  });
+  it('maps ethnicity onto a nationality accent', () => {
+    expect(inferVoiceAccent('British')).toBe('british');
+    expect(inferVoiceAccent('American')).toBe('american');
+    expect(inferVoiceAccent('')).toBeUndefined();
   });
 });

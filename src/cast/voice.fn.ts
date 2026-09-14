@@ -12,11 +12,28 @@ import {
   getElevenLabsVoice,
   listLibraryVoices,
 } from '@/cast/server/voice/elevenlabs-voice';
+import {
+  VOICE_LANGUAGES,
+  VOICE_NATIONALITIES,
+  type VoiceLanguageFilter,
+  type VoiceNationalityFilter,
+} from '@/cast/voice';
 import { authWithTeamMiddleware } from '@/platform/middleware.fn';
 import { ValidationError } from '@/platform/errors';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
+
+const languageSchema = z
+  .string()
+  .refine((value): value is VoiceLanguageFilter =>
+    VOICE_LANGUAGES.some((language) => language.value === value)
+  );
+const nationalitySchema = z
+  .string()
+  .refine((value): value is VoiceNationalityFilter =>
+    VOICE_NATIONALITIES.some((nationality) => nationality.value === value)
+  );
 
 export const getVoiceDesignAvailableFn = createServerFn({
   method: 'GET',
@@ -42,6 +59,8 @@ export const listElevenLabsVoicesFn = createServerFn({ method: 'GET' })
         gender: z.enum(['male', 'female', 'neutral']).optional(),
         age: z.enum(['young', 'middle_aged', 'old']).optional(),
         quality: z.enum(['studio', 'any']).optional(),
+        language: languageSchema.optional(),
+        accent: nationalitySchema.optional(),
       })
     )
   )
@@ -54,6 +73,8 @@ export const listElevenLabsVoicesFn = createServerFn({ method: 'GET' })
         gender: data.gender,
         age: data.age,
         quality: data.quality,
+        language: data.language,
+        accent: data.accent,
       },
     });
   });

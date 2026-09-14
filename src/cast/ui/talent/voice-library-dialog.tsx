@@ -1,10 +1,15 @@
 import { useElevenLabsVoices } from '@/cast/ui/use-elevenlabs-voices';
-import type {
-  CatalogVoice,
-  CatalogVoiceFilters,
-  VoiceAgeFilter,
-  VoiceGenderFilter,
-  VoiceQualityFilter,
+import {
+  DEFAULT_VOICE_LANGUAGE,
+  VOICE_LANGUAGES,
+  VOICE_NATIONALITIES,
+  type CatalogVoice,
+  type CatalogVoiceFilters,
+  type VoiceAgeFilter,
+  type VoiceGenderFilter,
+  type VoiceLanguageFilter,
+  type VoiceNationalityFilter,
+  type VoiceQualityFilter,
 } from '@/cast/voice';
 import { Button } from '@/ui/shadcn/button';
 import {
@@ -16,6 +21,13 @@ import {
 } from '@/ui/shadcn/dialog';
 import { Input } from '@/ui/shadcn/input';
 import { ScrollArea } from '@/ui/shadcn/scroll-area';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/ui/shadcn/select';
 import { Skeleton } from '@/ui/shadcn/skeleton';
 import { cn } from '@/ui/utils';
 import { Library, Search } from 'lucide-react';
@@ -105,7 +117,7 @@ function FilterPills<T extends string>({
 }) {
   return (
     <div className="flex items-center justify-between gap-2">
-      <p className="w-16 shrink-0 text-sm font-medium">{label}</p>
+      <p className="w-24 shrink-0 text-sm font-medium">{label}</p>
       <div className="flex min-w-0 flex-nowrap justify-end gap-1">
         {options.map((option) => (
           <Button
@@ -141,6 +153,50 @@ function FilterPills<T extends string>({
   );
 }
 
+function FilterSelect<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: T | undefined;
+  options: readonly { value: T; label: string }[];
+  onChange: (value: T | undefined) => void;
+}) {
+  const items = [
+    { value: 'any', label: 'Any' },
+    ...options.map((option) => ({
+      value: option.value,
+      label: option.label,
+    })),
+  ];
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <p className="w-24 shrink-0 text-sm font-medium">{label}</p>
+      <Select
+        value={value ?? 'any'}
+        items={items}
+        onValueChange={(next) => {
+          const match = options.find((option) => option.value === next);
+          onChange(match?.value);
+        }}
+      >
+        <SelectTrigger size="sm" className="min-w-40">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {items.map((item) => (
+            <SelectItem key={item.value} value={item.value}>
+              {item.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
 export const VoiceLibraryDialog: React.FC<VoiceLibraryDialogProps> = ({
   open,
   onOpenChange,
@@ -159,7 +215,10 @@ export const VoiceLibraryDialog: React.FC<VoiceLibraryDialogProps> = ({
   const voices = query.data?.pages.flatMap((page) => page.voices) ?? [];
   const empty = !query.isFetching && voices.length === 0;
   const lastPage = query.data?.pages.at(-1);
-  const hasFilters = Boolean(filters.gender || filters.age || filters.quality);
+  const hasFilters =
+    Boolean(
+      filters.gender || filters.age || filters.quality || filters.accent
+    ) || filters.language !== DEFAULT_VOICE_LANGUAGE;
 
   const reset = () => {
     window.clearTimeout(searchTimer.current);
@@ -203,6 +262,25 @@ export const VoiceLibraryDialog: React.FC<VoiceLibraryDialogProps> = ({
           />
         </div>
         <div className="flex flex-col gap-2">
+          <FilterSelect
+            label="Language"
+            value={filters.language}
+            options={VOICE_LANGUAGES}
+            onChange={(language: VoiceLanguageFilter | undefined) =>
+              setFilters((current) => ({ ...current, language }))
+            }
+          />
+          <FilterSelect
+            label="Nationality"
+            value={filters.accent}
+            options={VOICE_NATIONALITIES}
+            onChange={(accent: VoiceNationalityFilter | undefined) =>
+              setFilters((current) => ({
+                ...current,
+                accent,
+              }))
+            }
+          />
           <FilterPills
             label="Quality"
             value={filters.quality}
@@ -231,7 +309,7 @@ export const VoiceLibraryDialog: React.FC<VoiceLibraryDialogProps> = ({
             size="sm"
             className="self-end"
             disabled={!hasFilters}
-            onClick={() => setFilters({})}
+            onClick={() => setFilters({ language: DEFAULT_VOICE_LANGUAGE })}
           >
             Clear filters
           </Button>

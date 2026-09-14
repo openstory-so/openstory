@@ -12,6 +12,8 @@ export const elevenLabsVoiceKeys = {
       filters.gender ?? '',
       filters.age ?? '',
       filters.quality ?? '',
+      filters.language ?? '',
+      filters.accent ?? '',
     ] as const,
   saved: (characterId: string, voiceId = '') =>
     [...elevenLabsVoiceKeys.all, 'saved', characterId, voiceId] as const,
@@ -32,6 +34,8 @@ export function useElevenLabsVoices(
           ...(filters.gender ? { gender: filters.gender } : {}),
           ...(filters.age ? { age: filters.age } : {}),
           ...(filters.quality ? { quality: filters.quality } : {}),
+          ...(filters.language ? { language: filters.language } : {}),
+          ...(filters.accent ? { accent: filters.accent } : {}),
         },
       }),
     initialPageParam: 0,
