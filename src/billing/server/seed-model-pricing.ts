@@ -156,7 +156,6 @@ export const LOCAL_FAL_PRICING_SEED: Record<string, SeedPrice> = {
   'bytedance/seedance-2.0/mini/image-to-video': units(0.007),
   'bytedance/seedance-2.0/mini/text-to-video': units(0.007),
   'bytedance/seedance-2.0/mini/reference-to-video': units(0.007),
-  'fal-ai/elevenlabs/music': { unit: 'minutes', unitPriceUsd: 0.8 },
   'fal-ai/ace-step-1.5': units(0.0005),
   'fal-ai/ace-step/prompt-to-audio': units(0.0005),
 };

@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { ELEVENLABS_MUSIC_ENDPOINT } from '@/billing/elevenlabs-pricing';
 import {
   EDIT_ENDPOINTS,
   IMAGE_TO_VIDEO_MODELS,
   MOTION_REFERENCE_ENDPOINTS,
 } from '@/models/models';
+import { getFalEndpointIds } from '@/models/fal-endpoints';
 import { catalogFalEndpointIds } from './catalog-endpoints';
 import { studioVideoEndpointId } from '@/studio/text-to-video';
 
@@ -27,5 +29,10 @@ describe('catalogFalEndpointIds', () => {
     for (const endpointId of Object.values(EDIT_ENDPOINTS)) {
       expect(ids).toContain(endpointId);
     }
+  });
+
+  it('includes native ElevenLabs music so ActionCost can price it', () => {
+    expect(catalogFalEndpointIds()).toContain(ELEVENLABS_MUSIC_ENDPOINT);
+    expect(getFalEndpointIds()).not.toContain(ELEVENLABS_MUSIC_ENDPOINT);
   });
 });

@@ -26,7 +26,7 @@ const PRICING: Record<string, EffectiveFalPricing> = {
     unitPrice: micros(14_000),
     unit: 'units',
   },
-  'fal-ai/elevenlabs/music': { unitPrice: usd(0.8), unit: 'minutes' },
+  'elevenlabs-music': { unitPrice: usd(0.15), unit: 'minutes' },
   'fal-ai/veo3.1/image-to-video': { unitPrice: usd(0.4), unit: 'seconds' },
   'openai/gpt-image-2': {
     unitPrice: micros(1_000_000),
@@ -208,12 +208,8 @@ describe('estimateFalCost', () => {
 
   test('per-minute rounds up', () => {
     expect(
-      estimateFalCost(
-        'fal-ai/elevenlabs/music',
-        { durationSeconds: 61 },
-        PRICING
-      )
-    ).toBe(usd(1.6));
+      estimateFalCost('elevenlabs-music', { durationSeconds: 61 }, PRICING)
+    ).toBe(usd(0.3));
   });
 
   test('nano-banana-2-lite catalog stub is unknown, not advertised USD', () => {

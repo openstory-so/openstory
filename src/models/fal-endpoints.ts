@@ -1,6 +1,7 @@
 /**
  * Shared helper: collects all deduplicated fal.ai endpoint IDs from our model configs.
  */
+import { ELEVENLABS_MUSIC_ENDPOINT } from '@/billing/elevenlabs-pricing';
 import {
   AUDIO_MODELS,
   EDIT_ENDPOINTS,
@@ -13,7 +14,9 @@ import { studioVideoEndpointIds } from '@/studio/text-to-video';
 export function getFalEndpointIds(): string[] {
   const video = Object.values(IMAGE_TO_VIDEO_MODELS).map((m) => m.id);
   const image = Object.values(IMAGE_MODELS).map((m) => m.id);
-  const audio = Object.values(AUDIO_MODELS).map((m) => m.id);
+  const audio = Object.values(AUDIO_MODELS)
+    .map((m) => m.id)
+    .filter((id) => id !== ELEVENLABS_MUSIC_ENDPOINT);
   const edit = Object.values(EDIT_ENDPOINTS);
   // Both rows a reference-only shot can bill on (#1521): the reference
   // endpoint, and the text-to-video sibling it takes with no matched sheets.

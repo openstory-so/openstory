@@ -1,5 +1,5 @@
 /**
- * ElevenLabs env — native TTS and Voice Design (#1552).
+ * ElevenLabs env — native TTS, Voice Design, and Music (#1552 / #1640).
  *
  * Platform key only: `API_KEY_PROVIDERS` has no `'elevenlabs'`. Designed
  * voices live in the account that created them, so a team key would not see
@@ -45,8 +45,8 @@ export function isElevenLabsConfigured(): boolean {
 
 /**
  * Shared adapter / SDK config. `timeoutInSeconds` is the SDK's stall
- * deadline so a hung TTS call fails the workflow step instead of hanging
- * it (the same guarantee `createDeadlineFetch` gives the fal path).
+ * deadline so a hung TTS / music call fails the workflow step instead of
+ * hanging it (the same guarantee `createDeadlineFetch` gives the fal path).
  */
 export function elevenLabsAdapterConfig(
   apiKey: string,
@@ -68,6 +68,16 @@ export function elevenLabsAdapterConfig(
 export async function loadElevenLabsSpeech() {
   const { createElevenLabsSpeech } = await import('@tanstack/ai-elevenlabs');
   return createElevenLabsSpeech;
+}
+
+/**
+ * Lazy-load the music / SFX adapter. Same startup-CPU reason as speech:
+ * a static import of `@tanstack/ai-elevenlabs` from a workflow graph in
+ * `src/server.ts` would pull the SDK into every Worker isolate boot.
+ */
+export async function loadElevenLabsAudio() {
+  const { createElevenLabsAudio } = await import('@tanstack/ai-elevenlabs');
+  return createElevenLabsAudio;
 }
 
 /**

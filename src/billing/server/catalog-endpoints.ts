@@ -4,6 +4,7 @@
  * instead of the full ~1,350-row fal catalog.
  */
 
+import { ELEVENLABS_MUSIC_ENDPOINT } from '@/billing/elevenlabs-pricing';
 import { getFalEndpointIds } from '@/models/fal-endpoints';
 import { IMAGE_MODELS, IMAGE_TO_VIDEO_MODELS } from '@/models/models';
 
@@ -16,7 +17,9 @@ import { IMAGE_MODELS, IMAGE_TO_VIDEO_MODELS } from '@/models/models';
  * BytePlus ids ride along unconditionally (#1157) rather than gated on
  * `ARK_API_KEY`: this map is cached by the client, the route can flip when a
  * key is added, and a missing row makes ActionCost render nothing at all.
- * The extra rows are a handful of entries off a static card.
+ * Native ElevenLabs music is the same shape (#1640): the catalog id is not a
+ * fal endpoint, so `getFalEndpointIds` omits it and we add it here. The extra
+ * rows are a handful of entries off a static card.
  */
 export function catalogFalEndpointIds(): string[] {
   const ids = new Set(getFalEndpointIds());
@@ -26,5 +29,6 @@ export function catalogFalEndpointIds(): string[] {
   ]) {
     if ('byteplusId' in model) ids.add(model.byteplusId);
   }
+  ids.add(ELEVENLABS_MUSIC_ENDPOINT);
   return [...ids];
 }

@@ -12,11 +12,12 @@
  *   against recorded fixtures under `fixtures/recorded/fal/`. No `mount()`
  *   needed — the library handles it.
  *
- * Native ElevenLabs TTS is built into aimock (`POST /v1/text-to-speech/{id}`,
- * `onElevenLabsTTS`). Playwright points `ELEVENLABS_BASE_URL` at this host
- * (no `/v1` suffix — the SDK paths include it). Fixtures live under
- * `fixtures/recorded/elevenlabs/`. Voice Design (`/v1/text-to-voice/*`) is
- * not in aimock yet — that lands with the first product call.
+ * Native ElevenLabs TTS and Music are built into aimock
+ * (`POST /v1/text-to-speech/{id}`, `POST /v1/music`). Playwright points
+ * `ELEVENLABS_BASE_URL` at this host (no `/v1` suffix — the SDK paths
+ * include it). Fixtures live under `fixtures/recorded/elevenlabs/`. Voice
+ * Design (`/v1/text-to-voice/*`) is not in aimock yet — that lands with
+ * the first product call.
  *
  * Browser-side mocks (R2, QStash) remain in handlers.ts via Playwright routes.
  */
@@ -532,9 +533,10 @@ export async function startAimockServer(): Promise<string> {
     mockServer.addFixtures(loadFixturesRecursive(FAL_FIXTURE_DIR));
   }
 
-  // Native ElevenLabs TTS (`POST /v1/text-to-speech/{voice_id}`). aimock
-  // dispatches this on the same server as OpenRouter/fal — the path does
-  // not collide. Voice Design is not a built-in aimock endpoint.
+  // Native ElevenLabs TTS (`POST /v1/text-to-speech/{voice_id}`) and Music
+  // (`POST /v1/music`). aimock dispatches these on the same server as
+  // OpenRouter/fal — the paths do not collide. Voice Design is not a
+  // built-in aimock endpoint.
   if (existsSync(ELEVENLABS_FIXTURE_DIR)) {
     mockServer.addFixtures(loadFixturesRecursive(ELEVENLABS_FIXTURE_DIR));
   }
