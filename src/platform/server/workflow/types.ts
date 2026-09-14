@@ -633,6 +633,12 @@ export interface MotionWorkflowInput extends SequenceWorkflowContext {
    */
   packedScene?: PackedMotionSceneHeader;
   /**
+   * This shot belongs to a 2+ shot scene. A 1-shot job (Grok, or a tile
+   * that did not pack) still prepends the packed environment so lighting /
+   * palette / look are not lost when the stored body is framing+action only.
+   */
+  attachSceneHeader?: boolean;
+  /**
    * Kling v3 packed `multi_prompt[]`. When set, submit sends this instead of
    * `prompt`. Re-assembled after dialogue TTS the same way `prompt` is.
    */
@@ -1490,6 +1496,8 @@ export interface BatchMotionMusicWorkflowInput extends SequenceWorkflowContext {
     renderSegmentId?: string | null;
     /** See `MotionWorkflowInput.packedScene`. */
     packedScene?: PackedMotionSceneHeader;
+    /** See `MotionWorkflowInput.attachSceneHeader`. */
+    attachSceneHeader?: boolean;
     /** The start frame. Absent only when `referenceOnly` is set. */
     imageUrl?: string;
     /** See `MotionWorkflowInput.referenceOnly`. Required for the same reason. */

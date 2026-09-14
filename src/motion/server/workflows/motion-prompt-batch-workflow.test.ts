@@ -353,4 +353,99 @@ describe('MotionPromptBatchWorkflow multi-shot scenes (#1517)', () => {
       2
     );
   });
+
+  test('reference-only derived motion is framing+action, not the visual prompt', async () => {
+    spawnAndAwaitChild.mockReset();
+    vi.mocked(SCOPED_DB.shotPromptVersions.writeAiVersion).mockClear();
+
+    const event = makeEvent({
+      styleConfig: migrateStyleConfigV1ToV2({
+        mood: 'tense',
+        artStyle: 'cinematic live action with tactile observational detail',
+        lighting: 'soft',
+        colorPalette: ['#111'],
+        cameraWork: 'handheld',
+        referenceFilms: [],
+        colorGrading: 'neutral',
+      }),
+      scenes: [
+        {
+          sceneId: 'scene_1',
+          sceneNumber: 1,
+          originalScript: { extract: 'a beat', dialogue: [] },
+          metadata: {
+            title: 'scene_1',
+            durationSeconds: 13,
+            location: 'INT. HALLWAY - NIGHT',
+            timeOfDay: 'night',
+            storyBeat: '',
+          },
+          continuity: {
+            characterTags: ['mara'],
+            environmentTag: 'dim_hallway',
+            colorPalette: 'cold blues',
+            lightingSetup: 'single overhead bulb',
+            styleTag: '',
+          },
+          shots: [
+            {
+              shotNumber: 1,
+              framing: {
+                shotSize: 'wide',
+                angle: 'eye level',
+                composition: 'centered',
+                subjectStartState: 'Sarah at the door',
+              },
+              action: 'opens the door',
+              cameraMovement: { move: 'static', pacing: 'slow' },
+              soundCue: '',
+              dialogue: [],
+              durationSeconds: 7,
+            },
+            {
+              shotNumber: 2,
+              framing: {
+                shotSize: 'medium',
+                angle: 'eye level',
+                composition: '',
+                subjectStartState: '',
+              },
+              action: 'cut to the hallway',
+              cameraMovement: { move: 'truck', pacing: 'smooth' },
+              soundCue: '',
+              dialogue: [],
+              durationSeconds: 6,
+            },
+          ],
+        },
+      ],
+      shotMapping: [
+        {
+          analysisSceneId: 'scene_1',
+          shotId: 'sh-1',
+          frameId: 'fr-1',
+          shotNumber: 1,
+        },
+        {
+          analysisSceneId: 'scene_1',
+          shotId: 'sh-2',
+          frameId: 'fr-2',
+          shotNumber: 2,
+        },
+      ],
+      startingFrameImageUrls: undefined,
+      referenceOnly: true,
+    });
+
+    const result = await makeWorkflow().batch(event, makeStep(), SCOPED_DB);
+
+    expect(spawnAndAwaitChild).not.toHaveBeenCalled();
+    const first = result[0]?.motionPrompt.fullPrompt ?? '';
+    expect(first).toContain('wide');
+    expect(first).toContain('opens the door');
+    expect(first).not.toContain('single overhead bulb');
+    expect(first).not.toContain('cold blues');
+    expect(first).not.toContain('cinematic live action');
+    expect(first).not.toContain('INT. HALLWAY');
+  });
 });

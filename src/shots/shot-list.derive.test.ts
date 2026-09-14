@@ -166,6 +166,22 @@ describe('deriveMotionPrompt — model-agnostic', () => {
     const motion = deriveMotionPrompt(scene, shot);
     expect(motion.audio).toEqual({ ambientSound: '', soundEffects: [] });
   });
+
+  it('reference-only prefixes unique framing, not scene lighting/palette/look', () => {
+    const scene = makeScene();
+    const motion = deriveMotionPrompt(scene, firstShot(scene), {
+      referenceOnly: true,
+    });
+    expect(motion.fullPrompt).toContain('wide');
+    expect(motion.fullPrompt).toContain('eye level');
+    expect(motion.fullPrompt).toContain('Sarah at the far end');
+    expect(motion.fullPrompt).toContain('Sarah walks toward the door');
+    expect(motion.fullPrompt).not.toContain('INT. HALLWAY - NIGHT');
+    expect(motion.fullPrompt).not.toContain('single overhead bulb');
+    expect(motion.fullPrompt).not.toContain('cold blues');
+    expect(motion.fullPrompt).not.toContain('neo-noir cinematic');
+    expect(motion.fullPrompt).not.toContain('dim_hallway');
+  });
 });
 
 describe('deriveShots — single-shot regression', () => {

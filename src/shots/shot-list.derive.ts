@@ -11,6 +11,8 @@
  *
  *   start-frame visual prompt = scene context + shot framing/start-state
  *   motion prompt             = shot action + camera movement + sound cue
+ *                               (reference-only prefixes unique framing;
+ *                               scene lighting/palette/look stay on the scene)
  *
  * The derived shapes are the existing `VisualPrompt` / `MotionPrompt` types so
  * downstream image/motion workflows consume them unchanged. Each shot is
@@ -79,24 +81,50 @@ function deriveVisualPrompt(
   return { fullPrompt };
 }
 
+/** Options for {@link deriveMotionPrompt} / {@link deriveShots}. */
+export type DeriveShotPromptOptions = {
+  /**
+   * Prefix the shot's unique framing onto the motion prompt. Reference-only
+   * has no still, so the opening frame has to live in prose — but only the
+   * per-shot framing (size, angle, start state, composition). Scene lighting /
+   * palette / look stay on the scene and are attached once at assemble time
+   * (#1510 packed header). Default false (image-to-video: the still is the
+   * opening frame).
+   */
+  referenceOnly?: boolean;
+};
+
 /**
  * Derive the motion prompt for one shot.
  *
  * fullPrompt = the shot's action + its single camera move (with pacing adverb)
- * + the sound cue. Model-agnostic: no vendor syntax — `assembleMotionPrompt`
- * adapts per model at render time.
+ * + the sound cue. Reference-only also prefixes unique framing. Model-agnostic:
+ * no vendor syntax — `assembleMotionPrompt` adapts per model at render time.
+ * Scene context is never copied in: that is the packed prompt header.
  */
 export function deriveMotionPrompt(
   scene: SceneWithShots,
-  shot: ShotSpec
+  shot: ShotSpec,
+  options?: DeriveShotPromptOptions
 ): MotionPrompt {
-  const { action, cameraMovement, soundCue } = shot;
+  const { action, cameraMovement, soundCue, framing } = shot;
   const cameraPhrase = joinParts(
     [cameraMovement.pacing, cameraMovement.move],
     ' '
   );
 
-  const fullPrompt = joinParts([action, `Camera: ${cameraPhrase}`], '. ');
+  const motion = joinParts([action, `Camera: ${cameraPhrase}`], '. ');
+  const framingPrefix = options?.referenceOnly
+    ? joinParts([
+        framing.shotSize,
+        framing.angle,
+        framing.subjectStartState,
+        framing.composition,
+      ])
+    : '';
+  const fullPrompt = framingPrefix
+    ? joinParts([framingPrefix, motion], '. ')
+    : motion;
 
   // Dialogue presence is a scene-level hint; the start-frame visual carries the
   // performance, the motion prompt carries the move + sound. The lines are the
@@ -143,12 +171,13 @@ export type DerivedShot = {
  */
 export function deriveShots(
   scene: SceneWithShots,
-  styleConfig: StyleConfig
+  styleConfig: StyleConfig,
+  options?: DeriveShotPromptOptions
 ): DerivedShot[] {
   const ordered = [...scene.shots].sort((a, b) => a.shotNumber - b.shotNumber);
   return ordered.map((shot) => {
     const visual = deriveVisualPrompt(scene, shot, styleConfig);
-    const motion = deriveMotionPrompt(scene, shot);
+    const motion = deriveMotionPrompt(scene, shot, options);
     return {
       shotNumber: shot.shotNumber,
       durationMs: Math.round(shot.durationSeconds * 1000),

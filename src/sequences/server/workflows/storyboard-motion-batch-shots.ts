@@ -129,6 +129,7 @@ export function buildStoryboardMotionBatchShots(input: {
       shotId: mapping.shotId,
       sceneId: scene.sceneId,
       packedScene: packedSceneFromScene(scene),
+      attachSceneHeader: item.hasSiblingShots,
       ...(input.referenceOnly
         ? { referenceOnly: true as const }
         : { referenceOnly: false as const, imageUrl: imageUrl ?? undefined }),

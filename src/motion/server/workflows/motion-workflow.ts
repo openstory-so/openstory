@@ -285,6 +285,8 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           model,
           characterTags: input.characterTags,
           generateAudio: input.generateAudio,
+          attachSceneHeader: input.attachSceneHeader,
+          scene: input.packedScene,
         });
       }
       const audioSeconds = audioClips.reduce(

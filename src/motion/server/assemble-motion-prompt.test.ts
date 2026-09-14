@@ -499,6 +499,25 @@ describe('assembleMotionPrompt', () => {
       expect(result).not.toContain('No BGM');
     });
   });
+
+  it('attachSceneHeader prepends environment without repeating it in the body', () => {
+    const result = assembleMotionPrompt({
+      motionPrompt: makeMotionPrompt({
+        fullPrompt: 'opens the door',
+        dialogue: { presence: false, lines: [] },
+        audio: { ambientSound: '', soundEffects: [] },
+      }),
+      model: 'minimax_h3_max',
+      attachSceneHeader: true,
+      scene: {
+        lightingSetup: 'single overhead bulb',
+        colorPalette: 'cold blues',
+      },
+    });
+    expect(result).toMatch(/^single overhead bulb\. cold blues\./);
+    expect(result).toContain('opens the door');
+    expect(result.split('single overhead bulb').length).toBe(2);
+  });
 });
 
 describe('assemblePackedMotionPrompt', () => {
@@ -524,6 +543,25 @@ describe('assemblePackedMotionPrompt', () => {
     });
     expect(packed.prompt).toContain('Single continuous shot, no cuts.');
     expect(packed.multiPrompt).toBeUndefined();
+  });
+
+  it('a 1-shot sibling of a packed scene prepends environment once', () => {
+    const packed = assemblePackedMotionPrompt({
+      shots: [
+        {
+          ...shot('opens the door', 4),
+          attachSceneHeader: true,
+        },
+      ],
+      model: 'minimax_h3_max',
+      scene: {
+        lightingSetup: 'single overhead bulb',
+        colorPalette: 'cold blues',
+      },
+    });
+    expect(packed.prompt).toMatch(/^single overhead bulb\. cold blues\./);
+    expect(packed.prompt).toContain('opens the door');
+    expect(packed.prompt.split('single overhead bulb').length).toBe(2);
   });
 
   it('Seedance 2.0 packs with Shot N prose and cut to, no oner pin', () => {
@@ -629,5 +667,28 @@ describe('assemblePackedMotionPrompt', () => {
     });
     expect(packedPromptFitsLimit(packed, 4096)).toBe(true);
     expect(packedPromptFitsLimit(packed, packed.prompt.length)).toBe(false);
+  });
+
+  it('two reference-only derived bodies fit H3 Max with the scene header', () => {
+    const lighting =
+      'At dawn, cool natural light enters through the stairwell windows and mixes with weak interior light. At night, a warm bedside lamp and the cold glow of Mara’s phone illuminate the room before the lamp is switched off and the space falls into blue darkness.';
+    const palette =
+      'Muted gray, off-white, warm wood, faded black, and worn neutrals, with occasional saturated color from Mara’s artwork and paint marks.';
+    const packed = assemblePackedMotionPrompt({
+      shots: [
+        shot(
+          "extreme close-up, eye level, The alarm clock displays 5:59, buzzing beside the bed; Mara's hand is just outside frame. Mara slaps the alarm off as the digits flip to 6:00. Camera: smooth static",
+          5
+        ),
+        shot(
+          'medium close-up, eye level, Mara sits on the edge of the bed, paint-stained fingers braced beside her, face tense and sleep-deprived. Mara swings out of bed, grabs the clean hoodie, and pulls it over her head. Camera: smooth truck',
+          6
+        ),
+      ],
+      model: 'minimax_h3_max',
+      scene: { lightingSetup: lighting, colorPalette: palette },
+    });
+    expect(packedPromptFitsLimit(packed, 2500)).toBe(true);
+    expect(packed.prompt.split(lighting).length).toBe(2);
   });
 });

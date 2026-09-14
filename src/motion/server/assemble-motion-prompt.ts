@@ -43,6 +43,18 @@ import {
 const NO_MUSIC_DIRECTION =
   'No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.';
 
+/**
+ * Scene-level look stated once at the top of a packed prompt. Per-shot bodies
+ * then only describe action, camera, dialogue, and SFX.
+ */
+export type PackedMotionSceneHeader = {
+  location?: string | null;
+  timeOfDay?: string | null;
+  lightingSetup?: string | null;
+  colorPalette?: string | null;
+  look?: string | null;
+};
+
 type AssembleOptions = {
   motionPrompt: AssemblableMotionPrompt;
   model: ImageToVideoModel;
@@ -69,6 +81,15 @@ type AssembleOptions = {
    * header states those once so they are not repeated per shot.
    */
   omitSharedConstraints?: boolean;
+  /**
+   * Prepend the packed scene environment (location, lighting, palette, look).
+   * Used on a 1-shot job of a 2+ shot scene so a peeled/Grok clip still gets
+   * the look that packed clips put in the header. Default false so 1-shot
+   * LLM scenes stay byte-identical.
+   */
+  attachSceneHeader?: boolean;
+  /** Scene look for {@link AssembleOptions.attachSceneHeader}. */
+  scene?: PackedMotionSceneHeader;
 };
 
 /**
@@ -85,6 +106,8 @@ export function assembleMotionPrompt({
   generateAudio,
   singleTake = true,
   omitSharedConstraints = false,
+  attachSceneHeader = false,
+  scene,
 }: AssembleOptions): string {
   const { dialogue, audio, fullPrompt } = motionPrompt;
   const supportsAudio = videoModelSupportsAudio(model);
@@ -147,6 +170,9 @@ export function assembleMotionPrompt({
     }
   }
 
+  if (attachSceneHeader) {
+    return joinPacked(formatPackedEnvironment(scene), assembled);
+  }
   return assembled;
 }
 
@@ -158,20 +184,11 @@ export type PackedMotionPromptShot = {
   prompt?: string;
   characterTags?: readonly string[];
   generateAudio?: boolean;
-};
-
-/**
- * Scene-level look stated once at the top of a packed prompt. Per-shot bodies
- * then only describe action, camera, dialogue, and SFX — Seedance 2.5 (and
- * the other in-clip models) want environment first, not repeated in every
- * shot.
- */
-export type PackedMotionSceneHeader = {
-  location?: string | null;
-  timeOfDay?: string | null;
-  lightingSetup?: string | null;
-  colorPalette?: string | null;
-  look?: string | null;
+  /**
+   * 1-shot jobs of a 2+ shot scene prepend the packed environment. Ignored
+   * on 2+ packed lists — those always use the scene header.
+   */
+  attachSceneHeader?: boolean;
 };
 
 /** Bytes reserved for the start-frame line and reference legend after packing. */
@@ -258,9 +275,17 @@ export function assemblePackedMotionPrompt({
   const first = shots[0];
   if (!first) return { prompt: '' };
   if (shots.length === 1) {
-    return {
-      prompt: assembleOnePackedShot(first, model, generateAudio, true, false),
-    };
+    const body = assembleOnePackedShot(
+      first,
+      model,
+      generateAudio,
+      true,
+      false
+    );
+    const header = first.attachSceneHeader
+      ? formatPackedEnvironment(scene)
+      : '';
+    return { prompt: joinPacked(header, body) };
   }
 
   const characterTags = uniqueCharacterTags(shots);
@@ -303,24 +328,29 @@ function joinPacked(header: string, body: string): string {
   return `${header}\n\n${body}`;
 }
 
+function formatPackedEnvironment(scene?: PackedMotionSceneHeader): string {
+  const env = [
+    scene?.location,
+    scene?.timeOfDay,
+    scene?.lightingSetup,
+    scene?.colorPalette,
+    scene?.look,
+  ]
+    .map((part) => part?.trim())
+    .filter((part): part is string => Boolean(part && part.length > 0))
+    .join('. ');
+  return env.length > 0 ? asSentence(env) : '';
+}
+
 function formatPackedHeader(input: {
   scene?: PackedMotionSceneHeader;
   characterTags: readonly string[];
   model: ImageToVideoModel;
   generateAudio?: boolean;
 }): string {
-  const env = [
-    input.scene?.location,
-    input.scene?.timeOfDay,
-    input.scene?.lightingSetup,
-    input.scene?.colorPalette,
-    input.scene?.look,
-  ]
-    .map((part) => part?.trim())
-    .filter((part): part is string => Boolean(part && part.length > 0))
-    .join('. ');
   const parts: string[] = [];
-  if (env.length > 0) parts.push(asSentence(env));
+  const env = formatPackedEnvironment(input.scene);
+  if (env.length > 0) parts.push(env);
   if (input.model === 'minimax_h3_max' && input.generateAudio === false) {
     parts.push(
       'overall_soundscape: Silent. No dialogue, no sound effects, no music.\nnon_diegetic_music: N/A'

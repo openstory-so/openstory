@@ -176,6 +176,8 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
               model,
               characterTags: shot.characterTags,
               generateAudio: shot.generateAudio,
+              attachSceneHeader: shot.attachSceneHeader,
+              scene: shot.packedScene,
             })
           : shot.prompt;
       const voicedLines = members
@@ -218,6 +220,7 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
         motionPrompt: shot.motionPrompt,
         characterTags: shot.characterTags,
         packedScene: shot.packedScene,
+        attachSceneHeader: shot.attachSceneHeader,
         // Add-model (#547) batches generate alternates only — the child must
         // not write the legacy `shots.video*` columns.
         variantOnly: input.variantOnly,

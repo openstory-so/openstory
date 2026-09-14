@@ -11,7 +11,11 @@
  */
 
 import type { Scene } from '@/shots/scene-analysis.schema';
-import { deriveShots, type DerivedShot } from '@/shots/shot-list.derive';
+import {
+  deriveShots,
+  type DerivedShot,
+  type DeriveShotPromptOptions,
+} from '@/shots/shot-list.derive';
 import type { ShotSpec } from '@/shots/shot-list.schema';
 import type { StyleConfig } from '@/look/style-config';
 import { dialogueForShot } from '@/shots/shot-list-pass';
@@ -162,7 +166,8 @@ function specForItem(
  */
 export function derivedShotForItem(
   item: ShotWorkItem,
-  styleConfig: StyleConfig
+  styleConfig: StyleConfig,
+  options?: DeriveShotPromptOptions
 ): DerivedShot | null {
   if (!item.hasSiblingShots) return null;
   const specs = item.scene.shots;
@@ -194,7 +199,8 @@ export function derivedShotForItem(
       continuousFromPrevious: false,
       shots: [...specs],
     },
-    styleConfig
+    styleConfig,
+    options
   );
   return (
     derived.find((shot) => shot.shotNumber === item.mapping.shotNumber) ?? null

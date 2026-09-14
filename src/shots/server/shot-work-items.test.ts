@@ -276,4 +276,48 @@ describe('derivedShotForItem', () => {
     expect(derived?.motionPrompt.fullPrompt).toContain('cut to the hallway');
     expect(derived?.visualPrompt.fullPrompt).toContain('medium');
   });
+
+  it('reference-only motion keeps framing and drops scene context', () => {
+    const shots = [
+      spec(1, 7, 'opens the door'),
+      spec(2, 6, 'cut to the hallway'),
+    ];
+    const items = shotWorkItems(
+      [
+        {
+          ...scene('sc-1', 13, shots),
+          continuity: {
+            characterTags: [],
+            environmentTag: '',
+            colorPalette: '',
+            lightingSetup: 'single overhead bulb',
+            styleTag: '',
+          },
+        },
+      ],
+      [
+        {
+          analysisSceneId: 'sc-1',
+          shotId: 'sh-1',
+          frameId: 'fr-1',
+          shotNumber: 1,
+        },
+        {
+          analysisSceneId: 'sc-1',
+          shotId: 'sh-2',
+          frameId: 'fr-2',
+          shotNumber: 2,
+        },
+      ]
+    );
+    const derived =
+      items[0] &&
+      derivedShotForItem(items[0], styleConfig, { referenceOnly: true });
+    expect(derived?.motionPrompt.fullPrompt).toContain('medium');
+    expect(derived?.motionPrompt.fullPrompt).toContain('opens the door');
+    expect(derived?.motionPrompt.fullPrompt).not.toContain(
+      'single overhead bulb'
+    );
+    expect(derived?.visualPrompt.fullPrompt).toContain('single overhead bulb');
+  });
 });

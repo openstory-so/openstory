@@ -426,11 +426,13 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
             })
           : undefined;
 
+        const attachSceneHeader = sceneShots.length > 1;
         const clickedPayload = {
           shotId: shot.id,
           sceneId: shot.sceneId,
           renderSegmentId: shot.renderSegmentId,
           packedScene,
+          attachSceneHeader,
           imageUrl: firstMember.shotId === shot.id ? firstImageUrl : imageUrl,
           referenceOnly,
           frameVersionId:
@@ -508,6 +510,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
                 sceneId: member.sceneId,
                 renderSegmentId: member.renderSegmentId,
                 packedScene,
+                attachSceneHeader,
                 imageUrl: memberImageUrl,
                 referenceOnly: memberReferenceOnly,
                 frameVersionId: memberFrameVersionId,
@@ -899,6 +902,10 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
               sceneId: shot.sceneId,
               renderSegmentId: shot.renderSegmentId,
               packedScene: packedSceneFromScene(scene),
+              attachSceneHeader:
+                !!shot.sceneId &&
+                allShots.filter((row) => row.sceneId === shot.sceneId).length >
+                  1,
               // Reference-only carries no still; every other shot passed the
               // eligibility filter above, which requires one.
               imageUrl: shotIsReferenceOnly(shot)

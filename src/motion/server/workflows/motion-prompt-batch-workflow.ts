@@ -195,17 +195,14 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
           results.map((result) => [result.sceneId, result])
         );
         for (const item of derivedItems) {
-          const derived = derivedShotForItem(item, styleConfig);
-          // Reference-only has no still, so the framing the visual prompt
-          // would have fixed rides in the motion prompt instead — the same
-          // inversion the reference-only LLM template makes.
+          const derived = derivedShotForItem(item, styleConfig, {
+            referenceOnly,
+          });
+          // Reference-only prefixes unique framing (no still). Scene lighting /
+          // palette / look stay off the body — the packed assemble header
+          // states them once (#1510).
           const motionPrompt =
-            (derived && referenceOnly
-              ? {
-                  ...derived.motionPrompt,
-                  fullPrompt: `${derived.visualPrompt.fullPrompt}. ${derived.motionPrompt.fullPrompt}`,
-                }
-              : derived?.motionPrompt) ??
+            derived?.motionPrompt ??
             headByScene.get(item.scene.sceneId)?.motionPrompt;
           if (!motionPrompt?.fullPrompt) continue;
           let finalVersionId: string | null = null;
