@@ -74,6 +74,8 @@ export class MusicWorkflow extends OpenStoryWorkflowEntrypoint<MusicWorkflowInpu
         duration,
         instrumental: true,
         model,
+        teamId,
+        sequenceId,
         scopedDb: scopedDb.credentials,
         observability: {
           observationName: 'music',
@@ -137,23 +139,32 @@ export class MusicWorkflow extends OpenStoryWorkflowEntrypoint<MusicWorkflowInpu
     }
     let audioUrl = audioResult.audioUrl;
     if (sequenceId) {
-      const storageResult = await step.do('upload-to-storage', async () => {
-        const result = await uploadAudioToStorage({
-          audioUrl,
-          teamId,
-          sequenceId,
-          sequenceTitle: 'sequence',
-          sceneTitle: 'music',
+      // Native ElevenLabs already parked bytes in R2 (relative `/r2/` URL).
+      // Fal still returns a CDN URL that this step downloads.
+      let storagePath = audioResult.storagePath;
+      if (!storagePath) {
+        const storageResult = await step.do('upload-to-storage', async () => {
+          const result = await uploadAudioToStorage({
+            audioUrl,
+            teamId,
+            sequenceId,
+            sequenceTitle: 'sequence',
+            sceneTitle: 'music',
+          });
+
+          if (!result.success || !result.path) {
+            throw new Error('Failed to upload audio');
+          }
+
+          return { path: result.path, url: result.url };
         });
-
-        if (!result.success || !result.path) {
-          throw new Error('Failed to upload audio');
+        storagePath = storageResult.path;
+        if (storageResult.url) {
+          audioUrl = storageResult.url;
         }
-
-        return { path: result.path, url: result.url };
-      });
-      if (storageResult.url) {
-        audioUrl = storageResult.url;
+      }
+      if (!storagePath) {
+        throw new Error('Audio storage path missing from generation result');
       }
       const inputHash = await computeSequenceMusicInputHash({
         prompt,
@@ -166,7 +177,7 @@ export class MusicWorkflow extends OpenStoryWorkflowEntrypoint<MusicWorkflowInpu
         return scopedDb.sequenceVariants.writeMusicVariant({
           sequenceId,
           url: audioUrl,
-          storagePath: storageResult.path,
+          storagePath,
           prompt,
           tags,
           durationSeconds: actualDuration,
@@ -184,8 +195,8 @@ export class MusicWorkflow extends OpenStoryWorkflowEntrypoint<MusicWorkflowInpu
           userId: input.userId,
           assetKind: 'music_variant',
           assetId: writeResult.variant.id,
-          storageKey: buildR2Key(STORAGE_BUCKETS.AUDIO, storageResult.path),
-          provider: 'fal',
+          storageKey: buildR2Key(STORAGE_BUCKETS.AUDIO, storagePath),
+          provider: model === 'elevenlabs_music' ? 'elevenlabs' : 'fal',
           model,
           providerRequestId: falUsage?.requestId ?? null,
           workflowRunId: event.instanceId,
@@ -238,7 +249,7 @@ export class MusicWorkflow extends OpenStoryWorkflowEntrypoint<MusicWorkflowInpu
           if (isPrimary) {
             await scopedDb.sequence(sequenceId).updateMusicFields({
               musicUrl: audioUrl,
-              musicPath: storageResult.path,
+              musicPath: storagePath,
               musicStatus: 'completed',
               musicGeneratedAt: new Date(),
               musicError: null,

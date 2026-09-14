@@ -551,7 +551,7 @@ export function getCompatibleModel(
  */
 export const AUDIO_MODELS = {
   elevenlabs_music: {
-    id: 'fal-ai/elevenlabs/music' as const,
+    id: 'elevenlabs-music' as const,
     name: 'ElevenLabs Music',
     vendor: 'ElevenLabs',
     license: 'proprietary' as const,

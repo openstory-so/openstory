@@ -9,6 +9,7 @@ const {
   elevenLabsAdapterConfig,
   getElevenLabsApiKey,
   loadElevenLabsSpeech,
+  loadElevenLabsAudio,
   createElevenLabsSdk,
 } = await import('./elevenlabs-config');
 
@@ -79,6 +80,11 @@ describe('lazy loaders', () => {
 
   it('loads the speech adapter factory', async () => {
     const create = await loadElevenLabsSpeech();
+    expect(typeof create).toBe('function');
+  });
+
+  it('loads the audio (music) adapter factory', async () => {
+    const create = await loadElevenLabsAudio();
     expect(typeof create).toBe('function');
   });
 
