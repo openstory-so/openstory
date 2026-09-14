@@ -109,3 +109,147 @@ export function matchSpeaker<T extends { name: string; voiceOnly?: boolean }>(
     characters.find((character) => sharesToken(speaker, character.name))
   );
 }
+
+/** Where a catalog pick came from (#1629). */
+export type CatalogVoiceSource = 'premade' | 'library';
+
+/** One ElevenLabs default or Voice Library entry the picker can assign. */
+export type CatalogVoice = {
+  voiceId: string;
+  /** Library only — needed to add the shared voice to the platform account. */
+  publicOwnerId?: string;
+  name: string;
+  description: string;
+  previewUrl: string | null;
+  labels: string[];
+  category: string;
+  source: CatalogVoiceSource;
+};
+
+export type CatalogVoicePage = {
+  voices: CatalogVoice[];
+  hasMore: boolean;
+  nextPage?: number;
+  nextPageToken?: string;
+};
+
+/** Live metadata for the character's saved `voiceId`. */
+export type SavedVoiceMeta = {
+  voiceId: string;
+  name: string;
+  category: string;
+  previewUrl: string | null;
+  /** Default ElevenLabs voices do not consume an account slot. */
+  isPremade: boolean;
+};
+
+const PREMADE_LABEL_KEYS = [
+  'gender',
+  'age',
+  'accent',
+  'language',
+  'use_case',
+  'descriptive',
+] as const;
+
+function labelsFromRecord(
+  labels: Record<string, string> | undefined
+): string[] {
+  if (!labels) return [];
+  const out: string[] = [];
+  for (const key of PREMADE_LABEL_KEYS) {
+    const value = labels[key]?.trim();
+    if (value) out.push(value);
+  }
+  return out;
+}
+
+function labelsFromLibrary(voice: {
+  gender?: string;
+  age?: string;
+  accent?: string;
+  language?: string;
+  useCase?: string;
+  descriptive?: string;
+}): string[] {
+  return [
+    voice.gender,
+    voice.age,
+    voice.accent,
+    voice.language,
+    voice.useCase,
+    voice.descriptive,
+  ].flatMap((value) => {
+    const trimmed = value?.trim();
+    return trimmed ? [trimmed] : [];
+  });
+}
+
+export function toCatalogVoiceFromPremade(input: {
+  voiceId: string;
+  name?: string;
+  description?: string;
+  previewUrl?: string;
+  category?: string;
+  labels?: Record<string, string>;
+}): CatalogVoice {
+  return {
+    voiceId: input.voiceId,
+    name: input.name?.trim() || 'Untitled voice',
+    description: input.description?.trim() ?? '',
+    previewUrl: input.previewUrl ?? null,
+    labels: labelsFromRecord(input.labels),
+    category: input.category ?? 'premade',
+    source: 'premade',
+  };
+}
+
+export function toCatalogVoiceFromLibrary(input: {
+  voiceId: string;
+  publicOwnerId: string;
+  name: string;
+  description?: string;
+  previewUrl?: string;
+  category: string;
+  gender?: string;
+  age?: string;
+  accent?: string;
+  language?: string;
+  useCase?: string;
+  descriptive?: string;
+}): CatalogVoice {
+  return {
+    voiceId: input.voiceId,
+    publicOwnerId: input.publicOwnerId,
+    name: input.name,
+    description: input.description?.trim() ?? '',
+    previewUrl: input.previewUrl ?? null,
+    labels: labelsFromLibrary(input),
+    category: input.category,
+    source: 'library',
+  };
+}
+
+/**
+ * Premade defaults are shared platform-wide and must never be deleted.
+ * Designed voices and library copies we added consume an account slot.
+ */
+export function voiceConsumesAccountSlot(
+  category: string | null | undefined
+): boolean {
+  return category !== 'premade';
+}
+
+/**
+ * A Voice Design take is in use only when the saved voice is still that
+ * designed voice (category `generated`, or unknown while metadata loads)
+ * and it sits at the front of `voicePreviews`.
+ */
+export function designedTakeIsInUse(
+  index: number,
+  voiceId: string | null | undefined,
+  category: string | null | undefined
+): boolean {
+  if (!voiceId || index !== 0) return false;
+  return category == null || category === 'generated';
+}

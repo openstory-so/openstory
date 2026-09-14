@@ -154,10 +154,10 @@ export const musicDesignResultSchema = z.object({
   }),
 });
 
-/** Voice Design brief (#1553) — one sentence ElevenLabs casts from. */
+/** Voice Design brief (#1553) — ElevenLabs' recommended prompt shape. */
 export const voiceDescriptionSchema = z.object({
   voiceDescription: z.string().meta({
     description:
-      'One 20–60 word sentence describing only what can be heard: age, gender, accent, pitch, texture, pace, attitude',
+      'Voice Design brief: Native <language>. <gender>, <age>. Excellent quality. Persona: <2-5 words>. Emotion: <2-3 adjectives>. Then 1-2 sentences on timbre, pacing, delivery. Hearable traits only — no appearance, no FX words.',
   }),
 });

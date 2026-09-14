@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 
 const mockDelete = vi.fn();
+const mockGetVoice = vi.fn();
 const mockGetKey = vi.fn();
 const mockConfigured = vi.fn();
 
@@ -16,6 +17,7 @@ vi.doMock('@/cast/server/voice/elevenlabs-voice', async () => ({
     typeof import('@/cast/server/voice/elevenlabs-voice')
   >('@/cast/server/voice/elevenlabs-voice')),
   deleteElevenLabsVoice: mockDelete,
+  getElevenLabsVoice: mockGetVoice,
 }));
 vi.doMock('@/models/server/elevenlabs-config', () => ({
   getElevenLabsApiKey: mockGetKey,
@@ -42,6 +44,13 @@ beforeEach(() => {
   mockGetKey.mockReturnValue('key');
   mockConfigured.mockReturnValue(true);
   mockDelete.mockResolvedValue(undefined);
+  mockGetVoice.mockResolvedValue({
+    voiceId: 'v1',
+    name: 'Designed',
+    category: 'generated',
+    previewUrl: null,
+    isPremade: false,
+  });
 });
 
 describe('releaseVoiceIfUnreferenced', () => {
@@ -71,6 +80,24 @@ describe('releaseVoiceIfUnreferenced', () => {
   });
   it('skips the provider when ElevenLabs is not configured', async () => {
     mockConfigured.mockReturnValue(false);
+    const { scopedDb } = makeScopedDb(0);
+    await releaseVoiceIfUnreferenced(scopedDb, 'v1');
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
+  it('does not delete a premade default voice', async () => {
+    mockGetVoice.mockResolvedValue({
+      voiceId: 'v1',
+      name: 'Rachel',
+      category: 'premade',
+      previewUrl: null,
+      isPremade: true,
+    });
+    const { scopedDb } = makeScopedDb(0);
+    await releaseVoiceIfUnreferenced(scopedDb, 'v1');
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
+  it('skips delete when the voice is already gone', async () => {
+    mockGetVoice.mockResolvedValue(null);
     const { scopedDb } = makeScopedDb(0);
     await releaseVoiceIfUnreferenced(scopedDb, 'v1');
     expect(mockDelete).not.toHaveBeenCalled();

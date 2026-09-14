@@ -9,7 +9,18 @@ export const BibleField: React.FC<{
   defaultValue: string | null;
   textarea?: boolean;
   required?: boolean;
-}> = ({ idPrefix, label, name, defaultValue, textarea, required }) => {
+  placeholder?: string;
+  hint?: string;
+}> = ({
+  idPrefix,
+  label,
+  name,
+  defaultValue,
+  textarea,
+  required,
+  placeholder,
+  hint,
+}) => {
   const id = `${idPrefix}-${name}`;
   return (
     <div className="flex flex-col gap-1">
@@ -24,6 +35,7 @@ export const BibleField: React.FC<{
           id={id}
           name={name}
           defaultValue={defaultValue ?? ''}
+          placeholder={placeholder}
           rows={3}
         />
       ) : (
@@ -31,9 +43,11 @@ export const BibleField: React.FC<{
           id={id}
           name={name}
           defaultValue={defaultValue ?? ''}
+          placeholder={placeholder}
           required={required}
         />
       )}
+      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
     </div>
   );
 };

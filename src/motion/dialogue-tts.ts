@@ -18,6 +18,12 @@ import type {
 export const DIALOGUE_TTS_MODEL = 'eleven_v3';
 
 /**
+ * Text-to-Dialogue stability (0–1). Default 0.5 is a bit monotone for
+ * acted conversation; lower opens emotional range without going erratic.
+ */
+export const DIALOGUE_TTS_STABILITY = 0.35;
+
+/**
  * One token for the whole shot conversation so Text to Dialogue’s single
  * clip binds as `@Audio1` / `Audio 1` on every voiced line.
  */

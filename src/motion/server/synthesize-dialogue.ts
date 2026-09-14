@@ -11,6 +11,7 @@ import { createElevenLabsSdk } from '@/models/server/elevenlabs-config';
 import {
   DIALOGUE_CLIP_TOKEN,
   DIALOGUE_TTS_MODEL,
+  DIALOGUE_TTS_STABILITY,
   dialogueClipSourceKey,
   ttsUtterance,
   type VoicedDialogueLine,
@@ -49,6 +50,7 @@ export async function synthesizeDialogueClip(
     modelId: DIALOGUE_TTS_MODEL,
     outputFormat: 'wav_44100',
     inputs: turns,
+    settings: { stability: DIALOGUE_TTS_STABILITY },
   });
   let wav = await collectStream(stream);
   if (wav.byteLength === 0) {

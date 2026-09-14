@@ -160,6 +160,8 @@ export const CharacterBibleForm: React.FC<{
         name="voiceDescription"
         defaultValue={character.voiceDescription}
         textarea
+        placeholder="Native English. Female, mid-50s. Excellent quality. Persona: dry detective. Emotion: unhurried, precise."
+        hint="Language, age, quality, persona, emotion, timbre — what can be heard, not how they look."
       />
       <div className="flex justify-end">
         <Button type="submit" disabled={updateCharacter.isPending}>

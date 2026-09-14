@@ -4,6 +4,13 @@
  * `elevenlabs-config.ts`.
  */
 
+import {
+  toCatalogVoiceFromLibrary,
+  toCatalogVoiceFromPremade,
+  voiceConsumesAccountSlot,
+  type CatalogVoicePage,
+  type SavedVoiceMeta,
+} from '@/cast/voice';
 import { createElevenLabsSdk } from '@/models/server/elevenlabs-config';
 
 export type DesignedPreview = {
@@ -11,6 +18,16 @@ export type DesignedPreview = {
   audioBase64: string;
   mediaType: string;
 };
+
+/**
+ * ElevenLabs' own examples sit at 20–40. The API default (5) under-follows a
+ * structured brief; high values make the take sound artificial / robotic.
+ * https://elevenlabs.io/docs/eleven-creative/voices/voice-design#prompting-guide
+ */
+export const VOICE_DESIGN_GUIDANCE_SCALE = 25;
+
+/** -1..1. Higher is cleaner with less variety. */
+export const VOICE_DESIGN_QUALITY = 0.5;
 
 /** Previews cost no voice slot; only `saveDesignedVoice` does. */
 export async function designVoicePreviews(
@@ -22,6 +39,9 @@ export async function designVoicePreviews(
     voiceDescription,
     modelId: 'eleven_ttv_v3',
     autoGenerateText: true,
+    shouldEnhance: true,
+    guidanceScale: VOICE_DESIGN_GUIDANCE_SCALE,
+    quality: VOICE_DESIGN_QUALITY,
     // 192 kbps needs the Creator tier; 128 does not.
     outputFormat: 'mp3_44100_128',
   });
@@ -88,4 +108,136 @@ export async function deleteElevenLabsVoice(
     if (elevenLabsStatus(error) === 404) return;
     throw error;
   }
+}
+
+export async function getElevenLabsVoice(
+  apiKey: string,
+  voiceId: string
+): Promise<SavedVoiceMeta | null> {
+  const client = await createElevenLabsSdk(apiKey);
+  try {
+    const voice = await client.voices.get(voiceId);
+    const category = voice.category ?? '';
+    return {
+      voiceId: voice.voiceId,
+      name: voice.name?.trim() || 'Saved voice',
+      category,
+      previewUrl: voice.previewUrl ?? null,
+      isPremade: !voiceConsumesAccountSlot(category),
+    };
+  } catch (error) {
+    if (elevenLabsStatus(error) === 404) return null;
+    throw error;
+  }
+}
+
+export async function listPremadeVoices(
+  apiKey: string,
+  args: { search?: string; nextPageToken?: string } = {}
+): Promise<CatalogVoicePage> {
+  const client = await createElevenLabsSdk(apiKey);
+  const result = await client.voices.search({
+    voiceType: 'default',
+    pageSize: 100,
+    sort: 'name',
+    sortDirection: 'asc',
+    ...(args.search && { search: args.search }),
+    ...(args.nextPageToken && { nextPageToken: args.nextPageToken }),
+  });
+  return {
+    voices: result.voices.map((voice) =>
+      toCatalogVoiceFromPremade({
+        voiceId: voice.voiceId,
+        name: voice.name,
+        description: voice.description,
+        previewUrl: voice.previewUrl,
+        category: voice.category,
+        labels: voice.labels,
+      })
+    ),
+    hasMore: result.hasMore,
+    nextPageToken: result.nextPageToken,
+  };
+}
+
+export async function listLibraryVoices(
+  apiKey: string,
+  args: { search?: string; page?: number } = {}
+): Promise<CatalogVoicePage> {
+  const client = await createElevenLabsSdk(apiKey);
+  const page = args.page ?? 0;
+  const result = await client.voices.getShared({
+    pageSize: 30,
+    page,
+    sort: args.search ? 'usage_character_count_1y' : 'trending',
+    includeCustomRates: false,
+    ...(args.search && { search: args.search }),
+  });
+  return {
+    voices: result.voices.map((voice) =>
+      toCatalogVoiceFromLibrary({
+        voiceId: voice.voiceId,
+        publicOwnerId: voice.publicOwnerId,
+        name: voice.name,
+        description: voice.description,
+        previewUrl: voice.previewUrl,
+        category: voice.category,
+        gender: voice.gender,
+        age: voice.age,
+        accent: voice.accent,
+        language: voice.language,
+        useCase: voice.useCase,
+        descriptive: voice.descriptive,
+      })
+    ),
+    hasMore: result.hasMore,
+    nextPage: result.hasMore ? page + 1 : undefined,
+  };
+}
+
+async function addSharedVoice(
+  apiKey: string,
+  args: { publicOwnerId: string; voiceId: string; name: string }
+): Promise<string> {
+  const client = await createElevenLabsSdk(apiKey);
+  const added = await client.voices.share(args.publicOwnerId, args.voiceId, {
+    newName: args.name,
+  });
+  return added.voiceId;
+}
+
+export type AssignableVoicePick =
+  | { source: 'premade'; voiceId: string }
+  | {
+      source: 'library';
+      voiceId: string;
+      publicOwnerId: string;
+      name: string;
+    };
+
+/**
+ * Resolve a picker selection to an account voice id. Premade ids are used
+ * as-is (no slot). Library voices are copied onto the platform account.
+ */
+export async function resolveAssignableVoiceId(
+  apiKey: string,
+  pick: AssignableVoicePick
+): Promise<string> {
+  if (pick.source === 'premade') {
+    const voice = await getElevenLabsVoice(apiKey, pick.voiceId);
+    if (!voice) {
+      throw Object.assign(new Error('Voice not found'), { statusCode: 404 });
+    }
+    if (voiceConsumesAccountSlot(voice.category)) {
+      throw Object.assign(new Error('Not a default ElevenLabs voice'), {
+        statusCode: 400,
+      });
+    }
+    return voice.voiceId;
+  }
+  return addSharedVoice(apiKey, {
+    publicOwnerId: pick.publicOwnerId,
+    voiceId: pick.voiceId,
+    name: pick.name,
+  });
 }

@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { matchSpeaker, speakingCharacterIds, usesVoice } from './voice';
+import {
+  designedTakeIsInUse,
+  matchSpeaker,
+  speakingCharacterIds,
+  toCatalogVoiceFromLibrary,
+  toCatalogVoiceFromPremade,
+  usesVoice,
+  voiceConsumesAccountSlot,
+} from './voice';
 
 const scene = (speakers: string[]) => ({
   originalScript: {
@@ -123,5 +131,67 @@ describe('matchSpeaker', () => {
       { name: 'Sarah', voiceOnly: false },
     ];
     expect(matchSpeaker('SARAH', family)?.name).toBe('Sarah');
+  });
+});
+
+describe('designedTakeIsInUse', () => {
+  it('marks the front take as in use for a designed voice', () => {
+    expect(designedTakeIsInUse(0, 'voice-1', 'generated')).toBe(true);
+    expect(designedTakeIsInUse(1, 'voice-1', 'generated')).toBe(false);
+  });
+  it('treats an unknown category as designed while metadata loads', () => {
+    expect(designedTakeIsInUse(0, 'voice-1', undefined)).toBe(true);
+  });
+  it('does not mark designed takes as in use once a catalog voice is saved', () => {
+    expect(designedTakeIsInUse(0, 'voice-1', 'premade')).toBe(false);
+    expect(designedTakeIsInUse(0, 'voice-1', 'professional')).toBe(false);
+  });
+  it('is never in use without a saved voice id', () => {
+    expect(designedTakeIsInUse(0, null, 'generated')).toBe(false);
+  });
+});
+
+describe('voiceConsumesAccountSlot', () => {
+  it('spares premade defaults and treats everything else as a slot', () => {
+    expect(voiceConsumesAccountSlot('premade')).toBe(false);
+    expect(voiceConsumesAccountSlot('generated')).toBe(true);
+    expect(voiceConsumesAccountSlot('professional')).toBe(true);
+  });
+});
+
+describe('catalog voice mapping', () => {
+  it('maps a premade voice with labels in a stable order', () => {
+    expect(
+      toCatalogVoiceFromPremade({
+        voiceId: 'abc',
+        name: 'Rachel',
+        description: 'Calm',
+        previewUrl: 'https://example.com/r.mp3',
+        category: 'premade',
+        labels: { age: 'young', gender: 'female', accent: 'american' },
+      })
+    ).toEqual({
+      voiceId: 'abc',
+      name: 'Rachel',
+      description: 'Calm',
+      previewUrl: 'https://example.com/r.mp3',
+      labels: ['female', 'young', 'american'],
+      category: 'premade',
+      source: 'premade',
+    });
+  });
+  it('maps a library voice and keeps the public owner id', () => {
+    const mapped = toCatalogVoiceFromLibrary({
+      voiceId: 'lib-1',
+      publicOwnerId: 'owner-1',
+      name: 'Narrator',
+      category: 'professional',
+      gender: 'male',
+      age: 'middle aged',
+      accent: 'british',
+    });
+    expect(mapped.source).toBe('library');
+    expect(mapped.publicOwnerId).toBe('owner-1');
+    expect(mapped.labels).toEqual(['male', 'middle aged', 'british']);
   });
 });

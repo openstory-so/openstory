@@ -15,6 +15,7 @@ import {
   getSequenceCharactersFn,
   recastCharacterFn,
   regenerateCharacterSheetFn,
+  assignCharacterVoiceFn,
   chooseCharacterVoiceTakeFn,
   generateCharacterVoiceFn,
   setCharacterVoiceEnabledFn,
@@ -25,6 +26,7 @@ import {
 import type { SheetStaleness } from '@/cast/server/sheets/sheet-staleness';
 import { addCharacterToLibraryFn } from '@/cast/talent.fn';
 import { shotStalenessNamespace } from '@/shots/ui/use-shot-staleness';
+import { elevenLabsVoiceKeys } from '@/cast/ui/use-elevenlabs-voices';
 import type { CharacterWithTalent } from '@/platform/server/db/schema';
 
 export const sequenceCharacterKeys = {
@@ -132,9 +134,34 @@ export function useChooseCharacterVoiceTake() {
       characterId: string;
       generatedVoiceId: string;
     }) => chooseCharacterVoiceTakeFn({ data }),
-    onSuccess: (_result, { sequenceId }) => {
+    onSuccess: (_result, { sequenceId, characterId }) => {
       void queryClient.invalidateQueries({
         queryKey: sequenceCharacterKeys.list(sequenceId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: elevenLabsVoiceKeys.saved(characterId),
+      });
+    },
+  });
+}
+
+export function useAssignCharacterVoice() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      sequenceId: string;
+      characterId: string;
+      source: 'premade' | 'library';
+      voiceId: string;
+      publicOwnerId?: string;
+      name?: string;
+    }) => assignCharacterVoiceFn({ data }),
+    onSuccess: (_result, { sequenceId, characterId }) => {
+      void queryClient.invalidateQueries({
+        queryKey: sequenceCharacterKeys.list(sequenceId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: elevenLabsVoiceKeys.saved(characterId),
       });
     },
   });

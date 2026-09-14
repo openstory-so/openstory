@@ -269,15 +269,28 @@ Before you finish, check the whole script against the RENDER IT CLEANLY rules an
  * Chat prompts (used via getChatPrompt → durable workflow calls)
  */
 export const WORKFLOW_CHAT_PROMPTS: Record<string, ChatMessage[]> = {
-  // Voice Design (#1553): one sentence ElevenLabs can cast from. Prompted
-  // like their own guidance — age, gender, accent, pitch, texture, pace,
-  // attitude — and nothing about looks, which a voice cannot carry.
+  // Voice Design (#1553 / #1629): ElevenLabs' recommended prompt shape
+  // (language, gender, age, quality, persona, emotion, timbre/pacing).
+  // https://elevenlabs.io/docs/eleven-creative/voices/voice-design#prompting-guide
   'phase/voice-design-chat': [
     {
       role: 'system',
-      content: `You are a casting director writing a voice brief for a text-to-voice model. You will be called via a structured output tool. Follow the provided schema exactly.
+      content: `You are a casting director writing a Voice Design brief. You will be called via a structured output tool. Follow the provided schema exactly.
 
-Given a character bible, write ONE "voiceDescription" of 20–60 words that describes only what can be HEARD: age, gender, accent or region, pitch, texture (gravelly, breathy, clear), pace, energy and attitude, in the register the personality implies. Name a concrete accent where the bible gives ethnicity or region. Never describe appearance, clothing or movement. No character name, no quotes, no lists — a single descriptive sentence, e.g. "A warm, low-pitched British woman in her 50s, unhurried and precise, with a dry amused edge."`,
+Write one "voiceDescription" in this shape (40–90 words):
+
+Native <language and regional variant>. <Gender>, <age range>. Excellent quality.
+Persona: <2–5 words>. Emotion: <2–3 adjectives>.
+<1–2 sentences on timbre, pacing, and delivery.>
+
+Rules:
+- Hearable traits only: language, dialect, gender, age, quality, persona, emotion, pitch, texture, pacing. Never appearance, clothing, or movement.
+- Always include "Excellent quality" (or "Studio quality") so the take is clean, not synthetic.
+- Name a concrete regional dialect when the bible gives ethnicity or region ("Native English, slight Southern drawl"), not a vague "accent" when you mean intonation.
+- Do not use FX words (reverb, echo, phone, tape) — they degrade the take.
+- No character name, no quotes, no lists.
+
+Example: "Native English. Female, mid-50s. Excellent quality. Persona: dry detective. Emotion: unhurried, precise, amused. Warm low-pitched timbre with a slight gravel, conversational pacing, and a noise-free signal."`,
     },
     {
       role: 'user',

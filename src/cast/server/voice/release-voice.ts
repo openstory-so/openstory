@@ -12,7 +12,12 @@ import {
   isElevenLabsConfigured,
 } from '@/models/server/elevenlabs-config';
 import type { ScopedDb } from '@/platform/server/db/scoped';
-import { deleteElevenLabsVoice, elevenLabsStatus } from './elevenlabs-voice';
+import {
+  deleteElevenLabsVoice,
+  elevenLabsStatus,
+  getElevenLabsVoice,
+} from './elevenlabs-voice';
+import { voiceConsumesAccountSlot } from '@/cast/voice';
 import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'cast', 'release-voice']);
@@ -33,6 +38,10 @@ export async function releaseVoiceIfUnreferenced(
     return;
   }
   try {
+    const voice = await getElevenLabsVoice(apiKey, voiceId);
+    if (!voice || !voiceConsumesAccountSlot(voice.category)) {
+      return;
+    }
     await deleteElevenLabsVoice(apiKey, voiceId);
   } catch (error) {
     // A revoked / wrong key is the unconfigured case with extra steps: no
@@ -40,8 +49,8 @@ export async function releaseVoiceIfUnreferenced(
     // delete or archive that called us. Everything else (5xx, network) is
     // retryable and propagates so the caller keeps its pointer.
     const status = elevenLabsStatus(error);
-    if (status === 401 || status === 403) {
-      logger.warn('ElevenLabs key rejected; voice slot not released', {
+    if (status === 401 || status === 403 || status === 400) {
+      logger.warn('ElevenLabs refused the delete; voice slot not released', {
         voiceId,
         status,
       });

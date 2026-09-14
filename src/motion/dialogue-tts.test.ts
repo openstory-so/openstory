@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DIALOGUE_CLIP_TOKEN,
   DIALOGUE_TTS_MODEL,
+  DIALOGUE_TTS_STABILITY,
   GENERATED_VOICE,
   VIDEO_MODEL_VOICE_TOKEN,
   isElementVoiceToken,
@@ -44,6 +45,13 @@ const dialogue = (
     tone: line.tone ?? '',
     ...(line.voiceToken ? { voiceToken: line.voiceToken } : {}),
   })),
+});
+
+describe('DIALOGUE_TTS_STABILITY', () => {
+  it('is below the ElevenLabs default so conversation is not monotone', () => {
+    expect(DIALOGUE_TTS_STABILITY).toBeLessThan(0.5);
+    expect(DIALOGUE_TTS_STABILITY).toBeGreaterThan(0.2);
+  });
 });
 
 describe('modelTakesDialogueAudio', () => {
