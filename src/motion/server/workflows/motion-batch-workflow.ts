@@ -88,18 +88,17 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
       );
     }
 
-    // Step 0: BytePlus ACR admission (#1361). Every still a Seedance shot
-    // sends — start frame and every matched sheet — has to be registered as
-    // `asset://`, and those slots are per BytePlus ACCOUNT, not per run. 20
-    // children that each discover slot 51 for themselves is 20 wasted
-    // `CreateAsset` round trips and 20 fal fallbacks, so count the batch
-    // against the pool first and let it drain.
+    // Step 0: BytePlus ACR admission (#1361). Face-bearing stills a Seedance
+    // shot sends — start frame and character sheets — have to be registered
+    // as `asset://`, and those slots are per BytePlus ACCOUNT, not per run.
+    // 20 children that each discover slot 51 for themselves is 20 wasted
+    // `CreateAsset` attempts (then failed shots), so count the batch against
+    // the pool first and let it drain.
     //
-    // Reads live D1 outside `scopedDb` on purpose: the pool is platform-global
-    // (no team column, like `model_pricing`, which `price-motion-generation`
-    // already reads live in this same run) and occupancy is the one thing that
-    // cannot be snapshotted at the trigger — a run that froze it would evict
-    // slots another team leased minutes later.
+    // Reads through `scopedDb.liveRead.bytePlusAssets.getAdmission` (the live
+    // hatch): occupancy is shared across teams and cannot be snapshotted at
+    // trigger — a run that froze it would evict slots another team leased
+    // minutes later.
     await this.awaitBytePlusPoolAdmission(input, step, scopedDb);
 
     // Step 1: Fan out motion workflows + optional music workflow in parallel.
@@ -284,10 +283,11 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
   /**
    * Hold the fan-out until this batch's distinct stills fit the ACR pool.
    *
-   * Bounded on purpose: waiting forever would turn a busy pool into a hung
-   * generation, and overshooting is not fatal — a shot that finds nothing
-   * evictable sends the public URL and takes the existing portrait-filter
-   * fallback to fal. A BYOK-fal team never touches the pool but is not
+   * Bounded on purpose: waiting forever would hang a generation. Overshooting
+   * is fatal — each child claim fails immediately on a full leased pool
+   * (`NonRetryableError`); there is no public-URL or fal fallback. A still
+   * another run is creating waits ~20 minutes (40 × 30s) then fails if that
+   * create never lands. A BYOK-fal team never touches the pool but is not
    * excluded here (that needs a credential read for a check that only ever
    * costs a `count(*)`); it can be delayed by other teams' traffic, which the
    * `deferred` event will show if it ever matters.

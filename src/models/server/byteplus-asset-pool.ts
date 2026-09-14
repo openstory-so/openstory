@@ -127,9 +127,10 @@ export type PooledAssetClaim =
  * fal scratch URL would burn a fresh slot on every submit. A hit is the
  * `asset://` to send; a reservation is the go-ahead to create (the workflow
  * waits for a CreateAsset token first, #1519). A still another run is
- * creating, or a full pool with nothing evictable, throws — the claim step
- * retries until the other run finishes or a lease frees. There is no
- * public-URL fallback.
+ * creating throws a retryable error so the claim step waits for that create
+ * (40 × 30s). A full pool with nothing evictable throws `NonRetryableError`
+ * — admission already waited, and the 20-minute claim budget cannot outlast
+ * a 45-minute lease. There is no public-URL fallback.
  */
 export async function claimPooledAsset(
   ledger: AssetPoolLedger,
@@ -151,7 +152,7 @@ export async function claimPooledAsset(
       throw new Error(ASSET_PENDING_MESSAGE);
     case 'exhausted':
       reportBytePlusAssetPool({ outcome: 'exhausted' });
-      throw new Error(ASSET_POOL_EXHAUSTED_MESSAGE);
+      throw new NonRetryableError(ASSET_POOL_EXHAUSTED_MESSAGE);
     case 'reserved':
       return {
         kind: 'reserved',

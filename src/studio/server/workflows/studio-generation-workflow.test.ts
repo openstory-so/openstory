@@ -20,7 +20,10 @@ const mockPoll = vi.fn();
 const mockCost = vi.fn();
 const mockRecordMediaGenerationSpan = vi.fn();
 const mockResolveMotionVia = vi.fn(
-  async (): Promise<'fal' | 'google'> => 'fal'
+  async (): Promise<'fal' | 'google' | 'byteplus'> => 'fal'
+);
+const mockIngestArkAssets = vi.fn(
+  async (_step: unknown, _args: { owner: string }) => ({})
 );
 
 vi.doMock('@/stills/server/image-generation', () => ({
@@ -49,6 +52,10 @@ vi.doMock('@/studio/server/studio-video-generation', () => ({
   submitStudioVideoJob: mockSubmit,
   pollStudioVideoJob: mockPoll,
   studioVideoCostFromUsage: mockCost,
+  arkStillsForStudio: () => [],
+}));
+vi.doMock('@/models/server/byteplus-asset-steps', () => ({
+  ingestArkAssets: mockIngestArkAssets,
 }));
 vi.doMock('@/platform/server/observability/ai-otel', () => ({
   recordMediaGenerationSpan: mockRecordMediaGenerationSpan,
@@ -284,6 +291,17 @@ describe('StudioGenerationWorkflow video', () => {
         costMicros: 70_000,
       })
     );
+  });
+
+  it('leases stills under the same owner it releases', async () => {
+    mockResolveMotionVia.mockResolvedValueOnce('byteplus');
+    const { scopedDb, bytePlusAssets } = makeScopedDb();
+
+    await makeWorkflow().runBody(makeEvent(VIDEO), makeStep(), scopedDb);
+
+    const owner = mockIngestArkAssets.mock.calls[0]?.[1].owner;
+    expect(owner).toBe('studio:run-1');
+    expect(bytePlusAssets.releaseOwner).toHaveBeenCalledWith(owner);
   });
 
   it('a release that never lands does not fail a rendered clip', async () => {

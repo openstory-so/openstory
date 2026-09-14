@@ -69,7 +69,8 @@ describe('isContentRejectionError', () => {
       'Motion generation timed out after 30 minutes',
       'D1_ERROR: database is locked',
       'No URL returned',
-      // Provenance 400 — submit falls back to fal; a reseed cannot help.
+      // Provenance 400 — not a content-flag; reseeding cannot help. Submit
+      // fails the shot (no fal fallback).
       "BytePlus Ark video task creation failed (400 InputImageSensitiveContentDetected.PrivacyInformation): The request failed because the input image 'content[1]' may contain real person.",
     ];
     for (const message of transient) {

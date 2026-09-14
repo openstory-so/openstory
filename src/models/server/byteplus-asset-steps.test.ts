@@ -163,6 +163,27 @@ describe('ingestArkAssets', () => {
     );
   });
 
+  it('a failed evict never reaches create', async () => {
+    mockClaim.mockResolvedValue({
+      kind: 'reserved',
+      identity: 'h',
+      evictedAssetId: 'ark-old',
+    });
+    mockEvict.mockRejectedValue(new Error('DeleteAsset failed'));
+    const { step } = fakeStep();
+
+    await expect(
+      ingestArkAssets(step, {
+        prefix: 'p',
+        stills: [{ storedUrl: 'https://cdn/x.png', slot: 'frame' }],
+        ledger,
+        owner: 'motion:run-1',
+        credentials,
+      })
+    ).rejects.toThrow('DeleteAsset failed');
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
   it('skips the sleep when the token is free now, and registers a still once', async () => {
     mockClaim.mockResolvedValue({
       kind: 'reserved',

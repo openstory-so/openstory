@@ -294,9 +294,13 @@ describe('claimPooledAsset + createPooledAsset', () => {
     await seedSlot({ url: 'b', assetId: 'ark-b', slot: 'frame', lastUsedAt: ago(80), leasedBy: 'motion:other' }); // prettier-ignore
     await seedSlot({ url: 'c', assetId: 'ark-c', slot: 'library', lastUsedAt: ago(70), leasedBy: 'motion:other' }); // prettier-ignore
 
-    await expect(ingest(config, 'https://cdn/new.png')).rejects.toThrow(
-      /every slot is held by a running shot/
+    const error = await ingest(config, 'https://cdn/new.png').catch(
+      (caught: unknown) => caught
     );
+    expect(error).toBeInstanceOf(NonRetryableError);
+    expect(error).toMatchObject({
+      message: expect.stringMatching(/every slot is held by a running shot/),
+    });
     expect(deleted).toEqual([]);
     expect(await db.select().from(bytePlusAssets)).toHaveLength(3);
   });
@@ -309,9 +313,18 @@ describe('claimPooledAsset + createPooledAsset', () => {
       owner: 'motion:first',
     });
 
-    await expect(
-      ingest(config, 'https://cdn/sheet.png', 'motion:second')
-    ).rejects.toThrow(/still registering this image for another shot/);
+    const pending = await ingest(
+      config,
+      'https://cdn/sheet.png',
+      'motion:second'
+    ).catch((caught: unknown) => caught);
+    expect(pending).toBeInstanceOf(Error);
+    expect(pending).not.toBeInstanceOf(NonRetryableError);
+    expect(pending).toMatchObject({
+      message: expect.stringMatching(
+        /still registering this image for another shot/
+      ),
+    });
 
     if (reserved.kind !== 'reserved') throw new Error('expected a reservation');
     const uri = await createPooledAsset(config, ledger, {
@@ -337,6 +350,39 @@ describe('reservations (#1531)', () => {
     });
     // Nothing was created or recorded for x yet — the slot is still taken.
     expect(await claim('y', 'motion:b', 1)).toEqual({ kind: 'exhausted' });
+  });
+
+  it('getAdmission treats a pending row as occupancy and as reuse of that still', async () => {
+    expect(await claim('x', 'motion:a', 1)).toEqual({
+      kind: 'reserved',
+      evictedAssetId: null,
+    });
+    const forY = await arkAssetIdentities(['y']);
+    expect(await ledger.getAdmission(forY, 1)).toMatchObject({
+      needed: 1,
+      free: 0,
+      evictable: 0,
+      fits: false,
+    });
+    const forX = await arkAssetIdentities(['x']);
+    expect(await ledger.getAdmission(forX, 1)).toMatchObject({
+      needed: 0,
+      fits: true,
+    });
+  });
+
+  it('an expired reservation for a different still is evicted', async () => {
+    await db.insert(bytePlusAssets).values({
+      identity: await hashAssetIdentity('dead'),
+      slot: 'frame',
+      reservedBy: 'motion:dead',
+      reservedUntil: PAST,
+      lastUsedAt: ago(90),
+    });
+    expect(await claim('new', 'motion:run', 1)).toEqual({
+      kind: 'reserved',
+      evictedAssetId: null,
+    });
   });
 
   it('gives the last free slot to exactly one of twelve concurrent claims', async () => {

@@ -7,9 +7,10 @@
  * Advanced Creation Rights do not lift the check on a URL. They unlock the
  * **virtual** portrait library (AIGC groups). Submit registers the still
  * via the Assets API (`BYTEPLUS_ACCESS_KEY` / `BYTEPLUS_SECRET_KEY`) and
- * sends `asset://<id>`. If ingest is not configured or Ark still 400s, the
- * shot fails with {@link BYTEPLUS_PORTRAIT_FILTER_MESSAGE} — never a quiet hop
- * to fal. Do not fold this into the content-flag re-roll.
+ * sends `asset://<id>`. If ingest is not configured, Ark gets the public
+ * URL. A portrait-filter 400 becomes {@link BYTEPLUS_PORTRAIT_FILTER_MESSAGE};
+ * any other Ark error is the failure the user sees — never a quiet hop to
+ * fal. Do not fold this into the content-flag re-roll.
  */
 
 /** Exact Ark code on the 400 the user sees. */

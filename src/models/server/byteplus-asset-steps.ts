@@ -22,9 +22,9 @@
  * the workflow what it was already told. No alarm, no race with a wait that
  * has not been reached yet.
  *
- * Nothing here falls back. A full pool or a still another run is creating
- * waits out the claim step's retries first; a refused token or a failed
- * create fails the shot with its own message.
+ * Nothing here falls back. A still another run is creating waits out the
+ * claim step's retries; a full leased pool, a refused token, or a failed
+ * create fails the shot immediately.
  */
 
 import type { WorkflowStep, WorkflowStepConfig } from 'cloudflare:workers';
@@ -53,11 +53,12 @@ export type ArkStill = {
 export type ArkAssetMap = Record<string, string>;
 
 /**
- * The claim throws while another run is creating the same still, or while
- * every slot is leased. Wait out the other run's create: up to the governor's
- * 15-minute CreateAsset queue plus the create itself. Nothing else runs in
- * this step, so a permanent error elsewhere (a bad fal key, an upload) never
- * waits this long. The motion batch's child timeout budgets for it.
+ * The claim throws while another run is creating the same still. Wait out
+ * that create: up to the governor's 15-minute CreateAsset queue plus the
+ * create itself. A full leased pool is `NonRetryableError` and does not
+ * sit here. Nothing else runs in this step, so a permanent error elsewhere
+ * (a bad fal key, an upload) never waits this long. The motion batch's
+ * child timeout budgets for the pending wait.
  */
 const CLAIM_RETRIES: WorkflowStepConfig = {
   retries: { limit: 40, delay: '30 seconds', backoff: 'constant' },
