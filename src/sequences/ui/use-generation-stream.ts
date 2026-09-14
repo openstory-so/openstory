@@ -3,7 +3,7 @@ import { useUser } from '@/platform/ui/use-user';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { useRealtime } from '@/platform/ui/realtime/client';
-import { dropTrailingTerminalHistory } from './generation-stream-history';
+import { replayableHistoryWhileProcessing } from './generation-stream-history';
 import {
   createInitialState,
   generationStreamReducer,
@@ -284,6 +284,8 @@ export function useGenerationStream(
   const replayHistory = options?.replayHistory ?? true;
   const { data: user } = useUser();
   const wasReplayHistory = useRef(replayHistory);
+  const skipHistoryRef = useRef(false);
+  const historyEpochRef = useRef(0);
 
   // Handle incoming events
   const handleEvent = useCallback(
@@ -322,12 +324,17 @@ export function useGenerationStream(
     [queryClient, sequenceId]
   );
 
-  // Continue / retry flips replayHistory off → on. Drop the previous run's
-  // COMPLETE so the chip is not already exiting when it remounts (#1641).
-  // Skip on first mount while already processing — history replay rebuilds.
+  // Continue / retry flips replayHistory off → on. Reset to a new run and
+  // skip history: replaying the prior COMPLETE unmounts the chip for a
+  // frame, then the live phase:start brings it back (#1641). Refresh
+  // mid-run still replays because wasReplayHistory starts true.
   useEffect(() => {
     if (replayHistory && !wasReplayHistory.current) {
       dispatch({ type: 'RESET', payload: phaseConfig });
+      historyEpochRef.current += 1;
+      skipHistoryRef.current = true;
+    } else if (!replayHistory && wasReplayHistory.current) {
+      historyEpochRef.current += 1;
     }
     wasReplayHistory.current = replayHistory;
   }, [replayHistory, phaseConfig]);
@@ -339,9 +346,15 @@ export function useGenerationStream(
   // avoid briefly flashing progress UI from old events on tab re-mount.
   useEffect(() => {
     if (!replayHistory || !user) return;
+    if (skipHistoryRef.current) {
+      skipHistoryRef.current = false;
+      return;
+    }
+    const epoch = historyEpochRef.current;
     getChannelHistoryFn({ data: { channel: sequenceId } })
       .then((events: { event: string; data: string }[]) => {
-        for (const evt of dropTrailingTerminalHistory(events)) {
+        if (epoch !== historyEpochRef.current) return;
+        for (const evt of replayableHistoryWhileProcessing(events)) {
           try {
             const parsed = JSON.parse(evt.data);
             const action = mapEventToAction(evt.event, parsed);
@@ -396,6 +409,8 @@ export function useGenerationStream(
 
   const reset = useCallback(
     (config?: GenerationPhaseConfig) => {
+      historyEpochRef.current += 1;
+      skipHistoryRef.current = true;
       dispatch({ type: 'RESET', payload: config ?? phaseConfig });
     },
     [phaseConfig]

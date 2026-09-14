@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dropTrailingTerminalHistory } from './generation-stream-history';
+import { replayableHistoryWhileProcessing } from './generation-stream-history';
 
 const start = (phase: number) => ({
   event: 'generation.phase:start',
@@ -15,42 +15,55 @@ const short = {
   event: 'generation.reservation:short',
   data: { sceneCount: 3 },
 };
+const updated = { event: 'generation.updated', data: { title: 'x' } };
 
-describe('dropTrailingTerminalHistory', () => {
-  it('drops a previous run’s trailing complete so Continue can show progress', () => {
-    // Stop at Casting, then Continue to References: history ends on complete
-    // and the new phase:start has not been emitted yet.
+describe('replayableHistoryWhileProcessing', () => {
+  it('drops a previous run’s complete so Continue does not exit the chip', () => {
     expect(
-      dropTrailingTerminalHistory([start(1), completePhase(1), complete]).map(
-        (e) => e.event
-      )
+      replayableHistoryWhileProcessing([
+        start(1),
+        completePhase(1),
+        complete,
+      ]).map((e) => e.event)
     ).toEqual(['generation.phase:start', 'generation.phase:complete']);
   });
 
-  it('keeps a complete that is followed by the current run’s phase:start', () => {
+  it('drops a complete even when a later phase:start follows it', () => {
+    // Refresh mid-Continue: the prior run’s complete sits in the middle.
+    // Applying it marks isComplete and the chip unmounts for a frame.
     expect(
-      dropTrailingTerminalHistory([
+      replayableHistoryWhileProcessing([
         start(1),
         completePhase(1),
         complete,
         start(2),
-      ])
-    ).toEqual([start(1), completePhase(1), complete, start(2)]);
+      ]).map((e) => e.event)
+    ).toEqual([
+      'generation.phase:start',
+      'generation.phase:complete',
+      'generation.phase:start',
+    ]);
   });
 
-  it('drops trailing failed and reservation-short the same way', () => {
-    expect(dropTrailingTerminalHistory([start(1), failed])).toEqual([start(1)]);
-    expect(dropTrailingTerminalHistory([start(1), short])).toEqual([start(1)]);
+  it('drops complete when a non-terminal event landed after it', () => {
+    expect(
+      replayableHistoryWhileProcessing([start(1), complete, updated]).map(
+        (e) => e.event
+      )
+    ).toEqual(['generation.phase:start', 'generation.updated']);
   });
 
-  it('drops a stack of trailing terminals', () => {
-    expect(dropTrailingTerminalHistory([start(1), complete, failed])).toEqual([
+  it('drops failed and reservation-short the same way', () => {
+    expect(replayableHistoryWhileProcessing([start(1), failed])).toEqual([
+      start(1),
+    ]);
+    expect(replayableHistoryWhileProcessing([start(1), short])).toEqual([
       start(1),
     ]);
   });
 
-  it('returns the same array when nothing trailing is terminal', () => {
+  it('returns the same array when nothing is terminal', () => {
     const events = [start(1), completePhase(1), start(2)];
-    expect(dropTrailingTerminalHistory(events)).toBe(events);
+    expect(replayableHistoryWhileProcessing(events)).toBe(events);
   });
 });

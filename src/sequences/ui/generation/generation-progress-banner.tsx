@@ -90,7 +90,9 @@ export const GenerationProgressBanner: React.FC<
     <ProgressBanner
       phases={bannerPhases}
       remaining={remaining}
-      isComplete={generationState.isComplete}
+      // Parent mounts this only while status is processing. A leftover or
+      // replayed COMPLETE must not self-unmount the chip (#1641).
+      isComplete={generationState.isComplete && !isProcessing}
       defaultLabel="Generating&#xa0;sequence"
       ariaPrefix="Generation"
       exitDelayMs={0}

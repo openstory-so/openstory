@@ -1373,6 +1373,10 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       // footer key off `sequence.status`, and the server fn reserves credits
       // and triggers the workflow before it returns.
       const key = sequenceKeys.detail(sequenceId);
+      // Drop in-flight detail refetches (the prior run's `generation.complete`
+      // invalidates this key). Without cancel, they land after the optimistic
+      // processing write and hide the chip for a frame (#1641).
+      await queryClient.cancelQueries({ queryKey: key });
       const previous = queryClient.getQueryData<Sequence>(key);
       const { autoGenerateMotion, autoGenerateMusic } = flagsFromStopAt(
         args.stopAt
