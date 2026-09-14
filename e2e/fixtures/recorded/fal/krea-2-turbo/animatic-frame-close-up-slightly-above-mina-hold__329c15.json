@@ -3,7 +3,7 @@
     {
       "match": {
         "endpoint": "fal",
-        "userMessage": "Animatic frame. close-up. slightly above. Mina holds the coral lipstick open in her palm while facing Scarlett, both women smiling beside the rooftop wall. Mina closes her fingers around the lipstick, takes Scarlett’s hand, and pulls her toward the stairwell. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+        "userMessage": "Animatic frame. close-up. slightly above. Mina’s open palm and coral lipstick sit in the sunlit foreground while Scarlett and the glowing skyline fall softly behind. Mina holds the coral lipstick open in her palm while facing Scarlett, both women smiling beside the rooftop wall. Mina closes her fingers around the lipstick, takes Scarlett’s hand, and pulls her toward the stairwell. DOWNTOWN ROOFTOP. sunset. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
         "model": "fal-ai/krea-2/turbo"
       },
       "response": {
@@ -23,7 +23,7 @@
           },
           "seed": 1771903048,
           "has_nsfw_concepts": [true],
-          "prompt": "Animatic frame. close-up. slightly above. Mina holds the coral lipstick open in her palm while facing Scarlett, both women smiling beside the rooftop wall. Mina closes her fingers around the lipstick, takes Scarlett’s hand, and pulls her toward the stairwell. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+          "prompt": "Animatic frame. close-up. slightly above. Mina’s open palm and coral lipstick sit in the sunlit foreground while Scarlett and the glowing skyline fall softly behind. Mina holds the coral lipstick open in her palm while facing Scarlett, both women smiling beside the rooftop wall. Mina closes her fingers around the lipstick, takes Scarlett’s hand, and pulls her toward the stairwell. DOWNTOWN ROOFTOP. sunset. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
           "actual_prompt": null
         },
         "status": 200,

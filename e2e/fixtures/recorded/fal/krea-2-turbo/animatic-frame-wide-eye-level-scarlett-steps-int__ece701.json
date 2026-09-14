@@ -3,7 +3,7 @@
     {
       "match": {
         "endpoint": "fal",
-        "userMessage": "Animatic frame. wide. eye level. Scarlett steps into the crowded crosswalk in a black-and-neutral outfit, carrying her tote with relaxed posture and coral lips as the bright focal point.. Scarlett walks against the commuter flow as traffic begins rolling behind her.. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+        "userMessage": "Animatic frame. wide. eye level. Scarlett crosses through the center of a broad 16:9 street frame, surrounded by commuters, taxis, delivery bikes, and mirrored towers. Scarlett steps into the crowded crosswalk in a black-and-neutral outfit, carrying her tote with relaxed posture and coral lips as the bright focal point. Scarlett walks against the commuter flow as traffic begins rolling behind her. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
         "model": "fal-ai/krea-2/turbo"
       },
       "response": {
@@ -23,7 +23,7 @@
           },
           "seed": 301181906,
           "has_nsfw_concepts": [false],
-          "prompt": "Animatic frame. wide. eye level. Scarlett steps into the crowded crosswalk in a black-and-neutral outfit, carrying her tote with relaxed posture and coral lips as the bright focal point.. Scarlett walks against the commuter flow as traffic begins rolling behind her.. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+          "prompt": "Animatic frame. wide. eye level. Scarlett crosses through the center of a broad 16:9 street frame, surrounded by commuters, taxis, delivery bikes, and mirrored towers. Scarlett steps into the crowded crosswalk in a black-and-neutral outfit, carrying her tote with relaxed posture and coral lips as the bright focal point. Scarlett walks against the commuter flow as traffic begins rolling behind her. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
           "actual_prompt": null
         },
         "status": 200,

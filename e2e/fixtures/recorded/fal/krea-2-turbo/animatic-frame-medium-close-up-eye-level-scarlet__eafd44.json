@@ -3,7 +3,7 @@
     {
       "match": {
         "endpoint": "fal",
-        "userMessage": "Animatic frame. medium close-up. eye level. Scarlett walks at the curb with her tote strap loose, one hand near the bag and her face turned slightly toward the street.. Scarlett hooks the tote strap with her elbow and checks the lipstick bullet in the parked car window.. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+        "userMessage": "Animatic frame. medium close-up. eye level. Scarlett's moving hands and face share the frame, with the parked car window catching the lipstick reflection and the city softly blurred behind her. Scarlett walks at the curb with her tote strap loose, one hand near the bag and her face turned slightly toward the street. Scarlett hooks the tote strap with her elbow and checks the lipstick bullet in the parked car window. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
         "model": "fal-ai/krea-2/turbo"
       },
       "response": {
@@ -23,7 +23,7 @@
           },
           "seed": 2081876384,
           "has_nsfw_concepts": [false],
-          "prompt": "Animatic frame. medium close-up. eye level. Scarlett walks at the curb with her tote strap loose, one hand near the bag and her face turned slightly toward the street.. Scarlett hooks the tote strap with her elbow and checks the lipstick bullet in the parked car window.. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+          "prompt": "Animatic frame. medium close-up. eye level. Scarlett's moving hands and face share the frame, with the parked car window catching the lipstick reflection and the city softly blurred behind her. Scarlett walks at the curb with her tote strap loose, one hand near the bag and her face turned slightly toward the street. Scarlett hooks the tote strap with her elbow and checks the lipstick bullet in the parked car window. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
           "actual_prompt": null
         },
         "status": 200,

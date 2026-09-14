@@ -3,7 +3,7 @@
     {
       "match": {
         "endpoint": "fal",
-        "userMessage": "Animatic frame. low angle. low angle. Scarlett has just placed the closed lipstick on the ledge and stands beside it, facing the skyline as wind nudges the tube toward the edge.. Scarlett catches the lipstick, pockets it, and walks toward the glowing skyline.. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+        "userMessage": "Animatic frame. low angle. low angle. The rooftop ledge and lipstick sit in the foreground while Scarlett's silhouette moves toward the glowing skyline, ending with her coral lips catching warm light. Scarlett has just placed the closed lipstick on the ledge and stands beside it, facing the skyline as wind nudges the tube toward the edge. Scarlett catches the lipstick, pockets it, and walks toward the glowing skyline. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
         "model": "fal-ai/krea-2/turbo"
       },
       "response": {
@@ -23,7 +23,7 @@
           },
           "seed": 1616897994,
           "has_nsfw_concepts": [true],
-          "prompt": "Animatic frame. low angle. low angle. Scarlett has just placed the closed lipstick on the ledge and stands beside it, facing the skyline as wind nudges the tube toward the edge.. Scarlett catches the lipstick, pockets it, and walks toward the glowing skyline.. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+          "prompt": "Animatic frame. low angle. low angle. The rooftop ledge and lipstick sit in the foreground while Scarlett's silhouette moves toward the glowing skyline, ending with her coral lips catching warm light. Scarlett has just placed the closed lipstick on the ledge and stands beside it, facing the skyline as wind nudges the tube toward the edge. Scarlett catches the lipstick, pockets it, and walks toward the glowing skyline. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
           "actual_prompt": null
         },
         "status": 200,

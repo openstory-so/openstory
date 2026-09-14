@@ -1,11 +1,21 @@
 import type { StyleConfig } from '@/platform/server/db/schema/libraries';
 import { UNTITLED_SEQUENCE_TITLE } from '@/sequences/untitled-sequence-title';
+import type { ShotSpec } from '@/shots/shot-list.schema';
 
 const MAX_PROMPT_LENGTH = 2000;
 const MAX_SCRIPT_LENGTH = 500;
 // Short on purpose (#1277): every extra line of screenplay is detail the model
-// tries to draw, and detail is exactly what a stand-in must not have.
-const MAX_SCENE_TEXT_LENGTH = 400;
+// tries to draw, and detail is exactly what a stand-in must not have. Shot-spec
+// previews are structured framing (not a slice of the script), so they get a
+// longer budget — composition is the load-bearing field (#1642).
+const MAX_SHOT_TEXT_LENGTH = 900;
+
+/** Scene fields the preview prompt reads. Narrower than SceneSplittingScene. */
+export type PreviewShotScene = {
+  shots?: ReadonlyArray<Pick<ShotSpec, 'shotNumber' | 'framing' | 'action'>>;
+  originalScript: { extract: string };
+  metadata: { title: string; location: string; timeOfDay: string };
+};
 
 const SKETCH_SUFFIX =
   'Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail.';
@@ -59,6 +69,39 @@ export function buildPosterPrompt(
 }
 
 /**
+ * Animatic text for one shot's preview (#1642).
+ *
+ * The shot spec is the source of truth — including on a 1-shot scene, which
+ * used to fall through to the verbatim slice and draw the whole scene instead
+ * of this setup. Style / bible look stay out: a photoreal style would pull
+ * the sketch toward the final still (#1277), and visual prompts only exist
+ * on the start-frame path, where a real still is about to replace the tile.
+ */
+export function previewTextForShot(
+  scene: PreviewShotScene,
+  shotNumber: number
+): string {
+  const spec = scene.shots?.find((shot) => shot.shotNumber === shotNumber);
+  if (spec) {
+    const parts = [
+      spec.framing.shotSize,
+      spec.framing.angle,
+      spec.framing.composition,
+      spec.framing.subjectStartState,
+      spec.action,
+      scene.metadata.location,
+      scene.metadata.timeOfDay,
+    ]
+      .map((part) => part.trim().replace(/\.+$/, ''))
+      .filter((part) => part.length > 0);
+    if (parts.length > 0) return parts.join('. ');
+  }
+  return (
+    scene.originalScript.extract || scene.metadata.title || 'A cinematic scene'
+  );
+}
+
+/**
  * Build an image generation prompt for a fast scene preview.
  *
  * Previews are stand-ins rendered before any character/location reference
@@ -70,7 +113,10 @@ export function buildPosterPrompt(
  * style would pull the sketch back toward realism.
  */
 export function buildPreviewPrompt(sceneText: string): string {
-  const excerpt = sceneText.slice(0, MAX_SCENE_TEXT_LENGTH);
+  const excerpt = sceneText
+    .slice(0, MAX_SHOT_TEXT_LENGTH)
+    .trim()
+    .replace(/\.+$/, '');
 
   return clampPrompt(
     [`Animatic frame. ${excerpt}.`, SKETCH_SUFFIX, NO_TEXT_SUFFIX].join(' ')

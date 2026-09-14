@@ -3,7 +3,7 @@
     {
       "match": {
         "endpoint": "fal",
-        "userMessage": "Animatic frame. medium wide. eye level. Scarlett strides toward camera through the hallway, carrying the lipstick in one hand and a canvas tote in the other, phone still on the radiator shelf behind her.. Scarlett snaps the lipstick shut, puts it in the tote, and doubles back for her phone.. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+        "userMessage": "Animatic frame. medium wide. eye level. Scarlett stays centered against cream hallway walls, her coral lips and lipstick hand as the focal points while the tote and radiator shelf create depth behind her. Scarlett strides toward camera through the hallway, carrying the lipstick in one hand and a canvas tote in the other, phone still on the radiator shelf behind her. Scarlett snaps the lipstick shut, puts it in the tote, and doubles back for her phone. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
         "model": "fal-ai/krea-2/turbo"
       },
       "response": {
@@ -23,7 +23,7 @@
           },
           "seed": 655931251,
           "has_nsfw_concepts": [false],
-          "prompt": "Animatic frame. medium wide. eye level. Scarlett strides toward camera through the hallway, carrying the lipstick in one hand and a canvas tote in the other, phone still on the radiator shelf behind her.. Scarlett snaps the lipstick shut, puts it in the tote, and doubles back for her phone.. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+          "prompt": "Animatic frame. medium wide. eye level. Scarlett stays centered against cream hallway walls, her coral lips and lipstick hand as the focal points while the tote and radiator shelf create depth behind her. Scarlett strides toward camera through the hallway, carrying the lipstick in one hand and a canvas tote in the other, phone still on the radiator shelf behind her. Scarlett snaps the lipstick shut, puts it in the tote, and doubles back for her phone. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
           "actual_prompt": null
         },
         "status": 200,
