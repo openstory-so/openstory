@@ -28,10 +28,11 @@ export type BytePlusAsset = {
   CreateTime?: string;
 };
 
-type BytePlusAssetGroup = {
+export type BytePlusAssetGroup = {
   Id?: string;
   Name?: string;
   GroupType?: string;
+  CreateTime?: string;
 };
 
 function assetNameFor(identity: string): string {
@@ -49,20 +50,45 @@ export async function hashAssetIdentity(identity: string): Promise<string> {
     .join('');
 }
 
+/**
+ * AIGC groups whose Name matches the filter (Ark treats Name as fuzzy).
+ * Callers that need an exact name must filter again.
+ */
+export async function listAigcAssetGroups(
+  config: BytePlusOpenApiConfig,
+  name?: string
+): Promise<BytePlusAssetGroup[]> {
+  const pageSize = 100;
+  const all: BytePlusAssetGroup[] = [];
+  for (let page = 1; page <= 50; page += 1) {
+    const result = await bytePlusOpenApi<{
+      Items?: BytePlusAssetGroup[];
+      TotalCount?: number;
+    }>(
+      config,
+      'ListAssetGroups',
+      withProject(config, {
+        Filter: {
+          GroupType: 'AIGC',
+          ...(name ? { Name: name } : {}),
+        },
+        PageNumber: page,
+        PageSize: pageSize,
+      })
+    );
+    const items = result.Items ?? [];
+    all.push(...items);
+    if (items.length < pageSize) break;
+  }
+  return all;
+}
+
 async function listAssetGroups(
   config: BytePlusOpenApiConfig,
   name: string
 ): Promise<BytePlusAssetGroup[]> {
-  const result = await bytePlusOpenApi<{ Items?: BytePlusAssetGroup[] }>(
-    config,
-    'ListAssetGroups',
-    withProject(config, {
-      Filter: { Name: name, GroupType: 'AIGC' },
-      PageNumber: 1,
-      PageSize: 20,
-    })
-  );
-  return (result.Items ?? []).filter((item) => item.Name === name);
+  const items = await listAigcAssetGroups(config, name);
+  return items.filter((item) => item.Name === name);
 }
 
 async function createAssetGroup(
@@ -257,9 +283,6 @@ export async function ingestAigcAsset(
  * Free one slot in the account pool (#1361). Irreversible — the `asset://`
  * dies with it, and any job still holding that URI 400s, which is why the
  * caller must own an unexpired lease before calling this.
- *
- * `DeleteAssetGroup` is deliberately not wrapped: it wipes every asset in the
- * group in one irreversible call and has no place on the eviction path.
  */
 export async function deleteAsset(
   config: BytePlusOpenApiConfig,
@@ -268,6 +291,23 @@ export async function deleteAsset(
   await bytePlusOpenApi<unknown>(
     config,
     'DeleteAsset',
+    withProject(config, { Id: id }),
+    { allowEmptyResult: true }
+  );
+}
+
+/**
+ * Wipe a group and every asset in it. Irreversible — eviction and the
+ * per-deployment ledger sweep must never call this (they delete one asset).
+ * Only preview teardown / the production leftover-`pr-*` backstop (#1635).
+ */
+export async function deleteAssetGroup(
+  config: BytePlusOpenApiConfig,
+  id: string
+): Promise<void> {
+  await bytePlusOpenApi<unknown>(
+    config,
+    'DeleteAssetGroup',
     withProject(config, { Id: id }),
     { allowEmptyResult: true }
   );

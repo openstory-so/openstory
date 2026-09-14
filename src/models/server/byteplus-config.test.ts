@@ -5,11 +5,15 @@ const env: Record<string, string | undefined> = {};
 vi.doMock('#env', () => ({ getEnv: () => env }));
 
 const {
-  claimBytePlusVia,
-  isBytePlusConfigured,
-  isBytePlusAssetsConfigured,
-  bytePlusOpenApiConfig,
+  aigcGroupName,
+  aigcGroupScope,
   arkAdapterConfig,
+  bytePlusOpenApiConfig,
+  claimBytePlusVia,
+  isBytePlusAssetsConfigured,
+  isBytePlusConfigured,
+  isPreviewPrAssetGroupName,
+  PREVIEW_AIGC_GROUP_NAME,
 } = await import('./byteplus-config');
 
 describe('claimBytePlusVia', () => {
@@ -122,6 +126,63 @@ describe('isBytePlusAssetsConfigured', () => {
     expect(isBytePlusAssetsConfigured()).toBe(false);
     env.BYTEPLUS_OPENAPI_HOST = 'http://localhost:4010';
     expect(isBytePlusAssetsConfigured()).toBe(true);
+  });
+});
+
+describe('aigcGroupName', () => {
+  beforeEach(() => {
+    env.VITE_APP_URL = undefined;
+    env.VITE_IS_PREVIEW = undefined;
+  });
+
+  it('shares one group across every PR preview', () => {
+    env.VITE_APP_URL = 'https://pr-1520.openstory.workers.dev';
+    expect(aigcGroupScope()).toBe('preview');
+    expect(aigcGroupName()).toBe(PREVIEW_AIGC_GROUP_NAME);
+  });
+
+  it('treats VITE_IS_PREVIEW as preview even when the host is not pr-N', () => {
+    env.VITE_APP_URL = 'https://example.workers.dev';
+    env.VITE_IS_PREVIEW = 'true';
+    expect(aigcGroupName()).toBe(PREVIEW_AIGC_GROUP_NAME);
+  });
+
+  it('keeps production per-host so the ledger sweep stays 1 group ↔ 1 D1', () => {
+    env.VITE_APP_URL = 'https://openstory.so';
+    expect(aigcGroupScope()).toBe('production');
+    expect(aigcGroupName()).toBe('openstory-virtual-openstory-so');
+  });
+
+  it('keeps local per-host', () => {
+    env.VITE_APP_URL = 'http://localhost:3000';
+    expect(aigcGroupScope()).toBe('local');
+    expect(aigcGroupName()).toBe('openstory-virtual-localhost-3000');
+  });
+});
+
+describe('isPreviewPrAssetGroupName', () => {
+  it('matches leftover per-PR groups and not the shared preview group', () => {
+    expect(
+      isPreviewPrAssetGroupName(
+        'openstory-virtual-pr-1520-openstory-workers-dev'
+      )
+    ).toBe(true);
+    expect(
+      isPreviewPrAssetGroupName(
+        'openstory-virtual-pr-1520-openstory-workers-dev',
+        1520
+      )
+    ).toBe(true);
+    expect(
+      isPreviewPrAssetGroupName(
+        'openstory-virtual-pr-1520-openstory-workers-dev',
+        152
+      )
+    ).toBe(false);
+    expect(isPreviewPrAssetGroupName(PREVIEW_AIGC_GROUP_NAME)).toBe(false);
+    expect(isPreviewPrAssetGroupName('openstory-virtual-openstory-so')).toBe(
+      false
+    );
   });
 });
 

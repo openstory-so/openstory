@@ -23,6 +23,7 @@ import {
   FAL_BILLING_RECONCILE_CRON,
   reconcileFalBilling,
 } from '@/billing/server/reconcile-fal-billing';
+import { sweepOrphanedPreviewBytePlusGroups } from '@/models/server/byteplus-preview-groups';
 import {
   BYTEPLUS_ASSETS_RECONCILE_CRON,
   reconcileBytePlusAssets,
@@ -190,12 +191,25 @@ const exportedHandler: ExportedHandler<WorkerEnv> = {
       );
       return;
     }
-    // Hourly diff of the BytePlus asset group against the ledger (#1519).
+    // Hourly diff of this deployment's BytePlus asset group against the
+    // ledger (#1519). Production also age-sweeps the shared preview group
+    // and leftover per-PR groups (#1635).
     if (controller.cron === BYTEPLUS_ASSETS_RECONCILE_CRON) {
       ctx.waitUntil(
-        reconcileBytePlusAssets().catch((error) => {
-          logger.error('reconcileBytePlusAssets failed:', { err: error });
-        })
+        (async () => {
+          try {
+            await reconcileBytePlusAssets();
+          } catch (error) {
+            logger.error('reconcileBytePlusAssets failed:', { err: error });
+          }
+          try {
+            await sweepOrphanedPreviewBytePlusGroups();
+          } catch (error) {
+            logger.error('sweepOrphanedPreviewBytePlusGroups failed:', {
+              err: error,
+            });
+          }
+        })()
       );
       return;
     }

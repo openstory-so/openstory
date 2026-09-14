@@ -94,24 +94,68 @@ export function isBytePlusAssetsConfigured(): boolean {
 }
 
 /**
- * The AIGC asset group this deployment owns, `openstory-virtual-<host>`
- * (#1519). Every deployment on the account — production and each preview —
- * keeps its own ledger, so each needs its own group: the hourly sweep
- * deletes group assets the ledger does not know, and a shared group would
- * have previews deleting each other's sheets. `BYTEPLUS_ASSET_GROUP_ID`
- * pins a group by id and skips the name entirely.
+ * Shared AIGC group for every PR preview (#1635). Ark quotas are
+ * per-account, so a group per preview did not isolate capacity — it only
+ * multiplied groups and orphaned them when the preview Worker/D1 died.
+ * All previews therefore share one group. Production's hourly job age-sweeps
+ * it; a preview must never run that orphan-delete against this group, or it
+ * would wipe another PR's sheets. `BYTEPLUS_ASSET_GROUP_ID` still pins a
+ * group by id and skips the name entirely.
+ */
+export const PREVIEW_AIGC_GROUP_NAME = 'openstory-virtual-preview';
+
+const PREVIEW_PR_GROUP_NAME = /^openstory-virtual-pr-(\d+)(?:-|$)/;
+
+export type AigcGroupScope = 'preview' | 'local' | 'production';
+
+function appHost(): string {
+  const appUrl = optionalEnv('VITE_APP_URL');
+  if (!appUrl) return 'local';
+  try {
+    return new URL(appUrl).host;
+  } catch {
+    return appUrl;
+  }
+}
+
+export function aigcGroupScope(): AigcGroupScope {
+  if (optionalEnv('VITE_IS_PREVIEW') === 'true') return 'preview';
+  const host = appHost();
+  if (/^pr-\d+\./i.test(host)) return 'preview';
+  if (
+    host === 'local' ||
+    host === 'localhost' ||
+    host.startsWith('localhost:') ||
+    host === '127.0.0.1' ||
+    host.startsWith('127.0.0.1:')
+  ) {
+    return 'local';
+  }
+  return 'production';
+}
+
+/**
+ * Legacy per-PR group names (`openstory-virtual-pr-<n>-…`). New previews
+ * no longer create these; teardown and the production backstop delete them.
+ */
+export function isPreviewPrAssetGroupName(
+  name: string,
+  prNumber?: number
+): boolean {
+  const match = PREVIEW_PR_GROUP_NAME.exec(name);
+  if (!match) return false;
+  if (prNumber === undefined) return true;
+  return match[1] === String(prNumber);
+}
+
+/**
+ * The AIGC asset group this deployment owns. Production and local stay
+ * per-host (`openstory-virtual-<host>`) so the hourly ledger sweep is
+ * 1 group ↔ 1 D1. Previews share {@link PREVIEW_AIGC_GROUP_NAME}.
  */
 export function aigcGroupName(): string {
-  const appUrl = optionalEnv('VITE_APP_URL');
-  let host = 'local';
-  if (appUrl) {
-    try {
-      host = new URL(appUrl).host;
-    } catch {
-      host = appUrl;
-    }
-  }
-  const slug = host
+  if (aigcGroupScope() === 'preview') return PREVIEW_AIGC_GROUP_NAME;
+  const slug = appHost()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '');

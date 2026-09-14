@@ -3,17 +3,20 @@
  * (#1519). Two directions:
  *
  *   Ark has it, the ledger does not → an orphan. A create step that crashed
- *   after CreateAsset is healed by name on retry, but a deleted preview D1,
- *   or a DeleteAsset that failed on eviction, leaves assets nobody will ever
- *   look up again — and every one holds one of the account's slots. Deleted
- *   once it is older than the lease window, so an in-flight create (asset
- *   exists, row not yet written) is never swept.
+ *   after CreateAsset is healed by name on retry, or a DeleteAsset that
+ *   failed on eviction, leaves assets nobody will ever look up again — and
+ *   every one holds one of the account's slots. Deleted once it is older
+ *   than the lease window, so an in-flight create (asset exists, row not
+ *   yet written) is never swept.
  *
  *   The ledger has it, Ark does not → a ghost row. The slot counts as
  *   occupied while nothing is there. Forgotten, so it counts as free.
  *
- * The group is per deployment (`aigcGroupName`), which is what makes the
- * first direction safe: a preview only ever sees its own assets.
+ * Safe only when 1 group ↔ 1 D1. Production and local keep per-host groups.
+ * Previews share `openstory-virtual-preview` (#1635), so this sweep is a
+ * no-op there — otherwise one PR's empty ledger would delete another's
+ * sheets. Production's `sweepOrphanedPreviewBytePlusGroups` age-sweeps the
+ * shared group and tears down leftover `openstory-virtual-pr-*` groups.
  */
 
 import { getDb } from '#db-client';
@@ -23,7 +26,10 @@ import {
   listAssetsInGroup,
   resolveAigcGroupId,
 } from '@/models/server/byteplus-assets';
-import { bytePlusOpenApiConfig } from '@/models/server/byteplus-config';
+import {
+  aigcGroupScope,
+  bytePlusOpenApiConfig,
+} from '@/models/server/byteplus-config';
 import { createBytePlusAssetsMethods } from '@/models/server/db/byteplus-assets';
 import { getLogger } from '@/platform/logger';
 
@@ -54,6 +60,12 @@ export async function reconcileBytePlusAssets(
 ): Promise<BytePlusAssetsReconcileSummary | null> {
   const config = bytePlusOpenApiConfig();
   if (!config) return null;
+  if (aigcGroupScope() === 'preview') {
+    logger.info(
+      'BytePlus asset reconcile skipped: shared preview group is swept from production'
+    );
+    return { arkAssets: 0, ledgerRows: 0, swept: 0, forgotten: 0 };
+  }
   const now = deps.now ?? new Date();
   const ark = {
     accessKey: config.accessKey,
