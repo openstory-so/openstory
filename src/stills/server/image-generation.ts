@@ -212,11 +212,24 @@ async function resolveOptionalGoogleKey(
 }
 
 /**
+ * Stands in for a reference whose only form is inline bytes. Arity is what
+ * `parameters.referenceImageUrls` is read for (the provenance reference
+ * count), so an elided entry holds its place rather than disappearing.
+ */
+const ELIDED_INLINE_REFERENCE = 'inline:image';
+
+/**
  * Reference URLs as authored, for the returned `parameters` record: the
  * xAI / BytePlus request paths swap stored `/r2/` refs for inline `data:`
  * URIs, and those bytes have no business in a checkpointed step result
- * (#1638). Only inlined entries are restored — a fal-storage swap stays,
+ * (#1638). Only inlined entries are rewritten — a fal-storage swap stays,
  * since that URL is what the provider was actually handed.
+ *
+ * The authored URL is the preferred replacement, but it is not trusted to
+ * be one: `mediaUrlSchema` rejects `data:` at every validated entry point
+ * today, and this bug is exactly what assuming a field holds a URL costs.
+ * An inline authored value is elided instead, so the bound holds by
+ * construction rather than by every caller staying well-behaved.
  */
 function withoutInlineReferences(
   params: ImageGenerationParams,
@@ -226,10 +239,13 @@ function withoutInlineReferences(
   if (!sent?.some(isDataImageUrl)) return params;
   return {
     ...params,
-    referenceImageUrls: sent.map(
-      (url, i) =>
-        (isDataImageUrl(url) ? rawParams.referenceImageUrls?.[i] : url) ?? url
-    ),
+    referenceImageUrls: sent.map((url, i) => {
+      if (!isDataImageUrl(url)) return url;
+      const authored = rawParams.referenceImageUrls?.[i];
+      return authored && !isDataImageUrl(authored)
+        ? authored
+        : ELIDED_INLINE_REFERENCE;
+    }),
   };
 }
 
