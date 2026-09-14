@@ -19,6 +19,7 @@ import { recordProvenance } from '@/platform/server/compliance/provenance';
 import { getLocationChannel } from '@/platform/realtime';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import { uploadResponse } from '@/platform/server/storage/upload-response';
+import { fetchGeneratedImage } from '@/platform/server/storage/inline-image';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { generateImageSoftening } from '@/stills/server/workflows/content-soften';
 import type {
@@ -136,7 +137,7 @@ export class LibraryLocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<Li
       );
 
       // Fetch and stream directly to R2
-      const response = await fetch(imageUrl);
+      const response = await fetchGeneratedImage(imageUrl);
       if (!response.ok) {
         throw new Error(`Failed to fetch generated image: ${response.status}`);
       }
@@ -235,7 +236,7 @@ export class LibraryLocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<Li
           `[LibraryLocationSheetWorkflow:cf] Uploading preview to storage for ${input.locationName}`
         );
 
-        const response = await fetch(previewUrl);
+        const response = await fetchGeneratedImage(previewUrl);
         if (!response.ok) {
           throw new Error(
             `Failed to fetch generated preview: ${response.status}`

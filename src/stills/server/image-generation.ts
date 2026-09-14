@@ -47,6 +47,10 @@ import {
   toVisionImageSource,
 } from '@/platform/server/storage/external-url';
 import {
+  isDataImageUrl,
+  stashInlineImage,
+} from '@/platform/server/storage/inline-image';
+import {
   generateImage,
   type ImageGenerationResult as AiImageGenerationResult,
 } from '@tanstack/ai';
@@ -205,6 +209,28 @@ async function resolveOptionalGoogleKey(
   if (scopedDb) return scopedDb.resolveOptionalKey('google');
   const platformKey = getEnv().GEMINI_API_KEY;
   return platformKey ? { key: platformKey, source: 'platform' } : undefined;
+}
+
+/**
+ * Reference URLs as authored, for the returned `parameters` record: the
+ * xAI / BytePlus request paths swap stored `/r2/` refs for inline `data:`
+ * URIs, and those bytes have no business in a checkpointed step result
+ * (#1638). Only inlined entries are restored — a fal-storage swap stays,
+ * since that URL is what the provider was actually handed.
+ */
+function withoutInlineReferences(
+  params: ImageGenerationParams,
+  rawParams: ImageGenerationParams
+): ImageGenerationParams {
+  const sent = params.referenceImageUrls;
+  if (!sent?.some(isDataImageUrl)) return params;
+  return {
+    ...params,
+    referenceImageUrls: sent.map(
+      (url, i) =>
+        (isDataImageUrl(url) ? rawParams.referenceImageUrls?.[i] : url) ?? url
+    ),
+  };
 }
 
 async function generateImageInternal(
@@ -394,7 +420,7 @@ async function generateImageInternal(
     }
   }
 
-  const imageUrls = result.images
+  const returnedUrls = result.images
     .map((img) => {
       if (img.url) return img.url;
       if (img.b64Json) return `data:image/png;base64,${img.b64Json}`;
@@ -402,9 +428,17 @@ async function generateImageInternal(
     })
     .filter((url): url is string => !!url);
 
-  if (imageUrls.length === 0) {
+  if (returnedUrls.length === 0) {
     throw new Error('No images returned from generation');
   }
+
+  // Native Gemini always answers with inline bytes and no hosted URL, and
+  // BytePlus can. Every caller runs this inside a `step.do`, whose result
+  // Workflows checkpoints at 1 MiB — a 1K still base64-encodes well past
+  // that, so the generation succeeds and the CHECKPOINT fails (#1638). Park
+  // the bytes here, before returning, so the result is a short URL whatever
+  // the via returned. The video twin is `videoUrlFitsWorkflowCheckpoint`.
+  const imageUrls = await Promise.all(returnedUrls.map(stashInlineImage));
 
   const processingTimeMs = Date.now() - startTime;
   if (via === 'xai') {
@@ -431,7 +465,10 @@ async function generateImageInternal(
 
   return {
     imageUrls,
-    parameters: params,
+    // The xAI and BytePlus paths inline reference images as `data:` URIs for
+    // the request; those bytes must not ride the checkpoint back out either
+    // (#1638). The authored URL says the same thing in a few dozen chars.
+    parameters: withoutInlineReferences(params, rawParams),
     generatedAt: new Date().toISOString(),
     processingTimeMs,
     via,

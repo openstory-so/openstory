@@ -12,6 +12,7 @@ import {
   sniffImageMimeType,
 } from '@/platform/server/storage/file';
 import { generateId } from '@/platform/id';
+import { fetchGeneratedImage } from '@/platform/server/storage/inline-image';
 
 interface UploadImageOptions {
   imageUrl: string;
@@ -32,6 +33,15 @@ type StorageResult = {
   contentType: string;
 };
 
+/** Host for the error message; `new URL()` throws on our relative `/r2/` URLs. */
+function imageSourceLabel(imageUrl: string): string {
+  try {
+    return new URL(imageUrl).host || imageUrl.slice(0, 40);
+  } catch {
+    return imageUrl.slice(0, 40);
+  }
+}
+
 /**
  * Download an image from a (provider) URL into the thumbnails bucket.
  * `buildPath` receives the resolved file extension so callers own the
@@ -41,7 +51,9 @@ export async function uploadImageFromUrl(
   imageUrl: string,
   buildPath: (extension: string) => string
 ): Promise<StorageResult> {
-  const response = await fetch(imageUrl);
+  // Not a bare `fetch`: a generation can hand back inline `data:` bytes or a
+  // stored `/r2/` URL we parked them at, and neither is fetchable (#1638).
+  const response = await fetchGeneratedImage(imageUrl);
 
   if (!response.ok) {
     // `statusText` was the whole error we reported, and it is worthless:
@@ -50,7 +62,7 @@ export async function uploadImageFromUrl(
     // status and the provider's error body are what name the cause.
     const body = (await response.text().catch(() => '')).slice(0, 200).trim();
     throw new Error(
-      `Failed to download image from ${new URL(imageUrl).host}: ${response.status}${body ? ` ${body}` : ''}`
+      `Failed to download image from ${imageSourceLabel(imageUrl)}: ${response.status}${body ? ` ${body}` : ''}`
     );
   }
 

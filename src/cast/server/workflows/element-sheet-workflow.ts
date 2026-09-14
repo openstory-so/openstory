@@ -37,6 +37,7 @@ import { buildElementSheetPrompt } from '@/cast/element-prompt';
 import { rejectionReasonMessage } from './replace-element-workflow';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import { uploadResponse } from '@/platform/server/storage/upload-response';
+import { fetchGeneratedImage } from '@/platform/server/storage/inline-image';
 import { contentRejectionSummary } from '@/models/content-rejection';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { generateImageSoftening } from '@/stills/server/workflows/content-soften';
@@ -215,7 +216,7 @@ export class ElementSheetWorkflow extends OpenStoryWorkflowEntrypoint<ElementShe
         const storageResult = await step.do(
           `upload-element-image-${index}`,
           async () => {
-            const response = await fetch(generatedUrl);
+            const response = await fetchGeneratedImage(generatedUrl);
             if (!response.ok) {
               throw new Error(
                 `Failed to fetch generated element image: ${response.status}`

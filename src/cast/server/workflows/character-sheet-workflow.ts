@@ -22,6 +22,7 @@ import { getGenerationChannel } from '@/platform/realtime';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import { copyStoredImage } from '@/platform/server/storage/copy-stored-image';
 import { uploadResponse } from '@/platform/server/storage/upload-response';
+import { fetchGeneratedImage } from '@/platform/server/storage/inline-image';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { generateImageSoftening } from '@/stills/server/workflows/content-soften';
 import { WorkflowValidationError } from '@/platform/server/workflow/errors';
@@ -352,7 +353,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         );
 
         // Fetch and stream directly to R2
-        const response = await fetch(imageUrl);
+        const response = await fetchGeneratedImage(imageUrl);
         if (!response.ok) {
           throw new Error(
             `Failed to fetch generated image: ${response.status}`

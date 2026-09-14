@@ -27,7 +27,8 @@ const uploadFile = vi.fn(
       contentType: options?.contentType,
     })
 );
-vi.doMock('#storage', () => ({ uploadFile }));
+const readStorageObject = vi.fn();
+vi.doMock('#storage', () => ({ uploadFile, readStorageObject }));
 vi.doMock('#env', () => ({ getEnv: () => ({}) }));
 
 // Dynamic import so the mocks apply (vi.doMock is not hoisted).
@@ -56,6 +57,7 @@ function respondWith(
 beforeEach(() => {
   fetchMock.mockReset();
   uploadFile.mockClear();
+  readStorageObject.mockReset();
 });
 
 describe('uploadPosterToStorage', () => {
@@ -219,5 +221,63 @@ describe('content-type precedence', () => {
       expect.anything(),
       expect.objectContaining({ contentType: 'image/jpeg' })
     );
+  });
+});
+
+/**
+ * #1638: native Gemini answers with inline base64 and BytePlus can, so the
+ * generation hands back bytes rather than a URL — and those are parked in R2
+ * so the workflow step result stays under the 1 MiB checkpoint cap. Neither
+ * form is reachable by a plain `fetch`, which is what this uploader used to
+ * do.
+ */
+describe('inline and stored sources', () => {
+  it('uploads a stashed /r2/ image by reading the binding, not fetching', async () => {
+    readStorageObject.mockResolvedValue({
+      bytes: PNG_BYTES,
+      contentType: 'image/png',
+    });
+
+    const result = await uploadImageToStorage({
+      imageUrl: '/r2/thumbnails/scratch/01ABC.png',
+      teamId: 'team_1',
+      sequenceId: 'seq_1',
+      shotId: 'shot_1',
+    });
+
+    expect(readStorageObject).toHaveBeenCalledWith(
+      'thumbnails/scratch/01ABC.png'
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result.path).toMatch(/\.png$/);
+  });
+
+  it('uploads inline data: bytes without a network call', async () => {
+    const dataUri = `data:image/png;base64,${btoa(String.fromCharCode(...PNG_BYTES))}`;
+
+    const result = await uploadImageToStorage({
+      imageUrl: dataUri,
+      teamId: 'team_1',
+      sequenceId: 'seq_1',
+      shotId: 'shot_1',
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result.contentType).toBe('image/png');
+    expect(result.path).toMatch(/\.png$/);
+  });
+
+  it('reports a failed download without throwing on a relative URL', async () => {
+    // `new URL('/r2/…').host` throws; the old message builder called it.
+    fetchMock.mockResolvedValue(new Response('nope', { status: 500 }));
+
+    await expect(
+      uploadImageToStorage({
+        imageUrl: 'https://v3.fal.media/files/b/abc/shot.png',
+        teamId: 'team_1',
+        sequenceId: 'seq_1',
+        shotId: 'shot_1',
+      })
+    ).rejects.toThrow('Failed to download image from v3.fal.media: 500 nope');
   });
 });
