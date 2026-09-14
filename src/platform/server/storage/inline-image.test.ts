@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 
 const uploadFile = vi.fn();
-const readStorageObject = vi.fn();
+const openStorageObject = vi.fn();
 
-vi.doMock('#storage', () => ({ uploadFile, readStorageObject }));
+vi.doMock('#storage', () => ({ uploadFile, openStorageObject }));
 
-const { fetchGeneratedImage, isDataImageUrl, stashInlineImage } =
+const { fetchGeneratedImage, isDataImageUrl, stashBase64Image } =
   await import('./inline-image');
 
 /** A one-pixel PNG, so the magic-byte sniff has something real to read. */
@@ -23,7 +23,7 @@ describe('isDataImageUrl', () => {
   });
 });
 
-describe('stashInlineImage', () => {
+describe('stashBase64Image', () => {
   it('parks inline bytes in R2 and returns a short stored URL', async () => {
     uploadFile.mockResolvedValueOnce({
       path: 'thumbnails/scratch/abc.png',
@@ -31,7 +31,7 @@ describe('stashInlineImage', () => {
       fullPath: 'thumbnails/scratch/abc.png',
     });
 
-    const url = await stashInlineImage(PNG_DATA_URI);
+    const url = await stashBase64Image(PNG_B64, 'image/png');
 
     expect(url).toBe('/r2/thumbnails/scratch/abc.png');
     // The whole point: what crosses the step boundary fits the 1 MiB cap.
@@ -43,18 +43,19 @@ describe('stashInlineImage', () => {
     expect(options).toMatchObject({ contentType: 'image/png' });
   });
 
-  it('leaves a hosted URL alone', async () => {
-    uploadFile.mockClear();
-    await expect(stashInlineImage('https://fal.media/x.png')).resolves.toBe(
-      'https://fal.media/x.png'
-    );
-    expect(uploadFile).not.toHaveBeenCalled();
-  });
+  it('names the file by sniffed bytes, not the declared type', async () => {
+    uploadFile.mockResolvedValueOnce({
+      path: 'x',
+      publicUrl: '/r2/x',
+      fullPath: 'x',
+    });
 
-  it('rejects a malformed data URI rather than storing garbage', async () => {
-    await expect(stashInlineImage('data:image/png,notbase64')).rejects.toThrow(
-      /Malformed image data URI/
-    );
+    // Gemini declares PNG for everything; #1218 says believe the bytes.
+    await stashBase64Image(PNG_B64, 'image/jpeg');
+
+    const [, path, , options] = uploadFile.mock.calls.at(-1) ?? [];
+    expect(path).toMatch(/\.png$/);
+    expect(options).toMatchObject({ contentType: 'image/png' });
   });
 });
 
@@ -66,20 +67,28 @@ describe('fetchGeneratedImage', () => {
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(PNG_BYTES);
   });
 
-  it('reads a stored /r2/ URL from the binding — it is not fetchable', async () => {
-    readStorageObject.mockResolvedValueOnce({
-      bytes: PNG_BYTES,
+  it('streams a stored /r2/ URL off the binding — it is not fetchable', async () => {
+    const body = new Response(PNG_BYTES).body;
+    openStorageObject.mockResolvedValueOnce({
+      body,
       contentType: 'image/png',
+      size: PNG_BYTES.byteLength,
     });
 
     const response = await fetchGeneratedImage('/r2/thumbnails/scratch/a.png');
 
-    expect(readStorageObject).toHaveBeenCalledWith('thumbnails/scratch/a.png');
+    expect(openStorageObject).toHaveBeenCalledWith('thumbnails/scratch/a.png');
+    // The R2 stream is passed through, never buffered — and it carries the
+    // length `uploadResponse` needs to hand `r2.put` a FixedLengthStream.
+    expect(response.body).toBe(body);
+    expect(response.headers.get('content-length')).toBe(
+      String(PNG_BYTES.byteLength)
+    );
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(PNG_BYTES);
   });
 
   it('fails loudly when the stashed object is gone', async () => {
-    readStorageObject.mockResolvedValueOnce(null);
+    openStorageObject.mockResolvedValueOnce(null);
     await expect(
       fetchGeneratedImage('/r2/thumbnails/gone.png')
     ).rejects.toThrow(/not found in storage/);

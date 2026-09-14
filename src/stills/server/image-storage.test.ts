@@ -27,8 +27,8 @@ const uploadFile = vi.fn(
       contentType: options?.contentType,
     })
 );
-const readStorageObject = vi.fn();
-vi.doMock('#storage', () => ({ uploadFile, readStorageObject }));
+const openStorageObject = vi.fn();
+vi.doMock('#storage', () => ({ uploadFile, openStorageObject }));
 vi.doMock('#env', () => ({ getEnv: () => ({}) }));
 
 // Dynamic import so the mocks apply (vi.doMock is not hoisted).
@@ -57,7 +57,7 @@ function respondWith(
 beforeEach(() => {
   fetchMock.mockReset();
   uploadFile.mockClear();
-  readStorageObject.mockReset();
+  openStorageObject.mockReset();
 });
 
 describe('uploadPosterToStorage', () => {
@@ -232,10 +232,11 @@ describe('content-type precedence', () => {
  * do.
  */
 describe('inline and stored sources', () => {
-  it('uploads a stashed /r2/ image by reading the binding, not fetching', async () => {
-    readStorageObject.mockResolvedValue({
-      bytes: PNG_BYTES,
+  it('uploads a stashed /r2/ image off the binding, not by fetching', async () => {
+    openStorageObject.mockResolvedValue({
+      body: new Response(PNG_BYTES).body,
       contentType: 'image/png',
+      size: PNG_BYTES.byteLength,
     });
 
     const result = await uploadImageToStorage({
@@ -245,7 +246,7 @@ describe('inline and stored sources', () => {
       shotId: 'shot_1',
     });
 
-    expect(readStorageObject).toHaveBeenCalledWith(
+    expect(openStorageObject).toHaveBeenCalledWith(
       'thumbnails/scratch/01ABC.png'
     );
     expect(fetchMock).not.toHaveBeenCalled();

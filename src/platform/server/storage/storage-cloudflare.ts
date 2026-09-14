@@ -319,6 +319,29 @@ export async function readStorageObject(
 }
 
 /**
+ * Open a storage object as a STREAM rather than reading its bytes, for the
+ * one shape {@link readStorageObject} is wrong for: copying an object to
+ * another key. `arrayBuffer()` materialises the whole image just to hand it
+ * to `r2.put`, which takes a `ReadableStream` natively — pair the returned
+ * `body` and `size` with `uploadResponse` and the bytes go binding to
+ * binding without ever landing in the isolate (#1638).
+ */
+export async function openStorageObject(key: string): Promise<{
+  body: ReadableStream;
+  contentType: string;
+  size: number;
+} | null> {
+  const r2 = getR2Bucket();
+  const object = await r2.get(key);
+  if (!object) return null;
+  return {
+    body: object.body,
+    contentType: object.httpMetadata?.contentType ?? '',
+    size: object.size,
+  };
+}
+
+/**
  * Size in bytes of a storage object by key (`<bucket>/<path>`), or null when
  * there is no such key. What a ranged reader needs up front — e.g. a demuxer
  * reading a clip's header without downloading the clip.

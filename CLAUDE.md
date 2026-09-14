@@ -97,6 +97,7 @@ Inside a product domain: root files are client-safe (catalogs, pure logic, zod);
   - `boundaries/platform-domain-blind` — on for `src/platform/**` only (see Project Structure).
   - All of them ignore `import type`; the inline `import { type X }` form is banned by `typescript/no-import-type-side-effects` because it leaves a side-effect import that ships the whole graph.
 
+- **Never buffer media to put it in R2.** `uploadResponse` streams a `Response` body into the binding (`FixedLengthStream` when a `Content-Length` is present — `r2.put` rejects an unknown-length stream), and `openStorageObject` hands back an R2 object's `body` + `size` so an R2→R2 copy never lands in the isolate. Reach for `readStorageObject`/`arrayBuffer()` only when you genuinely need the bytes (sniffing, base64). A provider's inline base64 is the one case with nothing to stream — it is already a string — so decode it once and put it, never via a `data:` URI you parse back apart.
 - Anonymous-first → upgrade to save work.
 - Team-based resources (sequences, styles, characters).
 - Script-driven generation for consistency.

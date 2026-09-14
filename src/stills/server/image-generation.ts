@@ -48,7 +48,7 @@ import {
 } from '@/platform/server/storage/external-url';
 import {
   isDataImageUrl,
-  stashInlineImage,
+  stashBase64Image,
 } from '@/platform/server/storage/inline-image';
 import {
   generateImage,
@@ -420,25 +420,26 @@ async function generateImageInternal(
     }
   }
 
-  const returnedUrls = result.images
-    .map((img) => {
-      if (img.url) return img.url;
-      if (img.b64Json) return `data:image/png;base64,${img.b64Json}`;
-      return undefined;
-    })
-    .filter((url): url is string => !!url);
-
-  if (returnedUrls.length === 0) {
-    throw new Error('No images returned from generation');
-  }
-
-  // Native Gemini always answers with inline bytes and no hosted URL, and
+  // Native Gemini always answers with inline base64 and no hosted URL, and
   // BytePlus can. Every caller runs this inside a `step.do`, whose result
   // Workflows checkpoints at 1 MiB — a 1K still base64-encodes well past
   // that, so the generation succeeds and the CHECKPOINT fails (#1638). Park
-  // the bytes here, before returning, so the result is a short URL whatever
-  // the via returned. The video twin is `videoUrlFitsWorkflowCheckpoint`.
-  const imageUrls = await Promise.all(returnedUrls.map(stashInlineImage));
+  // those bytes in R2 here, before returning, so the result is a short URL
+  // whatever the via returned. The video twin is
+  // `videoUrlFitsWorkflowCheckpoint`.
+  const imageUrls = (
+    await Promise.all(
+      result.images.map(async (img) => {
+        if (img.url) return img.url;
+        if (img.b64Json) return stashBase64Image(img.b64Json, 'image/png');
+        return undefined;
+      })
+    )
+  ).filter((url): url is string => !!url);
+
+  if (imageUrls.length === 0) {
+    throw new Error('No images returned from generation');
+  }
 
   const processingTimeMs = Date.now() - startTime;
   if (via === 'xai') {
