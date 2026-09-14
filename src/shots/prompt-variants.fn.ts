@@ -729,7 +729,6 @@ export const regenerateShotPromptFn = createServerFn({ method: 'POST' })
                 // through the sequence row, so it has to reach the child too or
                 // the stamp and the verify disagree.
                 referenceOnly: shotReferenceOnly,
-                characterVoices: [...ctx.characterVoices],
                 sceneBefore,
                 sceneAfter,
                 targetVersionId: claim.id,

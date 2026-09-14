@@ -131,7 +131,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       audioModels: audioModelsInput,
       suggestedTalentIds,
       suggestedLocationIds,
-      referenceOnly = false,
+      referenceOnly,
       generateVoices = false,
     } = input;
 
@@ -330,7 +330,9 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       if (
         !checkpoint?.scenes ||
         !checkpoint.shotMapping ||
-        !checkpoint.characterBible
+        !checkpoint.characterBible ||
+        checkpoint.locationBible == null ||
+        checkpoint.elementBible == null
       ) {
         throw new WorkflowValidationError(
           'Cannot continue generation: missing script checkpoint'
@@ -341,8 +343,8 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         title: '',
         shotMapping: checkpoint.shotMapping,
         characterBible: checkpoint.characterBible,
-        locationBible: checkpoint.locationBible ?? [],
-        elementBible: checkpoint.elementBible ?? [],
+        locationBible: checkpoint.locationBible,
+        elementBible: checkpoint.elementBible,
       };
     }
 
@@ -463,15 +465,6 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       characterBible,
       talentCharacterMatches
     );
-    const characterVoicesFromCast = castCharacterBible.map((character) => ({
-      name: character.name,
-      voiceId:
-        talentCharacterMatches.find(
-          (match) => match.characterId === character.characterId
-        )?.voiceId ?? null,
-      voiceOnly: character.voiceOnly,
-    }));
-
     // Cast, locations and script-detected elements land NOW, sheet-less, so a
     // run stopped at Script shows the whole bible for review before any
     // reference image is billed. The References stage re-upserts the same
@@ -654,7 +647,6 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       scenesForPrompts: Scene[];
       startingFrameImageUrls: Record<string, string | null>;
       visualSummaryBySceneId: Record<string, string>;
-      characterVoices: MotionMusicPromptsWorkflowInput['characterVoices'];
     }) =>
       spawnAndAwaitChild<
         MotionMusicPromptsWorkflowInput,
@@ -683,7 +675,6 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           visualSummaryBySceneId: args.visualSummaryBySceneId,
           musicPromptSource: input.musicPromptSource,
           referenceOnly,
-          characterVoices: args.characterVoices,
         },
         spawnStepName: 'spawn-motion-music-prompts',
         awaitStepName: 'await-motion-music-prompts',
@@ -870,7 +861,6 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
                   scenes.map((scene) => [scene.sceneId, null])
                 ),
                 visualSummaryBySceneId: {},
-                characterVoices: characterVoicesFromCast,
               })
             : Promise.resolve(null),
         ])
@@ -1194,14 +1184,6 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
                   scenesForPrompts: scenesWithVisualPrompts,
                   startingFrameImageUrls,
                   visualSummaryBySceneId: visualPromptBySceneId,
-                  characterVoices:
-                    charactersWithSheets.length > 0
-                      ? charactersWithSheets.map((row) => ({
-                          name: row.name,
-                          voiceId: row.voiceId ?? null,
-                          voiceOnly: row.voiceOnly,
-                        }))
-                      : characterVoicesFromCast,
                 }),
               ])
             )[0];

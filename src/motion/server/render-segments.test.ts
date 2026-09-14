@@ -97,6 +97,7 @@ describe('buildVideoManifest', () => {
           usesStartFrame: true,
           durationMs: 3000,
           audioClipIds: [],
+          audioSourceKey: null,
         },
         {
           shotId: 's2',
@@ -105,6 +106,7 @@ describe('buildVideoManifest', () => {
           usesStartFrame: true,
           durationMs: 4000,
           audioClipIds: [],
+          audioSourceKey: null,
         },
       ])
     ).toEqual([
@@ -115,6 +117,7 @@ describe('buildVideoManifest', () => {
         usesStartFrame: true,
         durationMs: 3000,
         audioClipIds: [],
+        audioSourceKey: null,
       },
       {
         shotId: 's2',
@@ -123,6 +126,7 @@ describe('buildVideoManifest', () => {
         usesStartFrame: true,
         durationMs: 4000,
         audioClipIds: [],
+        audioSourceKey: null,
       },
     ]);
   });

@@ -16,7 +16,10 @@ import { arkAssetIdentities } from '@/models/server/byteplus-asset-pool';
 import { ingestArkAssets } from '@/models/server/byteplus-asset-steps';
 import { extractFalErrorMessage } from '@/models/fal-error';
 import { assembleMotionPrompt } from '@/motion/server/assemble-motion-prompt';
-import { withVoicedLineTokens } from '@/motion/dialogue-tts';
+import {
+  audioSourceKeyFromVoicedLines,
+  withVoicedLineTokens,
+} from '@/motion/dialogue-tts';
 import {
   dialogueClipsAsReferences,
   synthesizeDialogueClip,
@@ -430,6 +433,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
               usesStartFrame: !input.referenceOnly,
               durationMs: duration * 1000,
               audioClipIds: audioClips.map((clip) => clip.id),
+              audioSourceKey: audioSourceKeyFromVoicedLines(voicedLines),
             },
           ]);
           const inputHash = await computeVideoManifestInputHash(

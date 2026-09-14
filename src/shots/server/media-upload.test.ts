@@ -194,6 +194,7 @@ async function seedSegmentAndVideo(frameVersionId: string) {
       usesStartFrame: true,
       durationMs: 4000,
       audioClipIds: [],
+      audioSourceKey: null,
     },
   ];
   const videos = createVideoVariantsMethods(db);
@@ -517,6 +518,7 @@ describe('§4.3 B — image-only upload (appendUploadedVersion + select)', () =>
         usesStartFrame: true,
         durationMs: 4000,
         audioClipIds: [],
+        audioSourceKey: null,
       },
     ];
     expect(
@@ -776,6 +778,7 @@ describe('video upload (appendUploadedVersion + select)', () => {
         usesStartFrame: true,
         durationMs: 4000,
         audioClipIds: [],
+        audioSourceKey: null,
       },
     ];
     const inputHash = await computeVideoManifestInputHash(
@@ -826,6 +829,7 @@ describe('video upload (appendUploadedVersion + select)', () => {
         usesStartFrame: true,
         durationMs: 4000,
         audioClipIds: [],
+        audioSourceKey: null,
       },
     ];
     expect(

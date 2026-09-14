@@ -3,7 +3,6 @@ import {
   sequenceElementsToBible,
   sequenceLocationsToBible,
 } from '@/cast/server/bibles-from-scoped';
-import type { VoiceCharacter } from '@/motion/dialogue-tts';
 import {
   DEFAULT_ANALYSIS_MODEL,
   getAnalysisModelById,
@@ -50,12 +49,6 @@ export type ShotPromptContextSequence = {
  */
 export type ShotPromptContextRefs = {
   characters: Awaited<ReturnType<ScopedDb['characters']['listWithSheets']>>;
-  /**
-   * Every character on the sequence, including voice-only narrators that
-   * `listWithSheets` drops. The motion-prompt hash matches speakers against
-   * these. When absent, `loadShotPromptContext` reads `characters.list`.
-   */
-  voiceCharacters?: Awaited<ReturnType<ScopedDb['characters']['list']>>;
   locations: Awaited<
     ReturnType<ScopedDb['sequenceLocations']['listWithReferences']>
   >;
@@ -98,14 +91,8 @@ export async function loadShotPromptContext(args: {
     );
   }
 
-  const [characters, locations, elements, style, voiceCharacters] = refs
-    ? [
-        refs.characters,
-        refs.locations,
-        refs.elements,
-        refs.style,
-        refs.voiceCharacters ?? refs.characters,
-      ]
+  const [characters, locations, elements, style] = refs
+    ? [refs.characters, refs.locations, refs.elements, refs.style]
     : await Promise.all([
         scopedDb.characters.listWithSheets(sequence.id),
         scopedDb.sequenceLocations.listWithReferences(sequence.id),
@@ -113,7 +100,6 @@ export async function loadShotPromptContext(args: {
         hasSnapshot || !sequence.styleId
           ? Promise.resolve(null)
           : scopedDb.styles.getById(sequence.styleId),
-        scopedDb.characters.list(sequence.id),
       ]);
 
   if (!hasSnapshot && !style) {
@@ -138,11 +124,6 @@ export async function loadShotPromptContext(args: {
     analysisModel,
     startingFrameImageUrl: startingFrameImageUrl ?? null,
     referenceOnly: sequence.referenceOnly,
-    characterVoices: voiceCharacters.map((row): VoiceCharacter => ({
-      name: row.name,
-      voiceId: row.voiceId,
-      voiceOnly: row.voiceOnly,
-    })),
   };
 }
 
@@ -177,7 +158,7 @@ export async function loadNarrowShotPromptContext(args: {
  * `continuity` references. Pure function — exposed so workflows that already
  * received full bibles as inputs (visual/motion prompt scene workflows) can
  * narrow without re-fetching from the DB. Generic so a visual-only bag
- * (no voices / start-frame) narrows without dummy motion channels.
+ * (no start-frame) narrows without dummy motion channels.
  */
 export function narrowShotPromptContext<T extends VisualPromptHashInput>(
   ctx: T

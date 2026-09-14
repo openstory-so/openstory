@@ -12,6 +12,7 @@ import {
   orphanedVoiceTokens,
   persistToken,
   shotPickerValue,
+  audioSourceKeyFromVoicedLines,
   dialogueVoicesForHash,
   dialogueVoicesHashBody,
   toneToV3AudioTag,
@@ -301,6 +302,26 @@ describe('dialogueVoicesHashBody', () => {
       },
     ]);
     expect(whispered).not.toEqual(shouted);
+  });
+});
+
+describe('audioSourceKeyFromVoicedLines', () => {
+  it('is null when nothing is voiced, and moves when the voice id does', () => {
+    const lines = voicedDialogueLines(
+      dialogue([{ character: 'SARAH', line: 'Stay down.' }]),
+      [sarah]
+    );
+    expect(audioSourceKeyFromVoicedLines([])).toBeNull();
+    expect(audioSourceKeyFromVoicedLines(lines)).toBe(
+      'voice-sarah\tStay down.\t\televen_v3'
+    );
+    const other = voicedDialogueLines(
+      dialogue([{ character: 'SARAH', line: 'Stay down.' }]),
+      [{ name: 'Detective Sarah Chen', voiceId: 'voice-other' }]
+    );
+    expect(audioSourceKeyFromVoicedLines(other)).not.toBe(
+      audioSourceKeyFromVoicedLines(lines)
+    );
   });
 });
 

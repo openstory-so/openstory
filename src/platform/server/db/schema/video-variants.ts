@@ -76,6 +76,14 @@ export type VideoManifestEntry = {
    * stored digests do not move.
    */
   audioClipIds: string[];
+  /**
+   * Identity of the bound dialogue audio (voice id + line + tone + TTS
+   * model), or `null` when voiceless. The sheet analogue: character sheet
+   * hashes live on the still, not the visual prompt. Required so stamp and
+   * verify cannot independently omit it; the hash body still drops `null`
+   * so stored voiceless digests do not move.
+   */
+  audioSourceKey: string | null;
 };
 
 /** Ordered, one entry per covered shot. @public consumed from #990+ */

@@ -482,8 +482,10 @@ voice/lines moved) and stamps that take onto `shot_prompt_versions.audioClips`
 (provenance of the render). Tone maps to v3 audio tags on each turn. User-bound
 `voiceToken` elements already ride as `@AudioN` and are not re-synthesised.
 The clip binds as `DIALOGUE` / `@Audio1`. Voice ids + lines + tone + TTS model
-fold into the motion-prompt hash **only when a voice is present** (same
-shape-stable trick as `usesStartFrame` / `referenceOnly`). Shot duration is
+fold into the **video manifest** as `audioSourceKey` **only when a voice is
+present** (same shape-stable trick as `usesStartFrame` / `referenceOnly`) —
+not the motion-prompt hash: the LLM never sees the id, so a voice change
+must not rewrite the prompt. Shot duration is
 raised to cover the audio; a clip under the provider floor (H3 Max 2s) is
 padded with silence. Preflight reserves the TTS cost on the references
 slice (static card), including when Voices is off — talent may already hold

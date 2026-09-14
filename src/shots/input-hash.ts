@@ -258,6 +258,7 @@ const videoManifestHashEntrySchema = z.object({
   usesStartFrame: z.boolean(),
   durationMs: z.number(),
   audioClipIds: z.array(z.string()),
+  audioSourceKey: z.string().nullable(),
 });
 
 function canonicalizeManifestEntry(
@@ -272,6 +273,7 @@ function canonicalizeManifestEntry(
     ...(entry.audioClipIds.length > 0
       ? { audioClipIds: entry.audioClipIds }
       : {}),
+    ...(entry.audioSourceKey ? { audioSourceKey: entry.audioSourceKey } : {}),
   };
 }
 
@@ -611,14 +613,6 @@ export async function talentSheetInputHashMatches(
 // ---------------------------------------------------------------------------
 
 import type {
-  DialogueVoiceHashInput,
-  VoiceCharacter,
-} from '@/motion/dialogue-tts';
-import {
-  dialogueVoicesForHash,
-  dialogueVoicesHashBody,
-} from '@/motion/dialogue-tts';
-import type {
   CharacterBibleEntry,
   ElementBibleEntry,
   LocationBibleEntry,
@@ -633,9 +627,8 @@ import { styleConfigHashBody } from '@/look/style-config';
 
 /**
  * Visual-prompt assembler DTO (#1616). Every channel is required so stamp
- * and verify cannot independently omit a field. Empty is spelled `[]`, not
- * omitted — the hash *body* still drops empty motion-only channels
- * (`LEGACY_HASH_UNTIL` 2026-09-28).
+ * and verify cannot independently omit a field. Empty bibles are spelled
+ * `[]`, not omitted.
  */
 export type VisualPromptHashInput = {
   scene: Scene;
@@ -649,13 +642,13 @@ export type VisualPromptHashInput = {
 
 /**
  * Motion-prompt assembler DTO. Extends the visual channels with the
- * motion-only ones, all required. `characterVoices: []` is voiceless;
- * the hasher projects dialogue + voices into the shape-stable body.
+ * motion-only ones, all required. Voice ids are not a prompt channel —
+ * they bind on the clip (`VideoManifestEntry.audioSourceKey`), like
+ * character sheets on the still.
  */
 export type MotionPromptHashInput = VisualPromptHashInput & {
   startingFrameImageUrl: string | null;
   referenceOnly: boolean;
-  characterVoices: readonly VoiceCharacter[];
 };
 
 export type VisualPromptInputHash = string & {
@@ -666,17 +659,11 @@ export type MotionPromptInputHash = string & {
 };
 
 /* oxlint-disable typescript/no-unsafe-type-assertion -- sole brand constructors */
-const visualPromptInputHash = (hex: string): VisualPromptInputHash =>
+export const visualPromptInputHash = (hex: string): VisualPromptInputHash =>
   hex as VisualPromptInputHash;
-const motionPromptInputHash = (hex: string): MotionPromptInputHash =>
+export const motionPromptInputHash = (hex: string): MotionPromptInputHash =>
   hex as MotionPromptInputHash;
 /* oxlint-enable typescript/no-unsafe-type-assertion */
-
-const voiceCharacterSchema = z.object({
-  name: z.string(),
-  voiceId: z.string().nullable().optional(),
-  voiceOnly: z.boolean().optional(),
-});
 
 /** Any non-null object — Scene / StyleConfig / bible rows are validated by TS. */
 const requiredObject = z.custom<object>(
@@ -698,7 +685,6 @@ const visualPromptHashInputSchema = z.object({
 const motionPromptHashInputSchema = visualPromptHashInputSchema.extend({
   startingFrameImageUrl: z.string().nullable(),
   referenceOnly: z.boolean(),
-  characterVoices: z.array(voiceCharacterSchema),
 });
 
 /**
@@ -711,8 +697,8 @@ function assembleVisualPromptHashInput(raw: unknown): VisualPromptHashInput {
 }
 
 /**
- * Runtime-parse a motion assembler DTO. `characterVoices` is required with
- * no default — omitting it on replay is a failed run, not `[]`.
+ * Runtime-parse a motion assembler DTO. A missing channel on a durable JSON
+ * replay fails the run instead of hashing a different shape than verify.
  */
 export function assembleMotionPromptHashInput(
   raw: unknown
@@ -723,8 +709,8 @@ export function assembleMotionPromptHashInput(
 
 /**
  * Hash-body input. Motion-only channels stay optional HERE so empty/omitted
- * is load-bearing (no stored voiceless digest moves). Callers never build
- * this; they go through {@link MotionPromptHashInput} /
+ * is load-bearing (no stored voiceless / i2v digest moves). Callers never
+ * build this; they go through {@link MotionPromptHashInput} /
  * {@link VisualPromptHashInput}.
  */
 type PromptSceneContextHashInput = {
@@ -737,7 +723,6 @@ type PromptSceneContextHashInput = {
   analysisModel: string;
   startingFrameImageUrl?: string | null;
   referenceOnly?: boolean;
-  dialogueVoices?: readonly DialogueVoiceHashInput[];
 };
 
 function toVisualBodyInput(
@@ -761,13 +746,6 @@ function toMotionBodyInput(
     ...toVisualBodyInput(input),
     startingFrameImageUrl: input.startingFrameImageUrl,
     referenceOnly: input.referenceOnly,
-    dialogueVoices: dialogueVoicesForHash(
-      {
-        presence: input.scene.originalScript.dialogue.length > 0,
-        lines: input.scene.originalScript.dialogue,
-      },
-      input.characterVoices
-    ),
   };
 }
 
@@ -965,7 +943,6 @@ function motionPromptHashBody(
     named: flags.named,
     performance: true,
   });
-  const dialogueVoices = dialogueVoicesHashBody(input.dialogueVoices);
   return {
     artifact: 'shot:motion-prompt',
     hashVersion: flags.hashVersion,
@@ -976,7 +953,6 @@ function motionPromptHashBody(
     analysisModel: trim(input.analysisModel),
     startingFrameImageUrl: trim(input.startingFrameImageUrl),
     ...(input.referenceOnly ? { referenceOnly: true } : {}),
-    ...(dialogueVoices ? { dialogueVoices } : {}),
   };
 }
 

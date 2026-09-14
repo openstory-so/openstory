@@ -956,7 +956,6 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                       ? (startingFrameImageUrl ?? undefined)
                       : undefined,
                     referenceOnly: !target.usesStartFrame,
-                    characterVoices: plan.characterVoices,
                     targetVersionId: claims.motionVersionId ?? undefined,
                   },
                   spawnStepName: `spawn-motion-prompt-${target.shotId}`,

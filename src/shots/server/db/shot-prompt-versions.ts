@@ -82,7 +82,7 @@ export type WriteShotPromptVersionInput = WriteShotPromptVersionBase &
   (
     | {
         source: 'ai-generated' | 'regenerated';
-        inputHash: string;
+        inputHash: MotionPromptInputHash;
         analysisModel: string;
       }
     | {
@@ -411,7 +411,7 @@ export function createShotPromptVersionsMethods(db: Database) {
        * (`pendingInputHash` nulled). Prefer the claim hash — that is the
        * verify digest captured at trigger (#1616).
        */
-      inputHash?: MotionPromptInputHash | string;
+      inputHash?: MotionPromptInputHash;
       analysisModel: string;
     }): Promise<ShotPromptVersion | null> => {
       const [claim] = await db

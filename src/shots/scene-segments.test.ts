@@ -128,6 +128,27 @@ describe('isSelectedVersionStale', () => {
     expect(isSelectedVersionStale(v, motion, frame)).toBe(false);
   });
 
+  it('is stale when the bound dialogue audio identity moved', () => {
+    const v = version('v1', 'seg', 'kling', [
+      {
+        shotId: 'shot-1',
+        motionPromptVersionId: 'mp-1',
+        frameVersionId: 'fv-1',
+        audioSourceKey: 'voice-sarah\tStay down.\t\televen_v3',
+      },
+    ]);
+    const audio = new Map([['shot-1', 'voice-other\tStay down.\t\televen_v3']]);
+    expect(isSelectedVersionStale(v, motion, frame, audio)).toBe(true);
+    expect(
+      isSelectedVersionStale(
+        v,
+        motion,
+        frame,
+        new Map([['shot-1', 'voice-sarah\tStay down.\t\televen_v3']])
+      )
+    ).toBe(false);
+  });
+
   it('is stale when a shot repointed its frame or motion prompt', () => {
     const v = version('v1', 'seg', 'kling', [
       {

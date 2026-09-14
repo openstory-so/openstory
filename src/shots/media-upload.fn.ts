@@ -509,6 +509,7 @@ export const setShotVideoFromUploadFn = createServerFn({ method: 'POST' })
         usesStartFrame: shotUsesStartFrame,
         durationMs,
         audioClipIds: [],
+        audioSourceKey: null,
       },
     ]);
     const inputHash = await computeVideoManifestInputHash(

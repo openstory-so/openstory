@@ -70,7 +70,7 @@ function makeInput(): MotionPromptBatchWorkflowInput {
     startingFrameImageUrls: Object.fromEntries(
       SCENE_IDS.map((id) => [id, `https://example.com/${id}.png`])
     ),
-    characterVoices: [],
+    referenceOnly: false,
   };
 }
 

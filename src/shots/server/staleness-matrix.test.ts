@@ -85,6 +85,7 @@ function videoHash(state: PipelineState): Promise<string | null> {
       usesStartFrame: true,
       durationMs: state.durationMs,
       audioClipIds: [],
+      audioSourceKey: null,
     },
   ];
   return computeVideoManifestInputHash(manifest, state.videoModel);
@@ -477,7 +478,6 @@ describe('staleness matrix — cast/location bible mutations (§4.2, Phase 2)', 
         analysisModel: 'anthropic/claude-haiku-4.5',
         startingFrameImageUrl: null,
         referenceOnly: false,
-        characterVoices: [],
       });
     expect(await motionHash(edited)).not.toBe(await motionHash(BIBLE_BASE));
     expect(await promptHash(edited)).toBe(await promptHash(BIBLE_BASE));

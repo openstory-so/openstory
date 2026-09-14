@@ -18,6 +18,7 @@ const entry = (
   usesStartFrame: true,
   durationMs: 3000,
   audioClipIds: [],
+  audioSourceKey: null,
   ...overrides,
 });
 
@@ -83,6 +84,32 @@ describe('computeVideoManifestInputHash', () => {
     );
     expect(voiceless).not.toBe(voiced);
     const { audioClipIds: _dropped, ...without } = entry();
+    expect(() =>
+      computeVideoManifestInputHash(
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- incomplete assembler
+        [without] as VideoManifestEntry[],
+        'veo3_1'
+      )
+    ).toThrow();
+  });
+
+  it('voice identity re-stales the clip, not via an omitted key (#1554/#1616)', async () => {
+    const voiceless = await computeVideoManifestInputHash(
+      [entry({ audioSourceKey: null })],
+      'veo3_1'
+    );
+    const voiced = await computeVideoManifestInputHash(
+      [entry({ audioSourceKey: 'voice-sarah\tStay down.\t\televen_v3' })],
+      'veo3_1'
+    );
+    expect(voiced).not.toBe(voiceless);
+    expect(
+      await computeVideoManifestInputHash(
+        [entry({ audioSourceKey: 'voice-other\tStay down.\t\televen_v3' })],
+        'veo3_1'
+      )
+    ).not.toBe(voiced);
+    const { audioSourceKey: _dropped, ...without } = entry();
     expect(() =>
       computeVideoManifestInputHash(
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- incomplete assembler

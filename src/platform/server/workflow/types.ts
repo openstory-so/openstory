@@ -10,7 +10,7 @@ import type {
   TextToImageModel,
 } from '@/models/models';
 import type { AnalysisModelId } from '@/models/models.config';
-import type { VoiceCharacter, VoicedDialogueLine } from '@/motion/dialogue-tts';
+import type { VoicedDialogueLine } from '@/motion/dialogue-tts';
 import type {
   AssemblableMotionPrompt,
   CharacterBibleEntry,
@@ -320,9 +320,10 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
    * Reference-only mode: render straight to video from the cast / location /
    * element reference sheets, skipping start-frame generation entirely.
    * Snapshotted from `!sequences.generateStartFrames` by the launcher and passed
-   * straight through to analyze-script.
+   * straight through to analyze-script. Required — omitting it defaulted to
+   * image-to-video at destructure while verify hashed the live mode (#1616).
    */
-  referenceOnly?: boolean;
+  referenceOnly: boolean;
   /**
    * Design a voice per speaking character (#1553). Snapshotted from
    * `sequences.generateVoices` by the launcher; absent on legacy payloads =
@@ -353,6 +354,7 @@ export type StoryboardTriggerInput = Omit<
   | 'suggestedLocations'
   | 'ownerEmail'
   | 'sequenceUrl'
+  | 'referenceOnly'
 > & {
   /** This click's choice; absent, the launcher falls back to the sequence snapshot. */
   stopAt?: GenerationStage;
@@ -401,9 +403,10 @@ export interface AnalyzeScriptWorkflowInput extends SequenceWorkflowContext {
    * element reference sheets, skipping start-frame generation entirely. Pinned
    * onto the payload at the trigger from `!sequences.generateStartFrames` like every
    * other generation setting, so a mid-run toggle cannot change what this run
-   * is doing.
+   * is doing. Required — omitting it defaulted to image-to-video at
+   * destructure while verify hashed the live mode (#1616).
    */
-  referenceOnly?: boolean;
+  referenceOnly: boolean;
   /** @see StoryboardWorkflowInput.generateVoices — passed straight through. */
   generateVoices?: boolean;
 }
@@ -1037,13 +1040,9 @@ export interface MotionPromptBatchWorkflowInput extends SequenceWorkflowContext 
    * Reference-only mode (see {@link MotionPromptWorkflowInput.referenceOnly}).
    * The batch's "every scene must have a rendered still" guard is lifted here:
    * in this mode a missing still is the design, not a failed image.
+   * Required — omitting it defaulted to `false` before the hasher ran (#1616).
    */
-  referenceOnly?: boolean;
-  /**
-   * Speakers with a designed voice, snapshotted at trigger (#1616). Required
-   * on the assembler — a missing field on replay fails the run, not `[]`.
-   */
-  characterVoices: VoiceCharacter[];
+  referenceOnly: boolean;
 }
 
 export interface MotionPromptWorkflowInput extends SequenceWorkflowContext {
@@ -1075,13 +1074,9 @@ export interface MotionPromptWorkflowInput extends SequenceWorkflowContext {
    * prompt is written against a different template — one that composes the
    * opening frame in words instead of animating a still. Distinct from a
    * merely absent `startingFrameImageUrl`, which means "no still YET".
+   * Required — omitting it defaulted to `false` before the hasher ran (#1616).
    */
-  referenceOnly?: boolean;
-  /**
-   * Speakers with a designed voice, snapshotted at trigger (#1616). Required
-   * so the stamp hasher cannot omit them; verify always includes them.
-   */
-  characterVoices: VoiceCharacter[];
+  referenceOnly: boolean;
   /** See {@link FramePromptWorkflowInput.emitStreaming}. */
   emitStreaming?: boolean;
   /**
@@ -1647,11 +1642,10 @@ export interface MotionMusicPromptsWorkflowInput extends SequenceWorkflowContext
   /**
    * Reference-only mode (see {@link MotionPromptWorkflowInput.referenceOnly}),
    * forwarded to the motion-prompt batch. Music is unaffected — it has never
-   * depended on the still.
+   * depended on the still. Required — omitting it defaulted to `false` before
+   * the hasher ran (#1616).
    */
-  referenceOnly?: boolean;
-  /** See {@link MotionPromptWorkflowInput.characterVoices}. */
-  characterVoices: VoiceCharacter[];
+  referenceOnly: boolean;
 }
 
 export interface MotionMusicPromptsWorkflowResult {

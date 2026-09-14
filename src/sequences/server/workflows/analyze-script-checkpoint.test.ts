@@ -239,6 +239,7 @@ function makeEvent(
     videoModel: DEFAULT_VIDEO_MODEL,
     elementIds: [],
     musicPromptSource: 'ai-generated',
+    referenceOnly: false,
     // An automatic style whose recipe this run is meant to derive (#1213).
     pendingAutoStyleId: 'sty_1',
     stopAt: 'script',
@@ -492,6 +493,32 @@ describe('AnalyzeScriptWorkflow script checkpoint', () => {
           ...noStyle,
           startFrom: 'references',
           stopAt: 'references',
+        }),
+        makeStep(),
+        makeScopedDb(vi.fn())
+      )
+    ).rejects.toThrow(
+      new WorkflowValidationError(
+        'Cannot continue generation: missing script checkpoint'
+      )
+    );
+
+    expect(spawnAndAwaitChild).not.toHaveBeenCalled();
+  });
+
+  test('startFrom references without checkpoint bibles refuses before any child spawns (#1616)', async () => {
+    await expect(
+      makeWorkflow().invokeRunImpl(
+        makeEvent({
+          ...noStyle,
+          startFrom: 'references',
+          stopAt: 'references',
+          checkpoint: {
+            completedStage: 'script',
+            scenes: SPLIT.scenes,
+            shotMapping: SPLIT.shotMapping,
+            characterBible: SPLIT.characterBible,
+          },
         }),
         makeStep(),
         makeScopedDb(vi.fn())

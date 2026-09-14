@@ -229,6 +229,33 @@ export function dialogueClipSourceKey(
     .join('\n');
 }
 
+/**
+ * Bound-audio identity for a video manifest (`VideoManifestEntry.audioSourceKey`).
+ * Null when voiceless — the hasher omits it so stored voiceless digests do not
+ * move. Voice ids live here, not on the motion-prompt hash: the LLM never
+ * sees them; the clip binds them like a character sheet.
+ */
+export function audioSourceKeyFromVoicedLines(
+  lines: readonly VoicedDialogueLine[]
+): string | null {
+  const key = dialogueClipSourceKey(lines);
+  return key === '' ? null : key;
+}
+
+/** Live bound-audio identity from a shot's dialogue + current speakers. */
+export function audioSourceKeyForDialogueLines(
+  lines: readonly DialogueLine[] | undefined,
+  characters: readonly VoiceCharacter[]
+): string | null {
+  const spoken = lines ?? [];
+  return audioSourceKeyFromVoicedLines(
+    voicedDialogueLines(
+      { presence: spoken.length > 0, lines: [...spoken] },
+      characters
+    )
+  );
+}
+
 function clipSourceKey(clip: unknown): string | undefined {
   if (clip === null || typeof clip !== 'object' || !('sourceKey' in clip)) {
     return undefined;

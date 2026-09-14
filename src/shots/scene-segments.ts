@@ -116,10 +116,13 @@ export type SegmentRowInput = {
 };
 export type SegmentVersionInput = SegmentVideoVersion & {
   renderSegmentId: string;
-  manifest: readonly Pick<
+  manifest: readonly (Pick<
     VideoManifestEntry,
     'shotId' | 'motionPromptVersionId' | 'frameVersionId'
-  >[];
+  > & {
+    /** Absent on pre-pointer rows; treated as voiceless. */
+    audioSourceKey?: string | null;
+  })[];
 };
 export type SegmentShotInput = {
   id: string;
@@ -154,18 +157,20 @@ function toVersion(v: SegmentVersionInput): SegmentVideoVersion {
 /**
  * A segment's selected version is stale when any covered shot's inputs have
  * moved on since the render — i.e. the version's manifest references a frame or
- * motion-prompt version that is no longer the shot's selected one. Comparing the
- * stored references against the shots' *current* pointers (rather than rehashing)
- * is the derivation the schema doc calls out, and it sidesteps false positives
- * from non-referenced inputs like a re-snapped duration. A manifest entry whose
- * shot no longer exists (deleted/re-tiled) reads as stale, not fresh. An entry
- * with both version ids null is unknown provenance (legacy / unpinned trigger)
- * and is not stale — same contract as a null `inputHash`.
+ * motion-prompt version that is no longer the shot's selected one, or the
+ * bound dialogue-audio identity (`audioSourceKey`) no longer matches. Comparing
+ * the stored references against the shots' *current* pointers (rather than
+ * rehashing) is the derivation the schema doc calls out, and it sidesteps false
+ * positives from non-referenced inputs like a re-snapped duration. A manifest
+ * entry whose shot no longer exists (deleted/re-tiled) reads as stale, not
+ * fresh. An entry with both version ids null is unknown provenance (legacy /
+ * unpinned trigger) and is not stale — same contract as a null `inputHash`.
  */
 export function isSelectedVersionStale(
   selected: SegmentVersionInput | undefined,
   currentMotionByShot: ReadonlyMap<string, string | null>,
-  currentFrameByShot: ReadonlyMap<string, string | null>
+  currentFrameByShot: ReadonlyMap<string, string | null>,
+  currentAudioSourceKeyByShot: ReadonlyMap<string, string | null> = new Map()
 ): boolean {
   if (!selected) return false;
   return selected.manifest.some((entry) => {
@@ -177,9 +182,11 @@ export function isSelectedVersionStale(
     }
     const currentMotion = currentMotionByShot.get(entry.shotId) ?? null;
     const currentFrame = currentFrameByShot.get(entry.shotId) ?? null;
+    const currentAudio = currentAudioSourceKeyByShot.get(entry.shotId) ?? null;
     return (
       entry.motionPromptVersionId !== currentMotion ||
-      entry.frameVersionId !== currentFrame
+      entry.frameVersionId !== currentFrame ||
+      (entry.audioSourceKey ?? null) !== currentAudio
     );
   });
 }
@@ -195,6 +202,12 @@ export function assembleSequenceSegments(input: {
   versions: readonly SegmentVersionInput[];
   shots: readonly SegmentShotInput[];
   frames: readonly SegmentFrameInput[];
+  /**
+   * Live dialogue-audio identity per shot (voice id + line + tone + TTS
+   * model). Omitted keys are voiceless (`null`). Same pointer comparison as
+   * motion-prompt / frame version ids.
+   */
+  currentAudioSourceKeyByShot?: ReadonlyMap<string, string | null>;
 }): SequenceSegment[] {
   // Membership lives on the shot; callers pass shots already in hierarchical
   // order (scene, then shot number).
@@ -253,7 +266,8 @@ export function assembleSequenceSegments(input: {
       stale: isSelectedVersionStale(
         selected,
         currentMotionByShot,
-        currentFrameByShot
+        currentFrameByShot,
+        input.currentAudioSourceKeyByShot
       ),
     };
   });

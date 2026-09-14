@@ -108,6 +108,7 @@ function makeEvent(
     imageModel: DEFAULT_IMAGE_MODEL,
     videoModel: DEFAULT_VIDEO_MODEL,
     elementIds: [],
+    referenceOnly: false,
     ownerEmail: 'owner@example.com',
     sequenceUrl: 'https://openstory.so/sequences/seq_1/scenes',
     ...extras,

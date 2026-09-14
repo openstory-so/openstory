@@ -180,6 +180,7 @@ function versionInput(
         usesStartFrame: true,
         durationMs: 3000,
         audioClipIds: [],
+        audioSourceKey: null,
       },
     ],
     status: 'completed',
@@ -458,6 +459,7 @@ describe('listSelectedModelsBySequence (#1066)', () => {
             usesStartFrame: true,
             durationMs: 3000,
             audioClipIds: [],
+            audioSourceKey: null,
           },
         ],
       })
@@ -542,6 +544,7 @@ describe('listLastFailedModelsBySequence (#1066)', () => {
             usesStartFrame: true,
             durationMs: 3000,
             audioClipIds: [],
+            audioSourceKey: null,
           },
         ],
       })

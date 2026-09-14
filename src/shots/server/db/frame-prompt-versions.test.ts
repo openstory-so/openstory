@@ -11,6 +11,7 @@
 
 import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
+import { visualPromptInputHash } from '@/shots/input-hash';
 import {
   framePromptVersions,
   frames,
@@ -108,7 +109,7 @@ describe('framePromptVersions.write', () => {
       frameId,
       text: 'AI prompt v1',
       source: 'ai-generated',
-      inputHash: 'hash-1',
+      inputHash: visualPromptInputHash('hash-1'),
       analysisModel: HAIKU,
     });
 
@@ -130,14 +131,14 @@ describe('framePromptVersions.write', () => {
       frameId,
       text: 'AI prompt v1',
       source: 'ai-generated',
-      inputHash: 'hash-1',
+      inputHash: visualPromptInputHash('hash-1'),
       analysisModel: HAIKU,
     });
     const retried = await m.write({
       frameId,
       text: 'AI prompt v1',
       source: 'ai-generated',
-      inputHash: 'hash-1',
+      inputHash: visualPromptInputHash('hash-1'),
       analysisModel: HAIKU,
     });
     expect(retried.id).toBe(first.id);
@@ -150,14 +151,14 @@ describe('framePromptVersions.write', () => {
       frameId,
       text: 'AI prompt v1',
       source: 'ai-generated',
-      inputHash: 'hash-1',
+      inputHash: visualPromptInputHash('hash-1'),
       analysisModel: HAIKU,
     });
     const forced = await m.write({
       frameId,
       text: 'Fresh completion against same inputs',
       source: 'regenerated',
-      inputHash: 'hash-1',
+      inputHash: visualPromptInputHash('hash-1'),
       analysisModel: HAIKU,
     });
     expect(forced.id).not.toBe(first.id);
@@ -189,7 +190,7 @@ describe('framePromptVersions.write', () => {
       frameId,
       text: 'AI prompt v1',
       source: 'ai-generated',
-      inputHash: 'hash-1',
+      inputHash: visualPromptInputHash('hash-1'),
       analysisModel: HAIKU,
     });
 
@@ -197,7 +198,7 @@ describe('framePromptVersions.write', () => {
       frameId,
       text: 'Hand-edited prompt',
       source: 'user-edit',
-      inputHash: 'hash-1',
+      inputHash: visualPromptInputHash('hash-1'),
       analysisModel: HAIKU,
     });
 
@@ -231,14 +232,14 @@ describe('framePromptVersions.write', () => {
       frameId,
       text: 'AI prompt v1',
       source: 'ai-generated',
-      inputHash: 'hash-1',
+      inputHash: visualPromptInputHash('hash-1'),
       analysisModel: HAIKU,
     });
     await m.write({
       frameId,
       text: 'AI prompt v1',
       source: 'regenerated',
-      inputHash: 'hash-1',
+      inputHash: visualPromptInputHash('hash-1'),
       analysisModel: HAIKU,
     });
     expect(await m.listByFrame(frameId)).toHaveLength(1);
@@ -250,7 +251,7 @@ describe('framePromptVersions.write', () => {
       frameId,
       text: 'AI prompt v1',
       source: 'ai-generated',
-      inputHash: 'hash-1',
+      inputHash: visualPromptInputHash('hash-1'),
       analysisModel: HAIKU,
     });
     await m.write({
@@ -277,14 +278,14 @@ describe('framePromptVersions.write', () => {
       frameId,
       text: 'A graphic fight in the alley',
       source: 'ai-generated',
-      inputHash: 'hash-1',
+      inputHash: visualPromptInputHash('hash-1'),
       analysisModel: HAIKU,
     });
     const softened = await m.write({
       frameId,
       text: 'Two figures confront each other in the alley',
       source: 'softened',
-      inputHash: 'hash-1',
+      inputHash: visualPromptInputHash('hash-1'),
       analysisModel: HAIKU,
     });
     expect(softened.id).not.toBe(first.id);
@@ -305,14 +306,14 @@ describe('framePromptVersions.select (restore)', () => {
       frameId,
       text: 'AI prompt v1',
       source: 'ai-generated',
-      inputHash: 'hash-1',
+      inputHash: visualPromptInputHash('hash-1'),
       analysisModel: HAIKU,
     });
     const v2 = await m.write({
       frameId,
       text: 'AI prompt v2',
       source: 'regenerated',
-      inputHash: 'hash-2',
+      inputHash: visualPromptInputHash('hash-2'),
       analysisModel: HAIKU,
     });
     // Frame now points at v2; restore v1.
@@ -355,7 +356,7 @@ describe('framePromptVersions.select (restore)', () => {
       frameId: sibling.id,
       text: 'belongs to sibling',
       source: 'ai-generated',
-      inputHash: 'hash-s',
+      inputHash: visualPromptInputHash('hash-s'),
       analysisModel: HAIKU,
     });
 
@@ -377,7 +378,7 @@ describe('framePromptVersions.getByIdForFrame', () => {
       frameId,
       text: 'belongs to frame A',
       source: 'ai-generated',
-      inputHash: 'hash-A',
+      inputHash: visualPromptInputHash('hash-A'),
       analysisModel: HAIKU,
     });
 
@@ -419,6 +420,25 @@ describe('framePromptVersions.completePendingAiVersion', () => {
     expect(frame.selectedImagePromptVersionId).toBe(claim.id);
   });
 
+  it('persists the claim pendingInputHash, not a caller-supplied digest (#1616)', async () => {
+    const m = createFramePromptVersionsMethods(db);
+    const claim = await m.createPending({
+      frameId,
+      pendingInputHash: 'verify-hash-at-trigger',
+    });
+    await m.markGenerating(claim.id, 'run-1');
+
+    const completed = await m.completePendingAiVersion({
+      versionId: claim.id,
+      frameId,
+      text: 'Regenerated prompt',
+      analysisModel: HAIKU,
+      inputHash: visualPromptInputHash('voiceless-payload-recompute'),
+    });
+
+    expect(completed?.inputHash).toBe('verify-hash-at-trigger');
+  });
+
   it('a post-click user edit keeps the mirror — the run completes to history only', async () => {
     // The invariant the PR is named for: the system cannot lose an edit.
     const m = createFramePromptVersionsMethods(db);
@@ -441,7 +461,7 @@ describe('framePromptVersions.completePendingAiVersion', () => {
       versionId: claim.id,
       frameId,
       text: 'Older run output',
-      inputHash: 'live-hash',
+      inputHash: visualPromptInputHash('live-hash'),
       analysisModel: HAIKU,
     });
 
@@ -467,7 +487,7 @@ describe('framePromptVersions.completePendingAiVersion', () => {
       frameId,
       text: 'Original',
       source: 'ai-generated',
-      inputHash: 'hash-0',
+      inputHash: visualPromptInputHash('hash-0'),
       analysisModel: HAIKU,
     });
     const claim = await m.createPending({
@@ -506,7 +526,7 @@ describe('framePromptVersions.completePendingAiVersion', () => {
       frameId,
       text: 'Same output',
       source: 'ai-generated',
-      inputHash: 'hash-1',
+      inputHash: visualPromptInputHash('hash-1'),
       analysisModel: HAIKU,
     });
     const claim = await m.createPending({
@@ -544,7 +564,7 @@ describe('framePromptVersions.completePendingAiVersion', () => {
       frameId,
       text: 'Old output',
       source: 'ai-generated',
-      inputHash: 'hash-1',
+      inputHash: visualPromptInputHash('hash-1'),
       analysisModel: HAIKU,
     });
     const claim = await m.createPending({
@@ -601,7 +621,7 @@ describe('framePromptVersions.completePendingAiVersion', () => {
       frameId,
       text: 'Original prompt',
       source: 'ai-generated',
-      inputHash: 'hash-0',
+      inputHash: visualPromptInputHash('hash-0'),
       analysisModel: HAIKU,
     });
     const claim = await m.createPending({
@@ -624,7 +644,7 @@ describe('framePromptVersions.completePendingAiVersion', () => {
       versionId: claim.id,
       frameId,
       text: 'Would clobber restore',
-      inputHash: 'live-hash',
+      inputHash: visualPromptInputHash('live-hash'),
       analysisModel: HAIKU,
     });
     expect(completed?.status).toBe('completed');
@@ -673,7 +693,7 @@ describe('framePromptVersions.getLatestWithInputHash', () => {
       frameId,
       text: 'AI prompt',
       source: 'ai-generated',
-      inputHash: 'ai-hash',
+      inputHash: visualPromptInputHash('ai-hash'),
       analysisModel: HAIKU,
     });
     await m.write({

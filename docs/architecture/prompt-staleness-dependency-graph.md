@@ -188,6 +188,10 @@ Key consequences of the shape:
   character's `physicalDescription` and the visual + motion **prompts** go stale;
   the rendered thumbnail goes stale only because the **character-sheet hash**
   changes and feeds the thumbnail hash.
+- **Voice ids bind on the clip**, not the motion prompt. A designed ElevenLabs
+  id is `VideoManifestEntry.audioSourceKey` (shape-stable: omitted when
+  voiceless), the sheet analogue of `characterSheetHashes` on the still. The
+  LLM never sees it, so swapping a voice re-stales the render, not the prompt.
 - **Image → video is a hash cascade.** The video hash includes the source image's
   hash (`FrameVideoSourceImage = { kind: 'variantHash'; hash }`), so a stale image
   invalidates its motion without the video needing to know _why_ the image changed.
@@ -211,7 +215,7 @@ Listed in generation order (matching §4.1):
 | **Motion prompt**             | `motion-prompt-scene-workflow.ts`                         | `getFrameStalenessFn`                                    | _same as visual_                                                                                                                        |
 | **Sequence music prompt**     | `music-prompt-workflow`                                   | sequence music checks                                    | sceneSummaries, analysisModel                                                                                                           |
 | **Thumbnail / variant image** | `frame-images-workflow.ts` / `image-workflow-snapshot.ts` | `getFrameStalenessFn` via `buildRegenerateFrameSnapshot` | effective visual prompt text, imageModel, aspectRatio, size, seed, characterSheetHashes, locationSheetHashes, elementReferenceHashes    |
-| **Frame video**               | `motion-workflow*`                                        | `frameVariants.isStale`                                  | sourceImage (variant hash or URL), motion prompt text, motionModel, durationSeconds, fps, aspectRatio                                   |
+| **Frame video**               | `motion-workflow*`                                        | `videoVariants.isStale` / `isSelectedVersionStale`       | manifest pointers (motion-prompt / frame version ids, `usesStartFrame`, durationMs, `audioClipIds`, `audioSourceKey`)                   |
 | **Frame / sequence audio**    | `music-workflow`                                          | `frameVariants.isStale` / sequence checks                | musicPrompt, tags (sorted set), durationSeconds, audioModel                                                                             |
 
 Two cross-cutting normalizations make the hash order-insensitive and

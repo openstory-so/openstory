@@ -49,7 +49,7 @@ export type WriteFramePromptVersionInput = WriteFramePromptVersionBase &
   (
     | {
         source: 'ai-generated' | 'regenerated';
-        inputHash: string;
+        inputHash: VisualPromptInputHash;
         analysisModel: string;
       }
     | {
@@ -367,7 +367,7 @@ export function createFramePromptVersionsMethods(db: Database) {
        * (`pendingInputHash` nulled). Prefer the claim hash — that is the
        * verify digest captured at trigger (#1616).
        */
-      inputHash?: VisualPromptInputHash | string;
+      inputHash?: VisualPromptInputHash;
       analysisModel: string;
     }): Promise<FramePromptVersion | null> => {
       const [claim] = await db

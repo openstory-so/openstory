@@ -62,8 +62,7 @@ export class MotionPromptWorkflow extends OpenStoryWorkflowEntrypoint<MotionProm
       sequenceId,
       shotId,
       startingFrameImageUrl,
-      referenceOnly = false,
-      characterVoices,
+      referenceOnly,
     } = input;
 
     // ============================================================
@@ -113,7 +112,6 @@ export class MotionPromptWorkflow extends OpenStoryWorkflowEntrypoint<MotionProm
       analysisModel: analysisModelId,
       startingFrameImageUrl: startingFrameImageUrl ?? null,
       referenceOnly,
-      characterVoices,
     });
 
     const promptVariables = {

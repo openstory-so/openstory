@@ -55,8 +55,7 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
       shotMapping,
       sequenceId,
       startingFrameImageUrls,
-      referenceOnly = false,
-      characterVoices,
+      referenceOnly,
     } = input;
 
     // ============================================================
@@ -122,7 +121,6 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
           shotId: mapping.shotId || undefined,
           startingFrameImageUrl,
           referenceOnly,
-          characterVoices,
         };
 
         return spawnAndAwaitChild<
@@ -235,7 +233,6 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
                   analysisModel: analysisModelId,
                   startingFrameImageUrl,
                   referenceOnly,
-                  characterVoices,
                 })
               ),
               analysisModel: analysisModelId,

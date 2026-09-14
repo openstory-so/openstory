@@ -648,7 +648,6 @@ describe('prompt input hashes', () => {
     analysisModel: 'anthropic/claude-haiku-4.5',
     startingFrameImageUrl: null,
     referenceOnly: false,
-    characterVoices: [],
   };
 
   it('visual and motion prompt hashes are namespaced by artifact and differ', async () => {
@@ -692,7 +691,10 @@ describe('prompt input hashes', () => {
     ).toBe(await hashVisualPromptInput(sceneCtx));
   });
 
-  it('dialogue voices re-stale the motion prompt only, and only when present (#1554)', async () => {
+  it('dialogue text re-stales the motion prompt; voice ids do not (#1554)', async () => {
+    // Voice identity binds on the clip (`audioSourceKey`), like a character
+    // sheet on the still. The LLM never sees the ElevenLabs id, so swapping
+    // it must not move the motion-prompt digest.
     const stayDown = {
       ...minimalScene,
       originalScript: {
@@ -701,38 +703,11 @@ describe('prompt input hashes', () => {
       },
     };
     const withDialogue = { ...sceneCtx, scene: stayDown };
-    const voiced = {
-      ...withDialogue,
-      characterVoices: [{ name: 'Alice', voiceId: 'voice-sarah' }],
-    };
-    expect(await hashMotionPromptInput(voiced)).not.toBe(
-      await hashMotionPromptInput(withDialogue)
+    expect(await hashMotionPromptInput(withDialogue)).not.toBe(
+      await hashMotionPromptInput(sceneCtx)
     );
-    expect(await hashVisualPromptInput(voiced)).toBe(
-      await hashVisualPromptInput(withDialogue)
-    );
-    // Shape-stable: empty and blank voice ids hash exactly as voiceless.
-    expect(
-      await hashMotionPromptInput({ ...sceneCtx, characterVoices: [] })
-    ).toBe(await hashMotionPromptInput(sceneCtx));
-    expect(
-      await hashMotionPromptInput({
-        ...withDialogue,
-        characterVoices: [{ name: 'Alice', voiceId: '' }],
-      })
-    ).toBe(await hashMotionPromptInput(withDialogue));
-    expect(
-      await hashMotionPromptInput({
-        ...sceneCtx,
-        scene: stayDown,
-        characterVoices: [{ name: 'Alice', voiceId: 'voice-sarah' }],
-      })
-    ).not.toBe(
-      await hashMotionPromptInput({
-        ...sceneCtx,
-        scene: stayDown,
-        characterVoices: [{ name: 'Alice', voiceId: 'voice-other' }],
-      })
+    expect(await hashVisualPromptInput(withDialogue)).not.toBe(
+      await hashVisualPromptInput(sceneCtx)
     );
     expect(
       await hashMotionPromptInput({
@@ -746,15 +721,14 @@ describe('prompt input hashes', () => {
             ],
           },
         },
-        characterVoices: [{ name: 'Alice', voiceId: 'voice-sarah' }],
       })
-    ).not.toBe(await hashMotionPromptInput(voiced));
+    ).not.toBe(await hashMotionPromptInput(withDialogue));
   });
 
-  it('assembler rejects a missing characterVoices channel (#1616)', () => {
-    const { characterVoices: _dropped, ...withoutVoices } = sceneCtx;
-    expect(() => assembleMotionPromptHashInput(withoutVoices)).toThrow();
-    expect(assembleMotionPromptHashInput(sceneCtx).characterVoices).toEqual([]);
+  it('assembler rejects a missing referenceOnly channel (#1616)', () => {
+    const { referenceOnly: _dropped, ...withoutFlag } = sceneCtx;
+    expect(() => assembleMotionPromptHashInput(withoutFlag)).toThrow();
+    expect(assembleMotionPromptHashInput(sceneCtx).referenceOnly).toBe(false);
   });
 
   it('branded digest is not a raw sha256 of {kind, text} (#1616)', async () => {
@@ -768,7 +742,7 @@ describe('prompt input hashes', () => {
     expectTypeOf(assembler).toEqualTypeOf<MotionPromptInputHash>();
     expectTypeOf<string>().not.toMatchTypeOf<MotionPromptInputHash>();
     expectTypeOf<
-      Omit<MotionPromptHashInput, 'characterVoices'>
+      Omit<MotionPromptHashInput, 'referenceOnly'>
     >().not.toMatchTypeOf<MotionPromptHashInput>();
   });
 
