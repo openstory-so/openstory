@@ -68,18 +68,11 @@ export function buildPosterPrompt(
   return clampPrompt(parts.join(' '));
 }
 
-/** Drop ALL-CAPS sluglines — they read as signage against NO_TEXT_SUFFIX. */
-function previewPart(value: string): string {
-  const trimmed = value.trim().replace(/\.+$/, '');
-  const letters = trimmed.replace(/[^A-Za-z]/g, '');
-  if (letters.length > 0 && letters === letters.toUpperCase()) return '';
-  return trimmed;
-}
-
 /**
  * Animatic text for one shot's preview (#1642). Shot spec is the source of
  * truth, including on a 1-shot scene; the scene slice is the empty-spec
- * fallback. Style stays out (#1277).
+ * fallback. Style stays out (#1277). Location/time-of-day live on the scene
+ * and already show up inside composition — appending them draws signage.
  */
 export function previewTextForShot(
   scene: PreviewShotScene,
@@ -93,10 +86,8 @@ export function previewTextForShot(
       spec.framing.composition,
       spec.framing.subjectStartState,
       spec.action,
-      scene.metadata.location,
-      scene.metadata.timeOfDay,
     ]
-      .map(previewPart)
+      .map((part) => part.trim().replace(/\.+$/, ''))
       .filter((part) => part.length > 0);
     if (parts.length > 0) return parts.join('. ');
   }

@@ -36,8 +36,7 @@ describe('previewTextForShot', () => {
     expect(text).toContain('She fills the right third, doorway left');
     expect(text).toContain('She stands at the door, hand on the frame');
     expect(text).toContain('She opens the door');
-    expect(text).toContain('Apartment hallway');
-    expect(text).toContain('morning');
+    expect(text).not.toContain('Apartment hallway');
     expect(text).not.toContain('screenplay slice');
   });
 
@@ -106,20 +105,10 @@ describe('previewTextForShot', () => {
     expect(text).not.toContain('..');
   });
 
-  it('drops ALL-CAPS sluglines so they are not drawn as signage', () => {
-    const text = previewTextForShot(
-      scene({
-        metadata: {
-          title: 'The hallway',
-          location: 'DOWNTOWN CROSSWALK',
-          timeOfDay: 'LATE MORNING',
-        },
-      }),
-      1
-    );
-    expect(text).not.toContain('DOWNTOWN CROSSWALK');
-    expect(text).not.toContain('LATE MORNING');
-    expect(text).toContain('She fills the right third, doorway left');
+  it('does not append scene location or time of day', () => {
+    const text = previewTextForShot(scene(), 1);
+    expect(text).not.toContain('Apartment hallway');
+    expect(text).not.toContain('morning');
   });
 });
 
