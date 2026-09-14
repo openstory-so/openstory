@@ -911,8 +911,8 @@ describe('SceneSplitWorkflow shot-list pass (#1486)', () => {
     // A legacy-shaped script: scene 1 still carries the OLD `Shot N — Xs`
     // lines Enhance used to write — Enhance no longer emits these (#1621),
     // so they are now just prose the split ignores; the shot-list pass
-    // divides scene 1's label exactly like scene 2's. Scene 3 (5s) still
-    // cannot hold two 4s clips.
+    // divides scene 1's label exactly like scene 2's. Scene 3 (5s) can
+    // hold two editorial shots (3s+2s); leftover packs snap at render.
     const script = [
       'Scene 1 — 12s',
       'Shot 1 — 4s',
@@ -943,7 +943,7 @@ describe('SceneSplitWorkflow shot-list pass (#1486)', () => {
       scenes: [
         { sceneNumber: 1, shots: [shotSpec(1, 'a'), shotSpec(2, 'b')] },
         { sceneNumber: 2, shots: [shotSpec(1, 'c'), shotSpec(2, 'd')] },
-        // Two shots asked for a 5s scene on a 4s-minimum grid: only one fits.
+        // Two shots on a 5s scene: editorial 1s floor lets both land.
         { sceneNumber: 3, shots: [shotSpec(1, 'e'), shotSpec(2, 'f')] },
       ],
     };
@@ -960,9 +960,14 @@ describe('SceneSplitWorkflow shot-list pass (#1486)', () => {
     );
     // Scene 1's stray Shot labels no longer fix [4, 8] — both shots carry the
     // same weight (`shotSpec`'s default), so its 12s label splits evenly,
-    // same as scene 2's unlabelled 10s.
-    expect(seconds).toEqual([[6, 6], [5, 5], [5]]);
-    expect(result.shotMapping).toHaveLength(5);
+    // same as scene 2's unlabelled 10s. Editorial 1s shots mean a 5s
+    // scene can hold two clips (3+2); packing snaps leftovers at render.
+    expect(seconds).toEqual([
+      [6, 6],
+      [5, 5],
+      [3, 2],
+    ]);
+    expect(result.shotMapping).toHaveLength(6);
     expect(result.scenes.every((scene) => !('shotLabelSeconds' in scene))).toBe(
       true
     );

@@ -333,11 +333,12 @@ export function formatCastForShotList(
 
 /**
  * The `shots:` budget line for one scene (#1593, #1621): the range the
- * scene's label allows on the model grid — at least one per longest clip, at
- * most one per shortest. Without the floor the model reads "up to N" as
- * licence for a handful and a long scene ends on one huge shot. The
- * shot-list LLM decides coverage within this range on its own — Enhance no
- * longer locks the count via its own shot labels.
+ * scene's label allows — at least one per longest clip, at most one per
+ * editorial second. The model's shortest clip is a render floor, not a
+ * shot floor. Without the floor the model reads "up to N" as licence for a
+ * handful and a long scene ends on one huge shot. The shot-list LLM
+ * decides coverage within this range on its own — Enhance no longer locks
+ * the count via its own shot labels.
  */
 function shotBudgetLine(
   scene: Pick<SceneSplittingScene, 'metadata'>,

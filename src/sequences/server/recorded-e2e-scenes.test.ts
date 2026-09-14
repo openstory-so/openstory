@@ -8,10 +8,9 @@
  * The recorded enhanced script still carries the OLD `Shot N — Xs` labels
  * Enhance used to write (#1486/#1593 era) — they are frozen fixture text.
  * Since #1621 the split no longer reads them as a coverage lock, so the
- * fixture's `shots:` lines were hand-updated to the grid-derived budget the
+ * fixture's `shots:` lines were hand-updated to the editorial-1s budget the
  * current code computes; the LLM's own shot-list response (and the resulting
- * shot durations, unchanged here because the old labels already landed on
- * the model's clip grid) did not need to change.
+ * shot durations) did not need to change.
  */
 
 import { describe, expect, it } from 'vitest';
