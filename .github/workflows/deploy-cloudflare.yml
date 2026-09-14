@@ -271,6 +271,10 @@ jobs:
           # 2.5 rejects photorealistic stills and falls through to fal.
           SECRET_BYTEPLUS_ACCESS_KEY: ${{ secrets.BYTEPLUS_ACCESS_KEY }}
           SECRET_BYTEPLUS_SECRET_KEY: ${{ secrets.BYTEPLUS_SECRET_KEY }}
+          # 0 = stay off the shared Ark asset pool (#1635). Seedance/Seedream
+          # go to fal. Set repo var BYTEPLUS_PREVIEW_ASSET_SLOTS=50 to opt a
+          # preview back onto native Ark + CreateAsset.
+          SECRET_BYTEPLUS_ASSET_SLOTS: ${{ vars.BYTEPLUS_PREVIEW_ASSET_SLOTS || '0' }}
           # Admin-scoped fal key so the preview's daily pricing refresh
           # bill-verifies model_pricing instead of error-logging (#1069).
           SECRET_FAL_BILLING_KEY: ${{ secrets.FAL_BILLING_KEY }}

@@ -50,6 +50,24 @@ function getBytePlusOpenApiHost(): string | undefined {
 }
 
 /**
+ * Resident ACR slots this process will occupy. Unset → 50 (Entry).
+ * `0` is valid: do not CreateAsset and do not claim the BytePlus via, so
+ * Seedance/Seedream stay on fal. Previews push `BYTEPLUS_ASSET_SLOTS=0`
+ * (#1635); set it to 50 (or unset) to opt a preview/local process back onto
+ * the shared account pool.
+ */
+const DEFAULT_BYTEPLUS_ASSET_SLOTS = 50;
+
+export function bytePlusAssetSlots(): number {
+  const raw = optionalEnv('BYTEPLUS_ASSET_SLOTS');
+  if (raw === undefined) return DEFAULT_BYTEPLUS_ASSET_SLOTS;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 0)
+    return DEFAULT_BYTEPLUS_ASSET_SLOTS;
+  return parsed;
+}
+
+/**
  * True when the platform can submit to Ark at all.
  *
  * E2E is hermetic by construction: aimock intercepts fal through the
@@ -61,6 +79,7 @@ function getBytePlusOpenApiHost(): string | undefined {
  * i.e. unless someone has deliberately wired a mock host to record against.
  */
 export function isBytePlusConfigured(): boolean {
+  if (bytePlusAssetSlots() === 0) return false;
   if (getArkApiKey() === undefined) return false;
   const env = getEnv();
   if (env.E2E_TEST === 'true' && !getArkBaseUrl()) return false;
@@ -87,6 +106,7 @@ export function claimBytePlusVia(options: {
  * real BytePlus unless a mock host is wired.
  */
 export function isBytePlusAssetsConfigured(): boolean {
+  if (bytePlusAssetSlots() === 0) return false;
   if (!getBytePlusAccessKey() || !getBytePlusSecretKey()) return false;
   const env = getEnv();
   if (env.E2E_TEST === 'true' && !getBytePlusOpenApiHost()) return false;

@@ -8,6 +8,7 @@ const {
   aigcGroupName,
   aigcGroupScope,
   arkAdapterConfig,
+  bytePlusAssetSlots,
   bytePlusOpenApiConfig,
   claimBytePlusVia,
   isBytePlusAssetsConfigured,
@@ -23,6 +24,7 @@ describe('claimBytePlusVia', () => {
     env.BYTEPLUS_SECRET_KEY = undefined;
     env.BYTEPLUS_OPENAPI_HOST = undefined;
     env.BYTEPLUS_ASSET_GROUP_ID = undefined;
+    env.BYTEPLUS_ASSET_SLOTS = undefined;
     env.E2E_TEST = undefined;
   });
 
@@ -70,6 +72,18 @@ describe('claimBytePlusVia', () => {
     expect(isBytePlusConfigured()).toBe(false);
   });
 
+  it('routes to fal when BYTEPLUS_ASSET_SLOTS is 0 even with an Ark key', () => {
+    env.ARK_API_KEY = 'ark-test';
+    env.BYTEPLUS_ASSET_SLOTS = '0';
+    expect(
+      claimBytePlusVia({
+        native: true,
+        usingOwnFalKey: false,
+      })
+    ).toBe('fal');
+    expect(isBytePlusConfigured()).toBe(false);
+  });
+
   // Playwright injects the developer's process env into the worker, so a key
   // in a local .env.local would otherwise point the suite at real, billable
   // BytePlus — aimock cannot intercept Ark the way it intercepts fal.
@@ -97,6 +111,7 @@ describe('isBytePlusAssetsConfigured', () => {
     env.BYTEPLUS_SECRET_KEY = undefined;
     env.BYTEPLUS_OPENAPI_HOST = undefined;
     env.BYTEPLUS_ASSET_GROUP_ID = undefined;
+    env.BYTEPLUS_ASSET_SLOTS = undefined;
     env.E2E_TEST = undefined;
   });
 
@@ -125,6 +140,35 @@ describe('isBytePlusAssetsConfigured', () => {
     expect(isBytePlusAssetsConfigured()).toBe(false);
     env.BYTEPLUS_OPENAPI_HOST = 'http://localhost:4010';
     expect(isBytePlusAssetsConfigured()).toBe(true);
+  });
+
+  it('is off when BYTEPLUS_ASSET_SLOTS is 0 even with IAM keys', () => {
+    env.BYTEPLUS_ACCESS_KEY = 'AKTEST';
+    env.BYTEPLUS_SECRET_KEY = 'sk-test';
+    env.BYTEPLUS_ASSET_SLOTS = '0';
+    expect(bytePlusAssetSlots()).toBe(0);
+    expect(isBytePlusAssetsConfigured()).toBe(false);
+    expect(bytePlusOpenApiConfig()).toBeUndefined();
+  });
+});
+
+describe('bytePlusAssetSlots', () => {
+  beforeEach(() => {
+    env.BYTEPLUS_ASSET_SLOTS = undefined;
+  });
+
+  it('defaults to 50 when unset', () => {
+    expect(bytePlusAssetSlots()).toBe(50);
+  });
+
+  it('honours 0 so a process can stay off the shared pool', () => {
+    env.BYTEPLUS_ASSET_SLOTS = '0';
+    expect(bytePlusAssetSlots()).toBe(0);
+  });
+
+  it('honours a positive override', () => {
+    env.BYTEPLUS_ASSET_SLOTS = '3';
+    expect(bytePlusAssetSlots()).toBe(3);
   });
 });
 

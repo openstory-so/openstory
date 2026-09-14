@@ -172,6 +172,7 @@ describe('SECRETS catalog (#1502)', () => {
     expect(SECRETS.BYTEPLUS_ACCESS_KEY).toEqual(runtime);
     expect(SECRETS.BYTEPLUS_SECRET_KEY).toEqual(runtime);
     expect(SECRETS.BYTEPLUS_ASSET_GROUP_ID).toEqual(runtime);
+    expect(SECRETS.BYTEPLUS_ASSET_SLOTS).toEqual(runtime);
     expect(SECRETS.BYTEPLUS_OPENAPI_HOST).toEqual(runtime);
   });
 

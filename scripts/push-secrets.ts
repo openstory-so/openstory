@@ -71,6 +71,7 @@ export const SECRETS = {
   BYTEPLUS_ACCESS_KEY: { runtime: true, build: false },
   BYTEPLUS_SECRET_KEY: { runtime: true, build: false },
   BYTEPLUS_ASSET_GROUP_ID: { runtime: true, build: false },
+  BYTEPLUS_ASSET_SLOTS: { runtime: true, build: false },
   BYTEPLUS_OPENAPI_HOST: { runtime: true, build: false },
   BETTER_AUTH_SECRET: { runtime: true, build: false },
   // Designed voices live on this account; there is no team BYOK (#1552).

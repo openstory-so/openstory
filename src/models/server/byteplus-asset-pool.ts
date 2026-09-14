@@ -28,11 +28,11 @@
  */
 
 import { NonRetryableError } from 'cloudflare:workflows';
-import { getEnv } from '#env';
 import type { BytePlusAssetSlot } from '@/platform/server/db/schema/byteplus-assets';
 import type { createBytePlusAssetsMethods } from '@/models/server/db/byteplus-assets';
 import { getLogger } from '@/platform/logger';
 import { reportBytePlusAssetPool } from './byteplus-observability';
+import { bytePlusAssetSlots } from './byteplus-config';
 import {
   deleteAsset,
   hashAssetIdentity,
@@ -43,27 +43,14 @@ import {
 } from './byteplus-assets';
 import type { BytePlusOpenApiConfig } from './byteplus-openapi';
 
+export { bytePlusAssetSlots };
+
 const logger = getLogger(['openstory', 'ai', 'byteplus-asset-pool']);
 
 type Ledger = ReturnType<typeof createBytePlusAssetsMethods>;
 
 /** Reserve + finalize, as `scopedDb.bytePlusAssets` — both writes, no hatch. */
 export type AssetPoolLedger = Pick<Ledger, 'claimSlot' | 'finalizeSlot'>;
-
-/**
- * Resident asset slots on the BytePlus account.
- *
- * Entry Advanced Creation Rights is 50 slots per ACCOUNT (not per project,
- * not per team, and shared with the real-human library) — the same shape as
- * the Ark RPM quotas. Transcribed 2026-09-06 from the ACR purchase guide as
- * relayed in #1361; NOT verified against a live 429, so `BYTEPLUS_ASSET_SLOTS`
- * overrides it without a code change when the tier moves. Under-setting it is
- * safe (we evict early); over-setting it just means `CreateAsset` refuses and
- * the shot fails with Ark's error.
- *
- * Not to be confused with Seedance 2.5's 50 references, which is per REQUEST.
- */
-const DEFAULT_BYTEPLUS_ASSET_SLOTS = 50;
 
 /**
  * How long a submitted still stays pinned when nobody releases it.
@@ -78,14 +65,6 @@ const DEFAULT_BYTEPLUS_ASSET_SLOTS = 50;
  * another run can take it over.
  */
 const LEASE_TTL_MS = 45 * 60 * 1000;
-
-export function bytePlusAssetSlots(): number {
-  const raw = Reflect.get(getEnv(), 'BYTEPLUS_ASSET_SLOTS');
-  const parsed = typeof raw === 'string' ? Number.parseInt(raw, 10) : NaN;
-  return Number.isFinite(parsed) && parsed > 0
-    ? parsed
-    : DEFAULT_BYTEPLUS_ASSET_SLOTS;
-}
 
 /**
  * The ledger's key for each distinct stored URL. Exported so the batch can
