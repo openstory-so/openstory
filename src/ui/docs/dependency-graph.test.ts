@@ -68,6 +68,20 @@ describe('dependency graph', () => {
     expect(ids(staleAfterEdit('musicOn', 'start-frame'))).toEqual(['export']);
   });
 
+  it('a voice change re-stales the clip, not the motion prompt', () => {
+    expect(ids(staleAfterEdit('voice', 'start-frame'))).toEqual([
+      'clip',
+      'export',
+    ]);
+    expect(ids(staleAfterEdit('voice', 'reference-only'))).toEqual([
+      'clip',
+      'export',
+    ]);
+    expect(ids(staleBecauseOf('motionPrompt', 'start-frame'))).not.toContain(
+      'voice'
+    );
+  });
+
   it('upstream walk mirrors the downstream walk', () => {
     for (const a of GRAPH_NODES) {
       const down = ids(staleAfterEdit(a.id, 'start-frame'));

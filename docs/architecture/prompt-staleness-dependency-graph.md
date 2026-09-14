@@ -53,7 +53,7 @@ stored hash != recompute(now)  → "stale"      (an input changed → show "rege
 ```
 
 `recompute(now)` reads the **current persisted state** and re-derives the hash.
-Helpers live in [`src/shots/input-hash.ts`](../../src/lib/ai/input-hash.ts).
+Helpers live in [`src/shots/input-hash.ts`](../../src/shots/input-hash.ts).
 
 **The invariant that must hold:** the hash computed at **stamp time** (inside the
 generating workflow) and the hash computed at **verify time** (inside
@@ -136,6 +136,7 @@ flowchart LR
         amodel2{{"audioModel"}}
         dur{{"durationSeconds (snapped)"}}
         tags{{"music tags"}}
+        voice{{"character voiceId<br/>(designed ElevenLabs voice)"}}
     end
 
     scene --> VP(["visual prompt hash"])
@@ -170,11 +171,12 @@ flowchart LR
     style --> LS
     imodel --> LS
 
-    TH --> VID(["frame video hash"])
-    MP -. "fullPrompt text" .-> VID
+    TH --> VID(["frame video / clip"])
+    MP -. "prompt version id" .-> VID
     vmodel --> VID
     dur --> VID
     ar --> VID
+    voice --> VID
 
     MUSIC(["sequence music-prompt hash"]) --> AUD(["frame / sequence audio hash"])
     tags --> AUD
@@ -202,7 +204,7 @@ Key consequences of the shape:
 
 ## 4. Per-artifact hash inputs (authoritative reference)
 
-Source of truth: [`src/shots/input-hash.ts`](../../src/lib/ai/input-hash.ts).
+Source of truth: [`src/shots/input-hash.ts`](../../src/shots/input-hash.ts).
 
 Listed in generation order (matching §4.1):
 
@@ -212,7 +214,7 @@ Listed in generation order (matching §4.1):
 | **Character sheet**           | `character-sheet-workflow`                                | sheet-staleness reads                                    | character bible fields, talentSheetHash, styleConfigHash, imageModel                                                                    |
 | **Location sheet**            | `location-sheet-workflow`                                 | sheet-staleness reads                                    | location bible fields, libraryLocationReferenceHash, styleConfigHash, imageModel                                                        |
 | **Visual prompt**             | `visual-prompt-scene-workflow.ts`                         | `getFrameStalenessFn` (`functions/frames.ts`)            | scene input surface, styleConfig, character/location/element bibles (narrowed), aspectRatio, analysisModel, `PROMPT_INPUT_HASH_VERSION` |
-| **Motion prompt**             | `motion-prompt-scene-workflow.ts`                         | `getFrameStalenessFn`                                    | _same as visual_                                                                                                                        |
+| **Motion prompt**             | `motion-prompt-scene-workflow.ts`                         | `computeShotStaleness`                                   | _same as visual_, plus starting-frame URL and `referenceOnly`. Voice ids are **not** a prompt channel.                                  |
 | **Sequence music prompt**     | `music-prompt-workflow`                                   | sequence music checks                                    | sceneSummaries, analysisModel                                                                                                           |
 | **Thumbnail / variant image** | `frame-images-workflow.ts` / `image-workflow-snapshot.ts` | `getFrameStalenessFn` via `buildRegenerateFrameSnapshot` | effective visual prompt text, imageModel, aspectRatio, size, seed, characterSheetHashes, locationSheetHashes, elementReferenceHashes    |
 | **Frame video**               | `motion-workflow*`                                        | `videoVariants.isStale` / `isSelectedVersionStale`       | manifest pointers (motion-prompt / frame version ids, `usesStartFrame`, durationMs, `audioClipIds`, `audioSourceKey`)                   |
@@ -399,13 +401,17 @@ sides; `consistencyTag` is no longer hashed at all).
 > entries themselves are hashed field-for-field. A single differing character
 > field (e.g. a cast `physicalDescription`) flips the whole digest.
 
-#### 4. Motion prompt — `computeMotionPromptInputHash`
+#### 4. Motion prompt — `hashMotionPromptInput`
 
-Generated in Phase 4. **Byte-identical to the visual body except the
-discriminator** — `artifact: 'frame:motion-prompt'`. Same scene surface, same
-bibles, same style, aspectRatio, analysisModel, hashVersion. (So a change that
-staleness-flags the visual prompt also flags the motion prompt — they share an
-input surface.)
+Generated in Phase 4. Same scene surface, bibles, style, aspectRatio,
+analysisModel and hashVersion as the visual body, plus `startingFrameImageUrl`
+and `referenceOnly` (the flag joins the body only when true). Discriminator is
+`artifact: 'shot:motion-prompt'`.
+
+Voice ids are **not** in this hash. They bind on the clip
+(`VideoManifestEntry.audioSourceKey`), the sheet analogue of
+`characterSheetHashes` on the still — the LLM never sees the ElevenLabs id, so
+swapping a voice must not rewrite the prompt.
 
 #### 5. Sequence music prompt — `computeMusicPromptInputHash`
 
@@ -438,22 +444,24 @@ sha256Hex({
 });
 ```
 
-#### 7. Frame video — `computeFrameVideoInputHash`
+#### 7. Clip / frame video — `computeVideoManifestInputHash`
 
-Rendered from the source image + the motion prompt text.
+The stamp is over the render manifest (motion-prompt / still version ids,
+`usesStartFrame`, duration, `audioClipIds`, `audioSourceKey`). The UI compare
+(`isSelectedVersionStale`) is pointer-based: stored entries vs the shot's
+current prompt / still version ids **and** the live `audioSourceKey` (voice id
+
+- line + tone + TTS model, omitted when voiceless). A voice change therefore
+  re-stales the clip, not the motion prompt.
 
 ```ts
 sha256Hex({
-  artifact: 'frame:video',
-  // the upstream image, as a HASH not a URL when possible:
-  sourceImage:
-    { kind: 'variantHash', hash: trim(hash) } | //   ← cascade: image change → video stale
-    { kind: 'url', url: trim(url) }, //   external asset with no hashable upstream
-  motionPrompt: trim(motionPrompt), // composed motion fullPrompt TEXT
-  motionModel,
-  durationSeconds, // hashed HERE (the snapped value) — not in the prompt hash
-  fps: fps ?? null,
-  aspectRatio,
+  artifact: 'video:manifest',
+  model,
+  manifest: entries.map(canonicalizeManifestEntry),
+  // each entry: shotId, motionPromptVersionId, frameVersionId,
+  // usesStartFrame, durationMs, audioClipIds (dropped when []),
+  // audioSourceKey (dropped when null)
 });
 ```
 

@@ -38,7 +38,7 @@ Every artifact-bearing row stores the SHA-256 hash of the canonical serializatio
 The rule is: anything that, if changed, should cause the user to see a "regenerate" affordance. For our artifacts this is:
 
 - **Frame image** (`frames.imageInputHash`, mirrored on the selected `frame_variants` version) — the composed visual prompt (`frame.imagePrompt` or `shot.metadata` fallback), image model, aspect ratio, and the **content hash of each referenced character sheet, location sheet, and element reference**. Crucially, the hash is over the _referenced sheets' hashes_, not their URLs.
-- **Shot video** (`shots.videoInputHash`) — source still selection, motion prompt, motion model, duration, fps, aspect ratio.
+- **Shot video** (`video_variants.inputHash` over the render manifest) — motion-prompt / still version ids, `usesStartFrame`, duration, `audioClipIds`, and `audioSourceKey` (voice id + line + tone + TTS model; omitted when voiceless). Voice ids are **not** on the motion-prompt hash.
 - **Shot audio** (`shots.audioInputHash`) — music prompt, tags, duration, audio model.
 - **Visual prompt** (`frames.visualPromptInputHash`) — upstream scene metadata + style config + character/location bible + analysis model.
 - **Motion prompt** (`shots.motionPromptInputHash`) — same upstream context plus the starting-frame image hash.

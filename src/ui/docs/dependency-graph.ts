@@ -345,9 +345,10 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     kind: 'input',
     band: 'bibles',
     summary:
-      'The lines spoken in a shot, assigned by the shot-list call at the Script stage. They ride on the motion prompt version and are appended at render; the panel binds a voice element to a line.',
+      'The lines spoken in a shot, assigned by the shot-list call at the Script stage. Wording rides the script (and so the motion prompt); the bound voice identity rides the clip.',
     counts: [
-      'Which voice is bound to which line (writes a new motion prompt version)',
+      'Voice id + line + tone + TTS model (clip audioSourceKey)',
+      'Which voice is bound to which line (a bound audio element skips TTS)',
     ],
     ignored: ['The wording: lines come from the script, edit them there'],
   },
@@ -396,13 +397,15 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     kind: 'artifact',
     band: 'references',
     summary:
-      'A designed ElevenLabs voice for a speaking character. Designed once and kept; nothing renders with it yet.',
-    counts: ['Nothing is compared today'],
+      'A designed ElevenLabs voice for a speaking character. Bound on the clip like a character sheet on the still — the LLM never sees the id, so a voice change does not rewrite the motion prompt.',
+    counts: [
+      'Voice id (folds into the clip manifest as audioSourceKey, with line, tone and TTS model)',
+    ],
     ignored: [
       'Voice description edits ("Generate voice" releases the old one and designs again)',
       'Character bible edits',
     ],
-    storedAs: 'characters.voiceId (no hash)',
+    storedAs: 'characters.voiceId → VideoManifestEntry.audioSourceKey',
   },
   {
     id: 'libraryLocationReference',
@@ -475,7 +478,11 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'The rendered still it was shown (start-frame mode)',
       'Start-frame mode',
     ],
-    ignored: ['Duration', 'Names and titles'],
+    ignored: [
+      'Duration',
+      'Names and titles',
+      'Voice ids (they bind on the clip, like sheets on the still)',
+    ],
     storedAs: 'shots.motionPromptInputHash',
   },
   {
@@ -527,6 +534,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     counts: [
       'Which motion prompt version it rendered',
       'Which still version it rendered (start-frame mode)',
+      'Bound dialogue-audio identity (audioSourceKey: voice id + line + tone + TTS model)',
     ],
     ignored: [
       {
@@ -754,8 +762,14 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
   {
     from: 'dialogue',
     to: 'clip',
-    tracking: 'pointer',
-    note: 'binding a voice writes a new motion prompt version, which the manifest records',
+    tracking: 'hash',
+    note: 'line + tone fold into audioSourceKey on the manifest',
+  },
+  {
+    from: 'voice',
+    to: 'clip',
+    tracking: 'hash',
+    note: 'the voice id folds into audioSourceKey; the LLM never sees it',
   },
   {
     from: 'element',
