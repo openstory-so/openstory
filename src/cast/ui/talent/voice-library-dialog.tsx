@@ -154,23 +154,24 @@ function FilterPills<T extends string>({
 }
 
 function FilterSelect<T extends string>({
+  id,
   label,
   value,
   options,
   onChange,
 }: {
+  id: string;
   label: string;
   value: T | undefined;
   options: readonly { value: T; label: string }[];
   onChange: (value: T | undefined) => void;
 }) {
-  const items = [
-    { value: 'any', label: 'Any' },
-    ...options.map((option) => ({
-      value: option.value,
-      label: option.label,
-    })),
-  ];
+  const items = {
+    any: 'Any',
+    ...Object.fromEntries(
+      options.map((option) => [option.value, option.label])
+    ),
+  };
   return (
     <div className="flex items-center justify-between gap-2">
       <p className="w-24 shrink-0 text-sm font-medium">{label}</p>
@@ -178,22 +179,34 @@ function FilterSelect<T extends string>({
         value={value ?? 'any'}
         items={items}
         onValueChange={(next) => {
+          if (!next || next === 'any') {
+            onChange(undefined);
+            return;
+          }
           const match = options.find((option) => option.value === next);
           onChange(match?.value);
         }}
       >
-        <SelectTrigger size="sm" className="min-w-40">
+        <SelectTrigger id={id} size="sm" className="min-w-40">
           <SelectValue />
         </SelectTrigger>
-        <SelectContent>
-          {items.map((item) => (
-            <SelectItem key={item.value} value={item.value}>
-              {item.label}
+        <SelectContent align="end" alignItemWithTrigger={false}>
+          <SelectItem value="any">Any</SelectItem>
+          {options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
             </SelectItem>
           ))}
         </SelectContent>
       </Select>
     </div>
+  );
+}
+
+function isSelectPopupTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    Boolean(target.closest('[data-slot="select-content"]'))
   );
 }
 
@@ -243,7 +256,18 @@ export const VoiceLibraryDialog: React.FC<VoiceLibraryDialogProps> = ({
         onOpenChange(next);
       }}
     >
-      <DialogContent className="flex h-[min(90vh,44rem)] w-full flex-col gap-3 sm:max-w-lg">
+      <DialogContent
+        className="flex h-[min(90vh,44rem)] w-full flex-col gap-3 sm:max-w-lg"
+        onPointerDownOutside={(event) => {
+          if (isSelectPopupTarget(event.target)) event.preventDefault();
+        }}
+        onFocusOutside={(event) => {
+          if (isSelectPopupTarget(event.target)) event.preventDefault();
+        }}
+        onInteractOutside={(event) => {
+          if (isSelectPopupTarget(event.target)) event.preventDefault();
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Voice library</DialogTitle>
           <DialogDescription className="sr-only">
@@ -263,6 +287,7 @@ export const VoiceLibraryDialog: React.FC<VoiceLibraryDialogProps> = ({
         </div>
         <div className="flex flex-col gap-2">
           <FilterSelect
+            id="voice-library-language"
             label="Language"
             value={filters.language}
             options={VOICE_LANGUAGES}
@@ -271,6 +296,7 @@ export const VoiceLibraryDialog: React.FC<VoiceLibraryDialogProps> = ({
             }
           />
           <FilterSelect
+            id="voice-library-nationality"
             label="Nationality"
             value={filters.accent}
             options={VOICE_NATIONALITIES}
