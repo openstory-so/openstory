@@ -15,8 +15,8 @@ import { SceneList, type SceneListProps } from './scene-list';
 import { SceneModelBar, scopeLabel } from './scene-model-bar';
 import {
   SceneScriptPrompts,
+  effectiveTabFor,
   tabsForScope,
-  type TabValue,
 } from './scene-script-prompts';
 import { FailureSummaryBanner } from '@/sequences/ui/failure-summary-banner';
 import { SequenceHeaderPortal } from '@/sequences/ui/sequence-header-slot';
@@ -77,7 +77,6 @@ import {
   selectShot,
   selectionScope,
   selectionShots,
-  type SceneFacet,
   type ScenesSearch,
 } from './scene-selection';
 import { formatShotSpan } from '@/shots/scene-segments';
@@ -223,11 +222,6 @@ type ScenesViewProps = {
   search?: ScenesSearch;
 };
 
-/** Facet tokens ARE tab values (#986); no facet in the URL → default tab. */
-function facetToTab(facet?: SceneFacet): TabValue {
-  return facet ?? 'cast';
-}
-
 const CompareWithPromptDiff: React.FC<{
   sequenceId: string;
   shot: ShotView;
@@ -332,16 +326,6 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   const handleAutoPlayConsumed = useCallback(() => {
     setAutoPlaySequence(false);
   }, []);
-
-  const [selectedTab, setSelectedTab] = useState<TabValue>(() =>
-    facetToTab(search.facet)
-  );
-
-  useEffect(() => {
-    if (search.facet) {
-      setSelectedTab(facetToTab(search.facet));
-    }
-  }, [search.facet]);
 
   const [regeneratingImages, setRegeneratingImages] = useState<Set<string>>(
     () => new Set()
@@ -741,17 +725,15 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     return formatShotSpan(numbers);
   }, [selectedSegment, shots]);
 
-  // Tabs are level-aware (#986). `selectedTab` holds the user's last pick; when
-  // the scope changes so that pick is no longer offered, fall back to the first
-  // tab for the new scope without mutating state — every downstream consumer
-  // reads `effectiveTab` so the panel, canvas, and previews stay in agreement.
+  // Tabs are level-aware (#986). `search.facet` is the user's last *explicit*
+  // pick (a click writes it; missing ≠ Cast). When the scope changes so that
+  // pick is no longer offered — or the user never picked — fall back to the
+  // first tab for the new scope. Every downstream consumer reads
+  // `effectiveTab` so the panel, canvas, and previews stay in agreement.
   const visibleTabs = useMemo(() => tabsForScope(scope), [scope]);
   const effectiveTab = useMemo(
-    () =>
-      visibleTabs.some((t) => t.value === selectedTab)
-        ? selectedTab
-        : (visibleTabs[0]?.value ?? 'cast'),
-    [visibleTabs, selectedTab]
+    () => effectiveTabFor(scope, search.facet),
+    [scope, search.facet]
   );
 
   // Shot ids in scope; `null` = whole sequence, so facets show the full
@@ -1643,10 +1625,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                     sequenceGeneratesStartFrames={generateStartFrames}
                     selectedTab={effectiveTab}
                     visibleTabs={visibleTabs}
-                    onTabChange={(tab) => {
-                      setSelectedTab(tab);
-                      setFacet(tab);
-                    }}
+                    onTabChange={setFacet}
                     regeneratingImages={regeneratingImages}
                     regeneratingMotion={regeneratingMotion}
                     onRegenerateStart={handleRegenerateStart}

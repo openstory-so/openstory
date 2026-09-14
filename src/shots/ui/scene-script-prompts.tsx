@@ -193,6 +193,23 @@ export function tabsForScope(scope: SelectionScope): TabDescriptor[] {
   ];
 }
 
+/**
+ * Which inspector tab to show for this scope.
+ *
+ * `picked` is the user's last explicit choice (a click, or a `facet` in the
+ * URL). No pick → first tab of the current scope: Cast at sequence, Script
+ * at scene, Video at shot. An implicit sequence Cast must not stick when
+ * the user clicks a shot (#1624).
+ */
+export function effectiveTabFor(
+  scope: SelectionScope,
+  picked: TabValue | undefined
+): TabValue {
+  const tabs = tabsForScope(scope);
+  if (picked && tabs.some((t) => t.value === picked)) return picked;
+  return tabs[0]?.value ?? 'cast';
+}
+
 function isValidTabValue(value: string): value is TabValue {
   return (SCENE_FACETS as readonly string[]).includes(value);
 }
