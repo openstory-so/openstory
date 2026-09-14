@@ -51,6 +51,7 @@ export const AddTalentDialog: React.FC<AddTalentDialogProps> = ({
   const [open, setOpen] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [uploadedUrls, setUploadedUrls] = useState<string[]>([]);
+  const [isFileUploading, setIsFileUploading] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [sheetFileKeys, setSheetFileKeys] = useState<Set<string>>(new Set());
@@ -80,6 +81,7 @@ export const AddTalentDialog: React.FC<AddTalentDialogProps> = ({
     detectJobsRef.current.clear();
     setFiles([]);
     setUploadedUrls([]);
+    setIsFileUploading(false);
     setName('');
     setDescription('');
     setSheetFileKeys(new Set());
@@ -288,7 +290,7 @@ export const AddTalentDialog: React.FC<AddTalentDialogProps> = ({
   };
 
   const isBusy = createPhase !== 'idle' || createTalent.isPending;
-  const isUploading = files.length > uploadedUrls.length;
+  const isUploading = isFileUploading;
   const statusMessage =
     createPhase === 'analyzing' ||
     (checkingFileKeys.size > 0 && createPhase === 'idle')
@@ -420,6 +422,7 @@ export const AddTalentDialog: React.FC<AddTalentDialogProps> = ({
                 files={files}
                 onFilesChange={handleFilesChange}
                 onUploadedUrlsChange={setUploadedUrls}
+                onUploadingChange={setIsFileUploading}
                 sheetFileKeys={sheetFileKeys}
                 checkingFileKeys={checkingFileKeys}
                 onFileUploaded={(file, url) => {

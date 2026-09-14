@@ -32,6 +32,7 @@ export const AddLocationDialog: React.FC<AddLocationDialogProps> = ({
   const [open, setOpen] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [uploadedUrls, setUploadedUrls] = useState<string[]>([]);
+  const [isFileUploading, setIsFileUploading] = useState(false);
 
   const isHydrated = useHydrated();
   const { requireAuth } = useAuthGate();
@@ -40,6 +41,7 @@ export const AddLocationDialog: React.FC<AddLocationDialogProps> = ({
   const closeAndReset = () => {
     setFiles([]);
     setUploadedUrls([]);
+    setIsFileUploading(false);
     setOpen(false);
   };
 
@@ -89,7 +91,7 @@ export const AddLocationDialog: React.FC<AddLocationDialogProps> = ({
   };
 
   const isPending = createLocation.isPending;
-  const isUploading = files.length > uploadedUrls.length;
+  const isUploading = isFileUploading;
 
   return (
     <Dialog
@@ -159,6 +161,7 @@ export const AddLocationDialog: React.FC<AddLocationDialogProps> = ({
                 files={files}
                 onFilesChange={setFiles}
                 onUploadedUrlsChange={setUploadedUrls}
+                onUploadingChange={setIsFileUploading}
                 disabled={isPending}
                 maxFiles={5}
               />

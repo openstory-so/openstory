@@ -32,6 +32,8 @@ type TalentMediaUploadProps = {
   onComplete?: () => void;
   /** Called after each successful upload with the stored URL. */
   onFileUploaded?: (file: File, url: string) => void;
+  /** True while a PUT is in flight. Failed uploads are not “still uploading”. */
+  onUploadingChange?: (uploading: boolean) => void;
   /** File keys (see getFileKey) detected as an existing character sheet. */
   sheetFileKeys?: ReadonlySet<string>;
   /** File keys whose sheet-vs-photo classify is still in flight. */
@@ -46,6 +48,7 @@ export const TalentMediaUpload: React.FC<TalentMediaUploadProps> = ({
   talentId,
   onComplete,
   onFileUploaded,
+  onUploadingChange,
   sheetFileKeys,
   checkingFileKeys,
   disabled = false,
@@ -53,6 +56,7 @@ export const TalentMediaUpload: React.FC<TalentMediaUploadProps> = ({
   const [uploadedUrlsMap, setUploadedUrlsMap] = useState<Map<string, string>>(
     new Map()
   );
+  const [failedKeys, setFailedKeys] = useState<Set<string>>(new Set());
   const uploadedKeysRef = useRef(new Set<string>());
   const { requireAuth } = useAuthGate();
   const uploadTempMedia = useUploadTempMedia();
@@ -61,6 +65,11 @@ export const TalentMediaUpload: React.FC<TalentMediaUploadProps> = ({
   useEffect(() => {
     onUploadedUrlsChange?.(Array.from(uploadedUrlsMap.values()));
   }, [uploadedUrlsMap, onUploadedUrlsChange]);
+
+  const isUploading = uploadTempMedia.isPending || uploadTalentMedia.isPending;
+  useEffect(() => {
+    onUploadingChange?.(isUploading);
+  }, [isUploading, onUploadingChange]);
 
   const handleValueChange = useCallback(
     (newFiles: File[]) => {
@@ -77,6 +86,10 @@ export const TalentMediaUpload: React.FC<TalentMediaUploadProps> = ({
           }
         }
         return changed ? next : prev;
+      });
+      setFailedKeys((prev) => {
+        const next = new Set([...prev].filter((key) => currentKeys.has(key)));
+        return next.size === prev.size ? prev : next;
       });
     },
     [onFilesChange]
@@ -124,6 +137,7 @@ export const TalentMediaUpload: React.FC<TalentMediaUploadProps> = ({
         } catch (error) {
           const err =
             error instanceof Error ? error : new Error('Upload failed');
+          setFailedKeys((prev) => new Set(prev).add(getFileKey(file)));
           onError(file, err);
           throw err;
         }
@@ -201,7 +215,11 @@ export const TalentMediaUpload: React.FC<TalentMediaUploadProps> = ({
               }
             />
             <FileUploadItemProgress className="absolute bottom-0 left-0 right-0 h-1" />
-            {sheetFileKeys?.has(getFileKey(file)) ? (
+            {failedKeys.has(getFileKey(file)) ? (
+              <Badge variant="destructive" className="absolute bottom-2 left-2">
+                Failed
+              </Badge>
+            ) : sheetFileKeys?.has(getFileKey(file)) ? (
               <Badge className="absolute bottom-2 left-2">Sheet</Badge>
             ) : checkingFileKeys?.has(getFileKey(file)) ? (
               <Badge variant="secondary" className="absolute bottom-2 left-2">

@@ -45,7 +45,10 @@ export function putToR2(
   options?: PutOptions
 ): Promise<void> {
   if (file.size <= MULTIPART_THRESHOLD) {
-    return putSingle(uploadUrl, file, contentType, onProgress, options);
+    return putSingle(uploadUrl, file, contentType, onProgress, {
+      ...options,
+      timeoutMs: options?.timeoutMs ?? 120_000,
+    });
   }
   return putMultipart(uploadUrl, file, contentType, onProgress, options);
 }

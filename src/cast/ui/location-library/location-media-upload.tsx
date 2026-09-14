@@ -22,6 +22,7 @@ type LocationMediaUploadProps = {
   onUploadedUrlsChange?: (urls: string[]) => void;
   locationId?: string;
   onComplete?: () => void;
+  onUploadingChange?: (uploading: boolean) => void;
   disabled?: boolean;
   maxFiles?: number;
 };
@@ -32,6 +33,7 @@ export const LocationMediaUpload: React.FC<LocationMediaUploadProps> = ({
   onUploadedUrlsChange,
   locationId,
   onComplete,
+  onUploadingChange,
   disabled = false,
   maxFiles = 5,
 }) => {
@@ -44,6 +46,10 @@ export const LocationMediaUpload: React.FC<LocationMediaUploadProps> = ({
   useEffect(() => {
     onUploadedUrlsChange?.(Array.from(uploadedUrlsMap.values()));
   }, [uploadedUrlsMap, onUploadedUrlsChange]);
+
+  useEffect(() => {
+    onUploadingChange?.(uploadMedia.isPending);
+  }, [uploadMedia.isPending, onUploadingChange]);
 
   const handleValueChange = useCallback(
     (newFiles: File[]) => {
