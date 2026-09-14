@@ -280,8 +280,10 @@ export const VoiceLibraryDialog: React.FC<VoiceLibraryDialogProps> = ({
             </Button>
           ) : null}
         </div>
-        <p className="h-5 text-sm text-destructive empty:invisible">
-          {query.isError ? 'Could not load voices. Try again in a moment.' : ''}
+        <p className="h-5 text-sm text-destructive">
+          <span className={query.isError ? undefined : 'invisible'}>
+            Could not load voices. Try again in a moment.
+          </span>
         </p>
       </DialogContent>
     </Dialog>
