@@ -2,7 +2,7 @@
  * Render segments (#990) — tiling a scene into ≤cap render units.
  *
  * The render unit is NOT the scene: a render model caps a single render at a
- * per-model duration (15s for current models, 30s for newer ones), so a scene's
+ * per-model duration (Omni 10s, most 15s, Seedance 2.5 30s), so a scene's
  * video is an ordered tiling of **segments**, each a contiguous shot-subset
  * whose total duration is ≤ the model cap. The common case (scene ≤ cap) is one
  * segment = the whole scene; long scenes split; per-shot rendering is the

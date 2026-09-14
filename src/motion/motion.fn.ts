@@ -20,7 +20,9 @@ import { z } from 'zod';
 
 import {
   AUDIO_MODELS,
+  DEFAULT_VIDEO_MODEL,
   IMAGE_TO_VIDEO_MODELS,
+  safeImageToVideoModel,
   videoModelSupportsInClipMultiShot,
 } from '@/models/models';
 import {
@@ -28,7 +30,10 @@ import {
   packedPromptFitsLimit,
   packedSceneFromScene,
 } from '@/motion/server/assemble-motion-prompt';
-import { coveredMembersForShot } from '@/motion/server/pack-motion-jobs';
+import {
+  coveredMembersForShot,
+  packPayloadDurationSeconds,
+} from '@/motion/server/pack-motion-jobs';
 import { canRenderReferenceOnly } from '@/motion/server/motion-generation';
 import { toWorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { REFERENCE_ONLY_MODEL_ERROR } from '@/sequences/server/sequence.schemas';
@@ -151,7 +156,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
     const packableSceneShots = sceneShots.map((row) => ({
       ...row,
       shotId: row.id,
-      duration: (row.durationMs ?? 3000) / 1000,
+      duration: packPayloadDurationSeconds(row.durationMs),
       model,
     }));
     const promptFitsPacked = (
@@ -207,7 +212,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
     const firstMember = covered[0] ?? {
       ...shot,
       shotId: shot.id,
-      duration: (shot.durationMs ?? 3000) / 1000,
+      duration: packPayloadDurationSeconds(shot.durationMs),
       model,
     };
     const anyReferenceOnly = covered.some((row) =>
@@ -437,7 +442,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
           motionPromptVersionId: selectedMotion?.id ?? null,
           prompt,
           model,
-          duration,
+          duration: packPayloadDurationSeconds(shot.durationMs),
           fps: data.fps,
           motionBucket: data.motionBucket,
           aspectRatio: sequence.aspectRatio,
@@ -512,10 +517,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
                 motionPromptVersionId: version?.id ?? null,
                 prompt: memberPrompt,
                 model,
-                duration: resolveShotDuration({
-                  durationMs: member.durationMs,
-                  model,
-                }),
+                duration: packPayloadDurationSeconds(member.durationMs),
                 fps: data.fps,
                 motionBucket: data.motionBucket,
                 aspectRatio: sequence.aspectRatio,
@@ -558,6 +560,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
           sequenceId: sequence.id,
           reservationId,
           includeMusic: false,
+          videoModels: [model],
           shots: packedShotIds.flatMap((id) => {
             const payload = shotsById.get(id);
             return payload ? [payload] : [];
@@ -883,12 +886,16 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
           };
         }
 
+        const packingModel =
+          data.model ??
+          safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL);
         const workflowInput: BatchMotionMusicWorkflowInput = {
           userId: user.id,
           teamId,
           sequenceId: sequence.id,
           reservationId,
           includeMusic,
+          videoModels: [packingModel],
           shots: eligibleShots.map((shot) => {
             const shotModel = resolveShotVideoModel(shot);
             const scene = sceneOf(shot);

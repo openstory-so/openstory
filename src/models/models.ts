@@ -382,9 +382,8 @@ export function videoModelSupportsAudio(modelKey: ImageToVideoModel): boolean {
 
 /**
  * Can this model cut inside one generation — several shots of a scene packed
- * into a single clip using their stored timings (#1510)? Grok Imagine cannot
- * (one take per clip). Hailuo is not in the catalog; if it returns it stays
- * unpacked like Grok.
+ * into a single clip using their stored timings (#1510)? Missing or false
+ * stays unpacked. Grok Imagine is the only current `false` (one take per clip).
  */
 export function videoModelSupportsInClipMultiShot(
   modelKey: ImageToVideoModel

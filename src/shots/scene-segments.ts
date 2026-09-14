@@ -5,10 +5,9 @@
  * The render unit is the **segment** (a contiguous shot-subset of one scene),
  * not the shot: a scene is tiled into ≤cap segments (`render_segments`) and each
  * segment's video accumulates versions in `video_variants`, with the segment's
- * `selectedVideoVersionId` pointing at the chosen one. Per-shot rendering is the
- * degenerate one-shot-per-segment case that's true for every scene today (the
- * analysis pipeline still emits one shot per scene), so this view degrades to
- * "one segment == one shot" until packing (#1510) assigns a shared segment.
+ * `selectedVideoVersionId` pointing at the chosen one. Persisted
+ * `renderSegmentId` groups are the clip; unrendered runs are tiled as a
+ * generate preview. 1:1 is only the leftover / Grok / incapable-model case.
  *
  * `SequenceSegment` is what `getSequenceSegmentsFn` returns; membership
  * (`shotIds`) is authoritative and ordered. The UI groups its already-loaded
@@ -128,9 +127,10 @@ export function groupShotsBySegment(
 /**
  * Shot-list grouping: persisted render segments stay as they are; contiguous
  * unrendered shots are tiled with the generate-picker model so the strip can
- * preview the next pack (#1510). Grok (and any 1-shot tile) stays unwrapped.
- * A run that already has a `renderSegmentId` is never re-tiled — the existing
- * clip's membership wins until a new render lands.
+ * preview the next pack (#1510). Grok stays unwrapped. A 1-shot tile that
+ * meets min stays flat; a 1-shot leftover is wrapped so the strip can offer
+ * snap vs Grok. A run that already has a `renderSegmentId` is never re-tiled
+ * — the existing clip's membership wins until a new render lands.
  */
 export function groupShotsForSceneList(
   shots: readonly ShotView[],

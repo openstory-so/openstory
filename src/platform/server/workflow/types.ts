@@ -333,7 +333,9 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
   /**
    * Shot ids the user routed to Grok on leftover packs (sum under the
    * packing model's min). Snap-to-min is the default; this is the
-   * stop-and-pick override. Don't-stop runs omit it.
+   * stop-and-pick override. Omitted when the leftover dropdown is not
+   * used (storyboard / don't-stop generate); those packs snap up to the
+   * model min.
    */
   leftoverGrokShotIds?: string[];
 }
@@ -510,8 +512,11 @@ export interface DialogueAudioWorkflowResult {
 export interface MotionWorkflowInput extends SequenceWorkflowContext {
   shotId?: string;
   /**
-   * The shot's scene, pinned at the trigger. Optional only until every trigger
-   * threads it — absent falls back to reading the shot.
+   * The shot's scene, pinned at the trigger. Storyboard pins the analysis
+   * ULID (packing key); Generate pins live `scenes.id`. `render_segments.sceneId`
+   * must be the live FK — see MotionWorkflow's ensureForShots comment.
+   * Optional only until every trigger threads it — absent falls back to
+   * reading the shot.
    */
   sceneId?: string | null;
   /**

@@ -91,6 +91,21 @@ describe('packMotionBatchShots then buildMotionJobs (#1510)', () => {
     expect(jobs[0]?.model).toBe(B);
   });
 
+  it('a leftover Grok shot next to a Seedance pair still packs the pair when videoModels is Seedance', () => {
+    const grok: ImageToVideoModel = 'grok_imagine_video_1_5';
+    const sceneShots = [
+      { shotId: 'a', sceneId: 'sc-1', duration: 4, model: B },
+      { shotId: 'b', sceneId: 'sc-1', duration: 6, model: B },
+      { shotId: 'c', sceneId: 'sc-2', duration: 1, model: grok },
+    ];
+    const packed = packMotionBatchShots(sceneShots, [B]);
+    const jobs = buildMotionJobs(packed, [B]);
+    expect(jobs.map((j) => [j.shot.shotId, j.model, j.shot.duration])).toEqual([
+      ['a', B, 10],
+      ['c', grok, 1],
+    ]);
+  });
+
   it('keeps two Grok jobs for the same scene', () => {
     const grok: ImageToVideoModel = 'grok_imagine_video_1_5';
     const sceneShots = [

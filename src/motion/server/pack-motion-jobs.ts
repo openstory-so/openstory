@@ -63,9 +63,27 @@ export function batchPacksInClipMultiShot(
 }
 
 /**
+ * Per-shot editorial seconds for a batch payload that
+ * {@link packMotionBatchShots} will re-tile. Never the packed sum — putting
+ * 10s on shot 1 of a 4s+6s pair makes H3 re-tile as 16s and split.
+ */
+export function packPayloadDurationSeconds(
+  durationMs: number | null | undefined
+): number {
+  return (
+    (typeof durationMs === 'number' &&
+    Number.isFinite(durationMs) &&
+    durationMs > 0
+      ? durationMs
+      : 3000) / 1000
+  );
+}
+
+/**
  * Tile `shots` into generation jobs for `videoModels`. Packing uses the
- * tightest cap among those models so every model in the batch shares the
- * same membership. Shots without a `sceneId` never coalesce.
+ * tightest cap and the highest min among those models so every model in
+ * the batch shares the same membership. Shots without a `sceneId` never
+ * coalesce.
  */
 export function packMotionBatchShots<S extends PackableMotionShot>(
   shots: readonly S[],

@@ -144,6 +144,11 @@ function makeScopedDb() {
   const bytePlusAssets = {
     releaseOwner: vi.fn(async (_owner: string) => {}),
   };
+  const renderSegments = {
+    ensureForShot: vi.fn(async () => 'seg-1'),
+    ensureForShots: vi.fn(async () => 'seg-packed'),
+    setPendingPromoteVersionId: vi.fn(async () => {}),
+  };
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the surface runImpl touches
   const scopedDb = {
     credentials: { resolveKey: async () => ({ source: 'platform' }) },
@@ -151,25 +156,21 @@ function makeScopedDb() {
       shots: {
         getById: async () => ({
           id: 'shot-1',
-          sceneId: 'scene-1',
+          sceneId: 'live-scene-ulid',
           sequenceId: 'seq-1',
           renderSegmentId: null,
         }),
         getByIds: async (ids: string[]) =>
           ids.map((id) => ({
             id,
-            sceneId: 'scene-1',
+            sceneId: 'live-scene-ulid',
             sequenceId: 'seq-1',
             renderSegmentId: null,
           })),
       },
       billing: { hasEnoughCredits: async () => true },
     },
-    renderSegments: {
-      ensureForShot: async () => 'seg-1',
-      ensureForShots: async () => 'seg-packed',
-      setPendingPromoteVersionId: async () => {},
-    },
+    renderSegments,
     claims: {
       shotPromptVersions: {
         getByIdForShot: async () => ({
@@ -186,7 +187,13 @@ function makeScopedDb() {
     bytePlusAssets,
     provenance: {},
   } as unknown as WorkflowScopedDb;
-  return { scopedDb, shotPromptVersions, videoVariants, bytePlusAssets };
+  return {
+    scopedDb,
+    shotPromptVersions,
+    videoVariants,
+    bytePlusAssets,
+    renderSegments,
+  };
 }
 
 const MODEL = 'seedance_v2';
@@ -572,6 +579,80 @@ describe('MotionWorkflow affordability estimate (#1570)', () => {
     expect(mockCalculateMotionMetadata).toHaveBeenCalledWith(
       expect.objectContaining({ resolution: '1080p' }),
       expect.anything()
+    );
+  });
+});
+
+describe('MotionWorkflow packed in-clip job (#1510)', () => {
+  const motion = (text: string) => ({
+    fullPrompt: text,
+    dialogue: null,
+    audio: null,
+  });
+
+  it('assigns covered shots to one segment using live sceneId and stamps an N-entry manifest', async () => {
+    const { scopedDb, renderSegments, videoVariants } = makeScopedDb();
+
+    await makeWorkflow().runBody(
+      makeEvent({
+        sceneId: 'analysis-sc-1',
+        duration: 10,
+        coveredShots: [
+          {
+            shotId: 'shot-1',
+            duration: 4,
+            referenceOnly: false,
+            motionPromptVersionId: 'spv-1',
+            frameVersionId: 'fv-1',
+            motionPrompt: motion('opens the door'),
+          },
+          {
+            shotId: 'shot-2',
+            duration: 6,
+            referenceOnly: false,
+            motionPromptVersionId: 'spv-2',
+            frameVersionId: 'fv-2',
+            motionPrompt: motion('the hallway beyond'),
+          },
+        ],
+      }),
+      makeStep(),
+      scopedDb
+    );
+
+    expect(renderSegments.ensureForShots).toHaveBeenCalledWith([
+      expect.objectContaining({
+        id: 'shot-1',
+        sceneId: 'live-scene-ulid',
+        sequenceId: 'seq-1',
+      }),
+      expect.objectContaining({
+        id: 'shot-2',
+        sceneId: 'live-scene-ulid',
+        sequenceId: 'seq-1',
+      }),
+    ]);
+    expect(renderSegments.ensureForShot).not.toHaveBeenCalled();
+    expect(videoVariants.appendVersion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        renderSegmentId: 'seg-packed',
+        manifest: [
+          expect.objectContaining({
+            shotId: 'shot-1',
+            motionPromptVersionId: 'spv-1',
+            frameVersionId: 'fv-1',
+            usesStartFrame: true,
+            durationMs: 4000,
+          }),
+          expect.objectContaining({
+            shotId: 'shot-2',
+            motionPromptVersionId: 'spv-2',
+            frameVersionId: 'fv-2',
+            usesStartFrame: true,
+            durationMs: 6000,
+          }),
+        ],
+      })
     );
   });
 });

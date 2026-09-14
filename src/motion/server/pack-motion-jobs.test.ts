@@ -4,6 +4,7 @@ import {
   batchPacksInClipMultiShot,
   coveredMembersForShot,
   packMotionBatchShots,
+  packPayloadDurationSeconds,
 } from './pack-motion-jobs';
 
 const shot = (
@@ -122,6 +123,46 @@ describe('packMotionBatchShots', () => {
       undefined
     );
     expect(packed.map((s) => s.shotId)).toEqual(['a', 'b']);
+  });
+
+  it('4s+6s H3 packs as one 10s job when each payload carries editorial seconds', () => {
+    const packed = packMotionBatchShots(
+      [
+        shot('a', 'sc-1', packPayloadDurationSeconds(4000)),
+        shot('b', 'sc-1', packPayloadDurationSeconds(6000)),
+      ],
+      ['minimax_h3_max']
+    );
+    expect(packed).toHaveLength(1);
+    expect(packed[0]).toMatchObject({ shotId: 'a', duration: 10 });
+    expect(packed[0]?.coveredShots?.map((s) => s.shotId)).toEqual(['a', 'b']);
+  });
+
+  it('writing the packed sum onto the clicked shot splits H3 4s+6s into two jobs', () => {
+    const packed = packMotionBatchShots(
+      [shot('a', 'sc-1', 10), shot('b', 'sc-1', 6)],
+      ['minimax_h3_max']
+    );
+    expect(packed.map((s) => s.shotId)).toEqual(['a', 'b']);
+    expect(packed.every((s) => s.coveredShots === undefined)).toBe(true);
+  });
+
+  it('omitting videoModels unpacks a Seedance pair next to a leftover Grok shot', () => {
+    const shots = [
+      shot('a', 'sc-1', 4, 'seedance_v2'),
+      shot('b', 'sc-1', 6, 'seedance_v2'),
+      shot('c', 'sc-2', 1, 'grok_imagine_video_1_5'),
+    ];
+    expect(
+      packMotionBatchShots(shots, undefined).every((s) => !s.coveredShots)
+    ).toBe(true);
+
+    const packed = packMotionBatchShots(shots, ['seedance_v2']);
+    expect(packed).toHaveLength(2);
+    expect(packed[0]?.duration).toBe(10);
+    expect(packed[0]?.coveredShots?.map((s) => s.shotId)).toEqual(['a', 'b']);
+    expect(packed[1]?.shotId).toBe('c');
+    expect(packed[1]?.coveredShots).toBeUndefined();
   });
 });
 

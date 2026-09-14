@@ -1,9 +1,10 @@
 /**
  * The `motionBatchWorkflow` durable workflow.
  *
- * Spawns one `MOTION_WORKFLOW` child per shot (plus an optional
- * `MUSIC_WORKFLOW`) via Pattern 3. There is no merge step — playback is the
- * live canvas stitch; the downloadable MP4 is `SequenceExportWorkflow`.
+ * Spawns one `MOTION_WORKFLOW` child per packed generation (and model);
+ * leftover / Grok jobs stay 1:1. Optional `MUSIC_WORKFLOW` via Pattern 3.
+ * There is no merge step — playback is the live canvas stitch; the
+ * downloadable MP4 is `SequenceExportWorkflow`.
  *
  * Fan-out: `Promise.all` on spawn (the parent blocks until every child has
  * been queued, so a transient spawn failure surfaces as a workflow error
@@ -110,9 +111,9 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
     await this.awaitBytePlusPoolAdmission(input, step, scopedDb);
 
     // Step 1: Fan out motion workflows + optional music workflow in parallel.
-    // Multi-model video (#545): one MOTION_WORKFLOW child per (shot, model)
-    // — the motion analog of shot-images' per-(scene, model) fan-out (see
-    // `buildMotionJobs` for the resolution/dedupe rules). The first model is
+    // Multi-model video (#545/#1510): one MOTION_WORKFLOW child per packed
+    // generation (and model); leftover / Grok jobs stay 1:1. See
+    // `buildMotionJobs` for the resolution/dedupe rules. The first model is
     // primary (its output also lands in the legacy `shots.video*` columns);
     // the rest are alternates in `shot_variants`. Pattern 3 spawns + awaits
     // each child via `spawnAndAwaitChild`; Promise.allSettled lets a single

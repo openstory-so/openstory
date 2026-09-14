@@ -9,8 +9,7 @@
  *
  * It is also per-**shot**, not per-scene: `shots.durationMs` is the only store
  * (a scene's duration is the sum of its shots, which is exactly what
- * `tileSceneIntoSegments` reads against the model's cap). Today's one-shot
- * scenes make the two coincide; multi-shot scenes (#910) won't.
+ * `tileSceneIntoSegments` packs against).
  *
  * Options are 1s through the model's max — editorial length, not the render
  * floor. A stored value outside the model's legal set (legacy data, or a

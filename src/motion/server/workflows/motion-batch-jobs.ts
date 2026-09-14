@@ -1,10 +1,10 @@
 /**
  * N+M fan-out expansion for `MotionBatchWorkflow` (#545).
  *
- * Multi-model video generation runs one motion child per `(shot, model)` —
- * the motion analog of shot-images' per-`(scene, model)` fan-out. Pulled out
- * of the workflow body (mirroring `motion-workflow-persist`) so the expansion's
- * invariants are unit-testable without bootstrapping a `WorkflowEntrypoint`.
+ * Multi-model video generation runs one motion child per packed generation
+ * (and model); leftover / Grok jobs stay 1:1. Pulled out of the workflow
+ * body (mirroring `motion-workflow-persist`) so the expansion's invariants
+ * are unit-testable without bootstrapping a `WorkflowEntrypoint`.
  *
  * Resolution rules (kept deliberately distinct from `resolveVideoModels`, which
  * has different defaulting):

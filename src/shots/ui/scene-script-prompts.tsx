@@ -819,11 +819,10 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     shot && leftoverGrokShotIds?.has(shot.id)
       ? 'grok_imagine_video_1_5'
       : effectiveMotionModel;
-  // Can this model carry a voice reference at all? Without an audio slot the
-  // binding would substitute to prose and the file would never ride, so the
-  // dialogue panel shows the lines but offers no voice picker (#1559).
+  // Preview and submit share this model. Leftover Grok is 1:1; using the
+  // packing model here would show a packed N-shot clip then generate one shot.
   const motionTakesAudioReferences =
-    motionReferenceSupport(effectiveMotionModel).audio;
+    motionReferenceSupport(regenMotionModel).audio;
 
   const imagePrompt = shot?.imagePromptVersion?.text ?? undefined;
 
@@ -1096,7 +1095,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       sequenceId,
       shotId: shot?.id ?? '',
       imageModel: effectiveImageModel,
-      videoModel: effectiveMotionModel,
+      videoModel: regenMotionModel,
       imagePrompt: debouncedImagePrompt || imagePrompt || '',
       motionPrompt: debouncedMotionPrompt || rawMotionPrompt,
       generateAudio,
@@ -1127,7 +1126,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   // track at all — the line is sent and never heard. Asked, not refused: the
   // toggle is the user's call.
   const silencedVoiceLines =
-    videoModelSupportsAudio(effectiveMotionModel) && !generateAudio
+    videoModelSupportsAudio(regenMotionModel) && !generateAudio
       ? (motionRequestPreview?.audio ?? []).map((track) => track.label)
       : [];
 
@@ -1146,12 +1145,12 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     if (!falPricing || !shot) return null;
     const duration = resolveShotDuration({
       durationMs: promptPreview?.packedDurationMs ?? shot.durationMs,
-      model: effectiveMotionModel,
+      model: regenMotionModel,
     });
     const referenceOnly = !usesStartFrame(shot, {
       generateStartFrames: sequenceGeneratesStartFrames,
     });
-    return estimateVideoCost(effectiveMotionModel, duration, {
+    return estimateVideoCost(regenMotionModel, duration, {
       pricing: falPricing,
       resolution,
       // Unknown (preview failed or pending) falls back to the mode's default
@@ -1162,7 +1161,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   }, [
     falPricing,
     shot,
-    effectiveMotionModel,
+    regenMotionModel,
     resolution,
     sequenceGeneratesStartFrames,
     promptPreview?.motionHasReferenceImages,
@@ -2122,7 +2121,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           )}
 
           {/* SFX/dialogue toggle — only for audio-capable models */}
-          {videoModelSupportsAudio(effectiveMotionModel) && (
+          {videoModelSupportsAudio(regenMotionModel) && (
             <label
               htmlFor="scene-generate-audio"
               className="flex items-center gap-2 text-sm text-muted-foreground"

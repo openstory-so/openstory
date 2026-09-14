@@ -417,10 +417,11 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         // image versions (the references ARE the snapshot) + the value-snapshot
         // duration. The legacy `shots.video*` columns above stay the cached
         // mirror of whichever version the shot's selection points at.
-        // FK target is the live `scenes.id` on the shot row. The batch payload
-        // `sceneId` is the analysis scene key (used to pack siblings) and is
-        // not the same ULID as `scenes.id` — stuffing it into render_segments
-        // 404s the FK. Packed members already live-read their rows below.
+        // FK is always live `shots.sceneId`. Packed jobs live-read every
+        // member. Leftover 1-shot tiles must use that same live row —
+        // `input.sceneId` is only a packing key on the storyboard path
+        // (analysis ULID) and will 404 if used as the segment FK. Generate
+        // Motion / batch generate already pin live `shots.sceneId`.
         const renderSceneId = shot.sceneId ?? input.sceneId ?? null;
         let openedVideoVersionId: string | null = null;
         let manifest: VideoManifest | null = null;
