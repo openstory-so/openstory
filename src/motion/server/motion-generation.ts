@@ -605,7 +605,14 @@ export async function submitMotionJob(
       if (referenceImages?.length) {
         referenceImages = [];
         for (const ref of options.referenceImages ?? []) {
-          const registered = ref.role !== 'location' && ref.role !== 'element';
+          // Same exclusions as `arkStillsForMotion`: audio/video refs and
+          // location/element sheets are never ingested, so they must not be
+          // looked up in the Ark asset map either.
+          const registered =
+            ref.role !== 'location' &&
+            ref.role !== 'element' &&
+            ref.kind !== 'audio' &&
+            ref.kind !== 'video';
           referenceImages.push({
             ...ref,
             referenceImageUrl: registered

@@ -263,6 +263,47 @@ describe('Motion Service', () => {
       );
     });
 
+    it('sends a dialogue audio reference as a plain URL, never through the Ark asset map (#1627)', async () => {
+      testEnv.ARK_API_KEY = 'ark-test';
+      mockGenerateVideo.mockResolvedValue({ jobId: 'ark-audio' });
+
+      await submitMotionJob({
+        // Only the start frame is registered — audio clips are never
+        // ingested by `ingestArkAssets`, so a still-registered check on the
+        // audio ref would throw before this fix (unlike `registeredAssets`,
+        // this map has no entry for the audio URL).
+        arkAssets: {
+          'https://example.com/still.jpg': 'asset://still.jpg',
+        },
+        imageUrl: 'https://example.com/still.jpg',
+        prompt: 'Two people talk',
+        model: 'seedance_v2_5',
+        duration: 5,
+        referenceImages: [
+          {
+            referenceImageUrl: 'https://example.com/dialogue.wav',
+            description: 'Dialogue recorded as @Audio1',
+            kind: 'audio',
+            role: 'character',
+            token: 'DIALOGUE',
+          },
+        ],
+      });
+
+      expect(mockGenerateVideo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: expect.arrayContaining([
+            expect.objectContaining({
+              type: 'audio',
+              source: expect.objectContaining({
+                value: 'https://example.com/dialogue.wav',
+              }),
+            }),
+          ]),
+        })
+      );
+    });
+
     it('throws when a face still was not registered before submit (#1519)', async () => {
       testEnv.ARK_API_KEY = 'ark-test';
       mockGenerateVideo.mockResolvedValue({ jobId: 'never' });
