@@ -185,7 +185,9 @@ describe('StitchedSequenceMedia playback', () => {
         resolvePlay = resolve;
       })
     );
+    const onError = vi.fn();
     const media = await preparedMedia();
+    media.setListeners({ onError });
     const events = collectEvents(media);
 
     const first = media.play();
@@ -198,6 +200,7 @@ describe('StitchedSequenceMedia playback', () => {
     await first;
     expect(events).toEqual(['play', 'waiting', 'pause']);
     expect(media.paused).toBe(true);
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it('maps engine onEnded to pause+ended', async () => {
@@ -207,6 +210,18 @@ describe('StitchedSequenceMedia playback', () => {
     expect(media.paused).toBe(true);
     expect(media.ended).toBe(true);
     expect(events).toEqual(['pause', 'ended']);
+  });
+
+  it('clears ended on seek so the skin does not stay on Replay', async () => {
+    mocks.getPlaybackTime.mockReturnValue(4);
+    mocks.seek.mockResolvedValueOnce(null);
+    const media = await preparedMedia();
+    lastOpts.current?.onEnded?.();
+    expect(media.ended).toBe(true);
+
+    media.currentTime = 4;
+    await mocks.seek.mock.results[0]?.value;
+    expect(media.ended).toBe(false);
   });
 });
 
@@ -235,14 +250,30 @@ describe('StitchedSequenceMedia seek and volume', () => {
 });
 
 describe('StitchedSequenceMedia source identity', () => {
-  it('rebuilds on a new clip list and not on musicEnabled (#1284, #834)', async () => {
+  it('does not rebuild when setSource is the same clip list (#1284)', async () => {
     const media = await preparedMedia();
+    media.setSource({
+      ...source,
+      scenes: [{ orderIndex: 0, videoUrl: '/a.mp4' }],
+    });
     expect(mocks.dispose).not.toHaveBeenCalled();
+    expect(mocks.prepare).toHaveBeenCalledOnce();
+  });
 
-    media.setMusicEnabled(false);
+  it('does not rebuild when only musicEnabled changes (#834)', async () => {
+    const media = await preparedMedia();
+    media.setSource({ ...source, musicEnabled: false });
     expect(mocks.setMusicEnabled).toHaveBeenCalledWith(false);
     expect(mocks.dispose).not.toHaveBeenCalled();
+    expect(mocks.prepare).toHaveBeenCalledOnce();
 
+    media.setMusicEnabled(true);
+    expect(mocks.setMusicEnabled).toHaveBeenCalledWith(true);
+    expect(mocks.dispose).not.toHaveBeenCalled();
+  });
+
+  it('rebuilds on a new clip list', async () => {
+    const media = await preparedMedia();
     media.setSource({
       ...source,
       scenes: [

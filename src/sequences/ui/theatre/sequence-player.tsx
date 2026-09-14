@@ -127,10 +127,14 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
 
   // Drop stitch state when the cache lookup resolves to an MP4 or the clip
   // list changes, so a stale mixed-res warning / loading label cannot leak.
+  // Flush watched here (not only on SequencePlayer unmount): the stitcher
+  // can be torn down while this shell stays mounted (cache lands, clip list
+  // changes) and detach does not emit `pause`.
   useEffect(() => {
     setMeta(null);
     setLoadedScenes(0);
     setError(null);
+    flushWatched(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- scenesKey, not scenes identity (#1284)
   }, [scenesKey, musicUrl, musicLoudnessGainDb, cachedVideoUrl]);
 

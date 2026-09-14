@@ -202,6 +202,7 @@ export class StitchedSequenceMedia
       : Infinity;
     const next = Math.max(0, Math.min(value, duration));
     this.#currentTime = next;
+    this.#ended = false;
     this.#seeking = true;
     this.#emit('seeking');
     const engine = this.#engine;

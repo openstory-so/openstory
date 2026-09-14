@@ -104,8 +104,9 @@ const StitchedPlayerInner: React.FC<StitchedPlayerSurfaceProps> = ({
       musicLoudnessGainDb,
       musicEnabled,
     });
-    // `scenes` identity is not the rebuild key — SequencePlayer passes a
-    // stable list via scenePlaybackKey. musicEnabled is applied live below.
+    // musicEnabled is in the payload but must not rebuild: setMusicEnabled
+    // applies it live (#834). Clip-list identity is decided inside setSource
+    // (scenePlaybackKey + music URL/loudness), not by this array's identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [media, scenes, musicUrl, musicLoudnessGainDb]);
 
