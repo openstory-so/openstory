@@ -121,55 +121,48 @@ export const DEFAULT_VOICE_LANGUAGE = 'en';
 
 export const VOICE_LANGUAGES = [
   { value: 'en', label: 'English' },
-  { value: 'es', label: 'Spanish' },
+  { value: 'ar', label: 'Arabic' },
+  { value: 'zh', label: 'Chinese' },
+  { value: 'cs', label: 'Czech' },
+  { value: 'da', label: 'Danish' },
+  { value: 'nl', label: 'Dutch' },
+  { value: 'fil', label: 'Filipino' },
+  { value: 'fi', label: 'Finnish' },
   { value: 'fr', label: 'French' },
   { value: 'de', label: 'German' },
-  { value: 'it', label: 'Italian' },
-  { value: 'pt', label: 'Portuguese' },
-  { value: 'pl', label: 'Polish' },
-  { value: 'hi', label: 'Hindi' },
-  { value: 'ja', label: 'Japanese' },
-  { value: 'zh', label: 'Chinese' },
-  { value: 'ko', label: 'Korean' },
-  { value: 'ar', label: 'Arabic' },
-  { value: 'nl', label: 'Dutch' },
-  { value: 'tr', label: 'Turkish' },
-  { value: 'sv', label: 'Swedish' },
-  { value: 'id', label: 'Indonesian' },
-  { value: 'ru', label: 'Russian' },
-  { value: 'uk', label: 'Ukrainian' },
-  { value: 'cs', label: 'Czech' },
   { value: 'el', label: 'Greek' },
-  { value: 'fi', label: 'Finnish' },
+  { value: 'hi', label: 'Hindi' },
+  { value: 'id', label: 'Indonesian' },
+  { value: 'it', label: 'Italian' },
+  { value: 'ja', label: 'Japanese' },
+  { value: 'ko', label: 'Korean' },
+  { value: 'pl', label: 'Polish' },
+  { value: 'pt', label: 'Portuguese' },
   { value: 'ro', label: 'Romanian' },
-  { value: 'da', label: 'Danish' },
-  { value: 'fil', label: 'Filipino' },
+  { value: 'ru', label: 'Russian' },
+  { value: 'es', label: 'Spanish' },
+  { value: 'sv', label: 'Swedish' },
+  { value: 'tr', label: 'Turkish' },
+  { value: 'uk', label: 'Ukrainian' },
 ] as const;
 
+/** English-language accents / nationalities, A–Z. */
 export const VOICE_NATIONALITIES = [
   { value: 'american', label: 'American' },
-  { value: 'british', label: 'British' },
   { value: 'australian', label: 'Australian' },
+  { value: 'british', label: 'British' },
   { value: 'canadian', label: 'Canadian' },
-  { value: 'irish', label: 'Irish' },
-  { value: 'scottish', label: 'Scottish' },
-  { value: 'welsh', label: 'Welsh' },
   { value: 'indian', label: 'Indian' },
-  { value: 'south african', label: 'South African' },
+  { value: 'irish', label: 'Irish' },
   { value: 'new zealand', label: 'New Zealand' },
-  { value: 'french', label: 'French' },
-  { value: 'german', label: 'German' },
-  { value: 'italian', label: 'Italian' },
-  { value: 'spanish', label: 'Spanish' },
-  { value: 'mexican', label: 'Mexican' },
-  { value: 'brazilian', label: 'Brazilian' },
-  { value: 'portuguese', label: 'Portuguese' },
-  { value: 'chinese', label: 'Chinese' },
-  { value: 'japanese', label: 'Japanese' },
-  { value: 'korean', label: 'Korean' },
-  { value: 'russian', label: 'Russian' },
-  { value: 'arabic', label: 'Arabic' },
+  { value: 'scottish', label: 'Scottish' },
+  { value: 'south african', label: 'South African' },
+  { value: 'welsh', label: 'Welsh' },
 ] as const;
+
+export const OTHER_VOICE_LANGUAGES = VOICE_LANGUAGES.filter(
+  (language) => language.value !== DEFAULT_VOICE_LANGUAGE
+);
 
 export type VoiceLanguageFilter = (typeof VOICE_LANGUAGES)[number]['value'];
 export type VoiceNationalityFilter =
@@ -232,6 +225,31 @@ export function inferVoiceAccent(
   if (/\buk\b|united kingdom|england|english/.test(value)) return 'british';
   if (/\busa\b|united states|\bus\b/.test(value)) return 'american';
   return;
+}
+
+export function voiceLocaleKey(
+  language: VoiceLanguageFilter = DEFAULT_VOICE_LANGUAGE,
+  accent?: VoiceNationalityFilter
+): string {
+  return accent && language === DEFAULT_VOICE_LANGUAGE
+    ? `${language}|${accent}`
+    : language;
+}
+
+export function parseVoiceLocale(
+  value: string
+): Pick<CatalogVoiceFilters, 'language' | 'accent'> {
+  const [language, accent] = value.split('|');
+  const languageMatch = VOICE_LANGUAGES.find(
+    (option) => option.value === language
+  );
+  const accentMatch = VOICE_NATIONALITIES.find(
+    (option) => option.value === accent
+  );
+  return {
+    language: languageMatch?.value ?? DEFAULT_VOICE_LANGUAGE,
+    ...(accentMatch ? { accent: accentMatch.value } : {}),
+  };
 }
 
 /** Bible → library filters so Browse opens on a shortlist for this character. */

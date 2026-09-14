@@ -1,16 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import {
+  OTHER_VOICE_LANGUAGES,
+  VOICE_NATIONALITIES,
   designedTakeIsInUse,
   inferVoiceAccent,
   inferVoiceAge,
   inferVoiceGender,
   matchSpeaker,
+  parseVoiceLocale,
   recommendVoiceFilters,
   speakingCharacterIds,
   toCatalogVoiceFromLibrary,
   toCatalogVoiceFromPremade,
   usesVoice,
   voiceConsumesAccountSlot,
+  voiceLocaleKey,
 } from './voice';
 
 const scene = (speakers: string[]) => ({
@@ -235,5 +239,19 @@ describe('recommendVoiceFilters', () => {
     expect(inferVoiceAccent('British')).toBe('british');
     expect(inferVoiceAccent('American')).toBe('american');
     expect(inferVoiceAccent('')).toBeUndefined();
+  });
+  it('keeps English nationalities and other languages in A–Z order', () => {
+    const nationalityLabels = VOICE_NATIONALITIES.map((item) => item.label);
+    expect(nationalityLabels).toEqual([...nationalityLabels].sort());
+    const languageLabels = OTHER_VOICE_LANGUAGES.map((item) => item.label);
+    expect(languageLabels).toEqual([...languageLabels].sort());
+  });
+  it('round-trips a British English locale key', () => {
+    expect(voiceLocaleKey('en', 'british')).toBe('en|british');
+    expect(parseVoiceLocale('en|british')).toEqual({
+      language: 'en',
+      accent: 'british',
+    });
+    expect(parseVoiceLocale('fr')).toEqual({ language: 'fr' });
   });
 });

@@ -1,14 +1,14 @@
 import { useElevenLabsVoices } from '@/cast/ui/use-elevenlabs-voices';
 import {
   DEFAULT_VOICE_LANGUAGE,
-  VOICE_LANGUAGES,
+  OTHER_VOICE_LANGUAGES,
   VOICE_NATIONALITIES,
+  parseVoiceLocale,
+  voiceLocaleKey,
   type CatalogVoice,
   type CatalogVoiceFilters,
   type VoiceAgeFilter,
   type VoiceGenderFilter,
-  type VoiceLanguageFilter,
-  type VoiceNationalityFilter,
   type VoiceQualityFilter,
 } from '@/cast/voice';
 import { Button } from '@/ui/shadcn/button';
@@ -21,13 +21,6 @@ import {
 } from '@/ui/shadcn/dialog';
 import { Input } from '@/ui/shadcn/input';
 import { ScrollArea } from '@/ui/shadcn/scroll-area';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/ui/shadcn/select';
 import { Skeleton } from '@/ui/shadcn/skeleton';
 import { cn } from '@/ui/utils';
 import { Library, Search } from 'lucide-react';
@@ -153,60 +146,47 @@ function FilterPills<T extends string>({
   );
 }
 
-function FilterSelect<T extends string>({
-  id,
-  label,
+function LanguageSelect({
   value,
-  options,
   onChange,
 }: {
-  id: string;
-  label: string;
-  value: T | undefined;
-  options: readonly { value: T; label: string }[];
-  onChange: (value: T | undefined) => void;
+  value: string;
+  onChange: (next: Pick<CatalogVoiceFilters, 'language' | 'accent'>) => void;
 }) {
-  const items = {
-    any: 'Any',
-    ...Object.fromEntries(
-      options.map((option) => [option.value, option.label])
-    ),
-  };
   return (
     <div className="flex items-center justify-between gap-2">
-      <p className="w-24 shrink-0 text-sm font-medium">{label}</p>
-      <Select
-        value={value ?? 'any'}
-        items={items}
-        onValueChange={(next) => {
-          if (!next || next === 'any') {
-            onChange(undefined);
-            return;
-          }
-          const match = options.find((option) => option.value === next);
-          onChange(match?.value);
-        }}
+      <label
+        htmlFor="voice-library-language"
+        className="w-24 shrink-0 text-sm font-medium"
       >
-        <SelectTrigger id={id} size="sm" className="min-w-40">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent align="end" alignItemWithTrigger={false}>
-          <SelectItem value="any">Any</SelectItem>
-          {options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
+        Language
+      </label>
+      <select
+        id="voice-library-language"
+        value={value}
+        onChange={(event) => onChange(parseVoiceLocale(event.target.value))}
+        className="h-8 min-w-40 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+      >
+        <optgroup label="English">
+          <option value={DEFAULT_VOICE_LANGUAGE}>English</option>
+          {VOICE_NATIONALITIES.map((nationality) => (
+            <option
+              key={nationality.value}
+              value={voiceLocaleKey(DEFAULT_VOICE_LANGUAGE, nationality.value)}
+            >
+              {nationality.label}
+            </option>
           ))}
-        </SelectContent>
-      </Select>
+        </optgroup>
+        <optgroup label="Other languages">
+          {OTHER_VOICE_LANGUAGES.map((language) => (
+            <option key={language.value} value={language.value}>
+              {language.label}
+            </option>
+          ))}
+        </optgroup>
+      </select>
     </div>
-  );
-}
-
-function isSelectPopupTarget(target: EventTarget | null): boolean {
-  return (
-    target instanceof Element &&
-    Boolean(target.closest('[data-slot="select-content"]'))
   );
 }
 
@@ -256,18 +236,7 @@ export const VoiceLibraryDialog: React.FC<VoiceLibraryDialogProps> = ({
         onOpenChange(next);
       }}
     >
-      <DialogContent
-        className="flex h-[min(90vh,44rem)] w-full flex-col gap-3 sm:max-w-lg"
-        onPointerDownOutside={(event) => {
-          if (isSelectPopupTarget(event.target)) event.preventDefault();
-        }}
-        onFocusOutside={(event) => {
-          if (isSelectPopupTarget(event.target)) event.preventDefault();
-        }}
-        onInteractOutside={(event) => {
-          if (isSelectPopupTarget(event.target)) event.preventDefault();
-        }}
-      >
+      <DialogContent className="flex h-[min(90vh,44rem)] w-full flex-col gap-3 sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Voice library</DialogTitle>
           <DialogDescription className="sr-only">
@@ -286,24 +255,13 @@ export const VoiceLibraryDialog: React.FC<VoiceLibraryDialogProps> = ({
           />
         </div>
         <div className="flex flex-col gap-2">
-          <FilterSelect
-            id="voice-library-language"
-            label="Language"
-            value={filters.language}
-            options={VOICE_LANGUAGES}
-            onChange={(language: VoiceLanguageFilter | undefined) =>
-              setFilters((current) => ({ ...current, language }))
-            }
-          />
-          <FilterSelect
-            id="voice-library-nationality"
-            label="Nationality"
-            value={filters.accent}
-            options={VOICE_NATIONALITIES}
-            onChange={(accent: VoiceNationalityFilter | undefined) =>
+          <LanguageSelect
+            value={voiceLocaleKey(filters.language, filters.accent)}
+            onChange={(locale) =>
               setFilters((current) => ({
                 ...current,
-                accent,
+                language: locale.language,
+                accent: locale.accent,
               }))
             }
           />
