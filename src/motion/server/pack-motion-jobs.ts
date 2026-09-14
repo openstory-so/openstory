@@ -15,7 +15,11 @@ import {
   videoModelSupportsInClipMultiShot,
   type ImageToVideoModel,
 } from '@/models/models';
-import { resolveSegmentCapMs, tileSceneIntoSegments } from './render-segments';
+import {
+  resolveSegmentCapMs,
+  resolveSegmentMinMs,
+  tileSceneIntoSegments,
+} from './render-segments';
 
 export type PackableMotionShot = {
   shotId: string;
@@ -76,9 +80,10 @@ export function packMotionBatchShots<S extends PackableMotionShot>(
   }
 
   const capMs = Math.min(...models.map(resolveSegmentCapMs));
+  const minMs = Math.max(...models.map(resolveSegmentMinMs));
   const packed: PackedMotionMember<S>[] = [];
   for (const group of groupByScene(shots)) {
-    packed.push(...packSceneGroup(group, capMs, options?.promptFits));
+    packed.push(...packSceneGroup(group, capMs, minMs, options?.promptFits));
   }
   return packed;
 }
@@ -86,6 +91,7 @@ export function packMotionBatchShots<S extends PackableMotionShot>(
 function packSceneGroup<S extends PackableMotionShot>(
   group: readonly S[],
   capMs: number,
+  minMs: number,
   promptFits: PackMotionOptions<S>['promptFits']
 ): PackedMotionMember<S>[] {
   const packed: PackedMotionMember<S>[] = [];
@@ -95,7 +101,9 @@ function packSceneGroup<S extends PackableMotionShot>(
     // A persisted clip is atomic: peeling a member would leave it on the
     // old segment with a video it was not in. Unrendered (null) runs may
     // split on duration and prompt length; those shots become the next clip.
-    const tiles = sticky ? [tileOf(run)] : fitRun(run, capMs, promptFits);
+    const tiles = sticky
+      ? [tileOf(run)]
+      : fitRun(run, capMs, minMs, promptFits);
     for (const tile of tiles) {
       const members = tile.shotIds.flatMap((id) => {
         const shot = byId.get(id);
@@ -103,6 +111,12 @@ function packSceneGroup<S extends PackableMotionShot>(
       });
       const first = members[0];
       if (!first) continue;
+      // Grok leftover override: the shot opted out of the packing model.
+      // One take per clip — do not invent in-clip cuts Grok cannot follow.
+      if (first.model && !videoModelSupportsInClipMultiShot(first.model)) {
+        packed.push(...members);
+        continue;
+      }
       if (members.length === 1) {
         packed.push(first);
         continue;
@@ -122,6 +136,10 @@ function packSceneGroup<S extends PackableMotionShot>(
  * nulls) stay together. Distinct ids — a 1:1 degenerate segment uses the
  * shot's own id — never coalesce with their neighbours.
  */
+function packsInClip(shot: PackableMotionShot): boolean {
+  return !shot.model || videoModelSupportsInClipMultiShot(shot.model);
+}
+
 function splitStickyRuns<S extends PackableMotionShot>(
   group: readonly S[]
 ): S[][] {
@@ -130,7 +148,15 @@ function splitStickyRuns<S extends PackableMotionShot>(
     const last = runs[runs.length - 1];
     const id = shot.renderSegmentId ?? null;
     const lastId = last?.[0]?.renderSegmentId ?? null;
-    if (last && (id ?? '') === (lastId ?? '')) {
+    const lastPacks = last?.[0] ? packsInClip(last[0]) : false;
+    // Grok leftover shots are barriers: packing them into a Seedance
+    // neighbour would snap a 1s insert that the user sent to Grok.
+    if (
+      last &&
+      (id ?? '') === (lastId ?? '') &&
+      lastPacks &&
+      packsInClip(shot)
+    ) {
       last.push(shot);
       continue;
     }
@@ -142,6 +168,7 @@ function splitStickyRuns<S extends PackableMotionShot>(
 function fitRun<S extends PackableMotionShot>(
   shots: readonly S[],
   capMs: number,
+  minMs: number,
   promptFits: PackMotionOptions<S>['promptFits']
 ): { shotIds: string[]; durationMs: number }[] {
   const durationTiles = tileSceneIntoSegments(
@@ -149,7 +176,8 @@ function fitRun<S extends PackableMotionShot>(
       id: shot.shotId,
       durationMs: durationMsOf(shot),
     })),
-    capMs
+    capMs,
+    minMs
   );
   if (!promptFits) return durationTiles;
   const byId = new Map(shots.map((shot) => [shot.shotId, shot]));

@@ -13,13 +13,12 @@
  *
  * Length is per scene (#1593). A scene's running time is its script label
  * (`metadata.durationSeconds`); its shots divide it and never extend it. The
- * LLM decides coverage — how many shots, 1..N — capped at how many of the
- * video model's shortest clips fit the label, and `allocateClipDurations`
- * spreads the label over them. Enhance no longer labels shots (#1621): the
+ * LLM decides coverage — how many shots, 1..N — capped at one shot per
+ * editorial second, and `allocateClipDurations` spreads the label over them
+ * on 1s…max (not the model's shortest clip). Leftover packs under the model
+ * floor snap at render. Enhance no longer labels shots (#1621): the
  * shot-list pass is the only place shot count and durations are decided. The
- * film target never enters here. The model grid *does*: it budgets the
- * prompt, divides the label, and clamps each clip; `resolveShotDuration`
- * only snaps again at submit. Prompts are assembled later by `deriveShots` —
+ * film target never enters here. Prompts are assembled later by `deriveShots` —
  * this pass does not re-author them.
  */
 
@@ -37,6 +36,12 @@ import type {
   ShotListPassResult,
   ShotSpec,
 } from './shot-list.schema';
+
+function editorialGrid(grid: readonly number[]): number[] {
+  const maxClip = Math.max(...grid.filter((n) => n > 0));
+  if (!Number.isFinite(maxClip) || maxClip < 1) return [...grid];
+  return Array.from({ length: maxClip }, (_, i) => i + 1);
+}
 
 /** Fallback shot covering a whole scene when the pass emits nothing. */
 export function defaultSingleShot(durationSeconds: number): ShotSpec {
@@ -62,17 +67,21 @@ function sceneDurationSeconds(
   return scene.metadata.durationSeconds || 3;
 }
 
+/** Editorial floor: a shot may be 1s; leftover packs snap to the model min. */
+const EDITORIAL_MIN_SECONDS = 1;
+
 /**
- * How many shots a scene can hold: one per shortest clip the video model
- * renders, never fewer than one. No grid (no video model) → no cap.
+ * How many shots a scene can hold: one per editorial second, never fewer
+ * than one. The video model's shortest clip is a *render* floor, not a shot
+ * floor — packing absorbs inserts under that min. No grid → no cap.
  */
 export function maxShotsForScene(
   sceneSeconds: number,
   grid: readonly number[]
 ): number {
-  const minClip = Math.min(...grid.filter((n) => n > 0));
-  if (!Number.isFinite(minClip)) return Number.POSITIVE_INFINITY;
-  return Math.max(1, Math.floor(sceneSeconds / minClip));
+  const hasGrid = grid.some((n) => n > 0);
+  if (!hasGrid) return Number.POSITIVE_INFINITY;
+  return Math.max(1, Math.floor(sceneSeconds / EDITORIAL_MIN_SECONDS));
 }
 
 /**
@@ -111,7 +120,7 @@ function keepShots(
  *
  * The list is capped at `maxShotsForScene` (post-parse only — Anthropic
  * rejects `maxItems`), a lone shot takes the whole label, and several split
- * it with `allocateClipDurations` on the model grid, the LLM's
+ * it with `allocateClipDurations` on 1s…max, the LLM's
  * `durationSeconds` as relative weights. A label the grid cannot reach
  * exactly (a 12s label on a {5, 10} grid) puts the residual on the last
  * shot, and `resolveShotDuration` snaps at submit — but no shot ever runs
@@ -137,7 +146,7 @@ export function allocateSceneShots(
     seconds = allocateClipDurations(
       kept.map((shot) => Math.max(1, shot.durationSeconds || 1)),
       sceneSeconds,
-      grid
+      editorialGrid(grid)
     );
     const residual = sceneSeconds - seconds.reduce((a, b) => a + b, 0);
     const lastIndex = seconds.length - 1;

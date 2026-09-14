@@ -575,13 +575,20 @@ describe('assemblePackedMotionPrompt', () => {
     expect(packed.prompt).not.toContain('Single continuous shot, no cuts.');
   });
 
-  it('Seedance 2.5 adds timestamps on the packed list', () => {
+  it('Seedance 2.5 packs Shot N (timestamps) as paragraphs, no cut to', () => {
     const packed = assemblePackedMotionPrompt({
       shots: [shot('opens the door', 4), shot('the hallway beyond', 6)],
       model: 'seedance_v2_5',
     });
-    expect(packed.prompt).toContain('0-4 seconds: Shot 1:');
-    expect(packed.prompt).toContain('4-10 seconds: Shot 2:');
+    expect(packed.prompt).toContain('Shot 1 (0-4s): opens the door');
+    expect(packed.prompt).toContain('Shot 2 (4-10s): the hallway beyond');
+    expect(packed.prompt).toContain(
+      'Shot 1 (0-4s): opens the door\n\nShot 2 (4-10s): the hallway beyond'
+    );
+    expect(packed.prompt).not.toContain('cut to');
+    expect(packed.prompt).toContain(
+      'No BGM; generate only environmental sounds and action sounds.'
+    );
   });
 
   it('H3 Max uses a timed shot list', () => {
@@ -642,7 +649,10 @@ describe('assemblePackedMotionPrompt', () => {
     expect(packed.prompt.split('No BGM').length).toBe(2);
     expect(packed.prompt.split('Avoid jitter and bent limbs.').length).toBe(2);
     expect(packed.prompt.indexOf('INT. HALLWAY')).toBeLessThan(
-      packed.prompt.indexOf('Shot 1:')
+      packed.prompt.indexOf('Shot 1 (')
+    );
+    expect(packed.prompt.indexOf('Shot 2 (')).toBeLessThan(
+      packed.prompt.indexOf('No BGM')
     );
     expect(packed.prompt).not.toContain('Single continuous shot, no cuts.');
   });

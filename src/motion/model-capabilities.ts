@@ -42,6 +42,21 @@ export function durationGridForModel(modelKey: ImageToVideoModel): number[] {
   return [...MOTION_DURATION_GRID[modelKey]];
 }
 
+/**
+ * Integer seconds a shot may be *authored* at: 1s through the model's max.
+ * Render still snaps onto {@link durationGridForModel}; leftover packs under
+ * the model floor snap up (or go to Grok). Shot-list coverage uses this so
+ * inserts are not forced to the model's shortest clip.
+ */
+export function editorialDurationGridForModel(
+  modelKey: ImageToVideoModel
+): number[] {
+  const grid = durationGridForModel(modelKey);
+  const max = Math.max(...grid);
+  if (!Number.isFinite(max) || max < 1) return grid;
+  return Array.from({ length: max }, (_, i) => i + 1);
+}
+
 export function motionResolutionTokensForModel(
   modelKey: ImageToVideoModel
 ): string[] {

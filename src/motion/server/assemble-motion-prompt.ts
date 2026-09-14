@@ -254,8 +254,8 @@ export type PackedMotionPrompt = {
 
 /**
  * Assemble one generation covering several shots of a scene. Per-shot bodies
- * come from {@link assembleMotionPrompt}; this only adds vendor cut syntax
- * and timings. A 1-shot list is the existing single-take path.
+ * come from {@link assembleMotionPrompt}; this only adds vendor shot-list
+ * syntax and timings. A 1-shot list is the existing single-take path.
  *
  * A 2+ shot clip is a scene header (environment, no-music, jitter) once,
  * then short per-shot bodies. Truncating the joined prompt would drop a
@@ -289,15 +289,31 @@ export function assemblePackedMotionPrompt({
   }
 
   const characterTags = uniqueCharacterTags(shots);
+  const bodies = shots.map((shot) =>
+    assembleOnePackedShot(shot, model, generateAudio, false, true)
+  );
+  const list = formatPackedShotList(model, shots, bodies);
+  if (model === 'seedance_v2_5') {
+    // BytePlus 2.5: timestamps or Shot N, each shot its own paragraph.
+    // 2.0 only follows shot numbers and uses `cut to`; 2.5 does not.
+    // https://docs.byteplus.com/en/docs/ModelArk/2607689
+    const env = formatPackedEnvironment(scene);
+    const guards = [
+      'No BGM; generate only environmental sounds and action sounds.',
+      characterTags.length > 0 ? 'Avoid jitter and bent limbs.' : '',
+    ].filter((part) => part.length > 0);
+    return {
+      prompt: [env, list, guards.join('\n')]
+        .filter((part) => part.length > 0)
+        .join('\n\n'),
+    };
+  }
   const header = formatPackedHeader({
     scene,
     characterTags,
     model,
     generateAudio,
   });
-  const bodies = shots.map((shot) =>
-    assembleOnePackedShot(shot, model, generateAudio, false, true)
-  );
   if (model === 'kling_v3_pro') {
     // Kling rejects `prompt` + `multi_prompt` together, so the header has to
     // live on the first element. Later shots stay action-only.
@@ -312,7 +328,7 @@ export function assemblePackedMotionPrompt({
   }
 
   return {
-    prompt: joinPacked(header, formatPackedShotList(model, shots, bodies)),
+    prompt: joinPacked(header, list),
   };
 }
 
@@ -405,7 +421,7 @@ function formatPackedShotList(
     const n = i + 1;
     const body = bodies[i] ?? '';
     if (model === 'seedance_v2_5') {
-      return `${start}-${end} seconds: Shot ${n}: ${body}`;
+      return `Shot ${n} (${start}-${end}s): ${body}`;
     }
     if (model === 'minimax_h3_max') {
       return `Shot ${n} (${start}-${end}s): ${body}`;
@@ -416,7 +432,6 @@ function formatPackedShotList(
   if (
     model === 'seedance_v2' ||
     model === 'seedance_v2_mini' ||
-    model === 'seedance_v2_5' ||
     model === 'gemini_omni_flash'
   ) {
     return labeled.join('\ncut to\n');

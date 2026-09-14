@@ -284,6 +284,7 @@ type SceneScriptPromptsProps = {
    */
   resolvedImageModel: TextToImageModel;
   resolvedVideoModel: ImageToVideoModel;
+  leftoverGrokShotIds?: ReadonlySet<string>;
   /** Per-scene generation status by model — drives the ✓/⟳/! dropdown markers. */
   imageModelStatuses?: Map<string, ModelGenerationStatus>;
   videoModelStatuses?: Map<string, ModelGenerationStatus>;
@@ -347,6 +348,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   segmentSpanLabel,
   resolvedImageModel,
   resolvedVideoModel,
+  leftoverGrokShotIds,
   imageModelStatuses,
   videoModelStatuses,
   onImageModelChange,
@@ -813,7 +815,10 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     motionModelConfig.requiredStyleCategory !== styleCategory
       ? DEFAULT_VIDEO_MODEL
       : aspectCompatibleMotion;
-  const regenMotionModel = effectiveMotionModel;
+  const regenMotionModel: ImageToVideoModel =
+    shot && leftoverGrokShotIds?.has(shot.id)
+      ? 'grok_imagine_video_1_5'
+      : effectiveMotionModel;
   // Can this model carry a voice reference at all? Without an audio slot the
   // binding would substitute to prose and the file would never ride, so the
   // dialogue panel shows the lines but offers no voice picker (#1559).

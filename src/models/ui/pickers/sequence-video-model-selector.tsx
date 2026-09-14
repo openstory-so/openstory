@@ -85,6 +85,8 @@ export const SequenceVideoModelSelector = ({
 
   // No video variants generated yet — fall back to the read-only chip showing
   // the sequence's configured model (or render nothing when motion is off).
+  // The generate-shots picker writes that default on change, so this chip
+  // tracks the model ungenerated shots will render with.
   if (!models || models.length === 0) {
     if (!sequenceVideoModel) return null;
     return withLabel(

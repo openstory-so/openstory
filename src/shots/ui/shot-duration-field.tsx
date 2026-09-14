@@ -12,12 +12,10 @@
  * `tileSceneIntoSegments` reads against the model's cap). Today's one-shot
  * scenes make the two coincide; multi-shot scenes (#910) won't.
  *
- * Options come from the selected motion model's JSON Schema, so the user can
- * only pick a value the model accepts. A stored value outside that set (the
- * shot renders through a different model than it was saved against, or legacy
- * data) is shown snapped, with a note — not as a pending edit. The render path
- * snaps it too (`resolveShotDuration`), so nothing is broken and there is
- * nothing the user must do.
+ * Options are 1s through the model's max — editorial length, not the render
+ * floor. A stored value outside the model's legal set (legacy data, or a
+ * leftover pack under the min) is shown snapped, with a note. The render path
+ * snaps it too (`resolveShotDuration`).
  */
 
 import { Button } from '@/ui/shadcn/button';
@@ -35,7 +33,7 @@ import { formatSeconds } from '@/sequences/ui/target-duration-chip';
 import { shotStalenessNamespace } from './use-shot-staleness';
 import { shotKeys } from './use-shots';
 import { videoModelDisplayName, type ImageToVideoModel } from '@/models/models';
-import { durationGridForModel } from '@/motion/model-capabilities';
+import { editorialDurationGridForModel } from '@/motion/model-capabilities';
 import { dialogueExceedsShotDuration } from '@/motion/resolve-shot-duration';
 import { snapDuration, snapDurationUp } from '@/motion/snap-duration';
 import type { Shot } from '@/platform/server/db/schema';
@@ -79,7 +77,7 @@ export const ShotDurationField: React.FC<ShotDurationFieldProps> = ({
       ? shot.durationMs / 1000
       : undefined;
 
-  const durationOptions = durationGridForModel(motionModel);
+  const durationOptions = editorialDurationGridForModel(motionModel);
   const durationItems = durationOptions.map((seconds) => ({
     value: String(seconds),
     label: `${seconds}s`,

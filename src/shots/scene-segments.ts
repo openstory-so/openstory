@@ -81,9 +81,13 @@ export type SegmentGroup = {
   shots: ShotView[];
   /**
    * Generate-picker model when this wrap is a packing preview, not a
-   * persisted clip. Only set on 2+ unrendered shots that fit under the cap.
+   * persisted clip. Set on 2+ unrendered shots that fit under the cap, and
+   * on a 1-shot leftover (sum < model min) so the strip can show the
+   * snap/Grok dropdown.
    */
   plannedModel?: ImageToVideoModel;
+  /** Planned pack whose sum is under the model floor. */
+  belowMin?: true;
 };
 
 /**
@@ -139,6 +143,7 @@ export function groupShotsForSceneList(
   const grid = durationGridForModel(videoModel);
   const capMs =
     grid.length > 0 ? Math.max(...grid) * 1000 : DEFAULT_SEGMENT_CAP_MS;
+  const minMs = grid.length > 0 ? Math.min(...grid) * 1000 : 0;
   const out: SegmentGroup[] = [];
   let pending: ShotView[] = [];
 
@@ -149,7 +154,8 @@ export function groupShotsForSceneList(
         id: shot.id,
         durationMs: Math.round(durationSecondsOf(shot.durationMs) * 1000),
       })),
-      capMs
+      capMs,
+      minMs
     );
     const byId = new Map(pending.map((shot) => [shot.id, shot]));
     for (const tile of tiles) {
@@ -158,13 +164,15 @@ export function groupShotsForSceneList(
         return member ? [member] : [];
       });
       if (members.length === 0) continue;
+      const leftover = tile.belowMin === true;
       out.push(
-        members.length > 1
+        members.length > 1 || leftover
           ? {
               segmentId: null,
               segment: null,
               shots: members,
               plannedModel: videoModel,
+              ...(leftover ? { belowMin: true as const } : {}),
             }
           : { segmentId: null, segment: null, shots: members }
       );

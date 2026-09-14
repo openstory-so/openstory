@@ -157,6 +157,11 @@ export type SceneListProps = {
   initialMusicModel?: AudioModel;
   /** Sequence default / last batch pick — seeds the motion model dropdown. */
   initialVideoModel?: ImageToVideoModel;
+  /**
+   * Persist a generate-shots model pick as the sequence default so
+   * ungenerated shots and Sequence settings follow it immediately.
+   */
+  onVideoModelChange?: (model: ImageToVideoModel) => void;
   /** Sequence stills model — continue-from-DAG cost quotes. */
   initialImageModel?: TextToImageModel;
   /** Style-category gate for models that require a matching style. */
@@ -177,6 +182,8 @@ export type SceneListProps = {
   targetDurationSeconds?: number | null;
   /** A run is on: scenes with no shots yet read "listing shots…" (#1593). */
   isAnalyzing?: boolean;
+  leftoverGrokShotIds?: ReadonlySet<string>;
+  onLeftoverGrokChange?: (shotIds: readonly string[], useGrok: boolean) => void;
 };
 
 const SceneListComponent: React.FC<SceneListProps> = ({
@@ -205,6 +212,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   onCompareDivergent,
   initialMusicModel,
   initialVideoModel,
+  onVideoModelChange,
   initialImageModel: _initialImageModel,
   styleCategory,
   generateStartFrames = false,
@@ -214,6 +222,8 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   scrollToSelection = false,
   targetDurationSeconds,
   isAnalyzing = false,
+  leftoverGrokShotIds,
+  onLeftoverGrokChange,
 }) => {
   const rootRef = useRef<HTMLDivElement>(null);
   const divergentByShotId = useMemo(() => {
@@ -624,6 +634,8 @@ const SceneListComponent: React.FC<SceneListProps> = ({
               onCompareDivergent={onCompareDivergent}
               staleShotIds={staleShotIds}
               videoModel={videoModel}
+              leftoverGrokShotIds={leftoverGrokShotIds}
+              onLeftoverGrokChange={onLeftoverGrokChange}
               isAnalyzing={isAnalyzing}
             />
           ))}
@@ -672,7 +684,10 @@ const SceneListComponent: React.FC<SceneListProps> = ({
         <div className="sticky bottom-0 border-t bg-background p-4 flex flex-col gap-3">
           <MotionModelSelector
             selectedModel={videoModel}
-            onModelChange={setVideoModel}
+            onModelChange={(model) => {
+              setVideoModel(model);
+              onVideoModelChange?.(model);
+            }}
             aspectRatio={aspectRatio}
             styleCategory={styleCategory}
             styleName={styleName}
@@ -838,6 +853,7 @@ const areEqual = (
     prevProps.styleCategory !== nextProps.styleCategory ||
     prevProps.styleName !== nextProps.styleName ||
     prevProps.staleShotIds !== nextProps.staleShotIds ||
+    prevProps.leftoverGrokShotIds !== nextProps.leftoverGrokShotIds ||
     prevProps.className !== nextProps.className
   ) {
     return false;
@@ -858,7 +874,9 @@ const areEqual = (
     prevProps.onSelectScene !== nextProps.onSelectScene ||
     prevProps.onSelectShot !== nextProps.onSelectShot ||
     prevProps.onClearSelection !== nextProps.onClearSelection ||
-    prevProps.onPlaySequence !== nextProps.onPlaySequence
+    prevProps.onPlaySequence !== nextProps.onPlaySequence ||
+    prevProps.onLeftoverGrokChange !== nextProps.onLeftoverGrokChange ||
+    prevProps.onVideoModelChange !== nextProps.onVideoModelChange
   ) {
     return false;
   }

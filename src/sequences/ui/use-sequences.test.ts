@@ -16,7 +16,13 @@ type CreateCall = { data: Record<string, unknown> };
 const createSequenceFn = vi.fn<(args: CreateCall) => Promise<unknown[]>>(
   async () => []
 );
-vi.doMock('@/sequences/sequences.fn', () => ({ createSequenceFn }));
+const setSequenceVideoModelFn = vi.fn<(args: CreateCall) => Promise<unknown>>(
+  async () => ({})
+);
+vi.doMock('@/sequences/sequences.fn', () => ({
+  createSequenceFn,
+  setSequenceVideoModelFn,
+}));
 // `useMutation` returns its own options object, so `mutationFn` is callable
 // straight off the hook — a pure payload check needs no React renderer. Kept
 // here (not a shared helper) because it is a lie only this file wants.
@@ -46,7 +52,8 @@ vi.doMock('@/platform/ui/auth/session-query', () => ({
   useAuthSession: () => ({ data: null }),
 }));
 
-const { useCreateSequence } = await import('./use-sequences');
+const { useCreateSequence, useSetSequenceVideoModel } =
+  await import('./use-sequences');
 
 /** Every field the composer can set, with values distinct from the server defaults. */
 const INPUT = {
@@ -91,5 +98,16 @@ describe('useCreateSequence forwards the full input', () => {
     const sent = createSequenceFn.mock.calls[0]?.[0];
     expect(sent?.data.title).toBe('Untitled Sequence');
     expect(sent?.data.generateStartFrames).toBe(false);
+  });
+});
+
+describe('useSetSequenceVideoModel', () => {
+  it('sends the sequence id and the picked video model', async () => {
+    setSequenceVideoModelFn.mockClear();
+    await mutationFnOf(useSetSequenceVideoModel('seq_1'))('seedance_v2_5');
+
+    expect(setSequenceVideoModelFn).toHaveBeenCalledWith({
+      data: { sequenceId: 'seq_1', videoModel: 'seedance_v2_5' },
+    });
   });
 });

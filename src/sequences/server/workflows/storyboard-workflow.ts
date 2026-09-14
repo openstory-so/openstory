@@ -227,6 +227,7 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
         suggestedLocations: input.suggestedLocations,
         referenceOnly: input.referenceOnly,
         generateVoices: input.generateVoices ?? false,
+        leftoverGrokShotIds: input.leftoverGrokShotIds,
       },
       spawnStepName: 'spawn-analyze-script',
       awaitStepName: 'await-analyze-script',

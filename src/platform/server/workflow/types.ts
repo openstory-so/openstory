@@ -330,6 +330,12 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
    * off.
    */
   generateVoices?: boolean;
+  /**
+   * Shot ids the user routed to Grok on leftover packs (sum under the
+   * packing model's min). Snap-to-min is the default; this is the
+   * stop-and-pick override. Don't-stop runs omit it.
+   */
+  leftoverGrokShotIds?: string[];
 }
 
 /**
@@ -409,6 +415,8 @@ export interface AnalyzeScriptWorkflowInput extends SequenceWorkflowContext {
   referenceOnly: boolean;
   /** @see StoryboardWorkflowInput.generateVoices — passed straight through. */
   generateVoices?: boolean;
+  /** @see StoryboardWorkflowInput.leftoverGrokShotIds — passed straight through. */
+  leftoverGrokShotIds?: string[];
 }
 
 /**

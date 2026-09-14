@@ -230,6 +230,7 @@ export const continueGenerationFn = createServerFn({ method: 'POST' })
           sequenceId: ulidSchema,
           startFrom: continueStageSchema,
           stopAt: generationStageSchema,
+          leftoverGrokShotIds: z.array(ulidSchema).optional(),
         })
         .refine((d) => stageIndex(d.startFrom) <= stageIndex(d.stopAt), {
           path: ['stopAt'],
@@ -321,6 +322,7 @@ export const continueGenerationFn = createServerFn({ method: 'POST' })
         musicModel: sequence.musicModel
           ? safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)
           : undefined,
+        leftoverGrokShotIds: data.leftoverGrokShotIds,
       })
     );
   });
@@ -502,6 +504,38 @@ export const setSequenceTargetDurationFn = createServerFn({ method: 'POST' })
     return await context.scopedDb.sequences.update({
       id: data.sequenceId,
       targetDurationSeconds: data.targetDurationSeconds,
+    });
+  });
+
+/**
+ * Persist the sequence video-model default. Ungenerated shots inherit this
+ * as the sequence tier, and Sequence settings reads it as the Video badge
+ * until a clip exists. Separate from {@link updateSequenceFn} for the
+ * reasons {@link setSequenceMusicFn} is.
+ *
+ * The generate-shots picker writes this on change so the inspector, packing
+ * preview, and settings row agree before anyone clicks Generate. Batch
+ * generate still writes it too, as a safety net.
+ */
+export const setSequenceVideoModelFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(
+    zodValidator(
+      z.object({
+        sequenceId: ulidSchema,
+        videoModel: z.string().refine(isValidImageToVideoModel, {
+          message: 'Invalid video model',
+        }),
+      })
+    )
+  )
+  .handler(async ({ data, context }) => {
+    if (data.videoModel === context.sequence.videoModel) {
+      return context.sequence;
+    }
+    return await context.scopedDb.sequences.update({
+      id: data.sequenceId,
+      videoModel: data.videoModel,
     });
   });
 

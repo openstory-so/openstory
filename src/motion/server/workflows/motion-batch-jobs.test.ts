@@ -66,6 +66,15 @@ describe('buildMotionJobs', () => {
   it('returns no jobs for no shots', () => {
     expect(buildMotionJobs([], [A, B])).toEqual([]);
   });
+
+  it('keeps a leftover Grok shot on Grok even when the batch is Seedance', () => {
+    const grok: ImageToVideoModel = 'grok_imagine_video_1_5';
+    const mixed: Shot[] = [
+      { shotId: 'a', model: B },
+      { shotId: 'b', model: grok },
+    ];
+    expect(buildMotionJobs(mixed, [B]).map((j) => j.model)).toEqual([B, grok]);
+  });
 });
 
 describe('packMotionBatchShots then buildMotionJobs (#1510)', () => {

@@ -57,7 +57,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
     name: 'Gemini Omni Flash 1.1',
     vendor: 'Google',
     license: 'proprietary' as const,
-    qualityRank: 2,
+    qualityRank: 3,
     // Always generates synchronized audio (dialogue, ambience, score). Neither
     // the fal schema nor the Interactions API expose a generate_audio toggle
     // (`videoModelSupportsAudio` is false), so audio direction is in-prompt
@@ -73,7 +73,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
     name: 'Kling 3.0 Omni',
     vendor: 'Kling',
     license: 'proprietary' as const,
-    qualityRank: 3,
+    qualityRank: 4,
     maxPromptLength: 2500,
     supportsAudio: true,
     // Packed via `multi_prompt[]` (1–15s per shot) + `shot_type: customize`.
@@ -101,7 +101,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
     name: 'Seedance 2.0',
     vendor: 'ByteDance',
     license: 'proprietary' as const,
-    qualityRank: 4,
+    qualityRank: 2,
     maxPromptLength: 4096,
     supportsAudio: true,
     // Shot 1/2/3 prose + `cut to`.
@@ -117,10 +117,10 @@ export const IMAGE_TO_VIDEO_MODELS = {
     name: 'Seedance 2.5',
     vendor: 'ByteDance',
     license: 'proprietary' as const,
-    qualityRank: 2,
+    qualityRank: 1,
     maxPromptLength: 4096,
     supportsAudio: true,
-    // Shot 1/2/3 prose + `cut to` + timestamps.
+    // Shot N (0-Ns) paragraphs; 2.5 timestamps, no `cut to`.
     supportsInClipMultiShot: true,
     performance: { estimatedGenerationTime: 208, quality: 'best' as const },
     // Offered only where the BytePlus via is live (#1519): public fal 2.5

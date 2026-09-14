@@ -162,8 +162,8 @@ describe('shot-list schema — constraints', () => {
     expect(shots.safeParse([]).success).toBe(false);
     // One shot is fine.
     expect(shots.safeParse([validShot]).success).toBe(true);
-    // No ceiling on the schema (#1593): the scene label and the model's
-    // shortest clip cap the count post-parse (`allocateSceneShots`).
+    // No ceiling on the schema (#1593): the scene label and editorial 1s
+    // cap the count post-parse (`allocateSceneShots`).
     const many = Array.from({ length: 9 }, (_, i) => ({
       ...validShot,
       shotNumber: i + 1,

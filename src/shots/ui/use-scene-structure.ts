@@ -76,7 +76,7 @@ export function useCreateScene(sequenceId: string) {
 
 /**
  * Append a shot to a scene (server auto-numbers the slot). The caller passes
- * the length — the video model's shortest clip (#1593) — so the film total
+ * the length — default 3s, not the model's shortest clip — so the film total
  * grows by exactly that and the chips say so; nothing else is rebalanced.
  */
 export function useCreateShot(sequenceId: string) {

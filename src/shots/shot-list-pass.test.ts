@@ -96,10 +96,10 @@ function oneShotEach(
 }
 
 describe('maxShotsForScene', () => {
-  it('is how many shortest clips fit the label, at least one', () => {
-    expect(maxShotsForScene(18, SEEDANCE)).toBe(4);
-    expect(maxShotsForScene(5, SEEDANCE)).toBe(1);
-    expect(maxShotsForScene(3, SEEDANCE)).toBe(1);
+  it('is how many editorial seconds fit the label, at least one', () => {
+    expect(maxShotsForScene(18, SEEDANCE)).toBe(18);
+    expect(maxShotsForScene(5, SEEDANCE)).toBe(5);
+    expect(maxShotsForScene(3, SEEDANCE)).toBe(3);
     expect(maxShotsForScene(30, NO_GRID)).toBe(Number.POSITIVE_INFINITY);
   });
 });
@@ -172,17 +172,17 @@ describe('allocateSceneShots (#1593, #1621)', () => {
     expect(out.map((s) => s.durationSeconds)).toEqual([15, 15, 15]);
   });
 
-  it('caps the count at what the label can hold; cut shots hand their lines to the last kept', () => {
+  it('keeps more shots than the model min when they still fit the label', () => {
     const shots = [1, 2, 3, 4].map((n) => ({
       ...twoShotSpec(2),
       shotNumber: n,
       dialogue: [{ character: 'A', line: `line ${n}`, tone: '' }],
     }));
-    // 5s on a 4s-minimum grid: one shot.
+    // 5s used to cap at one 4s-min clip. Editorial 1s shots keep all four.
     const out = allocateSceneShots(shots, scene(5), SEEDANCE);
-    expect(out).toHaveLength(1);
-    expect(out[0]?.durationSeconds).toBe(5);
-    expect(out[0]?.dialogue.map((l) => l.line)).toEqual([
+    expect(out).toHaveLength(4);
+    expect(out.reduce((sum, s) => sum + s.durationSeconds, 0)).toBe(5);
+    expect(out.flatMap((s) => s.dialogue.map((l) => l.line))).toEqual([
       'line 1',
       'line 2',
       'line 3',
@@ -387,7 +387,7 @@ describe('film length is the sum of the scene labels (#1593)', () => {
           sceneNumber: 2,
           shots: [twoShotSpec(1), twoShotSpec(2), twoShotSpec(3)],
         },
-        // Asked for two on a 5s scene: a 4s-minimum grid holds one.
+        // Asked for two on a 5s scene: editorial 1s shots keep both.
         { sceneNumber: 3, shots: [twoShotSpec(1), twoShotSpec(2)] },
       ],
     };
@@ -396,7 +396,7 @@ describe('film length is the sum of the scene labels (#1593)', () => {
       (scene.shots ?? []).reduce((sum, shot) => sum + shot.durationSeconds, 0)
     );
     expect(perScene).toEqual([8, 12, 5]);
-    expect(attached.map((scene) => scene.shots?.length)).toEqual([2, 3, 1]);
+    expect(attached.map((scene) => scene.shots?.length)).toEqual([2, 3, 2]);
     // Scene labels never move.
     expect(attached.map((scene) => scene.metadata.durationSeconds)).toEqual([
       8, 12, 5,
@@ -500,11 +500,11 @@ describe('formatScenesForShotListPrompt', () => {
     );
     expect(text).toContain('## Scene 1 — Scene 1');
     expect(text).toContain('INT. HALLWAY - NIGHT');
-    expect(text).toContain('duration: 8s\nshots: up to 2');
+    expect(text).toContain('duration: 8s\nshots: up to 8');
     expect(text).toContain('She opens the door. Cut to the hallway beyond.');
   });
 
-  it('a label too short for two clips is exactly 1; a very long one needs a floor', () => {
+  it('a short label still allows inserts; a very long one needs a floor', () => {
     const tiny = formatScenesForShotListPrompt(
       [
         makeScene(2, 'Blink.', {
@@ -513,8 +513,8 @@ describe('formatScenesForShotListPrompt', () => {
       ],
       SEEDANCE
     );
-    expect(tiny).toContain('duration: 5s\nshots: exactly 1');
-    // 993s on a 4..15s grid needs 67 clips and holds 248.
+    expect(tiny).toContain('duration: 5s\nshots: up to 5');
+    // 993s on a 15s max clip needs 67 clips; editorial 1s holds 993.
     const long = formatScenesForShotListPrompt(
       [
         makeScene(4, 'Siege.', {
@@ -523,7 +523,7 @@ describe('formatScenesForShotListPrompt', () => {
       ],
       SEEDANCE
     );
-    expect(long).toContain('duration: 993s\nshots: 67 to 248');
+    expect(long).toContain('duration: 993s\nshots: 67 to 993');
     // No grid: no budget line.
     expect(
       formatScenesForShotListPrompt([makeScene(3, 'x')], NO_GRID)

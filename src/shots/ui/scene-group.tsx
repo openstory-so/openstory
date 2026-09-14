@@ -29,6 +29,10 @@ import {
 } from './use-scene-structure';
 import { videoModelDisplayName, type ImageToVideoModel } from '@/models/models';
 import { durationGridForModel } from '@/motion/model-capabilities';
+import { snapDuration } from '@/motion/snap-duration';
+
+const GROK_IMAGINE: ImageToVideoModel = 'grok_imagine_video_1_5';
+const DEFAULT_ADD_SHOT_MS = 3000;
 import { formatSeconds } from '@/sequences/ui/target-duration-chip';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import type { SceneWithScript } from './use-scenes';
@@ -92,8 +96,11 @@ type SceneGroupProps = {
   onCompareDivergent?: (variant: ShotVariant) => void;
   /** Shots with stale prompts/image (#1077) — amber corner dot. */
   staleShotIds?: Set<string>;
-  /** Sizes a hand-added shot: the model's shortest clip (#1593). */
+  /** Sequence video model — planned-pack preview and leftover snap/Grok. */
   videoModel: ImageToVideoModel;
+  /** Shot ids the user routed to Grok on a leftover planned pack. */
+  leftoverGrokShotIds?: ReadonlySet<string>;
+  onLeftoverGrokChange?: (shotIds: readonly string[], useGrok: boolean) => void;
   /** A run is on: a scene with no shots yet is still being listed (#1593). */
   isAnalyzing?: boolean;
 };
@@ -110,6 +117,13 @@ type SegmentBracketProps = {
   model: string | null;
   shotCount: number;
   stale?: boolean;
+  /** Planned pack under the model floor — snap vs Grok. */
+  leftover?: {
+    editorialSeconds: number;
+    packingModel: ImageToVideoModel;
+    useGrok: boolean;
+    onUseGrokChange: (useGrok: boolean) => void;
+  };
   children: ReactNode;
 };
 
@@ -122,15 +136,21 @@ const SegmentBracket: React.FC<SegmentBracketProps> = ({
   model,
   shotCount,
   stale = false,
+  leftover,
   children,
 }) => {
   const planned = kind === 'planned';
-  const modelName = model ? videoModelDisplayName(model) : null;
+  const displayModel = leftover?.useGrok ? GROK_IMAGINE : model;
+  const modelName = displayModel ? videoModelDisplayName(displayModel) : null;
   const label = modelName ?? 'Video';
+  const snappedSeconds = leftover
+    ? snapDuration(leftover.editorialSeconds, leftover.packingModel)
+    : null;
   return (
     <div
       data-testid="segment-bracket"
       data-segment-kind={kind}
+      data-below-min={leftover ? 'true' : undefined}
       aria-label={
         planned
           ? `Will generate with ${label}, ${shotCount} shots`
@@ -145,14 +165,40 @@ const SegmentBracket: React.FC<SegmentBracketProps> = ({
     >
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <Film className="h-3 w-3 shrink-0" />
-        <span
-          className={cn(
-            'truncate font-medium',
-            planned ? 'text-muted-foreground' : 'text-foreground'
-          )}
-        >
-          {label}
-        </span>
+        {leftover ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              className={cn(
+                'flex min-w-0 items-center gap-0.5 truncate font-medium',
+                planned ? 'text-muted-foreground' : 'text-foreground'
+              )}
+            >
+              {label}
+              <ChevronDown className="h-3 w-3 shrink-0" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem
+                onSelect={() => leftover.onUseGrokChange(false)}
+              >
+                {videoModelDisplayName(leftover.packingModel)} · billed as{' '}
+                {formatSeconds(snappedSeconds ?? leftover.editorialSeconds)}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => leftover.onUseGrokChange(true)}>
+                {videoModelDisplayName(GROK_IMAGINE)} ·{' '}
+                {formatSeconds(leftover.editorialSeconds)}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <span
+            className={cn(
+              'truncate font-medium',
+              planned ? 'text-muted-foreground' : 'text-foreground'
+            )}
+          >
+            {label}
+          </span>
+        )}
         {shotCount > 1 && <span className="shrink-0">{shotCount} shots</span>}
         {!planned && stale && (
           <Badge
@@ -163,6 +209,13 @@ const SegmentBracket: React.FC<SegmentBracketProps> = ({
           </Badge>
         )}
       </div>
+      {leftover && snappedSeconds != null && (
+        <p className="text-[11px] text-muted-foreground">
+          {leftover.useGrok
+            ? `${formatSeconds(leftover.editorialSeconds)} clip — Grok Imagine can render it at that length.`
+            : `${formatSeconds(leftover.editorialSeconds)} clip — ${videoModelDisplayName(leftover.packingModel)} min is ${formatSeconds(Math.min(...durationGridForModel(leftover.packingModel)))}. Billed as ${formatSeconds(snappedSeconds)}.`}
+        </p>
+      )}
       {children}
     </div>
   );
@@ -188,6 +241,8 @@ const SceneGroupComponent: React.FC<SceneGroupProps> = ({
   onCompareDivergent,
   staleShotIds,
   videoModel,
+  leftoverGrokShotIds,
+  onLeftoverGrokChange,
   isAnalyzing = false,
 }) => {
   const [expanded, setExpanded] = useState(true);
@@ -279,12 +334,10 @@ const SceneGroupComponent: React.FC<SceneGroupProps> = ({
   };
 
   const handleAddShot = () => {
-    const minClipSeconds = Math.min(...durationGridForModel(videoModel));
     createShot.mutate(
       {
         sceneId: scene.id,
-        durationMs:
-          (Number.isFinite(minClipSeconds) ? minClipSeconds : 3) * 1000,
+        durationMs: DEFAULT_ADD_SHOT_MS,
       },
       {
         onSuccess: (shot) => onSelectShot(shot.id),
@@ -540,12 +593,31 @@ const SceneGroupComponent: React.FC<SceneGroupProps> = ({
               );
             }
             if (group.plannedModel) {
+              const leftover = group.belowMin
+                ? {
+                    editorialSeconds:
+                      group.shots.reduce(
+                        (sum, shot) => sum + (shot.durationMs ?? 0),
+                        0
+                      ) / 1000,
+                    packingModel: group.plannedModel,
+                    useGrok: group.shots.some((shot) =>
+                      leftoverGrokShotIds?.has(shot.id)
+                    ),
+                    onUseGrokChange: (useGrok: boolean) =>
+                      onLeftoverGrokChange?.(
+                        group.shots.map((shot) => shot.id),
+                        useGrok
+                      ),
+                  }
+                : undefined;
               return (
                 <SegmentBracket
                   key={key}
                   kind="planned"
-                  model={group.plannedModel}
+                  model={leftover?.useGrok ? GROK_IMAGINE : group.plannedModel}
                   shotCount={group.shots.length}
+                  leftover={leftover}
                 >
                   {items}
                 </SegmentBracket>

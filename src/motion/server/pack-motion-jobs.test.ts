@@ -199,6 +199,33 @@ describe('packMotionBatchShots — prompt length', () => {
   });
 });
 
+describe('packMotionBatchShots — leftover min', () => {
+  it('does not leave a 4s H3 tail on 19×1s — packs [14][5]', () => {
+    const shots = Array.from({ length: 19 }, (_, i) =>
+      shot(`s${i}`, 'sc-1', 1)
+    );
+    const packed = packMotionBatchShots(shots, ['minimax_h3_max']);
+    expect(packed).toHaveLength(2);
+    expect(packed[0]?.coveredShots).toHaveLength(14);
+    expect(packed[0]?.duration).toBe(14);
+    expect(packed[1]?.coveredShots).toHaveLength(5);
+    expect(packed[1]?.duration).toBe(5);
+  });
+
+  it('a Grok leftover shot does not pack into Seedance neighbours', () => {
+    const packed = packMotionBatchShots(
+      [
+        shot('a', 'sc-1', 15, 'seedance_v2'),
+        shot('b', 'sc-1', 1, 'grok_imagine_video_1_5'),
+        shot('c', 'sc-1', 15, 'seedance_v2'),
+      ],
+      ['seedance_v2']
+    );
+    expect(packed.map((s) => s.shotId)).toEqual(['a', 'b', 'c']);
+    expect(packed.every((s) => s.coveredShots === undefined)).toBe(true);
+  });
+});
+
 describe('coveredMembersForShot', () => {
   it('returns both members when clicking either shot of a packed pair', () => {
     const shots = [shot('a', 'sc-1', 4), shot('b', 'sc-1', 6)];

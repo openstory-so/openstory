@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { editorialDurationGridForModel } from './model-capabilities';
 import {
   allocateClipDurations,
   durationGridForModel,
@@ -17,6 +18,13 @@ describe('durationGridForModel', () => {
     expect(durationGridForModel('seedance_v2')).toEqual([
       4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
     ]);
+  });
+});
+
+describe('editorialDurationGridForModel', () => {
+  it('offers 1s through H3 Max’s 15s cap, not the 5s render floor', () => {
+    expect(editorialDurationGridForModel('minimax_h3_max')[0]).toBe(1);
+    expect(editorialDurationGridForModel('minimax_h3_max')?.at(-1)).toBe(15);
   });
 });
 

@@ -44,10 +44,11 @@ export const TURBO_IMAGE_MODELS = [
   'flux_2_turbo',
 ] as const satisfies readonly TextToImageModel[];
 
-/** Fast motion models. H3 Max is the turbo default. */
+/** Fast motion models. H3 Max is the turbo default; Mini sits last. */
 export const TURBO_VIDEO_MODELS = [
   'minimax_h3_max',
   'grok_imagine_video_1_5',
+  'seedance_v2_mini',
 ] as const satisfies readonly ImageToVideoModel[];
 
 /** Fast audio. ElevenLabs is the default in both modes. */
@@ -64,7 +65,7 @@ export const TURBO_DEFAULT_AUDIO = 'elevenlabs_music' as const;
 
 export const QUALITY_DEFAULT_ANALYSIS = 'openai/gpt-6-astra' as const;
 export const QUALITY_DEFAULT_IMAGE = 'gpt_image_2' as const;
-export const QUALITY_DEFAULT_VIDEO = 'seedance_v2' as const;
+export const QUALITY_DEFAULT_VIDEO = 'seedance_v2_5' as const;
 export const QUALITY_DEFAULT_AUDIO = 'elevenlabs_music' as const;
 
 const TURBO_ANALYSIS_MODEL_SET = new Set<string>(TURBO_ANALYSIS_MODELS);

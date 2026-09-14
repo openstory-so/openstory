@@ -34,6 +34,12 @@ import { getDurationValues, numericOf } from './motion-transform';
 
 export { DEFAULT_SEGMENT_CAP_MS, tileSceneIntoSegments, type SegmentShot };
 
+function durationValuesForModel(model: ImageToVideoModel): number[] {
+  const endpointId = IMAGE_TO_VIDEO_MODELS[model].id;
+  const jsonSchema = MOTION_JSON_SCHEMAS[endpointId];
+  return getDurationValues(jsonSchema).map(numericOf);
+}
+
 /**
  * The maximum single-render duration (ms) for a model — the largest value in
  * its valid duration set. This is the segment cap: a render may cover multiple
@@ -41,11 +47,20 @@ export { DEFAULT_SEGMENT_CAP_MS, tileSceneIntoSegments, type SegmentShot };
  * {@link DEFAULT_SEGMENT_CAP_MS} when the schema exposes no durations.
  */
 export function resolveSegmentCapMs(model: ImageToVideoModel): number {
-  const endpointId = IMAGE_TO_VIDEO_MODELS[model].id;
-  const jsonSchema = MOTION_JSON_SCHEMAS[endpointId];
-  const values = getDurationValues(jsonSchema).map(numericOf);
+  const values = durationValuesForModel(model);
   if (values.length === 0) return DEFAULT_SEGMENT_CAP_MS;
   return Math.max(...values) * 1000;
+}
+
+/**
+ * The shortest clip (ms) this model will accept. Leftover tiles under this
+ * floor snap up (or the leftover dropdown routes them to Grok). 0 when the
+ * schema exposes no durations — same "no floor" as a missing min on the tiler.
+ */
+export function resolveSegmentMinMs(model: ImageToVideoModel): number {
+  const values = durationValuesForModel(model).filter((n) => n > 0);
+  if (values.length === 0) return 0;
+  return Math.min(...values) * 1000;
 }
 
 /**

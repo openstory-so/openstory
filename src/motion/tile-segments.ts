@@ -1,10 +1,17 @@
 /**
- * Greedy contiguous fill of a scene into ≤cap render units (#990 / #1510).
+ * Contiguous partition of a scene into render units (#990 / #1510).
  *
  * Client-safe: the shot list previews the same membership generate will use.
- * `packMotionBatchShots` is the live server caller; `resolveSegmentCapMs` is
- * the schema-backed cap. The UI uses `durationGridForModel`'s max, which the
- * capabilities lockstep test keeps equal to that schema.
+ * `packMotionBatchShots` is the live server caller; `resolveSegmentCapMs` /
+ * `resolveSegmentMinMs` are the schema-backed bounds. The UI uses
+ * `durationGridForModel`'s min/max, which the capabilities lockstep test
+ * keeps equal to that schema.
+ *
+ * With only a max (min = 0) this matches greedy next-fit: order is fixed, so
+ * filling each segment as far as the cap allows minimises job count. A min
+ * greater than 0 is the leftover problem — greedy fill can leave a tail
+ * shorter than the model floor, so the tiler is a shortest path over cut
+ * positions that prefers zero leftovers, then fewer jobs.
  */
 
 /** Fallback segment cap when a model's duration set is empty. */
@@ -20,36 +27,100 @@ export type SegmentShot = {
 export type TiledSegment = {
   shotIds: string[];
   durationMs: number;
+  /**
+   * Sum is under the model floor. Generate snaps this clip up to min (or the
+   * leftover dropdown routes it to Grok). Omitted when the segment meets min.
+   */
+  belowMin?: true;
+};
+
+type Cut = {
+  leftover: number;
+  jobs: number;
+  prev: number;
 };
 
 /**
- * Tile an ordered list of shots into contiguous segments, each ≤ `maxSegmentMs`.
- * Greedy contiguous fill: a shot joins the current segment while the running
- * total stays within the cap, otherwise it opens a new one. A single shot
- * longer than the cap becomes its own (over-cap) segment — that's the model's
- * problem to enforce, not the tiler's, and silently dropping or splitting it
- * would lose content.
+ * Tile an ordered list of shots into contiguous segments.
+ *
+ * Each multi-shot segment stays ≤ `maxSegmentMs`. A single shot longer than
+ * the cap becomes its own (over-cap) segment — that's the model's problem to
+ * enforce, not the tiler's, and silently dropping or splitting it would lose
+ * content. When `minSegmentMs` is set, a segment whose sum is under that
+ * floor is marked `belowMin` and the cut set minimises how many of those
+ * leftovers exist (then job count).
  *
  * Order is preserved (segment identity depends on it); shots are never sorted.
  */
 export function tileSceneIntoSegments(
   shots: readonly SegmentShot[],
-  maxSegmentMs: number
+  maxSegmentMs: number,
+  minSegmentMs = 0
 ): TiledSegment[] {
-  const cap = maxSegmentMs > 0 ? maxSegmentMs : DEFAULT_SEGMENT_CAP_MS;
-  const segments: TiledSegment[] = [];
-  let current: TiledSegment | null = null;
+  if (shots.length === 0) return [];
 
-  for (const shot of shots) {
-    const dur = Math.max(0, shot.durationMs);
-    if (current && current.durationMs + dur <= cap) {
-      current.shotIds.push(shot.id);
-      current.durationMs += dur;
-    } else {
-      current = { shotIds: [shot.id], durationMs: dur };
-      segments.push(current);
+  const cap = maxSegmentMs > 0 ? maxSegmentMs : DEFAULT_SEGMENT_CAP_MS;
+  const minMs = minSegmentMs > 0 ? minSegmentMs : 0;
+  const n = shots.length;
+  const prefix = Array.from({ length: n + 1 }, () => 0);
+  for (let i = 0; i < n; i++) {
+    prefix[i + 1] = (prefix[i] ?? 0) + Math.max(0, shots[i]?.durationMs ?? 0);
+  }
+
+  const best: Cut[] = Array.from({ length: n + 1 }, () => ({
+    leftover: Number.POSITIVE_INFINITY,
+    jobs: Number.POSITIVE_INFINITY,
+    prev: -1,
+  }));
+  best[0] = { leftover: 0, jobs: 0, prev: -1 };
+
+  for (let j = 1; j <= n; j++) {
+    for (let i = 0; i < j; i++) {
+      const sum = (prefix[j] ?? 0) - (prefix[i] ?? 0);
+      const count = j - i;
+      if (count > 1 && sum > cap) continue;
+      const prev = best[i];
+      if (!prev) continue;
+      const belowMin = minMs > 0 && sum < minMs;
+      const leftover = prev.leftover + (belowMin ? 1 : 0);
+      const jobs = prev.jobs + 1;
+      const current = best[j];
+      if (!current) continue;
+      const betterLeftover = leftover < current.leftover;
+      const betterJobs = leftover === current.leftover && jobs < current.jobs;
+      // Larger i → shorter last segment. On a leftover-free tie this packs
+      // earlier shots fuller (the 19×1s / H3 case lands on [14][5], not [5][14]).
+      const betterTie =
+        leftover === current.leftover &&
+        jobs === current.jobs &&
+        i > current.prev;
+      if (betterLeftover || betterJobs || betterTie) {
+        best[j] = { leftover, jobs, prev: i };
+      }
     }
   }
 
-  return segments;
+  const ranges: Array<{ start: number; end: number }> = [];
+  let j = n;
+  while (j > 0) {
+    const cut = best[j];
+    const i = cut?.prev ?? -1;
+    if (i < 0) break;
+    ranges.push({ start: i, end: j });
+    j = i;
+  }
+  ranges.reverse();
+
+  return ranges.map(({ start, end }) => {
+    const shotIds: string[] = [];
+    for (let i = start; i < end; i++) {
+      const shot = shots[i];
+      if (shot) shotIds.push(shot.id);
+    }
+    const durationMs = (prefix[end] ?? 0) - (prefix[start] ?? 0);
+    const belowMin = minMs > 0 && durationMs < minMs;
+    return belowMin
+      ? { shotIds, durationMs, belowMin: true as const }
+      : { shotIds, durationMs };
+  });
 }

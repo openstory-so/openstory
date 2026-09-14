@@ -87,10 +87,11 @@ describe('mode defaults', () => {
     expect(TURBO_DEFAULT_VIDEO).toBe('minimax_h3_max');
   });
 
-  it('quality defaults are Astra / GPT Image 2 / Seedance', () => {
+  it('quality defaults are Astra / GPT Image 2 / Seedance 2.5', () => {
     expect(defaultAnalysisModel('quality')).toBe('openai/gpt-6-astra');
     expect(defaultImageModel('quality')).toBe('gpt_image_2');
-    expect(defaultVideoModel('quality', '16:9')).toBe('seedance_v2');
+    expect(defaultVideoModel('quality', '16:9')).toBe('seedance_v2_5');
+    expect(QUALITY_DEFAULT_VIDEO).toBe('seedance_v2_5');
   });
 });
 
@@ -123,6 +124,39 @@ describe('selector grouping', () => {
     expect(ids[1]).toBe('flux_2_flash');
     expect(ids[2]).toBe('gpt_image_2');
   });
+
+  it('puts Seedance 2.5 then 2.0 in Quality, and Mini last in Fast', () => {
+    const ids = [
+      'seedance_v2_mini',
+      'kling_v3_pro',
+      'seedance_v2',
+      'gemini_omni_flash',
+      'seedance_v2_5',
+      'grok_imagine_video_1_5',
+      'minimax_h3_max',
+    ];
+    ids.sort((a, b) =>
+      compareSelectorModels(
+        a,
+        b,
+        TURBO_VIDEO_MODELS,
+        QUALITY_DEFAULT_VIDEO,
+        (id) =>
+          isValidImageToVideoModel(id)
+            ? IMAGE_TO_VIDEO_MODELS[id].qualityRank
+            : 99
+      )
+    );
+    expect(ids).toEqual([
+      'minimax_h3_max',
+      'grok_imagine_video_1_5',
+      'seedance_v2_mini',
+      'seedance_v2_5',
+      'seedance_v2',
+      'gemini_omni_flash',
+      'kling_v3_pro',
+    ]);
+  });
 });
 
 describe('styleMayApplyImage / styleMayApplyVideo', () => {
@@ -140,15 +174,18 @@ describe('styleMayApplyImage / styleMayApplyVideo', () => {
   it('allows Turbo to apply a Fast rec', () => {
     expect(styleMayApplyImage('turbo', 'nano_banana_2_lite')).toBe(true);
     expect(styleMayApplyVideo('turbo', 'minimax_h3_max')).toBe(true);
+    expect(styleMayApplyVideo('turbo', 'seedance_v2_mini')).toBe(true);
   });
 });
 
 describe('isTurboAnalysisModel / isTurboImageModel / isTurboVideoModel', () => {
-  it('flags Lite and H3 Max, not GPT Image 2 or Seedance', () => {
+  it('flags Lite and H3 Max, not GPT Image 2 or Seedance 2.0', () => {
     expect(isTurboImageModel('nano_banana_2_lite')).toBe(true);
     expect(isTurboImageModel('gpt_image_2')).toBe(false);
     expect(isTurboVideoModel('minimax_h3_max')).toBe(true);
+    expect(isTurboVideoModel('seedance_v2_mini')).toBe(true);
     expect(isTurboVideoModel('seedance_v2')).toBe(false);
+    expect(isTurboVideoModel('seedance_v2_5')).toBe(false);
   });
 
   it('flags Luna, not Fable or Astra', () => {

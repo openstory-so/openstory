@@ -9,6 +9,7 @@ import {
   getSequencesFn,
   renameSequenceFn,
   setSequenceTargetDurationFn,
+  setSequenceVideoModelFn,
   setSequenceModelFn,
   setSequenceMusicFn,
   unarchiveSequenceFn,
@@ -339,6 +340,46 @@ export function useSetSequenceTargetDuration(sequenceId: string) {
       }),
     onSuccess: (updated) => {
       queryClient.setQueryData(sequenceKeys.detail(sequenceId), updated);
+      void queryClient.invalidateQueries({
+        queryKey: sequenceKeys.detail(sequenceId),
+      });
+    },
+  });
+}
+
+/**
+ * Persist the sequence video-model default. Ungenerated shots inherit it,
+ * Sequence settings shows it, and the generate-shots picker seeds from it.
+ * Optimistic so the inspector and the Video badge move with the click.
+ */
+export function useSetSequenceVideoModel(sequenceId: string) {
+  const queryClient = useQueryClient();
+  const posthog = usePostHog();
+
+  return useMutation({
+    scope: { id: `set-sequence-video-model-${sequenceId}` },
+    mutationFn: (videoModel: string) =>
+      setSequenceVideoModelFn({ data: { sequenceId, videoModel } }),
+    onMutate: async (videoModel) => {
+      const key = sequenceKeys.detail(sequenceId);
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<Sequence>(key);
+      queryClient.setQueryData<Sequence>(key, (old) =>
+        old ? { ...old, videoModel } : old
+      );
+      return { previous };
+    },
+    onError: (error, _videoModel, ctx) => {
+      if (ctx?.previous) {
+        queryClient.setQueryData(sequenceKeys.detail(sequenceId), ctx.previous);
+      }
+      toast.error('Could not save the video model.');
+      posthog.captureException(error, { sequence_id: sequenceId });
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData(sequenceKeys.detail(sequenceId), updated);
+    },
+    onSettled: () => {
       void queryClient.invalidateQueries({
         queryKey: sequenceKeys.detail(sequenceId),
       });

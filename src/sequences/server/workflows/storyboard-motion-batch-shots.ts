@@ -74,7 +74,9 @@ export function buildStoryboardMotionBatchShots(input: {
   referenceOnly?: boolean;
   /** References-stage dialogue clips, keyed by shot id (#1554). */
   dialogueClipsByShotId?: Record<string, MotionAudioClip[]>;
+  leftoverGrokShotIds?: readonly string[];
 }): BatchMotionMusicWorkflowInput['shots'] {
+  const leftoverGrok = new Set(input.leftoverGrokShotIds ?? []);
   const items = shotWorkItems(input.scenes, input.shotMapping);
   return items.flatMap((item, index) => {
     const { scene, mapping } = item;
@@ -110,12 +112,16 @@ export function buildStoryboardMotionBatchShots(input: {
     // prompt would leave its token unsubstituted and its audio file off the
     // request. The single-shot path in `motion.fn.ts` already matched the
     // assembled text; this brings the batch in line with it.
+    const shotModel =
+      mapping.shotId && leftoverGrok.has(mapping.shotId)
+        ? 'grok_imagine_video_1_5'
+        : input.videoModel;
     const prompt = assembleMotionPrompt({
       motionPrompt: motionPromptData,
-      model: input.videoModel,
+      model: shotModel,
       characterTags,
     });
-    const voicedLines = modelTakesDialogueAudio(input.videoModel)
+    const voicedLines = modelTakesDialogueAudio(shotModel)
       ? voicedDialogueLines(motionPromptData.dialogue, input.characters)
       : [];
     const audioClips = matchingDialogueClips(
@@ -136,7 +142,7 @@ export function buildStoryboardMotionBatchShots(input: {
       frameVersionId: input.frameVersionIds[index] ?? null,
       motionPromptVersionId,
       prompt,
-      model: input.videoModel,
+      model: shotModel,
       motionPrompt: motionPromptData,
       characterTags,
       duration: clipDurationSeconds(item),

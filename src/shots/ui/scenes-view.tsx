@@ -47,7 +47,11 @@ import {
 } from './use-shot-staleness';
 import { errorMessage, isInsufficientCreditsError } from '@/platform/errors';
 import { adjacentShotId } from './shot-walk';
-import { sequenceKeys, useSequence } from '@/sequences/ui/use-sequences';
+import {
+  sequenceKeys,
+  useSequence,
+  useSetSequenceVideoModel,
+} from '@/sequences/ui/use-sequences';
 import { sumShotSeconds } from './scene-group';
 import {
   shotKeys,
@@ -336,6 +340,22 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   const [regeneratingSceneVariants, setRegeneratingSceneVariants] = useState<
     Set<string>
   >(() => new Set());
+  const [leftoverGrokShotIds, setLeftoverGrokShotIds] = useState<Set<string>>(
+    () => new Set()
+  );
+  const handleLeftoverGrokChange = useCallback(
+    (shotIds: readonly string[], useGrok: boolean) => {
+      setLeftoverGrokShotIds((prev) => {
+        const next = new Set(prev);
+        for (const id of shotIds) {
+          if (useGrok) next.add(id);
+          else next.delete(id);
+        }
+        return next;
+      });
+    },
+    []
+  );
 
   // Poll sequence while a motion batch is in flight so per-shot statuses stay
   // fresh. The refetchInterval fn reads from the query cache each tick to
@@ -426,6 +446,14 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   const sequenceVideoModel = safeImageToVideoModel(
     sequence?.videoModel,
     DEFAULT_VIDEO_MODEL
+  );
+  const { mutate: persistVideoModel } = useSetSequenceVideoModel(sequenceId);
+  const persistSequenceVideoModel = useCallback(
+    (model: ImageToVideoModel) => {
+      if (model === sequenceVideoModel) return;
+      persistVideoModel(model);
+    },
+    [sequenceVideoModel, persistVideoModel]
   );
   const styleName = style?.name ?? undefined;
   // Phase config from DB — set in stone when the workflow was triggered
@@ -925,13 +953,37 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   const handleVideoModelChange = useCallback(
     (model: ImageToVideoModel) => {
       if (!curSelectedShotId) return;
+      const failedModel =
+        selectedModels?.failedVideoModelByShot[curSelectedShotId];
+      // No version and no failed attempt: this shot still inherits the
+      // sequence default, so the pick IS the sequence default. Persist it
+      // so Sequence settings and every other ungenerated shot follow.
+      if (selectedVideoModelForShot == null && !failedModel) {
+        persistSequenceVideoModel(model);
+        setVideoModelPick(null);
+        return;
+      }
       setVideoModelPick({
         shotId: curSelectedShotId,
         model,
         basedOn: selectedVideoModelForShot,
       });
     },
-    [curSelectedShotId, selectedVideoModelForShot]
+    [
+      curSelectedShotId,
+      selectedVideoModelForShot,
+      selectedModels?.failedVideoModelByShot,
+      persistSequenceVideoModel,
+    ]
+  );
+  const handleBatchVideoModelChange = useCallback(
+    (model: ImageToVideoModel) => {
+      persistSequenceVideoModel(model);
+      // Drop a next-gen pick that was only shadowing the sequence default,
+      // so the inspector of an ungenerated shot follows the generate picker.
+      setVideoModelPick((pick) => (pick?.basedOn == null ? null : pick));
+    },
+    [persistSequenceVideoModel]
   );
 
   const resolvedSequenceImageModel = safeTextToImageModel(
@@ -1241,6 +1293,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
             model: videoModel,
             musicModel: includeMusic ? musicModel : undefined,
             generateAudio,
+            leftoverGrokShotIds: [...leftoverGrokShotIds],
           },
         });
         // Server may have updated sequence.videoModel / sequence.musicModel to
@@ -1275,7 +1328,14 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
         }
       }
     },
-    [sequenceId, shots, generateStartFrames, queryClient, posthog]
+    [
+      sequenceId,
+      shots,
+      generateStartFrames,
+      leftoverGrokShotIds,
+      queryClient,
+      posthog,
+    ]
   );
 
   const musicPromptsReady = !!(sequence?.musicPrompt && sequence.musicTags);
@@ -1320,6 +1380,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
             sequenceId,
             startFrom: args.startFrom,
             stopAt: args.stopAt,
+            leftoverGrokShotIds: [...leftoverGrokShotIds],
           },
         });
       } catch (error) {
@@ -1335,7 +1396,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
         queryKey: sequenceKeys.detail(sequenceId),
       });
     },
-    [sequenceId, queryClient]
+    [sequenceId, leftoverGrokShotIds, queryClient]
   );
 
   const handleGenerateMusic = useCallback(
@@ -1456,6 +1517,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     onCompareDivergent: setCompareVariant,
     initialMusicModel: sequenceMusicModel,
     initialVideoModel: sequenceVideoModel,
+    onVideoModelChange: handleBatchVideoModelChange,
     initialImageModel: resolvedSequenceImageModel,
     styleCategory,
     generateStartFrames,
@@ -1463,6 +1525,8 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     staleShotIds: isGenerationActive ? undefined : staleShotIds,
     targetDurationSeconds: sequence?.targetDurationSeconds,
     isAnalyzing: isProcessing,
+    leftoverGrokShotIds,
+    onLeftoverGrokChange: handleLeftoverGrokChange,
   };
 
   return (
@@ -1635,6 +1699,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                     segment={selectedSegment}
                     segmentSpanLabel={selectedSegmentSpanLabel}
                     resolvedImageModel={resolvedImageModel}
+                    leftoverGrokShotIds={leftoverGrokShotIds}
                     resolvedVideoModel={resolvedVideoModel}
                     imageModelStatuses={sceneImageModelStatuses}
                     videoModelStatuses={sceneVideoModelStatuses}

@@ -59,8 +59,9 @@ import {
 
 // There are no shot-count or clip-length constants here (#1593): a scene's
 // length is its script label and its shots divide it. The prompt budget is
-// `minShotsForScene`..`maxShotsForScene` (floor = longest clip, cap =
-// shortest); `allocateSceneShots` applies that after parse.
+// `minShotsForScene`..`maxShotsForScene` (floor = longest clip, cap = one
+// shot per editorial second); `allocateSceneShots` applies that after parse.
+// The video model's shortest clip is a render floor, not a shot floor.
 
 // ============================================================================
 // Scene-level shared continuity (strict, union-free)

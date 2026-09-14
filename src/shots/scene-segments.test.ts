@@ -180,6 +180,35 @@ describe('groupShotsForSceneList', () => {
     expect(groups.every((g) => g.plannedModel === undefined)).toBe(true);
   });
 
+  it('wraps a 1-shot leftover so the strip can show snap/Grok', () => {
+    const groups = groupShotsForSceneList(
+      [shot('a', 1, null, 1000)],
+      new Map(),
+      'minimax_h3_max'
+    );
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.belowMin).toBe(true);
+    expect(groups[0]?.plannedModel).toBe('minimax_h3_max');
+  });
+
+  it('packs [12, 3, 3] on Seedance as [12][3, 3], not [12, 3] leftover [3]', () => {
+    const groups = groupShotsForSceneList(
+      [
+        shot('a', 1, null, 12_000),
+        shot('b', 2, null, 3_000),
+        shot('c', 3, null, 3_000),
+      ],
+      new Map(),
+      'seedance_v2'
+    );
+    expect(groups.map((g) => g.shots.map((s) => s.id))).toEqual([
+      ['a'],
+      ['b', 'c'],
+    ]);
+    expect(groups[1]?.plannedModel).toBe('seedance_v2');
+    expect(groups.every((g) => g.belowMin !== true)).toBe(true);
+  });
+
   it('uses the longer cap for Seedance 2.5', () => {
     const groups = groupShotsForSceneList(
       [

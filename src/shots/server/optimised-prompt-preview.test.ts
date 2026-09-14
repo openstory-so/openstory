@@ -192,10 +192,10 @@ describe('buildShotPromptPreview', () => {
     expect(result.packedDurationMs).toBe(10_000);
     expect(result.packedLimitWarning).toBeNull();
     expect(result.packedPromptOverflow).toBe(false);
-    expect(result.assembledMotionPrompt).toContain('0-4 seconds: Shot 1:');
+    expect(result.assembledMotionPrompt).toContain('Shot 1 (0-4s):');
     expect(result.assembledMotionPrompt).toContain('opens the door');
-    expect(result.assembledMotionPrompt).toContain('cut to');
-    expect(result.assembledMotionPrompt).toContain('4-10 seconds: Shot 2:');
+    expect(result.assembledMotionPrompt).not.toContain('cut to');
+    expect(result.assembledMotionPrompt).toContain('Shot 2 (4-10s):');
     expect(result.assembledMotionPrompt).not.toContain(
       'Single continuous shot, no cuts.'
     );

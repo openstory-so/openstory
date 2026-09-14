@@ -348,23 +348,18 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
     // unsnapped value (e.g. legacy `durationMs` from a different model) gets
     // priced at the raw seconds while the workflow bills against the snapped
     // value, leaving the two paths inconsistent.
-    const clickedDuration = resolveShotDuration({
-      explicit: data.duration,
-      durationMs: shot.durationMs,
+    const editorialMs = covered.reduce((sum, member) => {
+      const ms = member.durationMs;
+      return (
+        sum +
+        (typeof ms === 'number' && Number.isFinite(ms) && ms > 0 ? ms : 3000)
+      );
+    }, 0);
+    const duration = resolveShotDuration({
+      explicit: covered.length > 1 ? undefined : data.duration,
+      durationMs: editorialMs,
       model,
     });
-    const duration =
-      covered.length > 1
-        ? covered.reduce(
-            (sum, member) =>
-              sum +
-              resolveShotDuration({
-                durationMs: member.durationMs,
-                model,
-              }),
-            0
-          )
-        : clickedDuration;
 
     const voicedLines = modelTakesDialogueAudio(model)
       ? voicedDialogueLines(selectedMotion?.dialogue, voiceCharacters)
@@ -442,7 +437,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
           motionPromptVersionId: selectedMotion?.id ?? null,
           prompt,
           model,
-          duration: clickedDuration,
+          duration,
           fps: data.fps,
           motionBucket: data.motionBucket,
           aspectRatio: sequence.aspectRatio,
@@ -598,6 +593,7 @@ const batchGenerateMotionInputSchema = z.object({
   fps: generateMotionSchema.shape.fps,
   motionBucket: generateMotionSchema.shape.motionBucket,
   generateAudio: generateMotionSchema.shape.generateAudio,
+  leftoverGrokShotIds: z.array(ulidSchema).optional(),
 });
 
 export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
@@ -690,8 +686,11 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
       ),
     ]);
     const shotModels = { selected, lastFailed };
+    const leftoverGrok = new Set(data.leftoverGrokShotIds ?? []);
     const resolveShotVideoModel = (shot: (typeof allShots)[number]) =>
-      resolveBatchShotVideoModel(shot, shotModels, sequence, data.model);
+      leftoverGrok.has(shot.id)
+        ? 'grok_imagine_video_1_5'
+        : resolveBatchShotVideoModel(shot, shotModels, sequence, data.model);
 
     // Resolve cast/element reference images once for the whole batch (#873) —
     // before credit pre-flight so Seedance prices the reference-to-video

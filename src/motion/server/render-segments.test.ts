@@ -10,6 +10,7 @@ import {
   buildVideoManifest,
   DEFAULT_SEGMENT_CAP_MS,
   resolveSegmentCapMs,
+  resolveSegmentMinMs,
   tileSceneIntoSegments,
   type SegmentShot,
 } from './render-segments';
@@ -83,6 +84,71 @@ describe('resolveSegmentCapMs', () => {
     expect(cap % 1000).toBe(0);
     // Never below the safe default floor.
     expect(cap).toBeGreaterThanOrEqual(DEFAULT_SEGMENT_CAP_MS);
+  });
+});
+
+describe('resolveSegmentMinMs', () => {
+  it('returns Seedance 2.0’s 4s floor', () => {
+    expect(resolveSegmentMinMs('seedance_v2')).toBe(4_000);
+  });
+
+  it('returns H3 Max’s 5s floor', () => {
+    expect(resolveSegmentMinMs('minimax_h3_max')).toBe(5_000);
+  });
+});
+
+describe('tileSceneIntoSegments — min floor', () => {
+  it('greedy fill that leaves a 4s tail on H3 (min 5) is rejected for [14][5]', () => {
+    const shots = Array.from({ length: 19 }, (_, i) => shot(String(i), 1000));
+    expect(tileSceneIntoSegments(shots, 15_000, 5_000)).toEqual([
+      {
+        shotIds: Array.from({ length: 14 }, (_, i) => String(i)),
+        durationMs: 14_000,
+      },
+      {
+        shotIds: ['14', '15', '16', '17', '18'],
+        durationMs: 5_000,
+      },
+    ]);
+  });
+
+  it('interior leftover: [10, 3, 3, 10, 3] on Seedance 4–15 packs as [10][3,3][10,3]', () => {
+    const shots = [
+      shot('a', 10_000),
+      shot('b', 3_000),
+      shot('c', 3_000),
+      shot('d', 10_000),
+      shot('e', 3_000),
+    ];
+    expect(tileSceneIntoSegments(shots, 15_000, 4_000)).toEqual([
+      { shotIds: ['a'], durationMs: 10_000 },
+      { shotIds: ['b', 'c'], durationMs: 6_000 },
+      { shotIds: ['d', 'e'], durationMs: 13_000 },
+    ]);
+  });
+
+  it('forced leftover between two max clips is marked belowMin', () => {
+    const shots = [shot('a', 15_000), shot('b', 1_000), shot('c', 15_000)];
+    expect(tileSceneIntoSegments(shots, 15_000, 5_000)).toEqual([
+      { shotIds: ['a'], durationMs: 15_000 },
+      { shotIds: ['b'], durationMs: 1_000, belowMin: true },
+      { shotIds: ['c'], durationMs: 15_000 },
+    ]);
+  });
+
+  it('a whole scene under the floor is one belowMin segment, not N leftovers', () => {
+    const shots = [shot('a', 1_000), shot('b', 1_000), shot('c', 1_000)];
+    expect(tileSceneIntoSegments(shots, 15_000, 5_000)).toEqual([
+      { shotIds: ['a', 'b', 'c'], durationMs: 3_000, belowMin: true },
+    ]);
+  });
+
+  it('Omni 3–10: [8, 2, 2] packs as [8][2, 2], not [8, 2][2]', () => {
+    const shots = [shot('a', 8_000), shot('b', 2_000), shot('c', 2_000)];
+    expect(tileSceneIntoSegments(shots, 10_000, 3_000)).toEqual([
+      { shotIds: ['a'], durationMs: 8_000 },
+      { shotIds: ['b', 'c'], durationMs: 4_000 },
+    ]);
   });
 });
 
