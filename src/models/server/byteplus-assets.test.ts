@@ -7,6 +7,7 @@ vi.mock('#env', () => ({
 
 const { aigcGroupName } = await import('./byteplus-config');
 const {
+  deleteAssetGroup,
   hashAssetIdentity,
   ingestAigcAsset,
 }: typeof import('./byteplus-assets') = await import('./byteplus-assets');
@@ -186,5 +187,23 @@ describe('ingestAigcAsset', () => {
         sleep: async () => undefined,
       })
     ).rejects.toThrow(/failed processing/);
+  });
+});
+
+describe('deleteAssetGroup', () => {
+  it('calls DeleteAssetGroup and accepts an empty Result', async () => {
+    const calls: string[] = [];
+    const config = configWith(
+      {
+        DeleteAssetGroup: (body) => {
+          expect(body.Id).toBe('group-1');
+          return {};
+        },
+      },
+      calls
+    );
+
+    await deleteAssetGroup(config, 'group-1');
+    expect(calls).toEqual(['DeleteAssetGroup']);
   });
 });

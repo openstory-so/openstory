@@ -21,13 +21,15 @@ let client: Client;
 let arkAssets: BytePlusAsset[] = [];
 const deleted: string[] = [];
 
+const env = {
+  VITE_APP_URL: 'https://openstory.so',
+  BYTEPLUS_ACCESS_KEY: 'AK',
+  BYTEPLUS_SECRET_KEY: 'SK',
+  BYTEPLUS_ASSET_GROUP_ID: 'group-1',
+};
+
 vi.mock('#env', () => ({
-  getEnv: () => ({
-    VITE_APP_URL: 'https://pr-1520.openstory.workers.dev',
-    BYTEPLUS_ACCESS_KEY: 'AK',
-    BYTEPLUS_SECRET_KEY: 'SK',
-    BYTEPLUS_ASSET_GROUP_ID: 'group-1',
-  }),
+  getEnv: () => env,
 }));
 vi.mock('#db-client', () => ({ getDb: () => db }));
 vi.mock('@/platform/server/observability/posthog-server', () => ({
@@ -43,7 +45,6 @@ vi.mock('@/models/server/byteplus-assets', () => ({
 
 const { reconcileBytePlusAssets, BYTEPLUS_ASSETS_RECONCILE_CRON } =
   await import('./reconcile-byteplus-assets');
-const { aigcGroupName } = await import('@/models/server/byteplus-config');
 
 const NOW = new Date('2026-09-07T10:00:00Z');
 const hoursAgo = (h: number) => new Date(NOW.getTime() - h * 3_600_000);
@@ -62,6 +63,7 @@ beforeEach(async () => {
   await db.delete(bytePlusAssets);
   arkAssets = [];
   deleted.length = 0;
+  env.VITE_APP_URL = 'https://openstory.so';
 });
 
 async function seedRow(assetId: string) {
@@ -72,14 +74,6 @@ async function seedRow(assetId: string) {
     lastUsedAt: NOW,
   });
 }
-
-describe('aigcGroupName', () => {
-  it('is per deployment, derived from the app host', () => {
-    expect(aigcGroupName()).toBe(
-      'openstory-virtual-pr-1520-openstory-workers-dev'
-    );
-  });
-});
 
 describe('cron wiring', () => {
   const wrangler = readFileSync('wrangler.jsonc', 'utf8');

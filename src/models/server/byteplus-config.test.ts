@@ -5,11 +5,15 @@ const env: Record<string, string | undefined> = {};
 vi.doMock('#env', () => ({ getEnv: () => env }));
 
 const {
-  claimBytePlusVia,
-  isBytePlusConfigured,
-  isBytePlusAssetsConfigured,
-  bytePlusOpenApiConfig,
+  aigcGroupName,
+  aigcGroupScope,
   arkAdapterConfig,
+  bytePlusAssetSlots,
+  bytePlusOpenApiConfig,
+  claimBytePlusVia,
+  isBytePlusAssetsConfigured,
+  isBytePlusConfigured,
+  isPreviewPrAssetGroupName,
 } = await import('./byteplus-config');
 
 describe('claimBytePlusVia', () => {
@@ -20,6 +24,7 @@ describe('claimBytePlusVia', () => {
     env.BYTEPLUS_SECRET_KEY = undefined;
     env.BYTEPLUS_OPENAPI_HOST = undefined;
     env.BYTEPLUS_ASSET_GROUP_ID = undefined;
+    env.BYTEPLUS_ASSET_SLOTS = undefined;
     env.E2E_TEST = undefined;
   });
 
@@ -67,6 +72,18 @@ describe('claimBytePlusVia', () => {
     expect(isBytePlusConfigured()).toBe(false);
   });
 
+  it('routes to fal when BYTEPLUS_ASSET_SLOTS is 0 even with an Ark key', () => {
+    env.ARK_API_KEY = 'ark-test';
+    env.BYTEPLUS_ASSET_SLOTS = '0';
+    expect(
+      claimBytePlusVia({
+        native: true,
+        usingOwnFalKey: false,
+      })
+    ).toBe('fal');
+    expect(isBytePlusConfigured()).toBe(false);
+  });
+
   // Playwright injects the developer's process env into the worker, so a key
   // in a local .env.local would otherwise point the suite at real, billable
   // BytePlus — aimock cannot intercept Ark the way it intercepts fal.
@@ -94,6 +111,7 @@ describe('isBytePlusAssetsConfigured', () => {
     env.BYTEPLUS_SECRET_KEY = undefined;
     env.BYTEPLUS_OPENAPI_HOST = undefined;
     env.BYTEPLUS_ASSET_GROUP_ID = undefined;
+    env.BYTEPLUS_ASSET_SLOTS = undefined;
     env.E2E_TEST = undefined;
   });
 
@@ -122,6 +140,95 @@ describe('isBytePlusAssetsConfigured', () => {
     expect(isBytePlusAssetsConfigured()).toBe(false);
     env.BYTEPLUS_OPENAPI_HOST = 'http://localhost:4010';
     expect(isBytePlusAssetsConfigured()).toBe(true);
+  });
+
+  it('is off when BYTEPLUS_ASSET_SLOTS is 0 even with IAM keys', () => {
+    env.BYTEPLUS_ACCESS_KEY = 'AKTEST';
+    env.BYTEPLUS_SECRET_KEY = 'sk-test';
+    env.BYTEPLUS_ASSET_SLOTS = '0';
+    expect(bytePlusAssetSlots()).toBe(0);
+    expect(isBytePlusAssetsConfigured()).toBe(false);
+    expect(bytePlusOpenApiConfig()).toBeUndefined();
+  });
+});
+
+describe('bytePlusAssetSlots', () => {
+  beforeEach(() => {
+    env.BYTEPLUS_ASSET_SLOTS = undefined;
+  });
+
+  it('defaults to 50 when unset', () => {
+    expect(bytePlusAssetSlots()).toBe(50);
+  });
+
+  it('honours 0 so a process can stay off the shared pool', () => {
+    env.BYTEPLUS_ASSET_SLOTS = '0';
+    expect(bytePlusAssetSlots()).toBe(0);
+  });
+
+  it('honours a positive override', () => {
+    env.BYTEPLUS_ASSET_SLOTS = '3';
+    expect(bytePlusAssetSlots()).toBe(3);
+  });
+});
+
+describe('aigcGroupName', () => {
+  beforeEach(() => {
+    env.VITE_APP_URL = undefined;
+    env.VITE_IS_PREVIEW = undefined;
+  });
+
+  it('is per preview host so the D1 ledger stays 1 group ↔ 1 D1', () => {
+    env.VITE_APP_URL = 'https://pr-1520.openstory.workers.dev';
+    expect(aigcGroupScope()).toBe('preview');
+    expect(aigcGroupName()).toBe(
+      'openstory-virtual-pr-1520-openstory-workers-dev'
+    );
+  });
+
+  it('treats VITE_IS_PREVIEW as preview without changing the host-derived name', () => {
+    env.VITE_APP_URL = 'https://example.workers.dev';
+    env.VITE_IS_PREVIEW = 'true';
+    expect(aigcGroupScope()).toBe('preview');
+    expect(aigcGroupName()).toBe('openstory-virtual-example-workers-dev');
+  });
+
+  it('keeps production per-host so the ledger sweep stays 1 group ↔ 1 D1', () => {
+    env.VITE_APP_URL = 'https://openstory.so';
+    expect(aigcGroupScope()).toBe('production');
+    expect(aigcGroupName()).toBe('openstory-virtual-openstory-so');
+  });
+
+  it('keeps local per-host', () => {
+    env.VITE_APP_URL = 'http://localhost:3000';
+    expect(aigcGroupScope()).toBe('local');
+    expect(aigcGroupName()).toBe('openstory-virtual-localhost-3000');
+  });
+});
+
+describe('isPreviewPrAssetGroupName', () => {
+  it('matches per-PR groups and not production or local names', () => {
+    expect(
+      isPreviewPrAssetGroupName(
+        'openstory-virtual-pr-1520-openstory-workers-dev'
+      )
+    ).toBe(true);
+    expect(
+      isPreviewPrAssetGroupName(
+        'openstory-virtual-pr-1520-openstory-workers-dev',
+        1520
+      )
+    ).toBe(true);
+    expect(
+      isPreviewPrAssetGroupName(
+        'openstory-virtual-pr-1520-openstory-workers-dev',
+        152
+      )
+    ).toBe(false);
+    expect(isPreviewPrAssetGroupName('openstory-virtual-preview')).toBe(false);
+    expect(isPreviewPrAssetGroupName('openstory-virtual-openstory-so')).toBe(
+      false
+    );
   });
 });
 

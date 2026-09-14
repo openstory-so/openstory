@@ -436,16 +436,20 @@ SUPER:  CORAL.  OUT NOW.
       );
 
       // 13. Whole-sequence playback in the Scenes canvas (#986) — nothing
-      //     selected uses SequencePlayer (mediabunny → <canvas>). Play only
-      //     mounts after prepare() resolves.
+      //     selected uses SequencePlayer (mediabunny canvas + Video.js skin,
+      //     #1258). Play is in the skin from first paint; the loading overlay
+      //     covers it until prepare() sets meta (`data-state="ready"`).
       await page.goto(`/sequences/${sequenceId}/scenes`);
 
-      // Wait for either the Play button (success) or the player error state.
+      // Wait for prepare() (data-state=ready) or the player error state.
       // A hanging prepare() (common with raw AI-generated motion clips during
       // fresh recording) will still hit the outer timeout, but at least an
       // actual rejection from SequencePlayerEngine.prepare() will now fail
       // fast with the real error message instead of a useless "Play button not
-      // found after 10 minutes".
+      // found after 10 minutes". Do not treat a visible Play control as ready:
+      // the skin mounts it before prepare, and Playwright isVisible() ignores
+      // the covering skeleton.
+      const theatrePlayer = page.getByTestId('sequence-player');
       await expect
         .poll(
           async () => {
@@ -456,16 +460,18 @@ SUPER:  CORAL.  OUT NOW.
                 `Theatre player failed to initialize: ${msg || '(no message)'}`
               );
             }
-            const playBtn = page.getByRole('button', { name: 'Play' });
-            return await playBtn.isVisible();
+            return (await theatrePlayer.getAttribute('data-state')) === 'ready';
           },
           {
             timeout: t(60_000),
             message:
-              'theatre: Play button visible (player initialized) or player errored',
+              'theatre: sequence-player data-state=ready (prepared) or player errored',
           }
         )
         .toBe(true);
+      await expect(
+        theatrePlayer.getByRole('button', { name: 'Play' })
+      ).toBeVisible();
 
       // 14. Thin DB sanity tail: a UI bug that silently hides a player
       //     mustn't make the test pass green. We've already proved every

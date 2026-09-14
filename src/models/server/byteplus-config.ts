@@ -50,6 +50,24 @@ function getBytePlusOpenApiHost(): string | undefined {
 }
 
 /**
+ * Resident ACR slots this process will occupy. Unset → 50 (Entry).
+ * `0` is valid: do not CreateAsset and do not claim the BytePlus via, so
+ * Seedance/Seedream stay on fal. Previews push `BYTEPLUS_ASSET_SLOTS=0`
+ * (#1635); set it to 50 (or unset) to opt a preview/local process back onto
+ * the shared account pool.
+ */
+const DEFAULT_BYTEPLUS_ASSET_SLOTS = 50;
+
+export function bytePlusAssetSlots(): number {
+  const raw = optionalEnv('BYTEPLUS_ASSET_SLOTS');
+  if (raw === undefined) return DEFAULT_BYTEPLUS_ASSET_SLOTS;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 0)
+    return DEFAULT_BYTEPLUS_ASSET_SLOTS;
+  return parsed;
+}
+
+/**
  * True when the platform can submit to Ark at all.
  *
  * E2E is hermetic by construction: aimock intercepts fal through the
@@ -61,6 +79,7 @@ function getBytePlusOpenApiHost(): string | undefined {
  * i.e. unless someone has deliberately wired a mock host to record against.
  */
 export function isBytePlusConfigured(): boolean {
+  if (bytePlusAssetSlots() === 0) return false;
   if (getArkApiKey() === undefined) return false;
   const env = getEnv();
   if (env.E2E_TEST === 'true' && !getArkBaseUrl()) return false;
@@ -87,6 +106,7 @@ export function claimBytePlusVia(options: {
  * real BytePlus unless a mock host is wired.
  */
 export function isBytePlusAssetsConfigured(): boolean {
+  if (bytePlusAssetSlots() === 0) return false;
   if (!getBytePlusAccessKey() || !getBytePlusSecretKey()) return false;
   const env = getEnv();
   if (env.E2E_TEST === 'true' && !getBytePlusOpenApiHost()) return false;
@@ -94,24 +114,66 @@ export function isBytePlusAssetsConfigured(): boolean {
 }
 
 /**
- * The AIGC asset group this deployment owns, `openstory-virtual-<host>`
- * (#1519). Every deployment on the account — production and each preview —
- * keeps its own ledger, so each needs its own group: the hourly sweep
- * deletes group assets the ledger does not know, and a shared group would
- * have previews deleting each other's sheets. `BYTEPLUS_ASSET_GROUP_ID`
- * pins a group by id and skips the name entirely.
+ * Per-PR preview groups are `openstory-virtual-pr-<n>-…` (#1635). The
+ * group is 1:1 with that preview's D1 ledger (FIFO/LRU eviction, hourly
+ * orphan sweep). Teardown deletes the group; production's backstop deletes
+ * any whose PR is no longer open. `BYTEPLUS_ASSET_GROUP_ID` still pins a
+ * group by id and skips the name entirely.
+ */
+const PREVIEW_PR_GROUP_NAME = /^openstory-virtual-pr-(\d+)(?:-|$)/;
+
+export type AigcGroupScope = 'preview' | 'local' | 'production';
+
+function appHost(): string {
+  const appUrl = optionalEnv('VITE_APP_URL');
+  if (!appUrl) return 'local';
+  try {
+    return new URL(appUrl).host;
+  } catch {
+    return appUrl;
+  }
+}
+
+export function aigcGroupScope(): AigcGroupScope {
+  if (optionalEnv('VITE_IS_PREVIEW') === 'true') return 'preview';
+  const host = appHost();
+  if (/^pr-\d+\./i.test(host)) return 'preview';
+  if (
+    host === 'local' ||
+    host === 'localhost' ||
+    host.startsWith('localhost:') ||
+    host === '127.0.0.1' ||
+    host.startsWith('127.0.0.1:')
+  ) {
+    return 'local';
+  }
+  return 'production';
+}
+
+export function previewPrNumberFromGroupName(name: string): number | undefined {
+  const match = PREVIEW_PR_GROUP_NAME.exec(name);
+  if (!match) return undefined;
+  const parsed = Number.parseInt(match[1] ?? '', 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+export function isPreviewPrAssetGroupName(
+  name: string,
+  prNumber?: number
+): boolean {
+  const parsed = previewPrNumberFromGroupName(name);
+  if (parsed === undefined) return false;
+  if (prNumber === undefined) return true;
+  return parsed === prNumber;
+}
+
+/**
+ * The AIGC asset group this deployment owns, `openstory-virtual-<host>`.
+ * Production, local, and each preview keep their own group so the D1
+ * ledger sweep and LRU eviction stay 1 group ↔ 1 D1.
  */
 export function aigcGroupName(): string {
-  const appUrl = optionalEnv('VITE_APP_URL');
-  let host = 'local';
-  if (appUrl) {
-    try {
-      host = new URL(appUrl).host;
-    } catch {
-      host = appUrl;
-    }
-  }
-  const slug = host
+  const slug = appHost()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '');

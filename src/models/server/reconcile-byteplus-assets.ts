@@ -3,17 +3,19 @@
  * (#1519). Two directions:
  *
  *   Ark has it, the ledger does not → an orphan. A create step that crashed
- *   after CreateAsset is healed by name on retry, but a deleted preview D1,
- *   or a DeleteAsset that failed on eviction, leaves assets nobody will ever
- *   look up again — and every one holds one of the account's slots. Deleted
- *   once it is older than the lease window, so an in-flight create (asset
- *   exists, row not yet written) is never swept.
+ *   after CreateAsset is healed by name on retry, or a DeleteAsset that
+ *   failed on eviction, leaves assets nobody will ever look up again — and
+ *   every one holds one of the account's slots. Deleted once it is older
+ *   than the lease window, so an in-flight create (asset exists, row not
+ *   yet written) is never swept.
  *
  *   The ledger has it, Ark does not → a ghost row. The slot counts as
  *   occupied while nothing is there. Forgotten, so it counts as free.
  *
  * The group is per deployment (`aigcGroupName`), which is what makes the
- * first direction safe: a preview only ever sees its own assets.
+ * first direction safe: a preview only ever sees its own assets. Closed
+ * previews never run this again — production's
+ * `sweepOrphanedPreviewBytePlusGroups` deletes those leftover groups (#1635).
  */
 
 import { getDb } from '#db-client';
