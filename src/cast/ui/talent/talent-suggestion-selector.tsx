@@ -18,6 +18,10 @@ import { ScrollArea } from '@/ui/shadcn/scroll-area';
 import { Skeleton } from '@/ui/shadcn/skeleton';
 import { useTalent } from '@/cast/ui/use-talent';
 import type { TalentWithSheets } from '@/platform/server/db/schema';
+import {
+  talentSquareImageClassName,
+  talentSquarePreview,
+} from '@/cast/talent-preview';
 import { AddTalentDialog } from '@/cast/ui/talent-library/add-talent-dialog';
 import { cn } from '@/ui/utils';
 import { Check, Plus, Search, User, Users, X } from 'lucide-react';
@@ -41,13 +45,7 @@ const TalentPickerCard: React.FC<TalentPickerCardProps> = ({
   isSelected,
   onClick,
 }) => {
-  // Filter divergent sheets out of the fallback chain — they are stale-
-  // marked variants and must not stand in as the talent's primary identity.
-  const sheet =
-    talent.sheets.find((s) => s.isDefault && !s.divergedAt) ??
-    talent.sheets.find((s) => !s.divergedAt);
-  // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- sheet is undefined when no eligible row exists
-  const imageUrl = sheet?.imageUrl ?? talent.imageUrl;
+  const preview = talentSquarePreview(talent);
 
   return (
     <button
@@ -59,13 +57,16 @@ const TalentPickerCard: React.FC<TalentPickerCardProps> = ({
       )}
     >
       <div className="aspect-square w-full overflow-hidden rounded-lg bg-muted">
-        {imageUrl ? (
+        {preview.url ? (
           <AppImage
-            src={imageUrl}
+            src={preview.url}
             alt={talent.name}
             width={160}
             height={160}
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+            className={cn(
+              talentSquareImageClassName(preview.isSheet),
+              'transition-transform duration-300 group-hover:scale-105'
+            )}
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
@@ -94,24 +95,18 @@ type TalentAvatarProps = {
 };
 
 const TalentAvatar: React.FC<TalentAvatarProps> = ({ talent, onRemove }) => {
-  // Filter divergent sheets out of the fallback chain — they are stale-
-  // marked variants and must not stand in as the talent's primary identity.
-  const sheet =
-    talent.sheets.find((s) => s.isDefault && !s.divergedAt) ??
-    talent.sheets.find((s) => !s.divergedAt);
-  // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- sheet is undefined when no eligible row exists
-  const imageUrl = sheet?.imageUrl ?? talent.imageUrl;
+  const preview = talentSquarePreview(talent);
 
   return (
     <div className="group relative">
       <div className="h-10 w-10 overflow-hidden rounded-full border-2 border-primary bg-muted">
-        {imageUrl ? (
+        {preview.url ? (
           <AppImage
-            src={imageUrl}
+            src={preview.url}
             alt={talent.name}
             width={160}
             height={160}
-            className="h-full w-full object-cover"
+            className={talentSquareImageClassName(preview.isSheet)}
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center">

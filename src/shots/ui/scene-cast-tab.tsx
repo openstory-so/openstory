@@ -56,7 +56,7 @@ const CastCard: React.FC<CastCardProps> = ({
         params={{ id: sequenceId, characterId: character.id }}
         className="block overflow-hidden rounded-lg bg-card cursor-pointer"
       >
-        {/* Character avatar - cropped from right side of sheet where large headshot lives */}
+        {/* Character avatar — 4-panel sheet cropped to the close-up (panel 2) */}
         <div className="aspect-square relative overflow-hidden bg-muted">
           {character.sheetImageUrl ? (
             <AppImage
@@ -64,7 +64,7 @@ const CastCard: React.FC<CastCardProps> = ({
               alt={character.name}
               width={160}
               height={160}
-              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+              className="h-full w-full object-cover object-[37.5%_top] transition-transform duration-500 group-hover:scale-105"
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center">
@@ -79,16 +79,19 @@ const CastCard: React.FC<CastCardProps> = ({
           {/* Gradient overlay */}
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
 
-          {/* Character info overlay */}
-          <div className="absolute inset-x-0 bottom-0 p-4">
-            <h3 className="text-sm font-medium tracking-wider text-white uppercase">
+          {/* Character info overlay — one line each, never wrap over the still */}
+          <div className="absolute inset-x-0 bottom-0 min-w-0 p-4">
+            <h3
+              className="truncate text-sm font-medium tracking-wider text-white uppercase"
+              title={character.name}
+            >
               {character.name}
             </h3>
             {character.voiceOnly && (
               <Badge variant="secondary">Voice only</Badge>
             )}
             {(character.age || character.gender) && (
-              <p className="mt-1 text-xs text-white/70">
+              <p className="mt-1 truncate text-xs text-white/70">
                 {[character.age, character.gender].filter(Boolean).join(' · ')}
               </p>
             )}

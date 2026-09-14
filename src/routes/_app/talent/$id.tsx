@@ -312,15 +312,15 @@ function TalentDetailPage() {
                     sheet.isDefault && 'ring-2 ring-primary'
                   )}
                 >
-                  <div className="aspect-video bg-muted relative">
+                  <div className="relative bg-muted">
                     {sheet.imageUrl ? (
                       <img
                         src={sheet.imageUrl}
                         alt={sheet.name}
-                        className="w-full h-full object-cover"
+                        className="h-auto w-full"
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center">
+                      <div className="flex aspect-video w-full items-center justify-center">
                         <User className="h-12 w-12 text-muted-foreground/30" />
                       </div>
                     )}

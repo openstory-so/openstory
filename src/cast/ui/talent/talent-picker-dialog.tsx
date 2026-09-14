@@ -10,6 +10,11 @@ import { ScrollArea } from '@/ui/shadcn/scroll-area';
 import { Skeleton } from '@/ui/shadcn/skeleton';
 import { useTalent } from '@/cast/ui/use-talent';
 import type { TalentWithSheets } from '@/platform/server/db/schema';
+import {
+  talentSquareImageClassName,
+  talentSquarePreview,
+} from '@/cast/talent-preview';
+import { cn } from '@/ui/utils';
 import { Search, User } from 'lucide-react';
 import { useState } from 'react';
 import { AppImage } from '@/ui/shadcn/app-image';
@@ -30,14 +35,7 @@ const TalentPickerCard: React.FC<TalentPickerCardProps> = ({
   talent,
   onClick,
 }) => {
-  // Get the default sheet or first sheet for the avatar. Filter divergent
-  // sheets — they are stale-marked variants and must not stand in as the
-  // talent's primary identity.
-  const sheet =
-    talent.sheets.find((s) => s.isDefault && !s.divergedAt) ??
-    talent.sheets.find((s) => !s.divergedAt);
-  // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- sheet is undefined when no eligible row exists
-  const imageUrl = sheet?.imageUrl ?? talent.imageUrl;
+  const preview = talentSquarePreview(talent);
 
   return (
     <button
@@ -46,13 +44,16 @@ const TalentPickerCard: React.FC<TalentPickerCardProps> = ({
       className="group flex flex-col items-center gap-2 rounded-lg p-3 text-center transition-colors hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary"
     >
       <div className="aspect-square w-full overflow-hidden rounded-lg bg-muted">
-        {imageUrl ? (
+        {preview.url ? (
           <AppImage
-            src={imageUrl}
+            src={preview.url}
             alt={talent.name}
             width={160}
             height={160}
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+            className={cn(
+              talentSquareImageClassName(preview.isSheet),
+              'transition-transform duration-300 group-hover:scale-105'
+            )}
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center">

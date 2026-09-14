@@ -3,6 +3,10 @@ import { Button } from '@/ui/shadcn/button';
 import { Card } from '@/ui/shadcn/card';
 import { useToggleTalentFavorite } from '@/cast/ui/use-talent';
 import type { TalentWithSheets } from '@/platform/server/db/schema';
+import {
+  talentSquareImageClassName,
+  talentSquarePreview,
+} from '@/cast/talent-preview';
 import { cn } from '@/ui/utils';
 import { Link } from '@tanstack/react-router';
 import { ImageIcon, Loader2, Sparkles, Star, User } from 'lucide-react';
@@ -23,8 +27,7 @@ export const TalentLibraryCard: React.FC<TalentLibraryCardProps> = ({
   divergentVariantId,
 }) => {
   const toggleFavorite = useToggleTalentFavorite();
-  // Prefer talent headshot (square), fall back to default sheet
-  const previewUrl = talent.imageUrl ?? talent.defaultSheet?.imageUrl;
+  const preview = talentSquarePreview(talent);
 
   const handleFavoriteClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -45,14 +48,14 @@ export const TalentLibraryCard: React.FC<TalentLibraryCardProps> = ({
       >
         {/* Preview image */}
         <div className="aspect-square bg-muted relative">
-          {previewUrl ? (
+          {preview.url ? (
             <AppImage
-              src={previewUrl}
+              src={preview.url}
               alt={talent.name}
               width={160}
               height={160}
               className={cn(
-                'w-full h-full object-cover',
+                talentSquareImageClassName(preview.isSheet),
                 isGenerating && 'opacity-50'
               )}
             />

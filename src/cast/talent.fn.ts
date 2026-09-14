@@ -34,8 +34,9 @@ import { computeLibraryTalentSheetHashFromDto } from '@/cast/server/workflows/sh
 import { characterToBible } from '@/cast/server/bibles-from-scoped';
 import { releaseVoiceIfUnreferenced } from '@/cast/server/voice/release-voice';
 import { isTeamWritableTalent } from '@/cast/server/db/talent';
-import { createLibraryTalent } from '@/cast/server/talent/create-library-talent';
 import { analyzeTalentMediaForTeam } from '@/cast/server/talent/analyze-talent-media';
+import { createLibraryTalent } from '@/cast/server/talent/create-library-talent';
+import { cropTalentSheetPortrait } from '@/cast/server/talent/crop-sheet-portrait';
 import { enqueueLibraryTalentSheet } from '@/cast/server/talent/enqueue-library-talent-sheet';
 import { maybePromoteOrGenerateSheet } from '@/cast/server/talent/promote-or-generate-sheet';
 import { isTeamTalentStoredUrl } from '@/platform/server/storage/copy-stored-image';
@@ -497,24 +498,38 @@ export const addCharacterToLibraryFn = createServerFn({ method: 'POST' })
       // Same ElevenLabs voice on both rows (#1553) — released when the last goes.
       voiceId: character.voiceId ?? undefined,
       voiceDescription: character.voiceDescription ?? undefined,
-      imageUrl: character.sheetImageUrl ?? undefined,
-      imagePath: character.sheetImagePath ?? undefined,
       isFavorite: false,
       isHuman: false,
       isInTeamLibrary: true,
     });
 
-    if (character.sheetImageUrl) {
-      await context.scopedDb.talent.sheets.create({
-        talentId: newTalent.id,
-        name: 'Default',
-        imageUrl: character.sheetImageUrl,
-        imagePath: character.sheetImagePath ?? undefined,
-        metadata: characterToBible(character),
-        isDefault: true,
-        source: 'script_analysis',
-      });
-    }
+    if (!character.sheetImageUrl) return newTalent;
 
-    return newTalent;
+    await context.scopedDb.talent.sheets.create({
+      talentId: newTalent.id,
+      name: 'Default',
+      imageUrl: character.sheetImageUrl,
+      imagePath: character.sheetImagePath ?? undefined,
+      metadata: characterToBible(character),
+      isDefault: true,
+      source: 'script_analysis',
+    });
+
+    // Crop panel 2 as the avatar — do not stamp the 4-panel onto imageUrl
+    // (#1630). A non-landscape sheet is copied as-is by the crop helper.
+    const headshot = await cropTalentSheetPortrait({
+      sheetUrl: character.sheetImageUrl,
+      destPath: `${context.teamId}/${newTalent.id}/headshot.png`,
+    });
+    const updated = await context.scopedDb.talent.update(newTalent.id, {
+      imageUrl: headshot.publicUrl,
+      imagePath: headshot.path,
+    });
+    return (
+      updated ?? {
+        ...newTalent,
+        imageUrl: headshot.publicUrl,
+        imagePath: headshot.path,
+      }
+    );
   });
