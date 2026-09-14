@@ -1,0 +1,17 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "Medium close-up on a 50mm lens from slightly above the tiny marble counter, composed for 16:9. Scarlett (Image 1) sits at the counter with one hand poised beside a sweating iced coffee, eyes fixed on the cup as Barista (Image 2) extends it across from the service area. Her phone lies dark-screen-up beside keys and a coral lipstick in a silver casing, all within reach and arranged in the foreground, with open space for Scarlett (Image 1) to lift the drink. The compact corner coffee shop surrounds them with pale marble and quiet café neutrals. Bright late-morning window light creates clean reflections and directional shadows. Clean daylight film stock, tactile editorial product photography, airy contrast, coral accent.\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.\nImage 3 (location): INT. CORNER COFFEE SHOP — LATE MORNING - Small neighborhood coffee shop centered on a tiny marble counter",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/696383646ef9b1b0c358642f2e5b6059157e8963e952cd23bf9b45646c46ee03.jpeg",
+          "mime_type": "image/jpeg"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Animatic frame. Scene 5 — 6s\n\nEXT. DOWNTOWN CROSSWALK — MORNING\n\nAt the red light, Scarlett leans toward a shop window and catches her reflection among mannequins and passing shoulders. The signal changes; the crowd surges forward around her. She starts across with them, turning her face briefly toward the camera as sunlight snaps across the coral shade.\n\n. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+        "model": "fal-ai/krea-2/turbo"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://assets.openstory.so/e2e/be19140f047e1369ff2870ae3c1ce886c9566a7e904543dd12537b6cffadf8dd.png",
+              "content_type": "image/png",
+              "file_name": "SCxVAvSGsrra8ENq4gCMS_zmDb9kRs.png",
+              "file_size": null,
+              "width": 1024,
+              "height": 576
+            }
+          ],
+          "timings": {
+            "inference": 0.8004485630081035
+          },
+          "seed": 219716564,
+          "has_nsfw_concepts": [false],
+          "prompt": "Animatic frame. Scene 5 — 6s\n\nEXT. DOWNTOWN CROSSWALK — MORNING\n\nAt the red light, Scarlett leans toward a shop window and catches her reflection among mannequins and passing shoulders. The signal changes; the crowd surges forward around her. She starts across with them, turning her face briefly toward the camera as sunlight snaps across the coral shade.\n\n. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+          "actual_prompt": null
+        },
+        "status": 200,
+        "billableUnits": 0.5625
+      }
+    }
+  ]
+}

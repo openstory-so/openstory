@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nStatic lock-off with smooth observational pacing. From the existing pose, Image 3 releases the iced coffee as Image 2 draws it toward her and takes a measured sip. She lowers the cup without spilling, then lifts the phone from the counter and angles its dark screen toward her face to check the coral lipstick. Hold the composition as focus shifts briefly from the lipstick to Image 2’s satisfied grin, ending on her composed reaction.\n\nImage 2 moves with precise, economical gestures and a lightly pleased expression. Image 3 withdraws discreetly into the background after serving her.\n\nCondensation continues to bead and slide down the cup while ice shifts inside. Soft café activity and window light remain natural and steady.\n\noverall_soundscape: quiet corner café chatter, subdued espresso-machine hum, and faint street noise through the window. ice shifting inside the iced coffee, soft cup movement against marble, phone lifted from the counter. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/e6200678307e9e1a66338d9fe28d161b6f8a4e0bc7caf1aa051aa2ae2b4b572a.mp4",
+            "content_type": "video/mp4",
+            "file_name": "FumfhkqC1ktD1UF35U_MD_minimax-h3.mp4",
+            "file_size": 7104217
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the blonde customer in <Picture 2>, featuring wavy shoulder-length blonde hair, sunglasses perched atop her head, a black ribbed turtleneck, and a lightly pleased expression.\n<Subject 2> is the dark-haired barista in <Picture 3>, with hair in a messy bun, a black t-shirt, a black apron with pink accents on the pockets, and precise, economical gestures.\n<Picture 1> is the initial scene frame, establishing the setting: a corner café with natural window light on the left and a warm-lit espresso counter on the right.\n<Reference 3> The target video is a single static medium-shot sequence with a depth of field focused on <Subject 1>, capturing the interaction between <Subject 1> and <Subject 2>.\n\nsummary:\n[reference generation] The target video depicts <Subject 2> handing an iced coffee to <Subject 1> in a bright café. <Subject 1> accepts the drink, takes a sip, and discreetly uses her phone as a mirror to check her coral lipstick, ending with a satisfied expression. <Subject 2> exits the frame after serving the drink.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1]): fully_preserved - Maintains facial features, hairstyle, and black turtleneck outfit from <Picture 2>.\n<Subject 2> (appears in [Shot 1]): fully_preserved - Maintains facial features, bun hairstyle, and apron uniform from <Picture 3>.\n<Picture 1> (appears in [Shot 1]): fully_preserved - Preserves the layout, lighting, and prop placement (marble counter, phone, lipstick, keys).\n\ndetailed_description:\nThe video features a high-fidelity, naturalistic cinematic style with soft, realistic lighting and a shallow depth of field that emphasizes the subjects while softening the background. The scene is a 16:9 single-plane composition. \n\n[Shot 1] The camera adopts a Static Shot with small amplitude and slow speed, establishing a calm observational perspective. At the start, <Subject 2> stands at the counter, extending an iced coffee cup toward <Subject 1>, whose hand is outstretched in <Picture 1>. As <Subject 2> releases the cup, she slowly and gracefully steps out of the left side of the frame, preserving the composition. <Subject 1> (S1) receives the cup with a fluid motion, drawing it toward her face without spilling. She takes a long, measured sip through the straw while condensation beads visibly slide down the plastic cup. After sipping, <Subject 1> sets the cup back onto the marble counter, which emits a soft, dull thud. She then reaches for the black smartphone lying in the foreground, picking it up with precise, economical gestures. She tilts the dark, reflective screen toward her face to scrutinize her coral lipstick. The depth of field performs a subtle, slow shift from the phone screen to <Subject 1>'s face. She lowers the phone slightly, and a satisfied, composed grin spreads across her features as she looks directly into the camera. \n\noverall_soundscape:\nThe ambience is a quiet café with a low-level espresso-machine hum and faint, distant street noise through the window. Specific action sounds include the soft clink of ice shifting inside the cup, the smooth sliding of the plastic cup on marble, and the gentle click of the phone being picked up from the counter.\n\nnon_diegetic_music:\nN/A",
+          "seed": 820764623,
+          "timings": {
+            "inference": 6.266076039988548
+          }
+        },
+        "status": 200,
+        "billableUnits": 10.150400000000001
+      }
+    }
+  ]
+}

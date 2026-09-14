@@ -1,0 +1,81 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "Cover each scene. The script is what happens; you decide the camera setups in this director's style, and place every spoken line in the shot it is spoken in. Copy sceneNumber from the \"## Scene N\" headings.\n\n<DIRECTOR_STYLE>\nMood: Fresh, sensory, and effortlessly cool\nCamera: Dynamic mix of handheld and locked shots with consistent energy. Handheld with natural micro-movement for lifestyle moments -- hands interacting, daily rituals, real context. Quick-cut to locked beauty frames for hero product shots. Macro details on textures and surfaces. Overhead flat-lays directly above. Eye-level and slightly above angles. Shallow depth of field on tactile details. Energetic pacing -- no lingering, every frame earns its time\nReferences: modern social-first skincare-brand content; dewy minimalist beauty-brand visual identity; sun-soaked lifestyle beauty campaigns; playful color-blocked skincare content\n</DIRECTOR_STYLE>\n\n<CHARACTERS>\n- Scarlett\n- Barista\n- Photographer\n</CHARACTERS>\n\n<SCENES>\n## Scene 1 — DOWNTOWN APARTMENT BATHROOM\nINT. DOWNTOWN APARTMENT BATHROOM — MORNING\nduration: 6s\nshots: exactly 1\n\nScene 1 — 6s\n\nINT. DOWNTOWN APARTMENT BATHROOM — MORNING\n\nHard morning light cuts across white tile and a black stone sink. Scarlett, late twenties, black turtleneck, reaches into an open coral carton while her phone buzzes beside a cold coffee. She ignores the phone, lifts the lipstick, and turns it in her fingers as the camera makes a quick handheld drift toward the vivid coral tube.\n\n---\n\n## Scene 2 — DOWNTOWN APARTMENT BATHROOM\nINT. DOWNTOWN APARTMENT BATHROOM — CONTINUOUS\nduration: 6s\nshots: exactly 1\n\nScene 2 — 6s\n\nINT. DOWNTOWN APARTMENT BATHROOM — CONTINUOUS\n\nScarlett twists the coral bullet upward with one decisive click. The faceted tip catches a stripe of sunlight; her thumb grazes the smooth metal casing. Cut to her reflection as she applies one clean sweep to her lower lip, then presses her lips together and gives herself a testing half-smile.\n\n---\n\n## Scene 3 — DOWNTOWN APARTMENT — ENTRYWAY\nINT. DOWNTOWN APARTMENT — ENTRYWAY — MORNING\nduration: 6s\nshots: exactly 1\n\nScene 3 — 6s\n\nINT. DOWNTOWN APARTMENT — ENTRYWAY — MORNING\n\nScarlett crosses the narrow apartment in one fluid rush, sliding black sunglasses into her hair and grabbing a canvas tote from a chair. She checks the lipstick in the small mirror by the door, dabs the corner of her mouth with her pinky, and says, “Good. Let’s go.” The camera tracks backward as she pulls the door open into bright city light.\n\n---\n\n## Scene 4 — DOWNTOWN SIDEWALK\nEXT. DOWNTOWN SIDEWALK — MORNING\nduration: 6s\nshots: exactly 1\n\nScene 4 — 6s\n\nEXT. DOWNTOWN SIDEWALK — MORNING\n\nA courier bicycle glides past the lens as Scarlett steps into a crowded sidewalk stream. She dodges a newspaper box, swings her tote against her hip, and the coral on her mouth flashes against her black collar. The camera moves alongside her with lively handheld micro-shake, glass towers sliding behind.\n\n---\n\n## Scene 5 — DOWNTOWN CROSSWALK\nEXT. DOWNTOWN CROSSWALK — MORNING\nduration: 6s\nshots: exactly 1\n\nScene 5 — 6s\n\nEXT. DOWNTOWN CROSSWALK — MORNING\n\nAt the red light, Scarlett leans toward a shop window and catches her reflection among mannequins and passing shoulders. The signal changes; the crowd surges forward around her. She starts across with them, turning her face briefly toward the camera as sunlight snaps across the coral shade.\n\n---\n\n## Scene 6 — CORNER COFFEE SHOP\nINT. CORNER COFFEE SHOP — LATE MORNING\nduration: 6s\nshots: exactly 1\n\nScene 6 — 6s\n\nINT. CORNER COFFEE SHOP — LATE MORNING\n\nScarlett sets her phone, keys, and lipstick on a tiny marble counter while a barista pushes an iced coffee toward her. She wraps one hand around the sweating cup, takes a sip, and checks the lipstick in the dark screen of her phone. A quick rack focus shifts from the coral tube to her satisfied grin.\n\n---\n\n## Scene 7 — CITY NEWSSTAND — NOON\nEXT. CITY NEWSSTAND — NOON\nduration: 6s\nshots: exactly 1\n\nScene 7 — 6s\n\nEXT. CITY NEWSSTAND — NOON\n\nWind flips the corners of newspapers as Scarlett reaches over a rack to buy a small bunch of coral ranunculus from a flower bucket. She tucks the stems beneath her arm, the petals echoing her lipstick. A bus rolls through the background, briefly washing the frame with reflected red and cream light.\n\n---\n\n## Scene 8 — LOFT STUDIO — AFTERNOON\nINT. LOFT STUDIO — AFTERNOON\nduration: 6s\nshots: exactly 1\n\nScene 8 — 6s\n\nINT. LOFT STUDIO — AFTERNOON\n\nIn a sunlit loft, Scarlett leans over a long table scattered with fabric swatches, camera cards, and a half-eaten orange. She uncaps the lipstick and refreshes the center of her lower lip without looking in a mirror, then snaps the cap shut as a photographer’s hand gestures from behind camera. She laughs and says, “Still here.”\n</SCENES>\n\nRespond with ONLY valid JSON matching the schema.",
+        "model": "openai/gpt-5.6-luna",
+        "turnIndex": 0,
+        "hasToolResult": false
+      },
+      "response": {
+        "content": "{\"scenes\":[{\"sceneNumber\":1,\"shots\":[{\"shotNumber\":1,\"framing\":{\"shotSize\":\"medium close-up\",\"angle\":\"eye level\",\"composition\":\"Scarlett and the black stone sink sit on the right third, with the coral carton, phone, and cold coffee layered in the foreground; hard sunlight cuts across the white tile.\",\"subjectStartState\":\"Scarlett stands at the sink in a black turtleneck, reaching toward the open coral carton while her phone buzzes beside the cold coffee.\"},\"action\":\"Scarlett lifts the lipstick from the carton and turns the vivid coral tube in her fingers.\",\"cameraMovement\":{\"move\":\"push-in\",\"pacing\":\"smooth\"},\"soundCue\":\"phone buzzing, faint bathroom ambience\",\"dialogue\":[],\"durationSeconds\":6}]},{\"sceneNumber\":2,\"shots\":[{\"shotNumber\":1,\"framing\":{\"shotSize\":\"medium close-up\",\"angle\":\"slightly above\",\"composition\":\"Scarlett's hands and lips fill the frame, with the faceted coral bullet catching a narrow stripe of sunlight against the reflective bathroom mirror.\",\"subjectStartState\":\"Scarlett holds the closed coral lipstick near the sink, focused and poised to use it.\"},\"action\":\"Scarlett applies one clean sweep of lipstick to her lower lip, presses her lips together, and checks the result with a half-smile.\",\"cameraMovement\":{\"move\":\"tilt\",\"pacing\":\"smooth\"},\"soundCue\":\"decisive lipstick click, soft bathroom room tone\",\"dialogue\":[],\"durationSeconds\":6}]},{\"sceneNumber\":3,\"shots\":[{\"shotNumber\":1,\"framing\":{\"shotSize\":\"medium wide\",\"angle\":\"eye level\",\"composition\":\"Scarlett stays centered in the narrow entryway, with the mirror and door creating depth behind her and bright city light opening ahead.\",\"subjectStartState\":\"Scarlett crosses the entryway with sunglasses in hand, approaching the chair and canvas tote while the door is closed.\"},\"action\":\"Scarlett grabs the canvas tote, checks the lipstick in the mirror, dabs the corner of her mouth, and pulls open the door.\",\"cameraMovement\":{\"move\":\"truck\",\"pacing\":\"smooth\"},\"soundCue\":\"tote rustle, door latch and city ambience swelling\",\"dialogue\":[{\"character\":\"Scarlett\",\"line\":\"Good. Let’s go.\",\"tone\":\"confident, lightly amused\"}],\"durationSeconds\":6}]},{\"sceneNumber\":4,\"shots\":[{\"shotNumber\":1,\"framing\":{\"shotSize\":\"medium wide\",\"angle\":\"eye level\",\"composition\":\"Scarlett moves through the center of the crowded sidewalk, with the courier bicycle crossing the foreground and glass towers streaking through the background.\",\"subjectStartState\":\"Scarlett steps onto the sidewalk in a black outfit with her canvas tote at her side, sunglasses pushed into her hair.\"},\"action\":\"Scarlett dodges the newspaper box and swings her tote against her hip as she joins the pedestrian stream.\",\"cameraMovement\":{\"move\":\"truck\",\"pacing\":\"smooth\"},\"soundCue\":\"bicycle bell, city traffic, layered sidewalk chatter\",\"dialogue\":[],\"durationSeconds\":6}]},{\"sceneNumber\":5,\"shots\":[{\"shotNumber\":1,\"framing\":{\"shotSize\":\"medium close-up\",\"angle\":\"eye level\",\"composition\":\"Scarlett's reflection shares the shop window with mannequins and passing shoulders, while the crosswalk crowd fills the soft background.\",\"subjectStartState\":\"Scarlett leans toward the shop window at the red light, studying her reflection among the mannequins.\"},\"action\":\"Scarlett turns from the window and begins crossing with the surging crowd, briefly facing the camera as sunlight catches the coral shade.\",\"cameraMovement\":{\"move\":\"pull-out\",\"pacing\":\"smooth\"},\"soundCue\":\"crosswalk signal, footsteps and rising street traffic\",\"dialogue\":[],\"durationSeconds\":6}]},{\"sceneNumber\":6,\"shots\":[{\"shotNumber\":1,\"framing\":{\"shotSize\":\"medium close-up\",\"angle\":\"slightly above\",\"composition\":\"The marble counter anchors the foreground with the coral lipstick, phone, and keys arranged beside the sweating iced coffee; Scarlett's face sits behind them in shallow focus.\",\"subjectStartState\":\"Scarlett has just placed her phone, keys, and lipstick on the marble counter while the barista extends the iced coffee toward her.\"},\"action\":\"Scarlett sips the iced coffee and checks the lipstick in the dark screen of her phone.\",\"cameraMovement\":{\"move\":\"static\",\"pacing\":\"smooth\"},\"soundCue\":\"ice shifting in cup, café chatter, soft counter clink\",\"dialogue\":[],\"durationSeconds\":6}]},{\"sceneNumber\":7,\"shots\":[{\"shotNumber\":1,\"framing\":{\"shotSize\":\"medium wide\",\"angle\":\"eye level\",\"composition\":\"Scarlett reaches across the newsstand in the left third, with coral ranunculus in the foreground and wind-tossed newspapers framing the scene.\",\"subjectStartState\":\"Scarlett stands beside the newsstand, reaching over the newspaper rack toward a small flower bucket as wind lifts newspaper corners.\"},\"action\":\"Scarlett takes the coral ranunculus and tucks the stems beneath her arm.\",\"cameraMovement\":{\"move\":\"pan\",\"pacing\":\"smooth\"},\"soundCue\":\"wind through newspapers, bus rolling past, paper flutter\",\"dialogue\":[],\"durationSeconds\":6}]},{\"sceneNumber\":8,\"shots\":[{\"shotNumber\":1,\"framing\":{\"shotSize\":\"medium close-up\",\"angle\":\"slightly above\",\"composition\":\"Scarlett leans over the sunlit table, framed by colorful fabric swatches, camera cards, and the half-eaten orange; the lipstick and her lips are the tactile focal point.\",\"subjectStartState\":\"Scarlett leans over the studio table holding the uncapped lipstick near her mouth, with the photographer's gesturing hand blurred behind camera.\"},\"action\":\"Scarlett refreshes the center of her lower lip, snaps the cap shut, and laughs toward the photographer.\",\"cameraMovement\":{\"move\":\"push-in\",\"pacing\":\"smooth\"},\"soundCue\":\"lipstick cap snap, light studio laughter and room tone\",\"dialogue\":[{\"character\":\"Scarlett\",\"line\":\"Still here.\",\"tone\":\"laughing, playful\"}],\"durationSeconds\":6}]}]}"
+      },
+      "recordedTimings": {
+        "ttftMs": 921,
+        "interChunkDelaysMs": [
+          415, 462, 373, 227, 9, 4, 6, 5, 8, 0, 4, 0, 0, 5, 7, 3, 6, 28, 9, 8,
+          15, 6, 0, 6, 6, 5, 2, 6, 5, 11, 0, 4, 6, 7, 2, 7, 0, 2, 1, 0, 0, 0, 0,
+          0, 1, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 1, 0, 0, 0, 2, 0,
+          6, 0, 0, 0, 0, 0, 0, 1, 0, 5, 0, 0, 13, 3, 0, 5, 8, 7, 6, 1, 9, 0, 0,
+          0, 0, 2, 0, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 4,
+          7, 3, 4, 0, 22, 0, 9, 6, 2, 13, 0, 98, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 21, 0, 0, 14, 0,
+          2, 10, 5, 6, 4, 5, 13, 0, 2, 10, 39, 0, 0, 0, 0, 9, 0, 17, 7, 5, 4, 0,
+          7, 0, 5, 1, 6, 20, 13, 28, 34, 13, 13, 32, 39, 48, 100, 0, 0, 0, 7,
+          25, 23, 9, 0, 3, 6, 26, 17, 11, 33, 0, 12, 9, 6, 13, 3, 12, 0, 0, 12,
+          15, 0, 6, 12, 22, 0, 0, 12, 7, 10, 29, 6, 7, 11, 7, 18, 14, 10, 11,
+          92, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 10, 7, 0, 9, 12, 12, 5, 7, 13, 1,
+          14, 18, 9, 0, 11, 4, 11, 0, 7, 0, 9, 14, 7, 5, 5, 13, 6, 6, 15, 2, 6,
+          7, 10, 6, 5, 7, 6, 7, 4, 6, 4, 10, 7, 8, 7, 19, 7, 20, 8, 16, 26, 0,
+          0, 94, 0, 0, 0, 0, 0, 0, 0, 16, 14, 8, 6, 17, 11, 13, 9, 19, 16, 8, 9,
+          13, 4, 10, 6, 20, 8, 16, 6, 12, 8, 15, 9, 5, 16, 9, 11, 14, 8, 19, 4,
+          7, 7, 12, 8, 5, 7, 294, 18, 42, 14, 17, 5, 2, 6, 7, 6, 21, 10, 5, 5,
+          3, 4, 20, 0, 0, 9, 9, 10, 15, 16, 0, 2, 5, 5, 4, 90, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 22, 3, 3, 6, 0, 13, 12, 8, 0, 5, 16, 1, 0, 3, 6, 0, 3, 11, 5,
+          9, 5, 0, 16, 3, 4, 5, 7, 6, 6, 10, 7, 0, 0, 2, 6, 7, 1, 4, 5, 5, 5, 0,
+          9, 5, 18, 14, 9, 3, 5, 4, 7, 15, 6, 9, 17, 7, 5, 10, 6, 19, 5, 4, 5,
+          8, 5, 102, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 8, 15, 15, 5, 10, 4, 6, 2, 8,
+          6, 5, 5, 10, 9, 8, 7, 4, 8, 9, 7, 8, 11, 6, 7, 16, 11, 7, 5, 6, 7, 7,
+          4, 4, 6, 13, 1, 4, 9, 9, 4, 8, 82, 8, 2, 5, 5, 12, 5, 6, 0, 90, 0, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 7, 5, 4, 5, 10, 18, 0, 2, 10,
+          0, 4, 2, 0, 11, 0, 4, 5, 3, 4, 7, 8, 0, 7, 0, 10, 0, 0, 8, 6, 2, 6,
+          11, 14, 0, 8, 7, 4, 2, 5, 4, 6, 2, 7, 1, 11, 0, 5, 7, 8, 1, 3, 0, 9,
+          3, 5, 13, 2, 10, 0, 4, 5, 7, 4, 0, 11, 6, 1, 6, 4, 3, 5, 5, 6, 5, 7,
+          0, 5, 5, 9, 12, 6, 6, 6, 97, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 3, 8, 11, 3, 4, 3, 7, 6, 6, 14, 4, 7, 5, 4, 5, 1, 1, 10, 0,
+          7, 5, 5, 2, 15, 0, 17, 5, 5, 4, 5, 9, 1, 7, 8, 6, 9, 7, 4, 8, 4, 11,
+          2, 4, 2, 11, 4, 6, 6, 4, 9, 0, 14, 7, 233, 9, 0, 1, 0, 4, 0, 0, 0, 0,
+          4, 0, 1, 0, 0, 0, 1, 0, 0, 4, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 3, 0,
+          7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 2, 1, 0, 1, 0, 0, 0, 0, 11, 7, 0, 2,
+          10, 8, 0, 4, 14, 5, 1, 6, 5, 2, 9, 7, 8, 0, 3, 4, 6, 3, 4, 2, 5, 5, 4,
+          7, 4, 9, 5, 2, 4, 2, 7, 2, 4, 3, 4, 3, 5, 6, 2, 4, 10, 3, 3, 1, 4, 6,
+          4, 2, 8, 3, 3, 3, 11, 4, 5, 4, 5, 0, 2, 7, 8, 1, 4, 8, 8, 0, 6, 5, 7,
+          3, 6, 2, 16, 85, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0, 5, 6, 4, 0, 6, 2, 5, 2, 6, 2, 3, 6, 3, 9, 0, 0, 0,
+          4, 4, 5, 7, 0, 9, 1, 5, 2, 5, 6, 3, 4, 13, 0, 8, 0, 2, 3, 6, 10, 4, 2,
+          6, 2, 7, 2, 7, 0, 3, 3, 6, 6, 18, 0, 5, 31, 29, 20, 0, 0, 0, 0, 0, 0,
+          4, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 2, 0, 0, 0, 0, 0, 0,
+          3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0,
+          2, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 1, 0,
+          0, 4, 0, 0, 0, 0, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 5, 4, 0, 0, 0, 0, 1, 0, 0, 0, 0, 5, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 0, 0, 3, 7, 0, 0, 0, 0, 2, 0, 0,
+          3, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0, 1,
+          0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0,
+          0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 1, 13, 0, 0, 0, 0, 1, 0, 0, 0,
+          0, 0, 1, 0, 0, 92, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 3, 1, 2, 2, 1, 0, 0, 0, 9, 0, 0, 0,
+          0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 62, 0, 0
+        ],
+        "totalDurationMs": 8723
+      },
+      "metadata": {
+        "systemHash": "efd4a5d8"
+      }
+    }
+  ]
+}

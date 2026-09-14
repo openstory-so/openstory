@@ -1,0 +1,17 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "Medium close-up on a 50mm lens from slightly above table height, composed in 16:9. Scarlett (Image 1) VEGA leans over a long worktable, one hand braced on its surface and the other holding an uncapped coral lipstick just against the center of the lower lip, paused before refreshing it, eyes directed toward the off-camera Photographer (Image 2). Colorful fabric swatches, camera cards, and a half-eaten orange surround the working area, with the Photographer (Image 2)’s gesturing hand softly blurred at the frame edge behind camera. The open-plan industrial loft is fully sunlit in warm afternoon daylight, casting clean directional shadows. Fresh, tactile editorial product photography, airy neutral palette, crisp natural color, shallow depth of field.\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.\nImage 3 (location): INT. LOFT STUDIO — AFTERNOON - Large sunlit loft studio with a long worktable occupying the central workspace",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/3cec7a377f781974d678be54f3d345e9426af8645f0fd58dc3d9d895dc41fcd7.jpeg",
+          "mime_type": "image/jpeg"
+        }
+      }
+    }
+  ]
+}

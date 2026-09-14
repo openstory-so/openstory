@@ -1,0 +1,17 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "Medium-wide shot on a 35mm lens at eye level, composed for 16:9. Scarlett (Image 1) stands beside a compact downtown metal newsstand, reaching across the newspaper rack toward a small flower bucket in the foreground, fingertips just short of the coral ranunculus stems, with one arm ready to receive them. Wind lifts several newspaper corners and opens the travel direction toward the flowers. A city bus rolls through the distant background, its red and cream reflections beginning to sweep across the pavement and metal surfaces. Hard overhead noon light creates crisp edges and clear shadows. Fresh, tactile editorial social-first photography, bright true-to-life color, airy neutrals, saturated coral accent, subtle handheld energy.\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.\nImage 2 (location): EXT. CITY NEWSSTAND — NOON - Urban newsstand area with a rack of newspapers and a flower bucket positioned nearby",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/4c2cb66ca3d6a6ec0b5943988f1ac663e037ea9737d9ef86a56978b5da5ecec4.jpeg",
+          "mime_type": "image/jpeg"
+        }
+      }
+    }
+  ]
+}

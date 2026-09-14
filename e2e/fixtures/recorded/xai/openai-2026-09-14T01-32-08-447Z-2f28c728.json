@@ -1,0 +1,17 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "Medium-wide shot on a 35mm lens at eye level, composed for 16:9. Scarlett (Image 1) VEGA walks between concrete planters in an elevated rooftop garden, carrying coral flowers against one arm and the lipstick in the other hand, just before placing it on the nearby ledge. Scarlett (Image 1) VEGA’s weight shifts toward the ledge, gaze fixed on the open placement spot, with clear space for the step and reach. The ledge fills the near foreground; foliage, skyline, traffic, and an elevated train track layer behind. A train passes below. Warm late-afternoon sunlight creates golden rim light and long soft shadows. Fresh, tactile, editorial social-first product photography, clean bright color, crisp natural detail.\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.\nImage 2 (location): EXT. ROOFTOP — LATE AFTERNOON - Elevated city rooftop garden overlooking traffic and an elevated train track",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/70e4f74559e1d472a16b88fb10231ab475f6c5da576bd9cef4e68319e33aa4c0.jpeg",
+          "mime_type": "image/jpeg"
+        }
+      }
+    }
+  ]
+}

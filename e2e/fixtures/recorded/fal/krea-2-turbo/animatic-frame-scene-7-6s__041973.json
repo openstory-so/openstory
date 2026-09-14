@@ -1,0 +1,34 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Animatic frame. Scene 7 — 6s\n\nEXT. CITY NEWSSTAND — NOON\n\nWind flips the corners of newspapers as Scarlett reaches over a rack to buy a small bunch of coral ranunculus from a flower bucket. She tucks the stems beneath her arm, the petals echoing her lipstick. A bus rolls through the background, briefly washing the frame with reflected red and cream light.\n\n. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+        "model": "fal-ai/krea-2/turbo"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://assets.openstory.so/e2e/d53f5a7d952e8ca466341ab59822814b41856563c592eb838a54ba3eef041e5d.png",
+              "content_type": "image/png",
+              "file_name": "cPx_01xqa-Pp1pg8iWVLB_XieMdUD0.png",
+              "file_size": null,
+              "width": 1024,
+              "height": 576
+            }
+          ],
+          "timings": {
+            "inference": 0.7986514079384506
+          },
+          "seed": 712091393,
+          "has_nsfw_concepts": [false],
+          "prompt": "Animatic frame. Scene 7 — 6s\n\nEXT. CITY NEWSSTAND — NOON\n\nWind flips the corners of newspapers as Scarlett reaches over a rack to buy a small bunch of coral ranunculus from a flower bucket. She tucks the stems beneath her arm, the petals echoing her lipstick. A bus rolls through the background, briefly washing the frame with reflected red and cream light.\n\n. Loose freehand black line drawing on plain flat white, quick gesture strokes, nothing ruled or geometric. Figures as a few flowing outline strokes with blank faces, the setting hinted with a handful of loose lines. No shading, no texture, no colour, no rendering, no realism, no detail. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+          "actual_prompt": null
+        },
+        "status": 200,
+        "billableUnits": 0.5625
+      }
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "9-panel cinematic storyboard CONTACT SHEET derived from Image 1. Mix Wide, Medium, and Tight shots of the same scene.\n\nLayout: a rigid 3x3 grid of 9 equal rectangular cells in a 16:9 landscape image. Each cell is exactly 1/3 of the width and 1/3 of the height. Separate cells with a thin black gutter.\n- Content must not cross, bleed, or overlap a gutter. No collage.\n- Each cell is a complete, independently framed shot — not a crop of a larger scene.\n\nScene: Medium close-up at eye level, 35mm lens, composed for 16:9. Scarlett (Image 2) leans toward a downtown shop window at the red pedestrian light, one hand near the glass and weight poised to turn, studying Scarlett (Image 2)’s reflection among stationary mannequins and layered reflections of passing shoulders. A dense crowd waits behind and around Scarlett (Image 2) at the curb, with open crosswalk space extending toward the street crossing in the direction of travel. The modern glazed storefront, concrete pavement, traffic signal, and high-rise corridor are fully visible. Bright morning sun cuts sharply across the glass, making a vivid coral reflection flare. Fresh editorial social-first photography, clean natural color, crisp shadows, airy contrast, shallow focus.\n\nEvery panel is a shot of the same scene as Image 1 — keep the characters, wardrobe, lighting, color grade, and texture consistent across all panels.\n\nNo text, dialogue bubbles, scene numbers, or watermarks.\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.\nImage 1 (primary): Primary source scene — generate 9 variant shots from this image\nImage 3 (location): EXT. DOWNTOWN CROSSWALK — MORNING - Signal-controlled downtown intersection with a shop window along the pedestrian route",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/f69856ee29fbbdad1a95e2e36f78affc90d3722ddd80f17c34b32e9cf504f1e7.png",
+          "mime_type": "image/png"
+        }
+      }
+    }
+  ]
+}

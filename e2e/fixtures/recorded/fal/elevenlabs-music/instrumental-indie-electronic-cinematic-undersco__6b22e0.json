@@ -1,0 +1,23 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Instrumental indie-electronic cinematic underscore that begins with a minimal, tactile pulse for the intimate beauty ritual, then gradually adds rhythmic percussion and shimmering synth layers as the journey moves through the busy city. Build toward a warm, expansive, uplifting rooftop finale with glowing pads, confident momentum, and a polished editorial feel.",
+        "model": "fal-ai/elevenlabs/music"
+      },
+      "response": {
+        "json": {
+          "audio": {
+            "url": "https://assets.openstory.so/e2e/bbae84110540dfebd9587460f3860cadafca2d307ec2ca5fa1a1d167e6d09c94.mp3",
+            "content_type": "audio/mpeg",
+            "file_name": "music_generated.mp3",
+            "file_size": 960515
+          }
+        },
+        "status": 200,
+        "billableUnits": 2
+      }
+    }
+  ]
+}

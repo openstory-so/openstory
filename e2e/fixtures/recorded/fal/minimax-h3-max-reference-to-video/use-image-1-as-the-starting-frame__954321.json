@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nSmooth tilt downward from Image 2’s poised hand toward her lips and their mirror reflection. Starting with the lipstick already raised, Image 2 guides it in one clean sweep across her lower lip, then lowers her hand slightly and presses her lips together. She studies the result and forms a restrained, testing half-smile, ending composed and ready to leave.\n\nKeep her movements precise and economical, with focused eyes on the reflection. Her mouth movement follows the application naturally; no dialogue.\n\nAs her hand shifts, the coral bullet catches a narrow stripe of hard sunlight and the metal casing throws a brief highlight. Maintain subtle natural hand and fabric movement.\n\noverall_soundscape: quiet bathroom room tone with faint city hush. soft decisive lipstick click at the start, light lipstick casing movement, subtle lip press. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/ba7ad551c638fc96cc4b1c00be7d65ddf9dd53d34c6c7c11c314a9b1888a079a.mp4",
+            "content_type": "video/mp4",
+            "file_name": "KL-nIgI43WNxnW4ggeEyq_minimax-h3.mp4",
+            "file_size": 7675363
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the blonde woman in <Picture 1> and <Picture 2>, with long wavy hair, sunglasses perched on her head, and a black turtleneck.\n<Subject 2> is the coral-red lipstick with a gold and black casing shown in <Picture 1>, to be applied in the target video.\n<Subject 3> is the bathroom setting in <Picture 1>, featuring white subway tiles, a black-framed mirror, a black countertop, a black sink, and a coffee cup.\n\nsummary:\n[keyframe completion + reference generation] The target video shows <Subject 1> in the <Subject 3> as the camera tilts down from her poised hand holding <Subject 2> toward her lips and their reflection in the mirror. With the lipstick already raised, she applies it in a single clean sweep, presses her lips together, and forms a composed, testing half-smile at the result.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1]): attribute_transfer - her face, hair, sunglasses, and black turtleneck are preserved; her lip state updates to red.\n<Subject 2> (appears in [Shot 1]): fully_preserved - the coral bullet and metal casing are maintained as the active tool.\n<Subject 3> (appears in [Shot 1]): fully_preserved - the bathroom architecture and foreground elements are consistent.\n<Picture 1> (appears in [Shot 1]): fully_preserved - used as the starting frame.\n<Picture 2> (appears in [Shot 1]): attribute_transfer - used for character facial identity and clothing detail reference.\n\ndetailed_description:\nThe aesthetic is a high-end, cinematic beauty shot with sharp focus and natural window lighting that creates dramatic yet soft contrast.\n[Shot 1] The video opens on <Picture 1>, a medium close-up of <Subject 1> in <Subject 3>, where the lipstick in <Picture 2> <Subject 2> is already positioned near her face. The camera performs a Tilt Down with small amplitude at a slow and steady speed, moving from the poised hand holding the lipstick to a tight focus on <Subject 1>'s lips and their mirror reflection. <Subject 1> (S1) remains silent. <Subject 2> makes a definitive \"click\" sound, and <Subject 1> guides the coral bullet in one smooth, clean sweep across her lower lip. The hard sunlight from the window strikes the coral tip of <Subject 2>, producing a sharp highlight, while the metal casing of the lipstick throws a brief metallic sheen. As the application finishes, <Subject 1>’s hand lowers the lipstick slightly with a subtle movement. Her lips press together naturally, catching a faint glint of the morning light. The fabric of her black turtleneck shifts minimally as she adjusts her posture. She study the reflection with focused, steady eyes, her mouth movement precise. Finally, she forms a restrained, testing half-smile, her expression becoming composed and confident, signaling she is ready to leave.\n\noverall_soundscape:\nThe audio environment is a quiet bathroom room tone layered with a faint, muffled city hush. Distinct action sounds include a soft, decisive lipstick click at the beginning and the subtle friction of the casing moving. The lip press is audible but very faint.\n\nnon_diegetic_music:\nN/A",
+          "seed": 1981083909,
+          "timings": {
+            "inference": 5.642055666074157
+          }
+        },
+        "status": 200,
+        "billableUnits": 9.600000000000001
+      }
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nSmooth push-in toward Image 2 as she completes lifting the lipstick from the open carton, keeping her gaze lowered to it. She raises it clear of the carton and slowly turns the tube between her fingers, inspecting its finish without twisting the bullet. By the end of the shot, Image 2 holds the lipstick steady near the sink, poised for the next action. Her movements remain precise and composed. The phone continues buzzing beside the cold coffee, but she does not acknowledge it. Hard sunlight stays fixed across the tile while subtle hand shadows shift over the counter.\n\noverall_soundscape: quiet bathroom room tone with faint city ambience beyond the window. phone buzzing beside the coffee throughout the shot, light cardboard rustle as the lipstick clears the carton, soft lipstick casing movement between Image 2's fingers. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/5fe892c43754f2550d0e50a801259fb66f6e5371a3263c87d799bf639ec6d435.mp4",
+            "content_type": "video/mp4",
+            "file_name": "SJi4G36Hw0PKCe_Anojjd_minimax-h3.mp4",
+            "file_size": 7653413
+          },
+          "expanded_prompt": "subject_definitions:\n<Picture 1> is the opening reference frame showing a young blonde woman in a black turtleneck, with sunglasses perched on her head, reaching for a red lipstick tube inside an open salmon-colored carton on a black-terrazzo bathroom counter.\n<Picture 2> is a multi-angle studio reference featuring the same blonde woman (referred to later as <Subject 1>), confirming her facial features—wavy blonde hair, tanned skin, and blue eyes—and her specific black ribbed turtleneck fit and styling.\n<Subject 1> is the blonde woman from <Picture 1> and <Picture 2>, dressed in a black ribbed turtleneck and black trousers, wearing sunglasses on her head with a composed, precise physical rhythm.\n\nsummary:\n[keyframe completion + reference generation] The 6-second target video opens with the scene from <Picture 1> and moves into a smooth push-in toward the framing seen in <Picture 2>. The visual narrative focuses on <Subject 1> as she precisely completes lifting a red lipstick from a carton and inspects the tube's finish near a sink.\n\nretention_analysis:\n<Picture 1>: fully_preserved as the initial 16:9 frame (Shot 1), establishing the bathroom scene, lighting, and starting pose.\n<Picture 2>: partially_preserved as a consistency reference for <Subject 1>'s facial identity, hair texture, and the specific texture of the black ribbed turtleneck.\n<Subject 1>: fully_preserved throughout the sequence, maintaining her facial features and wardrobe consistent with both reference images.\n\ndetailed_description:\nThe target video features a realistic, high-end cinematic style with a natural, high-fidelity photographic look that emphasizes realistic skin tones and precise material textures. [Shot 1] begins with the exact frame of <Picture 1>, a 6-second medium shot of <Subject 1> at a bathroom counter. As the camera moves in a slow, smooth Push In at a steady speed, <Subject 1> finishes withdrawing a red lipstick tube from a salmon-colored carton placed on the black counter. Her gaze remains strictly downward, fixated on the object. She lifts the lipstick clear of the carton and begins a slow, contemplative rotation of the tube between her fingers, turning it over to inspect its metallic and matte finish without twisting the bullet. By the end of the 6-second duration, <Subject 1> holds the lipstick steady near a dark faucet, her posture poised and motionless. Throughout the entire action, <Subject 1>’s appearance—including her wavy blonde hair and the fit of her black turtleneck—remains perfectly aligned with the visual identity in <Picture 2>. On the left side of the frame, a white and black coffee cup and a buzzing smartphone remain out of focus; <Subject 1> never looks toward them. Hard sunlight, entering from a right-side window, casts sharp, fixed shadows across white wall tiles, while the soft shadows of <Subject 1>'s fingers subtly shift over the dark countertoppings during the motion.\n\noverall_soundscape:\nThe soundscape consists of a quiet indoor room tone layered with a faint, distant city hum. A steady, rhythmic phone buzzing is audible throughout the sequence, representing the distraction on the counter. The primary action sounds are the light rustle of the open cardboard carton as the lipstick clears it and the subtle, dry friction of the lipstick casing being turned between fingers.\n\nnon_diegetic_music:\nN/A",
+          "seed": 1934183047,
+          "timings": {
+            "inference": 5.827385202001096
+          }
+        },
+        "status": 200,
+        "billableUnits": 9.600000000000001
+      }
+    }
+  ]
+}

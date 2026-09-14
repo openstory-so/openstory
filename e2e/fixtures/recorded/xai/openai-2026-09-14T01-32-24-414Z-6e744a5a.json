@@ -1,0 +1,17 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "Medium-wide eye-level shot on a 35mm lens, composed for 16:9. Scarlett (Image 1) VEGA has just stepped onto the busy downtown sidewalk, weight shifted forward and eyes fixed on the newspaper box interrupting her path, one hand gripping the canvas tote before swinging it against her hip. A courier bicycle and rider cut across the immediate foreground, leaving open space in Scarlett (Image 1) VEGA’s direction of travel. Anonymous pedestrians fill the surrounding stream beside tall glass office towers and hard asphalt paving. Clear morning sunlight creates crisp reflections and mobile highlights, catching the coral lipstick. Fresh, tactile editorial realism, clean bright color, cool glass blues and charcoal with vivid coral, natural handheld micro-shake.\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.\nImage 2 (location): EXT. DOWNTOWN SIDEWALK — MORNING - Busy downtown sidewalk forming a moving stream of pedestrians beside glass towers",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/c8669da3ca80cad79f265cadc3d95a0371e5f3514178f2b6b369c948bfd4b08b.jpeg",
+          "mime_type": "image/jpeg"
+        }
+      }
+    }
+  ]
+}

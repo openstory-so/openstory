@@ -1,0 +1,29 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "Cast the following talent into character roles. The user specifically selected these 1 talent members.\n\nCHARACTERS (3 available):\n- Character ID: char_scarlett\n  Name: Scarlett\n  Age: late twenties\n  Gender: female\n  Ethnicity: Not specified\n  Physical: Woman in her late twenties with a slim, lightly athletic build and poised presence. Natural complexion, expressive mouth, and dark hair styled to hold black sunglasses. Her defining visual feature is vivid coral lipstick, which creates a strong contrast against her dark clothing.\n  Clothing: Fitted black turtleneck, understated citywear, black sunglasses worn in her hair, and a practical canvas tote. Clothing remains sleek, minimal, and predominantly black throughout the day.\n  Distinguishing features: Vivid coral lipstick; black sunglasses pushed into her hair; canvas tote; coral ranunculus later carried beneath her arm or against her shoulder.\n\n- Character ID: char_barista\n  Name: Barista\n  Age: 20s-40s\n  Gender: unspecified\n  Ethnicity: Not specified\n  Physical: Only briefly visible or implied behind the counter; a café worker with an ordinary, approachable appearance. Specific height, build, hair, eyes, and skin tone are not established by the script.\n  Clothing: Contemporary coffee-shop workwear, such as a dark apron over a simple shirt; exact garments are not specified.\n  Distinguishing features: Carries and serves an iced coffee; no distinctive features established.\n\n- Character ID: char_photographer\n  Name: Photographer\n  Age: 20s-50s\n  Gender: unspecified\n  Ethnicity: Not specified\n  Physical: Not fully seen; represented on screen by a gesturing hand from behind the camera. No reliable details about height, build, hair, eyes, skin tone, or age markers are established.\n  Clothing: Not visible; likely practical studio workwear, but no specific clothing is established.\n  Distinguishing features: A photographer's hand gestures from behind camera in the loft studio.\n\nTALENT TO CAST (1 selected by user):\n- Talent ID: 01KRMKES6TWAEC44S2S8PXZBM8\n  Name: Sienna Blake\n  Age: unspecified (infer from name if recognizable)\n  Gender: unspecified (infer from name if recognizable)\n  Ethnicity: unspecified\n  Physical/Description: Golden blonde, beach-tanned skin, effortless Bondi energy. Wide smile, freckles across the nose, the kind of face that sells skincare without trying. Perfect for product ads, lifestyle campaigns, and rom-com leads.\n  Clothing: unspecified\n  Distinguishing features: unspecified\n\nREQUIREMENTS:\n- Match ALL 1 talent to characters (1 talent, 3 characters available)\n- Each talent gets exactly one character\n- Each character can only have one talent\n\n\nRespond with exactly 1 matches.",
+        "model": "openai/gpt-5.6-luna",
+        "turnIndex": 0,
+        "hasToolResult": false
+      },
+      "response": {
+        "content": "{\"matches\":[{\"characterId\":\"char_scarlett\",\"talentId\":\"01KRMKES6TWAEC44S2S8PXZBM8\",\"confidence\":0.82,\"reason\":\"Sienna's polished, expressive, skincare-ad-ready presence and rom-com lead appeal fit Scarlett's poised late-twenties protagonist role; her blonde hair can be styled darker to match the character's visual design.\"}]}"
+      },
+      "recordedTimings": {
+        "ttftMs": 1022,
+        "interChunkDelaysMs": [
+          416, 418, 106, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 5, 0, 1, 6, 1,
+          0, 0, 3, 6, 0, 0, 0, 11, 7, 0, 0, 19, 51, 17, 4, 0, 0, 19, 4, 7, 5, 0,
+          26, 20, 0, 0, 24, 96, 1, 30, 10, 8, 24, 15, 1, 27, 13, 11, 0, 4, 16,
+          12, 7, 28, 8, 35, 10, 34, 41, 11, 3, 6, 0, 25, 13, 0, 28, 105, 0, 2,
+          0, 0, 0, 34, 9, 1, 4, 4, 116, 0, 1
+        ],
+        "totalDurationMs": 3001
+      },
+      "metadata": {
+        "systemHash": "b98a3bc5"
+      }
+    }
+  ]
+}

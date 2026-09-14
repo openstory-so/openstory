@@ -1,0 +1,17 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "Medium-wide shot on a 35mm lens, slightly above eye level, composed for 16:9. Scarlett (Image 1) reaches toward the lipstick resting on the concrete ledge in the foreground, coral ranunculus tucked firmly against Scarlett (Image 1)’s shoulder, weight shifted forward and gaze fixed on the object before turning toward the skyline. The elevated city rooftop garden surrounds the ledge with concrete planters and green foliage, while a bright train moves across the deep blue-gray skyline behind Scarlett (Image 1), leaving open space in the direction of travel. Low late-afternoon sunlight creates warm rim light, long soft shadows, and metallic reflections. Fresh, tactile, editorial social-first beauty photography with clean natural color and airy contrast.\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.\nImage 2 (location): EXT. ROOFTOP — LATE AFTERNOON - Elevated city rooftop garden overlooking traffic and an elevated train track",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/0f79a101ed8b758cb5f1f7d5cb4cf47e72c0ccbc86ea8861715f7f3453195235.jpeg",
+          "mime_type": "image/jpeg"
+        }
+      }
+    }
+  ]
+}

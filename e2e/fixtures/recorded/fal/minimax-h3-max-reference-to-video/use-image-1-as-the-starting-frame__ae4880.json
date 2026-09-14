@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nSmooth pull-out from the exact starting pose as Image 2 withdraws her raised hand from the shop window, turns away from her reflection, and steps into the crosswalk with the advancing crowd. As she moves forward, she briefly turns her face toward the camera with composed confidence before continuing across frame. The red pedestrian signal changes as the crowd surges around her.\n\nKeep Image 2’s movement fluid and purposeful, with her tote shifting naturally against her side and her stride matching the surrounding pedestrians.\n\nBright morning sunlight sweeps across the glass and briefly catches the coral accent as reflections of mannequins, flowers, and passing shoulders slide across the window. Maintain natural city motion in the background.\n\noverall_soundscape: downtown morning traffic, layered pedestrian chatter, and city street noise. crosswalk signal changing, footsteps swelling as the crowd moves, distant vehicle pass-bys. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/2074bd32c31f19bbb3e8cfbbbf72442abcaeaa853c3691837e07287356637a02.mp4",
+            "content_type": "video/mp4",
+            "file_name": "dEMLqC2O-S6hQGX853hgK_minimax-h3.mp4",
+            "file_size": 11125519
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the blonde woman in <Picture 1> and <Picture 2>, wearing a black turtleneck sweater, black high-waisted trousers, black sunglasses perched on her head, and carrying a cream canvas tote with a coral ranunculus bouquet tucked at her side.\n<Picture 1> is the keyframe starting frame of the sequence, showing <Subject 1> standing in profile at a storefront, her right hand raised against the glass, with red pedestrian signal visible in the mid-ground.\n<Picture 2> is the multi-angle identity reference for <Subject 1>, defining her facial structure, hair texture, clothing fit, and tote positioning across frontal, profile, and back views.\n\nsummary:\n[keyframe completion + reference generation] The target video captures a 6-second duration where <Subject 1> begins at the pose of <Picture 1> and follows the identity/movement parameters of <Picture 2> as she withdraws her hand from a shop window, turns toward the camera with composed confidence, and crosses into a bustling city street.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1]): fully_preserved - Her facial identity, black turtleneck/trousers outfit, hair texture, and the coral ranunculus bouquet in her tote are maintained exactly as shown in <Picture 2>.\n<Picture 1> (appears in [Shot 1]): fully_preserved - The exact starting pose, reflection in the glass, and red pedestrian signal are the literal visual starting point of the video.\n<Picture 2> (appears in [Shot 1]): attribute_transfer - Used to maintain physical consistency of <Subject 1>'s features and outfit throughout the sequence's movement.\n\ndetailed_description:\nThe video features a high-fidelity cinematic street style with a bright, sharp morning aesthetic. The aspect ratio is 16:9.\n\n[Shot 1] The video begins on the exact keyframe of <Picture 1>, where <Subject 1> stands in profile pressing her hand against a large glass storefront. <Picture 2> defines her appearance: blonde wavy hair, sunglasses on top of her head, a black ribbed turtleneck, and black trousers. A cream tote bag with a coral ranunculus bouquet is tucked under her arm. The camera performs a smooth Pull Out with small amplitude at a steady speed, pulling back to reveal the full street context. As the camera moves, <Subject 1> smoothly lowers her raised hand from the glass and begins to pivot away from her reflection. She turns her face directly toward the camera with a look of composed, quiet confidence, maintaining steady eye contact for a brief moment. She then continues her pivot and steps forward into the crosswalk. As she moves, her stride is fluid and matches the pace of the surrounding pedestrians, her tote shifting naturally against her side. Bright morning sunlight sweeps across the storefront glass, creating a brief specular highlight as reflections of mannequins, flowers, and passing shoulders slide across the window surface. In the mid-ground, the red pedestrian traffic signal lights flicker and change, signaling the crowd to surge forward. The background is a busy downtown street with high-rise buildings and a dense, natural flow of people.\n\noverall_soundscape:\nThe audio landscape is a rich capture of a downtown morning, featuring a dense layer of pedestrian chatter and the layered rumble of distant vehicle pass-bys. Physical action sounds include the rhythmic swelling of footsteps as the crowd moves and a distinct mechanical click as the crosswalk signal changes.\n\nnon_diegetic_music:\nN/A",
+          "seed": 1434389851,
+          "timings": {
+            "inference": 5.80569784110412
+          }
+        },
+        "status": 200,
+        "billableUnits": 9.600000000000001
+      }
+    }
+  ]
+}

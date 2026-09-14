@@ -1,0 +1,17 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "9-panel cinematic storyboard CONTACT SHEET derived from Image 1. Mix Wide, Medium, and Tight shots of the same scene.\n\nLayout: a rigid 3x3 grid of 9 equal rectangular cells in a 16:9 landscape image. Each cell is exactly 1/3 of the width and 1/3 of the height. Separate cells with a thin black gutter.\n- Content must not cross, bleed, or overlap a gutter. No collage.\n- Each cell is a complete, independently framed shot — not a crop of a larger scene.\n\nScene: Medium close-up on a 50mm lens from slightly above the tiny marble counter, composed for 16:9. Scarlett (Image 2) sits at the counter with one hand poised beside a sweating iced coffee, eyes fixed on the cup as Barista (Image 3) extends it across from the service area. Her phone lies dark-screen-up beside keys and a coral lipstick in a silver casing, all within reach and arranged in the foreground, with open space for Scarlett (Image 2) to lift the drink. The compact corner coffee shop surrounds them with pale marble and quiet café neutrals. Bright late-morning window light creates clean reflections and directional shadows. Clean daylight film stock, tactile editorial product photography, airy contrast, coral accent.\n\nEvery panel is a shot of the same scene as Image 1 — keep the characters, wardrobe, lighting, color grade, and texture consistent across all panels.\n\nNo text, dialogue bubbles, scene numbers, or watermarks.\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.\nImage 1 (primary): Primary source scene — generate 9 variant shots from this image\nImage 4 (location): INT. CORNER COFFEE SHOP — LATE MORNING - Small neighborhood coffee shop centered on a tiny marble counter",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/e741fb19cac2f220372f1cbb19d67c06419b2afb2f933dde1c2222941f011edf.png",
+          "mime_type": "image/png"
+        }
+      }
+    }
+  ]
+}
