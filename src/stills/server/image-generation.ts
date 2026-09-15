@@ -399,7 +399,7 @@ async function generateImageInternal(
   // is safe to represent inline only because no caller passes this value
   // between workflow steps: each stores the image in the same `step.do` that
   // generated it, so the bytes never reach a 1 MiB checkpoint (#1638,
-  // #1645). `fetchGeneratedImage` is what opens either form for upload.
+  // #1645). `storeGeneratedPng` / `uploadImageFromUrl` open either form.
   const imageUrls = result.images
     .map((img) => {
       if (img.url) return img.url;

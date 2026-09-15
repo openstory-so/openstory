@@ -9,7 +9,7 @@ import { globSync, readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 
 const UPLOAD =
-  /uploadResponse|uploadImageToStorage|uploadAudioToStorage|uploadFile\s*\(/;
+  /uploadResponse|uploadImageToStorage|storeGeneratedPng|uploadAudioToStorage|uploadFile\s*\(/;
 const RECORD = /recordProvenance/;
 
 describe('provenance wiring', () => {

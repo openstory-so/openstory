@@ -252,14 +252,6 @@ describe('generateImageSoftening', () => {
  * off the checkpoint — so assert on the value the step hands back, not on
  * `generateImageWithProvider`'s return.
  */
-/**
- * #1638 / #1645: the bound that actually matters. Cloudflare Workflows
- * serialises every `step.do` result into its durable checkpoint at 1 MiB, and
- * a via that answers with inline base64 (native Gemini always) puts the whole
- * image in `imageUrls`. Storing inside the generating step is what keeps that
- * off the checkpoint — so assert on the value the step hands back, not on
- * `generateImageWithProvider`'s return.
- */
 describe('step-result bound', () => {
   const STEP_RESULT_CAP = 1024 * 1024;
   /** ~2 MB of base64 — a 4K still, over the cap on its own. */

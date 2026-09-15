@@ -16,9 +16,8 @@ import { buildLocationSheetPrompt } from '@/cast/location-prompt';
 import { recordProvenance } from '@/platform/server/compliance/provenance';
 import { getGenerationChannel } from '@/platform/realtime';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
-import { uploadResponse } from '@/platform/server/storage/upload-response';
-import { fetchGeneratedImage } from '@/platform/server/storage/inline-image';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
+import { storeGeneratedPng } from '@/stills/server/image-storage';
 import { generateImageSoftening } from '@/stills/server/workflows/content-soften';
 import { WorkflowValidationError } from '@/platform/server/workflow/errors';
 import type {
@@ -146,33 +145,12 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
       stepName: 'generate-reference-image',
       params: builtParams,
       meta: { locationDbId },
-      store: async (result) => {
-        const imageUrl = result.imageUrls[0];
-        if (!imageUrl) {
-          throw new Error('No image URL returned from generation');
-        }
-
-        logger.info(
-          `[LocationSheetWorkflow:cf] Uploading reference to storage for ${input.locationName}`
-        );
-
-        const response = await fetchGeneratedImage(imageUrl);
-        if (!response.ok) {
-          throw new Error(
-            `Failed to fetch generated image: ${response.status}`
-          );
-        }
-
-        // locations/{teamId}/{sequenceId}/{locationDbId}/{uniqueId}.png
-        const storagePath = `${teamId}/${sequenceId}/${locationDbId}/${generateId()}.png`;
-        const uploaded = await uploadResponse(
-          response,
+      store: (result) =>
+        storeGeneratedPng(
+          result.imageUrls[0],
           STORAGE_BUCKETS.LOCATIONS,
-          storagePath,
-          { contentType: 'image/png' }
-        );
-        return { url: uploaded.publicUrl, path: uploaded.path };
-      },
+          `${teamId}/${sequenceId}/${locationDbId}/${generateId()}.png`
+        ),
       onRetry: async (retry) => {
         await getGenerationChannel(sequenceId).emit(
           'generation.location-sheet:progress',
@@ -215,121 +193,118 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
     const referenceImagePath: string = storageResult.path;
     let sheetVersionId: string | null = null;
 
-    {
-      await step.do('record-provenance', async () => {
-        await recordProvenance(scopedDb.provenance, {
-          teamId,
-          userId: input.userId,
-          assetKind: 'location_sheet',
-          assetId: locationDbId,
-          storageKey: storageResult.path,
-          provider: 'fal',
-          model: generationParams.model,
-          providerRequestId: falUsage.requestId ?? null,
-          workflowRunId,
-          prompt: generationParams.prompt,
-          sequenceId,
-          referenceImageCount: generationParams.referenceImageUrls?.length ?? 0,
-        });
+    await step.do('record-provenance', async () => {
+      await recordProvenance(scopedDb.provenance, {
+        teamId,
+        userId: input.userId,
+        assetKind: 'location_sheet',
+        assetId: locationDbId,
+        storageKey: storageResult.path,
+        provider: 'fal',
+        model: generationParams.model,
+        providerRequestId: falUsage.requestId ?? null,
+        workflowRunId,
+        prompt: generationParams.prompt,
+        sequenceId,
+        referenceImageCount: generationParams.referenceImageUrls?.length ?? 0,
       });
+    });
 
-      // Step 4: Divergence-aware database write. On convergent, update the
-      // sequence location's primary reference. On divergent, preserve the
-      // artifact as a variant row (the helper emits `stale:detected`) and
-      // skip the primary update so the in-flight run does not overwrite a
-      // now-stale reference.
-      const snapshotInputHash = input.snapshotInputHash ?? null;
-      const reconcileOutcome = await step.do(
-        'reconcile-database',
-        async (): Promise<
-          | { kind: 'convergent'; versionId: string | null }
-          | { kind: 'divergent' }
-        > => {
-          logger.info(
-            `[LocationSheetWorkflow:cf] Updating database for ${input.locationName}`
-          );
-
-          const currentInputHash = snapshotInputHash
-            ? await computeLocationSheetHashCurrent(input, scopedDb.liveRead)
-            : null;
-
-          const decision = decideSheetDivergence(
-            snapshotInputHash,
-            currentInputHash
-          );
-
-          if (decision.kind === 'divergent') {
-            logger.warn('[LocationSheetWorkflow:cf] divergence detected', {
-              locationDbId,
-              snapshotInputHash: decision.snapshotInputHash,
-              currentInputHash: decision.currentInputHash,
-              storagePath: storageResult.path,
-            });
-            await saveDivergentLocationSheet({
-              scopedDb,
-              parent: {
-                type: 'sequence_location',
-                id: locationDbId,
-                sequenceId,
-              },
-              model: generationParams.model,
-              url: storageResult.url,
-              storagePath: storageResult.path,
-              workflowRunId,
-              snapshotInputHash: decision.snapshotInputHash,
-            });
-            return { kind: 'divergent' };
-          }
-
-          const location = await scopedDb.sequenceLocations.updateReference(
-            locationDbId,
-            storageResult.url,
-            storageResult.path,
-            snapshotInputHash,
-            { model: generationParams.model, workflowRunId }
-          );
-          return {
-            kind: 'convergent',
-            versionId: location.selectedReferenceVersionId,
-          };
-        }
-      );
-      if (reconcileOutcome.kind === 'convergent') {
-        sheetVersionId = reconcileOutcome.versionId;
-      }
-
-      if (reconcileOutcome.kind === 'divergent') {
-        // Helper already emitted `stale:detected` on the sequence channel.
-        // Settle the primary reference status so the UI does not stay wedged
-        // on "Regenerating…". The pre-existing `referenceImageUrl` (if any)
-        // remains the live primary — we deliberately did not overwrite it.
-        // For first-time generation the entity ends in `completed` with a
-        // null referenceImageUrl; the user can manually retry. Either way,
-        // flipping status to `completed` reflects "generation finished,
-        // primary unchanged, divergent variant saved alongside".
-        await step.do('settle-divergent-status', async () => {
-          await scopedDb.sequenceLocations.updateReferenceStatus(
-            locationDbId,
-            'completed'
-          );
-          await getGenerationChannel(sequenceId).emit(
-            'generation.location-sheet:progress',
-            {
-              locationId: locationDbId,
-              status: 'completed',
-            }
-          );
-        });
+    // Step 4: Divergence-aware database write. On convergent, update the
+    // sequence location's primary reference. On divergent, preserve the
+    // artifact as a variant row (the helper emits `stale:detected`) and
+    // skip the primary update so the in-flight run does not overwrite a
+    // now-stale reference.
+    const snapshotInputHash = input.snapshotInputHash ?? null;
+    const reconcileOutcome = await step.do(
+      'reconcile-database',
+      async (): Promise<
+        { kind: 'convergent'; versionId: string | null } | { kind: 'divergent' }
+      > => {
         logger.info(
-          `[LocationSheetWorkflow:cf] Diverged for ${input.locationName}; saved as variant`
+          `[LocationSheetWorkflow:cf] Updating database for ${input.locationName}`
+        );
+
+        const currentInputHash = snapshotInputHash
+          ? await computeLocationSheetHashCurrent(input, scopedDb.liveRead)
+          : null;
+
+        const decision = decideSheetDivergence(
+          snapshotInputHash,
+          currentInputHash
+        );
+
+        if (decision.kind === 'divergent') {
+          logger.warn('[LocationSheetWorkflow:cf] divergence detected', {
+            locationDbId,
+            snapshotInputHash: decision.snapshotInputHash,
+            currentInputHash: decision.currentInputHash,
+            storagePath: storageResult.path,
+          });
+          await saveDivergentLocationSheet({
+            scopedDb,
+            parent: {
+              type: 'sequence_location',
+              id: locationDbId,
+              sequenceId,
+            },
+            model: generationParams.model,
+            url: storageResult.url,
+            storagePath: storageResult.path,
+            workflowRunId,
+            snapshotInputHash: decision.snapshotInputHash,
+          });
+          return { kind: 'divergent' };
+        }
+
+        const location = await scopedDb.sequenceLocations.updateReference(
+          locationDbId,
+          storageResult.url,
+          storageResult.path,
+          snapshotInputHash,
+          { model: generationParams.model, workflowRunId }
         );
         return {
-          referenceImageUrl,
-          referenceImagePath,
-          locationDbId,
-          diverged: true,
+          kind: 'convergent',
+          versionId: location.selectedReferenceVersionId,
         };
       }
+    );
+    if (reconcileOutcome.kind === 'convergent') {
+      sheetVersionId = reconcileOutcome.versionId;
+    }
+
+    if (reconcileOutcome.kind === 'divergent') {
+      // Helper already emitted `stale:detected` on the sequence channel.
+      // Settle the primary reference status so the UI does not stay wedged
+      // on "Regenerating…". The pre-existing `referenceImageUrl` (if any)
+      // remains the live primary — we deliberately did not overwrite it.
+      // For first-time generation the entity ends in `completed` with a
+      // null referenceImageUrl; the user can manually retry. Either way,
+      // flipping status to `completed` reflects "generation finished,
+      // primary unchanged, divergent variant saved alongside".
+      await step.do('settle-divergent-status', async () => {
+        await scopedDb.sequenceLocations.updateReferenceStatus(
+          locationDbId,
+          'completed'
+        );
+        await getGenerationChannel(sequenceId).emit(
+          'generation.location-sheet:progress',
+          {
+            locationId: locationDbId,
+            status: 'completed',
+          }
+        );
+      });
+      logger.info(
+        `[LocationSheetWorkflow:cf] Diverged for ${input.locationName}; saved as variant`
+      );
+      return {
+        referenceImageUrl,
+        referenceImagePath,
+        locationDbId,
+        diverged: true,
+      };
     }
 
     // Emit realtime event that generation is complete

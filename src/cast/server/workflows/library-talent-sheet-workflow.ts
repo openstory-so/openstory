@@ -18,9 +18,8 @@ import { recordProvenance } from '@/platform/server/compliance/provenance';
 import { getTalentChannel } from '@/platform/realtime';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import { copyStoredImage } from '@/platform/server/storage/copy-stored-image';
-import { uploadResponse } from '@/platform/server/storage/upload-response';
-import { fetchGeneratedImage } from '@/platform/server/storage/inline-image';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
+import { storeGeneratedPng } from '@/stills/server/image-storage';
 import { generateImageSoftening } from '@/stills/server/workflows/content-soften';
 import { WorkflowValidationError } from '@/platform/server/workflow/errors';
 import type {
@@ -144,33 +143,26 @@ export class LibraryTalentSheetWorkflow extends OpenStoryWorkflowEntrypoint<Libr
         params: generationParams,
         meta: { talentId: input.talentId },
         store: async (result) => {
-          const imageUrl = result.imageUrls[0];
-          if (!imageUrl) {
-            throw new Error('No image URL returned from generation');
-          }
-          logger.info(
-            `[LibraryTalentSheetWorkflow:cf] Uploading sheet to storage`
-          );
-          const response = await fetchGeneratedImage(imageUrl);
-          if (!response.ok) {
-            throw new Error(
-              `Failed to fetch generated image: ${response.status}`
-            );
-          }
           // Minted inside the step: this ULID becomes the sheet row's id, so
           // it must survive replay rather than be regenerated.
           const sheetId = generateId();
-          const storagePath = `${input.teamId}/${input.talentId}/${sheetId}.png`;
-          const uploaded = await uploadResponse(
-            response,
+          const stored = await storeGeneratedPng(
+            result.imageUrls[0],
             STORAGE_BUCKETS.TALENT,
-            storagePath,
-            { contentType: 'image/png' }
+            `${input.teamId}/${input.talentId}/${sheetId}.png`
           );
-          return { sheetId, url: uploaded.publicUrl, path: uploaded.path };
+          return { sheetId, ...stored };
         },
       });
-      storageResult = generation.stored;
+      const stored = generation.stored;
+      if (!stored.sheetId) {
+        throw new Error('Talent sheet store must return sheetId');
+      }
+      storageResult = {
+        sheetId: stored.sheetId,
+        url: stored.url,
+        path: stored.path,
+      };
       const imageMetadata = generation.metadata;
 
       // Before the deduction guard — see recordFalUsageStep (#1069).

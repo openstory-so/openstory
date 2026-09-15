@@ -3,7 +3,10 @@
  * Handles uploading and managing images in R2 Storage
  */
 
-import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
+import {
+  STORAGE_BUCKETS,
+  type StorageBucket,
+} from '@/platform/server/storage/buckets';
 import { uploadResponse } from '@/platform/server/storage/upload-response';
 import {
   getExtensionFromMimeType,
@@ -12,7 +15,6 @@ import {
   sniffImageMimeType,
 } from '@/platform/server/storage/file';
 import { generateId } from '@/platform/id';
-import { fetchGeneratedImage } from '@/platform/server/storage/inline-image';
 
 interface UploadImageOptions {
   imageUrl: string;
@@ -33,13 +35,52 @@ type StorageResult = {
   contentType: string;
 };
 
-/** Host for the error message; `new URL()` throws on our relative `/r2/` URLs. */
-function imageSourceLabel(imageUrl: string): string {
-  try {
-    return new URL(imageUrl).host || imageUrl.slice(0, 40);
-  } catch {
-    return imageUrl.slice(0, 40);
+const DATA_URI = /^data:([^;,]+);base64,(.*)$/;
+
+/**
+ * Open a generated image for upload. Native Gemini always answers with
+ * inline base64, and BytePlus can — workerd's `fetch` does not read `data:`.
+ */
+function fetchGeneratedImage(url: string): Promise<Response> {
+  if (!url.startsWith('data:')) return fetch(url);
+  const match = DATA_URI.exec(url);
+  if (!match?.[1] || match[2] === undefined) {
+    throw new Error(
+      'Malformed image data URI; expected data:<mime>;base64,<payload>'
+    );
   }
+  const bytes = Buffer.from(match[2], 'base64');
+  const contentType = sniffImageMimeType(bytes) ?? match[1];
+  return Promise.resolve(
+    new Response(bytes, {
+      headers: {
+        'Content-Type': contentType,
+        'Content-Length': String(bytes.byteLength),
+      },
+    })
+  );
+}
+
+/**
+ * Persist a generated still to a known key. Runs inside the generating
+ * `step.do` so inline bytes never reach a 1 MiB checkpoint (#1638, #1645).
+ */
+export async function storeGeneratedPng(
+  imageUrl: string | undefined,
+  bucket: StorageBucket,
+  path: string
+): Promise<{ url: string; path: string }> {
+  if (!imageUrl) {
+    throw new Error('No image URL returned from generation');
+  }
+  const response = await fetchGeneratedImage(imageUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch generated image: ${response.status}`);
+  }
+  const uploaded = await uploadResponse(response, bucket, path, {
+    contentType: 'image/png',
+  });
+  return { url: uploaded.publicUrl, path: uploaded.path };
 }
 
 /**
@@ -51,8 +92,6 @@ export async function uploadImageFromUrl(
   imageUrl: string,
   buildPath: (extension: string) => string
 ): Promise<StorageResult> {
-  // Not a bare `fetch`: a generation can hand back inline `data:` bytes or a
-  // stored `/r2/` URL we parked them at, and neither is fetchable (#1638).
   const response = await fetchGeneratedImage(imageUrl);
 
   if (!response.ok) {
@@ -62,7 +101,7 @@ export async function uploadImageFromUrl(
     // status and the provider's error body are what name the cause.
     const body = (await response.text().catch(() => '')).slice(0, 200).trim();
     throw new Error(
-      `Failed to download image from ${imageSourceLabel(imageUrl)}: ${response.status}${body ? ` ${body}` : ''}`
+      `Failed to download image: ${response.status}${body ? ` ${body}` : ''}`
     );
   }
 

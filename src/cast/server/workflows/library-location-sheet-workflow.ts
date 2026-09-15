@@ -18,9 +18,8 @@ import {
 import { recordProvenance } from '@/platform/server/compliance/provenance';
 import { getLocationChannel } from '@/platform/realtime';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
-import { uploadResponse } from '@/platform/server/storage/upload-response';
-import { fetchGeneratedImage } from '@/platform/server/storage/inline-image';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
+import { storeGeneratedPng } from '@/stills/server/image-storage';
 import { generateImageSoftening } from '@/stills/server/workflows/content-soften';
 import type {
   LibraryLocationSheetWorkflowInput,
@@ -96,29 +95,12 @@ export class LibraryLocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<Li
       stepName: 'generate-sheet-image',
       params: generationParams,
       meta: { locationDbId: input.locationDbId },
-      store: async (result) => {
-        const imageUrl = result.imageUrls[0];
-        if (!imageUrl) {
-          throw new Error('No image URL returned from generation');
-        }
-        logger.info(
-          `[LibraryLocationSheetWorkflow:cf] Uploading sheet to storage for ${input.locationName}`
-        );
-        const response = await fetchGeneratedImage(imageUrl);
-        if (!response.ok) {
-          throw new Error(
-            `Failed to fetch generated image: ${response.status}`
-          );
-        }
-        const storagePath = `${input.teamId}/${input.sequenceId}/${input.locationDbId}/sheet_${generateId()}.png`;
-        const uploaded = await uploadResponse(
-          response,
+      store: (result) =>
+        storeGeneratedPng(
+          result.imageUrls[0],
           STORAGE_BUCKETS.LOCATIONS,
-          storagePath,
-          { contentType: 'image/png' }
-        );
-        return { url: uploaded.publicUrl, path: uploaded.path };
-      },
+          `${input.teamId}/${input.sequenceId}/${input.locationDbId}/sheet_${generateId()}.png`
+        ),
     });
     const storageResult = sheetGeneration.stored;
     const imageMetadata = sheetGeneration.metadata;
@@ -183,29 +165,12 @@ export class LibraryLocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<Li
       stepName: 'generate-preview-image',
       params: previewParams,
       meta: { locationDbId: input.locationDbId },
-      store: async (result) => {
-        const previewUrl = result.imageUrls[0];
-        if (!previewUrl) {
-          throw new Error('No preview URL returned from generation');
-        }
-        logger.info(
-          `[LibraryLocationSheetWorkflow:cf] Uploading preview to storage for ${input.locationName}`
-        );
-        const response = await fetchGeneratedImage(previewUrl);
-        if (!response.ok) {
-          throw new Error(
-            `Failed to fetch generated preview: ${response.status}`
-          );
-        }
-        const previewPath = `${input.teamId}/${input.sequenceId}/${input.locationDbId}/preview.png`;
-        const uploaded = await uploadResponse(
-          response,
+      store: (result) =>
+        storeGeneratedPng(
+          result.imageUrls[0],
           STORAGE_BUCKETS.LOCATIONS,
-          previewPath,
-          { contentType: 'image/png' }
-        );
-        return { url: uploaded.publicUrl, path: uploaded.path };
-      },
+          `${input.teamId}/${input.sequenceId}/${input.locationDbId}/preview.png`
+        ),
     });
     const previewStorageResult = previewGeneration.stored;
     const previewMetadata = previewGeneration.metadata;

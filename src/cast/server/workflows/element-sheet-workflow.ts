@@ -36,10 +36,9 @@ import { recordProvenance } from '@/platform/server/compliance/provenance';
 import { buildElementSheetPrompt } from '@/cast/element-prompt';
 import { rejectionReasonMessage } from './replace-element-workflow';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
-import { uploadResponse } from '@/platform/server/storage/upload-response';
-import { fetchGeneratedImage } from '@/platform/server/storage/inline-image';
 import { contentRejectionSummary } from '@/models/content-rejection';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
+import { storeGeneratedPng } from '@/stills/server/image-storage';
 import { generateImageSoftening } from '@/stills/server/workflows/content-soften';
 import { MAX_AUTO_ELEMENTS } from './cast-records';
 import type {
@@ -176,29 +175,12 @@ export class ElementSheetWorkflow extends OpenStoryWorkflowEntrypoint<ElementShe
           stepName: `generate-element-image-${index}`,
           params: builtParams,
           meta: { elementId: entry.elementId },
-          store: async (result) => {
-            const generatedUrl = result.imageUrls[0];
-            if (!generatedUrl) {
-              throw new Error(
-                `Element reference generation returned no image URL for ${entry.token}`
-              );
-            }
-            const response = await fetchGeneratedImage(generatedUrl);
-            if (!response.ok) {
-              throw new Error(
-                `Failed to fetch generated element image: ${response.status}`
-              );
-            }
-            // Same path shape as user uploads: {teamId}/{sequenceId}/{id}.png
-            const storagePath = `${input.teamId}/${sequenceId}/${generateId()}.png`;
-            const uploaded = await uploadResponse(
-              response,
+          store: (result) =>
+            storeGeneratedPng(
+              result.imageUrls[0],
               STORAGE_BUCKETS.ELEMENTS,
-              storagePath,
-              { contentType: 'image/png' }
-            );
-            return { url: uploaded.publicUrl, path: uploaded.path };
-          },
+              `${input.teamId}/${sequenceId}/${generateId()}.png`
+            ),
         });
         const storageResult = generation.stored;
         const imageMetadata = generation.metadata;

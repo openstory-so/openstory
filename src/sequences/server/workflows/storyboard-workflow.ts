@@ -139,46 +139,43 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
         });
 
     if (posterResult) {
-      {
-        const savedPosterUrl = posterResult.url;
-        posterUrl = savedPosterUrl;
+      const savedPosterUrl = posterResult.url;
+      posterUrl = savedPosterUrl;
 
-        await step.do('save-poster', async () => {
-          await scopedDb.sequences.update({
-            id: sequenceId,
-            posterUrl: savedPosterUrl,
-          });
-          await getGenerationChannel(sequenceId).emit(
-            'generation.poster:ready',
-            { posterUrl: savedPosterUrl }
-          );
+      await step.do('save-poster', async () => {
+        await scopedDb.sequences.update({
+          id: sequenceId,
+          posterUrl: savedPosterUrl,
         });
+        await getGenerationChannel(sequenceId).emit('generation.poster:ready', {
+          posterUrl: savedPosterUrl,
+        });
+      });
 
-        // Before the deduction guard — see recordFalUsageStep (#1069).
-        const posterUsage = await recordFalUsageStep(
-          step,
+      // Before the deduction guard — see recordFalUsageStep (#1069).
+      const posterUsage = await recordFalUsageStep(
+        step,
+        scopedDb,
+        posterResult.metadata,
+        'record-fal-usage-poster'
+      );
+
+      await step.do('deduct-poster-credits', async () => {
+        await deductWorkflowCredits({
           scopedDb,
-          posterResult.metadata,
-          'record-fal-usage-poster'
-        );
-
-        await step.do('deduct-poster-credits', async () => {
-          await deductWorkflowCredits({
-            scopedDb,
-            costMicros: extractImageCost(posterResult.metadata),
-            usedOwnKey: posterResult.metadata.usedOwnKey,
-            description: `Sequence poster (${PREVIEW_IMAGE_MODEL})`,
-            idempotencyKey: `${event.instanceId}:poster`,
-            reservationId: input.reservationId,
-            metadata: {
-              ...posterUsage,
-              model: PREVIEW_IMAGE_MODEL,
-              sequenceId,
-            },
-            workflowName: 'StoryboardWorkflow',
-          });
+          costMicros: extractImageCost(posterResult.metadata),
+          usedOwnKey: posterResult.metadata.usedOwnKey,
+          description: `Sequence poster (${PREVIEW_IMAGE_MODEL})`,
+          idempotencyKey: `${event.instanceId}:poster`,
+          reservationId: input.reservationId,
+          metadata: {
+            ...posterUsage,
+            model: PREVIEW_IMAGE_MODEL,
+            sequenceId,
+          },
+          workflowName: 'StoryboardWorkflow',
         });
-      }
+      });
     }
 
     // Spawn the analyze-script child and block until it returns. Pattern 3.

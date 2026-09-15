@@ -249,63 +249,59 @@ export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariant
       });
     });
 
-    let imageUrl: string = uploadResult.url;
+    const imageUrl = uploadResult.url;
 
-    {
-      // Complete the framing-sheet version. No selection — the sheet is the
-      // picker source, not the frame's primary still.
-      await step.do('persist-variant', async () => {
-        await scopedDb.frameVariants.update(versionId, {
+    // Complete the framing-sheet version. No selection — the sheet is the
+    // picker source, not the frame's primary still.
+    await step.do('persist-variant', async () => {
+      await scopedDb.frameVariants.update(versionId, {
+        status: 'completed',
+        url: uploadResult.url,
+        storagePath: uploadResult.path || null,
+        generatedAt: new Date(),
+        error: null,
+      });
+
+      await getGenerationChannel(sequenceId).emit(
+        'generation.variant-image:progress',
+        {
+          shotId,
           status: 'completed',
-          url: uploadResult.url,
-          storagePath: uploadResult.path || null,
-          generatedAt: new Date(),
-          error: null,
-        });
-
-        await getGenerationChannel(sequenceId).emit(
-          'generation.variant-image:progress',
-          {
-            shotId,
-            status: 'completed',
-            variantImageUrl: uploadResult.url,
-          }
-        );
-
-        logger.info(
-          `[ShotVariantWorkflow] Grid sheet uploaded: ${uploadResult.path}`
-        );
-      });
-
-      imageUrl = uploadResult.url;
-
-      // Provenance (#1180). The 3×3 grid is a frame_variant (`kind: framing`)
-      // — not the retired `shot_variants` table. storageKey is derived from
-      // the cached upload URL so this step stays replay-safe if `upload-to-storage`
-      // already completed with `{ url }` only.
-      await step.do('record-provenance', async () => {
-        const storageKey = r2KeyFromUrl(uploadResult.url);
-        if (!storageKey) {
-          throw new Error(`Uploaded grid for ${versionId} has no R2 key`);
+          variantImageUrl: uploadResult.url,
         }
-        await recordProvenance(scopedDb.provenance, {
-          teamId: input.teamId,
-          userId: input.userId,
-          assetKind: 'frame_variant',
-          assetId: versionId,
-          storageKey,
-          provider: imageVia,
-          model: prep.params.model,
-          providerRequestId:
-            falUsage.requestId ?? imageMetadata.requestId ?? null,
-          workflowRunId,
-          prompt: prep.params.prompt,
-          sequenceId: input.sequenceId,
-          shotId: input.shotId,
-          referenceImageCount: prep.params.referenceImageUrls?.length ?? 0,
-        });
+      );
+
+      logger.info(
+        `[ShotVariantWorkflow] Grid sheet uploaded: ${uploadResult.path}`
+      );
+    });
+
+    // Provenance (#1180). The 3×3 grid is a frame_variant (`kind: framing`)
+    // — not the retired `shot_variants` table. storageKey is derived from
+    // the cached upload URL so this step stays replay-safe if `upload-to-storage`
+    // already completed with `{ url }` only.
+    await step.do('record-provenance', async () => {
+      const storageKey = r2KeyFromUrl(uploadResult.url);
+      if (!storageKey) {
+        throw new Error(`Uploaded grid for ${versionId} has no R2 key`);
+      }
+      await recordProvenance(scopedDb.provenance, {
+        teamId: input.teamId,
+        userId: input.userId,
+        assetKind: 'frame_variant',
+        assetId: versionId,
+        storageKey,
+        provider: imageVia,
+        model: prep.params.model,
+        providerRequestId:
+          falUsage.requestId ?? imageMetadata.requestId ?? null,
+        workflowRunId,
+        prompt: prep.params.prompt,
+        sequenceId: input.sequenceId,
+        shotId: input.shotId,
+        referenceImageCount: prep.params.referenceImageUrls?.length ?? 0,
       });
-    }
+    });
 
     return { variantImageUrl: imageUrl };
   }
