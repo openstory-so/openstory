@@ -53,17 +53,12 @@ export const ProgressBanner: React.FC<ProgressBannerProps> = ({
   leaveHint,
 }) => {
   const [isExiting, setIsExiting] = useState(false);
-  // Continue (#1641) clears isComplete while this may still be true from the
-  // previous run. Adjust during render so the chip does not stay hidden.
-  if (!isComplete && isExiting) {
-    setIsExiting(false);
-  }
 
   const prefersReducedMotion =
     typeof window !== 'undefined' &&
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  // Exit animation when complete.
+  // Exit animation when complete
   useEffect(() => {
     if (!isComplete) return;
     const timer = setTimeout(() => {
@@ -81,8 +76,6 @@ export const ProgressBanner: React.FC<ProgressBannerProps> = ({
     return () => clearTimeout(timer);
   }, [isExiting, onExitComplete]);
 
-  // A Continue clears isComplete while isExiting may still be true from the
-  // previous run — keep the chip up. Only a still-complete exit unmounts.
   if (isComplete && isExiting && exitDelayMs === 0) return null;
 
   const activePhase = phases.find((p) => p.status === 'active');
