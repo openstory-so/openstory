@@ -102,7 +102,9 @@ export class DialogueAudioWorkflow extends OpenStoryWorkflowEntrypoint<DialogueA
           workflowName: 'DialogueAudioWorkflow',
         });
         await step.do(`dialogue-audio-${index}-persist`, async () => {
-          await scopedDb.shots.setAudioClips(entry.shotId, [fitted.clip]);
+          await scopedDb.shots.setAudioClips(entry.shotId, [fitted.clip], {
+            workflowRunId,
+          });
         });
         return { shotId: entry.shotId, clips: [fitted.clip] };
       })

@@ -124,6 +124,14 @@ export const relations = defineRelations(schema, (r) => ({
     frames: r.many.frames(),
     variants: r.many.shotVariants(),
     promptVariants: r.many.shotPromptVersions(),
+    dialogueVersions: r.many.shotDialogueVersions(),
+  },
+
+  shotDialogueVersions: {
+    shot: r.one.shots({
+      from: r.shotDialogueVersions.shotId,
+      to: r.shots.id,
+    }),
   },
 
   // ---- Shot Variants ----
@@ -218,11 +226,23 @@ export const relations = defineRelations(schema, (r) => ({
       from: r.characters.sequenceId,
       to: r.sequences.id,
     }),
+    voiceVersions: r.many.characterVoiceVersions(),
     talent: r.one.talent({
       from: r.characters.talentId,
       to: r.talent.id,
     }),
     sheetVariants: r.many.characterSheetVariants(),
+  },
+
+  characterVoiceVersions: {
+    character: r.one.characters({
+      from: r.characterVoiceVersions.characterId,
+      to: r.characters.id,
+    }),
+    createdByUser: r.one.user({
+      from: r.characterVoiceVersions.createdBy,
+      to: r.user.id,
+    }),
   },
 
   // ---- Character Sheet Variants ----
