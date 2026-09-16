@@ -13,6 +13,15 @@
  * 2. Error-time (`withRegionFallback` / the retry in `callLLMStream`): any
  *    call that still hits a region block is retried once on a
  *    region-available model instead of exhausting workflow step retries.
+ *
+ * `callLLMStream` wires layer 2 in for everything that goes through it. The
+ * handful of call sites that build their own adapter and drive `chat()`
+ * directly do NOT get it for free and must wrap themselves in
+ * `withRegionFallback` — the vision helpers (`talent-vision`,
+ * `element-vision`, `studio-prompt-draft`) all default to an Anthropic model,
+ * so a missing wrap is a hard failure in China, not a slow path. That is how
+ * `classifyUploadFn` (#1581, via talent vision) came to die on
+ * "This model is not available in your region".
  */
 
 import type { TextModel } from './models';
@@ -43,11 +52,14 @@ export const REGION_FALLBACK_TEXT_MODEL =
   'deepseek/deepseek-v4-pro-0813' satisfies TextModel;
 
 /**
- * DeepSeek is text-only, so image-bearing calls fall back to Mistral instead
- * (vision + strict structured outputs, not geo-blocked in China).
+ * DeepSeek is text-only, so image-bearing calls fall back to GLM-5.3 Flash
+ * instead: natively multimodal, does strict structured outputs (which the
+ * talent/element vision schemas require), and served by Z.ai — the one
+ * vision model we carry that is unambiguously reachable from mainland China,
+ * where this fallback exists to help.
  */
 export const REGION_FALLBACK_VISION_MODEL =
-  'mistralai/mistral-small-2603' satisfies TextModel;
+  'z-ai/glm-5.3-flash' satisfies TextModel;
 
 /**
  * Errors the region fallback recovers from: the geo-block itself, and the

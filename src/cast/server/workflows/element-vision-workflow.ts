@@ -56,10 +56,10 @@ export class ElementVisionWorkflow extends OpenStoryWorkflowEntrypoint<ElementVi
         scopedDb,
         costMicros: vision.costMicros,
         usedOwnKey: vision.usedOwnKey,
-        description: `Element vision (${ELEMENT_VISION_MODEL})`,
+        description: `Element vision (${vision.model})`,
         idempotencyKey: `${event.instanceId}:vision`,
         metadata: {
-          model: ELEMENT_VISION_MODEL,
+          model: vision.model,
           elementId,
         },
         workflowName: 'ElementVisionWorkflow',

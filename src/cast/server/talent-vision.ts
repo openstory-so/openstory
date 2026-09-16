@@ -8,6 +8,7 @@
 
 import type { Microdollars } from '@/billing/money';
 import type { ResolvedLlmKey } from '@/models/server/db/api-keys';
+import type { TextModel } from '@/models/models';
 import {
   aiObservabilityMiddleware,
   type AIObservabilityMeta,
@@ -27,6 +28,7 @@ import {
   throwNotedRunError,
 } from '@/models/server/llm-client';
 import { DEFAULT_VISION_MODEL } from '@/models/models.config';
+import { withRegionFallback } from '@/models/region-policy';
 import { talentSubjectKindSchema } from '@/cast/subject-kind';
 
 export const TALENT_VISION_MODEL = DEFAULT_VISION_MODEL;
@@ -59,6 +61,9 @@ export type AnalyzeTalentMediaInput = {
 };
 
 export type TalentVisionResult = TalentMediaAnalysis & {
+  /** The model that actually answered — the region fallback may have run
+   *  instead of {@link TALENT_VISION_MODEL}. Bill and log this one. */
+  model: TextModel;
   costMicros: Microdollars;
   usedOwnKey: boolean;
 };
@@ -150,65 +155,74 @@ export async function analyzeTalentMedia(
     }
   }
 
-  const adapter = createAdapter(TALENT_VISION_MODEL, input.llmKey);
+  // This call is always image-bearing, and its default model is Anthropic —
+  // geo-blocked from a mainland-China colo (#1259). Nothing is streamed to a
+  // caller, so a failed attempt can simply be re-run on the region-available
+  // vision model; `model` (not the constant) drives the adapter AND the cost.
+  return withRegionFallback(TALENT_VISION_MODEL, true, async (model) => {
+    const adapter = createAdapter(model, input.llmKey);
 
-  const usageCapture = createUsageCapture();
-  let structuredObject: unknown;
-  let accumulated = '';
-  let runError = null;
-  for await (const event of chat({
-    adapter,
-    systemPrompts,
-    messages: chatMessages,
-    stream: true,
-    modelOptions: {
-      temperature: 0.2,
-      streamOptions: { includeUsage: true },
-    },
-    outputSchema: talentMediaAnalysisSchema,
-    middleware: [
-      ...aiObservabilityMiddleware({
-        observationName: 'talent-vision',
-        tags: ['vision', 'talent'],
-        ...input.observability,
-      }),
-      ...usageCapture.middleware,
-    ],
-    debug: false,
-  })) {
-    usageCapture.noteFromStreamEvent(event);
-    const noted = extractRunError(event);
-    if (noted) {
-      runError ??= noted;
-      continue;
+    const usageCapture = createUsageCapture();
+    let structuredObject: unknown;
+    let accumulated = '';
+    let runError = null;
+    for await (const event of chat({
+      adapter,
+      systemPrompts,
+      messages: chatMessages,
+      stream: true,
+      modelOptions: {
+        temperature: 0.2,
+        streamOptions: { includeUsage: true },
+      },
+      outputSchema: talentMediaAnalysisSchema,
+      middleware: [
+        ...aiObservabilityMiddleware({
+          observationName: 'talent-vision',
+          tags: ['vision', 'talent'],
+          ...input.observability,
+        }),
+        ...usageCapture.middleware,
+      ],
+      debug: false,
+    })) {
+      usageCapture.noteFromStreamEvent(event);
+      const noted = extractRunError(event);
+      if (noted) {
+        runError ??= noted;
+        continue;
+      }
+      if (
+        event.type === 'TEXT_MESSAGE_CONTENT' &&
+        typeof event.delta === 'string'
+      ) {
+        accumulated += event.delta;
+        continue;
+      }
+      if (
+        event.type === 'CUSTOM' &&
+        event.name === 'structured-output.complete'
+      ) {
+        structuredObject = event.value.object;
+        continue;
+      }
     }
-    if (
-      event.type === 'TEXT_MESSAGE_CONTENT' &&
-      typeof event.delta === 'string'
-    ) {
-      accumulated += event.delta;
-      continue;
-    }
-    if (
-      event.type === 'CUSTOM' &&
-      event.name === 'structured-output.complete'
-    ) {
-      structuredObject = event.value.object;
-      continue;
-    }
-  }
-  throwNotedRunError(runError);
+    throwNotedRunError(runError);
 
-  const parsed = talentMediaAnalysisSchema.parse(
-    structuredObject !== undefined ? structuredObject : JSON.parse(accumulated)
-  );
-  return {
-    ...parsed,
-    costMicros: llmCostFromUsage(
-      usageCapture.get(),
-      TALENT_VISION_MODEL,
-      input.llmKey?.via
-    ),
-    usedOwnKey: input.llmKey?.source === 'team',
-  };
+    const parsed = talentMediaAnalysisSchema.parse(
+      structuredObject !== undefined
+        ? structuredObject
+        : JSON.parse(accumulated)
+    );
+    return {
+      ...parsed,
+      model,
+      costMicros: llmCostFromUsage(
+        usageCapture.get(),
+        model,
+        input.llmKey?.via
+      ),
+      usedOwnKey: input.llmKey?.source === 'team',
+    };
+  });
 }

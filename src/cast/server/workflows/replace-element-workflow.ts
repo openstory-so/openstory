@@ -274,10 +274,10 @@ export class ReplaceElementWorkflow extends OpenStoryWorkflowEntrypoint<ReplaceE
         scopedDb,
         costMicros: visionResult.costMicros,
         usedOwnKey: visionResult.usedOwnKey,
-        description: `Element vision (${ELEMENT_VISION_MODEL})`,
+        description: `Element vision (${visionResult.model})`,
         idempotencyKey: `${event.instanceId}:vision`,
         metadata: {
-          model: ELEMENT_VISION_MODEL,
+          model: visionResult.model,
           elementId,
           sequenceId,
         },

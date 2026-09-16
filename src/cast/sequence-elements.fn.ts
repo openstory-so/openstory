@@ -134,14 +134,14 @@ export const analyzeDraftElementFn = createServerFn({ method: 'POST' })
     if (!result.usedOwnKey) {
       if (result.costMicros > 0) {
         await scopedDb.billing.deductCredits(result.costMicros, {
-          description: `Element vision (${ELEMENT_VISION_MODEL})`,
-          metadata: { model: ELEMENT_VISION_MODEL, draft: true },
+          description: `Element vision (${result.model})`,
+          metadata: { model: result.model, draft: true },
           idempotencyKey: `draft-vision:${data.publicUrl}`,
         });
       } else {
         reportMissingBillingCost({
           source: 'draft-element-vision',
-          modelId: ELEMENT_VISION_MODEL,
+          modelId: result.model,
           metadata: { draft: true, publicUrl: data.publicUrl },
         });
       }

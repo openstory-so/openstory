@@ -7,6 +7,7 @@
 
 import type { Microdollars } from '@/billing/money';
 import type { ResolvedLlmKey } from '@/models/server/db/api-keys';
+import type { TextModel } from '@/models/models';
 import {
   aiObservabilityMiddleware,
   type AIObservabilityMeta,
@@ -26,6 +27,7 @@ import {
   throwNotedRunError,
 } from '@/models/server/llm-client';
 import { DEFAULT_VISION_MODEL } from '@/models/models.config';
+import { withRegionFallback } from '@/models/region-policy';
 
 export const ELEMENT_VISION_MODEL = DEFAULT_VISION_MODEL;
 
@@ -52,6 +54,9 @@ export type DescribeElementInput = {
 };
 
 export type ElementVisionResult = ElementDescription & {
+  /** The model that actually answered — the region fallback may have run
+   *  instead of {@link ELEMENT_VISION_MODEL}. Bill and log this one. */
+  model: TextModel;
   costMicros: Microdollars;
   usedOwnKey: boolean;
 };
@@ -124,75 +129,84 @@ export async function describeElementImage(
     }
   }
 
-  const adapter = createAdapter(ELEMENT_VISION_MODEL, input.llmKey);
+  // Always image-bearing on an Anthropic default, so it is geo-blocked from a
+  // mainland-China colo (#1259). Nothing is streamed out, so a blocked attempt
+  // re-runs on the region-available vision model; `model` (not the constant)
+  // drives the adapter AND the cost.
+  return withRegionFallback(ELEMENT_VISION_MODEL, true, async (model) => {
+    const adapter = createAdapter(model, input.llmKey);
 
-  // Stream structured output so OpenRouter attaches usage.cost (TanStack/ai#1076).
-  const usageCapture = createUsageCapture();
-  let structuredObject: unknown;
-  let accumulated = '';
-  let runError = null;
-  for await (const event of chat({
-    adapter,
-    systemPrompts,
-    messages: chatMessages,
-    stream: true,
-    modelOptions: {
-      temperature: 0.3,
-      streamOptions: { includeUsage: true },
-    },
-    outputSchema: elementVisionResponseSchema,
-    middleware: [
-      ...aiObservabilityMiddleware({
-        observationName: 'element-vision',
-        tags: ['vision'],
-        ...input.observability,
-      }),
-      ...usageCapture.middleware,
-    ],
-    debug: false,
-  })) {
-    usageCapture.noteFromStreamEvent(event);
-    const noted = extractRunError(event);
-    if (noted) {
-      runError ??= noted;
-      continue;
+    // Stream structured output so OpenRouter attaches usage.cost (TanStack/ai#1076).
+    const usageCapture = createUsageCapture();
+    let structuredObject: unknown;
+    let accumulated = '';
+    let runError = null;
+    for await (const event of chat({
+      adapter,
+      systemPrompts,
+      messages: chatMessages,
+      stream: true,
+      modelOptions: {
+        temperature: 0.3,
+        streamOptions: { includeUsage: true },
+      },
+      outputSchema: elementVisionResponseSchema,
+      middleware: [
+        ...aiObservabilityMiddleware({
+          observationName: 'element-vision',
+          tags: ['vision'],
+          ...input.observability,
+        }),
+        ...usageCapture.middleware,
+      ],
+      debug: false,
+    })) {
+      usageCapture.noteFromStreamEvent(event);
+      const noted = extractRunError(event);
+      if (noted) {
+        runError ??= noted;
+        continue;
+      }
+      if (
+        event.type === 'TEXT_MESSAGE_CONTENT' &&
+        typeof event.delta === 'string'
+      ) {
+        accumulated += event.delta;
+        continue;
+      }
+      if (
+        event.type === 'CUSTOM' &&
+        event.name === 'structured-output.complete'
+      ) {
+        structuredObject = event.value.object;
+        continue;
+      }
     }
-    if (
-      event.type === 'TEXT_MESSAGE_CONTENT' &&
-      typeof event.delta === 'string'
-    ) {
-      accumulated += event.delta;
-      continue;
-    }
-    if (
-      event.type === 'CUSTOM' &&
-      event.name === 'structured-output.complete'
-    ) {
-      structuredObject = event.value.object;
-      continue;
-    }
-  }
-  throwNotedRunError(runError);
+    throwNotedRunError(runError);
 
-  const parsed = elementVisionResponseSchema.parse(
-    structuredObject !== undefined ? structuredObject : JSON.parse(accumulated)
-  );
-  const description = parsed.description.trim();
-  const consistencyTag = parsed.consistencyTag.trim();
-  if (!description || !consistencyTag) {
-    throw new Error(
-      'Element vision returned empty description or consistencyTag'
+    const parsed = elementVisionResponseSchema.parse(
+      structuredObject !== undefined
+        ? structuredObject
+        : JSON.parse(accumulated)
     );
-  }
-  return {
-    description,
-    consistencyTag,
-    suggestedToken: normalizeSuggestedToken(parsed.suggestedToken),
-    costMicros: llmCostFromUsage(
-      usageCapture.get(),
-      ELEMENT_VISION_MODEL,
-      input.llmKey?.via
-    ),
-    usedOwnKey: input.llmKey?.source === 'team',
-  };
+    const description = parsed.description.trim();
+    const consistencyTag = parsed.consistencyTag.trim();
+    if (!description || !consistencyTag) {
+      throw new Error(
+        'Element vision returned empty description or consistencyTag'
+      );
+    }
+    return {
+      description,
+      consistencyTag,
+      suggestedToken: normalizeSuggestedToken(parsed.suggestedToken),
+      model,
+      costMicros: llmCostFromUsage(
+        usageCapture.get(),
+        model,
+        input.llmKey?.via
+      ),
+      usedOwnKey: input.llmKey?.source === 'team',
+    };
+  });
 }

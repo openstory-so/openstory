@@ -51,14 +51,14 @@ export async function analyzeTalentMediaForTeam(
   if (!result.usedOwnKey) {
     if (result.costMicros > 0) {
       await input.scopedDb.billing.deductCredits(result.costMicros, {
-        description: `Talent vision (${TALENT_VISION_MODEL})`,
-        metadata: { model: TALENT_VISION_MODEL },
+        description: `Talent vision (${result.model})`,
+        metadata: { model: result.model },
         idempotencyKey: input.idempotencyKey,
       });
     } else {
       reportMissingBillingCost({
         source: 'talent-vision',
-        modelId: TALENT_VISION_MODEL,
+        modelId: result.model,
         metadata: { imageCount: input.imageUrls.length },
       });
     }
