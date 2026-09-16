@@ -341,6 +341,27 @@ describe('re-analysis revival + shot soft-delete details', () => {
     expect(after.find((version) => version.selectedAt)?.id).toBe(first.id);
   });
 
+  it('versions authored line edits separately and invalidates the old take', async () => {
+    const methods = createShotsMethods(db);
+    const { sceneShots } = await seedScene(0, 1);
+    const shot = sceneShots[0];
+    if (!shot) throw new Error('setup');
+    const dialogue = {
+      presence: true as const,
+      lines: [{ character: 'Maya', line: 'A new line.', tone: 'quiet' }],
+    };
+
+    await methods.setDialogue(shot.id, dialogue);
+
+    const versions = await methods.listDialogueVersions(shot.id);
+    expect(versions[0]).toMatchObject({
+      dialogue,
+      audioClips: [],
+      source: 'user-edit',
+    });
+    expect((await methods.getById(shot.id))?.audioClips).toEqual([]);
+  });
+
   it('scenes.upsert on a deleted row’s orderIndex slot revives it', async () => {
     const sceneMethods = createScenesMethods(db);
     const { scene } = await seedScene(0, 0);

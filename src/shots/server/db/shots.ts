@@ -19,6 +19,7 @@ import type {
   Shot,
   NewShot,
 } from '@/platform/server/db/schema';
+import type { MotionDialogue } from '@/shots/scene-analysis.schema';
 import type { Sequence } from '@/platform/server/db/schema/sequences';
 import { and, asc, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
@@ -249,7 +250,10 @@ export function createShotsMethods(db: Database) {
     setAudioClips: async (
       shotId: string,
       audioClips: MotionAudioClip[],
-      opts?: { workflowRunId?: string | null }
+      opts?: {
+        workflowRunId?: string | null;
+        dialogue?: MotionDialogue | null;
+      }
     ): Promise<void> => {
       if (audioClips.length === 0) {
         await db.batch([
@@ -292,6 +296,8 @@ export function createShotsMethods(db: Database) {
           audioClips,
           inputHash,
           workflowRunId: opts?.workflowRunId,
+          dialogue: opts?.dialogue,
+          source: 'generated',
           selectedAt: new Date(),
         }),
         db
@@ -300,6 +306,41 @@ export function createShotsMethods(db: Database) {
             audioClips,
             updatedAt: new Date(),
           })
+          .where(eq(shots.id, shotId)),
+      ]);
+    },
+
+    /** Append a line edit independently of the motion-prompt history. */
+    setDialogue: async (
+      shotId: string,
+      dialogue: MotionDialogue,
+      source: 'prompt' | 'user-edit' = 'user-edit'
+    ): Promise<void> => {
+      const versionId = generateId();
+      await db.batch([
+        db
+          .update(shotDialogueVersions)
+          .set({ selectedAt: null })
+          .where(
+            and(
+              eq(shotDialogueVersions.shotId, shotId),
+              sql`${shotDialogueVersions.selectedAt} IS NOT NULL`
+            )
+          ),
+        db.insert(shotDialogueVersions).values({
+          id: versionId,
+          shotId,
+          dialogue,
+          // The authored dialogue is the dependency input until synthesis
+          // replaces this selection with its voice/model source key.
+          inputHash: JSON.stringify(dialogue),
+          audioClips: [],
+          source,
+          selectedAt: new Date(),
+        }),
+        db
+          .update(shots)
+          .set({ audioClips: [], updatedAt: new Date() })
           .where(eq(shots.id, shotId)),
       ]);
     },
