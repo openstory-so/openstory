@@ -31,6 +31,9 @@ import type {
   WorkflowStepConfig,
 } from 'cloudflare:workers';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
+import type { ScopedDb } from '@/platform/server/db/scoped';
+import type { GenerationCheckpoint } from '@/sequences/pipeline';
+import { snapshotDialogueContinuation } from '../dialogue-continuation';
 import type {
   CharacterMinimal,
   SequenceLocationMinimal,
@@ -501,6 +504,151 @@ describe('AnalyzeScriptWorkflow script checkpoint', () => {
       locationsWithSheets: [LOCATION_ROW],
     });
   });
+
+  test.each([
+    { referenceOnly: false, presence: 'full' as const },
+    { referenceOnly: true, presence: 'full' as const },
+    { referenceOnly: false, presence: 'none' as const },
+    { referenceOnly: true, presence: 'none' as const },
+  ])(
+    'Dialogue continuation preserves sequence music ($referenceOnly / $presence)',
+    async ({ referenceOnly, presence }) => {
+      const scenes: Scene[] = [5, 7].map((durationSeconds, index) => ({
+        sceneId: `as_${index + 1}`,
+        sceneNumber: index + 1,
+        originalScript: { extract: 'A quiet moment.', dialogue: [] },
+        metadata: {
+          title: 'Hallway',
+          durationSeconds,
+          location: '',
+          timeOfDay: '',
+          storyBeat: '',
+        },
+        continuity: {
+          characterTags: [],
+          environmentTag: '',
+          colorPalette: '',
+          lightingSetup: '',
+          styleTag: '',
+        },
+      }));
+      const completeScenes = scenes.map((scene) => ({
+        ...scene,
+        musicDesign: {
+          presence,
+          style: 'ambient',
+          mood: 'warm',
+          atmosphere: 'quiet',
+        },
+      }));
+      const shotMapping = scenes.map((scene, index) => ({
+        analysisSceneId: scene.sceneId,
+        shotId: `sh_${index + 1}`,
+        frameId: `fr_${index + 1}`,
+      }));
+      const previousPrompts = CHILD_RESULTS['spawn-motion-music-prompts'];
+      const previousVisualPrompts = CHILD_RESULTS['spawn-visual-prompts'];
+      CHILD_RESULTS['spawn-visual-prompts'] = { ...VISUAL_PROMPTS, scenes };
+      CHILD_RESULTS['spawn-motion-music-prompts'] = {
+        completeScenes,
+        motionPromptsBySceneId: {},
+        musicPrompt: 'Original sequence score',
+        musicTags: 'ambient',
+      } satisfies MotionMusicPromptsWorkflowResult;
+      let savedCheckpoint: GenerationCheckpoint | undefined;
+      const saveCheckpoint = vi.fn(
+        async (args: { generationCheckpoint?: GenerationCheckpoint }) => {
+          if (args.generationCheckpoint)
+            savedCheckpoint = args.generationCheckpoint;
+        }
+      );
+      try {
+        await makeWorkflow().invokeRunImpl(
+          makeEvent({
+            ...noStyle,
+            referenceOnly,
+            startFrom: 'references',
+            stopAt: referenceOnly ? 'references' : 'images',
+            checkpoint: {
+              ...SPLIT,
+              completedStage: 'script',
+              scenes,
+              shotMapping,
+            },
+          }),
+          makeStep(),
+          makeScopedDb(saveCheckpoint)
+        );
+      } finally {
+        CHILD_RESULTS['spawn-motion-music-prompts'] = previousPrompts;
+        CHILD_RESULTS['spawn-visual-prompts'] = previousVisualPrompts;
+      }
+      if (!savedCheckpoint) throw new Error('Missing completed checkpoint');
+
+      // The real continue-click snapshot refreshes selections from D1. Music
+      // design must survive the persisted checkpoint, without another LLM call.
+      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- only selection reads are exercised
+      const selectionDb = {
+        frames: {
+          getAnchorsByShots: async () =>
+            new Map(
+              shotMapping.map((shot) => [shot.shotId, { id: shot.frameId }])
+            ),
+        },
+        frameVariants: {
+          getSelectedByFrameIds: async () =>
+            new Map(
+              shotMapping.map((shot) => [
+                shot.frameId,
+                { id: `image_${shot.frameId}`, url: '/r2/still.png' },
+              ])
+            ),
+        },
+        shotPromptVersions: {
+          getSelectedMotionByShots: async () =>
+            new Map(
+              shotMapping.map((shot) => [
+                shot.shotId,
+                { id: `prompt_${shot.shotId}`, text: 'Selected motion' },
+              ])
+            ),
+        },
+      } as unknown as ScopedDb;
+      savedCheckpoint.imageStage = await snapshotDialogueContinuation(
+        selectionDb,
+        { musicPrompt: 'Edited sequence score', musicTags: 'cinematic' },
+        savedCheckpoint
+      );
+      spawnAndAwaitChild.mockClear();
+      const update = vi.fn();
+      await makeWorkflow().invokeRunImpl(
+        makeEvent({
+          ...noStyle,
+          referenceOnly,
+          startFrom: 'dialogue',
+          stopAt: 'music',
+          checkpoint: savedCheckpoint,
+        }),
+        makeStep(),
+        makeScopedDb(update)
+      );
+      expect(spawned()).toEqual(['spawn-motion-batch']);
+      expect(childPayload('spawn-motion-batch')).toMatchObject({
+        includeMusic: presence !== 'none',
+        music:
+          presence === 'none'
+            ? undefined
+            : {
+                prompt: 'Edited sequence score',
+                tags: 'cinematic',
+                duration: 12,
+              },
+      });
+      expect(
+        checkpointWrite(update, presence === 'none' ? 'motion' : 'music')
+      ).toBeDefined();
+    }
+  );
 
   test.each([
     { referenceOnly: false, stopAt: 'dialogue' as const },

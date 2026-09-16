@@ -947,7 +947,13 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         locationsWithSheets,
         allElements,
         visualPromptBySceneId,
-        scenesWithVisualPrompts,
+        // Reference-only runs finish music design during References. Keep it
+        // on the scenes that a Dialogue continue will snapshot.
+        scenesWithVisualPrompts:
+          referenceOnlyPromptsSettled?.status === 'fulfilled'
+            ? (referenceOnlyPromptsSettled.value?.completeScenes ??
+              scenesWithVisualPrompts)
+            : scenesWithVisualPrompts,
         dialogueClipsByShotId,
       });
       if (stopAt === 'references') {
@@ -1193,6 +1199,9 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       await persistProgress({
         ...(checkpoint ?? { completedStage: 'images' }),
         completedStage: 'images',
+        // These include music design (and snapped durations); the earlier
+        // visual-only scenes cannot decide whether to render sequence music.
+        scenesWithVisualPrompts: imageStage.prompts.completeScenes,
       });
       return imageStage;
     })();
