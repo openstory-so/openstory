@@ -51,7 +51,8 @@ async function coversProvider(
  *
  * @param scopedDb - Scoped DB context for the team
  * @param estimatedCostMicros - Estimated raw cost in Microdollars
- * @param providers - Which BYOK providers bypass the check (default: ['fal'])
+ * @param providers - Which BYOK providers bypass the check (default: ['fal']);
+ *   an empty list requires platform credits regardless of team keys.
  * @param errorMessage - Custom error message for insufficient credits
  *
  * @throws InsufficientCreditsError if team lacks credits and has no BYOK keys
@@ -75,7 +76,7 @@ export async function requireCredits(
       coversProvider(scopedDb, provider, opts.llmModel)
     )
   );
-  const hasAllKeys = keyChecks.every(Boolean);
+  const hasAllKeys = providers.length > 0 && keyChecks.every(Boolean);
 
   if (hasAllKeys) return;
 
@@ -92,6 +93,7 @@ export async function requireCredits(
  * Create a run envelope instead of a read-only preflight. Returns undefined
  * when BYOK skips the hold. Throws InsufficientCreditsError if available
  * funds cannot cover the estimate.
+ * Pass `providers: []` for platform-only work that BYOK cannot cover.
  */
 export async function reserveRunCredits(
   scopedDb: ReservationPreflightScopedDb,
@@ -110,7 +112,7 @@ export async function reserveRunCredits(
       coversProvider(scopedDb, provider, opts.llmModel)
     )
   );
-  if (keyChecks.every(Boolean)) return undefined;
+  if (providers.length > 0 && keyChecks.every(Boolean)) return undefined;
 
   const result = await scopedDb.billing.createReservation(estimatedCostMicros, {
     idempotencyKey: opts.idempotencyKey ?? generateId(),

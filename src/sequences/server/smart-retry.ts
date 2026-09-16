@@ -497,7 +497,8 @@ export async function executeSmartRetry(context: SmartRetryContext) {
     const reservationId =
       musicCost > 0
         ? await reserveRunCredits(context.scopedDb, musicCost, {
-            providers: ['fal'],
+            // Native ElevenLabs always spends the platform key.
+            providers: musicModel === 'elevenlabs_music' ? [] : ['fal'],
             errorMessage: 'Insufficient credits to retry failed items',
             sequenceId: sequence.id,
           })
@@ -510,6 +511,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
       reservationId,
       ownsReservation: true,
       prompt: sequence.musicPrompt,
+      model: musicModel,
       tags: sequence.musicTags ?? '',
       duration: totalDuration || 30,
     };

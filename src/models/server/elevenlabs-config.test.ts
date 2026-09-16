@@ -1,4 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { parseEnv } from 'node:util';
 
 const env: Record<string, string | undefined> = {};
 
@@ -50,6 +52,31 @@ describe('isElevenLabsConfigured', () => {
     env.E2E_TEST = 'true';
     env.ELEVENLABS_BASE_URL = 'http://localhost:4010';
     expect(isElevenLabsConfigured()).toBe(true);
+  });
+
+  it('enables native ElevenLabs against aimock in every built CI E2E job', () => {
+    // Preview reads the .dev.vars next to the built wrangler config. The
+    // Playwright command's process.env overrides do not supply those bindings.
+    const workflow = readFileSync('.github/workflows/test.yml', 'utf8');
+    const devVarsBlocks = Array.from(
+      workflow.matchAll(
+        /cat > dist\/server\/\.dev\.vars <<EOF\n([\s\S]*?)\n\s*EOF/g
+      )
+    );
+    expect(devVarsBlocks).toHaveLength(2);
+
+    for (const [, block] of devVarsBlocks) {
+      if (!block) throw new Error('Missing CI E2E .dev.vars block');
+      const vars = parseEnv(block);
+      env.E2E_TEST = vars.E2E_TEST;
+      env.ELEVENLABS_API_KEY = vars.ELEVENLABS_API_KEY;
+      env.ELEVENLABS_BASE_URL = vars.ELEVENLABS_BASE_URL;
+      expect(isElevenLabsConfigured()).toBe(true);
+      expect(getElevenLabsApiKey()).toBe('test-mock-key');
+      expect(elevenLabsAdapterConfig(getElevenLabsApiKey() ?? '').baseURL).toBe(
+        'http://localhost:4010'
+      );
+    }
   });
 });
 
