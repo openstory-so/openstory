@@ -44,6 +44,7 @@ import {
 import { toVisionImageSource } from '@/platform/server/storage/external-url';
 import { shouldInlineVisionForVia } from '@/models/server/llm-call-helper';
 import { createServerOnlyFn } from '@tanstack/react-start';
+import { getRequestCountry } from '@/platform/server/request-country';
 
 export type { EnhanceChunk } from '@/sequences/enhance-script-turns';
 
@@ -139,7 +140,9 @@ export async function* streamScriptEnhancement(
   }
 
   const sanitized = sanitizeScriptContent(data.script);
-  const { compiled } = await getPrompt('script/enhance');
+  const { compiled } = await getPrompt('script/enhance', {
+    userCountry: getRequestCountry() ?? '',
+  });
   const elements = data.elements ?? [];
   const userPrompt = createUserPrompt(sanitized, {
     invent: data.invent,

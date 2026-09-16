@@ -37,7 +37,7 @@
  */
 
 import { withMeasuredDurations } from '@/cast/server/sequence-elements/media-duration';
-import { getRequestHeader } from '@tanstack/react-start/server';
+import { getRequestCountry } from '@/platform/server/request-country';
 import {
   DEFAULT_IMAGE_MODEL,
   DEFAULT_VIDEO_MODEL,
@@ -187,12 +187,7 @@ async function resolveStoryboardPayload(
   ]);
 
   // Capture during the request: durable workflows have no request context.
-  // Cloudflare reports XX for unknown and T1 for Tor, neither a country.
-  const country = getRequestHeader('cf-ipcountry')?.trim().toUpperCase();
-  const userCountry =
-    country && /^[A-Z]{2}$/.test(country) && country !== 'XX'
-      ? country
-      : undefined;
+  const userCountry = getRequestCountry();
 
   return {
     ...input,
