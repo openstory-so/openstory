@@ -948,7 +948,13 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         locationsWithSheets,
         allElements,
         visualPromptBySceneId,
-        scenesWithVisualPrompts,
+        // Reference-only runs finish music design during References. Keep it
+        // on the scenes that a Dialogue continue will snapshot.
+        scenesWithVisualPrompts:
+          referenceOnlyPromptsSettled?.status === 'fulfilled'
+            ? (referenceOnlyPromptsSettled.value?.completeScenes ??
+              scenesWithVisualPrompts)
+            : scenesWithVisualPrompts,
         dialogueClipsByShotId,
       });
       if (stopAt === 'references') {
@@ -957,226 +963,254 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       }
     }
 
-    // ----------------------------------------------------------------------
-    // PHASE 4: shot images + motion/music prompts in parallel
-    // ----------------------------------------------------------------------
-    // Reference-only has no phase 4: the stills are skipped and the prompts
-    // finished in phase 3, so it emits nothing and the progress rail runs
-    // Script → References → Motion & Music.
-    if (!referenceOnly) {
-      await step.do('phase-4-start', async () => {
-        await getGenerationChannel(sequenceId).emit('generation.phase:start', {
-          phase: GENERATION_STAGE_META.images.phase,
-          phaseName: 'Generating images…',
-        });
-      });
-    }
-
-    const clipItems = shotWorkItems(scenesWithVisualPrompts, shotMapping);
-    // Every clip of a 2+ shot scene assembles its prompts from the shot-list
-    // spec (#1517); null on the 1-shot LLM path. Aligned to `clipItems`.
-    const derivedShots = clipItems.map((item) =>
-      derivedShotForItem(item, styleConfig)
-    );
-    // The music prompt grounds on one visual per scene; a derived scene has
-    // no LLM visual, so its head's assembled prompt stands in.
-    for (const [index, item] of clipItems.entries()) {
-      const derived = derivedShots[index];
-      if (derived && item.isSceneHead) {
-        visualPromptBySceneId[item.scene.sceneId] =
-          derived.visualPrompt.fullPrompt;
-      }
-    }
-
-    if (!referenceOnly) {
-      await step.do('persist-derived-visual-prompts', async () => {
-        for (const [index, item] of clipItems.entries()) {
-          const derived = derivedShots[index];
-          const frameId = item.mapping.frameId;
-          if (!derived || !frameId) continue;
-          await scopedDb.framePromptVersions.writeAiVersion({
-            frameId,
-            text: derived.visualPrompt.fullPrompt,
-            inputHash: await hashVisualPromptInput(
-              narrowShotPromptContext({
-                scene: item.scene,
-                styleConfig,
-                characterBible,
-                locationBible,
-                elementBible,
-                aspectRatio,
-                analysisModel: analysisModelId,
-              })
-            ),
-            analysisModel: analysisModelId,
-          });
-          // Same refresh the frame-prompt child emits after its write: the
-          // prompt lives on the `frame.imagePrompt` mirror, not in metadata.
-          await getGenerationChannel(sequenceId).emit(
-            'generation.shot:updated',
-            {
-              shotId: item.mapping.shotId,
-              updateType: 'visual-prompt',
-              metadata: item.scene,
-            }
+    const imageStage = await (async () => {
+      if (startFrom === 'dialogue') {
+        if (!checkpoint?.imageStage) {
+          throw new WorkflowValidationError(
+            'Cannot continue dialogue: missing render inputs'
           );
         }
-      });
-    }
-
-    // One snapshot per clip. 1-shot films omit `shotId` so the batch hash
-    // stays byte-identical; derived clips carry shotId + the assembled prompt.
-    const sceneSnapshots: ShotImageSceneSnapshot[] = clipItems.map(
-      (item, index) => {
-        const derived = derivedShots[index];
-        const visualPrompt =
-          derived?.visualPrompt.fullPrompt ??
-          visualPromptBySceneId[item.scene.sceneId] ??
-          '';
-        const refs = resolveSceneShotImageReferences({
-          scene: item.scene,
-          visualPrompt,
-          characters: charactersWithSheets,
-          locations: locationsWithSheets,
-          elements: allElements,
-        });
-        return {
-          sceneId: item.scene.sceneId,
-          ...(item.hasSiblingShots && item.mapping.shotId
-            ? { shotId: item.mapping.shotId }
-            : {}),
-          visualPrompt,
-          characterSheetHashes: refs.characterSheetHashes,
-          locationSheetHashes: refs.locationSheetHashes,
-          elementReferenceHashes: refs.elementReferenceHashes,
-        };
+        return checkpoint.imageStage;
       }
-    );
+      // ----------------------------------------------------------------------
+      // PHASE 4: shot images + motion/music prompts in parallel
+      // ----------------------------------------------------------------------
+      // Reference-only has no phase 4: the stills are skipped and the prompts
+      // finished in phase 3, so it emits nothing and the progress rail runs
+      // Script → References → Motion & Music.
+      if (!referenceOnly) {
+        await step.do('phase-4-start', async () => {
+          await getGenerationChannel(sequenceId).emit(
+            'generation.phase:start',
+            {
+              phase: GENERATION_STAGE_META.images.phase,
+              phaseName: 'Generating images…',
+            }
+          );
+        });
+      }
 
-    const shotImagesPayload: ShotImagesWorkflowInput = {
-      userId: input.userId,
-      teamId: input.teamId,
-      sequenceId,
-      reservationId: input.reservationId,
-      scenesWithVisualPrompts,
-      charactersWithSheets,
-      locationsWithSheets,
-      elements: allElements,
-      shotMapping,
-      imageModel,
-      imageModels,
-      aspectRatio,
-      resolution,
-      sceneSnapshots,
-    };
-    shotImagesPayload.snapshotInputHash = await computeShotImagesHashFromDto({
-      ...shotImagesPayload,
-      sceneSnapshots,
-    });
+      const clipItems = shotWorkItems(scenesWithVisualPrompts, shotMapping);
+      // Every clip of a 2+ shot scene assembles its prompts from the shot-list
+      // spec (#1517); null on the 1-shot LLM path. Aligned to `clipItems`.
+      const derivedShots = clipItems.map((item) =>
+        derivedShotForItem(item, styleConfig)
+      );
+      // The music prompt grounds on one visual per scene; a derived scene has
+      // no LLM visual, so its head's assembled prompt stands in.
+      for (const [index, item] of clipItems.entries()) {
+        const derived = derivedShots[index];
+        if (derived && item.isSceneHead) {
+          visualPromptBySceneId[item.scene.sceneId] =
+            derived.visualPrompt.fullPrompt;
+        }
+      }
 
-    // Render shot images FIRST, then run motion/music prompts — the prior
-    // parallel fan-out is now sequential (#929). The motion-prompt pass is
-    // conditioned on the ACTUAL rendered starting frame (vision input), which
-    // only exists once images have rendered. We capture each scene's primary
-    // still here and thread it down as an INPUT — the motion children must
-    // never look it up mid-run (a concurrent re-render could swap it). Music
-    // has no image dependency but rides along with motion in the same child,
-    // so it inherits the wait — an accepted latency cost on the non-critical
-    // music artifact in exchange for image-grounded motion. Each child is
-    // wrapped in `Promise.allSettled` so a rejection is captured (not thrown)
-    // and surfaced together below after recording the analysis duration.
-    //
-    // REFERENCE-ONLY skips this phase outright: no still is rendered, so the
-    // reason motion waits on images disappears and with it the whole image
-    // pass. Its motion/music prompts already settled in phase 3
-    // (`referenceOnlyPromptsSettled`); nothing is awaited here.
-    const shotImagesSettled: PromiseSettledResult<ShotImagesWorkflowResult> =
-      referenceOnly
-        ? {
-            status: 'fulfilled',
-            value: { imageUrls: [], frameVersionIds: [] },
+      if (!referenceOnly) {
+        await step.do('persist-derived-visual-prompts', async () => {
+          for (const [index, item] of clipItems.entries()) {
+            const derived = derivedShots[index];
+            const frameId = item.mapping.frameId;
+            if (!derived || !frameId) continue;
+            await scopedDb.framePromptVersions.writeAiVersion({
+              frameId,
+              text: derived.visualPrompt.fullPrompt,
+              inputHash: await hashVisualPromptInput(
+                narrowShotPromptContext({
+                  scene: item.scene,
+                  styleConfig,
+                  characterBible,
+                  locationBible,
+                  elementBible,
+                  aspectRatio,
+                  analysisModel: analysisModelId,
+                })
+              ),
+              analysisModel: analysisModelId,
+            });
+            // Same refresh the frame-prompt child emits after its write: the
+            // prompt lives on the `frame.imagePrompt` mirror, not in metadata.
+            await getGenerationChannel(sequenceId).emit(
+              'generation.shot:updated',
+              {
+                shotId: item.mapping.shotId,
+                updateType: 'visual-prompt',
+                metadata: item.scene,
+              }
+            );
           }
-        : (
-            await Promise.allSettled([
-              spawnAndAwaitChild<
-                ShotImagesWorkflowInput,
-                ShotImagesWorkflowResult
-              >(step, {
-                binding: this.env.SHOT_IMAGES_WORKFLOW,
-                parentBindingName: PARENT_BINDING_NAME,
-                parentInstanceId,
-                childId: `shot-images:${sequenceId ?? 'no-seq'}`,
-                childPayload: shotImagesPayload,
-                spawnStepName: 'spawn-shot-images',
-                awaitStepName: 'await-shot-images',
-                // Must exceed the child's own budget — under a many-sequence
-                // burst the image queue alone can outlast the 30-minute
-                // default.
-                timeout: '90 minutes',
-              }),
-            ])
-          )[0];
+        });
+      }
 
-    // Clip-aligned stills from shot-images (one slot per work item). Also
-    // index by sceneId for the scene-head so motion-prompt batch can keep
-    // looking up the 1-shot path by scene.
-    const shotImageUrls =
-      shotImagesSettled.status === 'fulfilled'
-        ? shotImagesSettled.value.imageUrls
-        : [];
-    const startingFrameImageUrls: Record<string, string | null> = {};
-    for (const [index, item] of clipItems.entries()) {
-      const url = shotImageUrls[index] ?? null;
-      if (item.mapping.shotId)
-        startingFrameImageUrls[item.mapping.shotId] = url;
-      if (item.isSceneHead) startingFrameImageUrls[item.scene.sceneId] = url;
-    }
+      // One snapshot per clip. 1-shot films omit `shotId` so the batch hash
+      // stays byte-identical; derived clips carry shotId + the assembled prompt.
+      const sceneSnapshots: ShotImageSceneSnapshot[] = clipItems.map(
+        (item, index) => {
+          const derived = derivedShots[index];
+          const visualPrompt =
+            derived?.visualPrompt.fullPrompt ??
+            visualPromptBySceneId[item.scene.sceneId] ??
+            '';
+          const refs = resolveSceneShotImageReferences({
+            scene: item.scene,
+            visualPrompt,
+            characters: charactersWithSheets,
+            locations: locationsWithSheets,
+            elements: allElements,
+          });
+          return {
+            sceneId: item.scene.sceneId,
+            ...(item.hasSiblingShots && item.mapping.shotId
+              ? { shotId: item.mapping.shotId }
+              : {}),
+            visualPrompt,
+            characterSheetHashes: refs.characterSheetHashes,
+            locationSheetHashes: refs.locationSheetHashes,
+            elementReferenceHashes: refs.elementReferenceHashes,
+          };
+        }
+      );
 
-    // Settled back in phase 3 when reference-only; otherwise it starts here,
-    // because it needs the stills phase 4 just rendered. A phase-3 rejection
-    // is carried through unchanged so it surfaces at the shared raise site
-    // below, after the analysis duration is recorded. A continue that skipped
-    // phase 3 (#1408) has no settled prompts and runs them here regardless.
-    const motionMusicSettled: PromiseSettledResult<MotionMusicPromptsWorkflowResult> =
-      referenceOnlyPromptsSettled?.status === 'rejected'
-        ? referenceOnlyPromptsSettled
-        : referenceOnlyPromptsSettled?.status === 'fulfilled' &&
-            referenceOnlyPromptsSettled.value
-          ? { status: 'fulfilled', value: referenceOnlyPromptsSettled.value }
+      const shotImagesPayload: ShotImagesWorkflowInput = {
+        userId: input.userId,
+        teamId: input.teamId,
+        sequenceId,
+        reservationId: input.reservationId,
+        scenesWithVisualPrompts,
+        charactersWithSheets,
+        locationsWithSheets,
+        elements: allElements,
+        shotMapping,
+        imageModel,
+        imageModels,
+        aspectRatio,
+        resolution,
+        sceneSnapshots,
+      };
+      shotImagesPayload.snapshotInputHash = await computeShotImagesHashFromDto({
+        ...shotImagesPayload,
+        sceneSnapshots,
+      });
+
+      // Render shot images FIRST, then run motion/music prompts — the prior
+      // parallel fan-out is now sequential (#929). The motion-prompt pass is
+      // conditioned on the ACTUAL rendered starting frame (vision input), which
+      // only exists once images have rendered. We capture each scene's primary
+      // still here and thread it down as an INPUT — the motion children must
+      // never look it up mid-run (a concurrent re-render could swap it). Music
+      // has no image dependency but rides along with motion in the same child,
+      // so it inherits the wait — an accepted latency cost on the non-critical
+      // music artifact in exchange for image-grounded motion. Each child is
+      // wrapped in `Promise.allSettled` so a rejection is captured (not thrown)
+      // and surfaced together below after recording the analysis duration.
+      //
+      // REFERENCE-ONLY skips this phase outright: no still is rendered, so the
+      // reason motion waits on images disappears and with it the whole image
+      // pass. Its motion/music prompts already settled in phase 3
+      // (`referenceOnlyPromptsSettled`); nothing is awaited here.
+      const shotImagesSettled: PromiseSettledResult<ShotImagesWorkflowResult> =
+        referenceOnly
+          ? {
+              status: 'fulfilled',
+              value: { imageUrls: [], frameVersionIds: [] },
+            }
           : (
               await Promise.allSettled([
-                runMotionMusicPrompts({
-                  scenesForPrompts: scenesWithVisualPrompts,
-                  startingFrameImageUrls,
-                  visualSummaryBySceneId: visualPromptBySceneId,
+                spawnAndAwaitChild<
+                  ShotImagesWorkflowInput,
+                  ShotImagesWorkflowResult
+                >(step, {
+                  binding: this.env.SHOT_IMAGES_WORKFLOW,
+                  parentBindingName: PARENT_BINDING_NAME,
+                  parentInstanceId,
+                  childId: `shot-images:${sequenceId ?? 'no-seq'}`,
+                  childPayload: shotImagesPayload,
+                  spawnStepName: 'spawn-shot-images',
+                  awaitStepName: 'await-shot-images',
+                  // Must exceed the child's own budget — under a many-sequence
+                  // burst the image queue alone can outlast the 30-minute
+                  // default.
+                  timeout: '90 minutes',
                 }),
               ])
             )[0];
 
-    // Record analysis duration before raising failures, so a failed run
-    // still reports how long it spent.
-    await step.do('record-analysis-duration', async () => {
-      if (sequenceId) {
-        await scopedDb.sequences.updateAnalysisDurationMs(
-          sequenceId,
-          Date.now() - startTime
+      // Clip-aligned stills from shot-images (one slot per work item). Also
+      // index by sceneId for the scene-head so motion-prompt batch can keep
+      // looking up the 1-shot path by scene.
+      const shotImageUrls =
+        shotImagesSettled.status === 'fulfilled'
+          ? shotImagesSettled.value.imageUrls
+          : [];
+      const startingFrameImageUrls: Record<string, string | null> = {};
+      for (const [index, item] of clipItems.entries()) {
+        const url = shotImageUrls[index] ?? null;
+        if (item.mapping.shotId)
+          startingFrameImageUrls[item.mapping.shotId] = url;
+        if (item.isSceneHead) startingFrameImageUrls[item.scene.sceneId] = url;
+      }
+
+      // Settled back in phase 3 when reference-only; otherwise it starts here,
+      // because it needs the stills phase 4 just rendered. A phase-3 rejection
+      // is carried through unchanged so it surfaces at the shared raise site
+      // below, after the analysis duration is recorded. A continue that skipped
+      // phase 3 (#1408) has no settled prompts and runs them here regardless.
+      const motionMusicSettled: PromiseSettledResult<MotionMusicPromptsWorkflowResult> =
+        referenceOnlyPromptsSettled?.status === 'rejected'
+          ? referenceOnlyPromptsSettled
+          : referenceOnlyPromptsSettled?.status === 'fulfilled' &&
+              referenceOnlyPromptsSettled.value
+            ? { status: 'fulfilled', value: referenceOnlyPromptsSettled.value }
+            : (
+                await Promise.allSettled([
+                  runMotionMusicPrompts({
+                    scenesForPrompts: scenesWithVisualPrompts,
+                    startingFrameImageUrls,
+                    visualSummaryBySceneId: visualPromptBySceneId,
+                  }),
+                ])
+              )[0];
+
+      // Record analysis duration before raising failures, so a failed run
+      // still reports how long it spent.
+      await step.do('record-analysis-duration', async () => {
+        if (sequenceId) {
+          await scopedDb.sequences.updateAnalysisDurationMs(
+            sequenceId,
+            Date.now() - startTime
+          );
+        }
+      });
+
+      if (shotImagesSettled.status === 'rejected') {
+        throw new Error(
+          `Shot image generation failed: ${String(shotImagesSettled.reason)}`
         );
       }
-    });
+      if (motionMusicSettled.status === 'rejected') {
+        throw new Error(
+          `Motion/music prompt generation failed: ${String(motionMusicSettled.reason)}`
+        );
+      }
 
-    if (shotImagesSettled.status === 'rejected') {
-      throw new Error(
-        `Shot image generation failed: ${String(shotImagesSettled.reason)}`
-      );
-    }
-    if (motionMusicSettled.status === 'rejected') {
-      throw new Error(
-        `Motion/music prompt generation failed: ${String(motionMusicSettled.reason)}`
-      );
-    }
+      const imageStage = {
+        images: shotImagesSettled.value,
+        prompts: motionMusicSettled.value,
+      };
+      await persistProgress({
+        ...(checkpoint ?? { completedStage: 'images' }),
+        completedStage: 'images',
+        // These include music design (and snapped durations); the earlier
+        // visual-only scenes cannot decide whether to render sequence music.
+        scenesWithVisualPrompts: imageStage.prompts.completeScenes,
+      });
+      return imageStage;
+    })();
 
-    const imageUrls = shotImagesSettled.value.imageUrls;
-    const frameVersionIds = shotImagesSettled.value.frameVersionIds ?? [];
+    const imageUrls = referenceOnly ? [] : imageStage.images.imageUrls;
+    const frameVersionIds = referenceOnly
+      ? []
+      : (imageStage.images.frameVersionIds ?? []);
     const {
       completeScenes,
       motionPromptsBySceneId,
@@ -1185,12 +1219,8 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       motionPromptVersionIdsByShotId,
       musicPrompt,
       musicTags,
-    } = motionMusicSettled.value;
+    } = imageStage.prompts;
 
-    await persistProgress({
-      ...(checkpoint ?? { completedStage: 'images' }),
-      completedStage: 'images',
-    });
     if (stopAt === 'images') {
       return completeScenes;
     }
@@ -1211,10 +1241,12 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         (item) => {
           if (!item.mapping.shotId) return [];
           const lines = voicedDialogueLines(
-            {
-              presence: item.scene.originalScript.dialogue.length > 0,
-              lines: item.scene.originalScript.dialogue,
-            },
+            startFrom === 'dialogue'
+              ? motionPromptsByShotId?.[item.mapping.shotId]?.dialogue
+              : {
+                  presence: item.scene.originalScript.dialogue.length > 0,
+                  lines: item.scene.originalScript.dialogue,
+                },
             charactersWithSheets
           );
           return lines.length > 0

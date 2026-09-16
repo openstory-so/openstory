@@ -1354,6 +1354,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
           musicUrl: sequence?.musicUrl,
           pipelineStage: sequence?.pipelineStage,
           referenceOnly: !generateStartFrames,
+          generateVoices: sequence?.generateVoices,
         }),
       }),
     [
@@ -1363,6 +1364,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       sequence?.musicStatus,
       sequence?.musicUrl,
       sequence?.pipelineStage,
+      sequence?.generateVoices,
       generateStartFrames,
     ]
   );
@@ -1558,6 +1560,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     initialImageModel: resolvedSequenceImageModel,
     styleCategory,
     generateStartFrames,
+    generateVoices: sequence?.generateVoices,
     styleName,
     staleShotIds: isGenerationActive ? undefined : staleShotIds,
     targetDurationSeconds: sequence?.targetDurationSeconds,

@@ -56,6 +56,7 @@ import type { Sequence } from '@/platform/server/db/schema';
 import { resolveSequenceStyleConfig } from '@/look/style-config';
 import { sequenceScenesUrl } from './notify-sequence-ready';
 import { refreshCheckpointFromCast } from './refresh-checkpoint';
+import { snapshotDialogueContinuation } from './dialogue-continuation';
 import { resolveStopAt } from '@/sequences/pipeline';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import { resolveRunState } from '@/platform/server/workflow/reconcile';
@@ -186,6 +187,17 @@ async function resolveStoryboardPayload(
       : Promise.resolve([]),
   ]);
 
+  const checkpoint = input.checkpoint
+    ? await refreshCheckpointFromCast(scopedDb, sequenceId, input.checkpoint)
+    : undefined;
+  if (checkpoint && input.startFrom === 'dialogue') {
+    checkpoint.imageStage = await snapshotDialogueContinuation(
+      scopedDb,
+      sequence,
+      checkpoint
+    );
+  }
+
   // Capture during the request: durable workflows have no request context.
   const userCountry = getRequestCountry();
 
@@ -195,9 +207,7 @@ async function resolveStoryboardPayload(
     sequenceId,
     // A continue re-reads the cast the user may have edited since the run
     // stopped — the checkpoint's LLM bible would revert those edits.
-    checkpoint: input.checkpoint
-      ? await refreshCheckpointFromCast(scopedDb, sequenceId, input.checkpoint)
-      : undefined,
+    checkpoint,
     suggestedTalent: suggestedTalentRows.map((t) => ({
       talentId: t.id,
       name: t.name,

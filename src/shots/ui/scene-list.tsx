@@ -173,6 +173,8 @@ export type SceneListProps = {
    * cannot require one — see `isBatchMotionEligible`.
    */
   generateStartFrames?: boolean;
+  /** Match the initial Generate dialog’s Dialogue stop. */
+  generateVoices?: boolean;
   styleName?: string;
   /** Shots with stale prompts/image (#1077) — amber dots on every rail thumbnail. */
   staleShotIds?: Set<string>;
@@ -218,6 +220,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   initialImageModel: _initialImageModel,
   styleCategory,
   generateStartFrames = false,
+  generateVoices = false,
   styleName,
   staleShotIds,
   className,
@@ -772,6 +775,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
             onChange={setContinueStopAt}
             minStage={nextStage}
             generateStartFrames={generateStartFrames}
+            generateVoices={generateVoices}
             disabled={isGenerating}
           />
           <Button

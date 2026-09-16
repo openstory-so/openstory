@@ -140,6 +140,7 @@ export const realtimeSchema = {
       updateType: z.enum([
         'visual-prompt',
         'motion-prompt',
+        'dialogue-audio',
         'audio-design',
         'music-design',
       ]),

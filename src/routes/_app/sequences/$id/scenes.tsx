@@ -11,6 +11,7 @@ import { sequenceKeys } from '@/sequences/ui/use-sequences';
 import { scenesSearchSchema } from '@/shots/ui/scene-selection';
 import {
   continueStageFromState,
+  isContinueStage,
   artifactsFromSequenceState,
   DEFAULT_GENERATION_STOP_AT,
 } from '@/sequences/pipeline';
@@ -54,9 +55,10 @@ export const Route = createFileRoute('/_app/sequences/$id/scenes')({
         musicUrl: sequence.musicUrl,
         pipelineStage: sequence.pipelineStage,
         referenceOnly: !sequence.generateStartFrames,
+        generateVoices: sequence.generateVoices,
       }),
     });
-    if (nextStage === 'references' || nextStage === 'images') {
+    if (isContinueStage(nextStage)) {
       const stopAt = sequence.generationStopAt ?? DEFAULT_GENERATION_STOP_AT;
       await queryClient.ensureQueryData({
         queryKey: sequenceKeys.generationSlice(params.id, nextStage, stopAt),
