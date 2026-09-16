@@ -240,6 +240,8 @@ export interface ShotVariantWorkflowResult {
 export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
   title: string;
   script: string;
+  /** Request country captured at launch; only a fallback for character background. */
+  userCountry?: string;
   aspectRatio: AspectRatio;
   resolution?: Resolution;
   styleConfig: StyleConfig;
@@ -350,6 +352,7 @@ export type StoryboardTriggerInput = Omit<
   | 'stopAt'
   | 'title'
   | 'script'
+  | 'userCountry'
   | 'aspectRatio'
   | 'resolution'
   | 'styleConfig'
@@ -374,6 +377,8 @@ export type StoryboardTriggerInput = Omit<
 export interface AnalyzeScriptWorkflowInput extends SequenceWorkflowContext {
   // Required inputs
   script: string;
+  /** @see StoryboardWorkflowInput.userCountry — passed straight through. */
+  userCountry?: string;
   aspectRatio: AspectRatio;
   resolution?: Resolution;
   styleConfig: StyleConfig;
@@ -429,6 +434,8 @@ export type SceneSplitWorkflowInput = SequenceWorkflowContext & {
   modelId: AnalysisModelId;
   aspectRatio: AspectRatio;
   script: string;
+  /** @see StoryboardWorkflowInput.userCountry — passed straight through. */
+  userCountry?: string;
   /** User-uploaded elements to make the model aware of uppercase tokens */
   elements?: SequenceElementMinimal[];
   /**

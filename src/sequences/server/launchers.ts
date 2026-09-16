@@ -37,6 +37,7 @@
  */
 
 import { withMeasuredDurations } from '@/cast/server/sequence-elements/media-duration';
+import { getRequestCountry } from '@/platform/server/request-country';
 import {
   DEFAULT_IMAGE_MODEL,
   DEFAULT_VIDEO_MODEL,
@@ -197,8 +198,12 @@ async function resolveStoryboardPayload(
     );
   }
 
+  // Capture during the request: durable workflows have no request context.
+  const userCountry = getRequestCountry();
+
   return {
     ...input,
+    userCountry,
     sequenceId,
     // A continue re-reads the cast the user may have edited since the run
     // stopped — the checkpoint's LLM bible would revert those edits.
