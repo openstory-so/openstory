@@ -407,6 +407,31 @@ describe('updateQueryCacheFromEvent — variant-only guard (#547)', () => {
       expect(keys).toContainEqual(promptVariantKeys.shot('motion', 'shot-1'));
     });
 
+    it('dialogue audio completion refetches the shot used by the open video panel', () => {
+      const invalidate = vi.spyOn(qc, 'invalidateQueries');
+      updateQueryCacheFromEvent(qc, SEQ, 'generation.shot:updated', {
+        shotId: 'shot-1',
+        updateType: 'dialogue-audio',
+      });
+      vi.advanceTimersByTime(200);
+      const keys = invalidate.mock.calls.map((c) => c[0]?.queryKey);
+      expect(keys).toContainEqual(shotKeys.list(SEQ));
+      expect(keys).not.toContainEqual(
+        promptVariantKeys.shot('motion', 'shot-1')
+      );
+    });
+
+    it.each(['generation.complete', 'generation.failed'])(
+      '%s refreshes persisted dialogue even if the per-shot event was missed',
+      (eventName) => {
+        const invalidate = vi.spyOn(qc, 'invalidateQueries');
+        updateQueryCacheFromEvent(qc, SEQ, eventName, {});
+        expect(invalidate.mock.calls.map((c) => c[0]?.queryKey)).toContainEqual(
+          shotKeys.list(SEQ)
+        );
+      }
+    );
+
     it('a non-prompt updateType refetches the scene spine, not the shots list', () => {
       const invalidate = vi.spyOn(qc, 'invalidateQueries');
 

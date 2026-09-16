@@ -21,6 +21,7 @@ import type {
   DialogueAudioWorkflowResult,
 } from '@/platform/server/workflow/types';
 import { getLogger } from '@/platform/logger';
+import { getGenerationChannel } from '@/platform/realtime';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 
 const logger = getLogger(['openstory', 'workflow', 'dialogue-audio']);
@@ -103,6 +104,14 @@ export class DialogueAudioWorkflow extends OpenStoryWorkflowEntrypoint<DialogueA
         });
         await step.do(`dialogue-audio-${index}-persist`, async () => {
           await scopedDb.shots.setAudioClips(entry.shotId, [fitted.clip]);
+          await getGenerationChannel(sequenceId).emit(
+            'generation.shot:updated',
+            {
+              shotId: entry.shotId,
+              updateType: 'dialogue-audio',
+              metadata: null,
+            }
+          );
         });
         return { shotId: entry.shotId, clips: [fitted.clip] };
       })

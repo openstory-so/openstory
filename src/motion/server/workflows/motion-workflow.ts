@@ -224,6 +224,14 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         });
         await step.do('persist-dialogue-audio', async () => {
           await scopedDb.shots.setAudioClips(shotId, [fitted.clip]);
+          await getGenerationChannel(sequenceId).emit(
+            'generation.shot:updated',
+            {
+              shotId,
+              updateType: 'dialogue-audio',
+              metadata: null,
+            }
+          );
         });
         audioClips = [fitted.clip];
         voicedLines = fitted.lines;

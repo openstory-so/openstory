@@ -159,13 +159,16 @@ export function updateQueryCacheFromEvent(
       // invalidate the matching version-history query so an open prompt history
       // sheet shows the freshly appended version (#991).
       const updateType = getString(data, 'updateType');
-      if (updateType === 'visual-prompt' || updateType === 'motion-prompt') {
+      const promptUpdated =
+        updateType === 'visual-prompt' || updateType === 'motion-prompt';
+      // Dialogue clips live on the shot and feed the video inspector’s player.
+      if (promptUpdated || updateType === 'dialogue-audio') {
         debouncedInvalidate(
           queryClient,
           shotKeys.list(sequenceId),
           `shots:${sequenceId}`
         );
-        if (shotId) {
+        if (shotId && promptUpdated) {
           const promptType =
             updateType === 'visual-prompt' ? 'visual' : 'motion';
           debouncedInvalidate(
@@ -752,6 +755,11 @@ export function updateQueryCacheFromEvent(
       // Invalidate sequence to get updated status/title
       void queryClient.invalidateQueries({
         queryKey: sequenceKeys.detail(sequenceId),
+      });
+      // Dialogue can finish without any image/video progress event. Also
+      // recover persisted clips if a per-shot event was missed or a sibling failed.
+      void queryClient.invalidateQueries({
+        queryKey: shotKeys.list(sequenceId),
       });
       // Final catch-all so the cast, location and element lists — and the
       // per-scene membership the tabs filter by — reflect the finished run
