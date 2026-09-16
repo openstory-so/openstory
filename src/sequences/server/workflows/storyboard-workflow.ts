@@ -190,6 +190,7 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
         sequenceId,
         reservationId: input.reservationId,
         script,
+        userCountry: input.userCountry,
         aspectRatio,
         resolution,
         styleConfig: input.styleConfig,

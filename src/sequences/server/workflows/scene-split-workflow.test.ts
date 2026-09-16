@@ -506,6 +506,26 @@ describe('SceneSplitWorkflow stream step config', () => {
     feed.mockReset();
   });
 
+  test.each(['AU', undefined])(
+    'passes user country %s to the bible prompt',
+    async (userCountry) => {
+      const { getChatPrompt } =
+        await import('@/platform/server/ai/prompts-index');
+      vi.mocked(getChatPrompt).mockClear();
+
+      await makeWorkflow().split(
+        makeEvent({ ...INPUT, userCountry }),
+        makeStep(),
+        makeScopedDb()
+      );
+
+      expect(getChatPrompt).toHaveBeenCalledWith(
+        'phase/scene-bibles-chat',
+        expect.objectContaining({ userCountry: userCountry ?? '' })
+      );
+    }
+  );
+
   test('times the stream step for a first pass plus one repair retry (#1218)', async () => {
     await makeWorkflow().split(makeEvent(), makeStep(), makeScopedDb());
 

@@ -314,6 +314,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           promptName: 'phase/scene-splitting-boundaries-chat',
           aspectRatio,
           script: sanitizeScriptContent(script),
+          userCountry: input.userCountry,
           modelId: analysisModelId,
           elements: elementsMinimal,
           videoModel: primaryVideoModel,

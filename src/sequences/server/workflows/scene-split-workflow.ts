@@ -817,7 +817,11 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
         scopedDb,
         stepName: BIBLES_STEP_NAME,
         promptName: BIBLES_PROMPT_NAME,
-        promptVars: { script: gutteredScript, elements: elementsBlock },
+        promptVars: {
+          script: gutteredScript,
+          elements: elementsBlock,
+          userCountry: input.userCountry ?? '',
+        },
         responseSchema: sceneSplitBiblesResultSchema,
         maxTokens: biblesMaxTokens,
       });

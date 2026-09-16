@@ -37,6 +37,7 @@
  */
 
 import { withMeasuredDurations } from '@/cast/server/sequence-elements/media-duration';
+import { getRequestHeader } from '@tanstack/react-start/server';
 import {
   DEFAULT_IMAGE_MODEL,
   DEFAULT_VIDEO_MODEL,
@@ -185,8 +186,17 @@ async function resolveStoryboardPayload(
       : Promise.resolve([]),
   ]);
 
+  // Capture during the request: durable workflows have no request context.
+  // Cloudflare reports XX for unknown and T1 for Tor, neither a country.
+  const country = getRequestHeader('cf-ipcountry')?.trim().toUpperCase();
+  const userCountry =
+    country && /^[A-Z]{2}$/.test(country) && country !== 'XX'
+      ? country
+      : undefined;
+
   return {
     ...input,
+    userCountry,
     sequenceId,
     // A continue re-reads the cast the user may have edited since the run
     // stopped — the checkpoint's LLM bible would revert those edits.

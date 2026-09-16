@@ -83,7 +83,10 @@ function makeWorkflow(): TestableStoryboardWorkflow {
 function makeEvent(
   sequenceId: string | undefined,
   extras: Partial<
-    Pick<StoryboardWorkflowInput, 'notify' | 'stopAt' | 'resume'>
+    Pick<
+      StoryboardWorkflowInput,
+      'notify' | 'stopAt' | 'resume' | 'userCountry'
+    >
   > = {}
 ): Readonly<WorkflowEvent<StoryboardWorkflowInput>> {
   const payload: StoryboardWorkflowInput = {
@@ -319,6 +322,18 @@ describe('StoryboardWorkflow stop-at + resume (#1408)', () => {
       generationCheckpoint: null,
     });
     expect(names).toContain('generate-poster');
+  });
+
+  test('passes the captured user country to script analysis', async () => {
+    await run({ stopAt: 'script', userCountry: 'AU' });
+
+    expect(spawnAndAwaitChild).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        spawnStepName: 'spawn-analyze-script',
+        childPayload: expect.objectContaining({ userCountry: 'AU' }),
+      })
+    );
   });
 
   test('a resume keeps shots, checkpoint and poster', async () => {

@@ -10,6 +10,16 @@ export type ChatMessage = {
   content: string;
 };
 
+const CHARACTER_BACKGROUND_GUIDANCE = `## Nationality, language and regional voice
+
+- Explicit character background, nationality, native language and accent in the script take precedence. Preserve visitors, immigrants, multilingual characters and mixed casts individually.
+- When unspecified, infer a plausible background from the story's city/country and the language each character actually speaks. A local in Sydney, Australia is likely Australian, with Australian English when speaking English. Chinese dialogue suggests a Chinese-speaking background; use Mandarin or Cantonese when specified. Dialogue language is a clue, not proof of nationality or ethnicity.
+- The language used to write the brief or stage directions is not necessarily the language spoken by the characters. Do not default every English-language script to American characters or American accents, and do not translate dialogue.
+- If the script gives no useful setting or character-language clues, an available user country may guide a plausible regional default. It is only a fallback, never evidence of the user's or character's nationality, and never overrides the script. With no useful clues, leave nationality unspecified and avoid inventing a specific dialect.
+- Keep nationality, ethnicity and spoken language distinct. Do not infer skin tone or other physical features solely from a country or language. Preserve any explicitly described appearance.
+- Include the chosen national/cultural background naturally in the on-screen character's physicalDescription, without adding a new schema field or putting nationality into ethnicity. Carry the spoken language and supported regional variant/accent into voiceDescription so voice generation retains this context. Voice-only characters keep empty appearance fields; put their language/accent in voiceDescription.
+- Apply the same context to narrators and off-screen voices, while preserving any explicit narrator language or accent.`;
+
 /**
  * Text prompts (used via getPrompt → system message for streaming calls)
  */
@@ -96,6 +106,8 @@ Hyper-accurate rendering of all fabrics, skin textures, hardware, and micro-deta
 1. **TRACK FIRST MENTION**: Record exact text where character first appears (e.g., "a man" or "JACK (30s)")
 2. **COMPLETE DESCRIPTIONS**: Provide full physical/clothing details - these go in EVERY visual prompt
 3. **OUTPUT**: Pure JSON only. Start with { end with }. No markdown code blocks.
+
+${CHARACTER_BACKGROUND_GUIDANCE}
 
 ## Character Analysis
 
@@ -288,7 +300,8 @@ Persona: <2–5 words>. Emotion: <2–3 adjectives>.
 Rules:
 - Hearable traits only: language, dialect, gender, age, quality, persona, emotion, pitch, texture, pacing. Never appearance, clothing, or movement.
 - Always include "Excellent quality" (or "Studio quality") so the take is clean, not synthetic.
-- Name a concrete regional dialect when the bible gives ethnicity or region ("Native English, slight Southern drawl"), not a vague "accent" when you mean intonation.
+- Preserve the language and regional accent already established in the bible, including voiceDescription and background in physicalDescription/personality. Explicit language or accent wins over an inferred nationality; ethnicity alone does not establish a native language or accent.
+- Use a supported regional variant (for example, "Native Australian English" for an Australian English-speaking local). Do not silently replace it with American English. If no region is supported, leave the dialect unspecified. Multilingual and voice-only characters follow the same rule.
 - Do not use FX words (reverb, echo, phone, tape) — they degrade the take.
 - No character name, no quotes, no lists.
 
@@ -398,6 +411,8 @@ Respond with ONLY valid JSON matching the schema.`,
 
 1. **TRACK FIRST MENTION**: Record exact text where character first appears (e.g., "a man" or "JACK (30s)")
 2. **COMPLETE DESCRIPTIONS**: Provide full physical/clothing details - these go in EVERY visual prompt
+
+${CHARACTER_BACKGROUND_GUIDANCE}
 
 ## Character Analysis
 
@@ -994,6 +1009,10 @@ Respond with ONLY valid JSON matching the schema.`,
 
 The script is provided with a numbered line gutter ("12: some text") — use it for every lineNumber you report. The gutter is NOT part of the script text.
 
+${CHARACTER_BACKGROUND_GUIDANCE}
+
+User country (ISO country code; fallback only, unavailable when empty): {{userCountry}}
+
 ## Character Bible
 
 Build a complete character bible. For each character:
@@ -1006,7 +1025,7 @@ Build a complete character bible. For each character:
 - personality — who they are, NOT what they look like: temperament, archetype, how they react under pressure, comic register. Drives expressions, reactions, pacing and delivery.
 - movement — how the body moves: gait, posture, energy, habitual gestures, a limp, a tremor. Drives blocking and action.
   Extract both from the script, and infer where the script only implies them ("fidgets with his tie" → personality: anxious, eager to please; movement: restless hands, shoulders tight). Never repeat appearance in either field.
-- voiceDescription — what can be HEARD. ElevenLabs Voice Design brief, 40–90 words, this shape: Native <language>. <gender>, <age>. Excellent quality. Persona: <2–5 words>. Emotion: <2–3 adjectives>. Then 1–2 sentences on timbre, pacing, delivery. Infer from dialogue, personality and movement. No appearance, clothing, or FX words (reverb/echo/phone). Always fill this — it is the Voice field and the brief Generate casts from.
+- voiceDescription — what can be HEARD. ElevenLabs Voice Design brief, 40–90 words, this shape: Native <language and supported regional variant>. <gender>, <age>. Excellent quality. Persona: <2–5 words>. Emotion: <2–3 adjectives>. Then 1–2 sentences on timbre, pacing, delivery. Infer from the character's background, dialogue, personality and movement using the context rules above. No appearance, clothing, or FX words (reverb/echo/phone). Always fill this — it is the Voice field and the brief Generate casts from.
 - consistencyTag — HARD FORMAT CONTRACT: the snake_case slug of the character's name AS WRITTEN IN THE SCRIPT ("GIRL ONE" → "girl_one"). Optional descriptive context may follow the name slug ("jack_denim_weathered"), but the tag MUST start with the name slug. An independent system joins scene tags against these.
 - voiceOnly — true only for a voice that is heard but NEVER seen: a narrator, a voiceover, a radio or phone voice with no face on screen. Each distinct such voice is its own entry, named as the script names it, or "Narrator" for unnamed narration. Its personality describes the VOICE — register, warmth, pace, attitude. Age may be a guess if the voice implies one, otherwise empty; gender, ethnicity, physicalDescription, standardClothing, distinguishingFeatures and movement are empty strings. Create none when nobody speaks off screen. A character who is off screen for a moment, or seen in another scene, has a face: voiceOnly false, full appearance.
 
