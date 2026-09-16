@@ -216,7 +216,7 @@ export const createSequenceFn = createServerFn({ method: 'POST' })
  * Continue a stopped pipeline from `startFrom` through `stopAt` (#1408).
  * Does not wipe existing shots — storyboard runs in resume mode.
  *
- * Only References and Images continue here: Script is a fresh run, and
+ * References, Images, and Dialogue continue here: Script is a fresh run, and
  * motion/music have their own batch footers. Everything is checked before a
  * credit is reserved or the mutex claimed — the workflow would otherwise
  * reject the same input minutes later, after the UI flipped to processing.
@@ -248,7 +248,11 @@ export const continueGenerationFn = createServerFn({ method: 'POST' })
     }
     // A checkpoint carries everything up to its stage, so re-running an
     // earlier stage is fine; starting past it has nothing to hydrate from.
-    const reachable = nextStageAfter(checkpoint.completedStage);
+    let reachable = nextStageAfter(checkpoint.completedStage);
+    // Reference-only has no Images stage to run between References and Dialogue.
+    if (reachable === 'images' && !sequence.generateStartFrames) {
+      reachable = 'dialogue';
+    }
     if (!reachable || stageIndex(data.startFrom) > stageIndex(reachable)) {
       throw new ValidationError(
         `The last run only reached ${checkpoint.completedStage}; ${data.startFrom} cannot start from there`

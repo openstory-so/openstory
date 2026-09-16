@@ -17,6 +17,8 @@ import {
   includesStage,
   allowsUnfundedGeneration,
   isGenerationStage,
+  isContinueStage,
+  continueStageSchema,
   nextActionFromArtifacts,
   nextStageAfter,
   resolveStopAt,
@@ -228,6 +230,40 @@ describe('completedStageFromArtifacts / nextActionFromArtifacts', () => {
     const staleMusic = { ...empty, hasScenes: true, hasMusic: true };
     expect(nextActionFromArtifacts(staleMusic)).toBe('references');
   });
+
+  it.each([false, true])(
+    'offers Dialogue after images/references with Voices (reference-only: %s)',
+    (referenceOnly) => {
+      const artifacts = artifactsFromSequenceState({
+        sceneCount: 1,
+        shots: [
+          {
+            imagePromptVersion: {},
+            frame: { imageStatus: 'completed' },
+            videoStatus: 'pending',
+          },
+        ],
+        pipelineStage: referenceOnly ? 'references' : 'images',
+        referenceOnly,
+        generateVoices: true,
+      });
+      expect(continueStageFromState({ isProcessing: false, artifacts })).toBe(
+        'dialogue'
+      );
+      const stages = sliderStages(referenceOnly, true);
+      expect(
+        stopAtFromSliderIndex(sliderThumbIndex('dialogue', stages), stages)
+      ).toBe('dialogue');
+      expect(isContinueStage('dialogue')).toBe(true);
+      expect(continueStageSchema.parse('dialogue')).toBe('dialogue');
+      expect(
+        nextActionFromArtifacts({ ...artifacts, pipelineStage: 'dialogue' })
+      ).toBe('motion');
+      expect(
+        continueStageFromState({ isProcessing: true, artifacts })
+      ).toBeNull();
+    }
+  );
 
   it('labels the continue button with the next stage verb', () => {
     expect(actionLabelForStage('script')).toBe('Analyze Script');

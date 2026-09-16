@@ -329,6 +329,23 @@ describe('estimateStoryboardPreflightCost', () => {
     );
   });
 
+  it('reserves only TTS when continuing from Dialogue to Dialogue', () => {
+    const script = 'Scene 1 — 5s\nA room.\n\nScene 2 — 5s\nAnother room.';
+    const cost = estimateStoryboardPreflightCost({
+      ...base,
+      script,
+      startFrom: 'dialogue',
+      stopAt: 'dialogue',
+      generateVoices: true,
+      videoModels: [DEFAULT_VIDEO_MODEL],
+    });
+    expect(cost).toBe(
+      estimateTtsCost(
+        estimateSceneCount(script) * TYPICAL_DIALOGUE_CHARS_PER_SHOT
+      )
+    );
+  });
+
   it('does not reserve TTS in the motion slice — clips already ran (#1554)', () => {
     const script = 'Scene 1 — 5s\nA room.\n\nScene 2 — 5s\nAnother room.';
     const off = estimateStoryboardPreflightCost({

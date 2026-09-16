@@ -21,6 +21,8 @@ import type { SequenceElementMinimal } from '@/platform/server/db/schema/sequenc
 import type { SequenceLocationMinimal } from '@/platform/server/db/schema/sequence-locations';
 import type {
   LibraryLocationMatch,
+  MotionMusicPromptsWorkflowResult,
+  ShotImagesWorkflowResult,
   TalentCharacterMatch,
 } from '@/platform/server/workflow/types';
 import { z } from 'zod';
@@ -42,14 +44,14 @@ export const generationStageSchema = z.enum(GENERATION_STAGES);
  * Stages the scene-list continue button can start from. Script is a fresh
  * run; motion and music have their own batch footers.
  */
-const CONTINUE_STAGES = ['references', 'images'] as const;
+const CONTINUE_STAGES = ['references', 'images', 'dialogue'] as const;
 export type ContinueStage = (typeof CONTINUE_STAGES)[number];
 export const continueStageSchema = z.enum(CONTINUE_STAGES);
 
 export function isContinueStage(
   stage: GenerationStage | null | undefined
 ): stage is ContinueStage {
-  return stage === 'references' || stage === 'images';
+  return stage === 'references' || stage === 'images' || stage === 'dialogue';
 }
 
 /** Product default: stills + motion + music (the short-film aha). */
@@ -233,6 +235,7 @@ export type PipelineArtifacts = {
   hasMotion: boolean;
   hasMusic: boolean;
   pipelineStage?: GenerationStage | null;
+  generateVoices?: boolean;
 };
 
 export function completedStageFromArtifacts(
@@ -260,10 +263,10 @@ export function nextActionFromArtifacts(
   const completed = completedStageFromArtifacts(artifacts);
   if (completed === null) return null;
   let next = nextStageAfter(completed);
-  // Dialogue is a stop on the slider when Voices is on, but the scene-list
-  // continue CTA jumps it: clips synthesize before motion in the full run,
-  // and the motion footer covers a stop after images.
-  if (next === 'dialogue') next = nextStageAfter(next);
+  // Match the Generate slider: only offer the separate Dialogue stop when
+  // Voices is on. Otherwise any existing talent voices ride with motion.
+  if (next === 'dialogue' && !artifacts.generateVoices)
+    next = nextStageAfter(next);
   return next;
 }
 
@@ -299,9 +302,10 @@ export function artifactsFromSequenceState(args: {
    * Reference-only writes no frame prompts and renders no stills, so those
    * artifacts never appear. The stage the workflow persisted after References
    * is the only evidence, and it covers Images too — nothing renders there,
-   * so the next action after References is Motion.
+   * so the next action after References is Dialogue (Voices on) or Motion.
    */
   referenceOnly?: boolean;
+  generateVoices?: boolean;
 }): PipelineArtifacts {
   const { shots } = args;
   const reached = coerceStage(args.pipelineStage);
@@ -322,6 +326,7 @@ export function artifactsFromSequenceState(args: {
       shots.every((shot) => shot.videoStatus === 'completed'),
     hasMusic: args.musicStatus === 'completed' && Boolean(args.musicUrl),
     pipelineStage: args.pipelineStage,
+    generateVoices: args.generateVoices,
   };
 }
 
@@ -354,6 +359,11 @@ export type GenerationCheckpoint = {
   allElements?: SequenceElementMinimal[];
   visualPromptBySceneId?: Record<string, string>;
   scenesWithVisualPrompts?: Scene[];
+  /** Selected stills and prompts snapshotted at a Dialogue continue click. */
+  imageStage?: {
+    images: ShotImagesWorkflowResult;
+    prompts: MotionMusicPromptsWorkflowResult;
+  };
   /** Per-shot Text to Dialogue clips from the Dialogue stage (#1554 / #1629). */
   dialogueClipsByShotId?: Record<string, MotionAudioClip[]>;
 };

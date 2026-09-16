@@ -493,3 +493,19 @@ export const WidthExtraLarge: Story = {
     ),
   ],
 };
+
+export const ContinueDialogue: Story = {
+  name: 'Continue to Dialogue with Voices',
+  args: {
+    nextStage: 'dialogue',
+    generateVoices: true,
+    generateStartFrames: true,
+    onContinueGeneration: async () => undefined,
+  },
+};
+
+export const ContinueDialogueReferenceOnly: Story = {
+  ...ContinueDialogue,
+  name: 'Continue to Dialogue without start frames',
+  args: { ...ContinueDialogue.args, generateStartFrames: false },
+};

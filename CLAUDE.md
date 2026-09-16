@@ -314,15 +314,18 @@ phase number); there is no separate stage.
   stage needs (bibles, matches, sheet rows, prompts) so a continue never
   re-reads mutable D1 mid-run. A fresh (non-resume) storyboard run nulls both
   alongside its shot wipe.
-- **Continue** (`continueGenerationFn`) only starts from `references` or
-  `images` (`ContinueStage`); Script is a fresh run, motion/music have batch
-  footers. It validates `startFrom ≤ stopAt` and that the checkpoint reaches
+- **Continue** (`continueGenerationFn`) only starts from `references`,
+  `images`, or `dialogue` (`ContinueStage`); Script is a fresh run, motion/music
+  have batch footers. It validates `startFrom ≤ stopAt` and that the checkpoint reaches
   `startFrom` BEFORE reserving credits, reserves only the slice
   (`estimateStoryboardPreflightCost({ startFrom, stopAt, referenceOnly })`),
   and triggers storyboard with `resume: true` (no shot wipe, no poster). At
   the trigger, `refreshCheckpointFromCast` re-snapshots the bibles, matches AND
   sheet rows from D1 so edits made while stopped (recast, regenerated sheet)
   survive — the checkpoint's LLM values would otherwise silently revert them.
+  A Dialogue continue also snapshots selected stills and motion/music prompts
+  at the trigger and skips generating them. The scenes slider uses the sequence’s
+  Voices setting, just like the initial Generate dialog.
 - **Ready email** only sends when the run reached motion: the send is a
   one-shot claim per sequence.
 - Reference-only has no Images stop; `pipelineStage` is the only evidence of

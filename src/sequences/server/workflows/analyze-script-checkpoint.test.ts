@@ -39,6 +39,7 @@ import { WorkflowValidationError } from '@/platform/server/workflow/errors';
 import type {
   AnalyzeScriptWorkflowInput,
   SceneSplitWorkflowResult,
+  MotionMusicPromptsWorkflowResult,
 } from '@/platform/server/workflow/types';
 import * as realCastRecords from '@/cast/server/workflows/cast-records';
 
@@ -126,6 +127,8 @@ const CHILD_RESULTS: Record<string, unknown> = {
   'spawn-character-bible': [CHARACTER_ROW],
   'spawn-location-bible': [LOCATION_ROW],
   'spawn-visual-prompts': VISUAL_PROMPTS,
+  'spawn-dialogue-audio': { clipsByShotId: { sh_1: [] } },
+  'spawn-motion-batch': {},
   'spawn-shot-images': { imageUrls: [], frameVersionIds: [] },
   'spawn-motion-music-prompts': {
     completeScenes: [],
@@ -498,6 +501,111 @@ describe('AnalyzeScriptWorkflow script checkpoint', () => {
       locationsWithSheets: [LOCATION_ROW],
     });
   });
+
+  test.each([
+    { referenceOnly: false, stopAt: 'dialogue' as const },
+    { referenceOnly: true, stopAt: 'dialogue' as const },
+    { referenceOnly: false, stopAt: 'music' as const },
+    { referenceOnly: true, stopAt: 'music' as const },
+  ])(
+    'startFrom dialogue reuses selected inputs ($referenceOnly / $stopAt)',
+    async ({ referenceOnly, stopAt }) => {
+      const scene: Scene = {
+        sceneId: 'as_1',
+        sceneNumber: 1,
+        originalScript: {
+          extract: 'Ada speaks.',
+          dialogue: [{ character: 'Ada', line: 'Old script line', tone: '' }],
+        },
+        metadata: {
+          title: 'Hallway',
+          durationSeconds: 5,
+          location: '',
+          timeOfDay: '',
+          storyBeat: '',
+        },
+        continuity: {
+          characterTags: [],
+          environmentTag: '',
+          colorPalette: '',
+          lightingSetup: '',
+          styleTag: '',
+        },
+      };
+      const prompts: MotionMusicPromptsWorkflowResult = {
+        completeScenes: [scene],
+        motionPromptsBySceneId: {},
+        motionPromptsByShotId: {
+          sh_1: {
+            fullPrompt: 'Preserved prompt',
+            dialogue: {
+              presence: true,
+              lines: [
+                { character: 'Ada', line: 'Edited dialogue', tone: 'warm' },
+              ],
+            },
+            audio: { ambientSound: '', soundEffects: [] },
+          },
+        },
+        motionPromptVersionIdsByShotId: { sh_1: 'mp_1' },
+        musicPrompt: 'Preserved music',
+        musicTags: 'ambient',
+      };
+      const update = vi.fn();
+      const result = await makeWorkflow().invokeRunImpl(
+        makeEvent({
+          ...noStyle,
+          referenceOnly,
+          startFrom: 'dialogue',
+          stopAt,
+          checkpoint: {
+            ...SPLIT,
+            scenes: [scene],
+            completedStage: referenceOnly ? 'references' : 'images',
+            charactersWithSheets: [{ ...CHARACTER_ROW, voiceId: 'voice_ada' }],
+            imageStage: {
+              images: {
+                imageUrls: ['/r2/still.png'],
+                frameVersionIds: ['fv_1'],
+              },
+              prompts,
+            },
+          },
+        }),
+        makeStep(),
+        makeScopedDb(update)
+      );
+      expect(result).toEqual([scene]);
+      expect(spawned()).toEqual(
+        stopAt === 'dialogue'
+          ? ['spawn-dialogue-audio']
+          : ['spawn-dialogue-audio', 'spawn-motion-batch']
+      );
+      if (stopAt === 'music') {
+        expect(childPayload('spawn-motion-batch')).toMatchObject({
+          shots: [
+            {
+              shotId: 'sh_1',
+              motionPromptVersionId: 'mp_1',
+              frameVersionId: referenceOnly ? null : 'fv_1',
+              motionPrompt: { fullPrompt: 'Preserved prompt' },
+            },
+          ],
+        });
+      }
+      expect(childPayload('spawn-dialogue-audio')).toMatchObject({
+        shots: [{ shotId: 'sh_1', lines: [{ text: 'Edited dialogue' }] }],
+      });
+      expect(writeVisualPrompt).not.toHaveBeenCalled();
+      expect(checkpointWrite(update, 'images')).toBeUndefined();
+      expect(checkpointWrite(update, 'dialogue')).toMatchObject({
+        generationCheckpoint: {
+          completedStage: 'dialogue',
+          dialogueClipsByShotId: { sh_1: [] },
+        },
+      });
+    }
+  );
 
   test('startFrom images: derived visual prompts stamp the verify hash, not the prompt text', async () => {
     const twoShot: Scene = {
