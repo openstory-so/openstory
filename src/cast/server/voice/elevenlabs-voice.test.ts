@@ -9,11 +9,8 @@ vi.doMock('@/models/server/elevenlabs-config', () => ({
   })),
 }));
 
-const {
-  resolveAssignableVoiceId,
-  VOICE_DESIGN_GUIDANCE_SCALE,
-  VOICE_DESIGN_QUALITY,
-} = await import('./elevenlabs-voice');
+const { resolveAssignableVoiceId, VOICE_DESIGN_GUIDANCE_SCALE } =
+  await import('./elevenlabs-voice');
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -23,7 +20,6 @@ describe('Voice Design params', () => {
   it('stays in the natural band from the prompting guide', () => {
     expect(VOICE_DESIGN_GUIDANCE_SCALE).toBeGreaterThanOrEqual(15);
     expect(VOICE_DESIGN_GUIDANCE_SCALE).toBeLessThanOrEqual(40);
-    expect(VOICE_DESIGN_QUALITY).toBeGreaterThan(0);
   });
 });
 

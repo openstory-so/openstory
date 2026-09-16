@@ -948,6 +948,8 @@ Every line of speech in a scene goes in the \`dialogue\` of the shot it is spoke
 - Prose speech in any order: \`Lena says, “…”\`, \`“…,” says Lena\`, \`“…,” Lena replies, “…”\` (a quote split around an attribution is ONE line — join the parts).
 - Narration, voiceover, a voice on a phone or a tannoy: spoken by the matching "(voice only)" entry in <CHARACTERS>.
 
+A shot's clip has to hold the speech placed in it: a voice actor speaks roughly {{dialogueWordsPerSecond}} words a second, so a shot's \`durationSeconds\` budgets about that many words times its seconds — around 30 for a 15-second take, around 10 for a 5-second one. This is a placement budget, not a licence to rewrite: when a scene's speech is longer than one shot can hold, spread the lines across MORE shots (within the scene's \`shots:\` budget) and give a speech-heavy shot the longer \`durationSeconds\`. Never stack a scene's whole conversation onto one short shot.
+
 Each line is spoken in exactly one shot — never repeat a line across shots. \`line\` is the spoken words copied verbatim: no paraphrase, no surrounding quotation marks, no attribution ("says Lena"). \`character\` is the speaker copied EXACTLY as <CHARACTERS> spells it (it is how the rest of the pipeline finds them); speech attributed only by a pronoun resolves to the nearest named character when that is unambiguous. Leave \`character\` empty only for a voice nobody could attribute. \`tone\` is the delivery the script implies ("whispered", "flat, exhausted"); empty when it implies none. Do NOT invent speech, do NOT report action or description as dialogue, and do NOT merge lines from different speakers. A shot with no speech has an empty \`dialogue\` array.
 
 ## Fields
@@ -1292,6 +1294,32 @@ Two rejection classes:
 <REJECTION>
 {{rejection}}
 </REJECTION>`,
+    },
+  ],
+
+  'phase/shorten-dialogue-chat': [
+    {
+      role: 'system',
+      content: `You tighten spoken dialogue that ran too long when it was recorded, so a re-record fits the shot it is spoken in. The performance is already cast and voiced; only the words change.
+
+You are given the turns of ONE shot's conversation, the seconds the take has to fit, and how long the last recording actually ran. Cut the words, not the content.
+
+### CRITICAL OUTPUT RULES
+1. You will be called via a structured output tool. Follow the provided schema exactly.
+2. Return EVERY turn you were given, in the same order, with the same \`index\` and the same \`character\`. Never drop a turn, never merge two speakers, never add one — a dropped turn silences that actor.
+3. Rewrite only \`line\`: the same meaning, the same speaker's voice and register, fewer words. Keep names, numbers, and any plot fact the rest of the film depends on.
+4. Stay inside the word budget you are given, spread across the turns roughly as the original was. Overshooting is what failed the last take.
+5. Plain spoken words only — no stage directions, no quotation marks wrapping the line, no attribution ("says Lena"), no bracketed audio tags (the delivery is carried separately).
+6. Cut filler, throat-clearing, restated context and repeated names first; cut a whole sentence before you paraphrase one into something vaguer.
+7. Never return a turn unchanged if the take was over budget — an unchanged line re-records at the same length.`,
+    },
+    {
+      role: 'user',
+      content: `This shot's recorded dialogue ran {{measuredSeconds}}s. It has to fit {{targetSeconds}}s — about {{wordBudget}} spoken words in total, down from {{currentWords}}. Tighten every turn.
+
+<TURNS>
+{{turns}}
+</TURNS>`,
     },
   ],
 

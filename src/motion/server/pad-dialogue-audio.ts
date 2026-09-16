@@ -98,6 +98,88 @@ export function padWavToMinDuration(
   };
 }
 
+/**
+ * Silence to keep after the last spoken sample (#1651) — a hard cut on the
+ * final consonant sounds clipped even when no sample is lost.
+ */
+const TRIM_TAIL_PAD_SECONDS = 0.1;
+
+/** |sample| below this is silence. -60 dBFS on 16-bit. */
+const SILENCE_THRESHOLD = 0.001;
+
+/**
+ * Trim trailing silence from a PCM WAV (#1651), never a spoken word.
+ *
+ * Two independent floors, whichever is later, because neither is trustworthy
+ * alone: the last sample above {@link SILENCE_THRESHOLD}, and `speechEndSeconds`
+ * from the provider's own alignment. An alignment end that under-reports cannot
+ * cut audible speech, and a noise floor that never dips below the threshold
+ * cannot cut a tail the alignment says is silent.
+ *
+ * Returns the original bytes when there is nothing to trim. Throws if the
+ * buffer is not a PCM WAV we can measure — a silent no-op would hand the
+ * duration guard an unmeasured file.
+ */
+export function trimWavTrailingSilence(
+  bytes: Uint8Array,
+  speechEndSeconds?: number | null
+): { bytes: Uint8Array<ArrayBuffer>; durationSeconds: number } {
+  const fmt = parseWav(bytes);
+  if (!fmt) {
+    throw new Error('Dialogue TTS trim expected a PCM WAV');
+  }
+  const frame = fmt.channels * (fmt.bitsPerSample / 8);
+  const bytesPerSecond = fmt.sampleRate * frame;
+  const duration = fmt.dataSize / bytesPerSecond;
+  // Only 16-bit PCM is measured sample-by-sample; that is the one format we
+  // ask ElevenLabs for. Anything else keeps the alignment floor alone.
+  const dataStart = fmt.dataSizeOffset + 4;
+  const available = Math.min(fmt.dataSize, bytes.length - dataStart);
+  const lastLoud =
+    fmt.bitsPerSample === 16
+      ? lastLoudByte(bytes, dataStart, available, frame)
+      : null;
+  const fromAlignment =
+    speechEndSeconds != null && Number.isFinite(speechEndSeconds)
+      ? Math.max(0, speechEndSeconds) * bytesPerSecond
+      : 0;
+  const keep = Math.max(lastLoud ?? available, fromAlignment);
+  const padded = keep + TRIM_TAIL_PAD_SECONDS * bytesPerSecond;
+  const aligned = Math.ceil(Math.min(available, padded) / frame) * frame;
+  if (aligned >= fmt.dataSize || aligned <= 0) {
+    return { bytes: new Uint8Array(bytes), durationSeconds: duration };
+  }
+  const out = new Uint8Array(dataStart + aligned);
+  out.set(bytes.subarray(0, dataStart + aligned));
+  const view = new DataView(out.buffer);
+  const removed = fmt.dataSize - aligned;
+  view.setUint32(
+    fmt.riffSizeOffset,
+    view.getUint32(fmt.riffSizeOffset, true) - removed,
+    true
+  );
+  view.setUint32(fmt.dataSizeOffset, aligned, true);
+  return { bytes: out, durationSeconds: aligned / bytesPerSecond };
+}
+
+/** Byte offset (relative to the data chunk) just past the last audible frame. */
+function lastLoudByte(
+  bytes: Uint8Array,
+  dataStart: number,
+  dataSize: number,
+  frame: number
+): number | null {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const limit = Math.trunc(dataSize / 2) * 2;
+  for (let offset = limit - 2; offset >= 0; offset -= 2) {
+    const sample = view.getInt16(dataStart + offset, true) / 32_768;
+    if (Math.abs(sample) > SILENCE_THRESHOLD) {
+      return Math.ceil((offset + 2) / frame) * frame;
+    }
+  }
+  return null;
+}
+
 type WavFmt = {
   sampleRate: number;
   channels: number;

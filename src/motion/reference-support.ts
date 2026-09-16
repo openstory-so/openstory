@@ -294,7 +294,10 @@ export function unusableShotReferenceLines(
   attached: AttachedReference[],
   hasStartFrame: boolean
 ): string[] {
-  const lines = unusableReferenceLines(model, attached);
+  const lines = [
+    ...unusableReferenceLines(model, attached),
+    ...overCombinedLengthLines(model, attached),
+  ];
   if (hasStartFrame) return lines;
   const support = motionReferenceSupport(model);
   const usable = attached.filter(
@@ -316,6 +319,50 @@ export function unusableShotReferenceLines(
     ...lines,
     `${IMAGE_TO_VIDEO_MODELS[model].name} can't send ${which} on its own — it needs a reference image or clip alongside. Add a cast member, location or element to this shot, or use a start frame.`,
   ];
+}
+
+/**
+ * `maxCombined` is a budget across FILES, so only the whole shot can check it
+ * (#1651): H3 Max takes reference audio "2-15 seconds each" AND caps the sum
+ * at 15, so two 10s voices are each fine and together are not. Per-file limits
+ * are `referenceProblem`'s job; this is the sum, for each kind that publishes
+ * one. Only files the model would actually send are counted — one it refuses
+ * for another reason never reaches the request, and naming it twice would read
+ * as two separate faults.
+ *
+ * An unknown length counts as zero, the same choice `referenceProblem` makes:
+ * guessing would refuse a render the provider might take.
+ */
+function overCombinedLengthLines(
+  model: ImageToVideoModel,
+  attached: Iterable<AttachedReference>
+): string[] {
+  const config = getMotionReferenceEndpoint(model);
+  const name = IMAGE_TO_VIDEO_MODELS[model].name;
+  const lines: string[] = [];
+  for (const kind of ['video', 'audio'] as const) {
+    const maxCombined =
+      kind === 'video'
+        ? config?.videoSeconds?.maxCombined
+        : config?.audioSeconds?.maxCombined;
+    if (maxCombined == null) continue;
+    const usable = [...attached].filter(
+      (ref) =>
+        (ref.kind ?? 'image') === kind && referenceProblem(model, ref) === null
+    );
+    if (usable.length < 2) continue;
+    const total = usable.reduce(
+      (sum, ref) => sum + (ref.durationSeconds ?? 0),
+      0
+    );
+    if (total <= maxCombined) continue;
+    const noun = kind === 'video' ? 'clips' : 'audio files';
+    const tokens = usable.map((ref) => ref.token ?? `a ${noun.slice(0, -1)}`);
+    lines.push(
+      `${name} can't use ${tokens.join(' and ')} together — ${Number(total.toFixed(2))}s of ${noun}, over its ${maxCombined}s combined limit. Remove one, or trim them.`
+    );
+  }
+  return lines;
 }
 
 /**

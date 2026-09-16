@@ -278,6 +278,26 @@ flowchart LR
 3. **Merge** — Combines motion prompts and music design into `completeScenes[]`
 4. **Returns:** `{ completeScenes, musicPrompt, musicTags }`
 
+### Phase 4b: Dialogue Audio (Conditional)
+
+**Sub-workflow:** `DialogueAudioWorkflow` (`src/motion/server/workflows/dialogue-audio-workflow.ts`), one `spawnAndAwaitChild` after images and before motion. Runs only for shots whose speakers hold an ElevenLabs `voiceId` (#1554); a line bound to an uploaded audio element or opted out to the video model is skipped.
+
+One acted **Text to Dialogue** take per shot — not one file per line — parked in R2 on `shots.audioClips` as a working set, keyed by `sourceKey` (voice + line + tone + TTS model) so motion reuses it and a replay never re-bills it. Every shot runs concurrently; successes persist before any failure surfaces.
+
+**Fitting the take to the clip (#1651).** ElevenLabs v3 takes no target or maximum duration, so the length is discovered rather than requested. `fitDialogueClip` (`src/motion/server/fit-dialogue-clip.ts`) runs the ladder, cheapest rung first, and is shared with `MotionWorkflow`'s standalone-synthesis path so both callers behave identically:
+
+1. `convertWithTimestamps` (not `convert`) returns the take plus a character alignment and per-turn voice segments. `trimWavTrailingSilence` cuts the silent tail back to whichever is LATER of the last audible sample and the alignment end — so an alignment that under-reports cannot clip a word, and a noise floor that never dips cannot keep a tail the alignment says is silent. A header rewrite, like the existing min-duration pad.
+2. Still over: an LLM (`phase/shorten-dialogue-chat`) tightens the turns to the shot's word budget (`DIALOGUE_WORDS_PER_SECOND`, ~30 words for 15s) and the take is re-recorded. Bounded by `MAX_DIALOGUE_FIT_ATTEMPTS` (2), each pass billing another TTS call. The rewrite is merged **by turn index**, so a model that drops or invents a turn cannot change who speaks or with whose voice — the worst it does is leave a line as it was, which stops the loop.
+3. Still over: the shot fails here with the measured numbers. It is never submitted — a provider that refuses a 15.4s reference reports it as an opaque request error minutes later, on a render the user paid for.
+
+There is deliberately **no time-compression** rung: speeding speech up alters the performance the user cast, and a pitch-preserving stretch in workerd would be ours to write and tune.
+
+**Two budgets, from `dialogueFitBudget`.** `limitSeconds` is the refusal line — `dialogueAudioMaxSeconds(videoModels)` (the tightest of each model's reference-audio window and its longest grid clip) minus `DIALOGUE_FIT_SLACK_SECONDS` (0.2), which is where H3 Max's 14.8s comes from; the slack covers trailing silence, encoder padding and provider rounding, none of which the alignment end measures. `targetSeconds` is what a rewrite aims at: the **shot's own** length when shorter, so the take fits the cut instead of stretching it. Speech between the two is kept rather than rewritten — `raiseShotDurationToCoverAudio` extends the clip, a pacing cost, not a broken render.
+
+**The delivered wording, not the authored wording, drives the prompt.** A rewritten take records its per-turn text on the clip as `spokenLines`; `sourceKey` still keys the lines as authored, so matching, staleness and the manifest's `audioSourceKey` do not move and nothing re-synthesises. `MotionWorkflow` reads it back with `withSpokenText` before assembling, because the prompt's dialogue drives lip movement and has to say what the bound audio says. The user's script in `frame.metadata` is left as they wrote it.
+
+The shot-list pass is the prevention half: its Dialogue rules give each shot a words-per-second placement budget and tell it to spread a long conversation across more shots rather than stacking it onto one short one.
+
 ### Phase 5: Motion + Music Generation (Conditional)
 
 **Sub-workflow:** `motionBatchWorkflow` (`src/motion/server/workflows/motion-batch-workflow.ts`)

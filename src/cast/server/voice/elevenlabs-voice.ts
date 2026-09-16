@@ -26,8 +26,9 @@ export type DesignedPreview = {
  */
 export const VOICE_DESIGN_GUIDANCE_SCALE = 25;
 
-/** -1..1. Higher is cleaner with less variety. */
-export const VOICE_DESIGN_QUALITY = 0.5;
+// No `quality` here, though the SDK types accept one: the live
+// /v1/text-to-voice/design endpoint rejects it, so sending it fails every
+// design call. `guidanceScale` is the knob that actually shapes the take.
 
 /** Previews cost no voice slot; only `saveDesignedVoice` does. */
 export async function designVoicePreviews(
@@ -41,7 +42,6 @@ export async function designVoicePreviews(
     autoGenerateText: true,
     shouldEnhance: true,
     guidanceScale: VOICE_DESIGN_GUIDANCE_SCALE,
-    quality: VOICE_DESIGN_QUALITY,
     // 192 kbps needs the Creator tier; 128 does not.
     outputFormat: 'mp3_44100_128',
   });

@@ -112,6 +112,7 @@ import { aspectRatioToImageSize } from '@/models/aspect-ratios';
 import { generateId } from '@/platform/id';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { durationGridForModel } from '@/motion/snap-duration';
+import { DIALOGUE_WORDS_PER_SECOND } from '@/motion/dialogue-tts';
 import {
   getChatPrompt,
   type ChatMessage,
@@ -962,6 +963,10 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
                 scenes: formatScenesForShotListPrompt(batch, clipGrid),
                 style: formatDirectorStyleForShotList(input.styleConfig),
                 characters: formatCastForShotList(biblesResult.characterBible),
+                // Placement budget for speech (#1651): a shot's clip has to
+                // hold the lines put in it, or the recorded take overruns the
+                // clip and the model's reference-audio window.
+                dialogueWordsPerSecond: String(DIALOGUE_WORDS_PER_SECOND),
               },
               responseSchema: shotListPassResultSchema,
               maxTokens: shotListMaxTokens,

@@ -27,6 +27,7 @@ import {
   VOICE_DESIGN_COST,
 } from '@/billing/elevenlabs-pricing';
 import {
+  dialogueAudioMaxSeconds,
   dialogueAudioMinSeconds,
   voicedDialogueLines,
 } from '@/motion/dialogue-tts';
@@ -77,6 +78,7 @@ import {
 } from '@/cast/server/workflows/cast-records';
 import { buildStoryboardMotionBatchShots } from './storyboard-motion-batch-shots';
 import {
+  clipDurationSeconds,
   derivedShotForItem,
   shotWorkItems,
 } from '@/shots/server/shot-work-items';
@@ -1215,7 +1217,15 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
             charactersWithSheets
           );
           return lines.length > 0
-            ? [{ shotId: item.mapping.shotId, lines }]
+            ? [
+                {
+                  shotId: item.mapping.shotId,
+                  lines,
+                  // The clip this take has to fit (#1651), same number the
+                  // motion batch renders at.
+                  shotSeconds: clipDurationSeconds(item),
+                },
+              ]
             : [];
         }
       );
@@ -1235,6 +1245,8 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
             reservationId: input.reservationId,
             shots: jobs,
             minDurationSeconds: dialogueAudioMinSeconds(videoModels),
+            maxDurationSeconds: dialogueAudioMaxSeconds(videoModels),
+            analysisModelId,
           },
           spawnStepName: 'spawn-dialogue-audio',
           awaitStepName: 'await-dialogue-audio',

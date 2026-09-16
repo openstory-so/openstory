@@ -497,9 +497,22 @@ export interface DialogueAudioWorkflowInput extends UserWorkflowContext {
   shots: Array<{
     shotId: string;
     lines: VoicedDialogueLine[];
+    /**
+     * This shot's clip length (#1651). What a rewrite aims at, so the take
+     * fits the cut rather than stretching it up to the provider's cap.
+     */
+    shotSeconds?: number;
   }>;
   /** Provider per-file floor (H3 Max 2s). Short one-liners are padded. */
   minDurationSeconds?: number;
+  /**
+   * Longest take every selected model can carry (`dialogueAudioMaxSeconds`,
+   * #1651). REQUIRED: a default here would be a silent cap, and an absent one
+   * is how a 16s take reached a provider that rejects anything over 15.
+   */
+  maxDurationSeconds: number;
+  /** Model that rewrites an over-long take. Defaults to the analysis default. */
+  analysisModelId?: AnalysisModelId;
 }
 
 export interface DialogueAudioWorkflowResult {

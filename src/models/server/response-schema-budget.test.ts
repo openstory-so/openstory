@@ -23,6 +23,7 @@ import type { z } from 'zod';
 import { elementVisionResponseSchema } from '@/cast/server/element-vision';
 import { talentMediaAnalysisSchema } from '@/cast/server/talent-vision';
 import { autoStyleResponseSchema } from '@/look/auto-style';
+import { shortenDialogueResponseSchema } from '@/motion/server/fit-dialogue-clip';
 import { softenImagePromptResponseSchema } from '@/stills/server/workflows/content-soften';
 import {
   ANTHROPIC_GRAMMAR_BUDGET_BYTES,
@@ -58,6 +59,7 @@ const MEASURED_SCHEMAS: Record<string, z.ZodType> = {
   talentMediaAnalysisSchema,
   autoStyleResponseSchema,
   softenImagePromptResponseSchema,
+  shortenDialogueResponseSchema,
   shotListPassResultSchema,
   voiceDescriptionSchema,
 };

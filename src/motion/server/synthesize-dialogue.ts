@@ -2,6 +2,13 @@
  * Synthesise a shot’s dialogue as one ElevenLabs Text to Dialogue clip
  * (#1554). Multiple speakers act the conversation in a single take — not
  * one TTS file per line. Parked in R2 and bound as `@Audio1` / `Audio 1`.
+ *
+ * `convertWithTimestamps` rather than `convert` (#1651): the alignment it
+ * returns is how we learn where speech ends, which is what lets the trailing
+ * silence come off and the duration guard compare against a real number. It
+ * answers base64 JSON instead of a stream, so the whole take is buffered
+ * either way — the caller uploads inside its own step so only the small
+ * `{ url, path }` record crosses the Workflows checkpoint (#1645).
  */
 
 import { generateId } from '@/platform/id';
@@ -13,10 +20,15 @@ import {
   DIALOGUE_TTS_MODEL,
   DIALOGUE_TTS_STABILITY,
   dialogueClipSourceKey,
+  spokenLinesFor,
   ttsUtterance,
   type VoicedDialogueLine,
 } from '@/motion/dialogue-tts';
-import { padWavToMinDuration, wavDurationSeconds } from './pad-dialogue-audio';
+import {
+  padWavToMinDuration,
+  trimWavTrailingSilence,
+  wavDurationSeconds,
+} from './pad-dialogue-audio';
 import type { MotionAudioClip } from '@/platform/server/db/schema';
 import type { ReferenceImageDescription } from '@/stills/reference-image-prompt';
 
@@ -25,7 +37,15 @@ export type SynthesizeDialogueInput = {
   teamId: string;
   sequenceId: string;
   shotId: string;
+  /** The turns to speak. A rewritten take (#1651) passes its shortened text. */
   lines: readonly VoicedDialogueLine[];
+  /**
+   * The lines as AUTHORED, which key the clip (#1651). Defaults to `lines`.
+   * A rewrite must not move `sourceKey`: it is what motion, staleness and the
+   * manifest's `audioSourceKey` match on, and a moved key would re-synthesise
+   * the take on every later read. The delivered wording rides `spokenLines`.
+   */
+  keyLines?: readonly VoicedDialogueLine[];
   /**
    * Provider per-file floor (H3 Max 2s, Seedance 2.5 1.8s). A short
    * one-liner is padded with silence so the clip still rides as a reference.
@@ -33,9 +53,21 @@ export type SynthesizeDialogueInput = {
   minDurationSeconds?: number;
 };
 
+export type SynthesizedDialogueClip = {
+  clip: MotionAudioClip;
+  characterCount: number;
+  /**
+   * Where the provider's alignment says the last character is spoken, or null
+   * when it returned none. NOT the clip length — trailing silence and encoder
+   * padding sit after it, which is why `clip.durationSeconds` (measured off
+   * the WAV) is what the duration guard reads.
+   */
+  speechEndSeconds: number | null;
+};
+
 export async function synthesizeDialogueClip(
   input: SynthesizeDialogueInput
-): Promise<{ clip: MotionAudioClip; characterCount: number }> {
+): Promise<SynthesizedDialogueClip> {
   if (input.lines.length === 0) {
     throw new Error('synthesizeDialogueClip requires at least one line');
   }
@@ -46,20 +78,31 @@ export async function synthesizeDialogueClip(
   const characterCount = turns.reduce((sum, turn) => sum + turn.text.length, 0);
 
   const client = await createElevenLabsSdk(input.apiKey);
-  const stream = await client.textToDialogue.convert({
+  const result = await client.textToDialogue.convertWithTimestamps({
     modelId: DIALOGUE_TTS_MODEL,
     outputFormat: 'wav_44100',
     inputs: turns,
     settings: { stability: DIALOGUE_TTS_STABILITY },
   });
-  let wav = await collectStream(stream);
+  let wav = decodeBase64(result.audioBase64);
   if (wav.byteLength === 0) {
     throw new Error('Dialogue TTS returned an empty audio body');
   }
-  let durationSeconds = wavDurationSeconds(wav);
-  if (durationSeconds == null) {
+  if (wavDurationSeconds(wav) == null) {
     throw new Error('Dialogue TTS returned audio that is not a PCM WAV');
   }
+
+  // Trailing silence first, so the guard and the stored length both describe
+  // the file as it will be submitted. `speechEndSeconds` only ever moves the
+  // trim point LATER (see `trimWavTrailingSilence`), so an absent, empty or
+  // nonsensical alignment cannot cut speech — and cannot skip the guard
+  // either, because the duration comes off the WAV, not the alignment.
+  const speechEndSeconds = speechEndFrom(result);
+  let { bytes, durationSeconds } = trimWavTrailingSilence(
+    wav,
+    speechEndSeconds
+  );
+  wav = bytes;
   const min = input.minDurationSeconds;
   if (min != null) {
     const padded = padWavToMinDuration(wav, min);
@@ -67,6 +110,8 @@ export async function synthesizeDialogueClip(
     durationSeconds = padded.durationSeconds;
   }
 
+  const keyLines = input.keyLines ?? input.lines;
+  const spokenLines = spokenLinesFor(keyLines, input.lines);
   const id = generateId();
   const path = `${input.teamId}/${input.sequenceId}/${input.shotId}/${id}.wav`;
   const uploaded = await uploadFile(STORAGE_BUCKETS.AUDIO, path, wav, {
@@ -80,10 +125,35 @@ export async function synthesizeDialogueClip(
       url: uploaded.publicUrl,
       token: DIALOGUE_CLIP_TOKEN,
       durationSeconds,
-      sourceKey: dialogueClipSourceKey(input.lines),
+      sourceKey: dialogueClipSourceKey(keyLines),
+      ...(spokenLines && { spokenLines }),
     },
     characterCount,
+    speechEndSeconds,
   };
+}
+
+/**
+ * Last moment any character is spoken. Voice segments first (one per turn,
+ * so the last one's end is the conversation's end); the character alignment
+ * is the fallback for a response that carried no segments. Null when both
+ * are missing, empty, or not finite numbers — an alignment we cannot read is
+ * no alignment, never a pass.
+ */
+export function speechEndFrom(result: {
+  voiceSegments?: Array<{ endTimeSeconds?: number }> | null;
+  alignment?: { characterEndTimesSeconds?: number[] | null } | null;
+  normalizedAlignment?: { characterEndTimesSeconds?: number[] | null } | null;
+}): number | null {
+  const ends = [
+    ...(result.voiceSegments ?? []).map((segment) => segment.endTimeSeconds),
+    ...(result.alignment?.characterEndTimesSeconds ?? []),
+    ...(result.normalizedAlignment?.characterEndTimesSeconds ?? []),
+  ].filter(
+    (value): value is number =>
+      typeof value === 'number' && Number.isFinite(value) && value >= 0
+  );
+  return ends.length > 0 ? Math.max(...ends) : null;
 }
 
 /** Append the conversation clip as an audio reference the r2v binder knows. */
@@ -100,36 +170,11 @@ export function dialogueClipsAsReferences(
   }));
 }
 
-async function collectStream(
-  stream: ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>
-): Promise<Uint8Array<ArrayBuffer>> {
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  const push = (chunk: Uint8Array) => {
-    chunks.push(chunk);
-    total += chunk.byteLength;
-  };
-  if (isWebStream(stream)) {
-    const reader = stream.getReader();
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (value) push(value);
-    }
-  } else {
-    for await (const chunk of stream) push(chunk);
-  }
-  const out = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    out.set(chunk, offset);
-    offset += chunk.byteLength;
+function decodeBase64(base64: string): Uint8Array<ArrayBuffer> {
+  const binary = atob(base64);
+  const out = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    out[i] = binary.charCodeAt(i);
   }
   return out;
-}
-
-function isWebStream(
-  stream: ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>
-): stream is ReadableStream<Uint8Array> {
-  return 'getReader' in stream && typeof stream.getReader === 'function';
 }
