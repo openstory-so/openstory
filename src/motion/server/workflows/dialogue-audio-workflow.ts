@@ -105,6 +105,14 @@ export class DialogueAudioWorkflow extends OpenStoryWorkflowEntrypoint<DialogueA
         await step.do(`dialogue-audio-${index}-persist`, async () => {
           await scopedDb.shots.setAudioClips(entry.shotId, [fitted.clip], {
             workflowRunId,
+            dialogue: {
+              presence: entry.lines.length > 0,
+              lines: entry.lines.map((line) => ({
+                character: line.character,
+                line: line.text,
+                tone: line.tone,
+              })),
+            },
           });
           await getGenerationChannel(sequenceId).emit(
             'generation.shot:updated',

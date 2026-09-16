@@ -1,7 +1,7 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "47e71166-52c1-429d-b7c1-4974af8e7485",
+  "id": "c13296c6-9a9f-43e5-9e10-8906638ab129",
   "prevIds": ["41d15a2d-0215-41ac-b689-25b780ff55ca"],
   "ddl": [
     {
@@ -6442,6 +6442,16 @@
     },
     {
       "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "dialogue",
+      "entityType": "columns",
+      "table": "shot_dialogue_versions"
+    },
+    {
+      "type": "text",
       "notNull": true,
       "autoincrement": false,
       "default": null,
@@ -6467,6 +6477,16 @@
       "default": null,
       "generated": null,
       "name": "workflow_run_id",
+      "entityType": "columns",
+      "table": "shot_dialogue_versions"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "source",
       "entityType": "columns",
       "table": "shot_dialogue_versions"
     },

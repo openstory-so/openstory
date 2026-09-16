@@ -339,6 +339,17 @@ export const saveShotPromptFn = createServerFn({ method: 'POST' })
       return { unchanged: true } as const;
     }
 
+    // Dialogue is its own authored/versioned node (#1657). Persist it before
+    // the compatibility prompt mirror below; changing a line invalidates the
+    // selected generated take without touching any image or scene-script data.
+    if (
+      data.promptType === 'motion' &&
+      data.dialogue !== undefined &&
+      !dialogueUnchanged
+    ) {
+      await scopedDb.shots.setDialogue(shot.id, data.dialogue, 'user-edit');
+    }
+
     // Capture the current upstream hash so staleness keeps tracking: a manual
     // edit aligns the prompt with the live context, and it should later light
     // up 'stale' if that context changes. Best-effort — a null hash just

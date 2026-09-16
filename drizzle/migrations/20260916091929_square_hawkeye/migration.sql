@@ -16,9 +16,11 @@ CREATE TABLE `character_voice_versions` (
 CREATE TABLE `shot_dialogue_versions` (
 	`id` text PRIMARY KEY,
 	`shot_id` text NOT NULL,
+	`dialogue` text,
 	`audio_clips` text NOT NULL,
 	`input_hash` text NOT NULL,
 	`workflow_run_id` text,
+	`source` text NOT NULL,
 	`selected_at` integer,
 	`discarded_at` integer,
 	`created_at` integer NOT NULL,

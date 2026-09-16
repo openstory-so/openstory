@@ -8,6 +8,7 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/platform/id';
+import type { MotionDialogue } from '@/shots/scene-analysis.schema';
 import type { MotionAudioClip } from './shot-prompt-versions';
 import { shots } from './shots';
 
@@ -21,10 +22,12 @@ export const shotDialogueVersions = snakeCase.table(
     shotId: text()
       .notNull()
       .references(() => shots.id, { onDelete: 'cascade' }),
+    dialogue: text({ mode: 'json' }).$type<MotionDialogue>(),
     audioClips: text({ mode: 'json' }).$type<MotionAudioClip[]>().notNull(),
     /** Canonical voice id + line + tone + model dependency key. */
     inputHash: text().notNull(),
     workflowRunId: text(),
+    source: text().$type<'prompt' | 'user-edit' | 'generated'>().notNull(),
     selectedAt: integer({ mode: 'timestamp' }),
     discardedAt: integer({ mode: 'timestamp' }),
     createdAt: integer({ mode: 'timestamp' })
