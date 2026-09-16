@@ -51,6 +51,17 @@ function fakeScopedDb(opts: {
 const COST = micros(1000);
 
 describe('requireCredits BYOK coverage', () => {
+  it('requires credits for platform-only work even with a usable fal key', async () => {
+    await expect(
+      requireCredits(fakeScopedDb({ keys: ['fal'] }), COST, { providers: [] })
+    ).rejects.toThrow(InsufficientCreditsError);
+    await expect(
+      requireCredits(fakeScopedDb({ keys: ['fal'], canAfford: true }), COST, {
+        providers: [],
+      })
+    ).resolves.toBeUndefined();
+  });
+
   it('passes with only a fal key when openrouter is required (routes via fal)', async () => {
     const db = fakeScopedDb({ keys: ['fal'] });
     await expect(
@@ -151,6 +162,26 @@ describe('requireCredits BYOK coverage', () => {
 });
 
 describe('reserveRunCredits', () => {
+  it('rejects unfunded platform-only work even with a usable fal key', async () => {
+    await expect(
+      reserveRunCredits(fakeScopedDb({ keys: ['fal'] }), COST, {
+        providers: [],
+      })
+    ).rejects.toThrow(InsufficientCreditsError);
+  });
+
+  it('reserves credits for platform-only work even with a usable fal key', async () => {
+    await expect(
+      reserveRunCredits(
+        fakeScopedDb({ keys: ['fal'], canAfford: true }),
+        COST,
+        {
+          providers: [],
+        }
+      )
+    ).resolves.toBe('res_1');
+  });
+
   it('returns undefined for BYOK fal keys', async () => {
     const db = fakeScopedDb({ keys: ['fal'] });
     await expect(reserveRunCredits(db, COST)).resolves.toBeUndefined();
