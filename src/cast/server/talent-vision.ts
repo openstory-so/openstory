@@ -159,7 +159,7 @@ export async function analyzeTalentMedia(
   // geo-blocked from a mainland-China colo (#1259). Nothing is streamed to a
   // caller, so a failed attempt can simply be re-run on the region-available
   // vision model; `model` (not the constant) drives the adapter AND the cost.
-  return withRegionFallback(TALENT_VISION_MODEL, true, async (model) => {
+  return withRegionFallback(TALENT_VISION_MODEL, async (model) => {
     const adapter = createAdapter(model, input.llmKey);
 
     const usageCapture = createUsageCapture();

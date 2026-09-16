@@ -3,7 +3,7 @@ import type { TextModel } from '@/models/models';
 import type { TokenUsage } from '@tanstack/ai';
 import { convertWebSearchToolToAdapterFormat } from '@tanstack/ai-openrouter/tools';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { REGION_FALLBACK_VISION_MODEL } from '@/models/region-policy';
+import { REGION_FALLBACK_MODEL } from '@/models/region-policy';
 import { z } from 'zod';
 
 // Import real exports before vi.doMock so they can be re-exported
@@ -421,7 +421,7 @@ describe('llm-client', () => {
       expect(mockChat).toHaveBeenCalledTimes(2);
       expect(mockCreateAdapter).toHaveBeenNthCalledWith(
         2,
-        'deepseek/deepseek-v4-pro-0813',
+        REGION_FALLBACK_MODEL,
         undefined
       );
     });
@@ -462,7 +462,7 @@ describe('llm-client', () => {
       expect(result).toBe('vision answer');
       expect(mockCreateAdapter).toHaveBeenNthCalledWith(
         2,
-        REGION_FALLBACK_VISION_MODEL,
+        REGION_FALLBACK_MODEL,
         undefined
       );
     });

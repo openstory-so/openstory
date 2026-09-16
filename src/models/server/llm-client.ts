@@ -970,16 +970,6 @@ export function throwNotedRunError(detail: RunErrorDetail | null): void {
   throw new Error(message);
 }
 
-/** Whether any message carries an image content part (drives which region
- *  fallback model is eligible — DeepSeek is text-only). */
-function messagesHaveImages(messages: ChatMessage[]): boolean {
-  return messages.some(
-    (msg) =>
-      typeof msg.content !== 'string' &&
-      msg.content.some((part) => part.type === 'image')
-  );
-}
-
 export function callLLMStream<T>(
   params: LLMRequestParams<T> & { responseSchema: z.ZodType<T> }
 ): AsyncGenerator<StreamChunk<T>>;
@@ -1004,7 +994,7 @@ export async function* callLLMStream<T>(
     const message = error instanceof Error ? error.message : String(error);
     const fallback =
       !yielded && isRegionBlockedLlmError(message)
-        ? regionFallbackModel(params.model, messagesHaveImages(params.messages))
+        ? regionFallbackModel(params.model)
         : null;
     if (!fallback) throw error;
     logger.warn(

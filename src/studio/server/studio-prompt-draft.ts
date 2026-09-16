@@ -141,81 +141,69 @@ export async function draftStudioPrompt(
   input: DraftStudioPromptInput
 ): Promise<DraftStudioPromptResult> {
   const { systemPrompts, messages } = await buildDraftMessages(input);
-  // The composer can draft from nothing (#1393), so whether this call carries
-  // images decides which region fallback is eligible — the text one is
-  // DeepSeek, which rejects image input (#1323).
-  const hasImageInput = messages.some(
-    (m) =>
-      typeof m.content !== 'string' &&
-      m.content.some((part) => part.type === 'image')
-  );
 
   // Anthropic default, geo-blocked from a mainland-China colo (#1259). The
   // draft is buffered here rather than streamed to the caller, so a blocked
   // attempt re-runs on the region-available model; `model` (not the constant)
   // drives the adapter AND the cost.
-  return withRegionFallback(
-    STUDIO_DRAFT_MODEL,
-    hasImageInput,
-    async (model) => {
-      const adapter = createAdapter(model, input.llmKey);
-      const usageCapture = createUsageCapture();
-      let text = '';
-      let runError = null;
-      for await (const event of chat({
-        adapter,
-        systemPrompts,
-        messages: messages.map((m) => ({
-          role: m.role === 'system' ? ('user' as const) : m.role,
-          content: m.content,
-        })),
-        stream: true,
-        modelOptions: {
-          temperature: 0.7,
-          streamOptions: { includeUsage: true },
-        },
-        middleware: [
-          ...aiObservabilityMiddleware({
-            observationName: 'studio-prompt-draft',
-            tags: ['vision', 'studio'],
-            ...input.observability,
-          }),
-          ...usageCapture.middleware,
-        ],
-        debug: false,
-      })) {
-        usageCapture.noteFromStreamEvent(event);
-        const noted = extractRunError(event);
-        if (noted) {
-          runError ??= noted;
-          continue;
-        }
-        if (
-          event.type === 'TEXT_MESSAGE_CONTENT' &&
-          typeof event.delta === 'string'
-        ) {
-          text += event.delta;
-        }
+  return withRegionFallback(STUDIO_DRAFT_MODEL, async (model) => {
+    const adapter = createAdapter(model, input.llmKey);
+    const usageCapture = createUsageCapture();
+    let text = '';
+    let runError = null;
+    for await (const event of chat({
+      adapter,
+      systemPrompts,
+      messages: messages.map((m) => ({
+        role: m.role === 'system' ? ('user' as const) : m.role,
+        content: m.content,
+      })),
+      stream: true,
+      modelOptions: {
+        temperature: 0.7,
+        streamOptions: { includeUsage: true },
+      },
+      middleware: [
+        ...aiObservabilityMiddleware({
+          observationName: 'studio-prompt-draft',
+          tags: ['vision', 'studio'],
+          ...input.observability,
+        }),
+        ...usageCapture.middleware,
+      ],
+      debug: false,
+    })) {
+      usageCapture.noteFromStreamEvent(event);
+      const noted = extractRunError(event);
+      if (noted) {
+        runError ??= noted;
+        continue;
       }
-      throwNotedRunError(runError);
-
-      // Strip any @ the model added anyway; pills store the bare token.
-      const prompt = text
-        .trim()
-        .replace(/^["'`]+|["'`]+$/g, '')
-        .replace(/@(Image|Video|Audio)(\d+)/g, '$1$2');
-      if (!prompt) throw new Error('The draft came back empty — try again.');
-
-      return {
-        prompt,
-        model,
-        costMicros: llmCostFromUsage(
-          usageCapture.get(),
-          model,
-          input.llmKey?.via
-        ),
-        usedOwnKey: input.llmKey?.source === 'team',
-      };
+      if (
+        event.type === 'TEXT_MESSAGE_CONTENT' &&
+        typeof event.delta === 'string'
+      ) {
+        text += event.delta;
+      }
     }
-  );
+    throwNotedRunError(runError);
+
+    // Strip any @ the model added anyway; pills store the bare token.
+    const prompt = text
+      .trim()
+      .replace(/^["'`]+|["'`]+$/g, '')
+      .replace(/@(Image|Video|Audio)(\d+)/g, '$1$2');
+    if (!prompt) throw new Error('The draft came back empty — try again.');
+
+    return {
+      prompt,
+      model,
+      costMicros: llmCostFromUsage(
+        usageCapture.get(),
+        model,
+        input.llmKey?.via
+      ),
+      usedOwnKey: input.llmKey?.source === 'team',
+    };
+  });
 }

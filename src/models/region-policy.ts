@@ -9,7 +9,8 @@
  *
  * 1. Request-time (`resolveModelForCountry`): when the request's
  *    `cf-ipcountry` is a known Anthropic-blocked country, never pick an
- *    Anthropic model in the first place — DeepSeek becomes the default.
+ *    Anthropic model in the first place — `REGION_FALLBACK_MODEL` becomes the
+ *    default, for the picker and the scene splitter alike.
  * 2. Error-time (`withRegionFallback` / the retry in `callLLMStream`): any
  *    call that still hits a region block is retried once on a
  *    region-available model instead of exhausting workflow step retries.
@@ -47,25 +48,27 @@ const ANTHROPIC_BLOCKED_COUNTRIES = new Set([
   'CU',
 ]);
 
-/** Region-available default: DeepSeek is not geo-blocked where Anthropic is. */
-export const REGION_FALLBACK_TEXT_MODEL =
-  'deepseek/deepseek-v4-pro-0813' satisfies TextModel;
-
 /**
- * DeepSeek is text-only, so image-bearing calls fall back to GLM-5.3 Flash
- * instead: natively multimodal, does strict structured outputs (which the
- * talent/element vision schemas require), and served by Z.ai — the one
- * vision model we carry that is unambiguously reachable from mainland China,
- * where this fallback exists to help.
+ * The one region-available model every blocked call falls back to, text and
+ * vision alike: Z.ai's GLM-5.3 Flash. It is natively multimodal, does the
+ * strict structured outputs our schema calls require, ranks above DeepSeek V4
+ * Pro on our own board (Arena 1475 vs 1463) at a sixth of the price, and
+ * being served by Z.ai it is reachable from exactly where this fallback
+ * exists to help.
+ *
+ * ONE model for both is the point. The fallback used to be DeepSeek for text
+ * and something else for images, and the text one is text-only — so a
+ * geo-blocked call carrying an image failed its retry too, with "No endpoints
+ * found that support image input" (#1323). A vision-capable fallback deletes
+ * that failure by construction; there is no "which fallback" question left to
+ * get wrong.
  */
-export const REGION_FALLBACK_VISION_MODEL =
-  'z-ai/glm-5.3-flash' satisfies TextModel;
+export const REGION_FALLBACK_MODEL = 'z-ai/glm-5.3-flash' satisfies TextModel;
 
 /**
- * Errors the region fallback recovers from: the geo-block itself, and the
- * text-only DeepSeek fallback being handed images (#1323 — "No endpoints
- * found that support image input"). Both retry on `regionFallbackModel`, which
- * picks the vision-capable fallback when the messages carry images.
+ * Errors the region fallback recovers from: the geo-block itself, and a
+ * text-only model being handed images (#1323 — "No endpoints found that
+ * support image input"), which the multimodal fallback can take.
  */
 export function isRegionBlockedLlmError(message: string): boolean {
   return /not available in your region|unsupported_country_region|no endpoints found that support image input/i.test(
@@ -77,27 +80,21 @@ export function isRegionBlockedLlmError(message: string): boolean {
  * The model to retry with after a region block, or `null` when the failed
  * model already IS the fallback (nothing regional left to try).
  */
-export function regionFallbackModel(
-  model: string,
-  hasImageInput = false
-): TextModel | null {
-  const fallback = hasImageInput
-    ? REGION_FALLBACK_VISION_MODEL
-    : REGION_FALLBACK_TEXT_MODEL;
-  return model === fallback ? null : fallback;
+export function regionFallbackModel(model: string): TextModel | null {
+  return model === REGION_FALLBACK_MODEL ? null : REGION_FALLBACK_MODEL;
 }
 
 /**
  * Request-time swap: an Anthropic model requested from an Anthropic-blocked
- * country becomes the DeepSeek fallback. Anything else passes through.
+ * country becomes the region fallback. Anything else passes through.
  * `country` is the request's `cf-ipcountry` header (absent in local dev).
  */
 export function resolveModelForCountry<M extends string>(
   model: M,
   country: string | null | undefined
-): M | typeof REGION_FALLBACK_TEXT_MODEL {
+): M | typeof REGION_FALLBACK_MODEL {
   if (!country || !ANTHROPIC_BLOCKED_COUNTRIES.has(country)) return model;
-  return model.startsWith('anthropic/') ? REGION_FALLBACK_TEXT_MODEL : model;
+  return model.startsWith('anthropic/') ? REGION_FALLBACK_MODEL : model;
 }
 
 /** Whether a model would be swapped away for this country — drives hiding it
@@ -115,7 +112,6 @@ export function isRegionBlockedModel(
  */
 export async function withRegionFallback<T>(
   model: TextModel,
-  hasImageInput: boolean,
   run: (model: TextModel) => Promise<T>
 ): Promise<T> {
   try {
@@ -123,7 +119,7 @@ export async function withRegionFallback<T>(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const fallback = isRegionBlockedLlmError(message)
-      ? regionFallbackModel(model, hasImageInput)
+      ? regionFallbackModel(model)
       : null;
     if (!fallback) throw error;
     logger.warn(

@@ -8,7 +8,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { REGION_FALLBACK_VISION_MODEL } from '@/models/region-policy';
+import { REGION_FALLBACK_MODEL } from '@/models/region-policy';
 import { TALENT_VISION_MODEL } from './talent-vision';
 
 const ANALYSIS = {
@@ -85,12 +85,9 @@ describe('analyzeTalentMedia region fallback', () => {
       imageUrls: ['/r2/team-1/uploads/talent.png'],
     });
 
-    expect(adapterModels).toEqual([
-      TALENT_VISION_MODEL,
-      REGION_FALLBACK_VISION_MODEL,
-    ]);
+    expect(adapterModels).toEqual([TALENT_VISION_MODEL, REGION_FALLBACK_MODEL]);
     // Billing must follow the model that actually answered, not the default.
-    expect(result.model).toBe(REGION_FALLBACK_VISION_MODEL);
+    expect(result.model).toBe(REGION_FALLBACK_MODEL);
     expect(result.subjectKind).toBe('human');
   });
 

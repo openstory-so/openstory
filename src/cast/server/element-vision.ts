@@ -133,7 +133,7 @@ export async function describeElementImage(
   // mainland-China colo (#1259). Nothing is streamed out, so a blocked attempt
   // re-runs on the region-available vision model; `model` (not the constant)
   // drives the adapter AND the cost.
-  return withRegionFallback(ELEMENT_VISION_MODEL, true, async (model) => {
+  return withRegionFallback(ELEMENT_VISION_MODEL, async (model) => {
     const adapter = createAdapter(model, input.llmKey);
 
     // Stream structured output so OpenRouter attaches usage.cost (TanStack/ai#1076).
