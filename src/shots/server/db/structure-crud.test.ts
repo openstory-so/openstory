@@ -14,6 +14,7 @@ import {
   sequenceEvents,
   sequences,
   shots,
+  shotDialogueVersions,
   styles,
   teams,
   user,
@@ -35,6 +36,7 @@ let actorId = '';
 
 async function seed() {
   await db.delete(sequenceEvents);
+  await db.delete(shotDialogueVersions);
   await db.delete(frames);
   await db.delete(sceneScriptVersions);
   await db.delete(shots);
@@ -310,6 +312,35 @@ describe('reorder over live rows (deleted rows renumbered into the tail band)', 
 });
 
 describe('re-analysis revival + shot soft-delete details', () => {
+  it('appends and can restore generated dialogue takes', async () => {
+    const methods = createShotsMethods(db);
+    const { sceneShots } = await seedScene(0, 1);
+    const shot = sceneShots[0];
+    if (!shot) throw new Error('setup');
+    const clip = (id: string, sourceKey: string) => ({
+      id,
+      url: `/${id}.wav`,
+      token: 'DIALOGUE',
+      durationSeconds: 1,
+      sourceKey,
+    });
+    await methods.setAudioClips(shot.id, [clip('take-a', 'voice-a\tHello')], {
+      workflowRunId: 'run-a',
+    });
+    await methods.setAudioClips(shot.id, [clip('take-b', 'voice-b\tHello')]);
+
+    const versions = await methods.listDialogueVersions(shot.id);
+    expect(versions).toHaveLength(2);
+    expect(versions.filter((version) => version.selectedAt)).toHaveLength(1);
+    const first = versions.find((version) => version.workflowRunId === 'run-a');
+    if (!first) throw new Error('first dialogue version missing');
+
+    const restored = await methods.selectDialogueVersion(shot.id, first.id);
+    expect(restored.audioClips?.[0]?.id).toBe('take-a');
+    const after = await methods.listDialogueVersions(shot.id);
+    expect(after.find((version) => version.selectedAt)?.id).toBe(first.id);
+  });
+
   it('scenes.upsert on a deleted row’s orderIndex slot revives it', async () => {
     const sceneMethods = createScenesMethods(db);
     const { scene } = await seedScene(0, 0);

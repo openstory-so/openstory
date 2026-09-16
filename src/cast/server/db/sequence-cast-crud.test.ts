@@ -20,6 +20,7 @@ import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
 import {
   characterSheetVariants,
+  characterVoiceVersions,
   characters,
   sequenceElements,
   sequenceEvents,
@@ -46,6 +47,7 @@ let actorId = '';
 
 async function seed() {
   await db.delete(sequenceEvents);
+  await db.delete(characterVoiceVersions);
   await db.delete(characters);
   await db.delete(sequenceElements);
   await db.delete(sequenceLocations);
@@ -147,6 +149,33 @@ beforeEach(async () => {
 });
 
 describe('characters bible CRUD + soft-remove', () => {
+  it('appends and can restore selected voice configurations', async () => {
+    const methods = createCharactersMethods(db);
+    const created = await methods.create({
+      sequenceId,
+      characterId: 'voice_001',
+      name: 'Maya',
+      voiceDescription: 'Warm Australian alto',
+    });
+    await methods.update(created.id, {
+      voiceId: 'voice-a',
+      voicePreviews: [],
+      useVoice: true,
+    });
+    await methods.update(created.id, { voiceId: 'voice-b' });
+
+    const versions = await methods.listVoiceVersions(created.id);
+    expect(versions).toHaveLength(2);
+    expect(versions.filter((version) => version.selectedAt)).toHaveLength(1);
+    const first = versions.find((version) => version.voiceId === 'voice-a');
+    if (!first) throw new Error('first voice version missing');
+
+    const restored = await methods.selectVoiceVersion(created.id, first.id);
+    expect(restored.voiceId).toBe('voice-a');
+    const after = await methods.listVoiceVersions(created.id);
+    expect(after.find((version) => version.selectedAt)?.id).toBe(first.id);
+  });
+
   it('updateBible writes the fields and an atomic character.updated event carrying prevState', async () => {
     const m = createCharactersMethods(db);
     const created = await m.create({

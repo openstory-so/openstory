@@ -8,8 +8,10 @@ import {
   frames,
   sceneScriptVersions,
   scenes,
+  shotDialogueVersions,
   shots,
 } from '@/platform/server/db/schema';
+import { generateId } from '@/platform/id';
 import { dbSceneId } from '@/shots/scene-id';
 import type {
   MotionAudioClip,
@@ -264,12 +266,118 @@ export function createShotsMethods(db: Database) {
      */
     setAudioClips: async (
       shotId: string,
-      audioClips: MotionAudioClip[]
+      audioClips: MotionAudioClip[],
+      opts?: { workflowRunId?: string | null }
     ): Promise<void> => {
+      if (audioClips.length === 0) {
+        await db.batch([
+          db
+            .update(shotDialogueVersions)
+            .set({ selectedAt: null })
+            .where(
+              and(
+                eq(shotDialogueVersions.shotId, shotId),
+                sql`${shotDialogueVersions.selectedAt} IS NOT NULL`
+              )
+            ),
+          db
+            .update(shots)
+            .set({ audioClips, updatedAt: new Date() })
+            .where(eq(shots.id, shotId)),
+        ]);
+        return;
+      }
+      const inputHash = audioClips
+        .map((clip) => clip.sourceKey)
+        .filter(Boolean)
+        .join('\n');
+      if (!inputHash)
+        throw new Error('Dialogue clips require a sourceKey to be versioned');
+      const versionId = generateId();
+      await db.batch([
+        db
+          .update(shotDialogueVersions)
+          .set({ selectedAt: null })
+          .where(
+            and(
+              eq(shotDialogueVersions.shotId, shotId),
+              sql`${shotDialogueVersions.selectedAt} IS NOT NULL`
+            )
+          ),
+        db.insert(shotDialogueVersions).values({
+          id: versionId,
+          shotId,
+          audioClips,
+          inputHash,
+          workflowRunId: opts?.workflowRunId,
+          selectedAt: new Date(),
+        }),
+        db
+          .update(shots)
+          .set({
+            audioClips,
+            updatedAt: new Date(),
+          })
+          .where(eq(shots.id, shotId)),
+      ]);
+    },
+
+    listDialogueVersions: async (shotId: string) =>
       await db
-        .update(shots)
-        .set({ audioClips, updatedAt: new Date() })
-        .where(eq(shots.id, shotId));
+        .select()
+        .from(shotDialogueVersions)
+        .where(
+          and(
+            eq(shotDialogueVersions.shotId, shotId),
+            isNull(shotDialogueVersions.discardedAt)
+          )
+        )
+        .orderBy(
+          desc(shotDialogueVersions.createdAt),
+          desc(shotDialogueVersions.id)
+        ),
+
+    selectDialogueVersion: async (
+      shotId: string,
+      versionId: string
+    ): Promise<Shot> => {
+      const [version] = await db
+        .select()
+        .from(shotDialogueVersions)
+        .where(
+          and(
+            eq(shotDialogueVersions.id, versionId),
+            eq(shotDialogueVersions.shotId, shotId)
+          )
+        );
+      if (!version || version.discardedAt) {
+        throw new Error(
+          `Dialogue version ${versionId} not found for shot ${shotId}`
+        );
+      }
+      const [, , updatedRows] = await db.batch([
+        db
+          .update(shotDialogueVersions)
+          .set({ selectedAt: null })
+          .where(
+            and(
+              eq(shotDialogueVersions.shotId, shotId),
+              sql`${shotDialogueVersions.selectedAt} IS NOT NULL`
+            )
+          ),
+        db
+          .update(shotDialogueVersions)
+          .set({ selectedAt: new Date() })
+          .where(eq(shotDialogueVersions.id, version.id)),
+        db
+          .update(shots)
+          .set({ audioClips: version.audioClips, updatedAt: new Date() })
+          .where(eq(shots.id, shotId))
+          .returning(),
+      ]);
+      const updated = updatedRows[0];
+      if (!updated) throw new Error(`Shot ${shotId} not found`);
+      return updated;
     },
 
     upsert: async (data: NewShot): Promise<ShotWithAnchorFrame> => {

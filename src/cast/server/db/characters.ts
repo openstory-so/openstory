@@ -6,6 +6,7 @@
 import {
   and,
   count,
+  desc,
   eq,
   getTableColumns,
   inArray,
@@ -25,10 +26,12 @@ import type {
 } from '@/platform/server/db/schema';
 import {
   characterSheetVariants,
+  characterVoiceVersions,
   characters,
   shots,
   talent,
 } from '@/platform/server/db/schema';
+import { generateId } from '@/platform/id';
 import {
   loadSceneContextBySequenceFromDb,
   resolveSceneForShot,
@@ -119,11 +122,69 @@ export function createCharactersMethods(db: Database) {
     id: string,
     data: Partial<NewCharacter>
   ): Promise<Character> => {
-    const [character] = await db
-      .update(characters)
-      .set({ ...data, updatedAt: new Date() })
-      .where(eq(characters.id, id))
-      .returning();
+    const changesVoice =
+      data.voiceId !== undefined ||
+      data.voiceDescription !== undefined ||
+      data.voicePreviews !== undefined ||
+      data.useVoice !== undefined;
+    let character: Character | undefined;
+    if (changesVoice) {
+      const [existing] = await db
+        .select()
+        .from(characters)
+        .where(eq(characters.id, id));
+      if (!existing) throw new Error(`SequenceCharacter ${id} not found`);
+      const versionId = generateId();
+      const source =
+        data.useVoice === false
+          ? 'disabled'
+          : data.voiceId !== undefined
+            ? 'generated'
+            : 'user-edit';
+      const [, updatedRows] = await db.batch([
+        db
+          .update(characterVoiceVersions)
+          .set({ selectedAt: null })
+          .where(
+            and(
+              eq(characterVoiceVersions.characterId, id),
+              sql`${characterVoiceVersions.selectedAt} IS NOT NULL`
+            )
+          ),
+        db
+          .update(characters)
+          .set({
+            ...data,
+            updatedAt: new Date(),
+          })
+          .where(eq(characters.id, id))
+          .returning(),
+        db.insert(characterVoiceVersions).values({
+          id: versionId,
+          characterId: id,
+          voiceId: data.voiceId === undefined ? existing.voiceId : data.voiceId,
+          description:
+            data.voiceDescription === undefined
+              ? existing.voiceDescription
+              : data.voiceDescription,
+          previews:
+            data.voicePreviews === undefined
+              ? existing.voicePreviews
+              : data.voicePreviews,
+          enabled:
+            data.useVoice === undefined ? existing.useVoice : data.useVoice,
+          source,
+          selectedAt: new Date(),
+        }),
+      ]);
+      character = updatedRows[0];
+    } else {
+      [character] = await db
+        .update(characters)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(characters.id, id))
+        .returning();
+    }
 
     if (!character) {
       throw new Error(`SequenceCharacter ${id} not found`);
@@ -282,6 +343,65 @@ export function createCharactersMethods(db: Database) {
     },
 
     update,
+
+    listVoiceVersions: async (characterId: string) =>
+      await db
+        .select()
+        .from(characterVoiceVersions)
+        .where(eq(characterVoiceVersions.characterId, characterId))
+        .orderBy(
+          desc(characterVoiceVersions.createdAt),
+          desc(characterVoiceVersions.id)
+        ),
+
+    selectVoiceVersion: async (
+      characterId: string,
+      versionId: string
+    ): Promise<Character> => {
+      const [version] = await db
+        .select()
+        .from(characterVoiceVersions)
+        .where(
+          and(
+            eq(characterVoiceVersions.id, versionId),
+            eq(characterVoiceVersions.characterId, characterId)
+          )
+        );
+      if (!version)
+        throw new Error(
+          `Voice version ${versionId} not found for character ${characterId}`
+        );
+      const [, , updatedRows] = await db.batch([
+        db
+          .update(characterVoiceVersions)
+          .set({ selectedAt: null })
+          .where(
+            and(
+              eq(characterVoiceVersions.characterId, characterId),
+              sql`${characterVoiceVersions.selectedAt} IS NOT NULL`
+            )
+          ),
+        db
+          .update(characterVoiceVersions)
+          .set({ selectedAt: new Date() })
+          .where(eq(characterVoiceVersions.id, version.id)),
+        db
+          .update(characters)
+          .set({
+            voiceId: version.voiceId,
+            voiceDescription: version.description,
+            voicePreviews: version.previews,
+            useVoice: version.enabled,
+            updatedAt: new Date(),
+          })
+          .where(eq(characters.id, characterId))
+          .returning(),
+      ]);
+      const updated = updatedRows[0];
+      if (!updated)
+        throw new Error(`SequenceCharacter ${characterId} not found`);
+      return updated;
+    },
 
     /**
      * Rows (any team — the id is the ElevenLabs account's) still pointing at
