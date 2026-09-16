@@ -4,9 +4,9 @@
  * The render unit is NOT the scene: a render model caps a single render at a
  * per-model duration (Omni 10s, most 15s, Seedance 2.5 30s), so a scene's
  * video is an ordered tiling of **segments**, each a contiguous shot-subset
- * whose total duration is ≤ the model cap. The common case (scene ≤ cap) is one
- * segment = the whole scene; long scenes split; per-shot rendering is the
- * degenerate case (one shot per segment).
+ * whose total duration is ≤ the model cap. Shots render independently when
+ * they meet the model minimum; shorter shots form the smallest groups that
+ * avoid under-minimum leftovers (#1658).
  *
  * A segment is a persisted `render_segments` row; its `id` (with the model) is
  * the key under which `video_variants` versions for that segment accumulate. Its

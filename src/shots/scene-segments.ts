@@ -7,7 +7,8 @@
  * segment's video accumulates versions in `video_variants`, with the segment's
  * `selectedVideoVersionId` pointing at the chosen one. Persisted
  * `renderSegmentId` groups are the clip; unrendered runs are tiled as a
- * generate preview. 1:1 is only the leftover / Grok / incapable-model case.
+ * generate preview. Shots that meet the model minimum stay 1:1; shorter shots
+ * are grouped only as needed to avoid under-minimum leftovers (#1658).
  *
  * `SequenceSegment` is what `getSequenceSegmentsFn` returns; membership
  * (`shotIds`) is authoritative and ordered. The UI groups its already-loaded

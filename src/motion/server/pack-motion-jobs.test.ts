@@ -33,17 +33,12 @@ describe('batchPacksInClipMultiShot', () => {
 });
 
 describe('packMotionBatchShots', () => {
-  it('packs a 4s+6s Seedance scene into one 10s generation', () => {
+  it('keeps a 4s+6s Seedance scene as independent generations', () => {
     const packed = packMotionBatchShots(
       [shot('a', 'sc-1', 4), shot('b', 'sc-1', 6)],
       ['seedance_v2']
     );
-    expect(packed).toHaveLength(1);
-    expect(packed[0]).toMatchObject({
-      shotId: 'a',
-      duration: 10,
-    });
-    expect(packed[0]?.coveredShots?.map((s) => s.shotId)).toEqual(['a', 'b']);
+    expect(packed).toEqual([shot('a', 'sc-1', 4), shot('b', 'sc-1', 6)]);
   });
 
   it('keeps Grok on one generation per shot', () => {
@@ -97,21 +92,21 @@ describe('packMotionBatchShots', () => {
     expect(packed).toEqual([shot('a', 'sc-1', 8)]);
   });
 
-  it('packs two 4s+6s scenes into two 10s generations', () => {
+  it('packs short shots separately within each scene', () => {
     const packed = packMotionBatchShots(
       [
-        shot('a', 'sc-1', 4),
-        shot('b', 'sc-1', 6),
-        shot('c', 'sc-2', 4),
-        shot('d', 'sc-2', 6),
+        shot('a', 'sc-1', 1),
+        shot('b', 'sc-1', 2),
+        shot('c', 'sc-2', 1),
+        shot('d', 'sc-2', 2),
       ],
       ['kling_v3_pro']
     );
     expect(packed).toHaveLength(2);
     expect(packed[0]?.shotId).toBe('a');
-    expect(packed[0]?.duration).toBe(10);
+    expect(packed[0]?.duration).toBe(3);
     expect(packed[1]?.shotId).toBe('c');
-    expect(packed[1]?.duration).toBe(10);
+    expect(packed[1]?.duration).toBe(3);
   });
 
   it('falls back to each shot’s model when no top-level list is given', () => {
@@ -149,8 +144,8 @@ describe('packMotionBatchShots', () => {
 
   it('omitting videoModels unpacks a Seedance pair next to a leftover Grok shot', () => {
     const shots = [
-      shot('a', 'sc-1', 4, 'seedance_v2'),
-      shot('b', 'sc-1', 6, 'seedance_v2'),
+      shot('a', 'sc-1', 2, 'seedance_v2'),
+      shot('b', 'sc-1', 2, 'seedance_v2'),
       shot('c', 'sc-2', 1, 'grok_imagine_video_1_5'),
     ];
     expect(
@@ -159,7 +154,7 @@ describe('packMotionBatchShots', () => {
 
     const packed = packMotionBatchShots(shots, ['seedance_v2']);
     expect(packed).toHaveLength(2);
-    expect(packed[0]?.duration).toBe(10);
+    expect(packed[0]?.duration).toBe(4);
     expect(packed[0]?.coveredShots?.map((s) => s.shotId)).toEqual(['a', 'b']);
     expect(packed[1]?.shotId).toBe('c');
     expect(packed[1]?.coveredShots).toBeUndefined();
@@ -193,8 +188,8 @@ describe('packMotionBatchShots — sticky membership', () => {
     const packed = packMotionBatchShots(
       [
         { ...shot('a', 'sc-1', 4), renderSegmentId: 'a' },
-        shot('b', 'sc-1', 4),
-        shot('c', 'sc-1', 4),
+        shot('b', 'sc-1', 2),
+        shot('c', 'sc-1', 2),
       ],
       ['seedance_v2']
     );
@@ -207,7 +202,7 @@ describe('packMotionBatchShots — sticky membership', () => {
 describe('packMotionBatchShots — prompt length', () => {
   it('peels trailing shots when the assembled prompt would overflow', () => {
     const packed = packMotionBatchShots(
-      [shot('a', 'sc-1', 4), shot('b', 'sc-1', 4), shot('c', 'sc-1', 4)],
+      [shot('a', 'sc-1', 1), shot('b', 'sc-1', 1), shot('c', 'sc-1', 2)],
       ['seedance_v2'],
       {
         promptFits: (members) => members.length <= 2,
@@ -241,16 +236,18 @@ describe('packMotionBatchShots — prompt length', () => {
 });
 
 describe('packMotionBatchShots — leftover min', () => {
-  it('does not leave a 4s H3 tail on 19×1s — packs [14][5]', () => {
+  it('uses minimum H3 groups without leaving a short tail: [5][5][9]', () => {
     const shots = Array.from({ length: 19 }, (_, i) =>
       shot(`s${i}`, 'sc-1', 1)
     );
     const packed = packMotionBatchShots(shots, ['minimax_h3_max']);
-    expect(packed).toHaveLength(2);
-    expect(packed[0]?.coveredShots).toHaveLength(14);
-    expect(packed[0]?.duration).toBe(14);
+    expect(packed).toHaveLength(3);
+    expect(packed[0]?.coveredShots).toHaveLength(5);
+    expect(packed[0]?.duration).toBe(5);
     expect(packed[1]?.coveredShots).toHaveLength(5);
     expect(packed[1]?.duration).toBe(5);
+    expect(packed[2]?.coveredShots).toHaveLength(9);
+    expect(packed[2]?.duration).toBe(9);
   });
 
   it('a Grok leftover shot does not pack into Seedance neighbours', () => {
@@ -269,7 +266,7 @@ describe('packMotionBatchShots — leftover min', () => {
 
 describe('coveredMembersForShot', () => {
   it('returns both members when clicking either shot of a packed pair', () => {
-    const shots = [shot('a', 'sc-1', 4), shot('b', 'sc-1', 6)];
+    const shots = [shot('a', 'sc-1', 2), shot('b', 'sc-1', 2)];
     expect(
       coveredMembersForShot(shots, 'a', ['seedance_v2']).map((s) => s.shotId)
     ).toEqual(['a', 'b']);
