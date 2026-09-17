@@ -1,31 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
+import { describe, expect, it, vi } from 'vitest';
+import { NonRetryableError } from 'cloudflare:workflows';
 
 vi.doMock('#env', () => ({
   getEnv: () => ({}),
 }));
 
 const readStorageObject = vi.fn();
-const uploadFile = vi.fn();
-vi.doMock('#storage', () => ({ readStorageObject, uploadFile }));
+vi.doMock('#storage', () => ({ readStorageObject }));
 
-const toArkFetchableUrl = vi.fn(async (url: string) => `fetchable:${url}`);
-vi.doMock('./byteplus-asset-ingest', () => ({
-  toArkFetchableUrl,
-}));
-
-const free = vi.fn();
-const get_bytes = vi.fn(() => new Uint8Array([9, 9, 9]));
-const resize = vi.fn(() => ({ get_bytes, free }));
-vi.doMock('@cf-wasm/photon', () => ({
-  PhotonImage: {
-    new_from_byteslice: () => ({ free }),
-  },
-  SamplingFilter: { CatmullRom: 3 },
-  resize,
-}));
-
-const { arkCreateAssetUpscaleSize, fitUrlForArkCreateAsset } =
+const { assertArkCreateAssetSize, stillFitsArkCreateAsset } =
   await import('./byteplus-asset-size');
 
 function makePng(width: number, height: number): Uint8Array {
@@ -37,65 +20,40 @@ function makePng(width: number, height: number): Uint8Array {
   return bytes;
 }
 
-describe('arkCreateAssetUpscaleSize', () => {
-  it('is a no-op at or above 300px', () => {
-    expect(arkCreateAssetUpscaleSize(1024, 576)).toBeNull();
-    expect(arkCreateAssetUpscaleSize(300, 300)).toBeNull();
+describe('stillFitsArkCreateAsset', () => {
+  it('accepts 300px and above', () => {
+    expect(stillFitsArkCreateAsset(300, 300)).toBe(true);
+    expect(stillFitsArkCreateAsset(1024, 576)).toBe(true);
   });
 
-  it('scales a 256px thumbnail to 300px', () => {
-    expect(arkCreateAssetUpscaleSize(256, 256)).toEqual({
-      width: 300,
-      height: 300,
-    });
+  it('rejects a 256px thumbnail', () => {
+    expect(stillFitsArkCreateAsset(256, 256)).toBe(false);
   });
 });
 
-describe('fitUrlForArkCreateAsset', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    resize.mockReturnValue({ get_bytes, free });
-  });
-
-  it('passes through a still that already fits', async () => {
+describe('assertArkCreateAssetSize', () => {
+  it('allows a still that already fits', async () => {
     readStorageObject.mockResolvedValue({
       bytes: makePng(1024, 576),
       contentType: 'image/png',
     });
-
     await expect(
-      fitUrlForArkCreateAsset(
-        '/r2/thumbnails/still.png',
-        'https://cdn/still.png'
-      )
-    ).resolves.toBe('https://cdn/still.png');
-    expect(resize).not.toHaveBeenCalled();
+      assertArkCreateAssetSize('/r2/thumbnails/still.png')
+    ).resolves.toBeUndefined();
   });
 
-  it('upscales a sub-300px still before CreateAsset', async () => {
+  it('refuses a sub-300px still with the measured size', async () => {
     readStorageObject.mockResolvedValue({
-      bytes: makePng(200, 200),
+      bytes: makePng(256, 256),
       contentType: 'image/png',
     });
-    uploadFile.mockResolvedValue({
-      publicUrl: '/r2/thumbnails/ark-fit/abc.png',
-      path: 'thumbnails/ark-fit/abc.png',
-      fullPath: 'thumbnails/ark-fit/abc.png',
-    });
-
     await expect(
-      fitUrlForArkCreateAsset(
-        '/r2/thumbnails/tiny.png',
-        'https://cdn/tiny.png',
-        'fal-key'
-      )
-    ).resolves.toBe('fetchable:/r2/thumbnails/ark-fit/abc.png');
-    expect(resize).toHaveBeenCalledWith(expect.anything(), 300, 300, 3);
-    expect(uploadFile).toHaveBeenCalledWith(
-      STORAGE_BUCKETS.THUMBNAILS,
-      expect.stringMatching(/^ark-fit\/[0-9a-f]{64}\.png$/),
-      expect.any(Uint8Array),
-      { contentType: 'image/png' }
+      assertArkCreateAssetSize('/r2/thumbnails/tiny.png')
+    ).rejects.toSatisfy(
+      (error: unknown) =>
+        error instanceof NonRetryableError &&
+        error.message.includes('256×256px') &&
+        error.message.includes('300×300px')
     );
   });
 });

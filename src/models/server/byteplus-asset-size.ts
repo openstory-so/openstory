@@ -1,80 +1,37 @@
 /**
- * CreateAsset rejects edges outside 300–6000px. Face-bearing stills stay
- * `asset://` (a public URL of a photoreal face 400s), so we upscale to the
- * 300px floor rather than skipping registration (#1664).
+ * CreateAsset rejects edges under 300px (`WidthTooSmall`). We do not
+ * buffer or resize the still in the Worker — probe headers and refuse
+ * (#1664). Location/element sheets never reach this path.
  */
 
-import { readStorageObject, uploadFile } from '#storage';
-import {
-  STORAGE_BUCKETS,
-  r2KeyFromUrl,
-} from '@/platform/server/storage/buckets';
+import { NonRetryableError } from 'cloudflare:workflows';
 import { probeImageDimensions } from '@/stills/server/image-crop';
-import { hashAssetIdentity } from './byteplus-assets';
-import { toArkFetchableUrl } from './byteplus-asset-ingest';
 
 const MIN_PX = 300;
 
-/** Uniform scale so both edges are ≥300. Null when the still already fits. */
-export function arkCreateAssetUpscaleSize(
+export function stillFitsArkCreateAsset(
   width: number,
   height: number
-): { width: number; height: number } | null {
-  if (width >= MIN_PX && height >= MIN_PX) return null;
-  const scale = Math.max(MIN_PX / width, MIN_PX / height);
-  return {
-    width: Math.max(MIN_PX, Math.round(width * scale)),
-    height: Math.max(MIN_PX, Math.round(height * scale)),
-  };
-}
-
-async function readImageBytes(imageUrl: string): Promise<Uint8Array> {
-  const key = r2KeyFromUrl(imageUrl);
-  if (key !== null) {
-    const object = await readStorageObject(key);
-    if (!object) throw new Error(`Still not found in storage: ${key}`);
-    return object.bytes;
-  }
-  const response = await fetch(imageUrl);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch still ${imageUrl}: ${response.status}`);
-  }
-  return new Uint8Array(await response.arrayBuffer());
+): boolean {
+  return width >= MIN_PX && height >= MIN_PX;
 }
 
 /**
- * URL CreateAsset should fetch. Pool identity stays `storedUrl`.
- * Unreadable headers pass through — Ark still fails loudly.
+ * Header-only (≤64KB). Unreadable formats pass through — Ark still fails
+ * loudly. Throws `NonRetryableError` so ingest does not burn a CreateAsset
+ * turn on an image that cannot succeed.
  */
-export async function fitUrlForArkCreateAsset(
-  storedUrl: string,
-  publicUrl: string,
-  falApiKey?: string
-): Promise<string> {
+export async function assertArkCreateAssetSize(
+  storedUrl: string
+): Promise<void> {
   let dims: { width: number; height: number };
   try {
     dims = await probeImageDimensions(storedUrl);
   } catch {
-    return publicUrl;
+    return;
   }
-  const size = arkCreateAssetUpscaleSize(dims.width, dims.height);
-  if (!size) return publicUrl;
-
-  const bytes = await readImageBytes(storedUrl);
-  const { PhotonImage, SamplingFilter, resize } =
-    await import('@cf-wasm/photon');
-  const input = PhotonImage.new_from_byteslice(bytes);
-  let scaled: ReturnType<typeof resize> | undefined;
-  try {
-    scaled = resize(input, size.width, size.height, SamplingFilter.CatmullRom);
-    const png = scaled.get_bytes();
-    const path = `ark-fit/${await hashAssetIdentity(storedUrl)}.png`;
-    const uploaded = await uploadFile(STORAGE_BUCKETS.THUMBNAILS, path, png, {
-      contentType: 'image/png',
-    });
-    return toArkFetchableUrl(uploaded.publicUrl, falApiKey);
-  } finally {
-    scaled?.free();
-    input.free();
-  }
+  if (stillFitsArkCreateAsset(dims.width, dims.height)) return;
+  throw new NonRetryableError(
+    `This image is smaller than 300px on an edge, which BytePlus rejects. Upload a still at least 300×300px. This one is ${dims.width}×${dims.height}px.`
+  );
 }

@@ -31,7 +31,7 @@ import type { WorkflowStep, WorkflowStepConfig } from 'cloudflare:workers';
 import type { CredentialScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { BytePlusAssetSlot } from '@/platform/server/db/schema/byteplus-assets';
 import { isHttpUrl, toArkFetchableUrl } from './byteplus-asset-ingest';
-import { fitUrlForArkCreateAsset } from './byteplus-asset-size';
+import { assertArkCreateAssetSize } from './byteplus-asset-size';
 import {
   claimPooledAsset,
   createPooledAsset,
@@ -101,6 +101,7 @@ export async function ingestArkAssets(
 
     const publicUrl = await step.do(`${name}-url`, async () => {
       const falKey = await args.credentials.resolveOptionalKey('fal');
+      await assertArkCreateAssetSize(still.storedUrl);
       return toArkFetchableUrl(still.storedUrl, falKey?.key);
     });
 
@@ -150,17 +151,11 @@ export async function ingestArkAssets(
 
     map[still.storedUrl] = await step.do(`${name}-create`, async () => {
       const config = requireConfig();
-      const falKey = await args.credentials.resolveOptionalKey('fal');
-      const publicUrl = await fitUrlForArkCreateAsset(
-        still.storedUrl,
-        claim.pending.publicUrl,
-        falKey?.key
-      );
       return createPooledAsset(config, args.ledger, {
         claim: claim.pending.claim,
         owner: args.owner,
         storedUrl: still.storedUrl,
-        publicUrl,
+        publicUrl: claim.pending.publicUrl,
         assetType: still.kind ?? 'Image',
         slot: still.slot,
         groupId: config.groupId,
