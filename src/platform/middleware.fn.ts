@@ -90,6 +90,8 @@ const VERY_SLOW_THRESHOLD_MS = 2000;
  * paging on — everything else must stay at `error`.
  */
 export const EXPECTED_REJECTION_CODES = new Set([
+  // Signed-out or expired sessions are expected on the anonymous app shell.
+  'AUTHENTICATION_ERROR',
   'INSUFFICIENT_CREDITS',
   'VALIDATION_ERROR',
   'NOT_FOUND',
@@ -159,8 +161,8 @@ export const loggerMiddleware = createMiddleware({ type: 'function' }).server(
       };
       // Expected business rejections are outcomes, not failures: warn, so prod
       // error logs stay signal (#1099). Deliberately an allowlist of codes and
-      // NOT `statusCode < 500` — a status range would also silence 401 spikes
-      // (an auth incident) and anything a handler mislabels as a 4xx.
+      // NOT `statusCode < 500` — a status range would also silence permission
+      // failures and anything a handler mislabels as a 4xx.
       if (EXPECTED_REJECTION_CODES.has(err.code)) {
         fnLogger.warn(
           'serverFn {fnName} rejected: {errCode} {errMessage}',
