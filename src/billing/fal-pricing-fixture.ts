@@ -89,6 +89,6 @@ export const TEST_FAL_PRICING: Record<string, EffectiveFalPricing> = {
     typicalUnitsPerCall: 1,
   },
   // Audio models
-  'fal-ai/elevenlabs/music': { unitPrice: micros(800_000), unit: 'minutes' },
+  'elevenlabs-music': { unitPrice: micros(150_000), unit: 'minutes' },
   'fal-ai/ace-step-1.5': { unitPrice: micros(500), unit: 'units' },
 };

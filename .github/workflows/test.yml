@@ -169,6 +169,8 @@ jobs:
           OPENROUTER_BASE_URL=http://localhost:4010
           XAI_API_KEY=test-mock-key
           XAI_BASE_URL=http://localhost:4011/v1
+          ELEVENLABS_API_KEY=test-mock-key
+          ELEVENLABS_BASE_URL=http://localhost:4010
           FAL_KEY=test-mock-key
           GOOGLE_CLIENT_ID=$E2E_GOOGLE_CLIENT_ID
           GOOGLE_CLIENT_SECRET=$E2E_GOOGLE_CLIENT_SECRET
@@ -264,6 +266,8 @@ jobs:
           OPENROUTER_BASE_URL=http://localhost:4010
           XAI_API_KEY=test-mock-key
           XAI_BASE_URL=http://localhost:4011/v1
+          ELEVENLABS_API_KEY=test-mock-key
+          ELEVENLABS_BASE_URL=http://localhost:4010
           FAL_KEY=test-mock-key
           FAL_PROXY_URL=http://localhost:4010/fal
           GOOGLE_CLIENT_ID=$E2E_GOOGLE_CLIENT_ID

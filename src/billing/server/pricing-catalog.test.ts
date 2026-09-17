@@ -38,6 +38,10 @@ describe('buildPricingCatalog native vias', () => {
       price: '$2.00 / M in · $6.00 / M out',
     });
     expect(r['Gemini 3.1 Pro']).toMatchObject({ via: 'Google' });
+    expect(r['ElevenLabs Music']).toMatchObject({
+      via: 'ElevenLabs',
+      price: 'from $0.15 / minute',
+    });
   });
 
   it('falls back to fal / OpenRouter without keys', () => {
@@ -49,5 +53,6 @@ describe('buildPricingCatalog native vias', () => {
     });
     expect(r['Seedream 5.0 Pro']?.via).toBe('fal.ai');
     expect(r['Grok 4.6']?.via).toBe('OpenRouter');
+    expect(r['ElevenLabs Music']?.via).toBe('ElevenLabs');
   });
 });

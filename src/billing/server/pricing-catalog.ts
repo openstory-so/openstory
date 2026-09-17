@@ -8,6 +8,7 @@
  */
 
 import type { EffectiveFalPricing } from './fal-pricing-live';
+import { ELEVENLABS_MUSIC_ENDPOINT } from '@/billing/elevenlabs-pricing';
 import { estimateStrategy, knownUnitsPerCall } from '@/billing/fal-cost';
 import {
   geminiImageCost,
@@ -39,7 +40,13 @@ import {
 import { microsToUsd, type Microdollars } from '@/billing/money';
 import { typedEntries } from '@/platform/typed-object';
 
-type PricingVia = 'fal.ai' | 'OpenRouter' | 'BytePlus' | 'xAI' | 'Google';
+type PricingVia =
+  | 'fal.ai'
+  | 'OpenRouter'
+  | 'BytePlus'
+  | 'xAI'
+  | 'Google'
+  | 'ElevenLabs';
 
 /**
  * Which native vias the PLATFORM key reaches (#1519). Advisory, like
@@ -51,6 +58,8 @@ export type PlatformVias = { byteplus: boolean; xai: boolean; google: boolean };
 const XAI_DOCS_URL = 'https://docs.x.ai/developers/models';
 const GOOGLE_DOCS_URL = 'https://ai.google.dev/gemini-api/docs/pricing';
 const BYTEPLUS_DOCS_URL = 'https://docs.byteplus.com/en/docs/ModelArk/1544106';
+const ELEVENLABS_MUSIC_DOCS_URL =
+  'https://elevenlabs.io/docs/overview/capabilities/music';
 
 type PricingRow = {
   name: string;
@@ -229,6 +238,16 @@ function nativeVideoRoute(
   return undefined;
 }
 
+function nativeAudioRoute(endpointId: string): NativeRoute | undefined {
+  if (endpointId !== ELEVENLABS_MUSIC_ENDPOINT) return undefined;
+  return {
+    via: 'ElevenLabs',
+    docsUrl: ELEVENLABS_MUSIC_DOCS_URL,
+    price: 'from $0.15 / minute',
+    detail: 'Advertised rate — billed per minute rounded up',
+  };
+}
+
 export function buildPricingCatalog(opts: {
   falPricing: Record<string, EffectiveFalPricing>;
   /** When the fal snapshot was last refreshed (null = never). */
@@ -285,7 +304,7 @@ export function buildPricingCatalog(opts: {
     .map(([key, model]) => toFalRow(model, nativeVideoRoute(key, vias)));
   const audioRows = Object.values(AUDIO_MODELS)
     .sort((a, b) => a.qualityRank - b.qualityRank)
-    .map((model) => toFalRow(model));
+    .map((model) => toFalRow(model, nativeAudioRoute(model.id)));
 
   const llmRows: PricingRow[] = SCRIPT_ANALYSIS_MODELS.filter(
     (model) => !('hidden' in model && model.hidden)

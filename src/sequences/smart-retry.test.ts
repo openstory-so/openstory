@@ -35,6 +35,7 @@ import {
 } from '@/mocks/frame-fixtures';
 import { toShotView, type ShotView } from '@/shots/shot-view';
 import { estimateImageCost, gateEstimate } from '@/billing/cost-estimation';
+import { ZERO_MICROS } from '@/billing/money';
 
 const assertNoActiveStoryboardMock = vi.fn();
 const triggerStoryboardMock = vi.fn();
@@ -53,6 +54,7 @@ vi.doMock('@/platform/server/workflow/client', () => ({
 }));
 
 const reserveRunCreditsMock = vi.fn();
+const realPreflight = await import('@/billing/server/preflight');
 vi.doMock('@/billing/server/preflight', () => ({
   reserveRunCredits: reserveRunCreditsMock,
   releaseReservationOnThrow: async (
@@ -348,6 +350,11 @@ function makeContext(
       )
   );
   const stub = {
+    apiKeys: { hasUsableKey: vi.fn(async () => true) },
+    billing: {
+      hasEnoughCredits: vi.fn(async () => false),
+      createReservation: vi.fn(async () => ({ ok: false })),
+    },
     shots: { listBySequence, ensureAnchorFrames },
     frames: { listAnchorsBySequence },
     // Continuity/location context resolves through `sceneId` → `scenes` now;
@@ -390,6 +397,8 @@ function makeContext(
     scopedDb,
     updateStatus,
     listBySequence,
+    updateMusicFields,
+    createReservation: stub.billing.createReservation,
   };
 }
 
@@ -405,6 +414,67 @@ function resetMocks() {
   notifySequenceReadyMock.mockReset();
   notifySequenceReadyMock.mockResolvedValue('sent');
 }
+
+describe('executeSmartRetry — music credits', () => {
+  test('blocks native music for a fal BYOK team with insufficient credits', async () => {
+    resetMocks();
+    reserveRunCreditsMock.mockImplementation(realPreflight.reserveRunCredits);
+    const { context, createReservation, updateMusicFields } = makeContext(
+      makeSequence({ musicStatus: 'failed', musicModel: 'elevenlabs_music' }),
+      [makeShot({ videoStatus: 'completed' })]
+    );
+
+    await expect(executeSmartRetry(context)).rejects.toThrow(
+      'Insufficient credits to retry failed items'
+    );
+    expect(createReservation).toHaveBeenCalledTimes(1);
+    expect(updateMusicFields).not.toHaveBeenCalled();
+    expect(triggerWorkflowMock).not.toHaveBeenCalled();
+  });
+
+  test('passes the native music reservation to the workflow', async () => {
+    resetMocks();
+    reserveRunCreditsMock.mockImplementation(realPreflight.reserveRunCredits);
+    const { context } = makeContext(
+      makeSequence({ musicStatus: 'failed', musicModel: 'elevenlabs_music' }),
+      [makeShot({ videoStatus: 'completed' })]
+    );
+    vi.spyOn(context.scopedDb.billing, 'createReservation').mockResolvedValue({
+      ok: true,
+      reservationId: 'res_music',
+      remaining: ZERO_MICROS,
+      replay: false,
+    });
+
+    await executeSmartRetry(context);
+
+    expect(triggerWorkflowMock).toHaveBeenCalledWith(
+      '/music',
+      expect.objectContaining({
+        model: 'elevenlabs_music',
+        reservationId: 'res_music',
+        ownsReservation: true,
+      })
+    );
+  });
+
+  test('keeps fal BYOK for ACE-Step and retries the model that was priced', async () => {
+    resetMocks();
+    reserveRunCreditsMock.mockImplementation(realPreflight.reserveRunCredits);
+    const { context, createReservation } = makeContext(
+      makeSequence({ musicStatus: 'failed', musicModel: 'ace_step' }),
+      [makeShot({ videoStatus: 'completed' })]
+    );
+
+    await executeSmartRetry(context);
+
+    expect(createReservation).not.toHaveBeenCalled();
+    expect(triggerWorkflowMock).toHaveBeenCalledWith(
+      '/music',
+      expect.objectContaining({ model: 'ace_step', reservationId: undefined })
+    );
+  });
+});
 
 describe('executeSmartRetry — generation mutex (#839)', () => {
   test('live storyboard run → rejects before reading shots or triggering anything', async () => {

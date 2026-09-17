@@ -932,6 +932,8 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
           { model, operation: 'add-audio-model' }
         ),
         {
+          // Native ElevenLabs always spends the platform key.
+          providers: model === 'elevenlabs_music' ? [] : ['fal'],
           errorMessage: 'Insufficient credits to add this audio model',
           sequenceId: sequence.id,
         }

@@ -408,20 +408,20 @@ Two vias, one catalog key. `IMAGE_TO_VIDEO_MODELS.seedance_v2` / `seedance_v2_5`
 
 ### Native ElevenLabs
 
-Character TTS and Voice Design go to `api.elevenlabs.io` via
-`@tanstack/ai-elevenlabs` (`elevenlabsSpeech`) and `@elevenlabs/elevenlabs-js`
-(Voice Design / create-voice — the adapter does not wrap those). **Platform
-key only** (`ELEVENLABS_API_KEY`): designed voices live in the account that
-created them, so there is no team BYOK and `'elevenlabs'` is not on
-`API_KEY_PROVIDERS` (same shape as `ARK_API_KEY`). Workflows spend the key
-through `scopedDb.credentials.resolveKey('elevenlabs')`.
+Character TTS, Voice Design, and Music go to `api.elevenlabs.io` via
+`@tanstack/ai-elevenlabs` (`elevenlabsSpeech` / `elevenlabsAudio`) and
+`@elevenlabs/elevenlabs-js` (Voice Design / create-voice — the adapter does
+not wrap those). **Platform key only** (`ELEVENLABS_API_KEY`): designed
+voices live in the account that created them, so there is no team BYOK and
+`'elevenlabs'` is not on `API_KEY_PROVIDERS` (same shape as `ARK_API_KEY`).
+Workflows spend the key through `scopedDb.credentials.resolveKey('elevenlabs')`.
 
-`ELEVENLABS_BASE_URL` is the e2e hook on both the TanStack TTS adapter and
+`ELEVENLABS_BASE_URL` is the e2e hook on both the TanStack adapters and
 the official SDK (default `https://api.elevenlabs.io`, no `/v1` suffix —
 paths include it). Playwright points it at the main aimock on `:4010`,
 which already dispatches `POST /v1/text-to-speech/{voice_id}`
-(`onElevenLabsTTS`). Fixtures live under
-`e2e/fixtures/recorded/elevenlabs/`. Replay injects
+(`onElevenLabsTTS`) and `POST /v1/music` (`handleElevenLabsAudio`). Fixtures
+live under `e2e/fixtures/recorded/elevenlabs/`. Replay injects
 `ELEVENLABS_API_KEY=test-mock-key`; record uses the real key from
 `.env.local` and aimock's `providers.elevenlabs` proxy. Voice Design
 (`/v1/text-to-voice/*`) is not in aimock yet. Under `E2E_TEST` the via
@@ -431,9 +431,13 @@ replay.
 Pricing is a static card (`src/billing/elevenlabs-pricing.ts`), merged into
 the effective map like BytePlus: TTS per 1000 characters (v3 / Multilingual v2
 $0.10, advertised **2026-09-11**), Voice Design per call ($0.30, a
-conservative 3 × 1000-char preview over-estimate). `recordFalUsage: false`,
-unaudited like xAI/Google/Ark spend. Do not alias onto
-`fal-ai/elevenlabs/music` — that is a different product.
+conservative 3 × 1000-char preview over-estimate), Music per minute rounded
+up ($0.15, advertised **2026-09-15**). `recordFalUsage: false`, unaudited
+like xAI/Google/Ark spend. Catalog id is `elevenlabs-music` (`music_v1` on
+the adapter) — do not send `fal-ai/elevenlabs/music`; that proxy is retired
+(#1640). Native music returns inline bytes, so `generateMusic` parks the
+MP3 in R2 before the workflow step returns (Cloudflare Workflows' 1 MiB
+`step.do` cap).
 
 **Character voices (#1553).** `sequences.generateVoices` (Generate dialog
 "Voices" switch, off by default) is the sequence default; `characters.useVoice`
