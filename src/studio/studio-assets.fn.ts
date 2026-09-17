@@ -177,6 +177,7 @@ export const draftStudioPromptFn = createServerFn({ method: 'POST' })
     const result = await draftStudioPrompt({
       ...data,
       llmKey,
+      resolveLlmKey: (model) => scopedDb.apiKeys.resolveLlmKey(model),
       observability: { userId: context.user.id, tags: ['studio', 'draft'] },
     });
 

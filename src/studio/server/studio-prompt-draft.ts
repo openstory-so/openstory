@@ -11,23 +11,12 @@
 import type { Microdollars } from '@/billing/money';
 import type { ResolvedLlmKey } from '@/models/server/db/api-keys';
 import type { TextModel } from '@/models/models';
-import {
-  aiObservabilityMiddleware,
-  type AIObservabilityMeta,
-} from '@/platform/server/observability/ai-otel';
+import type { AIObservabilityMeta } from '@/platform/server/observability/ai-otel';
 import type { ChatMessage } from '@/platform/server/ai/prompts-index';
 import type { StudioActivity, StudioReferenceKind } from '@/studio/schema';
 import { toVisionImageSource } from '@/platform/server/storage/external-url';
-import { chat } from '@tanstack/ai';
-import { createAdapter } from '@/models/server/create-adapter';
-import {
-  createUsageCapture,
-  extractRunError,
-  llmCostFromUsage,
-  throwNotedRunError,
-} from '@/models/server/llm-client';
+import { callLLMStream, llmCostFromUsage } from '@/models/server/llm-client';
 import { DEFAULT_VISION_MODEL } from '@/models/models.config';
-import { withRegionFallback } from '@/models/region-policy';
 
 export const STUDIO_DRAFT_MODEL = DEFAULT_VISION_MODEL;
 
@@ -47,6 +36,12 @@ export type DraftStudioPromptInput = {
   /** What the user has typed so far, if anything — kept as intent. */
   currentPrompt?: string;
   llmKey?: ResolvedLlmKey;
+  /**
+   * Re-resolve the key when a region block swaps the model (#1259). `llmKey`
+   * was resolved for {@link STUDIO_DRAFT_MODEL}; the fallback may not be
+   * carried by the same via.
+   */
+  resolveLlmKey?: (model: TextModel) => Promise<ResolvedLlmKey>;
   observability?: AIObservabilityMeta;
 };
 
@@ -142,68 +137,52 @@ export async function draftStudioPrompt(
 ): Promise<DraftStudioPromptResult> {
   const { systemPrompts, messages } = await buildDraftMessages(input);
 
-  // Anthropic default, geo-blocked from a mainland-China colo (#1259). The
-  // draft is buffered here rather than streamed to the caller, so a blocked
-  // attempt re-runs on the region-available model; `model` (not the constant)
-  // drives the adapter AND the cost.
-  return withRegionFallback(STUDIO_DRAFT_MODEL, async (model) => {
-    const adapter = createAdapter(model, input.llmKey);
-    const usageCapture = createUsageCapture();
-    let text = '';
-    let runError = null;
-    for await (const event of chat({
-      adapter,
-      systemPrompts,
-      messages: messages.map((m) => ({
+  // Centralized call (see talent-vision): the #1259 region fallback, the
+  // OpenRouter provider pin, the priority service tier, and a `low` reasoning
+  // effort on the GLM-5.3 Flash fallback, which cannot disable thinking and
+  // defaults to `max` (#1494) — a composer draft must not stall for minutes.
+  let text = '';
+  let usage;
+  let model = STUDIO_DRAFT_MODEL;
+  let via = input.llmKey?.via;
+  for await (const chunk of callLLMStream({
+    model: STUDIO_DRAFT_MODEL,
+    messages: [
+      ...systemPrompts.map((content) => ({
+        role: 'system' as const,
+        content,
+      })),
+      ...messages.map((m) => ({
         role: m.role === 'system' ? ('user' as const) : m.role,
         content: m.content,
       })),
-      stream: true,
-      modelOptions: {
-        temperature: 0.7,
-        streamOptions: { includeUsage: true },
-      },
-      middleware: [
-        ...aiObservabilityMiddleware({
-          observationName: 'studio-prompt-draft',
-          tags: ['vision', 'studio'],
-          ...input.observability,
-        }),
-        ...usageCapture.middleware,
-      ],
-      debug: false,
-    })) {
-      usageCapture.noteFromStreamEvent(event);
-      const noted = extractRunError(event);
-      if (noted) {
-        runError ??= noted;
-        continue;
-      }
-      if (
-        event.type === 'TEXT_MESSAGE_CONTENT' &&
-        typeof event.delta === 'string'
-      ) {
-        text += event.delta;
-      }
+    ],
+    temperature: 0.7,
+    apiKey: input.llmKey,
+    resolveApiKey: input.resolveLlmKey,
+    observationName: 'studio-prompt-draft',
+    tags: ['vision', 'studio'],
+    ...input.observability,
+  })) {
+    text = chunk.accumulated;
+    if (chunk.done) {
+      usage = chunk.usage;
+      model = chunk.model;
+      via = chunk.via;
     }
-    throwNotedRunError(runError);
+  }
 
-    // Strip any @ the model added anyway; pills store the bare token.
-    const prompt = text
-      .trim()
-      .replace(/^["'`]+|["'`]+$/g, '')
-      .replace(/@(Image|Video|Audio)(\d+)/g, '$1$2');
-    if (!prompt) throw new Error('The draft came back empty — try again.');
+  // Strip any @ the model added anyway; pills store the bare token.
+  const prompt = text
+    .trim()
+    .replace(/^["'`]+|["'`]+$/g, '')
+    .replace(/@(Image|Video|Audio)(\d+)/g, '$1$2');
+  if (!prompt) throw new Error('The draft came back empty — try again.');
 
-    return {
-      prompt,
-      model,
-      costMicros: llmCostFromUsage(
-        usageCapture.get(),
-        model,
-        input.llmKey?.via
-      ),
-      usedOwnKey: input.llmKey?.source === 'team',
-    };
-  });
+  return {
+    prompt,
+    model,
+    costMicros: llmCostFromUsage(usage, model, via),
+    usedOwnKey: input.llmKey?.source === 'team',
+  };
 }

@@ -43,6 +43,7 @@ export class ElementVisionWorkflow extends OpenStoryWorkflowEntrypoint<ElementVi
         imageUrl,
         filename,
         llmKey: llmKeyInfo,
+        resolveLlmKey: (model) => scopedDb.credentials.resolveLlmKey(model),
         observability: {
           userId: event.payload.userId,
           sessionId: event.payload.sequenceId,

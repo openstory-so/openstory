@@ -124,6 +124,7 @@ export const analyzeDraftElementFn = createServerFn({ method: 'POST' })
       imageUrl: data.publicUrl,
       filename: data.filename,
       llmKey: llmKeyInfo,
+      resolveLlmKey: (model) => scopedDb.apiKeys.resolveLlmKey(model),
       observability: {
         userId: context.user.id,
         tags: ['vision', 'draft'],

@@ -255,6 +255,7 @@ export class ReplaceElementWorkflow extends OpenStoryWorkflowEntrypoint<ReplaceE
         imageUrl: newImageUrl,
         filename: input.newFilename,
         llmKey: llmKeyInfo,
+        resolveLlmKey: (model) => scopedDb.credentials.resolveLlmKey(model),
         observability: {
           userId: input.userId,
           sessionId: input.sequenceId,

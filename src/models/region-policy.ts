@@ -15,14 +15,18 @@
  *    call that still hits a region block is retried once on a
  *    region-available model instead of exhausting workflow step retries.
  *
- * `callLLMStream` wires layer 2 in for everything that goes through it. The
- * handful of call sites that build their own adapter and drive `chat()`
- * directly do NOT get it for free and must wrap themselves in
- * `withRegionFallback` — the vision helpers (`talent-vision`,
- * `element-vision`, `studio-prompt-draft`) all default to an Anthropic model,
- * so a missing wrap is a hard failure in China, not a slow path. That is how
- * `classifyUploadFn` (#1581, via talent vision) came to die on
- * "This model is not available in your region".
+ * `callLLMStream` wires layer 2 in for everything that goes through it, and
+ * that is the path to be on: it also carries the OpenRouter provider pin
+ * (#1285), the priority service tier, and GLM-5.3's forced-`low` reasoning
+ * effort (#1494) — none of which a hand-rolled `chat()` loop gets, and all of
+ * which the fallback model needs. A call site that builds its own adapter
+ * must wrap ITSELF in `withRegionFallback` and resolve its key INSIDE the
+ * wrap (a via that carries the blocked model need not carry the fallback).
+ * `frame-prompt-workflow` is the one such site left, and only because it
+ * drives a realtime channel and an abort timeout `callLLMStream` does not
+ * expose; the vision helpers used to be three more, which is how
+ * `classifyUploadFn` (#1581, via talent vision) came to die on "This model is
+ * not available in your region".
  */
 
 import type { TextModel } from './models';

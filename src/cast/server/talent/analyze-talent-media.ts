@@ -42,6 +42,9 @@ export async function analyzeTalentMediaForTeam(
     imageUrls: input.imageUrls,
     filenames: input.filenames,
     llmKey: llmKeyInfo,
+    // The region fallback swaps the model; re-resolve so the retry's via is
+    // one that carries it (#1259).
+    resolveLlmKey: (model) => input.scopedDb.apiKeys.resolveLlmKey(model),
     observability: {
       userId: input.userId,
       tags: ['vision', 'talent'],
