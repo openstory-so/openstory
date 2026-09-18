@@ -51,7 +51,9 @@ function writeBucket(): AcquireInput {
   const qpm = envQpm('BYTEPLUS_ASSET_WRITE_QPM', DEFAULT_ASSET_WRITE_QPM);
   return {
     bucket: 'assets-write',
-    capacity: qpm,
+    // One at a time, not a burst of `qpm`: three creates in the same second
+    // is what Ark 429s, even though three in a minute is allowed (#1674).
+    capacity: 1,
     refillPerMinute: qpm,
     maxWaitMs: CREATE_MAX_WAIT_MS,
   };
@@ -99,18 +101,25 @@ function governorStub(): DurableObjectStub<BytePlusGovernor> | undefined {
 }
 
 /**
- * Pace a READ before it fires. CreateAsset is not paced here: its token was
- * reserved by {@link reserveBytePlusCreateSlot} and slept off durably, so a
- * second reservation would spend a turn nobody uses. No-op where the DO is
- * not bound (unit tests, scripts) — the backoff retry still covers those.
+ * Pace a call before it fires. A CreateAsset's first attempt is not paced
+ * here: its token was reserved by {@link reserveBytePlusCreateSlot} and slept
+ * off durably, so a second reservation would spend a turn nobody uses. Its
+ * quota RETRIES are another create, so they take a turn like anyone else —
+ * waited in-step, bounded like a read — rather than cutting in ahead of the
+ * runs asleep on theirs (#1674). No-op where the DO is not bound (unit
+ * tests, scripts) — the backoff retry still covers those.
  */
 export async function acquireBytePlusOpenApiToken(
-  action: string
+  action: string,
+  retry: boolean
 ): Promise<void> {
-  if (WRITE_ACTIONS.has(action)) return;
+  const write = WRITE_ACTIONS.has(action);
+  if (write && !retry) return;
   const stub = governorStub();
   if (!stub) return;
-  const bucket = readBucket();
+  const bucket = write
+    ? { ...writeBucket(), maxWaitMs: READ_MAX_WAIT_MS }
+    : readBucket();
   const delayMs = await stub.acquire(bucket);
   if (delayMs < 0) throw refused(action, bucket);
   if (delayMs === 0) return;

@@ -44,8 +44,9 @@ export async function bytePlusOpenApi<T>(
   // calls under the account quota, and the backoff retry is the backstop for
   // a throttle it did not model. A throttled ingest used to fall through to
   // the public URL, which Ark then rejects as a possible real person.
+  let attempt = 0;
   return withBytePlusQuotaRetry(`BytePlus ${action}`, async () => {
-    await acquireBytePlusOpenApiToken(action);
+    await acquireBytePlusOpenApiToken(action, attempt++ > 0);
     return bytePlusOpenApiOnce<T>(config, action, body, options);
   });
 }
