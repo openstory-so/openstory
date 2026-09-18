@@ -222,7 +222,12 @@ export function clientRetainedImports(source: string): string[] {
   const ast = parseAst({ code: source });
 
   if (COMPILED_RE.test(source)) {
-    const referenced = findReferencedIdentifiers(ast);
+    // parseAst and babel-dead-code-elimination resolve different @babel/parser
+    // copies; TS 7 hits excessive stack depth comparing the File types.
+    const referenced = findReferencedIdentifiers(
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- duplicate @babel/parser File types
+      ast as Parameters<typeof findReferencedIdentifiers>[0]
+    );
     for (const node of walkAst(ast.program)) {
       if (node.type !== 'CallExpression') continue;
       if (

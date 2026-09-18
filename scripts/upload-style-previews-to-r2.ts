@@ -326,7 +326,7 @@ async function main() {
     ],
   });
 
-  if (p.isCancel(defaultScene)) {
+  if (p.isCancel(defaultScene) || typeof defaultScene !== 'string') {
     p.cancel('Upload cancelled.');
     process.exit(0);
   }
@@ -352,7 +352,7 @@ async function main() {
         })),
       });
 
-      if (p.isCancel(scene)) {
+      if (p.isCancel(scene) || typeof scene !== 'string') {
         p.cancel('Upload cancelled.');
         process.exit(0);
       }
