@@ -17,9 +17,15 @@
  */
 
 import {
+  IMAGE_TO_VIDEO_MODELS,
   videoModelSupportsInClipMultiShot,
   type ImageToVideoModel,
 } from '@/models/models';
+import { referenceKeysMoved } from '@/motion/reference-provenance';
+import {
+  raiseShotDurationToCoverAudio,
+  resolveShotDuration,
+} from '@/motion/resolve-shot-duration';
 import { durationGridForModel } from '@/motion/model-capabilities';
 import {
   DEFAULT_SEGMENT_CAP_MS,
@@ -210,7 +216,32 @@ export type SegmentVersionInput = SegmentVideoVersion & {
   > & {
     /** Absent on pre-pointer rows; treated as voiceless. */
     audioSourceKey?: string | null;
+    /** Absent on rows from before #1657: unknown, never stale. */
+    dialogueTakeId?: string | null;
+    /** Absent on rows from before #1657: unknown, never stale. */
+    referenceKeys?: readonly string[];
+    /** Absent on rows from before #767's value snapshot. */
+    durationMs?: number;
   })[];
+};
+
+/**
+ * What a shot would be rendered from NOW, beyond its prompt and frame
+ * pointers (#1657). Every field is optional so a caller that cannot
+ * cheaply load one compares without it; a map that lacks a shot reads as
+ * "nothing bound" for that input.
+ */
+export type LiveShotInputs = {
+  /** Voice id + line + tone + model key per shot; `null` = voiceless. */
+  audioSourceKeyByShot?: ReadonlyMap<string, string | null>;
+  /** The scene's selected dialogue take, per shot that has voiced lines. */
+  dialogueTakeByShot?: ReadonlyMap<string, string | null>;
+  /** `kind:entityId` → the provenance key a render would be sent now. */
+  referenceIdentity?: ReadonlyMap<string, string>;
+  /** Raw `shots.durationMs` (unset/0 = no user duration, not compared). */
+  durationMsByShot?: ReadonlyMap<string, number | null>;
+  /** Seconds of dialogue audio bound to the shot, for the audio raise. */
+  audioSecondsByShot?: ReadonlyMap<string, number>;
 };
 export type SegmentShotInput = {
   id: string;
@@ -258,7 +289,7 @@ export function isSelectedVersionStale(
   selected: SegmentVersionInput | undefined,
   currentMotionByShot: ReadonlyMap<string, string | null>,
   currentFrameByShot: ReadonlyMap<string, string | null>,
-  currentAudioSourceKeyByShot: ReadonlyMap<string, string | null> = new Map()
+  live: LiveShotInputs = {}
 ): boolean {
   if (!selected) return false;
   return selected.manifest.some((entry) => {
@@ -270,13 +301,68 @@ export function isSelectedVersionStale(
     }
     const currentMotion = currentMotionByShot.get(entry.shotId) ?? null;
     const currentFrame = currentFrameByShot.get(entry.shotId) ?? null;
-    const currentAudio = currentAudioSourceKeyByShot.get(entry.shotId) ?? null;
+    const currentAudio = live.audioSourceKeyByShot?.get(entry.shotId) ?? null;
     return (
       entry.motionPromptVersionId !== currentMotion ||
       entry.frameVersionId !== currentFrame ||
-      (entry.audioSourceKey ?? null) !== currentAudio
+      (entry.audioSourceKey ?? null) !== currentAudio ||
+      dialogueTakeMoved(entry, live) ||
+      referenceKeysMoved(
+        entry.referenceKeys,
+        live.referenceIdentity ?? EMPTY
+      ) ||
+      durationMoved(entry, selected.model, live)
     );
   });
+}
+
+const EMPTY: ReadonlyMap<string, string> = new Map();
+
+/**
+ * The scene's selected take is a pointer, like the frame version: picking a
+ * different take re-stales the clip even though the key (lines + voices)
+ * did not move. Compared only for a shot that has voiced lines now — a
+ * voiceless shot in a scene with a take is not bound to it. An absent stamp
+ * is a pre-#1657 row: unknown, never stale.
+ */
+function dialogueTakeMoved(
+  entry: { shotId: string; dialogueTakeId?: string | null },
+  live: LiveShotInputs
+): boolean {
+  if (entry.dialogueTakeId === undefined) return false;
+  if (!live.dialogueTakeByShot) return false;
+  const current = live.dialogueTakeByShot.get(entry.shotId) ?? null;
+  return entry.dialogueTakeId !== current;
+}
+
+/**
+ * Duration, snapped on BOTH sides (#767): the manifest holds the length the
+ * model was asked for, so the live `shots.durationMs` is snapped onto the
+ * same model's grid before comparing. A shot with dialogue audio may have
+ * been raised to cover it (`raiseShotDurationToCoverAudio`), and a packed
+ * member may not, so either candidate counts as unchanged. No user duration
+ * (unset / 0) means nothing to compare.
+ */
+function durationMoved(
+  entry: { shotId: string; durationMs?: number },
+  model: string,
+  live: LiveShotInputs
+): boolean {
+  if (entry.durationMs === undefined || !live.durationMsByShot) return false;
+  const rawMs = live.durationMsByShot.get(entry.shotId);
+  if (!rawMs || rawMs <= 0 || !isImageToVideoModel(model)) return false;
+  const snapped = resolveShotDuration({ durationMs: rawMs, model });
+  const audioSeconds = live.audioSecondsByShot?.get(entry.shotId) ?? 0;
+  const raised = raiseShotDurationToCoverAudio(snapped, audioSeconds, model);
+  const candidates = new Set([
+    Math.round(snapped * 1000),
+    Math.round(raised * 1000),
+  ]);
+  return !candidates.has(entry.durationMs);
+}
+
+function isImageToVideoModel(model: string): model is ImageToVideoModel {
+  return model in IMAGE_TO_VIDEO_MODELS;
 }
 
 /**
@@ -291,11 +377,10 @@ export function assembleSequenceSegments(input: {
   shots: readonly SegmentShotInput[];
   frames: readonly SegmentFrameInput[];
   /**
-   * Live dialogue-audio identity per shot (voice id + line + tone + TTS
-   * model). Omitted keys are voiceless (`null`). Same pointer comparison as
-   * motion-prompt / frame version ids.
+   * What each shot would render from now beyond its two pointers: dialogue
+   * key and take, reference provenance, duration. See {@link LiveShotInputs}.
    */
-  currentAudioSourceKeyByShot?: ReadonlyMap<string, string | null>;
+  live?: LiveShotInputs;
 }): SequenceSegment[] {
   // Membership lives on the shot; callers pass shots already in hierarchical
   // order (scene, then shot number).
@@ -355,7 +440,7 @@ export function assembleSequenceSegments(input: {
         selected,
         currentMotionByShot,
         currentFrameByShot,
-        input.currentAudioSourceKeyByShot
+        input.live
       ),
     };
   });

@@ -215,6 +215,15 @@ const updateSplitContent = vi.fn<
   (seeds: Array<{ content: { dialogue: unknown[] } }>) => Promise<void>
 >(() => Promise.resolve());
 
+/** The scene dialogue node seeded in `persist-scenes` (#1657). */
+const sceneDialogueWrite = vi.fn<
+  (
+    sceneId: string,
+    lines: Array<{ character: string; line: string; shotId: string }>,
+    source: string
+  ) => Promise<{ id: string }>
+>(() => Promise.resolve({ id: 'dialogue-version-1' }));
+
 function makeScopedDb(
   resolveLlmKey: (model?: string) => Promise<{
     source: string;
@@ -259,6 +268,9 @@ function makeScopedDb(
     sceneScriptVersions: {
       seedSplitVersions: () => Promise.resolve(),
       updateSplitContent: updateSplitContent,
+    },
+    sceneDialogue: {
+      write: sceneDialogueWrite,
     },
     shots: {
       // No stream-time `shots.upsert` (#1593): the first shot rows are
@@ -718,6 +730,7 @@ describe('SceneSplitWorkflow shot-list pass (#1486)', () => {
   });
 
   test("persists each shot's lines on its scene, stamped per shot (#1585)", async () => {
+    sceneDialogueWrite.mockClear();
     shotListParsed = {
       scenes: [
         {
@@ -752,6 +765,22 @@ describe('SceneSplitWorkflow shot-list pass (#1486)', () => {
     // shot-list lines must overwrite it (seedSplitVersions skips existing rows).
     const seeds = updateSplitContent.mock.calls.at(-1)?.[0] ?? [];
     expect(seeds.map((s) => s.content.dialogue.length)).toEqual([2, 0, 0]);
+
+    // …and the scene dialogue node is seeded with the same lines naming their
+    // shot by ID (#1657) — this is the one moment shotNumber can be resolved
+    // to a shot row, which is what makes a later reorder need no restamp.
+    const seeded = sceneDialogueWrite.mock.calls.find(
+      (call) => call[0] === 'dbscene_0'
+    );
+    expect(seeded?.[2]).toBe('prompt');
+    const seededLines = seeded?.[1] ?? [];
+    expect(seededLines.map((l) => l.line)).toEqual(['Steady.', 'Lane four.']);
+    expect(seededLines.every((l) => Boolean(l.shotId))).toBe(true);
+    expect(new Set(seededLines.map((l) => l.shotId)).size).toBe(2);
+    // A scene with no dialogue gets no version row at all.
+    expect(sceneDialogueWrite.mock.calls.map((call) => call[0])).not.toContain(
+      'dbscene_1'
+    );
   });
 
   test('persists two shots on a scene with an internal cut', async () => {

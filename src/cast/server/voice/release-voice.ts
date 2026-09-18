@@ -43,6 +43,9 @@ export async function releaseVoiceIfUnreferenced(
       return;
     }
     await deleteElevenLabsVoice(apiKey, voiceId);
+    // The id is gone at the provider, so every history row still naming it is
+    // now unselectable (#1657) — stamp them before anyone offers one back.
+    await scopedDb.characters.markVoiceReleased(voiceId);
   } catch (error) {
     // A revoked / wrong key is the unconfigured case with extra steps: no
     // retry with this key can free the slot, so it must not wedge the
@@ -67,5 +70,9 @@ export async function releaseCharacterVoice(
 ): Promise<void> {
   if (!character.voiceId) return;
   await releaseVoiceIfUnreferenced(scopedDb, character.voiceId, { heldBy: 1 });
-  await scopedDb.characters.update(character.id, { voiceId: null });
+  await scopedDb.characters.updateVoice(
+    character.id,
+    { voiceId: null },
+    'released'
+  );
 }

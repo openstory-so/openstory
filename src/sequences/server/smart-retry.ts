@@ -45,6 +45,10 @@ import {
   ttsCharacterCount,
   voicedDialogueLines,
 } from '@/motion/dialogue-tts';
+import {
+  loadSceneDialogueLines,
+  shotDialogueFromScene,
+} from '@/shots/server/shot-dialogue';
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import {
   releaseReservationOnThrow,
@@ -389,6 +393,10 @@ export async function executeSmartRetry(context: SmartRetryContext) {
             context.scopedDb.characters.list(sequence.id),
           ])
         : [[], [], [], await context.scopedDb.characters.list(sequence.id)];
+    const retrySceneDialogueLines = await loadSceneDialogueLines(
+      context.scopedDb,
+      sequence.id
+    );
     let triggeredMotion = 0;
     for (const shot of failedMotionShots) {
       const imageUrl = shot.image?.url;
@@ -398,8 +406,14 @@ export async function executeSmartRetry(context: SmartRetryContext) {
       const shotVideoModel = videoModelFor(shot);
       const scene = sceneOf(shot);
       const selectedMotion = selectedMotionByShot.get(shot.id) ?? null;
+      // Scene dialogue node first (#1657); the motion row's mirror answers
+      // only for a scene with no version row.
       const voicedLines = modelTakesDialogueAudio(shotVideoModel)
-        ? voicedDialogueLines(selectedMotion?.dialogue, voiceCharacters)
+        ? voicedDialogueLines(
+            shotDialogueFromScene(retrySceneDialogueLines, shot) ??
+              selectedMotion?.dialogue,
+            voiceCharacters
+          )
         : [];
       const audioClips = matchingDialogueClips(shot.audioClips, voicedLines);
       const ttsChars =

@@ -5,7 +5,10 @@
  * Every field list here is transcribed from the hash bodies in
  * `src/shots/input-hash.ts`, the still snapshot in
  * `cast/server/workflows/sheet-snapshots.ts`, the clip pointer compare in
- * `shots/scene-segments.ts` and the Update-all plan in
+ * `shots/scene-segments.ts`, the reference provenance keys in
+ * `motion/reference-provenance.ts`, the take key in
+ * `shots/scene-dialogue.ts`, the track compare in
+ * `audio/music-track-staleness.ts` and the Update-all plan in
  * `shots/server/update-stale-plan.ts`. When one of those changes, this graph
  * is the doc that has to move with it.
  */
@@ -143,7 +146,12 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     summary:
       'A library person. Cast onto a character automatically at the Script stage or by hand; casting copies their look, performance and voice onto the character once. These fields only reach a sequence through a regenerated talent sheet: edit the description and the character keeps the old face until the sheet is redone.',
     counts: ['Description', 'Reference photos'],
-    ignored: ['Name'],
+    ignored: [
+      'Name',
+      {
+        gap: 'A redesigned talent voice never reaches a cast character: the id is copied once at cast, and talent voices have no history to select from',
+      },
+    ],
   },
   {
     id: 'location',
@@ -181,12 +189,9 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Token and description (prompts)',
       'Image (still)',
       'Audio or video clip: sent as a reference when the video model takes one',
+      'Its media URL, stamped on every clip it was sent to (referenceKeys)',
     ],
-    ignored: [
-      {
-        gap: 'A changed audio or video clip never flags the clip that used it',
-      },
-    ],
+    ignored: [],
   },
   // --- You set -------------------------------------------------------------
   {
@@ -273,8 +278,8 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     kind: 'input',
     band: 'settings',
     summary: 'The model that renders the score.',
-    counts: ['Nothing is compared today'],
-    ignored: [{ gap: 'In the track hash, which nothing reads' }],
+    counts: ['Model id (music track hash)'],
+    ignored: ['An uploaded score, which has no hash to compare'],
   },
   {
     id: 'duration',
@@ -282,12 +287,13 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     kind: 'input',
     band: 'settings',
     summary: 'Seconds per shot, snapped to the video model.',
-    counts: ['Seconds (music prompt)'],
+    counts: [
+      'Seconds (music prompt, and the music track hash as their clamped sum)',
+      'Seconds, snapped onto the video model grid, against the clip that rendered',
+    ],
     ignored: [
       'Visual and motion prompts',
-      {
-        gap: 'The clip, once rendered: a user edit is a real change, but the compare ignores duration since a re-snap flagged every clip (#767)',
-      },
+      'A raise that only covers the bound dialogue audio: both the snapped and the raised length count as unchanged',
     ],
   },
   {
@@ -341,16 +347,21 @@ export const GRAPH_NODES: readonly GraphNode[] = [
   },
   {
     id: 'dialogue',
+    versionedIn: 'scene_dialogue_versions',
     label: 'Dialogue',
     kind: 'input',
     band: 'bibles',
     summary:
-      'The lines spoken in a shot, assigned by the shot-list call at the Script stage. Wording rides the script (and so the motion prompt); the bound voice identity rides the clip.',
+      "The scene's authored lines, each naming the shot it is spoken in. Seeded by the shot-list call at the Script stage, then edited here — the script's copy stays as the LLM's seed and is only read for a scene with no row yet.",
     counts: [
+      'Line + tone + which shot speaks it, in order (the take key)',
       'Voice id + line + tone + TTS model (clip audioSourceKey)',
       'Which voice is bound to which line (a bound audio element skips TTS)',
     ],
-    ignored: ['The wording: lines come from the script, edit them there'],
+    ignored: [
+      'Speaker renames that do not change which voice is matched',
+      'A shot reorder that speaks the same words in the same order',
+    ],
   },
   // --- References ----------------------------------------------------------
   {
@@ -384,28 +395,46 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Character name',
       'Personality and movement',
       'Voice-only characters never get one',
-      {
-        gap: 'A reference-only clip drawn from it stays fresh when a new version is selected',
-      },
     ],
     storedAs: 'characters.sheetInputHash',
   },
   {
     id: 'voice',
+    versionedIn: 'character_voice_versions',
     optional: 'when voices are on for a speaking character',
     label: 'Voice',
     kind: 'artifact',
     band: 'references',
     summary:
-      'A designed ElevenLabs voice for a speaking character. Bound on the clip like a character sheet on the still — the LLM never sees the id, so a voice change does not rewrite the motion prompt.',
+      'A designed ElevenLabs voice for a speaking character. Bound on the clip like a character sheet on the still — the LLM never sees the id, so a voice change does not rewrite the motion prompt. Every write appends a row and moves the pointer; a row whose ElevenLabs slot has been freed is stamped released and can never be selected again.',
     counts: [
-      'Voice id (folds into the clip manifest as audioSourceKey, with line, tone and TTS model)',
+      'Voice id (folds into the take key, and into the clip manifest as audioSourceKey with line, tone and TTS model)',
     ],
     ignored: [
       'Voice description edits ("Generate voice" releases the old one and designs again)',
       'Character bible edits',
     ],
-    storedAs: 'characters.voiceId → VideoManifestEntry.audioSourceKey',
+    storedAs:
+      'characters.selectedVoiceVersionId → scene_dialogue_takes.inputHash, VideoManifestEntry.audioSourceKey',
+  },
+  {
+    id: 'dialogueTake',
+    versionedIn: 'scene_dialogue_takes',
+    optional: 'when voices are on and someone speaks in the scene',
+    label: 'Dialogue take',
+    kind: 'artifact',
+    band: 'references',
+    summary:
+      "One acted Text to Dialogue recording of the whole scene, cut into a clip per shot. Recorded whole so every turn is a reply to a line the model heard; the shot's slice is what the render binds.",
+    counts: [
+      "The scene's voiced turns in speaking order: shot id, voice id, line, tone",
+      'TTS model and stability',
+    ],
+    ignored: [
+      'Scene line positions (the order already says them)',
+      'The wording a fit rewrite actually delivered (kept on the take as spokenText, so no digest moves)',
+    ],
+    storedAs: 'scene_dialogue_takes.inputHash',
   },
   {
     id: 'libraryLocationReference',
@@ -441,9 +470,6 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     ignored: [
       'Name',
       'Type, time of day, architectural style, key features, colour palette, lighting, ambiance',
-      {
-        gap: 'A reference-only clip drawn from it stays fresh when a new version is selected',
-      },
     ],
     storedAs: 'sequence_locations.referenceInputHash',
   },
@@ -497,12 +523,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Per scene: the visual prompt text',
       'Script model',
     ],
-    ignored: [
-      'Scene titles',
-      {
-        gap: 'The music track never reads stale from it; only Update all regenerates it',
-      },
-    ],
+    ignored: ['Scene titles'],
     storedAs: 'sequences.musicPromptInputHash',
   },
   // --- Renders -------------------------------------------------------------
@@ -535,18 +556,14 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Which motion prompt version it rendered',
       'Which still version it rendered (start-frame mode)',
       'Bound dialogue-audio identity (audioSourceKey: voice id + line + tone + TTS model)',
+      'Which dialogue take its audio was cut from (dialogueTakeId)',
+      'Every reference it was sent, as the sheet version or media URL that was current then (referenceKeys)',
+      'The length it was rendered at, snapped onto the model grid on both sides',
     ],
     ignored: [
-      {
-        gap: 'Duration: recorded in the manifest, ignored by the compare since a re-snap flagged every clip (#767)',
-      },
       'Video model (a different model is a different segment, not a stale one)',
-      {
-        gap: 'Reference sheets it was drawn from (reference-only mode): the manifest records no sheet versions',
-      },
-      {
-        gap: 'Audio or video elements it was sent as references: the manifest does not record them',
-      },
+      'Resolution (stamped on the version so a 4K re-roll stays legible, never compared)',
+      'Rows from before the stamp existed: an absent field is unknown, never stale',
     ],
     storedAs: 'video_variants.manifest',
   },
@@ -558,13 +575,15 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     kind: 'artifact',
     band: 'renders',
     summary: 'The generated score.',
-    counts: ['Nothing is compared today'],
-    ignored: [
-      {
-        gap: 'Music prompt, tags, duration and music model: the hash is written and never compared',
-      },
+    counts: [
+      'Selected music prompt text and tags',
+      'Requested length: the shot durations summed, clamped to the model ceiling',
+      'Music model',
     ],
-    storedAs: 'sequences.musicInputHash (written, never read)',
+    ignored: [
+      'An uploaded score, which stores no hash and so can never read stale',
+    ],
+    storedAs: 'sequence_music_variants.inputHash',
   },
   // --- Cut -----------------------------------------------------------------
   {
@@ -639,7 +658,7 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     from: 'script',
     to: 'dialogue',
     tracking: 'seeded',
-    note: 'the shot-list call assigns every spoken line to a shot',
+    note: 'the shot-list call assigns every spoken line to a shot and seeds the scene node with it',
   },
   // References
   { from: 'talent', to: 'talentSheet', tracking: 'hash' },
@@ -662,9 +681,22 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     from: 'talent',
     to: 'voice',
     tracking: 'untracked',
-    note: 'a library voice is copied onto the character at cast, not designed',
+    gap: true,
+    note: 'a library voice is copied onto the character at cast, not designed — and redesigning the talent voice later reaches nothing, since talent voices have no version history',
   },
   { from: 'imageModel', to: 'characterSheet', tracking: 'hash' },
+  {
+    from: 'dialogue',
+    to: 'dialogueTake',
+    tracking: 'hash',
+    note: 'the voiced turns, in speaking order, with the shot each belongs to',
+  },
+  {
+    from: 'voice',
+    to: 'dialogueTake',
+    tracking: 'hash',
+    note: 'the voice speaking each turn is part of the take key',
+  },
   { from: 'libraryLocation', to: 'libraryLocationReference', tracking: 'hash' },
   { from: 'style', to: 'libraryLocationReference', tracking: 'hash' },
   { from: 'imageModel', to: 'libraryLocationReference', tracking: 'hash' },
@@ -739,25 +771,21 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
   {
     from: 'characterSheet',
     to: 'clip',
-    tracking: 'untracked',
-    gap: true,
-    mode: 'reference-only',
-    note: 'the sheets are the video references, but the manifest does not record them',
+    tracking: 'pointer',
+    note: 'the sheets ride as video references in both modes; the manifest stamps the selected version id it was sent (referenceKeys)',
   },
   {
     from: 'locationSheet',
     to: 'clip',
-    tracking: 'untracked',
-    gap: true,
+    tracking: 'pointer',
     mode: 'reference-only',
-    note: 'the sheets are the video references, but the manifest does not record them',
+    note: 'only reference-only sends the location sheet to the video model; the manifest stamps the version it was sent',
   },
   {
     from: 'duration',
     to: 'clip',
-    tracking: 'untracked',
-    gap: true,
-    note: 'the manifest records it but the compare ignores it, because a pipeline re-snap flagged every clip (#767); snapping both sides would fix that',
+    tracking: 'hash',
+    note: 'the manifest length against the live duration, each snapped onto the model grid, so a pipeline re-snap no longer flags every clip (#767)',
   },
   {
     from: 'dialogue',
@@ -772,11 +800,16 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     note: 'the voice id folds into audioSourceKey; the LLM never sees it',
   },
   {
+    from: 'dialogueTake',
+    to: 'clip',
+    tracking: 'pointer',
+    note: 'the manifest records dialogueTakeId, so picking another take of the same lines re-stales the clip',
+  },
+  {
     from: 'element',
     to: 'clip',
-    tracking: 'untracked',
-    gap: true,
-    note: 'an audio or video element goes as a reference when the model takes one; the manifest does not record it',
+    tracking: 'hash',
+    note: 'its media URL is stamped in referenceKeys, so a re-uploaded image, audio or video clip flags the render',
   },
   {
     from: 'resolution',
@@ -799,9 +832,14 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
   {
     from: 'musicModel',
     to: 'musicTrack',
-    tracking: 'untracked',
-    gap: true,
-    note: 'in the track hash, which nothing reads',
+    tracking: 'hash',
+    note: 'the model is in the track hash',
+  },
+  {
+    from: 'duration',
+    to: 'musicTrack',
+    tracking: 'hash',
+    note: 'the shot durations summed and clamped are the length the track was billed for',
   },
   {
     from: 'voicesOn',
@@ -812,9 +850,8 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
   {
     from: 'musicPrompt',
     to: 'musicTrack',
-    tracking: 'untracked',
-    gap: true,
-    note: 'the track is never flagged; Update all at music depth regenerates it when the prompt regenerates',
+    tracking: 'hash',
+    note: 'the selected prompt text and tags are in the track hash; Update all can regenerate the track on its own',
   },
   // Cut
   {

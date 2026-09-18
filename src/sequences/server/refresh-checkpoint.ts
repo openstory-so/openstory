@@ -128,12 +128,38 @@ export async function refreshCheckpointFromCast(
       consistencyTag: l.consistencyTag,
     }));
   }
+  // Dialogue: the clips on the shots, and the authored lines behind them.
+  // Both are live by the time a stopped run continues — a user reviewing a
+  // References stop can edit a line, and the recording has to say what the
+  // scene now says. Keyed by ANALYSIS scene id, which is what the workflow
+  // works in; the shot mapping is the bridge to the live scene rows.
+  const shotRows = await scopedDb.shots.listBySequence(sequenceId);
   if (next.dialogueClipsByShotId) {
-    const shotRows = await scopedDb.shots.listBySequence(sequenceId);
     next.dialogueClipsByShotId = Object.fromEntries(
       shotRows
         .filter((shot) => shot.audioClips && shot.audioClips.length > 0)
         .map((shot) => [shot.id, shot.audioClips ?? []])
+    );
+  }
+  const dialogueVersions =
+    await scopedDb.sceneDialogue.getSelectedBySequence(sequenceId);
+  if (dialogueVersions.length > 0) {
+    const sceneIdByShotId = new Map(
+      shotRows.flatMap((shot) =>
+        shot.sceneId ? [[shot.id, shot.sceneId]] : []
+      )
+    );
+    const analysisSceneIdBySceneId = new Map(
+      (next.shotMapping ?? []).flatMap((row) => {
+        const sceneId = sceneIdByShotId.get(row.shotId);
+        return sceneId ? [[sceneId, row.analysisSceneId]] : [];
+      })
+    );
+    next.dialogueLinesBySceneId = Object.fromEntries(
+      dialogueVersions.flatMap((version) => {
+        const analysisSceneId = analysisSceneIdBySceneId.get(version.sceneId);
+        return analysisSceneId ? [[analysisSceneId, version.lines]] : [];
+      })
     );
   }
 

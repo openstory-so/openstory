@@ -48,6 +48,14 @@ export type ReferenceImageDescription = {
    * unless this is false. Absent (in-flight payloads) means register.
    */
   isPerson?: boolean;
+  /**
+   * Which entity this reference is, and the identity of what was sent
+   * (`referenceProvenanceKey`, #1657). Stamped on the clip manifest as
+   * `referenceKeys` so a re-selected sheet or replaced element media
+   * re-stales the render. Absent on the primary still and on dialogue clips,
+   * which have their own manifest pointers.
+   */
+  provenanceKey?: string;
 };
 
 /** Ordering weight per role: primary first, then the supporting refs. */

@@ -82,6 +82,11 @@ export const characters = snakeCase.table(
     voiceDescription: text(),
     voicePreviews: text({ mode: 'json' }).$type<VoicePreview[]>(),
     useVoice: integer({ mode: 'boolean' }),
+    // The selected `character_voice_versions` row (#1657). The voice columns
+    // above are that row's values, mirrored for readers; `selectVoiceVersion`
+    // moves the pointer and the mirror together. Null on rows from before
+    // voice history, and until the first voice write.
+    selectedVoiceVersionId: text(),
     consistencyTag: text(), // e.g. "char_001: Jack-denim-jacket"
     // First appearance in script
     firstMentionSceneId: text(),

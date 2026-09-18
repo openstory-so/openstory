@@ -332,20 +332,6 @@ export function audioSourceKeyFromVoicedLines(
   return key === '' ? null : key;
 }
 
-/** Live bound-audio identity from a shot's dialogue + current speakers. */
-export function audioSourceKeyForDialogueLines(
-  lines: readonly DialogueLine[] | undefined,
-  characters: readonly VoiceCharacter[]
-): string | null {
-  const spoken = lines ?? [];
-  return audioSourceKeyFromVoicedLines(
-    voicedDialogueLines(
-      { presence: spoken.length > 0, lines: [...spoken] },
-      characters
-    )
-  );
-}
-
 function clipSourceKey(clip: unknown): string | undefined {
   if (clip === null || typeof clip !== 'object' || !('sourceKey' in clip)) {
     return undefined;

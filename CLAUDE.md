@@ -483,13 +483,44 @@ a failed release is retryable), talent delete and regenerate — never a bare
 delete, and the upsert keeps a voice the row already holds. Billed at
 `VOICE_DESIGN_COST` per design call; pre-flight prices one call per
 estimated character (`generateVoices` on `estimateStoryboardCost`), the
-in-run gate the real speaking count.
+in-run gate the real speaking count. **Voices are versioned (#1657):** every
+write appends a `character_voice_versions` row with an explicit `source`
+('analysis' | 'generated' | 'library' | 'user-edit' | 'disabled' |
+'released' — never inferred from which columns moved) and moves
+`characters.selectedVoiceVersionId`, whose values the voice columns mirror;
+`releaseVoiceIfUnreferenced` stamps `releasedAt` on every row holding the id
+it deletes, and `selectVoiceVersion` refuses a released row, because that id
+no longer exists at ElevenLabs and would 404 at TTS.
 
-**Dialogue audio (#1554).** An audio reference, like a character sheet: the
-References stage (after Voice Design) runs ElevenLabs **Text to Dialogue**
-(`eleven_v3`) over every line whose speaker has a `voiceId` and no
-`voiceToken` (uploaded element or `__video_model__` opt-out) — one acted
-conversation clip per shot, parked on `shots.audioClips` (working set).
+**Dialogue audio (#1554, #1657).** An audio reference, like a character
+sheet: the References stage (after Voice Design) runs ElevenLabs **Text to
+Dialogue** (`eleven_v3`) over every line whose speaker has a `voiceId` and no
+`voiceToken` (uploaded element or `__video_model__` opt-out). **One take per
+SCENE, sliced per shot** (`recordDialogueTake`): v3 acts the turns it is
+given against each other, so a shot recorded alone is a cold read of a reply
+the model never heard. The scene's conversation is recorded whole, cut at the
+provider's own per-turn voice segments (`sliceWav`), and the slices are
+mirrored onto `shots.audioClips` (working set) each stamping `takeId`. The
+take itself lands on `scene_dialogue_takes` (url, duration, segments, the
+per-shot `clips`, `inputHash` = `dialogueTakeKey` = ordered voiced turns with
+shot ids + voice ids + tone + TTS model + stability), append-only with one
+selected row per scene; `selectSceneDialogueTakeFn` puts another take's
+slices back on the shots. A scene over `DIALOGUE_TAKE_CHUNK_CHARS` (2,000)
+splits at a **shot boundary**, never inside a shot, and the chunks are joined
+with their segment times offset. Bytes never cross a `step.do` (#1645): each
+chunk is parked in R2 and the assemble step reads them back by key.
+
+**The scene is the one source of lines.** `scene_dialogue_versions` is the
+authored node — append-only, one selected row per scene, every line naming
+its shot by `shotId` (an id, so a reorder needs no restamp). The shot-list
+pass seeds a `prompt` row; the prompt editor appends `user-edit`
+(`replaceShotLines`). The script's `originalScript.dialogue` stays as the
+LLM's seed, and a scene with no row yet is derived at read time
+(`deriveSceneDialogueLines`) — so there is no backfill migration. Pure
+helpers: `src/shots/scene-dialogue.ts`; `lineIndex` is the scene position,
+`index` stays shot-relative so every #1554/#1651 helper works unchanged on a
+slice.
+
 Motion attaches the stored clip (synthesising only if it is missing or the
 voice/lines moved) and stamps that take onto `shot_prompt_versions.audioClips`
 (provenance of the render). Tone maps to v3 audio tags on each turn. User-bound
@@ -498,14 +529,25 @@ The clip binds as `DIALOGUE` / `@Audio1`. Voice ids + lines + tone + TTS model
 fold into the **video manifest** as `audioSourceKey` **only when a voice is
 present** (same shape-stable trick as `usesStartFrame` / `referenceOnly`) —
 not the motion-prompt hash: the LLM never sees the id, so a voice change
-must not rewrite the prompt. Shot duration is
-raised to cover the audio; a clip under the provider floor (H3 Max 2s) is
-padded with silence.
+must not rewrite the prompt. The manifest also stamps `dialogueTakeId` (the
+take the clips were cut from — a selection pointer `audioSourceKey` cannot
+express) and `referenceKeys` (`character:<id>:<sheetVersionId|url>`,
+`location:…`, `element:…` for every reference the render was sent,
+`src/motion/reference-provenance.ts`), both dropped from the hash body when
+null or empty so no stored digest moves. `isSelectedVersionStale` compares
+them against live identity, with duration snapped on **both** sides —
+together closing #767 and the reference / element-media gaps on the docs
+dependency graph. Shot duration is raised to cover the audio; a clip under
+the provider floor (H3 Max 2s) is padded with silence.
 
 **Fitting the take to the clip (#1651).** v3 takes no target or maximum
-duration, so length is discovered, not requested. `fitDialogueClip`
-(`src/motion/server/fit-dialogue-clip.ts`) is the one ladder, shared by the
-References child and motion's standalone synthesis: `convertWithTimestamps`
+duration, so length is discovered, not requested. The ladder runs **per shot
+slice over a scene-wide recording** (#1657): a slice over its shot's limit
+sends THAT shot's turns to the rewrite and the whole scene is re-recorded,
+because the other shots' delivery is not independent of it.
+`fitDialogueClip` (`src/motion/server/fit-dialogue-clip.ts`) is the per-shot
+twin, still used by motion's standalone synthesis; both share
+`shortenDialogueLines`, so the rungs behave identically: `convertWithTimestamps`
 returns alignment + voice segments → `trimWavTrailingSilence` cuts the tail
 back to whichever is LATER of the last audible sample and the alignment end
 (so a short-reporting alignment cannot clip a word, and an alignment saying
@@ -522,10 +564,12 @@ the padding and rounding the alignment end does not measure);
 `targetSeconds` is what a rewrite aims at, the SHOT's own length when
 shorter, so the take fits the cut rather than stretching it. Speech between
 the two is kept — the clip stretches. A rewritten take records its delivered
-wording on the clip as `spokenLines` while `sourceKey` keeps keying the
-AUTHORED lines, so nothing re-synthesises and no digest moves; motion reads
-it back with `withSpokenText` before assembling, because the prompt drives
-lip movement. `maxCombined` is checked across files in
+wording on the clip as `spokenLines` (and on the take as
+`segments[].spokenText`) while `sourceKey` keeps keying the AUTHORED lines,
+so nothing re-synthesises and no digest moves; the manifest's
+`audioSourceKey` is built from the authored lines for the same reason
+(#1671). Motion reads the delivered wording back with `withSpokenText`
+before assembling, because the prompt drives lip movement. `maxCombined` is checked across files in
 `unusableShotReferenceLines` — H3 Max takes 2–15s each AND 15s summed, so
 two 10s voices each pass and together do not. The shot-list prompt is the
 prevention half (a words-per-second placement budget per shot). Preflight reserves the TTS cost on the references

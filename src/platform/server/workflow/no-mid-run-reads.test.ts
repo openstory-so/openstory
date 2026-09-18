@@ -254,9 +254,9 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
   ],
   'dialogue-audio-workflow.ts': [
     {
-      read: 'shots.getById',
+      read: 'shots.getByIds',
       bucket: 'EXISTENCE-GUARD',
-      why: 'Idempotency: a replayed or retried run must not re-bill a clip whose sourceKey still matches.',
+      why: "Idempotency plus the scene the take belongs to: a replayed run must not re-bill slices whose sourceKey and takeId still match, and every shot carries the live scene id the parent's analysis ids cannot name (#1657).",
     },
   ],
   'element-sheet-workflow.ts': [

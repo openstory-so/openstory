@@ -206,7 +206,20 @@ export async function mergeRecastSheetIntoSnapshots(params: {
       ): RegenerateShotSnapshot['characterRefs'] =>
         refs.map((ref) =>
           ref.referenceImageUrl === PENDING_SHEET_URL
-            ? { ...ref, referenceImageUrl: sheetImageUrl }
+            ? {
+                ...ref,
+                referenceImageUrl: sheetImageUrl,
+                // The provenance key (#1657) was built from the pending url
+                // too; it names the sheet the render was actually sent.
+                ...(ref.provenanceKey
+                  ? {
+                      provenanceKey: ref.provenanceKey.replace(
+                        PENDING_SHEET_URL,
+                        sheetImageUrl
+                      ),
+                    }
+                  : {}),
+              }
             : ref
         );
 

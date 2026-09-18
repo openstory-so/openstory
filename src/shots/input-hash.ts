@@ -259,6 +259,8 @@ const videoManifestHashEntrySchema = z.object({
   durationMs: z.number(),
   audioClipIds: z.array(z.string()),
   audioSourceKey: z.string().nullable(),
+  dialogueTakeId: z.string().nullable(),
+  referenceKeys: z.array(z.string()),
 });
 
 function canonicalizeManifestEntry(
@@ -274,6 +276,10 @@ function canonicalizeManifestEntry(
       ? { audioClipIds: entry.audioClipIds }
       : {}),
     ...(entry.audioSourceKey ? { audioSourceKey: entry.audioSourceKey } : {}),
+    ...(entry.dialogueTakeId ? { dialogueTakeId: entry.dialogueTakeId } : {}),
+    ...(entry.referenceKeys.length > 0
+      ? { referenceKeys: [...entry.referenceKeys].sort() }
+      : {}),
   };
 }
 

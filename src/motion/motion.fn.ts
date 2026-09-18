@@ -49,6 +49,10 @@ import {
   voicedDialogueLines,
 } from '@/motion/dialogue-tts';
 import {
+  loadSceneDialogueLines,
+  shotDialogueFromScene,
+} from '@/shots/server/shot-dialogue';
+import {
   estimateBatchMotionCost,
   resolveBatchShotVideoModel,
 } from '@/motion/server/batch-motion-cost';
@@ -313,6 +317,12 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
     // those with a reference-to-video route send them on the wire, the rest
     // substitute the tokens with descriptions. Matches the continuity AFTER
     // any rescan above.
+    const sceneDialogueLines = await loadSceneDialogueLines(
+      context.scopedDb,
+      sequence.id
+    );
+    const dialogueFor = (row: { id: string; sceneId: string | null }) =>
+      shotDialogueFromScene(sceneDialogueLines, row);
     const [characters, voiceCharacters, elements, locations] =
       await Promise.all([
         context.scopedDb.characters.listWithSheets(sequence.id),
@@ -341,11 +351,11 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
     // the render here, before credits are reserved, rather than as a failed
     // job after them.
     assertReferencesUsable(model, referenceImages, !referenceOnly);
-    const missingVoices = missingVoiceLines(
-      model,
-      selectedMotion?.dialogue,
-      elements
-    );
+    // The scene dialogue node is the authored source (#1657); the motion
+    // row's `dialogue` is a mirror and only answers for a scene that has no
+    // version row yet.
+    const shotDialogue = dialogueFor(shot) ?? selectedMotion?.dialogue;
+    const missingVoices = missingVoiceLines(model, shotDialogue, elements);
     if (missingVoices.length > 0) throw new Error(missingVoices.join(' '));
 
     // Snap the resolved duration onto the selected model's valid set before
@@ -367,7 +377,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
     });
 
     const voicedLines = modelTakesDialogueAudio(model)
-      ? voicedDialogueLines(selectedMotion?.dialogue, voiceCharacters)
+      ? voicedDialogueLines(shotDialogue, voiceCharacters)
       : [];
     const audioClips = matchingDialogueClips(shot.audioClips, voicedLines);
     const ttsChars =
@@ -377,7 +387,10 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
           return sum;
         }
         const version = sceneMotionByShot.get(member.shotId);
-        const lines = voicedDialogueLines(version?.dialogue, voiceCharacters);
+        const lines = voicedDialogueLines(
+          dialogueFor(member) ?? version?.dialogue,
+          voiceCharacters
+        );
         const clips = matchingDialogueClips(member.audioClips, lines);
         return sum + (clips.length > 0 ? 0 : ttsCharacterCount(lines));
       }, 0);
@@ -486,7 +499,10 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
                 model
               );
               const memberVoiced = modelTakesDialogueAudio(model)
-                ? voicedDialogueLines(version?.dialogue, voiceCharacters)
+                ? voicedDialogueLines(
+                    dialogueFor(member) ?? version?.dialogue,
+                    voiceCharacters
+                  )
                 : [];
               const isFirst = member.shotId === firstMember.shotId;
               let memberImageUrl: string | undefined;
@@ -698,6 +714,12 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
     // Resolve cast/element reference images once for the whole batch (#873) —
     // before credit pre-flight so Seedance prices the reference-to-video
     // endpoint when refs will actually be sent.
+    const batchSceneDialogueLines = await loadSceneDialogueLines(
+      context.scopedDb,
+      sequence.id
+    );
+    const batchDialogueFor = (shot: { id: string; sceneId: string | null }) =>
+      shotDialogueFromScene(batchSceneDialogueLines, shot);
     const [characters, voiceCharacters, elements, batchLocations] =
       await Promise.all([
         context.scopedDb.characters.listWithSheets(sequence.id),
@@ -785,7 +807,8 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
         ).concat(
           missingVoiceLines(
             resolveShotVideoModel(shot),
-            selectedMotionByShot.get(shot.id)?.dialogue,
+            batchDialogueFor(shot) ??
+              selectedMotionByShot.get(shot.id)?.dialogue,
             elements
           )
         )
@@ -797,7 +820,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
       const model = resolveShotVideoModel(shot);
       if (!modelTakesDialogueAudio(model)) return sum;
       const lines = voicedDialogueLines(
-        selectedMotionByShot.get(shot.id)?.dialogue,
+        batchDialogueFor(shot) ?? selectedMotionByShot.get(shot.id)?.dialogue,
         voiceCharacters
       );
       const clips = matchingDialogueClips(shot.audioClips, lines);
@@ -901,7 +924,10 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
             const scene = sceneOf(shot);
             const selectedMotion = selectedMotionByShot.get(shot.id);
             const voicedLines = modelTakesDialogueAudio(shotModel)
-              ? voicedDialogueLines(selectedMotion?.dialogue, voiceCharacters)
+              ? voicedDialogueLines(
+                  batchDialogueFor(shot) ?? selectedMotion?.dialogue,
+                  voiceCharacters
+                )
               : [];
             return {
               shotId: shot.id,

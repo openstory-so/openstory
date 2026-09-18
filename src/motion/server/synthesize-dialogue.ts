@@ -178,3 +178,157 @@ function decodeBase64(base64: string): Uint8Array<ArrayBuffer> {
   }
   return out;
 }
+
+/** One turn of a scene take, as the recorder needs it. */
+export type DialogueTakeLine = {
+  /** Index into the scene's dialogue lines — what the take's segments name. */
+  lineIndex: number;
+  shotId: string;
+  voiceId: string;
+  text: string;
+  tone: string;
+};
+
+export type DialogueTakeChunk = {
+  /** `<bucket>/<path>`, so the next step can read the bytes back (#1645). */
+  storageKey: string;
+  url: string;
+  durationSeconds: number;
+  characterCount: number;
+  /** Per-turn times, relative to this chunk's own start. */
+  segments: Array<{
+    lineIndex: number;
+    shotId: string;
+    startSeconds: number;
+    endSeconds: number;
+  }>;
+};
+
+/**
+ * Record one chunk of a scene's dialogue take (#1657) and park it in R2.
+ *
+ * The whole scene is acted in ONE call wherever it fits, so every turn is
+ * delivered in context; a long scene is split at a shot boundary by the
+ * caller and joined by `concatWavs`. Untrimmed and unpadded: the take is the
+ * recording as made, and trimming belongs to each shot's slice.
+ *
+ * Only the record below crosses the step boundary — the WAV rides R2, never
+ * the Workflows checkpoint (#1645, 1 MiB).
+ */
+export async function synthesizeDialogueTakeChunk(input: {
+  apiKey: string;
+  teamId: string;
+  sequenceId: string;
+  sceneId: string;
+  lines: readonly DialogueTakeLine[];
+}): Promise<DialogueTakeChunk> {
+  if (input.lines.length === 0) {
+    throw new Error('synthesizeDialogueTakeChunk requires at least one line');
+  }
+  const turns = input.lines.map((line) => ({
+    text: ttsUtterance(line.text, line.tone),
+    voiceId: line.voiceId,
+  }));
+  const characterCount = turns.reduce((sum, turn) => sum + turn.text.length, 0);
+
+  const client = await createElevenLabsSdk(input.apiKey);
+  const result = await client.textToDialogue.convertWithTimestamps({
+    modelId: DIALOGUE_TTS_MODEL,
+    outputFormat: 'wav_44100',
+    inputs: turns,
+    settings: { stability: DIALOGUE_TTS_STABILITY },
+  });
+  const wav = decodeBase64(result.audioBase64);
+  if (wav.byteLength === 0) {
+    throw new Error('Dialogue TTS returned an empty audio body');
+  }
+  const durationSeconds = wavDurationSeconds(wav);
+  if (durationSeconds == null) {
+    throw new Error('Dialogue TTS returned audio that is not a PCM WAV');
+  }
+
+  const path = `${input.teamId}/${input.sequenceId}/${input.sceneId}/${generateId()}.wav`;
+  const uploaded = await uploadFile(STORAGE_BUCKETS.AUDIO, path, wav, {
+    contentType: 'audio/wav',
+    upsert: true,
+  });
+
+  return {
+    storageKey: uploaded.fullPath,
+    url: uploaded.publicUrl,
+    durationSeconds,
+    characterCount,
+    segments: takeSegments(input.lines, result, durationSeconds),
+  };
+}
+
+/**
+ * Where each turn sits in the chunk. `dialogueInputIndex` is the position in
+ * the `inputs` we sent, so it maps straight back onto the lines; a turn
+ * reported as several segments spans the outermost of them.
+ *
+ * A response with no segments can still be sliced when every line belongs to
+ * ONE shot — there is nothing to cut, the whole chunk is that shot's. Across
+ * shots it cannot, and that fails here rather than handing some shot a clip
+ * of someone else's lines.
+ */
+function takeSegments(
+  lines: readonly DialogueTakeLine[],
+  result: { voiceSegments?: Array<VoiceSegmentTimes> | null },
+  durationSeconds: number
+): DialogueTakeChunk['segments'] {
+  const spans = new Map<number, { start: number; end: number }>();
+  for (const segment of result.voiceSegments ?? []) {
+    const at = segment.dialogueInputIndex;
+    const start = segment.startTimeSeconds;
+    const end = segment.endTimeSeconds;
+    if (
+      typeof at !== 'number' ||
+      typeof start !== 'number' ||
+      typeof end !== 'number' ||
+      !Number.isFinite(start) ||
+      !Number.isFinite(end)
+    ) {
+      continue;
+    }
+    const existing = spans.get(at);
+    spans.set(at, {
+      start: Math.min(existing?.start ?? start, start),
+      end: Math.max(existing?.end ?? end, end),
+    });
+  }
+  if (spans.size === 0) {
+    const shotIds = new Set(lines.map((line) => line.shotId));
+    if (shotIds.size > 1) {
+      throw new Error(
+        `Dialogue TTS returned no voice segments for a take spanning ${shotIds.size} shots — there is no way to cut each shot's clip`
+      );
+    }
+    return lines.map((line) => ({
+      lineIndex: line.lineIndex,
+      shotId: line.shotId,
+      startSeconds: 0,
+      endSeconds: durationSeconds,
+    }));
+  }
+  return lines.map((line, at) => {
+    const span = spans.get(at);
+    if (!span) {
+      throw new Error(
+        `Dialogue TTS reported no timing for turn ${at + 1}/${lines.length} of the take`
+      );
+    }
+    return {
+      lineIndex: line.lineIndex,
+      shotId: line.shotId,
+      startSeconds: Math.max(0, span.start),
+      endSeconds: Math.min(durationSeconds, Math.max(span.start, span.end)),
+    };
+  });
+}
+
+type VoiceSegmentTimes = {
+  dialogueInputIndex?: number;
+  startTimeSeconds?: number;
+  endTimeSeconds?: number;
+};

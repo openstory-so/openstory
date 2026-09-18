@@ -84,6 +84,8 @@ const generateMockShot = (overrides?: Partial<ShotView>): ShotView => {
         durationMs: shot.durationMs ?? 3000,
         audioClipIds: [],
         audioSourceKey: null,
+        dialogueTakeId: null,
+        referenceKeys: [],
       },
     ],
     url: faker.datatype.boolean() ? `${faker.internet.url()}/video.mp4` : null,

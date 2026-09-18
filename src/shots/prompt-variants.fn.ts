@@ -31,6 +31,11 @@ import {
   resolveSceneForShot,
 } from '@/shots/server/scene-script';
 import { getFrameImageUrl } from '@/shots/server/frame-image';
+import { dbSceneId } from '@/shots/scene-id';
+import {
+  deriveSceneDialogueLines,
+  replaceShotLines,
+} from '@/shots/scene-dialogue';
 import { simpleHash } from '@/platform/hash';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import { terminateSingleArtifactRun } from '@/platform/server/workflow/run-outcome';
@@ -43,6 +48,7 @@ import type {
   FramePromptWorkflowInput,
 } from '@/platform/server/workflow/types';
 import { buildMusicSceneSummaries } from '@/audio/server/workflows/music-scene-summaries';
+import { readMusicTrackStaleness } from '@/audio/server/music-track-staleness';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
@@ -307,7 +313,7 @@ export const saveShotPromptFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
   .validator(zodValidator(shotSaveInput))
   .handler(async ({ context, data }) => {
-    const { shot, frame, sequence, scopedDb, user, scene } = context;
+    const { shot, frame, sequence, scopedDb, user, scene, script } = context;
     const text = data.text.trim();
     if (!text) {
       throw new Error('Cannot save an empty prompt');
@@ -339,15 +345,36 @@ export const saveShotPromptFn = createServerFn({ method: 'POST' })
       return { unchanged: true } as const;
     }
 
-    // Dialogue is its own authored/versioned node (#1657). Persist it before
-    // the compatibility prompt mirror below; changing a line invalidates the
-    // selected generated take without touching any image or scene-script data.
+    // Dialogue is its own authored/versioned node, per SCENE (#1657). The
+    // edit replaces THIS shot's lines inside the scene's and appends a
+    // `user-edit` version; every other shot's lines, and their order, are
+    // untouched. Persisted before the compatibility prompt mirror below —
+    // changing a line invalidates the scene's selected take without touching
+    // any image or scene-script data.
     if (
       data.promptType === 'motion' &&
       data.dialogue !== undefined &&
       !dialogueUnchanged
     ) {
-      await scopedDb.shots.setDialogue(shot.id, data.dialogue, 'user-edit');
+      if (!shot.sceneId) {
+        throw new Error('Cannot edit dialogue on a shot with no scene');
+      }
+      const sceneId = dbSceneId(shot.sceneId);
+      const selected = await scopedDb.sceneDialogue.getSelected(sceneId);
+      const current =
+        selected?.lines ??
+        deriveSceneDialogueLines(
+          script?.dialogue,
+          (await scopedDb.shots.listBySequence(sequence.id))
+            .filter((row) => row.sceneId === sceneId)
+            .map((row) => ({ id: row.id, shotNumber: row.shotNumber }))
+        );
+      await scopedDb.sceneDialogue.write(
+        sceneId,
+        replaceShotLines(current, shot.id, data.dialogue.lines),
+        'user-edit',
+        { createdBy: user.id }
+      );
     }
 
     // Capture the current upstream hash so staleness keeps tracking: a manual

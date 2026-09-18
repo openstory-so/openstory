@@ -38,7 +38,7 @@ Every artifact-bearing row stores the SHA-256 hash of the canonical serializatio
 The rule is: anything that, if changed, should cause the user to see a "regenerate" affordance. For our artifacts this is:
 
 - **Frame image** (`frames.imageInputHash`, mirrored on the selected `frame_variants` version) — the composed visual prompt (`frame.imagePrompt` or `shot.metadata` fallback), image model, aspect ratio, and the **content hash of each referenced character sheet, location sheet, and element reference**. Crucially, the hash is over the _referenced sheets' hashes_, not their URLs.
-- **Shot video** (`video_variants.inputHash` over the render manifest) — motion-prompt / still version ids, `usesStartFrame`, duration, `audioClipIds`, and `audioSourceKey` (voice id + line + tone + TTS model; omitted when voiceless). Voice ids are **not** on the motion-prompt hash.
+- **Shot video** (`video_variants.inputHash` over the render manifest) — motion-prompt / still version ids, `usesStartFrame`, duration, `audioClipIds`, `audioSourceKey` (voice id + line + tone + TTS model; omitted when voiceless), `dialogueTakeId`, and `referenceKeys`. Voice ids are **not** on the motion-prompt hash. See "Clip provenance" below.
 - **Shot audio** (`shots.audioInputHash`) — music prompt, tags, duration, audio model.
 - **Visual prompt** (`frames.visualPromptInputHash`) — upstream scene metadata + style config + character/location bible + analysis model.
 - **Motion prompt** (`shots.motionPromptInputHash`) — same upstream context plus the starting-frame image hash.
@@ -63,6 +63,8 @@ One column per artifact per row. The column is nullable because pre-existing row
 | `location_library`        | `referenceInputHash`                                                                       |
 | `talent_sheets`           | `inputHash`                                                                                |
 | `shot_variants`           | `inputHash` (video/audio divergent alternates; image variants retired to `frame_variants`) |
+| `video_variants`          | `inputHash` over the render `manifest` (see "Clip provenance")                             |
+| `scene_dialogue_takes`    | `inputHash` (the take key) + `selectedAt` pointer per scene                                |
 | `*_sheet_variants`        | `inputHash` + `divergedAt` on divergent sheet rows                                         |
 | `sequence_music_variants` | `inputHash` + `divergedAt` on divergent music rows                                         |
 
@@ -97,6 +99,19 @@ const videoStale = await scopedDb.shots.isStale(
 ```
 
 The UI calls this (or a batch variant) when rendering. There is no cascading propagation, no dirty-bit table, no LISTEN/NOTIFY. The staleness calculation is a pure read of the current graph — if character sheets haven't changed, their hash is the same, and the comparison trivially passes.
+
+### Clip provenance: what the manifest has to record (#1657)
+
+A clip is compared by pointer, not by hash: `isSelectedVersionStale` (`src/shots/scene-segments.ts`) walks each `VideoManifestEntry` and asks whether what the render was sent still matches what a render would be sent now. That only works for inputs the manifest stamps and the compare reads, and the red edges on the docs dependency graph (`src/ui/docs/dependency-graph.ts`) were exactly the ones it did neither. Four changes close them:
+
+- **`referenceKeys`** — every reference the render was handed, as `kind:entityId:identity` where identity is the selected version id when the entity has one and the media URL otherwise (`src/motion/reference-provenance.ts`, built from `ReferenceImageDescription.provenanceKey`). Character sheets ride as video references in **both** modes, location sheets only in reference-only, and an element's audio or video clip rides wherever the model takes one — none of which the manifest saw before. The live side is `liveReferenceIdentity`, so a re-selected sheet version, a re-upload, or a deleted entity all read stale; a rename does not.
+- **`dialogueTakeId`** — the `scene_dialogue_takes` row the shot's bound audio was cut from. `audioSourceKey` already caught a line, tone or voice edit, but not the user picking a different take of the same lines, which is a selection pointer like the frame version.
+- **Duration, snapped on both sides.** The manifest holds the length the model was asked for, so the live `shots.durationMs` is snapped onto the same model's grid before comparing, and a length raised to cover bound dialogue audio counts as unchanged too (`durationMoved`). Comparing raw values is what made a pipeline re-snap flag every clip, which is why the compare ignored duration entirely until now (#767).
+- **Dialogue lines come from the scene, not the script.** `scene_dialogue_versions` is the authored node — append-only, one selected row per scene, every line naming its shot by id. The script's `originalScript.dialogue` stays as the LLM's seed and is only read for a scene with no row yet (`deriveSceneDialogueLines`), so no backfill migration exists. `src/shots/server/live-shot-state.ts` is the one loader of the live side, shared by the Scenes read and the Update-all planner, so both compare against identical inputs.
+
+Two rules keep this from moving stored digests. Every new field is **dropped from the hash body when null or empty** (`canonicalizeManifestEntry` in `src/shots/input-hash.ts`), the same shape-stable trick `usesStartFrame` and `audioSourceKey` use. And an **absent** stamp on a row written before #1657 is unknown, never stale — the same contract as a null hash column.
+
+`sequence_music_variants.inputHash` got the same treatment: it was written by `MusicWorkflow` and never compared, so an edited music prompt or changed shot durations left the track silently stale. `musicTrackStaleness` (`src/audio/music-track-staleness.ts`) recomputes it from the live prompt, tags, clamped request length and audio model; an uploaded score deliberately stores no hash and so reads untracked. Update-all's `regenTrack` is now independent of `regenPrompt`.
 
 ## Pillar 2: Workflow input snapshots
 
@@ -278,6 +293,10 @@ Much of the original "stage 1" plan is live. This section separates what exists 
 - **Music divergent alternates** — `sequence_music_variants` + `music-workflow.ts` emit path.
 - **Prompt version history** — `frame_prompt_versions` (visual) and `shot_prompt_versions` (motion), with `visualPromptInputHash` / `motionPromptInputHash` staleness mirrors.
 - **Realtime** — `realtimeSchema.generation['stale:detected']` discriminated union is live.
+- **Clip provenance (#1657)** — `VideoManifestEntry.dialogueTakeId` + `referenceKeys`, duration snapped on both sides, and `src/shots/server/live-shot-state.ts` as the one live-side loader. Closes the reference-sheet, element-media and duration gaps the docs dependency graph drew red.
+- **Authored dialogue + takes (#1657)** — `scene_dialogue_versions` (append-only lines per scene, each naming its shot) and `scene_dialogue_takes` (one recording per scene, sliced onto `shots.audioClips`), both with a selected pointer.
+- **Voice history (#1657)** — `character_voice_versions` + `characters.selectedVoiceVersionId`, with an explicit `source` per row and `releasedAt` on any row whose ElevenLabs id has been freed (a released row can never be selected).
+- **Music track staleness (#1657)** — `sequence_music_variants.inputHash` is compared, not just written; `musicTrack` is its own facet next to `musicPrompt`.
 
 ### Still deferred
 

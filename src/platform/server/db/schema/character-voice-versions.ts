@@ -11,14 +11,21 @@ import { generateId } from '@/platform/id';
 import { user } from './auth';
 import { characters, type VoicePreview } from './characters';
 
+/**
+ * Why this row exists. Explicit at every call site (#1657) — never inferred
+ * from which columns moved, which made a release and a library pick both read
+ * as 'generated'. 'released' is the row written when the voice id is dropped
+ * because its ElevenLabs slot was freed.
+ */
 const CHARACTER_VOICE_VERSION_SOURCES = [
   'analysis',
   'generated',
   'library',
   'user-edit',
   'disabled',
+  'released',
 ] as const;
-type CharacterVoiceVersionSource =
+export type CharacterVoiceVersionSource =
   (typeof CHARACTER_VOICE_VERSION_SOURCES)[number];
 
 export const characterVoiceVersions = snakeCase.table(
@@ -37,6 +44,12 @@ export const characterVoiceVersions = snakeCase.table(
     enabled: integer({ mode: 'boolean' }),
     source: text().$type<CharacterVoiceVersionSource>().notNull(),
     selectedAt: integer({ mode: 'timestamp' }),
+    /**
+     * Set on every row holding a voice id the moment that id is deleted on
+     * ElevenLabs (`releaseVoiceIfUnreferenced`). A released row cannot be
+     * selected: its id no longer exists at the provider.
+     */
+    releasedAt: integer({ mode: 'timestamp' }),
     createdAt: integer({ mode: 'timestamp' })
       .$defaultFn(() => new Date())
       .notNull(),

@@ -1,11 +1,8 @@
-import { audioSourceKeyForDialogueLines } from '@/motion/dialogue-tts';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Shot } from '@/platform/server/db/schema';
 import { assembleSequenceSegments } from '@/shots/scene-segments';
-import {
-  loadSceneContextBySequence,
-  resolveSceneForShot,
-} from '@/shots/server/scene-script';
+import { loadLiveShotInputs } from '@/shots/server/live-shot-state';
+import { loadSceneContextBySequence } from '@/shots/server/scene-script';
 import {
   rendersReferenceOnly,
   type StartFrameSequence,
@@ -34,19 +31,15 @@ export async function loadSequenceSegments(
       loadSceneContextBySequence(scopedDb, sequence.id),
       scopedDb.characters.list(sequence.id),
     ]);
-  const currentAudioSourceKeyByShot = new Map<string, string | null>();
-  for (const shot of shots) {
-    const { scene } = resolveSceneForShot(shot, scriptBySceneId);
-    currentAudioSourceKeyByShot.set(
-      shot.id,
-      scene
-        ? audioSourceKeyForDialogueLines(
-            scene.originalScript?.dialogue,
-            characters
-          )
-        : null
-    );
-  }
+  // What each shot would render from NOW beyond its two pointers (#1657):
+  // dialogue key and take, reference provenance, duration.
+  const live = await loadLiveShotInputs(
+    scopedDb,
+    sequence.id,
+    shots,
+    characters,
+    scriptBySceneId
+  );
   // Versions are oldest-first here (listBySequence orders by ULID).
   const assembled = assembleSequenceSegments({
     segments,
@@ -59,7 +52,7 @@ export async function loadSequenceSegments(
       rendersReferenceOnly: rendersReferenceOnly(shot, sequence),
     })),
     frames,
-    currentAudioSourceKeyByShot,
+    live,
   });
   return { assembled, versions };
 }

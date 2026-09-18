@@ -57,6 +57,7 @@ describe('buildMotionReferenceImages', () => {
     expect(refs).toEqual([
       {
         referenceImageUrl: 'https://example.com/alice.png',
+        provenanceKey: 'character:char-Alice:https://example.com/alice.png',
         description: 'Alice - Alice is tall',
         role: 'character',
         token: 'Alice',
@@ -64,6 +65,7 @@ describe('buildMotionReferenceImages', () => {
       },
       {
         referenceImageUrl: 'https://example.com/logo.png',
+        provenanceKey: 'element:el-LOGO:https://example.com/logo.png',
         description: 'LOGO - LOGO description',
         role: 'element',
         kind: 'image',

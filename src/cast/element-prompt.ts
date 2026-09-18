@@ -13,6 +13,7 @@ import type {
   SequenceElementMinimal,
   StyleConfig,
 } from '@/platform/server/db/schema';
+import { referenceProvenanceKey } from '@/motion/reference-provenance';
 import type { ReferenceImageDescription } from '@/stills/reference-image-prompt';
 
 /**
@@ -56,6 +57,11 @@ export function buildElementReferenceImages(
             kind: el.kind ?? ('image' as const),
             durationSeconds: el.durationSeconds,
             token: el.token,
+            provenanceKey: referenceProvenanceKey(
+              'element',
+              el.id,
+              el.imageUrl
+            ),
           },
         ]
       : []

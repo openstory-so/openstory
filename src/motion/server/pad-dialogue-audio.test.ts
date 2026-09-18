@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   AUDIO_MIN_PAD_SLACK_SECONDS,
   ELEVENLABS_PCM_SAMPLE_RATE,
+  concatWavs,
   padWavToMinDuration,
   pcmToWav,
+  sliceWav,
   trimWavTrailingSilence,
   wavDurationSeconds,
 } from './pad-dialogue-audio';
@@ -175,5 +177,61 @@ describe('speechEndFrom (#1651)', () => {
     ['a missing end', { voiceSegments: [{}] }],
   ])('reads %s as no alignment rather than as zero', (_label, response) => {
     expect(speechEndFrom(response)).toBeNull();
+  });
+});
+
+/** Mono 16-bit PCM WAV whose every sample is `value`. */
+function tone(seconds: number, value: number, sampleRate = 8000): Uint8Array {
+  const samples = seconds * sampleRate;
+  const pcm = new Uint8Array(samples * 2);
+  const view = new DataView(pcm.buffer);
+  for (let i = 0; i < samples; i++) view.setInt16(i * 2, value, true);
+  return pcmToWav(pcm, sampleRate, 1, 16);
+}
+
+describe('sliceWav (#1657)', () => {
+  it('cuts the requested window and reports its own duration', () => {
+    const cut = sliceWav(wav(4), 1, 2.5);
+    expect(cut.durationSeconds).toBeCloseTo(1.5, 5);
+    expect(wavDurationSeconds(cut.bytes)).toBeCloseTo(1.5, 5);
+    // 44-byte header + 1.5s of 8kHz mono 16-bit.
+    expect(cut.bytes.byteLength).toBe(44 + 1.5 * 8000 * 2);
+  });
+
+  it('clamps past the end of the take rather than reading past it', () => {
+    const cut = sliceWav(wav(2), 1.5, 99);
+    expect(cut.durationSeconds).toBeCloseTo(0.5, 5);
+  });
+
+  it('keeps the samples of the requested window, not another shot’s', () => {
+    const joined = concatWavs([tone(1, 1000), tone(1, -1000)]);
+    const second = sliceWav(joined.bytes, 1, 2);
+    const view = new DataView(
+      second.bytes.buffer,
+      second.bytes.byteOffset + 44,
+      second.bytes.byteLength - 44
+    );
+    expect(view.getInt16(0, true)).toBe(-1000);
+  });
+
+  it('refuses an empty window instead of writing a headerless file', () => {
+    expect(() => sliceWav(wav(2), 1, 1)).toThrow(/empty/);
+  });
+});
+
+describe('concatWavs (#1657)', () => {
+  it('sums the parts and reports where each one starts', () => {
+    const joined = concatWavs([wav(1), wav(0.5), wav(2)]);
+    expect(joined.durationSeconds).toBeCloseTo(3.5, 5);
+    expect(wavDurationSeconds(joined.bytes)).toBeCloseTo(3.5, 5);
+    expect(joined.offsetsSeconds[0]).toBeCloseTo(0, 5);
+    expect(joined.offsetsSeconds[1]).toBeCloseTo(1, 5);
+    expect(joined.offsetsSeconds[2]).toBeCloseTo(1.5, 5);
+  });
+
+  it('refuses a format mismatch rather than playing at the wrong speed', () => {
+    expect(() => concatWavs([wav(1, 8000), wav(1, 44_100)])).toThrow(
+      /disagree on format/
+    );
   });
 });

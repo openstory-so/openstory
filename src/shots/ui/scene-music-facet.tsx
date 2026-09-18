@@ -472,6 +472,7 @@ export const SceneMusicFacet: React.FC<SceneMusicFacetProps> = ({
         isSettingModel={setMusicModel.isPending}
         divergentBanner={divergentBanner}
         isMusicPromptStale={musicPromptStaleness?.musicPrompt === 'stale'}
+        isMusicTrackStale={musicPromptStaleness?.musicTrack === 'stale'}
         onRegenerateMusicPrompt={() => regenerateMusicPrompt.mutate()}
         isRegeneratingMusicPrompt={regenerateMusicPrompt.isPending}
         onSaveMusicPrompt={(prompt) => saveMusicPrompt.mutate(prompt)}

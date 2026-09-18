@@ -22,6 +22,7 @@ import {
 import { dialogueExceedsShotDuration } from '@/motion/resolve-shot-duration';
 import type { SequenceElementMinimal } from '@/platform/server/db/schema';
 import type { MotionDialogue } from '@/shots/scene-analysis.schema';
+import { Button } from '@/ui/shadcn/button';
 import {
   Select,
   SelectContent,
@@ -33,6 +34,16 @@ import {
 type DialogueClip = {
   url: string;
   durationSeconds: number | null;
+  /** The scene take this clip was cut from (#1657). */
+  takeId?: string;
+};
+
+/** One recorded scene take, as the takes list shows it (#1657). */
+export type SceneDialogueTakeOption = {
+  id: string;
+  createdAt: Date | string;
+  durationSeconds: number;
+  selectedAt: Date | string | null;
 };
 
 function voiceLabel(element: SequenceElementMinimal): string {
@@ -52,6 +63,15 @@ export const MotionDialoguePanel: React.FC<{
   clip?: DialogueClip | null;
   /** Shot duration in seconds — noted only when the take is longer. */
   shotSeconds?: number;
+  /**
+   * Takes recorded for this shot's SCENE (#1657), newest first. The clip on
+   * this shot is a slice of one of them, so the list is scene-wide: choosing
+   * another take re-cuts every shot of the scene, not just this one.
+   */
+  takes?: SceneDialogueTakeOption[];
+  /** Absent while the user cannot pick (no takes, or no permission to write). */
+  onSelectTake?: (takeId: string) => void;
+  selectingTakeId?: string | null;
 }> = ({
   dialogue,
   elements,
@@ -60,6 +80,9 @@ export const MotionDialoguePanel: React.FC<{
   source,
   clip,
   shotSeconds,
+  takes,
+  onSelectTake,
+  selectingTakeId,
 }) => {
   const lines = dialogue?.presence ? dialogue.lines : [];
   if (lines.length === 0) return null;
@@ -193,6 +216,39 @@ export const MotionDialoguePanel: React.FC<{
           </li>
         ))}
       </ul>
+      {takes && takes.length > 1 && (
+        <div className="flex flex-col gap-2 rounded-md border p-3">
+          <span className="text-xs font-medium">Takes</span>
+          <ul className="flex flex-col gap-1">
+            {takes.map((take) => {
+              const current = take.id === clip?.takeId || !!take.selectedAt;
+              return (
+                <li
+                  key={take.id}
+                  className="flex items-center justify-between gap-2"
+                >
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(take.createdAt).toLocaleString()} ·{' '}
+                    {formatElementDuration(take.durationSeconds)}
+                  </span>
+                  {current ? (
+                    <span className="text-xs font-medium">Current</span>
+                  ) : onSelectTake ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={selectingTakeId != null}
+                      onClick={() => onSelectTake(take.id)}
+                    >
+                      {selectingTakeId === take.id ? 'Using…' : 'Use'}
+                    </Button>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
       {!onChange && source === 'prompt' && (
         <p className="text-xs text-muted-foreground">
           This model generates its own voices — it takes no audio reference.

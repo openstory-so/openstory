@@ -66,14 +66,14 @@ function makeStep(): WorkflowStep {
 }
 
 function makeScopedDb() {
-  const update = vi.fn(async () => ({}));
+  const updateVoice = vi.fn(async () => ({}));
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the scoped-db surface runImpl touches
   const scopedDb = {
-    characters: { update },
+    characters: { updateVoice },
     provenance: {},
     credentials: { resolveKey: vi.fn(async () => ({ key: 'el-key' })) },
   } as unknown as WorkflowScopedDb;
-  return { scopedDb, update };
+  return { scopedDb, updateVoice };
 }
 
 const characterBible: CharacterBibleEntry = {
@@ -125,7 +125,7 @@ beforeEach(() => {
 
 describe('CharacterVoiceWorkflow', () => {
   it('designs once, deducts once, saves the top take, persists it', async () => {
-    const { scopedDb, update } = makeScopedDb();
+    const { scopedDb, updateVoice } = makeScopedDb();
     const result = await makeWorkflow().runBody(
       makeEvent('Warm alto, unhurried.'),
       makeStep(),
@@ -146,12 +146,14 @@ describe('CharacterVoiceWorkflow', () => {
       'el-key',
       expect.objectContaining({ generatedVoiceId: 'g1' })
     );
-    expect(update).toHaveBeenCalledWith(
+    // #1657: the history row says the voice was designed, not inferred.
+    expect(updateVoice).toHaveBeenCalledWith(
       'char-1',
       expect.objectContaining({
         voiceId: 'voice-1',
         voiceDescription: 'Warm alto, unhurried.',
-      })
+      }),
+      'generated'
     );
     expect(result.voiceId).toBe('voice-1');
   });
@@ -173,12 +175,12 @@ describe('CharacterVoiceWorkflow', () => {
 
   it('spends nothing when Voice Design returns no previews', async () => {
     mockDesign.mockResolvedValue([]);
-    const { scopedDb, update } = makeScopedDb();
+    const { scopedDb, updateVoice } = makeScopedDb();
     await expect(
       makeWorkflow().runBody(makeEvent('x'), makeStep(), scopedDb)
     ).rejects.toThrow('no previews');
     expect(mockDeduct).not.toHaveBeenCalled();
     expect(mockSave).not.toHaveBeenCalled();
-    expect(update).not.toHaveBeenCalled();
+    expect(updateVoice).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  edgesForMode,
   GRAPH_EDGES,
   GRAPH_NODES,
   staleAfterEdit,
@@ -41,6 +42,7 @@ describe('dependency graph', () => {
       'export',
       'motionPrompt',
       'musicPrompt',
+      'musicTrack',
       'still',
       'visualPrompt',
     ]);
@@ -53,28 +55,51 @@ describe('dependency graph', () => {
   it('reference-only drops the still from the clip chain but keeps the prompt path', () => {
     const after = staleAfterEdit('still', 'reference-only');
     expect(ids(after)).toEqual([]);
+    // The sheets bind on the clip in both modes (#1657), so a new sheet
+    // version reaches the render with no still in between.
     expect(ids(staleAfterEdit('characterSheet', 'reference-only'))).toEqual([
+      'clip',
+      'export',
       'still',
     ]);
+    // The location sheet is only sent to the video model in reference-only,
+    // so only that mode binds it on the clip.
+    const locationToClip = (mode: 'start-frame' | 'reference-only') =>
+      edgesForMode(mode).some(
+        (e) => e.from === 'locationSheet' && e.to === 'clip'
+      );
+    expect(locationToClip('reference-only')).toBe(true);
+    expect(locationToClip('start-frame')).toBe(false);
   });
 
   it('untracked edges do not propagate, gap or not', () => {
-    expect(ids(staleAfterEdit('duration', 'start-frame'))).toEqual([
-      'musicPrompt',
-    ]);
-    expect(ids(staleBecauseOf('musicTrack', 'start-frame'))).toEqual([]);
     expect(ids(staleBecauseOf('voice', 'start-frame'))).toEqual([]);
     expect(ids(staleAfterEdit('videoModel', 'start-frame'))).toEqual([]);
     expect(ids(staleAfterEdit('musicOn', 'start-frame'))).toEqual(['export']);
+    expect(ids(staleAfterEdit('stopAt', 'start-frame'))).toEqual([]);
   });
 
-  it('a voice change re-stales the clip, not the motion prompt', () => {
+  it('duration and the music track are compared (#767, #1657)', () => {
+    expect(ids(staleAfterEdit('duration', 'start-frame'))).toEqual([
+      'clip',
+      'export',
+      'musicPrompt',
+      'musicTrack',
+    ]);
+    expect(ids(staleBecauseOf('musicTrack', 'start-frame'))).toContain(
+      'musicPrompt'
+    );
+  });
+
+  it('a voice change re-stales the take and the clip, not the motion prompt', () => {
     expect(ids(staleAfterEdit('voice', 'start-frame'))).toEqual([
       'clip',
+      'dialogueTake',
       'export',
     ]);
     expect(ids(staleAfterEdit('voice', 'reference-only'))).toEqual([
       'clip',
+      'dialogueTake',
       'export',
     ]);
     expect(ids(staleBecauseOf('motionPrompt', 'start-frame'))).not.toContain(

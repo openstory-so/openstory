@@ -151,6 +151,8 @@ function buildScopedDb(
   opts: {
     video?: VideoFixture;
     sequence?: Record<string, unknown>;
+    /** The completed primary `sequence_music_variants` row, if any (#1657). */
+    musicPrimary?: Record<string, unknown>;
   } = {}
 ): ScopedDb {
   return asScopedDb({
@@ -177,6 +179,12 @@ function buildScopedDb(
     shots: {
       listBySequence: () => Promise.resolve(shots),
       ensureAnchorFrames: () => Promise.resolve(undefined),
+    },
+    // No scene dialogue rows: every target's `dialogue` snapshot is null and
+    // the video stage falls back to the motion row's mirror (#1657).
+    sceneDialogue: {
+      getSelectedBySequence: () => Promise.resolve([]),
+      getSelectedTakesBySequence: () => Promise.resolve([]),
     },
     frames: {
       listAnchorsBySequence: () => Promise.resolve(frames),
@@ -213,6 +221,9 @@ function buildScopedDb(
     },
     sequenceMusicPromptVersions: {
       getLatest: () => Promise.resolve(null),
+    },
+    sequenceVariants: {
+      getMusicPrimary: () => Promise.resolve(opts.musicPrimary ?? null),
     },
   });
 }
@@ -474,6 +485,56 @@ describe("computePlan — depth 'music' (#1085)", () => {
     });
   });
 
+  it('regenerates a track stale on its own hash, fresh prompt and all (#1657)', async () => {
+    const trackSequence = {
+      musicPromptInputHash: 'live-music-hash',
+      musicUrl: 'https://example.com/m.mp3',
+      musicStatus: 'completed',
+      musicModel: 'elevenlabs_music',
+      musicPrompt: 'warm analogue synth pad',
+      musicTags: 'ambient, instrumental',
+    };
+    const primary = {
+      status: 'completed',
+      model: 'elevenlabs_music',
+      inputHash: 'hash-of-the-prompt-this-track-was-rendered-from',
+    };
+    const stale = await plan([makeShot()], [makeFrame()], {
+      depth: 'music',
+      db: buildScopedDb([makeShot()], [makeFrame()], {
+        sequence: trackSequence,
+        musicPrimary: primary,
+      }),
+    });
+    expect(stale.music).toMatchObject({
+      regenPrompt: false,
+      regenTrack: true,
+      durationSeconds: 10,
+    });
+
+    // The same row, stamped with the digest the live inputs produce: fresh.
+    const fresh = await plan([makeShot()], [makeFrame()], {
+      depth: 'music',
+      db: buildScopedDb([makeShot()], [makeFrame()], {
+        sequence: trackSequence,
+        musicPrimary: {
+          ...primary,
+          // Real digest (the mock above only replaces the PROMPT hash fns).
+          inputHash: await realInputHash.computeSequenceMusicInputHash({
+            prompt: trackSequence.musicPrompt,
+            tags: trackSequence.musicTags,
+            durationSeconds: 10,
+            audioModel: 'elevenlabs_music',
+          }),
+        },
+      }),
+    });
+    expect(fresh.music).toMatchObject({
+      regenPrompt: false,
+      regenTrack: false,
+    });
+  });
+
   it('leaves a fresh music prompt and its track alone', async () => {
     const db = buildScopedDb([makeShot()], [makeFrame()], {
       sequence: {
@@ -570,6 +631,7 @@ describe('claimTargets (#1085)', () => {
       imageLiveHash: 'ih',
       imageModel: 'nano_banana_2',
       regenVideo: false,
+      dialogue: null,
       ...overrides,
     };
   }

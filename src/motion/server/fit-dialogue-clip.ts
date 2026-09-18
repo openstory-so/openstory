@@ -192,14 +192,26 @@ function tooLong(measured: number, limitSeconds: number): NonRetryableError {
  * whose voice — the worst it can do is leave a line as it was, which is what
  * the null return reports.
  */
-async function shortenDialogueLines(
+export type ShortenDialogueArgs = {
+  scopedDb: WorkflowScopedDb;
+  workflowRunId: string;
+  userId: string;
+  sequenceId: string;
+  /** For the LLM call's metadata and the rewrite brief. */
+  shotId: string;
+  reservationId?: string;
+  analysisModelId?: AnalysisModelId;
+  /** The turns to tighten, with the indexes the merge happens on. */
+  lines: readonly VoicedDialogueLine[];
+  measuredSeconds: number;
+  targetSeconds: number;
+  /** Durable step name. */
+  name: string;
+};
+
+export async function shortenDialogueLines(
   step: WorkflowStep,
-  args: FitDialogueClipArgs & {
-    lines: readonly VoicedDialogueLine[];
-    measuredSeconds: number;
-    targetSeconds: number;
-    name: string;
-  }
+  args: ShortenDialogueArgs
 ): Promise<VoicedDialogueLine[] | null> {
   const wordBudget = dialogueWordBudget(args.targetSeconds);
   const response = await durableLLMCallCf(

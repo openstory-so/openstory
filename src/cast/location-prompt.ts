@@ -17,6 +17,7 @@ import {
   type ReferenceImageDescription,
   buildReferenceImagePrompt,
 } from '@/stills/reference-image-prompt';
+import { referenceProvenanceKey } from '@/motion/reference-provenance';
 
 /**
  * Build a concise location description from location data
@@ -56,6 +57,11 @@ export const buildLocationReferenceImages = (
       // The bible id prompts name the set by (`metropolitan_sidewalk_corner`),
       // so it gets swapped for its `@ImageN` tag like a character's name.
       token: l.locationId,
+      provenanceKey: referenceProvenanceKey(
+        'location',
+        l.id,
+        l.selectedReferenceVersionId ?? l.referenceImageUrl
+      ),
     }));
 };
 

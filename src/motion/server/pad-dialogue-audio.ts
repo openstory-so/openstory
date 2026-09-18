@@ -231,3 +231,112 @@ function parseWav(bytes: Uint8Array): WavFmt | null {
 function ascii(bytes: Uint8Array, at: number, length: number): string {
   return String.fromCharCode(...bytes.subarray(at, at + length));
 }
+
+/** The PCM payload of a WAV, plus what it takes to rebuild a header for it. */
+function pcmOf(bytes: Uint8Array): {
+  pcm: Uint8Array;
+  fmt: WavFmt;
+  bytesPerSecond: number;
+} {
+  const fmt = parseWav(bytes);
+  if (!fmt) throw new Error('Dialogue audio expected a PCM WAV');
+  const frame = fmt.channels * (fmt.bitsPerSample / 8);
+  const dataStart = fmt.dataSizeOffset + 4;
+  const available = Math.min(fmt.dataSize, bytes.length - dataStart);
+  const usable = Math.trunc(available / frame) * frame;
+  return {
+    pcm: bytes.subarray(dataStart, dataStart + usable),
+    fmt,
+    bytesPerSecond: fmt.sampleRate * frame,
+  };
+}
+
+/**
+ * Cut `[startSeconds, endSeconds)` out of a PCM WAV (#1657) — one shot's
+ * slice of the scene's take. Offsets are snapped DOWN to a whole frame, so a
+ * slice never starts or ends mid-sample, and clamped to the file.
+ *
+ * The header is rebuilt (`pcmToWav`) rather than patched: the source may
+ * carry chunks after `data` that describe bytes the slice does not have.
+ */
+export function sliceWav(
+  bytes: Uint8Array,
+  startSeconds: number,
+  endSeconds: number
+): { bytes: Uint8Array<ArrayBuffer>; durationSeconds: number } {
+  const { pcm, fmt, bytesPerSecond } = pcmOf(bytes);
+  const frame = fmt.channels * (fmt.bitsPerSample / 8);
+  const snap = (seconds: number) =>
+    Math.min(
+      pcm.length,
+      Math.max(
+        0,
+        Math.trunc((Math.max(0, seconds) * bytesPerSecond) / frame) * frame
+      )
+    );
+  const from = snap(startSeconds);
+  const to = Math.max(from, snap(endSeconds));
+  if (to === from) {
+    throw new Error(
+      `Dialogue slice ${startSeconds.toFixed(2)}–${endSeconds.toFixed(2)}s of a ${(pcm.length / bytesPerSecond).toFixed(2)}s take is empty`
+    );
+  }
+  return {
+    bytes: pcmToWav(
+      pcm.subarray(from, to),
+      fmt.sampleRate,
+      fmt.channels,
+      fmt.bitsPerSample
+    ),
+    durationSeconds: (to - from) / bytesPerSecond,
+  };
+}
+
+/**
+ * Join PCM WAVs of identical format end to end (#1657) — the chunks a long
+ * scene's take is recorded in. `offsetsSeconds[i]` is where part `i` starts
+ * in the result, which is what the per-turn segment times have to be shifted
+ * by. Refuses a format mismatch rather than producing audio that plays at the
+ * wrong speed.
+ */
+export function concatWavs(parts: readonly Uint8Array[]): {
+  bytes: Uint8Array<ArrayBuffer>;
+  durationSeconds: number;
+  offsetsSeconds: number[];
+} {
+  if (parts.length === 0) throw new Error('concatWavs needs at least one part');
+  const parsed = parts.map(pcmOf);
+  const [head] = parsed;
+  if (!head) throw new Error('concatWavs needs at least one part');
+  const offsetsSeconds: number[] = [];
+  let total = 0;
+  for (const part of parsed) {
+    if (
+      part.fmt.sampleRate !== head.fmt.sampleRate ||
+      part.fmt.channels !== head.fmt.channels ||
+      part.fmt.bitsPerSample !== head.fmt.bitsPerSample
+    ) {
+      throw new Error(
+        `Dialogue take chunks disagree on format (${part.fmt.sampleRate}Hz/${part.fmt.channels}ch/${part.fmt.bitsPerSample}bit vs ${head.fmt.sampleRate}Hz/${head.fmt.channels}ch/${head.fmt.bitsPerSample}bit)`
+      );
+    }
+    offsetsSeconds.push(total / head.bytesPerSecond);
+    total += part.pcm.length;
+  }
+  const pcm = new Uint8Array(total);
+  let at = 0;
+  for (const part of parsed) {
+    pcm.set(part.pcm, at);
+    at += part.pcm.length;
+  }
+  return {
+    bytes: pcmToWav(
+      pcm,
+      head.fmt.sampleRate,
+      head.fmt.channels,
+      head.fmt.bitsPerSample
+    ),
+    durationSeconds: total / head.bytesPerSecond,
+    offsetsSeconds,
+  };
+}

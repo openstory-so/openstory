@@ -296,14 +296,15 @@ describe('isSelectedVersionStale', () => {
       },
     ]);
     const audio = new Map([['shot-1', 'voice-other\tStay down.\t\televen_v3']]);
-    expect(isSelectedVersionStale(v, motion, frame, audio)).toBe(true);
     expect(
-      isSelectedVersionStale(
-        v,
-        motion,
-        frame,
-        new Map([['shot-1', 'voice-sarah\tStay down.\t\televen_v3']])
-      )
+      isSelectedVersionStale(v, motion, frame, { audioSourceKeyByShot: audio })
+    ).toBe(true);
+    expect(
+      isSelectedVersionStale(v, motion, frame, {
+        audioSourceKeyByShot: new Map([
+          ['shot-1', 'voice-sarah\tStay down.\t\televen_v3'],
+        ]),
+      })
     ).toBe(false);
   });
 
@@ -466,5 +467,91 @@ describe('reference-only shots and staleness', () => {
     // The null-frame escape must not swallow a genuine missing pointer: this
     // clip claims no start frame while the shot animates from one.
     expect(assemble(false)[0]?.stale).toBe(true);
+  });
+});
+
+describe('isSelectedVersionStale — take, references, duration (#1657)', () => {
+  const motion = new Map([['shot-1', 'mp-1']]);
+  const frame = new Map([['shot-1', 'fv-1']]);
+  const entry = {
+    shotId: 'shot-1',
+    motionPromptVersionId: 'mp-1',
+    frameVersionId: 'fv-1',
+  };
+
+  it('is stale when the scene selects a different dialogue take, only for a voiced shot', () => {
+    const v = version('v1', 'seg', 'kling_v3_pro', [
+      { ...entry, audioSourceKey: 'k', dialogueTakeId: 'take-1' },
+    ]);
+    const key = new Map([['shot-1', 'k']]);
+    expect(
+      isSelectedVersionStale(v, motion, frame, {
+        audioSourceKeyByShot: key,
+        dialogueTakeByShot: new Map([['shot-1', 'take-1']]),
+      })
+    ).toBe(false);
+    expect(
+      isSelectedVersionStale(v, motion, frame, {
+        audioSourceKeyByShot: key,
+        dialogueTakeByShot: new Map([['shot-1', 'take-2']]),
+      })
+    ).toBe(true);
+    // A pre-#1657 row has no stamp: unknown, never stale.
+    const old = version('v1', 'seg', 'kling_v3_pro', [entry]);
+    expect(
+      isSelectedVersionStale(old, motion, frame, {
+        dialogueTakeByShot: new Map([['shot-1', 'take-2']]),
+      })
+    ).toBe(false);
+  });
+
+  it('is stale when a stamped reference sheet or element media moved', () => {
+    const v = version('v1', 'seg', 'kling_v3_pro', [
+      { ...entry, referenceKeys: ['character:c1:csv-1'] },
+    ]);
+    expect(
+      isSelectedVersionStale(v, motion, frame, {
+        referenceIdentity: new Map([['character:c1', 'character:c1:csv-1']]),
+      })
+    ).toBe(false);
+    expect(
+      isSelectedVersionStale(v, motion, frame, {
+        referenceIdentity: new Map([['character:c1', 'character:c1:csv-2']]),
+      })
+    ).toBe(true);
+  });
+
+  it('compares duration snapped on both sides, accepting the audio-raised length', () => {
+    // Kling v3 pro grid is whole seconds 3–15: a 5s render matches a 4.6s
+    // user edit (snaps to 5) and a 9s one does not.
+    const v = version('v1', 'seg', 'kling_v3_pro', [
+      { ...entry, durationMs: 5000 },
+    ]);
+    expect(
+      isSelectedVersionStale(v, motion, frame, {
+        durationMsByShot: new Map([['shot-1', 4600]]),
+      })
+    ).toBe(false);
+    expect(
+      isSelectedVersionStale(v, motion, frame, {
+        durationMsByShot: new Map([['shot-1', 9000]]),
+      })
+    ).toBe(true);
+    // Raised to cover 7s of dialogue: 7s is still "unchanged".
+    const raised = version('v1', 'seg', 'kling_v3_pro', [
+      { ...entry, durationMs: 7000 },
+    ]);
+    expect(
+      isSelectedVersionStale(raised, motion, frame, {
+        durationMsByShot: new Map([['shot-1', 5000]]),
+        audioSecondsByShot: new Map([['shot-1', 7]]),
+      })
+    ).toBe(false);
+    // No user duration: nothing to compare.
+    expect(
+      isSelectedVersionStale(v, motion, frame, {
+        durationMsByShot: new Map([['shot-1', 0]]),
+      })
+    ).toBe(false);
   });
 });

@@ -157,23 +157,149 @@ describe('characters bible CRUD + soft-remove', () => {
       name: 'Maya',
       voiceDescription: 'Warm Australian alto',
     });
-    await methods.update(created.id, {
-      voiceId: 'voice-a',
-      voicePreviews: [],
-      useVoice: true,
-    });
-    await methods.update(created.id, { voiceId: 'voice-b' });
+    // The voice the cast arrived with is history's first row, selected (#1657).
+    expect(created.selectedVoiceVersionId).toBeTruthy();
+    const [original] = await methods.listVoiceVersions(created.id);
+    expect(original?.source).toBe('analysis');
+    expect(original?.description).toBe('Warm Australian alto');
+
+    const a = await methods.updateVoice(
+      created.id,
+      { voiceId: 'voice-a', voicePreviews: [], useVoice: true },
+      'generated'
+    );
+    const b = await methods.updateVoice(
+      created.id,
+      { voiceId: 'voice-b' },
+      'library'
+    );
 
     const versions = await methods.listVoiceVersions(created.id);
-    expect(versions).toHaveLength(2);
+    expect(versions).toHaveLength(3);
+    expect(versions.map((version) => version.source)).toEqual([
+      'library',
+      'generated',
+      'analysis',
+    ]);
+    // Every write moves the pointer with the row it appended.
     expect(versions.filter((version) => version.selectedAt)).toHaveLength(1);
+    expect(a.selectedVoiceVersionId).toBe(
+      versions.find((version) => version.voiceId === 'voice-a')?.id
+    );
+    expect(b.selectedVoiceVersionId).toBe(
+      versions.find((version) => version.voiceId === 'voice-b')?.id
+    );
+
     const first = versions.find((version) => version.voiceId === 'voice-a');
     if (!first) throw new Error('first voice version missing');
 
+    // Select restores the whole mirror, not just the id.
     const restored = await methods.selectVoiceVersion(created.id, first.id);
     expect(restored.voiceId).toBe('voice-a');
+    expect(restored.useVoice).toBe(true);
+    expect(restored.voicePreviews).toEqual([]);
+    expect(restored.selectedVoiceVersionId).toBe(first.id);
     const after = await methods.listVoiceVersions(created.id);
     expect(after.find((version) => version.selectedAt)?.id).toBe(first.id);
+  });
+
+  it('refuses a released voice version, across every character holding the id', async () => {
+    const methods = createCharactersMethods(db);
+    const maya = await methods.create({
+      sequenceId,
+      characterId: 'voice_002',
+      name: 'Maya',
+    });
+    const otto = await methods.create({
+      sequenceId,
+      characterId: 'voice_003',
+      name: 'Otto',
+    });
+    await methods.updateVoice(maya.id, { voiceId: 'shared' }, 'generated');
+    await methods.updateVoice(otto.id, { voiceId: 'shared' }, 'library');
+    await methods.updateVoice(maya.id, { voiceId: 'kept' }, 'library');
+
+    // The id is deleted at ElevenLabs once, for everyone (#1657).
+    await methods.markVoiceReleased('shared');
+    const mayaVersions = await methods.listVoiceVersions(maya.id);
+    const ottoVersions = await methods.listVoiceVersions(otto.id);
+    expect(
+      [...mayaVersions, ...ottoVersions]
+        .filter((version) => version.voiceId === 'shared')
+        .every((version) => version.releasedAt)
+    ).toBe(true);
+    expect(
+      mayaVersions.find((version) => version.voiceId === 'kept')?.releasedAt
+    ).toBeNull();
+
+    const released = mayaVersions.find(
+      (version) => version.voiceId === 'shared'
+    );
+    if (!released) throw new Error('released voice version missing');
+    await expect(
+      methods.selectVoiceVersion(maya.id, released.id)
+    ).rejects.toThrow(/deleted when it stopped being used/);
+    // The refusal changed nothing.
+    const unchanged = await methods.getById(maya.id);
+    expect(unchanged?.voiceId).toBe('kept');
+  });
+
+  it('create labels a talent-copied voice library, and appends nothing on the re-upsert', async () => {
+    const methods = createCharactersMethods(db);
+    const cast = await methods.create({
+      sequenceId,
+      characterId: 'voice_004',
+      name: 'Nora',
+      voiceId: 'talent-voice',
+      voiceDescription: 'Gravelly',
+    });
+    const [original] = await methods.listVoiceVersions(cast.id);
+    expect(original?.source).toBe('library');
+    expect(original?.voiceId).toBe('talent-voice');
+
+    // The References stage re-upserts the same row; history must not grow and
+    // the `coalesce` keeps the voice the row already holds.
+    const again = await methods.create({
+      sequenceId,
+      characterId: 'voice_004',
+      name: 'Nora',
+      voiceId: 'other-voice',
+      sheetStatus: 'generating',
+    });
+    expect(again.voiceId).toBe('talent-voice');
+    expect(await methods.listVoiceVersions(cast.id)).toHaveLength(1);
+  });
+
+  it('update refuses a voice field, and a bible description edit records one', async () => {
+    const methods = createCharactersMethods(db);
+    const created = await methods.create({
+      sequenceId,
+      characterId: 'voice_005',
+      name: 'Pia',
+    });
+    await expect(
+      // @ts-expect-error -- the point: a voice write needs updateVoice's source
+      methods.update(created.id, { voiceId: 'nope' })
+    ).rejects.toThrow(/updateVoice/);
+    expect(await methods.listVoiceVersions(created.id)).toHaveLength(0);
+
+    await methods.updateBible(
+      created.id,
+      { voiceDescription: 'Clipped, dry' },
+      { actorId }
+    );
+    const versions = await methods.listVoiceVersions(created.id);
+    expect(versions).toHaveLength(1);
+    expect(versions[0]?.source).toBe('user-edit');
+    expect(versions[0]?.description).toBe('Clipped, dry');
+
+    // Re-posting the same description is not a new take.
+    await methods.updateBible(
+      created.id,
+      { voiceDescription: 'Clipped, dry', age: '40s' },
+      { actorId }
+    );
+    expect(await methods.listVoiceVersions(created.id)).toHaveLength(1);
   });
 
   it('updateBible writes the fields and an atomic character.updated event carrying prevState', async () => {

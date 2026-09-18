@@ -8,10 +8,8 @@ import {
   frames,
   sceneScriptVersions,
   scenes,
-  shotDialogueVersions,
   shots,
 } from '@/platform/server/db/schema';
-import { generateId } from '@/platform/id';
 import { dbSceneId } from '@/shots/scene-id';
 import type {
   MotionAudioClip,
@@ -19,7 +17,6 @@ import type {
   Shot,
   NewShot,
 } from '@/platform/server/db/schema';
-import type { MotionDialogue } from '@/shots/scene-analysis.schema';
 import type { Sequence } from '@/platform/server/db/schema/sequences';
 import { and, asc, desc, eq, gt, gte, inArray, isNull, sql } from 'drizzle-orm';
 import type { PageOptions } from '@/platform/server/db/read-page';
@@ -261,164 +258,21 @@ export function createShotsMethods(db: Database) {
     },
 
     /**
-     * Stamp the References-stage dialogue clip onto the shot (#1554).
-     * Working set: motion attaches it, and synthesises only when the
-     * stored clip is missing or the lines/voices moved.
+     * Mirror the scene take's slice for this shot onto the shot row (#1657).
+     * Working set, not history: the take (`scene_dialogue_takes`) is the
+     * provenance and the thing a user picks between, and each render stamps
+     * the slice it used onto its `shot_prompt_versions` row. Motion attaches
+     * whatever is here, and synthesises only when it is missing or the
+     * lines/voices moved.
      */
     setAudioClips: async (
       shotId: string,
-      audioClips: MotionAudioClip[],
-      opts?: {
-        workflowRunId?: string | null;
-        dialogue?: MotionDialogue | null;
-      }
+      audioClips: MotionAudioClip[]
     ): Promise<void> => {
-      if (audioClips.length === 0) {
-        await db.batch([
-          db
-            .update(shotDialogueVersions)
-            .set({ selectedAt: null })
-            .where(
-              and(
-                eq(shotDialogueVersions.shotId, shotId),
-                sql`${shotDialogueVersions.selectedAt} IS NOT NULL`
-              )
-            ),
-          db
-            .update(shots)
-            .set({ audioClips, updatedAt: new Date() })
-            .where(eq(shots.id, shotId)),
-        ]);
-        return;
-      }
-      const inputHash = audioClips
-        .map((clip) => clip.sourceKey)
-        .filter(Boolean)
-        .join('\n');
-      if (!inputHash)
-        throw new Error('Dialogue clips require a sourceKey to be versioned');
-      const versionId = generateId();
-      await db.batch([
-        db
-          .update(shotDialogueVersions)
-          .set({ selectedAt: null })
-          .where(
-            and(
-              eq(shotDialogueVersions.shotId, shotId),
-              sql`${shotDialogueVersions.selectedAt} IS NOT NULL`
-            )
-          ),
-        db.insert(shotDialogueVersions).values({
-          id: versionId,
-          shotId,
-          audioClips,
-          inputHash,
-          workflowRunId: opts?.workflowRunId,
-          dialogue: opts?.dialogue,
-          source: 'generated',
-          selectedAt: new Date(),
-        }),
-        db
-          .update(shots)
-          .set({
-            audioClips,
-            updatedAt: new Date(),
-          })
-          .where(eq(shots.id, shotId)),
-      ]);
-    },
-
-    /** Append a line edit independently of the motion-prompt history. */
-    setDialogue: async (
-      shotId: string,
-      dialogue: MotionDialogue,
-      source: 'prompt' | 'user-edit' = 'user-edit'
-    ): Promise<void> => {
-      const versionId = generateId();
-      await db.batch([
-        db
-          .update(shotDialogueVersions)
-          .set({ selectedAt: null })
-          .where(
-            and(
-              eq(shotDialogueVersions.shotId, shotId),
-              sql`${shotDialogueVersions.selectedAt} IS NOT NULL`
-            )
-          ),
-        db.insert(shotDialogueVersions).values({
-          id: versionId,
-          shotId,
-          dialogue,
-          // The authored dialogue is the dependency input until synthesis
-          // replaces this selection with its voice/model source key.
-          inputHash: JSON.stringify(dialogue),
-          audioClips: [],
-          source,
-          selectedAt: new Date(),
-        }),
-        db
-          .update(shots)
-          .set({ audioClips: [], updatedAt: new Date() })
-          .where(eq(shots.id, shotId)),
-      ]);
-    },
-
-    listDialogueVersions: async (shotId: string) =>
       await db
-        .select()
-        .from(shotDialogueVersions)
-        .where(
-          and(
-            eq(shotDialogueVersions.shotId, shotId),
-            isNull(shotDialogueVersions.discardedAt)
-          )
-        )
-        .orderBy(
-          desc(shotDialogueVersions.createdAt),
-          desc(shotDialogueVersions.id)
-        ),
-
-    selectDialogueVersion: async (
-      shotId: string,
-      versionId: string
-    ): Promise<Shot> => {
-      const [version] = await db
-        .select()
-        .from(shotDialogueVersions)
-        .where(
-          and(
-            eq(shotDialogueVersions.id, versionId),
-            eq(shotDialogueVersions.shotId, shotId)
-          )
-        );
-      if (!version || version.discardedAt) {
-        throw new Error(
-          `Dialogue version ${versionId} not found for shot ${shotId}`
-        );
-      }
-      const [, , updatedRows] = await db.batch([
-        db
-          .update(shotDialogueVersions)
-          .set({ selectedAt: null })
-          .where(
-            and(
-              eq(shotDialogueVersions.shotId, shotId),
-              sql`${shotDialogueVersions.selectedAt} IS NOT NULL`
-            )
-          ),
-        db
-          .update(shotDialogueVersions)
-          .set({ selectedAt: new Date() })
-          .where(eq(shotDialogueVersions.id, version.id)),
-        db
-          .update(shots)
-          .set({ audioClips: version.audioClips, updatedAt: new Date() })
-          .where(eq(shots.id, shotId))
-          .returning(),
-      ]);
-      const updated = updatedRows[0];
-      if (!updated) throw new Error(`Shot ${shotId} not found`);
-      return updated;
+        .update(shots)
+        .set({ audioClips, updatedAt: new Date() })
+        .where(eq(shots.id, shotId));
     },
 
     upsert: async (data: NewShot): Promise<ShotWithAnchorFrame> => {

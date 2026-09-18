@@ -27,6 +27,7 @@ import {
   modelTakesDialogueAudio,
   voicedDialogueLines,
 } from '@/motion/dialogue-tts';
+import { linesForShot, type SceneDialogueLine } from '@/shots/scene-dialogue';
 import type { MotionAudioClip } from '@/platform/server/db/schema';
 import {
   assembleMotionPrompt,
@@ -74,6 +75,13 @@ export function buildStoryboardMotionBatchShots(input: {
   referenceOnly?: boolean;
   /** References-stage dialogue clips, keyed by shot id (#1554). */
   dialogueClipsByShotId?: Record<string, MotionAudioClip[]>;
+  /**
+   * Authored dialogue per ANALYSIS scene id (#1657) — the same snapshot the
+   * Dialogue stage recorded from, so the prompt's voiced lines and the clips
+   * bound to them describe one set of words. Absent for a scene with no
+   * version row, which falls back to the motion prompt's own copy.
+   */
+  dialogueLinesBySceneId?: Record<string, SceneDialogueLine[]>;
   leftoverGrokShotIds?: readonly string[];
 }): BatchMotionMusicWorkflowInput['shots'] {
   const leftoverGrok = new Set(input.leftoverGrokShotIds ?? []);
@@ -121,8 +129,14 @@ export function buildStoryboardMotionBatchShots(input: {
       model: shotModel,
       characterTags,
     });
+    const sceneLines = input.dialogueLinesBySceneId?.[scene.sceneId];
     const voicedLines = modelTakesDialogueAudio(shotModel)
-      ? voicedDialogueLines(motionPromptData.dialogue, input.characters)
+      ? voicedDialogueLines(
+          sceneLines && mapping.shotId
+            ? linesForShot(sceneLines, mapping.shotId)
+            : motionPromptData.dialogue,
+          input.characters
+        )
       : [];
     const audioClips = matchingDialogueClips(
       mapping.shotId

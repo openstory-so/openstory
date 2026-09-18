@@ -637,8 +637,14 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             durationMs: target.durationMs,
             model,
           });
+          // The scene dialogue node's slice for this shot, snapshotted on the
+          // target at click time (#1657); the motion row's mirror is the
+          // fallback for a scene with no version row.
           const voicedLines = modelTakesDialogueAudio(model)
-            ? voicedDialogueLines(motionVersion.dialogue, plan.characterVoices)
+            ? voicedDialogueLines(
+                target.dialogue ?? motionVersion.dialogue,
+                plan.characterVoices
+              )
             : [];
           const audioClips = matchingDialogueClips(
             shot.audioClips,
@@ -1066,8 +1072,8 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
 
     // ============================================================
     // PHASE 3 (depth 'music', #1085): sequence-level music, alongside the
-    // shot jobs. Prompt first; the track cascades only behind a successful
-    // prompt regeneration (see MusicPlan).
+    // shot jobs. Prompt first; the track then renders when it is stale on its
+    // own hash or the prompt regeneration cascades into it (see MusicPlan).
     // ============================================================
     const musicJob = musicToRun
       ? (async (music: MusicPlan): Promise<void> => {
@@ -1161,14 +1167,6 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             const musicInputJson = await step.do(
               'prepare-music-track',
               async (): Promise<string | null> => {
-                if (!regeneratedPrompt) {
-                  // Unreachable: the plan only cascades a track behind a
-                  // prompt regen, and a skipped/failed prompt returns above.
-                  throw new NonRetryableError(
-                    'Sequence has no music prompt to regenerate from',
-                    'WorkflowValidationError'
-                  );
-                }
                 // Live only for the guard: a concurrent run or manual
                 // regenerate already has a track render in flight — it is
                 // producing the fix, don't double-bill.
@@ -1181,14 +1179,26 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                   );
                 }
                 if (sequence.musicStatus === 'generating') return null;
+                // A track stale on its OWN hash (#1657) renders from the
+                // prompt already on the sequence — there was no prompt child
+                // to take it from.
+                const prompt =
+                  regeneratedPrompt?.prompt ?? sequence.musicPrompt;
+                const tags = regeneratedPrompt?.tags ?? sequence.musicTags;
+                if (!prompt || !tags) {
+                  throw new NonRetryableError(
+                    'Sequence has no music prompt to regenerate from',
+                    'WorkflowValidationError'
+                  );
+                }
                 // Model stays the workflow default — parity with the manual
                 // regenerate path.
                 const payload: MusicWorkflowInput = {
                   userId,
                   teamId,
                   sequenceId,
-                  prompt: regeneratedPrompt.prompt,
-                  tags: regeneratedPrompt.tags,
+                  prompt,
+                  tags,
                   duration: music.durationSeconds,
                   isPrimary: true,
                 };

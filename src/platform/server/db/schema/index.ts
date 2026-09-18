@@ -61,7 +61,8 @@ import { sequenceExports } from './sequence-exports';
 
 import { characters } from './characters';
 import { characterVoiceVersions } from './character-voice-versions';
-import { shotDialogueVersions } from './shot-dialogue-versions';
+import { sceneDialogueVersions } from './scene-dialogue-versions';
+import { sceneDialogueTakes } from './scene-dialogue-takes';
 
 // Location Library (team-level templates)
 import { locationLibrary } from './location-library';
@@ -159,7 +160,17 @@ export type {
 
 // Shots
 export { shots };
-export { shotDialogueVersions };
+export { sceneDialogueVersions, sceneDialogueTakes };
+
+export type {
+  SceneDialogueLine,
+  SceneDialogueSource,
+  SceneDialogueVersion,
+} from './scene-dialogue-versions';
+export type {
+  DialogueTakeSegment,
+  SceneDialogueTake,
+} from './scene-dialogue-takes';
 
 export type { NewShot, Shot } from './shots';
 
@@ -291,6 +302,8 @@ export type { SequenceExport } from './sequence-exports';
 
 // Characters (scripted roles)
 export { characters, characterVoiceVersions };
+
+export type { CharacterVoiceVersionSource } from './character-voice-versions';
 
 export type {
   CharacterWithSheet,
@@ -455,7 +468,8 @@ export const schema = {
   scenes,
   sceneScriptVersions,
   shots,
-  shotDialogueVersions,
+  sceneDialogueVersions,
+  sceneDialogueTakes,
   shotVariants,
   // SSF redesign (#990) — render segments + flat video render versions
   renderSegments,

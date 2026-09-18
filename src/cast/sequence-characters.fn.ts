@@ -260,9 +260,11 @@ export const setCharacterVoiceEnabledFn = createServerFn({ method: 'POST' })
     if (!character || character.sequenceId !== data.sequenceId) {
       throw new NotFoundError('Character not found');
     }
-    await context.scopedDb.characters.update(character.id, {
-      useVoice: data.enabled,
-    });
+    await context.scopedDb.characters.updateVoice(
+      character.id,
+      { useVoice: data.enabled },
+      data.enabled ? 'user-edit' : 'disabled'
+    );
     if (!data.enabled) await releaseCharacterVoice(context.scopedDb, character);
     return { characterId: character.id, useVoice: data.enabled };
   });
@@ -329,10 +331,14 @@ export const chooseCharacterVoiceTakeFn = createServerFn({ method: 'POST' })
       }
       throw error;
     }
-    await context.scopedDb.characters.update(character.id, {
-      voiceId,
-      voicePreviews: [take, ...previews.filter((p) => p !== take)],
-    });
+    await context.scopedDb.characters.updateVoice(
+      character.id,
+      {
+        voiceId,
+        voicePreviews: [take, ...previews.filter((p) => p !== take)],
+      },
+      'generated'
+    );
     if (character.voiceId && character.voiceId !== voiceId) {
       await releaseVoiceIfUnreferenced(context.scopedDb, character.voiceId);
     }
@@ -409,14 +415,61 @@ export const assignCharacterVoiceFn = createServerFn({ method: 'POST' })
       return { characterId: character.id, voiceId };
     }
     const voiceDescription = (data.description ?? data.name)?.trim();
-    await context.scopedDb.characters.update(character.id, {
-      voiceId,
-      ...(voiceDescription ? { voiceDescription } : {}),
-    });
+    await context.scopedDb.characters.updateVoice(
+      character.id,
+      { voiceId, ...(voiceDescription ? { voiceDescription } : {}) },
+      'library'
+    );
     if (character.voiceId) {
       await releaseVoiceIfUnreferenced(context.scopedDb, character.voiceId);
     }
     return { characterId: character.id, voiceId };
+  });
+
+/**
+ * Voice history (#1657): every voice this character has held, newest first.
+ * The row carrying `selectedAt` is the live one; a row carrying `releasedAt`
+ * names an id that no longer exists at ElevenLabs and can never come back.
+ */
+export const listCharacterVoiceVersionsFn = createServerFn({ method: 'GET' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(zodValidator(characterIdInput))
+  .handler(async ({ context, data }) => {
+    const character = await context.scopedDb.characters.getById(
+      data.characterId
+    );
+    if (!character || character.sequenceId !== data.sequenceId) {
+      throw new NotFoundError('Character not found');
+    }
+    return await context.scopedDb.characters.listVoiceVersions(character.id);
+  });
+
+/**
+ * Point the character back at an earlier voice (#1657). Same order as
+ * choosing a take: the pointer and the mirror move first, then the voice the
+ * row was holding is released if nothing else uses it — so a failed release
+ * leaves the new id on the row with the old one still on the account for the
+ * next release to retry. That release stamps the old id's history rows, which
+ * is why a voice, once released, can never be selected again.
+ */
+export const selectCharacterVoiceVersionFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(zodValidator(characterIdInput.extend({ versionId: ulidSchema })))
+  .handler(async ({ context, data }) => {
+    const character = await context.scopedDb.characters.getById(
+      data.characterId
+    );
+    if (!character || character.sequenceId !== data.sequenceId) {
+      throw new NotFoundError('Character not found');
+    }
+    const updated = await context.scopedDb.characters.selectVoiceVersion(
+      character.id,
+      data.versionId
+    );
+    if (character.voiceId && character.voiceId !== updated.voiceId) {
+      await releaseVoiceIfUnreferenced(context.scopedDb, character.voiceId);
+    }
+    return { characterId: character.id, voiceId: updated.voiceId };
   });
 
 /** Undo a character soft-delete. */
@@ -626,16 +679,22 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
         character.isPerson,
         talentWithSheets.isHuman
       ),
-      // Cast copies the talent's voice (#1553); the role's own is released
-      // below once nothing else points at it.
-      ...(talentWithSheets.voiceId
-        ? {
-            voiceId: talentWithSheets.voiceId,
-            voiceDescription: talentWithSheets.voiceDescription,
-            voicePreviews: null,
-          }
-        : {}),
     });
+    // Cast copies the talent's voice (#1553): its own history row, labelled
+    // 'library' because that voice came from the talent, not this role's
+    // design. The role's old voice is released below once nothing points at
+    // it. Separate write — the voice mirror only moves through `updateVoice`.
+    if (talentWithSheets.voiceId) {
+      await context.scopedDb.characters.updateVoice(
+        data.characterId,
+        {
+          voiceId: talentWithSheets.voiceId,
+          voiceDescription: talentWithSheets.voiceDescription,
+          voicePreviews: null,
+        },
+        'library'
+      );
+    }
     if (
       character.voiceId &&
       talentWithSheets.voiceId &&

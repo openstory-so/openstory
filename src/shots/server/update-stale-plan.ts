@@ -16,6 +16,8 @@ import {
   type StartFrameSequence,
 } from '@/shots/use-start-frame';
 import { musicPromptInputHashMatches } from '@/shots/input-hash';
+import { musicRequestDurationSeconds } from '@/audio/music-track-staleness';
+import { readMusicTrackStaleness } from '@/audio/server/music-track-staleness';
 import {
   DEFAULT_ANALYSIS_MODEL,
   getAnalysisModelById,
@@ -31,8 +33,10 @@ import type {
   CharacterBibleEntry,
   ElementBibleEntry,
   LocationBibleEntry,
+  MotionDialogue,
   Scene,
 } from '@/shots/scene-analysis.schema';
+import { loadSceneDialogueLines, shotDialogueFromScene } from './shot-dialogue';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import type { Resolution } from '@/models/resolutions';
 import type {
@@ -50,6 +54,7 @@ import {
   loadSceneContextBySequence,
   resolveSceneForShot,
 } from './scene-script';
+import { loadLiveShotInputs } from './live-shot-state';
 import {
   computeShotStaleness,
   type ShotStalenessRefs,
@@ -140,6 +145,15 @@ export type PlanTarget = {
    * stale. Video/music use status columns rather than pending-claim rows.
    */
   regenVideo: boolean;
+  /**
+   * The lines this shot speaks, from the scene dialogue node at click time
+   * (#1657). Snapshotted here because the node is mutable and the run
+   * renders minutes later: the clip's bound audio, and the TTS the video
+   * stage bills when no clip matches, both come from these words. Null when
+   * the scene has no version row, which sends the video stage back to the
+   * motion prompt row's mirror.
+   */
+  dialogue: MotionDialogue | null;
 };
 
 /**
@@ -174,8 +188,9 @@ export type SkippedShot = {
 /**
  * Sequence-level music slice (depth 'music').
  * - `regenPrompt` — stored music-prompt hash diverges from live.
- * - `regenTrack` — track already exists AND the prompt regenerates (cascade
- *   only; no track-level staleness signal today). Never a FIRST generation.
+ * - `regenTrack` — the track's own `sequence_music_variants.inputHash`
+ *   diverges from the live prompt / tags / durations (#1657), OR the prompt
+ *   regenerates and cascades into it. Never a FIRST generation.
  *
  * Music is always sequence-scoped, even when shot/scene narrows shot targets.
  *
@@ -373,6 +388,13 @@ export async function computePlan(args: {
     ]);
   const refs: ShotStalenessRefs = { characters, locations, elements, style };
 
+  // The authored dialogue per scene, read once (#1657). Each target carries
+  // only its own shot's slice, so the run never reads the node mid-flight.
+  const dialogueLinesBySceneId = await loadSceneDialogueLines(
+    scopedDb,
+    sequence.id
+  );
+
   const targets: PlanTarget[] = [];
   const skipped: SkippedShot[] = [];
   // Bibles are sequence-wide; any target scene is enough to load context.
@@ -392,6 +414,7 @@ export async function computePlan(args: {
         ? (selectedPromptByFrame.get(frame.id) ?? null)
         : null,
       selectedMotionVersionId: selectedMotionByShot.get(shot.id)?.id ?? null,
+      dialogue: shotDialogueFromScene(dialogueLinesBySceneId, shot),
       scene,
       refs,
       depth,
@@ -542,6 +565,8 @@ async function decideShotTarget(args: {
   selectedPrompt: FramePromptVersion | null;
   /** Selected motion prompt version id — the video-only-regen default. */
   selectedMotionVersionId: string | null;
+  /** This shot's lines from the scene dialogue node (`PlanTarget.dialogue`). */
+  dialogue: MotionDialogue | null;
   scene: Scene | null;
   refs: ShotStalenessRefs;
   depth: UpdateStaleDepth;
@@ -557,6 +582,7 @@ async function decideShotTarget(args: {
     selectedImage,
     selectedPrompt,
     selectedMotionVersionId,
+    dialogue,
     scene,
     refs,
     depth,
@@ -640,6 +666,7 @@ async function decideShotTarget(args: {
         DEFAULT_IMAGE_MODEL
       ),
       regenVideo: flags.regenVideo,
+      dialogue,
     },
   };
 }
@@ -707,23 +734,11 @@ function cascadeFlags(args: {
 
 /**
  * Sequence-level music slice. Mirrors `getMusicPromptStalenessFn`'s comparison
- * (latest version's analysis model, fallback to the sequence's). Untracked
- * (no stored hash / no scenes) means nothing — never a first music prompt or
- * track. In-flight generation is left to finish.
+ * (latest version's analysis model, fallback to the sequence's) AND
+ * `readMusicTrackStaleness`'s for the track. Untracked (no stored hash / no
+ * scenes) means nothing — never a first music prompt or track. In-flight
+ * generation is left to finish.
  */
-/** Same rule as `generateMusicFn`: shot durations, 10s each when unset, with
- * a 30s floor for an empty sequence. */
-function musicDurationSeconds(allShots: Shot[]): number {
-  return (
-    Math.round(
-      allShots.reduce(
-        (sum, s) => sum + (s.durationMs ? s.durationMs / 1000 : 10),
-        0
-      )
-    ) || 30
-  );
-}
-
 async function computeMusicPlan(
   scopedDb: ScopedDb,
   sequence: Sequence,
@@ -735,13 +750,23 @@ async function computeMusicPlan(
   // `getMusicPromptStalenessFn`.
   const analysisModelId =
     getAnalysisModelById(sequence.analysisModel)?.id ?? DEFAULT_ANALYSIS_MODEL;
+  // Shared with the scene-music badge (`getMusicPromptStalenessFn`) so the
+  // plan and the UI agree on the duration they hash.
+  const durationSeconds = musicRequestDurationSeconds(allShots);
+  // Track staleness stands on its own (#1657): a hand-edited prompt NULLs
+  // `musicPromptInputHash`, so gating this behind the prompt's hash would hide
+  // exactly the case the edit created. Never a first generation.
+  const trackStale =
+    !!sequence.musicUrl &&
+    sequence.musicStatus !== 'generating' &&
+    (await readMusicTrackStaleness(scopedDb, sequence, allShots)) === 'stale';
   const none: MusicPlan = {
     regenPrompt: false,
-    regenTrack: false,
+    regenTrack: trackStale,
     sceneSummaries: [],
     analysisModelId,
     promptSource: 'ai-generated',
-    durationSeconds: 30,
+    durationSeconds,
   };
   if (!sequence.musicPromptInputHash) return none;
 
@@ -763,15 +788,17 @@ async function computeMusicPlan(
     ));
     return {
       regenPrompt,
-      // Cascade-only: track follows its prompt. No track-level staleness today.
+      // Either the track's own hash diverged, or the prompt regen cascades
+      // into it.
       regenTrack:
-        regenPrompt &&
-        !!sequence.musicUrl &&
-        sequence.musicStatus !== 'generating',
+        trackStale ||
+        (regenPrompt &&
+          !!sequence.musicUrl &&
+          sequence.musicStatus !== 'generating'),
       sceneSummaries,
       analysisModelId,
       promptSource: latest ? 'regenerated' : 'ai-generated',
-      durationSeconds: musicDurationSeconds(allShots),
+      durationSeconds,
     };
   } catch (error) {
     // Fail closed — same posture as per-shot 'unknown'.

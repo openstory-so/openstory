@@ -58,6 +58,12 @@ type MusicViewProps = {
   /** Banner rendered above the audio player while `musicStatus === 'completed'`. */
   divergentBanner?: React.ReactNode;
   isMusicPromptStale?: boolean;
+  /**
+   * The playing track's `sequence_music_variants.inputHash` no longer matches
+   * the sequence's prompt / tags / shot durations (#1657). Regenerating is
+   * the plain "Generate" call, so no extra handler.
+   */
+  isMusicTrackStale?: boolean;
   onRegenerateMusicPrompt?: () => void;
   isRegeneratingMusicPrompt?: boolean;
   /**
@@ -180,6 +186,7 @@ export const MusicView: React.FC<MusicViewProps> = ({
   isSettingModel = false,
   divergentBanner,
   isMusicPromptStale,
+  isMusicTrackStale,
   onRegenerateMusicPrompt,
   isRegeneratingMusicPrompt,
   onIncludeMusicChange,
@@ -207,6 +214,10 @@ export const MusicView: React.FC<MusicViewProps> = ({
     setEditPrompt(musicPrompt ?? '');
   }
 
+  // Two independent signals, stacked: the prompt is out of date against the
+  // scenes, the track is out of date against the prompt / tags / shot
+  // durations it was rendered from (#1657). Regenerating the prompt does not
+  // re-render the track, so one badge cannot stand for both.
   const stalenessBanner =
     isMusicPromptStale && onRegenerateMusicPrompt ? (
       <StalenessIndicator
@@ -217,6 +228,16 @@ export const MusicView: React.FC<MusicViewProps> = ({
         isRegenerating={isRegeneratingMusicPrompt}
       />
     ) : null;
+
+  const trackStalenessBanner = isMusicTrackStale ? (
+    <StalenessIndicator
+      artifact="music"
+      entityType="sequence"
+      density="inline"
+      onRegenerate={handleGenerate}
+      isRegenerating={isGeneratingMusic}
+    />
+  ) : null;
 
   const historyButton = (
     <Button
@@ -307,6 +328,7 @@ export const MusicView: React.FC<MusicViewProps> = ({
       >
         {divergentBanner}
         {stalenessBanner}
+        {trackStalenessBanner}
         <audio
           controls
           src={musicUrl}
@@ -448,6 +470,7 @@ export const MusicView: React.FC<MusicViewProps> = ({
       message={promptPending ? 'Preparing music…' : 'Music prompt ready'}
     >
       {stalenessBanner}
+      {trackStalenessBanner}
       <FormField
         label="Prompt"
         htmlFor="music-prompt"

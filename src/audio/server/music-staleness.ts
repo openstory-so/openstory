@@ -11,6 +11,7 @@ import {
 } from '@/shots/server/scene-script';
 import { musicPromptInputHashMatches } from '@/shots/input-hash';
 import { buildMusicSceneSummaries } from './workflows/music-scene-summaries';
+import { readMusicTrackStaleness } from './music-track-staleness';
 import { getLogger } from '@/platform/logger';
 const logger = getLogger(['openstory', 'music', 'staleness']);
 
@@ -25,26 +26,35 @@ export async function readMusicPromptStaleness(
   // `computeShotStaleness`, for the same reason: no verdict while the
   // sequence is being built.
   if (sequence.status === 'processing') {
-    return { musicPrompt: 'generating' as const };
+    return {
+      musicPrompt: 'generating' as const,
+      musicTrack: 'generating' as const,
+    };
   }
+
+  // Track staleness is INDEPENDENT of the prompt's (#1657): a hand-edited
+  // prompt nulls `musicPromptInputHash` — so the prompt reads 'untracked' —
+  // while leaving the track stale against the text it was rendered from.
+  const shots = await scopedDb.shots.listBySequence(sequence.id);
+  const musicTrack = await readMusicTrackStaleness(scopedDb, sequence, shots);
 
   // No stored hash: legacy sequence or never generated. Surface explicitly
   // so the UI can suppress the "regenerate" prompt without claiming
   // freshness.
   if (!sequence.musicPromptInputHash) {
-    return { musicPrompt: 'untracked' as const };
+    return { musicPrompt: 'untracked' as const, musicTrack };
   }
 
   try {
-    const [shots, sceneContext] = await Promise.all([
-      scopedDb.shots.listBySequence(sequence.id),
-      loadSceneContextBySequence(scopedDb, sequence.id),
-    ]);
+    const sceneContext = await loadSceneContextBySequence(
+      scopedDb,
+      sequence.id
+    );
     const scenes = shots
       .map((shot) => resolveSceneForShot(shot, sceneContext).scene)
       .filter((scene): scene is Scene => scene !== null);
     if (scenes.length === 0) {
-      return { musicPrompt: 'untracked' as const };
+      return { musicPrompt: 'untracked' as const, musicTrack };
     }
     const sceneSummaries = buildMusicSceneSummaries(scenes);
 
@@ -63,11 +73,12 @@ export async function readMusicPromptStaleness(
 
     return {
       musicPrompt: musicUpToDate ? ('fresh' as const) : ('stale' as const),
+      musicTrack,
     };
   } catch (error) {
     // Hash uncomputable (e.g., scene metadata missing a required field).
     // Surface as untracked so the UI doesn't lie about freshness.
     logger.warn(`uncomputable for sequence ${sequence.id}:`, { err: error });
-    return { musicPrompt: 'untracked' as const };
+    return { musicPrompt: 'untracked' as const, musicTrack };
   }
 }

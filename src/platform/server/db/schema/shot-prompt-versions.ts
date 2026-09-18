@@ -54,6 +54,12 @@ export type MotionAudioClip = {
    * would re-synthesise the take on every later read.
    */
   spokenLines?: { index: number; text: string }[];
+  /**
+   * The `scene_dialogue_takes` row this clip was cut from (#1657). Absent on
+   * a clip synthesised for one shot alone (motion's in-run fallback, or
+   * rows from before scene takes).
+   */
+  takeId?: string;
 };
 import { type InferSelectModel, sql } from 'drizzle-orm';
 import {

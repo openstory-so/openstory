@@ -12,6 +12,10 @@ import type {
 import type { AnalysisModelId } from '@/models/models.config';
 import type { VoicedDialogueLine } from '@/motion/dialogue-tts';
 import type {
+  SceneDialogueLine,
+  SceneVoicedLine,
+} from '@/shots/scene-dialogue';
+import type {
   AssemblableMotionPrompt,
   CharacterBibleEntry,
   ElementBibleEntry,
@@ -495,25 +499,40 @@ export interface ElementSheetWorkflowResult {
 }
 
 /**
- * Per-shot Text to Dialogue in the References stage (#1554). One acted
- * conversation clip per shot, persisted on `shots.audioClips` so motion
- * only attaches it.
+ * Per-SCENE Text to Dialogue in the References stage (#1554, #1657). One
+ * acted conversation clip per scene; each shot's clip is a slice of it, cut
+ * at the provider's per-turn voice segments and persisted on
+ * `shots.audioClips` so motion only attaches it.
  */
+export interface DialogueAudioSceneJob {
+  /**
+   * The scene's authored lines, each naming its shot — the
+   * `scene_dialogue_versions` row this take speaks. Snapshotted at the
+   * trigger (or re-snapshotted by `refreshCheckpointFromCast` on a
+   * continue), never re-read mid-run.
+   */
+  lines: SceneDialogueLine[];
+  /**
+   * The turns to speak, in speaking order, with their voices resolved.
+   * `index` is shot-relative (so a slice's `spokenLines` and the rewrite
+   * merge work per shot); `lineIndex` is the scene position the take's
+   * segments name.
+   */
+  voiced: SceneVoicedLine[];
+  /**
+   * Each shot's clip length, keyed by shot id (#1651). What a rewrite aims
+   * at, so a take fits the cut rather than stretching it to the cap.
+   */
+  shotSeconds: Record<string, number>;
+}
+
 export interface DialogueAudioWorkflowInput extends UserWorkflowContext {
   sequenceId: string;
-  shots: Array<{
-    shotId: string;
-    lines: VoicedDialogueLine[];
-    /**
-     * This shot's clip length (#1651). What a rewrite aims at, so the take
-     * fits the cut rather than stretching it up to the provider's cap.
-     */
-    shotSeconds?: number;
-  }>;
-  /** Provider per-file floor (H3 Max 2s). Short one-liners are padded. */
+  scenes: DialogueAudioSceneJob[];
+  /** Provider per-file floor (H3 Max 2s). Short slices are padded. */
   minDurationSeconds?: number;
   /**
-   * Longest take every selected model can carry (`dialogueAudioMaxSeconds`,
+   * Longest clip every selected model can carry (`dialogueAudioMaxSeconds`,
    * #1651). REQUIRED: a default here would be a silent cap, and an absent one
    * is how a 16s take reached a provider that rejects anything over 15.
    */

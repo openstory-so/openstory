@@ -27,6 +27,7 @@ import {
   withVoicedLineTokens,
 } from '@/motion/dialogue-tts';
 import { dialogueClipsAsReferences } from '@/motion/server/synthesize-dialogue';
+import { referenceKeysFrom } from '@/motion/reference-provenance';
 import { fitDialogueClip } from '@/motion/server/fit-dialogue-clip';
 import { raiseShotDurationToCoverAudio } from '@/motion/resolve-shot-duration';
 import type { MotionAudioClip } from '@/platform/server/db/schema';
@@ -200,6 +201,11 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     // that was rewritten to fit records its delivered wording on the clip, and
     // the prompt drives lip movement, so assembly has to read it back.
     let voicedLines = withSpokenText(input.voicedLines ?? [], audioClips);
+    // The manifest key is the AUTHORED lines (#1671): every reader computes
+    // it from the scene, so stamping the shortened wording would read stale
+    // forever. `voicedLines` above is for the prompt, which must say what the
+    // audio says.
+    const authoredLines = input.voicedLines ?? [];
     if (voicedLines.length > 0 && input.shotId && input.sequenceId) {
       const shotId = input.shotId;
       const sequenceId = input.sequenceId;
@@ -484,9 +490,16 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                   ),
                   audioSourceKey: audioSourceKeyFromVoicedLines(
                     member.shotId === input.shotId
-                      ? voicedLines
+                      ? authoredLines
                       : (member.voicedLines ?? [])
                   ),
+                  dialogueTakeId:
+                    (member.shotId === input.shotId
+                      ? audioClips
+                      : (member.audioClips ?? []))[0]?.takeId ?? null,
+                  // One clip, one request: every covered shot was sent the
+                  // same references.
+                  referenceKeys: referenceKeysFrom(input.referenceImages),
                 }))
               : [
                   {
@@ -503,7 +516,10 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                     usesStartFrame: !input.referenceOnly,
                     durationMs: duration * 1000,
                     audioClipIds: audioClips.map((clip) => clip.id),
-                    audioSourceKey: audioSourceKeyFromVoicedLines(voicedLines),
+                    audioSourceKey:
+                      audioSourceKeyFromVoicedLines(authoredLines),
+                    dialogueTakeId: audioClips[0]?.takeId ?? null,
+                    referenceKeys: referenceKeysFrom(input.referenceImages),
                   },
                 ];
           manifest = buildVideoManifest(coveredEntries);

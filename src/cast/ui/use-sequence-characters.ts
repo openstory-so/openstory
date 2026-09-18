@@ -18,6 +18,8 @@ import {
   assignCharacterVoiceFn,
   chooseCharacterVoiceTakeFn,
   generateCharacterVoiceFn,
+  listCharacterVoiceVersionsFn,
+  selectCharacterVoiceVersionFn,
   setCharacterVoiceEnabledFn,
   restoreSequenceCharacterFn,
   softDeleteSequenceCharacterFn,
@@ -35,6 +37,13 @@ export const sequenceCharacterKeys = {
     [...sequenceCharacterKeys.all, 'list', sequenceId] as const,
   shotsForCharacter: (sequenceId: string, characterId: string) =>
     [...sequenceCharacterKeys.all, 'shots', sequenceId, characterId] as const,
+  voiceVersions: (sequenceId: string, characterId: string) =>
+    [
+      ...sequenceCharacterKeys.all,
+      'voice-versions',
+      sequenceId,
+      characterId,
+    ] as const,
   sheetStaleness: (sequenceId: string, characterId: string) =>
     [
       ...sequenceCharacterKeys.all,
@@ -160,6 +169,44 @@ export function useAssignCharacterVoice() {
     onSuccess: (_result, { sequenceId, characterId }) => {
       void queryClient.invalidateQueries({
         queryKey: sequenceCharacterKeys.list(sequenceId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: elevenLabsVoiceKeys.saved(characterId),
+      });
+    },
+  });
+}
+
+/**
+ * Voice history (#1657). Suspense: the list renders inside the voice section,
+ * which is already behind a boundary.
+ */
+export function useCharacterVoiceVersions(
+  sequenceId: string,
+  characterId: string
+) {
+  return useQuery({
+    queryKey: sequenceCharacterKeys.voiceVersions(sequenceId, characterId),
+    queryFn: () =>
+      listCharacterVoiceVersionsFn({ data: { sequenceId, characterId } }),
+  });
+}
+
+/** Point the character back at an earlier voice (#1657). */
+export function useSelectCharacterVoiceVersion() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      sequenceId: string;
+      characterId: string;
+      versionId: string;
+    }) => selectCharacterVoiceVersionFn({ data }),
+    onSuccess: (_result, { sequenceId, characterId }) => {
+      void queryClient.invalidateQueries({
+        queryKey: sequenceCharacterKeys.list(sequenceId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: sequenceCharacterKeys.voiceVersions(sequenceId, characterId),
       });
       void queryClient.invalidateQueries({
         queryKey: elevenLabsVoiceKeys.saved(characterId),

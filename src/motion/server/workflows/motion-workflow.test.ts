@@ -656,3 +656,51 @@ describe('MotionWorkflow packed in-clip job (#1510)', () => {
     );
   });
 });
+
+describe('manifest audio key (#1671)', () => {
+  it('stamps the AUTHORED lines, not the shortened wording the clip spoke', async () => {
+    const { scopedDb, videoVariants } = makeScopedDb();
+    const authored = {
+      index: 0,
+      token: 'DIALOGUE',
+      voiceId: 'voice-sarah',
+      text: 'Stay down, and do not move until I say so.',
+      tone: '',
+      ttsModel: 'eleven_v3',
+      character: 'Sarah',
+    };
+    const authoredKey = `voice-sarah\t${authored.text}\t\televen_v3`;
+
+    await makeWorkflow().runBody(
+      makeEvent({
+        voicedLines: [authored],
+        audioClips: [
+          {
+            id: 'clip-1',
+            url: '/r2/audio/clip-1.wav',
+            token: 'DIALOGUE',
+            durationSeconds: 3,
+            sourceKey: authoredKey,
+            // The #1651 rewrite shortened the take; the prompt says this,
+            // the manifest must not.
+            spokenLines: [{ index: 0, text: 'Stay down.' }],
+          },
+        ],
+      }),
+      makeStep(),
+      scopedDb
+    );
+
+    expect(videoVariants.appendVersion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        manifest: [
+          expect.objectContaining({
+            shotId: 'shot-1',
+            audioClipIds: ['clip-1'],
+            audioSourceKey: authoredKey,
+          }),
+        ],
+      })
+    );
+  });
+});

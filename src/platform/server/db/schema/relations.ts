@@ -72,6 +72,22 @@ export const relations = defineRelations(schema, (r) => ({
     shots: r.many.shots(),
     renderSegments: r.many.renderSegments(),
     scriptVersions: r.many.sceneScriptVersions(),
+    dialogueVersions: r.many.sceneDialogueVersions(),
+    dialogueTakes: r.many.sceneDialogueTakes(),
+  },
+
+  sceneDialogueVersions: {
+    scene: r.one.scenes({
+      from: r.sceneDialogueVersions.sceneId,
+      to: r.scenes.id,
+    }),
+  },
+
+  sceneDialogueTakes: {
+    scene: r.one.scenes({
+      from: r.sceneDialogueTakes.sceneId,
+      to: r.scenes.id,
+    }),
   },
 
   sceneScriptVersions: {
@@ -124,14 +140,6 @@ export const relations = defineRelations(schema, (r) => ({
     frames: r.many.frames(),
     variants: r.many.shotVariants(),
     promptVariants: r.many.shotPromptVersions(),
-    dialogueVersions: r.many.shotDialogueVersions(),
-  },
-
-  shotDialogueVersions: {
-    shot: r.one.shots({
-      from: r.shotDialogueVersions.shotId,
-      to: r.shots.id,
-    }),
   },
 
   // ---- Shot Variants ----

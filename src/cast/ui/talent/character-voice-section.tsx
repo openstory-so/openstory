@@ -14,13 +14,18 @@ import {
 import {
   sequenceCharacterKeys,
   useAssignCharacterVoice,
+  useCharacterVoiceVersions,
   useChooseCharacterVoiceTake,
   useGenerateCharacterVoice,
+  useSelectCharacterVoiceVersion,
   useSetCharacterVoiceEnabled,
 } from '@/cast/ui/use-sequence-characters';
 import { VoiceLibraryDialog } from '@/cast/ui/talent/voice-library-dialog';
 import { errorMessage } from '@/platform/errors';
-import type { CharacterWithSheet } from '@/platform/server/db/schema';
+import type {
+  CharacterVoiceVersionSource,
+  CharacterWithSheet,
+} from '@/platform/server/db/schema';
 import { useRealtime } from '@/platform/ui/realtime/client';
 import { Badge } from '@/ui/shadcn/badge';
 import { Button } from '@/ui/shadcn/button';
@@ -224,6 +229,7 @@ export const CharacterVoiceSection: React.FC<{
                 : 'No voice yet. Browse the library or generate one.'}
             </p>
           )}
+          <VoiceHistory sequenceId={sequenceId} character={character} />
           <div className="flex flex-wrap gap-2">
             <Button
               variant="outline"
@@ -276,6 +282,101 @@ export const CharacterVoiceSection: React.FC<{
         </>
       )}
     </div>
+  );
+};
+
+/** What put this voice on the character — the history row's own label. */
+const VOICE_SOURCE_LABELS: Record<CharacterVoiceVersionSource, string> = {
+  analysis: 'From the script',
+  generated: 'Designed',
+  library: 'From the library',
+  'user-edit': 'Description edited',
+  disabled: 'Voice turned off',
+  released: 'Voice removed',
+};
+
+/**
+ * Voice history (#1657): every voice this character has held. A released row
+ * names an id ElevenLabs no longer has, so it is shown but cannot be used.
+ * Hidden until there is something to go back to.
+ */
+const VoiceHistory: React.FC<{
+  sequenceId: string;
+  character: CharacterWithSheet;
+}> = ({ sequenceId, character }) => {
+  const { data: versions } = useCharacterVoiceVersions(
+    sequenceId,
+    character.id
+  );
+  const select = useSelectCharacterVoiceVersion();
+  if (!versions || versions.length < 2) return null;
+  return (
+    <section className="flex flex-col gap-2" aria-label="Voice history">
+      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        History
+      </p>
+      <ul className="flex flex-col gap-1">
+        {versions.map((version) => {
+          const current = version.id === character.selectedVoiceVersionId;
+          const released = Boolean(version.releasedAt);
+          const created = new Date(version.createdAt);
+          return (
+            <li
+              key={version.id}
+              className="flex items-center justify-between gap-2 rounded-md border p-2"
+              aria-current={current ? 'true' : undefined}
+            >
+              <div className="flex min-w-0 flex-col">
+                <p className="text-xs font-medium">
+                  {VOICE_SOURCE_LABELS[version.source]}{' '}
+                  <time
+                    dateTime={created.toISOString()}
+                    className="font-normal text-muted-foreground"
+                  >
+                    {created.toLocaleDateString()}
+                  </time>
+                </p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {released
+                    ? 'Deleted when it stopped being used'
+                    : (version.description ?? 'No description')}
+                </p>
+              </div>
+              {current ? (
+                <Badge variant="secondary">Current</Badge>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={released || select.isPending}
+                  aria-label={`Use the ${VOICE_SOURCE_LABELS[
+                    version.source
+                  ].toLowerCase()} voice from ${created.toLocaleDateString()}`}
+                  onClick={() =>
+                    select.mutate(
+                      {
+                        sequenceId,
+                        characterId: character.id,
+                        versionId: version.id,
+                      },
+                      {
+                        onError: (error) =>
+                          toast.error('Failed to switch voice', {
+                            description: errorMessage(error),
+                          }),
+                      }
+                    )
+                  }
+                >
+                  Use
+                </Button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 };
 

@@ -463,6 +463,7 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
     voiceDescription: b.voiceDescription || null,
     voicePreviews: null,
     useVoice: null,
+    selectedVoiceVersionId: null,
     consistencyTag: b.consistencyTag,
     firstMentionSceneId: null,
     firstMentionText: null,

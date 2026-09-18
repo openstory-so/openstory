@@ -13,6 +13,7 @@ import type {
   CharacterMinimal,
   StyleConfig,
 } from '@/platform/server/db/schema';
+import { referenceProvenanceKey } from '@/motion/reference-provenance';
 import type { ReferenceImageDescription } from '@/stills/reference-image-prompt';
 /**
  * Build a concise character description from character data
@@ -56,6 +57,11 @@ export const buildCharacterReferenceImages = (
       role: 'character' as const,
       token: c.name,
       isPerson: c.isPerson,
+      provenanceKey: referenceProvenanceKey(
+        'character',
+        c.id,
+        c.selectedSheetVersionId ?? c.sheetImageUrl
+      ),
     }));
 };
 
