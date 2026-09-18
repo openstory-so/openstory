@@ -226,6 +226,7 @@ describe('StudioGenerationWorkflow image', () => {
     expect(generatedAssets.markCompleted).toHaveBeenCalledWith('asset-1', {
       outputs: [{ url: '/r2/thumbnails/a.png', contentType: 'image/png' }],
       costMicros: 12_000,
+      provider: 'fal',
     });
     expect(mockCaptureStudioGenerationCompleted).toHaveBeenCalledWith({
       distinctId: 'u1',
@@ -301,6 +302,7 @@ describe('StudioGenerationWorkflow video', () => {
     expect(generatedAssets.markCompleted).toHaveBeenCalledWith('asset-1', {
       outputs: [{ url: '/r2/videos/a.mp4', contentType: 'video/mp4' }],
       costMicros: 70_000,
+      provider: 'fal',
     });
     expect(mockCaptureStudioGenerationCompleted).toHaveBeenCalledWith({
       distinctId: 'u1',
@@ -379,7 +381,12 @@ describe('StudioGenerationWorkflow onFailure', () => {
   it('flips the reserved row to failed', async () => {
     const { scopedDb, generatedAssets } = makeScopedDb();
     await makeWorkflow().fail(makeEvent(IMAGE), scopedDb);
-    expect(generatedAssets.markFailed).toHaveBeenCalledWith('asset-1', 'boom');
+    // An image run only learns its via from the generate result.
+    expect(generatedAssets.markFailed).toHaveBeenCalledWith(
+      'asset-1',
+      'boom',
+      undefined
+    );
     // Image failures are recorded inside generateImageWithProvider.
     expect(mockRecordMediaGenerationSpan).not.toHaveBeenCalled();
   });
@@ -397,7 +404,11 @@ describe('StudioGenerationWorkflow onFailure', () => {
     await expect(
       makeWorkflow().fail(makeEvent(VIDEO), scopedDb)
     ).rejects.toThrow('D1 down');
-    expect(generatedAssets.markFailed).toHaveBeenCalledWith('asset-1', 'boom');
+    expect(generatedAssets.markFailed).toHaveBeenCalledWith(
+      'asset-1',
+      'boom',
+      'fal'
+    );
   });
 
   it('records a video failure span on the resolved via', async () => {
@@ -407,7 +418,12 @@ describe('StudioGenerationWorkflow onFailure', () => {
       makeEvent({ ...VIDEO, videoModel: 'gemini_omni_flash' }),
       scopedDb
     );
-    expect(generatedAssets.markFailed).toHaveBeenCalledWith('asset-1', 'boom');
+    // The failed row is labelled with the via too, not left as fal (#1681).
+    expect(generatedAssets.markFailed).toHaveBeenCalledWith(
+      'asset-1',
+      'boom',
+      'google'
+    );
     expect(mockRecordMediaGenerationSpan).toHaveBeenCalledWith(
       expect.objectContaining({
         model: 'gemini_omni_flash',

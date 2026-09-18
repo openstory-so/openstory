@@ -175,9 +175,13 @@ describe('status lifecycle', () => {
         contentType: 'image/png',
       },
     ];
-    await methods.markCompleted(row.id, { outputs });
+    // Inserted as 'fal' before any via is known; completion records the via
+    // the run actually rendered on (#1681).
+    expect(current?.provider).toBe('fal');
+    await methods.markCompleted(row.id, { outputs, provider: 'byteplus' });
     current = await methods.getById(row.id);
     expect(current?.status).toBe('completed');
+    expect(current?.provider).toBe('byteplus');
     expect(current?.outputs).toEqual(outputs);
     expect(current?.costMicros).toBeNull();
     expect(current?.error).toBeNull();

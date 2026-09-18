@@ -170,7 +170,7 @@ describe('persistAssetCompletion / persistAssetFailure', () => {
     await persistAssetCompletion({ scopedDb, assetId: 'asset-1', outputs });
 
     expect(completed).toEqual([
-      { id: 'asset-1', fields: { outputs, costMicros: null } },
+      { id: 'asset-1', fields: { outputs, costMicros: null, provider: 'fal' } },
     ]);
     expect(failed).toEqual([]);
   });

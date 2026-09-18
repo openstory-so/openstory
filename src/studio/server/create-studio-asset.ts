@@ -199,6 +199,8 @@ export async function createStudioAssets(
         reservationId,
         async () => {
           const row = await scopedDb.generatedAssets.insert({
+            // Queue-time label only: the via is resolved inside the run, which
+            // overwrites this on completion (#1681).
             provider: 'fal',
             endpointId,
             activity: input.activity,

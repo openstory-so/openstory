@@ -24,6 +24,7 @@ import {
 } from '@/models/content-rejection';
 import { extractFalErrorMessage } from '@/models/fal-error';
 import { IMAGE_TO_VIDEO_MODELS } from '@/models/models';
+import type { MediaVia } from '@/models/via';
 import { ZERO_MICROS } from '@/billing/money';
 import {
   deductWorkflowCredits,
@@ -197,6 +198,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
       await scopedDb.generatedAssets.markCompleted(assetId, {
         outputs,
         costMicros: imageCost,
+        provider: generated.via,
       });
     });
 
@@ -522,6 +524,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
       await scopedDb.generatedAssets.markCompleted(assetId, {
         outputs,
         costMicros: videoCost,
+        provider: job.via,
       });
     });
 
@@ -565,14 +568,15 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
     scopedDb: WorkflowScopedDb;
   }): Promise<void> {
     const { assetId, userId, input } = event.payload;
+    // An image run only learns its via from the generate result, so a failed
+    // one keeps the row's queue-time label.
+    let videoVia: MediaVia | undefined;
     if (input.activity === 'video') {
+      videoVia = await resolveMotionVia(input.videoModel, scopedDb.credentials);
       // Image failures are already recorded inside generateImageWithProvider.
       recordMediaGenerationSpan({
         model: input.videoModel,
-        provider: await resolveMotionVia(
-          input.videoModel,
-          scopedDb.credentials
-        ),
+        provider: videoVia,
         activity: 'video',
         prompt: input.prompt,
         errorType: isContentRejectionError(error)
@@ -586,7 +590,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
         metadata: { model: input.videoModel, assetId },
       });
     }
-    await scopedDb.generatedAssets.markFailed(assetId, error);
+    await scopedDb.generatedAssets.markFailed(assetId, error, videoVia);
     if (input.activity === 'video') {
       // Unpin this run's ACR stills (#1531). Not caught: this runs inside the
       // base class's retried `emit-failure` step, which keeps the real
