@@ -359,6 +359,18 @@ describe('computeCharacterSheetInputHash', () => {
     expect(new Set([a, talent, style, model]).size).toBe(4);
   });
 
+  it('does not fold likeness into the sheet hash (#1682)', async () => {
+    const a = await computeCharacterSheetInputHash(base);
+    const flagged = await computeCharacterSheetInputHash({
+      ...base,
+      characterBible: {
+        ...base.characterBible,
+        likeness: 'none' as const,
+      },
+    });
+    expect(flagged).toBe(a);
+  });
+
   it('rejects omitted talentSheetHash; null is the explicit empty', async () => {
     const nullHash = await computeCharacterSheetInputHash({
       ...base,
@@ -621,6 +633,7 @@ describe('prompt input hashes', () => {
     movement: '',
     voiceDescription: '',
     voiceOnly: false,
+    likeness: 'fictional' as const,
     consistencyTag: '',
   };
 

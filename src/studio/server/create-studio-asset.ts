@@ -26,8 +26,9 @@ import {
   reserveRunCredits,
 } from '@/billing/server/preflight';
 import { requireGenerationAllowed } from '@/platform/server/compliance/generation-gate';
+import { registersWithArk } from '@/cast/likeness';
 import {
-  imagesWithoutPerson,
+  likenessFromLedger,
   requireUploadRights,
 } from '@/cast/server/upload-rights';
 import { needsLikenessCheck } from '@/cast/upload-rights';
@@ -171,10 +172,14 @@ export async function createStudioAssets(
     scopedDb,
     studioReferenceImages(input).filter(needsLikenessCheck)
   );
-  const noPersonImages =
-    input.activity === 'video'
-      ? await imagesWithoutPerson(scopedDb, studioReferenceImages(input))
-      : [];
+  const noPersonImages: string[] = [];
+  if (input.activity === 'video') {
+    for (const url of studioReferenceImages(input)) {
+      if (!registersWithArk(await likenessFromLedger(scopedDb, url))) {
+        noPersonImages.push(url);
+      }
+    }
+  }
 
   // Hold every item before inserting any row. A shared envelope would let
   // the first child to finish zero leftover for siblings; a later reserve

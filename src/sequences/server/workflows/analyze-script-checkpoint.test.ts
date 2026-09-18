@@ -100,6 +100,7 @@ const CHARACTER_ROW: CharacterMinimal = {
   selectedSheetVersionId: 'csv_1',
   physicalDescription: 'tall',
   voiceOnly: false,
+  likeness: 'fictional' as const,
   consistencyTag: 'ADA',
 };
 const LOCATION_ROW: SequenceLocationMinimal = {
@@ -442,6 +443,7 @@ describe('AnalyzeScriptWorkflow script checkpoint', () => {
       movement: '',
       voiceDescription: '',
       voiceOnly: true,
+      likeness: 'fictional' as const,
       consistencyTag: 'narrator',
     };
     const event = makeEvent({

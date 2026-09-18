@@ -50,8 +50,8 @@ export type ArkStill = {
   kind?: BytePlusAssetKind;
   /**
    * Known to show no person: map it to a fetchable URL and spend no
-   * CreateAsset on it (#1674). Only a still with a face needs the portrait
-   * library.
+   * CreateAsset on it (#1674, #1682). Only a still with a face needs the
+   * portrait library.
    */
   plain?: boolean;
 };

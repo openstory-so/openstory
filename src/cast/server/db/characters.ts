@@ -56,6 +56,7 @@ export type CharacterBibleUpdate = Partial<
     | 'personality'
     | 'movement'
     | 'voiceOnly'
+    | 'likeness'
     | 'voiceDescription'
     | 'consistencyTag'
   >
@@ -223,6 +224,7 @@ export function createCharactersMethods(db: Database) {
             personality: data.personality,
             movement: data.movement,
             voiceOnly: data.voiceOnly,
+            likeness: data.likeness,
             // A voice already on the row wins (#1553): re-writing it would
             // orphan an ElevenLabs slot. A row without one takes the talent
             // copy the insert carries.

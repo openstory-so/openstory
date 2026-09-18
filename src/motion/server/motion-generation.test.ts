@@ -66,12 +66,81 @@ const registeredAssets: ArkAssetMap = new Proxy(
 );
 
 const {
+  arkStillsForMotion,
   submitMotionJob,
   pollMotionJob,
   motionCostFromUsage,
   calculateMotionMetadata,
   resolveMotionVia,
 } = await import('./motion-generation');
+
+describe('arkStillsForMotion', () => {
+  it('registers the start frame and character sheets that may show a person (#1682)', () => {
+    expect(
+      arkStillsForMotion({
+        imageUrl: 'https://cdn/still.png',
+        referenceImages: [
+          {
+            referenceImageUrl: 'https://cdn/sarah.png',
+            description: 'Sarah',
+            role: 'character',
+            token: 'Sarah',
+            likeness: 'fictional' as const,
+          },
+          {
+            referenceImageUrl: 'https://cdn/elvis.png',
+            description: 'Elvis',
+            role: 'character',
+            token: 'Elvis',
+            likeness: 'real',
+          },
+          {
+            referenceImageUrl: 'https://cdn/robot.png',
+            description: 'UNIT-7',
+            role: 'character',
+            token: 'UNIT-7',
+            likeness: 'none' as const,
+          },
+          {
+            referenceImageUrl: 'https://cdn/cafe.png',
+            description: 'cafe',
+            role: 'location',
+            token: 'CAFE',
+          },
+          {
+            referenceImageUrl: 'https://cdn/logo.png',
+            description: 'logo',
+            role: 'element',
+            token: 'LOGO',
+          },
+        ],
+      })
+    ).toEqual([
+      { storedUrl: 'https://cdn/still.png', slot: 'frame' },
+      { storedUrl: 'https://cdn/sarah.png', slot: 'library' },
+      { storedUrl: 'https://cdn/elvis.png', slot: 'library' },
+      {
+        storedUrl: 'https://cdn/robot.png',
+        slot: 'library',
+        plain: true,
+      },
+    ]);
+  });
+
+  it('treats a missing likeness as a face, including in-flight payloads', () => {
+    expect(
+      arkStillsForMotion({
+        referenceImages: [
+          {
+            referenceImageUrl: 'https://cdn/unknown.png',
+            description: 'Someone',
+            role: 'character',
+          },
+        ],
+      })
+    ).toEqual([{ storedUrl: 'https://cdn/unknown.png', slot: 'library' }]);
+  });
+});
 
 describe('Motion Service', () => {
   beforeEach(() => {
@@ -206,6 +275,50 @@ describe('Motion Service', () => {
       expect(result.via).toBe('byteplus');
       expect(result.usedOwnKey).toBe(false);
       expect(result.jobId).toBe('ark-job-id');
+    });
+
+    it('registers only character sheets that may show a person; robots go as the mapped plain URL (#1682)', async () => {
+      testEnv.ARK_API_KEY = 'ark-test';
+      mockGenerateVideo.mockResolvedValue({ jobId: 'ark-plain' });
+
+      await submitMotionJob({
+        arkAssets: {
+          'https://example.com/still.jpg': 'asset://still.jpg',
+          'https://example.com/robot.png': 'https://example.com/robot.png',
+        },
+        imageUrl: 'https://example.com/still.jpg',
+        prompt: 'UNIT-7 waves',
+        model: 'seedance_v2_5',
+        duration: 5,
+        referenceImages: [
+          {
+            referenceImageUrl: 'https://example.com/robot.png',
+            description: 'UNIT-7',
+            role: 'character',
+            token: 'UNIT-7',
+            likeness: 'none' as const,
+          },
+        ],
+      });
+
+      expect(mockGenerateVideo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: expect.arrayContaining([
+            expect.objectContaining({
+              type: 'image',
+              source: expect.objectContaining({
+                value: 'asset://still.jpg',
+              }),
+            }),
+            expect.objectContaining({
+              type: 'image',
+              source: expect.objectContaining({
+                value: 'https://example.com/robot.png',
+              }),
+            }),
+          ]),
+        })
+      );
     });
 
     it('registers the start frame and character refs as asset://, sends element/location sheets as URLs (#1519)', async () => {

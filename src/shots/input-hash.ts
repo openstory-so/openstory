@@ -339,6 +339,8 @@ export type CharacterBibleHashFields = {
   standardClothing: string | null;
   distinguishingFeatures: string | null;
   consistencyTag: string | null;
+  /** Not hashed — BytePlus registration only (#1682). */
+  likeness?: string;
 };
 
 export type CharacterSheetHashInput = {

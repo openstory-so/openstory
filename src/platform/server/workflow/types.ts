@@ -914,6 +914,11 @@ export type TalentCharacterMatch = {
   // library has none (pre-#1553 checkpoints lack the keys: `?? null`).
   voiceId: string | null;
   voiceDescription: string | null;
+  /**
+   * Signed real-person portrait (`talent.isHuman`). Stamps character
+   * `likeness: 'real'` at insert (#1682). Absent on pre-stamp checkpoints.
+   */
+  hasSignedRelease?: boolean;
 };
 
 /**

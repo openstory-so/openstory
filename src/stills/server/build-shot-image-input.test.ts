@@ -211,6 +211,7 @@ describe('buildShotImageWorkflowInput — reference images', () => {
       selectedSheetVersionId: null,
       physicalDescription: 'tall',
       voiceOnly: false,
+      likeness: 'fictional' as const,
       consistencyTag: null,
     };
     const input = await buildShotImageWorkflowInput({
@@ -246,6 +247,7 @@ describe('buildShotImageWorkflowInput — reference images', () => {
       selectedSheetVersionId: null,
       physicalDescription: 'red coat',
       voiceOnly: false,
+      likeness: 'fictional' as const,
       consistencyTag: null,
     };
     const input = await buildShotImageWorkflowInput({

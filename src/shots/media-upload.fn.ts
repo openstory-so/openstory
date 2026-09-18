@@ -25,7 +25,10 @@ import {
   hashVisualPromptInput,
 } from './input-hash';
 import { resolveSheetImageModel } from '@/cast/sheet-image-model';
-import { requireUploadRights } from '@/cast/server/upload-rights';
+import {
+  likenessFromLedger,
+  requireUploadRights,
+} from '@/cast/server/upload-rights';
 import { StyleConfigSchema } from '@/look/style-config';
 import { NotFoundError } from '@/platform/errors';
 import { computeStyleConfigHash } from '@/cast/server/workflows/sheet-snapshots';
@@ -707,6 +710,8 @@ export const setCharacterSheetFromUploadFn = createServerFn({ method: 'POST' })
       context.teamId
     );
     await requireUploadRights(scopedDb, [data.publicUrl]);
+    const likeness =
+      (await likenessFromLedger(scopedDb, data.publicUrl)) ?? 'fictional';
     const character = await scopedDb.characters.getById(data.characterId);
     if (!character || character.sequenceId !== sequence.id) {
       throw new NotFoundError('Character not found');
@@ -752,6 +757,7 @@ export const setCharacterSheetFromUploadFn = createServerFn({ method: 'POST' })
         storagePath,
         inputHash,
         model: USER_UPLOAD_MODEL,
+        likeness,
       });
     await scopedDb.sequenceEvents.record({
       sequenceId: sequence.id,

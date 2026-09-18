@@ -1,3 +1,4 @@
+import type { Likeness } from '@/cast/likeness';
 import { getLogger } from '@/platform/logger';
 import {
   appendLegendWithinLimit,
@@ -43,6 +44,12 @@ export type ReferenceImageDescription = {
    * the description (#873).
    */
   token?: string;
+  /**
+   * Who this still depicts (#1682). BytePlus CreateAsset is spent unless
+   * `none`. Absent (in-flight payloads) means register — Ark rejects a
+   * photoreal face sent as a public URL.
+   */
+  likeness?: Likeness;
 };
 
 /** Ordering weight per role: primary first, then the supporting refs. */

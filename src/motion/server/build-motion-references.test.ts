@@ -22,6 +22,7 @@ const character = (
   selectedSheetVersionId: null,
   physicalDescription: `${name} is tall`,
   voiceOnly: false,
+  likeness: 'fictional' as const,
   consistencyTag: name.toLowerCase(),
 });
 

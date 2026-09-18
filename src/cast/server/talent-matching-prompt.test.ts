@@ -15,6 +15,7 @@ const character: CharacterBibleEntry = {
   movement: '',
   voiceDescription: '',
   voiceOnly: false,
+  likeness: 'fictional' as const,
   consistencyTag: 'jack',
 };
 
@@ -36,6 +37,7 @@ const talent = {
       movement: '',
       voiceDescription: '',
       voiceOnly: false,
+      likeness: 'fictional' as const,
       consistencyTag: 'sam',
     },
   },

@@ -23,6 +23,7 @@ import type {
 } from '@/platform/server/db/schema';
 import type { ReferenceStatus } from '@/platform/server/db/schema/sequence-locations';
 import { buildCastingAttributes } from '@/cast/character-prompt';
+import { likenessFromTalentCast } from '@/cast/likeness';
 import type {
   ElementSheetEntry,
   LibraryLocationMatch,
@@ -59,6 +60,10 @@ export function buildCharacterInsert(args: {
     personality: castingAttrs?.personality ?? character.personality,
     movement: castingAttrs?.movement ?? character.movement,
     voiceOnly: character.voiceOnly,
+    likeness: likenessFromTalentCast(
+      character.likeness,
+      talentMatch?.hasSignedRelease
+    ),
     consistencyTag: castingAttrs?.consistencyTag ?? character.consistencyTag,
     // Cast copies the talent's voice (#1553); the upsert keeps a voice the
     // row already holds.

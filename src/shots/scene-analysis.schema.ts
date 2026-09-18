@@ -50,6 +50,11 @@ export const characterBibleEntrySchema = z.object({
   // Narrator, radio voice, a caller on the phone: a voice with no face, so no
   // sheet, no talent match, no place in an image prompt (#1585).
   voiceOnly: z.boolean().meta({ description: 'Heard but never seen' }),
+  // LLM wire is fictional | none only. `real` is stamped from a signed
+  // talent or the upload ledger, never from the bible call (#1682).
+  likeness: z
+    .enum(['fictional', 'none'])
+    .meta({ description: 'fictional person, or none' }),
   consistencyTag: z.string().meta({ description: 'snake_case name slug' }),
 });
 

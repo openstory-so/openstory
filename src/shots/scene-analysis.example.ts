@@ -19,6 +19,7 @@ export const sceneAnalysisExample: SceneAnalysis = {
       movement: 'Gait, posture, habitual gestures',
       voiceDescription: '',
       voiceOnly: false,
+      likeness: 'fictional' as const,
       consistencyTag: 'Short tag for continuity',
     },
   ],

@@ -50,6 +50,7 @@ function makeCharacter(
     personality: null,
     movement: null,
     voiceOnly: false,
+    likeness: 'fictional' as const,
     voiceId: null,
     voiceDescription: null,
     voicePreviews: null,

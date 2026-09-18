@@ -138,9 +138,17 @@ export function createCharacterSheetVariantsMethods(db: Database) {
       inputHash: CharacterSheetInputHash | null;
       model: string;
       workflowRunId?: string | null;
+      likeness?: Character['likeness'];
     }): Promise<{ character: Character; version: CharacterSheetVariant }> => {
-      const { characterId, url, storagePath, inputHash, model, workflowRunId } =
-        args;
+      const {
+        characterId,
+        url,
+        storagePath,
+        inputHash,
+        model,
+        workflowRunId,
+        likeness,
+      } = args;
       const [existing] = await db
         .select()
         .from(characters)
@@ -175,6 +183,7 @@ export function createCharacterSheetVariantsMethods(db: Database) {
           sheetError: null,
           selectedSheetVersionId: version.id,
           updatedAt: now,
+          ...(likeness !== undefined ? { likeness } : {}),
         })
         .where(eq(characters.id, characterId))
         .returning();

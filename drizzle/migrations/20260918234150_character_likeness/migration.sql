@@ -1,0 +1,1 @@
+ALTER TABLE `characters` ADD `likeness` text DEFAULT 'fictional' NOT NULL;

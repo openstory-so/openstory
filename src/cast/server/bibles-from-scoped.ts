@@ -1,3 +1,4 @@
+import { bibleLikeness } from '@/cast/likeness';
 import type {
   CharacterBibleEntry,
   ElementBibleEntry,
@@ -24,6 +25,7 @@ export function characterToBible(c: CharacterWithSheet): CharacterBibleEntry {
     movement: c.movement ?? '',
     voiceDescription: c.voiceDescription ?? '',
     voiceOnly: c.voiceOnly,
+    likeness: bibleLikeness(c.likeness),
     consistencyTag: c.consistencyTag ?? '',
   };
 }

@@ -42,6 +42,7 @@ const characterBible = [
     movement: '',
     voiceDescription: '',
     voiceOnly: false,
+    likeness: 'fictional' as const,
     consistencyTag: 'jack_denim_weathered',
   },
 ];

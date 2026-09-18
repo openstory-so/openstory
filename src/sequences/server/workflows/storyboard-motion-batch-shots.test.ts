@@ -335,6 +335,7 @@ describe('buildStoryboardMotionBatchShots', () => {
           selectedSheetVersionId: null,
           physicalDescription: null,
           voiceOnly: false,
+          likeness: 'fictional' as const,
           consistencyTag: 'sarah',
           voiceId: 'voice-sarah',
         },
