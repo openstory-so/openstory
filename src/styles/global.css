@@ -369,8 +369,78 @@ body {
   }
 }
 
+/* Welcome gift (#1668): confetti burst behind the amount. Each piece carries
+   its own --x / --y / --r; the second leg is the fall. */
+@keyframes confetti-burst {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0) scale(0.4);
+  }
+  55% {
+    opacity: 1;
+    transform: translate(var(--x), var(--y)) rotate(var(--r)) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(var(--x) * 1.15), calc(var(--y) + 56px))
+      rotate(calc(var(--r) * 1.6)) scale(0.9);
+  }
+}
+
+/* Welcome gift: the amount lands with a small overshoot */
+@keyframes gift-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Sidebar pill: "+$20.00" rises off the balance as it counts up */
+@keyframes balance-gain {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-18px);
+  }
+}
+
 /* Reduced motion: simple fade pulse */
 @media (prefers-reduced-motion: reduce) {
+  .confetti-piece {
+    display: none;
+  }
+  @keyframes gift-pop {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes balance-gain {
+    0%,
+    100% {
+      opacity: 0;
+    }
+    20%,
+    80% {
+      opacity: 1;
+    }
+  }
   .progress-shimmer::after {
     animation: none;
   }

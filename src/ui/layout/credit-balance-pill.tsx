@@ -9,7 +9,8 @@
  *    click reopens the claim dialog after Skip. Never show the grant amount
  *    as if it were the balance.
  * 3. Low balance with no safety net (amber)
- * 4. Balance topped up — brief green flash
+ * 4. Balance topped up — brief green flash. The welcome grant also counts
+ *    the digits up under a rising "+$20.00" (#1668).
  * 5. User left "Show costs" on (default) — muted wallet amount (#1140)
  *
  * Expanded: wallet + $amount at normal sidebar foreground weight.
@@ -28,6 +29,7 @@ import {
 import { useWelcomeCreditsGate } from '@/billing/ui/welcome-credits-dialog';
 import { openAddCreditsDialog } from '@/billing/ui/use-add-credits-dialog';
 import { useBalanceFlash } from '@/billing/ui/use-balance-flash';
+import { useBalanceCountUp } from '@/billing/ui/use-balance-count-up';
 import { useBillingBalance } from '@/billing/ui/use-billing-balance';
 import { useBillingBalanceRealtime } from '@/billing/ui/use-billing-balance-realtime';
 import { useBillingGateQuery } from '@/billing/ui/use-billing-gate';
@@ -58,6 +60,7 @@ export const CreditBalancePill: React.FC = () => {
   const { showCosts } = useShowCosts();
   const { isFlashing } = useBalanceFlash();
   const { reopen: reopenWelcomeCredits } = useWelcomeCreditsGate();
+  const { shown, gain } = useBalanceCountUp(balance);
 
   const isSignedOut = !userLoading && !user;
   const unclaimedWelcome = Boolean(
@@ -129,37 +132,68 @@ export const CreditBalancePill: React.FC = () => {
   if (!isSignedInVisible) return null;
 
   // Flash / low only — default inherits sidebar menu foreground (not muted).
-  const toneClass = isFlashing
-    ? 'text-emerald-600 dark:text-emerald-400 hover:text-emerald-600 dark:hover:text-emerald-400'
-    : isLowBalanceVisible
-      ? 'text-amber-600 dark:text-amber-400 hover:text-amber-600 dark:hover:text-amber-400'
-      : undefined;
+  const toneClass =
+    isFlashing || gain !== null
+      ? 'text-emerald-600 dark:text-emerald-400 hover:text-emerald-600 dark:hover:text-emerald-400'
+      : isLowBalanceVisible
+        ? 'text-amber-600 dark:text-amber-400 hover:text-amber-600 dark:hover:text-amber-400'
+        : undefined;
 
   const amount = `$${balance?.toFixed(2) ?? '0.00'}`;
   const tooltip =
     reserved > 0 ? `Credits · ${amount} available` : `Credits · ${amount}`;
 
   return (
-    <SidebarMenu>
-      <SidebarMenuItem>
-        {/* Opens the add-credits modal, not the credits page (#1099) */}
-        <SidebarMenuButton
-          tooltip={tooltip}
-          onClick={() => openAddCreditsDialog('sidebar_pill')}
-          aria-label={`Credit balance ${amount}. Add credits.`}
-          className={cn(
-            'animate-[balance-flash-in_300ms_ease-out_both]',
-            toneClass
-          )}
-        >
-          <Wallet />
-          {/* Amount hides in icon mode via SidebarMenuButton truncation
-              (span:last-child); tooltip carries the full amount. */}
-          <span className="tabular-nums" aria-live="polite">
-            {amount}
-          </span>
-        </SidebarMenuButton>
-      </SidebarMenuItem>
-    </SidebarMenu>
+    <BalancePillButton
+      amount={amount}
+      shown={shown}
+      gain={gain}
+      tooltip={tooltip}
+      toneClass={toneClass}
+    />
   );
 };
+
+/** The signed-in pill itself; split out so Storybook can play the count-up. */
+export const BalancePillButton: React.FC<{
+  amount: string;
+  shown: number;
+  gain: number | null;
+  tooltip: string;
+  toneClass: string | undefined;
+}> = ({ amount, shown, gain, tooltip, toneClass }) => (
+  <SidebarMenu>
+    <SidebarMenuItem>
+      {/* Opens the add-credits modal, not the credits page (#1099) */}
+      <SidebarMenuButton
+        tooltip={tooltip}
+        onClick={() => openAddCreditsDialog('sidebar_pill')}
+        aria-label={`Credit balance ${amount}. Add credits.`}
+        className={cn(
+          'animate-[balance-flash-in_300ms_ease-out_both]',
+          toneClass
+        )}
+      >
+        <Wallet />
+        {/* The ticking digits are visual only; the live region announces
+            the settled amount once, not every frame. */}
+        <span className="sr-only" aria-live="polite">
+          {amount}
+        </span>
+        {/* Amount hides in icon mode via SidebarMenuButton truncation
+            (span:last-child); tooltip carries the full amount. */}
+        <span className="tabular-nums" aria-hidden>
+          ${shown.toFixed(2)}
+        </span>
+      </SidebarMenuButton>
+      {gain !== null ? (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute -top-2.5 left-8 text-xs font-semibold tabular-nums text-emerald-600 animate-[balance-gain_1800ms_ease-out_both] group-data-[collapsible=icon]:hidden dark:text-emerald-400"
+        >
+          +${gain.toFixed(2)}
+        </span>
+      ) : null}
+    </SidebarMenuItem>
+  </SidebarMenu>
+);
