@@ -5,6 +5,8 @@ import { convertWebSearchToolToAdapterFormat } from '@tanstack/ai-openrouter/too
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { REGION_FALLBACK_MODEL } from '@/models/region-policy';
 import { z } from 'zod';
+import { getLogger } from '@/platform/logger';
+import { getMaxOutputTokens } from '@/models/models.config';
 
 // Import real exports before vi.doMock so they can be re-exported
 import * as tanstackAi from '@tanstack/ai';
@@ -54,6 +56,8 @@ const {
   callLLM,
   callLLMStream,
   createUsageCapture,
+  extractRunError,
+  throwNotedRunError,
   glmReasoningEffortForCall,
   isForcedGlmReasoningModel,
   llmCostFromUsage,
@@ -72,11 +76,56 @@ const usage = (cost?: number): TokenUsage => ({
   cost,
 });
 
+const logger = getLogger(['openstory', 'ai', 'llm-client']);
+const warnLog = vi.spyOn(logger, 'warn');
+const errorLog = vi.spyOn(logger, 'error');
+
 describe('llm-client', () => {
   beforeEach(() => {
+    warnLog.mockClear();
+    errorLog.mockClear();
     mockChat.mockClear();
     mockCreateAdapter.mockClear();
     mockAIObservabilityMiddleware.mockClear();
+  });
+
+  describe('RUN_ERROR diagnostics', () => {
+    it('retains legacy top-level model support', () => {
+      expect(
+        extractRunError({
+          type: 'RUN_ERROR',
+          message: 'failed',
+          model: 'legacy',
+        })?.model
+      ).toBe('legacy');
+    });
+
+    it.each([
+      undefined,
+      null,
+      'bad',
+      { tanstack: null },
+      { tanstack: 'bad' },
+      { tanstack: { model: 123 } },
+    ])('ignores malformed metadata: %j', (metadata) => {
+      expect(
+        extractRunError({ type: 'RUN_ERROR', message: 'failed', metadata })
+          ?.model
+      ).toBeUndefined();
+    });
+
+    it('logs terminal region blocks as errors by default', () => {
+      expect(() =>
+        throwNotedRunError(
+          extractRunError({
+            type: 'RUN_ERROR',
+            message: 'This model is not available in your region.',
+          })
+        )
+      ).toThrow('not available in your region');
+      expect(errorLog).toHaveBeenCalledTimes(1);
+      expect(warnLog).not.toHaveBeenCalled();
+    });
   });
 
   describe('callLLMStream', () => {
@@ -402,7 +451,7 @@ describe('llm-client', () => {
             yield {
               type: 'RUN_ERROR',
               message: 'This model is not available in your region.',
-              model: 'anthropic/claude-opus-5-fast',
+              metadata: { tanstack: { model: 'anthropic/claude-opus-5-fast' } },
             };
           })()
         )
@@ -418,6 +467,13 @@ describe('llm-client', () => {
       });
 
       expect(result).toBe('fallback answer');
+      expect(errorLog).not.toHaveBeenCalled();
+      expect(warnLog).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'LLM stream error [model=anthropic/claude-opus-5-fast]'
+        ),
+        expect.objectContaining({ runError: expect.any(Object) })
+      );
       expect(mockChat).toHaveBeenCalledTimes(2);
       expect(mockCreateAdapter).toHaveBeenNthCalledWith(
         2,
@@ -425,6 +481,53 @@ describe('llm-client', () => {
         undefined
       );
     });
+
+    it('logs a failed fallback at error level', async () => {
+      mockChat.mockImplementation(() =>
+        (async function* () {
+          yield {
+            type: 'RUN_ERROR',
+            message: 'This model is not available in your region.',
+          };
+        })()
+      );
+      await expect(
+        callLLM({
+          model: 'anthropic/claude-sonnet-5',
+          messages: [{ role: 'user', content: 'test' }],
+        })
+      ).rejects.toThrow('not available in your region');
+      expect(mockChat).toHaveBeenCalledTimes(2);
+      expect(errorLog).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([300, 200_000])(
+      'caps the fallback token budget while preserving smaller limits (%i)',
+      async (max_tokens) => {
+        mockChat
+          .mockReturnValueOnce(
+            (async function* () {
+              yield {
+                type: 'RUN_ERROR',
+                message: 'This model is not available in your region.',
+              };
+            })()
+          )
+          .mockReturnValueOnce(
+            (async function* () {
+              yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'ok' };
+            })()
+          );
+        await callLLM({
+          model: 'anthropic/claude-opus-5',
+          messages: [{ role: 'user', content: 'test' }],
+          max_tokens,
+        });
+        expect(mockChat.mock.calls[1]?.[0].modelOptions.maxTokens).toBe(
+          Math.min(max_tokens, getMaxOutputTokens(REGION_FALLBACK_MODEL))
+        );
+      }
+    );
 
     it('reports the fallback model and via so callers bill what answered', async () => {
       mockChat
@@ -492,7 +595,9 @@ describe('llm-client', () => {
             yield {
               type: 'RUN_ERROR',
               message: 'No endpoints found that support image input',
-              model: 'deepseek/deepseek-v4-pro-0813',
+              metadata: {
+                tanstack: { model: 'deepseek/deepseek-v4-pro-0813' },
+              },
             };
           })()
         )
@@ -546,6 +651,10 @@ describe('llm-client', () => {
         )
       ).rejects.toThrow('not available in your region');
       expect(mockChat).toHaveBeenCalledTimes(1);
+      expect(errorLog).toHaveBeenCalledExactlyOnceWith(
+        expect.stringContaining('not available in your region'),
+        expect.any(Object)
+      );
     });
 
     it('preserves event.code in stream errors', () => {
@@ -569,14 +678,14 @@ describe('llm-client', () => {
       );
     });
 
-    it('surfaces event.code and event.model in stream errors', () => {
+    it('surfaces event.code and normalized model in stream errors', () => {
       mockChat.mockReturnValue(
         (async function* () {
           yield {
             type: 'RUN_ERROR',
             message: 'Provider returned error',
             code: 'provider-error',
-            model: 'anthropic/claude-sonnet-5',
+            metadata: { tanstack: { model: 'anthropic/claude-sonnet-5' } },
           };
         })()
       );
@@ -591,13 +700,13 @@ describe('llm-client', () => {
       );
     });
 
-    it('surfaces event.model even when code is absent', () => {
+    it('surfaces normalized model even when code is absent', () => {
       mockChat.mockReturnValue(
         (async function* () {
           yield {
             type: 'RUN_ERROR',
             message: 'Provider returned error',
-            model: 'anthropic/claude-sonnet-5',
+            metadata: { tanstack: { model: 'anthropic/claude-sonnet-5' } },
           };
         })()
       );
@@ -636,7 +745,7 @@ describe('llm-client', () => {
           yield {
             type: 'RUN_ERROR',
             message: 'Provider returned error',
-            model: 'anthropic/claude-sonnet-5',
+            metadata: { tanstack: { model: 'anthropic/claude-sonnet-5' } },
             rawEvent: {
               code: 400,
               message: 'Provider returned error',
@@ -1277,7 +1386,7 @@ describe('llm-client', () => {
             message:
               'Insufficient credits. Add more using https://openrouter.ai/settings/credits',
             code: '402',
-            model: 'anthropic/claude-sonnet-5',
+            metadata: { tanstack: { model: 'anthropic/claude-sonnet-5' } },
           };
         })()
       );

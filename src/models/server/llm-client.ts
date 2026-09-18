@@ -4,6 +4,7 @@
  */
 
 import type { TextModel } from '@/models/models';
+import { getMaxOutputTokens } from '@/models/models.config';
 import { reportMissingBillingCost } from '@/billing/billing-observability';
 import { usdToMicros, ZERO_MICROS, type Microdollars } from '@/billing/money';
 import { aiObservabilityMiddleware } from '@/platform/server/observability/ai-otel';
@@ -895,10 +896,23 @@ export function extractRunError(event: unknown): RunErrorDetail | null {
         );
   const code =
     'code' in event && typeof event.code === 'string' ? event.code : undefined;
+  // TanStack normalizes adapter-only fields into metadata.tanstack.
+  const metadata = 'metadata' in event ? event.metadata : undefined;
+  const tanstack =
+    metadata && typeof metadata === 'object' && 'tanstack' in metadata
+      ? metadata.tanstack
+      : undefined;
+  const normalizedModel =
+    tanstack &&
+    typeof tanstack === 'object' &&
+    'model' in tanstack &&
+    typeof tanstack.model === 'string'
+      ? tanstack.model
+      : undefined;
   const model =
     'model' in event && typeof event.model === 'string'
       ? event.model
-      : undefined;
+      : normalizedModel;
   const rawEvent = 'rawEvent' in event ? event.rawEvent : undefined;
   return { message, code, model, rawEvent, event };
 }
@@ -977,13 +991,23 @@ function formatRunErrorMessage(detail: RunErrorDetail): string {
  * (for-await-of close), which skips TanStack's `onError` and leaves the OTel
  * iteration span un-ended — PostHog never turns those into `$ai_generation`.
  */
-export function throwNotedRunError(detail: RunErrorDetail | null): void {
+export function throwNotedRunError(
+  detail: RunErrorDetail | null,
+  canRetryRegionBlock = false
+): void {
   if (!detail) return;
   // Log the formatted string as the message (not as a `{ properties }` field)
   // so the actual error is visible in the dev pretty sink, which omits the
   // structured-field block. The full event still rides along for prod JSON.
   const message = formatRunErrorMessage(detail);
-  logger.error(message, { runError: detail.event, rawEvent: detail.rawEvent });
+  const properties = { runError: detail.event, rawEvent: detail.rawEvent };
+  // Only downgrade attempts the caller can recover. Terminal failures must
+  // still count as errors, even when their message describes a region block.
+  if (canRetryRegionBlock && isRegionBlockedLlmError(message)) {
+    logger.warn(message, properties);
+  } else {
+    logger.error(message, properties);
+  }
   throw new Error(message);
 }
 
@@ -1002,7 +1026,7 @@ export async function* callLLMStream<T>(
   // so a mid-stream failure can never replay content into the consumer.
   let yielded = false;
   try {
-    for await (const chunk of callLLMStreamOnce(params)) {
+    for await (const chunk of callLLMStreamOnce(params, true)) {
       yielded = true;
       yield chunk;
     }
@@ -1020,14 +1044,24 @@ export async function* callLLMStream<T>(
     const apiKey = params.resolveApiKey
       ? await params.resolveApiKey(fallback)
       : params.apiKey;
-    yield* callLLMStreamOnce({ ...params, model: fallback, apiKey });
+    yield* callLLMStreamOnce({
+      ...params,
+      model: fallback,
+      apiKey,
+      max_tokens:
+        params.max_tokens == null
+          ? undefined
+          : Math.min(params.max_tokens, getMaxOutputTokens(fallback)),
+    });
   }
 }
 
 async function* callLLMStreamOnce<T>(
-  params: LLMRequestParams<T>
+  params: LLMRequestParams<T>,
+  canRetryRegionBlock = false
 ): AsyncGenerator<StreamChunk<T>> {
   let accumulated = '';
+  let yielded = false;
   let parsed: T | undefined;
   // Structured streaming + multi-hook capture is required for OpenRouter
   // `usage.cost` (non-stream structuredOutput drops it — TanStack/ai#1076).
@@ -1083,6 +1117,7 @@ async function* callLLMStreamOnce<T>(
         typeof event.delta === 'string'
       ) {
         accumulated += event.delta;
+        yielded = true;
         yield { delta: event.delta, accumulated, done: false };
         continue;
       }
@@ -1107,6 +1142,7 @@ async function* callLLMStreamOnce<T>(
       }
       if (event.type === 'TEXT_MESSAGE_CONTENT') {
         accumulated += event.delta;
+        yielded = true;
         yield { delta: event.delta, accumulated, done: false };
         continue;
       }
@@ -1119,6 +1155,7 @@ async function* callLLMStreamOnce<T>(
         // first answer token). Empty `delta` keeps it out of the answer.
         // Deliberately plain-text-path only: the structured-output paths above
         // feed workflows with nothing watching, so they keep dropping it.
+        yielded = true;
         yield { delta: '', accumulated, reasoning: event.delta, done: false };
         continue;
       }
@@ -1134,7 +1171,12 @@ async function* callLLMStreamOnce<T>(
     });
     throw new NonRetryableError(contentFilterLlmMessage('Script'));
   }
-  throwNotedRunError(runError);
+  throwNotedRunError(
+    runError,
+    canRetryRegionBlock &&
+      !yielded &&
+      regionFallbackModel(params.model) !== null
+  );
 
   yield {
     delta: '',

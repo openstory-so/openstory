@@ -34,7 +34,10 @@ import {
   getMaxOutputTokens,
   resolveVisionModel,
 } from '@/models/models.config';
-import { withRegionFallback } from '@/models/region-policy';
+import {
+  regionFallbackModel,
+  withRegionFallback,
+} from '@/models/region-policy';
 import { extractStreamingStringField } from '@/platform/server/ai/stream-extract';
 import type { Microdollars } from '@/billing/money';
 import { deductWorkflowCredits } from '@/billing/server/workflow-deduction';
@@ -475,7 +478,7 @@ export async function durableLLMCallCf<TSchema extends z.ZodType>(
                 continue;
               }
             }
-            throwNotedRunError(runError);
+            throwNotedRunError(runError, regionFallbackModel(model) !== null);
             assertStructuredOutput(
               structuredObject,
               logName,
@@ -705,7 +708,7 @@ export async function durableStreamingLLMCallCf<TSchema extends z.ZodType>(
                 continue;
               }
             }
-            throwNotedRunError(runError);
+            throwNotedRunError(runError, regionFallbackModel(model) !== null);
             await flushDelta();
             assertStructuredOutput(
               structuredJson,

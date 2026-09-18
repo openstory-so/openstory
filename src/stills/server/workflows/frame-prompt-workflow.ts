@@ -15,7 +15,10 @@ import {
   isContentFilterFinish,
 } from '@/models/content-rejection';
 import { createAdapter } from '@/models/server/create-adapter';
-import { withRegionFallback } from '@/models/region-policy';
+import {
+  regionFallbackModel,
+  withRegionFallback,
+} from '@/models/region-policy';
 import type { TextModel } from '@/models/models';
 import { hashVisualPromptInput } from '@/shots/input-hash';
 import {
@@ -324,7 +327,10 @@ export class FramePromptWorkflow extends OpenStoryWorkflowEntrypoint<FramePrompt
                 continue;
               }
             }
-            throwNotedRunError(runError);
+            throwNotedRunError(
+              runError,
+              regionFallbackModel(servedModel) !== null
+            );
             // A content filter is a property of the script, not a transient
             // fault: every retry re-runs the same prompt and stops the same way.
             // Fail fast and name the scene so the user can edit it, instead of
