@@ -333,7 +333,7 @@ describe('AnalyzeScriptWorkflow script checkpoint', () => {
     const update: UpdateMock = vi.fn(async () => undefined);
 
     await makeWorkflow().invokeRunImpl(
-      makeEvent({ ...noStyle, stopAt: 'script' }),
+      makeEvent({ ...noStyle, stopAt: 'script', userCountry: 'AU' }),
       makeStep(),
       makeScopedDb(update)
     );
@@ -343,6 +343,9 @@ describe('AnalyzeScriptWorkflow script checkpoint', () => {
       'spawn-talent-matching',
       'spawn-location-matching',
     ]);
+    expect(childPayload('spawn-scene-split')).toMatchObject({
+      userCountry: 'AU',
+    });
     expect(createCastRecords).toHaveBeenCalledTimes(1);
     expect(checkpointWrite(update, 'script')).toMatchObject({
       id: 'seq_1',

@@ -9,6 +9,7 @@ import {
   getMotionReferenceEndpoint,
   type ImageToVideoModel,
 } from '@/models/models';
+import { durationGridForModel } from '@/motion/model-capabilities';
 import type {
   DialogueLine,
   MotionDialogue,
@@ -108,6 +109,89 @@ export function dialogueAudioMinSeconds(
     if (floor != null && floor > min) min = floor;
   }
   return min;
+}
+
+/**
+ * Headroom under a hard cap (#1651). An alignment end time measures the last
+ * spoken character, not the file: trailing silence and encoder padding land
+ * after it, and a provider rounds its own way (H3 Max reported 1.959s on a
+ * clip we measured at 2). So the fit target is the cap minus this, which is
+ * where the issue's 14.8s for a 15s limit comes from.
+ */
+export const DIALOGUE_FIT_SLACK_SECONDS = 0.2;
+
+/**
+ * Planning heuristic only (#1651): roughly what eleven_v3 speaks in a second,
+ * so 15s budgets ~30 words. It sizes the shot-list rule and the rewrite brief
+ * — it is never evidence that a take fits. Only the measured file is that.
+ */
+export const DIALOGUE_WORDS_PER_SECOND = 2;
+
+/** Used when a model publishes no grid and no audio window. H3 Max's number. */
+const DIALOGUE_FALLBACK_MAX_SECONDS = 15;
+
+/**
+ * Longest dialogue take every selected model can carry (#1651). Two ceilings,
+ * whichever is lower: the model's reference-audio window (H3 Max 15s) and the
+ * longest clip its duration grid renders — the clip is stretched to cover the
+ * audio (`raiseShotDurationToCoverAudio`) and cannot stretch past the grid, so
+ * audio beyond it has nowhere to play. Min across models, like
+ * {@link dialogueAudioMinSeconds} takes the max, so one take rides on all of
+ * them.
+ */
+export function dialogueAudioMaxSeconds(
+  models: readonly ImageToVideoModel[]
+): number {
+  const ceilings = models.map((model) => {
+    const grid = durationGridForModel(model);
+    const gridMax =
+      grid.length > 0 ? Math.max(...grid) : DIALOGUE_FALLBACK_MAX_SECONDS;
+    const audio = getMotionReferenceEndpoint(model)?.audioSeconds;
+    return Math.min(gridMax, audio?.max ?? audio?.maxCombined ?? gridMax);
+  });
+  return ceilings.length > 0
+    ? Math.min(...ceilings)
+    : DIALOGUE_FALLBACK_MAX_SECONDS;
+}
+
+/**
+ * What one shot's take has to fit inside (#1651). Two numbers, because they
+ * answer different questions:
+ *
+ * - `limitSeconds` is the refusal line — past it no model can carry the file
+ *   at all, so a take still over it after the bounded rewrites fails the shot.
+ * - `targetSeconds` is what a rewrite is asked for: the SHOT's own length when
+ *   that is shorter, so the take fits the cut instead of stretching it. Speech
+ *   between the two is kept (the clip stretches, #1554) rather than rewritten —
+ *   raising a 5s shot to 6s is a pacing cost, not a broken render.
+ */
+export function dialogueFitBudget(input: {
+  shotSeconds?: number | null;
+  maxSeconds: number;
+}): { targetSeconds: number; limitSeconds: number } {
+  const limitSeconds = Math.max(
+    1,
+    input.maxSeconds - DIALOGUE_FIT_SLACK_SECONDS
+  );
+  const shot = input.shotSeconds;
+  const targetSeconds =
+    shot != null && Number.isFinite(shot) && shot > 0
+      ? Math.max(1, Math.min(limitSeconds, shot))
+      : limitSeconds;
+  return { targetSeconds, limitSeconds };
+}
+
+/** Spoken words that fit `seconds`, as a brief for the rewrite. */
+export function dialogueWordBudget(seconds: number): number {
+  return Math.max(3, Math.floor(seconds * DIALOGUE_WORDS_PER_SECOND));
+}
+
+/** Words across a conversation — audio tags are not spoken, so not counted. */
+export function spokenWordCount(lines: readonly { text: string }[]): number {
+  return lines.reduce(
+    (sum, line) => sum + line.text.trim().split(/\s+/).filter(Boolean).length,
+    0
+  );
 }
 
 export type VoiceCharacter = {
@@ -293,7 +377,12 @@ export function ttsCharacterCount(
   );
 }
 
-/** Copy TTS tokens onto the matching lines so `spokenLine` binds them. */
+/**
+ * Copy TTS tokens onto the matching lines so `spokenLine` binds them — and
+ * the voiced TEXT with them, which is normally identical and differs only when
+ * a take was rewritten to fit (#1651). The prompt drives lip movement, so it
+ * has to say what the bound audio says.
+ */
 export function withVoicedLineTokens(
   dialogue: MotionDialogue | null | undefined,
   voiced: readonly VoicedDialogueLine[]
@@ -305,9 +394,58 @@ export function withVoicedLineTokens(
     lines: dialogue.lines.map((line, index) => {
       const voicedLine = byIndex.get(index);
       if (!voicedLine || line.voiceToken) return line;
-      return { ...line, voiceToken: voicedLine.token } satisfies DialogueLine;
+      return {
+        ...line,
+        line: voicedLine.text,
+        voiceToken: voicedLine.token,
+      } satisfies DialogueLine;
     }),
   };
+}
+
+/**
+ * The text a stored clip actually SPOKE (#1651). A take rewritten to fit its
+ * shot records the delivered wording as `spokenLines`; the clip's `sourceKey`
+ * still keys the lines as authored, so matching, staleness and the manifest's
+ * `audioSourceKey` do not move and nothing re-synthesises. Reading it back is
+ * what keeps the motion prompt saying what the audio says.
+ *
+ * A no-op for every clip minted without it — the overwhelming case, where the
+ * authored text IS the delivered text.
+ */
+export function withSpokenText(
+  lines: readonly VoicedDialogueLine[],
+  clips:
+    | readonly { spokenLines?: { index: number; text: string }[] }[]
+    | null
+    | undefined
+): VoicedDialogueLine[] {
+  const spoken = new Map<number, string>();
+  for (const clip of clips ?? []) {
+    for (const line of clip.spokenLines ?? []) {
+      const text = line.text.trim();
+      if (text) spoken.set(line.index, text);
+    }
+  }
+  if (spoken.size === 0) return [...lines];
+  return lines.map((line) => {
+    const text = spoken.get(line.index);
+    return text && text !== line.text ? { ...line, text } : line;
+  });
+}
+
+/** Per-line delivered text for a clip, omitted when nothing was rewritten. */
+export function spokenLinesFor(
+  authored: readonly VoicedDialogueLine[],
+  delivered: readonly VoicedDialogueLine[]
+): { index: number; text: string }[] | undefined {
+  const byIndex = new Map(authored.map((line) => [line.index, line.text]));
+  const changed = delivered.filter(
+    (line) => byIndex.get(line.index) !== line.text
+  );
+  return changed.length > 0
+    ? changed.map((line) => ({ index: line.index, text: line.text }))
+    : undefined;
 }
 
 /**

@@ -215,6 +215,15 @@ export type StreamChunk<T = never> =
        * to bill the call.
        */
       usage: TokenUsage | undefined;
+      /**
+       * The model that actually answered, and the via it was reached on. A
+       * region block (#1259) retries on {@link REGION_FALLBACK_MODEL}, so this
+       * is NOT always `params.model` — bill and label with these, or a
+       * GLM-5.3-Flash answer gets charged at the requested model's rate
+       * (silently, on any via that reports no cost of its own).
+       */
+      model: TextModel;
+      via: LlmKeyInfo['via'] | undefined;
     };
 
 export type LLMRequestParams<T = unknown> = {
@@ -240,6 +249,14 @@ export type LLMRequestParams<T = unknown> = {
   responseSchema?: z.ZodType<T>;
   /** Resolved LLM key info — `via` decides endpoint routing + auth scheme. */
   apiKey?: LlmKeyInfo;
+  /**
+   * Re-resolve the key when a region block swaps the model (#1259). `apiKey`
+   * was resolved for `model`; a via that carries it need not carry the
+   * fallback (an LLMTR key for an unmapped model is a `createAdapter` throw,
+   * not a fallback), so callers that can resolve per-model pass this and the
+   * retry asks again. Omitted: the retry reuses `apiKey`.
+   */
+  resolveApiKey?: (model: TextModel) => Promise<LlmKeyInfo | undefined>;
   /**
    * Enable OpenRouter's web-search server tool for this request. The model
    * decides when to search; OpenRouter runs the search server-side inside the
@@ -970,16 +987,6 @@ export function throwNotedRunError(detail: RunErrorDetail | null): void {
   throw new Error(message);
 }
 
-/** Whether any message carries an image content part (drives which region
- *  fallback model is eligible — DeepSeek is text-only). */
-function messagesHaveImages(messages: ChatMessage[]): boolean {
-  return messages.some(
-    (msg) =>
-      typeof msg.content !== 'string' &&
-      msg.content.some((part) => part.type === 'image')
-  );
-}
-
 export function callLLMStream<T>(
   params: LLMRequestParams<T> & { responseSchema: z.ZodType<T> }
 ): AsyncGenerator<StreamChunk<T>>;
@@ -1004,13 +1011,16 @@ export async function* callLLMStream<T>(
     const message = error instanceof Error ? error.message : String(error);
     const fallback =
       !yielded && isRegionBlockedLlmError(message)
-        ? regionFallbackModel(params.model, messagesHaveImages(params.messages))
+        ? regionFallbackModel(params.model)
         : null;
     if (!fallback) throw error;
     logger.warn(
       `Model ${params.model} is region-blocked here; retrying with ${fallback}`
     );
-    yield* callLLMStreamOnce({ ...params, model: fallback });
+    const apiKey = params.resolveApiKey
+      ? await params.resolveApiKey(fallback)
+      : params.apiKey;
+    yield* callLLMStreamOnce({ ...params, model: fallback, apiKey });
   }
 }
 
@@ -1132,5 +1142,7 @@ async function* callLLMStreamOnce<T>(
     done: true,
     parsed,
     usage: usageCapture.get(),
+    model: params.model,
+    via: params.apiKey?.via,
   };
 }

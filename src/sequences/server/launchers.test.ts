@@ -12,7 +12,7 @@
  */
 
 import { migrateStyleConfigV1ToV2 } from '@/look/style-config';
-import { describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { DEFAULT_IMAGE_MODEL, DEFAULT_VIDEO_MODEL } from '@/models/models';
 import { DEFAULT_ANALYSIS_MODEL } from '@/models/models.config';
 import type { ScopedDb } from '@/platform/server/db/scoped';
@@ -21,6 +21,11 @@ import type { GenerationStage } from '@/sequences/pipeline';
 import type { StoryboardTriggerInput } from '@/platform/server/workflow/types';
 
 const triggerWorkflowMock = vi.fn();
+const getRequestHeader = vi.fn<(name: string) => string | undefined>();
+vi.doMock('@tanstack/react-start/server', () => ({ getRequestHeader }));
+beforeEach(() => {
+  getRequestHeader.mockReset();
+});
 vi.doMock('@/platform/server/workflow/client', () => ({
   triggerWorkflow: triggerWorkflowMock,
 }));
@@ -147,6 +152,32 @@ function makeScopedDb(opts: {
 }
 
 describe('triggerStoryboard', () => {
+  test.each([
+    ['AU', 'AU'],
+    [' cn ', 'CN'],
+    [undefined, undefined],
+    ['', undefined],
+    ['XX', undefined],
+    ['T1', undefined],
+    ['Australia', undefined],
+  ])(
+    'snapshots country %s as %s for character context',
+    async (header, expected) => {
+      getRequestHeader.mockReturnValue(header);
+      triggerWorkflowMock.mockReset();
+      triggerWorkflowMock.mockResolvedValue('run-1');
+      const { scopedDb } = makeScopedDb({ workflowRunId: null });
+
+      await triggerStoryboard(scopedDb, INPUT);
+
+      expect(getRequestHeader).toHaveBeenCalledWith('cf-ipcountry');
+      expect(triggerWorkflowMock.mock.calls[0]?.[1]).toHaveProperty(
+        'userCountry',
+        expected
+      );
+    }
+  );
+
   test('previous run still in flight → GenerationInProgressError, nothing triggered', async () => {
     runStateResult = null; // queued/running/waiting
     triggerWorkflowMock.mockReset();

@@ -286,3 +286,111 @@ describe('missingVoiceLines', () => {
     );
   });
 });
+
+describe('combined reference length (#1651)', () => {
+  const audio = (token: string, durationSeconds: number) => ({
+    token,
+    kind: 'audio' as const,
+    durationSeconds,
+    referenceImageUrl: `https://example.test/${token}.wav`,
+  });
+  const still = {
+    token: 'LENA',
+    kind: 'image' as const,
+    referenceImageUrl: 'https://example.test/lena.png',
+  };
+
+  it('refuses two audio files each inside the per-file limit but over the sum', () => {
+    // H3 Max: "2-15 seconds each", 15s combined. 10 + 10 passes per file.
+    const [line, ...rest] = unusableShotReferenceLines(
+      'minimax_h3_max',
+      [still, audio('DIALOGUE', 10), audio('SIREN', 10)],
+      true
+    );
+    expect(rest).toEqual([]);
+    expect(line).toContain('DIALOGUE and SIREN');
+    expect(line).toContain('20s of audio files');
+    expect(line).toContain('15s combined limit');
+  });
+
+  it('allows two audio files whose sum is inside the combined budget', () => {
+    expect(
+      unusableShotReferenceLines(
+        'minimax_h3_max',
+        [still, audio('DIALOGUE', 7), audio('SIREN', 6)],
+        true
+      )
+    ).toEqual([]);
+  });
+
+  it('checks reference clips the same way', () => {
+    const clip = (token: string, durationSeconds: number) => ({
+      token,
+      kind: 'video' as const,
+      durationSeconds,
+      referenceImageUrl: `https://example.test/${token}.mp4`,
+    });
+    const [line] = unusableShotReferenceLines(
+      'minimax_h3_max',
+      [still, clip('DOLLY', 9), clip('CRANE', 9)],
+      true
+    );
+    expect(line).toContain('18s of clips');
+    expect(line).toContain('15s combined limit');
+  });
+
+  it('never double-reports a file already refused on its own length', () => {
+    // A 20s voice busts the per-file limit; it is named once, and does not
+    // count toward the sum it would never be sent as part of.
+    const lines = unusableShotReferenceLines(
+      'minimax_h3_max',
+      [still, audio('DIALOGUE', 20), audio('SIREN', 6)],
+      true
+    );
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('over its 15s limit');
+  });
+
+  it('says nothing about a lone file — that is the per-file question', () => {
+    expect(
+      unusableShotReferenceLines(
+        'minimax_h3_max',
+        [still, audio('DIALOGUE', 14.8)],
+        true
+      )
+    ).toEqual([]);
+  });
+
+  it('counts an unmeasured file as zero rather than guessing it over', () => {
+    expect(
+      unusableShotReferenceLines(
+        'minimax_h3_max',
+        [
+          still,
+          audio('DIALOGUE', 14),
+          { ...audio('SIREN', 0), durationSeconds: null },
+        ],
+        true
+      )
+    ).toEqual([]);
+  });
+
+  it('refuses a dialogue take at submit rather than sending it to the provider', () => {
+    // The acceptance case: an oversized generated take never reaches MiniMax.
+    expect(() =>
+      assertReferencesUsable(
+        'minimax_h3_max',
+        [
+          still,
+          {
+            token: DIALOGUE_CLIP_TOKEN,
+            kind: 'audio',
+            durationSeconds: 16.2,
+            referenceImageUrl: 'https://example.test/dialogue.wav',
+          },
+        ],
+        true
+      )
+    ).toThrow(/16\.2s, over its 15s limit/);
+  });
+});

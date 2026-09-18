@@ -2,12 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   isRegionBlockedLlmError,
   isRegionBlockedModel,
-  REGION_FALLBACK_TEXT_MODEL,
-  REGION_FALLBACK_VISION_MODEL,
+  REGION_FALLBACK_MODEL,
   regionFallbackModel,
   resolveModelForCountry,
   withRegionFallback,
 } from './region-policy';
+import { analysisModelSupportsVision } from './models.config';
 
 describe('isRegionBlockedLlmError', () => {
   it('matches the real production error string (#1259)', () => {
@@ -18,7 +18,7 @@ describe('isRegionBlockedLlmError', () => {
     ).toBe(true);
   });
 
-  it('matches the text-only fallback rejecting image input (#1323)', () => {
+  it('matches a text-only model rejecting image input (#1323)', () => {
     expect(
       isRegionBlockedLlmError(
         'LLM stream error [model=deepseek/deepseek-v4-pro-0813]: No endpoints found that support image input'
@@ -35,28 +35,30 @@ describe('isRegionBlockedLlmError', () => {
 });
 
 describe('regionFallbackModel', () => {
-  it('falls back to DeepSeek for text calls', () => {
+  it('falls back to the one region-available model', () => {
     expect(regionFallbackModel('anthropic/claude-opus-5-fast')).toBe(
-      REGION_FALLBACK_TEXT_MODEL
+      REGION_FALLBACK_MODEL
     );
-  });
-
-  it('falls back to a vision-capable model for image-bearing calls', () => {
-    expect(regionFallbackModel('anthropic/claude-sonnet-5', true)).toBe(
-      REGION_FALLBACK_VISION_MODEL
+    expect(regionFallbackModel('anthropic/claude-sonnet-5')).toBe(
+      REGION_FALLBACK_MODEL
     );
   });
 
   it('returns null when the failed model already is the fallback', () => {
-    expect(regionFallbackModel(REGION_FALLBACK_TEXT_MODEL)).toBeNull();
-    expect(regionFallbackModel(REGION_FALLBACK_VISION_MODEL, true)).toBeNull();
+    expect(regionFallbackModel(REGION_FALLBACK_MODEL)).toBeNull();
+  });
+
+  // The whole point of a single fallback: an image-bearing call that falls
+  // back must not land on a text-only model and fail again (#1323).
+  it('falls back to a vision-capable model', () => {
+    expect(analysisModelSupportsVision(REGION_FALLBACK_MODEL)).toBe(true);
   });
 });
 
 describe('resolveModelForCountry', () => {
   it('swaps Anthropic models for blocked countries', () => {
     expect(resolveModelForCountry('anthropic/claude-opus-5', 'CN')).toBe(
-      REGION_FALLBACK_TEXT_MODEL
+      REGION_FALLBACK_MODEL
     );
   });
 
@@ -94,16 +96,16 @@ describe('withRegionFallback', () => {
       )
       .mockResolvedValueOnce('ok');
     await expect(
-      withRegionFallback('anthropic/claude-opus-5', false, run)
+      withRegionFallback('anthropic/claude-opus-5', run)
     ).resolves.toBe('ok');
     expect(run).toHaveBeenNthCalledWith(1, 'anthropic/claude-opus-5');
-    expect(run).toHaveBeenNthCalledWith(2, REGION_FALLBACK_TEXT_MODEL);
+    expect(run).toHaveBeenNthCalledWith(2, REGION_FALLBACK_MODEL);
   });
 
   it('rethrows non-region errors untouched', async () => {
     const run = vi.fn().mockRejectedValue(new Error('402 out of credits'));
     await expect(
-      withRegionFallback('anthropic/claude-opus-5', false, run)
+      withRegionFallback('anthropic/claude-opus-5', run)
     ).rejects.toThrow('402 out of credits');
     expect(run).toHaveBeenCalledTimes(1);
   });
@@ -113,7 +115,7 @@ describe('withRegionFallback', () => {
       .fn()
       .mockRejectedValue(new Error('not available in your region'));
     await expect(
-      withRegionFallback(REGION_FALLBACK_TEXT_MODEL, false, run)
+      withRegionFallback(REGION_FALLBACK_MODEL, run)
     ).rejects.toThrow('not available in your region');
     expect(run).toHaveBeenCalledTimes(1);
   });

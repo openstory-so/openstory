@@ -30,6 +30,11 @@ vi.doMock('./byteplus-asset-ingest', () => ({
   toArkFetchableUrl: async (url: string) => url,
 }));
 
+const mockAssertSize = vi.fn(async () => {});
+vi.doMock('./byteplus-asset-size', () => ({
+  assertArkCreateAssetSize: mockAssertSize,
+}));
+
 const { ingestArkAssets } = await import('./byteplus-asset-steps');
 
 /**
@@ -71,6 +76,7 @@ const credentials = {
 beforeEach(() => {
   vi.clearAllMocks();
   mockConfig.mockReturnValue({ accessKey: 'AK', secretKey: 'SK' });
+  mockAssertSize.mockResolvedValue(undefined);
 });
 
 describe('ingestArkAssets', () => {
@@ -89,6 +95,7 @@ describe('ingestArkAssets', () => {
     expect(map).toEqual({ 'https://cdn/a.png': 'asset://resident' });
     expect(trace).toEqual(['motion-ark-0-url', 'motion-ark-0-claim']);
     expect(mockReserve).not.toHaveBeenCalled();
+    expect(mockAssertSize).toHaveBeenCalledWith('https://cdn/a.png');
   });
 
   it('a miss reserves a turn, sleeps it durably, then creates', async () => {
@@ -129,6 +136,7 @@ describe('ingestArkAssets', () => {
         slot: 'frame',
       })
     );
+    expect(mockAssertSize).toHaveBeenCalledWith('https://cdn/new.png');
   });
 
   it('deletes an evicted asset in its own step before waiting for a turn', async () => {
@@ -227,6 +235,7 @@ describe('ingestArkAssets', () => {
     expect(map).toEqual({ 'https://cdn/a.png': 'https://cdn/a.png' });
     expect(trace).toEqual(['p-ark-0-url', 'p-ark-0-claim']);
     expect(mockClaim).not.toHaveBeenCalled();
+    expect(mockAssertSize).toHaveBeenCalledWith('https://cdn/a.png');
   });
 
   it('a full pool fails the shot — nothing is degraded to a public URL', async () => {
@@ -262,5 +271,23 @@ describe('ingestArkAssets', () => {
     expect(configs['p-ark-0-claim']).toEqual({
       retries: expect.objectContaining({ limit: 40, delay: '30 seconds' }),
     });
+  });
+
+  it('refuses a sub-300px still before claiming a CreateAsset turn (#1664)', async () => {
+    mockAssertSize.mockRejectedValue(new Error('too small'));
+    const { step } = fakeStep();
+
+    await expect(
+      ingestArkAssets(step, {
+        prefix: 'p',
+        stills: [{ storedUrl: 'https://cdn/tiny.png', slot: 'frame' }],
+        ledger,
+        owner: 'motion:run-1',
+        credentials,
+      })
+    ).rejects.toThrow('too small');
+    expect(mockClaim).not.toHaveBeenCalled();
+    expect(mockReserve).not.toHaveBeenCalled();
+    expect(mockCreate).not.toHaveBeenCalled();
   });
 });

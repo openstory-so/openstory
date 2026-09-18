@@ -255,6 +255,7 @@ export class ReplaceElementWorkflow extends OpenStoryWorkflowEntrypoint<ReplaceE
         imageUrl: newImageUrl,
         filename: input.newFilename,
         llmKey: llmKeyInfo,
+        resolveLlmKey: (model) => scopedDb.credentials.resolveLlmKey(model),
         observability: {
           userId: input.userId,
           sessionId: input.sequenceId,
@@ -274,10 +275,10 @@ export class ReplaceElementWorkflow extends OpenStoryWorkflowEntrypoint<ReplaceE
         scopedDb,
         costMicros: visionResult.costMicros,
         usedOwnKey: visionResult.usedOwnKey,
-        description: `Element vision (${ELEMENT_VISION_MODEL})`,
+        description: `Element vision (${visionResult.model})`,
         idempotencyKey: `${event.instanceId}:vision`,
         metadata: {
-          model: ELEMENT_VISION_MODEL,
+          model: visionResult.model,
           elementId,
           sequenceId,
         },

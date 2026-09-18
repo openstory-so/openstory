@@ -488,7 +488,35 @@ present** (same shape-stable trick as `usesStartFrame` / `referenceOnly`) —
 not the motion-prompt hash: the LLM never sees the id, so a voice change
 must not rewrite the prompt. Shot duration is
 raised to cover the audio; a clip under the provider floor (H3 Max 2s) is
-padded with silence. Preflight reserves the TTS cost on the references
+padded with silence.
+
+**Fitting the take to the clip (#1651).** v3 takes no target or maximum
+duration, so length is discovered, not requested. `fitDialogueClip`
+(`src/motion/server/fit-dialogue-clip.ts`) is the one ladder, shared by the
+References child and motion's standalone synthesis: `convertWithTimestamps`
+returns alignment + voice segments → `trimWavTrailingSilence` cuts the tail
+back to whichever is LATER of the last audible sample and the alignment end
+(so a short-reporting alignment cannot clip a word, and an alignment saying
+"silent" cannot be overruled by a noise floor) → still over, an LLM
+(`phase/shorten-dialogue-chat`) tightens the turns and the take is
+re-recorded, bounded at `MAX_DIALOGUE_FIT_ATTEMPTS` (2) → still over, the
+shot **fails here** with the measured numbers. No time-compression rung:
+speeding speech up alters the performance that was cast. The rewrite merges
+**by turn index**, so a dropped or invented turn cannot move a speaker or a
+voice. Two budgets from `dialogueFitBudget`: `limitSeconds` is the refusal
+line (`dialogueAudioMaxSeconds` — the tightest of each model's audio window
+and longest grid clip — minus 0.2s slack, hence H3 Max's 14.8s; the slack is
+the padding and rounding the alignment end does not measure);
+`targetSeconds` is what a rewrite aims at, the SHOT's own length when
+shorter, so the take fits the cut rather than stretching it. Speech between
+the two is kept — the clip stretches. A rewritten take records its delivered
+wording on the clip as `spokenLines` while `sourceKey` keeps keying the
+AUTHORED lines, so nothing re-synthesises and no digest moves; motion reads
+it back with `withSpokenText` before assembling, because the prompt drives
+lip movement. `maxCombined` is checked across files in
+`unusableShotReferenceLines` — H3 Max takes 2–15s each AND 15s summed, so
+two 10s voices each pass and together do not. The shot-list prompt is the
+prevention half (a words-per-second placement budget per shot). Preflight reserves the TTS cost on the references
 slice (static card), including when Voices is off — talent may already hold
 a `voiceId`. Clip ids are stamped on `VideoManifestEntry.audioClipIds`.
 The optimised-prompt JSON carries those audio refs for paste-into-Videos.

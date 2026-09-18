@@ -22,17 +22,13 @@ import {
 } from '@/motion/server/assemble-motion-prompt';
 import {
   audioSourceKeyFromVoicedLines,
+  dialogueAudioMaxSeconds,
+  withSpokenText,
   withVoicedLineTokens,
 } from '@/motion/dialogue-tts';
-import {
-  dialogueClipsAsReferences,
-  synthesizeDialogueClip,
-} from '@/motion/server/synthesize-dialogue';
+import { dialogueClipsAsReferences } from '@/motion/server/synthesize-dialogue';
+import { fitDialogueClip } from '@/motion/server/fit-dialogue-clip';
 import { raiseShotDurationToCoverAudio } from '@/motion/resolve-shot-duration';
-import {
-  ELEVENLABS_TTS_ENDPOINT,
-  estimateTtsCost,
-} from '@/billing/elevenlabs-pricing';
 import type { MotionAudioClip } from '@/platform/server/db/schema';
 import { computeVideoManifestInputHash } from '@/shots/input-hash';
 import {
@@ -200,45 +196,37 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     let referenceImages = input.referenceImages;
     let durationHint = input.duration;
     let audioClips: MotionAudioClip[] = input.audioClips ?? [];
-    const voicedLines = input.voicedLines ?? [];
+    // The words the bound audio actually SAYS (#1651): a References-stage take
+    // that was rewritten to fit records its delivered wording on the clip, and
+    // the prompt drives lip movement, so assembly has to read it back.
+    let voicedLines = withSpokenText(input.voicedLines ?? [], audioClips);
     if (voicedLines.length > 0 && input.shotId && input.sequenceId) {
       const shotId = input.shotId;
       const sequenceId = input.sequenceId;
       if (audioClips.length === 0) {
-        const synthesized = await step.do(
-          'synthesize-dialogue-audio',
-          async () => {
-            const { key } = await scopedDb.credentials.resolveKey('elevenlabs');
-            const minDurationSeconds =
-              getMotionReferenceEndpoint(model)?.audioSeconds?.min;
-            const { clip, characterCount } = await synthesizeDialogueClip({
-              apiKey: key,
-              teamId: input.teamId,
-              sequenceId,
-              shotId,
-              lines: voicedLines,
-              minDurationSeconds,
-            });
-            await deductWorkflowCredits({
-              scopedDb,
-              costMicros: estimateTtsCost(characterCount),
-              usedOwnKey: false,
-              description: `Dialogue (${voicedLines.length} line${voicedLines.length === 1 ? '' : 's'})`,
-              idempotencyKey: `${workflowRunId}:dialogue-tts`,
-              reservationId: input.reservationId,
-              metadata: {
-                endpointId: ELEVENLABS_TTS_ENDPOINT,
-                model: 'eleven_v3',
-                characterCount,
-                clipCount: 1,
-              },
-              workflowName: 'MotionWorkflow',
-            });
-            await scopedDb.shots.setAudioClips(shotId, [clip]);
-            return { clips: [clip], characterCount };
-          }
-        );
-        audioClips = synthesized.clips;
+        const fitted = await fitDialogueClip(step, {
+          scopedDb,
+          workflowRunId,
+          userId: input.userId,
+          teamId: input.teamId,
+          sequenceId,
+          shotId,
+          lines: voicedLines,
+          minDurationSeconds:
+            getMotionReferenceEndpoint(model)?.audioSeconds?.min,
+          // One model here, not the sequence's list: this is the clip about to
+          // be submitted, so its own window is the only one that binds.
+          maxDurationSeconds: dialogueAudioMaxSeconds([model]),
+          shotSeconds: input.duration,
+          reservationId: input.reservationId,
+          stepPrefix: 'synthesize-dialogue-audio',
+          workflowName: 'MotionWorkflow',
+        });
+        await step.do('persist-dialogue-audio', async () => {
+          await scopedDb.shots.setAudioClips(shotId, [fitted.clip]);
+        });
+        audioClips = [fitted.clip];
+        voicedLines = fitted.lines;
       }
       referenceImages = [
         ...(input.referenceImages ?? []),
@@ -253,7 +241,12 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                   ...member.motionPrompt,
                   dialogue: withVoicedLineTokens(
                     member.motionPrompt.dialogue,
-                    member.voicedLines ?? voicedLines
+                    member.voicedLines
+                      ? withSpokenText(
+                          member.voicedLines,
+                          member.audioClips ?? audioClips
+                        )
+                      : voicedLines
                   ),
                 }
               : undefined,

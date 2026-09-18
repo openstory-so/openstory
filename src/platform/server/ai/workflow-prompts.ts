@@ -10,6 +10,16 @@ export type ChatMessage = {
   content: string;
 };
 
+const CHARACTER_BACKGROUND_GUIDANCE = `## Nationality, language and regional voice
+
+- Explicit character background, nationality, native language and accent in the script take precedence. Preserve visitors, immigrants, multilingual characters and mixed casts individually.
+- When unspecified, infer a plausible background from the story's city/country and the language each character actually speaks. A local in Sydney, Australia is likely Australian, with Australian English when speaking English. Chinese dialogue suggests a Chinese-speaking background; use Mandarin or Cantonese when specified. Dialogue language is a clue, not proof of nationality or ethnicity.
+- The language used to write the brief or stage directions is not necessarily the language spoken by the characters. Do not default every English-language script to American characters or American accents, and do not translate dialogue.
+- If the script gives no useful setting or character-language clues, an available user country may guide a plausible regional default. It is only a fallback, never evidence of the user's or character's nationality, and never overrides the script. With no useful clues, leave nationality unspecified and avoid inventing a specific dialect.
+- Keep nationality, ethnicity and spoken language distinct. Do not infer skin tone or other physical features solely from a country or language. Preserve any explicitly described appearance.
+- Include the chosen national/cultural background naturally in the on-screen character's physicalDescription, without adding a new schema field or putting nationality into ethnicity. Carry the spoken language and supported regional variant/accent into voiceDescription so voice generation retains this context. Voice-only characters keep empty appearance fields; put their language/accent in voiceDescription.
+- Apply the same context to narrators and off-screen voices, while preserving any explicit narrator language or accent.`;
+
 /**
  * Text prompts (used via getPrompt → system message for streaming calls)
  */
@@ -96,6 +106,8 @@ Hyper-accurate rendering of all fabrics, skin textures, hardware, and micro-deta
 1. **TRACK FIRST MENTION**: Record exact text where character first appears (e.g., "a man" or "JACK (30s)")
 2. **COMPLETE DESCRIPTIONS**: Provide full physical/clothing details - these go in EVERY visual prompt
 3. **OUTPUT**: Pure JSON only. Start with { end with }. No markdown code blocks.
+
+${CHARACTER_BACKGROUND_GUIDANCE}
 
 ## Character Analysis
 
@@ -239,6 +251,13 @@ WORK FROM WHAT YOU'RE GIVEN. Read the brief first and match your invention to ho
 - If it is already specific — a named product, characters, a setting, a story — honor it. Keep its subject, world, and key beats; your job is the most compelling, vivid, specific version of THEIR idea, not a different one.
 - If it is thin or generic ("a new product launch", "a brand film"), the specifics are yours to invent. Commit to a particular product, a particular person, a particular place — do NOT fall back on the category's stock exemplar. A "product launch" with no product named must NOT become generic skincare on a bathroom shelf; choose a specific, concrete product and a specific owner with a reason to care.
 
+USER LOCATION — a default for the world you invent, not a replacement for the brief.
+User country (ISO country code; unavailable when empty): {{userCountry}}
+- When the brief leaves the setting open, use the user's country as the default for a plausible place, local everyday details, vocabulary and regional speech. For a user in Australia, an unspecified local story should feel Australian rather than automatically American. This also applies when inventing a script from scratch.
+- Preserve any setting, character background, dialogue language or accent specified in the brief, even when it differs from the user's country. Localize only details left open; do not relocate a story set elsewhere or translate supplied dialogue just to match the user.
+- Country is an approximate location signal, not the user's nationality or ethnicity. Do not assume every character shares one background or infer physical appearance from it. With no country available, invent normally without claiming a user location.
+- Make the chosen setting and any relevant regional speech clear naturally in the script so later character and voice extraction can retain them. Do not mention geolocation or these defaults in the output.
+
 FIND A FRESH ANGLE — this is what separates a memorable script from a forgettable one, and it is the part most scripts fail. Before you write, do this thinking deliberately:
 
 - THE WAY IN: DON'T FILM THE THING — FILM A PERSON'S MOMENT WITH IT. The default is always to film the subject head-on: the product glowing, the office looking productive, the home looking expensive, the hero being heroic. That is what makes it generic. Instead, find a specific person in a specific situation where the subject MATTERS to them, and film that moment — the stakes, the small private behaviour, the unexpected context. The product/place/feature should arrive through someone's real use of it, not as a beauty shot. (A corporate film is not "focused employees at dusk"; it is one specific person and the thing they're racing to finish, or protect, or prove. A home tour is not "wealthy hands on marble"; it is who is moving in, or out, and why, and what the empty rooms mean to them. A makeup ad is not "the slow mirror application"; it is the two minutes before something that matters.)
@@ -288,7 +307,8 @@ Persona: <2–5 words>. Emotion: <2–3 adjectives>.
 Rules:
 - Hearable traits only: language, dialect, gender, age, quality, persona, emotion, pitch, texture, pacing. Never appearance, clothing, or movement.
 - Always include "Excellent quality" (or "Studio quality") so the take is clean, not synthetic.
-- Name a concrete regional dialect when the bible gives ethnicity or region ("Native English, slight Southern drawl"), not a vague "accent" when you mean intonation.
+- Preserve the language and regional accent already established in the bible, including voiceDescription and background in physicalDescription/personality. Explicit language or accent wins over an inferred nationality; ethnicity alone does not establish a native language or accent.
+- Use a supported regional variant (for example, "Native Australian English" for an Australian English-speaking local). Do not silently replace it with American English. If no region is supported, leave the dialect unspecified. Multilingual and voice-only characters follow the same rule.
 - Do not use FX words (reverb, echo, phone, tape) — they degrade the take.
 - No character name, no quotes, no lists.
 
@@ -398,6 +418,8 @@ Respond with ONLY valid JSON matching the schema.`,
 
 1. **TRACK FIRST MENTION**: Record exact text where character first appears (e.g., "a man" or "JACK (30s)")
 2. **COMPLETE DESCRIPTIONS**: Provide full physical/clothing details - these go in EVERY visual prompt
+
+${CHARACTER_BACKGROUND_GUIDANCE}
 
 ## Character Analysis
 
@@ -948,6 +970,8 @@ Every line of speech in a scene goes in the \`dialogue\` of the shot it is spoke
 - Prose speech in any order: \`Lena says, “…”\`, \`“…,” says Lena\`, \`“…,” Lena replies, “…”\` (a quote split around an attribution is ONE line — join the parts).
 - Narration, voiceover, a voice on a phone or a tannoy: spoken by the matching "(voice only)" entry in <CHARACTERS>.
 
+A shot's clip has to hold the speech placed in it: a voice actor speaks roughly {{dialogueWordsPerSecond}} words a second, so a shot's \`durationSeconds\` budgets about that many words times its seconds — around 30 for a 15-second take, around 10 for a 5-second one. This is a placement budget, not a licence to rewrite: when a scene's speech is longer than one shot can hold, spread the lines across MORE shots (within the scene's \`shots:\` budget) and give a speech-heavy shot the longer \`durationSeconds\`. Never stack a scene's whole conversation onto one short shot.
+
 Each line is spoken in exactly one shot — never repeat a line across shots. \`line\` is the spoken words copied verbatim: no paraphrase, no surrounding quotation marks, no attribution ("says Lena"). \`character\` is the speaker copied EXACTLY as <CHARACTERS> spells it (it is how the rest of the pipeline finds them); speech attributed only by a pronoun resolves to the nearest named character when that is unambiguous. Leave \`character\` empty only for a voice nobody could attribute. \`tone\` is the delivery the script implies ("whispered", "flat, exhausted"); empty when it implies none. Do NOT invent speech, do NOT report action or description as dialogue, and do NOT merge lines from different speakers. A shot with no speech has an empty \`dialogue\` array.
 
 ## Fields
@@ -992,6 +1016,10 @@ Respond with ONLY valid JSON matching the schema.`,
 
 The script is provided with a numbered line gutter ("12: some text") — use it for every lineNumber you report. The gutter is NOT part of the script text.
 
+${CHARACTER_BACKGROUND_GUIDANCE}
+
+User country (ISO country code; fallback only, unavailable when empty): {{userCountry}}
+
 ## Character Bible
 
 Build a complete character bible. For each character:
@@ -1004,7 +1032,7 @@ Build a complete character bible. For each character:
 - personality — who they are, NOT what they look like: temperament, archetype, how they react under pressure, comic register. Drives expressions, reactions, pacing and delivery.
 - movement — how the body moves: gait, posture, energy, habitual gestures, a limp, a tremor. Drives blocking and action.
   Extract both from the script, and infer where the script only implies them ("fidgets with his tie" → personality: anxious, eager to please; movement: restless hands, shoulders tight). Never repeat appearance in either field.
-- voiceDescription — what can be HEARD. ElevenLabs Voice Design brief, 40–90 words, this shape: Native <language>. <gender>, <age>. Excellent quality. Persona: <2–5 words>. Emotion: <2–3 adjectives>. Then 1–2 sentences on timbre, pacing, delivery. Infer from dialogue, personality and movement. No appearance, clothing, or FX words (reverb/echo/phone). Always fill this — it is the Voice field and the brief Generate casts from.
+- voiceDescription — what can be HEARD. ElevenLabs Voice Design brief, 40–90 words, this shape: Native <language and supported regional variant>. <gender>, <age>. Excellent quality. Persona: <2–5 words>. Emotion: <2–3 adjectives>. Then 1–2 sentences on timbre, pacing, delivery. Infer from the character's background, dialogue, personality and movement using the context rules above. No appearance, clothing, or FX words (reverb/echo/phone). Always fill this — it is the Voice field and the brief Generate casts from.
 - consistencyTag — HARD FORMAT CONTRACT: the snake_case slug of the character's name AS WRITTEN IN THE SCRIPT ("GIRL ONE" → "girl_one"). Optional descriptive context may follow the name slug ("jack_denim_weathered"), but the tag MUST start with the name slug. An independent system joins scene tags against these.
 - voiceOnly — true only for a voice that is heard but NEVER seen: a narrator, a voiceover, a radio or phone voice with no face on screen. Each distinct such voice is its own entry, named as the script names it, or "Narrator" for unnamed narration. Its personality describes the VOICE — register, warmth, pace, attitude. Age may be a guess if the voice implies one, otherwise empty; gender, ethnicity, physicalDescription, standardClothing, distinguishingFeatures and movement are empty strings. Create none when nobody speaks off screen. A character who is off screen for a moment, or seen in another scene, has a face: voiceOnly false, full appearance.
 
@@ -1292,6 +1320,32 @@ Two rejection classes:
 <REJECTION>
 {{rejection}}
 </REJECTION>`,
+    },
+  ],
+
+  'phase/shorten-dialogue-chat': [
+    {
+      role: 'system',
+      content: `You tighten spoken dialogue that ran too long when it was recorded, so a re-record fits the shot it is spoken in. The performance is already cast and voiced; only the words change.
+
+You are given the turns of ONE shot's conversation, the seconds the take has to fit, and how long the last recording actually ran. Cut the words, not the content.
+
+### CRITICAL OUTPUT RULES
+1. You will be called via a structured output tool. Follow the provided schema exactly.
+2. Return EVERY turn you were given, in the same order, with the same \`index\` and the same \`character\`. Never drop a turn, never merge two speakers, never add one — a dropped turn silences that actor.
+3. Rewrite only \`line\`: the same meaning, the same speaker's voice and register, fewer words. Keep names, numbers, and any plot fact the rest of the film depends on.
+4. Stay inside the word budget you are given, spread across the turns roughly as the original was. Overshooting is what failed the last take.
+5. Plain spoken words only — no stage directions, no quotation marks wrapping the line, no attribution ("says Lena"), no bracketed audio tags (the delivery is carried separately).
+6. Cut filler, throat-clearing, restated context and repeated names first; cut a whole sentence before you paraphrase one into something vaguer.
+7. Never return a turn unchanged if the take was over budget — an unchanged line re-records at the same length.`,
+    },
+    {
+      role: 'user',
+      content: `This shot's recorded dialogue ran {{measuredSeconds}}s. It has to fit {{targetSeconds}}s — about {{wordBudget}} spoken words in total, down from {{currentWords}}. Tighten every turn.
+
+<TURNS>
+{{turns}}
+</TURNS>`,
     },
   ],
 

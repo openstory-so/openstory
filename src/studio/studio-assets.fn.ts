@@ -177,19 +177,20 @@ export const draftStudioPromptFn = createServerFn({ method: 'POST' })
     const result = await draftStudioPrompt({
       ...data,
       llmKey,
+      resolveLlmKey: (model) => scopedDb.apiKeys.resolveLlmKey(model),
       observability: { userId: context.user.id, tags: ['studio', 'draft'] },
     });
 
     if (!result.usedOwnKey) {
       if (result.costMicros > 0) {
         await scopedDb.billing.deductCredits(result.costMicros, {
-          description: `Studio prompt draft (${STUDIO_DRAFT_MODEL})`,
-          metadata: { model: STUDIO_DRAFT_MODEL },
+          description: `Studio prompt draft (${result.model})`,
+          metadata: { model: result.model },
         });
       } else {
         reportMissingBillingCost({
           source: 'studio-prompt-draft',
-          modelId: STUDIO_DRAFT_MODEL,
+          modelId: result.model,
           metadata: { references: data.references.length },
         });
       }

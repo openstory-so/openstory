@@ -44,6 +44,16 @@ export type MotionAudioClip = {
    * before this field) never matches and is regenerated.
    */
   sourceKey?: string;
+  /**
+   * The wording this take actually SPOKE, per dialogue-line index, when a
+   * rewrite shortened it to fit the shot (#1651). Absent — the normal case —
+   * means the authored lines were delivered verbatim.
+   *
+   * Deliberately separate from `sourceKey`, which keys the lines as authored:
+   * the prompt has to say what the audio says (lip movement), but a moved key
+   * would re-synthesise the take on every later read.
+   */
+  spokenLines?: { index: number; text: string }[];
 };
 import { type InferSelectModel, sql } from 'drizzle-orm';
 import {

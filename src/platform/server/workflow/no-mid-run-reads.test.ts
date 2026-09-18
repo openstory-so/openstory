@@ -34,6 +34,9 @@ const WORKFLOW_PATHS = [
     (f) => !f.endsWith('.test.ts')
   ),
   'src/models/server/llm-call-helper.ts',
+  // A workflow-step helper, not a workflow: the dialogue fit loop spends the
+  // ElevenLabs key inside the step it drives (#1651).
+  'src/motion/server/fit-dialogue-clip.ts',
 ].sort();
 
 const WORKFLOW_PATH_BY_BASE: Record<string, string> = (() => {
@@ -242,12 +245,14 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       why: 'Re-resolved inside each step that talks to fal, because a replayed step may run in a fresh isolate with an unconfigured singleton.',
     },
   ],
-  'dialogue-audio-workflow.ts': [
+  'fit-dialogue-clip.ts': [
     {
       read: 'resolveKey',
       bucket: 'CREDENTIAL',
       why: 'The platform ElevenLabs key, resolved inside the synthesise step that spends it (#1554).',
     },
+  ],
+  'dialogue-audio-workflow.ts': [
     {
       read: 'shots.getById',
       bucket: 'EXISTENCE-GUARD',

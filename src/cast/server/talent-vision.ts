@@ -8,24 +8,15 @@
 
 import type { Microdollars } from '@/billing/money';
 import type { ResolvedLlmKey } from '@/models/server/db/api-keys';
-import {
-  aiObservabilityMiddleware,
-  type AIObservabilityMeta,
-} from '@/platform/server/observability/ai-otel';
+import type { TextModel } from '@/models/models';
+import type { AIObservabilityMeta } from '@/platform/server/observability/ai-otel';
 import type {
   ChatMessage,
   ChatMessageImagePart,
 } from '@/platform/server/ai/prompts-index';
 import { toVisionImageSource } from '@/platform/server/storage/external-url';
-import { chat } from '@tanstack/ai';
 import { z } from 'zod';
-import { createAdapter } from '@/models/server/create-adapter';
-import {
-  createUsageCapture,
-  extractRunError,
-  llmCostFromUsage,
-  throwNotedRunError,
-} from '@/models/server/llm-client';
+import { callLLMStream, llmCostFromUsage } from '@/models/server/llm-client';
 import { DEFAULT_VISION_MODEL } from '@/models/models.config';
 import { talentSubjectKindSchema } from '@/cast/subject-kind';
 
@@ -55,10 +46,19 @@ export type AnalyzeTalentMediaInput = {
    */
   filenames?: string[];
   llmKey?: ResolvedLlmKey;
+  /**
+   * Re-resolve the key when a region block swaps the model (#1259). `llmKey`
+   * was resolved for {@link TALENT_VISION_MODEL}; the fallback may not be
+   * carried by the same via.
+   */
+  resolveLlmKey?: (model: TextModel) => Promise<ResolvedLlmKey>;
   observability?: AIObservabilityMeta;
 };
 
 export type TalentVisionResult = TalentMediaAnalysis & {
+  /** The model that actually answered — the region fallback may have run
+   *  instead of {@link TALENT_VISION_MODEL}. Bill and log this one. */
+  model: TextModel;
   costMicros: Microdollars;
   usedOwnKey: boolean;
 };
@@ -136,79 +136,43 @@ export async function analyzeTalentMedia(
   );
   const messages = buildTalentVisionMessages(imageSources, input.filenames);
 
-  const systemPrompts: string[] = [];
-  const chatMessages: Array<{
-    role: 'user' | 'assistant';
-    content: ChatMessage['content'];
-  }> = [];
-
-  for (const msg of messages) {
-    if (msg.role === 'system') {
-      if (typeof msg.content === 'string') systemPrompts.push(msg.content);
-    } else {
-      chatMessages.push({ role: msg.role, content: msg.content });
-    }
-  }
-
-  const adapter = createAdapter(TALENT_VISION_MODEL, input.llmKey);
-
-  const usageCapture = createUsageCapture();
-  let structuredObject: unknown;
-  let accumulated = '';
-  let runError = null;
-  for await (const event of chat({
-    adapter,
-    systemPrompts,
-    messages: chatMessages,
-    stream: true,
-    modelOptions: {
-      temperature: 0.2,
-      streamOptions: { includeUsage: true },
-    },
-    outputSchema: talentMediaAnalysisSchema,
-    middleware: [
-      ...aiObservabilityMiddleware({
-        observationName: 'talent-vision',
-        tags: ['vision', 'talent'],
-        ...input.observability,
-      }),
-      ...usageCapture.middleware,
-    ],
-    debug: false,
+  // Goes through callLLMStream rather than a hand-rolled `chat()` loop so this
+  // call gets what every centralized call gets: the #1259 region fallback, the
+  // OpenRouter provider pin (#1285 — Vertex advertises `response_format`
+  // without `structured_outputs`, which this schema needs), the priority
+  // service tier, and — since the fallback is GLM-5.3 Flash, which cannot
+  // disable thinking and defaults to `max` effort (#1494) — a `low` effort on
+  // the retry instead of a five-minute think on an upload check.
+  let parsed: TalentMediaAnalysis | undefined;
+  let usage;
+  let model = TALENT_VISION_MODEL;
+  let via = input.llmKey?.via;
+  for await (const chunk of callLLMStream({
+    model: TALENT_VISION_MODEL,
+    messages,
+    temperature: 0.2,
+    responseSchema: talentMediaAnalysisSchema,
+    apiKey: input.llmKey,
+    resolveApiKey: input.resolveLlmKey,
+    observationName: 'talent-vision',
+    tags: ['vision', 'talent'],
+    ...input.observability,
   })) {
-    usageCapture.noteFromStreamEvent(event);
-    const noted = extractRunError(event);
-    if (noted) {
-      runError ??= noted;
-      continue;
-    }
-    if (
-      event.type === 'TEXT_MESSAGE_CONTENT' &&
-      typeof event.delta === 'string'
-    ) {
-      accumulated += event.delta;
-      continue;
-    }
-    if (
-      event.type === 'CUSTOM' &&
-      event.name === 'structured-output.complete'
-    ) {
-      structuredObject = event.value.object;
-      continue;
+    if (chunk.done) {
+      parsed = chunk.parsed;
+      usage = chunk.usage;
+      model = chunk.model;
+      via = chunk.via;
     }
   }
-  throwNotedRunError(runError);
+  if (!parsed) {
+    throw new Error('Talent vision returned no validated analysis');
+  }
 
-  const parsed = talentMediaAnalysisSchema.parse(
-    structuredObject !== undefined ? structuredObject : JSON.parse(accumulated)
-  );
   return {
     ...parsed,
-    costMicros: llmCostFromUsage(
-      usageCapture.get(),
-      TALENT_VISION_MODEL,
-      input.llmKey?.via
-    ),
+    model,
+    costMicros: llmCostFromUsage(usage, model, via),
     usedOwnKey: input.llmKey?.source === 'team',
   };
 }

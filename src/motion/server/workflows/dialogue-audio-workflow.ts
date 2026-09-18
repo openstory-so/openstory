@@ -3,17 +3,16 @@
  * (#1554). Runs in the References stage after Voice Design, so the clip is
  * an audio reference (like a character sheet) that motion only attaches.
  *
+ * Each take is fitted to the clip that will carry it (#1651) — see
+ * `fitDialogueClip`: trailing silence off, bounded rewrite-and-re-record when
+ * it still overruns, and a hard failure rather than a file no model can take.
+ *
  * All shots run concurrently; successes persist before any failure is
  * surfaced so a retry skips clips whose `sourceKey` still matches.
  */
 
-import {
-  ELEVENLABS_TTS_ENDPOINT,
-  estimateTtsCost,
-} from '@/billing/elevenlabs-pricing';
-import { deductWorkflowCredits } from '@/billing/server/workflow-deduction';
 import { matchingDialogueClips } from '@/motion/dialogue-tts';
-import { synthesizeDialogueClip } from '@/motion/server/synthesize-dialogue';
+import { fitDialogueClip } from '@/motion/server/fit-dialogue-clip';
 import type { MotionAudioClip } from '@/platform/server/db/schema';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
@@ -72,48 +71,40 @@ export class DialogueAudioWorkflow extends OpenStoryWorkflowEntrypoint<DialogueA
     const workflowRunId = event.instanceId;
     const settled = await Promise.allSettled(
       shots.map(async (entry, index) => {
-        const clips = await step.do(
-          `dialogue-audio-${index}`,
+        // The reuse check is its own step so a refit's extra steps do not
+        // shift the durable names of a clip that was already good.
+        const matched = await step.do(
+          `dialogue-audio-${index}-existing`,
           async (): Promise<MotionAudioClip[]> => {
             const existing = await scopedDb.liveRead.shots.getById(
               entry.shotId
             );
-            const matched = matchingDialogueClips(
-              existing?.audioClips,
-              entry.lines
-            );
-            if (matched.length > 0) {
-              return matched;
-            }
-            const { key } = await scopedDb.credentials.resolveKey('elevenlabs');
-            const { clip, characterCount } = await synthesizeDialogueClip({
-              apiKey: key,
-              teamId: input.teamId,
-              sequenceId,
-              shotId: entry.shotId,
-              lines: entry.lines,
-              minDurationSeconds: input.minDurationSeconds,
-            });
-            await deductWorkflowCredits({
-              scopedDb,
-              costMicros: estimateTtsCost(characterCount),
-              usedOwnKey: false,
-              description: `Dialogue (${entry.lines.length} line${entry.lines.length === 1 ? '' : 's'})`,
-              idempotencyKey: `${workflowRunId}:dialogue-tts:${entry.shotId}`,
-              reservationId: input.reservationId,
-              metadata: {
-                endpointId: ELEVENLABS_TTS_ENDPOINT,
-                model: 'eleven_v3',
-                characterCount,
-                clipCount: 1,
-              },
-              workflowName: 'DialogueAudioWorkflow',
-            });
-            await scopedDb.shots.setAudioClips(entry.shotId, [clip]);
-            return [clip];
+            return matchingDialogueClips(existing?.audioClips, entry.lines);
           }
         );
-        return { shotId: entry.shotId, clips };
+        if (matched.length > 0) {
+          return { shotId: entry.shotId, clips: matched };
+        }
+        const fitted = await fitDialogueClip(step, {
+          scopedDb,
+          workflowRunId,
+          userId: input.userId,
+          teamId: input.teamId,
+          sequenceId,
+          shotId: entry.shotId,
+          lines: entry.lines,
+          minDurationSeconds: input.minDurationSeconds,
+          maxDurationSeconds: input.maxDurationSeconds,
+          shotSeconds: entry.shotSeconds,
+          analysisModelId: input.analysisModelId,
+          reservationId: input.reservationId,
+          stepPrefix: `dialogue-audio-${index}`,
+          workflowName: 'DialogueAudioWorkflow',
+        });
+        await step.do(`dialogue-audio-${index}-persist`, async () => {
+          await scopedDb.shots.setAudioClips(entry.shotId, [fitted.clip]);
+        });
+        return { shotId: entry.shotId, clips: [fitted.clip] };
       })
     );
 

@@ -7,11 +7,10 @@
  * `durationGridForModel`'s min/max, which the capabilities lockstep test
  * keeps equal to that schema.
  *
- * With only a max (min = 0) this matches greedy next-fit: order is fixed, so
- * filling each segment as far as the cap allows minimises job count. A min
- * greater than 0 is the leftover problem — greedy fill can leave a tail
- * shorter than the model floor, so the tiler is a shortest path over cut
- * positions that prefers zero leftovers, then fewer jobs.
+ * Group only as many shots as needed to meet the model floor (#1658).
+ * The tiler optimises over cut positions: minimise under-floor leftovers,
+ * then maximise job count (minimise merged shot boundaries). Without a
+ * minimum, every shot renders independently.
  */
 
 /** Fallback segment cap when a model's duration set is empty. */
@@ -48,7 +47,8 @@ type Cut = {
  * enforce, not the tiler's, and silently dropping or splitting it would lose
  * content. When `minSegmentMs` is set, a segment whose sum is under that
  * floor is marked `belowMin` and the cut set minimises how many of those
- * leftovers exist (then job count).
+ * leftovers exist, then maximises job count. Ties favour smaller earlier
+ * groups, absorbing a short tail only when needed to avoid a leftover.
  *
  * Order is preserved (segment identity depends on it); shots are never sorted.
  */
@@ -69,7 +69,7 @@ export function tileSceneIntoSegments(
 
   const best: Cut[] = Array.from({ length: n + 1 }, () => ({
     leftover: Number.POSITIVE_INFINITY,
-    jobs: Number.POSITIVE_INFINITY,
+    jobs: Number.NEGATIVE_INFINITY,
     prev: -1,
   }));
   best[0] = { leftover: 0, jobs: 0, prev: -1 };
@@ -87,13 +87,13 @@ export function tileSceneIntoSegments(
       const current = best[j];
       if (!current) continue;
       const betterLeftover = leftover < current.leftover;
-      const betterJobs = leftover === current.leftover && jobs < current.jobs;
-      // Larger i → shorter last segment. On a leftover-free tie this packs
-      // earlier shots fuller (the 19×1s / H3 case lands on [14][5], not [5][14]).
+      const betterJobs = leftover === current.leftover && jobs > current.jobs;
+      // Smaller i leaves earlier groups small and absorbs any tail into
+      // the last group: 19×1s / H3 lands on [5][5][9].
       const betterTie =
         leftover === current.leftover &&
         jobs === current.jobs &&
-        i > current.prev;
+        i < current.prev;
       if (betterLeftover || betterJobs || betterTie) {
         best[j] = { leftover, jobs, prev: i };
       }

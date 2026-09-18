@@ -7,24 +7,15 @@
 
 import type { Microdollars } from '@/billing/money';
 import type { ResolvedLlmKey } from '@/models/server/db/api-keys';
-import {
-  aiObservabilityMiddleware,
-  type AIObservabilityMeta,
-} from '@/platform/server/observability/ai-otel';
+import type { TextModel } from '@/models/models';
+import type { AIObservabilityMeta } from '@/platform/server/observability/ai-otel';
 import type {
   ChatMessage,
   ChatMessageImagePart,
 } from '@/platform/server/ai/prompts-index';
 import { toVisionImageSource } from '@/platform/server/storage/external-url';
-import { chat } from '@tanstack/ai';
 import { z } from 'zod';
-import { createAdapter } from '@/models/server/create-adapter';
-import {
-  createUsageCapture,
-  extractRunError,
-  llmCostFromUsage,
-  throwNotedRunError,
-} from '@/models/server/llm-client';
+import { callLLMStream, llmCostFromUsage } from '@/models/server/llm-client';
 import { DEFAULT_VISION_MODEL } from '@/models/models.config';
 
 export const ELEMENT_VISION_MODEL = DEFAULT_VISION_MODEL;
@@ -47,11 +38,20 @@ export type DescribeElementInput = {
   filename: string;
   /** Resolved LLM key (team OpenRouter, team fal, or platform) */
   llmKey?: ResolvedLlmKey;
+  /**
+   * Re-resolve the key when a region block swaps the model (#1259). `llmKey`
+   * was resolved for {@link ELEMENT_VISION_MODEL}; the fallback may not be
+   * carried by the same via.
+   */
+  resolveLlmKey?: (model: TextModel) => Promise<ResolvedLlmKey>;
   /** PostHog LLM-analytics metadata for the generation span. */
   observability?: AIObservabilityMeta;
 };
 
 export type ElementVisionResult = ElementDescription & {
+  /** The model that actually answered — the region fallback may have run
+   *  instead of {@link ELEMENT_VISION_MODEL}. Bill and log this one. */
+  model: TextModel;
   costMicros: Microdollars;
   usedOwnKey: boolean;
 };
@@ -110,73 +110,37 @@ export async function describeElementImage(
   const imageSource = await toVisionImageSource(input.imageUrl);
   const messages = buildVisionMessages(input.filename, imageSource);
 
-  const systemPrompts: string[] = [];
-  const chatMessages: Array<{
-    role: 'user' | 'assistant';
-    content: ChatMessage['content'];
-  }> = [];
-
-  for (const msg of messages) {
-    if (msg.role === 'system') {
-      if (typeof msg.content === 'string') systemPrompts.push(msg.content);
-    } else {
-      chatMessages.push({ role: msg.role, content: msg.content });
-    }
-  }
-
-  const adapter = createAdapter(ELEMENT_VISION_MODEL, input.llmKey);
-
-  // Stream structured output so OpenRouter attaches usage.cost (TanStack/ai#1076).
-  const usageCapture = createUsageCapture();
-  let structuredObject: unknown;
-  let accumulated = '';
-  let runError = null;
-  for await (const event of chat({
-    adapter,
-    systemPrompts,
-    messages: chatMessages,
-    stream: true,
-    modelOptions: {
-      temperature: 0.3,
-      streamOptions: { includeUsage: true },
-    },
-    outputSchema: elementVisionResponseSchema,
-    middleware: [
-      ...aiObservabilityMiddleware({
-        observationName: 'element-vision',
-        tags: ['vision'],
-        ...input.observability,
-      }),
-      ...usageCapture.middleware,
-    ],
-    debug: false,
+  // Centralized call (see talent-vision): the #1259 region fallback, the
+  // OpenRouter provider pin that keeps this schema on a host advertising
+  // `structured_outputs` (#1285), the priority service tier, and a `low`
+  // reasoning effort on the GLM-5.3 Flash fallback, which otherwise thinks at
+  // `max` (#1494).
+  let parsed: ElementDescription | undefined;
+  let usage;
+  let model = ELEMENT_VISION_MODEL;
+  let via = input.llmKey?.via;
+  for await (const chunk of callLLMStream({
+    model: ELEMENT_VISION_MODEL,
+    messages,
+    temperature: 0.3,
+    responseSchema: elementVisionResponseSchema,
+    apiKey: input.llmKey,
+    resolveApiKey: input.resolveLlmKey,
+    observationName: 'element-vision',
+    tags: ['vision'],
+    ...input.observability,
   })) {
-    usageCapture.noteFromStreamEvent(event);
-    const noted = extractRunError(event);
-    if (noted) {
-      runError ??= noted;
-      continue;
-    }
-    if (
-      event.type === 'TEXT_MESSAGE_CONTENT' &&
-      typeof event.delta === 'string'
-    ) {
-      accumulated += event.delta;
-      continue;
-    }
-    if (
-      event.type === 'CUSTOM' &&
-      event.name === 'structured-output.complete'
-    ) {
-      structuredObject = event.value.object;
-      continue;
+    if (chunk.done) {
+      parsed = chunk.parsed;
+      usage = chunk.usage;
+      model = chunk.model;
+      via = chunk.via;
     }
   }
-  throwNotedRunError(runError);
+  if (!parsed) {
+    throw new Error('Element vision returned no validated description');
+  }
 
-  const parsed = elementVisionResponseSchema.parse(
-    structuredObject !== undefined ? structuredObject : JSON.parse(accumulated)
-  );
   const description = parsed.description.trim();
   const consistencyTag = parsed.consistencyTag.trim();
   if (!description || !consistencyTag) {
@@ -188,11 +152,8 @@ export async function describeElementImage(
     description,
     consistencyTag,
     suggestedToken: normalizeSuggestedToken(parsed.suggestedToken),
-    costMicros: llmCostFromUsage(
-      usageCapture.get(),
-      ELEMENT_VISION_MODEL,
-      input.llmKey?.via
-    ),
+    model,
+    costMicros: llmCostFromUsage(usage, model, via),
     usedOwnKey: input.llmKey?.source === 'team',
   };
 }

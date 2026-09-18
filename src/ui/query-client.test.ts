@@ -1,4 +1,8 @@
-import { MutationObserver, type QueryClient } from '@tanstack/react-query';
+import {
+  MutationObserver,
+  QueryObserver,
+  type QueryClient,
+} from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { AccountRestrictedError, AuthenticationError } from '@/platform/errors';
@@ -92,5 +96,105 @@ describe('query retry default', () => {
     expect(retry(0, new Error('boom'))).toBe(true);
     expect(retry(2, new Error('boom'))).toBe(true);
     expect(retry(3, new Error('boom'))).toBe(false);
+  });
+});
+
+describe('rejected sessions (#1663)', () => {
+  const session = { user: { id: 'user-1' } };
+
+  it('disables session-gated reads after the first 401', async () => {
+    const qc = makeQueryClient();
+    qc.setQueryData(['session'], session);
+    const sessionObserver = new QueryObserver(qc, {
+      queryKey: ['session'],
+      enabled: false,
+    });
+    const read = vi.fn().mockRejectedValue(new AuthenticationError('Expired'));
+    const options = {
+      queryKey: ['billing-balance'],
+      queryFn: read,
+      enabled: !!qc.getQueryData(['session']),
+    };
+    const observer = new QueryObserver(qc, options);
+    const unsubscribeSession = sessionObserver.subscribe((result) => {
+      observer.setOptions({ ...options, enabled: !!result.data });
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    try {
+      await vi.waitFor(() =>
+        expect(observer.getCurrentResult().isError).toBe(true)
+      );
+      expect(qc.getQueryData(['session'])).toBeNull();
+      await qc.invalidateQueries({ queryKey: ['billing-balance'] });
+      expect(read).toHaveBeenCalledTimes(1);
+
+      // A later successful sign-in can enable the same reads again.
+      read.mockResolvedValue('balance');
+      qc.setQueryData(['session'], session);
+      await vi.waitFor(() =>
+        expect(observer.getCurrentResult().data).toBe('balance')
+      );
+      expect(read).toHaveBeenCalledTimes(2);
+    } finally {
+      unsubscribe();
+      unsubscribeSession();
+      qc.clear();
+    }
+  });
+
+  it('clears a session on a mutation 401 even with a local error handler', async () => {
+    const qc = makeQueryClient();
+    qc.setQueryData(['session'], session);
+    const error = new AuthenticationError('Expired');
+    const observer = new MutationObserver(qc, {
+      mutationFn: () => Promise.reject(error),
+      onError: vi.fn(),
+    });
+    await expect(observer.mutate(undefined)).rejects.toBe(error);
+    expect(qc.getQueryData(['session'])).toBeNull();
+    qc.clear();
+  });
+
+  it.each([new AccountRestrictedError(), new Error('Network failure')])(
+    'preserves the session for %s',
+    async (error) => {
+      const qc = makeQueryClient();
+      qc.setQueryData(['session'], session);
+      await expect(
+        qc.fetchQuery({
+          queryKey: ['protected'],
+          queryFn: () => Promise.reject(error),
+        })
+      ).rejects.toBe(error);
+      expect(qc.getQueryData(['session'])).toEqual(session);
+      qc.clear();
+    }
+  );
+
+  it('prevents an older in-flight session read from restoring the rejected session', async () => {
+    const qc = makeQueryClient();
+    qc.setQueryData(['session'], session);
+    let resolveSession!: (value: typeof session) => void;
+    const pending = qc
+      .fetchQuery({
+        queryKey: ['session'],
+        staleTime: 0,
+        queryFn: () =>
+          new Promise<typeof session>((resolve) => {
+            resolveSession = resolve;
+          }),
+      })
+      .catch(() => null);
+    const error = new AuthenticationError('Expired');
+    await expect(
+      qc.fetchQuery({
+        queryKey: ['protected'],
+        queryFn: () => Promise.reject(error),
+      })
+    ).rejects.toBe(error);
+    resolveSession(session);
+    await pending;
+    expect(qc.getQueryData(['session'])).toBeNull();
+    qc.clear();
   });
 });

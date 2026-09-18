@@ -11,11 +11,11 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@mediabunny/server": "^1.55.7",
-    "mediabunny": "^1.55.7"
+    "@mediabunny/server": "^1.56.2",
+    "mediabunny": "^1.56.2"
   },
   "devDependencies": {
-    "@types/node": "^22.10.0",
+    "@types/node": "^22.20.2",
     "typescript": "^7.0.2"
   },
   "trustedDependencies": [

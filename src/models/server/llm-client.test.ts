@@ -3,6 +3,7 @@ import type { TextModel } from '@/models/models';
 import type { TokenUsage } from '@tanstack/ai';
 import { convertWebSearchToolToAdapterFormat } from '@tanstack/ai-openrouter/tools';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { REGION_FALLBACK_MODEL } from '@/models/region-policy';
 import { z } from 'zod';
 
 // Import real exports before vi.doMock so they can be re-exported
@@ -420,9 +421,68 @@ describe('llm-client', () => {
       expect(mockChat).toHaveBeenCalledTimes(2);
       expect(mockCreateAdapter).toHaveBeenNthCalledWith(
         2,
-        'deepseek/deepseek-v4-pro-0813',
+        REGION_FALLBACK_MODEL,
         undefined
       );
+    });
+
+    it('reports the fallback model and via so callers bill what answered', async () => {
+      mockChat
+        .mockReturnValueOnce(
+          (async function* () {
+            yield {
+              type: 'RUN_ERROR',
+              message: 'This model is not available in your region.',
+            };
+          })()
+        )
+        .mockReturnValueOnce(
+          (async function* () {
+            yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'fallback answer' };
+          })()
+        );
+      // The retry re-resolves: a via carrying the blocked model need not
+      // carry the fallback, and the new via is what prices the call.
+      const resolveApiKey = vi.fn(async () => ({
+        key: 'k',
+        via: 'openrouter' as const,
+      }));
+
+      let terminal;
+      for await (const chunk of callLLMStream({
+        model: 'anthropic/claude-opus-5-fast',
+        messages: [{ role: 'user', content: 'test' }],
+        apiKey: { key: 'k', via: 'llmtr' },
+        resolveApiKey,
+      })) {
+        if (chunk.done) terminal = chunk;
+      }
+
+      expect(resolveApiKey).toHaveBeenCalledExactlyOnceWith(
+        REGION_FALLBACK_MODEL
+      );
+      expect(terminal?.model).toBe(REGION_FALLBACK_MODEL);
+      expect(terminal?.via).toBe('openrouter');
+    });
+
+    it('reports the requested model when nothing was swapped', async () => {
+      mockChat.mockReturnValueOnce(
+        (async function* () {
+          yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'answer' };
+        })()
+      );
+
+      let terminal;
+      for await (const chunk of callLLMStream({
+        model: 'anthropic/claude-sonnet-5',
+        messages: [{ role: 'user', content: 'test' }],
+        apiKey: { key: 'k', via: 'openrouter' },
+      })) {
+        if (chunk.done) terminal = chunk;
+      }
+
+      expect(terminal?.model).toBe('anthropic/claude-sonnet-5');
+      expect(terminal?.via).toBe('openrouter');
     });
 
     it('retries DeepSeek rejecting image input with the vision fallback (#1323)', async () => {
@@ -461,7 +521,7 @@ describe('llm-client', () => {
       expect(result).toBe('vision answer');
       expect(mockCreateAdapter).toHaveBeenNthCalledWith(
         2,
-        'mistralai/mistral-small-2603',
+        REGION_FALLBACK_MODEL,
         undefined
       );
     });
