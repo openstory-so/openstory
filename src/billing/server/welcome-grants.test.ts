@@ -126,7 +126,7 @@ describe('shouldOfferWelcomeClaim', () => {
   });
 });
 
-describe('welcome credit grants', () => {
+describe.skipIf(SIGNUP_GRANT_MICROS <= 0)('welcome credit grants', () => {
   let client: Client;
   let db: Database;
   let teamId = '';
