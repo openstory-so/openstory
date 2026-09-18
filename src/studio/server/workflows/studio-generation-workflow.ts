@@ -231,7 +231,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
         submitVia === 'byteplus'
           ? await ingestArkAssets(step, {
               prefix: `studio${tag}`,
-              stills: arkStillsForStudio(input),
+              stills: arkStillsForStudio(input, event.payload.noPersonImages),
               ledger: scopedDb.bytePlusAssets,
               owner: assetLeaseOwner('studio', event.instanceId),
               credentials: scopedDb.credentials,

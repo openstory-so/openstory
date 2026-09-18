@@ -1885,6 +1885,12 @@ export interface AssetGenerationWorkflowInput extends UserWorkflowContext {
 export interface StudioGenerationWorkflowInput extends UserWorkflowContext {
   assetId: string;
   input: StudioCreateInput;
+  /**
+   * Reference images the likeness ledger cleared as showing no person,
+   * snapshotted at the trigger. BytePlus sends these as plain URLs instead
+   * of spending a CreateAsset on them (`arkStillsForStudio`, #1674).
+   */
+  noPersonImages: string[];
 }
 
 /**

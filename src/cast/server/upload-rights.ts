@@ -221,3 +221,23 @@ export async function carryUploadRights(
     userAgent: row.userAgent,
   });
 }
+
+/**
+ * The URLs the ledger says show no person (the classifier cleared them).
+ * BytePlus registers a still as a virtual portrait only so Ark accepts a
+ * face, and CreateAsset is 3/min per account — so these go as plain URLs
+ * (#1674). No row, or a signed portrait, is not "no person": Ark would
+ * reject a photoreal face sent as a URL, so an unknown still is registered.
+ */
+export async function imagesWithoutPerson(
+  scopedDb: ScopedDb,
+  urls: string[]
+): Promise<string[]> {
+  const cleared: string[] = [];
+  for (const url of new Set(urls)) {
+    const row = await latestRow(scopedDb, url);
+    if (row?.statementVersion === LIKENESS_CLEARED_V1.version)
+      cleared.push(url);
+  }
+  return cleared;
+}

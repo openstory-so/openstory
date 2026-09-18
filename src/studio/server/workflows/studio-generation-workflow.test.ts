@@ -164,6 +164,7 @@ function makeEvent(
       reservationId: 'res-studio-1',
       ownsReservation: true,
       input,
+      noPersonImages: [],
       ...extra,
     },
     instanceId: 'run-1',

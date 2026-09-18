@@ -238,6 +238,31 @@ describe('ingestArkAssets', () => {
     expect(mockAssertSize).toHaveBeenCalledWith('https://cdn/a.png');
   });
 
+  it('a still with no person goes as a plain URL and spends no CreateAsset (#1674)', async () => {
+    mockClaim.mockResolvedValue({ kind: 'reserved', evictedAssetId: null });
+    const { step, trace } = fakeStep();
+
+    const map = await ingestArkAssets(step, {
+      prefix: 'studio',
+      stills: [
+        { storedUrl: 'https://cdn/prop.png', slot: 'library', plain: true },
+        { storedUrl: 'https://cdn/face.png', slot: 'library' },
+      ],
+      ledger,
+      owner: 'studio:run-1',
+      credentials,
+    });
+
+    expect(map).toEqual({
+      'https://cdn/prop.png': 'https://cdn/prop.png',
+      'https://cdn/face.png': 'asset://created',
+    });
+    expect(trace[0]).toBe('studio-ark-0-plain-url');
+    expect(mockClaim).toHaveBeenCalledTimes(1);
+    expect(mockReserve).toHaveBeenCalledTimes(1);
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+  });
+
   it('a full pool fails the shot — nothing is degraded to a public URL', async () => {
     mockClaim.mockRejectedValue(new Error('every slot is leased'));
     const { step } = fakeStep();

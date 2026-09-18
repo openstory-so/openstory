@@ -48,6 +48,12 @@ export type ArkStill = {
   storedUrl: string;
   slot: BytePlusAssetSlot;
   kind?: BytePlusAssetKind;
+  /**
+   * Known to show no person: map it to a fetchable URL and spend no
+   * CreateAsset on it (#1674). Only a still with a face needs the portrait
+   * library.
+   */
+  plain?: boolean;
 };
 
 /** Stored URL → the URL Ark receives (`asset://…`, or a plain fetchable URL). */
@@ -98,6 +104,14 @@ export async function ingestArkAssets(
   for (const [index, still] of args.stills.entries()) {
     if (map[still.storedUrl]) continue;
     const name = `${args.prefix}-ark-${index}`;
+
+    if (still.plain) {
+      map[still.storedUrl] = await step.do(`${name}-plain-url`, async () => {
+        const falKey = await args.credentials.resolveOptionalKey('fal');
+        return toArkFetchableUrl(still.storedUrl, falKey?.key);
+      });
+      continue;
+    }
 
     const publicUrl = await step.do(`${name}-url`, async () => {
       const falKey = await args.credentials.resolveOptionalKey('fal');
