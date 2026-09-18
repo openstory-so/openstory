@@ -14,6 +14,7 @@
  *   7. persist-result on the reserved `generated_assets` row — last, so a
  *      failure anywhere before it leaves the row `failed`, never
  *      `completed` then flipped
+ *   8. notify-content-feed — PostHog event for the Slack content feed (#1667)
  */
 
 import {
@@ -37,6 +38,7 @@ import { assetLeaseOwner } from '@/models/server/byteplus-asset-pool';
 import { ingestArkAssets } from '@/models/server/byteplus-asset-steps';
 import { resolveMotionVia } from '@/motion/server/motion-generation';
 import { videoUrlFitsWorkflowCheckpoint } from '@/motion/server/video-storage';
+import { captureStudioGenerationCompleted } from '@/platform/server/observability/content-feed';
 import { recordMediaGenerationSpan } from '@/platform/server/observability/ai-otel';
 import { getLogger } from '@/platform/logger';
 import { isEngineAbortError } from '@/platform/server/workflow/errors';
@@ -197,6 +199,8 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
         costMicros: imageCost,
       });
     });
+
+    await this.notifyContentFeed(event, input, outputs, step);
 
     return { assetId, outputs };
   }
@@ -521,7 +525,34 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
       });
     });
 
+    await this.notifyContentFeed(event, input, outputs, step);
+
     return { assetId, outputs };
+  }
+
+  private async notifyContentFeed(
+    event: Readonly<WorkflowEvent<StudioGenerationWorkflowInput>>,
+    input: StudioCreateInput,
+    outputs: GeneratedAssetOutput[],
+    step: WorkflowStep
+  ): Promise<void> {
+    const output = outputs[0];
+    if (!output?.url) return;
+    await step.do('notify-content-feed', async () => {
+      captureStudioGenerationCompleted({
+        distinctId: event.payload.userId,
+        teamId: event.payload.teamId,
+        assetId: event.payload.assetId,
+        activity: input.activity,
+        model: input.activity === 'image' ? input.imageModel : input.videoModel,
+        mediaUrl: output.url,
+        contentType: output.contentType,
+        prompt: input.prompt,
+        aspectRatio: input.aspectRatio,
+        ...(input.activity === 'video' && { duration: input.duration }),
+      });
+      return { ok: true as const };
+    });
   }
 
   protected override async onFailure({

@@ -63,6 +63,10 @@ vi.doMock('@/platform/server/observability/ai-otel', () => ({
 vi.doMock('@/motion/server/motion-generation', () => ({
   resolveMotionVia: mockResolveMotionVia,
 }));
+const mockCaptureStudioGenerationCompleted = vi.fn();
+vi.doMock('@/platform/server/observability/content-feed', () => ({
+  captureStudioGenerationCompleted: mockCaptureStudioGenerationCompleted,
+}));
 
 const { StudioGenerationWorkflow } =
   await import('./studio-generation-workflow');
@@ -210,6 +214,7 @@ describe('StudioGenerationWorkflow image', () => {
       'deduct-credits',
       'record-provenance',
       'persist-result',
+      'notify-content-feed',
     ]);
     expect(mockDeductWorkflowCredits).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -221,6 +226,17 @@ describe('StudioGenerationWorkflow image', () => {
     expect(generatedAssets.markCompleted).toHaveBeenCalledWith('asset-1', {
       outputs: [{ url: '/r2/thumbnails/a.png', contentType: 'image/png' }],
       costMicros: 12_000,
+    });
+    expect(mockCaptureStudioGenerationCompleted).toHaveBeenCalledWith({
+      distinctId: 'u1',
+      teamId: 'team-1',
+      assetId: 'asset-1',
+      activity: 'image',
+      model: 'gpt_image_2',
+      mediaUrl: '/r2/thumbnails/a.png',
+      contentType: 'image/png',
+      prompt: 'a red fox',
+      aspectRatio: '16:9',
     });
   });
 
@@ -273,6 +289,7 @@ describe('StudioGenerationWorkflow video', () => {
       'record-video-observation',
       'record-provenance',
       'persist-result',
+      'notify-content-feed',
     ]);
     expect(bytePlusAssets.releaseOwner).toHaveBeenCalledWith('studio:run-1');
     expect(mockDeductWorkflowCredits).toHaveBeenCalledWith(
@@ -284,6 +301,18 @@ describe('StudioGenerationWorkflow video', () => {
     expect(generatedAssets.markCompleted).toHaveBeenCalledWith('asset-1', {
       outputs: [{ url: '/r2/videos/a.mp4', contentType: 'video/mp4' }],
       costMicros: 70_000,
+    });
+    expect(mockCaptureStudioGenerationCompleted).toHaveBeenCalledWith({
+      distinctId: 'u1',
+      teamId: 'team-1',
+      assetId: 'asset-1',
+      activity: 'video',
+      model: 'seedance_v2',
+      mediaUrl: '/r2/videos/a.mp4',
+      contentType: 'video/mp4',
+      prompt: 'the fox turns',
+      aspectRatio: '16:9',
+      duration: 5,
     });
     expect(mockRecordMediaGenerationSpan).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -325,6 +354,7 @@ describe('StudioGenerationWorkflow video', () => {
       /^Content checker rejected the clip \(Seedance 2\.0\)\. Rewrite the prompt\. \(/
     );
     expect(mockDeductWorkflowCredits).not.toHaveBeenCalled();
+    expect(mockCaptureStudioGenerationCompleted).not.toHaveBeenCalled();
   });
 
   it('names a flagged reference image instead of a still that does not exist (#1373)', async () => {
