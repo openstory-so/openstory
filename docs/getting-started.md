@@ -30,6 +30,8 @@ bun dev
 
 The app will be available at [http://localhost:3000](http://localhost:3000).
 
+To expose a worktree on a stable public HTTPS hostname (`devN.openstory.so`) — Google OAuth, inbound webhooks, a phone — see [Local dev tunnels](/docs/developer-guide/local-dev-tunnels). Ordinary `bun dev` does not need this.
+
 ## AI Keys
 
 To use AI generation features you need two API keys — run `bun setup` to add them interactively, or paste them into `.env.local`:

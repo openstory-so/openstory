@@ -28,6 +28,9 @@
   },
   "scripts": {
     "setup": "bun scripts/setup.ts",
+    "tunnel": "bun scripts/dev-tunnel.ts",
+    "teardown": "bun scripts/dev-tunnel.ts --stop",
+    "tunnel:provision": "bun scripts/dev-tunnel.ts --provision",
     "setup:prd": "bun scripts/setup.ts --prod",
     "setup:deploy": "bun scripts/setup.ts --deploy",
     "setup:stg": "bun scripts/setup.ts --pr-preview",
@@ -52,7 +55,7 @@
     "dev:app": "bun run db:migrate:local && bun run db:seed:local && bun run dev:vite",
     "dev:vite": "bun scripts/build-content-collections.ts && vite dev",
     "dev:bunny": "cd containers/video-export && bun install && bun run dev",
-    "stripe:dev": "source .env.local 2>/dev/null; [ -z \"${STRIPE_SECRET_KEY}\" ] && echo 'Skipping Stripe (no STRIPE_SECRET_KEY)' && exit 0; stripe listen --forward-to localhost:3000/api/billing/webhook --api-key=${STRIPE_SECRET_KEY}",
+    "stripe:dev": "source .env.local 2>/dev/null; [ -z \"${STRIPE_SECRET_KEY}\" ] && echo 'Skipping Stripe (no STRIPE_SECRET_KEY)' && exit 0; stripe listen --forward-to localhost:${PORT:-3000}/api/billing/webhook --api-key=${STRIPE_SECRET_KEY}",
     "build": "vite build",
     "build:e2e": "CLOUDFLARE_ENV=test VITE_APP_URL=http://localhost:3001 VITE_DISABLE_DEVTOOLS=true vite build",
     "lint": "bunx oxlint --type-aware",

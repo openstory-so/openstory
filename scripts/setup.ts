@@ -15,6 +15,7 @@
 import * as p from '@clack/prompts';
 import chalk from 'chalk';
 import { resolve } from 'path';
+import { claimSlot, defaultTunnelIo, TunnelError } from './dev-tunnel';
 import {
   ensureLocalEnv,
   parseEnvFile,
@@ -26,6 +27,8 @@ import { runProdSetup } from './setup-prod';
 const isDeploy = process.argv.includes('--deploy');
 const isPrPreview = process.argv.includes('--pr-preview');
 const isProd = process.argv.includes('--prod');
+const wantTunnel = process.argv.includes('--tunnel');
+const noTunnel = process.argv.includes('--no-tunnel');
 
 const ENV_FILE = resolve(process.cwd(), '.env.local');
 
@@ -101,9 +104,41 @@ async function localSetup() {
     'Optional'
   );
 
+  const shouldClaimTunnel = await resolveTunnelChoice();
+  if (shouldClaimTunnel) {
+    try {
+      const claimed = await claimSlot(defaultTunnelIo());
+      p.log.success(
+        `Tunnel ${claimed.slot} → ${claimed.origin} (port ${claimed.port})`
+      );
+    } catch (error) {
+      p.log.error(
+        error instanceof TunnelError
+          ? error.message
+          : `Tunnel claim failed: ${String(error)}`
+      );
+    }
+  }
+
   p.outro(
-    `Run ${chalk.bold('bun dev')} to start the development server.\nTo deploy to production, run: ${chalk.bold('bun setup --prod')}`
+    `Run ${chalk.bold('bun dev')} to start the development server.\nPublic HTTPS (Google OAuth, inbound webhooks): ${chalk.bold('bun tunnel')}\nTo deploy to production, run: ${chalk.bold('bun setup --prod')}`
   );
+}
+
+async function resolveTunnelChoice(): Promise<boolean> {
+  if (noTunnel) return false;
+  if (wantTunnel) return true;
+  if (!process.stdin.isTTY) return false;
+  const yes = await p.confirm({
+    message:
+      'Claim a public HTTPS tunnel slot? (Google OAuth / inbound webhooks; needs cloudflared)',
+    initialValue: false,
+  });
+  if (p.isCancel(yes) || typeof yes !== 'boolean') {
+    p.cancel('Setup cancelled. Progress saved to .env.local');
+    process.exit(0);
+  }
+  return yes;
 }
 
 async function main() {

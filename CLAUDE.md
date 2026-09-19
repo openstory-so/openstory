@@ -11,6 +11,9 @@ bun dev:all                        # bun dev + the Stripe listener (billing webh
 bun storybook                      # Storybook on :6006
 bun explorer                       # Open the local CF Explorer (KV/R2/D1/DOs/Workflows)
 bun db:studio:local                # Inspect local D1 tables (wrangler d1 execute)
+bun tunnel                         # Claim a public HTTPS slot (devN.openstory.so) and start cloudflared
+bun teardown                       # Free this worktree's tunnel slot
+bun tunnel:provision               # One-time: create the 10 named tunnels + DNS routes
 
 # Quality
 bun lint                           # oxlint (type-aware)

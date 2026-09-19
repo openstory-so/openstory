@@ -10,6 +10,10 @@ import { defineConfig, type Plugin } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
 import { devtools } from '@tanstack/devtools-vite';
 import viteReact from '@vitejs/plugin-react';
+import {
+  devTunnelHostname,
+  slotFromOrigin,
+} from './src/platform/dev-tunnel-slots.ts';
 import { worktreeAuthCookiePrefix } from './src/platform/auth/cookie-prefix.ts';
 import { createServerFnIdGenerator } from './src/platform/server-fn-id.ts';
 
@@ -24,6 +28,20 @@ if (isDev) {
 const authCookiePrefix = isDev
   ? process.env.VITE_AUTH_COOKIE_PREFIX
   : undefined;
+
+function tunnelHmr():
+  | { protocol: 'wss'; host: string; clientPort: number }
+  | undefined {
+  const slot = slotFromOrigin(process.env.VITE_APP_URL);
+  if (!slot) return undefined;
+  return {
+    protocol: 'wss',
+    host: devTunnelHostname(slot),
+    clientPort: 443,
+  };
+}
+
+const tunnelHmrConfig = tunnelHmr();
 
 /**
  * Prints which wrangler.jsonc bindings are local vs REMOTE on dev startup.
@@ -193,9 +211,16 @@ export default defineConfig({
     ],
   },
   server: {
-    port: 3000,
+    port: Number.parseInt(process.env.PORT ?? '3000', 10) || 3000,
+    strictPort: true,
     host: true, // Listen on all interfaces for QStash Docker to reach via host.docker.internal
-    allowedHosts: ['localhost', '127.0.0.1', 'host.docker.internal'],
+    allowedHosts: [
+      'localhost',
+      '127.0.0.1',
+      'host.docker.internal',
+      '.openstory.so',
+    ],
+    ...(tunnelHmrConfig ? { hmr: tunnelHmrConfig } : {}),
     watch: {
       ignored: [
         '**/e2e/.auth/**',
