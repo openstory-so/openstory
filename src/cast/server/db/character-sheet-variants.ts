@@ -15,19 +15,31 @@ import {
   characters,
 } from '@/platform/server/db/schema';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { pageOf } from '@/platform/server/db/read-page';
+import type { VersionListOptions } from '@/platform/server/db/read-page';
 import { insertDivergentRaceTolerant } from '@/platform/server/db/scoped/divergent-insert';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
 import type { CharacterSheetInputHash } from '@/shots/input-hash';
 
 export function createCharacterSheetVariantsMethods(db: Database) {
   return {
+    /** Every attempt (any status), oldest-first; discarded rows on request. */
     listByCharacter: async (
-      characterId: string
+      characterId: string,
+      options?: VersionListOptions
     ): Promise<CharacterSheetVariant[]> => {
-      return db
-        .select()
-        .from(characterSheetVariants)
-        .where(eq(characterSheetVariants.characterId, characterId));
+      return await pageOf(
+        db.select().from(characterSheetVariants).$dynamic(),
+        and(
+          eq(characterSheetVariants.characterId, characterId),
+          options?.includeDiscarded
+            ? undefined
+            : isNull(characterSheetVariants.discardedAt)
+        ),
+        characterSheetVariants.id,
+        options?.page,
+        asc(characterSheetVariants.id)
+      );
     },
 
     /**
@@ -111,6 +123,23 @@ export function createCharacterSheetVariantsMethods(db: Database) {
      * Look up a variant by id. Used by the promote / discard server functions
      * to confirm the row exists and is still divergent before acting.
      */
+    /** Batch lookup, chunked below D1's 100-bound-parameter cap. */
+    getByIds: async (
+      variantIds: string[]
+    ): Promise<CharacterSheetVariant[]> => {
+      const rows: CharacterSheetVariant[] = [];
+      for (let i = 0; i < variantIds.length; i += 80)
+        rows.push(
+          ...(await db
+            .select()
+            .from(characterSheetVariants)
+            .where(
+              inArray(characterSheetVariants.id, variantIds.slice(i, i + 80))
+            ))
+        );
+      return rows;
+    },
+
     getById: async (
       variantId: string
     ): Promise<CharacterSheetVariant | null> => {

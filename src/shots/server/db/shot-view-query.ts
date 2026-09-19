@@ -82,7 +82,10 @@ export const shotHierarchicalOrder = [
  * frame / no segment / a discarded selection still comes back — assetless, not
  * missing.
  */
-export function selectShotViewRows(db: Database) {
+export function selectShotViewRows(
+  db: Database,
+  options: { includePrompts?: boolean; includeAssets?: boolean } = {}
+) {
   return (
     db
       // Explicit projection, NOT a bare `db.select()`. D1 rejects any result
@@ -98,44 +101,76 @@ export function selectShotViewRows(db: Database) {
       .select({
         shots,
         frames,
-        frame_variants: frameVariants,
-        frame_prompt_versions: framePromptVersions,
+        selectedImageId: frameVariants.id,
+        selectedVideoId: videoVariants.id,
+        selectedImageUsable:
+          sql<boolean>`${frameVariants.url} is not null`.mapWith(Boolean),
+        selectedVideoUsable:
+          sql<boolean>`${videoVariants.url} is not null`.mapWith(Boolean),
+        frame_variants:
+          options.includeAssets === false ? sql<null>`NULL` : frameVariants,
+        frame_prompt_versions:
+          options.includePrompts === false
+            ? sql<null>`NULL`
+            : framePromptVersions,
         // Only the three fields `motionPromptFromVersion` rebuilds a prompt
         // from — `components`/`parameters` are history, not render input.
-        shot_prompt_versions: {
-          text: shotPromptVersions.text,
-          dialogue: shotPromptVersions.dialogue,
-          audio: shotPromptVersions.audio,
-        },
-        video_variants: videoVariants,
+        shot_prompt_versions:
+          options.includePrompts === false
+            ? sql<null>`NULL`
+            : {
+                text: shotPromptVersions.text,
+                dialogue: shotPromptVersions.dialogue,
+                audio: shotPromptVersions.audio,
+              },
+        video_variants:
+          options.includeAssets === false ? sql<null>`NULL` : videoVariants,
       })
       .from(shots)
       // Anchor frame holds the image surface (#989) — the shot's first frame
       // (orderIndex 0), joined by shotId (NOT id-reuse).
       .leftJoin(
         frames,
-        and(eq(frames.shotId, shots.id), eq(frames.orderIndex, 0))
+        and(
+          eq(frames.shotId, shots.id),
+          eq(frames.orderIndex, 0),
+          eq(frames.sequenceId, shots.sequenceId)
+        )
       )
       .leftJoin(
         frameVariants,
         and(
           eq(frameVariants.id, frames.selectedImageVersionId),
+          eq(frameVariants.frameId, frames.id),
           isNull(frameVariants.discardedAt)
         )
       )
       .leftJoin(
         framePromptVersions,
-        eq(framePromptVersions.id, frames.selectedImagePromptVersionId)
+        and(
+          eq(framePromptVersions.id, frames.selectedImagePromptVersionId),
+          eq(framePromptVersions.frameId, frames.id)
+        )
       )
       .leftJoin(
         shotPromptVersions,
-        eq(shotPromptVersions.id, shots.selectedMotionPromptVersionId)
+        and(
+          eq(shotPromptVersions.id, shots.selectedMotionPromptVersionId),
+          eq(shotPromptVersions.shotId, shots.id)
+        )
       )
-      .leftJoin(renderSegments, eq(renderSegments.id, shots.renderSegmentId))
+      .leftJoin(
+        renderSegments,
+        and(
+          eq(renderSegments.id, shots.renderSegmentId),
+          eq(renderSegments.sequenceId, shots.sequenceId)
+        )
+      )
       .leftJoin(
         videoVariants,
         and(
           eq(videoVariants.id, renderSegments.selectedVideoVersionId),
+          eq(videoVariants.renderSegmentId, renderSegments.id),
           isNull(videoVariants.discardedAt)
         )
       )
@@ -154,7 +189,8 @@ export function selectShotViewRows(db: Database) {
 export async function assembleShotViews(
   db: Database,
   rows: ShotViewRow[],
-  gridSheetByFrameId?: Map<string, ShotGridSheet>
+  gridSheetByFrameId?: Map<string, ShotGridSheet>,
+  options: { includeAssets?: boolean } = {}
 ): Promise<ShotView[]> {
   const pendingPromoteIds = [
     ...new Set(
@@ -170,11 +206,15 @@ export async function assembleShotViews(
       db,
       rows.map((r) => r.shots.id)
     ),
-    getLatestPreviewByFrameIds(
-      db,
-      rows.flatMap((r) => (r.frames ? [r.frames.id] : []))
-    ),
-    getFrameVariantsByIds(db, pendingPromoteIds),
+    options.includeAssets === false
+      ? new Map<string, FrameVariant>()
+      : getLatestPreviewByFrameIds(
+          db,
+          rows.flatMap((r) => (r.frames ? [r.frames.id] : []))
+        ),
+    options.includeAssets === false
+      ? new Map<string, FrameVariant>()
+      : getFrameVariantsByIds(db, pendingPromoteIds),
   ]);
   return rows.map((row) => {
     const video = {

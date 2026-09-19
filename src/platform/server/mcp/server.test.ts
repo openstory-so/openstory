@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as dbModule from '@/platform/server/db/scoped';
+import type { ScopedDb } from '@/platform/server/db/scoped';
 import { z } from 'zod';
 import {
   createOpenStoryMcpServer,
@@ -25,6 +27,7 @@ const auth = {
   user,
   teamId: 'team_1',
   teamName: "Ada's Team",
+  kind: 'api_key' as const,
   keyHint: 'osk_…XXXX',
   clientId: 'api_key',
   scopes: [] as const,
@@ -38,7 +41,20 @@ const rpcEnvelope = z.object({
 });
 
 const toolsListResult = z.object({
-  tools: z.array(z.object({ name: z.string(), description: z.string() })),
+  tools: z.array(
+    z.object({
+      name: z.string(),
+      description: z.string(),
+      inputSchema: z.object({ type: z.literal('object') }).passthrough(),
+      outputSchema: z.object({ type: z.literal('object') }),
+      annotations: z
+        .object({
+          readOnlyHint: z.boolean().optional(),
+          destructiveHint: z.boolean().optional(),
+        })
+        .optional(),
+    })
+  ),
 });
 
 const whoamiResult = z.object({
@@ -87,10 +103,14 @@ function mcpPost(
   });
 }
 
-async function rpc(method: string, params?: Record<string, unknown>) {
+async function rpc(
+  method: string,
+  params?: Record<string, unknown>,
+  caller: Parameters<typeof toMcpAuthInfo>[0] = auth
+) {
   resetMcpHttpHandler();
   const res = await getMcpHttpHandler().fetch(mcpPost(method, { params }), {
-    authInfo: toMcpAuthInfo(auth),
+    authInfo: toMcpAuthInfo(caller),
   });
   return {
     status: res.status,
@@ -107,12 +127,100 @@ describe('createOpenStoryMcpServer', () => {
 });
 
 describe('tools/list and whoami', () => {
-  it('lists whoami', async () => {
+  it('lists whoami and all production read tools with input/output schemas', async () => {
     const { status, body } = await rpc('tools/list');
     expect(status).toBe(200);
     const tools = toolsListResult.parse(body.result).tools;
-    expect(tools.map((t) => t.name)).toEqual(['whoami']);
+    expect(tools.map((t) => t.name)).toEqual([
+      'whoami',
+      'openstory.list_sequences',
+      'openstory.get_sequence',
+      'openstory.get_sequence_status',
+      'openstory.list_scenes',
+      'openstory.get_scene',
+      'openstory.list_shots',
+      'openstory.get_shot',
+      'openstory.list_characters',
+      'openstory.get_character',
+      'openstory.list_locations',
+      'openstory.get_location',
+      'openstory.list_elements',
+      'openstory.get_element',
+      'openstory.get_sequence_settings',
+      'openstory.get_sequence_script',
+      'openstory.get_sequence_music',
+      'openstory.list_frames',
+      'openstory.get_frame',
+      'openstory.list_render_segments',
+      'openstory.get_render_segment',
+      'openstory.list_versions',
+      'openstory.get_version',
+      'openstory.get_shot_audio',
+      'openstory.list_exports',
+      'openstory.get_export_status',
+      'openstory.list_sequence_events',
+      'openstory.get_sequence_event',
+      'openstory.list_shot_references',
+      'openstory.list_entity_usages',
+      'openstory.get_shot_staleness',
+      'openstory.list_shot_staleness',
+      'openstory.get_reference_staleness',
+      'openstory.get_render_segment_staleness',
+      'openstory.get_music_staleness',
+      'openstory.list_talent',
+      'openstory.get_talent',
+      'openstory.list_library_locations',
+      'openstory.get_library_location',
+      'openstory.list_styles',
+      'openstory.get_style',
+      'openstory.list_library_resources',
+      'openstory.get_library_resource',
+      'openstory.list_gallery_samples',
+      'openstory.list_generated_assets',
+      'openstory.get_generated_asset',
+      'openstory.list_studio_uploads',
+    ]);
     expect(tools[0]?.description).toMatch(/user and team/i);
+    for (const tool of tools.slice(1))
+      expect(tool.annotations).toMatchObject({
+        readOnlyHint: true,
+        destructiveHint: false,
+      });
+    for (const name of [
+      'openstory.list_library_resources',
+      'openstory.get_library_resource',
+    ]) {
+      const libraryResourceSchema = z
+        .object({
+          oneOf: z.array(
+            z.object({
+              properties: z.object({
+                kind: z.object({ enum: z.array(z.string()) }),
+              }),
+              required: z.array(z.string()),
+            })
+          ),
+        })
+        .parse(tools.find((tool) => tool.name === name)?.inputSchema);
+      expect(
+        libraryResourceSchema.oneOf
+          .filter((entry) =>
+            entry.properties.kind.enum.some(
+              (kind) => kind !== 'audio' && kind !== 'vfx'
+            )
+          )
+          .every((entry) => entry.required.includes('parentId'))
+      ).toBe(true);
+      expect(
+        libraryResourceSchema.oneOf
+          .filter((entry) =>
+            entry.properties.kind.enum.every(
+              (kind) => kind === 'audio' || kind === 'vfx'
+            )
+          )
+          .every((entry) => !entry.required.includes('parentId'))
+      ).toBe(true);
+    }
   });
 
   it('whoami returns the caller user and team', async () => {
@@ -174,4 +282,65 @@ describe('tools/list and whoami', () => {
     );
     expect(res.status).toBeGreaterThanOrEqual(400);
   });
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe('production tool authorization', () => {
+  it.each(['api_key', 'oauth'] as const)(
+    'builds a fresh DB scoped to the authenticated team for %s',
+    async (kind) => {
+      const getById = vi.fn(async () => null);
+      const createDb = vi
+        .spyOn(dbModule, 'createScopedDb')
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- ownership rejection must stop after getById, before any child reads
+        .mockReturnValue({ sequences: { getById } } as unknown as ScopedDb);
+      const { body } = await rpc(
+        'tools/call',
+        {
+          name: 'openstory.get_sequence',
+          arguments: { sequenceId: '01J00000000000000000000000' },
+        },
+        {
+          ...auth,
+          kind,
+          teamId: 'team_2',
+          scopes: kind === 'oauth' ? ['sequences:read'] : [],
+        }
+      );
+      expect(createDb).toHaveBeenCalledWith('team_2', 'user_1');
+      expect(getById).toHaveBeenCalledWith('01J00000000000000000000000');
+      expect(body.result).toMatchObject({
+        isError: true,
+        structuredContent: { error: { code: 'NOT_FOUND' } },
+      });
+    }
+  );
+
+  it.each([
+    'list_sequences',
+    'list_talent',
+    'list_library_locations',
+    'list_styles',
+    'list_gallery_samples',
+    'list_generated_assets',
+    'list_studio_uploads',
+  ])(
+    'rejects OAuth without read scope for %s even when its client ID resembles an API key caller',
+    async (name) => {
+      const createDb = vi.spyOn(dbModule, 'createScopedDb');
+      const { body } = await rpc(
+        'tools/call',
+        { name: `openstory.${name}`, arguments: {} },
+        { ...auth, kind: 'oauth', clientId: 'api_key', scopes: [] }
+      );
+      expect(body.result).toMatchObject({
+        isError: true,
+        structuredContent: { error: { code: 'AUTHENTICATION_ERROR' } },
+      });
+      expect(createDb).not.toHaveBeenCalled();
+    }
+  );
 });

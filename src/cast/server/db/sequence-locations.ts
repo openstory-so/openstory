@@ -4,6 +4,8 @@
  */
 
 import { and, eq, getTableColumns, inArray, isNull, sql } from 'drizzle-orm';
+import { pageOf } from '@/platform/server/db/read-page';
+import type { PageOptions } from '@/platform/server/db/read-page';
 import type { Database } from '@/platform/server/db/client';
 import type {
   Shot,
@@ -141,13 +143,17 @@ export function createSequenceLocationsMethods(db: Database) {
     // twin for rationale. Id-addressed reads (getById/getByIds) still return
     // deleted rows so restore can reach them.
     list: async (
-      sequenceId: string
+      sequenceId: string,
+      page?: PageOptions
     ): Promise<SequenceLocationWithReference[]> => {
-      return await selectWithLiveReference().where(
+      return await pageOf(
+        selectWithLiveReference().$dynamic(),
         and(
           eq(sequenceLocations.sequenceId, sequenceId),
           isNull(sequenceLocations.deletedAt)
-        )
+        ),
+        sequenceLocations.id,
+        page
       );
     },
 

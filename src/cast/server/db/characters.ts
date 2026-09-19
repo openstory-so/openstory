@@ -13,6 +13,8 @@ import {
   sql,
 } from 'drizzle-orm';
 import type { Database } from '@/platform/server/db/client';
+import { pageOf } from '@/platform/server/db/read-page';
+import type { PageOptions } from '@/platform/server/db/read-page';
 import type {
   CharacterWithSheet,
   Character,
@@ -152,9 +154,18 @@ export function createCharactersMethods(db: Database) {
     // must vanish from the cast facet, the prompt-context bibles, and the
     // staleness verifies — all of which read through these methods. Restore
     // (or an id-addressed getById) is the only way back.
-    list: async (sequenceId: string): Promise<CharacterWithSheet[]> => {
-      return await selectWithLiveSheet().where(
-        and(eq(characters.sequenceId, sequenceId), isNull(characters.deletedAt))
+    list: async (
+      sequenceId: string,
+      page?: PageOptions
+    ): Promise<CharacterWithSheet[]> => {
+      return await pageOf(
+        selectWithLiveSheet().$dynamic(),
+        and(
+          eq(characters.sequenceId, sequenceId),
+          isNull(characters.deletedAt)
+        ),
+        characters.id,
+        page
       );
     },
 

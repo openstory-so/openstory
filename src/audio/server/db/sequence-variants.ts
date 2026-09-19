@@ -16,7 +16,9 @@ import type {
   Sequence,
   SequenceMusicVariant,
 } from '@/platform/server/db/schema';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
+import { pageOf } from '@/platform/server/db/read-page';
+import type { VersionListOptions } from '@/platform/server/db/read-page';
 import { insertDivergentRaceTolerant } from '@/platform/server/db/scoped/divergent-insert';
 import type { SequenceMusicInputHash } from '@/shots/input-hash';
 
@@ -129,13 +131,26 @@ export function createSequenceVariantsMethods(db: Database) {
 
   return {
     // ── Music variants ────────────────────────────────────────────────────
+    /**
+     * Every music variant of a sequence. Unlike the other version lists this
+     * one has always returned discarded rows too, so `includeDiscarded`
+     * defaults to true here; pass `false` to drop them.
+     */
     listMusicBySequence: async (
-      sequenceId: string
+      sequenceId: string,
+      options?: VersionListOptions
     ): Promise<SequenceMusicVariant[]> => {
-      return db
-        .select()
-        .from(sequenceMusicVariants)
-        .where(eq(sequenceMusicVariants.sequenceId, sequenceId));
+      return await pageOf(
+        db.select().from(sequenceMusicVariants).$dynamic(),
+        and(
+          eq(sequenceMusicVariants.sequenceId, sequenceId),
+          (options?.includeDiscarded ?? true)
+            ? undefined
+            : isNull(sequenceMusicVariants.discardedAt)
+        ),
+        sequenceMusicVariants.id,
+        options?.page
+      );
     },
 
     /**

@@ -135,3 +135,18 @@ export const storageObjectSize = (_key: string): Promise<number | null> =>
 
 export const serveFile = (_key: string, _request: Request): Promise<Response> =>
   throwStub();
+
+export const listFilesPage = (
+  _bucket: StorageBucket,
+  _path: string,
+  _options: { limit: number; cursor?: string }
+): Promise<{
+  files: {
+    name: string;
+    url: string;
+    size: number;
+    contentType: string;
+    uploadedAt: string;
+  }[];
+  nextCursor: string | null;
+}> => throwStub();

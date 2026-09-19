@@ -18,10 +18,12 @@
  */
 
 import type { Database } from '@/platform/server/db/client';
-import { renderSegments, shots } from '@/platform/server/db/schema';
+import { renderSegments, scenes, shots } from '@/platform/server/db/schema';
 import type { RenderSegment } from '@/platform/server/db/schema';
 import { generateId } from '@/platform/id';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { pageOf } from '@/platform/server/db/read-page';
+import type { PageOptions } from '@/platform/server/db/read-page';
 
 /** The shot fields {@link createRenderSegmentsMethods.ensureForShot} needs. */
 export type ShotForSegment = {
@@ -49,11 +51,33 @@ export function createRenderSegmentsMethods(db: Database) {
     },
 
     /** Every segment in a sequence — the read the Scenes editor groups shots by. */
-    listBySequence: async (sequenceId: string): Promise<RenderSegment[]> => {
-      return await db
-        .select()
-        .from(renderSegments)
-        .where(eq(renderSegments.sequenceId, sequenceId));
+    listBySequence: async (
+      sequenceId: string,
+      options?: {
+        sceneId?: string;
+        /** Drop segments whose scene is soft-deleted (they have no live shots). */
+        liveScenesOnly?: boolean;
+        page?: PageOptions;
+      }
+    ): Promise<RenderSegment[]> => {
+      const rows = await pageOf(
+        db
+          .select({ segment: renderSegments })
+          .from(renderSegments)
+          // Left join: the unfiltered editor read must not lose a row to it.
+          .leftJoin(scenes, eq(scenes.id, renderSegments.sceneId))
+          .$dynamic(),
+        and(
+          eq(renderSegments.sequenceId, sequenceId),
+          options?.sceneId
+            ? eq(renderSegments.sceneId, options.sceneId)
+            : undefined,
+          options?.liveScenesOnly ? isNull(scenes.deletedAt) : undefined
+        ),
+        renderSegments.id,
+        options?.page
+      );
+      return rows.map((row) => row.segment);
     },
 
     /**

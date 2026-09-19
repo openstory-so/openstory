@@ -21,6 +21,8 @@ import type { Database } from '@/platform/server/db/client';
 import { framePromptVersions, frames, user } from '@/platform/server/db/schema';
 import type { FramePromptVersion } from '@/platform/server/db/schema';
 import { and, desc, eq, gt, inArray, isNotNull, ne } from 'drizzle-orm';
+import { pageOf } from '@/platform/server/db/read-page';
+import type { PageOptions } from '@/platform/server/db/read-page';
 import { getLogger } from '@/platform/logger';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
 
@@ -527,12 +529,17 @@ export function createFramePromptVersionsMethods(db: Database) {
     },
 
     /** Revision history for a frame's image prompt, newest first. */
-    listByFrame: async (frameId: string): Promise<FramePromptVersion[]> => {
-      return await db
-        .select()
-        .from(framePromptVersions)
-        .where(eq(framePromptVersions.frameId, frameId))
-        .orderBy(desc(framePromptVersions.createdAt));
+    listByFrame: async (
+      frameId: string,
+      page?: PageOptions
+    ): Promise<FramePromptVersion[]> => {
+      return await pageOf(
+        db.select().from(framePromptVersions).$dynamic(),
+        eq(framePromptVersions.frameId, frameId),
+        framePromptVersions.id,
+        page,
+        desc(framePromptVersions.createdAt)
+      );
     },
 
     /** History list for the UI — joins author name. Newest first. */

@@ -27,6 +27,8 @@ import {
   isSelectableFrameVariantKind,
 } from '@/platform/server/db/schema/frame-variants';
 import { and, asc, desc, eq, inArray } from 'drizzle-orm';
+import { pageOf } from '@/platform/server/db/read-page';
+import type { PageOptions } from '@/platform/server/db/read-page';
 
 /** A frame plus the `frame_variants` version it currently points at (if any). */
 export type ResolvedFrame = {
@@ -166,12 +168,17 @@ export function createFramesMethods(db: Database) {
     },
 
     /** Frames of a shot, ordered (0 = first/anchor by default). */
-    listByShot: async (shotId: string): Promise<Frame[]> => {
-      return await db
-        .select()
-        .from(frames)
-        .where(eq(frames.shotId, shotId))
-        .orderBy(asc(frames.orderIndex));
+    listByShot: async (
+      shotId: string,
+      page?: PageOptions
+    ): Promise<Frame[]> => {
+      return await pageOf(
+        db.select().from(frames).$dynamic(),
+        eq(frames.shotId, shotId),
+        frames.id,
+        page,
+        asc(frames.orderIndex)
+      );
     },
 
     listBySequence: async (

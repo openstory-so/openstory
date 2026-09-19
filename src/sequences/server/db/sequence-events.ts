@@ -24,6 +24,8 @@ import type {
   SequenceEventTargetType,
 } from '@/platform/server/db/schema';
 import { and, desc, eq } from 'drizzle-orm';
+import { pageOf } from '@/platform/server/db/read-page';
+import type { PageOptions } from '@/platform/server/db/read-page';
 
 /**
  * One activity-log entry. `actorId` is null for system / AI / workflow-driven
@@ -80,18 +82,41 @@ export function createSequenceEventsMethods(db: Database) {
     /** The timeline: every event for a sequence, newest first (ULID order). */
     listBySequence: async (
       sequenceId: string,
-      options?: { limit?: number }
+      options?: {
+        limit?: number;
+        targetType?: SequenceEventTargetType;
+        targetId?: string;
+        page?: PageOptions;
+      }
     ): Promise<SequenceEvent[]> => {
-      let query = db
-        .select()
-        .from(sequenceEvents)
-        .where(eq(sequenceEvents.sequenceId, sequenceId))
-        .orderBy(desc(sequenceEvents.id))
-        .$dynamic();
+      let query = pageOf(
+        db.select().from(sequenceEvents).$dynamic(),
+        and(
+          eq(sequenceEvents.sequenceId, sequenceId),
+          options?.targetType
+            ? eq(sequenceEvents.targetType, options.targetType)
+            : undefined,
+          options?.targetId
+            ? eq(sequenceEvents.targetId, options.targetId)
+            : undefined
+        ),
+        sequenceEvents.id,
+        options?.page,
+        desc(sequenceEvents.id)
+      );
       if (options?.limit) {
         query = query.limit(options.limit);
       }
       return await query;
+    },
+
+    getById: async (eventId: string): Promise<SequenceEvent | null> => {
+      const [row] = await db
+        .select()
+        .from(sequenceEvents)
+        .where(eq(sequenceEvents.id, eventId))
+        .limit(1);
+      return row ?? null;
     },
 
     /** "What happened to this entity": events targeting one frame/shot/scene. */

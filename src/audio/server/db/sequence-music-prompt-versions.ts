@@ -19,6 +19,8 @@ import {
 } from '@/platform/server/db/schema';
 import type { SequenceMusicPromptVersion } from '@/platform/server/db/schema';
 import { and, desc, eq } from 'drizzle-orm';
+import { pageOf } from '@/platform/server/db/read-page';
+import type { PageOptions } from '@/platform/server/db/read-page';
 import type { MusicPromptInputHash } from '@/shots/input-hash';
 
 type WriteSequenceMusicPromptVersionBase = {
@@ -129,13 +131,16 @@ export function createSequenceMusicPromptVersionsMethods(db: Database) {
 
     /** Revision history for a sequence's music prompt, newest first. */
     listBySequence: async (
-      sequenceId: string
+      sequenceId: string,
+      page?: PageOptions
     ): Promise<SequenceMusicPromptVersion[]> => {
-      return await db
-        .select()
-        .from(sequenceMusicPromptVersions)
-        .where(eq(sequenceMusicPromptVersions.sequenceId, sequenceId))
-        .orderBy(desc(sequenceMusicPromptVersions.createdAt));
+      return await pageOf(
+        db.select().from(sequenceMusicPromptVersions).$dynamic(),
+        eq(sequenceMusicPromptVersions.sequenceId, sequenceId),
+        sequenceMusicPromptVersions.id,
+        page,
+        desc(sequenceMusicPromptVersions.createdAt)
+      );
     },
 
     /** Most recent music prompt version, or null if none exists. */

@@ -39,6 +39,8 @@ import {
   isSelectableFrameVariantKind,
 } from '@/platform/server/db/schema/frame-variants';
 import { simpleHash } from '@/platform/hash';
+import { pageOf } from '@/platform/server/db/read-page';
+import type { VersionListOptions } from '@/platform/server/db/read-page';
 import {
   and,
   asc,
@@ -47,6 +49,7 @@ import {
   inArray,
   isNotNull,
   isNull,
+  sql,
   ne,
   or,
 } from 'drizzle-orm';
@@ -177,13 +180,17 @@ export async function getLatestPreviewByFrameIds(
   frameIds: string[]
 ): Promise<Map<string, FrameVariant>> {
   if (frameIds.length === 0) return new Map();
-  // asc by id (≈ time) → last write per frame wins. Chunking is safe for this
-  // reduction: a frame's rows never span two batches (batches partition by
-  // frame id), so per-frame ordering is preserved.
+  // Resolve the newest usable ID in SQL so callers never load preview history.
   const byFrame = new Map<string, FrameVariant>();
   for (let i = 0; i < frameIds.length; i += PREVIEW_BY_FRAMES_BATCH) {
-    const rows = await db
-      .select()
+    const ranked = db
+      .select({
+        id: frameVariants.id,
+        position:
+          sql<number>`row_number() over (partition by ${frameVariants.frameId} order by ${frameVariants.createdAt} desc, ${frameVariants.id} desc)`.as(
+            'position'
+          ),
+      })
       .from(frameVariants)
       .where(
         and(
@@ -192,19 +199,22 @@ export async function getLatestPreviewByFrameIds(
             frameIds.slice(i, i + PREVIEW_BY_FRAMES_BATCH)
           ),
           eq(frameVariants.kind, 'preview'),
-          // A preview with no url is not a preview. `status` alone is NOT
-          // enough: the #1101 reclassify retagged url-less rows regardless of
-          // status, and 2150 of them were already 'completed'. Those carry
-          // real ULIDs (`01…`) while the backfilled rows carry synthetic `00…`
-          // ids, so a husk outranks the row holding the actual image and the
-          // preview reads as absent — which is exactly what happened to 2150
-          // of 3009 frames in production.
+          // Historical migrations left completed rows with no URL. Those must
+          // not shadow an older preview that actually has an image (#1101).
           eq(frameVariants.status, 'completed'),
           isNotNull(frameVariants.url),
           isNull(frameVariants.discardedAt)
         )
       )
-      .orderBy(...oldestFirst);
+      .as('ranked_previews');
+    const latest = db
+      .select({ id: ranked.id })
+      .from(ranked)
+      .where(eq(ranked.position, 1));
+    const rows = await db
+      .select()
+      .from(frameVariants)
+      .where(inArray(frameVariants.id, latest));
     for (const row of rows) byFrame.set(row.frameId, row);
   }
   return byFrame;
@@ -862,17 +872,20 @@ export function createFrameVariantsMethods(db: Database) {
     /** All versions for a frame, oldest-first. Excludes discarded by default. */
     listByFrame: async (
       frameId: string,
-      options?: { includeDiscarded?: boolean }
+      options?: VersionListOptions
     ): Promise<FrameVariant[]> => {
-      const conditions = [eq(frameVariants.frameId, frameId)];
-      if (!options?.includeDiscarded) {
-        conditions.push(isNull(frameVariants.discardedAt));
-      }
-      return await db
-        .select()
-        .from(frameVariants)
-        .where(and(...conditions))
-        .orderBy(...oldestFirst);
+      return await pageOf(
+        db.select().from(frameVariants).$dynamic(),
+        and(
+          eq(frameVariants.frameId, frameId),
+          options?.includeDiscarded
+            ? undefined
+            : isNull(frameVariants.discardedAt)
+        ),
+        frameVariants.id,
+        options?.page,
+        ...oldestFirst
+      );
     },
 
     /**

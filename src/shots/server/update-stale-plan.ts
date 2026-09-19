@@ -12,7 +12,6 @@
  */
 
 import {
-  rendersReferenceOnly,
   usesStartFrame,
   type StartFrameSequence,
 } from '@/shots/use-start-frame';
@@ -46,8 +45,7 @@ import type {
 } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { getLogger } from '@/platform/logger';
-import { audioSourceKeyForDialogueLines } from '@/motion/dialogue-tts';
-import { assembleSequenceSegments } from '@/shots/scene-segments';
+import { loadSequenceSegments } from '@/shots/server/sequence-segments';
 import {
   loadSceneContextBySequence,
   resolveSceneForShot,
@@ -501,39 +499,11 @@ async function loadVideoStateByShot(
   allShots: Shot[],
   sequence: StartFrameSequence
 ): Promise<Map<string, ShotVideoState>> {
-  const [segments, versions, allFrames, scriptBySceneId, characters] =
-    await Promise.all([
-      scopedDb.renderSegments.listBySequence(sequenceId),
-      scopedDb.videoVariants.listBySequence(sequenceId),
-      scopedDb.frames.listBySequence(sequenceId),
-      loadSceneContextBySequence(scopedDb, sequenceId),
-      scopedDb.characters.list(sequenceId),
-    ]);
-  const currentAudioSourceKeyByShot = new Map<string, string | null>();
-  for (const shot of allShots) {
-    const { scene } = resolveSceneForShot(shot, scriptBySceneId);
-    currentAudioSourceKeyByShot.set(
-      shot.id,
-      scene
-        ? audioSourceKeyForDialogueLines(
-            scene.originalScript?.dialogue,
-            characters
-          )
-        : null
-    );
-  }
-  const assembled = assembleSequenceSegments({
-    segments,
-    versions,
-    // Per shot, not per sequence — staleness compares against what each clip
-    // actually rendered from, and a shot can override the sequence default.
-    shots: allShots.map((shot) => ({
-      ...shot,
-      rendersReferenceOnly: rendersReferenceOnly(shot, sequence),
-    })),
-    frames: allFrames,
-    currentAudioSourceKeyByShot,
-  });
+  const { assembled, versions } = await loadSequenceSegments(
+    scopedDb,
+    { ...sequence, id: sequenceId },
+    allShots
+  );
 
   const byShot = new Map<string, ShotVideoState>();
   for (const segment of assembled) {
