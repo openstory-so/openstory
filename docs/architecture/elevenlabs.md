@@ -218,10 +218,16 @@ section and its clip as `spokenLines` (and on the recording as
 nothing re-records and no digest moves; the manifest's `audioSourceKey` is
 built from the authored lines for the same reason (#1671). Motion reads the
 delivered wording back with `withSpokenText` before assembling, because the
-prompt drives lip movement. `maxCombined` is checked across files in
+prompt drives lip movement. Seedance is the exception (BytePlus guidance): a
+line on the conversation recording is not repeated in the prompt at all, or
+the model re-voices it over the track — `buildSeedancePrompt` names the clip
+as the master audio track and points the speakers at it for lip-sync, in
+speaking order. Other models still get the words. `maxCombined` is checked across files in
 `unusableShotReferenceLines` — H3 Max takes 2–15s each AND 15s summed, so
 two 10s voices each pass and together do not. The shot-list prompt is the
-prevention half (a words-per-second placement budget per shot). Preflight
+prevention half (a words-per-second placement budget per shot), and
+`splitOverfullShots` enforces it after parse: a shot over the longest clip's
+word budget is split between lines into back-to-back shots. Preflight
 reserves the TTS cost on the references slice (static card), including when
 Voices is off — talent may already hold a `voiceId`. The optimised-prompt
 JSON carries the audio refs for paste-into-Videos. Models with no audio

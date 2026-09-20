@@ -23,6 +23,7 @@
  */
 
 import type { NewShot } from '@/platform/server/db/schema';
+import { dialogueWordBudget, spokenWordCount } from '@/motion/dialogue-tts';
 import { allocateClipDurations } from '@/motion/snap-duration';
 import type { StyleConfig } from '@/look/style-config';
 import type {
@@ -115,10 +116,43 @@ function keepShots(
 }
 
 /**
+ * Split a shot holding more speech than the longest clip can carry into
+ * back-to-back shots on the same setup, between lines (#1657). The prompt's
+ * placement budget is advice the model can ignore — eleven lines on one 15s
+ * shot recorded at 17.1s and failed the run after the audio was paid for.
+ * A single line over the budget stays whole: a line is never cut.
+ */
+function splitOverfullShots(
+  ordered: ReadonlyArray<ShotSpec>,
+  grid: readonly number[]
+): ShotSpec[] {
+  const maxClip = Math.max(...grid.filter((n) => n > 0));
+  if (!Number.isFinite(maxClip)) return [...ordered];
+  const budget = dialogueWordBudget(maxClip);
+  const words = (lines: ShotSpec['dialogue']) =>
+    spokenWordCount(lines.map((line) => ({ text: line.line })));
+  return ordered.flatMap((shot) => {
+    const groups: ShotSpec['dialogue'][] = [];
+    for (const line of shot.dialogue) {
+      const last = groups.at(-1);
+      if (last && words([...last, line]) <= budget) last.push(line);
+      else groups.push([line]);
+    }
+    // ponytail: every piece keeps the shot's full pacing weight, so a split
+    // take gets a speech-sized share of the label; weight by words if pacing
+    // around split shots ever reads wrong.
+    return groups.length > 1
+      ? groups.map((dialogue) => ({ ...shot, dialogue }))
+      : [shot];
+  });
+}
+
+/**
  * Sort, re-number 1..n, and give every shot its clip length from the SCENE
  * (#1593). Empty / missing → one default shot at the scene's length.
  *
- * The list is capped at `maxShotsForScene` (post-parse only — Anthropic
+ * A shot with more speech than the longest clip holds is split first
+ * (`splitOverfullShots`). The list is capped at `maxShotsForScene` (post-parse only — Anthropic
  * rejects `maxItems`), a lone shot takes the whole label, and several split
  * it with `allocateClipDurations` on 1s…max, the LLM's
  * `durationSeconds` as relative weights. A label the grid cannot reach
@@ -138,7 +172,10 @@ export function allocateSceneShots(
     return [defaultSingleShot(sceneSeconds)];
   }
   const ordered = [...shots].sort((a, b) => a.shotNumber - b.shotNumber);
-  const kept = keepShots(ordered, maxShotsForScene(sceneSeconds, grid));
+  const kept = keepShots(
+    splitOverfullShots(ordered, grid),
+    maxShotsForScene(sceneSeconds, grid)
+  );
   let seconds: number[];
   if (kept.length === 1) {
     seconds = [sceneSeconds];

@@ -190,6 +190,26 @@ describe('allocateSceneShots (#1593, #1621)', () => {
     ]);
   });
 
+  it('splits a shot holding more speech than the longest clip, between lines (#1657)', () => {
+    // 15s longest clip → 30 words. Five 12-word lines → 2 + 2 + 1.
+    const line = (n: number) => ({
+      character: 'ELARA',
+      line: `line ${n} ${'word '.repeat(10).trim()}`,
+      tone: '',
+    });
+    const lines = [1, 2, 3, 4, 5].map(line);
+    const out = allocateSceneShots(
+      [twoShotSpec(1), { ...twoShotSpec(2), dialogue: lines }],
+      scene(60),
+      SEEDANCE
+    );
+    expect(out.map((s) => s.shotNumber)).toEqual([1, 2, 3, 4]);
+    expect(out.slice(1).map((s) => s.dialogue.length)).toEqual([2, 2, 1]);
+    expect(out.slice(1).flatMap((s) => s.dialogue)).toEqual(lines);
+    expect(out[2]?.framing).toEqual(out[1]?.framing);
+    expect(out.reduce((sum, s) => sum + s.durationSeconds, 0)).toBe(60);
+  });
+
   it('with no grid, splits the label into even integers', () => {
     const out = allocateSceneShots(
       [twoShotSpec(1), twoShotSpec(2), twoShotSpec(3)],

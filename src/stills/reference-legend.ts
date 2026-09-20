@@ -20,22 +20,40 @@ import type { ReferenceImageDescription } from './reference-image-prompt';
  * Matching is case-insensitive and word-bounded, so "SCARLETT"/"Scarlett"
  * match a `Scarlett` token but "jacket" never matches `jack`. Returns which
  * entries were found so callers can fall back to a legend for the rest.
+ *
+ * Spoken or written words are never touched: a name inside a line of dialogue
+ * is something a person SAYS, and a video model voiced `"Hello Steve."` as
+ * "hello image 4" once STEVE had a sheet bound (#1657). A mention inside one
+ * does not count as `mentioned` either, so the legend still binds the sheet.
  */
 export function substituteReferenceTags(
   prompt: string,
   entries: Array<{ token?: string; render: string }>
 ): { prompt: string; mentioned: boolean[] } {
-  let result = prompt;
+  // Odd indexes are the quoted spans (`split` with a capture group).
+  const segments = prompt.split(QUOTED_SPAN);
   const mentioned = entries.map(() => false);
   entries.forEach((entry, index) => {
     if (!entry.token) return;
-    const pattern = `(?<=^|[^A-Za-z0-9_])${escapeRegex(entry.token)}(?=[^A-Za-z0-9_]|$)`;
-    if (!new RegExp(pattern, 'i').test(result)) return;
-    mentioned[index] = true;
-    result = result.replace(new RegExp(pattern, 'gi'), entry.render);
+    const pattern = new RegExp(
+      `(?<=^|[^A-Za-z0-9_])${escapeRegex(entry.token)}(?=[^A-Za-z0-9_]|$)`,
+      'gi'
+    );
+    for (let at = 0; at < segments.length; at += 2) {
+      segments[at] = (segments[at] ?? '').replace(pattern, () => {
+        mentioned[index] = true;
+        return entry.render;
+      });
+    }
   });
-  return { prompt: result, mentioned };
+  return { prompt: segments.join(''), mentioned };
 }
+
+/**
+ * Every shape the motion assemblers wrap spoken words in — `"…"` (narrative,
+ * Kling), `{…}` (Seedance), `<d>…</d>` — plus typographic quotes from prose.
+ */
+const QUOTED_SPAN = /("[^"\n]*"|“[^”\n]*”|\{[^{}\n]*\}|<d>[\s\S]*?<\/d>)/;
 
 /**
  * Render a reference description for inline prose substitution on models with

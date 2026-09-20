@@ -230,10 +230,20 @@ describe('assembleMotionPrompt', () => {
           model,
         });
 
+        // The recording is the master track: its words are NOT repeated, or
+        // Seedance re-voices them over it (BytePlus, #1657).
         expect(result).toContain(
-          `Sarah speaks this line exactly as recorded in ${DIALOGUE_CLIP_TOKEN}: {We need to reconsider the entire approach.}`
+          `${DIALOGUE_CLIP_TOKEN}: Exact master audio track; preserve word-for-word delivery`
+        );
+        expect(result).toContain(`Lipsync Sarah to ${DIALOGUE_CLIP_TOKEN}.`);
+        expect(result).not.toContain(
+          'We need to reconsider the entire approach.'
         );
         expect(result).not.toContain('firm commanding');
+        // The line with no recording keeps its words.
+        expect(result).toContain(
+          "James says in a soft resigned voice: {I couldn't agree more.}"
+        );
       });
 
       it('does not treat video-model as a recording', () => {

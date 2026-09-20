@@ -511,6 +511,10 @@ function formatKlingDialogue(lines: DialogueLine[]): string {
 // https://docs.byteplus.com/en/docs/ModelArk/2607689
 // ---------------------------------------------------------------------------
 
+/** BytePlus's wording for a reference clip that IS the shot's audio (#1657). */
+const MASTER_AUDIO_DIRECTION =
+  'Exact master audio track; preserve word-for-word delivery, exact vocal timbre, room tone, and sound effects completely intact. Do not replace, remix, or add underlying music.';
+
 function buildSeedancePrompt(
   fullPrompt: string,
   dialogue: MotionDialogue | undefined,
@@ -533,11 +537,28 @@ function buildSeedancePrompt(
   if (soundProse.length > 0) parts.push(soundProse.join(' '));
 
   if (dialogue) {
-    parts.push(
-      dialogue.lines
-        .map((line) => spokenLine(line, `{${line.line}}`, 'voice'))
-        .join(' ')
+    // A line on the conversation recording is NOT repeated here (BytePlus,
+    // #1657): with the words in the prompt as well, Seedance re-voices them
+    // over the track. The recording is named as the master track and the
+    // speakers are pointed at it, in speaking order, for lip-sync.
+    const recorded = dialogue.lines.filter(
+      (line) => line.voiceToken === DIALOGUE_CLIP_TOKEN
     );
+    const spoken = dialogue.lines
+      .filter((line) => line.voiceToken !== DIALOGUE_CLIP_TOKEN)
+      .map((line) => spokenLine(line, `{${line.line}}`, 'voice'));
+    if (recorded.length > 0) {
+      const speakers = recorded
+        .map((line) => line.character)
+        .filter((name, at, all) => name && name !== all[at - 1]);
+      spoken.unshift(
+        `${DIALOGUE_CLIP_TOKEN}: ${MASTER_AUDIO_DIRECTION}` +
+          (speakers.length > 0
+            ? ` Lipsync ${speakers.join(', then ')} to ${DIALOGUE_CLIP_TOKEN}${speakers.length > 1 ? ', in that order' : ''}.`
+            : '')
+      );
+    }
+    parts.push(spoken.join(' '));
   }
 
   if (omitSharedConstraints) {
