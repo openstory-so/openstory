@@ -35,6 +35,18 @@ describe('isContentRejectionError', () => {
     }
   });
 
+  it("matches Ark's code form of the output-audio refusal, not the portrait filter (#1680)", () => {
+    const audio =
+      'AudioSensitiveContentDetected.PolicyViolation: The request failed because the output audio may be related to copyright restrictions. Request id: 0217';
+    expect(isContentRejectionError(audio)).toBe(true);
+    expect(flaggedInputs(audio).audio).toBe(true);
+    expect(
+      isContentRejectionError(
+        'InputImageSensitiveContentDetected.PrivacyInformation: The request failed because the input image may contain real person.'
+      )
+    ).toBe(false);
+  });
+
   it('matches when the message is wrapped in a fal ApiError body.detail', () => {
     expect(
       isContentRejectionError(

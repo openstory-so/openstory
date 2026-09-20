@@ -32,6 +32,10 @@ import {
   studioPrimaryOutput,
   studioPrompt,
 } from './outputs';
+import {
+  CONTENT_REJECTION_USER_TITLE,
+  isContentRejectionError,
+} from '@/models/content-rejection';
 import { estimateStudioProgress } from './progress';
 import { cn } from '@/ui/utils';
 import { Download, Images, Star, Trash2 } from 'lucide-react';
@@ -90,8 +94,10 @@ function StudioCard({
         {inFlight ? (
           <Skeleton className="h-full w-full rounded-none" />
         ) : asset.status === 'failed' ? (
-          <div className="flex h-full items-center justify-center p-4 text-sm text-destructive">
-            {asset.error ?? 'Generation failed'}
+          <div className="flex h-full items-center justify-center p-4 text-center text-sm text-destructive">
+            {isContentRejectionError(asset.error)
+              ? CONTENT_REJECTION_USER_TITLE
+              : 'Generation failed'}
           </div>
         ) : isVideo && primary ? (
           <video
@@ -197,7 +203,7 @@ function StudioViewer({ asset }: { asset: GeneratedAsset }) {
   const prompt = studioPrompt(asset);
   if (asset.status === 'failed') {
     return (
-      <p className="flex min-h-0 flex-1 items-center justify-center text-sm text-destructive">
+      <p className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-4 text-center text-sm break-words text-destructive select-text">
         {asset.error ?? 'Generation failed'}
       </p>
     );

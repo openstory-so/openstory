@@ -47,6 +47,10 @@ export const CONTENT_REJECTION_PATTERNS: readonly RegExp[] = [
   /unexpected (?:result|output)/i,
   /unsafe content/i,
   /sensitive content/i,
+  // BytePlus Ark's code form of the same refusal, e.g.
+  // `AudioSensitiveContentDetected.PolicyViolation` (#1680). The portrait
+  // filter (`….PrivacyInformation`) stays out — see the file comment.
+  /SensitiveContentDetected(?!\.PrivacyInformation)/i,
   /content could not be processed/i,
   /content (?:filter|policy|moderation)/i,
   /\bnsfw\b/i,
@@ -202,7 +206,9 @@ export function flaggedInputs(rejection: string): {
   return {
     prompt: fields.some((f) => /prompt/i.test(f)),
     image: fields.some((f) => /image|frame|element/i.test(f)),
-    audio: fields.some((f) => /audio/i.test(f)),
+    audio:
+      fields.some((f) => /audio/i.test(f)) ||
+      /AudioSensitiveContentDetected/i.test(rejection),
   };
 }
 
