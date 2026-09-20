@@ -12,7 +12,7 @@ one MP4, using [`mediabunny`](https://mediabunny.dev) +
 WebCodecs and Web Audio don't exist on Workers. `@mediabunny/server` polyfills
 the pipeline via NodeAV (native FFmpeg bindings) — that needs a real Node
 runtime, hence a container. Production and PR previews run `standard-4`.
-See `docs/architecture/server-side-export.md`.
+See `docs/architecture/public-api-internals.md`.
 
 ## Contract
 
