@@ -26,14 +26,14 @@ import {
 } from '@/platform/dev-hosts';
 import { upsertEnvVars } from './env-file';
 
-export class DevHostsError extends Error {
+class DevHostsError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'DevHostsError';
   }
 }
 
-export type CloudflareIo = {
+type CloudflareIo = {
   accountId: string;
   apiToken: string;
   createTunnel: (name: string) => Promise<{ id: string; name: string }>;
@@ -94,7 +94,7 @@ export function readMapping(path = mappingPath()): DevTunnelsFile | undefined {
   };
 }
 
-export function writeMapping(file: DevTunnelsFile, path = mappingPath()): void {
+function writeMapping(file: DevTunnelsFile, path = mappingPath()): void {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(file, null, 2)}\n`);
 }
@@ -115,7 +115,7 @@ export function applyMappingToEnv(
   return origin;
 }
 
-export function machineTunnelName(hostname = osHostname()): string {
+function machineTunnelName(hostname = osHostname()): string {
   const slug = hostname
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '')
@@ -129,7 +129,7 @@ function randomBytes(): Uint8Array {
   return bytes;
 }
 
-export function buildMapping(input: {
+function buildMapping(input: {
   tunnelName: string;
   tunnelId: string;
   nextBytes?: () => Uint8Array;
@@ -143,7 +143,7 @@ export function buildMapping(input: {
   };
 }
 
-export async function provisionMapping(
+async function provisionMapping(
   io: CloudflareIo,
   options?: { tunnelName?: string; nextBytes?: () => Uint8Array }
 ): Promise<DevTunnelsFile> {
@@ -206,7 +206,7 @@ async function runCli(argv: string[]): Promise<void> {
   printMapping(file);
 }
 
-export function wranglerAuthFileCandidates(
+function wranglerAuthFileCandidates(
   homeDir: string,
   platform = process.platform
 ): string[] {
@@ -219,12 +219,12 @@ export function wranglerAuthFileCandidates(
   return platform === 'darwin' ? [mac, home] : [xdg, home];
 }
 
-export function parseWranglerOauthToml(text: string): string | undefined {
+function parseWranglerOauthToml(text: string): string | undefined {
   const match = /^oauth_token\s*=\s*"([^"]+)"/m.exec(text);
   return match?.[1];
 }
 
-export function parseWranglerWhoami(json: unknown): {
+function parseWranglerWhoami(json: unknown): {
   accountId: string;
   email?: string;
 } {
@@ -253,7 +253,7 @@ function jsonFromWranglerOutput(stdout: string): unknown {
   return JSON.parse(stdout.slice(start));
 }
 
-export function cloudflareTunnelUrl(accountId: string, path = ''): string {
+function cloudflareTunnelUrl(accountId: string, path = ''): string {
   return `https://api.cloudflare.com/client/v4/accounts/${accountId}/cfd_tunnel${path}`;
 }
 
@@ -262,29 +262,15 @@ function stringField(value: unknown, key: string): string | undefined {
   return value[key];
 }
 
-export function resolveWranglerAuth(input?: {
-  homeDir?: string;
-  platform?: NodeJS.Platform;
-  whoamiJson?: unknown;
-  readToml?: (path: string) => string | undefined;
-}): { accountId: string; apiToken: string } {
-  const whoami =
-    input?.whoamiJson ??
-    jsonFromWranglerOutput(
-      spawnSync('wrangler', ['whoami', '--json'], { encoding: 'utf8' }).stdout
-    );
+function resolveWranglerAuth(): { accountId: string; apiToken: string } {
+  const whoami = jsonFromWranglerOutput(
+    spawnSync('wrangler', ['whoami', '--json'], { encoding: 'utf8' }).stdout
+  );
   const { accountId } = parseWranglerWhoami(whoami);
 
-  const homeDir = input?.homeDir ?? homedir();
-  const platform = input?.platform ?? process.platform;
-  const readToml =
-    input?.readToml ??
-    ((path: string) =>
-      existsSync(path) ? readFileSync(path, 'utf8') : undefined);
-  for (const path of wranglerAuthFileCandidates(homeDir, platform)) {
-    const text = readToml(path);
-    if (!text) continue;
-    const token = parseWranglerOauthToml(text);
+  for (const path of wranglerAuthFileCandidates(homedir())) {
+    if (!existsSync(path)) continue;
+    const token = parseWranglerOauthToml(readFileSync(path, 'utf8'));
     if (token) return { accountId, apiToken: token };
   }
   throw new DevHostsError(
@@ -292,7 +278,7 @@ export function resolveWranglerAuth(input?: {
   );
 }
 
-export async function defaultCloudflareIo(): Promise<CloudflareIo> {
+async function defaultCloudflareIo(): Promise<CloudflareIo> {
   const { apiToken, accountId } = resolveWranglerAuth();
   const headers = {
     Authorization: `Bearer ${apiToken}`,
