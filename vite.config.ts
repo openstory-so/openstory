@@ -84,30 +84,11 @@ function localTunnel(): { tunnelName: string; zone: string } | undefined {
   }
 }
 
-function tunnelHmr():
-  | { protocol: 'wss'; host: string; clientPort: number }
-  | undefined {
-  const appUrl = process.env.VITE_APP_URL;
-  if (!appUrl) return undefined;
-  try {
-    const url = new URL(appUrl);
-    if (url.protocol !== 'https:') return undefined;
-    if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
-      return undefined;
-    }
-    return { protocol: 'wss', host: url.hostname, clientPort: 443 };
-  } catch {
-    return undefined;
-  }
-}
-
 const enableDevTunnel =
   isDev &&
   process.env.E2E_TEST !== 'true' &&
   process.env.CLOUDFLARE_ENV !== 'test';
 const namedTunnel = enableDevTunnel ? localTunnel() : undefined;
-
-const tunnelHmrConfig = tunnelHmr();
 
 /**
  * Prints which wrangler.jsonc bindings are local vs REMOTE on dev startup.
@@ -286,7 +267,6 @@ export default defineConfig({
       'host.docker.internal',
       `.${namedTunnel?.zone ?? 'openstory.so'}`,
     ],
-    ...(tunnelHmrConfig ? { hmr: tunnelHmrConfig } : {}),
     watch: {
       ignored: [
         '**/e2e/.auth/**',

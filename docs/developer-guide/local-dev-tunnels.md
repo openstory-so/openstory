@@ -33,6 +33,8 @@ That:
 2. `bun dev` — `ensure-env` sets `VITE_APP_URL` from the map for that port.
 3. Press **`t + Enter` once** on this machine. The Vite plugin connects the named tunnel; Cloudflare sends each hostname to the matching local port. A second `t` in another worktree is a replica and will load-balance — don't.
 
+Work in the app at `http://localhost:$PORT` — that stays on your machine. Use the `https://…openstory.so` URL only for Google OAuth, inbound webhooks, or a phone. Every request on that hostname hairpins through Cloudflare’s edge, so it will feel slower (especially HMR).
+
 Put Cloudflare Access on `*.openstory.so` (or the ten names) if you do not want the URLs world-readable. The fixed local OTP is not served on those hosts.
 
 Ordinary `bun install && bun dev` without a map still uses `http://localhost:3000`.
