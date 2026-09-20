@@ -48,6 +48,7 @@ const reading = (
   recordingUrl: AUDIO_URL,
   createdAt: '2026-09-18T10:00:00Z',
   matchesCurrentLines: true,
+  mismatch: null,
   ...over,
 });
 
@@ -63,7 +64,12 @@ const severalReadings = [
     toSeconds: 5.8,
     createdAt: '2026-09-19T16:12:00Z',
   }),
-  reading('r-1', { matchesCurrentLines: false }),
+  reading('r-1', { matchesCurrentLines: false, mismatch: 'lines' }),
+  reading('r-0', {
+    matchesCurrentLines: false,
+    mismatch: 'voice',
+    createdAt: '2026-09-17T10:00:00Z',
+  }),
 ];
 
 const meta: Meta<typeof MotionDialoguePanel> = {

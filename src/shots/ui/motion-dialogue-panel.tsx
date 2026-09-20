@@ -76,6 +76,8 @@ export type ShotDialogueReading = {
   createdAt: Date | string;
   /** False once the shot's lines or voices moved — it cannot be used. */
   matchesCurrentLines: boolean;
+  /** Why it no longer matches: the words moved, or only the voice did. */
+  mismatch: 'lines' | 'voice' | null;
 };
 
 function voiceLabel(element: SequenceElementMinimal): string {
@@ -157,7 +159,11 @@ const ReadingRow: React.FC<{
     recordedAt,
     formatElementDuration(reading.toSeconds - reading.fromSeconds),
     reading.source === 'context' ? 'Recorded with another shot' : null,
-    reading.matchesCurrentLines ? null : 'Lines changed since',
+    reading.mismatch === 'voice'
+      ? 'Voice changed since'
+      : reading.mismatch === 'lines'
+        ? 'Lines changed since'
+        : null,
   ].filter(Boolean);
   return (
     <li className="flex flex-col gap-1">

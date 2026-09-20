@@ -72,9 +72,10 @@ export const listShotDialogueSectionsFn = createServerFn({ method: 'GET' })
   .middleware([shotAccessMiddleware])
   .validator(zodValidator(shotInput))
   .handler(async ({ context }) => {
-    const [sections, currentKey] = await Promise.all([
+    const [sections, currentKey, currentVersion] = await Promise.all([
       context.scopedDb.shotDialogue.listSections(context.shot.id),
       currentSourceKey(context.scopedDb, context.shot.id, context.sequence.id),
+      context.scopedDb.shotDialogue.getSelected(context.shot.id),
     ]);
     return sections.map((section) => ({
       id: section.id,
@@ -86,6 +87,17 @@ export const listShotDialogueSectionsFn = createServerFn({ method: 'GET' })
       createdAt: section.createdAt,
       matchesCurrentLines:
         currentKey !== '' && section.sourceKey === currentKey,
+      // WHY it no longer matches, when it does not. The key folds words and
+      // voices together; the version the reading spoke tells them apart: same
+      // version, moved key → the voice changed (a recast). Unknown (a reading
+      // from before the id was stamped) reads as the lines.
+      mismatch:
+        currentKey !== '' && section.sourceKey === currentKey
+          ? null
+          : section.dialogueVersionId !== null &&
+              section.dialogueVersionId === currentVersion?.id
+            ? ('voice' as const)
+            : ('lines' as const),
     }));
   });
 
