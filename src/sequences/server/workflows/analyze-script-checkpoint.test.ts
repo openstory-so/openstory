@@ -767,6 +767,10 @@ describe('AnalyzeScriptWorkflow script checkpoint', () => {
           ],
           completedStage: referenceOnly ? 'references' : 'images',
           charactersWithSheets: [{ ...CHARACTER_ROW, voiceId: 'voice_ada' }],
+          // What `refreshCheckpointFromCast` snapshots from the shot at a continue.
+          dialogueLinesByShotId: {
+            sh_1: [{ character: 'Ada', line: 'Edited dialogue', tone: 'warm' }],
+          },
         }
       );
       const update = vi.fn();
@@ -800,7 +804,7 @@ describe('AnalyzeScriptWorkflow script checkpoint', () => {
         });
       }
       expect(childPayload('spawn-dialogue-audio')).toMatchObject({
-        shots: [{ shotId: 'sh_1', lines: [{ text: 'Edited dialogue' }] }],
+        scenes: [{ voiced: [{ shotId: 'sh_1', text: 'Edited dialogue' }] }],
       });
       expect(writeVisualPrompt).not.toHaveBeenCalled();
       expect(checkpointWrite(update, 'images')).toBeUndefined();
