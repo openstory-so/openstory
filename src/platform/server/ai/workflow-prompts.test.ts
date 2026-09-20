@@ -4,6 +4,27 @@ import {
   WORKFLOW_TEXT_PROMPTS,
 } from './workflow-prompts';
 
+describe('remote participant location extraction', () => {
+  it.each(['phase/scene-bibles-chat', 'phase/location-extraction-chat'])(
+    '%s distinguishes physical rooms from the call interface',
+    (name) => {
+      const system = WORKFLOW_CHAT_PROMPTS[name]?.[0]?.content ?? '';
+      expect(system).toContain('A video call is a connection between places');
+      expect(system).toContain('create a separate location bible entry');
+      expect(system).toContain('including participants who join later');
+      expect(system).toContain(
+        'Name an inferred location after its participant'
+      );
+      expect(system).toContain('Reuse that entry on every return');
+      expect(system).toContain(
+        'two people using the same camera in the same room share one location'
+      );
+      expect(system).toContain('firstMention still quotes real script text');
+      expect(system).toContain('audio-only participant');
+    }
+  );
+});
+
 describe('scene-splitting-boundaries-chat — shots vs scenes (#1486)', () => {
   const system =
     WORKFLOW_CHAT_PROMPTS['phase/scene-splitting-boundaries-chat']?.[0]

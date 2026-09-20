@@ -87,7 +87,10 @@ export const elementBibleEntrySchema = z.object({
 
 export const locationBibleEntrySchema = z.object({
   locationId: z.string(),
-  name: z.string().meta({ description: 'As written in the script' }),
+  name: z.string().meta({
+    description:
+      'As written in the script, or a participant-named physical setting for an unspecified remote video-call location',
+  }),
   type: z.enum(['interior', 'exterior', 'both']),
   timeOfDay: z.string(),
   description: z.string(),
