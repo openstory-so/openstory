@@ -157,6 +157,55 @@ selected prompt row is superseded, `promoteLegacyDialogue`
 (`shot-prompt-versions.ts`) moves its lines — and any voice bound to them —
 onto a `shot_dialogue_versions` row, so rung 2 is never stranded.
 
+**Recorded once per scene, everywhere.** The `dialogue` stage is not the only
+caller. Every batch-style trigger — Generate all motion, add-a-video-model,
+Update Stale — snapshots `snapshotBatchDialogue` (`src/shots/server/shot-dialogue.ts`):
+each shot's `voicedLines`, its matching clips and its fallback
+`dialogueContext`, plus `dialogueRecording` — ONE `DialogueAudioSceneJob` per
+scene that holds a shot with no matching clip — and `ttsChars` priced per scene.
+`MotionBatchWorkflow.recordScenesOnce` and `UpdateStaleShotsWorkflow` run
+`DialogueAudioWorkflow` over those jobs BEFORE they fan out, and the children
+only attach. Without it a recast (the voice id is in the clip key, so every
+shot the character speaks in loses its clip at once) recorded the scene once
+per speaking shot. Never fatal: a scene that cannot be recorded leaves its
+shots to record themselves in context. Smart retry and single-shot Generate
+still record per shot — they start one motion run per shot, with no parent to
+record first.
+
+**Claims — a recording lands like every other generation (#1085 pattern).**
+`shot_dialogue_claims`, one row per shot about to take new audio; a reading
+cannot be its own placeholder because a section needs a recording and a range.
+`recordDialogue` is the single owner:
+
+- **Claim** (`claimRecording`, first step, before anything is spent): a
+  `generating` row per adopting shot. The live unique index
+  `(shot_id, pending_source_key)` makes a second run for the same shot and the
+  same words stand down — it adopts only the shots it claimed, and with none
+  it records nothing.
+- **Demote** (`demoteLiveClaims`, in the SAME batch as the user's write):
+  picking a reading (`selectSection`), changing the lines (`write`) or
+  restoring them (`selectVersion`) nulls `pendingSourceKey`. The run finishes;
+  it can no longer take the selection. `cancelShotDialogueClaimFn` does the
+  same on request — it does not stop the run, which records for other shots.
+- **Complete** (`appendRecording`): one transaction. Every reading lands
+  unselected; then, per adopting shot, clear-selected → select → write
+  `shots.audioClips` → complete the claim, each carrying the same
+  `claimIsLive` predicate, so there is no gap between checking the claim and
+  acting on it and the pointer and the clip can never disagree.
+  `shots.setAudioClips` is gone: `appendRecording`, `selectSection` and
+  `discardSection` are the only writers of a shot's dialogue clip, and each
+  moves the pointer in the same batch. A demoted or cancelled claim's reading
+  is kept, unselected, pickable later. `recordDialogue` returns clips only for
+  PROMOTED shots; `MotionWorkflow` then renders from the shot's live clips
+  (`dialogue-audio-from-shot`) and fails the shot only if it has none.
+- **Fail**: the recorder fails its own claims when it gives up
+  (`fail-claims` step); `reconcileDialogueClaimsPass` (the 5-minute sweep)
+  fails the claims of a run that died.
+
+The panel shows a claim as "Recording…" with Cancel
+(`listShotDialogueClaimsFn`; the query key sits under `dialogueSections` so the
+realtime `dialogue-audio` event refreshes both).
+
 **Going back.** `listShotDialogueVersionsFn` / `selectShotDialogueVersionFn`
 (the History list in the prompt editor) re-point the selected version, and
 that is the whole change: every reader follows the pointer. The current

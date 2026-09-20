@@ -23,6 +23,7 @@ import {
 import {
   audioSourceKeyFromVoicedLines,
   dialogueAudioMaxSeconds,
+  matchingDialogueClips,
   withSpokenText,
   withVoicedLineTokens,
 } from '@/motion/dialogue-tts';
@@ -247,11 +248,22 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           stepPrefix: 'synthesize-dialogue-audio',
           workflowName: 'MotionWorkflow',
         });
-        const adopted = recorded[shotId];
-        if (!adopted || adopted.length === 0) {
+        // Nothing promoted for this shot is a legitimate answer (#1657):
+        // another run holds the claim for these words, or the user picked a
+        // reading while this recorded. Either way the shot's OWN audio is the
+        // truth, read live — it is what a render has to match.
+        const adopted =
+          recorded[shotId] ??
+          (await step.do('dialogue-audio-from-shot', async () =>
+            matchingDialogueClips(
+              (await scopedDb.liveRead.shots.getById(shotId))?.audioClips,
+              authoredLines
+            )
+          ));
+        if (adopted.length === 0) {
           // Voiced lines with no audio must not render silently.
           throw new NonRetryableError(
-            `Dialogue recording returned no audio for shot ${shotId}`
+            `Shot ${shotId} has no audio for its lines yet — another run may still be recording them. Try again.`
           );
         }
         audioClips = adopted;

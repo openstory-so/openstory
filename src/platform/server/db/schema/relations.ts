@@ -134,6 +134,7 @@ export const relations = defineRelations(schema, (r) => ({
     promptVariants: r.many.shotPromptVersions(),
     dialogueVersions: r.many.shotDialogueVersions(),
     dialogueSections: r.many.shotDialogueSections(),
+    dialogueClaims: r.many.shotDialogueClaims(),
   },
 
   shotDialogueVersions: {
@@ -146,6 +147,13 @@ export const relations = defineRelations(schema, (r) => ({
   shotDialogueSections: {
     shot: r.one.shots({
       from: r.shotDialogueSections.shotId,
+      to: r.shots.id,
+    }),
+  },
+
+  shotDialogueClaims: {
+    shot: r.one.shots({
+      from: r.shotDialogueClaims.shotId,
       to: r.shots.id,
     }),
   },

@@ -24,6 +24,7 @@
 import type { Database } from '@/platform/server/db/client';
 import {
   dialogueRecordings,
+  shotDialogueClaims,
   shotDialogueSections,
   shotDialogueVersions,
   shots,
@@ -32,12 +33,22 @@ import type {
   DialogueRecording,
   MotionAudioClip,
   DialogueRecordingTurn,
+  ShotDialogueClaim,
   ShotDialogueLine,
   ShotDialogueSection,
   ShotDialogueSource,
   ShotDialogueVersion,
 } from '@/platform/server/db/schema';
-import { and, desc, eq, isNotNull, isNull } from 'drizzle-orm';
+import {
+  and,
+  desc,
+  eq,
+  exists,
+  inArray,
+  isNotNull,
+  isNull,
+  sql,
+} from 'drizzle-orm';
 
 export type AppendDialogueRecordingInput = {
   /** Generated inside the workflow step, so a replay lands on the same rows. */
@@ -62,8 +73,12 @@ export type AppendDialogueRecordingInput = {
     spokenLines: { index: number; text: string }[] | null;
     /** Null when the lines were derived from the script (no version row). */
     dialogueVersionId: string | null;
-    /** True for a shot that adopts this reading; false = spoken as context. */
-    selected: boolean;
+    /**
+     * Set for a shot this recording was made FOR: the claim that has to still
+     * be live for the reading to become the shot's audio, and the clip cut
+     * from it. Null = spoken as context only.
+     */
+    adopt: { claimId: string; audioClips: MotionAudioClip[] } | null;
   }>;
 };
 
@@ -96,6 +111,39 @@ export function createShotDialogueMethods(db: Database) {
         and(
           eq(shotDialogueVersions.shotId, shotId),
           isNotNull(shotDialogueVersions.selectedAt)
+        )
+      );
+
+  /** The claim may still become the shot's audio — see `shot-dialogue-claims.ts`. */
+  const claimIsLive = (claimId: string) =>
+    exists(
+      db
+        .select({ one: sql`1` })
+        .from(shotDialogueClaims)
+        .where(
+          and(
+            eq(shotDialogueClaims.id, claimId),
+            eq(shotDialogueClaims.status, 'generating'),
+            isNotNull(shotDialogueClaims.pendingSourceKey)
+          )
+        )
+    );
+
+  /**
+   * The user did something that should win over any recording in flight for
+   * this shot (picked a reading, changed or restored the lines). The run
+   * still finishes and its reading is kept — it just cannot take the
+   * selection any more. Rides in the SAME batch as the user's write.
+   */
+  const demoteLiveClaims = (shotId: string) =>
+    db
+      .update(shotDialogueClaims)
+      .set({ pendingSourceKey: null })
+      .where(
+        and(
+          eq(shotDialogueClaims.shotId, shotId),
+          eq(shotDialogueClaims.status, 'generating'),
+          isNotNull(shotDialogueClaims.pendingSourceKey)
         )
       );
 
@@ -166,7 +214,8 @@ export function createShotDialogueMethods(db: Database) {
           `Shot dialogue version ${versionId} not found for shot ${shotId}`
         );
       }
-      const [, selected] = await db.batch([
+      const [, , selected] = await db.batch([
+        demoteLiveClaims(shotId),
         clearSelectedVersion(shotId),
         db
           .update(shotDialogueVersions)
@@ -220,7 +269,9 @@ export function createShotDialogueMethods(db: Database) {
       // Clear first: the statements apply in order inside one transaction, so
       // inserting a selected row before the clear would trip the partial
       // unique index.
-      const [, inserted] = await db.batch([
+      const [, , inserted] = await db.batch([
+        // The words moved: a recording in flight speaks the old ones.
+        demoteLiveClaims(shotId),
         clearSelectedVersion(shotId),
         db
           .insert(shotDialogueVersions)
@@ -239,25 +290,156 @@ export function createShotDialogueMethods(db: Database) {
     },
 
     /**
-     * Record one call: the recording, plus a section for every shot it spoke.
-     * Adopting shots (`selected: true`) have their selection moved onto the
-     * new section; context shots get an unselected row and keep what they had.
+     * Claim the shots a recording is about to be made for (#1657). Returns
+     * shot id → claim id for the shots THIS run now holds. A shot missing from
+     * the result is already being recorded, for the same words, by another
+     * run — the live unique index refused the insert — so this run must not
+     * adopt it. Safe under step replay: a claim this run already made is
+     * found by its run id and handed back.
+     */
+    claimRecording: async (input: {
+      shots: ReadonlyArray<{ shotId: string; sourceKey: string }>;
+      workflowRunId: string;
+    }): Promise<Record<string, string>> => {
+      if (input.shots.length === 0) return {};
+      const [first, ...rest] = input.shots.map((shot) =>
+        db
+          .insert(shotDialogueClaims)
+          .values({
+            shotId: shot.shotId,
+            sourceKey: shot.sourceKey,
+            pendingSourceKey: shot.sourceKey,
+            status: 'generating',
+            workflowRunId: input.workflowRunId,
+          })
+          .onConflictDoNothing()
+      );
+      if (first) await db.batch([first, ...rest]);
+      const mine = await db
+        .select({
+          id: shotDialogueClaims.id,
+          shotId: shotDialogueClaims.shotId,
+          sourceKey: shotDialogueClaims.sourceKey,
+        })
+        .from(shotDialogueClaims)
+        .where(
+          and(
+            eq(shotDialogueClaims.workflowRunId, input.workflowRunId),
+            eq(shotDialogueClaims.status, 'generating'),
+            inArray(
+              shotDialogueClaims.shotId,
+              input.shots.map((shot) => shot.shotId)
+            )
+          )
+        );
+      const wanted = new Map(
+        input.shots.map((shot) => [shot.shotId, shot.sourceKey])
+      );
+      return Object.fromEntries(
+        mine
+          .filter((claim) => wanted.get(claim.shotId) === claim.sourceKey)
+          .map((claim) => [claim.shotId, claim.id])
+      );
+    },
+
+    /** The recorder gave up: its claims must not read as "a job is fixing this". */
+    failClaims: async (claimIds: readonly string[], error: string) => {
+      if (claimIds.length === 0) return;
+      await db
+        .update(shotDialogueClaims)
+        .set({ status: 'failed', pendingSourceKey: null, error })
+        .where(
+          and(
+            inArray(shotDialogueClaims.id, [...claimIds]),
+            eq(shotDialogueClaims.status, 'generating')
+          )
+        );
+    },
+
+    /**
+     * The user does not want this recording to become the shot's audio. The
+     * run is not stopped — it records the scene for other shots too — but its
+     * reading for this shot lands unselected.
+     */
+    cancelClaim: async (shotId: string, claimId: string): Promise<boolean> => {
+      const cancelled = await db
+        .update(shotDialogueClaims)
+        .set({ status: 'cancelled', pendingSourceKey: null })
+        .where(
+          and(
+            eq(shotDialogueClaims.id, claimId),
+            eq(shotDialogueClaims.shotId, shotId),
+            eq(shotDialogueClaims.status, 'generating')
+          )
+        )
+        .returning({ id: shotDialogueClaims.id });
+      return cancelled.length > 0;
+    },
+
+    /** A shot's recordings in flight, newest first. */
+    listLiveClaims: async (shotId: string): Promise<ShotDialogueClaim[]> =>
+      await db
+        .select()
+        .from(shotDialogueClaims)
+        .where(
+          and(
+            eq(shotDialogueClaims.shotId, shotId),
+            eq(shotDialogueClaims.status, 'generating')
+          )
+        )
+        .orderBy(desc(shotDialogueClaims.createdAt)),
+
+    /**
+     * Land one call: the recording, a section for every shot it spoke, and —
+     * for each shot it was made FOR — the promotion, guarded by that shot's
+     * claim (#1657).
      *
-     * Idempotent under replay: the ids come from the caller, and a recording
-     * that already exists means this batch already committed whole — so the
-     * replay returns before the clears, which would otherwise unselect the
-     * very sections the first pass selected (or a reading picked since).
+     * One transaction, and every promoting statement carries the same
+     * `claimIsLive` predicate, so there is no gap between checking the claim
+     * and acting on it: a reading becomes the shot's audio (pointer moved AND
+     * `shots.audioClips` written) only if the claim is still live at that
+     * moment. A claim the user demoted or cancelled meanwhile keeps its
+     * reading — unselected, pickable later — and leaves the shot alone.
+     * Context shots get an unselected row and keep what they had.
+     *
+     * Returns the shots that were promoted. Idempotent under replay: the ids
+     * come from the caller, a recording that already exists means this batch
+     * committed whole, and the answer is read back off the claims.
      * One statement per section keeps each under D1's 100-bound-parameter cap.
      */
     appendRecording: async (
       input: AppendDialogueRecordingInput
-    ): Promise<void> => {
+    ): Promise<{ promotedShotIds: string[] }> => {
+      const adopting = input.sections.flatMap((section) =>
+        section.adopt ? [{ ...section, adopt: section.adopt }] : []
+      );
+      const promoted = async () => {
+        if (adopting.length === 0) return { promotedShotIds: [] };
+        const claims = await db
+          .select({
+            shotId: shotDialogueClaims.shotId,
+            promotedAt: shotDialogueClaims.promotedAt,
+          })
+          .from(shotDialogueClaims)
+          .where(
+            inArray(
+              shotDialogueClaims.id,
+              adopting.map((section) => section.adopt.claimId)
+            )
+          );
+        return {
+          promotedShotIds: claims
+            .filter((claim) => claim.promotedAt !== null)
+            .map((claim) => claim.shotId),
+        };
+      };
+
       const [existing] = await db
         .select({ id: dialogueRecordings.id })
         .from(dialogueRecordings)
         .where(eq(dialogueRecordings.id, input.id))
         .limit(1);
-      if (existing) return;
+      if (existing) return await promoted();
 
       // The recording is a soft pointer, so no CHECK can say this.
       const outside = input.sections.find(
@@ -285,11 +467,7 @@ export function createShotDialogueMethods(db: Database) {
             workflowRunId: input.workflowRunId,
           })
           .onConflictDoNothing(),
-        // Clear first, then insert — the partial unique index rejects the
-        // other order.
-        ...input.sections
-          .filter((section) => section.selected)
-          .map((section) => clearSelectedSection(section.shotId)),
+        // Every reading lands unselected; promotion is the guarded part below.
         ...input.sections.map((section) =>
           db
             .insert(shotDialogueSections)
@@ -302,13 +480,54 @@ export function createShotDialogueMethods(db: Database) {
               sourceKey: section.sourceKey,
               spokenLines: section.spokenLines,
               dialogueVersionId: section.dialogueVersionId,
-              source: section.selected ? 'recorded' : 'context',
-              selectedAt: section.selected ? now : null,
+              source: section.adopt ? 'recorded' : 'context',
               workflowRunId: input.workflowRunId,
             })
             .onConflictDoNothing()
         ),
+        // Promote, per shot, only while its claim is live. Clear before
+        // select — the partial unique index rejects the other order. The
+        // claim is completed LAST, so the three guards above it all see it
+        // live or all see it gone.
+        ...adopting.flatMap((section) => {
+          const live = claimIsLive(section.adopt.claimId);
+          return [
+            db
+              .update(shotDialogueSections)
+              .set({ selectedAt: null })
+              .where(
+                and(
+                  eq(shotDialogueSections.shotId, section.shotId),
+                  isNotNull(shotDialogueSections.selectedAt),
+                  live
+                )
+              ),
+            db
+              .update(shotDialogueSections)
+              .set({ selectedAt: now })
+              .where(and(eq(shotDialogueSections.id, section.id), live)),
+            db
+              .update(shots)
+              .set({ audioClips: section.adopt.audioClips, updatedAt: now })
+              .where(and(eq(shots.id, section.shotId), live)),
+            db
+              .update(shotDialogueClaims)
+              .set({
+                status: 'completed',
+                sectionId: section.id,
+                promotedAt: sql`CASE WHEN ${shotDialogueClaims.pendingSourceKey} IS NOT NULL THEN ${Math.floor(now.getTime() / 1000)} END`,
+                pendingSourceKey: null,
+              })
+              .where(
+                and(
+                  eq(shotDialogueClaims.id, section.adopt.claimId),
+                  eq(shotDialogueClaims.status, 'generating')
+                )
+              ),
+          ];
+        }),
       ]);
+      return await promoted();
     },
 
     /** A shot's readings, newest first, each with the file it points into. */
@@ -433,7 +652,9 @@ export function createShotDialogueMethods(db: Database) {
       if (section.discardedAt) {
         throw new Error(`Shot dialogue section ${sectionId} was discarded`);
       }
-      const [, selected] = await db.batch([
+      const [, , selected] = await db.batch([
+        // A reading picked by hand outranks one still being recorded.
+        demoteLiveClaims(shotId),
         clearSelectedSection(shotId),
         db
           .update(shotDialogueSections)

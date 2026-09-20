@@ -28,6 +28,7 @@ import {
   shotVariants,
   sequenceElements,
   sequences,
+  shotDialogueClaims,
   videoVariants,
 } from '@/platform/server/db/schema';
 import {
@@ -79,6 +80,8 @@ export async function reconcileAllStuckJobs(): Promise<ReconcileCounts> {
       () => reconcilePromptClaimsPass(db, 'shot'),
     ],
     ['frame_variants.claims', () => reconcileImageClaimsPass(db)],
+    // Dialogue recordings in flight (#1657): same rule, same reason.
+    ['shot_dialogue_claims', () => reconcileDialogueClaimsPass(db)],
     // Video versions live on video_variants now (#990) — without this pass a
     // dead motion run leaves a permanent "generating" chip on the Video tab
     // (#1076).
@@ -327,6 +330,51 @@ async function reconcilePromptClaimsPass(
   for (const row of orphaned) await cascade(row.id);
 
   return updated + orphaned.length;
+}
+
+/**
+ * Sweep dialogue-recording claims whose run died (#1657). The recorder fails
+ * its own claims when it gives up; this covers the run that never got the
+ * chance. Every claim carries a run id, so there is no blind-fail branch.
+ */
+async function reconcileDialogueClaimsPass(db: Database): Promise<number> {
+  const staleCutoff = new Date(Date.now() - STALE_THRESHOLD_MS);
+  let updated = 0;
+  const stuck = await db
+    .select({
+      id: shotDialogueClaims.id,
+      runId: shotDialogueClaims.workflowRunId,
+    })
+    .from(shotDialogueClaims)
+    .where(
+      and(
+        eq(shotDialogueClaims.status, 'generating'),
+        lt(shotDialogueClaims.createdAt, staleCutoff)
+      )
+    )
+    .limit(MAX_ROWS_PER_PASS);
+  for (const row of stuck) {
+    const next = await resolveRunState(row.runId);
+    if (next === null || next === 'unknown') continue;
+    // Re-guard at write time: the run can complete the claim between the
+    // SELECT above and this UPDATE (resolveRunState is a network RPC).
+    const transitioned = await db
+      .update(shotDialogueClaims)
+      .set({
+        status: 'failed',
+        pendingSourceKey: null,
+        error: 'The run recording this dialogue died',
+      })
+      .where(
+        and(
+          eq(shotDialogueClaims.id, row.id),
+          eq(shotDialogueClaims.status, 'generating')
+        )
+      )
+      .returning({ id: shotDialogueClaims.id });
+    updated += transitioned.length;
+  }
+  return updated;
 }
 
 /**

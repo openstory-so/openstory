@@ -6,7 +6,9 @@
 
 import { useSequenceElements } from '@/cast/ui/use-sequence-elements';
 import {
+  cancelShotDialogueClaimFn,
   discardShotDialogueSectionFn,
+  listShotDialogueClaimsFn,
   listShotDialogueSectionsFn,
   listShotDialogueVersionsFn,
   selectShotDialogueSectionFn,
@@ -25,6 +27,7 @@ import {
   ShotDialogueBlock,
   ShotDialogueHistory,
   ShotReadingsList,
+  ShotRecordingsInFlight,
 } from './motion-dialogue-panel';
 import { shotStalenessNamespace } from './use-shot-staleness';
 import { shotKeys } from './use-shots';
@@ -77,8 +80,29 @@ const Readings: React.FC<ReadingsProps> = ({
     onError: (error: Error) =>
       toast.error('Reading not discarded', { description: error.message }),
   });
+  // Recordings in flight. Refreshed by the same realtime event as the list:
+  // the key sits under `dialogueSections`.
+  const { data: claims } = useSuspenseQuery({
+    queryKey: shotKeys.dialogueClaims(shotId),
+    queryFn: () => listShotDialogueClaimsFn({ data: { sequenceId, shotId } }),
+  });
+  const cancelClaim = useMutation({
+    mutationFn: (claimId: string) =>
+      cancelShotDialogueClaimFn({ data: { sequenceId, shotId, claimId } }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: shotKeys.dialogueClaims(shotId),
+      }),
+    onError: (error: Error) =>
+      toast.error('Recording not cancelled', { description: error.message }),
+  });
   return (
     <>
+      <ShotRecordingsInFlight
+        claims={claims}
+        onCancel={(claimId) => cancelClaim.mutate(claimId)}
+        cancellingId={cancelClaim.isPending ? cancelClaim.variables : null}
+      />
       {/* History only where there is room to act on it: the prompt editor. */}
       {collapsible ? null : (
         <DialogueHistory sequenceId={sequenceId} shotId={shotId} />

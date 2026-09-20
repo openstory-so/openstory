@@ -120,7 +120,55 @@ export async function recordDialogue(
       'recordDialogue requires every adopting shot to have a voiced line'
     );
   }
-  const adopts = new Set(adopting);
+  // Claim before anything is spent (#1657) — the same lifecycle every other
+  // generation has. A shot another run is already recording, for the same
+  // words, is not ours to adopt; with none left there is nothing to do.
+  const claimIdByShotId = await step.do(
+    `${args.stepPrefix}-claim`,
+    async () => {
+      const claims = await args.scopedDb.shotDialogue.claimRecording({
+        shots: adopting.map((shotId) => ({
+          shotId,
+          sourceKey: dialogueClipSourceKey(linesOf(args.lines, shotId)),
+        })),
+        workflowRunId: args.workflowRunId,
+      });
+      // The open panel shows "Recording…" from here (#1653).
+      await Promise.all(
+        Object.keys(claims).map((shotId) =>
+          getGenerationChannel(args.sequenceId).emit(
+            'generation.shot:updated',
+            { shotId, updateType: 'dialogue-audio', metadata: null }
+          )
+        )
+      );
+      return claims;
+    }
+  );
+  const claimed = adopting.filter((shotId) => claimIdByShotId[shotId]);
+  if (claimed.length === 0) return {};
+  try {
+    return await recordClaimed(step, args, claimed, claimIdByShotId);
+  } catch (error) {
+    // A claim must never outlive its run's ability to complete it.
+    await step.do(`${args.stepPrefix}-fail-claims`, () =>
+      args.scopedDb.shotDialogue.failClaims(
+        Object.values(claimIdByShotId),
+        error instanceof Error ? error.message : String(error)
+      )
+    );
+    throw error;
+  }
+}
+
+/** The recording itself, for the shots this run holds a claim on. */
+async function recordClaimed(
+  step: WorkflowStep,
+  args: RecordDialogueArgs,
+  claimed: readonly string[],
+  claimIdByShotId: Record<string, string>
+): Promise<Record<string, MotionAudioClip[]>> {
+  const adopts = new Set(claimed);
   const budgetFor = (shotId: string) =>
     dialogueFitBudget({
       shotSeconds: args.shotSeconds[shotId],
@@ -294,62 +342,89 @@ export async function recordDialogue(
   }
 
   // Only the recordings that survived the ladder get rows. `appendRecording`
-  // is a no-op for a recording id it already holds, and `setAudioClips` is an
-  // overwrite, so a retry of this step lands on the same state.
-  await step.do(`${args.stepPrefix}-persist`, async () => {
-    for (const call of recorded.values()) {
-      const callShotIds = call.windows.map((window) => window.shotId);
-      const inputHash = recordingKey(
-        args.lines.filter((line) => callShotIds.includes(line.shotId))
-      );
-      if (!inputHash) {
-        throw new NonRetryableError(
-          `Recording ${call.recordingId} has no voiced lines to key`
+  // lands the reading AND promotes it — pointer and `shots.audioClips` in one
+  // transaction, each guarded by the shot's claim — and is a no-op for a
+  // recording id it already holds, so a retry of this step lands on the same
+  // state. The step returns only the promoted shot ids: small, and what a
+  // replay has to agree on.
+  const promotedShotIds = await step.do(
+    `${args.stepPrefix}-persist`,
+    async () => {
+      const promoted: string[] = [];
+      for (const call of recorded.values()) {
+        const callShotIds = call.windows.map((window) => window.shotId);
+        const inputHash = recordingKey(
+          args.lines.filter((line) => callShotIds.includes(line.shotId))
         );
+        if (!inputHash) {
+          throw new NonRetryableError(
+            `Recording ${call.recordingId} has no voiced lines to key`
+          );
+        }
+        const landed = await args.scopedDb.shotDialogue.appendRecording({
+          id: call.recordingId,
+          sequenceId: args.sequenceId,
+          storageKey: call.storageKey,
+          url: call.url,
+          durationSeconds: call.durationSeconds,
+          turns: call.turns.map((turn) => {
+            const authored = lineAt(args.lines, turn)?.text;
+            const said = lineAt(spoken, turn)?.text;
+            return said !== undefined && said !== authored
+              ? { ...turn, spokenText: said }
+              : turn;
+          }),
+          inputHash,
+          characterCount: call.characterCount,
+          workflowRunId: args.workflowRunId,
+          sections: call.windows.map((window) => {
+            const { sourceKey, spokenLines } = spokenOf(window.shotId);
+            return {
+              id: sectionIdOf(call, window.shotId),
+              shotId: window.shotId,
+              fromSeconds: window.fromSeconds,
+              toSeconds: window.toSeconds,
+              sourceKey,
+              spokenLines: spokenLines ?? null,
+              dialogueVersionId:
+                args.dialogueVersionIdByShotId[window.shotId] ?? null,
+              adopt: (() => {
+                const claimId = claimIdByShotId[window.shotId];
+                const audioClips = clipsByShotId[window.shotId];
+                return adopts.has(window.shotId) && claimId && audioClips
+                  ? { claimId, audioClips }
+                  : null;
+              })(),
+            };
+          }),
+        });
+        promoted.push(...landed.promotedShotIds);
       }
-      await args.scopedDb.shotDialogue.appendRecording({
-        id: call.recordingId,
-        sequenceId: args.sequenceId,
-        storageKey: call.storageKey,
-        url: call.url,
-        durationSeconds: call.durationSeconds,
-        turns: call.turns.map((turn) => {
-          const authored = lineAt(args.lines, turn)?.text;
-          const said = lineAt(spoken, turn)?.text;
-          return said !== undefined && said !== authored
-            ? { ...turn, spokenText: said }
-            : turn;
-        }),
-        inputHash,
-        characterCount: call.characterCount,
-        workflowRunId: args.workflowRunId,
-        sections: call.windows.map((window) => {
-          const { sourceKey, spokenLines } = spokenOf(window.shotId);
-          return {
-            id: sectionIdOf(call, window.shotId),
-            shotId: window.shotId,
-            fromSeconds: window.fromSeconds,
-            toSeconds: window.toSeconds,
-            sourceKey,
-            spokenLines: spokenLines ?? null,
-            dialogueVersionId:
-              args.dialogueVersionIdByShotId[window.shotId] ?? null,
-            selected: adopts.has(window.shotId),
-          };
-        }),
-      });
-    }
-    for (const [shotId, clips] of Object.entries(clipsByShotId)) {
-      await args.scopedDb.shots.setAudioClips(shotId, clips);
-      // The open video panel re-reads the shot (#1653).
-      await getGenerationChannel(args.sequenceId).emit(
-        'generation.shot:updated',
-        { shotId, updateType: 'dialogue-audio', metadata: null }
+      // The open panel re-reads the shot (#1653) — promoted or not, its list of
+      // readings and its "recording…" state both moved.
+      await Promise.all(
+        claimed.map((shotId) =>
+          getGenerationChannel(args.sequenceId).emit(
+            'generation.shot:updated',
+            {
+              shotId,
+              updateType: 'dialogue-audio',
+              metadata: null,
+            }
+          )
+        )
       );
+      return promoted;
     }
-  });
+  );
 
-  return clipsByShotId;
+  // Only a PROMOTED reading is the shot's audio. A claim the user demoted or
+  // cancelled while this recorded keeps its reading in the list, unselected,
+  // and the caller renders from whatever the shot holds now.
+  const promotedSet = new Set(promotedShotIds);
+  return Object.fromEntries(
+    Object.entries(clipsByShotId).filter(([shotId]) => promotedSet.has(shotId))
+  );
 }
 
 const linesOf = (lines: readonly SceneVoicedLine[], shotId: string) =>

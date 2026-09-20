@@ -137,7 +137,7 @@ function makeStep(): WorkflowStep & { names: string[] } {
   } as unknown as WorkflowStep & { names: string[] };
 }
 
-function makeScopedDb() {
+function makeScopedDb(shotAudioClips: unknown[] = []) {
   const shotPromptVersions = {
     write: vi.fn(async () => ({ id: 'spv-soft' })),
     setAudioClips: vi.fn(async () => {}),
@@ -164,6 +164,7 @@ function makeScopedDb() {
           sceneId: 'live-scene-ulid',
           sequenceId: 'seq-1',
           renderSegmentId: null,
+          audioClips: shotAudioClips,
         }),
         getByIds: async (ids: string[]) =>
           ids.map((id) => ({
@@ -183,9 +184,6 @@ function makeScopedDb() {
           analysisModel: 'anthropic/claude-haiku-4.5',
         }),
       },
-    },
-    shots: {
-      setAudioClips: vi.fn(async () => {}),
     },
     shotPromptVersions,
     videoVariants,
@@ -795,7 +793,27 @@ describe('recording its own dialogue (#1657)', () => {
         makeStep(),
         scopedDb
       )
-    ).rejects.toThrow(/no audio for shot shot-1/);
+    ).rejects.toThrow(/Shot shot-1 has no audio for its lines yet/);
+  });
+
+  it("renders with the shot's own audio when nothing was promoted for it", async () => {
+    // Another run held the claim for these words, or the user picked a
+    // reading while this recorded: the recorder hands back nothing, and the
+    // clip the shot holds NOW is the truth.
+    mockRecordDialogue.mockReset();
+    mockRecordDialogue.mockResolvedValue({});
+    const { scopedDb, shotPromptVersions } = makeScopedDb([recordedClip]);
+
+    await makeWorkflow().runBody(
+      makeEvent({ voicedLines: [own] }),
+      makeStep(),
+      scopedDb
+    );
+
+    expect(shotPromptVersions.setAudioClips).toHaveBeenCalledWith(
+      expect.anything(),
+      [recordedClip]
+    );
   });
 });
 

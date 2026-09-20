@@ -11,12 +11,7 @@ import {
   shots,
 } from '@/platform/server/db/schema';
 import { dbSceneId } from '@/shots/scene-id';
-import type {
-  MotionAudioClip,
-  NewFrame,
-  Shot,
-  NewShot,
-} from '@/platform/server/db/schema';
+import type { NewFrame, Shot, NewShot } from '@/platform/server/db/schema';
 import type { Sequence } from '@/platform/server/db/schema/sequences';
 import { and, asc, desc, eq, gt, gte, inArray, isNull, sql } from 'drizzle-orm';
 import type { PageOptions } from '@/platform/server/db/read-page';
@@ -255,24 +250,6 @@ export function createShotsMethods(db: Database) {
       }
 
       return shot;
-    },
-
-    /**
-     * Mirror the shot's selected dialogue section — its cut file — onto the
-     * shot row (#1657). Working set, not history: `shot_dialogue_sections` is
-     * the provenance and the thing a user picks between, and each render
-     * stamps the clip it used onto its `shot_prompt_versions` row. Motion
-     * attaches whatever is here, and records only when it is missing or the
-     * lines/voices moved.
-     */
-    setAudioClips: async (
-      shotId: string,
-      audioClips: MotionAudioClip[]
-    ): Promise<void> => {
-      await db
-        .update(shots)
-        .set({ audioClips, updatedAt: new Date() })
-        .where(eq(shots.id, shotId));
     },
 
     upsert: async (data: NewShot): Promise<ShotWithAnchorFrame> => {

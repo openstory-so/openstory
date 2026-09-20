@@ -52,7 +52,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/ui/shadcn/select';
-import { Check, ChevronDown } from 'lucide-react';
+import { Check, ChevronDown, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 
 type DialogueClip = {
@@ -295,6 +295,56 @@ export const ShotReadingsList: React.FC<{
       <span className="text-xs font-medium">Readings</span>
       {rows}
     </div>
+  );
+};
+
+/** A dialogue recording in flight for this shot (#1657). */
+export type ShotDialogueClaimRow = {
+  id: string;
+  /** False once the user acted: it still records, but will not take over. */
+  willBecomeCurrent: boolean;
+};
+
+/**
+ * "Recording…" — one row per recording in flight, with the same way out every
+ * other generation has. Cancel does not stop the run (it records the scene for
+ * other shots too); it stops the reading from becoming this shot's audio.
+ */
+export const ShotRecordingsInFlight: React.FC<{
+  claims: ShotDialogueClaimRow[];
+  onCancel: (claimId: string) => void;
+  cancellingId?: string | null;
+}> = ({ claims, onCancel, cancellingId }) => {
+  if (claims.length === 0) return null;
+  return (
+    <ul className="flex flex-col gap-1" aria-live="polite">
+      {claims.map((claim) => (
+        <li
+          key={claim.id}
+          className="flex min-h-8 items-center justify-between gap-2"
+        >
+          <span className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2
+              className="h-3 w-3 animate-spin motion-reduce:animate-none"
+              aria-hidden
+            />
+            {claim.willBecomeCurrent
+              ? 'Recording…'
+              : 'Recording… will not replace the current audio'}
+          </span>
+          {claim.willBecomeCurrent ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={cancellingId != null}
+              onClick={() => onCancel(claim.id)}
+            >
+              {cancellingId === claim.id ? 'Cancelling…' : 'Cancel'}
+            </Button>
+          ) : null}
+        </li>
+      ))}
+    </ul>
   );
 };
 

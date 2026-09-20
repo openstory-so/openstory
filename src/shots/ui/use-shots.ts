@@ -65,6 +65,13 @@ export const shotKeys = {
   /** One shot's dialogue readings (#1657). */
   dialogueSections: (shotId: string) =>
     [...shotKeys.dialogueSectionsAll(), shotId] as const,
+  /**
+   * One shot's recordings in flight (#1657). Under `dialogueSections` on
+   * purpose: the realtime `dialogue-audio` event invalidates that prefix, so
+   * a claim appears and clears with the reading it produces.
+   */
+  dialogueClaims: (shotId: string) =>
+    [...shotKeys.dialogueSections(shotId), 'claims'] as const,
   /** One shot's authored dialogue versions (#1657). */
   dialogueVersions: (shotId: string) =>
     [...shotKeys.all, 'dialogue-versions', shotId] as const,

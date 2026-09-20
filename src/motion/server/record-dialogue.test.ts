@@ -76,19 +76,35 @@ type Appended = {
   sections: Array<{
     id: string;
     shotId: string;
-    selected: boolean;
+    adopt: { claimId: string; audioClips: unknown[] } | null;
     sourceKey: string;
     spokenLines: unknown;
     dialogueVersionId: string | null;
   }>;
 };
-const appendRecording = vi.fn(async (_input: Appended) => undefined);
-const setAudioClips = vi.fn(async (_shotId: string, _clips: unknown) => {});
-// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- only the key hatch and the two writes are touched
+// The db's half of the claim lifecycle (#1657): every shot asked for is
+// claimed, and a live claim's reading is promoted. `unclaimable` and `demoted`
+// are the two ways a test makes that not happen.
+const unclaimable = new Set<string>();
+const demoted = new Set<string>();
+const claimRecording = vi.fn(
+  async (input: { shots: { shotId: string }[]; workflowRunId: string }) =>
+    Object.fromEntries(
+      input.shots
+        .filter((shot) => !unclaimable.has(shot.shotId))
+        .map((shot) => [shot.shotId, `claim-${shot.shotId}`])
+    )
+);
+const failClaims = vi.fn(async (_ids: readonly string[], _error: string) => {});
+const appendRecording = vi.fn(async (input: Appended) => ({
+  promotedShotIds: input.sections
+    .filter((section) => section.adopt && !demoted.has(section.shotId))
+    .map((section) => section.shotId),
+}));
+// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- only the key hatch and the claim/land writes are touched
 const scopedDb = {
   credentials: { resolveKey: async () => ({ key: 'el-key' }) },
-  shotDialogue: { appendRecording },
-  shots: { setAudioClips },
+  shotDialogue: { claimRecording, failClaims, appendRecording },
 } as unknown as WorkflowScopedDb;
 
 const line = (
@@ -165,7 +181,10 @@ function reset() {
   recordCall.mockReset();
   llmCall.mockReset();
   appendRecording.mockClear();
-  setAudioClips.mockClear();
+  claimRecording.mockClear();
+  failClaims.mockClear();
+  unclaimable.clear();
+  demoted.clear();
   cut.mockClear();
   deduct.mockClear();
 }
@@ -188,6 +207,8 @@ describe('recordDialogue', () => {
     expect(recordCall.mock.calls[0]?.[0].lines).toHaveLength(3);
     expect(llmCall).not.toHaveBeenCalled();
     expect(names).toEqual([
+      // Claimed before anything is spent (#1657).
+      'scene-0-claim',
       'scene-0-chunk-0',
       'scene-0-cut-shot-a',
       'scene-0-persist',
@@ -196,16 +217,15 @@ describe('recordDialogue', () => {
     // One section per shot the call spoke; only the adopter is selected.
     const row = appended();
     expect(row.id).toBe('r1');
-    expect(row.sections.map((s) => [s.shotId, s.selected])).toEqual([
-      ['shot-a', true],
-      ['shot-b', false],
+    expect(row.sections.map((s) => [s.shotId, s.adopt?.claimId])).toEqual([
+      ['shot-a', 'claim-shot-a'],
+      ['shot-b', undefined],
     ]);
     expect(row.sections[0]?.dialogueVersionId).toBe('version-a');
     expect(row.sections[1]?.dialogueVersionId).toBeNull();
 
     // The context shot keeps the clip it had: nothing is cut or written for it.
     expect(cut).toHaveBeenCalledTimes(1);
-    expect(setAudioClips).toHaveBeenCalledTimes(1);
     expect(Object.keys(result)).toEqual(['shot-a']);
     const clip = result['shot-a']?.[0];
     expect(clip).toMatchObject({
@@ -218,7 +238,33 @@ describe('recordDialogue', () => {
       ),
     });
     expect(clip?.spokenLines).toBeUndefined();
-    expect(setAudioClips).toHaveBeenCalledWith('shot-a', [clip]);
+    // The clip rides INTO the landing write: pointer and clip move together,
+    // guarded by the claim — there is no separate clip write any more.
+    expect(row.sections[0]?.adopt?.audioClips).toEqual([clip]);
+  });
+
+  it('claims before it spends, and records nothing for a shot another run holds', async () => {
+    reset();
+    unclaimable.add('shot-a');
+    const { step } = fakeStep();
+
+    expect(await recordDialogue(step, args())).toEqual({});
+
+    expect(claimRecording).toHaveBeenCalledTimes(1);
+    expect(recordCall).not.toHaveBeenCalled();
+    expect(appendRecording).not.toHaveBeenCalled();
+  });
+
+  it('returns no clip for a claim the user demoted while it recorded', async () => {
+    reset();
+    recordCall.mockImplementation(answer({ 'shot-a': 5, 'shot-b': 5 }, 'r1'));
+    demoted.add('shot-a');
+    const { step } = fakeStep();
+
+    // The reading is still written — kept, unselected — but it is not the
+    // shot's audio, so the caller must not render with it.
+    expect(await recordDialogue(step, args())).toEqual({});
+    expect(appendRecording).toHaveBeenCalledTimes(1);
   });
 
   it('never measures a shot that is only context', async () => {
@@ -232,13 +278,14 @@ describe('recordDialogue', () => {
     expect(llmCall).not.toHaveBeenCalled();
     // …and never adopts it either: its row is context, its clip untouched.
     expect(
-      appended().sections.map((section) => [section.shotId, section.selected])
+      appended().sections.map((section) => [
+        section.shotId,
+        section.adopt !== null,
+      ])
     ).toEqual([
       ['shot-a', true],
       ['shot-b', false],
     ]);
-    expect(setAudioClips).toHaveBeenCalledTimes(1);
-    expect(setAudioClips.mock.calls[0]?.[0]).toBe('shot-a');
   });
 
   it('keeps a section between the shot length and the cap — the clip stretches', async () => {
@@ -323,7 +370,11 @@ describe('recordDialogue', () => {
     );
     expect(recordCall).toHaveBeenCalledTimes(MAX_DIALOGUE_FIT_ATTEMPTS + 1);
     expect(appendRecording).not.toHaveBeenCalled();
-    expect(setAudioClips).not.toHaveBeenCalled();
+    // A claim never outlives its run's ability to complete it.
+    expect(failClaims).toHaveBeenCalledWith(
+      ['claim-shot-a'],
+      expect.stringContaining("shot-a's dialogue records at 16.4s")
+    );
   });
 
   it('stops immediately when a rewrite changes nothing, rather than re-billing the same call', async () => {
@@ -401,7 +452,8 @@ describe('recordDialogue', () => {
     const sent: DialogueCallLine[] = recordCall.mock.calls[0]?.[0].lines;
     expect(sent.map((l) => l.shotId)).toEqual(['shot-b']);
     // The call keeps its position in the conversation as its durable name.
-    expect(names[0]).toBe('scene-0-chunk-1');
+    expect(names[0]).toBe('scene-0-claim');
+    expect(names[1]).toBe('scene-0-chunk-1');
     expect(Object.keys(result)).toEqual(['shot-b']);
     expect(appended().sections.map((s) => s.shotId)).toEqual(['shot-b']);
   });

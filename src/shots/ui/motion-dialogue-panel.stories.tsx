@@ -7,6 +7,7 @@ import {
   ShotDialogueBlock,
   ShotDialogueHistory,
   ShotReadingsList,
+  ShotRecordingsInFlight,
   type ShotDialogueReading,
 } from './motion-dialogue-panel';
 
@@ -214,6 +215,19 @@ export const History: Story = {
         },
       ]}
       onUse={fn()}
+    />
+  ),
+};
+
+/** A recording in flight, and one the user has already overruled. */
+export const RecordingsInFlight: Story = {
+  render: () => (
+    <ShotRecordingsInFlight
+      claims={[
+        { id: 'c1', willBecomeCurrent: true },
+        { id: 'c2', willBecomeCurrent: false },
+      ]}
+      onCancel={fn()}
     />
   ),
 };

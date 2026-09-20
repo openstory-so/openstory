@@ -215,3 +215,34 @@ export const discardShotDialogueSectionFn = createServerFn({ method: 'POST' })
     }
     return { sectionId: data.sectionId };
   });
+
+/** This shot's dialogue recordings in flight (#1657) — the "Recording…" rows. */
+export const listShotDialogueClaimsFn = createServerFn({ method: 'GET' })
+  .middleware([shotAccessMiddleware])
+  .validator(zodValidator(shotInput))
+  .handler(async ({ context }) => {
+    const claims = await context.scopedDb.shotDialogue.listLiveClaims(
+      context.shot.id
+    );
+    return claims.map((claim) => ({
+      id: claim.id,
+      createdAt: claim.createdAt,
+      // Demoted: it still records, but it will not become the shot's audio.
+      willBecomeCurrent: claim.pendingSourceKey !== null,
+    }));
+  });
+
+/**
+ * Stop a recording in flight from becoming this shot's audio. The run is not
+ * terminated — it records the scene for other shots too — and its reading for
+ * this shot lands in the list, unselected.
+ */
+export const cancelShotDialogueClaimFn = createServerFn({ method: 'POST' })
+  .middleware([shotAccessMiddleware])
+  .validator(zodValidator(shotInput.extend({ claimId: ulidSchema })))
+  .handler(async ({ context, data }) => ({
+    cancelled: await context.scopedDb.shotDialogue.cancelClaim(
+      context.shot.id,
+      data.claimId
+    ),
+  }));
