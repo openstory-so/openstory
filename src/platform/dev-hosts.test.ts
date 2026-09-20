@@ -44,7 +44,7 @@ describe('allocateRoutes', () => {
     const hosts = new Set(routes.map((r) => r.hostname));
     expect(hosts.size).toBe(10);
     for (const route of routes) {
-      expect(route.hostname.endsWith('.openstory.so')).toBe(true);
+      expect(route.hostname).toMatch(/^[a-z]+-[a-z]+\.openstory\.so$/);
       expect(isReservedLabel(route.hostname.split('.')[0] ?? '')).toBe(false);
     }
   });
@@ -52,7 +52,7 @@ describe('allocateRoutes', () => {
   it('skips reserved labels such as www and dev1', () => {
     expect(isReservedLabel('www')).toBe(true);
     expect(isReservedLabel('dev1')).toBe(true);
-    expect(hostnameForLabel('qk3mnpst')).toBe('qk3mnpst.openstory.so');
+    expect(hostnameForLabel('briny-otter')).toBe('briny-otter.openstory.so');
   });
 });
 
@@ -107,7 +107,7 @@ describe('tunnelIngressConfig', () => {
 
 describe('isTunnelAppHostname', () => {
   it('matches machine-private subdomains, not production hosts', () => {
-    expect(isTunnelAppHostname('qk3mnpst.openstory.so')).toBe(true);
+    expect(isTunnelAppHostname('briny-otter.openstory.so')).toBe(true);
     expect(isTunnelAppHostname('openstory.so')).toBe(false);
     expect(isTunnelAppHostname('www.openstory.so')).toBe(false);
     expect(isTunnelAppHostname('app.openstory.so')).toBe(false);
@@ -117,9 +117,9 @@ describe('isTunnelAppHostname', () => {
 });
 
 describe('randomLabel', () => {
-  it('is deterministic for a given byte string', () => {
-    expect(randomLabel(Uint8Array.from([0, 1, 2, 3, 4, 5, 6, 7]))).toBe(
-      randomLabel(Uint8Array.from([0, 1, 2, 3, 4, 5, 6, 7]))
-    );
+  it('is two hyphenated words and stable for the same bytes', () => {
+    const label = randomLabel(Uint8Array.from([0, 1, 2, 3, 4, 5, 6, 7]));
+    expect(label).toMatch(/^[a-z]+-[a-z]+$/);
+    expect(randomLabel(Uint8Array.from([0, 1, 2, 3, 4, 5, 6, 7]))).toBe(label);
   });
 });

@@ -20,7 +20,7 @@ bun tunnel:provision
 That:
 
 1. Creates (or reuses) a Wrangler named tunnel `openstory-dev-<hostname>`
-2. Allocates ten random hostnames and maps them to `127.0.0.1:3000` … `:3009`
+2. Allocates ten two-word hostnames (`briny-otter.openstory.so`, …) mapped to `127.0.0.1:3000` … `:3009`
 3. Writes DNS CNAMEs and the tunnel ingress on Cloudflare
 4. Saves the map to `~/.openstory/dev-tunnels.json`
 5. Prints the ten Google OAuth redirect URIs — add those by hand to the Google client

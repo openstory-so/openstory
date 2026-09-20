@@ -44,8 +44,89 @@ const RESERVED_LABELS = new Set([
   'dev10',
 ]);
 
-const LABEL_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
-const LABEL_LENGTH = 8;
+const ADJECTIVES = [
+  'amber',
+  'briny',
+  'cheeky',
+  'cosmic',
+  'dapper',
+  'eager',
+  'fancy',
+  'fuzzy',
+  'giddy',
+  'goofy',
+  'happy',
+  'icy',
+  'jaunty',
+  'jazzy',
+  'keen',
+  'loopy',
+  'lucky',
+  'merry',
+  'misty',
+  'nimble',
+  'noble',
+  'odd',
+  'peppy',
+  'perky',
+  'plucky',
+  'proud',
+  'quirky',
+  'rusty',
+  'silly',
+  'snappy',
+  'spry',
+  'sunny',
+  'tiny',
+  'vivid',
+  'witty',
+  'wobbly',
+  'zany',
+  'zippy',
+] as const;
+
+const NOUNS = [
+  'badger',
+  'bagel',
+  'bison',
+  'comet',
+  'dumpling',
+  'emu',
+  'falcon',
+  'gecko',
+  'gourd',
+  'heron',
+  'igloo',
+  'koala',
+  'lantern',
+  'lemur',
+  'llama',
+  'mango',
+  'marmot',
+  'muffin',
+  'newt',
+  'noodle',
+  'otter',
+  'panda',
+  'pebble',
+  'pickle',
+  'platypus',
+  'quail',
+  'raccoon',
+  'raven',
+  'sloth',
+  'sock',
+  'squid',
+  'taco',
+  'teapot',
+  'trout',
+  'waffle',
+  'walrus',
+  'wombat',
+  'yak',
+  'yacht',
+  'zebra',
+] as const;
 
 export type DevTunnelRoute = {
   port: number;
@@ -85,16 +166,22 @@ export function isReservedLabel(label: string): boolean {
   return RESERVED_LABELS.has(label.toLowerCase());
 }
 
+function pickWord(
+  list: readonly string[],
+  bytes: Uint8Array,
+  offset: number
+): string {
+  const hi = bytes[offset] ?? 0;
+  const lo = bytes[offset + 1] ?? 0;
+  const index = ((hi << 8) | lo) % list.length;
+  return list[index] ?? list[0] ?? 'odd';
+}
+
 export function randomLabel(bytes: Uint8Array): string {
-  if (bytes.length < LABEL_LENGTH) {
-    throw new Error(`Need ${LABEL_LENGTH} random bytes for a hostname label`);
+  if (bytes.length < 4) {
+    throw new Error('Need 4 random bytes for a two-word hostname');
   }
-  let label = '';
-  for (let i = 0; i < LABEL_LENGTH; i++) {
-    const byte = bytes[i] ?? 0;
-    label += LABEL_ALPHABET[byte % LABEL_ALPHABET.length];
-  }
-  return label;
+  return `${pickWord(ADJECTIVES, bytes, 0)}-${pickWord(NOUNS, bytes, 2)}`;
 }
 
 export function hostnameForLabel(label: string): string {
