@@ -629,6 +629,15 @@ export function getAudioModelDurationLimits(model: AudioModel) {
   };
 }
 
+/** The duration a music call bills and stamps: no request → the model default, otherwise capped at its max. */
+export function clampAudioDuration(
+  requested: number | undefined,
+  config: AudioModelConfig
+): number {
+  if (!requested) return config.capabilities.defaultDuration;
+  return Math.min(requested, config.capabilities.maxDuration);
+}
+
 export function safeAudioModel(
   value: string | null | undefined,
   fallback: AudioModel = DEFAULT_MUSIC_MODEL

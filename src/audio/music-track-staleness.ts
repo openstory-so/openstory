@@ -15,7 +15,8 @@
  */
 
 import {
-  getAudioModelDurationLimits,
+  AUDIO_MODELS,
+  clampAudioDuration,
   isValidAudioModel,
 } from '@/models/models';
 import { computeSequenceMusicInputHash } from '@/shots/input-hash';
@@ -37,15 +38,14 @@ export async function musicTrackStaleness(input: {
   if (!storedInputHash || !prompt || !tags || !audioModel) return 'untracked';
   if (!isValidAudioModel(audioModel)) return 'untracked';
 
-  const limits = getAudioModelDurationLimits(audioModel);
   const live = await computeSequenceMusicInputHash({
     prompt,
     tags,
-    // The stamped duration is what `generateMusic` billed: the request
-    // clamped to the model's ceiling, or the model's default with no request.
-    durationSeconds: input.requestDurationSeconds
-      ? Math.min(input.requestDurationSeconds, limits.max)
-      : limits.default,
+    // The stamped duration is what `generateMusic` billed.
+    durationSeconds: clampAudioDuration(
+      input.requestDurationSeconds,
+      AUDIO_MODELS[audioModel]
+    ),
     audioModel,
   });
   return live === storedInputHash ? 'fresh' : 'stale';

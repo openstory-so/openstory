@@ -74,11 +74,30 @@ export function pcmToWav(
   return out;
 }
 
+/**
+ * Byte arithmetic of a PCM WAV. `snap` turns a time into a data offset,
+ * rounded DOWN to a whole frame (never mid-sample) and clamped to `usable`:
+ * the whole frames inside `limitBytes`.
+ */
+export function wavFrameMath(
+  fmt: { sampleRate: number; channels: number; bitsPerSample: number },
+  limitBytes: number
+) {
+  const frame = fmt.channels * (fmt.bitsPerSample / 8);
+  const bytesPerSecond = fmt.sampleRate * frame;
+  const usable = Math.trunc(limitBytes / frame) * frame;
+  const snap = (seconds: number) =>
+    Math.min(
+      usable,
+      Math.trunc((Math.max(0, seconds) * bytesPerSecond) / frame) * frame
+    );
+  return { frame, bytesPerSecond, usable, snap };
+}
+
 export function wavDurationSeconds(bytes: Uint8Array): number | null {
   const fmt = parseWavHeader(bytes);
   if (!fmt) return null;
-  const bytesPerSecond =
-    fmt.sampleRate * fmt.channels * (fmt.bitsPerSample / 8);
+  const { bytesPerSecond } = wavFrameMath(fmt, fmt.dataSize);
   if (bytesPerSecond <= 0) return null;
   return fmt.dataSize / bytesPerSecond;
 }
@@ -119,14 +138,8 @@ export function trimmedEndSeconds(
   if (!fmt) {
     throw new Error('Dialogue TTS trim expected a PCM WAV');
   }
-  const frame = fmt.channels * (fmt.bitsPerSample / 8);
-  const bytesPerSecond = fmt.sampleRate * frame;
   const available = Math.min(fmt.dataSize, bytes.length - fmt.dataStart);
-  const snap = (seconds: number) =>
-    Math.min(
-      available,
-      Math.trunc((Math.max(0, seconds) * bytesPerSecond) / frame) * frame
-    );
+  const { frame, bytesPerSecond, snap } = wavFrameMath(fmt, available);
   const from = snap(fromSeconds);
   const to = Math.max(from, snap(toSeconds));
   // Only 16-bit PCM is measured sample-by-sample; that is the one format we

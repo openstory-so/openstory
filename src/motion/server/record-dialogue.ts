@@ -39,7 +39,7 @@ import {
   dialogueFitBudget,
   sectionClip,
   spokenLinesFor,
-  ttsUtterance,
+  ttsCharacterCount,
 } from '@/motion/dialogue-tts';
 import { cutAudioSection } from '@/motion/server/cut-audio-section';
 import {
@@ -393,10 +393,7 @@ export function chunkTakeLines<
   let current: T[] = [];
   let size = 0;
   for (const group of groups) {
-    const groupChars = group.reduce(
-      (sum, line) => sum + ttsUtterance(line.text, line.tone).length,
-      0
-    );
+    const groupChars = ttsCharacterCount(group);
     if (current.length > 0 && size + groupChars > maxChars) {
       chunks.push(current);
       current = [];

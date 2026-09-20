@@ -3,6 +3,7 @@ import { falCostFromUnits } from '@/billing/server/fal-cost-billing';
 import { FAL_GENERATION_TIMEOUT_MS } from '@/models/server/fal-deadline-fetch';
 import {
   AUDIO_MODELS,
+  clampAudioDuration,
   DEFAULT_MUSIC_MODEL,
   type AudioModel,
   type AudioModelConfig,
@@ -63,14 +64,6 @@ export type MusicResult = {
   requestId?: string;
 };
 
-function clampDuration(
-  requested: number | undefined,
-  config: AudioModelConfig
-): number {
-  if (!requested) return config.capabilities.defaultDuration;
-  return Math.min(requested, config.capabilities.maxDuration);
-}
-
 type AudioCallShape = {
   prompt: string;
   /**
@@ -98,7 +91,7 @@ const AUDIO_CALL_BUILDERS: Partial<Record<AudioModel, AudioCallBuilder>> = {
   // fal-ai/ace-step/prompt-to-audio: prompt + duration (seconds) + standard CFG knobs.
   ace_step: (options, config) => ({
     prompt: options.tags ?? options.prompt,
-    duration: clampDuration(options.duration, config),
+    duration: clampAudioDuration(options.duration, config),
     modelOptions: {
       instrumental: options.instrumental ?? true,
       number_of_steps: options.steps ?? 27,
@@ -116,7 +109,7 @@ const AUDIO_CALL_BUILDERS: Partial<Record<AudioModel, AudioCallBuilder>> = {
       options.lyrics ?? (isInstrumental ? '[Instrumental]' : undefined);
     return {
       prompt: options.tags ?? options.prompt,
-      duration: clampDuration(options.duration, config),
+      duration: clampAudioDuration(options.duration, config),
       modelOptions: {
         ...(lyrics !== undefined ? { lyrics } : {}),
         ...(options.steps ? { num_inference_steps: options.steps } : {}),
@@ -127,7 +120,7 @@ const AUDIO_CALL_BUILDERS: Partial<Record<AudioModel, AudioCallBuilder>> = {
   // fal-ai/elevenlabs/music: adapter maps `duration` -> `music_length_ms` (ms).
   elevenlabs_music: (options, config) => ({
     prompt: options.prompt,
-    duration: clampDuration(options.duration, config),
+    duration: clampAudioDuration(options.duration, config),
     modelOptions: {
       force_instrumental: options.instrumental ?? true,
     },
@@ -199,7 +192,7 @@ async function callFalAudio(
   // For cost estimation, use the builder's duration (models that accept one)
   // or fall back to the requested/default duration (fixed-length models).
   const billedDuration =
-    shape.duration ?? clampDuration(options.duration, modelConfig);
+    shape.duration ?? clampAudioDuration(options.duration, modelConfig);
 
   logger.info(`Generating music with model: ${modelConfig.id}`, {
     vendor: modelConfig.vendor,

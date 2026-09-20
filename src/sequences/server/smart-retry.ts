@@ -417,19 +417,18 @@ export async function executeSmartRetry(context: SmartRetryContext) {
       const audioClips = matchingDialogueClips(shot.audioClips, voicedLines);
       // No matching clip: the run records its own, acted in the conversation
       // around the shot — snapshotted here, since it cannot read it mid-run.
-      const dialogueContext =
-        voicedLines.length > 0 && audioClips.length === 0
-          ? dialogueContextFor({
-              shot,
-              shotLines: shotDialogue?.lines ?? [],
-              sceneShots: shotViews.filter(
-                (other) => shot.sceneId && other.sceneId === shot.sceneId
-              ),
-              linesByShotId: retryDialogueLines,
-              scriptDialogue: scene?.originalScript.dialogue,
-              characters: voiceCharacters,
-            })
-          : [];
+      const dialogueContext = dialogueContextFor({
+        shot,
+        shotLines: shotDialogue?.lines ?? [],
+        voicedLines,
+        audioClips,
+        sceneShots: shotViews.filter(
+          (other) => shot.sceneId && other.sceneId === shot.sceneId
+        ),
+        linesByShotId: retryDialogueLines,
+        scriptDialogue: scene?.originalScript.dialogue,
+        characters: voiceCharacters,
+      });
       const ttsChars =
         audioClips.length > 0 ? 0 : ttsCharacterCount(voicedLines);
       const motionCost = addMicros(
@@ -496,7 +495,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
         duration: shot.durationMs ? shot.durationMs / 1000 : undefined,
         voicedLines,
         audioClips: audioClips.length > 0 ? audioClips : undefined,
-        ...(dialogueContext.length > 0 ? { dialogueContext } : {}),
+        ...(dialogueContext ? { dialogueContext } : {}),
         motionPrompt: selectedMotion
           ? motionPromptFromVersion(selectedMotion)
           : undefined,

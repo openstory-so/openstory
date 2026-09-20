@@ -90,14 +90,16 @@ export const selectShotDialogueSectionFn = createServerFn({ method: 'POST' })
     const { scopedDb, shot, sequence } = context;
     const videoModels = [safeImageToVideoModel(sequence.videoModel)];
     const { limitSeconds } = dialogueFitBudget({
-      shotSeconds:
-        shot.durationMs && shot.durationMs > 0 ? shot.durationMs / 1000 : null,
       maxSeconds: dialogueAudioMaxSeconds(videoModels),
     });
+    const [candidate, currentKey] = await Promise.all([
+      scopedDb.shotDialogue.getSectionById(data.sectionId),
+      currentSourceKey(scopedDb, shot.id, sequence.id),
+    ]);
     const section = requireSelectableSection({
-      section: await scopedDb.shotDialogue.getSectionById(data.sectionId),
+      section: candidate,
       shotId: shot.id,
-      currentKey: await currentSourceKey(scopedDb, shot.id, sequence.id),
+      currentKey,
       limitSeconds,
     });
 

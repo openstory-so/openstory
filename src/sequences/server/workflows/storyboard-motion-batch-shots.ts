@@ -163,17 +163,18 @@ export function buildStoryboardMotionBatchShots(input: {
     // No clip for these lines (the Dialogue stage was skipped, or it failed
     // for this shot): motion records its own, so hand it the conversation
     // around the shot and the reading is still acted in context (#1657).
-    const dialogueContext =
-      voicedLines.length > 0 && audioClips.length === 0 && mapping.shotId
-        ? dialogueContextFor({
-            shot: { id: mapping.shotId },
-            shotLines: shotLines ?? motionPromptData.dialogue.lines,
-            sceneShots: sceneShotsOf(input.shotMapping, scene.sceneId),
-            linesByShotId,
-            scriptDialogue: scene.originalScript.dialogue,
-            characters: input.characters,
-          })
-        : [];
+    const dialogueContext = mapping.shotId
+      ? dialogueContextFor({
+          shot: { id: mapping.shotId },
+          shotLines: shotLines ?? motionPromptData.dialogue.lines,
+          voicedLines,
+          audioClips,
+          sceneShots: sceneShotsOf(input.shotMapping, scene.sceneId),
+          linesByShotId,
+          scriptDialogue: scene.originalScript.dialogue,
+          characters: input.characters,
+        })
+      : undefined;
 
     return {
       shotId: mapping.shotId,
@@ -202,7 +203,7 @@ export function buildStoryboardMotionBatchShots(input: {
       }),
       voicedLines,
       ...(audioClips.length > 0 ? { audioClips } : {}),
-      ...(dialogueContext.length > 0 ? { dialogueContext } : {}),
+      ...(dialogueContext ? { dialogueContext } : {}),
     };
   });
 }

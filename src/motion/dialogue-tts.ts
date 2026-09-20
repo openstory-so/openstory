@@ -380,7 +380,7 @@ export function matchingDialogueClips<T>(
 }
 
 export function ttsCharacterCount(
-  lines: readonly VoicedDialogueLine[]
+  lines: readonly Pick<VoicedDialogueLine, 'text' | 'tone'>[]
 ): number {
   return lines.reduce(
     (sum, line) => sum + ttsUtterance(line.text, line.tone).length,

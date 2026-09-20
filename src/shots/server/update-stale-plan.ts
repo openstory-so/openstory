@@ -377,24 +377,24 @@ export async function computePlan(args: {
   // Stills live on the selected `frame_variants` rows (#1067) — one batch read
   // so the per-shot loop below stays query-free on the image surface.
   const frameIds = anchorRows.map((f) => f.id);
-  const [selectedByFrame, selectedPromptByFrame, selectedMotionByShot] =
-    await Promise.all([
-      scopedDb.frameVariants.getSelectedByFrameIds(frameIds),
-      scopedDb.framePromptVersions.getSelectedByFrameIds(frameIds),
-      // Dereference the motion pointer HERE, once, so the video stage never
-      // has to (see `PlanTarget.standingMotionVersionId`).
-      scopedDb.shotPromptVersions.getSelectedMotionByShots(
-        inScope.map((s) => s.id)
-      ),
-    ]);
+  const [
+    selectedByFrame,
+    selectedPromptByFrame,
+    selectedMotionByShot,
+    dialogueLinesByShotId,
+  ] = await Promise.all([
+    scopedDb.frameVariants.getSelectedByFrameIds(frameIds),
+    scopedDb.framePromptVersions.getSelectedByFrameIds(frameIds),
+    // Dereference the motion pointer HERE, once, so the video stage never
+    // has to (see `PlanTarget.standingMotionVersionId`).
+    scopedDb.shotPromptVersions.getSelectedMotionByShots(
+      inScope.map((s) => s.id)
+    ),
+    // The authored dialogue per shot, read once (#1657). Each target carries
+    // only its own shot's lines, so the run never reads the node mid-flight.
+    loadShotDialogueLines(scopedDb, sequence.id),
+  ]);
   const refs: ShotStalenessRefs = { characters, locations, elements, style };
-
-  // The authored dialogue per shot, read once (#1657). Each target carries
-  // only its own shot's lines, so the run never reads the node mid-flight.
-  const dialogueLinesByShotId = await loadShotDialogueLines(
-    scopedDb,
-    sequence.id
-  );
 
   const targets: PlanTarget[] = [];
   const skipped: SkippedShot[] = [];

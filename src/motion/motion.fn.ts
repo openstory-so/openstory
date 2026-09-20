@@ -324,26 +324,28 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
     // those with a reference-to-video route send them on the wire, the rest
     // substitute the tokens with descriptions. Matches the continuity AFTER
     // any rescan above.
-    const dialogueLinesByShotId = await loadShotDialogueLines(
-      context.scopedDb,
-      sequence.id
-    );
+    const [
+      dialogueLinesByShotId,
+      characters,
+      voiceCharacters,
+      elements,
+      locations,
+    ] = await Promise.all([
+      loadShotDialogueLines(context.scopedDb, sequence.id),
+      context.scopedDb.characters.listWithSheets(sequence.id),
+      context.scopedDb.characters.list(sequence.id),
+      // A clip with no known length passes every length gate unchecked.
+      context.scopedDb.sequenceElements
+        .list(sequence.id)
+        .then((rows) => withMeasuredDurations(context.scopedDb, rows)),
+      // Reference-only additionally needs the location sheet: with no still,
+      // it is the only thing establishing the set.
+      anyReferenceOnly
+        ? context.scopedDb.sequenceLocations.listWithReferences(sequence.id)
+        : Promise.resolve([]),
+    ]);
     const dialogueFor = (row: { id: string }) =>
       shotDialogueFor(dialogueLinesByShotId, row);
-    const [characters, voiceCharacters, elements, locations] =
-      await Promise.all([
-        context.scopedDb.characters.listWithSheets(sequence.id),
-        context.scopedDb.characters.list(sequence.id),
-        // A clip with no known length passes every length gate unchecked.
-        context.scopedDb.sequenceElements
-          .list(sequence.id)
-          .then((rows) => withMeasuredDurations(context.scopedDb, rows)),
-        // Reference-only additionally needs the location sheet: with no still,
-        // it is the only thing establishing the set.
-        anyReferenceOnly
-          ? context.scopedDb.sequenceLocations.listWithReferences(sequence.id)
-          : Promise.resolve([]),
-      ]);
     const referenceImages = buildMotionReferenceImages({
       scene: context.scene
         ? { ...context.scene, continuity: effectiveContinuity }
@@ -455,17 +457,17 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
           dialogue: MotionDialogue | null | undefined,
           voiced: readonly VoicedDialogueLine[],
           clips: readonly MotionAudioClip[]
-        ) => {
-          if (voiced.length === 0 || clips.length > 0) return undefined;
-          return dialogueContextFor({
+        ) =>
+          dialogueContextFor({
             shot: row,
             shotLines: dialogue?.lines ?? [],
+            voicedLines: voiced,
+            audioClips: clips,
             sceneShots: allSceneShots,
             linesByShotId: dialogueLinesByShotId,
             scriptDialogue: context.scene?.originalScript.dialogue,
             characters: voiceCharacters,
           });
-        };
 
         const attachSceneHeader = sceneShots.length > 1;
         const clickedPayload = {
@@ -753,24 +755,26 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
     // Resolve cast/element reference images once for the whole batch (#873) —
     // before credit pre-flight so Seedance prices the reference-to-video
     // endpoint when refs will actually be sent.
-    const batchDialogueLinesByShotId = await loadShotDialogueLines(
-      context.scopedDb,
-      sequence.id
-    );
+    const [
+      batchDialogueLinesByShotId,
+      characters,
+      voiceCharacters,
+      elements,
+      batchLocations,
+    ] = await Promise.all([
+      loadShotDialogueLines(context.scopedDb, sequence.id),
+      context.scopedDb.characters.listWithSheets(sequence.id),
+      context.scopedDb.characters.list(sequence.id),
+      context.scopedDb.sequenceElements
+        .list(sequence.id)
+        .then((rows) => withMeasuredDurations(context.scopedDb, rows)),
+      // Reference-only only: with no still, the location sheet is the set.
+      anyReferenceOnly
+        ? context.scopedDb.sequenceLocations.listWithReferences(sequence.id)
+        : Promise.resolve([]),
+    ]);
     const batchDialogueFor = (shot: { id: string }) =>
       shotDialogueFor(batchDialogueLinesByShotId, shot);
-    const [characters, voiceCharacters, elements, batchLocations] =
-      await Promise.all([
-        context.scopedDb.characters.listWithSheets(sequence.id),
-        context.scopedDb.characters.list(sequence.id),
-        context.scopedDb.sequenceElements
-          .list(sequence.id)
-          .then((rows) => withMeasuredDurations(context.scopedDb, rows)),
-        // Reference-only only: with no still, the location sheet is the set.
-        anyReferenceOnly
-          ? context.scopedDb.sequenceLocations.listWithReferences(sequence.id)
-          : Promise.resolve([]),
-      ]);
 
     // Same pre-credit rejection as the single-shot path, but it matters more
     // here: the reservation covers the whole batch, so one doomed model would
@@ -1028,19 +1032,18 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
               // them, in context (#1657), so the conversation around the shot
               // is snapshotted here. `rawShots`, not `allShots`: a neighbour
               // with no anchor frame still speaks.
-              dialogueContext:
-                voicedLines.length > 0 && audioClips.length === 0
-                  ? dialogueContextFor({
-                      shot,
-                      shotLines: shotDialogue?.lines ?? [],
-                      sceneShots: rawShots.filter(
-                        (row) => row.sceneId === shot.sceneId
-                      ),
-                      linesByShotId: batchDialogueLinesByShotId,
-                      scriptDialogue: scene?.originalScript.dialogue,
-                      characters: voiceCharacters,
-                    })
-                  : undefined,
+              dialogueContext: dialogueContextFor({
+                shot,
+                shotLines: shotDialogue?.lines ?? [],
+                voicedLines,
+                audioClips,
+                sceneShots: rawShots.filter(
+                  (row) => row.sceneId === shot.sceneId
+                ),
+                linesByShotId: batchDialogueLinesByShotId,
+                scriptDialogue: scene?.originalScript.dialogue,
+                characters: voiceCharacters,
+              }),
               motionPrompt: selectedMotion
                 ? motionPromptFromVersion(selectedMotion)
                 : undefined,

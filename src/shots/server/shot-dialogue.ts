@@ -18,8 +18,8 @@ import type {
 } from '@/shots/scene-analysis.schema';
 import {
   contextWindow,
-  deriveShotDialogueLines,
   sceneConversation,
+  sceneShotLines,
   shotDialogue,
   type SceneVoicedLine,
   type ShotDialogueLine,
@@ -56,25 +56,30 @@ export function shotDialogueFor(
  * they win for `shot` itself: that may be the prompt mirror, and the section
  * that gets recorded has to key the same words the render asks for, or the
  * new clip would never match.
+ *
+ * Undefined unless the run has to record: voiced lines and no matching clip.
  */
 export function dialogueContextFor(input: {
   shot: { id: string };
   shotLines: readonly ShotDialogueLine[];
+  voicedLines: readonly unknown[];
+  audioClips: readonly unknown[];
   /** Every live shot of the shot's scene, in any order. */
   sceneShots: readonly { id: string; shotNumber: number | null }[];
   linesByShotId: ShotDialogueLinesByShotId;
   scriptDialogue: readonly DialogueLine[] | undefined;
   characters: readonly VoiceCharacter[];
-}): SceneVoicedLine[] {
+}): SceneVoicedLine[] | undefined {
+  if (input.voicedLines.length === 0 || input.audioClips.length > 0) {
+    return undefined;
+  }
   const inOrder = [...input.sceneShots].sort(
     (a, b) => (a.shotNumber ?? 0) - (b.shotNumber ?? 0)
   );
-  const lines = new Map<string, readonly ShotDialogueLine[]>(
-    inOrder.map((member, index) => [
-      member.id,
-      input.linesByShotId.get(member.id) ??
-        deriveShotDialogueLines(input.scriptDialogue, member, index === 0),
-    ])
+  const lines = sceneShotLines(
+    inOrder,
+    (shotId) => input.linesByShotId.get(shotId),
+    input.scriptDialogue
   );
   lines.set(input.shot.id, input.shotLines);
   return contextWindow(

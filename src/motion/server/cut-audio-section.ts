@@ -17,6 +17,7 @@
 import {
   AUDIO_MIN_PAD_SLACK_SECONDS,
   parseWavHeader,
+  wavFrameMath,
   wavHeader,
 } from '@/motion/server/pad-dialogue-audio';
 import {
@@ -72,14 +73,10 @@ export async function cutAudioSection(
 
   // Offsets are snapped DOWN to a whole frame, so a section never starts or
   // ends mid-sample, and clamped to the samples the header says exist.
-  const frame = fmt.channels * (fmt.bitsPerSample / 8);
-  const bytesPerSecond = fmt.sampleRate * frame;
-  const usable = Math.trunc(fmt.dataSize / frame) * frame;
-  const snap = (seconds: number) =>
-    Math.min(
-      usable,
-      Math.trunc((Math.max(0, seconds) * bytesPerSecond) / frame) * frame
-    );
+  const { frame, bytesPerSecond, usable, snap } = wavFrameMath(
+    fmt,
+    fmt.dataSize
+  );
   const from = snap(input.fromSeconds);
   const to = Math.max(from, snap(input.toSeconds));
   if (to === from) {

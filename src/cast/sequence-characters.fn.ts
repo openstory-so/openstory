@@ -652,8 +652,6 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
         },
         'library'
       );
-    }
-    if (talentWithSheets.voiceId) {
       await releaseReplacedVoice(
         context.scopedDb,
         character.voiceId,

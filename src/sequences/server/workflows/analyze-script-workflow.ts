@@ -31,7 +31,7 @@ import {
   dialogueAudioMinSeconds,
 } from '@/motion/dialogue-tts';
 import {
-  deriveShotDialogueLines,
+  sceneShotLines,
   sceneConversation,
   voicedShotIds,
   type ShotDialogueLine,
@@ -1274,16 +1274,10 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         if (sceneShots.length === 0) return [];
         const voiced = sceneConversation(
           sceneShots,
-          new Map(
-            sceneShots.map((shot, index) => [
-              shot.id,
-              dialogueLinesByShotId[shot.id] ??
-                deriveShotDialogueLines(
-                  scene.originalScript.dialogue,
-                  shot,
-                  index === 0
-                ),
-            ])
+          sceneShotLines(
+            sceneShots,
+            (shotId) => dialogueLinesByShotId[shotId],
+            scene.originalScript.dialogue
           ),
           charactersWithSheets
         );

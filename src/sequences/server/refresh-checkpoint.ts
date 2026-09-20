@@ -133,7 +133,12 @@ export async function refreshCheckpointFromCast(
   // References stop can edit a line, and the recording has to say what the
   // shot now says. Keyed by shot id, which the checkpoint's shot mapping
   // already speaks.
-  const shotRows = await scopedDb.shots.listBySequence(sequenceId);
+  const [shotRows, dialogueVersions] = await Promise.all([
+    next.dialogueClipsByShotId
+      ? scopedDb.shots.listBySequence(sequenceId)
+      : Promise.resolve([]),
+    scopedDb.shotDialogue.getSelectedBySequence(sequenceId),
+  ]);
   if (next.dialogueClipsByShotId) {
     next.dialogueClipsByShotId = Object.fromEntries(
       shotRows
@@ -141,8 +146,6 @@ export async function refreshCheckpointFromCast(
         .map((shot) => [shot.id, shot.audioClips ?? []])
     );
   }
-  const dialogueVersions =
-    await scopedDb.shotDialogue.getSelectedBySequence(sequenceId);
   if (dialogueVersions.length > 0) {
     next.dialogueLinesByShotId = Object.fromEntries(
       dialogueVersions.map((version) => [version.shotId, version.lines])

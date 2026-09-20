@@ -44,12 +44,14 @@ describe('dialogueContextFor', () => {
       shot: { id: 'shot-2' },
       // The lines the payload's `voicedLines` came from win for the shot.
       shotLines: [line('Ben', 'Mirror wording.')],
+      voicedLines: [1],
+      audioClips: [],
       sceneShots,
       linesByShotId: new Map([['shot-3', [line('Ana', 'Row wording.')]]]),
       scriptDialogue,
       characters,
     });
-    expect(context.map((turn) => [turn.shotId, turn.text])).toEqual([
+    expect(context?.map((turn) => [turn.shotId, turn.text])).toEqual([
       ['shot-1', 'Where were you?'],
       ['shot-2', 'Mirror wording.'],
       ['shot-3', 'Row wording.'],
@@ -61,12 +63,29 @@ describe('dialogueContextFor', () => {
       dialogueContextFor({
         shot: { id: 'shot-2' },
         shotLines: [],
+        voicedLines: [],
+        audioClips: [],
         sceneShots,
         linesByShotId: new Map(),
         scriptDialogue,
         characters,
       })
-    ).toEqual([]);
+    ).toBeUndefined();
+  });
+
+  it('is undefined when a clip already matches the lines', () => {
+    expect(
+      dialogueContextFor({
+        shot: { id: 'shot-2' },
+        shotLines: [line('Ben', 'Mirror wording.')],
+        voicedLines: [1],
+        audioClips: [1],
+        sceneShots,
+        linesByShotId: new Map(),
+        scriptDialogue,
+        characters,
+      })
+    ).toBeUndefined();
   });
 });
 
