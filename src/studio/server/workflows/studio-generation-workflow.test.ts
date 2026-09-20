@@ -347,6 +347,22 @@ describe('StudioGenerationWorkflow video', () => {
     expect(generatedAssets.markCompleted).toHaveBeenCalled();
   });
 
+  it('resubmits when Ark refuses its own output audio at poll (#1680)', async () => {
+    mockPoll.mockResolvedValueOnce({
+      status: 'failed',
+      error:
+        'AudioSensitiveContentDetected.PolicyViolation: The request failed because the output audio may be related to copyright restrictions. Request id: 0217',
+    });
+    const step = makeStep();
+    const { scopedDb, generatedAssets } = makeScopedDb();
+
+    await makeWorkflow().runBody(makeEvent(VIDEO), step, scopedDb);
+
+    expect(mockSubmit).toHaveBeenCalledTimes(2);
+    expect(step.names).toContain('submit-video-retry-1');
+    expect(generatedAssets.markFailed).not.toHaveBeenCalled();
+  });
+
   it('gives up after three content flags without billing', async () => {
     mockSubmit.mockRejectedValue(new Error('flagged by a content checker'));
     const { scopedDb } = makeScopedDb();
