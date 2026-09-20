@@ -1,5 +1,6 @@
 import { assertDeviceLoginRate } from '@/platform/server/api-v1/device-auth';
 import { getAuth } from '@/platform/server/auth/config';
+import { inferNativeRegistration } from '@/platform/server/auth/oauth-client-registration';
 import { pruneOrphanedOAuthClients } from '@/platform/server/db/scoped';
 import { getLogger } from '@/platform/logger';
 import { createFileRoute } from '@tanstack/react-router';
@@ -16,9 +17,15 @@ const logger = getLogger(['openstory', 'api', 'auth']);
  */
 const CLIENT_REGISTRATION_PATH = '/api/auth/oauth2/register';
 
+function isClientRegistration(request: Request): boolean {
+  return (
+    request.method === 'POST' &&
+    new URL(request.url).pathname === CLIENT_REGISTRATION_PATH
+  );
+}
+
 async function guardClientRegistration(request: Request): Promise<void> {
-  if (request.method !== 'POST') return;
-  if (new URL(request.url).pathname !== CLIENT_REGISTRATION_PATH) return;
+  if (!isClientRegistration(request)) return;
   await assertDeviceLoginRate(request);
   try {
     const pruned = await pruneOrphanedOAuthClients();
@@ -53,7 +60,13 @@ async function handleAuthRequest(request: Request): Promise<Response> {
     throw error;
   }
   const auth = getAuth();
-  const response = await auth.handler(request);
+  // A loopback client that does not say it is native is still one
+  // (`oauth-client-registration.ts`); the provider would refuse it as `web`.
+  const response = await auth.handler(
+    isClientRegistration(request)
+      ? await inferNativeRegistration(request)
+      : request
+  );
   await scheduleFlushAnalytics();
   return response;
 }
