@@ -1,8 +1,7 @@
 import type React from 'react';
 import { useEffect, useRef, useState } from 'react';
-import { Card } from '@/ui/shadcn/card';
+import { Link } from '@tanstack/react-router';
 import { Input } from '@/ui/shadcn/input';
-import { ToggleGroup, ToggleGroupItem } from '@/ui/shadcn/toggle-group';
 import {
   Select,
   SelectContent,
@@ -18,30 +17,17 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/ui/shadcn/popover';
 import { SCRIPT_ANALYSIS_MODELS } from '@/models/models.config';
 import { IMAGE_MODELS } from '@/models/models';
 import { ASPECT_RATIOS } from '@/models/aspect-ratios';
+import { Plus, Search, ShieldCheck, SlidersHorizontal, X } from 'lucide-react';
 import {
-  Clapperboard,
-  ImageIcon,
-  TextIcon,
-  FileTextIcon,
-  ShieldCheck,
-  X,
-  ArrowUpDown,
-  Plus,
-  SlidersHorizontal,
-  ArrowUp,
-  ArrowDown,
-} from 'lucide-react';
-import {
-  isValidSortField,
   isValidViewMode,
   type FilterState,
   type SortCriteria,
-  type ViewMode,
+  type ListViewMode,
 } from './eval-view';
 
 type EvalToolbarProps = {
-  viewMode: ViewMode;
-  onViewModeChange: (mode: ViewMode) => void;
+  viewMode: ListViewMode;
+  onViewModeChange: (mode: ListViewMode) => void;
   filters: FilterState;
   onFiltersChange: (filters: FilterState) => void;
   styleOptions: FilterSelectOption[];
@@ -57,13 +43,6 @@ type EvalToolbarProps = {
   hideInternalLocked?: boolean;
 };
 
-const SORT_FIELDS: { value: SortCriteria['field']; label: string }[] = [
-  { value: 'createdAt', label: 'Date' },
-  { value: 'title', label: 'Title' },
-  { value: 'analysisModel', label: 'Analysis Model' },
-  { value: 'imageModel', label: 'Image Model' },
-];
-
 const countActiveFilters = (filters: FilterState): number => {
   let count = 0;
   if (filters.analysisModel) count++;
@@ -73,66 +52,6 @@ const countActiveFilters = (filters: FilterState): number => {
   if (filters.dateFrom) count++;
   if (filters.dateTo) count++;
   return count;
-};
-
-const VIEW_MODE_ITEMS: {
-  value: ViewMode;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-}[] = [
-  { value: 'script', label: 'Script', icon: FileTextIcon },
-  { value: 'prompts', label: 'Prompts', icon: TextIcon },
-  { value: 'images', label: 'Images', icon: ImageIcon },
-  { value: 'motion', label: 'Motion', icon: Clapperboard },
-];
-
-type ViewModeToggleProps = {
-  viewMode: ViewMode;
-  onViewModeChange: (mode: ViewMode) => void;
-  iconOnly?: boolean;
-};
-
-const ViewModeToggle: React.FC<ViewModeToggleProps> = ({
-  viewMode,
-  onViewModeChange,
-  iconOnly,
-}) => {
-  return (
-    <ToggleGroup
-      type="single"
-      value={viewMode}
-      onValueChange={(value) => {
-        if (value && isValidViewMode(value)) {
-          onViewModeChange(value);
-        }
-      }}
-      variant="outline"
-      spacing={0}
-      className={iconOnly ? 'w-full' : undefined}
-    >
-      {VIEW_MODE_ITEMS.map(({ value, label, icon: Icon }) => (
-        <ToggleGroupItem
-          key={value}
-          value={value}
-          aria-label={`Show ${label.toLowerCase()}`}
-          className={iconOnly ? 'h-10 flex-1' : undefined}
-        >
-          <Icon className={iconOnly ? 'h-4 w-4' : 'h-4 w-4 mr-2'} />
-          {!iconOnly && label}
-        </ToggleGroupItem>
-      ))}
-    </ToggleGroup>
-  );
-};
-
-const getSortFieldOptions = (criteria: SortCriteria[], index: number) => {
-  const usedFields = new Set(
-    criteria.filter((_, i) => i !== index).map((c) => c.field)
-  );
-  const currentField = criteria[index]?.field;
-  return SORT_FIELDS.filter(
-    (f) => !usedFields.has(f.value) || f.value === currentField
-  );
 };
 
 type FilterSelectOption = { value: string; label: string };
@@ -187,6 +106,18 @@ const FilterSelect: React.FC<FilterSelectProps> = ({
   );
 };
 
+const VIEW_OPTIONS = [
+  { value: 'gallery', label: 'Gallery' },
+  { value: 'script', label: 'Compare scripts' },
+  { value: 'prompts', label: 'Compare prompts' },
+  { value: 'images', label: 'Compare images' },
+  { value: 'motion', label: 'Compare motion' },
+];
+const SORT_OPTIONS = [
+  { value: 'newest', label: 'Newest first' },
+  { value: 'oldest', label: 'Oldest first' },
+  { value: 'title', label: 'Title A–Z' },
+];
 export const EvalToolbar: React.FC<EvalToolbarProps> = ({
   viewMode,
   onViewModeChange,
@@ -280,418 +211,218 @@ export const EvalToolbar: React.FC<EvalToolbarProps> = ({
   const activeFilterCount = countActiveFilters(filters);
   const hasActiveFilters = Boolean(filters.search) || activeFilterCount > 0;
 
-  const addSortCriteria = () => {
-    if (sortCriteria.length >= 3) return;
-    const usedFields = new Set(sortCriteria.map((c) => c.field));
-    const availableField = SORT_FIELDS.find((f) => !usedFields.has(f.value));
-    if (availableField) {
-      onSortChange([
-        ...sortCriteria,
-        { field: availableField.value, direction: 'desc' },
-      ]);
-    }
-  };
-
-  const removeSortCriteria = (index: number) => {
-    if (sortCriteria.length <= 1) return;
-    onSortChange(sortCriteria.filter((_, i) => i !== index));
-  };
-
-  const toggleSortDirection = (index: number) => {
-    const current = sortCriteria[index];
-    if (!current) return;
-    const updated = [...sortCriteria];
-    updated[index] = {
-      ...current,
-      direction: current.direction === 'asc' ? 'desc' : 'asc',
-    };
-    onSortChange(updated);
-  };
-
-  const updateSortField = (index: number, field: SortCriteria['field']) => {
-    const current = sortCriteria[index];
-    if (!current) return;
-    const updated = [...sortCriteria];
-    updated[index] = { ...current, field };
-    onSortChange(updated);
-  };
-
-  // Build options for select components
-  const analysisModelOptions = [
-    { value: 'all', label: 'All Analysis Models' },
-    ...SCRIPT_ANALYSIS_MODELS.filter((model) => !('hidden' in model)).map(
-      (model) => ({
-        value: model.id,
-        label: model.name,
-      })
-    ),
-  ];
-
-  const imageModelOptions = [
-    { value: 'all', label: 'All Image Models' },
-    ...Object.values(IMAGE_MODELS)
-      .filter((m) => !('hidden' in m))
-      .map((model) => ({
-        value: model.id,
-        label: model.name,
-      })),
-  ];
-
-  const aspectRatioOptions = [
-    { value: 'all', label: 'All Aspect Ratios' },
-    ...ASPECT_RATIOS.map((r) => ({ value: r.value, label: r.label })),
-  ];
-
   const primarySort = sortCriteria[0];
-
+  const sortValue =
+    primarySort?.field === 'title'
+      ? 'title'
+      : primarySort?.direction === 'asc'
+        ? 'oldest'
+        : 'newest';
   return (
-    <>
-      {/* Mobile layout (≤sm) — flat, no Card chrome */}
-      <div className="flex flex-col gap-2 pb-3 border-b border-border sm:hidden">
-        <div className="flex items-center gap-2">
-          <Input
-            placeholder={
-              supportMode ? 'Search title, name, email…' : 'Search by title…'
-            }
-            value={searchDraft}
-            onChange={handleSearchChange}
-            className="h-11 flex-1 min-w-0"
+    <div className="flex shrink-0 flex-col gap-3">
+      {isAdmin && (
+        <div className="flex flex-wrap items-center gap-4 rounded-lg border bg-muted/30 px-3 py-2">
+          <ShieldCheck className="size-4 text-muted-foreground" />
+          <Label htmlFor="support-mode">Support mode</Label>
+          <Switch
+            id="support-mode"
+            checked={Boolean(supportMode)}
+            onCheckedChange={(value) => onSupportModeChange?.(value)}
           />
-          <Popover open={filtersOpen} onOpenChange={setFiltersOpen}>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                size="lg"
-                className="h-11 shrink-0 gap-1.5 px-3"
-                aria-label={
-                  activeFilterCount > 0
-                    ? `Filters and sort, ${activeFilterCount} active`
-                    : 'Filters and sort'
-                }
-              >
-                <SlidersHorizontal className="h-4 w-4" />
-                {activeFilterCount > 0 && (
-                  <Badge
-                    variant="secondary"
-                    className="h-5 min-w-5 justify-center px-1.5"
-                  >
-                    {activeFilterCount}
-                  </Badge>
-                )}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent
-              align="end"
-              className="flex w-[calc(100vw-2rem)] max-w-sm flex-col gap-3"
-            >
-              {primarySort && (
-                <div className="flex flex-col gap-1.5">
-                  <Label className="text-xs text-muted-foreground">
-                    Sort by
-                  </Label>
-                  <div className="flex items-center gap-2">
-                    <Select
-                      value={primarySort.field}
-                      items={getSortFieldOptions(sortCriteria, 0)}
-                      onValueChange={(value) => {
-                        if (value && isValidSortField(value)) {
-                          updateSortField(0, value);
-                        }
-                      }}
-                    >
-                      <SelectTrigger
-                        aria-label="Sort by"
-                        className="h-11 flex-1"
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {getSortFieldOptions(sortCriteria, 0).map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-11 w-11 shrink-0"
-                      onClick={() => toggleSortDirection(0)}
-                      aria-label={
-                        primarySort.direction === 'asc'
-                          ? 'Sort ascending'
-                          : 'Sort descending'
-                      }
-                    >
-                      {primarySort.direction === 'asc' ? (
-                        <ArrowUp className="h-4 w-4" />
-                      ) : (
-                        <ArrowDown className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              <FilterSelect
-                id="mobile-analysis-model"
-                label="Analysis Model"
-                value={filters.analysisModel || 'all'}
-                onValueChange={handleAnalysisModelChange}
-                options={analysisModelOptions}
-                placeholder="Analysis Model"
-                triggerClassName="h-11"
-              />
-
-              <FilterSelect
-                id="mobile-image-model"
-                label="Image Model"
-                value={filters.imageModel || 'all'}
-                onValueChange={handleImageModelChange}
-                options={imageModelOptions}
-                placeholder="Image Model"
-                triggerClassName="h-11"
-              />
-
-              <FilterSelect
-                id="mobile-aspect-ratio"
-                label="Aspect Ratio"
-                value={filters.aspectRatio || 'all'}
-                onValueChange={handleAspectRatioChange}
-                options={aspectRatioOptions}
-                placeholder="Aspect Ratio"
-                triggerClassName="h-11"
-              />
-
-              <FilterSelect
-                id="mobile-style"
-                label="Style"
-                value={filters.styleId || 'all'}
-                onValueChange={handleStyleChange}
-                options={styleOptions}
-                placeholder="Style"
-                triggerClassName="h-11"
-              />
-
-              {isAdmin && (
-                <div className="flex flex-col gap-3 border-t pt-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <Label
-                      htmlFor="mobile-support-mode"
-                      className="flex items-center gap-2 text-sm font-medium"
-                    >
-                      <ShieldCheck className="h-4 w-4 text-muted-foreground" />
-                      Support
-                    </Label>
-                    <Switch
-                      id="mobile-support-mode"
-                      checked={Boolean(supportMode)}
-                      onCheckedChange={(v) => onSupportModeChange?.(v)}
-                    />
-                  </div>
-                  {supportMode && hideInternalAvailable && (
-                    <div className="flex items-center justify-between gap-2">
-                      <Label
-                        htmlFor="mobile-hide-internal"
-                        className="text-sm font-medium"
-                      >
-                        Hide internal
-                      </Label>
-                      <Switch
-                        id="mobile-hide-internal"
-                        checked={Boolean(hideInternal)}
-                        onCheckedChange={(v) => onHideInternalChange?.(v)}
-                        disabled={Boolean(hideInternalLocked)}
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div className="flex items-center justify-between gap-2 border-t pt-3">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={clearFilters}
-                  disabled={!hasActiveFilters}
-                >
-                  <X className="h-4 w-4 mr-1" />
-                  Clear
-                </Button>
-                <Button size="sm" onClick={() => setFiltersOpen(false)}>
-                  Done
-                </Button>
-              </div>
-            </PopoverContent>
-          </Popover>
-        </div>
-
-        <ViewModeToggle
-          viewMode={viewMode}
-          onViewModeChange={onViewModeChange}
-          iconOnly
-        />
-      </div>
-
-      {/* Desktop layout (≥sm) — keeps Card chrome */}
-      <Card className="hidden sm:flex sm:flex-col sm:gap-3 p-3">
-        {/* Row 1: filters */}
-        <div className="flex flex-wrap items-center gap-2">
-          <Input
-            placeholder={
-              supportMode
-                ? 'Search by title, name, or email…'
-                : 'Search by title…'
-            }
-            value={searchDraft}
-            onChange={handleSearchChange}
-            className="w-48"
-          />
-          <FilterSelect
-            value={filters.analysisModel || 'all'}
-            onValueChange={handleAnalysisModelChange}
-            options={analysisModelOptions}
-            placeholder="Analysis Model"
-            triggerClassName="w-44"
-          />
-          <FilterSelect
-            value={filters.imageModel || 'all'}
-            onValueChange={handleImageModelChange}
-            options={imageModelOptions}
-            placeholder="Image Model"
-            triggerClassName="w-44"
-          />
-          <FilterSelect
-            value={filters.aspectRatio || 'all'}
-            onValueChange={handleAspectRatioChange}
-            options={aspectRatioOptions}
-            placeholder="Aspect Ratio"
-            triggerClassName="w-36"
-          />
-          <FilterSelect
-            value={filters.styleId || 'all'}
-            onValueChange={handleStyleChange}
-            options={styleOptions}
-            placeholder="Style"
-            triggerClassName="w-44"
-          />
-          {hasActiveFilters && (
-            <Button variant="ghost" size="sm" onClick={clearFilters}>
-              <X className="h-4 w-4 mr-1" />
-              Clear
-            </Button>
+          {supportMode && (
+            <span className="text-xs text-muted-foreground">All teams</span>
           )}
-        </div>
-
-        {/* Row 2: view toggle, sort, support mode */}
-        <div className="flex flex-wrap items-center gap-3">
-          <ViewModeToggle
-            viewMode={viewMode}
-            onViewModeChange={onViewModeChange}
-          />
-
-          <div className="flex items-center gap-2">
-            <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
-            {sortCriteria.map((criteria, index) => {
-              const sortFieldOptions = getSortFieldOptions(sortCriteria, index);
-
-              return (
-                <Badge
-                  key={criteria.field}
-                  variant="secondary"
-                  className="flex items-center gap-1 px-2 py-1"
-                >
-                  <Select
-                    value={criteria.field}
-                    items={sortFieldOptions}
-                    onValueChange={(value) => {
-                      if (value && isValidSortField(value)) {
-                        updateSortField(index, value);
-                      }
-                    }}
-                  >
-                    <SelectTrigger
-                      size="sm"
-                      className="h-auto p-0 border-0 bg-transparent w-auto min-w-16"
-                    >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {sortFieldOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-4 w-4 p-0"
-                    onClick={() => toggleSortDirection(index)}
-                  >
-                    {criteria.direction === 'asc' ? '↑' : '↓'}
-                  </Button>
-                  {sortCriteria.length > 1 && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-4 w-4 p-0"
-                      onClick={() => removeSortCriteria(index)}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  )}
-                </Badge>
-              );
-            })}
-            {sortCriteria.length < 3 && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                onClick={addSortCriteria}
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
-
-          {/* Support Mode (admin only) — pushed to end of row */}
-          {isAdmin && (
-            <div className="ml-auto flex items-center gap-4">
-              {supportMode && hideInternalAvailable && (
-                <div className="flex items-center gap-2">
-                  <Label
-                    htmlFor="hide-internal"
-                    className="text-sm font-medium"
-                  >
-                    Hide internal
-                  </Label>
-                  <Switch
-                    id="hide-internal"
-                    checked={Boolean(hideInternal)}
-                    onCheckedChange={(v) => onHideInternalChange?.(v)}
-                    disabled={Boolean(hideInternalLocked)}
-                  />
-                </div>
-              )}
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="h-4 w-4 text-muted-foreground" />
-                <Label htmlFor="support-mode" className="text-sm font-medium">
-                  Support
-                </Label>
-                <Switch
-                  id="support-mode"
-                  checked={Boolean(supportMode)}
-                  onCheckedChange={(v) => onSupportModeChange?.(v)}
-                />
-              </div>
+          {supportMode && hideInternalAvailable && (
+            <div className="ml-auto flex items-center gap-2">
+              <Label htmlFor="hide-internal">Hide internal</Label>
+              <Switch
+                id="hide-internal"
+                checked={Boolean(hideInternal)}
+                onCheckedChange={(value) => onHideInternalChange?.(value)}
+                disabled={Boolean(hideInternalLocked)}
+              />
             </div>
           )}
         </div>
-      </Card>
-    </>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-48 flex-1">
+          <Search className="pointer-events-none absolute left-3 top-3 size-4 text-muted-foreground" />
+          <Input
+            aria-label="Search sequences"
+            placeholder={
+              supportMode
+                ? 'Search title, name or email…'
+                : 'Search your sequences…'
+            }
+            value={searchDraft}
+            onChange={handleSearchChange}
+            className="h-11 sm:h-10 pl-9"
+          />
+        </div>
+        <Popover open={filtersOpen} onOpenChange={setFiltersOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              className="h-11 sm:h-10 gap-2"
+              aria-label={
+                activeFilterCount
+                  ? `Filters, ${activeFilterCount} active`
+                  : 'Filters'
+              }
+            >
+              <SlidersHorizontal className="size-4" /> Filters
+              {activeFilterCount > 0 && (
+                <Badge variant="secondary">{activeFilterCount}</Badge>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent
+            align="end"
+            className="flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-4"
+          >
+            <p className="text-sm font-medium">Filter sequences</p>
+            <FilterSelect
+              id="sequence-style"
+              label="Style"
+              value={filters.styleId || 'all'}
+              onValueChange={handleStyleChange}
+              options={styleOptions}
+              placeholder="All styles"
+            />
+            <FilterSelect
+              id="sequence-aspect-ratio"
+              label="Format"
+              value={filters.aspectRatio || 'all'}
+              onValueChange={handleAspectRatioChange}
+              options={[
+                { value: 'all', label: 'All formats' },
+                ...ASPECT_RATIOS.map((r) => ({
+                  value: r.value,
+                  label: r.label,
+                })),
+              ]}
+              placeholder="All formats"
+            />
+            <FilterSelect
+              id="sequence-analysis-model"
+              label="Analysis model"
+              value={filters.analysisModel || 'all'}
+              onValueChange={handleAnalysisModelChange}
+              options={[
+                { value: 'all', label: 'All analysis models' },
+                ...SCRIPT_ANALYSIS_MODELS.filter((m) => !('hidden' in m)).map(
+                  (m) => ({ value: m.id, label: m.name })
+                ),
+              ]}
+              placeholder="All analysis models"
+            />
+            <FilterSelect
+              id="sequence-image-model"
+              label="Image model"
+              value={filters.imageModel || 'all'}
+              onValueChange={handleImageModelChange}
+              options={[
+                { value: 'all', label: 'All image models' },
+                ...Object.values(IMAGE_MODELS)
+                  .filter((m) => !('hidden' in m))
+                  .map((m) => ({ value: m.id, label: m.name })),
+              ]}
+              placeholder="All image models"
+            />
+            <Button
+              variant="ghost"
+              onClick={clearFilters}
+              disabled={!hasActiveFilters}
+            >
+              Clear filters
+            </Button>
+          </PopoverContent>
+        </Popover>
+        <Select
+          value={sortValue}
+          items={SORT_OPTIONS}
+          onValueChange={(value) => {
+            if (value === 'title')
+              onSortChange([{ field: 'title', direction: 'asc' }]);
+            else if (value === 'newest' || value === 'oldest')
+              onSortChange([
+                {
+                  field: 'createdAt',
+                  direction: value === 'oldest' ? 'asc' : 'desc',
+                },
+              ]);
+          }}
+        >
+          <SelectTrigger aria-label="Sort sequences" className="h-11 sm:h-10">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {SORT_OPTIONS.map((o) => (
+              <SelectItem key={o.value} value={o.value}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select
+          value={viewMode}
+          items={VIEW_OPTIONS}
+          onValueChange={(value) => {
+            if (value === 'gallery' || (value && isValidViewMode(value)))
+              onViewModeChange(value);
+          }}
+        >
+          <SelectTrigger aria-label="Sequence view" className="h-11 sm:h-10">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {VIEW_OPTIONS.map((o) => (
+              <SelectItem key={o.value} value={o.value}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button asChild className="h-11 sm:h-10">
+          <Link to="/">
+            <Plus className="size-4" />
+            New sequence
+          </Link>
+        </Button>
+      </div>
+      {hasActiveFilters && (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          {filters.search && <span>Matching “{filters.search}”</span>}
+          {filters.styleId && (
+            <Badge variant="secondary">
+              {styleOptions.find((o) => o.value === filters.styleId)?.label ??
+                filters.styleId}
+            </Badge>
+          )}
+          {filters.aspectRatio && (
+            <Badge variant="secondary">{filters.aspectRatio}</Badge>
+          )}
+          {filters.analysisModel && (
+            <Badge variant="secondary">
+              {SCRIPT_ANALYSIS_MODELS.find(
+                (m) => m.id === filters.analysisModel
+              )?.name ?? filters.analysisModel}
+            </Badge>
+          )}
+          {filters.imageModel && (
+            <Badge variant="secondary">
+              {Object.values(IMAGE_MODELS).find(
+                (m) => m.id === filters.imageModel
+              )?.name ?? filters.imageModel}
+            </Badge>
+          )}
+          <Button size="sm" variant="ghost" onClick={clearFilters}>
+            <X className="size-3" />
+            Clear all
+          </Button>
+        </div>
+      )}
+    </div>
   );
 };

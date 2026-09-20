@@ -116,9 +116,9 @@ export const EvalSequenceMetadata: React.FC<EvalSequenceMetadataProps> = ({
  * Row actions (#1108 Phase 4). Archiving is the sequence-level soft delete
  * (status flip, reversible from the Archived strip below the list).
  */
-const SequenceRowMenu: React.FC<{ sequence: SequenceWithShots }> = ({
-  sequence,
-}) => {
+export const SequenceRowMenu: React.FC<{
+  sequence: Pick<SequenceWithShots, 'id' | 'title'>;
+}> = ({ sequence }) => {
   const archive = useArchiveSequence();
   return (
     <DropdownMenu>

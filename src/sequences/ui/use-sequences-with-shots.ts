@@ -13,20 +13,16 @@ export type SequenceWithShots = Sequence & {
   creatorEmail?: string | null;
 };
 
-/**
- * Fetches all sequences and their shots. Previously this fanned out one
- * `getShotsFn` per sequence via `useQueries`, which crashed iOS Chrome's
- * WebProcess once teams accumulated ~50+ sequences (the parallel server-fn
- * round-trips saturated the connection pool — see the
- * `claude/mobile-sequence-navigation-dmLJn` branch history for the wrangler
- * tail). Now one batched call returns every shot, grouped client-side.
- */
-export function useSequencesWithShots() {
+/** Only fetch shot details when a comparison view is open. */
+export function useSequencesWithShots({
+  enabled = true,
+  loadShots = true,
+}: { enabled?: boolean; loadShots?: boolean } = {}) {
   const {
     data: sequences,
     isLoading: seqLoading,
     error: seqError,
-  } = useSequences();
+  } = useSequences(undefined, { enabled });
 
   const sequenceIds = useMemo(
     () => (sequences ?? []).map((s) => s.id),
@@ -52,7 +48,7 @@ export function useSequencesWithShots() {
       }
       return map;
     },
-    enabled: sequenceIds.length > 0,
+    enabled: enabled && loadShots && sequenceIds.length > 0,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -75,7 +71,7 @@ export function useSequencesWithShots() {
     return map;
   }, [sequences, shotsLoading]);
 
-  const error = seqError || shotsError;
+  const error = seqError || (loadShots ? shotsError : null);
 
   return {
     data,

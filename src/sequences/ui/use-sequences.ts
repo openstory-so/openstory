@@ -192,7 +192,7 @@ export function useSetSequenceModel() {
 
 // Hook for listing sequences. The app shell is anonymous-browsable but the
 // fn requires auth, so don't fire (and error-log) it without a session (#1333).
-export function useSequences(teamId?: string) {
+export function useSequences(teamId?: string, options?: { enabled?: boolean }) {
   const { data: session } = useAuthSession();
   return useQuery<Sequence[]>({
     queryKey: sequenceKeys.list(teamId),
@@ -200,7 +200,7 @@ export function useSequences(teamId?: string) {
       return getSequencesFn();
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
-    enabled: !!session,
+    enabled: !!session && (options?.enabled ?? true),
   });
 }
 

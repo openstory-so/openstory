@@ -1,9 +1,10 @@
 import type React from 'react';
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import { ArchivedSequences } from '@/sequences/ui/archived-sequences';
 import { EvalToolbar } from './eval-toolbar';
-import { EvalMatrix } from './eval-matrix';
-import { EvalSequencesMobile } from './eval-sequences-mobile';
+import { SequenceGallery } from './sequence-gallery';
+import { useIsMobile } from '@/ui/use-mobile';
+
 import {
   useSequencesWithShots,
   type SequenceWithShots,
@@ -31,6 +32,15 @@ import {
 import type { Sequence } from '@/platform/server/db/schema';
 import type { ShotView } from '@/shots/shot-view';
 
+const EvalMatrix = lazy(() =>
+  import('./eval-matrix').then((m) => ({ default: m.EvalMatrix }))
+);
+const EvalSequencesMobile = lazy(() =>
+  import('./eval-sequences-mobile').then((m) => ({
+    default: m.EvalSequencesMobile,
+  }))
+);
+
 const PAGE_SIZE = 50;
 
 const adminSupportKeys = {
@@ -46,7 +56,11 @@ type AdminSequenceWithShots = SequenceWithShots & {
   creatorEmail: string | null;
 };
 
-function useAdminAllSequencesWithShots(enabled: boolean, search?: string) {
+function useAdminAllSequencesWithShots(
+  enabled: boolean,
+  loadShots: boolean,
+  search?: string
+) {
   const trimmedSearch = search?.trim() || undefined;
 
   const {
@@ -79,14 +93,16 @@ function useAdminAllSequencesWithShots(enabled: boolean, search?: string) {
   );
 
   const shotsQueries = useQueries({
-    queries: allSequences.map((seq: Sequence) => ({
-      queryKey: adminSupportKeys.shots(seq.id),
-      queryFn: async (): Promise<ShotView[]> => {
-        return getAdminShotsFn({ data: { sequenceId: seq.id } });
-      },
-      staleTime: 60_000,
-      enabled: allSequences.length > 0,
-    })),
+    queries: (enabled && loadShots ? allSequences : []).map(
+      (seq: Sequence) => ({
+        queryKey: adminSupportKeys.shots(seq.id),
+        queryFn: async (): Promise<ShotView[]> => {
+          return getAdminShotsFn({ data: { sequenceId: seq.id } });
+        },
+        staleTime: 60_000,
+        enabled: allSequences.length > 0,
+      })
+    ),
   });
 
   const data = useMemo<AdminSequenceWithShots[]>(() => {
@@ -128,6 +144,7 @@ function useAdminAllSequencesWithShots(enabled: boolean, search?: string) {
 }
 
 export type ViewMode = 'script' | 'prompts' | 'images' | 'motion';
+export type ListViewMode = 'gallery' | ViewMode;
 
 export function isValidViewMode(value: string): value is ViewMode {
   return (
@@ -135,17 +152,6 @@ export function isValidViewMode(value: string): value is ViewMode {
     value === 'prompts' ||
     value === 'images' ||
     value === 'motion'
-  );
-}
-
-export function isValidSortField(
-  value: string
-): value is SortCriteria['field'] {
-  return (
-    value === 'title' ||
-    value === 'createdAt' ||
-    value === 'analysisModel' ||
-    value === 'imageModel'
   );
 }
 
@@ -175,7 +181,7 @@ export const EvalView: React.FC<EvalViewProps> = ({
   prefs,
   setPrefs,
 }) => {
-  const [viewMode, setViewMode] = useState<ViewMode>('prompts');
+  const [viewMode, setViewMode] = useState<ListViewMode>('gallery');
   const [sortCriteria, setSortCriteria] = useState<SortCriteria[]>([
     { field: 'createdAt', direction: 'desc' },
   ]);
@@ -216,9 +222,15 @@ export const EvalView: React.FC<EvalViewProps> = ({
   const supportMode = isAdmin && prefs.supportMode;
   const hideInternal = supportMode && prefs.hideInternal;
 
-  const ownData = useSequencesWithShots();
+  const isMobile = useIsMobile();
+  const loadShots = viewMode !== 'gallery';
+  const ownData = useSequencesWithShots({
+    enabled: !supportMode && !(prefs.supportMode && adminStatusLoading),
+    loadShots,
+  });
   const adminData = useAdminAllSequencesWithShots(
     supportMode,
+    loadShots,
     supportMode ? filters.search : undefined
   );
 
@@ -263,7 +275,7 @@ export const EvalView: React.FC<EvalViewProps> = ({
   // Team-scoped divergence flags so own-data rows show a "variants available"
   // dot. In support mode rows belong to other teams, so the flag is irrelevant.
   const { data: divergentByTeam } = useTeamDivergentSequenceVariants(
-    !supportMode && sequences.length > 0
+    !supportMode && loadShots && sequences.length > 0
   );
   const divergenceMap = useMemo(() => {
     const map = new Map<string, { hasMusic: boolean }>();
@@ -308,18 +320,6 @@ export const EvalView: React.FC<EvalViewProps> = ({
       }
     : undefined;
 
-  if (error) {
-    return (
-      <div className="flex-1 overflow-hidden flex flex-col gap-4">
-        <Card className="p-8 text-center">
-          <p className="text-destructive">
-            Failed to load sequences: {error.message}
-          </p>
-        </Card>
-      </div>
-    );
-  }
-
   return (
     <div className="flex-1 overflow-hidden flex flex-col gap-4">
       <EvalToolbar
@@ -356,61 +356,83 @@ export const EvalView: React.FC<EvalViewProps> = ({
         hideInternalAvailable={internalDomains.length > 0}
         hideInternalLocked={Boolean(search.user)}
       />
-      {isLoading ? (
-        <Card className="flex-1 p-4">
-          <div className="space-y-4">
-            {[1, 2, 3].map((n) => (
-              <div key={`skeleton-${n}`} className="flex gap-4">
-                <Skeleton className="h-24 w-64" />
-                <Skeleton className="h-24 w-48" />
-                <Skeleton className="h-24 w-48" />
-                <Skeleton className="h-24 w-48" />
-              </div>
-            ))}
-          </div>
+      {error ? (
+        <Card className="p-8 text-center" role="alert">
+          <p className="text-destructive">
+            Failed to load sequences: {error.message}
+          </p>
         </Card>
+      ) : isLoading ? (
+        <div className="grid grid-cols-1 gap-5 overflow-hidden sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+          {[1, 2, 3, 4, 5, 6].map((n) => (
+            <Card key={n} className="gap-3 p-0 pb-4">
+              <Skeleton className="aspect-video w-full" />
+              <div className="flex flex-col gap-2 px-4">
+                <Skeleton className="h-5 w-3/4" />
+                <Skeleton className="h-3 w-1/2" />
+              </div>
+            </Card>
+          ))}
+        </div>
       ) : filteredAndSorted.length === 0 ? (
         <EmptyState
           icon={<VideoIcon className="h-12 w-12" />}
-          title={filters.search ? 'No matching sequences' : 'No sequences yet'}
+          title={
+            sequences.length > 0 || filters.search
+              ? 'No matching sequences'
+              : 'No sequences yet'
+          }
           description={
             filters.search
               ? `No sequences match "${filters.search}".`
-              : supportMode
-                ? 'No sequences found across any users.'
-                : 'Get started by creating your first video sequence. Transform your script into professional video content with AI assistance.'
+              : sequences.length > 0
+                ? 'Try changing or clearing your filters.'
+                : supportMode
+                  ? 'No sequences found across any users.'
+                  : 'Get started by creating your first video sequence. Transform your script into professional video content with AI assistance.'
           }
           action={
-            !filters.search && !supportMode ? (
+            !filters.search && !supportMode && sequences.length === 0 ? (
               <Button asChild size="lg">
                 <Link to="/">Create Your First Sequence</Link>
               </Button>
             ) : undefined
           }
         />
+      ) : viewMode === 'gallery' ? (
+        <SequenceGallery
+          sequences={filteredAndSorted}
+          supportMode={supportMode}
+          styleNameById={styleNameById}
+        />
       ) : (
-        <>
-          <div className="flex-1 min-h-0 flex flex-col sm:hidden">
+        <Suspense fallback={<Skeleton className="flex-1 min-h-64" />}>
+          {isMobile ? (
             <EvalSequencesMobile
               sequences={filteredAndSorted}
               viewMode={viewMode}
               shotsLoadingMap={shotsLoadingMap}
               divergenceMap={divergenceMap}
-              onLoadMore={handleLoadMore}
-              hasMore={supportMode ? adminData.hasNextPage : false}
             />
-          </div>
-          <div className="flex-1 min-h-0 hidden sm:flex sm:flex-col">
+          ) : (
             <EvalMatrix
               sequences={filteredAndSorted}
               viewMode={viewMode}
               shotsLoadingMap={shotsLoadingMap}
               divergenceMap={divergenceMap}
-              onLoadMore={handleLoadMore}
-              hasMore={supportMode ? adminData.hasNextPage : false}
             />
-          </div>
-        </>
+          )}
+        </Suspense>
+      )}
+      {supportMode && adminData.hasNextPage && (
+        <Button
+          variant="outline"
+          className="self-center shrink-0"
+          onClick={handleLoadMore}
+          disabled={adminData.isFetchingNextPage}
+        >
+          {adminData.isFetchingNextPage ? 'Loading…' : 'Load more sequences'}
+        </Button>
       )}
       {/* Archived strip (#1108 Phase 4) — own-data only; renders nothing when
           the team has no archived sequences. */}
