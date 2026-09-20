@@ -243,6 +243,7 @@ const ALICE: CharacterBibleEntry = {
   movement: '',
   voiceDescription: '',
   voiceOnly: false,
+  isPerson: true,
   consistencyTag: 'alice_tag',
 };
 const BOB: CharacterBibleEntry = {

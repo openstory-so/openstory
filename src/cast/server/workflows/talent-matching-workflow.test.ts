@@ -77,6 +77,7 @@ const entry = (
   movement: '',
   voiceDescription: '',
   voiceOnly: false,
+  isPerson: true,
   consistencyTag: overrides.characterId,
   ...overrides,
 });

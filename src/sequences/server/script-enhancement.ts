@@ -248,9 +248,10 @@ export async function* streamScriptEnhancement(
       },
     })) {
       if (chunk.done) {
+        // A region block retries on another model (#1259); bill what answered.
         totalCost = addMicros(
           totalCost,
-          llmCostFromUsage(chunk.usage, model, llmKey.via)
+          llmCostFromUsage(chunk.usage, chunk.model, chunk.via)
         );
         continue;
       }

@@ -78,30 +78,30 @@ describe('buildMotionJobs', () => {
 });
 
 describe('packMotionBatchShots then buildMotionJobs (#1510)', () => {
-  it('fans one job per packed segment per model', () => {
+  it('fans independent jobs for shots that already meet the minimum', () => {
     const sceneShots = [
       { shotId: 'a', sceneId: 'sc-1', duration: 4, model: B },
       { shotId: 'b', sceneId: 'sc-1', duration: 6, model: B },
     ];
     const packed = packMotionBatchShots(sceneShots, [B]);
     const jobs = buildMotionJobs(packed, [B]);
-    expect(jobs).toHaveLength(1);
-    expect(jobs[0]?.shot.shotId).toBe('a');
-    expect(jobs[0]?.shot.duration).toBe(10);
-    expect(jobs[0]?.model).toBe(B);
+    expect(jobs.map((j) => [j.shot.shotId, j.model, j.shot.duration])).toEqual([
+      ['a', B, 4],
+      ['b', B, 6],
+    ]);
   });
 
   it('a leftover Grok shot next to a Seedance pair still packs the pair when videoModels is Seedance', () => {
     const grok: ImageToVideoModel = 'grok_imagine_video_1_5';
     const sceneShots = [
-      { shotId: 'a', sceneId: 'sc-1', duration: 4, model: B },
-      { shotId: 'b', sceneId: 'sc-1', duration: 6, model: B },
+      { shotId: 'a', sceneId: 'sc-1', duration: 2, model: B },
+      { shotId: 'b', sceneId: 'sc-1', duration: 2, model: B },
       { shotId: 'c', sceneId: 'sc-2', duration: 1, model: grok },
     ];
     const packed = packMotionBatchShots(sceneShots, [B]);
     const jobs = buildMotionJobs(packed, [B]);
     expect(jobs.map((j) => [j.shot.shotId, j.model, j.shot.duration])).toEqual([
-      ['a', B, 10],
+      ['a', B, 4],
       ['c', grok, 1],
     ]);
   });

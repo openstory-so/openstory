@@ -19,17 +19,7 @@
  */
 
 import { sequenceAccessMiddleware } from '@/platform/middleware.fn';
-import {
-  loadSceneContextBySequence,
-  resolveSceneForShot,
-} from '@/shots/server/scene-script';
-import {
-  matchCharactersToScene,
-  matchElementsToShot,
-  matchLocationsToScene,
-} from './scene-matching';
-import { isElementVoiceToken } from '@/motion/dialogue-tts';
-import { rendersReferenceOnly } from './use-start-frame';
+import { loadSceneFacets } from '@/shots/server/scene-facets';
 import { createServerFn } from '@tanstack/react-start';
 
 /** Facet ids that apply to each shot, keyed by shot id. */
@@ -42,61 +32,7 @@ export type SceneFacetMaps = {
 export const getSceneFacetMapsFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
   .handler(async ({ context }): Promise<SceneFacetMaps> => {
-    const { scopedDb, sequence } = context;
-
-    const [shots, locations, characters, elements, sceneContext, anchors] =
-      await Promise.all([
-        scopedDb.shots.listBySequence(sequence.id),
-        scopedDb.sequenceLocations.list(sequence.id),
-        scopedDb.characters.listWithTalent(sequence.id),
-        scopedDb.sequenceElements.list(sequence.id),
-        loadSceneContextBySequence(scopedDb, sequence.id),
-        scopedDb.frames.listAnchorsBySequence(sequence.id),
-      ]);
-
-    const promptByFrameId =
-      await scopedDb.framePromptVersions.getSelectedByFrameIds(
-        anchors.map((f) => f.id)
-      );
-    const promptByShotId = new Map(
-      anchors.map((f) => [f.shotId, promptByFrameId.get(f.id)?.text ?? ''])
-    );
-    const motionByShotId =
-      await scopedDb.shotPromptVersions.getSelectedMotionByShots(
-        shots.map((s) => s.id)
-      );
-
-    const locationIdsByShot: Record<string, string[]> = {};
-    const characterIdsByShot: Record<string, string[]> = {};
-    const elementIdsByShot: Record<string, string[]> = {};
-
-    for (const shot of shots) {
-      const scene = resolveSceneForShot(shot, sceneContext).scene;
-      locationIdsByShot[shot.id] = matchLocationsToScene(
-        locations,
-        scene?.continuity?.environmentTag ?? '',
-        scene?.metadata?.location ?? '',
-        scene?.originalScript.extract
-      ).map((l) => l.id);
-
-      const characterTags = scene?.continuity?.characterTags ?? [];
-      characterIdsByShot[shot.id] = matchCharactersToScene(
-        characters,
-        characterTags
-      ).map((c) => c.id);
-
-      const motion = motionByShotId.get(shot.id);
-      elementIdsByShot[shot.id] = matchElementsToShot(elements, {
-        visualPrompt: promptByShotId.get(shot.id),
-        elementTags: scene?.continuity?.elementTags,
-        sceneExtract: scene?.originalScript?.extract,
-        motionPrompt: motion?.text,
-        voiceTokens: motion?.dialogue?.lines.flatMap((line) =>
-          isElementVoiceToken(line.voiceToken) ? [line.voiceToken] : []
-        ),
-        referenceOnly: rendersReferenceOnly(shot, sequence),
-      }).map((e) => e.id);
-    }
-
+    const { locationIdsByShot, characterIdsByShot, elementIdsByShot } =
+      await loadSceneFacets(context.scopedDb, context.sequence);
     return { locationIdsByShot, characterIdsByShot, elementIdsByShot };
   });

@@ -12,8 +12,8 @@ import { workflowNameFromRunId } from '@/platform/server/workflow/trigger-bindin
 import type { NewShot } from '@/platform/server/db/schema';
 import {
   computeShotStaleness,
+  loadShotStalenessBatch,
   UNTRACKED_STALENESS,
-  type ShotStalenessRefs,
   type ShotStalenessResult,
 } from '@/shots/server/shot-staleness';
 import {
@@ -43,10 +43,7 @@ import { dbSceneId } from './scene-id';
 import { NotFoundError } from '@/platform/errors';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { typedFromEntries } from '@/platform/typed-object';
-import {
-  loadSceneContextBySequence,
-  resolveSceneForShot,
-} from '@/shots/server/scene-script';
+import { resolveSceneForShot } from '@/shots/server/scene-script';
 import { rescanContinuityFromPrompt } from '@/shots/server/rescan-continuity-from-prompt';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import type { UpdateStaleShotsWorkflowInput } from '@/platform/server/workflow/types';
@@ -766,32 +763,14 @@ export const getShotStalenessBatchFn = createServerFn({ method: 'GET' })
     }
 
     await scopedDb.shots.ensureAnchorFrames(targetShots);
-    // Loaded once here and threaded into every shot's comparison as `refs`;
-    // without that each shot would re-read all four for both prompt branches.
-    const [
-      anchorRows,
-      scriptBySceneId,
-      characters,
-      locations,
-      elements,
-      style,
-    ] = await Promise.all([
-      scopedDb.frames.listAnchorsBySequence(sequence.id),
-      loadSceneContextBySequence(scopedDb, sequence.id),
-      scopedDb.characters.listWithSheets(sequence.id),
-      scopedDb.sequenceLocations.listWithReferences(sequence.id),
-      scopedDb.sequenceElements.list(sequence.id),
-      sequence.styleId
-        ? scopedDb.styles.getById(sequence.styleId)
-        : Promise.resolve(null),
-    ]);
-    const anchorsByShot = new Map(anchorRows.map((f) => [f.shotId, f]));
-    // Stills live on the selected `frame_variants` rows (#1067) — batched here
-    // alongside `refs` for the same reason: one read, not one per shot.
-    const selectedByFrame = await scopedDb.frameVariants.getSelectedByFrameIds(
-      anchorRows.map((f) => f.id)
-    );
-    const refs: ShotStalenessRefs = { characters, locations, elements, style };
+    // Loaded once here and threaded into every shot's comparison; without
+    // that each shot would re-read the bibles for both prompt branches.
+    const {
+      anchorsByShot,
+      sceneContext: scriptBySceneId,
+      selectedByFrame,
+      refs,
+    } = await loadShotStalenessBatch(scopedDb, sequence);
 
     const entries = await Promise.all(
       targetShots.map(

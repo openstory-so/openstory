@@ -24,6 +24,7 @@ export function characterToBible(c: CharacterWithSheet): CharacterBibleEntry {
     movement: c.movement ?? '',
     voiceDescription: c.voiceDescription ?? '',
     voiceOnly: c.voiceOnly,
+    isPerson: c.isPerson,
     consistencyTag: c.consistencyTag ?? '',
   };
 }

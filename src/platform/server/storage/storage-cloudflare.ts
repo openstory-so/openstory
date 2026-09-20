@@ -378,3 +378,28 @@ export async function serveFile(
 
   return new Response(object.body, { headers });
 }
+
+/** A real R2 continuation page; the slash prevents matching sibling prefixes. */
+export async function listFilesPage(
+  bucket: StorageBucket,
+  path: string,
+  options: { limit: number; cursor?: string }
+) {
+  const prefix = `${buildR2Key(bucket, path).replace(/\/$/, '')}/`;
+  const listed = await getR2Bucket().list({
+    prefix,
+    limit: options.limit,
+    cursor: options.cursor,
+    include: ['httpMetadata'],
+  });
+  return {
+    files: listed.objects.map((obj) => ({
+      name: obj.key.slice(prefix.length),
+      url: `/r2/${obj.key}`,
+      size: obj.size,
+      contentType: obj.httpMetadata?.contentType ?? '',
+      uploadedAt: obj.uploaded.toISOString(),
+    })),
+    nextCursor: listed.truncated ? listed.cursor : null,
+  };
+}

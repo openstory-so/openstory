@@ -2,6 +2,13 @@ import { BibleField } from '@/cast/ui/bible-field';
 import { Button } from '@/ui/shadcn/button';
 import { Checkbox } from '@/ui/shadcn/checkbox';
 import { Label } from '@/ui/shadcn/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/ui/shadcn/select';
 import { useUpdateSequenceCharacter } from '@/cast/ui/use-sequence-characters';
 import type { CharacterWithSheet } from '@/platform/server/db/schema';
 import { errorMessage } from '@/platform/errors';
@@ -22,6 +29,10 @@ const characterFormSchema = z.object({
   // A checked box submits 'on'; an unchecked one is absent from FormData.
   voiceOnly: z.preprocess((v) => v === 'on', z.boolean()),
   voiceDescription: z.string().max(2000).default(''),
+  isPerson: z
+    .enum(['true', 'false'])
+    .transform((value) => value === 'true')
+    .optional(),
 });
 
 /**
@@ -126,6 +137,30 @@ export const CharacterBibleForm: React.FC<{
           textarea
         />
       )}
+      <div className="flex flex-col gap-1">
+        <Label
+          htmlFor="character-isPerson"
+          className="text-xs font-medium uppercase tracking-wider text-muted-foreground"
+        >
+          Person
+        </Label>
+        <Select
+          name="isPerson"
+          defaultValue={character.isPerson ? 'true' : 'false'}
+          items={{
+            true: 'Person',
+            false: 'Not a person',
+          }}
+        >
+          <SelectTrigger id="character-isPerson">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="true">Person</SelectItem>
+            <SelectItem value="false">Not a person</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
       {/* The way back from a bible call that misfiled an on-screen character
           as a voice (#1585): untick, save, then generate the sheet. */}
       <div className="flex items-center gap-2">

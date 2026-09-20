@@ -9,6 +9,7 @@
  * Claim uses its own per-user key so a gift Skip cannot suppress it.
  */
 
+import { cn } from '@/ui/utils';
 import { Button } from '@/ui/shadcn/button';
 import {
   Dialog,
@@ -29,17 +30,18 @@ import {
   useBillingBalance,
 } from '@/billing/ui/use-billing-balance';
 import { BILLING_GATE_KEY } from '@/billing/ui/use-billing-gate';
+import { celebrateBalanceGain } from '@/billing/ui/use-balance-count-up';
 import { openAddCreditsDialog } from '@/billing/ui/use-add-credits-dialog';
 import { useShowCosts } from '@/billing/ui/use-show-costs';
 import { useUser } from '@/platform/ui/use-user';
 import { SIGNUP_GRANT_MICROS, welcomeDialogMode } from '@/billing/constants';
 import type { WelcomeDialogMode } from '@/billing/constants';
-import { microsToDisplayUsd } from '@/billing/money';
+import { microsToDisplayUsd, microsToUsd } from '@/billing/money';
 import { hasPendingGenerate } from '@/sequences/ui/generation/pending-generate';
 import { isWelcomeCardAlreadyClaimedError } from '@/platform/errors';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
-import { Sparkles } from 'lucide-react';
+import { Gift } from 'lucide-react';
 import {
   createContext,
   useCallback,
@@ -265,6 +267,9 @@ export const WelcomeCreditsProvider: React.FC<{ children: ReactNode }> = ({
         queryKey: [...BILLING_PAYMENT_METHODS_KEY],
       });
       if (result.granted || result.hasSignupGrant) {
+        // The webhook may have paid it before this call; either way the
+        // card they just added is what earned it.
+        celebrateBalanceGain(microsToUsd(SIGNUP_GRANT_MICROS));
         clearWelcomeSetupSearch();
         return result;
       }
@@ -339,7 +344,7 @@ export const WelcomeCreditsProvider: React.FC<{ children: ReactNode }> = ({
   );
 };
 
-function ClaimDialogContent({
+export function ClaimDialogContent({
   grantDisplay,
   showCosts,
   onShowCostsChange,
@@ -365,12 +370,16 @@ function ClaimDialogContent({
     <>
       <WelcomeHeader
         amount={grantDisplay}
-        description="Add a card to unlock it. We won't charge you — it just confirms you're a real person."
+        description="Yours when you add a card. We won't charge it — it just confirms you're a real person."
       />
 
       <div className="flex flex-col gap-4 px-6 py-5">
         <Button className="self-center" onClick={onAddCard} disabled={busy}>
-          {claiming ? 'Unlocking…' : opening ? 'Opening…' : 'Add a card'}
+          {claiming
+            ? 'Unlocking…'
+            : opening
+              ? 'Opening…'
+              : 'Add a card to claim'}
         </Button>
 
         <Button
@@ -436,6 +445,30 @@ function GiftDialogContent({
   );
 }
 
+const CONFETTI_TONES = [
+  'bg-emerald-400',
+  'bg-emerald-600',
+  'bg-amber-400',
+  'bg-sky-400',
+  'bg-pink-400',
+];
+
+// Fixed spread, not Math.random: the same burst on server and client.
+const CONFETTI = Array.from({ length: 28 }, (_, i) => {
+  const angle = (i / 28) * Math.PI * 2 + (i % 3) * 0.2;
+  const reach = 80 + ((i * 37) % 90);
+  return {
+    tone: CONFETTI_TONES[i % CONFETTI_TONES.length],
+    round: i % 4 === 0,
+    style: {
+      '--x': `${Math.round(Math.cos(angle) * reach * 1.4)}px`,
+      '--y': `${Math.round(Math.sin(angle) * reach - 30)}px`,
+      '--r': `${((i * 97) % 540) - 270}deg`,
+      animationDelay: `${150 + (i % 5) * 30}ms`,
+    } as React.CSSProperties,
+  };
+});
+
 function WelcomeHeader({
   amount,
   description,
@@ -444,21 +477,39 @@ function WelcomeHeader({
   description: string;
 }) {
   return (
-    <div className="relative overflow-hidden border-b bg-gradient-to-br from-primary/20 via-primary/10 to-transparent px-6 pb-6 pt-8">
+    <div className="relative overflow-hidden border-b bg-gradient-to-br from-emerald-500/20 via-emerald-500/10 to-transparent px-6 pb-6 pt-8">
       <div
         aria-hidden
-        className="pointer-events-none absolute -right-8 -top-10 size-40 rounded-full bg-primary/15 blur-2xl"
+        className="pointer-events-none absolute -right-8 -top-10 size-40 rounded-full bg-emerald-500/15 blur-2xl"
       />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute left-1/2 top-[45%] size-0"
+      >
+        {CONFETTI.map((piece, i) => (
+          <span
+            key={i}
+            style={piece.style}
+            className={cn(
+              'confetti-piece absolute opacity-0 animate-[confetti-burst_1400ms_cubic-bezier(0.2,0.8,0.3,1)_both]',
+              piece.round
+                ? 'size-1.5 rounded-full'
+                : 'h-2.5 w-1.5 rounded-[1px]',
+              piece.tone
+            )}
+          />
+        ))}
+      </div>
       <div className="relative flex flex-col items-center gap-3 text-center">
-        <div className="flex size-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm ring-4 ring-primary/15">
-          <Sparkles className="size-6" aria-hidden />
+        <div className="flex size-12 items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-sm ring-4 ring-emerald-500/15">
+          <Gift className="size-6" aria-hidden />
         </div>
-        <p className="text-xs font-medium uppercase tracking-widest text-primary">
+        <p className="text-xs font-medium uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
           Welcome gift
         </p>
         <DialogHeader className="items-center gap-1.5 sm:text-center">
-          <DialogTitle className="font-heading text-3xl font-bold tracking-tight tabular-nums sm:text-4xl">
-            {amount}
+          <DialogTitle className="font-heading text-4xl font-bold tracking-tight tabular-nums text-emerald-600 animate-[gift-pop_500ms_ease-out_150ms_both] dark:text-emerald-400 sm:text-5xl">
+            +{amount}
           </DialogTitle>
           <DialogDescription className="max-w-xs text-sm leading-relaxed">
             {description}

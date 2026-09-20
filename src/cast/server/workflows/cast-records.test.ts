@@ -84,6 +84,7 @@ describe('createCastRecords', () => {
           movement: '',
           voiceDescription: '',
           voiceOnly: false,
+          isPerson: true,
           consistencyTag: 'sarah',
         },
       ],
@@ -184,6 +185,7 @@ describe('createCastRecords (talent match, #1561)', () => {
     movement: 'restless hands',
     voiceDescription: '',
     voiceOnly: false,
+    isPerson: true,
     consistencyTag: 'sarah',
   };
   const match = {
@@ -230,6 +232,31 @@ describe('createCastRecords (talent match, #1561)', () => {
       movement: 'restless hands',
     });
   });
+
+  test('a signed talent portrait stamps likeness real (#1682)', async () => {
+    const characterCreate = vi.fn(async (row: { id: string }) => row);
+    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal stub
+    const scopedDb = {
+      characters: { create: characterCreate },
+      sequenceLocations: { createBulk: vi.fn(async () => []) },
+      sequenceElements: { create: vi.fn() },
+      liveRead: { sequenceElements: { getByToken: vi.fn(async () => null) } },
+    } as unknown as WorkflowScopedDb;
+    await createCastRecords(scopedDb, {
+      sequenceId: 'seq_1',
+      characterBible: [sarah],
+      talentMatches: [
+        { ...match, personality: '', movement: '', hasSignedRelease: true },
+      ],
+      locationBible: [],
+      locationMatches: [],
+      elementBible: [],
+      existingElements: [],
+    });
+    expect(characterCreate.mock.calls[0]?.[0]).toMatchObject({
+      isPerson: true,
+    });
+  });
 });
 
 describe('createCastRecords (voice only, #1585)', () => {
@@ -258,6 +285,7 @@ describe('createCastRecords (voice only, #1585)', () => {
           movement: '',
           voiceDescription: '',
           voiceOnly: true,
+          isPerson: true,
           consistencyTag: 'narrator',
         },
       ],
@@ -271,6 +299,7 @@ describe('createCastRecords (voice only, #1585)', () => {
       characterId: 'narrator',
       voiceDescription: null,
       voiceOnly: true,
+      isPerson: true,
       sheetStatus: 'pending',
       talentId: null,
     });
@@ -302,6 +331,7 @@ describe('createCastRecords (voice only, #1585)', () => {
           voiceDescription:
             'Native English. Male, 50s. Excellent quality. Persona: dry narrator. Emotion: unhurried, amused. Warm low timbre, conversational pace.',
           voiceOnly: true,
+          isPerson: true,
           consistencyTag: 'narrator',
         },
       ],

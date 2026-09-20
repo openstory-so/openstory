@@ -33,9 +33,11 @@ const {
   attestUploads,
   carryUploadRights,
   classifyUpload,
+  likenessFromLedger,
   recordLikenessFinding,
   requireUploadRights,
 } = await import('./upload-rights');
+
 const { createScopedDb } = await import('@/platform/server/db/scoped');
 
 const TEAM_ID = generateId();
@@ -213,6 +215,49 @@ describe('attestUploads', () => {
     expect(await requireUploadRights(scopedDb, [url])).toEqual(
       new Map([[url, { depictsRealPerson: true }]])
     );
+  });
+});
+
+describe('likenessFromLedger', () => {
+  it('maps cleared to none, a detected or signed person to real, unknown to null (#1674, #1682)', async () => {
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const cleared = `/r2/talent/${TEAM_ID}/temp/cleared.png`;
+    const signed = `/r2/talent/${TEAM_ID}/temp/signed.png`;
+    const unknown = `/r2/talent/${TEAM_ID}/temp/unknown.png`;
+    verdict('other');
+    expect(
+      await classifyUpload({
+        scopedDb,
+        userId: USER_ID,
+        url: cleared,
+        request,
+      })
+    ).toEqual({ status: 'cleared' });
+    verdict('human');
+    expect(
+      await classifyUpload({
+        scopedDb,
+        userId: USER_ID,
+        url: signed,
+        request,
+      })
+    ).toEqual({ status: 'needs_portrait' });
+    expect(await likenessFromLedger(scopedDb, signed)).toBe('real');
+    await attestUploads(
+      scopedDb,
+      [
+        {
+          url: signed,
+          statementVersion: PORTRAIT_RIGHTS_V1.version,
+          authorizationBasis: 'self',
+        },
+      ],
+      request
+    );
+
+    expect(await likenessFromLedger(scopedDb, cleared)).toBe('none');
+    expect(await likenessFromLedger(scopedDb, signed)).toBe('real');
+    expect(await likenessFromLedger(scopedDb, unknown)).toBeNull();
   });
 });
 

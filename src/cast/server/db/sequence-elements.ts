@@ -33,6 +33,8 @@ import {
 } from '@/shots/server/scene-script';
 import { matchElementsToShotImage } from '@/shots/scene-matching';
 import { and, eq, inArray, isNull, like, ne, or, sql } from 'drizzle-orm';
+import { pageOf } from '@/platform/server/db/read-page';
+import type { PageOptions } from '@/platform/server/db/read-page';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
 
 /** Selected visual prompt text for each shot's anchor frame, keyed by shot id. */
@@ -168,17 +170,20 @@ export function createSequenceElementsMethods(db: Database) {
     // vanish from the elements grid and the prompt-context element bible.
     // Token uniqueness (isTokenTaken / ensureUniqueToken) deliberately still
     // counts deleted rows so a restore can never collide.
-    list: async (sequenceId: string): Promise<SequenceElement[]> => {
-      return await db
-        .select()
-        .from(sequenceElements)
-        .where(
-          and(
-            eq(sequenceElements.sequenceId, sequenceId),
-            isNull(sequenceElements.deletedAt)
-          )
-        )
-        .orderBy(sequenceElements.createdAt);
+    list: async (
+      sequenceId: string,
+      page?: PageOptions
+    ): Promise<SequenceElement[]> => {
+      return await pageOf(
+        db.select().from(sequenceElements).$dynamic(),
+        and(
+          eq(sequenceElements.sequenceId, sequenceId),
+          isNull(sequenceElements.deletedAt)
+        ),
+        sequenceElements.id,
+        page,
+        sequenceElements.createdAt
+      );
     },
 
     listByIds: async (ids: string[]): Promise<SequenceElement[]> => {

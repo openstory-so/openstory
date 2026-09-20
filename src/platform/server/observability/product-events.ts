@@ -1,5 +1,5 @@
 /**
- * Product analytics events that drive PostHog → Slack alerts (#1088).
+ * Product analytics events that drive PostHog → Slack alerts (#1088, #1667).
  *
  * Prefer server-side capture so OAuth redirects, passkeys, and the public API
  * all emit the same events. Failures must never break the critical path.
@@ -29,6 +29,8 @@ type ProductEventName =
   | 'sequence_ready_email_sent'
   | 'auto_top_up_failed_email_sent'
   | 'studio_generation_started'
+  | 'studio_generation_completed'
+  | 'sequence_content_ready'
   | 'welcome_card_setup_opened'
   | 'welcome_credits_granted';
 

@@ -18,7 +18,8 @@ import type {
   NewShot,
 } from '@/platform/server/db/schema';
 import type { Sequence } from '@/platform/server/db/schema/sequences';
-import { and, asc, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNull, sql } from 'drizzle-orm';
+import type { PageOptions } from '@/platform/server/db/read-page';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
 
 /**
@@ -91,6 +92,10 @@ type ShotFilters = {
   ascending?: boolean;
   limit?: number;
   offset?: number;
+  sceneId?: string;
+  renderSegmentId?: string;
+  /** Id-cursor paging; overrides `orderBy` / `limit` / `offset`. */
+  page?: PageOptions;
 };
 
 export function createShotsMethods(db: Database) {
@@ -166,6 +171,7 @@ export function createShotsMethods(db: Database) {
         ascending = true,
         limit,
         offset,
+        page,
       } = options ?? {};
 
       // Default list excludes soft-deleted rows (#1108): the editor, prompt
@@ -176,6 +182,18 @@ export function createShotsMethods(db: Database) {
         eq(shots.sequenceId, sequenceId),
         isNull(shots.deletedAt),
       ];
+      if (options?.sceneId) conditions.push(eq(shots.sceneId, options.sceneId));
+      if (options?.renderSegmentId)
+        conditions.push(eq(shots.renderSegmentId, options.renderSegmentId));
+      if (page) {
+        if (page.after) conditions.push(gt(shots.id, page.after));
+        return await db
+          .select()
+          .from(shots)
+          .where(and(...conditions))
+          .orderBy(asc(shots.id))
+          .limit(page.limit);
+      }
       const orderFn = ascending ? asc : desc;
       const direction = ascending ? sql`ASC` : sql`DESC`;
 

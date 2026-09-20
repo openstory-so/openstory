@@ -15,6 +15,11 @@ import {
   isContentFilterFinish,
 } from '@/models/content-rejection';
 import { createAdapter } from '@/models/server/create-adapter';
+import {
+  regionFallbackModel,
+  withRegionFallback,
+} from '@/models/region-policy';
+import type { TextModel } from '@/models/models';
 import { hashVisualPromptInput } from '@/shots/input-hash';
 import {
   createUsageCapture,
@@ -165,187 +170,202 @@ export class FramePromptWorkflow extends OpenStoryWorkflowEntrypoint<FramePrompt
     // The key is resolved INSIDE this step (it reads — and can write — mutable
     // D1 state), and its non-secret `source` rides out on the step result so
     // the deduction bills the key this call actually used even on replay.
-    const { resultJson, costMicros, keySource } = await step.do(
+    const { resultJson, costMicros, keySource, servedModel } = await step.do(
       llmStepName,
       async (): Promise<{
         resultJson: string;
         costMicros: Microdollars;
         keySource: 'team' | 'platform';
+        servedModel: TextModel;
       }> => {
-        const llmKeyInfo =
-          await scopedDb.credentials.resolveLlmKey(analysisModelId);
-        const adapter = createAdapter(analysisModelId, llmKeyInfo);
-        // Always stream structured output so OpenRouter attaches usage.cost
-        // (TanStack/ai#1076). Optional channel emits for live UI deltas.
-        const usageCapture = createUsageCapture();
+        // Region-block fallback (#1259): this workflow builds its own adapter
+        // (it drives a realtime channel and an abort timeout that
+        // callLLMStream does not expose), so it needs the retry wired in
+        // explicitly — an Anthropic analysis model geo-blocked at the colo
+        // would otherwise burn every step retry. The key is resolved INSIDE
+        // the fallback so a swap cannot reuse a via that does not carry the
+        // retry model.
+        return withRegionFallback(analysisModelId, async (servedModel) => {
+          const llmKeyInfo =
+            await scopedDb.credentials.resolveLlmKey(servedModel);
+          const adapter = createAdapter(servedModel, llmKeyInfo);
+          // Always stream structured output so OpenRouter attaches usage.cost
+          // (TanStack/ai#1076). Optional channel emits for live UI deltas.
+          const usageCapture = createUsageCapture();
 
-        logger.info(
-          `[FramePromptWorkflow:cf] [LLM:${LOG_NAME}] Starting streaming call`,
-          {
-            model: analysisModelId,
-            keySource: llmKeyInfo.source,
-            keyVia: llmKeyInfo.via,
-            messageCount: messages.length,
-            ...(streamConfig
-              ? {
-                  shotId: streamConfig.shotId,
-                  promptType: streamConfig.promptType,
-                }
-              : {}),
-          }
-        );
-
-        const systemPrompts: string[] = [];
-        const chatMessages: Array<{
-          role: 'user' | 'assistant';
-          content: string;
-        }> = [];
-        for (const msg of messages) {
-          const flat =
-            typeof msg.content === 'string'
-              ? msg.content
-              : msg.content
-                  .map((part) => (part.type === 'text' ? part.content : ''))
-                  .filter(Boolean)
-                  .join('\n');
-          if (msg.role === 'system') {
-            systemPrompts.push(flat);
-          } else {
-            chatMessages.push({ role: msg.role, content: flat });
-          }
-        }
-
-        const abortController = new AbortController();
-        const timeout = setTimeout(() => abortController.abort(), 300_000);
-
-        try {
-          const channel = streamConfig
-            ? getShotPromptChannel(streamConfig.shotId)
-            : null;
-          let accumulated = '';
-          let lastExtracted = '';
-          let pendingDelta = '';
-          let lastEmitAt = 0;
-          let structuredObject: unknown;
-          let runError = null;
-          let contentFiltered = false;
-
-          const flushDelta = async () => {
-            if (!channel || !streamConfig || !pendingDelta) return;
-            const delta = pendingDelta;
-            pendingDelta = '';
-            lastEmitAt = Date.now();
-            await channel.emit('shotPrompt.streaming', {
-              promptType: streamConfig.promptType,
-              delta,
-            });
-          };
-
-          const modelOptions = chatModelOptionsForCall(
-            analysisModelId,
-            llmKeyInfo,
-            true
-          );
-
-          for await (const streamEvent of chat({
-            adapter,
-            messages: chatMessages,
-            systemPrompts: systemPrompts,
-            stream: true,
-            abortController,
-            modelOptions,
-            outputSchema: visualPromptResultSchema,
-            middleware: [
-              ...aiObservabilityMiddleware({
-                observationName: LOG_NAME,
-                tags: streamConfig ? [...LOG_TAGS_STREAM] : [...LOG_TAGS],
-                metadata: logMetadata,
-                sessionId: sequenceId,
-                userId,
-              }),
-              ...usageCapture.middleware,
-            ],
-            debug: false,
-          })) {
-            usageCapture.noteFromStreamEvent(streamEvent);
-            // A safety-classifier stop ends the run with `finishReason:
-            // 'content_filter'` and either no content or content cut
-            // mid-token. Note it here so the failure below is classified as a
-            // content rejection instead of an opaque parse error (#1304).
-            if (isContentFilterFinish(streamEvent)) {
-              contentFiltered = true;
-              continue;
-            }
-            const noted = extractRunError(streamEvent);
-            if (noted) {
-              runError ??= noted;
-              continue;
-            }
-            if (
-              streamEvent.type === 'TEXT_MESSAGE_CONTENT' &&
-              typeof streamEvent.delta === 'string'
-            ) {
-              accumulated += streamEvent.delta;
-              if (streamConfig) {
-                const next = extractStreamingStringField(
-                  accumulated,
-                  'fullPrompt'
-                );
-                if (next.length > lastExtracted.length) {
-                  pendingDelta += next.slice(lastExtracted.length);
-                  lastExtracted = next;
-                }
-                if (
-                  pendingDelta &&
-                  Date.now() - lastEmitAt >= streamConfig.flushIntervalMs
-                ) {
-                  await flushDelta();
-                }
-              }
-              continue;
-            }
-            if (
-              streamEvent.type === 'CUSTOM' &&
-              streamEvent.name === 'structured-output.complete'
-            ) {
-              structuredObject = streamEvent.value.object;
-              continue;
-            }
-          }
-          throwNotedRunError(runError);
-          // A content filter is a property of the script, not a transient
-          // fault: every retry re-runs the same prompt and stops the same way.
-          // Fail fast and name the scene so the user can edit it, instead of
-          // burning five step retries (and their credits) on a certain loss.
-          if (contentFiltered && structuredObject === undefined) {
-            logger.warn(
-              `[FramePromptWorkflow:cf] [LLM:${LOG_NAME}] content filter stopped the run`,
-              { event: CONTENT_REJECTION_EVENT, sceneId: scene.sceneId }
-            );
-            throw new NonRetryableError(
-              contentFilterLlmMessage(`Scene ${scene.sceneNumber}`)
-            );
-          }
-          await flushDelta();
           logger.info(
-            `[FramePromptWorkflow:cf] [LLM:${LOG_NAME}] Streaming call succeeded`
+            `[FramePromptWorkflow:cf] [LLM:${LOG_NAME}] Starting streaming call`,
+            {
+              model: servedModel,
+              requestedModel: analysisModelId,
+              keySource: llmKeyInfo.source,
+              keyVia: llmKeyInfo.via,
+              messageCount: messages.length,
+              ...(streamConfig
+                ? {
+                    shotId: streamConfig.shotId,
+                    promptType: streamConfig.promptType,
+                  }
+                : {}),
+            }
           );
-          const resultObject =
-            structuredObject !== undefined
-              ? visualPromptResultSchema.parse(structuredObject)
-              : visualPromptResultSchema.parse(JSON.parse(accumulated));
-          return {
-            resultJson: JSON.stringify(resultObject),
-            costMicros: llmCostFromUsage(
-              usageCapture.get(),
-              analysisModelId,
-              llmKeyInfo.via
-            ),
-            keySource: llmKeyInfo.source,
-          };
-        } finally {
-          clearTimeout(timeout);
-        }
+
+          const systemPrompts: string[] = [];
+          const chatMessages: Array<{
+            role: 'user' | 'assistant';
+            content: string;
+          }> = [];
+          for (const msg of messages) {
+            const flat =
+              typeof msg.content === 'string'
+                ? msg.content
+                : msg.content
+                    .map((part) => (part.type === 'text' ? part.content : ''))
+                    .filter(Boolean)
+                    .join('\n');
+            if (msg.role === 'system') {
+              systemPrompts.push(flat);
+            } else {
+              chatMessages.push({ role: msg.role, content: flat });
+            }
+          }
+
+          const abortController = new AbortController();
+          const timeout = setTimeout(() => abortController.abort(), 300_000);
+
+          try {
+            const channel = streamConfig
+              ? getShotPromptChannel(streamConfig.shotId)
+              : null;
+            let accumulated = '';
+            let lastExtracted = '';
+            let pendingDelta = '';
+            let lastEmitAt = 0;
+            let structuredObject: unknown;
+            let runError = null;
+            let contentFiltered = false;
+
+            const flushDelta = async () => {
+              if (!channel || !streamConfig || !pendingDelta) return;
+              const delta = pendingDelta;
+              pendingDelta = '';
+              lastEmitAt = Date.now();
+              await channel.emit('shotPrompt.streaming', {
+                promptType: streamConfig.promptType,
+                delta,
+              });
+            };
+
+            const modelOptions = chatModelOptionsForCall(
+              servedModel,
+              llmKeyInfo,
+              true
+            );
+
+            for await (const streamEvent of chat({
+              adapter,
+              messages: chatMessages,
+              systemPrompts: systemPrompts,
+              stream: true,
+              abortController,
+              modelOptions,
+              outputSchema: visualPromptResultSchema,
+              middleware: [
+                ...aiObservabilityMiddleware({
+                  observationName: LOG_NAME,
+                  tags: streamConfig ? [...LOG_TAGS_STREAM] : [...LOG_TAGS],
+                  metadata: logMetadata,
+                  sessionId: sequenceId,
+                  userId,
+                }),
+                ...usageCapture.middleware,
+              ],
+              debug: false,
+            })) {
+              usageCapture.noteFromStreamEvent(streamEvent);
+              // A safety-classifier stop ends the run with `finishReason:
+              // 'content_filter'` and either no content or content cut
+              // mid-token. Note it here so the failure below is classified as a
+              // content rejection instead of an opaque parse error (#1304).
+              if (isContentFilterFinish(streamEvent)) {
+                contentFiltered = true;
+                continue;
+              }
+              const noted = extractRunError(streamEvent);
+              if (noted) {
+                runError ??= noted;
+                continue;
+              }
+              if (
+                streamEvent.type === 'TEXT_MESSAGE_CONTENT' &&
+                typeof streamEvent.delta === 'string'
+              ) {
+                accumulated += streamEvent.delta;
+                if (streamConfig) {
+                  const next = extractStreamingStringField(
+                    accumulated,
+                    'fullPrompt'
+                  );
+                  if (next.length > lastExtracted.length) {
+                    pendingDelta += next.slice(lastExtracted.length);
+                    lastExtracted = next;
+                  }
+                  if (
+                    pendingDelta &&
+                    Date.now() - lastEmitAt >= streamConfig.flushIntervalMs
+                  ) {
+                    await flushDelta();
+                  }
+                }
+                continue;
+              }
+              if (
+                streamEvent.type === 'CUSTOM' &&
+                streamEvent.name === 'structured-output.complete'
+              ) {
+                structuredObject = streamEvent.value.object;
+                continue;
+              }
+            }
+            throwNotedRunError(
+              runError,
+              regionFallbackModel(servedModel) !== null
+            );
+            // A content filter is a property of the script, not a transient
+            // fault: every retry re-runs the same prompt and stops the same way.
+            // Fail fast and name the scene so the user can edit it, instead of
+            // burning five step retries (and their credits) on a certain loss.
+            if (contentFiltered && structuredObject === undefined) {
+              logger.warn(
+                `[FramePromptWorkflow:cf] [LLM:${LOG_NAME}] content filter stopped the run`,
+                { event: CONTENT_REJECTION_EVENT, sceneId: scene.sceneId }
+              );
+              throw new NonRetryableError(
+                contentFilterLlmMessage(`Scene ${scene.sceneNumber}`)
+              );
+            }
+            await flushDelta();
+            logger.info(
+              `[FramePromptWorkflow:cf] [LLM:${LOG_NAME}] Streaming call succeeded`
+            );
+            const resultObject =
+              structuredObject !== undefined
+                ? visualPromptResultSchema.parse(structuredObject)
+                : visualPromptResultSchema.parse(JSON.parse(accumulated));
+            return {
+              resultJson: JSON.stringify(resultObject),
+              costMicros: llmCostFromUsage(
+                usageCapture.get(),
+                servedModel,
+                llmKeyInfo.via
+              ),
+              keySource: llmKeyInfo.source,
+              servedModel,
+            };
+          } finally {
+            clearTimeout(timeout);
+          }
+        });
       }
     );
     const result: VisualPromptResult = visualPromptResultSchema.parse(
@@ -358,11 +378,11 @@ export class FramePromptWorkflow extends OpenStoryWorkflowEntrypoint<FramePrompt
         scopedDb,
         costMicros,
         usedOwnKey: keySource === 'team',
-        description: `LLM analysis (${analysisModelId})`,
+        description: `LLM analysis (${servedModel})`,
         idempotencyKey: `${event.instanceId}:llm-${STEP_NAME}`,
         reservationId: input.reservationId,
         metadata: {
-          model: analysisModelId,
+          model: servedModel,
           phase: PHASE.number,
           phaseName: PHASE.name,
           stepName: STEP_NAME,

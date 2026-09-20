@@ -2,8 +2,8 @@
  * Register stills in the BytePlus virtual portrait library as durable
  * workflow steps (#1519).
  *
- * `CreateAsset` is allowed THREE times a minute per account. The wait for a
- * turn is therefore minutes, not milliseconds, and it must not hold a Worker
+ * `CreateAsset` is paced by `BYTEPLUS_ASSET_WRITE_QPM`. The wait for a
+ * turn can be minutes, not milliseconds, and it must not hold a Worker
  * open or eat a step's 10-minute budget. Per still:
  *
  *   url     step.do   the URL CreateAsset can fetch (fal key, upload)
@@ -31,6 +31,7 @@ import type { WorkflowStep, WorkflowStepConfig } from 'cloudflare:workers';
 import type { CredentialScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { BytePlusAssetSlot } from '@/platform/server/db/schema/byteplus-assets';
 import { isHttpUrl, toArkFetchableUrl } from './byteplus-asset-ingest';
+import { assertArkCreateAssetSize } from './byteplus-asset-size';
 import {
   claimPooledAsset,
   createPooledAsset,
@@ -47,6 +48,12 @@ export type ArkStill = {
   storedUrl: string;
   slot: BytePlusAssetSlot;
   kind?: BytePlusAssetKind;
+  /**
+   * Known to show no person: map it to a fetchable URL and spend no
+   * CreateAsset on it (#1674, #1682). Only a still with a face needs the
+   * portrait library.
+   */
+  plain?: boolean;
 };
 
 /** Stored URL → the URL Ark receives (`asset://…`, or a plain fetchable URL). */
@@ -98,8 +105,17 @@ export async function ingestArkAssets(
     if (map[still.storedUrl]) continue;
     const name = `${args.prefix}-ark-${index}`;
 
+    if (still.plain) {
+      map[still.storedUrl] = await step.do(`${name}-plain-url`, async () => {
+        const falKey = await args.credentials.resolveOptionalKey('fal');
+        return toArkFetchableUrl(still.storedUrl, falKey?.key);
+      });
+      continue;
+    }
+
     const publicUrl = await step.do(`${name}-url`, async () => {
       const falKey = await args.credentials.resolveOptionalKey('fal');
+      await assertArkCreateAssetSize(still.storedUrl);
       return toArkFetchableUrl(still.storedUrl, falKey?.key);
     });
 

@@ -25,6 +25,7 @@ function makeScopedDb(opts: { claim: boolean }) {
   const getBalance = vi.fn(async () => usdToMicros(6.4));
   const getForUser = vi.fn(async () => ({ title: 'The Long Walk' }));
   const stub = {
+    teamId: 'team-1',
     sequences: { claimReadyEmailSend, releaseReadyEmailSend },
     liveRead: {
       sequences: { getForUser },
@@ -79,6 +80,17 @@ describe('notifySequenceReady', () => {
       event: 'sequence_ready_email_sent',
       properties: { sequence_id: 'seq_1' },
     });
+    expect(captureProductEvent).toHaveBeenCalledWith({
+      distinctId: 'u1',
+      event: 'sequence_content_ready',
+      properties: expect.objectContaining({
+        team_id: 'team-1',
+        sequence_id: 'seq_1',
+        title: 'The Long Walk',
+        watch_url: 'https://openstory.so/sequences/seq_1/scenes',
+        poster_url: expect.stringContaining('/r2/posters/seq_1.png'),
+      }),
+    });
     expect(second.claimReadyEmailSend).toHaveBeenCalledWith('seq_1');
     expect(sendSequenceReadyEmail.mock.calls[0]?.[0].watchUrl).toContain(
       'utm_campaign=ready'
@@ -87,6 +99,7 @@ describe('notifySequenceReady', () => {
 
   it('skips API-key sequences (notify: false) without claiming', async () => {
     sendSequenceReadyEmail.mockReset();
+    captureProductEvent.mockReset();
     const { scopedDb, claimReadyEmailSend } = makeScopedDb({ claim: true });
 
     expect(
@@ -99,10 +112,48 @@ describe('notifySequenceReady', () => {
 
     expect(claimReadyEmailSend).not.toHaveBeenCalled();
     expect(sendSequenceReadyEmail).not.toHaveBeenCalled();
+    expect(captureProductEvent).toHaveBeenCalledWith({
+      distinctId: 'u1',
+      event: 'sequence_content_ready',
+      properties: expect.objectContaining({
+        sequence_id: 'seq_1',
+        title: 'The Long Walk',
+      }),
+    });
+  });
+
+  it('posts the content feed when there is no owner email to mail', async () => {
+    sendSequenceReadyEmail.mockReset();
+    captureProductEvent.mockReset();
+    const { scopedDb, claimReadyEmailSend } = makeScopedDb({ claim: true });
+
+    expect(
+      await notifySequenceReady({
+        ...OPTS,
+        ownerEmail: null,
+        scopedDb,
+      })
+    ).toBe('skipped');
+
+    expect(claimReadyEmailSend).not.toHaveBeenCalled();
+    expect(sendSequenceReadyEmail).not.toHaveBeenCalled();
+    expect(captureProductEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'sequence_content_ready' })
+    );
+  });
+
+  it('does not re-post the content feed when the ready claim is already taken', async () => {
+    sendSequenceReadyEmail.mockReset();
+    captureProductEvent.mockReset();
+    const { scopedDb } = makeScopedDb({ claim: false });
+
+    expect(await notifySequenceReady({ ...OPTS, scopedDb })).toBe('skipped');
+    expect(captureProductEvent).not.toHaveBeenCalled();
   });
 
   it('releases the claim when send fails so a retry can re-claim', async () => {
     sendSequenceReadyEmail.mockReset();
+    captureProductEvent.mockReset();
     sendSequenceReadyEmail.mockResolvedValue({
       success: false,
       error: 'bounce',
@@ -113,5 +164,6 @@ describe('notifySequenceReady', () => {
       'bounce'
     );
     expect(releaseReadyEmailSend).toHaveBeenCalledWith('seq_1');
+    expect(captureProductEvent).not.toHaveBeenCalled();
   });
 });

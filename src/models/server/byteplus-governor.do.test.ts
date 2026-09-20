@@ -8,11 +8,20 @@ const bucket = {
   maxWaitMs: 60_000,
 };
 
-function governor(): BytePlusGovernor {
+/** Storage outlives the instance, as it does across a DO eviction. */
+function storage(): Map<string, unknown> {
+  return new Map();
+}
+
+function governor(store = storage()): BytePlusGovernor {
+  const kv = {
+    get: (key: string) => store.get(key),
+    put: (key: string, value: unknown) => void store.set(key, value),
+  };
   return new BytePlusGovernor(
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- in-memory DO reads neither ctx nor env
-    {} as DurableObjectState,
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- in-memory DO reads neither ctx nor env
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the DO reads only ctx.storage.kv
+    { storage: { kv } } as unknown as DurableObjectState,
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the DO reads no env
     {} as Cloudflare.Env
   );
 }
@@ -61,5 +70,14 @@ describe('BytePlusGovernor.acquire', () => {
     const t0 = 1_000_000;
     for (let i = 0; i < 4; i += 1) g.acquire(bucket, t0);
     expect(g.acquire({ ...bucket, bucket: 'other' }, t0)).toBe(0);
+  });
+
+  it('keeps its reservations across an eviction (#1674)', () => {
+    const store = storage();
+    const t0 = 1_000_000;
+    for (let i = 0; i < 3; i += 1) governor(store).acquire(bucket, t0);
+    // A fresh instance over the same storage is the evicted-and-revived DO:
+    // it must not hand out a full bucket again.
+    expect(governor(store).acquire(bucket, t0)).toBe(1_000);
   });
 });

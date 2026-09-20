@@ -10,6 +10,7 @@
  * (workflow picked it up) → `completed` (outputs uploaded to R2) / `failed`.
  */
 
+import type { MediaVia } from '@/models/via';
 import type { Database } from '@/platform/server/db/client';
 import {
   generatedAssets,
@@ -140,12 +141,17 @@ export function createGeneratedAssetsMethods(
       fields: {
         outputs: GeneratedAssetOutput[];
         costMicros?: number | null;
+        // Required, never defaulted: the row is inserted as 'fal' before any
+        // via is resolved, so a completion that omits it leaves a BytePlus /
+        // xAI / Google render labelled fal (#1681).
+        provider: MediaVia;
       }
     ): Promise<void> => {
       const updated = await db
         .update(generatedAssets)
         .set({
           status: 'completed',
+          provider: fields.provider,
           outputs: fields.outputs,
           costMicros: fields.costMicros ?? null,
           error: null,
@@ -158,10 +164,20 @@ export function createGeneratedAssetsMethods(
       assertUpdated(updated, id);
     },
 
-    markFailed: async (id: string, error: string): Promise<void> => {
+    /** `provider` when the run got far enough to know which via it was on. */
+    markFailed: async (
+      id: string,
+      error: string,
+      provider?: MediaVia
+    ): Promise<void> => {
       const updated = await db
         .update(generatedAssets)
-        .set({ status: 'failed', error, updatedAt: new Date() })
+        .set({
+          status: 'failed',
+          error,
+          ...(provider && { provider }),
+          updatedAt: new Date(),
+        })
         .where(
           and(eq(generatedAssets.id, id), eq(generatedAssets.teamId, teamId))
         )

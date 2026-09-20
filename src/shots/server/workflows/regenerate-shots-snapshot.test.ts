@@ -50,6 +50,7 @@ function makeCharacter(
     personality: null,
     movement: null,
     voiceOnly: false,
+    isPerson: true,
     voiceId: null,
     voiceDescription: null,
     voicePreviews: null,

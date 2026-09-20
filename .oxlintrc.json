@@ -186,11 +186,12 @@
       "rules": { "boundaries/no-raw-db": "off" }
     },
     {
-      // The request middlewares and the workflow base mint the scoped db for
+      // Request boundaries (middlewares/MCP) and the workflow base mint the scoped db for
       // handlers / runs. Pinned by db-access-allowlist.test.ts.
       "files": [
         "src/platform/middleware.fn.ts",
         "src/billing/stripe-webhook-middleware.fn.ts",
+        "src/platform/server/mcp/server.ts",
         "src/platform/server/workflow/base-workflow.ts"
       ],
       "rules": { "boundaries/no-scoped-factory": "off" }
@@ -250,6 +251,7 @@
         "src/platform/server/db/scoped/admin.ts",
         "src/platform/server/db/seed-system-templates.ts",
         "src/platform/server/api-v1/**",
+        "src/platform/server/mcp/tools/**",
         "src/platform/ui/realtime/query-cache-updater.ts",
         "src/platform/server/workflow/base-workflow.ts",
         "src/platform/**/*.test.ts",

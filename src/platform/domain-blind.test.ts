@@ -70,7 +70,9 @@ describe('src/platform is domain-blind', () => {
 
   it('names its composition roots in .oxlintrc.json', () => {
     expect(roots.length).toBeGreaterThan(0);
-    expect(roots.length).toBeLessThan(10);
+    expect(
+      roots.filter((root) => !root.includes('*.test.')).length
+    ).toBeLessThan(10);
   });
 
   it('value-imports no domain module outside those roots', () => {

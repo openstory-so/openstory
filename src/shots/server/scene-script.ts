@@ -133,7 +133,13 @@ function buildSceneContext(
 
 /** Load each scene of a sequence with its selected script, keyed by scene id. */
 export async function loadSceneContextBySequence(
-  scopedDb: Pick<ScopedDb, 'scenes' | 'sceneScriptVersions'>,
+  scopedDb: {
+    scenes: Pick<ScopedDb['scenes'], 'listBySequence'>;
+    sceneScriptVersions: Pick<
+      ScopedDb['sceneScriptVersions'],
+      'listSelectedBySequence'
+    >;
+  },
   sequenceId: string
 ): Promise<Map<string, SceneContext>> {
   const [sceneRows, selectedRows] = await Promise.all([

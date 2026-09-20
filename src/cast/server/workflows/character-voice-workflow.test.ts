@@ -89,6 +89,7 @@ const characterBible: CharacterBibleEntry = {
   movement: '',
   voiceDescription: '',
   voiceOnly: false,
+  isPerson: true,
   consistencyTag: 'sam',
 };
 

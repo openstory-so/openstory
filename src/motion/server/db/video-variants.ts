@@ -34,6 +34,8 @@ import type {
   VideoVariant,
 } from '@/platform/server/db/schema';
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { pageOf } from '@/platform/server/db/read-page';
+import type { VersionListOptions } from '@/platform/server/db/read-page';
 import { buildRenderSegmentSelect } from './render-segments';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
 import type { VideoManifestInputHash } from '@/shots/input-hash';
@@ -50,14 +52,20 @@ export type VideoVariantGroup = {
 // no such cap, so an unchunked list passes CI and throws on D1 (#1019).
 const VIDEO_BY_SHOTS_BATCH = 90;
 
+/** Shared latest-primary selector for full views and narrow polling reads. */
+function primaryVideoIdForShot() {
+  return sql<string>`(select max(primary_video.id) from video_variants primary_video
+    where primary_video.render_segment_id = ${shots.renderSegmentId}
+    and primary_video.sequence_id = ${shots.sequenceId}
+    and primary_video.is_primary = 1)`;
+}
+
 export async function getPrimaryVideoByShotIds(
   db: Database,
   shotIds: string[]
 ): Promise<Map<string, VideoVariant>> {
   if (shotIds.length === 0) return new Map();
-  // asc by id (≈ time) → last write per shot wins. Chunking is safe for this
-  // reduction: a shot's rows never span two batches (batches partition by shot
-  // id), so per-shot ordering is preserved.
+  // Read only the newest primary per shot, without materializing its render history.
   const byShot = new Map<string, VideoVariant>();
   for (let i = 0; i < shotIds.length; i += VIDEO_BY_SHOTS_BATCH) {
     const rows = await db
@@ -70,7 +78,7 @@ export async function getPrimaryVideoByShotIds(
       .where(
         and(
           inArray(shots.id, shotIds.slice(i, i + VIDEO_BY_SHOTS_BATCH)),
-          eq(videoVariants.isPrimary, true)
+          eq(videoVariants.id, primaryVideoIdForShot())
         )
       )
       .orderBy(asc(videoVariants.id));
@@ -369,17 +377,22 @@ export function createVideoVariantsMethods(db: Database) {
      * Drives the per-shot video history sheet (#1070) without scanning the
      * whole sequence.
      */
-    listBySegment: async (renderSegmentId: string): Promise<VideoVariant[]> => {
-      return await db
-        .select()
-        .from(videoVariants)
-        .where(
-          and(
-            eq(videoVariants.renderSegmentId, renderSegmentId),
-            isNull(videoVariants.discardedAt)
-          )
-        )
-        .orderBy(asc(videoVariants.id));
+    listBySegment: async (
+      renderSegmentId: string,
+      options?: VersionListOptions
+    ): Promise<VideoVariant[]> => {
+      return await pageOf(
+        db.select().from(videoVariants).$dynamic(),
+        and(
+          eq(videoVariants.renderSegmentId, renderSegmentId),
+          options?.includeDiscarded
+            ? undefined
+            : isNull(videoVariants.discardedAt)
+        ),
+        videoVariants.id,
+        options?.page,
+        asc(videoVariants.id)
+      );
     },
 
     /** Distinct model names that have a (non-discarded) version in a sequence. */

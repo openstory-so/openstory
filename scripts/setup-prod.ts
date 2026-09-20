@@ -330,7 +330,7 @@ async function prPreviewSetup() {
           process.exit(0);
         }
 
-        if (value.trim()) {
+        if (typeof value === 'string' && value.trim()) {
           merged.set(key, value.trim());
         }
       }
@@ -427,7 +427,10 @@ async function prPreviewSetup() {
           process.exit(0);
         }
 
-        zoneId = manualZoneId.trim() || undefined;
+        zoneId =
+          typeof manualZoneId === 'string'
+            ? manualZoneId.trim() || undefined
+            : undefined;
       }
 
       if (zoneId) {
@@ -503,7 +506,7 @@ async function prPreviewSetup() {
           'Workers subdomain (the part before .workers.dev in your preview URL)',
         placeholder: 'e.g. myaccount',
       });
-      if (!p.isCancel(manual) && manual.trim()) {
+      if (typeof manual === 'string' && manual.trim()) {
         workersSubdomain = manual.trim();
       }
     }
@@ -1043,7 +1046,9 @@ export async function runProdSetup(mode: ProdSetupMode) {
   });
 
   function checkCancel<T>(value: T | symbol): T {
-    if (p.isCancel(value)) {
+    // isCancel is `value is typeof CANCEL_SYMBOL` (a unique symbol), which
+    // does not exclude the rest of `symbol` from `T | symbol`.
+    if (p.isCancel(value) || typeof value === 'symbol') {
       saveProgress();
       p.cancel(`Setup cancelled. Progress saved to ${ENV_FILENAME}`);
       process.exit(0);

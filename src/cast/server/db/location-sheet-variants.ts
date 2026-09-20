@@ -21,6 +21,8 @@ import {
   sequenceLocations,
 } from '@/platform/server/db/schema';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { pageOf } from '@/platform/server/db/read-page';
+import type { VersionListOptions } from '@/platform/server/db/read-page';
 import { insertDivergentRaceTolerant } from '@/platform/server/db/scoped/divergent-insert';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
 import type {
@@ -41,19 +43,25 @@ type PromoteLocationUpdate = {
 
 export function createLocationSheetVariantsMethods(db: Database) {
   return {
+    /** Every attempt (any status), oldest-first; discarded rows on request. */
     listByParent: async (
       parentType: LocationSheetVariantParentType,
-      parentId: string
+      parentId: string,
+      options?: VersionListOptions
     ): Promise<LocationSheetVariant[]> => {
-      return db
-        .select()
-        .from(locationSheetVariants)
-        .where(
-          and(
-            eq(locationSheetVariants.parentType, parentType),
-            eq(locationSheetVariants.parentId, parentId)
-          )
-        );
+      return await pageOf(
+        db.select().from(locationSheetVariants).$dynamic(),
+        and(
+          eq(locationSheetVariants.parentType, parentType),
+          eq(locationSheetVariants.parentId, parentId),
+          options?.includeDiscarded
+            ? undefined
+            : isNull(locationSheetVariants.discardedAt)
+        ),
+        locationSheetVariants.id,
+        options?.page,
+        asc(locationSheetVariants.id)
+      );
     },
 
     listDivergentByParent: async (
@@ -112,6 +120,21 @@ export function createLocationSheetVariantsMethods(db: Database) {
           )
         )
         .orderBy(locationSheetVariants.divergedAt);
+    },
+
+    /** Batch lookup, chunked below D1's 100-bound-parameter cap. */
+    getByIds: async (variantIds: string[]): Promise<LocationSheetVariant[]> => {
+      const rows: LocationSheetVariant[] = [];
+      for (let i = 0; i < variantIds.length; i += 80)
+        rows.push(
+          ...(await db
+            .select()
+            .from(locationSheetVariants)
+            .where(
+              inArray(locationSheetVariants.id, variantIds.slice(i, i + 80))
+            ))
+        );
+      return rows;
     },
 
     getById: async (

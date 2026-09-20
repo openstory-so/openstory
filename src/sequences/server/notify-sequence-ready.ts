@@ -10,6 +10,7 @@ import { TYPICAL_SHORT_COST_USD } from '@/billing/constants';
 import { microsToDisplayUsd } from '@/billing/money';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { SITE_CONFIG } from '@/ui/marketing/constants';
+import { captureSequenceContentReady } from '@/platform/server/observability/content-feed';
 import { captureProductEvent } from '@/platform/server/observability/product-events';
 import { sumShotDurationsSeconds } from './shot-durations';
 import { sendSequenceReadyEmail } from './sequence-ready-email';
@@ -60,11 +61,42 @@ export type NotifySequenceReadyOpts = {
   userId: string;
 };
 
+async function sequenceTitleForFeed(
+  opts: NotifySequenceReadyOpts
+): Promise<string> {
+  // Live: the row still holds "Untitled Sequence" at the click; scene-split
+  // names it from the script mid-run (#1453). Same hatch as the ready email.
+  const sequence = await opts.scopedDb.liveRead.sequences.getForUser({
+    sequenceId: opts.sequenceId,
+  });
+  return sequence.title;
+}
+
+function emitSequenceContentReady(
+  opts: NotifySequenceReadyOpts,
+  title: string
+): void {
+  captureSequenceContentReady({
+    distinctId: opts.userId,
+    teamId: opts.scopedDb.teamId,
+    sequenceId: opts.sequenceId,
+    title,
+    watchUrl: opts.sequenceUrl,
+    posterUrl: opts.posterUrl,
+  });
+}
+
 export async function notifySequenceReady(
   opts: NotifySequenceReadyOpts
 ): Promise<'sent' | 'skipped'> {
-  if (opts.notify === false) return 'skipped';
-  if (!opts.ownerEmail) return 'skipped';
+  if (opts.notify === false) {
+    emitSequenceContentReady(opts, await sequenceTitleForFeed(opts));
+    return 'skipped';
+  }
+  if (!opts.ownerEmail) {
+    emitSequenceContentReady(opts, await sequenceTitleForFeed(opts));
+    return 'skipped';
+  }
 
   const claimed = await opts.scopedDb.sequences.claimReadyEmailSend(
     opts.sequenceId
@@ -107,6 +139,7 @@ export async function notifySequenceReady(
       event: 'sequence_ready_email_sent',
       properties: { sequence_id: opts.sequenceId },
     });
+    emitSequenceContentReady(opts, sequence.title);
     return 'sent';
   } catch (error) {
     await opts.scopedDb.sequences.releaseReadyEmailSend(opts.sequenceId);

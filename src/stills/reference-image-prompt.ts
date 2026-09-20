@@ -43,6 +43,11 @@ export type ReferenceImageDescription = {
    * the description (#873).
    */
   token?: string;
+  /**
+   * Person vs robot/animal/object (#1682). BytePlus CreateAsset is spent
+   * unless this is false. Absent (in-flight payloads) means register.
+   */
+  isPerson?: boolean;
 };
 
 /** Ordering weight per role: primary first, then the supporting refs. */

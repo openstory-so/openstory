@@ -914,6 +914,11 @@ export type TalentCharacterMatch = {
   // library has none (pre-#1553 checkpoints lack the keys: `?? null`).
   voiceId: string | null;
   voiceDescription: string | null;
+  /**
+   * Signed real-person portrait (`talent.isHuman`). Stamps character
+   * `isPerson: true` at insert (#1682). Absent on pre-stamp checkpoints.
+   */
+  hasSignedRelease?: boolean;
 };
 
 /**
@@ -1885,6 +1890,12 @@ export interface AssetGenerationWorkflowInput extends UserWorkflowContext {
 export interface StudioGenerationWorkflowInput extends UserWorkflowContext {
   assetId: string;
   input: StudioCreateInput;
+  /**
+   * Reference images the likeness ledger cleared as showing no person,
+   * snapshotted at the trigger. BytePlus sends these as plain URLs instead
+   * of spending a CreateAsset on them (`arkStillsForStudio`, #1674).
+   */
+  noPersonImages: string[];
 }
 
 /**

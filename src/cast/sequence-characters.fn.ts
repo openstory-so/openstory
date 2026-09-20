@@ -11,6 +11,7 @@ import { isValidTextToImageModel, safeTextToImageModel } from '@/models/models';
 import type { CharacterBibleUpdate } from '@/cast/server/db/characters';
 import { resolveSequenceStyleConfig } from '@/look/style-config';
 import { buildCastingAttributes } from './character-prompt';
+import { isPersonFromTalentCast } from '@/cast/likeness';
 import { shouldReuseTalentSheet } from '@/cast/server/talent/reuse-talent-sheet';
 import { getGenerationChannel } from '@/platform/realtime';
 import {
@@ -94,6 +95,7 @@ const characterBibleFieldsSchema = z.object({
   movement: bibleField.optional(),
   voiceDescription: bibleField.optional(),
   consistencyTag: bibleField.optional(),
+  isPerson: z.boolean().optional(),
 });
 
 /**
@@ -620,6 +622,10 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
       personality: castingAttrs.personality,
       movement: castingAttrs.movement,
       consistencyTag: castingAttrs.consistencyTag,
+      isPerson: isPersonFromTalentCast(
+        character.isPerson,
+        talentWithSheets.isHuman
+      ),
       // Cast copies the talent's voice (#1553); the role's own is released
       // below once nothing else points at it.
       ...(talentWithSheets.voiceId
@@ -684,6 +690,7 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
         characterId: character.characterId,
         name: character.name,
         voiceOnly: character.voiceOnly,
+        isPerson: updatedCharacter.isPerson,
         voiceDescription: character.voiceDescription ?? '',
         ...castingAttrs,
       },

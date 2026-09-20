@@ -35,6 +35,7 @@ import type { ScopedDb } from '@/platform/server/db/scoped';
 import { buildRegenerateShotSnapshot } from '@/shots/server/workflows/regenerate-shots-snapshot';
 import { matchElementsToShotImage } from '@/shots/scene-matching';
 import { getLogger } from '@/platform/logger';
+import { loadSceneContextBySequence } from './scene-script';
 
 const logger = getLogger(['openstory', 'shots', 'staleness']);
 
@@ -109,6 +110,37 @@ const isSequenceGenerating = (status: SequenceStatus): boolean =>
 
 /** Sequence-scoped rows loaded once for a batch of shot comparisons. */
 export type ShotStalenessRefs = ShotPromptContextRefs;
+
+/**
+ * The sequence-wide rows a batch of comparisons shares: anchors, scene scripts,
+ * selected stills and the reference bibles. One read each, not one per shot.
+ */
+export async function loadShotStalenessBatch(
+  scopedDb: ScopedDb,
+  sequence: { id: string; styleId: string | null }
+) {
+  const [anchorRows, sceneContext, characters, locations, elements, style] =
+    await Promise.all([
+      scopedDb.frames.listAnchorsBySequence(sequence.id),
+      loadSceneContextBySequence(scopedDb, sequence.id),
+      scopedDb.characters.listWithSheets(sequence.id),
+      scopedDb.sequenceLocations.listWithReferences(sequence.id),
+      scopedDb.sequenceElements.list(sequence.id),
+      sequence.styleId
+        ? scopedDb.styles.getById(sequence.styleId)
+        : Promise.resolve(null),
+    ]);
+  const refs: ShotStalenessRefs = { characters, locations, elements, style };
+  return {
+    anchorsByShot: new Map(anchorRows.map((f) => [f.shotId, f])),
+    sceneContext,
+    // Stills live on the selected `frame_variants` rows (#1067).
+    selectedByFrame: await scopedDb.frameVariants.getSelectedByFrameIds(
+      anchorRows.map((f) => f.id)
+    ),
+    refs,
+  };
+}
 
 /**
  * Five states per artifact:

@@ -15,12 +15,10 @@ import type { AcquireInput, BytePlusGovernor } from './byteplus-governor.do';
 const logger = getLogger(['openstory', 'ai', 'byteplus-governor']);
 
 /**
- * Two buckets. `CreateAsset` is the scarce one — the account allows THREE
- * per minute (`QuotaWriteQPMExceeded`, relayed by Tom 2026-09-07), which is
- * why only stills that can carry a face are ingested at all (character
+ * Two buckets. `CreateAsset` is paced by `BYTEPLUS_ASSET_WRITE_QPM`, which
+ * is why only stills that can carry a face are ingested at all (character
  * sheets and start frames; see `submitMotionJob`). Reads (`ListAssets`,
- * `GetAsset` polls, group lookup) sit under a separate flow-control limit
- * BytePlus does not publish; 60/min has not tripped it.
+ * `GetAsset` polls, group lookup) sit under `BYTEPLUS_OPENAPI_QPM`.
  */
 const DEFAULT_ASSET_WRITE_QPM = 3;
 const DEFAULT_OPENAPI_QPM = 60;
@@ -29,9 +27,9 @@ const GOVERNOR_NAME = 'byteplus';
 
 /**
  * Longest a create waits for its turn. The wait is a durable `step.sleep`
- * (`byteplus-asset-steps.ts`), so this bounds the queue, not a Worker: at
- * 3/min it is ~45 creates ahead. Beyond it the DO refuses without reserving
- * and the shot fails with a message that names the queue.
+ * (`byteplus-asset-steps.ts`), so this bounds the queue, not a Worker.
+ * Beyond it the DO refuses without reserving and the shot fails with a
+ * message that names the queue.
  */
 const CREATE_MAX_WAIT_MS = 15 * 60_000;
 
@@ -51,7 +49,9 @@ function writeBucket(): AcquireInput {
   const qpm = envQpm('BYTEPLUS_ASSET_WRITE_QPM', DEFAULT_ASSET_WRITE_QPM);
   return {
     bucket: 'assets-write',
-    capacity: qpm,
+    // One at a time, not a burst of `qpm`: Ark 429s a same-second burst
+    // even when the minute budget is free (#1674).
+    capacity: 1,
     refillPerMinute: qpm,
     maxWaitMs: CREATE_MAX_WAIT_MS,
   };
@@ -99,18 +99,25 @@ function governorStub(): DurableObjectStub<BytePlusGovernor> | undefined {
 }
 
 /**
- * Pace a READ before it fires. CreateAsset is not paced here: its token was
- * reserved by {@link reserveBytePlusCreateSlot} and slept off durably, so a
- * second reservation would spend a turn nobody uses. No-op where the DO is
- * not bound (unit tests, scripts) — the backoff retry still covers those.
+ * Pace a call before it fires. A CreateAsset's first attempt is not paced
+ * here: its token was reserved by {@link reserveBytePlusCreateSlot} and slept
+ * off durably, so a second reservation would spend a turn nobody uses. Its
+ * quota RETRIES are another create, so they take a turn like anyone else —
+ * waited in-step, bounded like a read — rather than cutting in ahead of the
+ * runs asleep on theirs (#1674). No-op where the DO is not bound (unit
+ * tests, scripts) — the backoff retry still covers those.
  */
 export async function acquireBytePlusOpenApiToken(
-  action: string
+  action: string,
+  retry: boolean
 ): Promise<void> {
-  if (WRITE_ACTIONS.has(action)) return;
+  const write = WRITE_ACTIONS.has(action);
+  if (write && !retry) return;
   const stub = governorStub();
   if (!stub) return;
-  const bucket = readBucket();
+  const bucket = write
+    ? { ...writeBucket(), maxWaitMs: READ_MAX_WAIT_MS }
+    : readBucket();
   const delayMs = await stub.acquire(bucket);
   if (delayMs < 0) throw refused(action, bucket);
   if (delayMs === 0) return;

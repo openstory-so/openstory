@@ -37,7 +37,7 @@ type CropTileResult = {
   path: string;
 };
 
-type ImageDimensions = { width: number; height: number };
+export type ImageDimensions = { width: number; height: number };
 
 /**
  * Bytes to read for format headers. PNG/WebP fit in <40B; JPEG SOF often
@@ -222,11 +222,7 @@ function parseWebpDimensions(bytes: Uint8Array): ImageDimensions | null {
   return null;
 }
 
-/**
- * Read width/height from PNG, JPEG, or WebP headers. Stored `/r2/` URLs
- * read a prefix from the R2 binding; external URLs use a Range request —
- * no full download.
- */
+/** Read width/height from PNG, JPEG, or WebP headers. */
 export function parseImageDimensions(
   bytes: Uint8Array
 ): ImageDimensions | null {
@@ -237,7 +233,14 @@ export function parseImageDimensions(
   );
 }
 
-async function getImageDimensions(imageUrl: string): Promise<ImageDimensions> {
+/**
+ * Read width/height from PNG, JPEG, or WebP headers. Stored `/r2/` URLs
+ * read a prefix from the R2 binding; external URLs use a Range request —
+ * no full download.
+ */
+export async function probeImageDimensions(
+  imageUrl: string
+): Promise<ImageDimensions> {
   const key = r2KeyFromUrl(imageUrl);
   let bytes: Uint8Array;
   if (key !== null) {
@@ -246,7 +249,7 @@ async function getImageDimensions(imageUrl: string): Promise<ImageDimensions> {
       length: HEADER_BYTES,
     });
     if (!object) {
-      throw new Error(`Grid image not found in storage: ${key}`);
+      throw new Error(`Image not found in storage: ${key}`);
     }
     bytes = object.bytes;
   } else {
@@ -255,7 +258,7 @@ async function getImageDimensions(imageUrl: string): Promise<ImageDimensions> {
     });
     if (!response.ok) {
       throw new Error(
-        `Failed to fetch grid image header ${imageUrl}: ${response.status}`
+        `Failed to fetch image header ${imageUrl}: ${response.status}`
       );
     }
     bytes = new Uint8Array(await response.arrayBuffer());
@@ -396,7 +399,7 @@ export async function cropTileFromGrid(
   }
 
   const { width: gridWidth, height: gridHeight } =
-    await getImageDimensions(gridImageUrl);
+    await probeImageDimensions(gridImageUrl);
   const { trim } = tileCropRect({
     gridWidth,
     gridHeight,

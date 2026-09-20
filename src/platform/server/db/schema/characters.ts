@@ -68,6 +68,9 @@ export const characters = snakeCase.table(
     // sheet is ever generated. Existing rows are all on-screen cast, so the
     // default is honest.
     voiceOnly: integer({ mode: 'boolean' }).default(false).notNull(),
+    // Person vs robot/animal/object (#1682). Existing rows predate the
+    // column and may show a person, so the default keeps them registered.
+    isPerson: integer({ mode: 'boolean' }).default(true).notNull(),
     // Voice (#1553). `voiceId` is an ElevenLabs voice on the PLATFORM account;
     // the same id is copied onto `talent.voiceId` at save-to-library and
     // back at cast, so release through `releaseVoiceIfUnreferenced`, never a
@@ -157,6 +160,7 @@ export type CharacterMinimal = Pick<
   | 'selectedSheetVersionId'
   | 'physicalDescription'
   | 'voiceOnly'
+  | 'isPerson'
   | 'consistencyTag'
 > & {
   /** Designed ElevenLabs voice, when the row has one (#1554). */

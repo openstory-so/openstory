@@ -42,6 +42,9 @@ export async function analyzeTalentMediaForTeam(
     imageUrls: input.imageUrls,
     filenames: input.filenames,
     llmKey: llmKeyInfo,
+    // The region fallback swaps the model; re-resolve so the retry's via is
+    // one that carries it (#1259).
+    resolveLlmKey: (model) => input.scopedDb.apiKeys.resolveLlmKey(model),
     observability: {
       userId: input.userId,
       tags: ['vision', 'talent'],
@@ -51,14 +54,14 @@ export async function analyzeTalentMediaForTeam(
   if (!result.usedOwnKey) {
     if (result.costMicros > 0) {
       await input.scopedDb.billing.deductCredits(result.costMicros, {
-        description: `Talent vision (${TALENT_VISION_MODEL})`,
-        metadata: { model: TALENT_VISION_MODEL },
+        description: `Talent vision (${result.model})`,
+        metadata: { model: result.model },
         idempotencyKey: input.idempotencyKey,
       });
     } else {
       reportMissingBillingCost({
         source: 'talent-vision',
-        modelId: TALENT_VISION_MODEL,
+        modelId: result.model,
         metadata: { imageCount: input.imageUrls.length },
       });
     }
@@ -96,6 +99,7 @@ export function sheetMetadataFromAnalysis(
     voiceDescription: '',
     // A talent photo is a face by definition.
     voiceOnly: false,
+    isPerson: true,
     consistencyTag: slug,
   };
 }

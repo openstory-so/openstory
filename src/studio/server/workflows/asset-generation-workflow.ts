@@ -186,7 +186,11 @@ export type AssetPersistScopedDb = {
     markRunning: (id: string) => Promise<void>;
     markCompleted: (
       id: string,
-      fields: { outputs: GeneratedAssetOutput[]; costMicros?: number | null }
+      fields: {
+        outputs: GeneratedAssetOutput[];
+        costMicros?: number | null;
+        provider: 'fal';
+      }
     ) => Promise<void>;
     markFailed: (id: string, error: string) => Promise<void>;
   };
@@ -409,6 +413,8 @@ export async function persistAssetCompletion(params: {
   await params.scopedDb.generatedAssets.markCompleted(params.assetId, {
     outputs: params.outputs,
     costMicros: null,
+    // The catalog runs fal endpoints directly; there is no other via here.
+    provider: 'fal',
   });
 }
 

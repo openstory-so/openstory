@@ -17,6 +17,8 @@ import {
   RECOMMENDED_MODELS,
 } from '@/models/server/llm-client';
 import { isValidImageToVideoModel } from './models';
+import type { TextModel } from './models';
+import type { LlmKeyInfo } from '@/models/server/create-adapter';
 import { isValidAnalysisModelId } from './models.config';
 import { sanitizeScriptContent } from '@/sequences/prompt-validation';
 import {
@@ -114,6 +116,9 @@ export const shortenPromptFn = createServerFn({ method: 'POST' })
     const model = RECOMMENDED_MODELS.fast;
     let shortenedPrompt = '';
     let usage;
+    // A region block retries on another model (#1259); bill what answered.
+    let servedModel: TextModel = model;
+    let servedVia: LlmKeyInfo['via'] | undefined = llmKey.via;
     for await (const chunk of callLLMStream({
       model,
       messages: [
@@ -127,7 +132,11 @@ export const shortenPromptFn = createServerFn({ method: 'POST' })
       apiKey: llmKey,
     })) {
       shortenedPrompt = chunk.accumulated;
-      if (chunk.done) usage = chunk.usage;
+      if (chunk.done) {
+        usage = chunk.usage;
+        servedModel = chunk.model;
+        servedVia = chunk.via;
+      }
     }
 
     if (!shortenedPrompt) {
@@ -139,7 +148,7 @@ export const shortenPromptFn = createServerFn({ method: 'POST' })
       throw new Error('Shortened prompt is too short. Please try again.');
     }
 
-    await deduct?.(llmCostFromUsage(usage, model, llmKey.via));
+    await deduct?.(llmCostFromUsage(usage, servedModel, servedVia));
 
     return {
       originalPrompt: data.prompt,
@@ -214,6 +223,8 @@ export const estimateSceneDurationFn = createServerFn({ method: 'POST' })
 
     let response;
     let usage;
+    let servedModel: TextModel = analysisModel;
+    let servedVia: LlmKeyInfo['via'] | undefined = llmKey.via;
     for await (const chunk of callLLMStream({
       model: analysisModel,
       messages: [
@@ -235,6 +246,8 @@ export const estimateSceneDurationFn = createServerFn({ method: 'POST' })
       if (chunk.done) {
         response = chunk.parsed;
         usage = chunk.usage;
+        servedModel = chunk.model;
+        servedVia = chunk.via;
       }
     }
 
@@ -242,7 +255,7 @@ export const estimateSceneDurationFn = createServerFn({ method: 'POST' })
       throw new Error('No response received from AI service');
     }
 
-    await deduct?.(llmCostFromUsage(usage, analysisModel, llmKey.via));
+    await deduct?.(llmCostFromUsage(usage, servedModel, servedVia));
 
     return { durationSeconds: clampDuration(response.durationSeconds) };
   });
@@ -465,6 +478,8 @@ Return up to ${limit} best-fit styles, strongest first.`;
     const model = RECOMMENDED_MODELS.structured;
     let result;
     let usage;
+    let servedModel: TextModel = model;
+    let servedVia: LlmKeyInfo['via'] | undefined = llmKey.via;
     for await (const chunk of callLLMStream({
       model,
       messages: [
@@ -480,6 +495,8 @@ Return up to ${limit} best-fit styles, strongest first.`;
       if (chunk.done) {
         result = chunk.parsed;
         usage = chunk.usage;
+        servedModel = chunk.model;
+        servedVia = chunk.via;
       }
     }
 
@@ -487,7 +504,7 @@ Return up to ${limit} best-fit styles, strongest first.`;
       throw new Error('No response received from AI service');
     }
 
-    await deduct?.(llmCostFromUsage(usage, model, llmKey.via));
+    await deduct?.(llmCostFromUsage(usage, servedModel, servedVia));
 
     const recommendations = rankStyleRecommendations(
       result,

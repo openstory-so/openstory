@@ -19,6 +19,7 @@
  * off the client.
  */
 
+import type { Likeness } from '@/cast/likeness';
 import { analyzeTalentMediaForTeam } from '@/cast/server/talent/analyze-talent-media';
 import type { TalentSubjectKind } from '@/cast/subject-kind';
 import type { PortraitAttestation, UploadRights } from '@/cast/upload-rights';
@@ -193,6 +194,28 @@ export async function requireUploadRights(
     result.set(url, { depictsRealPerson: rights.status === 'signed' });
   }
   return result;
+}
+
+/**
+ * Signed or detected → `real`; classifier cleared → `none` (#1682).
+ * Detected-but-unsigned is still a real person — `requireUploadRights`
+ * refuses use until signed. No row returns null. A `none` still is a
+ * plain URL; anything else registers.
+ */
+export async function likenessFromLedger(
+  scopedDb: ScopedDb,
+  url: string
+): Promise<Likeness | null> {
+  const row = await latestRow(scopedDb, url);
+  if (!row) return null;
+  switch (rightsFromRow(row).status) {
+    case 'signed':
+      return 'real';
+    case 'cleared':
+      return 'none';
+    case 'needs_portrait':
+      return 'real';
+  }
 }
 
 /**

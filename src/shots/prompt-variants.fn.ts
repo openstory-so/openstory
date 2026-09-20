@@ -1,3 +1,4 @@
+import { readMusicPromptStaleness } from '@/audio/server/music-staleness';
 import {
   rendersReferenceOnly,
   shotPromptSequence,
@@ -883,61 +884,9 @@ export const regenerateMusicPromptFn = createServerFn({ method: 'POST' })
 export const getMusicPromptStalenessFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(sequenceListInput))
-  .handler(async ({ context }) => {
-    const { sequence, scopedDb } = context;
-
-    // Mid-run (#1121): the hash is taken over the scene summaries, and a
-    // storyboard run is still writing scenes — the divergence is the pipeline
-    // working, not the user's edit. Same short-circuit as
-    // `computeShotStaleness`, for the same reason: no verdict while the
-    // sequence is being built.
-    if (sequence.status === 'processing') {
-      return { musicPrompt: 'generating' as const };
-    }
-
-    // No stored hash: legacy sequence or never generated. Surface explicitly
-    // so the UI can suppress the "regenerate" prompt without claiming
-    // freshness.
-    if (!sequence.musicPromptInputHash) {
-      return { musicPrompt: 'untracked' as const };
-    }
-
-    try {
-      const [shots, sceneContext] = await Promise.all([
-        scopedDb.shots.listBySequence(sequence.id),
-        loadSceneContextBySequence(scopedDb, sequence.id),
-      ]);
-      const scenes = shots
-        .map((shot) => resolveSceneForShot(shot, sceneContext).scene)
-        .filter((scene): scene is Scene => scene !== null);
-      if (scenes.length === 0) {
-        return { musicPrompt: 'untracked' as const };
-      }
-      const sceneSummaries = buildMusicSceneSummaries(scenes);
-
-      const latest = await scopedDb.sequenceMusicPromptVersions.getLatest(
-        sequence.id
-      );
-      const analysisModel =
-        latest?.analysisModel ??
-        getAnalysisModelById(sequence.analysisModel)?.id ??
-        DEFAULT_ANALYSIS_MODEL;
-
-      const musicUpToDate = await musicPromptInputHashMatches(
-        sequence.musicPromptInputHash,
-        { sceneSummaries, analysisModel }
-      );
-
-      return {
-        musicPrompt: musicUpToDate ? ('fresh' as const) : ('stale' as const),
-      };
-    } catch (error) {
-      // Hash uncomputable (e.g., scene metadata missing a required field).
-      // Surface as untracked so the UI doesn't lie about freshness.
-      logger.warn(`uncomputable for sequence ${sequence.id}:`, { err: error });
-      return { musicPrompt: 'untracked' as const };
-    }
-  });
+  .handler(({ context }) =>
+    readMusicPromptStaleness(context.scopedDb, context.sequence)
+  );
 
 // Variant `promptHash` is `simpleHash(text)` (32-bit, non-crypto). We match
 // against prompt-variant rows that existed at or before the variant's

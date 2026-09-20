@@ -50,7 +50,7 @@ export const PLATFORM_FEE_PERCENT = 0.07;
  * H3 Max / ElevenLabs). Guarded by the signup-grant test in
  * constants.test.ts.
  */
-const SIGNUP_GRANT_USD = 20;
+const SIGNUP_GRANT_USD = 0;
 
 export const SIGNUP_GRANT_MICROS: Microdollars = usdToMicros(SIGNUP_GRANT_USD);
 

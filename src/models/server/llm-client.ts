@@ -4,6 +4,7 @@
  */
 
 import type { TextModel } from '@/models/models';
+import { getMaxOutputTokens } from '@/models/models.config';
 import { reportMissingBillingCost } from '@/billing/billing-observability';
 import { usdToMicros, ZERO_MICROS, type Microdollars } from '@/billing/money';
 import { aiObservabilityMiddleware } from '@/platform/server/observability/ai-otel';
@@ -215,6 +216,15 @@ export type StreamChunk<T = never> =
        * to bill the call.
        */
       usage: TokenUsage | undefined;
+      /**
+       * The model that actually answered, and the via it was reached on. A
+       * region block (#1259) retries on {@link REGION_FALLBACK_MODEL}, so this
+       * is NOT always `params.model` — bill and label with these, or a
+       * GLM-5.3-Flash answer gets charged at the requested model's rate
+       * (silently, on any via that reports no cost of its own).
+       */
+      model: TextModel;
+      via: LlmKeyInfo['via'] | undefined;
     };
 
 export type LLMRequestParams<T = unknown> = {
@@ -240,6 +250,14 @@ export type LLMRequestParams<T = unknown> = {
   responseSchema?: z.ZodType<T>;
   /** Resolved LLM key info — `via` decides endpoint routing + auth scheme. */
   apiKey?: LlmKeyInfo;
+  /**
+   * Re-resolve the key when a region block swaps the model (#1259). `apiKey`
+   * was resolved for `model`; a via that carries it need not carry the
+   * fallback (an LLMTR key for an unmapped model is a `createAdapter` throw,
+   * not a fallback), so callers that can resolve per-model pass this and the
+   * retry asks again. Omitted: the retry reuses `apiKey`.
+   */
+  resolveApiKey?: (model: TextModel) => Promise<LlmKeyInfo | undefined>;
   /**
    * Enable OpenRouter's web-search server tool for this request. The model
    * decides when to search; OpenRouter runs the search server-side inside the
@@ -878,10 +896,23 @@ export function extractRunError(event: unknown): RunErrorDetail | null {
         );
   const code =
     'code' in event && typeof event.code === 'string' ? event.code : undefined;
+  // TanStack normalizes adapter-only fields into metadata.tanstack.
+  const metadata = 'metadata' in event ? event.metadata : undefined;
+  const tanstack =
+    metadata && typeof metadata === 'object' && 'tanstack' in metadata
+      ? metadata.tanstack
+      : undefined;
+  const normalizedModel =
+    tanstack &&
+    typeof tanstack === 'object' &&
+    'model' in tanstack &&
+    typeof tanstack.model === 'string'
+      ? tanstack.model
+      : undefined;
   const model =
     'model' in event && typeof event.model === 'string'
       ? event.model
-      : undefined;
+      : normalizedModel;
   const rawEvent = 'rawEvent' in event ? event.rawEvent : undefined;
   return { message, code, model, rawEvent, event };
 }
@@ -960,24 +991,24 @@ function formatRunErrorMessage(detail: RunErrorDetail): string {
  * (for-await-of close), which skips TanStack's `onError` and leaves the OTel
  * iteration span un-ended — PostHog never turns those into `$ai_generation`.
  */
-export function throwNotedRunError(detail: RunErrorDetail | null): void {
+export function throwNotedRunError(
+  detail: RunErrorDetail | null,
+  canRetryRegionBlock = false
+): void {
   if (!detail) return;
   // Log the formatted string as the message (not as a `{ properties }` field)
   // so the actual error is visible in the dev pretty sink, which omits the
   // structured-field block. The full event still rides along for prod JSON.
   const message = formatRunErrorMessage(detail);
-  logger.error(message, { runError: detail.event, rawEvent: detail.rawEvent });
+  const properties = { runError: detail.event, rawEvent: detail.rawEvent };
+  // Only downgrade attempts the caller can recover. Terminal failures must
+  // still count as errors, even when their message describes a region block.
+  if (canRetryRegionBlock && isRegionBlockedLlmError(message)) {
+    logger.warn(message, properties);
+  } else {
+    logger.error(message, properties);
+  }
   throw new Error(message);
-}
-
-/** Whether any message carries an image content part (drives which region
- *  fallback model is eligible — DeepSeek is text-only). */
-function messagesHaveImages(messages: ChatMessage[]): boolean {
-  return messages.some(
-    (msg) =>
-      typeof msg.content !== 'string' &&
-      msg.content.some((part) => part.type === 'image')
-  );
 }
 
 export function callLLMStream<T>(
@@ -995,7 +1026,7 @@ export async function* callLLMStream<T>(
   // so a mid-stream failure can never replay content into the consumer.
   let yielded = false;
   try {
-    for await (const chunk of callLLMStreamOnce(params)) {
+    for await (const chunk of callLLMStreamOnce(params, true)) {
       yielded = true;
       yield chunk;
     }
@@ -1004,20 +1035,33 @@ export async function* callLLMStream<T>(
     const message = error instanceof Error ? error.message : String(error);
     const fallback =
       !yielded && isRegionBlockedLlmError(message)
-        ? regionFallbackModel(params.model, messagesHaveImages(params.messages))
+        ? regionFallbackModel(params.model)
         : null;
     if (!fallback) throw error;
     logger.warn(
       `Model ${params.model} is region-blocked here; retrying with ${fallback}`
     );
-    yield* callLLMStreamOnce({ ...params, model: fallback });
+    const apiKey = params.resolveApiKey
+      ? await params.resolveApiKey(fallback)
+      : params.apiKey;
+    yield* callLLMStreamOnce({
+      ...params,
+      model: fallback,
+      apiKey,
+      max_tokens:
+        params.max_tokens == null
+          ? undefined
+          : Math.min(params.max_tokens, getMaxOutputTokens(fallback)),
+    });
   }
 }
 
 async function* callLLMStreamOnce<T>(
-  params: LLMRequestParams<T>
+  params: LLMRequestParams<T>,
+  canRetryRegionBlock = false
 ): AsyncGenerator<StreamChunk<T>> {
   let accumulated = '';
+  let yielded = false;
   let parsed: T | undefined;
   // Structured streaming + multi-hook capture is required for OpenRouter
   // `usage.cost` (non-stream structuredOutput drops it — TanStack/ai#1076).
@@ -1073,6 +1117,7 @@ async function* callLLMStreamOnce<T>(
         typeof event.delta === 'string'
       ) {
         accumulated += event.delta;
+        yielded = true;
         yield { delta: event.delta, accumulated, done: false };
         continue;
       }
@@ -1097,6 +1142,7 @@ async function* callLLMStreamOnce<T>(
       }
       if (event.type === 'TEXT_MESSAGE_CONTENT') {
         accumulated += event.delta;
+        yielded = true;
         yield { delta: event.delta, accumulated, done: false };
         continue;
       }
@@ -1109,6 +1155,7 @@ async function* callLLMStreamOnce<T>(
         // first answer token). Empty `delta` keeps it out of the answer.
         // Deliberately plain-text-path only: the structured-output paths above
         // feed workflows with nothing watching, so they keep dropping it.
+        yielded = true;
         yield { delta: '', accumulated, reasoning: event.delta, done: false };
         continue;
       }
@@ -1124,7 +1171,12 @@ async function* callLLMStreamOnce<T>(
     });
     throw new NonRetryableError(contentFilterLlmMessage('Script'));
   }
-  throwNotedRunError(runError);
+  throwNotedRunError(
+    runError,
+    canRetryRegionBlock &&
+      !yielded &&
+      regionFallbackModel(params.model) !== null
+  );
 
   yield {
     delta: '',
@@ -1132,5 +1184,7 @@ async function* callLLMStreamOnce<T>(
     done: true,
     parsed,
     usage: usageCapture.get(),
+    model: params.model,
+    via: params.apiKey?.via,
   };
 }

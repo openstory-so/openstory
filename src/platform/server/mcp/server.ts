@@ -1,7 +1,10 @@
+import { registerLibraryReads } from './tools/library-reads';
+import { registerCastReads } from './tools/cast-reads';
+import { registerProductionReads } from './tools/production-reads';
+import { registerContextReads } from './tools/context-reads';
 /**
  * MCP server construction (#1457): name/version, tools capability, and the
- * `whoami` connectivity tool. Read/write production tools land in later
- * milestones; this registry starts empty besides whoami.
+ * `whoami` connectivity tool and read-only production tools (#1458).
  */
 
 import {
@@ -13,6 +16,16 @@ import {
 import { CfWorkerJsonSchemaValidator } from '@modelcontextprotocol/server/validators/cf-worker';
 import { getLogger, toErrorPayload } from '@/platform/logger';
 import { z } from 'zod';
+import { AuthenticationError } from '@/platform/errors';
+import { createScopedDb } from '@/platform/server/db/scoped';
+import type { ReadToolContextFactory } from './tool-context';
+import { registerListSequences } from './tools/list-sequences';
+import { registerGetSequence } from './tools/get-sequence';
+import { registerGetSequenceStatus } from './tools/get-sequence-status';
+import { registerListScenes } from './tools/list-scenes';
+import { registerGetScene } from './tools/get-scene';
+import { registerListShots } from './tools/list-shots';
+import { registerGetShot } from './tools/get-shot';
 import { isMcpCallerIdentity, type McpCallerIdentity } from './auth';
 
 const logger = getLogger(['openstory', 'mcp']);
@@ -42,8 +55,15 @@ function authFromInfo(info: AuthInfo | undefined): McpCallerIdentity {
   return extra;
 }
 
+/** Media URLs are made absolute against the host the caller reached. */
+function originFromRequest(request: { url: string } | undefined): string {
+  if (!request) throw new Error('MCP request is missing request info');
+  return new URL(request.url).origin;
+}
+
 export function toMcpAuthInfo(
   auth: McpCallerIdentity & {
+    kind: 'oauth' | 'api_key';
     keyHint: string;
     clientId: string;
     scopes: readonly string[];
@@ -54,6 +74,7 @@ export function toMcpAuthInfo(
     clientId: auth.clientId,
     scopes: [...auth.scopes],
     extra: {
+      authKind: auth.kind,
       [MCP_AUTH_EXTRA]: {
         user: auth.user,
         teamId: auth.teamId,
@@ -63,7 +84,10 @@ export function toMcpAuthInfo(
   };
 }
 
-export function createOpenStoryMcpServer(auth: McpCallerIdentity): McpServer {
+export function createOpenStoryMcpServer(
+  auth: McpCallerIdentity,
+  options: { origin: string; scopes?: string[] }
+): McpServer {
   const server = new McpServer(
     { name: MCP_SERVER_NAME, version: MCP_SERVER_VERSION },
     { jsonSchemaValidator: new CfWorkerJsonSchemaValidator() }
@@ -94,6 +118,29 @@ export function createOpenStoryMcpServer(auth: McpCallerIdentity): McpServer {
     }
   );
 
+  // Construct the DB only when a production tool runs; discovery/whoami need none.
+  const context: ReadToolContextFactory = () => {
+    if (options.scopes && !options.scopes.includes('sequences:read')) {
+      throw new AuthenticationError(
+        'This token requires the sequences:read scope.'
+      );
+    }
+    return {
+      scopedDb: createScopedDb(auth.teamId, auth.user.id),
+      origin: options.origin,
+    };
+  };
+  registerListSequences(server, context);
+  registerGetSequence(server, context);
+  registerGetSequenceStatus(server, context);
+  registerListScenes(server, context);
+  registerGetScene(server, context);
+  registerListShots(server, context);
+  registerGetShot(server, context);
+  registerCastReads(server, context);
+  registerProductionReads(server, context);
+  registerContextReads(server, context);
+  registerLibraryReads(server, context);
   return server;
 }
 
@@ -101,7 +148,15 @@ let handler: McpHttpHandler | undefined;
 
 export function getMcpHttpHandler(): McpHttpHandler {
   handler ??= createMcpHandler(
-    (ctx) => createOpenStoryMcpServer(authFromInfo(ctx.authInfo)),
+    (ctx) =>
+      createOpenStoryMcpServer(authFromInfo(ctx.authInfo), {
+        origin: originFromRequest(ctx.requestInfo),
+        // API keys are unscoped; OAuth tokens must carry sequences:read.
+        scopes:
+          ctx.authInfo?.extra?.authKind === 'api_key'
+            ? undefined
+            : (ctx.authInfo?.scopes ?? []),
+      }),
     {
       legacy: 'reject',
       onerror: (error) => {

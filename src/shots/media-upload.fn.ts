@@ -24,8 +24,12 @@ import {
   computeLocationSheetInputHash,
   hashVisualPromptInput,
 } from './input-hash';
+import { isPersonFromUploadLedger } from '@/cast/likeness';
 import { resolveSheetImageModel } from '@/cast/sheet-image-model';
-import { requireUploadRights } from '@/cast/server/upload-rights';
+import {
+  likenessFromLedger,
+  requireUploadRights,
+} from '@/cast/server/upload-rights';
 import { StyleConfigSchema } from '@/look/style-config';
 import { NotFoundError } from '@/platform/errors';
 import { computeStyleConfigHash } from '@/cast/server/workflows/sheet-snapshots';
@@ -711,6 +715,10 @@ export const setCharacterSheetFromUploadFn = createServerFn({ method: 'POST' })
     if (!character || character.sequenceId !== sequence.id) {
       throw new NotFoundError('Character not found');
     }
+    const isPerson = isPersonFromUploadLedger(
+      character.isPerson,
+      await likenessFromLedger(scopedDb, data.publicUrl)
+    );
 
     // Same upstream resolution the character-sheet workflow uses: the matched
     // talent's default convergent sheet hash, else null.
@@ -752,6 +760,7 @@ export const setCharacterSheetFromUploadFn = createServerFn({ method: 'POST' })
         storagePath,
         inputHash,
         model: USER_UPLOAD_MODEL,
+        isPerson,
       });
     await scopedDb.sequenceEvents.record({
       sequenceId: sequence.id,

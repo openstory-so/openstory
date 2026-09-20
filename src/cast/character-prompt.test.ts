@@ -2,9 +2,11 @@ import { describe, expect, test } from 'vitest';
 import { migrateStyleConfigV1ToV2 } from '@/look/style-config';
 import type { CharacterBibleEntry } from '@/shots/scene-analysis.schema';
 import type { StyleConfig } from '@/platform/server/db/schema';
+import type { CharacterMinimal } from '@/platform/server/db/schema';
 import {
   buildCastCharacterBible,
   buildCastingAttributes,
+  buildCharacterReferenceImages,
   buildCharacterSheetPrompt,
 } from './character-prompt';
 
@@ -24,6 +26,7 @@ const scriptEntry: CharacterBibleEntry = {
   movement: '',
   voiceDescription: '',
   voiceOnly: false,
+  isPerson: true,
   consistencyTag: 'detective_sarah_blonde_30s',
 };
 
@@ -40,8 +43,57 @@ const talentMetadata: CharacterBibleEntry = {
   movement: '',
   voiceDescription: '',
   voiceOnly: false,
+  isPerson: true,
   consistencyTag: 'elvis_presley',
 };
+
+describe('buildCharacterReferenceImages', () => {
+  const sheet = (
+    overrides: Partial<CharacterMinimal> & { name: string }
+  ): CharacterMinimal => ({
+    id: `id_${overrides.name}`,
+    characterId: overrides.name.toLowerCase(),
+    sheetImageUrl: `/r2/${overrides.name}.png`,
+    sheetStatus: 'completed',
+    sheetInputHash: 'hash',
+    selectedSheetVersionId: null,
+    physicalDescription: `${overrides.name} is here`,
+    voiceOnly: false,
+    isPerson: true,
+    consistencyTag: overrides.name.toLowerCase(),
+    ...overrides,
+  });
+
+  test('copies isPerson onto the motion reference (#1682)', () => {
+    expect(
+      buildCharacterReferenceImages([
+        sheet({ name: 'Sarah', isPerson: true }),
+        sheet({ name: 'UNIT-7', isPerson: false }),
+      ])
+    ).toEqual([
+      expect.objectContaining({
+        token: 'Sarah',
+        isPerson: true,
+      }),
+      expect.objectContaining({
+        token: 'UNIT-7',
+        isPerson: false,
+      }),
+    ]);
+  });
+
+  test('a missing isPerson on an in-flight checkpoint still registers', () => {
+    const legacy = sheet({ name: 'Ada', isPerson: true });
+    // oxlint-disable-next-line typescript/no-dynamic-delete -- drop the flag the way a pre-#1682 checkpoint would
+    delete (legacy as { isPerson?: boolean }).isPerson;
+    expect(buildCharacterReferenceImages([legacy])).toEqual([
+      expect.objectContaining({ token: 'Ada' }),
+    ]);
+    expect(
+      buildCharacterReferenceImages([legacy])[0]?.isPerson
+    ).toBeUndefined();
+  });
+});
 
 describe('buildCastingAttributes', () => {
   test('uses talent physical attributes over script', () => {
@@ -193,6 +245,7 @@ describe('buildCastCharacterBible', () => {
     movement: '',
     voiceDescription: '',
     voiceOnly: false,
+    isPerson: true,
     consistencyTag: 'bob_grey_suit',
   };
 
@@ -223,6 +276,7 @@ describe('buildCastCharacterBible', () => {
       name: 'Detective Sarah',
       voiceDescription: '',
       voiceOnly: false,
+      isPerson: true,
       ...expected,
     });
     expect(cast.physicalDescription).toBe(

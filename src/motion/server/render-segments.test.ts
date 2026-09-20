@@ -21,31 +21,31 @@ const shot = (id: string, durationMs: number): SegmentShot => ({
 });
 
 describe('tileSceneIntoSegments', () => {
-  it('scene ≤ cap ⇒ one segment covering every shot', () => {
+  it('without a minimum, each shot renders independently', () => {
     const shots = [shot('a', 5000), shot('b', 5000), shot('c', 4000)];
     const segments = tileSceneIntoSegments(shots, 15_000);
     expect(segments).toEqual([
-      { shotIds: ['a', 'b', 'c'], durationMs: 14_000 },
+      { shotIds: ['a'], durationMs: 5000 },
+      { shotIds: ['b'], durationMs: 5000 },
+      { shotIds: ['c'], durationMs: 4000 },
     ]);
   });
 
-  it('long scene splits on the per-model cap (15s)', () => {
-    const shots = [
-      shot('a', 8000),
-      shot('b', 8000), // a+b = 16s > 15s → b opens a new segment
-      shot('c', 5000),
-    ];
-    expect(tileSceneIntoSegments(shots, 15_000)).toEqual([
-      { shotIds: ['a'], durationMs: 8000 },
-      { shotIds: ['b', 'c'], durationMs: 13_000 },
+  it('does not exceed the cap to absorb a short shot', () => {
+    const shots = [shot('a', 15_000), shot('b', 1000), shot('c', 15_000)];
+    expect(tileSceneIntoSegments(shots, 15_000, 4000)).toEqual([
+      { shotIds: ['a'], durationMs: 15_000 },
+      { shotIds: ['b'], durationMs: 1000, belowMin: true },
+      { shotIds: ['c'], durationMs: 15_000 },
     ]);
   });
 
-  it('a higher per-model cap (30s) keeps more shots in one segment', () => {
+  it('a higher cap does not merge independently renderable shots', () => {
     const shots = [shot('a', 8000), shot('b', 8000), shot('c', 5000)];
-    // Same shots, 30s cap → all three fit in one segment.
-    expect(tileSceneIntoSegments(shots, 30_000)).toEqual([
-      { shotIds: ['a', 'b', 'c'], durationMs: 21_000 },
+    expect(tileSceneIntoSegments(shots, 30_000, 4000)).toEqual([
+      { shotIds: ['a'], durationMs: 8000 },
+      { shotIds: ['b'], durationMs: 8000 },
+      { shotIds: ['c'], durationMs: 5000 },
     ]);
   });
 
@@ -71,7 +71,7 @@ describe('tileSceneIntoSegments', () => {
 
   it('a non-positive cap falls back to the default cap', () => {
     const shots = [shot('a', 5000), shot('b', 5000)];
-    expect(tileSceneIntoSegments(shots, 0)).toEqual([
+    expect(tileSceneIntoSegments(shots, 0, 6000)).toEqual([
       { shotIds: ['a', 'b'], durationMs: 10_000 },
     ]);
   });
@@ -98,16 +98,47 @@ describe('resolveSegmentMinMs', () => {
 });
 
 describe('tileSceneIntoSegments — min floor', () => {
-  it('greedy fill that leaves a 4s tail on H3 (min 5) is rejected for [14][5]', () => {
+  it('stops grouping short shots as soon as the minimum is met', () => {
+    expect(
+      tileSceneIntoSegments(
+        [shot('a', 2000), shot('b', 2000), shot('c', 2000), shot('d', 2000)],
+        15_000,
+        4000
+      )
+    ).toEqual([
+      { shotIds: ['a', 'b'], durationMs: 4000 },
+      { shotIds: ['c', 'd'], durationMs: 4000 },
+    ]);
+  });
+
+  it('keeps independently renderable shots separate even when all fit the cap', () => {
+    expect(
+      tileSceneIntoSegments(
+        [shot('a', 4000), shot('b', 6000), shot('c', 5000)],
+        15_000,
+        4000
+      )
+    ).toEqual([
+      { shotIds: ['a'], durationMs: 4000 },
+      { shotIds: ['b'], durationMs: 6000 },
+      { shotIds: ['c'], durationMs: 5000 },
+    ]);
+  });
+
+  it('uses minimum H3 groups and absorbs the short tail: [5][5][9]', () => {
     const shots = Array.from({ length: 19 }, (_, i) => shot(String(i), 1000));
     expect(tileSceneIntoSegments(shots, 15_000, 5_000)).toEqual([
       {
-        shotIds: Array.from({ length: 14 }, (_, i) => String(i)),
-        durationMs: 14_000,
+        shotIds: ['0', '1', '2', '3', '4'],
+        durationMs: 5_000,
       },
       {
-        shotIds: ['14', '15', '16', '17', '18'],
+        shotIds: ['5', '6', '7', '8', '9'],
         durationMs: 5_000,
+      },
+      {
+        shotIds: ['10', '11', '12', '13', '14', '15', '16', '17', '18'],
+        durationMs: 9_000,
       },
     ]);
   });

@@ -16,7 +16,9 @@ import type {
   SceneScriptSource,
   SceneScriptVersion,
 } from '@/platform/server/db/schema';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { pageOf } from '@/platform/server/db/read-page';
+import type { PageOptions } from '@/platform/server/db/read-page';
 
 type WriteSceneScriptVersionInput = {
   sceneId: DbSceneId;
@@ -126,12 +128,17 @@ export function createSceneScriptVersionsMethods(db: Database) {
       return new Map(rows.map((r) => [r.sceneId, r.version]));
     },
 
-    listByScene: async (sceneId: DbSceneId): Promise<SceneScriptVersion[]> => {
-      return await db
-        .select()
-        .from(sceneScriptVersions)
-        .where(eq(sceneScriptVersions.sceneId, sceneId))
-        .orderBy(desc(sceneScriptVersions.createdAt));
+    listByScene: async (
+      sceneId: DbSceneId,
+      page?: PageOptions
+    ): Promise<SceneScriptVersion[]> => {
+      return await pageOf(
+        db.select().from(sceneScriptVersions).$dynamic(),
+        eq(sceneScriptVersions.sceneId, sceneId),
+        sceneScriptVersions.id,
+        page,
+        desc(sceneScriptVersions.createdAt)
+      );
     },
 
     getByIdForScene: async (
@@ -175,7 +182,9 @@ export function createSceneScriptVersionsMethods(db: Database) {
           sceneScriptVersions,
           eq(scenes.selectedScriptVersionId, sceneScriptVersions.id)
         )
-        .where(eq(scenes.sequenceId, sequenceId))
+        // Live scenes only (#1108): a soft-deleted scene keeps its selected
+        // version, and its text must not reappear in the composed script.
+        .where(and(eq(scenes.sequenceId, sequenceId), isNull(scenes.deletedAt)))
         .orderBy(scenes.orderIndex);
       return rows;
     },

@@ -12,16 +12,8 @@
 
 import { createServerFn } from '@tanstack/react-start';
 import { sequenceAccessMiddleware } from '@/platform/middleware.fn';
-import { audioSourceKeyForDialogueLines } from '@/motion/dialogue-tts';
-import { rendersReferenceOnly } from './use-start-frame';
-import {
-  assembleSequenceSegments,
-  type SequenceSegment,
-} from './scene-segments';
-import {
-  loadSceneContextBySequence,
-  resolveSceneForShot,
-} from './server/scene-script';
+import type { SequenceSegment } from './scene-segments';
+import { loadSequenceSegments } from './server/sequence-segments';
 import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'segments']);
@@ -37,44 +29,11 @@ export const getSequenceSegmentsFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
   .handler(async ({ context }): Promise<SequenceSegment[]> => {
     const { scopedDb, sequence } = context;
-    const [segments, versions, shots, frames, scriptBySceneId, characters] =
-      await Promise.all([
-        scopedDb.renderSegments.listBySequence(sequence.id),
-        scopedDb.videoVariants.listBySequence(sequence.id),
-        scopedDb.shots.listBySequence(sequence.id),
-        scopedDb.frames.listBySequence(sequence.id),
-        loadSceneContextBySequence(scopedDb, sequence.id),
-        scopedDb.characters.list(sequence.id),
-      ]);
-
-    const currentAudioSourceKeyByShot = new Map<string, string | null>();
-    for (const shot of shots) {
-      const { scene } = resolveSceneForShot(shot, scriptBySceneId);
-      currentAudioSourceKeyByShot.set(
-        shot.id,
-        scene
-          ? audioSourceKeyForDialogueLines(
-              scene.originalScript?.dialogue,
-              characters
-            )
-          : null
-      );
-    }
-
-    // Versions are oldest-first here (listBySequence orders by ULID).
-    const assembled = assembleSequenceSegments({
-      segments,
-      versions,
-      // Resolved per shot, not per sequence — a shot can override the
-      // sequence's start-frame mode either way, and staleness compares against
-      // what the clip actually rendered from.
-      shots: shots.map((shot) => ({
-        ...shot,
-        rendersReferenceOnly: rendersReferenceOnly(shot, sequence),
-      })),
-      frames,
-      currentAudioSourceKeyByShot,
-    });
+    const { assembled } = await loadSequenceSegments(
+      scopedDb,
+      sequence,
+      await scopedDb.shots.listBySequence(sequence.id)
+    );
 
     for (const segment of assembled) {
       if (

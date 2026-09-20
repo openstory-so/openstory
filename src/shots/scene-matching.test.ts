@@ -51,6 +51,7 @@ function makeCharacter(
     selectedSheetVersionId: null,
     physicalDescription: null,
     voiceOnly: false,
+    isPerson: true,
     consistencyTag: null,
     ...overrides,
   };

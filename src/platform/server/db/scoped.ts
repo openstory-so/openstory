@@ -43,6 +43,7 @@ import { createFrameVariantsMethods } from '@/stills/server/db/frame-variants';
 import { createFramesMethods } from '@/shots/server/db/frames';
 import { createGeneratedAssetsMethods } from '@/models/server/db/generated-assets';
 import { createScenesMethods } from '@/shots/server/db/scenes';
+import { createProductionReadMethods } from '@/shots/server/db/production-reads';
 import { createSceneScriptVersionsMethods } from '@/shots/server/db/scene-script-versions';
 import { createSequenceEventsMethods } from '@/sequences/server/db/sequence-events';
 import { createShotPromptVersionsMethods } from '@/shots/server/db/shot-prompt-versions';
@@ -450,6 +451,7 @@ export async function ensureUserAndTeam(authUser: {
  */
 export function createScopedDb(teamId: string, userId: string) {
   const db = getDb();
+  const reads = createProductionReadMethods(db, teamId);
 
   return {
     teamId,
@@ -464,9 +466,9 @@ export function createScopedDb(teamId: string, userId: string) {
     locationSheets: createLocationSheetsMethods(db),
     library: createLibraryMethods(db, teamId),
 
-    scenes: createScenesMethods(db),
+    scenes: { ...createScenesMethods(db), ...reads.scenes },
     sceneScriptVersions: createSceneScriptVersionsMethods(db),
-    shots: createShotsMethods(db),
+    shots: { ...createShotsMethods(db), ...reads.shots },
     shotVariants: createShotVariantsMethods(db),
     // SSF redesign (#990) — render segments (scene render units) + flat video
     // versions per (segment, model); replaces the shot_variants video slice.

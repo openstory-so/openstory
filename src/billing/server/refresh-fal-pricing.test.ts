@@ -660,9 +660,13 @@ describe('refreshFalPricing', () => {
   });
 
   test('does not sweep an endpoint whose price fetch merely errored', async () => {
+    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
     await db
       .insert(modelPricing)
-      .values([seedRow(), seedRow({ endpointId: 'fal-ai/erroring' })]);
+      .values([
+        seedRow(),
+        seedRow({ endpointId: 'fal-ai/erroring', fetchedAt: threeDaysAgo }),
+      ]);
     const { refreshFalPricing } = await load({
       prices: [
         {
@@ -682,6 +686,10 @@ describe('refreshFalPricing', () => {
       'fal-ai/erroring',
       'fal-ai/flux-2',
     ]);
+    // Kept on purpose, so it is stamped like any other row — a frozen
+    // fetchedAt makes the staleness check report the cron as dead forever.
+    const kept = rows.find((r) => r.endpointId === 'fal-ai/erroring');
+    expect(kept?.fetchedAt.getTime()).toBeGreaterThan(threeDaysAgo.getTime());
   });
 
   test('writes the H3 Max typical-units fallback when fal has no history', async () => {

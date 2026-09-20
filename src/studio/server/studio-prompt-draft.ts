@@ -10,21 +10,12 @@
 
 import type { Microdollars } from '@/billing/money';
 import type { ResolvedLlmKey } from '@/models/server/db/api-keys';
-import {
-  aiObservabilityMiddleware,
-  type AIObservabilityMeta,
-} from '@/platform/server/observability/ai-otel';
+import type { TextModel } from '@/models/models';
+import type { AIObservabilityMeta } from '@/platform/server/observability/ai-otel';
 import type { ChatMessage } from '@/platform/server/ai/prompts-index';
 import type { StudioActivity, StudioReferenceKind } from '@/studio/schema';
 import { toVisionImageSource } from '@/platform/server/storage/external-url';
-import { chat } from '@tanstack/ai';
-import { createAdapter } from '@/models/server/create-adapter';
-import {
-  createUsageCapture,
-  extractRunError,
-  llmCostFromUsage,
-  throwNotedRunError,
-} from '@/models/server/llm-client';
+import { callLLMStream, llmCostFromUsage } from '@/models/server/llm-client';
 import { DEFAULT_VISION_MODEL } from '@/models/models.config';
 
 export const STUDIO_DRAFT_MODEL = DEFAULT_VISION_MODEL;
@@ -45,11 +36,20 @@ export type DraftStudioPromptInput = {
   /** What the user has typed so far, if anything — kept as intent. */
   currentPrompt?: string;
   llmKey?: ResolvedLlmKey;
+  /**
+   * Re-resolve the key when a region block swaps the model (#1259). `llmKey`
+   * was resolved for {@link STUDIO_DRAFT_MODEL}; the fallback may not be
+   * carried by the same via.
+   */
+  resolveLlmKey?: (model: TextModel) => Promise<ResolvedLlmKey>;
   observability?: AIObservabilityMeta;
 };
 
 type DraftStudioPromptResult = {
   prompt: string;
+  /** The model that actually answered — the region fallback may have run
+   *  instead of {@link STUDIO_DRAFT_MODEL}. Bill and log this one. */
+  model: TextModel;
   costMicros: Microdollars;
   usedOwnKey: boolean;
 };
@@ -136,43 +136,41 @@ export async function draftStudioPrompt(
   input: DraftStudioPromptInput
 ): Promise<DraftStudioPromptResult> {
   const { systemPrompts, messages } = await buildDraftMessages(input);
-  const adapter = createAdapter(STUDIO_DRAFT_MODEL, input.llmKey);
-  const usageCapture = createUsageCapture();
+
+  // Centralized call (see talent-vision): the #1259 region fallback, the
+  // OpenRouter provider pin, the priority service tier, and a `low` reasoning
+  // effort on the GLM-5.3 Flash fallback, which cannot disable thinking and
+  // defaults to `max` (#1494) — a composer draft must not stall for minutes.
   let text = '';
-  let runError = null;
-  for await (const event of chat({
-    adapter,
-    systemPrompts,
-    messages: messages.map((m) => ({
-      role: m.role === 'system' ? ('user' as const) : m.role,
-      content: m.content,
-    })),
-    stream: true,
-    modelOptions: { temperature: 0.7, streamOptions: { includeUsage: true } },
-    middleware: [
-      ...aiObservabilityMiddleware({
-        observationName: 'studio-prompt-draft',
-        tags: ['vision', 'studio'],
-        ...input.observability,
-      }),
-      ...usageCapture.middleware,
+  let usage;
+  let model = STUDIO_DRAFT_MODEL;
+  let via = input.llmKey?.via;
+  for await (const chunk of callLLMStream({
+    model: STUDIO_DRAFT_MODEL,
+    messages: [
+      ...systemPrompts.map((content) => ({
+        role: 'system' as const,
+        content,
+      })),
+      ...messages.map((m) => ({
+        role: m.role === 'system' ? ('user' as const) : m.role,
+        content: m.content,
+      })),
     ],
-    debug: false,
+    temperature: 0.7,
+    apiKey: input.llmKey,
+    resolveApiKey: input.resolveLlmKey,
+    observationName: 'studio-prompt-draft',
+    tags: ['vision', 'studio'],
+    ...input.observability,
   })) {
-    usageCapture.noteFromStreamEvent(event);
-    const noted = extractRunError(event);
-    if (noted) {
-      runError ??= noted;
-      continue;
-    }
-    if (
-      event.type === 'TEXT_MESSAGE_CONTENT' &&
-      typeof event.delta === 'string'
-    ) {
-      text += event.delta;
+    text = chunk.accumulated;
+    if (chunk.done) {
+      usage = chunk.usage;
+      model = chunk.model;
+      via = chunk.via;
     }
   }
-  throwNotedRunError(runError);
 
   // Strip any @ the model added anyway; pills store the bare token.
   const prompt = text
@@ -183,11 +181,8 @@ export async function draftStudioPrompt(
 
   return {
     prompt,
-    costMicros: llmCostFromUsage(
-      usageCapture.get(),
-      STUDIO_DRAFT_MODEL,
-      input.llmKey?.via
-    ),
+    model,
+    costMicros: llmCostFromUsage(usage, model, via),
     usedOwnKey: input.llmKey?.source === 'team',
   };
 }

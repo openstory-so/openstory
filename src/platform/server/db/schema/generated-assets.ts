@@ -17,6 +17,7 @@
 
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm';
 import { index, integer, snakeCase, text } from 'drizzle-orm/sqlite-core';
+import type { MediaVia } from '@/models/via';
 import { generateId } from '@/platform/id';
 import { user } from './auth';
 import { teams } from './teams';
@@ -78,9 +79,13 @@ export const generatedAssets = snakeCase.table(
       .notNull()
       .references(() => user.id, { onDelete: 'restrict' }),
 
-    // Which model ran. `endpointId` is the fal endpoint (e.g.
-    // `fal-ai/flux-1/dev`); `modelName` is the catalog display name.
-    provider: text({ length: 50 }).$type<'fal'>().notNull(),
+    // Which model ran, and where. `provider` is the via the run actually hit:
+    // it is inserted as 'fal' at queue time and overwritten on completion
+    // (#1681). `endpointId` is the CATALOG endpoint id (fal-shaped, e.g.
+    // `fal-ai/flux-1/dev`) that pricing aliases key on, whatever via served
+    // it; the via's own model id lives on `content_provenance.model`.
+    // `modelName` is the catalog display name.
+    provider: text({ length: 50 }).$type<MediaVia>().notNull(),
     endpointId: text({ length: 200 }).notNull(),
     activity: text({ length: 20 }).$type<GeneratedAssetActivity>().notNull(),
     modelName: text({ length: 200 }).notNull(),

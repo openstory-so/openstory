@@ -4,6 +4,7 @@ import { getSessionFn } from '@/platform/session.fn';
 export const sessionQueryOptions = queryOptions({
   queryKey: ['session'],
   queryFn: () => getSessionFn(),
+  // The global query/mutation error handlers clear this immediately on a 401.
   staleTime: 5 * 60 * 1000,
 });
 

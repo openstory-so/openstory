@@ -110,6 +110,7 @@ export async function refreshCheckpointFromCast(
       selectedSheetVersionId: c.selectedSheetVersionId,
       physicalDescription: c.physicalDescription,
       voiceOnly: c.voiceOnly,
+      isPerson: c.isPerson,
       consistencyTag: c.consistencyTag,
       voiceId: c.voiceId,
     }));

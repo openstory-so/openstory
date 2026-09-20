@@ -9,10 +9,13 @@
  * the one place every call passes through before it fires; callers ask for a
  * token and get back how long to wait.
  *
- * State is in memory on purpose: a DO is single-threaded, and after an
- * eviction the bucket simply restarts full, which is a one-off burst of at
- * most `capacity` requests. Backoff retry stays underneath as the backstop
- * for that and for whatever BytePlus throttles that we did not model.
+ * State is persisted in the DO's SQLite-backed KV, not held in memory
+ * (#1674). Callers reserve a turn and then `step.sleep` for minutes, so the
+ * DO sits idle between reservations and is routinely evicted; an in-memory
+ * bucket came back full every time and the pacing was advisory. The sync KV
+ * keeps `acquire` a single synchronous read-modify-write, so no two calls
+ * interleave. Backoff retry stays underneath for whatever BytePlus throttles
+ * that we did not model.
  */
 
 import { DurableObject } from 'cloudflare:workers';
@@ -35,8 +38,6 @@ export type AcquireInput = {
 };
 
 export class BytePlusGovernor extends DurableObject {
-  private readonly buckets = new Map<string, Bucket>();
-
   /**
    * Reserve one token. Returns the delay in ms the caller must sleep before
    * sending — 0 when a token is free now, -1 when the wait would exceed
@@ -47,7 +48,8 @@ export class BytePlusGovernor extends DurableObject {
   acquire(input: AcquireInput, now = Date.now()): number {
     const capacity = Math.max(1, input.capacity);
     const refillPerMs = Math.max(input.refillPerMinute, 1) / 60_000;
-    const bucket = this.buckets.get(input.bucket) ?? {
+    const key = `bucket:${input.bucket}`;
+    const bucket = this.ctx.storage.kv.get<Bucket>(key) ?? {
       tokens: capacity,
       lastRefillAt: now,
     };
@@ -61,10 +63,10 @@ export class BytePlusGovernor extends DurableObject {
     const delayMs = tokens >= 0 ? 0 : Math.ceil(-tokens / refillPerMs);
     if (delayMs > input.maxWaitMs) {
       // Refused: persist only the refill, not the reservation.
-      this.buckets.set(input.bucket, { tokens: refilled, lastRefillAt: now });
+      this.ctx.storage.kv.put(key, { tokens: refilled, lastRefillAt: now });
       return -1;
     }
-    this.buckets.set(input.bucket, { tokens, lastRefillAt: now });
+    this.ctx.storage.kv.put(key, { tokens, lastRefillAt: now });
     return delayMs;
   }
 }

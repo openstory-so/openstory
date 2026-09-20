@@ -19,6 +19,8 @@ import {
 } from '@/platform/server/db/schema';
 import { isUniqueConstraintError } from '@/platform/server/db/scoped/divergent-insert';
 import { and, desc, eq } from 'drizzle-orm';
+import { pageOf } from '@/platform/server/db/read-page';
+import type { PageOptions } from '@/platform/server/db/read-page';
 
 export function createSequenceExportsMethods(db: Database) {
   return {
@@ -38,13 +40,16 @@ export function createSequenceExportsMethods(db: Database) {
 
     /** Newest-first list of exports in any status (API — includes progress). */
     listAllBySequence: async (
-      sequenceId: string
+      sequenceId: string,
+      page?: PageOptions
     ): Promise<SequenceExport[]> => {
-      return await db
-        .select()
-        .from(sequenceExports)
-        .where(eq(sequenceExports.sequenceId, sequenceId))
-        .orderBy(desc(sequenceExports.createdAt));
+      return await pageOf(
+        db.select().from(sequenceExports).$dynamic(),
+        eq(sequenceExports.sequenceId, sequenceId),
+        sequenceExports.id,
+        page,
+        desc(sequenceExports.createdAt)
+      );
     },
 
     getById: async (id: string): Promise<SequenceExport | null> => {

@@ -26,7 +26,10 @@ import {
   reserveRunCredits,
 } from '@/billing/server/preflight';
 import { requireGenerationAllowed } from '@/platform/server/compliance/generation-gate';
-import { requireUploadRights } from '@/cast/server/upload-rights';
+import {
+  likenessFromLedger,
+  requireUploadRights,
+} from '@/cast/server/upload-rights';
 import { needsLikenessCheck } from '@/cast/upload-rights';
 import { studioReferenceImages } from '@/studio/reference-rights';
 import type { ScopedDb } from '@/platform/server/db/scoped';
@@ -168,6 +171,14 @@ export async function createStudioAssets(
     scopedDb,
     studioReferenceImages(input).filter(needsLikenessCheck)
   );
+  const noPersonImages: string[] = [];
+  if (input.activity === 'video') {
+    for (const url of studioReferenceImages(input)) {
+      if ((await likenessFromLedger(scopedDb, url)) === 'none') {
+        noPersonImages.push(url);
+      }
+    }
+  }
 
   // Hold every item before inserting any row. A shared envelope would let
   // the first child to finish zero leftover for siblings; a later reserve
@@ -199,6 +210,8 @@ export async function createStudioAssets(
         reservationId,
         async () => {
           const row = await scopedDb.generatedAssets.insert({
+            // Queue-time label only: the via is resolved inside the run, which
+            // overwrites this on completion (#1681).
             provider: 'fal',
             endpointId,
             activity: input.activity,
@@ -215,6 +228,7 @@ export async function createStudioAssets(
             reservationId,
             ownsReservation: true,
             input,
+            noPersonImages,
           };
 
           try {

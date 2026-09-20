@@ -1,4 +1,5 @@
 import { getEnv } from '#env';
+import { registersWithArk } from '@/cast/likeness';
 import { toArkFetchableUrl } from '@/models/server/byteplus-asset-ingest';
 import {
   arkUrlFor,
@@ -370,11 +371,32 @@ export type SubmitMotionOptions = GenerateMotionOptions & {
   arkAssets: ArkAssetMap;
 };
 
+type MotionRef = NonNullable<GenerateMotionOptions['referenceImages']>[number];
+
+/**
+ * Character (and other face-bearing) refs go through ingest — as `asset://`
+ * when {@link registersWithArk}, else as `plain`. Location/element sheets
+ * and audio/video refs are never ingested. Submit uses the same helper so
+ * `arkUrlFor` is not asked for a URL the map does not hold.
+ */
+function arkStillForMotionRef(ref: MotionRef): ArkStill | null {
+  if (ref.role === 'location' || ref.role === 'element') return null;
+  if (ref.kind === 'audio' || ref.kind === 'video') return null;
+  return {
+    storedUrl: ref.referenceImageUrl,
+    slot: 'library',
+    ...(registersWithArk(ref.isPerson) ? {} : { plain: true }),
+  };
+}
+
 /**
  * The stills a BytePlus submit needs registered: the start frame and every
- * reference that can carry a face. CreateAsset allows 3/min per account, so
- * location and element sheets — no people — are not spent on. The workflow
- * runs these through `ingestArkAssets` before the submit step.
+ * character sheet that may show a person. CreateAsset is paced by
+ * `BYTEPLUS_ASSET_WRITE_QPM`, so location and element sheets — no people —
+ * are not spent on, and neither are non-person character sheets (#1682).
+ * Those still go through ingest as `plain` so submit looks them up in the
+ * same map. The workflow runs these through `ingestArkAssets` before
+ * submit.
  */
 export function arkStillsForMotion(
   options: Pick<GenerateMotionOptions, 'imageUrl' | 'referenceImages'>
@@ -383,11 +405,8 @@ export function arkStillsForMotion(
   if (options.imageUrl)
     stills.push({ storedUrl: options.imageUrl, slot: 'frame' });
   for (const ref of options.referenceImages ?? []) {
-    if (ref.role === 'location' || ref.role === 'element') continue;
-    if (ref.kind === 'audio' || ref.kind === 'video') continue;
-    // Cast sheets are the pool's long-lived residents — evicting one costs
-    // every shot that binds it.
-    stills.push({ storedUrl: ref.referenceImageUrl, slot: 'library' });
+    const still = arkStillForMotionRef(ref);
+    if (still) stills.push(still);
   }
   return stills;
 }
@@ -610,14 +629,9 @@ export async function submitMotionJob(
       if (referenceImages?.length) {
         referenceImages = [];
         for (const ref of options.referenceImages ?? []) {
-          // Same exclusions as `arkStillsForMotion`: audio/video refs and
-          // location/element sheets are never ingested, so they must not be
-          // looked up in the Ark asset map either.
-          const registered =
-            ref.role !== 'location' &&
-            ref.role !== 'element' &&
-            ref.kind !== 'audio' &&
-            ref.kind !== 'video';
+          // Same helper as `arkStillsForMotion`: ingested stills (faces as
+          // asset://, non-person sheets as `plain`) live in the map.
+          const registered = arkStillForMotionRef(ref) !== null;
           referenceImages.push({
             ...ref,
             referenceImageUrl: registered

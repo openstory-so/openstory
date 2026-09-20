@@ -1,0 +1,1 @@
+ALTER TABLE `characters` ADD `is_person` integer DEFAULT true NOT NULL;

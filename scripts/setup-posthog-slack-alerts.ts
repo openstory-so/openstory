@@ -11,7 +11,8 @@
  *
  * Prerequisites:
  * 1. Slack is connected in PostHog → Settings → Integrations
- * 2. The PostHog Slack app is invited to `#product-alerts` and `#ops-alerts`
+ * 2. The PostHog Slack app is invited to `#product-alerts`, `#ops-alerts`,
+ *    and `#generated-content`
  * 3. A personal API key with `hog_function:write` (+ integrations read):
  *    https://us.posthog.com/settings/user-api-keys
  *
@@ -24,6 +25,7 @@
  *   POSTHOG_HOST=https://us.posthog.com
  *   PRODUCT_CHANNEL=#product-alerts
  *   OPS_CHANNEL=#ops-alerts
+ *   CONTENT_CHANNEL=#generated-content
  *   DRY_RUN=1   # print planned creates only
  */
 
@@ -37,6 +39,7 @@ const API_KEY = process.env.POSTHOG_PERSONAL_API_KEY;
 const PROJECT_ID = process.env.POSTHOG_PROJECT_ID;
 const PRODUCT_CHANNEL = process.env.PRODUCT_CHANNEL ?? '#product-alerts';
 const OPS_CHANNEL = process.env.OPS_CHANNEL ?? '#ops-alerts';
+const CONTENT_CHANNEL = process.env.CONTENT_CHANNEL ?? '#generated-content';
 const DRY_RUN = process.env.DRY_RUN === '1' || process.env.DRY_RUN === 'true';
 
 if (!API_KEY || !PROJECT_ID) {
@@ -156,6 +159,56 @@ function eventFilter(eventName: string, properties: PropertyFilter[] = []) {
     ],
     filter_test_accounts: true,
   };
+}
+
+function contentBlocks(opts: {
+  header: string;
+  detail: string;
+  imageUrl?: string;
+  buttonLabel: string;
+  buttonUrl: string;
+}) {
+  const blocks: unknown[] = [
+    {
+      type: 'header',
+      text: { type: 'plain_text', text: opts.header },
+    },
+  ];
+  if (opts.imageUrl) {
+    blocks.push({
+      type: 'image',
+      image_url: opts.imageUrl,
+      alt_text: opts.header,
+    });
+  }
+  blocks.push(
+    {
+      type: 'section',
+      text: { type: 'mrkdwn', text: opts.detail },
+    },
+    {
+      type: 'context',
+      elements: [
+        {
+          type: 'mrkdwn',
+          text: 'Person: {person.properties.email ?? event.distinct_id}',
+        },
+        { type: 'mrkdwn', text: 'Project: <{project.url}|{project.name}>' },
+      ],
+    },
+    { type: 'divider' },
+    {
+      type: 'actions',
+      elements: [
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: opts.buttonLabel },
+          url: opts.buttonUrl,
+        },
+      ],
+    }
+  );
+  return blocks;
 }
 
 function productBlocks(title: string, detail: string) {
@@ -319,6 +372,78 @@ function specs(): DestinationSpec[] {
       ),
     },
     {
+      name: `Product · welcome_card_setup_opened · ${PRODUCT_CHANNEL} (#1667)`,
+      type: 'destination',
+      event: 'welcome_card_setup_opened',
+      channel: PRODUCT_CHANNEL,
+      text: 'Adding a card: {person.properties.email ?? event.distinct_id}',
+      blocks: productBlocks(
+        '💳 Adding a card',
+        '*{person.properties.email ?? event.distinct_id}* opened Stripe to save a payment method'
+      ),
+    },
+    {
+      name: `Product · welcome_credits_granted · ${PRODUCT_CHANNEL} (#1667)`,
+      type: 'destination',
+      event: 'welcome_credits_granted',
+      channel: PRODUCT_CHANNEL,
+      text: 'Welcome credits: {person.properties.email ?? event.distinct_id}',
+      blocks: productBlocks(
+        '🎁 Welcome credits',
+        '*{person.properties.email ?? event.distinct_id}* saved a card and received {event.properties.amount_usd} USD ({event.properties.source})'
+      ),
+    },
+    {
+      name: `Content · studio_generation_completed image · ${CONTENT_CHANNEL} (#1667)`,
+      type: 'destination',
+      event: 'studio_generation_completed',
+      channel: CONTENT_CHANNEL,
+      text: 'Studio still: {person.properties.email ?? event.distinct_id}',
+      properties: [
+        { key: 'activity', value: 'image', operator: 'exact', type: 'event' },
+      ],
+      blocks: contentBlocks({
+        header: '🖼 Studio still',
+        detail:
+          '*{person.properties.email ?? event.distinct_id}* generated a still (`{event.properties.model}`)\n>{substring(event.properties.prompt, 1, 280)}',
+        imageUrl: '{event.properties.preview_url}',
+        buttonLabel: 'Open in Images',
+        buttonUrl: '{event.properties.watch_url}',
+      }),
+    },
+    {
+      name: `Content · studio_generation_completed video · ${CONTENT_CHANNEL} (#1667)`,
+      type: 'destination',
+      event: 'studio_generation_completed',
+      channel: CONTENT_CHANNEL,
+      text: 'Studio clip: {person.properties.email ?? event.distinct_id}',
+      properties: [
+        { key: 'activity', value: 'video', operator: 'exact', type: 'event' },
+      ],
+      blocks: contentBlocks({
+        header: '🎬 Studio clip',
+        detail:
+          '*{person.properties.email ?? event.distinct_id}* generated a clip (`{event.properties.model}`, {event.properties.duration ?? "?"}s)\n<{event.properties.media_url}|Play>\n>{substring(event.properties.prompt, 1, 280)}',
+        buttonLabel: 'Open in Videos',
+        buttonUrl: '{event.properties.watch_url}',
+      }),
+    },
+    {
+      name: `Content · sequence_content_ready · ${CONTENT_CHANNEL} (#1667)`,
+      type: 'destination',
+      event: 'sequence_content_ready',
+      channel: CONTENT_CHANNEL,
+      text: 'Sequence ready: {event.properties.title}',
+      blocks: contentBlocks({
+        header: '🎞 Sequence ready',
+        detail:
+          '*{person.properties.email ?? event.distinct_id}* finished *{event.properties.title}*',
+        imageUrl: '{event.properties.preview_url}',
+        buttonLabel: 'Watch',
+        buttonUrl: '{event.properties.watch_url}',
+      }),
+    },
+    {
       name: `Issue spiking · ${OPS_CHANNEL} (#1088)`,
       type: 'internal_destination',
       event: '$error_tracking_issue_spiking',
@@ -369,7 +494,8 @@ async function ensureDestination(
     type: spec.type,
     template_id: 'template-slack',
     name: spec.name,
-    description: 'Created by scripts/setup-posthog-slack-alerts.ts for #1088',
+    description:
+      'Created by scripts/setup-posthog-slack-alerts.ts (#1088, #1667)',
     enabled: true,
     filters: eventFilter(spec.event, spec.properties),
     inputs: {
@@ -405,7 +531,7 @@ async function main() {
   if (!primarySlack) {
     console.error(
       'No Slack integration found. Connect Slack in PostHog → Settings → Integrations first,\n' +
-        'then invite the PostHog app to #product-alerts and #ops-alerts.'
+        'then invite the PostHog app to #product-alerts, #ops-alerts, and #generated-content.'
     );
     process.exit(1);
   }
@@ -427,7 +553,7 @@ async function main() {
   console.log(`  created=${created} already_existed=${skipped}`);
   console.log(`
 Manual follow-ups (not automated — needs baseline tuning):
-  1. Invite the PostHog Slack app to ${PRODUCT_CHANNEL} and ${OPS_CHANNEL}
+  1. Invite the PostHog Slack app to ${PRODUCT_CHANNEL}, ${OPS_CHANNEL}, and ${CONTENT_CHANNEL}
      (channel details → Integrations → Add apps → PostHog)
   2. Logs ERROR alert → PostHog Logs → Alerts:
      severity error/fatal → destination Slack ${OPS_CHANNEL}

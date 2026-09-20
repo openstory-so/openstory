@@ -26,6 +26,8 @@ import type {
 } from '@/platform/server/db/schema';
 import { getLogger } from '@/platform/logger';
 import { and, desc, eq, gt, inArray, isNotNull, lte, ne } from 'drizzle-orm';
+import { pageOf } from '@/platform/server/db/read-page';
+import type { PageOptions } from '@/platform/server/db/read-page';
 import { LIVE_PENDING_STATUSES } from './frame-prompt-versions';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
 
@@ -644,18 +646,19 @@ export function createShotPromptVersionsMethods(db: Database) {
     /** List the revision history for a shot's prompt, newest first. */
     listByShot: async (
       shotId: string,
-      promptType: ShotPromptType
+      promptType: ShotPromptType,
+      page?: PageOptions
     ): Promise<ShotPromptVersion[]> => {
-      return await db
-        .select()
-        .from(shotPromptVersions)
-        .where(
-          and(
-            eq(shotPromptVersions.shotId, shotId),
-            eq(shotPromptVersions.promptType, promptType)
-          )
-        )
-        .orderBy(desc(shotPromptVersions.createdAt));
+      return await pageOf(
+        db.select().from(shotPromptVersions).$dynamic(),
+        and(
+          eq(shotPromptVersions.shotId, shotId),
+          eq(shotPromptVersions.promptType, promptType)
+        ),
+        shotPromptVersions.id,
+        page,
+        desc(shotPromptVersions.createdAt)
+      );
     },
 
     /**

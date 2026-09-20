@@ -22,7 +22,12 @@ import {
   styles,
   videoVariants,
 } from '@/platform/server/db/schema';
-import type { NewSequence, Sequence } from '@/platform/server/db/schema';
+import type {
+  Frame,
+  NewSequence,
+  Sequence,
+  Shot,
+} from '@/platform/server/db/schema';
 import type {
   MusicStatus,
   SequenceStatus,
@@ -41,6 +46,23 @@ import {
   SETTINGS_CHANGED_LABELS,
 } from './sequence-events';
 import { ValidationError } from '@/platform/errors';
+
+/**
+ * {@link ShotReadiness} plus the scalars a production status derives from: which
+ * attempt is in flight or failed, and whether the shot even takes a start frame.
+ * Still one narrow row per shot — no prompts, manifests or metadata (#1161).
+ */
+export type ShotProductionReadiness = ShotReadiness &
+  Pick<Shot, 'sequenceId' | 'useStartFrame' | 'renderSegmentId'> & {
+    shotId: string;
+    /** Null while the selected render has no file, even though it is selected. */
+    selectedVideoUrl: string | null;
+    imageStatus: Frame['imageStatus'] | null;
+    imageWorkflowRunId: string | null;
+    primaryVideoId: string | null;
+    videoWorkflowRunId: string | null;
+    videoError: string | null;
+  };
 import { and, asc, desc, eq, inArray, isNull, lt, not, or } from 'drizzle-orm';
 
 export type MusicFieldsUpdate = {
@@ -195,7 +217,7 @@ function createSequencesReadMethods(db: Database, teamId: string) {
      */
     listShotReadinessByIds: async (
       sequenceIds: string[]
-    ): Promise<Array<ShotReadiness & { sequenceId: string }>> => {
+    ): Promise<ShotProductionReadiness[]> => {
       if (sequenceIds.length === 0) return [];
       const batches: string[][] = [];
       for (let i = 0; i < sequenceIds.length; i += SHOTS_BY_IDS_BATCH) {
@@ -207,9 +229,14 @@ function createSequencesReadMethods(db: Database, teamId: string) {
             .select({
               sequenceId: shots.sequenceId,
               shotId: shots.id,
+              useStartFrame: shots.useStartFrame,
+              renderSegmentId: shots.renderSegmentId,
               frameId: frames.id,
+              imageStatus: frames.imageStatus,
+              imageWorkflowRunId: frames.imageWorkflowRunId,
               selectedImageUrl: frameVariants.url,
               selectedVideoId: videoVariants.id,
+              selectedVideoUrl: videoVariants.url,
             })
             .from(shots)
             // teamId is filtered through the join, so caller-supplied ids from
@@ -265,15 +292,27 @@ function createSequencesReadMethods(db: Database, teamId: string) {
         ),
       ]);
 
-      return rows.map((row) => ({
-        sequenceId: row.sequenceId,
-        selectedImageUrl: row.selectedImageUrl ?? null,
-        previewImageUrl: row.frameId
-          ? (previewByFrame.get(row.frameId)?.url ?? null)
-          : null,
-        hasSelectedVideo: row.selectedVideoId !== null,
-        primaryVideoStatus: primaryByShot.get(row.shotId)?.status ?? null,
-      }));
+      return rows.map((row) => {
+        const primary = primaryByShot.get(row.shotId);
+        return {
+          sequenceId: row.sequenceId,
+          shotId: row.shotId,
+          useStartFrame: row.useStartFrame,
+          renderSegmentId: row.renderSegmentId,
+          imageStatus: row.imageStatus,
+          imageWorkflowRunId: row.imageWorkflowRunId,
+          selectedImageUrl: row.selectedImageUrl ?? null,
+          previewImageUrl: row.frameId
+            ? (previewByFrame.get(row.frameId)?.url ?? null)
+            : null,
+          hasSelectedVideo: row.selectedVideoId !== null,
+          selectedVideoUrl: row.selectedVideoUrl ?? null,
+          primaryVideoId: primary?.id ?? null,
+          primaryVideoStatus: primary?.status ?? null,
+          videoWorkflowRunId: primary?.workflowRunId ?? null,
+          videoError: primary?.error ?? null,
+        };
+      });
     },
   };
 }

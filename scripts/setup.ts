@@ -73,7 +73,7 @@ async function localSetup() {
       process.exit(0);
     }
 
-    if (!raw || !raw.trim()) continue;
+    if (typeof raw !== 'string' || !raw.trim()) continue;
 
     // Accept either a raw value or a pasted KEY=VALUE line.
     const parsed = parseEnvString(raw);

@@ -14,6 +14,7 @@
  *   7. persist-result on the reserved `generated_assets` row — last, so a
  *      failure anywhere before it leaves the row `failed`, never
  *      `completed` then flipped
+ *   8. notify-content-feed — PostHog event for the Slack content feed (#1667)
  */
 
 import {
@@ -23,6 +24,7 @@ import {
 } from '@/models/content-rejection';
 import { extractFalErrorMessage } from '@/models/fal-error';
 import { IMAGE_TO_VIDEO_MODELS } from '@/models/models';
+import type { MediaVia } from '@/models/via';
 import { ZERO_MICROS } from '@/billing/money';
 import {
   deductWorkflowCredits,
@@ -37,6 +39,7 @@ import { assetLeaseOwner } from '@/models/server/byteplus-asset-pool';
 import { ingestArkAssets } from '@/models/server/byteplus-asset-steps';
 import { resolveMotionVia } from '@/motion/server/motion-generation';
 import { videoUrlFitsWorkflowCheckpoint } from '@/motion/server/video-storage';
+import { captureStudioGenerationCompleted } from '@/platform/server/observability/content-feed';
 import { recordMediaGenerationSpan } from '@/platform/server/observability/ai-otel';
 import { getLogger } from '@/platform/logger';
 import { isEngineAbortError } from '@/platform/server/workflow/errors';
@@ -195,8 +198,11 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
       await scopedDb.generatedAssets.markCompleted(assetId, {
         outputs,
         costMicros: imageCost,
+        provider: generated.via,
       });
     });
+
+    await this.notifyContentFeed(event, input, outputs, step);
 
     return { assetId, outputs };
   }
@@ -227,7 +233,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
         submitVia === 'byteplus'
           ? await ingestArkAssets(step, {
               prefix: `studio${tag}`,
-              stills: arkStillsForStudio(input),
+              stills: arkStillsForStudio(input, event.payload.noPersonImages),
               ledger: scopedDb.bytePlusAssets,
               owner: assetLeaseOwner('studio', event.instanceId),
               credentials: scopedDb.credentials,
@@ -518,10 +524,38 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
       await scopedDb.generatedAssets.markCompleted(assetId, {
         outputs,
         costMicros: videoCost,
+        provider: job.via,
       });
     });
 
+    await this.notifyContentFeed(event, input, outputs, step);
+
     return { assetId, outputs };
+  }
+
+  private async notifyContentFeed(
+    event: Readonly<WorkflowEvent<StudioGenerationWorkflowInput>>,
+    input: StudioCreateInput,
+    outputs: GeneratedAssetOutput[],
+    step: WorkflowStep
+  ): Promise<void> {
+    const output = outputs[0];
+    if (!output?.url) return;
+    await step.do('notify-content-feed', async () => {
+      captureStudioGenerationCompleted({
+        distinctId: event.payload.userId,
+        teamId: event.payload.teamId,
+        assetId: event.payload.assetId,
+        activity: input.activity,
+        model: input.activity === 'image' ? input.imageModel : input.videoModel,
+        mediaUrl: output.url,
+        contentType: output.contentType,
+        prompt: input.prompt,
+        aspectRatio: input.aspectRatio,
+        ...(input.activity === 'video' && { duration: input.duration }),
+      });
+      return { ok: true as const };
+    });
   }
 
   protected override async onFailure({
@@ -534,14 +568,15 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
     scopedDb: WorkflowScopedDb;
   }): Promise<void> {
     const { assetId, userId, input } = event.payload;
+    // An image run only learns its via from the generate result, so a failed
+    // one keeps the row's queue-time label.
+    let videoVia: MediaVia | undefined;
     if (input.activity === 'video') {
+      videoVia = await resolveMotionVia(input.videoModel, scopedDb.credentials);
       // Image failures are already recorded inside generateImageWithProvider.
       recordMediaGenerationSpan({
         model: input.videoModel,
-        provider: await resolveMotionVia(
-          input.videoModel,
-          scopedDb.credentials
-        ),
+        provider: videoVia,
         activity: 'video',
         prompt: input.prompt,
         errorType: isContentRejectionError(error)
@@ -555,7 +590,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
         metadata: { model: input.videoModel, assetId },
       });
     }
-    await scopedDb.generatedAssets.markFailed(assetId, error);
+    await scopedDb.generatedAssets.markFailed(assetId, error, videoVia);
     if (input.activity === 'video') {
       // Unpin this run's ACR stills (#1531). Not caught: this runs inside the
       // base class's retried `emit-failure` step, which keeps the real

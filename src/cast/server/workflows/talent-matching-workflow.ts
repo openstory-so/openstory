@@ -168,6 +168,7 @@ export class TalentMatchingWorkflow extends OpenStoryWorkflowEntrypoint<TalentMa
             movement: talent.movement ?? '',
             voiceId: talent.voiceId,
             voiceDescription: talent.voiceDescription,
+            hasSignedRelease: talent.isHuman === true,
           });
         }
 

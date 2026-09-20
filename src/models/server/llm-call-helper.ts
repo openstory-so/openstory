@@ -34,7 +34,10 @@ import {
   getMaxOutputTokens,
   resolveVisionModel,
 } from '@/models/models.config';
-import { withRegionFallback } from '@/models/region-policy';
+import {
+  regionFallbackModel,
+  withRegionFallback,
+} from '@/models/region-policy';
 import { extractStreamingStringField } from '@/platform/server/ai/stream-extract';
 import type { Microdollars } from '@/billing/money';
 import { deductWorkflowCredits } from '@/billing/server/workflow-deduction';
@@ -379,7 +382,7 @@ export async function durableLLMCallCf<TSchema extends z.ZodType>(
       // Retry once on a region-available model instead of burning step retries.
       // Resolve the key INSIDE the fallback so a model swap cannot reuse a
       // via that does not carry the retry model (LLMTR key → OpenRouter 401).
-      return withRegionFallback(modelId, hasImageInput, async (model) => {
+      return withRegionFallback(modelId, async (model) => {
         const llmKeyInfo = await resolveCallKey(callContext, model);
         const adapter = createAdapter(model, llmKeyInfo);
 
@@ -475,7 +478,7 @@ export async function durableLLMCallCf<TSchema extends z.ZodType>(
                 continue;
               }
             }
-            throwNotedRunError(runError);
+            throwNotedRunError(runError, regionFallbackModel(model) !== null);
             assertStructuredOutput(
               structuredObject,
               logName,
@@ -579,7 +582,7 @@ export async function durableStreamingLLMCallCf<TSchema extends z.ZodType>(
       // model errors before its first token, so the realtime channel has seen
       // nothing when the retry restarts the stream. Resolve the key for the
       // model actually called so via tracks the retry.
-      return withRegionFallback(modelId, hasImageInput, async (model) => {
+      return withRegionFallback(modelId, async (model) => {
         const llmKeyInfo = await resolveCallKey(callContext, model);
         const adapter = createAdapter(model, llmKeyInfo);
 
@@ -705,7 +708,7 @@ export async function durableStreamingLLMCallCf<TSchema extends z.ZodType>(
                 continue;
               }
             }
-            throwNotedRunError(runError);
+            throwNotedRunError(runError, regionFallbackModel(model) !== null);
             await flushDelta();
             assertStructuredOutput(
               structuredJson,

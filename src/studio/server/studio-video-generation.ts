@@ -303,28 +303,35 @@ function urlPart(
 
 /**
  * The stills a BytePlus studio submit needs registered: every image the
- * user supplied (they are uploads — any of them may be a face). Videos and
+ * user supplied that may be a face. `noPersonImages` (ledger stills whose
+ * ledger verdict is `none`, snapshotted at the trigger)
+ * are marked `plain` and go as fetchable URLs so they do not spend
+ * CreateAsset turns (`BYTEPLUS_ASSET_WRITE_QPM`, #1674, #1682). Videos and
  * audio are not assets.
  */
 export function arkStillsForStudio(
   options: Pick<
     StudioVideoJobOptions,
     'mode' | 'referenceImages' | 'startImageUrl' | 'endImageUrl'
-  >
+  >,
+  noPersonImages: string[]
 ): ArkStill[] {
+  const noPerson = new Set(noPersonImages);
   const mode = options.mode ?? 'text';
-  if (mode === 'reference') {
-    return (options.referenceImages ?? []).map((storedUrl) => ({
-      storedUrl,
-      slot: 'library' as const,
-    }));
-  }
-  if (mode === 'frames') {
-    return [options.startImageUrl, options.endImageUrl]
-      .filter((url): url is string => Boolean(url))
-      .map((storedUrl) => ({ storedUrl, slot: 'frame' as const }));
-  }
-  return [];
+  const stills: ArkStill[] =
+    mode === 'reference'
+      ? (options.referenceImages ?? []).map((storedUrl) => ({
+          storedUrl,
+          slot: 'library',
+        }))
+      : mode === 'frames'
+        ? [options.startImageUrl, options.endImageUrl]
+            .filter((url): url is string => Boolean(url))
+            .map((storedUrl) => ({ storedUrl, slot: 'frame' }))
+        : [];
+  return stills.map((still) =>
+    noPerson.has(still.storedUrl) ? { ...still, plain: true } : still
+  );
 }
 
 async function buildStudioBytePlusPrompt(

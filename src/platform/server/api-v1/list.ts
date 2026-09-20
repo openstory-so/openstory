@@ -114,7 +114,12 @@ function buildListItem(
  */
 export async function buildSequenceListPage(params: {
   scopedDb: {
-    sequences: Pick<ScopedDb['sequences'], 'listShotReadinessByIds'>;
+    // Only the readiness fields `counts` derive from — the read returns more.
+    sequences: {
+      listShotReadinessByIds: (
+        sequenceIds: string[]
+      ) => Promise<Array<ShotReadiness & { sequenceId: string }>>;
+    };
     styles: Pick<ScopedDb['styles'], 'listByIds'>;
   };
   sequences: Sequence[];

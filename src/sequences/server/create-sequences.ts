@@ -71,7 +71,10 @@ export type StyleSource =
   | { kind: 'clone'; draft: AutoStyleDraft };
 
 export async function resolveStyleSource(
-  scopedDb: Pick<ScopedDb, 'styles' | 'sequences'>,
+  scopedDb: {
+    styles: ScopedDb['styles'];
+    sequences: Pick<ScopedDb['sequences'], 'getById'>;
+  },
   styleId: string
 ): Promise<StyleSource> {
   if (styleId === AUTO_STYLE_ID) {

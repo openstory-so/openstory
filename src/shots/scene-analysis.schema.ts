@@ -50,6 +50,11 @@ export const characterBibleEntrySchema = z.object({
   // Narrator, radio voice, a caller on the phone: a voice with no face, so no
   // sheet, no talent match, no place in an image prompt (#1585).
   voiceOnly: z.boolean().meta({ description: 'Heard but never seen' }),
+  // Person vs robot/animal/object. Legal `real` is never a bible fact —
+  // it is stamped on the character row from a signed talent or upload (#1682).
+  isPerson: z
+    .boolean()
+    .meta({ description: 'Person, not robot/animal/object' }),
   consistencyTag: z.string().meta({ description: 'snake_case name slug' }),
 });
 

@@ -169,7 +169,7 @@ export function useStudioLibrary(): StudioLibrary {
         };
       }),
       cast: (talent ?? []).flatMap((t) => {
-        const url = t.imageUrl ?? t.defaultSheet?.imageUrl;
+        const url = t.defaultSheet?.imageUrl ?? t.imageUrl;
         return url ? [{ url, label: t.name, kind: 'image' as const }] : [];
       }),
       locations: (locations ?? []).flatMap((loc) =>

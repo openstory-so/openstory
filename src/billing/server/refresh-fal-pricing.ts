@@ -699,6 +699,27 @@ export async function refreshFalPricing(
   const staleRows = existing.filter(
     (row) => !freshKeys.has(pricingKey(row)) && !fetchFailed.has(row.endpointId)
   );
+
+  // A row we DELIBERATELY kept is current as far as this refresh is concerned,
+  // so stamp it like any other — otherwise its fetchedAt freezes at the last
+  // run fal could price it and `warnIfStale` reports the cron as dead forever
+  // (fal-ai/llava-next did exactly that). The endpoints fal cannot price are
+  // already reported by their own warn in fetchFalUnitPrices.
+  const preservedRows = existing.filter(
+    (row) => !freshKeys.has(pricingKey(row)) && fetchFailed.has(row.endpointId)
+  );
+  for (const row of preservedRows) {
+    await db
+      .update(modelPricing)
+      .set({ fetchedAt: now, updatedAt: now })
+      .where(
+        and(
+          eq(modelPricing.provider, 'fal'),
+          eq(modelPricing.endpointId, row.endpointId),
+          eq(modelPricing.unit, row.unit)
+        )
+      );
+  }
   for (const row of staleRows) {
     await db
       .delete(modelPricing)
