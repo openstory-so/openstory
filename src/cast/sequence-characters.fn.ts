@@ -213,7 +213,7 @@ export const softDeleteSequenceCharacterFn = createServerFn({ method: 'POST' })
     );
     // The voice slot is account-wide, so it goes with the row (#1553); the
     // description and previews stay, so a restore can regenerate.
-    await releaseCharacterVoice(context.scopedDb, existing);
+    await releaseCharacterVoice(context.scopedDb, existing, context.user.id);
     return { characterId: data.characterId, deletedAt };
   });
 
@@ -230,7 +230,7 @@ export const generateCharacterVoiceFn = createServerFn({ method: 'POST' })
       throw new ValidationError('Voice design is not configured');
     }
     const character = await requireCharacter(context.scopedDb, data);
-    await releaseCharacterVoice(context.scopedDb, character);
+    await releaseCharacterVoice(context.scopedDb, character, context.user.id);
     const payload: CharacterVoiceWorkflowInput = {
       userId: context.user.id,
       teamId: context.teamId,
@@ -258,9 +258,12 @@ export const setCharacterVoiceEnabledFn = createServerFn({ method: 'POST' })
     await context.scopedDb.characters.updateVoice(
       character.id,
       { useVoice: data.enabled },
-      data.enabled ? 'user-edit' : 'disabled'
+      data.enabled ? 'user-edit' : 'disabled',
+      context.user.id
     );
-    if (!data.enabled) await releaseCharacterVoice(context.scopedDb, character);
+    if (!data.enabled) {
+      await releaseCharacterVoice(context.scopedDb, character, context.user.id);
+    }
     return { characterId: character.id, useVoice: data.enabled };
   });
 
@@ -327,7 +330,8 @@ export const chooseCharacterVoiceTakeFn = createServerFn({ method: 'POST' })
         voiceId,
         voicePreviews: [take, ...previews.filter((p) => p !== take)],
       },
-      'generated'
+      'generated',
+      context.user.id
     );
     await releaseReplacedVoice(context.scopedDb, character.voiceId, voiceId);
     return { characterId: character.id, voiceId };
@@ -401,7 +405,8 @@ export const assignCharacterVoiceFn = createServerFn({ method: 'POST' })
     await context.scopedDb.characters.updateVoice(
       character.id,
       { voiceId, ...(voiceDescription ? { voiceDescription } : {}) },
-      'library'
+      'library',
+      context.user.id
     );
     await releaseReplacedVoice(context.scopedDb, character.voiceId, voiceId);
     return { characterId: character.id, voiceId };
@@ -650,7 +655,8 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
           voiceDescription: talentWithSheets.voiceDescription,
           voicePreviews: null,
         },
-        'library'
+        'library',
+        context.user.id
       );
       await releaseReplacedVoice(
         context.scopedDb,

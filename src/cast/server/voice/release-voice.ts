@@ -95,7 +95,9 @@ export async function releaseReplacedVoice(
 /** Free the slot if nothing else uses it, then drop the character's pointer. */
 export async function releaseCharacterVoice(
   scopedDb: ScopedDb,
-  character: { id: string; voiceId: string | null }
+  character: { id: string; voiceId: string | null },
+  /** Who dropped the voice — stamped on the 'removed' history row. */
+  createdBy: string | null
 ): Promise<void> {
   if (!character.voiceId) return;
   await releaseVoiceIfUnreferenced(scopedDb, character.voiceId, { heldBy: 1 });
@@ -104,6 +106,7 @@ export async function releaseCharacterVoice(
     { voiceId: null },
     // 'removed' says the character dropped the id; only `releasedAt` says the
     // provider slot was actually freed.
-    'removed'
+    'removed',
+    createdBy
   );
 }

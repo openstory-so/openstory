@@ -145,3 +145,73 @@ export const selectShotDialogueSectionFn = createServerFn({ method: 'POST' })
     }
     return { sectionId: section.id, clip };
   });
+
+/** Every authored version of this shot's lines, newest first. */
+export const listShotDialogueVersionsFn = createServerFn({ method: 'GET' })
+  .middleware([shotAccessMiddleware])
+  .validator(zodValidator(shotInput))
+  .handler(
+    async ({ context }) =>
+      await context.scopedDb.shotDialogue.listVersions(context.shot.id)
+  );
+
+/**
+ * Point the shot back at an earlier set of lines. The pointer is the whole
+ * change (#1657): every reader resolves what a shot says from the selected
+ * version. The shot's current reading stops matching, so the next render
+ * records; a reading of the restored wording can be picked again with Use.
+ */
+export const selectShotDialogueVersionFn = createServerFn({ method: 'POST' })
+  .middleware([shotAccessMiddleware])
+  .validator(zodValidator(shotInput.extend({ versionId: ulidSchema })))
+  .handler(async ({ context, data }) => {
+    const version = await context.scopedDb.shotDialogue.selectVersion(
+      context.shot.id,
+      data.versionId
+    );
+    try {
+      await context.scopedDb.sequenceEvents.record({
+        sequenceId: context.sequence.id,
+        actorId: context.user.id,
+        kind: 'dialogue.version.selected',
+        targetType: 'shot',
+        targetId: context.shot.id,
+        data: { versionId: version.id },
+      });
+    } catch (error) {
+      logger.error('dialogue.version.selected event not recorded', {
+        shotId: context.shot.id,
+        versionId: version.id,
+        err: error,
+      });
+    }
+    return { versionId: version.id };
+  });
+
+/** Discard a reading. Discarding the current one leaves the shot with no clip. */
+export const discardShotDialogueSectionFn = createServerFn({ method: 'POST' })
+  .middleware([shotAccessMiddleware])
+  .validator(zodValidator(shotInput.extend({ sectionId: ulidSchema })))
+  .handler(async ({ context, data }) => {
+    await context.scopedDb.shotDialogue.discardSection(
+      context.shot.id,
+      data.sectionId
+    );
+    try {
+      await context.scopedDb.sequenceEvents.record({
+        sequenceId: context.sequence.id,
+        actorId: context.user.id,
+        kind: 'dialogue.section.discarded',
+        targetType: 'shot',
+        targetId: context.shot.id,
+        data: { sectionId: data.sectionId },
+      });
+    } catch (error) {
+      logger.error('dialogue.section.discarded event not recorded', {
+        shotId: context.shot.id,
+        sectionId: data.sectionId,
+        err: error,
+      });
+    }
+    return { sectionId: data.sectionId };
+  });

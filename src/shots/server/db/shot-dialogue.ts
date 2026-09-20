@@ -129,6 +129,58 @@ export function createShotDialogueMethods(db: Database) {
   return {
     getSelected,
 
+    /** Every authored version of a shot's lines, newest first. */
+    listVersions: async (shotId: string): Promise<ShotDialogueVersion[]> =>
+      await db
+        .select()
+        .from(shotDialogueVersions)
+        .where(eq(shotDialogueVersions.shotId, shotId))
+        .orderBy(
+          desc(shotDialogueVersions.createdAt),
+          desc(shotDialogueVersions.id)
+        ),
+
+    /**
+     * Point the shot back at an earlier set of lines. The pointer is the whole
+     * change: every reader resolves what a shot says from the selected row,
+     * so the prompt text, the recording and the panel all follow. Readings
+     * are not touched — the current one stops matching (so the next render
+     * records), and any reading of the restored wording becomes usable again.
+     */
+    selectVersion: async (
+      shotId: string,
+      versionId: string
+    ): Promise<ShotDialogueVersion> => {
+      const [version] = await db
+        .select()
+        .from(shotDialogueVersions)
+        .where(
+          and(
+            eq(shotDialogueVersions.id, versionId),
+            eq(shotDialogueVersions.shotId, shotId)
+          )
+        )
+        .limit(1);
+      if (!version) {
+        throw new Error(
+          `Shot dialogue version ${versionId} not found for shot ${shotId}`
+        );
+      }
+      const [, selected] = await db.batch([
+        clearSelectedVersion(shotId),
+        db
+          .update(shotDialogueVersions)
+          .set({ selectedAt: new Date() })
+          .where(eq(shotDialogueVersions.id, version.id))
+          .returning(),
+      ]);
+      const [row] = selected;
+      if (!row) {
+        throw new Error(`Failed to select dialogue version ${versionId}`);
+      }
+      return row;
+    },
+
     /** Selected authored lines for every live shot of a sequence that has a row. */
     getSelectedBySequence: async (
       sequenceId: string
@@ -307,6 +359,49 @@ export function createShotDialogueMethods(db: Database) {
         .where(eq(shotDialogueSections.id, sectionId))
         .limit(1);
       return row ? { ...row.section, recording: row.recording } : null;
+    },
+
+    /**
+     * Soft-discard a reading. A discarded section can never stay selected, and
+     * the shot must not keep a clip cut from it — so discarding the CURRENT
+     * reading clears `shots.audioClips` in the same batch, and the next render
+     * records afresh. The recording file is untouched: other shots may hold
+     * sections of it.
+     */
+    discardSection: async (
+      shotId: string,
+      sectionId: string
+    ): Promise<void> => {
+      const [section] = await db
+        .select({ selectedAt: shotDialogueSections.selectedAt })
+        .from(shotDialogueSections)
+        .where(
+          and(
+            eq(shotDialogueSections.id, sectionId),
+            eq(shotDialogueSections.shotId, shotId)
+          )
+        )
+        .limit(1);
+      if (!section) {
+        throw new Error(
+          `Shot dialogue section ${sectionId} not found for shot ${shotId}`
+        );
+      }
+      const discard = db
+        .update(shotDialogueSections)
+        .set({ discardedAt: new Date(), selectedAt: null })
+        .where(eq(shotDialogueSections.id, sectionId));
+      if (!section.selectedAt) {
+        await discard;
+        return;
+      }
+      await db.batch([
+        discard,
+        db
+          .update(shots)
+          .set({ audioClips: [], updatedAt: new Date() })
+          .where(eq(shots.id, shotId)),
+      ]);
     },
 
     /**

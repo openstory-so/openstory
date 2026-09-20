@@ -166,12 +166,17 @@ describe('characters bible CRUD + soft-remove', () => {
     const a = await methods.updateVoice(
       created.id,
       { voiceId: 'voice-a', voicePreviews: [], useVoice: true },
-      'generated'
+      'generated',
+      actorId
+    );
+    expect((await methods.listVoiceVersions(created.id))[0]?.createdBy).toBe(
+      actorId
     );
     const b = await methods.updateVoice(
       created.id,
       { voiceId: 'voice-b' },
-      'library'
+      'library',
+      null
     );
 
     const versions = await methods.listVoiceVersions(created.id);
@@ -212,9 +217,14 @@ describe('characters bible CRUD + soft-remove', () => {
       characterId: 'voice_003',
       name: 'Otto',
     });
-    await methods.updateVoice(maya.id, { voiceId: 'shared' }, 'generated');
-    await methods.updateVoice(otto.id, { voiceId: 'shared' }, 'library');
-    await methods.updateVoice(maya.id, { voiceId: 'kept' }, 'library');
+    await methods.updateVoice(
+      maya.id,
+      { voiceId: 'shared' },
+      'generated',
+      null
+    );
+    await methods.updateVoice(otto.id, { voiceId: 'shared' }, 'library', null);
+    await methods.updateVoice(maya.id, { voiceId: 'kept' }, 'library', null);
 
     // The id is deleted at ElevenLabs once, for everyone (#1657).
     await methods.markVoiceReleased('shared');

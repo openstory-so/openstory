@@ -29,6 +29,16 @@ import type {
   DialogueLine,
   MotionDialogue,
 } from '@/shots/scene-analysis.schema';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/ui/shadcn/alert-dialog';
 import { Button } from '@/ui/shadcn/button';
 import {
   Collapsible,
@@ -43,6 +53,7 @@ import {
   SelectValue,
 } from '@/ui/shadcn/select';
 import { Check, ChevronDown } from 'lucide-react';
+import { useState } from 'react';
 
 type DialogueClip = {
   url: string;
@@ -138,8 +149,9 @@ const ShotAudio: React.FC<{ url: string }> = ({ url }) => (
 const ReadingRow: React.FC<{
   reading: ShotDialogueReading;
   onUse: (readingId: string) => void;
+  onDiscard: (reading: ShotDialogueReading) => void;
   usingId?: string | null;
-}> = ({ reading, onUse, usingId }) => {
+}> = ({ reading, onUse, onDiscard, usingId }) => {
   const recordedAt = new Date(reading.createdAt).toLocaleString();
   const facts = [
     recordedAt,
@@ -153,22 +165,33 @@ const ReadingRow: React.FC<{
         <span className="text-xs text-muted-foreground">
           {facts.join(' · ')}
         </span>
-        {reading.selected ? (
-          <span className="flex items-center gap-1 text-xs font-medium">
-            <Check className="h-3 w-3" aria-hidden />
-            Current
-          </span>
-        ) : (
+        <div className="flex items-center gap-1">
+          {reading.selected ? (
+            <span className="flex items-center gap-1 text-xs font-medium">
+              <Check className="h-3 w-3" aria-hidden />
+              Current
+            </span>
+          ) : (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={usingId != null || !reading.matchesCurrentLines}
+              aria-label={`Use reading from ${recordedAt}`}
+              onClick={() => onUse(reading.id)}
+            >
+              {usingId === reading.id ? 'Using…' : 'Use'}
+            </Button>
+          )}
           <Button
             size="sm"
             variant="ghost"
-            disabled={usingId != null || !reading.matchesCurrentLines}
-            aria-label={`Use reading from ${recordedAt}`}
-            onClick={() => onUse(reading.id)}
+            disabled={usingId != null}
+            aria-label={`Discard reading from ${recordedAt}`}
+            onClick={() => onDiscard(reading)}
           >
-            {usingId === reading.id ? 'Using…' : 'Use'}
+            Discard
           </Button>
-        )}
+        </div>
       </div>
       {/* oxlint-disable-next-line jsx-a11y/media-has-caption -- a reading of the lines shown beside it */}
       <audio
@@ -190,20 +213,54 @@ const ReadingRow: React.FC<{
 export const ShotReadingsList: React.FC<{
   readings: ShotDialogueReading[];
   onUse: (readingId: string) => void;
+  onDiscard: (readingId: string) => void;
   usingId?: string | null;
   collapsible?: boolean;
-}> = ({ readings, onUse, usingId, collapsible }) => {
+}> = ({ readings, onUse, onDiscard, usingId, collapsible }) => {
+  const [pendingDiscard, setPendingDiscard] =
+    useState<ShotDialogueReading | null>(null);
   const rows = (
-    <ul className="flex flex-col gap-3">
-      {readings.map((reading) => (
-        <ReadingRow
-          key={reading.id}
-          reading={reading}
-          onUse={onUse}
-          usingId={usingId}
-        />
-      ))}
-    </ul>
+    <>
+      <ul className="flex flex-col gap-3">
+        {readings.map((reading) => (
+          <ReadingRow
+            key={reading.id}
+            reading={reading}
+            onUse={onUse}
+            onDiscard={setPendingDiscard}
+            usingId={usingId}
+          />
+        ))}
+      </ul>
+      <AlertDialog
+        open={pendingDiscard !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDiscard(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard this reading?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDiscard?.selected
+                ? 'It is the shot’s current audio. The next render records a new one.'
+                : 'It leaves this list. The recording it came from is kept.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingDiscard) onDiscard(pendingDiscard.id);
+                setPendingDiscard(null);
+              }}
+            >
+              Discard
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
   if (collapsible) {
     if (readings.length === 0) {
@@ -238,6 +295,85 @@ export const ShotReadingsList: React.FC<{
       <span className="text-xs font-medium">Readings</span>
       {rows}
     </div>
+  );
+};
+
+/** One authored version of a shot's lines, as the history list shows it. */
+export type ShotDialogueVersionRow = {
+  id: string;
+  source: 'prompt' | 'user-edit';
+  createdAt: Date | string;
+  selected: boolean;
+  lines: readonly { character: string; line: string }[];
+};
+
+const DIALOGUE_VERSION_SOURCE_LABELS = {
+  prompt: 'From the script',
+  'user-edit': 'Edited',
+} as const;
+
+/**
+ * Every set of lines this shot has held (#1657), newest first, with a way
+ * back. Hidden until there is something to go back to.
+ */
+export const ShotDialogueHistory: React.FC<{
+  versions: ShotDialogueVersionRow[];
+  onUse: (versionId: string) => void;
+  usingId?: string | null;
+}> = ({ versions, onUse, usingId }) => {
+  if (versions.length < 2) return null;
+  return (
+    <section
+      className="flex flex-col gap-2 rounded-md border p-3"
+      aria-label="Dialogue history"
+    >
+      <span className="text-xs font-medium">History</span>
+      <ul className="flex flex-col gap-1">
+        {versions.map((version) => {
+          const created = new Date(version.createdAt);
+          const said =
+            version.lines.length === 0
+              ? 'No lines'
+              : version.lines.map((line) => `“${line.line}”`).join(' ');
+          return (
+            <li
+              key={version.id}
+              className="flex min-h-8 items-center justify-between gap-2"
+              aria-current={version.selected ? 'true' : undefined}
+            >
+              <div className="flex min-w-0 flex-col">
+                <p className="text-xs font-medium">
+                  {DIALOGUE_VERSION_SOURCE_LABELS[version.source]}{' '}
+                  <time
+                    dateTime={created.toISOString()}
+                    className="font-normal text-muted-foreground"
+                  >
+                    {created.toLocaleString()}
+                  </time>
+                </p>
+                <p className="truncate text-xs text-muted-foreground">{said}</p>
+              </div>
+              {version.selected ? (
+                <span className="flex items-center gap-1 text-xs font-medium">
+                  <Check className="h-3 w-3" aria-hidden />
+                  Current
+                </span>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={usingId != null}
+                  aria-label={`Use lines from ${created.toLocaleString()}`}
+                  onClick={() => onUse(version.id)}
+                >
+                  {usingId === version.id ? 'Using…' : 'Use'}
+                </Button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 };
 

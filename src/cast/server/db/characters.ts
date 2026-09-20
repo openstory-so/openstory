@@ -179,7 +179,9 @@ export function createCharactersMethods(db: Database) {
   const updateVoice = async (
     id: string,
     data: CharacterVoiceUpdate,
-    source: CharacterVoiceVersionSource
+    source: CharacterVoiceVersionSource,
+    /** Who did this — required so no writer forgets; null when nobody did. */
+    createdBy: string | null
   ): Promise<Character> => {
     const [existing] = await db
       .select()
@@ -203,6 +205,7 @@ export function createCharactersMethods(db: Database) {
         enabled:
           data.useVoice === undefined ? existing.useVoice : data.useVoice,
         source,
+        createdBy,
       }),
       db
         .update(characters)
@@ -365,7 +368,9 @@ export function createCharactersMethods(db: Database) {
           {},
           character.voiceId && character.voiceId === data.voiceId
             ? 'library'
-            : 'analysis'
+            : 'analysis',
+          // Seeded by the cast-records step, not by a person.
+          null
         );
       }
       return character;
@@ -593,7 +598,8 @@ export function createCharactersMethods(db: Database) {
         return await updateVoice(
           id,
           { voiceDescription: data.voiceDescription },
-          'user-edit'
+          'user-edit',
+          opts.actorId
         );
       }
       return updated;

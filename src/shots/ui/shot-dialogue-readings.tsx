@@ -6,8 +6,11 @@
 
 import { useSequenceElements } from '@/cast/ui/use-sequence-elements';
 import {
+  discardShotDialogueSectionFn,
   listShotDialogueSectionsFn,
+  listShotDialogueVersionsFn,
   selectShotDialogueSectionFn,
+  selectShotDialogueVersionFn,
 } from '@/shots/shot-dialogue.fn';
 import type { ShotView } from '@/shots/shot-view';
 import { Skeleton } from '@/ui/shadcn/skeleton';
@@ -18,7 +21,12 @@ import {
 } from '@tanstack/react-query';
 import { Suspense } from 'react';
 import { toast } from 'sonner';
-import { ShotDialogueBlock, ShotReadingsList } from './motion-dialogue-panel';
+import {
+  ShotDialogueBlock,
+  ShotDialogueHistory,
+  ShotReadingsList,
+} from './motion-dialogue-panel';
+import { shotStalenessNamespace } from './use-shot-staleness';
 import { shotKeys } from './use-shots';
 
 type ReadingsProps = {
@@ -54,12 +62,79 @@ const Readings: React.FC<ReadingsProps> = ({
     onError: (error: Error) =>
       toast.error('Reading not used', { description: error.message }),
   });
+  const discardReading = useMutation({
+    mutationFn: (sectionId: string) =>
+      discardShotDialogueSectionFn({ data: { sequenceId, shotId, sectionId } }),
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: shotKeys.dialogueSections(shotId),
+        }),
+        // Discarding the current reading clears the shot's `audioClips`.
+        queryClient.invalidateQueries({ queryKey: shotKeys.list(sequenceId) }),
+        queryClient.invalidateQueries({ queryKey: shotStalenessNamespace }),
+      ]),
+    onError: (error: Error) =>
+      toast.error('Reading not discarded', { description: error.message }),
+  });
   return (
-    <ShotReadingsList
-      readings={readings}
-      onUse={(sectionId) => selectReading.mutate(sectionId)}
-      usingId={selectReading.isPending ? selectReading.variables : null}
-      collapsible={collapsible}
+    <>
+      {/* History only where there is room to act on it: the prompt editor. */}
+      {collapsible ? null : (
+        <DialogueHistory sequenceId={sequenceId} shotId={shotId} />
+      )}
+      <ShotReadingsList
+        readings={readings}
+        onUse={(sectionId) => selectReading.mutate(sectionId)}
+        onDiscard={(sectionId) => discardReading.mutate(sectionId)}
+        usingId={selectReading.isPending ? selectReading.variables : null}
+        collapsible={collapsible}
+      />
+    </>
+  );
+};
+
+/** The shot's authored line history, and the way back to an earlier set. */
+const DialogueHistory: React.FC<{ sequenceId: string; shotId: string }> = ({
+  sequenceId,
+  shotId,
+}) => {
+  const queryClient = useQueryClient();
+  const { data: versions } = useSuspenseQuery({
+    queryKey: shotKeys.dialogueVersions(shotId),
+    queryFn: () => listShotDialogueVersionsFn({ data: { sequenceId, shotId } }),
+  });
+  const selectVersion = useMutation({
+    mutationFn: (versionId: string) =>
+      selectShotDialogueVersionFn({ data: { sequenceId, shotId, versionId } }),
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: shotKeys.dialogueVersions(shotId),
+        }),
+        // Which readings match the lines moved with them.
+        queryClient.invalidateQueries({
+          queryKey: shotKeys.dialogueSections(shotId),
+        }),
+        // `shot.dialogue` rides the shots list; the clip now reads stale.
+        queryClient.invalidateQueries({ queryKey: shotKeys.list(sequenceId) }),
+        queryClient.invalidateQueries({ queryKey: shotKeys.detail(shotId) }),
+        queryClient.invalidateQueries({ queryKey: shotStalenessNamespace }),
+      ]),
+    onError: (error: Error) =>
+      toast.error('Lines not restored', { description: error.message }),
+  });
+  return (
+    <ShotDialogueHistory
+      versions={versions.map((version) => ({
+        id: version.id,
+        source: version.source,
+        createdAt: version.createdAt,
+        selected: version.selectedAt !== null,
+        lines: version.lines,
+      }))}
+      onUse={(versionId) => selectVersion.mutate(versionId)}
+      usingId={selectVersion.isPending ? selectVersion.variables : null}
     />
   );
 };

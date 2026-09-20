@@ -65,6 +65,9 @@ export const shotKeys = {
   /** One shot's dialogue readings (#1657). */
   dialogueSections: (shotId: string) =>
     [...shotKeys.dialogueSectionsAll(), shotId] as const,
+  /** One shot's authored dialogue versions (#1657). */
+  dialogueVersions: (shotId: string) =>
+    [...shotKeys.all, 'dialogue-versions', shotId] as const,
 };
 
 // Distinct image models that have generated a variant for this sequence.

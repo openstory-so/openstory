@@ -719,7 +719,7 @@ export const archiveSequenceFn = createServerFn({ method: 'POST' })
     for (const character of await context.scopedDb.characters.list(
       context.sequence.id
     )) {
-      await releaseCharacterVoice(context.scopedDb, character);
+      await releaseCharacterVoice(context.scopedDb, character, context.user.id);
     }
     await context.scopedDb
       .sequence(context.sequence.id)

@@ -380,18 +380,86 @@ describe('recordings and sections', () => {
     ).toHaveLength(1);
   });
 
-  it('omits and refuses a discarded section', async () => {
+  it("omits and refuses a discarded section; discarding the current one clears the shot's clip", async () => {
     const methods = createShotDialogueMethods(db);
     const mine = section(shotId, true);
     await methods.appendRecording(recording([mine]));
     await db
-      .update(shotDialogueSections)
-      .set({ discardedAt: new Date(), selectedAt: null })
-      .where(eq(shotDialogueSections.id, mine.id));
+      .update(shots)
+      .set({
+        audioClips: [
+          {
+            id: mine.id,
+            url: '/r2/cut.wav',
+            token: 'DIALOGUE',
+            durationSeconds: 2,
+            sourceKey: mine.sourceKey,
+          },
+        ],
+      })
+      .where(eq(shots.id, shotId));
+
+    await methods.discardSection(shotId, mine.id);
 
     expect(await methods.listSections(shotId)).toEqual([]);
+    const stored = await methods.getSectionById(mine.id);
+    expect(stored?.selectedAt).toBeNull();
+    expect(stored?.discardedAt).toBeInstanceOf(Date);
+    // The shot must not keep audio cut from a reading that is gone.
+    const [shot] = await db.select().from(shots).where(eq(shots.id, shotId));
+    expect(shot?.audioClips).toEqual([]);
     await expect(methods.selectSection(shotId, mine.id, [])).rejects.toThrow(
       /discarded/
+    );
+  });
+
+  it('discarding a reading the shot does not use leaves its clip alone', async () => {
+    const methods = createShotDialogueMethods(db);
+    const current = section(shotId, true);
+    await methods.appendRecording(recording([current]));
+    const spare = section(shotId, false);
+    await methods.appendRecording(recording([spare]));
+    const clip = {
+      id: current.id,
+      url: '/r2/cut.wav',
+      token: 'DIALOGUE',
+      durationSeconds: 2,
+      sourceKey: current.sourceKey,
+    };
+    await db
+      .update(shots)
+      .set({ audioClips: [clip] })
+      .where(eq(shots.id, shotId));
+
+    await methods.discardSection(shotId, spare.id);
+
+    const [shot] = await db.select().from(shots).where(eq(shots.id, shotId));
+    expect(shot?.audioClips).toEqual([clip]);
+    expect(
+      (await methods.getSectionById(current.id))?.selectedAt
+    ).not.toBeNull();
+  });
+
+  it('restores an earlier version without deleting the newer one', async () => {
+    const methods = createShotDialogueMethods(db);
+    const first = await methods.write(shotId, [line('A')], 'prompt');
+    await methods.write(shotId, [line('B')], 'user-edit');
+    if (!first) throw new Error('expected a first version');
+
+    await methods.selectVersion(shotId, first.id);
+
+    expect((await methods.getSelected(shotId))?.id).toBe(first.id);
+    const versions = await methods.listVersions(shotId);
+    expect(versions).toHaveLength(2);
+    expect(versions.filter((version) => version.selectedAt)).toHaveLength(1);
+  });
+
+  it('refuses a version id from another shot', async () => {
+    const methods = createShotDialogueMethods(db);
+    const other = await methods.write(otherShotId, [line('X')], 'prompt');
+    if (!other) throw new Error('expected a version');
+    await expect(methods.selectVersion(shotId, other.id)).rejects.toThrow(
+      /not found/
     );
   });
 
@@ -417,6 +485,10 @@ describe('recordings and sections', () => {
     await expect(methods.selectSection(shotId, theirs.id, [])).rejects.toThrow(
       /not found/
     );
+    await expect(methods.discardSection(shotId, theirs.id)).rejects.toThrow(
+      /not found/
+    );
+    expect((await methods.getSectionById(theirs.id))?.discardedAt).toBeNull();
   });
 
   it('returns null for a section that does not exist', async () => {

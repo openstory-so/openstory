@@ -1,6 +1,7 @@
 /** Append-only voice history for a sequence character (#1657). */
 import { index, integer, snakeCase, text } from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/platform/id';
+import { user } from './auth';
 import { characters, type VoicePreview } from './characters';
 
 /**
@@ -41,6 +42,12 @@ export const characterVoiceVersions = snakeCase.table(
      * selected: its id no longer exists at the provider.
      */
     releasedAt: integer({ mode: 'timestamp' }),
+    /**
+     * The person whose action made this version (picked a library voice, chose
+     * a take, recast, turned voice off). Null when nobody did: a row written
+     * for a run that carries no user, or the user has since been deleted.
+     */
+    createdBy: text().references(() => user.id, { onDelete: 'set null' }),
     createdAt: integer({ mode: 'timestamp' })
       .$defaultFn(() => new Date())
       .notNull(),

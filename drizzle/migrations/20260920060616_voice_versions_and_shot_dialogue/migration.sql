@@ -7,8 +7,10 @@ CREATE TABLE `character_voice_versions` (
 	`enabled` integer,
 	`source` text NOT NULL,
 	`released_at` integer,
+	`created_by` text,
 	`created_at` integer NOT NULL,
-	CONSTRAINT `fk_character_voice_versions_character_id_characters_id_fk` FOREIGN KEY (`character_id`) REFERENCES `characters`(`id`) ON DELETE CASCADE
+	CONSTRAINT `fk_character_voice_versions_character_id_characters_id_fk` FOREIGN KEY (`character_id`) REFERENCES `characters`(`id`) ON DELETE CASCADE,
+	CONSTRAINT `fk_character_voice_versions_created_by_user_id_fk` FOREIGN KEY (`created_by`) REFERENCES `user`(`id`) ON DELETE SET NULL
 );
 --> statement-breakpoint
 CREATE TABLE `dialogue_recordings` (

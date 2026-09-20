@@ -153,7 +153,9 @@ describe('CharacterVoiceWorkflow', () => {
         voiceId: 'voice-1',
         voiceDescription: 'Warm alto, unhurried.',
       }),
-      'generated'
+      'generated',
+      // The person who asked for the voice is stamped on the version.
+      'u1'
     );
     expect(result.voiceId).toBe('voice-1');
   });

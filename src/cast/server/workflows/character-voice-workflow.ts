@@ -152,7 +152,9 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       await scopedDb.characters.updateVoice(
         characterDbId,
         { voiceId, voiceDescription, voicePreviews: previews },
-        'generated'
+        'generated',
+        // The person who asked for this voice (or started the run that did).
+        input.userId
       );
     });
 

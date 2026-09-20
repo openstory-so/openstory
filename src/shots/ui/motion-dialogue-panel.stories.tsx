@@ -5,6 +5,7 @@ import { fn } from 'storybook/test';
 import {
   MotionDialoguePanel,
   ShotDialogueBlock,
+  ShotDialogueHistory,
   ShotReadingsList,
   type ShotDialogueReading,
 } from './motion-dialogue-panel';
@@ -117,7 +118,13 @@ export const DialogueExceedsShot: Story = {
 
 export const WithReadings: Story = {
   args: {
-    readings: <ShotReadingsList readings={severalReadings} onUse={fn()} />,
+    readings: (
+      <ShotReadingsList
+        readings={severalReadings}
+        onUse={fn()}
+        onDiscard={fn()}
+      />
+    ),
   },
 };
 
@@ -138,7 +145,14 @@ export const BlockLinesNoAudioYet: Story = {
     <ShotDialogueBlock
       dialogue={dialogue}
       elements={[]}
-      readings={<ShotReadingsList readings={[]} onUse={fn()} collapsible />}
+      readings={
+        <ShotReadingsList
+          readings={[]}
+          onUse={fn()}
+          onDiscard={fn()}
+          collapsible
+        />
+      }
     />
   ),
 };
@@ -150,7 +164,12 @@ export const BlockCurrentReadingOnly: Story = {
       elements={[]}
       clip={clip}
       readings={
-        <ShotReadingsList readings={[current]} onUse={fn()} collapsible />
+        <ShotReadingsList
+          readings={[current]}
+          onUse={fn()}
+          onDiscard={fn()}
+          collapsible
+        />
       }
     />
   ),
@@ -163,8 +182,38 @@ export const BlockSeveralReadings: Story = {
       elements={[]}
       clip={clip}
       readings={
-        <ShotReadingsList readings={severalReadings} onUse={fn()} collapsible />
+        <ShotReadingsList
+          readings={severalReadings}
+          onUse={fn()}
+          onDiscard={fn()}
+          collapsible
+        />
       }
+    />
+  ),
+};
+
+/** Two sets of lines: the script's, then an edit. "Use" goes back. */
+export const History: Story = {
+  render: () => (
+    <ShotDialogueHistory
+      versions={[
+        {
+          id: 'v2',
+          source: 'user-edit',
+          createdAt: '2026-09-20T10:05:00Z',
+          selected: true,
+          lines: [{ character: 'SARAH', line: 'This deadline will kill me.' }],
+        },
+        {
+          id: 'v1',
+          source: 'prompt',
+          createdAt: '2026-09-20T09:00:00Z',
+          selected: false,
+          lines: dialogue.lines,
+        },
+      ]}
+      onUse={fn()}
     />
   ),
 };

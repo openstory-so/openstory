@@ -1,7 +1,7 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "cb2c7be7-2977-43db-b5ab-f0b50ea65b09",
+  "id": "10c5bbf1-df3f-459d-ad69-8df30b87f233",
   "prevIds": ["123a704f-45b7-43d0-8d7b-1e1c08ed80b5"],
   "ddl": [
     {
@@ -1105,6 +1105,16 @@
       "default": null,
       "generated": null,
       "name": "released_at",
+      "entityType": "columns",
+      "table": "character_voice_versions"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_by",
       "entityType": "columns",
       "table": "character_voice_versions"
     },
@@ -9160,6 +9170,17 @@
       "onDelete": "CASCADE",
       "nameExplicit": false,
       "name": "fk_character_voice_versions_character_id_characters_id_fk",
+      "entityType": "fks",
+      "table": "character_voice_versions"
+    },
+    {
+      "columns": ["created_by"],
+      "tableTo": "user",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "nameExplicit": false,
+      "name": "fk_character_voice_versions_created_by_user_id_fk",
       "entityType": "fks",
       "table": "character_voice_versions"
     },

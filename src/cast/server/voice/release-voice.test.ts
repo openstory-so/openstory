@@ -148,12 +148,18 @@ describe('releaseVoiceIfUnreferenced', () => {
 describe('releaseCharacterVoice', () => {
   it('frees the slot, then nulls the pointer as a released version', async () => {
     const { scopedDb, updateVoice } = makeScopedDb(1);
-    await releaseCharacterVoice(scopedDb, { id: 'c1', voiceId: 'v1' });
+    await releaseCharacterVoice(
+      scopedDb,
+      { id: 'c1', voiceId: 'v1' },
+      'user-1'
+    );
     expect(mockDelete).toHaveBeenCalledWith('key', 'v1');
     expect(updateVoice).toHaveBeenCalledWith(
       'c1',
       { voiceId: null },
-      'removed'
+      'removed',
+      // Who dropped the voice rides onto the history row.
+      'user-1'
     );
     expect(mockDelete.mock.invocationCallOrder[0]).toBeLessThan(
       updateVoice.mock.invocationCallOrder[0] ?? 0
@@ -163,13 +169,17 @@ describe('releaseCharacterVoice', () => {
     mockDelete.mockRejectedValue(new Error('502'));
     const { scopedDb, updateVoice } = makeScopedDb(1);
     await expect(
-      releaseCharacterVoice(scopedDb, { id: 'c1', voiceId: 'v1' })
+      releaseCharacterVoice(scopedDb, { id: 'c1', voiceId: 'v1' }, 'user-1')
     ).rejects.toThrow('502');
     expect(updateVoice).not.toHaveBeenCalled();
   });
   it('nulls nothing and deletes nothing for a row without a voice', async () => {
     const { scopedDb, updateVoice } = makeScopedDb(0);
-    await releaseCharacterVoice(scopedDb, { id: 'c1', voiceId: null });
+    await releaseCharacterVoice(
+      scopedDb,
+      { id: 'c1', voiceId: null },
+      'user-1'
+    );
     expect(mockDelete).not.toHaveBeenCalled();
     expect(updateVoice).not.toHaveBeenCalled();
   });
