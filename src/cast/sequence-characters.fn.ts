@@ -13,6 +13,7 @@ import type { ScopedDb } from '@/platform/server/db/scoped';
 import { resolveSequenceStyleConfig } from '@/look/style-config';
 import { buildCastingAttributes } from './character-prompt';
 import { isPersonFromTalentCast } from '@/cast/likeness';
+import { previewListWithChosenTake } from '@/cast/voice';
 import { shouldReuseTalentSheet } from '@/cast/server/talent/reuse-talent-sheet';
 import { getGenerationChannel } from '@/platform/realtime';
 import {
@@ -273,9 +274,11 @@ export const setCharacterVoiceEnabledFn = createServerFn({ method: 'POST' })
  * leaves the row untouched, and a failed release leaves the new id on the
  * row with the old one still on the account for the next release to retry
  * (never two slots with no pointer). The chosen take moves to the front:
- * while `voiceId` is set, `voicePreviews[0]` is the saved voice. A 404 from
- * ElevenLabs means the preview id aged out; any other 4xx carries the
- * provider's reason (slot limit, description rejected).
+ * while `voiceId` is set, `voicePreviews[0]` is the saved voice. Take
+ * numbers are stamped (and kept) so the In use card can show Take 2
+ * after promoting the second preview (#1709). A 404 from ElevenLabs
+ * means the preview id aged out; any other 4xx carries the provider's
+ * reason (slot limit, description rejected).
  */
 export const chooseCharacterVoiceTakeFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
@@ -288,12 +291,17 @@ export const chooseCharacterVoiceTakeFn = createServerFn({ method: 'POST' })
       throw new ValidationError('Voice design is not configured');
     }
     const character = await requireCharacter(context.scopedDb, data);
-    const previews = character.voicePreviews ?? [];
-    const take = previews.find(
-      (p) => p.generatedVoiceId === data.generatedVoiceId
+    const previews = previewListWithChosenTake(
+      character.voicePreviews ?? [],
+      data.generatedVoiceId
     );
-    if (!take) throw new NotFoundError('Take not found');
-    if (previews[0] === take && character.voiceId) {
+    const take = previews?.[0];
+    if (!previews || !take) throw new NotFoundError('Take not found');
+    if (
+      character.voicePreviews?.[0]?.generatedVoiceId ===
+        take.generatedVoiceId &&
+      character.voiceId
+    ) {
       return { characterId: character.id, voiceId: character.voiceId };
     }
     let voiceId: string;
@@ -328,7 +336,7 @@ export const chooseCharacterVoiceTakeFn = createServerFn({ method: 'POST' })
       character.id,
       {
         voiceId,
-        voicePreviews: [take, ...previews.filter((p) => p !== take)],
+        voicePreviews: previews,
       },
       'generated',
       context.user.id

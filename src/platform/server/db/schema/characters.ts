@@ -28,6 +28,8 @@ export type VoicePreview = {
   generatedVoiceId: string;
   url: string;
   path: string;
+  /** 1-based generation order. Travels with the card when a take is promoted (#1709). */
+  takeNumber?: number;
 };
 
 /**

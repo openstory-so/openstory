@@ -2,7 +2,7 @@ import { VOICE_DESIGN_COST } from '@/billing/elevenlabs-pricing';
 import { ActionCost } from '@/billing/ui/action-cost';
 import {
   catalogVoiceBrief,
-  designedTakeIsInUse,
+  designedTakesForDisplay,
   recommendVoiceFilters,
   usesVoice,
   type CatalogVoice,
@@ -100,13 +100,16 @@ export const CharacterVoiceSection: React.FC<{
   });
 
   const busy = isDesigning || generate.isPending || assignVoice.isPending;
-  const previews = character.voicePreviews ?? [];
-  const inUseTake = previews.find((_, index) =>
-    designedTakeIsInUse(index, character.voiceId, savedVoice?.category)
+  const takes = designedTakesForDisplay(
+    character.voicePreviews ?? [],
+    character.voiceId,
+    savedVoice?.category
   );
-  const otherTakes = previews.filter(
-    (preview) => preview.generatedVoiceId !== inUseTake?.generatedVoiceId
-  );
+  const inUseTake = takes.find((take) => take.inUse);
+  const otherTakes = takes.filter((take) => !take.inUse);
+  const choosingId = chooseTake.isPending
+    ? chooseTake.variables?.generatedVoiceId
+    : undefined;
   const catalogVoice =
     savedVoice && savedVoice.category !== 'generated' ? savedVoice : null;
 
@@ -118,6 +121,7 @@ export const CharacterVoiceSection: React.FC<{
         generatedVoiceId,
       },
       {
+        onSuccess: () => toast.success('Voice take in use'),
         onError: (error) =>
           toast.error('Failed to save take', {
             description: errorMessage(error),
@@ -172,7 +176,7 @@ export const CharacterVoiceSection: React.FC<{
       </div>
       {enabled && (
         <>
-          {character.voiceId || previews.length > 0 ? (
+          {character.voiceId || takes.length > 0 ? (
             <div className="flex flex-col gap-3">
               {(inUseTake || catalogVoice || character.voiceId) && (
                 <section className="flex flex-col gap-2" aria-label="In use">
@@ -188,8 +192,8 @@ export const CharacterVoiceSection: React.FC<{
                     />
                   ) : inUseTake ? (
                     <VoiceTakeCard
-                      src={inUseTake.url}
-                      label="Designed take"
+                      src={inUseTake.preview.url}
+                      label={inUseTake.label}
                       inUse
                     />
                   ) : (
@@ -206,14 +210,17 @@ export const CharacterVoiceSection: React.FC<{
                     Other takes
                   </p>
                   <ul className="flex flex-col gap-2">
-                    {otherTakes.map((preview, index) => (
-                      <li key={preview.generatedVoiceId}>
+                    {otherTakes.map((take) => (
+                      <li key={take.preview.generatedVoiceId}>
                         <VoiceTakeCard
-                          src={preview.url}
-                          label={`Take ${index + 1}`}
+                          src={take.preview.url}
+                          label={take.label}
                           disabled={busy || chooseTake.isPending}
+                          choosing={
+                            choosingId === take.preview.generatedVoiceId
+                          }
                           onUse={() =>
-                            handleChooseTake(preview.generatedVoiceId)
+                            handleChooseTake(take.preview.generatedVoiceId)
                           }
                         />
                       </li>
@@ -393,8 +400,9 @@ const VoiceTakeCard: React.FC<{
   inUse?: boolean;
   isPremade?: boolean;
   disabled?: boolean;
+  choosing?: boolean;
   onUse?: () => void;
-}> = ({ src, label, inUse = false, isPremade, disabled, onUse }) => (
+}> = ({ src, label, inUse = false, isPremade, disabled, choosing, onUse }) => (
   <div
     className={cn(
       'flex flex-col gap-2 rounded-lg border p-3',
@@ -412,10 +420,11 @@ const VoiceTakeCard: React.FC<{
           variant="outline"
           size="sm"
           disabled={disabled}
-          aria-label={`Use ${label}`}
+          aria-label={choosing ? `Using ${label}` : `Use ${label}`}
           onClick={onUse}
         >
-          Use this take
+          {choosing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+          {choosing ? 'Using…' : 'Use this take'}
         </Button>
       )}
     </div>

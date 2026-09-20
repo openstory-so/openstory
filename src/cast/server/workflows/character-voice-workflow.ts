@@ -94,6 +94,7 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           generatedVoiceId: preview.generatedVoiceId,
           url: result.publicUrl,
           path,
+          takeNumber: stored.length + 1,
         });
       }
       if (stored.length === 0) {

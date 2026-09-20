@@ -4,11 +4,14 @@ import {
   VOICE_NATIONALITIES,
   catalogVoiceBrief,
   designedTakeIsInUse,
+  designedTakeLabel,
+  designedTakesForDisplay,
   inferVoiceAccent,
   inferVoiceAge,
   inferVoiceGender,
   matchSpeaker,
   parseVoiceLocale,
+  previewListWithChosenTake,
   recommendVoiceFilters,
   speakingCharacterIds,
   toCatalogVoiceFromLibrary,
@@ -157,6 +160,67 @@ describe('designedTakeIsInUse', () => {
   });
   it('is never in use without a saved voice id', () => {
     expect(designedTakeIsInUse(0, null, 'generated')).toBe(false);
+  });
+});
+
+const preview = (
+  generatedVoiceId: string,
+  takeNumber?: number
+): {
+  generatedVoiceId: string;
+  url: string;
+  path: string;
+  takeNumber?: number;
+} => ({
+  generatedVoiceId,
+  url: `/${generatedVoiceId}.mp3`,
+  path: generatedVoiceId,
+  ...(takeNumber == null ? {} : { takeNumber }),
+});
+
+describe('designedTakeLabel', () => {
+  it('uses a stamped take number so the label survives a reorder', () => {
+    expect(designedTakeLabel(preview('b', 2), 0)).toBe('Take 2');
+  });
+  it('falls back to 1-based position when the row predates take numbers', () => {
+    expect(designedTakeLabel(preview('a'), 0)).toBe('Take 1');
+    expect(designedTakeLabel(preview('b'), 1)).toBe('Take 2');
+  });
+});
+
+describe('previewListWithChosenTake', () => {
+  it('stamps missing numbers then moves the chosen take to the front', () => {
+    expect(
+      previewListWithChosenTake([preview('a'), preview('b'), preview('c')], 'b')
+    ).toEqual([preview('b', 2), preview('a', 1), preview('c', 3)]);
+  });
+  it('keeps existing take numbers when promoting', () => {
+    expect(
+      previewListWithChosenTake(
+        [preview('a', 1), preview('b', 2), preview('c', 3)],
+        'c'
+      )
+    ).toEqual([preview('c', 3), preview('a', 1), preview('b', 2)]);
+  });
+  it('returns null when the take is not in the list', () => {
+    expect(previewListWithChosenTake([preview('a')], 'missing')).toBeNull();
+  });
+});
+
+describe('designedTakesForDisplay', () => {
+  it('labels In use and Other takes from stamped numbers, not leftover-list order', () => {
+    const takes = designedTakesForDisplay(
+      [preview('b', 2), preview('a', 1), preview('c', 3)],
+      'voice-1',
+      'generated'
+    );
+    expect(
+      takes.map((take) => ({ label: take.label, inUse: take.inUse }))
+    ).toEqual([
+      { label: 'Take 2', inUse: true },
+      { label: 'Take 1', inUse: false },
+      { label: 'Take 3', inUse: false },
+    ]);
   });
 });
 

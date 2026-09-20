@@ -51,7 +51,10 @@ lines just have no designed voice for TTS. The LLM drafts `voiceDescription` whe
 voice; "Use" on another take saves it instead (`chooseCharacterVoiceTakeFn`,
 which writes the new id then releases the old, and moves the take to the
 front — while `voiceId` is set, `voicePreviews[0]` is the saved voice; a 404
-is reported as an expired take). Previews cost no slot; a saved voice is an
+is reported as an expired take). Each preview keeps a 1-based `takeNumber`
+stamped at design (and lazily on promote for older rows) so the In use card
+shows Take 2 after promoting the second preview, not a generic “Designed
+take” (#1709). Previews cost no slot; a saved voice is an
 **account-wide** ElevenLabs slot, so the id is shared by copy (talent ↔
 character at cast / save-to-library) and freed only through
 `releaseVoiceIfUnreferenced` (`getVoiceReferenceCount` over both tables,

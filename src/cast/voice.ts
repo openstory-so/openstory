@@ -4,6 +4,14 @@
 
 import type { CharacterBibleEntry, Scene } from '@/shots/scene-analysis.schema';
 
+/** The preview fields these take helpers need; matches `VoicePreview`. */
+type VoicePreviewTake = {
+  generatedVoiceId: string;
+  url: string;
+  path: string;
+  takeNumber?: number;
+};
+
 /**
  * Does this character get a designed voice? `characters.useVoice` NULL
  * inherits `sequences.generateVoices` — the same shape as `usesStartFrame`.
@@ -423,4 +431,48 @@ export function designedTakeIsInUse(
 ): boolean {
   if (!voiceId || index !== 0) return false;
   return category == null || category === 'generated';
+}
+
+/** Card copy for a designed preview. Stamped numbers survive a promote reorder. */
+export function designedTakeLabel(
+  preview: Pick<VoicePreviewTake, 'takeNumber'>,
+  index: number
+): string {
+  return `Take ${preview.takeNumber ?? index + 1}`;
+}
+
+const stampTakeNumbers = (previews: VoicePreviewTake[]): VoicePreviewTake[] =>
+  previews.map((preview, index) =>
+    preview.takeNumber == null ? { ...preview, takeNumber: index + 1 } : preview
+  );
+
+/**
+ * Move the chosen take to the front (saved-voice slot) and stamp 1-based
+ * numbers on older rows that have none, so In use can show Take 2 after
+ * promoting the second preview (#1709).
+ */
+export function previewListWithChosenTake(
+  previews: VoicePreviewTake[],
+  generatedVoiceId: string
+): VoicePreviewTake[] | null {
+  const numbered = stampTakeNumbers(previews);
+  const take = numbered.find(
+    (preview) => preview.generatedVoiceId === generatedVoiceId
+  );
+  if (!take) return null;
+  if (numbered[0] === take) return numbered;
+  return [take, ...numbered.filter((preview) => preview !== take)];
+}
+
+/** In use vs Other takes, labeled from stamped numbers not leftover-list order. */
+export function designedTakesForDisplay(
+  previews: VoicePreviewTake[],
+  voiceId: string | null | undefined,
+  category: string | null | undefined
+): Array<{ preview: VoicePreviewTake; label: string; inUse: boolean }> {
+  return previews.map((preview, index) => ({
+    preview,
+    label: designedTakeLabel(preview, index),
+    inUse: designedTakeIsInUse(index, voiceId, category),
+  }));
 }
