@@ -1,4 +1,4 @@
-# Server-side sequence export container (see ../../CLAUDE.md "Server-side export").
+# Server-side sequence export container (see ../../docs/architecture/server-side-export.md).
 #
 # Debian (glibc), NOT Alpine: @mediabunny/server -> node-av ships prebuilt
 # native bindings (per-platform @seydx/node-av-* packages) and a postinstall
