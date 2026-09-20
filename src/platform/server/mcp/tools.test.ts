@@ -1416,6 +1416,8 @@ describe('complete production reads', () => {
             durationMs: 3000,
             audioClipIds: [],
             audioSourceKey: null,
+            dialogueTakeId: null,
+            referenceKeys: [],
           },
         ],
       })
@@ -1439,6 +1441,8 @@ describe('complete production reads', () => {
             durationMs: 3000,
             audioClipIds: [],
             audioSourceKey: null,
+            dialogueTakeId: null,
+            referenceKeys: [],
           },
         ],
       })

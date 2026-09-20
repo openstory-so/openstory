@@ -48,7 +48,6 @@ import type {
   FramePromptWorkflowInput,
 } from '@/platform/server/workflow/types';
 import { buildMusicSceneSummaries } from '@/audio/server/workflows/music-scene-summaries';
-import { readMusicTrackStaleness } from '@/audio/server/music-track-staleness';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';

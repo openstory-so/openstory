@@ -54,7 +54,6 @@ import {
   loadSceneContextBySequence,
   resolveSceneForShot,
 } from './scene-script';
-import { loadLiveShotInputs } from './live-shot-state';
 import {
   computeShotStaleness,
   type ShotStalenessRefs,
