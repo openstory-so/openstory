@@ -7,6 +7,13 @@
  * @public
  */
 export const STYLE_BRIEF_VARIANTS: Record<string, string[]> = {
+  'video-call': [
+    'A female urban gardener with short curly auburn hair and a green cardigan interviews a male beekeeper with a gray beard and denim shirt over video call, as he lifts a honeycomb frame toward his webcam while she nods and asks about the season from her sunlit apartment desk.',
+    'A male high-school physics teacher with close-cropped black hair and a blue sweater coaches a female student with long braided hair and a yellow hoodie through a paper-airplane experiment, each speaking from separate bedrooms as she launches one past her webcam and he reacts with an encouraging grin.',
+    'A female travel writer with a dark bob and cream blouse interviews a male mountain guide with tousled brown hair and a red fleece, who unfolds a trail map beside his laptop while she points to a route on her desk and both compare plans from their distinct home offices.',
+    'A male home cook with wavy blond hair and a striped apron leads a female beginner with shoulder-length black hair and a gray T-shirt through making fresh salsa on a remote call, as she chops tomatoes in her kitchen while he demonstrates the mixing motion from his own dining room.',
+    'Two remote musicians, a female violinist with long red hair in a black sweater and a male drummer with shaved hair in a white T-shirt, rehearse a new rhythm over webcam, counting aloud and tapping their desks in separate sound-treated rooms before smiling at the synchronized finish.',
+  ],
   'product-ad': [
     'A woman with wet dark hair and a white tank top squeezes a pearl of citrus face serum from an amber glass dropper onto her fingertips at a sunlit bathroom sink, then presses it into her cheeks as macro cuts catch the bottle beading with water on the tiled shelf.',
     'A man with a cropped beard and rolled linen sleeves tears the kraft seal off a coffee bag on a bright kitchen counter, tips glossy beans into a grinder, and pours a slow ribbon of espresso into a matte ceramic cup as steam curls through window light.',
