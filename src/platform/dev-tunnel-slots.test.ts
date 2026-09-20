@@ -12,6 +12,7 @@ import {
   isDevTunnelSlotName,
   slotFromHostname,
   slotFromOrigin,
+  slotFromTunnelName,
 } from './dev-tunnel-slots';
 
 describe('dev tunnel slots', () => {
@@ -43,6 +44,9 @@ describe('dev tunnel slots', () => {
     expect(devTunnelHostname('dev1')).toBe('dev1.openstory.so');
     expect(devTunnelOrigin('dev3')).toBe('https://dev3.openstory.so');
     expect(devTunnelName('dev10')).toBe('openstory-dev10');
+    expect(slotFromTunnelName('openstory-dev1')).toBe('dev1');
+    expect(slotFromTunnelName('openstory-dev10')).toBe('dev10');
+    expect(slotFromTunnelName('openstory-dev')).toBeUndefined();
   });
 
   it('recognizes only the ten public slot hostnames', () => {

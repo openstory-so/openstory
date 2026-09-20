@@ -56,6 +56,15 @@ export function devTunnelName(slot: DevTunnelSlotName): string {
   return `openstory-${slot}`;
 }
 
+export function slotFromTunnelName(
+  name: string
+): DevTunnelSlotName | undefined {
+  const prefix = 'openstory-';
+  if (!name.startsWith(prefix)) return undefined;
+  const slot = name.slice(prefix.length);
+  return isDevTunnelSlotName(slot) ? slot : undefined;
+}
+
 export function isDevTunnelHostname(hostname: string): boolean {
   return HOSTNAME_RE.test(hostname.toLowerCase());
 }

@@ -13,6 +13,9 @@
  * Ten named tunnels, not one UUID with ten CNAMEs: extra connectors on a
  * single tunnel are load-balanced, and ingress is applied only after a
  * request already landed on a connector.
+ *
+ * Occupancy is Cloudflare's live connector list, so a slot is unique across
+ * machines. ~/.openstory-dev-slots.json only remembers this laptop's pid.
  */
 
 import { spawn, spawnSync } from 'node:child_process';
@@ -35,6 +38,7 @@ import {
   devTunnelName,
   devTunnelOrigin,
   slotFromOrigin,
+  slotFromTunnelName,
 } from '@/platform/dev-tunnel-slots';
 import { parseEnvFile, upsertEnvVars } from './env-file';
 
@@ -73,6 +77,7 @@ export type TunnelIo = {
   }) => { pid: number };
   killPid: (pid: number, signal?: NodeJS.Signals) => void;
   sleep: (ms: number) => Promise<void>;
+  listConnectors: () => Promise<Record<DevTunnelSlotName, number>>;
 };
 
 export class TunnelError extends Error {
@@ -85,6 +90,48 @@ export class TunnelError extends Error {
 const SLOT_FILE_NAME = '.openstory-dev-slots.json';
 const LOCK_DIR_NAME = '.openstory-dev-slots.lock';
 const LOCK_WAIT_MS = 10_000;
+const CONNECTOR_POLLS = 20;
+const CONNECTOR_POLL_MS = 250;
+
+export function emptyConnectorCounts(): Record<DevTunnelSlotName, number> {
+  return {
+    dev1: 0,
+    dev2: 0,
+    dev3: 0,
+    dev4: 0,
+    dev5: 0,
+    dev6: 0,
+    dev7: 0,
+    dev8: 0,
+    dev9: 0,
+    dev10: 0,
+  };
+}
+
+export function countsFromTunnelList(
+  payload: unknown
+): Record<DevTunnelSlotName, number> {
+  const counts = emptyConnectorCounts();
+  const rows = Array.isArray(payload)
+    ? payload
+    : isRecord(payload) && Array.isArray(payload.tunnels)
+      ? payload.tunnels
+      : [];
+  for (const row of rows) {
+    if (!isRecord(row) || typeof row.name !== 'string') continue;
+    const slot = slotFromTunnelName(row.name);
+    if (!slot) continue;
+    counts[slot] = connectionCount(row);
+  }
+  return counts;
+}
+
+function connectionCount(row: Record<string, unknown>): number {
+  if (typeof row.connections === 'number') return row.connections;
+  if (Array.isArray(row.connections)) return row.connections.length;
+  if (typeof row.conns_active === 'number') return row.conns_active;
+  return 0;
+}
 
 export function generateIngressYaml(input: {
   slot: DevTunnelSlotName;
@@ -288,8 +335,25 @@ function occupancyForWorktree(
   return undefined;
 }
 
-function firstFree(file: SlotFile): DevTunnelSlotName | undefined {
-  return DEV_TUNNEL_SLOT_NAMES.find((name) => file.slots[name] === null);
+async function connectorCount(
+  io: TunnelIo,
+  slot: DevTunnelSlotName
+): Promise<number> {
+  const counts = await io.listConnectors();
+  return counts[slot];
+}
+
+async function waitForExclusiveConnector(
+  io: TunnelIo,
+  slot: DevTunnelSlotName
+): Promise<'exclusive' | 'conflict' | 'timeout'> {
+  for (let i = 0; i < CONNECTOR_POLLS; i++) {
+    const count = await connectorCount(io, slot);
+    if (count > 1) return 'conflict';
+    if (count === 1) return 'exclusive';
+    await io.sleep(CONNECTOR_POLL_MS);
+  }
+  return 'timeout';
 }
 
 function writeWorktreeEnv(io: TunnelIo, vars: Record<string, string>): void {
@@ -357,10 +421,47 @@ function persistClaim(
   return claimed(slot, pid, false);
 }
 
+async function bindSlot(
+  io: TunnelIo,
+  file: SlotFile,
+  slot: DevTunnelSlotName,
+  reused: boolean
+): Promise<ClaimedSlot | undefined> {
+  const port = devTunnelLocalPort(slot);
+  const { pid } = startCloudflared(io, slot, port);
+  const verdict = await waitForExclusiveConnector(io, slot);
+  if (verdict !== 'exclusive') {
+    io.killPid(pid, 'SIGTERM');
+    return undefined;
+  }
+  file.slots[slot] = {
+    pid,
+    worktree: resolve(io.worktree),
+    port,
+  };
+  writeSlots(io, file);
+  const result = persistClaim(io, slot, pid);
+  return { ...result, reused };
+}
+
+function locallyHeld(
+  io: TunnelIo,
+  file: SlotFile,
+  slot: DevTunnelSlotName
+): boolean {
+  const occupancy = file.slots[slot];
+  return Boolean(
+    occupancy &&
+    resolve(occupancy.worktree) !== resolve(io.worktree) &&
+    io.isPidAlive(occupancy.pid)
+  );
+}
+
 export async function claimSlot(io: TunnelIo): Promise<ClaimedSlot> {
-  return withLock(io, () => {
+  return withLock(io, async () => {
     const file = readSlots(io);
     sweep(io, file);
+
     const existing = occupancyForWorktree(io, file);
     if (existing) {
       const { slot, occupancy } = existing;
@@ -373,31 +474,24 @@ export async function claimSlot(io: TunnelIo): Promise<ClaimedSlot> {
         writeSlots(io, file);
         return claimed(slot, occupancy.pid, true);
       }
-      const { pid } = startCloudflared(io, slot, occupancy.port);
-      file.slots[slot] = {
-        pid,
-        worktree: resolve(io.worktree),
-        port: occupancy.port,
-      };
-      writeSlots(io, file);
-      const result = persistClaim(io, slot, pid);
-      return { ...result, reused: true };
+      if ((await connectorCount(io, slot)) === 0) {
+        const rebound = await bindSlot(io, file, slot, true);
+        if (rebound) return rebound;
+      }
+      file.slots[slot] = null;
     }
-    const slot = firstFree(file);
-    if (!slot) {
-      throw new TunnelError(
-        'All 10 local-dev tunnel slots are in use. Run `bun teardown` in a worktree you no longer need, or inspect ~/.openstory-dev-slots.json.'
-      );
+
+    for (const slot of DEV_TUNNEL_SLOT_NAMES) {
+      if (locallyHeld(io, file, slot)) continue;
+      if ((await connectorCount(io, slot)) > 0) continue;
+      const bound = await bindSlot(io, file, slot, false);
+      if (bound) return bound;
     }
-    const port = devTunnelLocalPort(slot);
-    const { pid } = startCloudflared(io, slot, port);
-    file.slots[slot] = {
-      pid,
-      worktree: resolve(io.worktree),
-      port,
-    };
+
     writeSlots(io, file);
-    return persistClaim(io, slot, pid);
+    throw new TunnelError(
+      'All 10 local-dev tunnel slots are in use (live Cloudflare connectors or this machine). Run `bun teardown` on a worktree you no longer need, or wait for a stale connector to drop.'
+    );
   });
 }
 
@@ -443,9 +537,9 @@ export async function ensureWorktreeTunnel(
 
   const appUrl = parseEnvFile(io.envFile).get('VITE_APP_URL');
   if (appUrl && slotFromOrigin(appUrl)) {
-    throw new TunnelError(
-      `VITE_APP_URL is ${appUrl} but this worktree has no slot in ~/.openstory-dev-slots.json. Run \`bun tunnel\` to claim one, or \`bun teardown\` to go back to localhost.`
-    );
+    // Copied .env.local from another machine: claim a globally free slot
+    // (maybe not the same number) rather than colliding on that hostname.
+    return claimSlot(io);
   }
   return undefined;
 }
@@ -506,6 +600,31 @@ export function defaultTunnelIo(overrides?: Partial<TunnelIo>): TunnelIo {
         }
       }),
     sleep: overrides?.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms))),
+    listConnectors:
+      overrides?.listConnectors ??
+      (async () => {
+        const bin = whichCloudflared();
+        if (!bin) {
+          throw new TunnelError('cloudflared is not on PATH.');
+        }
+        const result = spawnSync(bin, ['tunnel', 'list', '--output', 'json'], {
+          encoding: 'utf8',
+        });
+        if (result.status !== 0) {
+          throw new TunnelError(
+            'Could not list Cloudflare tunnels. Run `cloudflared tunnel login` against the account that owns openstory.so, then retry.'
+          );
+        }
+        let payload: unknown = [];
+        try {
+          payload = JSON.parse(result.stdout || '[]');
+        } catch {
+          throw new TunnelError(
+            'cloudflared tunnel list did not return JSON. Upgrade cloudflared and retry.'
+          );
+        }
+        return countsFromTunnelList(payload);
+      }),
     ...overrides,
   };
 }

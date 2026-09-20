@@ -10,7 +10,13 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseEnvFile } from './env-file';
 import {
+  DEV_TUNNEL_SLOT_NAMES,
+  type DevTunnelSlotName,
+} from '@/platform/dev-tunnel-slots';
+import {
   claimSlot,
+  countsFromTunnelList,
+  emptyConnectorCounts,
   ensureWorktreeTunnel,
   generateIngressYaml,
   provisionPlan,
@@ -36,21 +42,27 @@ function makeIo(
   root: string,
   options?: {
     worktree?: string;
+    homeDir?: string;
     alive?: Set<number>;
     nextPid?: { value: number };
     spawns?: Array<{ slot: string; port: number; configPath: string }>;
     kills?: number[];
+    connectors?: Record<string, number>;
+    extraConnectorsOnSpawn?: Partial<Record<DevTunnelSlotName, number>>;
   }
 ): TunnelIo {
   const alive = options?.alive ?? new Set<number>();
   const nextPid = options?.nextPid ?? { value: 1000 };
   const spawns = options?.spawns ?? [];
   const kills = options?.kills ?? [];
+  const connectors = options?.connectors ?? {};
+  const pidToSlot = new Map<number, DevTunnelSlotName>();
   const worktree = options?.worktree ?? join(root, 'wt-a');
+  const homeDir = options?.homeDir ?? join(root, 'home');
   mkdirSync(worktree, { recursive: true });
-  mkdirSync(join(root, 'home'), { recursive: true });
+  mkdirSync(homeDir, { recursive: true });
   return {
-    homeDir: join(root, 'home'),
+    homeDir,
     worktree,
     envFile: join(worktree, '.env.local'),
     now: () => 1_700_000_000_000,
@@ -60,13 +72,28 @@ function makeIo(
       spawns.push({ slot, port, configPath });
       const pid = nextPid.value++;
       alive.add(pid);
+      pidToSlot.set(pid, slot);
+      connectors[slot] = (connectors[slot] ?? 0) + 1;
+      const extra = options?.extraConnectorsOnSpawn?.[slot] ?? 0;
+      if (extra > 0) connectors[slot] = (connectors[slot] ?? 0) + extra;
       return { pid };
     },
     killPid: (pid) => {
       kills.push(pid);
       alive.delete(pid);
+      const slot = pidToSlot.get(pid);
+      if (!slot) return;
+      const current = connectors[slot] ?? 0;
+      if (current > 0) connectors[slot] = current - 1;
     },
     sleep: async () => undefined,
+    listConnectors: async () => {
+      const counts = emptyConnectorCounts();
+      for (const name of DEV_TUNNEL_SLOT_NAMES) {
+        counts[name] = connectors[name] ?? 0;
+      }
+      return counts;
+    },
   };
 }
 
@@ -108,6 +135,24 @@ describe('provisionPlan', () => {
     expect(plan[9]?.googleCallback).toBe(
       'https://dev10.openstory.so/api/auth/callback/google'
     );
+  });
+});
+
+describe('countsFromTunnelList', () => {
+  it('reads live connector counts from cloudflared tunnel list JSON', () => {
+    const counts = countsFromTunnelList([
+      {
+        name: 'openstory-dev1',
+        connections: [{ id: 'a' }, { id: 'b' }],
+      },
+      { name: 'openstory-dev2', connections: [] },
+      { name: 'openstory-dev3', connections: 1 },
+      { name: 'unrelated', connections: [{ id: 'x' }] },
+    ]);
+    expect(counts.dev1).toBe(2);
+    expect(counts.dev2).toBe(0);
+    expect(counts.dev3).toBe(1);
+    expect(counts.dev4).toBe(0);
   });
 });
 
@@ -171,19 +216,64 @@ describe('claimSlot', () => {
     expect(claimedB.origin).toBe('https://dev2.openstory.so');
   });
 
-  it('reclaims a dead pid from another worktree and prefers the lowest slot', async () => {
+  it('skips a slot another machine is already connected to', async () => {
+    const root = tempDir();
+    const connectors = { dev1: 1 };
+    const io = makeIo(root, {
+      homeDir: join(root, 'laptop-b'),
+      connectors,
+    });
+    const claimed = await claimSlot(io);
+    expect(claimed.slot).toBe('dev2');
+    expect(claimed.origin).toBe('https://dev2.openstory.so');
+  });
+
+  it('does not collide when two laptops have separate slot files', async () => {
+    const root = tempDir();
+    const connectors: Record<string, number> = {};
+    const laptopA = makeIo(root, {
+      worktree: join(root, 'wt-a'),
+      homeDir: join(root, 'home-a'),
+      connectors,
+      nextPid: { value: 1000 },
+    });
+    const laptopB = makeIo(root, {
+      worktree: join(root, 'wt-b'),
+      homeDir: join(root, 'home-b'),
+      connectors,
+      nextPid: { value: 2000 },
+    });
+    await claimSlot(laptopA);
+    const claimedB = await claimSlot(laptopB);
+    expect(claimedB.slot).toBe('dev2');
+  });
+
+  it('abandons a slot when a second connector shows up (lost the race)', async () => {
+    const root = tempDir();
+    const io = makeIo(root, {
+      extraConnectorsOnSpawn: { dev1: 1 },
+    });
+    const claimed = await claimSlot(io);
+    expect(claimed.slot).toBe('dev2');
+  });
+
+  it('reclaims a dead pid once Cloudflare has dropped the connector', async () => {
     const root = tempDir();
     const alive = new Set<number>();
+    const connectors: Record<string, number> = {};
     const a = makeIo(root, {
       worktree: join(root, 'wt-a'),
       alive,
+      connectors,
       nextPid: { value: 1000 },
     });
     await claimSlot(a);
     alive.clear();
+    connectors.dev1 = 0;
     const b = makeIo(root, {
       worktree: join(root, 'wt-b'),
       alive,
+      connectors,
       nextPid: { value: 2000 },
     });
     const claimed = await claimSlot(b);
@@ -191,12 +281,38 @@ describe('claimSlot', () => {
     expect(claimed.pid).toBe(2000);
   });
 
+  it('does not steal a slot whose connector is still live on another machine', async () => {
+    const root = tempDir();
+    const alive = new Set<number>();
+    const connectors: Record<string, number> = {};
+    const a = makeIo(root, {
+      worktree: join(root, 'wt-a'),
+      homeDir: join(root, 'home-a'),
+      alive,
+      connectors,
+      nextPid: { value: 1000 },
+    });
+    await claimSlot(a);
+    alive.clear();
+    const b = makeIo(root, {
+      worktree: join(root, 'wt-b'),
+      homeDir: join(root, 'home-b'),
+      alive,
+      connectors,
+      nextPid: { value: 2000 },
+    });
+    const claimed = await claimSlot(b);
+    expect(claimed.slot).toBe('dev2');
+  });
+
   it('respawns this worktree on the same slot after the pid dies', async () => {
     const root = tempDir();
     const alive = new Set<number>();
-    const io = makeIo(root, { alive, nextPid: { value: 1000 } });
+    const connectors: Record<string, number> = {};
+    const io = makeIo(root, { alive, connectors, nextPid: { value: 1000 } });
     await claimSlot(io);
     alive.clear();
+    connectors.dev1 = 0;
     const again = await claimSlot(io);
     expect(again.slot).toBe('dev1');
     expect(again.pid).toBe(1001);
@@ -267,15 +383,36 @@ describe('ensureWorktreeTunnel', () => {
   it('restarts a dead claimed tunnel without taking a new slot', async () => {
     const root = tempDir();
     const alive = new Set<number>();
+    const connectors: Record<string, number> = {};
     const spawns: Array<{ slot: string; port: number; configPath: string }> =
       [];
-    const io = makeIo(root, { alive, spawns, nextPid: { value: 50 } });
+    const io = makeIo(root, {
+      alive,
+      connectors,
+      spawns,
+      nextPid: { value: 50 },
+    });
     await claimSlot(io);
     expect(spawns).toHaveLength(1);
     alive.clear();
+    connectors.dev1 = 0;
     const ensured = await ensureWorktreeTunnel(io);
     expect(ensured?.slot).toBe('dev1');
     expect(ensured?.pid).toBe(51);
     expect(spawns).toHaveLength(2);
+  });
+
+  it('claims a free slot when .env.local was copied from another machine', async () => {
+    const root = tempDir();
+    const connectors = { dev1: 1 };
+    const io = makeIo(root, {
+      homeDir: join(root, 'laptop-b'),
+      connectors,
+    });
+    writeFileSync(io.envFile, 'VITE_APP_URL=https://dev1.openstory.so\n');
+    const ensured = await ensureWorktreeTunnel(io);
+    expect(ensured?.slot).toBe('dev2');
+    const env = parseEnvFile(io.envFile);
+    expect(env.get('VITE_APP_URL')).toBe('https://dev2.openstory.so');
   });
 });
