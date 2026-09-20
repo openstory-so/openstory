@@ -1,11 +1,15 @@
 /**
- * Pad a PCM WAV so it meets a provider's per-file audio floor (#1554).
+ * PCM WAV arithmetic for dialogue audio (#1554, #1651, #1657).
+ *
+ * WAV is requested from ElevenLabs so that everything we do to a recording is
+ * byte arithmetic, not a decode (Workers has no ffmpeg): a shot's reading is a
+ * time range of the recording, its trailing silence is MEASURED here, and the
+ * file a video model is handed is cut by `cutAudioSection` from a ranged read
+ * plus a fresh header.
  *
  * H3 Max rejects `reference_audio_urls` under 2s; Seedance 2.5 under 1.8s.
- * Dialogue TTS lines are often 1–2s, so we extend with silence rather than
- * dropping the voice (overflow-to-prose) or concatenating lines (Workers
- * has no ffmpeg). WAV is requested from ElevenLabs so this is a header
- * rewrite, not a decode.
+ * Dialogue lines are often 1–2s, so a short section is extended with silence
+ * rather than dropping the voice (overflow-to-prose).
  */
 
 const PCM_FORMAT = 1;
@@ -17,16 +21,19 @@ const ELEVENLABS_PCM_BITS = 16;
 /** Beat provider rounding (H3 Max reported 1.959s on a clip we thought was 2). */
 export const AUDIO_MIN_PAD_SLACK_SECONDS = 0.15;
 
-/** Wrap ElevenLabs raw PCM in a WAV header so we can pad it. */
-export function pcmToWav(
-  pcm: Uint8Array,
-  sampleRate = ELEVENLABS_PCM_SAMPLE_RATE,
-  channels = ELEVENLABS_PCM_CHANNELS,
-  bitsPerSample = ELEVENLABS_PCM_BITS
+export type WavFormat = {
+  sampleRate: number;
+  channels: number;
+  bitsPerSample: number;
+};
+
+/** The canonical 44-byte PCM WAV header for `dataSize` bytes of samples. */
+export function wavHeader(
+  dataSize: number,
+  fmt: WavFormat
 ): Uint8Array<ArrayBuffer> {
-  const frame = channels * (bitsPerSample / 8);
-  const dataSize = pcm.length - (pcm.length % frame);
-  const out = new Uint8Array(HEADER + dataSize);
+  const frame = fmt.channels * (fmt.bitsPerSample / 8);
+  const out = new Uint8Array(HEADER);
   const view = new DataView(out.buffer);
   const ascii = (at: number, text: string) => {
     for (let i = 0; i < text.length; i++) {
@@ -39,63 +46,38 @@ export function pcmToWav(
   ascii(12, 'fmt ');
   view.setUint32(16, 16, true);
   view.setUint16(20, PCM_FORMAT, true);
-  view.setUint16(22, channels, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * frame, true);
+  view.setUint16(22, fmt.channels, true);
+  view.setUint32(24, fmt.sampleRate, true);
+  view.setUint32(28, fmt.sampleRate * frame, true);
   view.setUint16(32, frame, true);
-  view.setUint16(34, bitsPerSample, true);
+  view.setUint16(34, fmt.bitsPerSample, true);
   ascii(36, 'data');
   view.setUint32(40, dataSize, true);
+  return out;
+}
+
+/** Wrap ElevenLabs raw PCM in a WAV header. */
+export function pcmToWav(
+  pcm: Uint8Array,
+  sampleRate = ELEVENLABS_PCM_SAMPLE_RATE,
+  channels = ELEVENLABS_PCM_CHANNELS,
+  bitsPerSample = ELEVENLABS_PCM_BITS
+): Uint8Array<ArrayBuffer> {
+  const frame = channels * (bitsPerSample / 8);
+  const dataSize = pcm.length - (pcm.length % frame);
+  const out = new Uint8Array(HEADER + dataSize);
+  out.set(wavHeader(dataSize, { sampleRate, channels, bitsPerSample }));
   out.set(pcm.subarray(0, dataSize), HEADER);
   return out;
 }
 
 export function wavDurationSeconds(bytes: Uint8Array): number | null {
-  const fmt = parseWav(bytes);
+  const fmt = parseWavHeader(bytes);
   if (!fmt) return null;
   const bytesPerSecond =
     fmt.sampleRate * fmt.channels * (fmt.bitsPerSample / 8);
   if (bytesPerSecond <= 0) return null;
   return fmt.dataSize / bytesPerSecond;
-}
-
-/**
- * Returns the original bytes when they already cover `minSeconds`.
- * Throws if the buffer is not a PCM WAV we can extend.
- */
-export function padWavToMinDuration(
-  bytes: Uint8Array,
-  minSeconds: number
-): { bytes: Uint8Array<ArrayBuffer>; durationSeconds: number } {
-  const fmt = parseWav(bytes);
-  if (!fmt) {
-    throw new Error('Dialogue TTS pad expected a PCM WAV');
-  }
-  const bytesPerSecond =
-    fmt.sampleRate * fmt.channels * (fmt.bitsPerSample / 8);
-  const duration = fmt.dataSize / bytesPerSecond;
-  const target = minSeconds + AUDIO_MIN_PAD_SLACK_SECONDS;
-  if (duration >= target) {
-    return {
-      bytes: new Uint8Array(bytes),
-      durationSeconds: duration,
-    };
-  }
-  const extra = Math.ceil((target - duration) * bytesPerSecond);
-  // Align to a whole frame so the WAV stays valid.
-  const frame = fmt.channels * (fmt.bitsPerSample / 8);
-  const extraAligned = Math.ceil(extra / frame) * frame;
-  const out = new Uint8Array(bytes.length + extraAligned);
-  out.set(bytes);
-  const view = new DataView(out.buffer);
-  const newDataSize = fmt.dataSize + extraAligned;
-  const riffSize = view.getUint32(fmt.riffSizeOffset, true);
-  view.setUint32(fmt.riffSizeOffset, riffSize + extraAligned, true);
-  view.setUint32(fmt.dataSizeOffset, newDataSize, true);
-  return {
-    bytes: out,
-    durationSeconds: newDataSize / bytesPerSecond,
-  };
 }
 
 /**
@@ -108,70 +90,72 @@ const TRIM_TAIL_PAD_SECONDS = 0.1;
 const SILENCE_THRESHOLD = 0.001;
 
 /**
- * Trim trailing silence from a PCM WAV (#1651), never a spoken word.
+ * Where a section `[fromSeconds, toSeconds)` of a recording should END once
+ * its trailing silence is off (#1651, #1657) — never a spoken word. MEASURED
+ * in place: a section is a time range of the recording, so nothing is copied
+ * and nothing is cut here.
  *
  * Two independent floors, whichever is later, because neither is trustworthy
- * alone: the last sample above {@link SILENCE_THRESHOLD}, and `speechEndSeconds`
- * from the provider's own alignment. An alignment end that under-reports cannot
+ * alone: the last sample above {@link SILENCE_THRESHOLD} inside the window,
+ * and `speechEndSeconds` from the provider's own alignment (a time in the
+ * RECORDING, not in the window). An alignment end that under-reports cannot
  * cut audible speech, and a noise floor that never dips below the threshold
- * cannot cut a tail the alignment says is silent.
+ * cannot cut a tail the alignment says is silent. A short tail pad is kept
+ * after it, and the answer never passes `toSeconds`.
  *
- * Returns the original bytes when there is nothing to trim. Throws if the
- * buffer is not a PCM WAV we can measure — a silent no-op would hand the
- * duration guard an unmeasured file.
+ * Throws if the buffer is not a PCM WAV we can measure — a silent no-op would
+ * hand the duration guard an unmeasured file.
  */
-export function trimWavTrailingSilence(
+export function trimmedEndSeconds(
   bytes: Uint8Array,
+  fromSeconds: number,
+  toSeconds: number,
   speechEndSeconds?: number | null
-): { bytes: Uint8Array<ArrayBuffer>; durationSeconds: number } {
-  const fmt = parseWav(bytes);
+): number {
+  const fmt = parseWavHeader(bytes);
   if (!fmt) {
     throw new Error('Dialogue TTS trim expected a PCM WAV');
   }
   const frame = fmt.channels * (fmt.bitsPerSample / 8);
   const bytesPerSecond = fmt.sampleRate * frame;
-  const duration = fmt.dataSize / bytesPerSecond;
+  const available = Math.min(fmt.dataSize, bytes.length - fmt.dataStart);
+  const snap = (seconds: number) =>
+    Math.min(
+      available,
+      Math.trunc((Math.max(0, seconds) * bytesPerSecond) / frame) * frame
+    );
+  const from = snap(fromSeconds);
+  const to = Math.max(from, snap(toSeconds));
   // Only 16-bit PCM is measured sample-by-sample; that is the one format we
-  // ask ElevenLabs for. Anything else keeps the alignment floor alone.
-  const dataStart = fmt.dataSizeOffset + 4;
-  const available = Math.min(fmt.dataSize, bytes.length - dataStart);
+  // ask ElevenLabs for. Anything else is kept whole.
   const lastLoud =
     fmt.bitsPerSample === 16
-      ? lastLoudByte(bytes, dataStart, available, frame)
+      ? lastLoudByte(bytes, fmt.dataStart, from, to, frame)
       : null;
   const fromAlignment =
     speechEndSeconds != null && Number.isFinite(speechEndSeconds)
       ? Math.max(0, speechEndSeconds) * bytesPerSecond
       : 0;
-  const keep = Math.max(lastLoud ?? available, fromAlignment);
+  const keep = Math.max(lastLoud ?? to, fromAlignment);
   const padded = keep + TRIM_TAIL_PAD_SECONDS * bytesPerSecond;
-  const aligned = Math.ceil(Math.min(available, padded) / frame) * frame;
-  if (aligned >= fmt.dataSize || aligned <= 0) {
-    return { bytes: new Uint8Array(bytes), durationSeconds: duration };
-  }
-  const out = new Uint8Array(dataStart + aligned);
-  out.set(bytes.subarray(0, dataStart + aligned));
-  const view = new DataView(out.buffer);
-  const removed = fmt.dataSize - aligned;
-  view.setUint32(
-    fmt.riffSizeOffset,
-    view.getUint32(fmt.riffSizeOffset, true) - removed,
-    true
-  );
-  view.setUint32(fmt.dataSizeOffset, aligned, true);
-  return { bytes: out, durationSeconds: aligned / bytesPerSecond };
+  const end = Math.ceil(Math.min(to, padded) / frame) * frame;
+  return Math.max(from, end) / bytesPerSecond;
 }
 
-/** Byte offset (relative to the data chunk) just past the last audible frame. */
+/**
+ * Byte offset (relative to the data chunk) just past the last audible frame
+ * of `[from, to)`, or null when the whole window is silent.
+ */
 function lastLoudByte(
   bytes: Uint8Array,
   dataStart: number,
-  dataSize: number,
+  from: number,
+  to: number,
   frame: number
 ): number | null {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const limit = Math.trunc(dataSize / 2) * 2;
-  for (let offset = limit - 2; offset >= 0; offset -= 2) {
+  const limit = Math.trunc(to / 2) * 2;
+  for (let offset = limit - 2; offset >= from; offset -= 2) {
     const sample = view.getInt16(dataStart + offset, true) / 32_768;
     if (Math.abs(sample) > SILENCE_THRESHOLD) {
       return Math.ceil((offset + 2) / frame) * frame;
@@ -180,16 +164,19 @@ function lastLoudByte(
   return null;
 }
 
-type WavFmt = {
-  sampleRate: number;
-  channels: number;
-  bitsPerSample: number;
+export type WavHeader = WavFormat & {
+  /** Byte offset of the first sample. */
+  dataStart: number;
+  /** Bytes of samples the header CLAIMS — the file may hold fewer. */
   dataSize: number;
-  riffSizeOffset: number;
-  dataSizeOffset: number;
 };
 
-function parseWav(bytes: Uint8Array): WavFmt | null {
+/**
+ * Parse a PCM WAV's header. Needs only the bytes up to the `data` chunk's
+ * size field, so a ranged prefix of the file is enough (`cutAudioSection`
+ * reads 4 KiB) — the samples themselves do not have to be present.
+ */
+export function parseWavHeader(bytes: Uint8Array): WavHeader | null {
   if (bytes.length < HEADER) return null;
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   if (ascii(bytes, 0, 4) !== 'RIFF' || ascii(bytes, 8, 4) !== 'WAVE') {
@@ -211,16 +198,20 @@ function parseWav(bytes: Uint8Array): WavFmt | null {
       sampleRate = view.getUint32(body + 4, true);
       bitsPerSample = view.getUint16(body + 14, true);
     } else if (id === 'data') {
-      if (audioFormat !== PCM_FORMAT || sampleRate <= 0 || channels <= 0) {
+      if (
+        audioFormat !== PCM_FORMAT ||
+        sampleRate <= 0 ||
+        channels <= 0 ||
+        bitsPerSample <= 0
+      ) {
         return null;
       }
       return {
         sampleRate,
         channels,
         bitsPerSample,
+        dataStart: body,
         dataSize: size,
-        riffSizeOffset: 4,
-        dataSizeOffset: offset + 4,
       };
     }
     offset = body + size + (size % 2);
@@ -230,113 +221,4 @@ function parseWav(bytes: Uint8Array): WavFmt | null {
 
 function ascii(bytes: Uint8Array, at: number, length: number): string {
   return String.fromCharCode(...bytes.subarray(at, at + length));
-}
-
-/** The PCM payload of a WAV, plus what it takes to rebuild a header for it. */
-function pcmOf(bytes: Uint8Array): {
-  pcm: Uint8Array;
-  fmt: WavFmt;
-  bytesPerSecond: number;
-} {
-  const fmt = parseWav(bytes);
-  if (!fmt) throw new Error('Dialogue audio expected a PCM WAV');
-  const frame = fmt.channels * (fmt.bitsPerSample / 8);
-  const dataStart = fmt.dataSizeOffset + 4;
-  const available = Math.min(fmt.dataSize, bytes.length - dataStart);
-  const usable = Math.trunc(available / frame) * frame;
-  return {
-    pcm: bytes.subarray(dataStart, dataStart + usable),
-    fmt,
-    bytesPerSecond: fmt.sampleRate * frame,
-  };
-}
-
-/**
- * Cut `[startSeconds, endSeconds)` out of a PCM WAV (#1657) — one shot's
- * slice of the scene's take. Offsets are snapped DOWN to a whole frame, so a
- * slice never starts or ends mid-sample, and clamped to the file.
- *
- * The header is rebuilt (`pcmToWav`) rather than patched: the source may
- * carry chunks after `data` that describe bytes the slice does not have.
- */
-export function sliceWav(
-  bytes: Uint8Array,
-  startSeconds: number,
-  endSeconds: number
-): { bytes: Uint8Array<ArrayBuffer>; durationSeconds: number } {
-  const { pcm, fmt, bytesPerSecond } = pcmOf(bytes);
-  const frame = fmt.channels * (fmt.bitsPerSample / 8);
-  const snap = (seconds: number) =>
-    Math.min(
-      pcm.length,
-      Math.max(
-        0,
-        Math.trunc((Math.max(0, seconds) * bytesPerSecond) / frame) * frame
-      )
-    );
-  const from = snap(startSeconds);
-  const to = Math.max(from, snap(endSeconds));
-  if (to === from) {
-    throw new Error(
-      `Dialogue slice ${startSeconds.toFixed(2)}–${endSeconds.toFixed(2)}s of a ${(pcm.length / bytesPerSecond).toFixed(2)}s take is empty`
-    );
-  }
-  return {
-    bytes: pcmToWav(
-      pcm.subarray(from, to),
-      fmt.sampleRate,
-      fmt.channels,
-      fmt.bitsPerSample
-    ),
-    durationSeconds: (to - from) / bytesPerSecond,
-  };
-}
-
-/**
- * Join PCM WAVs of identical format end to end (#1657) — the chunks a long
- * scene's take is recorded in. `offsetsSeconds[i]` is where part `i` starts
- * in the result, which is what the per-turn segment times have to be shifted
- * by. Refuses a format mismatch rather than producing audio that plays at the
- * wrong speed.
- */
-export function concatWavs(parts: readonly Uint8Array[]): {
-  bytes: Uint8Array<ArrayBuffer>;
-  durationSeconds: number;
-  offsetsSeconds: number[];
-} {
-  if (parts.length === 0) throw new Error('concatWavs needs at least one part');
-  const parsed = parts.map(pcmOf);
-  const [head] = parsed;
-  if (!head) throw new Error('concatWavs needs at least one part');
-  const offsetsSeconds: number[] = [];
-  let total = 0;
-  for (const part of parsed) {
-    if (
-      part.fmt.sampleRate !== head.fmt.sampleRate ||
-      part.fmt.channels !== head.fmt.channels ||
-      part.fmt.bitsPerSample !== head.fmt.bitsPerSample
-    ) {
-      throw new Error(
-        `Dialogue take chunks disagree on format (${part.fmt.sampleRate}Hz/${part.fmt.channels}ch/${part.fmt.bitsPerSample}bit vs ${head.fmt.sampleRate}Hz/${head.fmt.channels}ch/${head.fmt.bitsPerSample}bit)`
-      );
-    }
-    offsetsSeconds.push(total / head.bytesPerSecond);
-    total += part.pcm.length;
-  }
-  const pcm = new Uint8Array(total);
-  let at = 0;
-  for (const part of parsed) {
-    pcm.set(part.pcm, at);
-    at += part.pcm.length;
-  }
-  return {
-    bytes: pcmToWav(
-      pcm,
-      head.fmt.sampleRate,
-      head.fmt.channels,
-      head.fmt.bitsPerSample
-    ),
-    durationSeconds: total / head.bytesPerSecond,
-    offsetsSeconds,
-  };
 }

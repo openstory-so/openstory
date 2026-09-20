@@ -9,6 +9,9 @@
  * A bottom caption band is always reserved so the ScenePlayer "Fast preview"
  * note (positioned just under the frame) is never clipped when the media
  * fills the stage height.
+ *
+ * `below` sits under that band at its own height (capped, scrolling), and
+ * the media band gives up the room — the frame shrinks, nothing overflows.
  */
 
 import { getCanvasFitClassName } from '@/models/aspect-ratios';
@@ -22,12 +25,15 @@ const CAPTION_BAND = 'h-6';
 type CanvasMediaStageProps = {
   aspectRatio: AspectRatio;
   children: ReactNode;
+  /** Content under the media — the shot's dialogue (#1657). */
+  below?: ReactNode;
   className?: string;
 };
 
 export const CanvasMediaStage: React.FC<CanvasMediaStageProps> = ({
   aspectRatio,
   children,
+  below,
   className,
 }) => (
   <div
@@ -55,5 +61,13 @@ export const CanvasMediaStage: React.FC<CanvasMediaStageProps> = ({
       className={cn('shrink-0', CAPTION_BAND)}
       aria-hidden
     />
+    {below ? (
+      <div
+        data-testid="canvas-media-below"
+        className="flex max-h-[40%] w-full max-w-2xl shrink-0 flex-col self-center overflow-y-auto"
+      >
+        {below}
+      </div>
+    ) : null}
   </div>
 );

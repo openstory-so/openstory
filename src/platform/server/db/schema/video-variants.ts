@@ -85,14 +85,6 @@ export type VideoManifestEntry = {
    */
   audioSourceKey: string | null;
   /**
-   * The `scene_dialogue_takes` row the bound clips were cut from (#1657),
-   * or `null` when voiceless or synthesised for this shot alone. Selecting
-   * a different take on the scene makes the clip stale; `audioSourceKey`
-   * still catches a line or voice edit under an unchanged selection. The
-   * hash body drops `null` so stored digests do not move.
-   */
-  dialogueTakeId: string | null;
-  /**
    * Provenance of every non-versioned reference this render was sent
    * (#1657): the sheet versions a reference-only shot drew from and the
    * media of any audio/video element, as `sheet:<versionId>` and

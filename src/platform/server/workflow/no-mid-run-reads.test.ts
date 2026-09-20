@@ -34,9 +34,9 @@ const WORKFLOW_PATHS = [
     (f) => !f.endsWith('.test.ts')
   ),
   'src/models/server/llm-call-helper.ts',
-  // A workflow-step helper, not a workflow: the dialogue fit loop spends the
-  // ElevenLabs key inside the step it drives (#1651).
-  'src/motion/server/fit-dialogue-clip.ts',
+  // A workflow-step helper, not a workflow: dialogue recording spends the
+  // ElevenLabs key inside the step it drives (#1651, #1657).
+  'src/motion/server/record-dialogue.ts',
 ].sort();
 
 const WORKFLOW_PATH_BY_BASE: Record<string, string> = (() => {
@@ -245,18 +245,18 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       why: 'Re-resolved inside each step that talks to fal, because a replayed step may run in a fresh isolate with an unconfigured singleton.',
     },
   ],
-  'fit-dialogue-clip.ts': [
+  'record-dialogue.ts': [
     {
       read: 'resolveKey',
       bucket: 'CREDENTIAL',
-      why: 'The platform ElevenLabs key, resolved inside the synthesise step that spends it (#1554).',
+      why: 'The platform ElevenLabs key, resolved inside the recording step that spends it (#1554).',
     },
   ],
   'dialogue-audio-workflow.ts': [
     {
       read: 'shots.getByIds',
       bucket: 'EXISTENCE-GUARD',
-      why: "Idempotency plus the scene the take belongs to: a replayed run must not re-bill slices whose sourceKey and takeId still match, and every shot carries the live scene id the parent's analysis ids cannot name (#1657).",
+      why: 'Idempotency and adoption: only a voiced shot whose working-set clip no longer matches its lines adopts the new recording, so a replayed run re-bills nothing and an untouched shot keeps its section (#1657).',
     },
   ],
   'element-sheet-workflow.ts': [

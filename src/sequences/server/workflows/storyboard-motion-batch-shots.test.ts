@@ -345,6 +345,76 @@ describe('buildStoryboardMotionBatchShots', () => {
     });
     expect(shots[0]?.audioClips).toEqual([clip]);
     expect(shots[0]?.voicedLines).toHaveLength(1);
+    // A shot with its clip records nothing, so it carries no conversation.
+    expect(shots[0]?.dialogueContext).toBeUndefined();
+  });
+
+  it('reads lines per shot, and hands a clipless shot its conversation (#1657)', () => {
+    const sarah = {
+      id: 'c1',
+      characterId: 'char_001',
+      name: 'SARAH',
+      sheetImageUrl: null,
+      sheetStatus: 'completed' as const,
+      sheetInputHash: null,
+      selectedSheetVersionId: null,
+      physicalDescription: null,
+      voiceOnly: false,
+      isPerson: true,
+      consistencyTag: 'sarah',
+      voiceId: 'voice-sarah',
+    };
+    const said = (line: string) => [{ character: 'SARAH', line, tone: '' }];
+    const shotOneLines = voicedDialogueLines(
+      { presence: true, lines: said('Stay down.') },
+      [sarah]
+    );
+    const clip = {
+      id: 'section-1',
+      url: '/r2/a.wav',
+      token: 'DIALOGUE',
+      durationSeconds: 2.2,
+      sourceKey: dialogueClipSourceKey(shotOneLines),
+    };
+    const shots = buildStoryboardMotionBatchShots({
+      scenes: [scene('sc-1')],
+      shotMapping: [
+        { analysisSceneId: 'sc-1', shotId: 'shot-1', shotNumber: 1 },
+        { analysisSceneId: 'sc-1', shotId: 'shot-2', shotNumber: 2 },
+      ],
+      imageUrls: ['https://cdn/a.png', 'https://cdn/b.png'],
+      frameVersionIds: ['fv-1', 'fv-2'],
+      // The prompt's own copy is stale; the shot node's lines win.
+      motionPromptsBySceneId: {
+        'sc-1': {
+          ...prompt('two shot'),
+          dialogue: { presence: true, lines: said('Old words.') },
+        },
+      },
+      motionPromptVersionIdsBySceneId: { 'sc-1': 'mpv-1' },
+      videoModel: 'seedance_v2_5',
+      aspectRatio: '16:9',
+      characters: [sarah],
+      elements: [],
+      dialogueClipsByShotId: { 'shot-1': [clip] },
+      dialogueLinesByShotId: {
+        'shot-1': said('Stay down.'),
+        'shot-2': said('Now run.'),
+      },
+    });
+
+    expect(shots[0]?.voicedLines?.map((l) => l.text)).toEqual(['Stay down.']);
+    expect(shots[0]?.audioClips).toEqual([clip]);
+    expect(shots[0]?.dialogueContext).toBeUndefined();
+
+    // shot-2 has lines and no clip: motion will record it, in context.
+    expect(shots[1]?.audioClips).toBeUndefined();
+    expect(
+      shots[1]?.dialogueContext?.map((l) => [l.shotId, l.lineIndex, l.text])
+    ).toEqual([
+      ['shot-1', 0, 'Stay down.'],
+      ['shot-2', 1, 'Now run.'],
+    ]);
   });
 });
 

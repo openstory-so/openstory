@@ -91,20 +91,42 @@ describe('dependency graph', () => {
     );
   });
 
-  it('a voice change re-stales the take and the clip, not the motion prompt', () => {
+  it('a voice change re-stales the recording, the section and the clip, not the motion prompt', () => {
     expect(ids(staleAfterEdit('voice', 'start-frame'))).toEqual([
       'clip',
-      'dialogueTake',
+      'dialogueRecording',
+      'dialogueSection',
       'export',
     ]);
     expect(ids(staleAfterEdit('voice', 'reference-only'))).toEqual([
       'clip',
-      'dialogueTake',
+      'dialogueRecording',
+      'dialogueSection',
       'export',
     ]);
     expect(ids(staleBecauseOf('motionPrompt', 'start-frame'))).not.toContain(
       'voice'
     );
+  });
+
+  it('the clip reaches its dialogue through the section, by pointer (#1657)', () => {
+    const toClip = GRAPH_EDGES.filter(
+      (e) => e.to === 'clip' && e.from.startsWith('dialogue')
+    );
+    expect(
+      toClip
+        .map((e) => [e.from, e.tracking])
+        .sort(([a = ''], [b = '']) => a.localeCompare(b))
+    ).toEqual([
+      ['dialogue', 'hash'],
+      ['dialogueSection', 'pointer'],
+    ]);
+    expect(ids(staleAfterEdit('dialogue', 'start-frame'))).toEqual([
+      'clip',
+      'dialogueRecording',
+      'dialogueSection',
+      'export',
+    ]);
   });
 
   it('upstream walk mirrors the downstream walk', () => {

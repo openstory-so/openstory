@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'vitest';
 import {
   collectDialogueResults,
-  reusableSceneClips,
+  planSceneAdoption,
 } from './dialogue-audio-workflow';
 import type { MotionAudioClip } from '@/platform/server/db/schema';
 import { dialogueClipSourceKey } from '@/motion/dialogue-tts';
-import type { SceneVoicedLine } from '@/shots/scene-dialogue';
+import type { SceneVoicedLine } from '@/shots/shot-dialogue';
 
 const voiced = (
   shotId: string,
@@ -27,14 +27,14 @@ const voiced = (
 const clip = (
   id: string,
   lines: SceneVoicedLine[],
-  takeId?: string
+  recordingId?: string
 ): MotionAudioClip => ({
   id,
   url: `/r2/${id}.wav`,
   token: 'DIALOGUE',
   durationSeconds: 2,
   sourceKey: dialogueClipSourceKey(lines),
-  ...(takeId ? { takeId } : {}),
+  ...(recordingId ? { recordingId } : {}),
 });
 
 describe('collectDialogueResults', () => {
@@ -53,7 +53,7 @@ describe('collectDialogueResults', () => {
         fulfilled({ 'shot-a': [clip('c1', a, 't1')] }),
         fulfilled({ 'shot-b': [clip('c2', b, 't2')] }),
       ],
-      [{ lines: a }, { lines: b }]
+      [{ voiced: a }, { voiced: b }]
     );
     expect(Object.keys(clips)).toEqual(['shot-a', 'shot-b']);
     expect(clips['shot-a']?.[0]?.id).toBe('c1');
@@ -67,63 +67,55 @@ describe('collectDialogueResults', () => {
           fulfilled({ 'shot-a': [clip('c1', a, 't1')] }),
           { status: 'rejected', reason: new Error('elevenlabs 429') },
         ],
-        [{ lines: a }, { lines: [{ shotId: 'shot-b' }] }]
+        [{ voiced: a }, { voiced: [{ shotId: 'shot-b' }] }]
       )
     ).toThrow(/1\/2.*shot-b: elevenlabs 429/);
   });
 });
 
-describe('reusableSceneClips', () => {
+describe('planSceneAdoption', () => {
   const lines = [voiced('shot-a', 0, 0, 'Hi'), voiced('shot-b', 0, 1, 'Bye')];
   const shotLines = (shotId: string) =>
     lines.filter((line) => line.shotId === shotId);
 
-  test('reuses clips from one take that still match every shot', () => {
-    const reuse = reusableSceneClips({ voiced: lines }, [
-      { id: 'shot-a', audioClips: [clip('c1', shotLines('shot-a'), 'take-1')] },
-      { id: 'shot-b', audioClips: [clip('c2', shotLines('shot-b'), 'take-1')] },
+  test('adopts nobody when every shot’s clip still matches its lines', () => {
+    const plan = planSceneAdoption({ voiced: lines }, [
+      { id: 'shot-a', audioClips: [clip('c1', shotLines('shot-a'), 'rec-1')] },
+      { id: 'shot-b', audioClips: [clip('c2', shotLines('shot-b'), 'rec-2')] },
     ]);
-    expect(Object.keys(reuse ?? {})).toEqual(['shot-a', 'shot-b']);
+    // Sections of different recordings are fine: selection is per shot.
+    expect(plan.adoptShotIds).toEqual([]);
+    expect(Object.keys(plan.kept)).toEqual(['shot-a', 'shot-b']);
   });
 
-  test('refuses when the shots hold slices of different takes', () => {
-    expect(
-      reusableSceneClips({ voiced: lines }, [
-        {
-          id: 'shot-a',
-          audioClips: [clip('c1', shotLines('shot-a'), 'take-1')],
-        },
-        {
-          id: 'shot-b',
-          audioClips: [clip('c2', shotLines('shot-b'), 'take-2')],
-        },
-      ])
-    ).toBeNull();
+  test('adopts only the shot whose lines moved — its neighbour keeps its clip', () => {
+    const kept = clip('c2', shotLines('shot-b'), 'rec-1');
+    const plan = planSceneAdoption({ voiced: lines }, [
+      {
+        id: 'shot-a',
+        audioClips: [
+          clip('c1', [voiced('shot-a', 0, 0, 'Different')], 'rec-1'),
+        ],
+      },
+      { id: 'shot-b', audioClips: [kept] },
+    ]);
+    expect(plan.adoptShotIds).toEqual(['shot-a']);
+    expect(plan.kept).toEqual({ 'shot-b': [kept] });
   });
 
-  test('refuses a per-shot clip from before scene takes (no takeId)', () => {
-    expect(
-      reusableSceneClips({ voiced: lines }, [
-        { id: 'shot-a', audioClips: [clip('c1', shotLines('shot-a'))] },
-        { id: 'shot-b', audioClips: [clip('c2', shotLines('shot-b'))] },
-      ])
-    ).toBeNull();
+  test('keeps a matching clip from before recordings (no recordingId)', () => {
+    const plan = planSceneAdoption({ voiced: lines }, [
+      { id: 'shot-a', audioClips: [clip('c1', shotLines('shot-a'))] },
+      { id: 'shot-b', audioClips: [clip('c2', shotLines('shot-b'))] },
+    ]);
+    expect(plan.adoptShotIds).toEqual([]);
   });
 
-  test('refuses when a shot’s lines moved', () => {
-    expect(
-      reusableSceneClips({ voiced: lines }, [
-        {
-          id: 'shot-a',
-          audioClips: [
-            clip('c1', [voiced('shot-a', 0, 0, 'Different')], 'take-1'),
-          ],
-        },
-        {
-          id: 'shot-b',
-          audioClips: [clip('c2', shotLines('shot-b'), 'take-1')],
-        },
-      ])
-    ).toBeNull();
+  test('adopts a shot with no clip, and one that is gone', () => {
+    const plan = planSceneAdoption({ voiced: lines }, [
+      { id: 'shot-a', audioClips: null },
+    ]);
+    expect(plan.adoptShotIds).toEqual(['shot-a', 'shot-b']);
+    expect(plan.kept).toEqual({});
   });
 });

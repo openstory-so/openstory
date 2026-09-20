@@ -114,7 +114,7 @@ import { generateId } from '@/platform/id';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { durationGridForModel } from '@/motion/snap-duration';
 import { DIALOGUE_WORDS_PER_SECOND } from '@/motion/dialogue-tts';
-import { deriveSceneDialogueLines } from '@/shots/scene-dialogue';
+import { deriveShotDialogueLines } from '@/shots/shot-dialogue';
 import {
   getChatPrompt,
   type ChatMessage,
@@ -1191,9 +1191,9 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
         // in the row.
         await scopedDb.sceneScriptVersions.updateSplitContent(scriptSeeds);
 
-        // Seed the scene dialogue node (#1657). This is the first moment the
-        // shot-list lines can name their shot by ID rather than by number:
-        // the mapping above is what turns `shotNumber` into a shot row. From
+        // Seed the shot dialogue node (#1657). This is the first moment the
+        // shot-list lines can belong to a shot ROW rather than name a shot
+        // number: the mapping above is what turns `shotNumber` into one. From
         // here a reorder needs no restamp and a line follows its shot.
         // `write` returns the selected row unchanged when nothing moved, so a
         // re-analysis that produced the same lines appends nothing.
@@ -1212,12 +1212,15 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
             (a, b) => a.shotNumber - b.shotNumber
           );
           if (!scene || sceneShots.length === 0) continue;
-          const lines = deriveSceneDialogueLines(
-            scene.originalScript.dialogue,
-            sceneShots
-          );
-          if (lines.length === 0) continue;
-          await scopedDb.sceneDialogue.write(sceneRow.id, lines, 'prompt');
+          for (const [index, shot] of sceneShots.entries()) {
+            const lines = deriveShotDialogueLines(
+              scene.originalScript.dialogue,
+              shot,
+              index === 0
+            );
+            if (lines.length === 0) continue;
+            await scopedDb.shotDialogue.write(shot.id, lines, 'prompt');
+          }
         }
       });
     }

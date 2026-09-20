@@ -180,11 +180,10 @@ function buildScopedDb(
       listBySequence: () => Promise.resolve(shots),
       ensureAnchorFrames: () => Promise.resolve(undefined),
     },
-    // No scene dialogue rows: every target's `dialogue` snapshot is null and
+    // No shot dialogue rows: every target's `dialogue` snapshot is null and
     // the video stage falls back to the motion row's mirror (#1657).
-    sceneDialogue: {
+    shotDialogue: {
       getSelectedBySequence: () => Promise.resolve([]),
-      getSelectedTakesBySequence: () => Promise.resolve([]),
     },
     frames: {
       listAnchorsBySequence: () => Promise.resolve(frames),

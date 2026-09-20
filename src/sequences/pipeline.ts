@@ -17,7 +17,7 @@ import type {
 } from '@/shots/scene-analysis.schema';
 import type { CharacterMinimal } from '@/platform/server/db/schema/characters';
 import type { MotionAudioClip } from '@/platform/server/db/schema/shot-prompt-versions';
-import type { SceneDialogueLine } from '@/platform/server/db/schema/scene-dialogue-versions';
+import type { ShotDialogueLine } from '@/platform/server/db/schema/shot-dialogue-versions';
 import type { SequenceElementMinimal } from '@/platform/server/db/schema/sequence-elements';
 import type { SequenceLocationMinimal } from '@/platform/server/db/schema/sequence-locations';
 import type {
@@ -498,13 +498,19 @@ export type GenerationCheckpoint = {
   /** Per-shot Text to Dialogue clips from the Dialogue stage (#1554 / #1629). */
   dialogueClipsByShotId?: Record<string, MotionAudioClip[]>;
   /**
-   * Authored dialogue per ANALYSIS scene id (#1657), snapshotted so the
-   * Dialogue stage never reads the scene node mid-run. Re-read from D1 at a
-   * continue (`refreshCheckpointFromCast`), so a line edited while the run
-   * was stopped is what gets recorded. A scene absent from here has no
-   * version row yet and is derived from its script.
+   * Authored dialogue per SHOT id (#1657), snapshotted so the Dialogue stage
+   * never reads the shot node mid-run. Re-read from D1 at a continue
+   * (`refreshCheckpointFromCast`), so a line edited while the run was stopped
+   * is what gets recorded. A shot absent from here has no version row yet and
+   * is derived from its scene's script.
    */
-  dialogueLinesBySceneId?: Record<string, SceneDialogueLine[]>;
+  dialogueLinesByShotId?: Record<string, ShotDialogueLine[]>;
+  /**
+   * The `shot_dialogue_versions` row each entry above came from, so a
+   * recorded section can name the lines it spoke. Same lifecycle; absent for
+   * a shot whose lines were derived.
+   */
+  dialogueVersionIdByShotId?: Record<string, string>;
 };
 
 /**

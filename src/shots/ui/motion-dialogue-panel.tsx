@@ -9,6 +9,9 @@
  * Before the shot has a motion prompt the caller hands in the scene's own
  * lines instead (#1585). Voice binding waits for the prompt row it is
  * stored on, so `onChange` is null then.
+ *
+ * `ShotDialogueBlock` is the same lines + audio + readings, read-only and
+ * compact, for under the shot's video (#1657).
  */
 
 import { formatElementDuration } from '@/cast/element-kind';
@@ -21,8 +24,16 @@ import {
 } from '@/motion/dialogue-tts';
 import { dialogueExceedsShotDuration } from '@/motion/resolve-shot-duration';
 import type { SequenceElementMinimal } from '@/platform/server/db/schema';
-import type { MotionDialogue } from '@/shots/scene-analysis.schema';
+import type {
+  DialogueLine,
+  MotionDialogue,
+} from '@/shots/scene-analysis.schema';
 import { Button } from '@/ui/shadcn/button';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/ui/shadcn/collapsible';
 import {
   Select,
   SelectContent,
@@ -30,26 +41,222 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/ui/shadcn/select';
+import { Check, ChevronDown } from 'lucide-react';
 
 type DialogueClip = {
   url: string;
   durationSeconds: number | null;
-  /** The scene take this clip was cut from (#1657). */
-  takeId?: string;
 };
 
-/** One recorded scene take, as the takes list shows it (#1657). */
-export type SceneDialogueTakeOption = {
+/**
+ * One reading of this shot's lines (#1657): a time range of a recording.
+ * The whole recording is the file; the range rides the URL as a media
+ * fragment, so one file serves every shot it spoke.
+ */
+export type ShotDialogueReading = {
   id: string;
+  /** `context`: spoken while recording another shot, never adopted here. */
+  source: 'recorded' | 'context';
+  selected: boolean;
+  fromSeconds: number;
+  toSeconds: number;
+  recordingUrl: string;
   createdAt: Date | string;
-  durationSeconds: number;
-  selectedAt: Date | string | null;
+  /** False once the shot's lines or voices moved — it cannot be used. */
+  matchesCurrentLines: boolean;
 };
 
 function voiceLabel(element: SequenceElementMinimal): string {
   const length = formatElementDuration(element.durationSeconds);
   return length ? `${element.token} · ${length}` : element.token;
 }
+
+/** What the shot's one audio choice plays: the generated clip or a bound element. */
+function shotPlayback(
+  lines: readonly DialogueLine[],
+  voices: SequenceElementMinimal[],
+  clip: DialogueClip | null | undefined
+) {
+  const value = shotPickerValue(lines);
+  const bound = voices.find((el) => el.token === value);
+  const generated = value === GENERATED_VOICE;
+  return {
+    value,
+    url: generated ? (clip?.url ?? null) : (bound?.imageUrl ?? null),
+    seconds: generated
+      ? (clip?.durationSeconds ?? null)
+      : (bound?.durationSeconds ?? null),
+  };
+}
+
+const DialogueLineList: React.FC<{
+  lines: readonly DialogueLine[];
+  /** One row per line: "CHARACTER — line · tone". */
+  compact?: boolean;
+}> = ({ lines, compact }) => (
+  <ul className={compact ? 'flex flex-col gap-1' : 'flex flex-col gap-2'}>
+    {lines.map((line, index) =>
+      compact ? (
+        <li key={`${line.character}-${index}`} className="text-sm">
+          <span className="font-medium">{line.character || 'Narrator'}</span>
+          {' — '}
+          {line.line}
+          {line.tone && (
+            <span className="text-muted-foreground"> · {line.tone}</span>
+          )}
+        </li>
+      ) : (
+        <li
+          key={`${line.character}-${index}`}
+          className="flex flex-col gap-1.5"
+        >
+          <p className="text-sm">
+            <span className="font-medium">{line.character || 'Narrator'}</span>
+            {line.tone && (
+              <span className="text-muted-foreground"> · {line.tone}</span>
+            )}
+          </p>
+          <p className="text-sm text-muted-foreground">“{line.line}”</p>
+        </li>
+      )
+    )}
+  </ul>
+);
+
+const ShotAudio: React.FC<{ url: string }> = ({ url }) => (
+  // oxlint-disable-next-line jsx-a11y/media-has-caption -- generated or uploaded take; the transcript is the lines beside it
+  <audio
+    controls
+    preload="none"
+    src={url}
+    className="w-full"
+    aria-label="Shot dialogue audio"
+  />
+);
+
+const ReadingRow: React.FC<{
+  reading: ShotDialogueReading;
+  onUse?: (readingId: string) => void;
+  usingId?: string | null;
+}> = ({ reading, onUse, usingId }) => {
+  const recordedAt = new Date(reading.createdAt).toLocaleString();
+  const facts = [
+    recordedAt,
+    formatElementDuration(reading.toSeconds - reading.fromSeconds),
+    reading.source === 'context' ? 'Recorded with another shot' : null,
+    reading.matchesCurrentLines ? null : 'Lines changed since',
+  ].filter(Boolean);
+  return (
+    <li className="flex flex-col gap-1">
+      <div className="flex min-h-8 items-center justify-between gap-2">
+        <span className="text-xs text-muted-foreground">
+          {facts.join(' · ')}
+        </span>
+        {reading.selected ? (
+          <span className="flex items-center gap-1 text-xs font-medium">
+            <Check className="h-3 w-3" aria-hidden />
+            Current
+          </span>
+        ) : onUse ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={usingId != null || !reading.matchesCurrentLines}
+            aria-label={`Use reading from ${recordedAt}`}
+            onClick={() => onUse(reading.id)}
+          >
+            {usingId === reading.id ? 'Using…' : 'Use'}
+          </Button>
+        ) : null}
+      </div>
+      {/* oxlint-disable-next-line jsx-a11y/media-has-caption -- a reading of the lines shown beside it */}
+      <audio
+        controls
+        preload="none"
+        src={`${reading.recordingUrl}#t=${reading.fromSeconds},${reading.toSeconds}`}
+        className="w-full"
+        aria-label={`Reading from ${recordedAt}`}
+      />
+    </li>
+  );
+};
+
+/**
+ * This shot's readings, newest first. Boxed (the prompt editor) it shows
+ * only when there is something to pick; `collapsible` (under the video) it
+ * always holds its one row, so the block does not move when the list lands.
+ */
+export const ShotReadingsList: React.FC<{
+  readings: ShotDialogueReading[];
+  /** Absent while the user cannot pick. */
+  onUse?: (readingId: string) => void;
+  usingId?: string | null;
+  collapsible?: boolean;
+}> = ({ readings, onUse, usingId, collapsible }) => {
+  const rows = (
+    <ul className="flex flex-col gap-3">
+      {readings.map((reading) => (
+        <ReadingRow
+          key={reading.id}
+          reading={reading}
+          onUse={onUse}
+          usingId={usingId}
+        />
+      ))}
+    </ul>
+  );
+  if (collapsible) {
+    if (readings.length === 0) {
+      return (
+        <p className="flex h-8 items-center text-xs text-muted-foreground">
+          No readings yet
+        </p>
+      );
+    }
+    return (
+      <Collapsible className="flex flex-col gap-2">
+        <CollapsibleTrigger asChild>
+          <Button size="sm" variant="ghost" className="group justify-between">
+            Readings · {readings.length}
+            <ChevronDown
+              className="h-4 w-4 transition-transform group-data-[state=open]:rotate-180 motion-reduce:transition-none"
+              aria-hidden
+            />
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent>{rows}</CollapsibleContent>
+      </Collapsible>
+    );
+  }
+  if (readings.every((reading) => reading.selected)) return null;
+  return (
+    <div className="flex flex-col gap-2 rounded-md border p-3">
+      <span className="text-xs font-medium">Readings</span>
+      {rows}
+    </div>
+  );
+};
+
+/** Lines, the current audio, then the readings — read-only, under the video. */
+export const ShotDialogueBlock: React.FC<{
+  dialogue: MotionDialogue | null | undefined;
+  elements: SequenceElementMinimal[] | undefined;
+  clip?: DialogueClip | null;
+  /** The readings list — a slot, so this stays presentational. */
+  readings?: React.ReactNode;
+}> = ({ dialogue, elements, clip, readings }) => {
+  const lines = dialogue?.presence ? dialogue.lines : [];
+  if (lines.length === 0) return null;
+  const voices = (elements ?? []).filter((el) => el.kind === 'audio');
+  const { url } = shotPlayback(lines, voices, clip);
+  return (
+    <section aria-label="Shot dialogue" className="flex flex-col gap-2">
+      <DialogueLineList lines={lines} compact />
+      {url ? <ShotAudio url={url} /> : null}
+      {readings}
+    </section>
+  );
+};
 
 export const MotionDialoguePanel: React.FC<{
   dialogue: MotionDialogue | null | undefined;
@@ -63,15 +270,8 @@ export const MotionDialoguePanel: React.FC<{
   clip?: DialogueClip | null;
   /** Shot duration in seconds — noted only when the take is longer. */
   shotSeconds?: number;
-  /**
-   * Takes recorded for this shot's SCENE (#1657), newest first. The clip on
-   * this shot is a slice of one of them, so the list is scene-wide: choosing
-   * another take re-cuts every shot of the scene, not just this one.
-   */
-  takes?: SceneDialogueTakeOption[];
-  /** Absent while the user cannot pick (no takes, or no permission to write). */
-  onSelectTake?: (takeId: string) => void;
-  selectingTakeId?: string | null;
+  /** This shot's readings list (#1657) — a slot, so the panel stays presentational. */
+  readings?: React.ReactNode;
 }> = ({
   dialogue,
   elements,
@@ -80,9 +280,7 @@ export const MotionDialoguePanel: React.FC<{
   source,
   clip,
   shotSeconds,
-  takes,
-  onSelectTake,
-  selectingTakeId,
+  readings,
 }) => {
   const lines = dialogue?.presence ? dialogue.lines : [];
   if (lines.length === 0) return null;
@@ -92,8 +290,11 @@ export const MotionDialoguePanel: React.FC<{
     const length = formatElementDuration(clip?.durationSeconds ?? null);
     return length ? `Generated · ${length}` : 'Generated';
   })();
-  const value = shotPickerValue(lines);
-  const boundElement = voices.find((el) => el.token === value);
+  const {
+    value,
+    url: playbackUrl,
+    seconds: audioSeconds,
+  } = shotPlayback(lines, voices, clip);
   const orphans =
     elements === undefined
       ? []
@@ -106,14 +307,6 @@ export const MotionDialoguePanel: React.FC<{
       orphans.map((token) => [token, `${token} (deleted)`])
     ),
   };
-  const playbackUrl =
-    value === GENERATED_VOICE
-      ? (clip?.url ?? null)
-      : (boundElement?.imageUrl ?? null);
-  const audioSeconds =
-    value === GENERATED_VOICE
-      ? (clip?.durationSeconds ?? null)
-      : (boundElement?.durationSeconds ?? null);
   const dialogueLonger = dialogueExceedsShotDuration(audioSeconds, shotSeconds);
 
   const setShotVoice = (next: string) => {
@@ -186,69 +379,13 @@ export const MotionDialoguePanel: React.FC<{
               shot to cover it.
             </p>
           )}
-          {playbackUrl ? (
-            // oxlint-disable-next-line jsx-a11y/media-has-caption -- generated or uploaded take; the transcript is the lines below
-            <audio
-              controls
-              preload="none"
-              src={playbackUrl}
-              className="w-full"
-              aria-label="Shot dialogue audio"
-            />
-          ) : null}
+          {playbackUrl ? <ShotAudio url={playbackUrl} /> : null}
         </div>
       )}
-      <ul className="flex flex-col gap-2 rounded-md border p-3">
-        {lines.map((line, index) => (
-          <li
-            key={`${line.character}-${index}`}
-            className="flex flex-col gap-1.5"
-          >
-            <p className="text-sm">
-              <span className="font-medium">
-                {line.character || 'Narrator'}
-              </span>
-              {line.tone && (
-                <span className="text-muted-foreground"> · {line.tone}</span>
-              )}
-            </p>
-            <p className="text-sm text-muted-foreground">“{line.line}”</p>
-          </li>
-        ))}
-      </ul>
-      {takes && takes.length > 1 && (
-        <div className="flex flex-col gap-2 rounded-md border p-3">
-          <span className="text-xs font-medium">Takes</span>
-          <ul className="flex flex-col gap-1">
-            {takes.map((take) => {
-              const current = take.id === clip?.takeId || !!take.selectedAt;
-              return (
-                <li
-                  key={take.id}
-                  className="flex items-center justify-between gap-2"
-                >
-                  <span className="text-xs text-muted-foreground">
-                    {new Date(take.createdAt).toLocaleString()} ·{' '}
-                    {formatElementDuration(take.durationSeconds)}
-                  </span>
-                  {current ? (
-                    <span className="text-xs font-medium">Current</span>
-                  ) : onSelectTake ? (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={selectingTakeId != null}
-                      onClick={() => onSelectTake(take.id)}
-                    >
-                      {selectingTakeId === take.id ? 'Using…' : 'Use'}
-                    </Button>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
+      <div className="rounded-md border p-3">
+        <DialogueLineList lines={lines} />
+      </div>
+      {readings}
       {!onChange && source === 'prompt' && (
         <p className="text-xs text-muted-foreground">
           This model generates its own voices — it takes no audio reference.

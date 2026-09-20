@@ -216,8 +216,8 @@ export type SegmentVersionInput = SegmentVideoVersion & {
   > & {
     /** Absent on pre-pointer rows; treated as voiceless. */
     audioSourceKey?: string | null;
-    /** Absent on rows from before #1657: unknown, never stale. */
-    dialogueTakeId?: string | null;
+    /** Absent on very old rows: unknown, never stale. */
+    audioClipIds?: readonly string[];
     /** Absent on rows from before #1657: unknown, never stale. */
     referenceKeys?: readonly string[];
     /** Absent on rows from before #767's value snapshot. */
@@ -234,8 +234,8 @@ export type SegmentVersionInput = SegmentVideoVersion & {
 export type LiveShotInputs = {
   /** Voice id + line + tone + model key per shot; `null` = voiceless. */
   audioSourceKeyByShot?: ReadonlyMap<string, string | null>;
-  /** The scene's selected dialogue take, per shot that has voiced lines. */
-  dialogueTakeByShot?: ReadonlyMap<string, string | null>;
+  /** Ids of the clips in the shot's working set (`shots.audioClips`). */
+  audioClipIdsByShot?: ReadonlyMap<string, readonly string[]>;
   /** `kind:entityId` → the provenance key a render would be sent now. */
   referenceIdentity?: ReadonlyMap<string, string>;
   /** Raw `shots.durationMs` (unset/0 = no user duration, not compared). */
@@ -306,7 +306,7 @@ export function isSelectedVersionStale(
       entry.motionPromptVersionId !== currentMotion ||
       entry.frameVersionId !== currentFrame ||
       (entry.audioSourceKey ?? null) !== currentAudio ||
-      dialogueTakeMoved(entry, live) ||
+      audioClipsMoved(entry, live) ||
       referenceKeysMoved(
         entry.referenceKeys,
         live.referenceIdentity ?? EMPTY
@@ -319,20 +319,26 @@ export function isSelectedVersionStale(
 const EMPTY: ReadonlyMap<string, string> = new Map();
 
 /**
- * The scene's selected take is a pointer, like the frame version: picking a
- * different take re-stales the clip even though the key (lines + voices)
- * did not move. Compared only for a shot that has voiced lines now — a
- * voiceless shot in a scene with a take is not bound to it. An absent stamp
- * is a pre-#1657 row: unknown, never stale.
+ * The clip a render was sent is a pointer, like the frame version: a generated
+ * dialogue clip's id is its `shot_dialogue_sections.id`, so picking another
+ * reading of the same lines re-stales the clip even though the key (lines +
+ * voices) did not move. Compared as SETS against the shot's own working set,
+ * so a neighbour re-recording never reaches this shot. An entry with no clip
+ * ids is not compared — a voice appearing is `audioSourceKey`'s job — and an
+ * absent field is a very old row: unknown, never stale.
  */
-function dialogueTakeMoved(
-  entry: { shotId: string; dialogueTakeId?: string | null },
+function audioClipsMoved(
+  entry: { shotId: string; audioClipIds?: readonly string[] },
   live: LiveShotInputs
 ): boolean {
-  if (entry.dialogueTakeId === undefined) return false;
-  if (!live.dialogueTakeByShot) return false;
-  const current = live.dialogueTakeByShot.get(entry.shotId) ?? null;
-  return entry.dialogueTakeId !== current;
+  if (!entry.audioClipIds || entry.audioClipIds.length === 0) return false;
+  if (!live.audioClipIdsByShot) return false;
+  const current = new Set(live.audioClipIdsByShot.get(entry.shotId) ?? []);
+  const rendered = new Set(entry.audioClipIds);
+  return (
+    rendered.size !== current.size ||
+    [...rendered].some((id) => !current.has(id))
+  );
 }
 
 /**
@@ -378,7 +384,8 @@ export function assembleSequenceSegments(input: {
   frames: readonly SegmentFrameInput[];
   /**
    * What each shot would render from now beyond its two pointers: dialogue
-   * key and take, reference provenance, duration. See {@link LiveShotInputs}.
+   * key and clip ids, reference provenance, duration. See
+   * {@link LiveShotInputs}.
    */
   live?: LiveShotInputs;
 }): SequenceSegment[] {

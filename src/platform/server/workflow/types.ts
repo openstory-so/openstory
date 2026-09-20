@@ -11,10 +11,7 @@ import type {
 } from '@/models/models';
 import type { AnalysisModelId } from '@/models/models.config';
 import type { VoicedDialogueLine } from '@/motion/dialogue-tts';
-import type {
-  SceneDialogueLine,
-  SceneVoicedLine,
-} from '@/shots/scene-dialogue';
+import type { SceneVoicedLine } from '@/shots/shot-dialogue';
 import type {
   AssemblableMotionPrompt,
   CharacterBibleEntry,
@@ -499,29 +496,20 @@ export interface ElementSheetWorkflowResult {
 }
 
 /**
- * Per-SCENE Text to Dialogue in the References stage (#1554, #1657). One
- * acted conversation clip per scene; each shot's clip is a slice of it, cut
- * at the provider's per-turn voice segments and persisted on
+ * Per-SCENE Text to Dialogue in the References stage (#1554, #1657). The
+ * scene's conversation is recorded whole so every turn is acted in context,
+ * but only the shots whose clip no longer matches their lines adopt the new
+ * audio — each as a section of the recording, cut to a file and persisted on
  * `shots.audioClips` so motion only attaches it.
  */
 export interface DialogueAudioSceneJob {
-  /**
-   * The scene's authored lines, each naming its shot — the
-   * `scene_dialogue_versions` row this take speaks. Snapshotted at the
-   * trigger (or re-snapshotted by `refreshCheckpointFromCast` on a
-   * continue), never re-read mid-run.
-   */
-  lines: SceneDialogueLine[];
-  /**
-   * The turns to speak, in speaking order, with their voices resolved.
-   * `index` is shot-relative (so a slice's `spokenLines` and the rewrite
-   * merge work per shot); `lineIndex` is the scene position the take's
-   * segments name.
-   */
+  /** The scene's voiced turns in speaking order (shot order, then line order). */
   voiced: SceneVoicedLine[];
+  /** shot id → the shot_dialogue_versions row its lines came from (absent = derived from the script). */
+  dialogueVersionIdByShotId: Record<string, string>;
   /**
    * Each shot's clip length, keyed by shot id (#1651). What a rewrite aims
-   * at, so a take fits the cut rather than stretching it to the cap.
+   * at, so a reading fits the cut rather than stretching it to the cap.
    */
   shotSeconds: Record<string, number>;
 }
@@ -658,6 +646,12 @@ export interface MotionWorkflowInput extends SequenceWorkflowContext {
    * Snapshotted at the trigger from `shots.audioClips`.
    */
   audioClips?: MotionAudioClip[];
+  /**
+   * The conversation around this shot (#1657), snapshotted at the trigger
+   * when the shot has voiced lines and no matching clip. Motion's fallback
+   * records it and keeps only this shot's section.
+   */
+  dialogueContext?: SceneVoicedLine[];
   /**
    * Structured motion prompt so the TTS step can re-assemble with audio
    * tokens after the clips exist. Absent on paths that only pass `prompt`.
@@ -1608,6 +1602,8 @@ export interface BatchMotionMusicWorkflowInput extends SequenceWorkflowContext {
     voicedLines?: VoicedDialogueLine[];
     /** See `MotionWorkflowInput.audioClips`. */
     audioClips?: MotionAudioClip[];
+    /** See `MotionWorkflowInput.dialogueContext`. */
+    dialogueContext?: SceneVoicedLine[];
     /** See `MotionWorkflowInput.coveredShots`. */
     coveredShots?: PackedMotionCoveredShot[];
   }>;

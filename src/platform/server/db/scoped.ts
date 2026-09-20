@@ -45,7 +45,7 @@ import { createGeneratedAssetsMethods } from '@/models/server/db/generated-asset
 import { createScenesMethods } from '@/shots/server/db/scenes';
 import { createProductionReadMethods } from '@/shots/server/db/production-reads';
 import { createSceneScriptVersionsMethods } from '@/shots/server/db/scene-script-versions';
-import { createSceneDialogueMethods } from '@/shots/server/db/scene-dialogue';
+import { createShotDialogueMethods } from '@/shots/server/db/shot-dialogue';
 import { createSequenceEventsMethods } from '@/sequences/server/db/sequence-events';
 import { createShotPromptVersionsMethods } from '@/shots/server/db/shot-prompt-versions';
 import { createRenderSegmentsMethods } from '@/motion/server/db/render-segments';
@@ -469,7 +469,7 @@ export function createScopedDb(teamId: string, userId: string) {
 
     scenes: { ...createScenesMethods(db), ...reads.scenes },
     sceneScriptVersions: createSceneScriptVersionsMethods(db),
-    sceneDialogue: createSceneDialogueMethods(db),
+    shotDialogue: createShotDialogueMethods(db),
     shots: { ...createShotsMethods(db), ...reads.shots },
     shotVariants: createShotVariantsMethods(db),
     // SSF redesign (#990) — render segments (scene render units) + flat video

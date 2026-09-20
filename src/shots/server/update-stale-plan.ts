@@ -36,7 +36,7 @@ import type {
   MotionDialogue,
   Scene,
 } from '@/shots/scene-analysis.schema';
-import { loadSceneDialogueLines, shotDialogueFromScene } from './shot-dialogue';
+import { loadShotDialogueLines, shotDialogueFor } from './shot-dialogue';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import type { Resolution } from '@/models/resolutions';
 import type {
@@ -145,11 +145,11 @@ export type PlanTarget = {
    */
   regenVideo: boolean;
   /**
-   * The lines this shot speaks, from the scene dialogue node at click time
+   * The lines this shot speaks, from the shot dialogue node at click time
    * (#1657). Snapshotted here because the node is mutable and the run
    * renders minutes later: the clip's bound audio, and the TTS the video
    * stage bills when no clip matches, both come from these words. Null when
-   * the scene has no version row, which sends the video stage back to the
+   * the shot has no version row, which sends the video stage back to the
    * motion prompt row's mirror.
    */
   dialogue: MotionDialogue | null;
@@ -387,9 +387,9 @@ export async function computePlan(args: {
     ]);
   const refs: ShotStalenessRefs = { characters, locations, elements, style };
 
-  // The authored dialogue per scene, read once (#1657). Each target carries
-  // only its own shot's slice, so the run never reads the node mid-flight.
-  const dialogueLinesBySceneId = await loadSceneDialogueLines(
+  // The authored dialogue per shot, read once (#1657). Each target carries
+  // only its own shot's lines, so the run never reads the node mid-flight.
+  const dialogueLinesByShotId = await loadShotDialogueLines(
     scopedDb,
     sequence.id
   );
@@ -413,7 +413,7 @@ export async function computePlan(args: {
         ? (selectedPromptByFrame.get(frame.id) ?? null)
         : null,
       selectedMotionVersionId: selectedMotionByShot.get(shot.id)?.id ?? null,
-      dialogue: shotDialogueFromScene(dialogueLinesBySceneId, shot),
+      dialogue: shotDialogueFor(dialogueLinesByShotId, shot),
       scene,
       refs,
       depth,
@@ -564,7 +564,7 @@ async function decideShotTarget(args: {
   selectedPrompt: FramePromptVersion | null;
   /** Selected motion prompt version id — the video-only-regen default. */
   selectedMotionVersionId: string | null;
-  /** This shot's lines from the scene dialogue node (`PlanTarget.dialogue`). */
+  /** This shot's lines from the shot dialogue node (`PlanTarget.dialogue`). */
   dialogue: MotionDialogue | null;
   scene: Scene | null;
   refs: ShotStalenessRefs;

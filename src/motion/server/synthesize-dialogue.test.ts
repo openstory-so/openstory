@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
-import {
-  dialogueClipSourceKey,
-  voicedDialogueLines,
-} from '@/motion/dialogue-tts';
+import { voicedDialogueLines } from '@/motion/dialogue-tts';
 import { pcmToWav } from './pad-dialogue-audio';
 
 // Exercise the real SDK serializer without making a paid provider request.
@@ -22,12 +19,15 @@ vi.doMock('@/models/server/elevenlabs-config', () => ({
     }),
 }));
 vi.doMock('#storage', () => ({
-  uploadFile: vi.fn(async () => ({ publicUrl: '/r2/dialogue.wav' })),
+  uploadFile: vi.fn(async () => ({
+    publicUrl: '/r2/dialogue.wav',
+    fullPath: 'audio/dialogue.wav',
+  })),
 }));
-const { synthesizeDialogueClip } = await import('./synthesize-dialogue');
+const { recordDialogueCall } = await import('./synthesize-dialogue');
 
-describe('synthesizeDialogueClip voice identity', () => {
-  it('sends each character’s selected voice to ElevenLabs and keys the stored preview by those voices', async () => {
+describe('recordDialogueCall voice identity', () => {
+  it('sends each character’s selected voice to ElevenLabs and stores the recording', async () => {
     const lines = voicedDialogueLines(
       {
         presence: true,
@@ -45,12 +45,11 @@ describe('synthesizeDialogueClip voice identity', () => {
         { name: 'Young Man', voiceId: 'young-man-selected-voice' },
       ]
     );
-    const { clip } = await synthesizeDialogueClip({
+    const recording = await recordDialogueCall({
       apiKey: 'test-key',
       teamId: 'team-1',
       sequenceId: 'seq-1',
-      shotId: 'shot-1',
-      lines,
+      lines: lines.map((line) => ({ ...line, shotId: 'shot-1' })),
     });
     expect(fetchRequest).toHaveBeenCalledTimes(1);
     const request = fetchRequest.mock.calls[0];
@@ -75,7 +74,6 @@ describe('synthesizeDialogueClip voice identity', () => {
         { voice_id: 'young-man-selected-voice', text: 'The beaches.' },
       ],
     });
-    expect(clip.sourceKey).toBe(dialogueClipSourceKey(lines));
-    expect(clip.url).toBe('/r2/dialogue.wav');
+    expect(recording.url).toBe('/r2/dialogue.wav');
   });
 });

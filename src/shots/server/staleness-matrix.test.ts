@@ -86,7 +86,6 @@ function videoHash(state: PipelineState): Promise<string | null> {
       durationMs: state.durationMs,
       audioClipIds: [],
       audioSourceKey: null,
-      dialogueTakeId: null,
       referenceKeys: [],
     },
   ];

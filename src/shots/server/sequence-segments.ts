@@ -32,7 +32,7 @@ export async function loadSequenceSegments(
       scopedDb.characters.list(sequence.id),
     ]);
   // What each shot would render from NOW beyond its two pointers (#1657):
-  // dialogue key and take, reference provenance, duration.
+  // dialogue key and clip ids, reference provenance, duration.
   const live = await loadLiveShotInputs(
     scopedDb,
     sequence.id,

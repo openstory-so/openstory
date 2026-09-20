@@ -75,89 +75,157 @@ no longer exists at ElevenLabs and would 404 at TTS.
 **Dialogue audio (#1554, #1657).** An audio reference, like a character
 sheet: the References stage (after Voice Design) runs ElevenLabs **Text to
 Dialogue** (`eleven_v3`) over every line whose speaker has a `voiceId` and no
-`voiceToken` (uploaded element or `__video_model__` opt-out). **One take per
-SCENE, sliced per shot** (`recordDialogueTake`): v3 acts the turns it is
-given against each other, so a shot recorded alone is a cold read of a reply
-the model never heard. The scene's conversation is recorded whole, cut at the
-provider's own per-turn voice segments (`sliceWav`), and the slices are
-mirrored onto `shots.audioClips` (working set) each stamping `takeId`. The
-take itself lands on `scene_dialogue_takes` (url, duration, segments, the
-per-shot `clips`, `inputHash` = `dialogueTakeKey` = ordered voiced turns with
-shot ids + voice ids + tone + TTS model + stability), append-only with one
-selected row per scene; `selectSceneDialogueTakeFn` puts another take's
-slices back on the shots. A scene over `DIALOGUE_TAKE_CHUNK_CHARS` (2,000)
-splits at a **shot boundary**, never inside a shot, and the chunks are joined
-with their segment times offset. Bytes never cross a `step.do` (#1645): each
-chunk is parked in R2 and the assemble step reads them back by key.
+`voiceToken` (uploaded element or `__video_model__` opt-out). **Record wide,
+keep narrow.** Acting quality comes from what the call hears: v3 acts the
+turns it is given against each other, so a shot recorded alone is a cold read
+of a reply the model never heard — the call speaks the whole conversation.
+What is KEPT is narrow, so one edit disturbs one shot: only a shot whose
+working-set clip no longer matches its lines (`matchingDialogueClips` empty →
+`adoptShotIds`) adopts the new audio; every other shot keeps the section it
+had, so nothing of theirs goes stale. Three tables, all append-only:
 
-**The scene is the one source of lines.** `scene_dialogue_versions` is the
-authored node — append-only, one selected row per scene, every line naming
-its shot by `shotId` (an id, so a reorder needs no restamp). The shot-list
-pass seeds a `prompt` row; the prompt editor appends `user-edit`
-(`replaceShotLines`). The script's `originalScript.dialogue` stays as the
-LLM's seed, and a scene with no row yet is derived at read time
-(`deriveSceneDialogueLines`) — so there is no backfill migration. Pure
-helpers: `src/shots/scene-dialogue.ts`; `lineIndex` is the scene position,
-`index` stays shot-relative so every #1554/#1651 helper works unchanged on a
-slice.
+- `shot_dialogue_versions` — the authored lines, one selected row per shot.
+- `dialogue_recordings` — one row per ElevenLabs call, the **whole file** as
+  it came back (`storageKey`, `url`, `durationSeconds`, per-turn `turns`,
+  `inputHash` = `recordingKey` = ordered voiced turns with shot ids + voice
+  ids + tone + TTS model + stability). No selected flag, no per-shot copies,
+  never joined or concatenated.
+- `shot_dialogue_sections` — a time range (`fromSeconds`–`toSeconds`) of a
+  recording, one selected row per shot. A recording inserts a row for EVERY
+  shot it spoke: `source: 'recorded'` and selected for the shots it was made
+  for, `source: 'context'` and unselected for the shots that were only spoken
+  so the others had something to answer. Section rows hold no URL.
 
-Motion attaches the stored clip (synthesising only if it is missing or the
-voice/lines moved) and stamps that take onto `shot_prompt_versions.audioClips`
-(provenance of the render). Tone maps to v3 audio tags on each turn. User-bound
-`voiceToken` elements already ride as `@AudioN` and are not re-synthesised.
-The clip binds as `DIALOGUE` / `@Audio1`. Voice ids + lines + tone + TTS model
-fold into the **video manifest** as `audioSourceKey` **only when a voice is
-present** (same shape-stable trick as `usesStartFrame` / `referenceOnly`) —
-not the motion-prompt hash: the LLM never sees the id, so a voice change
-must not rewrite the prompt. The manifest also stamps `dialogueTakeId` (the
-take the clips were cut from — a selection pointer `audioSourceKey` cannot
-express) and `referenceKeys` (`character:<id>:<sheetVersionId|url>`,
-`location:…`, `element:…` for every reference the render was sent,
-`src/motion/reference-provenance.ts`), both dropped from the hash body when
-null or empty so no stored digest moves. `isSelectedVersionStale` compares
-them against live identity, with duration snapped on **both** sides —
+Picking a context reading ("promote") is the same `selectSection` as picking
+an older reading — there is no second code path.
+`selectShotDialogueSectionFn` refuses a row whose `sourceKey` no longer
+matches the shot's lines and one longer than `dialogueFitBudget` allows, then
+cuts, selects, and mirrors the clip onto `shots.audioClips`.
+`appendRecording` is one batch (recording, clear the adopting shots' selected
+sections, insert all sections) with ids generated inside the workflow step
+and `onConflictDoNothing`, so a replay is idempotent. A discarded section can
+never stay selected. A conversation over `DIALOGUE_TAKE_CHUNK_CHARS` (2,000)
+splits at a **shot boundary**, never inside a shot (`chunkTakeLines`); each
+chunk is its own recording, and only chunks holding an adopting shot are
+recorded at all. `recordDialogue` (`src/motion/server/record-dialogue.ts`) is
+the one entry: `DialogueAudioWorkflow` calls it per scene, and motion's
+fallback (clip missing, or the voice/lines moved since) calls it with
+`lines: input.dialogueContext` — the `contextWindow` snapshotted at the
+trigger, the shot's own turns plus whole neighbouring shots grown outward
+while under the chunk limit — and `adoptShotIds: [shotId]`, so it records the
+window and keeps only its own shot.
+
+**The shot is the one source of lines.** `shot_dialogue_versions` is the
+authored node. The shot-list pass seeds a `prompt` row per shot; the prompt
+editor appends `user-edit` (`scopedDb.shotDialogue.write`, which returns the
+selected row unchanged when the lines are identical). The save touches one
+shot's row, so it cannot drop a concurrent edit to another shot — the
+whole-scene list it replaces could. **Speaking order is shot order, then line
+order within the shot** (`sceneConversation`), read at the moment of use, so
+a shot reorder needs nothing restamped and leaves every shot's audio valid.
+The script's `originalScript.dialogue` stays as the LLM's seed, and a shot
+with no row yet is derived at read time (`deriveShotDialogueLines`: lines
+stamped with the shot's number; unstamped pre-#1585 lines go to the first
+shot only) — so there is no backfill migration. Pure helpers:
+`src/shots/shot-dialogue.ts`; `lineIndex` is the running position in the
+conversation that was sent, `index` stays shot-relative so every #1554/#1651
+helper works unchanged on one shot's lines.
+
+**Cut files are a cache.** A video model needs a file URL, so the selected
+section is materialised by `cutAudioSection`
+(`src/motion/server/cut-audio-section.ts`) and `shots.audioClips` (the working
+set, shape unchanged) holds that URL; the clip's `id` IS its
+`shot_dialogue_sections.id` and it stamps `recordingId`. The cut **never
+loads the recording**: a ranged read of the first 4 KiB parses the PCM header
+(`parseWavHeader`), the byte range is frame-snapped from the section's times,
+and the output is a new 44-byte header, the ranged body from R2 as a stream
+(`readStorageStream`), then silence in ≤16 KiB blocks — wrapped in
+`FixedLengthStream` since the total is known and `r2.put` rejects an
+unknown-length stream. The key is deterministic
+(`…/dialogue-sections/<recordingId>_<fromMs>_<toMs>_<minMs>.wav`), so an
+existing file is returned without re-cutting and a replay or a re-select is
+free. **Padding to the provider floor (H3 Max 2s) happens at cut time**,
+which is why the floor is in the key: the same section cut for a model with a
+different floor is a different file. The tail trim is **measured once at
+record time** (`trimmedEndSeconds`, in place, no copy) and stored as the
+section's `toSeconds`, so the cut is pure arithmetic. The silence between two
+turns belongs to the shot about to speak (`shotSliceWindows`). Bytes never
+cross a `step.do` (#1645): the recording step uploads the whole WAV and
+returns `{ recordingId, storageKey, turns, windows }`; each adopting shot is
+cut in its own step.
+
+**Relation to #1577** (`@BEACH:3-8`, a section of a clip or audio element per
+shot). Same idea — one file, each shot uses a range of it, server-side cut
+cached by (file, from, to). Where the range lives differs: #1577 writes it in
+the mention because a person chose it and the shot's text should own it; a
+dialogue range is machine-made and changes on every
+re-record, so it is DATA on the shot (`shot_dialogue_sections`), never
+`@TOKEN:3-8` prompt text that would re-stale the prompt each time. Recordings
+are not `sequence_elements` rows either: nobody binds or names one.
+
+Motion attaches the stored clip and stamps it onto
+`shot_prompt_versions.audioClips` (provenance of the render). Tone maps to v3
+audio tags on each turn. User-bound `voiceToken` elements already ride as
+`@AudioN` and are not re-synthesised. The clip binds as `DIALOGUE` /
+`@Audio1`. Voice ids + lines + tone + TTS model fold into the **video
+manifest** as `audioSourceKey` **only when a voice is present** (same
+shape-stable trick as `usesStartFrame` / `referenceOnly`) — not the
+motion-prompt hash: the LLM never sees the id, so a voice change must not
+rewrite the prompt. The manifest also stamps `audioClipIds` — for a generated
+dialogue clip, the section id, which is the selection pointer
+`audioSourceKey` cannot express — and `referenceKeys`
+(`character:<id>:<sheetVersionId|url>`, `location:…`, `element:…` for every
+reference the render was sent, `src/motion/reference-provenance.ts`), dropped
+from the hash body when null or empty so no stored digest moves.
+`isSelectedVersionStale` compares them against live identity:
+`audioClipsMoved` reads the manifest's `audioClipIds` against the shot's
+working-set clip ids (`audioClipIdsByShot`, from `shots.audioClips`) and
+differs → stale, so picking another reading re-stales that shot's video and
+no other; an entry with no clip ids is not compared (a voice appearing is
+`audioSourceKey`'s job), and older manifests hold the ids the working set
+still holds, so nothing old flips. Duration is snapped on **both** sides —
 together closing #767 and the reference / element-media gaps on the docs
-dependency graph. Shot duration is raised to cover the audio; a clip under
-the provider floor (H3 Max 2s) is padded with silence.
+dependency graph. Shot duration is raised to cover the audio.
 
-**Fitting the take to the clip (#1651).** v3 takes no target or maximum
-duration, so length is discovered, not requested. The ladder runs **per shot
-slice over a scene-wide recording** (#1657): a slice over its shot's limit
-sends THAT shot's turns to the rewrite and the whole scene is re-recorded,
-because the other shots' delivery is not independent of it.
-`fitDialogueClip` (`src/motion/server/fit-dialogue-clip.ts`) is the per-shot
-twin, still used by motion's standalone synthesis; both share
-`shortenDialogueLines`, so the rungs behave identically: `convertWithTimestamps`
-returns alignment + voice segments → `trimWavTrailingSilence` cuts the tail
-back to whichever is LATER of the last audible sample and the alignment end
-(so a short-reporting alignment cannot clip a word, and an alignment saying
-"silent" cannot be overruled by a noise floor) → still over, an LLM
-(`phase/shorten-dialogue-chat`) tightens the turns and the take is
-re-recorded, bounded at `MAX_DIALOGUE_FIT_ATTEMPTS` (2) → still over, the
-shot **fails here** with the measured numbers. No time-compression rung:
-speeding speech up alters the performance that was cast. The rewrite merges
-**by turn index**, so a dropped or invented turn cannot move a speaker or a
-voice. Two budgets from `dialogueFitBudget`: `limitSeconds` is the refusal
-line (`dialogueAudioMaxSeconds` — the tightest of each model's audio window
-and longest grid clip — minus 0.2s slack, hence H3 Max's 14.8s; the slack is
-the padding and rounding the alignment end does not measure);
-`targetSeconds` is what a rewrite aims at, the SHOT's own length when
-shorter, so the take fits the cut rather than stretching it. Speech between
-the two is kept — the clip stretches. A rewritten take records its delivered
-wording on the clip as `spokenLines` (and on the take as
-`segments[].spokenText`) while `sourceKey` keeps keying the AUTHORED lines,
-so nothing re-synthesises and no digest moves; the manifest's
-`audioSourceKey` is built from the authored lines for the same reason
-(#1671). Motion reads the delivered wording back with `withSpokenText`
-before assembling, because the prompt drives lip movement. `maxCombined` is checked across files in
+**Fitting the section to the clip (#1651).** v3 takes no target or maximum
+duration, so length is discovered, not requested. The ladder runs **per
+adopting shot over the wide recording** (#1657): a section whose padded
+length is over its shot's limit sends THAT shot's turns to the rewrite
+(`shortenDialogueLines`, `src/motion/server/fit-dialogue-clip.ts`) and the
+chunk is re-recorded, because the other shots' delivery is not independent of
+it. Shots that are only context are never checked — their audio is not being
+kept. Only the final attempt's recordings get rows. The rungs:
+`convertWithTimestamps` returns alignment + voice segments →
+`trimmedEndSeconds` pulls the section's end back to whichever is LATER of the
+last audible sample and the alignment end (so a short-reporting alignment
+cannot clip a word, and an alignment saying "silent" cannot be overruled by a
+noise floor) → still over, an LLM (`phase/shorten-dialogue-chat`) tightens
+the turns and the chunk is re-recorded, bounded at
+`MAX_DIALOGUE_FIT_ATTEMPTS` (2) → still over, the shot **fails here** with
+the measured numbers. No time-compression rung: speeding speech up alters the
+performance that was cast. The rewrite merges **by turn index**, so a dropped
+or invented turn cannot move a speaker or a voice. Two budgets from
+`dialogueFitBudget`: `limitSeconds` is the refusal line
+(`dialogueAudioMaxSeconds` — the tightest of each model's audio window and
+longest grid clip — minus 0.2s slack, hence H3 Max's 14.8s; the slack is the
+padding and rounding the alignment end does not measure); `targetSeconds` is
+what a rewrite aims at, the SHOT's own length when shorter, so the reading
+fits the cut rather than stretching it. Speech between the two is kept — the
+clip stretches. A rewritten reading records its delivered wording on the
+section and its clip as `spokenLines` (and on the recording as
+`turns[].spokenText`) while `sourceKey` keeps keying the AUTHORED lines, so
+nothing re-records and no digest moves; the manifest's `audioSourceKey` is
+built from the authored lines for the same reason (#1671). Motion reads the
+delivered wording back with `withSpokenText` before assembling, because the
+prompt drives lip movement. `maxCombined` is checked across files in
 `unusableShotReferenceLines` — H3 Max takes 2–15s each AND 15s summed, so
 two 10s voices each pass and together do not. The shot-list prompt is the
-prevention half (a words-per-second placement budget per shot). Preflight reserves the TTS cost on the references
-slice (static card), including when Voices is off — talent may already hold
-a `voiceId`. Clip ids are stamped on `VideoManifestEntry.audioClipIds`.
-The optimised-prompt JSON carries those audio refs for paste-into-Videos.
-Models with no audio reference slot (Grok, Omni Flash, Kling) still mint
-the clip in References; motion just does not bind it.
+prevention half (a words-per-second placement budget per shot). Preflight
+reserves the TTS cost on the references slice (static card), including when
+Voices is off — talent may already hold a `voiceId`. The optimised-prompt
+JSON carries the audio refs for paste-into-Videos. Models with no audio
+reference slot (Grok, Omni Flash, Kling) still get a section and a cut clip
+in References; motion just does not bind it.
 
 Out of scope here: voice cloning from an uploaded sample, realtime/agents,
 auditioning/regenerating a single line from the scene panel.

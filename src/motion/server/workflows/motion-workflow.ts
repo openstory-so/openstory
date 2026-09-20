@@ -28,7 +28,7 @@ import {
 } from '@/motion/dialogue-tts';
 import { dialogueClipsAsReferences } from '@/motion/server/synthesize-dialogue';
 import { referenceKeysFrom } from '@/motion/reference-provenance';
-import { fitDialogueClip } from '@/motion/server/fit-dialogue-clip';
+import { recordDialogue } from '@/motion/server/record-dialogue';
 import { raiseShotDurationToCoverAudio } from '@/motion/resolve-shot-duration';
 import type { MotionAudioClip } from '@/platform/server/db/schema';
 import { computeVideoManifestInputHash } from '@/shots/input-hash';
@@ -210,37 +210,41 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       const shotId = input.shotId;
       const sequenceId = input.sequenceId;
       if (audioClips.length === 0) {
-        const fitted = await fitDialogueClip(step, {
+        // The conversation around this shot, snapshotted at the trigger so
+        // the reading is acted in context (#1657) — only THIS shot adopts it.
+        // Without one (an older trigger), the shot's own lines are the whole
+        // conversation.
+        // ponytail: N shots of one scene each record their own window; record once per scene at the batch level if this shows up in the bill.
+        const context = input.dialogueContext?.some(
+          (line) => line.shotId === shotId
+        )
+          ? input.dialogueContext
+          : authoredLines.map((line, lineIndex) => ({
+              ...line,
+              shotId,
+              lineIndex,
+            }));
+        const recorded = await recordDialogue(step, {
           scopedDb,
           workflowRunId,
           userId: input.userId,
           teamId: input.teamId,
           sequenceId,
-          shotId,
-          lines: voicedLines,
+          lines: context,
+          adoptShotIds: [shotId],
+          dialogueVersionIdByShotId: {},
+          shotSeconds: { [shotId]: input.duration },
           minDurationSeconds:
             getMotionReferenceEndpoint(model)?.audioSeconds?.min,
           // One model here, not the sequence's list: this is the clip about to
           // be submitted, so its own window is the only one that binds.
           maxDurationSeconds: dialogueAudioMaxSeconds([model]),
-          shotSeconds: input.duration,
           reservationId: input.reservationId,
           stepPrefix: 'synthesize-dialogue-audio',
           workflowName: 'MotionWorkflow',
         });
-        await step.do('persist-dialogue-audio', async () => {
-          await scopedDb.shots.setAudioClips(shotId, [fitted.clip]);
-          await getGenerationChannel(sequenceId).emit(
-            'generation.shot:updated',
-            {
-              shotId,
-              updateType: 'dialogue-audio',
-              metadata: null,
-            }
-          );
-        });
-        audioClips = [fitted.clip];
-        voicedLines = fitted.lines;
+        audioClips = recorded.clipsByShotId[shotId] ?? [];
+        voicedLines = withSpokenText(authoredLines, audioClips);
       }
       referenceImages = [
         ...(input.referenceImages ?? []),
@@ -493,10 +497,6 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                       ? authoredLines
                       : (member.voicedLines ?? [])
                   ),
-                  dialogueTakeId:
-                    (member.shotId === input.shotId
-                      ? audioClips
-                      : (member.audioClips ?? []))[0]?.takeId ?? null,
                   // One clip, one request: every covered shot was sent the
                   // same references.
                   referenceKeys: referenceKeysFrom(input.referenceImages),
@@ -518,7 +518,6 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                     audioClipIds: audioClips.map((clip) => clip.id),
                     audioSourceKey:
                       audioSourceKeyFromVoicedLines(authoredLines),
-                    dialogueTakeId: audioClips[0]?.takeId ?? null,
                     referenceKeys: referenceKeysFrom(input.referenceImages),
                   },
                 ];

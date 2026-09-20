@@ -46,8 +46,9 @@ import {
   voicedDialogueLines,
 } from '@/motion/dialogue-tts';
 import {
-  loadSceneDialogueLines,
-  shotDialogueFromScene,
+  dialogueContextFor,
+  loadShotDialogueLines,
+  shotDialogueFor,
 } from '@/shots/server/shot-dialogue';
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import {
@@ -393,7 +394,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
             context.scopedDb.characters.list(sequence.id),
           ])
         : [[], [], [], await context.scopedDb.characters.list(sequence.id)];
-    const retrySceneDialogueLines = await loadSceneDialogueLines(
+    const retryDialogueLines = await loadShotDialogueLines(
       context.scopedDb,
       sequence.id
     );
@@ -406,16 +407,29 @@ export async function executeSmartRetry(context: SmartRetryContext) {
       const shotVideoModel = videoModelFor(shot);
       const scene = sceneOf(shot);
       const selectedMotion = selectedMotionByShot.get(shot.id) ?? null;
-      // Scene dialogue node first (#1657); the motion row's mirror answers
-      // only for a scene with no version row.
+      // Shot dialogue node first (#1657); the motion row's mirror answers
+      // only for a shot with no version row.
+      const shotDialogue =
+        shotDialogueFor(retryDialogueLines, shot) ?? selectedMotion?.dialogue;
       const voicedLines = modelTakesDialogueAudio(shotVideoModel)
-        ? voicedDialogueLines(
-            shotDialogueFromScene(retrySceneDialogueLines, shot) ??
-              selectedMotion?.dialogue,
-            voiceCharacters
-          )
+        ? voicedDialogueLines(shotDialogue, voiceCharacters)
         : [];
       const audioClips = matchingDialogueClips(shot.audioClips, voicedLines);
+      // No matching clip: the run records its own, acted in the conversation
+      // around the shot — snapshotted here, since it cannot read it mid-run.
+      const dialogueContext =
+        voicedLines.length > 0 && audioClips.length === 0
+          ? dialogueContextFor({
+              shot,
+              shotLines: shotDialogue?.lines ?? [],
+              sceneShots: shotViews.filter(
+                (other) => shot.sceneId && other.sceneId === shot.sceneId
+              ),
+              linesByShotId: retryDialogueLines,
+              scriptDialogue: scene?.originalScript.dialogue,
+              characters: voiceCharacters,
+            })
+          : [];
       const ttsChars =
         audioClips.length > 0 ? 0 : ttsCharacterCount(voicedLines);
       const motionCost = addMicros(
@@ -482,6 +496,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
         duration: shot.durationMs ? shot.durationMs / 1000 : undefined,
         voicedLines,
         audioClips: audioClips.length > 0 ? audioClips : undefined,
+        ...(dialogueContext.length > 0 ? { dialogueContext } : {}),
         motionPrompt: selectedMotion
           ? motionPromptFromVersion(selectedMotion)
           : undefined,

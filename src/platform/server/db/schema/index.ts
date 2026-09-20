@@ -61,8 +61,9 @@ import { sequenceExports } from './sequence-exports';
 
 import { characters } from './characters';
 import { characterVoiceVersions } from './character-voice-versions';
-import { sceneDialogueVersions } from './scene-dialogue-versions';
-import { sceneDialogueTakes } from './scene-dialogue-takes';
+import { shotDialogueVersions } from './shot-dialogue-versions';
+import { dialogueRecordings } from './dialogue-recordings';
+import { shotDialogueSections } from './shot-dialogue-sections';
 
 // Location Library (team-level templates)
 import { locationLibrary } from './location-library';
@@ -160,17 +161,18 @@ export type {
 
 // Shots
 export { shots };
-export { sceneDialogueVersions, sceneDialogueTakes };
+export { shotDialogueVersions, dialogueRecordings, shotDialogueSections };
 
 export type {
-  SceneDialogueLine,
-  SceneDialogueSource,
-  SceneDialogueVersion,
-} from './scene-dialogue-versions';
+  ShotDialogueLine,
+  ShotDialogueSource,
+  ShotDialogueVersion,
+} from './shot-dialogue-versions';
 export type {
-  DialogueTakeSegment,
-  SceneDialogueTake,
-} from './scene-dialogue-takes';
+  DialogueRecording,
+  DialogueRecordingTurn,
+} from './dialogue-recordings';
+export type { ShotDialogueSection } from './shot-dialogue-sections';
 
 export type { NewShot, Shot } from './shots';
 
@@ -468,8 +470,9 @@ export const schema = {
   scenes,
   sceneScriptVersions,
   shots,
-  sceneDialogueVersions,
-  sceneDialogueTakes,
+  shotDialogueVersions,
+  dialogueRecordings,
+  shotDialogueSections,
   shotVariants,
   // SSF redesign (#990) — render segments + flat video render versions
   renderSegments,

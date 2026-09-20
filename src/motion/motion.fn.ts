@@ -14,7 +14,8 @@ import {
   loadSceneContextBySequence,
   resolveSceneForShot,
 } from '@/shots/server/scene-script';
-import type { Shot } from '@/platform/server/db/schema';
+import type { MotionAudioClip, Shot } from '@/platform/server/db/schema';
+import type { MotionDialogue } from '@/shots/scene-analysis.schema';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 
@@ -47,10 +48,12 @@ import {
   modelTakesDialogueAudio,
   ttsCharacterCount,
   voicedDialogueLines,
+  type VoicedDialogueLine,
 } from '@/motion/dialogue-tts';
 import {
-  loadSceneDialogueLines,
-  shotDialogueFromScene,
+  dialogueContextFor,
+  loadShotDialogueLines,
+  shotDialogueFor,
 } from '@/shots/server/shot-dialogue';
 import {
   estimateBatchMotionCost,
@@ -317,12 +320,12 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
     // those with a reference-to-video route send them on the wire, the rest
     // substitute the tokens with descriptions. Matches the continuity AFTER
     // any rescan above.
-    const sceneDialogueLines = await loadSceneDialogueLines(
+    const dialogueLinesByShotId = await loadShotDialogueLines(
       context.scopedDb,
       sequence.id
     );
-    const dialogueFor = (row: { id: string; sceneId: string | null }) =>
-      shotDialogueFromScene(sceneDialogueLines, row);
+    const dialogueFor = (row: { id: string }) =>
+      shotDialogueFor(dialogueLinesByShotId, row);
     const [characters, voiceCharacters, elements, locations] =
       await Promise.all([
         context.scopedDb.characters.listWithSheets(sequence.id),
@@ -351,8 +354,8 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
     // the render here, before credits are reserved, rather than as a failed
     // job after them.
     assertReferencesUsable(model, referenceImages, !referenceOnly);
-    // The scene dialogue node is the authored source (#1657); the motion
-    // row's `dialogue` is a mirror and only answers for a scene that has no
+    // The shot dialogue node is the authored source (#1657); the motion
+    // row's `dialogue` is a mirror and only answers for a shot that has no
     // version row yet.
     const shotDialogue = dialogueFor(shot) ?? selectedMotion?.dialogue;
     const missingVoices = missingVoiceLines(model, shotDialogue, elements);
@@ -439,6 +442,37 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
             })
           : undefined;
 
+        // A shot with voiced lines and no matching clip is recorded by its
+        // motion run, in context (#1657): the conversation around it is
+        // snapshotted here, because the run cannot read its neighbours' lines.
+        // Every covered member shares the clicked shot's scene, so its live
+        // shots are read once, and only when a member needs them.
+        let conversationShots: Promise<readonly Shot[]> | undefined;
+        const dialogueContextOf = async (
+          row: { id: string },
+          dialogue: MotionDialogue | null | undefined,
+          voiced: readonly VoicedDialogueLine[],
+          clips: readonly MotionAudioClip[]
+        ) => {
+          if (voiced.length === 0 || clips.length > 0) return undefined;
+          conversationShots ??=
+            sceneShots.length > 1 || !shot.sceneId
+              ? Promise.resolve(sceneShots)
+              : context.scopedDb.shots
+                  .listBySequence(sequence.id)
+                  .then((rows) =>
+                    rows.filter((other) => other.sceneId === shot.sceneId)
+                  );
+          return dialogueContextFor({
+            shot: row,
+            shotLines: dialogue?.lines ?? [],
+            sceneShots: await conversationShots,
+            linesByShotId: dialogueLinesByShotId,
+            scriptDialogue: context.scene?.originalScript.dialogue,
+            characters: voiceCharacters,
+          });
+        };
+
         const attachSceneHeader = sceneShots.length > 1;
         const clickedPayload = {
           shotId: shot.id,
@@ -474,6 +508,12 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
           referenceImages,
           voicedLines,
           audioClips: audioClips.length > 0 ? audioClips : undefined,
+          dialogueContext: await dialogueContextOf(
+            shot,
+            shotDialogue,
+            voicedLines,
+            audioClips
+          ),
           motionPrompt: selectedMotion
             ? motionPromptFromVersion(selectedMotion)
             : undefined,
@@ -498,12 +538,14 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
                 },
                 model
               );
+              const memberDialogue = dialogueFor(member) ?? version?.dialogue;
               const memberVoiced = modelTakesDialogueAudio(model)
-                ? voicedDialogueLines(
-                    dialogueFor(member) ?? version?.dialogue,
-                    voiceCharacters
-                  )
+                ? voicedDialogueLines(memberDialogue, voiceCharacters)
                 : [];
+              const memberClips = matchingDialogueClips(
+                member.audioClips,
+                memberVoiced
+              );
               const isFirst = member.shotId === firstMember.shotId;
               let memberImageUrl: string | undefined;
               let memberFrameVersionId: string | null = null;
@@ -552,9 +594,12 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
                   locations,
                 }),
                 voicedLines: memberVoiced,
-                audioClips: matchingDialogueClips(
-                  member.audioClips,
-                  memberVoiced
+                audioClips: memberClips,
+                dialogueContext: await dialogueContextOf(
+                  member,
+                  memberDialogue,
+                  memberVoiced,
+                  memberClips
                 ),
                 motionPrompt: version
                   ? motionPromptFromVersion(version)
@@ -714,12 +759,12 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
     // Resolve cast/element reference images once for the whole batch (#873) —
     // before credit pre-flight so Seedance prices the reference-to-video
     // endpoint when refs will actually be sent.
-    const batchSceneDialogueLines = await loadSceneDialogueLines(
+    const batchDialogueLinesByShotId = await loadShotDialogueLines(
       context.scopedDb,
       sequence.id
     );
-    const batchDialogueFor = (shot: { id: string; sceneId: string | null }) =>
-      shotDialogueFromScene(batchSceneDialogueLines, shot);
+    const batchDialogueFor = (shot: { id: string }) =>
+      shotDialogueFor(batchDialogueLinesByShotId, shot);
     const [characters, voiceCharacters, elements, batchLocations] =
       await Promise.all([
         context.scopedDb.characters.listWithSheets(sequence.id),
@@ -923,12 +968,15 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
             const shotModel = resolveShotVideoModel(shot);
             const scene = sceneOf(shot);
             const selectedMotion = selectedMotionByShot.get(shot.id);
+            const shotDialogue =
+              batchDialogueFor(shot) ?? selectedMotion?.dialogue;
             const voicedLines = modelTakesDialogueAudio(shotModel)
-              ? voicedDialogueLines(
-                  batchDialogueFor(shot) ?? selectedMotion?.dialogue,
-                  voiceCharacters
-                )
+              ? voicedDialogueLines(shotDialogue, voiceCharacters)
               : [];
+            const audioClips = matchingDialogueClips(
+              shot.audioClips,
+              voicedLines
+            );
             return {
               shotId: shot.id,
               sceneId: shot.sceneId,
@@ -981,7 +1029,24 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
                 locations: batchLocations,
               }),
               voicedLines,
-              audioClips: matchingDialogueClips(shot.audioClips, voicedLines),
+              audioClips,
+              // Voiced lines and no matching clip: the motion run records
+              // them, in context (#1657), so the conversation around the shot
+              // is snapshotted here. `rawShots`, not `allShots`: a neighbour
+              // with no anchor frame still speaks.
+              dialogueContext:
+                voicedLines.length > 0 && audioClips.length === 0
+                  ? dialogueContextFor({
+                      shot,
+                      shotLines: shotDialogue?.lines ?? [],
+                      sceneShots: rawShots.filter(
+                        (row) => row.sceneId === shot.sceneId
+                      ),
+                      linesByShotId: batchDialogueLinesByShotId,
+                      scriptDialogue: scene?.originalScript.dialogue,
+                      characters: voiceCharacters,
+                    })
+                  : undefined,
               motionPrompt: selectedMotion
                 ? motionPromptFromVersion(selectedMotion)
                 : undefined,

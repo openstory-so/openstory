@@ -470,7 +470,7 @@ describe('reference-only shots and staleness', () => {
   });
 });
 
-describe('isSelectedVersionStale — take, references, duration (#1657)', () => {
+describe('isSelectedVersionStale — clips, references, duration (#1657)', () => {
   const motion = new Map([['shot-1', 'mp-1']]);
   const frame = new Map([['shot-1', 'fv-1']]);
   const entry = {
@@ -478,30 +478,66 @@ describe('isSelectedVersionStale — take, references, duration (#1657)', () => 
     motionPromptVersionId: 'mp-1',
     frameVersionId: 'fv-1',
   };
+  const key = new Map([['shot-1', 'k']]);
+  const voiced = version('v1', 'seg', 'kling_v3_pro', [
+    { ...entry, audioSourceKey: 'k', audioClipIds: ['section-1'] },
+  ]);
+  const staleWith = (
+    v: SegmentVersionInput,
+    audioClipIdsByShot: ReadonlyMap<string, readonly string[]>
+  ) =>
+    isSelectedVersionStale(v, motion, frame, {
+      audioSourceKeyByShot: key,
+      audioClipIdsByShot,
+    });
 
-  it('is stale when the scene selects a different dialogue take, only for a voiced shot', () => {
-    const v = version('v1', 'seg', 'kling_v3_pro', [
-      { ...entry, audioSourceKey: 'k', dialogueTakeId: 'take-1' },
+  it('is fresh while the shot still holds the clip the render was sent', () => {
+    expect(staleWith(voiced, new Map([['shot-1', ['section-1']]]))).toBe(false);
+  });
+
+  it('is stale when the shot picks another reading of the same lines', () => {
+    expect(staleWith(voiced, new Map([['shot-1', ['section-2']]]))).toBe(true);
+    // The working set emptied: the clip it was sent is gone.
+    expect(staleWith(voiced, new Map())).toBe(true);
+  });
+
+  it('does not compare an entry with no clip ids, or a row from before the field', () => {
+    // A voice appearing is `audioSourceKey`'s job, not this rule's.
+    const voiceless = version('v1', 'seg', 'kling_v3_pro', [
+      { ...entry, audioClipIds: [] },
     ]);
-    const key = new Map([['shot-1', 'k']]);
+    const old = version('v1', 'seg', 'kling_v3_pro', [entry]);
+    const live = { audioClipIdsByShot: new Map([['shot-1', ['section-2']]]) };
+    expect(isSelectedVersionStale(voiceless, motion, frame, live)).toBe(false);
+    expect(isSelectedVersionStale(old, motion, frame, live)).toBe(false);
+    // A caller that did not load the working set compares without it.
     expect(
-      isSelectedVersionStale(v, motion, frame, {
+      isSelectedVersionStale(voiced, motion, frame, {
         audioSourceKeyByShot: key,
-        dialogueTakeByShot: new Map([['shot-1', 'take-1']]),
       })
     ).toBe(false);
+  });
+
+  it('keeps a legacy manifest fresh: its clip ids are the ones the working set still holds', () => {
+    // Pre-#1657 clips carry a generated id, not a section id — and no
+    // migration touched either side, so the sets still agree in any order.
+    const legacy = version('v1', 'seg', 'kling_v3_pro', [
+      { ...entry, audioSourceKey: 'k', audioClipIds: ['clip-a', 'clip-b'] },
+    ]);
+    expect(staleWith(legacy, new Map([['shot-1', ['clip-b', 'clip-a']]]))).toBe(
+      false
+    );
+  });
+
+  it('is not staled by a neighbour shot re-recording', () => {
     expect(
-      isSelectedVersionStale(v, motion, frame, {
-        audioSourceKeyByShot: key,
-        dialogueTakeByShot: new Map([['shot-1', 'take-2']]),
-      })
-    ).toBe(true);
-    // A pre-#1657 row has no stamp: unknown, never stale.
-    const old = version('v1', 'seg', 'kling_v3_pro', [entry]);
-    expect(
-      isSelectedVersionStale(old, motion, frame, {
-        dialogueTakeByShot: new Map([['shot-1', 'take-2']]),
-      })
+      staleWith(
+        voiced,
+        new Map([
+          ['shot-1', ['section-1']],
+          ['shot-2', ['section-9']],
+        ])
+      )
     ).toBe(false);
   });
 

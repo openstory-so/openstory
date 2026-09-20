@@ -72,10 +72,6 @@ import {
   type SceneWithScript,
 } from './use-scenes';
 import { sceneFacetKeys } from './use-scene-facets';
-import {
-  listSceneDialogueTakesFn,
-  selectSceneDialogueTakeFn,
-} from '@/shots/scene-dialogue.fn';
 import { useSaveShotPrompt } from './use-prompt-variants';
 import type { FrameVariant, ShotVariant } from '@/platform/server/db/schema';
 import {
@@ -144,6 +140,7 @@ import { SceneMusicFacet } from './scene-music-facet';
 import { MotionDialoguePanel } from './motion-dialogue-panel';
 import { dialogueForShot } from '@/shots/shot-list-pass';
 import { SceneScriptTab } from './scene-script-tab';
+import { ShotDialogueReadings } from './shot-dialogue-readings';
 import { ShotDurationField } from './shot-duration-field';
 import { sumShotSeconds } from './scene-group';
 
@@ -1182,39 +1179,14 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   });
   const storageDomain = storageConfig?.storageDomain ?? null;
 
-  // Recorded takes for this shot's SCENE (#1657). The clip on the shot is a
-  // slice of one of them, so picking another re-cuts every shot of the scene.
-  const dialogueSceneId = scene?.id;
-  const dialogueTakesKey = ['scene-dialogue-takes', dialogueSceneId] as const;
-  const { data: dialogueTakes } = useQuery({
-    queryKey: dialogueTakesKey,
-    queryFn: () =>
-      listSceneDialogueTakesFn({
-        data: { sequenceId, sceneId: dialogueSceneId ?? '' },
-      }),
-    enabled: Boolean(dialogueSceneId),
-  });
-  const selectDialogueTake = useMutation({
-    mutationFn: (takeId: string) =>
-      selectSceneDialogueTakeFn({
-        data: { sequenceId, sceneId: dialogueSceneId ?? '', takeId },
-      }),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: dialogueTakesKey }),
-        queryClient.invalidateQueries({ queryKey: shotKeys.list(sequenceId) }),
-      ]);
-    },
-    // Nothing else reports a failed take switch.
-    meta: { globalError: true },
-  });
-  const takeListProps = {
-    takes: dialogueTakes,
-    onSelectTake: (takeId: string) => selectDialogueTake.mutate(takeId),
-    selectingTakeId: selectDialogueTake.isPending
-      ? (selectDialogueTake.variables ?? null)
-      : null,
-  };
+  // This shot's readings (#1657) — one list for either dialogue panel below.
+  const dialogueReadings = shot ? (
+    <ShotDialogueReadings
+      sequenceId={sequenceId}
+      shotId={shot.id}
+      clipId={shot.audioClips?.[0]?.id}
+    />
+  ) : undefined;
 
   // Flipping this re-stales the motion prompt — the two modes use different
   // templates. See `usesStartFrame`.
@@ -2029,7 +2001,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
               }
               disabled={saveMotionPrompt.isPending || isAwaitingMotionPrompt}
               source="prompt"
-              {...takeListProps}
+              readings={dialogueReadings}
             />
           ) : (
             <MotionDialoguePanel
@@ -2049,7 +2021,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
               }
               onChange={null}
               source="script"
-              {...takeListProps}
+              readings={dialogueReadings}
             />
           )}
 

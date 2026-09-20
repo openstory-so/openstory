@@ -5,23 +5,42 @@
  * compare against the same inputs.
  */
 
-import { audioSourceKeyFromVoicedLines } from '@/motion/dialogue-tts';
+import {
+  audioSourceKeyFromVoicedLines,
+  voicedDialogueLines,
+  type VoiceCharacter,
+} from '@/motion/dialogue-tts';
 import { liveReferenceIdentity } from '@/motion/reference-provenance';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Shot } from '@/platform/server/db/schema';
 import type { LiveShotInputs } from '@/shots/scene-segments';
-import {
-  deriveSceneDialogueLines,
-  voicedLinesForShot,
-  type SceneDialogueLine,
-} from '@/shots/scene-dialogue';
-import type { VoiceCharacter } from '@/motion/dialogue-tts';
+import { deriveShotDialogueLines, shotDialogue } from '@/shots/shot-dialogue';
 import type { SceneContext } from './scene-script';
+import { loadShotDialogueLines } from './shot-dialogue';
+
+/**
+ * The first live shot of each scene, by shot number — the shot a pre-#1585
+ * unstamped line is derived onto (`deriveShotDialogueLines`).
+ */
+function firstShotIdByScene(
+  shots: readonly Pick<Shot, 'id' | 'sceneId' | 'shotNumber' | 'deletedAt'>[]
+): ReadonlyMap<string, string> {
+  const first = new Map<string, { id: string; shotNumber: number }>();
+  for (const shot of shots) {
+    if (!shot.sceneId || shot.deletedAt) continue;
+    const shotNumber = shot.shotNumber ?? 0;
+    const current = first.get(shot.sceneId);
+    if (!current || shotNumber < current.shotNumber) {
+      first.set(shot.sceneId, { id: shot.id, shotNumber });
+    }
+  }
+  return new Map([...first].map(([sceneId, shot]) => [sceneId, shot.id]));
+}
 
 export async function loadLiveShotInputs(
   scopedDb: Pick<
     ScopedDb,
-    'sceneDialogue' | 'sequenceLocations' | 'sequenceElements'
+    'shotDialogue' | 'sequenceLocations' | 'sequenceElements'
   >,
   sequenceId: string,
   shots: readonly Shot[],
@@ -32,44 +51,38 @@ export async function loadLiveShotInputs(
   })[],
   scriptBySceneId: ReadonlyMap<string, SceneContext>
 ): Promise<LiveShotInputs> {
-  const [versions, takes, locations, elements] = await Promise.all([
-    scopedDb.sceneDialogue.getSelectedBySequence(sequenceId),
-    scopedDb.sceneDialogue.getSelectedTakesBySequence(sequenceId),
+  const [linesByShotId, locations, elements] = await Promise.all([
+    loadShotDialogueLines(scopedDb, sequenceId),
     scopedDb.sequenceLocations.listWithReferences(sequenceId),
     scopedDb.sequenceElements.list(sequenceId),
   ]);
-  const linesBySceneId = new Map(versions.map((v) => [v.sceneId, v.lines]));
-  const takeBySceneId = new Map(takes.map((t) => [t.sceneId, t.id]));
-
-  const sceneLines = (sceneId: string): SceneDialogueLine[] => {
-    const stored = linesBySceneId.get(sceneId);
-    if (stored) return stored;
-    // No node yet (a scene from before #1657): the derivation IS the old
-    // meaning of the script's stamped lines.
-    const derived = deriveSceneDialogueLines(
-      scriptBySceneId.get(sceneId)?.script?.dialogue,
-      shots
-        .filter((shot) => shot.sceneId === sceneId && !shot.deletedAt)
-        .sort((a, b) => (a.shotNumber ?? 0) - (b.shotNumber ?? 0))
-    );
-    linesBySceneId.set(sceneId, derived);
-    return derived;
-  };
+  const firstShotId = firstShotIdByScene(shots);
 
   const audioSourceKeyByShot = new Map<string, string | null>();
-  const dialogueTakeByShot = new Map<string, string | null>();
+  const audioClipIdsByShot = new Map<string, readonly string[]>();
   const durationMsByShot = new Map<string, number | null>();
   const audioSecondsByShot = new Map<string, number>();
   for (const shot of shots) {
-    const key = shot.sceneId
-      ? audioSourceKeyFromVoicedLines(
-          voicedLinesForShot(sceneLines(shot.sceneId), characters, shot.id)
-        )
-      : null;
-    audioSourceKeyByShot.set(shot.id, key);
-    dialogueTakeByShot.set(
+    // The shot's OWN lines. No row yet (a shot from before #1657): the
+    // derivation IS the old meaning of the script's stamped lines.
+    const lines =
+      linesByShotId.get(shot.id) ??
+      (shot.sceneId
+        ? deriveShotDialogueLines(
+            scriptBySceneId.get(shot.sceneId)?.script?.dialogue,
+            shot,
+            firstShotId.get(shot.sceneId) === shot.id
+          )
+        : []);
+    audioSourceKeyByShot.set(
       shot.id,
-      key && shot.sceneId ? (takeBySceneId.get(shot.sceneId) ?? null) : null
+      audioSourceKeyFromVoicedLines(
+        voicedDialogueLines(shotDialogue(lines), characters)
+      )
+    );
+    audioClipIdsByShot.set(
+      shot.id,
+      (shot.audioClips ?? []).map((clip) => clip.id)
     );
     durationMsByShot.set(shot.id, shot.durationMs);
     audioSecondsByShot.set(
@@ -83,7 +96,7 @@ export async function loadLiveShotInputs(
 
   return {
     audioSourceKeyByShot,
-    dialogueTakeByShot,
+    audioClipIdsByShot,
     referenceIdentity: liveReferenceIdentity({
       characters,
       locations,

@@ -27,7 +27,8 @@ import {
   modelTakesDialogueAudio,
   voicedDialogueLines,
 } from '@/motion/dialogue-tts';
-import { linesForShot, type SceneDialogueLine } from '@/shots/scene-dialogue';
+import { dialogueContextFor } from '@/shots/server/shot-dialogue';
+import { shotDialogue, type ShotDialogueLine } from '@/shots/shot-dialogue';
 import type { MotionAudioClip } from '@/platform/server/db/schema';
 import {
   assembleMotionPrompt,
@@ -76,16 +77,19 @@ export function buildStoryboardMotionBatchShots(input: {
   /** References-stage dialogue clips, keyed by shot id (#1554). */
   dialogueClipsByShotId?: Record<string, MotionAudioClip[]>;
   /**
-   * Authored dialogue per ANALYSIS scene id (#1657) — the same snapshot the
-   * Dialogue stage recorded from, so the prompt's voiced lines and the clips
-   * bound to them describe one set of words. Absent for a scene with no
-   * version row, which falls back to the motion prompt's own copy.
+   * Authored dialogue per shot id (#1657) — the same snapshot the Dialogue
+   * stage recorded from, so the prompt's voiced lines and the clips bound to
+   * them describe one set of words. Absent for a shot with no version row,
+   * which falls back to the motion prompt's own copy.
    */
-  dialogueLinesBySceneId?: Record<string, SceneDialogueLine[]>;
+  dialogueLinesByShotId?: Record<string, ShotDialogueLine[]>;
   leftoverGrokShotIds?: readonly string[];
 }): BatchMotionMusicWorkflowInput['shots'] {
   const leftoverGrok = new Set(input.leftoverGrokShotIds ?? []);
   const items = shotWorkItems(input.scenes, input.shotMapping);
+  const linesByShotId = new Map(
+    Object.entries(input.dialogueLinesByShotId ?? {})
+  );
   return items.flatMap((item, index) => {
     const { scene, mapping } = item;
     const imageUrl = input.imageUrls[index];
@@ -129,12 +133,12 @@ export function buildStoryboardMotionBatchShots(input: {
       model: shotModel,
       characterTags,
     });
-    const sceneLines = input.dialogueLinesBySceneId?.[scene.sceneId];
+    const shotLines = mapping.shotId
+      ? input.dialogueLinesByShotId?.[mapping.shotId]
+      : undefined;
     const voicedLines = modelTakesDialogueAudio(shotModel)
       ? voicedDialogueLines(
-          sceneLines && mapping.shotId
-            ? linesForShot(sceneLines, mapping.shotId)
-            : motionPromptData.dialogue,
+          shotLines ? shotDialogue(shotLines) : motionPromptData.dialogue,
           input.characters
         )
       : [];
@@ -144,6 +148,28 @@ export function buildStoryboardMotionBatchShots(input: {
         : undefined,
       voicedLines
     );
+
+    // No clip for these lines (the Dialogue stage was skipped, or it failed
+    // for this shot): motion records its own, so hand it the conversation
+    // around the shot and the reading is still acted in context (#1657).
+    const dialogueContext =
+      voicedLines.length > 0 && audioClips.length === 0 && mapping.shotId
+        ? dialogueContextFor({
+            shot: { id: mapping.shotId },
+            shotLines: shotLines ?? motionPromptData.dialogue.lines,
+            sceneShots: input.shotMapping
+              .filter(
+                (row) => row.analysisSceneId === scene.sceneId && row.shotId
+              )
+              .map((row) => ({
+                id: row.shotId,
+                shotNumber: row.shotNumber ?? 1,
+              })),
+            linesByShotId,
+            scriptDialogue: scene.originalScript.dialogue,
+            characters: input.characters,
+          })
+        : [];
 
     return {
       shotId: mapping.shotId,
@@ -172,6 +198,7 @@ export function buildStoryboardMotionBatchShots(input: {
       }),
       voicedLines,
       ...(audioClips.length > 0 ? { audioClips } : {}),
+      ...(dialogueContext.length > 0 ? { dialogueContext } : {}),
     };
   });
 }

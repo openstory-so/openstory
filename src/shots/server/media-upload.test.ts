@@ -195,7 +195,6 @@ async function seedSegmentAndVideo(frameVersionId: string) {
       durationMs: 4000,
       audioClipIds: [],
       audioSourceKey: null,
-      dialogueTakeId: null,
       referenceKeys: [],
     },
   ];
@@ -521,7 +520,6 @@ describe('§4.3 B — image-only upload (appendUploadedVersion + select)', () =>
         durationMs: 4000,
         audioClipIds: [],
         audioSourceKey: null,
-        dialogueTakeId: null,
         referenceKeys: [],
       },
     ];
@@ -783,7 +781,6 @@ describe('video upload (appendUploadedVersion + select)', () => {
         durationMs: 4000,
         audioClipIds: [],
         audioSourceKey: null,
-        dialogueTakeId: null,
         referenceKeys: [],
       },
     ];
@@ -836,7 +833,6 @@ describe('video upload (appendUploadedVersion + select)', () => {
         durationMs: 4000,
         audioClipIds: [],
         audioSourceKey: null,
-        dialogueTakeId: null,
         referenceKeys: [],
       },
     ];

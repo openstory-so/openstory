@@ -258,11 +258,11 @@ export function createShotsMethods(db: Database) {
     },
 
     /**
-     * Mirror the scene take's slice for this shot onto the shot row (#1657).
-     * Working set, not history: the take (`scene_dialogue_takes`) is the
-     * provenance and the thing a user picks between, and each render stamps
-     * the slice it used onto its `shot_prompt_versions` row. Motion attaches
-     * whatever is here, and synthesises only when it is missing or the
+     * Mirror the shot's selected dialogue section — its cut file — onto the
+     * shot row (#1657). Working set, not history: `shot_dialogue_sections` is
+     * the provenance and the thing a user picks between, and each render
+     * stamps the clip it used onto its `shot_prompt_versions` row. Motion
+     * attaches whatever is here, and records only when it is missing or the
      * lines/voices moved.
      */
     setAudioClips: async (

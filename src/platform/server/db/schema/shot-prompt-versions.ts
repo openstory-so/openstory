@@ -55,11 +55,11 @@ export type MotionAudioClip = {
    */
   spokenLines?: { index: number; text: string }[];
   /**
-   * The `scene_dialogue_takes` row this clip was cut from (#1657). Absent on
-   * a clip synthesised for one shot alone (motion's in-run fallback, or
-   * rows from before scene takes).
+   * The `dialogue_recordings` row this clip was cut from (#1657); the clip's
+   * `id` is then its `shot_dialogue_sections.id`. Absent on a row from before
+   * recordings, and on a user-bound element clip.
    */
-  takeId?: string;
+  recordingId?: string;
 };
 import { type InferSelectModel, sql } from 'drizzle-orm';
 import {
