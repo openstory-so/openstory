@@ -151,9 +151,10 @@ function originForPort(file: DevTunnelsFile, port: number): string | undefined {
 }
 
 function googleCallbackUrls(file: DevTunnelsFile): string[] {
-  return file.routes.map(
-    (route) => `https://${route.hostname}/api/auth/callback/google`
-  );
+  return file.routes.flatMap((route) => [
+    `http://localhost:${route.port}/api/auth/callback/google`,
+    `https://${route.hostname}/api/auth/callback/google`,
+  ]);
 }
 
 function pickWord(
@@ -286,8 +287,19 @@ export function applyMappingToEnv(
   upsertEnvVars(envFile, {
     PORT: String(port),
     VITE_APP_URL: origin,
-    BETTER_AUTH_URL: origin,
   });
+  // Never pin BETTER_AUTH_URL (#1701): Better Auth prefers it over the request
+  // origin, so a sign-in started on localhost came back on the tunnel host,
+  // where its state cookie does not exist. Unpinned, Google returns to the
+  // host the sign-in started on. #1686 wrote the pin, so drop a stale one.
+  const pinned = new Set(
+    file.routes.map((r) => `BETTER_AUTH_URL=https://${r.hostname}`)
+  );
+  const text = readFileSync(envFile, 'utf8');
+  const kept = text.split('\n').filter((line) => !pinned.has(line.trim()));
+  if (kept.length !== text.split('\n').length) {
+    writeFileSync(envFile, kept.join('\n'));
+  }
   return origin;
 }
 

@@ -27,9 +27,7 @@ if (
   const envLocal = join(process.cwd(), '.env.local');
   if (existsSync(envLocal)) {
     for (const line of readFileSync(envLocal, 'utf8').split('\n')) {
-      const m = /^(PORT|VITE_APP_URL|BETTER_AUTH_URL)\s*=\s*(.*)$/.exec(
-        line.trim()
-      );
+      const m = /^(PORT|VITE_APP_URL)\s*=\s*(.*)$/.exec(line.trim());
       const key = m?.[1];
       const value = m?.[2];
       if (key && value) process.env[key] = value.replace(/^['"]|['"]$/g, '');

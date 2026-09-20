@@ -38,14 +38,20 @@ function mapping(
 }
 
 describe('applyMappingToEnv', () => {
-  it('writes PORT, VITE_APP_URL, and BETTER_AUTH_URL for a mapped slot', () => {
+  it('writes PORT and VITE_APP_URL, and drops a stale tunnel BETTER_AUTH_URL', () => {
     const envFile = join(tempDir(), '.env.local');
+    writeFileSync(
+      envFile,
+      'BETTER_AUTH_URL=https://qk3mnpst.openstory.so\nFAL_KEY=x\n'
+    );
     const origin = applyMappingToEnv(envFile, 3003, mapping());
     expect(origin).toBe('https://qk3mnpst.openstory.so');
     const env = parseEnvFile(envFile);
     expect(env.get('PORT')).toBe('3003');
     expect(env.get('VITE_APP_URL')).toBe('https://qk3mnpst.openstory.so');
-    expect(env.get('BETTER_AUTH_URL')).toBe('https://qk3mnpst.openstory.so');
+    // Pinned, Google returns to the tunnel host even from localhost (#1701).
+    expect(env.has('BETTER_AUTH_URL')).toBe(false);
+    expect(env.get('FAL_KEY')).toBe('x');
   });
 
   it('ignores e2e port 3020', () => {
