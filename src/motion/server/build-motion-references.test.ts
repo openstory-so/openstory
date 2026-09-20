@@ -60,6 +60,7 @@ describe('buildMotionReferenceImages', () => {
         description: 'Alice - Alice is tall',
         role: 'character',
         token: 'Alice',
+        likeness: 'fictional',
       },
       {
         referenceImageUrl: 'https://example.com/logo.png',
