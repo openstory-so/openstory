@@ -17,7 +17,7 @@ import {
   gateEstimate,
 } from '@/billing/cost-estimation';
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
-import { sumShotDurationsSeconds } from '@/sequences/server/shot-durations';
+import { musicRequestDurationSeconds } from '@/audio/server/music-staleness';
 import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
 import { addMicros } from '@/billing/money';
 import { buildMotionReferenceImages } from '@/motion/server/build-motion-references';
@@ -959,7 +959,9 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
         );
       }
       const allShots = await scopedDb.shots.listBySequence(sequence.id);
-      const totalDuration = sumShotDurationsSeconds(allShots) || 30;
+      // The one rule for a track's length — the staleness read re-derives it
+      // with the same function, so a fresh track can never read stale.
+      const totalDuration = musicRequestDurationSeconds(allShots);
 
       const reservationId = await reserveRunCredits(
         scopedDb,
@@ -1661,13 +1663,13 @@ export const generateMusicFn = createServerFn({ method: 'POST' })
       data.sequenceId
     );
 
-    const totalDuration = sumShotDurationsSeconds(allShots);
+    const totalDuration = musicRequestDurationSeconds(allShots);
 
     const baseInput = {
       userId: user.id,
       teamId: sequence.teamId,
       sequenceId: sequence.id,
-      duration: data.duration ?? (totalDuration || 30),
+      duration: data.duration ?? totalDuration,
       model:
         data.model && isValidAudioModel(data.model) ? data.model : undefined,
     };

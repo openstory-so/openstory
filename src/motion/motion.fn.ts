@@ -65,6 +65,7 @@ import {
 } from '@/billing/server/preflight';
 import { buildMotionReferenceImages } from '@/motion/server/build-motion-references';
 import { resolveShotDuration } from './resolve-shot-duration';
+import { musicRequestDurationSeconds } from '@/audio/server/music-staleness';
 import { generateMotionSchema } from '@/shots/server/shot.schemas';
 import { dbSceneId } from '@/shots/scene-id';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
@@ -942,16 +943,12 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
 
         let musicConfig: BatchMotionMusicWorkflowInput['music'];
         if (includeMusic && sequence.musicPrompt && sequence.musicTags) {
-          const totalDuration = allShots.reduce(
-            (sum, shot) =>
-              sum + (shot.durationMs ? shot.durationMs / 1000 : 10),
-            0
-          );
-
           musicConfig = {
             prompt: sequence.musicPrompt,
             tags: sequence.musicTags,
-            duration: totalDuration || 30,
+            // The one rule for a track's length, over the same shots the
+            // staleness read sums — or a fresh track reads stale.
+            duration: musicRequestDurationSeconds(rawShots),
             model: data.musicModel,
           };
         }

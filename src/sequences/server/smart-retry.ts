@@ -85,7 +85,7 @@ import type {
   MusicWorkflowInput,
 } from '@/platform/server/workflow/types';
 import { buildMusicSceneSummaries } from '@/audio/server/workflows/music-scene-summaries';
-import { sumShotDurationsSeconds } from './shot-durations';
+import { musicRequestDurationSeconds } from '@/audio/server/music-staleness';
 import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'sequences', 'smart-retry']);
@@ -516,10 +516,10 @@ export async function executeSmartRetry(context: SmartRetryContext) {
   // 3. Retry failed music
   if (hasMusicFailure && sequence.musicPrompt) {
     const allShots = await context.scopedDb.shots.listBySequence(sequence.id);
-    const totalDuration = sumShotDurationsSeconds(allShots);
+    const totalDuration = musicRequestDurationSeconds(allShots);
     const musicModel = safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL);
     const musicCost = gateEstimate(
-      estimateAudioCost(musicModel, totalDuration || 30, { pricing }),
+      estimateAudioCost(musicModel, totalDuration, { pricing }),
       { model: musicModel, operation: 'smart-retry:music' }
     );
     const reservationId =
@@ -539,7 +539,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
       ownsReservation: true,
       prompt: sequence.musicPrompt,
       tags: sequence.musicTags ?? '',
-      duration: totalDuration || 30,
+      duration: totalDuration,
     };
 
     await context.scopedDb.sequence(sequence.id).updateMusicFields({
@@ -567,7 +567,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
         return scene ? [scene] : [];
       })
     );
-    const totalDuration = sumShotDurationsSeconds(allShots);
+    const totalDuration = musicRequestDurationSeconds(allShots);
 
     // Generate music prompt
     await triggerWorkflow<MusicPromptWorkflowInput>('/music-prompt', {
@@ -578,7 +578,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
       analysisModelId:
         getAnalysisModelById(sequence.analysisModel)?.id ??
         DEFAULT_ANALYSIS_MODEL,
-      duration: totalDuration || 30,
+      duration: totalDuration,
       // This branch only runs when the sequence has no music prompt at all.
       promptSource: 'ai-generated',
     });
