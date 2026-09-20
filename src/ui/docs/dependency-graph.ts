@@ -432,8 +432,10 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     ignored: [
       'Running line positions (the order already says them)',
       'The wording a fit rewrite actually delivered (kept on the turn as spokenText, so no digest moves)',
+      'The voiceId and ttsModel stamped on each turn: a readable copy of what the key already counts, so they move nothing',
     ],
-    storedAs: 'dialogue_recordings.inputHash',
+    storedAs:
+      'dialogue_recordings.inputHash (the key), dialogue_recordings.turns (voice id and TTS model per turn, readable)',
   },
   {
     id: 'dialogueSection',
