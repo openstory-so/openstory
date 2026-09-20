@@ -212,6 +212,7 @@ export function sceneDialogueJobs(input: {
             return seconds === undefined ? [] : [[shotId, seconds]];
           })
         ),
+        forceAdoptShotIds: [],
       },
     ];
   });

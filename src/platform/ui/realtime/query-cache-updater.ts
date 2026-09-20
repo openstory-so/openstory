@@ -174,6 +174,13 @@ export function updateQueryCacheFromEvent(
             shotKeys.dialogueSections(shotId),
             `dialogue-sections:${shotId}`
           );
+          // A new reading is a new clip: the video rendered with the old one
+          // now reads stale, and that verdict rides the segments list.
+          debouncedInvalidate(
+            queryClient,
+            segmentKeys.list(sequenceId),
+            `segments:${sequenceId}`
+          );
         }
         if (shotId && promptUpdated) {
           const promptType =

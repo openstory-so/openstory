@@ -11,10 +11,12 @@ import {
   listShotDialogueClaimsFn,
   listShotDialogueSectionsFn,
   listShotDialogueVersionsFn,
+  regenerateShotDialogueFn,
   selectShotDialogueSectionFn,
   selectShotDialogueVersionFn,
 } from '@/shots/shot-dialogue.fn';
 import type { ShotView } from '@/shots/shot-view';
+import { Button } from '@/ui/shadcn/button';
 import { Skeleton } from '@/ui/shadcn/skeleton';
 import {
   useMutation,
@@ -29,6 +31,8 @@ import {
   ShotReadingsList,
   ShotRecordingsInFlight,
 } from './motion-dialogue-panel';
+import { StalenessIndicator } from './staleness/staleness-indicator';
+import { segmentKeys } from './use-segments';
 import { shotStalenessNamespace } from './use-shot-staleness';
 import { shotKeys } from './use-shots';
 
@@ -61,6 +65,10 @@ const Readings: React.FC<ReadingsProps> = ({
         }),
         // The shot's `audioClips` ride the shots list.
         queryClient.invalidateQueries({ queryKey: shotKeys.list(sequenceId) }),
+        // The video rendered with the old clip now reads stale.
+        queryClient.invalidateQueries({
+          queryKey: segmentKeys.list(sequenceId),
+        }),
       ]),
     onError: (error: Error) =>
       toast.error('Reading not used', { description: error.message }),
@@ -75,6 +83,10 @@ const Readings: React.FC<ReadingsProps> = ({
         }),
         // Discarding the current reading clears the shot's `audioClips`.
         queryClient.invalidateQueries({ queryKey: shotKeys.list(sequenceId) }),
+        // The video rendered with the old clip now reads stale.
+        queryClient.invalidateQueries({
+          queryKey: segmentKeys.list(sequenceId),
+        }),
         queryClient.invalidateQueries({ queryKey: shotStalenessNamespace }),
       ]),
     onError: (error: Error) =>
@@ -94,10 +106,56 @@ const Readings: React.FC<ReadingsProps> = ({
         queryKey: shotKeys.dialogueClaims(shotId),
       }),
     onError: (error: Error) =>
-      toast.error('Recording not cancelled', { description: error.message }),
+      toast.error('Generation not cancelled', { description: error.message }),
   });
+  // The claim lands a moment after the trigger; the realtime event then
+  // refetches it and "Generating…" takes over from the button.
+  const record = useMutation({
+    mutationFn: () =>
+      regenerateShotDialogueFn({ data: { sequenceId, shotId } }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: shotKeys.dialogueClaims(shotId),
+      }),
+    onError: (error: Error) =>
+      toast.error('Dialogue not generated', { description: error.message }),
+  });
+  const recording = claims.some((claim) => claim.willBecomeCurrent);
+  // The shot's audio is its current reading; it is out of date once the voice
+  // or the lines it was generated from moved.
+  const current = readings.find((reading) => reading.selected);
+  const staleBecause = current?.mismatch ?? null;
   return (
     <>
+      {recording ? null : staleBecause ? (
+        <StalenessIndicator
+          entityType="shot"
+          density="status-line"
+          artifact="audio"
+          message={
+            staleBecause === 'voice'
+              ? 'Dialogue out of date — voice changed'
+              : 'Dialogue out of date — lines changed'
+          }
+          actionLabel="Regenerate"
+          isRegenerating={record.isPending}
+          onRegenerate={() => record.mutate()}
+        />
+      ) : (
+        <Button
+          size="sm"
+          variant="outline"
+          className="self-start"
+          disabled={record.isPending}
+          onClick={() => record.mutate()}
+        >
+          {record.isPending
+            ? 'Starting…'
+            : readings.length > 0
+              ? 'Regenerate dialogue'
+              : 'Generate dialogue'}
+        </Button>
+      )}
       <ShotRecordingsInFlight
         claims={claims}
         onCancel={(claimId) => cancelClaim.mutate(claimId)}
@@ -142,6 +200,10 @@ const DialogueHistory: React.FC<{ sequenceId: string; shotId: string }> = ({
         }),
         // `shot.dialogue` rides the shots list; the clip now reads stale.
         queryClient.invalidateQueries({ queryKey: shotKeys.list(sequenceId) }),
+        // The video rendered with the old clip now reads stale.
+        queryClient.invalidateQueries({
+          queryKey: segmentKeys.list(sequenceId),
+        }),
         queryClient.invalidateQueries({ queryKey: shotKeys.detail(shotId) }),
         queryClient.invalidateQueries({ queryKey: shotStalenessNamespace }),
       ]),
@@ -164,11 +226,16 @@ const DialogueHistory: React.FC<{ sequenceId: string; shotId: string }> = ({
 };
 
 // The fallback is what the list most often resolves to, so nothing moves when
-// it lands: one h-8 row under the video, nothing in the prompt editor (a lone
-// selected reading renders no list).
+// it lands: the record button, then one h-8 row under the video and nothing
+// more in the prompt editor (a lone selected reading renders no list).
 export const ShotDialogueReadings: React.FC<ReadingsProps> = (props) => (
   <Suspense
-    fallback={props.collapsible ? <Skeleton className="h-8 w-full" /> : null}
+    fallback={
+      <>
+        <Skeleton className="h-8 w-32" />
+        {props.collapsible ? <Skeleton className="h-8 w-full" /> : null}
+      </>
+    }
   >
     <Readings {...props} />
   </Suspense>

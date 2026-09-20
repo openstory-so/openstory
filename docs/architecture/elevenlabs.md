@@ -121,7 +121,21 @@ and `onConflictDoNothing`, so a replay is idempotent.
 (`discardedAt`; the list omits it, select refuses it). Discarding the shot's
 CURRENT reading clears `shots.audioClips` in the same batch — a shot must not
 keep audio cut from a reading that is gone — so the next render records. The
-recording file stays: other shots may hold sections of it. A conversation over `DIALOGUE_TAKE_CHUNK_CHARS` (2,000)
+recording file stays: other shots may hold sections of it.
+`regenerateShotDialogueFn` ("Regenerate dialogue" / "Generate dialogue" in the readings
+list) is the on-demand recording: it builds the shot's scene job with
+`sceneDialogueJobs`, sets `forceAdoptShotIds: [shotId]` so
+`planSceneAdoption` adopts the shot even though its clip still matches, and
+triggers `DialogueAudioWorkflow` with its own reservation
+(`ownsReservation`). Still the whole conversation, still through a claim;
+scene-mates whose clips match keep them.
+A shot's dialogue audio reads out of date when its CURRENT reading no longer
+matches (`mismatch` on `listShotDialogueSectionsFn`: `voice` when only a
+voice id moved — same version id, or the same words with the key's voice
+column dropped — else `lines`). The readings list shows it as the amber
+status line with Regenerate; the video's "Stale" chip is the segment verdict,
+so every voice or reading change also invalidates `segmentKeys.list`.
+"Update all" does not yet count stale dialogue or video. A conversation over `DIALOGUE_TAKE_CHUNK_CHARS` (2,000)
 splits at a **shot boundary**, never inside a shot (`chunkTakeLines`); each
 chunk is its own recording, and only chunks holding an adopting shot are
 recorded at all. `recordDialogue` (`src/motion/server/record-dialogue.ts`) is
@@ -202,7 +216,7 @@ cannot be its own placeholder because a section needs a recording and a range.
   (`fail-claims` step); `reconcileDialogueClaimsPass` (the 5-minute sweep)
   fails the claims of a run that died.
 
-The panel shows a claim as "Recording…" with Cancel
+The panel shows a claim as "Generating…" with Cancel
 (`listShotDialogueClaimsFn`; the query key sits under `dialogueSections` so the
 realtime `dialogue-audio` event refreshes both).
 

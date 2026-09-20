@@ -71,16 +71,18 @@ export function collectDialogueResults(
  * adopts. Per shot, so one edited line moves one shot.
  */
 export function planSceneAdoption(
-  job: Pick<DialogueAudioSceneJob, 'voiced'>,
+  job: Pick<DialogueAudioSceneJob, 'voiced' | 'forceAdoptShotIds'>,
   shots: ReadonlyArray<{ id: string; audioClips?: MotionAudioClip[] | null }>
 ): { adoptShotIds: string[]; kept: Record<string, MotionAudioClip[]> } {
   const byShot = new Map(shots.map((shot) => [shot.id, shot.audioClips]));
+  // "Regenerate dialogue": the user wants another reading of lines that did not move.
+  const forced = new Set(job.forceAdoptShotIds);
   const adoptShotIds: string[] = [];
   const kept: Record<string, MotionAudioClip[]> = {};
   for (const shotId of voicedShotIds(job.voiced)) {
     const lines = job.voiced.filter((line) => line.shotId === shotId);
     const matched = matchingDialogueClips(byShot.get(shotId), lines);
-    if (matched.length === 0) adoptShotIds.push(shotId);
+    if (matched.length === 0 || forced.has(shotId)) adoptShotIds.push(shotId);
     else kept[shotId] = matched;
   }
   return { adoptShotIds, kept };

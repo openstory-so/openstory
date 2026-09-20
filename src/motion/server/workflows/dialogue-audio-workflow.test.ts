@@ -77,7 +77,7 @@ describe('planSceneAdoption', () => {
     lines.filter((line) => line.shotId === shotId);
 
   test('adopts nobody when every shot’s clip still matches its lines', () => {
-    const plan = planSceneAdoption({ voiced: lines }, [
+    const plan = planSceneAdoption({ voiced: lines, forceAdoptShotIds: [] }, [
       { id: 'shot-a', audioClips: [clip('c1', shotLines('shot-a'), 'rec-1')] },
       { id: 'shot-b', audioClips: [clip('c2', shotLines('shot-b'), 'rec-2')] },
     ]);
@@ -88,7 +88,7 @@ describe('planSceneAdoption', () => {
 
   test('adopts only the shot whose lines moved — its neighbour keeps its clip', () => {
     const kept = clip('c2', shotLines('shot-b'), 'rec-1');
-    const plan = planSceneAdoption({ voiced: lines }, [
+    const plan = planSceneAdoption({ voiced: lines, forceAdoptShotIds: [] }, [
       {
         id: 'shot-a',
         audioClips: [clip('c1', [voiced('shot-a', 0, 'Different')], 'rec-1')],
@@ -99,8 +99,24 @@ describe('planSceneAdoption', () => {
     expect(plan.kept).toEqual({ 'shot-b': [kept] });
   });
 
+  test('adopts a forced shot whose clip still matches — "Regenerate dialogue"', () => {
+    const kept = clip('c2', shotLines('shot-b'), 'rec-1');
+    const plan = planSceneAdoption(
+      { voiced: lines, forceAdoptShotIds: ['shot-a'] },
+      [
+        {
+          id: 'shot-a',
+          audioClips: [clip('c1', shotLines('shot-a'), 'rec-1')],
+        },
+        { id: 'shot-b', audioClips: [kept] },
+      ]
+    );
+    expect(plan.adoptShotIds).toEqual(['shot-a']);
+    expect(plan.kept).toEqual({ 'shot-b': [kept] });
+  });
+
   test('keeps a matching clip from before recordings (no recordingId)', () => {
-    const plan = planSceneAdoption({ voiced: lines }, [
+    const plan = planSceneAdoption({ voiced: lines, forceAdoptShotIds: [] }, [
       { id: 'shot-a', audioClips: [clip('c1', shotLines('shot-a'))] },
       { id: 'shot-b', audioClips: [clip('c2', shotLines('shot-b'))] },
     ]);
@@ -108,7 +124,7 @@ describe('planSceneAdoption', () => {
   });
 
   test('adopts a shot with no clip, and one that is gone', () => {
-    const plan = planSceneAdoption({ voiced: lines }, [
+    const plan = planSceneAdoption({ voiced: lines, forceAdoptShotIds: [] }, [
       { id: 'shot-a', audioClips: null },
     ]);
     expect(plan.adoptShotIds).toEqual(['shot-a', 'shot-b']);

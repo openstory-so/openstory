@@ -158,7 +158,7 @@ const ReadingRow: React.FC<{
   const facts = [
     recordedAt,
     formatElementDuration(reading.toSeconds - reading.fromSeconds),
-    reading.source === 'context' ? 'Recorded with another shot' : null,
+    reading.source === 'context' ? 'Generated with another shot' : null,
     reading.mismatch === 'voice'
       ? 'Voice changed since'
       : reading.mismatch === 'lines'
@@ -213,8 +213,9 @@ const ReadingRow: React.FC<{
 
 /**
  * This shot's readings, newest first. Boxed (the prompt editor) it shows
- * only when there is something to pick; `collapsible` (under the video) it
- * always holds its one row, so the block does not move when the list lands.
+ * only when there is something to pick or the current one went stale;
+ * `collapsible` (under the video) it always holds its one row, so the block
+ * does not move when the list lands.
  */
 export const ShotReadingsList: React.FC<{
   readings: ShotDialogueReading[];
@@ -295,7 +296,9 @@ export const ShotReadingsList: React.FC<{
       </Collapsible>
     );
   }
-  if (readings.every((reading) => reading.selected)) return null;
+  // A lone current reading says nothing new — unless it no longer matches
+  // (the voice or the lines moved), which is the one fact worth a row.
+  if (readings.every((r) => r.selected && r.matchesCurrentLines)) return null;
   return (
     <div className="flex flex-col gap-2 rounded-md border p-3">
       <span className="text-xs font-medium">Readings</span>
@@ -312,7 +315,7 @@ export type ShotDialogueClaimRow = {
 };
 
 /**
- * "Recording…" — one row per recording in flight, with the same way out every
+ * "Generating…" — one row per recording in flight, with the same way out every
  * other generation has. Cancel does not stop the run (it records the scene for
  * other shots too); it stops the reading from becoming this shot's audio.
  */
@@ -335,8 +338,8 @@ export const ShotRecordingsInFlight: React.FC<{
               aria-hidden
             />
             {claim.willBecomeCurrent
-              ? 'Recording…'
-              : 'Recording… will not replace the current audio'}
+              ? 'Generating…'
+              : 'Generating… will not replace the current audio'}
           </span>
           {claim.willBecomeCurrent ? (
             <Button

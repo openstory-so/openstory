@@ -7,23 +7,36 @@
  * playing a different reading than the one marked current.
  */
 
+import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
+import {
+  releaseReservationOnThrow,
+  reserveRunCredits,
+} from '@/billing/server/preflight';
 import {
   dialogueAudioMaxSeconds,
   dialogueAudioMinSeconds,
   dialogueClipSourceKey,
   dialogueFitBudget,
   sectionClip,
+  ttsCharacterCount,
   voicedDialogueLines,
 } from '@/motion/dialogue-tts';
+import { resolveShotDuration } from '@/motion/resolve-shot-duration';
 import { cutAudioSection } from '@/motion/server/cut-audio-section';
 import { safeImageToVideoModel } from '@/models/models';
 import { getLogger } from '@/platform/logger';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
+import { triggerWorkflow } from '@/platform/server/workflow/client';
+import type { DialogueAudioWorkflowInput } from '@/platform/server/workflow/types';
+import { loadSceneContextBySequence } from '@/shots/server/scene-script';
 import {
   loadShotDialogueResolver,
   requireSelectableSection,
+  sceneDialogueJobs,
+  shotDialogueResolver,
 } from '@/shots/server/shot-dialogue';
+import { voicedShotIds } from '@/shots/shot-dialogue';
 import { shotAccessMiddleware } from '@/shots/shot-access.fn';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
@@ -67,6 +80,18 @@ async function currentSourceKey(
   );
 }
 
+/**
+ * A source key without its voices. Each key line is
+ * `voiceId \t line \t tone \t model` (`dialogueClipSourceKey`); with the first
+ * column gone, two keys are equal exactly when only a voice moved. Covers the
+ * readings with no version id to compare: lines still derived from the script.
+ */
+const wordsOfKey = (key: string): string =>
+  key
+    .split('\n')
+    .map((line) => line.slice(line.indexOf('\t') + 1))
+    .join('\n');
+
 /** This shot's readings, newest first; discarded ones omitted. */
 export const listShotDialogueSectionsFn = createServerFn({ method: 'GET' })
   .middleware([shotAccessMiddleware])
@@ -94,8 +119,9 @@ export const listShotDialogueSectionsFn = createServerFn({ method: 'GET' })
       mismatch:
         currentKey !== '' && section.sourceKey === currentKey
           ? null
-          : section.dialogueVersionId !== null &&
-              section.dialogueVersionId === currentVersion?.id
+          : (section.dialogueVersionId !== null &&
+                section.dialogueVersionId === currentVersion?.id) ||
+              wordsOfKey(section.sourceKey) === wordsOfKey(currentKey)
             ? ('voice' as const)
             : ('lines' as const),
     }));
@@ -200,6 +226,81 @@ export const selectShotDialogueVersionFn = createServerFn({ method: 'POST' })
     return { versionId: version.id };
   });
 
+/**
+ * "Regenerate dialogue": another reading of this shot's lines, on demand. The same
+ * per-scene recorder every batch uses — the whole conversation is spoken so
+ * the turn is acted in context — with this shot forced to adopt even though
+ * its clip still matches. It lands through a claim like any other recording,
+ * so the panel shows "Generating…" with Cancel.
+ */
+export const regenerateShotDialogueFn = createServerFn({ method: 'POST' })
+  .middleware([shotAccessMiddleware])
+  .validator(zodValidator(shotInput))
+  .handler(async ({ context }) => {
+    const { scopedDb, shot, sequence, user } = context;
+    const [shots, characters, versions, sceneContext] = await Promise.all([
+      scopedDb.shots.listBySequence(sequence.id),
+      scopedDb.characters.list(sequence.id),
+      // The rows, not just the lines: a recording names the version it spoke.
+      scopedDb.shotDialogue.getSelectedBySequence(sequence.id),
+      loadSceneContextBySequence(scopedDb, sequence.id),
+    ]);
+    const selectedMotionByShot =
+      await scopedDb.shotPromptVersions.getSelectedMotionByShots(
+        shots.map((row) => row.id)
+      );
+    const model = safeImageToVideoModel(sequence.videoModel);
+    const [job] = sceneDialogueJobs({
+      needing: [shot],
+      shots,
+      dialogueOf: shotDialogueResolver({
+        linesByShotId: new Map(
+          versions.map((version) => [version.shotId, version.lines])
+        ),
+        shots,
+        legacyDialogueOf: (shotId) =>
+          selectedMotionByShot.get(shotId)?.dialogue,
+        scriptDialogueOf: (sceneId) =>
+          sceneContext.get(sceneId)?.script?.dialogue,
+      }),
+      characters,
+      versionIdByShotId: new Map(
+        versions.map((version) => [version.shotId, version.id])
+      ),
+      shotSecondsOf: (shotId) =>
+        shotId === shot.id
+          ? resolveShotDuration({ durationMs: shot.durationMs, model })
+          : undefined,
+    });
+    if (!job || !voicedShotIds(job.voiced).includes(shot.id)) {
+      throw new Error('This shot has no voiced lines to record');
+    }
+
+    const reservationId = await reserveRunCredits(
+      scopedDb,
+      estimateTtsCost(ttsCharacterCount(job.voiced)),
+      {
+        errorMessage: 'Insufficient credits to record dialogue',
+        sequenceId: sequence.id,
+      }
+    );
+    return releaseReservationOnThrow(scopedDb, reservationId, async () => {
+      const input: DialogueAudioWorkflowInput = {
+        userId: user.id,
+        teamId: sequence.teamId,
+        sequenceId: sequence.id,
+        reservationId,
+        ownsReservation: true,
+        scenes: [{ ...job, forceAdoptShotIds: [shot.id] }],
+        minDurationSeconds: dialogueAudioMinSeconds([model]),
+        maxDurationSeconds: dialogueAudioMaxSeconds([model]),
+      };
+      return {
+        workflowRunId: await triggerWorkflow('/dialogue-audio', input),
+      };
+    });
+  });
+
 /** Discard a reading. Discarding the current one leaves the shot with no clip. */
 export const discardShotDialogueSectionFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
@@ -228,7 +329,7 @@ export const discardShotDialogueSectionFn = createServerFn({ method: 'POST' })
     return { sectionId: data.sectionId };
   });
 
-/** This shot's dialogue recordings in flight (#1657) — the "Recording…" rows. */
+/** This shot's dialogue recordings in flight (#1657) — the "Generating…" rows. */
 export const listShotDialogueClaimsFn = createServerFn({ method: 'GET' })
   .middleware([shotAccessMiddleware])
   .validator(zodValidator(shotInput))

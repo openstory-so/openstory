@@ -518,6 +518,11 @@ export interface DialogueAudioSceneJob {
    * at, so a reading fits the cut rather than stretching it to the cap.
    */
   shotSeconds: Record<string, number>;
+  /**
+   * Shots that adopt the new audio even though their clip still matches —
+   * the user asked for another reading ("Regenerate dialogue"). Empty everywhere else.
+   */
+  forceAdoptShotIds: string[];
 }
 
 export interface DialogueAudioWorkflowInput extends UserWorkflowContext {

@@ -28,6 +28,8 @@ import {
 import type { SheetStaleness } from '@/cast/server/sheets/sheet-staleness';
 import { addCharacterToLibraryFn } from '@/cast/talent.fn';
 import { shotStalenessNamespace } from '@/shots/ui/use-shot-staleness';
+import { segmentKeys } from '@/shots/ui/use-segments';
+import { shotKeys } from '@/shots/ui/use-shots';
 import { elevenLabsVoiceKeys } from '@/cast/ui/use-elevenlabs-voices';
 import type { CharacterWithTalent } from '@/platform/server/db/schema';
 
@@ -111,6 +113,28 @@ type CharacterBibleInput = {
   voiceDescription?: string;
 };
 
+/**
+ * A character's voice moved (#1657): every reading it spoke stops matching
+ * ("Voice changed since") and every video that bound one reads stale. The
+ * voice is part of both keys, so both caches go with the cast list.
+ */
+function invalidateAfterVoiceChange(
+  queryClient: QueryClient,
+  sequenceId: string
+): void {
+  void queryClient.invalidateQueries({
+    queryKey: sequenceCharacterKeys.list(sequenceId),
+  });
+  void queryClient.invalidateQueries({
+    queryKey: shotKeys.dialogueSectionsAll(),
+  });
+  // The video's "Stale" chip is a segment verdict, not a shot one.
+  void queryClient.invalidateQueries({
+    queryKey: segmentKeys.list(sequenceId),
+  });
+  void queryClient.invalidateQueries({ queryKey: shotStalenessNamespace });
+}
+
 /** Voice design (#1553): the workflow's realtime events refresh the list. */
 export function useGenerateCharacterVoice() {
   return useMutation({
@@ -128,9 +152,7 @@ export function useSetCharacterVoiceEnabled() {
       enabled: boolean;
     }) => setCharacterVoiceEnabledFn({ data }),
     onSuccess: (_result, { sequenceId }) => {
-      void queryClient.invalidateQueries({
-        queryKey: sequenceCharacterKeys.list(sequenceId),
-      });
+      invalidateAfterVoiceChange(queryClient, sequenceId);
     },
   });
 }
@@ -144,9 +166,7 @@ export function useChooseCharacterVoiceTake() {
       generatedVoiceId: string;
     }) => chooseCharacterVoiceTakeFn({ data }),
     onSuccess: (_result, { sequenceId, characterId }) => {
-      void queryClient.invalidateQueries({
-        queryKey: sequenceCharacterKeys.list(sequenceId),
-      });
+      invalidateAfterVoiceChange(queryClient, sequenceId);
       void queryClient.invalidateQueries({
         queryKey: elevenLabsVoiceKeys.saved(characterId),
       });
@@ -167,9 +187,7 @@ export function useAssignCharacterVoice() {
       description?: string;
     }) => assignCharacterVoiceFn({ data }),
     onSuccess: (_result, { sequenceId, characterId }) => {
-      void queryClient.invalidateQueries({
-        queryKey: sequenceCharacterKeys.list(sequenceId),
-      });
+      invalidateAfterVoiceChange(queryClient, sequenceId);
       void queryClient.invalidateQueries({
         queryKey: elevenLabsVoiceKeys.saved(characterId),
       });
@@ -202,9 +220,7 @@ export function useSelectCharacterVoiceVersion() {
       versionId: string;
     }) => selectCharacterVoiceVersionFn({ data }),
     onSuccess: (_result, { sequenceId, characterId }) => {
-      void queryClient.invalidateQueries({
-        queryKey: sequenceCharacterKeys.list(sequenceId),
-      });
+      invalidateAfterVoiceChange(queryClient, sequenceId);
       void queryClient.invalidateQueries({
         queryKey: sequenceCharacterKeys.voiceVersions(sequenceId, characterId),
       });

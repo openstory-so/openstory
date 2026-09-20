@@ -1299,6 +1299,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
                 shotSecondsByShotId.get(shotId) ?? 0,
               ])
             ),
+            forceAdoptShotIds: [],
           },
         ];
       });
