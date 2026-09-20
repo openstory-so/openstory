@@ -11,7 +11,7 @@ Each laptop has its own ten random `*.openstory.so` names, stored at **`~/.opens
 
 ## One-time per machine
 
-Uses your existing **`wrangler login`** session (the OAuth token Wrangler already stores). No Cloudflare API token. If DNS create is denied (Wrangler’s login is zone-read-only), run **`cloudflared tunnel login`** once — also a browser login, not an API key — so `cloudflared tunnel route dns` can write the CNAMEs.
+Uses your existing **`wrangler login`** session (the OAuth token Wrangler already stores). No Cloudflare API token. Hostnames are `<two-words>.<zone>`; the zone is the host of `OPENSTORY_API_URL` (default `openstory.so`). If DNS create is denied (Wrangler’s login is zone-read-only), run **`cloudflared tunnel login`** once — also a browser login, not an API key — so `cloudflared tunnel route dns` can write the CNAMEs.
 
 ```bash
 bun tunnel:provision

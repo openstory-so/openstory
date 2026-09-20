@@ -26,23 +26,27 @@ const authCookiePrefix = isDev
   ? process.env.VITE_AUTH_COOKIE_PREFIX
   : undefined;
 
-function localTunnelName(): string | undefined {
+function localTunnel(): { tunnelName: string; zone: string } | undefined {
   const path = join(homedir(), '.openstory/dev-tunnels.json');
   if (!existsSync(path)) return undefined;
   try {
     const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
     if (
-      typeof parsed === 'object' &&
-      parsed !== null &&
-      'tunnelName' in parsed &&
-      typeof parsed.tunnelName === 'string'
+      typeof parsed !== 'object' ||
+      parsed === null ||
+      !('tunnelName' in parsed) ||
+      typeof parsed.tunnelName !== 'string'
     ) {
-      return parsed.tunnelName;
+      return undefined;
     }
+    const zone =
+      'zone' in parsed && typeof parsed.zone === 'string'
+        ? parsed.zone
+        : 'openstory.so';
+    return { tunnelName: parsed.tunnelName, zone };
   } catch {
     return undefined;
   }
-  return undefined;
 }
 
 function tunnelHmr():
@@ -51,17 +55,12 @@ function tunnelHmr():
   const appUrl = process.env.VITE_APP_URL;
   if (!appUrl) return undefined;
   try {
-    const host = new URL(appUrl).hostname;
-    if (!host.endsWith('.openstory.so')) return undefined;
-    if (
-      host === 'openstory.so' ||
-      host === 'www.openstory.so' ||
-      host === 'app.openstory.so' ||
-      host === 'assets.openstory.so'
-    ) {
+    const url = new URL(appUrl);
+    if (url.protocol !== 'https:') return undefined;
+    if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
       return undefined;
     }
-    return { protocol: 'wss', host, clientPort: 443 };
+    return { protocol: 'wss', host: url.hostname, clientPort: 443 };
   } catch {
     return undefined;
   }
@@ -71,7 +70,7 @@ const enableDevTunnel =
   isDev &&
   process.env.E2E_TEST !== 'true' &&
   process.env.CLOUDFLARE_ENV !== 'test';
-const namedTunnel = enableDevTunnel ? localTunnelName() : undefined;
+const namedTunnel = enableDevTunnel ? localTunnel() : undefined;
 
 const tunnelHmrConfig = tunnelHmr();
 
@@ -250,7 +249,7 @@ export default defineConfig({
       'localhost',
       '127.0.0.1',
       'host.docker.internal',
-      '.openstory.so',
+      `.${namedTunnel?.zone ?? 'openstory.so'}`,
     ],
     ...(tunnelHmrConfig ? { hmr: tunnelHmrConfig } : {}),
     watch: {
@@ -277,7 +276,7 @@ export default defineConfig({
     cloudflare({
       viteEnvironment: { name: 'ssr' },
       ...(enableDevTunnel
-        ? { tunnel: namedTunnel ? { name: namedTunnel } : true }
+        ? { tunnel: namedTunnel ? { name: namedTunnel.tunnelName } : true }
         : {}),
       // remoteBindings is left at its default (true) so an explicit
       // per-binding `remote: true` in wrangler.jsonc still works as an

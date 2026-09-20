@@ -18,8 +18,22 @@ import { upsertEnvVars } from './env-file';
 
 const DEV_TUNNEL_PORT_COUNT = 10;
 const DEV_TUNNEL_BASE_PORT = 3000;
-const DEV_TUNNEL_ZONE = 'openstory.so';
 const DEV_TUNNELS_RELATIVE_PATH = '.openstory/dev-tunnels.json';
+
+function tunnelZone(): string {
+  const raw = process.env.OPENSTORY_API_URL;
+  if (raw) {
+    try {
+      const host = new URL(raw).hostname;
+      if (host && host !== 'localhost' && host !== '127.0.0.1') {
+        return host.replace(/^www\./, '');
+      }
+    } catch {
+      // fall through
+    }
+  }
+  return 'openstory.so';
+}
 
 const DEV_TUNNEL_PORTS: readonly number[] = Array.from(
   { length: DEV_TUNNEL_PORT_COUNT },
@@ -190,7 +204,7 @@ function randomLabel(bytes: Uint8Array): string {
 }
 
 function hostnameForLabel(label: string): string {
-  return `${label}.${DEV_TUNNEL_ZONE}`;
+  return `${label}.${tunnelZone()}`;
 }
 
 function allocateRoutes(
@@ -292,7 +306,7 @@ export function readMapping(path = mappingPath()): DevTunnelsFile | undefined {
     v: 1,
     tunnelName: parsed.tunnelName,
     tunnelId: parsed.tunnelId,
-    zone: typeof parsed.zone === 'string' ? parsed.zone : DEV_TUNNEL_ZONE,
+    zone: typeof parsed.zone === 'string' ? parsed.zone : tunnelZone(),
     routes,
   };
 }
@@ -341,7 +355,7 @@ function buildMapping(input: {
     v: 1,
     tunnelName: input.tunnelName,
     tunnelId: input.tunnelId,
-    zone: DEV_TUNNEL_ZONE,
+    zone: tunnelZone(),
     routes: allocateRoutes(input.nextBytes ?? randomBytes),
   };
 }
@@ -565,7 +579,7 @@ async function defaultCloudflareIo(): Promise<CloudflareIo> {
 
       const zoneResult = await cf(
         'GET',
-        `https://api.cloudflare.com/client/v4/zones?name=${encodeURIComponent(DEV_TUNNEL_ZONE)}`
+        `https://api.cloudflare.com/client/v4/zones?name=${encodeURIComponent(tunnelZone())}`
       );
       const zoneId = firstId(zoneResult);
       if (!zoneId) {
