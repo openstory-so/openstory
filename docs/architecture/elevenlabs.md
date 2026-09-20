@@ -68,7 +68,9 @@ write appends a `character_voice_versions` row with an explicit `source`
 ('analysis' | 'generated' | 'library' | 'user-edit' | 'disabled' |
 'removed' — never inferred from which columns moved) and moves
 `characters.selectedVoiceVersionId`, the only selection pointer, whose values
-the voice columns mirror. 'removed' means the character dropped its voice id;
+the voice columns mirror. `createdBy` is the person whose action made the
+version — required on `updateVoice` so no writer forgets it, null when nobody
+did (the cast-records seed). 'removed' means the character dropped its voice id;
 only `releasedAt` means the ElevenLabs slot was actually freed.
 `releaseVoiceIfUnreferenced` stamps `releasedAt` on every row holding the id
 it deletes — and on one it finds already gone at ElevenLabs (404) — and
@@ -114,9 +116,12 @@ cuts, then `selectSection` moves the pointer and writes `shots.audioClips` in
 one batch.
 `appendRecording` is one batch (recording, clear the adopting shots' selected
 sections, insert all sections) with ids generated inside the workflow step
-and `onConflictDoNothing`, so a replay is idempotent. Nothing discards a
-section yet; reads already honour `discardedAt` (the list omits it, select
-refuses it). A conversation over `DIALOGUE_TAKE_CHUNK_CHARS` (2,000)
+and `onConflictDoNothing`, so a replay is idempotent.
+`discardShotDialogueSectionFn` → `discardSection` soft-discards a reading
+(`discardedAt`; the list omits it, select refuses it). Discarding the shot's
+CURRENT reading clears `shots.audioClips` in the same batch — a shot must not
+keep audio cut from a reading that is gone — so the next render records. The
+recording file stays: other shots may hold sections of it. A conversation over `DIALOGUE_TAKE_CHUNK_CHARS` (2,000)
 splits at a **shot boundary**, never inside a shot (`chunkTakeLines`); each
 chunk is its own recording, and only chunks holding an adopting shot are
 recorded at all. `recordDialogue` (`src/motion/server/record-dialogue.ts`) is
@@ -127,8 +132,38 @@ trigger, the shot's own turns plus whole neighbouring shots grown outward
 while under the chunk limit — and `adoptShotIds: [shotId]`, so it records the
 window and keeps only its own shot.
 
-**The shot is the one source of lines.** `shot_dialogue_versions` is the
-authored node. The shot-list pass seeds a `prompt` row per shot; the prompt
+**The shot is the one source of lines, and the only place they are written.**
+What a shot says is resolved by ONE ladder — `resolveShotDialogue`
+(`src/shots/shot-dialogue.ts`), built per request as `shotDialogueResolver`
+(`src/shots/server/shot-dialogue.ts`):
+
+1. the shot's selected `shot_dialogue_versions` row (an EMPTY row is an answer:
+   "this shot lost its lines");
+2. else `shot_prompt_versions.dialogue` on its selected motion row — only rows
+   from before #1657 have one; **nothing writes that column any more**;
+3. else the lines the script stamps onto it (`deriveShotDialogueLines`).
+
+Every reader goes through it — render triggers, the recording context
+(`dialogueContextFor`), the staleness read (`loadLiveShotInputs`), the prompt
+preview, the reading-select guard and the UI (`ShotView.dialogue`) — so the
+recording, the prompt text and the panel cannot disagree. It is enforced at
+one seam: `motionPromptFromVersion(version, dialogue)` takes the resolved
+dialogue as a REQUIRED argument, so no builder can assemble a prompt around a
+row's own copy. A workflow cannot read the node, so its form of the ladder is
+fed from the payload (`dialogueLinesByShotId`; a continue snapshots EVERY shot
+resolved in `refreshCheckpointFromCast`), and the motion-prompt LLM's own
+`dialogue` output is never a source of lines. Before a pre-#1657 shot's
+selected prompt row is superseded, `promoteLegacyDialogue`
+(`shot-prompt-versions.ts`) moves its lines — and any voice bound to them —
+onto a `shot_dialogue_versions` row, so rung 2 is never stranded.
+
+**Going back.** `listShotDialogueVersionsFn` / `selectShotDialogueVersionFn`
+(the History list in the prompt editor) re-point the selected version, and
+that is the whole change: every reader follows the pointer. The current
+reading stops matching (the next render records), and a reading of the
+restored wording becomes usable again — `sourceKey` finds it.
+
+`shot_dialogue_versions` is the authored node. The shot-list pass seeds a `prompt` row per shot; the prompt
 editor appends `user-edit` (`scopedDb.shotDialogue.write`, which returns the
 selected row unchanged when the lines are identical). The save touches one
 shot's row, so it cannot drop a concurrent edit to another shot — the
