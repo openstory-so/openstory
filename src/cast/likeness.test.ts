@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { isPersonFromTalentCast, registersWithArk } from './likeness';
+import {
+  isPersonFromTalentCast,
+  isPersonFromUploadLedger,
+  registersWithArk,
+} from './likeness';
 
 describe('registersWithArk', () => {
   it('registers a person, and a missing value on in-flight payloads', () => {
@@ -23,5 +27,19 @@ describe('isPersonFromTalentCast', () => {
     expect(isPersonFromTalentCast(true, false)).toBe(true);
     expect(isPersonFromTalentCast(false, false)).toBe(false);
     expect(isPersonFromTalentCast(true, undefined)).toBe(true);
+  });
+});
+
+describe('isPersonFromUploadLedger', () => {
+  it('is a person when the ledger is a signed portrait', () => {
+    expect(isPersonFromUploadLedger(true, 'real')).toBe(true);
+    expect(isPersonFromUploadLedger(false, 'real')).toBe(true);
+  });
+
+  it('keeps the bible value when the ledger is cleared or missing', () => {
+    expect(isPersonFromUploadLedger(true, 'none')).toBe(true);
+    expect(isPersonFromUploadLedger(false, 'none')).toBe(false);
+    expect(isPersonFromUploadLedger(true, null)).toBe(true);
+    expect(isPersonFromUploadLedger(false, undefined)).toBe(false);
   });
 });

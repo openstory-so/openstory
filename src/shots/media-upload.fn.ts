@@ -24,6 +24,7 @@ import {
   computeLocationSheetInputHash,
   hashVisualPromptInput,
 } from './input-hash';
+import { isPersonFromUploadLedger } from '@/cast/likeness';
 import { resolveSheetImageModel } from '@/cast/sheet-image-model';
 import {
   likenessFromLedger,
@@ -710,12 +711,14 @@ export const setCharacterSheetFromUploadFn = createServerFn({ method: 'POST' })
       context.teamId
     );
     await requireUploadRights(scopedDb, [data.publicUrl]);
-    const isPerson =
-      (await likenessFromLedger(scopedDb, data.publicUrl)) !== 'none';
     const character = await scopedDb.characters.getById(data.characterId);
     if (!character || character.sequenceId !== sequence.id) {
       throw new NotFoundError('Character not found');
     }
+    const isPerson = isPersonFromUploadLedger(
+      character.isPerson,
+      await likenessFromLedger(scopedDb, data.publicUrl)
+    );
 
     // Same upstream resolution the character-sheet workflow uses: the matched
     // talent's default convergent sheet hash, else null.

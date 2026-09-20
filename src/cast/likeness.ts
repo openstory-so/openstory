@@ -22,3 +22,14 @@ export function isPersonFromTalentCast(
 ): boolean {
   return talentHasSignedRelease ? true : isPerson;
 }
+
+/**
+ * A signed uploaded portrait is a person; a cleared or missing ledger
+ * row does not flip the bible (`isPerson` includes stylised people).
+ */
+export function isPersonFromUploadLedger(
+  isPerson: boolean,
+  likeness: Likeness | null | undefined
+): boolean {
+  return likeness === 'real' ? true : isPerson;
+}
