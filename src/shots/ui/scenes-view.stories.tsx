@@ -1,4 +1,5 @@
 import { ScenesView } from './scenes-view';
+import { UploadRightsGateStub } from '@/cast/ui/upload-rights-gate';
 import type { SceneWithScript } from './use-scenes';
 import { dbSceneId } from '@/shots/scene-id';
 import type {
@@ -146,7 +147,9 @@ const meta = {
 
       return (
         <QueryClientProvider client={queryClient}>
-          <RouterProvider router={router} />
+          <UploadRightsGateStub>
+            <RouterProvider router={router} />
+          </UploadRightsGateStub>
         </QueryClientProvider>
       );
     },
@@ -180,6 +183,30 @@ export const RealSequence: Story = {
       },
     },
   },
+};
+
+/** Available width after the expanded app navigation on a small desktop. */
+export const SmallDesktop: Story = {
+  ...RealSequence,
+  decorators: [
+    (Story) => (
+      <div className="h-[800px] w-[1100px] max-w-full">
+        <Story />
+      </div>
+    ),
+  ],
+};
+
+/** The inspector collapses below the preview when three columns no longer fit. */
+export const NarrowWorkspace: Story = {
+  ...RealSequence,
+  decorators: [
+    (Story) => (
+      <div className="h-[800px] w-[800px] max-w-full">
+        <Story />
+      </div>
+    ),
+  ],
 };
 
 /**

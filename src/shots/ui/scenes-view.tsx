@@ -1202,7 +1202,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   const [isRetrying, setIsRetrying] = useState(false);
 
   // Mobile inspector starts collapsed so the canvas keeps the vertical space.
-  const [mobileInspectorOpen, setMobileInspectorOpen] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
 
   const failureSummary = useMemo(
     () => analyzeLoadedFailures(shots, sequence, scenesById),
@@ -1572,7 +1572,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   };
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="@container/scenes flex h-full flex-col">
       {/* Progress rides in the sequence title row (#1427) — no layout shift,
           and it never sits on top of anything you might want to click. */}
       <SequenceHeaderPortal>{progressChip}</SequenceHeaderPortal>
@@ -1590,14 +1590,17 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
 
       <div className="flex flex-1 min-h-0">
         <div className="hidden min-h-0 md:block shrink-0 pl-4 py-4">
-          <SceneList {...sceneListProps} className="w-[280px] lg:w-[360px]" />
+          <SceneList
+            {...sceneListProps}
+            className="w-[clamp(220px,24cqw,360px)]"
+          />
         </div>
 
         <div className="md:hidden">
           <MobileSceneDrawer {...sceneListProps} />
         </div>
 
-        <div className="flex flex-1 min-h-0 min-w-0 flex-col md:flex-row">
+        <div className="flex flex-1 min-h-0 min-w-0 flex-col @5xl/scenes:flex-row">
           <div className="flex flex-1 min-h-0 min-w-0 flex-col">
             <CanvasViewToggle
               view={effectiveView}
@@ -1679,15 +1682,15 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
             </div>
           </div>
 
-          {/* One inspector: phone collapse bar + `hidden`/`md:flex`, desktop
-              card. Same CSS-visibility rule as the scene list, one tree. */}
-          <div className="relative z-10 shrink-0 border-t bg-background pb-20 md:min-h-0 md:border-0 md:bg-transparent md:pb-0 md:pr-4 md:py-4">
+          {/* Use the available workspace width (including the app sidebar's
+              effect), so the inspector yields before the preview is squeezed. */}
+          <div className="relative z-10 min-w-0 shrink-0 border-t bg-background pb-20 md:pb-0 @5xl/scenes:min-h-0 @5xl/scenes:border-0 @5xl/scenes:bg-transparent @5xl/scenes:pr-4 @5xl/scenes:py-4">
             <button
               type="button"
-              className="flex min-h-11 w-full items-center justify-between px-4 py-2 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 md:hidden"
-              aria-expanded={mobileInspectorOpen}
+              className="flex min-h-11 w-full items-center justify-between px-4 py-2 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 @5xl/scenes:hidden"
+              aria-expanded={inspectorOpen}
               aria-controls="scene-inspector"
-              onClick={() => setMobileInspectorOpen((open) => !open)}
+              onClick={() => setInspectorOpen((open) => !open)}
             >
               <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 {scopeLabel[scope]}
@@ -1695,19 +1698,19 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
               <ChevronDown
                 className={cn(
                   'h-4 w-4 text-muted-foreground transition-transform motion-reduce:transition-none',
-                  mobileInspectorOpen && 'rotate-180'
+                  inspectorOpen && 'rotate-180'
                 )}
               />
             </button>
             <div
               id="scene-inspector"
               className={cn(
-                // The phone height is on this wrapper, not on the ScrollArea:
+                // The collapsed-layout height is on this wrapper, not the ScrollArea:
                 // a `max-h` alone leaves the Radix viewport (`height: 100%` of
                 // an auto-height root) resolving to its content height, so the
                 // root clipped at 40dvh with nothing scrollable inside it.
-                'max-md:h-[40dvh] md:flex md:h-full md:min-h-0 md:w-[380px] lg:w-[420px] md:flex-col md:overflow-hidden md:rounded-lg md:border md:bg-background',
-                mobileInspectorOpen ? 'block' : 'hidden'
+                'h-[40dvh] @5xl/scenes:flex @5xl/scenes:h-full @5xl/scenes:min-h-0 @5xl/scenes:w-[min(28cqw,420px)] @5xl/scenes:flex-col @5xl/scenes:overflow-hidden @5xl/scenes:rounded-lg @5xl/scenes:border @5xl/scenes:bg-background',
+                inspectorOpen ? 'block' : 'hidden'
               )}
             >
               <ScrollArea className="h-full min-h-0">
@@ -1723,7 +1726,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                   targetDurationSeconds={sequence?.targetDurationSeconds}
                   analysisModel={sequence?.analysisModel ?? undefined}
                 />
-                <div className="px-4 pb-4">
+                <div className="@container/inspector px-4 pb-4">
                   <SceneScriptPrompts
                     shot={selectedShot}
                     sequenceId={sequenceId}

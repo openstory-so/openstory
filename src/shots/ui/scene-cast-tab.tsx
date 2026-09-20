@@ -196,7 +196,7 @@ export const SceneCastTab: React.FC<SceneCastTabProps> = ({
   // Loading state
   if (isLoading) {
     return (
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-4 @[360px]/inspector:grid-cols-3">
         <CastCardSkeleton />
         <CastCardSkeleton />
         <CastCardSkeleton />
@@ -240,7 +240,7 @@ export const SceneCastTab: React.FC<SceneCastTabProps> = ({
         {canAdd && <AddCharacterDialog sequenceId={sequenceId} />}
       </div>
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-4 @[360px]/inspector:grid-cols-3">
         {scopedCast.map((character) => (
           <CastCard
             key={character.id}

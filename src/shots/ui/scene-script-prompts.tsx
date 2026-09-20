@@ -1444,8 +1444,8 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
         />
       )}
 
-      {/* Mobile: Select dropdown */}
-      <div className="md:hidden">
+      {/* Use a dropdown whenever the inspector is too narrow for all tabs. */}
+      <div className="@[360px]/inspector:hidden">
         <Select
           value={selectedTab}
           items={visibleTabs}
@@ -1470,7 +1470,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
 
       {/* Desktop: content-sized list — avoid w-full, which stretches each
           flex-1 trigger and spaces short labels too far apart. */}
-      <TabsList className="hidden md:inline-flex">
+      <TabsList className="hidden @[360px]/inspector:inline-flex">
         {visibleTabs.map((t) => (
           <TabsTrigger key={t.value} value={t.value}>
             {t.label}

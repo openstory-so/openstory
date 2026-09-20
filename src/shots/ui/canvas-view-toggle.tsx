@@ -17,8 +17,7 @@ type CanvasViewToggleProps = {
   /** Progressive reveal (#1091): the canvas has nothing to show until the
    *  first shot preview lands, so the item stays disabled during the split. */
   canvasDisabled?: boolean;
-  /** View-scoped action in the right column. The 1fr / auto / 1fr grid keeps
-   *  the toggle centred without overlapping this control on a narrow screen. */
+  /** View-scoped action; wraps below the toggle when the preview is narrow. */
   trailing?: React.ReactNode;
 };
 
@@ -28,8 +27,7 @@ export const CanvasViewToggle: React.FC<CanvasViewToggleProps> = ({
   canvasDisabled,
   trailing,
 }) => (
-  <div className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 px-2 pt-4 md:px-4">
-    <div />
+  <div className="flex shrink-0 flex-wrap items-center justify-center gap-2 px-2 pt-4 md:px-4">
     <ToggleGroup
       type="single"
       value={view}

@@ -230,7 +230,7 @@ export const SceneElementsTab: React.FC<SceneElementsTabProps> = ({
 
   if (isLoading) {
     return (
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-4 @[360px]/inspector:grid-cols-3">
         {Array.from({ length: 3 }).map((_, i) => (
           <Skeleton key={i} className="aspect-square rounded-lg" />
         ))}
@@ -296,7 +296,7 @@ export const SceneElementsTab: React.FC<SceneElementsTabProps> = ({
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-4 @[360px]/inspector:grid-cols-3">
         {sceneElements.map((el) => (
           <Link
             key={el.id}

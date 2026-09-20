@@ -69,9 +69,9 @@ export function CreatingScenesView({
         </div>
       </div>
       <div className="mx-auto w-full max-w-[1920px] flex-1 min-h-0 overflow-hidden">
-        <div className="flex h-full min-h-0">
+        <div className="@container/scenes flex h-full min-h-0">
           <div className="hidden shrink-0 pl-4 py-4 md:block">
-            <div className="h-full w-[280px] lg:w-[360px]" />
+            <div className="h-full w-[clamp(220px,24cqw,360px)]" />
           </div>
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <CanvasViewToggle
@@ -89,7 +89,9 @@ export function CreatingScenesView({
               />
             </div>
           </div>
-          <div className="hidden shrink-0 md:block md:w-[380px] md:pr-4 md:py-4 lg:w-[420px]" />
+          <div className="hidden shrink-0 @5xl/scenes:block @5xl/scenes:pr-4 @5xl/scenes:py-4">
+            <div className="h-full w-[min(28cqw,420px)]" />
+          </div>
         </div>
       </div>
     </div>
