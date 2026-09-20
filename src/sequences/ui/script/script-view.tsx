@@ -1271,7 +1271,10 @@ export const ScriptView: FC<{
     generateStartFrames,
     generateVoices,
   });
-  const generateScopeLabel = runScopeLabel(stopAt);
+  const generateScopeLabel = runScopeLabel(stopAt, {
+    generateStartFrames,
+    generateVoices,
+  });
 
   // Nothing written yet: Enhance writes the script instead of expanding one
   // (#1393), so it stays live at any length and says which job it is doing.

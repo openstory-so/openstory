@@ -54,6 +54,56 @@ export function isContinueStage(
   return stage === 'references' || stage === 'images' || stage === 'dialogue';
 }
 
+/**
+ * Canvas continue: start-frames can still change only before Images has
+ * run. After that, stills exist (or the sequence is already reference-only
+ * because Images was skipped) and toggling would rewrite rendered shots.
+ */
+export function continueOffersStartFramesSwitch(
+  startFrom: GenerationStage
+): boolean {
+  // Images has not run yet when continue starts at Images — still optional.
+  return stageIndex(startFrom) <= stageIndex('images');
+}
+
+/**
+ * Canvas continue: Voices can still change until Dialogue has finished.
+ * Starting at Dialogue means clips have not run yet — turning Voices off
+ * skips them for this continue.
+ */
+export function continueOffersVoicesSwitch(
+  startFrom: GenerationStage
+): boolean {
+  return stageIndex(startFrom) <= stageIndex('dialogue');
+}
+
+/**
+ * Apply start-frames / Voices edits from a continue click. Flags for
+ * stages that have already run are ignored so a stale client cannot
+ * rewrite them.
+ */
+export function resolveContinueGenerationFlags(args: {
+  startFrom: GenerationStage;
+  current: { generateStartFrames: boolean; generateVoices: boolean };
+  requested?: {
+    generateStartFrames?: boolean;
+    generateVoices?: boolean;
+  };
+}): { generateStartFrames: boolean; generateVoices: boolean } {
+  return {
+    generateStartFrames:
+      args.requested?.generateStartFrames !== undefined &&
+      continueOffersStartFramesSwitch(args.startFrom)
+        ? args.requested.generateStartFrames
+        : args.current.generateStartFrames,
+    generateVoices:
+      args.requested?.generateVoices !== undefined &&
+      continueOffersVoicesSwitch(args.startFrom)
+        ? args.requested.generateVoices
+        : args.current.generateVoices,
+  };
+}
+
 /** Product default: stills + motion + music (the short-film aha). */
 export const DEFAULT_GENERATION_STOP_AT: GenerationStage = 'music';
 
@@ -225,8 +275,8 @@ export function resolveStopAt(opts: {
 /**
  * Observable artifacts + the workflow's last completed stage. Artifacts are
  * the evidence (a crash after images landed but before the stage write still
- * looks like images); `pipelineStage` only vouches for Script, whose scenes
- * can be deleted by hand.
+ * looks like images). `pipelineStage` is a floor for continue stages so a
+ * finished step cannot be offered again when shot rows lag the persist.
  */
 export type PipelineArtifacts = {
   hasScenes: boolean;
@@ -243,14 +293,83 @@ export function completedStageFromArtifacts(
 ): GenerationStage | null {
   // Music outlives a re-run that deleted every shot; on its own it would hide
   // the whole board behind a finished pipeline.
-  if (artifacts.hasMusic && artifacts.hasMotion) return 'music';
-  if (artifacts.hasMotion) return 'motion';
-  if (coerceStage(artifacts.pipelineStage) === 'dialogue') return 'dialogue';
-  if (artifacts.hasImages) return 'images';
-  if (artifacts.hasVisualPrompts) return 'references';
-  if (artifacts.hasScenes || coerceStage(artifacts.pipelineStage) === 'script')
-    return 'script';
-  return null;
+  let completed: GenerationStage | null = null;
+  if (artifacts.hasMusic && artifacts.hasMotion) completed = 'music';
+  else if (artifacts.hasMotion) completed = 'motion';
+  else if (artifacts.hasImages) completed = 'images';
+  else if (artifacts.hasVisualPrompts) completed = 'references';
+  else if (artifacts.hasScenes) completed = 'script';
+
+  // Shot rows can lag the persist (prompts not mirrored yet). A persisted
+  // continue-stage is still done — otherwise the canvas slider offers the
+  // same step again (#1698). Motion/music still need files: leftover music
+  // after a shot wipe must not look finished.
+  const persisted = coerceStage(artifacts.pipelineStage);
+  if (
+    persisted &&
+    persisted !== 'motion' &&
+    persisted !== 'music' &&
+    (completed === null || stageIndex(persisted) > stageIndex(completed))
+  ) {
+    completed = persisted;
+  }
+  return completed;
+}
+
+/**
+ * Next stage a continue click may start from, given the checkpoint the last
+ * run persisted. Skips Images when start frames are off and Dialogue when
+ * Voices is off — same skips as the canvas slider.
+ */
+export function continueReachableFrom(
+  completed: GenerationStage,
+  opts: { generateStartFrames: boolean; generateVoices: boolean }
+): GenerationStage | null {
+  let reachable = nextStageAfter(completed);
+  if (reachable === 'images' && !opts.generateStartFrames) {
+    reachable = nextStageAfter(reachable);
+  }
+  if (reachable === 'dialogue' && !opts.generateVoices) {
+    reachable = nextStageAfter(reachable);
+  }
+  return reachable;
+}
+
+/**
+ * Continue start for the canvas footer after the user toggles start frames
+ * or Voices. `nextStage` is the sequence's next unrun stage; draft flags
+ * may skip it (Images off, Voices off).
+ */
+export function continueStartFrom(
+  nextStage: GenerationStage,
+  flags: { generateStartFrames: boolean; generateVoices: boolean }
+): GenerationStage | null {
+  if (nextStage === 'images' && !flags.generateStartFrames) {
+    return continueReachableFrom('references', flags);
+  }
+  if (nextStage === 'dialogue' && !flags.generateVoices) {
+    return continueReachableFrom(
+      flags.generateStartFrames ? 'images' : 'references',
+      flags
+    );
+  }
+  return nextStage;
+}
+
+/**
+ * A continue click may still send the stage the footer was sitting on
+ * (Images) after draft flags skipped it to Dialogue or Motion. Accept that
+ * and run from `reachable`. Reject a start that would re-run a completed
+ * stage or jump past what the checkpoint can hydrate.
+ */
+export function alignContinueStartFrom(
+  requested: GenerationStage,
+  reachable: GenerationStage,
+  flags: { generateStartFrames: boolean; generateVoices: boolean }
+): GenerationStage | null {
+  if (requested === reachable) return reachable;
+  if (stageIndex(requested) > stageIndex(reachable)) return null;
+  return continueStartFrom(requested, flags) === reachable ? reachable : null;
 }
 
 /**
@@ -283,7 +402,18 @@ export function continueStageFromState(args: {
   return nextActionFromArtifacts(args.artifacts);
 }
 
-export function actionLabelForStage(stage: GenerationStage): string {
+export function actionLabelForStage(
+  stage: GenerationStage,
+  opts?: { generateStartFrames?: boolean; startFrom?: GenerationStage }
+): string {
+  if (
+    stage === 'dialogue' &&
+    opts?.generateStartFrames &&
+    opts.startFrom != null &&
+    shouldRunStage(opts.startFrom, stage, 'images')
+  ) {
+    return 'Generate Start Frames & Dialogue';
+  }
   return GENERATION_STAGE_META[stage].actionLabel;
 }
 
@@ -394,13 +524,21 @@ export function bannerStagesForStopAt(
  * Generate-dialog / continue-slider stops. Same as a full-run banner — the
  * last thumb is Motion & Music (`stopAt: 'music'`). Reference-only has no
  * Images stop. Voices off has no Dialogue stop — clips still run before
- * motion when a talent already holds a voiceId.
+ * motion when a talent already holds a voiceId. Start frames + Voices share
+ * one start-frames-and-dialogue stop (the two ticks do not fit on the canvas slider).
  */
 export function sliderStages(
   referenceOnly: boolean,
   generateVoices = false
 ): GenerationStage[] {
-  return bannerStagesForStopAt('music', { referenceOnly, generateVoices });
+  const stages = bannerStagesForStopAt('music', {
+    referenceOnly,
+    generateVoices,
+  });
+  if (!referenceOnly && generateVoices) {
+    return stages.filter((stage) => stage !== 'images');
+  }
+  return stages;
 }
 
 export function sliderThumbIndex(
@@ -428,10 +566,27 @@ export function stopAtFromSliderIndex(
   return stage === 'motion' ? 'music' : stage;
 }
 
-export function sliderStopLabel(stopAt: GenerationStage): string {
+export function sliderStopLabel(
+  stopAt: GenerationStage,
+  opts?: { generateStartFrames?: boolean }
+): string {
   if (stopAt === 'music' || stopAt === 'motion') return 'Motion & Music';
   if (stopAt === 'references') return 'References & Prompts';
+  if (stopAt === 'dialogue' && opts?.generateStartFrames) {
+    return 'Start Frames & Dialogue';
+  }
   return GENERATION_STAGE_META[stopAt].shortName;
+}
+
+/**
+ * Tick copy: keep "X & Y" on at most two lines (`Motion &` / `Music`), never
+ * three (`Motion` / `&` / `Music`).
+ */
+export function sliderTickLabel(
+  stopAt: GenerationStage,
+  opts?: { generateStartFrames?: boolean }
+): string {
+  return sliderStopLabel(stopAt, opts).replace(' & ', '\u00a0&\n');
 }
 
 /**
@@ -447,7 +602,13 @@ const STOP_AFTER_SENTENCE: Record<GenerationStage, string> = {
   music: 'Don’t stop',
 };
 
-export function stopAfterSentence(stopAt: GenerationStage): string {
+export function stopAfterSentence(
+  stopAt: GenerationStage,
+  opts?: { generateStartFrames?: boolean }
+): string {
+  if (stopAt === 'dialogue' && opts?.generateStartFrames) {
+    return 'Stop after start frames & dialogue';
+  }
   return STOP_AFTER_SENTENCE[stopAt];
 }
 
@@ -455,7 +616,14 @@ export function stopAfterSentence(stopAt: GenerationStage): string {
  * The Generate-button scope line (#1526): names the current stop-at.
  * Same "Stops after {stage}" copy as main; a full run is "Whole sequence".
  */
-export function runScopeLabel(stopAt: GenerationStage): string {
+export function runScopeLabel(
+  stopAt: GenerationStage,
+  opts?: { generateStartFrames?: boolean; generateVoices?: boolean }
+): string {
   if (stopAt === 'music' || stopAt === 'motion') return 'Whole sequence';
-  return `Stops after ${sliderStopLabel(stopAt)}`;
+  const stage =
+    stopAt === 'images' && opts?.generateStartFrames && opts.generateVoices
+      ? 'dialogue'
+      : stopAt;
+  return `Stops after ${sliderStopLabel(stage, opts)}`;
 }

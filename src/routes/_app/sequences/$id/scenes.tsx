@@ -61,13 +61,21 @@ export const Route = createFileRoute('/_app/sequences/$id/scenes')({
     if (isContinueStage(nextStage)) {
       const stopAt = sequence.generationStopAt ?? DEFAULT_GENERATION_STOP_AT;
       await queryClient.ensureQueryData({
-        queryKey: sequenceKeys.generationSlice(params.id, nextStage, stopAt),
+        queryKey: sequenceKeys.generationSlice(
+          params.id,
+          nextStage,
+          stopAt,
+          sequence.generateStartFrames,
+          sequence.generateVoices
+        ),
         queryFn: () =>
           estimateGenerationSliceFn({
             data: {
               sequenceId: params.id,
               startFrom: nextStage,
               stopAt,
+              generateStartFrames: sequence.generateStartFrames,
+              generateVoices: sequence.generateVoices,
             },
           }),
       });

@@ -132,3 +132,28 @@ describe('sequences.create persists the chosen settings', () => {
     });
   });
 });
+
+describe('sequences.update persists continue generation flags', () => {
+  it('writes generateStartFrames and generateVoices chosen on continue', async () => {
+    const methods = createSequencesMethods(db, teamId, userId);
+    const created = await methods.create({
+      title: 'Stopped after references',
+      styleId,
+      generateStartFrames: false,
+      generateVoices: false,
+    });
+
+    const updated = await methods.update({
+      id: created.id,
+      generateStartFrames: true,
+      generateVoices: true,
+    });
+
+    expect(updated.generateStartFrames).toBe(true);
+    expect(updated.generateVoices).toBe(true);
+
+    const [row] = await db.select().from(sequences);
+    expect(row?.generateStartFrames).toBe(true);
+    expect(row?.generateVoices).toBe(true);
+  });
+});

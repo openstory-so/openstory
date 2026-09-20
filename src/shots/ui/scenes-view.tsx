@@ -1370,7 +1370,12 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   );
 
   const handleContinueGeneration = useCallback(
-    async (args: { startFrom: ContinueStage; stopAt: GenerationStage }) => {
+    async (args: {
+      startFrom: ContinueStage;
+      stopAt: GenerationStage;
+      generateStartFrames: boolean;
+      generateVoices: boolean;
+    }) => {
       // Optimistic status flip, as the motion batch does: the chip and the
       // footer key off `sequence.status`, and the server fn reserves credits
       // and triggers the workflow before it returns.
@@ -1389,8 +1394,8 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
         stopAt: args.stopAt,
         autoGenerateMotion,
         autoGenerateMusic,
-        referenceOnly: !generateStartFrames,
-        generateVoices: sequence?.generateVoices ?? false,
+        referenceOnly: !args.generateStartFrames,
+        generateVoices: args.generateVoices,
       });
       // Flip status AND stop-at together so the chip sizes for the Continue
       // (Casting → References, etc.) instead of the finished run.
@@ -1403,6 +1408,8 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
               generationStopAt: args.stopAt,
               autoGenerateMotion,
               autoGenerateMusic,
+              generateStartFrames: args.generateStartFrames,
+              generateVoices: args.generateVoices,
             }
           : old
       );
@@ -1413,6 +1420,8 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
             startFrom: args.startFrom,
             stopAt: args.stopAt,
             leftoverGrokShotIds: [...leftoverGrokShotIds],
+            generateStartFrames: args.generateStartFrames,
+            generateVoices: args.generateVoices,
           },
         });
       } catch (error) {
@@ -1428,14 +1437,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
         queryKey: sequenceKeys.detail(sequenceId),
       });
     },
-    [
-      sequenceId,
-      leftoverGrokShotIds,
-      queryClient,
-      generateStartFrames,
-      sequence?.generateVoices,
-      resetGenerationStream,
-    ]
+    [sequenceId, leftoverGrokShotIds, queryClient, resetGenerationStream]
   );
 
   const handleGenerateMusic = useCallback(

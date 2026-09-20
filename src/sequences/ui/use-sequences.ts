@@ -43,13 +43,17 @@ export const sequenceKeys = {
   generationSlice: (
     id: string,
     startFrom: GenerationStage,
-    stopAt: GenerationStage
+    stopAt: GenerationStage,
+    generateStartFrames?: boolean,
+    generateVoices?: boolean
   ) =>
     [
       ...sequenceKeys.detail(id),
       'generation-slice',
       startFrom,
       stopAt,
+      generateStartFrames,
+      generateVoices,
     ] as const,
 };
 
@@ -57,6 +61,8 @@ export function useGenerationSliceEstimate(args: {
   sequenceId: string;
   startFrom: GenerationStage | null | undefined;
   stopAt: GenerationStage;
+  generateStartFrames?: boolean;
+  generateVoices?: boolean;
   enabled?: boolean;
 }): Microdollars | null | undefined {
   const { data } = useQuery({
@@ -66,7 +72,9 @@ export function useGenerationSliceEstimate(args: {
         : sequenceKeys.generationSlice(
             args.sequenceId,
             args.startFrom,
-            args.stopAt
+            args.stopAt,
+            args.generateStartFrames,
+            args.generateVoices
           ),
     queryFn: async () => {
       if (args.startFrom == null) return { estimateMicros: null };
@@ -75,6 +83,8 @@ export function useGenerationSliceEstimate(args: {
           sequenceId: args.sequenceId,
           startFrom: args.startFrom,
           stopAt: args.stopAt,
+          generateStartFrames: args.generateStartFrames,
+          generateVoices: args.generateVoices,
         },
       });
     },

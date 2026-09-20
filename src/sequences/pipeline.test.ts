@@ -6,12 +6,19 @@ import {
   completedStageFromArtifacts,
   sliderStages,
   sliderStopLabel,
+  sliderTickLabel,
   stopAfterSentence,
   runScopeLabel,
   sliderThumbIndex,
   stopAtFromSliderIndex,
+  continueOffersStartFramesSwitch,
+  continueOffersVoicesSwitch,
+  continueReachableFrom,
+  continueStartFrom,
+  alignContinueStartFrom,
   continueStageFromState,
   DEFAULT_GENERATION_STOP_AT,
+  resolveContinueGenerationFlags,
   flagsFromStopAt,
   GENERATION_STAGES,
   includesStage,
@@ -201,13 +208,34 @@ describe('completedStageFromArtifacts / nextActionFromArtifacts', () => {
     });
     expect(nextActionFromArtifacts(afterScript)).toBe('references');
 
-    // Frame-based still needs the artifacts themselves.
+    // Frame-based: a persisted References stage is done even before every
+    // shot row shows a prompt, so continue cannot offer References again.
     const frameBased = artifactsFromSequenceState({
       sceneCount: 1,
       shots,
       pipelineStage: 'references',
     });
-    expect(nextActionFromArtifacts(frameBased)).toBe('references');
+    expect(completedStageFromArtifacts(frameBased)).toBe('references');
+    expect(nextActionFromArtifacts(frameBased)).toBe('images');
+  });
+
+  it('advances continue past a persisted stage that has no shot artifacts yet', () => {
+    const afterReferences = {
+      ...empty,
+      hasScenes: true,
+      pipelineStage: 'references' as const,
+    };
+    expect(completedStageFromArtifacts(afterReferences)).toBe('references');
+    expect(nextActionFromArtifacts(afterReferences)).toBe('images');
+
+    const afterImages = {
+      ...empty,
+      hasScenes: true,
+      hasVisualPrompts: true,
+      pipelineStage: 'images' as const,
+    };
+    expect(completedStageFromArtifacts(afterImages)).toBe('images');
+    expect(nextActionFromArtifacts(afterImages)).toBe('motion');
   });
 
   it('offers motion after stills, music after motion, nothing after music', () => {
@@ -324,6 +352,7 @@ describe('completedStageFromArtifacts / nextActionFromArtifacts', () => {
     expect(sliderThumbIndex('music', stages)).toBe(3);
     expect(sliderThumbIndex('motion', stages)).toBe(3);
     expect(sliderStopLabel('music')).toBe('Motion & Music');
+    expect(sliderTickLabel('music')).toBe('Motion\u00a0&\nMusic');
     expect(sliderStopLabel('references')).toBe('References & Prompts');
     expect(sliderStopLabel('images')).toBe('Images');
     expect(stopAfterSentence('motion')).toBe('Don’t stop');
@@ -349,18 +378,145 @@ describe('completedStageFromArtifacts / nextActionFromArtifacts', () => {
     expect(sliderThumbIndex('references', stages)).toBe(1);
   });
 
-  it('slider inserts Dialogue before motion when Voices is on', () => {
-    const stages = sliderStages(false, true);
-    expect(stages).toEqual([
-      'script',
-      'references',
-      'images',
-      'dialogue',
-      'motion',
-    ]);
-    expect(stopAtFromSliderIndex(3, stages)).toBe('dialogue');
-    expect(stopAtFromSliderIndex(4, stages)).toBe('music');
+  it('slider inserts Dialogue before motion when Voices is on without start frames', () => {
+    const stages = sliderStages(true, true);
+    expect(stages).toEqual(['script', 'references', 'dialogue', 'motion']);
+    expect(stopAtFromSliderIndex(2, stages)).toBe('dialogue');
+    expect(stopAtFromSliderIndex(3, stages)).toBe('music');
     expect(sliderStopLabel('dialogue')).toBe('Dialogue');
     expect(stopAfterSentence('dialogue')).toBe('Stop after dialogue');
+  });
+
+  it('slider folds Images and Dialogue into one stop when both are on', () => {
+    const stages = sliderStages(false, true);
+    expect(stages).toEqual(['script', 'references', 'dialogue', 'motion']);
+    // A remembered Images stop is the combined tick (runs through Dialogue).
+    expect(sliderThumbIndex('images', stages)).toBe(2);
+    expect(stopAtFromSliderIndex(2, stages)).toBe('dialogue');
+    expect(sliderThumbIndex('dialogue', stages)).toBe(2);
+    expect(sliderStopLabel('dialogue', { generateStartFrames: true })).toBe(
+      'Start Frames & Dialogue'
+    );
+    expect(sliderTickLabel('dialogue', { generateStartFrames: true })).toBe(
+      'Start Frames\u00a0&\nDialogue'
+    );
+    expect(stopAfterSentence('dialogue', { generateStartFrames: true })).toBe(
+      'Stop after start frames & dialogue'
+    );
+    expect(runScopeLabel('dialogue', { generateStartFrames: true })).toBe(
+      'Stops after Start Frames & Dialogue'
+    );
+    expect(
+      actionLabelForStage('dialogue', {
+        generateStartFrames: true,
+        startFrom: 'images',
+      })
+    ).toBe('Generate Start Frames & Dialogue');
+    expect(
+      actionLabelForStage('dialogue', {
+        generateStartFrames: true,
+        startFrom: 'dialogue',
+      })
+    ).toBe('Generate Dialogue');
+  });
+
+  it('offers start-frames and Voices switches until those stages have finished', () => {
+    expect(continueOffersStartFramesSwitch('references')).toBe(true);
+    expect(continueOffersStartFramesSwitch('images')).toBe(true);
+    expect(continueOffersStartFramesSwitch('dialogue')).toBe(false);
+    expect(continueOffersVoicesSwitch('references')).toBe(true);
+    expect(continueOffersVoicesSwitch('images')).toBe(true);
+    expect(continueOffersVoicesSwitch('dialogue')).toBe(true);
+    expect(continueOffersVoicesSwitch('motion')).toBe(false);
+  });
+
+  it('applies continue flag edits only for stages that have not run yet', () => {
+    const current = { generateStartFrames: false, generateVoices: false };
+    expect(
+      resolveContinueGenerationFlags({
+        startFrom: 'references',
+        current,
+        requested: { generateStartFrames: true, generateVoices: true },
+      })
+    ).toEqual({ generateStartFrames: true, generateVoices: true });
+    expect(
+      resolveContinueGenerationFlags({
+        startFrom: 'images',
+        current: { generateStartFrames: true, generateVoices: false },
+        requested: { generateStartFrames: false, generateVoices: true },
+      })
+    ).toEqual({ generateStartFrames: false, generateVoices: true });
+    expect(
+      resolveContinueGenerationFlags({
+        startFrom: 'dialogue',
+        current: { generateStartFrames: true, generateVoices: true },
+        requested: { generateStartFrames: false, generateVoices: false },
+      })
+    ).toEqual({ generateStartFrames: true, generateVoices: false });
+  });
+
+  it('continue starts at the next unrun stage, never a completed one', () => {
+    const flags = { generateStartFrames: true, generateVoices: false };
+    expect(continueReachableFrom('script', flags)).toBe('references');
+    expect(continueReachableFrom('references', flags)).toBe('images');
+    expect(continueReachableFrom('images', flags)).toBe('motion');
+    expect(
+      continueReachableFrom('references', {
+        generateStartFrames: false,
+        generateVoices: true,
+      })
+    ).toBe('dialogue');
+    expect(
+      continueReachableFrom('references', {
+        generateStartFrames: false,
+        generateVoices: false,
+      })
+    ).toBe('motion');
+    expect(continueReachableFrom('dialogue', flags)).toBe('motion');
+    expect(continueReachableFrom('music', flags)).toBeNull();
+  });
+
+  it('draft flags can skip Images when continue was about to start there', () => {
+    expect(
+      continueStartFrom('images', {
+        generateStartFrames: true,
+        generateVoices: false,
+      })
+    ).toBe('images');
+    expect(
+      continueStartFrom('images', {
+        generateStartFrames: false,
+        generateVoices: true,
+      })
+    ).toBe('dialogue');
+    expect(
+      continueStartFrom('images', {
+        generateStartFrames: false,
+        generateVoices: false,
+      })
+    ).toBe('motion');
+    expect(
+      continueStartFrom('references', {
+        generateStartFrames: false,
+        generateVoices: true,
+      })
+    ).toBe('references');
+  });
+
+  it('accepts an Images continue click after start frames are turned off', () => {
+    const flags = { generateStartFrames: false, generateVoices: false };
+    expect(alignContinueStartFrom('images', 'motion', flags)).toBe('motion');
+    expect(
+      alignContinueStartFrom('images', 'dialogue', {
+        generateStartFrames: false,
+        generateVoices: true,
+      })
+    ).toBe('dialogue');
+    expect(
+      alignContinueStartFrom('references', 'images', {
+        generateStartFrames: true,
+        generateVoices: false,
+      })
+    ).toBeNull();
   });
 });

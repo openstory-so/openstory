@@ -494,6 +494,16 @@ export const WidthExtraLarge: Story = {
   ],
 };
 
+export const ContinueFromReferences: Story = {
+  name: 'Continue from References with switches',
+  args: {
+    nextStage: 'references',
+    generateStartFrames: false,
+    generateVoices: false,
+    onContinueGeneration: async () => undefined,
+  },
+};
+
 export const ContinueDialogue: Story = {
   name: 'Continue to Dialogue with Voices',
   args: {

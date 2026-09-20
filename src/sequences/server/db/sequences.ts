@@ -500,6 +500,14 @@ export function createSequencesMethods(
       generationStopAt?: GenerationStage | null;
       pipelineStage?: GenerationStage | null;
       generationCheckpoint?: GenerationCheckpoint | null;
+      /**
+       * Continue-from before Images (#1698): the create-time default can
+       * still change because no stills exist yet. The general
+       * `updateSequenceFn` path still omits this field.
+       */
+      generateStartFrames?: boolean;
+      /** Continue-from before Dialogue (#1698). */
+      generateVoices?: boolean;
       targetDurationSeconds?: number | null;
     }): Promise<Sequence> => {
       // Scoped by teamId like every other write here — `workflowRunId` in

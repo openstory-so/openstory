@@ -7,8 +7,10 @@ import { Checkbox } from '@/ui/shadcn/checkbox';
 import { ScrollArea } from '@/ui/shadcn/scroll-area';
 import {
   actionLabelForStage,
+  continueStartFrom,
   DEFAULT_GENERATION_STOP_AT,
   isContinueStage,
+  stageIndex,
   type ContinueStage,
   type GenerationStage,
 } from '@/sequences/pipeline';
@@ -29,6 +31,7 @@ import { addMicros, ZERO_MICROS, type Microdollars } from '@/billing/money';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import type { Resolution } from '@/models/resolutions';
 import { useFalPricing } from '@/billing/ui/use-fal-pricing';
+import { useVoiceDesignAvailable } from '@/cast/ui/use-voice-design-available';
 import { useGenerationSliceEstimate } from '@/sequences/ui/use-sequences';
 import type { SceneWithScript } from './use-scenes';
 import type { ShotVariant } from '@/platform/server/db/schema';
@@ -150,6 +153,8 @@ export type SceneListProps = {
   onContinueGeneration?: (args: {
     startFrom: ContinueStage;
     stopAt: GenerationStage;
+    generateStartFrames: boolean;
+    generateVoices: boolean;
   }) => Promise<void>;
   onGenerateMusic?: (model: AudioModel) => Promise<void>;
   musicPromptsReady: boolean;
@@ -291,9 +296,19 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   const [continueStopAt, setContinueStopAt] = useState<GenerationStage>(
     nextStage ?? DEFAULT_GENERATION_STOP_AT
   );
+  const [draftStartFrames, setDraftStartFrames] = useState(generateStartFrames);
+  const [draftVoices, setDraftVoices] = useState(generateVoices);
   useEffect(() => {
     if (nextStage) setContinueStopAt(nextStage);
   }, [nextStage]);
+  useEffect(() => {
+    setDraftStartFrames(generateStartFrames);
+  }, [generateStartFrames]);
+  useEffect(() => {
+    setDraftVoices(generateVoices);
+  }, [generateVoices]);
+  const voicesUnavailable = useVoiceDesignAvailable() === false;
+  const voices = voicesUnavailable ? false : draftVoices;
   const [includeMusic, setIncludeMusic] = useState(true);
   const [generateAudio, setGenerateAudio] = useState(true);
   const [musicModel, setMusicModel] = useState<AudioModel>(
@@ -385,6 +400,13 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   };
 
   const isMotionInProgress = regeneratingMotion.size > 0 || hasGeneratingShots;
+  const continueStart =
+    nextStage == null
+      ? null
+      : continueStartFrom(nextStage, {
+          generateStartFrames: draftStartFrames,
+          generateVoices: voices,
+        });
   const showMotionFooter =
     !hideBatchButton &&
     !isMotionInProgress &&
@@ -396,17 +418,29 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     !hideBatchButton &&
     isContinueStage(nextStage) &&
     Boolean(onContinueGeneration);
-  const ContinueIcon = CONTINUE_ICON[continueStopAt];
+  const continueStopAtClamped =
+    nextStage && stageIndex(continueStopAt) < stageIndex(nextStage)
+      ? nextStage
+      : continueStopAt;
+  const ContinueIcon = CONTINUE_ICON[continueStopAtClamped];
   const showButton = showMotionFooter;
 
   const handleContinue = async () => {
     if (!onContinueGeneration || !isContinueStage(nextStage)) return;
+    const startFrom = isContinueStage(continueStart)
+      ? continueStart
+      : nextStage;
     await runFooterAction(
-      `Failed to ${actionLabelForStage(continueStopAt).toLowerCase()}`,
+      `Failed to ${actionLabelForStage(continueStopAtClamped, {
+        generateStartFrames: draftStartFrames,
+        startFrom,
+      }).toLowerCase()}`,
       () =>
         onContinueGeneration({
-          startFrom: nextStage,
-          stopAt: continueStopAt,
+          startFrom,
+          stopAt: continueStopAtClamped,
+          generateStartFrames: draftStartFrames,
+          generateVoices: voices,
         })
     );
   };
@@ -478,8 +512,10 @@ const SceneListComponent: React.FC<SceneListProps> = ({
 
   const continueCostEstimate = useGenerationSliceEstimate({
     sequenceId,
-    startFrom: nextStage,
-    stopAt: continueStopAt,
+    startFrom: continueStart,
+    stopAt: continueStopAtClamped,
+    generateStartFrames: draftStartFrames,
+    generateVoices: voices,
     enabled: showContinueFooter,
   });
 
@@ -771,11 +807,15 @@ const SceneListComponent: React.FC<SceneListProps> = ({
       {showContinueFooter && (
         <div className="sticky bottom-0 border-t bg-background p-4 flex flex-col gap-3">
           <GenerationStopSlider
-            value={continueStopAt}
+            value={continueStopAtClamped}
             onChange={setContinueStopAt}
-            minStage={nextStage}
-            generateStartFrames={generateStartFrames}
-            generateVoices={generateVoices}
+            minStage={nextStage ?? undefined}
+            generateStartFrames={draftStartFrames}
+            onGenerateStartFramesChange={setDraftStartFrames}
+            generateVoices={voices}
+            onGenerateVoicesChange={
+              voicesUnavailable ? undefined : setDraftVoices
+            }
             disabled={isGenerating}
           />
           <Button
@@ -792,7 +832,10 @@ const SceneListComponent: React.FC<SceneListProps> = ({
             ) : (
               <>
                 <ContinueIcon className="mr-2 h-4 w-4" />
-                {actionLabelForStage(continueStopAt)}
+                {actionLabelForStage(continueStopAtClamped, {
+                  generateStartFrames: draftStartFrames,
+                  startFrom: continueStart ?? nextStage,
+                })}
               </>
             )}
           </Button>
@@ -853,6 +896,8 @@ const areEqual = (
     prevProps.musicPromptsReady !== nextProps.musicPromptsReady ||
     prevProps.hideBatchButton !== nextProps.hideBatchButton ||
     prevProps.nextStage !== nextProps.nextStage ||
+    prevProps.generateStartFrames !== nextProps.generateStartFrames ||
+    prevProps.generateVoices !== nextProps.generateVoices ||
     prevProps.initialMusicModel !== nextProps.initialMusicModel ||
     prevProps.initialVideoModel !== nextProps.initialVideoModel ||
     prevProps.initialImageModel !== nextProps.initialImageModel ||

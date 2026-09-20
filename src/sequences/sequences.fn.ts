@@ -53,11 +53,13 @@ import { triggerStoryboard } from '@/sequences/server/launchers';
 import { ValidationError } from '@/platform/errors';
 import {
   allowsUnfundedGeneration,
+  alignContinueStartFrom,
+  continueReachableFrom,
   continueStageSchema,
   flagsFromStopAt,
   generationStageSchema,
   includesStage,
-  nextStageAfter,
+  resolveContinueGenerationFlags,
   resolveStopAt,
   stageIndex,
 } from './pipeline';
@@ -129,6 +131,8 @@ const estimateGenerationSliceInputSchema = z.object({
   sequenceId: ulidSchema,
   startFrom: generationStageSchema,
   stopAt: generationStageSchema,
+  generateStartFrames: z.boolean().optional(),
+  generateVoices: z.boolean().optional(),
 });
 
 /**
@@ -149,7 +153,19 @@ export const estimateGenerationSliceFn = createServerFn({ method: 'GET' })
       sequence.imageModel,
       DEFAULT_IMAGE_MODEL
     );
+    const flags = resolveContinueGenerationFlags({
+      startFrom: data.startFrom,
+      current: {
+        generateStartFrames: sequence.generateStartFrames,
+        generateVoices: sequence.generateVoices,
+      },
+      requested: {
+        generateStartFrames: data.generateStartFrames,
+        generateVoices: data.generateVoices,
+      },
+    });
     if (
+      flags.generateStartFrames &&
       includesStage(data.stopAt, 'images') &&
       estimateImageCost(imageModel, sequence.aspectRatio, 1, { pricing }) ===
         null
@@ -177,8 +193,8 @@ export const estimateGenerationSliceFn = createServerFn({ method: 'GET' })
       estimatedSceneCount: sceneCount,
       startFrom: data.startFrom,
       stopAt: data.stopAt,
-      referenceOnly: !sequence.generateStartFrames,
-      generateVoices: sequence.generateVoices,
+      referenceOnly: !flags.generateStartFrames,
+      generateVoices: flags.generateVoices,
       autoGenerateMotion: motionOn,
       videoModels: motionOn ? [videoModel] : undefined,
       videoDurationSeconds: motionOn ? perShotSeconds : undefined,
@@ -231,6 +247,8 @@ export const continueGenerationFn = createServerFn({ method: 'POST' })
           startFrom: continueStageSchema,
           stopAt: generationStageSchema,
           leftoverGrokShotIds: z.array(ulidSchema).optional(),
+          generateStartFrames: z.boolean().optional(),
+          generateVoices: z.boolean().optional(),
         })
         .refine((d) => stageIndex(d.startFrom) <= stageIndex(d.stopAt), {
           path: ['stopAt'],
@@ -246,14 +264,23 @@ export const continueGenerationFn = createServerFn({ method: 'POST' })
         'Nothing to continue from — generate the sequence first'
       );
     }
-    // A checkpoint carries everything up to its stage, so re-running an
-    // earlier stage is fine; starting past it has nothing to hydrate from.
-    let reachable = nextStageAfter(checkpoint.completedStage);
-    // Reference-only has no Images stage to run between References and Dialogue.
-    if (reachable === 'images' && !sequence.generateStartFrames) {
-      reachable = 'dialogue';
-    }
-    if (!reachable || stageIndex(data.startFrom) > stageIndex(reachable)) {
+    const flags = resolveContinueGenerationFlags({
+      startFrom: data.startFrom,
+      current: {
+        generateStartFrames: sequence.generateStartFrames,
+        generateVoices: sequence.generateVoices,
+      },
+      requested: {
+        generateStartFrames: data.generateStartFrames,
+        generateVoices: data.generateVoices,
+      },
+    });
+    // Start exactly at the next unrun stage. Re-running a completed continue
+    // stage would regenerate work the slider has already progressed past.
+    const reachable = continueReachableFrom(checkpoint.completedStage, flags);
+    const startFrom =
+      reachable && alignContinueStartFrom(data.startFrom, reachable, flags);
+    if (!startFrom) {
       throw new ValidationError(
         `The last run only reached ${checkpoint.completedStage}; ${data.startFrom} cannot start from there`
       );
@@ -277,9 +304,9 @@ export const continueGenerationFn = createServerFn({ method: 'POST' })
             resolution: sequence.resolution,
             autoGenerateMotion,
             stopAt: data.stopAt,
-            startFrom: data.startFrom,
-            referenceOnly: !sequence.generateStartFrames,
-            generateVoices: sequence.generateVoices,
+            startFrom,
+            referenceOnly: !flags.generateStartFrames,
+            generateVoices: flags.generateVoices,
             videoModels: [
               safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
             ],
@@ -303,6 +330,8 @@ export const continueGenerationFn = createServerFn({ method: 'POST' })
       generationStopAt: data.stopAt,
       autoGenerateMotion,
       autoGenerateMusic,
+      generateStartFrames: flags.generateStartFrames,
+      generateVoices: flags.generateVoices,
     });
 
     return releaseReservationOnThrow(context.scopedDb, reservationId, () =>
@@ -312,7 +341,7 @@ export const continueGenerationFn = createServerFn({ method: 'POST' })
         sequenceId: data.sequenceId,
         reservationId,
         resume: true,
-        startFrom: data.startFrom,
+        startFrom,
         stopAt: data.stopAt,
         checkpoint,
         autoGenerateMotion,

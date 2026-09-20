@@ -324,8 +324,15 @@ phase number); there is no separate stage.
   sheet rows from D1 so edits made while stopped (recast, regenerated sheet)
   survive — the checkpoint's LLM values would otherwise silently revert them.
   A Dialogue continue also snapshots selected stills and motion/music prompts
-  at the trigger and skips generating them. The scenes slider uses the sequence’s
-  Voices setting, just like the initial Generate dialog.
+  at the trigger and skips generating them. The scenes slider offers the same
+  start-frames and Voices switches as the initial Generate dialog, but only
+  for stages that have not run yet (#1698): start frames before Images,
+  Voices before Dialogue. Confirming Continue persists those flags with
+  `generationStopAt`. After a stage completes, continue starts at the next
+  unrun stage (`pipelineStage` is a floor even when shot rows lag) and
+  refuses to re-run a completed continue stage. Start frames + Voices share
+  one start-frames-and-dialogue slider stop (the two ticks do not fit); the run
+  still executes both stages, like Motion & Music.
 - **Ready email** only sends when the run reached motion: the send is a
   one-shot claim per sequence.
 - Reference-only has no Images stop; `pipelineStage` is the only evidence of
