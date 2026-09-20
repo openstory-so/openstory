@@ -22,6 +22,10 @@ export type DialogueRecordingTurn = {
   shotId: string;
   /** Index into THAT SHOT's dialogue lines. */
   index: number;
+  /** The ElevenLabs voice that spoke this turn. */
+  voiceId: string;
+  /** The TTS model the call ran on. */
+  ttsModel: string;
   startSeconds: number;
   endSeconds: number;
   /** The wording actually spoken when a fit rewrite shortened this turn. */

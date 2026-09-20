@@ -67,7 +67,16 @@ const recording = (
   storageKey: 'audio/t/s/dialogue/take.wav',
   url: '/r2/audio/take.wav',
   durationSeconds: 4.5,
-  turns: [{ shotId, index: 0, startSeconds: 0, endSeconds: 2 }],
+  turns: [
+    {
+      shotId,
+      index: 0,
+      voiceId: 'voice-1',
+      ttsModel: 'eleven_v3',
+      startSeconds: 0,
+      endSeconds: 2,
+    },
+  ],
   inputHash: 'hash-1',
   characterCount: 42,
   workflowRunId: 'run-1',

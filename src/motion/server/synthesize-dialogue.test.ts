@@ -75,5 +75,9 @@ describe('recordDialogueCall voice identity', () => {
       ],
     });
     expect(recording.url).toBe('/r2/dialogue.wav');
+    expect(recording.turns).toMatchObject([
+      { voiceId: 'maya-selected-voice', ttsModel: 'eleven_v3' },
+      { voiceId: 'young-man-selected-voice', ttsModel: 'eleven_v3' },
+    ]);
   });
 });

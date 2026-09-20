@@ -255,6 +255,8 @@ function recordingTurns(
     return lines.map((line) => ({
       shotId: line.shotId,
       index: line.index,
+      voiceId: line.voiceId,
+      ttsModel: DIALOGUE_TTS_MODEL,
       startSeconds: 0,
       endSeconds: durationSeconds,
     }));
@@ -269,6 +271,8 @@ function recordingTurns(
     return {
       shotId: line.shotId,
       index: line.index,
+      voiceId: line.voiceId,
+      ttsModel: DIALOGUE_TTS_MODEL,
       startSeconds: Math.max(0, span.start),
       endSeconds: Math.min(durationSeconds, Math.max(span.start, span.end)),
     };

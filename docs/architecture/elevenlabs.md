@@ -88,8 +88,9 @@ had, so nothing of theirs goes stale. Three tables, all append-only:
 - `dialogue_recordings` — one row per ElevenLabs call, the **whole file** as
   it came back (`storageKey`, `url`, `durationSeconds`, per-turn `turns`,
   `inputHash` = `recordingKey` = ordered voiced turns with shot ids + voice
-  ids + tone + TTS model + stability). No selected flag, no per-shot copies,
-  never joined or concatenated.
+  ids + tone + TTS model + stability). Each turn also stamps its `voiceId` and
+  `ttsModel` in the clear — the hash cannot be read back. No selected flag, no
+  per-shot copies, never joined or concatenated.
 - `shot_dialogue_sections` — a time range (`fromSeconds`–`toSeconds`) of a
   recording, one selected row per shot. A recording inserts a row for EVERY
   shot it spoke: `source: 'recorded'` and selected for the shots it was made
