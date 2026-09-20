@@ -11,6 +11,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { hostname as osHostname, homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -314,6 +315,31 @@ export function readMapping(path = mappingPath()): DevTunnelsFile | undefined {
 function writeMapping(file: DevTunnelsFile, path = mappingPath()): void {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(file, null, 2)}\n`);
+}
+
+function isPortFree(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = createServer();
+    server.unref();
+    server.once('error', () => resolve(false));
+    server.once('listening', () => {
+      server.close(() => resolve(true));
+    });
+    server.listen({ port, host: '0.0.0.0', exclusive: true });
+  });
+}
+
+/** Probe 3000–3009. Prefer `preferred` when it is in range and free. */
+export async function pickFreeDevPort(preferred = 3000): Promise<number> {
+  const ordered = isDevTunnelPort(preferred)
+    ? [preferred, ...DEV_TUNNEL_PORTS.filter((port) => port !== preferred)]
+    : [...DEV_TUNNEL_PORTS];
+  for (const port of ordered) {
+    if (await isPortFree(port)) return port;
+  }
+  throw new Error(
+    'All ports 3000–3009 are in use. Stop another `bun dev` (or whatever is bound there) and retry.'
+  );
 }
 
 export function applyMappingToEnv(
