@@ -439,7 +439,7 @@ describe("computePlan — depth 'video' (#1085)", () => {
 });
 
 describe("computePlan — depth 'dialogue' (#1703)", () => {
-  const staleAudio = [
+  const staleAudio: Shot['audioClips'] = [
     {
       id: 'clip-1',
       url: 'https://example.com/old.mp3',
@@ -453,11 +453,8 @@ describe("computePlan — depth 'dialogue' (#1703)", () => {
     id: 'sdv-1',
     lines: [{ character: 'Woman', line: 'Hello', tone: 'calm' }],
   };
-  const voiceDb = (audioClips: unknown = staleAudio) =>
-    buildScopedDb(
-      [makeShot({ audioClips: audioClips as Shot['audioClips'] })],
-      [makeFrame()]
-    );
+  const voiceDb = (audioClips: Shot['audioClips'] = staleAudio) =>
+    buildScopedDb([makeShot({ audioClips })], [makeFrame()]);
 
   function withVoices(db: ScopedDb): ScopedDb {
     return asScopedDb({
