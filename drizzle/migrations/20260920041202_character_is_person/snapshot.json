@@ -1,7 +1,7 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "c23254a2-9639-4903-8fd3-434490fd07e7",
+  "id": "123a704f-45b7-43d0-8d7b-1e1c08ed80b5",
   "prevIds": ["80e88233-2212-4187-9b4e-73be01de5d48"],
   "ddl": [
     {
@@ -1153,12 +1153,12 @@
       "table": "characters"
     },
     {
-      "type": "text",
+      "type": "integer",
       "notNull": true,
       "autoincrement": false,
-      "default": "'fictional'",
+      "default": "true",
       "generated": null,
-      "name": "likeness",
+      "name": "is_person",
       "entityType": "columns",
       "table": "characters"
     },

@@ -359,13 +359,13 @@ describe('computeCharacterSheetInputHash', () => {
     expect(new Set([a, talent, style, model]).size).toBe(4);
   });
 
-  it('does not fold likeness into the sheet hash (#1682)', async () => {
+  it('does not fold isPerson into the sheet hash (#1682)', async () => {
     const a = await computeCharacterSheetInputHash(base);
     const flagged = await computeCharacterSheetInputHash({
       ...base,
       characterBible: {
         ...base.characterBible,
-        likeness: 'none' as const,
+        isPerson: false,
       },
     });
     expect(flagged).toBe(a);
@@ -633,7 +633,7 @@ describe('prompt input hashes', () => {
     movement: '',
     voiceDescription: '',
     voiceOnly: false,
-    likeness: 'fictional' as const,
+    isPerson: true,
     consistencyTag: '',
   };
 

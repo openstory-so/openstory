@@ -72,7 +72,7 @@ export const TALENT_CASE = {
       movement: 'Quick precise hands, chin up, never hurries her feet.',
       voiceDescription: '',
       voiceOnly: false,
-      likeness: 'fictional' as const,
+      isPerson: true,
       consistencyTag: 'scarlett_vega',
     },
     {
@@ -90,7 +90,7 @@ export const TALENT_CASE = {
       movement: 'Heavy deliberate stride, favours the left knee.',
       voiceDescription: '',
       voiceOnly: false,
-      likeness: 'fictional' as const,
+      isPerson: true,
       consistencyTag: 'jack_cole',
     },
   ] satisfies CharacterBibleEntry[],

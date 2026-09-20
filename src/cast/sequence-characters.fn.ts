@@ -11,7 +11,7 @@ import { isValidTextToImageModel, safeTextToImageModel } from '@/models/models';
 import type { CharacterBibleUpdate } from '@/cast/server/db/characters';
 import { resolveSequenceStyleConfig } from '@/look/style-config';
 import { buildCastingAttributes } from './character-prompt';
-import { bibleLikeness, likenessFromTalentCast } from '@/cast/likeness';
+import { isPersonFromTalentCast } from '@/cast/likeness';
 import { shouldReuseTalentSheet } from '@/cast/server/talent/reuse-talent-sheet';
 import { getGenerationChannel } from '@/platform/realtime';
 import {
@@ -95,7 +95,7 @@ const characterBibleFieldsSchema = z.object({
   movement: bibleField.optional(),
   voiceDescription: bibleField.optional(),
   consistencyTag: bibleField.optional(),
-  likeness: z.enum(['fictional', 'none']).optional(),
+  isPerson: z.boolean().optional(),
 });
 
 /**
@@ -176,12 +176,7 @@ export const updateSequenceCharacterFn = createServerFn({ method: 'POST' })
     if (!existing || existing.sequenceId !== sequenceId) {
       throw new NotFoundError('Character not found');
     }
-    // `real` is stamped from a signed talent or the upload ledger, never the
-    // bible form. Edits may switch fictional ↔ none only.
-    const update: CharacterBibleUpdate =
-      existing.likeness === 'real'
-        ? { ...fields, likeness: undefined }
-        : fields;
+    const update: CharacterBibleUpdate = fields;
     return await context.scopedDb.characters.updateBible(characterId, update, {
       actorId: context.user.id,
     });
@@ -627,8 +622,8 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
       personality: castingAttrs.personality,
       movement: castingAttrs.movement,
       consistencyTag: castingAttrs.consistencyTag,
-      likeness: likenessFromTalentCast(
-        character.likeness,
+      isPerson: isPersonFromTalentCast(
+        character.isPerson,
         talentWithSheets.isHuman
       ),
       // Cast copies the talent's voice (#1553); the role's own is released
@@ -695,7 +690,7 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
         characterId: character.characterId,
         name: character.name,
         voiceOnly: character.voiceOnly,
-        likeness: bibleLikeness(updatedCharacter.likeness),
+        isPerson: updatedCharacter.isPerson,
         voiceDescription: character.voiceDescription ?? '',
         ...castingAttrs,
       },

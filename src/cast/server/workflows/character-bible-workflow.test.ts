@@ -68,7 +68,7 @@ const entry = (
   movement: '',
   voiceDescription: '',
   voiceOnly: false,
-  likeness: 'fictional' as const,
+  isPerson: true,
   consistencyTag: overrides.characterId,
   ...overrides,
 });
@@ -83,7 +83,7 @@ const narrator = entry({
   name: 'Narrator',
   personality: 'dry, unhurried, faintly amused',
   voiceOnly: true,
-  likeness: 'fictional' as const,
+  isPerson: true,
 });
 
 function makeEvent(
@@ -126,13 +126,13 @@ describe('CharacterBibleWorkflow voice-only characters', () => {
       expect.objectContaining({
         characterId: 'sam',
         voiceOnly: false,
-        likeness: 'fictional' as const,
+        isPerson: true,
         sheetStatus: 'generating',
       }),
       expect.objectContaining({
         characterId: 'narrator',
         voiceOnly: true,
-        likeness: 'fictional' as const,
+        isPerson: true,
         sheetStatus: 'completed',
       }),
     ]);

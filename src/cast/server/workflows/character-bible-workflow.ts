@@ -12,7 +12,7 @@ import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { CharacterMinimal } from '@/platform/server/db/schema';
 import { buildCharacterInsert } from './cast-records';
 import { buildCastingAttributes } from '@/cast/character-prompt';
-import { likenessFromTalentCast } from '@/cast/likeness';
+import { isPersonFromTalentCast } from '@/cast/likeness';
 import { reusesTalentSheet } from '@/cast/server/talent/reuse-talent-sheet';
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
 import { contentRejectionSummary } from '@/models/content-rejection';
@@ -292,8 +292,8 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         physicalDescription:
           castingAttrs?.physicalDescription ?? character.physicalDescription,
         voiceOnly: false,
-        likeness: likenessFromTalentCast(
-          character.likeness,
+        isPerson: isPersonFromTalentCast(
+          character.isPerson,
           matchMap.get(character.characterId)?.hasSignedRelease
         ),
         voiceId: voiceByCharacterId.get(character.characterId) ?? null,
@@ -320,8 +320,8 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         selectedSheetVersionId: null,
         physicalDescription: character.physicalDescription,
         voiceOnly: true,
-        likeness: likenessFromTalentCast(
-          character.likeness,
+        isPerson: isPersonFromTalentCast(
+          character.isPerson,
           matchMap.get(character.characterId)?.hasSignedRelease
         ),
         voiceId: voiceByCharacterId.get(character.characterId) ?? null,

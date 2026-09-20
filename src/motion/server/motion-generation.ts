@@ -385,7 +385,7 @@ function arkStillForMotionRef(ref: MotionRef): ArkStill | null {
   return {
     storedUrl: ref.referenceImageUrl,
     slot: 'library',
-    ...(registersWithArk(ref.likeness) ? {} : { plain: true }),
+    ...(registersWithArk(ref.isPerson) ? {} : { plain: true }),
   };
 }
 
@@ -393,10 +393,10 @@ function arkStillForMotionRef(ref: MotionRef): ArkStill | null {
  * The stills a BytePlus submit needs registered: the start frame and every
  * character sheet that may show a person. CreateAsset is paced by
  * `BYTEPLUS_ASSET_WRITE_QPM`, so location and element sheets — no people —
- * are not spent on, and neither are `likeness: none` character sheets
- * (#1682). Those still go through ingest as `plain` so submit looks them
- * up in the same map. The workflow runs these through `ingestArkAssets`
- * before submit.
+ * are not spent on, and neither are non-person character sheets (#1682).
+ * Those still go through ingest as `plain` so submit looks them up in the
+ * same map. The workflow runs these through `ingestArkAssets` before
+ * submit.
  */
 export function arkStillsForMotion(
   options: Pick<GenerateMotionOptions, 'imageUrl' | 'referenceImages'>
@@ -630,7 +630,7 @@ export async function submitMotionJob(
         referenceImages = [];
         for (const ref of options.referenceImages ?? []) {
           // Same helper as `arkStillsForMotion`: ingested stills (faces as
-          // asset://, `likeness: none` as `plain`) live in the map.
+          // asset://, non-person sheets as `plain`) live in the map.
           const registered = arkStillForMotionRef(ref) !== null;
           referenceImages.push({
             ...ref,

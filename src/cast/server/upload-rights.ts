@@ -199,9 +199,8 @@ export async function requireUploadRights(
 /**
  * Signed or detected → `real`; classifier cleared → `none` (#1682).
  * Detected-but-unsigned is still a real person — `requireUploadRights`
- * refuses use until signed; this helper must not call that `fictional`
- * (no release needed). No row returns null. BytePlus CreateAsset uses
- * `registersWithArk`: only `none` is a plain URL.
+ * refuses use until signed. No row returns null. A `none` still is a
+ * plain URL; anything else registers.
  */
 export async function likenessFromLedger(
   scopedDb: ScopedDb,

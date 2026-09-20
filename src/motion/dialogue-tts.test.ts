@@ -36,7 +36,6 @@ const narrator = {
   name: 'Narrator',
   voiceId: 'voice-narrator',
   voiceOnly: true,
-  likeness: 'fictional' as const,
 };
 
 const dialogue = (

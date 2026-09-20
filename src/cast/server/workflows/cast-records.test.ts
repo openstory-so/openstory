@@ -84,7 +84,7 @@ describe('createCastRecords', () => {
           movement: '',
           voiceDescription: '',
           voiceOnly: false,
-          likeness: 'fictional' as const,
+          isPerson: true,
           consistencyTag: 'sarah',
         },
       ],
@@ -185,7 +185,7 @@ describe('createCastRecords (talent match, #1561)', () => {
     movement: 'restless hands',
     voiceDescription: '',
     voiceOnly: false,
-    likeness: 'fictional' as const,
+    isPerson: true,
     consistencyTag: 'sarah',
   };
   const match = {
@@ -254,7 +254,7 @@ describe('createCastRecords (talent match, #1561)', () => {
       existingElements: [],
     });
     expect(characterCreate.mock.calls[0]?.[0]).toMatchObject({
-      likeness: 'real',
+      isPerson: true,
     });
   });
 });
@@ -285,7 +285,7 @@ describe('createCastRecords (voice only, #1585)', () => {
           movement: '',
           voiceDescription: '',
           voiceOnly: true,
-          likeness: 'fictional' as const,
+          isPerson: true,
           consistencyTag: 'narrator',
         },
       ],
@@ -299,7 +299,7 @@ describe('createCastRecords (voice only, #1585)', () => {
       characterId: 'narrator',
       voiceDescription: null,
       voiceOnly: true,
-      likeness: 'fictional' as const,
+      isPerson: true,
       sheetStatus: 'pending',
       talentId: null,
     });
@@ -331,7 +331,7 @@ describe('createCastRecords (voice only, #1585)', () => {
           voiceDescription:
             'Native English. Male, 50s. Excellent quality. Persona: dry narrator. Emotion: unhurried, amused. Warm low timbre, conversational pace.',
           voiceOnly: true,
-          likeness: 'fictional' as const,
+          isPerson: true,
           consistencyTag: 'narrator',
         },
       ],

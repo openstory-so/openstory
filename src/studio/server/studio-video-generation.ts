@@ -304,7 +304,7 @@ function urlPart(
 /**
  * The stills a BytePlus studio submit needs registered: every image the
  * user supplied that may be a face. `noPersonImages` (ledger stills whose
- * `likeness` is `none` via `registersWithArk`, snapshotted at the trigger)
+ * ledger verdict is `none`, snapshotted at the trigger)
  * are marked `plain` and go as fetchable URLs so they do not spend
  * CreateAsset turns (`BYTEPLUS_ASSET_WRITE_QPM`, #1674, #1682). Videos and
  * audio are not assets.

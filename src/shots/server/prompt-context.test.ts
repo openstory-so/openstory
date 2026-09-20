@@ -47,7 +47,7 @@ const alice: CharacterBibleEntry = {
   movement: '',
   voiceDescription: '',
   voiceOnly: false,
-  likeness: 'fictional' as const,
+  isPerson: true,
   consistencyTag: '',
 };
 const bob: CharacterBibleEntry = { ...alice, characterId: 'bob', name: 'Bob' };
@@ -408,7 +408,7 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
     movement: '',
     voiceDescription: '',
     voiceOnly: false,
-    likeness: 'fictional' as const,
+    isPerson: true,
     consistencyTag: 'detective_sarah_blonde_30s',
   };
   const talentSheet: CharacterBibleEntry = {
@@ -424,7 +424,7 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
     movement: '',
     voiceDescription: '',
     voiceOnly: false,
-    likeness: 'fictional' as const,
+    isPerson: true,
     consistencyTag: 'elvis_presley',
   };
   const match = {
@@ -458,7 +458,7 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
     personality: '',
     movement: '',
     voiceOnly: b.voiceOnly,
-    likeness: 'fictional' as const,
+    isPerson: true,
     voiceId: null,
     voiceDescription: b.voiceDescription || null,
     voicePreviews: null,

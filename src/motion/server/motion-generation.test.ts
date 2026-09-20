@@ -85,21 +85,21 @@ describe('arkStillsForMotion', () => {
             description: 'Sarah',
             role: 'character',
             token: 'Sarah',
-            likeness: 'fictional' as const,
+            isPerson: true,
           },
           {
             referenceImageUrl: 'https://cdn/elvis.png',
             description: 'Elvis',
             role: 'character',
             token: 'Elvis',
-            likeness: 'real',
+            isPerson: true,
           },
           {
             referenceImageUrl: 'https://cdn/robot.png',
             description: 'UNIT-7',
             role: 'character',
             token: 'UNIT-7',
-            likeness: 'none' as const,
+            isPerson: false,
           },
           {
             referenceImageUrl: 'https://cdn/cafe.png',
@@ -127,7 +127,7 @@ describe('arkStillsForMotion', () => {
     ]);
   });
 
-  it('treats a missing likeness as a face, including in-flight payloads', () => {
+  it('treats a missing isPerson as a face, including in-flight payloads', () => {
     expect(
       arkStillsForMotion({
         referenceImages: [
@@ -296,7 +296,7 @@ describe('Motion Service', () => {
             description: 'UNIT-7',
             role: 'character',
             token: 'UNIT-7',
-            likeness: 'none' as const,
+            isPerson: false,
           },
         ],
       });

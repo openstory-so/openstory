@@ -340,7 +340,7 @@ export type CharacterBibleHashFields = {
   distinguishingFeatures: string | null;
   consistencyTag: string | null;
   /** Not hashed — BytePlus registration only (#1682). */
-  likeness?: string;
+  isPerson?: boolean;
 };
 
 export type CharacterSheetHashInput = {

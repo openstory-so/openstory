@@ -55,7 +55,7 @@ export const buildCharacterReferenceImages = (
       description: buildCharacterDescription(c),
       role: 'character' as const,
       token: c.name,
-      likeness: c.likeness,
+      isPerson: c.isPerson,
     }));
 };
 

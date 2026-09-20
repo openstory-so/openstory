@@ -22,7 +22,7 @@ const character = (
   selectedSheetVersionId: null,
   physicalDescription: `${name} is tall`,
   voiceOnly: false,
-  likeness: 'fictional' as const,
+  isPerson: true,
   consistencyTag: name.toLowerCase(),
 });
 
@@ -60,7 +60,7 @@ describe('buildMotionReferenceImages', () => {
         description: 'Alice - Alice is tall',
         role: 'character',
         token: 'Alice',
-        likeness: 'fictional',
+        isPerson: true,
       },
       {
         referenceImageUrl: 'https://example.com/logo.png',

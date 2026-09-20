@@ -51,7 +51,7 @@ function makeCharacter(
     selectedSheetVersionId: null,
     physicalDescription: null,
     voiceOnly: false,
-    likeness: 'fictional' as const,
+    isPerson: true,
     consistencyTag: null,
     ...overrides,
   };

@@ -26,7 +26,7 @@ const scriptEntry: CharacterBibleEntry = {
   movement: '',
   voiceDescription: '',
   voiceOnly: false,
-  likeness: 'fictional' as const,
+  isPerson: true,
   consistencyTag: 'detective_sarah_blonde_30s',
 };
 
@@ -43,7 +43,7 @@ const talentMetadata: CharacterBibleEntry = {
   movement: '',
   voiceDescription: '',
   voiceOnly: false,
-  likeness: 'fictional' as const,
+  isPerson: true,
   consistencyTag: 'elvis_presley',
 };
 
@@ -59,38 +59,38 @@ describe('buildCharacterReferenceImages', () => {
     selectedSheetVersionId: null,
     physicalDescription: `${overrides.name} is here`,
     voiceOnly: false,
-    likeness: 'fictional' as const,
+    isPerson: true,
     consistencyTag: overrides.name.toLowerCase(),
     ...overrides,
   });
 
-  test('copies likeness onto the motion reference (#1682)', () => {
+  test('copies isPerson onto the motion reference (#1682)', () => {
     expect(
       buildCharacterReferenceImages([
-        sheet({ name: 'Sarah', likeness: 'fictional' }),
-        sheet({ name: 'UNIT-7', likeness: 'none' }),
+        sheet({ name: 'Sarah', isPerson: true }),
+        sheet({ name: 'UNIT-7', isPerson: false }),
       ])
     ).toEqual([
       expect.objectContaining({
         token: 'Sarah',
-        likeness: 'fictional' as const,
+        isPerson: true,
       }),
       expect.objectContaining({
         token: 'UNIT-7',
-        likeness: 'none' as const,
+        isPerson: false,
       }),
     ]);
   });
 
-  test('a missing likeness on an in-flight checkpoint still registers', () => {
-    const legacy = sheet({ name: 'Ada', likeness: 'fictional' });
+  test('a missing isPerson on an in-flight checkpoint still registers', () => {
+    const legacy = sheet({ name: 'Ada', isPerson: true });
     // oxlint-disable-next-line typescript/no-dynamic-delete -- drop the flag the way a pre-#1682 checkpoint would
-    delete (legacy as { likeness?: CharacterMinimal['likeness'] }).likeness;
+    delete (legacy as { isPerson?: boolean }).isPerson;
     expect(buildCharacterReferenceImages([legacy])).toEqual([
       expect.objectContaining({ token: 'Ada' }),
     ]);
     expect(
-      buildCharacterReferenceImages([legacy])[0]?.likeness
+      buildCharacterReferenceImages([legacy])[0]?.isPerson
     ).toBeUndefined();
   });
 });
@@ -245,7 +245,7 @@ describe('buildCastCharacterBible', () => {
     movement: '',
     voiceDescription: '',
     voiceOnly: false,
-    likeness: 'fictional' as const,
+    isPerson: true,
     consistencyTag: 'bob_grey_suit',
   };
 
@@ -276,7 +276,7 @@ describe('buildCastCharacterBible', () => {
       name: 'Detective Sarah',
       voiceDescription: '',
       voiceOnly: false,
-      likeness: 'fictional' as const,
+      isPerson: true,
       ...expected,
     });
     expect(cast.physicalDescription).toBe(

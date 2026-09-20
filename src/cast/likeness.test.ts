@@ -1,44 +1,27 @@
 import { describe, expect, it } from 'vitest';
-import {
-  bibleLikeness,
-  likenessFromTalentCast,
-  registersWithArk,
-} from './likeness';
+import { isPersonFromTalentCast, registersWithArk } from './likeness';
 
 describe('registersWithArk', () => {
-  it('registers real and fictional faces, and a missing value on in-flight payloads', () => {
-    expect(registersWithArk('real')).toBe(true);
-    expect(registersWithArk('fictional')).toBe(true);
+  it('registers a person, and a missing value on in-flight payloads', () => {
+    expect(registersWithArk(true)).toBe(true);
     expect(registersWithArk(undefined)).toBe(true);
     expect(registersWithArk(null)).toBe(true);
   });
 
   it('does not register a non-person sheet', () => {
-    expect(registersWithArk('none')).toBe(false);
+    expect(registersWithArk(false)).toBe(false);
   });
 });
 
-describe('likenessFromTalentCast', () => {
-  it('stamps real when the talent has a signed release', () => {
-    expect(likenessFromTalentCast('fictional', true)).toBe('real');
-    expect(likenessFromTalentCast('none', true)).toBe('real');
+describe('isPersonFromTalentCast', () => {
+  it('is a person when the talent has a signed release', () => {
+    expect(isPersonFromTalentCast(true, true)).toBe(true);
+    expect(isPersonFromTalentCast(false, true)).toBe(true);
   });
 
   it('keeps the bible value when the talent is unsigned', () => {
-    expect(likenessFromTalentCast('fictional', false)).toBe('fictional');
-    expect(likenessFromTalentCast('none', false)).toBe('none');
-    expect(likenessFromTalentCast('fictional', undefined)).toBe('fictional');
-  });
-
-  it('does not keep real after recasting off a signed talent', () => {
-    expect(likenessFromTalentCast('real', false)).toBe('fictional');
-  });
-});
-
-describe('bibleLikeness', () => {
-  it('collapses real to fictional and keeps none', () => {
-    expect(bibleLikeness('real')).toBe('fictional');
-    expect(bibleLikeness('fictional')).toBe('fictional');
-    expect(bibleLikeness('none')).toBe('none');
+    expect(isPersonFromTalentCast(true, false)).toBe(true);
+    expect(isPersonFromTalentCast(false, false)).toBe(false);
+    expect(isPersonFromTalentCast(true, undefined)).toBe(true);
   });
 });

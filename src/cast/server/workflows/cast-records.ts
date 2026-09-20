@@ -23,7 +23,7 @@ import type {
 } from '@/platform/server/db/schema';
 import type { ReferenceStatus } from '@/platform/server/db/schema/sequence-locations';
 import { buildCastingAttributes } from '@/cast/character-prompt';
-import { likenessFromTalentCast } from '@/cast/likeness';
+import { isPersonFromTalentCast } from '@/cast/likeness';
 import type {
   ElementSheetEntry,
   LibraryLocationMatch,
@@ -60,8 +60,8 @@ export function buildCharacterInsert(args: {
     personality: castingAttrs?.personality ?? character.personality,
     movement: castingAttrs?.movement ?? character.movement,
     voiceOnly: character.voiceOnly,
-    likeness: likenessFromTalentCast(
-      character.likeness,
+    isPerson: isPersonFromTalentCast(
+      character.isPerson,
       talentMatch?.hasSignedRelease
     ),
     consistencyTag: castingAttrs?.consistencyTag ?? character.consistencyTag,

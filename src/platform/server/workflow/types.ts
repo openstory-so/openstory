@@ -916,7 +916,7 @@ export type TalentCharacterMatch = {
   voiceDescription: string | null;
   /**
    * Signed real-person portrait (`talent.isHuman`). Stamps character
-   * `likeness: 'real'` at insert (#1682). Absent on pre-stamp checkpoints.
+   * `isPerson: true` at insert (#1682). Absent on pre-stamp checkpoints.
    */
   hasSignedRelease?: boolean;
 };

@@ -26,7 +26,6 @@ import {
   reserveRunCredits,
 } from '@/billing/server/preflight';
 import { requireGenerationAllowed } from '@/platform/server/compliance/generation-gate';
-import { registersWithArk } from '@/cast/likeness';
 import {
   likenessFromLedger,
   requireUploadRights,
@@ -175,7 +174,7 @@ export async function createStudioAssets(
   const noPersonImages: string[] = [];
   if (input.activity === 'video') {
     for (const url of studioReferenceImages(input)) {
-      if (!registersWithArk(await likenessFromLedger(scopedDb, url))) {
+      if ((await likenessFromLedger(scopedDb, url)) === 'none') {
         noPersonImages.push(url);
       }
     }

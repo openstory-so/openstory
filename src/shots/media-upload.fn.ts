@@ -710,8 +710,8 @@ export const setCharacterSheetFromUploadFn = createServerFn({ method: 'POST' })
       context.teamId
     );
     await requireUploadRights(scopedDb, [data.publicUrl]);
-    const likeness =
-      (await likenessFromLedger(scopedDb, data.publicUrl)) ?? 'fictional';
+    const isPerson =
+      (await likenessFromLedger(scopedDb, data.publicUrl)) !== 'none';
     const character = await scopedDb.characters.getById(data.characterId);
     if (!character || character.sequenceId !== sequence.id) {
       throw new NotFoundError('Character not found');
@@ -757,7 +757,7 @@ export const setCharacterSheetFromUploadFn = createServerFn({ method: 'POST' })
         storagePath,
         inputHash,
         model: USER_UPLOAD_MODEL,
-        likeness,
+        isPerson,
       });
     await scopedDb.sequenceEvents.record({
       sequenceId: sequence.id,

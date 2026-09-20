@@ -29,7 +29,10 @@ const characterFormSchema = z.object({
   // A checked box submits 'on'; an unchecked one is absent from FormData.
   voiceOnly: z.preprocess((v) => v === 'on', z.boolean()),
   voiceDescription: z.string().max(2000).default(''),
-  likeness: z.enum(['fictional', 'none']).optional(),
+  isPerson: z
+    .enum(['true', 'false'])
+    .transform((value) => value === 'true')
+    .optional(),
 });
 
 /**
@@ -134,36 +137,30 @@ export const CharacterBibleForm: React.FC<{
           textarea
         />
       )}
-      {character.likeness === 'real' ? (
-        <p className="text-sm text-muted-foreground">
-          Real person — signed portrait
-        </p>
-      ) : (
-        <div className="flex flex-col gap-1">
-          <Label
-            htmlFor="character-likeness"
-            className="text-xs font-medium uppercase tracking-wider text-muted-foreground"
-          >
-            Likeness
-          </Label>
-          <Select
-            name="likeness"
-            defaultValue={character.likeness === 'none' ? 'none' : 'fictional'}
-            items={{
-              fictional: 'Fictional person',
-              none: 'Not a person',
-            }}
-          >
-            <SelectTrigger id="character-likeness">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="fictional">Fictional person</SelectItem>
-              <SelectItem value="none">Not a person</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      )}
+      <div className="flex flex-col gap-1">
+        <Label
+          htmlFor="character-isPerson"
+          className="text-xs font-medium uppercase tracking-wider text-muted-foreground"
+        >
+          Person
+        </Label>
+        <Select
+          name="isPerson"
+          defaultValue={character.isPerson ? 'true' : 'false'}
+          items={{
+            true: 'Person',
+            false: 'Not a person',
+          }}
+        >
+          <SelectTrigger id="character-isPerson">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="true">Person</SelectItem>
+            <SelectItem value="false">Not a person</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
       {/* The way back from a bible call that misfiled an on-screen character
           as a voice (#1585): untick, save, then generate the sheet. */}
       <div className="flex items-center gap-2">

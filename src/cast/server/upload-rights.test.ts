@@ -37,7 +37,7 @@ const {
   recordLikenessFinding,
   requireUploadRights,
 } = await import('./upload-rights');
-const { registersWithArk } = await import('@/cast/likeness');
+
 const { createScopedDb } = await import('@/platform/server/db/scoped');
 
 const TEAM_ID = generateId();
@@ -243,7 +243,6 @@ describe('likenessFromLedger', () => {
       })
     ).toEqual({ status: 'needs_portrait' });
     expect(await likenessFromLedger(scopedDb, signed)).toBe('real');
-    expect(registersWithArk('real')).toBe(true);
     await attestUploads(
       scopedDb,
       [
@@ -257,17 +256,8 @@ describe('likenessFromLedger', () => {
     );
 
     expect(await likenessFromLedger(scopedDb, cleared)).toBe('none');
-    expect(registersWithArk(await likenessFromLedger(scopedDb, cleared))).toBe(
-      false
-    );
     expect(await likenessFromLedger(scopedDb, signed)).toBe('real');
-    expect(registersWithArk(await likenessFromLedger(scopedDb, signed))).toBe(
-      true
-    );
     expect(await likenessFromLedger(scopedDb, unknown)).toBeNull();
-    expect(registersWithArk(await likenessFromLedger(scopedDb, unknown))).toBe(
-      true
-    );
   });
 });
 

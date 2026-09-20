@@ -88,7 +88,7 @@ describe('character-sheet hash', () => {
       movement: '',
       voiceDescription: '',
       voiceOnly: false,
-      likeness: 'fictional' as const,
+      isPerson: true,
       consistencyTag: 'jack',
     },
     imageModel: 'nano_banana_2',

@@ -1,33 +1,24 @@
 /**
- * Who a character sheet depicts (#1682). Answers two questions: whether
- * BytePlus CreateAsset must register the still, and whether a signed
- * likeness release is required.
- *
- *   real       — an actual, identifiable person. Register; needs a release.
- *   fictional  — a made-up person (generated, or an uploaded AI face).
- *                Register; no release. Ark cannot tell this from `real`.
- *   none       — not a person (robot, animal, creature, object). Plain URL.
- *
- * A missing value (in-flight checkpoints, pre-column rows) means register.
+ * Upload-ledger verdict (#1682). Not a bible field: the script only
+ * answers person vs not-a-person (`isPerson`). `real` means the ledger
+ * saw an identifiable person (signed or still awaiting a release).
  */
-export type Likeness = 'real' | 'fictional' | 'none';
+export type Likeness = 'real' | 'none';
 
+/**
+ * BytePlus CreateAsset is spent unless this is known not to be a person.
+ * A missing value (in-flight payloads) means register.
+ */
 export function registersWithArk(
-  likeness: Likeness | null | undefined
+  isPerson: boolean | null | undefined
 ): boolean {
-  return likeness !== 'none';
+  return isPerson !== false;
 }
 
-/** A signed talent portrait stamps `real`; otherwise keep the bible value. */
-export function likenessFromTalentCast(
-  bibleLikeness: Likeness,
+/** A signed talent portrait is a person; otherwise keep the bible value. */
+export function isPersonFromTalentCast(
+  isPerson: boolean,
   talentHasSignedRelease: boolean | null | undefined
-): Likeness {
-  if (talentHasSignedRelease) return 'real';
-  return bibleLikeness === 'none' ? 'none' : 'fictional';
-}
-
-/** The script bible never carries `real`. */
-export function bibleLikeness(likeness: Likeness): 'fictional' | 'none' {
-  return likeness === 'none' ? 'none' : 'fictional';
+): boolean {
+  return talentHasSignedRelease ? true : isPerson;
 }
