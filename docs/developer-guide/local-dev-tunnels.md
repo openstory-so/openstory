@@ -35,6 +35,6 @@ That:
 
 Work in the app at `http://localhost:$PORT` — that stays on your machine. Use the `https://…openstory.so` URL only for Google OAuth, inbound webhooks, or a phone. Every request on that hostname hairpins through Cloudflare’s edge, so it will feel slower (especially HMR).
 
-Put Cloudflare Access on `*.openstory.so` (or the ten names) if you do not want the URLs world-readable. The fixed local OTP is not served on those hosts.
+Put Cloudflare Access on `*.openstory.so` (or the ten names) if you do not want the URLs world-readable. The fixed local OTP is not served on those hosts: `isLocalRequestHost` fails closed unless every Host / X-Forwarded-Host value is loopback, so a spoofed `X-Forwarded-Host: localhost` on a tunnel hostname does not turn it on. Without a mapping file, `bun dev` does not start a Quick Tunnel.
 
 Ordinary `bun install && bun dev` without a map still uses `http://localhost:3000`.

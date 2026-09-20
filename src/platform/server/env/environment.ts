@@ -33,11 +33,29 @@ export function getProductionDeploymentAppUrl(request: Request): string {
   return getServerAppUrl(request);
 }
 
+function hostnameFromHostHeader(host: string): string {
+  return (host.split(':')[0] ?? host).toLowerCase();
+}
+
+function isLoopbackOrBareIp(hostname: string): boolean {
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '::1' ||
+    /^\d+\.\d+\.\d+\.\d+$/.test(hostname)
+  );
+}
+
 /**
  * Is this request being served on a local/network-dev host (localhost or a
- * bare IP)? Mirrors the local-access check in `src/routes/__root.tsx`: real
- * deployments — wherever they are hosted — are always reached by hostname,
- * never a bare IP or localhost.
+ * bare IP)? Real deployments — wherever they are hosted — are always reached
+ * by hostname, never a bare IP or localhost.
+ *
+ * Every present host signal must be local. `X-Forwarded-Host` is not
+ * authoritative: a public `Host` with `X-Forwarded-Host: localhost` is how a
+ * tunnel request would re-enable the fixed OTP, and a loopback `Host` with a
+ * public forwarded host is the shape of some reverse proxies. Fail closed if
+ * either is a hostname.
  *
  * This is a host-based, env-independent signal. Unlike IS_PREVIEW_DEPLOYMENT,
  * it does not rely on VITE_APP_URL / NODE_ENV being present in the worker env
@@ -45,14 +63,12 @@ export function getProductionDeploymentAppUrl(request: Request): string {
  * undefined in production and in the e2e-built worker alike).
  */
 export function isLocalRequestHost(request: Request): boolean {
-  const host =
-    request.headers.get('x-forwarded-host') ?? request.headers.get('host');
-  if (!host) return false;
-  const hostname = (host.split(':')[0] ?? host).toLowerCase();
-  return (
-    hostname === 'localhost' ||
-    hostname === '127.0.0.1' ||
-    hostname === '::1' ||
-    /^\d+\.\d+\.\d+\.\d+$/.test(hostname)
+  const hosts = [
+    request.headers.get('host'),
+    request.headers.get('x-forwarded-host'),
+  ].filter((value): value is string => Boolean(value));
+  if (hosts.length === 0) return false;
+  return hosts.every((host) =>
+    isLoopbackOrBareIp(hostnameFromHostHeader(host))
   );
 }

@@ -276,8 +276,11 @@ export default defineConfig({
     tailwindcss(),
     cloudflare({
       viteEnvironment: { name: 'ssr' },
-      ...(enableDevTunnel
-        ? { tunnel: namedTunnel ? { name: namedTunnel.tunnelName } : true }
+      // Named tunnel only — `tunnel: true` is a Quick Tunnel that auto-starts
+      // on listen (`*.trycloudflare.com`). Omit the option entirely when there
+      // is no ~/.openstory/dev-tunnels.json so `bun dev` stays loopback-only.
+      ...(enableDevTunnel && namedTunnel
+        ? { tunnel: { name: namedTunnel.tunnelName } }
         : {}),
       // remoteBindings is left at its default (true) so an explicit
       // per-binding `remote: true` in wrangler.jsonc still works as an

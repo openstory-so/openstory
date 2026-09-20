@@ -260,12 +260,15 @@ function isPortFree(port: number): Promise<boolean> {
 }
 
 /** Probe 3000–3009. Prefer `preferred` when it is in range and free. */
-export async function pickFreeDevPort(preferred = 3000): Promise<number> {
+export async function pickFreeDevPort(
+  preferred = 3000,
+  isFree: (port: number) => Promise<boolean> = isPortFree
+): Promise<number> {
   const ordered = isDevTunnelPort(preferred)
     ? [preferred, ...DEV_TUNNEL_PORTS.filter((port) => port !== preferred)]
     : [...DEV_TUNNEL_PORTS];
   for (const port of ordered) {
-    if (await isPortFree(port)) return port;
+    if (await isFree(port)) return port;
   }
   throw new Error(
     'All ports 3000–3009 are in use. Stop another `bun dev` (or whatever is bound there) and retry.'
