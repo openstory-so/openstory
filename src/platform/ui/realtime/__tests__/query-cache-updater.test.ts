@@ -416,6 +416,7 @@ describe('updateQueryCacheFromEvent — variant-only guard (#547)', () => {
       vi.advanceTimersByTime(200);
       const keys = invalidate.mock.calls.map((c) => c[0]?.queryKey);
       expect(keys).toContainEqual(shotKeys.list(SEQ));
+      expect(keys).toContainEqual(shotKeys.dialogueSections('shot-1'));
       expect(keys).not.toContainEqual(
         promptVariantKeys.shot('motion', 'shot-1')
       );

@@ -216,7 +216,11 @@ export const ShotReadingsList: React.FC<{
     return (
       <Collapsible className="flex flex-col gap-2">
         <CollapsibleTrigger asChild>
-          <Button size="sm" variant="ghost" className="group justify-between">
+          <Button
+            size="sm"
+            variant="ghost"
+            className="group h-8 justify-between"
+          >
             Readings · {readings.length}
             <ChevronDown
               className="h-4 w-4 transition-transform group-data-[state=open]:rotate-180 motion-reduce:transition-none"

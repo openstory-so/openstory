@@ -60,6 +60,11 @@ export const shotKeys = {
   /** Per-shot video version history (#1070). */
   videoVersions: (shotId: string) =>
     [...shotKeys.all, 'video-versions', shotId] as const,
+  /** Every shot's dialogue readings (#1657) — the catch-all invalidation. */
+  dialogueSectionsAll: () => [...shotKeys.all, 'dialogue-sections'] as const,
+  /** One shot's dialogue readings (#1657). */
+  dialogueSections: (shotId: string) =>
+    [...shotKeys.dialogueSectionsAll(), shotId] as const,
 };
 
 // Distinct image models that have generated a variant for this sequence.

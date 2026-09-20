@@ -1181,11 +1181,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
 
   // This shot's readings (#1657) — one list for either dialogue panel below.
   const dialogueReadings = shot ? (
-    <ShotDialogueReadings
-      sequenceId={sequenceId}
-      shotId={shot.id}
-      clipId={shot.audioClips?.[0]?.id}
-    />
+    <ShotDialogueReadings sequenceId={sequenceId} shotId={shot.id} />
   ) : undefined;
 
   // Flipping this re-stales the motion prompt — the two modes use different

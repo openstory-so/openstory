@@ -26,20 +26,20 @@ import type { SceneWithScript } from './use-scenes';
 type ReadingsProps = {
   sequenceId: string;
   shotId: string;
-  /** The shot's current clip id — a new recording landing refetches the list. */
-  clipId?: string;
   collapsible?: boolean;
 };
 
 const Readings: React.FC<ReadingsProps> = ({
   sequenceId,
   shotId,
-  clipId,
   collapsible,
 }) => {
   const queryClient = useQueryClient();
+  // Keyed by shot alone: a new recording invalidates it (the realtime
+  // `dialogue-audio` event), so the list on screen stays put while it
+  // refetches instead of dropping back to the fallback.
   const { data: readings } = useSuspenseQuery({
-    queryKey: ['shot-dialogue-sections', shotId, clipId ?? null],
+    queryKey: shotKeys.dialogueSections(shotId),
     queryFn: () => listShotDialogueSectionsFn({ data: { sequenceId, shotId } }),
   });
   const selectReading = useMutation({
@@ -48,7 +48,7 @@ const Readings: React.FC<ReadingsProps> = ({
     onSuccess: () =>
       Promise.all([
         queryClient.invalidateQueries({
-          queryKey: ['shot-dialogue-sections', shotId],
+          queryKey: shotKeys.dialogueSections(shotId),
         }),
         // The shot's `audioClips` ride the shots list.
         queryClient.invalidateQueries({ queryKey: shotKeys.list(sequenceId) }),
@@ -66,8 +66,13 @@ const Readings: React.FC<ReadingsProps> = ({
   );
 };
 
+// The fallback is what the list most often resolves to, so nothing moves when
+// it lands: one h-8 row under the video, nothing in the prompt editor (a lone
+// selected reading renders no list).
 export const ShotDialogueReadings: React.FC<ReadingsProps> = (props) => (
-  <Suspense fallback={<Skeleton className="h-8 w-full" />}>
+  <Suspense
+    fallback={props.collapsible ? <Skeleton className="h-8 w-full" /> : null}
+  >
     <Readings {...props} />
   </Suspense>
 );
@@ -94,7 +99,6 @@ export const ShotDialogueUnderVideo: React.FC<{
         <ShotDialogueReadings
           sequenceId={shot.sequenceId}
           shotId={shot.id}
-          clipId={clip?.id}
           collapsible
         />
       }

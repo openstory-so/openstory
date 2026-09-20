@@ -168,6 +168,13 @@ export function updateQueryCacheFromEvent(
           shotKeys.list(sequenceId),
           `shots:${sequenceId}`
         );
+        if (shotId && updateType === 'dialogue-audio') {
+          debouncedInvalidate(
+            queryClient,
+            shotKeys.dialogueSections(shotId),
+            `dialogue-sections:${shotId}`
+          );
+        }
         if (shotId && promptUpdated) {
           const promptType =
             updateType === 'visual-prompt' ? 'visual' : 'motion';
@@ -760,6 +767,9 @@ export function updateQueryCacheFromEvent(
       // recover persisted clips if a per-shot event was missed or a sibling failed.
       void queryClient.invalidateQueries({
         queryKey: shotKeys.list(sequenceId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: shotKeys.dialogueSectionsAll(),
       });
       // Final catch-all so the cast, location and element lists — and the
       // per-scene membership the tabs filter by — reflect the finished run
