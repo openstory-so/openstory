@@ -55,6 +55,16 @@ const SEQUENCE_LEVEL_BY_DESIGN: Record<string, string> = {
   // Continue-stage prefetch for the whole sequence, not a per-shot render.
   'src/routes/_app/sequences/$id/scenes.tsx':
     'sequence-wide continue-stage estimate',
+  'src/sequences/ui/use-sequences.ts':
+    'sequence-wide continue-stage estimate cache',
+  // Continue slider / next-stage skips for the whole run. Per-shot overrides
+  // still go through `rendersReferenceOnly` at render time.
+  'src/sequences/pipeline.ts':
+    'sequence-wide continue stages and generation flags',
+  // Hands the default to `rendersReferenceOnly` per shot; continue drafts
+  // the sequence flag before Images has run.
+  'src/shots/ui/scene-list.tsx':
+    'passes the default to the per-shot resolver; continue is sequence-wide',
   // Plan snapshot of the sequence row. Per-shot answers are frozen onto each
   // PlanTarget as `usesStartFrame`.
   'src/shots/server/update-stale-plan.ts': 'snapshots the sequence default',
