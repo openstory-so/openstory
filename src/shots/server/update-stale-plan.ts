@@ -48,7 +48,10 @@ import {
 import {
   dialogueAudioMaxSeconds,
   dialogueAudioMinSeconds,
+  matchingDialogueClips,
   voicedDialogueLines,
+  type VoiceCharacter,
+  type VoicedDialogueLine,
 } from '@/motion/dialogue-tts';
 import type { BatchDialogueRecording } from '@/platform/server/workflow/types';
 import type { SceneVoicedLine } from '@/shots/shot-dialogue';
@@ -159,6 +162,13 @@ export type PlanTarget = {
    * stale. Video/music use status columns rather than pending-claim rows.
    */
   regenVideo: boolean;
+  /**
+   * Re-record this shot's dialogue audio. True only when a reading already
+   * exists (never a FIRST recording) and no longer matches the current
+   * lines or voice. Independent of `regenVideo` so a take can be reviewed
+   * before the clip is re-rendered (#1703).
+   */
+  regenDialogue: boolean;
   /**
    * The lines this shot speaks, from the shot dialogue node at click time
    * (#1657). Snapshotted here because the node is mutable and the run
@@ -388,17 +398,30 @@ export async function computePlan(args: {
     : new Map<string, ShotVideoState>();
 
   await scopedDb.shots.ensureAnchorFrames(inScope);
-  const [anchorRows, scriptBySceneId, characters, locations, elements, style] =
-    await Promise.all([
-      scopedDb.frames.listAnchorsBySequence(sequenceId),
-      loadSceneContextBySequence(scopedDb, sequenceId),
-      scopedDb.characters.listWithSheets(sequenceId),
-      scopedDb.sequenceLocations.listWithReferences(sequenceId),
-      scopedDb.sequenceElements.list(sequenceId),
-      sequence.styleId
-        ? scopedDb.styles.getById(sequence.styleId)
-        : Promise.resolve(null),
-    ]);
+  const [
+    anchorRows,
+    scriptBySceneId,
+    characters,
+    locations,
+    elements,
+    style,
+    voiceRows,
+  ] = await Promise.all([
+    scopedDb.frames.listAnchorsBySequence(sequenceId),
+    loadSceneContextBySequence(scopedDb, sequenceId),
+    scopedDb.characters.listWithSheets(sequenceId),
+    scopedDb.sequenceLocations.listWithReferences(sequenceId),
+    scopedDb.sequenceElements.list(sequenceId),
+    sequence.styleId
+      ? scopedDb.styles.getById(sequence.styleId)
+      : Promise.resolve(null),
+    scopedDb.characters.list(sequenceId),
+  ]);
+  const characterVoices = voiceRows.flatMap((row) =>
+    row.voiceId
+      ? [{ name: row.name, voiceId: row.voiceId, voiceOnly: row.voiceOnly }]
+      : []
+  );
   const anchorsByShot = new Map(anchorRows.map((f) => [f.shotId, f]));
   // Stills live on the selected `frame_variants` rows (#1067) — one batch read
   // so the per-shot loop below stays query-free on the image surface.
@@ -455,6 +478,7 @@ export async function computePlan(args: {
         : null,
       selectedMotionVersionId: selectedMotionByShot.get(shot.id)?.id ?? null,
       dialogue: dialogueOf(shot),
+      characterVoices,
       scene,
       refs,
       depth,
@@ -486,12 +510,6 @@ export async function computePlan(args: {
     scene: sceneForBibles,
   });
 
-  const voiceRows = await scopedDb.characters.list(sequence.id);
-  const characterVoices = voiceRows.flatMap((row) =>
-    row.voiceId
-      ? [{ name: row.name, voiceId: row.voiceId, voiceOnly: row.voiceOnly }]
-      : []
-  );
   const shotById = new Map(allShots.map((shot) => [shot.id, shot]));
   for (const target of targets) {
     const sceneId = shotById.get(target.shotId)?.sceneId;
@@ -513,7 +531,7 @@ export async function computePlan(args: {
     needing: targets
       .filter(
         (target) =>
-          target.regenVideo &&
+          (target.regenDialogue || target.regenVideo) &&
           voicedDialogueLines(target.dialogue, characterVoices).length > 0
       )
       .map((target) => ({ id: target.shotId })),
@@ -651,6 +669,7 @@ async function decideShotTarget(args: {
   selectedMotionVersionId: string | null;
   /** What the shot says now (`PlanTarget.dialogue`). */
   dialogue: MotionDialogue;
+  characterVoices: VoiceCharacter[];
   scene: Scene | null;
   refs: ShotStalenessRefs;
   depth: UpdateStaleDepth;
@@ -667,6 +686,7 @@ async function decideShotTarget(args: {
     selectedPrompt,
     selectedMotionVersionId,
     dialogue,
+    characterVoices,
     scene,
     refs,
     depth,
@@ -713,11 +733,14 @@ async function decideShotTarget(args: {
     depth,
     videoState,
     usesStartFrame: shotUsesStartFrame,
+    voicedLines: voicedDialogueLines(dialogue, characterVoices),
+    audioClips: shot.audioClips,
   });
   if (
     !flags.regenVisual &&
     !flags.regenMotion &&
     !flags.regenImage &&
+    !flags.regenDialogue &&
     !flags.regenVideo
   ) {
     return { kind: 'noop' };
@@ -750,6 +773,7 @@ async function decideShotTarget(args: {
         DEFAULT_IMAGE_MODEL
       ),
       regenVideo: flags.regenVideo,
+      regenDialogue: flags.regenDialogue,
       dialogue,
       // Filled in by `computePlan` once the voices are loaded.
       dialogueContext: [],
@@ -771,6 +795,7 @@ function hasUnknownStaleness(staleness: ShotStalenessResult): boolean {
  *
  * - prompts/images: hash + pending-claim vocabulary from `computeShotStaleness`
  *   (`'stale'` only; `'updating'` is already covered).
+ * - dialogue: existing clips whose source key no longer matches (#1703).
  * - video: segment assembly status columns (no pending-claim rows yet).
  */
 function cascadeFlags(args: {
@@ -780,13 +805,24 @@ function cascadeFlags(args: {
   videoState: ShotVideoState | undefined;
   /** Resolved per shot — a reference-only clip never reads its still. */
   usesStartFrame: boolean;
+  voicedLines: readonly VoicedDialogueLine[];
+  audioClips: Shot['audioClips'];
 }): {
   regenVisual: boolean;
   regenMotion: boolean;
   regenImage: boolean;
+  regenDialogue: boolean;
   regenVideo: boolean;
 } {
-  const { staleness, selectedImage, depth, videoState, usesStartFrame } = args;
+  const {
+    staleness,
+    selectedImage,
+    depth,
+    videoState,
+    usesStartFrame,
+    voicedLines,
+    audioClips,
+  } = args;
 
   // 'stale' only — 'updating' is a live claim already fixing this artifact.
   const regenVisual = staleness.visualPrompt === 'stale';
@@ -803,15 +839,31 @@ function cascadeFlags(args: {
     !!selectedImage?.url &&
     (staleness.thumbnail === 'stale' || regenVisual);
 
+  // Depth ≥ dialogue: existing audio whose clips no longer match the current
+  // reading. Never a FIRST recording. Does not cascade into video — the new
+  // take is meant to be reviewed first (#1703).
+  const regenDialogue =
+    depthIncludes(depth, 'dialogue') &&
+    voicedLines.length > 0 &&
+    (audioClips?.length ?? 0) > 0 &&
+    matchingDialogueClips(audioClips, voicedLines).length === 0;
+
   // Depth ≥ video: existing videos whose upstream changes in this run, or
   // whose manifest already diverged. Leave in-flight renders alone.
   const regenVideo =
+    depthIncludes(depth, 'video') &&
     !!videoState &&
     videoState.hasVideo &&
     !videoState.generating &&
     (regenMotion || regenImage || videoState.alreadyStale);
 
-  return { regenVisual, regenMotion, regenImage, regenVideo };
+  return {
+    regenVisual,
+    regenMotion,
+    regenImage,
+    regenDialogue,
+    regenVideo,
+  };
 }
 
 // ---------------------------------------------------------------------------

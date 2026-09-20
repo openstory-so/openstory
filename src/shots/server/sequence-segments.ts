@@ -54,5 +54,5 @@ export async function loadSequenceSegments(
     frames,
     live,
   });
-  return { assembled, versions };
+  return { assembled, versions, live };
 }

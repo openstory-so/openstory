@@ -11,6 +11,8 @@ const shot = (causes: string[]): ShotStaleness => ({
   thumbnail: 'stale',
   visualPrompt: 'fresh',
   motionPrompt: 'fresh',
+  dialogue: 'untracked',
+  video: 'untracked',
   causes,
 });
 
@@ -51,6 +53,8 @@ describe('levelsFromStaleShots', () => {
           thumbnail: 'stale',
           visualPrompt: 'stale',
           motionPrompt: 'fresh',
+          dialogue: 'untracked',
+          video: 'untracked',
           causes: ['Script'],
         },
       ])
@@ -73,10 +77,30 @@ describe('levelsFromStaleShots', () => {
           thumbnail: 'fresh',
           visualPrompt: 'fresh',
           motionPrompt: 'stale',
+          dialogue: 'untracked',
+          video: 'untracked',
           causes: ['Script'],
         },
       ])
     ).toEqual([{ depth: 'prompts', label: 'Prompts' }]);
+  });
+
+  it('shows dialogue and video from client staleness so they render before the preview (#1703)', () => {
+    expect(
+      levelsFromStaleShots([
+        {
+          thumbnail: 'fresh',
+          visualPrompt: 'fresh',
+          motionPrompt: 'fresh',
+          dialogue: 'stale',
+          video: 'stale',
+          causes: ['Character "Woman"'],
+        },
+      ])
+    ).toEqual([
+      { depth: 'dialogue', label: 'Dialogue' },
+      { depth: 'video', label: 'Videos' },
+    ]);
   });
 });
 
@@ -90,9 +114,16 @@ describe('previewLevels', () => {
     motionPromptShotIds: ['b'],
     imageShotIds: ['a', 'b'],
     videoShotIds: [],
+    dialogueShotIds: [],
     musicPrompt: true,
     musicTrack: false,
-    costByLevel: { prompts: null, images: null, video: null, music: null },
+    costByLevel: {
+      prompts: null,
+      images: null,
+      dialogue: null,
+      video: null,
+      music: null,
+    },
   };
   it('lists only levels with work, concretely, in cascade order', () => {
     expect(previewLevels(preview, numbers, false)).toEqual([
@@ -102,6 +133,29 @@ describe('previewLevels', () => {
       },
       { depth: 'images', label: 'Images for shots 2 & 3' },
       { depth: 'music', label: 'Music prompt' },
+    ]);
+  });
+
+  it('names dialogue separately from video (#1703)', () => {
+    expect(
+      previewLevels(
+        {
+          ...preview,
+          musicPrompt: false,
+          dialogueShotIds: ['a'],
+          videoShotIds: ['a', 'b'],
+        },
+        numbers,
+        false
+      )
+    ).toEqual([
+      {
+        depth: 'prompts',
+        label: 'Image prompts for shots 2 & 3 · Motion prompts for shot 3',
+      },
+      { depth: 'images', label: 'Images for shots 2 & 3' },
+      { depth: 'dialogue', label: 'Dialogue for shot 2' },
+      { depth: 'video', label: 'Videos for shots 2 & 3' },
     ]);
   });
 });

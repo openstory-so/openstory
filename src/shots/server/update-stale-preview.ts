@@ -25,6 +25,7 @@ export type UpdateStalePreview = {
   visualPromptShotIds: string[];
   motionPromptShotIds: string[];
   imageShotIds: string[];
+  dialogueShotIds: string[];
   videoShotIds: string[];
   musicPrompt: boolean;
   musicTrack: boolean;
@@ -58,6 +59,7 @@ export function buildUpdateStalePreview(
   const visual = plan.targets.filter((t) => t.regenVisual);
   const motion = plan.targets.filter((t) => t.regenMotion);
   const images = plan.targets.filter((t) => t.regenImage);
+  const dialogues = plan.targets.filter((t) => t.regenDialogue);
   const videos = plan.targets.filter((t) => t.regenVideo);
   const music = plan.music;
 
@@ -81,21 +83,18 @@ export function buildUpdateStalePreview(
       0
     )
   );
-  const videosCost = addMaybe(
-    sum(
-      videos.map((t) =>
-        estimateVideoCost(
-          videoModel,
-          (t.durationMs ?? DEFAULT_VIDEO_DURATION_MS) / 1000,
-          {
-            pricing,
-            resolution: plan.sequence.resolution,
-            referenceOnly: !t.usesStartFrame,
-          }
-        )
+  const videosCost = sum(
+    videos.map((t) =>
+      estimateVideoCost(
+        videoModel,
+        (t.durationMs ?? DEFAULT_VIDEO_DURATION_MS) / 1000,
+        {
+          pricing,
+          resolution: plan.sequence.resolution,
+          referenceOnly: !t.usesStartFrame,
+        }
       )
-    ),
-    videos.length > 0 ? dialogueCost : ZERO_MICROS
+    )
   );
   const musicCost = music
     ? addMaybe(
@@ -116,12 +115,14 @@ export function buildUpdateStalePreview(
     visualPromptShotIds: visual.map((t) => t.shotId),
     motionPromptShotIds: motion.map((t) => t.shotId),
     imageShotIds: images.map((t) => t.shotId),
+    dialogueShotIds: dialogues.map((t) => t.shotId),
     videoShotIds: videos.map((t) => t.shotId),
     musicPrompt: music?.regenPrompt ?? false,
     musicTrack: music?.regenTrack ?? false,
     costByLevel: {
       prompts: promptsCost,
       images: imagesCost,
+      dialogue: dialogues.length > 0 ? dialogueCost : ZERO_MICROS,
       video: videosCost,
       music: musicCost,
     },

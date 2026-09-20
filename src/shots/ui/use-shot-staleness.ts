@@ -19,7 +19,13 @@ import {
  */
 
 /** The tracked artifacts, and the source of truth for `ShotStaleness`'s keys. */
-const SHOT_ARTIFACTS = ['thumbnail', 'visualPrompt', 'motionPrompt'] as const;
+const SHOT_ARTIFACTS = [
+  'thumbnail',
+  'visualPrompt',
+  'motionPrompt',
+  'dialogue',
+  'video',
+] as const;
 
 export type ShotArtifact = (typeof SHOT_ARTIFACTS)[number];
 

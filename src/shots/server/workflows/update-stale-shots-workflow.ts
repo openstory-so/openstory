@@ -3,13 +3,15 @@
  * out-of-date artifacts in scope (a shot, a scene, or the whole sequence),
  * at a user-chosen cascade depth (src/shots/update-stale-depth.ts):
  *
- *   'prompts' → stale visual/motion prompts only, nothing renders
- *   'images'  → + stale stills, and stills whose visual prompt regenerates
- *               in this run (cascade); never a FIRST still
- *   'video'   → + existing videos whose upstream changed in this run or
- *               whose manifest already diverged; never a FIRST video
- *   'music'   → + the sequence music prompt, and the existing track behind
- *               a successful prompt regen; never a FIRST generation
+ *   'prompts'  → stale visual/motion prompts only, nothing renders
+ *   'images'   → + stale stills, and stills whose visual prompt regenerates
+ *                in this run (cascade); never a FIRST still
+ *   'dialogue' → + existing dialogue readings whose voice or lines moved;
+ *                never a FIRST recording. Video is left for the next tick.
+ *   'video'    → + existing videos whose upstream changed in this run or
+ *                whose manifest already diverged; never a FIRST video
+ *   'music'    → + the sequence music prompt, and the existing track behind
+ *                a successful prompt regen; never a FIRST generation
  *
  * Per shot the dependency order is visual-prompt → image → video, with the
  * motion prompt alongside (video waits on it too). Chained stages never run
@@ -1300,7 +1302,11 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
         })(musicToRun)
       : null;
 
-    await Promise.allSettled(musicJob ? [...jobs, musicJob] : jobs);
+    await Promise.allSettled([
+      ...jobs,
+      ...(musicJob ? [musicJob] : []),
+      dialogueRecorded,
+    ]);
 
     // A user-initiated action that partly failed is a production issue, not a
     // warning — `error` is the only severity that surfaces in error tracking.

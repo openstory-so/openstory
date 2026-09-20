@@ -537,7 +537,7 @@ describe('executeSmartRetry — partial retry status reset', () => {
     expect(updateStatus).toHaveBeenCalledWith('completed');
   });
 
-  test('failed motion → triggers /motion with image url, prompt and duration', async () => {
+  test('failed motion → triggers /motion-batch with image url, prompt and duration', async () => {
     resetMocks();
     const shot = makeShot({
       videoStatus: 'failed',
@@ -556,15 +556,18 @@ describe('executeSmartRetry — partial retry status reset', () => {
 
     expect(triggerWorkflowMock).toHaveBeenCalledTimes(1);
     expect(triggerWorkflowMock).toHaveBeenCalledWith(
-      '/motion',
+      '/motion-batch',
       expect.objectContaining({
-        shotId: 'shot-1',
         sequenceId: 'seq_1',
-        imageUrl: 'https://cdn/thumb.jpg',
-        // The selected version is assembled for the target model, so the
-        // stored text is carried rather than reproduced verbatim.
-        prompt: expect.stringContaining('slow pan across the lab'),
-        duration: 5,
+        includeMusic: false,
+        shots: [
+          expect.objectContaining({
+            shotId: 'shot-1',
+            imageUrl: 'https://cdn/thumb.jpg',
+            prompt: expect.stringContaining('slow pan across the lab'),
+            duration: 5,
+          }),
+        ],
       })
     );
     expect(result).toEqual({
@@ -572,6 +575,75 @@ describe('executeSmartRetry — partial retry status reset', () => {
       retriedItems: ['1 motion video(s)'],
     });
     expect(updateStatus).toHaveBeenCalledWith('completed');
+  });
+
+  test('two failed shots in one scene record the conversation once (#1703)', async () => {
+    resetMocks();
+    const shotA = makeShot({
+      id: 'shot-a',
+      sceneId: 'scene-1',
+      shotNumber: 1,
+      videoStatus: 'failed',
+      imageStatus: 'completed',
+      imageUrl: 'https://cdn/a.jpg',
+    });
+    const shotB = makeShot({
+      id: 'shot-b',
+      sceneId: 'scene-1',
+      shotNumber: 2,
+      videoStatus: 'failed',
+      imageStatus: 'completed',
+      imageUrl: 'https://cdn/b.jpg',
+    });
+    const { context } = makeContext(
+      makeSequence({ videoModel: 'seedance_v2' }),
+      [shotA, shotB]
+    );
+    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test stub
+    const stub = context.scopedDb as unknown as {
+      shotDialogue: {
+        getSelectedBySequence: () => Promise<unknown>;
+      };
+      characters: { list: () => Promise<unknown> };
+    };
+    stub.shotDialogue.getSelectedBySequence = () =>
+      Promise.resolve([
+        {
+          shotId: 'shot-a',
+          id: 'sdv-a',
+          lines: [{ character: 'Woman', line: 'Hello', tone: 'calm' }],
+        },
+        {
+          shotId: 'shot-b',
+          id: 'sdv-b',
+          lines: [{ character: 'Woman', line: 'There', tone: 'calm' }],
+        },
+      ]);
+    stub.characters.list = () =>
+      Promise.resolve([{ name: 'Woman', voiceId: 'voice-woman' }]);
+
+    await executeSmartRetry(context);
+
+    expect(triggerWorkflowMock).toHaveBeenCalledTimes(1);
+    expect(triggerWorkflowMock).toHaveBeenCalledWith(
+      '/motion-batch',
+      expect.objectContaining({
+        dialogueRecording: expect.objectContaining({
+          scenes: [
+            expect.objectContaining({
+              voiced: expect.arrayContaining([
+                expect.objectContaining({ shotId: 'shot-a' }),
+                expect.objectContaining({ shotId: 'shot-b' }),
+              ]),
+            }),
+          ],
+        }),
+        shots: expect.arrayContaining([
+          expect.objectContaining({ shotId: 'shot-a' }),
+          expect.objectContaining({ shotId: 'shot-b' }),
+        ]),
+      })
+    );
   });
 
   test('cancelled motion is NOT a failure — never selected for retry (#1108)', async () => {
@@ -726,20 +798,18 @@ describe('executeSmartRetry — per-asset model selection (#1066)', () => {
 
     await executeSmartRetry(context);
 
+    expect(triggerWorkflowMock).toHaveBeenCalledTimes(1);
     expect(triggerWorkflowMock).toHaveBeenCalledWith(
-      '/motion',
+      '/motion-batch',
       expect.objectContaining({
-        shotId: 'shot-a',
-        model: 'seedance_v2',
         ownsReservation: true,
-      })
-    );
-    expect(triggerWorkflowMock).toHaveBeenCalledWith(
-      '/motion',
-      expect.objectContaining({
-        shotId: 'shot-b',
-        model: 'kling_v3_pro',
-        ownsReservation: true,
+        shots: expect.arrayContaining([
+          expect.objectContaining({ shotId: 'shot-a', model: 'seedance_v2' }),
+          expect.objectContaining({
+            shotId: 'shot-b',
+            model: 'kling_v3_pro',
+          }),
+        ]),
       })
     );
   });
@@ -799,8 +869,15 @@ describe('executeSmartRetry — per-asset model selection (#1066)', () => {
     await executeSmartRetry(context);
 
     expect(triggerWorkflowMock).toHaveBeenCalledWith(
-      '/motion',
-      expect.objectContaining({ shotId: 'shot-a', model: 'gemini_omni_flash' })
+      '/motion-batch',
+      expect.objectContaining({
+        shots: [
+          expect.objectContaining({
+            shotId: 'shot-a',
+            model: 'gemini_omni_flash',
+          }),
+        ],
+      })
     );
   });
 

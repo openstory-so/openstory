@@ -10,6 +10,11 @@ import {
   loadShotStalenessBatch,
   UNTRACKED_STALENESS,
 } from './shot-staleness';
+import {
+  loadShotMediaStaleness,
+  overlayMediaStaleness,
+  type ShotMediaStaleness,
+} from './shot-media-staleness';
 import { z } from 'zod';
 
 type ReadPageInput = PageInput & { sequenceId: string };
@@ -30,6 +35,8 @@ export const shotStalenessSchema = z.object({
   thumbnail: artifactStalenessSchema,
   visualPrompt: artifactStalenessSchema,
   motionPrompt: artifactStalenessSchema,
+  dialogue: artifactStalenessSchema,
+  video: artifactStalenessSchema,
   causes: z.array(z.string()),
 });
 
@@ -150,17 +157,26 @@ type StalenessInputs = Pick<
 > & { frame: Frame | null };
 
 /** A shot with no anchor frame has no image surface to compare: untracked. */
-async function shotStaleness(scopedDb: ScopedDb, inputs: StalenessInputs) {
+async function shotStaleness(
+  scopedDb: ScopedDb,
+  inputs: StalenessInputs,
+  media?: ShotMediaStaleness
+) {
   const { frame, ...rest } = inputs;
-  const result = frame
-    ? await computeShotStaleness({ scopedDb, frame, ...rest })
-    : UNTRACKED_STALENESS;
+  const result = overlayMediaStaleness(
+    frame
+      ? await computeShotStaleness({ scopedDb, frame, ...rest })
+      : UNTRACKED_STALENESS,
+    media
+  );
   return {
     shotId: inputs.shot.id,
     frameId: frame?.id ?? null,
     thumbnail: result.thumbnail,
     visualPrompt: result.visualPrompt,
     motionPrompt: result.motionPrompt,
+    dialogue: result.dialogue,
+    video: result.video,
     causes: result.causes,
   };
 }
@@ -177,16 +193,23 @@ export async function readShotStaleness(
   const selected = ctx.frame
     ? await scopedDb.frameVariants.getSelected(ctx.frame.id)
     : null;
-  return shotStaleness(scopedDb, {
-    sequence,
-    shot,
-    frame: ctx.frame,
-    selectedImage:
-      selected?.sequenceId === sequenceId && selected.frameId === ctx.frame?.id
-        ? selected
-        : null,
-    scene: ctx.scene,
-  });
+  const allShots = await scopedDb.shots.listBySequence(sequenceId);
+  const media = await loadShotMediaStaleness(scopedDb, sequence, allShots);
+  return shotStaleness(
+    scopedDb,
+    {
+      sequence,
+      shot,
+      frame: ctx.frame,
+      selectedImage:
+        selected?.sequenceId === sequenceId &&
+        selected.frameId === ctx.frame?.id
+          ? selected
+          : null,
+      scene: ctx.scene,
+    },
+    media.get(shot.id)
+  );
 }
 
 /**
@@ -213,19 +236,25 @@ export async function listShotStaleness(
   );
   if (!page.items.length) return { shots: [], nextCursor: page.nextCursor };
   const batch = await loadShotStalenessBatch(scopedDb, sequence);
+  const allShots = await scopedDb.shots.listBySequence(sequence.id);
+  const media = await loadShotMediaStaleness(scopedDb, sequence, allShots);
   const shots = await Promise.all(
     page.items.map((shot) => {
       const frame = batch.anchorsByShot.get(shot.id) ?? null;
-      return shotStaleness(scopedDb, {
-        sequence,
-        shot,
-        frame,
-        selectedImage: frame
-          ? (batch.selectedByFrame.get(frame.id) ?? null)
-          : null,
-        scene: resolveSceneForShot(shot, batch.sceneContext).scene,
-        refs: batch.refs,
-      });
+      return shotStaleness(
+        scopedDb,
+        {
+          sequence,
+          shot,
+          frame,
+          selectedImage: frame
+            ? (batch.selectedByFrame.get(frame.id) ?? null)
+            : null,
+          scene: resolveSceneForShot(shot, batch.sceneContext).scene,
+          refs: batch.refs,
+        },
+        media.get(shot.id)
+      );
     })
   );
   return { shots, nextCursor: page.nextCursor };

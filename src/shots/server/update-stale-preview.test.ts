@@ -66,12 +66,13 @@ describe('buildUpdateStalePreview', () => {
     expect(preview.costByLevel).toEqual({
       prompts: 40_000,
       images: 40_000,
+      dialogue: 0,
       video: 500_000,
       music: 0,
     });
   });
 
-  it('prices dialogue once per scene, on the video level (#1657)', async () => {
+  it('prices dialogue on its own level, separate from video (#1703)', async () => {
     const { estimateTtsCost } = await import('@/billing/elevenlabs-pricing');
     const { ttsCharacterCount } = await import('@/motion/dialogue-tts');
     estimateVideoCost.mockReturnValue(micros(500_000));
@@ -80,21 +81,24 @@ describe('buildUpdateStalePreview', () => {
       { shotId: 'b', index: 0, text: 'General.', tone: 'dry' },
     ];
     const targets = [
-      target({ shotId: 'a', regenVideo: true }),
-      target({ shotId: 'b', regenVideo: true }),
+      target({ shotId: 'a', regenDialogue: true, regenVideo: true }),
+      target({ shotId: 'b', regenDialogue: true, regenVideo: true }),
     ];
     const preview = buildUpdateStalePreview(
       plan(targets, null, { scenes: [{ voiced }], maxDurationSeconds: 15 }),
       {},
       null
     );
-    // Two renders, ONE recording of the scene's whole conversation.
-    expect(preview.costByLevel.video).toBe(
-      1_000_000 + estimateTtsCost(ttsCharacterCount(voiced))
+    // Two renders, ONE recording of the scene's whole conversation — priced
+    // on the dialogue step, not folded into video.
+    expect(preview.dialogueShotIds).toEqual(['a', 'b']);
+    expect(preview.costByLevel.dialogue).toBe(
+      estimateTtsCost(ttsCharacterCount(voiced))
     );
+    expect(preview.costByLevel.video).toBe(1_000_000);
     expect(
-      buildUpdateStalePreview(plan(targets), {}, null).costByLevel.video
-    ).toBe(1_000_000);
+      buildUpdateStalePreview(plan(targets), {}, null).costByLevel.dialogue
+    ).toBe(0);
   });
 
   it('unknown pricing yields null, never an invented number', () => {

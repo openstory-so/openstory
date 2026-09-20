@@ -239,7 +239,7 @@ const plan = (
   scope: {
     sceneId?: string;
     shotId?: string;
-    depth?: 'prompts' | 'images' | 'video' | 'music';
+    depth?: 'prompts' | 'images' | 'dialogue' | 'video' | 'music';
     db?: ScopedDb;
   } = {}
 ) =>
@@ -276,7 +276,7 @@ describe('computePlan — what gets regenerated', () => {
     });
   });
 
-  it("depth 'images' (default) cascades: a regenerating visual prompt re-renders its currently-fresh image", async () => {
+  it("depth 'dialogue' (default) cascades: a regenerating visual prompt re-renders its currently-fresh image", async () => {
     stalenessByShot.set('shot-1', { ...FRESH, visualPrompt: 'stale' });
     const result = await plan([makeShot()], [makeFrame()]);
     expect(result.targets).toHaveLength(1);
@@ -435,6 +435,73 @@ describe("computePlan — depth 'video' (#1085)", () => {
       db: videoDb({ generating: true }),
     });
     expect(inFlight.targets[0]).toMatchObject({ regenVideo: false });
+  });
+});
+
+describe("computePlan — depth 'dialogue' (#1703)", () => {
+  const staleAudio = [
+    {
+      id: 'clip-1',
+      url: 'https://example.com/old.mp3',
+      token: 'DIALOGUE',
+      durationSeconds: 1,
+      sourceKey: 'old-voice\tHello\tcalm\televen_v3',
+    },
+  ];
+  const voicedVersion = {
+    shotId: 'shot-1',
+    id: 'sdv-1',
+    lines: [{ character: 'Woman', line: 'Hello', tone: 'calm' }],
+  };
+  const voiceDb = (audioClips: unknown = staleAudio) =>
+    buildScopedDb(
+      [makeShot({ audioClips: audioClips as Shot['audioClips'] })],
+      [makeFrame()]
+    );
+
+  function withVoices(db: ScopedDb): ScopedDb {
+    return asScopedDb({
+      ...db,
+      shotDialogue: {
+        getSelectedBySequence: () => Promise.resolve([voicedVersion]),
+      },
+      characters: {
+        listWithSheets: () => Promise.resolve([]),
+        list: () =>
+          Promise.resolve([{ name: 'Woman', voiceId: 'voice-woman' }]),
+      },
+    });
+  }
+
+  it('re-records stale dialogue without re-rendering video', async () => {
+    const result = await plan([makeShot()], [makeFrame()], {
+      depth: 'dialogue',
+      db: withVoices(voiceDb()),
+    });
+    expect(result.targets).toHaveLength(1);
+    expect(result.targets[0]).toMatchObject({
+      regenDialogue: true,
+      regenVideo: false,
+    });
+    expect(result.dialogueRecording?.scenes).toHaveLength(1);
+  });
+
+  it("depth 'images' never records dialogue even when the reading is stale", async () => {
+    const result = await plan([makeShot()], [makeFrame()], {
+      depth: 'images',
+      db: withVoices(voiceDb()),
+    });
+    expect(result.targets).toEqual([]);
+    expect(result.dialogueRecording).toBeNull();
+  });
+
+  it('never creates a FIRST recording', async () => {
+    const result = await plan([makeShot()], [makeFrame()], {
+      depth: 'dialogue',
+      db: withVoices(voiceDb([])),
+    });
+    expect(result.targets).toEqual([]);
+    expect(result.dialogueRecording).toBeNull();
   });
 });
 
@@ -625,6 +692,7 @@ describe('claimTargets (#1085)', () => {
       regenVisual: false,
       regenMotion: false,
       regenImage: false,
+      regenDialogue: false,
       visualLiveHash: 'vh',
       motionLiveHash: 'mh',
       imageLiveHash: 'ih',

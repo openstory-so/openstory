@@ -17,6 +17,10 @@ import {
   type ShotStalenessResult,
 } from '@/shots/server/shot-staleness';
 import {
+  loadShotMediaStaleness,
+  overlayMediaStaleness,
+} from '@/shots/server/shot-media-staleness';
+import {
   DEFAULT_UPDATE_STALE_DEPTH,
   UPDATE_STALE_DEPTHS,
 } from './update-stale-depth';
@@ -737,15 +741,17 @@ export const deleteShotsBySequenceFn = createServerFn({ method: 'POST' })
 
 /**
  * Returns staleness state for a shot's artifacts. Covers the rendered
- * thumbnail plus the visual / motion prompts (stage 4). See
- * `computeShotStaleness` (lib/shots/shot-staleness.ts) for the comparison
- * rules and the per-artifact states.
+ * thumbnail, visual / motion prompts, dialogue audio and video (#1703).
+ * See `computeShotStaleness` for the prompt/still comparison and
+ * `loadShotMediaStaleness` for dialogue and video.
  */
 export const getShotStalenessFn = createServerFn({ method: 'GET' })
   .middleware([shotAccessMiddleware])
   .validator(zodValidator(shotIdInputSchema))
   .handler(async ({ context }) => {
     const { shot, frame, sequence, scopedDb, scene } = context;
+    const allShots = await scopedDb.shots.listBySequence(sequence.id);
+    const media = await loadShotMediaStaleness(scopedDb, sequence, allShots);
     return toWireStaleness(
       await computeShotStaleness({
         scopedDb,
@@ -754,7 +760,8 @@ export const getShotStalenessFn = createServerFn({ method: 'GET' })
         frame,
         selectedImage: await scopedDb.frameVariants.getSelected(frame.id),
         scene,
-      })
+      }),
+      media.get(shot.id)
     );
   });
 
@@ -762,12 +769,23 @@ export const getShotStalenessFn = createServerFn({ method: 'GET' })
  * The client-facing slice of a staleness result. `liveHashes` is a server-side
  * convenience for the enqueue paths (#1085) and stays off the wire.
  */
-const toWireStaleness = ({
-  thumbnail,
-  visualPrompt,
-  motionPrompt,
-  causes,
-}: ShotStalenessResult) => ({ thumbnail, visualPrompt, motionPrompt, causes });
+const toWireStaleness = (
+  result: ShotStalenessResult,
+  media?: {
+    dialogue: ShotStalenessResult['thumbnail'];
+    video: ShotStalenessResult['thumbnail'];
+  }
+) => {
+  const overlaid = overlayMediaStaleness(result, media);
+  return {
+    thumbnail: overlaid.thumbnail,
+    visualPrompt: overlaid.visualPrompt,
+    motionPrompt: overlaid.motionPrompt,
+    dialogue: overlaid.dialogue,
+    video: overlaid.video,
+    causes: overlaid.causes,
+  };
+};
 
 /**
  * Batched `getShotStalenessFn` (#1077): staleness for every shot in one scene
@@ -802,6 +820,7 @@ export const getShotStalenessBatchFn = createServerFn({ method: 'GET' })
       selectedByFrame,
       refs,
     } = await loadShotStalenessBatch(scopedDb, sequence);
+    const media = await loadShotMediaStaleness(scopedDb, sequence, allShots);
 
     const entries = await Promise.all(
       targetShots.map(
@@ -814,7 +833,10 @@ export const getShotStalenessBatchFn = createServerFn({ method: 'GET' })
             logger.error(
               `getShotStalenessBatchFn: shot ${shot.id} has no anchor frame`
             );
-            return [shot.id, toWireStaleness(UNTRACKED_STALENESS)];
+            return [
+              shot.id,
+              toWireStaleness(UNTRACKED_STALENESS, media.get(shot.id)),
+            ];
           }
           const { scene } = resolveSceneForShot(shot, scriptBySceneId);
           try {
@@ -829,7 +851,8 @@ export const getShotStalenessBatchFn = createServerFn({ method: 'GET' })
                   selectedImage: selectedByFrame.get(frame.id) ?? null,
                   scene,
                   refs,
-                })
+                }),
+                media.get(shot.id)
               ),
             ];
           } catch (error) {
@@ -839,7 +862,10 @@ export const getShotStalenessBatchFn = createServerFn({ method: 'GET' })
               `getShotStalenessBatchFn: shot ${shot.id} staleness failed`,
               { err: error }
             );
-            return [shot.id, toWireStaleness(UNTRACKED_STALENESS)];
+            return [
+              shot.id,
+              toWireStaleness(UNTRACKED_STALENESS, media.get(shot.id)),
+            ];
           }
         }
       )

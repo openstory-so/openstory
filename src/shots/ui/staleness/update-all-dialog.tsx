@@ -20,6 +20,7 @@ import {
 import type { UpdateStalePreview } from '@/shots/server/update-stale-preview';
 import {
   UPDATE_STALE_DEPTH_LABELS,
+  UPDATE_STALE_DEPTH_RANK,
   type UpdateStaleDepth,
 } from '@/shots/update-stale-depth';
 import { cn } from '@/ui/utils';
@@ -71,8 +72,8 @@ export const shotsLabel = (
  * Immediate checkbox levels from the client staleness map (#1432). The dry-run
  * preview is a server `computePlan` at max depth — on a remote D1 that can
  * take long enough that the dialog used to render "…" with no checkboxes.
- * These two levels are what the client already knows; video/music arrive
- * when the preview does.
+ * Prompts, images, dialogue and video can render from the client map;
+ * music arrives when the preview does.
  */
 export const levelsFromStaleShots = (
   staleShots: ShotStaleness[]
@@ -83,9 +84,13 @@ export const levelsFromStaleShots = (
   const images = staleShots.some(
     (s) => s.thumbnail === 'stale' || s.visualPrompt === 'stale'
   );
+  const dialogue = staleShots.some((s) => s.dialogue === 'stale');
+  const video = staleShots.some((s) => s.video === 'stale');
   const levels: Array<{ depth: UpdateStaleDepth; label: string }> = [];
   if (prompts) levels.push({ depth: 'prompts', label: 'Prompts' });
   if (images) levels.push({ depth: 'images', label: 'Images' });
+  if (dialogue) levels.push({ depth: 'dialogue', label: 'Dialogue' });
+  if (video) levels.push({ depth: 'video', label: 'Videos' });
   return levels;
 };
 
@@ -109,6 +114,11 @@ export const previewLevels = (
       depth: 'images',
       label: `Images for ${label(preview.imageShotIds)}`,
     });
+  if (preview.dialogueShotIds.length > 0)
+    levels.push({
+      depth: 'dialogue',
+      label: `Dialogue for ${label(preview.dialogueShotIds)}`,
+    });
   if (preview.videoShotIds.length > 0)
     levels.push({
       depth: 'video',
@@ -125,12 +135,7 @@ export const previewLevels = (
 const costLabel = (cost: Microdollars | null | undefined): string | null =>
   cost == null ? null : `~${microsToDisplayUsd(cost)}`;
 
-const RANK: Record<UpdateStaleDepth, number> = {
-  prompts: 0,
-  images: 1,
-  video: 2,
-  music: 3,
-};
+const RANK = UPDATE_STALE_DEPTH_RANK;
 
 /**
  * "Update all" confirmation (#1085/#1194/#1432). Leads with WHAT changed,
@@ -151,7 +156,7 @@ export const UpdateAllDialog: React.FC<UpdateAllDialogProps> = ({
 }) => {
   // 'images' is the middle-ground default — the closest match to what
   // "Update all" did before depths existed.
-  const [depth, setDepth] = useState<UpdateStaleDepth | null>('images');
+  const [depth, setDepth] = useState<UpdateStaleDepth | null>('dialogue');
   const { showCosts } = useShowCosts();
   const singleShotScope = scope.shotId != null;
 
@@ -182,7 +187,7 @@ export const UpdateAllDialog: React.FC<UpdateAllDialogProps> = ({
   // at the old default depth — rather than blocking the update on a preview.
   const selectedDepth =
     available[available.length - 1]?.depth ??
-    (isError && depth != null ? 'images' : null);
+    (isError && depth != null ? 'dialogue' : null);
   const checked = (d: UpdateStaleDepth) =>
     selectedDepth != null && RANK[d] <= RANK[selectedDepth];
   const total = levels

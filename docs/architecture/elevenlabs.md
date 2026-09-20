@@ -135,7 +135,13 @@ voice id moved — same version id, or the same words with the key's voice
 column dropped — else `lines`). The readings list shows it as the amber
 status line with Regenerate; the video's "Stale" chip is the segment verdict,
 so every voice or reading change also invalidates `segmentKeys.list`.
-"Update all" does not yet count stale dialogue or video. A conversation over `DIALOGUE_TAKE_CHUNK_CHARS` (2,000)
+"Update all" counts a stale dialogue reading and a stale video the same way it
+counts a stale still: the rail dots, the scene/sequence summary and the confirm
+all see them. Dialogue is its own cascade depth between images and video, so a
+voice change can be re-recorded without paying to re-render the clips; the
+confirm names the two costs separately. Smart retry records each scene once
+(`snapshotBatchDialogue`) before it fans out, the same as Generate all motion
+and Update Stale. A conversation over `DIALOGUE_TAKE_CHUNK_CHARS` (2,000)
 splits at a **shot boundary**, never inside a shot (`chunkTakeLines`); each
 chunk is its own recording, and only chunks holding an adopting shot are
 recorded at all. `recordDialogue` (`src/motion/server/record-dialogue.ts`) is

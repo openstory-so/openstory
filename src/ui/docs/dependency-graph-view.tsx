@@ -568,8 +568,10 @@ const DEPTH_DETAIL: Record<(typeof UPDATE_STALE_DEPTHS)[number], string> = {
   prompts: 'Rewrites stale visual and motion prompts. Nothing renders.',
   images:
     'Also re-renders a still that is stale, or whose prompt was just rewritten. Never renders a first still.',
+  dialogue:
+    'Also re-records a dialogue reading whose voice or lines moved. Never a first recording. Video stays for the next tick so the new take can be reviewed.',
   video:
-    'Also re-renders a clip whose prompt or still changed in this run, or whose manifest already diverged. Never renders a first clip.',
+    'Also re-renders a clip whose prompt, still, or dialogue changed in this run, or whose manifest already diverged. Never renders a first clip.',
   music:
     'Also rewrites a stale music prompt, then the track if one exists. Never a first track.',
 };

@@ -116,7 +116,7 @@ export async function recordDialogue(
   const spokenShotIds = new Set(voicedShotIds(args.lines));
   const adopting = args.adoptShotIds.filter((id) => spokenShotIds.has(id));
   if (adopting.length === 0 || adopting.length !== args.adoptShotIds.length) {
-    throw new Error(
+    throw new NonRetryableError(
       'recordDialogue requires every adopting shot to have a voiced line'
     );
   }

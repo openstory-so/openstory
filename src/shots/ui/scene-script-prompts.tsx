@@ -1402,7 +1402,8 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       {/* Staleness status line (#1077) — one quiet summary under the scope
           header instead of the old filled banners. "Update all" regenerates
           only what is stale now — it doesn't cascade into artifacts the
-          regeneration outdates. Video stays a manual pick on its tab. */}
+          regeneration outdates. Dialogue and video are first-class depths
+          (#1703); video stays off the default so a new take can be reviewed. */}
       {(shotHasStale || shotHasUpdating) && (
         <StalenessIndicator
           entityType="shot"

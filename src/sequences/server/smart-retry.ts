@@ -38,17 +38,11 @@ import {
   gateEstimate,
 } from '@/billing/cost-estimation';
 import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
-import { addMicros } from '@/billing/money';
+import { addMicros, ZERO_MICROS } from '@/billing/money';
 import {
-  matchingDialogueClips,
-  modelTakesDialogueAudio,
-  ttsCharacterCount,
-  voicedDialogueLines,
-} from '@/motion/dialogue-tts';
-import {
-  dialogueContextFor,
   loadShotDialogueLines,
   shotDialogueResolver,
+  snapshotBatchDialogue,
 } from '@/shots/server/shot-dialogue';
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import {
@@ -79,8 +73,8 @@ import {
 } from './notify-sequence-ready';
 import { assertNoActiveStoryboard, triggerStoryboard } from './launchers';
 import type {
+  BatchMotionMusicWorkflowInput,
   ImageWorkflowInput,
-  MotionWorkflowInput,
   MusicPromptWorkflowInput,
   MusicWorkflowInput,
 } from '@/platform/server/workflow/types';
@@ -386,7 +380,8 @@ export async function executeSmartRetry(context: SmartRetryContext) {
     if (triggeredImages > 0) retried.push(`${triggeredImages} image(s)`);
   }
 
-  // 2. Retry failed motion
+  // 2. Retry failed motion — one batch so a scene is recorded ONCE (#1703),
+  // the same shape Generate all motion / Update Stale already use.
   if (failedMotionShots.length > 0) {
     const { snapDuration } = await import('@/motion/snap-duration');
     // Reference-only clips are driven ENTIRELY by their reference sheets, so a
@@ -402,7 +397,21 @@ export async function executeSmartRetry(context: SmartRetryContext) {
             context.scopedDb.characters.list(sequence.id),
           ])
         : [[], [], [], await context.scopedDb.characters.list(sequence.id)];
-    let triggeredMotion = 0;
+    const dialogueVersions =
+      await context.scopedDb.shotDialogue.getSelectedBySequence(sequence.id);
+    const batchDialogue = snapshotBatchDialogue({
+      rendering: failedMotionShots,
+      modelOf: (shot) => videoModelFor(shot),
+      shots,
+      dialogueOf,
+      characters: voiceCharacters,
+      versionIdByShotId: new Map(
+        dialogueVersions.map((version) => [version.shotId, version.id])
+      ),
+    });
+
+    const batchShots: BatchMotionMusicWorkflowInput['shots'] = [];
+    let videoCost = ZERO_MICROS;
     for (const shot of failedMotionShots) {
       const imageUrl = shot.image?.url;
       const referenceOnly = !shotUsesStartFrame(shot);
@@ -412,25 +421,11 @@ export async function executeSmartRetry(context: SmartRetryContext) {
       const scene = sceneOf(shot);
       const selectedMotion = selectedMotionByShot.get(shot.id) ?? null;
       const shotDialogue = dialogueOf(shot);
-      const voicedLines = modelTakesDialogueAudio(shotVideoModel)
-        ? voicedDialogueLines(shotDialogue, voiceCharacters)
-        : [];
-      const audioClips = matchingDialogueClips(shot.audioClips, voicedLines);
-      // No matching clip: the run records its own, acted in the conversation
-      // around the shot — snapshotted here, since it cannot read it mid-run.
-      const dialogueContext = dialogueContextFor({
-        shot,
-        voicedLines,
-        audioClips,
-        sceneShots: shotViews.filter(
-          (other) => shot.sceneId && other.sceneId === shot.sceneId
-        ),
-        dialogueOf,
-        characters: voiceCharacters,
-      });
-      const ttsChars =
-        audioClips.length > 0 ? 0 : ttsCharacterCount(voicedLines);
-      const motionCost = addMicros(
+      const spoken = batchDialogue.byShotId.get(shot.id);
+      const voicedLines = spoken?.voicedLines ?? [];
+      const audioClips = spoken?.audioClips ?? [];
+      videoCost = addMicros(
+        videoCost,
         gateEstimate(
           estimateVideoCost(
             shotVideoModel,
@@ -438,27 +433,12 @@ export async function executeSmartRetry(context: SmartRetryContext) {
             { pricing, resolution: sequence.resolution, referenceOnly }
           ),
           { model: shotVideoModel, operation: 'smart-retry:motion' }
-        ),
-        estimateTtsCost(ttsChars)
+        )
       );
-      const reservationId =
-        motionCost > 0
-          ? await reserveRunCredits(context.scopedDb, motionCost, {
-              providers: ['fal'],
-              errorMessage: 'Insufficient credits to retry failed items',
-              sequenceId: sequence.id,
-            })
-          : undefined;
-      const workflowInput: MotionWorkflowInput = {
-        userId: user.id,
-        teamId,
-        reservationId,
-        ownsReservation: true,
+      batchShots.push({
         shotId: shot.id,
         sceneId: shot.sceneId,
-        sequenceId: sequence.id,
-        // Null only on the reference-only path — the `continue` above still
-        // rejects a missing still everywhere else.
+        sequenceTitle: sequence.title,
         imageUrl: referenceOnly ? undefined : (imageUrl ?? undefined),
         referenceOnly,
         ...(referenceOnly
@@ -473,13 +453,8 @@ export async function executeSmartRetry(context: SmartRetryContext) {
               }),
             }
           : {}),
-        // The versions this clip renders from, pinned here so the render
-        // manifest can't name rows a concurrent edit repointed to. `null` when
-        // the clip renders from references — see `isSelectedVersionStale`: a
-        // pointer at a still the clip never received reads as divergence.
         frameVersionId: referenceOnly ? null : (shot.image?.id ?? null),
         motionPromptVersionId: selectedMotion?.id ?? null,
-        sequenceTitle: sequence.title,
         prompt: resolveMotionPromptFromVersion(
           selectedMotion,
           {
@@ -495,21 +470,43 @@ export async function executeSmartRetry(context: SmartRetryContext) {
         duration: shot.durationMs ? shot.durationMs / 1000 : undefined,
         voicedLines,
         audioClips: audioClips.length > 0 ? audioClips : undefined,
-        ...(dialogueContext ? { dialogueContext } : {}),
+        dialogueContext: spoken?.dialogueContext,
         motionPrompt: selectedMotion
           ? motionPromptFromVersion(selectedMotion, shotDialogue)
           : undefined,
         characterTags: scene?.continuity?.characterTags,
-      };
-
-      await releaseReservationOnThrow(context.scopedDb, reservationId, () =>
-        triggerWorkflow('/motion', workflowInput)
-      );
-      triggeredMotion++;
+      });
     }
 
-    if (triggeredMotion > 0) {
-      retried.push(`${triggeredMotion} motion video(s)`);
+    if (batchShots.length > 0) {
+      const motionCost = addMicros(
+        videoCost,
+        estimateTtsCost(batchDialogue.ttsChars)
+      );
+      const reservationId =
+        motionCost > 0
+          ? await reserveRunCredits(context.scopedDb, motionCost, {
+              providers: ['fal'],
+              errorMessage: 'Insufficient credits to retry failed items',
+              sequenceId: sequence.id,
+            })
+          : undefined;
+      const workflowInput: BatchMotionMusicWorkflowInput = {
+        userId: user.id,
+        teamId,
+        reservationId,
+        ownsReservation: true,
+        sequenceId: sequence.id,
+        includeMusic: false,
+        ...(batchDialogue.dialogueRecording
+          ? { dialogueRecording: batchDialogue.dialogueRecording }
+          : {}),
+        shots: batchShots,
+      };
+      await releaseReservationOnThrow(context.scopedDb, reservationId, () =>
+        triggerWorkflow('/motion-batch', workflowInput)
+      );
+      retried.push(`${batchShots.length} motion video(s)`);
     }
   }
 
