@@ -216,7 +216,6 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
             const written = await scopedDb.shotPromptVersions.writeAiVersion({
               shotId: item.mapping.shotId,
               text: motionPrompt.fullPrompt,
-              dialogue: motionPrompt.dialogue,
               audio: motionPrompt.audio,
               usesStartFrame: !referenceOnly,
               inputHash: await hashMotionPromptInput(

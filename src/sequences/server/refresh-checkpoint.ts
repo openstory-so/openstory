@@ -26,6 +26,7 @@ import type {
 } from '@/platform/server/workflow/types';
 import { characterToBible } from '@/cast/server/bibles-from-scoped';
 import { toLocationMetadata } from '@/cast/server/sheets/location-sheet-trigger';
+import { loadShotDialogueResolver } from '@/shots/server/shot-dialogue';
 
 export async function refreshCheckpointFromCast(
   scopedDb: ScopedDb,
@@ -134,9 +135,7 @@ export async function refreshCheckpointFromCast(
   // shot now says. Keyed by shot id, which the checkpoint's shot mapping
   // already speaks.
   const [shotRows, dialogueVersions] = await Promise.all([
-    next.dialogueClipsByShotId
-      ? scopedDb.shots.listBySequence(sequenceId)
-      : Promise.resolve([]),
+    scopedDb.shots.listBySequence(sequenceId),
     scopedDb.shotDialogue.getSelectedBySequence(sequenceId),
   ]);
   if (next.dialogueClipsByShotId) {
@@ -146,14 +145,28 @@ export async function refreshCheckpointFromCast(
         .map((shot) => [shot.id, shot.audioClips ?? []])
     );
   }
-  if (dialogueVersions.length > 0) {
-    next.dialogueLinesByShotId = Object.fromEntries(
-      dialogueVersions.map((version) => [version.shotId, version.lines])
+  // EVERY live shot, resolved (`shotDialogueResolver`) — not just the shots
+  // with a version row. The run cannot read the node, and a shot from before
+  // #1657 keeps its lines on its motion prompt row; snapshotting the resolved
+  // answer is what lets the run's ladder stop at "the payload said so".
+  const selectedMotionByShot =
+    await scopedDb.shotPromptVersions.getSelectedMotionByShots(
+      shotRows.map((shot) => shot.id)
     );
-    next.dialogueVersionIdByShotId = Object.fromEntries(
-      dialogueVersions.map((version) => [version.shotId, version.id])
-    );
-  }
+  const dialogueOf = await loadShotDialogueResolver(
+    scopedDb,
+    sequenceId,
+    shotRows,
+    (shotId) => selectedMotionByShot.get(shotId)?.dialogue
+  );
+  next.dialogueLinesByShotId = Object.fromEntries(
+    shotRows
+      .filter((shot) => !shot.deletedAt)
+      .map((shot) => [shot.id, dialogueOf(shot).lines])
+  );
+  next.dialogueVersionIdByShotId = Object.fromEntries(
+    dialogueVersions.map((version) => [version.shotId, version.id])
+  );
 
   if (next.allElements) {
     next.allElements = elements.map((el) => ({

@@ -1,12 +1,13 @@
 /**
- * Read a shot's authored dialogue from the shot node (#1657).
+ * What a shot says, read from the shot node (#1657).
  *
  * The lines live per SHOT on `shot_dialogue_versions`, one selected row per
- * shot. `shot_prompt_versions.dialogue` is still written as a mirror — the
- * prompt has to say what the audio says — but it is a copy, so every render
- * trigger resolves the lines HERE and only falls back to the mirror for a
- * shot that has no version row yet (nothing has written one, or the shot
- * predates the table).
+ * shot, and that is the only place they are written. Every reader — render
+ * triggers, the staleness read, the prompt preview, the UI's shot view —
+ * resolves through `shotDialogueResolver`, so the recording, the prompt text
+ * and the panel cannot disagree. `shot_prompt_versions.dialogue` is no longer
+ * written; it is read only as the resolver's second rung, for rows from
+ * before the node existed.
  */
 
 import type { VoiceCharacter } from '@/motion/dialogue-tts';
@@ -18,12 +19,13 @@ import type {
 } from '@/shots/scene-analysis.schema';
 import {
   contextWindow,
+  firstShotIdByScene,
+  resolveShotDialogue,
   sceneConversation,
-  sceneShotLines,
-  shotDialogue,
   type SceneVoicedLine,
   type ShotDialogueLine,
 } from '@/shots/shot-dialogue';
+import { loadSceneContextBySequence } from './scene-script';
 
 export type ShotDialogueLinesByShotId = ReadonlyMap<string, ShotDialogueLine[]>;
 
@@ -37,37 +39,80 @@ export async function loadShotDialogueLines(
   return new Map(versions.map((version) => [version.shotId, version.lines]));
 }
 
-/** Null when the shot has no version row — the caller uses its mirror. */
-export function shotDialogueFor(
-  linesByShotId: ShotDialogueLinesByShotId,
-  shot: { id: string }
-): MotionDialogue | null {
-  const lines = linesByShotId.get(shot.id);
-  return lines ? shotDialogue(lines) : null;
+/** What a shot says now (`resolveShotDialogue`), for any shot of one sequence. */
+export type ShotDialogueResolver = (shot: { id: string }) => MotionDialogue;
+
+/**
+ * Build the resolver once per request, from reads the caller already made.
+ * `shots` is every shot of the sequence: the first-shot rule needs the
+ * scene-mates of a shot, not just the shots being rendered.
+ */
+export function shotDialogueResolver(input: {
+  linesByShotId: ShotDialogueLinesByShotId;
+  shots: readonly {
+    id: string;
+    sceneId: string | null;
+    shotNumber: number | null;
+    deletedAt?: Date | null;
+  }[];
+  /** The selected motion prompt row's `dialogue` — pre-#1657 rows only. */
+  legacyDialogueOf: (shotId: string) => MotionDialogue | null | undefined;
+  scriptDialogueOf: (sceneId: string) => readonly DialogueLine[] | undefined;
+}): ShotDialogueResolver {
+  const byId = new Map(input.shots.map((shot) => [shot.id, shot]));
+  const firstShotId = firstShotIdByScene(input.shots);
+  return ({ id }) => {
+    const shot = byId.get(id);
+    const sceneId = shot?.sceneId ?? null;
+    return resolveShotDialogue({
+      selectedLines: input.linesByShotId.get(id),
+      legacyDialogue: input.legacyDialogueOf(id),
+      scriptDialogue: sceneId ? input.scriptDialogueOf(sceneId) : undefined,
+      shot: { shotNumber: shot?.shotNumber },
+      isFirstShot: sceneId !== null && firstShotId.get(sceneId) === id,
+    });
+  };
+}
+
+/**
+ * {@link shotDialogueResolver} for a caller that holds neither the lines nor
+ * the scene scripts yet — both read here, in parallel. `shots` is every shot
+ * of the sequence, or of the scene when only one scene is being resolved.
+ */
+export async function loadShotDialogueResolver(
+  scopedDb: Pick<ScopedDb, 'shotDialogue' | 'scenes' | 'sceneScriptVersions'>,
+  sequenceId: string,
+  shots: Parameters<typeof shotDialogueResolver>[0]['shots'],
+  legacyDialogueOf: (shotId: string) => MotionDialogue | null | undefined
+): Promise<ShotDialogueResolver> {
+  const [linesByShotId, sceneContext] = await Promise.all([
+    loadShotDialogueLines(scopedDb, sequenceId),
+    loadSceneContextBySequence(scopedDb, sequenceId),
+  ]);
+  return shotDialogueResolver({
+    linesByShotId,
+    shots,
+    legacyDialogueOf,
+    scriptDialogueOf: (sceneId) => sceneContext.get(sceneId)?.script?.dialogue,
+  });
 }
 
 /**
  * The conversation to record around one shot (`dialogueContext` on its motion
- * payload): the scene's live shots in shot order, each speaking its selected
- * lines — or, with no row yet, the lines the script stamps onto it — windowed
- * around `shot`.
- *
- * `shotLines` are the lines the payload's `voicedLines` were built from, and
- * they win for `shot` itself: that may be the prompt mirror, and the section
- * that gets recorded has to key the same words the render asks for, or the
- * new clip would never match.
+ * payload): the scene's live shots in shot order, each saying what
+ * `dialogueOf` resolves for it, windowed around `shot`. The same resolver
+ * built the payload's `voicedLines`, so the section that gets recorded keys
+ * the words the render asks for.
  *
  * Undefined unless the run has to record: voiced lines and no matching clip.
  */
 export function dialogueContextFor(input: {
   shot: { id: string };
-  shotLines: readonly ShotDialogueLine[];
   voicedLines: readonly unknown[];
   audioClips: readonly unknown[];
   /** Every live shot of the shot's scene, in any order. */
   sceneShots: readonly { id: string; shotNumber: number | null }[];
-  linesByShotId: ShotDialogueLinesByShotId;
-  scriptDialogue: readonly DialogueLine[] | undefined;
+  dialogueOf: ShotDialogueResolver;
   characters: readonly VoiceCharacter[];
 }): SceneVoicedLine[] | undefined {
   if (input.voicedLines.length === 0 || input.audioClips.length > 0) {
@@ -76,14 +121,14 @@ export function dialogueContextFor(input: {
   const inOrder = [...input.sceneShots].sort(
     (a, b) => (a.shotNumber ?? 0) - (b.shotNumber ?? 0)
   );
-  const lines = sceneShotLines(
-    inOrder,
-    (shotId) => input.linesByShotId.get(shotId),
-    input.scriptDialogue
-  );
-  lines.set(input.shot.id, input.shotLines);
   return contextWindow(
-    sceneConversation(inOrder, lines, input.characters),
+    sceneConversation(
+      inOrder,
+      new Map(
+        inOrder.map((member) => [member.id, input.dialogueOf(member).lines])
+      ),
+      input.characters
+    ),
     input.shot.id
   );
 }

@@ -28,6 +28,9 @@ const load = (rows: { shotId: string; lines: ReturnType<typeof line>[] }[]) =>
     // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub exposing only the three reads the loader makes
     {
       shotDialogue: { getSelectedBySequence: () => Promise.resolve(rows) },
+      shotPromptVersions: {
+        getSelectedMotionByShots: () => Promise.resolve(new Map()),
+      },
       sequenceLocations: { listWithReferences: () => Promise.resolve([]) },
       sequenceElements: { list: () => Promise.resolve([]) },
     } as unknown as Parameters<typeof loadLiveShotInputs>[0],

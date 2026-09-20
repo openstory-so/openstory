@@ -12,14 +12,28 @@ import {
 const AUDIO_MODEL = 'kling_v3_pro' as const;
 const NON_AUDIO_MODEL = 'grok_imagine_video_1_5' as const;
 
+// What the shot says now (#1657) — resolved from the shot's dialogue
+// version by the caller, never read off the prompt row.
+const dialogue = {
+  presence: true,
+  lines: [
+    {
+      character: 'Detective',
+      line: 'It was never about the money.',
+      tone: 'weary',
+    },
+  ],
+};
+
 const versionRow = {
   text: 'Slow dolly-in on the detective at her desk.',
+  // A pre-#1657 row still carries a copy. It must not reach the prompt.
   dialogue: {
     presence: true,
     lines: [
       {
         character: 'Detective',
-        line: 'It was never about the money.',
+        line: 'A stale line nobody says any more.',
         tone: 'weary',
       },
     ],
@@ -33,9 +47,9 @@ const versionRow = {
 
 describe('motionPromptFromVersion', () => {
   it('maps a version row to an assemblable prompt (text → fullPrompt)', () => {
-    expect(motionPromptFromVersion(versionRow)).toEqual({
+    expect(motionPromptFromVersion(versionRow, dialogue)).toEqual({
       fullPrompt: versionRow.text,
-      dialogue: versionRow.dialogue,
+      dialogue,
       audio: versionRow.audio,
     });
   });
@@ -44,7 +58,10 @@ describe('motionPromptFromVersion', () => {
 describe('resolveMotionPrompt', () => {
   it('assembles a model-specific prompt when a motion prompt is present', () => {
     const out = resolveMotionPrompt(
-      { motionPrompt: motionPromptFromVersion(versionRow), description: null },
+      {
+        motionPrompt: motionPromptFromVersion(versionRow, dialogue),
+        description: null,
+      },
       AUDIO_MODEL
     );
     // fullPrompt is the base; the audio model appends the dialogue line.
@@ -75,25 +92,27 @@ describe('resolveMotionPromptFromVersion', () => {
   it('assembles from the version row when one is selected', () => {
     const out = resolveMotionPromptFromVersion(
       versionRow,
-      { description: null },
+      { dialogue, description: null },
       AUDIO_MODEL
     );
     expect(out).toContain(versionRow.text);
     expect(out).toContain('It was never about the money.');
+    // The row's own copy never reaches the prompt.
+    expect(out).not.toContain('A stale line nobody says any more.');
   });
 
   it('falls back to the scene script when there is no version, else empty', () => {
     expect(
       resolveMotionPromptFromVersion(
         null,
-        { description: 'desc fallback' },
+        { dialogue, description: 'desc fallback' },
         NON_AUDIO_MODEL
       )
     ).toBe('desc fallback');
     expect(
       resolveMotionPromptFromVersion(
         undefined,
-        { description: null },
+        { dialogue, description: null },
         NON_AUDIO_MODEL
       )
     ).toBe('');
@@ -102,7 +121,7 @@ describe('resolveMotionPromptFromVersion', () => {
   it('does not enrich when passing through a non-audio model', () => {
     const out = resolveMotionPromptFromVersion(
       versionRow,
-      { description: null },
+      { dialogue, description: null },
       NON_AUDIO_MODEL
     );
     // Non-audio model returns fullPrompt as-is — no dialogue appended.

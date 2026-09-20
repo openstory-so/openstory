@@ -29,6 +29,12 @@ import type {
   VideoVariant,
 } from '@/platform/server/db/schema';
 import { motionPromptFromVersion } from '@/motion/server/resolve-motion-prompt';
+import { loadSceneContextBySequenceFromDb } from '@/shots/server/scene-script';
+import {
+  shotDialogueResolver,
+  type ShotDialogueResolver,
+} from '@/shots/server/shot-dialogue';
+import { createShotDialogueMethods } from './shot-dialogue';
 import {
   type ShotGridSheet,
   type ShotView,
@@ -36,7 +42,7 @@ import {
   shotViewMissingFrame,
   toShotView,
 } from '@/shots/shot-view';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import {
   getFrameVariantsByIds,
   getLatestPreviewByFrameIds,
@@ -179,6 +185,55 @@ export function selectShotViewRows(
 }
 
 /**
+ * What each shot in `rows` says now (#1657) — the same ladder the render
+ * triggers use (`shotDialogueResolver`), so the panel shows the words a
+ * render would speak. Read per SEQUENCE, not per shot id: the first-shot rule
+ * needs a shot's scene-mates even when the caller asked for one shot, and a
+ * sequence-wide read stays clear of D1's 100-bound-parameter cap.
+ */
+async function loadDialogueResolver(
+  db: Database,
+  rows: ShotViewRow[]
+): Promise<ShotDialogueResolver> {
+  const sequenceIds = [...new Set(rows.map((r) => r.shots.sequenceId))];
+  const dialogue = createShotDialogueMethods(db);
+  const [versions, sequenceShots, sceneContexts] = await Promise.all([
+    Promise.all(sequenceIds.map((id) => dialogue.getSelectedBySequence(id))),
+    sequenceIds.length === 0
+      ? []
+      : db
+          .select({
+            id: shots.id,
+            sceneId: shots.sceneId,
+            shotNumber: shots.shotNumber,
+            deletedAt: shots.deletedAt,
+          })
+          .from(shots)
+          .where(inArray(shots.sequenceId, sequenceIds)),
+    Promise.all(
+      sequenceIds.map((id) => loadSceneContextBySequenceFromDb(db, id))
+    ),
+  ]);
+  const legacy = new Map(
+    rows.map((r) => [r.shots.id, r.shot_prompt_versions?.dialogue])
+  );
+  return shotDialogueResolver({
+    linesByShotId: new Map(
+      versions.flat().map((version) => [version.shotId, version.lines])
+    ),
+    shots: sequenceShots,
+    legacyDialogueOf: (shotId) => legacy.get(shotId),
+    scriptDialogueOf: (sceneId) => {
+      for (const context of sceneContexts) {
+        const scene = context.get(sceneId);
+        if (scene) return scene.script?.dialogue;
+      }
+      return undefined;
+    },
+  });
+}
+
+/**
  * Map rows from {@link selectShotViewRows} to views.
  *
  * Two follow-up queries: the newest PRIMARY render per shot and the newest
@@ -190,7 +245,7 @@ export async function assembleShotViews(
   db: Database,
   rows: ShotViewRow[],
   gridSheetByFrameId?: Map<string, ShotGridSheet>,
-  options: { includeAssets?: boolean } = {}
+  options: { includePrompts?: boolean; includeAssets?: boolean } = {}
 ): Promise<ShotView[]> {
   const pendingPromoteIds = [
     ...new Set(
@@ -201,28 +256,33 @@ export async function assembleShotViews(
       )
     ),
   ];
-  const [primaryByShot, previewByFrame, pendingById] = await Promise.all([
-    getPrimaryVideoByShotIds(
-      db,
-      rows.map((r) => r.shots.id)
-    ),
-    options.includeAssets === false
-      ? new Map<string, FrameVariant>()
-      : getLatestPreviewByFrameIds(
-          db,
-          rows.flatMap((r) => (r.frames ? [r.frames.id] : []))
-        ),
-    options.includeAssets === false
-      ? new Map<string, FrameVariant>()
-      : getFrameVariantsByIds(db, pendingPromoteIds),
-  ]);
+  const [primaryByShot, previewByFrame, pendingById, dialogueOf] =
+    await Promise.all([
+      getPrimaryVideoByShotIds(
+        db,
+        rows.map((r) => r.shots.id)
+      ),
+      options.includeAssets === false
+        ? new Map<string, FrameVariant>()
+        : getLatestPreviewByFrameIds(
+            db,
+            rows.flatMap((r) => (r.frames ? [r.frames.id] : []))
+          ),
+      options.includeAssets === false
+        ? new Map<string, FrameVariant>()
+        : getFrameVariantsByIds(db, pendingPromoteIds),
+      options.includePrompts === false ? null : loadDialogueResolver(db, rows),
+    ]);
   return rows.map((row) => {
+    const dialogue = dialogueOf ? dialogueOf(row.shots) : null;
     const video = {
       video: row.video_variants,
       primaryVideo: primaryByShot.get(row.shots.id) ?? null,
-      motionPrompt: row.shot_prompt_versions
-        ? motionPromptFromVersion(row.shot_prompt_versions)
-        : null,
+      dialogue,
+      motionPrompt:
+        row.shot_prompt_versions && dialogue
+          ? motionPromptFromVersion(row.shot_prompt_versions, dialogue)
+          : null,
     };
     if (!row.frames) return shotViewMissingFrame(row.shots, video);
     return toShotView(row.shots, row.frames, {

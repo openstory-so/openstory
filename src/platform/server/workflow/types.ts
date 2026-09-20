@@ -18,7 +18,6 @@ import type {
   ElementBibleEntry,
   LocationBibleEntry,
   MotionAudio,
-  MotionDialogue,
   MotionPrompt,
   Scene,
   VisualPrompt,
@@ -32,15 +31,15 @@ import type {
 } from '@/shots/input-hash';
 
 /**
- * Structured motion direction (dialogue + audio) carried forward onto a
- * user-edit motion prompt version. Captured at trigger time from the version
+ * Structured audio direction carried forward onto a user-edit motion prompt
+ * version. (Not the dialogue, #1657: what a shot says lives on the shot's
+ * dialogue version, not on a prompt row.) Captured at trigger time from the version
  * being edited and threaded through the workflow input, so the workflow does
  * NOT re-read the DB to find it — that read would be racy (concurrent
  * append-only version writes) and replay-unsafe (after the user-edit row is
  * written, the selection pointer moves to it). #713/#991.
  */
 type PriorMotionDirection = {
-  dialogue?: MotionDialogue | null;
   audio?: MotionAudio | null;
 };
 
@@ -613,7 +612,7 @@ export interface MotionWorkflowInput extends SequenceWorkflowContext {
    */
   userEditText?: string;
   /**
-   * Only meaningful when `userEditedPrompt`: the dialogue/audio direction of the
+   * Only meaningful when `userEditedPrompt`: the audio direction of the
    * version being edited, captured at trigger time so the recorded user-edit
    * version carries it forward (audio-capable models still get enrichment after
    * a raw-text edit). Threaded in instead of re-read in-workflow — see

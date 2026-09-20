@@ -138,7 +138,6 @@ import { SceneElementsTab } from './scene-elements-tab';
 import { SceneLocationTab } from './scene-location-tab';
 import { SceneMusicFacet } from './scene-music-facet';
 import { MotionDialoguePanel } from './motion-dialogue-panel';
-import { dialogueForShot } from '@/shots/shot-list-pass';
 import { SceneScriptTab } from './scene-script-tab';
 import { ShotDialogueReadings } from './shot-dialogue-readings';
 import { ShotDurationField } from './shot-duration-field';
@@ -1970,56 +1969,33 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             )}
           </div>
 
-          {/* The dialogue that assembly appends to the prompt above (#1559).
-              Read-only lines — they come from the script — plus the one thing
-              only this panel can say: whose recorded voice speaks them. Until
-              the shot has a motion prompt, the scene's own lines for this
-              shot show instead (#1585), with no voice picker: a binding is
-              stored on the prompt row. */}
-          {shot?.motionPrompt?.dialogue ? (
-            <MotionDialoguePanel
-              dialogue={shot.motionPrompt.dialogue}
-              elements={elements}
-              clip={shot.audioClips?.[0] ?? null}
-              shotSeconds={
-                shot.durationMs && shot.durationMs > 0
-                  ? shot.durationMs / 1000
-                  : undefined
-              }
-              onChange={
-                motionTakesAudioReferences
-                  ? (next) =>
-                      handleSaveMotionPrompt(
-                        editedMotionPrompt || rawMotionPrompt,
-                        next
-                      )
-                  : null
-              }
-              disabled={saveMotionPrompt.isPending || isAwaitingMotionPrompt}
-              source="prompt"
-              readings={dialogueReadings}
-            />
-          ) : (
-            <MotionDialoguePanel
-              dialogue={{
-                presence: true,
-                lines: dialogueForShot(
-                  scene?.script?.dialogue,
-                  shot?.shotNumber ?? 1
-                ),
-              }}
-              elements={elements}
-              clip={shot?.audioClips?.[0] ?? null}
-              shotSeconds={
-                shot?.durationMs && shot.durationMs > 0
-                  ? shot.durationMs / 1000
-                  : undefined
-              }
-              onChange={null}
-              source="script"
-              readings={dialogueReadings}
-            />
-          )}
+          {/* What the shot says (#1657) — `shot.dialogue`, the same resolved
+              lines a render speaks and assembly appends to the prompt above —
+              plus the one thing only this panel can say: whose recorded voice
+              speaks them. The save rides the prompt save, so until the shot
+              has a motion prompt the lines show with no voice picker. */}
+          <MotionDialoguePanel
+            dialogue={shot?.dialogue}
+            elements={elements}
+            clip={shot?.audioClips?.[0] ?? null}
+            shotSeconds={
+              shot?.durationMs && shot.durationMs > 0
+                ? shot.durationMs / 1000
+                : undefined
+            }
+            onChange={
+              shot?.motionPrompt && motionTakesAudioReferences
+                ? (next) =>
+                    handleSaveMotionPrompt(
+                      editedMotionPrompt || rawMotionPrompt,
+                      next
+                    )
+                : null
+            }
+            disabled={saveMotionPrompt.isPending || isAwaitingMotionPrompt}
+            source={shot?.motionPrompt ? 'prompt' : 'script'}
+            readings={dialogueReadings}
+          />
 
           {/* Model selector — per-asset (#1066): seeded from the shot's selected
               video version; a pick applies to the next generation. */}

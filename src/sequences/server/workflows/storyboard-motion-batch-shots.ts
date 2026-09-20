@@ -14,7 +14,11 @@
  */
 
 import type { ImageToVideoModel } from '@/models/models';
-import type { MotionPrompt, Scene } from '@/shots/scene-analysis.schema';
+import type {
+  MotionDialogue,
+  MotionPrompt,
+  Scene,
+} from '@/shots/scene-analysis.schema';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import type { Resolution } from '@/models/resolutions';
 import type {
@@ -28,7 +32,10 @@ import {
   voicedDialogueLines,
 } from '@/motion/dialogue-tts';
 import { dialogueContextFor } from '@/shots/server/shot-dialogue';
-import { shotDialogue, type ShotDialogueLine } from '@/shots/shot-dialogue';
+import {
+  resolveShotDialogue,
+  type ShotDialogueLine,
+} from '@/shots/shot-dialogue';
 import type { MotionAudioClip } from '@/platform/server/db/schema';
 import {
   assembleMotionPrompt,
@@ -90,17 +97,32 @@ export function buildStoryboardMotionBatchShots(input: {
   /**
    * Authored dialogue per shot id (#1657) — the same snapshot the Dialogue
    * stage recorded from, so the prompt's voiced lines and the clips bound to
-   * them describe one set of words. Absent for a shot with no version row,
-   * which falls back to the motion prompt's own copy.
+   * them describe one set of words. A shot with no entry says what the script
+   * stamps onto it — never the motion-prompt LLM's own extraction, which is
+   * not a source of lines. A continue re-snapshots every shot resolved
+   * (`refreshCheckpointFromCast`), so pre-#1657 rows arrive here as entries.
    */
   dialogueLinesByShotId?: Record<string, ShotDialogueLine[]>;
   leftoverGrokShotIds?: readonly string[];
 }): BatchMotionMusicWorkflowInput['shots'] {
   const leftoverGrok = new Set(input.leftoverGrokShotIds ?? []);
   const items = shotWorkItems(input.scenes, input.shotMapping);
-  const linesByShotId = new Map(
-    Object.entries(input.dialogueLinesByShotId ?? {})
-  );
+  // The workflow's form of `shotDialogueResolver`: same ladder, fed from the
+  // payload because a run cannot read the node.
+  const dialogueOf = (shot: { id: string }): MotionDialogue => {
+    const row = input.shotMapping.find((entry) => entry.shotId === shot.id);
+    const sceneId = row?.analysisSceneId;
+    const scene = input.scenes.find((entry) => entry.sceneId === sceneId);
+    return resolveShotDialogue({
+      selectedLines: input.dialogueLinesByShotId?.[shot.id],
+      legacyDialogue: undefined,
+      scriptDialogue: scene?.originalScript.dialogue,
+      shot: { shotNumber: row?.shotNumber },
+      isFirstShot:
+        sceneId !== undefined &&
+        sceneShotsOf(input.shotMapping, sceneId)[0]?.id === shot.id,
+    });
+  };
   return items.flatMap((item, index) => {
     const { scene, mapping } = item;
     const imageUrl = input.imageUrls[index];
@@ -111,15 +133,21 @@ export function buildStoryboardMotionBatchShots(input: {
       return [];
     }
 
-    const motionPromptData =
+    const llmMotionPrompt =
       (mapping.shotId
         ? input.motionPromptsByShotId?.[mapping.shotId]
         : undefined) ?? input.motionPromptsBySceneId[scene.sceneId];
-    if (!motionPromptData?.fullPrompt) {
+    if (!llmMotionPrompt?.fullPrompt) {
       throw new WorkflowValidationError(
         `Shot ${mapping.shotId || scene.sceneId} has no motion prompt`
       );
     }
+    // The prompt says what the shot says (#1657), not what the motion-prompt
+    // LLM extracted: the assembled text, the voiced lines and the clips all
+    // come from the one resolved set of words.
+    const motionPromptData = mapping.shotId
+      ? { ...llmMotionPrompt, dialogue: dialogueOf({ id: mapping.shotId }) }
+      : llmMotionPrompt;
 
     const characterTags = scene.continuity?.characterTags;
     const motionPromptVersionId =
@@ -144,14 +172,8 @@ export function buildStoryboardMotionBatchShots(input: {
       model: shotModel,
       characterTags,
     });
-    const shotLines = mapping.shotId
-      ? input.dialogueLinesByShotId?.[mapping.shotId]
-      : undefined;
     const voicedLines = modelTakesDialogueAudio(shotModel)
-      ? voicedDialogueLines(
-          shotLines ? shotDialogue(shotLines) : motionPromptData.dialogue,
-          input.characters
-        )
+      ? voicedDialogueLines(motionPromptData.dialogue, input.characters)
       : [];
     const audioClips = matchingDialogueClips(
       mapping.shotId
@@ -166,12 +188,10 @@ export function buildStoryboardMotionBatchShots(input: {
     const dialogueContext = mapping.shotId
       ? dialogueContextFor({
           shot: { id: mapping.shotId },
-          shotLines: shotLines ?? motionPromptData.dialogue.lines,
           voicedLines,
           audioClips,
           sceneShots: sceneShotsOf(input.shotMapping, scene.sceneId),
-          linesByShotId,
-          scriptDialogue: scene.originalScript.dialogue,
+          dialogueOf,
           characters: input.characters,
         })
       : undefined;

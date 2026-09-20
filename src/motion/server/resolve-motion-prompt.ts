@@ -12,14 +12,16 @@
  * there is no separate "user override" branch any more.
  */
 
-import type { AssemblableMotionPrompt } from '@/shots/scene-analysis.schema';
+import type {
+  AssemblableMotionPrompt,
+  MotionDialogue,
+} from '@/shots/scene-analysis.schema';
 import type { ImageToVideoModel } from '@/models/models';
 import { assembleMotionPrompt } from './assemble-motion-prompt';
 
 /** The `shot_prompt_versions` motion-row fields needed to rebuild a prompt. */
 type MotionVersionRow = {
   text: string;
-  dialogue: AssemblableMotionPrompt['dialogue'];
   audio: AssemblableMotionPrompt['audio'];
 };
 
@@ -28,13 +30,18 @@ type MotionVersionRow = {
  * `shot_prompt_versions` row. Only `text` (→ `fullPrompt`) plus the
  * dialogue/audio direction feed model-specific assembly; `components` /
  * `parameters` are stored for history but unused at render time.
+ *
+ * The dialogue is NOT the row's (#1657): the lines belong to the shot, so the
+ * caller passes what the shot says now (`shotDialogueResolver`). Required, so
+ * no builder can quietly assemble a prompt around words the audio never says.
  */
 export function motionPromptFromVersion(
-  version: MotionVersionRow
+  version: MotionVersionRow,
+  dialogue: MotionDialogue
 ): AssemblableMotionPrompt {
   return {
     fullPrompt: version.text,
-    dialogue: version.dialogue,
+    dialogue,
     audio: version.audio,
   };
 }
@@ -85,6 +92,8 @@ export function resolveMotionPrompt(
 export function resolveMotionPromptFromVersion(
   version: MotionVersionRow | null | undefined,
   opts: {
+    /** What the shot says now — see {@link motionPromptFromVersion}. */
+    dialogue: MotionDialogue;
     characterTags?: readonly string[];
     description: string | null;
     generateAudio?: boolean;
@@ -94,7 +103,7 @@ export function resolveMotionPromptFromVersion(
   if (!version) return opts.description || '';
   return resolveMotionPrompt(
     {
-      motionPrompt: motionPromptFromVersion(version),
+      motionPrompt: motionPromptFromVersion(version, opts.dialogue),
       characterTags: opts.characterTags,
       description: opts.description,
       generateAudio: opts.generateAudio,

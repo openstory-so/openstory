@@ -14,32 +14,16 @@ import { liveReferenceIdentity } from '@/motion/reference-provenance';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Shot } from '@/platform/server/db/schema';
 import type { LoadedShotInputs } from '@/shots/scene-segments';
-import { deriveShotDialogueLines, shotDialogue } from '@/shots/shot-dialogue';
 import type { SceneContext } from './scene-script';
-import { loadShotDialogueLines } from './shot-dialogue';
-
-/**
- * The first live shot of each scene, by shot number — the shot a pre-#1585
- * unstamped line is derived onto (`deriveShotDialogueLines`).
- */
-function firstShotIdByScene(
-  shots: readonly Pick<Shot, 'id' | 'sceneId' | 'shotNumber' | 'deletedAt'>[]
-): ReadonlyMap<string, string> {
-  const first = new Map<string, string>();
-  const ordered = [...shots].sort(
-    (a, b) => (a.shotNumber ?? 0) - (b.shotNumber ?? 0)
-  );
-  for (const shot of ordered) {
-    if (!shot.sceneId || shot.deletedAt || first.has(shot.sceneId)) continue;
-    first.set(shot.sceneId, shot.id);
-  }
-  return first;
-}
+import { loadShotDialogueLines, shotDialogueResolver } from './shot-dialogue';
 
 export async function loadLiveShotInputs(
   scopedDb: Pick<
     ScopedDb,
-    'shotDialogue' | 'sequenceLocations' | 'sequenceElements'
+    | 'shotDialogue'
+    | 'shotPromptVersions'
+    | 'sequenceLocations'
+    | 'sequenceElements'
   >,
   sequenceId: string,
   shots: readonly Shot[],
@@ -50,30 +34,31 @@ export async function loadLiveShotInputs(
   })[],
   scriptBySceneId: ReadonlyMap<string, SceneContext>
 ): Promise<LoadedShotInputs> {
-  const [linesByShotId, locations, elements] = await Promise.all([
-    loadShotDialogueLines(scopedDb, sequenceId),
-    scopedDb.sequenceLocations.listWithReferences(sequenceId),
-    scopedDb.sequenceElements.list(sequenceId),
-  ]);
-  const firstShotId = firstShotIdByScene(shots);
+  const [linesByShotId, selectedMotionByShot, locations, elements] =
+    await Promise.all([
+      loadShotDialogueLines(scopedDb, sequenceId),
+      scopedDb.shotPromptVersions.getSelectedMotionByShots(
+        shots.map((shot) => shot.id)
+      ),
+      scopedDb.sequenceLocations.listWithReferences(sequenceId),
+      scopedDb.sequenceElements.list(sequenceId),
+    ]);
+  // The SAME answer a render trigger stamps the clip with — a different
+  // ladder here would read a fresh render stale.
+  const dialogueOf = shotDialogueResolver({
+    linesByShotId,
+    shots,
+    legacyDialogueOf: (shotId) => selectedMotionByShot.get(shotId)?.dialogue,
+    scriptDialogueOf: (sceneId) =>
+      scriptBySceneId.get(sceneId)?.script?.dialogue,
+  });
 
   const audioSourceKeyByShot = new Map<string, string | null>();
   for (const shot of shots) {
-    // The shot's OWN lines. No row yet (a shot from before #1657): the
-    // derivation IS the old meaning of the script's stamped lines.
-    const lines =
-      linesByShotId.get(shot.id) ??
-      (shot.sceneId
-        ? deriveShotDialogueLines(
-            scriptBySceneId.get(shot.sceneId)?.script?.dialogue,
-            shot,
-            firstShotId.get(shot.sceneId) === shot.id
-          )
-        : []);
     audioSourceKeyByShot.set(
       shot.id,
       audioSourceKeyFromVoicedLines(
-        voicedDialogueLines(shotDialogue(lines), characters)
+        voicedDialogueLines(dialogueOf(shot), characters)
       )
     );
   }

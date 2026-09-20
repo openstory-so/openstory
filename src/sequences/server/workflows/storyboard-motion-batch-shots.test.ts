@@ -293,6 +293,40 @@ describe('buildStoryboardMotionBatchShots', () => {
     ).toThrow(WorkflowValidationError);
   });
 
+  it("puts what the SHOT says into the prompt, not the prompt LLM's own lines (#1657)", () => {
+    const shots = buildStoryboardMotionBatchShots({
+      scenes: [scene('sc-1')],
+      shotMapping: [
+        { analysisSceneId: 'sc-1', shotId: 'shot-1', frameId: 'fr-1' },
+      ],
+      imageUrls: ['https://cdn/a.png'],
+      frameVersionIds: ['fv-1'],
+      motionPromptsBySceneId: {
+        'sc-1': {
+          fullPrompt: 'two shot',
+          dialogue: {
+            presence: true,
+            lines: [{ character: 'SARAH', line: 'LLM wording.', tone: 'flat' }],
+          },
+          audio: { ambientSound: '', soundEffects: [] },
+        },
+      },
+      motionPromptVersionIdsBySceneId: { 'sc-1': 'mpv-1' },
+      videoModel: 'seedance_v2_5',
+      aspectRatio: '16:9',
+      characters: [],
+      elements: [],
+      dialogueLinesByShotId: {
+        'shot-1': [{ character: 'SARAH', line: 'Shot wording.', tone: 'flat' }],
+      },
+    });
+    expect(shots[0]?.motionPrompt?.dialogue?.lines.map((l) => l.line)).toEqual([
+      'Shot wording.',
+    ]);
+    expect(shots[0]?.prompt).toContain('Shot wording.');
+    expect(shots[0]?.prompt).not.toContain('LLM wording.');
+  });
+
   it('attaches matching References-stage dialogue clips (#1554)', () => {
     const dialogue = {
       presence: true as const,
@@ -342,6 +376,9 @@ describe('buildStoryboardMotionBatchShots', () => {
       ],
       elements: [],
       dialogueClipsByShotId: { 'shot-1': [clip] },
+      // What the shot says comes from its dialogue version (#1657), never
+      // from the motion-prompt LLM's own `dialogue`.
+      dialogueLinesByShotId: { 'shot-1': dialogue.lines },
     });
     expect(shots[0]?.audioClips).toEqual([clip]);
     expect(shots[0]?.voicedLines).toHaveLength(1);

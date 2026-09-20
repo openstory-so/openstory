@@ -398,7 +398,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
 
         // Everything this write needs was resolved at trigger time and threaded
         // in: whether the edit is real, what it was authored against
-        // (`userEditProvenance`), and the dialogue/audio direction to carry
+        // (`userEditProvenance`), and the audio direction to carry
         // forward (`priorMotion`). Re-reading any of it here would be racy
         // against concurrent append-only version writes and replay-unsafe —
         // this very write repoints the selection pointer. `components` /
@@ -411,7 +411,6 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             shotId: input.shotId,
             promptType: 'motion',
             text: input.userEditText ?? input.prompt,
-            dialogue: input.priorMotion?.dialogue ?? null,
             audio: input.priorMotion?.audio ?? null,
             source: 'user-edit',
             usesStartFrame: !input.referenceOnly,

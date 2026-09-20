@@ -612,6 +612,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           const prompt = resolveMotionPromptFromVersion(
             motionVersion,
             {
+              dialogue: target.dialogue,
               characterTags: scene?.continuity?.characterTags,
               description: scene?.originalScript.extract ?? null,
             },
@@ -637,14 +638,10 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             durationMs: target.durationMs,
             model,
           });
-          // The scene dialogue node's slice for this shot, snapshotted on the
-          // target at click time (#1657); the motion row's mirror is the
-          // fallback for a scene with no version row.
+          // What the shot says, snapshotted on the target at click time
+          // (#1657).
           const voicedLines = modelTakesDialogueAudio(model)
-            ? voicedDialogueLines(
-                target.dialogue ?? motionVersion.dialogue,
-                plan.characterVoices
-              )
+            ? voicedDialogueLines(target.dialogue, plan.characterVoices)
             : [];
           const audioClips = matchingDialogueClips(
             shot.audioClips,
@@ -706,7 +703,15 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             referenceImages,
             voicedLines,
             audioClips: audioClips.length > 0 ? audioClips : undefined,
-            motionPrompt: motionPromptFromVersion(motionVersion),
+            // Only read when no clip matches: the recording is then acted in
+            // the conversation around the shot, not as a cold read.
+            ...(voicedLines.length > 0 && target.dialogueContext.length > 0
+              ? { dialogueContext: target.dialogueContext }
+              : {}),
+            motionPrompt: motionPromptFromVersion(
+              motionVersion,
+              target.dialogue
+            ),
             characterTags: scene?.continuity?.characterTags,
           };
           return JSON.stringify(motionInput);

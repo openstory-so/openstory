@@ -8,7 +8,10 @@
  * THEMSELVES rather than flattening them into a third set of names.
  */
 
-import type { AssemblableMotionPrompt } from './scene-analysis.schema';
+import type {
+  AssemblableMotionPrompt,
+  MotionDialogue,
+} from './scene-analysis.schema';
 import type {
   Frame,
   FramePromptVersion,
@@ -99,6 +102,8 @@ export type ShotViewSources = {
   primaryVideo: VideoVariant | null;
   gridSheet?: ShotGridSheet | null;
   motionPrompt?: AssemblableMotionPrompt | null;
+  /** See {@link ShotView.dialogue}. */
+  dialogue?: MotionDialogue | null;
   /**
    * In-flight variant upscale: the generating framing version the promote
    * claim points at, when it already has a cropped-tile url (minted at
@@ -133,6 +138,14 @@ export type ShotView = Shot & {
   videoStatus: VideoVariant['status'];
   gridSheet: ShotGridSheet | null;
   motionPrompt: AssemblableMotionPrompt | null;
+  /**
+   * What the shot says now (#1657): its selected `shot_dialogue_versions`
+   * row, resolved by `shotDialogueResolver` — the same answer a render
+   * speaks. Present with or without a motion prompt. Null only on a view
+   * assembled without prompts (a planning read), never "silent": a silent
+   * shot is `{ presence: false, lines: [] }`.
+   */
+  dialogue: MotionDialogue | null;
   /** Cropped tile for an in-flight variant upscale, or null. */
   pendingUpscaleUrl: string | null;
   /**
@@ -150,7 +163,10 @@ export type ShotView = Shot & {
  */
 export function shotViewMissingFrame(
   shot: Shot,
-  video: Pick<ShotViewSources, 'video' | 'primaryVideo' | 'motionPrompt'>
+  video: Pick<
+    ShotViewSources,
+    'video' | 'primaryVideo' | 'motionPrompt' | 'dialogue'
+  >
 ): ShotView {
   const frame: Frame = {
     // Synthetic in-memory placeholder ONLY — never persisted and never used for
@@ -202,6 +218,7 @@ export function toShotView(
     }),
     gridSheet: sources.gridSheet ?? null,
     motionPrompt: sources.motionPrompt ?? null,
+    dialogue: sources.dialogue ?? null,
     pendingUpscaleUrl: sources.pendingUpscaleUrl ?? null,
     pendingUpscaleIndex: null,
   };

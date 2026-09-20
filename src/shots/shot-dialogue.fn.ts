@@ -20,9 +20,11 @@ import { safeImageToVideoModel } from '@/models/models';
 import { getLogger } from '@/platform/logger';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
-import { requireSelectableSection } from '@/shots/server/shot-dialogue';
+import {
+  loadShotDialogueResolver,
+  requireSelectableSection,
+} from '@/shots/server/shot-dialogue';
 import { shotAccessMiddleware } from '@/shots/shot-access.fn';
-import { shotDialogue } from '@/shots/shot-dialogue';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
@@ -33,26 +35,36 @@ const shotInput = z.object({ sequenceId: ulidSchema, shotId: ulidSchema });
 
 /**
  * The key a reading must carry to speak this shot's lines as they stand.
- * The shot node is the authored source; the motion row's `dialogue` is a
- * mirror and only answers for a shot that has no version row yet. Empty when
+ * What the shot says now, by the one resolver every reader uses. Empty when
  * nothing is voiced — no reading matches that.
  */
 async function currentSourceKey(
   scopedDb: Pick<
     ScopedDb,
-    'shotDialogue' | 'shotPromptVersions' | 'characters'
+    | 'shots'
+    | 'shotDialogue'
+    | 'shotPromptVersions'
+    | 'characters'
+    | 'scenes'
+    | 'sceneScriptVersions'
   >,
   shotId: string,
   sequenceId: string
 ): Promise<string> {
-  const [version, characters] = await Promise.all([
-    scopedDb.shotDialogue.getSelected(shotId),
+  const [shots, selectedMotion, characters] = await Promise.all([
+    scopedDb.shots.listBySequence(sequenceId),
+    scopedDb.shotPromptVersions.getSelectedMotion(shotId),
     scopedDb.characters.list(sequenceId),
   ]);
-  const dialogue = version
-    ? shotDialogue(version.lines)
-    : (await scopedDb.shotPromptVersions.getSelectedMotion(shotId))?.dialogue;
-  return dialogueClipSourceKey(voicedDialogueLines(dialogue, characters));
+  const dialogueOf = await loadShotDialogueResolver(
+    scopedDb,
+    sequenceId,
+    shots,
+    () => selectedMotion?.dialogue
+  );
+  return dialogueClipSourceKey(
+    voicedDialogueLines(dialogueOf({ id: shotId }), characters)
+  );
 }
 
 /** This shot's readings, newest first; discarded ones omitted. */

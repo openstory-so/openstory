@@ -119,9 +119,9 @@ export function useSaveShotPrompt(args: {
 }) {
   const queryClient = useQueryClient();
   return useMutation<
-    { unchanged: true } | { unchanged: false; versionId: string },
+    { unchanged: boolean },
     Error,
-    /** `dialogue` only when the user changed a voice binding (#1559). */
+    /** `dialogue` only when the user changed a line or a voice binding. */
     { text: string; dialogue?: MotionDialogue }
   >({
     mutationFn: ({ text, dialogue }) =>

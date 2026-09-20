@@ -32,6 +32,10 @@ import {
   loadSceneContextBySequence,
   resolveSceneForShot,
 } from '@/shots/server/scene-script';
+import {
+  loadShotDialogueLines,
+  shotDialogueResolver,
+} from '@/shots/server/shot-dialogue';
 import { buildShotImageWorkflowInput } from '@/stills/server/build-shot-image-input';
 import { toShotView, type ShotView } from '@/shots/shot-view';
 import {
@@ -1156,10 +1160,10 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
           scopedDb,
           reservationId,
           async () => {
-            const sceneContext = await loadSceneContextBySequence(
-              scopedDb,
-              sequence.id
-            );
+            const [sceneContext, dialogueLinesByShotId] = await Promise.all([
+              loadSceneContextBySequence(scopedDb, sequence.id),
+              loadShotDialogueLines(scopedDb, sequence.id),
+            ]);
             const sceneOf = (
               s: Pick<Shot, 'sceneId' | 'durationMs' | 'shotNumber'>
             ) => resolveSceneForShot(s, sceneContext).scene;
@@ -1179,6 +1183,15 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
               await scopedDb.shotPromptVersions.getSelectedMotionByShots(
                 eligible.map((f) => f.id)
               );
+            // What each shot says now (#1657) goes into its prompt.
+            const dialogueOf = shotDialogueResolver({
+              linesByShotId: dialogueLinesByShotId,
+              shots: allShots,
+              legacyDialogueOf: (shotId) =>
+                selectedMotionByShot.get(shotId)?.dialogue,
+              scriptDialogueOf: (sceneId) =>
+                sceneContext.get(sceneId)?.script?.dialogue,
+            });
             const workflowInput: BatchMotionMusicWorkflowInput = {
               ...baseCtx,
               reservationId,
@@ -1190,7 +1203,7 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
               shots: eligible.map((f) => {
                 const selectedMotion = selectedMotionByShot.get(f.id);
                 const motionPrompt = selectedMotion
-                  ? motionPromptFromVersion(selectedMotion)
+                  ? motionPromptFromVersion(selectedMotion, dialogueOf(f))
                   : undefined;
                 const referenceOnly = shotIsReferenceOnly(f);
                 return {

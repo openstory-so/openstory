@@ -19,7 +19,6 @@ import {
 } from '@/platform/realtime';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import type { MotionPromptWorkflowInput } from '@/platform/server/workflow/types';
-import { hydrateMotionPromptFromScene } from '@/motion/server/hydrate-motion-prompt';
 import { durableStreamingLLMCallCf } from '@/models/server/llm-call-helper';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { getLogger } from '@/platform/logger';
@@ -172,9 +171,10 @@ export class MotionPromptWorkflow extends OpenStoryWorkflowEntrypoint<MotionProm
       }
     );
 
-    // Mirror the analysis pipeline: dialogue lines come from the scene script
-    // when the LLM omits them (common on explicit regenerate runs).
-    const motionPrompt = hydrateMotionPromptFromScene(scene, llmMotionPrompt);
+    // The LLM's own `dialogue` is not a source of lines (#1657): what a shot
+    // says lives on its dialogue version, and every render resolves it from
+    // there. Nothing here stores or patches it.
+    const motionPrompt = llmMotionPrompt;
 
     // The version this run left live, returned to the parent so a chained
     // render resolves its prompt by explicit id instead of re-reading the
@@ -211,7 +211,6 @@ export class MotionPromptWorkflow extends OpenStoryWorkflowEntrypoint<MotionProm
                 versionId: input.targetVersionId,
                 shotId,
                 text: motionPrompt.fullPrompt,
-                dialogue: motionPrompt.dialogue,
                 audio: motionPrompt.audio,
                 usesStartFrame: !referenceOnly,
                 inputHash,
@@ -231,7 +230,6 @@ export class MotionPromptWorkflow extends OpenStoryWorkflowEntrypoint<MotionProm
             const written = await scopedDb.shotPromptVersions.writeAiVersion({
               shotId,
               text: motionPrompt.fullPrompt,
-              dialogue: motionPrompt.dialogue,
               audio: motionPrompt.audio,
               usesStartFrame: !referenceOnly,
               inputHash,

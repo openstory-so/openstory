@@ -12,20 +12,35 @@
 
 import type {
   MotionAudio,
-  MotionDialogue,
   MotionPromptParameters,
 } from '@/shots/scene-analysis.schema';
 import type { MotionPromptInputHash } from '@/shots/input-hash';
 import type { MotionAudioClip } from '@/platform/server/db/schema';
 import type { Database } from '@/platform/server/db/client';
-import { shotPromptVersions, shots, user } from '@/platform/server/db/schema';
+import {
+  shotDialogueVersions,
+  shotPromptVersions,
+  shots,
+  user,
+} from '@/platform/server/db/schema';
 import type {
   ShotPromptType,
   ShotPromptVersion,
   ShotPromptVersionComponents,
 } from '@/platform/server/db/schema';
 import { getLogger } from '@/platform/logger';
-import { and, desc, eq, gt, inArray, isNotNull, lte, ne } from 'drizzle-orm';
+import {
+  and,
+  desc,
+  eq,
+  gt,
+  inArray,
+  isNotNull,
+  lte,
+  ne,
+  notExists,
+  sql,
+} from 'drizzle-orm';
 import { pageOf } from '@/platform/server/db/read-page';
 import type { PageOptions } from '@/platform/server/db/read-page';
 import { LIVE_PENDING_STATUSES } from './frame-prompt-versions';
@@ -44,11 +59,11 @@ type WriteShotPromptVersionBase = {
   components?: ShotPromptVersionComponents | null;
   parameters?: MotionPromptParameters | null;
   /**
-   * Motion-only: the scene dialogue/audio direction the prompt was authored
-   * with. Persisted on the version so audio-capable video models can append
-   * them at render time without re-reading `metadata.prompts.motion` (#713).
+   * Motion-only: the audio direction the prompt was authored with. Persisted
+   * on the version so audio-capable video models can append it at render time
+   * (#713). NOT the dialogue (#1657): what a shot says lives on
+   * `shot_dialogue_versions` and nothing writes `dialogue` here any more.
    */
-  dialogue?: MotionDialogue | null;
   audio?: MotionAudio | null;
   /**
    * The mode this text was authored for (`usesStartFrame(shot, sequence)` at
@@ -149,6 +164,53 @@ export function createShotPromptVersionsMethods(db: Database) {
    * Post-transition mirror check for completePendingAiVersion (#1095 TOCTOU).
    * See framePromptVersions.stillHoldsMirrorRight for the race rationale.
    */
+  /**
+   * A shot from before #1657 keeps its lines only on its SELECTED motion
+   * prompt row (`dialogue`), which the resolver reads as a fallback. A new row
+   * carries no copy, so selecting it would strand those lines — and any voice
+   * bound to them. Before that happens, move them to where lines live: one
+   * `shot_dialogue_versions` row. A no-op for every shot that already has
+   * one, which is every shot made since.
+   */
+  const promoteLegacyDialogue = async (shotId: string): Promise<void> => {
+    const [row] = await db
+      .select({ dialogue: shotPromptVersions.dialogue })
+      .from(shots)
+      .innerJoin(
+        shotPromptVersions,
+        eq(shotPromptVersions.id, shots.selectedMotionPromptVersionId)
+      )
+      .where(
+        and(
+          eq(shots.id, shotId),
+          notExists(
+            db
+              .select({ one: sql`1` })
+              .from(shotDialogueVersions)
+              .where(
+                and(
+                  eq(shotDialogueVersions.shotId, shotId),
+                  isNotNull(shotDialogueVersions.selectedAt)
+                )
+              )
+          )
+        )
+      )
+      .limit(1);
+    if (!row?.dialogue || row.dialogue.lines.length === 0) return;
+    await db.insert(shotDialogueVersions).values({
+      shotId,
+      lines: row.dialogue.lines.map((line) => ({
+        character: line.character,
+        line: line.line,
+        tone: line.tone,
+        ...(line.voiceToken ? { voiceToken: line.voiceToken } : {}),
+      })),
+      source: 'prompt',
+      selectedAt: new Date(),
+    });
+  };
+
   const stillHoldsMirrorRight = async (
     shotId: string,
     claimId: string
@@ -192,6 +254,7 @@ export function createShotPromptVersionsMethods(db: Database) {
       input: WriteShotPromptVersionInput
     ): Promise<ShotPromptVersion> => {
       assertMotionPromptType(input.promptType);
+      await promoteLegacyDialogue(input.shotId);
 
       const nextHash = input.inputHash;
       const analysisModel = input.analysisModel;
@@ -199,10 +262,7 @@ export function createShotPromptVersionsMethods(db: Database) {
       // A workflow step retry re-submits the same output for the same context.
       // Same context but NEW text is a force-regen and must append.
       //
-      // "Same output" includes the dialogue and audio direction, not just the
-      // text (#1559): binding a voice to a dialogue line changes only the
-      // dialogue, and matching on text alone handed back the version with the
-      // OLD voice — the new pick was silently dropped.
+      // "Same output" includes the audio direction, not just the text.
       let version: ShotPromptVersion | undefined;
       // A restore always appends its audit row, even at identical content.
       if (nextHash !== null && input.source !== 'restored') {
@@ -220,10 +280,7 @@ export function createShotPromptVersionsMethods(db: Database) {
           );
         const same = (a: unknown, b: unknown) =>
           JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
-        version = sameText.find(
-          (row) =>
-            same(row.dialogue, input.dialogue) && same(row.audio, input.audio)
-        );
+        version = sameText.find((row) => same(row.audio, input.audio));
       }
 
       if (!version) {
@@ -235,7 +292,6 @@ export function createShotPromptVersionsMethods(db: Database) {
             text: input.text,
             components: input.components,
             parameters: input.parameters,
-            dialogue: input.dialogue,
             audio: input.audio,
             usesStartFrame: input.usesStartFrame,
             source: input.source,
@@ -279,7 +335,6 @@ export function createShotPromptVersionsMethods(db: Database) {
       text: string;
       components?: ShotPromptVersionComponents | null;
       parameters?: MotionPromptParameters | null;
-      dialogue?: MotionDialogue | null;
       audio?: MotionAudio | null;
       usesStartFrame: boolean;
       inputHash: MotionPromptInputHash;
@@ -405,7 +460,6 @@ export function createShotPromptVersionsMethods(db: Database) {
       text: string;
       components?: ShotPromptVersionComponents | null;
       parameters?: MotionPromptParameters | null;
-      dialogue?: MotionDialogue | null;
       audio?: MotionAudio | null;
       usesStartFrame: boolean;
       /**
@@ -416,6 +470,7 @@ export function createShotPromptVersionsMethods(db: Database) {
       inputHash?: MotionPromptInputHash;
       analysisModel: string;
     }): Promise<ShotPromptVersion | null> => {
+      await promoteLegacyDialogue(input.shotId);
       const [claim] = await db
         .select()
         .from(shotPromptVersions)
@@ -480,7 +535,6 @@ export function createShotPromptVersionsMethods(db: Database) {
           text: input.text,
           components: input.components ?? null,
           parameters: input.parameters ?? null,
-          dialogue: input.dialogue ?? null,
           audio: input.audio ?? null,
           usesStartFrame: input.usesStartFrame,
           inputHash,

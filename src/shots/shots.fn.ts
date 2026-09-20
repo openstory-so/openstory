@@ -33,6 +33,12 @@ import {
 } from './shot-view';
 import { getVideoDownloadUrl } from '@/motion/server/video-storage';
 import { motionPromptFromVersion } from '@/motion/server/resolve-motion-prompt';
+import { loadSceneContextBySequence } from '@/shots/server/scene-script';
+import {
+  loadShotDialogueLines,
+  loadShotDialogueResolver,
+  shotDialogueResolver,
+} from '@/shots/server/shot-dialogue';
 import { projectVideoVariants } from '@/motion/server/video-variant-projection';
 import {
   bulkShotSchema,
@@ -73,13 +79,25 @@ export const getShotsFn = createServerFn({ method: 'GET' })
     const shotRows = await scopedDb.shots.listBySequence(sequence.id);
     // Guarantee every shot has its anchor frame before assembling its view.
     await scopedDb.shots.ensureAnchorFrames(shotRows);
-    const [anchorRows, gridSheets, motionByShot] = await Promise.all([
-      scopedDb.frames.listAnchorsBySequence(sequence.id),
-      scopedDb.frameVariants.listLatestGridSheetsBySequence(sequence.id),
-      scopedDb.shotPromptVersions.getSelectedMotionByShots(
-        shotRows.map((s) => s.id)
-      ),
-    ]);
+    const [anchorRows, gridSheets, motionByShot, linesByShotId, sceneContext] =
+      await Promise.all([
+        scopedDb.frames.listAnchorsBySequence(sequence.id),
+        scopedDb.frameVariants.listLatestGridSheetsBySequence(sequence.id),
+        scopedDb.shotPromptVersions.getSelectedMotionByShots(
+          shotRows.map((s) => s.id)
+        ),
+        loadShotDialogueLines(scopedDb, sequence.id),
+        loadSceneContextBySequence(scopedDb, sequence.id),
+      ]);
+    // What each shot says now (#1657) — the panel shows the words a render
+    // would speak.
+    const dialogueOf = shotDialogueResolver({
+      linesByShotId,
+      shots: shotRows,
+      legacyDialogueOf: (shotId) => motionByShot.get(shotId)?.dialogue,
+      scriptDialogueOf: (sceneId) =>
+        sceneContext.get(sceneId)?.script?.dialogue,
+    });
     // The still lives on the selected `frame_variants` row and the video on the
     // segment's selected `video_variants` row (#1067) — one batch read each, so
     // assembling the sequence stays O(1) queries.
@@ -116,8 +134,9 @@ export const getShotsFn = createServerFn({ method: 'GET' })
     return shotRows.map((shot) => {
       const frame = anchorsByShot.get(shot.id);
       const selectedMotion = motionByShot.get(shot.id);
+      const dialogue = dialogueOf(shot);
       const motionPrompt = selectedMotion
-        ? motionPromptFromVersion(selectedMotion)
+        ? motionPromptFromVersion(selectedMotion, dialogue)
         : null;
       // `ensureAnchorFrames` above guarantees an anchor for every shot, so this
       // is normally unreachable. If it ever isn't, preserve the shot with a null
@@ -133,6 +152,7 @@ export const getShotsFn = createServerFn({ method: 'GET' })
           // Motion lives on the shot, not the frame — a frameless shot still
           // has one. The sibling reads in sequences/admin already pass it.
           motionPrompt,
+          dialogue,
         });
       }
       // Grid sheets are keyed by frame id (#989), resolved from the anchor.
@@ -148,6 +168,7 @@ export const getShotsFn = createServerFn({ method: 'GET' })
         primaryVideo: primaryVideoByShot.get(shot.id) ?? null,
         gridSheet,
         motionPrompt,
+        dialogue,
         pendingUpscaleUrl: pendingUpscaleUrlFromVersion(
           frame.pendingPromoteVersionId
             ? (pendingById.get(frame.pendingPromoteVersionId) ?? null)
@@ -210,6 +231,16 @@ export const getShotFn = createServerFn({ method: 'GET' })
           )
         : Promise.resolve(null),
     ]);
+    // The first-shot rule needs the scene-mates, so the sequence's shots are
+    // read even for one shot.
+    const dialogue = (
+      await loadShotDialogueResolver(
+        context.scopedDb,
+        context.sequence.id,
+        await context.scopedDb.shots.listBySequence(context.sequence.id),
+        () => selectedMotion?.dialogue
+      )
+    )(context.shot);
     return toShotView(context.shot, context.frame, {
       image,
       preview,
@@ -217,8 +248,9 @@ export const getShotFn = createServerFn({ method: 'GET' })
       video,
       primaryVideo,
       gridSheet: sheet ? { url: sheet.url, status: sheet.status } : null,
+      dialogue,
       motionPrompt: selectedMotion
-        ? motionPromptFromVersion(selectedMotion)
+        ? motionPromptFromVersion(selectedMotion, dialogue)
         : null,
       pendingUpscaleUrl: pendingUpscaleUrlFromVersion(pendingPromote),
     });
@@ -537,7 +569,6 @@ export const updateShotFn = createServerFn({ method: 'POST' })
         shotId,
         promptType: 'motion',
         text: editedMotionPrompt,
-        dialogue: selectedMotion?.dialogue ?? null,
         audio: selectedMotion?.audio ?? null,
         source: 'user-edit',
         usesStartFrame: usesStartFrame(context.shot, context.sequence),

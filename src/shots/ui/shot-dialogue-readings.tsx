@@ -9,7 +9,6 @@ import {
   listShotDialogueSectionsFn,
   selectShotDialogueSectionFn,
 } from '@/shots/shot-dialogue.fn';
-import { dialogueForShot } from '@/shots/shot-list-pass';
 import type { ShotView } from '@/shots/shot-view';
 import { Skeleton } from '@/ui/shadcn/skeleton';
 import {
@@ -21,7 +20,6 @@ import { Suspense } from 'react';
 import { toast } from 'sonner';
 import { ShotDialogueBlock, ShotReadingsList } from './motion-dialogue-panel';
 import { shotKeys } from './use-shots';
-import type { SceneWithScript } from './use-scenes';
 
 type ReadingsProps = {
   sequenceId: string;
@@ -78,21 +76,14 @@ export const ShotDialogueReadings: React.FC<ReadingsProps> = (props) => (
 );
 
 /** Lines, current audio and readings for the shot whose video is on the canvas. */
-export const ShotDialogueUnderVideo: React.FC<{
-  shot: ShotView;
-  scene: SceneWithScript | undefined;
-}> = ({ shot, scene }) => {
+export const ShotDialogueUnderVideo: React.FC<{ shot: ShotView }> = ({
+  shot,
+}) => {
   const { data: elements } = useSequenceElements(shot.sequenceId);
-  // Same ladder as the prompt editor: the motion prompt's lines, else the
-  // script's lines for this shot (#1585).
-  const dialogue = shot.motionPrompt?.dialogue ?? {
-    presence: true,
-    lines: dialogueForShot(scene?.script?.dialogue, shot.shotNumber ?? 1),
-  };
   const clip = shot.audioClips?.[0] ?? null;
   return (
     <ShotDialogueBlock
-      dialogue={dialogue}
+      dialogue={shot.dialogue}
       elements={elements}
       clip={clip}
       readings={

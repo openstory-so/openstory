@@ -15,7 +15,6 @@ import {
   resolveSceneForShot,
 } from '@/shots/server/scene-script';
 import type { MotionAudioClip, Shot } from '@/platform/server/db/schema';
-import type { MotionDialogue } from '@/shots/scene-analysis.schema';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 
@@ -53,7 +52,7 @@ import {
 import {
   dialogueContextFor,
   loadShotDialogueLines,
-  shotDialogueFor,
+  shotDialogueResolver,
 } from '@/shots/server/shot-dialogue';
 import {
   estimateBatchMotionCost,
@@ -149,20 +148,32 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
     // 4); prompt length can only shrink a tile, never grow it.
     // The scene's live shots, read once: the tiling below, and the conversation
     // a member with unrecorded voiced lines is snapshotted with (#1657).
+    const [sequenceShots, dialogueLinesByShotId] = await Promise.all([
+      shot.sceneId
+        ? context.scopedDb.shots.listBySequence(sequence.id)
+        : Promise.resolve([shot]),
+      loadShotDialogueLines(context.scopedDb, sequence.id),
+    ]);
     const allSceneShots = shot.sceneId
-      ? (await context.scopedDb.shots.listBySequence(sequence.id)).filter(
-          (row) => row.sceneId === shot.sceneId
-        )
+      ? sequenceShots.filter((row) => row.sceneId === shot.sceneId)
       : [shot];
     const sceneShots = videoModelSupportsInClipMultiShot(model)
       ? allSceneShots
       : [shot];
+    // Every scene shot, not just the covered ones: a neighbour's lines are
+    // part of the conversation a recording is acted in.
     const sceneMotionByShot =
-      sceneShots.length > 1
-        ? await context.scopedDb.shotPromptVersions.getSelectedMotionByShots(
-            sceneShots.map((row) => row.id)
-          )
-        : new Map();
+      await context.scopedDb.shotPromptVersions.getSelectedMotionByShots(
+        allSceneShots.map((row) => row.id)
+      );
+    // What each shot says now (#1657) — the one answer for the prompt text,
+    // the voiced lines and the recording context below.
+    const dialogueOf = shotDialogueResolver({
+      linesByShotId: dialogueLinesByShotId,
+      shots: allSceneShots,
+      legacyDialogueOf: (shotId) => sceneMotionByShot.get(shotId)?.dialogue,
+      scriptDialogueOf: () => context.scene?.originalScript.dialogue,
+    });
     const packedScene = packedSceneFromScene(context.scene);
     const packableSceneShots = sceneShots.map((row) => ({
       ...row,
@@ -186,11 +197,11 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
                 member.shotId === shot.id && data.prompt
                   ? {
                       fullPrompt: data.prompt,
-                      dialogue: version?.dialogue ?? null,
+                      dialogue: dialogueOf(member),
                       audio: version?.audio ?? null,
                     }
                   : version
-                    ? motionPromptFromVersion(version)
+                    ? motionPromptFromVersion(version, dialogueOf(member))
                     : undefined,
               characterTags: context.scene?.continuity?.characterTags,
             };
@@ -284,11 +295,11 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
         motionPrompt: data.prompt
           ? {
               fullPrompt: data.prompt,
-              dialogue: selectedMotion?.dialogue ?? null,
+              dialogue: dialogueOf(shot),
               audio: selectedMotion?.audio ?? null,
             }
           : selectedMotion
-            ? motionPromptFromVersion(selectedMotion)
+            ? motionPromptFromVersion(selectedMotion, dialogueOf(shot))
             : null,
         characterTags: context.scene?.continuity?.characterTags,
         description: context.scene?.originalScript.extract ?? null,
@@ -324,28 +335,20 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
     // those with a reference-to-video route send them on the wire, the rest
     // substitute the tokens with descriptions. Matches the continuity AFTER
     // any rescan above.
-    const [
-      dialogueLinesByShotId,
-      characters,
-      voiceCharacters,
-      elements,
-      locations,
-    ] = await Promise.all([
-      loadShotDialogueLines(context.scopedDb, sequence.id),
-      context.scopedDb.characters.listWithSheets(sequence.id),
-      context.scopedDb.characters.list(sequence.id),
-      // A clip with no known length passes every length gate unchecked.
-      context.scopedDb.sequenceElements
-        .list(sequence.id)
-        .then((rows) => withMeasuredDurations(context.scopedDb, rows)),
-      // Reference-only additionally needs the location sheet: with no still,
-      // it is the only thing establishing the set.
-      anyReferenceOnly
-        ? context.scopedDb.sequenceLocations.listWithReferences(sequence.id)
-        : Promise.resolve([]),
-    ]);
-    const dialogueFor = (row: { id: string }) =>
-      shotDialogueFor(dialogueLinesByShotId, row);
+    const [characters, voiceCharacters, elements, locations] =
+      await Promise.all([
+        context.scopedDb.characters.listWithSheets(sequence.id),
+        context.scopedDb.characters.list(sequence.id),
+        // A clip with no known length passes every length gate unchecked.
+        context.scopedDb.sequenceElements
+          .list(sequence.id)
+          .then((rows) => withMeasuredDurations(context.scopedDb, rows)),
+        // Reference-only additionally needs the location sheet: with no still,
+        // it is the only thing establishing the set.
+        anyReferenceOnly
+          ? context.scopedDb.sequenceLocations.listWithReferences(sequence.id)
+          : Promise.resolve([]),
+      ]);
     const referenceImages = buildMotionReferenceImages({
       scene: context.scene
         ? { ...context.scene, continuity: effectiveContinuity }
@@ -360,10 +363,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
     // the render here, before credits are reserved, rather than as a failed
     // job after them.
     assertReferencesUsable(model, referenceImages, !referenceOnly);
-    // The shot dialogue node is the authored source (#1657); the motion
-    // row's `dialogue` is a mirror and only answers for a shot that has no
-    // version row yet.
-    const shotDialogue = dialogueFor(shot) ?? selectedMotion?.dialogue;
+    const shotDialogue = dialogueOf(shot);
     const missingVoices = missingVoiceLines(model, shotDialogue, elements);
     if (missingVoices.length > 0) throw new Error(missingVoices.join(' '));
 
@@ -395,11 +395,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
         if (member.shotId === shot.id || !modelTakesDialogueAudio(model)) {
           return sum;
         }
-        const version = sceneMotionByShot.get(member.shotId);
-        const lines = voicedDialogueLines(
-          dialogueFor(member) ?? version?.dialogue,
-          voiceCharacters
-        );
+        const lines = voicedDialogueLines(dialogueOf(member), voiceCharacters);
         const clips = matchingDialogueClips(member.audioClips, lines);
         return sum + (clips.length > 0 ? 0 : ttsCharacterCount(lines));
       }, 0);
@@ -454,18 +450,15 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
         // Every covered member shares the clicked shot's scene.
         const dialogueContextOf = (
           row: { id: string },
-          dialogue: MotionDialogue | null | undefined,
           voiced: readonly VoicedDialogueLine[],
           clips: readonly MotionAudioClip[]
         ) =>
           dialogueContextFor({
             shot: row,
-            shotLines: dialogue?.lines ?? [],
             voicedLines: voiced,
             audioClips: clips,
             sceneShots: allSceneShots,
-            linesByShotId: dialogueLinesByShotId,
-            scriptDialogue: context.scene?.originalScript.dialogue,
+            dialogueOf,
             characters: voiceCharacters,
           });
 
@@ -497,21 +490,15 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
           userEditText: userEditProvenance ? data.prompt : undefined,
           priorMotion: userEditProvenance
             ? {
-                dialogue: selectedMotion?.dialogue ?? null,
                 audio: selectedMotion?.audio ?? null,
               }
             : undefined,
           referenceImages,
           voicedLines,
           audioClips: audioClips.length > 0 ? audioClips : undefined,
-          dialogueContext: dialogueContextOf(
-            shot,
-            shotDialogue,
-            voicedLines,
-            audioClips
-          ),
+          dialogueContext: dialogueContextOf(shot, voicedLines, audioClips),
           motionPrompt: selectedMotion
-            ? motionPromptFromVersion(selectedMotion)
+            ? motionPromptFromVersion(selectedMotion, shotDialogue)
             : undefined,
           characterTags: context.scene?.continuity?.characterTags,
         };
@@ -528,15 +515,15 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
               const memberPrompt = resolveMotionPromptFromVersion(
                 version,
                 {
+                  dialogue: dialogueOf(member),
                   characterTags: context.scene?.continuity?.characterTags,
                   description: context.scene?.originalScript.extract ?? null,
                   generateAudio: data.generateAudio,
                 },
                 model
               );
-              const memberDialogue = dialogueFor(member) ?? version?.dialogue;
               const memberVoiced = modelTakesDialogueAudio(model)
-                ? voicedDialogueLines(memberDialogue, voiceCharacters)
+                ? voicedDialogueLines(dialogueOf(member), voiceCharacters)
                 : [];
               const memberClips = matchingDialogueClips(
                 member.audioClips,
@@ -593,12 +580,11 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
                 audioClips: memberClips,
                 dialogueContext: dialogueContextOf(
                   member,
-                  memberDialogue,
                   memberVoiced,
                   memberClips
                 ),
                 motionPrompt: version
-                  ? motionPromptFromVersion(version)
+                  ? motionPromptFromVersion(version, dialogueOf(member))
                   : undefined,
                 characterTags: context.scene?.continuity?.characterTags,
               };
@@ -773,8 +759,6 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
         ? context.scopedDb.sequenceLocations.listWithReferences(sequence.id)
         : Promise.resolve([]),
     ]);
-    const batchDialogueFor = (shot: { id: string }) =>
-      shotDialogueFor(batchDialogueLinesByShotId, shot);
 
     // Same pre-credit rejection as the single-shot path, but it matters more
     // here: the reservation covers the whole batch, so one doomed model would
@@ -807,10 +791,21 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
     // Loaded BEFORE the estimate, not just before the submit: cast and element
     // refs follow the motion prompt (#1432), so estimating without it can price
     // a ref-less shot that the submit then sends references for.
+    // Every live shot, not just the eligible ones: a neighbour's lines are
+    // part of the conversation a recording is acted in (#1657).
     const selectedMotionByShot =
       await context.scopedDb.shotPromptVersions.getSelectedMotionByShots(
-        eligibleShots.map((s) => s.id)
+        rawShots.map((s) => s.id)
       );
+    // What each shot says now — the one answer for the prompt text, the
+    // voiced lines and the recording context below.
+    const batchDialogueOf = shotDialogueResolver({
+      linesByShotId: batchDialogueLinesByShotId,
+      shots: rawShots,
+      legacyDialogueOf: (shotId) => selectedMotionByShot.get(shotId)?.dialogue,
+      scriptDialogueOf: (sceneId) =>
+        sceneContext.get(sceneId)?.script?.dialogue,
+    });
     // The ASSEMBLED prompt, not the version's raw `text` (#1559). A dialogue
     // line's bound voice element is named only in the dialogue section
     // assembly appends, so matching the raw text would leave its token
@@ -823,6 +818,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
       return resolveMotionPromptFromVersion(
         version,
         {
+          dialogue: batchDialogueOf(shot),
           characterTags: sceneOf(shot)?.continuity?.characterTags,
           description: null,
           generateAudio: data.generateAudio,
@@ -850,8 +846,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
         ).concat(
           missingVoiceLines(
             resolveShotVideoModel(shot),
-            batchDialogueFor(shot) ??
-              selectedMotionByShot.get(shot.id)?.dialogue,
+            batchDialogueOf(shot),
             elements
           )
         )
@@ -862,10 +857,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
     const ttsChars = eligibleShots.reduce((sum, shot) => {
       const model = resolveShotVideoModel(shot);
       if (!modelTakesDialogueAudio(model)) return sum;
-      const lines = voicedDialogueLines(
-        batchDialogueFor(shot) ?? selectedMotionByShot.get(shot.id)?.dialogue,
-        voiceCharacters
-      );
+      const lines = voicedDialogueLines(batchDialogueOf(shot), voiceCharacters);
       const clips = matchingDialogueClips(shot.audioClips, lines);
       return sum + (clips.length > 0 ? 0 : ttsCharacterCount(lines));
     }, 0);
@@ -966,8 +958,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
             const shotModel = resolveShotVideoModel(shot);
             const scene = sceneOf(shot);
             const selectedMotion = selectedMotionByShot.get(shot.id);
-            const shotDialogue =
-              batchDialogueFor(shot) ?? selectedMotion?.dialogue;
+            const shotDialogue = batchDialogueOf(shot);
             const voicedLines = modelTakesDialogueAudio(shotModel)
               ? voicedDialogueLines(shotDialogue, voiceCharacters)
               : [];
@@ -1002,6 +993,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
               prompt: resolveMotionPromptFromVersion(
                 selectedMotion,
                 {
+                  dialogue: shotDialogue,
                   characterTags: scene?.continuity?.characterTags,
                   description: scene?.originalScript.extract ?? null,
                   generateAudio: data.generateAudio,
@@ -1034,18 +1026,16 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
               // with no anchor frame still speaks.
               dialogueContext: dialogueContextFor({
                 shot,
-                shotLines: shotDialogue?.lines ?? [],
                 voicedLines,
                 audioClips,
                 sceneShots: rawShots.filter(
                   (row) => row.sceneId === shot.sceneId
                 ),
-                linesByShotId: batchDialogueLinesByShotId,
-                scriptDialogue: scene?.originalScript.dialogue,
+                dialogueOf: batchDialogueOf,
                 characters: voiceCharacters,
               }),
               motionPrompt: selectedMotion
-                ? motionPromptFromVersion(selectedMotion)
+                ? motionPromptFromVersion(selectedMotion, shotDialogue)
                 : undefined,
               characterTags: scene?.continuity?.characterTags,
             };

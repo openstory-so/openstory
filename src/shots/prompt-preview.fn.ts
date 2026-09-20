@@ -34,7 +34,16 @@ import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import { shotAccessMiddleware, type ShotContext } from '@/shots/shot-access.fn';
-import type { AssemblableMotionPrompt } from '@/shots/scene-analysis.schema';
+import type {
+  AssemblableMotionPrompt,
+  MotionDialogue,
+} from '@/shots/scene-analysis.schema';
+import type { Shot } from '@/platform/server/db/schema';
+import {
+  loadShotDialogueLines,
+  shotDialogueResolver,
+  type ShotDialogueLinesByShotId,
+} from '@/shots/server/shot-dialogue';
 
 const previewShotPromptsInputSchema = z.object({
   sequenceId: ulidSchema,
@@ -59,6 +68,8 @@ export const previewShotPromptsFn = createServerFn({ method: 'POST' })
       selectedStill,
       selectedMotion,
       selectedVisual,
+      sequenceShots,
+      linesByShotId,
     ] = await Promise.all([
       scopedDb.characters.listWithSheets(sequence.id),
       // Same lengths submit will see, or the preview binds a clip submit drops.
@@ -71,16 +82,29 @@ export const previewShotPromptsFn = createServerFn({ method: 'POST' })
         : Promise.resolve(null),
       scopedDb.shotPromptVersions.getSelectedMotion(shot.id),
       scopedDb.framePromptVersions.getSelected(frame.id),
+      scopedDb.shots.listBySequence(sequence.id),
+      loadShotDialogueLines(scopedDb, sequence.id),
     ]);
+    const sceneShots = shot.sceneId
+      ? sequenceShots.filter((row) => row.sceneId === shot.sceneId)
+      : [shot];
 
+    // What the shot says now (#1657): the preview shows the words a render
+    // would put in the prompt, with or without a motion prompt version.
+    const dialogue = shotDialogueResolver({
+      linesByShotId,
+      shots: sceneShots,
+      legacyDialogueOf: () => selectedMotion?.dialogue,
+      scriptDialogueOf: () => scene?.originalScript.dialogue,
+    })(shot);
     const overrideText = data.motionPrompt ?? selectedMotion?.text ?? '';
     const motionPrompt = selectedMotion
       ? {
-          ...motionPromptFromVersion(selectedMotion),
+          ...motionPromptFromVersion(selectedMotion, dialogue),
           fullPrompt: overrideText || selectedMotion.text,
         }
       : overrideText
-        ? { fullPrompt: overrideText, dialogue: null, audio: null }
+        ? { fullPrompt: overrideText, dialogue, audio: null }
         : null;
 
     const videoModel = safeImageToVideoModel(
@@ -92,6 +116,8 @@ export const previewShotPromptsFn = createServerFn({ method: 'POST' })
       sequence,
       scene,
       shot,
+      sceneShots,
+      linesByShotId,
       videoModel,
       motionPrompt,
       selectedStillUrl: selectedStill?.url ?? null,
@@ -132,6 +158,9 @@ async function loadPackedPreviewMembers(input: {
   sequence: ShotContext['sequence'];
   scene: ShotContext['scene'];
   shot: ShotContext['shot'];
+  /** Every live shot of the clicked shot's scene. */
+  sceneShots: readonly Shot[];
+  linesByShotId: ShotDialogueLinesByShotId;
   videoModel: ImageToVideoModel;
   motionPrompt: AssemblableMotionPrompt | null;
   selectedStillUrl: string | null;
@@ -144,19 +173,22 @@ async function loadPackedPreviewMembers(input: {
     }
   | undefined
 > {
-  const { scopedDb, sequence, shot, videoModel, motionPrompt } = input;
+  const { scopedDb, sequence, shot, sceneShots, videoModel, motionPrompt } =
+    input;
   if (!videoModelSupportsInClipMultiShot(videoModel) || !shot.sceneId) {
     return undefined;
   }
-
-  const sceneShots = (await scopedDb.shots.listBySequence(sequence.id)).filter(
-    (row) => row.sceneId === shot.sceneId
-  );
   if (sceneShots.length < 2) return undefined;
 
   const versions = await scopedDb.shotPromptVersions.getSelectedMotionByShots(
     sceneShots.map((row) => row.id)
   );
+  const dialogueOf = shotDialogueResolver({
+    linesByShotId: input.linesByShotId,
+    shots: sceneShots,
+    legacyDialogueOf: (shotId) => versions.get(shotId)?.dialogue,
+    scriptDialogueOf: () => input.scene?.originalScript.dialogue,
+  });
   const packable = sceneShots.map((row) => ({
     shotId: row.id,
     sceneId: row.sceneId,
@@ -178,7 +210,8 @@ async function loadPackedPreviewMembers(input: {
           motionPrompt: packedMemberPrompt(
             member.shotId === shot.id,
             motionPrompt,
-            versions.get(member.shotId)
+            versions.get(member.shotId),
+            dialogueOf({ id: member.shotId })
           ),
           characterTags: input.scene?.continuity?.characterTags,
         })),
@@ -235,7 +268,10 @@ async function loadPackedPreviewMembers(input: {
         motionPrompt: isCurrent
           ? motionPrompt
           : version
-            ? motionPromptFromVersion(version)
+            ? motionPromptFromVersion(
+                version,
+                dialogueOf({ id: member.shotId })
+              )
             : null,
         usesStartFrame:
           member.shotId === firstId
@@ -258,8 +294,9 @@ async function loadPackedPreviewMembers(input: {
 function packedMemberPrompt(
   isCurrent: boolean,
   current: AssemblableMotionPrompt | null,
-  version: Parameters<typeof motionPromptFromVersion>[0] | undefined
+  version: Parameters<typeof motionPromptFromVersion>[0] | undefined,
+  dialogue: MotionDialogue
 ): AssemblableMotionPrompt | undefined {
   if (isCurrent) return current ?? undefined;
-  return version ? motionPromptFromVersion(version) : undefined;
+  return version ? motionPromptFromVersion(version, dialogue) : undefined;
 }

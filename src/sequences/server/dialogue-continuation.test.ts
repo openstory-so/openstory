@@ -167,7 +167,12 @@ describe('snapshotDialogueContinuation', () => {
     });
     expect(snapshot.imageStage?.prompts).toMatchObject({
       motionPromptsByShotId: {
-        shot_1: { fullPrompt: 'Edited prompt', dialogue },
+        // No lines ride the prompt (#1657): the batch resolves what the
+        // shot says from `dialogueLinesByShotId`.
+        shot_1: {
+          fullPrompt: 'Edited prompt',
+          dialogue: { presence: false, lines: [] },
+        },
       },
       motionPromptVersionIdsByShotId: {
         shot_1: 'prompt_1',

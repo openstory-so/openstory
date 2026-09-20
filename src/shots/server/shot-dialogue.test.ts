@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   dialogueContextFor,
   requireSelectableSection,
-  shotDialogueFor,
+  shotDialogueResolver,
 } from './shot-dialogue';
 
 const characters = [
@@ -15,14 +15,59 @@ const line = (character: string, text: string) => ({
   tone: 'calm',
 });
 
-describe('shotDialogueFor', () => {
-  it('is null for a shot with no row, so the caller keeps its mirror', () => {
-    const lines = new Map([['shot-1', [line('Ana', 'Hello.')]]]);
-    expect(shotDialogueFor(lines, { id: 'shot-2' })).toBeNull();
-    expect(shotDialogueFor(lines, { id: 'shot-1' })).toEqual({
-      presence: true,
-      lines: [line('Ana', 'Hello.')],
+const shots = [
+  { id: 'shot-1', sceneId: 'scene-1', shotNumber: 1 },
+  { id: 'shot-2', sceneId: 'scene-1', shotNumber: 2 },
+  { id: 'shot-3', sceneId: 'scene-1', shotNumber: 3 },
+];
+const script = [
+  // Unstamped (pre-#1585): spoken by the scene's first shot only.
+  line('Ana', 'Where were you?'),
+  { ...line('Ben', 'Script wording.'), shotNumber: 2 },
+  { ...line('Ana', 'From the script.'), shotNumber: 3 },
+];
+
+describe('shotDialogueResolver', () => {
+  const dialogueOf = shotDialogueResolver({
+    linesByShotId: new Map([['shot-3', [line('Ana', 'Row wording.')]]]),
+    shots,
+    legacyDialogueOf: (shotId) =>
+      shotId === 'shot-2'
+        ? { presence: true, lines: [line('Ben', 'Old prompt-row wording.')] }
+        : shotId === 'shot-3'
+          ? { presence: true, lines: [line('Ana', 'Ignored: the row wins.')] }
+          : null,
+    scriptDialogueOf: () => script,
+  });
+
+  it('answers from the selected version first', () => {
+    expect(dialogueOf({ id: 'shot-3' }).lines).toEqual([
+      line('Ana', 'Row wording.'),
+    ]);
+  });
+
+  it('falls back to a pre-#1657 prompt row, then to the script', () => {
+    expect(dialogueOf({ id: 'shot-2' }).lines).toEqual([
+      line('Ben', 'Old prompt-row wording.'),
+    ]);
+    // No row, no old copy: the script's lines, unstamped ones included
+    // because this is the scene's first shot.
+    expect(dialogueOf({ id: 'shot-1' }).lines).toEqual([
+      line('Ana', 'Where were you?'),
+    ]);
+  });
+
+  it('treats an empty selected version as "says nothing", not as missing', () => {
+    const silenced = shotDialogueResolver({
+      linesByShotId: new Map([['shot-2', []]]),
+      shots,
+      legacyDialogueOf: () => ({
+        presence: true,
+        lines: [line('Ben', 'Old wording.')],
+      }),
+      scriptDialogueOf: () => script,
     });
+    expect(silenced({ id: 'shot-2' })).toEqual({ presence: false, lines: [] });
   });
 });
 
@@ -32,42 +77,43 @@ describe('dialogueContextFor', () => {
     { id: 'shot-1', shotNumber: 1 },
     { id: 'shot-2', shotNumber: 2 },
   ];
-  const scriptDialogue = [
-    // Unstamped (pre-#1585): spoken by the scene's first shot only.
-    line('Ana', 'Where were you?'),
-    { ...line('Ben', 'Script wording.'), shotNumber: 2 },
-    { ...line('Ana', 'From the script.'), shotNumber: 3 },
-  ];
+  // One resolver for the whole scene — the same one the payload's
+  // `voicedLines` came from, so the recording keys the words the render asks
+  // for.
+  const dialogueOf = shotDialogueResolver({
+    linesByShotId: new Map([['shot-3', [line('Ana', 'Row wording.')]]]),
+    shots,
+    legacyDialogueOf: (shotId) =>
+      shotId === 'shot-2'
+        ? { presence: true, lines: [line('Ben', 'Old prompt-row wording.')] }
+        : null,
+    scriptDialogueOf: () => script,
+  });
 
-  it('speaks the scene in shot order, deriving a shot that has no row', () => {
+  it('speaks the scene in shot order, each shot saying what it resolves to', () => {
     const context = dialogueContextFor({
       shot: { id: 'shot-2' },
-      // The lines the payload's `voicedLines` came from win for the shot.
-      shotLines: [line('Ben', 'Mirror wording.')],
       voicedLines: [1],
       audioClips: [],
       sceneShots,
-      linesByShotId: new Map([['shot-3', [line('Ana', 'Row wording.')]]]),
-      scriptDialogue,
+      dialogueOf,
       characters,
     });
     expect(context?.map((turn) => [turn.shotId, turn.text])).toEqual([
       ['shot-1', 'Where were you?'],
-      ['shot-2', 'Mirror wording.'],
+      ['shot-2', 'Old prompt-row wording.'],
       ['shot-3', 'Row wording.'],
     ]);
   });
 
-  it('is empty when the shot itself has nothing voiced', () => {
+  it('is undefined when the shot itself has nothing voiced', () => {
     expect(
       dialogueContextFor({
         shot: { id: 'shot-2' },
-        shotLines: [],
         voicedLines: [],
         audioClips: [],
         sceneShots,
-        linesByShotId: new Map(),
-        scriptDialogue,
+        dialogueOf,
         characters,
       })
     ).toBeUndefined();
@@ -77,12 +123,10 @@ describe('dialogueContextFor', () => {
     expect(
       dialogueContextFor({
         shot: { id: 'shot-2' },
-        shotLines: [line('Ben', 'Mirror wording.')],
         voicedLines: [1],
         audioClips: [1],
         sceneShots,
-        linesByShotId: new Map(),
-        scriptDialogue,
+        dialogueOf,
         characters,
       })
     ).toBeUndefined();

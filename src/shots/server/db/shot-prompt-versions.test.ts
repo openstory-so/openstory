@@ -27,6 +27,7 @@ import {
   musicPromptInputHash,
 } from '@/shots/input-hash';
 import {
+  shotDialogueVersions,
   shotPromptVersions,
   shots,
   sequenceMusicPromptVersions,
@@ -434,55 +435,67 @@ describe('shot_prompt_variants helper', () => {
     expect(history).toHaveLength(1);
   });
 
-  it('a voice-only change at the same text appends and selects a new row', async () => {
-    // #1559: binding a voice changes the dialogue, not the text. Matching on
-    // text alone handed back the version with the OLD voice, so a new pick
-    // saved nothing and the picker snapped back.
+  it("moves a pre-#1657 shot's lines onto the shot before a new row supersedes them", async () => {
+    // Lines used to live on the selected motion row. New rows carry none, so
+    // selecting one would strand them — and the voice bound to them.
     const methods = createShotPromptVersionsMethods(db);
-    const line = {
+    const legacyLine = {
       character: 'Mateo',
       line: 'Wait, right now?',
       tone: 'surprised',
+      voiceToken: 'MATEO_SHOT_1',
     };
+    const legacyId = generateId();
+    await db.insert(shotPromptVersions).values({
+      id: legacyId,
+      shotId,
+      promptType: 'motion',
+      usesStartFrame: true,
+      text: 'Handheld push-in on Mateo.',
+      dialogue: { presence: true, lines: [legacyLine] },
+      source: 'ai-generated',
+      inputHash: motionPromptInputHash('context-hash-0'),
+      analysisModel: null,
+    });
+    await db
+      .update(shots)
+      .set({ selectedMotionPromptVersionId: legacyId })
+      .where(eq(shots.id, shotId));
+
     const base = {
       shotId,
       promptType: 'motion' as const,
       usesStartFrame: true,
-      text: 'Handheld push-in on Mateo.',
       source: 'user-edit' as const,
-      inputHash: motionPromptInputHash('context-hash-1'),
       analysisModel: null,
     };
-
-    const oldVoice = await methods.write({
+    const written = await methods.write({
       ...base,
-      dialogue: {
-        presence: true,
-        lines: [{ ...line, voiceToken: 'MATEO_SHOT_1' }],
-      },
+      text: 'Slow dolly instead.',
+      inputHash: motionPromptInputHash('context-hash-1'),
     });
-    const newVoice = await methods.write({
-      ...base,
-      dialogue: {
-        presence: true,
-        lines: [{ ...line, voiceToken: 'MATEO_SHOT_1_3' }],
-      },
-    });
+    expect(written.dialogue).toBeNull();
 
-    expect(newVoice.id).not.toBe(oldVoice.id);
-    expect(newVoice.dialogue?.lines[0]?.voiceToken).toBe('MATEO_SHOT_1_3');
-    const [shot] = await db.select().from(shots).where(eq(shots.id, shotId));
-    expect(shot?.selectedMotionPromptVersionId).toBe(newVoice.id);
+    const promoted = await db
+      .select()
+      .from(shotDialogueVersions)
+      .where(eq(shotDialogueVersions.shotId, shotId));
+    expect(promoted).toHaveLength(1);
+    expect(promoted[0]?.lines).toEqual([legacyLine]);
+    expect(promoted[0]?.selectedAt).toBeInstanceOf(Date);
 
-    // And a genuine retry of the new one still collapses onto it.
-    const retried = await methods.write({
+    // Once the shot has its own lines, later writes leave them alone.
+    await methods.write({
       ...base,
-      dialogue: {
-        presence: true,
-        lines: [{ ...line, voiceToken: 'MATEO_SHOT_1_3' }],
-      },
+      text: 'Static wide.',
+      inputHash: motionPromptInputHash('context-hash-2'),
     });
-    expect(retried.id).toBe(newVoice.id);
+    expect(
+      await db
+        .select()
+        .from(shotDialogueVersions)
+        .where(eq(shotDialogueVersions.shotId, shotId))
+    ).toHaveLength(1);
   });
 
   it('a different input_hash produces a new row for the same shot+type', async () => {

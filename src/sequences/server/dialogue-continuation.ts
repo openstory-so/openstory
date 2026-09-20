@@ -57,7 +57,9 @@ export async function snapshotDialogueContinuation(
     frameVersionIds.push(image?.id ?? null);
     motionPromptsByShotId[shotId] = {
       fullPrompt: motion.text,
-      dialogue: motion.dialogue ?? { presence: false, lines: [] },
+      // Not a source of lines (#1657): the batch puts what the shot says
+      // (`dialogueLinesByShotId`) into the prompt it assembles.
+      dialogue: { presence: false, lines: [] },
       audio: motion.audio ?? { ambientSound: '', soundEffects: [] },
     };
     motionPromptVersionIdsByShotId[shotId] = motion.id;

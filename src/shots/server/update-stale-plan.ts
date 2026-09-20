@@ -38,7 +38,13 @@ import type {
   MotionDialogue,
   Scene,
 } from '@/shots/scene-analysis.schema';
-import { loadShotDialogueLines, shotDialogueFor } from './shot-dialogue';
+import {
+  dialogueContextFor,
+  loadShotDialogueLines,
+  shotDialogueResolver,
+} from './shot-dialogue';
+import { voicedDialogueLines } from '@/motion/dialogue-tts';
+import type { SceneVoicedLine } from '@/shots/shot-dialogue';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import type { Resolution } from '@/models/resolutions';
 import type {
@@ -150,11 +156,16 @@ export type PlanTarget = {
    * The lines this shot speaks, from the shot dialogue node at click time
    * (#1657). Snapshotted here because the node is mutable and the run
    * renders minutes later: the clip's bound audio, and the TTS the video
-   * stage bills when no clip matches, both come from these words. Null when
-   * the shot has no version row, which sends the video stage back to the
-   * motion prompt row's mirror.
+   * stage bills when no clip matches, both come from these words. Resolved
+   * by `shotDialogueResolver`, the same answer every trigger uses.
    */
-  dialogue: MotionDialogue | null;
+  dialogue: MotionDialogue;
+  /**
+   * The conversation around the shot at click time, for a video stage that
+   * finds no matching clip and has to record one in context. Empty when the
+   * shot voices nothing. The run cannot read its neighbours' lines.
+   */
+  dialogueContext: SceneVoicedLine[];
 };
 
 /**
@@ -387,14 +398,23 @@ export async function computePlan(args: {
     scopedDb.framePromptVersions.getSelectedByFrameIds(frameIds),
     // Dereference the motion pointer HERE, once, so the video stage never
     // has to (see `PlanTarget.standingMotionVersionId`).
+    // Every shot, not just the ones in scope: a neighbour's pre-#1657 lines
+    // are part of the conversation a target is recorded in.
     scopedDb.shotPromptVersions.getSelectedMotionByShots(
-      inScope.map((s) => s.id)
+      allShots.map((s) => s.id)
     ),
     // The authored dialogue per shot, read once (#1657). Each target carries
     // only its own shot's lines, so the run never reads the node mid-flight.
     loadShotDialogueLines(scopedDb, sequence.id),
   ]);
   const refs: ShotStalenessRefs = { characters, locations, elements, style };
+  const dialogueOf = shotDialogueResolver({
+    linesByShotId: dialogueLinesByShotId,
+    shots: allShots,
+    legacyDialogueOf: (shotId) => selectedMotionByShot.get(shotId)?.dialogue,
+    scriptDialogueOf: (sceneId) =>
+      scriptBySceneId.get(sceneId)?.script?.dialogue,
+  });
 
   const targets: PlanTarget[] = [];
   const skipped: SkippedShot[] = [];
@@ -415,7 +435,7 @@ export async function computePlan(args: {
         ? (selectedPromptByFrame.get(frame.id) ?? null)
         : null,
       selectedMotionVersionId: selectedMotionByShot.get(shot.id)?.id ?? null,
-      dialogue: shotDialogueFor(dialogueLinesByShotId, shot),
+      dialogue: dialogueOf(shot),
       scene,
       refs,
       depth,
@@ -448,22 +468,34 @@ export async function computePlan(args: {
   });
 
   const voiceRows = await scopedDb.characters.list(sequence.id);
+  const characterVoices = voiceRows.flatMap((row) =>
+    row.voiceId
+      ? [{ name: row.name, voiceId: row.voiceId, voiceOnly: row.voiceOnly }]
+      : []
+  );
+  const shotById = new Map(allShots.map((shot) => [shot.id, shot]));
+  for (const target of targets) {
+    const sceneId = shotById.get(target.shotId)?.sceneId;
+    target.dialogueContext =
+      dialogueContextFor({
+        shot: { id: target.shotId },
+        voicedLines: voicedDialogueLines(target.dialogue, characterVoices),
+        // Whether a clip still matches is decided mid-run, against the model
+        // the render resolves; the context rides along either way.
+        audioClips: [],
+        sceneShots: allShots.filter(
+          (shot) => sceneId && shot.sceneId === sceneId && !shot.deletedAt
+        ),
+        dialogueOf,
+        characters: characterVoices,
+      }) ?? [];
+  }
   return {
     aspectRatio: sequence.aspectRatio,
     resolution: sequence.resolution,
     sequence: toPlanSequence(sequence),
     music,
-    characterVoices: voiceRows.flatMap((row) =>
-      row.voiceId
-        ? [
-            {
-              name: row.name,
-              voiceId: row.voiceId,
-              voiceOnly: row.voiceOnly,
-            },
-          ]
-        : []
-    ),
+    characterVoices,
     promptContext: {
       characterBible: [...ctx.characterBible],
       locationBible: [...ctx.locationBible],
@@ -566,8 +598,8 @@ async function decideShotTarget(args: {
   selectedPrompt: FramePromptVersion | null;
   /** Selected motion prompt version id — the video-only-regen default. */
   selectedMotionVersionId: string | null;
-  /** This shot's lines from the shot dialogue node (`PlanTarget.dialogue`). */
-  dialogue: MotionDialogue | null;
+  /** What the shot says now (`PlanTarget.dialogue`). */
+  dialogue: MotionDialogue;
   scene: Scene | null;
   refs: ShotStalenessRefs;
   depth: UpdateStaleDepth;
@@ -668,6 +700,8 @@ async function decideShotTarget(args: {
       ),
       regenVideo: flags.regenVideo,
       dialogue,
+      // Filled in by `computePlan` once the voices are loaded.
+      dialogueContext: [],
     },
   };
 }

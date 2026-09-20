@@ -86,6 +86,57 @@ export function deriveShotDialogueLines(
 }
 
 /**
+ * What a shot says NOW — the one answer every reader uses (#1657), so the
+ * recording, the prompt text and the panel cannot disagree:
+ *
+ * 1. its selected `shot_dialogue_versions` row;
+ * 2. else the dialogue its motion prompt row carried — only rows from before
+ *    the node existed have one, nothing writes it any more;
+ * 3. else the lines the script stamps onto it (`deriveShotDialogueLines`).
+ *
+ * An empty selected row is an answer ("this shot lost its lines"), so it
+ * stops the ladder; an empty legacy copy is not, because it never meant that.
+ */
+export function resolveShotDialogue(input: {
+  selectedLines: readonly ShotDialogueLine[] | null | undefined;
+  legacyDialogue: MotionDialogue | null | undefined;
+  scriptDialogue: readonly DialogueLine[] | undefined;
+  shot: { shotNumber?: number | null };
+  isFirstShot: boolean;
+}): MotionDialogue {
+  if (input.selectedLines) return shotDialogue(input.selectedLines);
+  if (input.legacyDialogue && input.legacyDialogue.lines.length > 0) {
+    return input.legacyDialogue;
+  }
+  return shotDialogue(
+    deriveShotDialogueLines(input.scriptDialogue, input.shot, input.isFirstShot)
+  );
+}
+
+/**
+ * The first live shot of each scene, by shot number — the shot a pre-#1585
+ * unstamped line is derived onto (`deriveShotDialogueLines`).
+ */
+export function firstShotIdByScene(
+  shots: readonly {
+    id: string;
+    sceneId: string | null;
+    shotNumber: number | null;
+    deletedAt?: Date | null;
+  }[]
+): ReadonlyMap<string, string> {
+  const first = new Map<string, string>();
+  const ordered = [...shots].sort(
+    (a, b) => (a.shotNumber ?? 0) - (b.shotNumber ?? 0)
+  );
+  for (const shot of ordered) {
+    if (!shot.sceneId || shot.deletedAt || first.has(shot.sceneId)) continue;
+    first.set(shot.sceneId, shot.id);
+  }
+  return first;
+}
+
+/**
  * Each shot of one scene mapped to the lines it speaks: its selected
  * `shot_dialogue_versions` row, else derived from the script.
  * `shotsInOrder` is shot order — index 0 takes the unstamped lines.
@@ -98,8 +149,15 @@ export function sceneShotLines(
   return new Map(
     shotsInOrder.map((shot, index) => [
       shot.id,
-      selectedLines(shot.id) ??
-        deriveShotDialogueLines(scriptDialogue, shot, index === 0),
+      resolveShotDialogue({
+        selectedLines: selectedLines(shot.id),
+        // A run reads lines off its payload, and a continue snapshots every
+        // shot resolved, so there is no prompt-row copy left to consult.
+        legacyDialogue: undefined,
+        scriptDialogue,
+        shot,
+        isFirstShot: index === 0,
+      }).lines,
     ])
   );
 }

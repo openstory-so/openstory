@@ -239,7 +239,6 @@ export const restoreShotPromptVariantFn = createServerFn({ method: 'POST' })
       text: chosen.text,
       components: chosen.components,
       parameters: chosen.parameters,
-      dialogue: chosen.dialogue,
       audio: chosen.audio,
       source: 'restored',
       usesStartFrame: chosen.usesStartFrame,
@@ -325,36 +324,27 @@ export const saveShotPromptFn = createServerFn({ method: 'POST' })
         ? ((await scopedDb.framePromptVersions.getSelected(frame.id))?.text ??
           null)
         : (selectedMotion?.text ?? null);
-    // A voice binding changes the dialogue, not the text, so the text-only
-    // guard would swallow it (#1559).
-    const dialogue =
-      data.dialogue !== undefined
-        ? data.dialogue
-        : (selectedMotion?.dialogue ?? null);
-    const dialogueUnchanged =
-      data.dialogue === undefined ||
-      JSON.stringify(selectedMotion?.dialogue ?? null) ===
-        JSON.stringify(data.dialogue);
-    if (currentPrompt !== null && currentPrompt === text && dialogueUnchanged) {
-      return { unchanged: true } as const;
-    }
-
-    // Dialogue is its own authored/versioned node, per SHOT (#1657). The
-    // edit appends a `user-edit` version of THIS shot's lines; no other shot
-    // is touched, so nothing of theirs goes stale. Persisted before the
-    // compatibility prompt mirror below — changing a line invalidates this
-    // shot's reading without touching any image or scene-script data.
-    if (
-      data.promptType === 'motion' &&
-      data.dialogue !== undefined &&
-      !dialogueUnchanged
-    ) {
-      await scopedDb.shotDialogue.write(
+    // Dialogue is its own authored/versioned node, per SHOT (#1657), and the
+    // ONLY place lines are written: the edit appends a `user-edit` version of
+    // THIS shot's lines and no prompt row carries a copy. No other shot is
+    // touched, so nothing of theirs goes stale. `write` hands back the
+    // selected row untouched when the lines did not move, so the id tells a
+    // real edit (a changed word, a bound voice, #1559) from a plain re-save.
+    let dialogueChanged = false;
+    if (data.promptType === 'motion' && data.dialogue !== undefined) {
+      const before = await scopedDb.shotDialogue.getSelected(shot.id);
+      const after = await scopedDb.shotDialogue.write(
         shot.id,
         data.dialogue.lines,
         'user-edit',
         { createdBy: user.id }
       );
+      dialogueChanged = (after?.id ?? null) !== (before?.id ?? null);
+    }
+    if (currentPrompt !== null && currentPrompt === text) {
+      // The lines moved but the prompt text did not: nothing to append to the
+      // prompt history.
+      return { unchanged: !dialogueChanged };
     }
 
     // Capture the current upstream hash so staleness keeps tracking: a manual
@@ -401,15 +391,14 @@ export const saveShotPromptFn = createServerFn({ method: 'POST' })
       return { unchanged: false, versionId: inserted.id } as const;
     }
 
-    // Carry the selected version's dialogue/audio direction forward onto the
-    // user-edit so audio-capable models keep their enrichment after a free-text
-    // edit (mirrors the motion-workflow user-edit path). `components` /
+    // Carry the selected version's audio direction forward onto the user-edit
+    // so audio-capable models keep their enrichment after a free-text edit
+    // (mirrors the motion-workflow user-edit path). `components` /
     // `parameters` stay null on a hand edit.
     const inserted = await scopedDb.shotPromptVersions.write({
       shotId: shot.id,
       promptType: 'motion',
       text,
-      dialogue,
       audio: selectedMotion?.audio ?? null,
       source: 'user-edit',
       usesStartFrame: usesStartFrame(shot, sequence),

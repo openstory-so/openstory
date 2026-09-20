@@ -630,7 +630,8 @@ describe('claimTargets (#1085)', () => {
       imageLiveHash: 'ih',
       imageModel: 'nano_banana_2',
       regenVideo: false,
-      dialogue: null,
+      dialogue: { presence: false, lines: [] },
+      dialogueContext: [],
       ...overrides,
     };
   }

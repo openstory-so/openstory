@@ -235,10 +235,7 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
         aspectRatio={aspectRatio}
         below={
           selectedShot ? (
-            <ShotDialogueUnderVideo
-              shot={selectedShot}
-              scene={scenes?.find((s) => s.id === selectedShot.sceneId)}
-            />
+            <ShotDialogueUnderVideo shot={selectedShot} />
           ) : undefined
         }
       >
