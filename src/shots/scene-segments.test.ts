@@ -9,6 +9,7 @@ import {
   type SegmentShotInput,
   type SegmentVersionInput,
   type SequenceSegment,
+  type LiveShotInputs,
 } from './scene-segments';
 
 const shot = (
@@ -265,14 +266,32 @@ const segShot = (
   renderSegmentId,
   selectedMotionPromptVersionId,
   rendersReferenceOnly,
+  audioClips: null,
+  durationMs: null,
 });
 
-describe('isSelectedVersionStale', () => {
-  const motion = new Map([['shot-1', 'mp-1']]);
-  const frame = new Map([['shot-1', 'fv-1']]);
+const NO_LOADED = {
+  audioSourceKeyByShot: new Map<string, string | null>(),
+  referenceIdentity: new Map<string, string>(),
+};
+const motion = new Map([['shot-1', 'mp-1']]);
+const frame = new Map([['shot-1', 'fv-1']]);
+/** Staleness of `v` against shot-1's pointers, with only the given live maps bound. */
+const stale = (
+  v: SegmentVersionInput | undefined,
+  live: Partial<LiveShotInputs> = {}
+) =>
+  isSelectedVersionStale(v, motion, frame, {
+    ...NO_LOADED,
+    audioClipIdsByShot: new Map(),
+    durationMsByShot: new Map(),
+    audioSecondsByShot: new Map(),
+    ...live,
+  });
 
+describe('isSelectedVersionStale', () => {
   it('is false with no selection', () => {
-    expect(isSelectedVersionStale(undefined, motion, frame)).toBe(false);
+    expect(stale(undefined)).toBe(false);
   });
 
   it('is fresh when the manifest matches current pointers', () => {
@@ -283,7 +302,7 @@ describe('isSelectedVersionStale', () => {
         frameVersionId: 'fv-1',
       },
     ]);
-    expect(isSelectedVersionStale(v, motion, frame)).toBe(false);
+    expect(stale(v)).toBe(false);
   });
 
   it('is stale when the bound dialogue audio identity moved', () => {
@@ -296,11 +315,9 @@ describe('isSelectedVersionStale', () => {
       },
     ]);
     const audio = new Map([['shot-1', 'voice-other\tStay down.\t\televen_v3']]);
+    expect(stale(v, { audioSourceKeyByShot: audio })).toBe(true);
     expect(
-      isSelectedVersionStale(v, motion, frame, { audioSourceKeyByShot: audio })
-    ).toBe(true);
-    expect(
-      isSelectedVersionStale(v, motion, frame, {
+      stale(v, {
         audioSourceKeyByShot: new Map([
           ['shot-1', 'voice-sarah\tStay down.\t\televen_v3'],
         ]),
@@ -316,14 +333,14 @@ describe('isSelectedVersionStale', () => {
         frameVersionId: 'fv-1',
       },
     ]);
-    expect(isSelectedVersionStale(v, motion, frame)).toBe(true);
+    expect(stale(v)).toBe(true);
   });
 
   it('is stale when a manifest shot no longer exists', () => {
     const v = version('v1', 'seg', 'kling', [
       { shotId: 'gone', motionPromptVersionId: 'mp-1', frameVersionId: 'fv-1' },
     ]);
-    expect(isSelectedVersionStale(v, motion, frame)).toBe(true);
+    expect(stale(v)).toBe(true);
   });
 
   it('treats a null-null manifest as unknown-not-stale, not born-stale (#1380)', () => {
@@ -337,7 +354,7 @@ describe('isSelectedVersionStale', () => {
         frameVersionId: null,
       },
     ]);
-    expect(isSelectedVersionStale(v, motion, frame)).toBe(false);
+    expect(stale(v)).toBe(false);
   });
 });
 
@@ -367,6 +384,7 @@ describe('assembleSequenceSegments', () => {
         { shotId: 'shot-2', role: 'first', selectedImageVersionId: 'fv-1' },
         { shotId: 'shot-2', role: 'last', selectedImageVersionId: 'other' },
       ],
+      live: NO_LOADED,
     });
 
     expect(result).toHaveLength(1);
@@ -390,6 +408,7 @@ describe('assembleSequenceSegments', () => {
       ],
       shots: [],
       frames: [],
+      live: NO_LOADED,
     });
     expect(result[0]?.model).toBe('seedance');
     expect(result[0]?.selectedVersion).toBeNull();
@@ -405,6 +424,7 @@ describe('assembleSequenceSegments', () => {
       versions: [],
       shots: [],
       frames: [],
+      live: NO_LOADED,
     });
     expect(result[0]?.shotIds).toEqual([]);
     expect(result[0]?.selectedVersionId).toBe('discarded');
@@ -429,6 +449,7 @@ describe('assembleSequenceSegments', () => {
       ],
       shots: [segShot('shot-1', 'seg-a', 'mp-new')],
       frames: [],
+      live: NO_LOADED,
     });
     expect(result[0]?.stale).toBe(true);
   });
@@ -457,6 +478,7 @@ describe('reference-only shots and staleness', () => {
       frames: [
         { shotId: 'shot-1', role: 'first', selectedImageVersionId: 'fv-1' },
       ],
+      live: NO_LOADED,
     });
 
   it('is fresh when the clip rendered from references and a still exists', () => {
@@ -471,8 +493,6 @@ describe('reference-only shots and staleness', () => {
 });
 
 describe('isSelectedVersionStale — clips, references, duration (#1657)', () => {
-  const motion = new Map([['shot-1', 'mp-1']]);
-  const frame = new Map([['shot-1', 'fv-1']]);
   const entry = {
     shotId: 'shot-1',
     motionPromptVersionId: 'mp-1',
@@ -486,7 +506,7 @@ describe('isSelectedVersionStale — clips, references, duration (#1657)', () =>
     v: SegmentVersionInput,
     audioClipIdsByShot: ReadonlyMap<string, readonly string[]>
   ) =>
-    isSelectedVersionStale(v, motion, frame, {
+    stale(v, {
       audioSourceKeyByShot: key,
       audioClipIdsByShot,
     });
@@ -508,14 +528,8 @@ describe('isSelectedVersionStale — clips, references, duration (#1657)', () =>
     ]);
     const old = version('v1', 'seg', 'kling_v3_pro', [entry]);
     const live = { audioClipIdsByShot: new Map([['shot-1', ['section-2']]]) };
-    expect(isSelectedVersionStale(voiceless, motion, frame, live)).toBe(false);
-    expect(isSelectedVersionStale(old, motion, frame, live)).toBe(false);
-    // A caller that did not load the working set compares without it.
-    expect(
-      isSelectedVersionStale(voiced, motion, frame, {
-        audioSourceKeyByShot: key,
-      })
-    ).toBe(false);
+    expect(stale(voiceless, live)).toBe(false);
+    expect(stale(old, live)).toBe(false);
   });
 
   it('keeps a legacy manifest fresh: its clip ids are the ones the working set still holds', () => {
@@ -546,12 +560,12 @@ describe('isSelectedVersionStale — clips, references, duration (#1657)', () =>
       { ...entry, referenceKeys: ['character:c1:csv-1'] },
     ]);
     expect(
-      isSelectedVersionStale(v, motion, frame, {
+      stale(v, {
         referenceIdentity: new Map([['character:c1', 'character:c1:csv-1']]),
       })
     ).toBe(false);
     expect(
-      isSelectedVersionStale(v, motion, frame, {
+      stale(v, {
         referenceIdentity: new Map([['character:c1', 'character:c1:csv-2']]),
       })
     ).toBe(true);
@@ -564,12 +578,12 @@ describe('isSelectedVersionStale — clips, references, duration (#1657)', () =>
       { ...entry, durationMs: 5000 },
     ]);
     expect(
-      isSelectedVersionStale(v, motion, frame, {
+      stale(v, {
         durationMsByShot: new Map([['shot-1', 4600]]),
       })
     ).toBe(false);
     expect(
-      isSelectedVersionStale(v, motion, frame, {
+      stale(v, {
         durationMsByShot: new Map([['shot-1', 9000]]),
       })
     ).toBe(true);
@@ -578,14 +592,14 @@ describe('isSelectedVersionStale — clips, references, duration (#1657)', () =>
       { ...entry, durationMs: 7000 },
     ]);
     expect(
-      isSelectedVersionStale(raised, motion, frame, {
+      stale(raised, {
         durationMsByShot: new Map([['shot-1', 5000]]),
         audioSecondsByShot: new Map([['shot-1', 7]]),
       })
     ).toBe(false);
     // No user duration: nothing to compare.
     expect(
-      isSelectedVersionStale(v, motion, frame, {
+      stale(v, {
         durationMsByShot: new Map([['shot-1', 0]]),
       })
     ).toBe(false);

@@ -16,8 +16,10 @@ import {
   type StartFrameSequence,
 } from '@/shots/use-start-frame';
 import { musicPromptInputHashMatches } from '@/shots/input-hash';
-import { musicRequestDurationSeconds } from '@/audio/music-track-staleness';
-import { readMusicTrackStaleness } from '@/audio/server/music-track-staleness';
+import {
+  musicRequestDurationSeconds,
+  readMusicTrackStaleness,
+} from '@/audio/server/music-staleness';
 import {
   DEFAULT_ANALYSIS_MODEL,
   getAnalysisModelById,
@@ -755,9 +757,10 @@ async function computeMusicPlan(
   // Track staleness stands on its own (#1657): a hand-edited prompt NULLs
   // `musicPromptInputHash`, so gating this behind the prompt's hash would hide
   // exactly the case the edit created. Never a first generation.
+  const hasIdleTrack =
+    !!sequence.musicUrl && sequence.musicStatus !== 'generating';
   const trackStale =
-    !!sequence.musicUrl &&
-    sequence.musicStatus !== 'generating' &&
+    hasIdleTrack &&
     (await readMusicTrackStaleness(scopedDb, sequence, allShots)) === 'stale';
   const none: MusicPlan = {
     regenPrompt: false,
@@ -789,11 +792,7 @@ async function computeMusicPlan(
       regenPrompt,
       // Either the track's own hash diverged, or the prompt regen cascades
       // into it.
-      regenTrack:
-        trackStale ||
-        (regenPrompt &&
-          !!sequence.musicUrl &&
-          sequence.musicStatus !== 'generating'),
+      regenTrack: trackStale || (regenPrompt && hasIdleTrack),
       sceneSummaries,
       analysisModelId,
       promptSource: latest ? 'regenerated' : 'ai-generated',

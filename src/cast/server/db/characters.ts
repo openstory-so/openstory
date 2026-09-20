@@ -367,28 +367,14 @@ export function createCharactersMethods(db: Database) {
         !character.selectedVoiceVersionId &&
         (character.voiceId ?? character.voiceDescription)
       ) {
-        const versionId = generateId();
-        const [, updatedRows] = await db.batch([
-          db.insert(characterVoiceVersions).values({
-            id: versionId,
-            characterId: character.id,
-            voiceId: character.voiceId,
-            description: character.voiceDescription,
-            previews: character.voicePreviews,
-            enabled: character.useVoice,
-            source:
-              character.voiceId && character.voiceId === data.voiceId
-                ? 'library'
-                : 'analysis',
-            selectedAt: new Date(),
-          }),
-          db
-            .update(characters)
-            .set({ selectedVoiceVersionId: versionId })
-            .where(eq(characters.id, character.id))
-            .returning(),
-        ]);
-        return updatedRows[0] ?? character;
+        // An empty patch: the version copies the row's voice as it stands.
+        return await updateVoice(
+          character.id,
+          {},
+          character.voiceId && character.voiceId === data.voiceId
+            ? 'library'
+            : 'analysis'
+        );
       }
       return character;
     },

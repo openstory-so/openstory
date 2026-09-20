@@ -178,8 +178,8 @@ export function useAssignCharacterVoice() {
 }
 
 /**
- * Voice history (#1657). Suspense: the list renders inside the voice section,
- * which is already behind a boundary.
+ * Voice history (#1657). Not suspending: the history list renders nothing
+ * until the versions arrive, so the voice section never waits on it.
  */
 export function useCharacterVoiceVersions(
   sequenceId: string,

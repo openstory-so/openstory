@@ -63,19 +63,13 @@ describe('loadLiveShotInputs — dialogue (#1657)', () => {
     const after = await load([
       { shotId: 'shot-1', lines: [line('Ana', 'Hello there.')] },
     ]);
-    expect(after.audioSourceKeyByShot?.get('shot-1')).not.toBe(
-      before.audioSourceKeyByShot?.get('shot-1')
+    expect(after.audioSourceKeyByShot.get('shot-1')).not.toBe(
+      before.audioSourceKeyByShot.get('shot-1')
     );
     // shot-2 has no row: its key is derived from the script's stamped line.
-    expect(before.audioSourceKeyByShot?.get('shot-2')).toBeTruthy();
-    expect(after.audioSourceKeyByShot?.get('shot-2')).toBe(
-      before.audioSourceKeyByShot?.get('shot-2')
+    expect(before.audioSourceKeyByShot.get('shot-2')).toBeTruthy();
+    expect(after.audioSourceKeyByShot.get('shot-2')).toBe(
+      before.audioSourceKeyByShot.get('shot-2')
     );
-  });
-
-  it('reports the working-set clip ids per shot', async () => {
-    const live = await load([]);
-    expect(live.audioClipIdsByShot?.get('shot-1')).toEqual(['section-1']);
-    expect(live.audioClipIdsByShot?.get('shot-2')).toEqual([]);
   });
 });

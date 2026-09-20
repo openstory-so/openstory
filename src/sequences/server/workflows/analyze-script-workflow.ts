@@ -81,7 +81,10 @@ import {
   createCastRecords,
   findMissingElementEntries,
 } from '@/cast/server/workflows/cast-records';
-import { buildStoryboardMotionBatchShots } from './storyboard-motion-batch-shots';
+import {
+  buildStoryboardMotionBatchShots,
+  sceneShotsOf,
+} from './storyboard-motion-batch-shots';
 import {
   clipDurationSeconds,
   derivedShotForItem,
@@ -1263,11 +1266,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           .map((item) => [item.mapping.shotId, clipDurationSeconds(item)])
       );
       const jobs = completeScenes.flatMap((scene) => {
-        const sceneShots = (shotMapping ?? [])
-          .filter((row) => row.analysisSceneId === scene.sceneId && row.shotId)
-          .slice()
-          .sort((a, b) => (a.shotNumber ?? 1) - (b.shotNumber ?? 1))
-          .map((row) => ({ id: row.shotId, shotNumber: row.shotNumber ?? 1 }));
+        const sceneShots = sceneShotsOf(shotMapping, scene.sceneId);
         if (sceneShots.length === 0) return [];
         const voiced = sceneConversation(
           sceneShots,

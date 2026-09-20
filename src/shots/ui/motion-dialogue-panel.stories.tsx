@@ -138,7 +138,7 @@ export const BlockLinesNoAudioYet: Story = {
     <ShotDialogueBlock
       dialogue={dialogue}
       elements={[]}
-      readings={<ShotReadingsList readings={[]} collapsible />}
+      readings={<ShotReadingsList readings={[]} onUse={fn()} collapsible />}
     />
   ),
 };
@@ -149,7 +149,9 @@ export const BlockCurrentReadingOnly: Story = {
       dialogue={dialogue}
       elements={[]}
       clip={clip}
-      readings={<ShotReadingsList readings={[current]} collapsible />}
+      readings={
+        <ShotReadingsList readings={[current]} onUse={fn()} collapsible />
+      }
     />
   ),
 };

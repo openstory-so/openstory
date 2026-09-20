@@ -57,34 +57,26 @@ export function liveReferenceIdentity(input: {
   }>;
   elements: ReadonlyArray<{ id: string; imageUrl: string | null }>;
 }): Map<string, string> {
-  const live = new Map<string, string>();
-  for (const c of input.characters) {
-    live.set(
-      `character:${c.id}`,
-      referenceProvenanceKey(
-        'character',
-        c.id,
-        c.selectedSheetVersionId ?? c.sheetImageUrl
-      )
-    );
-  }
-  for (const l of input.locations) {
-    live.set(
-      `location:${l.id}`,
-      referenceProvenanceKey(
-        'location',
-        l.id,
-        l.selectedReferenceVersionId ?? l.referenceImageUrl
-      )
-    );
-  }
-  for (const e of input.elements) {
-    live.set(
-      `element:${e.id}`,
-      referenceProvenanceKey('element', e.id, e.imageUrl)
-    );
-  }
-  return live;
+  type Row = [ReferenceEntityKind, string, string | null];
+  const rows = [
+    ...input.characters.map((c): Row => [
+      'character',
+      c.id,
+      c.selectedSheetVersionId ?? c.sheetImageUrl,
+    ]),
+    ...input.locations.map((l): Row => [
+      'location',
+      l.id,
+      l.selectedReferenceVersionId ?? l.referenceImageUrl,
+    ]),
+    ...input.elements.map((e): Row => ['element', e.id, e.imageUrl]),
+  ];
+  return new Map(
+    rows.map(([kind, id, identity]) => [
+      `${kind}:${id}`,
+      referenceProvenanceKey(kind, id, identity),
+    ])
+  );
 }
 
 /**

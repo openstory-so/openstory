@@ -208,8 +208,8 @@ describe('recordDialogue', () => {
     // The context shot keeps the clip it had: nothing is cut or written for it.
     expect(cut).toHaveBeenCalledTimes(1);
     expect(setAudioClips).toHaveBeenCalledTimes(1);
-    expect(Object.keys(result.clipsByShotId)).toEqual(['shot-a']);
-    const clip = result.clipsByShotId['shot-a']?.[0];
+    expect(Object.keys(result)).toEqual(['shot-a']);
+    const clip = result['shot-a']?.[0];
     expect(clip).toMatchObject({
       id: row.sections[0]?.id,
       recordingId: 'r1',
@@ -274,7 +274,6 @@ describe('recordDialogue', () => {
     expect(second.map((l) => l.voiceId)).toEqual(LINES.map((l) => l.voiceId));
 
     // Both attempts billed; only the recording that fit gets a row.
-    expect(result.characterCount).toBe(240);
     expect(deduct).toHaveBeenCalledTimes(2);
     expect(appendRecording).toHaveBeenCalledTimes(1);
     const row = appended();
@@ -285,7 +284,7 @@ describe('recordDialogue', () => {
     const authoredKey = dialogueClipSourceKey(
       LINES.filter((l) => l.shotId === 'shot-a')
     );
-    const clip = result.clipsByShotId['shot-a']?.[0];
+    const clip = result['shot-a']?.[0];
     expect(clip?.sourceKey).toBe(authoredKey);
     expect(clip?.spokenLines).toEqual([
       { index: 0, text: 'Gate closes at midnight.' },
@@ -373,7 +372,7 @@ describe('recordDialogue', () => {
       toSeconds: 1,
       minDurationSeconds: 2,
     });
-    expect(result.clipsByShotId['shot-a']?.[0]?.durationSeconds).toBe(2.15);
+    expect(result['shot-a']?.[0]?.durationSeconds).toBe(2.15);
   });
 
   it('records only the calls that hold an adopting shot', async () => {
@@ -396,7 +395,7 @@ describe('recordDialogue', () => {
     expect(sent.map((l) => l.shotId)).toEqual(['shot-b']);
     // The call keeps its position in the conversation as its durable name.
     expect(names[0]).toBe('scene-0-chunk-1');
-    expect(Object.keys(result.clipsByShotId)).toEqual(['shot-b']);
+    expect(Object.keys(result)).toEqual(['shot-b']);
     expect(appended().sections.map((s) => s.shotId)).toEqual(['shot-b']);
   });
 

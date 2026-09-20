@@ -93,13 +93,6 @@ export type RecordDialogueArgs = {
   workflowName: string;
 };
 
-export type RecordedDialogue = {
-  /** The adopting shots' new clips — nothing for a shot that was context. */
-  clipsByShotId: Record<string, MotionAudioClip[]>;
-  /** TTS characters billed across every call and attempt. */
-  characterCount: number;
-};
-
 /** A call's record plus the section id minted for each shot it spoke. */
 type RecordedCall = RecordedDialogueCall & {
   sectionIdByShotId: Record<string, string>;
@@ -108,7 +101,7 @@ type RecordedCall = RecordedDialogueCall & {
 export async function recordDialogue(
   step: WorkflowStep,
   args: RecordDialogueArgs
-): Promise<RecordedDialogue> {
+): Promise<Record<string, MotionAudioClip[]>> {
   const spokenShotIds = new Set(voicedShotIds(args.lines));
   const adopting = args.adoptShotIds.filter((id) => spokenShotIds.has(id));
   if (adopting.length === 0 || adopting.length !== args.adoptShotIds.length) {
@@ -138,7 +131,6 @@ export async function recordDialogue(
     .filter((call) => call.shotIds.some((id) => adopts.has(id)));
 
   let spoken: SceneVoicedLine[] = [...args.lines];
-  let characterCount = 0;
   const recorded = new Map<number, RecordedCall>();
   let toRecord = calls;
 
@@ -186,7 +178,6 @@ export async function recordDialogue(
         }
       );
       recorded.set(call.index, result);
-      characterCount += result.characterCount;
     }
 
     const over = [...recorded.entries()].flatMap(([callIndex, call]) =>
@@ -249,6 +240,15 @@ export async function recordDialogue(
     toRecord = calls.filter((call) => rerecord.has(call.index));
   }
 
+  // What each shot was asked to say, and what it said if the ladder rewrote it.
+  const spokenOf = (shotId: string) => ({
+    sourceKey: dialogueClipSourceKey(linesOf(args.lines, shotId)),
+    spokenLines: spokenLinesFor(
+      linesOf(args.lines, shotId),
+      linesOf(spoken, shotId)
+    ),
+  });
+
   // One cut per adopting shot, each in its own step: R2 → R2, no bytes here.
   const clipsByShotId: Record<string, MotionAudioClip[]> = {};
   for (const call of recorded.values()) {
@@ -267,19 +267,16 @@ export async function recordDialogue(
           minDurationSeconds: args.minDurationSeconds,
         })
       );
-      const delivered = spokenLinesFor(
-        linesOf(args.lines, shotId),
-        linesOf(spoken, shotId)
-      );
+      const { sourceKey, spokenLines } = spokenOf(shotId);
       clipsByShotId[shotId] = [
         {
           id: sectionId,
           url: cut.url,
           token: DIALOGUE_CLIP_TOKEN,
           durationSeconds: cut.durationSeconds,
-          sourceKey: dialogueClipSourceKey(linesOf(args.lines, shotId)),
+          sourceKey,
           recordingId: call.recordingId,
-          ...(delivered && { spokenLines: delivered }),
+          ...(spokenLines && { spokenLines }),
         },
       ];
     }
@@ -313,20 +310,15 @@ export async function recordDialogue(
         sections: call.windows.flatMap((window) => {
           const id = call.sectionIdByShotId[window.shotId];
           if (!id) return [];
+          const { sourceKey, spokenLines } = spokenOf(window.shotId);
           return [
             {
               id,
               shotId: window.shotId,
               fromSeconds: window.fromSeconds,
               toSeconds: window.toSeconds,
-              sourceKey: dialogueClipSourceKey(
-                linesOf(args.lines, window.shotId)
-              ),
-              spokenLines:
-                spokenLinesFor(
-                  linesOf(args.lines, window.shotId),
-                  linesOf(spoken, window.shotId)
-                ) ?? null,
+              sourceKey,
+              spokenLines: spokenLines ?? null,
               dialogueVersionId:
                 args.dialogueVersionIdByShotId[window.shotId] ?? null,
               selected: adopts.has(window.shotId),
@@ -345,7 +337,7 @@ export async function recordDialogue(
     }
   });
 
-  return { clipsByShotId, characterCount };
+  return clipsByShotId;
 }
 
 const linesOf = (lines: readonly SceneVoicedLine[], shotId: string) =>

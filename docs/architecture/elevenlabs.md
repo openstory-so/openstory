@@ -104,8 +104,9 @@ matches the shot's lines and one longer than `dialogueFitBudget` allows, then
 cuts, selects, and mirrors the clip onto `shots.audioClips`.
 `appendRecording` is one batch (recording, clear the adopting shots' selected
 sections, insert all sections) with ids generated inside the workflow step
-and `onConflictDoNothing`, so a replay is idempotent. A discarded section can
-never stay selected. A conversation over `DIALOGUE_TAKE_CHUNK_CHARS` (2,000)
+and `onConflictDoNothing`, so a replay is idempotent. Nothing discards a
+section yet; reads already honour `discardedAt` (the list omits it, select
+refuses it). A conversation over `DIALOGUE_TAKE_CHUNK_CHARS` (2,000)
 splits at a **shot boundary**, never inside a shot (`chunkTakeLines`); each
 chunk is its own recording, and only chunks holding an adopting shot are
 recorded at all. `recordDialogue` (`src/motion/server/record-dialogue.ts`) is

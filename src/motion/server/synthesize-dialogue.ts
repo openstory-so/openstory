@@ -128,29 +128,6 @@ export async function recordDialogueCall(input: {
   };
 }
 
-/**
- * Last moment any character is spoken. Voice segments first (one per turn,
- * so the last one's end is the conversation's end); the character alignment
- * is the fallback for a response that carried no segments. Null when both
- * are missing, empty, or not finite numbers — an alignment we cannot read is
- * no alignment, never a pass.
- */
-export function speechEndFrom(result: {
-  voiceSegments?: Array<{ endTimeSeconds?: number }> | null;
-  alignment?: { characterEndTimesSeconds?: number[] | null } | null;
-  normalizedAlignment?: { characterEndTimesSeconds?: number[] | null } | null;
-}): number | null {
-  const ends = [
-    ...(result.voiceSegments ?? []).map((segment) => segment.endTimeSeconds),
-    ...(result.alignment?.characterEndTimesSeconds ?? []),
-    ...(result.normalizedAlignment?.characterEndTimesSeconds ?? []),
-  ].filter(
-    (value): value is number =>
-      typeof value === 'number' && Number.isFinite(value) && value >= 0
-  );
-  return ends.length > 0 ? Math.max(...ends) : null;
-}
-
 /** Append the conversation clip as an audio reference the r2v binder knows. */
 export function dialogueClipsAsReferences(
   clips: readonly MotionAudioClip[]

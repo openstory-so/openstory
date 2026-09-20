@@ -147,12 +147,16 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
     // Motion on one shot submits every sibling that clip covers. Persisted
     // renderSegmentId membership is sticky (regenerate a 4-shot clip stays
     // 4); prompt length can only shrink a tile, never grow it.
-    const sceneShots =
-      shot.sceneId && videoModelSupportsInClipMultiShot(model)
-        ? (await context.scopedDb.shots.listBySequence(sequence.id)).filter(
-            (row) => row.sceneId === shot.sceneId
-          )
-        : [shot];
+    // The scene's live shots, read once: the tiling below, and the conversation
+    // a member with unrecorded voiced lines is snapshotted with (#1657).
+    const allSceneShots = shot.sceneId
+      ? (await context.scopedDb.shots.listBySequence(sequence.id)).filter(
+          (row) => row.sceneId === shot.sceneId
+        )
+      : [shot];
+    const sceneShots = videoModelSupportsInClipMultiShot(model)
+      ? allSceneShots
+      : [shot];
     const sceneMotionByShot =
       sceneShots.length > 1
         ? await context.scopedDb.shotPromptVersions.getSelectedMotionByShots(
@@ -445,28 +449,18 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
         // A shot with voiced lines and no matching clip is recorded by its
         // motion run, in context (#1657): the conversation around it is
         // snapshotted here, because the run cannot read its neighbours' lines.
-        // Every covered member shares the clicked shot's scene, so its live
-        // shots are read once, and only when a member needs them.
-        let conversationShots: Promise<readonly Shot[]> | undefined;
-        const dialogueContextOf = async (
+        // Every covered member shares the clicked shot's scene.
+        const dialogueContextOf = (
           row: { id: string },
           dialogue: MotionDialogue | null | undefined,
           voiced: readonly VoicedDialogueLine[],
           clips: readonly MotionAudioClip[]
         ) => {
           if (voiced.length === 0 || clips.length > 0) return undefined;
-          conversationShots ??=
-            sceneShots.length > 1 || !shot.sceneId
-              ? Promise.resolve(sceneShots)
-              : context.scopedDb.shots
-                  .listBySequence(sequence.id)
-                  .then((rows) =>
-                    rows.filter((other) => other.sceneId === shot.sceneId)
-                  );
           return dialogueContextFor({
             shot: row,
             shotLines: dialogue?.lines ?? [],
-            sceneShots: await conversationShots,
+            sceneShots: allSceneShots,
             linesByShotId: dialogueLinesByShotId,
             scriptDialogue: context.scene?.originalScript.dialogue,
             characters: voiceCharacters,
@@ -508,7 +502,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
           referenceImages,
           voicedLines,
           audioClips: audioClips.length > 0 ? audioClips : undefined,
-          dialogueContext: await dialogueContextOf(
+          dialogueContext: dialogueContextOf(
             shot,
             shotDialogue,
             voicedLines,
@@ -595,7 +589,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
                 }),
                 voicedLines: memberVoiced,
                 audioClips: memberClips,
-                dialogueContext: await dialogueContextOf(
+                dialogueContext: dialogueContextOf(
                   member,
                   memberDialogue,
                   memberVoiced,

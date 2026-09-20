@@ -22,31 +22,13 @@ import { computeSequenceMusicInputHash } from '@/shots/input-hash';
 
 export type MusicTrackStaleness = 'fresh' | 'stale' | 'untracked';
 
-/**
- * Track length a regeneration asks for: shot durations, 10s each when unset,
- * 30s floor for an empty sequence (`generateMusicFn`'s rule). Rounded, so a
- * fractional sum hashes the same from the plan and from this read.
- */
-export function musicRequestDurationSeconds(
-  shots: ReadonlyArray<{ durationMs: number | null }>
-): number {
-  return (
-    Math.round(
-      shots.reduce(
-        (sum, shot) => sum + (shot.durationMs ? shot.durationMs / 1000 : 10),
-        0
-      )
-    ) || 30
-  );
-}
-
 export async function musicTrackStaleness(input: {
   /** `inputHash` of the completed primary `sequence_music_variants` row. */
   storedInputHash: string | null;
   /** The sequence's live (selected) music prompt and tags. */
   prompt: string | null;
   tags: string | null;
-  /** Pre-clamp request length — see {@link musicRequestDurationSeconds}. */
+  /** Pre-clamp request length — `musicRequestDurationSeconds`. */
   requestDurationSeconds: number;
   /** The variant's audio model; `user-upload` and friends are untracked. */
   audioModel: string | null;

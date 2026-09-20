@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { computeSequenceMusicInputHash } from '@/shots/input-hash';
-import {
-  musicRequestDurationSeconds,
-  musicTrackStaleness,
-} from './music-track-staleness';
+import { musicTrackStaleness } from './music-track-staleness';
+import { musicRequestDurationSeconds } from './server/music-staleness';
 
 const base = {
   prompt: 'warm analogue synth pad, slow build',

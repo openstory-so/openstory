@@ -46,6 +46,17 @@ import {
 
 const logger = getLogger(['openstory', 'workflow', 'analyze-script']);
 
+/** A scene's mapped shots as `{ id, shotNumber }`, in shot order. */
+export function sceneShotsOf(
+  shotMapping: readonly ShotMappingRow[],
+  sceneId: string
+): Array<{ id: string; shotNumber: number }> {
+  return shotMapping
+    .filter((row) => row.analysisSceneId === sceneId && row.shotId)
+    .map((row) => ({ id: row.shotId, shotNumber: row.shotNumber ?? 1 }))
+    .sort((a, b) => a.shotNumber - b.shotNumber);
+}
+
 export function buildStoryboardMotionBatchShots(input: {
   scenes: readonly Scene[];
   shotMapping: ShotMappingRow[];
@@ -157,14 +168,7 @@ export function buildStoryboardMotionBatchShots(input: {
         ? dialogueContextFor({
             shot: { id: mapping.shotId },
             shotLines: shotLines ?? motionPromptData.dialogue.lines,
-            sceneShots: input.shotMapping
-              .filter(
-                (row) => row.analysisSceneId === scene.sceneId && row.shotId
-              )
-              .map((row) => ({
-                id: row.shotId,
-                shotNumber: row.shotNumber ?? 1,
-              })),
+            sceneShots: sceneShotsOf(input.shotMapping, scene.sceneId),
             linesByShotId,
             scriptDialogue: scene.originalScript.dialogue,
             characters: input.characters,

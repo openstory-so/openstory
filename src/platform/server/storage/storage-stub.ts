@@ -132,7 +132,7 @@ export const readStorageObject = (
 
 export const readStorageStream = (
   _key: string,
-  _range?: { offset: number; length: number }
+  _range: { offset: number; length: number }
 ): Promise<{ body: ReadableStream<Uint8Array>; size: number } | null> =>
   throwStub();
 

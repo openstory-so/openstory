@@ -17,7 +17,7 @@
  */
 
 import {
-  IMAGE_TO_VIDEO_MODELS,
+  isValidImageToVideoModel,
   videoModelSupportsInClipMultiShot,
   type ImageToVideoModel,
 } from '@/models/models';
@@ -32,6 +32,7 @@ import {
   tileSceneIntoSegments,
 } from '@/motion/tile-segments';
 import type {
+  MotionAudioClip,
   VideoManifestEntry,
   VideoVariant,
 } from '@/platform/server/db/schema';
@@ -227,26 +228,32 @@ export type SegmentVersionInput = SegmentVideoVersion & {
 
 /**
  * What a shot would be rendered from NOW, beyond its prompt and frame
- * pointers (#1657). Every field is optional so a caller that cannot
- * cheaply load one compares without it; a map that lacks a shot reads as
- * "nothing bound" for that input.
+ * pointers (#1657). A map that lacks a shot reads as "nothing bound" for
+ * that input.
  */
 export type LiveShotInputs = {
   /** Voice id + line + tone + model key per shot; `null` = voiceless. */
-  audioSourceKeyByShot?: ReadonlyMap<string, string | null>;
+  audioSourceKeyByShot: ReadonlyMap<string, string | null>;
   /** Ids of the clips in the shot's working set (`shots.audioClips`). */
-  audioClipIdsByShot?: ReadonlyMap<string, readonly string[]>;
+  audioClipIdsByShot: ReadonlyMap<string, readonly string[]>;
   /** `kind:entityId` → the provenance key a render would be sent now. */
-  referenceIdentity?: ReadonlyMap<string, string>;
+  referenceIdentity: ReadonlyMap<string, string>;
   /** Raw `shots.durationMs` (unset/0 = no user duration, not compared). */
-  durationMsByShot?: ReadonlyMap<string, number | null>;
+  durationMsByShot: ReadonlyMap<string, number | null>;
   /** Seconds of dialogue audio bound to the shot, for the audio raise. */
-  audioSecondsByShot?: ReadonlyMap<string, number>;
+  audioSecondsByShot: ReadonlyMap<string, number>;
 };
+/** The half of {@link LiveShotInputs} that takes I/O; the rest is on the shot rows. */
+export type LoadedShotInputs = Pick<
+  LiveShotInputs,
+  'audioSourceKeyByShot' | 'referenceIdentity'
+>;
 export type SegmentShotInput = {
   id: string;
   renderSegmentId: string | null;
   selectedMotionPromptVersionId: string | null;
+  audioClips: readonly Pick<MotionAudioClip, 'id' | 'durationSeconds'>[] | null;
+  durationMs: number | null;
   /**
    * Does this shot render from reference sheets rather than a still?
    * `rendersReferenceOnly(shot, sequence)` — REQUIRED, not defaulted: such a
@@ -289,7 +296,7 @@ export function isSelectedVersionStale(
   selected: SegmentVersionInput | undefined,
   currentMotionByShot: ReadonlyMap<string, string | null>,
   currentFrameByShot: ReadonlyMap<string, string | null>,
-  live: LiveShotInputs = {}
+  live: LiveShotInputs
 ): boolean {
   if (!selected) return false;
   return selected.manifest.some((entry) => {
@@ -301,22 +308,17 @@ export function isSelectedVersionStale(
     }
     const currentMotion = currentMotionByShot.get(entry.shotId) ?? null;
     const currentFrame = currentFrameByShot.get(entry.shotId) ?? null;
-    const currentAudio = live.audioSourceKeyByShot?.get(entry.shotId) ?? null;
+    const currentAudio = live.audioSourceKeyByShot.get(entry.shotId) ?? null;
     return (
       entry.motionPromptVersionId !== currentMotion ||
       entry.frameVersionId !== currentFrame ||
       (entry.audioSourceKey ?? null) !== currentAudio ||
       audioClipsMoved(entry, live) ||
-      referenceKeysMoved(
-        entry.referenceKeys,
-        live.referenceIdentity ?? EMPTY
-      ) ||
+      referenceKeysMoved(entry.referenceKeys, live.referenceIdentity) ||
       durationMoved(entry, selected.model, live)
     );
   });
 }
-
-const EMPTY: ReadonlyMap<string, string> = new Map();
 
 /**
  * The clip a render was sent is a pointer, like the frame version: a generated
@@ -332,7 +334,6 @@ function audioClipsMoved(
   live: LiveShotInputs
 ): boolean {
   if (!entry.audioClipIds || entry.audioClipIds.length === 0) return false;
-  if (!live.audioClipIdsByShot) return false;
   const current = new Set(live.audioClipIdsByShot.get(entry.shotId) ?? []);
   const rendered = new Set(entry.audioClipIds);
   return (
@@ -354,21 +355,17 @@ function durationMoved(
   model: string,
   live: LiveShotInputs
 ): boolean {
-  if (entry.durationMs === undefined || !live.durationMsByShot) return false;
+  if (entry.durationMs === undefined) return false;
   const rawMs = live.durationMsByShot.get(entry.shotId);
-  if (!rawMs || rawMs <= 0 || !isImageToVideoModel(model)) return false;
+  if (!rawMs || rawMs <= 0 || !isValidImageToVideoModel(model)) return false;
   const snapped = resolveShotDuration({ durationMs: rawMs, model });
-  const audioSeconds = live.audioSecondsByShot?.get(entry.shotId) ?? 0;
+  const audioSeconds = live.audioSecondsByShot.get(entry.shotId) ?? 0;
   const raised = raiseShotDurationToCoverAudio(snapped, audioSeconds, model);
   const candidates = new Set([
     Math.round(snapped * 1000),
     Math.round(raised * 1000),
   ]);
   return !candidates.has(entry.durationMs);
-}
-
-function isImageToVideoModel(model: string): model is ImageToVideoModel {
-  return model in IMAGE_TO_VIDEO_MODELS;
 }
 
 /**
@@ -383,19 +380,31 @@ export function assembleSequenceSegments(input: {
   shots: readonly SegmentShotInput[];
   frames: readonly SegmentFrameInput[];
   /**
-   * What each shot would render from now beyond its two pointers: dialogue
-   * key and clip ids, reference provenance, duration. See
-   * {@link LiveShotInputs}.
+   * What each shot would render from now that its row does not hold:
+   * dialogue key and reference provenance. See {@link LiveShotInputs}.
    */
-  live?: LiveShotInputs;
+  live: LoadedShotInputs;
 }): SequenceSegment[] {
   // Membership lives on the shot; callers pass shots already in hierarchical
   // order (scene, then shot number).
   const orderedShots = input.shots;
   const shotIdsBySegment = new Map<string, string[]>();
   const currentMotionByShot = new Map<string, string | null>();
+  const audioClipIdsByShot = new Map<string, readonly string[]>();
+  const durationMsByShot = new Map<string, number | null>();
+  const audioSecondsByShot = new Map<string, number>();
   for (const shot of orderedShots) {
     currentMotionByShot.set(shot.id, shot.selectedMotionPromptVersionId);
+    const clips = shot.audioClips ?? [];
+    audioClipIdsByShot.set(
+      shot.id,
+      clips.map((clip) => clip.id)
+    );
+    durationMsByShot.set(shot.id, shot.durationMs);
+    audioSecondsByShot.set(
+      shot.id,
+      clips.reduce((sum, clip) => sum + (clip.durationSeconds ?? 0), 0)
+    );
     if (!shot.renderSegmentId) continue;
     const list = shotIdsBySegment.get(shot.renderSegmentId) ?? [];
     list.push(shot.id);
@@ -428,6 +437,13 @@ export function assembleSequenceSegments(input: {
     versionsBySegment.set(v.renderSegmentId, list);
   }
 
+  const live: LiveShotInputs = {
+    ...input.live,
+    audioClipIdsByShot,
+    durationMsByShot,
+    audioSecondsByShot,
+  };
+
   return input.segments.map((segment): SequenceSegment => {
     const segVersions = versionsBySegment.get(segment.id) ?? [];
     const selected =
@@ -447,7 +463,7 @@ export function assembleSequenceSegments(input: {
         selected,
         currentMotionByShot,
         currentFrameByShot,
-        input.live
+        live
       ),
     };
   });

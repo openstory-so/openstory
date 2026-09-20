@@ -1,5 +1,5 @@
 import type { ScopedDb } from '@/platform/server/db/scoped';
-import type { Sequence } from '@/platform/server/db/schema';
+import type { Sequence, Shot } from '@/platform/server/db/schema';
 import type { Scene } from '@/shots/scene-analysis.schema';
 import {
   DEFAULT_ANALYSIS_MODEL,
@@ -11,9 +11,53 @@ import {
 } from '@/shots/server/scene-script';
 import { musicPromptInputHashMatches } from '@/shots/input-hash';
 import { buildMusicSceneSummaries } from './workflows/music-scene-summaries';
-import { readMusicTrackStaleness } from './music-track-staleness';
+import {
+  musicTrackStaleness,
+  type MusicTrackStaleness,
+} from '@/audio/music-track-staleness';
+import { sumShotDurationsSeconds } from '@/sequences/server/shot-durations';
 import { getLogger } from '@/platform/logger';
 const logger = getLogger(['openstory', 'music', 'staleness']);
+
+/**
+ * Track length a regeneration asks for: `generateMusicFn`'s rule (shot
+ * durations, 10s each when unset, 30s floor for an empty sequence). Rounded,
+ * so a fractional sum hashes the same from the plan and from this read.
+ */
+export function musicRequestDurationSeconds(
+  shots: ReadonlyArray<Pick<Shot, 'durationMs'>>
+): number {
+  return Math.round(sumShotDurationsSeconds(shots)) || 30;
+}
+
+/**
+ * Live read behind {@link musicTrackStaleness}: the completed primary music
+ * variant for the model that produced `sequences.musicUrl`, compared against
+ * the sequence's current prompt / tags / shot durations (#1657).
+ *
+ * The model is not a lever here — a model switch writes its own primary row
+ * per (sequence, model), so there is never a track stamped with a model the
+ * sequence no longer selects.
+ */
+export async function readMusicTrackStaleness(
+  scopedDb: Pick<ScopedDb, 'sequenceVariants'>,
+  sequence: Pick<Sequence, 'id' | 'musicModel' | 'musicPrompt' | 'musicTags'>,
+  shots: ReadonlyArray<Pick<Shot, 'durationMs'>>
+): Promise<MusicTrackStaleness> {
+  if (!sequence.musicModel) return 'untracked';
+  const primary = await scopedDb.sequenceVariants.getMusicPrimary(
+    sequence.id,
+    sequence.musicModel
+  );
+  if (!primary || primary.status !== 'completed') return 'untracked';
+  return await musicTrackStaleness({
+    storedInputHash: primary.inputHash,
+    prompt: sequence.musicPrompt,
+    tags: sequence.musicTags,
+    requestDurationSeconds: musicRequestDurationSeconds(shots),
+    audioModel: primary.model,
+  });
+}
 
 /** Shared read-only derivation used by editor and production inspection. */
 export async function readMusicPromptStaleness(

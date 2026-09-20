@@ -9,6 +9,7 @@ import { z } from 'zod';
 
 import { isValidTextToImageModel, safeTextToImageModel } from '@/models/models';
 import type { CharacterBibleUpdate } from '@/cast/server/db/characters';
+import type { ScopedDb } from '@/platform/server/db/scoped';
 import { resolveSequenceStyleConfig } from '@/look/style-config';
 import { buildCastingAttributes } from './character-prompt';
 import { isPersonFromTalentCast } from '@/cast/likeness';
@@ -71,6 +72,18 @@ export function assertTalentAccessible(
   if (talent.teamId !== contextTeamId && !talent.isPublic) {
     throw new Error('Talent does not belong to your team');
   }
+}
+
+/** The character, or 404 when it is missing or belongs to another sequence. */
+async function requireCharacter(
+  scopedDb: Pick<ScopedDb, 'characters'>,
+  { sequenceId, characterId }: { sequenceId: string; characterId: string }
+) {
+  const character = await scopedDb.characters.getById(characterId);
+  if (!character || character.sequenceId !== sequenceId) {
+    throw new NotFoundError('Character not found');
+  }
+  return character;
 }
 
 /** Get all characters for a sequence with their assigned talent */
@@ -172,10 +185,7 @@ export const updateSequenceCharacterFn = createServerFn({ method: 'POST' })
   )
   .handler(async ({ context, data }) => {
     const { sequenceId, characterId, ...fields } = data;
-    const existing = await context.scopedDb.characters.getById(characterId);
-    if (!existing || existing.sequenceId !== sequenceId) {
-      throw new NotFoundError('Character not found');
-    }
+    await requireCharacter(context.scopedDb, data);
     const update: CharacterBibleUpdate = fields;
     return await context.scopedDb.characters.updateBible(characterId, update, {
       actorId: context.user.id,
@@ -196,12 +206,7 @@ export const softDeleteSequenceCharacterFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(characterIdInput))
   .handler(async ({ context, data }) => {
-    const existing = await context.scopedDb.characters.getById(
-      data.characterId
-    );
-    if (!existing || existing.sequenceId !== data.sequenceId) {
-      throw new NotFoundError('Character not found');
-    }
+    const existing = await requireCharacter(context.scopedDb, data);
     const deletedAt = await context.scopedDb.characters.softDelete(
       data.characterId,
       { actorId: context.user.id }
@@ -224,12 +229,7 @@ export const generateCharacterVoiceFn = createServerFn({ method: 'POST' })
     if (!isElevenLabsConfigured()) {
       throw new ValidationError('Voice design is not configured');
     }
-    const character = await context.scopedDb.characters.getById(
-      data.characterId
-    );
-    if (!character || character.sequenceId !== data.sequenceId) {
-      throw new NotFoundError('Character not found');
-    }
+    const character = await requireCharacter(context.scopedDb, data);
     await releaseCharacterVoice(context.scopedDb, character);
     const payload: CharacterVoiceWorkflowInput = {
       userId: context.user.id,
@@ -254,12 +254,7 @@ export const setCharacterVoiceEnabledFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(characterIdInput.extend({ enabled: z.boolean() })))
   .handler(async ({ context, data }) => {
-    const character = await context.scopedDb.characters.getById(
-      data.characterId
-    );
-    if (!character || character.sequenceId !== data.sequenceId) {
-      throw new NotFoundError('Character not found');
-    }
+    const character = await requireCharacter(context.scopedDb, data);
     await context.scopedDb.characters.updateVoice(
       character.id,
       { useVoice: data.enabled },
@@ -289,12 +284,7 @@ export const chooseCharacterVoiceTakeFn = createServerFn({ method: 'POST' })
     if (!apiKey || !isElevenLabsConfigured()) {
       throw new ValidationError('Voice design is not configured');
     }
-    const character = await context.scopedDb.characters.getById(
-      data.characterId
-    );
-    if (!character || character.sequenceId !== data.sequenceId) {
-      throw new NotFoundError('Character not found');
-    }
+    const character = await requireCharacter(context.scopedDb, data);
     const previews = character.voicePreviews ?? [];
     const take = previews.find(
       (p) => p.generatedVoiceId === data.generatedVoiceId
@@ -369,12 +359,7 @@ export const assignCharacterVoiceFn = createServerFn({ method: 'POST' })
     if (!apiKey || !isElevenLabsConfigured()) {
       throw new ValidationError('Voice design is not configured');
     }
-    const character = await context.scopedDb.characters.getById(
-      data.characterId
-    );
-    if (!character || character.sequenceId !== data.sequenceId) {
-      throw new NotFoundError('Character not found');
-    }
+    const character = await requireCharacter(context.scopedDb, data);
     let pick: AssignableVoicePick;
     if (data.source === 'library') {
       if (!data.publicOwnerId || !data.name) {
@@ -435,12 +420,7 @@ export const listCharacterVoiceVersionsFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(characterIdInput))
   .handler(async ({ context, data }) => {
-    const character = await context.scopedDb.characters.getById(
-      data.characterId
-    );
-    if (!character || character.sequenceId !== data.sequenceId) {
-      throw new NotFoundError('Character not found');
-    }
+    const character = await requireCharacter(context.scopedDb, data);
     return await context.scopedDb.characters.listVoiceVersions(character.id);
   });
 
@@ -456,12 +436,7 @@ export const selectCharacterVoiceVersionFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(characterIdInput.extend({ versionId: ulidSchema })))
   .handler(async ({ context, data }) => {
-    const character = await context.scopedDb.characters.getById(
-      data.characterId
-    );
-    if (!character || character.sequenceId !== data.sequenceId) {
-      throw new NotFoundError('Character not found');
-    }
+    const character = await requireCharacter(context.scopedDb, data);
     const updated = await context.scopedDb.characters.selectVoiceVersion(
       character.id,
       data.versionId
@@ -477,12 +452,7 @@ export const restoreSequenceCharacterFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(characterIdInput))
   .handler(async ({ context, data }) => {
-    const existing = await context.scopedDb.characters.getById(
-      data.characterId
-    );
-    if (!existing || existing.sequenceId !== data.sequenceId) {
-      throw new NotFoundError('Character not found');
-    }
+    await requireCharacter(context.scopedDb, data);
     return await context.scopedDb.characters.restore(data.characterId, {
       actorId: context.user.id,
     });
@@ -520,12 +490,7 @@ export const regenerateCharacterSheetFn = createServerFn({ method: 'POST' })
     )
   )
   .handler(async ({ context, data }) => {
-    const character = await context.scopedDb.characters.getById(
-      data.characterId
-    );
-    if (!character || character.sequenceId !== data.sequenceId) {
-      throw new NotFoundError('Character not found');
-    }
+    const character = await requireCharacter(context.scopedDb, data);
 
     const payload = await buildRegenerateCharacterSheetPayload({
       scopedDb: context.scopedDb,
@@ -574,12 +539,7 @@ export const getCharacterSheetStalenessFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(characterIdInput))
   .handler(async ({ context, data }): Promise<SheetStaleness> => {
-    const character = await context.scopedDb.characters.getById(
-      data.characterId
-    );
-    if (!character || character.sequenceId !== data.sequenceId) {
-      throw new NotFoundError('Character not found');
-    }
+    const character = await requireCharacter(context.scopedDb, data);
     if (character.sheetStatus === 'generating') return 'generating';
     if (character.sheetInputHash == null) return 'untracked';
 

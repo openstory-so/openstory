@@ -319,23 +319,20 @@ export async function readStorageObject(
 }
 
 /**
- * A storage object's bytes as a STREAM, by key (`<bucket>/<path>`), optionally
- * just a byte range of it. For a consumer that pipes the bytes somewhere else
+ * A byte range of a storage object as a STREAM, by key (`<bucket>/<path>`). For a consumer that pipes the bytes somewhere else
  * (cutting a section out of a dialogue recording) and must never hold the
  * object in memory. `size` is the length of what `body` will deliver.
  */
 export async function readStorageStream(
   key: string,
-  range?: { offset: number; length: number }
+  range: { offset: number; length: number }
 ): Promise<{ body: ReadableStream<Uint8Array>; size: number } | null> {
   const r2 = getR2Bucket();
-  const object = await r2.get(key, range ? { range } : undefined);
+  const object = await r2.get(key, { range });
   if (!object) return null;
   return {
     body: object.body,
-    size: range
-      ? Math.max(0, Math.min(range.length, object.size - range.offset))
-      : object.size,
+    size: Math.max(0, Math.min(range.length, object.size - range.offset)),
   };
 }
 

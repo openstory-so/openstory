@@ -7,7 +7,7 @@ import {
   wavDurationSeconds,
   wavHeader,
 } from './pad-dialogue-audio';
-import { decodeBase64, speechEndFrom } from './synthesize-dialogue';
+import { decodeBase64 } from './synthesize-dialogue';
 
 /** Mono 16-bit PCM WAV of `seconds` of silence. */
 function wav(seconds: number, sampleRate = 8000): Uint8Array {
@@ -179,42 +179,6 @@ describe('trimmedEndSeconds (#1651, #1657)', () => {
     const before = bytes.slice();
     trimmedEndSeconds(bytes, 0, 5, 2);
     expect(bytes).toEqual(before);
-  });
-});
-
-describe('speechEndFrom (#1651)', () => {
-  it('takes the last voice segment end', () => {
-    expect(
-      speechEndFrom({
-        voiceSegments: [{ endTimeSeconds: 3.2 }, { endTimeSeconds: 7.9 }],
-      })
-    ).toBe(7.9);
-  });
-
-  it('falls back to the character alignment when there are no segments', () => {
-    expect(
-      speechEndFrom({
-        voiceSegments: [],
-        alignment: { characterEndTimesSeconds: [0.1, 0.4, 2.75] },
-      })
-    ).toBe(2.75);
-  });
-
-  it.each([
-    ['nothing at all', {}],
-    [
-      'empty everything',
-      { voiceSegments: [], alignment: { characterEndTimesSeconds: [] } },
-    ],
-    [
-      'nulls',
-      { voiceSegments: null, alignment: null, normalizedAlignment: null },
-    ],
-    ['non-finite numbers', { voiceSegments: [{ endTimeSeconds: Number.NaN }] }],
-    ['a negative end', { voiceSegments: [{ endTimeSeconds: -1 }] }],
-    ['a missing end', { voiceSegments: [{}] }],
-  ])('reads %s as no alignment rather than as zero', (_label, response) => {
-    expect(speechEndFrom(response)).toBeNull();
   });
 });
 

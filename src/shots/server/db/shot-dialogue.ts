@@ -36,7 +36,7 @@ import type {
   ShotDialogueSource,
   ShotDialogueVersion,
 } from '@/platform/server/db/schema';
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, isNull } from 'drizzle-orm';
 
 export type AppendDialogueRecordingInput = {
   /** Generated inside the workflow step, so a replay lands on the same rows. */
@@ -91,7 +91,7 @@ export function createShotDialogueMethods(db: Database) {
       .where(
         and(
           eq(shotDialogueVersions.shotId, shotId),
-          sql`${shotDialogueVersions.selectedAt} IS NOT NULL`
+          isNotNull(shotDialogueVersions.selectedAt)
         )
       );
 
@@ -102,7 +102,7 @@ export function createShotDialogueMethods(db: Database) {
       .where(
         and(
           eq(shotDialogueSections.shotId, shotId),
-          sql`${shotDialogueSections.selectedAt} IS NOT NULL`
+          isNotNull(shotDialogueSections.selectedAt)
         )
       );
 
@@ -115,7 +115,7 @@ export function createShotDialogueMethods(db: Database) {
       .where(
         and(
           eq(shotDialogueVersions.shotId, shotId),
-          sql`${shotDialogueVersions.selectedAt} IS NOT NULL`
+          isNotNull(shotDialogueVersions.selectedAt)
         )
       )
       .limit(1);
@@ -137,21 +137,11 @@ export function createShotDialogueMethods(db: Database) {
           and(
             eq(shots.sequenceId, sequenceId),
             isNull(shots.deletedAt),
-            sql`${shotDialogueVersions.selectedAt} IS NOT NULL`
+            isNotNull(shotDialogueVersions.selectedAt)
           )
         );
       return rows.map((row) => row.version);
     },
-
-    listVersions: async (shotId: string): Promise<ShotDialogueVersion[]> =>
-      await db
-        .select()
-        .from(shotDialogueVersions)
-        .where(eq(shotDialogueVersions.shotId, shotId))
-        .orderBy(
-          desc(shotDialogueVersions.createdAt),
-          desc(shotDialogueVersions.id)
-        ),
 
     /**
      * Append the lines as a new selected version. Returns the selected row
@@ -185,39 +175,6 @@ export function createShotDialogueMethods(db: Database) {
       ]);
       const [row] = inserted;
       if (!row) throw new Error('Failed to insert shot dialogue version');
-      return row;
-    },
-
-    selectVersion: async (
-      shotId: string,
-      versionId: string
-    ): Promise<ShotDialogueVersion> => {
-      const [version] = await db
-        .select()
-        .from(shotDialogueVersions)
-        .where(
-          and(
-            eq(shotDialogueVersions.id, versionId),
-            eq(shotDialogueVersions.shotId, shotId)
-          )
-        )
-        .limit(1);
-      if (!version) {
-        throw new Error(
-          `Shot dialogue version ${versionId} not found for shot ${shotId}`
-        );
-      }
-      const [, selected] = await db.batch([
-        clearSelectedVersion(shotId),
-        db
-          .update(shotDialogueVersions)
-          .set({ selectedAt: new Date() })
-          .where(eq(shotDialogueVersions.id, version.id))
-          .returning(),
-      ]);
-      const [row] = selected;
-      if (!row)
-        throw new Error(`Failed to select dialogue version ${versionId}`);
       return row;
     },
 
@@ -370,22 +327,6 @@ export function createShotDialogueMethods(db: Database) {
         throw new Error(`Failed to select dialogue section ${sectionId}`);
       }
       return row;
-    },
-
-    /** Soft-discard. A discarded section can never stay selected. */
-    discardSection: async (
-      shotId: string,
-      sectionId: string
-    ): Promise<void> => {
-      await db
-        .update(shotDialogueSections)
-        .set({ discardedAt: new Date(), selectedAt: null })
-        .where(
-          and(
-            eq(shotDialogueSections.id, sectionId),
-            eq(shotDialogueSections.shotId, shotId)
-          )
-        );
     },
   };
 }

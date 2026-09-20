@@ -1,6 +1,6 @@
 /**
- * Shot dialogue history (#1657): the authored lines a shot has held, and its
- * readings — the time ranges of recordings that spoke them.
+ * Shot dialogue readings (#1657): the time ranges of recordings that spoke a
+ * shot's lines.
  *
  * Picking a reading cuts its file and puts that clip on the shot — the clip
  * is the working set, so moving the pointer alone would leave the shot
@@ -52,39 +52,6 @@ async function currentSourceKey(
     : (await scopedDb.shotPromptVersions.getSelectedMotion(shotId))?.dialogue;
   return dialogueClipSourceKey(voicedDialogueLines(dialogue, characters));
 }
-
-/** Every authored version of this shot's lines, newest first. */
-export const listShotDialogueVersionsFn = createServerFn({ method: 'GET' })
-  .middleware([shotAccessMiddleware])
-  .validator(zodValidator(shotInput))
-  .handler(
-    async ({ context }) =>
-      await context.scopedDb.shotDialogue.listVersions(context.shot.id)
-  );
-
-/**
- * Point the shot back at an earlier set of lines. Its readings are not
- * touched — the selected one simply stops matching, which is what makes the
- * shot re-record on the next run.
- */
-export const selectShotDialogueVersionFn = createServerFn({ method: 'POST' })
-  .middleware([shotAccessMiddleware])
-  .validator(zodValidator(shotInput.extend({ versionId: ulidSchema })))
-  .handler(async ({ context, data }) => {
-    const version = await context.scopedDb.shotDialogue.selectVersion(
-      context.shot.id,
-      data.versionId
-    );
-    await context.scopedDb.sequenceEvents.record({
-      sequenceId: context.sequence.id,
-      actorId: context.user.id,
-      kind: 'dialogue.version.selected',
-      targetType: 'shot',
-      targetId: context.shot.id,
-      data: { versionId: version.id },
-    });
-    return { versionId: version.id };
-  });
 
 /** This shot's readings, newest first; discarded ones omitted. */
 export const listShotDialogueSectionsFn = createServerFn({ method: 'GET' })

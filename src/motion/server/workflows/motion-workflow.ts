@@ -243,7 +243,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           stepPrefix: 'synthesize-dialogue-audio',
           workflowName: 'MotionWorkflow',
         });
-        audioClips = recorded.clipsByShotId[shotId] ?? [];
+        audioClips = recorded[shotId] ?? [];
         voicedLines = withSpokenText(authoredLines, audioClips);
       }
       referenceImages = [

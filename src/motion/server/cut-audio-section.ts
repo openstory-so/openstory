@@ -24,12 +24,8 @@ import {
   getPublicUrl,
   STORAGE_BUCKETS,
 } from '@/platform/server/storage/buckets';
-import {
-  fileExists,
-  readStorageObject,
-  readStorageStream,
-  uploadFile,
-} from '#storage';
+import { fileExists, readStorageObject, readStorageStream } from '#storage';
+import { uploadResponse } from '@/platform/server/storage/upload-response';
 
 /** Enough for any header ElevenLabs writes (`fmt `, optional `LIST`, `data`). */
 const HEADER_PROBE_BYTES = 4096;
@@ -130,22 +126,16 @@ export async function cutAudioSection(
   // The header is rebuilt rather than copied: the source may carry chunks
   // around `data` that describe bytes this file does not have.
   const header = wavHeader(dataBytes, fmt);
-  const composed = composeWav(header, source.body, padBytes);
-  const total = header.length + dataBytes;
-  // workerd's r2.put() rejects a stream of unknown length (#738) — and ours
-  // is known exactly. `FixedLengthStream` only exists on workerd.
-  let body = composed;
-  if (typeof FixedLengthStream !== 'undefined') {
-    const fixed = new FixedLengthStream(total);
-    composed.pipeTo(fixed.writable).catch(() => {
-      // Pipe errors propagate through the readable side and reject the put.
-    });
-    body = fixed.readable;
-  }
-  await uploadFile(STORAGE_BUCKETS.AUDIO, path, body, {
-    contentType: 'audio/wav',
-    upsert: true,
-  });
+  // workerd's r2.put() rejects a stream of unknown length (#738) — ours is
+  // known exactly, and `uploadResponse` sizes the stream from the header.
+  await uploadResponse(
+    new Response(composeWav(header, source.body, padBytes), {
+      headers: { 'content-length': String(header.length + dataBytes) },
+    }),
+    STORAGE_BUCKETS.AUDIO,
+    path,
+    { contentType: 'audio/wav' }
+  );
   return cut;
 }
 

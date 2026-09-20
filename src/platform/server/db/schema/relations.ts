@@ -255,10 +255,6 @@ export const relations = defineRelations(schema, (r) => ({
       from: r.characterVoiceVersions.characterId,
       to: r.characters.id,
     }),
-    createdByUser: r.one.user({
-      from: r.characterVoiceVersions.createdBy,
-      to: r.user.id,
-    }),
   },
 
   // ---- Character Sheet Variants ----

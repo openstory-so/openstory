@@ -98,7 +98,6 @@ import {
 } from '@/sequences/server/streaming-scene-parser';
 import { reconcileSceneTags } from '@/sequences/tag-reconcile';
 import type {
-  DialogueLine,
   ElementBibleEntry,
   LocationBibleEntry,
 } from '@/shots/scene-analysis.schema';
@@ -1114,10 +1113,6 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
       await step.do('persist-scenes', async () => {
         const sceneRows = [];
         const scriptSeeds = [];
-        const sceneByRowId = new Map<
-          string,
-          { originalScript: { dialogue: DialogueLine[] } }
-        >();
         for (let index = 0; index < reconciled.scenes.length; index++) {
           const scene = reconciled.scenes[index];
           if (!scene) continue;
@@ -1125,7 +1120,6 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
             buildSceneInsert(sequenceId, scene, index)
           );
           sceneRows.push(sceneRow);
-          sceneByRowId.set(sceneRow.id, scene);
           scriptSeeds.push({
             sceneId: sceneRow.id,
             content: scene.originalScript,
@@ -1197,29 +1191,18 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
         // here a reorder needs no restamp and a line follows its shot.
         // `write` returns the selected row unchanged when nothing moved, so a
         // re-analysis that produced the same lines appends nothing.
-        const shotsBySceneId = new Map<
-          string,
-          Array<{ id: string; shotNumber: number }>
-        >();
-        for (const link of links) {
-          const list = shotsBySceneId.get(link.sceneId) ?? [];
-          list.push({ id: link.shotId, shotNumber: link.shotNumber });
-          shotsBySceneId.set(link.sceneId, list);
-        }
-        for (const sceneRow of sceneRows) {
-          const scene = sceneByRowId.get(sceneRow.id);
-          const sceneShots = (shotsBySceneId.get(sceneRow.id) ?? []).sort(
-            (a, b) => a.shotNumber - b.shotNumber
-          );
-          if (!scene || sceneShots.length === 0) continue;
+        for (const seed of scriptSeeds) {
+          const sceneShots = links
+            .filter((link) => link.sceneId === seed.sceneId)
+            .sort((a, b) => a.shotNumber - b.shotNumber);
           for (const [index, shot] of sceneShots.entries()) {
             const lines = deriveShotDialogueLines(
-              scene.originalScript.dialogue,
+              seed.content.dialogue,
               shot,
               index === 0
             );
             if (lines.length === 0) continue;
-            await scopedDb.shotDialogue.write(shot.id, lines, 'prompt');
+            await scopedDb.shotDialogue.write(shot.shotId, lines, 'prompt');
           }
         }
       });

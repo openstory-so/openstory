@@ -136,7 +136,7 @@ const ShotAudio: React.FC<{ url: string }> = ({ url }) => (
 
 const ReadingRow: React.FC<{
   reading: ShotDialogueReading;
-  onUse?: (readingId: string) => void;
+  onUse: (readingId: string) => void;
   usingId?: string | null;
 }> = ({ reading, onUse, usingId }) => {
   const recordedAt = new Date(reading.createdAt).toLocaleString();
@@ -157,7 +157,7 @@ const ReadingRow: React.FC<{
             <Check className="h-3 w-3" aria-hidden />
             Current
           </span>
-        ) : onUse ? (
+        ) : (
           <Button
             size="sm"
             variant="ghost"
@@ -167,7 +167,7 @@ const ReadingRow: React.FC<{
           >
             {usingId === reading.id ? 'Using…' : 'Use'}
           </Button>
-        ) : null}
+        )}
       </div>
       {/* oxlint-disable-next-line jsx-a11y/media-has-caption -- a reading of the lines shown beside it */}
       <audio
@@ -188,8 +188,7 @@ const ReadingRow: React.FC<{
  */
 export const ShotReadingsList: React.FC<{
   readings: ShotDialogueReading[];
-  /** Absent while the user cannot pick. */
-  onUse?: (readingId: string) => void;
+  onUse: (readingId: string) => void;
   usingId?: string | null;
   collapsible?: boolean;
 }> = ({ readings, onUse, usingId, collapsible }) => {

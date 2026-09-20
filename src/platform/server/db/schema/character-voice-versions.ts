@@ -8,7 +8,6 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/platform/id';
-import { user } from './auth';
 import { characters, type VoicePreview } from './characters';
 
 /**
@@ -53,7 +52,6 @@ export const characterVoiceVersions = snakeCase.table(
     createdAt: integer({ mode: 'timestamp' })
       .$defaultFn(() => new Date())
       .notNull(),
-    createdBy: text().references(() => user.id, { onDelete: 'set null' }),
   },
   (table) => [
     index('idx_character_voice_versions_character_created').on(

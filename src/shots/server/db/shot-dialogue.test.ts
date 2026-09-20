@@ -84,6 +84,12 @@ const recording = (
   ...overrides,
 });
 
+const versionsOf = async (forShotId: string) =>
+  await db
+    .select()
+    .from(shotDialogueVersions)
+    .where(eq(shotDialogueVersions.shotId, forShotId));
+
 async function seed() {
   await db.delete(shotDialogueSections);
   await db.delete(dialogueRecordings);
@@ -157,7 +163,7 @@ describe('authored versions', () => {
 
     expect(second.id).not.toBe(first.id);
     expect((await methods.getSelected(shotId))?.id).toBe(second.id);
-    const versions = await methods.listVersions(shotId);
+    const versions = await versionsOf(shotId);
     expect(versions).toHaveLength(2);
     expect(versions.filter((version) => version.selectedAt)).toHaveLength(1);
   });
@@ -167,7 +173,7 @@ describe('authored versions', () => {
     const first = await methods.write(shotId, [line('A')], 'prompt');
     const again = await methods.write(shotId, [line('A')], 'user-edit');
     expect(again).toEqual(first);
-    expect(await methods.listVersions(shotId)).toHaveLength(1);
+    expect(await versionsOf(shotId)).toHaveLength(1);
   });
 
   it('appends when only a voice binding changed', async () => {
@@ -178,7 +184,7 @@ describe('authored versions', () => {
       [{ ...line('A'), voiceToken: 'NARRATOR' }],
       'user-edit'
     );
-    expect(await methods.listVersions(shotId)).toHaveLength(2);
+    expect(await versionsOf(shotId)).toHaveLength(2);
   });
 
   it('keeps one shot’s selection out of another’s', async () => {
@@ -187,26 +193,6 @@ describe('authored versions', () => {
     const theirs = await methods.write(otherShotId, [line('X')], 'prompt');
     expect((await methods.getSelected(shotId))?.id).toBe(mine.id);
     expect((await methods.getSelected(otherShotId))?.id).toBe(theirs.id);
-  });
-
-  it('restores an earlier version without deleting the newer one', async () => {
-    const methods = createShotDialogueMethods(db);
-    const first = await methods.write(shotId, [line('A')], 'prompt');
-    await methods.write(shotId, [line('B')], 'user-edit');
-
-    await methods.selectVersion(shotId, first.id);
-    expect((await methods.getSelected(shotId))?.id).toBe(first.id);
-    const versions = await methods.listVersions(shotId);
-    expect(versions).toHaveLength(2);
-    expect(versions.filter((version) => version.selectedAt)).toHaveLength(1);
-  });
-
-  it('refuses a version id from another shot', async () => {
-    const methods = createShotDialogueMethods(db);
-    const other = await methods.write(otherShotId, [line('X')], 'prompt');
-    await expect(methods.selectVersion(shotId, other.id)).rejects.toThrow(
-      /not found/
-    );
   });
 
   it('lists the selected row of every live shot of the sequence', async () => {
@@ -366,22 +352,22 @@ describe('recordings and sections', () => {
     ).toHaveLength(1);
   });
 
-  it('refuses a discarded section, and discarding clears the selection', async () => {
+  it('omits and refuses a discarded section', async () => {
     const methods = createShotDialogueMethods(db);
     const mine = section(shotId, true);
     await methods.appendRecording(recording([mine]));
-    await methods.discardSection(shotId, mine.id);
+    await db
+      .update(shotDialogueSections)
+      .set({ discardedAt: new Date(), selectedAt: null })
+      .where(eq(shotDialogueSections.id, mine.id));
 
     expect(await methods.listSections(shotId)).toEqual([]);
-    const stored = await methods.getSectionById(mine.id);
-    expect(stored?.selectedAt).toBeNull();
-    expect(stored?.discardedAt).toBeInstanceOf(Date);
     await expect(methods.selectSection(shotId, mine.id)).rejects.toThrow(
       /discarded/
     );
   });
 
-  it('refuses a section of another shot, for select and for discard', async () => {
+  it('refuses a section of another shot', async () => {
     const methods = createShotDialogueMethods(db);
     const theirs = section(otherShotId, true);
     await methods.appendRecording(recording([theirs]));
@@ -389,8 +375,6 @@ describe('recordings and sections', () => {
     await expect(methods.selectSection(shotId, theirs.id)).rejects.toThrow(
       /not found/
     );
-    await methods.discardSection(shotId, theirs.id);
-    expect((await methods.getSectionById(theirs.id))?.discardedAt).toBeNull();
   });
 
   it('returns null for a section that does not exist', async () => {
