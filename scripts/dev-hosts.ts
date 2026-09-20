@@ -253,6 +253,10 @@ function jsonFromWranglerOutput(stdout: string): unknown {
   return JSON.parse(stdout.slice(start));
 }
 
+export function cloudflareTunnelUrl(accountId: string, path = ''): string {
+  return `https://api.cloudflare.com/client/v4/accounts/${accountId}/cfd_tunnel${path}`;
+}
+
 function stringField(value: unknown, key: string): string | undefined {
   if (!isRecord(value) || typeof value[key] !== 'string') return undefined;
   return value[key];
@@ -336,11 +340,10 @@ export async function defaultCloudflareIo(): Promise<CloudflareIo> {
         const id = /ID:\s*([0-9a-f-]{36})/i.exec(created.stdout)?.[1];
         if (id) return { id, name };
       }
-      const result = await cf(
-        'POST',
-        `https://api.cloudflare.com/client/v4/accounts/${accountId}/cfd_tunnels`,
-        { name, config_src: 'cloudflare' }
-      );
+      const result = await cf('POST', cloudflareTunnelUrl(accountId), {
+        name,
+        config_src: 'cloudflare',
+      });
       const id = stringField(result, 'id');
       if (!id) throw new DevHostsError('tunnel create did not return an id');
       return { id, name };
@@ -348,7 +351,7 @@ export async function defaultCloudflareIo(): Promise<CloudflareIo> {
     findTunnel: async (name) => {
       const result = await cf(
         'GET',
-        `https://api.cloudflare.com/client/v4/accounts/${accountId}/cfd_tunnels?is_deleted=false&name=${encodeURIComponent(name)}`
+        `${cloudflareTunnelUrl(accountId)}?is_deleted=false&name=${encodeURIComponent(name)}`
       );
       const rows = Array.isArray(result) ? result : [];
       const match = rows.find((row) => stringField(row, 'name') === name);
@@ -359,7 +362,7 @@ export async function defaultCloudflareIo(): Promise<CloudflareIo> {
     putIngress: async (tunnelId, config) => {
       await cf(
         'PUT',
-        `https://api.cloudflare.com/client/v4/accounts/${accountId}/cfd_tunnels/${tunnelId}/configurations`,
+        cloudflareTunnelUrl(accountId, `/${tunnelId}/configurations`),
         { config }
       );
     },

@@ -6,6 +6,7 @@ import { parseEnvFile } from './env-file';
 import {
   applyMappingToEnv,
   buildMapping,
+  cloudflareTunnelUrl,
   machineTunnelName,
   parseWranglerOauthToml,
   parseWranglerWhoami,
@@ -29,6 +30,15 @@ function tempFile(): string {
   temps.push(dir);
   return join(dir, '.env.local');
 }
+
+describe('cloudflareTunnelUrl', () => {
+  it('uses the singular cfd_tunnel resource wrangler uses', () => {
+    expect(cloudflareTunnelUrl('acct', '/id/configurations')).toBe(
+      'https://api.cloudflare.com/client/v4/accounts/acct/cfd_tunnel/id/configurations'
+    );
+    expect(cloudflareTunnelUrl('acct')).not.toContain('cfd_tunnels');
+  });
+});
 
 describe('wrangler login', () => {
   it('reads the OAuth token wrangler login stores, not an API key', () => {
