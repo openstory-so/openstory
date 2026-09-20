@@ -81,6 +81,31 @@ function firstShot(scene: SceneWithShots) {
 }
 
 describe('deriveShots — single source of truth', () => {
+  it('does not put later arrivals into an earlier participant close-up', () => {
+    const scene = makeScene();
+    scene.continuity.characterTags = ['sarah', 'finn', 'ravi'];
+    scene.continuity.environmentTag = 'sarah_study, finn_office, ravi_kitchen';
+    scene.metadata.location = 'Sarah study / Finn office / Ravi kitchen';
+    scene.originalScript.extract =
+      'Sarah talks to Finn on a video call. Ravi joins later.';
+    const earlier = firstShot(scene);
+    const later = {
+      ...earlier,
+      shotNumber: 2,
+      framing: {
+        ...earlier.framing,
+        subjectStartState: 'Ravi waves from his webcam',
+      },
+    };
+    scene.shots = [earlier, later];
+
+    const [beforeJoin, afterJoin] = deriveShots(scene, styleConfig);
+    expect(beforeJoin?.visualPrompt.fullPrompt).toContain('Sarah');
+    expect(beforeJoin?.visualPrompt.fullPrompt).not.toMatch(/ravi|finn/i);
+    expect(afterJoin?.visualPrompt.fullPrompt).toContain('Ravi');
+    expect(afterJoin?.visualPrompt.fullPrompt).not.toMatch(/sarah|finn/i);
+  });
+
   it('produces one derived shot per shot, ordered by shotNumber', () => {
     const scene = makeScene();
     const derived = deriveShots(scene, styleConfig);

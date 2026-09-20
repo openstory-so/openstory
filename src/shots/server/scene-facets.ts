@@ -2,7 +2,7 @@ import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Sequence } from '@/platform/server/db/schema';
 import { isElementVoiceToken } from '@/motion/dialogue-tts';
 import {
-  matchCharactersToScene,
+  matchCharactersToShotImage,
   matchElementsToShot,
   matchLocationsToScene,
 } from '@/shots/scene-matching';
@@ -52,13 +52,14 @@ export async function loadSceneFacets(scopedDb: ScopedDb, sequence: Sequence) {
       locations,
       scene?.continuity?.environmentTag ?? '',
       scene?.metadata?.location ?? '',
-      scene?.originalScript.extract
+      scene?.originalScript.extract,
+      promptByShotId.get(shot.id)
     ).map((l) => l.id);
 
-    characterIdsByShot[shot.id] = matchCharactersToScene(
-      characters,
-      scene?.continuity?.characterTags ?? []
-    ).map((c) => c.id);
+    characterIdsByShot[shot.id] = matchCharactersToShotImage(characters, {
+      characterTags: scene?.continuity?.characterTags,
+      visualPrompt: promptByShotId.get(shot.id),
+    }).map((c) => c.id);
 
     const motion = motionByShotId.get(shot.id);
     elementIdsByShot[shot.id] = matchElementsToShot(elements, {

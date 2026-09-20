@@ -99,15 +99,17 @@ export function reconcileSceneTags(
     // Prose scripts have no slugline, so `metadata.location` is empty and
     // the join key would be too. The extract is the same haystack the cast and
     // element scans above already use.
-    const [locationMatch] = matchLocationsToScene(
+    const locationMatches = matchLocationsToScene(
       bibles.locationBible,
       '',
       scene.metadata.location,
       extract
     );
-    const environmentTag = locationMatch
-      ? canonicalLocationTag(locationMatch)
-      : '';
+    const environmentTag = locationMatches.map(canonicalLocationTag).join(', ');
+    // A remote conversation can span rooms. Never borrow one participant's
+    // palette or lighting for everyone; shots select their room separately.
+    const locationMatch =
+      locationMatches.length === 1 ? locationMatches[0] : undefined;
     if (environmentTag) stats.assignedEnvironmentTags++;
 
     const elementTagsList: string[] = [];

@@ -151,32 +151,13 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
     // `elementReferenceHashes` / `snapshotInputHash` were computed over at the
     // trigger, so a fresher DB read here would render against elements the
     // stamped hash does not describe.
-    const { sceneCharacterMap, sceneLocationMap, sceneElementMap } =
-      await step.do('build-reference-maps', async () => {
+    const { sceneElementMap } = await step.do(
+      'build-reference-maps',
+      async () => {
         const visualPromptBySceneId = Object.fromEntries(
           (input.sceneSnapshots ?? []).map((s) => [s.sceneId, s.visualPrompt])
         );
         return {
-          sceneCharacterMap: Object.fromEntries(
-            scenesWithVisualPrompts.map((scene) => [
-              scene.sceneId,
-              matchCharactersToShotImage(charactersWithSheets, {
-                characterTags: scene.continuity?.characterTags,
-                visualPrompt: visualPromptBySceneId[scene.sceneId] ?? '',
-              }),
-            ])
-          ),
-          sceneLocationMap: Object.fromEntries(
-            scenesWithVisualPrompts.map((scene) => [
-              scene.sceneId,
-              matchLocationsToScene(
-                locationsWithSheets,
-                scene.continuity?.environmentTag || '',
-                scene.metadata?.location || '',
-                scene.originalScript?.extract
-              ),
-            ])
-          ),
           sceneElementMap: Object.fromEntries(
             scenesWithVisualPrompts.map((scene) => [
               scene.sceneId,
@@ -188,7 +169,8 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
             ])
           ),
         };
-      });
+      }
+    );
 
     const imageSize = aspectRatioToImageSize(aspectRatio);
     const items = shotWorkItems(scenesWithVisualPrompts, shotMapping);
@@ -243,12 +225,21 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
       }
 
       const characterRefs = buildCharacterReferenceImages(
-        // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-        sceneCharacterMap[scene.sceneId] || []
+        // Sibling shots have different subjects. Resolve against this shot's
+        // snapshot, never a scene-keyed map whose last shot wins for everyone.
+        matchCharactersToShotImage(charactersWithSheets, {
+          characterTags: scene.continuity?.characterTags,
+          visualPrompt,
+        })
       );
       const locationRefs = buildLocationReferenceImages(
-        // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-        sceneLocationMap[scene.sceneId] || []
+        matchLocationsToScene(
+          locationsWithSheets,
+          scene.continuity?.environmentTag ?? '',
+          scene.metadata?.location ?? '',
+          scene.originalScript?.extract,
+          visualPrompt
+        )
       );
       const elementRefs = buildElementStillReferences(
         // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard

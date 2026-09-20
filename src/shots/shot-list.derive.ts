@@ -6,7 +6,7 @@
  * are ASSEMBLED from the parent scene's shared context plus the shot's own
  * structured fields — never re-authored per shot by the LLM. Keeping the
  * derivation here (one place) is the structural fix for adjacent-clip drift:
- * every shot in a scene inherits the same location / lighting / cast / palette
+ * every shot in a scene inherits the same location / lighting / palette
  * / style truth verbatim.
  *
  *   start-frame visual prompt = scene context + shot framing/start-state
@@ -42,14 +42,17 @@ function sceneContextParts(
   styleConfig: StyleConfig
 ): string[] {
   const { continuity, metadata } = scene;
+  const multipleLocations = continuity.environmentTag.includes(',');
   return [
-    metadata.location,
+    multipleLocations ? '' : metadata.location,
     metadata.timeOfDay,
-    continuity.environmentTag,
+    // A multi-location scene's roster is not a single shot's background.
+    multipleLocations ? '' : continuity.environmentTag,
     continuity.lightingSetup,
     continuity.colorPalette,
-    // Cast membership is shared context; the per-shot subject state narrows it.
-    continuity.characterTags.join(', '),
+    // Cast belongs to the shot's framing, not the scene-wide roster. Appending
+    // that roster here puts later arrivals and off-camera listeners in every
+    // start frame, overriding the subjectStartState above.
     // Style is the single look authored for the whole sequence.
     styleConfig.look.artStyle,
     continuity.styleTag,

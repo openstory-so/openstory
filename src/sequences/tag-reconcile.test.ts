@@ -78,6 +78,28 @@ const elementBible = [
 ];
 
 describe('reconcileSceneTags', () => {
+  it('preserves separate remote rooms without applying one room lighting to everyone', () => {
+    const base = locationBible[0];
+    if (!base) throw new Error('missing location fixture');
+    const rooms = ['Nora', 'Finn', 'Ravi'].map((owner) => ({
+      ...base,
+      name: `${owner}'s study`,
+      locationId: `${owner.toLowerCase()}_study`,
+      consistencyTag: `${owner.toLowerCase()}_study`,
+    }));
+    const { scenes } = reconcileSceneTags(
+      [
+        makeScene('NORA speaks on the call. FINN listens.', ''),
+        makeScene('RAVI joins the call.', ''),
+      ],
+      { characterBible: [], locationBible: rooms, elementBible: [] }
+    );
+    expect(scenes[0]?.continuity.environmentTag).toBe('nora_study, finn_study');
+    expect(scenes[0]?.continuity.lightingSetup).toBe('');
+    expect(scenes[0]?.continuity.colorPalette).toBe('');
+    expect(scenes[1]?.continuity.environmentTag).toBe('ravi_study');
+  });
+
   it('assigns a character tag when the bible name appears in the slice', () => {
     const { scenes, stats } = reconcileSceneTags(
       [makeScene('JACK enters the office.')],

@@ -12,7 +12,65 @@ import {
   matchElementsToScene,
   matchElementsToShot,
   matchElementsToShotImage,
+  matchLocationsToScene,
 } from './scene-matching';
+
+describe('participant-owned remote locations', () => {
+  const locations = [
+    {
+      name: "Nora's study",
+      locationId: 'noras_study',
+      consistencyTag: 'noras_study_warm',
+    },
+    {
+      name: 'Finn’s kitchen',
+      locationId: 'finns_kitchen',
+      consistencyTag: 'finns_kitchen_blue',
+    },
+    {
+      name: "Ravi's office",
+      locationId: 'ravis_office',
+      consistencyTag: 'ravis_office_green',
+    },
+  ];
+
+  it('assigns separate inferred rooms even when dialogue never names them', () => {
+    expect(
+      matchLocationsToScene(
+        locations,
+        '',
+        '',
+        'NORA speaks on the call. FINN replies.'
+      )
+    ).toEqual(locations.slice(0, 2));
+  });
+
+  it('does not match a participant name inside another word', () => {
+    expect(
+      matchLocationsToScene(locations, '', '', 'A panoramic view.')
+    ).toEqual([]);
+  });
+
+  it('narrows a shared scene to the room of the participant framed in each shot', () => {
+    for (const [index, name] of ['NORA', 'FINN', 'RAVI'].entries()) {
+      expect(
+        matchLocationsToScene(
+          locations,
+          locations.map((l) => l.consistencyTag).join(', '),
+          '',
+          'NORA speaks to FINN. RAVI joins later.',
+          `Close-up of ${name} at their webcam.`
+        )
+      ).toEqual([locations[index]]);
+    }
+  });
+
+  it('keeps an explicitly named physical location ahead of ownership inference', () => {
+    expect(
+      matchLocationsToScene(locations, '', '', 'NORA visits Finn’s kitchen.')
+    ).toEqual([locations[1]]);
+  });
+});
 
 const elements: SequenceElementMinimal[] = [
   {
@@ -192,12 +250,30 @@ describe('matchCharactersToShotImage', () => {
     ).toEqual([]);
   });
 
-  it('unions prompt mentions with continuity tags', () => {
+  it('uses the shot subject instead of adding the rest of the scene cast', () => {
     const result = matchCharactersToShotImage([scarlett, jack], {
-      characterTags: ['Jack'],
+      characterTags: ['Jack', 'Scarlett'],
       visualPrompt: 'SCARLETT enters. The room is empty.',
     });
-    expect(result.map((c) => c.name).sort()).toEqual(['Jack', 'Scarlett']);
+    expect(result.map((c) => c.name)).toEqual(['Scarlett']);
+  });
+
+  it('keeps both characters when the shot explicitly frames both', () => {
+    expect(
+      matchCharactersToShotImage([scarlett, jack], {
+        characterTags: ['Jack', 'Scarlett'],
+        visualPrompt: 'SCARLETT and JACK share a two-shot.',
+      }).map((c) => c.name)
+    ).toEqual(['Scarlett', 'Jack']);
+  });
+
+  it('retains tagged references for legacy prompts with unnamed subjects', () => {
+    expect(
+      matchCharactersToShotImage([scarlett, jack], {
+        characterTags: ['Jack'],
+        visualPrompt: 'A man sits at his desk.',
+      }).map((c) => c.name)
+    ).toEqual(['Jack']);
   });
 
   it('falls back to tags when the visual prompt is empty', () => {

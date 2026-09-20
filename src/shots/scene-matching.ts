@@ -149,12 +149,11 @@ export function characterMentionedInPrompt(
 /**
  * Characters whose sheets should attach to a still (#1432).
  *
- * Continuity tags stay the primary match (a tagged character may be described
- * without an ALL-CAPS name). The visual prompt is additive: a regenerated
- * prompt that names `SCARLETT` still attaches her sheet when tags are empty
- * or stale — the same fallback `matchElementsToShotImage` already has for
- * tokens. Update all's chained stills skip `rescanContinuityFromPrompt`, so
- * this is the path that actually sends the refs.
+ * Explicit shot-prompt subjects take precedence over the scene-wide roster.
+ * Otherwise a close-up inherits sheets for off-camera characters and later
+ * arrivals. Legacy prompts with no identifiable subject still use tags.
+ * Update all's chained stills skip `rescanContinuityFromPrompt`, so this is
+ * also the path that selects references for regenerated prompts.
  */
 export function matchCharactersToShotImage<T extends CharacterMatchInput>(
   allCharacters: T[],
@@ -170,11 +169,10 @@ export function matchCharactersToShotImage<T extends CharacterMatchInput>(
   const prompt = (args.visualPrompt ?? '').trim();
   if (!prompt) return tagged;
 
-  const seen = new Set(tagged.map((c) => c.characterId));
-  const extra = allCharacters.filter(
-    (c) => !seen.has(c.characterId) && characterMentionedInPrompt(c, prompt)
+  const named = allCharacters.filter((c) =>
+    characterMentionedInPrompt(c, prompt)
   );
-  return extra.length === 0 ? tagged : [...tagged, ...extra];
+  return named.length > 0 ? named : tagged;
 }
 
 /**
@@ -249,7 +247,15 @@ function matchLocationInText<T extends LocationMatchInput>(
   // passes a single candidate), and a length check cannot tell the two apart.
   // A continuation slice that names nowhere is filled at split time instead —
   // see the carry-forward in `reconcileSceneTags`.
-  return best ? [best.location] : [];
+  if (best) return [best.location];
+
+  // The bible can design "Nora's study" for an unspecified remote feed even
+  // though the script only names NORA. Preserve that explicit ownership in
+  // the location name; never guess from generic words such as "office".
+  return allLocations.filter((loc) => {
+    const owner = /^(.+?)[’']s\s+/i.exec(loc.name)?.[1]?.trim();
+    return owner ? tagMatchesText(owner, sceneText) : false;
+  });
 }
 
 /**
@@ -271,8 +277,14 @@ export function matchLocationsToScene<T extends LocationMatchInput>(
   allLocations: T[],
   environmentTag: string,
   sceneLocation: string,
-  sceneText?: string | null
+  sceneText?: string | null,
+  /** A shot's own prompt narrows a scene containing several remote rooms. */
+  visualPrompt?: string | null
 ): T[] {
+  if (visualPrompt?.trim()) {
+    const framed = matchLocationInText(allLocations, visualPrompt);
+    if (framed.length > 0) return framed;
+  }
   if (!environmentTag && !sceneLocation) {
     return sceneText ? matchLocationInText(allLocations, sceneText) : [];
   }

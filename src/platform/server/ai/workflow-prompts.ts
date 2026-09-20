@@ -967,6 +967,11 @@ The style's camera, shot selection, pace, and energy decide coverage:
 - Honor explicit CUT TO: / new camera setups / "then we see" already in the script — those are coverage the writer already called.
 - Do not invent a new location, time jump, or story beat.
 
+## On-screen cast and arrivals
+
+The cast list covers the whole script; it is not a roster to put in every shot. Track entrances, exits, and remote callers joining in script order. A participant who joins later must not appear in earlier shots, even as a listening reaction, thumbnail, or background figure.
+In framing.subjectStartState and framing.composition, name every character actually visible at the START of this shot using their exact <CHARACTERS> name in ALL CAPS. Frame only the selected subject(s); do not list off-camera listeners or future arrivals. A voice speaking off camera does not make its owner visible. If someone enters during a shot, describe their entrance in action rather than placing them in its starting frame. Respect single-participant webcam framing when the style calls for it.
+
 ## Rules
 
 1. Each scene's \`shots:\` line is its budget. "exactly N" means the scene's length only fits N shots on this model's clip grid — emit exactly N. "up to N" means 1..N; prefer fewer, and a short scene with one action is usually one shot. "N to M" means at least N: the scene is longer than N-1 clips can hold, so cover it in N or more setups — never fewer.

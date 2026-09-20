@@ -197,7 +197,8 @@ export async function prepareShotImageWorkflowInput(args: {
     allLocations,
     continuity?.environmentTag ?? '',
     scene?.metadata?.location ?? '',
-    scene?.originalScript?.extract
+    scene?.originalScript?.extract,
+    prompt
   );
   const locationReferences = buildLocationReferenceImages(matchedLocations);
 
