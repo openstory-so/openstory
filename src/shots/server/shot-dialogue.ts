@@ -10,9 +10,25 @@
  * before the node existed.
  */
 
-import type { VoiceCharacter } from '@/motion/dialogue-tts';
+import {
+  dialogueAudioMaxSeconds,
+  dialogueAudioMinSeconds,
+  matchingDialogueClips,
+  modelTakesDialogueAudio,
+  ttsCharacterCount,
+  voicedDialogueLines,
+  type VoiceCharacter,
+  type VoicedDialogueLine,
+} from '@/motion/dialogue-tts';
+import type { ImageToVideoModel } from '@/models/models';
+import { resolveShotDuration } from '@/motion/resolve-shot-duration';
+import type { MotionAudioClip } from '@/platform/server/db/schema';
 import { NotFoundError, ValidationError } from '@/platform/errors';
 import type { ScopedDb } from '@/platform/server/db/scoped';
+import type {
+  BatchDialogueRecording,
+  DialogueAudioSceneJob,
+} from '@/platform/server/workflow/types';
 import type {
   DialogueLine,
   MotionDialogue,
@@ -22,6 +38,7 @@ import {
   firstShotIdByScene,
   resolveShotDialogue,
   sceneConversation,
+  voicedShotIds,
   type SceneVoicedLine,
   type ShotDialogueLine,
 } from '@/shots/shot-dialogue';
@@ -131,6 +148,188 @@ export function dialogueContextFor(input: {
     ),
     input.shot.id
   );
+}
+
+/**
+ * One recording job per scene that holds a shot needing audio (#1657) — what a
+ * batch trigger snapshots so the batch records each scene ONCE before it fans
+ * out, instead of every clip-less child recording its own window of it.
+ *
+ * A job is the scene's WHOLE conversation: every live shot, in shot order,
+ * saying what `dialogueOf` resolves. The recorder decides who adopts
+ * (`planSceneAdoption`: any shot whose clip no longer matches), so a
+ * scene-mate outside the batch whose lines or voice moved gets its audio too.
+ */
+export function sceneDialogueJobs(input: {
+  /** Shots about to render that speak and hold no matching clip. */
+  needing: readonly { id: string }[];
+  /** Every shot of the sequence. */
+  shots: readonly {
+    id: string;
+    sceneId: string | null;
+    shotNumber: number | null;
+    deletedAt?: Date | null;
+  }[];
+  dialogueOf: ShotDialogueResolver;
+  characters: readonly VoiceCharacter[];
+  /** shot id → its selected `shot_dialogue_versions` row, when it has one. */
+  versionIdByShotId: ReadonlyMap<string, string>;
+  /** The clip length a reading has to fit, per shot. */
+  shotSecondsOf: (shotId: string) => number | undefined;
+}): DialogueAudioSceneJob[] {
+  const byId = new Map(input.shots.map((shot) => [shot.id, shot]));
+  const sceneIds = new Set(
+    input.needing.flatMap((shot) => {
+      const sceneId = byId.get(shot.id)?.sceneId;
+      return sceneId ? [sceneId] : [];
+    })
+  );
+  return [...sceneIds].flatMap((sceneId) => {
+    const sceneShots = input.shots
+      .filter((shot) => shot.sceneId === sceneId && !shot.deletedAt)
+      .sort((a, b) => (a.shotNumber ?? 0) - (b.shotNumber ?? 0));
+    const voiced = sceneConversation(
+      sceneShots,
+      new Map(
+        sceneShots.map((shot) => [shot.id, input.dialogueOf(shot).lines])
+      ),
+      input.characters
+    );
+    if (voiced.length === 0) return [];
+    const speaking = voicedShotIds(voiced);
+    return [
+      {
+        voiced,
+        dialogueVersionIdByShotId: Object.fromEntries(
+          speaking.flatMap((shotId) => {
+            const versionId = input.versionIdByShotId.get(shotId);
+            return versionId ? [[shotId, versionId]] : [];
+          })
+        ),
+        shotSeconds: Object.fromEntries(
+          speaking.flatMap((shotId) => {
+            const seconds = input.shotSecondsOf(shotId);
+            return seconds === undefined ? [] : [[shotId, seconds]];
+          })
+        ),
+      },
+    ];
+  });
+}
+
+/**
+ * Everything a batch-style trigger has to say about dialogue, in one call
+ * (#1657) — so no trigger can send the prompt and forget the audio:
+ *
+ * - per shot: its `voicedLines`, the clips that still match them, and the
+ *   `dialogueContext` its run falls back to if it has to record alone;
+ * - `dialogueRecording`: one job per scene that needs audio, which the batch
+ *   records ONCE before it fans out;
+ * - `ttsChars`: what to reserve — a scene is one call over its whole
+ *   conversation; only a shot with no scene is priced on its own lines.
+ */
+export function snapshotBatchDialogue<
+  S extends {
+    id: string;
+    sceneId: string | null;
+    durationMs?: number | null;
+    audioClips?: MotionAudioClip[] | null;
+  },
+>(input: {
+  /** The shots about to render. */
+  rendering: readonly S[];
+  modelOf: (shot: S) => ImageToVideoModel;
+  /** Every shot of the sequence. */
+  shots: Parameters<typeof shotDialogueResolver>[0]['shots'];
+  dialogueOf: ShotDialogueResolver;
+  characters: readonly VoiceCharacter[];
+  versionIdByShotId: ReadonlyMap<string, string>;
+}): {
+  byShotId: ReadonlyMap<
+    string,
+    {
+      voicedLines: VoicedDialogueLine[];
+      audioClips: MotionAudioClip[];
+      dialogueContext: SceneVoicedLine[] | undefined;
+    }
+  >;
+  dialogueRecording: BatchDialogueRecording | undefined;
+  ttsChars: number;
+} {
+  const byShotId = new Map(
+    input.rendering.map((shot) => {
+      const voicedLines = modelTakesDialogueAudio(input.modelOf(shot))
+        ? voicedDialogueLines(input.dialogueOf(shot), input.characters)
+        : [];
+      const audioClips = matchingDialogueClips(shot.audioClips, voicedLines);
+      return [
+        shot.id,
+        {
+          voicedLines,
+          audioClips,
+          dialogueContext: dialogueContextFor({
+            shot,
+            voicedLines,
+            audioClips,
+            sceneShots: input.shots.filter(
+              (other) =>
+                shot.sceneId !== null &&
+                other.sceneId === shot.sceneId &&
+                !other.deletedAt
+            ),
+            dialogueOf: input.dialogueOf,
+            characters: input.characters,
+          }),
+        },
+      ] as const;
+    })
+  );
+  const needing = input.rendering.filter((shot) => {
+    const entry = byShotId.get(shot.id);
+    return (
+      entry && entry.voicedLines.length > 0 && entry.audioClips.length === 0
+    );
+  });
+  const renderingById = new Map(input.rendering.map((shot) => [shot.id, shot]));
+  const scenes = sceneDialogueJobs({
+    needing,
+    shots: input.shots,
+    dialogueOf: input.dialogueOf,
+    characters: input.characters,
+    versionIdByShotId: input.versionIdByShotId,
+    // A scene-mate outside the batch has no model resolved for it; its
+    // reading then only has to fit the provider's limit.
+    shotSecondsOf: (shotId) => {
+      const shot = renderingById.get(shotId);
+      return shot
+        ? resolveShotDuration({
+            durationMs: shot.durationMs,
+            model: input.modelOf(shot),
+          })
+        : undefined;
+    },
+  });
+  const models = [...new Set(needing.map((shot) => input.modelOf(shot)))];
+  return {
+    byShotId,
+    dialogueRecording:
+      scenes.length > 0
+        ? {
+            scenes,
+            minDurationSeconds: dialogueAudioMinSeconds(models),
+            maxDurationSeconds: dialogueAudioMaxSeconds(models),
+          }
+        : undefined,
+    ttsChars:
+      scenes.reduce((sum, job) => sum + ttsCharacterCount(job.voiced), 0) +
+      needing
+        .filter((shot) => !shot.sceneId)
+        .reduce(
+          (sum, shot) =>
+            sum + ttsCharacterCount(byShotId.get(shot.id)?.voicedLines ?? []),
+          0
+        ),
+  };
 }
 
 /**

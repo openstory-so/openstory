@@ -101,6 +101,8 @@ import type {
   FramePromptWorkflowInput,
   ImageWorkflowInput,
   MotionPromptWorkflowInput,
+  DialogueAudioWorkflowInput,
+  DialogueAudioWorkflowResult,
   MotionWorkflowInput,
   MotionWorkflowResult,
   MusicPromptWorkflowInput,
@@ -791,6 +793,70 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
         };
       });
 
+    // Dialogue is recorded ONCE PER SCENE (#1657), started now because what a
+    // shot says does not wait on its prompts or its still. Every video render
+    // awaits this first: `prepare-video` reads the shot's clips live, so the
+    // clip the recording saved is simply there, and the motion child attaches
+    // it instead of recording its own window of the scene. Never fatal — a
+    // scene that cannot be recorded leaves its shots to record themselves, in
+    // context, which fails that shot and not the run.
+    const dialogueRecording = plan.dialogueRecording;
+    // Same balance gate the per-shot render applies to its own TTS, priced on
+    // the whole conversation. Short of it, skip the up-front recording: each
+    // shot's own gate then refuses it by name instead of the run failing here.
+    const canRecordScenes = dialogueRecording
+      ? await step.do('gate-dialogue-audio', async () => {
+          try {
+            await requireCredits(
+              scopedDb.liveRead,
+              estimateTtsCost(
+                dialogueRecording.scenes.reduce(
+                  (sum, job) => sum + ttsCharacterCount(job.voiced),
+                  0
+                )
+              ),
+              { errorMessage: 'Insufficient credits for dialogue audio' }
+            );
+            return true;
+          } catch (error) {
+            if (isInsufficientCreditsError(error)) return false;
+            throw error;
+          }
+        })
+      : false;
+    const dialogueRecorded: Promise<void> =
+      dialogueRecording && canRecordScenes
+        ? spawnAndAwaitChild<
+            DialogueAudioWorkflowInput,
+            DialogueAudioWorkflowResult
+          >(step, {
+            binding: this.env.DIALOGUE_AUDIO_WORKFLOW,
+            parentBindingName: PARENT_BINDING_NAME,
+            parentInstanceId,
+            childId: `dialogue-audio:${sequenceId}:${parentInstanceId}`,
+            childPayload: {
+              userId,
+              teamId,
+              sequenceId,
+              reservationId: input.reservationId,
+              scenes: dialogueRecording.scenes,
+              minDurationSeconds: dialogueRecording.minDurationSeconds,
+              maxDurationSeconds: dialogueRecording.maxDurationSeconds,
+            },
+            spawnStepName: 'spawn-dialogue-audio',
+            awaitStepName: 'await-dialogue-audio',
+            timeout: '60 minutes',
+          }).then(
+            () => undefined,
+            (error: unknown) => {
+              logger.warn(
+                '[UpdateStaleShotsWorkflow] Scene dialogue not recorded up front; each shot records its own',
+                { sequenceId, err: error }
+              );
+            }
+          )
+        : Promise.resolve();
+
     // ============================================================
     // PHASE 2: fan out — one job per shot, so a shot's scene step runs once
     // for both its prompt children. Within a shot the visual-prompt → image
@@ -1058,6 +1124,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             if (target.regenVideo) {
               if (upstream.motionOk && upstream.imageOk) {
                 try {
+                  await dialogueRecorded;
                   await spawnVideo(target, claims, prompted.motionVersionId);
                 } catch (error) {
                   failures.push(toFailure(target.shotId, 'video', error));

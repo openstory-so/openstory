@@ -1543,7 +1543,25 @@ export interface MusicWorkflowResult {
  * Orchestrates parallel motion generation for all shots + optional music,
  * then merges videos and muxes audio.
  */
+/**
+ * Dialogue to record ONCE PER SCENE before a motion fan-out (#1657). Built at
+ * the trigger for every scene with a batch shot whose clip no longer matches
+ * its lines (no clip, an edited line, a recast voice). The batch runs
+ * `DialogueAudioWorkflow` over it first and hands each child its clip, so N
+ * shots of one scene are ONE ElevenLabs call acted as one conversation — not N
+ * overlapping windows, each billed in full.
+ */
+export type BatchDialogueRecording = {
+  scenes: DialogueAudioSceneJob[];
+  /** See `DialogueAudioWorkflowInput`. */
+  minDurationSeconds?: number;
+  maxDurationSeconds: number;
+  analysisModelId?: AnalysisModelId;
+};
+
 export interface BatchMotionMusicWorkflowInput extends SequenceWorkflowContext {
+  /** See {@link BatchDialogueRecording}. Absent when no shot needs a recording. */
+  dialogueRecording?: BatchDialogueRecording;
   /** Per-shot motion inputs (ordered by scene) */
   shots: Array<{
     shotId: string;

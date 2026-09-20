@@ -30,13 +30,18 @@ const target = (o: object) =>
     ...o,
   }) as never;
 
-const plan = (targets: unknown[], music: unknown = null) =>
+const plan = (
+  targets: unknown[],
+  music: unknown = null,
+  dialogueRecording: unknown = null
+) =>
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test stub
   ({
     aspectRatio: '16:9',
     sequence: { videoModel: 'seedance_v2' },
     targets,
     music,
+    dialogueRecording,
     skipped: [],
     promptContext: null,
   }) as never;
@@ -64,6 +69,32 @@ describe('buildUpdateStalePreview', () => {
       video: 500_000,
       music: 0,
     });
+  });
+
+  it('prices dialogue once per scene, on the video level (#1657)', async () => {
+    const { estimateTtsCost } = await import('@/billing/elevenlabs-pricing');
+    const { ttsCharacterCount } = await import('@/motion/dialogue-tts');
+    estimateVideoCost.mockReturnValue(micros(500_000));
+    const voiced = [
+      { shotId: 'a', index: 0, text: 'Hello there.', tone: 'calm' },
+      { shotId: 'b', index: 0, text: 'General.', tone: 'dry' },
+    ];
+    const targets = [
+      target({ shotId: 'a', regenVideo: true }),
+      target({ shotId: 'b', regenVideo: true }),
+    ];
+    const preview = buildUpdateStalePreview(
+      plan(targets, null, { scenes: [{ voiced }], maxDurationSeconds: 15 }),
+      {},
+      null
+    );
+    // Two renders, ONE recording of the scene's whole conversation.
+    expect(preview.costByLevel.video).toBe(
+      1_000_000 + estimateTtsCost(ttsCharacterCount(voiced))
+    );
+    expect(
+      buildUpdateStalePreview(plan(targets), {}, null).costByLevel.video
+    ).toBe(1_000_000);
   });
 
   it('unknown pricing yields null, never an invented number', () => {

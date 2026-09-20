@@ -27,6 +27,8 @@ import {
 } from '@/models/models.config';
 import {
   DEFAULT_IMAGE_MODEL,
+  DEFAULT_VIDEO_MODEL,
+  safeImageToVideoModel,
   safeTextToImageModel,
   type TextToImageModel,
 } from '@/models/models';
@@ -40,10 +42,15 @@ import type {
 } from '@/shots/scene-analysis.schema';
 import {
   dialogueContextFor,
-  loadShotDialogueLines,
+  sceneDialogueJobs,
   shotDialogueResolver,
 } from './shot-dialogue';
-import { voicedDialogueLines } from '@/motion/dialogue-tts';
+import {
+  dialogueAudioMaxSeconds,
+  dialogueAudioMinSeconds,
+  voicedDialogueLines,
+} from '@/motion/dialogue-tts';
+import type { BatchDialogueRecording } from '@/platform/server/workflow/types';
 import type { SceneVoicedLine } from '@/shots/shot-dialogue';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import type { Resolution } from '@/models/resolutions';
@@ -272,6 +279,13 @@ export type UpdateStalePlan = {
     voiceId: string;
     voiceOnly: boolean;
   }[];
+  /**
+   * Scenes to record ONCE before any video renders (#1657): every scene with
+   * a voiced target whose video is being re-rendered. The recorder checks the
+   * live clips itself, so a scene whose audio still matches costs nothing.
+   * Null when no target speaks.
+   */
+  dialogueRecording: BatchDialogueRecording | null;
   targets: PlanTarget[];
   skipped: SkippedShot[];
 };
@@ -363,6 +377,7 @@ export async function computePlan(args: {
     music,
     promptContext: null,
     characterVoices: [],
+    dialogueRecording: null,
     targets: [],
     skipped: [],
   };
@@ -392,7 +407,7 @@ export async function computePlan(args: {
     selectedByFrame,
     selectedPromptByFrame,
     selectedMotionByShot,
-    dialogueLinesByShotId,
+    dialogueVersions,
   ] = await Promise.all([
     scopedDb.frameVariants.getSelectedByFrameIds(frameIds),
     scopedDb.framePromptVersions.getSelectedByFrameIds(frameIds),
@@ -405,8 +420,12 @@ export async function computePlan(args: {
     ),
     // The authored dialogue per shot, read once (#1657). Each target carries
     // only its own shot's lines, so the run never reads the node mid-flight.
-    loadShotDialogueLines(scopedDb, sequence.id),
+    // The rows, not just the lines: a recording names the version it spoke.
+    scopedDb.shotDialogue.getSelectedBySequence(sequence.id),
   ]);
+  const dialogueLinesByShotId = new Map(
+    dialogueVersions.map((version) => [version.shotId, version.lines])
+  );
   const refs: ShotStalenessRefs = { characters, locations, elements, style };
   const dialogueOf = shotDialogueResolver({
     linesByShotId: dialogueLinesByShotId,
@@ -490,12 +509,44 @@ export async function computePlan(args: {
         characters: characterVoices,
       }) ?? [];
   }
+  const dialogueScenes = sceneDialogueJobs({
+    needing: targets
+      .filter(
+        (target) =>
+          target.regenVideo &&
+          voicedDialogueLines(target.dialogue, characterVoices).length > 0
+      )
+      .map((target) => ({ id: target.shotId })),
+    shots: allShots,
+    dialogueOf,
+    characters: characterVoices,
+    versionIdByShotId: new Map(
+      dialogueVersions.map((version) => [version.shotId, version.id])
+    ),
+    shotSecondsOf: (shotId) => {
+      const durationMs = shotById.get(shotId)?.durationMs;
+      return durationMs && durationMs > 0 ? durationMs / 1000 : undefined;
+    },
+  });
+  // ponytail: bounds come from the sequence's video model; a target whose
+  // selected version used a tighter model is still checked by its own render.
+  const dialogueModels = [
+    safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
+  ];
   return {
     aspectRatio: sequence.aspectRatio,
     resolution: sequence.resolution,
     sequence: toPlanSequence(sequence),
     music,
     characterVoices,
+    dialogueRecording:
+      dialogueScenes.length > 0
+        ? {
+            scenes: dialogueScenes,
+            minDurationSeconds: dialogueAudioMinSeconds(dialogueModels),
+            maxDurationSeconds: dialogueAudioMaxSeconds(dialogueModels),
+          }
+        : null,
     promptContext: {
       characterBible: [...ctx.characterBible],
       locationBible: [...ctx.locationBible],

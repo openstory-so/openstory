@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   dialogueContextFor,
   requireSelectableSection,
+  sceneDialogueJobs,
   shotDialogueResolver,
 } from './shot-dialogue';
 
@@ -130,6 +131,60 @@ describe('dialogueContextFor', () => {
         characters,
       })
     ).toBeUndefined();
+  });
+});
+
+describe('sceneDialogueJobs', () => {
+  const dialogueOf = shotDialogueResolver({
+    linesByShotId: new Map([
+      ['shot-1', [line('Ana', 'One.')]],
+      ['shot-2', [line('Ben', 'Two.')]],
+      ['shot-3', [line('Ana', 'Three.')]],
+      ['other-1', [line('Ben', 'Elsewhere.')]],
+    ]),
+    shots: [...shots, { id: 'other-1', sceneId: 'scene-2', shotNumber: 1 }],
+    legacyDialogueOf: () => null,
+    scriptDialogueOf: () => undefined,
+  });
+  const allShots = [
+    ...shots,
+    { id: 'other-1', sceneId: 'scene-2', shotNumber: 1 },
+  ];
+
+  it('makes ONE job per scene, however many of its shots need audio', () => {
+    const jobs = sceneDialogueJobs({
+      needing: [{ id: 'shot-1' }, { id: 'shot-3' }],
+      shots: allShots,
+      dialogueOf,
+      characters,
+      versionIdByShotId: new Map([['shot-1', 'version-1']]),
+      shotSecondsOf: (shotId) => (shotId === 'shot-1' ? 5 : undefined),
+    });
+    expect(jobs).toHaveLength(1);
+    // The whole conversation, in shot order — shot-2 included, though it was
+    // not asked for: every turn is acted in context.
+    expect(jobs[0]?.voiced.map((turn) => [turn.shotId, turn.text])).toEqual([
+      ['shot-1', 'One.'],
+      ['shot-2', 'Two.'],
+      ['shot-3', 'Three.'],
+    ]);
+    expect(jobs[0]?.dialogueVersionIdByShotId).toEqual({
+      'shot-1': 'version-1',
+    });
+    expect(jobs[0]?.shotSeconds).toEqual({ 'shot-1': 5 });
+  });
+
+  it('skips a scene nobody needs, and a shot with no scene', () => {
+    expect(
+      sceneDialogueJobs({
+        needing: [{ id: 'no-such-shot' }],
+        shots: allShots,
+        dialogueOf,
+        characters,
+        versionIdByShotId: new Map(),
+        shotSecondsOf: () => undefined,
+      })
+    ).toEqual([]);
   });
 });
 

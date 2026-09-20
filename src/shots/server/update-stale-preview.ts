@@ -15,7 +15,9 @@ import type { EffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 
 type FalPricingMap = Record<string, EffectiveFalPricing>;
 import { safeAudioModel, safeImageToVideoModel } from '@/models/models';
+import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
 import { addMicros, ZERO_MICROS, type Microdollars } from '@/billing/money';
+import { ttsCharacterCount } from '@/motion/dialogue-tts';
 import type { UpdateStalePlan } from './update-stale-plan';
 import type { UpdateStaleDepth } from '@/shots/update-stale-depth';
 
@@ -69,18 +71,31 @@ export function buildUpdateStalePreview(
     )
   );
   const videoModel = safeImageToVideoModel(plan.sequence.videoModel);
-  const videosCost = sum(
-    videos.map((t) =>
-      estimateVideoCost(
-        videoModel,
-        (t.durationMs ?? DEFAULT_VIDEO_DURATION_MS) / 1000,
-        {
-          pricing,
-          resolution: plan.sequence.resolution,
-          referenceOnly: !t.usesStartFrame,
-        }
-      )
+  // Dialogue is recorded once per SCENE before the renders (#1657), so it is
+  // priced per scene: the whole conversation of every scene with a voiced
+  // video target. An upper bound — a scene whose clips still match its lines
+  // is not recorded again.
+  const dialogueCost = estimateTtsCost(
+    (plan.dialogueRecording?.scenes ?? []).reduce(
+      (total, job) => total + ttsCharacterCount(job.voiced),
+      0
     )
+  );
+  const videosCost = addMaybe(
+    sum(
+      videos.map((t) =>
+        estimateVideoCost(
+          videoModel,
+          (t.durationMs ?? DEFAULT_VIDEO_DURATION_MS) / 1000,
+          {
+            pricing,
+            resolution: plan.sequence.resolution,
+            referenceOnly: !t.usesStartFrame,
+          }
+        )
+      )
+    ),
+    videos.length > 0 ? dialogueCost : ZERO_MICROS
   );
   const musicCost = music
     ? addMaybe(

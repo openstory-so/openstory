@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_VIDEO_MODEL, type ImageToVideoModel } from '@/models/models';
 import { packMotionBatchShots } from '@/motion/server/pack-motion-jobs';
-import { buildMotionJobs } from './motion-batch-jobs';
+import {
+  dialogueClipSourceKey,
+  voicedDialogueLines,
+} from '@/motion/dialogue-tts';
+import { attachRecordedClips, buildMotionJobs } from './motion-batch-jobs';
 
 type Shot = { shotId: string; model?: ImageToVideoModel };
 
@@ -115,5 +119,54 @@ describe('packMotionBatchShots then buildMotionJobs (#1510)', () => {
     const packed = packMotionBatchShots(sceneShots, [grok]);
     const jobs = buildMotionJobs(packed, [grok]);
     expect(jobs.map((j) => j.shot.shotId)).toEqual(['a', 'b']);
+  });
+});
+
+describe('attachRecordedClips (#1657)', () => {
+  const voiced = (text: string) =>
+    voicedDialogueLines(
+      {
+        presence: true,
+        lines: [{ character: 'Ana', line: text, tone: 'calm' }],
+      },
+      [{ name: 'Ana', voiceId: 'voice-ana' }]
+    );
+  const clipFor = (id: string, text: string) => ({
+    id,
+    url: `/r2/${id}.wav`,
+    token: 'DIALOGUE',
+    durationSeconds: 2,
+    sourceKey: dialogueClipSourceKey(voiced(text)),
+  });
+
+  it('hands a shot the clip its scene recording cut, and stops its child recording', () => {
+    const context = [{ shotId: 's1' }];
+    const input: {
+      shotId: string;
+      voicedLines: ReturnType<typeof voiced>;
+      audioClips?: ReturnType<typeof clipFor>[];
+      dialogueContext?: unknown;
+    }[] = [
+      { shotId: 's1', voicedLines: voiced('Hello.'), dialogueContext: context },
+    ];
+    const [shot] = attachRecordedClips(input, {
+      s1: [clipFor('section-1', 'Hello.')],
+    });
+    expect(shot?.audioClips?.map((clip) => clip.id)).toEqual(['section-1']);
+    // No context left: the child attaches, it does not record.
+    expect(shot && 'dialogueContext' in shot).toBe(false);
+  });
+
+  it('leaves a shot alone when the recording missed it or spoke other words', () => {
+    const context = [{ shotId: 's1' }];
+    const shots = [
+      { shotId: 's1', voicedLines: voiced('Hello.'), dialogueContext: context },
+      { shotId: 's2', voicedLines: voiced('Bye.'), dialogueContext: context },
+    ];
+    const out = attachRecordedClips(shots, {
+      // s1's clip was cut from different words; s2 got nothing.
+      s1: [clipFor('section-9', 'Something else.')],
+    });
+    expect(out).toEqual(shots);
   });
 });

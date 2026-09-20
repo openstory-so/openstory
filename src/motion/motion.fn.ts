@@ -53,6 +53,7 @@ import {
   dialogueContextFor,
   loadShotDialogueLines,
   shotDialogueResolver,
+  snapshotBatchDialogue,
 } from '@/shots/server/shot-dialogue';
 import {
   estimateBatchMotionCost,
@@ -742,13 +743,14 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
     // before credit pre-flight so Seedance prices the reference-to-video
     // endpoint when refs will actually be sent.
     const [
-      batchDialogueLinesByShotId,
+      batchDialogueVersions,
       characters,
       voiceCharacters,
       elements,
       batchLocations,
     ] = await Promise.all([
-      loadShotDialogueLines(context.scopedDb, sequence.id),
+      // The rows, not just the lines: a recording names the version it spoke.
+      context.scopedDb.shotDialogue.getSelectedBySequence(sequence.id),
       context.scopedDb.characters.listWithSheets(sequence.id),
       context.scopedDb.characters.list(sequence.id),
       context.scopedDb.sequenceElements
@@ -800,7 +802,9 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
     // What each shot says now — the one answer for the prompt text, the
     // voiced lines and the recording context below.
     const batchDialogueOf = shotDialogueResolver({
-      linesByShotId: batchDialogueLinesByShotId,
+      linesByShotId: new Map(
+        batchDialogueVersions.map((version) => [version.shotId, version.lines])
+      ),
       shots: rawShots,
       legacyDialogueOf: (shotId) => selectedMotionByShot.get(shotId)?.dialogue,
       scriptDialogueOf: (sceneId) =>
@@ -854,13 +858,21 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
     );
     if (unusable.size > 0) throw new Error([...unusable].join(' '));
 
-    const ttsChars = eligibleShots.reduce((sum, shot) => {
-      const model = resolveShotVideoModel(shot);
-      if (!modelTakesDialogueAudio(model)) return sum;
-      const lines = voicedDialogueLines(batchDialogueOf(shot), voiceCharacters);
-      const clips = matchingDialogueClips(shot.audioClips, lines);
-      return sum + (clips.length > 0 ? 0 : ttsCharacterCount(lines));
-    }, 0);
+    // Dialogue is recorded ONCE PER SCENE, before the fan-out (#1657): every
+    // shot that speaks and holds no matching clip puts its scene on the list,
+    // and the batch hands each child its clip. Priced the same way — a scene
+    // is one call over its whole conversation, not one per shot.
+    const batchDialogue = snapshotBatchDialogue({
+      rendering: eligibleShots,
+      modelOf: resolveShotVideoModel,
+      shots: rawShots,
+      dialogueOf: batchDialogueOf,
+      characters: voiceCharacters,
+      versionIdByShotId: new Map(
+        batchDialogueVersions.map((version) => [version.shotId, version.id])
+      ),
+    });
+    const ttsChars = batchDialogue.ttsChars;
 
     // Sum per-shot costs — shots may render with different (priced) models.
     const videoCost = estimateBatchMotionCost(
@@ -954,18 +966,17 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
           reservationId,
           includeMusic,
           videoModels: [packingModel],
+          ...(batchDialogue.dialogueRecording
+            ? { dialogueRecording: batchDialogue.dialogueRecording }
+            : {}),
           shots: eligibleShots.map((shot) => {
             const shotModel = resolveShotVideoModel(shot);
             const scene = sceneOf(shot);
             const selectedMotion = selectedMotionByShot.get(shot.id);
             const shotDialogue = batchDialogueOf(shot);
-            const voicedLines = modelTakesDialogueAudio(shotModel)
-              ? voicedDialogueLines(shotDialogue, voiceCharacters)
-              : [];
-            const audioClips = matchingDialogueClips(
-              shot.audioClips,
-              voicedLines
-            );
+            const spoken = batchDialogue.byShotId.get(shot.id);
+            const voicedLines = spoken?.voicedLines ?? [];
+            const audioClips = spoken?.audioClips ?? [];
             return {
               shotId: shot.id,
               sceneId: shot.sceneId,
@@ -1020,20 +1031,10 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
               }),
               voicedLines,
               audioClips,
-              // Voiced lines and no matching clip: the motion run records
-              // them, in context (#1657), so the conversation around the shot
-              // is snapshotted here. `rawShots`, not `allShots`: a neighbour
-              // with no anchor frame still speaks.
-              dialogueContext: dialogueContextFor({
-                shot,
-                voicedLines,
-                audioClips,
-                sceneShots: rawShots.filter(
-                  (row) => row.sceneId === shot.sceneId
-                ),
-                dialogueOf: batchDialogueOf,
-                characters: voiceCharacters,
-              }),
+              // The fallback only: the batch records the scene once up front
+              // (`dialogueRecording`). If that fails, the run records alone,
+              // acted in this conversation.
+              dialogueContext: spoken?.dialogueContext,
               motionPrompt: selectedMotion
                 ? motionPromptFromVersion(selectedMotion, shotDialogue)
                 : undefined,
