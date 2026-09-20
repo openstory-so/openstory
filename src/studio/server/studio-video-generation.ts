@@ -305,9 +305,9 @@ function urlPart(
  * The stills a BytePlus studio submit needs registered: every image the
  * user supplied that may be a face. `noPersonImages` (ledger stills whose
  * `likeness` is `none` via `registersWithArk`, snapshotted at the trigger)
- * are marked `plain` and go as fetchable URLs — CreateAsset is 3/min per
- * account and a 7-reference job of props would spend over two minutes of
- * it (#1674, #1682). Videos and audio are not assets.
+ * are marked `plain` and go as fetchable URLs so they do not spend
+ * CreateAsset turns (`BYTEPLUS_ASSET_WRITE_QPM`, #1674, #1682). Videos and
+ * audio are not assets.
  */
 export function arkStillsForStudio(
   options: Pick<

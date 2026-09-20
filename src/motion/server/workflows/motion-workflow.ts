@@ -828,10 +828,11 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         attempt === 0 ? '' : isRescue ? '-rescue' : `-retry-${attempt}`;
 
       // Step 3-pre: register the stills BytePlus must see as `asset://`
-      // (#1519). CreateAsset is 3/min per account, so each create waits its
-      // turn with a durable `step.sleep` — outside the submit step, which
-      // therefore never holds a Worker open for a queue. Only when this
-      // model is actually going to Ark; a fal/xAI/Google submit needs none.
+      // (#1519). CreateAsset is paced by `BYTEPLUS_ASSET_WRITE_QPM`, so
+      // each create waits its turn with a durable `step.sleep` — outside
+      // the submit step, which therefore never holds a Worker open for a
+      // queue. Only when this model is actually going to Ark; a
+      // fal/xAI/Google submit needs none.
       const submitVia = await step.do(`resolve-motion-via${tag}`, () =>
         resolveMotionVia(activeModel, scopedDb.credentials)
       );

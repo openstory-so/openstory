@@ -2,8 +2,8 @@
  * Register stills in the BytePlus virtual portrait library as durable
  * workflow steps (#1519).
  *
- * `CreateAsset` is allowed THREE times a minute per account. The wait for a
- * turn is therefore minutes, not milliseconds, and it must not hold a Worker
+ * `CreateAsset` is paced by `BYTEPLUS_ASSET_WRITE_QPM`. The wait for a
+ * turn can be minutes, not milliseconds, and it must not hold a Worker
  * open or eat a step's 10-minute budget. Per still:
  *
  *   url     step.do   the URL CreateAsset can fetch (fal key, upload)

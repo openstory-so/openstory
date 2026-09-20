@@ -15,12 +15,10 @@ import type { AcquireInput, BytePlusGovernor } from './byteplus-governor.do';
 const logger = getLogger(['openstory', 'ai', 'byteplus-governor']);
 
 /**
- * Two buckets. `CreateAsset` is the scarce one — the account allows THREE
- * per minute (`QuotaWriteQPMExceeded`, relayed by Tom 2026-09-07), which is
- * why only stills that can carry a face are ingested at all (character
+ * Two buckets. `CreateAsset` is paced by `BYTEPLUS_ASSET_WRITE_QPM`, which
+ * is why only stills that can carry a face are ingested at all (character
  * sheets and start frames; see `submitMotionJob`). Reads (`ListAssets`,
- * `GetAsset` polls, group lookup) sit under a separate flow-control limit
- * BytePlus does not publish; 60/min has not tripped it.
+ * `GetAsset` polls, group lookup) sit under `BYTEPLUS_OPENAPI_QPM`.
  */
 const DEFAULT_ASSET_WRITE_QPM = 3;
 const DEFAULT_OPENAPI_QPM = 60;
@@ -29,9 +27,9 @@ const GOVERNOR_NAME = 'byteplus';
 
 /**
  * Longest a create waits for its turn. The wait is a durable `step.sleep`
- * (`byteplus-asset-steps.ts`), so this bounds the queue, not a Worker: at
- * 3/min it is ~45 creates ahead. Beyond it the DO refuses without reserving
- * and the shot fails with a message that names the queue.
+ * (`byteplus-asset-steps.ts`), so this bounds the queue, not a Worker.
+ * Beyond it the DO refuses without reserving and the shot fails with a
+ * message that names the queue.
  */
 const CREATE_MAX_WAIT_MS = 15 * 60_000;
 
@@ -51,8 +49,8 @@ function writeBucket(): AcquireInput {
   const qpm = envQpm('BYTEPLUS_ASSET_WRITE_QPM', DEFAULT_ASSET_WRITE_QPM);
   return {
     bucket: 'assets-write',
-    // One at a time, not a burst of `qpm`: three creates in the same second
-    // is what Ark 429s, even though three in a minute is allowed (#1674).
+    // One at a time, not a burst of `qpm`: Ark 429s a same-second burst
+    // even when the minute budget is free (#1674).
     capacity: 1,
     refillPerMinute: qpm,
     maxWaitMs: CREATE_MAX_WAIT_MS,

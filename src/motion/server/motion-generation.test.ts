@@ -363,8 +363,7 @@ describe('Motion Service', () => {
                 value: 'asset://https://example.com/scarlett.png',
               }),
             }),
-            // An element sheet carries no face; CreateAsset is 3/min, so it
-            // is not spent here.
+            // An element sheet carries no face; it is not ingested.
             expect.objectContaining({
               type: 'image',
               source: expect.objectContaining({
