@@ -44,7 +44,11 @@ export type CloudflareIo = {
     tunnelId: string,
     config: ReturnType<typeof tunnelIngressConfig>
   ) => Promise<void>;
-  upsertCname: (hostname: string, target: string) => Promise<void>;
+  upsertCname: (
+    hostname: string,
+    target: string,
+    tunnelName: string
+  ) => Promise<void>;
 };
 
 export function mappingPath(homeDir = homedir()): string {
@@ -154,7 +158,7 @@ export async function provisionMapping(
   await io.putIngress(tunnel.id, tunnelIngressConfig(file.routes));
   const target = `${tunnel.id}.cfargotunnel.com`;
   for (const route of file.routes) {
-    await io.upsertCname(route.hostname, target);
+    await io.upsertCname(route.hostname, target, tunnel.name);
   }
   return file;
 }
@@ -196,29 +200,100 @@ async function runCli(argv: string[]): Promise<void> {
   const file = readMapping();
   if (!file) {
     throw new DevHostsError(
-      `No mapping at ${mappingPath()}. Run \`bun tunnel:provision\` (needs wrangler login / CLOUDFLARE_API_TOKEN).`
+      `No mapping at ${mappingPath()}. Run \`bun tunnel:provision\` (uses \`wrangler login\`).`
     );
   }
   printMapping(file);
 }
 
-export async function defaultCloudflareIo(): Promise<CloudflareIo> {
-  const apiToken = process.env.CLOUDFLARE_API_TOKEN;
-  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
-  if (!apiToken || !accountId) {
+export function wranglerAuthFileCandidates(
+  homeDir: string,
+  platform = process.platform
+): string[] {
+  const mac = join(
+    homeDir,
+    'Library/Preferences/.wrangler/config/default.toml'
+  );
+  const xdg = join(homeDir, '.config/.wrangler/config/default.toml');
+  const home = join(homeDir, '.wrangler/config/default.toml');
+  return platform === 'darwin' ? [mac, home] : [xdg, home];
+}
+
+export function parseWranglerOauthToml(text: string): string | undefined {
+  const match = /^oauth_token\s*=\s*"([^"]+)"/m.exec(text);
+  return match?.[1];
+}
+
+export function parseWranglerWhoami(json: unknown): {
+  accountId: string;
+  email?: string;
+} {
+  if (!isRecord(json) || json.loggedIn !== true) {
     throw new DevHostsError(
-      'CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are required to register hostnames. They are the same credentials wrangler deploy uses.'
+      'Not logged in to Wrangler. Run `wrangler login` and retry `bun tunnel:provision`.'
     );
   }
+  const accounts = Array.isArray(json.accounts) ? json.accounts : [];
+  const accountId = stringField(accounts[0], 'id');
+  if (!accountId) {
+    throw new DevHostsError(
+      'Wrangler login has no Cloudflare account. Run `wrangler login` and pick the OpenStory account.'
+    );
+  }
+  return { accountId, email: stringField(json, 'email') };
+}
+
+function jsonFromWranglerOutput(stdout: string): unknown {
+  const start = stdout.indexOf('{');
+  if (start < 0) {
+    throw new DevHostsError(
+      'wrangler whoami --json did not return JSON. Run `wrangler login`.'
+    );
+  }
+  return JSON.parse(stdout.slice(start));
+}
+
+function stringField(value: unknown, key: string): string | undefined {
+  if (!isRecord(value) || typeof value[key] !== 'string') return undefined;
+  return value[key];
+}
+
+export function resolveWranglerAuth(input?: {
+  homeDir?: string;
+  platform?: NodeJS.Platform;
+  whoamiJson?: unknown;
+  readToml?: (path: string) => string | undefined;
+}): { accountId: string; apiToken: string } {
+  const whoami =
+    input?.whoamiJson ??
+    jsonFromWranglerOutput(
+      spawnSync('wrangler', ['whoami', '--json'], { encoding: 'utf8' }).stdout
+    );
+  const { accountId } = parseWranglerWhoami(whoami);
+
+  const homeDir = input?.homeDir ?? homedir();
+  const platform = input?.platform ?? process.platform;
+  const readToml =
+    input?.readToml ??
+    ((path: string) =>
+      existsSync(path) ? readFileSync(path, 'utf8') : undefined);
+  for (const path of wranglerAuthFileCandidates(homeDir, platform)) {
+    const text = readToml(path);
+    if (!text) continue;
+    const token = parseWranglerOauthToml(text);
+    if (token) return { accountId, apiToken: token };
+  }
+  throw new DevHostsError(
+    'Could not find a Wrangler OAuth token. Run `wrangler login` (browser, no API token) and retry.'
+  );
+}
+
+export async function defaultCloudflareIo(): Promise<CloudflareIo> {
+  const { apiToken, accountId } = resolveWranglerAuth();
   const headers = {
     Authorization: `Bearer ${apiToken}`,
     'Content-Type': 'application/json',
   };
-
-  function stringField(value: unknown, key: string): string | undefined {
-    if (!isRecord(value) || typeof value[key] !== 'string') return undefined;
-    return value[key];
-  }
 
   function firstId(rows: unknown): string | undefined {
     if (!Array.isArray(rows) || rows.length === 0) return undefined;
@@ -288,14 +363,23 @@ export async function defaultCloudflareIo(): Promise<CloudflareIo> {
         { config }
       );
     },
-    upsertCname: async (hostname, target) => {
+    upsertCname: async (hostname, target, tunnelName) => {
+      const routed = spawnSync(
+        'cloudflared',
+        ['tunnel', 'route', 'dns', tunnelName, hostname],
+        { encoding: 'utf8' }
+      );
+      if (routed.status === 0) return;
+
       const zoneResult = await cf(
         'GET',
         `https://api.cloudflare.com/client/v4/zones?name=${encodeURIComponent(DEV_TUNNEL_ZONE)}`
       );
       const zoneId = firstId(zoneResult);
       if (!zoneId) {
-        throw new DevHostsError(`Could not find zone ${DEV_TUNNEL_ZONE}`);
+        throw new DevHostsError(
+          `Could not create DNS for ${hostname}. Wrangler login cannot write zone DNS. Run \`cloudflared tunnel login\` once (browser, not an API token), then retry. cloudflared said: ${routed.stderr || routed.stdout || 'not installed'}`
+        );
       }
       const existing = await cf(
         'GET',
@@ -309,19 +393,26 @@ export async function defaultCloudflareIo(): Promise<CloudflareIo> {
         proxied: true,
         ttl: 1,
       };
-      if (recordId) {
+      try {
+        if (recordId) {
+          await cf(
+            'PUT',
+            `https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records/${recordId}`,
+            payload
+          );
+          return;
+        }
         await cf(
-          'PUT',
-          `https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records/${recordId}`,
+          'POST',
+          `https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records`,
           payload
         );
-        return;
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        throw new DevHostsError(
+          `Could not create CNAME ${hostname} → ${target}. Wrangler login is zone-read-only. Run \`cloudflared tunnel login\` once, then retry. (${detail})`
+        );
       }
-      await cf(
-        'POST',
-        `https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records`,
-        payload
-      );
     },
   };
 }

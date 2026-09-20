@@ -7,7 +7,11 @@ import {
   applyMappingToEnv,
   buildMapping,
   machineTunnelName,
+  parseWranglerOauthToml,
+  parseWranglerWhoami,
   provisionMapping,
+  resolveWranglerAuth,
+  wranglerAuthFileCandidates,
   writeMapping,
   type CloudflareIo,
 } from './dev-hosts';
@@ -25,6 +29,43 @@ function tempFile(): string {
   temps.push(dir);
   return join(dir, '.env.local');
 }
+
+describe('wrangler login', () => {
+  it('reads the OAuth token wrangler login stores, not an API key', () => {
+    expect(
+      parseWranglerOauthToml('oauth_token = "oauth-from-wrangler-login"\n')
+    ).toBe('oauth-from-wrangler-login');
+    expect(
+      parseWranglerWhoami({
+        loggedIn: true,
+        email: 'tom@openstory.so',
+        accounts: [{ id: 'acct-1', name: 'OpenStory' }],
+      })
+    ).toEqual({ accountId: 'acct-1', email: 'tom@openstory.so' });
+  });
+
+  it('resolves auth from whoami + the wrangler config file', () => {
+    const auth = resolveWranglerAuth({
+      homeDir: '/tmp/home',
+      platform: 'darwin',
+      whoamiJson: {
+        loggedIn: true,
+        accounts: [{ id: 'acct-from-login' }],
+      },
+      readToml: (path) =>
+        path.includes('Library/Preferences/.wrangler')
+          ? 'oauth_token = "session-token"\n'
+          : undefined,
+    });
+    expect(auth).toEqual({
+      accountId: 'acct-from-login',
+      apiToken: 'session-token',
+    });
+    expect(wranglerAuthFileCandidates('/tmp/home', 'darwin')[0]).toContain(
+      'Library/Preferences/.wrangler'
+    );
+  });
+});
 
 describe('machineTunnelName', () => {
   it('slugs the hostname into a wrangler tunnel name', () => {

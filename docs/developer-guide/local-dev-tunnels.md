@@ -11,7 +11,7 @@ Each laptop has its own ten random `*.openstory.so` names, stored at **`~/.opens
 
 ## One-time per machine
 
-Needs Wrangler credentials (`CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`).
+Uses your existing **`wrangler login`** session (the OAuth token Wrangler already stores). No Cloudflare API token. If DNS create is denied (Wrangler’s login is zone-read-only), run **`cloudflared tunnel login`** once — also a browser login, not an API key — so `cloudflared tunnel route dns` can write the CNAMEs.
 
 ```bash
 bun tunnel:provision

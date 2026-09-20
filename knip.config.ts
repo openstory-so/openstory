@@ -64,5 +64,6 @@ export default {
     'open', // macOS URL/file opener (bun explorer)
     'openssl', // used by scripts/env-file.ts for secret generation
     'doppler', // package.json secrets:pull + scripts/push-secrets.ts
+    'cloudflared', // scripts/dev-hosts.ts DNS fallback (wrangler login cannot write zone DNS)
   ],
 } satisfies KnipConfig;
