@@ -164,16 +164,20 @@ export const LOCAL_FAL_PRICING_SEED: Record<string, SeedPrice> = {
 /** D1 100-bind cap; 10 columns × 9 rows. */
 const INSERT_CHUNK = 9;
 
-/** fal's $1/unit catalog stub — no typical, no observed. ActionCost hides. */
-function isCatalogStub(row: {
+/**
+ * A refreshed row that can never price a call: fal's $1/unit catalog stub, or
+ * advertised "compute seconds" (H3 Max reference-to-video) — no typical, no
+ * observed. ActionCost hides and `estimateFalCost` logs "No unit-count signal".
+ */
+export function isCatalogStub(row: {
   unit: string;
   unitPriceMicros: number;
   typicalUnitsPerCall: number | null;
   observedSampleCount: number;
 }): boolean {
   return (
-    row.unit === 'units' &&
-    row.unitPriceMicros === 1_000_000 &&
+    ((row.unit === 'units' && row.unitPriceMicros === 1_000_000) ||
+      row.unit === 'compute seconds') &&
     row.typicalUnitsPerCall == null &&
     row.observedSampleCount === 0
   );
@@ -181,8 +185,8 @@ function isCatalogStub(row: {
 
 /**
  * Insert seed rows for fal endpoints that have no `model_pricing` row yet.
- * Also replaces fal $1/unit catalog stubs for seeded endpoints — a live
- * `refresh-fal-pricing` snapshot writes those stubs and would otherwise
+ * Also replaces no-signal stubs (`isCatalogStub`) for seeded endpoints — a
+ * live `refresh-fal-pricing` snapshot writes those stubs and would otherwise
  * hide Generate's cost on Turbo (Lite). Never overwrites a real rate.
  */
 export async function ensureLocalModelPricingSeeded(
