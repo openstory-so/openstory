@@ -40,7 +40,6 @@ import {
 } from '@/platform/auth/cookie-prefix';
 import { DEV_OTP_CODE } from '@/platform/auth/dev-otp';
 import { isGoogleAuthConfigured } from './google-auth';
-import { DEV_TUNNEL_ORIGINS } from '@/platform/dev-tunnel-slots';
 import { isLocalRequestHost } from '@/platform/server/env/environment';
 import { DEVICE_VERIFICATION_PATH } from '@/platform/server/api-v1/device-auth';
 import { createOAuthProviderPlugins } from './oauth-provider';
@@ -162,7 +161,9 @@ export function createAuth(db: ReturnType<typeof getDb> = getDb()) {
       'http://localhost:*',
       'http://192.168.*:*',
       'http://100.*:*',
-      ...DEV_TUNNEL_ORIGINS,
+      ...(getEnv().VITE_APP_URL.startsWith('https://')
+        ? [getEnv().VITE_APP_URL]
+        : []),
     ],
 
     // Session configuration

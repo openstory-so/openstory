@@ -107,7 +107,7 @@ export async function setupMockRoutes(page: Page): Promise<void> {
     await route.fulfill({
       status: 302,
       headers: {
-        Location: 'http://localhost:3001/api/test/image?w=9&h=9',
+        Location: 'http://localhost:3020/api/test/image?w=9&h=9',
       },
     });
   });

@@ -300,7 +300,7 @@ export async function cleanupLocationByName(
   teamId: string,
   name: string
 ): Promise<void> {
-  await fetch('http://localhost:3001/api/test/location', {
+  await fetch('http://localhost:3020/api/test/location', {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ teamId, name }),
@@ -315,7 +315,7 @@ export async function cleanupTalentByName(
   teamId: string,
   name: string
 ): Promise<void> {
-  await fetch('http://localhost:3001/api/test/talent', {
+  await fetch('http://localhost:3020/api/test/talent', {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ teamId, name }),

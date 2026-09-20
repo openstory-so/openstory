@@ -9,11 +9,7 @@
  */
 
 import { readFileSync } from 'node:fs';
-import {
-  defaultTunnelIo,
-  ensureWorktreeTunnel,
-  TunnelError,
-} from './dev-tunnel';
+import { applyMappingToEnv, readMapping } from './dev-hosts';
 import { ensureLocalEnv } from './env-file';
 
 const isOlder = (a: string, b: string): boolean => {
@@ -62,20 +58,15 @@ if (added.length > 0) {
   console.log(`[ensure-env] .env.local: added ${added.join(', ')}`);
 }
 
-// Reboot recovery for an already-claimed slot. Never claims a new one, and
-// skipped in e2e so a leftover tunnel URL cannot rewrite the hermetic env.
 if (process.env.E2E_TEST !== 'true' && process.env.CLOUDFLARE_ENV !== 'test') {
-  try {
-    const tunnel = await ensureWorktreeTunnel(defaultTunnelIo());
-    if (tunnel) {
+  const mapping = readMapping();
+  if (mapping) {
+    const port = Number.parseInt(process.env.PORT ?? '3000', 10) || 3000;
+    const origin = applyMappingToEnv('.env.local', port, mapping);
+    if (origin) {
       console.log(
-        `[ensure-env] tunnel ${tunnel.slot} → ${tunnel.origin} (pid ${tunnel.pid})`
+        `[ensure-env] ${origin} ← port ${port} (~/.openstory/dev-tunnels.json)`
       );
     }
-  } catch (error) {
-    const message =
-      error instanceof TunnelError ? error.message : String(error);
-    console.error(`[ensure-env] ${message}`);
-    process.exit(1);
   }
 }

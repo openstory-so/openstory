@@ -19,7 +19,7 @@ export async function createTestLibraryLocation(
   teamId: string,
   name: string
 ): Promise<TestLibraryLocation> {
-  const res = await fetch('http://localhost:3001/api/test/location', {
+  const res = await fetch('http://localhost:3020/api/test/location', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ teamId, name }),
@@ -39,7 +39,7 @@ export async function createTestLibraryLocation(
 
   return {
     ...created,
-    referenceImageUrl: `http://localhost:3001/api/test/image?w=1024&h=576&label=location`,
+    referenceImageUrl: `http://localhost:3020/api/test/image?w=1024&h=576&label=location`,
   };
 }
 
@@ -62,7 +62,7 @@ export async function createTestLibraryLocationSet(
  * Clean up test library locations by team ID (use only when test isolation isn't needed)
  */
 export async function cleanupTestLocations(teamId: string): Promise<void> {
-  await fetch('http://localhost:3001/api/test/location', {
+  await fetch('http://localhost:3020/api/test/location', {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ teamId }),
@@ -73,7 +73,7 @@ export async function cleanupTestLocations(teamId: string): Promise<void> {
  * Clean up a specific location by ID (use for parallel test isolation)
  */
 export async function cleanupLocationById(locationId: string): Promise<void> {
-  await fetch('http://localhost:3001/api/test/location', {
+  await fetch('http://localhost:3020/api/test/location', {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ locationId }),
@@ -90,7 +90,7 @@ export async function getSystemLocationByName(
   name: string
 ): Promise<TestLibraryLocation> {
   const res = await fetch(
-    `http://localhost:3001/api/test/location?name=${encodeURIComponent(name)}`
+    `http://localhost:3020/api/test/location?name=${encodeURIComponent(name)}`
   );
   if (!res.ok) {
     throw new Error(

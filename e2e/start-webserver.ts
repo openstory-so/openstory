@@ -6,7 +6,7 @@
  * open a second Miniflare against the same SQLite while vite already holds
  * it (SQLITE_BUSY_RECOVERY, workerd dies, every spec gets connection refused).
  *
- * Args after the script name are forwarded to vite (e.g. `dev --port=3001`).
+ * Args after the script name are forwarded to vite (e.g. `dev --port=3020`).
  */
 
 import { execFileSync, spawn } from 'node:child_process';

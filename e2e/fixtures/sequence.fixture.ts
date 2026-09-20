@@ -29,7 +29,7 @@ export type TestCharacter = {
  * Create a test style for the team (required by sequence)
  */
 export async function createTestStyle(teamId: string): Promise<string> {
-  const res = await fetch('http://localhost:3001/api/test/style', {
+  const res = await fetch('http://localhost:3020/api/test/style', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ teamId }),
@@ -55,7 +55,7 @@ export async function createTestSequence(
   // sequence's own style, and `cleanupSequenceById` only deletes that one — so
   // a second style here leaked an orphan row onto the shared team on every
   // call, permanently widening the team's style catalog mid-run.
-  const res = await fetch('http://localhost:3001/api/test/sequence', {
+  const res = await fetch('http://localhost:3020/api/test/sequence', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ teamId, userId, title }),
@@ -88,7 +88,7 @@ export async function createTestShot(
     variantImageStatus?: 'pending' | 'generating' | 'completed' | 'failed';
   } = {}
 ): Promise<TestShot> {
-  const res = await fetch('http://localhost:3001/api/test/shot', {
+  const res = await fetch('http://localhost:3020/api/test/shot', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sequenceId, orderIndex, ...options }),
@@ -117,7 +117,7 @@ export async function createTestCharacter(
     sheetStatus?: 'pending' | 'generating' | 'completed' | 'failed';
   } = {}
 ): Promise<TestCharacter> {
-  const res = await fetch('http://localhost:3001/api/test/character', {
+  const res = await fetch('http://localhost:3020/api/test/character', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -162,7 +162,7 @@ export async function getTestSequenceShots(sequenceId: string): Promise<
   }>
 > {
   const res = await fetch(
-    `http://localhost:3001/api/test/shot?sequenceId=${encodeURIComponent(sequenceId)}`
+    `http://localhost:3020/api/test/shot?sequenceId=${encodeURIComponent(sequenceId)}`
   );
   if (!res.ok) {
     throw new Error(
@@ -193,7 +193,7 @@ export async function getTestShot(shotId: string): Promise<{
   variantImageStatus: string | null;
 } | null> {
   const res = await fetch(
-    `http://localhost:3001/api/test/shot?id=${encodeURIComponent(shotId)}`
+    `http://localhost:3020/api/test/shot?id=${encodeURIComponent(shotId)}`
   );
   if (!res.ok) return null;
   return z
@@ -215,7 +215,7 @@ export async function getTestCharacter(characterId: string): Promise<{
   sheetStatus: string | null;
 } | null> {
   const res = await fetch(
-    `http://localhost:3001/api/test/character?id=${encodeURIComponent(characterId)}`
+    `http://localhost:3020/api/test/character?id=${encodeURIComponent(characterId)}`
   );
   if (!res.ok) return null;
   return z
@@ -240,7 +240,7 @@ export async function getTestSequenceStatus(sequenceId: string): Promise<{
   musicUrl: string | null;
 } | null> {
   const res = await fetch(
-    `http://localhost:3001/api/test/sequence?sequenceId=${encodeURIComponent(sequenceId)}`
+    `http://localhost:3020/api/test/sequence?sequenceId=${encodeURIComponent(sequenceId)}`
   );
   if (!res.ok) return null;
   return z
@@ -256,7 +256,7 @@ export async function getTestSequenceStatus(sequenceId: string): Promise<{
  * Clean up all test sequences and related data for a team (use only when test isolation isn't needed)
  */
 export async function cleanupTestSequences(teamId: string): Promise<void> {
-  await fetch('http://localhost:3001/api/test/sequence', {
+  await fetch('http://localhost:3020/api/test/sequence', {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ teamId }),
@@ -270,7 +270,7 @@ export async function cleanupSequenceById(
   sequenceId: string,
   styleId: string
 ): Promise<void> {
-  await fetch('http://localhost:3001/api/test/sequence', {
+  await fetch('http://localhost:3020/api/test/sequence', {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sequenceId, styleId }),

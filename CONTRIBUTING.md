@@ -53,16 +53,16 @@ Lefthook automatically tags commits with the issue number extracted from the bra
 
 Key commands:
 
-| Command         | Description                                                                                              |
-| --------------- | -------------------------------------------------------------------------------------------------------- |
-| `bun dev`       | Start the app dev services                                                                               |
-| `bun dev:all`   | Same as `bun dev` plus the Stripe listener                                                               |
-| `bun tunnel`    | Claim a globally free `devN.openstory.so` HTTPS slot ([docs](docs/developer-guide/local-dev-tunnels.md)) |
-| `bun teardown`  | Free this worktree's tunnel slot                                                                         |
-| `bun run build` | Build for production (**not** `bun build` — that's the bundler)                                          |
-| `bun typecheck` | Type-check with tsgo                                                                                     |
-| `bun run test`  | Run unit tests (Vitest)                                                                                  |
-| `bun test:e2e`  | Run Playwright end-to-end tests                                                                          |
+| Command                | Description                                                                                                               |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `bun dev`              | Start the app dev services                                                                                                |
+| `bun dev:all`          | Same as `bun dev` plus the Stripe listener                                                                                |
+| `bun tunnel:provision` | Once per laptop: map ports 3000–3009 to random `*.openstory.so` names ([docs](docs/developer-guide/local-dev-tunnels.md)) |
+| `bun tunnel`           | Print that map and the Google OAuth redirect URIs                                                                         |
+| `bun run build`        | Build for production (**not** `bun build` — that's the bundler)                                                           |
+| `bun typecheck`        | Type-check with tsgo                                                                                                      |
+| `bun run test`         | Run unit tests (Vitest)                                                                                                   |
+| `bun test:e2e`         | Run Playwright end-to-end tests                                                                                           |
 
 ## Code Quality
 

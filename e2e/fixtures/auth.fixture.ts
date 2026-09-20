@@ -55,7 +55,7 @@ export async function createTestUser(
 
   // Create via the guarded test API so all writes go through the single
   // safe Miniflare process (instead of direct getPlatformProxy from this worker).
-  const res = await fetch('http://localhost:3001/api/test/user', {
+  const res = await fetch('http://localhost:3020/api/test/user', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
@@ -74,7 +74,7 @@ export async function createTestUser(
  */
 async function cleanupTestUser(userId: string, teamId: string): Promise<void> {
   // Cleanup via test API so the write happens inside the safe Worker Miniflare
-  await fetch('http://localhost:3001/api/test/user', {
+  await fetch('http://localhost:3020/api/test/user', {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ userId, teamId }),
@@ -110,7 +110,7 @@ export async function authenticateUser(
 
   // Create OTP via test API (the route normalizes to the identifier
   // Better Auth's signIn.emailOtp will actually look up).
-  await fetch('http://localhost:3001/api/test/verify', {
+  await fetch('http://localhost:3020/api/test/verify', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, otp: testOtp }),

@@ -24,7 +24,7 @@ export async function createTestTalent(
   name: string
 ): Promise<TestTalent> {
   // Create via guarded test API (writes happen inside the single safe Miniflare)
-  const res = await fetch('http://localhost:3001/api/test/talent', {
+  const res = await fetch('http://localhost:3020/api/test/talent', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ teamId, name }),
@@ -74,7 +74,7 @@ export async function createTestTalentWithMedia(
   name: string,
   mediaCount = 2
 ): Promise<TestTalentWithMedia> {
-  const res = await fetch('http://localhost:3001/api/test/talent', {
+  const res = await fetch('http://localhost:3020/api/test/talent', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ teamId, name, mediaCount }),
@@ -103,7 +103,7 @@ export async function createTestTalentWithMedia(
  * Clean up test talent by team ID (use only when test isolation isn't needed)
  */
 export async function cleanupTestTalent(teamId: string): Promise<void> {
-  await fetch('http://localhost:3001/api/test/talent', {
+  await fetch('http://localhost:3020/api/test/talent', {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ teamId }),
@@ -114,7 +114,7 @@ export async function cleanupTestTalent(teamId: string): Promise<void> {
  * Clean up a specific talent by ID (use for parallel test isolation)
  */
 export async function cleanupTalentById(talentId: string): Promise<void> {
-  await fetch('http://localhost:3001/api/test/talent', {
+  await fetch('http://localhost:3020/api/test/talent', {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ talentId }),
@@ -130,7 +130,7 @@ export async function cleanupTalentById(talentId: string): Promise<void> {
  */
 export async function getSystemTalentByName(name: string): Promise<TestTalent> {
   const res = await fetch(
-    `http://localhost:3001/api/test/talent?name=${encodeURIComponent(name)}`
+    `http://localhost:3020/api/test/talent?name=${encodeURIComponent(name)}`
   );
   if (!res.ok) {
     throw new Error(

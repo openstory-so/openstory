@@ -239,7 +239,7 @@ export async function createTestShot(
   const shotId = generateId();
 
   const {
-    thumbnailUrl = `http://localhost:3001/api/test/image?w=1024&h=576&label=thumb`,
+    thumbnailUrl = `http://localhost:3020/api/test/image?w=1024&h=576&label=thumb`,
     variantImageUrl = null,
     variantImageStatus = 'pending',
   } = options;
@@ -333,7 +333,7 @@ export async function createTestTalent(
     id: sheetId,
     talentId,
     name: 'Default',
-    imageUrl: `http://localhost:3001/api/test/image?w=512&h=512&label=sheet`,
+    imageUrl: `http://localhost:3020/api/test/image?w=512&h=512&label=sheet`,
     imagePath: `talent/${name.toLowerCase().replace(/\s+/g, '-')}/sheet.webp`,
     isDefault: true,
     source: 'manual_upload',
@@ -376,7 +376,7 @@ export async function createTestTalentWithMedia(
     id: sheetId,
     talentId,
     name: 'Default',
-    imageUrl: `http://localhost:3001/api/test/image?w=512&h=512&label=sheet`,
+    imageUrl: `http://localhost:3020/api/test/image?w=512&h=512&label=sheet`,
     isDefault: true,
     source: 'manual_upload',
     createdAt: now,
@@ -391,7 +391,7 @@ export async function createTestTalentWithMedia(
       id: mediaId,
       talentId,
       type: 'image',
-      url: `http://localhost:3001/api/test/image?w=400&h=400&label=media`,
+      url: `http://localhost:3020/api/test/image?w=400&h=400&label=media`,
       path: `${teamId}/${talentId}/${mediaId}.jpg`,
       createdAt: now,
       updatedAt: now,
@@ -430,7 +430,7 @@ export async function createTestLocation(
     id: sheetId,
     locationId: inserted.id,
     name: 'Default',
-    imageUrl: `http://localhost:3001/api/test/image?w=1024&h=576&label=location`,
+    imageUrl: `http://localhost:3020/api/test/image?w=1024&h=576&label=location`,
     imagePath: `locations/${name
       .toLowerCase()
       .replace(/[^a-z0-9\s-]/g, '')
@@ -467,7 +467,7 @@ export async function createTestCharacter(
   const id = generateId();
 
   const {
-    sheetImageUrl = `http://localhost:3001/api/test/image?w=512&h=512&label=character`,
+    sheetImageUrl = `http://localhost:3020/api/test/image?w=512&h=512&label=character`,
     sheetStatus = 'completed',
   } = options;
 

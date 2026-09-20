@@ -33,7 +33,7 @@ export default defineConfig({
 
   // Shared settings for all projects
   use: {
-    baseURL: 'http://localhost:3001',
+    baseURL: 'http://localhost:3020',
     viewport: { width: 1920, height: 1080 },
     trace: process.env.CI ? 'on-first-retry' : 'retain-on-failure',
     screenshot: 'only-on-failure',
@@ -113,8 +113,8 @@ export default defineConfig({
             `BYTEPLUS_OPENAPI_HOST=${process.env.BYTEPLUS_OPENAPI_HOST ?? 'ark.ap-southeast-1.byteplusapi.com'}`,
           ]
         : []),
-      'PORT=3001',
-      'VITE_APP_URL=http://localhost:3001',
+      'PORT=3020',
+      'VITE_APP_URL=http://localhost:3020',
       'OPENROUTER_BASE_URL=http://localhost:4010',
       // Native xAI (Grok chat / Imagine stills / video) goes to a second
       // aimock instance — see aimock-server.ts. The Grok adapter's default
@@ -157,11 +157,11 @@ export default defineConfig({
     // built-server testing.
     return {
       command: useBuiltServer
-        ? `${envPrefix} bun e2e/start-webserver.ts preview --port=3001`
-        : `${envPrefix} bun e2e/start-webserver.ts dev --port=3001`,
+        ? `${envPrefix} bun e2e/start-webserver.ts preview --port=3020`
+        : `${envPrefix} bun e2e/start-webserver.ts dev --port=3020`,
       // Wait for the TCP port, not an HTTP 2xx — SSR errors should surface to
       // the individual specs via `page.goto()` rather than fail server boot.
-      port: 3001,
+      port: 3020,
       reuseExistingServer: !useBuiltServer,
       timeout: 300_000,
       stdout: 'pipe',

@@ -147,7 +147,7 @@ testWithUser.describe('Variant Selection', () => {
   let testSequence: TestSequence;
   let testShot: TestShot;
   const originalThumbnailUrl =
-    'http://localhost:3001/api/test/image?w=1024&h=576&label=thumb';
+    'http://localhost:3020/api/test/image?w=1024&h=576&label=thumb';
 
   testWithUser.beforeEach(async ({ page, testUser }) => {
     await setupMockRoutes(page);
@@ -162,7 +162,7 @@ testWithUser.describe('Variant Selection', () => {
       // Use real placeholder images
       thumbnailUrl: originalThumbnailUrl,
       variantImageUrl:
-        'http://localhost:3001/api/test/image?w=3072&h=3072&label=variants',
+        'http://localhost:3020/api/test/image?w=3072&h=3072&label=variants',
       variantImageStatus: 'completed',
     });
   });
@@ -299,7 +299,7 @@ testWithUser.describe('Character Recast', () => {
       {
         // Use real placeholder image
         sheetImageUrl:
-          'http://localhost:3001/api/test/image?w=1920&h=1080&label=character',
+          'http://localhost:3020/api/test/image?w=1920&h=1080&label=character',
         sheetStatus: 'completed',
       }
     );

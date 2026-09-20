@@ -10,10 +10,8 @@ import { defineConfig, type Plugin } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
 import { devtools } from '@tanstack/devtools-vite';
 import viteReact from '@vitejs/plugin-react';
-import {
-  devTunnelHostname,
-  slotFromOrigin,
-} from './src/platform/dev-tunnel-slots.ts';
+import { isTunnelAppHostname } from './src/platform/dev-hosts.ts';
+import { readMapping } from './scripts/dev-hosts.ts';
 import { worktreeAuthCookiePrefix } from './src/platform/auth/cookie-prefix.ts';
 import { createServerFnIdGenerator } from './src/platform/server-fn-id.ts';
 
@@ -32,14 +30,22 @@ const authCookiePrefix = isDev
 function tunnelHmr():
   | { protocol: 'wss'; host: string; clientPort: number }
   | undefined {
-  const slot = slotFromOrigin(process.env.VITE_APP_URL);
-  if (!slot) return undefined;
-  return {
-    protocol: 'wss',
-    host: devTunnelHostname(slot),
-    clientPort: 443,
-  };
+  const appUrl = process.env.VITE_APP_URL;
+  if (!appUrl) return undefined;
+  try {
+    const host = new URL(appUrl).hostname;
+    if (!isTunnelAppHostname(host)) return undefined;
+    return { protocol: 'wss', host, clientPort: 443 };
+  } catch {
+    return undefined;
+  }
 }
+
+const enableDevTunnel =
+  isDev &&
+  process.env.E2E_TEST !== 'true' &&
+  process.env.CLOUDFLARE_ENV !== 'test';
+const namedTunnel = enableDevTunnel ? readMapping()?.tunnelName : undefined;
 
 const tunnelHmrConfig = tunnelHmr();
 
@@ -244,6 +250,9 @@ export default defineConfig({
     tailwindcss(),
     cloudflare({
       viteEnvironment: { name: 'ssr' },
+      ...(enableDevTunnel
+        ? { tunnel: namedTunnel ? { name: namedTunnel } : true }
+        : {}),
       // remoteBindings is left at its default (true) so an explicit
       // per-binding `remote: true` in wrangler.jsonc still works as an
       // opt-in (e.g. temporarily repro'ing a CDN bug against real R2). By

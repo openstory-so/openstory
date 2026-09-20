@@ -77,13 +77,13 @@ See [`.env.example`](.env.example) for all optional configuration (Google OAuth,
 
 ### Development
 
-| Command         | Description                                                |
-| --------------- | ---------------------------------------------------------- |
-| `bun dev`       | Bootstrap env, migrate + seed DB, start dev server         |
-| `bun setup`     | Interactive setup — add AI keys (`--prod` for deployments) |
-| `bun tunnel`    | Optional public HTTPS slot (`devN.openstory.so`)           |
-| `bun teardown`  | Free this worktree's tunnel slot                           |
-| `bun storybook` | Start Storybook on port 6006                               |
+| Command                | Description                                                |
+| ---------------------- | ---------------------------------------------------------- |
+| `bun dev`              | Bootstrap env, migrate + seed DB, start dev server         |
+| `bun setup`            | Interactive setup — add AI keys (`--prod` for deployments) |
+| `bun tunnel:provision` | Optional: 10 random public HTTPS names for ports 3000–3009 |
+| `bun tunnel`           | Print this laptop's hostname map                           |
+| `bun storybook`        | Start Storybook on port 6006                               |
 
 ### Quality
 
