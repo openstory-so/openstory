@@ -39,16 +39,7 @@ const CONFIG: Record<EnvKey, BucketConfig[]> = {
       bucket: 'openstory-dev',
       // 3000–3009 are bun dev worktrees; 3020 is the e2e Playwright server.
       origins: [
-        'http://localhost:3000',
-        'http://localhost:3001',
-        'http://localhost:3002',
-        'http://localhost:3003',
-        'http://localhost:3004',
-        'http://localhost:3005',
-        'http://localhost:3006',
-        'http://localhost:3007',
-        'http://localhost:3008',
-        'http://localhost:3009',
+        ...Array.from({ length: 10 }, (_, i) => `http://localhost:${3000 + i}`),
         'http://localhost:3020',
       ],
       includeWrites: true,

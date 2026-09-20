@@ -41,32 +41,6 @@ const DEV_TUNNEL_PORTS: readonly number[] = Array.from(
   (_, i) => DEV_TUNNEL_BASE_PORT + i
 );
 
-const RESERVED_LABELS = new Set([
-  'www',
-  'app',
-  'api',
-  'assets',
-  'cdn',
-  'mail',
-  'mcp',
-  'auth',
-  'admin',
-  'staging',
-  'preview',
-  'local',
-  'dev',
-  'dev1',
-  'dev2',
-  'dev3',
-  'dev4',
-  'dev5',
-  'dev6',
-  'dev7',
-  'dev8',
-  'dev9',
-  'dev10',
-]);
-
 const ADJECTIVES = [
   'amber',
   'briny',
@@ -182,10 +156,6 @@ function googleCallbackUrls(file: DevTunnelsFile): string[] {
   );
 }
 
-function isReservedLabel(label: string): boolean {
-  return RESERVED_LABELS.has(label.toLowerCase());
-}
-
 function pickWord(
   list: readonly string[],
   bytes: Uint8Array,
@@ -193,39 +163,31 @@ function pickWord(
 ): string {
   const hi = bytes[offset] ?? 0;
   const lo = bytes[offset + 1] ?? 0;
-  const index = ((hi << 8) | lo) % list.length;
-  return list[index] ?? list[0] ?? 'odd';
+  return list[((hi << 8) | lo) % list.length] ?? list[0] ?? 'odd';
 }
 
-function randomLabel(bytes: Uint8Array): string {
-  if (bytes.length < 4) {
-    throw new Error('Need 4 random bytes for a two-word hostname');
-  }
+function randomLabel(): string {
+  const bytes = new Uint8Array(4);
+  crypto.getRandomValues(bytes);
   return `${pickWord(ADJECTIVES, bytes, 0)}-${pickWord(NOUNS, bytes, 2)}`;
 }
 
-function hostnameForLabel(label: string): string {
-  return `${label}.${tunnelZone()}`;
-}
-
-function allocateRoutes(
-  nextBytes: () => Uint8Array,
-  existing: ReadonlySet<string> = new Set()
-): DevTunnelRoute[] {
-  const taken = new Set(existing);
+function allocateRoutes(): DevTunnelRoute[] {
+  const taken = new Set<string>();
+  const zone = tunnelZone();
   const routes: DevTunnelRoute[] = [];
   for (const port of DEV_TUNNEL_PORTS) {
-    let label = randomLabel(nextBytes());
+    let label = randomLabel();
     let guard = 0;
-    while (isReservedLabel(label) || taken.has(label)) {
-      label = randomLabel(nextBytes());
+    while (taken.has(label)) {
+      label = randomLabel();
       guard += 1;
       if (guard > 50) {
         throw new Error('Could not allocate a unique hostname label');
       }
     }
     taken.add(label);
-    routes.push({ port, hostname: hostnameForLabel(label) });
+    routes.push({ port, hostname: `${label}.${zone}` });
   }
   return routes;
 }
@@ -244,32 +206,7 @@ function tunnelIngressConfig(routes: readonly DevTunnelRoute[]): {
   };
 }
 
-class DevHostsError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'DevHostsError';
-  }
-}
-
-type CloudflareIo = {
-  accountId: string;
-  apiToken: string;
-  createTunnel: (name: string) => Promise<{ id: string; name: string }>;
-  findTunnel: (
-    name: string
-  ) => Promise<{ id: string; name: string } | undefined>;
-  putIngress: (
-    tunnelId: string,
-    config: ReturnType<typeof tunnelIngressConfig>
-  ) => Promise<void>;
-  upsertCname: (
-    hostname: string,
-    target: string,
-    tunnelName: string
-  ) => Promise<void>;
-};
-
-export function mappingPath(homeDir = homedir()): string {
+function mappingPath(homeDir = homedir()): string {
   return join(homeDir, DEV_TUNNELS_RELATIVE_PATH);
 }
 
@@ -277,31 +214,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function parseRoute(
-  value: unknown
-): DevTunnelsFile['routes'][number] | undefined {
-  if (!isRecord(value)) return undefined;
-  if (typeof value.port !== 'number' || typeof value.hostname !== 'string') {
-    return undefined;
-  }
-  return { port: value.port, hostname: value.hostname };
-}
-
 export function readMapping(path = mappingPath()): DevTunnelsFile | undefined {
   if (!existsSync(path)) return undefined;
   const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
-  if (!isRecord(parsed) || parsed.v !== 1 || !Array.isArray(parsed.routes)) {
-    return undefined;
-  }
   if (
+    !isRecord(parsed) ||
+    parsed.v !== 1 ||
     typeof parsed.tunnelName !== 'string' ||
-    typeof parsed.tunnelId !== 'string'
+    typeof parsed.tunnelId !== 'string' ||
+    !Array.isArray(parsed.routes)
   ) {
     return undefined;
   }
-  const routes = parsed.routes
-    .map(parseRoute)
-    .filter((route) => route !== undefined);
+  const routes = parsed.routes.filter(
+    (route): route is DevTunnelRoute =>
+      isRecord(route) &&
+      typeof route.port === 'number' &&
+      typeof route.hostname === 'string'
+  );
   if (routes.length === 0) return undefined;
   return {
     v: 1,
@@ -366,46 +296,6 @@ function machineTunnelName(hostname = osHostname()): string {
   return `openstory-dev-${slug || 'local'}`;
 }
 
-function randomBytes(): Uint8Array {
-  const bytes = new Uint8Array(8);
-  crypto.getRandomValues(bytes);
-  return bytes;
-}
-
-function buildMapping(input: {
-  tunnelName: string;
-  tunnelId: string;
-  nextBytes?: () => Uint8Array;
-}): DevTunnelsFile {
-  return {
-    v: 1,
-    tunnelName: input.tunnelName,
-    tunnelId: input.tunnelId,
-    zone: tunnelZone(),
-    routes: allocateRoutes(input.nextBytes ?? randomBytes),
-  };
-}
-
-async function provisionMapping(
-  io: CloudflareIo,
-  options?: { tunnelName?: string; nextBytes?: () => Uint8Array }
-): Promise<DevTunnelsFile> {
-  const tunnelName = options?.tunnelName ?? machineTunnelName();
-  const existing = await io.findTunnel(tunnelName);
-  const tunnel = existing ?? (await io.createTunnel(tunnelName));
-  const file = buildMapping({
-    tunnelName: tunnel.name,
-    tunnelId: tunnel.id,
-    nextBytes: options?.nextBytes,
-  });
-  await io.putIngress(tunnel.id, tunnelIngressConfig(file.routes));
-  const target = `${tunnel.id}.cfargotunnel.com`;
-  for (const route of file.routes) {
-    await io.upsertCname(route.hostname, target, tunnel.name);
-  }
-  return file;
-}
-
 function printMapping(file: DevTunnelsFile): void {
   console.log(`Tunnel ${file.tunnelName} (${file.tunnelId})`);
   console.log(`Map: ${mappingPath()}\n`);
@@ -426,23 +316,22 @@ async function runCli(argv: string[]): Promise<void> {
   const reset = argv.includes('--reset');
   if (argv[0] === '--provision' || argv[0] === 'provision') {
     const path = mappingPath();
-    if (!reset && readMapping(path)) {
+    const existing = !reset ? readMapping(path) : undefined;
+    if (existing) {
       console.log(
         'Mapping already exists. Pass --reset to allocate new hostnames.\n'
       );
-      const file = readMapping(path);
-      if (file) printMapping(file);
+      printMapping(existing);
       return;
     }
-    const io = await defaultCloudflareIo();
-    const file = await provisionMapping(io);
+    const file = await provisionMapping();
     writeMapping(file, path);
     printMapping(file);
     return;
   }
   const file = readMapping();
   if (!file) {
-    throw new DevHostsError(
+    throw new Error(
       `No mapping at ${mappingPath()}. Run \`bun tunnel:provision\` (uses \`wrangler login\`).`
     );
   }
@@ -472,14 +361,14 @@ function parseWranglerWhoami(json: unknown): {
   email?: string;
 } {
   if (!isRecord(json) || json.loggedIn !== true) {
-    throw new DevHostsError(
+    throw new Error(
       'Not logged in to Wrangler. Run `wrangler login` and retry `bun tunnel:provision`.'
     );
   }
   const accounts = Array.isArray(json.accounts) ? json.accounts : [];
   const accountId = stringField(accounts[0], 'id');
   if (!accountId) {
-    throw new DevHostsError(
+    throw new Error(
       'Wrangler login has no Cloudflare account. Run `wrangler login` and pick the OpenStory account.'
     );
   }
@@ -489,7 +378,7 @@ function parseWranglerWhoami(json: unknown): {
 function jsonFromWranglerOutput(stdout: string): unknown {
   const start = stdout.indexOf('{');
   if (start < 0) {
-    throw new DevHostsError(
+    throw new Error(
       'wrangler whoami --json did not return JSON. Run `wrangler login`.'
     );
   }
@@ -516,30 +405,45 @@ function resolveWranglerAuth(): { accountId: string; apiToken: string } {
     const token = parseWranglerOauthToml(readFileSync(path, 'utf8'));
     if (token) return { accountId, apiToken: token };
   }
-  throw new DevHostsError(
+  throw new Error(
     'Could not find a Wrangler OAuth token. Run `wrangler login` (browser, no API token) and retry.'
   );
 }
 
-async function defaultCloudflareIo(): Promise<CloudflareIo> {
+function createTunnel(name: string): { id: string; name: string } {
+  const created = spawnSync('wrangler', ['tunnel', 'create', name], {
+    encoding: 'utf8',
+  });
+  const id =
+    created.status === 0
+      ? /ID:\s*([0-9a-f-]{36})/i.exec(created.stdout)?.[1]
+      : undefined;
+  if (!id) {
+    throw new Error(
+      `wrangler tunnel create failed: ${created.stderr || created.stdout || created.status}`
+    );
+  }
+  return { id, name };
+}
+
+function routeDns(tunnelName: string, hostname: string): void {
+  const routed = spawnSync(
+    'cloudflared',
+    ['tunnel', 'route', 'dns', tunnelName, hostname],
+    { encoding: 'utf8' }
+  );
+  if (routed.status === 0) return;
+  throw new Error(
+    `Could not create DNS for ${hostname}. Wrangler login cannot write zone DNS. Run \`cloudflared tunnel login\` once (browser, not an API token), then retry. cloudflared said: ${routed.stderr || routed.stdout || 'not installed'}`
+  );
+}
+
+async function provisionMapping(): Promise<DevTunnelsFile> {
   const { apiToken, accountId } = resolveWranglerAuth();
   const headers = {
     Authorization: `Bearer ${apiToken}`,
     'Content-Type': 'application/json',
   };
-
-  function firstId(rows: unknown): string | undefined {
-    if (!Array.isArray(rows) || rows.length === 0) return undefined;
-    return stringField(rows[0], 'id');
-  }
-
-  function cfErrorMessage(json: unknown, status: number): string {
-    if (!isRecord(json) || !Array.isArray(json.errors)) {
-      return `Cloudflare API ${status}`;
-    }
-    const first = json.errors[0];
-    return stringField(first, 'message') ?? `Cloudflare API ${status}`;
-  }
 
   async function cf(
     method: string,
@@ -553,100 +457,45 @@ async function defaultCloudflareIo(): Promise<CloudflareIo> {
     });
     const json: unknown = await response.json();
     if (!isRecord(json) || json.success !== true) {
-      throw new DevHostsError(cfErrorMessage(json, response.status));
+      const first =
+        isRecord(json) && Array.isArray(json.errors)
+          ? json.errors[0]
+          : undefined;
+      throw new Error(
+        stringField(first, 'message') ?? `Cloudflare API ${response.status}`
+      );
     }
     return json.result;
   }
 
-  return {
-    accountId,
-    apiToken,
-    createTunnel: async (name) => {
-      const created = spawnSync('wrangler', ['tunnel', 'create', name], {
-        encoding: 'utf8',
-      });
-      if (created.status === 0) {
-        const id = /ID:\s*([0-9a-f-]{36})/i.exec(created.stdout)?.[1];
-        if (id) return { id, name };
-      }
-      const result = await cf('POST', cloudflareTunnelUrl(accountId), {
-        name,
-        config_src: 'cloudflare',
-      });
-      const id = stringField(result, 'id');
-      if (!id) throw new DevHostsError('tunnel create did not return an id');
-      return { id, name };
-    },
-    findTunnel: async (name) => {
-      const result = await cf(
-        'GET',
-        `${cloudflareTunnelUrl(accountId)}?is_deleted=false&name=${encodeURIComponent(name)}`
-      );
-      const rows = Array.isArray(result) ? result : [];
-      const match = rows.find((row) => stringField(row, 'name') === name);
-      const id = stringField(match, 'id');
-      if (!id) return undefined;
-      return { id, name };
-    },
-    putIngress: async (tunnelId, config) => {
-      await cf(
-        'PUT',
-        cloudflareTunnelUrl(accountId, `/${tunnelId}/configurations`),
-        { config }
-      );
-    },
-    upsertCname: async (hostname, target, tunnelName) => {
-      const routed = spawnSync(
-        'cloudflared',
-        ['tunnel', 'route', 'dns', tunnelName, hostname],
-        { encoding: 'utf8' }
-      );
-      if (routed.status === 0) return;
+  const tunnelName = machineTunnelName();
+  const listed = await cf(
+    'GET',
+    `${cloudflareTunnelUrl(accountId)}?is_deleted=false&name=${encodeURIComponent(tunnelName)}`
+  );
+  const rows = Array.isArray(listed) ? listed : [];
+  const match = rows.find((row) => stringField(row, 'name') === tunnelName);
+  const existingId = stringField(match, 'id');
+  const tunnel = existingId
+    ? { id: existingId, name: tunnelName }
+    : createTunnel(tunnelName);
 
-      const zoneResult = await cf(
-        'GET',
-        `https://api.cloudflare.com/client/v4/zones?name=${encodeURIComponent(tunnelZone())}`
-      );
-      const zoneId = firstId(zoneResult);
-      if (!zoneId) {
-        throw new DevHostsError(
-          `Could not create DNS for ${hostname}. Wrangler login cannot write zone DNS. Run \`cloudflared tunnel login\` once (browser, not an API token), then retry. cloudflared said: ${routed.stderr || routed.stdout || 'not installed'}`
-        );
-      }
-      const existing = await cf(
-        'GET',
-        `https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records?type=CNAME&name=${encodeURIComponent(hostname)}`
-      );
-      const recordId = firstId(existing);
-      const payload = {
-        type: 'CNAME',
-        name: hostname,
-        content: target,
-        proxied: true,
-        ttl: 1,
-      };
-      try {
-        if (recordId) {
-          await cf(
-            'PUT',
-            `https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records/${recordId}`,
-            payload
-          );
-          return;
-        }
-        await cf(
-          'POST',
-          `https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records`,
-          payload
-        );
-      } catch (error) {
-        const detail = error instanceof Error ? error.message : String(error);
-        throw new DevHostsError(
-          `Could not create CNAME ${hostname} → ${target}. Wrangler login is zone-read-only. Run \`cloudflared tunnel login\` once, then retry. (${detail})`
-        );
-      }
-    },
+  const file: DevTunnelsFile = {
+    v: 1,
+    tunnelName: tunnel.name,
+    tunnelId: tunnel.id,
+    zone: tunnelZone(),
+    routes: allocateRoutes(),
   };
+  await cf(
+    'PUT',
+    cloudflareTunnelUrl(accountId, `/${tunnel.id}/configurations`),
+    { config: tunnelIngressConfig(file.routes) }
+  );
+  for (const route of file.routes) {
+    routeDns(tunnel.name, route.hostname);
+  }
+  return file;
 }
 
 if (import.meta.main) {

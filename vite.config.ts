@@ -27,26 +27,12 @@ if (
   const envLocal = join(process.cwd(), '.env.local');
   if (existsSync(envLocal)) {
     for (const line of readFileSync(envLocal, 'utf8').split('\n')) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
-      const eq = trimmed.indexOf('=');
-      if (eq === -1) continue;
-      const key = trimmed.slice(0, eq).trim();
-      if (
-        key !== 'PORT' &&
-        key !== 'VITE_APP_URL' &&
-        key !== 'BETTER_AUTH_URL'
-      ) {
-        continue;
-      }
-      let value = trimmed.slice(eq + 1).trim();
-      if (
-        (value.startsWith('"') && value.endsWith('"')) ||
-        (value.startsWith("'") && value.endsWith("'"))
-      ) {
-        value = value.slice(1, -1);
-      }
-      if (value) process.env[key] = value;
+      const m = /^(PORT|VITE_APP_URL|BETTER_AUTH_URL)\s*=\s*(.*)$/.exec(
+        line.trim()
+      );
+      const key = m?.[1];
+      const value = m?.[2];
+      if (key && value) process.env[key] = value.replace(/^['"]|['"]$/g, '');
     }
   }
 }
