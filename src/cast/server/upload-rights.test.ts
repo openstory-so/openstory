@@ -219,7 +219,7 @@ describe('attestUploads', () => {
 });
 
 describe('likenessFromLedger', () => {
-  it('maps cleared to none, signed to real, unknown to null (#1674, #1682)', async () => {
+  it('maps cleared to none, a detected or signed person to real, unknown to null (#1674, #1682)', async () => {
     const scopedDb = createScopedDb(TEAM_ID, USER_ID);
     const cleared = `/r2/talent/${TEAM_ID}/temp/cleared.png`;
     const signed = `/r2/talent/${TEAM_ID}/temp/signed.png`;
@@ -242,8 +242,8 @@ describe('likenessFromLedger', () => {
         request,
       })
     ).toEqual({ status: 'needs_portrait' });
-    expect(await likenessFromLedger(scopedDb, signed)).toBe('fictional');
-    expect(registersWithArk('fictional')).toBe(true);
+    expect(await likenessFromLedger(scopedDb, signed)).toBe('real');
+    expect(registersWithArk('real')).toBe(true);
     await attestUploads(
       scopedDb,
       [

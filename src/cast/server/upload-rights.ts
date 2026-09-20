@@ -197,9 +197,11 @@ export async function requireUploadRights(
 }
 
 /**
- * Signed → `real`; classifier cleared → `none`; detected but unsigned →
- * `fictional` (#1682). No row returns null — the caller has not gated yet.
- * BytePlus CreateAsset uses `registersWithArk`: only `none` is a plain URL.
+ * Signed or detected → `real`; classifier cleared → `none` (#1682).
+ * Detected-but-unsigned is still a real person — `requireUploadRights`
+ * refuses use until signed; this helper must not call that `fictional`
+ * (no release needed). No row returns null. BytePlus CreateAsset uses
+ * `registersWithArk`: only `none` is a plain URL.
  */
 export async function likenessFromLedger(
   scopedDb: ScopedDb,
@@ -213,7 +215,7 @@ export async function likenessFromLedger(
     case 'cleared':
       return 'none';
     case 'needs_portrait':
-      return 'fictional';
+      return 'real';
   }
 }
 
