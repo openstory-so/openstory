@@ -1,7 +1,8 @@
 // vite.config.ts
-import { copyFileSync, readFileSync } from 'node:fs';
+import { copyFileSync, existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { parse as parseJsonc } from 'jsonc-parser';
-import { resolve } from 'node:path';
 import { cloudflare } from '@cloudflare/vite-plugin';
 import contentCollections from '@content-collections/vite';
 import { tanstackStart } from '@tanstack/react-start/plugin/vite';
@@ -10,8 +11,6 @@ import { defineConfig, type Plugin } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
 import { devtools } from '@tanstack/devtools-vite';
 import viteReact from '@vitejs/plugin-react';
-import { isTunnelAppHostname } from './src/platform/dev-hosts.ts';
-import { readMapping } from './scripts/dev-hosts.ts';
 import { worktreeAuthCookiePrefix } from './src/platform/auth/cookie-prefix.ts';
 import { createServerFnIdGenerator } from './src/platform/server-fn-id.ts';
 
@@ -27,6 +26,25 @@ const authCookiePrefix = isDev
   ? process.env.VITE_AUTH_COOKIE_PREFIX
   : undefined;
 
+function localTunnelName(): string | undefined {
+  const path = join(homedir(), '.openstory/dev-tunnels.json');
+  if (!existsSync(path)) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      'tunnelName' in parsed &&
+      typeof parsed.tunnelName === 'string'
+    ) {
+      return parsed.tunnelName;
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
 function tunnelHmr():
   | { protocol: 'wss'; host: string; clientPort: number }
   | undefined {
@@ -34,7 +52,15 @@ function tunnelHmr():
   if (!appUrl) return undefined;
   try {
     const host = new URL(appUrl).hostname;
-    if (!isTunnelAppHostname(host)) return undefined;
+    if (!host.endsWith('.openstory.so')) return undefined;
+    if (
+      host === 'openstory.so' ||
+      host === 'www.openstory.so' ||
+      host === 'app.openstory.so' ||
+      host === 'assets.openstory.so'
+    ) {
+      return undefined;
+    }
     return { protocol: 'wss', host, clientPort: 443 };
   } catch {
     return undefined;
@@ -45,7 +71,7 @@ const enableDevTunnel =
   isDev &&
   process.env.E2E_TEST !== 'true' &&
   process.env.CLOUDFLARE_ENV !== 'test';
-const namedTunnel = enableDevTunnel ? readMapping()?.tunnelName : undefined;
+const namedTunnel = enableDevTunnel ? localTunnelName() : undefined;
 
 const tunnelHmrConfig = tunnelHmr();
 

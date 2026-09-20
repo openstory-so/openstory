@@ -14,17 +14,220 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { hostname as osHostname, homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import {
-  allocateRoutes,
-  DEV_TUNNELS_RELATIVE_PATH,
-  DEV_TUNNEL_ZONE,
-  googleCallbackUrls,
-  isDevTunnelPort,
-  originForPort,
-  tunnelIngressConfig,
-  type DevTunnelsFile,
-} from '@/platform/dev-hosts';
 import { upsertEnvVars } from './env-file';
+
+const DEV_TUNNEL_PORT_COUNT = 10;
+const DEV_TUNNEL_BASE_PORT = 3000;
+const DEV_TUNNEL_ZONE = 'openstory.so';
+const DEV_TUNNELS_RELATIVE_PATH = '.openstory/dev-tunnels.json';
+
+const DEV_TUNNEL_PORTS: readonly number[] = Array.from(
+  { length: DEV_TUNNEL_PORT_COUNT },
+  (_, i) => DEV_TUNNEL_BASE_PORT + i
+);
+
+const RESERVED_LABELS = new Set([
+  'www',
+  'app',
+  'api',
+  'assets',
+  'cdn',
+  'mail',
+  'mcp',
+  'auth',
+  'admin',
+  'staging',
+  'preview',
+  'local',
+  'dev',
+  'dev1',
+  'dev2',
+  'dev3',
+  'dev4',
+  'dev5',
+  'dev6',
+  'dev7',
+  'dev8',
+  'dev9',
+  'dev10',
+]);
+
+const ADJECTIVES = [
+  'amber',
+  'briny',
+  'cheeky',
+  'cosmic',
+  'dapper',
+  'eager',
+  'fancy',
+  'fuzzy',
+  'giddy',
+  'goofy',
+  'happy',
+  'icy',
+  'jaunty',
+  'jazzy',
+  'keen',
+  'loopy',
+  'lucky',
+  'merry',
+  'misty',
+  'nimble',
+  'noble',
+  'odd',
+  'peppy',
+  'perky',
+  'plucky',
+  'proud',
+  'quirky',
+  'rusty',
+  'silly',
+  'snappy',
+  'spry',
+  'sunny',
+  'tiny',
+  'vivid',
+  'witty',
+  'wobbly',
+  'zany',
+  'zippy',
+] as const;
+
+const NOUNS = [
+  'badger',
+  'bagel',
+  'bison',
+  'comet',
+  'dumpling',
+  'emu',
+  'falcon',
+  'gecko',
+  'gourd',
+  'heron',
+  'igloo',
+  'koala',
+  'lantern',
+  'lemur',
+  'llama',
+  'mango',
+  'marmot',
+  'muffin',
+  'newt',
+  'noodle',
+  'otter',
+  'panda',
+  'pebble',
+  'pickle',
+  'platypus',
+  'quail',
+  'raccoon',
+  'raven',
+  'sloth',
+  'sock',
+  'squid',
+  'taco',
+  'teapot',
+  'trout',
+  'waffle',
+  'walrus',
+  'wombat',
+  'yak',
+  'yacht',
+  'zebra',
+] as const;
+
+type DevTunnelRoute = {
+  port: number;
+  hostname: string;
+};
+
+type DevTunnelsFile = {
+  v: 1;
+  tunnelName: string;
+  tunnelId: string;
+  zone: string;
+  routes: DevTunnelRoute[];
+};
+
+function isDevTunnelPort(port: number): boolean {
+  return (
+    port >= DEV_TUNNEL_BASE_PORT &&
+    port < DEV_TUNNEL_BASE_PORT + DEV_TUNNEL_PORT_COUNT
+  );
+}
+
+function originForPort(file: DevTunnelsFile, port: number): string | undefined {
+  const route = file.routes.find((r) => r.port === port);
+  return route ? `https://${route.hostname}` : undefined;
+}
+
+function googleCallbackUrls(file: DevTunnelsFile): string[] {
+  return file.routes.map(
+    (route) => `https://${route.hostname}/api/auth/callback/google`
+  );
+}
+
+function isReservedLabel(label: string): boolean {
+  return RESERVED_LABELS.has(label.toLowerCase());
+}
+
+function pickWord(
+  list: readonly string[],
+  bytes: Uint8Array,
+  offset: number
+): string {
+  const hi = bytes[offset] ?? 0;
+  const lo = bytes[offset + 1] ?? 0;
+  const index = ((hi << 8) | lo) % list.length;
+  return list[index] ?? list[0] ?? 'odd';
+}
+
+function randomLabel(bytes: Uint8Array): string {
+  if (bytes.length < 4) {
+    throw new Error('Need 4 random bytes for a two-word hostname');
+  }
+  return `${pickWord(ADJECTIVES, bytes, 0)}-${pickWord(NOUNS, bytes, 2)}`;
+}
+
+function hostnameForLabel(label: string): string {
+  return `${label}.${DEV_TUNNEL_ZONE}`;
+}
+
+function allocateRoutes(
+  nextBytes: () => Uint8Array,
+  existing: ReadonlySet<string> = new Set()
+): DevTunnelRoute[] {
+  const taken = new Set(existing);
+  const routes: DevTunnelRoute[] = [];
+  for (const port of DEV_TUNNEL_PORTS) {
+    let label = randomLabel(nextBytes());
+    let guard = 0;
+    while (isReservedLabel(label) || taken.has(label)) {
+      label = randomLabel(nextBytes());
+      guard += 1;
+      if (guard > 50) {
+        throw new Error('Could not allocate a unique hostname label');
+      }
+    }
+    taken.add(label);
+    routes.push({ port, hostname: hostnameForLabel(label) });
+  }
+  return routes;
+}
+
+function tunnelIngressConfig(routes: readonly DevTunnelRoute[]): {
+  ingress: Array<{ hostname?: string; service: string }>;
+} {
+  return {
+    ingress: [
+      ...routes.map((route) => ({
+        hostname: route.hostname,
+        service: `http://127.0.0.1:${route.port}`,
+      })),
+      { service: 'http_status:404' },
+    ],
+  };
+}
 
 class DevHostsError extends Error {
   constructor(message: string) {
