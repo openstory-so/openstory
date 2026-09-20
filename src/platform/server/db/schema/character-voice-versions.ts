@@ -1,20 +1,13 @@
 /** Append-only voice history for a sequence character (#1657). */
-import { sql } from 'drizzle-orm';
-import {
-  index,
-  integer,
-  snakeCase,
-  text,
-  uniqueIndex,
-} from 'drizzle-orm/sqlite-core';
+import { index, integer, snakeCase, text } from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/platform/id';
 import { characters, type VoicePreview } from './characters';
 
 /**
  * Why this row exists. Explicit at every call site (#1657) — never inferred
  * from which columns moved, which made a release and a library pick both read
- * as 'generated'. 'released' is the row written when the voice id is dropped
- * because its ElevenLabs slot was freed.
+ * as 'generated'. 'removed' is the row written when the character drops its
+ * voice id; whether the ElevenLabs slot was actually freed is `releasedAt`.
  */
 const CHARACTER_VOICE_VERSION_SOURCES = [
   'analysis',
@@ -22,7 +15,7 @@ const CHARACTER_VOICE_VERSION_SOURCES = [
   'library',
   'user-edit',
   'disabled',
-  'released',
+  'removed',
 ] as const;
 export type CharacterVoiceVersionSource =
   (typeof CHARACTER_VOICE_VERSION_SOURCES)[number];
@@ -41,8 +34,7 @@ export const characterVoiceVersions = snakeCase.table(
     description: text(),
     previews: text({ mode: 'json' }).$type<VoicePreview[]>(),
     enabled: integer({ mode: 'boolean' }),
-    source: text().$type<CharacterVoiceVersionSource>().notNull(),
-    selectedAt: integer({ mode: 'timestamp' }),
+    source: text({ enum: CHARACTER_VOICE_VERSION_SOURCES }).notNull(),
     /**
      * Set on every row holding a voice id the moment that id is deleted on
      * ElevenLabs (`releaseVoiceIfUnreferenced`). A released row cannot be
@@ -58,8 +50,5 @@ export const characterVoiceVersions = snakeCase.table(
       table.characterId,
       table.createdAt
     ),
-    uniqueIndex('uq_character_voice_versions_selected')
-      .on(table.characterId)
-      .where(sql`${table.selectedAt} IS NOT NULL`),
   ]
 );

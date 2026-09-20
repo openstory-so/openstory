@@ -85,11 +85,12 @@ export type VideoManifestEntry = {
    */
   audioSourceKey: string | null;
   /**
-   * Provenance of every non-versioned reference this render was sent
-   * (#1657): the sheet versions a reference-only shot drew from and the
-   * media of any audio/video element, as `sheet:<versionId>` and
-   * `element:<elementId>:<url>`. Sorted, so order is not identity. The
-   * hash body drops an empty list so stored digests do not move.
+   * Provenance of every reference that rode on the wire for this render
+   * (#1657), in either mode: `character:<id>:<sheetVersionId|url>`,
+   * `location:<id>:<refVersionId|url>` and `element:<id>:<url>` (see
+   * `reference-provenance.ts`). Sorted, so order is not identity. The hash
+   * body drops an empty list so stored digests do not move. Absent on rows
+   * from before #1657: unknown, never stale.
    */
   referenceKeys: string[];
 };

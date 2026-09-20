@@ -1,7 +1,7 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "6ab2a601-d5b2-4e93-a554-fd610e6ca164",
+  "id": "cb2c7be7-2977-43db-b5ab-f0b50ea65b09",
   "prevIds": ["123a704f-45b7-43d0-8d7b-1e1c08ed80b5"],
   "ddl": [
     {
@@ -1095,16 +1095,6 @@
       "default": null,
       "generated": null,
       "name": "source",
-      "entityType": "columns",
-      "table": "character_voice_versions"
-    },
-    {
-      "type": "integer",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "selected_at",
       "entityType": "columns",
       "table": "character_voice_versions"
     },
@@ -10898,20 +10888,6 @@
     {
       "columns": [
         {
-          "value": "character_id",
-          "isExpression": false
-        }
-      ],
-      "isUnique": true,
-      "where": "\"character_voice_versions\".\"selected_at\" IS NOT NULL",
-      "origin": "manual",
-      "name": "uq_character_voice_versions_selected",
-      "entityType": "indexes",
-      "table": "character_voice_versions"
-    },
-    {
-      "columns": [
-        {
           "value": "sequence_id",
           "isExpression": false
         }
@@ -13322,10 +13298,28 @@
       "table": "credits"
     },
     {
+      "value": "\"duration_seconds\" > 0",
+      "name": "dialogue_recordings_duration",
+      "entityType": "checks",
+      "table": "dialogue_recordings"
+    },
+    {
       "value": "(\"observed_median_units\" IS NULL) = (\"observed_sample_count\" = 0)",
       "name": "model_pricing_observed_pair",
       "entityType": "checks",
       "table": "model_pricing"
+    },
+    {
+      "value": "\"from_seconds\" >= 0 AND \"to_seconds\" > \"from_seconds\"",
+      "name": "shot_dialogue_sections_range",
+      "entityType": "checks",
+      "table": "shot_dialogue_sections"
+    },
+    {
+      "value": "\"discarded_at\" IS NULL OR \"selected_at\" IS NULL",
+      "name": "shot_dialogue_sections_selected_not_discarded",
+      "entityType": "checks",
+      "table": "shot_dialogue_sections"
     }
   ],
   "renames": []

@@ -9,10 +9,12 @@
  * range to a deterministic R2 key) and `shots.audioClips` holds that URL. A
  * generated dialogue clip's `id` IS its section id.
  *
- * Append-only, one selected row per shot, soft-discard via `discardedAt`.
+ * Append-only, one selected row per shot. `discardedAt` is honoured by reads;
+ * nothing sets it yet.
  */
 import { sql, type InferSelectModel } from 'drizzle-orm';
 import {
+  check,
   index,
   integer,
   real,
@@ -24,8 +26,6 @@ import { generateId } from '@/platform/id';
 import { shots } from './shots';
 
 const SHOT_DIALOGUE_SECTION_SOURCES = ['recorded', 'context'] as const;
-export type ShotDialogueSectionSource =
-  (typeof SHOT_DIALOGUE_SECTION_SOURCES)[number];
 
 export const shotDialogueSections = snakeCase.table(
   'shot_dialogue_sections',
@@ -50,7 +50,7 @@ export const shotDialogueSections = snakeCase.table(
     >(),
     /** The `shot_dialogue_versions` row spoken, when one existed. */
     dialogueVersionId: text(),
-    source: text().$type<ShotDialogueSectionSource>().notNull(),
+    source: text({ enum: SHOT_DIALOGUE_SECTION_SOURCES }).notNull(),
     selectedAt: integer({ mode: 'timestamp' }),
     discardedAt: integer({ mode: 'timestamp' }),
     workflowRunId: text(),
@@ -67,6 +67,14 @@ export const shotDialogueSections = snakeCase.table(
     uniqueIndex('uq_shot_dialogue_sections_selected')
       .on(table.shotId)
       .where(sql`${table.selectedAt} IS NOT NULL`),
+    check(
+      'shot_dialogue_sections_range',
+      sql`${table.fromSeconds} >= 0 AND ${table.toSeconds} > ${table.fromSeconds}`
+    ),
+    check(
+      'shot_dialogue_sections_selected_not_discarded',
+      sql`${table.discardedAt} IS NULL OR ${table.selectedAt} IS NULL`
+    ),
   ]
 );
 

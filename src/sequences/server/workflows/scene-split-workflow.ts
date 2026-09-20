@@ -292,6 +292,12 @@ async function triggerPreviewImage({
  * `offsets` are the resolved boundary offsets (used to derive owning scenes
  * for bible `firstMention` lines).
  */
+/** The split as the LLM steps reconcile it — before `persist-scenes` adds row ids. */
+type ReconciledSplit = Omit<
+  SceneSplitWorkflowResult,
+  'dialogueVersionIdByShotId'
+>;
+
 type StreamResult = {
   scenes: SceneSplittingScene[];
   title: string;
@@ -1066,10 +1072,10 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
           characterBible: biblesResult.characterBible,
           locationBible,
           elementBible,
-        } satisfies SceneSplitWorkflowResult);
+        } satisfies ReconciledSplit);
       }
     );
-    const reconciled: SceneSplitWorkflowResult = JSON.parse(reconcileJson);
+    const reconciled: ReconciledSplit = JSON.parse(reconcileJson);
     if (
       !Array.isArray(reconciled.scenes) ||
       !Array.isArray(reconciled.shotMapping)
@@ -1109,8 +1115,10 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
     // Do NOT delete-then-recreate: `shots.scene_id` is a bare
     // `REFERENCES scenes(id)` in the migration (no ON DELETE SET NULL), so
     // deleting stream-linked scenes fails with DrizzleQueryError (#1072).
+    let dialogueVersionIdByShotId: Record<string, string> = {};
     if (sequenceId && reconciled.scenes.length > 0) {
-      await step.do('persist-scenes', async () => {
+      dialogueVersionIdByShotId = await step.do('persist-scenes', async () => {
+        const versionIds: Record<string, string> = {};
         const sceneRows = [];
         const scriptSeeds = [];
         for (let index = 0; index < reconciled.scenes.length; index++) {
@@ -1201,10 +1209,21 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
               shot,
               index === 0
             );
-            if (lines.length === 0) continue;
-            await scopedDb.shotDialogue.write(shot.shotId, lines, 'prompt');
+            // No `lines.length` skip: a shot the re-analysis left silent
+            // needs an empty row over its old one (`write` mints nothing for
+            // a shot that never spoke). A re-analysis also replaces a
+            // 'user-edit' selection — the script it was edited against moved.
+            const version = await scopedDb.shotDialogue.write(
+              shot.shotId,
+              lines,
+              'prompt'
+            );
+            if (version && lines.length > 0) {
+              versionIds[shot.shotId] = version.id;
+            }
           }
         }
+        return versionIds;
       });
     }
 
@@ -1264,7 +1283,7 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
       });
     });
 
-    return reconciled;
+    return { ...reconciled, dialogueVersionIdByShotId };
   }
 
   protected override async onFailure({

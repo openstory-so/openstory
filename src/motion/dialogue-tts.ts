@@ -10,6 +10,7 @@ import {
   type ImageToVideoModel,
 } from '@/models/models';
 import { durationGridForModel } from '@/motion/model-capabilities';
+import type { MotionAudioClip } from '@/platform/server/db/schema';
 import type {
   DialogueLine,
   MotionDialogue,
@@ -29,6 +30,30 @@ export const DIALOGUE_TTS_STABILITY = 0.35;
  * clip binds as `@Audio1` / `Audio 1` on every voiced line.
  */
 export const DIALOGUE_CLIP_TOKEN = 'DIALOGUE';
+
+/**
+ * The clip a shot holds for a section of a recording (#1657). The one place
+ * that says a generated dialogue clip's `id` IS its section id.
+ */
+export function sectionClip(
+  section: {
+    id: string;
+    recordingId: string;
+    sourceKey: string;
+    spokenLines: MotionAudioClip['spokenLines'] | null;
+  },
+  cut: { url: string; durationSeconds: number }
+): MotionAudioClip {
+  return {
+    id: section.id,
+    url: cut.url,
+    token: DIALOGUE_CLIP_TOKEN,
+    durationSeconds: cut.durationSeconds,
+    sourceKey: section.sourceKey,
+    recordingId: section.recordingId,
+    ...(section.spokenLines && { spokenLines: section.spokenLines }),
+  };
+}
 
 /**
  * Persisted on a line the user opted out of the generated take: the video

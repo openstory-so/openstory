@@ -8,24 +8,26 @@
  */
 
 import {
-  DIALOGUE_CLIP_TOKEN,
   dialogueAudioMaxSeconds,
   dialogueAudioMinSeconds,
   dialogueClipSourceKey,
   dialogueFitBudget,
+  sectionClip,
   voicedDialogueLines,
 } from '@/motion/dialogue-tts';
 import { cutAudioSection } from '@/motion/server/cut-audio-section';
 import { safeImageToVideoModel } from '@/models/models';
-import { NotFoundError, ValidationError } from '@/platform/errors';
-import type { MotionAudioClip } from '@/platform/server/db/schema';
+import { getLogger } from '@/platform/logger';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
+import { requireSelectableSection } from '@/shots/server/shot-dialogue';
 import { shotAccessMiddleware } from '@/shots/shot-access.fn';
 import { shotDialogue } from '@/shots/shot-dialogue';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
+
+const logger = getLogger(['openstory', 'serverFn', 'shot-dialogue']);
 
 const shotInput = z.object({ sequenceId: ulidSchema, shotId: ulidSchema });
 
@@ -76,40 +78,28 @@ export const listShotDialogueSectionsFn = createServerFn({ method: 'GET' })
   });
 
 /**
- * Make a reading the shot's current one and put its cut file on the shot.
- * Pointer first, mirror second: a failed mirror leaves the pointer and the
- * clip naming different readings, which the next select or render corrects —
- * whereas mirroring first could leave a clip nothing points at. The cut
- * comes before both: it is a deterministic cache write, so a failure there
- * changes nothing.
+ * Make a reading the shot's current one and put its cut file on the shot —
+ * pointer and clip in one batch (`selectSection`). The cut comes first: it is
+ * a deterministic cache write, so a failure there changes nothing. The event
+ * comes last and is logged, not thrown: both writes already landed.
  */
 export const selectShotDialogueSectionFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
   .validator(zodValidator(shotInput.extend({ sectionId: ulidSchema })))
   .handler(async ({ context, data }) => {
     const { scopedDb, shot, sequence } = context;
-    const section = await scopedDb.shotDialogue.getSectionById(data.sectionId);
-    if (!section || section.shotId !== shot.id || section.discardedAt) {
-      throw new NotFoundError('Reading not found');
-    }
-
-    const currentKey = await currentSourceKey(scopedDb, shot.id, sequence.id);
-    if (currentKey === '' || section.sourceKey !== currentKey) {
-      throw new ValidationError('These lines changed since this was recorded.');
-    }
-
     const videoModels = [safeImageToVideoModel(sequence.videoModel)];
     const { limitSeconds } = dialogueFitBudget({
       shotSeconds:
         shot.durationMs && shot.durationMs > 0 ? shot.durationMs / 1000 : null,
       maxSeconds: dialogueAudioMaxSeconds(videoModels),
     });
-    const seconds = section.toSeconds - section.fromSeconds;
-    if (seconds > limitSeconds) {
-      throw new ValidationError(
-        `Reading is ${seconds.toFixed(1)}s — the limit is ${limitSeconds.toFixed(1)}s.`
-      );
-    }
+    const section = requireSelectableSection({
+      section: await scopedDb.shotDialogue.getSectionById(data.sectionId),
+      shotId: shot.id,
+      currentKey: await currentSourceKey(scopedDb, shot.id, sequence.id),
+      limitSeconds,
+    });
 
     const cut = await cutAudioSection({
       storageKey: section.recording.storageKey,
@@ -121,24 +111,23 @@ export const selectShotDialogueSectionFn = createServerFn({ method: 'POST' })
       minDurationSeconds: dialogueAudioMinSeconds(videoModels),
     });
 
-    await scopedDb.shotDialogue.selectSection(shot.id, section.id);
-    const clip: MotionAudioClip = {
-      id: section.id,
-      url: cut.url,
-      token: DIALOGUE_CLIP_TOKEN,
-      durationSeconds: cut.durationSeconds,
-      sourceKey: section.sourceKey,
-      recordingId: section.recordingId,
-      ...(section.spokenLines && { spokenLines: section.spokenLines }),
-    };
-    await scopedDb.shots.setAudioClips(shot.id, [clip]);
-    await scopedDb.sequenceEvents.record({
-      sequenceId: sequence.id,
-      actorId: context.user.id,
-      kind: 'dialogue.section.selected',
-      targetType: 'shot',
-      targetId: shot.id,
-      data: { sectionId: section.id },
-    });
+    const clip = sectionClip(section, cut);
+    await scopedDb.shotDialogue.selectSection(shot.id, section.id, [clip]);
+    try {
+      await scopedDb.sequenceEvents.record({
+        sequenceId: sequence.id,
+        actorId: context.user.id,
+        kind: 'dialogue.section.selected',
+        targetType: 'shot',
+        targetId: shot.id,
+        data: { sectionId: section.id },
+      });
+    } catch (error) {
+      logger.error('dialogue.section.selected event not recorded', {
+        shotId: shot.id,
+        sectionId: section.id,
+        err: error,
+      });
+    }
     return { sectionId: section.id, clip };
   });

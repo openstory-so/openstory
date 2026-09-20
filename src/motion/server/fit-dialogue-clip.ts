@@ -10,7 +10,7 @@
  *  1. Trailing silence comes off every section as it is measured
  *     (`trimmedEndSeconds`) — free, and it is usually the whole overrun.
  *  2. Still over: an LLM tightens the turns to the shot's word budget and the
- *     take is re-recorded. Bounded by {@link MAX_DIALOGUE_FIT_ATTEMPTS}, since
+ *     call is re-recorded. Bounded by {@link MAX_DIALOGUE_FIT_ATTEMPTS}, since
  *     each pass bills one more TTS call.
  *  3. Still over: the shot FAILS here, with the numbers in the message. It is
  *     never submitted. A provider that rejects a 15.4s reference reports it as
@@ -20,7 +20,7 @@
  * changes the performance the user cast, and a pitch-preserving stretch in
  * workerd would be ours to write and tune. Trimming silence is the fitting
  * the issue asks for; the rewrite is the recovery.
- * ponytail: if steady-state failures show takes landing 1–3% over after the
+ * ponytail: if steady-state failures show sections landing 1–3% over after the
  * rewrites, a WSOLA stretch capped at ~1.05x is the next rung.
  */
 
@@ -39,9 +39,9 @@ import type { WorkflowStep } from 'cloudflare:workers';
 import { z } from 'zod';
 
 /**
- * Rewrite-and-re-record passes after the first take. Two, because each pass
+ * Rewrite-and-re-record passes after the first call. Two, because each pass
  * costs another TTS call plus an LLM call and the first rewrite lands the
- * large majority — the second is for a take that was far over.
+ * large majority — the second is for a section that was far over.
  */
 export const MAX_DIALOGUE_FIT_ATTEMPTS = 2;
 

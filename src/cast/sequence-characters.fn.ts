@@ -28,7 +28,7 @@ import { buildRecastRegenerateSnapshots } from '@/cast/server/workflows/recast-s
 import { characterToBible } from '@/cast/server/bibles-from-scoped';
 import {
   releaseCharacterVoice,
-  releaseVoiceIfUnreferenced,
+  releaseReplacedVoice,
 } from '@/cast/server/voice/release-voice';
 import {
   getElevenLabsApiKey,
@@ -329,9 +329,7 @@ export const chooseCharacterVoiceTakeFn = createServerFn({ method: 'POST' })
       },
       'generated'
     );
-    if (character.voiceId && character.voiceId !== voiceId) {
-      await releaseVoiceIfUnreferenced(context.scopedDb, character.voiceId);
-    }
+    await releaseReplacedVoice(context.scopedDb, character.voiceId, voiceId);
     return { characterId: character.id, voiceId };
   });
 
@@ -405,15 +403,13 @@ export const assignCharacterVoiceFn = createServerFn({ method: 'POST' })
       { voiceId, ...(voiceDescription ? { voiceDescription } : {}) },
       'library'
     );
-    if (character.voiceId) {
-      await releaseVoiceIfUnreferenced(context.scopedDb, character.voiceId);
-    }
+    await releaseReplacedVoice(context.scopedDb, character.voiceId, voiceId);
     return { characterId: character.id, voiceId };
   });
 
 /**
  * Voice history (#1657): every voice this character has held, newest first.
- * The row carrying `selectedAt` is the live one; a row carrying `releasedAt`
+ * `characters.selectedVoiceVersionId` names the live one; a row carrying `releasedAt`
  * names an id that no longer exists at ElevenLabs and can never come back.
  */
 export const listCharacterVoiceVersionsFn = createServerFn({ method: 'GET' })
@@ -427,10 +423,10 @@ export const listCharacterVoiceVersionsFn = createServerFn({ method: 'GET' })
 /**
  * Point the character back at an earlier voice (#1657). Same order as
  * choosing a take: the pointer and the mirror move first, then the voice the
- * row was holding is released if nothing else uses it — so a failed release
- * leaves the new id on the row with the old one still on the account for the
- * next release to retry. That release stamps the old id's history rows, which
- * is why a voice, once released, can never be selected again.
+ * row was holding is released if nothing else uses it. A failed release is
+ * logged, not thrown (`releaseReplacedVoice`): the switch already happened.
+ * A release stamps the old id's history rows, which is why a voice, once
+ * released, can never be selected again.
  */
 export const selectCharacterVoiceVersionFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
@@ -441,9 +437,11 @@ export const selectCharacterVoiceVersionFn = createServerFn({ method: 'POST' })
       character.id,
       data.versionId
     );
-    if (character.voiceId && character.voiceId !== updated.voiceId) {
-      await releaseVoiceIfUnreferenced(context.scopedDb, character.voiceId);
-    }
+    await releaseReplacedVoice(
+      context.scopedDb,
+      character.voiceId,
+      updated.voiceId
+    );
     return { characterId: character.id, voiceId: updated.voiceId };
   });
 
@@ -655,12 +653,12 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
         'library'
       );
     }
-    if (
-      character.voiceId &&
-      talentWithSheets.voiceId &&
-      character.voiceId !== talentWithSheets.voiceId
-    ) {
-      await releaseVoiceIfUnreferenced(context.scopedDb, character.voiceId);
+    if (talentWithSheets.voiceId) {
+      await releaseReplacedVoice(
+        context.scopedDb,
+        character.voiceId,
+        talentWithSheets.voiceId
+      );
     }
     // Re-read rather than use the write's row: the recast snapshot needs the
     // live sheet, which resolves from the version pointer (#1419).

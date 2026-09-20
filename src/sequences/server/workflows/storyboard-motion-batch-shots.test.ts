@@ -409,11 +409,9 @@ describe('buildStoryboardMotionBatchShots', () => {
 
     // shot-2 has lines and no clip: motion will record it, in context.
     expect(shots[1]?.audioClips).toBeUndefined();
-    expect(
-      shots[1]?.dialogueContext?.map((l) => [l.shotId, l.lineIndex, l.text])
-    ).toEqual([
-      ['shot-1', 0, 'Stay down.'],
-      ['shot-2', 1, 'Now run.'],
+    expect(shots[1]?.dialogueContext?.map((l) => [l.shotId, l.text])).toEqual([
+      ['shot-1', 'Stay down.'],
+      ['shot-2', 'Now run.'],
     ]);
   });
 });

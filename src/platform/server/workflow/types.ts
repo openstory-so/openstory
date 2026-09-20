@@ -461,6 +461,12 @@ export type SceneSplitWorkflowResult = {
   characterBible: CharacterBibleEntry[];
   locationBible: LocationBibleEntry[];
   elementBible: ElementBibleEntry[];
+  /**
+   * The `shot_dialogue_versions` row seeded (or already selected) for each
+   * shot with lines (#1657), so a fresh run's recordings can name the version
+   * they spoke instead of only a continue's.
+   */
+  dialogueVersionIdByShotId: Record<string, string>;
 };
 
 /**
@@ -496,7 +502,8 @@ export interface ElementSheetWorkflowResult {
 }
 
 /**
- * Per-SCENE Text to Dialogue in the References stage (#1554, #1657). The
+ * Per-SCENE Text to Dialogue in the `dialogue` stage, after images and before
+ * motion (#1554, #1657). The
  * scene's conversation is recorded whole so every turn is acted in context,
  * but only the shots whose clip no longer matches their lines adopt the new
  * audio — each as a section of the recording, cut to a file and persisted on
@@ -517,15 +524,15 @@ export interface DialogueAudioSceneJob {
 export interface DialogueAudioWorkflowInput extends UserWorkflowContext {
   sequenceId: string;
   scenes: DialogueAudioSceneJob[];
-  /** Provider per-file floor (H3 Max 2s). Short slices are padded. */
+  /** Provider per-file floor (H3 Max 2s). Short sections are padded. */
   minDurationSeconds?: number;
   /**
    * Longest clip every selected model can carry (`dialogueAudioMaxSeconds`,
    * #1651). REQUIRED: a default here would be a silent cap, and an absent one
-   * is how a 16s take reached a provider that rejects anything over 15.
+   * is how a 16s section reached a provider that rejects anything over 15.
    */
   maxDurationSeconds: number;
-  /** Model that rewrites an over-long take. Defaults to the analysis default. */
+  /** Model that rewrites an over-long section. Defaults to the analysis default. */
   analysisModelId?: AnalysisModelId;
 }
 
@@ -641,7 +648,7 @@ export interface MotionWorkflowInput extends SequenceWorkflowContext {
    */
   voicedLines?: VoicedDialogueLine[];
   /**
-   * Dialogue clips already synthesised in the References stage (#1554).
+   * Dialogue clips already synthesised in the `dialogue` stage (#1554).
    * When present, motion attaches them and does not call ElevenLabs.
    * Snapshotted at the trigger from `shots.audioClips`.
    */

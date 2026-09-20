@@ -77,6 +77,7 @@ const SPLIT: SceneSplitWorkflowResult = {
   characterBible: [],
   locationBible: [],
   elementBible: [],
+  dialogueVersionIdByShotId: {},
 };
 const TALENT_MATCH = {
   characterId: 'c1',

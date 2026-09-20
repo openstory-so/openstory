@@ -272,10 +272,9 @@ type VoiceSegmentTimes = {
  * and `speechEnd` is its own last word, which is where the tail is trimmed
  * back to.
  *
- * Interleaved shots (two shots trading lines inside one scene) get
- * overlapping ranges by construction. That is the honest answer: each clip
- * carries the conversation around its own lines, and the alternative — a
- * clip missing its own reply — is worse.
+ * Precondition: a shot's turns are contiguous. `sceneConversation` builds
+ * them that way (shot order, then line order) and `chunkTakeLines` groups by
+ * shot, so two shots never trade turns inside one recording.
  */
 export function shotSliceWindows(
   turns: ReadonlyArray<

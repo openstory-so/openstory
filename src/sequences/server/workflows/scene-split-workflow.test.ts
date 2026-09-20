@@ -768,15 +768,18 @@ describe('SceneSplitWorkflow shot-list pass (#1486)', () => {
 
     // …and each shot's dialogue node is seeded with its own lines (#1657) —
     // this is the one moment shotNumber can be resolved to a shot row, which
-    // is what makes a later reorder need no restamp. A shot with no dialogue
-    // gets no version row at all, so only the two speaking shots are written.
+    // is what makes a later reorder need no restamp. Silent shots are
+    // written too, with no lines: `write` mints nothing for a shot that never
+    // spoke, and an empty row over one that lost its lines.
     const seeded = shotDialogueWrite.mock.calls;
     expect(seeded.map((call) => call[1].map((l) => l.line))).toEqual([
       ['Steady.'],
       ['Lane four.'],
+      [],
+      [],
     ]);
     expect(seeded.every((call) => call[2] === 'prompt')).toBe(true);
-    expect(new Set(seeded.map((call) => call[0])).size).toBe(2);
+    expect(new Set(seeded.map((call) => call[0])).size).toBe(4);
   });
 
   test('persists two shots on a scene with an internal cut', async () => {

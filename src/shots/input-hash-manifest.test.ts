@@ -24,6 +24,31 @@ const entry = (
 });
 
 describe('computeVideoManifestInputHash', () => {
+  it('keeps every stored digest where it was (#1657)', async () => {
+    // The literal is what `main` computed for this entry before
+    // `referenceKeys` existed. Empty `referenceKeys` / `audioClipIds` and a
+    // null `audioSourceKey` are left OUT of the hash body; putting any of
+    // them in unconditionally moves this digest, and with it every stored
+    // clip reads Stale at once.
+    expect(await computeVideoManifestInputHash([entry()], 'veo3_1')).toBe(
+      '857d2779f11774ae3952766a1e61bc0032bc12b650ffcc19512545f13785ac07'
+    );
+  });
+
+  it('moves with the references sent, whatever order they were stamped in', async () => {
+    const base = await computeVideoManifestInputHash([entry()], 'veo3_1');
+    const ab = await computeVideoManifestInputHash(
+      [entry({ referenceKeys: ['character:a:v1', 'element:b:url'] })],
+      'veo3_1'
+    );
+    const ba = await computeVideoManifestInputHash(
+      [entry({ referenceKeys: ['element:b:url', 'character:a:v1'] })],
+      'veo3_1'
+    );
+    expect(ab).not.toBe(base);
+    expect(ba).toBe(ab);
+  });
+
   it('is deterministic for the same manifest + model', async () => {
     const a = await computeVideoManifestInputHash([entry()], 'veo3_1');
     const b = await computeVideoManifestInputHash([entry()], 'veo3_1');

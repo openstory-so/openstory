@@ -54,6 +54,8 @@ const section = (
   fromSeconds: 0,
   toSeconds: 2,
   sourceKey: 'k',
+  spokenLines: null,
+  dialogueVersionId: null,
   selected,
   ...overrides,
 });
@@ -161,8 +163,8 @@ describe('authored versions', () => {
     const first = await methods.write(shotId, [line('A')], 'prompt');
     const second = await methods.write(shotId, [line('B')], 'user-edit');
 
-    expect(second.id).not.toBe(first.id);
-    expect((await methods.getSelected(shotId))?.id).toBe(second.id);
+    expect(second?.id).not.toBe(first?.id);
+    expect((await methods.getSelected(shotId))?.id).toBe(second?.id);
     const versions = await versionsOf(shotId);
     expect(versions).toHaveLength(2);
     expect(versions.filter((version) => version.selectedAt)).toHaveLength(1);
@@ -191,8 +193,20 @@ describe('authored versions', () => {
     const methods = createShotDialogueMethods(db);
     const mine = await methods.write(shotId, [line('A')], 'prompt');
     const theirs = await methods.write(otherShotId, [line('X')], 'prompt');
-    expect((await methods.getSelected(shotId))?.id).toBe(mine.id);
-    expect((await methods.getSelected(otherShotId))?.id).toBe(theirs.id);
+    expect((await methods.getSelected(shotId))?.id).toBe(mine?.id);
+    expect((await methods.getSelected(otherShotId))?.id).toBe(theirs?.id);
+  });
+
+  it('mints no row for a shot that never spoke, and an empty one for a shot that lost its lines', async () => {
+    const methods = createShotDialogueMethods(db);
+    expect(await methods.write(shotId, [], 'prompt')).toBeNull();
+    expect(await versionsOf(shotId)).toHaveLength(0);
+
+    await methods.write(shotId, [line('A')], 'prompt');
+    const silenced = await methods.write(shotId, [], 'prompt');
+    // Without this row the old one would keep speaking.
+    expect(silenced?.lines).toEqual([]);
+    expect((await methods.getSelected(shotId))?.id).toBe(silenced?.id);
   });
 
   it('lists the selected row of every live shot of the sequence', async () => {
@@ -340,8 +354,22 @@ describe('recordings and sections', () => {
     const context = section(otherShotId, false);
     await methods.appendRecording(recording([section(shotId, true), context]));
 
-    const picked = await methods.selectSection(otherShotId, context.id);
+    const clip = {
+      id: context.id,
+      url: '/r2/audio/cut.wav',
+      token: 'DIALOGUE',
+      durationSeconds: 2,
+      sourceKey: 'k',
+      recordingId: 'rec',
+    };
+    const picked = await methods.selectSection(otherShotId, context.id, [clip]);
     expect(picked.id).toBe(context.id);
+    // Pointer and clip move in one batch.
+    const [shotRow] = await db
+      .select({ audioClips: shots.audioClips })
+      .from(shots)
+      .where(eq(shots.id, otherShotId));
+    expect(shotRow?.audioClips).toEqual([clip]);
     const selected = (await methods.listSections(otherShotId)).filter(
       (row) => row.selectedAt
     );
@@ -362,9 +390,23 @@ describe('recordings and sections', () => {
       .where(eq(shotDialogueSections.id, mine.id));
 
     expect(await methods.listSections(shotId)).toEqual([]);
-    await expect(methods.selectSection(shotId, mine.id)).rejects.toThrow(
+    await expect(methods.selectSection(shotId, mine.id, [])).rejects.toThrow(
       /discarded/
     );
+  });
+
+  it('refuses a range that is empty, negative or past the recording', async () => {
+    const methods = createShotDialogueMethods(db);
+    for (const range of [
+      { fromSeconds: 2, toSeconds: 2 },
+      { fromSeconds: -1, toSeconds: 2 },
+      { fromSeconds: 0, toSeconds: 9 },
+    ]) {
+      await expect(
+        methods.appendRecording(recording([section(shotId, true, range)]))
+      ).rejects.toThrow();
+    }
+    expect(await methods.listSections(shotId)).toEqual([]);
   });
 
   it('refuses a section of another shot', async () => {
@@ -372,7 +414,7 @@ describe('recordings and sections', () => {
     const theirs = section(otherShotId, true);
     await methods.appendRecording(recording([theirs]));
 
-    await expect(methods.selectSection(shotId, theirs.id)).rejects.toThrow(
+    await expect(methods.selectSection(shotId, theirs.id, [])).rejects.toThrow(
       /not found/
     );
   });

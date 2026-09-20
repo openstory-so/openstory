@@ -66,15 +66,20 @@ estimated character (`generateVoices` on `estimateStoryboardCost`), the
 in-run gate the real speaking count. **Voices are versioned (#1657):** every
 write appends a `character_voice_versions` row with an explicit `source`
 ('analysis' | 'generated' | 'library' | 'user-edit' | 'disabled' |
-'released' — never inferred from which columns moved) and moves
-`characters.selectedVoiceVersionId`, whose values the voice columns mirror;
+'removed' — never inferred from which columns moved) and moves
+`characters.selectedVoiceVersionId`, the only selection pointer, whose values
+the voice columns mirror. 'removed' means the character dropped its voice id;
+only `releasedAt` means the ElevenLabs slot was actually freed.
 `releaseVoiceIfUnreferenced` stamps `releasedAt` on every row holding the id
-it deletes, and `selectVoiceVersion` refuses a released row, because that id
-no longer exists at ElevenLabs and would 404 at TTS.
+it deletes — and on one it finds already gone at ElevenLabs (404) — and
+`selectVoiceVersion` refuses a released row, because that id no longer exists
+at ElevenLabs and would 404 at TTS. A failed release AFTER a committed voice
+switch is logged, not thrown (`releaseReplacedVoice`): the switch stands and
+the old id's slot stays held.
 
 **Dialogue audio (#1554, #1657).** An audio reference, like a character
-sheet: the References stage (after Voice Design) runs ElevenLabs **Text to
-Dialogue** (`eleven_v3`) over every line whose speaker has a `voiceId` and no
+sheet: the `dialogue` stage (after images, before motion) runs ElevenLabs
+**Text to Dialogue** (`eleven_v3`) over every line whose speaker has a `voiceId` and no
 `voiceToken` (uploaded element or `__video_model__` opt-out). **Record wide,
 keep narrow.** Acting quality comes from what the call hears: v3 acts the
 turns it is given against each other, so a shot recorded alone is a cold read
@@ -88,20 +93,25 @@ had, so nothing of theirs goes stale. Three tables, all append-only:
 - `dialogue_recordings` — one row per ElevenLabs call, the **whole file** as
   it came back (`storageKey`, `url`, `durationSeconds`, per-turn `turns`,
   `inputHash` = `recordingKey` = ordered voiced turns with shot ids + voice
-  ids + tone + TTS model + stability). Each turn also stamps its `voiceId` and
+  ids + the words + tone + TTS model + stability). Each turn also stamps its `voiceId` and
   `ttsModel` in the clear — the hash cannot be read back. No selected flag, no
   per-shot copies, never joined or concatenated.
 - `shot_dialogue_sections` — a time range (`fromSeconds`–`toSeconds`) of a
   recording, one selected row per shot. A recording inserts a row for EVERY
   shot it spoke: `source: 'recorded'` and selected for the shots it was made
   for, `source: 'context'` and unselected for the shots that were only spoken
-  so the others had something to answer. Section rows hold no URL.
+  so the others had something to answer. Section rows hold no URL. CHECK
+  constraints hold the shape:
+  `from_seconds >= 0 AND to_seconds > from_seconds`, a discarded row cannot be
+  selected, and `dialogue_recordings.duration_seconds > 0`; `appendRecording`
+  refuses a section that ends past its recording.
 
 Picking a context reading ("promote") is the same `selectSection` as picking
 an older reading — there is no second code path.
 `selectShotDialogueSectionFn` refuses a row whose `sourceKey` no longer
 matches the shot's lines and one longer than `dialogueFitBudget` allows, then
-cuts, selects, and mirrors the clip onto `shots.audioClips`.
+cuts, then `selectSection` moves the pointer and writes `shots.audioClips` in
+one batch.
 `appendRecording` is one batch (recording, clear the adopting shots' selected
 sections, insert all sections) with ids generated inside the workflow step
 and `onConflictDoNothing`, so a replay is idempotent. Nothing discards a
@@ -129,9 +139,11 @@ The script's `originalScript.dialogue` stays as the LLM's seed, and a shot
 with no row yet is derived at read time (`deriveShotDialogueLines`: lines
 stamped with the shot's number; unstamped pre-#1585 lines go to the first
 shot only) — so there is no backfill migration. Pure helpers:
-`src/shots/shot-dialogue.ts`; `lineIndex` is the running position in the
-conversation that was sent, `index` stays shot-relative so every #1554/#1651
-helper works unchanged on one shot's lines.
+`src/shots/shot-dialogue.ts`. A turn's `index` is shot-relative, so every
+#1554/#1651 helper (`dialogueClipSourceKey`, `matchingDialogueClips`,
+`spokenLinesFor`, `withSpokenText`, the rewrite merge) works unchanged on one
+shot's lines; a turn's place in the conversation is its array position, never
+stored.
 
 **Cut files are a cache.** A video model needs a file URL, so the selected
 section is materialised by `cutAudioSection`
@@ -197,11 +209,11 @@ length is over its shot's limit sends THAT shot's turns to the rewrite
 chunk is re-recorded, because the other shots' delivery is not independent of
 it. Shots that are only context are never checked — their audio is not being
 kept. Only the final attempt's recordings get rows. The rungs:
-`convertWithTimestamps` returns alignment + voice segments →
-`trimmedEndSeconds` pulls the section's end back to whichever is LATER of the
-last audible sample and the alignment end (so a short-reporting alignment
-cannot clip a word, and an alignment saying "silent" cannot be overruled by a
-noise floor) → still over, an LLM (`phase/shorten-dialogue-chat`) tightens
+`convertWithTimestamps` returns per-turn voice segments (the character
+alignment is never read) → `trimmedEndSeconds` pulls the section's end back to
+whichever is LATER of the last audible sample and the end of the shot's last
+voice segment (so a short-reporting segment cannot clip a word, and a segment
+saying "silent" cannot be overruled by a noise floor) → still over, an LLM (`phase/shorten-dialogue-chat`) tightens
 the turns and the chunk is re-recorded, bounded at
 `MAX_DIALOGUE_FIT_ATTEMPTS` (2) → still over, the shot **fails here** with
 the measured numbers. No time-compression rung: speeding speech up alters the
@@ -210,7 +222,8 @@ or invented turn cannot move a speaker or a voice. Two budgets from
 `dialogueFitBudget`: `limitSeconds` is the refusal line
 (`dialogueAudioMaxSeconds` — the tightest of each model's audio window and
 longest grid clip — minus 0.2s slack, hence H3 Max's 14.8s; the slack is the
-padding and rounding the alignment end does not measure); `targetSeconds` is
+padding and rounding the end of the shot's last voice segment does not
+measure); `targetSeconds` is
 what a rewrite aims at, the SHOT's own length when shorter, so the reading
 fits the cut rather than stretching it. Speech between the two is kept — the
 clip stretches. A rewritten reading records its delivered wording on the

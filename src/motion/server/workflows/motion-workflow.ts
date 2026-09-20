@@ -190,14 +190,14 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     // Dialogue clips (#1554) before the credit check: they raise duration
     // (Seedance 2.5 is 4–30 s) and ride the request as audio refs, so both
     // the video estimate and the manifest have to see them. Prefer the
-    // References-stage clip snapshotted onto the payload; synthesise only
+    // dialogue-stage clip snapshotted onto the payload; synthesise only
     // when that is missing (standalone motion, stale lines, pre-#1554 rows).
     let prompt = input.prompt;
     let multiPrompt = input.multiPrompt;
     let referenceImages = input.referenceImages;
     let durationHint = input.duration;
     let audioClips: MotionAudioClip[] = input.audioClips ?? [];
-    // The words the bound audio actually SAYS (#1651): a References-stage take
+    // The words the bound audio actually SAYS (#1651): a dialogue-stage section
     // that was rewritten to fit records its delivered wording on the clip, and
     // the prompt drives lip movement, so assembly has to read it back.
     let voicedLines = withSpokenText(input.voicedLines ?? [], audioClips);
@@ -215,15 +215,19 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         // Without one (an older trigger), the shot's own lines are the whole
         // conversation.
         // ponytail: N shots of one scene each record their own window; record once per scene at the batch level if this shows up in the bill.
-        const context = input.dialogueContext?.some(
+        const snapshotted = input.dialogueContext?.some(
           (line) => line.shotId === shotId
-        )
-          ? input.dialogueContext
-          : authoredLines.map((line, lineIndex) => ({
-              ...line,
-              shotId,
-              lineIndex,
-            }));
+        );
+        if (!snapshotted) {
+          logger.warn('No dialogue context; recording the shot alone', {
+            shotId,
+            sequenceId,
+          });
+        }
+        const context =
+          snapshotted && input.dialogueContext
+            ? input.dialogueContext
+            : authoredLines.map((line) => ({ ...line, shotId }));
         const recorded = await recordDialogue(step, {
           scopedDb,
           workflowRunId,
@@ -243,7 +247,14 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           stepPrefix: 'synthesize-dialogue-audio',
           workflowName: 'MotionWorkflow',
         });
-        audioClips = recorded[shotId] ?? [];
+        const adopted = recorded[shotId];
+        if (!adopted || adopted.length === 0) {
+          // Voiced lines with no audio must not render silently.
+          throw new NonRetryableError(
+            `Dialogue recording returned no audio for shot ${shotId}`
+          );
+        }
+        audioClips = adopted;
         voicedLines = withSpokenText(authoredLines, audioClips);
       }
       referenceImages = [
@@ -476,6 +487,17 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           // that a different still than the one this clip rendered from (the
           // render consumes `input.imageUrl`, snapshotted at the trigger). A
           // payload without it records null provenance, as pre-#1067 rows do.
+          //
+          // Only the references that rode on the wire are stamped — the same
+          // question billing asks below. A model with no reference slot got
+          // descriptions, so a sheet re-select cannot stale its clip.
+          const sentReferenceKeys = referenceKeysFrom(
+            bindableReferences(
+              getMotionReferenceEndpoint(model),
+              referenceImages ?? [],
+              Boolean(input.imageUrl)
+            )
+          );
           const coveredEntries =
             covered && covered.length > 1
               ? covered.map((member) => ({
@@ -499,7 +521,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                   ),
                   // One clip, one request: every covered shot was sent the
                   // same references.
-                  referenceKeys: referenceKeysFrom(input.referenceImages),
+                  referenceKeys: sentReferenceKeys,
                 }))
               : [
                   {
@@ -518,7 +540,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                     audioClipIds: audioClips.map((clip) => clip.id),
                     audioSourceKey:
                       audioSourceKeyFromVoicedLines(authoredLines),
-                    referenceKeys: referenceKeysFrom(input.referenceImages),
+                    referenceKeys: sentReferenceKeys,
                   },
                 ];
           manifest = buildVideoManifest(coveredEntries);

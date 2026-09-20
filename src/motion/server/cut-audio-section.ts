@@ -4,8 +4,8 @@
  * A shot's reading is a time range of a recording (`shot_dialogue_sections`),
  * but a video model needs a file URL — so the selected section is materialised
  * here. The file is a CACHE: its key is derived from the recording and the
- * range, so cutting the same section twice is a `head`, and nothing but
- * `shots.audioClips` ever holds its URL.
+ * range, so cutting the same section twice is a 4 KiB ranged header read plus
+ * a `head`, and nothing but `shots.audioClips` ever holds its URL.
  *
  * It never loads the recording. The header comes from a 4 KiB ranged read,
  * the byte range is arithmetic, and the samples go from one R2 object to the

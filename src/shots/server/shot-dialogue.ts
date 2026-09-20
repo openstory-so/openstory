@@ -10,6 +10,7 @@
  */
 
 import type { VoiceCharacter } from '@/motion/dialogue-tts';
+import { NotFoundError, ValidationError } from '@/platform/errors';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type {
   DialogueLine,
@@ -80,4 +81,43 @@ export function dialogueContextFor(input: {
     sceneConversation(inOrder, lines, input.characters),
     input.shot.id
   );
+}
+
+/**
+ * May this reading become the shot's current one? Refuses another shot's row
+ * (the only thing between a caller and a cut of someone else's recording —
+ * `getSectionById` is unscoped), a discarded one, one recorded for lines that
+ * have since changed, and one longer than the shot can carry. Measures the
+ * raw section; `recordDialogue` measures the padded file, so a reading at
+ * the provider's floor can pass there and still be padded here.
+ */
+export function requireSelectableSection<
+  S extends {
+    shotId: string;
+    discardedAt: Date | null;
+    sourceKey: string;
+    fromSeconds: number;
+    toSeconds: number;
+  },
+>(input: {
+  section: S | null;
+  shotId: string;
+  /** `''` when the shot voices nothing — no reading matches that. */
+  currentKey: string;
+  limitSeconds: number;
+}): S {
+  const { section, shotId, currentKey, limitSeconds } = input;
+  if (!section || section.shotId !== shotId || section.discardedAt) {
+    throw new NotFoundError('Reading not found');
+  }
+  if (currentKey === '' || section.sourceKey !== currentKey) {
+    throw new ValidationError('These lines changed since this was recorded.');
+  }
+  const seconds = section.toSeconds - section.fromSeconds;
+  if (seconds > limitSeconds) {
+    throw new ValidationError(
+      `Reading is ${seconds.toFixed(1)}s — the limit is ${limitSeconds.toFixed(1)}s.`
+    );
+  }
+  return section;
 }

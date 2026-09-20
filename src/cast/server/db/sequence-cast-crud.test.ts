@@ -182,7 +182,6 @@ describe('characters bible CRUD + soft-remove', () => {
       'analysis',
     ]);
     // Every write moves the pointer with the row it appended.
-    expect(versions.filter((version) => version.selectedAt)).toHaveLength(1);
     expect(a.selectedVoiceVersionId).toBe(
       versions.find((version) => version.voiceId === 'voice-a')?.id
     );
@@ -199,8 +198,6 @@ describe('characters bible CRUD + soft-remove', () => {
     expect(restored.useVoice).toBe(true);
     expect(restored.voicePreviews).toEqual([]);
     expect(restored.selectedVoiceVersionId).toBe(first.id);
-    const after = await methods.listVoiceVersions(created.id);
-    expect(after.find((version) => version.selectedAt)?.id).toBe(first.id);
   });
 
   it('refuses a released voice version, across every character holding the id', async () => {
@@ -242,6 +239,13 @@ describe('characters bible CRUD + soft-remove', () => {
     // The refusal changed nothing.
     const unchanged = await methods.getById(maya.id);
     expect(unchanged?.voiceId).toBe('kept');
+
+    // Another character's version is not this character's to select.
+    const ottos = ottoVersions[0];
+    if (!ottos) throw new Error('otto voice version missing');
+    await expect(methods.selectVoiceVersion(maya.id, ottos.id)).rejects.toThrow(
+      /not found for character/
+    );
   });
 
   it('create labels a talent-copied voice library, and appends nothing on the re-upsert', async () => {

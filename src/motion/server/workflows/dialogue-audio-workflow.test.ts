@@ -10,11 +10,9 @@ import type { SceneVoicedLine } from '@/shots/shot-dialogue';
 const voiced = (
   shotId: string,
   index: number,
-  lineIndex: number,
   text: string
 ): SceneVoicedLine => ({
   index,
-  lineIndex,
   shotId,
   token: 'DIALOGUE',
   voiceId: 'voice-1',
@@ -46,8 +44,8 @@ describe('collectDialogueResults', () => {
   });
 
   test('merges every scene’s clips, keyed by shot', () => {
-    const a = [voiced('shot-a', 0, 0, 'Hi')];
-    const b = [voiced('shot-b', 0, 0, 'Bye')];
+    const a = [voiced('shot-a', 0, 'Hi')];
+    const b = [voiced('shot-b', 0, 'Bye')];
     const clips = collectDialogueResults(
       [
         fulfilled({ 'shot-a': [clip('c1', a, 't1')] }),
@@ -60,7 +58,7 @@ describe('collectDialogueResults', () => {
   });
 
   test('throws naming a failed scene by its first shot', () => {
-    const a = [voiced('shot-a', 0, 0, 'Hi')];
+    const a = [voiced('shot-a', 0, 'Hi')];
     expect(() =>
       collectDialogueResults(
         [
@@ -74,7 +72,7 @@ describe('collectDialogueResults', () => {
 });
 
 describe('planSceneAdoption', () => {
-  const lines = [voiced('shot-a', 0, 0, 'Hi'), voiced('shot-b', 0, 1, 'Bye')];
+  const lines = [voiced('shot-a', 0, 'Hi'), voiced('shot-b', 0, 'Bye')];
   const shotLines = (shotId: string) =>
     lines.filter((line) => line.shotId === shotId);
 
@@ -93,9 +91,7 @@ describe('planSceneAdoption', () => {
     const plan = planSceneAdoption({ voiced: lines }, [
       {
         id: 'shot-a',
-        audioClips: [
-          clip('c1', [voiced('shot-a', 0, 0, 'Different')], 'rec-1'),
-        ],
+        audioClips: [clip('c1', [voiced('shot-a', 0, 'Different')], 'rec-1')],
       },
       { id: 'shot-b', audioClips: [kept] },
     ]);

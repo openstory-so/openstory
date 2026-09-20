@@ -10,10 +10,17 @@
  * recording only moves the shots that adopt it.
  *
  * `inputHash` is `recordingKey`: the ordered turns with their shot ids, the
- * voice id per turn, tone, TTS model and stability.
+ * words, the voice id per turn, tone, TTS model and stability.
  */
-import type { InferSelectModel } from 'drizzle-orm';
-import { index, integer, real, snakeCase, text } from 'drizzle-orm/sqlite-core';
+import { sql, type InferSelectModel } from 'drizzle-orm';
+import {
+  check,
+  index,
+  integer,
+  real,
+  snakeCase,
+  text,
+} from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/platform/id';
 import { sequences } from './sequences';
 
@@ -60,6 +67,7 @@ export const dialogueRecordings = snakeCase.table(
       table.sequenceId,
       table.createdAt
     ),
+    check('dialogue_recordings_duration', sql`${table.durationSeconds} > 0`),
   ]
 );
 

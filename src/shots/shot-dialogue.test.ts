@@ -125,20 +125,19 @@ describe('sceneConversation', () => {
     ],
   };
 
-  it('numbers `index` per shot and `lineIndex` along the conversation', () => {
+  it('numbers `index` per shot, not along the conversation', () => {
     expect(
       conversation(byShot).map((voiced) => ({
         shotId: voiced.shotId,
         index: voiced.index,
-        lineIndex: voiced.lineIndex,
         voiceId: voiced.voiceId,
       }))
     ).toEqual([
-      { shotId: 'shot-a', index: 0, lineIndex: 0, voiceId: 'voice-maya' },
+      { shotId: 'shot-a', index: 0, voiceId: 'voice-maya' },
       // index 0 of shot-b is the unvoiced line: `index` still names the
-      // shot's own array, `lineIndex` only counts what is sent.
-      { shotId: 'shot-b', index: 1, lineIndex: 1, voiceId: 'voice-ari' },
-      { shotId: 'shot-b', index: 2, lineIndex: 2, voiceId: 'voice-maya' },
+      // shot's own array.
+      { shotId: 'shot-b', index: 1, voiceId: 'voice-ari' },
+      { shotId: 'shot-b', index: 2, voiceId: 'voice-maya' },
     ]);
   });
 
@@ -148,7 +147,6 @@ describe('sceneConversation', () => {
       { id: 'shot-a' },
     ]);
     expect(reversed.map((l) => l.text)).toEqual(['Two', 'Three', 'One']);
-    expect(reversed.map((l) => l.lineIndex)).toEqual([0, 1, 2]);
   });
 
   it('skips a line whose speaker has no voice, and one bound to an element', () => {
@@ -266,10 +264,9 @@ describe('contextWindow', () => {
     expect(shotIdsOf(contextWindow(voiced, 'c', 1))).toEqual(['c']);
   });
 
-  it('preserves order and renumbers `lineIndex` for what is sent', () => {
+  it('preserves order for what is sent', () => {
     const window = contextWindow(voiced, 'd', 30);
     expect(shotIdsOf(window)).toEqual(['c', 'd', 'e']);
-    expect(window.map((l) => l.lineIndex)).toEqual([0, 1, 2]);
     expect(window.map((l) => l.index)).toEqual([0, 0, 0]);
   });
 

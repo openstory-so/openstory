@@ -24,8 +24,11 @@ vi.doMock('@/models/server/elevenlabs-config', () => ({
   isElevenLabsConfigured: mockConfigured,
 }));
 
-const { releaseCharacterVoice, releaseVoiceIfUnreferenced } =
-  await import('./release-voice');
+const {
+  releaseCharacterVoice,
+  releaseReplacedVoice,
+  releaseVoiceIfUnreferenced,
+} = await import('./release-voice');
 
 function makeScopedDb(referenceCount: number) {
   const updateVoice = vi.fn(async () => ({}));
@@ -55,6 +58,23 @@ beforeEach(() => {
   });
 });
 
+describe('releaseReplacedVoice', () => {
+  it('does not throw when the release fails — the switch already committed', async () => {
+    mockDelete.mockRejectedValue(new Error('ElevenLabs 503'));
+    const { scopedDb } = makeScopedDb(0);
+    await expect(
+      releaseReplacedVoice(scopedDb, 'v1', 'v2')
+    ).resolves.toBeUndefined();
+    expect(mockDelete).toHaveBeenCalledWith('key', 'v1');
+  });
+  it('releases nothing when the voice did not change or there was none', async () => {
+    const { scopedDb } = makeScopedDb(0);
+    await releaseReplacedVoice(scopedDb, 'v1', 'v1');
+    await releaseReplacedVoice(scopedDb, null, 'v2');
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
+});
+
 describe('releaseVoiceIfUnreferenced', () => {
   it('deletes when no row points at the voice, then marks the history rows released', async () => {
     const { scopedDb, markVoiceReleased } = makeScopedDb(0);
@@ -65,6 +85,15 @@ describe('releaseVoiceIfUnreferenced', () => {
     expect(mockDelete.mock.invocationCallOrder[0]).toBeLessThan(
       markVoiceReleased.mock.invocationCallOrder[0] ?? 0
     );
+  });
+  it('marks a voice already gone at the provider released, without a delete', async () => {
+    // A retry after a failed row write, or a dashboard delete: the id is dead
+    // either way, so History must not offer it back.
+    mockGetVoice.mockResolvedValue(null);
+    const { scopedDb, markVoiceReleased } = makeScopedDb(0);
+    await releaseVoiceIfUnreferenced(scopedDb, 'v1');
+    expect(mockDelete).not.toHaveBeenCalled();
+    expect(markVoiceReleased).toHaveBeenCalledWith('v1');
   });
   it('marks nothing released when the provider keeps the voice', async () => {
     const { scopedDb, markVoiceReleased } = makeScopedDb(1);
@@ -124,7 +153,7 @@ describe('releaseCharacterVoice', () => {
     expect(updateVoice).toHaveBeenCalledWith(
       'c1',
       { voiceId: null },
-      'released'
+      'removed'
     );
     expect(mockDelete.mock.invocationCallOrder[0]).toBeLessThan(
       updateVoice.mock.invocationCallOrder[0] ?? 0

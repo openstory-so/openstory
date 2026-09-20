@@ -4,15 +4,14 @@
  * Lines belong to the SHOT. A scene's conversation is its shots in order,
  * then each shot's lines in order — built here, never stored. One ElevenLabs
  * Text to Dialogue call records a conversation so every turn is acted in
- * context, and each shot it spoke keeps a time range of that recording. So
- * two indexes exist and both matter:
+ * context, and each shot it spoke keeps a time range of that recording.
  *
- *   `lineIndex` — running position in the conversation that was sent.
- *   `index`     — position among THAT SHOT's lines, which is the index
- *                 `VoicedDialogueLine.index` has always meant: the prompt
- *                 mirror (`withVoicedLineTokens`), the clip's `spokenLines`
- *                 and the shorten-dialogue rewrite all index into the shot's
- *                 own `MotionDialogue.lines`.
+ * A turn's `index` is its position among THAT SHOT's lines, which is what
+ * `VoicedDialogueLine.index` has always meant: the prompt mirror
+ * (`withVoicedLineTokens`), the clip's `spokenLines` and the shorten-dialogue
+ * rewrite all index into the shot's own `MotionDialogue.lines`. A turn's
+ * place in the conversation is its array position — never stored, so the two
+ * cannot disagree.
  *
  * Keeping `index` shot-relative is what lets every #1554/#1651 helper —
  * `voicedDialogueLines`, `dialogueClipSourceKey`, `matchingDialogueClips`,
@@ -44,11 +43,9 @@ export type { ShotDialogueLine };
  */
 export const DIALOGUE_TAKE_CHUNK_CHARS = 2000;
 
-/** A voiced turn of a conversation: shot-relative `index`, running `lineIndex`. */
+/** A voiced turn of a conversation; `index` is shot-relative. */
 export type SceneVoicedLine = VoicedDialogueLine & {
   shotId: string;
-  /** Position in the conversation that was sent. */
-  lineIndex: number;
 };
 
 /** A shot's lines as the prompt and the per-shot hashes see them. */
@@ -103,7 +100,7 @@ export function sceneConversation(
   for (const shot of shotsInOrder) {
     const lines = linesByShotId.get(shot.id) ?? [];
     for (const voiced of voicedDialogueLines(shotDialogue(lines), characters)) {
-      out.push({ ...voiced, shotId: shot.id, lineIndex: out.length });
+      out.push({ ...voiced, shotId: shot.id });
     }
   }
   return out;
@@ -121,8 +118,7 @@ export function voicedShotIds(lines: readonly SceneVoicedLine[]): string[] {
  * recorded with. Null when nothing is voiced — there is nothing to key.
  *
  * Order, not sorted: a call records a conversation, so who speaks after whom
- * is part of what was recorded. `lineIndex` is deliberately NOT in here — it
- * is implied by the order.
+ * is part of what was recorded.
  */
 export function recordingKey(
   voiced: readonly SceneVoicedLine[]
@@ -139,9 +135,9 @@ export function recordingKey(
  * grown outward alternately (previous, next, …) while the `ttsUtterance`
  * character total stays within `maxChars`. Order preserved. The shot's own
  * turns are always in, whatever they total; a side stops growing at the first
- * neighbour that does not fit, so the window never skips a shot. `lineIndex`
- * is renumbered from 0: the window IS the conversation that gets sent, and
- * the provider's segments name positions in it.
+ * neighbour that does not fit, so the window never skips a shot. The window
+ * IS the conversation that gets sent: the provider's segments name array
+ * positions in it.
  */
 export function contextWindow(
   voiced: readonly SceneVoicedLine[],
@@ -177,7 +173,5 @@ export function contextWindow(
     }
   }
   const kept = new Set(shotIds.slice(from, to + 1));
-  return voiced
-    .filter((line) => kept.has(line.shotId))
-    .map((line, lineIndex) => ({ ...line, lineIndex }));
+  return voiced.filter((line) => kept.has(line.shotId));
 }

@@ -356,6 +356,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         characterBible: checkpoint.characterBible,
         locationBible: checkpoint.locationBible,
         elementBible: checkpoint.elementBible,
+        dialogueVersionIdByShotId: checkpoint.dialogueVersionIdByShotId ?? {},
       };
     }
 
@@ -946,8 +947,11 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     // (#1657); empty on a fresh run, where the script IS the authored text.
     const dialogueLinesByShotId: Record<string, ShotDialogueLine[]> =
       checkpoint?.dialogueLinesByShotId ?? {};
+    // A continue reads the live selection (`refreshCheckpoint`); a fresh run
+    // has the rows scene-split just seeded.
     const dialogueVersionIdByShotId: Record<string, string> =
-      checkpoint?.dialogueVersionIdByShotId ?? {};
+      checkpoint?.dialogueVersionIdByShotId ??
+      sceneSplitResult.dialogueVersionIdByShotId;
 
     if (runReferences) {
       await persistProgress({

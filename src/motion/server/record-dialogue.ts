@@ -34,10 +34,10 @@ import {
 } from '@/billing/elevenlabs-pricing';
 import { deductWorkflowCredits } from '@/billing/server/workflow-deduction';
 import {
-  DIALOGUE_CLIP_TOKEN,
   DIALOGUE_TTS_MODEL,
   dialogueClipSourceKey,
   dialogueFitBudget,
+  sectionClip,
   spokenLinesFor,
   ttsUtterance,
 } from '@/motion/dialogue-tts';
@@ -97,6 +97,17 @@ export type RecordDialogueArgs = {
 type RecordedCall = RecordedDialogueCall & {
   sectionIdByShotId: Record<string, string>;
 };
+
+/** Every shot a call spoke was minted a section id; a miss is a bug, not silence. */
+function sectionIdOf(call: RecordedCall, shotId: string): string {
+  const id = call.sectionIdByShotId[shotId];
+  if (!id) {
+    throw new NonRetryableError(
+      `Recording ${call.recordingId} has no section for shot ${shotId}`
+    );
+  }
+  return id;
+}
 
 export async function recordDialogue(
   step: WorkflowStep,
@@ -193,11 +204,11 @@ export async function recordDialogue(
           measured: fileSeconds(window),
         }))
     );
-    const worst = over[0];
-    if (!worst) break;
-    const worstLimit = budgetFor(worst.shotId).limitSeconds;
+    const first = over[0];
+    if (!first) break;
+    const firstLimit = budgetFor(first.shotId).limitSeconds;
     if (attempt >= MAX_DIALOGUE_FIT_ATTEMPTS) {
-      throw tooLong(worst.shotId, worst.measured, worstLimit);
+      throw tooLong(first.shotId, first.measured, firstLimit);
     }
 
     // Rewrite only the shots that overran; the rest of their call is
@@ -232,7 +243,7 @@ export async function recordDialogue(
     // so the next call is the same length: stop here with the real numbers
     // rather than billing an identical one.
     if (rerecord.size === 0) {
-      throw tooLong(worst.shotId, worst.measured, worstLimit);
+      throw tooLong(first.shotId, first.measured, firstLimit);
     }
     logger.warn(
       `[dialogue-recording] ${args.stepPrefix}: ${over.length} section(s) over budget — re-recording ${rerecord.size} call(s) (attempt ${attempt + 1}/${MAX_DIALOGUE_FIT_ATTEMPTS})`
@@ -254,8 +265,8 @@ export async function recordDialogue(
   for (const call of recorded.values()) {
     for (const window of call.windows) {
       const shotId = window.shotId;
-      const sectionId = call.sectionIdByShotId[shotId];
-      if (!adopts.has(shotId) || !sectionId) continue;
+      if (!adopts.has(shotId)) continue;
+      const sectionId = sectionIdOf(call, shotId);
       const cut = await step.do(`${args.stepPrefix}-cut-${shotId}`, () =>
         cutAudioSection({
           storageKey: call.storageKey,
@@ -269,15 +280,15 @@ export async function recordDialogue(
       );
       const { sourceKey, spokenLines } = spokenOf(shotId);
       clipsByShotId[shotId] = [
-        {
-          id: sectionId,
-          url: cut.url,
-          token: DIALOGUE_CLIP_TOKEN,
-          durationSeconds: cut.durationSeconds,
-          sourceKey,
-          recordingId: call.recordingId,
-          ...(spokenLines && { spokenLines }),
-        },
+        sectionClip(
+          {
+            id: sectionId,
+            recordingId: call.recordingId,
+            sourceKey,
+            spokenLines: spokenLines ?? null,
+          },
+          cut
+        ),
       ];
     }
   }
@@ -288,6 +299,14 @@ export async function recordDialogue(
   await step.do(`${args.stepPrefix}-persist`, async () => {
     for (const call of recorded.values()) {
       const callShotIds = call.windows.map((window) => window.shotId);
+      const inputHash = recordingKey(
+        args.lines.filter((line) => callShotIds.includes(line.shotId))
+      );
+      if (!inputHash) {
+        throw new NonRetryableError(
+          `Recording ${call.recordingId} has no voiced lines to key`
+        );
+      }
       await args.scopedDb.shotDialogue.appendRecording({
         id: call.recordingId,
         sequenceId: args.sequenceId,
@@ -301,29 +320,22 @@ export async function recordDialogue(
             ? { ...turn, spokenText: said }
             : turn;
         }),
-        inputHash:
-          recordingKey(
-            args.lines.filter((line) => callShotIds.includes(line.shotId))
-          ) ?? '',
+        inputHash,
         characterCount: call.characterCount,
         workflowRunId: args.workflowRunId,
-        sections: call.windows.flatMap((window) => {
-          const id = call.sectionIdByShotId[window.shotId];
-          if (!id) return [];
+        sections: call.windows.map((window) => {
           const { sourceKey, spokenLines } = spokenOf(window.shotId);
-          return [
-            {
-              id,
-              shotId: window.shotId,
-              fromSeconds: window.fromSeconds,
-              toSeconds: window.toSeconds,
-              sourceKey,
-              spokenLines: spokenLines ?? null,
-              dialogueVersionId:
-                args.dialogueVersionIdByShotId[window.shotId] ?? null,
-              selected: adopts.has(window.shotId),
-            },
-          ];
+          return {
+            id: sectionIdOf(call, window.shotId),
+            shotId: window.shotId,
+            fromSeconds: window.fromSeconds,
+            toSeconds: window.toSeconds,
+            sourceKey,
+            spokenLines: spokenLines ?? null,
+            dialogueVersionId:
+              args.dialogueVersionIdByShotId[window.shotId] ?? null,
+            selected: adopts.has(window.shotId),
+          };
         }),
       });
     }

@@ -216,6 +216,9 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
         // the wire or as substituted descriptions.
         referenceImages: shot.referenceImages,
         voicedLines,
+        // The conversation around the shot (#1657) — without it the child
+        // records the shot's lines as a cold read.
+        dialogueContext: shot.dialogueContext,
         audioClips:
           audioClips && audioClips.length > 0 ? audioClips : undefined,
         motionPrompt: shot.motionPrompt,

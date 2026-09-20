@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { dialogueContextFor, shotDialogueFor } from './shot-dialogue';
+import {
+  dialogueContextFor,
+  requireSelectableSection,
+  shotDialogueFor,
+} from './shot-dialogue';
 
 const characters = [
   { name: 'Ana', voiceId: 'voice-ana' },
@@ -45,12 +49,10 @@ describe('dialogueContextFor', () => {
       scriptDialogue,
       characters,
     });
-    expect(
-      context.map((turn) => [turn.shotId, turn.text, turn.lineIndex])
-    ).toEqual([
-      ['shot-1', 'Where were you?', 0],
-      ['shot-2', 'Mirror wording.', 1],
-      ['shot-3', 'Row wording.', 2],
+    expect(context.map((turn) => [turn.shotId, turn.text])).toEqual([
+      ['shot-1', 'Where were you?'],
+      ['shot-2', 'Mirror wording.'],
+      ['shot-3', 'Row wording.'],
     ]);
   });
 
@@ -65,5 +67,57 @@ describe('dialogueContextFor', () => {
         characters,
       })
     ).toEqual([]);
+  });
+});
+
+describe('requireSelectableSection', () => {
+  const section: {
+    shotId: string;
+    discardedAt: Date | null;
+    sourceKey: string;
+    fromSeconds: number;
+    toSeconds: number;
+  } = {
+    shotId: 'shot-1',
+    discardedAt: null,
+    sourceKey: 'key',
+    fromSeconds: 1,
+    toSeconds: 5,
+  };
+  const ask = (overrides: {
+    section?: typeof section | null;
+    currentKey?: string;
+    limitSeconds?: number;
+  }) =>
+    requireSelectableSection({
+      section,
+      shotId: 'shot-1',
+      currentKey: 'key',
+      limitSeconds: 4,
+      ...overrides,
+    });
+
+  it('passes a reading exactly at the limit', () => {
+    expect(ask({})).toBe(section);
+  });
+
+  it('refuses a missing, discarded or other shot’s reading as not found', () => {
+    // The only thing between a caller and a cut of someone else's recording.
+    for (const other of [
+      null,
+      { ...section, shotId: 'shot-2' },
+      { ...section, discardedAt: new Date() },
+    ]) {
+      expect(() => ask({ section: other })).toThrow('Reading not found');
+    }
+  });
+
+  it('refuses a reading of lines that have since changed, or of none', () => {
+    expect(() => ask({ currentKey: 'moved' })).toThrow(/lines changed/);
+    expect(() => ask({ currentKey: '' })).toThrow(/lines changed/);
+  });
+
+  it('refuses a reading longer than the shot can carry', () => {
+    expect(() => ask({ limitSeconds: 3.9 })).toThrow(/limit is 3\.9s/);
   });
 });

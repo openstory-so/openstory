@@ -8,6 +8,7 @@ import {
   count,
   desc,
   eq,
+  exists,
   getTableColumns,
   inArray,
   isNull,
@@ -70,9 +71,9 @@ export type CharacterBibleUpdate = Partial<
 
 /**
  * The four columns that mirror the selected `character_voice_versions` row
- * (#1657). They move only through `updateVoice`, which appends the history
- * row and moves the pointer with them; `update` refuses them so a voice write
- * cannot land without saying where it came from.
+ * (#1657). `update` refuses them so a voice write cannot land without saying
+ * where it came from: a new value goes through `updateVoice`, re-selecting
+ * an old row through `selectVoiceVersion`.
  */
 const VOICE_FIELDS = [
   'voiceId',
@@ -125,6 +126,9 @@ const charactersWithLiveSheet = {
   sheetInputHash: characterSheetVariants.inputHash,
 };
 
+const RELEASED_VOICE_MESSAGE =
+  'This voice was deleted when it stopped being used; design or pick a new one.';
+
 export function createCharactersMethods(db: Database) {
   /** `select(charactersWithLiveSheet)` + the join it depends on. */
   const selectWithLiveSheet = () =>
@@ -136,21 +140,9 @@ export function createCharactersMethods(db: Database) {
         eq(characterSheetVariants.id, liveSheetVersionId)
       );
 
-  /** Deselect whatever row the character currently points at. */
-  const deselectVoiceVersions = (characterId: string) =>
-    db
-      .update(characterVoiceVersions)
-      .set({ selectedAt: null })
-      .where(
-        and(
-          eq(characterVoiceVersions.characterId, characterId),
-          sql`${characterVoiceVersions.selectedAt} IS NOT NULL`
-        )
-      );
-
   // Private update helper used by updateSheetStatus and updateSheet. Voice
-  // fields are NOT writable here — they go through `updateVoice`, which
-  // appends the history row and moves the pointer (#1657).
+  // fields are NOT writable here — a new value goes through `updateVoice`,
+  // which appends the history row and moves the pointer (#1657).
   const update = async (
     id: string,
     data: CharacterUpdate
@@ -177,10 +169,12 @@ export function createCharactersMethods(db: Database) {
   };
 
   /**
-   * The only way a voice field moves (#1657): one `db.batch` that appends the
-   * history row, selects it, writes the mirror columns and points the
-   * character at it. `source` says WHY — a release and a library pick both
-   * used to be inferred as 'generated'.
+   * How a NEW voice value lands (#1657): one `db.batch` that appends the
+   * history row, writes the mirror columns and points the character at it.
+   * `source` says WHY — a release and a library pick both used to be inferred
+   * as 'generated'. The other writers of the mirror: `selectVoiceVersion`
+   * (re-selects an old row), `create`'s upsert (coalesce, then the original
+   * row through here) and `updateBible` (description, then history).
    */
   const updateVoice = async (
     id: string,
@@ -193,8 +187,7 @@ export function createCharactersMethods(db: Database) {
       .where(eq(characters.id, id));
     if (!existing) throw new Error(`SequenceCharacter ${id} not found`);
     const versionId = generateId();
-    const [, , updatedRows] = await db.batch([
-      deselectVoiceVersions(id),
+    const [, updatedRows] = await db.batch([
       db.insert(characterVoiceVersions).values({
         id: versionId,
         characterId: id,
@@ -210,7 +203,6 @@ export function createCharactersMethods(db: Database) {
         enabled:
           data.useVoice === undefined ? existing.useVoice : data.useVoice,
         source,
-        selectedAt: new Date(),
       }),
       db
         .update(characters)
@@ -430,33 +422,37 @@ export function createCharactersMethods(db: Database) {
         );
       // The id on a released row no longer exists at ElevenLabs, so selecting
       // it would put a dead voice on the row and 404 at TTS (#1657).
-      if (version.releasedAt) {
-        throw new Error(
-          'This voice was deleted when it stopped being used; design or pick a new one.'
-        );
-      }
-      const [, , updatedRows] = await db.batch([
-        deselectVoiceVersions(characterId),
-        db
-          .update(characterVoiceVersions)
-          .set({ selectedAt: new Date() })
-          .where(eq(characterVoiceVersions.id, version.id)),
-        db
-          .update(characters)
-          .set({
-            voiceId: version.voiceId,
-            voiceDescription: version.description,
-            voicePreviews: version.previews,
-            useVoice: version.enabled,
-            selectedVoiceVersionId: version.id,
-            updatedAt: new Date(),
-          })
-          .where(eq(characters.id, characterId))
-          .returning(),
-      ]);
-      const updated = updatedRows[0];
-      if (!updated)
-        throw new Error(`SequenceCharacter ${characterId} not found`);
+      if (version.releasedAt) throw new Error(RELEASED_VOICE_MESSAGE);
+      // The released check rides in the write too: a release landing between
+      // the read above and here must not leave a dead id selected.
+      const [updated] = await db
+        .update(characters)
+        .set({
+          voiceId: version.voiceId,
+          voiceDescription: version.description,
+          voicePreviews: version.previews,
+          useVoice: version.enabled,
+          selectedVoiceVersionId: version.id,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(characters.id, characterId),
+            exists(
+              db
+                .select({ id: characterVoiceVersions.id })
+                .from(characterVoiceVersions)
+                .where(
+                  and(
+                    eq(characterVoiceVersions.id, version.id),
+                    isNull(characterVoiceVersions.releasedAt)
+                  )
+                )
+            )
+          )
+        )
+        .returning();
+      if (!updated) throw new Error(RELEASED_VOICE_MESSAGE);
       return updated;
     },
 

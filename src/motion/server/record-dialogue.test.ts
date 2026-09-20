@@ -94,13 +94,11 @@ const scopedDb = {
 const line = (
   shotId: string,
   index: number,
-  lineIndex: number,
   character: string,
   text: string
 ): SceneVoicedLine => ({
   shotId,
   index,
-  lineIndex,
   token: DIALOGUE_CLIP_TOKEN,
   voiceId: `voice-${character.toLowerCase()}`,
   text,
@@ -110,9 +108,9 @@ const line = (
 });
 
 const LINES: SceneVoicedLine[] = [
-  line('shot-a', 0, 0, 'LENA', 'We only get one shot at the harbour gate.'),
-  line('shot-a', 1, 1, 'MARCUS', 'Then we had better stop talking and move.'),
-  line('shot-b', 0, 2, 'LENA', 'After you.'),
+  line('shot-a', 0, 'LENA', 'We only get one shot at the harbour gate.'),
+  line('shot-a', 1, 'MARCUS', 'Then we had better stop talking and move.'),
+  line('shot-b', 0, 'LENA', 'After you.'),
 ];
 
 /** A provider answer: each shot speaks for `secondsByShot`, back to back. */
@@ -232,6 +230,15 @@ describe('recordDialogue', () => {
 
     expect(recordCall).toHaveBeenCalledTimes(1);
     expect(llmCall).not.toHaveBeenCalled();
+    // …and never adopts it either: its row is context, its clip untouched.
+    expect(
+      appended().sections.map((section) => [section.shotId, section.selected])
+    ).toEqual([
+      ['shot-a', true],
+      ['shot-b', false],
+    ]);
+    expect(setAudioClips).toHaveBeenCalledTimes(1);
+    expect(setAudioClips.mock.calls[0]?.[0]).toBe('shot-a');
   });
 
   it('keeps a section between the shot length and the cap — the clip stretches', async () => {
@@ -379,8 +386,8 @@ describe('recordDialogue', () => {
     reset();
     const long = 'x'.repeat(DIALOGUE_TAKE_CHUNK_CHARS - 100);
     const lines = [
-      line('shot-a', 0, 0, 'LENA', long),
-      line('shot-b', 0, 1, 'MARCUS', long),
+      line('shot-a', 0, 'LENA', long),
+      line('shot-b', 0, 'MARCUS', long),
     ];
     recordCall.mockImplementation(answer({ 'shot-b': 9 }, 'r1'));
     const { step, names } = fakeStep();

@@ -292,7 +292,7 @@ const VOICE_SOURCE_LABELS: Record<CharacterVoiceVersionSource, string> = {
   library: 'From the library',
   'user-edit': 'Description edited',
   disabled: 'Voice turned off',
-  released: 'Voice removed',
+  removed: 'Voice removed',
 };
 
 /**
@@ -304,11 +304,18 @@ const VoiceHistory: React.FC<{
   sequenceId: string;
   character: CharacterWithSheet;
 }> = ({ sequenceId, character }) => {
-  const { data: versions } = useCharacterVoiceVersions(
+  const { data: versions, isError } = useCharacterVoiceVersions(
     sequenceId,
     character.id
   );
   const select = useSelectCharacterVoiceVersion();
+  if (isError) {
+    return (
+      <p className="text-xs text-destructive" role="alert">
+        Voice history failed to load.
+      </p>
+    );
+  }
   if (!versions || versions.length < 2) return null;
   return (
     <section className="flex flex-col gap-2" aria-label="Voice history">

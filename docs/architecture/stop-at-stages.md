@@ -1,8 +1,8 @@
 # Stop-at stages and continue (#1408)
 
 Generate asks how far to run. **One ordered list**, `GENERATION_STAGES` in
-`src/sequences/pipeline.ts` (script → references → images → motion →
-music), drives the Generate-dialog slider, the progress banner and the
+`src/sequences/pipeline.ts` (script → references → images → dialogue →
+motion → music), drives the Generate-dialog slider, the progress banner and the
 scene-list continue button. Casting is part of `script` (it emits the Script
 phase number); there is no separate stage.
 

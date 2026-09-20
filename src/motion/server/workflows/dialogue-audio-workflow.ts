@@ -1,8 +1,8 @@
 /**
  * Dialogue audio workflow — record each SCENE's conversation, keep it per
- * SHOT (#1554, #1657). Runs in the References stage after Voice Design, so the
- * clips are audio references (like a character sheet) that motion only
- * attaches.
+ * SHOT (#1554, #1657). Runs as its own `dialogue` stage, after images and
+ * before motion, so the clips are audio references (like a character sheet)
+ * that motion only attaches.
  *
  * Record wide: Text to Dialogue acts the turns it is given against each
  * other, so a shot recorded alone is a cold read of a reply to a line the

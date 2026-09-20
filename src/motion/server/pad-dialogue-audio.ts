@@ -9,12 +9,12 @@
  *
  * H3 Max rejects `reference_audio_urls` under 2s; Seedance 2.5 under 1.8s.
  * Dialogue lines are often 1–2s, so a short section is extended with silence
- * rather than dropping the voice (overflow-to-prose).
+ * rather than dropping the voice.
  */
 
 const PCM_FORMAT = 1;
 const HEADER = 44;
-/** ElevenLabs `pcm_44100` — 16-bit LE mono. */
+/** ElevenLabs `wav_44100` — 16-bit LE mono PCM in a WAV container. */
 export const ELEVENLABS_PCM_SAMPLE_RATE = 44_100;
 const ELEVENLABS_PCM_CHANNELS = 1;
 const ELEVENLABS_PCM_BITS = 16;
@@ -56,7 +56,10 @@ export function wavHeader(
   return out;
 }
 
-/** Wrap ElevenLabs raw PCM in a WAV header. */
+/**
+ * Wrap raw PCM in a WAV header. Tests only: the call requests `wav_44100`,
+ * so production never sees headerless PCM.
+ */
 export function pcmToWav(
   pcm: Uint8Array,
   sampleRate = ELEVENLABS_PCM_SAMPLE_RATE,
@@ -97,10 +100,10 @@ const SILENCE_THRESHOLD = 0.001;
  *
  * Two independent floors, whichever is later, because neither is trustworthy
  * alone: the last sample above {@link SILENCE_THRESHOLD} inside the window,
- * and `speechEndSeconds` from the provider's own alignment (a time in the
- * RECORDING, not in the window). An alignment end that under-reports cannot
+ * and `speechEndSeconds`, the end of the shot's last voice segment (a time in
+ * the RECORDING, not in the window). A segment end that under-reports cannot
  * cut audible speech, and a noise floor that never dips below the threshold
- * cannot cut a tail the alignment says is silent. A short tail pad is kept
+ * cannot cut a tail the segment says is silent. A short tail pad is kept
  * after it, and the answer never passes `toSeconds`.
  *
  * Throws if the buffer is not a PCM WAV we can measure — a silent no-op would

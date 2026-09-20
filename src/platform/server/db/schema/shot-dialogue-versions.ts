@@ -52,7 +52,7 @@ export const shotDialogueVersions = snakeCase.table(
       .notNull()
       .references(() => shots.id, { onDelete: 'cascade' }),
     lines: text({ mode: 'json' }).$type<ShotDialogueLine[]>().notNull(),
-    source: text().$type<ShotDialogueSource>().notNull(),
+    source: text({ enum: SHOT_DIALOGUE_SOURCES }).notNull(),
     selectedAt: integer({ mode: 'timestamp' }),
     createdAt: integer({ mode: 'timestamp' })
       .$defaultFn(() => new Date())

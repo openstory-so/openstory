@@ -30,6 +30,7 @@ import {
 } from '@/platform/server/db/schema';
 import type {
   DialogueRecording,
+  MotionAudioClip,
   DialogueRecordingTurn,
   ShotDialogueLine,
   ShotDialogueSection,
@@ -48,6 +49,7 @@ export type AppendDialogueRecordingInput = {
   turns: DialogueRecordingTurn[];
   inputHash: string;
   characterCount: number;
+  /** Null for a recording no workflow made. */
   workflowRunId: string | null;
   /** One per shot the call spoke. */
   sections: Array<{
@@ -56,8 +58,10 @@ export type AppendDialogueRecordingInput = {
     fromSeconds: number;
     toSeconds: number;
     sourceKey: string;
-    spokenLines?: { index: number; text: string }[] | null;
-    dialogueVersionId?: string | null;
+    /** Delivered wording; null when the authored lines were spoken as written. */
+    spokenLines: { index: number; text: string }[] | null;
+    /** Null when the lines were derived from the script (no version row). */
+    dialogueVersionId: string | null;
     /** True for a shot that adopts this reading; false = spoken as context. */
     selected: boolean;
   }>;
@@ -147,16 +151,20 @@ export function createShotDialogueMethods(db: Database) {
      * Append the lines as a new selected version. Returns the selected row
      * UNCHANGED when it already says exactly this — a re-analysis, a replayed
      * workflow step and a Save with no edit all land here, and each would
-     * otherwise mint a history row that says nothing.
+     * otherwise mint a history row that says nothing. Null when there is
+     * nothing to say and nothing was said before: a silent shot gets no row,
+     * but a shot that LOST its lines gets an empty one, or the old row would
+     * keep speaking.
      */
     write: async (
       shotId: string,
       lines: ShotDialogueLine[],
       source: ShotDialogueSource,
       opts?: { createdBy?: string | null }
-    ): Promise<ShotDialogueVersion> => {
+    ): Promise<ShotDialogueVersion | null> => {
       const current = await getSelected(shotId);
       if (current && sameLines(current.lines, lines)) return current;
+      if (!current && lines.length === 0) return null;
       // Clear first: the statements apply in order inside one transaction, so
       // inserting a selected row before the clear would trip the partial
       // unique index.
@@ -199,6 +207,16 @@ export function createShotDialogueMethods(db: Database) {
         .limit(1);
       if (existing) return;
 
+      // The recording is a soft pointer, so no CHECK can say this.
+      const outside = input.sections.find(
+        (section) => section.toSeconds > input.durationSeconds
+      );
+      if (outside) {
+        throw new Error(
+          `Section ${outside.id} ends at ${outside.toSeconds}s, past its ${input.durationSeconds}s recording`
+        );
+      }
+
       const now = new Date();
       await db.batch([
         db
@@ -230,8 +248,8 @@ export function createShotDialogueMethods(db: Database) {
               fromSeconds: section.fromSeconds,
               toSeconds: section.toSeconds,
               sourceKey: section.sourceKey,
-              spokenLines: section.spokenLines ?? null,
-              dialogueVersionId: section.dialogueVersionId ?? null,
+              spokenLines: section.spokenLines,
+              dialogueVersionId: section.dialogueVersionId,
               source: section.selected ? 'recorded' : 'context',
               selectedAt: section.selected ? now : null,
               workflowRunId: input.workflowRunId,
@@ -291,10 +309,16 @@ export function createShotDialogueMethods(db: Database) {
       return row ? { ...row.section, recording: row.recording } : null;
     },
 
-    /** Pick a reading — an older one, or one recorded as another shot's context. */
+    /**
+     * Pick a reading — an older one, or one recorded as another shot's
+     * context — and put its cut clip on the shot in the SAME batch: a pointer
+     * naming one reading while the shot holds another has no way back in the
+     * UI (the pointed-at row shows as current, with no Use button).
+     */
     selectSection: async (
       shotId: string,
-      sectionId: string
+      sectionId: string,
+      audioClips: MotionAudioClip[]
     ): Promise<ShotDialogueSection> => {
       const [section] = await db
         .select()
@@ -321,6 +345,10 @@ export function createShotDialogueMethods(db: Database) {
           .set({ selectedAt: new Date() })
           .where(eq(shotDialogueSections.id, section.id))
           .returning(),
+        db
+          .update(shots)
+          .set({ audioClips, updatedAt: new Date() })
+          .where(eq(shots.id, shotId)),
       ]);
       const [row] = selected;
       if (!row) {

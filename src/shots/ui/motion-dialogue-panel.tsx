@@ -1,8 +1,9 @@
 /**
  * The dialogue an audio-capable video model will be told to speak (#1559).
  *
- * Lines are READ-ONLY: they come from the script. Audio is one choice for
- * the whole shot (#1554): the generated take, a user-uploaded audio
+ * Line text is not edited here: it comes from the shot's dialogue node
+ * (`shot_dialogue_versions`; the script only seeds it). Audio is one choice
+ * for the whole shot (#1554): the generated take, a user-uploaded audio
  * element, or the video model inventing the voices. Per-line binding was
  * the old grain; the take is a conversation, not a character.
  *
