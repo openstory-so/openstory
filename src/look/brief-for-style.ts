@@ -76,6 +76,8 @@ export const CATEGORY_BRIEFS: Record<string, string> = {
  * knip ignores; `briefForStyle` is its only in-app consumer.
  */
 export const STYLE_BRIEF_OVERRIDES: Record<string, string> = {
+  'video-call':
+    "A remote team celebrates finishing a project on a three-person video call. Maya, a woman with a dark bob and a blue shirt, speaks from a cream-walled study with an oak bookshelf and a plant on her left. Cut to Ben, a bearded man in a grey sweater, smiling in a blue-walled room with a framed print behind him. Cut to Jo, a woman with short curls and a green cardigan, waving from a white-walled kitchen with a pendant lamp. Return to Maya laughing, then Ben giving a thumbs-up. Show one full-frame webcam feed at a time, keeping each person's room, background objects, lighting, wardrobe, and camera framing identical on every return.",
   // Creative-direction override: perfume advertising trades on allure, so the
   // generated "woman reaches into the haze" brief read too chaste. This pushes
   // the canonical render toward the sultry, sensual register the genre expects.

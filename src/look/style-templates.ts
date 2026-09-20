@@ -1825,6 +1825,57 @@ export const DEFAULT_STYLE_TEMPLATES: StyleTemplateEntry[] = [
     useCases: ['talking-head', 'social-vertical'],
   },
   {
+    name: 'Video Call',
+    description:
+      'Natural webcam conversations between two people or a remote group, cutting between speakers in their own rooms. Each participant keeps the same background, lighting, and framing throughout the call.',
+    category: 'influencer',
+    tags: [
+      'video-call',
+      'webcam',
+      'remote',
+      'conversation',
+      'interview',
+      'group',
+    ],
+    config: {
+      version: 2,
+      look: {
+        mood: 'Conversational, familiar, present',
+        artStyle:
+          'Photorealistic video-call footage of two people or a group connecting from separate locations. Show one participant full-frame at a time in active-speaker view, seated at a laptop or desktop with natural head-and-shoulders webcam framing and eyes near the lens. Establish a distinct room for each named participant on their first appearance and reuse that exact setting every time they return. Preserve wall color, doors, windows, furniture, shelf contents, plants, pictures, desk props, and their positions relative to the participant. Keep each background attached to its owner; never swap rooms between speakers or place remote participants together in one room. Background details remain visible and stable rather than disappearing into portrait blur. Everyday clothing and optional headphones stay consistent. The image is the webcam feed itself, without a device bezel, app logos, captions, or call controls',
+        lighting:
+          "Believable soft window light and gentle screen fill. Each participant can have different local lighting, but keep that person's light direction, brightness, white balance, and practical lamps unchanged throughout the call. No relighting on speaker changes",
+        colorPalette: ['#E9E5DF', '#BDA58B', '#647567', '#424B57', '#F7F7F5'],
+        colorGrading:
+          "Natural webcam color with honest skin tones, moderate contrast, and restrained sharpening. Preserve each participant's established exposure and room colors across every return shot. Subtle webcam texture, without exaggerated compression or glitches",
+      },
+      motion: {
+        camera:
+          'Fixed laptop or monitor-mounted webcam at eye level for each participant. Lock lens, camera height, crop, headroom, and background perspective for the entire call. Small natural gestures, blinks, nods, and listening reactions; no pans, dollies, zooms, reverse angles, or handheld movement',
+        shots:
+          "Cut between full-frame active speakers and brief listening reactions as dialogue changes. Apply the same coverage to two-person calls and larger groups. On returning to any participant, reuse their established room and exact webcam composition. Keep remote eyelines toward each person's own screen",
+        pace: 'measured',
+        energy: 1,
+      },
+      references: [
+        'remote webcam interviews',
+        'everyday team video meetings in active-speaker view',
+        'long-distance family video conversations',
+      ],
+    },
+    isPublic: true,
+    isTemplate: true,
+    // Use the palette fallback until a preview asset has been generated.
+    previewUrl: null,
+    sortOrder: 310,
+    version: null,
+    usageCount: null,
+    recommendedImageModel: 'gpt_image_2',
+    recommendedVideoModel: 'seedance_v2',
+    defaultAspectRatio: '16:9',
+    useCases: ['talking-head', 'tutorial'],
+  },
+  {
     name: 'Street Interview',
     description:
       'On-the-street talking-head with handheld camera, real ambient sound vibe, and unscripted-feeling reactions. Built for man-on-the-street ads and organic reportage content.',

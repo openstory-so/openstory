@@ -38,3 +38,9 @@ Some motion models require specific style categories. For example, the **Seedanc
 ## Style and Script Enhancement
 
 When you use **Enhance Script**, the selected style's configuration is passed to the AI. The enhanced screenplay is tailored to match the style's visual language — for example, a noir style produces darker, moodier descriptions while a vibrant pop-art style produces bold, colorful ones.
+
+### Video Call
+
+Choose **Video Call** for a two-person conversation or a remote group meeting. It uses fixed webcam views, cutting between speakers and listening reactions. Each person has their own room, with the same background, lighting, and framing whenever they reappear.
+
+In your script, name each participant and describe their setting on first appearance. Reuse those names when switching speakers. For example: “Maya speaks from her cream-walled study with an oak bookshelf. Ben replies from his blue-walled office. Return to Maya in the same study.” The default format is landscape (16:9), with one participant filling the frame at a time.
