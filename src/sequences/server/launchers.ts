@@ -187,11 +187,11 @@ async function resolveStoryboardPayload(
       : Promise.resolve([]),
   ]);
 
-  const checkpoint = input.checkpoint
+  let checkpoint = input.checkpoint
     ? await refreshCheckpointFromCast(scopedDb, sequenceId, input.checkpoint)
     : undefined;
   if (checkpoint && input.startFrom === 'dialogue') {
-    checkpoint.imageStage = await snapshotDialogueContinuation(
+    checkpoint = await snapshotDialogueContinuation(
       scopedDb,
       sequence,
       checkpoint

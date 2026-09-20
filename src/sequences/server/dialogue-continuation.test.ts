@@ -62,8 +62,13 @@ function mockDb() {
         ],
       ])
   );
+  const listBySequence = vi.fn(async () => [
+    { id: 'shot_1' },
+    { id: 'shot_2' },
+  ]);
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- only the selected asset reads are exercised
   const db = {
+    shots: { listBySequence },
     frames: {
       getAnchorsByShots: vi.fn(
         async () =>
@@ -84,22 +89,83 @@ function mockDb() {
     },
     shotPromptVersions: { getSelectedMotionByShots },
   } as unknown as ScopedDb;
-  return { db, getSelectedMotionByShots };
+  return { db, getSelectedMotionByShots, listBySequence };
 }
 
 describe('snapshotDialogueContinuation', () => {
+  it.each([false, true])(
+    'excludes deleted shots and keeps surviving inputs aligned (same scene: %s)',
+    async (sameScene) => {
+      const { db, listBySequence, getSelectedMotionByShots } = mockDb();
+      listBySequence.mockResolvedValue([{ id: 'shot_2' }]);
+      const original: GenerationCheckpoint = {
+        ...checkpoint,
+        ...(sameScene
+          ? {
+              scenes: [scene],
+              shotMapping: checkpoint.shotMapping?.map((shot, index) => ({
+                ...shot,
+                analysisSceneId: scene.sceneId,
+                shotNumber: index === 0 ? 2 : 1,
+              })),
+            }
+          : {}),
+        dialogueClipsByShotId: { shot_1: [], shot_2: [] },
+      };
+      const snapshot = await snapshotDialogueContinuation(
+        db,
+        { id: 'seq_1', musicPrompt: null, musicTags: null },
+        original
+      );
+      expect(listBySequence).toHaveBeenCalledWith('seq_1');
+      expect(db.frames.getAnchorsByShots).toHaveBeenCalledWith(['shot_2']);
+      expect(getSelectedMotionByShots).toHaveBeenCalledWith(['shot_2']);
+      expect(snapshot.shotMapping?.map((shot) => shot.shotId)).toEqual([
+        'shot_2',
+      ]);
+      expect(snapshot.scenes?.map((scene) => scene.sceneId)).toEqual([
+        sameScene ? 'scene_1' : 'scene_2',
+      ]);
+      expect(snapshot.imageStage?.prompts.completeScenes).toEqual(
+        snapshot.scenes
+      );
+      expect(snapshot.imageStage?.images).toEqual({
+        imageUrls: ['/second.png'],
+        frameVersionIds: ['image_2'],
+      });
+      expect(
+        Object.keys(snapshot.imageStage?.prompts.motionPromptsByShotId ?? {})
+      ).toEqual(['shot_2']);
+      expect(snapshot.dialogueClipsByShotId).toEqual({ shot_2: [] });
+      expect(original.shotMapping).toHaveLength(2);
+    }
+  );
+
+  it('refuses continuation when every checkpoint shot has been deleted', async () => {
+    const { db, listBySequence, getSelectedMotionByShots } = mockDb();
+    listBySequence.mockResolvedValue([]);
+    await expect(
+      snapshotDialogueContinuation(
+        db,
+        { id: 'seq_1', musicPrompt: null, musicTags: null },
+        checkpoint
+      )
+    ).rejects.toThrow('no remaining shots');
+    expect(getSelectedMotionByShots).not.toHaveBeenCalled();
+  });
+
   it('pins selected stills and prompts in clip order, including edits and voice bindings', async () => {
     const { db } = mockDb();
     const snapshot = await snapshotDialogueContinuation(
       db,
-      { musicPrompt: 'Edited music', musicTags: 'ambient' },
+      { id: 'seq_1', musicPrompt: 'Edited music', musicTags: 'ambient' },
       checkpoint
     );
-    expect(snapshot.images).toEqual({
+    expect(snapshot.imageStage?.images).toEqual({
       imageUrls: ['/edited.png', '/second.png'],
       frameVersionIds: ['image_1', 'image_2'],
     });
-    expect(snapshot.prompts).toMatchObject({
+    expect(snapshot.imageStage?.prompts).toMatchObject({
       motionPromptsByShotId: {
         shot_1: { fullPrompt: 'Edited prompt', dialogue },
       },
@@ -110,7 +176,9 @@ describe('snapshotDialogueContinuation', () => {
       musicPrompt: 'Edited music',
       musicTags: 'ambient',
     });
-    expect(snapshot.prompts.motionPromptsByShotId?.shot_2?.dialogue).toEqual({
+    expect(
+      snapshot.imageStage?.prompts.motionPromptsByShotId?.shot_2?.dialogue
+    ).toEqual({
       presence: false,
       lines: [],
     });
@@ -122,7 +190,7 @@ describe('snapshotDialogueContinuation', () => {
     await expect(
       snapshotDialogueContinuation(
         db,
-        { musicPrompt: null, musicTags: null },
+        { id: 'seq_1', musicPrompt: null, musicTags: null },
         checkpoint
       )
     ).rejects.toThrow('needs a motion prompt');

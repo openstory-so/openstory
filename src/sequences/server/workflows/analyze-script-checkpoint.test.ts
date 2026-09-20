@@ -594,6 +594,10 @@ describe('AnalyzeScriptWorkflow script checkpoint', () => {
       // design must survive the persisted checkpoint, without another LLM call.
       // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- only selection reads are exercised
       const selectionDb = {
+        shots: {
+          listBySequence: async () =>
+            shotMapping.map((shot) => ({ id: shot.shotId })),
+        },
         frames: {
           getAnchorsByShots: async () =>
             new Map(
@@ -619,9 +623,13 @@ describe('AnalyzeScriptWorkflow script checkpoint', () => {
             ),
         },
       } as unknown as ScopedDb;
-      savedCheckpoint.imageStage = await snapshotDialogueContinuation(
+      savedCheckpoint = await snapshotDialogueContinuation(
         selectionDb,
-        { musicPrompt: 'Edited sequence score', musicTags: 'cinematic' },
+        {
+          id: 'seq_1',
+          musicPrompt: 'Edited sequence score',
+          musicTags: 'cinematic',
+        },
         savedCheckpoint
       );
       spawnAndAwaitChild.mockClear();
@@ -704,6 +712,63 @@ describe('AnalyzeScriptWorkflow script checkpoint', () => {
         musicPrompt: 'Preserved music',
         musicTags: 'ambient',
       };
+      // A deleted sibling remains in ID-addressed asset reads and the old
+      // checkpoint. Neither Dialogue nor Motion may receive it after continue.
+      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- only continuation snapshot reads are used
+      const selectionDb = {
+        shots: { listBySequence: async () => [{ id: 'sh_1' }] },
+        frames: {
+          getAnchorsByShots: async () =>
+            new Map([
+              ['sh_1', { id: 'fr_1' }],
+              ['deleted', { id: 'fr_deleted' }],
+            ]),
+        },
+        frameVariants: {
+          getSelectedByFrameIds: async () =>
+            new Map([
+              ['fr_1', { id: 'fv_1', url: '/r2/still.png' }],
+              ['fr_deleted', { id: 'fv_deleted', url: '/r2/deleted.png' }],
+            ]),
+        },
+        shotPromptVersions: {
+          getSelectedMotionByShots: async () =>
+            new Map(
+              ['sh_1', 'deleted'].map((id) => [
+                id,
+                {
+                  id: id === 'sh_1' ? 'mp_1' : 'mp_deleted',
+                  text: 'Preserved prompt',
+                  dialogue: prompts.motionPromptsByShotId?.sh_1?.dialogue,
+                  audio: prompts.motionPromptsByShotId?.sh_1?.audio,
+                },
+              ])
+            ),
+        },
+      } as unknown as ScopedDb;
+      const checkpoint = await snapshotDialogueContinuation(
+        selectionDb,
+        {
+          id: 'seq_1',
+          musicPrompt: prompts.musicPrompt,
+          musicTags: prompts.musicTags,
+        },
+        {
+          ...SPLIT,
+          scenes: [scene],
+          shotMapping: [
+            ...SPLIT.shotMapping,
+            {
+              analysisSceneId: scene.sceneId,
+              shotId: 'deleted',
+              frameId: 'fr_deleted',
+              shotNumber: 2,
+            },
+          ],
+          completedStage: referenceOnly ? 'references' : 'images',
+          charactersWithSheets: [{ ...CHARACTER_ROW, voiceId: 'voice_ada' }],
+        }
+      );
       const update = vi.fn();
       const result = await makeWorkflow().invokeRunImpl(
         makeEvent({
@@ -711,19 +776,7 @@ describe('AnalyzeScriptWorkflow script checkpoint', () => {
           referenceOnly,
           startFrom: 'dialogue',
           stopAt,
-          checkpoint: {
-            ...SPLIT,
-            scenes: [scene],
-            completedStage: referenceOnly ? 'references' : 'images',
-            charactersWithSheets: [{ ...CHARACTER_ROW, voiceId: 'voice_ada' }],
-            imageStage: {
-              images: {
-                imageUrls: ['/r2/still.png'],
-                frameVersionIds: ['fv_1'],
-              },
-              prompts,
-            },
-          },
+          checkpoint,
         }),
         makeStep(),
         makeScopedDb(update)
