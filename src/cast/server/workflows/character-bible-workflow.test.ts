@@ -157,14 +157,61 @@ describe('CharacterBibleWorkflow voice-only characters', () => {
     ]);
   });
 
-  it('blames the right character when a sheet fails with the narrator listed first', async () => {
+  it('keeps the sequence at casting when a sheet fails with the narrator listed first (#1727)', async () => {
     mockSpawnAndAwaitChild.mockRejectedValueOnce(new Error('fal 500'));
-    await expect(
-      makeWorkflow().runBody(
-        makeEvent([narrator, sam]),
-        makeStep(),
-        makeScopedDb()
-      )
-    ).rejects.toThrow(/Sam/);
+    const result = await makeWorkflow().runBody(
+      makeEvent([narrator, sam]),
+      makeStep(),
+      makeScopedDb()
+    );
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        characterId: 'sam',
+        name: 'Sam',
+        sheetStatus: 'failed',
+        sheetImageUrl: null,
+        selectedSheetVersionId: null,
+      }),
+      expect.objectContaining({
+        characterId: 'narrator',
+        sheetStatus: 'completed',
+        sheetImageUrl: null,
+        selectedSheetVersionId: null,
+      }),
+    ]);
+  });
+
+  it('returns the sheets that landed when a sibling sheet fails (#1727)', async () => {
+    const pat = entry({ characterId: 'pat', name: 'Pat' });
+    mockSpawnAndAwaitChild.mockImplementation(async (_step, args) => {
+      if (args.childPayload.characterName === 'Sam') {
+        throw new Error('fal 500');
+      }
+      return {
+        sheetImageUrl: '/r2/characters/pat.png',
+        sheetVersionId: 'ver-pat',
+      };
+    });
+
+    const result = await makeWorkflow().runBody(
+      makeEvent([sam, pat]),
+      makeStep(),
+      makeScopedDb()
+    );
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        characterId: 'sam',
+        sheetStatus: 'failed',
+        sheetImageUrl: null,
+      }),
+      expect.objectContaining({
+        characterId: 'pat',
+        sheetStatus: 'completed',
+        sheetImageUrl: '/r2/characters/pat.png',
+        selectedSheetVersionId: 'ver-pat',
+      }),
+    ]);
   });
 });

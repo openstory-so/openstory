@@ -72,6 +72,7 @@ import type {
 } from '@/platform/server/workflow/types';
 import {
   GENERATION_STAGE_META,
+  characterReferenceSheetsReady,
   flagsFromStopAt,
   shouldRunStage,
   type GenerationCheckpoint,
@@ -954,6 +955,18 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       sceneSplitResult.dialogueVersionIdByShotId;
 
     if (runReferences) {
+      if (
+        !characterReferenceSheetsReady(castCharacterBible, charactersWithSheets)
+      ) {
+        // Sheets that failed stay `failed` on the row; the script checkpoint
+        // is already written. Returning here leaves the sequence at Casting
+        // so Generate can retry the misses (#1727).
+        logger.error(
+          `[AnalyzeScriptWorkflow:cf] Character sheets incomplete; staying at Casting`
+        );
+        await recordDuration('script');
+        return scenesWithVisualPrompts;
+      }
       await persistProgress({
         completedStage: 'references',
         scenes,

@@ -60,8 +60,8 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         // Upsert on (sequenceId, characterId): the Script stage already
         // created these rows sheet-less, so this keeps their ids and flips
         // them to `generating`. A voice-only character (#1585) is completed
-        // by design with no sheet version, so nothing waits on it — unlike
-        // the #939 case, which was a FAILED sheet left `completed`.
+        // by design with no sheet version, so nothing waits on it. A failed
+        // sheet stays `failed` on the row; the parent stays at Casting (#1727).
         // The upsert's returned row is the one read of live state here: it
         // says whether the character already holds a voice (never design a
         // second — a saved voice is an account-wide slot) and whether the
@@ -251,17 +251,9 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     const failures: { name: string; reason: string }[] = [];
     for (const [index, outcome] of settled.entries()) {
       if (outcome.status === 'rejected') {
-        // A reference sheet is what anchors a character's identity across cuts
-        // (#801), and every character in the bible recurs by construction — so
-        // a missing sheet means the sequence would render an unanchored,
-        // different-looking person each cut. We therefore do NOT swallow a
-        // failed child and press on (the old behaviour, which left the row
-        // `completed` with a null sheet and silently continued); instead we
-        // collect every failure and throw once below so the parent
-        // (analyze-script) fails the whole sequence with a clear status error
-        // rather than completing it unanchored (#939). The child's own
-        // `onFailure` already wrote the failed status + emitted the realtime
-        // event for the affected character row.
+        // Keep the sibling sheets and let the parent stay at Casting so the
+        // user can retry the misses (#1727). The child's `onFailure` already
+        // wrote `failed` on the row and emitted the realtime event.
         const character = sheetCharacters[index];
         const name = character?.name ?? `index ${index}`;
         const reason =
@@ -275,6 +267,26 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           }
         );
         failures.push({ name, reason });
+        if (!character) continue;
+        const characterDbId = characterIdToDbId.get(character.characterId);
+        if (!characterDbId) continue;
+        seqCharacters.push({
+          id: characterDbId,
+          characterId: character.characterId,
+          name: character.name,
+          sheetImageUrl: null,
+          sheetStatus: 'failed' as const,
+          sheetInputHash: null,
+          selectedSheetVersionId: null,
+          physicalDescription: character.physicalDescription,
+          voiceOnly: false,
+          isPerson: isPersonFromTalentCast(
+            character.isPerson,
+            matchMap.get(character.characterId)?.hasSignedRelease
+          ),
+          voiceId: voiceByCharacterId.get(character.characterId) ?? null,
+          consistencyTag: character.consistencyTag,
+        });
         continue;
       }
 
@@ -330,16 +342,10 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     }
 
     if (failures.length > 0) {
-      // Stop the sequence rather than continue with an unanchored character
-      // (#939). This rejection propagates up through `spawnAndAwaitChild` to
-      // analyze-script's `charSettled.status === 'rejected'` branch, which marks
-      // the sequence `failed` with this message and emits `generation.failed`.
-      // Content-only failures collapse to the names so the banner can list
-      // who was blocked (#1293).
-      throw new Error(
+      logger.error(
         contentRejectionSummary(failures) ??
           `Character sheet generation failed for ${failures.length} of ${settled.length} character(s); ` +
-            `stopping rather than rendering an unanchored sequence: ${failures.map((f) => `${f.name} (${f.reason})`).join('; ')}`
+            `staying at Casting so the user can retry: ${failures.map((f) => `${f.name} (${f.reason})`).join('; ')}`
       );
     }
 

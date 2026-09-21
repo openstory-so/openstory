@@ -28,6 +28,8 @@ import {
   continueStageSchema,
   nextActionFromArtifacts,
   nextStageAfter,
+  characterReferenceSheetsReady,
+  referenceSheetProgress,
   resolveStopAt,
   shouldRunStage,
   stageIndex,
@@ -169,6 +171,24 @@ describe('completedStageFromArtifacts / nextActionFromArtifacts', () => {
     expect(nextActionFromArtifacts(artifacts)).toBe('references');
   });
 
+  it('stays at script when a character sheet is still missing (#1727)', () => {
+    const missingSheet = {
+      ...empty,
+      hasScenes: true,
+      hasVisualPrompts: true,
+      hasReferenceSheets: false,
+    };
+    expect(completedStageFromArtifacts(missingSheet)).toBe('script');
+    expect(nextActionFromArtifacts(missingSheet)).toBe('references');
+
+    const persistedAnyway = {
+      ...missingSheet,
+      pipelineStage: 'references' as const,
+    };
+    expect(completedStageFromArtifacts(persistedAnyway)).toBe('script');
+    expect(nextActionFromArtifacts(persistedAnyway)).toBe('references');
+  });
+
   it('prefers artifacts over a stale pipelineStage write', () => {
     const imagesLanded = {
       ...empty,
@@ -217,6 +237,33 @@ describe('completedStageFromArtifacts / nextActionFromArtifacts', () => {
     });
     expect(completedStageFromArtifacts(frameBased)).toBe('references');
     expect(nextActionFromArtifacts(frameBased)).toBe('images');
+
+    const failedSheet = artifactsFromSequenceState({
+      sceneCount: 1,
+      shots: [
+        {
+          imagePromptVersion: {},
+          frame: { imageStatus: null },
+          videoStatus: 'pending',
+        },
+      ],
+      pipelineStage: 'script',
+      characters: [
+        {
+          voiceOnly: false,
+          sheetStatus: 'failed',
+          sheetImageUrl: null,
+        },
+        {
+          voiceOnly: false,
+          sheetStatus: 'completed',
+          sheetImageUrl: '/r2/ada.png',
+        },
+      ],
+    });
+    expect(failedSheet.hasReferenceSheets).toBe(false);
+    expect(completedStageFromArtifacts(failedSheet)).toBe('script');
+    expect(nextActionFromArtifacts(failedSheet)).toBe('references');
   });
 
   it('advances continue past a persisted stage that has no shot artifacts yet', () => {
@@ -301,6 +348,55 @@ describe('completedStageFromArtifacts / nextActionFromArtifacts', () => {
     // The `music` stop runs motion too, so the verb must say both.
     expect(actionLabelForStage('music')).toBe('Generate Motion & Music');
     expect(actionLabelForStage('references')).toBe('Generate References');
+    expect(actionLabelForStage('references', { remaining: 1, total: 3 })).toBe(
+      'Generate 1 / 3 references'
+    );
+    expect(actionLabelForStage('references', { remaining: 1, total: 1 })).toBe(
+      'Generate 1 / 1 reference'
+    );
+  });
+
+  it('counts remaining on-screen character sheets for the references CTA (#1727)', () => {
+    expect(
+      referenceSheetProgress([
+        {
+          voiceOnly: false,
+          sheetStatus: 'completed',
+          sheetImageUrl: '/r2/ada.png',
+        },
+        { voiceOnly: false, sheetStatus: 'failed', sheetImageUrl: null },
+        { voiceOnly: true, sheetStatus: 'completed', sheetImageUrl: null },
+      ])
+    ).toEqual({ remaining: 1, total: 2 });
+    expect(
+      characterReferenceSheetsReady(
+        [
+          { characterId: 'ada', voiceOnly: false },
+          { characterId: 'bob', voiceOnly: false },
+          { characterId: 'narrator', voiceOnly: true },
+        ],
+        [
+          {
+            characterId: 'ada',
+            sheetStatus: 'completed',
+            sheetImageUrl: '/r2/ada.png',
+          },
+          { characterId: 'bob', sheetStatus: 'failed', sheetImageUrl: null },
+        ]
+      )
+    ).toBe(false);
+    expect(
+      characterReferenceSheetsReady(
+        [{ characterId: 'ada', voiceOnly: false }],
+        [
+          {
+            characterId: 'ada',
+            sheetStatus: 'completed',
+            sheetImageUrl: '/r2/ada.png',
+          },
+        ]
+      )
+    ).toBe(true);
   });
 
   it('does not offer a continue action while the sequence is processing', () => {

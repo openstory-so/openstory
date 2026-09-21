@@ -196,6 +196,8 @@ export type SceneListProps = {
   isAnalyzing?: boolean;
   leftoverGrokShotIds?: ReadonlySet<string>;
   onLeftoverGrokChange?: (shotIds: readonly string[], useGrok: boolean) => void;
+  /** Remaining / total on-screen sheets when continue starts at References. */
+  referenceProgress?: { remaining: number; total: number };
 };
 
 const SceneListComponent: React.FC<SceneListProps> = ({
@@ -238,6 +240,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   isAnalyzing = false,
   leftoverGrokShotIds,
   onLeftoverGrokChange,
+  referenceProgress,
 }) => {
   const rootRef = useRef<HTMLDivElement>(null);
   const divergentByShotId = useMemo(() => {
@@ -428,6 +431,12 @@ const SceneListComponent: React.FC<SceneListProps> = ({
       : continueStopAt;
   const ContinueIcon = CONTINUE_ICON[continueStopAtClamped];
   const showButton = showMotionFooter;
+  const continueLabelOpts = {
+    generateStartFrames: draftStartFrames,
+    startFrom: continueStart ?? nextStage ?? undefined,
+    remaining: referenceProgress?.remaining,
+    total: referenceProgress?.total,
+  };
 
   const handleContinue = async () => {
     if (!onContinueGeneration || !isContinueStage(nextStage)) return;
@@ -436,7 +445,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
       : nextStage;
     await runFooterAction(
       `Failed to ${actionLabelForStage(continueStopAtClamped, {
-        generateStartFrames: draftStartFrames,
+        ...continueLabelOpts,
         startFrom,
       }).toLowerCase()}`,
       () =>
@@ -851,10 +860,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
             ) : (
               <>
                 <ContinueIcon className="mr-2 h-4 w-4" />
-                {actionLabelForStage(continueStopAtClamped, {
-                  generateStartFrames: draftStartFrames,
-                  startFrom: continueStart ?? nextStage,
-                })}
+                {actionLabelForStage(continueStopAtClamped, continueLabelOpts)}
               </>
             )}
           </Button>
@@ -924,6 +930,9 @@ const areEqual = (
     prevProps.styleName !== nextProps.styleName ||
     prevProps.staleShotIds !== nextProps.staleShotIds ||
     prevProps.leftoverGrokShotIds !== nextProps.leftoverGrokShotIds ||
+    prevProps.referenceProgress?.remaining !==
+      nextProps.referenceProgress?.remaining ||
+    prevProps.referenceProgress?.total !== nextProps.referenceProgress?.total ||
     prevProps.className !== nextProps.className
   ) {
     return false;

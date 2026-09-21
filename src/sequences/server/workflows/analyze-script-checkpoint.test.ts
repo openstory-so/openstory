@@ -143,18 +143,17 @@ const CHILD_RESULTS: Record<string, unknown> = {
     musicTags: [],
   },
 };
-const spawnAndAwaitChild = vi.fn(
-  async (
-    _step: WorkflowStep,
-    args: { spawnStepName: string; childPayload: unknown }
-  ) => {
-    const result = CHILD_RESULTS[args.spawnStepName];
-    if (result === undefined) {
-      throw new Error(`unexpected child ${args.spawnStepName}`);
-    }
-    return result;
+const defaultSpawn = async (
+  _step: WorkflowStep,
+  args: { spawnStepName: string; childPayload: unknown }
+) => {
+  const result = CHILD_RESULTS[args.spawnStepName];
+  if (result === undefined) {
+    throw new Error(`unexpected child ${args.spawnStepName}`);
   }
-);
+  return result;
+};
+const spawnAndAwaitChild = vi.fn(defaultSpawn);
 vi.doMock('@/platform/server/workflow/await-child', () => ({
   spawnAndAwaitChild,
 }));
@@ -394,6 +393,69 @@ describe('AnalyzeScriptWorkflow script checkpoint', () => {
         scenesWithVisualPrompts: VISUAL_PROMPTS.scenes,
       },
     });
+  });
+
+  test('a failed character sheet stays at script and does not render (#1727)', async () => {
+    const update: UpdateMock = vi.fn(async () => undefined);
+    const bibleEntry = (characterId: string, name: string) => ({
+      characterId,
+      name,
+      age: '',
+      gender: '',
+      ethnicity: '',
+      physicalDescription: '',
+      standardClothing: '',
+      distinguishingFeatures: '',
+      personality: '',
+      movement: '',
+      voiceDescription: '',
+      voiceOnly: false,
+      isPerson: true,
+      consistencyTag: characterId,
+    });
+    const bible = [bibleEntry('c1', 'Ada'), bibleEntry('c2', 'Bob')];
+    const bobFailed: CharacterMinimal = {
+      ...CHARACTER_ROW,
+      id: 'ch_2',
+      characterId: 'c2',
+      name: 'Bob',
+      sheetImageUrl: null,
+      sheetStatus: 'failed',
+      selectedSheetVersionId: null,
+    };
+    spawnAndAwaitChild.mockImplementation(async (_step, args) => {
+      if (args.spawnStepName === 'spawn-scene-split') {
+        return { ...SPLIT, characterBible: bible };
+      }
+      if (args.spawnStepName === 'spawn-character-bible') {
+        return [CHARACTER_ROW, bobFailed];
+      }
+      return defaultSpawn(_step, args);
+    });
+
+    try {
+      await makeWorkflow().invokeRunImpl(
+        makeEvent({ ...noStyle, stopAt: 'music' }),
+        makeStep(),
+        makeScopedDb(update)
+      );
+
+      expect(spawned()).toEqual(
+        expect.arrayContaining([
+          'spawn-character-bible',
+          'spawn-location-bible',
+          'spawn-visual-prompts',
+        ])
+      );
+      expect(spawned()).not.toContain('spawn-shot-images');
+      expect(checkpointWrite(update, 'references')).toBeUndefined();
+      expect(checkpointWrite(update, 'script')).toMatchObject({
+        id: 'seq_1',
+        pipelineStage: 'script',
+      });
+    } finally {
+      spawnAndAwaitChild.mockImplementation(defaultSpawn);
+    }
   });
 
   test('startFrom references: skips the script stage and reads the bible off the checkpoint', async () => {

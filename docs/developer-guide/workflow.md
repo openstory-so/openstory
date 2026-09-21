@@ -231,7 +231,7 @@ flowchart LR
 **Character Bible Workflow** (`src/cast/server/workflows/character-bible-workflow.ts`):
 
 - Creates the `characters` DB rows (upsert on `(sequenceId, characterId)`; the Script stage already made them sheet-less)
-- Generates a reference sheet image for each on-screen character (one `CharacterSheetWorkflow` child per character, in parallel); a failed child fails the whole run (#939)
+- Generates a reference sheet image for each on-screen character (one `CharacterSheetWorkflow` child per character, in parallel); a failed child leaves that row `failed` and the sequence stays at Casting so Generate can retry the misses (`Generate 1 / 3 references`, #1727)
 - A voice-only character (#1585) gets no child: its row is created `completed` with no sheet version, it is left out of the billed sheet count, and it never reaches the still prompt or the reference images. The motion prompt still sees it, for delivery
 - Uses talent match images as reference when available
 - Uploads sheets to R2 storage

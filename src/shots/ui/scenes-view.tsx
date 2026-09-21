@@ -32,9 +32,11 @@ import {
   artifactsFromSequenceState,
   continueStageFromState,
   flagsFromStopAt,
+  referenceSheetProgress,
   type ContinueStage,
   type GenerationStage,
 } from '@/sequences/pipeline';
+import { useSequenceCharacters } from '@/cast/ui/use-sequence-characters';
 import { getDivergentVariantPromptDiffFn } from '@/shots/prompt-variants.fn';
 import { smartRetryFn } from '@/sequences/smart-retry.fn';
 import { BILLING_BALANCE_KEY } from '@/billing/ui/use-billing-balance';
@@ -1362,6 +1364,14 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   );
 
   const musicPromptsReady = !!(sequence?.musicPrompt && sequence.musicTags);
+  const { data: sequenceCharacters } = useSequenceCharacters(sequenceId);
+  const referenceProgress = useMemo(
+    () =>
+      sequenceCharacters
+        ? referenceSheetProgress(sequenceCharacters)
+        : undefined,
+    [sequenceCharacters]
+  );
 
   const nextStage = useMemo(
     () =>
@@ -1375,6 +1385,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
           pipelineStage: sequence?.pipelineStage,
           referenceOnly: !generateStartFrames,
           generateVoices: sequence?.generateVoices,
+          characters: sequenceCharacters,
         }),
       }),
     [
@@ -1386,6 +1397,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       sequence?.pipelineStage,
       sequence?.generateVoices,
       generateStartFrames,
+      sequenceCharacters,
     ]
   );
 
@@ -1589,6 +1601,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     isAnalyzing: isProcessing,
     leftoverGrokShotIds,
     onLeftoverGrokChange: handleLeftoverGrokChange,
+    referenceProgress,
   };
 
   return (

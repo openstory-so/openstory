@@ -44,3 +44,9 @@ phase number); there is no separate stage.
 - Known gap: scenes added/edited during a stop are NOT re-snapshotted (the
   full `Scene` lives in `frame.metadata`); the staleness tooling covers them
   after the fact.
+- **Failed character sheets (#1727).** A miss does not fail the sequence.
+  Analyze-script returns after References without persisting that stage, so
+  `pipelineStage` stays `script` (Casting). Continue offers References again;
+  the footer shows remaining / total (`Generate 1 / 3 references`). Visual
+  prompts that already landed do not count as References-complete while any
+  on-screen sheet is still missing.

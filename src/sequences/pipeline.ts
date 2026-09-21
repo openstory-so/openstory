@@ -285,9 +285,71 @@ export type PipelineArtifacts = {
   hasImages: boolean;
   hasMotion: boolean;
   hasMusic: boolean;
+  /**
+   * On-screen character sheets that the References stage still owes. `false`
+   * keeps the sequence at Casting even when visual prompts already exist
+   * (#1727). Omitted when the canvas has not loaded the cast yet.
+   */
+  hasReferenceSheets?: boolean;
   pipelineStage?: GenerationStage | null;
   generateVoices?: boolean;
 };
+
+export type ReferenceSheetRow = {
+  voiceOnly?: boolean | null;
+  sheetStatus?: string | null;
+  sheetImageUrl?: string | null;
+};
+
+/** Voice-only characters never get a sheet; they do not count as misses. */
+function characterNeedsReferenceSheet(
+  character: Pick<ReferenceSheetRow, 'voiceOnly'>
+): boolean {
+  return !character.voiceOnly;
+}
+
+function characterHasReferenceSheet(
+  character: Pick<ReferenceSheetRow, 'sheetStatus' | 'sheetImageUrl'>
+): boolean {
+  return (
+    character.sheetStatus === 'completed' && Boolean(character.sheetImageUrl)
+  );
+}
+
+/**
+ * Remaining / total on-screen sheets for the references continue CTA
+ * (`Generate 1 / 3 references`).
+ */
+export function referenceSheetProgress(
+  characters: ReadonlyArray<ReferenceSheetRow>
+): { remaining: number; total: number } {
+  const needed = characters.filter(characterNeedsReferenceSheet);
+  return {
+    remaining: needed.filter((c) => !characterHasReferenceSheet(c)).length,
+    total: needed.length,
+  };
+}
+
+/**
+ * True when every on-screen bible entry has a completed sheet. Voice-only
+ * characters are complete by design. An empty bible is ready.
+ */
+export function characterReferenceSheetsReady(
+  bible: ReadonlyArray<{ characterId: string; voiceOnly?: boolean | null }>,
+  sheets: ReadonlyArray<{
+    characterId: string;
+    sheetStatus?: string | null;
+    sheetImageUrl?: string | null;
+  }>
+): boolean {
+  const needed = bible.filter((c) => characterNeedsReferenceSheet(c));
+  if (needed.length === 0) return true;
+  const byId = new Map(sheets.map((row) => [row.characterId, row]));
+  return needed.every((entry) => {
+    const row = byId.get(entry.characterId);
+    return row != null && characterHasReferenceSheet(row);
+  });
+}
 
 export function completedStageFromArtifacts(
   artifacts: PipelineArtifacts
@@ -298,7 +360,8 @@ export function completedStageFromArtifacts(
   if (artifacts.hasMusic && artifacts.hasMotion) completed = 'music';
   else if (artifacts.hasMotion) completed = 'motion';
   else if (artifacts.hasImages) completed = 'images';
-  else if (artifacts.hasVisualPrompts) completed = 'references';
+  else if (artifacts.hasVisualPrompts && artifacts.hasReferenceSheets !== false)
+    completed = 'references';
   else if (artifacts.hasScenes) completed = 'script';
 
   // Shot rows can lag the persist (prompts not mirrored yet). A persisted
@@ -313,6 +376,16 @@ export function completedStageFromArtifacts(
     (completed === null || stageIndex(persisted) > stageIndex(completed))
   ) {
     completed = persisted;
+  }
+  // A failed character sheet must not look like References is done, even if
+  // visual prompts landed or a persist wrote the stage before this rule (#1727).
+  if (
+    artifacts.hasReferenceSheets === false &&
+    completed !== null &&
+    stageIndex(completed) >= stageIndex('references') &&
+    stageIndex(completed) < stageIndex('images')
+  ) {
+    completed = artifacts.hasScenes ? 'script' : null;
   }
   return completed;
 }
@@ -405,7 +478,12 @@ export function continueStageFromState(args: {
 
 export function actionLabelForStage(
   stage: GenerationStage,
-  opts?: { generateStartFrames?: boolean; startFrom?: GenerationStage }
+  opts?: {
+    generateStartFrames?: boolean;
+    startFrom?: GenerationStage;
+    remaining?: number;
+    total?: number;
+  }
 ): string {
   if (
     stage === 'dialogue' &&
@@ -414,6 +492,14 @@ export function actionLabelForStage(
     shouldRunStage(opts.startFrom, stage, 'images')
   ) {
     return 'Generate Start Frames & Dialogue';
+  }
+  if (
+    stage === 'references' &&
+    opts?.remaining != null &&
+    opts.total != null &&
+    opts.total > 0
+  ) {
+    return `Generate ${opts.remaining} / ${opts.total} ${opts.total === 1 ? 'reference' : 'references'}`;
   }
   return GENERATION_STAGE_META[stage].actionLabel;
 }
@@ -437,6 +523,7 @@ export function artifactsFromSequenceState(args: {
    */
   referenceOnly?: boolean;
   generateVoices?: boolean;
+  characters?: ReadonlyArray<ReferenceSheetRow>;
 }): PipelineArtifacts {
   const { shots } = args;
   const reached = coerceStage(args.pipelineStage);
@@ -456,6 +543,10 @@ export function artifactsFromSequenceState(args: {
       shots.length > 0 &&
       shots.every((shot) => shot.videoStatus === 'completed'),
     hasMusic: args.musicStatus === 'completed' && Boolean(args.musicUrl),
+    hasReferenceSheets:
+      args.characters === undefined
+        ? undefined
+        : referenceSheetProgress(args.characters).remaining === 0,
     pipelineStage: args.pipelineStage,
     generateVoices: args.generateVoices,
   };
