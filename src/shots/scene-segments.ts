@@ -313,6 +313,7 @@ export function isSelectedVersionStale(
     // receive no voiced lines and stamp a null key, even with voices enabled.
     // Keep the shared live key intact for the dialogue recording's own check.
     const currentAudio =
+      entry.audioSourceKey == null &&
       isValidImageToVideoModel(selected.model) &&
       !modelTakesDialogueAudio(selected.model)
         ? null

@@ -357,6 +357,23 @@ describe('isSelectedVersionStale', () => {
     }
   );
 
+  it('still compares explicitly stamped audio on a legacy or fallback render', () => {
+    const v = version('v1', 'seg', 'grok_imagine_video_1_5', [
+      {
+        shotId: 'shot-1',
+        motionPromptVersionId: 'mp-1',
+        frameVersionId: 'fv-1',
+        audioSourceKey: 'recorded-key',
+      },
+    ]);
+    expect(
+      stale(v, { audioSourceKeyByShot: new Map([['shot-1', 'recorded-key']]) })
+    ).toBe(false);
+    expect(
+      stale(v, { audioSourceKeyByShot: new Map([['shot-1', 'changed-key']]) })
+    ).toBe(true);
+  });
+
   it('is stale when a shot repointed its frame or motion prompt', () => {
     const v = version('v1', 'seg', 'kling', [
       {
