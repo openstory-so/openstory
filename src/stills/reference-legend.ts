@@ -20,6 +20,8 @@ import type { ReferenceImageDescription } from './reference-image-prompt';
  * Matching is case-insensitive and word-bounded, so "SCARLETT"/"Scarlett"
  * match a `Scarlett` token but "jacket" never matches `jack`. Returns which
  * entries were found so callers can fall back to a legend for the rest.
+ * Reserved machine markers can opt into case-sensitive matching to avoid
+ * binding ordinary prose such as "dialogue" to the DIALOGUE recording.
  *
  * Spoken or written words are never touched: a name inside a line of dialogue
  * is something a person SAYS, and a video model voiced `"Hello Steve."` as
@@ -28,7 +30,7 @@ import type { ReferenceImageDescription } from './reference-image-prompt';
  */
 export function substituteReferenceTags(
   prompt: string,
-  entries: Array<{ token?: string; render: string }>
+  entries: Array<{ token?: string; render: string; caseSensitive?: boolean }>
 ): { prompt: string; mentioned: boolean[] } {
   // Odd indexes are the quoted spans (`split` with a capture group).
   const segments = prompt.split(QUOTED_SPAN);
@@ -37,7 +39,7 @@ export function substituteReferenceTags(
     if (!entry.token) return;
     const pattern = new RegExp(
       `(?<=^|[^A-Za-z0-9_])${escapeRegex(entry.token)}(?=[^A-Za-z0-9_]|$)`,
-      'gi'
+      entry.caseSensitive ? 'g' : 'gi'
     );
     for (let at = 0; at < segments.length; at += 2) {
       segments[at] = (segments[at] ?? '').replace(pattern, () => {

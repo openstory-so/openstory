@@ -48,6 +48,7 @@ import type {
   MotionReferenceEndpointConfig,
 } from '@/models/models';
 import type { ReferenceImageDescription } from '@/stills/reference-image-prompt';
+import { DIALOGUE_CLIP_TOKEN } from '@/motion/dialogue-tts';
 import {
   appendLegendWithinLimit,
   inlineReferenceDescription,
@@ -237,11 +238,19 @@ export function buildReferenceVideoPrompt(
     basePrompt,
     [
       // Attached refs bind inline to their tag.
-      ...bound.map(({ ref, render }) => ({ token: ref.token, render })),
+      ...bound.map(({ ref, render }) => ({
+        token: ref.token,
+        render,
+        // The generated recording marker must not consume ordinary "dialogue" prose.
+        caseSensitive:
+          ref.kind === 'audio' && ref.token === DIALOGUE_CLIP_TOKEN,
+      })),
       // Overflow refs have no slot — swap tokens for descriptions.
       ...overflow.map((ref) => ({
         token: ref.token,
         render: inlineReferenceDescription(ref),
+        caseSensitive:
+          ref.kind === 'audio' && ref.token === DIALOGUE_CLIP_TOKEN,
       })),
     ]
   );

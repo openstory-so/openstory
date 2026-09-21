@@ -581,3 +581,56 @@ describe('a dialogue line bound to a voice element', () => {
     expect(result.prompt).not.toContain('SARAH_VOICE');
   });
 });
+
+describe('recorded dialogue token versus ordinary prose (#1720)', () => {
+  it.each([false, true])(
+    'preserves the dialogue instruction with an explicit recording binding=%s',
+    (bindRecording) => {
+      const config = getMotionReferenceEndpoint('minimax_h3_max');
+      if (!config) throw new Error('MiniMax reference endpoint missing');
+      const base = assembleMotionPrompt({
+        model: 'minimax_h3_max',
+        motionPrompt: {
+          fullPrompt: 'STEVE looks up.',
+          dialogue: {
+            presence: true,
+            lines: [
+              {
+                character: 'STEVE',
+                line: 'Hello Elara.',
+                tone: 'calm',
+                ...(bindRecording ? { voiceToken: 'DIALOGUE' } : {}),
+              },
+            ],
+          },
+          audio: null,
+        },
+      });
+      const result = buildReferenceVideoPrompt(config, base, null, [
+        {
+          token: 'STEVE',
+          description: 'Steve',
+          role: 'character',
+          referenceImageUrl: '/steve.png',
+        },
+        {
+          token: 'DIALOGUE',
+          description: 'Recorded conversation',
+          role: 'element',
+          kind: 'audio',
+          durationSeconds: 3,
+          referenceImageUrl: '/dialogue.wav',
+        },
+      ]);
+      expect(result.prompt).toContain(
+        'Generate only dialogue, environmental sounds, and action sounds.'
+      );
+      expect(result.prompt).toContain('<d>[English] Hello Elara.</d>');
+      expect(result.prompt).toContain(
+        bindRecording
+          ? 'Image 1 speaks this line exactly as recorded in Audio 1:'
+          : 'Audio 1: Recorded conversation'
+      );
+    }
+  );
+});
