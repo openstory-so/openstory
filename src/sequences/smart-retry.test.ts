@@ -19,6 +19,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { TEST_FAL_PRICING as FAL_PRICING } from '@/billing/fal-pricing-fixture';
 import type { AssemblableMotionPrompt } from '@/shots/scene-analysis.schema';
 import type {
+  CharacterMinimal,
   Frame,
   FramePromptVersion,
   FrameVariant,
@@ -313,7 +314,7 @@ function makeContext(
         )
       )
   );
-  const listWithSheets = vi.fn(async () => []);
+  const listWithSheets = vi.fn(async (): Promise<CharacterMinimal[]> => []);
   const listCharacters = vi.fn(async () => []);
   // Model identity lives on the version that produced each asset (#1066); an
   // empty map means nothing has been rendered yet → shots inherit the sequence
@@ -378,6 +379,8 @@ function makeContext(
       ),
     },
     characters: { listWithSheets, list: listCharacters },
+    sequenceElements: { list: vi.fn(async () => []) },
+    sequenceLocations: { listWithReferences: vi.fn(async () => []) },
     // No shot dialogue rows: the retry reads the motion row's mirror (#1657).
     shotDialogue: { getSelectedBySequence: vi.fn(async () => []) },
     shotPromptVersions: { getSelectedMotionByShots },
@@ -393,6 +396,7 @@ function makeContext(
     scopedDb,
     updateStatus,
     listBySequence,
+    listWithSheets,
   };
 }
 
@@ -576,6 +580,57 @@ describe('executeSmartRetry — partial retry status reset', () => {
     });
     expect(updateStatus).toHaveBeenCalledWith('completed');
   });
+
+  test.each([true, false])(
+    'motion retry retains cast references with useStartFrame=%s',
+    async (useStartFrame) => {
+      resetMocks();
+      const shot = makeShot({
+        videoStatus: 'failed',
+        useStartFrame,
+        motionPrompt: {
+          fullPrompt: 'Sarah walks through the lab',
+          dialogue: null,
+          audio: null,
+        },
+      });
+      const { context, listWithSheets } = makeContext(makeSequence(), [shot]);
+      listWithSheets.mockResolvedValue([
+        {
+          id: 'char-sarah',
+          characterId: 'sarah',
+          name: 'Sarah',
+          sheetImageUrl: 'https://cdn/sarah.png',
+          sheetStatus: 'completed',
+          sheetInputHash: 'hash',
+          selectedSheetVersionId: 'sheet-1',
+          physicalDescription: 'Short dark hair',
+          voiceOnly: false,
+          isPerson: true,
+          consistencyTag: 'sarah',
+        },
+      ]);
+
+      await executeSmartRetry(context);
+
+      expect(triggerWorkflowMock).toHaveBeenCalledWith(
+        '/motion-batch',
+        expect.objectContaining({
+          shots: [
+            expect.objectContaining({
+              referenceOnly: !useStartFrame,
+              referenceImages: [
+                expect.objectContaining({
+                  referenceImageUrl: 'https://cdn/sarah.png',
+                  provenanceKey: 'character:char-sarah:sheet-1',
+                }),
+              ],
+            }),
+          ],
+        })
+      );
+    }
+  );
 
   test('two failed shots in one scene record the conversation once (#1703)', async () => {
     resetMocks();

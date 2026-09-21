@@ -384,19 +384,18 @@ export async function executeSmartRetry(context: SmartRetryContext) {
   // the same shape Generate all motion / Update Stale already use.
   if (failedMotionShots.length > 0) {
     const { snapDuration } = await import('@/motion/snap-duration');
-    // Reference-only clips are driven ENTIRELY by their reference sheets, so a
-    // retry that forwarded none would silently resubmit as text-to-video —
-    // different characters, different set, at the same price. Loaded once for
-    // the whole batch; the image-to-video path keeps its existing behaviour.
+    // Match normal motion generation: cast and element references also keep
+    // identity consistent when animating a start frame. Only location sheets
+    // are exclusive to reference-only shots.
     const [motionCharacters, motionElements, motionLocations, voiceCharacters] =
-      anyReferenceOnly
-        ? await Promise.all([
-            context.scopedDb.characters.listWithSheets(sequence.id),
-            context.scopedDb.sequenceElements.list(sequence.id),
-            context.scopedDb.sequenceLocations.listWithReferences(sequence.id),
-            context.scopedDb.characters.list(sequence.id),
-          ])
-        : [[], [], [], await context.scopedDb.characters.list(sequence.id)];
+      await Promise.all([
+        context.scopedDb.characters.listWithSheets(sequence.id),
+        context.scopedDb.sequenceElements.list(sequence.id),
+        anyReferenceOnly
+          ? context.scopedDb.sequenceLocations.listWithReferences(sequence.id)
+          : Promise.resolve([]),
+        context.scopedDb.characters.list(sequence.id),
+      ]);
     const dialogueVersions =
       await context.scopedDb.shotDialogue.getSelectedBySequence(sequence.id);
     const batchDialogue = snapshotBatchDialogue({
@@ -435,35 +434,32 @@ export async function executeSmartRetry(context: SmartRetryContext) {
           { model: shotVideoModel, operation: 'smart-retry:motion' }
         )
       );
+      const prompt = resolveMotionPromptFromVersion(
+        selectedMotion,
+        {
+          dialogue: shotDialogue,
+          characterTags: scene?.continuity?.characterTags,
+          description: scene?.originalScript.extract ?? null,
+        },
+        shotVideoModel
+      );
       batchShots.push({
         shotId: shot.id,
         sceneId: shot.sceneId,
         sequenceTitle: sequence.title,
         imageUrl: referenceOnly ? undefined : (imageUrl ?? undefined),
         referenceOnly,
-        ...(referenceOnly
-          ? {
-              referenceImages: buildMotionReferenceImages({
-                scene: scene ?? null,
-                characters: motionCharacters,
-                elements: motionElements,
-                motionPrompt: selectedMotion?.text ?? null,
-                referenceOnly: true,
-                locations: motionLocations,
-              }),
-            }
-          : {}),
+        referenceImages: buildMotionReferenceImages({
+          scene: scene ?? null,
+          characters: motionCharacters,
+          elements: motionElements,
+          motionPrompt: prompt,
+          referenceOnly,
+          locations: motionLocations,
+        }),
         frameVersionId: referenceOnly ? null : (shot.image?.id ?? null),
         motionPromptVersionId: selectedMotion?.id ?? null,
-        prompt: resolveMotionPromptFromVersion(
-          selectedMotion,
-          {
-            dialogue: shotDialogue,
-            characterTags: scene?.continuity?.characterTags,
-            description: scene?.originalScript.extract ?? null,
-          },
-          shotVideoModel
-        ),
+        prompt,
         model: shotVideoModel,
         aspectRatio: sequence.aspectRatio,
         resolution: sequence.resolution,
