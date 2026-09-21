@@ -2,15 +2,34 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockGet = vi.fn();
 const mockShare = vi.fn();
+const mockDelete = vi.fn();
 
 vi.doMock('@/models/server/elevenlabs-config', () => ({
   createElevenLabsSdk: vi.fn(async () => ({
-    voices: { get: mockGet, share: mockShare },
+    voices: { get: mockGet, share: mockShare, delete: mockDelete },
   })),
 }));
 
-const { resolveAssignableVoiceId, VOICE_DESIGN_GUIDANCE_SCALE } =
-  await import('./elevenlabs-voice');
+const {
+  deleteElevenLabsVoice,
+  getElevenLabsVoice,
+  isElevenLabsVoiceMissing,
+  resolveAssignableVoiceId,
+  VOICE_DESIGN_GUIDANCE_SCALE,
+} = await import('./elevenlabs-voice');
+
+/** ElevenLabs GET/DELETE of a gone voice: 400 + voice_not_found, not 404. */
+const voiceNotFound = (voiceId: string) => ({
+  statusCode: 400,
+  body: {
+    detail: {
+      type: 'not_found',
+      code: 'voice_not_found',
+      message: `A voice with ID '${voiceId}' was not found.`,
+      status: 'voice_not_found',
+    },
+  },
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -63,5 +82,49 @@ describe('resolveAssignableVoiceId', () => {
     expect(mockShare).toHaveBeenCalledWith('owner-1', 'lib-1', {
       newName: 'Narrator · Sam',
     });
+  });
+});
+
+describe('isElevenLabsVoiceMissing', () => {
+  it('treats 404 and 400 voice_not_found as gone', () => {
+    expect(isElevenLabsVoiceMissing({ statusCode: 404 })).toBe(true);
+    expect(isElevenLabsVoiceMissing(voiceNotFound('abc'))).toBe(true);
+  });
+  it('does not swallow other 400s', () => {
+    expect(
+      isElevenLabsVoiceMissing({
+        statusCode: 400,
+        body: { detail: { code: 'voice_limit_exceeded', message: 'Full' } },
+      })
+    ).toBe(false);
+  });
+});
+
+describe('getElevenLabsVoice', () => {
+  it('returns null when ElevenLabs says the voice is gone (#1709)', async () => {
+    mockGet.mockRejectedValue(voiceNotFound('N3X0YWvzne19q1776q24'));
+    await expect(
+      getElevenLabsVoice('key', 'N3X0YWvzne19q1776q24')
+    ).resolves.toBe(null);
+  });
+  it('returns null on 404', async () => {
+    mockGet.mockRejectedValue({ statusCode: 404 });
+    await expect(getElevenLabsVoice('key', 'gone')).resolves.toBe(null);
+  });
+  it('throws other 400s', async () => {
+    mockGet.mockRejectedValue({
+      statusCode: 400,
+      body: { detail: { code: 'voice_limit_exceeded', message: 'Full' } },
+    });
+    await expect(getElevenLabsVoice('key', 'x')).rejects.toMatchObject({
+      statusCode: 400,
+    });
+  });
+});
+
+describe('deleteElevenLabsVoice', () => {
+  it('is a no-op when ElevenLabs says the voice is already gone', async () => {
+    mockDelete.mockRejectedValue(voiceNotFound('abc'));
+    await expect(deleteElevenLabsVoice('key', 'abc')).resolves.toBeUndefined();
   });
 });

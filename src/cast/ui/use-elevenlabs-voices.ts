@@ -55,5 +55,7 @@ export function useSavedVoiceMeta(
     queryFn: () => getElevenLabsVoiceFn({ data: { voiceId: voiceId ?? '' } }),
     enabled: enabled && Boolean(voiceId),
     staleTime: 5 * 60 * 1000,
+    // A gone id is a successful null, not a retryable fetch (#1709).
+    retry: false,
   });
 }

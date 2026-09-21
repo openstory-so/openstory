@@ -38,6 +38,7 @@ import {
 import {
   elevenLabsDetail,
   elevenLabsStatus,
+  isElevenLabsVoiceMissing,
   resolveAssignableVoiceId,
   saveDesignedVoice,
   type AssignableVoicePick,
@@ -313,7 +314,7 @@ export const chooseCharacterVoiceTakeFn = createServerFn({ method: 'POST' })
       });
     } catch (error) {
       const status = elevenLabsStatus(error);
-      if (status === 404) {
+      if (isElevenLabsVoiceMissing(error)) {
         throw new ValidationError(
           'This take has expired. Regenerate the voice for fresh takes.'
         );
@@ -391,7 +392,7 @@ export const assignCharacterVoiceFn = createServerFn({ method: 'POST' })
       voiceId = await resolveAssignableVoiceId(apiKey, pick);
     } catch (error) {
       const status = elevenLabsStatus(error);
-      if (status === 404) {
+      if (isElevenLabsVoiceMissing(error)) {
         throw new ValidationError('This voice is no longer available.');
       }
       if (

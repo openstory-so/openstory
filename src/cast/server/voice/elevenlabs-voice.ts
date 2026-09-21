@@ -79,6 +79,29 @@ export function elevenLabsDetail(error: unknown): string | undefined {
   return;
 }
 
+const elevenLabsDetailCode = (error: unknown): string | undefined => {
+  if (typeof error !== 'object' || error === null || !('body' in error)) return;
+  const body: unknown = error.body;
+  if (typeof body !== 'object' || body === null || !('detail' in body)) return;
+  const detail: unknown = body.detail;
+  if (typeof detail !== 'object' || detail === null || !('code' in detail)) {
+    return;
+  }
+  const code: unknown = detail.code;
+  return typeof code === 'string' && code ? code : undefined;
+};
+
+/**
+ * A voice (or preview) ElevenLabs no longer has. GET/DELETE use HTTP 400
+ * + `voice_not_found`, not 404 (#1709). Other 400s (slot limit, rejected
+ * description) must still propagate.
+ */
+export function isElevenLabsVoiceMissing(error: unknown): boolean {
+  const status = elevenLabsStatus(error);
+  if (status === 404) return true;
+  return status === 400 && elevenLabsDetailCode(error) === 'voice_not_found';
+}
+
 /**
  * Spends one account-wide voice slot. Release through
  * `releaseVoiceIfUnreferenced` (`release-voice.ts`), never this file's delete.
@@ -105,7 +128,7 @@ export async function deleteElevenLabsVoice(
   try {
     await client.voices.delete(voiceId);
   } catch (error) {
-    if (elevenLabsStatus(error) === 404) return;
+    if (isElevenLabsVoiceMissing(error)) return;
     throw error;
   }
 }
@@ -126,7 +149,7 @@ export async function getElevenLabsVoice(
       isPremade: !voiceConsumesAccountSlot(category),
     };
   } catch (error) {
-    if (elevenLabsStatus(error) === 404) return null;
+    if (isElevenLabsVoiceMissing(error)) return null;
     throw error;
   }
 }
