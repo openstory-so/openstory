@@ -2,6 +2,7 @@
 @plugin '@tailwindcss/typography';
 @import 'tw-animate-css';
 @import '@videojs/react/video/minimal-skin.css';
+@import '@videojs/react/video/skin.css';
 
 /* Video.js icon controls (play/mute/fullscreen) are ~38px; mobile hit target is 44. */
 @media (max-width: 767px) {
