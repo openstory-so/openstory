@@ -501,16 +501,18 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     label: 'Visual prompt',
     kind: 'artifact',
     band: 'prompts',
-    summary: 'The text the still is rendered from.',
+    summary:
+      'The text the still is rendered from. A scene of one shot gets it from the model; every clip of a multi-shot scene has it assembled from the shot spec.',
     counts: [
       'Scene extract, heading, time of day, story beat',
       'Style config',
-      'Character, location and element bibles, narrowed to this scene',
+      'Character, location and element bibles, narrowed to this scene — as cast, so a talent match moves nothing afterwards',
+      "The shot's framing and start state, on a multi-shot scene",
       'Aspect ratio',
       'Script model',
     ],
     ignored: ['Duration', 'Names and titles', 'The still it produces'],
-    storedAs: 'frames.visualPromptInputHash',
+    storedAs: 'frame_prompt_versions.inputHash',
   },
   {
     id: 'motionPrompt',
@@ -518,7 +520,8 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     label: 'Motion prompt',
     kind: 'artifact',
     band: 'prompts',
-    summary: 'The text the clip is rendered from.',
+    summary:
+      'The text the clip is rendered from. Assembled from the shot spec on a multi-shot scene, the same as the visual prompt.',
     counts: [
       'Everything the visual prompt counts',
       'Character personality and movement',
@@ -530,7 +533,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Names and titles',
       'Voice ids (they bind on the clip, like sheets on the still)',
     ],
-    storedAs: 'shots.motionPromptInputHash',
+    storedAs: 'shot_prompt_versions.inputHash',
   },
   {
     id: 'musicPrompt',
@@ -564,7 +567,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Element image URLs',
     ],
     ignored: ['Seed and size, unless set'],
-    storedAs: 'frames.imageInputHash',
+    storedAs: 'frame_variants.inputHash',
   },
   {
     id: 'clip',
