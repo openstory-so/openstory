@@ -22,6 +22,7 @@ import {
   type ImageToVideoModel,
 } from '@/models/models';
 import { referenceKeysMoved } from '@/motion/reference-provenance';
+import { modelTakesDialogueAudio } from '@/motion/dialogue-tts';
 import {
   raiseShotDurationToCoverAudio,
   resolveShotDuration,
@@ -308,7 +309,14 @@ export function isSelectedVersionStale(
     }
     const currentMotion = currentMotionByShot.get(entry.shotId) ?? null;
     const currentFrame = currentFrameByShot.get(entry.shotId) ?? null;
-    const currentAudio = live.audioSourceKeyByShot.get(entry.shotId) ?? null;
+    // Match the render triggers: models without an uploaded-audio input
+    // receive no voiced lines and stamp a null key, even with voices enabled.
+    // Keep the shared live key intact for the dialogue recording's own check.
+    const currentAudio =
+      isValidImageToVideoModel(selected.model) &&
+      !modelTakesDialogueAudio(selected.model)
+        ? null
+        : (live.audioSourceKeyByShot.get(entry.shotId) ?? null);
     return (
       entry.motionPromptVersionId !== currentMotion ||
       entry.frameVersionId !== currentFrame ||

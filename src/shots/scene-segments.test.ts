@@ -306,7 +306,7 @@ describe('isSelectedVersionStale', () => {
   });
 
   it('is stale when the bound dialogue audio identity moved', () => {
-    const v = version('v1', 'seg', 'kling', [
+    const v = version('v1', 'seg', 'seedance_v2', [
       {
         shotId: 'shot-1',
         motionPromptVersionId: 'mp-1',
@@ -324,6 +324,38 @@ describe('isSelectedVersionStale', () => {
       })
     ).toBe(false);
   });
+
+  it.each(['grok_imagine_video_1_5', 'kling_v3_pro', 'gemini_omni_flash'])(
+    'keeps a fresh %s video fresh when the shot has a designed voice (#1720)',
+    (model) => {
+      const v = version('v1', 'seg', model, [
+        {
+          shotId: 'shot-1',
+          motionPromptVersionId: 'mp-1',
+          frameVersionId: 'fv-1',
+          audioSourceKey: null,
+          audioClipIds: [],
+        },
+      ]);
+      // Render triggers omit voicedLines for models without an audio input.
+      // The live loader still resolves the voice for dialogue staleness.
+      expect(
+        stale(v, {
+          audioSourceKeyByShot: new Map([
+            ['shot-1', 'voice-sarah\tStay down.\t\televen_v3'],
+          ]),
+        })
+      ).toBe(false);
+      expect(
+        isSelectedVersionStale(v, new Map([['shot-1', 'mp-2']]), frame, {
+          ...NO_LOADED,
+          audioClipIdsByShot: new Map(),
+          durationMsByShot: new Map(),
+          audioSecondsByShot: new Map(),
+        })
+      ).toBe(true);
+    }
+  );
 
   it('is stale when a shot repointed its frame or motion prompt', () => {
     const v = version('v1', 'seg', 'kling', [
@@ -499,7 +531,7 @@ describe('isSelectedVersionStale — clips, references, duration (#1657)', () =>
     frameVersionId: 'fv-1',
   };
   const key = new Map([['shot-1', 'k']]);
-  const voiced = version('v1', 'seg', 'kling_v3_pro', [
+  const voiced = version('v1', 'seg', 'seedance_v2', [
     { ...entry, audioSourceKey: 'k', audioClipIds: ['section-1'] },
   ]);
   const staleWith = (
@@ -535,7 +567,7 @@ describe('isSelectedVersionStale — clips, references, duration (#1657)', () =>
   it('keeps a legacy manifest fresh: its clip ids are the ones the working set still holds', () => {
     // Pre-#1657 clips carry a generated id, not a section id — and no
     // migration touched either side, so the sets still agree in any order.
-    const legacy = version('v1', 'seg', 'kling_v3_pro', [
+    const legacy = version('v1', 'seg', 'seedance_v2', [
       { ...entry, audioSourceKey: 'k', audioClipIds: ['clip-a', 'clip-b'] },
     ]);
     expect(staleWith(legacy, new Map([['shot-1', ['clip-b', 'clip-a']]]))).toBe(
