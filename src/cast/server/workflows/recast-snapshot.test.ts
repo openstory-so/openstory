@@ -57,6 +57,8 @@ function makeCharacter(
     sheetStatus: 'completed',
     sheetGeneratedAt: NOW,
     sheetError: null,
+    voiceStatus: 'pending',
+    voiceError: null,
     sheetInputHash: 'jack-hash-v1',
     selectedSheetVersionId: null,
     selectedVoiceVersionId: null,

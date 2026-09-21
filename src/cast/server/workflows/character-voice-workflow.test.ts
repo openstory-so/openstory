@@ -47,6 +47,14 @@ class Probe extends CharacterVoiceWorkflow {
   ) {
     return this.runImpl(event, step, scopedDb);
   }
+
+  failBody(
+    event: Readonly<WorkflowEvent<CharacterVoiceWorkflowInput>>,
+    error: string,
+    scopedDb: WorkflowScopedDb
+  ) {
+    return this.onFailure({ event, error, scopedDb });
+  }
 }
 
 function makeWorkflow(): Probe {
@@ -67,13 +75,14 @@ function makeStep(): WorkflowStep {
 
 function makeScopedDb() {
   const updateVoice = vi.fn(async () => ({}));
+  const updateVoiceStatus = vi.fn(async () => ({}));
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the scoped-db surface runImpl touches
   const scopedDb = {
-    characters: { updateVoice },
+    characters: { updateVoice, updateVoiceStatus },
     provenance: {},
     credentials: { resolveKey: vi.fn(async () => ({ key: 'el-key' })) },
   } as unknown as WorkflowScopedDb;
-  return { scopedDb, updateVoice };
+  return { scopedDb, updateVoice, updateVoiceStatus };
 }
 
 const characterBible: CharacterBibleEntry = {
@@ -166,6 +175,30 @@ describe('CharacterVoiceWorkflow', () => {
       'u1'
     );
     expect(result.voiceId).toBe('voice-1');
+  });
+
+  it('marks the row completed after the designed voice lands (#1715)', async () => {
+    const { scopedDb, updateVoiceStatus } = makeScopedDb();
+    await makeWorkflow().runBody(
+      makeEvent('Warm alto, unhurried.'),
+      makeStep(),
+      scopedDb
+    );
+    expect(updateVoiceStatus).toHaveBeenCalledWith('char-1', 'completed');
+  });
+
+  it('marks the row failed when the run dies (#1715)', async () => {
+    const { scopedDb, updateVoiceStatus } = makeScopedDb();
+    await makeWorkflow().failBody(
+      makeEvent('Warm alto, unhurried.'),
+      'Voice Design returned no previews',
+      scopedDb
+    );
+    expect(updateVoiceStatus).toHaveBeenCalledWith(
+      'char-1',
+      'failed',
+      'Voice Design returned no previews'
+    );
   });
 
   it('drafts a description from the bible when the row has none', async () => {

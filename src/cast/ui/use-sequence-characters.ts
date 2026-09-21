@@ -137,9 +137,13 @@ function invalidateAfterVoiceChange(
 
 /** Voice design (#1553): the workflow's realtime events refresh the list. */
 export function useGenerateCharacterVoice() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: { sequenceId: string; characterId: string }) =>
       generateCharacterVoiceFn({ data }),
+    onSuccess: (_result, { sequenceId }) => {
+      invalidateAfterVoiceChange(queryClient, sequenceId);
+    },
   });
 }
 

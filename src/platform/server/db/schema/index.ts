@@ -323,6 +323,7 @@ export type {
   VoicePreviewUnusable,
   NewCharacter,
   SheetStatus,
+  VoiceStatus,
 } from './characters';
 
 // Location Library (team-level templates)

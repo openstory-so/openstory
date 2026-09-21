@@ -32,7 +32,10 @@ function makeWorkflow(): Probe {
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- tests construct the entrypoint directly; runImpl never reads ctx
   const ctx = undefined as unknown as Ctor[0];
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the binding is only handed to the (mocked) spawn
-  const env = { CHARACTER_SHEET_WORKFLOW: {} } as unknown as Ctor[1];
+  const env = {
+    CHARACTER_SHEET_WORKFLOW: {},
+    CHARACTER_VOICE_WORKFLOW: {},
+  } as unknown as Ctor[1];
   return new Probe(ctx, env);
 }
 
@@ -46,11 +49,12 @@ function makeStep(): WorkflowStep {
 const characterCreate = vi.fn(
   async (row: { id: string; characterId: string }) => row
 );
+const updateVoiceStatus = vi.fn(async () => ({}));
 
 function makeScopedDb(): WorkflowScopedDb {
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the scoped-db surface runImpl touches
   return {
-    characters: { create: characterCreate },
+    characters: { create: characterCreate, updateVoiceStatus },
   } as unknown as WorkflowScopedDb;
 }
 
@@ -87,7 +91,8 @@ const narrator = entry({
 });
 
 function makeEvent(
-  characterBible: CharacterBibleEntry[] = [sam, narrator]
+  characterBible: CharacterBibleEntry[] = [sam, narrator],
+  opts: { generateVoices?: boolean; speakingCharacterIds?: string[] } = {}
 ): Readonly<WorkflowEvent<CharacterBibleWorkflowInput>> {
   return {
     payload: {
@@ -95,8 +100,8 @@ function makeEvent(
       teamId: 'team-1',
       sequenceId: 'seq-1',
       characterBible,
-      generateVoices: false,
-      speakingCharacterIds: [],
+      generateVoices: opts.generateVoices ?? false,
+      speakingCharacterIds: opts.speakingCharacterIds ?? [],
       analysisModelId: 'anthropic/claude-sonnet-5',
     },
     instanceId: 'run-1',
@@ -166,5 +171,31 @@ describe('CharacterBibleWorkflow voice-only characters', () => {
         makeScopedDb()
       )
     ).rejects.toThrow(/Sam/);
+  });
+
+  it('stamps voice generating before spawning the voice child (#1715)', async () => {
+    mockSpawnAndAwaitChild.mockImplementation(
+      async (_step: unknown, opts: { childId: string }) =>
+        opts.childId.startsWith('character-voice:')
+          ? { voiceId: 'voice-1', voiceDescription: 'Warm alto' }
+          : {
+              sheetImageUrl: '/r2/characters/sam.png',
+              sheetVersionId: 'ver-sam',
+            }
+    );
+    await makeWorkflow().runBody(
+      makeEvent([sam], { generateVoices: true, speakingCharacterIds: ['sam'] }),
+      makeStep(),
+      makeScopedDb()
+    );
+    const created = characterCreate.mock.calls[0]?.[0] as { id: string };
+    expect(updateVoiceStatus).toHaveBeenCalledWith(created.id, 'generating');
+    expect(
+      mockSpawnAndAwaitChild.mock.calls.some(
+        (call) =>
+          (call[1] as { childId: string }).childId ===
+          `character-voice:${created.id}`
+      )
+    ).toBe(true);
   });
 });

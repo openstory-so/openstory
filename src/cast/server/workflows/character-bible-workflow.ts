@@ -220,6 +220,12 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           analysisModelId: input.analysisModelId,
         };
         try {
+          await step.do(
+            `mark-voice-generating-${row.characterId}`,
+            async () => {
+              await scopedDb.characters.updateVoiceStatus(row.id, 'generating');
+            }
+          );
           const result = await spawnAndAwaitChild<
             CharacterVoiceWorkflowInput,
             CharacterVoiceWorkflowResult

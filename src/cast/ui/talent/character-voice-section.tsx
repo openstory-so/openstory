@@ -99,7 +99,9 @@ export const CharacterVoiceSection: React.FC<{
     ),
   });
 
-  const busy = isDesigning || generate.isPending || assignVoice.isPending;
+  const designing =
+    character.voiceStatus === 'generating' || isDesigning || generate.isPending;
+  const busy = designing || assignVoice.isPending;
   const takes = designedTakesForDisplay(
     character.voicePreviews ?? [],
     character.voiceId,
@@ -176,8 +178,16 @@ export const CharacterVoiceSection: React.FC<{
       </div>
       {enabled && (
         <>
-          {character.voiceId || takes.length > 0 ? (
+          {character.voiceId || takes.length > 0 || designing ? (
             <div className="flex flex-col gap-3">
+              {designing && (
+                <section className="flex flex-col gap-2" aria-label="Pending">
+                  <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Pending
+                  </p>
+                  <VoiceTakeCard src={null} label="Designing voice" pending />
+                </section>
+              )}
               {(inUseTake || catalogVoice || character.voiceId) && (
                 <section className="flex flex-col gap-2" aria-label="In use">
                   <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -237,9 +247,7 @@ export const CharacterVoiceSection: React.FC<{
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">
-              {busy
-                ? 'Designing voice…'
-                : 'No voice yet. Browse the library or generate one.'}
+              No voice yet. Browse the library or generate one.
             </p>
           )}
           <VoiceHistory sequenceId={sequenceId} character={character} />
@@ -269,14 +277,14 @@ export const CharacterVoiceSection: React.FC<{
                   )
                 }
               >
-                {isDesigning || generate.isPending ? (
+                {designing ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
                   <Mic className="mr-2 h-4 w-4" />
                 )}
-                {isDesigning || generate.isPending
+                {designing
                   ? 'Designing…'
-                  : character.voiceId
+                  : character.voiceId || takes.length > 0
                     ? 'Regenerate voice'
                     : 'Generate voice'}
               </Button>
@@ -405,6 +413,7 @@ const VoiceTakeCard: React.FC<{
   label: string;
   inUse?: boolean;
   isPremade?: boolean;
+  pending?: boolean;
   disabled?: boolean;
   choosing?: boolean;
   unusable?: 'saved' | 'expired';
@@ -414,6 +423,7 @@ const VoiceTakeCard: React.FC<{
   label,
   inUse = false,
   isPremade,
+  pending = false,
   disabled,
   choosing,
   unusable,
@@ -425,10 +435,13 @@ const VoiceTakeCard: React.FC<{
       inUse ? 'border-primary ring-2 ring-primary/40' : 'border-border'
     )}
     aria-current={inUse ? 'true' : undefined}
+    aria-busy={pending || undefined}
   >
     <div className="flex items-center justify-between gap-2">
       <p className="truncate text-sm font-medium">{label}</p>
-      {inUse ? (
+      {pending ? (
+        <Badge variant="secondary">Generating…</Badge>
+      ) : inUse ? (
         <Badge variant="default">{isPremade ? 'Default' : 'In use'}</Badge>
       ) : unusable ? (
         <p className="text-xs text-muted-foreground">
@@ -448,7 +461,15 @@ const VoiceTakeCard: React.FC<{
         </Button>
       )}
     </div>
-    {src ? (
+    {pending ? (
+      <div className="flex min-h-8 items-center gap-2 text-xs text-muted-foreground">
+        <Loader2
+          className="h-4 w-4 animate-spin motion-reduce:animate-none"
+          aria-hidden
+        />
+        Designing…
+      </div>
+    ) : src ? (
       // oxlint-disable-next-line jsx-a11y/media-has-caption -- a voice audition has no words to caption
       <audio controls preload="none" src={src} className="w-full" />
     ) : (

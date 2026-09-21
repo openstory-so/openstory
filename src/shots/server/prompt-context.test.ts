@@ -473,6 +473,8 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
     sheetStatus: 'completed',
     sheetGeneratedAt: null,
     sheetError: null,
+    voiceStatus: 'pending',
+    voiceError: null,
     sheetInputHash: null,
     selectedSheetVersionId: null,
     deletedAt: null,

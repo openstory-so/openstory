@@ -26,6 +26,7 @@ import type {
   NewCharacter,
   SheetStatus,
   VoicePreviewUnusable,
+  VoiceStatus,
 } from '@/platform/server/db/schema';
 import {
   characterSheetVariants,
@@ -552,6 +553,22 @@ export function createCharactersMethods(db: Database) {
       return await update(id, {
         sheetStatus: status,
         sheetError: error ?? null,
+      });
+    },
+
+    /**
+     * Voice Design lifecycle (#1715). Not a history write: generating is
+     * stamped before the workflow starts, so the card can show a pending
+     * take without a `character_voice_versions` row.
+     */
+    updateVoiceStatus: async (
+      id: string,
+      status: VoiceStatus,
+      error?: string
+    ): Promise<Character> => {
+      return await update(id, {
+        voiceStatus: status,
+        voiceError: error ?? null,
       });
     },
 

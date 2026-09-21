@@ -166,6 +166,7 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         // The person who asked for this voice (or started the run that did).
         input.userId
       );
+      await scopedDb.characters.updateVoiceStatus(characterDbId, 'completed');
     });
 
     await channel.emit('generation.character-voice:progress', {
@@ -178,6 +179,7 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
   protected override async onFailure({
     event,
     error,
+    scopedDb,
   }: {
     event: Readonly<WorkflowEvent<CharacterVoiceWorkflowInput>>;
     error: string;
@@ -187,6 +189,7 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     logger.error(
       `[CharacterVoiceWorkflow:cf] Voice design failed for ${characterDbId}: ${error}`
     );
+    await scopedDb.characters.updateVoiceStatus(characterDbId, 'failed', error);
     await getGenerationChannel(sequenceId).emit(
       'generation.character-voice:progress',
       { characterId: characterDbId, status: 'failed', error }

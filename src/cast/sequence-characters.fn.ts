@@ -245,7 +245,29 @@ export const generateCharacterVoiceFn = createServerFn({ method: 'POST' })
         getAnalysisModelById(context.sequence.analysisModel)?.id ??
         DEFAULT_ANALYSIS_MODEL,
     };
-    const workflowRunId = await triggerWorkflow('/character-voice', payload);
+    await context.scopedDb.characters.updateVoiceStatus(
+      character.id,
+      'generating'
+    );
+    try {
+      await getGenerationChannel(character.sequenceId).emit(
+        'generation.character-voice:progress',
+        { characterId: character.id, status: 'generating' }
+      );
+    } catch (error) {
+      logger.error('realtime emit failed', { err: error });
+    }
+    let workflowRunId: string;
+    try {
+      workflowRunId = await triggerWorkflow('/character-voice', payload);
+    } catch (error) {
+      await context.scopedDb.characters.updateVoiceStatus(
+        character.id,
+        'failed',
+        error instanceof Error ? error.message : String(error)
+      );
+      throw error;
+    }
     return { characterId: character.id, workflowRunId };
   });
 

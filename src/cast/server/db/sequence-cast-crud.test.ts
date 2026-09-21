@@ -253,6 +253,33 @@ describe('characters bible CRUD + soft-remove', () => {
     expect(stamped.selectedVoiceVersionId).toBe(saved.selectedVoiceVersionId);
   });
 
+  it('stamps voice design lifecycle without appending voice history (#1715)', async () => {
+    const methods = createCharactersMethods(db);
+    const created = await methods.create({
+      sequenceId,
+      characterId: 'voice_status',
+      name: 'Maya',
+    });
+    expect(created.voiceStatus).toBe('pending');
+    const before = await methods.listVoiceVersions(created.id);
+    const generating = await methods.updateVoiceStatus(
+      created.id,
+      'generating'
+    );
+    expect(generating.voiceStatus).toBe('generating');
+    expect(generating.voiceError).toBeNull();
+    const failed = await methods.updateVoiceStatus(
+      created.id,
+      'failed',
+      'Voice Design returned no previews'
+    );
+    expect(failed.voiceStatus).toBe('failed');
+    expect(failed.voiceError).toBe('Voice Design returned no previews');
+    expect(await methods.listVoiceVersions(created.id)).toHaveLength(
+      before.length
+    );
+  });
+
   it('refuses a released voice version, across every character holding the id', async () => {
     const methods = createCharactersMethods(db);
     const maya = await methods.create({
