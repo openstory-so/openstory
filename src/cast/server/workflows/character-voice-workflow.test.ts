@@ -153,7 +153,11 @@ describe('CharacterVoiceWorkflow', () => {
         voiceId: 'voice-1',
         voiceDescription: 'Warm alto, unhurried.',
         voicePreviews: [
-          expect.objectContaining({ generatedVoiceId: 'g1', takeNumber: 1 }),
+          expect.objectContaining({
+            generatedVoiceId: 'g1',
+            takeNumber: 1,
+            unusable: 'saved',
+          }),
           expect.objectContaining({ generatedVoiceId: 'g2', takeNumber: 2 }),
         ],
       }),

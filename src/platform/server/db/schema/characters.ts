@@ -23,6 +23,9 @@ const SHEET_STATUSES = [
 ] as const;
 export type SheetStatus = (typeof SHEET_STATUSES)[number];
 
+/** Why a parked take can no longer be saved (#1709). */
+export type VoicePreviewUnusable = 'saved' | 'expired';
+
 /** One Voice Design audition: the ElevenLabs preview id + its MP3 in R2. */
 export type VoicePreview = {
   generatedVoiceId: string;
@@ -30,6 +33,11 @@ export type VoicePreview = {
   path: string;
   /** 1-based generation order. Travels with the card when a take is promoted (#1709). */
   takeNumber?: number;
+  /**
+   * Set once this generatedVoiceId cannot be created again: we already
+   * saved it (one-shot), or ElevenLabs no longer has the preview.
+   */
+  unusable?: VoicePreviewUnusable;
 };
 
 /**

@@ -13,7 +13,7 @@ import type { ScopedDb } from '@/platform/server/db/scoped';
 import { resolveSequenceStyleConfig } from '@/look/style-config';
 import { buildCastingAttributes } from './character-prompt';
 import { isPersonFromTalentCast } from '@/cast/likeness';
-import { previewListWithChosenTake } from '@/cast/voice';
+import { markPreviewUnusable, previewListWithChosenTake } from '@/cast/voice';
 import { shouldReuseTalentSheet } from '@/cast/server/talent/reuse-talent-sheet';
 import { getGenerationChannel } from '@/platform/realtime';
 import {
@@ -38,6 +38,7 @@ import {
 import {
   elevenLabsDetail,
   elevenLabsStatus,
+  isElevenLabsVoiceAlreadyCreated,
   isElevenLabsVoiceMissing,
   resolveAssignableVoiceId,
   saveDesignedVoice,
@@ -305,6 +306,16 @@ export const chooseCharacterVoiceTakeFn = createServerFn({ method: 'POST' })
     ) {
       return { characterId: character.id, voiceId: character.voiceId };
     }
+    if (take.unusable === 'expired') {
+      throw new ValidationError(
+        'This take has expired. Regenerate the voice for fresh takes.'
+      );
+    }
+    if (take.unusable === 'saved') {
+      throw new ValidationError(
+        'This take was already saved. Regenerate the voice for fresh takes.'
+      );
+    }
     let voiceId: string;
     try {
       voiceId = await saveDesignedVoice(apiKey, {
@@ -315,8 +326,23 @@ export const chooseCharacterVoiceTakeFn = createServerFn({ method: 'POST' })
     } catch (error) {
       const status = elevenLabsStatus(error);
       if (isElevenLabsVoiceMissing(error)) {
+        await context.scopedDb.characters.stampPreviewUnusable(
+          character.id,
+          take.generatedVoiceId,
+          'expired'
+        );
         throw new ValidationError(
           'This take has expired. Regenerate the voice for fresh takes.'
+        );
+      }
+      if (isElevenLabsVoiceAlreadyCreated(error)) {
+        await context.scopedDb.characters.stampPreviewUnusable(
+          character.id,
+          take.generatedVoiceId,
+          'saved'
+        );
+        throw new ValidationError(
+          'This take was already saved. Regenerate the voice for fresh takes.'
         );
       }
       // 429 is not the user's doing and clears on retry, so it stays a
@@ -337,7 +363,9 @@ export const chooseCharacterVoiceTakeFn = createServerFn({ method: 'POST' })
       character.id,
       {
         voiceId,
-        voicePreviews: previews,
+        voicePreviews:
+          markPreviewUnusable(previews, take.generatedVoiceId, 'saved') ??
+          previews,
       },
       'generated',
       context.user.id

@@ -6,6 +6,7 @@ import {
   designedTakeIsInUse,
   designedTakeLabel,
   designedTakesForDisplay,
+  markPreviewUnusable,
   inferVoiceAccent,
   inferVoiceAge,
   inferVoiceGender,
@@ -165,17 +166,20 @@ describe('designedTakeIsInUse', () => {
 
 const preview = (
   generatedVoiceId: string,
-  takeNumber?: number
+  takeNumber?: number,
+  unusable?: 'saved' | 'expired'
 ): {
   generatedVoiceId: string;
   url: string;
   path: string;
   takeNumber?: number;
+  unusable?: 'saved' | 'expired';
 } => ({
   generatedVoiceId,
   url: `/${generatedVoiceId}.mp3`,
   path: generatedVoiceId,
   ...(takeNumber == null ? {} : { takeNumber }),
+  ...(unusable == null ? {} : { unusable }),
 });
 
 describe('designedTakeLabel', () => {
@@ -221,6 +225,42 @@ describe('designedTakesForDisplay', () => {
       { label: 'Take 1', inUse: false },
       { label: 'Take 3', inUse: false },
     ]);
+  });
+  it('offers Use only on takes that can still be saved', () => {
+    const takes = designedTakesForDisplay(
+      [
+        preview('b', 2, 'saved'),
+        preview('a', 1, 'saved'),
+        preview('c', 3, 'expired'),
+      ],
+      'voice-1',
+      'generated'
+    );
+    expect(
+      takes.map((take) => ({
+        label: take.label,
+        inUse: take.inUse,
+        canUse: take.canUse,
+        unusable: take.unusable,
+      }))
+    ).toEqual([
+      { label: 'Take 2', inUse: true, canUse: false, unusable: 'saved' },
+      { label: 'Take 1', inUse: false, canUse: false, unusable: 'saved' },
+      { label: 'Take 3', inUse: false, canUse: false, unusable: 'expired' },
+    ]);
+  });
+});
+
+describe('markPreviewUnusable', () => {
+  it('stamps the matching take and leaves the others', () => {
+    expect(
+      markPreviewUnusable([preview('a', 1), preview('b', 2)], 'b', 'expired')
+    ).toEqual([preview('a', 1), preview('b', 2, 'expired')]);
+  });
+  it('returns null when the take is not in the list', () => {
+    expect(
+      markPreviewUnusable([preview('a', 1)], 'missing', 'saved')
+    ).toBeNull();
   });
 });
 

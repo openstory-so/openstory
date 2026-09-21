@@ -55,7 +55,9 @@ preview is reported as an expired take — ElevenLabs uses HTTP 400
 `voice_not_found`, not 404). Each preview keeps a 1-based `takeNumber`
 stamped at design (and lazily on promote for older rows) so the In use card
 shows Take 2 after promoting the second preview, not a generic “Designed
-take” (#1709). Previews cost no slot; a saved voice is an
+take” (#1709). A `generatedVoiceId` can be saved once; after create()
+succeeds (or ElevenLabs says it already did / the preview aged out) the
+take is `unusable` and Use this take is hidden — the R2 MP3 stays. Previews cost no slot; a saved voice is an
 **account-wide** ElevenLabs slot, so the id is shared by copy (talent ↔
 character at cast / save-to-library) and freed only through
 `releaseVoiceIfUnreferenced` (`getVoiceReferenceCount` over both tables,

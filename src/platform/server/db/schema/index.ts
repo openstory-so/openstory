@@ -320,6 +320,7 @@ export type {
   CharacterMinimal,
   CharacterWithTalent,
   VoicePreview,
+  VoicePreviewUnusable,
   NewCharacter,
   SheetStatus,
 } from './characters';

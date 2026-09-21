@@ -63,6 +63,7 @@ export const characterReadSchema = createSelectSchema(characters)
           generatedVoiceId: z.string(),
           url: z.string(),
           takeNumber: z.number().int().positive().optional(),
+          unusable: z.enum(['saved', 'expired']).optional(),
         })
       )
       .nullable(),

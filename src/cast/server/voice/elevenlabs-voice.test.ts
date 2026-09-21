@@ -13,6 +13,7 @@ vi.doMock('@/models/server/elevenlabs-config', () => ({
 const {
   deleteElevenLabsVoice,
   getElevenLabsVoice,
+  isElevenLabsVoiceAlreadyCreated,
   isElevenLabsVoiceMissing,
   resolveAssignableVoiceId,
   VOICE_DESIGN_GUIDANCE_SCALE,
@@ -97,6 +98,24 @@ describe('isElevenLabsVoiceMissing', () => {
         body: { detail: { code: 'voice_limit_exceeded', message: 'Full' } },
       })
     ).toBe(false);
+  });
+});
+
+describe('isElevenLabsVoiceAlreadyCreated', () => {
+  it('detects a one-shot preview that was already saved', () => {
+    expect(
+      isElevenLabsVoiceAlreadyCreated({
+        statusCode: 400,
+        body: {
+          detail: {
+            message: "Voice 'owwDX6J1iWn4pODPJtaV' has already been created.",
+          },
+        },
+      })
+    ).toBe(true);
+  });
+  it('does not treat expiry as already-created', () => {
+    expect(isElevenLabsVoiceAlreadyCreated(voiceNotFound('abc'))).toBe(false);
   });
 });
 

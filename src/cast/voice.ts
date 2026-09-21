@@ -10,6 +10,7 @@ type VoicePreviewTake = {
   url: string;
   path: string;
   takeNumber?: number;
+  unusable?: 'saved' | 'expired';
 };
 
 /**
@@ -469,10 +470,39 @@ export function designedTakesForDisplay(
   previews: VoicePreviewTake[],
   voiceId: string | null | undefined,
   category: string | null | undefined
-): Array<{ preview: VoicePreviewTake; label: string; inUse: boolean }> {
-  return previews.map((preview, index) => ({
-    preview,
-    label: designedTakeLabel(preview, index),
-    inUse: designedTakeIsInUse(index, voiceId, category),
-  }));
+): Array<{
+  preview: VoicePreviewTake;
+  label: string;
+  inUse: boolean;
+  canUse: boolean;
+  unusable?: 'saved' | 'expired';
+}> {
+  return previews.map((preview, index) => {
+    const inUse = designedTakeIsInUse(index, voiceId, category);
+    return {
+      preview,
+      label: designedTakeLabel(preview, index),
+      inUse,
+      unusable: preview.unusable,
+      canUse: !inUse && preview.unusable == null,
+    };
+  });
+}
+
+/** Stamp a take that can no longer be saved; audio stays on the card. */
+export function markPreviewUnusable(
+  previews: VoicePreviewTake[],
+  generatedVoiceId: string,
+  reason: 'saved' | 'expired'
+): VoicePreviewTake[] | null {
+  if (
+    !previews.some((preview) => preview.generatedVoiceId === generatedVoiceId)
+  ) {
+    return null;
+  }
+  return previews.map((preview) =>
+    preview.generatedVoiceId === generatedVoiceId
+      ? { ...preview, unusable: reason }
+      : preview
+  );
 }

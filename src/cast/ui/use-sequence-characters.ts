@@ -165,7 +165,7 @@ export function useChooseCharacterVoiceTake() {
       characterId: string;
       generatedVoiceId: string;
     }) => chooseCharacterVoiceTakeFn({ data }),
-    onSuccess: (_result, { sequenceId, characterId }) => {
+    onSettled: (_result, _error, { sequenceId, characterId }) => {
       invalidateAfterVoiceChange(queryClient, sequenceId);
       void queryClient.invalidateQueries({
         queryKey: elevenLabsVoiceKeys.saved(characterId),

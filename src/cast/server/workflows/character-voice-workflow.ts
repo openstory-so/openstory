@@ -27,6 +27,7 @@ import type {
   CharacterVoiceWorkflowInput,
   CharacterVoiceWorkflowResult,
 } from '@/platform/server/workflow/types';
+import { markPreviewUnusable } from '@/cast/voice';
 import { durableLLMCallCf } from '@/models/server/llm-call-helper';
 import {
   designVoicePreviews,
@@ -150,9 +151,17 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     });
 
     await step.do('persist-voice', async () => {
+      const top = previews[0];
       await scopedDb.characters.updateVoice(
         characterDbId,
-        { voiceId, voiceDescription, voicePreviews: previews },
+        {
+          voiceId,
+          voiceDescription,
+          voicePreviews:
+            (top &&
+              markPreviewUnusable(previews, top.generatedVoiceId, 'saved')) ??
+            previews,
+        },
         'generated',
         // The person who asked for this voice (or started the run that did).
         input.userId

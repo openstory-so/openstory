@@ -25,6 +25,7 @@ import type {
   Shot,
   NewCharacter,
   SheetStatus,
+  VoicePreviewUnusable,
 } from '@/platform/server/db/schema';
 import {
   characterSheetVariants,
@@ -33,6 +34,7 @@ import {
   shots,
   talent,
 } from '@/platform/server/db/schema';
+import { markPreviewUnusable } from '@/cast/voice';
 import { generateId } from '@/platform/id';
 import {
   loadSceneContextBySequenceFromDb,
@@ -378,6 +380,53 @@ export function createCharactersMethods(db: Database) {
 
     update,
     updateVoice,
+
+    /**
+     * Mark a parked take unpromotable without a new history row (#1709):
+     * the selected voice does not change, only the preview JSON flag.
+     */
+    stampPreviewUnusable: async (
+      id: string,
+      generatedVoiceId: string,
+      reason: VoicePreviewUnusable
+    ): Promise<Character> => {
+      const [existing] = await db
+        .select()
+        .from(characters)
+        .where(eq(characters.id, id));
+      if (!existing) throw new Error(`SequenceCharacter ${id} not found`);
+      const next = markPreviewUnusable(
+        existing.voicePreviews ?? [],
+        generatedVoiceId,
+        reason
+      );
+      if (!next) return existing;
+      const versionId = existing.selectedVoiceVersionId;
+      const now = new Date();
+      if (versionId) {
+        const [, updatedRows] = await db.batch([
+          db
+            .update(characterVoiceVersions)
+            .set({ previews: next })
+            .where(eq(characterVoiceVersions.id, versionId)),
+          db
+            .update(characters)
+            .set({ voicePreviews: next, updatedAt: now })
+            .where(eq(characters.id, id))
+            .returning(),
+        ]);
+        const character = updatedRows[0];
+        if (!character) throw new Error(`SequenceCharacter ${id} not found`);
+        return character;
+      }
+      const [character] = await db
+        .update(characters)
+        .set({ voicePreviews: next, updatedAt: now })
+        .where(eq(characters.id, id))
+        .returning();
+      if (!character) throw new Error(`SequenceCharacter ${id} not found`);
+      return character;
+    },
 
     /**
      * Stamp every history row holding this voice id — any character, any team,

@@ -102,6 +102,13 @@ export function isElevenLabsVoiceMissing(error: unknown): boolean {
   return status === 400 && elevenLabsDetailCode(error) === 'voice_not_found';
 }
 
+/** A generatedVoiceId that already ran create() — ElevenLabs will not save it twice. */
+export function isElevenLabsVoiceAlreadyCreated(error: unknown): boolean {
+  const status = elevenLabsStatus(error);
+  if (status !== 400 && status !== 409) return false;
+  return /already been created/i.test(elevenLabsDetail(error) ?? '');
+}
+
 /**
  * Spends one account-wide voice slot. Release through
  * `releaseVoiceIfUnreferenced` (`release-voice.ts`), never this file's delete.

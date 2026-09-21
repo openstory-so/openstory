@@ -205,6 +205,54 @@ describe('characters bible CRUD + soft-remove', () => {
     expect(restored.selectedVoiceVersionId).toBe(first.id);
   });
 
+  it('stamps a take unusable without appending voice history (#1709)', async () => {
+    const methods = createCharactersMethods(db);
+    const created = await methods.create({
+      sequenceId,
+      characterId: 'voice_unusable',
+      name: 'Maya',
+    });
+    const saved = await methods.updateVoice(
+      created.id,
+      {
+        voiceId: 'voice-a',
+        voicePreviews: [
+          {
+            generatedVoiceId: 'take-1',
+            url: '/r2/a.mp3',
+            path: 'a.mp3',
+            takeNumber: 1,
+          },
+          {
+            generatedVoiceId: 'take-2',
+            url: '/r2/b.mp3',
+            path: 'b.mp3',
+            takeNumber: 2,
+          },
+        ],
+      },
+      'generated',
+      actorId
+    );
+    const before = await methods.listVoiceVersions(created.id);
+    const stamped = await methods.stampPreviewUnusable(
+      created.id,
+      'take-2',
+      'expired'
+    );
+    expect(stamped.voicePreviews).toEqual([
+      expect.objectContaining({ generatedVoiceId: 'take-1' }),
+      expect.objectContaining({
+        generatedVoiceId: 'take-2',
+        unusable: 'expired',
+      }),
+    ]);
+    expect(await methods.listVoiceVersions(created.id)).toHaveLength(
+      before.length
+    );
+    expect(stamped.selectedVoiceVersionId).toBe(saved.selectedVoiceVersionId);
+  });
+
   it('refuses a released voice version, across every character holding the id', async () => {
     const methods = createCharactersMethods(db);
     const maya = await methods.create({

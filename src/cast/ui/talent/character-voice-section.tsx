@@ -219,8 +219,14 @@ export const CharacterVoiceSection: React.FC<{
                           choosing={
                             choosingId === take.preview.generatedVoiceId
                           }
-                          onUse={() =>
-                            handleChooseTake(take.preview.generatedVoiceId)
+                          unusable={take.unusable}
+                          onUse={
+                            take.canUse
+                              ? () =>
+                                  handleChooseTake(
+                                    take.preview.generatedVoiceId
+                                  )
+                              : undefined
                           }
                         />
                       </li>
@@ -401,8 +407,18 @@ const VoiceTakeCard: React.FC<{
   isPremade?: boolean;
   disabled?: boolean;
   choosing?: boolean;
+  unusable?: 'saved' | 'expired';
   onUse?: () => void;
-}> = ({ src, label, inUse = false, isPremade, disabled, choosing, onUse }) => (
+}> = ({
+  src,
+  label,
+  inUse = false,
+  isPremade,
+  disabled,
+  choosing,
+  unusable,
+  onUse,
+}) => (
   <div
     className={cn(
       'flex flex-col gap-2 rounded-lg border p-3',
@@ -414,6 +430,10 @@ const VoiceTakeCard: React.FC<{
       <p className="truncate text-sm font-medium">{label}</p>
       {inUse ? (
         <Badge variant="default">{isPremade ? 'Default' : 'In use'}</Badge>
+      ) : unusable ? (
+        <p className="text-xs text-muted-foreground">
+          {unusable === 'expired' ? 'Expired' : 'Already used'}
+        </p>
       ) : (
         <Button
           type="button"
