@@ -22,8 +22,16 @@ import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'cast', 'release-voice']);
 
+/** The two character methods a slot release needs — writes plus the live count. */
+export type VoiceReleaseDb = {
+  characters: Pick<
+    ScopedDb['characters'],
+    'getVoiceReferenceCount' | 'markVoiceReleased'
+  >;
+};
+
 export async function releaseVoiceIfUnreferenced(
-  scopedDb: ScopedDb,
+  scopedDb: VoiceReleaseDb,
   voiceId: string,
   { heldBy = 0 }: { heldBy?: number } = {}
 ): Promise<void> {
@@ -76,7 +84,7 @@ export async function releaseVoiceIfUnreferenced(
  * un-released, so selecting it and switching away again retries.
  */
 export async function releaseReplacedVoice(
-  scopedDb: ScopedDb,
+  scopedDb: VoiceReleaseDb,
   replacedVoiceId: string | null,
   currentVoiceId: string | null
 ): Promise<void> {

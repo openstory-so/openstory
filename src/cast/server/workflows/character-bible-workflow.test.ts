@@ -49,12 +49,12 @@ function makeStep(): WorkflowStep {
 const characterCreate = vi.fn(
   async (row: { id: string; characterId: string }) => row
 );
-const updateVoiceStatus = vi.fn(async () => ({}));
+const createPendingVoiceClaim = vi.fn(async () => ({ id: 'husk-1' }));
 
 function makeScopedDb(): WorkflowScopedDb {
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the scoped-db surface runImpl touches
   return {
-    characters: { create: characterCreate, updateVoiceStatus },
+    characters: { create: characterCreate, createPendingVoiceClaim },
   } as unknown as WorkflowScopedDb;
 }
 
@@ -188,14 +188,15 @@ describe('CharacterBibleWorkflow voice-only characters', () => {
       makeStep(),
       makeScopedDb()
     );
-    expect(updateVoiceStatus).toHaveBeenCalledWith(
+    expect(createPendingVoiceClaim).toHaveBeenCalledWith(
       expect.any(String),
-      'generating'
+      'u1'
     );
     expect(mockSpawnAndAwaitChild).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
         childId: expect.stringMatching(/^character-voice:/),
+        childPayload: expect.objectContaining({ targetVersionId: 'husk-1' }),
       })
     );
   });

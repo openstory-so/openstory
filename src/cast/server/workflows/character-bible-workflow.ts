@@ -209,23 +209,26 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           (c) => c.characterId === row.characterId
         );
         if (!character || sequenceId === undefined) return;
-        const childPayload: CharacterVoiceWorkflowInput = {
-          userId: input.userId,
-          teamId: input.teamId,
-          sequenceId,
-          reservationId: input.reservationId,
-          characterDbId: row.id,
-          characterBible: character,
-          voiceDescription: row.voiceDescription ?? '',
-          analysisModelId: input.analysisModelId,
-        };
         try {
-          await step.do(
+          const husk = await step.do(
             `mark-voice-generating-${row.characterId}`,
-            async () => {
-              await scopedDb.characters.updateVoiceStatus(row.id, 'generating');
-            }
+            async () =>
+              await scopedDb.characters.createPendingVoiceClaim(
+                row.id,
+                input.userId
+              )
           );
+          const childPayload: CharacterVoiceWorkflowInput = {
+            userId: input.userId,
+            teamId: input.teamId,
+            sequenceId,
+            reservationId: input.reservationId,
+            characterDbId: row.id,
+            characterBible: character,
+            voiceDescription: row.voiceDescription ?? '',
+            analysisModelId: input.analysisModelId,
+            targetVersionId: husk.id,
+          };
           const result = await spawnAndAwaitChild<
             CharacterVoiceWorkflowInput,
             CharacterVoiceWorkflowResult

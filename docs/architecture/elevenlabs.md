@@ -32,14 +32,16 @@ unaudited like xAI/Google/Ark spend. Do not alias onto
 overrides it per character (NULL = inherit) — resolve with `usesVoice()`.
 The launcher refuses the flag when `isElevenLabsConfigured()` is false and
 the Generate dialog hides the switch (`getVoiceDesignAvailableFn`).
-`characters.voiceStatus` is the Voice Design lifecycle (#1715), the same
-job `sheetStatus` does for sheets: `generating` is stamped at trigger time
-(`generateCharacterVoiceFn`, and `CharacterBibleWorkflow` before it spawns
-the child) so the character card can show a pending take after reload or
-when opened mid-run — the realtime `generation.character-voice:progress`
-event is one-shot and easy to miss. The workflow stamps `completed` with
-the saved voice and `failed` in `onFailure`. The Generate voice button
-spins while `voiceStatus === 'generating'`.
+In-flight Voice Design is a stills-style husk (#1715): a
+`character_voice_versions` row with `status: 'generating'` (no `voiceId` /
+previews yet) and `characters.pendingPromoteVoiceVersionId` pointing at it.
+`generateCharacterVoiceFn` and `CharacterBibleWorkflow` insert the husk
+before trigger / spawn; a second Generate while live no-ops. The current
+saved voice stays until the husk promotes (do not release first). Persist
+completes that row in place and selects it only if the pointer still names
+it; picking a library voice or an older history row mid-run clears the
+pointer (demote). `onFailure` and the reconcile sweep mark the husk failed.
+The character card lists a generating version as the pending take.
 `CharacterBibleWorkflow` spawns a `CharacterVoiceWorkflow` child per
 _speaking_ character (`speakingCharacterIds()`: a bible name sharing a
 non-stopword token with a dialogue speaker cue, or equal to it once

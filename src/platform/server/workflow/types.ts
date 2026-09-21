@@ -1026,10 +1026,12 @@ export interface CharacterVoiceWorkflowInput extends SequenceWorkflowContext {
   /** The stored description; empty = draft one from the bible first. */
   voiceDescription: string;
   analysisModelId: AnalysisModelId;
+  /** Generating husk this run completes in place (#1715). */
+  targetVersionId: string;
 }
 
 export interface CharacterVoiceWorkflowResult {
-  voiceId: string;
+  voiceId: string | null;
   voiceDescription: string;
 }
 

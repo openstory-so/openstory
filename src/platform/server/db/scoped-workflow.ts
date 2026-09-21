@@ -137,8 +137,16 @@ type WorkflowLiveReads = Pick<ScopedDb, 'teamId' | 'userId'> & {
     ScopedDb['billing'],
     'hasEnoughCredits' | 'checkAutoTopUp' | 'getBalance'
   >;
-  /** `getById`: divergence recompute. `listWithSheets`: live bibles for a re-render. */
-  characters: Pick<ScopedDb['characters'], 'getById' | 'listWithSheets'>;
+  /**
+   * `getById`: divergence recompute, and the pending-promote pointer at
+   * Voice Design persist (#1715) — demote must win. `listWithSheets`: live
+   * bibles for a re-render. `getVoiceReferenceCount`: slot occupancy when
+   * releasing a replaced or demoted designed voice.
+   */
+  characters: Pick<
+    ScopedDb['characters'],
+    'getById' | 'listWithSheets' | 'getVoiceReferenceCount'
+  >;
   /**
    * `getSelected` only, and only for `getAnchorImageUrl`
    * (src/shots/server/frame-image.ts) — a thumbnail for a realtime event and the

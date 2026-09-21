@@ -339,6 +339,16 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       bucket: 'CREDENTIAL',
       why: 'The platform ElevenLabs key, resolved inside the design and save steps that spend it (#1553).',
     },
+    {
+      read: 'characters.getById',
+      bucket: 'EXISTENCE-GUARD',
+      why: 'pendingPromoteVoiceVersionId at persist: the user may have picked another voice mid-run, so promote must read the live pointer (#1715).',
+    },
+    {
+      read: 'characters.getVoiceReferenceCount',
+      bucket: 'POOL-CAPACITY',
+      why: 'ElevenLabs slot occupancy when releasing a replaced or demoted designed voice; a frozen count would free a slot still held.',
+    },
   ],
   'motion-workflow.ts': [
     {

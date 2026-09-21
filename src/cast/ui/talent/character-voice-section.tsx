@@ -60,6 +60,13 @@ export const CharacterVoiceSection: React.FC<{
     character.voiceId,
     enabled
   );
+  const { data: versions } = useCharacterVoiceVersions(
+    sequenceId,
+    character.id
+  );
+  const pendingHusk = versions?.find(
+    (version) => version.status === 'generating' || version.status === 'pending'
+  );
 
   useRealtime({
     channels: [sequenceId],
@@ -78,6 +85,12 @@ export const CharacterVoiceSection: React.FC<{
           return;
         }
         setIsDesigning(data.status === 'generating');
+        void queryClient.invalidateQueries({
+          queryKey: sequenceCharacterKeys.voiceVersions(
+            sequenceId,
+            character.id
+          ),
+        });
         if (data.status === 'failed') {
           toast.error('Voice design failed', {
             description:
@@ -91,6 +104,12 @@ export const CharacterVoiceSection: React.FC<{
             queryKey: sequenceCharacterKeys.list(sequenceId),
           });
           void queryClient.invalidateQueries({
+            queryKey: sequenceCharacterKeys.voiceVersions(
+              sequenceId,
+              character.id
+            ),
+          });
+          void queryClient.invalidateQueries({
             queryKey: elevenLabsVoiceKeys.saved(character.id),
           });
         }
@@ -99,8 +118,7 @@ export const CharacterVoiceSection: React.FC<{
     ),
   });
 
-  const designing =
-    character.voiceStatus === 'generating' || isDesigning || generate.isPending;
+  const designing = Boolean(pendingHusk) || isDesigning || generate.isPending;
   const busy = designing || assignVoice.isPending;
   const takes = designedTakesForDisplay(
     character.voicePreviews ?? [],
@@ -337,14 +355,17 @@ const VoiceHistory: React.FC<{
       </p>
     );
   }
-  if (!versions || versions.length < 2) return null;
+  const completed = versions?.filter(
+    (version) => version.status === 'completed'
+  );
+  if (!completed || completed.length < 2) return null;
   return (
     <section className="flex flex-col gap-2" aria-label="Voice history">
       <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
         History
       </p>
       <ul className="flex flex-col gap-1">
-        {versions.map((version) => {
+        {completed.map((version) => {
           const current = version.id === character.selectedVoiceVersionId;
           const released = Boolean(version.releasedAt);
           const created = new Date(version.createdAt);

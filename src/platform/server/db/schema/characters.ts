@@ -23,9 +23,6 @@ const SHEET_STATUSES = [
 ] as const;
 export type SheetStatus = (typeof SHEET_STATUSES)[number];
 
-/** Voice Design lifecycle — same statuses as sheets, not a version-row mirror. */
-export type VoiceStatus = SheetStatus;
-
 /** Why a parked take can no longer be saved (#1709). */
 export type VoicePreviewUnusable = 'saved' | 'expired';
 
@@ -100,6 +97,13 @@ export const characters = snakeCase.table(
     // moves the pointer and the mirror together. Null on rows from before
     // voice history, and until the first voice write.
     selectedVoiceVersionId: text(),
+    // Soft pointer to the in-flight `character_voice_versions` husk that
+    // should become selected when Voice Design completes (#1715) — same job
+    // as `frames.pendingPromoteVersionId`. Last kickoff wins (overwrite);
+    // picking a different completed voice clears it; failure of that husk
+    // clears it. Persist promotes only when this still names the finishing
+    // row.
+    pendingPromoteVoiceVersionId: text(),
     consistencyTag: text(), // e.g. "char_001: Jack-denim-jacket"
     // First appearance in script
     firstMentionSceneId: text(),
@@ -111,13 +115,6 @@ export const characters = snakeCase.table(
     // imageError for the same reason (#1419).
     sheetStatus: text().$type<SheetStatus>().default('pending').notNull(),
     sheetError: text(),
-    // Voice Design lifecycle (#1715). Same job as `sheetStatus`: stamped
-    // `generating` at trigger time (before the workflow starts) so the card
-    // can show a pending take on reload / after opening the character mid-run.
-    // Not a version mirror — `character_voice_versions` only exist after a
-    // design lands. `failed` when the workflow dies.
-    voiceStatus: text().$type<VoiceStatus>().default('pending').notNull(),
-    voiceError: text(),
     // Soft pointer to the live `character_sheet_variants` row (#1108 sheet
     // versions). No FK — same cycle-avoidance as frames.selectedImageVersionId.
     // Null on rows the #1419 backfill snapshotted rather than a user

@@ -51,8 +51,6 @@ export const characterReadSchema = createSelectSchema(characters)
     firstMentionLine: true,
     sheetStatus: true,
     sheetError: true,
-    voiceStatus: true,
-    voiceError: true,
     selectedSheetVersionId: true,
   })
   .extend({

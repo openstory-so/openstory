@@ -694,10 +694,11 @@ export function updateQueryCacheFromEvent(
       // per-scene cast (SceneCastTab) populate live instead of only after a
       // page refresh. Debounced because character-sheet:progress fires
       // generating + completed for every character. History keys too — the
-      // version strip is a separate query from the list.
+      // version strip is a separate query from the list. Voice Design husks
+      // live on the versions query (#1715).
       debouncedInvalidate(
         queryClient,
-        sequenceCharacterKeys.list(sequenceId),
+        sequenceCharacterKeys.all,
         `sequence-characters:${sequenceId}`
       );
       debouncedInvalidate(

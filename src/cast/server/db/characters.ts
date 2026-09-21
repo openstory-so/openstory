@@ -25,8 +25,9 @@ import type {
   Shot,
   NewCharacter,
   SheetStatus,
+  VoicePreview,
   VoicePreviewUnusable,
-  VoiceStatus,
+  CharacterVoiceVersionStatus,
 } from '@/platform/server/db/schema';
 import {
   characterSheetVariants,
@@ -37,6 +38,7 @@ import {
 } from '@/platform/server/db/schema';
 import { markPreviewUnusable } from '@/cast/voice';
 import { generateId } from '@/platform/id';
+import { isUniqueConstraintError } from '@/platform/server/db/scoped/divergent-insert';
 import {
   loadSceneContextBySequenceFromDb,
   resolveSceneForShot,
@@ -131,6 +133,13 @@ const charactersWithLiveSheet = {
 
 const RELEASED_VOICE_MESSAGE =
   'This voice was deleted when it stopped being used; design or pick a new one.';
+const VOICE_HUSK_NOT_READY_MESSAGE =
+  'This voice is not finished generating yet.';
+const VOICE_DESIGN_IN_FLIGHT_MESSAGE = 'Voice design already in flight';
+const LIVE_VOICE_CLAIM_STATUSES = [
+  'pending',
+  'generating',
+] as const satisfies readonly CharacterVoiceVersionStatus[];
 
 export function createCharactersMethods(db: Database) {
   /** `select(charactersWithLiveSheet)` + the join it depends on. */
@@ -215,6 +224,7 @@ export function createCharactersMethods(db: Database) {
         .set({
           ...data,
           selectedVoiceVersionId: versionId,
+          pendingPromoteVoiceVersionId: null,
           updatedAt: new Date(),
         })
         .where(eq(characters.id, id))
@@ -478,6 +488,9 @@ export function createCharactersMethods(db: Database) {
       // The id on a released row no longer exists at ElevenLabs, so selecting
       // it would put a dead voice on the row and 404 at TTS (#1657).
       if (version.releasedAt) throw new Error(RELEASED_VOICE_MESSAGE);
+      if (version.status !== 'completed') {
+        throw new Error(VOICE_HUSK_NOT_READY_MESSAGE);
+      }
       // The released check rides in the write too: a release landing between
       // the read above and here must not leave a dead id selected.
       const [updated] = await db
@@ -488,6 +501,7 @@ export function createCharactersMethods(db: Database) {
           voicePreviews: version.previews,
           useVoice: version.enabled,
           selectedVoiceVersionId: version.id,
+          pendingPromoteVoiceVersionId: null,
           updatedAt: new Date(),
         })
         .where(
@@ -500,7 +514,8 @@ export function createCharactersMethods(db: Database) {
                 .where(
                   and(
                     eq(characterVoiceVersions.id, version.id),
-                    isNull(characterVoiceVersions.releasedAt)
+                    isNull(characterVoiceVersions.releasedAt),
+                    eq(characterVoiceVersions.status, 'completed')
                   )
                 )
             )
@@ -557,19 +572,182 @@ export function createCharactersMethods(db: Database) {
     },
 
     /**
-     * Voice Design lifecycle (#1715). Not a history write: generating is
-     * stamped before the workflow starts, so the card can show a pending
-     * take without a `character_voice_versions` row.
+     * Pre-create the generating husk for an enqueued Voice Design (#1715).
+     * Completes in place; last kickoff overwrites `pendingPromoteVoiceVersionId`.
      */
-    updateVoiceStatus: async (
-      id: string,
-      status: VoiceStatus,
+    createPendingVoiceClaim: async (
+      characterId: string,
+      createdBy: string | null,
+      opts?: { workflowRunId?: string | null }
+    ) => {
+      const [existing] = await db
+        .select()
+        .from(characters)
+        .where(eq(characters.id, characterId));
+      if (!existing)
+        throw new Error(`SequenceCharacter ${characterId} not found`);
+      const versionId = generateId();
+      try {
+        const [versionRows, characterRows] = await db.batch([
+          db
+            .insert(characterVoiceVersions)
+            .values({
+              id: versionId,
+              characterId,
+              source: 'generated',
+              status: 'generating',
+              createdBy,
+              workflowRunId: opts?.workflowRunId ?? null,
+              description: existing.voiceDescription,
+              enabled: existing.useVoice,
+            })
+            .returning(),
+          db
+            .update(characters)
+            .set({
+              pendingPromoteVoiceVersionId: versionId,
+              updatedAt: new Date(),
+            })
+            .where(eq(characters.id, characterId))
+            .returning(),
+        ]);
+        const version = versionRows[0];
+        if (!version || !characterRows[0]) {
+          throw new Error(
+            `Failed to insert pending voice claim for character ${characterId}`
+          );
+        }
+        return version;
+      } catch (error) {
+        if (isUniqueConstraintError(error)) {
+          throw new Error(VOICE_DESIGN_IN_FLIGHT_MESSAGE);
+        }
+        throw error;
+      }
+    },
+
+    listLiveVoiceClaims: async (characterId: string) =>
+      await db
+        .select()
+        .from(characterVoiceVersions)
+        .where(
+          and(
+            eq(characterVoiceVersions.characterId, characterId),
+            inArray(characterVoiceVersions.status, [
+              ...LIVE_VOICE_CLAIM_STATUSES,
+            ])
+          )
+        ),
+
+    completeVoiceClaimIfLive: async (
+      versionId: string,
+      data: {
+        voiceId?: string | null;
+        description?: string | null;
+        previews?: VoicePreview[] | null;
+      }
+    ) => {
+      const [row] = await db
+        .update(characterVoiceVersions)
+        .set({
+          ...(data.voiceId !== undefined ? { voiceId: data.voiceId } : {}),
+          ...(data.description !== undefined
+            ? { description: data.description }
+            : {}),
+          ...(data.previews !== undefined ? { previews: data.previews } : {}),
+          status: 'completed',
+          error: null,
+        })
+        .where(
+          and(
+            eq(characterVoiceVersions.id, versionId),
+            inArray(characterVoiceVersions.status, [
+              ...LIVE_VOICE_CLAIM_STATUSES,
+            ])
+          )
+        )
+        .returning();
+      return row ?? null;
+    },
+
+    markVoiceClaimTerminal: async (
+      versionId: string,
+      status: Extract<CharacterVoiceVersionStatus, 'failed'>,
       error?: string
-    ): Promise<Character> => {
-      return await update(id, {
-        voiceStatus: status,
-        voiceError: error ?? null,
-      });
+    ) => {
+      const [row] = await db
+        .update(characterVoiceVersions)
+        .set({ status, error: error ?? null })
+        .where(
+          and(
+            eq(characterVoiceVersions.id, versionId),
+            inArray(characterVoiceVersions.status, [
+              ...LIVE_VOICE_CLAIM_STATUSES,
+            ])
+          )
+        )
+        .returning();
+      if (row) {
+        await db
+          .update(characters)
+          .set({
+            pendingPromoteVoiceVersionId: null,
+            updatedAt: new Date(),
+          })
+          .where(eq(characters.pendingPromoteVoiceVersionId, versionId));
+      }
+      return row ?? null;
+    },
+
+    /**
+     * Select the husk as the live voice only if auto-promote still names it.
+     * Returns null when the user picked something else mid-run (#1070 analog).
+     */
+    promoteVoiceClaimIfPending: async (
+      characterId: string,
+      versionId: string
+    ) => {
+      const [version] = await db
+        .select()
+        .from(characterVoiceVersions)
+        .where(
+          and(
+            eq(characterVoiceVersions.id, versionId),
+            eq(characterVoiceVersions.characterId, characterId)
+          )
+        );
+      if (!version || version.status !== 'completed') return null;
+      const [updated] = await db
+        .update(characters)
+        .set({
+          voiceId: version.voiceId,
+          voiceDescription: version.description,
+          voicePreviews: version.previews,
+          useVoice: version.enabled,
+          selectedVoiceVersionId: version.id,
+          pendingPromoteVoiceVersionId: null,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(characters.id, characterId),
+            eq(characters.pendingPromoteVoiceVersionId, versionId)
+          )
+        )
+        .returning();
+      return updated ?? null;
+    },
+
+    stampVoiceClaimWorkflowRunId: async (
+      versionId: string,
+      workflowRunId: string
+    ) => {
+      const [row] = await db
+        .update(characterVoiceVersions)
+        .set({ workflowRunId })
+        .where(eq(characterVoiceVersions.id, versionId))
+        .returning();
+      return row ?? null;
     },
 
     /**

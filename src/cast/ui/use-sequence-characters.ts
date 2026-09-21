@@ -141,8 +141,11 @@ export function useGenerateCharacterVoice() {
   return useMutation({
     mutationFn: (data: { sequenceId: string; characterId: string }) =>
       generateCharacterVoiceFn({ data }),
-    onSuccess: (_result, { sequenceId }) => {
+    onSuccess: (_result, { sequenceId, characterId }) => {
       invalidateAfterVoiceChange(queryClient, sequenceId);
+      void queryClient.invalidateQueries({
+        queryKey: sequenceCharacterKeys.voiceVersions(sequenceId, characterId),
+      });
     },
   });
 }

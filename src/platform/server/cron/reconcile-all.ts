@@ -29,6 +29,8 @@ import {
   sequenceElements,
   sequences,
   shotDialogueClaims,
+  characterVoiceVersions,
+  characters,
   videoVariants,
 } from '@/platform/server/db/schema';
 import {
@@ -86,6 +88,10 @@ export async function reconcileAllStuckJobs(): Promise<ReconcileCounts> {
     // dead motion run leaves a permanent "generating" chip on the Video tab
     // (#1076).
     ['video_variants.status', () => reconcileVideoVariantsPass(db)],
+    [
+      'character_voice_versions.claims',
+      () => reconcileCharacterVoiceClaimsPass(db),
+    ],
     ['shot_variants.status', () => reconcileShotVariantsPass(db, 'primary')],
     [
       'shot_variants.shot_variant',
@@ -213,6 +219,57 @@ async function reconcileFrameVariantsPass(db: Database): Promise<number> {
  * from the workflow instance status and drop a failed version's auto-promote
  * claim on its render segment.
  */
+/**
+ * Sweep zombie Voice Design husks (#1715). A dead run must not leave a
+ * permanent Pending take on the character card.
+ */
+async function reconcileCharacterVoiceClaimsPass(
+  db: Database
+): Promise<number> {
+  const staleCutoff = new Date(Date.now() - STALE_THRESHOLD_MS);
+  const stuck = await db
+    .select({
+      id: characterVoiceVersions.id,
+      runId: characterVoiceVersions.workflowRunId,
+    })
+    .from(characterVoiceVersions)
+    .where(
+      and(
+        inArray(characterVoiceVersions.status, ['pending', 'generating']),
+        lt(characterVoiceVersions.createdAt, staleCutoff)
+      )
+    )
+    .limit(MAX_ROWS_PER_PASS);
+  let updated = 0;
+  for (const row of stuck) {
+    const next = row.runId ? await resolveRunState(row.runId) : 'failed';
+    if (next === null || next === 'unknown') continue;
+    const transitioned = await db
+      .update(characterVoiceVersions)
+      .set({
+        status: 'failed',
+        error: 'Generation died before completing',
+      })
+      .where(
+        and(
+          eq(characterVoiceVersions.id, row.id),
+          inArray(characterVoiceVersions.status, ['pending', 'generating'])
+        )
+      )
+      .returning({ id: characterVoiceVersions.id });
+    if (transitioned.length === 0) continue;
+    await db
+      .update(characters)
+      .set({
+        pendingPromoteVoiceVersionId: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(characters.pendingPromoteVoiceVersionId, row.id));
+    updated++;
+  }
+  return updated;
+}
+
 async function reconcileVideoVariantsPass(db: Database): Promise<number> {
   const staleCutoff = new Date(Date.now() - STALE_THRESHOLD_MS);
   const stuck = await db

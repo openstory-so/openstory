@@ -1,7 +1,7 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "b4cdce91-c409-4c9a-a1c5-aaec1e3ee31c",
+  "id": "9803ee20-a96a-4f64-8d20-807efa28ba91",
   "prevIds": ["39c5050b-3e60-4f86-b041-1534cb6757e7"],
   "ddl": [
     {
@@ -1103,6 +1103,36 @@
       "table": "character_voice_versions"
     },
     {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "'completed'",
+      "generated": null,
+      "name": "status",
+      "entityType": "columns",
+      "table": "character_voice_versions"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "workflow_run_id",
+      "entityType": "columns",
+      "table": "character_voice_versions"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "error",
+      "entityType": "columns",
+      "table": "character_voice_versions"
+    },
+    {
       "type": "integer",
       "notNull": false,
       "autoincrement": false,
@@ -1338,6 +1368,16 @@
       "autoincrement": false,
       "default": null,
       "generated": null,
+      "name": "pending_promote_voice_version_id",
+      "entityType": "columns",
+      "table": "characters"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
       "name": "consistency_tag",
       "entityType": "columns",
       "table": "characters"
@@ -1389,26 +1429,6 @@
       "default": null,
       "generated": null,
       "name": "sheet_error",
-      "entityType": "columns",
-      "table": "characters"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": "'pending'",
-      "generated": null,
-      "name": "voice_status",
-      "entityType": "columns",
-      "table": "characters"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "voice_error",
       "entityType": "columns",
       "table": "characters"
     },
@@ -11045,6 +11065,20 @@
       "where": null,
       "origin": "manual",
       "name": "idx_character_voice_versions_character_created",
+      "entityType": "indexes",
+      "table": "character_voice_versions"
+    },
+    {
+      "columns": [
+        {
+          "value": "character_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": "\"character_voice_versions\".\"status\" IN ('pending', 'generating')",
+      "origin": "manual",
+      "name": "uq_character_voice_versions_live_claim",
       "entityType": "indexes",
       "table": "character_voice_versions"
     },
