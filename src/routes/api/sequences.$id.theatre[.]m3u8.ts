@@ -15,11 +15,17 @@ import {
 } from '@/sequences/server/theatre-playlist';
 import { createFileRoute } from '@tanstack/react-router';
 
+// #1735: on again once repackage streams instead of buffering whole clips.
+const PLAYLIST_ENABLED: boolean = false;
+
 export const Route = createFileRoute('/api/sequences/$id/theatre.m3u8')({
   server: {
     middleware: [authWithTeamRequestMiddleware],
     handlers: {
       GET: async ({ params, context, request }) => {
+        // #1735: repackage OOMs the worker. 404 = stitch, as before #1623.
+        // oxlint-disable-next-line typescript/no-unnecessary-condition
+        if (!PLAYLIST_ENABLED) return new Response(null, { status: 404 });
         try {
           const sequence = await context.scopedDb.sequences.getById(params.id);
           if (!sequence) throw new NotFoundError('Sequence not found');
