@@ -1,17 +1,35 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as tanstackAi from '@tanstack/ai';
 
 const mockGet = vi.fn();
 const mockShare = vi.fn();
 const mockDelete = vi.fn();
+const generateVoice = vi.fn();
+const createElevenLabsVoiceDesign = vi.fn(
+  (_model: string, _apiKey: string, _config?: unknown) => ({
+    name: 'elevenlabs',
+  })
+);
+
+vi.doMock('@tanstack/ai', () => ({
+  ...tanstackAi,
+  generateVoice,
+}));
 
 vi.doMock('@/models/server/elevenlabs-config', () => ({
   createElevenLabsSdk: vi.fn(async () => ({
     voices: { get: mockGet, share: mockShare, delete: mockDelete },
   })),
+  loadElevenLabsVoiceDesign: async () => createElevenLabsVoiceDesign,
+  elevenLabsAdapterConfig: (apiKey: string, timeoutInSeconds = 60) => ({
+    apiKey,
+    timeoutInSeconds,
+  }),
 }));
 
 const {
   deleteElevenLabsVoice,
+  designVoicePreviews,
   getElevenLabsVoice,
   isElevenLabsVoiceAlreadyCreated,
   isElevenLabsVoiceMissing,
@@ -40,6 +58,59 @@ describe('Voice Design params', () => {
   it('stays in the natural band from the prompting guide', () => {
     expect(VOICE_DESIGN_GUIDANCE_SCALE).toBeGreaterThanOrEqual(15);
     expect(VOICE_DESIGN_GUIDANCE_SCALE).toBeLessThanOrEqual(40);
+  });
+});
+
+describe('designVoicePreviews', () => {
+  it('maps adapter previews to the DesignedPreview shape', async () => {
+    generateVoice.mockResolvedValue({
+      id: 'gen-req-1',
+      model: 'eleven_ttv_v3',
+      voices: [
+        {
+          voiceId: 'gen-1',
+          audio: 'base64audio',
+          contentType: 'audio/mpeg',
+          saved: false,
+          status: 'ready',
+        },
+      ],
+    });
+
+    const previews = await designVoicePreviews('el-key', 'a warm narrator');
+
+    expect(previews).toEqual([
+      {
+        generatedVoiceId: 'gen-1',
+        audioBase64: 'base64audio',
+        mediaType: 'audio/mpeg',
+      },
+    ]);
+    expect(createElevenLabsVoiceDesign).toHaveBeenCalledWith(
+      'eleven_ttv_v3',
+      'el-key',
+      expect.objectContaining({ timeoutInSeconds: 120 })
+    );
+    expect(generateVoice).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: 'a warm narrator',
+        modelOptions: expect.objectContaining({
+          guidanceScale: VOICE_DESIGN_GUIDANCE_SCALE,
+        }),
+      })
+    );
+  });
+
+  it('throws when a preview is missing audio data', async () => {
+    generateVoice.mockResolvedValue({
+      id: 'gen-req-1',
+      model: 'eleven_ttv_v3',
+      voices: [{ voiceId: 'gen-1', saved: false, status: 'ready' }],
+    });
+
+    await expect(
+      designVoicePreviews('el-key', 'a warm narrator')
+    ).rejects.toThrow('missing audio data');
   });
 });
 

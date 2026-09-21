@@ -81,9 +81,23 @@ export async function loadElevenLabsAudio() {
 }
 
 /**
- * Official SDK client for Voice Design / create-voice — endpoints
- * `elevenlabsSpeech` does not wrap. `fetch` is the workerd-safe global so
- * a method-extracted `this.fetch` cannot throw Illegal invocation.
+ * Lazy-load the Voice Design adapter (`@tanstack/ai-elevenlabs` >=0.6, #1640).
+ * Same startup-CPU reason as speech/audio. Covers preview generation
+ * (`textToVoice.design`) only — it has no standalone "save this preview" or
+ * voice-management surface, so `createElevenLabsSdk` below still backs
+ * `saveDesignedVoice` / `deleteElevenLabsVoice` / list / share.
+ */
+export async function loadElevenLabsVoiceDesign() {
+  const { createElevenLabsVoiceDesign } =
+    await import('@tanstack/ai-elevenlabs');
+  return createElevenLabsVoiceDesign;
+}
+
+/**
+ * Official SDK client for voice management — save / delete / get / list /
+ * share, none of which the `@tanstack/ai-elevenlabs` adapters expose.
+ * `fetch` is the workerd-safe global so a method-extracted `this.fetch`
+ * cannot throw Illegal invocation.
  */
 export async function createElevenLabsSdk(
   apiKey: string,

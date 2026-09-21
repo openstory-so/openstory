@@ -1,9 +1,12 @@
 /**
- * ElevenLabs Voice Design + saved voices (#1553), through the official SDK
- * (`@tanstack/ai-elevenlabs` wraps TTS only). Platform key only — see
- * `elevenlabs-config.ts`.
+ * ElevenLabs Voice Design + saved voices (#1553). Preview generation goes
+ * through the `@tanstack/ai-elevenlabs` Voice Design adapter (#1640); saving
+ * a preview and all voice management (delete/get/list/share) stay on the
+ * official SDK because the adapter has no standalone surface for them — see
+ * `elevenlabs-config.ts`. Platform key only.
  */
 
+import { generateVoice } from '@tanstack/ai';
 import {
   toCatalogVoiceFromLibrary,
   voiceConsumesAccountSlot,
@@ -11,7 +14,11 @@ import {
   type CatalogVoicePage,
   type SavedVoiceMeta,
 } from '@/cast/voice';
-import { createElevenLabsSdk } from '@/models/server/elevenlabs-config';
+import {
+  createElevenLabsSdk,
+  elevenLabsAdapterConfig,
+  loadElevenLabsVoiceDesign,
+} from '@/models/server/elevenlabs-config';
 
 export type DesignedPreview = {
   generatedVoiceId: string;
@@ -26,30 +33,45 @@ export type DesignedPreview = {
  */
 export const VOICE_DESIGN_GUIDANCE_SCALE = 25;
 
-// No `quality` here, though the SDK types accept one: the live
-// /v1/text-to-voice/design endpoint rejects it, so sending it fails every
-// design call. `guidanceScale` is the knob that actually shapes the take.
+// No `quality` here, though the adapter's provider options accept one: the
+// live /v1/text-to-voice/design endpoint rejects it, so sending it fails
+// every design call. `guidanceScale` is the knob that actually shapes the
+// take.
 
 /** Previews cost no voice slot; only `saveDesignedVoice` does. */
 export async function designVoicePreviews(
   apiKey: string,
   voiceDescription: string
 ): Promise<DesignedPreview[]> {
-  const client = await createElevenLabsSdk(apiKey, 120);
-  const result = await client.textToVoice.design({
-    voiceDescription,
-    modelId: 'eleven_ttv_v3',
-    autoGenerateText: true,
-    shouldEnhance: true,
-    guidanceScale: VOICE_DESIGN_GUIDANCE_SCALE,
-    // 192 kbps needs the Creator tier; 128 does not.
-    outputFormat: 'mp3_44100_128',
+  const createElevenLabsVoiceDesign = await loadElevenLabsVoiceDesign();
+  const adapterConfig = elevenLabsAdapterConfig(apiKey, 120);
+  const adapter = createElevenLabsVoiceDesign('eleven_ttv_v3', apiKey, {
+    timeoutInSeconds: adapterConfig.timeoutInSeconds,
+    ...(adapterConfig.baseURL && { baseURL: adapterConfig.baseURL }),
   });
-  return result.previews.map((preview) => ({
-    generatedVoiceId: preview.generatedVoiceId,
-    audioBase64: preview.audioBase64,
-    mediaType: preview.mediaType,
-  }));
+  const result = await generateVoice({
+    adapter,
+    prompt: voiceDescription,
+    modelOptions: {
+      autoGenerateText: true,
+      shouldEnhance: true,
+      guidanceScale: VOICE_DESIGN_GUIDANCE_SCALE,
+      // 192 kbps needs the Creator tier; 128 does not.
+      outputFormat: 'mp3_44100_128',
+    },
+  });
+  return result.voices.map((voice) => {
+    // `audio`/`contentType` are optional on the generic `GeneratedVoice`
+    // shape, but ElevenLabs' design endpoint always returns both.
+    if (!voice.audio || !voice.contentType) {
+      throw new Error('ElevenLabs voice preview is missing audio data');
+    }
+    return {
+      generatedVoiceId: voice.voiceId,
+      audioBase64: voice.audio,
+      mediaType: voice.contentType,
+    };
+  });
 }
 
 /** HTTP status of an SDK error, if it carried one. */
@@ -112,6 +134,11 @@ export function isElevenLabsVoiceAlreadyCreated(error: unknown): boolean {
 /**
  * Spends one account-wide voice slot. Release through
  * `releaseVoiceIfUnreferenced` (`release-voice.ts`), never this file's delete.
+ *
+ * Stays on the raw SDK: the Voice Design adapter's `generateVoice` only
+ * promotes the preview it just generated (`voices[0]`) and can't save an
+ * arbitrary previously-generated `generatedVoiceId` on its own, which is
+ * what this workflow step needs.
  */
 export async function saveDesignedVoice(
   apiKey: string,

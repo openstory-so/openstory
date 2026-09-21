@@ -121,13 +121,6 @@ export const CATALOG_LAG_MODELS = [
     input: ['text', 'image'],
     features: ['reasoning', 'structured_outputs'],
   }),
-  // OpenRouter listed openai/gpt-6-astra on 2026-09-03; the installed
-  // @tanstack/ai-openrouter catalog still stops at GPT-5.6. Prune when
-  // Dependabot lands a catalog that includes this id.
-  createModel('openai/gpt-6-astra', {
-    input: ['text', 'image'],
-    features: ['reasoning', 'structured_outputs'],
-  }),
 ] as const;
 
 const openRouterTextExtended = extendAdapter(
@@ -155,15 +148,9 @@ const createGrokTextExtended = extendAdapter(
 );
 
 /** {@link CATALOG_LAG_MODELS} for the native Gemini adapter.
- *  `@tanstack/ai-gemini@0.26.5` stops at `gemini-3.7-flash`; 3.8 Flash is
- *  lag-bridged until Dependabot lands ≥0.28.0 (first catalog with that id).
- *  Prune is the Gemini block in `catalog-lag.test.ts`. */
-export const GEMINI_CATALOG_LAG_MODELS = [
-  createModel('gemini-3.8-flash', {
-    input: ['text', 'image', 'video', 'audio', 'document'],
-    features: ['reasoning', 'structured_outputs'],
-  }),
-] as const;
+ *  `@tanstack/ai-gemini@0.31.2` now ships `gemini-3.8-flash` natively —
+ *  nothing currently lags. Prune is the Gemini block in `catalog-lag.test.ts`. */
+export const GEMINI_CATALOG_LAG_MODELS = [] as const;
 
 const createGeminiChatExtended = extendAdapter(
   createGeminiChat,
