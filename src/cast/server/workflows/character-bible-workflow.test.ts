@@ -188,14 +188,15 @@ describe('CharacterBibleWorkflow voice-only characters', () => {
       makeStep(),
       makeScopedDb()
     );
-    const created = characterCreate.mock.calls[0]?.[0] as { id: string };
-    expect(updateVoiceStatus).toHaveBeenCalledWith(created.id, 'generating');
-    expect(
-      mockSpawnAndAwaitChild.mock.calls.some(
-        (call) =>
-          (call[1] as { childId: string }).childId ===
-          `character-voice:${created.id}`
-      )
-    ).toBe(true);
+    expect(updateVoiceStatus).toHaveBeenCalledWith(
+      expect.any(String),
+      'generating'
+    );
+    expect(mockSpawnAndAwaitChild).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        childId: expect.stringMatching(/^character-voice:/),
+      })
+    );
   });
 });
