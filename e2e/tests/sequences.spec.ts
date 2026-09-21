@@ -47,7 +47,7 @@ test.describe('Sequences', () => {
       .poll(() => new URL(page.url()).searchParams.get('aspectRatio'))
       .toBe('9:16');
     await expect(
-      page.getByRole('textbox', { name: 'Search by title…' })
+      page.getByRole('textbox', { name: 'Search sequences' })
     ).toHaveValue('night diner');
   });
 
@@ -72,7 +72,7 @@ test.describe('Sequences', () => {
     await page.goto('/sequences');
 
     await expect(
-      page.getByRole('textbox', { name: 'Search by title…' })
+      page.getByRole('textbox', { name: 'Search sequences' })
     ).toBeVisible();
     await expect(page.getByText('Failed to load sequences')).toHaveCount(0);
   });
