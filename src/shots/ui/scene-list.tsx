@@ -53,6 +53,7 @@ import {
   Loader2,
   Mic,
   Music,
+  PanelLeftClose,
   Plus,
   Video,
 } from 'lucide-react';
@@ -183,6 +184,8 @@ export type SceneListProps = {
   styleName?: string;
   /** Shots with stale prompts/image (#1077) — amber dots on every rail thumbnail. */
   staleShotIds?: Set<string>;
+  /** Desktop sidebar only: fold the list to the thumbnail rail (#1713). */
+  onCollapse?: () => void;
   /** Sizing from the host — sidebar width on desktop, `w-full` in a sheet. */
   className?: string;
   /** Scroll the selected shot/scene into view on mount (mobile sheet). */
@@ -228,6 +231,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   generateVoices = false,
   styleName,
   staleShotIds,
+  onCollapse,
   className,
   scrollToSelection = false,
   targetDurationSeconds,
@@ -588,9 +592,24 @@ const SceneListComponent: React.FC<SceneListProps> = ({
       )}
     >
       <div className="flex items-center justify-between border-b px-4 py-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Scenes
-        </h2>
+        <div className="flex items-center gap-1">
+          {onCollapse && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="-ml-2 size-7"
+              aria-label="Collapse scenes list"
+              title="Collapse scenes list"
+              onClick={onCollapse}
+            >
+              <PanelLeftClose className="size-4" />
+            </Button>
+          )}
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Scenes
+          </h2>
+        </div>
         {shots && (
           <TargetDurationChip
             sequenceId={sequenceId}
@@ -926,6 +945,7 @@ const areEqual = (
     prevProps.onSelectShot !== nextProps.onSelectShot ||
     prevProps.onClearSelection !== nextProps.onClearSelection ||
     prevProps.onPlaySequence !== nextProps.onPlaySequence ||
+    prevProps.onCollapse !== nextProps.onCollapse ||
     prevProps.onLeftoverGrokChange !== nextProps.onLeftoverGrokChange ||
     prevProps.onVideoModelChange !== nextProps.onVideoModelChange
   ) {

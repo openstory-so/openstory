@@ -21,7 +21,9 @@ import {
   resolveVideoModel,
 } from '@/models/resolve-asset-models';
 import { shotPromptPreviewQueryOptions } from '@/shots/ui/shot-prompt-preview-query';
+import { useSidebar } from '@/ui/shadcn/sidebar';
 import { createFileRoute } from '@tanstack/react-router';
+import { useEffect, useRef } from 'react';
 
 export const Route = createFileRoute('/_app/sequences/$id/scenes')({
   component: ScenesPage,
@@ -117,6 +119,18 @@ export const Route = createFileRoute('/_app/sequences/$id/scenes')({
 function ScenesPage() {
   const { id: sequenceId } = Route.useParams();
   const search = Route.useSearch();
+
+  // The canvas needs the width (#1713): fold the app sidebar to icons on the
+  // way in, put it back on the way out. Once per visit — a sidebar the user
+  // reopens by hand stays open.
+  const { open, setOpen } = useSidebar();
+  const sidebar = useRef({ open, setOpen });
+  useEffect(() => {
+    const { open, setOpen } = sidebar.current;
+    if (!open) return;
+    setOpen(false);
+    return () => setOpen(true);
+  }, []);
 
   return <ScenesView sequenceId={sequenceId} search={search} />;
 }

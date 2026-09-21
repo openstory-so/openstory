@@ -10,13 +10,16 @@ import type { ImageToVideoModel, TextToImageModel } from '@/models/models';
 import { getAspectRatioData, type AspectRatio } from '@/models/aspect-ratios';
 import { RESOLUTION_OPTIONS, type Resolution } from '@/models/resolutions';
 import { Badge } from '@/ui/shadcn/badge';
-import type { SelectionScope } from './scene-selection';
+import { selectionScope, type SceneSelection } from './scene-selection';
+import { ScopeBreadcrumb } from './scope-breadcrumb';
+import type { SceneWithScript } from './use-scenes';
+import type { ShotView } from '@/shots/shot-view';
 import { usePostHog } from '@posthog/react';
 import { Link } from '@tanstack/react-router';
 import { CopyPlus } from 'lucide-react';
 
 /**
- * Scope header for the inspector, plus — at sequence scope — the settings that
+ * Scope breadcrumb for the inspector (#1713), plus — at sequence scope — the settings that
  * apply to the whole sequence.
  *
  * Sequence scope is the only home for these now: style, aspect ratio and the
@@ -35,7 +38,9 @@ import { CopyPlus } from 'lucide-react';
  * on the sequence-scope Music tab.
  */
 type SceneModelBarProps = {
-  scope: SelectionScope;
+  selection: SceneSelection;
+  scenes?: SceneWithScript[];
+  shots?: ShotView[];
   sequenceId?: string;
   resolvedSequenceImageModel: TextToImageModel;
   resolvedSequenceVideoModel: ImageToVideoModel;
@@ -49,12 +54,6 @@ type SceneModelBarProps = {
   analysisModel?: string;
 };
 
-export const scopeLabel: Record<SelectionScope, string> = {
-  sequence: 'Sequence settings',
-  scenes: 'Scene assets',
-  shot: 'Shot assets',
-};
-
 const SettingRow: React.FC<{ label: string; children: React.ReactNode }> = ({
   label,
   children,
@@ -66,7 +65,9 @@ const SettingRow: React.FC<{ label: string; children: React.ReactNode }> = ({
 );
 
 export const SceneModelBar: React.FC<SceneModelBarProps> = ({
-  scope,
+  selection,
+  scenes,
+  shots,
   sequenceId,
   resolvedSequenceImageModel,
   resolvedSequenceVideoModel,
@@ -78,19 +79,17 @@ export const SceneModelBar: React.FC<SceneModelBarProps> = ({
   analysisModel,
 }) => {
   const posthog = usePostHog();
+  const scope = selectionScope(selection);
   const showSequenceSettings = scope === 'sequence';
   const ratio = aspectRatio ? getAspectRatioData(aspectRatio) : undefined;
 
   return (
     <div className="space-y-3 px-4 py-3">
-      {/* Hidden on phones — the collapse bar already names the scope. */}
-      <div className="hidden items-center justify-between gap-2 md:flex">
-        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          {scopeLabel[scope]}
-        </span>
-        {/* Scope zoom-out affordance — Esc walks shot → scene → sequence. */}
+      <div className="flex items-center justify-between gap-2">
+        <ScopeBreadcrumb selection={selection} scenes={scenes} shots={shots} />
+        {/* Esc walks shot → scene → sequence; no keyboard on a phone. */}
         {scope !== 'sequence' && (
-          <span className="flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground">
+          <span className="hidden shrink-0 items-center gap-1 text-[11px] text-muted-foreground md:flex">
             <Kbd>esc</Kbd> up
           </span>
         )}

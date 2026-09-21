@@ -12,7 +12,8 @@ import { useSequenceExport } from '@/sequences/ui/theatre/use-sequence-export';
 import { SceneScriptDocument } from './scene-script-document';
 import type { BatchGenerateMotionArgs } from './scene-list';
 import { SceneList, type SceneListProps } from './scene-list';
-import { SceneModelBar, scopeLabel } from './scene-model-bar';
+import { SceneModelBar } from './scene-model-bar';
+import { SceneRail } from './scene-rail';
 import {
   SceneScriptPrompts,
   effectiveTabFor,
@@ -102,7 +103,6 @@ import type { GenerationPhaseConfig } from '@/sequences/ui/generation-stream.red
 import { useGenerationStream } from '@/sequences/ui/use-generation-stream';
 import { useStaleDetected } from './use-stale-detected';
 import { cn } from '@/ui/utils';
-import { ChevronDown } from 'lucide-react';
 import { usePostHog } from '@posthog/react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from '@tanstack/react-router';
@@ -302,6 +302,8 @@ function isTerminalStatus(status: string | null): boolean {
     status === 'completed' || status === 'failed' || status === 'cancelled'
   );
 }
+
+const RAIL_COLLAPSED_KEY = 'openstory:scenes-rail-collapsed';
 
 export const ScenesView: React.FC<ScenesViewProps> = ({
   sequenceId,
@@ -1201,8 +1203,26 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
 
   const [isRetrying, setIsRetrying] = useState(false);
 
-  // Mobile inspector starts collapsed so the canvas keeps the vertical space.
-  const [inspectorOpen, setInspectorOpen] = useState(false);
+  // Scenes list folded to the thumbnail rail (#1713). A per-viewer preference,
+  // read after mount so the server and first client render agree.
+  const [railCollapsed, setRailCollapsed] = useState(false);
+  useEffect(() => {
+    try {
+      setRailCollapsed(localStorage.getItem(RAIL_COLLAPSED_KEY) === '1');
+    } catch {
+      // Storage blocked — the list just starts expanded.
+    }
+  }, []);
+  const setRail = useCallback((collapsed: boolean) => {
+    setRailCollapsed(collapsed);
+    try {
+      localStorage.setItem(RAIL_COLLAPSED_KEY, collapsed ? '1' : '0');
+    } catch {
+      // Storage blocked — the choice lasts for this visit only.
+    }
+  }, []);
+  const collapseRail = useCallback(() => setRail(true), [setRail]);
+  const expandRail = useCallback(() => setRail(false), [setRail]);
 
   const failureSummary = useMemo(
     () => analyzeLoadedFailures(shots, sequence, scenesById),
@@ -1590,9 +1610,26 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
 
       <div className="flex flex-1 min-h-0">
         <div className="hidden min-h-0 md:block shrink-0 pl-4 py-4">
+          {/* Both stay mounted — the list's footer drafts survive a fold. */}
           <SceneList
             {...sceneListProps}
-            className="w-[clamp(220px,24cqw,360px)]"
+            onCollapse={collapseRail}
+            className={cn(
+              'w-[clamp(220px,24cqw,360px)]',
+              railCollapsed && 'hidden'
+            )}
+          />
+          <SceneRail
+            scenes={scenes}
+            shots={shots}
+            selection={selection}
+            aspectRatio={aspectRatio}
+            staleShotIds={sceneListProps.staleShotIds}
+            onExpand={expandRail}
+            className={cn(
+              aspectRatio === '9:16' ? 'w-16' : 'w-24',
+              !railCollapsed && 'hidden'
+            )}
           />
         </div>
 
@@ -1600,173 +1637,160 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
           <MobileSceneDrawer {...sceneListProps} />
         </div>
 
-        <div className="flex flex-1 min-h-0 min-w-0 flex-col @5xl/scenes:flex-row">
-          <div className="flex flex-1 min-h-0 min-w-0 flex-col">
-            <CanvasViewToggle
-              view={effectiveView}
-              onViewChange={setView}
-              canvasDisabled={!canvasReady}
-              trailing={
-                effectiveView === 'script' ? (
-                  <CopyScriptButton sequenceId={sequenceId} />
-                ) : (
-                  <SequenceExportActions sequenceExport={sequenceExport} />
-                )
-              }
-            />
-            {/* flex-col so SceneCanvas's flex-1 chain still stretches — in a
+        {/* Queried on the width left AFTER the scenes column, so folding the
+            list to the rail is what buys the inspector its place on the right.
+            Too narrow for both: one scrolling column, settings open under the
+            preview (#1713). */}
+        <div className="@container/workspace flex min-h-0 min-w-0 flex-1">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto @3xl/workspace:flex-row @3xl/workspace:overflow-visible">
+            <div className="flex h-[55dvh] min-w-0 shrink-0 flex-col @3xl/workspace:h-auto @3xl/workspace:min-h-0 @3xl/workspace:flex-1">
+              <CanvasViewToggle
+                view={effectiveView}
+                onViewChange={setView}
+                canvasDisabled={!canvasReady}
+                trailing={
+                  effectiveView === 'script' ? (
+                    <CopyScriptButton sequenceId={sequenceId} />
+                  ) : (
+                    <SequenceExportActions sequenceExport={sequenceExport} />
+                  )
+                }
+              />
+              {/* flex-col so SceneCanvas's flex-1 chain still stretches — in a
                 block parent the CanvasMediaStage size container computes 0
                 height and the whole canvas collapses. */}
-            <div
-              className="relative flex min-h-0 flex-1 flex-col touch-pan-y overflow-hidden"
-              {...canvasSwipe}
-            >
-              {effectiveView === 'script' ? (
-                <SceneScriptDocument
-                  sequenceId={sequenceId}
-                  scenes={scenes}
-                  selectedSceneIds={selectedScenes.map((s) => s.id)}
-                  onSelectScene={handleFocusScene}
-                  splittingScript={isProcessing ? sequence.script : undefined}
-                />
-              ) : (
-                <SceneCanvas
-                  sequenceExport={sequenceExport}
-                  autoPlay={autoPlaySequence}
-                  onAutoPlayConsumed={handleAutoPlayConsumed}
-                  selection={selection}
-                  shots={shots}
-                  scenes={scenes}
-                  loadError={shotsError}
-                  sequence={sequence}
-                  aspectRatio={aspectRatio}
-                  selectedTab={effectiveTab}
-                  overrideImageUrl={previewVariantUrl}
-                  overrideVideoUrl={previewVariantVideoUrl}
-                  badgeMessage={playerBadgeMessage}
-                  staleLabel={
-                    !isGenerationActive &&
-                    effectiveTab === 'image-prompt' &&
-                    curSelectedShotId &&
-                    !regeneratingImages.has(curSelectedShotId)
-                      ? scopeStaleness?.[curSelectedShotId]?.thumbnail ===
-                        'stale'
-                        ? 'Out of date'
-                        : scopeStaleness?.[curSelectedShotId]?.thumbnail ===
-                            'updating'
-                          ? 'Updating…'
-                          : null
-                      : null
-                  }
-                  progressMessage={
-                    isGenerationActive ? (
-                      <RenderWaitCopy
-                        etaMinutes={etaMinutes}
-                        willEmail={willEmail}
-                      />
-                    ) : (
-                      generationState.phases.find((p) => p.status === 'active')
-                        ?.phaseName
-                    )
-                  }
-                  retry={selectedShotRetry}
-                  onSelectShot={handleSelectShot}
-                  sceneImageModel={resolvedImageModel}
-                  regeneratingSceneVariants={regeneratingSceneVariants}
-                  onGenerateSceneVariantsStart={(id) =>
-                    handleRegenerateStart(id, 'scene-variants')
-                  }
-                  firstRunActive={isGenerationActive}
-                />
-              )}
-            </div>
-          </div>
-
-          {/* Use the available workspace width (including the app sidebar's
-              effect), so the inspector yields before the preview is squeezed. */}
-          <div className="relative z-10 min-w-0 shrink-0 border-t bg-background pb-20 md:pb-0 @5xl/scenes:min-h-0 @5xl/scenes:border-0 @5xl/scenes:bg-transparent @5xl/scenes:pr-4 @5xl/scenes:py-4">
-            <button
-              type="button"
-              className="flex min-h-11 w-full items-center justify-between px-4 py-2 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 @5xl/scenes:hidden"
-              aria-expanded={inspectorOpen}
-              aria-controls="scene-inspector"
-              onClick={() => setInspectorOpen((open) => !open)}
-            >
-              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {scopeLabel[scope]}
-              </span>
-              <ChevronDown
-                className={cn(
-                  'h-4 w-4 text-muted-foreground transition-transform motion-reduce:transition-none',
-                  inspectorOpen && 'rotate-180'
-                )}
-              />
-            </button>
-            <div
-              id="scene-inspector"
-              className={cn(
-                // The collapsed-layout height is on this wrapper, not the ScrollArea:
-                // a `max-h` alone leaves the Radix viewport (`height: 100%` of
-                // an auto-height root) resolving to its content height, so the
-                // root clipped at 40dvh with nothing scrollable inside it.
-                'h-[40dvh] @5xl/scenes:flex @5xl/scenes:h-full @5xl/scenes:min-h-0 @5xl/scenes:w-[min(28cqw,420px)] @5xl/scenes:flex-col @5xl/scenes:overflow-hidden @5xl/scenes:rounded-lg @5xl/scenes:border @5xl/scenes:bg-background',
-                inspectorOpen ? 'block' : 'hidden'
-              )}
-            >
-              <ScrollArea className="h-full min-h-0">
-                <SceneModelBar
-                  scope={scope}
-                  sequenceId={sequenceId}
-                  resolvedSequenceImageModel={resolvedSequenceImageModel}
-                  resolvedSequenceVideoModel={resolvedSequenceVideoModel}
-                  styleId={sequence?.styleId ?? undefined}
-                  stylePending={sequence?.styleConfig == null}
-                  aspectRatio={aspectRatio}
-                  resolution={sequence?.resolution}
-                  targetDurationSeconds={sequence?.targetDurationSeconds}
-                  analysisModel={sequence?.analysisModel ?? undefined}
-                />
-                <div className="@container/inspector px-4 pb-4">
-                  <SceneScriptPrompts
-                    shot={selectedShot}
+              <div
+                className="relative flex min-h-0 flex-1 flex-col touch-pan-y overflow-hidden"
+                {...canvasSwipe}
+              >
+                {effectiveView === 'script' ? (
+                  <SceneScriptDocument
                     sequenceId={sequenceId}
-                    resolution={sequence?.resolution}
-                    sequenceGeneratesStartFrames={generateStartFrames}
-                    selectedTab={effectiveTab}
-                    visibleTabs={visibleTabs}
-                    onTabChange={setFacet}
-                    regeneratingImages={regeneratingImages}
-                    regeneratingMotion={regeneratingMotion}
-                    onRegenerateStart={handleRegenerateStart}
-                    aspectRatio={aspectRatio}
-                    variantForSelectedModel={variantForSelectedModel}
-                    videoVariantForSelectedModel={videoVariantForSelectedModel}
-                    segment={selectedSegment}
-                    segmentSpanLabel={selectedSegmentSpanLabel}
-                    resolvedImageModel={resolvedImageModel}
-                    leftoverGrokShotIds={leftoverGrokShotIds}
-                    resolvedVideoModel={resolvedVideoModel}
-                    imageModelStatuses={sceneImageModelStatuses}
-                    videoModelStatuses={sceneVideoModelStatuses}
-                    onImageModelChange={handleImageModelChange}
-                    onVideoModelChange={handleVideoModelChange}
-                    styleName={styleName}
-                    styleCategory={styleCategory}
-                    shotDivergentVariants={divergentVariants?.filter(
-                      (v) => v.shotId === curSelectedShotId
-                    )}
-                    onCompareDivergent={(variant) => setCompareVariant(variant)}
-                    facetShotIds={facetShotIds}
-                    musicEditable={scope === 'sequence'}
-                    scene={scriptScene}
-                    scopeShots={scopeShots}
-                    filmSeconds={shots ? sumShotSeconds(shots) : undefined}
-                    scopeStaleness={scopeStaleness}
-                    scopeStalenessFailed={scopeStalenessFailed}
-                    onSelectShot={handleSelectShot}
+                    scenes={scenes}
+                    selectedSceneIds={selectedScenes.map((s) => s.id)}
+                    onSelectScene={handleFocusScene}
+                    splittingScript={isProcessing ? sequence.script : undefined}
                   />
-                </div>
-              </ScrollArea>
+                ) : (
+                  <SceneCanvas
+                    sequenceExport={sequenceExport}
+                    autoPlay={autoPlaySequence}
+                    onAutoPlayConsumed={handleAutoPlayConsumed}
+                    selection={selection}
+                    shots={shots}
+                    scenes={scenes}
+                    loadError={shotsError}
+                    sequence={sequence}
+                    aspectRatio={aspectRatio}
+                    selectedTab={effectiveTab}
+                    overrideImageUrl={previewVariantUrl}
+                    overrideVideoUrl={previewVariantVideoUrl}
+                    badgeMessage={playerBadgeMessage}
+                    staleLabel={
+                      !isGenerationActive &&
+                      effectiveTab === 'image-prompt' &&
+                      curSelectedShotId &&
+                      !regeneratingImages.has(curSelectedShotId)
+                        ? scopeStaleness?.[curSelectedShotId]?.thumbnail ===
+                          'stale'
+                          ? 'Out of date'
+                          : scopeStaleness?.[curSelectedShotId]?.thumbnail ===
+                              'updating'
+                            ? 'Updating…'
+                            : null
+                        : null
+                    }
+                    progressMessage={
+                      isGenerationActive ? (
+                        <RenderWaitCopy
+                          etaMinutes={etaMinutes}
+                          willEmail={willEmail}
+                        />
+                      ) : (
+                        generationState.phases.find(
+                          (p) => p.status === 'active'
+                        )?.phaseName
+                      )
+                    }
+                    retry={selectedShotRetry}
+                    onSelectShot={handleSelectShot}
+                    sceneImageModel={resolvedImageModel}
+                    regeneratingSceneVariants={regeneratingSceneVariants}
+                    onGenerateSceneVariantsStart={(id) =>
+                      handleRegenerateStart(id, 'scene-variants')
+                    }
+                    firstRunActive={isGenerationActive}
+                  />
+                )}
+              </div>
+            </div>
+
+            <div className="relative z-10 min-w-0 shrink-0 border-t bg-background pb-20 md:pb-0 @3xl/workspace:min-h-0 @3xl/workspace:border-0 @3xl/workspace:bg-transparent @3xl/workspace:py-4 @3xl/workspace:pr-4">
+              <div
+                id="scene-inspector"
+                className="@3xl/workspace:flex @3xl/workspace:h-full @3xl/workspace:min-h-0 @3xl/workspace:w-[clamp(280px,38cqw,420px)] @3xl/workspace:flex-col @3xl/workspace:overflow-hidden @3xl/workspace:rounded-lg @3xl/workspace:border @3xl/workspace:bg-background"
+              >
+                <ScrollArea className="h-full min-h-0">
+                  <SceneModelBar
+                    selection={selection}
+                    scenes={scenes}
+                    shots={shots}
+                    sequenceId={sequenceId}
+                    resolvedSequenceImageModel={resolvedSequenceImageModel}
+                    resolvedSequenceVideoModel={resolvedSequenceVideoModel}
+                    styleId={sequence?.styleId ?? undefined}
+                    stylePending={sequence?.styleConfig == null}
+                    aspectRatio={aspectRatio}
+                    resolution={sequence?.resolution}
+                    targetDurationSeconds={sequence?.targetDurationSeconds}
+                    analysisModel={sequence?.analysisModel ?? undefined}
+                  />
+                  <div className="@container/inspector px-4 pb-4">
+                    <SceneScriptPrompts
+                      shot={selectedShot}
+                      sequenceId={sequenceId}
+                      resolution={sequence?.resolution}
+                      sequenceGeneratesStartFrames={generateStartFrames}
+                      selectedTab={effectiveTab}
+                      visibleTabs={visibleTabs}
+                      onTabChange={setFacet}
+                      regeneratingImages={regeneratingImages}
+                      regeneratingMotion={regeneratingMotion}
+                      onRegenerateStart={handleRegenerateStart}
+                      aspectRatio={aspectRatio}
+                      variantForSelectedModel={variantForSelectedModel}
+                      videoVariantForSelectedModel={
+                        videoVariantForSelectedModel
+                      }
+                      segment={selectedSegment}
+                      segmentSpanLabel={selectedSegmentSpanLabel}
+                      resolvedImageModel={resolvedImageModel}
+                      leftoverGrokShotIds={leftoverGrokShotIds}
+                      resolvedVideoModel={resolvedVideoModel}
+                      imageModelStatuses={sceneImageModelStatuses}
+                      videoModelStatuses={sceneVideoModelStatuses}
+                      onImageModelChange={handleImageModelChange}
+                      onVideoModelChange={handleVideoModelChange}
+                      styleName={styleName}
+                      styleCategory={styleCategory}
+                      shotDivergentVariants={divergentVariants?.filter(
+                        (v) => v.shotId === curSelectedShotId
+                      )}
+                      onCompareDivergent={(variant) =>
+                        setCompareVariant(variant)
+                      }
+                      facetShotIds={facetShotIds}
+                      musicEditable={scope === 'sequence'}
+                      scene={scriptScene}
+                      scopeShots={scopeShots}
+                      filmSeconds={shots ? sumShotSeconds(shots) : undefined}
+                      scopeStaleness={scopeStaleness}
+                      scopeStalenessFailed={scopeStalenessFailed}
+                      onSelectShot={handleSelectShot}
+                    />
+                  </div>
+                </ScrollArea>
+              </div>
             </div>
           </div>
         </div>

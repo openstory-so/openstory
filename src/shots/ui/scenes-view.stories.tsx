@@ -197,7 +197,16 @@ export const SmallDesktop: Story = {
   ],
 };
 
-/** The inspector collapses below the preview when three columns no longer fit. */
+/** Shot scope — the inspector trail reads Sequence › scene › Shot (#1713). */
+export const ShotSelected: Story = {
+  ...SmallDesktop,
+  args: {
+    sequenceId: fixtureSequence.id,
+    search: { shot: fixtureShots[0]?.id },
+  },
+};
+
+/** Settings sit open under the preview when three columns no longer fit. */
 export const NarrowWorkspace: Story = {
   ...RealSequence,
   decorators: [
