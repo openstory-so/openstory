@@ -4,6 +4,7 @@
  * Not team-scoped (admin operations span all teams).
  */
 
+import { withSequencePosters } from '@/sequences/server/db/sequence-poster';
 import { micros, microsToUsd, usdToMicros } from '@/billing/money';
 import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
@@ -220,11 +221,14 @@ export function createAdminMethods(db: Database) {
       .limit(limit)
       .offset(offset);
 
-    return rows.map(({ sequence, creatorName, creatorEmail }) => ({
-      ...sequence,
-      creatorName,
-      creatorEmail,
-    }));
+    return withSequencePosters(
+      db,
+      rows.map(({ sequence, creatorName, creatorEmail }) => ({
+        ...sequence,
+        creatorName,
+        creatorEmail,
+      }))
+    );
   }
 
   async function getShotsForSequence(sequenceId: string): Promise<ShotView[]> {

@@ -3,6 +3,7 @@
  * Team-scoped sequence CRUD and per-sequence update methods.
  */
 
+import { withSequencePosters } from './sequence-poster';
 import { DEFAULT_ANALYSIS_MODEL } from '@/models/models.config';
 import { DEFAULT_IMAGE_MODEL, DEFAULT_VIDEO_MODEL } from '@/models/models';
 import { type AspectRatio, DEFAULT_ASPECT_RATIO } from '@/models/aspect-ratios';
@@ -84,7 +85,7 @@ const SHOTS_BY_IDS_BATCH = 90;
 function createSequencesReadMethods(db: Database, teamId: string) {
   return {
     list: async (): Promise<Sequence[]> => {
-      return await db
+      const rows = await db
         .select()
         .from(sequences)
         .where(
@@ -94,6 +95,7 @@ function createSequencesReadMethods(db: Database, teamId: string) {
           )
         )
         .orderBy(desc(sequences.updatedAt));
+      return withSequencePosters(db, rows);
     },
 
     /** The team's archived sequences — the unarchive picker (#1108 Phase 4). */

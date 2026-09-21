@@ -11,7 +11,7 @@ import {
   DialogTitle,
 } from '@/ui/shadcn/dialog';
 import { Separator } from '@/ui/shadcn/separator';
-import { optimizedVideoUrl, videoPosterUrl } from './cloudflare-video';
+import { optimizedVideoUrl, videoPosterUrl } from '../cloudflare-video';
 import {
   styleBespokeVideoUrl,
   styleCanonicalVideoUrl,

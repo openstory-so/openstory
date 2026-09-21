@@ -200,6 +200,7 @@ export function useSequences(teamId?: string, options?: { enabled?: boolean }) {
       return getSequencesFn();
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
+    refetchOnMount: 'always', // Refresh first-shot selections when returning to the gallery.
     enabled: !!session && (options?.enabled ?? true),
   });
 }

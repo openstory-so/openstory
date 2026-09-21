@@ -41,6 +41,22 @@ projects the newest non-discarded one as `previewThumbnailUrl`.
 > copy, and fal CDN urls are described as short-lived but do not actually
 > expire, so they are live images rather than dead links.
 
+## Sequence preview
+
+The team and support lists resolve a sequence preview on read, from its first
+non-deleted shot (scene order, then shot number, then id). A narrow, batched
+query returns only that shot's selected video and anchor-frame image URLs.
+Priority: video's first frame, selected start frame, newest completed storyboard
+preview, then the provisional `sequences.posterUrl`.
+
+For a reachable video, the response contains a Cloudflare Media Transformations
+JPEG URL (`mode=frame,time=0s`). Cloudflare extracts and caches it server-side;
+the browser never downloads/decodes the video for a gallery poster. Different
+selected video URLs naturally get different cache entries. Local/off-zone clips
+fall back to stills. There are no poster writes, completion hooks, backfills, or
+media downloads during list reads. Returning to either gallery refreshes the
+list so changed selections are reflected without adding event synchronization.
+
 ## Vocabulary (this is binding — two words, not three)
 
 - **variant** — a parallel candidate you select between. Axis = **model** _or_

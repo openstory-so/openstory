@@ -84,6 +84,7 @@ function useAdminAllSequencesWithShots(
     getNextPageParam: (lastPage, _allPages, lastPageParam) =>
       lastPage.length === PAGE_SIZE ? lastPageParam + 1 : undefined,
     enabled,
+    refetchOnMount: 'always',
     staleTime: 60_000,
   });
 

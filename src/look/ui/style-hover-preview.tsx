@@ -1,5 +1,5 @@
 import { AppImage } from '@/ui/shadcn/app-image';
-import { optimizedVideoUrl } from './cloudflare-video';
+import { optimizedVideoUrl } from '../cloudflare-video';
 import { styleHoverVideoUrl } from './style-assets';
 import { cn } from '@/ui/utils';
 import type { Style } from '@/platform/server/db/schema';
