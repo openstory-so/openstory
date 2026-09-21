@@ -350,7 +350,9 @@ export function StudioGallery({
           {openAsset && (
             <>
               <DialogHeader className="shrink-0">
-                <DialogTitle className="line-clamp-2 pr-8 text-base">
+                {/* Scrolls rather than clamps: the prompt is what people
+                    copy to reuse, and a clamp hides most of it. */}
+                <DialogTitle className="max-h-24 overflow-y-auto pr-8 text-base break-words whitespace-pre-wrap select-text">
                   {studioPrompt(openAsset) || 'Generated asset'}
                 </DialogTitle>
                 <DialogDescription>
