@@ -46,6 +46,7 @@ const { StitchedSequenceMedia } = await import('./stitched-media');
 
 const meta: SequencePlayerMeta = {
   durationSeconds: 12,
+  sceneOffsetsSeconds: [0],
   displayWidth: 1920,
   displayHeight: 1080,
   hasAudio: true,

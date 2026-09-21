@@ -9,20 +9,27 @@ import { scenePlaybackKey, toPlaybackScenes } from './playback-scenes';
 
 const shot = (url: string | null, extra?: { status?: string }) => ({
   video: url ? { url, status: extra?.status } : null,
+  image: null,
+  previewThumbnailUrl: null,
+  durationMs: 5000,
+  audioClips: null,
+  dialogue: null,
 });
 
 describe('toPlaybackScenes', () => {
-  it('keeps completed clips in list order and drops shots with no video url', () => {
+  it('keeps completed clips and fills missing videos with timed stills', () => {
     expect(
-      toPlaybackScenes([
-        shot('/a.mp4'),
-        shot(null),
-        shot('/c.mp4'),
-        { video: { url: undefined } },
-      ])
+      toPlaybackScenes([shot('/a.mp4'), shot(null), shot('/c.mp4'), shot(null)])
     ).toEqual([
       { orderIndex: 0, videoUrl: '/a.mp4' },
-      { orderIndex: 1, videoUrl: '/c.mp4' },
+      expect.objectContaining({
+        orderIndex: 1,
+        imageUrl: null,
+        durationSeconds: 5,
+        audioUrls: [],
+      }),
+      { orderIndex: 2, videoUrl: '/c.mp4' },
+      expect.objectContaining({ orderIndex: 3, imageUrl: null }),
     ]);
   });
 
@@ -71,4 +78,56 @@ describe('scenePlaybackKey', () => {
       scenePlaybackKey(toPlaybackScenes([shot('/a-v2.mp4')]))
     );
   });
+});
+
+it('does not collapse rendered clips across a missing shot', () => {
+  expect(
+    toPlaybackScenes([shot('/packed.mp4'), shot(null), shot('/packed.mp4')])
+  ).toHaveLength(3);
+});
+it('prefers the storyboard, includes selected dialogue and recorded wording only for stills', () => {
+  const input = {
+    ...shot(null),
+    previewThumbnailUrl: '/preview.png',
+    image: { url: '/still.png' },
+    audioClips: [
+      {
+        id: 'take',
+        url: '/take.wav',
+        token: 'DIALOGUE',
+        durationSeconds: 2,
+        spokenLines: [{ index: 0, text: 'Hi' }],
+      },
+    ],
+    dialogue: {
+      presence: true,
+      lines: [{ character: 'Ana', line: 'Hello there', tone: '' }],
+    },
+  };
+  expect(toPlaybackScenes([input])[0]).toMatchObject({
+    imageUrl: '/preview.png',
+    fallbackImageUrl: '/still.png',
+    audioUrls: ['/take.wav'],
+    captions: ['Ana: Hi'],
+  });
+  expect(
+    toPlaybackScenes([{ ...input, video: { url: '/render.mp4' } }])
+  ).toEqual([{ orderIndex: 0, videoUrl: '/render.mp4' }]);
+});
+it('updates identity when a still, recording, duration or aspect ratio changes', () => {
+  const input = { ...shot(null), image: { url: '/still.png' } };
+  const key = scenePlaybackKey(toPlaybackScenes([input]));
+  for (const changed of [
+    { ...input, image: { url: '/new.png' } },
+    { ...input, durationMs: 8000 },
+    {
+      ...input,
+      audioClips: [
+        { id: 'take', url: '/take.wav', token: 'DIALOGUE', durationSeconds: 2 },
+      ],
+    },
+  ]) {
+    expect(scenePlaybackKey(toPlaybackScenes([changed]))).not.toBe(key);
+  }
+  expect(scenePlaybackKey(toPlaybackScenes([input], '9:16'))).not.toBe(key);
 });

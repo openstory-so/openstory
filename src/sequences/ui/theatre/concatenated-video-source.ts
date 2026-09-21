@@ -47,10 +47,17 @@ const logger = getLogger(['openstory', 'sequence-player', 'concat-source']);
 
 type CanvasFit = 'fill' | 'contain' | 'cover';
 
-export type SceneInput = {
-  orderIndex: number;
-  videoUrl: string;
-};
+export type SceneInput = { orderIndex: number; captions?: string[] } & (
+  | { videoUrl: string }
+  | {
+      imageUrl: string | null;
+      fallbackImageUrl: string | null;
+      durationSeconds: number;
+      audioUrls: string[];
+      width: number;
+      height: number;
+    }
+);
 
 export type SceneSlice = {
   /** Index into the (sorted) scenes array. */
@@ -108,22 +115,27 @@ export type SceneAudioTrack = {
   /** Cumulative scene start offset (seconds) — where this audio is anchored on the global timeline. */
   sceneOffsetSeconds: number;
   track: InputAudioTrack;
+  /** External still dialogue may be PCM, decoded by Mediabunny itself. */
+  isStill: boolean;
 };
 
 type OpenedScene = {
-  input: Input;
-  videoTrack: InputVideoTrack;
-  audioTrack: InputAudioTrack | null;
+  inputs: Input[];
+  videoTrack: InputVideoTrack | null;
+  image: ImageBitmap | null;
+  audioTracks: { track: InputAudioTrack; offset: number }[];
   duration: number;
   dimensions: SceneDimensions;
-  codecProbe: SceneCodecProbe;
+  codecProbe: SceneCodecProbe | null;
 };
 
 export class ConcatenatedVideoSource {
   private readonly scenes: SceneInput[];
   private inputs: Input[] = [];
-  private videoTracks: InputVideoTrack[] = [];
-  private audioTracks: Array<InputAudioTrack | null> = [];
+  private videoTracks: Array<InputVideoTrack | null> = [];
+  private images: Array<ImageBitmap | null> = [];
+  private readonly abort = new AbortController();
+  private audioTracks: OpenedScene['audioTracks'][] = [];
   private meta: ConcatenatedVideoMeta | null = null;
   private disposed = false;
 
@@ -166,17 +178,22 @@ export class ConcatenatedVideoSource {
     // ran mid-open couldn't reach these — release them here.
     // oxlint-disable-next-line typescript/no-unnecessary-condition -- flips during the await
     if (failure !== null || this.disposed) {
-      for (const o of opened) o.input.dispose();
+      for (const o of opened) {
+        for (const input of o.inputs) input.dispose();
+        o.image?.close();
+      }
       throw failure ?? new Error('ConcatenatedVideoSource disposed');
     }
-    const inputs = opened.map((o) => o.input);
+    const inputs = opened.flatMap((o) => o.inputs);
     const videoTracks = opened.map((o) => o.videoTrack);
-    const audioTracks = opened.map((o) => o.audioTrack);
+    const audioTracks = opened.map((o) => o.audioTracks);
     const sceneDurationsSeconds = opened.map((o) => o.duration);
     const sceneDimensions = opened.map((o) => o.dimensions);
     // Codec + decoder-config probes, fed to `canTransmuxScenes()` to decide
     // the fast transmux path vs. decode→re-encode.
-    const codecProbes = opened.map((o) => o.codecProbe);
+    const codecProbes = opened.flatMap((o) =>
+      o.codecProbe ? [o.codecProbe] : []
+    );
 
     const sceneOffsetsSeconds: number[] = [];
     let acc = 0;
@@ -185,10 +202,17 @@ export class ConcatenatedVideoSource {
       acc += d;
     }
 
-    const target = computeTargetResolution(sceneDimensions);
-    const hasMixedResolutions = detectMixedResolutions(sceneDimensions);
+    // Preview dimensions must not inflate video resolution or create model warnings.
+    const videoDimensions = opened
+      .filter((o) => o.videoTrack)
+      .map((o) => o.dimensions);
+    const target = computeTargetResolution(
+      videoDimensions.length ? videoDimensions : sceneDimensions
+    );
+    const hasMixedResolutions = detectMixedResolutions(videoDimensions);
 
     this.inputs = inputs;
+    this.images = opened.map((o) => o.image);
     this.videoTracks = videoTracks;
     this.audioTracks = audioTracks;
     this.meta = {
@@ -199,16 +223,18 @@ export class ConcatenatedVideoSource {
       displayHeight: target.height,
       sceneDimensions,
       hasMixedResolutions,
-      hasMixedAspectRatios: detectMixedAspectRatios(sceneDimensions),
+      hasMixedAspectRatios: detectMixedAspectRatios(videoDimensions),
       resolutionsLabel: hasMixedResolutions
-        ? describeResolutions(sceneDimensions)
+        ? describeResolutions(videoDimensions)
         : '',
-      canTransmux: canTransmuxScenes(codecProbes),
+      canTransmux:
+        codecProbes.length === opened.length && canTransmuxScenes(codecProbes),
     };
     return this.meta;
   }
 
   private async openScene(scene: SceneInput, i: number): Promise<OpenedScene> {
+    if (!('videoUrl' in scene)) return this.openStill(scene);
     const input = new Input({
       formats: ALL_FORMATS,
       source: new UrlSource(addCorsCacheBuster(scene.videoUrl)),
@@ -218,6 +244,72 @@ export class ConcatenatedVideoSource {
     } catch (err) {
       input.dispose();
       throw err;
+    }
+  }
+
+  private async openStill(
+    scene: Extract<SceneInput, { imageUrl: string | null }>
+  ): Promise<OpenedScene> {
+    const inputs: Input[] = [];
+    let image: ImageBitmap | null = null;
+    try {
+      for (const url of [scene.imageUrl, scene.fallbackImageUrl]) {
+        if (!url) continue;
+        try {
+          const response = await fetch(
+            url.startsWith('data:') || url.startsWith('blob:')
+              ? url
+              : addCorsCacheBuster(url),
+            { signal: this.abort.signal }
+          );
+          if (!response.ok)
+            throw new Error(`Image request failed: ${response.status}`);
+          image = await createImageBitmap(await response.blob());
+          break;
+        } catch (error) {
+          if (this.abort.signal.aborted) throw error;
+          logger.warn('Sequence preview image unavailable', { error });
+        }
+      }
+      const audioTracks: OpenedScene['audioTracks'] = [];
+      let audioDuration = 0;
+      for (const url of scene.audioUrls) {
+        const input = new Input({
+          formats: ALL_FORMATS,
+          source: new UrlSource(
+            url.startsWith('data:') || url.startsWith('blob:')
+              ? url
+              : addCorsCacheBuster(url)
+          ),
+        });
+        inputs.push(input);
+        const track = await input.getPrimaryAudioTrack();
+        if (!track || !(await track.canDecode()))
+          throw new Error(
+            'Recorded dialogue cannot be decoded by this browser'
+          );
+        const duration =
+          (await input.getDurationFromMetadata([track], {
+            skipLiveWait: true,
+          })) ?? (await input.computeDuration([track], { skipLiveWait: true }));
+        if (!Number.isFinite(duration) || duration <= 0)
+          throw new Error('Recorded dialogue has no playable duration');
+        audioTracks.push({ track, offset: audioDuration });
+        audioDuration += duration;
+      }
+      return {
+        inputs,
+        image,
+        videoTrack: null,
+        audioTracks,
+        duration: audioDuration || scene.durationSeconds,
+        dimensions: { width: scene.width, height: scene.height },
+        codecProbe: null,
+      };
+    } catch (error) {
+      for (const input of inputs) input.dispose();
+      image?.close();
+      throw error;
     }
   }
 
@@ -278,9 +370,10 @@ export class ConcatenatedVideoSource {
       audioTrack && (await audioTrack.canDecode()) ? audioTrack : null;
 
     return {
-      input,
+      inputs: [input],
+      image: null,
       videoTrack,
-      audioTrack: usableAudio,
+      audioTracks: usableAudio ? [{ track: usableAudio, offset: 0 }] : [],
       duration,
       dimensions: { width, height },
       codecProbe,
@@ -342,7 +435,55 @@ export class ConcatenatedVideoSource {
 
       const videoTrack = this.videoTracks[sceneIndex];
       const offset = meta.sceneOffsetsSeconds[sceneIndex];
-      if (!videoTrack || offset === undefined) continue;
+      if (offset === undefined) continue;
+      if (!videoTrack) {
+        const canvas = document.createElement('canvas');
+        canvas.width = meta.displayWidth;
+        canvas.height = meta.displayHeight;
+        const context = canvas.getContext('2d');
+        if (!context) throw new Error('Still playback needs a canvas context');
+        const image = this.images[sceneIndex];
+        if (image) {
+          const scale = Math.min(
+            canvas.width / image.width,
+            canvas.height / image.height
+          );
+          const width = image.width * scale;
+          const height = image.height * scale;
+          context.drawImage(
+            image,
+            (canvas.width - width) / 2,
+            (canvas.height - height) / 2,
+            width,
+            height
+          );
+        } else {
+          context.fillStyle = 'white';
+          context.font = '24px sans-serif';
+          context.textAlign = 'center';
+          context.fillText(
+            'No image available',
+            canvas.width / 2,
+            canvas.height / 2
+          );
+        }
+        const duration = meta.sceneDurationsSeconds[sceneIndex] ?? 0;
+        const localStart =
+          sceneIndex === startSceneIndex
+            ? Math.min(startLocalTime, duration)
+            : 0;
+        yield {
+          canvas,
+          timestamp: offset + localStart,
+          duration: duration - localStart,
+        };
+        // The engine prefetches one frame and ends when the iterator exhausts.
+        // A final boundary frame keeps the last still alive for its entire hold.
+        if (sceneIndex === this.videoTracks.length - 1 && !signal?.aborted) {
+          yield { canvas, timestamp: offset + duration, duration: 0 };
+        }
+        continue;
+      }
       // Pin every scene to the common target size so mixed-resolution scenes
       // (#791) are letterboxed into one canvas instead of being drawn at their
       // own size and clipped/misaligned. For a uniform sequence target ===
@@ -451,10 +592,17 @@ export class ConcatenatedVideoSource {
     const meta = this.getMeta();
     const result: SceneAudioTrack[] = [];
     for (let i = 0; i < this.audioTracks.length; i++) {
-      const track = this.audioTracks[i];
+      const tracks = this.audioTracks[i];
       const offset = meta.sceneOffsetsSeconds[i];
-      if (!track || offset === undefined) continue;
-      result.push({ sceneIndex: i, sceneOffsetSeconds: offset, track });
+      if (!tracks || offset === undefined) continue;
+      for (const audio of tracks) {
+        result.push({
+          sceneIndex: i,
+          sceneOffsetSeconds: offset + audio.offset,
+          track: audio.track,
+          isStill: !this.videoTracks[i],
+        });
+      }
     }
     return result;
   }
@@ -462,6 +610,9 @@ export class ConcatenatedVideoSource {
   /** Release every underlying `Input` — call when the source is no longer needed. */
   dispose(): void {
     this.disposed = true;
+    this.abort.abort();
+    for (const image of this.images) image?.close();
+    this.images = [];
     for (const input of this.inputs) input.dispose();
     this.inputs = [];
     this.videoTracks = [];

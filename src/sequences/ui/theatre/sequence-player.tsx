@@ -40,6 +40,7 @@ const StitchedPlayerSurface = lazy(() => import('./stitched-player-surface'));
 
 type SequencePlayerProps = {
   scenes: SceneInput[];
+  onCaptionsChange?: (lines: string[]) => void;
   musicUrl: string | null;
   musicLoudnessGainDb: number | null;
   /**
@@ -95,10 +96,22 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
   sequenceId,
   autoPlay = false,
   onAutoPlayConsumed,
+  onCaptionsChange,
 }) => {
   const posthog = usePostHog();
   const mounted = useMounted();
   const scenesKey = scenePlaybackKey(scenes);
+  // An exported MP4 cannot represent shots that still have no video.
+  const hasStills = scenes.some((scene) => !('videoUrl' in scene));
+  if (hasStills) cachedVideoUrl = null;
+  const captionIndex = useRef(-1);
+  const publishCaptions = (time: number, offsets: number[]) => {
+    let index = offsets.length - 1;
+    while (index > 0 && (offsets[index] ?? 0) > time) index--;
+    if (index === captionIndex.current) return;
+    captionIndex.current = index;
+    onCaptionsChange?.(scenes[index]?.captions ?? []);
+  };
 
   const [meta, setMeta] = useState<SequencePlayerMeta | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -131,6 +144,8 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
   // can be torn down while this shell stays mounted (cache lands, clip list
   // changes) and detach does not emit `pause`.
   useEffect(() => {
+    captionIndex.current = -1;
+    onCaptionsChange?.([]);
     setMeta(null);
     setLoadedScenes(0);
     setError(null);
@@ -232,8 +247,20 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
           {stitchError}
         </p>
         <p className="text-xs text-muted-foreground text-center max-w-sm">
-          Export your sequence to download an MP4 you can play in any browser.
+          {hasStills
+            ? 'Check your connection and retry playback.'
+            : 'Export your sequence to download an MP4 you can play in any browser.'}
         </p>
+        <Button
+          variant="outline"
+          onClick={() => {
+            setMeta(null);
+            setLoadedScenes(0);
+            setError(null);
+          }}
+        >
+          Retry playback
+        </Button>
       </div>
     );
   }
@@ -275,9 +302,13 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
               onLoadProgress={(loaded) => setLoadedScenes(loaded)}
               onMeta={(next) => {
                 setMeta(next);
+                publishCaptions(0, next.sceneOffsetsSeconds);
                 tracker.setDuration(next.durationSeconds);
               }}
-              onTimeUpdate={(t) => tracker.tick(t)}
+              onTimeUpdate={(t) => {
+                tracker.tick(t);
+                if (meta) publishCaptions(t, meta.sceneOffsetsSeconds);
+              }}
               onPlay={() => {
                 if (!tracker.isActive()) tracker.start();
                 captureVideoPlay(posthog, {

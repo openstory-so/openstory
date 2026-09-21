@@ -1,4 +1,3 @@
-import { AnimaticDialog } from '@/sequences/ui/animatic/animatic-player';
 import { ActionCost } from '@/billing/ui/action-cost';
 import { GenerationStopSlider } from '@/sequences/ui/generation/generation-stop-slider';
 import { MotionModelSelector } from '@/models/ui/pickers/motion-model-selector';
@@ -620,36 +619,28 @@ const SceneListComponent: React.FC<SceneListProps> = ({
         )}
       </div>
 
-      <div className="flex items-center border-b pr-2">
-        <button
-          type="button"
-          onClick={() => {
-            onClearSelection();
-            if (isWholeSequence) onPlaySequence?.();
-          }}
-          title={
-            isWholeSequence
-              ? 'Play the whole sequence'
-              : 'Show the whole sequence (Esc zooms out one level at a time)'
-          }
-          className={cn(
-            'flex min-h-11 w-full items-center justify-between gap-2 px-4 py-2.5 text-left text-sm transition-colors hover:bg-muted/40 md:min-h-0',
-            isWholeSequence && 'bg-primary/5 font-medium text-primary'
-          )}
-        >
-          Whole sequence
-          <CirclePlay
-            className="size-3.5 shrink-0 text-muted-foreground"
-            aria-hidden
-          />
-        </button>
-        <AnimaticDialog
-          shots={shots ?? []}
-          scenes={scenes ?? []}
-          selection={selection}
-          aspectRatio={aspectRatio}
+      <button
+        type="button"
+        onClick={() => {
+          onClearSelection();
+          if (isWholeSequence) onPlaySequence?.();
+        }}
+        title={
+          isWholeSequence
+            ? 'Play the whole sequence'
+            : 'Show the whole sequence (Esc zooms out one level at a time)'
+        }
+        className={cn(
+          'flex min-h-11 w-full items-center justify-between gap-2 border-b px-4 py-2.5 text-left text-sm transition-colors hover:bg-muted/40 md:min-h-0',
+          isWholeSequence && 'bg-primary/5 font-medium text-primary'
+        )}
+      >
+        Whole sequence
+        <CirclePlay
+          className="size-3.5 shrink-0 text-muted-foreground"
+          aria-hidden
         />
-      </div>
+      </button>
 
       <ScrollArea className="flex-1 min-h-0">
         <div className="flex flex-col gap-3 p-4">

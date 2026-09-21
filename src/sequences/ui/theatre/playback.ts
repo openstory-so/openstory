@@ -72,6 +72,7 @@ export type SequencePlayerOptions = {
 
 export type SequencePlayerMeta = {
   durationSeconds: number;
+  sceneOffsetsSeconds: number[];
   displayWidth: number;
   displayHeight: number;
   hasAudio: boolean;
@@ -207,6 +208,7 @@ export class SequencePlayerEngine {
 
     this.meta = {
       durationSeconds: videoMeta.totalDurationSeconds,
+      sceneOffsetsSeconds: videoMeta.sceneOffsetsSeconds,
       displayWidth: videoMeta.displayWidth,
       displayHeight: videoMeta.displayHeight,
       hasAudio,
@@ -230,9 +232,25 @@ export class SequencePlayerEngine {
         sceneIndex,
         sceneOffsetSeconds,
         track,
+        isStill,
       } of sceneAudioTracks) {
         if (this.disposed) return;
         try {
+          if (isStill) {
+            // AudioBufferSink also decodes PCM cut WAVs, which have no
+            // WebCodecs decoder configuration. Schedule its chunks unchanged.
+            for await (const { buffer, timestamp } of new AudioBufferSink(
+              track
+            ).buffers()) {
+              // oxlint-disable-next-line typescript/no-unnecessary-condition -- may dispose during decoding
+              if (this.disposed) return;
+              dialogueClips.push({
+                buffer,
+                sceneOffsetSeconds: sceneOffsetSeconds + timestamp,
+              });
+            }
+            continue;
+          }
           const buffer = await decodeAudioTrack(track);
           if (!buffer) continue;
           dialogueClips.push({ buffer, sceneOffsetSeconds });
@@ -241,6 +259,7 @@ export class SequencePlayerEngine {
           // rejection isn't a broken track.
           // oxlint-disable-next-line typescript/no-unnecessary-condition -- flips during the await
           if (this.disposed) return;
+          if (isStill) throw err;
           logger.warn(
             `SequencePlayerEngine: failed to decode embedded audio for scene ${sceneIndex}`,
             { err }
@@ -250,6 +269,9 @@ export class SequencePlayerEngine {
       this.dialogueClips = dialogueClips;
     })();
 
+    void this.dialogueReady.catch(() => {
+      /* play() surfaces the failure. */
+    });
     return this.meta;
   }
 
@@ -464,16 +486,17 @@ export class SequencePlayerEngine {
 
       const scheduleTime =
         this.audioContextStartTime + sceneOffsetSeconds - playStart;
-      const bufferOffset = Math.max(0, playStart - sceneOffsetSeconds);
-
-      if (scheduleTime >= this.audioContext.currentTime) {
-        node.start(scheduleTime, bufferOffset);
-      } else {
-        node.start(
-          this.audioContext.currentTime,
-          bufferOffset + (this.audioContext.currentTime - scheduleTime)
-        );
-      }
+      // A seek into a clip already puts scheduleTime in the past. Its
+      // lateness IS the buffer offset; adding playStart again skips speech.
+      const bufferOffset = Math.max(
+        0,
+        this.audioContext.currentTime - scheduleTime
+      );
+      if (bufferOffset >= buffer.duration) continue;
+      node.start(
+        Math.max(scheduleTime, this.audioContext.currentTime),
+        bufferOffset
+      );
 
       this.queuedAudioNodes.add(node);
       node.onended = () => {

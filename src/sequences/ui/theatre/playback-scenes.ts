@@ -1,24 +1,57 @@
 import type { SceneInput } from './concatenated-video-source';
 
-type ShotWithVideoUrl = {
-  video?: { url?: string | null } | null;
+import type { ShotView } from '@/shots/shot-view';
+import {
+  aspectRatioToDimensions,
+  type AspectRatio,
+} from '@/models/aspect-ratios';
+
+type PlaybackShot = Pick<
+  ShotView,
+  'previewThumbnailUrl' | 'durationMs' | 'audioClips' | 'dialogue'
+> & {
+  video: { url: string | null } | null;
+  image: { url: string | null } | null;
 };
 
-/**
- * Playable clips for the stitched SequencePlayer, in list order. Shots still
- * generating (no url) are skipped so the player can start as soon as the first
- * clip lands.
- */
+/** One continuous timeline: rendered clips where available, stills elsewhere. */
 export function toPlaybackScenes(
-  shots: ReadonlyArray<ShotWithVideoUrl>
+  shots: readonly PlaybackShot[],
+  aspectRatio: AspectRatio = '16:9'
 ): SceneInput[] {
   const scenes: SceneInput[] = [];
   for (const shot of shots) {
-    const url = shot.video?.url;
-    if (!url) continue;
-    scenes.push({ orderIndex: scenes.length, videoUrl: url });
+    const videoUrl = shot.video?.url;
+    if (videoUrl) {
+      const previous = scenes.at(-1);
+      // Only adjacent rendered entries can share a packed clip.
+      if (previous && 'videoUrl' in previous && previous.videoUrl === videoUrl)
+        continue;
+      scenes.push({ orderIndex: scenes.length, videoUrl });
+    } else {
+      const spoken = new Map(
+        shot.audioClips
+          ?.flatMap((clip) => clip.spokenLines ?? [])
+          .map((line) => [line.index, line.text])
+      );
+      scenes.push({
+        orderIndex: scenes.length,
+        imageUrl: shot.previewThumbnailUrl ?? shot.image?.url ?? null,
+        fallbackImageUrl: shot.image?.url ?? null,
+        durationSeconds:
+          shot.durationMs != null && shot.durationMs > 0
+            ? shot.durationMs / 1000
+            : 3,
+        audioUrls: (shot.audioClips ?? []).map((clip) => clip.url),
+        ...aspectRatioToDimensions(aspectRatio),
+        captions: (shot.dialogue?.lines ?? []).map(
+          (line, index) =>
+            `${line.character ? `${line.character}: ` : ''}${spoken.get(index) ?? line.line}`
+        ),
+      });
+    }
   }
-  return collapseConsecutivePlaybackUrls(scenes);
+  return scenes;
 }
 
 /**
@@ -34,17 +67,24 @@ export function collapseConsecutiveUrls(urls: readonly string[]): string[] {
   return out;
 }
 
-function collapseConsecutivePlaybackUrls(
-  scenes: readonly SceneInput[]
-): SceneInput[] {
-  const urls = collapseConsecutiveUrls(scenes.map((s) => s.videoUrl));
-  return urls.map((videoUrl, orderIndex) => ({ orderIndex, videoUrl }));
-}
-
 /**
  * Identity of a stitched clip list (order + URLs). A new `SceneInput[]` of
  * the same clips (shots refetch while others generate) is not a new list (#1284).
  */
 export function scenePlaybackKey(scenes: readonly SceneInput[]): string {
-  return scenes.map((s) => `${s.orderIndex}:${s.videoUrl}`).join('\n');
+  return JSON.stringify(
+    scenes.map((scene) =>
+      'videoUrl' in scene
+        ? [scene.orderIndex, scene.videoUrl]
+        : [
+            scene.orderIndex,
+            scene.imageUrl,
+            scene.fallbackImageUrl,
+            scene.durationSeconds,
+            scene.audioUrls,
+            scene.width,
+            scene.height,
+          ]
+    )
+  );
 }

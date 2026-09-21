@@ -362,19 +362,19 @@ in References; motion just does not bind it.
 Out of scope here: voice cloning from an uploaded sample, realtime/agents,
 auditioning/regenerating a single line from the scene panel.
 
-**Stills animatic (#1690, Step 1).** The scene-list Animatic control opens a
-standalone image/audio player, scoped to the selected shot's scene, selected
-scene, or whole sequence. The scope switch can expand to the sequence or
-return to that scene (the first scene when opened at sequence scope). The
-playlist snapshots the rail's scene/shot order on open so background refetches
-do not restart playback. Each shot prefers its storyboard preview, falls back
-to its thumbnail, and plays `shots.audioClips` in order; an audio `ended` event
-advances it, regardless of the planned shot length. Without audio, it holds
-for `durationMs` (3 seconds for legacy missing/invalid durations). Pause keeps
-the audio position or remaining silent hold. Captions use resolved
-`ShotView.dialogue` with the current clip's `spokenLines` substitutions.
-Space toggles play/pause and arrows step shots. Hard image cuts introduce no
-motion, including for reduced-motion users. Closing stops audio and timers;
-media errors pause with a visible retry/skip message. This is dialogue-only:
-the theatre decoder, rendered videos, export and music are unchanged. Mixed
-stills/video playback is Step 2, a separate follow-up.
+**Continuous preview playback (#1690).** The existing scene/sequence player
+includes every shot before rendering is complete. `toPlaybackScenes` uses
+rendered clips where available and still entries elsewhere, preferring the
+storyboard preview with a thumbnail fallback. A still plays its selected
+`shots.audioClips` and holds for their actual combined duration; without audio
+it holds for `durationMs` (3 seconds for legacy missing durations). The
+Mediabunny canvas source yields timed still frames on the same timeline as
+video frames; it does not encode temporary videos. PCM dialogue cut files are
+decoded with `AudioBufferSink` and scheduled on the existing audio clock, so
+pause, seeking, volume and music work across both kinds of entry. Rendered
+clips use only their embedded audio. Still captions use resolved
+`ShotView.dialogue` with `spokenLines` substitutions. Image failures fall back
+to the thumbnail, then a placeholder, preserving the shot's timeline slot.
+Hard cuts have no cross-fades. Mixed previews bypass the cached exported MP4;
+export continues to require rendered videos. There is no separate animatic
+button, dialog, or playback mode.
