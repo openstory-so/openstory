@@ -4,6 +4,12 @@ import type { SequenceWithShots } from '../use-sequences-with-shots';
 import { AppImage } from '@/ui/shadcn/app-image';
 import { Card } from '@/ui/shadcn/card';
 import { Badge } from '@/ui/shadcn/badge';
+import { AspectRatioIcon } from '@/ui/icons/aspect-ratio-icon';
+import {
+  aspectRatioToDimensions,
+  getAspectRatioData,
+} from '@/models/aspect-ratios';
+import { cn } from '@/ui/utils';
 import { formatDistanceToNow } from '@/ui/format-date';
 import { SequenceRowMenu } from './eval-sequence-metadata';
 import { getCreatorIdentity } from './creator-identity';
@@ -50,6 +56,11 @@ export function SequenceGallery({
       <ul className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 pb-4">
         {sequences.map((sequence) => {
           const creator = getCreatorIdentity(sequence);
+          const insetPoster = sequence.aspectRatio !== '16:9';
+          const posterDimensions = aspectRatioToDimensions(
+            sequence.aspectRatio
+          );
+          const ratioData = getAspectRatioData(sequence.aspectRatio);
           const creditsShort =
             sequence.status === 'failed' &&
             isCreditsShortError(sequence.statusError);
@@ -67,18 +78,33 @@ export function SequenceGallery({
                   to="/sequences/$id/scenes"
                   params={{ id: sequence.id }}
                   preload={false}
-                  className="relative flex aspect-video items-center justify-center overflow-hidden bg-muted focus-visible:outline-2 focus-visible:outline-ring focus-visible:-outline-offset-2"
+                  className={cn(
+                    'relative flex aspect-video items-center justify-center overflow-hidden bg-muted focus-visible:outline-2 focus-visible:outline-ring focus-visible:-outline-offset-2',
+                    insetPoster && 'bg-muted/50'
+                  )}
                   aria-label={`Open ${sequence.title || 'Untitled Sequence'}`}
                 >
                   {sequence.posterUrl ? (
-                    <AppImage
-                      src={sequence.posterUrl}
-                      alt=""
-                      width={640}
-                      height={360}
-                      loading="lazy"
-                      className="h-full w-full object-cover motion-safe:transition-transform motion-safe:duration-300 motion-safe:group-hover:scale-105"
-                    />
+                    <div
+                      className={cn(
+                        'absolute inset-0 flex items-center justify-center',
+                        insetPoster && 'p-3'
+                      )}
+                    >
+                      <AppImage
+                        unstyled
+                        src={sequence.posterUrl}
+                        alt=""
+                        width={posterDimensions.width}
+                        height={posterDimensions.height}
+                        loading="lazy"
+                        className={cn(
+                          insetPoster
+                            ? 'h-full w-auto max-w-full object-contain rounded-sm shadow-sm ring-1 ring-foreground/10 motion-safe:transition-shadow motion-safe:duration-300 group-hover:shadow-md group-focus-within:shadow-md'
+                            : 'h-full w-full object-cover motion-safe:transition-transform motion-safe:duration-300 motion-safe:group-hover:scale-105'
+                        )}
+                      />
+                    </div>
                   ) : (
                     <div className="flex flex-col items-center gap-3 text-muted-foreground">
                       <Film className="size-9 opacity-40" strokeWidth={1} />
@@ -89,14 +115,16 @@ export function SequenceGallery({
                       </span>
                     </div>
                   )}
-                  <Badge
-                    variant="secondary"
-                    className="absolute left-3 top-3 shadow-sm"
-                  >
-                    {creditsShort
-                      ? CREDITS_SHORT_TITLE
-                      : STATUS_LABELS[sequence.status]}
-                  </Badge>
+                  {!insetPoster && (
+                    <Badge
+                      variant="secondary"
+                      className="absolute left-3 top-3 shadow-sm"
+                    >
+                      {creditsShort
+                        ? CREDITS_SHORT_TITLE
+                        : STATUS_LABELS[sequence.status]}
+                    </Badge>
+                  )}
                   <span className="absolute bottom-3 right-3 flex size-8 items-center justify-center rounded-full bg-background/90 opacity-0 motion-safe:transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                     <ArrowUpRight className="size-4" />
                   </span>
@@ -116,9 +144,27 @@ export function SequenceGallery({
                   </div>
                   <p className="truncate text-xs text-muted-foreground">
                     {styleNameById.get(sequence.styleId) ?? 'Custom style'} ·{' '}
-                    {sequence.aspectRatio} ·{' '}
                     {formatDistanceToNow(new Date(sequence.createdAt))}
                   </p>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                    {ratioData && (
+                      <span className="flex items-center gap-1">
+                        <AspectRatioIcon
+                          width={ratioData.width}
+                          height={ratioData.height}
+                          size="sm"
+                        />
+                        <span>{ratioData.label}</span>
+                      </span>
+                    )}
+                    {insetPoster && (
+                      <Badge variant="secondary">
+                        {creditsShort
+                          ? CREDITS_SHORT_TITLE
+                          : STATUS_LABELS[sequence.status]}
+                      </Badge>
+                    )}
+                  </div>
                   {supportMode && (
                     <div className="min-w-0 border-t pt-2 text-xs text-muted-foreground">
                       {creator.name && (
