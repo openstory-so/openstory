@@ -121,21 +121,27 @@ export type SceneAudioTrack = {
   isStill: boolean;
 };
 
+type StillFrame = HTMLImageElement | ImageBitmap;
+
 type OpenedScene = {
   inputs: Input[];
   videoTrack: InputVideoTrack | null;
-  image: ImageBitmap | null;
+  image: StillFrame | null;
   audioTracks: { track: InputAudioTrack; offset: number }[];
   duration: number;
   dimensions: SceneDimensions;
   codecProbe: SceneCodecProbe | null;
 };
 
+function closeStill(image: StillFrame | null): void {
+  if (image && 'close' in image) image.close();
+}
+
 export class ConcatenatedVideoSource {
   private readonly scenes: SceneInput[];
   private inputs: Input[] = [];
   private videoTracks: Array<InputVideoTrack | null> = [];
-  private images: Array<ImageBitmap | null> = [];
+  private images: Array<StillFrame | null> = [];
   private readonly abort = new AbortController();
   private audioTracks: OpenedScene['audioTracks'][] = [];
   private meta: ConcatenatedVideoMeta | null = null;
@@ -182,7 +188,7 @@ export class ConcatenatedVideoSource {
     if (failure !== null || this.disposed) {
       for (const o of opened) {
         for (const input of o.inputs) input.dispose();
-        o.image?.close();
+        closeStill(o.image);
       }
       throw failure ?? new Error('ConcatenatedVideoSource disposed');
     }
@@ -253,20 +259,12 @@ export class ConcatenatedVideoSource {
     scene: Extract<SceneInput, { imageUrl: string | null }>
   ): Promise<OpenedScene> {
     const inputs: Input[] = [];
-    let image: ImageBitmap | null = null;
+    let image: StillFrame | null = null;
     try {
       for (const url of [scene.imageUrl, scene.fallbackImageUrl]) {
         if (!url) continue;
         try {
-          const response = await fetch(
-            url.startsWith('data:') || url.startsWith('blob:')
-              ? url
-              : addCorsCacheBuster(url),
-            { signal: this.abort.signal }
-          );
-          if (!response.ok)
-            throw new Error(`Image request failed: ${response.status}`);
-          image = await createImageBitmap(await response.blob());
+          image = await this.decodeStill(url);
           break;
         } catch (error) {
           if (this.abort.signal.aborted) throw error;
@@ -310,9 +308,33 @@ export class ConcatenatedVideoSource {
       };
     } catch (error) {
       for (const input of inputs) input.dispose();
-      image?.close();
+      closeStill(image);
       throw error;
     }
+  }
+
+  /**
+   * Same load path as shot-view `<img>`: an element decode, not `fetch` +
+   * `createImageBitmap`. Canvas `fetch` needs CORS; fal preview URLs and
+   * some stored stills don't send it, so the whole-sequence stitcher painted
+   * "No image available" while the inspector still showed the frame.
+   */
+  private decodeStill(url: string): Promise<HTMLImageElement> {
+    const img = new Image();
+    img.decoding = 'async';
+    return new Promise((resolve, reject) => {
+      const onAbort = () => {
+        img.src = '';
+        reject(this.abort.signal.reason ?? new Error('aborted'));
+      };
+      this.abort.signal.addEventListener('abort', onAbort, { once: true });
+      img.src = url;
+      img
+        .decode()
+        .then(() => resolve(img))
+        .catch(reject)
+        .finally(() => this.abort.signal.removeEventListener('abort', onAbort));
+    });
   }
 
   private async probeScene(input: Input, i: number): Promise<OpenedScene> {
@@ -460,14 +482,8 @@ export class ConcatenatedVideoSource {
             height
           );
         } else {
-          context.fillStyle = 'white';
-          context.font = '24px sans-serif';
-          context.textAlign = 'center';
-          context.fillText(
-            'No image available',
-            canvas.width / 2,
-            canvas.height / 2
-          );
+          context.fillStyle = '#09090b';
+          context.fillRect(0, 0, canvas.width, canvas.height);
         }
         const duration = meta.sceneDurationsSeconds[sceneIndex] ?? 0;
         const localStart =
@@ -613,7 +629,7 @@ export class ConcatenatedVideoSource {
   dispose(): void {
     this.disposed = true;
     this.abort.abort();
-    for (const image of this.images) image?.close();
+    for (const image of this.images) closeStill(image);
     this.images = [];
     for (const input of this.inputs) input.dispose();
     this.inputs = [];

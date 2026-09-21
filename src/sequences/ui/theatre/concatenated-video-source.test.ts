@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SceneInput } from './concatenated-video-source';
 
 const opened: { url: string; dispose: ReturnType<typeof vi.fn> }[] = [];
-const image = { width: 640, height: 360, close: vi.fn() };
 const context = {
   drawImage: vi.fn(),
+  fillRect: vi.fn(),
   fillText: vi.fn(),
   fillStyle: '',
   font: '',
@@ -67,12 +67,18 @@ beforeEach(() => {
   opened.length = 0;
   vi.clearAllMocks();
   vi.stubGlobal(
-    'fetch',
-    vi.fn(async () => new Response(new Blob(['image'])))
-  );
-  vi.stubGlobal(
-    'createImageBitmap',
-    vi.fn(async () => image)
+    'Image',
+    class {
+      src = '';
+      width = 640;
+      height = 360;
+      decode() {
+        if (this.src.includes('missing')) {
+          return Promise.reject(new Error('decode failed'));
+        }
+        return Promise.resolve();
+      }
+    }
   );
   vi.stubGlobal('document', { createElement: () => canvas });
 });
@@ -95,7 +101,6 @@ describe('mixed canvas timeline', () => {
     ]);
     expect(context.drawImage).toHaveBeenCalled();
     source.dispose();
-    expect(image.close).toHaveBeenCalledOnce();
   });
   it('uses measured dialogue duration and offsets every audio clip on a mixed timeline', async () => {
     const source = new ConcatenatedVideoSource([
@@ -135,21 +140,21 @@ describe('mixed canvas timeline', () => {
     expect(opened).toHaveLength(3);
     for (const input of opened) expect(input.dispose).toHaveBeenCalledOnce();
   });
-  it('falls back after a preview error and preserves a placeholder when both images fail', async () => {
-    vi.mocked(fetch).mockRejectedValueOnce(new Error('missing preview'));
-    const fallback = new ConcatenatedVideoSource([still()]);
+  it('falls back after a preview error and holds a quiet frame when both images fail', async () => {
+    const fallback = new ConcatenatedVideoSource([
+      still({ imageUrl: '/missing.png', fallbackImageUrl: '/thumbnail.png' }),
+    ]);
     await fallback.prepare();
-    expect(fetch).toHaveBeenCalledTimes(2);
+    await fallback.canvases(0).next();
+    expect(context.drawImage).toHaveBeenCalled();
     fallback.dispose();
-    vi.mocked(fetch).mockRejectedValue(new Error('missing image'));
-    const missing = new ConcatenatedVideoSource([still()]);
+    const missing = new ConcatenatedVideoSource([
+      still({ imageUrl: '/missing.png', fallbackImageUrl: '/missing-2.png' }),
+    ]);
     expect((await missing.prepare()).totalDurationSeconds).toBe(5);
     await missing.canvases(0).next();
-    expect(context.fillText).toHaveBeenCalledWith(
-      'No image available',
-      800,
-      450
-    );
+    expect(context.fillText).not.toHaveBeenCalled();
+    expect(context.fillRect).toHaveBeenCalled();
     missing.dispose();
   });
   it('releases loaded images and inputs when dialogue cannot be opened', async () => {
@@ -159,7 +164,6 @@ describe('mixed canvas timeline', () => {
     await expect(source.prepare()).rejects.toThrow(
       'Recorded dialogue cannot be decoded'
     );
-    expect(image.close).toHaveBeenCalledOnce();
     expect(opened[0]?.dispose).toHaveBeenCalledOnce();
     source.dispose();
   });

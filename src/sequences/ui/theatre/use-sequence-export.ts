@@ -15,6 +15,7 @@ import { useShotsBySequence } from '@/shots/ui/use-shots';
 import {
   collapseConsecutiveUrls,
   scenePlaybackKey,
+  shouldFetchTheatrePlaylist,
   toPlaybackScenes,
 } from './playback-scenes';
 import {
@@ -226,7 +227,8 @@ export function useSequenceExport(
   // The clip list is the cache key: a changed cut is a new URL, so neither the
   // query nor the browser can serve the old list. Success means every clip
   // already has a fragmented copy from ingest, so the URL is safe to play.
-  const playlistKey = shots ? scenePlaybackKey(toPlaybackScenes(shots)) : '';
+  const playbackScenes = shots ? toPlaybackScenes(shots) : [];
+  const playlistKey = shots ? scenePlaybackKey(playbackScenes) : '';
   const playback = useQuery({
     queryKey: ['theatre-playlist', sequenceId, playlistKey],
     queryFn: async ({ signal }) => {
@@ -260,7 +262,7 @@ export function useSequenceExport(
         return null;
       }
     },
-    enabled: Boolean(sequence) && playlistKey !== '',
+    enabled: Boolean(sequence) && shouldFetchTheatrePlaylist(playbackScenes),
     staleTime: Infinity,
     retry: false,
   });

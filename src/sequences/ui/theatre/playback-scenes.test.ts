@@ -5,7 +5,11 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { scenePlaybackKey, toPlaybackScenes } from './playback-scenes';
+import {
+  scenePlaybackKey,
+  shouldFetchTheatrePlaylist,
+  toPlaybackScenes,
+} from './playback-scenes';
 
 const shot = (url: string | null, extra?: { status?: string }) => ({
   video: url ? { url, status: extra?.status } : null,
@@ -76,6 +80,23 @@ describe('scenePlaybackKey', () => {
     expect(scenePlaybackKey(toPlaybackScenes([shot('/a.mp4')]))).not.toBe(
       scenePlaybackKey(toPlaybackScenes([shot('/a-v2.mp4')]))
     );
+  });
+});
+
+describe('shouldFetchTheatrePlaylist', () => {
+  it('is only true when every entry is a rendered clip', () => {
+    expect(shouldFetchTheatrePlaylist([])).toBe(false);
+    expect(shouldFetchTheatrePlaylist(toPlaybackScenes([shot(null)]))).toBe(
+      false
+    );
+    expect(
+      shouldFetchTheatrePlaylist(toPlaybackScenes([shot('/a.mp4'), shot(null)]))
+    ).toBe(false);
+    expect(
+      shouldFetchTheatrePlaylist(
+        toPlaybackScenes([shot('/a.mp4'), shot('/b.mp4')])
+      )
+    ).toBe(true);
   });
 });
 

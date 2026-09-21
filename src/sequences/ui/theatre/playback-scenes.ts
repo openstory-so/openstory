@@ -65,6 +65,16 @@ export function collapseConsecutiveUrls(urls: readonly string[]): string[] {
  * Identity of a stitched clip list (order + URLs). A new `SceneInput[]` of
  * the same clips (shots refetch while others generate) is not a new list (#1284).
  */
+/**
+ * HLS can only list rendered clips. A cut that still holds a still (or has
+ * no clips yet) stitches in the tab — do not fetch `theatre.m3u8`.
+ */
+export function shouldFetchTheatrePlaylist(
+  scenes: readonly SceneInput[]
+): boolean {
+  return scenes.length > 0 && scenes.every((scene) => 'videoUrl' in scene);
+}
+
 export function scenePlaybackKey(scenes: readonly SceneInput[]): string {
   return JSON.stringify(
     scenes.map((scene) =>
