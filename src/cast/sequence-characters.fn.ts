@@ -278,9 +278,9 @@ export const setCharacterVoiceEnabledFn = createServerFn({ method: 'POST' })
  * (never two slots with no pointer). The chosen take moves to the front:
  * while `voiceId` is set, `voicePreviews[0]` is the saved voice. Take
  * numbers are stamped (and kept) so the In use card can show Take 2
- * after promoting the second preview (#1709). A 404 from ElevenLabs
- * means the preview id aged out; any other 4xx carries the provider's
- * reason (slot limit, description rejected).
+ * after promoting the second preview (#1709). A gone preview is HTTP 400
+ * `voice_not_found` (not 404); any other 4xx carries the provider's
+ * reason (already created, slot limit, description rejected).
  */
 export const chooseCharacterVoiceTakeFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
