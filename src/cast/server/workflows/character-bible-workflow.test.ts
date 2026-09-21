@@ -50,11 +50,16 @@ const characterCreate = vi.fn(
   async (row: { id: string; characterId: string }) => row
 );
 const createPendingVoiceClaim = vi.fn(async () => ({ id: 'husk-1' }));
+const markVoiceClaimTerminal = vi.fn(async () => ({ id: 'husk-1' }));
 
 function makeScopedDb(): WorkflowScopedDb {
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the scoped-db surface runImpl touches
   return {
-    characters: { create: characterCreate, createPendingVoiceClaim },
+    characters: {
+      create: characterCreate,
+      createPendingVoiceClaim,
+      markVoiceClaimTerminal,
+    },
   } as unknown as WorkflowScopedDb;
 }
 
@@ -198,6 +203,30 @@ describe('CharacterBibleWorkflow voice-only characters', () => {
         childId: expect.stringMatching(/^character-voice:/),
         childPayload: expect.objectContaining({ targetVersionId: 'husk-1' }),
       })
+    );
+  });
+
+  it('fails the husk if the voice child never starts (#1715)', async () => {
+    mockSpawnAndAwaitChild.mockImplementation(
+      async (_step: unknown, opts: { childId: string }) => {
+        if (opts.childId.startsWith('character-voice:')) {
+          throw new Error('workflow binding missing');
+        }
+        return {
+          sheetImageUrl: '/r2/characters/sam.png',
+          sheetVersionId: 'ver-sam',
+        };
+      }
+    );
+    await makeWorkflow().runBody(
+      makeEvent([sam], { generateVoices: true, speakingCharacterIds: ['sam'] }),
+      makeStep(),
+      makeScopedDb()
+    );
+    expect(markVoiceClaimTerminal).toHaveBeenCalledWith(
+      'husk-1',
+      'failed',
+      'workflow binding missing'
     );
   });
 });

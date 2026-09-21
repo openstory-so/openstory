@@ -99,10 +99,9 @@ export const characters = snakeCase.table(
     selectedVoiceVersionId: text(),
     // Soft pointer to the in-flight `character_voice_versions` husk that
     // should become selected when Voice Design completes (#1715) — same job
-    // as `frames.pendingPromoteVersionId`. Last kickoff wins (overwrite);
-    // picking a different completed voice clears it; failure of that husk
-    // clears it. Persist promotes only when this still names the finishing
-    // row.
+    // as `frames.pendingPromoteVersionId`. One live husk (a second Generate
+    // no-ops); picking a completed voice or failing this husk clears it.
+    // Persist promotes only when this still names the finishing row.
     pendingPromoteVoiceVersionId: text(),
     consistencyTag: text(), // e.g. "char_001: Jack-denim-jacket"
     // First appearance in script

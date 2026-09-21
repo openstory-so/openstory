@@ -77,12 +77,17 @@ function makeScopedDb(opts?: {
   pendingPromoteVoiceVersionId?: string | null;
   voiceId?: string | null;
   promote?: unknown;
+  complete?: unknown;
 }) {
-  const completeVoiceClaimIfLive = vi.fn(async () => ({ id: 'ver-1' }));
-  const promoteVoiceClaimIfPending = vi.fn(
-    async () => opts?.promote ?? { id: 'char-1' }
+  const completeVoiceClaimIfLive = vi.fn(async () =>
+    opts?.complete === null ? null : { id: 'ver-1' }
+  );
+  const promoteVoiceClaimIfPending = vi.fn(async () =>
+    opts && 'promote' in opts ? opts.promote : { id: 'char-1' }
   );
   const markVoiceClaimTerminal = vi.fn(async () => ({ id: 'ver-1' }));
+  const stampVoiceClaimWorkflowRunId = vi.fn(async () => ({ id: 'ver-1' }));
+  const updateVoice = vi.fn(async () => ({ id: 'char-1' }));
   const markVoiceReleased = vi.fn(async () => undefined);
   const getById = vi.fn(async () => ({
     id: 'char-1',
@@ -99,6 +104,8 @@ function makeScopedDb(opts?: {
       completeVoiceClaimIfLive,
       promoteVoiceClaimIfPending,
       markVoiceClaimTerminal,
+      stampVoiceClaimWorkflowRunId,
+      updateVoice,
       markVoiceReleased,
     },
     liveRead: {
@@ -112,6 +119,8 @@ function makeScopedDb(opts?: {
     completeVoiceClaimIfLive,
     promoteVoiceClaimIfPending,
     markVoiceClaimTerminal,
+    stampVoiceClaimWorkflowRunId,
+    updateVoice,
   };
 }
 
@@ -133,7 +142,8 @@ const characterBible: CharacterBibleEntry = {
 };
 
 function makeEvent(
-  voiceDescription: string
+  voiceDescription: string,
+  opts?: { targetVersionId?: string }
 ): Readonly<WorkflowEvent<CharacterVoiceWorkflowInput>> {
   return {
     payload: {
@@ -144,7 +154,9 @@ function makeEvent(
       characterBible,
       voiceDescription,
       analysisModelId: 'anthropic/claude-sonnet-5',
-      targetVersionId: 'ver-1',
+      ...(opts && 'targetVersionId' in opts
+        ? { targetVersionId: opts.targetVersionId }
+        : { targetVersionId: 'ver-1' }),
     },
     instanceId: 'run-1',
     workflowName: 'character-voice',
@@ -165,14 +177,19 @@ beforeEach(() => {
 
 describe('CharacterVoiceWorkflow', () => {
   it('designs once, deducts once, saves the top take, persists it', async () => {
-    const { scopedDb, completeVoiceClaimIfLive, promoteVoiceClaimIfPending } =
-      makeScopedDb();
+    const {
+      scopedDb,
+      completeVoiceClaimIfLive,
+      promoteVoiceClaimIfPending,
+      stampVoiceClaimWorkflowRunId,
+    } = makeScopedDb();
     const result = await makeWorkflow().runBody(
       makeEvent('Warm alto, unhurried.'),
       makeStep(),
       scopedDb
     );
 
+    expect(stampVoiceClaimWorkflowRunId).toHaveBeenCalledWith('ver-1', 'run-1');
     expect(mockLlm).not.toHaveBeenCalled();
     expect(mockDesign).toHaveBeenCalledTimes(1);
     expect(mockDeduct).toHaveBeenCalledTimes(1);
@@ -204,22 +221,90 @@ describe('CharacterVoiceWorkflow', () => {
     );
     expect(promoteVoiceClaimIfPending).toHaveBeenCalledWith('char-1', 'ver-1');
     expect(result.voiceId).toBe('voice-1');
+    expect(mockEmit).toHaveBeenLastCalledWith(
+      'generation.character-voice:progress',
+      expect.objectContaining({ status: 'completed' })
+    );
   });
 
-  it('completes the husk without promoting when pending-promote was demoted (#1715)', async () => {
-    const { scopedDb, completeVoiceClaimIfLive, promoteVoiceClaimIfPending } =
-      makeScopedDb({ pendingPromoteVoiceVersionId: null });
+  it('fails the husk without promoting when pending-promote was demoted (#1715)', async () => {
+    const {
+      scopedDb,
+      completeVoiceClaimIfLive,
+      promoteVoiceClaimIfPending,
+      markVoiceClaimTerminal,
+    } = makeScopedDb({ pendingPromoteVoiceVersionId: null });
     const result = await makeWorkflow().runBody(
       makeEvent('Warm alto, unhurried.'),
       makeStep(),
       scopedDb
     );
-    expect(completeVoiceClaimIfLive).toHaveBeenCalledWith(
+    expect(markVoiceClaimTerminal).toHaveBeenCalledWith(
       'ver-1',
-      expect.objectContaining({ voiceId: null })
+      'failed',
+      'Voice design was superseded'
+    );
+    expect(completeVoiceClaimIfLive).not.toHaveBeenCalled();
+    expect(promoteVoiceClaimIfPending).not.toHaveBeenCalled();
+    expect(result.voiceId).toBeNull();
+    expect(mockEmit).toHaveBeenLastCalledWith(
+      'generation.character-voice:progress',
+      expect.objectContaining({ status: 'completed' })
+    );
+  });
+
+  it('emits failed when completeIfLive returns null (#1715)', async () => {
+    const { scopedDb, promoteVoiceClaimIfPending } = makeScopedDb({
+      complete: null,
+    });
+    const result = await makeWorkflow().runBody(
+      makeEvent('Warm alto, unhurried.'),
+      makeStep(),
+      scopedDb
     );
     expect(promoteVoiceClaimIfPending).not.toHaveBeenCalled();
     expect(result.voiceId).toBeNull();
+    expect(mockEmit).toHaveBeenLastCalledWith(
+      'generation.character-voice:progress',
+      expect.objectContaining({
+        status: 'failed',
+        error: 'Voice claim is no longer live',
+      })
+    );
+  });
+
+  it('releases the new slot when promote loses the pointer race (#1715)', async () => {
+    const { scopedDb, promoteVoiceClaimIfPending } = makeScopedDb({
+      promote: null,
+    });
+    const result = await makeWorkflow().runBody(
+      makeEvent('Warm alto, unhurried.'),
+      makeStep(),
+      scopedDb
+    );
+    expect(promoteVoiceClaimIfPending).toHaveBeenCalled();
+    expect(result.voiceId).toBeNull();
+    expect(mockEmit).toHaveBeenLastCalledWith(
+      'generation.character-voice:progress',
+      expect.objectContaining({ status: 'completed' })
+    );
+  });
+
+  it('writes via updateVoice when the payload has no husk id', async () => {
+    const { scopedDb, updateVoice, completeVoiceClaimIfLive } = makeScopedDb();
+    const result = await makeWorkflow().runBody(
+      makeEvent('Warm alto, unhurried.', { targetVersionId: undefined }),
+      makeStep(),
+      scopedDb
+    );
+    expect(updateVoice).toHaveBeenCalledWith(
+      'char-1',
+      expect.objectContaining({ voiceId: 'voice-1' }),
+      'generated',
+      'u1'
+    );
+    expect(completeVoiceClaimIfLive).not.toHaveBeenCalled();
+    expect(result.voiceId).toBe('voice-1');
   });
 
   it('marks the husk failed when the run dies (#1715)', async () => {

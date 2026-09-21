@@ -218,8 +218,8 @@ export const softDeleteSequenceCharacterFn = createServerFn({ method: 'POST' })
 
 /**
  * Design (or re-design) a character's voice (#1553 / #1715). Inserts a
- * generating husk and keeps the current voice until that husk promotes —
- * same as stills keeping the current still while a claim is in flight.
+ * generating husk and keeps the current voice until that husk promotes.
+ * A second Generate while a live husk exists no-ops (`alreadyInFlight`).
  */
 export const generateCharacterVoiceFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
@@ -236,13 +236,15 @@ export const generateCharacterVoiceFn = createServerFn({ method: 'POST' })
       analysisModel: context.sequence.analysisModel,
       trigger: (payload) => triggerWorkflow('/character-voice', payload),
     });
-    try {
-      await getGenerationChannel(character.sequenceId).emit(
-        'generation.character-voice:progress',
-        { characterId: character.id, status: 'generating' }
-      );
-    } catch (error) {
-      logger.error('realtime emit failed', { err: error });
+    if (!enqueued.alreadyInFlight) {
+      try {
+        await getGenerationChannel(character.sequenceId).emit(
+          'generation.character-voice:progress',
+          { characterId: character.id, status: 'generating' }
+        );
+      } catch (error) {
+        logger.error('realtime emit failed', { err: error });
+      }
     }
     return {
       characterId: enqueued.characterId,

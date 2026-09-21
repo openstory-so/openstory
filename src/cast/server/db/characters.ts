@@ -37,6 +37,7 @@ import {
   talent,
 } from '@/platform/server/db/schema';
 import { markPreviewUnusable } from '@/cast/voice';
+import { ValidationError } from '@/platform/errors';
 import { generateId } from '@/platform/id';
 import { isUniqueConstraintError } from '@/platform/server/db/scoped/divergent-insert';
 import {
@@ -135,6 +136,7 @@ const RELEASED_VOICE_MESSAGE =
   'This voice was deleted when it stopped being used; design or pick a new one.';
 const VOICE_HUSK_NOT_READY_MESSAGE =
   'This voice is not finished generating yet.';
+const VOICE_HUSK_EMPTY_MESSAGE = 'This voice has no saved take.';
 const VOICE_DESIGN_IN_FLIGHT_MESSAGE = 'Voice design already in flight';
 const LIVE_VOICE_CLAIM_STATUSES = [
   'pending',
@@ -489,7 +491,10 @@ export function createCharactersMethods(db: Database) {
       // it would put a dead voice on the row and 404 at TTS (#1657).
       if (version.releasedAt) throw new Error(RELEASED_VOICE_MESSAGE);
       if (version.status !== 'completed') {
-        throw new Error(VOICE_HUSK_NOT_READY_MESSAGE);
+        throw new ValidationError(VOICE_HUSK_NOT_READY_MESSAGE);
+      }
+      if (!version.voiceId) {
+        throw new ValidationError(VOICE_HUSK_EMPTY_MESSAGE);
       }
       // The released check rides in the write too: a release landing between
       // the read above and here must not leave a dead id selected.
@@ -573,7 +578,8 @@ export function createCharactersMethods(db: Database) {
 
     /**
      * Pre-create the generating husk for an enqueued Voice Design (#1715).
-     * Completes in place; last kickoff overwrites `pendingPromoteVoiceVersionId`.
+     * Completes in place. A second live claim is rejected (one in-flight
+     * Voice Design per character); enqueue no-ops instead of overwriting.
      */
     createPendingVoiceClaim: async (
       characterId: string,
@@ -716,7 +722,9 @@ export function createCharactersMethods(db: Database) {
             eq(characterVoiceVersions.characterId, characterId)
           )
         );
-      if (!version || version.status !== 'completed') return null;
+      if (!version || version.status !== 'completed' || !version.voiceId) {
+        return null;
+      }
       const [updated] = await db
         .update(characters)
         .set({

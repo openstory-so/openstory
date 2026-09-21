@@ -104,12 +104,6 @@ export const CharacterVoiceSection: React.FC<{
             queryKey: sequenceCharacterKeys.list(sequenceId),
           });
           void queryClient.invalidateQueries({
-            queryKey: sequenceCharacterKeys.voiceVersions(
-              sequenceId,
-              character.id
-            ),
-          });
-          void queryClient.invalidateQueries({
             queryKey: elevenLabsVoiceKeys.saved(character.id),
           });
         }
@@ -300,11 +294,10 @@ export const CharacterVoiceSection: React.FC<{
                 ) : (
                   <Mic className="mr-2 h-4 w-4" />
                 )}
-                {designing
-                  ? 'Designing…'
-                  : character.voiceId || takes.length > 0
-                    ? 'Regenerate voice'
-                    : 'Generate voice'}
+                {generateVoiceButtonLabel(
+                  designing,
+                  Boolean(character.voiceId || takes.length > 0)
+                )}
               </Button>
               <ActionCost estimate={VOICE_DESIGN_COST} />
             </div>
@@ -323,6 +316,15 @@ export const CharacterVoiceSection: React.FC<{
     </div>
   );
 };
+
+function generateVoiceButtonLabel(
+  designing: boolean,
+  hasVoice: boolean
+): string {
+  if (designing) return 'Designing…';
+  if (hasVoice) return 'Regenerate voice';
+  return 'Generate voice';
+}
 
 /** What put this voice on the character — the history row's own label. */
 const VOICE_SOURCE_LABELS: Record<CharacterVoiceVersionSource, string> = {
@@ -356,7 +358,7 @@ const VoiceHistory: React.FC<{
     );
   }
   const completed = versions?.filter(
-    (version) => version.status === 'completed'
+    (version) => version.status === 'completed' && version.voiceId
   );
   if (!completed || completed.length < 2) return null;
   return (
@@ -398,7 +400,7 @@ const VoiceHistory: React.FC<{
                   type="button"
                   variant="outline"
                   size="sm"
-                  disabled={released || select.isPending}
+                  disabled={released || !version.voiceId || select.isPending}
                   aria-label={`Use the ${VOICE_SOURCE_LABELS[
                     version.source
                   ].toLowerCase()} voice from ${created.toLocaleDateString()}`}
@@ -460,29 +462,72 @@ const VoiceTakeCard: React.FC<{
   >
     <div className="flex items-center justify-between gap-2">
       <p className="truncate text-sm font-medium">{label}</p>
-      {pending ? (
-        <Badge variant="secondary">Generating…</Badge>
-      ) : inUse ? (
-        <Badge variant="default">{isPremade ? 'Default' : 'In use'}</Badge>
-      ) : unusable ? (
-        <p className="text-xs text-muted-foreground">
-          {unusable === 'expired' ? 'Expired' : 'Already used'}
-        </p>
-      ) : (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={disabled}
-          aria-label={choosing ? `Using ${label}` : `Use ${label}`}
-          onClick={onUse}
-        >
-          {choosing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-          {choosing ? 'Using…' : 'Use this take'}
-        </Button>
-      )}
+      <VoiceTakeCardAction
+        pending={pending}
+        inUse={inUse}
+        isPremade={isPremade}
+        unusable={unusable}
+        disabled={disabled}
+        choosing={choosing}
+        label={label}
+        onUse={onUse}
+      />
     </div>
-    {pending ? (
+    <VoiceTakeCardPreview pending={pending} src={src} />
+  </div>
+);
+
+const VoiceTakeCardAction: React.FC<{
+  pending: boolean;
+  inUse: boolean;
+  isPremade?: boolean;
+  unusable?: 'saved' | 'expired';
+  disabled?: boolean;
+  choosing?: boolean;
+  label: string;
+  onUse?: () => void;
+}> = ({
+  pending,
+  inUse,
+  isPremade,
+  unusable,
+  disabled,
+  choosing,
+  label,
+  onUse,
+}) => {
+  if (pending) return <Badge variant="secondary">Generating…</Badge>;
+  if (inUse) {
+    return <Badge variant="default">{isPremade ? 'Default' : 'In use'}</Badge>;
+  }
+  if (unusable) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        {unusable === 'expired' ? 'Expired' : 'Already used'}
+      </p>
+    );
+  }
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      disabled={disabled}
+      aria-label={choosing ? `Using ${label}` : `Use ${label}`}
+      onClick={onUse}
+    >
+      {choosing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+      {choosing ? 'Using…' : 'Use this take'}
+    </Button>
+  );
+};
+
+const VoiceTakeCardPreview: React.FC<{
+  pending: boolean;
+  src: string | null;
+}> = ({ pending, src }) => {
+  if (pending) {
+    return (
       <div className="flex min-h-8 items-center gap-2 text-xs text-muted-foreground">
         <Loader2
           className="h-4 w-4 animate-spin motion-reduce:animate-none"
@@ -490,11 +535,13 @@ const VoiceTakeCard: React.FC<{
         />
         Designing…
       </div>
-    ) : src ? (
+    );
+  }
+  if (src) {
+    return (
       // oxlint-disable-next-line jsx-a11y/media-has-caption -- a voice audition has no words to caption
       <audio controls preload="none" src={src} className="w-full" />
-    ) : (
-      <p className="text-xs text-muted-foreground">No preview</p>
-    )}
-  </div>
-);
+    );
+  }
+  return <p className="text-xs text-muted-foreground">No preview</p>;
+};

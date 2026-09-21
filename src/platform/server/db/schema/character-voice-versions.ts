@@ -1,4 +1,7 @@
-/** Append-only voice history for a sequence character (#1657). */
+/**
+ * Voice history for a sequence character (#1657). Completed rows are
+ * append-only; an in-flight generated husk (#1715) is completed in place.
+ */
 import { sql } from 'drizzle-orm';
 import {
   index,
@@ -14,7 +17,9 @@ import { characters, type VoicePreview } from './characters';
 /**
  * In-flight Voice Design is a husk on this table (#1715), the stills/video
  * claim: `status: 'generating'`, no voiceId/previews yet, completed in place.
- * Existing rows predate the column and are completed voices.
+ * Existing rows predate the column and are completed voices. `'pending'` is
+ * unused (no queued-not-started phase) but still counts as live so a stray
+ * row cannot double-claim.
  */
 const CHARACTER_VOICE_VERSION_STATUSES = [
   'pending',

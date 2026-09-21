@@ -37,10 +37,24 @@ export async function enqueueCharacterVoiceDesign(args: {
     };
   }
 
-  const husk = await scopedDb.characters.createPendingVoiceClaim(
-    character.id,
-    userId
-  );
+  let husk: { id: string };
+  try {
+    husk = await scopedDb.characters.createPendingVoiceClaim(
+      character.id,
+      userId
+    );
+  } catch (error) {
+    const raced = (
+      await scopedDb.characters.listLiveVoiceClaims(character.id)
+    )[0];
+    if (!raced) throw error;
+    return {
+      characterId: character.id,
+      workflowRunId: raced.workflowRunId,
+      alreadyInFlight: true,
+      targetVersionId: raced.id,
+    };
+  }
   const payload: CharacterVoiceWorkflowInput = {
     userId,
     teamId: scopedDb.teamId,

@@ -1,12 +1,14 @@
 /**
- * The `CharacterVoiceWorkflow` durable workflow (#1553).
+ * The `CharacterVoiceWorkflow` durable workflow (#1553 / #1715).
  *
  * One character's ElevenLabs voice: draft a description from the bible when
  * the character has none, Voice Design → previews parked in R2, save the top
- * preview as a voice and stamp its id on the row. Spawned per speaking
- * character by `CharacterBibleWorkflow`; triggered directly by "Generate
- * voice" on the character card (which releases the old voice first — a saved
- * voice is an account-wide slot, so nothing here designs twice for one row).
+ * preview as a voice. The generating husk already exists as `targetVersionId`;
+ * persist completes it in place and promotes only if
+ * `pendingPromoteVoiceVersionId` still names it. Otherwise the husk is failed
+ * and the unused saved id is released. The current In use voice stays until
+ * promote — do not release it first. Spawned per speaking character by
+ * `CharacterBibleWorkflow`; triggered by Generate on the character card.
  */
 
 import { voiceDescriptionSchema } from '@/sequences/response-schemas';
@@ -51,6 +53,17 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     const input = event.payload;
     const { characterDbId, sequenceId, characterBible } = input;
     const channel = getGenerationChannel(sequenceId);
+    const targetVersionId = input.targetVersionId;
+    // Stamp the child instance id before design so reconcile can verify a
+    // bible-spawned husk (insert has no run id) instead of failing it at 5 min.
+    if (targetVersionId) {
+      await step.do('stamp-voice-claim-run', async () =>
+        scopedDb.characters.stampVoiceClaimWorkflowRunId(
+          targetVersionId,
+          event.instanceId
+        )
+      );
+    }
     await channel.emit('generation.character-voice:progress', {
       characterId: characterDbId,
       status: 'generating',
@@ -154,22 +167,11 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       });
     });
 
-    const persistedVoiceId = await step.do('persist-voice', async () => {
+    const persisted = await step.do('persist-voice', async () => {
       const top = previews[0];
-      const live = await scopedDb.liveRead.characters.getById(characterDbId);
-      const shouldPromote =
-        live?.pendingPromoteVoiceVersionId === input.targetVersionId;
       const parked =
         (top && markPreviewUnusable(previews, top.generatedVoiceId, 'saved')) ??
         previews;
-      await scopedDb.characters.completeVoiceClaimIfLive(
-        input.targetVersionId,
-        {
-          voiceId: shouldPromote ? voiceId : null,
-          description: voiceDescription,
-          previews: shouldPromote ? parked : previews,
-        }
-      );
       const releaseDb = {
         characters: {
           getVoiceReferenceCount: (id: string) =>
@@ -178,27 +180,66 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
             scopedDb.characters.markVoiceReleased(id),
         },
       };
+      // Pre-#1715 payloads have no husk. Write the old way; do not release
+      // a slot this run never claimed as a version.
+      if (!targetVersionId) {
+        await scopedDb.characters.updateVoice(
+          characterDbId,
+          {
+            voiceId,
+            voiceDescription,
+            voicePreviews: parked,
+            useVoice: true,
+          },
+          'generated',
+          input.userId
+        );
+        return { voiceId, emit: 'completed' as const };
+      }
+      const live = await scopedDb.liveRead.characters.getById(characterDbId);
+      const shouldPromote =
+        live?.pendingPromoteVoiceVersionId === targetVersionId;
       if (!shouldPromote) {
+        await scopedDb.characters.markVoiceClaimTerminal(
+          targetVersionId,
+          'failed',
+          'Voice design was superseded'
+        );
         await releaseVoiceIfUnreferenced(releaseDb, voiceId);
-        return null;
+        return { voiceId: null, emit: 'completed' as const };
+      }
+      const completed = await scopedDb.characters.completeVoiceClaimIfLive(
+        targetVersionId,
+        {
+          voiceId,
+          description: voiceDescription,
+          previews: parked,
+        }
+      );
+      if (!completed) {
+        await releaseVoiceIfUnreferenced(releaseDb, voiceId);
+        return { voiceId: null, emit: 'failed' as const };
       }
       const promoted = await scopedDb.characters.promoteVoiceClaimIfPending(
         characterDbId,
-        input.targetVersionId
+        targetVersionId
       );
       if (!promoted) {
         await releaseVoiceIfUnreferenced(releaseDb, voiceId);
-        return null;
+        return { voiceId: null, emit: 'completed' as const };
       }
       await releaseReplacedVoice(releaseDb, live.voiceId, voiceId);
-      return voiceId;
+      return { voiceId, emit: 'completed' as const };
     });
 
     await channel.emit('generation.character-voice:progress', {
       characterId: characterDbId,
-      status: 'completed',
+      status: persisted.emit,
+      ...(persisted.emit === 'failed'
+        ? { error: 'Voice claim is no longer live' }
+        : {}),
     });
-    return { voiceId: persistedVoiceId, voiceDescription };
+    return { voiceId: persisted.voiceId, voiceDescription };
   }
 
   protected override async onFailure({
@@ -214,11 +255,13 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     logger.error(
       `[CharacterVoiceWorkflow:cf] Voice design failed for ${characterDbId}: ${error}`
     );
-    await scopedDb.characters.markVoiceClaimTerminal(
-      targetVersionId,
-      'failed',
-      error
-    );
+    if (targetVersionId) {
+      await scopedDb.characters.markVoiceClaimTerminal(
+        targetVersionId,
+        'failed',
+        error
+      );
+    }
     await getGenerationChannel(sequenceId).emit(
       'generation.character-voice:progress',
       { characterId: characterDbId, status: 'failed', error }

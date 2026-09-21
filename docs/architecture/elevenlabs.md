@@ -37,11 +37,15 @@ In-flight Voice Design is a stills-style husk (#1715): a
 previews yet) and `characters.pendingPromoteVoiceVersionId` pointing at it.
 `generateCharacterVoiceFn` and `CharacterBibleWorkflow` insert the husk
 before trigger / spawn; a second Generate while live no-ops. The current
-saved voice stays until the husk promotes (do not release first). Persist
-completes that row in place and selects it only if the pointer still names
-it; picking a library voice or an older history row mid-run clears the
-pointer (demote). `onFailure` and the reconcile sweep mark the husk failed.
-The character card lists a generating version as the pending take.
+saved voice stays until the husk promotes (do not release first). The child
+stamps `workflowRunId` from `event.instanceId` on its first step so reconcile
+can verify the child (bible insert has no run id). Persist completes that
+row in place and selects it only if the pointer still names it; picking a
+library voice or an older history row mid-run fails the husk (demote) and
+releases the unused ElevenLabs id. `onFailure` and the reconcile sweep mark
+the husk failed (5 min verified with a run id; 30 min blind-fail if none).
+The card shows a Pending take while a generating husk exists; history lists
+completed rows that have a `voiceId`.
 `CharacterBibleWorkflow` spawns a `CharacterVoiceWorkflow` child per
 _speaking_ character (`speakingCharacterIds()`: a bible name sharing a
 non-stopword token with a dialogue speaker cue, or equal to it once
@@ -80,7 +84,7 @@ delete, and the upsert keeps a voice the row already holds. Billed at
 `VOICE_DESIGN_COST` per design call; pre-flight prices one call per
 estimated character (`generateVoices` on `estimateStoryboardCost`), the
 in-run gate the real speaking count. **Voices are versioned (#1657):** every
-write appends a `character_voice_versions` row with an explicit `source`
+`updateVoice` write appends a `character_voice_versions` row with an explicit `source`
 ('analysis' | 'generated' | 'library' | 'user-edit' | 'disabled' |
 'removed' — never inferred from which columns moved) and moves
 `characters.selectedVoiceVersionId`, the only selection pointer, whose values

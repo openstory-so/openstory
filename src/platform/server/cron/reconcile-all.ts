@@ -221,12 +221,24 @@ async function reconcileFrameVariantsPass(db: Database): Promise<number> {
  */
 /**
  * Sweep zombie Voice Design husks (#1715). A dead run must not leave a
- * permanent Pending take on the character card.
+ * permanent Pending take on the character card. Verified (has run id) at
+ * 5 min; insert-then-crash orphans with no run id blind-fail at 30 min —
+ * bible husks are stamped with the child instance id on the first voice
+ * step, so a live 30-minute bible child is not failed at 5 min.
  */
 async function reconcileCharacterVoiceClaimsPass(
   db: Database
 ): Promise<number> {
   const staleCutoff = new Date(Date.now() - STALE_THRESHOLD_MS);
+  const blindCutoff = new Date(Date.now() - BLIND_FAIL_THRESHOLD_MS);
+  const liveStatuses = ['pending', 'generating'] as const;
+  const clearPointer = async (versionId: string) => {
+    await db
+      .update(characters)
+      .set({ pendingPromoteVoiceVersionId: null })
+      .where(eq(characters.pendingPromoteVoiceVersionId, versionId));
+  };
+
   const stuck = await db
     .select({
       id: characterVoiceVersions.id,
@@ -235,14 +247,15 @@ async function reconcileCharacterVoiceClaimsPass(
     .from(characterVoiceVersions)
     .where(
       and(
-        inArray(characterVoiceVersions.status, ['pending', 'generating']),
+        inArray(characterVoiceVersions.status, [...liveStatuses]),
+        isNotNull(characterVoiceVersions.workflowRunId),
         lt(characterVoiceVersions.createdAt, staleCutoff)
       )
     )
     .limit(MAX_ROWS_PER_PASS);
   let updated = 0;
   for (const row of stuck) {
-    const next = row.runId ? await resolveRunState(row.runId) : 'failed';
+    const next = await resolveRunState(row.runId ?? '');
     if (next === null || next === 'unknown') continue;
     const transitioned = await db
       .update(characterVoiceVersions)
@@ -253,21 +266,32 @@ async function reconcileCharacterVoiceClaimsPass(
       .where(
         and(
           eq(characterVoiceVersions.id, row.id),
-          inArray(characterVoiceVersions.status, ['pending', 'generating'])
+          inArray(characterVoiceVersions.status, [...liveStatuses])
         )
       )
       .returning({ id: characterVoiceVersions.id });
     if (transitioned.length === 0) continue;
-    await db
-      .update(characters)
-      .set({
-        pendingPromoteVoiceVersionId: null,
-        updatedAt: new Date(),
-      })
-      .where(eq(characters.pendingPromoteVoiceVersionId, row.id));
+    await clearPointer(row.id);
     updated++;
   }
-  return updated;
+
+  const orphaned = await db
+    .update(characterVoiceVersions)
+    .set({
+      status: 'failed',
+      error: 'Generation died before completing',
+    })
+    .where(
+      and(
+        inArray(characterVoiceVersions.status, [...liveStatuses]),
+        isNull(characterVoiceVersions.workflowRunId),
+        lt(characterVoiceVersions.createdAt, blindCutoff)
+      )
+    )
+    .returning({ id: characterVoiceVersions.id });
+  for (const row of orphaned) await clearPointer(row.id);
+
+  return updated + orphaned.length;
 }
 
 async function reconcileVideoVariantsPass(db: Database): Promise<number> {

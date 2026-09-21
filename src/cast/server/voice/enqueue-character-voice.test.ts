@@ -103,6 +103,21 @@ describe('enqueueCharacterVoiceDesign', () => {
     });
   });
 
+  it('stamps the workflow run id after a successful trigger (#1715)', async () => {
+    const { scopedDb, stampVoiceClaimWorkflowRunId } = makeScopedDb({});
+    await enqueueCharacterVoiceDesign({
+      scopedDb,
+      character: character(),
+      userId: 'user-1',
+      analysisModel: null,
+      trigger: async () => 'run-1',
+    });
+    expect(stampVoiceClaimWorkflowRunId).toHaveBeenCalledWith(
+      'husk-1',
+      'run-1'
+    );
+  });
+
   it('returns the live husk instead of starting a second design (#1715)', async () => {
     const { scopedDb, createPendingVoiceClaim } = makeScopedDb({
       live: [{ id: 'husk-live', workflowRunId: 'run-live' }],
@@ -123,7 +138,8 @@ describe('enqueueCharacterVoiceDesign', () => {
   });
 
   it('fails the husk when trigger throws (#1715)', async () => {
-    const { scopedDb, markVoiceClaimTerminal } = makeScopedDb({});
+    const { scopedDb, markVoiceClaimTerminal, stampVoiceClaimWorkflowRunId } =
+      makeScopedDb({});
     await expect(
       enqueueCharacterVoiceDesign({
         scopedDb,
@@ -140,5 +156,34 @@ describe('enqueueCharacterVoiceDesign', () => {
       'failed',
       'workflow binding missing'
     );
+    expect(stampVoiceClaimWorkflowRunId).not.toHaveBeenCalled();
+  });
+
+  it('maps a unique-constraint race to alreadyInFlight (#1715)', async () => {
+    const {
+      scopedDb,
+      listLiveVoiceClaims,
+      createPendingVoiceClaim,
+      stampVoiceClaimWorkflowRunId,
+    } = makeScopedDb({});
+    listLiveVoiceClaims
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'husk-live', workflowRunId: 'run-live' }]);
+    createPendingVoiceClaim.mockRejectedValue(
+      new Error('Voice design already in flight')
+    );
+    const trigger = vi.fn(async () => 'run-2');
+    const result = await enqueueCharacterVoiceDesign({
+      scopedDb,
+      character: character(),
+      userId: 'user-1',
+      analysisModel: null,
+      trigger,
+    });
+    expect(trigger).not.toHaveBeenCalled();
+    expect(stampVoiceClaimWorkflowRunId).not.toHaveBeenCalled();
+    expect(result.alreadyInFlight).toBe(true);
+    expect(result.targetVersionId).toBe('husk-live');
+    expect(result.workflowRunId).toBe('run-live');
   });
 });
