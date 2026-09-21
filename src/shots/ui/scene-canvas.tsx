@@ -1,7 +1,6 @@
 import { ScenePlayer } from '@/motion/ui/scene-player';
 import { CanvasMediaStage } from './canvas-media-stage';
 import { ShotDialogueUnderVideo } from './shot-dialogue-readings';
-import { ShotDialogueBlock } from './motion-dialogue-panel';
 import { ShotMediaDropZone } from './shot-media-drop-zone';
 import { StartingFrameVariants } from './starting-frame-variants';
 import { formatExportProgress } from './sequence-export-actions';
@@ -21,10 +20,9 @@ import {
   type SceneSelection,
 } from './scene-selection';
 import type { ShotView } from '@/shots/shot-view';
-import type { MotionDialogue } from '@/shots/scene-analysis.schema';
 import type { Sequence } from '@/platform/server/db/schema';
 import { Download, Film, Link, Loader2 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { toPlaybackScenes } from '@/sequences/ui/theatre/playback-scenes';
 
 type SceneCanvasProps = {
@@ -162,10 +160,6 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
   autoPlay = false,
   onAutoPlayConsumed,
 }) => {
-  const [playbackDialogue, setPlaybackDialogue] = useState<{
-    dialogue: MotionDialogue | null | undefined;
-    clip: { url: string; durationSeconds: number | null } | null | undefined;
-  }>({ dialogue: null, clip: null });
   const scope = selectionScope(selection);
   const scopedShots = useMemo(
     () => (shots ? selectionShots(selection, shots) : []),
@@ -277,20 +271,8 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
   }
 
   return (
-    <CanvasMediaStage
-      aspectRatio={aspectRatio}
-      below={
-        <ShotDialogueBlock
-          dialogue={playbackDialogue.dialogue}
-          elements={undefined}
-          clip={playbackDialogue.clip}
-        />
-      }
-    >
+    <CanvasMediaStage aspectRatio={aspectRatio}>
       <SequencePlayer
-        onDialogueChange={(dialogue, clip) =>
-          setPlaybackDialogue({ dialogue, clip })
-        }
         scenes={playbackScenes}
         musicUrl={scope === 'sequence' ? (sequence.musicUrl ?? null) : null}
         musicLoudnessGainDb={null}

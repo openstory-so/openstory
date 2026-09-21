@@ -18,7 +18,6 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/shadcn/tooltip';
 import type { SequencePlayerMeta } from './playback';
 import type { SceneInput } from './concatenated-video-source';
-import type { MotionDialogue } from '@/shots/scene-analysis.schema';
 import { scenePlaybackKey } from './playback-scenes';
 import {
   captureVideoPlay,
@@ -41,10 +40,6 @@ const StitchedPlayerSurface = lazy(() => import('./stitched-player-surface'));
 
 type SequencePlayerProps = {
   scenes: SceneInput[];
-  onDialogueChange?: (
-    dialogue: MotionDialogue | null | undefined,
-    clip: { url: string; durationSeconds: number | null } | null | undefined
-  ) => void;
   musicUrl: string | null;
   musicLoudnessGainDb: number | null;
   /**
@@ -100,7 +95,6 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
   sequenceId,
   autoPlay = false,
   onAutoPlayConsumed,
-  onDialogueChange,
 }) => {
   const posthog = usePostHog();
   const mounted = useMounted();
@@ -108,16 +102,6 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
   // An exported MP4 cannot represent shots that still have no video.
   const hasStills = scenes.some((scene) => !('videoUrl' in scene));
   if (hasStills) cachedVideoUrl = null;
-  const sceneIndex = useRef(-1);
-  const sceneOffsets = useRef<number[]>([]);
-  const publishDialogue = (time: number, offsets: number[]) => {
-    let index = offsets.length - 1;
-    while (index > 0 && (offsets[index] ?? 0) > time) index--;
-    if (index === sceneIndex.current) return;
-    sceneIndex.current = index;
-    const scene = scenes[index];
-    onDialogueChange?.(scene?.dialogue, scene?.clip);
-  };
 
   const [meta, setMeta] = useState<SequencePlayerMeta | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -150,9 +134,6 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
   // can be torn down while this shell stays mounted (cache lands, clip list
   // changes) and detach does not emit `pause`.
   useEffect(() => {
-    sceneIndex.current = -1;
-    sceneOffsets.current = [];
-    onDialogueChange?.(null, null);
     setMeta(null);
     setLoadedScenes(0);
     setError(null);
@@ -309,14 +290,9 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
               onLoadProgress={(loaded) => setLoadedScenes(loaded)}
               onMeta={(next) => {
                 setMeta(next);
-                sceneOffsets.current = next.sceneOffsetsSeconds;
-                publishDialogue(0, next.sceneOffsetsSeconds);
                 tracker.setDuration(next.durationSeconds);
               }}
-              onTimeUpdate={(t) => {
-                tracker.tick(t);
-                publishDialogue(t, sceneOffsets.current);
-              }}
+              onTimeUpdate={(t) => tracker.tick(t)}
               onPlay={() => {
                 if (!tracker.isActive()) tracker.start();
                 captureVideoPlay(posthog, {

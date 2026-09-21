@@ -119,9 +119,9 @@ export type ShotView = Shot & {
   image: FrameVariant | null;
   imagePromptVersion: FramePromptVersion | null;
   /**
-   * Derived, not stored: the url of the newest non-discarded `kind: 'preview'`
-   * version (#1101) — what `frames.previewImageUrl` used to hold. A raw fal CDN
-   * url that expires, so it is a fallback BEHIND `image.url`, never a still.
+   * Derived, not stored: the newest non-discarded `kind: 'preview'` version
+   * (#1101). Bytes live in our bucket (ImageWorkflow copies them off the
+   * provider URL). Fallback behind `image.url`, never a selectable still.
    */
   previewThumbnailUrl: string | null;
   video: VideoVariant | null;

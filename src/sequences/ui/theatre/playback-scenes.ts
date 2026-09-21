@@ -8,7 +8,7 @@ import {
 
 type PlaybackShot = Pick<
   ShotView,
-  'previewThumbnailUrl' | 'durationMs' | 'audioClips' | 'dialogue'
+  'previewThumbnailUrl' | 'durationMs' | 'audioClips'
 > & {
   video: { url: string | null } | null;
   image: { url: string | null } | null;
@@ -29,28 +29,19 @@ export function toPlaybackScenes(
         continue;
       scenes.push({ orderIndex: scenes.length, videoUrl });
     } else {
+      const stillUrl = shot.image?.url ?? null;
+      const previewUrl = shot.previewThumbnailUrl ?? null;
       scenes.push({
         orderIndex: scenes.length,
-        imageUrl: shot.previewThumbnailUrl ?? shot.image?.url ?? null,
-        fallbackImageUrl: shot.image?.url ?? null,
+        imageUrl: stillUrl ?? previewUrl,
+        fallbackImageUrl:
+          stillUrl && previewUrl && previewUrl !== stillUrl ? previewUrl : null,
         durationSeconds:
           shot.durationMs != null && shot.durationMs > 0
             ? shot.durationMs / 1000
             : 3,
         audioUrls: (shot.audioClips ?? []).map((clip) => clip.url),
         ...aspectRatioToDimensions(aspectRatio),
-        dialogue: shot.dialogue
-          ? {
-              ...shot.dialogue,
-              lines: shot.dialogue.lines.map((line, index) => {
-                const spoken = shot.audioClips
-                  ?.flatMap((clip) => clip.spokenLines ?? [])
-                  .find((spokenLine) => spokenLine.index === index)?.text;
-                return spoken ? { ...line, line: spoken } : line;
-              }),
-            }
-          : null,
-        clip: shot.audioClips?.[0] ?? null,
       });
     }
   }

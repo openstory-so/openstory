@@ -68,16 +68,6 @@ export const Mixed: Story = {
         orderIndex: 2,
         durationSeconds: 7,
         audioUrls: [dialogueFixture()],
-        dialogue: {
-          presence: true,
-          lines: [
-            {
-              character: 'Ana',
-              line: 'Recorded dialogue (two-second silent test WAV)',
-              tone: '',
-            },
-          ],
-        },
       },
     ],
   },

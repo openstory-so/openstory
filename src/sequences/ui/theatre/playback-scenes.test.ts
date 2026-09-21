@@ -13,7 +13,6 @@ const shot = (url: string | null, extra?: { status?: string }) => ({
   previewThumbnailUrl: null,
   durationMs: 5000,
   audioClips: null,
-  dialogue: null,
 });
 
 describe('toPlaybackScenes', () => {
@@ -85,7 +84,7 @@ it('does not collapse rendered clips across a missing shot', () => {
     toPlaybackScenes([shot('/packed.mp4'), shot(null), shot('/packed.mp4')])
   ).toHaveLength(3);
 });
-it('prefers the storyboard, includes selected dialogue and recorded wording only for stills', () => {
+it('prefers the selected still and plays its recorded take only when there is no video', () => {
   const input = {
     ...shot(null),
     previewThumbnailUrl: '/preview.png',
@@ -96,26 +95,28 @@ it('prefers the storyboard, includes selected dialogue and recorded wording only
         url: '/take.wav',
         token: 'DIALOGUE',
         durationSeconds: 2,
-        spokenLines: [{ index: 0, text: 'Hi' }],
       },
     ],
-    dialogue: {
-      presence: true,
-      lines: [{ character: 'Ana', line: 'Hello there', tone: '' }],
-    },
   };
   expect(toPlaybackScenes([input])[0]).toMatchObject({
-    imageUrl: '/preview.png',
-    fallbackImageUrl: '/still.png',
+    imageUrl: '/still.png',
+    fallbackImageUrl: '/preview.png',
     audioUrls: ['/take.wav'],
-    dialogue: {
-      presence: true,
-      lines: [{ character: 'Ana', line: 'Hi', tone: '' }],
-    },
   });
   expect(
     toPlaybackScenes([{ ...input, video: { url: '/render.mp4' } }])
   ).toEqual([{ orderIndex: 0, videoUrl: '/render.mp4' }]);
+});
+
+it('uses the preview when there is no selected still', () => {
+  expect(
+    toPlaybackScenes([
+      { ...shot(null), previewThumbnailUrl: '/preview.png' },
+    ])[0]
+  ).toMatchObject({
+    imageUrl: '/preview.png',
+    fallbackImageUrl: null,
+  });
 });
 it('updates identity when a still, recording, duration or aspect ratio changes', () => {
   const input = { ...shot(null), image: { url: '/still.png' } };

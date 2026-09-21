@@ -10,7 +10,7 @@
  */
 
 import { createPlayer, useMediaInstance } from '@videojs/react';
-import { VideoSkin, videoFeatures } from '@videojs/react/video';
+import { MinimalVideoSkin, videoFeatures } from '@videojs/react/video';
 import { useCallback, useEffect, useRef } from 'react';
 
 import type { SceneInput } from './concatenated-video-source';
@@ -165,15 +165,13 @@ const StitchedPlayerInner: React.FC<StitchedPlayerSurfaceProps> = ({
   }, [autoPlay, media]);
 
   return (
-    <div className="relative h-full w-full min-h-0">
-      <VideoSkin className="absolute inset-0 h-full w-full">
-        <canvas
-          ref={canvasRef}
-          className="h-full w-full object-contain"
-          aria-label="Sequence playback"
-        />
-      </VideoSkin>
-    </div>
+    <MinimalVideoSkin className="h-full w-full">
+      <canvas
+        ref={canvasRef}
+        className="h-full w-full object-contain"
+        aria-label="Sequence playback"
+      />
+    </MinimalVideoSkin>
   );
 };
 
