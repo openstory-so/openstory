@@ -261,7 +261,10 @@ describe('characters bible CRUD + soft-remove', () => {
       name: 'Maya',
     });
     const before = await methods.listVoiceVersions(created.id);
-    const husk = await methods.createPendingVoiceClaim(created.id, actorId);
+    const { version: husk } = await methods.createPendingVoiceClaim(
+      created.id,
+      actorId
+    );
     expect(husk.status).toBe('generating');
     expect(husk.source).toBe('generated');
     expect(husk.voiceId).toBeNull();
@@ -275,17 +278,56 @@ describe('characters bible CRUD + soft-remove', () => {
     ]);
   });
 
-  it('refuses a second live voice husk for the same character (#1715)', async () => {
+  it('returns the existing live husk instead of inserting a second (#1715)', async () => {
     const methods = createCharactersMethods(db);
     const created = await methods.create({
       sequenceId,
       characterId: 'voice_husk_unique',
       name: 'Maya',
     });
-    await methods.createPendingVoiceClaim(created.id, actorId);
-    await expect(
-      methods.createPendingVoiceClaim(created.id, actorId)
-    ).rejects.toThrow(/already in flight/i);
+    const first = await methods.createPendingVoiceClaim(created.id, actorId);
+    const second = await methods.createPendingVoiceClaim(created.id, actorId);
+    expect(first.created).toBe(true);
+    expect(second.created).toBe(false);
+    expect(second.version.id).toBe(first.version.id);
+    expect(await methods.listLiveVoiceClaims(created.id)).toHaveLength(1);
+  });
+
+  it('does not touch the live voice while a husk is inserted or completed (#1715)', async () => {
+    const methods = createCharactersMethods(db);
+    const created = await methods.create({
+      sequenceId,
+      characterId: 'voice_husk_keep_live',
+      name: 'Maya',
+    });
+    const saved = await methods.updateVoice(
+      created.id,
+      { voiceId: 'voice-old', voiceDescription: 'Original' },
+      'generated',
+      actorId
+    );
+    const { version: husk } = await methods.createPendingVoiceClaim(
+      created.id,
+      actorId
+    );
+    const afterInsert = await methods.getById(created.id);
+    expect(afterInsert?.voiceId).toBe('voice-old');
+    expect(afterInsert?.selectedVoiceVersionId).toBe(
+      saved.selectedVoiceVersionId
+    );
+    expect(afterInsert?.pendingPromoteVoiceVersionId).toBe(husk.id);
+    await methods.completeVoiceClaimIfLive(husk.id, { voiceId: 'voice-new' });
+    const afterComplete = await methods.getById(created.id);
+    expect(afterComplete?.voiceId).toBe('voice-old');
+    expect(afterComplete?.selectedVoiceVersionId).toBe(
+      saved.selectedVoiceVersionId
+    );
+    const promoted = await methods.promoteVoiceClaimIfPending(
+      created.id,
+      husk.id
+    );
+    expect(promoted?.voiceId).toBe('voice-new');
+    expect(promoted?.selectedVoiceVersionId).toBe(husk.id);
   });
 
   it('completes a live husk in place without appending history (#1715)', async () => {
@@ -295,7 +337,10 @@ describe('characters bible CRUD + soft-remove', () => {
       characterId: 'voice_husk_complete',
       name: 'Maya',
     });
-    const husk = await methods.createPendingVoiceClaim(created.id, actorId);
+    const { version: husk } = await methods.createPendingVoiceClaim(
+      created.id,
+      actorId
+    );
     const completed = await methods.completeVoiceClaimIfLive(husk.id, {
       voiceId: 'voice-new',
       description: 'Warm alto',
@@ -325,7 +370,10 @@ describe('characters bible CRUD + soft-remove', () => {
       characterId: 'voice_husk_fail',
       name: 'Maya',
     });
-    const husk = await methods.createPendingVoiceClaim(created.id, actorId);
+    const { version: husk } = await methods.createPendingVoiceClaim(
+      created.id,
+      actorId
+    );
     const failed = await methods.markVoiceClaimTerminal(
       husk.id,
       'failed',
@@ -353,7 +401,10 @@ describe('characters bible CRUD + soft-remove', () => {
       'generated',
       actorId
     );
-    const husk = await methods.createPendingVoiceClaim(created.id, actorId);
+    const { version: husk } = await methods.createPendingVoiceClaim(
+      created.id,
+      actorId
+    );
     expect(
       (await methods.getById(created.id))?.pendingPromoteVoiceVersionId
     ).toBe(husk.id);
@@ -381,7 +432,10 @@ describe('characters bible CRUD + soft-remove', () => {
       'generated',
       actorId
     );
-    const husk = await methods.createPendingVoiceClaim(created.id, actorId);
+    const { version: husk } = await methods.createPendingVoiceClaim(
+      created.id,
+      actorId
+    );
     await methods.completeVoiceClaimIfLive(husk.id, {
       voiceId: 'voice-new',
       description: 'Warm alto',
@@ -416,7 +470,10 @@ describe('characters bible CRUD + soft-remove', () => {
       'generated',
       actorId
     );
-    const husk = await methods.createPendingVoiceClaim(created.id, actorId);
+    const { version: husk } = await methods.createPendingVoiceClaim(
+      created.id,
+      actorId
+    );
     await methods.completeVoiceClaimIfLive(husk.id, {
       voiceId: 'voice-new',
     });
@@ -444,7 +501,10 @@ describe('characters bible CRUD + soft-remove', () => {
       characterId: 'voice_husk_promote_empty',
       name: 'Maya',
     });
-    const husk = await methods.createPendingVoiceClaim(created.id, actorId);
+    const { version: husk } = await methods.createPendingVoiceClaim(
+      created.id,
+      actorId
+    );
     expect(
       await methods.promoteVoiceClaimIfPending(created.id, husk.id)
     ).toBeNull();
@@ -467,7 +527,10 @@ describe('characters bible CRUD + soft-remove', () => {
       'generated',
       actorId
     );
-    const husk = await methods.createPendingVoiceClaim(created.id, actorId);
+    const { version: husk } = await methods.createPendingVoiceClaim(
+      created.id,
+      actorId
+    );
     await methods.updateVoice(
       created.id,
       { voiceId: 'voice-lib' },
@@ -489,7 +552,10 @@ describe('characters bible CRUD + soft-remove', () => {
       characterId: 'voice_husk_select',
       name: 'Maya',
     });
-    const husk = await methods.createPendingVoiceClaim(created.id, actorId);
+    const { version: husk } = await methods.createPendingVoiceClaim(
+      created.id,
+      actorId
+    );
     await expect(
       methods.selectVoiceVersion(created.id, husk.id)
     ).rejects.toThrow(/not finished/i);
@@ -502,7 +568,10 @@ describe('characters bible CRUD + soft-remove', () => {
       characterId: 'voice_husk_empty_select',
       name: 'Maya',
     });
-    const husk = await methods.createPendingVoiceClaim(created.id, actorId);
+    const { version: husk } = await methods.createPendingVoiceClaim(
+      created.id,
+      actorId
+    );
     await methods.completeVoiceClaimIfLive(husk.id, { voiceId: null });
     await expect(
       methods.selectVoiceVersion(created.id, husk.id)

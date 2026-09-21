@@ -40,10 +40,16 @@ before trigger / spawn; a second Generate while live no-ops. The current
 saved voice stays until the husk promotes (do not release first). The child
 stamps `workflowRunId` from `event.instanceId` on its first step so reconcile
 can verify the child (bible insert has no run id). Persist completes that
-row in place and selects it only if the pointer still names it; picking a
-library voice or an older history row mid-run fails the husk (demote) and
+row in place and selects it only if the pointer still names it. Picking a
+library voice or an older history row mid-run clears
+`pendingPromoteVoiceVersionId` (demote); persist then fails the husk and
 releases the unused ElevenLabs id. `onFailure` and the reconcile sweep mark
 the husk failed (5 min verified with a run id; 30 min blind-fail if none).
+Verified means the husk is older than 5 min and `resolveRunState` is not
+`null`/`unknown` — an in-flight stamped run is skipped. Blind 30 min is for
+unstamped husks (insert-then-crash, or bible spawn before
+`stamp-voice-claim-run`). A stamped bible child running up to the 30 min
+spawn timeout is protected by the in-flight skip, not the blind timer.
 The card shows a Pending take while a generating husk exists; history lists
 completed rows that have a `voiceId`.
 `CharacterBibleWorkflow` spawns a `CharacterVoiceWorkflow` child per

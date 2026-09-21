@@ -49,7 +49,15 @@ function makeStep(): WorkflowStep {
 const characterCreate = vi.fn(
   async (row: { id: string; characterId: string }) => row
 );
-const createPendingVoiceClaim = vi.fn(async () => ({ id: 'husk-1' }));
+const createPendingVoiceClaim = vi.fn(
+  async (): Promise<{
+    version: { id: string; workflowRunId: string | null };
+    created: boolean;
+  }> => ({
+    version: { id: 'husk-1', workflowRunId: null },
+    created: true,
+  })
+);
 const markVoiceClaimTerminal = vi.fn(async () => ({ id: 'husk-1' }));
 
 function makeScopedDb(): WorkflowScopedDb {
@@ -225,6 +233,70 @@ describe('CharacterBibleWorkflow voice-only characters', () => {
     );
     expect(markVoiceClaimTerminal).toHaveBeenCalledWith(
       'husk-1',
+      'failed',
+      'workflow binding missing'
+    );
+  });
+
+  it('skips spawn when a live husk already has a run id (#1715)', async () => {
+    createPendingVoiceClaim.mockResolvedValueOnce({
+      version: { id: 'husk-live', workflowRunId: 'run-live' },
+      created: false,
+    });
+    mockSpawnAndAwaitChild.mockImplementation(
+      async (_step: unknown, opts: { childId: string }) =>
+        opts.childId.startsWith('character-voice:')
+          ? { voiceId: 'voice-1', voiceDescription: 'Warm alto' }
+          : {
+              sheetImageUrl: '/r2/characters/sam.png',
+              sheetVersionId: 'ver-sam',
+            }
+    );
+    await makeWorkflow().runBody(
+      makeEvent([sam], { generateVoices: true, speakingCharacterIds: ['sam'] }),
+      makeStep(),
+      makeScopedDb()
+    );
+    expect(mockSpawnAndAwaitChild).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        childId: expect.stringMatching(/^character-voice:/),
+      })
+    );
+    expect(markVoiceClaimTerminal).not.toHaveBeenCalled();
+  });
+
+  it('adopts a zombie husk and fails it if spawn never starts (#1715)', async () => {
+    createPendingVoiceClaim.mockResolvedValueOnce({
+      version: { id: 'husk-zombie', workflowRunId: null },
+      created: false,
+    });
+    mockSpawnAndAwaitChild.mockImplementation(
+      async (_step: unknown, opts: { childId: string }) => {
+        if (opts.childId.startsWith('character-voice:')) {
+          throw new Error('workflow binding missing');
+        }
+        return {
+          sheetImageUrl: '/r2/characters/sam.png',
+          sheetVersionId: 'ver-sam',
+        };
+      }
+    );
+    await makeWorkflow().runBody(
+      makeEvent([sam], { generateVoices: true, speakingCharacterIds: ['sam'] }),
+      makeStep(),
+      makeScopedDb()
+    );
+    expect(mockSpawnAndAwaitChild).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        childPayload: expect.objectContaining({
+          targetVersionId: 'husk-zombie',
+        }),
+      })
+    );
+    expect(markVoiceClaimTerminal).toHaveBeenCalledWith(
+      'husk-zombie',
       'failed',
       'workflow binding missing'
     );

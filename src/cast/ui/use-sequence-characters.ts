@@ -214,6 +214,19 @@ export function useCharacterVoiceVersions(
     queryKey: sequenceCharacterKeys.voiceVersions(sequenceId, characterId),
     queryFn: () =>
       listCharacterVoiceVersionsFn({ data: { sequenceId, characterId } }),
+    // Realtime can miss the terminal event; poll while a husk is live so
+    // the Pending take does not stick after persist (#1715).
+    refetchInterval: (query) => {
+      const rows = query.state.data;
+      if (
+        !rows?.some(
+          (row) => row.status === 'generating' || row.status === 'pending'
+        )
+      ) {
+        return false;
+      }
+      return 2000;
+    },
   });
 }
 

@@ -200,6 +200,18 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       const shouldPromote =
         live?.pendingPromoteVoiceVersionId === targetVersionId;
       if (!shouldPromote) {
+        // Persist replay after promote: pointer is already cleared and this
+        // husk is the selected voice. Do not treat that as a demote.
+        const existing =
+          await scopedDb.claims.characters.getVoiceVersionById(targetVersionId);
+        if (
+          existing?.status === 'completed' &&
+          existing.voiceId === voiceId &&
+          (live?.selectedVoiceVersionId === targetVersionId ||
+            live?.voiceId === voiceId)
+        ) {
+          return { voiceId, emit: 'completed' as const };
+        }
         await scopedDb.characters.markVoiceClaimTerminal(
           targetVersionId,
           'failed',
@@ -217,8 +229,14 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         }
       );
       if (!completed) {
-        await releaseVoiceIfUnreferenced(releaseDb, voiceId);
-        return { voiceId: null, emit: 'failed' as const };
+        // step.do replay after D1 committed: the husk is already completed.
+        // Releasing here would delete the slot this run just saved.
+        const existing =
+          await scopedDb.claims.characters.getVoiceVersionById(targetVersionId);
+        if (existing?.status !== 'completed' || existing.voiceId !== voiceId) {
+          await releaseVoiceIfUnreferenced(releaseDb, voiceId);
+          return { voiceId: null, emit: 'failed' as const };
+        }
       }
       const promoted = await scopedDb.characters.promoteVoiceClaimIfPending(
         characterDbId,

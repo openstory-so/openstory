@@ -470,6 +470,15 @@ export function createCharactersMethods(db: Database) {
           desc(characterVoiceVersions.id)
         ),
 
+    /** The husk this run holds, including after it completed in place (#1715). */
+    getVoiceVersionById: async (id: string) => {
+      const [row] = await db
+        .select()
+        .from(characterVoiceVersions)
+        .where(eq(characterVoiceVersions.id, id));
+      return row ?? null;
+    },
+
     selectVoiceVersion: async (
       characterId: string,
       versionId: string
@@ -577,9 +586,9 @@ export function createCharactersMethods(db: Database) {
     },
 
     /**
-     * Pre-create the generating husk for an enqueued Voice Design (#1715).
-     * Completes in place. A second live claim is rejected (one in-flight
-     * Voice Design per character); enqueue no-ops instead of overwriting.
+     * Insert a generating Voice Design husk (#1715). Does not complete it —
+     * that is `completeVoiceClaimIfLive`. A unique live claim returns the
+     * existing row with `created: false` so enqueue/bible can no-op or adopt.
      */
     createPendingVoiceClaim: async (
       characterId: string,
@@ -623,9 +632,21 @@ export function createCharactersMethods(db: Database) {
             `Failed to insert pending voice claim for character ${characterId}`
           );
         }
-        return version;
+        return { version, created: true as const };
       } catch (error) {
         if (isUniqueConstraintError(error)) {
+          const [live] = await db
+            .select()
+            .from(characterVoiceVersions)
+            .where(
+              and(
+                eq(characterVoiceVersions.characterId, characterId),
+                inArray(characterVoiceVersions.status, [
+                  ...LIVE_VOICE_CLAIM_STATUSES,
+                ])
+              )
+            );
+          if (live) return { version: live, created: false as const };
           throw new Error(VOICE_DESIGN_IN_FLIGHT_MESSAGE);
         }
         throw error;

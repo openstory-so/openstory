@@ -36,6 +36,12 @@ vi.doMock('@/platform/server/compliance/provenance', () => ({
 vi.doMock('@/platform/realtime', () => ({
   getGenerationChannel: () => ({ emit: mockEmit }),
 }));
+const mockReleaseIfUnreferenced = vi.fn(async () => undefined);
+const mockReleaseReplaced = vi.fn(async () => undefined);
+vi.doMock('@/cast/server/voice/release-voice', () => ({
+  releaseVoiceIfUnreferenced: mockReleaseIfUnreferenced,
+  releaseReplacedVoice: mockReleaseReplaced,
+}));
 
 const { CharacterVoiceWorkflow } = await import('./character-voice-workflow');
 
@@ -76,8 +82,10 @@ function makeStep(): WorkflowStep {
 function makeScopedDb(opts?: {
   pendingPromoteVoiceVersionId?: string | null;
   voiceId?: string | null;
+  selectedVoiceVersionId?: string | null;
   promote?: unknown;
   complete?: unknown;
+  husk?: { status: string; voiceId: string | null } | null;
 }) {
   const completeVoiceClaimIfLive = vi.fn(async () =>
     opts?.complete === null ? null : { id: 'ver-1' }
@@ -92,12 +100,16 @@ function makeScopedDb(opts?: {
   const getById = vi.fn(async () => ({
     id: 'char-1',
     voiceId: opts?.voiceId ?? null,
+    selectedVoiceVersionId: opts?.selectedVoiceVersionId ?? null,
     pendingPromoteVoiceVersionId:
       opts?.pendingPromoteVoiceVersionId === undefined
         ? 'ver-1'
         : opts.pendingPromoteVoiceVersionId,
   }));
-  const getVoiceReferenceCount = vi.fn(async () => 1);
+  const getVoiceReferenceCount = vi.fn(async () => 0);
+  const getVoiceVersionById = vi.fn(async () =>
+    opts && 'husk' in opts ? opts.husk : null
+  );
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the scoped-db surface runImpl touches
   const scopedDb = {
     characters: {
@@ -111,6 +123,9 @@ function makeScopedDb(opts?: {
     liveRead: {
       characters: { getById, getVoiceReferenceCount },
     },
+    claims: {
+      characters: { getVoiceVersionById },
+    },
     provenance: {},
     credentials: { resolveKey: vi.fn(async () => ({ key: 'el-key' })) },
   } as unknown as WorkflowScopedDb;
@@ -121,6 +136,7 @@ function makeScopedDb(opts?: {
     markVoiceClaimTerminal,
     stampVoiceClaimWorkflowRunId,
     updateVoice,
+    getVoiceVersionById,
   };
 }
 
@@ -220,6 +236,8 @@ describe('CharacterVoiceWorkflow', () => {
       })
     );
     expect(promoteVoiceClaimIfPending).toHaveBeenCalledWith('char-1', 'ver-1');
+    expect(mockReleaseReplaced).toHaveBeenCalled();
+    expect(mockReleaseIfUnreferenced).not.toHaveBeenCalled();
     expect(result.voiceId).toBe('voice-1');
     expect(mockEmit).toHaveBeenLastCalledWith(
       'generation.character-voice:progress',
@@ -246,6 +264,11 @@ describe('CharacterVoiceWorkflow', () => {
     );
     expect(completeVoiceClaimIfLive).not.toHaveBeenCalled();
     expect(promoteVoiceClaimIfPending).not.toHaveBeenCalled();
+    expect(mockReleaseIfUnreferenced).toHaveBeenCalledWith(
+      expect.anything(),
+      'voice-1'
+    );
+    expect(mockReleaseReplaced).not.toHaveBeenCalled();
     expect(result.voiceId).toBeNull();
     expect(mockEmit).toHaveBeenLastCalledWith(
       'generation.character-voice:progress',
@@ -253,9 +276,10 @@ describe('CharacterVoiceWorkflow', () => {
     );
   });
 
-  it('emits failed when completeIfLive returns null (#1715)', async () => {
+  it('emits failed when completeVoiceClaimIfLive returns null (#1715)', async () => {
     const { scopedDb, promoteVoiceClaimIfPending } = makeScopedDb({
       complete: null,
+      husk: null,
     });
     const result = await makeWorkflow().runBody(
       makeEvent('Warm alto, unhurried.'),
@@ -263,6 +287,10 @@ describe('CharacterVoiceWorkflow', () => {
       scopedDb
     );
     expect(promoteVoiceClaimIfPending).not.toHaveBeenCalled();
+    expect(mockReleaseIfUnreferenced).toHaveBeenCalledWith(
+      expect.anything(),
+      'voice-1'
+    );
     expect(result.voiceId).toBeNull();
     expect(mockEmit).toHaveBeenLastCalledWith(
       'generation.character-voice:progress',
@@ -270,6 +298,53 @@ describe('CharacterVoiceWorkflow', () => {
         status: 'failed',
         error: 'Voice claim is no longer live',
       })
+    );
+  });
+
+  it('returns the saved voice when persist replays after promote (#1715)', async () => {
+    const {
+      scopedDb,
+      completeVoiceClaimIfLive,
+      promoteVoiceClaimIfPending,
+      markVoiceClaimTerminal,
+    } = makeScopedDb({
+      pendingPromoteVoiceVersionId: null,
+      voiceId: 'voice-1',
+      selectedVoiceVersionId: 'ver-1',
+      husk: { status: 'completed', voiceId: 'voice-1' },
+    });
+    const result = await makeWorkflow().runBody(
+      makeEvent('Warm alto, unhurried.'),
+      makeStep(),
+      scopedDb
+    );
+    expect(markVoiceClaimTerminal).not.toHaveBeenCalled();
+    expect(completeVoiceClaimIfLive).not.toHaveBeenCalled();
+    expect(promoteVoiceClaimIfPending).not.toHaveBeenCalled();
+    expect(mockReleaseIfUnreferenced).not.toHaveBeenCalled();
+    expect(result.voiceId).toBe('voice-1');
+    expect(mockEmit).toHaveBeenLastCalledWith(
+      'generation.character-voice:progress',
+      expect.objectContaining({ status: 'completed' })
+    );
+  });
+
+  it('does not release the saved slot when persist replays after complete (#1715)', async () => {
+    const { scopedDb, promoteVoiceClaimIfPending } = makeScopedDb({
+      complete: null,
+      husk: { status: 'completed', voiceId: 'voice-1' },
+    });
+    const result = await makeWorkflow().runBody(
+      makeEvent('Warm alto, unhurried.'),
+      makeStep(),
+      scopedDb
+    );
+    expect(promoteVoiceClaimIfPending).toHaveBeenCalledWith('char-1', 'ver-1');
+    expect(mockReleaseIfUnreferenced).not.toHaveBeenCalled();
+    expect(result.voiceId).toBe('voice-1');
+    expect(mockEmit).toHaveBeenLastCalledWith(
+      'generation.character-voice:progress',
+      expect.objectContaining({ status: 'completed' })
     );
   });
 
@@ -283,11 +358,31 @@ describe('CharacterVoiceWorkflow', () => {
       scopedDb
     );
     expect(promoteVoiceClaimIfPending).toHaveBeenCalled();
+    expect(mockReleaseIfUnreferenced).toHaveBeenCalledWith(
+      expect.anything(),
+      'voice-1'
+    );
+    expect(mockReleaseReplaced).not.toHaveBeenCalled();
     expect(result.voiceId).toBeNull();
     expect(mockEmit).toHaveBeenLastCalledWith(
       'generation.character-voice:progress',
       expect.objectContaining({ status: 'completed' })
     );
+  });
+
+  it('releases the previous In use voice after a successful promote (#1715)', async () => {
+    const { scopedDb } = makeScopedDb({ voiceId: 'voice-old' });
+    await makeWorkflow().runBody(
+      makeEvent('Warm alto, unhurried.'),
+      makeStep(),
+      scopedDb
+    );
+    expect(mockReleaseReplaced).toHaveBeenCalledWith(
+      expect.anything(),
+      'voice-old',
+      'voice-1'
+    );
+    expect(mockReleaseIfUnreferenced).not.toHaveBeenCalled();
   });
 
   it('writes via updateVoice when the payload has no husk id', async () => {

@@ -345,6 +345,11 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       why: 'pendingPromoteVoiceVersionId at persist: the user may have picked another voice mid-run, so promote must read the live pointer (#1715).',
     },
     {
+      read: 'characters.getVoiceVersionById',
+      bucket: 'CLAIM-BY-ID',
+      why: 'The husk this run holds (`targetVersionId`). A persist-step replay after completeIfLive committed must read that completed row instead of releasing the saved slot (#1715).',
+    },
+    {
       read: 'characters.getVoiceReferenceCount',
       bucket: 'POOL-CAPACITY',
       why: 'ElevenLabs slot occupancy when releasing a replaced or demoted designed voice; a frozen count would free a slot still held.',

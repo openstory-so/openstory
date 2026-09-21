@@ -13,6 +13,8 @@ import {
   getAnalysisModelById,
 } from '@/models/models.config';
 
+const VOICE_DESIGN_NEVER_STARTED = 'Voice design never started';
+
 export async function enqueueCharacterVoiceDesign(args: {
   scopedDb: ScopedDb;
   character: CharacterWithSheet;
@@ -26,35 +28,20 @@ export async function enqueueCharacterVoiceDesign(args: {
   targetVersionId: string;
 }> {
   const { scopedDb, character, userId, analysisModel, trigger } = args;
-  const live = await scopedDb.characters.listLiveVoiceClaims(character.id);
-  const existing = live[0];
-  if (existing) {
+  const claim = await takeLiveVoiceClaimOrInsert(
+    scopedDb,
+    character.id,
+    userId
+  );
+  if (claim.alreadyInFlight) {
     return {
       characterId: character.id,
-      workflowRunId: existing.workflowRunId,
+      workflowRunId: claim.version.workflowRunId,
       alreadyInFlight: true,
-      targetVersionId: existing.id,
+      targetVersionId: claim.version.id,
     };
   }
-
-  let husk: { id: string };
-  try {
-    husk = await scopedDb.characters.createPendingVoiceClaim(
-      character.id,
-      userId
-    );
-  } catch (error) {
-    const raced = (
-      await scopedDb.characters.listLiveVoiceClaims(character.id)
-    )[0];
-    if (!raced) throw error;
-    return {
-      characterId: character.id,
-      workflowRunId: raced.workflowRunId,
-      alreadyInFlight: true,
-      targetVersionId: raced.id,
-    };
-  }
+  const husk = claim.version;
   const payload: CharacterVoiceWorkflowInput = {
     userId,
     teamId: scopedDb.teamId,
@@ -89,4 +76,54 @@ export async function enqueueCharacterVoiceDesign(args: {
     alreadyInFlight: false,
     targetVersionId: husk.id,
   };
+}
+
+/**
+ * A live husk with a run id is in flight. A live husk with none is a zombie
+ * (insert-then-crash); fail it so Generate can insert a new claim.
+ */
+async function takeLiveVoiceClaimOrInsert(
+  scopedDb: ScopedDb,
+  characterId: string,
+  userId: string
+): Promise<{
+  alreadyInFlight: boolean;
+  version: { id: string; workflowRunId: string | null };
+}> {
+  const existing = (
+    await scopedDb.characters.listLiveVoiceClaims(characterId)
+  )[0];
+  if (existing?.workflowRunId) {
+    return { alreadyInFlight: true, version: existing };
+  }
+  if (existing) {
+    await scopedDb.characters.markVoiceClaimTerminal(
+      existing.id,
+      'failed',
+      VOICE_DESIGN_NEVER_STARTED
+    );
+  }
+  let inserted = await scopedDb.characters.createPendingVoiceClaim(
+    characterId,
+    userId
+  );
+  if (inserted.created) {
+    return { alreadyInFlight: false, version: inserted.version };
+  }
+  if (inserted.version.workflowRunId) {
+    return { alreadyInFlight: true, version: inserted.version };
+  }
+  await scopedDb.characters.markVoiceClaimTerminal(
+    inserted.version.id,
+    'failed',
+    VOICE_DESIGN_NEVER_STARTED
+  );
+  inserted = await scopedDb.characters.createPendingVoiceClaim(
+    characterId,
+    userId
+  );
+  if (inserted.created) {
+    return { alreadyInFlight: false, version: inserted.version };
+  }
+  return { alreadyInFlight: true, version: inserted.version };
 }

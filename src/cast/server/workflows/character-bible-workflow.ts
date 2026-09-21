@@ -212,7 +212,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         if (!character || sequenceId === undefined) return;
         let huskId: string | undefined;
         try {
-          const husk = await step.do(
+          const claim = await step.do(
             `mark-voice-generating-${row.characterId}`,
             async () =>
               await scopedDb.characters.createPendingVoiceClaim(
@@ -220,7 +220,10 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
                 input.userId
               )
           );
-          huskId = husk.id;
+          huskId = claim.version.id;
+          if (!claim.created && claim.version.workflowRunId) {
+            return;
+          }
           const childPayload: CharacterVoiceWorkflowInput = {
             userId: input.userId,
             teamId: input.teamId,
@@ -230,7 +233,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
             characterBible: character,
             voiceDescription: row.voiceDescription ?? '',
             analysisModelId: input.analysisModelId,
-            targetVersionId: husk.id,
+            targetVersionId: claim.version.id,
           };
           const result = await spawnAndAwaitChild<
             CharacterVoiceWorkflowInput,

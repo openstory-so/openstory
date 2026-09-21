@@ -50,10 +50,15 @@ function makeScopedDb(overrides: {
   live?: { id: string; workflowRunId: string | null }[];
 }) {
   const listLiveVoiceClaims = vi.fn(async () => overrides.live ?? []);
-  const createPendingVoiceClaim = vi.fn(async () => ({
-    id: 'husk-1',
-    workflowRunId: null,
-  }));
+  const createPendingVoiceClaim = vi.fn(
+    async (): Promise<{
+      version: { id: string; workflowRunId: string | null };
+      created: boolean;
+    }> => ({
+      version: { id: 'husk-1', workflowRunId: null },
+      created: true,
+    })
+  );
   const markVoiceClaimTerminal = vi.fn(async () => ({}));
   const stampVoiceClaimWorkflowRunId = vi.fn(async () => ({}));
   const releaseCharacterVoice = vi.fn();
@@ -159,6 +164,33 @@ describe('enqueueCharacterVoiceDesign', () => {
     expect(stampVoiceClaimWorkflowRunId).not.toHaveBeenCalled();
   });
 
+  it('fails a zombie husk and starts a new design (#1715)', async () => {
+    const { scopedDb, createPendingVoiceClaim, markVoiceClaimTerminal } =
+      makeScopedDb({
+        live: [{ id: 'husk-zombie', workflowRunId: null }],
+      });
+    const trigger = vi.fn(async () => 'run-2');
+    const result = await enqueueCharacterVoiceDesign({
+      scopedDb,
+      character: character(),
+      userId: 'user-1',
+      analysisModel: null,
+      trigger,
+    });
+    expect(markVoiceClaimTerminal).toHaveBeenCalledWith(
+      'husk-zombie',
+      'failed',
+      'Voice design never started'
+    );
+    expect(createPendingVoiceClaim).toHaveBeenCalledWith('char-1', 'user-1');
+    expect(trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ targetVersionId: 'husk-1' })
+    );
+    expect(result.alreadyInFlight).toBe(false);
+    expect(result.targetVersionId).toBe('husk-1');
+    expect(result.workflowRunId).toBe('run-2');
+  });
+
   it('maps a unique-constraint race to alreadyInFlight (#1715)', async () => {
     const {
       scopedDb,
@@ -166,12 +198,11 @@ describe('enqueueCharacterVoiceDesign', () => {
       createPendingVoiceClaim,
       stampVoiceClaimWorkflowRunId,
     } = makeScopedDb({});
-    listLiveVoiceClaims
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ id: 'husk-live', workflowRunId: 'run-live' }]);
-    createPendingVoiceClaim.mockRejectedValue(
-      new Error('Voice design already in flight')
-    );
+    listLiveVoiceClaims.mockResolvedValueOnce([]);
+    createPendingVoiceClaim.mockResolvedValue({
+      version: { id: 'husk-live', workflowRunId: 'run-live' },
+      created: false,
+    });
     const trigger = vi.fn(async () => 'run-2');
     const result = await enqueueCharacterVoiceDesign({
       scopedDb,
@@ -185,5 +216,38 @@ describe('enqueueCharacterVoiceDesign', () => {
     expect(result.alreadyInFlight).toBe(true);
     expect(result.targetVersionId).toBe('husk-live');
     expect(result.workflowRunId).toBe('run-live');
+  });
+
+  it('fails a unique-race zombie and inserts a new husk (#1715)', async () => {
+    const { scopedDb, createPendingVoiceClaim, markVoiceClaimTerminal } =
+      makeScopedDb({});
+    createPendingVoiceClaim
+      .mockResolvedValueOnce({
+        version: { id: 'husk-zombie', workflowRunId: null },
+        created: false,
+      })
+      .mockResolvedValueOnce({
+        version: { id: 'husk-2', workflowRunId: null },
+        created: true,
+      });
+    const trigger = vi.fn(async () => 'run-2');
+    const result = await enqueueCharacterVoiceDesign({
+      scopedDb,
+      character: character(),
+      userId: 'user-1',
+      analysisModel: null,
+      trigger,
+    });
+    expect(markVoiceClaimTerminal).toHaveBeenCalledWith(
+      'husk-zombie',
+      'failed',
+      'Voice design never started'
+    );
+    expect(createPendingVoiceClaim).toHaveBeenCalledTimes(2);
+    expect(trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ targetVersionId: 'husk-2' })
+    );
+    expect(result.alreadyInFlight).toBe(false);
+    expect(result.targetVersionId).toBe('husk-2');
   });
 });

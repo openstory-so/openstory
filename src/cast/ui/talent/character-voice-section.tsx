@@ -34,7 +34,7 @@ import { Switch } from '@/ui/shadcn/switch';
 import { cn } from '@/ui/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import { Library, Loader2, Mic } from 'lucide-react';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 /**
@@ -52,7 +52,6 @@ export const CharacterVoiceSection: React.FC<{
   const setEnabled = useSetCharacterVoiceEnabled();
   const chooseTake = useChooseCharacterVoiceTake();
   const assignVoice = useAssignCharacterVoice();
-  const [isDesigning, setIsDesigning] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const enabled = usesVoice(character, { generateVoices });
   const { data: savedVoice } = useSavedVoiceMeta(
@@ -67,6 +66,22 @@ export const CharacterVoiceSection: React.FC<{
   const pendingHusk = versions?.find(
     (version) => version.status === 'generating' || version.status === 'pending'
   );
+  const hadLiveHusk = useRef(false);
+
+  useEffect(() => {
+    if (pendingHusk) {
+      hadLiveHusk.current = true;
+      return;
+    }
+    if (!hadLiveHusk.current) return;
+    hadLiveHusk.current = false;
+    void queryClient.invalidateQueries({
+      queryKey: sequenceCharacterKeys.list(sequenceId),
+    });
+    void queryClient.invalidateQueries({
+      queryKey: elevenLabsVoiceKeys.saved(character.id),
+    });
+  }, [pendingHusk, character.id, queryClient, sequenceId]);
 
   useRealtime({
     channels: [sequenceId],
@@ -84,7 +99,6 @@ export const CharacterVoiceSection: React.FC<{
         ) {
           return;
         }
-        setIsDesigning(data.status === 'generating');
         void queryClient.invalidateQueries({
           queryKey: sequenceCharacterKeys.voiceVersions(
             sequenceId,
@@ -112,7 +126,7 @@ export const CharacterVoiceSection: React.FC<{
     ),
   });
 
-  const designing = Boolean(pendingHusk) || isDesigning || generate.isPending;
+  const designing = Boolean(pendingHusk) || generate.isPending;
   const busy = designing || assignVoice.isPending;
   const takes = designedTakesForDisplay(
     character.voicePreviews ?? [],
@@ -192,7 +206,7 @@ export const CharacterVoiceSection: React.FC<{
         <>
           {character.voiceId || takes.length > 0 || designing ? (
             <div className="flex flex-col gap-3">
-              {designing && (
+              {pendingHusk && (
                 <section className="flex flex-col gap-2" aria-label="Pending">
                   <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                     Pending
@@ -280,7 +294,6 @@ export const CharacterVoiceSection: React.FC<{
                   generate.mutate(
                     { sequenceId, characterId: character.id },
                     {
-                      onSuccess: () => setIsDesigning(true),
                       onError: (error) =>
                         toast.error('Failed to design voice', {
                           description: errorMessage(error),

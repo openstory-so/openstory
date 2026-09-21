@@ -213,18 +213,13 @@ async function reconcileFrameVariantsPass(db: Database): Promise<number> {
 }
 
 /**
- * Reconcile stuck `video_variants` versions (#990 / #1076) — the motion analog
- * of {@link reconcileFrameVariantsPass}. Dead motion runs that never hit
- * `onFailure` left permanent "generating" chips on the Video tab; heal them
- * from the workflow instance status and drop a failed version's auto-promote
- * claim on its render segment.
- */
-/**
  * Sweep zombie Voice Design husks (#1715). A dead run must not leave a
- * permanent Pending take on the character card. Verified (has run id) at
- * 5 min; insert-then-crash orphans with no run id blind-fail at 30 min —
- * bible husks are stamped with the child instance id on the first voice
- * step, so a live 30-minute bible child is not failed at 5 min.
+ * permanent Pending take on the character card. Fail a still-live husk
+ * whose instance is `completed` or `failed` (never copy instance status onto
+ * the husk — that would mint an empty completed take). Verified (has run id)
+ * at 5 min when `resolveRunState` is terminal; insert-then-crash orphans with
+ * no run id blind-fail at 30 min. A stamped in-flight child is skipped at
+ * 5 min, including a bible child that can run up to the 30 min spawn timeout.
  */
 async function reconcileCharacterVoiceClaimsPass(
   db: Database
@@ -294,6 +289,13 @@ async function reconcileCharacterVoiceClaimsPass(
   return updated + orphaned.length;
 }
 
+/**
+ * Reconcile stuck `video_variants` versions (#990 / #1076) — the motion analog
+ * of {@link reconcileFrameVariantsPass}. Dead motion runs that never hit
+ * `onFailure` left permanent "generating" chips on the Video tab; heal them
+ * from the workflow instance status and drop a failed version's auto-promote
+ * claim on its render segment.
+ */
 async function reconcileVideoVariantsPass(db: Database): Promise<number> {
   const staleCutoff = new Date(Date.now() - STALE_THRESHOLD_MS);
   const stuck = await db

@@ -108,6 +108,11 @@ type WorkflowClaims = {
   frameVariants: Pick<ScopedDb['frameVariants'], 'getById'>;
   /** This run's own clip render, and its pending-promote claim. */
   videoVariants: Pick<ScopedDb['videoVariants'], 'getById'>;
+  /**
+   * This run's Voice Design husk (`targetVersionId`), including after it
+   * completed in place — persist retries must not treat that as a lost claim.
+   */
+  characters: Pick<ScopedDb['characters'], 'getVoiceVersionById'>;
 };
 
 /**
