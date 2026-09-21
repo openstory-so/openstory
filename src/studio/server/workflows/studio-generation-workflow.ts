@@ -61,6 +61,7 @@ import { NonRetryableError } from 'cloudflare:workflows';
 const logger = getLogger(['openstory', 'workflow', 'studio']);
 
 const POLL_BATCH_DURATION_MS = 30_000;
+const POLL_INTERVAL_MS = 3_000;
 const MAX_BATCHES = 60;
 const MAX_MOTION_ATTEMPTS = 3;
 
@@ -358,6 +359,10 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
                   pollResult.error || 'Unknown error'
                 );
               }
+
+              await new Promise((resolve) =>
+                setTimeout(resolve, POLL_INTERVAL_MS)
+              );
             }
             return { kind: 'pending' };
           }
