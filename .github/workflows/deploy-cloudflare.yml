@@ -267,6 +267,9 @@ jobs:
           SECRET_XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
           SECRET_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SECRET_ARK_API_KEY: ${{ secrets.ARK_API_KEY }}
+          # Platform key for character voices + dialogue audio; absent → the
+          # Voices option is hidden (isElevenLabsConfigured).
+          SECRET_ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
           # IAM AK/SK for the virtual portrait library; without them Seedance
           # 2.5 rejects photorealistic stills and falls through to fal.
           SECRET_BYTEPLUS_ACCESS_KEY: ${{ secrets.BYTEPLUS_ACCESS_KEY }}
