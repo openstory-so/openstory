@@ -98,7 +98,8 @@ export const ScopeBreadcrumb: React.FC<{
       <BreadcrumbList className="flex-nowrap gap-1 text-xs font-semibold sm:gap-1">
         {trail.slice(0, -1).map((crumb, i) => (
           <Fragment key={crumbKey(crumb)}>
-            {/* Only the scene title can be long — it is the crumb that truncates. */}
+            {/* The scene title is the long one, so it alone gives way — before
+                the active crumb does. */}
             <BreadcrumbItem className={i === 0 ? 'shrink-0' : 'min-w-0'}>
               <BreadcrumbLink asChild>
                 {crumbLink(
@@ -110,7 +111,8 @@ export const ScopeBreadcrumb: React.FC<{
             <BreadcrumbSeparator />
           </Fragment>
         ))}
-        <BreadcrumbItem className="min-w-0">
+        {/* "Shot N" never truncates; an active scene title still has to. */}
+        <BreadcrumbItem className={shot ? 'shrink-0' : 'min-w-0'}>
           {!showMenu ? (
             <span aria-current="page" className="truncate text-foreground">
               {current?.label}
