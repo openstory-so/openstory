@@ -63,18 +63,14 @@ flowchart TD
     subgraph "Phase 5 — Motion + Music Generation (conditional) · ~1-5min"
         MotionBatch["<b>Motion Batch</b> · Fal.ai ×N parallel<br/>IN: imageUrls[], motionPrompts[],<br/>videoModel, aspectRatio, durations<br/>OUT: videoUrl per frame"]
         MusicGen["<b>Music Generation</b> · Fal.ai<br/>IN: prompt, tags, totalDuration, musicModel<br/>OUT: musicUrl on sequence"]
-        MergeVideo["<b>Merge Video</b><br/>IN: videoUrls[]<br/>OUT: mergedVideoUrl"]
-        MergeAudioVideo["<b>Merge Audio+Video</b><br/>IN: mergedVideoUrl, musicUrl<br/>OUT: finalVideoUrl"]
-        MotionBatch --> MergeVideo
-        MusicGen --> MergeAudioVideo
-        MergeVideo --> MergeAudioVideo
     end
 
     ImageGen -->|"imageUrls"| MotionBatch
     MotionMusicPrompts -->|"motionPrompts + musicPrompt"| MotionBatch
     MotionMusicPrompts -->|"musicPrompt + tags"| MusicGen
 
-    MergeAudioVideo --> Done
+    MotionBatch --> Done
+    MusicGen --> Done
     MotionMusicPrompts -->|"if no motion/music"| Done
     Done["<b>Complete</b> · <1s<br/>OUT: generation.complete + completeScenes[]"]
 
@@ -243,11 +239,11 @@ flowchart LR
 - Uses library location reference images when matched
 - Uploads to R2 storage, updates DB
 
-**Visual Prompt Workflow** (`src/lib/workflows/visual-prompt-workflow.ts`):
+**Frame Prompt Batch Workflow** (`src/stills/server/workflows/frame-prompt-batch-workflow.ts`):
 
-- Delegates to `visualPromptSceneWorkflow` per **1-shot** scene (parallel via `spawnAndAwaitChild`)
+- Delegates to `FramePromptWorkflow` (`src/stills/server/workflows/frame-prompt-workflow.ts`) per **1-shot** scene (parallel via `spawnAndAwaitChild`)
 - Each such scene gets an LLM call that generates `fullPrompt` and `negativePrompt`. Scene `continuity` is authored in Phase 1 and is not re-emitted here.
-- **A 2+ shot scene is skipped here (#1517):** every one of its clips — the head included — gets its start-frame prompt assembled by `deriveShots` (scene context + the shot's framing / start state), which analyze-script writes to `frame_prompt_versions` in the `persist-derived-visual-prompts` step at the top of Phase 4 (`derivedShotForItem` in `shot-work-items.ts` is the one predicate; it is null on the 1-shot path). The head's assembled prompt also stands in as that scene's visual grounding for the music prompt.
+- **A 2+ shot scene is skipped here (#1517):** every one of its clips — the head included — gets its start-frame prompt assembled by `deriveShots` (scene context + the shot's framing / start state), which analyze-script writes to `frame_prompt_versions` in the `persist-derived-visual-prompts` step at the top of Phase 4 (`derivedShotForItem` in `shot-work-items.ts` is the one predicate; it is null on the 1-shot path). The head's assembled prompt also stands in as that scene's visual grounding for the music prompt. Its input hash is stamped over the **cast** character bible (`buildCastCharacterBible`), the same one the prompt children are handed — staleness verify reads the cast row out of D1, so stamping the raw pre-cast bible made every clip of every multi-shot scene read stale from birth (#1732).
 - Merges results back into scene objects
 
 ### Phase 4: Frame Images, then Motion/Music Prompts (Sequential)
@@ -261,7 +257,7 @@ flowchart LR
     MMP --> Join["Phase complete"]
 ```
 
-**Frame Images Workflow** (`src/lib/workflows/frame-images-workflow.ts`):
+**Shot Images Workflow** (`src/stills/server/workflows/shot-images-workflow.ts`):
 
 1. Builds per-scene character and location reference maps
 2. For each scene, generates images with each selected model in parallel (one `spawnAndAwaitChild` per scene × model, gathered with `Promise.allSettled`):
@@ -320,8 +316,8 @@ Only runs if `autoGenerateMotion` is enabled, a video model is set, and images w
 
 1. **Parallel generation** — All frame motion child workflows + the optional music workflow spawned simultaneously (`spawnAndAwaitChild` under `Promise.all`)
 2. **Collect video URLs** — Reads from DB (authoritative ordering by `orderIndex`)
-3. **Merge video** — Concatenates all frame videos into one sequence video
-4. **Merge audio+video** — If music was generated, muxes audio onto the merged video
+
+There is no merge step: the clips stay separate rows. The player stitches them client-side (`src/motion/ui/packed-playback.ts`), and a single MP4 is produced only on demand by `POST /api/v1/sequences/$id/exports` → `SequenceExportWorkflow` → the video-export Container (production-only).
 
 ```mermaid
 flowchart TD
@@ -333,9 +329,8 @@ flowchart TD
     M1 --> Collect["Collect video URLs from DB"]
     M2 --> Collect
     MN --> Collect
-    Collect --> MergeV["mergeVideoWorkflow"]
-    MergeV --> MergeAV["mergeAudioVideoWorkflow<br/>(if music generated)"]
-    Music --> MergeAV
+    Collect --> Done["Clips stay separate rows<br/>(player stitches; export muxes on demand)"]
+    Music --> Done
 ```
 
 ### Final: Return
@@ -350,7 +345,7 @@ flowchart TD
     P2["Phase 2: Casting Characters<br/>& Locations"] -->|"talent + library matches<br/>(bibles already from Phase 1)"| P3
     P3["Phase 3: References &<br/>Prompts"] -->|"+ visual fullPrompt +<br/>negativePrompt (no components)"| P4
     P4["Phase 4: Images +<br/>Motion/Music Prompts"] -->|"Frames get thumbnailUrl +<br/>variants. Scenes get<br/>prompts.motion + musicDesign"| P5
-    P5["Phase 5: Motion + Music<br/>Generation"] -->|"Sequence gets musicUrl,<br/>mergedVideoUrl, finalVideoUrl.<br/>Frames get videoUrl"| Final["Complete Scene"]
+    P5["Phase 5: Motion + Music<br/>Generation"] -->|"Sequence gets musicUrl.<br/>Frames get videoUrl"| Final["Complete Scene"]
 
     style Final fill:#1a472a,color:#fff
 ```
@@ -456,7 +451,7 @@ Per-scene fan-out (image, variant, motion) uses `Promise.allSettled` over `spawn
 | `src/sequences/tag-reconcile.ts`                               | Canonicalize scene continuity tags onto bible tags after the join   |
 | `src/sequences/server/streaming-scene-parser.ts`               | Incremental JSON parser for the boundary-annotation stream          |
 | `src/platform/server/workflow/sanitize-fail-response.ts`       | Error message extraction + Cloudflare error-code mapping            |
-| `src/lib/db/helpers/frames.ts`                                 | `upsertFrame()` / `bulkInsertFrames()` idempotent helpers           |
+| `src/shots/server/db/frames.ts`                                | Scoped-db frame methods (`createFramesMethods`)                     |
 | **Extraction + Matching**                                      |                                                                     |
 | `src/cast/server/workflows/talent-matching-workflow.ts`        | Talent matching against Phase 1 character bible                     |
 | `src/cast/server/workflows/location-matching-workflow.ts`      | Location matching against Phase 1 location bible                    |
@@ -466,27 +461,26 @@ Per-scene fan-out (image, variant, motion) uses `Promise.allSettled` over `spawn
 | `src/cast/server/workflows/location-bible-workflow.ts`         | Location sheet generation (parallel per location)                   |
 | `src/cast/server/workflows/location-sheet-workflow.ts`         | Single location reference image generation                          |
 | **Prompt Generation**                                          |                                                                     |
-| `src/lib/workflows/visual-prompt-workflow.ts`                  | Visual prompt sub-workflow (parallel per scene)                     |
-| `src/lib/workflows/visual-prompt-scene-workflow.ts`            | Per-scene visual prompt LLM call                                    |
+| `src/stills/server/workflows/frame-prompt-batch-workflow.ts`   | Visual prompt sub-workflow (parallel per 1-shot scene)              |
+| `src/stills/server/workflows/frame-prompt-workflow.ts`         | Per-scene visual prompt LLM call                                    |
 | `src/motion/server/workflows/motion-prompt-workflow.ts`        | Motion prompt sub-workflow (parallel per scene)                     |
-| `src/lib/workflows/motion-prompt-scene-workflow.ts`            | Per-scene motion prompt LLM call                                    |
+| `src/motion/server/workflows/motion-prompt-batch-workflow.ts`  | Motion prompts per shot batch; stamps the derived-shot motion hash  |
 | `src/motion/server/workflows/motion-music-prompts-workflow.ts` | Orchestrates motion + music prompts in parallel                     |
 | `src/audio/server/workflows/music-prompt-workflow.ts`          | Music design LLM call                                               |
 | **Image Generation**                                           |                                                                     |
-| `src/lib/workflows/frame-images-workflow.ts`                   | Orchestrates image + variant gen for all scenes                     |
+| `src/stills/server/workflows/shot-images-workflow.ts`          | Orchestrates image + variant gen for all scenes                     |
 | `src/stills/server/workflows/image-workflow.ts`                | Single image generation (Fal.ai)                                    |
-| `src/lib/workflows/variant-workflow.ts`                        | Shot grid variant generation                                        |
+| `src/stills/server/workflows/shot-variant-workflow.ts`         | Shot grid variant generation                                        |
 | **Motion + Music Generation**                                  |                                                                     |
-| `src/motion/server/workflows/motion-batch-workflow.ts`         | Orchestrates motion + music + merge                                 |
+| `src/motion/server/workflows/motion-batch-workflow.ts`         | Orchestrates motion + music generation                              |
 | `src/motion/server/workflows/motion-workflow.ts`               | Single motion/video generation (Fal.ai)                             |
 | `src/audio/server/workflows/music-workflow.ts`                 | Music generation (Fal.ai)                                           |
-| `src/lib/workflows/merge-video-workflow.ts`                    | Merge frame videos into sequence video                              |
-| `src/lib/workflows/merge-audio-video-workflow.ts`              | Merge music audio with video                                        |
+| `src/sequences/server/workflows/sequence-export-workflow.ts`   | Server-side export (video-export Container; production-only)        |
 | **Recasting + Regeneration**                                   |                                                                     |
 | `src/cast/server/workflows/recast-character-workflow.ts`       | Recast a character and regenerate affected frames                   |
 | `src/cast/server/workflows/recast-location-workflow.ts`        | Recast a location and regenerate affected frames                    |
-| `src/lib/workflows/regenerate-frames-workflow.ts`              | Regenerate specific frames with new prompts                         |
+| `src/shots/server/workflows/regenerate-shots-workflow.ts`      | Regenerate specific shots with new prompts                          |
 | **Schemas + Events**                                           |                                                                     |
-| `src/shared/realtime.ts`                                       | Real-time event schema and channel helpers                          |
+| `src/platform/realtime/index.ts`                               | Real-time event schema and channel helpers                          |
 | `src/shots/scene-analysis.schema.ts`                           | `Scene` type definition                                             |
 | `src/sequences/response-schemas.ts`                            | `musicDesignResultSchema` and other LLM response schemas            |
