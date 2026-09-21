@@ -214,7 +214,7 @@ export function AnimaticDialog({
           Animatic
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[95dvh] overflow-y-auto sm:max-w-3xl motion-reduce:animate-none">
+      <DialogContent className="max-h-[95dvh] overflow-y-auto sm:max-w-3xl motion-reduce:data-open:animate-none motion-reduce:data-closed:animate-none">
         <DialogTitle>Animatic</DialogTitle>
         <DialogDescription>
           Preview the story with stills and recorded dialogue.
@@ -225,6 +225,7 @@ export function AnimaticDialog({
             disabled={!sceneId}
             aria-pressed={scope === 'scene'}
             onClick={() => {
+              if (scope === 'scene') return;
               setScope('scene');
               setScopedShots(
                 playlist.filter((shot) => shot.sceneId === sceneId)
