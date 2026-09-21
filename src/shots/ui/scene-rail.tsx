@@ -120,11 +120,7 @@ export const SceneRail: React.FC<{
                           thumbnailUrl={shot.image?.url}
                           previewThumbnailUrl={shot.previewThumbnailUrl}
                           thumbnailStatus={shot.frame.imageStatus || undefined}
-                          videoUrl={
-                            shot.videoStatus === 'completed'
-                              ? shot.video?.url
-                              : null
-                          }
+                          videoUrl={shot.video?.url}
                           generationError={shot.frame.imageError}
                           alt={shotLabel}
                           aspectRatio={aspectRatio}

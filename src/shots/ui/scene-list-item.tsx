@@ -190,7 +190,11 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
                 thumbnailUrl={shot?.image?.url}
                 previewThumbnailUrl={shot?.previewThumbnailUrl}
                 thumbnailStatus={shot?.frame.imageStatus || undefined}
-                videoUrl={hasVideo ? shot.video?.url : null}
+                // The selected clip, whatever a newer render is doing: the
+                // pointer only moves when that render lands, and the theatre
+                // plays this clip until then. Gating on 'completed' dropped
+                // the frame back to the storyboard mid-regenerate.
+                videoUrl={shot?.video?.url}
                 videoStartSeconds={videoStartSeconds}
                 generationError={shot?.frame.imageError}
                 alt={linkLabel ?? 'Shot thumbnail'}
