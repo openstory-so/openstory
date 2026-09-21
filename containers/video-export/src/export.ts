@@ -213,12 +213,21 @@ export async function exportSequence(job: ExportJob): Promise<ExportOutput> {
 
   const probes: SceneProbe[] = [];
   try {
+    // All at once: a probe is a few small range reads, and nothing can be
+    // written until every scene's length is known — one after another, that
+    // wait grew with the scene count. Settled rather than `all`, so a failure
+    // still leaves every opened input in `probes` for the `finally` to dispose.
+    const settled = await Promise.allSettled(
+      ordered.map((scene, i) => probeScene(scene, i))
+    );
     let acc = 0;
-    for (let i = 0; i < ordered.length; i++) {
-      const probe = await probeScene(ordered[i]!, i);
-      probes.push({ ...probe, offsetSeconds: acc });
-      acc += probe.durationSeconds;
+    for (const result of settled) {
+      if (result.status !== 'fulfilled') continue;
+      probes.push({ ...result.value, offsetSeconds: acc });
+      acc += result.value.durationSeconds;
     }
+    const failed = settled.find((r) => r.status === 'rejected');
+    if (failed) throw failed.reason;
     const totalDurationSeconds = acc;
 
     if (totalDurationSeconds > MAX_TOTAL_DURATION_SECONDS) {
@@ -246,6 +255,11 @@ export async function exportSequence(job: ExportJob): Promise<ExportOutput> {
       : new VideoSampleSource({
           codec: 'avc',
           quality: QUALITY_HIGH,
+          // The transform letterboxes every frame into the bounding box, so
+          // the encoder only ever sees one size. 'passThrough' lifts
+          // mediabunny's check on the size going IN, which the default 'deny'
+          // trips on the first scene of another resolution.
+          sizeChangeBehavior: 'passThrough',
           transform: {
             width: target.width,
             height: target.height,

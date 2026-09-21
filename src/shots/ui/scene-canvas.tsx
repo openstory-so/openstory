@@ -284,14 +284,7 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
         sequenceId={sequence.id}
         autoPlay={autoPlay}
         onAutoPlayConsumed={onAutoPlayConsumed}
-        cachedVideoUrl={
-          scope !== 'sequence' ||
-          playbackScenes.some((scene) => !('videoUrl' in scene))
-            ? null
-            : sequenceExport.isCacheResolved
-              ? sequenceExport.freshExportUrl
-              : undefined
-        }
+        playlistUrl={scope !== 'sequence' ? null : sequenceExport.playbackUrl}
         overlayActions={
           scope === 'sequence' ? (
             <TheatreShareOverlay sequenceExport={sequenceExport} />

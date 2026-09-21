@@ -87,6 +87,7 @@ import { Route as AppSequencesIdScriptRouteImport } from './routes/_app/sequence
 import { Route as AppSequencesIdTheatreRouteImport } from './routes/_app/sequences/$id/theatre'
 import { Route as AppSequencesNewIndexRouteImport } from './routes/_app/sequences/new/index'
 import { Route as AppSequencesNewScenesRouteImport } from './routes/_app/sequences/new/scenes'
+import { Route as ApiSequencesIdTheatreDotm3u8RouteImport } from './routes/api/sequences.$id.theatre[.]m3u8'
 import { Route as ApiV1DeviceCodeRouteImport } from './routes/api/v1/device.code'
 import { Route as ApiV1DeviceTokenRouteImport } from './routes/api/v1/device.token'
 import { Route as ApiV1ScriptsEnhanceRouteImport } from './routes/api/v1/scripts.enhance'
@@ -488,6 +489,12 @@ const AppSequencesNewScenesRoute = AppSequencesNewScenesRouteImport.update({
   path: '/sequences/new/scenes',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const ApiSequencesIdTheatreDotm3u8Route =
+  ApiSequencesIdTheatreDotm3u8RouteImport.update({
+    id: '/api/sequences/$id/theatre.m3u8',
+    path: '/api/sequences/$id/theatre.m3u8',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiV1DeviceCodeRoute = ApiV1DeviceCodeRouteImport.update({
   id: '/api/v1/device/code',
   path: '/api/v1/device/code',
@@ -630,6 +637,7 @@ export interface FileRoutesByFullPath {
   '/sequences/$id/script': typeof AppSequencesIdScriptRoute
   '/sequences/$id/theatre': typeof AppSequencesIdTheatreRoute
   '/sequences/new/scenes': typeof AppSequencesNewScenesRoute
+  '/api/sequences/$id/theatre.m3u8': typeof ApiSequencesIdTheatreDotm3u8Route
   '/api/v1/device/code': typeof ApiV1DeviceCodeRoute
   '/api/v1/device/token': typeof ApiV1DeviceTokenRoute
   '/api/v1/scripts/enhance': typeof ApiV1ScriptsEnhanceRoute
@@ -718,6 +726,7 @@ export interface FileRoutesByTo {
   '/sequences/$id/script': typeof AppSequencesIdScriptRoute
   '/sequences/$id/theatre': typeof AppSequencesIdTheatreRoute
   '/sequences/new/scenes': typeof AppSequencesNewScenesRoute
+  '/api/sequences/$id/theatre.m3u8': typeof ApiSequencesIdTheatreDotm3u8Route
   '/api/v1/device/code': typeof ApiV1DeviceCodeRoute
   '/api/v1/device/token': typeof ApiV1DeviceTokenRoute
   '/api/v1/scripts/enhance': typeof ApiV1ScriptsEnhanceRoute
@@ -811,6 +820,7 @@ export interface FileRoutesById {
   '/_app/sequences/$id/script': typeof AppSequencesIdScriptRoute
   '/_app/sequences/$id/theatre': typeof AppSequencesIdTheatreRoute
   '/_app/sequences/new/scenes': typeof AppSequencesNewScenesRoute
+  '/api/sequences/$id/theatre.m3u8': typeof ApiSequencesIdTheatreDotm3u8Route
   '/api/v1/device/code': typeof ApiV1DeviceCodeRoute
   '/api/v1/device/token': typeof ApiV1DeviceTokenRoute
   '/api/v1/scripts/enhance': typeof ApiV1ScriptsEnhanceRoute
@@ -903,6 +913,7 @@ export interface FileRouteTypes {
     | '/sequences/$id/script'
     | '/sequences/$id/theatre'
     | '/sequences/new/scenes'
+    | '/api/sequences/$id/theatre.m3u8'
     | '/api/v1/device/code'
     | '/api/v1/device/token'
     | '/api/v1/scripts/enhance'
@@ -991,6 +1002,7 @@ export interface FileRouteTypes {
     | '/sequences/$id/script'
     | '/sequences/$id/theatre'
     | '/sequences/new/scenes'
+    | '/api/sequences/$id/theatre.m3u8'
     | '/api/v1/device/code'
     | '/api/v1/device/token'
     | '/api/v1/scripts/enhance'
@@ -1083,6 +1095,7 @@ export interface FileRouteTypes {
     | '/_app/sequences/$id/script'
     | '/_app/sequences/$id/theatre'
     | '/_app/sequences/new/scenes'
+    | '/api/sequences/$id/theatre.m3u8'
     | '/api/v1/device/code'
     | '/api/v1/device/token'
     | '/api/v1/scripts/enhance'
@@ -1125,6 +1138,7 @@ export interface RootRouteChildren {
   ApiV1SequencesRoute: typeof ApiV1SequencesRouteWithChildren
   ApiV1StylesRoute: typeof ApiV1StylesRouteWithChildren
   ApiV1IndexRoute: typeof ApiV1IndexRoute
+  ApiSequencesIdTheatreDotm3u8Route: typeof ApiSequencesIdTheatreDotm3u8Route
   ApiV1DeviceCodeRoute: typeof ApiV1DeviceCodeRoute
   ApiV1DeviceTokenRoute: typeof ApiV1DeviceTokenRoute
   ApiV1ScriptsEnhanceRoute: typeof ApiV1ScriptsEnhanceRoute
@@ -1678,6 +1692,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSequencesNewScenesRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/api/sequences/$id/theatre.m3u8': {
+      id: '/api/sequences/$id/theatre.m3u8'
+      path: '/api/sequences/$id/theatre.m3u8'
+      fullPath: '/api/sequences/$id/theatre.m3u8'
+      preLoaderRoute: typeof ApiSequencesIdTheatreDotm3u8RouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/device/code': {
       id: '/api/v1/device/code'
       path: '/api/v1/device/code'
@@ -2010,6 +2031,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiV1SequencesRoute: ApiV1SequencesRouteWithChildren,
   ApiV1StylesRoute: ApiV1StylesRouteWithChildren,
   ApiV1IndexRoute: ApiV1IndexRoute,
+  ApiSequencesIdTheatreDotm3u8Route: ApiSequencesIdTheatreDotm3u8Route,
   ApiV1DeviceCodeRoute: ApiV1DeviceCodeRoute,
   ApiV1DeviceTokenRoute: ApiV1DeviceTokenRoute,
   ApiV1ScriptsEnhanceRoute: ApiV1ScriptsEnhanceRoute,

@@ -2,6 +2,9 @@
  * On-demand sequence export. Download/Copy reuse a ready row whose
  * `sourceShotsHash` matches the current cut; otherwise they POST
  * `/api/v1/sequences/$id/exports` and poll. There is no in-browser encode.
+ *
+ * Theatre playback does not wait on an export (#1623): it plays a playlist
+ * that points straight at the clips. See `playbackUrl`.
  */
 
 import {
@@ -9,7 +12,11 @@ import {
   listSequenceExportsFn,
 } from '@/sequences/sequence-exports.fn';
 import { useShotsBySequence } from '@/shots/ui/use-shots';
-import { collapseConsecutiveUrls } from './playback-scenes';
+import {
+  collapseConsecutiveUrls,
+  scenePlaybackKey,
+  toPlaybackScenes,
+} from './playback-scenes';
 import {
   effectiveExportMusicUrl,
   hashSequenceExportInputs,
@@ -44,8 +51,15 @@ export type SequenceExportState = {
   progress: ExportProgress | null;
   /** Cached export URL for the current scenes + music choice, or null. */
   freshExportUrl: string | null;
-  /** False while the exports list / input hash are still loading — `freshExportUrl` is unknown, not absent. */
-  isCacheResolved: boolean;
+  /**
+   * What the theatre plays: the playlist of the clips that exist right now
+   * (`theatre-playlist.ts`). Asked for as soon as the shots are known, not on
+   * the click, so a first visit's one-time repackaging is usually done before
+   * anyone presses play. `undefined` = still finding out — show the first
+   * frame, don't stitch yet. `null` = the server could not list these clips:
+   * stitch in the tab.
+   */
+  playbackUrl: string | null | undefined;
   /** Download the current state's MP4 — exports first if not cached. */
   download: () => void;
   /** Copy a shareable URL for the current state's MP4 — exports first if not cached. */
@@ -65,7 +79,7 @@ export function useSequenceExport(
   const sequenceId = sequence?.id ?? '';
   const { data: shots } = useShotsBySequence(sequence?.id);
 
-  const { data: exports, isLoading: exportsLoading } = useQuery({
+  const { data: exports } = useQuery({
     queryKey: sequenceExportKeys.list(sequenceId),
     queryFn: () => listSequenceExportsFn({ data: { sequenceId } }),
     staleTime: 5_000,
@@ -90,11 +104,7 @@ export function useSequenceExport(
     };
   }, [sequence, shots]);
   const inputsKey = exportInputs ? sequenceExportInputsKey(exportInputs) : null;
-  const {
-    data: inputsHash,
-    error: inputsHashError,
-    isLoading: hashLoading,
-  } = useQuery({
+  const { data: inputsHash, error: inputsHashError } = useQuery({
     queryKey: ['sequence-export-inputs-hash', inputsKey],
     queryFn: () => {
       if (!exportInputs) {
@@ -212,6 +222,34 @@ export function useSequenceExport(
   const clipsReady = shotList.filter((s) => Boolean(s.video?.url)).length;
   const canExport = clipsTotal > 0 && clipsReady === clipsTotal;
 
+  // The clip list is the cache key: a changed cut is a new URL, so neither the
+  // query nor the browser can serve the old list. The fetch is the warm-up —
+  // it makes any missing fragmented copies — and its success is what says the
+  // URL is safe to hand to the player.
+  const playlistKey = shots ? scenePlaybackKey(toPlaybackScenes(shots)) : '';
+  const playback = useQuery({
+    queryKey: ['theatre-playlist', sequenceId, playlistKey],
+    queryFn: async ({ signal }) => {
+      const digest = await crypto.subtle.digest(
+        'SHA-256',
+        new TextEncoder().encode(playlistKey)
+      );
+      const version = Array.from(new Uint8Array(digest).subarray(0, 8), (b) =>
+        b.toString(16).padStart(2, '0')
+      ).join('');
+      const url = `/api/sequences/${sequenceId}/theatre.m3u8?v=${version}`;
+      const response = await fetch(url, {
+        credentials: 'same-origin',
+        signal,
+      });
+      return response.ok ? url : null;
+    },
+    enabled: Boolean(sequence) && playlistKey !== '',
+    staleTime: Infinity,
+    retry: false,
+  });
+  const playbackUrl = playback.isError ? null : playback.data;
+
   const download = useCallback(() => {
     posthog.capture('export_clicked', {
       surface: 'theatre',
@@ -256,7 +294,7 @@ export function useSequenceExport(
     isRunning,
     progress,
     freshExportUrl,
-    isCacheResolved: !exportsLoading && !hashLoading,
+    playbackUrl,
     download,
     copyLink,
     abort,

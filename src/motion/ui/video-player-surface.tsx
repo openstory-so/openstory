@@ -28,6 +28,9 @@ import { useEffect, useRef } from 'react';
 const isVideoMedia = (media: Media): media is VideoMedia =>
   'duration' in media && 'currentTime' in media;
 
+const isHlsSource = (src: string): boolean =>
+  new URL(src, 'https://x').pathname.endsWith('.m3u8');
+
 // `createPlayer` also constructs an AbortController, so it stays out of module
 // scope even here: this module is only ever evaluated in the browser, but the
 // singleton is still the right shape — one player instance shared across every
@@ -49,6 +52,8 @@ type VideoPlayerSurfaceProps = {
   onEnded?: () => void;
   onPlay?: () => void;
   onError?: (reason: string) => void;
+  /** The media element, once there is one (and null when it goes). */
+  onMedia?: (media: HTMLMediaElement | null) => void;
 };
 
 const VideoPlayerInner: React.FC<VideoPlayerSurfaceProps> = ({
@@ -63,6 +68,7 @@ const VideoPlayerInner: React.FC<VideoPlayerSurfaceProps> = ({
   onEnded,
   onPlay,
   onError,
+  onMedia,
 }) => {
   const media = useMedia();
   const callbacksRef = useRef({
@@ -131,6 +137,46 @@ const VideoPlayerInner: React.FC<VideoPlayerSurfaceProps> = ({
     };
   }, [media]);
 
+  const onMediaRef = useRef(onMedia);
+  onMediaRef.current = onMedia;
+  useEffect(() => {
+    if (!(media instanceof HTMLMediaElement)) return;
+    onMediaRef.current?.(media);
+    return () => onMediaRef.current?.(null);
+  }, [media]);
+
+  // HLS (#1623) — the theatre's playlist of a cut's clips
+  // (`theatre-playlist.ts`): byte ranges of fragmented MP4s with a
+  // discontinuity between clips. hls.js is attached to the plain <Video>
+  // element by hand; it is large, so it loads only here.
+  const hls = isHlsSource(src);
+  useEffect(() => {
+    if (!hls || !(media instanceof HTMLMediaElement)) return;
+    const el = media;
+    let engine: { destroy: () => void } | null = null;
+    let cancelled = false;
+    void import('hls.js').then(({ default: Hls }) => {
+      if (cancelled) return;
+      if (!Hls.isSupported()) {
+        // No MSE (older iPhones): Safari plays HLS itself.
+        // oxlint-disable-next-line react/immutability
+        el.src = src;
+        return;
+      }
+      const instance = new Hls();
+      engine = instance;
+      instance.on(Hls.Events.ERROR, (_event, data) => {
+        if (data.fatal) callbacksRef.current.onError?.(data.details);
+      });
+      instance.loadSource(src);
+      instance.attachMedia(el);
+    });
+    return () => {
+      cancelled = true;
+      engine?.destroy();
+    };
+  }, [hls, src, media]);
+
   useEffect(() => {
     if (!autoPlay || !media || !isVideoMedia(media)) return;
     void media.play().catch(() => {
@@ -154,7 +200,8 @@ const VideoPlayerInner: React.FC<VideoPlayerSurfaceProps> = ({
   return (
     <MinimalVideoSkin>
       <Video
-        src={src || undefined}
+        // An HLS source is attached by hls.js in the effect above.
+        src={hls || !src ? undefined : src}
         playsInline
         autoPlay={autoPlay}
         preload="metadata"

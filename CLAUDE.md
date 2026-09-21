@@ -264,7 +264,11 @@ changing the area, and update it in the same PR.**
 - **Server-side export** — `docs/architecture/public-api-internals.md`. No
   in-browser encode; `POST /api/v1/sequences/$id/exports` →
   `SequenceExportWorkflow` → the video-export Container (production-only).
-  Plain `bun dev` and e2e have no renderer.
+  Plain `bun dev` and e2e have no renderer. The theatre does not use the
+  export: it plays an HLS playlist that points straight at the clips (#1623).
+  Each clip gets a fragmented copy made once in the worker by copying packets
+  — never mediabunny's `Conversion`, which re-encodes to trim AAC priming and
+  workerd has no codec. Music plays alongside in its own `<audio>`.
 
 ## Frame System
 

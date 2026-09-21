@@ -446,9 +446,11 @@ SUPER:  CORAL.  OUT NOW.
       );
 
       // 13. Whole-sequence playback in the Scenes canvas (#986) — nothing
-      //     selected uses SequencePlayer (mediabunny canvas + Video.js skin,
-      //     #1258). Play is in the skin from first paint; the loading overlay
-      //     covers it until prepare() sets meta (`data-state="ready"`).
+      //     selected uses SequencePlayer: the playlist of the clips through
+      //     Video.js (#1623), or the mediabunny canvas stitch if that fails
+      //     (#1258). Play is in the skin from first paint; the first-frame
+      //     overlay covers it until the source has loaded
+      //     (`data-state="ready"`).
       await page.goto(`/sequences/${sequenceId}/scenes`);
 
       // Wait for prepare() (data-state=ready) or the player error state.
