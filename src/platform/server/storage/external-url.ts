@@ -6,7 +6,9 @@
  * external service must be made publicly fetchable first:
  *
  * - With a public CDN domain configured (production / opt-in remote dev):
- *   absolutize against `R2_PUBLIC_STORAGE_DOMAIN` at the moment of use.
+ *   absolutize against `R2_PUBLIC_STORAGE_DOMAIN` at the moment of use,
+ *   except audio refs (`uploadToFalStorage`), which always go through fal
+ *   storage — MiniMax H3 fails to fetch our R2 custom-domain URLs.
  * - Without one (local dev / e2e record, but also CDN-less production
  *   deploy-button workers — this path is load-bearing in real deployments,
  *   not just a dev convenience), there is no public URL at all:
@@ -62,11 +64,22 @@ async function readStoredBytes(
     : object;
 }
 
+type EnsureExternallyFetchableOptions = {
+  /**
+   * Skip the CDN absolutize and upload stored bytes to fal.storage even when
+   * `R2_PUBLIC_STORAGE_DOMAIN` is set. Audio refs take this path: MiniMax H3
+   * (and possibly other fal video models) fail to fetch our R2 custom-domain
+   * URLs. Images and videos stay on the CDN.
+   */
+  uploadToFalStorage?: boolean;
+};
+
 /**
  * Make a stored media URL fetchable by real fal. CDN-backed deployments
  * absolutize; local `/r2/` URLs are uploaded to fal storage (short-lived
  * scratch space — these are model inputs, not user content); everything else
- * passes through.
+ * passes through. Pass `{ uploadToFalStorage: true }` to force the fal-storage
+ * path in production too (audio refs).
  *
  * `falApiKey` credentials the storage client — pass the caller's resolved fal
  * key (BYOK when present) so the upload authenticates on deployments with no
@@ -74,12 +87,15 @@ async function readStoredBytes(
  */
 export async function ensureExternallyFetchableUrl(
   url: string,
-  falApiKey?: string
+  falApiKey?: string,
+  options?: EnsureExternallyFetchableOptions
 ): Promise<string> {
   const key = r2KeyFromUrl(url);
   if (key === null) return url;
-  const cdnUrl = toCdnUrl(url);
-  if (cdnUrl) return cdnUrl;
+  if (!options?.uploadToFalStorage) {
+    const cdnUrl = toCdnUrl(url);
+    if (cdnUrl) return cdnUrl;
+  }
   if (isReplayMode()) return url;
   const { bytes, contentType } = await readStoredBytes(key);
   const fal = createFalClient({ credentials: falApiKey ?? getEnv().FAL_KEY });
@@ -90,10 +106,11 @@ export async function ensureExternallyFetchableUrl(
 
 export async function ensureExternallyFetchableUrls(
   urls: string[],
-  falApiKey?: string
+  falApiKey?: string,
+  options?: EnsureExternallyFetchableOptions
 ): Promise<string[]> {
   return Promise.all(
-    urls.map((url) => ensureExternallyFetchableUrl(url, falApiKey))
+    urls.map((url) => ensureExternallyFetchableUrl(url, falApiKey, options))
   );
 }
 

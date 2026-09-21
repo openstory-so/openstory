@@ -304,7 +304,9 @@ async function submitFalMotionJob(
   const key = await resolveFalMotionKey(options.scopedDb);
 
   // Locally-served /r2/ image URLs aren't reachable by real fal — swap them
-  // for a fal-storage upload first (no-op in prod and e2e replay).
+  // for a fal-storage upload first (no-op in prod and e2e replay). Audio
+  // refs always upload to fal storage: MiniMax H3 fails to fetch our R2
+  // custom-domain URLs.
   const imageUrl = options.imageUrl
     ? await ensureExternallyFetchableUrl(options.imageUrl, key.key)
     : undefined;
@@ -320,7 +322,8 @@ async function submitFalMotionJob(
             ...ref,
             referenceImageUrl: await ensureExternallyFetchableUrl(
               ref.referenceImageUrl,
-              key.key
+              key.key,
+              ref.kind === 'audio' ? { uploadToFalStorage: true } : undefined
             ),
           }))
         )

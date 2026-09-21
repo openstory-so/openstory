@@ -138,6 +138,37 @@ describe('ensureExternallyFetchableUrl', () => {
 
     expect(falUpload).not.toHaveBeenCalled();
   });
+
+  it('uploads stored audio to fal storage even when a CDN domain is configured', async () => {
+    setEnv({
+      R2_PUBLIC_STORAGE_DOMAIN: 'storage.example.com',
+      FAL_KEY: 'test-key',
+    });
+    readStorageObject.mockResolvedValue({
+      bytes: new Uint8Array([0x52, 0x49, 0x46, 0x46]),
+      contentType: 'audio/wav',
+    });
+    falUpload.mockResolvedValue('https://v3.fal.media/files/b/abc/line.wav');
+
+    await expect(
+      ensureExternallyFetchableUrl('/r2/audio/team/line.wav', undefined, {
+        uploadToFalStorage: true,
+      })
+    ).resolves.toBe('https://v3.fal.media/files/b/abc/line.wav');
+
+    expect(readStorageObject).toHaveBeenCalledWith('audio/team/line.wav');
+    expect(falUpload.mock.calls[0]?.[0].type).toBe('audio/wav');
+  });
+
+  it('still absolutizes images against the CDN when audio upload is not requested', async () => {
+    setEnv({ R2_PUBLIC_STORAGE_DOMAIN: 'storage.example.com' });
+
+    await expect(
+      ensureExternallyFetchableUrl('/r2/thumbnails/team/shot.png')
+    ).resolves.toBe('https://storage.example.com/thumbnails/team/shot.png');
+
+    expect(falUpload).not.toHaveBeenCalled();
+  });
 });
 
 describe('ensureExternallyFetchableUrls', () => {

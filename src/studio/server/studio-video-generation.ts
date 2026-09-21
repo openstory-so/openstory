@@ -173,7 +173,10 @@ async function buildStudioImageModeInput(
     const [imageUrls, videoUrls, audioUrls] = await Promise.all([
       ensureExternallyFetchableUrls(options.referenceImages ?? [], falApiKey),
       ensureExternallyFetchableUrls(options.referenceVideos ?? [], falApiKey),
-      ensureExternallyFetchableUrls(options.referenceAudio ?? [], falApiKey),
+      // MiniMax H3 fails to fetch our R2 custom-domain URLs; images/videos stay on the CDN.
+      ensureExternallyFetchableUrls(options.referenceAudio ?? [], falApiKey, {
+        uploadToFalStorage: true,
+      }),
     ]);
     const built = buildStudioVideoInput({
       prompt: tagStudioReferences(options.prompt, modelKey),

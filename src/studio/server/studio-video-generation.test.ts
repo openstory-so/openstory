@@ -26,6 +26,7 @@ const testEnv: {
   ARK_API_KEY: string | undefined;
   ARK_BASE_URL: string | undefined;
   E2E_TEST: string | undefined;
+  R2_PUBLIC_STORAGE_DOMAIN: string | undefined;
 } = {
   FAL_KEY: 'test-fal-key',
   OPENROUTER_KEY: 'test-or-key',
@@ -34,7 +35,16 @@ const testEnv: {
   ARK_API_KEY: undefined,
   ARK_BASE_URL: undefined,
   E2E_TEST: undefined,
+  R2_PUBLIC_STORAGE_DOMAIN: undefined,
 };
+
+const readStorageObject = vi.fn();
+vi.doMock('#storage', () => ({ readStorageObject }));
+
+const falUpload = vi.fn<(file: File) => Promise<string>>();
+vi.doMock('@fal-ai/client', () => ({
+  createFalClient: () => ({ storage: { upload: falUpload } }),
+}));
 
 vi.doMock('#env', () => ({
   getEnv: () => testEnv,
@@ -84,6 +94,9 @@ describe('submitStudioVideoJob', () => {
     testEnv.ARK_API_KEY = undefined;
     testEnv.ARK_BASE_URL = undefined;
     testEnv.E2E_TEST = undefined;
+    testEnv.R2_PUBLIC_STORAGE_DOMAIN = undefined;
+    readStorageObject.mockReset();
+    falUpload.mockReset();
   });
 
   it('submits Seedance 2.5 to the 2.5 text-to-video endpoint with no image field', async () => {
@@ -225,6 +238,49 @@ describe('submitStudioVideoJob', () => {
         }),
       })
     );
+  });
+
+  it('uploads studio audio refs to fal storage instead of the R2 CDN URL', async () => {
+    testEnv.R2_PUBLIC_STORAGE_DOMAIN = 'storage.example.com';
+    readStorageObject.mockImplementation(async (key: string) =>
+      key.endsWith('.wav')
+        ? {
+            bytes: new Uint8Array([0x52, 0x49, 0x46, 0x46]),
+            contentType: 'audio/wav',
+          }
+        : {
+            bytes: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+            contentType: 'image/png',
+          }
+    );
+    falUpload.mockResolvedValue('https://v3.fal.media/files/b/abc/rain.wav');
+    mockGenerateVideo.mockResolvedValue({
+      jobId: 'h3-studio-audio',
+      model: 'minimax/h3-max/reference-to-video',
+    });
+
+    await submitStudioVideoJob({
+      arkAssets: registeredAssets,
+      prompt: 'Image1 walks',
+      model: 'minimax_h3_max',
+      mode: 'reference',
+      referenceImages: ['/r2/elements/team/lead.png'],
+      referenceAudio: ['/r2/audio/team/rain.wav'],
+      duration: 5,
+      aspectRatio: '16:9',
+    });
+
+    expect(mockGenerateVideo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelOptions: expect.objectContaining({
+          reference_image_urls: [
+            'https://storage.example.com/elements/team/lead.png',
+          ],
+          reference_audio_urls: ['https://v3.fal.media/files/b/abc/rain.wav'],
+        }),
+      })
+    );
+    expect(falUpload).toHaveBeenCalledOnce();
   });
 
   it('sends native Grok a text prompt with no start frame', async () => {
@@ -545,6 +601,9 @@ describe('pollStudioVideoJob', () => {
     testEnv.ARK_API_KEY = undefined;
     testEnv.ARK_BASE_URL = undefined;
     testEnv.E2E_TEST = undefined;
+    testEnv.R2_PUBLIC_STORAGE_DOMAIN = undefined;
+    readStorageObject.mockReset();
+    falUpload.mockReset();
   });
 
   it('polls the T2V endpoint the job was submitted to', async () => {

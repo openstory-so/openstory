@@ -23,6 +23,7 @@ const testEnv: {
   ARK_API_KEY: string | undefined;
   ARK_BASE_URL: string | undefined;
   E2E_TEST: string | undefined;
+  R2_PUBLIC_STORAGE_DOMAIN: string | undefined;
 } = {
   FAL_KEY: 'test-fal-key',
   OPENROUTER_KEY: 'test-or-key',
@@ -31,7 +32,16 @@ const testEnv: {
   ARK_API_KEY: undefined,
   ARK_BASE_URL: undefined,
   E2E_TEST: undefined,
+  R2_PUBLIC_STORAGE_DOMAIN: undefined,
 };
+
+const readStorageObject = vi.fn();
+vi.doMock('#storage', () => ({ readStorageObject }));
+
+const falUpload = vi.fn<(file: File) => Promise<string>>();
+vi.doMock('@fal-ai/client', () => ({
+  createFalClient: () => ({ storage: { upload: falUpload } }),
+}));
 
 vi.doMock('#env', () => ({
   getEnv: () => testEnv,
@@ -155,6 +165,9 @@ describe('Motion Service', () => {
     testEnv.ARK_API_KEY = undefined;
     testEnv.ARK_BASE_URL = undefined;
     testEnv.E2E_TEST = undefined;
+    testEnv.R2_PUBLIC_STORAGE_DOMAIN = undefined;
+    readStorageObject.mockReset();
+    falUpload.mockReset();
   });
 
   describe('submitMotionJob', () => {
@@ -373,6 +386,60 @@ describe('Motion Service', () => {
           ],
         })
       );
+    });
+
+    it('uploads audio refs to fal storage instead of the R2 CDN URL', async () => {
+      testEnv.R2_PUBLIC_STORAGE_DOMAIN = 'storage.example.com';
+      readStorageObject.mockImplementation(async (key: string) =>
+        key.endsWith('.wav')
+          ? {
+              bytes: new Uint8Array([0x52, 0x49, 0x46, 0x46]),
+              contentType: 'audio/wav',
+            }
+          : {
+              bytes: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+              contentType: 'image/png',
+            }
+      );
+      falUpload.mockResolvedValue(
+        'https://v3.fal.media/files/b/abc/dialogue.wav'
+      );
+      mockGenerateVideo.mockResolvedValue({
+        jobId: 'h3-audio',
+        model: 'minimax/h3-max/reference-to-video',
+      });
+
+      await submitMotionJob({
+        arkAssets: registeredAssets,
+        imageUrl: '/r2/thumbnails/team/still.png',
+        prompt: 'DIALOGUE',
+        model: 'minimax_h3_max',
+        duration: 5,
+        referenceImages: [
+          {
+            referenceImageUrl: '/r2/audio/team/dialogue.wav',
+            description: 'Dialogue recorded as DIALOGUE',
+            kind: 'audio',
+            role: 'character',
+            token: 'DIALOGUE',
+            durationSeconds: 3,
+          },
+        ],
+      });
+
+      expect(mockGenerateVideo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          modelOptions: expect.objectContaining({
+            reference_image_urls: [
+              'https://storage.example.com/thumbnails/team/still.png',
+            ],
+            reference_audio_urls: [
+              'https://v3.fal.media/files/b/abc/dialogue.wav',
+            ],
+          }),
+        })
+      );
+      expect(falUpload).toHaveBeenCalledOnce();
     });
 
     it('sends a dialogue audio reference as a plain URL, never through the Ark asset map (#1627)', async () => {
