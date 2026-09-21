@@ -1,5 +1,4 @@
 import type { Meta, StoryObj } from '@storybook/react';
-import { useState } from 'react';
 import { SequencePlayer } from './sequence-player';
 import type { SceneInput } from './concatenated-video-source';
 import videoUrl from '../../../../e2e/fixtures/test-video.mp4?url';
@@ -49,13 +48,9 @@ const meta = {
     cachedVideoUrl: null,
   },
   render: function PlayerStory(args) {
-    const [captions, setCaptions] = useState<string[]>([]);
     return (
-      <div className="flex max-w-3xl flex-col gap-3">
-        <SequencePlayer {...args} onCaptionsChange={setCaptions} />
-        {captions.map((line, index) => (
-          <p key={index}>{line}</p>
-        ))}
+      <div className="max-w-3xl">
+        <SequencePlayer {...args} />
       </div>
     );
   },
@@ -73,7 +68,16 @@ export const Mixed: Story = {
         orderIndex: 2,
         durationSeconds: 7,
         audioUrls: [dialogueFixture()],
-        captions: ['Recorded dialogue (two-second silent test WAV)'],
+        dialogue: {
+          presence: true,
+          lines: [
+            {
+              character: 'Ana',
+              line: 'Recorded dialogue (two-second silent test WAV)',
+              tone: '',
+            },
+          ],
+        },
       },
     ],
   },

@@ -29,11 +29,6 @@ export function toPlaybackScenes(
         continue;
       scenes.push({ orderIndex: scenes.length, videoUrl });
     } else {
-      const spoken = new Map(
-        shot.audioClips
-          ?.flatMap((clip) => clip.spokenLines ?? [])
-          .map((line) => [line.index, line.text])
-      );
       scenes.push({
         orderIndex: scenes.length,
         imageUrl: shot.previewThumbnailUrl ?? shot.image?.url ?? null,
@@ -44,10 +39,18 @@ export function toPlaybackScenes(
             : 3,
         audioUrls: (shot.audioClips ?? []).map((clip) => clip.url),
         ...aspectRatioToDimensions(aspectRatio),
-        captions: (shot.dialogue?.lines ?? []).map(
-          (line, index) =>
-            `${line.character ? `${line.character}: ` : ''}${spoken.get(index) ?? line.line}`
-        ),
+        dialogue: shot.dialogue
+          ? {
+              ...shot.dialogue,
+              lines: shot.dialogue.lines.map((line, index) => {
+                const spoken = shot.audioClips
+                  ?.flatMap((clip) => clip.spokenLines ?? [])
+                  .find((spokenLine) => spokenLine.index === index)?.text;
+                return spoken ? { ...line, line: spoken } : line;
+              }),
+            }
+          : null,
+        clip: shot.audioClips?.[0] ?? null,
       });
     }
   }

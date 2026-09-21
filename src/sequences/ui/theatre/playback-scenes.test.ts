@@ -108,7 +108,10 @@ it('prefers the storyboard, includes selected dialogue and recorded wording only
     imageUrl: '/preview.png',
     fallbackImageUrl: '/still.png',
     audioUrls: ['/take.wav'],
-    captions: ['Ana: Hi'],
+    dialogue: {
+      presence: true,
+      lines: [{ character: 'Ana', line: 'Hi', tone: '' }],
+    },
   });
   expect(
     toPlaybackScenes([{ ...input, video: { url: '/render.mp4' } }])

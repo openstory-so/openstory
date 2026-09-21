@@ -42,12 +42,17 @@ import {
 } from './transmux';
 
 import { getLogger } from '@/platform/logger';
+import type { MotionDialogue } from '@/shots/scene-analysis.schema';
 
 const logger = getLogger(['openstory', 'sequence-player', 'concat-source']);
 
 type CanvasFit = 'fill' | 'contain' | 'cover';
 
-export type SceneInput = { orderIndex: number; captions?: string[] } & (
+export type SceneInput = {
+  orderIndex: number;
+  dialogue?: MotionDialogue | null;
+  clip?: { url: string; durationSeconds: number | null } | null;
+} & (
   | { videoUrl: string }
   | {
       imageUrl: string | null;

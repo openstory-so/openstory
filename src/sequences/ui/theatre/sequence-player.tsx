@@ -18,6 +18,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/shadcn/tooltip';
 import type { SequencePlayerMeta } from './playback';
 import type { SceneInput } from './concatenated-video-source';
+import type { MotionDialogue } from '@/shots/scene-analysis.schema';
 import { scenePlaybackKey } from './playback-scenes';
 import {
   captureVideoPlay,
@@ -40,7 +41,10 @@ const StitchedPlayerSurface = lazy(() => import('./stitched-player-surface'));
 
 type SequencePlayerProps = {
   scenes: SceneInput[];
-  onCaptionsChange?: (lines: string[]) => void;
+  onDialogueChange?: (
+    dialogue: MotionDialogue | null | undefined,
+    clip: { url: string; durationSeconds: number | null } | null | undefined
+  ) => void;
   musicUrl: string | null;
   musicLoudnessGainDb: number | null;
   /**
@@ -76,53 +80,6 @@ type SequencePlayerProps = {
   onAutoPlayConsumed?: () => void;
 };
 
-/**
- * A prompt-reader treatment for still dialogue. It lives in the theatre frame
- * so captions follow the same timeline as the image/video underneath.
- */
-const DialoguePromptReader: React.FC<{ lines: string[] }> = ({ lines }) => {
-  const [lineIndex, setLineIndex] = useState(0);
-
-  useEffect(() => {
-    setLineIndex(0);
-    if (lines.length < 2) return;
-    const timer = window.setInterval(() => {
-      setLineIndex((index) => (index + 1) % lines.length);
-    }, 2_600);
-    return () => window.clearInterval(timer);
-  }, [lines]);
-
-  if (lines.length === 0) return null;
-  const current = lines[lineIndex] ?? lines[0];
-  const next = lines[(lineIndex + 1) % lines.length];
-
-  return (
-    <output
-      className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center px-3 sm:top-5 sm:px-6"
-      aria-live="polite"
-      aria-label={`Dialogue: ${current}`}
-    >
-      <div className="relative w-full max-w-3xl overflow-hidden rounded-2xl border border-white/20 bg-black/75 px-5 py-4 text-center shadow-2xl backdrop-blur-md sm:px-8 sm:py-5">
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-transparent via-white/70 to-transparent" />
-        <p className="relative mb-2 text-[10px] font-semibold uppercase tracking-[0.28em] text-white/70">
-          Prompt reader
-        </p>
-        <p
-          key={`${lineIndex}-${current}`}
-          className="relative mx-auto max-w-[min(54rem,88vw)] text-pretty text-lg font-semibold leading-snug text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)] animate-in fade-in slide-in-from-bottom-2 duration-700 motion-reduce:animate-none sm:text-2xl"
-        >
-          {current}
-        </p>
-        {next && next !== current && (
-          <p className="relative mx-auto mt-2 max-w-[min(48rem,82vw)] text-pretty text-sm leading-snug text-white/60 drop-shadow-[0_2px_6px_rgba(0,0,0,0.95)] animate-in fade-in duration-1000 motion-reduce:animate-none sm:text-base">
-            {next}
-          </p>
-        )}
-      </div>
-    </output>
-  );
-};
-
 function useMounted(): boolean {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -143,7 +100,7 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
   sequenceId,
   autoPlay = false,
   onAutoPlayConsumed,
-  onCaptionsChange,
+  onDialogueChange,
 }) => {
   const posthog = usePostHog();
   const mounted = useMounted();
@@ -151,19 +108,15 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
   // An exported MP4 cannot represent shots that still have no video.
   const hasStills = scenes.some((scene) => !('videoUrl' in scene));
   if (hasStills) cachedVideoUrl = null;
-  const captionIndex = useRef(-1);
+  const sceneIndex = useRef(-1);
   const sceneOffsets = useRef<number[]>([]);
-  const [captions, setCaptions] = useState<string[]>([]);
-  const handleCaptionsChange = (lines: string[]) => {
-    setCaptions(lines);
-    onCaptionsChange?.(lines);
-  };
-  const publishCaptions = (time: number, offsets: number[]) => {
+  const publishDialogue = (time: number, offsets: number[]) => {
     let index = offsets.length - 1;
     while (index > 0 && (offsets[index] ?? 0) > time) index--;
-    if (index === captionIndex.current) return;
-    captionIndex.current = index;
-    handleCaptionsChange(scenes[index]?.captions ?? []);
+    if (index === sceneIndex.current) return;
+    sceneIndex.current = index;
+    const scene = scenes[index];
+    onDialogueChange?.(scene?.dialogue, scene?.clip);
   };
 
   const [meta, setMeta] = useState<SequencePlayerMeta | null>(null);
@@ -197,9 +150,9 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
   // can be torn down while this shell stays mounted (cache lands, clip list
   // changes) and detach does not emit `pause`.
   useEffect(() => {
-    captionIndex.current = -1;
+    sceneIndex.current = -1;
     sceneOffsets.current = [];
-    handleCaptionsChange([]);
+    onDialogueChange?.(null, null);
     setMeta(null);
     setLoadedScenes(0);
     setError(null);
@@ -357,12 +310,12 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
               onMeta={(next) => {
                 setMeta(next);
                 sceneOffsets.current = next.sceneOffsetsSeconds;
-                publishCaptions(0, next.sceneOffsetsSeconds);
+                publishDialogue(0, next.sceneOffsetsSeconds);
                 tracker.setDuration(next.durationSeconds);
               }}
               onTimeUpdate={(t) => {
                 tracker.tick(t);
-                publishCaptions(t, sceneOffsets.current);
+                publishDialogue(t, sceneOffsets.current);
               }}
               onPlay={() => {
                 if (!tracker.isActive()) tracker.start();
@@ -388,7 +341,6 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
         </Suspense>
       ) : null}
       {!meta && loading}
-      <DialoguePromptReader lines={captions} />
       {overlay}
     </div>
   );
