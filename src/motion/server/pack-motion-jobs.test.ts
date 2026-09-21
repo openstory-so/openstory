@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { buildReferenceVideoPrompt } from './build-reference-video-prompt';
+import type { ReferenceImageDescription } from '@/stills/reference-image-prompt';
 import type { ImageToVideoModel } from '@/models/models';
 import {
   batchPacksInClipMultiShot,
@@ -33,6 +35,48 @@ describe('batchPacksInClipMultiShot', () => {
 });
 
 describe('packMotionBatchShots', () => {
+  it('binds characters from every packed shot while preserving spoken names (#1720)', () => {
+    const location: ReferenceImageDescription = {
+      token: 'OFFICE',
+      description: 'Office',
+      referenceImageUrl: '/office.png',
+      role: 'location',
+    };
+    const steve: ReferenceImageDescription = {
+      token: 'STEVE',
+      description: 'Steve',
+      referenceImageUrl: '/steve.png',
+      role: 'character',
+    };
+    const elara: ReferenceImageDescription = {
+      token: 'ELARA',
+      description: 'Elara',
+      referenceImageUrl: '/elara.png',
+      role: 'character',
+    };
+    const [packed] = packMotionBatchShots(
+      [
+        { ...shot('a', 'sc-1', 3), referenceImages: [location, steve] },
+        { ...shot('b', 'sc-1', 2), referenceImages: [location, elara] },
+      ],
+      ['minimax_h3_max']
+    );
+    const bound = buildReferenceVideoPrompt(
+      { tag: (n) => `Image ${n}`, maxImages: 9 },
+      'STEVE listens. ELARA turns to camera. ELARA says: <d>[English] Hello Steve.</d>',
+      null,
+      packed?.referenceImages ?? []
+    );
+    expect(bound.imageUrls).toEqual([
+      '/office.png',
+      '/steve.png',
+      '/elara.png',
+    ]);
+    expect(bound.prompt).toContain(
+      'Image 2 listens. Image 3 turns to camera. Image 3 says: <d>[English] Hello Steve.</d>'
+    );
+  });
+
   it('keeps a 4s+6s Seedance scene as independent generations', () => {
     const packed = packMotionBatchShots(
       [shot('a', 'sc-1', 4), shot('b', 'sc-1', 6)],

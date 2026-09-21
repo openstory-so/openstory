@@ -10,6 +10,8 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { IMAGE_TO_VIDEO_MODELS } from '@/models/models';
+import { audioSourceKeyFromVoicedLines } from '@/motion/dialogue-tts';
+import { isSelectedVersionStale } from '@/shots/scene-segments';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { MotionWorkflowInput } from '@/platform/server/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
@@ -143,7 +145,13 @@ function makeScopedDb(shotAudioClips: unknown[] = []) {
     setAudioClips: vi.fn(async () => {}),
   };
   const videoVariants = {
-    appendVersion: vi.fn(async () => ({ id: 'vv-1' })),
+    appendVersion: vi.fn(
+      async (
+        _input: Parameters<
+          WorkflowScopedDb['videoVariants']['appendVersion']
+        >[0]
+      ) => ({ id: 'vv-1' })
+    ),
     update: vi.fn(async () => {}),
   };
   const bytePlusAssets = {
@@ -658,6 +666,102 @@ describe('MotionWorkflow packed in-clip job (#1510)', () => {
       })
     );
   });
+});
+
+describe('fresh MiniMax packed videos (#1720)', () => {
+  it.each([5, 3])(
+    'keeps a voiced pack fresh with %ss member durations',
+    async (duration) => {
+      const { scopedDb, videoVariants } = makeScopedDb();
+      const members = ['Stay down.', 'Now run.'].map((text, index) => {
+        const voicedLines = [
+          {
+            index: 0,
+            token: 'DIALOGUE',
+            voiceId: 'voice-sarah',
+            text,
+            tone: '',
+            ttsModel: 'eleven_v3',
+            character: 'Sarah',
+          },
+        ];
+        return {
+          shotId: `shot-${index + 1}`,
+          duration,
+          referenceOnly: true,
+          motionPromptVersionId: `spv-${index + 1}`,
+          frameVersionId: null,
+          prompt: text,
+          voicedLines,
+          audioClips: [
+            {
+              id: `section-${index + 1}`,
+              url: `/r2/audio/${index}.wav`,
+              token: 'DIALOGUE',
+              durationSeconds: 2,
+              sourceKey: audioSourceKeyFromVoicedLines(voicedLines) ?? '',
+            },
+          ],
+        };
+      });
+      await makeWorkflow().runBody(
+        makeEvent({
+          model: 'minimax_h3_max',
+          referenceOnly: true,
+          imageUrl: undefined,
+          duration: 10,
+          coveredShots: members,
+          voicedLines: members.flatMap((member) => member.voicedLines),
+          audioClips: members.flatMap((member) => member.audioClips),
+        }),
+        makeStep(),
+        scopedDb
+      );
+      const written = videoVariants.appendVersion.mock.calls[0]?.[0];
+      expect(written).toBeDefined();
+      if (!written) throw new Error('No video version written');
+      expect(
+        isSelectedVersionStale(
+          {
+            id: 'vv-1',
+            renderSegmentId: 'seg-packed',
+            model: 'minimax_h3_max',
+            resolution: null,
+            status: 'completed',
+            url: '/r2/video.mp4',
+            createdAt: new Date(),
+            manifest: written.manifest,
+          },
+          new Map(
+            members.map((member) => [
+              member.shotId,
+              member.motionPromptVersionId,
+            ])
+          ),
+          new Map(members.map((member) => [member.shotId, null])),
+          {
+            audioSourceKeyByShot: new Map(
+              members.map((member) => [
+                member.shotId,
+                audioSourceKeyFromVoicedLines(member.voicedLines),
+              ])
+            ),
+            audioClipIdsByShot: new Map(
+              members.map((member) => [
+                member.shotId,
+                member.audioClips.map((clip) => clip.id),
+              ])
+            ),
+            referenceIdentity: new Map(),
+            durationMsByShot: new Map(
+              members.map((member) => [member.shotId, member.duration * 1000])
+            ),
+            audioSecondsByShot: new Map(),
+          }
+        )
+      ).toBe(false);
+    }
+  );
 });
 
 describe('manifest audio key (#1671)', () => {

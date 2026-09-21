@@ -20,12 +20,14 @@ import {
   resolveSegmentMinMs,
   tileSceneIntoSegments,
 } from './render-segments';
+import type { ReferenceImageDescription } from '@/stills/reference-image-prompt';
 
 export type PackableMotionShot = {
   shotId: string;
   sceneId?: string | null;
   duration?: number;
   model?: ImageToVideoModel;
+  referenceImages?: ReferenceImageDescription[];
   /**
    * Persisted clip membership. Consecutive shots sharing a non-null id stay
    * that clip on regenerate; null runs are tiled fresh. A 1:1 segment uses
@@ -143,10 +145,31 @@ function packSceneGroup<S extends PackableMotionShot>(
         ...first,
         duration: tile.durationMs / 1000,
         coveredShots: members,
+        // A clip renders every member, not just the lead shot. Losing a later
+        // member's sheet also leaves its character name unbound in the prompt.
+        referenceImages: mergeReferences(members),
       });
     }
   }
   return packed;
+}
+
+function mergeReferences(
+  shots: readonly PackableMotionShot[]
+): ReferenceImageDescription[] {
+  const refs = new Map<string, ReferenceImageDescription>();
+  for (const shot of shots) {
+    for (const ref of shot.referenceImages ?? []) {
+      const key = JSON.stringify([
+        ref.kind ?? 'image',
+        ref.token,
+        ref.referenceImageUrl,
+        ref.provenanceKey,
+      ]);
+      if (!refs.has(key)) refs.set(key, ref);
+    }
+  }
+  return [...refs.values()];
 }
 
 /**

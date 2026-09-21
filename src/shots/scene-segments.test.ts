@@ -504,6 +504,87 @@ describe('assembleSequenceSegments', () => {
   });
 });
 
+describe('legacy packed video provenance (#1720)', () => {
+  const firstKey = 'voice-a\tHello.\tcalm\televen_v3';
+  const secondKey = 'voice-b\tGoodbye.\tcalm\televen_v3';
+  const v = version('packed', 'seg', 'minimax_h3_max', [
+    {
+      shotId: 'a',
+      motionPromptVersionId: 'mp-a',
+      frameVersionId: null,
+      durationMs: 3000,
+      audioSourceKey: `${firstKey}\n${secondKey}`,
+      audioClipIds: ['clip-a'],
+    },
+    {
+      shotId: 'b',
+      motionPromptVersionId: 'mp-b',
+      frameVersionId: null,
+      durationMs: 2000,
+      audioSourceKey: secondKey,
+      audioClipIds: ['clip-b'],
+    },
+  ]);
+  const live: LiveShotInputs = {
+    ...NO_LOADED,
+    audioSourceKeyByShot: new Map([
+      ['a', firstKey],
+      ['b', secondKey],
+    ]),
+    audioClipIdsByShot: new Map([
+      ['a', ['clip-a']],
+      ['b', ['clip-b']],
+    ]),
+    durationMsByShot: new Map([
+      ['a', 3000],
+      ['b', 2000],
+    ]),
+    audioSecondsByShot: new Map(),
+  };
+  const check = (changes: Partial<LiveShotInputs> = {}) =>
+    isSelectedVersionStale(
+      v,
+      new Map([
+        ['a', 'mp-a'],
+        ['b', 'mp-b'],
+      ]),
+      new Map(),
+      { ...live, ...changes }
+    );
+
+  it('recognizes an unchanged historical conversation and sub-minimum member durations', () => {
+    expect(check()).toBe(false);
+  });
+  it.each(['a', 'b'])(
+    'still detects changed words or voice on member %s',
+    (id) => {
+      const keys = new Map(live.audioSourceKeyByShot);
+      keys.set(id, 'changed-voice\tChanged words.\tcalm\televen_v3');
+      expect(check({ audioSourceKeyByShot: keys })).toBe(true);
+    }
+  );
+  it('still detects a different recording of unchanged dialogue', () => {
+    expect(
+      check({
+        audioClipIdsByShot: new Map([
+          ['a', ['new-take']],
+          ['b', ['clip-b']],
+        ]),
+      })
+    ).toBe(true);
+  });
+  it('detects editorial duration changes even below the model minimum', () => {
+    expect(
+      check({
+        durationMsByShot: new Map([
+          ['a', 4000],
+          ['b', 2000],
+        ]),
+      })
+    ).toBe(true);
+  });
+});
+
 describe('reference-only shots and staleness', () => {
   // A shot rendering from reference sheets animates from no still, so its
   // manifest entry records `frameVersionId: null`. The shot may still HAVE a

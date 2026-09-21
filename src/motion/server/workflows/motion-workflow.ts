@@ -526,9 +526,10 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                     (clip) => clip.id
                   ),
                   audioSourceKey: audioSourceKeyFromVoicedLines(
-                    member.shotId === input.shotId
-                      ? authoredLines
-                      : (member.voicedLines ?? [])
+                    // The top-level lines are the whole packed conversation.
+                    // Every manifest entry, including the lead shot, must
+                    // match that member's own live dialogue key (#1720).
+                    member.voicedLines ?? []
                   ),
                   // One clip, one request: every covered shot was sent the
                   // same references.
