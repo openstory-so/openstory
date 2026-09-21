@@ -165,13 +165,15 @@ const StitchedPlayerInner: React.FC<StitchedPlayerSurfaceProps> = ({
   }, [autoPlay, media]);
 
   return (
-    <VideoSkin className="h-full w-full">
-      <canvas
-        ref={canvasRef}
-        className="h-full w-full object-contain"
-        aria-label="Sequence playback"
-      />
-    </VideoSkin>
+    <div className="relative h-full w-full min-h-0">
+      <VideoSkin className="absolute inset-0 h-full w-full">
+        <canvas
+          ref={canvasRef}
+          className="h-full w-full object-contain"
+          aria-label="Sequence playback"
+        />
+      </VideoSkin>
+    </div>
   );
 };
 
