@@ -25,6 +25,7 @@ import {
 } from '@/shots/use-start-frame';
 import { AppImage } from '@/ui/shadcn/app-image';
 import { playerPosterSrc } from './player-poster';
+import { createPackedPlayback } from './packed-playback';
 import { usePostHog } from '@posthog/react';
 import { Download, Link, Loader2, Share2, VideoIcon } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -32,8 +33,6 @@ import {
   generatePackedShotChaptersVTT,
   packedClipWindows,
   packedPlaybackGroup,
-  shotIdAtTime,
-  windowForShot,
 } from '@/shots/packed-clip-window';
 import { toast } from 'sonner';
 import { VideoPlayer } from './video-player';
@@ -138,7 +137,7 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
   onSelectShot,
 }) => {
   const [shouldAutoPlay, setShouldAutoPlay] = useState(false);
-  const [playhead, setPlayhead] = useState(0);
+  const [packedPlayback] = useState(createPackedPlayback);
   const posthog = usePostHog();
 
   const imageDimensions = aspectRatioToDimensions(aspectRatio);
@@ -175,21 +174,33 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
       ? generatePackedShotChaptersVTT(packedGroup)
       : null;
   const chaptersUrl = usePackedChaptersUrl(packedChaptersVtt);
-  const currentVideoUrl = currentShot?.video?.url ?? '';
-  useEffect(() => {
-    setPlayhead(0);
-  }, [currentVideoUrl]);
+  const showsStillImage =
+    selectedTab === 'image-prompt' || selectedTab === 'scene-variants';
+  const playbackVideoUrl = showsStillImage
+    ? ''
+    : (overrideVideoUrl ?? currentShot?.video?.url ?? '');
+
+  const seekTo = packedPlayback.select(
+    playbackVideoUrl,
+    selectedShotId,
+    packedWindows
+  );
 
   const handlePackedTimeUpdate = useCallback(
     (currentTime: number) => {
-      setPlayhead(currentTime);
-      const memberId = shotIdAtTime(packedWindows, currentTime);
+      const memberId = packedPlayback.timeUpdate(playbackVideoUrl, currentTime);
       if (memberId && memberId !== selectedShotId) {
         onSelectShot?.(memberId);
       }
       onTimeUpdate?.(currentTime);
     },
-    [packedWindows, selectedShotId, onSelectShot, onTimeUpdate]
+    [
+      packedPlayback,
+      playbackVideoUrl,
+      selectedShotId,
+      onSelectShot,
+      onTimeUpdate,
+    ]
   );
 
   const handleCopyImageUrl = useCallback(async () => {
@@ -392,31 +403,12 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
     plainSceneTitle(currentScene?.title) ||
     (sceneNumber ? `Scene ${sceneNumber}` : undefined);
 
-  // The image-focused tabs (the still image + the shot-variant grid) keep
-  // showing the image; every other tab (script, motion, cast, location,
-  // elements) shows the scene's video when one exists.
-  const showsStillImage =
-    selectedTab === 'image-prompt' || selectedTab === 'scene-variants';
-
   // Per-scene video-variant preview (#545): on the motion tab, play the
   // override variant for this shot instead of its primary video.
   const isVariantVideoPreview =
     !!overrideVideoUrl &&
     !showsStillImage &&
     overrideVideoUrl !== currentShot.video?.url;
-  const playbackVideoUrl = showsStillImage
-    ? ''
-    : (overrideVideoUrl ?? currentShot.video?.url ?? '');
-
-  const selectedWindow = windowForShot(packedWindows, currentShot.id);
-  const windowSeek =
-    selectedWindow &&
-    (playhead < selectedWindow.startSeconds ||
-      playhead >= selectedWindow.endSeconds)
-      ? selectedWindow.startSeconds
-      : null;
-  const seekTo = packedWindows.length > 1 ? windowSeek : null;
-
   const displayImage = showsStillImage
     ? (overrideImageUrl ??
       currentShot.image?.url ??
