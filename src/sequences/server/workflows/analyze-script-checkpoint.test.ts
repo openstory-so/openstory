@@ -24,7 +24,8 @@ import { DEFAULT_ANALYSIS_MODEL } from '@/models/models.config';
 import { hashVisualPromptInput, sha256Hex } from '@/shots/input-hash';
 import { narrowShotPromptContext } from '@/shots/server/prompt-context';
 import { shotWorkItems } from '@/shots/server/shot-work-items';
-import type { Scene } from '@/shots/scene-analysis.schema';
+import type { CharacterBibleEntry, Scene } from '@/shots/scene-analysis.schema';
+import { buildCastCharacterBible } from '@/cast/character-prompt';
 import type {
   WorkflowEvent,
   WorkflowStep,
@@ -78,6 +79,23 @@ const SPLIT: SceneSplitWorkflowResult = {
   locationBible: [],
   elementBible: [],
   dialogueVersionIdByShotId: {},
+};
+/** Script-side entry; casting replaces the hashed appearance fields. */
+const RAW_ADA: CharacterBibleEntry = {
+  characterId: 'c1',
+  name: 'Ada',
+  age: '20s',
+  gender: 'female',
+  ethnicity: 'unspecified',
+  physicalDescription: 'as written in the script',
+  standardClothing: 'lab coat',
+  distinguishingFeatures: '',
+  personality: '',
+  movement: '',
+  voiceDescription: '',
+  voiceOnly: false,
+  isPerson: true,
+  consistencyTag: '',
 };
 const TALENT_MATCH = {
   characterId: 'c1',
@@ -893,7 +911,7 @@ describe('AnalyzeScriptWorkflow script checkpoint', () => {
         storyBeat: '',
       },
       continuity: {
-        characterTags: [],
+        characterTags: ['Ada'],
         environmentTag: '',
         colorPalette: '',
         lightingSetup: '',
@@ -951,6 +969,8 @@ describe('AnalyzeScriptWorkflow script checkpoint', () => {
       checkpoint: {
         completedStage: 'references',
         ...SPLIT,
+        characterBible: [RAW_ADA],
+        talentMatches: [TALENT_MATCH],
         scenes: [twoShot],
         shotMapping,
         scenesWithVisualPrompts: [twoShot],
@@ -976,17 +996,26 @@ describe('AnalyzeScriptWorkflow script checkpoint', () => {
         throw new Error(`missing derived visual write at ${index}`);
       }
       expect(written.frameId).toBe(item.mapping.frameId);
-      const verifyHash = await hashVisualPromptInput(
-        narrowShotPromptContext({
-          scene: item.scene,
-          styleConfig: event.payload.styleConfig,
-          characterBible: SPLIT.characterBible,
-          locationBible: SPLIT.locationBible,
-          elementBible: SPLIT.elementBible,
-          aspectRatio: event.payload.aspectRatio,
-          analysisModel: event.payload.analysisModelId,
-        })
+      // Verify reads the CAST row out of D1, so the stamp must be taken over
+      // the cast bible (#867). Stamping the raw pre-cast bible — which the
+      // derived path did until #1517's call site was fixed — left every
+      // multi-shot scene's image prompt stale the moment the run finished.
+      const hashWith = (characterBible: CharacterBibleEntry[]) =>
+        hashVisualPromptInput(
+          narrowShotPromptContext({
+            scene: item.scene,
+            styleConfig: event.payload.styleConfig,
+            characterBible,
+            locationBible: SPLIT.locationBible,
+            elementBible: SPLIT.elementBible,
+            aspectRatio: event.payload.aspectRatio,
+            analysisModel: event.payload.analysisModelId,
+          })
+        );
+      const verifyHash = await hashWith(
+        buildCastCharacterBible([RAW_ADA], [TALENT_MATCH])
       );
+      expect(verifyHash).not.toBe(await hashWith([RAW_ADA]));
       const textDigest = await sha256Hex({
         kind: 'derived-shot-visual',
         shotId: item.mapping.shotId,

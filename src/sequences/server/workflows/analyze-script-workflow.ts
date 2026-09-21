@@ -1053,7 +1053,12 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
                 narrowShotPromptContext({
                   scene: item.scene,
                   styleConfig,
-                  characterBible,
+                  // The CAST bible, the same one every prompt child gets
+                  // (#867): casting overwrites the hashed appearance fields
+                  // and `create-cast-records` persists the cast values, so
+                  // stamping the raw bible here left every derived clip's
+                  // image prompt reading stale the moment the run finished.
+                  characterBible: castCharacterBible,
                   locationBible,
                   elementBible,
                   aspectRatio,
