@@ -6,10 +6,12 @@
 import { getEnv } from '#env';
 import {
   STORAGE_BUCKETS,
+  buildR2Key,
   r2KeyFromUrl,
 } from '@/platform/server/storage/buckets';
 import { getSignedUrlWithDownload } from '#storage';
 import { uploadResponse } from '@/platform/server/storage/upload-response';
+import { writeFragmentedCopy } from '@/sequences/server/theatre-playlist';
 import {
   getExtensionFromUrl,
   getMimeTypeFromExtension,
@@ -88,7 +90,8 @@ function storedVideoPath(key: string): string {
  * Pull a provider clip into the videos bucket. Same shape as
  * {@link uploadImageFromUrl}: callers own the key layout. Already-stored
  * `/r2/…` URLs are returned as-is (no second copy). The body is streamed
- * through {@link uploadResponse} — not buffered, then re-uploaded.
+ * through {@link uploadResponse} — not buffered, then re-uploaded. The
+ * fragmented theatre copy is written here so play never remuxes (#1735).
  */
 export async function uploadVideoFromUrl(
   videoUrl: string,
@@ -97,6 +100,7 @@ export async function uploadVideoFromUrl(
 ): Promise<UploadedVideo> {
   const alreadyStored = r2KeyFromUrl(videoUrl);
   if (alreadyStored) {
+    await writeFragmentedCopy(alreadyStored);
     const extension = alreadyStored.split('.').pop() || 'mp4';
     return {
       url: videoUrl,
@@ -121,6 +125,7 @@ export async function uploadVideoFromUrl(
     storagePath,
     { contentType }
   );
+  await writeFragmentedCopy(buildR2Key(STORAGE_BUCKETS.VIDEOS, storagePath));
   return { url: result.publicUrl, path: storagePath, contentType };
 }
 

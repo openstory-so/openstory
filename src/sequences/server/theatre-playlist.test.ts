@@ -67,8 +67,12 @@ vi.doMock('#storage', () => ({
   uploadFile,
 }));
 
-const { buildTheatrePlaylist, ensureFragmentedClips, initSectionLength } =
-  await import('./theatre-playlist');
+const {
+  buildTheatrePlaylist,
+  ensureFragmentedClips,
+  initSectionLength,
+  writeFragmentedCopy,
+} = await import('./theatre-playlist');
 
 const CLIP_KEY = 'videos/team/clip.mp4';
 const CLIP = new Uint8Array(
@@ -158,37 +162,23 @@ describe('initSectionLength', () => {
   });
 });
 
-describe('ensureFragmentedClips', () => {
+describe('writeFragmentedCopy', () => {
   it('repackages from ranged reads and a streamed upload, never the whole clip at once', async () => {
-    const [result] = await ensureFragmentedClips(
-      ['/r2/videos/team/clip.mp4'],
-      'https://app.test'
-    );
-
-    expect(result?.durationSeconds).toBeCloseTo(0.5, 2);
-    expect(result?.videoCodec).toBe('avc');
-    expect(result?.hasAudio).toBe(false);
-    expect(result?.initBytes).toBeGreaterThan(0);
-    expect(result?.size).toBeGreaterThan(result?.initBytes ?? 0);
-    expect(result?.url).toBe(
-      'https://app.test/r2/videos/team/clip.mp4.frag.mp4'
-    );
-
-    const frag = objects.get('videos/team/clip.mp4.frag.mp4');
-    if (!frag) throw new Error('fragmented copy was not uploaded');
-    expect(initSectionLength(frag)).toBe(result?.initBytes);
-    expect(frag.byteLength).toBe(result?.size);
+    await writeFragmentedCopy(CLIP_KEY);
 
     const sidecar = JSON.parse(
       new TextDecoder().decode(objects.get('videos/team/clip.mp4.frag.json'))
     );
-    expect(sidecar).toEqual({
-      initBytes: result?.initBytes,
-      size: result?.size,
-      durationSeconds: result?.durationSeconds,
-      videoCodec: 'avc',
-      hasAudio: false,
-    });
+    expect(sidecar.videoCodec).toBe('avc');
+    expect(sidecar.hasAudio).toBe(false);
+    expect(sidecar.durationSeconds).toBeCloseTo(0.5, 2);
+    expect(sidecar.initBytes).toBeGreaterThan(0);
+    expect(sidecar.size).toBeGreaterThan(sidecar.initBytes);
+
+    const frag = objects.get('videos/team/clip.mp4.frag.mp4');
+    if (!frag) throw new Error('fragmented copy was not uploaded');
+    expect(initSectionLength(frag)).toBe(sidecar.initBytes);
+    expect(frag.byteLength).toBe(sidecar.size);
 
     const clipReads = readStorageObject.mock.calls.filter(
       ([key]) => key === CLIP_KEY
@@ -207,24 +197,42 @@ describe('ensureFragmentedClips', () => {
     );
   });
 
-  it('reuses a sidecar instead of remuxing again', async () => {
-    await ensureFragmentedClips(
-      ['/r2/videos/team/clip.mp4'],
-      'https://app.test'
-    );
+  it('skips remux when the sidecar is already there', async () => {
+    await writeFragmentedCopy(CLIP_KEY);
     const firstUploads = uploads.length;
     readStorageObject.mockClear();
     uploadFile.mockClear();
+    await writeFragmentedCopy(CLIP_KEY);
+    expect(uploadFile).not.toHaveBeenCalled();
+    expect(uploads.length).toBe(firstUploads);
+  });
+});
 
-    const [again] = await ensureFragmentedClips(
+describe('ensureFragmentedClips', () => {
+  it('lists sidecar copies and does not remux', async () => {
+    await writeFragmentedCopy(CLIP_KEY);
+    readStorageObject.mockClear();
+    uploadFile.mockClear();
+    uploads.length = 0;
+
+    const [result] = await ensureFragmentedClips(
       ['/r2/videos/team/clip.mp4'],
       'https://app.test'
     );
-    expect(again?.url).toContain('.frag.mp4');
+    expect(result?.url).toBe(
+      'https://app.test/r2/videos/team/clip.mp4.frag.mp4'
+    );
+    expect(result?.videoCodec).toBe('avc');
     expect(uploadFile).not.toHaveBeenCalled();
     expect(
       readStorageObject.mock.calls.every(([key]) => key.endsWith('.frag.json'))
     ).toBe(true);
-    expect(uploads.length).toBe(firstUploads);
+  });
+
+  it('refuses a clip that was never fragmented at ingest', async () => {
+    await expect(
+      ensureFragmentedClips(['/r2/videos/team/clip.mp4'], 'https://app.test')
+    ).rejects.toThrow(/No fragmented copy/);
+    expect(uploads).toEqual([]);
   });
 });

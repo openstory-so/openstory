@@ -224,9 +224,8 @@ export function useSequenceExport(
   const canExport = clipsTotal > 0 && clipsReady === clipsTotal;
 
   // The clip list is the cache key: a changed cut is a new URL, so neither the
-  // query nor the browser can serve the old list. The fetch is the warm-up —
-  // it makes any missing fragmented copies — and its success is what says the
-  // URL is safe to hand to the player.
+  // query nor the browser can serve the old list. Success means every clip
+  // already has a fragmented copy from ingest, so the URL is safe to play.
   const playlistKey = shots ? scenePlaybackKey(toPlaybackScenes(shots)) : '';
   const playback = useQuery({
     queryKey: ['theatre-playlist', sequenceId, playlistKey],

@@ -10,6 +10,11 @@ vi.doMock('@/platform/server/storage/upload-response', () => ({
   uploadResponse: mockUploadResponse,
 }));
 
+const mockWriteFragmentedCopy = vi.fn();
+vi.doMock('@/sequences/server/theatre-playlist', () => ({
+  writeFragmentedCopy: mockWriteFragmentedCopy,
+}));
+
 const {
   fetchVideoForUpload,
   geminiFileIdFromUrl,
@@ -78,6 +83,7 @@ describe('uploadVideoFromUrl', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     mockUploadResponse.mockReset();
+    mockWriteFragmentedCopy.mockReset();
   });
 
   it('returns an already-stored /r2/ URL without fetching or copying', async () => {
@@ -89,6 +95,9 @@ describe('uploadVideoFromUrl', () => {
     });
     expect(fetchMock).not.toHaveBeenCalled();
     expect(mockUploadResponse).not.toHaveBeenCalled();
+    expect(mockWriteFragmentedCopy).toHaveBeenCalledWith(
+      'videos/teams/t1/studio/a1/video.mp4'
+    );
     expect(result).toEqual({
       url,
       path: 'teams/t1/studio/a1/video.mp4',
@@ -127,5 +136,8 @@ describe('uploadVideoFromUrl', () => {
       path: 'teams/t1/studio/a1/video.mp4',
       contentType: 'video/mp4',
     });
+    expect(mockWriteFragmentedCopy).toHaveBeenCalledWith(
+      'videos/teams/t1/studio/a1/video.mp4'
+    );
   });
 });

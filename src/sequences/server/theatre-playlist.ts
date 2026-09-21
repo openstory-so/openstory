@@ -5,11 +5,11 @@
  * loads, with no container and no encode in the way.
  *
  * HLS cannot point at a plain MP4 (`moov` + one `mdat`), which is how every
- * generated clip is stored. So each clip gets a fragmented copy beside it, made
- * once, the first time a playlist names it: the same encoded packets,
- * repackaged — nothing is decoded. A sidecar JSON next to the copy records what
- * the playlist needs (init length, size, duration), and its presence is what
- * says the copy is complete.
+ * generated clip is stored. So each clip gets a fragmented copy beside it,
+ * made once at ingest (`writeFragmentedCopy`): the same encoded packets,
+ * repackaged — nothing is decoded. A sidecar JSON next to the copy records
+ * what the playlist needs (init length, size, duration), and its presence is
+ * what says the copy is complete. The playlist route only reads sidecars.
  *
  * Music is not in here: HLS cannot mix two audio tracks. The theatre plays it
  * alongside (`use-theatre-music.ts`).
@@ -42,8 +42,6 @@ import { uploadResponse } from '@/platform/server/storage/upload-response';
 
 const FRAGMENTED_SUFFIX = '.frag.mp4';
 const SIDECAR_SUFFIX = '.frag.json';
-/** Copies made at once on a cold playlist. Each is a stream, not a buffer. */
-const REPACKAGE_CONCURRENCY = 2;
 /** Demuxer cache ceiling — ranged reads, never the whole clip. */
 const SOURCE_CACHE_BYTES = 2 * 1024 * 1024;
 
@@ -282,6 +280,16 @@ async function repackage(key: string): Promise<FragmentedClipInfo> {
   return info;
 }
 
+/**
+ * Fragmented HLS copy of a stored clip, made once at ingest. A sidecar that
+ * is already there means the copy is whole — this is a no-op then.
+ */
+export async function writeFragmentedCopy(key: string): Promise<void> {
+  if (!key.toLowerCase().endsWith('.mp4')) return;
+  if (await readSidecar(key)) return;
+  await repackage(key);
+}
+
 async function readSidecar(key: string): Promise<FragmentedClipInfo | null> {
   const object = await readStorageObject(`${key}${SIDECAR_SUFFIX}`);
   if (!object) return null;
@@ -292,9 +300,10 @@ async function readSidecar(key: string): Promise<FragmentedClipInfo | null> {
 }
 
 /**
- * The fragmented copy of every clip, in order, made where missing. `origin`
- * absolutizes the URLs (the CDN when there is one) so the player fetches byte
- * ranges without a redirect per request.
+ * The fragmented copy of every clip, in order. Copies are written at ingest;
+ * a missing sidecar means this cut was never fragmented and the theatre
+ * stitches instead. `origin` absolutizes the URLs (the CDN when there is one)
+ * so the player fetches byte ranges without a redirect per request.
  */
 export async function ensureFragmentedClips(
   clipUrls: readonly string[],
@@ -308,18 +317,9 @@ export async function ensureFragmentedClips(
   });
   const infos = await Promise.all(keys.map(readSidecar));
 
-  const missing = keys.flatMap((key, i) => (infos[i] ? [] : [{ key, i }]));
-  for (let at = 0; at < missing.length; at += REPACKAGE_CONCURRENCY) {
-    await Promise.all(
-      missing.slice(at, at + REPACKAGE_CONCURRENCY).map(async ({ key, i }) => {
-        infos[i] = await repackage(key);
-      })
-    );
-  }
-
   return keys.map((key, i) => {
     const info = infos[i];
-    if (!info) throw new Error(`No fragmented copy for ${key}`);
+    if (!info) throw new ValidationError(`No fragmented copy for ${key}`);
     const { bucket, path } = splitKey(key);
     return {
       ...info,
