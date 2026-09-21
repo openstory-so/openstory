@@ -399,11 +399,12 @@ genuine pre-prompt inputs, so no downstream field can leak in:
 // in the allowlist.
 ```
 
-> **The dialogue filtering is upstream, so it is a stamp↔verify seam of its
-> own.** The stamp side builds the scene with `sceneForShot`
-> (`shot-work-items.ts`), verify rebuilds it with `dialogueForShot`
-> (`scene-script.ts`). A `shotNumber` / `voiceToken` that reaches the hasher
-> unstripped **is** hashed.
+> **The dialogue filtering happens upstream of the hash**, so it is the one
+> part of the hashed surface the hasher cannot enforce. Both sides go through
+> `scriptForShot` (`shot-list-pass.ts`) — `sceneForShot` at stamp time,
+> `composeSceneForShot` at verify time — and a `shotNumber` / `voiceToken` that
+> reached the hasher unstripped **would** be hashed. Anything added to this
+> view goes in that one function, never in a caller.
 
 **Bible entries are projected to their prompt-driving fields (post-#867)** —
 entries are still sorted by their identity field, but only the fields that shape
@@ -609,10 +610,12 @@ shipped fixes; C is defused rather than removed** — the diagram below is the
 _broken_ state, kept because #1732 proved a new stamp site can walk straight
 back into it.
 
-One seam is still live and is **not** the bible: the stamp builds its scene with
-`sceneForShot` while verify rebuilds it with `dialogueForShot` (§4.1). Same
-intent, two code paths — the next false-positive of this class will come from
-there.
+The stamp and the verify still build their scene from different rows — an
+in-memory analysis `Scene` at trigger time, the `scenes` row plus the selected
+`scene_script_versions` row afterwards — but the **narrowing they apply to it is
+one function**, `scriptForShot` (#1732). `scene-script.test.ts` hashes the two
+builders against each other for the same underlying script, so a one-sided
+change to the hashed script view fails there rather than in a user's sequence.
 
 ```mermaid
 flowchart TD
