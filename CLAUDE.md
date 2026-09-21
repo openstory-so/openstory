@@ -268,7 +268,9 @@ changing the area, and update it in the same PR.**
   export: it plays an HLS playlist that points straight at the clips (#1623).
   Each clip gets a fragmented copy made once in the worker by copying packets
   — never mediabunny's `Conversion`, which re-encodes to trim AAC priming and
-  workerd has no codec. Music plays alongside in its own `<audio>`.
+  workerd has no codec. The remux reads ranged R2 bytes and streams the copy
+  through `uploadResponse` (#1735); a whole clip must never sit in Worker
+  memory. Music plays alongside in its own `<audio>`.
 
 ## Frame System
 

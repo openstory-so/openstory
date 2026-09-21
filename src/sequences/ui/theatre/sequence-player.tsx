@@ -252,7 +252,14 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
           onPlay={onAutoPlayConsumed}
           onLoadedMetadata={() => setServerLoaded(true)}
           onMedia={setMedia}
-          onError={() => setFailedUrl(cachedVideoUrl)}
+          onError={() => {
+            captureVideoPlayFailed(posthog, {
+              source: playSource,
+              reason: 'playlist_fallback',
+              sequence_id: sequenceId,
+            });
+            setFailedUrl(cachedVideoUrl);
+          }}
         />
         {!serverLoaded && firstFrame}
         {overlay}

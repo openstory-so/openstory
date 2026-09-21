@@ -1,12 +1,88 @@
-import { describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const objects = new Map<string, Uint8Array>();
+const uploads: { path: string; kind: string }[] = [];
+
+async function bytesOf(
+  file: Uint8Array | ArrayBuffer | ReadableStream<Uint8Array>
+): Promise<Uint8Array> {
+  if (file instanceof ReadableStream) {
+    const chunks: Uint8Array[] = [];
+    const reader = file.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+    const total = chunks.reduce((n, c) => n + c.byteLength, 0);
+    const out = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      out.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return out;
+  }
+  return file instanceof Uint8Array ? file : new Uint8Array(file);
+}
+
+const readStorageObject = vi.fn(
+  async (key: string, range?: { offset: number; length: number }) => {
+    const bytes = objects.get(key);
+    if (!bytes) return null;
+    const slice = range
+      ? bytes.slice(range.offset, range.offset + range.length)
+      : bytes.slice();
+    return { bytes: new Uint8Array(slice), contentType: '' };
+  }
+);
+const storageObjectSize = vi.fn(
+  async (key: string) => objects.get(key)?.byteLength ?? null
+);
+const uploadFile = vi.fn(
+  async (
+    bucket: string,
+    path: string,
+    file: Uint8Array | ArrayBuffer | ReadableStream<Uint8Array>
+  ) => {
+    const bytes = await bytesOf(file);
+    objects.set(`${bucket}/${path}`, bytes);
+    uploads.push({
+      path,
+      kind: file instanceof ReadableStream ? 'stream' : 'buffer',
+    });
+    return {
+      path: `${bucket}/${path}`,
+      publicUrl: `/r2/${bucket}/${path}`,
+      fullPath: `${bucket}/${path}`,
+    };
+  }
+);
 
 vi.doMock('#storage', () => ({
-  readStorageObject: vi.fn(),
-  uploadFile: vi.fn(),
+  readStorageObject,
+  storageObjectSize,
+  uploadFile,
 }));
 
-const { buildTheatrePlaylist, initSectionLength } =
+const { buildTheatrePlaylist, ensureFragmentedClips, initSectionLength } =
   await import('./theatre-playlist');
+
+const CLIP_KEY = 'videos/team/clip.mp4';
+const CLIP = new Uint8Array(
+  readFileSync(resolve(__dirname, '../../../e2e/fixtures/test-video.mp4'))
+);
+
+beforeEach(() => {
+  objects.clear();
+  uploads.length = 0;
+  readStorageObject.mockClear();
+  storageObjectSize.mockClear();
+  uploadFile.mockClear();
+  objects.set(CLIP_KEY, CLIP);
+});
 
 const clip = (n: number, over: Record<string, unknown> = {}) => ({
   url: `https://cdn.test/videos/c${n}.mp4.frag.mp4`,
@@ -79,5 +155,76 @@ describe('initSectionLength', () => {
     expect(() =>
       initSectionLength(new Uint8Array([...box('ftyp', 24), ...box('mdat', 9)]))
     ).toThrow(/no moof/);
+  });
+});
+
+describe('ensureFragmentedClips', () => {
+  it('repackages from ranged reads and a streamed upload, never the whole clip at once', async () => {
+    const [result] = await ensureFragmentedClips(
+      ['/r2/videos/team/clip.mp4'],
+      'https://app.test'
+    );
+
+    expect(result?.durationSeconds).toBeCloseTo(0.5, 2);
+    expect(result?.videoCodec).toBe('avc');
+    expect(result?.hasAudio).toBe(false);
+    expect(result?.initBytes).toBeGreaterThan(0);
+    expect(result?.size).toBeGreaterThan(result?.initBytes ?? 0);
+    expect(result?.url).toBe(
+      'https://app.test/r2/videos/team/clip.mp4.frag.mp4'
+    );
+
+    const frag = objects.get('videos/team/clip.mp4.frag.mp4');
+    if (!frag) throw new Error('fragmented copy was not uploaded');
+    expect(initSectionLength(frag)).toBe(result?.initBytes);
+    expect(frag.byteLength).toBe(result?.size);
+
+    const sidecar = JSON.parse(
+      new TextDecoder().decode(objects.get('videos/team/clip.mp4.frag.json'))
+    );
+    expect(sidecar).toEqual({
+      initBytes: result?.initBytes,
+      size: result?.size,
+      durationSeconds: result?.durationSeconds,
+      videoCodec: 'avc',
+      hasAudio: false,
+    });
+
+    const clipReads = readStorageObject.mock.calls.filter(
+      ([key]) => key === CLIP_KEY
+    );
+    expect(clipReads.length).toBeGreaterThan(0);
+    expect(
+      clipReads.every(
+        ([, range]) =>
+          range != null &&
+          Number.isInteger(range.offset) &&
+          Number.isInteger(range.length)
+      )
+    ).toBe(true);
+    expect(uploads.find((u) => u.path.endsWith('.frag.mp4'))?.kind).toBe(
+      'stream'
+    );
+  });
+
+  it('reuses a sidecar instead of remuxing again', async () => {
+    await ensureFragmentedClips(
+      ['/r2/videos/team/clip.mp4'],
+      'https://app.test'
+    );
+    const firstUploads = uploads.length;
+    readStorageObject.mockClear();
+    uploadFile.mockClear();
+
+    const [again] = await ensureFragmentedClips(
+      ['/r2/videos/team/clip.mp4'],
+      'https://app.test'
+    );
+    expect(again?.url).toContain('.frag.mp4');
+    expect(uploadFile).not.toHaveBeenCalled();
+    expect(
+      readStorageObject.mock.calls.every(([key]) => key.endsWith('.frag.json'))
+    ).toBe(true);
+    expect(uploads.length).toBe(firstUploads);
   });
 });

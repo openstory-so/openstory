@@ -23,6 +23,7 @@ import {
   sequenceExportInputsKey,
 } from './source-shots-hash';
 import { exportSequenceOnServer } from './server-export-client';
+import { captureVideoPlayFailed } from './player-events';
 import type { Sequence } from '@/platform/server/db/schema';
 import { copyTextToClipboard } from '@/ui/clipboard';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -238,11 +239,27 @@ export function useSequenceExport(
         b.toString(16).padStart(2, '0')
       ).join('');
       const url = `/api/sequences/${sequenceId}/theatre.m3u8?v=${version}`;
-      const response = await fetch(url, {
-        credentials: 'same-origin',
-        signal,
-      });
-      return response.ok ? url : null;
+      try {
+        const response = await fetch(url, {
+          credentials: 'same-origin',
+          signal,
+        });
+        if (response.ok) return url;
+        captureVideoPlayFailed(posthog, {
+          source: 'theatre',
+          reason: `playlist_http_${response.status}`,
+          sequence_id: sequenceId,
+        });
+        return null;
+      } catch (error) {
+        if (signal.aborted) throw error;
+        captureVideoPlayFailed(posthog, {
+          source: 'theatre',
+          reason: 'playlist_fetch_failed',
+          sequence_id: sequenceId,
+        });
+        return null;
+      }
     },
     enabled: Boolean(sequence) && playlistKey !== '',
     staleTime: Infinity,

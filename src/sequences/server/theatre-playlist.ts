@@ -15,11 +15,11 @@
  * alongside (`use-theatre-music.ts`).
  */
 
-import { readStorageObject, uploadFile } from '#storage';
+import { readStorageObject, storageObjectSize, uploadFile } from '#storage';
 import {
   ALL_FORMATS,
-  BufferSource,
-  BufferTarget,
+  AppendOnlyStreamTarget,
+  CustomSource,
   EncodedAudioPacketSource,
   EncodedPacketSink,
   type EncodedPacket,
@@ -38,11 +38,14 @@ import {
   toShareableUrl,
   type StorageBucket,
 } from '@/platform/server/storage/buckets';
+import { uploadResponse } from '@/platform/server/storage/upload-response';
 
 const FRAGMENTED_SUFFIX = '.frag.mp4';
 const SIDECAR_SUFFIX = '.frag.json';
-/** Copies made at once on a cold playlist: each holds a clip in and out. */
+/** Copies made at once on a cold playlist. Each is a stream, not a buffer. */
 const REPACKAGE_CONCURRENCY = 2;
+/** Demuxer cache ceiling — ranged reads, never the whole clip. */
+const SOURCE_CACHE_BYTES = 2 * 1024 * 1024;
 
 const sidecarSchema = z.object({
   /** Bytes of `ftyp` + `moov` at the head of the copy — the HLS init section. */
@@ -102,13 +105,56 @@ async function copyPackets(
   }
 }
 
-async function repackage(key: string): Promise<FragmentedClipInfo> {
-  const source = await readStorageObject(key);
-  if (!source) throw new ValidationError(`Clip is missing: ${key}`);
+function clipSource(key: string, size: number): CustomSource {
+  return new CustomSource({
+    getSize: () => size,
+    maxCacheSize: SOURCE_CACHE_BYTES,
+    read: async (start, end) => {
+      const object = await readStorageObject(key, {
+        offset: start,
+        length: end - start,
+      });
+      if (!object) throw new Error(`Storage object disappeared: ${key}`);
+      return object.bytes;
+    },
+  });
+}
 
+/**
+ * Packet-copy the clip into `target` as fragmented MP4. No `Conversion`: an
+ * AAC track starts a frame before zero (encoder priming), and trimming that
+ * the library's way means a re-encode, which workerd has no codec for. The
+ * early packets are dropped instead; both tracks stay on the clip's own
+ * clock. Side by side, because the muxer closes a fragment only once every
+ * track covers it.
+ */
+async function remuxFragmented(
+  key: string,
+  size: number,
+  target: AppendOnlyStreamTarget,
+  onFirstMoof?: (position: number) => void
+): Promise<{
+  durationSeconds: number;
+  videoCodec: string;
+  hasAudio: boolean;
+}> {
   const input = new Input({
     formats: ALL_FORMATS,
-    source: new BufferSource(source.bytes),
+    source: clipSource(key, size),
+  });
+  let sawMoof = false;
+  const output = new Output({
+    format: new Mp4OutputFormat({
+      fastStart: 'fragmented',
+      onMoof: onFirstMoof
+        ? (_data, position) => {
+            if (sawMoof) return;
+            sawMoof = true;
+            onFirstMoof(position);
+          }
+        : undefined,
+    }),
+    target,
   });
   try {
     const videoTrack = await input.getPrimaryVideoTrack();
@@ -120,11 +166,6 @@ async function repackage(key: string): Promise<FragmentedClipInfo> {
       throw new ValidationError(`Clip has an unknown codec: ${key}`);
     }
 
-    const target = new BufferTarget();
-    const output = new Output({
-      format: new Mp4OutputFormat({ fastStart: 'fragmented' }),
-      target,
-    });
     const videoSource = new EncodedVideoPacketSource(videoCodec);
     output.addVideoTrack(videoSource);
     const audioSource = audioCodec
@@ -133,11 +174,6 @@ async function repackage(key: string): Promise<FragmentedClipInfo> {
     if (audioSource) output.addAudioTrack(audioSource);
     await output.start();
 
-    // The packets as they are — no `Conversion`: an AAC track starts a frame
-    // before zero (encoder priming), and trimming that the library's way means
-    // a re-encode, which workerd has no codec for. The early packets are
-    // dropped instead; both tracks stay on the clip's own clock. Side by side,
-    // because the muxer closes a fragment only once every track covers it.
     const videoConfig = await videoTrack.getDecoderConfig();
     const audioConfig = (await audioTrack?.getDecoderConfig()) ?? null;
     await Promise.all([
@@ -157,34 +193,93 @@ async function repackage(key: string): Promise<FragmentedClipInfo> {
         : null,
     ]);
     await output.finalize();
-    if (!target.buffer) throw new Error(`Repackage wrote nothing: ${key}`);
-    const bytes = new Uint8Array(target.buffer);
-
-    const info: FragmentedClipInfo = {
-      initBytes: initSectionLength(bytes),
-      size: bytes.byteLength,
+    return {
       durationSeconds: await input.computeDuration(),
       videoCodec,
       hasAudio: audioSource !== null,
     };
-
-    // The copy first, the sidecar second: a sidecar is the claim that the copy
-    // is whole.
-    const { bucket, path } = splitKey(key);
-    await uploadFile(bucket, `${path}${FRAGMENTED_SUFFIX}`, bytes, {
-      contentType: 'video/mp4',
-      upsert: true,
-    });
-    await uploadFile(
-      bucket,
-      `${path}${SIDECAR_SUFFIX}`,
-      new TextEncoder().encode(JSON.stringify(info)),
-      { contentType: 'application/json', upsert: true }
-    );
-    return info;
+  } catch (error) {
+    await output.cancel().catch(() => undefined);
+    throw error;
   } finally {
     input.dispose();
   }
+}
+
+/** First pass: size the copy and find the init section, discarding the bytes. */
+async function measureFragmentedCopy(
+  key: string,
+  size: number
+): Promise<FragmentedClipInfo> {
+  let bytes = 0;
+  let initBytes: number | undefined;
+  const meta = await remuxFragmented(
+    key,
+    size,
+    new AppendOnlyStreamTarget(
+      new WritableStream({
+        write(chunk) {
+          bytes += chunk.byteLength;
+        },
+      })
+    ),
+    (position) => {
+      initBytes = position;
+    }
+  );
+  if (initBytes == null || bytes === 0) {
+    throw new Error(`Repackage wrote nothing: ${key}`);
+  }
+  return { ...meta, initBytes, size: bytes };
+}
+
+/**
+ * Second pass: the same packets, streamed into R2 at a known length so
+ * `uploadResponse` can wrap a FixedLengthStream and never buffer the clip.
+ */
+async function streamFragmentedCopy(
+  key: string,
+  sourceSize: number,
+  copySize: number,
+  bucket: StorageBucket,
+  path: string
+): Promise<void> {
+  const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
+  const upload = uploadResponse(
+    new Response(readable, {
+      headers: { 'content-length': String(copySize) },
+    }),
+    bucket,
+    `${path}${FRAGMENTED_SUFFIX}`,
+    { contentType: 'video/mp4' }
+  );
+  try {
+    await Promise.all([
+      remuxFragmented(key, sourceSize, new AppendOnlyStreamTarget(writable)),
+      upload,
+    ]);
+  } catch (error) {
+    await writable.abort(error).catch(() => undefined);
+    throw error;
+  }
+}
+
+async function repackage(key: string): Promise<FragmentedClipInfo> {
+  const sourceSize = await storageObjectSize(key);
+  if (!sourceSize) throw new ValidationError(`Clip is missing: ${key}`);
+
+  const info = await measureFragmentedCopy(key, sourceSize);
+  const { bucket, path } = splitKey(key);
+  // The copy first, the sidecar second: a sidecar is the claim that the copy
+  // is whole.
+  await streamFragmentedCopy(key, sourceSize, info.size, bucket, path);
+  await uploadFile(
+    bucket,
+    `${path}${SIDECAR_SUFFIX}`,
+    new TextEncoder().encode(JSON.stringify(info)),
+    { contentType: 'application/json', upsert: true }
+  );
+  return info;
 }
 
 async function readSidecar(key: string): Promise<FragmentedClipInfo | null> {
