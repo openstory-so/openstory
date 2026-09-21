@@ -29,8 +29,17 @@ const TRANSFORM_ZONE = TRANSFORM_DOMAIN.split('.').slice(-2).join('.');
  * the only origin known identically on the server and the client (using the
  * runtime origin would make SSR and hydration disagree). Deployments without
  * it simply skip transforms and render a plain `<img>`.
+ *
+ * Never in dev: `bun dev` sets `VITE_APP_URL` to the worktree's tunnel
+ * hostname, which is on the transform zone — so every stored image would go
+ * out to Cloudflare and back in through the tunnel, and break whenever the
+ * tunnel is not connected (`onerror=redirect` lands on the same dead host).
+ * Local media is served by the local `/r2/` route; the relative src is right.
+ * `DEV` is a build-time constant, so server and client still agree.
  */
-const APP_ORIGIN = (import.meta.env.VITE_APP_URL || '').replace(/\/$/, '');
+const APP_ORIGIN = import.meta.env.DEV
+  ? ''
+  : (import.meta.env.VITE_APP_URL || '').replace(/\/$/, '');
 
 /**
  * Absolute form of an image src: origin-relative srcs resolve against the
