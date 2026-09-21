@@ -18,7 +18,7 @@ import {
 } from '@/shots/shot-list.derive';
 import type { ShotSpec } from '@/shots/shot-list.schema';
 import type { StyleConfig } from '@/look/style-config';
-import { dialogueForShot } from '@/shots/shot-list-pass';
+import { scriptForShot } from '@/shots/shot-list-pass';
 
 /**
  * The scene as one clip sees it: only the dialogue spoken in that shot
@@ -30,10 +30,7 @@ import { dialogueForShot } from '@/shots/shot-list-pass';
 export function sceneForShot(scene: Scene, shotNumber: number): Scene {
   return {
     ...scene,
-    originalScript: {
-      ...scene.originalScript,
-      dialogue: dialogueForShot(scene.originalScript.dialogue, shotNumber),
-    },
+    originalScript: scriptForShot(scene.originalScript, shotNumber),
   };
 }
 

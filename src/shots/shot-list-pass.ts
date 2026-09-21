@@ -29,6 +29,7 @@ import type { StyleConfig } from '@/look/style-config';
 import type {
   CharacterBibleEntry,
   DialogueLine,
+  Scene,
 } from '@/shots/scene-analysis.schema';
 import type { DbSceneId } from '@/shots/scene-id';
 import type { SceneSplittingScene } from '@/sequences/server/streaming-scene-parser';
@@ -245,6 +246,24 @@ export function dialogueForShot(
       (line) => line.shotNumber === undefined || line.shotNumber === shotNumber
     )
     .map(({ shotNumber: _stamp, ...line }) => line);
+}
+
+/**
+ * The script a shot is prompted and hashed from: the scene's script with its
+ * dialogue narrowed to that shot.
+ *
+ * `originalScript` is hashed VERBATIM (`sceneInputContext`), so this view is
+ * the whole hashed script surface — and the stamp and the verify build it
+ * from different rows (an in-memory analysis `Scene` at trigger time, the
+ * selected `scene_script_versions` row afterwards). Both go through here so
+ * the narrowing cannot drift between them; #1732 is what one stamp site
+ * drifting costs. Anything added to this view lands on both sides at once.
+ */
+export function scriptForShot(
+  script: Scene['originalScript'],
+  shotNumber: number
+): Scene['originalScript'] {
+  return { ...script, dialogue: dialogueForShot(script.dialogue, shotNumber) };
 }
 
 /**

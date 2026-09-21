@@ -19,7 +19,7 @@ import { createSceneScriptVersionsMethods } from '@/shots/server/db/scene-script
 import { createScenesMethods } from '@/shots/server/db/scenes';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { plainSceneTitle } from '@/platform/markdown-plain';
-import { dialogueForShot } from '@/shots/shot-list-pass';
+import { scriptForShot } from '@/shots/shot-list-pass';
 
 /** A scene row plus its selected script — everything a `Scene` composes from. */
 export type SceneContext = {
@@ -32,8 +32,9 @@ export type SceneContext = {
  *
  * Per-shot because `durationSeconds` derives from `shots.durationMs` rather
  * than being stored twice, and because the scene's dialogue is filtered to
- * the lines spoken in this shot (#1585) — the same filter `shotWorkItems`
- * applies at trigger time, so prompt-input hashes agree at verify time.
+ * the lines spoken in this shot (#1585). That narrowing is `scriptForShot`,
+ * the same call `sceneForShot` makes at trigger time — one function, so the
+ * verify view cannot drift from the stamped one.
  */
 function composeSceneForShot(
   shot: Pick<Shot, 'durationMs' | 'shotNumber'>,
@@ -44,10 +45,7 @@ function composeSceneForShot(
     sceneId: scene.id,
     sceneNumber: scene.orderIndex + 1,
     originalScript: script
-      ? {
-          ...script,
-          dialogue: dialogueForShot(script.dialogue, shot.shotNumber ?? 1),
-        }
+      ? scriptForShot(script, shot.shotNumber ?? 1)
       : { extract: '', dialogue: [] },
     metadata: {
       title: plainSceneTitle(scene.title),
