@@ -361,3 +361,20 @@ in References; motion just does not bind it.
 
 Out of scope here: voice cloning from an uploaded sample, realtime/agents,
 auditioning/regenerating a single line from the scene panel.
+
+**Stills animatic (#1690, Step 1).** The scene-list Animatic control opens a
+standalone image/audio player, scoped to the selected shot's scene, selected
+scene, or whole sequence. The scope switch can expand to the sequence or
+return to that scene (the first scene when opened at sequence scope). The
+playlist snapshots the rail's scene/shot order on open so background refetches
+do not restart playback. Each shot prefers its storyboard preview, falls back
+to its thumbnail, and plays `shots.audioClips` in order; an audio `ended` event
+advances it, regardless of the planned shot length. Without audio, it holds
+for `durationMs` (3 seconds for legacy missing/invalid durations). Pause keeps
+the audio position or remaining silent hold. Captions use resolved
+`ShotView.dialogue` with the current clip's `spokenLines` substitutions.
+Space toggles play/pause and arrows step shots. Hard image cuts introduce no
+motion, including for reduced-motion users. Closing stops audio and timers;
+media errors pause with a visible retry/skip message. This is dialogue-only:
+the theatre decoder, rendered videos, export and music are unchanged. Mixed
+stills/video playback is Step 2, a separate follow-up.
