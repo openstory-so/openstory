@@ -22,7 +22,7 @@ import {
 import type { ShotView } from '@/shots/shot-view';
 import type { Sequence } from '@/platform/server/db/schema';
 import { Download, Film, Link, Loader2 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { toPlaybackScenes } from '@/sequences/ui/theatre/playback-scenes';
 
 type SceneCanvasProps = {
@@ -160,7 +160,6 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
   autoPlay = false,
   onAutoPlayConsumed,
 }) => {
-  const [playbackCaptions, setPlaybackCaptions] = useState<string[]>([]);
   const scope = selectionScope(selection);
   const scopedShots = useMemo(
     () => (shots ? selectionShots(selection, shots) : []),
@@ -272,20 +271,8 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
   }
 
   return (
-    <CanvasMediaStage
-      aspectRatio={aspectRatio}
-      below={
-        playbackCaptions.length ? (
-          <div className="flex flex-col gap-1 text-sm">
-            {playbackCaptions.map((line, index) => (
-              <p key={index}>{line}</p>
-            ))}
-          </div>
-        ) : undefined
-      }
-    >
+    <CanvasMediaStage aspectRatio={aspectRatio}>
       <SequencePlayer
-        onCaptionsChange={setPlaybackCaptions}
         scenes={playbackScenes}
         musicUrl={scope === 'sequence' ? (sequence.musicUrl ?? null) : null}
         musicLoudnessGainDb={null}

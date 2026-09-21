@@ -76,6 +76,55 @@ type SequencePlayerProps = {
   onAutoPlayConsumed?: () => void;
 };
 
+/**
+ * A quiet prompt-reader treatment for still dialogue. It lives in the theatre
+ * frame so captions follow the same timeline as the image/video underneath.
+ * The next line is intentionally present but dimmed: users can anticipate the
+ * beat without losing the line currently being spoken.
+ */
+const DialoguePromptReader: React.FC<{ lines: string[] }> = ({ lines }) => {
+  const [lineIndex, setLineIndex] = useState(0);
+
+  useEffect(() => {
+    setLineIndex(0);
+    if (lines.length < 2) return;
+    const timer = window.setInterval(() => {
+      setLineIndex((index) => (index + 1) % lines.length);
+    }, 2_600);
+    return () => window.clearInterval(timer);
+  }, [lines]);
+
+  if (lines.length === 0) return null;
+  const current = lines[lineIndex] ?? lines[0];
+  const next = lines[(lineIndex + 1) % lines.length];
+
+  return (
+    <output
+      className="pointer-events-none absolute inset-x-0 top-3 z-20 flex justify-center px-4 sm:top-5"
+      aria-live="polite"
+      aria-label={`Dialogue: ${current}`}
+    >
+      <div className="relative flex max-w-2xl flex-col items-center gap-1 text-center">
+        <div className="absolute -inset-x-12 -inset-y-4 rounded-full bg-background/20 blur-2xl" />
+        <p className="relative text-[10px] font-medium uppercase tracking-[0.24em] text-white/60 motion-reduce:animate-none">
+          Dialogue
+        </p>
+        <p
+          key={`${lineIndex}-${current}`}
+          className="relative max-w-[min(42rem,90vw)] text-balance text-base font-medium leading-snug text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)] animate-in fade-in slide-in-from-bottom-2 duration-700 motion-reduce:animate-none sm:text-lg"
+        >
+          {current}
+        </p>
+        {next && next !== current && (
+          <p className="relative max-w-[min(36rem,78vw)] truncate text-sm leading-snug text-white/45 drop-shadow-[0_2px_6px_rgba(0,0,0,0.85)] animate-in fade-in duration-1000 motion-reduce:animate-none">
+            {next}
+          </p>
+        )}
+      </div>
+    </output>
+  );
+};
+
 function useMounted(): boolean {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -105,12 +154,17 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
   const hasStills = scenes.some((scene) => !('videoUrl' in scene));
   if (hasStills) cachedVideoUrl = null;
   const captionIndex = useRef(-1);
+  const [captions, setCaptions] = useState<string[]>([]);
+  const handleCaptionsChange = (lines: string[]) => {
+    setCaptions(lines);
+    onCaptionsChange?.(lines);
+  };
   const publishCaptions = (time: number, offsets: number[]) => {
     let index = offsets.length - 1;
     while (index > 0 && (offsets[index] ?? 0) > time) index--;
     if (index === captionIndex.current) return;
     captionIndex.current = index;
-    onCaptionsChange?.(scenes[index]?.captions ?? []);
+    handleCaptionsChange(scenes[index]?.captions ?? []);
   };
 
   const [meta, setMeta] = useState<SequencePlayerMeta | null>(null);
@@ -145,7 +199,7 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
   // changes) and detach does not emit `pause`.
   useEffect(() => {
     captionIndex.current = -1;
-    onCaptionsChange?.([]);
+    handleCaptionsChange([]);
     setMeta(null);
     setLoadedScenes(0);
     setError(null);
@@ -333,6 +387,7 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
         </Suspense>
       ) : null}
       {!meta && loading}
+      <DialoguePromptReader lines={captions} />
       {overlay}
     </div>
   );
