@@ -522,8 +522,26 @@ describe('updateQueryCacheFromEvent — variant-only guard (#547)', () => {
 
       vi.advanceTimersByTime(200);
       const keys = invalidate.mock.calls.map((c) => c[0]?.queryKey);
-      expect(keys).toContainEqual(sequenceCharacterKeys.list(SEQ));
+      expect(keys).toContainEqual(sequenceCharacterKeys.all);
       expect(keys).toContainEqual(sceneFacetKeys.maps(SEQ));
+    });
+
+    it('character-voice:progress invalidates the versions prefix (#1715)', () => {
+      const invalidate = vi.spyOn(qc, 'invalidateQueries');
+
+      updateQueryCacheFromEvent(
+        qc,
+        SEQ,
+        'generation.character-voice:progress',
+        {
+          characterId: 'char-1',
+          status: 'completed',
+        }
+      );
+
+      vi.advanceTimersByTime(200);
+      const keys = invalidate.mock.calls.map((c) => c[0]?.queryKey);
+      expect(keys).toContainEqual(sequenceCharacterKeys.all);
     });
 
     it('location:matched refetches the location list and the facet maps', () => {
