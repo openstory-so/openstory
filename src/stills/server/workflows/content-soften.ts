@@ -101,6 +101,52 @@ export function softenRejectedMotionPrompt(
   });
 }
 
+/**
+ * Shorten a motion prompt that a via's documented hard ceiling refused
+ * (#1754). Nothing is cut inside a request builder any more, so the rewrite
+ * is an LLM pass whose result the caller saves as a visible, revertable
+ * prompt version.
+ */
+export async function shortenOverlongMotionPrompt(
+  step: WorkflowStep,
+  args: SoftenRejectedPromptArgs & { limit: number }
+): Promise<string> {
+  const response = await durableLLMCallCf(
+    step,
+    {
+      name: args.name ?? 'shorten-motion-prompt',
+      phase: { number: 4, name: 'Shortening prompt…' },
+      promptName: 'phase/shorten-motion-prompt-chat',
+      promptVariables: {
+        prompt: args.prompt,
+        limit: String(args.limit),
+        currentLength: String(args.prompt.length),
+      },
+      modelId: args.analysisModelId,
+      responseSchema: softenImagePromptResponseSchema,
+      additionalMetadata: { shotId: args.shotId, model: args.model },
+    },
+    {
+      sequenceId: args.sequenceId,
+      userId: args.userId,
+      workflowRunId: args.workflowRunId,
+      scopedDb: args.scopedDb,
+      reservationId: args.reservationId,
+    }
+  );
+
+  const shortened = response.prompt.trim();
+  if (!shortened) throw new Error('Shortened prompt was empty');
+  // No fallback trim: cutting here is exactly what #1754 removed. A rewrite
+  // that still does not fit fails loudly so the user shortens the shot.
+  if (shortened.length > args.limit) {
+    throw new Error(
+      `Shortened prompt is still ${shortened.length} characters; ${args.model} accepts ${args.limit}.`
+    );
+  }
+  return shortened;
+}
+
 async function softenRejectedPrompt(
   step: WorkflowStep,
   args: SoftenRejectedPromptArgs & { name: string; promptName: string }

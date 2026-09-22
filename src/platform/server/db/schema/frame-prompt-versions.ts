@@ -30,6 +30,8 @@ const PROMPT_VERSION_SOURCES = [
   'restored',
   // Auto-rewritten after a provider content-checker rejection (#1272).
   'softened',
+  // Auto-shortened after a via refused the prompt for its length (#1754).
+  'shortened',
 ] as const;
 export type PromptVersionSource = (typeof PROMPT_VERSION_SOURCES)[number];
 

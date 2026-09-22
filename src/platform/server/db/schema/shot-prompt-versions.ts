@@ -98,6 +98,10 @@ const PROMPT_VARIANT_SOURCES = [
   // Kept in lockstep with PromptVersionSource — visual history is listed
   // through this union.
   'softened',
+  // Auto-shortened after a via refused the prompt for its length (#1754).
+  // Nothing is cut inside a request builder any more, so the shortening is
+  // an ordinary version the user can read and revert.
+  'shortened',
 ] as const;
 export type PromptVariantSource = (typeof PROMPT_VARIANT_SOURCES)[number];
 

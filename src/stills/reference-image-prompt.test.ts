@@ -137,23 +137,19 @@ describe('buildReferenceImagePrompt', () => {
     expect(second.prompt).not.toContain('(Image 1) (Image 1)');
   });
 
-  it('truncates the base prompt (never the legend) to fit the limit', () => {
+  it('keeps a long base prompt whole alongside the legend (#1754)', () => {
     const longBase = 'x'.repeat(5000);
-    const result = buildReferenceImagePrompt(
-      longBase,
-      [
-        ref({
-          referenceImageUrl: 'https://example.com/loc.png',
-          description: 'INT. BONDI STUDIO - MORNING',
-          role: 'location',
-        }),
-      ],
-      2500
-    );
-    expect(result.prompt.length).toBeLessThanOrEqual(2500);
+    const result = buildReferenceImagePrompt(longBase, [
+      ref({
+        referenceImageUrl: 'https://example.com/loc.png',
+        description: 'INT. BONDI STUDIO - MORNING',
+        role: 'location',
+      }),
+    ]);
+    expect(result.prompt).toContain(longBase);
     expect(result.prompt).toContain(
       'Image 1 (location): INT. BONDI STUDIO - MORNING'
     );
-    expect(result.prompt).toContain('...');
+    expect(result.prompt).not.toContain('...');
   });
 });

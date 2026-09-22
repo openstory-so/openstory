@@ -95,7 +95,6 @@ describe.each([
         'A slow dolly in',
         STILL,
         [ref('https://example.com/a.png', 'Alice - tall woman', 'Alice')],
-        undefined,
         { skipLegend: true }
       );
       expect(result.prompt).not.toContain('Reference images:');
@@ -163,21 +162,20 @@ describe.each([
       expect(result.prompt).not.toContain(`@Image${budget + 1}`);
     });
 
-    it('truncates the base prompt (never the legend or start line) to fit the limit', () => {
+    it('keeps a long base prompt whole alongside the legend (#1754)', () => {
       const longBase = 'x'.repeat(5000);
       const result = buildReferenceVideoPrompt(
         seedanceConfig,
         longBase,
         STILL,
-        [ref('https://example.com/a.png', 'Alice - tall woman', 'Alice')],
-        2500
+        [ref('https://example.com/a.png', 'Alice - tall woman', 'Alice')]
       );
-      expect(result.prompt.length).toBeLessThanOrEqual(2500);
+      expect(result.prompt).toContain(longBase);
       expect(
         result.prompt.startsWith('Use @Image1 as the starting frame.')
       ).toBe(true);
       expect(result.prompt).toContain('@Image2: Alice - tall woman');
-      expect(result.prompt).toContain('...');
+      expect(result.prompt).not.toContain('...');
     });
   }
 );

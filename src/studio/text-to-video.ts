@@ -13,6 +13,7 @@
  */
 
 import { IMAGE_TO_VIDEO_MODELS, type ImageToVideoModel } from '@/models/models';
+import { warnLongPrompt } from '@/models/prompt-length';
 import { motionResolutionTokensForModel } from '@/motion/model-capabilities';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import {
@@ -346,12 +347,6 @@ function encodeDuration(
   }
 }
 
-function truncatePrompt(prompt: string, model: ImageToVideoModel): string {
-  const max = IMAGE_TO_VIDEO_MODELS[model].maxPromptLength;
-  if (prompt.length <= max) return prompt;
-  return `${prompt.slice(0, max - 3)}...`;
-}
-
 type StudioVideoInput = {
   prompt: string;
   model: ImageToVideoModel;
@@ -375,8 +370,13 @@ export type StudioVideoRequest = {
 export function buildStudioVideoInput(
   options: StudioVideoInput
 ): StudioVideoRequest {
-  const { model } = options;
-  const prompt = truncatePrompt(options.prompt, model);
+  const { model, prompt } = options;
+  // Never truncated (#1754) — studio sends what the user wrote; the composer
+  // shows the length and the warning, and this line puts it in the logs.
+  warnLongPrompt(prompt, IMAGE_TO_VIDEO_MODELS[model].maxPromptLength, {
+    model,
+    surface: 'studio',
+  });
   const duration = snapStudioVideoDuration(options.duration, model);
   const modelOptions: Record<string, unknown> = {};
 

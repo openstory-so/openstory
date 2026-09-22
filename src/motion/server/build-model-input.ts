@@ -319,8 +319,7 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
     // no "Use @Image1 as the starting frame." line, because the frame is
     // guaranteed by the request rather than asked for in prose.
     pinsStartFrame ? null : (options.imageUrl ?? null),
-    options.referenceImages ?? [],
-    modelConfig.maxPromptLength
+    options.referenceImages ?? []
   );
 
   const config = endpoint.referenceConfig;

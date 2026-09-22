@@ -17,6 +17,7 @@ import {
   type ReferencePromptBinding,
 } from './build-reference-video-prompt';
 import { snapDuration } from '@/motion/snap-duration';
+import { warnLongPrompt } from '@/models/prompt-length';
 
 /**
  * Omni Flash reference-to-video: still first, then up to 6 library refs
@@ -181,7 +182,13 @@ export function buildGeminiVideoRequest(options: {
   input: GeminiVideoRequestInput;
 } {
   const modelKey = options.model ?? 'gemini_omni_flash';
-  const maxPromptLength = IMAGE_TO_VIDEO_MODELS[modelKey].maxPromptLength;
+  // Never truncated (#1754): Google documents no prompt ceiling, so the
+  // catalog number is a recommendation and going over is a log line.
+  warnLongPrompt(
+    options.prompt,
+    IMAGE_TO_VIDEO_MODELS[modelKey].maxPromptLength,
+    { model: modelKey, via: 'google' }
+  );
   const attached = (options.referenceImages ?? []).filter(
     (ref) => ref.referenceImageUrl
   );
@@ -189,15 +196,11 @@ export function buildGeminiVideoRequest(options: {
   const size = geminiVideoSize(options.aspectRatio);
 
   if (attached.length === 0) {
-    const text =
-      options.prompt.length <= maxPromptLength
-        ? options.prompt
-        : `${options.prompt.slice(0, maxPromptLength - 3)}...`;
     return {
       endpointId: NATIVE_GEMINI_VIDEO_MODEL,
       input: {
         prompt: geminiVideoPromptParts(
-          text,
+          options.prompt,
           options.imageUrl ? [options.imageUrl] : []
         ),
         duration,
@@ -215,8 +218,7 @@ export function buildGeminiVideoRequest(options: {
     GEMINI_VIDEO_REFERENCE_CONFIG,
     options.prompt,
     options.imageUrl ?? null,
-    options.referenceImages ?? [],
-    maxPromptLength
+    options.referenceImages ?? []
   );
   return {
     endpointId: NATIVE_GEMINI_VIDEO_MODEL,

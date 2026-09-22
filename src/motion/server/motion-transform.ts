@@ -14,9 +14,7 @@ import { z } from 'zod';
 
 import type { MotionJSONSchema } from './endpoint-map';
 
-import { getLogger } from '@/platform/logger';
-
-const logger = getLogger(['openstory', 'motion', 'motion-transform']);
+import { assertPromptWithinHardLimit } from '@/models/prompt-length';
 
 // ---------------------------------------------------------------------------
 // JSON Schema readers
@@ -55,11 +53,17 @@ export function getDurationValues<T extends MotionJSONSchema>(
   return [];
 }
 
-/** Extract maxLength from the prompt property, handling anyOf wrappers. */
+/**
+ * Extract maxLength from the prompt property, handling anyOf wrappers.
+ *
+ * Present = fal enforces it, so it is a hard ceiling (#1754). Absent — every
+ * Seedance endpoint — means there is no cap to enforce.
+ */
 function getPromptMaxLength(schema: MotionJSONSchema): number | undefined {
   const props = schema.properties;
   if (!('prompt' in props)) return undefined;
-  return Number(unwrapAnyOf(props.prompt, 'maxLength')?.maxLength ?? undefined);
+  const max = unwrapAnyOf(props.prompt, 'maxLength')?.maxLength;
+  return typeof max === 'number' ? max : undefined;
 }
 
 /**
@@ -113,27 +117,6 @@ export function snapTo(
   );
 }
 
-function truncatePrompt(prompt: string, maxLength: number): string {
-  if (prompt.length <= maxLength) return prompt;
-
-  const paragraphs = prompt.split('\n\n');
-  let result = '';
-  for (const paragraph of paragraphs) {
-    const candidate = result ? `${result}\n\n${paragraph}` : paragraph;
-    if (candidate.length <= maxLength) {
-      result = candidate;
-    } else {
-      break;
-    }
-  }
-  if (!result) return prompt.slice(0, maxLength - 3) + '...';
-
-  logger.warn(
-    `Prompt truncated from ${prompt.length} to ${result.length} chars`
-  );
-  return result;
-}
-
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -154,11 +137,14 @@ export function motionTransform<T extends z.ZodObject<z.ZodRawShape>>(
 
   return zMotionInput.transform((input): z.infer<T> => {
     const { imageUrl, aspectRatio, duration, prompt, ...rest } = input;
+    // A `maxLength` in fal's own schema is a ceiling fal enforces, so this is
+    // the one place a prompt is refused rather than sent (#1754). It used to
+    // be cut down to fit, which shipped a prompt nobody had seen; now the
+    // motion rescue shortens it into a visible prompt version instead.
+    assertPromptWithinHardLimit(prompt, maxPromptLength, 'this video model');
     const raw = {
       ...rest,
-      prompt: maxPromptLength
-        ? truncatePrompt(prompt, maxPromptLength)
-        : prompt,
+      prompt,
       ...(imageUrl && imageUrlField && { [imageUrlField]: imageUrl }),
       ...(aspectRatio && { aspect_ratio: aspectRatio }),
       ...(duration !== undefined &&

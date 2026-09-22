@@ -10,7 +10,6 @@
  * instead.
  */
 
-import { IMAGE_MODELS } from '@/models/models';
 import { resolveUpscaleModel } from '@/models/resolve-asset-models';
 import { ZERO_MICROS } from '@/billing/money';
 import {
@@ -340,11 +339,7 @@ export class UpscaleShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<Upsc
         })),
       ];
       const { prompt: enhancedPrompt, referenceUrls } =
-        buildReferenceImagePrompt(
-          UPSCALE_PROMPT,
-          allReferences,
-          IMAGE_MODELS[upscaleModel].maxPromptLength
-        );
+        buildReferenceImagePrompt(UPSCALE_PROMPT, allReferences);
 
       const imageSize = input.aspectRatio
         ? aspectRatioToImageSize(input.aspectRatio)

@@ -17,7 +17,7 @@ import { resolveShotDuration } from '@/motion/resolve-shot-duration';
 import {
   DEFAULT_IMAGE_MODEL,
   DEFAULT_VIDEO_MODEL,
-  IMAGE_TO_VIDEO_MODELS,
+  videoPromptHardLimit,
   safeImageToVideoModel,
   safeTextToImageModel,
   videoModelSupportsInClipMultiShot,
@@ -219,7 +219,7 @@ async function loadPackedPreviewMembers(input: {
         generateAudio: input.generateAudio,
         scene: packedScene,
       }),
-      IMAGE_TO_VIDEO_MODELS[videoModel].maxPromptLength
+      videoPromptHardLimit(videoModel)
     );
   const durationPacked = packMotionBatchShots(packable, [videoModel]);
   const packed = packMotionBatchShots(packable, [videoModel], { promptFits });

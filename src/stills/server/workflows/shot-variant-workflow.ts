@@ -8,7 +8,7 @@
  * "selected" — it's only the source the tiles are cropped from.
  */
 
-import { DEFAULT_IMAGE_MODEL, IMAGE_MODELS } from '@/models/models';
+import { DEFAULT_IMAGE_MODEL } from '@/models/models';
 import {
   deductWorkflowCredits,
   extractImageCost,
@@ -98,11 +98,7 @@ export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariant
         ];
 
         const { prompt: enhancedPrompt, referenceUrls } =
-          buildReferenceImagePrompt(
-            basePrompt,
-            allReferences,
-            IMAGE_MODELS[model].maxPromptLength
-          );
+          buildReferenceImagePrompt(basePrompt, allReferences);
 
         const params: ImageGenerationParams = {
           model,
@@ -191,11 +187,7 @@ export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariant
       params: prep.params,
       prompt: prep.basePrompt,
       rebuild: (nextPrompt, model) => {
-        const rebuilt = buildReferenceImagePrompt(
-          nextPrompt,
-          prep.references,
-          IMAGE_MODELS[model].maxPromptLength
-        );
+        const rebuilt = buildReferenceImagePrompt(nextPrompt, prep.references);
         return {
           ...prep.params,
           model,

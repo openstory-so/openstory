@@ -109,9 +109,11 @@ export type WriteShotPromptVersionInput = WriteShotPromptVersionBase &
       }
     | {
         // `restored`: audit row for a repoint. `softened`: the content-checker
-        // rewrite the clip was re-rendered from (#1373); carries the rejected
-        // version's hash + model verbatim so staleness stays detectable.
-        source: 'restored' | 'softened';
+        // rewrite the clip was re-rendered from (#1373). `shortened`: the
+        // length rewrite a hard-capped via forced (#1754). All three carry
+        // the original version's hash + model verbatim so staleness stays
+        // detectable.
+        source: 'restored' | 'softened' | 'shortened';
         inputHash: string | null;
         analysisModel: string | null;
       }

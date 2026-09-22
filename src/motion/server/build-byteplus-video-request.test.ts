@@ -127,14 +127,13 @@ describe('buildBytePlusVideoRequest', () => {
     );
   });
 
-  it('truncates a prompt past the model limit', () => {
+  it('sends a long prompt whole — Ark documents no cap for Seedance (#1754)', () => {
     const { prompt } = buildBytePlusVideoRequest(
       { ...base, prompt: 'x'.repeat(9000) },
       'seedance_v2_5'
     );
     const text = prompt.find((part) => part.type === 'text');
-    expect(text?.content.length).toBe(4096);
-    expect(text?.content.endsWith('...')).toBe(true);
+    expect(text?.content.length).toBe(9000);
   });
 });
 

@@ -227,12 +227,20 @@ export function packedSceneFromScene(
   return header;
 }
 
-/** True when this packed payload fits the model's prompt budget. */
+/**
+ * True when this packed payload fits the ceiling the via enforces.
+ *
+ * `hardLimit` is `videoPromptHardLimit(model)`: undefined where the provider
+ * documents no cap (every Seedance endpoint), and then nothing is too long to
+ * pack (#1754). Refusing to pack against a number we invented was blocking
+ * clips the model would have rendered.
+ */
 export function packedPromptFitsLimit(
   packed: PackedMotionPrompt,
-  maxPromptLength: number
+  hardLimit: number | undefined
 ): boolean {
-  const budget = Math.max(1, maxPromptLength - PACKED_PROMPT_RESERVE);
+  if (hardLimit === undefined) return true;
+  const budget = Math.max(1, hardLimit - PACKED_PROMPT_RESERVE);
   if (packed.multiPrompt && packed.multiPrompt.length > 0) {
     return packed.multiPrompt.every(
       (element) => element.prompt.length <= budget

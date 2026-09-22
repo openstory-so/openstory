@@ -50,7 +50,7 @@ import type {
 import type { ReferenceImageDescription } from '@/stills/reference-image-prompt';
 import { DIALOGUE_CLIP_TOKEN } from '@/motion/dialogue-tts';
 import {
-  appendLegendWithinLimit,
+  appendLegend,
   inlineReferenceDescription,
   substituteReferenceTags,
 } from '@/stills/reference-legend';
@@ -204,7 +204,6 @@ export function buildReferenceVideoPrompt(
   /** The rendered still, or null in reference-only mode (no start frame). */
   startImageUrl: string | null,
   references: ReferenceImageDescription[],
-  maxPromptLength?: number,
   options?: { skipLegend?: boolean }
 ): {
   prompt: string;
@@ -293,7 +292,7 @@ export function buildReferenceVideoPrompt(
   }
   const legend = `Reference images:\n${legendLines.join('\n')}`;
   return {
-    prompt: appendLegendWithinLimit(body, legend, maxPromptLength),
+    prompt: appendLegend(body, legend),
     ...result,
   };
 }

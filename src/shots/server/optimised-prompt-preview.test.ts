@@ -209,7 +209,7 @@ describe('buildShotPromptPreview', () => {
   it('warns when prompt length kept later shots out of the packed clip', () => {
     const result = buildShotPromptPreview({
       imageModel: 'nano_banana_2',
-      videoModel: 'seedance_v2_5',
+      videoModel: 'gemini_omni_flash',
       imagePrompt: 'Sarah types',
       motionPrompt: {
         fullPrompt: 'opens the door',
@@ -261,17 +261,19 @@ describe('buildShotPromptPreview', () => {
     expect(result.packedSpanLabel).toBe('Shots 1–2');
     expect(result.packedPromptOverflow).toBe(false);
     expect(result.packedLimitWarning).toContain(
-      "Seedance 2.5's 4096-character prompt limit"
+      "Gemini Omni Flash 1.1's 20000-character prompt limit"
     );
     expect(result.packedLimitWarning).toContain('Shot 3');
     expect(result.assembledMotionPrompt).toContain('INT. HALLWAY - NIGHT');
   });
 
   it('blocks a persisted clip whose prompt does not fit, without dropping a shot', () => {
-    const novel = 'x'.repeat(2000);
+    // Over a ceiling the provider actually enforces (#1754) — Seedance has
+    // none, so a blocking preview has to be tested on a model that does.
+    const novel = 'x'.repeat(11000);
     const result = buildShotPromptPreview({
       imageModel: 'nano_banana_2',
-      videoModel: 'seedance_v2_5',
+      videoModel: 'gemini_omni_flash',
       imagePrompt: 'Sarah types',
       motionPrompt: { fullPrompt: novel, dialogue: null, audio: null },
       shotDurationMs: 4000,
@@ -308,7 +310,7 @@ describe('buildShotPromptPreview', () => {
     expect(result.packedShotIds).toEqual(['shot-1', 'shot-2']);
     expect(result.packedPromptOverflow).toBe(true);
     expect(result.packedLimitWarning).toContain(
-      "This 2-shot clip's prompt exceeds Seedance 2.5's 4096-character limit"
+      "This 2-shot clip's prompt exceeds Gemini Omni Flash 1.1's 20000-character limit"
     );
     expect(result.packedLimitWarning).toContain(
       'Shorten a shot prompt to generate it as one clip'

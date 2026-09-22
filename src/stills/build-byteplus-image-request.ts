@@ -23,6 +23,7 @@ import type {
   BytePlusImageModel,
   BytePlusImageSize,
 } from '@tanstack/ai-byteplus';
+import { warnLongPrompt } from '@/models/prompt-length';
 
 /**
  * Pixel dimensions per aspect preset, per resolution tier (#1449).
@@ -83,11 +84,13 @@ export function buildBytePlusImageRequest(
     throw new Error(`No BytePlus model id for image model "${params.model}"`);
   }
 
-  const maxPromptLength = IMAGE_MODELS[params.model].maxPromptLength;
-  const prompt =
-    params.prompt.length <= maxPromptLength
-      ? params.prompt
-      : `${params.prompt.slice(0, maxPromptLength - 3)}...`;
+  // Never truncated (#1754) — Ark documents no ceiling; over the catalog
+  // recommendation is a log line, not a cut.
+  const prompt = params.prompt;
+  warnLongPrompt(prompt, IMAGE_MODELS[params.model].maxPromptLength, {
+    model: params.model,
+    via: 'byteplus',
+  });
 
   // Pro serves 1K and 2K only, so 1080p and 4K both land on 2K.
   const tier = params.resolution === '720p' ? '1K' : '2K';

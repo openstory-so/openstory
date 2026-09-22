@@ -35,9 +35,7 @@ import {
   type PixelBounds,
   type Resolution,
 } from '@/models/resolutions';
-import { getLogger } from '@/platform/logger';
-
-const logger = getLogger(['openstory', 'image', 'build-image-request']);
+import { warnLongPrompt } from '@/models/prompt-length';
 
 export type ImageGenerationParams = {
   model: TextToImageModel;
@@ -207,17 +205,14 @@ function resolveImageSize(
  *  Declared here, not imported, so this module stays adapter-free. */
 export type GrokImagineImageSize = `${AspectRatioValue}_${'1k' | '2k'}`;
 
-function truncatePromptForModel(
-  prompt: string,
-  model: TextToImageModel
-): string {
-  const maxLength = IMAGE_MODELS[model].maxPromptLength;
-  if (prompt.length <= maxLength) return prompt;
-
-  logger.warn(
-    `Prompt truncated from ${prompt.length} to ${maxLength} chars for ${model}`
-  );
-  return prompt.slice(0, maxLength - 3) + '...';
+/**
+ * Never truncated (#1754): fal's image schemas declare no `maxLength` on
+ * `prompt`, so the catalog number is a recommendation. Over it earns a
+ * warning and the prompt goes out whole.
+ */
+function promptForModel(prompt: string, model: TextToImageModel): string {
+  warnLongPrompt(prompt, IMAGE_MODELS[model].maxPromptLength, { model });
+  return prompt;
 }
 
 function buildFalModelOptions(
@@ -472,7 +467,7 @@ export function buildGeminiImageRequest(
 
   return {
     nativeModel,
-    prompt: truncatePromptForModel(params.prompt, params.model),
+    prompt: promptForModel(params.prompt, params.model),
     size: `${aspectRatio}_${resolution}`,
     resolution,
     numImages: params.numImages ?? 1,
@@ -505,7 +500,7 @@ export function buildGrokImageRequest(params: ImageGenerationParams): {
       : '2k';
 
   return {
-    prompt: truncatePromptForModel(params.prompt, params.model),
+    prompt: promptForModel(params.prompt, params.model),
     size: `${aspectRatio}_${resolution}`,
     numImages: params.numImages ?? 1,
     referenceImageUrls: capReferenceImages(
@@ -551,7 +546,7 @@ export function buildImageRequest(params: ImageGenerationParams): {
     via: 'fal',
     endpointId,
     input: {
-      prompt: truncatePromptForModel(capped.prompt, capped.model),
+      prompt: promptForModel(capped.prompt, capped.model),
       ...buildFalModelOptions(capped),
     },
   };

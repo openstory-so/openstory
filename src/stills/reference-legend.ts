@@ -8,9 +8,12 @@
  * an image model's positional binding (`SCARLETT (Image 2)`) — matching how
  * vendor examples weave tags into the narrative ("the fruit tea from
  * @Image2"). A trailing legend line is the fallback for references never
- * mentioned in the prompt; the legend is load-bearing — dropping it orphans
- * the reference images — so when the combined text exceeds the model's prompt
- * limit we truncate the BASE prompt and always keep the legend intact.
+ * mentioned in the prompt.
+ *
+ * Nothing here is length-aware any more (#1754): the legend used to be fitted
+ * by cutting the BASE prompt, which at the extreme handed the model the
+ * legend and none of the shot. Both go out whole; the model's recommendation
+ * is a warning, not a budget.
  */
 
 import type { ReferenceImageDescription } from './reference-image-prompt';
@@ -74,20 +77,6 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-export function appendLegendWithinLimit(
-  basePrompt: string,
-  legend: string,
-  maxLength?: number
-): string {
-  const joiner = '\n\n';
-  const combined = `${basePrompt}${joiner}${legend}`;
-  if (!maxLength || combined.length <= maxLength) return combined;
-
-  const available = maxLength - legend.length - joiner.length - 3; // 3 for '...'
-  if (available <= 0) {
-    // Legend alone exceeds the limit (only with absurdly long descriptions) —
-    // hand it back whole and let the downstream transform clamp it.
-    return legend;
-  }
-  return `${basePrompt.slice(0, available)}...${joiner}${legend}`;
+export function appendLegend(basePrompt: string, legend: string): string {
+  return `${basePrompt}\n\n${legend}`;
 }

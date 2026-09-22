@@ -21,6 +21,7 @@ import {
   getMotionReferenceEndpoint,
   IMAGE_MODELS,
   IMAGE_TO_VIDEO_MODELS,
+  videoPromptHardLimit,
   videoModelSupportsAudio,
   type ImageToVideoModel,
   type TextToImageModel,
@@ -62,6 +63,7 @@ import {
 } from '@/motion/dialogue-tts';
 import type { MotionAudioClip } from '@/platform/server/db/schema';
 import { buildReferenceImagePrompt } from '@/stills/reference-image-prompt';
+import { recommendedPromptLength } from '@/models/prompt-length';
 
 export type BoundPromptImage = {
   label: string;
@@ -73,7 +75,16 @@ export type OptimisedPromptPreview = {
   endpointId: string;
   prompt: string;
   json: string | null;
+  /**
+   * Length of `prompt` — the text above, measured (#1754). It used to be the
+   * pre-truncation length while the body shown was post-truncation, so the
+   * count and the body disagreed on every long prompt.
+   */
   promptLength: number;
+  /**
+   * The model's documented RECOMMENDATION, in characters. Nothing enforces
+   * it: over is a warning and the prompt is still sent whole.
+   */
   maxPromptLength: number;
   images?: BoundPromptImage[];
   /**
@@ -159,7 +170,7 @@ function packedLimitWarning(
 ): string | null {
   const config = IMAGE_TO_VIDEO_MODELS[model];
   if (promptOverflow && packedNumbers.length > 1) {
-    return `This ${packedNumbers.length}-shot clip's prompt exceeds ${config.name}'s ${config.maxPromptLength}-character limit. Shorten a shot prompt to generate it as one clip.`;
+    return `This ${packedNumbers.length}-shot clip's prompt exceeds ${config.name}'s ${videoPromptHardLimit(model)}-character limit. Shorten a shot prompt to generate it as one clip.`;
   }
   if (!durationNumbers || durationNumbers.length <= packedNumbers.length) {
     return null;
@@ -167,7 +178,7 @@ function packedLimitWarning(
   const packedSet = new Set(packedNumbers);
   const excluded = durationNumbers.filter((n) => !packedSet.has(n));
   if (excluded.length === 0) return null;
-  return `${config.name}'s ${config.maxPromptLength}-character prompt limit kept ${formatShotSpan(excluded)} out of this clip.`;
+  return `${config.name}'s ${videoPromptHardLimit(model)}-character prompt limit kept ${formatShotSpan(excluded)} out of this clip.`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -356,10 +367,7 @@ export function buildShotPromptPreview(input: {
     : input.shotDurationMs;
   const packedPromptOverflow = Boolean(
     packed &&
-    !packedPromptFitsLimit(
-      packed,
-      IMAGE_TO_VIDEO_MODELS[input.videoModel].maxPromptLength
-    )
+    !packedPromptFitsLimit(packed, videoPromptHardLimit(input.videoModel))
   );
   const motionRefs = absolutizeRefs([
     ...buildMotionReferenceImages({
@@ -459,8 +467,7 @@ function buildImagePreview(input: {
   try {
     const { prompt: enhancedPrompt, referenceUrls } = buildReferenceImagePrompt(
       basePrompt,
-      referenceImages,
-      config.maxPromptLength
+      referenceImages
     );
     const buildParams = {
       model: input.model,
@@ -483,7 +490,10 @@ function buildImagePreview(input: {
         prompt: enhancedPrompt,
         json: JSON.stringify(body, null, 2),
         promptLength: enhancedPrompt.length,
-        maxPromptLength: config.maxPromptLength,
+        maxPromptLength: recommendedPromptLength(
+          enhancedPrompt,
+          config.maxPromptLength
+        ),
         images: boundPromptImages(
           referenceUrls,
           (position) => `Image ${position}`
@@ -492,13 +502,17 @@ function buildImagePreview(input: {
     }
     const request = buildImageRequest(buildParams);
     const falImageUrls = imageUrlsFromFalInput(request.input);
+    const shownPrompt = promptFromFalInput(request.input, enhancedPrompt);
     return {
       modelName: config.name,
       endpointId: request.endpointId,
-      prompt: promptFromFalInput(request.input, enhancedPrompt),
+      prompt: shownPrompt,
       json: JSON.stringify(request.input, null, 2),
-      promptLength: enhancedPrompt.length,
-      maxPromptLength: config.maxPromptLength,
+      promptLength: shownPrompt.length,
+      maxPromptLength: recommendedPromptLength(
+        shownPrompt,
+        config.maxPromptLength
+      ),
       images: boundPromptImages(
         falImageUrls.length > 0 ? falImageUrls : referenceUrls,
         (position) => `Image ${position}`
@@ -553,7 +567,10 @@ function buildMotionPreview(input: {
         prompt,
         json: JSON.stringify(request.input, null, 2),
         promptLength: prompt.length,
-        maxPromptLength: config.maxPromptLength,
+        maxPromptLength: recommendedPromptLength(
+          prompt,
+          config.maxPromptLength
+        ),
         images: boundPromptImages(
           imageUrlsFromPromptParts(request.input.prompt),
           (position) => `<IMAGE_${position - 1}>`
@@ -586,7 +603,10 @@ function buildMotionPreview(input: {
         prompt,
         json: JSON.stringify(body, null, 2),
         promptLength: prompt.length,
-        maxPromptLength: config.maxPromptLength,
+        maxPromptLength: recommendedPromptLength(
+          prompt,
+          config.maxPromptLength
+        ),
         images: boundPromptImages(
           imageUrlsFromPromptParts(ark.prompt),
           (position) => `@Image${position}`
@@ -620,7 +640,10 @@ function buildMotionPreview(input: {
         prompt,
         json: JSON.stringify(request.input, null, 2),
         promptLength: prompt.length,
-        maxPromptLength: config.maxPromptLength,
+        maxPromptLength: recommendedPromptLength(
+          prompt,
+          config.maxPromptLength
+        ),
         images: boundPromptImages(
           imageUrlsFromPromptParts(request.input.prompt),
           (position) => `<IMAGE_REF_${position - 1}>`
@@ -648,13 +671,17 @@ function buildMotionPreview(input: {
     // the prompt does not use would make the preview lie about the binding.
     const refConfig = getMotionReferenceEndpoint(input.model);
     const onRefEndpoint = refConfig?.endpointId === request.endpointId;
+    const shownPrompt = promptFromFalInput(request.input, modelPrompt);
     return {
       modelName: config.name,
       endpointId: request.endpointId,
-      prompt: promptFromFalInput(request.input, modelPrompt),
+      prompt: shownPrompt,
       json: JSON.stringify(request.input, null, 2),
-      promptLength: modelPrompt.length,
-      maxPromptLength: config.maxPromptLength,
+      promptLength: shownPrompt.length,
+      maxPromptLength: recommendedPromptLength(
+        shownPrompt,
+        config.maxPromptLength
+      ),
       images: boundPromptImages(
         imageUrlsFromFalInput(request.input),
         onRefEndpoint && refConfig

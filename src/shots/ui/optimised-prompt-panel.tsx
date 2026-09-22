@@ -35,7 +35,9 @@ export const OptimisedPromptPanel: React.FC<{
 }> = ({ preview, copiedKey, onCopy, footnote, idPrefix, defaultOpen }) => {
   const [open, setOpen] = useState(defaultOpen ?? false);
   const [view, setView] = useState<PreviewView>('prompt');
-  const overLimit = preview
+  // Over the model's RECOMMENDATION, not a block (#1754) — the prompt is
+  // sent whole either way, so this is amber-shaped advice, not a failure.
+  const overRecommended = preview
     ? preview.promptLength > preview.maxPromptLength
     : false;
   const headingId = `${idPrefix}-heading`;
@@ -74,10 +76,15 @@ export const OptimisedPromptPanel: React.FC<{
                 <span
                   className={cn(
                     'shrink-0 text-xs font-normal tabular-nums',
-                    overLimit
-                      ? 'font-medium text-destructive'
+                    overRecommended
+                      ? 'font-medium text-warning'
                       : 'text-muted-foreground'
                   )}
+                  title={
+                    overRecommended
+                      ? `Over ${preview.modelName}'s recommended ${preview.maxPromptLength} characters. It is still sent in full.`
+                      : undefined
+                  }
                 >
                   {preview.promptLength}&nbsp;/&nbsp;{preview.maxPromptLength}
                 </span>
@@ -160,6 +167,13 @@ export const OptimisedPromptPanel: React.FC<{
               >
                 {preview.prompt}
               </p>
+            )}
+            {overRecommended && (
+              <output className="text-xs text-warning">
+                {preview.promptLength} characters — over {preview.modelName}'s
+                recommended {preview.maxPromptLength}. Sent in full; the model
+                may ignore the tail.
+              </output>
             )}
             {footnote && (
               <p className="text-xs text-muted-foreground">{footnote}</p>

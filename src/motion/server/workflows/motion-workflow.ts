@@ -15,6 +15,7 @@ import {
 import { assetLeaseOwner } from '@/models/server/byteplus-asset-pool';
 import { ingestArkAssets } from '@/models/server/byteplus-asset-steps';
 import { extractFalErrorMessage } from '@/models/fal-error';
+import { isPromptTooLongError } from '@/models/prompt-length';
 import {
   assembleMotionPrompt,
   assemblePackedMotionPrompt,
@@ -37,6 +38,7 @@ import {
   DEFAULT_VIDEO_MODEL,
   getMotionReferenceEndpoint,
   IMAGE_TO_VIDEO_MODELS,
+  videoPromptHardLimit,
 } from '@/models/models';
 import { bindableReferences } from '@/motion/server/build-reference-video-prompt';
 import {
@@ -46,6 +48,7 @@ import {
 import type { VideoManifest } from '@/platform/server/db/schema';
 import {
   MOTION_CONTENT_FALLBACK_MODEL,
+  shortenOverlongMotionPrompt,
   softenRejectedMotionPrompt,
 } from '@/stills/server/workflows/content-soften';
 import {
@@ -299,10 +302,10 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           generateAudio: input.generateAudio,
           scene: input.packedScene,
         });
-        const maxPromptLength = IMAGE_TO_VIDEO_MODELS[model].maxPromptLength;
-        if (!packedPromptFitsLimit(packed, maxPromptLength)) {
+        const hardLimit = videoPromptHardLimit(model);
+        if (!packedPromptFitsLimit(packed, hardLimit)) {
           throw new WorkflowValidationError(
-            `This ${input.coveredShots.length}-shot clip's prompt exceeds ${IMAGE_TO_VIDEO_MODELS[model].name}'s ${maxPromptLength}-character limit. Shorten a shot prompt to generate it as one clip.`
+            `This ${input.coveredShots.length}-shot clip's prompt exceeds ${IMAGE_TO_VIDEO_MODELS[model].name}'s ${hardLimit}-character limit. Shorten a shot prompt to generate it as one clip.`
           );
         }
         prompt = packed.prompt;
@@ -715,11 +718,77 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     // error text so the user learns which input to change.
     let activeModel = model;
     let softened = false;
+    // One length rewrite per run (#1754) — a second refusal after shortening
+    // means the shot itself is too long to say, which is the user's call.
+    let shortened = false;
     // The manifest the in-flight version currently carries — repointed at the
     // softened prompt version when the rescue rewrites it.
     let renderManifest: VideoManifest | null = manifest ?? null;
     const triedModels: (typeof model)[] = [model];
     const maxAttempts = MAX_MOTION_ATTEMPTS + 1;
+
+    /** What the rewritten version must carry forward so staleness still reads. */
+    const loadPromptProvenance = (stepName: string) =>
+      step.do(stepName, async () => {
+        if (input.userEditProvenance) return input.userEditProvenance;
+        const original =
+          input.shotId && input.motionPromptVersionId
+            ? await scopedDb.claims.shotPromptVersions.getByIdForShot(
+                input.motionPromptVersionId,
+                input.shotId
+              )
+            : null;
+        return {
+          inputHash: original?.inputHash ?? null,
+          analysisModel: original?.analysisModel ?? null,
+        };
+      });
+
+    /**
+     * Append the rescue's rewrite as a prompt version and repoint the
+     * in-flight clip's manifest at it. Shared by the content soften (#1373)
+     * and the length shorten (#1754): both replace the prompt mid-run, and
+     * both must leave the original in Versions for the user to revert to.
+     *
+     * A primary render selects the rewrite; a variant-only render appends to
+     * history only — an alternate model's rescue must not move the primary
+     * shot's prompt out from under the primary clip. ponytail: `prompt` is
+     * already model-assembled (dialogue prose + audio trailer baked in), so
+     * the row gets null dialogue/audio and a later render from it appends the
+     * model trailer a second time. Structured assembly resumes once the user
+     * regenerates the prompt.
+     */
+    const writeRescuedMotionPrompt = (
+      stepName: string,
+      text: string,
+      provenance: { inputHash: string | null; analysisModel: string | null },
+      source: 'softened' | 'shortened' = 'shortened'
+    ) =>
+      step.do(stepName, async () => {
+        const shotId = input.shotId;
+        if (!shotId) return renderManifest;
+        const version = await scopedDb.shotPromptVersions.write({
+          shotId,
+          promptType: 'motion',
+          text,
+          source,
+          usesStartFrame: !input.referenceOnly,
+          inputHash: provenance.inputHash,
+          analysisModel: provenance.analysisModel,
+          createdBy: input.userId,
+          select: !input.variantOnly,
+        });
+        if (!videoVersionId || !manifest) return manifest ?? null;
+        const rescued = manifest.map((e) => ({
+          ...e,
+          motionPromptVersionId: version.id,
+        }));
+        await scopedDb.videoVariants.update(videoVersionId, {
+          manifest: rescued,
+          inputHash: await computeVideoManifestInputHash(rescued, model),
+        });
+        return rescued;
+      });
 
     for (let attempt = 0; attempt <= MAX_MOTION_ATTEMPTS; attempt++) {
       const isRescue = attempt === MAX_MOTION_ATTEMPTS;
@@ -763,22 +832,8 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             `[MotionWorkflow:cf] same-prompt reseeds exhausted; softening prompt for shot ${input.shotId}`,
             { event: CONTENT_REJECTION_SOFTEN_EVENT, ...logMeta }
           );
-          const provenance = await step.do(
-            'load-motion-prompt-provenance',
-            async () => {
-              if (input.userEditProvenance) return input.userEditProvenance;
-              const original =
-                input.shotId && input.motionPromptVersionId
-                  ? await scopedDb.claims.shotPromptVersions.getByIdForShot(
-                      input.motionPromptVersionId,
-                      input.shotId
-                    )
-                  : null;
-              return {
-                inputHash: original?.inputHash ?? null,
-                analysisModel: original?.analysisModel ?? null,
-              };
-            }
+          const provenance = await loadPromptProvenance(
+            'load-motion-prompt-provenance'
           );
           try {
             prompt = await softenRejectedMotionPrompt(step, {
@@ -804,46 +859,11 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             if (!swapModel) break;
           }
           if (softened && input.shotId) {
-            const shotId = input.shotId;
-            const softenedText = prompt;
-            renderManifest = await step.do(
+            renderManifest = await writeRescuedMotionPrompt(
               'write-softened-motion-prompt',
-              async () => {
-                // A primary render selects the rewrite (the original stays
-                // in Versions), as the image softener does for the frame.
-                // A variant-only render appends to history only: an
-                // alternate model's rescue must not move the primary shot's
-                // prompt out from under the primary clip (which would then
-                // read stale). ponytail: `input.prompt` is already
-                // model-assembled (dialogue prose + audio trailer baked in),
-                // so this row gets null dialogue/audio — a later render from
-                // it appends the model trailer a second time. Structured
-                // assembly resumes once the user regenerates the prompt.
-                const version = await scopedDb.shotPromptVersions.write({
-                  shotId,
-                  promptType: 'motion',
-                  text: softenedText,
-                  source: 'softened',
-                  usesStartFrame: !input.referenceOnly,
-                  inputHash: provenance.inputHash,
-                  analysisModel: provenance.analysisModel,
-                  createdBy: input.userId,
-                  select: !input.variantOnly,
-                });
-                if (!videoVersionId || !manifest) return manifest ?? null;
-                const rescued = manifest.map((e) => ({
-                  ...e,
-                  motionPromptVersionId: version.id,
-                }));
-                await scopedDb.videoVariants.update(videoVersionId, {
-                  manifest: rescued,
-                  inputHash: await computeVideoManifestInputHash(
-                    rescued,
-                    model
-                  ),
-                });
-                return rescued;
-              }
+              prompt,
+              provenance,
+              'softened'
             );
           }
         }
@@ -964,6 +984,16 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
               rejection: extractFalErrorMessage(error),
             };
           }
+          // A ceiling the via really enforces (#1754) — ours, thrown before
+          // the request, or the provider's own 422. Not a hard stop and not
+          // worth a CF retry: the loop shortens the prompt and resubmits.
+          if (isPromptTooLongError(error)) {
+            return {
+              ok: false as const,
+              tooLong: true as const,
+              rejection: extractFalErrorMessage(error),
+            };
+          }
           if (
             error instanceof Error &&
             'status' in error &&
@@ -980,6 +1010,56 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
 
       if (!submitOutcome.ok) {
         lastRejection = submitOutcome.rejection;
+        if ('tooLong' in submitOutcome) {
+          // Reseeding the same prompt cannot fix a length refusal, so this
+          // does not join the content-rejection ladder: shorten once, save
+          // the rewrite as a prompt version the user can see and revert
+          // (#1754), and resubmit. A second refusal is terminal.
+          const hardLimit = videoPromptHardLimit(activeModel);
+          if (shortened || hardLimit === undefined) {
+            throw new NonRetryableError(
+              `${IMAGE_TO_VIDEO_MODELS[activeModel].name} refused this prompt for its length: ${submitOutcome.rejection}`
+            );
+          }
+          logger.warn(
+            `[MotionWorkflow:cf] prompt over ${IMAGE_TO_VIDEO_MODELS[activeModel].name}'s ${hardLimit}-character limit for shot ${input.shotId}; shortening`,
+            {
+              event: 'prompt_shortened_to_fit',
+              kind: 'motion',
+              model: activeModel,
+              shotId: input.shotId,
+              sequenceId: input.sequenceId,
+              promptLength: prompt.length,
+              hardLimit,
+            }
+          );
+          const provenance = await loadPromptProvenance(
+            `load-motion-prompt-provenance-shorten-${attempt}`
+          );
+          prompt = await shortenOverlongMotionPrompt(step, {
+            scopedDb,
+            workflowRunId,
+            sequenceId: input.sequenceId,
+            userId: input.userId,
+            prompt,
+            rejection: submitOutcome.rejection,
+            analysisModelId:
+              getAnalysisModelById(provenance.analysisModel ?? '')?.id ??
+              DEFAULT_ANALYSIS_MODEL,
+            shotId: input.shotId,
+            model: IMAGE_TO_VIDEO_MODELS[activeModel].name,
+            reservationId: input.reservationId,
+            limit: hardLimit,
+            name: `shorten-motion-prompt-${attempt}`,
+          });
+          shortened = true;
+          renderManifest = await writeRescuedMotionPrompt(
+            `write-shortened-motion-prompt-${attempt}`,
+            prompt,
+            provenance
+          );
+          continue;
+        }
         rejections.push(lastRejection);
         logger.warn(
           `[MotionWorkflow:cf] content-flag rejection on submit attempt ${attempt + 1}/${MAX_MOTION_ATTEMPTS} for shot ${input.shotId}: ${submitOutcome.rejection}`

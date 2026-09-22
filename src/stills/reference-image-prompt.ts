@@ -1,10 +1,5 @@
-import { getLogger } from '@/platform/logger';
-import {
-  appendLegendWithinLimit,
-  substituteReferenceTags,
-} from './reference-legend';
+import { appendLegend, substituteReferenceTags } from './reference-legend';
 
-const logger = getLogger(['openstory', 'prompts', 'reference-image-prompt']);
 /**
  * Result of building a prompt with character references
  */
@@ -112,15 +107,11 @@ function stripExistingReferenceSections(prompt: string): string {
  * @param basePrompt - The original prompt
  * @param references - The reference images (order determines Image numbering:
  *   primary, characters, locations, elements, untyped)
- * @param maxPromptLength - If set, truncate the base prompt to fit within this
- *   total limit while preserving the legend in full (a dropped legend would
- *   orphan the reference images).
  * @returns The enhanced prompt and ordered reference URLs
  */
 export function buildReferenceImagePrompt(
   basePrompt: string,
-  references: ReferenceImageDescription[],
-  maxPromptLength?: number
+  references: ReferenceImageDescription[]
 ): PromptWithReferenceImages {
   const stripped = stripExistingReferenceSections(basePrompt);
   if (references.length === 0) {
@@ -148,18 +139,8 @@ export function buildReferenceImagePrompt(
     .filter((line) => line !== null);
 
   const legend = [IDENTITY_GUARD, ...legendLines].join('\n');
-  const prompt = appendLegendWithinLimit(substituted, legend, maxPromptLength);
-  if (maxPromptLength && prompt.length > maxPromptLength) {
-    // Only possible when the legend alone exceeds the limit (absurdly long
-    // descriptions) — appendLegendWithinLimit returned the legend whole and
-    // the downstream per-model truncation will clamp it.
-    logger.warn(
-      `Reference legend (${legend.length} chars) exceeds maxPromptLength (${maxPromptLength})`
-    );
-  }
-
   return {
-    prompt,
+    prompt: appendLegend(substituted, legend),
     referenceUrls: ordered.map((ref) => ref.referenceImageUrl),
   };
 }

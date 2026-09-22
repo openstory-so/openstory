@@ -2,6 +2,23 @@
 
 The per-via reference for the vias that are not BytePlus (`byteplus-ark.md`) or ElevenLabs (`elevenlabs.md`). The rules that hold for every via are in `CLAUDE.md` → Media vias.
 
+## Prompt length (#1754)
+
+**Prompts are never truncated.** What the user wrote is what goes out, on every via and both media kinds. Everything downstream — the studio DB row's `input` JSON, the `gen_ai.input.messages` on OTel/PostHog, and the compliance `promptSha256` in `src/platform/server/compliance/provenance.ts` — therefore describes the prompt the provider actually received.
+
+`IMAGE_MODELS[m].maxPromptLength` / `IMAGE_TO_VIDEO_MODELS[m].maxPromptLength` is a **recommendation**, not a gate. Over it earns a structured warning (`warnLongPrompt`, event `prompt_over_recommended_length`) and a `length / recommendation` counter next to the prompt in studio and in the sequences prompt panel — amber, never a block.
+
+A **hard** ceiling is declared separately, and only where a via documents and enforces one:
+
+- `hardPromptLimit` in `src/models/models.ts` — Grok 2500 (xAI's schema), Kling 2500, Omni Flash 20000, H3 Max 50000 (fal's schemas). Read it through `videoPromptHardLimit(model)`, never `maxPromptLength`.
+- a fal endpoint schema's `prompt.maxLength`, asserted inside `motionTransform`.
+
+Seedance has neither: Ark documents no limit, only a style recommendation ("no more than 500 Chinese characters or 1,000 English words"), and no fal Seedance schema declares `maxLength`. The 4096 we carried was our own number and was quietly cutting prompts; the recommendation is now 6000 (≈1,000 English words), and `recommendedPromptLength` measures a CJK prompt against Ark's 500-character figure instead — a codepoint ratio, since there is nobody to ask what language the prompt is in. H3 Max's 2500 was invented the same way and is now fal's 50000.
+
+Only the hard limit gates clip **packing** (`packedPromptFitsLimit`, which returns true when there is none), so a packed Seedance clip is no longer refused against a limit that does not exist.
+
+**When a hard limit really refuses**, the motion workflow recovers rather than cutting: `isPromptTooLongError` classifies our own `PromptTooLongError` and the provider's 422 alike, `shortenOverlongMotionPrompt` rewrites the prompt with an LLM under the real budget, and the result is saved as a `shortened` shot prompt version (selected on a primary render, history-only on a variant). The shortening is therefore a visible, revertable edit in Versions, not something that happened inside a request builder. One rewrite per run; a second refusal fails the clip and names both numbers.
+
 ## Fal.ai Integration
 
 **Always check `/llms.txt` before updating models.** Machine-readable, authoritative param specs:

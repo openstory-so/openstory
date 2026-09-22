@@ -19,6 +19,7 @@ import type { MentionItem } from '@/shots/ui/prompt-mention/mention-items';
 import { AspectRatioPills } from '@/ui/settings/aspect-ratio-pills';
 import { ResolutionPills } from '@/ui/settings/resolution-pills';
 import { IMAGE_MODELS } from '@/models/models';
+import { recommendedPromptLength } from '@/models/prompt-length';
 import { imageResolutionTiers } from '@/stills/build-image-request';
 import { motionResolutionTiers } from '@/motion/model-capabilities';
 import {
@@ -359,6 +360,17 @@ export function StudioComposer({
   const activeModelName = isVideo
     ? IMAGE_TO_VIDEO_MODELS[compatibleVideoModel].name
     : IMAGE_MODELS[imageModel].name;
+  // The prompt is never cut (#1754), so the composer says how long it is and
+  // when it runs past what the model recommends. `recommendedPromptLength`
+  // switches to Ark's 500-character figure for a CJK prompt, where "1,000
+  // English words" is not the unit.
+  const promptRecommendation = recommendedPromptLength(
+    prompt,
+    isVideo
+      ? IMAGE_TO_VIDEO_MODELS[compatibleVideoModel].maxPromptLength
+      : IMAGE_MODELS[imageModel].maxPromptLength
+  );
+  const promptOverRecommended = prompt.length > promptRecommendation;
   const resolutionTiers = isVideo
     ? motionResolutionTiers(compatibleVideoModel)
     : imageResolutionTiers(imageModel, aspectRatio);
@@ -1385,6 +1397,21 @@ export function StudioComposer({
           </PopoverContent>
         </Popover>
 
+        {prompt.length > 0 && (
+          <output
+            className={cn(
+              'text-xs tabular-nums',
+              promptOverRecommended ? 'text-warning' : 'text-muted-foreground'
+            )}
+            title={
+              promptOverRecommended
+                ? `Over ${activeModelName}'s recommended ${promptRecommendation} characters. It is still sent in full.`
+                : `${activeModelName} recommends up to ${promptRecommendation} characters.`
+            }
+          >
+            {prompt.length}&nbsp;/&nbsp;{promptRecommendation}
+          </output>
+        )}
         <Button
           type="button"
           variant="ghost"

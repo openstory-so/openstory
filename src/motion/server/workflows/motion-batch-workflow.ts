@@ -19,7 +19,7 @@ import {
 import { reportBytePlusAssetPool } from '@/models/server/byteplus-observability';
 import { isBytePlusAssetsConfigured } from '@/models/server/byteplus-config';
 import {
-  IMAGE_TO_VIDEO_MODELS,
+  videoPromptHardLimit,
   isNativeBytePlusVideoModel,
 } from '@/models/models';
 import { resolveAudioModels } from '@/models/resolve-audio-models';
@@ -149,7 +149,7 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
               generateAudio: members[0]?.generateAudio,
               scene: members[0]?.packedScene,
             }),
-            IMAGE_TO_VIDEO_MODELS[packModel].maxPromptLength
+            videoPromptHardLimit(packModel)
           )
         );
       },

@@ -80,12 +80,12 @@ describe('buildBytePlusImageRequest', () => {
     ).toThrow(/No BytePlus model id/);
   });
 
-  it('truncates a prompt past the model limit', () => {
+  it('sends a long prompt whole — Ark documents no cap (#1754)', () => {
     const request = buildBytePlusImageRequest({
       ...base,
       prompt: 'x'.repeat(5000),
     });
     const text = request.prompt.find((part) => part.type === 'text');
-    expect(text?.content.length).toBe(2000);
+    expect(text?.content.length).toBe(5000);
   });
 });

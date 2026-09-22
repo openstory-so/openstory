@@ -57,7 +57,7 @@ export type WriteFramePromptVersionInput = WriteFramePromptVersionBase &
     | {
         // Softened copies the rejected row's hash + model so staleness still
         // tracks the same upstream context; null when the original had none.
-        source: 'user-edit' | 'restored' | 'softened';
+        source: 'user-edit' | 'restored' | 'softened' | 'shortened';
         inputHash: string | null;
         analysisModel: string | null;
       }

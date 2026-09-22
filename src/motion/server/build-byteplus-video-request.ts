@@ -38,6 +38,7 @@ import {
 } from '@/stills/reference-legend';
 import { pickVideoResolution, type Resolution } from '@/models/resolutions';
 import { buildReferenceVideoPrompt } from './build-reference-video-prompt';
+import { warnLongPrompt } from '@/models/prompt-length';
 
 /**
  * Resolution tokens Ark serves for Seedance. Matches the fal route's enum, so
@@ -83,12 +84,6 @@ export type BytePlusVideoRequestOptions = {
   referenceImages?: ReferenceImageDescription[];
 };
 
-function truncate(prompt: string, maxLength: number): string {
-  return prompt.length <= maxLength
-    ? prompt
-    : `${prompt.slice(0, maxLength - 3)}...`;
-}
-
 /**
  * Build the Ark request for a motion run.
  *
@@ -105,6 +100,13 @@ export function buildBytePlusVideoRequest(
   if (!modelId) {
     throw new Error(`No BytePlus model id for motion model "${modelKey}"`);
   }
+
+  // Never truncated (#1754): Ark documents no prompt limit for Seedance —
+  // only a style recommendation — so the catalog number only earns a log.
+  warnLongPrompt(options.prompt, config.maxPromptLength, {
+    model: modelKey,
+    via: 'byteplus',
+  });
 
   const references = (options.referenceImages ?? []).filter(
     (ref) => ref.referenceImageUrl
@@ -143,7 +145,7 @@ export function buildBytePlusVideoRequest(
       prompt: [
         {
           type: 'text',
-          content: truncate(options.prompt, config.maxPromptLength),
+          content: options.prompt,
         },
         // Reference-only with no matched sheets is pure text-to-video: a
         // prompt part and nothing else. Ark serves that on the same model id.
@@ -173,23 +175,19 @@ export function buildBytePlusVideoRequest(
         options.prompt,
         startFrameUrl ?? null,
         references,
-        config.maxPromptLength,
         { skipLegend: true }
       )
     : // A model with a BytePlus route but no reference-tag convention can't
       // bind media to prompt positions; inline the descriptions instead so
       // the prompt stays self-contained and send the still alone.
       {
-        prompt: truncate(
-          substituteReferenceTags(
-            options.prompt,
-            references.map((ref) => ({
-              token: ref.token,
-              render: inlineReferenceDescription(ref),
-            }))
-          ).prompt,
-          config.maxPromptLength
-        ),
+        prompt: substituteReferenceTags(
+          options.prompt,
+          references.map((ref) => ({
+            token: ref.token,
+            render: inlineReferenceDescription(ref),
+          }))
+        ).prompt,
         imageUrls: startFrameUrl ? [startFrameUrl] : [],
         videoUrls: [],
         audioUrls: [],

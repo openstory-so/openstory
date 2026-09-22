@@ -78,6 +78,7 @@ const SOURCE_LABEL: Record<PromptVariantSource, string> = {
   regenerated: 'Regenerated',
   restored: 'Restored',
   softened: 'Softened',
+  shortened: 'Shortened',
 };
 
 const SOURCE_VARIANT: Record<
@@ -89,6 +90,7 @@ const SOURCE_VARIANT: Record<
   regenerated: 'outline',
   restored: 'outline',
   softened: 'outline',
+  shortened: 'outline',
 };
 
 const TITLE: Record<PromptHistoryMode, string> = {
@@ -583,6 +585,12 @@ const PromptHistoryList: React.FC<PromptHistoryListProps> = ({
                 <p className="text-xs text-muted-foreground">
                   Rewritten to pass a content checker. The original is still in
                   this list.
+                </p>
+              )}
+              {row.source === 'shortened' && (
+                <p className="text-xs text-muted-foreground">
+                  Shortened to fit the model's prompt limit. The original is
+                  still in this list.
                 </p>
               )}
               {row.createdByName && (

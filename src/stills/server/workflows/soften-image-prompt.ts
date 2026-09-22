@@ -17,7 +17,7 @@ import {
   isContentRejectionError,
 } from '@/models/content-rejection';
 import { extractFalErrorMessage } from '@/models/fal-error';
-import { IMAGE_MODELS, type TextToImageModel } from '@/models/models';
+import type { TextToImageModel } from '@/models/models';
 import {
   DEFAULT_ANALYSIS_MODEL,
   getAnalysisModelById,
@@ -111,8 +111,7 @@ function rebuildParams(
 ): ImageGenerationParams {
   const { prompt: enhancedPrompt, referenceUrls } = buildReferenceImagePrompt(
     prompt,
-    input.referenceImages ?? [],
-    IMAGE_MODELS[params.model].maxPromptLength
+    input.referenceImages ?? []
   );
   return {
     ...params,

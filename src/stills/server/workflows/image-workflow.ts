@@ -16,7 +16,7 @@
  *      retains a stale-flagged version without repointing the primary.
  */
 
-import { DEFAULT_IMAGE_MODEL, IMAGE_MODELS } from '@/models/models';
+import { DEFAULT_IMAGE_MODEL } from '@/models/models';
 import { ZERO_MICROS } from '@/billing/money';
 import {
   deductWorkflowCredits,
@@ -149,11 +149,7 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
         // (primary → characters → locations → elements) — always send its
         // referenceUrls, not the raw input order.
         const { prompt: enhancedPrompt, referenceUrls } =
-          buildReferenceImagePrompt(
-            input.prompt,
-            input.referenceImages ?? [],
-            IMAGE_MODELS[model].maxPromptLength
-          );
+          buildReferenceImagePrompt(input.prompt, input.referenceImages ?? []);
         const params: ImageGenerationParams = {
           model,
           prompt: enhancedPrompt,

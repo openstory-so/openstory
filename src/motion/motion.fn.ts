@@ -22,6 +22,7 @@ import {
   AUDIO_MODELS,
   DEFAULT_VIDEO_MODEL,
   IMAGE_TO_VIDEO_MODELS,
+  videoPromptHardLimit,
   safeImageToVideoModel,
   videoModelSupportsInClipMultiShot,
 } from '@/models/models';
@@ -212,7 +213,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
           generateAudio: data.generateAudio,
           scene: packedScene,
         }),
-        IMAGE_TO_VIDEO_MODELS[model].maxPromptLength
+        videoPromptHardLimit(model)
       );
     const covered = coveredMembersForShot(
       packableSceneShots,
@@ -229,7 +230,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
     ) {
       const config = IMAGE_TO_VIDEO_MODELS[model];
       throw new Error(
-        `This ${covered.length}-shot clip's prompt exceeds ${config.name}'s ${config.maxPromptLength}-character limit. Shorten a shot prompt to generate it as one clip.`
+        `This ${covered.length}-shot clip's prompt exceeds ${config.name}'s ${videoPromptHardLimit(model)}-character limit. Shorten a shot prompt to generate it as one clip.`
       );
     }
     const packedShotIds = covered.map((row) => row.shotId);

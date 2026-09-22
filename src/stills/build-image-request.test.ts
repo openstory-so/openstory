@@ -202,12 +202,11 @@ describe('buildGrokImageRequest (issue #1167)', () => {
     );
   });
 
-  it('truncates the prompt to the model’s limit, as the fal path does', () => {
+  it('sends the prompt whole past the model’s recommendation (#1754)', () => {
     const longPrompt = 'x'.repeat(5000);
     const { prompt } = buildGrokImageRequest({ ...BASE, prompt: longPrompt });
 
-    expect(prompt.length).toBeLessThanOrEqual(4000);
-    expect(prompt.endsWith('...')).toBe(true);
+    expect(prompt).toBe(longPrompt);
   });
 });
 
