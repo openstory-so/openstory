@@ -224,8 +224,12 @@ export function studioSupportsMode(
 export type StudioReferenceToken = 'Image' | 'Video' | 'Audio';
 
 /**
- * Bare `ImageN` / `VideoN` / `AudioN` tokens (what the pill stores) → the
+ * `ImageN` / `VideoN` / `AudioN` tokens (what the pill stores) → the
  * provider's syntax: `@ImageN` by default, or the model's own still tag.
+ *
+ * Case-insensitive, and an `@` the user typed or pasted is consumed rather
+ * than blocking the match (#1748): `@image1` reaches Grok as `<IMAGE_0>`, not
+ * as literal prose the model never binds.
  */
 export function tagStudioReferences(
   prompt: string,
@@ -236,13 +240,68 @@ export function tagStudioReferences(
   const videoTag = reference?.videoTag ?? atVideo;
   const audioTag = reference?.audioTag ?? atAudio;
   return prompt.replace(
-    /(^|[^A-Za-z0-9_@-])(Image|Video|Audio)(\d+)(?=[^A-Za-z0-9_-]|$)/g,
+    /(^|[^A-Za-z0-9_-])@?(image|video|audio)(\d+)(?=[^A-Za-z0-9_-]|$)/gi,
     (_match, prefix: string, kind: string, digits: string) => {
       const n = Number(digits);
-      if (kind === 'Image') return `${prefix}${imageTag(n)}`;
-      if (kind === 'Video') return `${prefix}${videoTag(n)}`;
+      const lower = kind.toLowerCase();
+      if (lower === 'image') return `${prefix}${imageTag(n)}`;
+      if (lower === 'video') return `${prefix}${videoTag(n)}`;
       return `${prefix}${audioTag(n)}`;
     }
+  );
+}
+
+/**
+ * Matches each name, with or without the `@` the pill renders, on a word
+ * boundary that tolerates the spaces a name contains. Longest first so
+ * "Sienna Blake Jr" wins over "Sienna Blake".
+ */
+function aliasPattern(aliases: readonly string[]): RegExp {
+  const forms = [...aliases]
+    .sort((a, b) => b.length - a.length)
+    .map((a) => a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('|');
+  return new RegExp(`(^|[^A-Za-z0-9_-])@?(${forms})(?=[^A-Za-z0-9_-]|$)`, 'gi');
+}
+
+/**
+ * A named reference (talent, location, element) stays spelled by its name in
+ * the composer — `@Sienna Blake` reads as the person, `@Image3` does not
+ * (#1748). The name is swapped for the positional token on the way to the
+ * model, where only the slot has meaning.
+ *
+ * ponytail: first alias wins on a duplicate name; disambiguate by index if
+ * two talent ever share one.
+ */
+export function resolveStudioAliases(
+  prompt: string,
+  aliases: readonly { alias: string; token: string }[]
+): string {
+  const named = aliases.filter((a) => a.alias.trim().length > 0);
+  if (named.length === 0) return prompt;
+  const byAlias = new Map<string, string>();
+  for (const { alias, token } of named) {
+    const key = alias.toLowerCase();
+    if (!byAlias.has(key)) byAlias.set(key, token);
+  }
+  return prompt.replace(
+    aliasPattern(named.map((a) => a.alias)),
+    (match, prefix: string, form: string) => {
+      const token = byAlias.get(form.toLowerCase());
+      return token === undefined ? match : `${prefix}${token}`;
+    }
+  );
+}
+
+/**
+ * Drop a named reference's mentions when its tile goes away — the positional
+ * counterpart is `renumberStudioReferences`, which cannot see a name.
+ */
+export function dropStudioAlias(prompt: string, alias: string): string {
+  if (alias.trim().length === 0) return prompt;
+  return prompt.replace(
+    aliasPattern([alias]),
+    (_match, prefix: string) => prefix
   );
 }
 
@@ -256,7 +315,7 @@ export function renumberStudioReferences(
   kind: StudioReferenceToken = 'Image'
 ): string {
   return prompt.replace(
-    new RegExp(`(^|[^A-Za-z0-9_-])@?${kind}(\\d+)(?=[^A-Za-z0-9_-]|$)`, 'g'),
+    new RegExp(`(^|[^A-Za-z0-9_-])@?${kind}(\\d+)(?=[^A-Za-z0-9_-]|$)`, 'gi'),
     (match: string, prefix: string, digits: string) => {
       const n = Number(digits);
       if (n === removedIndex + 1) return prefix;

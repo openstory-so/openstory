@@ -5,7 +5,9 @@ import {
 } from '@/models/models';
 import {
   buildStudioVideoInput,
+  dropStudioAlias,
   renumberStudioReferences,
+  resolveStudioAliases,
   snapStudioVideoDuration,
   studioCombinedRefCap,
   studioSupportsEndFrame,
@@ -198,6 +200,48 @@ describe('reference tags', () => {
         'minimax_h3_max'
       )
     ).toBe('Image 1 walks with Video 1 under Audio 1');
+  });
+
+  it('resolves a token the user typed or pasted, any case, with or without @', () => {
+    expect(tagStudioReferences('@image1 meets image2')).toBe(
+      '@Image1 meets @Image2'
+    );
+    expect(
+      tagStudioReferences('@image1 meets @Image2', 'grok_imagine_video_1_5')
+    ).toBe('<IMAGE_0> meets <IMAGE_1>');
+    expect(tagStudioReferences('@Image1 under @audio1', 'minimax_h3_max')).toBe(
+      'Image 1 under Audio 1'
+    );
+  });
+
+  it('swaps a named reference for its slot on the way to the model', () => {
+    const aliases = [
+      { alias: 'Sienna Blake', token: 'Image1' },
+      { alias: 'Sienna Blake Jr', token: 'Image2' },
+      { alias: 'Bondi Beach', token: 'Image3' },
+    ];
+    expect(
+      resolveStudioAliases(
+        '@Sienna Blake Jr waves at sienna blake on @Bondi Beach',
+        aliases
+      )
+    ).toBe('Image2 waves at Image1 on Image3');
+    // An unattached name is prose, not a slot.
+    expect(resolveStudioAliases('Sienna Blakeley waves', aliases)).toBe(
+      'Sienna Blakeley waves'
+    );
+    expect(resolveStudioAliases('nobody named here', [])).toBe(
+      'nobody named here'
+    );
+  });
+
+  it('drops a named reference when its tile goes away', () => {
+    expect(dropStudioAlias('@Sienna Blake waves', 'Sienna Blake')).toBe(
+      ' waves'
+    );
+    expect(dropStudioAlias('Sienna Blakeley waves', 'Sienna Blake')).toBe(
+      'Sienna Blakeley waves'
+    );
   });
 
   it('drops the removed token and shifts later ones down', () => {

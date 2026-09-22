@@ -61,6 +61,12 @@ export type StudioReference = {
   kind: StudioReferenceKind;
   /** Still to show for a video tile. */
   posterUrl?: string;
+  /**
+   * Name this reference keeps in the prompt (#1748). Talent, locations and
+   * elements are people and places, so `@Sienna Blake` reads where `@Image3`
+   * does not; `resolveStudioAliases` swaps it for the slot on the way out.
+   */
+  alias?: string;
 };
 
 type StudioSequenceSummary = Pick<SequenceWithShots, 'id' | 'title'> & {
@@ -170,7 +176,9 @@ export function useStudioLibrary(): StudioLibrary {
       }),
       cast: (talent ?? []).flatMap((t) => {
         const url = t.defaultSheet?.imageUrl ?? t.imageUrl;
-        return url ? [{ url, label: t.name, kind: 'image' as const }] : [];
+        return url
+          ? [{ url, label: t.name, kind: 'image' as const, alias: t.name }]
+          : [];
       }),
       locations: (locations ?? []).flatMap((loc) =>
         loc.referenceImageUrl
@@ -179,6 +187,7 @@ export function useStudioLibrary(): StudioLibrary {
                 url: loc.referenceImageUrl,
                 label: loc.name,
                 kind: 'image' as const,
+                alias: loc.name,
               },
             ]
           : []
@@ -304,12 +313,26 @@ function SequenceDetail({
   const shots = shotReferences(sequence);
   const elementRefs = (elements ?? []).flatMap((el) =>
     el.imageUrl
-      ? [{ url: el.imageUrl, label: el.token, kind: 'image' as const }]
+      ? [
+          {
+            url: el.imageUrl,
+            label: el.token,
+            kind: 'image' as const,
+            alias: el.token,
+          },
+        ]
       : []
   );
   const castRefs = (characters ?? []).flatMap((c) =>
     c.sheetImageUrl
-      ? [{ url: c.sheetImageUrl, label: c.name, kind: 'image' as const }]
+      ? [
+          {
+            url: c.sheetImageUrl,
+            label: c.name,
+            kind: 'image' as const,
+            alias: c.name,
+          },
+        ]
       : []
   );
   const locationRefs = (locations ?? []).flatMap((loc) =>
@@ -319,6 +342,7 @@ function SequenceDetail({
             url: loc.referenceImageUrl,
             label: loc.name,
             kind: 'image' as const,
+            alias: loc.name,
           },
         ]
       : []

@@ -340,7 +340,11 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
     editable: !disabled,
     autofocus: autoFocus,
     extensions: [
-      StarterKit.configure({ hardBreak: false }),
+      // No links: these editors hold prompts and scripts, never prose with
+      // hyperlinks. Left on, StarterKit's Link plus markdown-it's linkify turn
+      // a pasted image URL into `[url](url)`, and that markdown ships to the
+      // model verbatim (#1748).
+      StarterKit.configure({ hardBreak: false, link: false }),
       HardBreakAsNewline,
       Markdown.configure({
         // `html: true` is required for inline mention spans (produced by
@@ -349,7 +353,7 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
         // extensions (StarterKit's block/inline set plus `mention`) survive the
         // parse, so unrelated/raw HTML can't leak in.
         html: hasMentions,
-        linkify: true,
+        linkify: false,
         breaks: true,
         // Off: tiptap-markdown's clipboard parser uses `{ inline: true }`,
         // which drops multi-line paste. Default ProseMirror paste is enough.
