@@ -21,6 +21,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/shadcn/tooltip';
 import { EmptyState } from '@/ui/shadcn/empty-state';
 import { Skeleton } from '@/ui/shadcn/skeleton';
 import { AppImage } from '@/ui/shadcn/app-image';
+import { ElementThumbnail } from '@/cast/ui/element/element-thumbnail';
+import { HighlightedPrompt } from '@/ui/text-editor/mention/highlighted-prompt';
+import type { MentionItem } from '@/shots/ui/prompt-mention/mention-items';
 import {
   useDeleteStudioAsset,
   useStudioPendingCreates,
@@ -37,6 +40,14 @@ import {
   studioShareUrl,
 } from './outputs';
 import {
+  readableStudioPrompt,
+  studioGenerationFacts,
+  studioReuse,
+  studioShownReferences,
+  type StudioReuse,
+  type StudioShownReference,
+} from './prompt-display';
+import {
   CONTENT_REJECTION_USER_TITLE,
   isContentRejectionError,
 } from '@/models/content-rejection';
@@ -44,7 +55,16 @@ import { estimateStudioProgress } from './progress';
 import { copyTextToClipboard } from '@/ui/clipboard';
 import { cn } from '@/ui/utils';
 import { usePostHog } from '@posthog/react';
-import { Download, Images, Link, Star, Trash2 } from 'lucide-react';
+import {
+  AudioLines,
+  Copy,
+  Download,
+  Images,
+  Link,
+  RotateCcw,
+  Star,
+  Trash2,
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -327,6 +347,183 @@ function StudioViewer({ asset }: { asset: GeneratedAsset }) {
   );
 }
 
+function mentionItems(references: StudioShownReference[]): MentionItem[] {
+  return references.flatMap((reference) =>
+    reference.tag
+      ? [
+          {
+            id: reference.tag,
+            section: 'references' as const,
+            label: reference.label,
+            tag: reference.tag,
+            haystack: reference.tag.toLowerCase(),
+          },
+        ]
+      : []
+  );
+}
+
+function ReferenceTile({ reference }: { reference: StudioShownReference }) {
+  return (
+    <li className="w-16 shrink-0">
+      <figure className="flex flex-col items-center gap-1">
+        <div className="size-16 overflow-hidden rounded-md border bg-muted">
+          {reference.kind === 'audio' ? (
+            <div className="flex size-16 items-center justify-center">
+              <AudioLines
+                className="size-5 text-muted-foreground"
+                aria-hidden="true"
+              />
+            </div>
+          ) : reference.kind === 'video' ? (
+            <ElementThumbnail
+              kind="video"
+              url={reference.url}
+              label={reference.label}
+              fit="cover"
+            />
+          ) : (
+            <AppImage
+              src={reference.url}
+              alt=""
+              width={64}
+              height={64}
+              className="size-16 object-cover"
+            />
+          )}
+        </div>
+        <figcaption className="w-full truncate text-center font-mono text-xs text-muted-foreground">
+          {reference.label}
+        </figcaption>
+      </figure>
+    </li>
+  );
+}
+
+/**
+ * Media on one side, the recipe on the other. The prompt is prose (escapes
+ * decoded) and scrolls with the panel, and the tiles are the references the
+ * run actually used, in the same order the prompt names them.
+ */
+export function GenerationDetail({
+  asset,
+  supportMode,
+  copied,
+  onCopy,
+  onReuse,
+  deletePending,
+  onDelete,
+}: {
+  asset: StudioGalleryAsset;
+  supportMode: boolean;
+  copied: boolean;
+  onCopy: (prompt: string) => void;
+  onReuse?: (reuse: StudioReuse) => void;
+  deletePending: boolean;
+  onDelete: () => void;
+}) {
+  const prompt = readableStudioPrompt(studioPrompt(asset));
+  const references = studioShownReferences(asset);
+  const reuse = studioReuse(asset);
+  const creator = [asset.creatorName, asset.creatorEmail]
+    .filter(Boolean)
+    .join(' · ');
+  const facts = [
+    ...studioGenerationFacts(asset),
+    supportMode ? creator : '',
+  ].filter(Boolean);
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+      <div className="flex min-h-48 min-w-0 flex-1 p-3 md:p-4">
+        <StudioViewer asset={asset} />
+      </div>
+      <aside className="flex max-h-[46%] min-h-0 w-full shrink-0 flex-col gap-3 overflow-y-auto border-t p-4 md:max-h-none md:w-96 md:overflow-hidden md:border-t-0 md:border-l md:pr-12">
+        <DialogHeader className="shrink-0">
+          <DialogTitle>{asset.modelName || 'Generation'}</DialogTitle>
+          <DialogDescription>{facts.join(' · ')}</DialogDescription>
+        </DialogHeader>
+        {references.length > 0 && (
+          <ul
+            className="flex shrink-0 gap-2 overflow-x-auto"
+            aria-label="References"
+          >
+            {references.map((reference) => (
+              <ReferenceTile
+                key={`${reference.label}-${reference.url}`}
+                reference={reference}
+              />
+            ))}
+          </ul>
+        )}
+        <div className="min-h-16 md:min-h-0 md:flex-1 md:overflow-y-auto">
+          {prompt ? (
+            <HighlightedPrompt
+              text={prompt}
+              items={mentionItems(references)}
+              className="text-sm leading-relaxed break-words select-text"
+            />
+          ) : (
+            <p className="text-sm text-muted-foreground">No prompt</p>
+          )}
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={!prompt}
+            aria-label={copied ? 'Copied prompt' : 'Copy prompt'}
+            onClick={() => onCopy(prompt)}
+          >
+            <Copy aria-hidden="true" />
+            {copied ? 'Copied' : 'Copy'}
+          </Button>
+          {onReuse && reuse && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onReuse(reuse)}
+            >
+              <RotateCcw aria-hidden="true" />
+              Use again
+            </Button>
+          )}
+          {!supportMode &&
+            asset.status !== 'queued' &&
+            asset.status !== 'running' && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    disabled={deletePending}
+                  >
+                    <Trash2 aria-hidden="true" />
+                    Delete
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete this generation?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      It is removed from your library for good.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Keep</AlertDialogCancel>
+                    <AlertDialogAction onClick={onDelete}>
+                      Delete
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
+        </div>
+      </aside>
+    </div>
+  );
+}
+
 export function StudioGallery({
   assets,
   isLoading,
@@ -336,6 +533,7 @@ export function StudioGallery({
   isFetchingNextPage,
   onLoadMore,
   supportMode = false,
+  onReuse,
 }: {
   assets: StudioGalleryAsset[];
   isLoading: boolean;
@@ -345,9 +543,17 @@ export function StudioGallery({
   isFetchingNextPage: boolean;
   onLoadMore: () => void;
   supportMode?: boolean;
+  /** Load this generation's prompt and references into the composer. */
+  onReuse?: (reuse: StudioReuse) => void;
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const remove = useDeleteStudioAsset();
+  useEffect(() => {
+    if (!copied) return;
+    const id = window.setTimeout(() => setCopied(false), 2000);
+    return () => window.clearTimeout(id);
+  }, [copied]);
   const openAsset = assets.find((asset) => asset.id === openId);
   const pendingCreates = useStudioPendingCreates(activity);
   const pending = supportMode
@@ -434,74 +640,39 @@ export function StudioGallery({
       <Dialog
         open={openAsset != null}
         onOpenChange={(open) => {
-          if (!open) setOpenId(null);
+          if (!open) {
+            setOpenId(null);
+            setCopied(false);
+          }
         }}
       >
-        <DialogContent className="flex h-[94vh] w-[96vw] max-w-none flex-col gap-3 p-4 sm:max-w-none">
+        <DialogContent className="flex h-[94vh] w-[96vw] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none">
           {openAsset && (
-            <>
-              <DialogHeader className="shrink-0">
-                {/* Scrolls rather than clamps: the prompt is what people
-                    copy to reuse, and a clamp hides most of it. */}
-                <DialogTitle className="max-h-24 overflow-y-auto pr-8 text-base break-words whitespace-pre-wrap select-text">
-                  {studioPrompt(openAsset) || 'Generated asset'}
-                </DialogTitle>
-                <DialogDescription>
-                  {[
-                    openAsset.modelName,
-                    studioAspectRatio(openAsset),
-                    supportMode
-                      ? [openAsset.creatorName, openAsset.creatorEmail]
-                          .filter(Boolean)
-                          .join(' · ')
-                      : '',
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </DialogDescription>
-              </DialogHeader>
-              <StudioViewer asset={openAsset} />
-              <div className="flex shrink-0 items-center justify-end gap-2">
-                {!supportMode &&
-                  openAsset.status !== 'queued' &&
-                  openAsset.status !== 'running' && (
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="destructive"
-                          disabled={remove.isPending}
-                        >
-                          <Trash2 aria-hidden="true" />
-                          Delete
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>
-                            Delete this generation?
-                          </AlertDialogTitle>
-                          <AlertDialogDescription>
-                            It is removed from your library for good.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Keep</AlertDialogCancel>
-                          <AlertDialogAction
-                            onClick={() => {
-                              remove.mutate(openAsset.id, {
-                                onSuccess: () => setOpenId(null),
-                              });
-                            }}
-                          >
-                            Delete
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  )}
-              </div>
-            </>
+            <GenerationDetail
+              asset={openAsset}
+              supportMode={supportMode}
+              copied={copied}
+              onCopy={(prompt) => {
+                void copyTextToClipboard(prompt).then((ok) => {
+                  if (ok) setCopied(true);
+                });
+              }}
+              onReuse={
+                onReuse
+                  ? (reuse) => {
+                      setOpenId(null);
+                      setCopied(false);
+                      onReuse(reuse);
+                    }
+                  : undefined
+              }
+              deletePending={remove.isPending}
+              onDelete={() => {
+                remove.mutate(openAsset.id, {
+                  onSuccess: () => setOpenId(null),
+                });
+              }}
+            />
           )}
         </DialogContent>
       </Dialog>

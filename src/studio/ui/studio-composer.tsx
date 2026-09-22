@@ -102,6 +102,7 @@ import { VoiceInputButton } from '@/ui/voice/voice-input-button';
 import { useEditorDictation } from '@/ui/use-dictation';
 import { pickShufflePrompt, studioShufflePrompts } from './prompt-shuffle';
 import { parseStudioPaste } from './paste-import';
+import type { StudioReuse } from './prompt-display';
 import type { StudioCreateInput, StudioReferenceKind } from '@/studio/schema';
 import {
   dropStudioAlias,
@@ -141,7 +142,13 @@ import {
   Sparkles,
   X,
 } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { toast } from 'sonner';
 
 const COUNTS = [1, 2, 4] as const;
@@ -160,10 +167,16 @@ const REFERENCE_TOKENS = {
   audio: 'Audio',
 } as const satisfies Record<StudioReferenceKind, StudioReferenceToken>;
 
+export type StudioComposerHandle = {
+  /** Load a generation's prompt, references, and settings into the bar. */
+  load: (reuse: StudioReuse) => void;
+};
+
 type StudioComposerProps = {
   activity: 'image' | 'video';
   /** Prompts of generations still in flight — the editor pulses while it shows one. */
   generatingPrompts: string[];
+  ref?: React.Ref<StudioComposerHandle>;
 };
 
 function referenceMentionItem(
@@ -304,6 +317,7 @@ function AddTile({
 export function StudioComposer({
   activity,
   generatingPrompts,
+  ref,
 }: StudioComposerProps) {
   const { requireAuth, isAuthenticated } = useAuthGate();
   const posthog = usePostHog();
@@ -357,6 +371,81 @@ export function StudioComposer({
   // given for, so attaching another unattested still un-ticks it.
   const [portraitTickedFor, setPortraitTickedFor] = useState('');
   const [authorizationBasis, setAuthorizationBasis] = useState('');
+  const [pendingSeed, setPendingSeed] = useState<StudioReuse | null>(null);
+
+  const applySeed = useCallback(
+    (next: StudioReuse) => {
+      const tile = (
+        url: string,
+        label: string,
+        kind: StudioReference['kind']
+      ): StudioReference => ({ url, label, kind });
+      setPrompt(next.prompt);
+      setLastShuffled(next.prompt);
+      setAspectRatio(next.aspectRatio);
+      if (next.resolution) setResolution(next.resolution);
+      if (activity === 'image' && next.imageModel)
+        setImageModel(next.imageModel);
+      if (activity === 'video') {
+        if (next.videoModel) setVideoModel(next.videoModel);
+        if (next.duration != null) setDuration(next.duration);
+        if (next.generateAudio != null) setGenerateAudio(next.generateAudio);
+        if (next.mode) setMode(next.mode);
+        setVideoRefs(
+          next.referenceVideos.map((url, index) =>
+            tile(url, `Video ${index + 1}`, 'video')
+          )
+        );
+        setAudioRefs(
+          next.referenceAudio.map((url, index) =>
+            tile(url, `Audio ${index + 1}`, 'audio')
+          )
+        );
+        setStartFrame(
+          next.startImageUrl
+            ? tile(next.startImageUrl, 'Start frame', 'image')
+            : null
+        );
+        setEndFrame(
+          next.endImageUrl ? tile(next.endImageUrl, 'End frame', 'image') : null
+        );
+      } else {
+        setVideoRefs([]);
+        setAudioRefs([]);
+        setStartFrame(null);
+        setEndFrame(null);
+      }
+      setReferences(
+        next.referenceImages.map((url, index) =>
+          tile(url, `Image ${index + 1}`, 'image')
+        )
+      );
+      toast.success('Loaded into the prompt bar');
+    },
+    [activity]
+  );
+
+  const composerDirty =
+    prompt.trim().length > 0 ||
+    references.length > 0 ||
+    videoRefs.length > 0 ||
+    audioRefs.length > 0 ||
+    startFrame !== null ||
+    endFrame !== null;
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      load(next) {
+        if (composerDirty) {
+          setPendingSeed(next);
+          return;
+        }
+        applySeed(next);
+      },
+    }),
+    [applySeed, composerDirty]
+  );
 
   const isVideo = activity === 'video';
   const compatibleVideoModel = getCompatibleModel(videoModel, aspectRatio);
@@ -1588,6 +1677,35 @@ export function StudioComposer({
             >
               <Sparkles className="size-3.5" />
               {draft.isPending ? 'Writing a prompt…' : 'Try something random'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={pendingSeed != null}
+        onOpenChange={(open) => {
+          if (!open) setPendingSeed(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Replace the prompt bar?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Use again loads that generation's prompt, references, and
+              settings. What you've written here will be replaced.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep what's here</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!pendingSeed) return;
+                applySeed(pendingSeed);
+              }}
+            >
+              <RotateCcw className="size-3.5" />
+              Use again
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

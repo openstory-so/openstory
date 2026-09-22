@@ -47,4 +47,4 @@ Open a scene's **Optimised prompt** panel in a sequence, switch to **JSON**, cop
 
 - **Newest** and **Oldest** change recency order
 - **Favorites** pins items you star on a card
-- Open a card to see it full-size, **Download** it, or delete it
+- Open a card to see it full-size. The side panel shows the prompt as readable text (line breaks instead of `\n` and other backslash escapes), the reference stills, clips, and audio that were attached, and the model settings. **Copy** takes the prompt. **Use again** loads that prompt, those references, and those settings back into the prompt bar. **Download** saves the file, or delete it.

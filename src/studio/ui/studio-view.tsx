@@ -1,4 +1,4 @@
-import { StudioComposer } from './studio-composer';
+import { StudioComposer, type StudioComposerHandle } from './studio-composer';
 import { StudioGallery, type StudioGalleryAsset } from './studio-gallery';
 import { isSystemAdminFn } from '@/billing/gift-tokens.fn';
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
@@ -78,6 +78,7 @@ type StudioViewProps = {
 export function StudioView({ activity, search, navigate }: StudioViewProps) {
   const { isAuthenticated } = useAuthGate();
   const { prefs, setPrefs } = useStudioListPrefs(search, navigate);
+  const composerRef = useRef<StudioComposerHandle>(null);
   const to = activity === 'video' ? '/videos' : '/images';
 
   const { data: adminStatus, isLoading: adminStatusLoading } = useQuery({
@@ -174,6 +175,11 @@ export function StudioView({ activity, search, navigate }: StudioViewProps) {
             isFetchingNextPage={query.isFetchingNextPage}
             onLoadMore={() => void query.fetchNextPage()}
             supportMode={supportMode}
+            onReuse={
+              supportMode
+                ? undefined
+                : (reuse) => composerRef.current?.load(reuse)
+            }
           />
         </PageContainer>
       </div>
@@ -189,6 +195,7 @@ export function StudioView({ activity, search, navigate }: StudioViewProps) {
             className="flex min-h-0 flex-col overflow-hidden py-4"
           >
             <StudioComposer
+              ref={composerRef}
               activity={activity}
               generatingPrompts={generatingPrompts}
             />
