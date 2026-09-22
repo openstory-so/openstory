@@ -53,6 +53,8 @@ import {
 } from '@/models/content-rejection';
 import { estimateStudioProgress } from './progress';
 import { copyTextToClipboard } from '@/ui/clipboard';
+import { VideoPlayer } from '@/motion/ui/video-player';
+import type { AspectRatio } from '@/models/aspect-ratios';
 import { cn } from '@/ui/utils';
 import { usePostHog } from '@posthog/react';
 import {
@@ -301,11 +303,25 @@ function StudioShareMenu({
   );
 }
 
+/**
+ * VideoPlayer derives its height from its width. Cap the width so that
+ * height stays inside the dialog — the same fit the sample-video dialog
+ * uses. Tighter on a phone, where the clip sits above the recipe.
+ */
+function studioPlayerWidth(aspect: AspectRatio): string {
+  if (aspect === '9:16')
+    return 'max-w-[min(100%,28vh)] md:max-w-[min(100%,42vh)]';
+  if (aspect === '1:1')
+    return 'max-w-[min(100%,46vh)] md:max-w-[min(100%,72vh)]';
+  return 'max-w-[min(100%,82vh)] md:max-w-[min(100%,128vh)]';
+}
+
 /** The opened asset at viewer size: the media fills the dialog, letterboxed. */
 function StudioViewer({ asset }: { asset: GeneratedAsset }) {
   const primary = studioPrimaryOutput(asset);
   const poster = studioPosterOutput(asset);
   const prompt = studioPrompt(asset);
+  const aspect = studioAspectRatio(asset);
   if (asset.status === 'failed') {
     return (
       <p className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-4 text-center text-sm break-words text-destructive select-text">
@@ -318,24 +334,24 @@ function StudioViewer({ asset }: { asset: GeneratedAsset }) {
   }
   return (
     <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg bg-muted">
-      <div className="group relative max-w-full">
+      <div className="group relative w-fit max-w-full">
         {primary.contentType.startsWith('video/') ? (
-          <video
+          <VideoPlayer
             src={primary.url}
-            poster={poster?.url}
-            controls
+            posterSrc={poster?.url}
+            aspectRatio={aspect}
             autoPlay
-            loop
-            playsInline
-            className="block max-h-[calc(94vh-12rem)] max-w-full object-contain"
-          >
-            <track kind="captions" />
-          </video>
+            playSource="modal"
+            className={cn(
+              'overflow-hidden rounded-lg',
+              studioPlayerWidth(aspect)
+            )}
+          />
         ) : (
           <img
             src={primary.url}
             alt={prompt || 'Generated image'}
-            className="block max-h-[calc(94vh-12rem)] max-w-full object-contain"
+            className="block max-h-full max-w-full object-contain"
           />
         )}
         <StudioShareMenu
