@@ -43,8 +43,11 @@ import {
   getBytePlusVideoModelId,
   IMAGE_TO_VIDEO_MODELS,
   isNativeBytePlusVideoModel,
+  supportsDraftMode,
   type ImageToVideoModel,
 } from '@/models/models';
+import { submitBytePlusFinalRender } from '@/models/server/byteplus-final-render';
+import { DRAFT_RESOLUTION } from '@/motion/draft-mode';
 import { assertMediaVia, type MediaVia } from '@/models/via';
 import { GROK_VIDEO_RESOLUTIONS } from '@/motion/server/build-grok-video-request';
 import { workersSafeFetch } from '@/platform/server/ai/workers-safe-fetch';
@@ -97,6 +100,10 @@ type StudioVideoJobOptions = {
   referenceAudio?: string[];
   startImageUrl?: string;
   endImageUrl?: string;
+  /** Ark draft mode (#1756): 480p preview. See `GenerateMotionOptions.draft`. */
+  draft?: boolean;
+  /** Render the 1080p final of this Ark draft task (#1756); only the id is sent. */
+  finalFromDraftTaskId?: string;
 };
 
 export type StudioVideoJobSubmission = {
@@ -105,6 +112,8 @@ export type StudioVideoJobSubmission = {
   endpointId: string;
   via: MediaVia;
   usedOwnKey: boolean;
+  /** Set when the clip went out as an Ark draft (#1756). */
+  draftTaskId?: string;
 };
 
 async function resolveFalKey(
@@ -408,10 +417,15 @@ export async function submitStudioVideoJob(
     : undefined;
   // Seedance 2.5 first-frame / first-last-frame rejects a concrete ratio;
   // output follows the first still. Text-to-video can still pick one.
+  // A draft is 480p or Ark rejects it (#1756).
+  const arkTier =
+    options.draft && supportsDraftMode(modelKey)
+      ? DRAFT_RESOLUTION
+      : (tier ?? '720p');
   const arkSize =
     mode === 'text'
-      ? options.aspectRatio && `${options.aspectRatio}_${tier ?? '720p'}`
-      : `adaptive_${tier ?? '720p'}`;
+      ? options.aspectRatio && `${options.aspectRatio}_${arkTier}`
+      : `adaptive_${arkTier}`;
 
   // Same claim order as sequence motion: xAI, then Google, then Ark, then
   // fal.
@@ -438,6 +452,14 @@ export async function submitStudioVideoJob(
 
   const geminiSize =
     via === 'google' ? geminiVideoSize(options.aspectRatio) : undefined;
+
+  // Draft mode is an Ark feature (#1756) — see `submitMotionJob`.
+  const draft = Boolean(options.draft) && supportsDraftMode(modelKey);
+  if ((draft || options.finalFromDraftTaskId) && via !== 'byteplus') {
+    throw new Error(
+      `Draft mode needs the BytePlus route, but ${IMAGE_TO_VIDEO_MODELS[modelKey].name} is routed to ${via} for this team`
+    );
+  }
 
   switch (via) {
     case 'xai': {
@@ -599,6 +621,21 @@ export async function submitStudioVideoJob(
       if (!modelId) {
         throw new Error(`No BytePlus model id for motion model "${modelKey}"`);
       }
+      // The final of a draft (#1756): only the draft's task id goes out.
+      if (options.finalFromDraftTaskId) {
+        const final = await submitBytePlusFinalRender({
+          modelId,
+          draftTaskId: options.finalFromDraftTaskId,
+          label: 'studio final submit',
+        });
+        return {
+          jobId: final.jobId,
+          modelKey,
+          endpointId: modelId,
+          via: 'byteplus',
+          usedOwnKey: false,
+        };
+      }
       const promptText =
         mode === 'reference'
           ? tagStudioReferences(options.prompt, modelKey)
@@ -630,6 +667,7 @@ export async function submitStudioVideoJob(
             ...(arkSize && { size: arkSize }),
             modelOptions: {
               watermark: false,
+              ...(draft && { draft: true }),
               ...(options.generateAudio !== undefined && {
                 generate_audio: options.generateAudio,
               }),
@@ -644,6 +682,7 @@ export async function submitStudioVideoJob(
           endpointId: modelId,
           via: 'byteplus',
           usedOwnKey: false,
+          ...(draft && { draftTaskId: job.jobId }),
         };
       } catch (error) {
         // No fal fallback (#1519): an Ark rejection is the failure the user

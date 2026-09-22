@@ -88,6 +88,7 @@ export function videoVariantFixture(
     generatedAt: now,
     error: null,
     inputHash: null,
+    draftTaskId: null,
     discardedAt: null,
     createdAt: now,
     updatedAt: now,

@@ -231,8 +231,9 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
       const submitVia = await step.do(`resolve-video-via${tag}`, () =>
         resolveMotionVia(videoModel, scopedDb.credentials)
       );
+      // A final from a draft sends no stills (#1756): Ark reuses the draft's.
       const arkAssets =
-        submitVia === 'byteplus'
+        submitVia === 'byteplus' && !event.payload.finalFromDraftTaskId
           ? await ingestArkAssets(step, {
               prefix: `studio${tag}`,
               stills: arkStillsForStudio(input, event.payload.noPersonImages),
@@ -257,6 +258,8 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
             referenceAudio: input.referenceAudio,
             startImageUrl: input.startImageUrl,
             endImageUrl: input.endImageUrl,
+            draft: input.draft,
+            finalFromDraftTaskId: event.payload.finalFromDraftTaskId,
             scopedDb: scopedDb.credentials,
           });
           return { ok: true as const, job };
@@ -531,6 +534,8 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
         outputs,
         costMicros: videoCost,
         provider: job.via,
+        // The handle "Render at quality" renders the final from (#1756).
+        draftTaskId: job.draftTaskId,
       });
     });
 

@@ -60,6 +60,7 @@ export type UserEditProvenance = {
 };
 import type { AspectRatio, ImageSize } from '@/models/aspect-ratios';
 import type { Resolution } from '@/models/resolutions';
+import type { VideoManifest } from '@/platform/server/db/schema/video-variants';
 import type {
   CharacterMinimal,
   GeneratedAssetActivity,
@@ -245,6 +246,8 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
   userCountry?: string;
   aspectRatio: AspectRatio;
   resolution?: Resolution;
+  /** `sequences.draftMotion` at launch (#1756) — see `MotionWorkflowInput.draft`. */
+  draftMotion?: boolean;
   styleConfig: StyleConfig;
   /**
    * Automatic style (#1213): set when the sequence's style is a placeholder
@@ -382,6 +385,8 @@ export interface AnalyzeScriptWorkflowInput extends SequenceWorkflowContext {
   userCountry?: string;
   aspectRatio: AspectRatio;
   resolution?: Resolution;
+  /** `sequences.draftMotion` at launch (#1756) — see `MotionWorkflowInput.draft`. */
+  draftMotion?: boolean;
   styleConfig: StyleConfig;
   /** @see StoryboardWorkflowInput.pendingAutoStyleId — derived here, in parallel with scene-split. */
   pendingAutoStyleId?: string;
@@ -597,6 +602,25 @@ export interface MotionWorkflowInput extends SequenceWorkflowContext {
   motionBucket?: number;
   aspectRatio?: AspectRatio; // "16:9", "9:16", "1:1"
   resolution?: Resolution;
+  /**
+   * Ark draft mode (#1756): render a 480p preview instead of `resolution`.
+   * Snapshotted from `sequences.draftMotion` at the trigger. Honoured only by
+   * a model with `supportsDraftMode` on the BytePlus via; the version is
+   * stamped '480p' + `draftTaskId`.
+   */
+  draft?: boolean;
+  /**
+   * Render the 1080p final of an approved draft (#1756). The run opens a
+   * version on the draft's own segment with the draft's manifest (same
+   * inputs, same hash), skips still ingest, and submits only the task id —
+   * Ark reuses the prompt, assets and seed. `prompt` / `imageUrl` /
+   * `referenceImages` are then provenance only, not sent.
+   */
+  finalFromDraft?: {
+    taskId: string;
+    renderSegmentId: string;
+    manifest: VideoManifest;
+  };
   /**
    * For audio-capable models (kling v3, seedance), pass `false` to suppress the
    * model's native audio output (sfx/ambient/lip-sync). Omit to use the API
@@ -1629,6 +1653,8 @@ export interface BatchMotionMusicWorkflowInput extends SequenceWorkflowContext {
     motionBucket?: number;
     aspectRatio?: AspectRatio;
     resolution?: Resolution;
+    /** See `MotionWorkflowInput.draft`. */
+    draft?: boolean;
     /** See `MotionWorkflowInput.generateAudio`. */
     generateAudio?: boolean;
     /** See `MotionWorkflowInput.userEditProvenance`. */
@@ -1950,6 +1976,13 @@ export interface AssetGenerationWorkflowInput extends UserWorkflowContext {
 export interface StudioGenerationWorkflowInput extends UserWorkflowContext {
   assetId: string;
   input: StudioCreateInput;
+  /**
+   * Render the 1080p final of this Ark draft task (#1756). Set by the server
+   * fn, never by the client — a task id names another team's render as
+   * easily as this one's. `input` is the draft's input at 1080p; the run
+   * skips still ingest and submits only the id.
+   */
+  finalFromDraftTaskId?: string;
   /**
    * Reference images the likeness ledger cleared as showing no person,
    * snapshotted at the trigger. BytePlus sends these as plain URLs instead

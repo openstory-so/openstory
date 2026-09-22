@@ -32,7 +32,7 @@
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm';
 import { index, integer, snakeCase, text } from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/platform/id';
-import type { Resolution } from '@/models/resolutions';
+import type { RenderedResolution } from '@/models/resolutions';
 import { renderSegments } from './render-segments';
 import { sequences } from './sequences';
 import { SHOT_GENERATION_STATUSES } from './shots';
@@ -118,8 +118,12 @@ export const videoVariants = snakeCase.table(
     // Resolution tier this version was asked for (#1449). Null on rows written
     // before the tier existed. Stamped, not derived: the sequence default can
     // change after a render, and a 4K re-roll has to stay legible next to the
-    // 720p draft it sits beside.
-    resolution: text({ length: 10 }).$type<Resolution>(),
+    // 720p draft it sits beside. An Ark draft stamps '480p' (#1756).
+    resolution: text({ length: 10 }).$type<RenderedResolution>(),
+    // The Ark task id when this version was rendered as a draft (#1756): the
+    // handle "Render at quality" renders the 1080p final from, valid seven
+    // days from `createdAt`. Null on full renders and rows from before it.
+    draftTaskId: text(),
 
     // Ordered, one entry per covered shot — the immutable snapshot the render
     // consumed (see VideoManifestEntry).

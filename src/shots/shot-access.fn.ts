@@ -40,6 +40,8 @@ type PartialSequence = {
   analysisModel: string;
   /** Sequence default for the start-frame mode; see `usesStartFrame()`. */
   generateStartFrames: boolean;
+  /** Render motion as Ark drafts (#1756). */
+  draftMotion: boolean;
 };
 
 export type ShotContext = TeamContext & {

@@ -180,6 +180,13 @@ export const sequences = snakeCase.table(
     // storyboard payload at the trigger like `generateStartFrames`.
     generateVoices: integer({ mode: 'boolean' }).default(false).notNull(),
 
+    // Render motion as Ark drafts (#1756): 480p previews the user approves
+    // shot by shot, then renders at quality from the draft's task id.
+    // Honoured only by models with `supportsDraftMode` on the BytePlus via;
+    // other models render as usual. Snapshotted onto every motion payload at
+    // the trigger like `resolution`.
+    draftMotion: integer({ mode: 'boolean' }).default(false).notNull(),
+
     // Film length the user asked for, in seconds (#1593). NULL = auto: as
     // long as the script needs. Only Enhance (and the rail chip afterwards)
     // writes this; Generate without Enhance leaves NULL. Generation never

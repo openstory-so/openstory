@@ -356,6 +356,7 @@ export const ScriptView: FC<{
     stopAt: GenerationStage;
     generateStartFrames: boolean;
     generateVoices: boolean;
+    draftMotion: boolean;
     audioModels: AudioModel[];
   }>(() => ({
     generationMode: savedSettings.generationMode,
@@ -381,6 +382,7 @@ export const ScriptView: FC<{
     generateVoices: isEditing
       ? sequence.generateVoices
       : savedSettings.generateVoices,
+    draftMotion: isEditing ? sequence.draftMotion : savedSettings.draftMotion,
     audioModels:
       isEditing && sequence.musicModel
         ? [safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)]
@@ -394,6 +396,7 @@ export const ScriptView: FC<{
     stopAt,
     generateStartFrames,
     generateVoices,
+    draftMotion,
     audioModels,
   } = genSettings;
   // Derived, not stored: the picker only offers tiers the chosen models serve,
@@ -735,6 +738,7 @@ export const ScriptView: FC<{
         stopAt: savedSettings.stopAt,
         generateStartFrames: savedSettings.generateStartFrames,
         generateVoices: savedSettings.generateVoices,
+        draftMotion: savedSettings.draftMotion,
         audioModels: savedSettings.audioModels,
       });
       hasSyncedRef.current = true;
@@ -927,6 +931,7 @@ export const ScriptView: FC<{
       autoGenerateMusic: flags.autoGenerateMusic,
       generateStartFrames,
       generateVoices,
+      draftMotion,
       musicModel: audioModels[0] ?? DEFAULT_MUSIC_MODEL,
       audioModels,
       targetDurationSeconds: enhancedTarget ?? undefined,
@@ -1428,6 +1433,8 @@ export const ScriptView: FC<{
             onImageModelsChange={(v) => updateGen('imageModels', v)}
             onVideoModelsChange={(v) => updateGen('videoModels', v)}
             onAudioModelsChange={(v) => updateGen('audioModels', v)}
+            draftMotion={draftMotion}
+            onDraftMotionChange={(v) => updateGen('draftMotion', v)}
             disabled={loading}
             styleCategory={styleCategory}
           />

@@ -463,6 +463,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
         model: shotVideoModel,
         aspectRatio: sequence.aspectRatio,
         resolution: sequence.resolution,
+        draft: sequence.draftMotion,
         duration: shot.durationMs ? shot.durationMs / 1000 : undefined,
         voicedLines,
         audioClips: audioClips.length > 0 ? audioClips : undefined,

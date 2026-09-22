@@ -10,6 +10,7 @@ import {
   AlertDialogTrigger,
 } from '@/ui/shadcn/alert-dialog';
 import { Button } from '@/ui/shadcn/button';
+import { draftTaskUsable } from '@/motion/draft-mode';
 import {
   Dialog,
   DialogContent,
@@ -26,6 +27,7 @@ import { HighlightedPrompt } from '@/ui/text-editor/mention/highlighted-prompt';
 import type { MentionItem } from '@/shots/ui/prompt-mention/mention-items';
 import {
   useDeleteStudioAsset,
+  useRenderStudioAssetAtQuality,
   useStudioPendingCreates,
   useToggleStudioFavorite,
 } from './use-studio-assets';
@@ -68,6 +70,7 @@ import {
   RotateCcw,
   Star,
   Trash2,
+  Sparkles,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -437,6 +440,8 @@ export function GenerationDetail({
   onReuse,
   deletePending,
   onDelete,
+  onRenderAtQuality,
+  renderAtQualityPending = false,
   onPrev,
   onNext,
 }: {
@@ -447,6 +452,9 @@ export function GenerationDetail({
   onReuse?: (reuse: StudioReuse) => void;
   deletePending: boolean;
   onDelete: () => void;
+  /** Render this Ark draft at 1080p (#1756); absent in support mode. */
+  onRenderAtQuality?: () => void;
+  renderAtQualityPending?: boolean;
   /** Step to the neighbouring generation in the gallery; absent at the ends. */
   onPrev?: () => void;
   onNext?: () => void;
@@ -542,6 +550,21 @@ export function GenerationDetail({
               Use again
             </Button>
           )}
+          {onRenderAtQuality &&
+            asset.draftTaskId &&
+            asset.status === 'completed' &&
+            draftTaskUsable(asset.createdAt) && (
+              <Button
+                type="button"
+                variant="outline"
+                className="pointer-coarse:h-11"
+                disabled={renderAtQualityPending}
+                onClick={onRenderAtQuality}
+              >
+                <Sparkles aria-hidden="true" />
+                {renderAtQualityPending ? 'Starting…' : 'Render at 1080p'}
+              </Button>
+            )}
           {!supportMode &&
             asset.status !== 'queued' &&
             asset.status !== 'running' && (
@@ -605,6 +628,7 @@ export function StudioGallery({
   const [openId, setOpenId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const remove = useDeleteStudioAsset();
+  const renderAtQuality = useRenderStudioAssetAtQuality();
   useEffect(() => {
     if (!copied) return;
     const id = window.setTimeout(() => setCopied(false), 2000);
@@ -752,6 +776,16 @@ export function StudioGallery({
                   onSuccess: () => setOpenId(null),
                 });
               }}
+              onRenderAtQuality={
+                supportMode
+                  ? undefined
+                  : () => {
+                      renderAtQuality.mutate(openAsset.id, {
+                        onSuccess: () => setOpenId(null),
+                      });
+                    }
+              }
+              renderAtQualityPending={renderAtQuality.isPending}
               onPrev={prevAsset ? () => step(prevAsset) : undefined}
               onNext={nextAsset ? () => step(nextAsset) : undefined}
             />

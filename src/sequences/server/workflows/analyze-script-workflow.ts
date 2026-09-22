@@ -1395,6 +1395,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         videoModel: primaryVideoModel,
         aspectRatio,
         resolution,
+        draftMotion: input.draftMotion,
         characters: charactersWithSheets,
         elements: allElements,
         // Reference-only motion attaches the location sheet too — with no

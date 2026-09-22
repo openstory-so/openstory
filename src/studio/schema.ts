@@ -12,6 +12,7 @@ import {
   IMAGE_TO_VIDEO_MODELS,
   isValidImageToVideoModel,
   isValidTextToImageModel,
+  supportsDraftMode,
   supportsReferenceImages,
   type ImageToVideoModel,
   type TextToImageModel,
@@ -106,6 +107,8 @@ export const studioCreateInputSchema = z.discriminatedUnion('activity', [
       duration: z.number().positive(),
       count: countSchema.default(1),
       generateAudio: z.boolean().optional(),
+      /** Ark draft mode (#1756): a 480p preview; `resolution` is ignored. */
+      draft: z.boolean().optional(),
       mode: z.enum(STUDIO_VIDEO_MODES).default('text'),
       /** Reference mode: stills bound as `@Image1`…`@ImageN`, in order. */
       referenceImages: z.array(mediaUrlSchema).max(9).default([]),
@@ -118,6 +121,13 @@ export const studioCreateInputSchema = z.discriminatedUnion('activity', [
       endImageUrl: mediaUrlSchema.optional(),
     })
     .superRefine((input, ctx) => {
+      if (input.draft && !supportsDraftMode(input.videoModel)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['draft'],
+          message: `${IMAGE_TO_VIDEO_MODELS[input.videoModel].name} has no draft mode`,
+        });
+      }
       const limit = studioReferenceLimit(input.videoModel);
       if (input.mode === 'reference') {
         if (limit === 0) {

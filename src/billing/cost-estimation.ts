@@ -20,7 +20,7 @@ import {
 } from '@/models/models';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import { aspectRatioToDimensions } from '@/models/aspect-ratios';
-import type { Resolution } from '@/models/resolutions';
+import type { RenderedResolution, Resolution } from '@/models/resolutions';
 import { imageRequestDimensions } from '@/stills/build-image-request';
 import { resolveMotionEndpoint } from '@/motion/resolve-motion-endpoint';
 import {
@@ -185,7 +185,8 @@ export function estimateVideoCost(
   durationSeconds: number,
   opts: {
     pricing: FalPricingMap;
-    resolution?: Resolution;
+    /** A tier, or '480p' for an Ark draft (#1756). */
+    resolution?: RenderedResolution;
     /**
      * True when cast/element (or other) reference images will be sent so
      * `resolveMotionEndpoint` may route to reference-to-video.
@@ -235,7 +236,8 @@ export function estimateStudioVideoCost(
   opts: {
     pricing: FalPricingMap;
     mode?: StudioVideoMode;
-    resolution?: Resolution;
+    /** A tier, or '480p' for an Ark draft (#1756). */
+    resolution?: RenderedResolution;
   }
 ): Microdollars | null {
   return estimateFalCost(

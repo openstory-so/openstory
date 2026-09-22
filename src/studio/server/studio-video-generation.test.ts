@@ -67,6 +67,11 @@ vi.doMock('@tanstack/ai-byteplus', () => ({
   createBytePlusVideo: mockCreateBytePlusVideo,
 }));
 
+const mockSubmitFinalRender = vi.fn(async () => ({ jobId: 'ark-final' }));
+vi.doMock('@/models/server/byteplus-final-render', () => ({
+  submitBytePlusFinalRender: mockSubmitFinalRender,
+}));
+
 const { submitStudioVideoJob, pollStudioVideoJob, studioVideoCostFromUsage } =
   await import('./studio-video-generation');
 
@@ -432,6 +437,90 @@ describe('submitStudioVideoJob', () => {
         size: '9:16_720p',
       })
     );
+  });
+
+  it('submits a Seedance 2.5 draft at 480p with draft: true and stamps the task id (#1756)', async () => {
+    testEnv.ARK_API_KEY = 'ark-test';
+    mockGenerateVideo.mockResolvedValue({ jobId: 'ark-draft' });
+
+    const result = await submitStudioVideoJob({
+      arkAssets: registeredAssets,
+      prompt: 'A red fox turns toward camera',
+      model: 'seedance_v2_5',
+      duration: 5,
+      aspectRatio: '9:16',
+      resolution: '1080p',
+      draft: true,
+    });
+
+    expect(result.draftTaskId).toBe('ark-draft');
+    expect(mockGenerateVideo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        size: '9:16_480p',
+        modelOptions: expect.objectContaining({ draft: true }),
+      })
+    );
+  });
+
+  it('ignores draft on a model without draft mode', async () => {
+    testEnv.ARK_API_KEY = 'ark-test';
+    mockGenerateVideo.mockResolvedValue({ jobId: 'ark-full' });
+
+    const result = await submitStudioVideoJob({
+      arkAssets: registeredAssets,
+      prompt: 'A red fox turns toward camera',
+      model: 'seedance_v2',
+      duration: 5,
+      aspectRatio: '9:16',
+      draft: true,
+    });
+
+    expect(result.draftTaskId).toBeUndefined();
+    const call = mockGenerateVideo.mock.calls[0]?.[0];
+    expect(call?.size).toBe('9:16_720p');
+    expect(call?.modelOptions).not.toHaveProperty('draft');
+  });
+
+  it('refuses a draft when Seedance 2.5 is routed to fal', async () => {
+    await expect(
+      submitStudioVideoJob({
+        arkAssets: registeredAssets,
+        prompt: 'A red fox turns toward camera',
+        model: 'seedance_v2_5',
+        duration: 5,
+        draft: true,
+      })
+    ).rejects.toThrow(/BytePlus route/);
+    expect(mockFalVideo).not.toHaveBeenCalled();
+  });
+
+  it('renders the final from the draft task id alone (#1756)', async () => {
+    testEnv.ARK_API_KEY = 'ark-test';
+    mockSubmitFinalRender.mockClear();
+
+    const result = await submitStudioVideoJob({
+      arkAssets: registeredAssets,
+      prompt: 'A red fox turns toward camera',
+      model: 'seedance_v2_5',
+      duration: 5,
+      aspectRatio: '9:16',
+      resolution: '1080p',
+      finalFromDraftTaskId: 'cgt-draft',
+    });
+
+    expect(result).toMatchObject({
+      jobId: 'ark-final',
+      via: 'byteplus',
+      endpointId: 'dreamina-seedance-2-5-260628',
+    });
+    expect(result.draftTaskId).toBeUndefined();
+    expect(mockSubmitFinalRender).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelId: 'dreamina-seedance-2-5-260628',
+        draftTaskId: 'cgt-draft',
+      })
+    );
+    expect(mockGenerateVideo).not.toHaveBeenCalled();
   });
 
   it('never falls back to fal when Ark rejects a studio still as a possible real person (#1519)', async () => {

@@ -156,6 +156,10 @@ export const IMAGE_TO_VIDEO_MODELS = {
     // $10.70/1M-token entry is exact for that tier only. fal has no
     // enterprise 2.5 (those paths 404); public 2.5 is the fal via.
     byteplusId: 'dreamina-seedance-2-5-260628' as const,
+    // Ark draft mode (#1756): a 480p preview, then a 1080p final rendered
+    // from the draft's task id. Ark-only — fal exposes no such flag, and the
+    // 2.0 family has no draft mode. See `supportsDraftMode`.
+    draftMode: true as const,
   },
   seedance_v2_mini: {
     id: 'bytedance/seedance-2.0/mini/image-to-video',
@@ -410,6 +414,15 @@ export function getBytePlusVideoModelId(
 
 export function isNativeBytePlusVideoModel(model: ImageToVideoModel): boolean {
   return getBytePlusVideoModelId(model) !== undefined;
+}
+
+/**
+ * Ark draft mode (#1756): the model can render a cheap 480p preview whose
+ * task id later renders the 1080p final with the same seed, prompt and
+ * assets. Only honoured on the BytePlus via — see `src/motion/draft-mode.ts`.
+ */
+export function supportsDraftMode(model: ImageToVideoModel): boolean {
+  return 'draftMode' in IMAGE_TO_VIDEO_MODELS[model];
 }
 
 export const DEFAULT_VIDEO_MODEL: ImageToVideoModel = 'seedance_v2';

@@ -193,6 +193,7 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
         userCountry: input.userCountry,
         aspectRatio,
         resolution,
+        draftMotion: input.draftMotion,
         styleConfig: input.styleConfig,
         pendingAutoStyleId: input.pendingAutoStyleId,
         analysisModelId,

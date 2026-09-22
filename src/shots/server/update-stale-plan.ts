@@ -262,6 +262,8 @@ type PlanSequence = {
    * sequence with half its prompts in each style.
    */
   generateStartFrames: boolean;
+  /** Render motion as Ark drafts (#1756); pinned like the rest. */
+  draftMotion: boolean;
 };
 
 type PlanPromptContext = {
@@ -337,6 +339,7 @@ function toPlanSequence(sequence: Sequence): PlanSequence {
     styleId: sequence.styleId,
     analysisModel: sequence.analysisModel,
     generateStartFrames: sequence.generateStartFrames,
+    draftMotion: sequence.draftMotion,
   };
 }
 

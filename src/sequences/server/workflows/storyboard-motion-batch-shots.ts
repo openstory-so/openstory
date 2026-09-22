@@ -83,6 +83,8 @@ export function buildStoryboardMotionBatchShots(input: {
   videoModel: ImageToVideoModel;
   aspectRatio: AspectRatio;
   resolution?: Resolution;
+  /** See `MotionWorkflowInput.draft` (#1756). */
+  draftMotion?: boolean;
   characters: CharacterMinimal[];
   elements: SequenceElementMinimal[];
   /** Location sheets. Only attached in reference-only mode. */
@@ -213,6 +215,7 @@ export function buildStoryboardMotionBatchShots(input: {
       duration: clipDurationSeconds(item),
       aspectRatio: input.aspectRatio,
       resolution: input.resolution,
+      draft: input.draftMotion,
       referenceImages: buildMotionReferenceImages({
         scene,
         characters: input.characters,

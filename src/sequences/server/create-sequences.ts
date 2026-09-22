@@ -150,6 +150,7 @@ export const createSequences = createServerOnlyFn(
       autoGenerateMusic,
       generateStartFrames = false,
       generateVoices = false,
+      draftMotion = false,
       musicModel,
       audioModels: audioModelsInput,
       targetDurationSeconds,
@@ -347,6 +348,7 @@ export const createSequences = createServerOnlyFn(
               deferStyleSnapshot: styleSource.kind === 'pending',
               aspectRatio,
               resolution,
+              draftMotion,
               analysisModel:
                 getAnalysisModelById(modelId)?.id ||
                 resolveModelForCountry(DEFAULT_ANALYSIS_MODEL, country),

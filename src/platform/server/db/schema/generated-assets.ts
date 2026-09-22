@@ -103,6 +103,10 @@ export const generatedAssets = snakeCase.table(
     error: text(),
     workflowRunId: text(),
     costMicros: integer(),
+    // The Ark task id when this clip was rendered as a draft (#1756): the
+    // handle "Render at quality" renders the 1080p final from, valid seven
+    // days from `createdAt`. Null on full renders, stills, and older rows.
+    draftTaskId: text(),
 
     createdAt: integer({ mode: 'timestamp' })
       .$defaultFn(() => new Date())

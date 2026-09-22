@@ -38,8 +38,10 @@ import {
   DEFAULT_VIDEO_MODEL,
   getMotionReferenceEndpoint,
   IMAGE_TO_VIDEO_MODELS,
+  supportsDraftMode,
   videoPromptHardLimit,
 } from '@/models/models';
+import { DRAFT_FINAL_RESOLUTION, DRAFT_RESOLUTION } from '@/motion/draft-mode';
 import { bindableReferences } from '@/motion/server/build-reference-video-prompt';
 import {
   DEFAULT_ANALYSIS_MODEL,
@@ -160,11 +162,23 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
 
     // Reference-only shots have no still by design — the reference sheets and
     // the prompt are the whole input. Every other shot must carry one.
-    if (!input.imageUrl?.trim() && !input.referenceOnly) {
+    // A final from a draft (#1756) sends only the task id — no still.
+    if (
+      !input.imageUrl?.trim() &&
+      !input.referenceOnly &&
+      !input.finalFromDraft
+    ) {
       throw new WorkflowValidationError(
         'Thumbnail Path is required for motion generation'
       );
     }
+    // What this render is stamped with: a draft is 480p, its final 1080p,
+    // anything else the tier the sequence asked for.
+    const renderedResolution = input.finalFromDraft
+      ? DRAFT_FINAL_RESOLUTION
+      : input.draft && supportsDraftMode(model)
+        ? DRAFT_RESOLUTION
+        : (input.resolution ?? null);
     if (
       input.referenceOnly &&
       !(await canRenderReferenceOnly(model, scopedDb.credentials))
@@ -358,6 +372,8 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             aspectRatio: input.aspectRatio,
             resolution: input.resolution,
             generateAudio: input.generateAudio,
+            draft: input.draft,
+            finalFromDraftTaskId: input.finalFromDraft?.taskId,
           },
           await getEffectiveFalPricing()
         );
@@ -479,8 +495,11 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                   covered.map((member) => member.shotId)
                 )
               : [shot];
+          // A final lands on the draft's own segment (#1756) — a packed
+          // draft's members must not be re-segmented one by one.
           const renderSegmentId =
-            liveMembers.length > 1
+            input.finalFromDraft?.renderSegmentId ??
+            (liveMembers.length > 1
               ? await scopedDb.renderSegments.ensureForShots(
                   liveMembers.map((member) => ({
                     id: member.id,
@@ -494,7 +513,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                   sceneId: renderSceneId,
                   sequenceId,
                   renderSegmentId: shot.renderSegmentId,
-                });
+                }));
           // Both version ids are pinned at the trigger. There is deliberately no
           // live fallback for the frame: re-reading the anchor's pointer would
           // name whatever is selected NOW, and a concurrent select/upscale makes
@@ -558,7 +577,11 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                     referenceKeys: sentReferenceKeys,
                   },
                 ];
-          manifest = buildVideoManifest(coveredEntries);
+          // A final reuses the draft's manifest verbatim (#1756): same
+          // inputs, same hash, so it is exactly as stale as the draft.
+          manifest =
+            input.finalFromDraft?.manifest ??
+            buildVideoManifest(coveredEntries);
           const inputHash = await computeVideoManifestInputHash(
             manifest,
             model
@@ -572,7 +595,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             renderSegmentId,
             sequenceId: input.sequenceId,
             model,
-            resolution: input.resolution ?? null,
+            resolution: renderedResolution,
             manifest,
             inputHash,
             status: 'generating',
@@ -792,6 +815,9 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
 
     for (let attempt = 0; attempt <= MAX_MOTION_ATTEMPTS; attempt++) {
       const isRescue = attempt === MAX_MOTION_ATTEMPTS;
+      // A final from a draft sends no prompt and cannot change model
+      // (#1756): nothing to soften, nothing to swap.
+      if (isRescue && input.finalFromDraft) break;
       if (isRescue) {
         // A rejection with no `body.<field>` prefix (Veo's "could not
         // generate", sensitive audio) is prompt-shaped: soften.
@@ -913,8 +939,9 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       const submitVia = await step.do(`resolve-motion-via${tag}`, () =>
         resolveMotionVia(activeModel, scopedDb.credentials)
       );
+      // A final from a draft sends no stills (#1756): Ark reuses the draft's.
       const arkAssets =
-        submitVia === 'byteplus'
+        submitVia === 'byteplus' && !input.finalFromDraft
           ? await ingestArkAssets(step, {
               prefix: `motion${tag}`,
               stills: arkStillsForMotion({
@@ -975,6 +1002,8 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             scopedDb: scopedDb.credentials,
             arkAssets,
             multiPrompt,
+            draft: input.draft,
+            finalFromDraftTaskId: input.finalFromDraft?.taskId,
           });
           return { ok: true as const, job };
         } catch (error) {
@@ -1068,6 +1097,16 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         continue;
       }
       const { job } = submitOutcome;
+
+      // The draft's task id is the handle "Render at quality" needs (#1756).
+      // Stamped per attempt: a content-flag re-roll is a new Ark task.
+      if (job.draftTaskId && videoVersionId) {
+        const versionId = videoVersionId;
+        const draftTaskId = job.draftTaskId;
+        await step.do(`stamp-draft-task${tag}`, async () => {
+          await scopedDb.videoVariants.update(versionId, { draftTaskId });
+        });
+      }
 
       // Step 3b: Batched polling — tight loop inside each step.do, checkpoint
       // between batches. A content-flag failure ends this attempt and re-rolls;

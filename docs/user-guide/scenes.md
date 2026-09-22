@@ -29,6 +29,8 @@ Click any scene to select it. On mobile, scenes appear in a bottom drawer that c
 
 At the top of the scene list, a **Generate Motion** button lets you start video generation for all eligible frames at once (frames with completed images but no video). You can optionally include music generation in the batch.
 
+**Draft at 480p** (Seedance 2.5 only) renders every shot as a cheap preview instead. Approve or regenerate shot by shot, then press **Render N drafts at 1080p** to render the finals — each from its own draft, so the approved motion, seed and references are kept. Drafts can be rendered at quality for seven days; the setting also lives in the generation settings when you create or regenerate a sequence.
+
 ## Scene Player
 
 The central player displays:
@@ -85,6 +87,7 @@ Control over the scene's video generation:
 - **Model selector** — Switch between video models for this scene. Models are filtered by aspect ratio compatibility and style category.
 - **Optimised prompt** — A collapsed panel for the currently selected model only. The header shows character count against that model's maximum prompt length (highlighted if over). Expand it to read the assembled prompt (dialogue, audio cues, reference bindings); toggle **JSON** to copy the exact request body.
 - **Generate Motion** / **Regenerate Motion** — Create a new video clip
+- **Render at 1080p** — Shown when the selected clip is a 480p draft: renders the final from that draft (same seed, prompt and references)
 - **Copy Prompt** — Copy the assembled prompt to clipboard
 
 ## Smart Retry

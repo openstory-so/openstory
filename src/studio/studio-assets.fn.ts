@@ -24,7 +24,10 @@ import {
   deleteFile,
   listFiles,
 } from '@/platform/server/storage/storage-cloudflare';
-import { createStudioAssets } from '@/studio/server/create-studio-asset';
+import {
+  createStudioAssets,
+  renderStudioAssetAtQuality,
+} from '@/studio/server/create-studio-asset';
 import {
   studioActivitySchema,
   studioCreateInputSchema,
@@ -90,6 +93,14 @@ export const listStudioAssetsFn = createServerFn({ method: 'GET' })
       limit: data?.limit,
       cursor: data?.cursor,
     });
+  });
+
+/** Render a finished Ark draft at 1080p from its task id (#1756). */
+export const renderStudioAssetAtQualityFn = createServerFn({ method: 'POST' })
+  .middleware([authWithTeamMiddleware])
+  .validator(zodValidator(z.object({ id: ulidSchema })))
+  .handler(async ({ context, data }) => {
+    return renderStudioAssetAtQuality(context.scopedDb, data.id);
   });
 
 export const setStudioAssetFavoriteFn = createServerFn({ method: 'POST' })

@@ -16,7 +16,7 @@ import { resolveVideoModel } from '@/models/resolve-asset-models';
 import type { EffectiveFalPricing } from '@/billing/fal-cost';
 import { estimateVideoCost, gateEstimate } from '@/billing/cost-estimation';
 import { addMicros, ZERO_MICROS, type Microdollars } from '@/billing/money';
-import type { Resolution } from '@/models/resolutions';
+import type { RenderedResolution } from '@/models/resolutions';
 import { snapDuration } from '@/motion/snap-duration';
 
 /** `useStartFrame` so a caller can price each shot on its own render route. */
@@ -65,7 +65,7 @@ export function estimateBatchMotionCost(
     explicitModel?: ImageToVideoModel | null;
     duration?: number;
     /** Output resolution tier (#1449) — token-billed clips scale with it. */
-    resolution?: Resolution;
+    resolution?: RenderedResolution;
     /**
      * When true (or per-shot true), price the reference-to-video endpoint for
      * models that route there with cast/element refs (#873).

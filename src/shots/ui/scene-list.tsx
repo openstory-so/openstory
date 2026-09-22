@@ -19,10 +19,17 @@ import { useCreateScene, useReorderScenes } from './use-scene-structure';
 import {
   DEFAULT_MUSIC_MODEL,
   DEFAULT_VIDEO_MODEL,
+  isValidImageToVideoModel,
+  supportsDraftMode,
   type AudioModel,
   type ImageToVideoModel,
   type TextToImageModel,
 } from '@/models/models';
+import {
+  DRAFT_FINAL_RESOLUTION,
+  DRAFT_RESOLUTION,
+  draftTaskUsable,
+} from '@/motion/draft-mode';
 import {
   estimateAudioCost,
   estimateVideoCost,
@@ -56,6 +63,7 @@ import {
   PanelLeftClose,
   Plus,
   Video,
+  Sparkles,
 } from 'lucide-react';
 import {
   memo,
@@ -127,6 +135,8 @@ export type BatchGenerateMotionArgs = {
    *  batch. The flag is honored only by models that produce audio — non-audio
    *  models ignore it downstream during motion-prompt assembly. */
   generateAudio: boolean;
+  /** Render the batch as Ark drafts (#1756); persisted on the sequence. */
+  draftMotion: boolean;
 };
 
 export type SceneListProps = {
@@ -201,6 +211,10 @@ export type SceneListProps = {
   onLeftoverGrokChange?: (shotIds: readonly string[], useGrok: boolean) => void;
   /** Remaining / total on-screen sheets when continue starts at References. */
   referenceProgress?: { remaining: number; total: number };
+  /** The sequence's draft-mode setting (#1756); seeds the batch checkbox. */
+  draftMotion?: boolean;
+  /** Render every approved draft at quality (#1756). */
+  onRenderDraftsAtQuality?: () => Promise<void>;
 };
 
 const SceneListComponent: React.FC<SceneListProps> = ({
@@ -245,6 +259,8 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   leftoverGrokShotIds,
   onLeftoverGrokChange,
   referenceProgress,
+  draftMotion = false,
+  onRenderDraftsAtQuality,
 }) => {
   const rootRef = useRef<HTMLDivElement>(null);
   const divergentByShotId = useMemo(() => {
@@ -322,6 +338,10 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   const voices = voicesUnavailable ? false : draftVoices;
   const [includeMusic, setIncludeMusic] = useState(true);
   const [generateAudio, setGenerateAudio] = useState(true);
+  const [draftBatch, setDraftBatch] = useState(draftMotion);
+  useEffect(() => {
+    setDraftBatch(draftMotion);
+  }, [draftMotion]);
   const [musicModel, setMusicModel] = useState<AudioModel>(
     initialMusicModel ?? DEFAULT_MUSIC_MODEL
   );
@@ -406,6 +426,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
         musicModel,
         videoModel,
         generateAudio,
+        draftMotion: draftBatch && supportsDraftMode(videoModel),
       })
     );
   };
@@ -490,7 +511,10 @@ const SceneListComponent: React.FC<SceneListProps> = ({
       // by motion time; Seedance routes to reference-to-video when they do.
       const perShot = estimateVideoCost(videoModel, duration, {
         pricing: falPricing,
-        resolution,
+        resolution:
+          draftBatch && supportsDraftMode(videoModel)
+            ? DRAFT_RESOLUTION
+            : resolution,
         hasReferenceImages: true,
         referenceOnly: rendersReferenceOnly(shot, { generateStartFrames }),
       });
@@ -518,6 +542,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     }
     return anyHonest ? total : null;
   }, [
+    draftBatch,
     falPricing,
     notStartedShots,
     includeMusic,
@@ -526,6 +551,75 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     resolution,
     generateStartFrames,
   ]);
+
+  // Approved drafts (#1756): selected, finished, and inside Ark's seven-day
+  // window. One final per segment, priced at 1080p.
+  const draftSegments = useMemo(
+    () =>
+      (segments ?? []).filter((segment) => {
+        const version = segment.selectedVersion;
+        return (
+          Boolean(version?.draftTaskId) &&
+          version?.status === 'completed' &&
+          draftTaskUsable(version.createdAt)
+        );
+      }),
+    [segments]
+  );
+  const draftFinalCostEstimate = useMemo((): Microdollars | null => {
+    if (!falPricing || draftSegments.length === 0) return null;
+    let total: Microdollars = ZERO_MICROS;
+    let anyHonest = false;
+    for (const segment of draftSegments) {
+      const stamped = segment.selectedVersion?.model;
+      const model =
+        stamped && isValidImageToVideoModel(stamped) ? stamped : videoModel;
+      const duration = segment.shotIds.reduce(
+        (sum, id) =>
+          sum +
+          resolveShotDuration({
+            durationMs: shots?.find((shot) => shot.id === id)?.durationMs,
+            model,
+          }),
+        0
+      );
+      const perSegment = estimateVideoCost(model, duration, {
+        pricing: falPricing,
+        resolution: DRAFT_FINAL_RESOLUTION,
+        hasReferenceImages: true,
+      });
+      if (perSegment === null) continue;
+      anyHonest = true;
+      total = addMicros(total, perSegment);
+    }
+    return anyHonest ? total : null;
+  }, [draftSegments, falPricing, shots, videoModel]);
+  const handleRenderDrafts = async () => {
+    if (!onRenderDraftsAtQuality) return;
+    await runFooterAction('Failed to render at quality', () =>
+      onRenderDraftsAtQuality()
+    );
+  };
+  const canRenderDrafts =
+    Boolean(onRenderDraftsAtQuality) &&
+    !isMotionInProgress &&
+    draftSegments.length > 0;
+  const renderDraftsButton = canRenderDrafts ? (
+    <div className="flex flex-col gap-1">
+      <Button
+        variant="outline"
+        className="w-full"
+        onClick={() => void handleRenderDrafts()}
+        disabled={isGenerating}
+      >
+        <Sparkles className="mr-2 h-4 w-4" />
+        Render {draftSegments.length}{' '}
+        {draftSegments.length === 1 ? 'draft' : 'drafts'} at 1080p
+      </Button>
+      <ActionCost estimate={draftFinalCostEstimate} />
+    </div>
+  ) : null;
+  const showDraftFooter = !hideBatchButton && !showButton && canRenderDrafts;
 
   const continueCostEstimate = useGenerationSliceEstimate({
     sequenceId,
@@ -843,6 +937,26 @@ const SceneListComponent: React.FC<SceneListProps> = ({
             />
             <span>Include SFX &amp; dialogue (when the model supports it)</span>
           </label>
+          {supportsDraftMode(videoModel) && (
+            <label
+              htmlFor="batch-draft-motion"
+              className="flex items-center gap-2 text-sm text-muted-foreground"
+            >
+              <Checkbox
+                id="batch-draft-motion"
+                checked={draftBatch}
+                onCheckedChange={(checked) => setDraftBatch(checked === true)}
+              />
+              <span>Draft at 480p (render at quality once approved)</span>
+            </label>
+          )}
+          {renderDraftsButton}
+        </div>
+      )}
+
+      {showDraftFooter && (
+        <div className="sticky bottom-0 border-t bg-background p-4 flex flex-col gap-3">
+          {renderDraftsButton}
         </div>
       )}
 

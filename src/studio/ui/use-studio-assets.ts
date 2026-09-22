@@ -7,6 +7,7 @@ import {
   listStudioAssetsFn,
   listStudioUploadsFn,
   setStudioAssetFavoriteFn,
+  renderStudioAssetAtQualityFn,
 } from '@/studio/studio-assets.fn';
 import {
   studioCreateInputSchema,
@@ -152,6 +153,23 @@ export function useToggleStudioFavorite() {
       void queryClient.invalidateQueries({ queryKey: studioAssetKeys.all });
     },
     onError: (error) => {
+      toast.error(error.message);
+    },
+  });
+}
+
+/** Render a finished Ark draft at 1080p (#1756); lands as a new tile. */
+export function useRenderStudioAssetAtQuality() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => renderStudioAssetAtQualityFn({ data: { id } }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: studioAssetKeys.all });
+      toast.success('Rendering at 1080p');
+    },
+    onError: (error) => {
+      if (isInsufficientCreditsError(error)) return;
       toast.error(error.message);
     },
   });

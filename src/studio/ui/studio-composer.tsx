@@ -84,10 +84,12 @@ import {
   getCompatibleModel,
   IMAGE_TO_VIDEO_MODELS,
   isOfferedVideoModel,
+  supportsDraftMode,
   supportsReferenceImages,
   type ImageToVideoModel,
   type TextToImageModel,
 } from '@/models/models';
+import { DRAFT_RESOLUTION } from '@/motion/draft-mode';
 import { useViaAvailability } from '@/models/ui/use-via-availability';
 import {
   estimateImageCost,
@@ -350,6 +352,7 @@ export function StudioComposer({
   const [count, setCount] = useState<(typeof COUNTS)[number]>(1);
   const [duration, setDuration] = useState(5);
   const [generateAudio, setGenerateAudio] = useState(true);
+  const [draftMode, setDraftMode] = useState(false);
   const [lastShuffled, setLastShuffled] = useState<string | null>(null);
   // The mic sits in the toolbar next to Shuffle; dictation streams into the
   // prompt editor through this handle.
@@ -392,6 +395,7 @@ export function StudioComposer({
         if (next.videoModel) setVideoModel(next.videoModel);
         if (next.duration != null) setDuration(next.duration);
         if (next.generateAudio != null) setGenerateAudio(next.generateAudio);
+        if (next.draft != null) setDraftMode(next.draft);
         if (next.mode) setMode(next.mode);
         setVideoRefs(
           next.referenceVideos.map((url, index) =>
@@ -491,6 +495,10 @@ export function StudioComposer({
   );
   const audioCapable = studioVideoSupportsAudio(compatibleVideoModel);
   const durationCapable = studioVideoDurations(compatibleVideoModel).length > 0;
+  // Ark draft mode (#1756): a 480p preview, rendered at 1080p from the
+  // gallery once approved. Only Seedance 2.5 on the BytePlus via has it.
+  const draftCapable = isVideo && supportsDraftMode(compatibleVideoModel);
+  const draftOn = draftCapable && draftMode;
   // Images: the model's edit endpoint takes stills (no clips/audio). Models
   // without a per-endpoint cap get the schema's cap of 9.
   const imageRefLimit = supportsReferenceImages(imageModel)
@@ -528,7 +536,11 @@ export function StudioComposer({
     const motion = estimateStudioVideoCost(
       compatibleVideoModel,
       snappedDuration,
-      { pricing, mode: effectiveMode, resolution }
+      {
+        pricing,
+        mode: effectiveMode,
+        resolution: draftOn ? DRAFT_RESOLUTION : resolution,
+      }
     );
     return motion === null ? null : multiplyMicros(motion, count);
   }, [
@@ -536,6 +548,7 @@ export function StudioComposer({
     aspectRatio,
     compatibleVideoModel,
     count,
+    draftOn,
     effectiveMode,
     imageModel,
     pricing,
@@ -577,6 +590,7 @@ export function StudioComposer({
         duration: snappedDuration,
         count,
         generateAudio: audioCapable ? generateAudio : undefined,
+        draft: draftCapable ? draftMode : undefined,
         mode: effectiveMode,
         referenceImages:
           effectiveMode === 'reference' ? references.map((r) => r.url) : [],
@@ -1136,6 +1150,7 @@ export function StudioComposer({
       : null,
     isVideo && durationCapable ? `${snappedDuration}s` : null,
     isVideo && audioCapable ? (generateAudio ? 'Audio' : 'Silent') : null,
+    draftOn ? 'Draft 480p' : null,
     `×${count}`,
   ].filter(Boolean);
 
@@ -1494,7 +1509,11 @@ export function StudioComposer({
                   value={resolution}
                   onChange={setResolution}
                   available={resolutionTiers}
-                  note={resolutionNote}
+                  note={
+                    draftOn
+                      ? 'Drafts render at 480p; render at 1080p from the gallery'
+                      : resolutionNote
+                  }
                 />
               </section>
               {isVideo && durationCapable && (
@@ -1547,6 +1566,27 @@ export function StudioComposer({
                       id="studio-generate-audio"
                       checked={generateAudio}
                       onCheckedChange={setGenerateAudio}
+                    />
+                  </section>
+                </>
+              )}
+              {draftCapable && (
+                <>
+                  <Separator />
+                  <section className="flex items-center justify-between gap-4">
+                    <label
+                      htmlFor="studio-draft"
+                      className="text-sm font-medium"
+                    >
+                      Draft
+                      <span className="block text-xs font-normal text-muted-foreground">
+                        480p preview; render at 1080p from the gallery
+                      </span>
+                    </label>
+                    <Switch
+                      id="studio-draft"
+                      checked={draftMode}
+                      onCheckedChange={setDraftMode}
                     />
                   </section>
                 </>

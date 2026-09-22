@@ -40,7 +40,12 @@ import { useEditorDictation } from '@/ui/use-dictation';
 import { useSequenceMentionItems } from './use-mention-items';
 import { shortenPromptFn } from '@/models/ai.fn';
 import { generateShotImageFn } from '@/stills/shot-image.fn';
-import { cancelVideoRenderFn, generateShotMotionFn } from '@/motion/motion.fn';
+import {
+  cancelVideoRenderFn,
+  generateShotMotionFn,
+  renderShotAtQualityFn,
+} from '@/motion/motion.fn';
+import { DRAFT_FINAL_RESOLUTION, draftTaskUsable } from '@/motion/draft-mode';
 import { regenerateShotPromptFn } from '@/shots/prompt-variants.fn';
 import { BILLING_BALANCE_KEY } from '@/billing/ui/use-billing-balance';
 import { notifyInsufficientCredits } from '@/billing/ui/notify-insufficient-credits';
@@ -123,6 +128,7 @@ import {
   Loader2,
   Minimize2,
   RefreshCw,
+  Sparkles,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -588,6 +594,39 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       });
     },
   });
+
+  // Render the selected Ark draft at 1080p (#1756): a new version on the
+  // draft's segment, promoted when it lands.
+  const renderAtQuality = useMutation({
+    mutationFn: () => {
+      if (!shot?.id) throw new Error('shot required');
+      return renderShotAtQualityFn({
+        data: { sequenceId, shotId: shot.id },
+      });
+    },
+    onSuccess: async () => {
+      toast.success('Rendering at 1080p');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: shotKeys.list(sequenceId) }),
+        queryClient.invalidateQueries({
+          queryKey: ['sequence-video-variants', sequenceId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: segmentKeys.list(sequenceId),
+        }),
+      ]);
+    },
+    onError: (error) =>
+      toast.error('Failed to render at quality', {
+        description: errorMessage(error),
+      }),
+  });
+  const selectedDraft =
+    segment?.selectedVersion?.draftTaskId &&
+    segment.selectedVersion.status === 'completed' &&
+    draftTaskUsable(segment.selectedVersion.createdAt)
+      ? segment.selectedVersion
+      : null;
 
   // Cancel an in-flight render (#1108 Phase 4): flips the generating
   // video_variants row terminal and terminates its single-artifact run — a
@@ -1164,6 +1203,30 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     shot,
     regenMotionModel,
     resolution,
+    sequenceGeneratesStartFrames,
+    promptPreview?.motionHasReferenceImages,
+    promptPreview?.packedDurationMs,
+  ]);
+  // The final of an approved draft is always 1080p (#1756).
+  const finalCostEstimate = useMemo(() => {
+    if (!falPricing || !shot || !selectedDraft) return null;
+    const duration = resolveShotDuration({
+      durationMs: promptPreview?.packedDurationMs ?? shot.durationMs,
+      model: regenMotionModel,
+    });
+    return estimateVideoCost(regenMotionModel, duration, {
+      pricing: falPricing,
+      resolution: DRAFT_FINAL_RESOLUTION,
+      hasReferenceImages: promptPreview?.motionHasReferenceImages,
+      referenceOnly: !usesStartFrame(shot, {
+        generateStartFrames: sequenceGeneratesStartFrames,
+      }),
+    });
+  }, [
+    falPricing,
+    shot,
+    selectedDraft,
+    regenMotionModel,
     sequenceGeneratesStartFrames,
     promptPreview?.motionHasReferenceImages,
     promptPreview?.packedDurationMs,
@@ -2243,6 +2306,28 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             </p>
             <ActionCost estimate={motionCostEstimate} />
           </div>
+
+          {/* The selected clip is an approved Ark draft (#1756): render its
+              1080p final from the task id — same seed, prompt and assets. */}
+          {selectedDraft && (
+            <div className="flex flex-col gap-1">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                disabled={
+                  renderAtQuality.isPending ||
+                  isGeneratingMotion ||
+                  videoVariantIsGenerating
+                }
+                onClick={() => renderAtQuality.mutate()}
+              >
+                <Sparkles className="mr-2 h-4 w-4" />
+                {renderAtQuality.isPending ? 'Starting…' : 'Render at 1080p'}
+              </Button>
+              <ActionCost estimate={finalCostEstimate} />
+            </div>
+          )}
 
           <AlertDialog
             open={confirmSilentOpen}

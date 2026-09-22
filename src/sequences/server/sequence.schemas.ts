@@ -146,6 +146,8 @@ export const createSequenceSchema = createInsertSchema(sequences, {
     // Design an ElevenLabs voice per speaking character (#1553). Off by
     // default: each saved voice is an account-wide slot.
     generateVoices: z.boolean().default(false).optional(),
+    // Render motion as Ark drafts (#1756); off by default.
+    draftMotion: z.boolean().default(false).optional(),
     // Music model selection (model key, not full ID) — primary / first of audioModels
     musicModel: z
       .string()

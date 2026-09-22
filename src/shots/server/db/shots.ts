@@ -52,6 +52,7 @@ type ShotWithSequence = Shot & {
     | 'resolution'
     | 'analysisModel'
     | 'generateStartFrames'
+    | 'draftMotion'
   >;
 };
 
@@ -662,6 +663,7 @@ export function createShotsMethods(db: Database) {
               // The start-frame default: shot-scoped motion paths resolve the
               // shot's override against it and must not demand a still.
               generateStartFrames: true,
+              draftMotion: true,
             },
           },
         },

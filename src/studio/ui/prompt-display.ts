@@ -44,6 +44,8 @@ export type StudioReuse = {
   duration: number | null;
   mode: StudioVideoMode | null;
   generateAudio: boolean | null;
+  /** Ark draft mode (#1756); null when the row predates it. */
+  draft: boolean | null;
   referenceImages: string[];
   referenceVideos: string[];
   referenceAudio: string[];
@@ -183,6 +185,7 @@ export function studioGenerationFacts(asset: GeneratedAsset): string[] {
   }
   const mode = videoMode(asset.input.mode);
   if (mode) facts.push(MODE_FACT[mode]);
+  if (asset.input.draft === true) facts.push('Draft');
   if (asset.input.generateAudio === true) facts.push('With audio');
   if (asset.input.generateAudio === false) facts.push('Silent');
   return facts;
@@ -212,6 +215,7 @@ export function studioReuse(asset: GeneratedAsset): StudioReuse | null {
     mode: videoMode(input.mode),
     generateAudio:
       typeof input.generateAudio === 'boolean' ? input.generateAudio : null,
+    draft: typeof input.draft === 'boolean' ? input.draft : null,
     referenceImages: strings(input.referenceImages),
     referenceVideos: strings(input.referenceVideos),
     referenceAudio: strings(input.referenceAudio),

@@ -109,6 +109,18 @@ describe('buildBytePlusVideoRequest', () => {
     ).toMatchObject({ watermark: false });
   });
 
+  it('renders a draft at 480p with draft: true, whatever tier was asked (#1756)', () => {
+    const request = buildBytePlusVideoRequest(
+      { ...base, resolution: '1080p', draft: true },
+      'seedance_v2_5'
+    );
+    expect(request.size).toBe('adaptive_480p');
+    expect(request.modelOptions).toMatchObject({ draft: true });
+    expect(
+      buildBytePlusVideoRequest(base, 'seedance_v2_5').modelOptions
+    ).not.toHaveProperty('draft');
+  });
+
   it('forwards generate_audio only when the caller set it', () => {
     expect(
       buildBytePlusVideoRequest(base, 'seedance_v2_5').modelOptions

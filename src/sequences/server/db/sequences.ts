@@ -368,6 +368,8 @@ export function createSequencesMethods(
       generateStartFrames?: boolean;
       /** Design a voice per speaking character (#1553); off by default. */
       generateVoices?: boolean;
+      /** Render motion as Ark drafts (#1756); off by default. */
+      draftMotion?: boolean;
       /** Film length asked for (#1593); absent / null = auto. */
       targetDurationSeconds?: number | null;
       suggestedTalentIds?: string[];
@@ -510,6 +512,8 @@ export function createSequencesMethods(
       generateStartFrames?: boolean;
       /** Continue-from before Dialogue (#1698). */
       generateVoices?: boolean;
+      /** Render motion as Ark drafts (#1756). */
+      draftMotion?: boolean;
       targetDurationSeconds?: number | null;
     }): Promise<Sequence> => {
       // Scoped by teamId like every other write here — `workflowRunId` in

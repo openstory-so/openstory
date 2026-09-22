@@ -27,6 +27,7 @@ function asset(
     error: null,
     workflowRunId: 'wf',
     costMicros: 1,
+    draftTaskId: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,

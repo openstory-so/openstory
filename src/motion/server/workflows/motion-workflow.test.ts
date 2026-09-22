@@ -727,6 +727,7 @@ describe('fresh MiniMax packed videos (#1720)', () => {
             renderSegmentId: 'seg-packed',
             model: 'minimax_h3_max',
             resolution: null,
+            draftTaskId: null,
             status: 'completed',
             url: '/r2/video.mp4',
             createdAt: new Date(),

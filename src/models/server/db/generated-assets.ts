@@ -145,6 +145,8 @@ export function createGeneratedAssetsMethods(
         // via is resolved, so a completion that omits it leaves a BytePlus /
         // xAI / Google render labelled fal (#1681).
         provider: MediaVia;
+        /** The Ark task id when the clip rendered as a draft (#1756). */
+        draftTaskId?: string;
       }
     ): Promise<void> => {
       const updated = await db
@@ -154,6 +156,7 @@ export function createGeneratedAssetsMethods(
           provider: fields.provider,
           outputs: fields.outputs,
           costMicros: fields.costMicros ?? null,
+          draftTaskId: fields.draftTaskId ?? null,
           error: null,
           updatedAt: new Date(),
         })

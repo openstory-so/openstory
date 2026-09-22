@@ -22,7 +22,10 @@ import {
 import { FailureSummaryBanner } from '@/sequences/ui/failure-summary-banner';
 import { SequenceHeaderPortal } from '@/sequences/ui/sequence-header-slot';
 import { ScrollArea } from '@/ui/shadcn/scroll-area';
-import { batchGenerateMotionFn } from '@/motion/motion.fn';
+import {
+  batchGenerateMotionFn,
+  renderSequenceDraftsAtQualityFn,
+} from '@/motion/motion.fn';
 import {
   continueGenerationFn,
   generateMusicFn,
@@ -42,7 +45,7 @@ import { smartRetryFn } from '@/sequences/smart-retry.fn';
 import { BILLING_BALANCE_KEY } from '@/billing/ui/use-billing-balance';
 import { notifyInsufficientCredits } from '@/billing/ui/notify-insufficient-credits';
 import { useSceneSelection } from './use-scene-selection';
-import { useSequenceSegments } from './use-segments';
+import { segmentKeys, useSequenceSegments } from './use-segments';
 import { useScenesBySequence, type SceneWithScript } from './use-scenes';
 import {
   shotIsStale,
@@ -1272,6 +1275,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       musicModel,
       videoModel,
       generateAudio,
+      draftMotion,
     }: BatchGenerateMotionArgs) => {
       // Optimistic: compute eligible shots locally (same filter as backend).
       // 'cancelled' is user-initiated (#1108 Phase 4): deliberately eligible
@@ -1323,6 +1327,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
             model: videoModel,
             musicModel: includeMusic ? musicModel : undefined,
             generateAudio,
+            draftMotion,
             leftoverGrokShotIds: [...leftoverGrokShotIds],
           },
         });
@@ -1477,6 +1482,23 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     [sequenceId, leftoverGrokShotIds, queryClient, resetGenerationStream]
   );
 
+  // Render every approved draft at 1080p (#1756). The workflow flips each
+  // segment to generating; invalidate so the list picks that up.
+  const handleRenderDraftsAtQuality = useCallback(async () => {
+    const result = await renderSequenceDraftsAtQualityFn({
+      data: { sequenceId },
+    });
+    toast.success(
+      result.started > 0
+        ? `Rendering ${result.started} at 1080p`
+        : 'No drafts ready to render'
+    );
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: shotKeys.list(sequenceId) }),
+      queryClient.invalidateQueries({ queryKey: segmentKeys.list(sequenceId) }),
+    ]);
+  }, [queryClient, sequenceId]);
+
   const handleGenerateMusic = useCallback(
     async (model: AudioModel) => {
       await generateMusicFn({
@@ -1579,6 +1601,8 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     selection,
     aspectRatio,
     resolution: sequence?.resolution,
+    draftMotion: sequence?.draftMotion,
+    onRenderDraftsAtQuality: handleRenderDraftsAtQuality,
     onSelectScene: handleSelectScene,
     onSelectShot: handleSelectShot,
     onClearSelection: handleClearSelection,

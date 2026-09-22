@@ -128,6 +128,7 @@ const psVersion = (id: string, model: string): SegmentVideoVersion => ({
   id,
   model,
   resolution: null,
+  draftTaskId: null,
   status: 'completed',
   url: PS_VIDEO_URL,
   createdAt: PS_FIXED_DATE,

@@ -24,8 +24,10 @@ import {
   IMAGE_TO_VIDEO_MODELS,
   videoPromptHardLimit,
   safeImageToVideoModel,
+  supportsDraftMode,
   videoModelSupportsInClipMultiShot,
 } from '@/models/models';
+import { DRAFT_RESOLUTION } from '@/motion/draft-mode';
 import {
   assemblePackedMotionPrompt,
   packedPromptFitsLimit,
@@ -74,6 +76,12 @@ import { NotFoundError } from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
 import { getGenerationChannel } from '@/platform/realtime';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
+import {
+  draftRenderBlocker,
+  renderDraftAtQuality,
+} from '@/motion/server/render-at-quality';
+import { isInsufficientCreditsError } from '@/platform/errors';
+import type { VideoVariant } from '@/platform/server/db/schema';
 import { terminateSingleArtifactRun } from '@/platform/server/workflow/run-outcome';
 
 const motionLogger = getLogger(['openstory', 'serverFn', 'motion']);
@@ -486,6 +494,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
           motionBucket: data.motionBucket,
           aspectRatio: sequence.aspectRatio,
           resolution: sequence.resolution,
+          draft: sequence.draftMotion,
           generateAudio: data.generateAudio,
           sceneTitle: context.scene?.metadata?.title,
           sequenceTitle: sequence.title,
@@ -566,6 +575,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
                 motionBucket: data.motionBucket,
                 aspectRatio: sequence.aspectRatio,
                 resolution: sequence.resolution,
+                draft: sequence.draftMotion,
                 generateAudio: data.generateAudio,
                 sceneTitle: context.scene?.metadata?.title,
                 sequenceTitle: sequence.title,
@@ -642,6 +652,8 @@ const batchGenerateMotionInputSchema = z.object({
   fps: generateMotionSchema.shape.fps,
   motionBucket: generateMotionSchema.shape.motionBucket,
   generateAudio: generateMotionSchema.shape.generateAudio,
+  /** Ark draft mode for the batch (#1756); persisted like the model pick. */
+  draftMotion: z.boolean().optional(),
   leftoverGrokShotIds: z.array(ulidSchema).optional(),
 });
 
@@ -876,6 +888,14 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
     });
     const ttsChars = batchDialogue.ttsChars;
 
+    // Draft mode rides the batch like the model pick (#1756): the checkbox
+    // wins for this batch and is persisted below; absent, the sequence's
+    // setting stands.
+    const draftMotion = data.draftMotion ?? sequence.draftMotion;
+    const packingModel =
+      data.model ??
+      safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL);
+
     // Sum per-shot costs — shots may render with different (priced) models.
     const videoCost = estimateBatchMotionCost(
       eligibleShots,
@@ -885,7 +905,10 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
         explicitModel: data.model,
         duration: data.duration,
         pricing: await getEffectiveFalPricing(),
-        resolution: sequence.resolution,
+        resolution:
+          draftMotion && supportsDraftMode(packingModel)
+            ? DRAFT_RESOLUTION
+            : sequence.resolution,
         referenceOnly: shotIsReferenceOnly,
         hasReferenceImages: (batchShot) => {
           const shot = eligibleShots.find((s) => s.id === batchShot.id);
@@ -934,11 +957,13 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
           includeMusic &&
           data.musicModel &&
           data.musicModel !== sequence.musicModel;
-        if (videoModelChanged || musicModelChanged) {
+        const draftMotionChanged = draftMotion !== sequence.draftMotion;
+        if (videoModelChanged || musicModelChanged || draftMotionChanged) {
           await context.scopedDb.sequences.update({
             id: sequence.id,
             ...(videoModelChanged ? { videoModel: data.model } : {}),
             ...(musicModelChanged ? { musicModel: data.musicModel } : {}),
+            ...(draftMotionChanged ? { draftMotion } : {}),
           });
         }
 
@@ -954,9 +979,6 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
           };
         }
 
-        const packingModel =
-          data.model ??
-          safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL);
         const workflowInput: BatchMotionMusicWorkflowInput = {
           userId: user.id,
           teamId,
@@ -1018,6 +1040,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
               motionBucket: data.motionBucket,
               aspectRatio: sequence.aspectRatio,
               resolution: sequence.resolution,
+              draft: draftMotion,
               generateAudio: data.generateAudio,
               referenceImages: buildMotionReferenceImages({
                 scene,
@@ -1119,4 +1142,75 @@ export const cancelVideoRenderFn = createServerFn({ method: 'POST' })
       motionLogger.error('realtime emit failed', { err: error });
     }
     return { cancelled: true } as const;
+  });
+
+// -- Render Ark drafts at quality (#1756) ---------------------------------
+
+/**
+ * Render the shot's selected draft at 1080p from its Ark task id. The final
+ * lands as a new version on the draft's segment and promotes when it lands.
+ */
+export const renderShotAtQualityFn = createServerFn({ method: 'POST' })
+  .middleware([shotAccessMiddleware])
+  .validator(
+    zodValidator(z.object({ sequenceId: ulidSchema, shotId: ulidSchema }))
+  )
+  .handler(async ({ context }) => {
+    const { shot, sequence, scopedDb, user } = context;
+    const version = await scopedDb.videoVariants.getSelectedByShot(shot.id);
+    if (!version) throw new NotFoundError('No video to render at quality');
+    return renderDraftAtQuality({
+      scopedDb,
+      userId: user.id,
+      sequence,
+      version,
+      sceneId: shot.sceneId,
+    });
+  });
+
+/**
+ * Render every approved draft in the sequence at quality — one run per
+ * segment, skipping segments already rendering or past the seven-day window.
+ */
+export const renderSequenceDraftsAtQualityFn = createServerFn({
+  method: 'POST',
+})
+  .middleware([sequenceAccessMiddleware])
+  .validator(zodValidator(z.object({ sequenceId: ulidSchema })))
+  .handler(async ({ context }) => {
+    const { sequence, scopedDb, user } = context;
+    const shots = await scopedDb.shots.listBySequence(sequence.id);
+    const selected = await scopedDb.videoVariants.getSelectedByShotIds(
+      shots.map((shot) => shot.id)
+    );
+    const sceneByShotId = new Map(shots.map((shot) => [shot.id, shot.sceneId]));
+    const bySegment = new Map<string, VideoVariant>();
+    for (const version of selected.values()) {
+      if (draftRenderBlocker(version)) continue;
+      bySegment.set(version.renderSegmentId, version);
+    }
+    const started: string[] = [];
+    const skipped: string[] = [];
+    for (const version of bySegment.values()) {
+      try {
+        const run = await renderDraftAtQuality({
+          scopedDb,
+          userId: user.id,
+          sequence,
+          version,
+          sceneId: sceneByShotId.get(version.manifest[0]?.shotId ?? '') ?? null,
+        });
+        started.push(run.versionId);
+      } catch (error) {
+        // A segment already rendering is not a reason to stop the rest; an
+        // empty balance is, and it surfaces on the first one.
+        if (isInsufficientCreditsError(error)) throw error;
+        motionLogger.warn('Skipped draft while rendering at quality', {
+          err: error,
+          versionId: version.id,
+        });
+        skipped.push(version.id);
+      }
+    }
+    return { started: started.length, skipped: skipped.length };
   });

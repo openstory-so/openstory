@@ -702,6 +702,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             duration,
             aspectRatio: plan.aspectRatio,
             resolution: plan.resolution,
+            draft: plan.sequence.draftMotion,
             sceneTitle: scene?.metadata?.title,
             sequenceTitle: sequenceSnapshot.title,
             referenceImages,

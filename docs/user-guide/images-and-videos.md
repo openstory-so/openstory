@@ -39,6 +39,8 @@ Each still is stored as its own item. Sign in first — generate is gated behind
 
 The library card plays the clip.
 
+**Draft first (Seedance 2.5).** Turn on **Draft** in the settings chip to render a cheap 480p preview. When it looks right, open it in the library and press **Render at 1080p**: the final is rendered from the draft itself — same seed, prompt and references — so what you approved is what you get. A draft can be rendered at quality for seven days.
+
 ## Paste a scene's request
 
 Open a scene's **Optimised prompt** panel in a sequence, switch to **JSON**, copy, and paste into the Videos prompt bar. The composer rebuilds the references (stills, clips, audio, or start/end frame) and the prompt instead of pasting JSON.

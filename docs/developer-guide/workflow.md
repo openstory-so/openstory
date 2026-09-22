@@ -318,6 +318,8 @@ Only runs if `autoGenerateMotion` is enabled, a video model is set, and images w
 1. **Parallel generation** — All frame motion child workflows + the optional music workflow spawned simultaneously (`spawnAndAwaitChild` under `Promise.all`)
 2. **Collect video URLs** — Reads from DB (authoritative ordering by `orderIndex`)
 
+**Ark draft mode (#1756).** With `sequences.draftMotion` on, every motion payload carries `draft: true` and a Seedance 2.5 clip on the BytePlus via renders at 480p with Ark's `draft` flag; `MotionWorkflow` stamps the Ark task id on the version (`stamp-draft-task`). "Render at quality" (`renderShotAtQualityFn` / `renderSequenceDraftsAtQualityFn` → `renderDraftAtQuality`) triggers `/motion` directly with `finalFromDraft: { taskId, renderSegmentId, manifest }` and its own reservation: the run opens a 1080p version on the draft's segment with the draft's manifest, skips dialogue, ingest and the content rescue, submits only the task id (`submitBytePlusFinalRender`), and promotes it like any primary render. One run per segment; the id expires seven days after the draft. See `docs/architecture/byteplus-ark.md`.
+
 There is no merge step: the clips stay separate rows. The player stitches them client-side (`src/motion/ui/packed-playback.ts`), and a single MP4 is produced only on demand by `POST /api/v1/sequences/$id/exports` → `SequenceExportWorkflow` → the video-export Container (production-only).
 
 ```mermaid
@@ -439,51 +441,53 @@ Per-scene fan-out (image, variant, motion) uses `Promise.allSettled` over `spawn
 
 ## Key Files Reference
 
-| File                                                           | Purpose                                                             |
-| -------------------------------------------------------------- | ------------------------------------------------------------------- |
-| `src/sequences/sequences.fn.ts`                                | Server functions that trigger the pipeline                          |
-| `src/platform/server/workflow/client.ts`                       | `triggerWorkflow()` — resolves binding + `binding.create()`         |
-| `src/platform/server/workflow/trigger-bindings.ts`             | `TRIGGER_TO_BINDING` — maps trigger path → Workflows binding        |
-| `src/platform/server/workflow/base-workflow.ts`                | `OpenStoryWorkflowEntrypoint` — base class, `onFailure`, `ScopedDb` |
-| `src/platform/server/workflow/await-child.ts`                  | `spawnAndAwaitChild()` — parent→child fan-out + await               |
-| `src/models/server/llm-call-helper.ts`                         | `durableLLMCallCf` / `durableStreamingLLMCallCf`                    |
-| `src/sequences/server/workflows/storyboard-workflow.ts`        | Wrapper: verify, clear, poster, spawn analyze-script                |
-| `src/sequences/server/workflows/analyze-script-workflow.ts`    | Core orchestration (phases 1-5)                                     |
-| `src/sequences/server/workflows/scene-split-workflow.ts`       | Phase 1: scenes + bibles in parallel, then streamed shot lists      |
-| `src/sequences/boundary-split.ts`                              | Anchor resolution + verbatim script slicing                         |
-| `src/sequences/tag-reconcile.ts`                               | Canonicalize scene continuity tags onto bible tags after the join   |
-| `src/sequences/server/streaming-scene-parser.ts`               | Incremental JSON parser for the boundary-annotation stream          |
-| `src/platform/server/workflow/sanitize-fail-response.ts`       | Error message extraction + Cloudflare error-code mapping            |
-| `src/shots/server/db/frames.ts`                                | Scoped-db frame methods (`createFramesMethods`)                     |
-| **Extraction + Matching**                                      |                                                                     |
-| `src/cast/server/workflows/talent-matching-workflow.ts`        | Talent matching against Phase 1 character bible                     |
-| `src/cast/server/workflows/location-matching-workflow.ts`      | Location matching against Phase 1 location bible                    |
-| **Reference Generation**                                       |                                                                     |
-| `src/cast/server/workflows/character-bible-workflow.ts`        | Character sheet generation (parallel per character)                 |
-| `src/cast/server/workflows/character-sheet-workflow.ts`        | Single character sheet image generation                             |
-| `src/cast/server/workflows/location-bible-workflow.ts`         | Location sheet generation (parallel per location)                   |
-| `src/cast/server/workflows/location-sheet-workflow.ts`         | Single location reference image generation                          |
-| **Prompt Generation**                                          |                                                                     |
-| `src/stills/server/workflows/frame-prompt-batch-workflow.ts`   | Visual prompt sub-workflow (parallel per 1-shot scene)              |
-| `src/stills/server/workflows/frame-prompt-workflow.ts`         | Per-scene visual prompt LLM call                                    |
-| `src/motion/server/workflows/motion-prompt-workflow.ts`        | Motion prompt sub-workflow (parallel per scene)                     |
-| `src/motion/server/workflows/motion-prompt-batch-workflow.ts`  | Motion prompts per shot batch; stamps the derived-shot motion hash  |
-| `src/motion/server/workflows/motion-music-prompts-workflow.ts` | Orchestrates motion + music prompts in parallel                     |
-| `src/audio/server/workflows/music-prompt-workflow.ts`          | Music design LLM call                                               |
-| **Image Generation**                                           |                                                                     |
-| `src/stills/server/workflows/shot-images-workflow.ts`          | Orchestrates image + variant gen for all scenes                     |
-| `src/stills/server/workflows/image-workflow.ts`                | Single image generation (Fal.ai)                                    |
-| `src/stills/server/workflows/shot-variant-workflow.ts`         | Shot grid variant generation                                        |
-| **Motion + Music Generation**                                  |                                                                     |
-| `src/motion/server/workflows/motion-batch-workflow.ts`         | Orchestrates motion + music generation                              |
-| `src/motion/server/workflows/motion-workflow.ts`               | Single motion/video generation (Fal.ai)                             |
-| `src/audio/server/workflows/music-workflow.ts`                 | Music generation (Fal.ai)                                           |
-| `src/sequences/server/workflows/sequence-export-workflow.ts`   | Server-side export (video-export Container; production-only)        |
-| **Recasting + Regeneration**                                   |                                                                     |
-| `src/cast/server/workflows/recast-character-workflow.ts`       | Recast a character and regenerate affected frames                   |
-| `src/cast/server/workflows/recast-location-workflow.ts`        | Recast a location and regenerate affected frames                    |
-| `src/shots/server/workflows/regenerate-shots-workflow.ts`      | Regenerate specific shots with new prompts                          |
-| **Schemas + Events**                                           |                                                                     |
-| `src/platform/realtime/index.ts`                               | Real-time event schema and channel helpers                          |
-| `src/shots/scene-analysis.schema.ts`                           | `Scene` type definition                                             |
-| `src/sequences/response-schemas.ts`                            | `musicDesignResultSchema` and other LLM response schemas            |
+| File                                                           | Purpose                                                              |
+| -------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `src/sequences/sequences.fn.ts`                                | Server functions that trigger the pipeline                           |
+| `src/platform/server/workflow/client.ts`                       | `triggerWorkflow()` — resolves binding + `binding.create()`          |
+| `src/platform/server/workflow/trigger-bindings.ts`             | `TRIGGER_TO_BINDING` — maps trigger path → Workflows binding         |
+| `src/platform/server/workflow/base-workflow.ts`                | `OpenStoryWorkflowEntrypoint` — base class, `onFailure`, `ScopedDb`  |
+| `src/platform/server/workflow/await-child.ts`                  | `spawnAndAwaitChild()` — parent→child fan-out + await                |
+| `src/motion/server/render-at-quality.ts`                       | Ark draft → 1080p final: opens the run with `finalFromDraft` (#1756) |
+| `src/models/server/byteplus-final-render.ts`                   | Posts the `draft_task` body Ark renders the final from               |
+| `src/models/server/llm-call-helper.ts`                         | `durableLLMCallCf` / `durableStreamingLLMCallCf`                     |
+| `src/sequences/server/workflows/storyboard-workflow.ts`        | Wrapper: verify, clear, poster, spawn analyze-script                 |
+| `src/sequences/server/workflows/analyze-script-workflow.ts`    | Core orchestration (phases 1-5)                                      |
+| `src/sequences/server/workflows/scene-split-workflow.ts`       | Phase 1: scenes + bibles in parallel, then streamed shot lists       |
+| `src/sequences/boundary-split.ts`                              | Anchor resolution + verbatim script slicing                          |
+| `src/sequences/tag-reconcile.ts`                               | Canonicalize scene continuity tags onto bible tags after the join    |
+| `src/sequences/server/streaming-scene-parser.ts`               | Incremental JSON parser for the boundary-annotation stream           |
+| `src/platform/server/workflow/sanitize-fail-response.ts`       | Error message extraction + Cloudflare error-code mapping             |
+| `src/shots/server/db/frames.ts`                                | Scoped-db frame methods (`createFramesMethods`)                      |
+| **Extraction + Matching**                                      |                                                                      |
+| `src/cast/server/workflows/talent-matching-workflow.ts`        | Talent matching against Phase 1 character bible                      |
+| `src/cast/server/workflows/location-matching-workflow.ts`      | Location matching against Phase 1 location bible                     |
+| **Reference Generation**                                       |                                                                      |
+| `src/cast/server/workflows/character-bible-workflow.ts`        | Character sheet generation (parallel per character)                  |
+| `src/cast/server/workflows/character-sheet-workflow.ts`        | Single character sheet image generation                              |
+| `src/cast/server/workflows/location-bible-workflow.ts`         | Location sheet generation (parallel per location)                    |
+| `src/cast/server/workflows/location-sheet-workflow.ts`         | Single location reference image generation                           |
+| **Prompt Generation**                                          |                                                                      |
+| `src/stills/server/workflows/frame-prompt-batch-workflow.ts`   | Visual prompt sub-workflow (parallel per 1-shot scene)               |
+| `src/stills/server/workflows/frame-prompt-workflow.ts`         | Per-scene visual prompt LLM call                                     |
+| `src/motion/server/workflows/motion-prompt-workflow.ts`        | Motion prompt sub-workflow (parallel per scene)                      |
+| `src/motion/server/workflows/motion-prompt-batch-workflow.ts`  | Motion prompts per shot batch; stamps the derived-shot motion hash   |
+| `src/motion/server/workflows/motion-music-prompts-workflow.ts` | Orchestrates motion + music prompts in parallel                      |
+| `src/audio/server/workflows/music-prompt-workflow.ts`          | Music design LLM call                                                |
+| **Image Generation**                                           |                                                                      |
+| `src/stills/server/workflows/shot-images-workflow.ts`          | Orchestrates image + variant gen for all scenes                      |
+| `src/stills/server/workflows/image-workflow.ts`                | Single image generation (Fal.ai)                                     |
+| `src/stills/server/workflows/shot-variant-workflow.ts`         | Shot grid variant generation                                         |
+| **Motion + Music Generation**                                  |                                                                      |
+| `src/motion/server/workflows/motion-batch-workflow.ts`         | Orchestrates motion + music generation                               |
+| `src/motion/server/workflows/motion-workflow.ts`               | Single motion/video generation (Fal.ai)                              |
+| `src/audio/server/workflows/music-workflow.ts`                 | Music generation (Fal.ai)                                            |
+| `src/sequences/server/workflows/sequence-export-workflow.ts`   | Server-side export (video-export Container; production-only)         |
+| **Recasting + Regeneration**                                   |                                                                      |
+| `src/cast/server/workflows/recast-character-workflow.ts`       | Recast a character and regenerate affected frames                    |
+| `src/cast/server/workflows/recast-location-workflow.ts`        | Recast a location and regenerate affected frames                     |
+| `src/shots/server/workflows/regenerate-shots-workflow.ts`      | Regenerate specific shots with new prompts                           |
+| **Schemas + Events**                                           |                                                                      |
+| `src/platform/realtime/index.ts`                               | Real-time event schema and channel helpers                           |
+| `src/shots/scene-analysis.schema.ts`                           | `Scene` type definition                                              |
+| `src/sequences/response-schemas.ts`                            | `musicDesignResultSchema` and other LLM response schemas             |
