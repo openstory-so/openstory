@@ -304,9 +304,10 @@ function StudioShareMenu({
 }
 
 /**
- * VideoPlayer derives its height from its width. Cap the width so that
- * height stays inside the dialog — the same fit the sample-video dialog
- * uses. Tighter on a phone, where the clip sits above the recipe.
+ * VideoPlayer derives its height from its width, and its own width is
+ * `w-full`. The frame around it has to be a real width — a shrink-to-fit
+ * parent collapses, and the share buttons then float in the empty pane.
+ * Cap that width so the derived height stays inside the dialog.
  */
 function studioPlayerWidth(aspect: AspectRatio): string {
   if (aspect === '9:16')
@@ -322,6 +323,7 @@ function StudioViewer({ asset }: { asset: GeneratedAsset }) {
   const poster = studioPosterOutput(asset);
   const prompt = studioPrompt(asset);
   const aspect = studioAspectRatio(asset);
+  const video = primary?.contentType.startsWith('video/') ?? false;
   if (asset.status === 'failed') {
     return (
       <p className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-4 text-center text-sm break-words text-destructive select-text">
@@ -333,19 +335,21 @@ function StudioViewer({ asset }: { asset: GeneratedAsset }) {
     return <Skeleton className="min-h-0 flex-1 rounded-lg" />;
   }
   return (
-    <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg bg-muted">
-      <div className="relative w-fit max-w-full">
-        {primary.contentType.startsWith('video/') ? (
+    <div className="flex min-h-0 w-full min-w-0 flex-1 items-center justify-center overflow-hidden rounded-lg bg-muted">
+      <div
+        className={cn(
+          'relative max-w-full',
+          video ? cn('w-full', studioPlayerWidth(aspect)) : 'w-fit'
+        )}
+      >
+        {video ? (
           <VideoPlayer
             src={primary.url}
             posterSrc={poster?.url}
             aspectRatio={aspect}
             autoPlay
             playSource="modal"
-            className={cn(
-              'overflow-hidden rounded-lg',
-              studioPlayerWidth(aspect)
-            )}
+            className="overflow-hidden rounded-lg"
           />
         ) : (
           <img

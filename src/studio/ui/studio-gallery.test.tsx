@@ -66,5 +66,6 @@ describe('GenerationDetail', () => {
     expect(html).toContain('Copy');
     expect(html).toContain('Share link');
     expect(html).toContain('Download');
+    expect(html).toContain('aspect-video');
   });
 });
