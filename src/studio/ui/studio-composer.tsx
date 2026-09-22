@@ -106,6 +106,7 @@ import type { StudioCreateInput, StudioReferenceKind } from '@/studio/schema';
 import {
   dropStudioAlias,
   renumberStudioReferences,
+  unresolvedStudioReferences,
   resolveStudioAliases,
   snapStudioVideoDuration,
   studioAudioLimit,
@@ -751,6 +752,13 @@ export function StudioComposer({
     videoRefs,
   ]);
 
+  /**
+   * `@Image5` with two stills attached: nothing pills it and nothing stops it,
+   * so the model would be handed a slot the request never carries (#1748).
+   * Warn rather than block — the prompt is the user's to write.
+   */
+  const unresolvedRefs = unresolvedStudioReferences(trimmed, counts);
+
   const onMentionSelect = (item: MentionItem): MentionItem => {
     if (item.section === 'references') return item;
     const [, kind = 'image', ...rest] = item.id.split(':');
@@ -1140,6 +1148,14 @@ export function StudioComposer({
           }}
         />
       </div>
+
+      {unresolvedRefs.length > 0 && (
+        <p className="shrink-0 text-xs text-destructive" aria-live="polite">
+          {unresolvedRefs.join(', ')}{' '}
+          {unresolvedRefs.length === 1 ? 'has' : 'have'} nothing attached — the
+          model gets a reference the request does not carry.
+        </p>
+      )}
 
       {isAuthenticated &&
         checks.length > 0 && (

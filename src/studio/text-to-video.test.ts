@@ -8,6 +8,7 @@ import {
   dropStudioAlias,
   renumberStudioReferences,
   resolveStudioAliases,
+  unresolvedStudioReferences,
   snapStudioVideoDuration,
   studioCombinedRefCap,
   studioSupportsEndFrame,
@@ -242,6 +243,23 @@ describe('reference tags', () => {
     expect(dropStudioAlias('Sienna Blakeley waves', 'Sienna Blake')).toBe(
       'Sienna Blakeley waves'
     );
+  });
+
+  it('names tokens with nothing attached', () => {
+    const attached = { image: 2, video: 0, audio: 1 };
+    expect(
+      unresolvedStudioReferences(
+        'Image1 meets @image5 while Video1 plays under Audio1',
+        attached
+      )
+    ).toEqual(['@Image5', '@Video1']);
+    expect(
+      unresolvedStudioReferences('Image1 and Image2 only', attached)
+    ).toEqual([]);
+    // Each token is named once however often it appears.
+    expect(unresolvedStudioReferences('Image9 then Image9', attached)).toEqual([
+      '@Image9',
+    ]);
   });
 
   it('drops the removed token and shifts later ones down', () => {

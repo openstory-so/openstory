@@ -306,6 +306,33 @@ export function dropStudioAlias(prompt: string, alias: string): string {
 }
 
 /**
+ * Tokens the prompt points at that nothing is attached to (#1748) — `@Image5`
+ * with two stills on the composer, or any token at all on a model that takes
+ * no references. Returned in the composer's spelling, in the order they
+ * appear, deduped.
+ *
+ * Only numbered slots can be checked. A name that was never attached
+ * (`@Sienna Blake`) is indistinguishable from prose, so it is left alone.
+ */
+export function unresolvedStudioReferences(
+  prompt: string,
+  attached: Record<'image' | 'video' | 'audio', number>
+): string[] {
+  const found: string[] = [];
+  for (const match of prompt.matchAll(
+    /(?:^|[^A-Za-z0-9_-])@?(image|video|audio)(\d+)(?=[^A-Za-z0-9_-]|$)/gi
+  )) {
+    const kind = match[1]?.toLowerCase();
+    const n = Number(match[2]);
+    if (kind !== 'image' && kind !== 'video' && kind !== 'audio') continue;
+    if (n >= 1 && n <= attached[kind]) continue;
+    const token = `@${kind[0]?.toUpperCase()}${kind.slice(1)}${n}`;
+    if (!found.includes(token)) found.push(token);
+  }
+  return found;
+}
+
+/**
  * Drop the `Image{removed+1}` token and shift the ones after it down by one,
  * so the prompt keeps pointing at the same stills after a tile is removed.
  */
