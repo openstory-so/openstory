@@ -12,8 +12,15 @@
  * Client-safe: no env, no adapters.
  */
 
-import { IMAGE_TO_VIDEO_MODELS, type ImageToVideoModel } from '@/models/models';
-import { warnLongPrompt } from '@/models/prompt-length';
+import {
+  IMAGE_TO_VIDEO_MODELS,
+  videoPromptHardLimit,
+  type ImageToVideoModel,
+} from '@/models/models';
+import {
+  assertPromptWithinHardLimit,
+  warnLongPrompt,
+} from '@/models/prompt-length';
 import { motionResolutionTokensForModel } from '@/motion/model-capabilities';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import {
@@ -371,8 +378,17 @@ export function buildStudioVideoInput(
   options: StudioVideoInput
 ): StudioVideoRequest {
   const { model, prompt } = options;
-  // Never truncated (#1754) — studio sends what the user wrote; the composer
-  // shows the length and the warning, and this line puts it in the logs.
+  // Never truncated and never rewritten (#1754). Studio has no prompt
+  // versions, so a shortening here would be an edit the user never sees —
+  // the sequences rescue is the only place that shortens. Past a ceiling the
+  // via enforces, refuse in our own words; the composer disables Generate so
+  // this is only the backstop.
+  assertPromptWithinHardLimit(
+    prompt,
+    videoPromptHardLimit(model),
+    IMAGE_TO_VIDEO_MODELS[model].name
+  );
+  // Over a mere recommendation is a log line; the prompt still goes out whole.
   warnLongPrompt(prompt, IMAGE_TO_VIDEO_MODELS[model].maxPromptLength, {
     model,
     surface: 'studio',

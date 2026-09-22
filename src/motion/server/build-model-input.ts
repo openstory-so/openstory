@@ -128,7 +128,7 @@ export function buildModelInput<T extends ImageToVideoModel>(
 
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion safe to cast here because we know the transform is valid
   const result = transform.parse({
-    prompt,
+    prompt: promptForSchema(prompt, options.multiPrompt),
     duration: options.duration,
     // Every endpoint reaching this builder requires a start frame;
     // `buildMotionRequest` asserts one is present before calling in.
@@ -153,6 +153,26 @@ export function buildModelInput<T extends ImageToVideoModel>(
   }) as ModelOutputMap[T];
 
   return applyKlingMultiPrompt(result, options.multiPrompt);
+}
+
+/**
+ * The string the schema's `prompt.maxLength` should be measured against.
+ *
+ * A packed Kling job ships `multi_prompt[]` and `applyKlingMultiPrompt`
+ * deletes `prompt`, so asserting the combined text would refuse a clip on
+ * the length of a string fal never sees (#1754). Measure the longest element
+ * instead — the per-element budget `packedPromptFitsLimit` already packs to.
+ */
+function promptForSchema(
+  prompt: string,
+  multiPrompt: GenerateMotionOptions['multiPrompt']
+): string {
+  if (!multiPrompt?.length) return prompt;
+  return multiPrompt.reduce(
+    (longest, element) =>
+      element.prompt.length > longest.length ? element.prompt : longest,
+    ''
+  );
 }
 
 /**
@@ -261,7 +281,7 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
     }
     const { endpointId } = endpoint;
     const input = MOTION_TRANSFORMS[endpointId].parse({
-      prompt: options.prompt,
+      prompt: promptForSchema(options.prompt, options.multiPrompt),
       duration: options.duration,
       aspectRatio: options.aspectRatio,
       ...QUALITY_OVERRIDES[modelKey],
@@ -326,7 +346,7 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
   const imageField = config.imageField ?? 'image_urls';
 
   const input = transform.parse({
-    prompt,
+    prompt: promptForSchema(prompt, options.multiPrompt),
     duration: options.duration,
     aspectRatio: options.aspectRatio,
     // Never empty here unless clips carry the shot instead: a reference-only

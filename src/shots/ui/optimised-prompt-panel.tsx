@@ -168,13 +168,6 @@ export const OptimisedPromptPanel: React.FC<{
                 {preview.prompt}
               </p>
             )}
-            {overRecommended && (
-              <output className="text-xs text-warning">
-                {preview.promptLength} characters — over {preview.modelName}'s
-                recommended {preview.maxPromptLength}. Sent in full; the model
-                may ignore the tail.
-              </output>
-            )}
             {footnote && (
               <p className="text-xs text-muted-foreground">{footnote}</p>
             )}

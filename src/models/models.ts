@@ -46,9 +46,11 @@ export const IMAGE_TO_VIDEO_MODELS = {
     vendor: 'SpaceXAI',
     license: 'proprietary' as const,
     qualityRank: 1,
-    maxPromptLength: 2500,
-    // xAI's own schema states 2500 and rejects past it (#1754).
-    hardPromptLimit: 2500,
+    // xAI answers 400 "Prompt length exceeds the maximum allowed length of
+    // 4096" past this, so it is a real ceiling (#1754). The 2500 we first
+    // wrote here was wrong — the live API's number is 4096.
+    maxPromptLength: 4096,
+    enforcesPromptLimit: true,
     supportsAudio: false,
     // One take per clip — packing would invent in-clip cuts Grok cannot follow.
     supportsInClipMultiShot: false,
@@ -67,9 +69,9 @@ export const IMAGE_TO_VIDEO_MODELS = {
     supportsAudio: false,
     // Defaults to multi-shot; a 1-shot segment pins "single unbroken scene".
     supportsInClipMultiShot: true,
-    maxPromptLength: 20000,
     // fal's schema declares 20000 and rejects past it (#1754).
-    hardPromptLimit: 20000,
+    maxPromptLength: 20000,
+    enforcesPromptLimit: true,
     performance: { estimatedGenerationTime: 20, quality: 'best' as const },
   },
   kling_v3_pro: {
@@ -78,9 +80,9 @@ export const IMAGE_TO_VIDEO_MODELS = {
     vendor: 'Kling',
     license: 'proprietary' as const,
     qualityRank: 4,
-    maxPromptLength: 2500,
     // fal's schema declares 2500 and rejects past it (#1754).
-    hardPromptLimit: 2500,
+    maxPromptLength: 2500,
+    enforcesPromptLimit: true,
     supportsAudio: true,
     // Packed via `multi_prompt[]` (1–15s per shot) + `shot_type: customize`.
     supportsInClipMultiShot: true,
@@ -101,7 +103,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
     // fal's schema declares 50000 and rejects past it; our old 2500 was
     // invented and quietly cut four fifths of a long prompt (#1754).
     maxPromptLength: 50000,
-    hardPromptLimit: 50000,
+    enforcesPromptLimit: true,
     // PostHog p50 9.7s (n=74, 30d ending 2026-09-01).
     performance: { estimatedGenerationTime: 10, quality: 'best' as const },
   },
@@ -114,9 +116,8 @@ export const IMAGE_TO_VIDEO_MODELS = {
     // Ark documents NO limit for Seedance — only a recommendation of "no more
     // than 500 Chinese characters or 1,000 English words", and fal's Seedance
     // schemas declare no `maxLength` on `prompt`. 1,000 English words is
-    // ~6,000 characters; a CJK prompt falls back to Ark's 500 (see
-    // `recommendedPromptLength`). Nothing enforces it — the old 4096 was ours
-    // and was silently cutting prompts (#1754).
+    // ~6,000 characters. Nothing enforces it — the old 4096 was ours and was
+    // silently cutting prompts (#1754).
     maxPromptLength: 6000,
     supportsAudio: true,
     // Shot 1/2/3 prose + `cut to`.
@@ -136,9 +137,8 @@ export const IMAGE_TO_VIDEO_MODELS = {
     // Ark documents NO limit for Seedance — only a recommendation of "no more
     // than 500 Chinese characters or 1,000 English words", and fal's Seedance
     // schemas declare no `maxLength` on `prompt`. 1,000 English words is
-    // ~6,000 characters; a CJK prompt falls back to Ark's 500 (see
-    // `recommendedPromptLength`). Nothing enforces it — the old 4096 was ours
-    // and was silently cutting prompts (#1754).
+    // ~6,000 characters. Nothing enforces it — the old 4096 was ours and was
+    // silently cutting prompts (#1754).
     maxPromptLength: 6000,
     supportsAudio: true,
     // Shot N (0-Ns) paragraphs; 2.5 timestamps, no `cut to`.
@@ -165,9 +165,8 @@ export const IMAGE_TO_VIDEO_MODELS = {
     // Ark documents NO limit for Seedance — only a recommendation of "no more
     // than 500 Chinese characters or 1,000 English words", and fal's Seedance
     // schemas declare no `maxLength` on `prompt`. 1,000 English words is
-    // ~6,000 characters; a CJK prompt falls back to Ark's 500 (see
-    // `recommendedPromptLength`). Nothing enforces it — the old 4096 was ours
-    // and was silently cutting prompts (#1754).
+    // ~6,000 characters. Nothing enforces it — the old 4096 was ours and was
+    // silently cutting prompts (#1754).
     maxPromptLength: 6000,
     supportsAudio: true,
     // Same in-clip syntax as Seedance 2.0.
@@ -190,7 +189,7 @@ export function videoPromptHardLimit(
   model: ImageToVideoModel
 ): number | undefined {
   const config = IMAGE_TO_VIDEO_MODELS[model];
-  return 'hardPromptLimit' in config ? config.hardPromptLimit : undefined;
+  return 'enforcesPromptLimit' in config ? config.maxPromptLength : undefined;
 }
 
 /**

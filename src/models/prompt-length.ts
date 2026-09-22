@@ -23,35 +23,6 @@ import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'models', 'prompt-length']);
 
-/**
- * Ark's Chinese figure for Seedance. A CJK prompt packs far more meaning per
- * character, so the recommendation drops from "1,000 English words" to 500
- * characters. Applied to every model: it is only ever a warning, and the
- * vendors that publish a figure at all publish this shape.
- */
-const CJK_PROMPT_LIMIT = 500;
-
-/** Han, Hiragana, Katakana, Hangul — scripts written without word spaces. */
-const CJK =
-  /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]/g;
-
-/**
- * Which unit this prompt should be measured in. We cannot ask the user what
- * language they wrote in, but we do not have to: CJK codepoints are their own
- * script, so a third of the text being CJK is enough to switch units.
- */
-export function isCjkPrompt(text: string): boolean {
-  return (text.match(CJK)?.length ?? 0) * 3 > text.length;
-}
-
-/**
- * The recommendation to measure `prompt` against — `max` for Latin text, or
- * Ark's 500-character Chinese figure where the prompt is CJK.
- */
-export function recommendedPromptLength(prompt: string, max: number): number {
-  return isCjkPrompt(prompt) ? Math.min(max, CJK_PROMPT_LIMIT) : max;
-}
-
 /** Structured-log event for a prompt past its model's recommendation. */
 const PROMPT_OVER_RECOMMENDED_EVENT = 'prompt_over_recommended_length';
 
@@ -65,14 +36,13 @@ export function warnLongPrompt(
   max: number,
   meta: { model: string } & Record<string, unknown>
 ): void {
-  const limit = recommendedPromptLength(prompt, max);
-  if (prompt.length <= limit) return;
+  if (prompt.length <= max) return;
   logger.warn(
-    `Prompt is ${prompt.length} chars, over ${meta.model}'s ${limit}-character recommendation — sending it whole`,
+    `Prompt is ${prompt.length} chars, over ${meta.model}'s ${max}-character recommendation — sending it whole`,
     {
       event: PROMPT_OVER_RECOMMENDED_EVENT,
       promptLength: prompt.length,
-      maxPromptLength: limit,
+      maxPromptLength: max,
       ...meta,
     }
   );
@@ -84,18 +54,11 @@ export function warnLongPrompt(
  * provider 422 the user cannot act on.
  */
 export class PromptTooLongError extends Error {
-  readonly promptLength: number;
-  readonly limit: number;
-  readonly model: string;
-
   constructor(promptLength: number, limit: number, model: string) {
     super(
       `Prompt is ${promptLength} characters; ${model} accepts at most ${limit}.`
     );
     this.name = 'PromptTooLongError';
-    this.promptLength = promptLength;
-    this.limit = limit;
-    this.model = model;
   }
 }
 
@@ -103,7 +66,7 @@ export class PromptTooLongError extends Error {
 export function assertPromptWithinHardLimit(
   prompt: string,
   limit: number | undefined,
-  model: string
+  model = 'this model'
 ): void {
   if (limit !== undefined && prompt.length > limit) {
     throw new PromptTooLongError(prompt.length, limit, model);
@@ -116,7 +79,7 @@ export function assertPromptWithinHardLimit(
  * provider-side length failure reaches the same rescue as our own throw.
  */
 const PROVIDER_TOO_LONG =
-  /string should have at most \d+ character|\bmax(imum)?[_ ]?length\b|\b(prompt|text|input)\b[^.]{0,80}\b(is )?too long\b|\b(prompt|text|input)\b[^.]{0,80}\bexceeds?\b[^.]{0,40}\b(length|characters?)\b/i;
+  /too long|at most \d+ character|max(imum)?[_ ]?length|exceeds? the max|length exceeds/i;
 
 export function isPromptTooLongError(error: unknown): boolean {
   if (error instanceof PromptTooLongError) return true;

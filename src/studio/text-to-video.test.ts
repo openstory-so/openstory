@@ -76,6 +76,28 @@ describe('buildStudioVideoInput', () => {
     });
   });
 
+  // Studio has no prompt versions, so it refuses instead of shortening —
+  // only the sequences rescue rewrites (#1754).
+  it('refuses a prompt past an enforced ceiling, in our own words', () => {
+    expect(() =>
+      buildStudioVideoInput({
+        ...base,
+        model: 'kling_v3_pro',
+        prompt: 'x'.repeat(2501),
+      })
+    ).toThrow(/Kling 3.0 Omni accepts at most 2500/);
+  });
+
+  it('sends a long prompt whole where nothing enforces a ceiling', () => {
+    const long = 'x'.repeat(9000);
+    const { prompt } = buildStudioVideoInput({
+      ...base,
+      model: 'seedance_v2_5',
+      prompt: long,
+    });
+    expect(prompt).toBe(long);
+  });
+
   it('resolves the requested tier against the model enum (#1449)', () => {
     const at = (
       model: 'seedance_v2' | 'minimax_h3_max',

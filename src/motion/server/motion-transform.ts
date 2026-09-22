@@ -141,7 +141,7 @@ export function motionTransform<T extends z.ZodObject<z.ZodRawShape>>(
     // the one place a prompt is refused rather than sent (#1754). It used to
     // be cut down to fit, which shipped a prompt nobody had seen; now the
     // motion rescue shortens it into a visible prompt version instead.
-    assertPromptWithinHardLimit(prompt, maxPromptLength, 'this video model');
+    assertPromptWithinHardLimit(prompt, maxPromptLength);
     const raw = {
       ...rest,
       prompt,

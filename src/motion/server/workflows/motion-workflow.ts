@@ -762,7 +762,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       stepName: string,
       text: string,
       provenance: { inputHash: string | null; analysisModel: string | null },
-      source: 'softened' | 'shortened' = 'shortened'
+      source: 'softened' | 'shortened'
     ) =>
       step.do(stepName, async () => {
         const shotId = input.shotId;
@@ -1056,7 +1056,8 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           renderManifest = await writeRescuedMotionPrompt(
             `write-shortened-motion-prompt-${attempt}`,
             prompt,
-            provenance
+            provenance,
+            'shortened'
           );
           continue;
         }

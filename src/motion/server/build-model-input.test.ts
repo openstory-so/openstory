@@ -74,6 +74,30 @@ describe('buildModelInput', () => {
       expect(result.shot_type).toBe('customize');
       expect(result).not.toHaveProperty('prompt');
     });
+
+    // The combined text is over Kling's 2500, but it is never sent: each
+    // multi_prompt element is what fal length-checks (#1754).
+    it('measures the packed elements, not the dropped combined prompt', () => {
+      const element = 'x'.repeat(2000);
+      expect(() =>
+        build('kling_v3_pro', {
+          prompt: `${element}\n\n${element}`,
+          multiPrompt: [
+            { prompt: element, duration: '4' },
+            { prompt: element, duration: '6' },
+          ],
+          duration: 10,
+        })
+      ).not.toThrow();
+    });
+
+    it('still refuses a single element past the schema limit', () => {
+      expect(() =>
+        build('kling_v3_pro', {
+          multiPrompt: [{ prompt: 'x'.repeat(2501), duration: '5' }],
+        })
+      ).toThrow(/2500/);
+    });
   });
 
   describe('Grok Imagine Video 1.5 (default)', () => {

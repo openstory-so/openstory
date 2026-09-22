@@ -10,14 +10,16 @@ The per-via reference for the vias that are not BytePlus (`byteplus-ark.md`) or 
 
 A **hard** ceiling is declared separately, and only where a via documents and enforces one:
 
-- `hardPromptLimit` in `src/models/models.ts` — Grok 2500 (xAI's schema), Kling 2500, Omni Flash 20000, H3 Max 50000 (fal's schemas). Read it through `videoPromptHardLimit(model)`, never `maxPromptLength`.
-- a fal endpoint schema's `prompt.maxLength`, asserted inside `motionTransform`.
+- `enforcesPromptLimit: true` in `src/models/models.ts` — Grok 4096 (xAI answers 400 `Prompt length exceeds the maximum allowed length of 4096`), Kling, Omni Flash, H3 Max (fal's schemas). The flag says the model's `maxPromptLength` is enforced; read it through `videoPromptHardLimit(model)`, which returns the number only for those, never `maxPromptLength` directly.
+- a fal endpoint schema's `prompt.maxLength`, asserted inside `motionTransform`. A packed Kling job ships `multi_prompt[]` and its `prompt` is dropped, so `promptForSchema` hands the assert the longest element — the string fal actually length-checks — never the combined text.
 
-Seedance has neither: Ark documents no limit, only a style recommendation ("no more than 500 Chinese characters or 1,000 English words"), and no fal Seedance schema declares `maxLength`. The 4096 we carried was our own number and was quietly cutting prompts; the recommendation is now 6000 (≈1,000 English words), and `recommendedPromptLength` measures a CJK prompt against Ark's 500-character figure instead — a codepoint ratio, since there is nobody to ask what language the prompt is in. H3 Max's 2500 was invented the same way and is now fal's 50000.
+Seedance has neither: Ark documents no limit, only a style recommendation ("no more than 500 Chinese characters or 1,000 English words"), and no fal Seedance schema declares `maxLength`. The 4096 we carried was our own number and was quietly cutting prompts; the recommendation is now 6000 (≈1,000 English words). H3 Max's 2500 was invented the same way and is now fal's 50000.
 
 Only the hard limit gates clip **packing** (`packedPromptFitsLimit`, which returns true when there is none), so a packed Seedance clip is no longer refused against a limit that does not exist.
 
-**When a hard limit really refuses**, the motion workflow recovers rather than cutting: `isPromptTooLongError` classifies our own `PromptTooLongError` and the provider's 422 alike, `shortenOverlongMotionPrompt` rewrites the prompt with an LLM under the real budget, and the result is saved as a `shortened` shot prompt version (selected on a primary render, history-only on a variant). The shortening is therefore a visible, revertable edit in Versions, not something that happened inside a request builder. One rewrite per run; a second refusal fails the clip and names both numbers.
+**Studio refuses; only sequences shorten.** Studio has no prompt-version history, so a rewrite there would be an edit the user never sees — the thing #1754 removed. Past a ceiling the via enforces, the composer turns the counter red (`12588 / 4096`) and a Generate click opens a dialog naming both numbers; `buildStudioVideoInput` asserts the same limit as the backstop so a bypass reads our wording, not fal's 400.
+
+**When a hard limit really refuses** in sequence generation, the motion workflow recovers rather than cutting: `isPromptTooLongError` classifies our own `PromptTooLongError` and the provider's 422 alike, `shortenOverlongMotionPrompt` rewrites the prompt with an LLM under the real budget, and the result is saved as a `shortened` shot prompt version (selected on a primary render, history-only on a variant). The shortening is therefore a visible, revertable edit in Versions, not something that happened inside a request builder. One rewrite per run; a second refusal fails the clip and names both numbers.
 
 ## Fal.ai Integration
 

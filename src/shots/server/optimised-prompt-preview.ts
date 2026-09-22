@@ -63,7 +63,6 @@ import {
 } from '@/motion/dialogue-tts';
 import type { MotionAudioClip } from '@/platform/server/db/schema';
 import { buildReferenceImagePrompt } from '@/stills/reference-image-prompt';
-import { recommendedPromptLength } from '@/models/prompt-length';
 
 export type BoundPromptImage = {
   label: string;
@@ -490,10 +489,7 @@ function buildImagePreview(input: {
         prompt: enhancedPrompt,
         json: JSON.stringify(body, null, 2),
         promptLength: enhancedPrompt.length,
-        maxPromptLength: recommendedPromptLength(
-          enhancedPrompt,
-          config.maxPromptLength
-        ),
+        maxPromptLength: config.maxPromptLength,
         images: boundPromptImages(
           referenceUrls,
           (position) => `Image ${position}`
@@ -509,10 +505,7 @@ function buildImagePreview(input: {
       prompt: shownPrompt,
       json: JSON.stringify(request.input, null, 2),
       promptLength: shownPrompt.length,
-      maxPromptLength: recommendedPromptLength(
-        shownPrompt,
-        config.maxPromptLength
-      ),
+      maxPromptLength: config.maxPromptLength,
       images: boundPromptImages(
         falImageUrls.length > 0 ? falImageUrls : referenceUrls,
         (position) => `Image ${position}`
@@ -567,10 +560,7 @@ function buildMotionPreview(input: {
         prompt,
         json: JSON.stringify(request.input, null, 2),
         promptLength: prompt.length,
-        maxPromptLength: recommendedPromptLength(
-          prompt,
-          config.maxPromptLength
-        ),
+        maxPromptLength: config.maxPromptLength,
         images: boundPromptImages(
           imageUrlsFromPromptParts(request.input.prompt),
           (position) => `<IMAGE_${position - 1}>`
@@ -603,10 +593,7 @@ function buildMotionPreview(input: {
         prompt,
         json: JSON.stringify(body, null, 2),
         promptLength: prompt.length,
-        maxPromptLength: recommendedPromptLength(
-          prompt,
-          config.maxPromptLength
-        ),
+        maxPromptLength: config.maxPromptLength,
         images: boundPromptImages(
           imageUrlsFromPromptParts(ark.prompt),
           (position) => `@Image${position}`
@@ -640,10 +627,7 @@ function buildMotionPreview(input: {
         prompt,
         json: JSON.stringify(request.input, null, 2),
         promptLength: prompt.length,
-        maxPromptLength: recommendedPromptLength(
-          prompt,
-          config.maxPromptLength
-        ),
+        maxPromptLength: config.maxPromptLength,
         images: boundPromptImages(
           imageUrlsFromPromptParts(request.input.prompt),
           (position) => `<IMAGE_REF_${position - 1}>`
@@ -678,10 +662,7 @@ function buildMotionPreview(input: {
       prompt: shownPrompt,
       json: JSON.stringify(request.input, null, 2),
       promptLength: shownPrompt.length,
-      maxPromptLength: recommendedPromptLength(
-        shownPrompt,
-        config.maxPromptLength
-      ),
+      maxPromptLength: config.maxPromptLength,
       images: boundPromptImages(
         imageUrlsFromFalInput(request.input),
         onRefEndpoint && refConfig

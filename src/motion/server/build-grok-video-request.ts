@@ -8,7 +8,11 @@
  */
 
 import { NATIVE_GROK_VIDEO_MODEL } from '@/models/grok-native';
-import { IMAGE_TO_VIDEO_MODELS, type ImageToVideoModel } from '@/models/models';
+import {
+  IMAGE_TO_VIDEO_MODELS,
+  videoPromptHardLimit,
+  type ImageToVideoModel,
+} from '@/models/models';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import { pickVideoResolution, type Resolution } from '@/models/resolutions';
 import type { GrokVideoProviderOptions } from '@tanstack/ai-grok';
@@ -146,7 +150,7 @@ export function buildGrokVideoRequest(options: {
   // a prompt version the user can see and revert.
   assertPromptWithinHardLimit(
     options.prompt,
-    IMAGE_TO_VIDEO_MODELS[modelKey].maxPromptLength,
+    videoPromptHardLimit(modelKey),
     IMAGE_TO_VIDEO_MODELS[modelKey].name
   );
   const references = options.referenceImages ?? [];
