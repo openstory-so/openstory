@@ -14,6 +14,7 @@ const selected: OptimisedPromptPreview = {
   ),
   promptLength: 36,
   maxPromptLength: 32000,
+  promptLengthUnit: 'characters',
 };
 
 function renderPanel(
@@ -75,6 +76,17 @@ describe('OptimisedPromptPanel', () => {
     expect(html).not.toContain('text-destructive');
     expect(html).toContain('2501');
     expect(html).toContain('2500');
+  });
+
+  it('shows the count alone when the model documents no length (#1754)', () => {
+    const html = renderPanel({
+      ...selected,
+      promptLength: 12345,
+      maxPromptLength: undefined,
+    });
+    expect(html).toContain('12345');
+    expect(html).not.toContain('\u00a0/\u00a0');
+    expect(html).not.toContain('text-warning');
   });
 
   it('leaves the closed collapsible body empty so the inspector stays short', () => {

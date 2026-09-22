@@ -211,7 +211,7 @@ export type GrokImagineImageSize = `${AspectRatioValue}_${'1k' | '2k'}`;
  * warning and the prompt goes out whole.
  */
 function promptForModel(prompt: string, model: TextToImageModel): string {
-  warnLongPrompt(prompt, IMAGE_MODELS[model].maxPromptLength, { model });
+  warnLongPrompt(prompt, IMAGE_MODELS[model], { model });
   return prompt;
 }
 

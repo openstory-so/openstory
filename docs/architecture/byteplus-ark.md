@@ -15,4 +15,4 @@ Two vias, one catalog key. `IMAGE_TO_VIDEO_MODELS.seedance_v2` / `seedance_v2_5`
 
 ## Prompt length
 
-Ark documents **no** prompt limit for Seedance — only a recommendation of "no more than 500 Chinese characters or 1,000 English words". Nothing on this via truncates or refuses a prompt for its length; `buildBytePlusVideoRequest` / `buildBytePlusImageRequest` only warn past the catalog recommendation. See `docs/architecture/media-vias.md` → Prompt length (#1754).
+Ark documents **no** prompt limit for Seedance — only a recommendation of "no more than 500 Chinese characters or 1,000 English words". The recommendation is counted in words, as Ark states it (`promptLengthUnit: 'words'`, read through `measurePrompt`). Nothing on this via truncates or refuses a prompt for its length; `buildBytePlusVideoRequest` / `buildBytePlusImageRequest` only warn past the catalog recommendation. See `docs/architecture/media-vias.md` → Prompt length (#1754).

@@ -27,22 +27,57 @@ const logger = getLogger(['openstory', 'models', 'prompt-length']);
 /** Structured-log event for a prompt past its model's recommendation. */
 const PROMPT_OVER_RECOMMENDED_EVENT = 'prompt_over_recommended_length';
 
+export type PromptLengthUnit = 'characters' | 'words';
+
 /**
- * Log a prompt that runs past `max`. Never changes the prompt — the caller
- * sends what it was given. `meta.model` names the model so the line is
- * actionable; pass shot / sequence ids where the caller has them.
+ * The catalog fields a recommendation is read from. Absent where the provider
+ * documents nothing (native Grok images): then there is no number to show or
+ * warn against, only the length. Ark states Seedance's in English words ("no
+ * more than 1,000 English words"); every other number is characters, so the
+ * unit is optional and defaults to that.
+ */
+export type PromptRecommendation = {
+  maxPromptLength?: number;
+  promptLengthUnit?: PromptLengthUnit;
+};
+
+export function promptLengthUnit(rec: PromptRecommendation): PromptLengthUnit {
+  return rec.promptLengthUnit ?? 'characters';
+}
+
+/** How long `prompt` is in the model's own unit — the number shown next to it. */
+export function measurePrompt(
+  prompt: string,
+  rec: PromptRecommendation
+): number {
+  if (promptLengthUnit(rec) === 'characters') return prompt.length;
+  // ponytail: whitespace words. CJK prose has no spaces, so a Chinese prompt
+  // under-counts; split on Han characters too if that ever matters.
+  return prompt.split(/\s+/).filter(Boolean).length;
+}
+
+/**
+ * Log a prompt that runs past the model's recommendation. Never changes the
+ * prompt — the caller sends what it was given. `meta.model` names the model
+ * so the line is actionable; pass shot / sequence ids where the caller has
+ * them.
  */
 export function warnLongPrompt(
   prompt: string,
-  max: number,
+  rec: PromptRecommendation,
   meta: { model: string } & Record<string, unknown>
 ): void {
-  if (prompt.length <= max) return;
+  const max = rec.maxPromptLength;
+  if (max === undefined) return;
+  const length = measurePrompt(prompt, rec);
+  if (length <= max) return;
+  const unit = promptLengthUnit(rec);
   logger.warn(
-    `Prompt is ${prompt.length} chars, over ${meta.model}'s ${max}-character recommendation — sending it whole`,
+    `Prompt is ${length} ${unit}, over ${meta.model}'s ${max}-${unit.slice(0, -1)} recommendation — sending it whole`,
     {
       event: PROMPT_OVER_RECOMMENDED_EVENT,
-      promptLength: prompt.length,
+      promptLength: length,
+      promptLengthUnit: unit,
       maxPromptLength: max,
       ...meta,
     }

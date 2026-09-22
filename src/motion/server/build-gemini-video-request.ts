@@ -184,11 +184,10 @@ export function buildGeminiVideoRequest(options: {
   const modelKey = options.model ?? 'gemini_omni_flash';
   // Never truncated (#1754): Google documents no prompt ceiling, so the
   // catalog number is a recommendation and going over is a log line.
-  warnLongPrompt(
-    options.prompt,
-    IMAGE_TO_VIDEO_MODELS[modelKey].maxPromptLength,
-    { model: modelKey, via: 'google' }
-  );
+  warnLongPrompt(options.prompt, IMAGE_TO_VIDEO_MODELS[modelKey], {
+    model: modelKey,
+    via: 'google',
+  });
   const attached = (options.referenceImages ?? []).filter(
     (ref) => ref.referenceImageUrl
   );

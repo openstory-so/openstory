@@ -129,6 +129,9 @@
       },
     },
   },
+  "patchedDependencies": {
+    "@tanstack/ai-grok@0.18.4": "patches/@tanstack%2Fai-grok@0.18.4.patch",
+  },
   "overrides": {
     "@better-auth/core": "1.7.2",
     "@tanstack/ai-devtools-core": "0.5.5",

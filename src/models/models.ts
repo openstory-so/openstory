@@ -115,10 +115,11 @@ export const IMAGE_TO_VIDEO_MODELS = {
     qualityRank: 2,
     // Ark documents NO limit for Seedance — only a recommendation of "no more
     // than 500 Chinese characters or 1,000 English words", and fal's Seedance
-    // schemas declare no `maxLength` on `prompt`. 1,000 English words is
-    // ~6,000 characters. Nothing enforces it — the old 4096 was ours and was
-    // silently cutting prompts (#1754).
-    maxPromptLength: 6000,
+    // schemas declare no `maxLength` on `prompt`. Counted in words, as Ark
+    // states it. Nothing enforces it — the old 4096 was ours and was silently
+    // cutting prompts (#1754).
+    maxPromptLength: 1000,
+    promptLengthUnit: 'words' as const,
     supportsAudio: true,
     // Shot 1/2/3 prose + `cut to`.
     supportsInClipMultiShot: true,
@@ -136,10 +137,11 @@ export const IMAGE_TO_VIDEO_MODELS = {
     qualityRank: 1,
     // Ark documents NO limit for Seedance — only a recommendation of "no more
     // than 500 Chinese characters or 1,000 English words", and fal's Seedance
-    // schemas declare no `maxLength` on `prompt`. 1,000 English words is
-    // ~6,000 characters. Nothing enforces it — the old 4096 was ours and was
-    // silently cutting prompts (#1754).
-    maxPromptLength: 6000,
+    // schemas declare no `maxLength` on `prompt`. Counted in words, as Ark
+    // states it. Nothing enforces it — the old 4096 was ours and was silently
+    // cutting prompts (#1754).
+    maxPromptLength: 1000,
+    promptLengthUnit: 'words' as const,
     supportsAudio: true,
     // Shot N (0-Ns) paragraphs; 2.5 timestamps, no `cut to`.
     supportsInClipMultiShot: true,
@@ -164,10 +166,11 @@ export const IMAGE_TO_VIDEO_MODELS = {
     qualityRank: 6,
     // Ark documents NO limit for Seedance — only a recommendation of "no more
     // than 500 Chinese characters or 1,000 English words", and fal's Seedance
-    // schemas declare no `maxLength` on `prompt`. 1,000 English words is
-    // ~6,000 characters. Nothing enforces it — the old 4096 was ours and was
-    // silently cutting prompts (#1754).
-    maxPromptLength: 6000,
+    // schemas declare no `maxLength` on `prompt`. Counted in words, as Ark
+    // states it. Nothing enforces it — the old 4096 was ours and was silently
+    // cutting prompts (#1754).
+    maxPromptLength: 1000,
+    promptLengthUnit: 'words' as const,
     supportsAudio: true,
     // Same in-clip syntax as Seedance 2.0.
     supportsInClipMultiShot: true,
@@ -242,7 +245,11 @@ export const IMAGE_MODELS = {
     qualityRank: 3,
     description:
       'Newest Imagine image model — 1K/2K, quality medium, edit up to 3 refs',
-    maxPromptLength: 4000,
+    // No number: Grok images always route natively and xAI documents no cap
+    // (fal's 8000 is fal's, not xAI's). The 4000 we carried was
+    // @tanstack/ai-grok's stale grok-2-image constant, which threw
+    // client-side — patched out under patches/ until upstream drops it (#1754).
+    maxPromptLength: undefined,
   },
   grok_imagine_image_quality: {
     id: 'xai/grok-imagine-image/quality/text-to-image' as const,
@@ -252,7 +259,8 @@ export const IMAGE_MODELS = {
     qualityRank: 3,
     description:
       'Quality Mode — higher fidelity and stronger text rendering, edit up to 3 refs',
-    maxPromptLength: 4000,
+    // As grok_imagine_image: native xAI, no documented cap, no number.
+    maxPromptLength: undefined,
   },
   flux_2_max: {
     id: 'fal-ai/flux-2-max' as const,
@@ -348,7 +356,8 @@ export const IMAGE_MODELS = {
     license: 'open-weight' as const,
     qualityRank: 99,
     description: 'Ultra-fast storyboard generation',
-    maxPromptLength: 2000,
+    // fal's schema declares 5000 (#1754).
+    maxPromptLength: 5000,
     hidden: true,
   },
 } as const;

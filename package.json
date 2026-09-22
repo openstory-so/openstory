@@ -259,5 +259,8 @@
     "workerDirectory": [
       "public"
     ]
+  },
+  "patchedDependencies": {
+    "@tanstack/ai-grok@0.18.4": "patches/@tanstack%2Fai-grok@0.18.4.patch"
   }
 }

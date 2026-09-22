@@ -4,6 +4,8 @@ import {
   PromptTooLongError,
   assertPromptWithinHardLimit,
   isPromptTooLongError,
+  measurePrompt,
+  promptLengthUnit,
 } from './prompt-length';
 import { IMAGE_TO_VIDEO_MODELS, videoPromptHardLimit } from './models';
 
@@ -17,8 +19,15 @@ describe('hard limits vs recommendations (#1754)', () => {
     expect(videoPromptHardLimit('grok_imagine_video_1_5')).toBe(4096);
   });
 
-  it('measures Seedance against Ark’s recommendation, not our old 4096', () => {
-    expect(IMAGE_TO_VIDEO_MODELS.seedance_v2_5.maxPromptLength).toBe(6000);
+  it('measures Seedance in words, as Ark states its recommendation', () => {
+    const seedance = IMAGE_TO_VIDEO_MODELS.seedance_v2_5;
+    expect(seedance.maxPromptLength).toBe(1000);
+    expect(promptLengthUnit(seedance)).toBe('words');
+    expect(measurePrompt('one two  three\nfour ', seedance)).toBe(4);
+    // Everyone else counts characters, and never gets a unit by accident.
+    const kling = IMAGE_TO_VIDEO_MODELS.kling_v3_pro;
+    expect(promptLengthUnit(kling)).toBe('characters');
+    expect(measurePrompt('one two', kling)).toBe(7);
   });
 
   it('throws with both numbers, and passes when there is no limit', () => {

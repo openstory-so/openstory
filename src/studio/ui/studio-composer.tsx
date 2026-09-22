@@ -19,6 +19,7 @@ import type { MentionItem } from '@/shots/ui/prompt-mention/mention-items';
 import { AspectRatioPills } from '@/ui/settings/aspect-ratio-pills';
 import { ResolutionPills } from '@/ui/settings/resolution-pills';
 import { IMAGE_MODELS, videoPromptHardLimit } from '@/models/models';
+import { measurePrompt, promptLengthUnit } from '@/models/prompt-length';
 import { imageResolutionTiers } from '@/stills/build-image-request';
 import { motionResolutionTiers } from '@/motion/model-capabilities';
 import {
@@ -363,9 +364,16 @@ export function StudioComposer({
   // The prompt is never cut (#1754), so the composer says how long it is and
   // when it runs past what the model recommends.
   const promptRecommendation = isVideo
-    ? IMAGE_TO_VIDEO_MODELS[compatibleVideoModel].maxPromptLength
-    : IMAGE_MODELS[imageModel].maxPromptLength;
-  const promptOverRecommended = prompt.length > promptRecommendation;
+    ? IMAGE_TO_VIDEO_MODELS[compatibleVideoModel]
+    : IMAGE_MODELS[imageModel];
+  // Seedance's recommendation is in words, as Ark states it; the rest count
+  // characters. Hard limits are always characters (fal's schema field).
+  const promptUnit = promptLengthUnit(promptRecommendation);
+  const promptMeasured = measurePrompt(prompt, promptRecommendation);
+  // No number (native Grok images) means nothing to be over.
+  const promptOverRecommended =
+    promptRecommendation.maxPromptLength !== undefined &&
+    promptMeasured > promptRecommendation.maxPromptLength;
   // Where the via enforces a ceiling, studio REFUSES rather than shortens.
   // Sequences can shorten because the rewrite lands as a prompt version the
   // user can read and revert; studio has no version history, so the same
@@ -1424,12 +1432,20 @@ export function StudioComposer({
               promptTooLong
                 ? `${activeModelName} maxes out at ${promptHardLimit} characters.`
                 : promptOverRecommended
-                  ? `Over ${activeModelName}'s recommended ${promptRecommendation} characters. It is still sent in full.`
-                  : `${activeModelName} recommends up to ${promptRecommendation} characters.`
+                  ? `Over ${activeModelName}'s recommended ${promptRecommendation.maxPromptLength} ${promptUnit}. It is still sent in full.`
+                  : promptRecommendation.maxPromptLength !== undefined
+                    ? `${activeModelName} recommends up to ${promptRecommendation.maxPromptLength} ${promptUnit}.`
+                    : `${activeModelName} sets no prompt length.`
             }
           >
-            {prompt.length}&nbsp;/&nbsp;
-            {promptHardLimit ?? promptRecommendation}
+            {promptMeasured}
+            {(promptHardLimit ?? promptRecommendation.maxPromptLength) !==
+              undefined && (
+              <>
+                &nbsp;/&nbsp;
+                {promptHardLimit ?? promptRecommendation.maxPromptLength}
+              </>
+            )}
           </output>
         )}
         <Button

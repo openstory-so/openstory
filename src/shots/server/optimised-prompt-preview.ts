@@ -15,6 +15,8 @@ import type {
 } from '@/platform/server/db/schema';
 import { isNativeGeminiVideoModel } from '@/models/gemini-native';
 import { isNativeGrokVideoModel } from '@/models/grok-native';
+import type { PromptLengthUnit } from '@/models/prompt-length';
+import { measurePrompt, promptLengthUnit } from '@/models/prompt-length';
 import {
   getBytePlusImageModelId,
   getBytePlusVideoModelId,
@@ -81,10 +83,13 @@ export type OptimisedPromptPreview = {
    */
   promptLength: number;
   /**
-   * The model's documented RECOMMENDATION, in characters. Nothing enforces
-   * it: over is a warning and the prompt is still sent whole.
+   * The model's documented RECOMMENDATION, in `promptLengthUnit`. Nothing
+   * enforces it: over is a warning and the prompt is still sent whole. Absent
+   * where the provider documents nothing (native Grok images).
    */
-  maxPromptLength: number;
+  maxPromptLength?: number;
+  /** Words for Seedance (Ark's own phrasing), characters for everyone else. */
+  promptLengthUnit: PromptLengthUnit;
   images?: BoundPromptImage[];
   /**
    * Reference clips and audio riding the request (#1559), each labelled with
@@ -488,8 +493,9 @@ function buildImagePreview(input: {
         endpointId: modelId,
         prompt: enhancedPrompt,
         json: JSON.stringify(body, null, 2),
-        promptLength: enhancedPrompt.length,
+        promptLength: measurePrompt(enhancedPrompt, config),
         maxPromptLength: config.maxPromptLength,
+        promptLengthUnit: promptLengthUnit(config),
         images: boundPromptImages(
           referenceUrls,
           (position) => `Image ${position}`
@@ -504,8 +510,9 @@ function buildImagePreview(input: {
       endpointId: request.endpointId,
       prompt: shownPrompt,
       json: JSON.stringify(request.input, null, 2),
-      promptLength: shownPrompt.length,
+      promptLength: measurePrompt(shownPrompt, config),
       maxPromptLength: config.maxPromptLength,
+      promptLengthUnit: promptLengthUnit(config),
       images: boundPromptImages(
         falImageUrls.length > 0 ? falImageUrls : referenceUrls,
         (position) => `Image ${position}`
@@ -559,8 +566,9 @@ function buildMotionPreview(input: {
         endpointId: request.endpointId,
         prompt,
         json: JSON.stringify(request.input, null, 2),
-        promptLength: prompt.length,
+        promptLength: measurePrompt(prompt, config),
         maxPromptLength: config.maxPromptLength,
+        promptLengthUnit: promptLengthUnit(config),
         images: boundPromptImages(
           imageUrlsFromPromptParts(request.input.prompt),
           (position) => `<IMAGE_${position - 1}>`
@@ -592,8 +600,9 @@ function buildMotionPreview(input: {
         endpointId: modelId,
         prompt,
         json: JSON.stringify(body, null, 2),
-        promptLength: prompt.length,
+        promptLength: measurePrompt(prompt, config),
         maxPromptLength: config.maxPromptLength,
+        promptLengthUnit: promptLengthUnit(config),
         images: boundPromptImages(
           imageUrlsFromPromptParts(ark.prompt),
           (position) => `@Image${position}`
@@ -626,8 +635,9 @@ function buildMotionPreview(input: {
         endpointId: request.endpointId,
         prompt,
         json: JSON.stringify(request.input, null, 2),
-        promptLength: prompt.length,
+        promptLength: measurePrompt(prompt, config),
         maxPromptLength: config.maxPromptLength,
+        promptLengthUnit: promptLengthUnit(config),
         images: boundPromptImages(
           imageUrlsFromPromptParts(request.input.prompt),
           (position) => `<IMAGE_REF_${position - 1}>`
@@ -661,8 +671,9 @@ function buildMotionPreview(input: {
       endpointId: request.endpointId,
       prompt: shownPrompt,
       json: JSON.stringify(request.input, null, 2),
-      promptLength: shownPrompt.length,
+      promptLength: measurePrompt(shownPrompt, config),
       maxPromptLength: config.maxPromptLength,
+      promptLengthUnit: promptLengthUnit(config),
       images: boundPromptImages(
         imageUrlsFromFalInput(request.input),
         onRefEndpoint && refConfig

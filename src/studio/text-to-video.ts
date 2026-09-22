@@ -389,7 +389,7 @@ export function buildStudioVideoInput(
     IMAGE_TO_VIDEO_MODELS[model].name
   );
   // Over a mere recommendation is a log line; the prompt still goes out whole.
-  warnLongPrompt(prompt, IMAGE_TO_VIDEO_MODELS[model].maxPromptLength, {
+  warnLongPrompt(prompt, IMAGE_TO_VIDEO_MODELS[model], {
     model,
     surface: 'studio',
   });

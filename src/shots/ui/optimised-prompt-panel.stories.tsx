@@ -40,6 +40,7 @@ export const Collapsed: Story = {
       ),
       promptLength: 64,
       maxPromptLength: 32000,
+      promptLengthUnit: 'characters',
     },
   },
 };
@@ -53,6 +54,7 @@ export const OverLimit: Story = {
       json: JSON.stringify({ prompt: 'truncated…' }, null, 2),
       promptLength: 2480,
       maxPromptLength: 2000,
+      promptLengthUnit: 'characters',
     },
   },
 };
@@ -78,6 +80,7 @@ export const BoundImages: Story = {
       ),
       promptLength: 64,
       maxPromptLength: 4096,
+      promptLengthUnit: 'characters',
       images: [
         {
           label: '@Image1',
@@ -102,6 +105,7 @@ export const AssembledTextOnly: Story = {
       json: null,
       promptLength: 92,
       maxPromptLength: 4096,
+      promptLengthUnit: 'characters',
     },
   },
 };

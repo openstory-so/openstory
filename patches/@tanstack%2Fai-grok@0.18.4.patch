@@ -1,0 +1,12 @@
+diff --git a/dist/esm/image/image-provider-options.js b/dist/esm/image/image-provider-options.js
+index 4ec00d652e095078cc4d4c04fd8dfcbefe567a6b..6c334576729373a39ccf77921a4e831a55638c52 100644
+--- a/dist/esm/image/image-provider-options.js
++++ b/dist/esm/image/image-provider-options.js
+@@ -66,7 +66,6 @@ function validateNumberOfImages(_model, numberOfImages) {
+ }
+ var validatePrompt = (options) => {
+ 	if (options.prompt.length === 0) throw new Error("Prompt cannot be empty.");
+-	if (options.prompt.length > 4e3) throw new Error("For grok-2-image-1212, prompt length must be less than or equal to 4000 characters.");
+ };
+ //#endregion
+ export { isGrokImagineImageModel, parseGrokImagineSize, validateImageSize, validateNumberOfImages, validatePrompt };

@@ -103,7 +103,7 @@ export function buildBytePlusVideoRequest(
 
   // Never truncated (#1754): Ark documents no prompt limit for Seedance —
   // only a style recommendation — so the catalog number only earns a log.
-  warnLongPrompt(options.prompt, config.maxPromptLength, {
+  warnLongPrompt(options.prompt, config, {
     model: modelKey,
     via: 'byteplus',
   });

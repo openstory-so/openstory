@@ -87,7 +87,7 @@ export function buildBytePlusImageRequest(
   // Never truncated (#1754) — Ark documents no ceiling; over the catalog
   // recommendation is a log line, not a cut.
   const prompt = params.prompt;
-  warnLongPrompt(prompt, IMAGE_MODELS[params.model].maxPromptLength, {
+  warnLongPrompt(prompt, IMAGE_MODELS[params.model], {
     model: params.model,
     via: 'byteplus',
   });
