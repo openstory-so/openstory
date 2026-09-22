@@ -334,7 +334,7 @@ function StudioViewer({ asset }: { asset: GeneratedAsset }) {
   }
   return (
     <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg bg-muted">
-      <div className="group relative w-fit max-w-full">
+      <div className="relative w-fit max-w-full">
         {primary.contentType.startsWith('video/') ? (
           <VideoPlayer
             src={primary.url}
@@ -354,10 +354,7 @@ function StudioViewer({ asset }: { asset: GeneratedAsset }) {
             className="block max-h-full max-w-full object-contain"
           />
         )}
-        <StudioShareMenu
-          asset={asset}
-          className="absolute top-2 right-2 z-20 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-        />
+        <StudioShareMenu asset={asset} className="absolute top-2 left-2 z-30" />
       </div>
     </div>
   );

@@ -64,5 +64,7 @@ describe('GenerationDetail', () => {
     expect(html).toContain('Reference to video');
     expect(html).toContain('Use again');
     expect(html).toContain('Copy');
+    expect(html).toContain('Share link');
+    expect(html).toContain('Download');
   });
 });
