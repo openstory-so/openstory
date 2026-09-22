@@ -83,7 +83,7 @@
       "devDependencies": {
         "@clack/prompts": "^1.8.0",
         "@cloudflare/vite-plugin": "^1.54.8",
-        "@copilotkit/aimock": "^1.41.0",
+        "@copilotkit/aimock": "^1.43.0",
         "@faker-js/faker": "^10.6.0",
         "@hey-api/openapi-ts": "0.0.0-next-20260824173136",
         "@libsql/client": "^0.18.0",
@@ -128,9 +128,6 @@
         "wrangler": "^4.131.1",
       },
     },
-  },
-  "patchedDependencies": {
-    "@tanstack/ai-grok@0.18.4": "patches/@tanstack%2Fai-grok@0.18.4.patch",
   },
   "overrides": {
     "@better-auth/core": "1.7.2",
@@ -309,7 +306,7 @@
 
     "@content-collections/vite": ["@content-collections/vite@0.3.0", "", { "dependencies": { "@content-collections/integrations": "0.5.0" }, "peerDependencies": { "@content-collections/core": "^0.x", "vite": "^6 || ^7 || ^8" } }, "sha512-1YDIQNXRKfU4diHQswX8xxhBk+0cJTfC54RRQMNMGOWPnkREVcCySt8ZbPZ9/osx3ACT0+kiWvHRzOKMKPubYA=="],
 
-    "@copilotkit/aimock": ["@copilotkit/aimock@1.41.0", "", { "peerDependencies": { "jest": ">=29", "vitest": ">=3" }, "optionalPeers": ["jest", "vitest"], "bin": { "aimock": "dist/aimock-cli.js", "llmock": "dist/cli.js" } }, "sha512-hduXWDo0vI3ZyidIcb+BP1CsquVOOwqaRPUY3E3tvi4EV6nyndTuw0RNrIa4fPTh56EAozhIQDEmjKULY8MJHQ=="],
+    "@copilotkit/aimock": ["@copilotkit/aimock@1.43.0", "", { "peerDependencies": { "jest": ">=29", "vitest": ">=3" }, "optionalPeers": ["jest", "vitest"], "bin": { "aimock": "dist/aimock-cli.js", "llmock": "dist/cli.js" } }, "sha512-V8D8cjSMtAR4rHaD2ulp3DR/ZguXQjDNOqwKDNvjb/OJL/KR1I0SDf5xpRCd+TYKjhmf9fM8Xpg3QBKPmV9Kmw=="],
 
     "@cspotcode/source-map-support": ["@cspotcode/source-map-support@0.8.1", "", { "dependencies": { "@jridgewell/trace-mapping": "0.3.9" } }, "sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw=="],
 

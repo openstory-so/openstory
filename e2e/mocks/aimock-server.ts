@@ -12,12 +12,15 @@
  *   against recorded fixtures under `fixtures/recorded/fal/`. No `mount()`
  *   needed — the library handles it.
  *
- * Native ElevenLabs TTS and Music are built into aimock
- * (`POST /v1/text-to-speech/{id}`, `POST /v1/music`). Playwright points
- * `ELEVENLABS_BASE_URL` at this host (no `/v1` suffix — the SDK paths
- * include it). Fixtures live under `fixtures/recorded/elevenlabs/`. Voice
- * Design (`/v1/text-to-voice/*`) is not in aimock yet — that lands with
- * the first product call.
+ * Native ElevenLabs TTS, Music and Voice Design are built into aimock
+ * (`POST /v1/text-to-speech/{id}`, `POST /v1/music`, `POST
+ * /v1/text-to-voice/design`, `POST /v1/text-to-voice`, `GET`/`DELETE
+ * /v1/voices/{id}` — the last four since aimock 1.43, CopilotKit/aimock#454).
+ * Playwright points `ELEVENLABS_BASE_URL` at this host (no `/v1` suffix — the
+ * SDK paths include it). Fixtures live under `fixtures/recorded/elevenlabs/`.
+ * Voice Design has no recorded fixtures yet: nothing in the suite turns
+ * `generateVoices` on, and a design/TTS tape has to be recorded against a real
+ * key (aimock synthesises a voice only in LENIENT mode, and replay is strict).
  *
  * Browser-side mocks (R2, QStash) remain in handlers.ts via Playwright routes.
  */
@@ -533,10 +536,10 @@ export async function startAimockServer(): Promise<string> {
     mockServer.addFixtures(loadFixturesRecursive(FAL_FIXTURE_DIR));
   }
 
-  // Native ElevenLabs TTS (`POST /v1/text-to-speech/{voice_id}`) and Music
-  // (`POST /v1/music`). aimock dispatches these on the same server as
-  // OpenRouter/fal — the paths do not collide. Voice Design is not a
-  // built-in aimock endpoint.
+  // Native ElevenLabs TTS (`POST /v1/text-to-speech/{voice_id}`), Music
+  // (`POST /v1/music`) and Voice Design (`/v1/text-to-voice/*`,
+  // `/v1/voices/{id}`). aimock dispatches all of them on the same server as
+  // OpenRouter/fal — the paths do not collide.
   if (existsSync(ELEVENLABS_FIXTURE_DIR)) {
     mockServer.addFixtures(loadFixturesRecursive(ELEVENLABS_FIXTURE_DIR));
   }

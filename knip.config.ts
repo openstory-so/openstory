@@ -54,8 +54,6 @@ export default {
     // Used in src/styles/global.css (@import / @plugin), not via a TS import.
     '@fontsource-variable/geist',
     '@tailwindcss/typography',
-    // Used by the e2e mocks (e2e/ is outside knip's project scope).
-    '@copilotkit/aimock',
   ],
   ignoreBinaries: [
     // CLI tools / shell builtins invoked from package.json scripts.
