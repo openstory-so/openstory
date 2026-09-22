@@ -17,12 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/ui/shadcn/dialog';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/ui/shadcn/dropdown-menu';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/shadcn/tooltip';
 import { EmptyState } from '@/ui/shadcn/empty-state';
 import { Skeleton } from '@/ui/shadcn/skeleton';
 import { AppImage } from '@/ui/shadcn/app-image';
@@ -49,7 +44,7 @@ import { estimateStudioProgress } from './progress';
 import { copyTextToClipboard } from '@/ui/clipboard';
 import { cn } from '@/ui/utils';
 import { usePostHog } from '@posthog/react';
-import { Download, Images, Link, Share2, Star, Trash2 } from 'lucide-react';
+import { Download, Images, Link, Star, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -210,8 +205,7 @@ function PendingCard({ aspectRatio }: { aspectRatio: string }) {
 }
 
 /**
- * Share control pinned to the media, same corner treatment as the sequence
- * player: one icon, then copy-link and download.
+ * Share and download pinned to the media. Share link copies the URL on click.
  */
 function StudioShareMenu({
   asset,
@@ -237,7 +231,7 @@ function StudioShareMenu({
       toast.error('Failed to copy URL');
       return;
     }
-    toast.success(video ? 'Video link copied' : 'Image link copied');
+    toast.success('Copied');
   };
 
   const download = () => {
@@ -254,29 +248,36 @@ function StudioShareMenu({
   };
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={cn('bg-black/50 text-white hover:bg-black/70', className)}
-          aria-label={video ? 'Share video' : 'Share image'}
-        >
-          <Share2 className="h-5 w-5 md:h-4 md:w-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-auto">
-        <DropdownMenuItem onClick={() => void copyLink()}>
-          <Link className="h-4 w-4" />
-          {video ? 'Copy video link' : 'Copy image link'}
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={download}>
-          <Download className="h-4 w-4" />
-          {video ? 'Download video' : 'Download image'}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <div className={cn('flex gap-1', className)}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="secondary"
+            size="icon"
+            aria-label="Download"
+            onClick={download}
+          >
+            <Download aria-hidden="true" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Download</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="secondary"
+            size="icon"
+            aria-label="Share link"
+            onClick={() => void copyLink()}
+          >
+            <Link aria-hidden="true" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Share link</TooltipContent>
+      </Tooltip>
+    </div>
   );
 }
 
@@ -319,7 +320,7 @@ function StudioViewer({ asset }: { asset: GeneratedAsset }) {
         )}
         <StudioShareMenu
           asset={asset}
-          className="absolute top-2 right-2 z-20 h-11 w-11 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 data-[state=open]:opacity-100 md:h-8 md:w-8"
+          className="absolute top-2 right-2 z-20 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
         />
       </div>
     </div>
