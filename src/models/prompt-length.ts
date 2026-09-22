@@ -9,10 +9,11 @@
  * truncate: the user's words go out whole, the length is shown next to the
  * prompt, and going over only earns a warning.
  *
- * A hard ceiling exists in exactly two shapes, and only those throw:
- *  - a fal endpoint schema that declares `prompt.maxLength` (Kling 2500) —
- *    fal rejects the request, so sending it whole would just fail later;
- *  - native xAI, whose 2500 comes from the provider's own schema.
+ * A hard ceiling is one the via actually rejects on, and only those throw.
+ * They are marked `enforcesPromptLimit` in the catalog, each with the number
+ * the provider itself states: the fal endpoints that declare `prompt.maxLength`
+ * (Kling 3.0 Omni 2500, Omni Flash 20000, H3 Max 50000), and native xAI, whose
+ * 4096 is the length its 400 names. Sending past those would just fail later.
  *
  * A throw is recoverable rather than terminal: the motion rescue shortens the
  * prompt with an LLM and saves it as a new prompt version, so the shortening

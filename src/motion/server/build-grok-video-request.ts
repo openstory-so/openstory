@@ -145,7 +145,7 @@ export function buildGrokVideoRequest(options: {
   input: GrokVideoRequestInput;
 } {
   const modelKey = options.model ?? 'grok_imagine_video_1_5';
-  // xAI's own schema documents 2500, so this one is a real ceiling (#1754):
+  // xAI answers 400 naming 4096, so this one is a real ceiling (#1754):
   // refuse rather than cut, and let the motion rescue shorten and save it as
   // a prompt version the user can see and revert.
   assertPromptWithinHardLimit(
