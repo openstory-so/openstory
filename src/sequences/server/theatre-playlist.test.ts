@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ValidationError } from '@/platform/errors';
 
 const objects = new Map<string, Uint8Array>();
 const uploads: { path: string; kind: string }[] = [];
@@ -206,6 +207,19 @@ describe('writeFragmentedCopy', () => {
     expect(uploadFile).not.toHaveBeenCalled();
     expect(uploads.length).toBe(firstUploads);
   });
+
+  it('remuxes when the sidecar is not valid JSON', async () => {
+    objects.set(
+      'videos/team/clip.mp4.frag.json',
+      new TextEncoder().encode('not-json{')
+    );
+    await writeFragmentedCopy(CLIP_KEY);
+    const sidecar = JSON.parse(
+      new TextDecoder().decode(objects.get('videos/team/clip.mp4.frag.json'))
+    );
+    expect(sidecar.videoCodec).toBe('avc');
+    expect(sidecar.size).toBeGreaterThan(sidecar.initBytes);
+  });
 });
 
 describe('ensureFragmentedClips', () => {
@@ -232,7 +246,18 @@ describe('ensureFragmentedClips', () => {
   it('refuses a clip that was never fragmented at ingest', async () => {
     await expect(
       ensureFragmentedClips(['/r2/videos/team/clip.mp4'], 'https://app.test')
-    ).rejects.toThrow(/No fragmented copy/);
+    ).rejects.toBeInstanceOf(ValidationError);
+    expect(uploads).toEqual([]);
+  });
+
+  it('refuses a clip whose sidecar is not valid JSON', async () => {
+    objects.set(
+      'videos/team/clip.mp4.frag.json',
+      new TextEncoder().encode('not-json{')
+    );
+    await expect(
+      ensureFragmentedClips(['/r2/videos/team/clip.mp4'], 'https://app.test')
+    ).rejects.toBeInstanceOf(ValidationError);
     expect(uploads).toEqual([]);
   });
 });

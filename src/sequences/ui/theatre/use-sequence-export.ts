@@ -25,6 +25,7 @@ import {
 } from './source-shots-hash';
 import { exportSequenceOnServer } from './server-export-client';
 import { captureVideoPlayFailed } from './player-events';
+import { theatrePlaylistFromHttp } from './theatre-playlist-from-http';
 import type { Sequence } from '@/platform/server/db/schema';
 import { copyTextToClipboard } from '@/ui/clipboard';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -245,26 +246,33 @@ export function useSequenceExport(
           credentials: 'same-origin',
           signal,
         });
-        if (response.ok) return url;
-        captureVideoPlayFailed(posthog, {
-          source: 'theatre',
-          reason: `playlist_http_${response.status}`,
-          sequence_id: sequenceId,
-        });
-        return null;
+        if (!response.ok) {
+          captureVideoPlayFailed(posthog, {
+            source: 'theatre',
+            reason: `playlist_http_${response.status}`,
+            sequence_id: sequenceId,
+          });
+        }
+        return theatrePlaylistFromHttp(response.status, url);
       } catch (error) {
         if (signal.aborted) throw error;
+        if (
+          error instanceof Error &&
+          error.message.startsWith('theatre playlist HTTP ')
+        ) {
+          throw error;
+        }
         captureVideoPlayFailed(posthog, {
           source: 'theatre',
           reason: 'playlist_fetch_failed',
           sequence_id: sequenceId,
         });
-        return null;
+        throw error;
       }
     },
     enabled: Boolean(sequence) && shouldFetchTheatrePlaylist(playbackScenes),
     staleTime: Infinity,
-    retry: false,
+    retry: 2,
   });
   const playbackUrl = playback.isError ? null : playback.data;
 

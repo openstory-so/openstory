@@ -56,6 +56,22 @@ const sidecarSchema = z.object({
 });
 type FragmentedClipInfo = z.infer<typeof sidecarSchema>;
 
+const sidecarJson = z.codec(z.string(), sidecarSchema, {
+  decode: (text, payload) => {
+    try {
+      return JSON.parse(text);
+    } catch {
+      payload.issues.push({
+        code: 'invalid_format',
+        format: 'json',
+        input: text,
+      });
+      return z.NEVER;
+    }
+  },
+  encode: (value) => JSON.stringify(value),
+});
+
 export type PlaylistClip = FragmentedClipInfo & { url: string };
 
 function splitKey(key: string): { bucket: StorageBucket; path: string } {
@@ -293,9 +309,7 @@ export async function writeFragmentedCopy(key: string): Promise<void> {
 async function readSidecar(key: string): Promise<FragmentedClipInfo | null> {
   const object = await readStorageObject(`${key}${SIDECAR_SUFFIX}`);
   if (!object) return null;
-  const parsed = sidecarSchema.safeParse(
-    JSON.parse(new TextDecoder().decode(object.bytes))
-  );
+  const parsed = sidecarJson.safeParse(new TextDecoder().decode(object.bytes));
   return parsed.success ? parsed.data : null;
 }
 

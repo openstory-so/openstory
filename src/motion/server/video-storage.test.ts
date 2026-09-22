@@ -140,4 +140,15 @@ describe('uploadVideoFromUrl', () => {
       'videos/teams/t1/studio/a1/video.mp4'
     );
   });
+
+  it('fails the upload when remux fails', async () => {
+    mockWriteFragmentedCopy.mockRejectedValue(
+      new Error('Repackage wrote nothing: videos/teams/t1/studio/a1/video.mp4')
+    );
+    await expect(
+      uploadVideoFromUrl('/r2/videos/teams/t1/studio/a1/video.mp4', () => {
+        throw new Error('should not mint a new key for a stored clip');
+      })
+    ).rejects.toThrow(/Repackage wrote nothing/);
+  });
 });
