@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 import type { GeneratedAsset } from '@/platform/server/db/schema';
 import {
   studioAspectRatio,
+  studioDownloadFilename,
+  studioDownloadHref,
   studioPosterOutput,
   studioPrimaryOutput,
   studioPrompt,
+  studioShareUrl,
 } from './outputs';
 
 function asset(
@@ -52,5 +55,38 @@ describe('studioPrimaryOutput', () => {
     });
     expect(studioPrompt(row)).toBe('a red fox');
     expect(studioAspectRatio(row)).toBe('9:16');
+  });
+});
+
+describe('studio share and download', () => {
+  it('absolutizes an origin-relative media URL for the clipboard', () => {
+    expect(
+      studioShareUrl('/r2/videos/team/clip.mp4', 'https://app.example.com')
+    ).toBe('https://app.example.com/r2/videos/team/clip.mp4');
+  });
+
+  it('leaves an already-absolute URL unchanged', () => {
+    expect(
+      studioShareUrl(
+        'https://storage.openstory.so/videos/clip.mp4',
+        'https://app.example.com'
+      )
+    ).toBe('https://storage.openstory.so/videos/clip.mp4');
+  });
+
+  it('asks the worker to attach the file instead of playing it', () => {
+    expect(studioDownloadHref('/r2/videos/team/clip.mp4')).toBe(
+      '/r2/videos/team/clip.mp4?download'
+    );
+    expect(studioDownloadHref('/r2/a.png?v=1')).toBe('/r2/a.png?v=1&download');
+  });
+
+  it('names the download from the asset id and content type', () => {
+    expect(studioDownloadFilename('01ASSET', 'video/mp4')).toBe(
+      'openstory-01ASSET.mp4'
+    );
+    expect(studioDownloadFilename('01ASSET', 'image/png; charset=binary')).toBe(
+      'openstory-01ASSET.png'
+    );
   });
 });

@@ -28,18 +28,24 @@ import {
 import type { GeneratedAsset } from '@/platform/server/db/schema';
 import {
   studioAspectRatio,
+  studioDownloadFilename,
+  studioDownloadHref,
   studioPosterOutput,
   studioPrimaryOutput,
   studioPrompt,
+  studioShareUrl,
 } from './outputs';
 import {
   CONTENT_REJECTION_USER_TITLE,
   isContentRejectionError,
 } from '@/models/content-rejection';
 import { estimateStudioProgress } from './progress';
+import { copyTextToClipboard } from '@/ui/clipboard';
 import { cn } from '@/ui/utils';
-import { Download, Images, Star, Trash2 } from 'lucide-react';
+import { usePostHog } from '@posthog/react';
+import { Download, Images, Link, Star, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 
 /** Wall clock ticking once a second while `active`; null otherwise. */
 function useNow(active: boolean) {
@@ -193,6 +199,56 @@ function PendingCard({ aspectRatio }: { aspectRatio: string }) {
         Starting…
       </p>
     </article>
+  );
+}
+
+/** Download + copy-link, the same pair the sequence player offers. */
+function StudioShareActions({ asset }: { asset: GeneratedAsset }) {
+  const posthog = usePostHog();
+  const primary = studioPrimaryOutput(asset);
+  if (!primary || asset.status !== 'completed') return null;
+
+  const surface = primary.contentType.startsWith('video/')
+    ? 'studio_video'
+    : 'studio_image';
+
+  const copyLink = async () => {
+    posthog.capture('share_clicked', {
+      surface,
+      asset_id: asset.id,
+    });
+    const shareable = studioShareUrl(primary.url, window.location.origin);
+    if (!(await copyTextToClipboard(shareable))) {
+      toast.error('Failed to copy URL');
+      return;
+    }
+    toast.success(
+      surface === 'studio_video' ? 'Video link copied' : 'Image link copied'
+    );
+  };
+
+  return (
+    <>
+      <Button asChild variant="outline">
+        <a
+          href={studioDownloadHref(primary.url)}
+          download={studioDownloadFilename(asset.id, primary.contentType)}
+          onClick={() => {
+            posthog.capture('export_clicked', {
+              surface,
+              asset_id: asset.id,
+            });
+          }}
+        >
+          <Download aria-hidden="true" />
+          Download
+        </a>
+      </Button>
+      <Button type="button" variant="outline" onClick={() => void copyLink()}>
+        <Link aria-hidden="true" />
+        Copy link
+      </Button>
+    </>
   );
 }
 
@@ -371,22 +427,7 @@ export function StudioGallery({
               </DialogHeader>
               <StudioViewer asset={openAsset} />
               <div className="flex shrink-0 items-center justify-end gap-2">
-                {(() => {
-                  const primary = studioPrimaryOutput(openAsset);
-                  if (!primary) return null;
-                  const ext = primary.contentType.split('/')[1] ?? 'bin';
-                  return (
-                    <Button asChild variant="outline">
-                      <a
-                        href={primary.url}
-                        download={`openstory-${openAsset.id}.${ext}`}
-                      >
-                        <Download aria-hidden="true" />
-                        Download
-                      </a>
-                    </Button>
-                  );
-                })()}
+                <StudioShareActions asset={openAsset} />
                 {!supportMode &&
                   openAsset.status !== 'queued' &&
                   openAsset.status !== 'running' && (
