@@ -306,28 +306,47 @@ export function dropStudioAlias(prompt: string, alias: string): string {
 }
 
 /**
- * Tokens the prompt points at that nothing is attached to (#1748) — `@Image5`
- * with two stills on the composer, or any token at all on a model that takes
- * no references. Returned in the composer's spelling, in the order they
- * appear, deduped.
+ * References the prompt names that nothing is attached to (#1748):
+ * `@Image5` with two stills on the composer, or `@bluesamurai` when that
+ * talent was never attached. Returned in the composer's spelling, in the
+ * order they appear, deduped.
  *
- * Only numbered slots can be checked. A name that was never attached
- * (`@Sienna Blake`) is indistinguishable from prose, so it is left alone.
+ * Two shapes count as naming a reference. A slot token (`Image5`, `@image5`)
+ * is checked against what is attached for its kind — the pill stores it bare,
+ * so it counts with or without the `@`. Anything else only counts with an
+ * explicit `@`, which is the user saying "this is a reference"; a bare word
+ * is prose. `@` mid-word is left alone so an email address is not a warning.
  */
 export function unresolvedStudioReferences(
   prompt: string,
-  attached: Record<'image' | 'video' | 'audio', number>
+  attached: Record<'image' | 'video' | 'audio', number>,
+  /** Names of the attached references (talent, locations, elements). */
+  aliases: readonly string[] = []
 ): string[] {
+  const names = aliases
+    .filter((alias) => alias.trim().length > 0)
+    .map((alias) => alias.toLowerCase());
   const found: string[] = [];
-  for (const match of prompt.matchAll(
-    /(?:^|[^A-Za-z0-9_-])@?(image|video|audio)(\d+)(?=[^A-Za-z0-9_-]|$)/gi
-  )) {
-    const kind = match[1]?.toLowerCase();
-    const n = Number(match[2]);
-    if (kind !== 'image' && kind !== 'video' && kind !== 'audio') continue;
-    if (n >= 1 && n <= attached[kind]) continue;
-    const token = `@${kind[0]?.toUpperCase()}${kind.slice(1)}${n}`;
-    if (!found.includes(token)) found.push(token);
+  const pattern =
+    /(^|[^A-Za-z0-9_-])@?(image|video|audio)(\d+)(?=[^A-Za-z0-9_-]|$)|(^|[^A-Za-z0-9_-])@([A-Za-z0-9_-]+)/gi;
+
+  for (const match of prompt.matchAll(pattern)) {
+    const kind = match[2]?.toLowerCase();
+    if (kind === 'image' || kind === 'video' || kind === 'audio') {
+      const n = Number(match[3]);
+      if (n >= 1 && n <= attached[kind]) continue;
+      const label = kind[0]?.toUpperCase() + kind.slice(1);
+      if (!found.includes(`@${label}${n}`)) found.push(`@${label}${n}`);
+      continue;
+    }
+    const word = match[5];
+    if (word === undefined) continue;
+    // A name can hold spaces, so match the rest of the prompt from the `@`,
+    // not just the first word after it.
+    const from = match.index + (match[4]?.length ?? 0) + 1;
+    const rest = prompt.slice(from).toLowerCase();
+    if (names.some((name) => rest.startsWith(name))) continue;
+    if (!found.includes(`@${word}`)) found.push(`@${word}`);
   }
   return found;
 }

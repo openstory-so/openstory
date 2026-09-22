@@ -245,7 +245,7 @@ describe('reference tags', () => {
     );
   });
 
-  it('names tokens with nothing attached', () => {
+  it('names slots with nothing attached', () => {
     const attached = { image: 2, video: 0, audio: 1 };
     expect(
       unresolvedStudioReferences(
@@ -260,6 +260,30 @@ describe('reference tags', () => {
     expect(unresolvedStudioReferences('Image9 then Image9', attached)).toEqual([
       '@Image9',
     ]);
+  });
+
+  it('names an @name that was never attached', () => {
+    const attached = { image: 1, video: 0, audio: 0 };
+    const aliases = ['Sienna Blake'];
+    expect(
+      unresolvedStudioReferences(
+        '@bluesamurai bows to @Sienna Blake',
+        attached,
+        aliases
+      )
+    ).toEqual(['@bluesamurai']);
+    // The bare form the pill stores is not an @name at all.
+    expect(
+      unresolvedStudioReferences('Sienna Blake bows', attached, aliases)
+    ).toEqual([]);
+    // `@` inside a word is an address, not a reference.
+    expect(
+      unresolvedStudioReferences('mail tom@example.com', attached, aliases)
+    ).toEqual([]);
+    // Order follows the prompt, across both shapes.
+    expect(
+      unresolvedStudioReferences('@ghost then Image4', attached, aliases)
+    ).toEqual(['@ghost', '@Image4']);
   });
 
   it('drops the removed token and shifts later ones down', () => {

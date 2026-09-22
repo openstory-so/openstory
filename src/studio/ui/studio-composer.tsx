@@ -757,7 +757,21 @@ export function StudioComposer({
    * so the model would be handed a slot the request never carries (#1748).
    * Warn rather than block — the prompt is the user's to write.
    */
-  const unresolvedRefs = unresolvedStudioReferences(trimmed, counts);
+  const unresolvedRefs = unresolvedStudioReferences(
+    trimmed,
+    counts,
+    [...references, ...videoRefs, ...audioRefs].flatMap((r) =>
+      r.alias ? [r.alias] : []
+    )
+  );
+  // A slot can be attached; a name we don't hold cannot, so the two want
+  // different words (#1748).
+  const unresolvedSlots = unresolvedRefs.filter((token) =>
+    /^@(Image|Video|Audio)\d+$/.test(token)
+  );
+  const unresolvedNames = unresolvedRefs.filter(
+    (token) => !unresolvedSlots.includes(token)
+  );
 
   const onMentionSelect = (item: MentionItem): MentionItem => {
     if (item.section === 'references') return item;
@@ -1149,11 +1163,26 @@ export function StudioComposer({
         />
       </div>
 
-      {unresolvedRefs.length > 0 && (
-        <p className="shrink-0 text-xs text-destructive" aria-live="polite">
-          {unresolvedRefs.join(', ')}{' '}
-          {unresolvedRefs.length === 1 ? "isn't" : "aren't"} attached.
-        </p>
+      {(unresolvedSlots.length > 0 || unresolvedNames.length > 0) && (
+        <div
+          className="flex shrink-0 flex-col gap-1 text-xs text-destructive"
+          aria-live="polite"
+        >
+          {unresolvedSlots.length > 0 && (
+            <p>
+              {unresolvedSlots.join(', ')}{' '}
+              {unresolvedSlots.length === 1 ? "isn't" : "aren't"} attached.
+            </p>
+          )}
+          {unresolvedNames.length > 0 && (
+            <p>
+              {unresolvedNames.join(', ')}{' '}
+              {unresolvedNames.length === 1 ? "isn't" : "aren't"} in your
+              library. {unresolvedNames.length === 1 ? 'It' : 'They'} will be
+              sent as words.
+            </p>
+          )}
+        </div>
       )}
 
       {isAuthenticated &&
