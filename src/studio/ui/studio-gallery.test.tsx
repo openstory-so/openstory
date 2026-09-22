@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { GeneratedAsset } from '@/platform/server/db/schema';
 import { Dialog } from '@/ui/shadcn/dialog';
+import { TooltipProvider } from '@/ui/shadcn/tooltip';
 import { GenerationDetail } from './studio-gallery';
 
 function asset(input: GeneratedAsset['input']): GeneratedAsset {
@@ -29,25 +30,27 @@ function asset(input: GeneratedAsset['input']): GeneratedAsset {
 describe('GenerationDetail', () => {
   it('shows the prompt as prose and the references that were used', () => {
     const html = renderToStaticMarkup(
-      <Dialog open>
-        <GenerationDetail
-          asset={asset({
-            prompt: 'the fox \\*turns\\*\\ntoward camera',
-            aspectRatio: '16:9',
-            resolution: '720p',
-            duration: 5,
-            mode: 'reference',
-            referenceImages: ['/r2/fox.png'],
-            referenceAudio: ['/r2/rain.mp3'],
-          })}
-          supportMode={false}
-          copied={false}
-          onCopy={() => undefined}
-          onReuse={() => undefined}
-          deletePending={false}
-          onDelete={() => undefined}
-        />
-      </Dialog>
+      <TooltipProvider>
+        <Dialog open>
+          <GenerationDetail
+            asset={asset({
+              prompt: 'the fox \\*turns\\*\\ntoward camera',
+              aspectRatio: '16:9',
+              resolution: '720p',
+              duration: 5,
+              mode: 'reference',
+              referenceImages: ['/r2/fox.png'],
+              referenceAudio: ['/r2/rain.mp3'],
+            })}
+            supportMode={false}
+            copied={false}
+            onCopy={() => undefined}
+            onReuse={() => undefined}
+            deletePending={false}
+            onDelete={() => undefined}
+          />
+        </Dialog>
+      </TooltipProvider>
     );
 
     expect(html).toContain('Seedance 2.5');

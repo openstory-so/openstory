@@ -417,9 +417,9 @@ function ReferenceTile({ reference }: { reference: StudioShownReference }) {
 }
 
 /**
- * Media on one side, the recipe on the other. The prompt is prose (escapes
- * decoded) and scrolls with the panel, and the tiles are the references the
- * run actually used, in the same order the prompt names them.
+ * The clip fills the dialog. The recipe sits against it and only grows with
+ * its content: model, settings, the prompt, then the references it names,
+ * then the actions. A long prompt scrolls inside its own box.
  */
 export function GenerationDetail({
   asset,
@@ -450,29 +450,16 @@ export function GenerationDetail({
   ].filter(Boolean);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+    <div className="flex min-h-0 flex-1 flex-col bg-muted md:flex-row">
       <div className="flex min-h-48 min-w-0 flex-1 p-3 md:p-4">
         <StudioViewer asset={asset} />
       </div>
-      <aside className="flex max-h-[46%] min-h-0 w-full shrink-0 flex-col gap-3 overflow-y-auto border-t p-4 md:max-h-none md:w-96 md:overflow-hidden md:border-t-0 md:border-l md:pr-12">
-        <DialogHeader className="shrink-0">
+      <aside className="flex max-h-[40%] w-full shrink-0 flex-col gap-3 overflow-y-auto border-t bg-popover p-4 md:max-h-full md:w-96 md:self-start md:border-t-0 md:border-l md:pr-12">
+        <DialogHeader>
           <DialogTitle>{asset.modelName || 'Generation'}</DialogTitle>
           <DialogDescription>{facts.join(' · ')}</DialogDescription>
         </DialogHeader>
-        {references.length > 0 && (
-          <ul
-            className="flex shrink-0 gap-2 overflow-x-auto"
-            aria-label="References"
-          >
-            {references.map((reference) => (
-              <ReferenceTile
-                key={`${reference.label}-${reference.url}`}
-                reference={reference}
-              />
-            ))}
-          </ul>
-        )}
-        <div className="min-h-16 md:min-h-0 md:flex-1 md:overflow-y-auto">
+        <div className="max-h-64 overflow-y-auto">
           {prompt ? (
             <HighlightedPrompt
               text={prompt}
@@ -483,10 +470,21 @@ export function GenerationDetail({
             <p className="text-sm text-muted-foreground">No prompt</p>
           )}
         </div>
-        <div className="flex shrink-0 flex-wrap gap-2">
+        {references.length > 0 && (
+          <ul className="flex gap-2 overflow-x-auto" aria-label="References">
+            {references.map((reference) => (
+              <ReferenceTile
+                key={`${reference.label}-${reference.url}`}
+                reference={reference}
+              />
+            ))}
+          </ul>
+        )}
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
             variant="outline"
+            className="pointer-coarse:h-11"
             disabled={!prompt}
             aria-label={copied ? 'Copied prompt' : 'Copy prompt'}
             onClick={() => onCopy(prompt)}
@@ -498,6 +496,7 @@ export function GenerationDetail({
             <Button
               type="button"
               variant="outline"
+              className="pointer-coarse:h-11"
               onClick={() => onReuse(reuse)}
             >
               <RotateCcw aria-hidden="true" />
@@ -511,11 +510,13 @@ export function GenerationDetail({
                 <AlertDialogTrigger asChild>
                   <Button
                     type="button"
+                    size="icon"
                     variant="destructive"
+                    className="pointer-coarse:size-11"
                     disabled={deletePending}
+                    aria-label="Delete"
                   >
                     <Trash2 aria-hidden="true" />
-                    Delete
                   </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
