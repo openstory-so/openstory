@@ -17,6 +17,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/ui/shadcn/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/ui/shadcn/dropdown-menu';
 import { EmptyState } from '@/ui/shadcn/empty-state';
 import { Skeleton } from '@/ui/shadcn/skeleton';
 import { AppImage } from '@/ui/shadcn/app-image';
@@ -43,7 +49,7 @@ import { estimateStudioProgress } from './progress';
 import { copyTextToClipboard } from '@/ui/clipboard';
 import { cn } from '@/ui/utils';
 import { usePostHog } from '@posthog/react';
-import { Download, Images, Link, Star, Trash2 } from 'lucide-react';
+import { Download, Images, Link, Share2, Star, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -139,8 +145,9 @@ function StudioCard({
           </div>
         )}
       </button>
+      <StudioShareMenu asset={asset} />
       {!supportMode && (
-        <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-end p-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+        <div className="pointer-events-none absolute top-2 right-16 z-20 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 md:right-12">
           <Button
             type="button"
             size="icon"
@@ -163,7 +170,7 @@ function StudioCard({
         </div>
       )}
       {supportMode && (asset.creatorName || asset.creatorEmail) && (
-        <p className="pointer-events-none absolute inset-x-0 top-0 truncate bg-background/80 px-2 py-1 text-xs text-muted-foreground">
+        <p className="pointer-events-none absolute inset-x-0 top-0 truncate bg-background/80 py-1 pr-14 pl-2 text-xs text-muted-foreground">
           <span>
             {asset.creatorName && asset.creatorEmail
               ? `${asset.creatorName} · ${asset.creatorEmail}`
@@ -202,15 +209,17 @@ function PendingCard({ aspectRatio }: { aspectRatio: string }) {
   );
 }
 
-/** Download + copy-link, the same pair the sequence player offers. */
-function StudioShareActions({ asset }: { asset: GeneratedAsset }) {
+/**
+ * Share control pinned to the media, same corner treatment as the sequence
+ * player: one icon, then copy-link and download.
+ */
+function StudioShareMenu({ asset }: { asset: GeneratedAsset }) {
   const posthog = usePostHog();
   const primary = studioPrimaryOutput(asset);
   if (!primary || asset.status !== 'completed') return null;
 
-  const surface = primary.contentType.startsWith('video/')
-    ? 'studio_video'
-    : 'studio_image';
+  const video = primary.contentType.startsWith('video/');
+  const surface = video ? 'studio_video' : 'studio_image';
 
   const copyLink = async () => {
     posthog.capture('share_clicked', {
@@ -222,33 +231,46 @@ function StudioShareActions({ asset }: { asset: GeneratedAsset }) {
       toast.error('Failed to copy URL');
       return;
     }
-    toast.success(
-      surface === 'studio_video' ? 'Video link copied' : 'Image link copied'
-    );
+    toast.success(video ? 'Video link copied' : 'Image link copied');
+  };
+
+  const download = () => {
+    posthog.capture('export_clicked', {
+      surface,
+      asset_id: asset.id,
+    });
+    const a = document.createElement('a');
+    a.href = studioDownloadHref(primary.url);
+    a.download = studioDownloadFilename(asset.id, primary.contentType);
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
   };
 
   return (
-    <>
-      <Button asChild variant="outline">
-        <a
-          href={studioDownloadHref(primary.url)}
-          download={studioDownloadFilename(asset.id, primary.contentType)}
-          onClick={() => {
-            posthog.capture('export_clicked', {
-              surface,
-              asset_id: asset.id,
-            });
-          }}
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="absolute top-2 right-2 z-20 h-11 w-11 bg-black/50 text-white hover:bg-black/70 md:h-8 md:w-8"
+          aria-label={video ? 'Share video' : 'Share image'}
         >
-          <Download aria-hidden="true" />
-          Download
-        </a>
-      </Button>
-      <Button type="button" variant="outline" onClick={() => void copyLink()}>
-        <Link aria-hidden="true" />
-        Copy link
-      </Button>
-    </>
+          <Share2 className="h-5 w-5 md:h-4 md:w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-auto">
+        <DropdownMenuItem onClick={() => void copyLink()}>
+          <Link className="h-4 w-4" />
+          {video ? 'Copy video link' : 'Copy image link'}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={download}>
+          <Download className="h-4 w-4" />
+          {video ? 'Download video' : 'Download image'}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -269,25 +291,28 @@ function StudioViewer({ asset }: { asset: GeneratedAsset }) {
   }
   return (
     <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg bg-muted">
-      {primary.contentType.startsWith('video/') ? (
-        <video
-          src={primary.url}
-          poster={poster?.url}
-          controls
-          autoPlay
-          loop
-          playsInline
-          className="max-h-full max-w-full object-contain"
-        >
-          <track kind="captions" />
-        </video>
-      ) : (
-        <img
-          src={primary.url}
-          alt={prompt || 'Generated image'}
-          className="max-h-full max-w-full object-contain"
-        />
-      )}
+      <div className="relative max-w-full">
+        {primary.contentType.startsWith('video/') ? (
+          <video
+            src={primary.url}
+            poster={poster?.url}
+            controls
+            autoPlay
+            loop
+            playsInline
+            className="block max-h-[calc(94vh-12rem)] max-w-full object-contain"
+          >
+            <track kind="captions" />
+          </video>
+        ) : (
+          <img
+            src={primary.url}
+            alt={prompt || 'Generated image'}
+            className="block max-h-[calc(94vh-12rem)] max-w-full object-contain"
+          />
+        )}
+        <StudioShareMenu asset={asset} />
+      </div>
     </div>
   );
 }
@@ -427,7 +452,6 @@ export function StudioGallery({
               </DialogHeader>
               <StudioViewer asset={openAsset} />
               <div className="flex shrink-0 items-center justify-end gap-2">
-                <StudioShareActions asset={openAsset} />
                 {!supportMode &&
                   openAsset.status !== 'queued' &&
                   openAsset.status !== 'running' && (
