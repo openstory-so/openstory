@@ -1152,8 +1152,7 @@ export function StudioComposer({
       {unresolvedRefs.length > 0 && (
         <p className="shrink-0 text-xs text-destructive" aria-live="polite">
           {unresolvedRefs.join(', ')}{' '}
-          {unresolvedRefs.length === 1 ? 'has' : 'have'} nothing attached — the
-          model gets a reference the request does not carry.
+          {unresolvedRefs.length === 1 ? "isn't" : "aren't"} attached.
         </p>
       )}
 
