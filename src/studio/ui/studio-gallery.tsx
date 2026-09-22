@@ -145,9 +145,8 @@ function StudioCard({
           </div>
         )}
       </button>
-      <StudioShareMenu asset={asset} />
-      {!supportMode && (
-        <div className="pointer-events-none absolute top-2 right-16 z-20 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 md:right-12">
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex justify-end gap-1 p-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 group-has-[[data-state=open]]:opacity-100">
+        {!supportMode && (
           <Button
             type="button"
             size="icon"
@@ -167,10 +166,11 @@ function StudioCard({
               aria-hidden="true"
             />
           </Button>
-        </div>
-      )}
+        )}
+        <StudioShareMenu asset={asset} className="pointer-events-auto" />
+      </div>
       {supportMode && (asset.creatorName || asset.creatorEmail) && (
-        <p className="pointer-events-none absolute inset-x-0 top-0 truncate bg-background/80 py-1 pr-14 pl-2 text-xs text-muted-foreground">
+        <p className="pointer-events-none absolute inset-x-0 top-0 truncate bg-background/80 px-2 py-1 text-xs text-muted-foreground">
           <span>
             {asset.creatorName && asset.creatorEmail
               ? `${asset.creatorName} · ${asset.creatorEmail}`
@@ -213,7 +213,13 @@ function PendingCard({ aspectRatio }: { aspectRatio: string }) {
  * Share control pinned to the media, same corner treatment as the sequence
  * player: one icon, then copy-link and download.
  */
-function StudioShareMenu({ asset }: { asset: GeneratedAsset }) {
+function StudioShareMenu({
+  asset,
+  className,
+}: {
+  asset: GeneratedAsset;
+  className?: string;
+}) {
   const posthog = usePostHog();
   const primary = studioPrimaryOutput(asset);
   if (!primary || asset.status !== 'completed') return null;
@@ -254,7 +260,7 @@ function StudioShareMenu({ asset }: { asset: GeneratedAsset }) {
           type="button"
           variant="ghost"
           size="icon"
-          className="absolute top-2 right-2 z-20 h-11 w-11 bg-black/50 text-white hover:bg-black/70 md:h-8 md:w-8"
+          className={cn('bg-black/50 text-white hover:bg-black/70', className)}
           aria-label={video ? 'Share video' : 'Share image'}
         >
           <Share2 className="h-5 w-5 md:h-4 md:w-4" />
@@ -291,7 +297,7 @@ function StudioViewer({ asset }: { asset: GeneratedAsset }) {
   }
   return (
     <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg bg-muted">
-      <div className="relative max-w-full">
+      <div className="group relative max-w-full">
         {primary.contentType.startsWith('video/') ? (
           <video
             src={primary.url}
@@ -311,7 +317,10 @@ function StudioViewer({ asset }: { asset: GeneratedAsset }) {
             className="block max-h-[calc(94vh-12rem)] max-w-full object-contain"
           />
         )}
-        <StudioShareMenu asset={asset} />
+        <StudioShareMenu
+          asset={asset}
+          className="absolute top-2 right-2 z-20 h-11 w-11 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 data-[state=open]:opacity-100 md:h-8 md:w-8"
+        />
       </div>
     </div>
   );
