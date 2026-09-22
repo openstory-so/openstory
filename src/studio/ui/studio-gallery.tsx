@@ -59,6 +59,8 @@ import { cn } from '@/ui/utils';
 import { usePostHog } from '@posthog/react';
 import {
   AudioLines,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   Download,
   Images,
@@ -422,8 +424,10 @@ function ReferenceTile({ reference }: { reference: StudioShownReference }) {
 
 /**
  * The clip fills the dialog. The recipe sits against it and only grows with
- * its content: model, settings, the prompt, then the references it names,
- * then the actions. A long prompt scrolls inside its own box.
+ * its content: model, settings, the references, the prompt, then the actions.
+ * The prompt is the one flexible row: a short one leaves the card compact, a
+ * long one grows the card to the dialog's height and then scrolls inside it,
+ * so the header and the actions never move.
  */
 export function GenerationDetail({
   asset,
@@ -433,6 +437,8 @@ export function GenerationDetail({
   onReuse,
   deletePending,
   onDelete,
+  onPrev,
+  onNext,
 }: {
   asset: StudioGalleryAsset;
   supportMode: boolean;
@@ -441,6 +447,9 @@ export function GenerationDetail({
   onReuse?: (reuse: StudioReuse) => void;
   deletePending: boolean;
   onDelete: () => void;
+  /** Step to the neighbouring generation in the gallery; absent at the ends. */
+  onPrev?: () => void;
+  onNext?: () => void;
 }) {
   const prompt = readableStudioPrompt(studioPrompt(asset));
   const references = studioShownReferences(asset);
@@ -455,15 +464,52 @@ export function GenerationDetail({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-muted md:flex-row">
-      <div className="flex min-h-48 min-w-0 flex-1 p-3 md:p-4">
+      <div className="relative flex min-h-48 min-w-0 flex-1 p-3 md:p-4">
         <StudioViewer asset={asset} />
+        {onPrev && (
+          <Button
+            type="button"
+            variant="secondary"
+            size="icon"
+            aria-label="Previous generation"
+            className="absolute top-1/2 left-4 -translate-y-1/2 rounded-full pointer-coarse:size-11"
+            onClick={onPrev}
+          >
+            <ChevronLeft aria-hidden="true" />
+          </Button>
+        )}
+        {onNext && (
+          <Button
+            type="button"
+            variant="secondary"
+            size="icon"
+            aria-label="Next generation"
+            className="absolute top-1/2 right-4 -translate-y-1/2 rounded-full pointer-coarse:size-11"
+            onClick={onNext}
+          >
+            <ChevronRight aria-hidden="true" />
+          </Button>
+        )}
       </div>
-      <aside className="flex max-h-[40%] w-full shrink-0 flex-col gap-3 overflow-y-auto border-t bg-popover p-4 md:max-h-full md:w-96 md:self-start md:border-t-0 md:border-l md:pr-12">
-        <DialogHeader>
+      <aside className="flex max-h-[40%] w-full shrink-0 flex-col gap-3 overflow-y-auto border-t bg-popover p-4 md:max-h-full md:w-96 md:self-start md:overflow-hidden md:border-t-0 md:border-l md:pr-12">
+        <DialogHeader className="shrink-0">
           <DialogTitle>{asset.modelName || 'Generation'}</DialogTitle>
           <DialogDescription>{facts.join(' · ')}</DialogDescription>
         </DialogHeader>
-        <div className="max-h-64 overflow-y-auto">
+        {references.length > 0 && (
+          <ul
+            className="flex shrink-0 gap-2 overflow-x-auto"
+            aria-label="References"
+          >
+            {references.map((reference) => (
+              <ReferenceTile
+                key={`${reference.label}-${reference.url}`}
+                reference={reference}
+              />
+            ))}
+          </ul>
+        )}
+        <div className="max-h-64 overflow-y-auto md:max-h-none md:min-h-0 md:flex-1">
           {prompt ? (
             <HighlightedPrompt
               text={prompt}
@@ -474,17 +520,7 @@ export function GenerationDetail({
             <p className="text-sm text-muted-foreground">No prompt</p>
           )}
         </div>
-        {references.length > 0 && (
-          <ul className="flex gap-2 overflow-x-auto" aria-label="References">
-            {references.map((reference) => (
-              <ReferenceTile
-                key={`${reference.label}-${reference.url}`}
-                reference={reference}
-              />
-            ))}
-          </ul>
-        )}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
           <Button
             type="button"
             variant="outline"
@@ -499,7 +535,6 @@ export function GenerationDetail({
           {onReuse && reuse && (
             <Button
               type="button"
-              variant="outline"
               className="pointer-coarse:h-11"
               onClick={() => onReuse(reuse)}
             >
@@ -516,7 +551,7 @@ export function GenerationDetail({
                     type="button"
                     size="icon"
                     variant="destructive"
-                    className="pointer-coarse:size-11"
+                    className="ml-auto pointer-coarse:size-11"
                     disabled={deletePending}
                     aria-label="Delete"
                   >
@@ -575,7 +610,31 @@ export function StudioGallery({
     const id = window.setTimeout(() => setCopied(false), 2000);
     return () => window.clearTimeout(id);
   }, [copied]);
-  const openAsset = assets.find((asset) => asset.id === openId);
+  const openIndex = assets.findIndex((asset) => asset.id === openId);
+  const openAsset = openIndex === -1 ? undefined : assets[openIndex];
+  const prevAsset = openIndex > 0 ? assets[openIndex - 1] : undefined;
+  const nextAsset = openAsset ? assets[openIndex + 1] : undefined;
+  const step = (target: StudioGalleryAsset | undefined) => {
+    if (!target) return;
+    setOpenId(target.id);
+    setCopied(false);
+  };
+  useEffect(() => {
+    if (!openAsset) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey) return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable || target.closest('input, textarea'))
+      )
+        return;
+      if (event.key === 'ArrowLeft') step(prevAsset);
+      else if (event.key === 'ArrowRight') step(nextAsset);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
   const pendingCreates = useStudioPendingCreates(activity);
   const pending = supportMode
     ? []
@@ -693,6 +752,8 @@ export function StudioGallery({
                   onSuccess: () => setOpenId(null),
                 });
               }}
+              onPrev={prevAsset ? () => step(prevAsset) : undefined}
+              onNext={nextAsset ? () => step(nextAsset) : undefined}
             />
           )}
         </DialogContent>
