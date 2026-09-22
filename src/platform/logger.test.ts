@@ -7,7 +7,12 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { type SerializedError, serializeError, toErrorPayload } from './logger';
+import {
+  SECRET_PATTERNS,
+  type SerializedError,
+  serializeError,
+  toErrorPayload,
+} from './logger';
 
 /** Narrow a `SerializedError | string` to the object form, failing the test
  * (rather than casting) when it isn't one. */
@@ -102,5 +107,39 @@ describe('toErrorPayload', () => {
 
   it('has no cause field for a plain error', () => {
     expect(toErrorPayload(new Error('plain')).cause).toBeUndefined();
+  });
+});
+
+describe('SECRET_PATTERNS', () => {
+  const redact = (value: string): string =>
+    SECRET_PATTERNS.reduce(
+      (acc, { pattern, replacement }) =>
+        acc.replace(
+          new RegExp(pattern.source, pattern.flags),
+          // Every pattern here replaces with a literal; the callback form of
+          // `RedactionPattern['replacement']` is unused.
+          typeof replacement === 'string' ? replacement : '[REDACTED]'
+        ),
+      value
+    );
+
+  // The base64-blob pattern used to include `/` in its charset, so any path
+  // longer than 64 chars read as one blob and vanished — which is how the
+  // reference-image URLs and the failing-download URLs were lost from prod
+  // logs.
+  it('leaves storage keys and nested API paths intact', () => {
+    const key =
+      '/r2/teams/01M0YGRGKYAVR4SDQ3ACJVKXKH/studio/01M31KMZ95K47KSRHZAY33NJ6W/image.png';
+    const apiPath =
+      '/api/v1/sequences/01M2F0MQFVPREQR3R436MMSSG3/shots/01M30YJNCMH0ZFP10J9H843RXJ';
+
+    expect(redact(key)).toBe(key);
+    expect(redact(apiPath)).toBe(apiPath);
+  });
+
+  it('still redacts a long token blob', () => {
+    const token = `eyJhbGciOiJIUzI1NiJ9.${'a1B2c3D4'.repeat(8)}`;
+
+    expect(redact(token)).toContain('[REDACTED]');
   });
 });

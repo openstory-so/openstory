@@ -13,8 +13,31 @@ import {
 import { loadComplianceRecords } from '@/platform/server/db/scoped';
 
 import { getLogger } from '@/platform/logger';
+import { toCdnUrl } from '@/platform/server/storage/buckets';
 
 const logger = getLogger(['openstory', 'workflow', 'client']);
+
+/**
+ * Absolutize stored media URLs for the trigger log.
+ *
+ * Payload media URLs are origin-relative (`/r2/<key>`, #894), which is right
+ * for storage but useless in a log line — you cannot open the reference image
+ * that produced a bad generation without reassembling the host by hand. Swap
+ * in the public CDN URL where one is configured; everything else (and local
+ * dev, where `toCdnUrl` returns null) is left exactly as it is.
+ *
+ * Log-only: the payload the workflow receives is untouched.
+ */
+function withAbsoluteMediaUrls(value: unknown): unknown {
+  if (typeof value === 'string') return toCdnUrl(value) ?? value;
+  if (Array.isArray(value)) return value.map(withAbsoluteMediaUrls);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([k, v]) => [k, withAbsoluteMediaUrls(v)])
+    );
+  }
+  return value;
+}
 
 /**
  * Triggers that produce nothing new and so survive a generation pause.
@@ -84,7 +107,11 @@ export async function triggerWorkflow<
     enforcement?: readonly EnforcementRow[];
   }
 ): Promise<string> {
-  logger.info('[TriggerWorkflow]', { url: urlPath, body, options });
+  logger.info('[TriggerWorkflow]', {
+    url: urlPath,
+    body: withAbsoluteMediaUrls(body),
+    options,
+  });
 
   // Enforcement backstop (#1180). Every generation in the app funnels through
   // here, and the payload carries `userId`/`teamId` by contract — so this is the

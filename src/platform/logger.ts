@@ -41,7 +41,7 @@ const REDACT = '[REDACTED]';
  * Ported from the previous src/lib/observability/structured-log.ts.
  * Each pattern MUST have the `g` flag (required by `@logtape/redaction`).
  */
-const SECRET_PATTERNS: readonly RedactionPattern[] = [
+export const SECRET_PATTERNS: readonly RedactionPattern[] = [
   {
     pattern:
       /\b(sk|pk|fal|key|token|secret|password|bearer)[-_]?[a-zA-Z0-9\-_.]{16,}\b/gi,
@@ -51,7 +51,12 @@ const SECRET_PATTERNS: readonly RedactionPattern[] = [
     pattern: /\b(postgres|mysql|redis|https?):\/\/[^\s"']+@[^\s"']+/gi,
     replacement: REDACT,
   },
-  { pattern: /\b[A-Za-z0-9+/]{64,}={0,2}\b/g, replacement: REDACT },
+  // Base64 blob. The charset deliberately EXCLUDES `/`: with it, any storage
+  // key or nested API path is one long "blob" and gets eaten whole
+  // (`/teams/<ulid>/studio/<ulid>/image.png` → `/[REDACTED].png`), which cost
+  // us the reference-image and failing-download URLs in prod logs. `_-` covers
+  // base64url, which is what real tokens use.
+  { pattern: /\b[A-Za-z0-9+_-]{64,}={0,2}\b/g, replacement: REDACT },
   { pattern: /\bAKIA[A-Z0-9]{16}\b/g, replacement: REDACT },
   {
     pattern: /\b[A-Za-z0-9_-]{40}\b(?=.*(?:token|key|secret))/gi,

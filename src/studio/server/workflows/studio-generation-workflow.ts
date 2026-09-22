@@ -42,6 +42,7 @@ import { videoUrlFitsWorkflowCheckpoint } from '@/motion/server/video-storage';
 import { captureStudioGenerationCompleted } from '@/platform/server/observability/content-feed';
 import { recordMediaGenerationSpan } from '@/platform/server/observability/ai-otel';
 import { getLogger } from '@/platform/logger';
+import { toCdnUrl } from '@/platform/server/storage/buckets';
 import { isEngineAbortError } from '@/platform/server/workflow/errors';
 import type { StudioCreateInput } from '@/studio/schema';
 import {
@@ -532,6 +533,15 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
         provider: job.via,
       });
     });
+
+    // Only failures logged here before, so a finished run left no way to reach
+    // the video from the logs. Absolute so the URL is openable as printed.
+    logger.info(
+      `[StudioGenerationWorkflow] Asset ${assetId} completed: ${
+        toCdnUrl(videoUpload.url) ?? videoUpload.url
+      }`,
+      { assetId, providerRequestId: job.jobId, model: videoModel }
+    );
 
     await this.notifyContentFeed(event, input, outputs, step);
 
