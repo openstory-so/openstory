@@ -358,7 +358,10 @@ function StudioViewer({ asset }: { asset: GeneratedAsset }) {
             className="block max-h-full max-w-full object-contain"
           />
         )}
-        <StudioShareMenu asset={asset} className="absolute top-2 left-2 z-30" />
+        <StudioShareMenu
+          asset={asset}
+          className="absolute top-2 right-14 z-30 md:right-2"
+        />
       </div>
     </div>
   );
@@ -491,7 +494,7 @@ export function GenerationDetail({
             onClick={() => onCopy(prompt)}
           >
             <Copy aria-hidden="true" />
-            {copied ? 'Copied' : 'Copy'}
+            {copied ? 'Copied' : 'Copy prompt'}
           </Button>
           {onReuse && reuse && (
             <Button

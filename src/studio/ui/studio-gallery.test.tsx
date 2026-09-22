@@ -63,7 +63,7 @@ describe('GenerationDetail', () => {
     expect(html).toContain('/r2/fox.png');
     expect(html).toContain('Reference to video');
     expect(html).toContain('Use again');
-    expect(html).toContain('Copy');
+    expect(html).toContain('Copy prompt');
     expect(html).toContain('Share link');
     expect(html).toContain('Download');
     expect(html).toContain('aspect-video');
