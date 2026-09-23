@@ -452,9 +452,11 @@ jobs:
           fi
 
       # Each preview owns `openstory-virtual-pr-<n>-…` on the shared Ark
-      # account (#1635). Delete that group (and every asset in it) here;
-      # the Worker/D1 are already gone so the hourly ledger sweep cannot.
-      # Production's cron is the backstop if this step is skipped.
+      # account (#1635). Delete that group here; the Worker/D1 are already
+      # gone so the hourly ledger sweep cannot, and production's cron no
+      # longer touches pr-* groups at all (#1756). A skipped or failed step
+      # leaves an empty group (previews run BYTEPLUS_ASSET_SLOTS=0) until
+      # someone runs `bun scripts/delete-preview-byteplus-group.ts --pr <n>`.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
