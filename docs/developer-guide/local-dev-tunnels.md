@@ -30,7 +30,7 @@ That:
 ## Daily
 
 1. In the worktree `.env.local`, set `PORT` to an unused value in 3000–3009.
-2. `bun dev` — `ensure-env` sets `VITE_APP_URL` from the map for that port.
+2. `bun dev` — `ensure-env` writes `PORT` and `VITE_APP_URL` for that port and puts them on the Vite process. Vite does not read `.env.local`.
 3. Press **`t + Enter` once** on this machine. The Vite plugin connects the named tunnel; Cloudflare sends each hostname to the matching local port. A second `t` in another worktree is a replica and will load-balance — don't.
 
 Work in the app at `http://localhost:$PORT` — that stays on your machine, and Google sign-in works there with no tunnel connected. Use the `https://…openstory.so` URL only for inbound webhooks or a phone. Google returns you to the host the sign-in started on (`bun dev` never sets `BETTER_AUTH_URL`, which would pin every sign-in to the tunnel host), and a session belongs to one host — signing in on localhost does not sign you in on the tunnel name. Every request on that hostname hairpins through Cloudflare’s edge, so it will feel slower (especially HMR).

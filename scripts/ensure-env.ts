@@ -9,7 +9,12 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { applyMappingToEnv, pickFreeDevPort, readMapping } from './dev-hosts';
+import {
+  applyMappingToEnv,
+  assignDevServerEnv,
+  pickFreeDevPort,
+  readMapping,
+} from './dev-hosts';
 import { ensureLocalEnv, upsertEnvVars } from './env-file';
 
 const isOlder = (a: string, b: string): boolean => {
@@ -69,15 +74,18 @@ if (process.env.E2E_TEST !== 'true' && process.env.CLOUDFLARE_ENV !== 'test') {
     if (mapping) {
       const origin = applyMappingToEnv('.env.local', port, mapping);
       if (origin) {
+        assignDevServerEnv(port, origin);
         console.log(
           `[ensure-env] ${origin} ← port ${port} (~/.openstory/dev-tunnels.json)`
         );
       }
     } else {
+      const origin = `http://localhost:${port}`;
       upsertEnvVars('.env.local', {
         PORT: String(port),
-        VITE_APP_URL: `http://localhost:${port}`,
+        VITE_APP_URL: origin,
       });
+      assignDevServerEnv(port, origin);
     }
   } catch (error) {
     console.error(

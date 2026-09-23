@@ -3,7 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseEnvFile } from './env-file';
-import { applyMappingToEnv, pickFreeDevPort, readMapping } from './dev-hosts';
+import {
+  applyMappingToEnv,
+  assignDevServerEnv,
+  pickFreeDevPort,
+  readMapping,
+} from './dev-hosts';
 
 let temps: string[] = [];
 
@@ -35,6 +40,28 @@ function mapping(
     routes: [{ port: 3003, hostname: 'qk3mnpst.openstory.so' }],
     ...overrides,
   };
+}
+
+describe('assignDevServerEnv', () => {
+  it('replaces a PORT the parent autoloaded before the file was rewritten', () => {
+    const previousPort = process.env.PORT;
+    const previousUrl = process.env.VITE_APP_URL;
+    process.env.PORT = '3000';
+    process.env.VITE_APP_URL = 'http://localhost:3000';
+    try {
+      assignDevServerEnv(3007, 'https://qk3mnpst.openstory.so');
+      expect(process.env.PORT).toBe('3007');
+      expect(process.env.VITE_APP_URL).toBe('https://qk3mnpst.openstory.so');
+    } finally {
+      restoreEnv('PORT', previousPort);
+      restoreEnv('VITE_APP_URL', previousUrl);
+    }
+  });
+});
+
+function restoreEnv(key: 'PORT' | 'VITE_APP_URL', value: string | undefined) {
+  if (value === undefined) delete process.env[key];
+  else process.env[key] = value;
 }
 
 describe('applyMappingToEnv', () => {

@@ -16,24 +16,6 @@ import { createServerFnIdGenerator } from './src/platform/server-fn-id.ts';
 
 const isDev = process.env.NODE_ENV !== 'production';
 
-// bun autoloads .env.local into the parent `bun dev` process before
-// ensure-env rewrites PORT. Child `vite` inherits the stale PORT=3000.
-// Prefer the file ensure-env just wrote (skip e2e — Playwright sets PORT).
-if (
-  isDev &&
-  process.env.E2E_TEST !== 'true' &&
-  process.env.CLOUDFLARE_ENV !== 'test'
-) {
-  const envLocal = join(process.cwd(), '.env.local');
-  if (existsSync(envLocal)) {
-    for (const line of readFileSync(envLocal, 'utf8').split('\n')) {
-      const m = /^(PORT|VITE_APP_URL)\s*=\s*(.*)$/.exec(line.trim());
-      const key = m?.[1];
-      const value = m?.[2];
-      if (key && value) process.env[key] = value.replace(/^['"]|['"]$/g, '');
-    }
-  }
-}
 // Per-worktree auth cookie name (#1288). Set on process.env so Vite's usual
 // `import.meta.env.VITE_*` replacement ships it into the worker the same way
 // as VITE_APP_URL. Production builds leave it unset.

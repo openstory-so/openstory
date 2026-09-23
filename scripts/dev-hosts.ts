@@ -276,6 +276,17 @@ export async function pickFreeDevPort(
   );
 }
 
+/**
+ * The Vite process must see the port `ensure-env` just wrote. `bun dev`
+ * autoloads `.env.local` before that write, and Bun will not replace an
+ * existing `PORT`, so the child would keep the stale value. Assigning here
+ * is what the launcher passes down. Vite does not read the file itself.
+ */
+export function assignDevServerEnv(port: number, appUrl: string): void {
+  process.env.PORT = String(port);
+  process.env.VITE_APP_URL = appUrl;
+}
+
 export function applyMappingToEnv(
   envFile: string,
   port: number,
