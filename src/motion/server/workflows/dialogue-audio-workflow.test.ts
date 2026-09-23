@@ -46,7 +46,7 @@ describe('collectDialogueResults', () => {
   test('merges every scene’s clips, keyed by shot', () => {
     const a = [voiced('shot-a', 0, 'Hi')];
     const b = [voiced('shot-b', 0, 'Bye')];
-    const clips = collectDialogueResults(
+    const { clipsByShotId: clips } = collectDialogueResults(
       [
         fulfilled({ 'shot-a': [clip('c1', a, 't1')] }),
         fulfilled({ 'shot-b': [clip('c2', b, 't2')] }),
@@ -57,17 +57,19 @@ describe('collectDialogueResults', () => {
     expect(clips['shot-a']?.[0]?.id).toBe('c1');
   });
 
-  test('throws naming a failed scene by its first shot', () => {
+  test('keeps the scenes that recorded and names a failed one by its first shot', () => {
     const a = [voiced('shot-a', 0, 'Hi')];
-    expect(() =>
-      collectDialogueResults(
-        [
-          fulfilled({ 'shot-a': [clip('c1', a, 't1')] }),
-          { status: 'rejected', reason: new Error('elevenlabs 429') },
-        ],
-        [{ voiced: a }, { voiced: [{ shotId: 'shot-b' }] }]
-      )
-    ).toThrow(/1\/2.*shot-b: elevenlabs 429/);
+    const result = collectDialogueResults(
+      [
+        fulfilled({ 'shot-a': [clip('c1', a, 't1')] }),
+        { status: 'rejected', reason: new Error('elevenlabs 429') },
+      ],
+      [{ voiced: a }, { voiced: [{ shotId: 'shot-b' }] }]
+    );
+    expect(Object.keys(result.clipsByShotId)).toEqual(['shot-a']);
+    expect(result.failures).toEqual([
+      { name: 'shot-b', reason: 'elevenlabs 429' },
+    ]);
   });
 });
 

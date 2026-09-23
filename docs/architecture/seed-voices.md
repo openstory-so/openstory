@@ -91,6 +91,11 @@ line` in order.
   Seed's own subtitles are an alignment of the script and can never show an
   invented word, so they are not requested; turn timings come from Scribe.
 - Failed takes are not billed to the team.
+- **A failed scene does not fail the run.** `DialogueAudioWorkflow` keeps the
+  scenes that recorded and logs the rest; the failed scene's shots record at
+  motion and fail there, one by one, with the reason (e.g. which character
+  still has an ElevenLabs voice sharing a shot with a Seed voice). Fix it and
+  retry those shots — nothing else is regenerated.
 
 ## Open
 

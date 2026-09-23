@@ -17,8 +17,9 @@
  * trailing silence off, bounded rewrite-and-re-record, then a hard failure
  * rather than a file no model can take), the cuts and the rows.
  *
- * All scenes run concurrently; a scene persists its own shots before any
- * failure is surfaced, so a retry skips the shots whose clips now match.
+ * All scenes run concurrently; a scene persists its own shots, and a scene
+ * that fails does not fail the others or the run (`collectDialogueResults`),
+ * so a retry skips the shots whose clips now match.
  */
 
 import { matchingDialogueClips } from '@/motion/dialogue-tts';
@@ -37,11 +38,20 @@ import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 
 const logger = getLogger(['openstory', 'workflow', 'dialogue-audio']);
 
-/** Merge the per-scene results, reporting every scene that failed. */
+/**
+ * Merge the per-scene results. A failed scene does not fail the stage: the
+ * scenes that recorded keep their clips and the run goes on. The failed
+ * scene's shots have no clip, so motion records them itself and fails THOSE
+ * shots with the reason — fix it (a voice, a line) and retry just them,
+ * rather than regenerating the sequence. Its claims already carry the error.
+ */
 export function collectDialogueResults(
   settled: Array<PromiseSettledResult<Record<string, MotionAudioClip[]>>>,
   scenes: ReadonlyArray<{ voiced: ReadonlyArray<{ shotId: string }> }>
-): Record<string, MotionAudioClip[]> {
+): {
+  clipsByShotId: Record<string, MotionAudioClip[]>;
+  failures: Array<{ name: string; reason: string }>;
+} {
   const failures: { name: string; reason: string }[] = [];
   const clipsByShotId: Record<string, MotionAudioClip[]> = {};
   for (const [index, outcome] of settled.entries()) {
@@ -55,12 +65,7 @@ export function collectDialogueResults(
     }
     Object.assign(clipsByShotId, outcome.value);
   }
-  if (failures.length > 0) {
-    throw new Error(
-      `Dialogue audio failed for ${failures.length}/${settled.length} scene(s) — ${failures.map((f) => `${f.name}: ${f.reason}`).join('; ')}`
-    );
-  }
-  return clipsByShotId;
+  return { clipsByShotId, failures };
 }
 
 /**
@@ -140,6 +145,12 @@ export class DialogueAudioWorkflow extends OpenStoryWorkflowEntrypoint<DialogueA
       })
     );
 
-    return { clipsByShotId: collectDialogueResults(settled, scenes) };
+    const { clipsByShotId, failures } = collectDialogueResults(settled, scenes);
+    for (const failure of failures) {
+      logger.warn(
+        `[DialogueAudioWorkflow:cf] Scene starting at shot ${failure.name} not recorded; its shots record at motion: ${failure.reason}`
+      );
+    }
+    return { clipsByShotId };
   }
 }

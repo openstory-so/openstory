@@ -133,9 +133,16 @@ export async function recordSeedDialogueCall(input: {
   if (lines.length === 0) {
     throw new Error('recordSeedDialogueCall requires at least one line');
   }
-  if (lines.some((line) => !isSeedVoiceId(line.voiceId))) {
+  const older = [
+    ...new Set(
+      lines
+        .filter((line) => !isSeedVoiceId(line.voiceId))
+        .map((line) => line.character.trim() || 'The narrator')
+    ),
+  ];
+  if (older.length > 0) {
     throw new NonRetryableError(
-      'These lines mix a Seed voice with an older ElevenLabs voice, which cannot be recorded together. Regenerate the older voice.'
+      `${older.join(' and ')} ${older.length === 1 ? 'has' : 'have'} an older ElevenLabs voice and share${older.length === 1 ? 's' : ''} this shot with a Seed voice; the two cannot be recorded together. Generate a new voice for ${older.join(' and ')}, then retry this shot.`
     );
   }
   const speakers = [...new Set(lines.map((line) => line.voiceId))];
