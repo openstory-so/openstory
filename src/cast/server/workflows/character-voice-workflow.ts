@@ -27,7 +27,11 @@ import {
   SEED_AUDIO_ENDPOINT,
   seedAudioCost,
 } from '@/billing/seed-speech-pricing';
-import { newSeedVoiceId, SEED_AUDIO_MODEL } from '@/cast/seed-voice';
+import {
+  newSeedVoiceId,
+  SEED_AUDIO_MODEL,
+  SEED_VOICE_MAX_TAKES,
+} from '@/cast/seed-voice';
 import { recordRangeRead } from '@/cast/server/voice/seed-voice';
 import { deductWorkflowCredits } from '@/billing/server/workflow-deduction';
 import { generateId } from '@/platform/id';
@@ -60,9 +64,6 @@ import type {
 import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'character-voice']);
-
-/** Range reads per Seed voice — the takes the user picks from (#1765). */
-const SEED_VOICE_TAKES = 3;
 
 /** A read that says anything but its script throws; the retry re-records it. */
 const SEED_READ_STEP = {
@@ -305,7 +306,7 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
 
   /**
    * Seed voice (#1765): an LLM writes a range script from the bible, Seed
-   * reads it SEED_VOICE_TAKES times, and each read that says its script
+   * reads it `takes` times, and each read that says its script
    * becomes a take — three reference clips in R2 under a `seed:` voice id.
    * The first take is the voice; picking another costs nothing.
    */
@@ -340,7 +341,8 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     );
 
     // The takes run side by side; the governor spaces their Seed calls.
-    const takes = Array.from({ length: SEED_VOICE_TAKES }, (_, i) => i + 1);
+    const count = Math.min(SEED_VOICE_MAX_TAKES, Math.max(1, input.takes));
+    const takes = Array.from({ length: count }, (_, i) => i + 1);
     const recorded = await Promise.all(
       takes.map(async (take): Promise<VoicePreview | null> => {
         // Minted in a step so a replay reuses the id the clips were stored under.

@@ -1,5 +1,21 @@
-import { VOICE_ESTIMATE_COST } from '@/billing/elevenlabs-pricing';
-import { voiceProviderLabel } from '@/cast/seed-voice';
+import {
+  SEED_VOICE_TAKE_ESTIMATE,
+  VOICE_DESIGN_COST,
+} from '@/billing/elevenlabs-pricing';
+import { micros } from '@/billing/money';
+import {
+  SEED_VOICE_DEFAULT_TAKES,
+  SEED_VOICE_MAX_TAKES,
+  voiceProviderLabel,
+} from '@/cast/seed-voice';
+import { useSeedVoices } from '@/cast/ui/use-voice-design-available';
+import { ToggleGroup, ToggleGroupItem } from '@/ui/shadcn/toggle-group';
+
+/** 1…SEED_VOICE_MAX_TAKES, for the takes picker. */
+const TAKE_CHOICES = Array.from(
+  { length: SEED_VOICE_MAX_TAKES },
+  (_, i) => i + 1
+);
 import { ActionCost } from '@/billing/ui/action-cost';
 import {
   catalogVoiceBrief,
@@ -50,6 +66,8 @@ export const CharacterVoiceSection: React.FC<{
 }> = ({ sequenceId, character, generateVoices }) => {
   const queryClient = useQueryClient();
   const generate = useGenerateCharacterVoice();
+  const seedVoices = useSeedVoices();
+  const [takeCount, setTakeCount] = useState(SEED_VOICE_DEFAULT_TAKES);
   const setEnabled = useSetCharacterVoiceEnabled();
   const chooseTake = useChooseCharacterVoiceTake();
   const assignVoice = useAssignCharacterVoice();
@@ -309,7 +327,11 @@ export const CharacterVoiceSection: React.FC<{
                 disabled={busy}
                 onClick={() =>
                   generate.mutate(
-                    { sequenceId, characterId: character.id },
+                    {
+                      sequenceId,
+                      characterId: character.id,
+                      takes: takeCount,
+                    },
                     {
                       onError: (error) =>
                         toast.error('Failed to design voice', {
@@ -329,8 +351,41 @@ export const CharacterVoiceSection: React.FC<{
                   Boolean(character.voiceId || takes.length > 0)
                 )}
               </Button>
-              <ActionCost estimate={VOICE_ESTIMATE_COST} />
+              <ActionCost
+                estimate={
+                  seedVoices
+                    ? micros(SEED_VOICE_TAKE_ESTIMATE * takeCount)
+                    : VOICE_DESIGN_COST
+                }
+              />
             </div>
+            {seedVoices && (
+              <div className="flex flex-col gap-1">
+                <ToggleGroup
+                  type="single"
+                  value={String(takeCount)}
+                  onValueChange={(value) => {
+                    if (value) setTakeCount(Number(value));
+                  }}
+                  variant="outline"
+                  size="sm"
+                  spacing={0}
+                  disabled={busy}
+                  aria-label="Takes to generate"
+                >
+                  {TAKE_CHOICES.map((count) => (
+                    <ToggleGroupItem
+                      key={count}
+                      value={String(count)}
+                      aria-label={`${count} ${count === 1 ? 'take' : 'takes'}`}
+                    >
+                      {count}
+                    </ToggleGroupItem>
+                  ))}
+                </ToggleGroup>
+                <p className="text-xs text-muted-foreground">Takes</p>
+              </div>
+            )}
           </div>
           <VoiceLibraryDialog
             open={libraryOpen}

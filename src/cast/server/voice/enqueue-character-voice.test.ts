@@ -91,6 +91,7 @@ describe('enqueueCharacterVoiceDesign', () => {
       character: character(),
       userId: 'user-1',
       analysisModel: null,
+      takes: 2,
       trigger,
     });
     expect(createPendingVoiceClaim).toHaveBeenCalledWith('char-1', 'user-1');
@@ -115,6 +116,7 @@ describe('enqueueCharacterVoiceDesign', () => {
       character: character(),
       userId: 'user-1',
       analysisModel: null,
+      takes: 2,
       trigger: async () => 'run-1',
     });
     expect(stampVoiceClaimWorkflowRunId).toHaveBeenCalledWith(
@@ -133,6 +135,7 @@ describe('enqueueCharacterVoiceDesign', () => {
       character: character(),
       userId: 'user-1',
       analysisModel: null,
+      takes: 2,
       trigger,
     });
     expect(createPendingVoiceClaim).not.toHaveBeenCalled();
@@ -151,6 +154,7 @@ describe('enqueueCharacterVoiceDesign', () => {
         character: character(),
         userId: 'user-1',
         analysisModel: null,
+        takes: 2,
         trigger: async () => {
           throw new Error('workflow binding missing');
         },
@@ -175,6 +179,7 @@ describe('enqueueCharacterVoiceDesign', () => {
       character: character(),
       userId: 'user-1',
       analysisModel: null,
+      takes: 2,
       trigger,
     });
     expect(markVoiceClaimTerminal).toHaveBeenCalledWith(
@@ -209,6 +214,7 @@ describe('enqueueCharacterVoiceDesign', () => {
       character: character(),
       userId: 'user-1',
       analysisModel: null,
+      takes: 2,
       trigger,
     });
     expect(trigger).not.toHaveBeenCalled();
@@ -236,6 +242,7 @@ describe('enqueueCharacterVoiceDesign', () => {
       character: character(),
       userId: 'user-1',
       analysisModel: null,
+      takes: 2,
       trigger,
     });
     expect(markVoiceClaimTerminal).toHaveBeenCalledWith(

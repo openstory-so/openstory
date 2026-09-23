@@ -1033,6 +1033,8 @@ export interface CharacterVoiceWorkflowInput extends SequenceWorkflowContext {
    * before it carry none and design on ElevenLabs.
    */
   voiceProvider: VoiceProvider;
+  /** Seed takes to record, 1–`SEED_VOICE_MAX_TAKES`. ElevenLabs ignores it. */
+  takes: number;
   /**
    * Generating husk this run completes in place (#1715). Absent on in-flight
    * pre-husk payloads; persist then writes via `updateVoice` and does not

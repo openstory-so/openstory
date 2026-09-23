@@ -53,13 +53,17 @@ ElevenLabs configured) and snapshotted on the payload.
    bible: normal / quiet (whispered) / loud (raised, annoyed). **Normal
    spelling only** — "nah-oo" and "to-die" were read literally and set off
    invented words.
-3. Three takes, run side by side, each its own step (`seed-range-read-N`); the three clips of a take are isolated side by side too. One Seed call reads
+3. `takes` takes (1–3, default 2), run side by side, each its own step (`seed-range-read-N`); the three clips of a take are isolated side by side too. One Seed call reads
    all three sections (one voice throughout, booth wording, "natural
    conversational pace" — pace cues like "slow" get over-applied), Scribe
    transcribes it, `checkTake` + `locateParts` find each section, the WAV is
    cut by the word timings, each section is isolated, and the bundle is
    written. A take that says anything but its script throws and the step
    retry re-records it; a take that still fails is dropped.
+   Each take is a different person reading the same description, paid for
+   separately, so the user picks the count: the character card's Generate
+   has a 1 / 2 / 3 picker (`SEED_VOICE_DEFAULT_TAKES` = 2), priced at
+   `SEED_VOICE_TAKE_ESTIMATE` per take. Story generation uses the default.
 4. The first surviving take is the voice. "Use this take" on another costs
    nothing — a Seed take is its voice, there is nothing to save.
 

@@ -15,3 +15,13 @@ export function useVoiceDesignAvailable(): boolean | undefined {
   });
   return data?.available;
 }
+
+/** Are new voices Seed voices, whose takes are paid one by one (#1765)? */
+export function useSeedVoices(): boolean {
+  const { data } = useQuery({
+    queryKey: ['voice-design-available'],
+    queryFn: () => getVoiceDesignAvailableFn(),
+    staleTime: Infinity,
+  });
+  return data?.seed ?? false;
+}

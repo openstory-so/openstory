@@ -17,6 +17,14 @@ const SEED_VOICE_PREFIX = 'seed:';
 /** The model every Seed voice is made and recorded with. */
 export const SEED_AUDIO_MODEL = 'seed-audio-1.0';
 
+/**
+ * Range reads per new Seed voice. Each take is a different person reading the
+ * same description (a description alone never locks a Seed voice), paid for
+ * separately — so the user picks how many to audition (#1765).
+ */
+export const SEED_VOICE_MAX_TAKES = 3;
+export const SEED_VOICE_DEFAULT_TAKES = 2;
+
 export const SEED_VOICE_MOODS = ['normal', 'quiet', 'loud'] as const;
 export type SeedVoiceMood = (typeof SEED_VOICE_MOODS)[number];
 

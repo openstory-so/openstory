@@ -21,6 +21,8 @@ export async function enqueueCharacterVoiceDesign(args: {
   character: CharacterWithSheet;
   userId: string;
   analysisModel: string | null;
+  /** Seed takes to record (#1765). */
+  takes: number;
   trigger: (payload: CharacterVoiceWorkflowInput) => Promise<string>;
 }): Promise<{
   characterId: string;
@@ -28,7 +30,7 @@ export async function enqueueCharacterVoiceDesign(args: {
   alreadyInFlight: boolean;
   targetVersionId: string;
 }> {
-  const { scopedDb, character, userId, analysisModel, trigger } = args;
+  const { scopedDb, character, userId, analysisModel, takes, trigger } = args;
   const claim = await takeLiveVoiceClaimOrInsert(
     scopedDb,
     character.id,
@@ -54,6 +56,7 @@ export async function enqueueCharacterVoiceDesign(args: {
       (analysisModel ? getAnalysisModelById(analysisModel)?.id : undefined) ??
       DEFAULT_ANALYSIS_MODEL,
     voiceProvider: isSeedVoiceConfigured() ? 'seed' : 'elevenlabs',
+    takes,
     targetVersionId: husk.id,
   };
 

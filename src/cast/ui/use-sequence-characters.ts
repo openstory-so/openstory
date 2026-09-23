@@ -139,8 +139,11 @@ function invalidateAfterVoiceChange(
 export function useGenerateCharacterVoice() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { sequenceId: string; characterId: string }) =>
-      generateCharacterVoiceFn({ data }),
+    mutationFn: (data: {
+      sequenceId: string;
+      characterId: string;
+      takes: number;
+    }) => generateCharacterVoiceFn({ data }),
     onSuccess: (_result, { sequenceId, characterId }) => {
       invalidateAfterVoiceChange(queryClient, sequenceId);
       void queryClient.invalidateQueries({

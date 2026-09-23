@@ -171,6 +171,7 @@ function makeEvent(
       voiceDescription,
       analysisModelId: 'anthropic/claude-sonnet-5',
       voiceProvider: 'elevenlabs',
+      takes: 2,
       ...(opts && 'targetVersionId' in opts
         ? { targetVersionId: opts.targetVersionId }
         : { targetVersionId: 'ver-1' }),

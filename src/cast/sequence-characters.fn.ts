@@ -45,7 +45,7 @@ import {
   saveDesignedVoice,
   type AssignableVoicePick,
 } from '@/cast/server/voice/elevenlabs-voice';
-import { isSeedVoiceId } from '@/cast/seed-voice';
+import { isSeedVoiceId, SEED_VOICE_MAX_TAKES } from '@/cast/seed-voice';
 import { buildRegenerateCharacterSheetPayload } from '@/cast/server/sheets/character-sheet-trigger';
 import type { SheetStaleness } from '@/cast/server/sheets/sheet-staleness';
 import { characterSheetHashMatchesStored } from '@/cast/server/workflows/sheet-snapshots';
@@ -224,7 +224,13 @@ export const softDeleteSequenceCharacterFn = createServerFn({ method: 'POST' })
  */
 export const generateCharacterVoiceFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .validator(zodValidator(characterIdInput))
+  .validator(
+    zodValidator(
+      characterIdInput.extend({
+        takes: z.number().int().min(1).max(SEED_VOICE_MAX_TAKES),
+      })
+    )
+  )
   .handler(async ({ context, data }) => {
     if (!isElevenLabsConfigured()) {
       throw new ValidationError('Voice design is not configured');
@@ -235,6 +241,7 @@ export const generateCharacterVoiceFn = createServerFn({ method: 'POST' })
       character,
       userId: context.user.id,
       analysisModel: context.sequence.analysisModel,
+      takes: data.takes,
       trigger: (payload) => triggerWorkflow('/character-voice', payload),
     });
     if (!enqueued.alreadyInFlight) {

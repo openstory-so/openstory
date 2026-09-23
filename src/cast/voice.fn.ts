@@ -13,6 +13,7 @@ import {
   listLibraryVoices,
 } from '@/cast/server/voice/elevenlabs-voice';
 import { isSeedVoiceId, seedVoiceFolder } from '@/cast/seed-voice';
+import { isSeedVoiceConfigured } from '@/models/server/seed-speech-config';
 import {
   getPublicUrl,
   STORAGE_BUCKETS,
@@ -43,8 +44,10 @@ const nationalitySchema = z
 
 export const getVoiceDesignAvailableFn = createServerFn({
   method: 'GET',
-}).handler((): { available: boolean } => ({
+}).handler((): { available: boolean; seed: boolean } => ({
   available: isElevenLabsConfigured(),
+  // New voices are Seed voices, whose takes are paid one by one (#1765).
+  seed: isSeedVoiceConfigured(),
 }));
 
 function requireElevenLabsKey(): string {

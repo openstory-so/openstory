@@ -26,6 +26,7 @@
 
 import { micros, multiplyMicros, type Microdollars } from './money';
 import { seedAudioCost } from './seed-speech-pricing';
+import { SEED_VOICE_DEFAULT_TAKES } from '@/cast/seed-voice';
 import type { EffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 
 /** Billing id for native ElevenLabs TTS (`eleven_v3` / multilingual v2). */
@@ -94,12 +95,22 @@ export function isolationCost(seconds: number): Microdollars {
 export const VOICE_DESIGN_COST = micros(300_000);
 
 /**
- * What to reserve for one new character voice, whichever provider makes it
- * (#1765). A Seed voice is three range reads — each ~35 s of Seed Audio
- * ($0.0875), its Scribe pass and ~30 s of isolation ($0.06) — about $0.45, so
- * the estimate is the dearer of the two, rounded up.
+ * One Seed voice take (#1765): ~35 s of Seed Audio ($0.0875), its Scribe pass
+ * and ~30 s of isolation ($0.06) — about $0.15, rounded up.
  */
-export const VOICE_ESTIMATE_COST = micros(500_000);
+export const SEED_VOICE_TAKE_ESTIMATE = micros(170_000);
+
+/**
+ * What to reserve for one new character voice made during generation,
+ * whichever provider makes it: the dearer of Voice Design and the default
+ * number of Seed takes.
+ */
+export const VOICE_ESTIMATE_COST = micros(
+  Math.max(
+    VOICE_DESIGN_COST,
+    SEED_VOICE_TAKE_ESTIMATE * SEED_VOICE_DEFAULT_TAKES
+  )
+);
 
 export const ELEVENLABS_RATE_CARD: Record<string, EffectiveFalPricing> = {
   // eleven_v3 / eleven_multilingual_v2 — $0.10 per 1,000 characters.
