@@ -41,7 +41,7 @@ export function PromptLengthReadout({
             type="button"
             className={cn(
               look,
-              'cursor-pointer rounded-sm bg-transparent p-0 outline-none focus-visible:ring-3 focus-visible:ring-ring/50'
+              'cursor-default rounded-sm bg-transparent p-0 outline-none focus-visible:ring-3 focus-visible:ring-ring/50'
             )}
           >
             {digits}
