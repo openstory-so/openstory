@@ -85,7 +85,7 @@ import {
   type ImageToVideoModel,
   type TextToImageModel,
 } from '@/models/models';
-import { measurePrompt, promptLengthUnit } from '@/models/prompt-length';
+import { promptLengthFields } from '@/models/prompt-length';
 import {
   estimateImageCost,
   estimateVideoCost,
@@ -2034,14 +2034,8 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                     endpointId: IMAGE_TO_VIDEO_MODELS[effectiveMotionModel].id,
                     prompt: assembledPrompt,
                     json: null,
-                    promptLength: measurePrompt(
+                    ...promptLengthFields(
                       assembledPrompt,
-                      IMAGE_TO_VIDEO_MODELS[effectiveMotionModel]
-                    ),
-                    maxPromptLength:
-                      IMAGE_TO_VIDEO_MODELS[effectiveMotionModel]
-                        .maxPromptLength,
-                    promptLengthUnit: promptLengthUnit(
                       IMAGE_TO_VIDEO_MODELS[effectiveMotionModel]
                     ),
                   }

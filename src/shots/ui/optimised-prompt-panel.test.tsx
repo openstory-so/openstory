@@ -78,6 +78,22 @@ describe('OptimisedPromptPanel', () => {
     expect(html).toContain('2500');
   });
 
+  it('explains the Seedance character count in the tooltip (#1763)', () => {
+    const html = renderPanel({
+      ...selected,
+      modelName: 'Seedance 2.5',
+      promptLength: 120,
+      maxPromptLength: 5500,
+      promptLengthNote:
+        'ByteDance documents about 1,000 English words. Shown in characters so it matches the rest of the interface.',
+    });
+    expect(html).toContain('120');
+    expect(html).toContain('5500');
+    expect(html).toContain('1,000 English words');
+    expect(html).toContain('matches the rest of the interface');
+    expect(html).not.toContain('text-warning');
+  });
+
   it('shows the count alone when the model documents no length (#1754)', () => {
     const html = renderPanel({
       ...selected,

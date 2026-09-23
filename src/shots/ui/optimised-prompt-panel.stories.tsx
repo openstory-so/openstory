@@ -79,8 +79,10 @@ export const BoundImages: Story = {
         2
       ),
       promptLength: 64,
-      maxPromptLength: 4096,
+      maxPromptLength: 5500,
       promptLengthUnit: 'characters',
+      promptLengthNote:
+        'ByteDance documents about 1,000 English words. Shown in characters so it matches the rest of the interface.',
       images: [
         {
           label: '@Image1',
@@ -104,8 +106,10 @@ export const AssembledTextOnly: Story = {
         'Slow push in as Sarah types.\n\nDialogue: SARAH: "This deadline is going to kill me."',
       json: null,
       promptLength: 92,
-      maxPromptLength: 4096,
+      maxPromptLength: 5500,
       promptLengthUnit: 'characters',
+      promptLengthNote:
+        'ByteDance documents about 1,000 English words. Shown in characters so it matches the rest of the interface.',
     },
   },
 };

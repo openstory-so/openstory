@@ -6,8 +6,10 @@
  * style note: "no more than 500 Chinese characters or 1,000 English words"),
  * and fal's Seedance schemas declare no `maxLength` on `prompt` — so the
  * 4096 we carried for that family was our own invention. We therefore never
- * truncate: the user's words go out whole, the length is shown next to the
- * prompt, and going over only earns a warning.
+ * truncate: the prompt goes out whole, the length is shown next to it, and
+ * going over only earns a warning. Seedance's note is in words; the counter
+ * is characters (5,500, about 1,000 English words) so it matches every other
+ * model (#1763). `promptLengthNote` is the tooltip that says so.
  *
  * A hard ceiling is one the via actually rejects on, and only those throw.
  * They are marked `enforcesPromptLimit` in the catalog, each with the number
@@ -27,33 +29,67 @@ const logger = getLogger(['openstory', 'models', 'prompt-length']);
 /** Structured-log event for a prompt past its model's recommendation. */
 const PROMPT_OVER_RECOMMENDED_EVENT = 'prompt_over_recommended_length';
 
-export type PromptLengthUnit = 'characters' | 'words';
+export type PromptLengthUnit = 'characters';
 
 /**
  * The catalog fields a recommendation is read from. Absent where the provider
  * documents nothing (native Grok images): then there is no number to show or
- * warn against, only the length. Ark states Seedance's in English words ("no
- * more than 1,000 English words"); every other number is characters, so the
- * unit is optional and defaults to that.
+ * warn against, only the length. Every number is characters (#1763), including
+ * Seedance — Ark phrases that one in English words, and `promptLengthNote`
+ * is the tooltip that says so.
  */
 export type PromptRecommendation = {
   maxPromptLength?: number;
   promptLengthUnit?: PromptLengthUnit;
+  promptLengthNote?: string;
 };
 
 export function promptLengthUnit(rec: PromptRecommendation): PromptLengthUnit {
   return rec.promptLengthUnit ?? 'characters';
 }
 
-/** How long `prompt` is in the model's own unit — the number shown next to it. */
+/** How long `prompt` is — the number shown next to it. Always characters. */
 export function measurePrompt(
   prompt: string,
-  rec: PromptRecommendation
+  _rec: PromptRecommendation
 ): number {
-  if (promptLengthUnit(rec) === 'characters') return prompt.length;
-  // ponytail: whitespace words. CJK prose has no spaces, so a Chinese prompt
-  // under-counts; split on Han characters too if that ever matters.
-  return prompt.split(/\s+/).filter(Boolean).length;
+  return prompt.length;
+}
+
+/** Counter fields for a preview: length, recommendation, unit, tooltip note. */
+export function promptLengthFields(prompt: string, rec: PromptRecommendation) {
+  return {
+    promptLength: measurePrompt(prompt, rec),
+    maxPromptLength: rec.maxPromptLength,
+    promptLengthUnit: promptLengthUnit(rec),
+    promptLengthNote: rec.promptLengthNote,
+  };
+}
+
+/**
+ * Hover text for the length counter. The note (Seedance) rides every state,
+ * so the unit is explained before the prompt crosses the recommendation.
+ */
+export function promptLengthTooltip(args: {
+  modelName: string;
+  recommendation: PromptRecommendation;
+  overRecommended: boolean;
+  hardLimit?: number;
+  overHard?: boolean;
+}): string {
+  const { modelName, recommendation, overRecommended } = args;
+  const max = recommendation.maxPromptLength;
+  const unit = promptLengthUnit(recommendation);
+  const line =
+    args.overHard && args.hardLimit !== undefined
+      ? `${modelName} maxes out at ${args.hardLimit} characters.`
+      : overRecommended && max !== undefined
+        ? `Over ${modelName}'s recommended ${max} ${unit}. It is still sent in full.`
+        : max !== undefined
+          ? `${modelName} recommends up to ${max} ${unit}.`
+          : `${modelName} sets no prompt length.`;
+  const note = recommendation.promptLengthNote;
+  return note ? `${line} ${note}` : line;
 }
 
 /**

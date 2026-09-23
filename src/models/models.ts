@@ -39,6 +39,19 @@ export type TextModel = AnalysisModelId;
  *
  * Only model-level metadata lives here: identity, audio override, performance.
  */
+
+/**
+ * Ark's Seedance style note is "no more than 500 Chinese characters or 1,000
+ * English words", and nothing enforces it (#1754). 1,000 English words is
+ * about 5.5 characters each, so the counter warns above 5,500 characters —
+ * the same unit as every other model (#1763). The note is the tooltip.
+ */
+const SEEDANCE_PROMPT_LENGTH = {
+  maxPromptLength: 5500,
+  promptLengthNote:
+    'ByteDance documents about 1,000 English words. Shown in characters so it matches the rest of the interface.',
+} as const;
+
 export const IMAGE_TO_VIDEO_MODELS = {
   grok_imagine_video_1_5: {
     id: 'xai/grok-imagine-video/v1.5/image-to-video',
@@ -113,13 +126,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
     vendor: 'ByteDance',
     license: 'proprietary' as const,
     qualityRank: 2,
-    // Ark documents NO limit for Seedance — only a recommendation of "no more
-    // than 500 Chinese characters or 1,000 English words", and fal's Seedance
-    // schemas declare no `maxLength` on `prompt`. Counted in words, as Ark
-    // states it. Nothing enforces it — the old 4096 was ours and was silently
-    // cutting prompts (#1754).
-    maxPromptLength: 1000,
-    promptLengthUnit: 'words' as const,
+    ...SEEDANCE_PROMPT_LENGTH,
     supportsAudio: true,
     // Shot 1/2/3 prose + `cut to`.
     supportsInClipMultiShot: true,
@@ -135,13 +142,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
     vendor: 'ByteDance',
     license: 'proprietary' as const,
     qualityRank: 1,
-    // Ark documents NO limit for Seedance — only a recommendation of "no more
-    // than 500 Chinese characters or 1,000 English words", and fal's Seedance
-    // schemas declare no `maxLength` on `prompt`. Counted in words, as Ark
-    // states it. Nothing enforces it — the old 4096 was ours and was silently
-    // cutting prompts (#1754).
-    maxPromptLength: 1000,
-    promptLengthUnit: 'words' as const,
+    ...SEEDANCE_PROMPT_LENGTH,
     supportsAudio: true,
     // Shot N (0-Ns) paragraphs; 2.5 timestamps, no `cut to`.
     supportsInClipMultiShot: true,
@@ -164,13 +165,7 @@ export const IMAGE_TO_VIDEO_MODELS = {
     vendor: 'ByteDance',
     license: 'proprietary' as const,
     qualityRank: 6,
-    // Ark documents NO limit for Seedance — only a recommendation of "no more
-    // than 500 Chinese characters or 1,000 English words", and fal's Seedance
-    // schemas declare no `maxLength` on `prompt`. Counted in words, as Ark
-    // states it. Nothing enforces it — the old 4096 was ours and was silently
-    // cutting prompts (#1754).
-    maxPromptLength: 1000,
-    promptLengthUnit: 'words' as const,
+    ...SEEDANCE_PROMPT_LENGTH,
     supportsAudio: true,
     // Same in-clip syntax as Seedance 2.0.
     supportsInClipMultiShot: true,

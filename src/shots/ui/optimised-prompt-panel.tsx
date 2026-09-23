@@ -13,6 +13,7 @@ import {
   CollapsibleTrigger,
 } from '@/ui/shadcn/collapsible';
 import { ToggleGroup, ToggleGroupItem } from '@/ui/shadcn/toggle-group';
+import { promptLengthTooltip } from '@/models/prompt-length';
 import type {
   BoundPromptImage,
   OptimisedPromptPreview,
@@ -81,8 +82,12 @@ export const OptimisedPromptPanel: React.FC<{
                       : 'text-muted-foreground'
                   )}
                   title={
-                    overRecommended
-                      ? `Over ${preview.modelName}'s recommended ${preview.maxPromptLength} ${preview.promptLengthUnit}. It is still sent in full.`
+                    overRecommended || preview.promptLengthNote
+                      ? promptLengthTooltip({
+                          modelName: preview.modelName,
+                          recommendation: preview,
+                          overRecommended,
+                        })
                       : undefined
                   }
                 >
