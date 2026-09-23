@@ -17,10 +17,10 @@ export const OPENROUTER_PRICING: Record<string, OpenRouterPricing> = {
     completionPerMillionTokens: 50,
     webSearchPerQuery: 0.01,
   },
-  'anthropic/claude-opus-5': {
-    name: 'Claude Opus 5',
-    promptPerMillionTokens: 5,
-    completionPerMillionTokens: 25,
+  'anthropic/claude-opus-5.5': {
+    name: 'Claude Opus 5.5',
+    promptPerMillionTokens: 4,
+    completionPerMillionTokens: 20,
     webSearchPerQuery: 0.01,
   },
   'anthropic/claude-opus-5-fast': {

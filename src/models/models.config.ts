@@ -35,11 +35,12 @@ export const SCRIPT_ANALYSIS_MODELS = [
     description: 'Most intelligent Anthropic model, new tier above Opus',
   },
   {
-    id: 'anthropic/claude-opus-5',
-    name: 'Claude Opus 5',
+    id: 'anthropic/claude-opus-5.5',
+    name: 'Claude Opus 5.5',
     vendor: 'Anthropic',
     license: 'proprietary' as const,
-    // Arena 1493 (opus-5-high).
+    // Bumped from Claude Opus 5 (Arena 1493, opus-5-high); re-rank on next
+    // LMArena snapshot.
     qualityRank: 3,
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
@@ -434,7 +435,7 @@ export const DEFAULT_ANALYSIS_MODEL: AnalysisModelId = 'openai/gpt-5.6-luna';
  * this is plain Opus 5 rather than the separate Fast id. Bibles and later
  * prompt calls keep the sequence's analysis model.
  */
-export const SCENE_SPLIT_MODEL: AnalysisModelId = 'anthropic/claude-opus-5';
+export const SCENE_SPLIT_MODEL: AnalysisModelId = 'anthropic/claude-opus-5.5';
 
 /**
  * Image generation models are now in src/models/models.ts

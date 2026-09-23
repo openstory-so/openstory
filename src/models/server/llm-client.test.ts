@@ -519,7 +519,7 @@ describe('llm-client', () => {
             })()
           );
         await callLLM({
-          model: 'anthropic/claude-opus-5',
+          model: 'anthropic/claude-opus-5.5',
           messages: [{ role: 'user', content: 'test' }],
           max_tokens,
         });
@@ -951,7 +951,7 @@ describe('llm-client', () => {
 
         await drain(
           callLLMStream({
-            model: 'anthropic/claude-opus-5',
+            model: 'anthropic/claude-opus-5.5',
             messages: [{ role: 'user', content: 'test' }],
           })
         );

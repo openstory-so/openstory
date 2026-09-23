@@ -301,7 +301,7 @@ const STRUCTURED_OUTPUT_MODELS = new Set([
   'anthropic/claude-fable-5.1',
   'anthropic/claude-sonnet-5',
   'x-ai/grok-4.20',
-  'anthropic/claude-opus-5',
+  'anthropic/claude-opus-5.5',
   'anthropic/claude-opus-5-fast',
   'anthropic/claude-opus-4.8',
   'deepseek/deepseek-v3.2',

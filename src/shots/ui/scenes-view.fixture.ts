@@ -40,7 +40,7 @@ export const fixtureSequence: Sequence = {
   styleConfig: null,
   aspectRatio: '9:16',
   resolution: '720p',
-  analysisModel: 'anthropic/claude-opus-5',
+  analysisModel: 'anthropic/claude-opus-5.5',
   analysisDurationMs: 81570,
   imageModel: 'nano_banana_pro',
   videoModel: 'kling_v3_pro',

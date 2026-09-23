@@ -258,7 +258,7 @@ describe('durableLLMCallCf usage cost capture', () => {
             message:
               'openrouter.structuredOutputStream: response contained no content',
             code: 'empty-response',
-            model: 'anthropic/claude-opus-5',
+            model: 'anthropic/claude-opus-5.5',
           },
         ];
         return {

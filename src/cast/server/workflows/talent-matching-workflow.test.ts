@@ -88,7 +88,7 @@ function makeEvent(): Readonly<WorkflowEvent<TalentMatchingWorkflowInput>> {
       userId: 'u1',
       teamId: 'team-1',
       sequenceId: 'seq-1',
-      analysisModelId: 'anthropic/claude-opus-5',
+      analysisModelId: 'anthropic/claude-opus-5.5',
       suggestedTalentIds: ['tal-1'],
       characterBible: [
         entry({ characterId: 'sam', name: 'Sam', physicalDescription: 'wiry' }),
