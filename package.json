@@ -261,6 +261,6 @@
     ]
   },
   "patchedDependencies": {
-    "@tanstack/ai-grok@0.18.4": "patches/@tanstack%2Fai-grok@0.18.4.patch"
+    "@tanstack/ai-grok@0.18.10": "patches/@tanstack%2Fai-grok@0.18.10.patch"
   }
 }
