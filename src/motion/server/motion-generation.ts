@@ -431,6 +431,23 @@ export function arkStillsForMotion(
   return stills;
 }
 
+/**
+ * The stills a batch would actually spend `CreateAsset` on — what pool
+ * admission budgets for (#1756). The same rule as ingest: start frames and
+ * sheets that may show a person; `plain` stills (location, element, known
+ * non-person) ride as URLs and take no slot. Budgeting every reference URL
+ * instead asked for 8 slots where 4 would be created, and stalled the batch.
+ */
+export function arkStillsToRegister(
+  shots: readonly Pick<GenerateMotionOptions, 'imageUrl' | 'referenceImages'>[]
+): string[] {
+  return shots.flatMap((shot) =>
+    arkStillsForMotion(shot)
+      .filter((still) => !still.plain)
+      .map((still) => still.storedUrl)
+  );
+}
+
 export async function submitMotionJob(
   options: SubmitMotionOptions
 ): Promise<MotionJobSubmission> {

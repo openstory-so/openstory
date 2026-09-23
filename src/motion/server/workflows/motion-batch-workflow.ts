@@ -18,6 +18,7 @@ import {
 } from '@/models/server/byteplus-asset-pool';
 import { reportBytePlusAssetPool } from '@/models/server/byteplus-observability';
 import { isBytePlusAssetsConfigured } from '@/models/server/byteplus-config';
+import { arkStillsToRegister } from '@/motion/server/motion-generation';
 import {
   videoPromptHardLimit,
   isNativeBytePlusVideoModel,
@@ -442,10 +443,10 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
     ) {
       return;
     }
-    const stills = input.shots.flatMap((shot) => [
-      ...(shot.imageUrl ? [shot.imageUrl] : []),
-      ...(shot.referenceImages ?? []).map((ref) => ref.referenceImageUrl),
-    ]);
+    // Only the stills ingest will CreateAsset for (#1756): counting every
+    // reference URL budgeted location and element sheets that never take a
+    // slot, and parked batches behind a pool that had room for them.
+    const stills = arkStillsToRegister(input.shots);
     if (!stills.length) return;
 
     for (let attempt = 0; attempt < POOL_ADMISSION_ATTEMPTS; attempt++) {

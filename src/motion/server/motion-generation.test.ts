@@ -67,6 +67,7 @@ const registeredAssets: ArkAssetMap = new Proxy(
 
 const {
   arkStillsForMotion,
+  arkStillsToRegister,
   submitMotionJob,
   pollMotionJob,
   motionCostFromUsage,
@@ -139,6 +140,50 @@ describe('arkStillsForMotion', () => {
         ],
       })
     ).toEqual([{ storedUrl: 'https://cdn/unknown.png', slot: 'library' }]);
+  });
+});
+
+describe('arkStillsToRegister', () => {
+  it('budgets only the stills ingest would create: faces, not sets or props (#1756)', () => {
+    const character = (name: string) => ({
+      referenceImageUrl: `https://cdn/${name}.png`,
+      description: name,
+      role: 'character' as const,
+      token: name,
+      isPerson: true,
+    });
+    const location = {
+      referenceImageUrl: 'https://cdn/pub.png',
+      description: 'The pub',
+      role: 'location' as const,
+      token: 'Pub',
+    };
+    const element = {
+      referenceImageUrl: 'https://cdn/ute.png',
+      description: 'The ute',
+      role: 'element' as const,
+      token: 'Ute',
+    };
+    // Reference-only shots: no start frame, the same sheets on every shot.
+    const shot = {
+      referenceImages: [
+        character('Damo'),
+        character('Shazza'),
+        location,
+        element,
+        { ...character('Cockatoo'), isPerson: false },
+      ],
+    };
+    const stills = arkStillsToRegister([shot, shot, shot]);
+    expect(new Set(stills)).toEqual(
+      new Set(['https://cdn/Damo.png', 'https://cdn/Shazza.png'])
+    );
+  });
+
+  it('counts a start frame', () => {
+    expect(
+      arkStillsToRegister([{ imageUrl: 'https://cdn/still.png' }])
+    ).toEqual(['https://cdn/still.png']);
   });
 });
 
