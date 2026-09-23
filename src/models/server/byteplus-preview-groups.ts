@@ -29,6 +29,7 @@ import {
   isPreviewPrAssetGroupName,
   previewPrNumberFromGroupName,
 } from '@/models/server/byteplus-config';
+import { getEnv } from '#env';
 import { getLogger } from '@/platform/logger';
 import { workersSafeFetch } from '@/platform/server/ai/workers-safe-fetch';
 import type { BytePlusOpenApiConfig } from './byteplus-openapi';
@@ -88,10 +89,24 @@ export async function deleteMatchingPreviewPrGroups(
   return { deleted, failed };
 }
 
-async function listOpenPullRequestNumbers(
+/**
+ * Optional read-only GitHub token for the open-PR listing. Unauthenticated
+ * calls get 60/hour PER SOURCE IP, and a Worker shares Cloudflare's egress
+ * IPs with every other tenant on them — so the hourly sweep was 403'd about
+ * every other run and skipped its per-PR deletes (#1756). A token is
+ * 5,000/hour to itself; a fine-grained PAT with no permissions can list a
+ * public repo's PRs.
+ */
+function gitHubToken(): string | undefined {
+  const value = Reflect.get(getEnv(), 'GITHUB_TOKEN');
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+export async function listOpenPullRequestNumbers(
   fetchImpl: typeof fetch = workersSafeFetch
 ): Promise<Set<number>> {
   const numbers = new Set<number>();
+  const token = gitHubToken();
   for (let page = 1; page <= 10; page += 1) {
     const response = await fetchImpl(
       `${OPENSTORY_PULLS_URL}?state=open&per_page=100&page=${page}`,
@@ -99,12 +114,20 @@ async function listOpenPullRequestNumbers(
         headers: {
           Accept: 'application/vnd.github+json',
           'User-Agent': 'openstory-byteplus-preview-sweep',
+          ...(token && { Authorization: `Bearer ${token}` }),
         },
       }
     );
     if (!response.ok) {
+      // GitHub answers a spent primary rate limit with 403 (or 429); the
+      // remaining count says so where a bare status would not.
+      const remaining = response.headers.get('x-ratelimit-remaining');
       throw new Error(
-        `GitHub list open PRs failed (${response.status}): ${response.statusText}`
+        `GitHub list open PRs failed (${response.status}): ${response.statusText}${
+          remaining !== null
+            ? ` (rate limit remaining ${remaining}, ${token ? 'authenticated' : 'unauthenticated'})`
+            : ''
+        }`
       );
     }
     const body: unknown = await response.json();

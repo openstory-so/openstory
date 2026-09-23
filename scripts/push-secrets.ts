@@ -73,6 +73,9 @@ export const SECRETS = {
   BYTEPLUS_ASSET_GROUP_ID: { runtime: true, build: false },
   BYTEPLUS_ASSET_SLOTS: { runtime: true, build: false },
   BYTEPLUS_OPENAPI_HOST: { runtime: true, build: false },
+  // Read-only: lifts the hourly Ark group sweep's open-PR listing off the
+  // per-IP unauthenticated GitHub limit (#1756).
+  GITHUB_TOKEN: { runtime: true, build: false },
   BETTER_AUTH_SECRET: { runtime: true, build: false },
   // Designed voices live on this account; there is no team BYOK (#1552).
   ELEVENLABS_API_KEY: { runtime: true, build: false },

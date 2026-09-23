@@ -31,6 +31,7 @@ vi.mock('./byteplus-assets', () => ({
 
 const {
   deleteMatchingPreviewPrGroups,
+  listOpenPullRequestNumbers,
   PREVIEW_GROUP_GRACE_MS,
   sweepOrphanedPreviewBytePlusGroups,
   UNOWNED_GROUP_ASSET_MAX_AGE_MS,
@@ -41,6 +42,7 @@ const hoursAgo = (h: number) => new Date(NOW.getTime() - h * 3_600_000);
 
 beforeEach(() => {
   env.VITE_APP_URL = 'https://openstory.so';
+  env.GITHUB_TOKEN = undefined;
   groups = [];
   assetsByGroup = {};
   deletedGroups.length = 0;
@@ -178,5 +180,47 @@ describe('sweepOrphanedPreviewBytePlusGroups', () => {
 
     expect(deletedGroups).toEqual([]);
     expect(summary?.leftoverGroupsDeleted).toBe(0);
+  });
+});
+
+describe('listOpenPullRequestNumbers', () => {
+  const fakeGitHub = (seen: Array<Record<string, string>>) =>
+    (async (_url: unknown, init?: RequestInit) => {
+      const headers: Record<string, string> = {};
+      new Headers(init?.headers).forEach((value, key) => {
+        headers[key] = value;
+      });
+      seen.push(headers);
+      return new Response(JSON.stringify([{ number: 1633 }]), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }) as typeof fetch;
+
+  it('authenticates with GITHUB_TOKEN so the sweep is not on the per-IP limit (#1756)', async () => {
+    env.GITHUB_TOKEN = 'ghp_test';
+    const seen: Array<Record<string, string>> = [];
+    expect(await listOpenPullRequestNumbers(fakeGitHub(seen))).toEqual(
+      new Set([1633])
+    );
+    expect(seen[0]?.authorization).toBe('Bearer ghp_test');
+  });
+
+  it('sends no Authorization header without a token', async () => {
+    const seen: Array<Record<string, string>> = [];
+    await listOpenPullRequestNumbers(fakeGitHub(seen));
+    expect(seen[0]?.authorization).toBeUndefined();
+  });
+
+  it('names the rate limit on a 403', async () => {
+    const limited = (async () =>
+      new Response('rate limited', {
+        status: 403,
+        statusText: 'Forbidden',
+        headers: { 'x-ratelimit-remaining': '0' },
+      })) as typeof fetch;
+    await expect(listOpenPullRequestNumbers(limited)).rejects.toThrow(
+      /403.*rate limit remaining 0, unauthenticated/
+    );
   });
 });
