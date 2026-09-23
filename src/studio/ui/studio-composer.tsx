@@ -20,6 +20,7 @@ import { AspectRatioPills } from '@/ui/settings/aspect-ratio-pills';
 import { ResolutionPills } from '@/ui/settings/resolution-pills';
 import { IMAGE_MODELS, videoPromptHardLimit } from '@/models/models';
 import { measurePrompt, promptLengthTooltip } from '@/models/prompt-length';
+import { PromptLengthReadout } from '@/models/ui/prompt-length-readout';
 import { imageResolutionTiers } from '@/stills/build-image-request';
 import { motionResolutionTiers } from '@/motion/model-capabilities';
 import {
@@ -1581,32 +1582,24 @@ export function StudioComposer({
         </Popover>
 
         {prompt.length > 0 && (
-          <output
-            className={cn(
-              'text-xs tabular-nums',
-              promptTooLong
-                ? 'font-medium text-destructive'
-                : promptOverRecommended
-                  ? 'text-warning'
-                  : 'text-muted-foreground'
-            )}
-            title={promptLengthTooltip({
+          <PromptLengthReadout
+            measured={promptMeasured}
+            limit={promptHardLimit ?? promptRecommendation.maxPromptLength}
+            tooltip={promptLengthTooltip({
               modelName: activeModelName,
               recommendation: promptRecommendation,
               overRecommended: promptOverRecommended,
               hardLimit: promptHardLimit,
               overHard: promptTooLong,
             })}
-          >
-            {promptMeasured}
-            {(promptHardLimit ?? promptRecommendation.maxPromptLength) !==
-              undefined && (
-              <>
-                &nbsp;/&nbsp;
-                {promptHardLimit ?? promptRecommendation.maxPromptLength}
-              </>
-            )}
-          </output>
+            className={
+              promptTooLong
+                ? 'font-medium text-destructive'
+                : promptOverRecommended
+                  ? 'text-warning'
+                  : 'text-muted-foreground'
+            }
+          />
         )}
         <Button
           type="button"

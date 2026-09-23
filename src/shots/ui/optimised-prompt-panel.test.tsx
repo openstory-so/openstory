@@ -78,7 +78,7 @@ describe('OptimisedPromptPanel', () => {
     expect(html).toContain('2500');
   });
 
-  it('explains the Seedance character count in the tooltip (#1763)', () => {
+  it('puts the Seedance length note on an immediate tooltip trigger (#1763)', () => {
     const html = renderPanel({
       ...selected,
       modelName: 'Seedance 2.5',
@@ -89,8 +89,11 @@ describe('OptimisedPromptPanel', () => {
     });
     expect(html).toContain('120');
     expect(html).toContain('5500');
-    expect(html).toContain('1,000 English words');
-    expect(html).toContain('matches the rest of the interface');
+    // The count is its own button, outside the row that expands the panel,
+    // with the same tooltip slot Download uses. The note itself portals on
+    // hover or focus, so it is not in the closed markup.
+    expect(html).toContain('data-slot="tooltip-trigger"');
+    expect(html).not.toContain('title=');
     expect(html).not.toContain('text-warning');
   });
 
