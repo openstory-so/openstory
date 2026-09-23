@@ -6,7 +6,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  groupPlaybackShots,
   scenePlaybackKey,
+  shotIdAtSequenceTime,
   shouldFetchTheatrePlaylist,
   toPlaybackScenes,
 } from './playback-scenes';
@@ -155,4 +157,51 @@ it('updates identity when a still, recording, duration or aspect ratio changes',
     expect(scenePlaybackKey(toPlaybackScenes([changed]))).not.toBe(key);
   }
   expect(scenePlaybackKey(toPlaybackScenes([input], '9:16'))).not.toBe(key);
+});
+
+describe('shotIdAtSequenceTime (#1771)', () => {
+  const timed = (id: string, url: string | null, durationMs = 5000) => ({
+    id,
+    shotNumber: null,
+    durationMs,
+    video: url ? { url } : null,
+  });
+  // Scenes: packed clip (s1 4s + s2 6s), still s3 (3s), clip s4 (5s).
+  const shots = [
+    timed('s1', '/packed.mp4', 4000),
+    timed('s2', '/packed.mp4', 6000),
+    timed('s3', null, 3000),
+    timed('s4', '/d.mp4'),
+  ];
+
+  it('groups adjacent shots that share a clip', () => {
+    expect(
+      groupPlaybackShots(shots).map((group) => group.map((s) => s.id))
+    ).toEqual([['s1', 's2'], ['s3'], ['s4']]);
+  });
+
+  it('splits a measured scene by the members’ own durations', () => {
+    // The packed clip really runs 12s, the still 3s, the last clip 5.5s.
+    const clock = { sceneOffsetsSeconds: [0, 12, 15] };
+    expect(shotIdAtSequenceTime(shots, 0, clock)).toBe('s1');
+    expect(shotIdAtSequenceTime(shots, 4.7, clock)).toBe('s1');
+    expect(shotIdAtSequenceTime(shots, 4.9, clock)).toBe('s2');
+    expect(shotIdAtSequenceTime(shots, 12, clock)).toBe('s3');
+    expect(shotIdAtSequenceTime(shots, 15, clock)).toBe('s4');
+    expect(shotIdAtSequenceTime(shots, 99, clock)).toBe('s4');
+  });
+
+  it('scales the estimate to the media length when only the total is known', () => {
+    // Estimated 18s, actual 36s: every shot is twice as long.
+    const clock = { durationSeconds: 36 };
+    expect(shotIdAtSequenceTime(shots, 7.9, clock)).toBe('s1');
+    expect(shotIdAtSequenceTime(shots, 8, clock)).toBe('s2');
+    expect(shotIdAtSequenceTime(shots, 20, clock)).toBe('s3');
+    expect(shotIdAtSequenceTime(shots, 26, clock)).toBe('s4');
+  });
+
+  it('falls back to the plain estimate with no clock', () => {
+    expect(shotIdAtSequenceTime(shots, 10.5)).toBe('s3');
+    expect(shotIdAtSequenceTime([], 0)).toBeUndefined();
+  });
 });

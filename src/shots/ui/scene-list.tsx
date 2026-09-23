@@ -92,10 +92,11 @@ function scrollIntoScrollArea(el: HTMLElement): boolean {
   if (!(viewport instanceof HTMLElement) || viewport.clientHeight === 0) {
     return false;
   }
-  const y =
-    el.getBoundingClientRect().top -
-    viewport.getBoundingClientRect().top +
-    viewport.scrollTop;
+  const rect = el.getBoundingClientRect();
+  const view = viewport.getBoundingClientRect();
+  // Already in view: leave the list where the user scrolled it.
+  if (rect.top >= view.top && rect.bottom <= view.bottom) return true;
+  const y = rect.top - view.top + viewport.scrollTop;
   viewport.scrollTop = Math.max(
     0,
     y - (viewport.clientHeight - el.offsetHeight) / 2
@@ -147,6 +148,8 @@ export type SceneListProps = {
   onClearSelection: () => void;
   /** Zoom out to the sequence player and switch the centre column to canvas. */
   onPlaySequence?: () => void;
+  /** Shot under the sequence player's playhead (#1771) — marked and kept in view. */
+  playingShotId?: string;
   regeneratingImages: Set<string>;
   regeneratingMotion: Set<string>;
   onBatchGenerateMotion?: (args: BatchGenerateMotionArgs) => Promise<void>;
@@ -214,6 +217,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   onSelectShot,
   onClearSelection,
   onPlaySequence,
+  playingShotId,
   regeneratingImages,
   regeneratingMotion,
   onBatchGenerateMotion,
@@ -592,6 +596,14 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     return () => cancelAnimationFrame(frame);
   }, [scrollToSelection, isLoading, selectedShotId, selectedSceneId]);
 
+  // Follow the playhead: bring the playing shot into view when it leaves it.
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root || !playingShotId) return;
+    const target = selectedListNode(root, playingShotId, undefined);
+    if (target) scrollIntoScrollArea(target);
+  }, [playingShotId]);
+
   return (
     <div
       ref={rootRef}
@@ -690,6 +702,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
               segmentsById={segmentsById}
               isSceneSelected={selection.sceneIds.includes(scene.id)}
               selectedShotId={selection.shotId}
+              playingShotId={playingShotId}
               aspectRatio={aspectRatio}
               onSelectScene={onSelectScene}
               onSelectShot={onSelectShot}
@@ -717,6 +730,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
                 shot={shot}
                 aspectRatio={aspectRatio}
                 isActive={shot.id === selection.shotId}
+                isPlaying={shot.id === playingShotId}
                 variant="horizontal"
                 isRegeneratingImage={regeneratingImages.has(shot.id)}
                 isRegeneratingMotion={regeneratingMotion.has(shot.id)}
@@ -913,6 +927,7 @@ const areEqual = (
   if (
     prevProps.sequenceId !== nextProps.sequenceId ||
     prevProps.selection !== nextProps.selection ||
+    prevProps.playingShotId !== nextProps.playingShotId ||
     prevProps.scenes !== nextProps.scenes ||
     prevProps.segments !== nextProps.segments ||
     prevProps.loadError !== nextProps.loadError ||

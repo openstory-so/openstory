@@ -419,3 +419,11 @@ placeholder, preserving the shot's timeline slot. Hard cuts have no
 cross-fades. Mixed previews bypass the cached exported MP4; export continues
 to require rendered videos. There is no separate animatic button, dialog, or
 playback mode.
+
+While that player runs, the shot list marks the shot under the playhead and
+keeps it in view (#1771). That is component state in `ScenesView`, not
+selection and not the URL: the inspector stays on whatever the user is
+editing, and choosing a shot still swaps the canvas to the single-shot
+player. `shotIdAtSequenceTime` maps the playhead to a shot from the
+stitcher's measured scene offsets; inside a packed clip, and on HLS (which
+reports only the total), shots split the scene by their own `durationMs`.

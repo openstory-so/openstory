@@ -32,6 +32,8 @@ type SceneListItemProps = {
   scene?: SceneWithScript | undefined;
   aspectRatio: AspectRatio;
   isActive?: boolean;
+  /** Under the sequence player's playhead (#1771). Distinct from selection. */
+  isPlaying?: boolean;
   /** Fires after the click; navigation is the card's own link. */
   onSelect?: () => void;
   variant?: 'stacked' | 'horizontal' | 'responsive';
@@ -65,6 +67,7 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
   scene,
   aspectRatio,
   isActive = false,
+  isPlaying = false,
   onSelect,
   variant = 'responsive',
   isRegeneratingImage = false,
@@ -106,10 +109,14 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
     <Card
       data-testid="scene-list-item"
       data-shot-id={shot?.id}
+      data-playing={isPlaying ? 'true' : undefined}
+      aria-current={isPlaying ? 'true' : undefined}
       className={cn(
         '@container/scene group/scene-item relative transition-all',
         isSkeleton ? 'pointer-events-none' : 'cursor-pointer',
         isActive ? 'border-primary bg-primary/5' : 'hover:bg-muted/50',
+        isPlaying &&
+          'ring-2 ring-primary/60 ring-offset-1 ring-offset-background',
         variant === 'responsive' && '@[280px]/scene:py-3',
         variant === 'horizontal' && 'py-3',
         'py-3'
@@ -235,8 +242,13 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <CardTitle className="text-sm">
+            <CardTitle className="flex items-center gap-2 text-sm">
               {title ?? <Skeleton className="w-24 h-4" />}
+              {isPlaying && (
+                <span className="text-xs font-normal text-primary">
+                  Playing
+                </span>
+              )}
             </CardTitle>
             <CardDescription className="line-clamp-2 text-xs leading-snug">
               {preview ?? <Skeleton className="w-full h-4" />}
@@ -305,6 +317,7 @@ const areEqual = (
   if (
     prevProps.aspectRatio !== nextProps.aspectRatio ||
     prevProps.isActive !== nextProps.isActive ||
+    prevProps.isPlaying !== nextProps.isPlaying ||
     prevProps.variant !== nextProps.variant ||
     prevProps.isRegeneratingImage !== nextProps.isRegeneratingImage ||
     prevProps.isRegeneratingMotion !== nextProps.isRegeneratingMotion ||

@@ -78,6 +78,8 @@ type SceneGroupProps = {
   segmentsById: ReadonlyMap<string, SequenceSegment>;
   isSceneSelected: boolean;
   selectedShotId?: string;
+  /** Shot under the sequence player's playhead (#1771). */
+  playingShotId?: string;
   aspectRatio: AspectRatio;
   onSelectScene: (sceneId: string, additive: boolean) => void;
   onSelectShot: (shotId: string) => void;
@@ -228,6 +230,7 @@ const SceneGroupComponent: React.FC<SceneGroupProps> = ({
   segmentsById,
   isSceneSelected,
   selectedShotId,
+  playingShotId,
   aspectRatio,
   onSelectScene,
   onSelectShot,
@@ -546,6 +549,7 @@ const SceneGroupComponent: React.FC<SceneGroupProps> = ({
                   scene={scene}
                   aspectRatio={aspectRatio}
                   isActive={shot.id === selectedShotId}
+                  isPlaying={shot.id === playingShotId}
                   variant="horizontal"
                   isRegeneratingImage={regeneratingImages.has(shot.id)}
                   isRegeneratingMotion={regeneratingMotion.has(shot.id)}

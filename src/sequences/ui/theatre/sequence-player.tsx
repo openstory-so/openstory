@@ -19,7 +19,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/shadcn/tooltip';
 import type { SequencePlayerMeta } from './playback';
 import type { SceneInput } from './concatenated-video-source';
-import { scenePlaybackKey } from './playback-scenes';
+import { scenePlaybackKey, type PlaybackClock } from './playback-scenes';
 import { useTheatreMusic } from './use-theatre-music';
 import {
   captureVideoPlay,
@@ -76,6 +76,8 @@ type SequencePlayerProps = {
    */
   autoPlay?: boolean;
   onAutoPlayConsumed?: () => void;
+  /** Playhead plus what this source knows about scene timing (#1771). */
+  onTimeUpdate?: (time: number, clock: PlaybackClock) => void;
 };
 
 function useMounted(): boolean {
@@ -98,6 +100,7 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
   sequenceId,
   autoPlay = false,
   onAutoPlayConsumed,
+  onTimeUpdate,
 }) => {
   const posthog = usePostHog();
   const mounted = useMounted();
@@ -261,6 +264,14 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
           sequenceId={sequenceId}
           onPlay={onAutoPlayConsumed}
           onLoadedMetadata={() => setServerLoaded(true)}
+          onTimeUpdate={(t) =>
+            onTimeUpdate?.(t, {
+              durationSeconds:
+                media && Number.isFinite(media.duration)
+                  ? media.duration
+                  : undefined,
+            })
+          }
           onMedia={setMedia}
           onError={() => {
             captureVideoPlayFailed(posthog, {
@@ -352,7 +363,12 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
                 setMeta(next);
                 tracker.setDuration(next.durationSeconds);
               }}
-              onTimeUpdate={(t) => tracker.tick(t)}
+              onTimeUpdate={(t) => {
+                tracker.tick(t);
+                onTimeUpdate?.(t, {
+                  sceneOffsetsSeconds: meta?.sceneOffsetsSeconds,
+                });
+              }}
               onPlay={() => {
                 if (!tracker.isActive()) tracker.start();
                 captureVideoPlay(posthog, {

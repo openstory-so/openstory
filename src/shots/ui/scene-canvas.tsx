@@ -23,7 +23,10 @@ import type { ShotView } from '@/shots/shot-view';
 import type { Sequence } from '@/platform/server/db/schema';
 import { Download, Film, Link, Loader2 } from 'lucide-react';
 import { useMemo } from 'react';
-import { toPlaybackScenes } from '@/sequences/ui/theatre/playback-scenes';
+import {
+  shotIdAtSequenceTime,
+  toPlaybackScenes,
+} from '@/sequences/ui/theatre/playback-scenes';
 
 type SceneCanvasProps = {
   selection: SceneSelection;
@@ -57,6 +60,8 @@ type SceneCanvasProps = {
   /** Scene-list play button — start the theatre player once it is ready. */
   autoPlay?: boolean;
   onAutoPlayConsumed?: () => void;
+  /** The shot under the sequence player's playhead (#1771). */
+  onPlayingShot?: (shotId: string | undefined) => void;
 };
 
 /**
@@ -159,6 +164,7 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
   sequenceExport,
   autoPlay = false,
   onAutoPlayConsumed,
+  onPlayingShot,
 }) => {
   const scope = selectionScope(selection);
   const scopedShots = useMemo(
@@ -284,6 +290,9 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
         sequenceId={sequence.id}
         autoPlay={autoPlay}
         onAutoPlayConsumed={onAutoPlayConsumed}
+        onTimeUpdate={(time, clock) =>
+          onPlayingShot?.(shotIdAtSequenceTime(scopedShots, time, clock))
+        }
         playlistUrl={scope !== 'sequence' ? null : sequenceExport.playbackUrl}
         overlayActions={
           scope === 'sequence' ? (

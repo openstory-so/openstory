@@ -335,6 +335,11 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   const handleAutoPlayConsumed = useCallback(() => {
     setAutoPlaySequence(false);
   }, []);
+  // Where the sequence player's playhead is — the rail marks that shot. Not
+  // selection: the inspector keeps whatever the user is editing (#1771). A
+  // single-shot selection swaps the player out, so nothing is playing then.
+  const [playheadShotId, setPlayheadShotId] = useState<string>();
+  const playingShotId = selection.shotId ? undefined : playheadShotId;
 
   const [regeneratingImages, setRegeneratingImages] = useState<Set<string>>(
     () => new Set()
@@ -1578,6 +1583,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     onSelectShot: handleSelectShot,
     onClearSelection: handleClearSelection,
     onPlaySequence: handlePlaySequence,
+    playingShotId,
     regeneratingImages,
     regeneratingMotion,
     onBatchGenerateMotion: handleBatchMotionGeneration,
@@ -1636,6 +1642,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
             scenes={scenes}
             shots={shots}
             selection={selection}
+            playingShotId={playingShotId}
             aspectRatio={aspectRatio}
             staleShotIds={sceneListProps.staleShotIds}
             onExpand={expandRail}
@@ -1689,6 +1696,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                     sequenceExport={sequenceExport}
                     autoPlay={autoPlaySequence}
                     onAutoPlayConsumed={handleAutoPlayConsumed}
+                    onPlayingShot={setPlayheadShotId}
                     selection={selection}
                     shots={shots}
                     scenes={scenes}
