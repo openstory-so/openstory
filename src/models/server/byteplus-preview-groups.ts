@@ -221,7 +221,15 @@ export async function sweepOrphanedPreviewBytePlusGroups(
       }
     }
 
-    if (young === 0) {
+    // An empty group is not a leftover while it is young: a laptop's `bun
+    // dev` creates its group at first ingest and may hold no asset yet when
+    // the hour turns. Deleting it strands that worker's cached group id
+    // (#1756). No CreateTime reads as old, as it did before.
+    const groupCreated = group.CreateTime ? Date.parse(group.CreateTime) : NaN;
+    const groupYoung =
+      Number.isFinite(groupCreated) &&
+      now.getTime() - groupCreated < UNOWNED_GROUP_ASSET_MAX_AGE_MS;
+    if (young === 0 && !groupYoung) {
       try {
         await deleteAssetGroup(ark, id);
         leftoverGroupsDeleted += 1;

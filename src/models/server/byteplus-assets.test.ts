@@ -47,6 +47,17 @@ function configWith(
         }
       }
       const result = handler(body);
+      // `{ __error }` from a handler answers as an Ark error envelope.
+      if (
+        typeof result === 'object' &&
+        result !== null &&
+        '__error' in result
+      ) {
+        return new Response(
+          JSON.stringify({ ResponseMetadata: { Error: result.__error } }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
       return new Response(JSON.stringify({ Result: result }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -97,6 +108,59 @@ describe('ingestAigcAsset', () => {
 
     expect(uri).toBe('asset://asset-1');
     expect(calls).toEqual([
+      'ListAssetGroups',
+      'CreateAssetGroup',
+      'ListAssets',
+      'CreateAsset',
+      'GetAsset',
+    ]);
+  });
+
+  it('recreates the group once when Ark says the cached one is gone (#1756)', async () => {
+    const calls: string[] = [];
+    let groupListings = 0;
+    const config = {
+      ...configWith(
+        {
+          // First resolve finds the stale group; after the miss, none.
+          ListAssetGroups: () => ({
+            Items:
+              groupListings++ === 0
+                ? [{ Id: 'group-stale', Name: aigcGroupName() }]
+                : ([] as BytePlusAssetGroup[]),
+          }),
+          CreateAssetGroup: () => ({ Id: 'group-fresh' }),
+          ListAssets: () => ({ Items: [] as BytePlusAsset[] }),
+          CreateAsset: (body) =>
+            body.GroupId === 'group-stale'
+              ? {
+                  __error: {
+                    Code: 'NotFound.group_id',
+                    Message:
+                      'The specified asset_group group-stale is not found.',
+                  },
+                }
+              : { Id: 'asset-2' },
+          GetAsset: () => ({ Id: 'asset-2', Status: 'Active' }),
+        },
+        calls
+      ),
+      // Own cache key: the module caches the group id per access key.
+      accessKey: 'AKSTALE',
+    };
+
+    const uri = await ingestAigcAsset(config, {
+      identity: '/r2/team/still.png',
+      publicUrl: 'https://cdn.example.com/still.png',
+      assetType: 'Image',
+      sleep: async () => undefined,
+    });
+
+    expect(uri).toBe('asset://asset-2');
+    expect(calls).toEqual([
+      'ListAssetGroups',
+      'ListAssets',
+      'CreateAsset',
       'ListAssetGroups',
       'CreateAssetGroup',
       'ListAssets',

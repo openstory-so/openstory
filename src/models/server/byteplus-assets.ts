@@ -255,7 +255,43 @@ export async function ingestAigcAsset(
     sleep?: (ms: number) => Promise<void>;
   }
 ): Promise<string> {
-  const groupId = await resolveAigcGroupId(config, input.groupId);
+  try {
+    return await ingestAigcAssetInGroup(
+      config,
+      input,
+      await resolveAigcGroupId(config, input.groupId)
+    );
+  } catch (error) {
+    // The cached group was deleted under us (production's hourly sweep,
+    // or the console). Forget it and resolve again — which recreates the
+    // group — once. A pinned `BYTEPLUS_ASSET_GROUP_ID` is not ours to
+    // recreate, so that error stands.
+    if (input.groupId || !isMissingGroupError(error)) throw error;
+    aigcGroupIdByAccount.delete(config.accessKey);
+    return ingestAigcAssetInGroup(
+      config,
+      input,
+      await resolveAigcGroupId(config)
+    );
+  }
+}
+
+function isMissingGroupError(error: unknown): boolean {
+  return (
+    error instanceof Error && error.message.includes('(NotFound.group_id)')
+  );
+}
+
+async function ingestAigcAssetInGroup(
+  config: BytePlusOpenApiConfig,
+  input: {
+    identity: string;
+    publicUrl: string;
+    assetType: BytePlusAssetKind;
+    sleep?: (ms: number) => Promise<void>;
+  },
+  groupId: string
+): Promise<string> {
   const name = assetNameFor(await hashAssetIdentity(input.identity));
   const existing = await listAssetsByName(config, groupId, name);
   const active = existing.find((item) => item.Status === 'Active' && item.Id);

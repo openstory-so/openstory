@@ -133,6 +133,33 @@ describe('sweepOrphanedPreviewBytePlusGroups', () => {
     expect(UNOWNED_GROUP_ASSET_MAX_AGE_MS).toBe(24 * 60 * 60 * 1000);
   });
 
+  it('keeps an empty unowned group that is younger than a day (#1756)', async () => {
+    // A laptop's bun dev creates its group at first ingest; the batch may
+    // still be waiting on admission when the hour turns, so it holds no
+    // asset yet. Deleting it strands the worker's cached group id.
+    groups = [
+      { Id: 'g-prod', Name: 'openstory-virtual-openstory-so' },
+      {
+        Id: 'g-laptop',
+        Name: 'openstory-virtual-snappy-wombat-openstory-so',
+        CreateTime: hoursAgo(2).toISOString(),
+      },
+      {
+        Id: 'g-abandoned',
+        Name: 'openstory-virtual-old-laptop-openstory-so',
+        CreateTime: hoursAgo(30).toISOString(),
+      },
+    ];
+
+    const summary = await sweepOrphanedPreviewBytePlusGroups({
+      now: NOW,
+      openPullRequests: async () => new Set<number>(),
+    });
+
+    expect(deletedGroups).toEqual(['g-abandoned']);
+    expect(summary?.leftoverGroupsDeleted).toBe(1);
+  });
+
   it('does not delete per-PR groups when GitHub is unreachable', async () => {
     groups = [
       {
