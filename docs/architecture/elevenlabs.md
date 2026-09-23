@@ -419,3 +419,12 @@ placeholder, preserving the shot's timeline slot. Hard cuts have no
 cross-fades. Mixed previews bypass the cached exported MP4; export continues
 to require rendered videos. There is no separate animatic button, dialog, or
 playback mode.
+
+While that sequence (or scene-range) player is running, the playhead selects
+the current shot in the rail and inspector and the player stays mounted
+(`playback=continue` keeps the scene range and the shot id together). A
+thumbnail ruler under the frame seeks by shot. "Play this shot only" swaps
+to the single-shot player; clearing it resumes the sequence from that shot.
+Storyboard stills use the same clock, so a cut with no rendered clips still
+shows which shot is on screen. Esc on a followed shot clears the playhead
+and leaves the sequence player up.

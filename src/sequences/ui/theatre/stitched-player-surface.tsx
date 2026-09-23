@@ -27,6 +27,9 @@ type StitchedPlayerSurfaceProps = {
   musicLoudnessGainDb: number | null;
   musicEnabled: boolean;
   autoPlay?: boolean;
+  /** Seek here when `seekNonce` changes. */
+  seekTo?: number | null;
+  seekNonce?: number;
   onLoadProgress?: (loadedScenes: number, totalScenes: number) => void;
   onMeta?: (meta: SequencePlayerMeta) => void;
   onLoadedMetadata?: (duration: number) => void;
@@ -43,6 +46,8 @@ const StitchedPlayerInner: React.FC<StitchedPlayerSurfaceProps> = ({
   musicLoudnessGainDb,
   musicEnabled,
   autoPlay = false,
+  seekTo,
+  seekNonce = 0,
   onLoadProgress,
   onMeta,
   onLoadedMetadata,
@@ -148,6 +153,17 @@ const StitchedPlayerInner: React.FC<StitchedPlayerSurfaceProps> = ({
       media.removeEventListener('ended', handleEnded);
     };
   }, [media]);
+
+  useEffect(() => {
+    if (seekTo == null || seekNonce === 0) return;
+    const apply = () => {
+      if (Math.abs(media.currentTime - seekTo) <= 0.05) return;
+      media.currentTime = seekTo;
+    };
+    apply();
+    media.addEventListener('loadedmetadata', apply);
+    return () => media.removeEventListener('loadedmetadata', apply);
+  }, [seekTo, seekNonce, media]);
 
   useEffect(() => {
     if (!autoPlay) return;

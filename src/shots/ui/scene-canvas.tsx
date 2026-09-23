@@ -6,7 +6,17 @@ import { StartingFrameVariants } from './starting-frame-variants';
 import { formatExportProgress } from './sequence-export-actions';
 import { SequencePlayer } from '@/sequences/ui/theatre/sequence-player';
 import type { SequenceExportState } from '@/sequences/ui/theatre/use-sequence-export';
+import { PlaybackShotScrubber } from '@/sequences/ui/theatre/playback-shot-scrubber';
+import {
+  applySceneDurations,
+  playbackSceneCount,
+  playbackShotSpans,
+  scaleSpansToDuration,
+  shotIdAtPlaybackTime,
+  spanStartForShot,
+} from '@/sequences/ui/theatre/playback-shot-spans';
 import { Button } from '@/ui/shadcn/button';
+import { Checkbox } from '@/ui/shadcn/checkbox';
 import { Skeleton } from '@/ui/shadcn/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/shadcn/tooltip';
 import type { SceneWithScript } from './use-scenes';
@@ -15,14 +25,14 @@ import type { TabValue } from './scene-script-prompts';
 import type { TextToImageModel } from '@/models/models';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import {
-  selectionScope,
-  selectionShots,
+  playbackMode,
+  playbackRangeShots,
   type SceneSelection,
 } from './scene-selection';
 import type { ShotView } from '@/shots/shot-view';
 import type { Sequence } from '@/platform/server/db/schema';
 import { Download, Film, Link, Loader2 } from 'lucide-react';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { toPlaybackScenes } from '@/sequences/ui/theatre/playback-scenes';
 
 type SceneCanvasProps = {
@@ -57,6 +67,13 @@ type SceneCanvasProps = {
   /** Scene-list play button — start the theatre player once it is ready. */
   autoPlay?: boolean;
   onAutoPlayConsumed?: () => void;
+  /**
+   * Sequence/scene playback moved onto this shot. The player stays mounted;
+   * the rail and inspector follow (#1771).
+   */
+  onPlayingShot?: (shotId: string) => void;
+  /** "Play this shot only" / resume the sequence. */
+  onPlaybackChange?: (selection: SceneSelection) => void;
 };
 
 /**
@@ -159,19 +176,97 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
   sequenceExport,
   autoPlay = false,
   onAutoPlayConsumed,
+  onPlayingShot,
+  onPlaybackChange,
 }) => {
-  const scope = selectionScope(selection);
-  const scopedShots = useMemo(
-    () => (shots ? selectionShots(selection, shots) : []),
+  const mode = playbackMode(selection);
+  const rangeShots = useMemo(
+    () => (shots ? playbackRangeShots(selection, shots) : []),
     [selection, shots]
   );
 
   const playbackScenes = useMemo(
-    () => toPlaybackScenes(scopedShots, aspectRatio),
-    [scopedShots, aspectRatio]
+    () => toPlaybackScenes(rangeShots, aspectRatio),
+    [rangeShots, aspectRatio]
   );
 
   const setMusicEnabled = useSetSequenceMusic(sequence?.id ?? '');
+  const rangeKey = rangeShots
+    .map(
+      (shot) =>
+        `${shot.id}:${shot.video?.url ?? ''}:${shot.image?.url ?? ''}:${shot.durationMs ?? ''}`
+    )
+    .join('|');
+  // Key the clock to the play range so a new cut drops the previous
+  // file's durations without an effect.
+  const [sceneClock, setSceneClock] = useState<{
+    key: string;
+    durations: number[];
+  } | null>(null);
+  const [mediaClock, setMediaClock] = useState<{
+    key: string;
+    duration: number;
+  } | null>(null);
+  const [timeClock, setTimeClock] = useState<{ key: string; time: number }>({
+    key: rangeKey,
+    time: 0,
+  });
+  const [seek, setSeek] = useState<{ seconds: number; nonce: number } | null>(
+    null
+  );
+  const sceneDurations =
+    sceneClock?.key === rangeKey ? sceneClock.durations : null;
+  const mediaDuration =
+    mediaClock?.key === rangeKey ? mediaClock.duration : null;
+  const currentTime = timeClock.key === rangeKey ? timeClock.time : 0;
+
+  const spans = useMemo(() => {
+    const base = playbackShotSpans(rangeShots);
+    if (sceneDurations && sceneDurations.length === playbackSceneCount(base)) {
+      return applySceneDurations(base, sceneDurations);
+    }
+    if (mediaDuration != null && mediaDuration > 0) {
+      return scaleSpansToDuration(base, mediaDuration);
+    }
+    return base;
+  }, [rangeShots, sceneDurations, mediaDuration]);
+
+  const requestSeek = (seconds: number) => {
+    setSeek((prev) => ({ seconds, nonce: (prev?.nonce ?? 0) + 1 }));
+    setTimeClock({ key: rangeKey, time: seconds });
+  };
+
+  const handleTimeUpdate = (time: number) => {
+    setTimeClock({ key: rangeKey, time });
+    if (mode !== 'continue') return;
+    // Ignore the resting playhead at 0 until the cut actually moves, so
+    // opening the sequence does not steal the sequence-level inspector.
+    if (time < 0.05 && !selection.shotId) return;
+    const shotId = shotIdAtPlaybackTime(spans, time);
+    if (shotId) onPlayingShot?.(shotId);
+  };
+
+  const showShotOnlyToggle =
+    mode === 'shot' ? (shots?.length ?? 0) > 1 : rangeShots.length > 1;
+
+  const handleShotOnly = (checked: boolean) => {
+    if (!onPlaybackChange || !shots) return;
+    if (checked) {
+      const shotId = selection.shotId ?? spans[0]?.shotId;
+      if (!shotId) return;
+      onPlaybackChange({ sceneIds: [], shotId, playback: 'shot' });
+      return;
+    }
+    const shotId = selection.shotId;
+    if (!shotId) return;
+    const start = spanStartForShot(playbackShotSpans(shots), shotId) ?? 0;
+    onPlaybackChange({
+      sceneIds: [],
+      shotId,
+      playback: 'continue',
+    });
+    requestSeek(start);
+  };
 
   if (loadError) {
     return (
@@ -194,7 +289,7 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
     );
   }
 
-  if (scope === 'shot' && selection.shotId) {
+  if (mode === 'shot' && selection.shotId) {
     const shotId = selection.shotId;
     const selectedShot = shots.find((s) => s.id === shotId);
     const stillUrl = selectedShot?.image?.url;
@@ -234,8 +329,15 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
       <CanvasMediaStage
         aspectRatio={aspectRatio}
         below={
-          selectedShot ? (
-            <ShotDialogueUnderVideo shot={selectedShot} />
+          selectedShot || showShotOnlyToggle ? (
+            <div className="flex flex-col gap-3">
+              {selectedShot ? (
+                <ShotDialogueUnderVideo shot={selectedShot} />
+              ) : null}
+              {showShotOnlyToggle ? (
+                <PlayThisShotOnly checked onCheckedChange={handleShotOnly} />
+              ) : null}
+            </div>
           ) : undefined
         }
       >
@@ -270,13 +372,38 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
     return null;
   }
 
+  const playingWholeSequence =
+    mode === 'continue' && selection.sceneIds.length === 0;
+
   return (
-    <CanvasMediaStage aspectRatio={aspectRatio}>
+    <CanvasMediaStage
+      aspectRatio={aspectRatio}
+      footer={
+        spans.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            <PlaybackShotScrubber
+              spans={spans}
+              currentShotId={
+                selection.shotId ?? shotIdAtPlaybackTime(spans, currentTime)
+              }
+              currentTime={currentTime}
+              onSeek={requestSeek}
+            />
+            {showShotOnlyToggle ? (
+              <PlayThisShotOnly
+                checked={false}
+                onCheckedChange={handleShotOnly}
+              />
+            ) : null}
+          </div>
+        ) : undefined
+      }
+    >
       <SequencePlayer
         scenes={playbackScenes}
-        musicUrl={scope === 'sequence' ? (sequence.musicUrl ?? null) : null}
+        musicUrl={playingWholeSequence ? (sequence.musicUrl ?? null) : null}
         musicLoudnessGainDb={null}
-        musicEnabled={scope === 'sequence' ? sequence.includeMusic : false}
+        musicEnabled={playingWholeSequence ? sequence.includeMusic : false}
         onMusicEnabledChange={(enabled) => setMusicEnabled.mutate(enabled)}
         aspectRatio={aspectRatio}
         className="h-full max-h-none w-full"
@@ -284,13 +411,37 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
         sequenceId={sequence.id}
         autoPlay={autoPlay}
         onAutoPlayConsumed={onAutoPlayConsumed}
-        playlistUrl={scope !== 'sequence' ? null : sequenceExport.playbackUrl}
+        playlistUrl={playingWholeSequence ? sequenceExport.playbackUrl : null}
         overlayActions={
-          scope === 'sequence' ? (
+          playingWholeSequence ? (
             <TheatreShareOverlay sequenceExport={sequenceExport} />
           ) : undefined
         }
+        seekTo={seek?.seconds ?? null}
+        seekNonce={seek?.nonce ?? 0}
+        onTimeUpdate={handleTimeUpdate}
+        onSceneDurations={(durations) =>
+          setSceneClock({ key: rangeKey, durations })
+        }
+        onDuration={(duration) => setMediaClock({ key: rangeKey, duration })}
       />
     </CanvasMediaStage>
   );
 };
+
+const PlayThisShotOnly: React.FC<{
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+}> = ({ checked, onCheckedChange }) => (
+  <label
+    htmlFor="play-this-shot-only"
+    className="flex min-h-11 items-center gap-2 self-start text-sm"
+  >
+    <Checkbox
+      id="play-this-shot-only"
+      checked={checked}
+      onCheckedChange={(value) => onCheckedChange(value === true)}
+    />
+    Play this shot only
+  </label>
+);
