@@ -174,7 +174,6 @@ describe('SECRETS catalog (#1502)', () => {
     expect(SECRETS.BYTEPLUS_ASSET_GROUP_ID).toEqual(runtime);
     expect(SECRETS.BYTEPLUS_ASSET_SLOTS).toEqual(runtime);
     expect(SECRETS.BYTEPLUS_OPENAPI_HOST).toEqual(runtime);
-    expect(SECRETS.GITHUB_TOKEN).toEqual(runtime);
   });
 
   it('pushes ElevenLabs keys as plain runtime secrets — platform only, no BYOK', () => {

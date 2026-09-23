@@ -31,8 +31,6 @@ vi.mock('./byteplus-assets', () => ({
 
 const {
   deleteMatchingPreviewPrGroups,
-  listOpenPullRequestNumbers,
-  PREVIEW_GROUP_GRACE_MS,
   sweepOrphanedPreviewBytePlusGroups,
   UNOWNED_GROUP_ASSET_MAX_AGE_MS,
 } = await import('./byteplus-preview-groups');
@@ -42,7 +40,6 @@ const hoursAgo = (h: number) => new Date(NOW.getTime() - h * 3_600_000);
 
 beforeEach(() => {
   env.VITE_APP_URL = 'https://openstory.so';
-  env.GITHUB_TOKEN = undefined;
   groups = [];
   assetsByGroup = {};
   deletedGroups.length = 0;
@@ -80,13 +77,12 @@ describe('sweepOrphanedPreviewBytePlusGroups', () => {
     expect(
       await sweepOrphanedPreviewBytePlusGroups({
         now: NOW,
-        openPullRequests: async () => new Set(),
       })
     ).toBeNull();
     expect(deletedGroups).toEqual([]);
   });
 
-  it('from production, deletes closed-PR groups and old unowned assets', async () => {
+  it('from production, ages out laptop/legacy groups and never touches a PR group', async () => {
     groups = [
       {
         Id: 'g-closed',
@@ -94,14 +90,9 @@ describe('sweepOrphanedPreviewBytePlusGroups', () => {
         CreateTime: hoursAgo(5).toISOString(),
       },
       {
-        Id: 'g-open',
-        Name: 'openstory-virtual-pr-1633-openstory-workers-dev',
-        CreateTime: hoursAgo(5).toISOString(),
-      },
-      {
-        Id: 'g-fresh',
-        Name: 'openstory-virtual-pr-1600-openstory-workers-dev',
-        CreateTime: hoursAgo(0.25).toISOString(),
+        Id: 'g-stale-pr',
+        Name: 'openstory-virtual-pr-1500-openstory-workers-dev',
+        CreateTime: hoursAgo(30).toISOString(),
       },
       { Id: 'g-prod', Name: 'openstory-virtual-openstory-so' },
       { Id: 'g-legacy', Name: 'openstory-virtual' },
@@ -118,20 +109,18 @@ describe('sweepOrphanedPreviewBytePlusGroups', () => {
       'g-prod': [{ Id: 'prod-old', CreateTime: hoursAgo(48).toISOString() }],
     };
 
-    const summary = await sweepOrphanedPreviewBytePlusGroups({
-      now: NOW,
-      openPullRequests: async () => new Set([1633]),
-    });
+    const summary = await sweepOrphanedPreviewBytePlusGroups({ now: NOW });
 
-    expect(deletedGroups).toEqual(['g-closed', 'g-legacy']);
+    // PR groups are the preview's own to tear down (previews hold no assets,
+    // #1756); production's own group is never touched; no CreateTime on a
+    // laptop/legacy group reads as old.
+    expect(deletedGroups).toEqual(['g-legacy']);
     expect(deletedAssets.sort()).toEqual(['legacy-old', 'local-old']);
     expect(summary).toEqual({
-      leftoverGroupsDeleted: 2,
+      leftoverGroupsDeleted: 1,
       leftoverGroupsFailed: 0,
-      leftoverGroupsSkippedOpen: 1,
       unownedAssetsSwept: 2,
     });
-    expect(PREVIEW_GROUP_GRACE_MS).toBe(45 * 60 * 1000);
     expect(UNOWNED_GROUP_ASSET_MAX_AGE_MS).toBe(24 * 60 * 60 * 1000);
   });
 
@@ -155,72 +144,9 @@ describe('sweepOrphanedPreviewBytePlusGroups', () => {
 
     const summary = await sweepOrphanedPreviewBytePlusGroups({
       now: NOW,
-      openPullRequests: async () => new Set<number>(),
     });
 
     expect(deletedGroups).toEqual(['g-abandoned']);
     expect(summary?.leftoverGroupsDeleted).toBe(1);
-  });
-
-  it('does not delete per-PR groups when GitHub is unreachable', async () => {
-    groups = [
-      {
-        Id: 'g-closed',
-        Name: 'openstory-virtual-pr-1520-openstory-workers-dev',
-        CreateTime: hoursAgo(5).toISOString(),
-      },
-    ];
-
-    const summary = await sweepOrphanedPreviewBytePlusGroups({
-      now: NOW,
-      openPullRequests: async () => {
-        throw new Error('GitHub down');
-      },
-    });
-
-    expect(deletedGroups).toEqual([]);
-    expect(summary?.leftoverGroupsDeleted).toBe(0);
-  });
-});
-
-describe('listOpenPullRequestNumbers', () => {
-  const fakeGitHub = (seen: Array<Record<string, string>>) =>
-    (async (_url: unknown, init?: RequestInit) => {
-      const headers: Record<string, string> = {};
-      new Headers(init?.headers).forEach((value, key) => {
-        headers[key] = value;
-      });
-      seen.push(headers);
-      return new Response(JSON.stringify([{ number: 1633 }]), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }) as typeof fetch;
-
-  it('authenticates with GITHUB_TOKEN so the sweep is not on the per-IP limit (#1756)', async () => {
-    env.GITHUB_TOKEN = 'ghp_test';
-    const seen: Array<Record<string, string>> = [];
-    expect(await listOpenPullRequestNumbers(fakeGitHub(seen))).toEqual(
-      new Set([1633])
-    );
-    expect(seen[0]?.authorization).toBe('Bearer ghp_test');
-  });
-
-  it('sends no Authorization header without a token', async () => {
-    const seen: Array<Record<string, string>> = [];
-    await listOpenPullRequestNumbers(fakeGitHub(seen));
-    expect(seen[0]?.authorization).toBeUndefined();
-  });
-
-  it('names the rate limit on a 403', async () => {
-    const limited = (async () =>
-      new Response('rate limited', {
-        status: 403,
-        statusText: 'Forbidden',
-        headers: { 'x-ratelimit-remaining': '0' },
-      })) as typeof fetch;
-    await expect(listOpenPullRequestNumbers(limited)).rejects.toThrow(
-      /403.*rate limit remaining 0, unauthenticated/
-    );
   });
 });
