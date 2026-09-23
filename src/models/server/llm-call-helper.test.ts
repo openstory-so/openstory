@@ -89,7 +89,7 @@ const nonStreamContext = {
 describe('chatModelOptionsForCall', () => {
   it('uses Responses wire names for LLMTR Luna, not Chat Completions', () => {
     const options = chatModelOptionsForCall(
-      'openai/gpt-5.6-luna',
+      'openai/gpt-6-luna',
       { key: 'k', via: 'llmtr' },
       true
     );
@@ -186,7 +186,7 @@ describe('durableLLMCallCf usage cost capture', () => {
 
     await durableLLMCallCf(
       step,
-      { ...callConfig, modelId: 'openai/gpt-5.6-luna' },
+      { ...callConfig, modelId: 'openai/gpt-6-luna' },
       nonStreamContext
     );
 
