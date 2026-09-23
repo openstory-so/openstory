@@ -78,25 +78,6 @@ describe('OptimisedPromptPanel', () => {
     expect(html).toContain('2500');
   });
 
-  it('puts the Seedance length note on an immediate tooltip trigger (#1763)', () => {
-    const html = renderPanel({
-      ...selected,
-      modelName: 'Seedance 2.5',
-      promptLength: 120,
-      maxPromptLength: 5500,
-      promptLengthNote:
-        'ByteDance documents about 1,000 English words. Shown in characters so it matches the rest of the interface.',
-    });
-    expect(html).toContain('120');
-    expect(html).toContain('5500');
-    // The count is its own button, outside the row that expands the panel,
-    // with the same tooltip slot Download uses. The note itself portals on
-    // hover or focus, so it is not in the closed markup.
-    expect(html).toContain('data-slot="tooltip-trigger"');
-    expect(html).not.toContain('title=');
-    expect(html).not.toContain('text-warning');
-  });
-
   it('shows the count alone when the model documents no length (#1754)', () => {
     const html = renderPanel({
       ...selected,

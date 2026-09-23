@@ -44,12 +44,10 @@ export type TextModel = AnalysisModelId;
  * Ark's Seedance style note is "no more than 500 Chinese characters or 1,000
  * English words", and nothing enforces it (#1754). 1,000 English words is
  * about 5.5 characters each, so the counter warns above 5,500 characters —
- * the same unit as every other model (#1763). The note is the tooltip.
+ * the same unit as every other model (#1763).
  */
 const SEEDANCE_PROMPT_LENGTH = {
   maxPromptLength: 5500,
-  promptLengthNote:
-    'ByteDance documents about 1,000 English words. Shown in characters so it matches the rest of the interface.',
 } as const;
 
 export const IMAGE_TO_VIDEO_MODELS = {

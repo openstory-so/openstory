@@ -19,8 +19,7 @@ import type { MentionItem } from '@/shots/ui/prompt-mention/mention-items';
 import { AspectRatioPills } from '@/ui/settings/aspect-ratio-pills';
 import { ResolutionPills } from '@/ui/settings/resolution-pills';
 import { IMAGE_MODELS, videoPromptHardLimit } from '@/models/models';
-import { measurePrompt, promptLengthTooltip } from '@/models/prompt-length';
-import { PromptLengthReadout } from '@/models/ui/prompt-length-readout';
+import { measurePrompt } from '@/models/prompt-length';
 import { imageResolutionTiers } from '@/stills/build-image-request';
 import { motionResolutionTiers } from '@/motion/model-capabilities';
 import {
@@ -458,8 +457,8 @@ export function StudioComposer({
     ? IMAGE_TO_VIDEO_MODELS[compatibleVideoModel].name
     : IMAGE_MODELS[imageModel].name;
   // The prompt is never cut (#1754), so the composer says how long it is and
-  // when it runs past what the model recommends. Every model counts
-  // characters; Seedance's tooltip explains that its docs speak in words.
+  // turns the count amber past what the model recommends. Every model,
+  // Seedance included, counts characters (#1763).
   const promptRecommendation = isVideo
     ? IMAGE_TO_VIDEO_MODELS[compatibleVideoModel]
     : IMAGE_MODELS[imageModel];
@@ -1582,24 +1581,25 @@ export function StudioComposer({
         </Popover>
 
         {prompt.length > 0 && (
-          <PromptLengthReadout
-            measured={promptMeasured}
-            limit={promptHardLimit ?? promptRecommendation.maxPromptLength}
-            tooltip={promptLengthTooltip({
-              modelName: activeModelName,
-              recommendation: promptRecommendation,
-              overRecommended: promptOverRecommended,
-              hardLimit: promptHardLimit,
-              overHard: promptTooLong,
-            })}
-            className={
+          <output
+            className={cn(
+              'text-xs tabular-nums',
               promptTooLong
                 ? 'font-medium text-destructive'
                 : promptOverRecommended
                   ? 'text-warning'
                   : 'text-muted-foreground'
-            }
-          />
+            )}
+          >
+            {promptMeasured}
+            {(promptHardLimit ?? promptRecommendation.maxPromptLength) !==
+              undefined && (
+              <>
+                &nbsp;/&nbsp;
+                {promptHardLimit ?? promptRecommendation.maxPromptLength}
+              </>
+            )}
+          </output>
         )}
         <Button
           type="button"

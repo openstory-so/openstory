@@ -7,9 +7,9 @@
  * and fal's Seedance schemas declare no `maxLength` on `prompt` — so the
  * 4096 we carried for that family was our own invention. We therefore never
  * truncate: the prompt goes out whole, the length is shown next to it, and
- * going over only earns a warning. Seedance's note is in words; the counter
- * is characters (5,500, about 1,000 English words) so it matches every other
- * model (#1763). `promptLengthNote` is the tooltip that says so.
+ * going over only earns a warning. Seedance's docs speak in words; the
+ * counter is characters (5,500, about 1,000 English words) so it matches
+ * every other model (#1763).
  *
  * A hard ceiling is one the via actually rejects on, and only those throw.
  * They are marked `enforcesPromptLimit` in the catalog, each with the number
@@ -34,14 +34,11 @@ export type PromptLengthUnit = 'characters';
 /**
  * The catalog fields a recommendation is read from. Absent where the provider
  * documents nothing (native Grok images): then there is no number to show or
- * warn against, only the length. Every number is characters (#1763), including
- * Seedance — Ark phrases that one in English words, and `promptLengthNote`
- * is the tooltip that says so.
+ * warn against, only the length. Every number is characters (#1763).
  */
 export type PromptRecommendation = {
   maxPromptLength?: number;
   promptLengthUnit?: PromptLengthUnit;
-  promptLengthNote?: string;
 };
 
 export function promptLengthUnit(rec: PromptRecommendation): PromptLengthUnit {
@@ -56,40 +53,13 @@ export function measurePrompt(
   return prompt.length;
 }
 
-/** Counter fields for a preview: length, recommendation, unit, tooltip note. */
+/** Counter fields for a preview: length, recommendation, unit. */
 export function promptLengthFields(prompt: string, rec: PromptRecommendation) {
   return {
     promptLength: measurePrompt(prompt, rec),
     maxPromptLength: rec.maxPromptLength,
     promptLengthUnit: promptLengthUnit(rec),
-    promptLengthNote: rec.promptLengthNote,
   };
-}
-
-/**
- * Hover text for the length counter. The note (Seedance) rides every state,
- * so the unit is explained before the prompt crosses the recommendation.
- */
-export function promptLengthTooltip(args: {
-  modelName: string;
-  recommendation: PromptRecommendation;
-  overRecommended: boolean;
-  hardLimit?: number;
-  overHard?: boolean;
-}): string {
-  const { modelName, recommendation, overRecommended } = args;
-  const max = recommendation.maxPromptLength;
-  const unit = promptLengthUnit(recommendation);
-  const line =
-    args.overHard && args.hardLimit !== undefined
-      ? `${modelName} maxes out at ${args.hardLimit} characters.`
-      : overRecommended && max !== undefined
-        ? `Over ${modelName}'s recommended ${max} ${unit}. It is still sent in full.`
-        : max !== undefined
-          ? `${modelName} recommends up to ${max} ${unit}.`
-          : `${modelName} sets no prompt length.`;
-  const note = recommendation.promptLengthNote;
-  return note ? `${line} ${note}` : line;
 }
 
 /**

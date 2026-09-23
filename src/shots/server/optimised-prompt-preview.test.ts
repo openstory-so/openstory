@@ -206,7 +206,6 @@ describe('buildShotPromptPreview', () => {
     expect(result.assembledMotionPrompt?.split('No BGM').length).toBe(2);
     expect(result.motion?.maxPromptLength).toBe(5500);
     expect(result.motion?.promptLengthUnit).toBe('characters');
-    expect(result.motion?.promptLengthNote).toContain('1,000 English words');
   });
 
   it('warns when prompt length kept later shots out of the packed clip', () => {

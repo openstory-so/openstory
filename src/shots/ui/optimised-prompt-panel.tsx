@@ -13,8 +13,6 @@ import {
   CollapsibleTrigger,
 } from '@/ui/shadcn/collapsible';
 import { ToggleGroup, ToggleGroupItem } from '@/ui/shadcn/toggle-group';
-import { promptLengthTooltip } from '@/models/prompt-length';
-import { PromptLengthReadout } from '@/models/ui/prompt-length-readout';
 import type {
   BoundPromptImage,
   OptimisedPromptPreview,
@@ -54,50 +52,45 @@ export const OptimisedPromptPanel: React.FC<{
       onOpenChange={setOpen}
       className="rounded-md border"
     >
-      <div className="flex min-h-11 w-full items-center gap-2 pr-3">
-        <CollapsibleTrigger asChild>
-          <button
-            type="button"
-            className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-          >
-            <ChevronRight
-              className={cn(
-                'size-4 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none',
-                open && 'rotate-90'
-              )}
-              aria-hidden
-            />
-            <span className="flex min-w-0 flex-1 items-baseline justify-between gap-2">
-              <span id={headingId} className="font-medium">
-                Optimised prompt
-              </span>
+      <CollapsibleTrigger asChild>
+        <button
+          type="button"
+          className="flex min-h-11 w-full items-center gap-2 px-3 py-2 text-left text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+        >
+          <ChevronRight
+            className={cn(
+              'size-4 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none',
+              open && 'rotate-90'
+            )}
+            aria-hidden
+          />
+          <span className="flex min-w-0 flex-1 items-baseline justify-between gap-2">
+            <span id={headingId} className="font-medium">
+              Optimised prompt
+            </span>
+            <span className="flex min-w-0 items-baseline gap-2">
               <span className="truncate text-xs font-normal text-muted-foreground">
                 {preview?.modelName ?? ''}
               </span>
+              {preview && (
+                <span
+                  className={cn(
+                    'shrink-0 text-xs font-normal tabular-nums',
+                    overRecommended
+                      ? 'font-medium text-warning'
+                      : 'text-muted-foreground'
+                  )}
+                >
+                  {preview.promptLength}
+                  {preview.maxPromptLength !== undefined && (
+                    <>&nbsp;/&nbsp;{preview.maxPromptLength}</>
+                  )}
+                </span>
+              )}
             </span>
-          </button>
-        </CollapsibleTrigger>
-        {preview && (
-          <PromptLengthReadout
-            measured={preview.promptLength}
-            limit={preview.maxPromptLength}
-            tooltip={
-              overRecommended || preview.promptLengthNote
-                ? promptLengthTooltip({
-                    modelName: preview.modelName,
-                    recommendation: preview,
-                    overRecommended,
-                  })
-                : undefined
-            }
-            className={
-              overRecommended
-                ? 'font-medium text-warning'
-                : 'font-normal text-muted-foreground'
-            }
-          />
-        )}
-      </div>
+          </span>
+        </button>
+      </CollapsibleTrigger>
       <CollapsibleContent>
         {preview && (
           <div className="flex flex-col gap-2 border-t px-3 py-2">

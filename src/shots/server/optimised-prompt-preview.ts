@@ -90,11 +90,6 @@ export type OptimisedPromptPreview = {
   maxPromptLength?: number;
   /** Always characters. Seedance included (#1763). */
   promptLengthUnit: PromptLengthUnit;
-  /**
-   * Extra sentence on the counter tooltip. Seedance uses it to say the docs
-   * speak in words while the counter is characters.
-   */
-  promptLengthNote?: string;
   images?: BoundPromptImage[];
   /**
    * Reference clips and audio riding the request (#1559), each labelled with

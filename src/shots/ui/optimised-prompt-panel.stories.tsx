@@ -81,8 +81,6 @@ export const BoundImages: Story = {
       promptLength: 64,
       maxPromptLength: 5500,
       promptLengthUnit: 'characters',
-      promptLengthNote:
-        'ByteDance documents about 1,000 English words. Shown in characters so it matches the rest of the interface.',
       images: [
         {
           label: '@Image1',
@@ -108,8 +106,6 @@ export const AssembledTextOnly: Story = {
       promptLength: 92,
       maxPromptLength: 5500,
       promptLengthUnit: 'characters',
-      promptLengthNote:
-        'ByteDance documents about 1,000 English words. Shown in characters so it matches the rest of the interface.',
     },
   },
 };
