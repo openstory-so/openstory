@@ -87,7 +87,12 @@ sheet) is the usual narrator and gets a voice like anyone else. The child
 runs for each such character that resolves true and has no `voiceId` yet.
 A failed voice child is logged and the run continues — that character's
 lines just have no designed voice for TTS. The LLM drafts `voiceDescription` when empty
-(`phase/voice-design-chat`), Voice Design's previews are parked in R2
+(`phase/voice-design-chat`). Australian English is not written as "Native
+Australian English": Voice Design hears that label as British (#1765). The
+brief opens with a regional Australian accent (laid-back, nasal, rising
+phrase endings) via `voiceDescriptionForDesign`, and `shouldEnhance` stays
+off for that brief so the enhancer cannot sand the accent back off. Other
+accents still go through enhance. Previews are parked in R2
 (`characters.voicePreviews`, AUDIO bucket) and the first is saved as the
 voice; "Use" on another take saves it instead (`chooseCharacterVoiceTakeFn`,
 which writes the new id then releases the old, and moves the take to the

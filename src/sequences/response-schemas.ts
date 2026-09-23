@@ -158,6 +158,6 @@ export const musicDesignResultSchema = z.object({
 export const voiceDescriptionSchema = z.object({
   voiceDescription: z.string().meta({
     description:
-      'Voice Design brief: Native <language>. <gender>, <age>. Excellent quality. Persona: <2-5 words>. Emotion: <2-3 adjectives>. Then 1-2 sentences on timbre, pacing, delivery. Hearable traits only — no appearance, no FX words.',
+      'Voice Design brief. Australian English opens with "Native English, with a regional Australian accent, laid-back and nasal, and rising intonation at the ends of phrases." — not "Native Australian English". Otherwise: Native <language and regional variant>. <gender>, <age>. Excellent quality. Persona: <2-5 words>. Emotion: <2-3 adjectives>. Then 1-2 sentences on timbre, pacing, delivery. Hearable traits only — no appearance, no FX words.',
   }),
 });

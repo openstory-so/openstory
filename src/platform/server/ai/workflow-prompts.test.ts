@@ -1,8 +1,24 @@
 import { describe, expect, it } from 'vitest';
+import { AUSTRALIAN_VOICE_OPENING } from '@/cast/voice';
 import {
   WORKFLOW_CHAT_PROMPTS,
   WORKFLOW_TEXT_PROMPTS,
 } from './workflow-prompts';
+
+describe('Australian voice briefs (#1765)', () => {
+  it('tells bible extraction and Voice Design to avoid the British-sounding label', () => {
+    const bibles =
+      WORKFLOW_CHAT_PROMPTS['phase/scene-bibles-chat']?.[0]?.content ?? '';
+    const design =
+      WORKFLOW_CHAT_PROMPTS['phase/voice-design-chat']?.[0]?.content ?? '';
+    for (const prompt of [bibles, design]) {
+      expect(prompt).toContain(AUSTRALIAN_VOICE_OPENING);
+      expect(prompt).toContain(
+        'not "Native Australian English", which Voice Design hears as British'
+      );
+    }
+  });
+});
 
 describe('remote participant location extraction', () => {
   it.each(['phase/scene-bibles-chat', 'phase/location-extraction-chat'])(

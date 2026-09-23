@@ -10,6 +10,7 @@ import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { CharacterVoiceWorkflowInput } from '@/platform/server/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { VOICE_DESIGN_COST } from '@/billing/elevenlabs-pricing';
+import { voiceDescriptionForDesign } from '@/cast/voice';
 
 const mockDesign = vi.fn();
 const mockSave = vi.fn();
@@ -413,6 +414,20 @@ describe('CharacterVoiceWorkflow', () => {
       'ver-1',
       'failed',
       'Voice Design returned no previews'
+    );
+  });
+
+  it('persists a regional Australian accent instead of Native Australian English', async () => {
+    const { scopedDb, completeVoiceClaimIfLive } = makeScopedDb();
+    const brief =
+      'Native Australian English. Female, mid-30s. Excellent quality. Persona: dry neighbour. Emotion: warm, steady. Low easy timbre, conversational pace.';
+    await makeWorkflow().runBody(makeEvent(brief), makeStep(), scopedDb);
+    const shaped = voiceDescriptionForDesign(brief);
+    expect(shaped).not.toContain('Native Australian English');
+    expect(mockDesign).toHaveBeenCalledWith('el-key', shaped);
+    expect(completeVoiceClaimIfLive).toHaveBeenCalledWith(
+      'ver-1',
+      expect.objectContaining({ description: shaped })
     );
   });
 

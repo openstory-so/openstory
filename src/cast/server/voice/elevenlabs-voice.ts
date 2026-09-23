@@ -10,6 +10,8 @@ import { generateVoice } from '@tanstack/ai';
 import {
   toCatalogVoiceFromLibrary,
   voiceConsumesAccountSlot,
+  voiceDescriptionForDesign,
+  voiceDesignShouldEnhance,
   type CatalogVoiceFilters,
   type CatalogVoicePage,
   type SavedVoiceMeta,
@@ -49,12 +51,15 @@ export async function designVoicePreviews(
     timeoutInSeconds: adapterConfig.timeoutInSeconds,
     ...(adapterConfig.baseURL && { baseURL: adapterConfig.baseURL }),
   });
+  const brief = voiceDescriptionForDesign(voiceDescription);
   const result = await generateVoice({
     adapter,
-    prompt: voiceDescription,
+    prompt: brief,
     modelOptions: {
       autoGenerateText: true,
-      shouldEnhance: true,
+      // Enhance expands a short prompt. It also rewrites a finished Australian
+      // brief back toward a generic English voice, which comes out British.
+      shouldEnhance: voiceDesignShouldEnhance(brief),
       guidanceScale: VOICE_DESIGN_GUIDANCE_SCALE,
       // 192 kbps needs the Creator tier; 128 does not.
       outputFormat: 'mp3_44100_128',

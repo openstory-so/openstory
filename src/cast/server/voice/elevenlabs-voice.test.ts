@@ -59,6 +59,45 @@ describe('Voice Design params', () => {
     expect(VOICE_DESIGN_GUIDANCE_SCALE).toBeGreaterThanOrEqual(15);
     expect(VOICE_DESIGN_GUIDANCE_SCALE).toBeLessThanOrEqual(40);
   });
+
+  it('sends a regional Australian accent and does not let enhance rewrite it', async () => {
+    generateVoice.mockResolvedValue({
+      id: 'r',
+      model: 'eleven_ttv_v3',
+      voices: [],
+    });
+    await designVoicePreviews(
+      'key',
+      'Native Australian English. Female, mid-30s. Excellent quality. Persona: dry neighbour. Emotion: warm, steady. Low easy timbre, conversational pace.'
+    );
+    expect(generateVoice).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringMatching(
+          /^Native English, with a regional Australian accent/
+        ),
+        modelOptions: expect.objectContaining({
+          shouldEnhance: false,
+          autoGenerateText: true,
+          guidanceScale: VOICE_DESIGN_GUIDANCE_SCALE,
+        }),
+      })
+    );
+  });
+
+  it('still enhances a brief that is not Australian', async () => {
+    generateVoice.mockResolvedValue({
+      id: 'r',
+      model: 'eleven_ttv_v3',
+      voices: [],
+    });
+    await designVoicePreviews('key', 'Native English. Female, mid-30s.');
+    expect(generateVoice).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: 'Native English. Female, mid-30s.',
+        modelOptions: expect.objectContaining({ shouldEnhance: true }),
+      })
+    );
+  });
 });
 
 describe('designVoicePreviews', () => {

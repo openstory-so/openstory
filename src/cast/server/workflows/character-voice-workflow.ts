@@ -29,7 +29,7 @@ import type {
   CharacterVoiceWorkflowInput,
   CharacterVoiceWorkflowResult,
 } from '@/platform/server/workflow/types';
-import { markPreviewUnusable } from '@/cast/voice';
+import { markPreviewUnusable, voiceDescriptionForDesign } from '@/cast/voice';
 import {
   releaseReplacedVoice,
   releaseVoiceIfUnreferenced,
@@ -69,7 +69,7 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       status: 'generating',
     });
 
-    const voiceDescription =
+    const drafted =
       input.voiceDescription.trim() ||
       (
         await durableLLMCallCf(
@@ -93,6 +93,9 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           }
         )
       ).voiceDescription;
+    // "Native Australian English" is heard as British. Swap that label
+    // before design and persist the phrase Voice Design actually follows.
+    const voiceDescription = voiceDescriptionForDesign(drafted);
 
     // Previews are free of slots; they land in R2 so the card can audition
     // them after the ElevenLabs preview ids age out.

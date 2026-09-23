@@ -405,6 +405,61 @@ export function voiceConsumesAccountSlot(
   return category !== 'premade';
 }
 
+/**
+ * ElevenLabs Voice Design hears "Native Australian English" as British.
+ * Their prompting guide's working example is a regional Australian accent:
+ * laid-back and nasal. Rising phrase endings are the Australian contour
+ * that label does not carry.
+ * https://elevenlabs.io/docs/eleven-creative/voices/voice-design
+ */
+export const AUSTRALIAN_VOICE_OPENING =
+  'Native English, with a regional Australian accent, laid-back and nasal, and rising intonation at the ends of phrases.';
+
+const AUSTRALIAN_ENGLISH_CLAIM =
+  /\b(australian english|australian accent|aussie accent|native australian)\b/i;
+
+const NATIVE_LANGUAGE_OPENING = /^Native\s+([^.]{1,120})\.\s*/;
+
+const OTHER_ENGLISH_ACCENT =
+  /\b(british|irish|scottish|welsh|american|canadian|indian|south african|new zealand)\b/i;
+
+/**
+ * Brief sent to Voice Design. Australian English keeps its persona and
+ * timbre, and the language label is replaced with {@link AUSTRALIAN_VOICE_OPENING}.
+ * A stated non-Australian accent, or a non-English opening, is left alone.
+ */
+export function voiceDescriptionForDesign(description: string): string {
+  const text = description.trim();
+  if (
+    !text ||
+    !AUSTRALIAN_ENGLISH_CLAIM.test(text) ||
+    text.startsWith(AUSTRALIAN_VOICE_OPENING)
+  ) {
+    return text;
+  }
+  const opening = text.match(NATIVE_LANGUAGE_OPENING);
+  if (opening) {
+    const language = opening[1] ?? '';
+    const claimsAustralian = /\baustralian\b/i.test(language);
+    const claimsEnglish = /\benglish\b/i.test(language);
+    if (!claimsAustralian && !claimsEnglish) return text;
+    if (!claimsAustralian && OTHER_ENGLISH_ACCENT.test(language)) return text;
+    return `${AUSTRALIAN_VOICE_OPENING} ${text.slice(opening[0].length)}`.trim();
+  }
+  return `${AUSTRALIAN_VOICE_OPENING} ${text}`.trim();
+}
+
+/**
+ * `should_enhance` rewrites the brief. Leave it on for ordinary descriptions.
+ * An Australian brief is already the phrase Voice Design follows; enhancing
+ * it is what sands the accent back toward British.
+ */
+export function voiceDesignShouldEnhance(description: string): boolean {
+  return !voiceDescriptionForDesign(description).startsWith(
+    AUSTRALIAN_VOICE_OPENING
+  );
+}
+
 /** Short bible line for a catalog pick so the Voice field is not left blank. */
 export function catalogVoiceBrief(voice: {
   name: string;
