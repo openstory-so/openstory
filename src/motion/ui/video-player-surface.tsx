@@ -46,8 +46,6 @@ type VideoPlayerSurfaceProps = {
   autoPlay?: boolean;
   /** Seek here when the value changes (packed-clip shot windows). */
   seekTo?: number | null;
-  /** Bumps even when `seekTo` repeats, so a second seek to the same time lands. */
-  seekNonce?: number;
   onLoadedMetadata?: (duration: number) => void;
   onTimeUpdate?: (currentTime: number) => void;
   onPause?: () => void;
@@ -64,7 +62,6 @@ const VideoPlayerInner: React.FC<VideoPlayerSurfaceProps> = ({
   posterSrc,
   autoPlay = false,
   seekTo,
-  seekNonce = 0,
   onLoadedMetadata,
   onTimeUpdate,
   onPause,
@@ -198,7 +195,7 @@ const VideoPlayerInner: React.FC<VideoPlayerSurfaceProps> = ({
     apply();
     media.addEventListener('loadedmetadata', apply);
     return () => media.removeEventListener('loadedmetadata', apply);
-  }, [seekTo, seekNonce, media]);
+  }, [seekTo, media]);
 
   return (
     <MinimalVideoSkin>

@@ -33,8 +33,6 @@ type VideoPlayerProps = {
   autoPlay?: boolean;
   /** Seek here when the value changes (packed-clip shot windows). */
   seekTo?: number | null;
-  /** Bumps even when `seekTo` repeats, so a second seek to the same time lands. */
-  seekNonce?: number;
   onLoadedMetadata?: (duration: number) => void;
   onTimeUpdate?: (currentTime: number) => void;
   onPause?: () => void;
@@ -94,7 +92,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   className,
   autoPlay = false,
   seekTo,
-  seekNonce = 0,
   onLoadedMetadata,
   onTimeUpdate,
   onPause,
@@ -191,7 +188,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             posterSrc={null}
             autoPlay={autoPlay}
             seekTo={seekTo}
-            seekNonce={seekNonce}
             onMedia={onMedia}
             onLoadedMetadata={(duration) => {
               tracker.setDuration(duration);

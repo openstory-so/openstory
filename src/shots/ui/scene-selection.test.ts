@@ -2,8 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   ascendSelection,
   parseSelectionFromSearch,
-  playbackMode,
-  playbackRangeShots,
   selectionScope,
   selectionToSearchParams,
   toggleSceneInSelection,
@@ -22,35 +20,13 @@ describe('scene-selection', () => {
     expect(parseSelectionFromSearch({ shot: 'shot-1' })).toEqual({
       sceneIds: [],
       shotId: 'shot-1',
-      playback: 'shot',
     });
   });
 
   it('normalizes a URL carrying both scenes and shot to the shot', () => {
     expect(parseSelectionFromSearch({ scenes: 'a,b', shot: 'shot-1' })).toEqual(
-      { sceneIds: [], shotId: 'shot-1', playback: 'shot' }
+      { sceneIds: [], shotId: 'shot-1' }
     );
-  });
-
-  it('keeps the scene range when the shot is a continue playhead', () => {
-    expect(
-      parseSelectionFromSearch({
-        scenes: 'a,b',
-        shot: 'shot-1',
-        playback: 'continue',
-      })
-    ).toEqual({
-      sceneIds: ['a', 'b'],
-      shotId: 'shot-1',
-      playback: 'continue',
-    });
-    expect(
-      selectionToSearchParams({
-        sceneIds: ['a', 'b'],
-        shotId: 'shot-1',
-        playback: 'continue',
-      })
-    ).toEqual({ scenes: 'a,b', shot: 'shot-1', playback: 'continue' });
   });
 
   it('serializes selection to search params', () => {
@@ -61,29 +37,6 @@ describe('scene-selection', () => {
       shot: 's1',
     });
     expect(selectionToSearchParams({ sceneIds: [] })).toEqual({});
-    expect(playbackMode({ sceneIds: [], shotId: 's1' })).toBe('shot');
-    expect(playbackMode({ sceneIds: ['a'] })).toBe('continue');
-  });
-
-  it('plays the range, not the playhead shot, while continue is on', () => {
-    const shots = [shot('s1', 'a'), shot('s2', 'a'), shot('s3', 'b')];
-    expect(
-      playbackRangeShots(
-        { sceneIds: [], shotId: 's2', playback: 'continue' },
-        shots
-      ).map((item) => item.id)
-    ).toEqual(['s1', 's2', 's3']);
-    expect(
-      playbackRangeShots(
-        { sceneIds: ['a'], shotId: 's2', playback: 'continue' },
-        shots
-      ).map((item) => item.id)
-    ).toEqual(['s1', 's2']);
-    expect(
-      playbackRangeShots({ sceneIds: [], shotId: 's2' }, shots).map(
-        (item) => item.id
-      )
-    ).toEqual(['s2']);
   });
 
   it('derives scope', () => {
@@ -136,22 +89,6 @@ describe('scene-selection', () => {
       sceneIds: [],
     });
     expect(ascendSelection({ sceneIds: [] }, shots)).toBeNull();
-  });
-
-  it('clears a continue playhead without leaving the sequence player', () => {
-    const shots = [shot('s1', 'sc1')];
-    expect(
-      ascendSelection(
-        { sceneIds: [], shotId: 's1', playback: 'continue' },
-        shots
-      )
-    ).toEqual({ sceneIds: [], playback: 'continue' });
-    expect(
-      ascendSelection(
-        { sceneIds: ['sc1'], shotId: 's1', playback: 'continue' },
-        shots
-      )
-    ).toEqual({ sceneIds: ['sc1'], playback: 'continue' });
   });
 
   it('ascends to sequence when shot has no parent scene', () => {

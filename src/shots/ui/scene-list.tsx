@@ -92,10 +92,10 @@ function scrollIntoScrollArea(el: HTMLElement): boolean {
   if (!(viewport instanceof HTMLElement) || viewport.clientHeight === 0) {
     return false;
   }
-  const rect = el.getBoundingClientRect();
-  const view = viewport.getBoundingClientRect();
-  if (rect.top >= view.top && rect.bottom <= view.bottom) return true;
-  const y = rect.top - view.top + viewport.scrollTop;
+  const y =
+    el.getBoundingClientRect().top -
+    viewport.getBoundingClientRect().top +
+    viewport.scrollTop;
   viewport.scrollTop = Math.max(
     0,
     y - (viewport.clientHeight - el.offsetHeight) / 2

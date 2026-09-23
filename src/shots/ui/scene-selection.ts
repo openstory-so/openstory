@@ -1,19 +1,10 @@
 import type { ShotView } from '@/shots/shot-view';
 import { z } from 'zod';
 
-/**
- * How the canvas plays while a shot is current (#1771).
- * `continue` keeps the sequence (or scene-range) player mounted and treats
- * `shotId` as the playhead. `shot` plays only that shot.
- * Omitted: a shot id means `shot`, otherwise `continue`.
- */
-export type PlaybackMode = 'continue' | 'shot';
-
 /** URL-synced editor selection — empty means whole sequence. */
 export type SceneSelection = {
   sceneIds: string[];
   shotId?: string;
-  playback?: PlaybackMode;
 };
 
 export type SelectionScope = 'sequence' | 'scenes' | 'shot';
@@ -48,41 +39,27 @@ export const DEFAULT_CANVAS_VIEW: CanvasView = 'canvas';
 export const scenesSearchSchema = z.object({
   scenes: z.string().optional(),
   shot: z.string().optional(),
-  /** Set when a shot id is the playhead of a sequence/scene play, not a single-shot player. */
-  playback: z.enum(['continue', 'shot']).optional(),
   facet: z.enum(SCENE_FACETS).optional(),
   view: z.enum(CANVAS_VIEWS).optional(),
 });
 
 export type ScenesSearch = z.infer<typeof scenesSearchSchema>;
 
-function sceneIdsFromSearch(scenes: string | undefined): string[] {
-  return scenes ? scenes.split(',').filter((id) => id.length > 0) : [];
-}
-
 export function parseSelectionFromSearch(search: {
   scenes?: string;
   shot?: string;
-  playback?: PlaybackMode;
 }): SceneSelection {
-  // Continue keeps the scene range AND the playhead shot. Any other URL
-  // that carries both (hand-edited or stale) normalizes to the shot.
-  if (search.playback === 'continue') {
-    return {
-      sceneIds: sceneIdsFromSearch(search.scenes),
-      shotId: search.shot,
-      playback: 'continue',
-    };
-  }
+  // Shot and scene selection are mutually exclusive; a URL carrying both
+  // (hand-edited or stale link) normalizes to the shot so every consumer
+  // sees the same state the transition functions produce.
   if (search.shot) {
-    return { sceneIds: [], shotId: search.shot, playback: 'shot' };
+    return { sceneIds: [], shotId: search.shot };
   }
-  return { sceneIds: sceneIdsFromSearch(search.scenes) };
-}
-
-export function playbackMode(selection: SceneSelection): PlaybackMode {
-  if (selection.playback) return selection.playback;
-  return selection.shotId ? 'shot' : 'continue';
+  return {
+    sceneIds: search.scenes
+      ? search.scenes.split(',').filter((id) => id.length > 0)
+      : [],
+  };
 }
 
 export function selectionToSearchParams(
@@ -91,16 +68,7 @@ export function selectionToSearchParams(
   view?: CanvasView
 ): ScenesSearch {
   const params: ScenesSearch = {};
-  const mode = playbackMode(selection);
-  if (mode === 'continue') {
-    if (selection.sceneIds.length > 0) {
-      params.scenes = selection.sceneIds.join(',');
-    }
-    if (selection.shotId) {
-      params.shot = selection.shotId;
-      params.playback = 'continue';
-    }
-  } else if (selection.shotId) {
+  if (selection.shotId) {
     params.shot = selection.shotId;
   } else if (selection.sceneIds.length > 0) {
     params.scenes = selection.sceneIds.join(',');
@@ -130,27 +98,6 @@ export function selectionShots(
     return shots.filter((s) => s.sceneId != null && sceneIdSet.has(s.sceneId));
   }
   return shots;
-}
-
-/**
- * Shots the canvas player should stitch. Continue ignores the playhead shot
- * so selecting it does not swap the sequence player for a single shot.
- */
-export function playbackRangeShots<
-  S extends { id: string; sceneId: string | null },
->(selection: SceneSelection, shots: readonly S[]): S[] {
-  if (playbackMode(selection) === 'shot') {
-    if (!selection.shotId) return [];
-    const shot = shots.find((item) => item.id === selection.shotId);
-    return shot ? [shot] : [];
-  }
-  if (selection.sceneIds.length > 0) {
-    const sceneIdSet = new Set(selection.sceneIds);
-    return shots.filter(
-      (item) => item.sceneId != null && sceneIdSet.has(item.sceneId)
-    );
-  }
-  return shots.slice();
 }
 
 export function toggleSceneInSelection(
@@ -206,11 +153,6 @@ export function ascendSelection(
   selection: SceneSelection,
   shots: ReadonlyArray<{ id: string; sceneId: string | null }>
 ): SceneSelection | null {
-  // Playhead follow: Esc clears the cursor and leaves the sequence player
-  // on the same range. A single-shot player still walks shot → scene.
-  if (selection.shotId && playbackMode(selection) === 'continue') {
-    return { sceneIds: selection.sceneIds, playback: 'continue' };
-  }
   if (selection.shotId) {
     const shot = shots.find((s) => s.id === selection.shotId);
     const sceneId = shot?.sceneId;

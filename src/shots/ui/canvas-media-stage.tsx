@@ -25,8 +25,6 @@ const CAPTION_BAND = 'h-6';
 type CanvasMediaStageProps = {
   aspectRatio: AspectRatio;
   children: ReactNode;
-  /** Shot ruler under the frame. Full stage width, so it can match the picture. */
-  footer?: ReactNode;
   /** Content under the media — the shot's dialogue (#1657). */
   below?: ReactNode;
   className?: string;
@@ -35,7 +33,6 @@ type CanvasMediaStageProps = {
 export const CanvasMediaStage: React.FC<CanvasMediaStageProps> = ({
   aspectRatio,
   children,
-  footer,
   below,
   className,
 }) => (
@@ -59,11 +56,6 @@ export const CanvasMediaStage: React.FC<CanvasMediaStageProps> = ({
         {children}
       </div>
     </div>
-    {footer ? (
-      <div data-testid="canvas-media-footer" className="w-full shrink-0 pt-2">
-        {footer}
-      </div>
-    ) : null}
     <div
       data-testid="canvas-media-caption-band"
       className={cn('shrink-0', CAPTION_BAND)}

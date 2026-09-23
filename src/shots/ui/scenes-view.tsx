@@ -82,11 +82,9 @@ import {
 } from '@/models/models';
 import {
   clearSelection,
-  playbackMode,
   selectShot,
   selectionScope,
   selectionShots,
-  type SceneSelection,
   type ScenesSearch,
 } from './scene-selection';
 import { formatShotSpan } from '@/shots/scene-segments';
@@ -337,29 +335,6 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   const handleAutoPlayConsumed = useCallback(() => {
     setAutoPlaySequence(false);
   }, []);
-  const handlePlayingShot = useCallback(
-    (shotId: string) => {
-      if (playbackMode(selection) !== 'continue') return;
-      if (selection.shotId === shotId && selection.playback === 'continue')
-        return;
-      setSelection(
-        {
-          sceneIds: selection.sceneIds,
-          shotId,
-          playback: 'continue',
-        },
-        undefined,
-        true
-      );
-    },
-    [selection, setSelection]
-  );
-  const handlePlaybackChange = useCallback(
-    (next: SceneSelection) => {
-      setSelection(next, undefined, true);
-    },
-    [setSelection]
-  );
 
   const [regeneratingImages, setRegeneratingImages] = useState<Set<string>>(
     () => new Set()
@@ -1714,8 +1689,6 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                     sequenceExport={sequenceExport}
                     autoPlay={autoPlaySequence}
                     onAutoPlayConsumed={handleAutoPlayConsumed}
-                    onPlayingShot={handlePlayingShot}
-                    onPlaybackChange={handlePlaybackChange}
                     selection={selection}
                     shots={shots}
                     scenes={scenes}

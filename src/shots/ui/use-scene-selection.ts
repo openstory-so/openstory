@@ -26,10 +26,10 @@ export function useSceneSelection({
 }: UseSceneSelectionOptions) {
   const navigate = useNavigate();
 
-  const { scenes, shot, playback } = search;
+  const { scenes, shot } = search;
   const selection = useMemo(
-    () => parseSelectionFromSearch({ scenes, shot, playback }),
-    [scenes, shot, playback]
+    () => parseSelectionFromSearch({ scenes, shot }),
+    [scenes, shot]
   );
 
   const view = search.view ?? DEFAULT_CANVAS_VIEW;

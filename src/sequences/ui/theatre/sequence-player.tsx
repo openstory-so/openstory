@@ -76,14 +76,6 @@ type SequencePlayerProps = {
    */
   autoPlay?: boolean;
   onAutoPlayConsumed?: () => void;
-  /** Seek when `seekNonce` changes. Used by the shot scrubber (#1771). */
-  seekTo?: number | null;
-  seekNonce?: number;
-  onTimeUpdate?: (currentTime: number) => void;
-  /** Measured per-scene durations from the stitcher, in playback order. */
-  onSceneDurations?: (durations: number[]) => void;
-  /** Media duration when the source does not report per-scene lengths (HLS). */
-  onDuration?: (duration: number) => void;
 };
 
 function useMounted(): boolean {
@@ -106,11 +98,6 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
   sequenceId,
   autoPlay = false,
   onAutoPlayConsumed,
-  seekTo = null,
-  seekNonce = 0,
-  onTimeUpdate,
-  onSceneDurations,
-  onDuration,
 }) => {
   const posthog = usePostHog();
   const mounted = useMounted();
@@ -273,13 +260,7 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
           playSource={playSource}
           sequenceId={sequenceId}
           onPlay={onAutoPlayConsumed}
-          seekTo={seekTo}
-          seekNonce={seekNonce}
-          onLoadedMetadata={(duration) => {
-            setServerLoaded(true);
-            onDuration?.(duration);
-          }}
-          onTimeUpdate={onTimeUpdate}
+          onLoadedMetadata={() => setServerLoaded(true)}
           onMedia={setMedia}
           onError={() => {
             captureVideoPlayFailed(posthog, {
@@ -366,24 +347,12 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
               musicLoudnessGainDb={musicLoudnessGainDb}
               musicEnabled={musicEnabled}
               autoPlay={autoPlay}
-              seekTo={seekTo}
-              seekNonce={seekNonce}
               onLoadProgress={(loaded) => setLoadedScenes(loaded)}
               onMeta={(next) => {
                 setMeta(next);
                 tracker.setDuration(next.durationSeconds);
-                onDuration?.(next.durationSeconds);
-                onSceneDurations?.(
-                  next.sceneOffsetsSeconds.map((offset, index, offsets) => {
-                    const end = offsets[index + 1] ?? next.durationSeconds;
-                    return end - offset;
-                  })
-                );
               }}
-              onTimeUpdate={(t) => {
-                tracker.tick(t);
-                onTimeUpdate?.(t);
-              }}
+              onTimeUpdate={(t) => tracker.tick(t)}
               onPlay={() => {
                 if (!tracker.isActive()) tracker.start();
                 captureVideoPlay(posthog, {
