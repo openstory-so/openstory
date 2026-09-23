@@ -12,12 +12,14 @@ import {
   listShotDialogueSectionsFn,
   listShotDialogueVersionsFn,
   regenerateShotDialogueFn,
+  saveShotDialogueFn,
   selectShotDialogueSectionFn,
   selectShotDialogueVersionFn,
 } from '@/shots/shot-dialogue.fn';
 import type { ShotView } from '@/shots/shot-view';
 import { Button } from '@/ui/shadcn/button';
 import { Skeleton } from '@/ui/shadcn/skeleton';
+import type { QueryClient } from '@tanstack/react-query';
 import {
   useMutation,
   useQueryClient,
@@ -25,11 +27,14 @@ import {
 } from '@tanstack/react-query';
 import { Suspense } from 'react';
 import { toast } from 'sonner';
+import type { DialogueLine } from '@/shots/scene-analysis.schema';
 import {
+  DialogueLinesEditor,
   ShotDialogueBlock,
   ShotDialogueHistory,
   ShotReadingsList,
   ShotRecordingsInFlight,
+  shotSpokenByNote,
 } from './motion-dialogue-panel';
 import { StalenessIndicator } from './staleness/staleness-indicator';
 import { segmentKeys } from './use-segments';
@@ -40,12 +45,19 @@ type ReadingsProps = {
   sequenceId: string;
   shotId: string;
   collapsible?: boolean;
+  /**
+   * Set when the shot is voiced by the video model or an audio element
+   * (`shotSpokenByNote`, #1773): the reading is not in use, so it shows this
+   * note in place of the staleness line and the Generate button.
+   */
+  spokenBy: string | null;
 };
 
 const Readings: React.FC<ReadingsProps> = ({
   sequenceId,
   shotId,
   collapsible,
+  spokenBy,
 }) => {
   const queryClient = useQueryClient();
   // Keyed by shot alone: a new recording invalidates it (the realtime
@@ -127,7 +139,9 @@ const Readings: React.FC<ReadingsProps> = ({
   const staleBecause = current?.mismatch ?? null;
   return (
     <>
-      {recording ? null : staleBecause ? (
+      {spokenBy ? (
+        <p className="text-xs text-muted-foreground">{spokenBy}</p>
+      ) : recording ? null : staleBecause ? (
         <StalenessIndicator
           entityType="shot"
           density="status-line"
@@ -176,6 +190,45 @@ const Readings: React.FC<ReadingsProps> = ({
   );
 };
 
+/**
+ * Everything that reads a shot's lines, after they moved (a restore or an
+ * edit): its history, which readings match, `shot.dialogue` on the shots list,
+ * and the video rendered from the old lines.
+ */
+const invalidateLinesMoved = (
+  queryClient: QueryClient,
+  sequenceId: string,
+  shotId: string
+) =>
+  Promise.all([
+    queryClient.invalidateQueries({
+      queryKey: shotKeys.dialogueVersions(shotId),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: shotKeys.dialogueSections(shotId),
+    }),
+    queryClient.invalidateQueries({ queryKey: shotKeys.list(sequenceId) }),
+    queryClient.invalidateQueries({ queryKey: segmentKeys.list(sequenceId) }),
+    queryClient.invalidateQueries({ queryKey: shotKeys.detail(shotId) }),
+    queryClient.invalidateQueries({ queryKey: shotStalenessNamespace }),
+  ]);
+
+/** Same speakers, words and tone — voice bindings aside. */
+const sameWords = (
+  a: readonly DialogueLine[],
+  b: readonly DialogueLine[]
+): boolean =>
+  a.length === b.length &&
+  a.every((line, index) => {
+    const other = b.at(index);
+    return (
+      other !== undefined &&
+      line.character === other.character &&
+      line.line === other.line &&
+      line.tone === other.tone
+    );
+  });
+
 /** The shot's authored line history, and the way back to an earlier set. */
 const DialogueHistory: React.FC<{ sequenceId: string; shotId: string }> = ({
   sequenceId,
@@ -189,36 +242,25 @@ const DialogueHistory: React.FC<{ sequenceId: string; shotId: string }> = ({
   const selectVersion = useMutation({
     mutationFn: (versionId: string) =>
       selectShotDialogueVersionFn({ data: { sequenceId, shotId, versionId } }),
-    onSuccess: () =>
-      Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: shotKeys.dialogueVersions(shotId),
-        }),
-        // Which readings match the lines moved with them.
-        queryClient.invalidateQueries({
-          queryKey: shotKeys.dialogueSections(shotId),
-        }),
-        // `shot.dialogue` rides the shots list; the clip now reads stale.
-        queryClient.invalidateQueries({ queryKey: shotKeys.list(sequenceId) }),
-        // The video rendered with the old clip now reads stale.
-        queryClient.invalidateQueries({
-          queryKey: segmentKeys.list(sequenceId),
-        }),
-        queryClient.invalidateQueries({ queryKey: shotKeys.detail(shotId) }),
-        queryClient.invalidateQueries({ queryKey: shotStalenessNamespace }),
-      ]),
+    onSuccess: () => invalidateLinesMoved(queryClient, sequenceId, shotId),
     onError: (error: Error) =>
       toast.error('Lines not restored', { description: error.message }),
   });
   return (
     <ShotDialogueHistory
-      versions={versions.map((version) => ({
-        id: version.id,
-        source: version.source,
-        createdAt: version.createdAt,
-        selected: version.selectedAt !== null,
-        lines: version.lines,
-      }))}
+      versions={versions.map((version, index) => {
+        // Newest first, so the version this one replaced is the next row.
+        const before = versions[index + 1];
+        return {
+          id: version.id,
+          source: version.source,
+          createdAt: version.createdAt,
+          selected: version.selectedAt !== null,
+          lines: version.lines,
+          voiceOnly:
+            before !== undefined && sameWords(version.lines, before.lines),
+        };
+      })}
       onUse={(versionId) => selectVersion.mutate(versionId)}
       usingId={selectVersion.isPending ? selectVersion.variables : null}
     />
@@ -257,8 +299,77 @@ export const ShotDialogueUnderVideo: React.FC<{ shot: ShotView }> = ({
           sequenceId={shot.sequenceId}
           shotId={shot.id}
           collapsible
+          spokenBy={shotSpokenByNote(
+            shot.dialogue?.presence ? shot.dialogue.lines : []
+          )}
         />
       }
     />
+  );
+};
+
+/**
+ * A shot's lines, editable in place (#1773). The save appends a `user-edit`
+ * version of this shot's lines only — no prompt row, no other shot.
+ */
+export const ShotDialogueLines: React.FC<{
+  sequenceId: string;
+  shotId: string;
+  lines: readonly DialogueLine[];
+  label?: string;
+}> = ({ sequenceId, shotId, lines, label }) => {
+  const queryClient = useQueryClient();
+  const save = useMutation({
+    mutationFn: (next: DialogueLine[]) =>
+      saveShotDialogueFn({ data: { sequenceId, shotId, lines: next } }),
+    onSuccess: () => invalidateLinesMoved(queryClient, sequenceId, shotId),
+    onError: (error: Error) =>
+      toast.error('Lines not saved', { description: error.message }),
+  });
+  return (
+    <DialogueLinesEditor
+      lines={lines}
+      onSave={(next) => save.mutate(next)}
+      saving={save.isPending}
+      label={label}
+    />
+  );
+};
+
+/**
+ * Every shot's lines in one scene, for the Script tab (#1773). Each save
+ * writes that shot's lines only; the others stay as they are.
+ */
+export const SceneDialogueLines: React.FC<{
+  sequenceId: string;
+  shots: readonly ShotView[];
+}> = ({ sequenceId, shots }) => {
+  if (shots.length === 0) return null;
+  const ordered = [...shots].sort(
+    (a, b) => (a.shotNumber ?? 0) - (b.shotNumber ?? 0)
+  );
+  return (
+    <section aria-label="Dialogue" className="flex flex-col gap-2">
+      <span className="text-sm font-medium">Dialogue</span>
+      <ul className="flex flex-col gap-2">
+        {ordered.map((shot, index) => {
+          const name = `Shot ${shot.shotNumber ?? index + 1}`;
+          return (
+            <li
+              key={shot.id}
+              className="flex flex-col gap-1 rounded-md border p-3"
+            >
+              <span className="text-xs font-medium">{name}</span>
+              <ShotDialogueLines
+                sequenceId={sequenceId}
+                shotId={shot.id}
+                lines={shot.dialogue?.presence ? shot.dialogue.lines : []}
+                label={`Edit lines for ${name.toLowerCase()}`}
+              />
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 };

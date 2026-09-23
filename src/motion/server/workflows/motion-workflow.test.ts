@@ -435,6 +435,78 @@ describe('MotionWorkflow content-flag rescue (#1373)', () => {
     expect(shotPromptVersions.write).not.toHaveBeenCalled();
   });
 
+  it('softens only the prose of a structured prompt and keeps the dialogue out of the saved version (#1773)', async () => {
+    rejectReseeds(PROMPT);
+    const { scopedDb, shotPromptVersions } = makeScopedDb();
+    const step = makeStep();
+    const audio = { ambientSound: 'rain', soundEffects: [] };
+
+    await makeWorkflow().runBody(
+      makeEvent({
+        motionPrompt: {
+          fullPrompt: 'the prose',
+          audio,
+          dialogue: {
+            presence: true,
+            lines: [{ character: 'SARAH', line: 'Run.', tone: 'urgent' }],
+          },
+        },
+      }),
+      step,
+      scopedDb
+    );
+
+    expect(mockSoften).toHaveBeenCalledWith(
+      step,
+      expect.objectContaining({ prompt: 'the prose' })
+    );
+    expect(shotPromptVersions.write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: 'the softened prompt',
+        audio,
+        source: 'softened',
+      })
+    );
+    // The retry is re-assembled: the softened prose plus the dialogue.
+    const retried = submittedArgs(3).prompt;
+    expect(retried).toContain('the softened prompt');
+    expect(retried).toContain('Run.');
+  });
+
+  it('refused reference audio: no soften, no fallback, names the recording (#1773)', async () => {
+    mockSubmit.mockRejectedValue(
+      new Error(
+        'InputAudioSensitiveContentDetected: the input audio is flagged'
+      )
+    );
+    const { scopedDb, shotPromptVersions } = makeScopedDb();
+    const step = makeStep();
+
+    await expect(
+      makeWorkflow().runBody(
+        makeEvent({
+          referenceImages: [
+            {
+              referenceImageUrl: '/r2/audio/sarah.wav',
+              description: 'SARAH_VOICE',
+              kind: 'audio',
+              role: 'character',
+              token: 'SARAH_VOICE',
+              durationSeconds: 3,
+            },
+          ],
+        }),
+        step,
+        scopedDb
+      )
+    ).rejects.toThrow(
+      `Content checker rejected the dialogue recording (${NAME}). Set the shot's dialogue audio to Video model, regenerate the dialogue for another reading, or change the lines in the script.`
+    );
+    expect(mockSubmit).toHaveBeenCalledTimes(3);
+    expect(mockSoften).not.toHaveBeenCalled();
+    expect(shotPromptVersions.write).not.toHaveBeenCalled();
+  });
+
   it('still flagged while already on Grok: nothing left to try, three submits', async () => {
     mockSubmit.mockRejectedValue(STILL);
     const { scopedDb } = makeScopedDb();

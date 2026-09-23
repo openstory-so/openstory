@@ -194,6 +194,12 @@ export function contentRejectionSubjects(error: string): string[] {
  * with its `loc` (`body.prompt: …; body.image_url: …`, #1373); a rejection
  * without any prefix (Veo's "could not generate", BytePlus, aimock) classifies
  * as nothing flagged and callers treat it as prompt-shaped.
+ *
+ * `audioInput` is the audio the request SENT (#1756, #1773): Ark's
+ * `InputAudioSensitiveContentDetected`, a `body.audio…` field, or a message
+ * naming the input/reference audio. `audio` alone also covers the model's
+ * own output audio, which a softer prompt can change; a sent recording it
+ * cannot.
  */
 export function flaggedInputs(rejection: string): {
   prompt: boolean;
@@ -216,7 +222,10 @@ export function flaggedInputs(rejection: string): {
     audio:
       fields.some((f) => /audio/i.test(f)) ||
       /AudioSensitiveContentDetected/i.test(rejection),
-    audioInput: /InputAudioSensitiveContentDetected/i.test(rejection),
+    audioInput:
+      fields.some((f) => /audio/i.test(f)) ||
+      /InputAudioSensitiveContentDetected/i.test(rejection) ||
+      /\b(?:input|reference|provided|uploaded) audio\b/i.test(rejection),
   };
 }
 

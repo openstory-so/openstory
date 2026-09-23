@@ -33,6 +33,10 @@ import { referenceKeysFrom } from '@/motion/reference-provenance';
 import { recordDialogue } from '@/motion/server/record-dialogue';
 import { raiseShotDurationToCoverAudio } from '@/motion/resolve-shot-duration';
 import type { MotionAudioClip } from '@/platform/server/db/schema';
+import type {
+  AssemblableMotionPrompt,
+  MotionAudio,
+} from '@/shots/scene-analysis.schema';
 import { computeVideoManifestInputHash } from '@/shots/input-hash';
 import {
   DEFAULT_VIDEO_MODEL,
@@ -224,6 +228,23 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     // forever. `voicedLines` above is for the prompt, which must say what the
     // audio says.
     const authoredLines = input.voicedLines ?? [];
+    /**
+     * One shot's request prompt from its structured parts: the prose, then
+     * the dialogue, audio trailer and (peeled) scene header. Also how the
+     * content soften re-assembles (#1773): only the prose is rewritten.
+     */
+    const assembleShotPrompt = (motionPrompt: AssemblableMotionPrompt) =>
+      assembleMotionPrompt({
+        motionPrompt: {
+          ...motionPrompt,
+          dialogue: withVoicedLineTokens(motionPrompt.dialogue, voicedLines),
+        },
+        model,
+        characterTags: input.characterTags,
+        generateAudio: input.generateAudio,
+        attachSceneHeader: input.attachSceneHeader,
+        scene: input.packedScene,
+      });
     if (voicedLines.length > 0 && input.shotId && input.sequenceId) {
       const shotId = input.shotId;
       const sequenceId = input.sequenceId;
@@ -325,20 +346,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         prompt = packed.prompt;
         if (packed.multiPrompt) multiPrompt = packed.multiPrompt;
       } else if (input.motionPrompt) {
-        prompt = assembleMotionPrompt({
-          motionPrompt: {
-            ...input.motionPrompt,
-            dialogue: withVoicedLineTokens(
-              input.motionPrompt.dialogue,
-              voicedLines
-            ),
-          },
-          model,
-          characterTags: input.characterTags,
-          generateAudio: input.generateAudio,
-          attachSceneHeader: input.attachSceneHeader,
-          scene: input.packedScene,
-        });
+        prompt = assembleShotPrompt(input.motionPrompt);
       }
       const audioSeconds = audioClips.reduce(
         (sum, clip) => sum + (clip.durationSeconds ?? 0),
@@ -775,17 +783,21 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
      *
      * A primary render selects the rewrite; a variant-only render appends to
      * history only — an alternate model's rescue must not move the primary
-     * shot's prompt out from under the primary clip. ponytail: `prompt` is
-     * already model-assembled (dialogue prose + audio trailer baked in), so
-     * the row gets null dialogue/audio and a later render from it appends the
-     * model trailer a second time. Structured assembly resumes once the user
-     * regenerates the prompt.
+     * shot's prompt out from under the primary clip.
+     *
+     * A single-shot soften passes the rewritten prose and the version's
+     * `audio` (#1773), so a later render still assembles dialogue and trailer
+     * from the structured parts. ponytail: a shorten, and a packed clip's
+     * soften, pass the model-assembled prompt (dialogue + trailer baked in)
+     * with null audio, and a later render from it appends the trailer again;
+     * structure the shorten the same way if that shows up.
      */
     const writeRescuedMotionPrompt = (
       stepName: string,
       text: string,
       provenance: { inputHash: string | null; analysisModel: string | null },
-      source: 'softened' | 'shortened'
+      source: 'softened' | 'shortened',
+      audio: MotionAudio | null = null
     ) =>
       step.do(stepName, async () => {
         const shotId = input.shotId;
@@ -794,6 +806,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           shotId,
           promptType: 'motion',
           text,
+          audio,
           source,
           usesStartFrame: !input.referenceOnly,
           inputHash: provenance.inputHash,
@@ -868,13 +881,25 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           const provenance = await loadPromptProvenance(
             'load-motion-prompt-provenance'
           );
+          // A single shot softens its prose only (#1773): the dialogue lines
+          // live on the shot's dialogue node and the trailer is re-added by
+          // assembly, so neither is handed to the rewrite or baked into the
+          // saved version. A packed clip still softens its assembled prompt.
+          const structured =
+            input.motionPrompt &&
+            !(input.coveredShots && input.coveredShots.length > 1)
+              ? input.motionPrompt
+              : null;
+          let softenedText: string | null = null;
           try {
-            prompt = await softenRejectedMotionPrompt(step, {
+            const softer = await softenRejectedMotionPrompt(step, {
               scopedDb,
               workflowRunId,
               sequenceId: input.sequenceId,
               userId: input.userId,
-              prompt,
+              prompt: structured
+                ? (input.userEditText ?? structured.fullPrompt)
+                : prompt,
               rejection: lastRejection ?? 'unknown rejection',
               analysisModelId:
                 getAnalysisModelById(provenance.analysisModel ?? '')?.id ??
@@ -883,6 +908,10 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
               model,
               reservationId: input.reservationId,
             });
+            prompt = structured
+              ? assembleShotPrompt({ ...structured, fullPrompt: softer })
+              : softer;
+            softenedText = softer;
             softened = true;
           } catch (error) {
             logger.warn(
@@ -891,12 +920,13 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             );
             if (!swapModel) break;
           }
-          if (softened && input.shotId) {
+          if (softenedText !== null && input.shotId) {
             renderManifest = await writeRescuedMotionPrompt(
               'write-softened-motion-prompt',
-              prompt,
+              softenedText,
               provenance,
-              'softened'
+              'softened',
+              structured?.audio ?? null
             );
           }
         }

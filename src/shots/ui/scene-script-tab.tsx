@@ -28,6 +28,8 @@ type SceneScriptTabProps = {
   mentionItems?: MentionItem[];
   /** Rename the target a pill points at (#1475); see `MarkdownEditor`. */
   onMentionRename?: (item: MentionItem, name: string) => void;
+  /** The scene's shots' lines, editable (#1773) — a slot, rendered below the script. */
+  dialogue?: React.ReactNode;
 };
 
 export const SceneScriptTab: React.FC<SceneScriptTabProps> = ({
@@ -41,6 +43,7 @@ export const SceneScriptTab: React.FC<SceneScriptTabProps> = ({
   onCopy,
   mentionItems,
   onMentionRename,
+  dialogue,
 }) => {
   const { ref: editorRef, voice } = useEditorDictation();
 
@@ -131,6 +134,8 @@ export const SceneScriptTab: React.FC<SceneScriptTabProps> = ({
           Saving will mark the image and motion prompts as stale.
         </p>
       )}
+
+      {dialogue}
     </div>
   );
 };

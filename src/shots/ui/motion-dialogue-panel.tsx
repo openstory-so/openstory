@@ -1,8 +1,8 @@
 /**
  * The dialogue an audio-capable video model will be told to speak (#1559).
  *
- * Line text is not edited here: it comes from the shot's dialogue node
- * (`shot_dialogue_versions`; the script only seeds it). Audio is one choice
+ * The lines are the shot's dialogue node (`shot_dialogue_versions`; the
+ * script only seeds it), edited in place through the `lines` slot (#1773). Audio is one choice
  * for the whole shot (#1554): the generated take, a user-uploaded audio
  * element, or the video model inventing the voices. Per-line binding was
  * the old grain; the take is a conversation, not a character.
@@ -54,7 +54,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/ui/shadcn/select';
-import { Check, ChevronDown, Loader2 } from 'lucide-react';
+import { Input } from '@/ui/shadcn/input';
+import { Textarea } from '@/ui/shadcn/textarea';
+import { Check, ChevronDown, Loader2, Pencil, Plus, X } from 'lucide-react';
 import { useState } from 'react';
 
 type DialogueClip = {
@@ -140,6 +142,174 @@ const DialogueLineList: React.FC<{
     )}
   </ul>
 );
+
+/**
+ * Who speaks the lines when it is not the generated reading (#1773): the
+ * reading is then not in use, so it can be neither out of date nor worth
+ * regenerating. Null on Generated.
+ */
+export function shotSpokenByNote(
+  lines: readonly DialogueLine[]
+): string | null {
+  const value = shotPickerValue(lines);
+  if (lines.length === 0 || value === GENERATED_VOICE) return null;
+  return value === VIDEO_MODEL_VOICE_TOKEN
+    ? 'Video model speaks the lines'
+    : `${value} speaks the lines`;
+}
+
+/** One row of the editor: the line it started as (null = added here). */
+type EditorRow = { key: number; line: DialogueLine | null };
+
+const toRows = (lines: readonly DialogueLine[]): EditorRow[] =>
+  lines.map((line, index) => ({ key: index, line }));
+
+/**
+ * The shot's lines, editable in place (#1773): character, words, tone. Reads
+ * as the plain list until Edit. Save hands back the whole set; each line keeps
+ * its voice binding, and an added line takes the shot's current audio source.
+ */
+export const DialogueLinesEditor: React.FC<{
+  lines: readonly DialogueLine[];
+  onSave: (lines: DialogueLine[]) => void;
+  saving?: boolean;
+  /** Label for the Edit button, e.g. "Edit lines for shot 3". */
+  label?: string;
+}> = ({ lines, onSave, saving, label = 'Edit lines' }) => {
+  const [rows, setRows] = useState<EditorRow[] | null>(null);
+  const [nextKey, setNextKey] = useState(lines.length);
+  const editing = rows !== null;
+
+  if (!editing) {
+    return (
+      <div className="flex flex-col gap-2">
+        {lines.length > 0 ? (
+          <DialogueLineList lines={lines} />
+        ) : (
+          <p className="text-sm text-muted-foreground">No lines</p>
+        )}
+        <Button
+          size="sm"
+          variant="ghost"
+          className="self-start"
+          aria-label={label}
+          onClick={() => {
+            setRows(toRows(lines));
+            setNextKey(lines.length);
+          }}
+        >
+          <Pencil className="h-3 w-3" aria-hidden />
+          Edit
+        </Button>
+      </div>
+    );
+  }
+
+  const shotToken = lines[0]?.voiceToken;
+  const onSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const read = (name: string) => form.getAll(name).map(String);
+    const [characters, words, tones] = [
+      read('character'),
+      read('line'),
+      read('tone'),
+    ];
+    const next = rows.flatMap((row, index) => {
+      const text = (words[index] ?? '').trim();
+      if (!text) return [];
+      const base = row.line ?? { voiceToken: shotToken };
+      return [
+        {
+          ...base,
+          character: (characters[index] ?? '').trim(),
+          line: text,
+          tone: (tones[index] ?? '').trim(),
+        },
+      ];
+    });
+    onSave(next);
+    setRows(null);
+  };
+
+  return (
+    <form onSubmit={onSubmit} className="flex flex-col gap-3">
+      <ul className="flex flex-col gap-3">
+        {rows.map((row, index) => (
+          <li key={row.key} className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-2">
+              <Input
+                name="character"
+                defaultValue={row.line?.character ?? ''}
+                placeholder="Character"
+                aria-label={`Line ${index + 1} character`}
+                autoComplete="off"
+              />
+              <Input
+                name="tone"
+                defaultValue={row.line?.tone ?? ''}
+                placeholder="Tone"
+                aria-label={`Line ${index + 1} tone`}
+                autoComplete="off"
+              />
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                aria-label={`Remove line ${index + 1}`}
+                onClick={() =>
+                  setRows(rows.filter((other) => other.key !== row.key))
+                }
+              >
+                <X className="h-4 w-4" aria-hidden />
+              </Button>
+            </div>
+            <Textarea
+              name="line"
+              defaultValue={row.line?.line ?? ''}
+              placeholder="What they say"
+              aria-label={`Line ${index + 1} words`}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                  event.preventDefault();
+                  event.currentTarget.form?.requestSubmit();
+                }
+              }}
+              rows={2}
+            />
+          </li>
+        ))}
+      </ul>
+      <div className="flex items-center justify-between gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={() => {
+            setRows([...rows, { key: nextKey, line: null }]);
+            setNextKey(nextKey + 1);
+          }}
+        >
+          <Plus className="h-3 w-3" aria-hidden />
+          Add line
+        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => setRows(null)}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" size="sm" disabled={saving}>
+            {saving ? 'Saving…' : 'Save'}
+          </Button>
+        </div>
+      </div>
+    </form>
+  );
+};
 
 const ShotAudio: React.FC<{ url: string }> = ({ url }) => (
   // oxlint-disable-next-line jsx-a11y/media-has-caption -- generated or uploaded take; the transcript is the lines beside it
@@ -369,6 +539,8 @@ export type ShotDialogueVersionRow = {
   createdAt: Date | string;
   selected: boolean;
   lines: readonly { character: string; line: string }[];
+  /** Same words as the version before it: only the audio source moved (#1773). */
+  voiceOnly: boolean;
 };
 
 const DIALOGUE_VERSION_SOURCE_LABELS = {
@@ -407,7 +579,9 @@ export const ShotDialogueHistory: React.FC<{
             >
               <div className="flex min-w-0 flex-col">
                 <p className="text-xs font-medium">
-                  {DIALOGUE_VERSION_SOURCE_LABELS[version.source]}{' '}
+                  {version.voiceOnly
+                    ? 'Audio source changed'
+                    : DIALOGUE_VERSION_SOURCE_LABELS[version.source]}{' '}
                   <time
                     dateTime={created.toISOString()}
                     className="font-normal text-muted-foreground"
@@ -476,6 +650,8 @@ export const MotionDialoguePanel: React.FC<{
   shotSeconds?: number;
   /** This shot's readings list (#1657) — a slot, so the panel stays presentational. */
   readings?: React.ReactNode;
+  /** The lines, editable (#1773) — a slot in place of the read-only list. */
+  lineEditor?: React.ReactNode;
 }> = ({
   dialogue,
   elements,
@@ -485,6 +661,7 @@ export const MotionDialoguePanel: React.FC<{
   clip,
   shotSeconds,
   readings,
+  lineEditor,
 }) => {
   const lines = dialogue?.presence ? dialogue.lines : [];
   if (lines.length === 0) return null;
@@ -587,7 +764,7 @@ export const MotionDialoguePanel: React.FC<{
         </div>
       )}
       <div className="rounded-md border p-3">
-        <DialogueLineList lines={lines} />
+        {lineEditor ?? <DialogueLineList lines={lines} />}
       </div>
       {readings}
       {!onChange && source === 'prompt' && (

@@ -148,9 +148,13 @@ import { SceneStaleShots } from './scene-stale-shots';
 import { SceneElementsTab } from './scene-elements-tab';
 import { SceneLocationTab } from './scene-location-tab';
 import { SceneMusicFacet } from './scene-music-facet';
-import { MotionDialoguePanel } from './motion-dialogue-panel';
+import { MotionDialoguePanel, shotSpokenByNote } from './motion-dialogue-panel';
 import { SceneScriptTab } from './scene-script-tab';
-import { ShotDialogueReadings } from './shot-dialogue-readings';
+import {
+  SceneDialogueLines,
+  ShotDialogueLines,
+  ShotDialogueReadings,
+} from './shot-dialogue-readings';
 import { ShotDurationField } from './shot-duration-field';
 import { sumShotSeconds } from './scene-group';
 
@@ -1283,8 +1287,13 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   const storageDomain = storageConfig?.storageDomain ?? null;
 
   // This shot's readings (#1657) — one list for either dialogue panel below.
+  const shotLines = shot?.dialogue?.presence ? shot.dialogue.lines : [];
   const dialogueReadings = shot ? (
-    <ShotDialogueReadings sequenceId={sequenceId} shotId={shot.id} />
+    <ShotDialogueReadings
+      sequenceId={sequenceId}
+      shotId={shot.id}
+      spokenBy={shotSpokenByNote(shotLines)}
+    />
   ) : undefined;
 
   // Flipping this re-stales the motion prompt — the two modes use different
@@ -1615,6 +1624,18 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           onCopy={(text) => void handleCopy(text, 'script')}
           mentionItems={mentionItems}
           onMentionRename={onMentionRename}
+          dialogue={
+            <SceneDialogueLines
+              sequenceId={sequenceId}
+              shots={
+                scopeShots?.some((s) => s.sceneId === scriptSceneId)
+                  ? scopeShots.filter((s) => s.sceneId === scriptSceneId)
+                  : shot
+                    ? [shot]
+                    : []
+              }
+            />
+          }
         />
       </TabsContent>
 
@@ -2100,6 +2121,16 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             disabled={saveMotionPrompt.isPending || isAwaitingMotionPrompt}
             source={shot?.motionPrompt ? 'prompt' : 'script'}
             readings={dialogueReadings}
+            lineEditor={
+              shot ? (
+                <ShotDialogueLines
+                  key={shot.id}
+                  sequenceId={sequenceId}
+                  shotId={shot.id}
+                  lines={shotLines}
+                />
+              ) : undefined
+            }
           />
 
           {/* Model selector — per-asset (#1066): seeded from the shot's selected

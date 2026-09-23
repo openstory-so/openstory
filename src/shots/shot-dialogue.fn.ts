@@ -38,6 +38,7 @@ import {
   shotDialogueResolver,
 } from '@/shots/server/shot-dialogue';
 import { voicedShotIds } from '@/shots/shot-dialogue';
+import { storedMotionDialogueSchema } from '@/shots/scene-analysis.schema';
 import { shotAccessMiddleware } from '@/shots/shot-access.fn';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
@@ -52,7 +53,7 @@ const shotInput = z.object({ sequenceId: ulidSchema, shotId: ulidSchema });
  * What the shot says now, by the one resolver every reader uses. Empty when
  * nothing is voiced — no reading matches that.
  */
-async function currentSourceKey(
+async function currentSourceKeys(
   scopedDb: Pick<
     ScopedDb,
     | 'shots'
@@ -64,7 +65,7 @@ async function currentSourceKey(
   >,
   shotId: string,
   sequenceId: string
-): Promise<string> {
+): Promise<{ key: string; untokenedKey: string }> {
   const [shots, selectedMotion, characters] = await Promise.all([
     scopedDb.shots.listBySequence(sequenceId),
     scopedDb.shotPromptVersions.getSelectedMotion(shotId),
@@ -76,9 +77,22 @@ async function currentSourceKey(
     shots,
     () => selectedMotion?.dialogue
   );
-  return dialogueClipSourceKey(
-    voicedDialogueLines(dialogueOf({ id: shotId }), characters)
-  );
+  const dialogue = dialogueOf({ id: shotId });
+  return {
+    key: dialogueClipSourceKey(voicedDialogueLines(dialogue, characters)),
+    // The key the lines would have with every line on Generated: a shot moved
+    // to Video model or an audio element voices nothing, so `key` is empty,
+    // yet its words may be exactly what a reading spoke (#1773).
+    untokenedKey: dialogueClipSourceKey(
+      voicedDialogueLines(
+        {
+          ...dialogue,
+          lines: dialogue.lines.map(({ voiceToken: _, ...line }) => line),
+        },
+        characters
+      )
+    ),
+  };
 }
 
 /**
@@ -98,11 +112,12 @@ export const listShotDialogueSectionsFn = createServerFn({ method: 'GET' })
   .middleware([shotAccessMiddleware])
   .validator(zodValidator(shotInput))
   .handler(async ({ context }) => {
-    const [sections, currentKey, currentVersion] = await Promise.all([
+    const [sections, keys, currentVersion] = await Promise.all([
       context.scopedDb.shotDialogue.listSections(context.shot.id),
-      currentSourceKey(context.scopedDb, context.shot.id, context.sequence.id),
+      currentSourceKeys(context.scopedDb, context.shot.id, context.sequence.id),
       context.scopedDb.shotDialogue.getSelected(context.shot.id),
     ]);
+    const { key: currentKey, untokenedKey } = keys;
     return sections.map((section) => ({
       id: section.id,
       source: section.source,
@@ -118,13 +133,15 @@ export const listShotDialogueSectionsFn = createServerFn({ method: 'GET' })
       // WHY it no longer matches, when it does not. The key folds words and
       // voices together; the version the reading spoke tells them apart: same
       // version, moved key → the voice changed (a recast). Unknown (a reading
-      // from before the id was stamped) reads as the lines.
+      // from before the id was stamped) reads as the lines. Words are compared
+      // as if every line were Generated, so a source pick that kept the words
+      // (Video model, an element) reads as the voice, not the lines (#1773).
       mismatch:
         currentKey !== '' && section.sourceKey === currentKey
           ? null
           : (section.dialogueVersionId !== null &&
                 section.dialogueVersionId === currentVersion?.id) ||
-              wordsOfKey(section.sourceKey) === wordsOfKey(currentKey)
+              wordsOfKey(section.sourceKey) === wordsOfKey(untokenedKey)
             ? ('voice' as const)
             : ('lines' as const),
     }));
@@ -145,9 +162,9 @@ export const selectShotDialogueSectionFn = createServerFn({ method: 'POST' })
     const { limitSeconds } = dialogueFitBudget({
       maxSeconds: dialogueAudioMaxSeconds(videoModels),
     });
-    const [candidate, currentKey] = await Promise.all([
+    const [candidate, { key: currentKey }] = await Promise.all([
       scopedDb.shotDialogue.getSectionById(data.sectionId),
-      currentSourceKey(scopedDb, shot.id, sequence.id),
+      currentSourceKeys(scopedDb, shot.id, sequence.id),
     ]);
     const section = requireSelectableSection({
       section: candidate,
@@ -195,6 +212,28 @@ export const listShotDialogueVersionsFn = createServerFn({ method: 'GET' })
     async ({ context }) =>
       await context.scopedDb.shotDialogue.listVersions(context.shot.id)
   );
+
+/**
+ * Edit what this shot says (#1773): character, words, tone. Appends a
+ * `user-edit` version of THIS shot's lines and nothing else — no prompt row,
+ * no other shot. `write` hands back the selected row when nothing moved.
+ */
+export const saveShotDialogueFn = createServerFn({ method: 'POST' })
+  .middleware([shotAccessMiddleware])
+  .validator(
+    zodValidator(
+      shotInput.extend({ lines: storedMotionDialogueSchema.shape.lines })
+    )
+  )
+  .handler(async ({ context, data }) => {
+    const version = await context.scopedDb.shotDialogue.write(
+      context.shot.id,
+      data.lines,
+      'user-edit',
+      { createdBy: context.user.id }
+    );
+    return { versionId: version?.id ?? null };
+  });
 
 /**
  * Point the shot back at an earlier set of lines. The pointer is the whole

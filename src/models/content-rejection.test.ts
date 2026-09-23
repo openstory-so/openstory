@@ -204,6 +204,15 @@ describe('flaggedInputs / clipContentRejectionMessage (#1373)', () => {
     ).toBe(
       'Content checker rejected a reference audio clip (Seedance 2.5). Remove or swap the reference audio.'
     );
+    // Other vias name the sent audio by field or in words (#1773).
+    expect(flaggedInputs('body.audio_urls.0: flagged').audioInput).toBe(true);
+    expect(
+      flaggedInputs('The reference audio contains sensitive content.')
+        .audioInput
+    ).toBe(true);
+    expect(
+      flaggedInputs('Output audio has sensitive content.').audioInput
+    ).toBe(false);
   });
 
   it('tells the user what was rejected, by whom, and what to change', () => {
