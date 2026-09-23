@@ -39,8 +39,12 @@ conservative 3 × 1000-char preview over-estimate), Music per minute rounded
 up ($0.15, advertised **2026-09-15**). `recordFalUsage: false`, unaudited
 like xAI/Google/Ark spend.
 
-**Music (#1640).** The catalog id is `elevenlabs-music` (`music_v1` on the
-adapter) — do not send `fal-ai/elevenlabs/music`; that proxy is retired.
+**Music (#1640).** The catalog id is `elevenlabs-music`, on the adapter's
+newest Eleven Music model (`music_v2_5`) — do not send
+`fal-ai/elevenlabs/music`; that proxy is retired. Every `music_v*` bills the
+same $0.15/minute, so a version bump moves no price, but the model id IS part
+of the e2e fixture match: bumping it without re-recording leaves the replay
+playing the older model's audio.
 Native music returns inline bytes, so `generateMusic` parks the MP3 in R2
 before the workflow step returns (Cloudflare Workflows' 1 MiB `step.do` cap).
 

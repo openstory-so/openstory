@@ -34,13 +34,20 @@ export const ELEVENLABS_TTS_ENDPOINT = 'elevenlabs-tts';
 export const ELEVENLABS_VOICE_DESIGN_ENDPOINT = 'elevenlabs-voice-design';
 
 /**
- * Billing id for native ElevenLabs Music (`music_v1` via `elevenlabsAudio`).
+ * Billing id for native ElevenLabs Music (`music_v2_5` via `elevenlabsAudio`).
  * Distinct from the retired fal proxy `fal-ai/elevenlabs/music`.
  */
 export const ELEVENLABS_MUSIC_ENDPOINT = 'elevenlabs-music';
 
-/** Adapter model id. `@tanstack/ai-elevenlabs` currently types only `music_v1`. */
-export const ELEVENLABS_MUSIC_MODEL = 'music_v1' as const;
+/**
+ * Adapter model id — the newest Eleven Music model (`ELEVENLABS_AUDIO_MODELS`
+ * leads with it). v2.5 bills at the same $0.15/minute as v1 and takes the
+ * same request; it enforces section durations strictly, where v1 let
+ * `respect_sections_durations` relax them (we never send that flag, so the
+ * only visible change is the model id — which IS part of the e2e fixture
+ * match, so bumping it needs a re-record).
+ */
+export const ELEVENLABS_MUSIC_MODEL = 'music_v2_5' as const;
 
 /**
  * Per-product ElevenLabs rates.
