@@ -121,6 +121,13 @@ export const CATALOG_LAG_MODELS = [
     input: ['text', 'image'],
     features: ['reasoning', 'structured_outputs'],
   }),
+  // Bridged by the model-freshness routine (#792): the installed
+  // @tanstack/ai-openrouter catalog snapshot predates openai/gpt-6-sol.
+  // Prune when a Dependabot catalog bump ships the id (catalog-lag.test.ts).
+  createModel('openai/gpt-6-sol', {
+    input: ['text', 'image'],
+    features: ['reasoning', 'structured_outputs'],
+  }),
 ] as const;
 
 const openRouterTextExtended = extendAdapter(
