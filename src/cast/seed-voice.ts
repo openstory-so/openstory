@@ -31,6 +31,11 @@ export function isSeedVoiceId(voiceId: string | null | undefined): boolean {
   return typeof voiceId === 'string' && voiceId.startsWith(SEED_VOICE_PREFIX);
 }
 
+/** Which provider made (and records) a voice — shown on the voice card. */
+export function voiceProviderLabel(voiceId: string): string {
+  return isSeedVoiceId(voiceId) ? 'Seed Audio' : 'ElevenLabs';
+}
+
 export function newSeedVoiceId(): string {
   return `${SEED_VOICE_PREFIX}${generateId()}`;
 }

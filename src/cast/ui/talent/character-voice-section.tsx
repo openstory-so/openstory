@@ -1,4 +1,5 @@
 import { VOICE_ESTIMATE_COST } from '@/billing/elevenlabs-pricing';
+import { voiceProviderLabel } from '@/cast/seed-voice';
 import { ActionCost } from '@/billing/ui/action-cost';
 import {
   catalogVoiceBrief,
@@ -223,6 +224,7 @@ export const CharacterVoiceSection: React.FC<{
                     <VoiceTakeCard
                       src={catalogVoice.previewUrl}
                       label={catalogVoice.name}
+                      provider={voiceProviderLabel(catalogVoice.voiceId)}
                       inUse
                       isPremade={catalogVoice.isPremade}
                     />
@@ -230,10 +232,22 @@ export const CharacterVoiceSection: React.FC<{
                     <VoiceTakeCard
                       src={inUseTake.preview.url}
                       label={inUseTake.label}
+                      provider={voiceProviderLabel(
+                        inUseTake.preview.generatedVoiceId
+                      )}
                       inUse
                     />
                   ) : (
-                    <VoiceTakeCard src={null} label="Saved voice" inUse />
+                    <VoiceTakeCard
+                      src={null}
+                      label="Saved voice"
+                      provider={
+                        character.voiceId
+                          ? voiceProviderLabel(character.voiceId)
+                          : undefined
+                      }
+                      inUse
+                    />
                   )}
                 </section>
               )}
@@ -251,6 +265,9 @@ export const CharacterVoiceSection: React.FC<{
                         <VoiceTakeCard
                           src={take.preview.url}
                           label={take.label}
+                          provider={voiceProviderLabel(
+                            take.preview.generatedVoiceId
+                          )}
                           disabled={busy || chooseTake.isPending}
                           choosing={
                             choosingId === take.preview.generatedVoiceId
@@ -447,6 +464,8 @@ const VoiceHistory: React.FC<{
 const VoiceTakeCard: React.FC<{
   src: string | null;
   label: string;
+  /** Who made the voice ("Seed Audio" / "ElevenLabs"), #1765. */
+  provider?: string;
   inUse?: boolean;
   isPremade?: boolean;
   pending?: boolean;
@@ -457,6 +476,7 @@ const VoiceTakeCard: React.FC<{
 }> = ({
   src,
   label,
+  provider,
   inUse = false,
   isPremade,
   pending = false,
@@ -474,7 +494,12 @@ const VoiceTakeCard: React.FC<{
     aria-busy={pending || undefined}
   >
     <div className="flex items-center justify-between gap-2">
-      <p className="truncate text-sm font-medium">{label}</p>
+      <div className="flex min-w-0 flex-col">
+        <p className="truncate text-sm font-medium">{label}</p>
+        {provider && (
+          <p className="text-xs text-muted-foreground">{provider}</p>
+        )}
+      </div>
       <VoiceTakeCardAction
         pending={pending}
         inUse={inUse}
