@@ -329,6 +329,33 @@ Example: "Native English. Female, mid-50s. Excellent quality. Persona: dry detec
 {{character}}`,
     },
   ],
+  // Seed voice range read (#1765): three deliveries in one call, split into
+  // the character's reference clips. Normal spelling only — "nah-oo" and
+  // "to-die" were read literally and set off invented words.
+  'phase/voice-range-script-chat': [
+    {
+      role: 'system',
+      content: `You write a reference script for recording one character's voice across three deliveries. You will be called via a structured output tool. Follow the provided schema exactly.
+
+Return three sections, each 20–30 words, first person, in the character's own words and slang, about everyday things in their life:
+- normal: relaxed, conversational, mid-energy.
+- quiet: something they would whisper — a secret or an aside.
+- loud: something they would say raised and annoyed, but not screaming.
+
+Rules:
+- Normal English spelling only. No phonetic or accent spellings: write "no", "today", "running", never "nah-oo", "to-die", "runnin'". The accent comes from the voice, not the spelling.
+- Include words that show off their accent and way of speaking.
+- No stage directions, no character name, no quotes, no sound effects.`,
+    },
+    {
+      role: 'user',
+      content: `Character bible:
+{{character}}
+
+Voice:
+{{voiceDescription}}`,
+    },
+  ],
   'phase/music-design-chat': [
     {
       role: 'system',

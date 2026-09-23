@@ -1,5 +1,11 @@
 # Native ElevenLabs
 
+> **#1765:** when Seed Speech is configured, NEW character voices are Seed
+> voices (`seed:` ids) and their dialogue is recorded by Seed Audio — see
+> `seed-voices.md`. Everything below still holds for ElevenLabs voices, which
+> keep recording on ElevenLabs. ElevenLabs also runs isolation and Scribe for
+> Seed voices.
+
 Character TTS, Voice Design and Music go to `api.elevenlabs.io` via
 `@tanstack/ai-elevenlabs` (`elevenlabsSpeech` / `elevenlabsVoiceDesign` /
 `elevenlabsAudio`) and `@elevenlabs/elevenlabs-js` (create-voice and voice

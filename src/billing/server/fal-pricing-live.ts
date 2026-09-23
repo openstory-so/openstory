@@ -10,6 +10,7 @@ import { getDb } from '#db-client';
 import { isBytePlusConfigured } from '@/models/server/byteplus-config';
 import { BYTEPLUS_RATE_CARD } from '@/billing/byteplus-pricing';
 import { ELEVENLABS_RATE_CARD } from '@/billing/elevenlabs-pricing';
+import { SEED_SPEECH_RATE_CARD } from '@/billing/seed-speech-pricing';
 import {
   FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP,
   FAL_UNVERIFIED_SIBLINGS,
@@ -120,6 +121,7 @@ async function load(): Promise<NonNullable<typeof cache>> {
   const map = {
     ...BYTEPLUS_RATE_CARD,
     ...ELEVENLABS_RATE_CARD,
+    ...SEED_SPEECH_RATE_CARD,
     ...buildFalPricingMap(rows),
   };
   applyBytePlusRouteAliases(map);

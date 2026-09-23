@@ -1019,6 +1019,8 @@ export interface CharacterBibleWorkflowInput extends SequenceWorkflowContext {
  * Spawned per speaking character by the bible workflow and triggered
  * directly by "Generate voice" on the character card.
  */
+type VoiceProvider = 'seed' | 'elevenlabs';
+
 export interface CharacterVoiceWorkflowInput extends SequenceWorkflowContext {
   sequenceId: string;
   characterDbId: string;
@@ -1026,6 +1028,11 @@ export interface CharacterVoiceWorkflowInput extends SequenceWorkflowContext {
   /** The stored description; empty = draft one from the bible first. */
   voiceDescription: string;
   analysisModelId: AnalysisModelId;
+  /**
+   * Which provider makes the voice, fixed at trigger (#1765). Payloads from
+   * before it carry none and design on ElevenLabs.
+   */
+  voiceProvider: VoiceProvider;
   /**
    * Generating husk this run completes in place (#1715). Absent on in-flight
    * pre-husk payloads; persist then writes via `updateVoice` and does not

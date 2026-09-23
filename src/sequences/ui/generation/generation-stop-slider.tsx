@@ -9,7 +9,7 @@ import {
   stopAtFromSliderIndex,
 } from '@/sequences/pipeline';
 import type { GenerationStage } from '@/sequences/pipeline';
-import { VOICE_DESIGN_COST } from '@/billing/elevenlabs-pricing';
+import { VOICE_ESTIMATE_COST } from '@/billing/elevenlabs-pricing';
 import { microsToDisplayUsd } from '@/billing/money';
 import { Label } from '@/ui/shadcn/label';
 import { Slider } from '@/ui/shadcn/slider';
@@ -191,7 +191,7 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
           </div>
           <p className="text-xs text-muted-foreground">
             {generateVoices
-              ? `Each speaking character gets a designed voice (${microsToDisplayUsd(VOICE_DESIGN_COST)} each).`
+              ? `Each speaking character gets a designed voice (${microsToDisplayUsd(VOICE_ESTIMATE_COST)} each).`
               : 'Characters have no voice.'}
           </p>
         </div>

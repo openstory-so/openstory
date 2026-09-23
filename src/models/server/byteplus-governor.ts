@@ -127,3 +127,26 @@ export async function acquireBytePlusOpenApiToken(
   });
   await new Promise((resolve) => setTimeout(resolve, delayMs));
 }
+
+/**
+ * Seed Speech (#1765) caps queries per second per ACCOUNT: eight parallel
+ * Seed Audio calls got `429 quota exceeded for types: qps`. Its own bucket on
+ * the same governor, paced in-step like a read. `SEED_SPEECH_QPM` overrides.
+ */
+const DEFAULT_SEED_SPEECH_QPM = 30;
+const SEED_SPEECH_MAX_WAIT_MS = 5 * 60_000;
+
+export async function acquireSeedSpeechToken(): Promise<void> {
+  const stub = governorStub();
+  if (!stub) return;
+  const qpm = envQpm('SEED_SPEECH_QPM', DEFAULT_SEED_SPEECH_QPM);
+  const bucket: AcquireInput = {
+    bucket: 'seed-speech',
+    capacity: 2,
+    refillPerMinute: qpm,
+    maxWaitMs: SEED_SPEECH_MAX_WAIT_MS,
+  };
+  const delayMs = await stub.acquire(bucket);
+  if (delayMs < 0) throw refused('Seed Audio', bucket);
+  if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
+}

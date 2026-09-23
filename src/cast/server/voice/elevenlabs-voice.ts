@@ -279,3 +279,51 @@ export async function resolveAssignableVoiceId(
     name: pick.name,
   });
 }
+
+/** A word Scribe heard, seconds. */
+export type HeardWord = { text: string; start: number; end: number };
+
+/**
+ * Scribe transcription with word timings (#1765). The check that a Seed take
+ * said the script and nothing else — Seed's own subtitles only align the
+ * script, so they can never show an invented word.
+ */
+export async function transcribeSpeech(
+  apiKey: string,
+  audio: Uint8Array<ArrayBuffer>,
+  contentType: string
+): Promise<{ text: string; words: HeardWord[]; seconds: number }> {
+  const client = await createElevenLabsSdk(apiKey, 120);
+  const result = await client.speechToText.convert({
+    modelId: 'scribe_v2',
+    file: new Blob([audio], { type: contentType }),
+    languageCode: 'en',
+    timestampsGranularity: 'word',
+    tagAudioEvents: false,
+  });
+  if (!('words' in result)) {
+    throw new Error('Scribe returned no word timings');
+  }
+  return {
+    text: result.text,
+    words: result.words.flatMap((word) =>
+      word.type === 'word' && word.start != null && word.end != null
+        ? [{ text: word.text, start: word.start, end: word.end }]
+        : []
+    ),
+    seconds: result.audioDurationSecs ?? 0,
+  };
+}
+
+/** Voice isolation (#1765): strips what Seed adds around a voice. Returns MP3. */
+export async function isolateVoice(
+  apiKey: string,
+  audio: Uint8Array<ArrayBuffer>,
+  contentType: string
+): Promise<Uint8Array<ArrayBuffer>> {
+  const client = await createElevenLabsSdk(apiKey, 120);
+  const stream = await client.audioIsolation.convert({
+    audio: new Blob([audio], { type: contentType }),
+  });
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}

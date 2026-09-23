@@ -4,6 +4,7 @@
  * hash body.
  */
 
+import { isSeedVoiceId, SEED_AUDIO_MODEL } from '@/cast/seed-voice';
 import { matchSpeaker } from '@/cast/voice';
 import {
   getMotionReferenceEndpoint,
@@ -16,7 +17,7 @@ import type {
   MotionDialogue,
 } from '@/shots/scene-analysis.schema';
 
-/** ElevenLabs model every dialogue clip is synthesised with. */
+/** ElevenLabs model an ElevenLabs voice's dialogue is recorded with (a Seed voice's is `SEED_AUDIO_MODEL`). */
 export const DIALOGUE_TTS_MODEL = 'eleven_v3';
 
 /**
@@ -316,7 +317,9 @@ export function voicedDialogueLines(
       voiceId: match.voiceId,
       text,
       tone: line.tone ?? '',
-      ttsModel: DIALOGUE_TTS_MODEL,
+      ttsModel: isSeedVoiceId(match.voiceId)
+        ? SEED_AUDIO_MODEL
+        : DIALOGUE_TTS_MODEL,
       character: line.character,
     });
   });

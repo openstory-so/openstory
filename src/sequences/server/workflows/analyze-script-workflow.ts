@@ -24,7 +24,7 @@ import { addMicros, microsToUsd, multiplyMicros } from '@/billing/money';
 import {
   estimateTtsCost,
   TYPICAL_DIALOGUE_CHARS_PER_SHOT,
-  VOICE_DESIGN_COST,
+  VOICE_ESTIMATE_COST,
 } from '@/billing/elevenlabs-pricing';
 import {
   dialogueAudioMaxSeconds,
@@ -599,7 +599,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         }),
         addMicros(
           addMicros(
-            multiplyMicros(VOICE_DESIGN_COST, billedVoices),
+            multiplyMicros(VOICE_ESTIMATE_COST, billedVoices),
             estimateTtsCost(
               shouldRunStage(startFrom, stopAt, 'dialogue')
                 ? scenes.length * TYPICAL_DIALOGUE_CHARS_PER_SHOT

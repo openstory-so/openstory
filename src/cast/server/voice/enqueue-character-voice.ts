@@ -5,6 +5,7 @@
  */
 
 import { characterToBible } from '@/cast/server/bibles-from-scoped';
+import { isSeedVoiceConfigured } from '@/models/server/seed-speech-config';
 import type { CharacterWithSheet } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { CharacterVoiceWorkflowInput } from '@/platform/server/workflow/types';
@@ -52,6 +53,7 @@ export async function enqueueCharacterVoiceDesign(args: {
     analysisModelId:
       (analysisModel ? getAnalysisModelById(analysisModel)?.id : undefined) ??
       DEFAULT_ANALYSIS_MODEL,
+    voiceProvider: isSeedVoiceConfigured() ? 'seed' : 'elevenlabs',
     targetVersionId: husk.id,
   };
 

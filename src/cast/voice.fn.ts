@@ -12,9 +12,15 @@ import {
   getElevenLabsVoice,
   listLibraryVoices,
 } from '@/cast/server/voice/elevenlabs-voice';
+import { isSeedVoiceId, seedVoiceFolder } from '@/cast/seed-voice';
+import {
+  getPublicUrl,
+  STORAGE_BUCKETS,
+} from '@/platform/server/storage/buckets';
 import {
   VOICE_LANGUAGES,
   VOICE_NATIONALITIES,
+  type SavedVoiceMeta,
   type VoiceLanguageFilter,
   type VoiceNationalityFilter,
 } from '@/cast/voice';
@@ -82,7 +88,20 @@ export const listElevenLabsVoicesFn = createServerFn({ method: 'GET' })
 export const getElevenLabsVoiceFn = createServerFn({ method: 'GET' })
   .middleware([authWithTeamMiddleware])
   .validator(zodValidator(z.object({ voiceId: z.string().min(1).max(128) })))
-  .handler(async ({ data }) => {
+  .handler(async ({ data }): Promise<SavedVoiceMeta | null> => {
+    // A Seed voice is clips in R2, not an ElevenLabs voice (#1765).
+    if (isSeedVoiceId(data.voiceId)) {
+      return {
+        voiceId: data.voiceId,
+        name: 'Seed voice',
+        category: 'generated',
+        previewUrl: getPublicUrl(
+          STORAGE_BUCKETS.AUDIO,
+          `${seedVoiceFolder(data.voiceId)}/read.wav`
+        ),
+        isPremade: false,
+      };
+    }
     const apiKey = requireElevenLabsKey();
     return getElevenLabsVoice(apiKey, data.voiceId);
   });

@@ -13,6 +13,11 @@
  * the small record below crosses the Workflows checkpoint (#1645, 1 MiB).
  */
 
+import {
+  ELEVENLABS_TTS_ENDPOINT,
+  elevenLabsTtsCost,
+} from '@/billing/elevenlabs-pricing';
+import type { Microdollars } from '@/billing/money';
 import { generateId } from '@/platform/id';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import { uploadFile } from '#storage';
@@ -38,6 +43,8 @@ export type DialogueCallLine = {
   shotId: string;
   index: number;
   voiceId: string;
+  /** The speaker cue, as the lines spell it — Seed's prompt names speakers. */
+  character: string;
   text: string;
   tone: string;
 };
@@ -54,6 +61,10 @@ export type RecordedDialogueCall = {
   turns: DialogueRecordingTurn[];
   /** Each shot's range of the recording, its trailing silence already off. */
   windows: Array<{ shotId: string; fromSeconds: number; toSeconds: number }>;
+  /** What the call cost, and the rate-card id it bills under. */
+  costMicros: Microdollars;
+  endpointId: string;
+  model: string;
 };
 
 /**
@@ -125,6 +136,9 @@ export async function recordDialogueCall(input: {
     characterCount,
     turns,
     windows,
+    costMicros: elevenLabsTtsCost(characterCount),
+    endpointId: ELEVENLABS_TTS_ENDPOINT,
+    model: DIALOGUE_TTS_MODEL,
   };
 }
 
@@ -179,7 +193,7 @@ export function decodeBase64(input: string): Uint8Array<ArrayBuffer> {
  * does its arithmetic off that field, so a header claiming more than the file
  * holds (a streaming encoder's placeholder) is corrected once, here, in place.
  */
-function honestDataSize(wav: Uint8Array<ArrayBuffer>): void {
+export function honestDataSize(wav: Uint8Array<ArrayBuffer>): void {
   const fmt = parseWavHeader(wav);
   if (!fmt) return;
   const available = wav.length - fmt.dataStart;

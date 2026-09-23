@@ -25,6 +25,7 @@
  */
 
 import { micros, multiplyMicros, type Microdollars } from './money';
+import { seedAudioCost } from './seed-speech-pricing';
 import type { EffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 
 /** Billing id for native ElevenLabs TTS (`eleven_v3` / multilingual v2). */
@@ -66,8 +67,39 @@ export const ELEVENLABS_MUSIC_MODEL = 'music_v2_5' as const;
  * without a unit-count signal, which gates on the $0.10 floor instead of
  * the real price.
  */
+/** Scribe v2 batch transcription (#1765): $0.22 per hour, 2026-09-23. */
+const ELEVENLABS_SCRIBE_ENDPOINT = 'elevenlabs-scribe';
+
+/** Voice isolation (#1765): $0.12 per minute, 2026-09-23. */
+const ELEVENLABS_ISOLATION_ENDPOINT = 'elevenlabs-isolation';
+
+const SCRIBE_PER_MINUTE = micros(3_667);
+const ISOLATION_PER_MINUTE = micros(120_000);
+
+/** Scribe for `seconds` of audio. */
+export function scribeCost(seconds: number): Microdollars {
+  return seconds > 0
+    ? multiplyMicros(SCRIBE_PER_MINUTE, seconds / 60)
+    : micros(0);
+}
+
+/** Voice isolation for `seconds` of audio. */
+export function isolationCost(seconds: number): Microdollars {
+  return seconds > 0
+    ? multiplyMicros(ISOLATION_PER_MINUTE, seconds / 60)
+    : micros(0);
+}
+
 /** One Voice Design call (#1553): three previews, no slot. */
 export const VOICE_DESIGN_COST = micros(300_000);
+
+/**
+ * What to reserve for one new character voice, whichever provider makes it
+ * (#1765). A Seed voice is three range reads — each ~35 s of Seed Audio
+ * ($0.0875), its Scribe pass and ~30 s of isolation ($0.06) — about $0.45, so
+ * the estimate is the dearer of the two, rounded up.
+ */
+export const VOICE_ESTIMATE_COST = micros(500_000);
 
 export const ELEVENLABS_RATE_CARD: Record<string, EffectiveFalPricing> = {
   // eleven_v3 / eleven_multilingual_v2 — $0.10 per 1,000 characters.
@@ -87,6 +119,16 @@ export const ELEVENLABS_RATE_CARD: Record<string, EffectiveFalPricing> = {
   [ELEVENLABS_MUSIC_ENDPOINT]: {
     unitPrice: micros(150_000),
     unit: 'minutes',
+  },
+  [ELEVENLABS_SCRIBE_ENDPOINT]: {
+    unitPrice: SCRIBE_PER_MINUTE,
+    unit: 'minutes',
+    typicalUnitsPerCall: 1,
+  },
+  [ELEVENLABS_ISOLATION_ENDPOINT]: {
+    unitPrice: ISOLATION_PER_MINUTE,
+    unit: 'minutes',
+    typicalUnitsPerCall: 1,
   },
 };
 
@@ -109,16 +151,35 @@ export function elevenLabsTtsUnitsBilled(
   return characterCount / 1000;
 }
 
-/**
- * Pre-flight TTS cost from a known character count. Uses the rate card
- * denomination (`1000 characters`) so the gate and the exact charge agree.
- */
-export function estimateTtsCost(characterCount: number): Microdollars {
+/** What ElevenLabs bills for `characterCount` characters of dialogue. */
+export function elevenLabsTtsCost(characterCount: number): Microdollars {
   const units = elevenLabsTtsUnitsBilled(characterCount);
   if (units == null || units <= 0) return micros(0);
   const price = ELEVENLABS_RATE_CARD[ELEVENLABS_TTS_ENDPOINT]?.unitPrice;
   if (price == null) return micros(0);
   return multiplyMicros(price, units);
+}
+
+/**
+ * Seed Audio bills seconds, not characters (#1765), and a scene take runs
+ * well past its words — the lab's 22 s of dialogue came back as 24–40 s. At
+ * 8 characters per billed second that is $0.3125 per 1,000 characters, over
+ * three times the ElevenLabs rate.
+ */
+const SEED_CHARS_PER_BILLED_SECOND = 8;
+
+/**
+ * Pre-flight dialogue cost from a character count. A pre-flight cannot tell
+ * which provider will speak each line, so it prices the dearer one: the gate
+ * must never under-estimate (#1069).
+ */
+export function estimateTtsCost(characterCount: number): Microdollars {
+  if (!Number.isFinite(characterCount) || characterCount <= 0) {
+    return micros(0);
+  }
+  const eleven = elevenLabsTtsCost(characterCount);
+  const seed = seedAudioCost(characterCount / SEED_CHARS_PER_BILLED_SECOND);
+  return eleven > seed ? eleven : seed;
 }
 
 /**

@@ -1,4 +1,4 @@
-import { VOICE_DESIGN_COST } from '@/billing/elevenlabs-pricing';
+import { VOICE_ESTIMATE_COST } from '@/billing/elevenlabs-pricing';
 import { ActionCost } from '@/billing/ui/action-cost';
 import {
   catalogVoiceBrief,
@@ -312,7 +312,7 @@ export const CharacterVoiceSection: React.FC<{
                   Boolean(character.voiceId || takes.length > 0)
                 )}
               </Button>
-              <ActionCost estimate={VOICE_DESIGN_COST} />
+              <ActionCost estimate={VOICE_ESTIMATE_COST} />
             </div>
           </div>
           <VoiceLibraryDialog

@@ -37,7 +37,7 @@ import { reportFlooredEstimate } from './billing-observability';
 import {
   estimateTtsCost,
   TYPICAL_DIALOGUE_CHARS_PER_SHOT,
-  VOICE_DESIGN_COST,
+  VOICE_ESTIMATE_COST,
 } from './elevenlabs-pricing';
 import { type Microdollars, addMicros, micros, multiplyMicros } from './money';
 
@@ -511,7 +511,7 @@ export function estimateStoryboardCost(opts: StoryboardCostOpts): Microdollars {
   const voiceCost =
     runsReferences && opts.generateVoices
       ? multiplyMicros(
-          VOICE_DESIGN_COST,
+          VOICE_ESTIMATE_COST,
           estimateCharacterSheetCount(sceneCount)
         )
       : micros(0);

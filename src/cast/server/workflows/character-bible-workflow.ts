@@ -27,6 +27,7 @@ import type {
   TalentCharacterMatch,
 } from '@/platform/server/workflow/types';
 import { usesVoice } from '@/cast/voice';
+import { isSeedVoiceConfigured } from '@/models/server/seed-speech-config';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { getLogger } from '@/platform/logger';
 
@@ -233,6 +234,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
             characterBible: character,
             voiceDescription: row.voiceDescription ?? '',
             analysisModelId: input.analysisModelId,
+            voiceProvider: isSeedVoiceConfigured() ? 'seed' : 'elevenlabs',
             targetVersionId: claim.version.id,
           };
           const result = await spawnAndAwaitChild<

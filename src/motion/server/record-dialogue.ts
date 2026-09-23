@@ -28,13 +28,9 @@
  *    so matching, staleness and the manifest's `audioSourceKey` do not move.
  */
 
-import {
-  ELEVENLABS_TTS_ENDPOINT,
-  estimateTtsCost,
-} from '@/billing/elevenlabs-pricing';
+import { isSeedVoiceId } from '@/cast/seed-voice';
 import { deductWorkflowCredits } from '@/billing/server/workflow-deduction';
 import {
-  DIALOGUE_TTS_MODEL,
   dialogueClipSourceKey,
   dialogueFitBudget,
   sectionClip,
@@ -47,6 +43,10 @@ import {
   shortenDialogueLines,
 } from '@/motion/server/fit-dialogue-clip';
 import { AUDIO_MIN_PAD_SLACK_SECONDS } from '@/motion/server/pad-dialogue-audio';
+import {
+  recordSeedDialogueCall,
+  SEED_MAX_SPEAKERS,
+} from '@/motion/server/record-seed-dialogue';
 import {
   recordDialogueCall,
   type RecordedDialogueCall,
@@ -67,6 +67,14 @@ import type { WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
 
 const logger = getLogger(['openstory', 'workflow', 'dialogue-recording']);
+
+/**
+ * Line characters per Seed Audio call (#1765). Its prompt also carries the
+ * booth and each speaker's description under a 3,000-character cap, and a
+ * take runs well past its words (22 s of lines came back as 24–40 s) under a
+ * 120 s cap.
+ */
+const SEED_TAKE_CHUNK_CHARS = 1000;
 
 export type RecordDialogueArgs = {
   scopedDb: WorkflowScopedDb;
@@ -202,24 +210,36 @@ async function recordClaimed(
       const result = await step.do(
         `${args.stepPrefix}-chunk-${call.index}${suffix}`,
         async (): Promise<RecordedCall> => {
-          const { key } =
+          const eleven =
             await args.scopedDb.credentials.resolveKey('elevenlabs');
-          const made = await recordDialogueCall({
-            apiKey: key,
-            teamId: args.teamId,
-            sequenceId: args.sequenceId,
-            lines: callLines,
-          });
+          // A Seed voice is recorded by Seed, an ElevenLabs voice by
+          // ElevenLabs (#1765) — `chunkTakeLines` never puts both in a call.
+          const made = callLines.some((line) => isSeedVoiceId(line.voiceId))
+            ? await recordSeedDialogueCall({
+                seedKey: (
+                  await args.scopedDb.credentials.resolveKey('seed-speech')
+                ).key,
+                elevenLabsKey: eleven.key,
+                teamId: args.teamId,
+                sequenceId: args.sequenceId,
+                lines: callLines,
+              })
+            : await recordDialogueCall({
+                apiKey: eleven.key,
+                teamId: args.teamId,
+                sequenceId: args.sequenceId,
+                lines: callLines,
+              });
           await deductWorkflowCredits({
             scopedDb: args.scopedDb,
-            costMicros: estimateTtsCost(made.characterCount),
+            costMicros: made.costMicros,
             usedOwnKey: false,
             description: `Dialogue (${callLines.length} line${callLines.length === 1 ? '' : 's'})`,
             idempotencyKey: `${args.workflowRunId}:dialogue-tts:${args.stepPrefix}:${call.index}${suffix}`,
             reservationId: args.reservationId,
             metadata: {
-              endpointId: ELEVENLABS_TTS_ENDPOINT,
-              model: DIALOGUE_TTS_MODEL,
+              endpointId: made.endpointId,
+              model: made.model,
               characterCount: made.characterCount,
               clipCount: 1,
               attempt,
@@ -451,12 +471,15 @@ function tooLong(
 }
 
 /**
- * Split a conversation into Text to Dialogue calls, breaking only between
- * shots. Consecutive turns of one shot are grouped first, so a shot is never
- * split across two recordings.
+ * Split a conversation into calls, breaking only between shots. Consecutive
+ * turns of one shot are grouped first, so a shot is never split across two
+ * recordings. A call also breaks where the provider changes (a Seed voice and
+ * an ElevenLabs voice cannot share one, #1765), and a Seed call where a third
+ * speaker would join or past {@link SEED_TAKE_CHUNK_CHARS}: a scene of three
+ * or more Seed speakers is recorded as a series of two-person exchanges.
  */
 export function chunkTakeLines<
-  T extends { shotId: string; text: string; tone: string },
+  T extends { shotId: string; voiceId: string; text: string; tone: string },
 >(lines: readonly T[], maxChars = DIALOGUE_TAKE_CHUNK_CHARS): T[][] {
   const groups: T[][] = [];
   for (const line of lines) {
@@ -467,9 +490,20 @@ export function chunkTakeLines<
   const chunks: T[][] = [];
   let current: T[] = [];
   let size = 0;
+  const seed = (chunk: readonly T[]) =>
+    chunk.some((line) => isSeedVoiceId(line.voiceId));
+  const speakers = (chunk: readonly T[]) =>
+    new Set(chunk.map((line) => line.voiceId)).size;
   for (const group of groups) {
     const groupChars = ttsCharacterCount(group);
-    if (current.length > 0 && size + groupChars > maxChars) {
+    const joined = [...current, ...group];
+    const breaks =
+      seed(current) !== seed(group) ||
+      (seed(group) &&
+        (speakers(joined) > SEED_MAX_SPEAKERS ||
+          size + groupChars > Math.min(maxChars, SEED_TAKE_CHUNK_CHARS))) ||
+      size + groupChars > maxChars;
+    if (current.length > 0 && breaks) {
       chunks.push(current);
       current = [];
       size = 0;

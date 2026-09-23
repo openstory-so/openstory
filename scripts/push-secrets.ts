@@ -77,6 +77,10 @@ export const SECRETS = {
   // Designed voices live on this account; there is no team BYOK (#1552).
   ELEVENLABS_API_KEY: { runtime: true, build: false },
   ELEVENLABS_BASE_URL: { runtime: true, build: false },
+  // Seed Audio voices and dialogue (#1765); platform key only.
+  SEED_SPEECH_API_KEY: { runtime: true, build: false },
+  SEED_SPEECH_BASE_URL: { runtime: true, build: false },
+  SEED_SPEECH_QPM: { runtime: true, build: false },
   EMAIL_FROM: { runtime: true, build: false },
   FAL_BILLING_KEY: { runtime: true, build: false },
   FAL_KEY: { runtime: true, build: false },
