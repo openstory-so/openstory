@@ -1,11 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  AUSTRALIAN_VOICE_OPENING,
   OTHER_VOICE_LANGUAGES,
   VOICE_NATIONALITIES,
   catalogVoiceBrief,
-  voiceDescriptionForDesign,
-  voiceDesignShouldEnhance,
   designedTakeIsInUse,
   designedTakeLabel,
   designedTakesForDisplay,
@@ -361,55 +358,6 @@ describe('recommendVoiceFilters', () => {
       accent: 'british',
     });
     expect(parseVoiceLocale('fr')).toEqual({ language: 'fr' });
-  });
-});
-
-describe('voiceDescriptionForDesign', () => {
-  const rest =
-    'Female, mid-30s. Excellent quality. Persona: dry neighbour. Emotion: warm, steady. Low easy timbre, conversational pace.';
-
-  it('replaces Native Australian English with a regional Australian accent', () => {
-    expect(
-      voiceDescriptionForDesign(`Native Australian English. ${rest}`)
-    ).toBe(`${AUSTRALIAN_VOICE_OPENING} ${rest}`);
-  });
-
-  it('rewrites a Native English brief that still claims Australian English', () => {
-    expect(
-      voiceDescriptionForDesign(
-        `Native English. ${rest} Speaks Australian English.`
-      )
-    ).toBe(`${AUSTRALIAN_VOICE_OPENING} ${rest} Speaks Australian English.`);
-  });
-
-  it('leaves a British brief alone, even if Australia is mentioned', () => {
-    const brief =
-      'Native British English. Female, 40s. She does an Australian accent as a joke.';
-    expect(voiceDescriptionForDesign(brief)).toBe(brief);
-  });
-
-  it('leaves a non-English opening alone', () => {
-    const brief =
-      'Native Spanish. Female, 30s. She also speaks Australian English.';
-    expect(voiceDescriptionForDesign(brief)).toBe(brief);
-  });
-
-  it('leaves American and unspecified English briefs alone', () => {
-    expect(voiceDescriptionForDesign(`Native English. ${rest}`)).toBe(
-      `Native English. ${rest}`
-    );
-    expect(voiceDesignShouldEnhance(`Native English. ${rest}`)).toBe(true);
-  });
-
-  it('is idempotent and skips enhance once the Australian opening is in place', () => {
-    const once = voiceDescriptionForDesign(
-      `Native Australian English. ${rest}`
-    );
-    expect(voiceDescriptionForDesign(once)).toBe(once);
-    expect(voiceDesignShouldEnhance(once)).toBe(false);
-    expect(
-      voiceDesignShouldEnhance(`Warm alto with an Australian accent.`)
-    ).toBe(false);
   });
 });
 
