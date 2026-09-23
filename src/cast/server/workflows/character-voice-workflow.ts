@@ -339,67 +339,75 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       }
     );
 
-    const previews: VoicePreview[] = [];
-    for (let take = 1; take <= SEED_VOICE_TAKES; take++) {
-      // Minted in a step so a replay reuses the id the clips were stored under.
-      const voiceId = await step.do(`seed-voice-id-${take}`, async () =>
-        newSeedVoiceId()
-      );
-      try {
-        const read = await step.do(
-          `seed-range-read-${take}`,
-          SEED_READ_STEP,
-          async () => {
-            const [seed, eleven] = await Promise.all([
-              scopedDb.credentials.resolveKey('seed-speech'),
-              scopedDb.credentials.resolveKey('elevenlabs'),
-            ]);
-            // ponytail: a take that fails the check is re-recorded by the
-            // step retry and not billed to the team; the platform eats it.
-            const made = await recordRangeRead({
-              seedKey: seed.key,
-              elevenLabsKey: eleven.key,
-              voiceId,
-              description: voiceDescription,
-              script,
-            });
-            await deductWorkflowCredits({
-              scopedDb,
-              costMicros: addMicros(
-                seedAudioCost(made.seedSeconds),
-                addMicros(
-                  scribeCost(made.transcribedSeconds),
-                  isolationCost(made.isolatedSeconds)
-                )
-              ),
-              usedOwnKey: false,
-              description: `Voice take ${take} (${characterBible.name})`,
-              idempotencyKey: `${event.instanceId}:seed-voice:${take}`,
-              reservationId: input.reservationId,
-              metadata: {
-                endpointId: SEED_AUDIO_ENDPOINT,
-                characterDbId,
-                seconds: made.seedSeconds,
-              },
-              workflowName: 'CharacterVoiceWorkflow',
-            });
-            return { url: made.url, path: made.path };
-          }
+    // The takes run side by side; the governor spaces their Seed calls.
+    const takes = Array.from({ length: SEED_VOICE_TAKES }, (_, i) => i + 1);
+    const recorded = await Promise.all(
+      takes.map(async (take): Promise<VoicePreview | null> => {
+        // Minted in a step so a replay reuses the id the clips were stored under.
+        const voiceId = await step.do(`seed-voice-id-${take}`, async () =>
+          newSeedVoiceId()
         );
-        previews.push({
-          generatedVoiceId: voiceId,
-          url: read.url,
-          path: read.path,
-          takeNumber: take,
-        });
-      } catch (error) {
-        // One bad take is not a failed voice: the user picks from the rest.
-        logger.warn(
-          `[CharacterVoiceWorkflow:cf] Seed take ${take} for ${characterDbId} failed`,
-          { err: error }
-        );
-      }
-    }
+        try {
+          const read = await step.do(
+            `seed-range-read-${take}`,
+            SEED_READ_STEP,
+            async () => {
+              const [seed, eleven] = await Promise.all([
+                scopedDb.credentials.resolveKey('seed-speech'),
+                scopedDb.credentials.resolveKey('elevenlabs'),
+              ]);
+              // ponytail: a take that fails the check is re-recorded by the
+              // step retry and not billed to the team; the platform eats it.
+              const made = await recordRangeRead({
+                seedKey: seed.key,
+                elevenLabsKey: eleven.key,
+                voiceId,
+                description: voiceDescription,
+                script,
+              });
+              await deductWorkflowCredits({
+                scopedDb,
+                costMicros: addMicros(
+                  seedAudioCost(made.seedSeconds),
+                  addMicros(
+                    scribeCost(made.transcribedSeconds),
+                    isolationCost(made.isolatedSeconds)
+                  )
+                ),
+                usedOwnKey: false,
+                description: `Voice take ${take} (${characterBible.name})`,
+                idempotencyKey: `${event.instanceId}:seed-voice:${take}`,
+                reservationId: input.reservationId,
+                metadata: {
+                  endpointId: SEED_AUDIO_ENDPOINT,
+                  characterDbId,
+                  seconds: made.seedSeconds,
+                },
+                workflowName: 'CharacterVoiceWorkflow',
+              });
+              return { url: made.url, path: made.path };
+            }
+          );
+          return {
+            generatedVoiceId: voiceId,
+            url: read.url,
+            path: read.path,
+            takeNumber: take,
+          };
+        } catch (error) {
+          // One bad take is not a failed voice: the user picks from the rest.
+          logger.warn(
+            `[CharacterVoiceWorkflow:cf] Seed take ${take} for ${characterDbId} failed`,
+            { err: error }
+          );
+          return null;
+        }
+      })
+    );
+    // In take order, so the voice is the first take that passed.
+    const previews = recorded.filter(
+      (preview): preview is VoicePreview => preview !== null
+    );
     const top = previews[0];
     if (!top) throw new Error('Every Seed voice take failed its check');
 

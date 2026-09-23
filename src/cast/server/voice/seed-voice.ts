@@ -87,26 +87,39 @@ export async function recordRangeRead(input: {
   }
 
   const folder = seedVoiceFolder(input.voiceId);
-  const clips: Partial<Record<SeedVoiceMood, string>> = {};
-  let isolatedSeconds = 0;
-  for (const [i, mood] of SEED_VOICE_MOODS.entries()) {
+  const cut = SEED_VOICE_MOODS.map((mood, i) => {
     const span = spans[i];
     if (!span) throw new Error(`Seed range read has no ${mood} section`);
-    const section = sliceWav(
-      take.wav,
-      span.start - LEAD_SECONDS,
-      span.end + TAIL_SECONDS
-    );
-    isolatedSeconds += wavDurationSeconds(section) ?? 0;
-    const clean = await isolateVoice(input.elevenLabsKey, section, 'audio/wav');
-    const uploaded = await uploadFile(
-      STORAGE_BUCKETS.AUDIO,
-      `${folder}/${mood}.mp3`,
-      clean,
-      { contentType: 'audio/mpeg', upsert: true }
-    );
-    clips[mood] = uploaded.fullPath;
-  }
+    return {
+      mood,
+      section: sliceWav(
+        take.wav,
+        span.start - LEAD_SECONDS,
+        span.end + TAIL_SECONDS
+      ),
+    };
+  });
+  const isolatedSeconds = cut.reduce(
+    (sum, { section }) => sum + (wavDurationSeconds(section) ?? 0),
+    0
+  );
+  const stored = await Promise.all(
+    cut.map(async ({ mood, section }) => {
+      const clean = await isolateVoice(
+        input.elevenLabsKey,
+        section,
+        'audio/wav'
+      );
+      const uploaded = await uploadFile(
+        STORAGE_BUCKETS.AUDIO,
+        `${folder}/${mood}.mp3`,
+        clean,
+        { contentType: 'audio/mpeg', upsert: true }
+      );
+      return [mood, uploaded.fullPath] as const;
+    })
+  );
+  const clips = Object.fromEntries(stored);
   const read = await uploadFile(
     STORAGE_BUCKETS.AUDIO,
     `${folder}/read.wav`,

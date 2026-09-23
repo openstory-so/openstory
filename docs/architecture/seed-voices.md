@@ -53,7 +53,7 @@ ElevenLabs configured) and snapshotted on the payload.
    bible: normal / quiet (whispered) / loud (raised, annoyed). **Normal
    spelling only** — "nah-oo" and "to-die" were read literally and set off
    invented words.
-3. Three takes, each its own step (`seed-range-read-N`): one Seed call reads
+3. Three takes, run side by side, each its own step (`seed-range-read-N`); the three clips of a take are isolated side by side too. One Seed call reads
    all three sections (one voice throughout, booth wording, "natural
    conversational pace" — pace cues like "slow" get over-applied), Scribe
    transcribes it, `checkTake` + `locateParts` find each section, the WAV is
