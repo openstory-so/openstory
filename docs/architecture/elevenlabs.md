@@ -433,3 +433,5 @@ editing, and choosing a shot still swaps the canvas to the single-shot
 player. `shotIdAtSequenceTime` maps the playhead to a shot from the
 stitcher's measured scene offsets; inside a packed clip, and on HLS (which
 reports only the total), shots split the scene by their own `durationMs`.
+
+**Ark refuses a recording (#1756).** Seedance 2.5 moderates reference audio on input (`InputAudioSensitiveContentDetected` on the `content[]` slot the clip rode in). That is the recording itself, so `MotionWorkflow`'s rescue does NOT soften the prompt for it (`flaggedInputs().audioInput`) and the terminal message names the dialogue recording and the three ways to send different audio: set the shot's dialogue audio to **Video model** (the lines ride in the prompt, no audio input), **Regenerate dialogue** for another reading, or change the lines in the script. Ark's output-side refusal (`AudioSensitiveContentDetected.PolicyViolation`, "Output audio has sensitive content") is the generated speech and still softens. There is no switch to turn either filter off.

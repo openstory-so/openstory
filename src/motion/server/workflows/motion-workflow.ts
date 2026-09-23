@@ -842,8 +842,10 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         // A flagged reference sheet cannot be softened away either (the sheet
         // is the input, not the prose), so a reference-only shot with no
         // usable fallback falls straight through to the terminal message
-        // rather than burning a rewrite that changes nothing.
-        const softenPrompt = flags.prompt || !flags.image;
+        // rather than burning a rewrite that changes nothing. The same for
+        // refused reference AUDIO (#1756): the recording is the input.
+        const softenPrompt =
+          flags.prompt || (!flags.image && !flags.audioInput);
         if (!swapModel && !softenPrompt) break;
 
         const logMeta = {

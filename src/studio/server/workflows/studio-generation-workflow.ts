@@ -415,6 +415,10 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
                 }
               : undefined,
             prompt: 'the prompt',
+            audio: {
+              name: 'a reference audio clip',
+              fix: 'Remove or swap the reference audio',
+            },
           },
         }),
         'ContentRejectionExhausted'
