@@ -18,7 +18,7 @@ const INPUT: Omit<CreatingSequence, 'parkedAt'> = {
     script: 'INT. LAUNDROMAT - NIGHT. A courier waits.',
     styleId: '01ARZ3NDEKTSV4RRFFQ69G5FB0',
     aspectRatio: '9:16',
-    analysisModels: ['openai/gpt-5.6-luna'],
+    analysisModels: ['openai/gpt-6-luna'],
     imageModels: ['nano_banana_2_lite'],
     videoModel: 'minimax_h3_max',
     videoModels: ['minimax_h3_max'],

@@ -102,7 +102,7 @@ describe('sequences.create persists the chosen settings', () => {
       title: 'Everything',
       styleId,
       aspectRatio: '9:16',
-      analysisModel: 'openai/gpt-5.6-luna',
+      analysisModel: 'openai/gpt-6-luna',
       imageModel: 'nano_banana_2_lite',
       videoModel: 'minimax_h3_max',
       musicModel: 'elevenlabs_music',
@@ -122,7 +122,7 @@ describe('sequences.create persists the chosen settings', () => {
       generateStartFrames: created.generateStartFrames,
     }).toEqual({
       aspectRatio: '9:16',
-      analysisModel: 'openai/gpt-5.6-luna',
+      analysisModel: 'openai/gpt-6-luna',
       imageModel: 'nano_banana_2_lite',
       videoModel: 'minimax_h3_max',
       musicModel: 'elevenlabs_music',

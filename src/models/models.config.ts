@@ -221,16 +221,17 @@ export const SCRIPT_ANALYSIS_MODELS = [
     description: 'Frontier xAI reasoning model, xAI’s smartest, 500K context',
   },
   {
-    id: 'openai/gpt-5.6-luna',
-    name: 'GPT-5.6 Luna',
+    id: 'openai/gpt-6-luna',
+    name: 'GPT-6 Luna',
     vendor: 'OpenAI',
     license: 'proprietary' as const,
-    // Arena 1452 (gpt-5.6-luna-xhigh).
+    // Bumped from GPT-5.6 Luna (Arena 1452, gpt-5.6-luna-xhigh); re-rank on
+    // next LMArena snapshot.
     qualityRank: 17,
     contextWindow: 1_050_000,
     maxOutputTokens: 128_000,
     vision: true,
-    description: 'GPT-5.6 fast, cost-efficient tier; default analysis model',
+    description: 'GPT-6 fast, cost-efficient tier; default analysis model',
   },
   {
     id: 'openai/gpt-5.4-mini',
@@ -423,7 +424,7 @@ export function resolveVisionModel(
  * full picker, grouped Fast / Quality.
  * Existing users keep whatever generation settings already store.
  */
-export const DEFAULT_ANALYSIS_MODEL: AnalysisModelId = 'openai/gpt-5.6-luna';
+export const DEFAULT_ANALYSIS_MODEL: AnalysisModelId = 'openai/gpt-6-luna';
 
 /**
  * Boundary-annotation scenes call only. Grok 4.6 + medium reasoning
