@@ -534,7 +534,7 @@ describe('resolveLlmKey — LLMTR gateway', () => {
     const scope = createApiKeysMethods(db, teamId, userId);
     await scope.saveKey({ provider: 'llmtr', apiKey: 'llmtr-team' });
 
-    expect(await scope.resolveLlmKey('x-ai/grok-4.6')).toEqual({
+    expect(await scope.resolveLlmKey('x-ai/grok-4.7')).toEqual({
       key: 'llmtr-team',
       source: 'team',
       via: 'llmtr',
@@ -558,7 +558,7 @@ describe('resolveLlmKey — LLMTR gateway', () => {
     const scope = createApiKeysMethods(db, teamId, userId);
     await scope.saveKey({ provider: 'llmtr', apiKey: 'llmtr-team' });
 
-    expect(await scope.resolveLlmKey('x-ai/grok-4.6')).toEqual({
+    expect(await scope.resolveLlmKey('x-ai/grok-4.7')).toEqual({
       key: 'platform-xai',
       source: 'platform',
       via: 'xai',
@@ -644,7 +644,7 @@ describe('native xAI key resolution (issue #1167)', () => {
     await scope.saveKey({ provider: 'openrouter', apiKey: 'sk-team-or' });
     await scope.saveKey({ provider: 'xai', apiKey: 'xai-team' });
 
-    expect(await scope.resolveLlmKey('x-ai/grok-4.6')).toMatchObject({
+    expect(await scope.resolveLlmKey('x-ai/grok-4.7')).toMatchObject({
       key: 'xai-team',
       source: 'team',
       via: 'xai',
@@ -672,7 +672,7 @@ describe('native xAI key resolution (issue #1167)', () => {
     testEnv.XAI_API_KEY = 'platform-xai';
     const scope = createApiKeysReadMethods(db, teamId);
 
-    expect(await scope.resolveLlmKey('x-ai/grok-4.6')).toMatchObject({
+    expect(await scope.resolveLlmKey('x-ai/grok-4.7')).toMatchObject({
       key: 'platform-xai',
       source: 'platform',
       via: 'xai',
@@ -682,7 +682,7 @@ describe('native xAI key resolution (issue #1167)', () => {
   it('falls through to OpenRouter for a Grok model with no xAI key anywhere', async () => {
     const scope = createApiKeysReadMethods(db, teamId);
 
-    expect(await scope.resolveLlmKey('x-ai/grok-4.6')).toMatchObject({
+    expect(await scope.resolveLlmKey('x-ai/grok-4.7')).toMatchObject({
       key: 'platform-openrouter-key',
       via: 'openrouter',
     });
@@ -693,7 +693,7 @@ describe('native xAI key resolution (issue #1167)', () => {
     await scope.saveKey({ provider: 'xai', apiKey: 'xai-team' });
     await scope.markKeyInvalid('xai', 'revoked');
 
-    expect(await scope.resolveLlmKey('x-ai/grok-4.6')).toMatchObject({
+    expect(await scope.resolveLlmKey('x-ai/grok-4.7')).toMatchObject({
       via: 'openrouter',
     });
   });

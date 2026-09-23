@@ -966,7 +966,7 @@ describe('llm-client', () => {
 
         await drain(
           callLLMStream({
-            model: 'x-ai/grok-4.6',
+            model: 'x-ai/grok-4.7',
             messages: [{ role: 'user', content: 'test' }],
           })
         );
@@ -1480,9 +1480,9 @@ describe('llm-client', () => {
             completionTokens: 100_000,
             totalTokens: 200_000,
           },
-          'x-ai/grok-4.6'
+          'x-ai/grok-4.7'
         )
-      ).toBe(800_000);
+      ).toBe(640_000);
     });
 
     it('prices an LLMTR call from the gateway’s catalog rates', () => {
@@ -1510,7 +1510,7 @@ describe('llm-client', () => {
         completionTokens: 100_000,
         totalTokens: 200_000,
       };
-      expect(llmCostFromUsage(tokens, 'x-ai/grok-4.6', 'llmtr')).toBe(800_000);
+      expect(llmCostFromUsage(tokens, 'x-ai/grok-4.7', 'llmtr')).toBe(640_000);
     });
 
     it('still prefers a reported cost over the LLMTR rate table', () => {
@@ -1538,7 +1538,7 @@ describe('llm-client', () => {
     it('still prefers OpenRouter’s reported cost for a Grok model', () => {
       // A Grok call that DID go through OpenRouter carries the real bill —
       // the published-rate path must not override it.
-      expect(llmCostFromUsage(usage(0.0123), 'x-ai/grok-4.6')).toBe(
+      expect(llmCostFromUsage(usage(0.0123), 'x-ai/grok-4.7')).toBe(
         usdToMicros(0.0123)
       );
     });

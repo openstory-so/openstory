@@ -25,7 +25,7 @@ describe('vision-model routing', () => {
   });
 
   it('leaves a vision-capable model unchanged even with an image', () => {
-    expect(resolveVisionModel('x-ai/grok-4.6', true)).toBe('x-ai/grok-4.6');
+    expect(resolveVisionModel('x-ai/grok-4.7', true)).toBe('x-ai/grok-4.7');
   });
 
   // The fallback target must itself accept images, or routing to it is pointless.
