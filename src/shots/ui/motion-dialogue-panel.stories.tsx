@@ -232,7 +232,13 @@ export const History: Story = {
 
 /** The lines, editable in place (#1773). Edit opens the form. */
 export const EditLines: Story = {
-  render: () => <DialogueLinesEditor lines={dialogue.lines} onSave={fn()} />,
+  render: () => (
+    <DialogueLinesEditor
+      lines={dialogue.lines}
+      onSave={fn()}
+      speakers={['SARAH', 'MARCUS']}
+    />
+  ),
 };
 
 /** A recording in flight, and one the user has already overruled. */

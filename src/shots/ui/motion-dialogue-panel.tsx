@@ -158,6 +158,44 @@ export function shotSpokenByNote(
     : `${value} speaks the lines`;
 }
 
+/** Select value for a line nobody could attribute (an empty `character`). */
+const NO_SPEAKER = '__none__';
+
+const speakerFromValue = (value: string | undefined): string =>
+  !value || value === NO_SPEAKER ? '' : value;
+
+/**
+ * Who says a line: one of the cast. A speaker no longer in the cast (renamed
+ * or removed) stays pickable, so opening the editor never changes a line.
+ */
+const SpeakerSelect: React.FC<{
+  speakers: readonly string[];
+  current: string;
+  label: string;
+}> = ({ speakers, current, label }) => {
+  const names =
+    current && !speakers.includes(current) ? [...speakers, current] : speakers;
+  const items: Record<string, string> = {
+    [NO_SPEAKER]: 'Unattributed',
+    ...Object.fromEntries(names.map((name) => [name, name])),
+  };
+  return (
+    <Select name="character" defaultValue={current || NO_SPEAKER} items={items}>
+      <SelectTrigger className="w-full" aria-label={label}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {names.map((name) => (
+          <SelectItem key={name} value={name}>
+            {name}
+          </SelectItem>
+        ))}
+        <SelectItem value={NO_SPEAKER}>Unattributed</SelectItem>
+      </SelectContent>
+    </Select>
+  );
+};
+
 /** One row of the editor: the line it started as (null = added here). */
 type EditorRow = { key: number; line: DialogueLine | null };
 
@@ -175,7 +213,12 @@ export const DialogueLinesEditor: React.FC<{
   saving?: boolean;
   /** Label for the Edit button, e.g. "Edit lines for shot 3". */
   label?: string;
-}> = ({ lines, onSave, saving, label = 'Edit lines' }) => {
+  /**
+   * The sequence's cast names — who a line can be given to. A line's
+   * speaker is spelled as the cast list spells it, so it is picked, not typed.
+   */
+  speakers: readonly string[];
+}> = ({ lines, onSave, saving, label = 'Edit lines', speakers }) => {
   const [rows, setRows] = useState<EditorRow[] | null>(null);
   const [nextKey, setNextKey] = useState(lines.length);
   const editing = rows !== null;
@@ -222,7 +265,7 @@ export const DialogueLinesEditor: React.FC<{
       return [
         {
           ...base,
-          character: (characters[index] ?? '').trim(),
+          character: speakerFromValue(characters[index]),
           line: text,
           tone: (tones[index] ?? '').trim(),
         },
@@ -238,12 +281,10 @@ export const DialogueLinesEditor: React.FC<{
         {rows.map((row, index) => (
           <li key={row.key} className="flex flex-col gap-1.5">
             <div className="flex items-center gap-2">
-              <Input
-                name="character"
-                defaultValue={row.line?.character ?? ''}
-                placeholder="Character"
-                aria-label={`Line ${index + 1} character`}
-                autoComplete="off"
+              <SpeakerSelect
+                speakers={speakers}
+                current={row.line?.character ?? ''}
+                label={`Line ${index + 1} character`}
               />
               <Input
                 name="tone"

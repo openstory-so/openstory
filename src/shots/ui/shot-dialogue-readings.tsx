@@ -5,6 +5,7 @@
  */
 
 import { useSequenceElements } from '@/cast/ui/use-sequence-elements';
+import { useSequenceCharacters } from '@/cast/ui/use-sequence-characters';
 import {
   cancelShotDialogueClaimFn,
   discardShotDialogueSectionFn,
@@ -319,6 +320,7 @@ export const ShotDialogueLines: React.FC<{
   label?: string;
 }> = ({ sequenceId, shotId, lines, label }) => {
   const queryClient = useQueryClient();
+  const { data: characters } = useSequenceCharacters(sequenceId);
   const save = useMutation({
     mutationFn: (next: DialogueLine[]) =>
       saveShotDialogueFn({ data: { sequenceId, shotId, lines: next } }),
@@ -332,6 +334,7 @@ export const ShotDialogueLines: React.FC<{
       onSave={(next) => save.mutate(next)}
       saving={save.isPending}
       label={label}
+      speakers={(characters ?? []).map((character) => character.name)}
     />
   );
 };
