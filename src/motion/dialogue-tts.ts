@@ -20,6 +20,13 @@ import type {
 /** ElevenLabs model an ElevenLabs voice's dialogue is recorded with (a Seed voice's is `SEED_AUDIO_MODEL`). */
 export const DIALOGUE_TTS_MODEL = 'eleven_v3';
 
+/** A dialogue model as the readings list names it. */
+export function dialogueModelLabel(model: string): string {
+  if (model === SEED_AUDIO_MODEL) return 'Seed Audio';
+  if (model === DIALOGUE_TTS_MODEL) return 'ElevenLabs v3';
+  return model;
+}
+
 /**
  * Text-to-Dialogue stability (0–1). Default 0.5 is a bit monotone for
  * acted conversation; lower opens emotional range without going erratic.

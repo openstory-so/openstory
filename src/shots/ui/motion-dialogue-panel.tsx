@@ -17,6 +17,7 @@
 
 import { formatElementDuration } from '@/cast/element-kind';
 import {
+  dialogueModelLabel,
   GENERATED_VOICE,
   VIDEO_MODEL_VOICE_TOKEN,
   orphanedVoiceTokens,
@@ -39,6 +40,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/ui/shadcn/alert-dialog';
+import { Badge } from '@/ui/shadcn/badge';
 import { Button } from '@/ui/shadcn/button';
 import {
   Collapsible,
@@ -73,6 +75,8 @@ export type ShotDialogueReading = {
   fromSeconds: number;
   toSeconds: number;
   recordingUrl: string;
+  /** The model the recording ran on (`ttsModel` of its turns). */
+  model: string;
   createdAt: Date | string;
   /** False once the shot's lines or voices moved — it cannot be used. */
   matchesCurrentLines: boolean;
@@ -168,7 +172,8 @@ const ReadingRow: React.FC<{
   return (
     <li className="flex flex-col gap-1">
       <div className="flex min-h-8 items-center justify-between gap-2">
-        <span className="text-xs text-muted-foreground">
+        <span className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <Badge variant="outline">{dialogueModelLabel(reading.model)}</Badge>
           {facts.join(' · ')}
         </span>
         <div className="flex items-center gap-1">

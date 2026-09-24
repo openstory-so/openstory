@@ -46,6 +46,7 @@ const reading = (
   fromSeconds: 0,
   toSeconds: 2.4,
   recordingUrl: AUDIO_URL,
+  model: 'eleven_v3',
   createdAt: '2026-09-18T10:00:00Z',
   matchesCurrentLines: true,
   mismatch: null,
@@ -53,6 +54,7 @@ const reading = (
 });
 
 const current = reading('r-3', {
+  model: 'seed-audio-1.0',
   selected: true,
   createdAt: '2026-09-20T09:30:00Z',
 });

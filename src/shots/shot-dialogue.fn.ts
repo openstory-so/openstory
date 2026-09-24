@@ -13,6 +13,7 @@ import {
   reserveRunCredits,
 } from '@/billing/server/preflight';
 import {
+  DIALOGUE_TTS_MODEL,
   dialogueAudioMaxSeconds,
   dialogueAudioMinSeconds,
   dialogueClipSourceKey,
@@ -109,6 +110,8 @@ export const listShotDialogueSectionsFn = createServerFn({ method: 'GET' })
       fromSeconds: section.fromSeconds,
       toSeconds: section.toSeconds,
       recordingUrl: section.recordingUrl,
+      // Every turn of a call runs on one model; the first says which.
+      model: section.recordingTurns[0]?.ttsModel ?? DIALOGUE_TTS_MODEL,
       createdAt: section.createdAt,
       matchesCurrentLines:
         currentKey !== '' && section.sourceKey === currentKey,
