@@ -133,7 +133,6 @@ import {
   Loader2,
   Minimize2,
   RefreshCw,
-  Sparkles,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -892,16 +891,13 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   // packing model here would show a packed N-shot clip then generate one shot.
   const motionTakesAudioReferences =
     motionReferenceSupport(regenMotionModel).audio;
-  // Draft first for this shot (#1756): seeded from the sequence, offered
-  // while the model has a draft mode and this team can reach Ark.
+  // Draft first for this shot (#1756): the sequence's Draft first switch,
+  // honoured while the model has a draft mode and this team can reach Ark.
+  // A final only ever comes from an approved draft (Render final below).
   const viaAvailability = useViaAvailability();
   const offerDraft =
     supportsDraftMode(regenMotionModel) && viaAvailability.byteplus;
-  const [regenDraft, setRegenDraft] = useState(sequenceDraftMotion);
-  useEffect(() => {
-    setRegenDraft(sequenceDraftMotion);
-  }, [sequenceDraftMotion]);
-  const regenAsDraft = offerDraft && regenDraft;
+  const regenAsDraft = offerDraft && sequenceDraftMotion;
 
   const imagePrompt = shot?.imagePromptVersion?.text ?? undefined;
 
@@ -1119,7 +1115,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           model: regenMotionModel,
           prompt: editedMotionPrompt || undefined,
           generateAudio: supportsAudio ? generateAudio : undefined,
-          draft: offerDraft ? regenDraft : undefined,
+          draft: offerDraft ? sequenceDraftMotion : undefined,
         },
       });
 
@@ -1149,7 +1145,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     editedMotionPrompt,
     generateAudio,
     offerDraft,
-    regenDraft,
+    sequenceDraftMotion,
     queryClient,
     invalidateContinuity,
     onRegenerateStart,
@@ -2262,23 +2258,6 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             </span>
           </label>
 
-          {/* Draft first per shot (#1756): re-draft after a final, or send
-              one shot straight to a final while the sequence drafts. */}
-          {offerDraft && (
-            <label
-              htmlFor="shot-draft-motion"
-              className="flex items-center gap-2 text-sm text-muted-foreground"
-            >
-              <Checkbox
-                id="shot-draft-motion"
-                checked={regenDraft}
-                onCheckedChange={(checked) => setRegenDraft(checked === true)}
-                disabled={isGenerating || isGeneratingMotion}
-              />
-              <span>Draft — 480p now, the final once approved</span>
-            </label>
-          )}
-
           {modelCannotRenderReferenceOnly && (
             <p className="text-xs text-muted-foreground">
               {IMAGE_TO_VIDEO_MODELS[effectiveMotionModel].name} needs a start
@@ -2318,10 +2297,37 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             </Alert>
           )}
 
+          {/* The selected clip is an approved Ark draft (#1756): render its
+              1080p final from the task id — same seed, prompt and assets.
+              It is the primary action; regenerating drops to a redo. */}
+          {selectedDraft && (
+            <div className="flex flex-col gap-1">
+              <Button
+                type="button"
+                className="w-full"
+                disabled={
+                  renderAtQuality.isPending ||
+                  isGeneratingMotion ||
+                  videoVariantIsGenerating
+                }
+                onClick={() => renderAtQuality.mutate()}
+              >
+                <span className="relative">
+                  {renderAtQuality.isPending ? 'Starting…' : 'Render final'}
+                  <ActionCost
+                    estimate={finalCostEstimate}
+                    className="absolute top-1/2 left-full ml-2 -translate-y-1/2"
+                  />
+                </span>
+              </Button>
+            </div>
+          )}
+
           {/* Motion action button. Switching to another model's existing
               clip is a history pick, like any other version. */}
           <div className="flex flex-col gap-1">
             <Button
+              variant={selectedDraft ? 'outline' : 'default'}
               onClick={() => {
                 if (falNeedsBillingSetup) {
                   showFalGate();
@@ -2347,9 +2353,19 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
               {(isGeneratingMotion || videoVariantIsGenerating) && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
-              {isGeneratingMotion || videoVariantIsGenerating
-                ? 'Generating…'
-                : motionGenerateLabel(packedShotCount, videoModelGenerated)}
+              <span className="relative">
+                {isGeneratingMotion || videoVariantIsGenerating
+                  ? 'Generating…'
+                  : motionGenerateLabel(
+                      packedShotCount,
+                      videoModelGenerated,
+                      regenAsDraft
+                    )}
+                <ActionCost
+                  estimate={motionCostEstimate}
+                  className="absolute top-1/2 left-full ml-2 -translate-y-1/2"
+                />
+              </span>
             </Button>
             <p
               className={
@@ -2364,31 +2380,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             >
               {EMPTY_GENERATION_PROMPT_MESSAGE}
             </p>
-            <ActionCost estimate={motionCostEstimate} />
           </div>
-
-          {/* The selected clip is an approved Ark draft (#1756): render its
-              1080p final from the task id — same seed, prompt and assets. */}
-          {selectedDraft && (
-            <div className="flex flex-col gap-1">
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full"
-                disabled={
-                  renderAtQuality.isPending ||
-                  isGeneratingMotion ||
-                  videoVariantIsGenerating
-                }
-                onClick={() => renderAtQuality.mutate()}
-              >
-                <Sparkles className="mr-2 h-4 w-4" />
-                {renderAtQuality.isPending ? 'Starting…' : 'Render final'}
-              </Button>
-              <ActionCost estimate={finalCostEstimate} />
-            </div>
-          )}
-
           <AlertDialog
             open={confirmSilentOpen}
             onOpenChange={setConfirmSilentOpen}

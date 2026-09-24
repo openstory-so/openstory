@@ -88,7 +88,7 @@ Control over the scene's video generation:
 - **Optimised prompt** — A collapsed panel for the currently selected model only. The header shows character count against that model's maximum prompt length (highlighted if over). Expand it to read the assembled prompt (dialogue, audio cues, reference bindings); toggle **JSON** to copy the exact request body.
 - **Generate Motion** / **Regenerate Motion** — Create a new video clip
 - **Render final** — Shown when the selected clip is a 480p draft: renders the 1080p final from that draft (same seed, prompt and references)
-- **Draft** checkbox — Under Regenerate Motion when the model has a draft mode: regenerate as a 480p draft (re-draft a finished shot) or, unchecked, straight to full quality
+- **Generate draft** / **Generate new draft** — What the motion button reads while the sequence has **Draft first** on and the model has a draft mode: a 480p draft, a new take rather than a redo of the clip on screen. The only way to a 1080p is **Render final** on an approved draft. Each button carries its estimated cost
 - **Copy Prompt** — Copy the assembled prompt to clipboard
 
 ## Smart Retry

@@ -65,7 +65,6 @@ import {
   PanelLeftClose,
   Plus,
   Video,
-  Sparkles,
 } from 'lucide-react';
 import {
   memo,
@@ -632,7 +631,6 @@ const SceneListComponent: React.FC<SceneListProps> = ({
           onClick={() => void handleRenderDrafts()}
           disabled={isGenerating}
         >
-          <Sparkles className="mr-2 h-4 w-4" />
           Render {draftSegments.length}{' '}
           {draftSegments.length === 1 ? 'final' : 'finals'}
         </Button>

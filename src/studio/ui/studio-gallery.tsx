@@ -592,7 +592,6 @@ export function GenerationDetail({
                 disabled={renderAtQualityPending}
                 onClick={onRenderAtQuality}
               >
-                <Sparkles aria-hidden="true" />
                 {renderAtQualityPending ? 'Starting…' : 'Render final'}
               </Button>
             )}
