@@ -13,6 +13,7 @@ import {
   AUDIO_MODELS,
   IMAGE_MODELS,
   IMAGE_TO_VIDEO_MODELS,
+  supportsDraftMode,
   supportsReferenceOnlyMotion,
   type AudioModel,
   type ImageToVideoModel,
@@ -21,6 +22,7 @@ import {
 import type { AspectRatio } from '@/models/aspect-ratios';
 import { aspectRatioToDimensions } from '@/models/aspect-ratios';
 import type { RenderedResolution, Resolution } from '@/models/resolutions';
+import { DRAFT_RESOLUTION } from '@/motion/draft-mode';
 import { imageRequestDimensions } from '@/stills/build-image-request';
 import { resolveMotionEndpoint } from '@/motion/resolve-motion-endpoint';
 import {
@@ -351,6 +353,8 @@ export type StoryboardCostOpts = {
    * estimated character — the in-run gate replaces that with the real count.
    */
   generateVoices?: boolean;
+  /** Draft first (#1756): clips price as 480p drafts where the model has a draft mode. */
+  draftMotion?: boolean;
   /** Live pricing map from `getEffectiveFalPricing()`. */
   pricing: FalPricingMap;
 };
@@ -408,7 +412,12 @@ export function estimateStoryboardRenderCost(
       const perShotMotion = gateEstimate(
         estimateVideoCost(model, duration, {
           pricing,
-          resolution: opts.resolution,
+          // Draft first (#1756): the run renders 480p drafts; the 1080p
+          // finals are a separate, later spend.
+          resolution:
+            opts.draftMotion && supportsDraftMode(model)
+              ? DRAFT_RESOLUTION
+              : opts.resolution,
           hasReferenceImages: true,
           referenceOnly: opts.referenceOnly,
         }),

@@ -39,7 +39,7 @@ Each still is stored as its own item. Sign in first — generate is gated behind
 
 The library card plays the clip.
 
-**Draft first (Seedance 2.5).** Turn on **Draft** in the settings chip to render a cheap 480p preview. When it looks right, open it in the library and press **Render at 1080p**: the final is rendered from the draft itself — same seed, prompt and references — so what you approved is what you get. A draft can be rendered at quality for seven days.
+**Draft first (Seedance 2.5, on by default).** Turn **Draft first** off in the settings chip to render at full quality straight away. A draft tile carries a **Draft** pill with the days left; when it looks right, press **Render final** on its card: the 1080p final is rendered from the draft itself — same seed, prompt and references — so what you approved is what you get. A draft can be rendered as a final for seven days.
 
 ## Paste a scene's request
 

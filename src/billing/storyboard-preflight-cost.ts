@@ -49,6 +49,8 @@ export type StoryboardPreflightInput = {
   referenceOnly?: boolean;
   /** One Voice Design call per estimated character (#1553). */
   generateVoices?: boolean;
+  /** Draft first (#1756): clips are priced as 480p drafts where the model has a draft mode. */
+  draftMotion?: boolean;
   /**
    * The Enhance target when Enhance ran (#1593). Without it the script's own
    * length is used: its labels, else its text at three words a second.
@@ -142,6 +144,7 @@ export function estimateStoryboardPreflightCost(
     autoGenerateMusic: musicOn,
     referenceOnly: opts.referenceOnly,
     generateVoices: opts.generateVoices,
+    draftMotion: opts.draftMotion,
     audioModels: musicOn ? opts.audioModels : undefined,
     audioDurationSeconds: musicOn
       ? (motionDurations?.totalSeconds ?? scriptSeconds)

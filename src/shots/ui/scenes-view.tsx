@@ -1,4 +1,5 @@
 import { GenerationProgressBanner } from '@/sequences/ui/generation/generation-progress-banner';
+import { theatreDraftLabel } from '@/motion/draft-mode';
 import { RenderWaitCopy } from '@/sequences/ui/generation/render-wait-copy';
 import { MotionProgressBanner } from '@/sequences/ui/generation/motion-progress-banner';
 import type { ModelGenerationStatus } from '@/models/ui/pickers/base-model-selector';
@@ -1417,6 +1418,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       stopAt: GenerationStage;
       generateStartFrames: boolean;
       generateVoices: boolean;
+      draftMotion: boolean;
     }) => {
       // Optimistic status flip, as the motion batch does: the chip and the
       // footer key off `sequence.status`, and the server fn reserves credits
@@ -1452,6 +1454,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
               autoGenerateMusic,
               generateStartFrames: args.generateStartFrames,
               generateVoices: args.generateVoices,
+              draftMotion: args.draftMotion,
             }
           : old
       );
@@ -1464,6 +1467,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
             leftoverGrokShotIds: [...leftoverGrokShotIds],
             generateStartFrames: args.generateStartFrames,
             generateVoices: args.generateVoices,
+            draftMotion: args.draftMotion,
           },
         });
       } catch (error) {
@@ -1490,7 +1494,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     });
     toast.success(
       result.started > 0
-        ? `Rendering ${result.started} at 1080p`
+        ? `Rendering ${result.started} ${result.started === 1 ? 'final' : 'finals'}`
         : 'No drafts ready to render'
     );
     await Promise.all([
@@ -1696,7 +1700,10 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                   effectiveView === 'script' ? (
                     <CopyScriptButton sequenceId={sequenceId} />
                   ) : (
-                    <SequenceExportActions sequenceExport={sequenceExport} />
+                    <SequenceExportActions
+                      sequenceExport={sequenceExport}
+                      draftLabel={theatreDraftLabel(shots ?? [])}
+                    />
                   )
                 }
               />
@@ -1796,6 +1803,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                       sequenceId={sequenceId}
                       resolution={sequence?.resolution}
                       sequenceGeneratesStartFrames={generateStartFrames}
+                      sequenceDraftMotion={sequence?.draftMotion ?? false}
                       selectedTab={effectiveTab}
                       visibleTabs={visibleTabs}
                       onTabChange={setFacet}

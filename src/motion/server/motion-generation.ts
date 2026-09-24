@@ -985,12 +985,30 @@ export function calculateMotionMetadata(
     };
   }
 
+  // The final of a draft (#1756) sends only the task id: no still, no
+  // references, no prompt, so there is no request to build — and building
+  // one would demand the start frame a reference-only draft never had. It is
+  // always 1080p on the model's own id.
+  if (options.finalFromDraftTaskId) {
+    return {
+      cost: estimateFalCost(
+        modelConfig.id,
+        {
+          durationSeconds: validatedDuration,
+          resolution: DRAFT_FINAL_RESOLUTION,
+        },
+        pricing
+      ),
+      duration: validatedDuration,
+      model: modelConfig.id,
+      vendor: modelConfig.vendor,
+    };
+  }
+
   const { endpointId, input } = buildMotionRequest(options, modelKey);
-  // A draft is always 480p and its final always 1080p (#1756), whatever tier
-  // the sequence asks for.
-  const resolution = options.finalFromDraftTaskId
-    ? DRAFT_FINAL_RESOLUTION
-    : options.draft && supportsDraftMode(modelKey)
+  // A draft is always 480p (#1756), whatever tier the sequence asks for.
+  const resolution =
+    options.draft && supportsDraftMode(modelKey)
       ? DRAFT_RESOLUTION
       : 'resolution' in input && typeof input.resolution === 'string'
         ? input.resolution

@@ -78,6 +78,8 @@ type SequencePlayerProps = {
   onAutoPlayConsumed?: () => void;
   /** Playhead plus what this source knows about scene timing (#1771). */
   onTimeUpdate?: (time: number, clock: PlaybackClock) => void;
+  /** Draft clips in this cut (#1756): "Draft cut · 2 days left", "3 of 12 shots are drafts". */
+  draftLabel?: string | null;
 };
 
 function useMounted(): boolean {
@@ -101,6 +103,7 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
   autoPlay = false,
   onAutoPlayConsumed,
   onTimeUpdate,
+  draftLabel = null,
 }) => {
   const posthog = usePostHog();
   const mounted = useMounted();
@@ -170,14 +173,24 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
 
   const overlay = (
     <>
-      {cachedVideoUrl === null ? (
-        <span
-          data-testid="theatre-local-preview"
-          className="absolute top-2 left-2 z-10 rounded bg-background/80 px-2 py-1 text-xs font-medium text-muted-foreground backdrop-blur-sm"
-        >
-          Local preview
-        </span>
-      ) : null}
+      <div className="pointer-events-none absolute top-2 left-2 z-10 flex flex-col items-start gap-1">
+        {cachedVideoUrl === null ? (
+          <span
+            data-testid="theatre-local-preview"
+            className="rounded bg-background/80 px-2 py-1 text-xs font-medium text-muted-foreground backdrop-blur-sm"
+          >
+            Local preview
+          </span>
+        ) : null}
+        {draftLabel && (
+          <span
+            data-testid="theatre-draft-label"
+            className="rounded bg-background/80 px-2 py-1 text-xs font-medium text-muted-foreground backdrop-blur-sm"
+          >
+            {draftLabel}
+          </span>
+        )}
+      </div>
       <div className="absolute top-2 right-2 z-10 flex items-center gap-2">
         {meta?.hasMixedResolutions && (
           <Tooltip>

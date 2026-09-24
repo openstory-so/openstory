@@ -28,8 +28,10 @@ import {
 import {
   DRAFT_FINAL_RESOLUTION,
   DRAFT_RESOLUTION,
+  draftExpirySuffix,
   draftTaskUsable,
 } from '@/motion/draft-mode';
+import { useViaAvailability } from '@/models/ui/use-via-availability';
 import {
   estimateAudioCost,
   estimateVideoCost,
@@ -169,6 +171,7 @@ export type SceneListProps = {
     stopAt: GenerationStage;
     generateStartFrames: boolean;
     generateVoices: boolean;
+    draftMotion: boolean;
   }) => Promise<void>;
   onGenerateMusic?: (model: AudioModel) => Promise<void>;
   musicPromptsReady: boolean;
@@ -211,9 +214,9 @@ export type SceneListProps = {
   onLeftoverGrokChange?: (shotIds: readonly string[], useGrok: boolean) => void;
   /** Remaining / total on-screen sheets when continue starts at References. */
   referenceProgress?: { remaining: number; total: number };
-  /** The sequence's draft-mode setting (#1756); seeds the batch checkbox. */
+  /** The sequence's draft-first setting (#1756); seeds the batch and continue switches. */
   draftMotion?: boolean;
-  /** Render every approved draft at quality (#1756). */
+  /** Render every selected draft's 1080p final (#1756). */
   onRenderDraftsAtQuality?: () => Promise<void>;
 };
 
@@ -338,10 +341,13 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   const voices = voicesUnavailable ? false : draftVoices;
   const [includeMusic, setIncludeMusic] = useState(true);
   const [generateAudio, setGenerateAudio] = useState(true);
+  // Draft first (#1756): one local switch for the batch footer and the
+  // continue slider, seeded from the sequence and persisted by either click.
   const [draftBatch, setDraftBatch] = useState(draftMotion);
   useEffect(() => {
     setDraftBatch(draftMotion);
   }, [draftMotion]);
+  const draftAvailable = useViaAvailability().byteplus;
   const [musicModel, setMusicModel] = useState<AudioModel>(
     initialMusicModel ?? DEFAULT_MUSIC_MODEL
   );
@@ -426,12 +432,15 @@ const SceneListComponent: React.FC<SceneListProps> = ({
         musicModel,
         videoModel,
         generateAudio,
-        draftMotion: draftBatch && supportsDraftMode(videoModel),
+        draftMotion: draftFirst,
       })
     );
   };
 
   const isMotionInProgress = regeneratingMotion.size > 0 || hasGeneratingShots;
+  // Draft first applies to the model this footer would send (#1756).
+  const offerDraftFirst = supportsDraftMode(videoModel) && draftAvailable;
+  const draftFirst = draftBatch && offerDraftFirst;
   const continueStart =
     nextStage == null
       ? null
@@ -461,6 +470,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     startFrom: continueStart ?? nextStage ?? undefined,
     remaining: referenceProgress?.remaining,
     total: referenceProgress?.total,
+    draftFirst,
   };
 
   const handleContinue = async () => {
@@ -479,6 +489,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
           stopAt: continueStopAtClamped,
           generateStartFrames: draftStartFrames,
           generateVoices: voices,
+          draftMotion: draftFirst,
         })
     );
   };
@@ -511,10 +522,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
       // by motion time; Seedance routes to reference-to-video when they do.
       const perShot = estimateVideoCost(videoModel, duration, {
         pricing: falPricing,
-        resolution:
-          draftBatch && supportsDraftMode(videoModel)
-            ? DRAFT_RESOLUTION
-            : resolution,
+        resolution: draftFirst ? DRAFT_RESOLUTION : resolution,
         hasReferenceImages: true,
         referenceOnly: rendersReferenceOnly(shot, { generateStartFrames }),
       });
@@ -542,7 +550,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     }
     return anyHonest ? total : null;
   }, [
-    draftBatch,
+    draftFirst,
     falPricing,
     notStartedShots,
     includeMusic,
@@ -552,20 +560,31 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     generateStartFrames,
   ]);
 
-  // Approved drafts (#1756): selected, finished, and inside Ark's seven-day
-  // window. One final per segment, priced at 1080p.
-  const draftSegments = useMemo(
-    () =>
-      (segments ?? []).filter((segment) => {
-        const version = segment.selectedVersion;
-        return (
-          Boolean(version?.draftTaskId) &&
-          version?.status === 'completed' &&
-          draftTaskUsable(version.createdAt)
-        );
-      }),
-    [segments]
-  );
+  // Selected drafts (#1756): selection is approval. Finished and inside
+  // Ark's seven-day window render one 1080p final per segment; a draft past
+  // the window can only be regenerated, so it is counted, not rendered.
+  const { draftSegments, expiredDrafts, soonestDraftExpiry } = useMemo(() => {
+    const live: SequenceSegment[] = [];
+    let expired = 0;
+    let soonest: number | null = null;
+    for (const segment of segments ?? []) {
+      const version = segment.selectedVersion;
+      if (!version?.draftTaskId || version.status !== 'completed') continue;
+      if (!draftTaskUsable(version.createdAt)) {
+        expired += 1;
+        continue;
+      }
+      live.push(segment);
+      const created = new Date(version.createdAt).getTime();
+      soonest = soonest === null ? created : Math.min(soonest, created);
+    }
+    return {
+      draftSegments: live,
+      expiredDrafts: expired,
+      soonestDraftExpiry:
+        soonest === null ? null : (draftExpirySuffix(soonest)?.trim() ?? null),
+    };
+  }, [segments]);
   const draftFinalCostEstimate = useMemo((): Microdollars | null => {
     if (!falPricing || draftSegments.length === 0) return null;
     let total: Microdollars = ZERO_MICROS;
@@ -603,23 +622,42 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   const canRenderDrafts =
     Boolean(onRenderDraftsAtQuality) &&
     !isMotionInProgress &&
-    draftSegments.length > 0;
+    (draftSegments.length > 0 || expiredDrafts > 0);
   const renderDraftsButton = canRenderDrafts ? (
     <div className="flex flex-col gap-1">
-      <Button
-        variant="outline"
-        className="w-full"
-        onClick={() => void handleRenderDrafts()}
-        disabled={isGenerating}
-      >
-        <Sparkles className="mr-2 h-4 w-4" />
-        Render {draftSegments.length}{' '}
-        {draftSegments.length === 1 ? 'draft' : 'drafts'} at 1080p
-      </Button>
+      {draftSegments.length > 0 && (
+        <Button
+          variant={showButton ? 'outline' : 'default'}
+          className="w-full"
+          onClick={() => void handleRenderDrafts()}
+          disabled={isGenerating}
+        >
+          <Sparkles className="mr-2 h-4 w-4" />
+          Render {draftSegments.length}{' '}
+          {draftSegments.length === 1 ? 'final' : 'finals'}
+        </Button>
+      )}
       <ActionCost estimate={draftFinalCostEstimate} />
+      {(soonestDraftExpiry || expiredDrafts > 0) && (
+        <p className="text-xs text-muted-foreground">
+          {[
+            soonestDraftExpiry &&
+              `Earliest draft: ${soonestDraftExpiry.replace(/^· /, '')}`,
+            expiredDrafts > 0 &&
+              `${expiredDrafts} ${expiredDrafts === 1 ? 'draft' : 'drafts'} expired — regenerate to render`,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        </p>
+      )}
     </div>
   ) : null;
-  const showDraftFooter = !hideBatchButton && !showButton && canRenderDrafts;
+  const showDraftFooter =
+    !hideBatchButton &&
+    !showButton &&
+    !showMusicFooter &&
+    !showContinueFooter &&
+    canRenderDrafts;
 
   const continueCostEstimate = useGenerationSliceEstimate({
     sequenceId,
@@ -627,6 +665,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     stopAt: continueStopAtClamped,
     generateStartFrames: draftStartFrames,
     generateVoices: voices,
+    draftMotion: draftFirst,
     enabled: showContinueFooter,
   });
 
@@ -937,7 +976,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
             />
             <span>Include SFX &amp; dialogue (when the model supports it)</span>
           </label>
-          {supportsDraftMode(videoModel) && (
+          {offerDraftFirst && (
             <label
               htmlFor="batch-draft-motion"
               className="flex items-center gap-2 text-sm text-muted-foreground"
@@ -947,7 +986,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
                 checked={draftBatch}
                 onCheckedChange={(checked) => setDraftBatch(checked === true)}
               />
-              <span>Draft at 480p (render at quality once approved)</span>
+              <span>Draft first — 480p now, 1080p finals once approved</span>
             </label>
           )}
           {renderDraftsButton}
@@ -972,6 +1011,8 @@ const SceneListComponent: React.FC<SceneListProps> = ({
             onGenerateVoicesChange={
               voicesUnavailable ? undefined : setDraftVoices
             }
+            draftFirst={draftFirst}
+            onDraftFirstChange={offerDraftFirst ? setDraftBatch : undefined}
             disabled={isGenerating}
           />
           <Button
@@ -1026,6 +1067,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
               </>
             )}
           </Button>
+          {renderDraftsButton}
         </div>
       )}
     </div>
@@ -1052,6 +1094,7 @@ const areEqual = (
     prevProps.nextStage !== nextProps.nextStage ||
     prevProps.generateStartFrames !== nextProps.generateStartFrames ||
     prevProps.generateVoices !== nextProps.generateVoices ||
+    prevProps.draftMotion !== nextProps.draftMotion ||
     prevProps.initialMusicModel !== nextProps.initialMusicModel ||
     prevProps.initialVideoModel !== nextProps.initialVideoModel ||
     prevProps.initialImageModel !== nextProps.initialImageModel ||

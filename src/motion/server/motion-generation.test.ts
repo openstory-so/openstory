@@ -1117,6 +1117,23 @@ describe('Motion Service', () => {
       expect(model).toBe('minimax/h3-max/reference-to-video');
       expect(cost).toBe(micros(400_000));
     });
+
+    it('prices the final of a draft at 1080p without building a request (#1756)', () => {
+      // A reference-only draft has no still; the final sends only the task
+      // id, so the start-frame guard must not fire here.
+      const { model, duration } = calculateMotionMetadata(
+        {
+          prompt: 'Golden hour along the beachfront',
+          model: 'seedance_v2_5',
+          duration: 5,
+          referenceOnly: false,
+          finalFromDraftTaskId: 'cgt-draft',
+        },
+        TEST_FAL_PRICING
+      );
+      expect(model).toBe('bytedance/seedance-2.5/image-to-video');
+      expect(duration).toBe(5);
+    });
   });
 
   describe('motionCostFromUsage', () => {

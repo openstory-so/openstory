@@ -166,7 +166,7 @@ export function useRenderStudioAssetAtQuality() {
     mutationFn: (id: string) => renderStudioAssetAtQualityFn({ data: { id } }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: studioAssetKeys.all });
-      toast.success('Rendering at 1080p');
+      toast.success('Rendering final');
     },
     onError: (error) => {
       if (isInsufficientCreditsError(error)) return;

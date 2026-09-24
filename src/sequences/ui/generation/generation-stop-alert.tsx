@@ -27,11 +27,15 @@ type GenerationStopAlertProps = {
   generateStartFrames: boolean;
   /** Design a voice per speaking character (#1553). */
   generateVoices: boolean;
+  /** Draft first (#1756); the switch shows only when `offerDraftMotion`. */
+  draftMotion: boolean;
+  offerDraftMotion: boolean;
   remember: boolean;
   onConfirm: (next: {
     stopAt: GenerationStage;
     generateStartFrames: boolean;
     generateVoices: boolean;
+    draftMotion: boolean;
     remember: boolean;
   }) => void;
   /** Extra copy — e.g. Generate Copy warning. */
@@ -40,7 +44,7 @@ type GenerationStopAlertProps = {
   /** Shared with the Generate footer so slider ticks reuse the same query. */
   estimateBase?: Omit<
     DraftGenerationEstimateInput,
-    'stopAt' | 'generateStartFrames' | 'generateVoices'
+    'stopAt' | 'generateStartFrames' | 'generateVoices' | 'draftMotion'
   > | null;
 };
 
@@ -50,6 +54,8 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
   stopAt,
   generateStartFrames,
   generateVoices,
+  draftMotion,
+  offerDraftMotion,
   remember,
   onConfirm,
   description,
@@ -59,15 +65,25 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
   const [draftStopAt, setDraftStopAt] = useState(stopAt);
   const [draftStartFrames, setDraftStartFrames] = useState(generateStartFrames);
   const [draftVoices, setDraftVoices] = useState(generateVoices);
+  const [draftDraftFirst, setDraftDraftFirst] = useState(draftMotion);
   const [draftRemember, setDraftRemember] = useState(remember);
+  const draftFirst = offerDraftMotion && draftDraftFirst;
 
   useEffect(() => {
     if (!open) return;
     setDraftStopAt(stopAt);
     setDraftStartFrames(generateStartFrames);
     setDraftVoices(generateVoices);
+    setDraftDraftFirst(draftMotion);
     setDraftRemember(remember);
-  }, [open, stopAt, generateStartFrames, generateVoices, remember]);
+  }, [
+    open,
+    stopAt,
+    generateStartFrames,
+    generateVoices,
+    draftMotion,
+    remember,
+  ]);
 
   // Deployment fact (platform ElevenLabs key), not a team one. When known to
   // be absent, the switch is hidden and the flag forced off so a remembered
@@ -83,6 +99,7 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
           stopAt: draftStopAt,
           generateStartFrames: draftStartFrames,
           generateVoices: voices,
+          draftMotion: draftFirst,
         }
       : null
   );
@@ -105,6 +122,8 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
           onGenerateVoicesChange={
             voicesUnavailable ? undefined : setDraftVoices
           }
+          draftFirst={draftFirst}
+          onDraftFirstChange={offerDraftMotion ? setDraftDraftFirst : undefined}
         />
         <AlertDialogFooter className="sm:items-start">
           {/* "Don't ask again" lives in the button bar, opposite the buttons,
@@ -129,6 +148,7 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
                   stopAt: draftStopAt,
                   generateStartFrames: draftStartFrames,
                   generateVoices: voices,
+                  draftMotion: draftDraftFirst,
                   remember: draftRemember,
                 })
               }

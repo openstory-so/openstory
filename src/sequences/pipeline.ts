@@ -483,8 +483,12 @@ export function actionLabelForStage(
     startFrom?: GenerationStage;
     remaining?: number;
     total?: number;
+    draftFirst?: boolean;
   }
 ): string {
+  if ((stage === 'music' || stage === 'motion') && opts?.draftFirst) {
+    return 'Generate Drafts & Music';
+  }
   if (
     stage === 'dialogue' &&
     opts?.generateStartFrames &&
@@ -674,9 +678,13 @@ export function stopAtFromSliderIndex(
 
 export function sliderStopLabel(
   stopAt: GenerationStage,
-  opts?: { generateStartFrames?: boolean }
+  opts?: { generateStartFrames?: boolean; draftFirst?: boolean }
 ): string {
-  if (stopAt === 'music' || stopAt === 'motion') return 'Motion & Music';
+  // Draft first (#1756): the motion pass renders 480p drafts (music rides
+  // along as usual); the 1080p finals are a continue, never an auto-run.
+  if (stopAt === 'music' || stopAt === 'motion') {
+    return opts?.draftFirst ? 'Drafts' : 'Motion & Music';
+  }
   if (stopAt === 'references') return 'References & Prompts';
   if (stopAt === 'dialogue' && opts?.generateStartFrames) {
     return 'Start Frames & Dialogue';
@@ -690,7 +698,7 @@ export function sliderStopLabel(
  */
 export function sliderTickLabel(
   stopAt: GenerationStage,
-  opts?: { generateStartFrames?: boolean }
+  opts?: { generateStartFrames?: boolean; draftFirst?: boolean }
 ): string {
   return sliderStopLabel(stopAt, opts).replace(' & ', '\u00a0&\n');
 }
@@ -710,10 +718,13 @@ const STOP_AFTER_SENTENCE: Record<GenerationStage, string> = {
 
 export function stopAfterSentence(
   stopAt: GenerationStage,
-  opts?: { generateStartFrames?: boolean }
+  opts?: { generateStartFrames?: boolean; draftFirst?: boolean }
 ): string {
   if (stopAt === 'dialogue' && opts?.generateStartFrames) {
     return 'Stop after start frames & dialogue';
+  }
+  if ((stopAt === 'music' || stopAt === 'motion') && opts?.draftFirst) {
+    return 'Stop after drafts';
   }
   return STOP_AFTER_SENTENCE[stopAt];
 }
@@ -724,9 +735,15 @@ export function stopAfterSentence(
  */
 export function runScopeLabel(
   stopAt: GenerationStage,
-  opts?: { generateStartFrames?: boolean; generateVoices?: boolean }
+  opts?: {
+    generateStartFrames?: boolean;
+    generateVoices?: boolean;
+    draftFirst?: boolean;
+  }
 ): string {
-  if (stopAt === 'music' || stopAt === 'motion') return 'Whole sequence';
+  if (stopAt === 'music' || stopAt === 'motion') {
+    return opts?.draftFirst ? 'Stops after drafts' : 'Whole sequence';
+  }
   const stage =
     stopAt === 'images' && opts?.generateStartFrames && opts.generateVoices
       ? 'dialogue'

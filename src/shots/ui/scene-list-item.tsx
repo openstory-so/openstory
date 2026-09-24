@@ -1,4 +1,5 @@
 import { DivergentAlternateBanner } from '@/shots/ui/staleness/divergent-alternate-banner';
+import { shotDraftLabel } from '@/motion/draft-mode';
 import { Button } from '@/ui/shadcn/button';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/ui/shadcn/card';
 import {
@@ -204,6 +205,7 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
                 videoUrl={shot?.video?.url}
                 videoStartSeconds={videoStartSeconds}
                 generationError={shot?.frame.imageError}
+                draftLabel={shotDraftLabel(shot)}
                 alt={linkLabel ?? 'Shot thumbnail'}
                 aspectRatio={aspectRatio}
                 className="w-full rounded-md"

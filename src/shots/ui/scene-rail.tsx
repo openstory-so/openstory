@@ -1,4 +1,5 @@
 import type { AspectRatio } from '@/models/aspect-ratios';
+import { shotDraftLabel } from '@/motion/draft-mode';
 import { plainSceneTitle } from '@/platform/markdown-plain';
 import type { ShotView } from '@/shots/shot-view';
 import { Button } from '@/ui/shadcn/button';
@@ -128,6 +129,7 @@ export const SceneRail: React.FC<{
                           thumbnailStatus={shot.frame.imageStatus || undefined}
                           videoUrl={shot.video?.url}
                           generationError={shot.frame.imageError}
+                          draftLabel={shotDraftLabel(shot)}
                           alt={shotLabel}
                           aspectRatio={aspectRatio}
                           className="w-full rounded-sm"

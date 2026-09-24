@@ -111,7 +111,9 @@ const DEFAULT_SETTINGS: GenerationSettings = withMode({
   // the opt-in for steerable composition.
   generateStartFrames: false,
   generateVoices: false,
-  draftMotion: false,
+  // On by default: only Seedance 2.5 honours it, and there a 480p look
+  // before the 1080p spend is the cheaper first run (#1756).
+  draftMotion: true,
   musicModel: TURBO_DEFAULT_AUDIO,
   audioModels: [TURBO_DEFAULT_AUDIO],
 });
@@ -281,7 +283,7 @@ function loadSettings(): GenerationSettings {
       draftMotion:
         'draftMotion' in parsed && typeof parsed.draftMotion === 'boolean'
           ? parsed.draftMotion
-          : false,
+          : true,
       musicModel,
       audioModels,
     });

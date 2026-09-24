@@ -13,12 +13,10 @@ import {
 } from '@/models/ui/pickers/music-model-selector';
 import { Popover, PopoverContent, PopoverTrigger } from '@/ui/shadcn/popover';
 import { Separator } from '@/ui/shadcn/separator';
-import { Switch } from '@/ui/shadcn/switch';
 import {
   DEFAULT_IMAGE_MODEL,
   DEFAULT_MUSIC_MODEL,
   DEFAULT_VIDEO_MODEL,
-  supportsDraftMode,
   type AudioModel,
   type ImageToVideoModel,
   type TextToImageModel,
@@ -50,12 +48,10 @@ type GenerationSettingsProps = {
   generateStartFrames?: boolean;
   audioModels?: AudioModel[];
   /**
-   * Render motion as Ark drafts (#1756): 480p previews, each rendered at
-   * quality from its task id once approved. Offered only while a selected
-   * motion model has a draft mode.
+   * Draft first (#1756) pins the tier: drafts are 480p and Ark renders the
+   * final at 1080p only. The pills go read-only and this note says why.
    */
-  draftMotion?: boolean;
-  onDraftMotionChange?: (value: boolean) => void;
+  resolutionLockNote?: string | null;
   onAspectRatioChange: (value: AspectRatio) => void;
   onResolutionChange: (value: Resolution) => void;
   onAnalysisModelsChange: (value: AnalysisModelId[]) => void;
@@ -82,8 +78,7 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
   videoModels,
   generateStartFrames = false,
   audioModels,
-  draftMotion = false,
-  onDraftMotionChange,
+  resolutionLockNote = null,
   onAspectRatioChange,
   onResolutionChange,
   onAnalysisModelsChange,
@@ -198,28 +193,12 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
               value={resolution}
               onChange={onResolutionChange}
               available={availableResolutions(modelSelection)}
-              disabled={disabled}
-              note={resolutionCeilingNote(resolution, modelSelection)}
+              disabled={disabled || Boolean(resolutionLockNote)}
+              note={
+                resolutionLockNote ??
+                resolutionCeilingNote(resolution, modelSelection)
+              }
             />
-            {onDraftMotionChange && videoModels.some(supportsDraftMode) && (
-              <div className="flex items-center justify-between gap-4">
-                <label
-                  htmlFor="generation-draft-motion"
-                  className="text-sm text-foreground"
-                >
-                  Draft motion
-                  <span className="block text-xs text-muted-foreground">
-                    480p previews; render at quality once approved
-                  </span>
-                </label>
-                <Switch
-                  id="generation-draft-motion"
-                  checked={draftMotion}
-                  onCheckedChange={onDraftMotionChange}
-                  disabled={disabled}
-                />
-              </div>
-            )}
           </section>
 
           {onAudioModelsChange && audioModels && (

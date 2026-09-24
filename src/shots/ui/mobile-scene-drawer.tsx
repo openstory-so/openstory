@@ -1,4 +1,5 @@
 import { Sheet, SheetContent, SheetTitle } from '@/ui/shadcn/sheet';
+import { shotDraftLabel } from '@/motion/draft-mode';
 import type { SceneWithScript } from './use-scenes';
 import type { SceneSelection } from './scene-selection';
 import { plainSceneTitle } from '@/platform/markdown-plain';
@@ -85,6 +86,7 @@ export const MobileSceneDrawer: React.FC<SceneListProps> = (listProps) => {
           previewThumbnailUrl={previewShot?.previewThumbnailUrl}
           thumbnailStatus={previewShot?.frame.imageStatus || undefined}
           videoUrl={previewShot?.video?.url}
+          draftLabel={shotDraftLabel(previewShot)}
           gridSheetUrl={previewShot?.gridSheet?.url}
           pendingUpscaleIndex={previewShot?.pendingUpscaleIndex}
           pendingUpscaleUrl={previewShot?.pendingUpscaleUrl}

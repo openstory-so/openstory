@@ -11,6 +11,8 @@ function OpenAlert() {
       stopAt="music"
       generateStartFrames={false}
       generateVoices={false}
+      draftMotion={true}
+      offerDraftMotion={true}
       remember={false}
       onConfirm={() => setOpen(false)}
     />

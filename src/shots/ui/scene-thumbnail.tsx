@@ -43,6 +43,8 @@ type SceneThumbnailProps = {
   pendingUpscaleIndex?: number | null;
   /** Cropped tile URL persisted on the generating framing version (survives refresh). */
   pendingUpscaleUrl?: string | null;
+  /** The shot's selected clip is an Ark draft (#1756): "Draft", "Draft · 2 days left", "Draft expired". */
+  draftLabel?: string | null;
 };
 
 /**
@@ -86,6 +88,7 @@ const SceneThumbnailComponent: React.FC<SceneThumbnailProps> = ({
   pendingUpscaleUrl,
   videoUrl,
   videoStartSeconds = 0,
+  draftLabel = null,
 }) => {
   const showOverlay = hasUpscaleOverlay({
     gridUrl: gridSheetUrl,
@@ -157,10 +160,19 @@ const SceneThumbnailComponent: React.FC<SceneThumbnailProps> = ({
         showLabel
       />
 
-      {isPreview && (
-        <span className="absolute top-1 right-1 rounded bg-background/80 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground backdrop-blur-sm">
-          Storyboard
-        </span>
+      {(isPreview || draftLabel) && (
+        <div className="pointer-events-none absolute top-1 right-1 flex flex-col items-end gap-0.5">
+          {isPreview && (
+            <span className="rounded bg-background/80 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground backdrop-blur-sm">
+              Storyboard
+            </span>
+          )}
+          {draftLabel && (
+            <span className="rounded bg-background/80 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground backdrop-blur-sm">
+              {draftLabel}
+            </span>
+          )}
+        </div>
       )}
 
       {isFailed && (

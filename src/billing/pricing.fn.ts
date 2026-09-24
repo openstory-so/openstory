@@ -109,6 +109,8 @@ const estimateDraftGenerationInputSchema = z.object({
   stopAt: generationStageSchema,
   generateStartFrames: z.boolean(),
   generateVoices: z.boolean(),
+  /** Draft first (#1756): motion is priced as 480p drafts. */
+  draftMotion: z.boolean().optional(),
   targetDurationSeconds: z.number().int().positive().optional(),
 });
 
@@ -149,6 +151,7 @@ export const estimateDraftGenerationFn = createServerFn({ method: 'POST' })
       autoGenerateMusic: true,
       referenceOnly: !data.generateStartFrames,
       generateVoices: data.generateVoices,
+      draftMotion: data.draftMotion,
       targetDurationSeconds: data.targetDurationSeconds,
       pricing,
     });

@@ -10,7 +10,7 @@ import {
   AlertDialogTrigger,
 } from '@/ui/shadcn/alert-dialog';
 import { Button } from '@/ui/shadcn/button';
-import { draftTaskUsable } from '@/motion/draft-mode';
+import { draftBadgeLabel, draftTaskUsable } from '@/motion/draft-mode';
 import {
   Dialog,
   DialogContent,
@@ -101,8 +101,15 @@ function StudioCard({
   supportMode: boolean;
 }) {
   const favorite = useToggleStudioFavorite();
+  const renderAtQuality = useRenderStudioAssetAtQuality();
   const primary = studioPrimaryOutput(asset);
   const poster = studioPosterOutput(asset);
+  // A finished Ark draft inside its seven-day window (#1756).
+  const renderable =
+    !supportMode &&
+    Boolean(asset.draftTaskId) &&
+    asset.status === 'completed' &&
+    draftTaskUsable(asset.createdAt);
   const prompt = studioPrompt(asset);
   const inFlight = asset.status === 'queued' || asset.status === 'running';
   const isVideo = primary?.contentType.startsWith('video/');
@@ -167,6 +174,12 @@ function StudioCard({
           </div>
         )}
       </button>
+      {/* A draft tile says so, with the days left to render its final (#1756). */}
+      {asset.draftTaskId && asset.status === 'completed' && (
+        <span className="pointer-events-none absolute top-2 left-2 z-10 rounded bg-background/80 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground backdrop-blur-sm">
+          {draftBadgeLabel(asset.createdAt)}
+        </span>
+      )}
       <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex justify-end gap-1 p-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 group-has-[[data-state=open]]:opacity-100">
         {!supportMode && (
           <Button
@@ -188,6 +201,24 @@ function StudioCard({
               aria-hidden="true"
             />
           </Button>
+        )}
+        {renderable && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                size="icon"
+                variant="secondary"
+                className="pointer-events-auto"
+                aria-label="Render final"
+                disabled={renderAtQuality.isPending}
+                onClick={() => renderAtQuality.mutate(asset.id)}
+              >
+                <Sparkles aria-hidden="true" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Render final</TooltipContent>
+          </Tooltip>
         )}
         <StudioShareMenu asset={asset} className="pointer-events-auto" />
       </div>
@@ -452,7 +483,7 @@ export function GenerationDetail({
   onReuse?: (reuse: StudioReuse) => void;
   deletePending: boolean;
   onDelete: () => void;
-  /** Render this Ark draft at 1080p (#1756); absent in support mode. */
+  /** Render this Ark draft's 1080p final (#1756); absent in support mode. */
   onRenderAtQuality?: () => void;
   renderAtQualityPending?: boolean;
   /** Step to the neighbouring generation in the gallery; absent at the ends. */
@@ -562,7 +593,7 @@ export function GenerationDetail({
                 onClick={onRenderAtQuality}
               >
                 <Sparkles aria-hidden="true" />
-                {renderAtQualityPending ? 'Starting…' : 'Render at 1080p'}
+                {renderAtQualityPending ? 'Starting…' : 'Render final'}
               </Button>
             )}
           {!supportMode &&

@@ -1,4 +1,5 @@
 import { ScenePlayer } from '@/motion/ui/scene-player';
+import { theatreDraftLabel } from '@/motion/draft-mode';
 import { CanvasMediaStage } from './canvas-media-stage';
 import { ShotDialogueUnderVideo } from './shot-dialogue-readings';
 import { ShotMediaDropZone } from './shot-media-drop-zone';
@@ -176,6 +177,10 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
     () => toPlaybackScenes(scopedShots, aspectRatio),
     [scopedShots, aspectRatio]
   );
+  const draftLabel = useMemo(
+    () => theatreDraftLabel(scopedShots),
+    [scopedShots]
+  );
 
   const setMusicEnabled = useSetSequenceMusic(sequence?.id ?? '');
 
@@ -293,6 +298,7 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
         onTimeUpdate={(time, clock) =>
           onPlayingShot?.(shotIdAtSequenceTime(scopedShots, time, clock))
         }
+        draftLabel={draftLabel}
         playlistUrl={scope !== 'sequence' ? null : sequenceExport.playbackUrl}
         overlayActions={
           scope === 'sequence' ? (

@@ -138,6 +138,7 @@ const estimateGenerationSliceInputSchema = z.object({
   stopAt: generationStageSchema,
   generateStartFrames: z.boolean().optional(),
   generateVoices: z.boolean().optional(),
+  draftMotion: z.boolean().optional(),
 });
 
 /**
@@ -200,6 +201,7 @@ export const estimateGenerationSliceFn = createServerFn({ method: 'GET' })
       stopAt: data.stopAt,
       referenceOnly: !flags.generateStartFrames,
       generateVoices: flags.generateVoices,
+      draftMotion: data.draftMotion ?? sequence.draftMotion,
       autoGenerateMotion: motionOn,
       videoModels: motionOn ? [videoModel] : undefined,
       videoDurationSeconds: motionOn ? perShotSeconds : undefined,
@@ -254,6 +256,8 @@ export const continueGenerationFn = createServerFn({ method: 'POST' })
           leftoverGrokShotIds: z.array(ulidSchema).optional(),
           generateStartFrames: z.boolean().optional(),
           generateVoices: z.boolean().optional(),
+          /** Draft first (#1756); motion has not run yet at any continue. */
+          draftMotion: z.boolean().optional(),
         })
         .refine((d) => stageIndex(d.startFrom) <= stageIndex(d.stopAt), {
           path: ['stopAt'],
@@ -293,6 +297,7 @@ export const continueGenerationFn = createServerFn({ method: 'POST' })
     const { autoGenerateMotion, autoGenerateMusic } = flagsFromStopAt(
       data.stopAt
     );
+    const draftMotion = data.draftMotion ?? sequence.draftMotion;
 
     const shots = await context.scopedDb.shots.listBySequence(sequence.id);
     const reservationId = allowsUnfundedGeneration(data.stopAt)
@@ -312,6 +317,7 @@ export const continueGenerationFn = createServerFn({ method: 'POST' })
             startFrom,
             referenceOnly: !flags.generateStartFrames,
             generateVoices: flags.generateVoices,
+            draftMotion,
             videoModels: [
               safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
             ],
@@ -337,6 +343,7 @@ export const continueGenerationFn = createServerFn({ method: 'POST' })
       autoGenerateMusic,
       generateStartFrames: flags.generateStartFrames,
       generateVoices: flags.generateVoices,
+      draftMotion,
     });
 
     return releaseReservationOnThrow(context.scopedDb, reservationId, () =>
@@ -457,6 +464,7 @@ export const updateSequenceFn = createServerFn({ method: 'POST' })
               ],
               referenceOnly: !sequence.generateStartFrames,
               generateVoices: sequence.generateVoices,
+              draftMotion: sequence.draftMotion,
               targetDurationSeconds:
                 sequence.targetDurationSeconds ?? undefined,
               pricing: await getEffectiveFalPricing(),
@@ -667,6 +675,7 @@ export const retryStoryboardFn = createServerFn({ method: 'POST' })
             ],
             referenceOnly: !sequence.generateStartFrames,
             generateVoices: sequence.generateVoices,
+            draftMotion: sequence.draftMotion,
             targetDurationSeconds: sequence.targetDurationSeconds ?? undefined,
             pricing: await getEffectiveFalPricing(),
           }),

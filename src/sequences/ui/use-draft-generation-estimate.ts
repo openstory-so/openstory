@@ -17,6 +17,8 @@ export type DraftGenerationEstimateInput = {
   stopAt: GenerationStage;
   generateStartFrames: boolean;
   generateVoices: boolean;
+  /** Draft first (#1756): motion is priced as 480p drafts. */
+  draftMotion?: boolean;
   targetDurationSeconds?: number;
 };
 
@@ -49,6 +51,7 @@ export function useDraftGenerationEstimate(
       input?.stopAt,
       input?.generateStartFrames,
       input?.generateVoices,
+      input?.draftMotion,
       input?.targetDurationSeconds,
     ],
     queryFn: async () => {
@@ -64,6 +67,7 @@ export function useDraftGenerationEstimate(
           stopAt: input.stopAt,
           generateStartFrames: input.generateStartFrames,
           generateVoices: input.generateVoices,
+          draftMotion: input.draftMotion,
           targetDurationSeconds: input.targetDurationSeconds,
         },
       });

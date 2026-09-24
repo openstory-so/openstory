@@ -102,7 +102,9 @@ export async function renderDraftAtQuality(options: {
       sequenceId: sequence.id,
       shotId: lead.shotId,
       sceneId: options.sceneId,
-      referenceOnly: false,
+      // The mode the draft ran in, so the final is stamped the same way and
+      // a reference-only draft is not asked for a start frame it never had.
+      referenceOnly: !lead.usesStartFrame,
       // Provenance only — the final sends the task id, not a prompt.
       prompt: promptVersion?.text ?? '',
       model,

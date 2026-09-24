@@ -9,6 +9,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuTrigger,
 } from '@/ui/shadcn/dropdown-menu';
 import type {
@@ -24,7 +25,9 @@ export function formatExportProgress(progress: ExportProgress | null): string {
 
 export const SequenceExportActions: React.FC<{
   sequenceExport: SequenceExportState;
-}> = ({ sequenceExport }) => {
+  /** Draft clips in the cut (#1756) — the export would carry 480p shots. */
+  draftLabel?: string | null;
+}> = ({ sequenceExport, draftLabel = null }) => {
   const running = sequenceExport.isRunning;
   const pending =
     !running && !sequenceExport.canExport && !sequenceExport.freshExportUrl;
@@ -56,6 +59,11 @@ export const SequenceExportActions: React.FC<{
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          {draftLabel && (
+            <DropdownMenuLabel className="font-normal text-muted-foreground">
+              {draftLabel} — finals not rendered
+            </DropdownMenuLabel>
+          )}
           <DropdownMenuItem
             disabled={pending || running}
             onClick={sequenceExport.download}

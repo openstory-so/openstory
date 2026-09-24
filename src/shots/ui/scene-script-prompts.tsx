@@ -45,7 +45,11 @@ import {
   generateShotMotionFn,
   renderShotAtQualityFn,
 } from '@/motion/motion.fn';
-import { DRAFT_FINAL_RESOLUTION, draftTaskUsable } from '@/motion/draft-mode';
+import {
+  DRAFT_FINAL_RESOLUTION,
+  DRAFT_RESOLUTION,
+  draftTaskUsable,
+} from '@/motion/draft-mode';
 import { regenerateShotPromptFn } from '@/shots/prompt-variants.fn';
 import { BILLING_BALANCE_KEY } from '@/billing/ui/use-billing-balance';
 import { notifyInsufficientCredits } from '@/billing/ui/notify-insufficient-credits';
@@ -85,6 +89,7 @@ import {
   IMAGE_TO_VIDEO_MODELS,
   getCompatibleModel,
   safeImageToVideoModel,
+  supportsDraftMode,
   safeTextToImageModel,
   videoModelSupportsAudio,
   type ImageToVideoModel,
@@ -262,6 +267,8 @@ type SceneScriptPromptsProps = {
    * (`shots.useStartFrame`); the checkbox below shows the resolved answer.
    */
   sequenceGeneratesStartFrames?: boolean;
+  /** The sequence's draft-first setting (#1756); seeds this shot's Draft switch. */
+  sequenceDraftMotion?: boolean;
   selectedTab: TabValue;
   /** Tabs to render for the current selection scope (#986). */
   visibleTabs: TabDescriptor[];
@@ -341,6 +348,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   shot,
   sequenceId,
   sequenceGeneratesStartFrames = false,
+  sequenceDraftMotion = false,
   selectedTab,
   visibleTabs,
   onTabChange,
@@ -604,8 +612,25 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
         data: { sequenceId, shotId: shot.id },
       });
     },
+    // Same optimistic flip as Regenerate Motion: the run opens its version a
+    // step later, so without this the click shows nothing until the next
+    // poll. The final covers the whole segment.
+    onMutate: () => {
+      if (!shot?.id) return;
+      const generatingIds = segment?.shotIds ?? [shot.id];
+      for (const id of generatingIds) onRegenerateStart(id, 'motion');
+      const generating = new Set(generatingIds);
+      queryClient.setQueryData<ShotView[]>(shotKeys.list(sequenceId), (old) =>
+        old?.map((f) =>
+          generating.has(f.id) ? { ...f, videoStatus: 'generating' } : f
+        )
+      );
+      queryClient.setQueryData<ShotView>(shotKeys.detail(shot.id), (old) =>
+        old ? { ...old, videoStatus: 'generating' } : old
+      );
+    },
     onSuccess: async () => {
-      toast.success('Rendering at 1080p');
+      toast.success('Rendering final');
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: shotKeys.list(sequenceId) }),
         queryClient.invalidateQueries({
@@ -616,10 +641,14 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
         }),
       ]);
     },
-    onError: (error) =>
-      toast.error('Failed to render at quality', {
+    onError: (error) => {
+      toast.error('Failed to render the final', {
         description: errorMessage(error),
-      }),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: shotKeys.list(sequenceId),
+      });
+    },
   });
   const selectedDraft =
     segment?.selectedVersion?.draftTaskId &&
@@ -863,6 +892,16 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   // packing model here would show a packed N-shot clip then generate one shot.
   const motionTakesAudioReferences =
     motionReferenceSupport(regenMotionModel).audio;
+  // Draft first for this shot (#1756): seeded from the sequence, offered
+  // while the model has a draft mode and this team can reach Ark.
+  const viaAvailability = useViaAvailability();
+  const offerDraft =
+    supportsDraftMode(regenMotionModel) && viaAvailability.byteplus;
+  const [regenDraft, setRegenDraft] = useState(sequenceDraftMotion);
+  useEffect(() => {
+    setRegenDraft(sequenceDraftMotion);
+  }, [sequenceDraftMotion]);
+  const regenAsDraft = offerDraft && regenDraft;
 
   const imagePrompt = shot?.imagePromptVersion?.text ?? undefined;
 
@@ -1080,6 +1119,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           model: regenMotionModel,
           prompt: editedMotionPrompt || undefined,
           generateAudio: supportsAudio ? generateAudio : undefined,
+          draft: offerDraft ? regenDraft : undefined,
         },
       });
 
@@ -1108,6 +1148,8 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     regenMotionModel,
     editedMotionPrompt,
     generateAudio,
+    offerDraft,
+    regenDraft,
     queryClient,
     invalidateContinuity,
     onRegenerateStart,
@@ -1192,7 +1234,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     });
     return estimateVideoCost(regenMotionModel, duration, {
       pricing: falPricing,
-      resolution,
+      resolution: regenAsDraft ? DRAFT_RESOLUTION : resolution,
       // Unknown (preview failed or pending) falls back to the mode's default
       // endpoint inside estimateVideoCost — never to "no references".
       hasReferenceImages: promptPreview?.motionHasReferenceImages,
@@ -1202,6 +1244,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     falPricing,
     shot,
     regenMotionModel,
+    regenAsDraft,
     resolution,
     sequenceGeneratesStartFrames,
     promptPreview?.motionHasReferenceImages,
@@ -1257,7 +1300,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   // The shot's model can't render without a start frame — it stays listed (it
   // is already picked) but submit refuses it, so say so here rather than at the
   // click. Same list the selector filters by.
-  const { referenceOnlyModels } = useViaAvailability();
+  const { referenceOnlyModels } = viaAvailability;
   const modelCannotRenderReferenceOnly =
     !shotUsesStartFrame && !referenceOnlyModels.includes(effectiveMotionModel);
   // With no still, the sheets are the ONLY thing fixing identity and set. None
@@ -2219,6 +2262,23 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             </span>
           </label>
 
+          {/* Draft first per shot (#1756): re-draft after a final, or send
+              one shot straight to a final while the sequence drafts. */}
+          {offerDraft && (
+            <label
+              htmlFor="shot-draft-motion"
+              className="flex items-center gap-2 text-sm text-muted-foreground"
+            >
+              <Checkbox
+                id="shot-draft-motion"
+                checked={regenDraft}
+                onCheckedChange={(checked) => setRegenDraft(checked === true)}
+                disabled={isGenerating || isGeneratingMotion}
+              />
+              <span>Draft — 480p now, the final once approved</span>
+            </label>
+          )}
+
           {modelCannotRenderReferenceOnly && (
             <p className="text-xs text-muted-foreground">
               {IMAGE_TO_VIDEO_MODELS[effectiveMotionModel].name} needs a start
@@ -2323,7 +2383,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                 onClick={() => renderAtQuality.mutate()}
               >
                 <Sparkles className="mr-2 h-4 w-4" />
-                {renderAtQuality.isPending ? 'Starting…' : 'Render at 1080p'}
+                {renderAtQuality.isPending ? 'Starting…' : 'Render final'}
               </Button>
               <ActionCost estimate={finalCostEstimate} />
             </div>

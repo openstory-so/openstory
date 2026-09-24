@@ -45,7 +45,8 @@ export const sequenceKeys = {
     startFrom: GenerationStage,
     stopAt: GenerationStage,
     generateStartFrames?: boolean,
-    generateVoices?: boolean
+    generateVoices?: boolean,
+    draftMotion?: boolean
   ) =>
     [
       ...sequenceKeys.detail(id),
@@ -53,6 +54,7 @@ export const sequenceKeys = {
       startFrom,
       stopAt,
       generateStartFrames,
+      draftMotion,
       generateVoices,
     ] as const,
 };
@@ -63,6 +65,8 @@ export function useGenerationSliceEstimate(args: {
   stopAt: GenerationStage;
   generateStartFrames?: boolean;
   generateVoices?: boolean;
+  /** Draft first (#1756): motion priced as 480p drafts. */
+  draftMotion?: boolean;
   enabled?: boolean;
 }): Microdollars | null | undefined {
   const { data } = useQuery({
@@ -74,7 +78,8 @@ export function useGenerationSliceEstimate(args: {
             args.startFrom,
             args.stopAt,
             args.generateStartFrames,
-            args.generateVoices
+            args.generateVoices,
+            args.draftMotion
           ),
     queryFn: async () => {
       if (args.startFrom == null) return { estimateMicros: null };
@@ -85,6 +90,7 @@ export function useGenerationSliceEstimate(args: {
           stopAt: args.stopAt,
           generateStartFrames: args.generateStartFrames,
           generateVoices: args.generateVoices,
+          draftMotion: args.draftMotion,
         },
       });
     },

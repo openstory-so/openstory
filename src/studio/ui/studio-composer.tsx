@@ -352,7 +352,8 @@ export function StudioComposer({
   const [count, setCount] = useState<(typeof COUNTS)[number]>(1);
   const [duration, setDuration] = useState(5);
   const [generateAudio, setGenerateAudio] = useState(true);
-  const [draftMode, setDraftMode] = useState(false);
+  // On by default (#1756): a 480p look before the 1080p spend.
+  const [draftMode, setDraftMode] = useState(true);
   const [lastShuffled, setLastShuffled] = useState<string | null>(null);
   // The mic sits in the toolbar next to Shuffle; dictation streams into the
   // prompt editor through this handle.
@@ -1511,7 +1512,7 @@ export function StudioComposer({
                   available={resolutionTiers}
                   note={
                     draftOn
-                      ? 'Drafts render at 480p; render at 1080p from the gallery'
+                      ? 'Drafts render at 480p, the final at 1080p'
                       : resolutionNote
                   }
                 />
@@ -1578,9 +1579,10 @@ export function StudioComposer({
                       htmlFor="studio-draft"
                       className="text-sm font-medium"
                     >
-                      Draft
+                      Draft first
                       <span className="block text-xs font-normal text-muted-foreground">
-                        480p preview; render at 1080p from the gallery
+                        480p now; render the 1080p final from its card within
+                        seven days
                       </span>
                     </label>
                     <Switch

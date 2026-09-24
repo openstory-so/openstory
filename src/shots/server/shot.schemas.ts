@@ -68,6 +68,12 @@ export const generateMotionSchema = z.object({
   motionBucket: z.number().min(1).max(255).optional(),
   /** Toggle sfx/dialogue/ambient audio for audio-capable models. */
   generateAudio: z.boolean().optional(),
+  /**
+   * Render this shot as an Ark draft (#1756). Absent = the sequence's
+   * draft-first setting; explicit so a shot can be re-drafted after its
+   * final, or sent straight to a final while the sequence drafts.
+   */
+  draft: z.boolean().optional(),
 });
 
 export const generateVariantSchema = z.object({
