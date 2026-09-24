@@ -230,22 +230,28 @@ async function recordClaimed(
                 sequenceId: args.sequenceId,
                 lines: callLines,
               });
-          await deductWorkflowCredits({
-            scopedDb: args.scopedDb,
-            costMicros: made.costMicros,
-            usedOwnKey: false,
-            description: `Dialogue (${callLines.length} line${callLines.length === 1 ? '' : 's'})`,
-            idempotencyKey: `${args.workflowRunId}:dialogue-tts:${args.stepPrefix}:${call.index}${suffix}`,
-            reservationId: args.reservationId,
-            metadata: {
-              endpointId: made.endpointId,
-              model: made.model,
-              characterCount: made.characterCount,
-              clipCount: 1,
-              attempt,
-            },
-            workflowName: args.workflowName,
-          });
+          // One ledger line per provider, so a Seed call's Scribe pass is
+          // booked as ElevenLabs spend. The first keeps the pre-#1765 key.
+          const chargeKey = `${args.workflowRunId}:dialogue-tts:${args.stepPrefix}:${call.index}${suffix}`;
+          for (const [at, charge] of made.charges.entries()) {
+            await deductWorkflowCredits({
+              scopedDb: args.scopedDb,
+              costMicros: charge.costMicros,
+              usedOwnKey: false,
+              description: `Dialogue (${callLines.length} line${callLines.length === 1 ? '' : 's'})`,
+              idempotencyKey:
+                at === 0 ? chargeKey : `${chargeKey}:${charge.endpointId}`,
+              reservationId: args.reservationId,
+              metadata: {
+                endpointId: charge.endpointId,
+                model: charge.model,
+                characterCount: made.characterCount,
+                clipCount: 1,
+                attempt,
+              },
+              workflowName: args.workflowName,
+            });
+          }
           // Section ids are minted with the recording, inside this step: the
           // clip and the row have to agree on them across a persist retry.
           return {

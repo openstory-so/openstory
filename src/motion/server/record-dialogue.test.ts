@@ -145,6 +145,9 @@ function answer(secondsByShot: Record<string, number>, id: string) {
       url: `/r2/audio/${id}.wav`,
       durationSeconds: at,
       characterCount: 120,
+      charges: [
+        { endpointId: 'elevenlabs-tts', model: 'eleven_v3', costMicros: 12 },
+      ],
       turns: lines.map((spoken) => {
         const window = windows.find((w) => w.shotId === spoken.shotId);
         return {

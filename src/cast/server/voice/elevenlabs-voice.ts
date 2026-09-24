@@ -280,6 +280,9 @@ export async function resolveAssignableVoiceId(
   });
 }
 
+/** The Scribe model every take is checked with (#1765). */
+export const SCRIBE_MODEL = 'scribe_v2';
+
 /** A word Scribe heard, seconds. */
 export type HeardWord = { text: string; start: number; end: number };
 
@@ -295,7 +298,7 @@ export async function transcribeSpeech(
 ): Promise<{ text: string; words: HeardWord[]; seconds: number }> {
   const client = await createElevenLabsSdk(apiKey, 120);
   const result = await client.speechToText.convert({
-    modelId: 'scribe_v2',
+    modelId: SCRIBE_MODEL,
     file: new Blob([audio], { type: contentType }),
     languageCode: 'en',
     timestampsGranularity: 'word',

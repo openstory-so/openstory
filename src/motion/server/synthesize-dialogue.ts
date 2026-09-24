@@ -61,10 +61,15 @@ export type RecordedDialogueCall = {
   turns: DialogueRecordingTurn[];
   /** Each shot's range of the recording, its trailing silence already off. */
   windows: Array<{ shotId: string; fromSeconds: number; toSeconds: number }>;
-  /** What the call cost, and the rate-card id it bills under. */
-  costMicros: Microdollars;
+  /** What the call cost, one charge per provider it spent with. */
+  charges: DialogueCharge[];
+};
+
+/** One ledger line: its cost and the rate-card id it bills under. */
+type DialogueCharge = {
   endpointId: string;
   model: string;
+  costMicros: Microdollars;
 };
 
 /**
@@ -136,9 +141,13 @@ export async function recordDialogueCall(input: {
     characterCount,
     turns,
     windows,
-    costMicros: elevenLabsTtsCost(characterCount),
-    endpointId: ELEVENLABS_TTS_ENDPOINT,
-    model: DIALOGUE_TTS_MODEL,
+    charges: [
+      {
+        endpointId: ELEVENLABS_TTS_ENDPOINT,
+        model: DIALOGUE_TTS_MODEL,
+        costMicros: elevenLabsTtsCost(characterCount),
+      },
+    ],
   };
 }
 

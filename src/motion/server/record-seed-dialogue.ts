@@ -16,8 +16,10 @@
  *    turn is found in what Scribe heard, in order.
  */
 
-import { scribeCost } from '@/billing/elevenlabs-pricing';
-import { addMicros } from '@/billing/money';
+import {
+  ELEVENLABS_SCRIBE_ENDPOINT,
+  scribeCost,
+} from '@/billing/elevenlabs-pricing';
 import {
   SEED_AUDIO_ENDPOINT,
   seedAudioCost,
@@ -29,7 +31,10 @@ import {
   type SeedVoiceBundle,
   type SeedVoiceMood,
 } from '@/cast/seed-voice';
-import { transcribeSpeech } from '@/cast/server/voice/elevenlabs-voice';
+import {
+  SCRIBE_MODEL,
+  transcribeSpeech,
+} from '@/cast/server/voice/elevenlabs-voice';
 import {
   SEED_AUDIO_MAX_PROMPT_CHARS,
   SEED_AUDIO_MAX_REFERENCES,
@@ -254,12 +259,18 @@ export async function recordSeedDialogueCall(input: {
       characterCount: script.length,
       turns,
       windows,
-      costMicros: addMicros(
-        seedAudioCost(take.billedSeconds),
-        scribeCost(heard.seconds)
-      ),
-      endpointId: SEED_AUDIO_ENDPOINT,
-      model: SEED_AUDIO_MODEL,
+      charges: [
+        {
+          endpointId: SEED_AUDIO_ENDPOINT,
+          model: SEED_AUDIO_MODEL,
+          costMicros: seedAudioCost(take.billedSeconds),
+        },
+        {
+          endpointId: ELEVENLABS_SCRIBE_ENDPOINT,
+          model: SCRIBE_MODEL,
+          costMicros: scribeCost(heard.seconds),
+        },
+      ],
     };
   }
   // ponytail: failed takes are not billed to the team; the platform eats them.

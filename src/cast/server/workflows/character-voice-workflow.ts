@@ -17,12 +17,13 @@ import {
   voiceRangeScriptSchema,
 } from '@/sequences/response-schemas';
 import {
+  ELEVENLABS_ISOLATION_ENDPOINT,
+  ELEVENLABS_SCRIBE_ENDPOINT,
   ELEVENLABS_VOICE_DESIGN_ENDPOINT,
   isolationCost,
   scribeCost,
   VOICE_DESIGN_COST,
 } from '@/billing/elevenlabs-pricing';
-import { addMicros } from '@/billing/money';
 import {
   SEED_AUDIO_ENDPOINT,
   seedAudioCost,
@@ -367,26 +368,44 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
                 description: voiceDescription,
                 script,
               });
-              await deductWorkflowCredits({
-                scopedDb,
-                costMicros: addMicros(
-                  seedAudioCost(made.seedSeconds),
-                  addMicros(
-                    scribeCost(made.transcribedSeconds),
-                    isolationCost(made.isolatedSeconds)
-                  )
-                ),
-                usedOwnKey: false,
-                description: `Voice take ${take} (${characterBible.name})`,
-                idempotencyKey: `${event.instanceId}:seed-voice:${take}`,
-                reservationId: input.reservationId,
-                metadata: {
+              // One ledger line per provider: Seed records, ElevenLabs checks
+              // and cleans.
+              const charges = [
+                {
+                  key: '',
                   endpointId: SEED_AUDIO_ENDPOINT,
-                  characterDbId,
                   seconds: made.seedSeconds,
+                  costMicros: seedAudioCost(made.seedSeconds),
                 },
-                workflowName: 'CharacterVoiceWorkflow',
-              });
+                {
+                  key: ':scribe',
+                  endpointId: ELEVENLABS_SCRIBE_ENDPOINT,
+                  seconds: made.transcribedSeconds,
+                  costMicros: scribeCost(made.transcribedSeconds),
+                },
+                {
+                  key: ':isolation',
+                  endpointId: ELEVENLABS_ISOLATION_ENDPOINT,
+                  seconds: made.isolatedSeconds,
+                  costMicros: isolationCost(made.isolatedSeconds),
+                },
+              ];
+              for (const charge of charges) {
+                await deductWorkflowCredits({
+                  scopedDb,
+                  costMicros: charge.costMicros,
+                  usedOwnKey: false,
+                  description: `Voice take ${take} (${characterBible.name})`,
+                  idempotencyKey: `${event.instanceId}:seed-voice:${take}${charge.key}`,
+                  reservationId: input.reservationId,
+                  metadata: {
+                    endpointId: charge.endpointId,
+                    characterDbId,
+                    seconds: charge.seconds,
+                  },
+                  workflowName: 'CharacterVoiceWorkflow',
+                });
+              }
               return { url: made.url, path: made.path };
             }
           );

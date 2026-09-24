@@ -22,7 +22,9 @@ transcription check on every take.
 - Pricing (`seed-speech-pricing.ts`): $0.0025 per second of
   `original_duration` (BytePlus pay-as-you-go $0.15/min, read off the docs
   2026-09-23, not yet bill-verified). Trailing silence is billed. Scribe
-  ($0.22/h) and isolation ($0.12/min) are on the ElevenLabs card. Unaudited
+  ($0.22/h) and isolation ($0.12/min) are on the ElevenLabs card and are
+  charged as their own ledger lines (`elevenlabs-scribe`,
+  `elevenlabs-isolation`), never folded into the Seed charge. Unaudited
   like every native via. Pre-flight (`estimateTtsCost`) prices the dearer of
   ElevenLabs and Seed at 8 characters per billed second, because a pre-flight
   cannot tell which provider speaks a line.

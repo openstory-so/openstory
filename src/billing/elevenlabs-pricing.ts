@@ -69,10 +69,10 @@ export const ELEVENLABS_MUSIC_MODEL = 'music_v2_5' as const;
  * the real price.
  */
 /** Scribe v2 batch transcription (#1765): $0.22 per hour, 2026-09-23. */
-const ELEVENLABS_SCRIBE_ENDPOINT = 'elevenlabs-scribe';
+export const ELEVENLABS_SCRIBE_ENDPOINT = 'elevenlabs-scribe';
 
 /** Voice isolation (#1765): $0.12 per minute, 2026-09-23. */
-const ELEVENLABS_ISOLATION_ENDPOINT = 'elevenlabs-isolation';
+export const ELEVENLABS_ISOLATION_ENDPOINT = 'elevenlabs-isolation';
 
 const SCRIBE_PER_MINUTE = micros(3_667);
 const ISOLATION_PER_MINUTE = micros(120_000);
