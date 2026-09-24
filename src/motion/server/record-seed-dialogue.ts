@@ -5,9 +5,9 @@
  *
  * What is different from ElevenLabs Text to Dialogue:
  *
- *  - **Two speakers, three references per call.** Each speaker's normal clip
- *    is always sent; a whispered or raised line also gets that mood's clip
- *    while a slot is free. A line whose mood clip did not fit is spoken
+ *  - **Up to three speakers, three references per call.** Each speaker's
+ *    normal clip is always sent; a whispered or raised line also gets that
+ *    mood's clip while a slot is free (none is, with three speakers). A line whose mood clip did not fit is spoken
  *    against the normal clip, with its tone in words.
  *  - **Every take is transcribed.** Seed sometimes speaks invented words.
  *    Nonsense before the script is cut off (the first shot's range starts at
@@ -57,8 +57,12 @@ const logger = getLogger(['openstory', 'workflow', 'seed-dialogue']);
 /** Takes per call before the recording fails (#1765: 1 of 6 scenes needed a retake). */
 const SEED_TAKE_ATTEMPTS = 3;
 
-/** Speakers Seed Audio keeps apart in one call. */
-export const SEED_MAX_SPEAKERS = 2;
+/**
+ * Speakers per call: one reference clip each, so the reference cap is the
+ * ceiling. Three held apart in testing (#1765); a fourth would have no clip
+ * and Seed would invent its voice.
+ */
+export const SEED_MAX_SPEAKERS = SEED_AUDIO_MAX_REFERENCES;
 
 /** Room kept before the script's first word when nonsense is cut off. */
 const LEAD_SECONDS = 0.15;
@@ -148,7 +152,7 @@ export async function recordSeedDialogueCall(input: {
   const speakers = [...new Set(lines.map((line) => line.voiceId))];
   if (speakers.length > SEED_MAX_SPEAKERS) {
     throw new NonRetryableError(
-      `One shot has ${speakers.length} speakers; Seed Audio records ${SEED_MAX_SPEAKERS} at a time. Split its lines across shots.`
+      `One shot has ${speakers.length} speakers; Seed Audio takes one voice clip per speaker and ${SEED_MAX_SPEAKERS} at most. Split its lines across shots.`
     );
   }
   const bundles = new Map(

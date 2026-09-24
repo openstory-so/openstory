@@ -15,7 +15,7 @@ transcription check on every take.
 - Output is WAV at 44.1 kHz, so everything after the call is the same PCM
   byte arithmetic the ElevenLabs path uses (`cutAudioSection`,
   `trimmedEndSeconds`).
-- Limits: 3 reference clips (each ≤ 30 s, ≤ 10 MB), 2 speakers, 120 s of
+- Limits: 3 reference clips (each ≤ 30 s, ≤ 10 MB) — so 3 speakers, one clip each (three held apart in a listening test), 120 s of
   audio, a 3,000-character prompt. The QPS cap is per **account**: calls are
   paced on the BytePlus governor DO (`acquireSeedSpeechToken`,
   `SEED_SPEECH_QPM`, default 30/min, burst 2) and a 429 is retried.
@@ -72,8 +72,9 @@ ElevenLabs configured) and snapshotted on the payload.
 Same claim → record → cut → promote lifecycle as ElevenLabs; only the call
 differs. `recordDialogue` sends a call to Seed when its lines are Seed
 voices; `chunkTakeLines` never mixes providers in one call, breaks a Seed
-call before a third speaker joins (a 3+ speaker scene is a series of
-two-person exchanges) and keeps it under 1,000 line characters.
+call before a fourth speaker joins (a fourth would have no reference clip)
+and keeps it under 1,000 line characters. With three speakers every slot is
+a normal clip, so moods go in words only.
 
 - **Mood-matched references.** Seed copies the reference's delivery as well
   as its voice. Each speaker's normal clip is always sent; a whispered line

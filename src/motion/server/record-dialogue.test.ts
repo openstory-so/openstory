@@ -524,12 +524,12 @@ describe('chunkTakeLines', () => {
     ).toEqual([['a'], ['b'], ['c']]);
   });
 
-  it('records three Seed speakers as two-person exchanges', () => {
+  it('keeps three Seed speakers in one call and breaks before a fourth', () => {
     const lines = [
       turn('a', 'One', '', 'seed:1'),
       turn('b', 'Two', '', 'seed:2'),
-      turn('c', 'Three', '', 'seed:1'),
-      turn('d', 'Four', '', 'seed:3'),
+      turn('c', 'Three', '', 'seed:3'),
+      turn('d', 'Four', '', 'seed:4'),
     ];
     expect(
       chunkTakeLines(lines).map((chunk) => chunk.map((l) => l.shotId))

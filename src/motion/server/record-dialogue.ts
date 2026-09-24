@@ -474,9 +474,9 @@ function tooLong(
  * Split a conversation into calls, breaking only between shots. Consecutive
  * turns of one shot are grouped first, so a shot is never split across two
  * recordings. A call also breaks where the provider changes (a Seed voice and
- * an ElevenLabs voice cannot share one, #1765), and a Seed call where a third
- * speaker would join or past {@link SEED_TAKE_CHUNK_CHARS}: a scene of three
- * or more Seed speakers is recorded as a series of two-person exchanges.
+ * an ElevenLabs voice cannot share one, #1765), and a Seed call where a fourth
+ * speaker would join or past {@link SEED_TAKE_CHUNK_CHARS}: Seed takes one
+ * voice clip per speaker and three at most.
  */
 export function chunkTakeLines<
   T extends { shotId: string; voiceId: string; text: string; tone: string },
