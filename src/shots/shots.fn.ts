@@ -978,6 +978,8 @@ const updateStaleShotsResultSchema = z.object({
   visualPrompts: z.number(),
   motionPrompts: z.number(),
   images: z.number(),
+  // Added with #1740; defaulted so a run from an older deployment still parses.
+  dialogue: z.number().default(0),
   // Depth-picker levels (#1085). Defaulted so a run from a pre-picker
   // deployment still parses during version skew.
   videos: z.number().default(0),

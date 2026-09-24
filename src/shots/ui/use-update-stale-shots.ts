@@ -132,6 +132,7 @@ export function useUpdateStaleShots(args: { sequenceId: string }) {
       visualPrompts,
       motionPrompts,
       images,
+      dialogue,
       videos,
       musicPrompts,
       musicTracks,
@@ -142,6 +143,7 @@ export function useUpdateStaleShots(args: { sequenceId: string }) {
       visualPrompts +
       motionPrompts +
       images +
+      dialogue +
       videos +
       musicPrompts +
       musicTracks;

@@ -123,6 +123,7 @@ type UpdateStage =
   | 'visual-prompt'
   | 'motion-prompt'
   | 'image'
+  | 'dialogue'
   | 'video'
   | 'music-prompt'
   | 'music';
@@ -135,6 +136,8 @@ type UpdateStaleShotsResult = {
   visualPrompts: number;
   motionPrompts: number;
   images: number;
+  /** Target shots whose dialogue recording landed (#1740). */
+  dialogue: number;
   videos: number;
   musicPrompts: number;
   musicTracks: number;
@@ -192,6 +195,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
       visualPrompts: 0,
       motionPrompts: 0,
       images: 0,
+      dialogue: 0,
       videos: 0,
       musicPrompts: 0,
       musicTracks: 0,
@@ -827,6 +831,17 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           }
         })
       : false;
+    // A target that stops at dialogue depth has no per-shot render to fall
+    // back on, so a recording that does not land is its failure (#1740).
+    const dialogueOnlyTargets = plan.targets.filter(
+      (target) => target.regenDialogue && !target.regenVideo
+    );
+    const failDialogueOnly = (error: unknown): void => {
+      for (const target of dialogueOnlyTargets)
+        failures.push(toFailure(target.shotId, 'dialogue', error));
+    };
+    if (dialogueRecording && !canRecordScenes)
+      failDialogueOnly(new Error('Insufficient credits for dialogue audio'));
     const dialogueRecorded: Promise<void> =
       dialogueRecording && canRecordScenes
         ? spawnAndAwaitChild<
@@ -850,8 +865,25 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             awaitStepName: 'await-dialogue-audio',
             timeout: '60 minutes',
           }).then(
-            () => undefined,
+            ({ clipsByShotId }) => {
+              // Count only the targets; a scene recording also returns clips
+              // for neighbouring shots whose lines did not change.
+              for (const target of plan.targets) {
+                if (!target.regenDialogue) continue;
+                if ((clipsByShotId[target.shotId]?.length ?? 0) > 0)
+                  counters.dialogue += 1;
+                else if (!target.regenVideo)
+                  failures.push(
+                    toFailure(
+                      target.shotId,
+                      'dialogue',
+                      new Error('Dialogue audio was not returned for this shot')
+                    )
+                  );
+              }
+            },
             (error: unknown) => {
+              failDialogueOnly(error);
               logger.warn(
                 '[UpdateStaleShotsWorkflow] Scene dialogue not recorded up front; each shot records its own',
                 { sequenceId, err: error }
