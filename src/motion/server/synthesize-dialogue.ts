@@ -18,6 +18,7 @@ import {
   elevenLabsTtsCost,
 } from '@/billing/elevenlabs-pricing';
 import type { Microdollars } from '@/billing/money';
+import { base64ToBytes } from '@/platform/base64';
 import { generateId } from '@/platform/id';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import { uploadFile } from '#storage';
@@ -106,7 +107,7 @@ export async function recordDialogueCall(input: {
     inputs,
     settings: { stability: DIALOGUE_TTS_STABILITY },
   });
-  const wav = decodeBase64(result.audioBase64);
+  const wav = base64ToBytes(result.audioBase64);
   if (wav.byteLength === 0) {
     throw new Error('Dialogue TTS returned an empty audio body');
   }
@@ -163,37 +164,6 @@ export function dialogueClipsAsReferences(
     token: clip.token,
     durationSeconds: clip.durationSeconds,
   }));
-}
-
-/** base64 characters decoded per `atob` — a multiple of 4, so no group is split. */
-const BASE64_SLICE_CHARS = 4 * 8192;
-
-/**
- * Decode straight into one preallocated buffer, a slice at a time. A
- * whole-file `atob` builds a binary string as long as the audio before a
- * single byte is copied out of it.
- */
-export function decodeBase64(input: string): Uint8Array<ArrayBuffer> {
-  // `atob` skips whitespace, which would shift a slice off its 4-character
-  // groups. Providers do not send any; the scan is what makes that safe to
-  // rely on, and the copy is only paid when it is wrong.
-  const base64 = /\s/.test(input) ? input.replace(/\s+/g, '') : input;
-  const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
-  const out = new Uint8Array(Math.floor((base64.length * 3) / 4) - padding);
-  let at = 0;
-  for (let from = 0; from < base64.length; from += BASE64_SLICE_CHARS) {
-    const binary = atob(base64.slice(from, from + BASE64_SLICE_CHARS));
-    // Written past the end is dropped by the typed array; caught just below.
-    for (let i = 0; i < binary.length; i++) out[at + i] = binary.charCodeAt(i);
-    at += binary.length;
-  }
-  if (at !== out.length) {
-    // A stray character shifted a group: the bytes are garbage.
-    throw new Error(
-      `Dialogue TTS returned base64 that decodes to ${at} bytes, expected ${out.length}`
-    );
-  }
-  return out;
 }
 
 /**

@@ -16,7 +16,7 @@
 import { SEED_AUDIO_MODEL } from '@/cast/seed-voice';
 import { acquireSeedSpeechToken } from '@/models/server/byteplus-governor';
 import { getSeedSpeechBaseUrl } from '@/models/server/seed-speech-config';
-import { decodeBase64 } from '@/motion/server/synthesize-dialogue';
+import { base64ToBytes, bytesToBase64 } from '@/platform/base64';
 import { generateId } from '@/platform/id';
 
 export const SEED_AUDIO_MAX_REFERENCES = 3;
@@ -79,7 +79,7 @@ export async function seedAudio(input: {
     text_prompt: input.prompt,
     ...(input.references.length > 0 && {
       references: input.references.map((bytes) => ({
-        audio_data: toBase64(bytes),
+        audio_data: bytesToBase64(bytes),
       })),
     }),
     audio_config: {
@@ -112,16 +112,8 @@ export async function seedAudio(input: {
       );
     }
     return {
-      wav: decodeBase64(json.audio),
+      wav: base64ToBytes(json.audio),
       billedSeconds: json.original_duration ?? 0,
     };
   }
-}
-
-function toBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  }
-  return btoa(binary);
 }
