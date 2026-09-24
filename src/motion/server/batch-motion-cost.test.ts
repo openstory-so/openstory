@@ -134,6 +134,43 @@ describe('estimateBatchMotionCost', () => {
     expect(Number(mixed)).toBeLessThan(Number(bothRef));
   });
 
+  it('prices a draft batch at 480p only for shots on a draft-capable model (#1756)', () => {
+    const shots = [{ id: 'shot-a' }, { id: 'shot-b' }];
+    const mixedModels = {
+      selected: new Map([
+        ['shot-a', 'seedance_v2_5'],
+        ['shot-b', 'kling_v3_pro'],
+      ]),
+      lastFailed: new Map<string, string>(),
+    };
+    const perShot = (
+      model: 'seedance_v2_5' | 'kling_v3_pro',
+      tier: '480p' | '1080p'
+    ) =>
+      gateEstimate(
+        estimateVideoCost(model, snapDuration(undefined, model), {
+          pricing: FAL_PRICING,
+          resolution: tier,
+          hasReferenceImages: false,
+          referenceOnly: false,
+        }),
+        { model, operation: 'batch-motion' }
+      );
+
+    expect(
+      estimateBatchMotionCost(shots, mixedModels, sequence, {
+        pricing: FAL_PRICING,
+        resolution: '1080p',
+        draft: true,
+      })
+    ).toBe(
+      addMicros(
+        perShot('seedance_v2_5', '480p'),
+        perShot('kling_v3_pro', '1080p')
+      )
+    );
+  });
+
   it('prices Kling with refs on O3 Pro reference-to-video', () => {
     const shots = [{ id: 'shot-b' }];
     const withRefs = estimateBatchMotionCost(shots, shotModels, sequence, {

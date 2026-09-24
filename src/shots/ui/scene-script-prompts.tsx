@@ -1115,7 +1115,9 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           model: regenMotionModel,
           prompt: editedMotionPrompt || undefined,
           generateAudio: supportsAudio ? generateAudio : undefined,
-          draft: offerDraft ? sequenceDraftMotion : undefined,
+          // Always a boolean: `undefined` would hand the decision back to the
+          // sequence's saved setting, which the switch above may be hiding.
+          draft: regenAsDraft,
         },
       });
 
@@ -1144,8 +1146,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     regenMotionModel,
     editedMotionPrompt,
     generateAudio,
-    offerDraft,
-    sequenceDraftMotion,
+    regenAsDraft,
     queryClient,
     invalidateContinuity,
     onRegenerateStart,

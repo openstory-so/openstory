@@ -27,7 +27,6 @@ import {
   supportsDraftMode,
   videoModelSupportsInClipMultiShot,
 } from '@/models/models';
-import { DRAFT_RESOLUTION } from '@/motion/draft-mode';
 import {
   assemblePackedMotionPrompt,
   packedPromptFitsLimit,
@@ -37,7 +36,10 @@ import {
   coveredMembersForShot,
   packPayloadDurationSeconds,
 } from '@/motion/server/pack-motion-jobs';
-import { canRenderReferenceOnly } from '@/motion/server/motion-generation';
+import {
+  canRenderReferenceOnly,
+  resolveMotionVia,
+} from '@/motion/server/motion-generation';
 import { toWorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { REFERENCE_ONLY_MODEL_ERROR } from '@/sequences/server/sequence.schemas';
 import { resolveVideoModel } from '@/models/resolve-asset-models';
@@ -77,10 +79,10 @@ import { getLogger } from '@/platform/logger';
 import { getGenerationChannel } from '@/platform/realtime';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import {
+  ALREADY_RENDERING,
   draftRenderBlocker,
   renderDraftAtQuality,
 } from '@/motion/server/render-at-quality';
-import { isInsufficientCreditsError } from '@/platform/errors';
 import type { VideoVariant } from '@/platform/server/db/schema';
 import { terminateSingleArtifactRun } from '@/platform/server/workflow/run-outcome';
 
@@ -153,6 +155,23 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
       selectedVersionModel: selectedVersion?.model,
       sequenceModel: sequence.videoModel,
     });
+    // Draft first is Ark-only (#1756). The inspector sends a boolean it
+    // resolved against the via; an API caller or a saved `true` on a team
+    // that since moved to its own fal key is refused HERE, before the hold
+    // and the version row, not inside the run.
+    const draft = data.draft ?? sequence.draftMotion;
+    if (
+      draft &&
+      supportsDraftMode(model) &&
+      (await resolveMotionVia(
+        model,
+        toWorkflowScopedDb(context.scopedDb).credentials
+      )) !== 'byteplus'
+    ) {
+      throw new Error(
+        `Draft first needs the BytePlus route, but ${IMAGE_TO_VIDEO_MODELS[model].name} is routed to fal for this team — turn Draft first off`
+      );
+    }
     // Same tiling the Optimised prompt preview uses (#1510): Generate
     // Motion on one shot submits every sibling that clip covers. Persisted
     // renderSegmentId membership is sticky (regenerate a 4-shot clip stays
@@ -494,7 +513,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
           motionBucket: data.motionBucket,
           aspectRatio: sequence.aspectRatio,
           resolution: sequence.resolution,
-          draft: data.draft ?? sequence.draftMotion,
+          draft,
           generateAudio: data.generateAudio,
           sceneTitle: context.scene?.metadata?.title,
           sequenceTitle: sequence.title,
@@ -575,7 +594,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
                 motionBucket: data.motionBucket,
                 aspectRatio: sequence.aspectRatio,
                 resolution: sequence.resolution,
-                draft: data.draft ?? sequence.draftMotion,
+                draft,
                 generateAudio: data.generateAudio,
                 sceneTitle: context.scene?.metadata?.title,
                 sequenceTitle: sequence.title,
@@ -905,10 +924,8 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
         explicitModel: data.model,
         duration: data.duration,
         pricing: await getEffectiveFalPricing(),
-        resolution:
-          draftMotion && supportsDraftMode(packingModel)
-            ? DRAFT_RESOLUTION
-            : sequence.resolution,
+        resolution: sequence.resolution,
+        draft: draftMotion,
         referenceOnly: shotIsReferenceOnly,
         hasReferenceImages: (batchShot) => {
           const shot = eligibleShots.find((s) => s.id === batchShot.id);
@@ -1202,9 +1219,12 @@ export const renderSequenceDraftsAtQualityFn = createServerFn({
         });
         started.push(run.versionId);
       } catch (error) {
-        // A segment already rendering is not a reason to stop the rest; an
-        // empty balance is, and it surfaces on the first one.
-        if (isInsufficientCreditsError(error)) throw error;
+        // A segment already rendering is not a reason to stop the rest.
+        // Everything else (balance, pricing, the trigger) surfaces: a click
+        // that started nothing must not read as "nothing to do".
+        if (!(error instanceof Error) || error.message !== ALREADY_RENDERING) {
+          throw error;
+        }
         motionLogger.warn('Skipped draft while rendering at quality', {
           err: error,
           versionId: version.id,

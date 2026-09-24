@@ -6,13 +6,14 @@
  * time and must not call DeleteAssetGroup. The group itself is deleted:
  *
  *   1. On PR close, from CI (`deleteMatchingPreviewPrGroups`).
- *   2. From production's hourly cron, for any `openstory-virtual-pr-*`
- *      group whose PR is not open (and older than the lease window, so a
- *      just-opened PR missing from GitHub is not wiped).
+ *   2. Never from the cron (#1756): previews run with no asset slots, so a
+ *      PR group holds nothing, and the close workflow is its only teardown.
+ *      There is no GitHub lookup here any more.
  *
  * Localhost / the pre-host `openstory-virtual` group have no live Worker
- * sweep. Production age-sweeps those the same tick — they occupy the
- * account pool and nobody else will.
+ * sweep. Production age-sweeps those hourly — assets older than a day go,
+ * and an empty group goes once it is itself older than a day — because they
+ * occupy the account pool and nobody else will.
  */
 
 import { reportBytePlusAssetPool } from '@/models/server/byteplus-observability';
@@ -86,8 +87,9 @@ export async function deleteMatchingPreviewPrGroups(
 }
 
 /**
- * Production-only backstop. No-ops on previews and local: a preview must
- * never DeleteAssetGroup for another PR.
+ * Production-only: ages out laptop / pre-host groups on the shared account.
+ * No-ops on previews and local so a preview never deletes another
+ * deployment's group. PR groups are skipped, not swept.
  */
 export async function sweepOrphanedPreviewBytePlusGroups(
   deps: { now?: Date } = {}
@@ -170,6 +172,6 @@ export async function sweepOrphanedPreviewBytePlusGroups(
     leftoverGroupsFailed,
     unownedAssetsSwept,
   };
-  logger.info('BytePlus leftover preview asset groups swept', summary);
+  logger.info('BytePlus unowned Ark asset groups swept', summary);
   return summary;
 }

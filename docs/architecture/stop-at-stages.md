@@ -47,13 +47,18 @@ phase number); there is no separate stage.
   `/motion` run per selected draft segment), which also shows the soonest
   expiry and the expired count. The switch lives under the slider (Generate
   dialog and the continue footer, which persists it through
-  `continueGenerationFn`) and on the batch footer; it is offered only while a
-  chosen model `supportsDraftMode` and `useViaAvailability().byteplus` says this
-  team reaches Ark (a team on its own fal key does not, and a draft submit
-  there refuses). Draft first pins the sequence
-  resolution to 1080p (`DRAFT_FINAL_RESOLUTION`: the only size Ark renders a
-  final at) and prices the run's motion at 480p (`draftMotion` on
-  `estimateStoryboardPreflightCost` / `estimateStoryboardCost`). Every
+  `continueGenerationFn`) and a checkbox on the batch footer; it is offered
+  only while a chosen model `supportsDraftMode` and
+  `useViaAvailability().byteplus` says this team reaches Ark (a team on its
+  own fal key does not, and a draft submit there refuses — so every surface
+  sends a boolean, never `undefined`, or a hidden switch would inherit the
+  saved setting). Draft first pins the resolution picker in the Generate
+  dialog to 1080p (`DRAFT_FINAL_RESOLUTION`: the only size Ark renders a
+  final at); the batch checkbox and the continue footer leave the stored tier
+  alone, and a final is 1080p whatever the tier says. It prices the run's
+  motion at 480p per draft-capable shot (`draftMotion` on
+  `estimateStoryboardPreflightCost` / `estimateStoryboardCost`, `draft` on
+  `estimateBatchMotionCost`). Every
   surface that shows a draft clip says so with `draftBadgeLabel` /
   `shotDraftLabel` / `theatreDraftLabel` (`src/motion/draft-mode.ts`): "Draft"
   until three days remain, then the countdown, then "Draft expired".

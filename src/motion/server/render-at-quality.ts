@@ -10,7 +10,12 @@
  * to the 1080p clip when it lands and keeps the draft until then.
  *
  * One run per segment: a packed draft covers several shots but is one Ark
- * task, so `renderSequenceDraftsAtQuality` dedupes by `renderSegmentId`.
+ * task, so `renderSequenceDraftsAtQualityFn` dedupes by `renderSegmentId`.
+ * One run per click too: the hold and the trigger share a key made of the
+ * draft's id and how many versions its segment has, so two calls before the
+ * final's row opens (double click, two tabs, shot and sequence buttons) land
+ * on one reservation and one instance; once a final lands or fails the count
+ * moves and the next click is a fresh run.
  */
 
 import { estimateVideoCost, gateEstimate } from '@/billing/cost-estimation';
@@ -32,14 +37,24 @@ type RenderableSequence = {
   aspectRatio: MotionWorkflowInput['aspectRatio'];
 };
 
+/** The one refusal a sequence-wide render skips past instead of surfacing. */
+export const ALREADY_RENDERING = 'This clip is already rendering';
+
 /** Why a version cannot be rendered at quality, or null when it can. */
 export function draftRenderBlocker(
-  version: Pick<VideoVariant, 'draftTaskId' | 'status' | 'createdAt'>
+  version: Pick<VideoVariant, 'draftTaskId' | 'status' | 'createdAt' | 'model'>
 ): string | null {
   if (!version.draftTaskId) return 'This clip is not a draft';
   if (version.status !== 'completed') return 'The draft has not finished';
   if (!draftTaskUsable(version.createdAt)) {
     return 'The draft is over seven days old — regenerate it first';
+  }
+  // Ark renders the final on the model that made the draft; a retired key
+  // would be remapped to the default and refused by Ark after the hold.
+  if (
+    safeImageToVideoModel(version.model, DEFAULT_VIDEO_MODEL) !== version.model
+  ) {
+    return "The draft's model is no longer available — regenerate it first";
   }
   return null;
 }
@@ -65,8 +80,10 @@ export async function renderDraftAtQuality(options: {
     version.renderSegmentId
   );
   if (siblings.some((row) => row.status === 'generating')) {
-    throw new Error('This clip is already rendering');
+    throw new Error(ALREADY_RENDERING);
   }
+  // See the header: one hold and one instance per (draft, attempt).
+  const runKey = `motion-final-${version.id}-${siblings.length}`;
 
   const model = safeImageToVideoModel(version.model, DEFAULT_VIDEO_MODEL);
   const duration =
@@ -92,6 +109,7 @@ export async function renderDraftAtQuality(options: {
     {
       errorMessage: 'Insufficient credits to render at quality',
       sequenceId: sequence.id,
+      idempotencyKey: runKey,
     }
   );
 
@@ -120,8 +138,9 @@ export async function renderDraftAtQuality(options: {
       },
     };
     const workflowRunId = await triggerWorkflow('/motion', payload, {
-      deduplicationId: `motion-final-${version.id}-${Date.now()}`,
+      deduplicationId: runKey,
     });
+    // The draft's id: the final's row opens inside the run.
     return { workflowRunId, versionId: version.id };
   });
 }

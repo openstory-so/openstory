@@ -11,8 +11,9 @@
  * `cost × count`.
  */
 
-import type { ImageToVideoModel } from '@/models/models';
+import { supportsDraftMode, type ImageToVideoModel } from '@/models/models';
 import { resolveVideoModel } from '@/models/resolve-asset-models';
+import { DRAFT_RESOLUTION } from '@/motion/draft-mode';
 import type { EffectiveFalPricing } from '@/billing/fal-cost';
 import { estimateVideoCost, gateEstimate } from '@/billing/cost-estimation';
 import { addMicros, ZERO_MICROS, type Microdollars } from '@/billing/money';
@@ -67,6 +68,12 @@ export function estimateBatchMotionCost(
     /** Output resolution tier (#1449) — token-billed clips scale with it. */
     resolution?: RenderedResolution;
     /**
+     * Ark draft mode (#1756): a shot whose resolved model `supportsDraftMode`
+     * renders at 480p; the rest render at `resolution`. Per shot, because a
+     * batch can mix models and pricing every shot at 480p under-holds.
+     */
+    draft?: boolean;
+    /**
      * When true (or per-shot true), price the reference-to-video endpoint for
      * models that route there with cast/element refs (#873).
      */
@@ -100,7 +107,10 @@ export function estimateBatchMotionCost(
       gateEstimate(
         estimateVideoCost(model, snapDuration(opts.duration, model), {
           pricing: opts.pricing,
-          resolution: opts.resolution,
+          resolution:
+            opts.draft && supportsDraftMode(model)
+              ? DRAFT_RESOLUTION
+              : opts.resolution,
           hasReferenceImages: hasRefs,
           referenceOnly,
         }),

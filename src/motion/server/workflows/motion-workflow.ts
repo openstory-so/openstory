@@ -835,10 +835,15 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             MOTION_CONTENT_FALLBACK_MODEL,
             scopedDb.credentials
           ));
+        // A draft never swaps vendor (#1756): the user asked for a cheap
+        // Seedance preview, and Grok has no draft mode, so the swap would
+        // bill a full clip on a row stamped 480p. The rejection surfaces and
+        // the user picks another model themselves.
         const swapModel =
           flags.image &&
           model !== MOTION_CONTENT_FALLBACK_MODEL &&
-          fallbackCanServe;
+          fallbackCanServe &&
+          renderedResolution !== DRAFT_RESOLUTION;
         // A flagged reference sheet cannot be softened away either (the sheet
         // is the input, not the prose), so a reference-only shot with no
         // usable fallback falls straight through to the terminal message
@@ -1096,6 +1101,8 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         logger.warn(
           `[MotionWorkflow:cf] content-flag rejection on submit attempt ${attempt + 1}/${MAX_MOTION_ATTEMPTS} for shot ${input.shotId}: ${submitOutcome.rejection}`
         );
+        // A final resubmits the same task id (#1756): one refusal is the answer.
+        if (input.finalFromDraft) break;
         continue;
       }
       const { job } = submitOutcome;
@@ -1259,6 +1266,9 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         logger.warn(
           `[MotionWorkflow:cf] content-flag rejection on poll attempt ${attempt + 1}/${MAX_MOTION_ATTEMPTS} for shot ${input.shotId}: ${rejected}`
         );
+        // A final resubmits the same task id (#1756): same seed, same
+        // assets, same answer. One refusal is the answer.
+        if (input.finalFromDraft) break;
         continue;
       }
 

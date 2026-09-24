@@ -567,8 +567,12 @@ export async function submitMotionJob(
   // Draft mode is an Ark feature (#1756): a draft-capable model that lands
   // on fal (a BYOK fal team) cannot honour it, and saying so beats a full
   // render the user thought was a cheap preview. A model without draft mode
-  // ignores the flag, like `generateAudio` on a silent model.
-  const draft = Boolean(options.draft) && supportsDraftMode(modelKey);
+  // ignores the flag, like `generateAudio` on a silent model. A final is
+  // never a draft, whatever its payload says: its task id must not be stamped.
+  const draft =
+    Boolean(options.draft) &&
+    !options.finalFromDraftTaskId &&
+    supportsDraftMode(modelKey);
   if ((draft || options.finalFromDraftTaskId) && via !== 'byteplus') {
     throw new Error(
       `Draft mode needs the BytePlus route, but ${IMAGE_TO_VIDEO_MODELS[modelKey].name} is routed to ${via} for this team`
