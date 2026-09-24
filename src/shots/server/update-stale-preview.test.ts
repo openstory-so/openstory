@@ -101,6 +101,75 @@ describe('buildUpdateStalePreview', () => {
     ).toBe(0);
   });
 
+  it('charges a scene recording at video depth when only its video is stale (#1740)', async () => {
+    const { estimateTtsCost } = await import('@/billing/elevenlabs-pricing');
+    const { ttsCharacterCount } = await import('@/motion/dialogue-tts');
+    estimateVideoCost.mockReturnValue(micros(500_000));
+    const voicedA = [{ shotId: 'a', index: 0, text: 'Hello.', tone: 'calm' }];
+    const voicedB = [{ shotId: 'b', index: 0, text: 'Goodbye.', tone: 'dry' }];
+    const recording = (scenes: unknown[]) => ({
+      scenes,
+      maxDurationSeconds: 15,
+    });
+
+    // No dialogue target: both scenes still record before their renders.
+    const videoOnly = buildUpdateStalePreview(
+      plan(
+        [
+          target({ shotId: 'a', regenVideo: true }),
+          target({ shotId: 'b', regenVideo: true }),
+        ],
+        null,
+        recording([{ voiced: voicedA }, { voiced: voicedB }])
+      ),
+      {},
+      null
+    );
+    expect(videoOnly.costByLevel.dialogue).toBe(0);
+    expect(videoOnly.costByLevel.video).toBe(
+      1_000_000 + estimateTtsCost(ttsCharacterCount([...voicedA, ...voicedB]))
+    );
+
+    // Scene A is a dialogue target, scene B only re-renders: each scene is
+    // charged at the earliest depth that records it.
+    const mixed = buildUpdateStalePreview(
+      plan(
+        [
+          target({ shotId: 'a', regenDialogue: true, regenVideo: true }),
+          target({ shotId: 'b', regenVideo: true }),
+        ],
+        null,
+        recording([{ voiced: voicedA }, { voiced: voicedB }])
+      ),
+      {},
+      null
+    );
+    expect(mixed.costByLevel.dialogue).toBe(
+      estimateTtsCost(ttsCharacterCount(voicedA))
+    );
+    expect(mixed.costByLevel.video).toBe(
+      1_000_000 + estimateTtsCost(ttsCharacterCount(voicedB))
+    );
+
+    // One scene holding both lines is recorded once, at dialogue depth.
+    const sameScene = buildUpdateStalePreview(
+      plan(
+        [
+          target({ shotId: 'a', regenDialogue: true, regenVideo: true }),
+          target({ shotId: 'b', regenVideo: true }),
+        ],
+        null,
+        recording([{ voiced: [...voicedA, ...voicedB] }])
+      ),
+      {},
+      null
+    );
+    expect(sameScene.costByLevel.dialogue).toBe(
+      estimateTtsCost(ttsCharacterCount([...voicedA, ...voicedB]))
+    );
+    expect(sameScene.costByLevel.video).toBe(1_000_000);
+  });
+
   it('unknown pricing yields null, never an invented number', () => {
     estimateImageCost.mockReturnValue(null);
     const preview = buildUpdateStalePreview(

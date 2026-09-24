@@ -76,13 +76,20 @@ export function buildUpdateStalePreview(
   // Dialogue is recorded once per SCENE before the renders (#1657), so it is
   // priced per scene: the whole conversation of every scene with a voiced
   // video target. An upper bound — a scene whose clips still match its lines
-  // is not recorded again.
-  const dialogueCost = estimateTtsCost(
-    (plan.dialogueRecording?.scenes ?? []).reduce(
-      (total, job) => total + ttsCharacterCount(job.voiced),
-      0
-    )
-  );
+  // is not recorded again. A scene is charged once, at the earliest depth that
+  // records it: dialogue when one of its lines is a dialogue target, otherwise
+  // video (a video-only update still records the scene before rendering).
+  const dialogueShotIds = new Set(dialogues.map((t) => t.shotId));
+  let dialogueCharacters = 0;
+  let videoOnlyCharacters = 0;
+  for (const job of plan.dialogueRecording?.scenes ?? []) {
+    const characters = ttsCharacterCount(job.voiced);
+    if (job.voiced.some((line) => dialogueShotIds.has(line.shotId)))
+      dialogueCharacters += characters;
+    else videoOnlyCharacters += characters;
+  }
+  const dialogueCost = estimateTtsCost(dialogueCharacters);
+  const videoRecordingCost = estimateTtsCost(videoOnlyCharacters);
   const videosCost = sum(
     videos.map((t) =>
       estimateVideoCost(
@@ -122,8 +129,8 @@ export function buildUpdateStalePreview(
     costByLevel: {
       prompts: promptsCost,
       images: imagesCost,
-      dialogue: dialogues.length > 0 ? dialogueCost : ZERO_MICROS,
-      video: videosCost,
+      dialogue: dialogueCost,
+      video: addMaybe(videosCost, videoRecordingCost),
       music: musicCost,
     },
   };
