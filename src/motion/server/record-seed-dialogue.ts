@@ -62,13 +62,6 @@ const logger = getLogger(['openstory', 'workflow', 'seed-dialogue']);
 /** Takes per call before the recording fails (#1765: 1 of 6 scenes needed a retake). */
 const SEED_TAKE_ATTEMPTS = 3;
 
-/**
- * Speakers per call: one reference clip each, so the reference cap is the
- * ceiling. Three held apart in testing (#1765); a fourth would have no clip
- * and Seed would invent its voice.
- */
-export const SEED_MAX_SPEAKERS = SEED_AUDIO_MAX_REFERENCES;
-
 /** Room kept before the script's first word when nonsense is cut off. */
 const LEAD_SECONDS = 0.15;
 
@@ -155,9 +148,9 @@ export async function recordSeedDialogueCall(input: {
     );
   }
   const speakers = [...new Set(lines.map((line) => line.voiceId))];
-  if (speakers.length > SEED_MAX_SPEAKERS) {
+  if (speakers.length > SEED_AUDIO_MAX_REFERENCES) {
     throw new NonRetryableError(
-      `One shot has ${speakers.length} speakers; Seed Audio takes one voice clip per speaker and ${SEED_MAX_SPEAKERS} at most. Split its lines across shots.`
+      `One shot has ${speakers.length} speakers; Seed Audio takes one voice clip per speaker and ${SEED_AUDIO_MAX_REFERENCES} at most. Split its lines across shots.`
     );
   }
   const bundles = new Map(

@@ -36,17 +36,6 @@ export type SeedAudioResult = {
   billedSeconds: number;
 };
 
-class SeedAudioError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-    readonly code: number | undefined
-  ) {
-    super(message);
-    this.name = 'SeedAudioError';
-  }
-}
-
 type SeedResponse = {
   code?: number;
   message?: string;
@@ -60,20 +49,6 @@ export async function seedAudio(input: {
   /** Reference clips as bytes, `@Audio1` first. */
   references: readonly Uint8Array[];
 }): Promise<SeedAudioResult> {
-  if (input.prompt.length > SEED_AUDIO_MAX_PROMPT_CHARS) {
-    throw new SeedAudioError(
-      `Seed Audio prompt is ${input.prompt.length} characters; the limit is ${SEED_AUDIO_MAX_PROMPT_CHARS}`,
-      400,
-      undefined
-    );
-  }
-  if (input.references.length > SEED_AUDIO_MAX_REFERENCES) {
-    throw new SeedAudioError(
-      `Seed Audio takes ${SEED_AUDIO_MAX_REFERENCES} reference clips, not ${input.references.length}`,
-      400,
-      undefined
-    );
-  }
   const body = JSON.stringify({
     model: SEED_AUDIO_MODEL,
     text_prompt: input.prompt,
@@ -105,10 +80,8 @@ export async function seedAudio(input: {
       continue;
     }
     if (!res.ok || !json.audio) {
-      throw new SeedAudioError(
-        `Seed Audio ${res.status}${json.code ? ` ${json.code}` : ''}: ${json.message ?? 'no audio returned'}`,
-        res.status,
-        json.code
+      throw new Error(
+        `Seed Audio ${res.status}${json.code ? ` ${json.code}` : ''}: ${json.message ?? 'no audio returned'}`
       );
     }
     return {

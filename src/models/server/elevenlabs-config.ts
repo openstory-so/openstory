@@ -9,13 +9,9 @@
  */
 
 import { getEnv } from '#env';
+import { optionalEnv } from '@/platform/server/env/environment';
 import { workersSafeFetch } from '@/platform/server/ai/workers-safe-fetch';
 import type { ElevenLabsClientConfig } from '@tanstack/ai-elevenlabs';
-
-function optionalEnv(name: string): string | undefined {
-  const value = Reflect.get(getEnv(), name);
-  return typeof value === 'string' && value.length > 0 ? value : undefined;
-}
 
 /** The platform ElevenLabs key, or undefined when it is not configured. */
 export function getElevenLabsApiKey(): string | undefined {

@@ -43,10 +43,8 @@ import {
   shortenDialogueLines,
 } from '@/motion/server/fit-dialogue-clip';
 import { AUDIO_MIN_PAD_SLACK_SECONDS } from '@/motion/server/pad-dialogue-audio';
-import {
-  recordSeedDialogueCall,
-  SEED_MAX_SPEAKERS,
-} from '@/motion/server/record-seed-dialogue';
+import { SEED_AUDIO_MAX_REFERENCES } from '@/cast/server/voice/seed-audio';
+import { recordSeedDialogueCall } from '@/motion/server/record-seed-dialogue';
 import {
   recordDialogueCall,
   type RecordedDialogueCall,
@@ -506,7 +504,9 @@ export function chunkTakeLines<
     const breaks =
       seed(current) !== seed(group) ||
       (seed(group) &&
-        (speakers(joined) > SEED_MAX_SPEAKERS ||
+        // One reference clip per speaker: a fourth would have none, and Seed
+        // would invent its voice.
+        (speakers(joined) > SEED_AUDIO_MAX_REFERENCES ||
           size + groupChars > Math.min(maxChars, SEED_TAKE_CHUNK_CHARS))) ||
       size + groupChars > maxChars;
     if (current.length > 0 && breaks) {

@@ -9,6 +9,15 @@
 import { getEnv } from '#env';
 
 /**
+ * A var the generated `Env` does not declare (a secret set per deploy), or
+ * `undefined` when unset or empty.
+ */
+export function optionalEnv(name: string): string | undefined {
+  const value: unknown = Reflect.get(getEnv(), name);
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+/**
  * Server-side application URL
  * Used by Better Auth, webhooks, and internal API calls
  * Lazily evaluated to support Cloudflare Workers

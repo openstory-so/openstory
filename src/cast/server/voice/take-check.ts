@@ -49,8 +49,6 @@ function runAt(got: readonly Heard[], want: readonly string[], from: number) {
 
 export type TakeCheck = {
   ok: boolean;
-  /** Heard words before the script's first words. */
-  extraBefore: number;
   /** Where the script starts, seconds — trim before it. */
   scriptStartSeconds: number | undefined;
   /** Heard words that match nothing in the script. */
@@ -80,7 +78,6 @@ export function checkTake(
   );
   // Three in a row, not two: a lead-in can open with the script's own words.
   const start = runAt(got, want.slice(0, Math.min(3, want.length)), 0);
-  const extraBefore = start < 0 ? got.length : start;
   // Nonsense before the script is trimmable, so it does not count against
   // the take here — the caller decides whether it trims or retakes.
   const extraAfterStart = extra.filter((g) => got.indexOf(g) >= start);
@@ -88,7 +85,6 @@ export function checkTake(
   return {
     ok:
       start >= 0 && extraAfterStart.length <= allow && missing.length <= allow,
-    extraBefore,
     scriptStartSeconds: got[start]?.start,
     extraText: extra.map((g) => g.text).join(' '),
     missing,

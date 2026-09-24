@@ -12,14 +12,10 @@
  */
 
 import { getEnv } from '#env';
+import { optionalEnv } from '@/platform/server/env/environment';
 import { isElevenLabsConfigured } from './elevenlabs-config';
 
 const DEFAULT_BASE_URL = 'https://voice.ap-southeast-1.bytepluses.com';
-
-function optionalEnv(name: string): string | undefined {
-  const value = Reflect.get(getEnv(), name);
-  return typeof value === 'string' && value.length > 0 ? value : undefined;
-}
 
 export function getSeedSpeechApiKey(): string | undefined {
   return optionalEnv('SEED_SPEECH_API_KEY');

@@ -185,9 +185,6 @@ const SEED_CHARS_PER_BILLED_SECOND = 8;
  * must never under-estimate (#1069).
  */
 export function estimateTtsCost(characterCount: number): Microdollars {
-  if (!Number.isFinite(characterCount) || characterCount <= 0) {
-    return micros(0);
-  }
   const eleven = elevenLabsTtsCost(characterCount);
   const seed = seedAudioCost(characterCount / SEED_CHARS_PER_BILLED_SECOND);
   return eleven > seed ? eleven : seed;

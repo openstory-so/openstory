@@ -15,7 +15,6 @@ describe('checkTake', () => {
       timed('Gday mate the rights are up again today')
     );
     expect(check.ok).toBe(true);
-    expect(check.extraBefore).toBe(0);
     expect(check.scriptStartSeconds).toBe(0);
   });
 
@@ -25,7 +24,6 @@ describe('checkTake', () => {
       timed('Laverame for Mrs Gorsnerm Got graft you say Not me')
     );
     expect(check.ok).toBe(true);
-    expect(check.extraBefore).toBe(4);
     expect(check.scriptStartSeconds).toBe(4);
   });
 
