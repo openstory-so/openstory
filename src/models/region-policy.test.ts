@@ -63,7 +63,7 @@ describe('resolveModelForCountry', () => {
   });
 
   it('keeps non-Anthropic models even in blocked countries', () => {
-    expect(resolveModelForCountry('x-ai/grok-4.6', 'CN')).toBe('x-ai/grok-4.6');
+    expect(resolveModelForCountry('x-ai/grok-4.7', 'CN')).toBe('x-ai/grok-4.7');
   });
 
   it('passes through outside blocked countries and without a header', () => {
@@ -79,7 +79,7 @@ describe('resolveModelForCountry', () => {
 describe('isRegionBlockedModel', () => {
   it('blocks only Anthropic models in blocked countries', () => {
     expect(isRegionBlockedModel('anthropic/claude-opus-5', 'CN')).toBe(true);
-    expect(isRegionBlockedModel('x-ai/grok-4.6', 'CN')).toBe(false);
+    expect(isRegionBlockedModel('x-ai/grok-4.7', 'CN')).toBe(false);
     expect(isRegionBlockedModel('anthropic/claude-opus-5', 'US')).toBe(false);
     expect(isRegionBlockedModel('anthropic/claude-opus-5', undefined)).toBe(
       false

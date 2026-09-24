@@ -14,7 +14,7 @@ import type { TokenUsage } from '@tanstack/ai';
 // `-0309-reasoning`, `-0309-non-reasoning`, and `-multi-agent-0309`. OpenRouter
 // fronts the reasoning build, so that's what keeps the id's meaning.
 const NATIVE_TEXT_MODELS = {
-  'x-ai/grok-4.6': 'grok-4.6',
+  'x-ai/grok-4.7': 'grok-4.7',
   'x-ai/grok-4.20': 'grok-4.20-0309-reasoning',
 } as const satisfies Partial<Record<AnalysisModelId, string>>;
 
@@ -89,11 +89,11 @@ const TEXT_RATES: Record<
     highTierFrom: number;
   }
 > = {
-  'grok-4.6': {
-    input: 2,
-    output: 6,
-    inputHigh: 4,
-    outputHigh: 12,
+  'grok-4.7': {
+    input: 1.6,
+    output: 4.8,
+    inputHigh: 3.2,
+    outputHigh: 9.6,
     highTierFrom: 200_000,
   },
   'grok-4.20-0309-reasoning': {

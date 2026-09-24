@@ -121,6 +121,13 @@ export const CATALOG_LAG_MODELS = [
     input: ['text', 'image'],
     features: ['reasoning', 'structured_outputs'],
   }),
+  // Bridged by the model-freshness routine (#792): the installed
+  // @tanstack/ai-openrouter catalog snapshot predates x-ai/grok-4.7.
+  // Prune when a Dependabot catalog bump ships the id (catalog-lag.test.ts).
+  createModel('x-ai/grok-4.7', {
+    input: ['text', 'image'],
+    features: ['reasoning', 'structured_outputs'],
+  }),
 ] as const;
 
 const openRouterTextExtended = extendAdapter(
@@ -132,11 +139,16 @@ const createOpenRouterTextExtended = extendAdapter(
   CATALOG_LAG_MODELS
 );
 
-/** {@link CATALOG_LAG_MODELS} for the Grok adapter. Native `grok-4.6` is
- *  in the 0.16 catalog; `grok-4.20-0309-reasoning` is still lag-bridged.
+/** {@link CATALOG_LAG_MODELS} for the Grok adapter. `grok-4.20-0309-reasoning`
+ *  and `grok-4.7` (bumped from grok-4.6 by the model-freshness routine, #792)
+ *  are still lag-bridged until an @tanstack/ai-grok bump ships them.
  *  Same prune contract as the OpenRouter list. */
 const GROK_CATALOG_LAG_MODELS = [
   createModel('grok-4.20-0309-reasoning', {
+    input: ['text', 'image'],
+    features: ['reasoning', 'structured_outputs'],
+  }),
+  createModel('grok-4.7', {
     input: ['text', 'image'],
     features: ['reasoning', 'structured_outputs'],
   }),

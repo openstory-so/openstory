@@ -23,7 +23,7 @@ const usage = (promptTokens: number, completionTokens: number) => ({
 
 describe('nativeGrokTextModel', () => {
   it('maps our registry ids onto the names xAI serves', () => {
-    expect(nativeGrokTextModel('x-ai/grok-4.6')).toBe('grok-4.6');
+    expect(nativeGrokTextModel('x-ai/grok-4.7')).toBe('grok-4.7');
     expect(nativeGrokTextModel('x-ai/grok-4.20')).toBe(
       'grok-4.20-0309-reasoning'
     );
@@ -36,11 +36,11 @@ describe('nativeGrokTextModel', () => {
 });
 
 describe('grokTextCostFromUsage', () => {
-  it('prices grok-4.6 at the published per-token rates', () => {
-    // 100k prompt @ $2/1M + 100k completion @ $6/1M = $0.80. Both counts sit
-    // under the long-context threshold, so these are the base rates.
-    expect(grokTextCostFromUsage(usage(100_000, 100_000), 'grok-4.6')).toBe(
-      800_000
+  it('prices grok-4.7 at the published per-token rates', () => {
+    // 100k prompt @ $1.6/1M + 100k completion @ $4.8/1M = $0.64. Both counts
+    // sit under the long-context threshold, so these are the base rates.
+    expect(grokTextCostFromUsage(usage(100_000, 100_000), 'grok-4.7')).toBe(
+      640_000
     );
   });
 
@@ -48,16 +48,16 @@ describe('grokTextCostFromUsage', () => {
     // 199_999 prompt tokens is still the cheap tier; 200_000 is not. Missing
     // this doubles nothing and under-charges every long script analysis — the
     // exact shape of call that crosses it.
-    const below = grokTextCostFromUsage(usage(199_999, 0), 'grok-4.6');
-    const at = grokTextCostFromUsage(usage(200_000, 0), 'grok-4.6');
-    expect(below).toBe(399_998);
-    expect(at).toBe(800_000);
+    const below = grokTextCostFromUsage(usage(199_999, 0), 'grok-4.7');
+    const at = grokTextCostFromUsage(usage(200_000, 0), 'grok-4.7');
+    expect(below).toBe(319_998);
+    expect(at).toBe(640_000);
   });
 
   it('returns undefined when the adapter reported no usage at all', () => {
     // Distinct from a $0 charge: the caller reports it as a missing cost
     // rather than silently recording nothing owed.
-    expect(grokTextCostFromUsage(undefined, 'grok-4.6')).toBeUndefined();
+    expect(grokTextCostFromUsage(undefined, 'grok-4.7')).toBeUndefined();
   });
 });
 

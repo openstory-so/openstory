@@ -80,7 +80,7 @@ export const LLMTR_TEXT_MODELS = {
   'openai/gpt-5.6-terra': 'openai/gpt-5.6-terra',
   'deepseek/deepseek-v4-pro-0813': 'deepseek/deepseek-v4-pro-0813',
   'anthropic/claude-sonnet-5': 'anthropic/claude-sonnet-5',
-  'x-ai/grok-4.6': 'xai/grok-4.6',
+  'x-ai/grok-4.7': 'xai/grok-4.7',
   'openai/gpt-5.6-luna': 'openai/gpt-5.6-luna',
   'openai/gpt-5.4-mini': 'openai/gpt-5.4-mini',
   'openai/gpt-5.4-nano': 'openai/gpt-5.4-nano',
@@ -112,7 +112,7 @@ export function llmtrTextModel(model: string): LlmtrTextModel | undefined {
  * changes.
  */
 export const LLMTR_RESPONSES_ONLY_MODEL_IDS = [
-  'xai/grok-4.6',
+  'xai/grok-4.7',
   'xai/grok-4.20-0309-reasoning',
 ] as const satisfies ReadonlyArray<LlmtrTextModel>;
 
@@ -141,7 +141,7 @@ export function llmtrCompatibleApi(
  */
 export const LLMTR_ONLY_MODEL_IDS = [
   'mistral/mistral-small-latest',
-  'xai/grok-4.6',
+  'xai/grok-4.7',
   'xai/grok-4.20-0309-reasoning',
   'zai/glm-5.3-flash',
 ] as const satisfies ReadonlyArray<LlmtrTextModel>;
@@ -181,7 +181,7 @@ const LLMTR_TEXT_RATES: Record<
   'openai/gpt-5.6-terra': { input: 2, output: 12 },
   'deepseek/deepseek-v4-pro-0813': { input: 1.32, output: 3.96 },
   'anthropic/claude-sonnet-5': { input: 2, output: 10 },
-  'xai/grok-4.6': { input: 2, output: 6 },
+  'xai/grok-4.7': { input: 1.6, output: 4.8 },
   'openai/gpt-5.6-luna': { input: 0.2, output: 1.2 },
   'openai/gpt-5.4-mini': { input: 0.75, output: 4.5 },
   'openai/gpt-5.4-nano': { input: 0.2, output: 1.25 },

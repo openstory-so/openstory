@@ -205,11 +205,12 @@ export const SCRIPT_ANALYSIS_MODELS = [
     description: 'State-of-the-art coding and structured output',
   },
   {
-    id: 'x-ai/grok-4.6',
-    name: 'Grok 4.6',
+    id: 'x-ai/grok-4.7',
+    name: 'Grok 4.7',
     vendor: 'SpaceXAI',
     license: 'proprietary' as const,
-    // Arena 1456 (grok-4.6-high).
+    // Bumped from Grok 4.6 (Arena 1456, grok-4.6-high); re-rank on next
+    // LMArena snapshot.
     qualityRank: 16,
     contextWindow: 500_000,
     maxOutputTokens: 450_000,
@@ -426,7 +427,7 @@ export function resolveVisionModel(
 export const DEFAULT_ANALYSIS_MODEL: AnalysisModelId = 'openai/gpt-5.6-luna';
 
 /**
- * Boundary-annotation scenes call only. Grok 4.6 + medium reasoning
+ * Boundary-annotation scenes call only. Grok 4.7 + medium reasoning
  * spends minutes thinking before the first boundary token. Opus 5 Fast
  * split a prose product-ad in 2.4s (9 beats) and a 19-heading screenplay
  * in 4s with exact quotes. The speed now comes from the priority service
