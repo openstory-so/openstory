@@ -603,8 +603,9 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
             </span>
           )}
           {/* Top-right pills: what is on screen is not the final thing.
-              A draft clip (#1756) says so the way a storyboard still does. */}
-          <div className="pointer-events-none absolute top-2 right-2 z-10 flex flex-col items-end gap-1">
+              A draft clip (#1756) says so the way a storyboard still does.
+              They sit left of the Share button (44px on touch, 32px on md). */}
+          <div className="pointer-events-none absolute top-2 right-15 z-10 flex flex-col items-end gap-1 md:right-12">
             {isPreviewImage && !isVariantPreview && (
               <span className="rounded bg-background/80 px-2 py-1 text-xs font-medium text-muted-foreground backdrop-blur-sm">
                 Storyboard
