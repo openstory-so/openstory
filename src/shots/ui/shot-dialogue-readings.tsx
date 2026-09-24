@@ -5,7 +5,20 @@
  */
 
 import { useSequenceElements } from '@/cast/ui/use-sequence-elements';
-import { useSequenceCharacters } from '@/cast/ui/use-sequence-characters';
+import {
+  useGenerateCharacterVoice,
+  useSequenceCharacters,
+  useSetCharacterVoiceEnabled,
+} from '@/cast/ui/use-sequence-characters';
+import {
+  useSeedVoices,
+  useVoiceDesignAvailable,
+} from '@/cast/ui/use-voice-design-available';
+import { speakersWithoutVoice } from '@/cast/voice';
+import { SEED_VOICE_DEFAULT_TAKES } from '@/cast/seed-voice';
+import { VOICE_DESIGN_COST } from '@/billing/elevenlabs-pricing';
+import { seedVoiceEstimate } from '@/billing/seed-speech-pricing';
+import { ActionCost } from '@/billing/ui/action-cost';
 import {
   cancelShotDialogueClaimFn,
   discardShotDialogueSectionFn,
@@ -34,6 +47,7 @@ import {
   ShotDialogueBlock,
   ShotDialogueHistory,
   ShotReadingsList,
+  ShotMissingVoices,
   ShotRecordingsInFlight,
   shotSpokenByNote,
 } from './motion-dialogue-panel';
@@ -47,20 +61,52 @@ type ReadingsProps = {
   shotId: string;
   collapsible?: boolean;
   /**
-   * Set when the shot is voiced by the video model or an audio element
-   * (`shotSpokenByNote`, #1773): the reading is not in use, so it shows this
-   * note in place of the staleness line and the Generate button.
+   * What the shot says (#1773). Off Generated (video model, audio element)
+   * the reading is not in use, so a note stands in for the staleness line and
+   * the Generate button; a speaker with no voice is offered one first.
    */
-  spokenBy: string | null;
+  lines: readonly DialogueLine[];
 };
 
 const Readings: React.FC<ReadingsProps> = ({
   sequenceId,
   shotId,
   collapsible,
-  spokenBy,
+  lines,
 }) => {
   const queryClient = useQueryClient();
+  const spokenBy = shotSpokenByNote(lines);
+  const { data: characters } = useSequenceCharacters(sequenceId);
+  const voiceDesign = useVoiceDesignAvailable();
+  const seedVoices = useSeedVoices();
+  const enableVoice = useSetCharacterVoiceEnabled();
+  const designVoice = useGenerateCharacterVoice();
+  const unvoiced = spokenBy
+    ? []
+    : speakersWithoutVoice(lines, characters ?? []);
+  const generateVoice = async (characterId: string) => {
+    const character = unvoiced.find((c) => c.id === characterId);
+    try {
+      // An explicit opt-in, so the voice shows on the character's page even
+      // when the sequence default is off.
+      if (character?.useVoice !== true) {
+        await enableVoice.mutateAsync({
+          sequenceId,
+          characterId,
+          enabled: true,
+        });
+      }
+      await designVoice.mutateAsync({
+        sequenceId,
+        characterId,
+        takes: SEED_VOICE_DEFAULT_TAKES,
+      });
+    } catch (error) {
+      toast.error('Voice not generated', {
+        description: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
   // Keyed by shot alone: a new recording invalidates it (the realtime
   // `dialogue-audio` event), so the list on screen stays put while it
   // refetches instead of dropping back to the fallback.
@@ -142,7 +188,28 @@ const Readings: React.FC<ReadingsProps> = ({
     <>
       {spokenBy ? (
         <p className="text-xs text-muted-foreground">{spokenBy}</p>
-      ) : recording ? null : staleBecause ? (
+      ) : recording ? null : unvoiced.length > 0 ? (
+        <ShotMissingVoices
+          speakers={unvoiced.map((character) => ({
+            characterId: character.id,
+            name: character.name,
+            generating:
+              character.pendingPromoteVoiceVersionId != null ||
+              (designVoice.isPending &&
+                designVoice.variables.characterId === character.id),
+          }))}
+          onGenerate={voiceDesign ? (id) => void generateVoice(id) : null}
+          cost={
+            <ActionCost
+              estimate={
+                seedVoices
+                  ? seedVoiceEstimate(SEED_VOICE_DEFAULT_TAKES)
+                  : VOICE_DESIGN_COST
+              }
+            />
+          }
+        />
+      ) : staleBecause ? (
         <StalenessIndicator
           entityType="shot"
           density="status-line"
@@ -300,9 +367,7 @@ export const ShotDialogueUnderVideo: React.FC<{ shot: ShotView }> = ({
           sequenceId={shot.sequenceId}
           shotId={shot.id}
           collapsible
-          spokenBy={shotSpokenByNote(
-            shot.dialogue?.presence ? shot.dialogue.lines : []
-          )}
+          lines={shot.dialogue?.presence ? shot.dialogue.lines : []}
         />
       }
     />

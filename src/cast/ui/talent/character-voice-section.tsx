@@ -224,7 +224,9 @@ export const CharacterVoiceSection: React.FC<{
         <>
           {character.voiceId || takes.length > 0 || designing ? (
             <div className="flex flex-col gap-3">
-              {pendingHusk && (
+              {/* From the click, not from when the husk row arrives: the
+                  box would otherwise open empty, then grow (#1773). */}
+              {designing && (
                 <section className="flex flex-col gap-2" aria-label="Pending">
                   <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                     Pending

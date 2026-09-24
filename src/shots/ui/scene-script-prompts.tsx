@@ -148,7 +148,7 @@ import { SceneStaleShots } from './scene-stale-shots';
 import { SceneElementsTab } from './scene-elements-tab';
 import { SceneLocationTab } from './scene-location-tab';
 import { SceneMusicFacet } from './scene-music-facet';
-import { MotionDialoguePanel, shotSpokenByNote } from './motion-dialogue-panel';
+import { MotionDialoguePanel } from './motion-dialogue-panel';
 import { SceneScriptTab } from './scene-script-tab';
 import {
   SceneDialogueLines,
@@ -1292,7 +1292,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     <ShotDialogueReadings
       sequenceId={sequenceId}
       shotId={shot.id}
-      spokenBy={shotSpokenByNote(shotLines)}
+      lines={shotLines}
     />
   ) : undefined;
 

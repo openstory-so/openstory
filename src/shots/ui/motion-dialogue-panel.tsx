@@ -523,6 +523,54 @@ export const ShotReadingsList: React.FC<{
   );
 };
 
+/** A speaker in this shot with no voice to record them in (#1773). */
+export type MissingVoiceRow = {
+  characterId: string;
+  name: string;
+  /** A voice is being designed for them now. */
+  generating: boolean;
+};
+
+/**
+ * "Aria has no voice" with a way to make one. Lines are recorded only in a
+ * cast member's voice, so without it "Generate dialogue" has nothing to say.
+ * `onGenerate` is null where voices cannot be designed on this deployment.
+ */
+export const ShotMissingVoices: React.FC<{
+  speakers: MissingVoiceRow[];
+  onGenerate: ((characterId: string) => void) | null;
+  /** Shown beside the button: what one design costs. */
+  cost?: React.ReactNode;
+}> = ({ speakers, onGenerate, cost }) => (
+  <ul className="flex flex-col gap-1" aria-live="polite">
+    {speakers.map((speaker) => (
+      <li
+        key={speaker.characterId}
+        className="flex min-h-8 items-center justify-between gap-2"
+      >
+        <span className="text-xs text-muted-foreground">
+          {speaker.generating
+            ? `Generating ${speaker.name}’s voice…`
+            : `${speaker.name} has no voice`}
+        </span>
+        {onGenerate && !speaker.generating ? (
+          <div className="flex items-center gap-2">
+            {cost}
+            <Button
+              size="sm"
+              variant="outline"
+              aria-label={`Generate a voice for ${speaker.name}`}
+              onClick={() => onGenerate(speaker.characterId)}
+            >
+              Generate voice
+            </Button>
+          </div>
+        ) : null}
+      </li>
+    ))}
+  </ul>
+);
+
 /** A dialogue recording in flight for this shot (#1657). */
 export type ShotDialogueClaimRow = {
   id: string;
