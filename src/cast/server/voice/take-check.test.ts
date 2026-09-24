@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkTake, locateParts } from './take-check';
+import { checkParts, checkTake, locateParts } from './take-check';
 
 const timed = (text: string, from = 0) =>
   text.split(' ').map((word, i) => ({
@@ -63,5 +63,31 @@ describe('locateParts', () => {
     expect(locateParts(timed('one two three'), ['four five'])).toEqual([
       undefined,
     ]);
+  });
+});
+
+describe('checkParts', () => {
+  it('finds each part of a clean read', () => {
+    const check = checkParts(timed('hello there mate how are you going'), [
+      'Hello there mate.',
+      'How are you going?',
+    ]);
+    expect(check).toEqual({
+      ok: true,
+      spans: [
+        { start: 0, end: 2.8 },
+        { start: 3, end: 6.8 },
+      ],
+      scriptStartSeconds: 0,
+    });
+  });
+
+  it('names what an invented burst added', () => {
+    const check = checkParts(
+      timed('hello there mate laverame gorsnerm vexolin how are you going'),
+      ['Hello there mate.', 'How are you going?']
+    );
+    expect(check.ok).toBe(false);
+    expect(!check.ok && check.problem).toContain('laverame');
   });
 });

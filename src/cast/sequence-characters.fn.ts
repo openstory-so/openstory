@@ -45,7 +45,7 @@ import {
   saveDesignedVoice,
   type AssignableVoicePick,
 } from '@/cast/server/voice/elevenlabs-voice';
-import { isSeedVoiceId, SEED_VOICE_MAX_TAKES } from '@/cast/seed-voice';
+import { voiceProviderOf, SEED_VOICE_MAX_TAKES } from '@/cast/seed-voice';
 import { buildRegenerateCharacterSheetPayload } from '@/cast/server/sheets/character-sheet-trigger';
 import type { SheetStaleness } from '@/cast/server/sheets/sheet-staleness';
 import { characterSheetHashMatchesStored } from '@/cast/server/workflows/sheet-snapshots';
@@ -325,7 +325,7 @@ export const chooseCharacterVoiceTakeFn = createServerFn({ method: 'POST' })
       );
     }
     // A Seed take IS its voice (#1765): nothing to save, no slot to spend.
-    if (isSeedVoiceId(take.generatedVoiceId)) {
+    if (voiceProviderOf(take.generatedVoiceId) === 'seed') {
       await context.scopedDb.characters.updateVoice(
         character.id,
         { voiceId: take.generatedVoiceId, voicePreviews: previews },

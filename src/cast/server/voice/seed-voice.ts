@@ -22,12 +22,11 @@ import {
   wavFrameMath,
   wavHeader,
 } from '@/motion/server/pad-dialogue-audio';
-import { honestDataSize } from '@/motion/server/synthesize-dialogue';
 import { buildR2Key, STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import { readStorageObject, uploadFile } from '#storage';
-import { isolateVoice, transcribeSpeech } from './elevenlabs-voice';
-import { SEED_BOOTH_PROMPT, seedAudio } from './seed-audio';
-import { checkTake, locateParts } from './take-check';
+import { isolateVoice } from './elevenlabs-voice';
+import { recordCheckedTake, SEED_BOOTH_PROMPT } from './seed-audio';
+import { WORD_LEAD_SECONDS } from './take-check';
 import { z } from 'zod';
 
 export type RangeScript = Record<SeedVoiceMood, string>;
@@ -37,8 +36,7 @@ const seedVoiceBundleSchema = z.object({
   clips: z.object({ normal: z.string(), quiet: z.string(), loud: z.string() }),
 }) satisfies z.ZodType<SeedVoiceBundle>;
 
-/** Room kept around each section so a clip never opens or ends mid-word. */
-const LEAD_SECONDS = 0.15;
+/** Room kept after each section so a clip never ends mid-word. */
 const TAIL_SECONDS = 0.2;
 
 export type RecordedRangeRead = {
@@ -63,28 +61,19 @@ export async function recordRangeRead(input: {
   description: string;
   script: RangeScript;
 }): Promise<RecordedRangeRead> {
-  const take = await seedAudio({
-    apiKey: input.seedKey,
+  const take = await recordCheckedTake({
+    seedKey: input.seedKey,
+    elevenLabsKey: input.elevenLabsKey,
     prompt: rangeReadPrompt(input.description, input.script),
     references: [],
+    parts: SEED_VOICE_MOODS.map((mood) => input.script[mood]),
   });
-  honestDataSize(take.wav);
-  const heard = await transcribeSpeech(
-    input.elevenLabsKey,
-    take.wav,
-    'audio/wav'
-  );
-  const script = SEED_VOICE_MOODS.map((mood) => input.script[mood]).join(' ');
-  const check = checkTake(script, heard.words);
-  const spans = locateParts(
-    heard.words,
-    SEED_VOICE_MOODS.map((mood) => input.script[mood])
-  );
-  if (!check.ok || spans.some((span) => !span)) {
+  if (!take.check.ok) {
     throw new Error(
-      `Seed range read did not say its script${check.extraText ? ` (heard extra: "${check.extraText.slice(0, 120)}")` : ''}${check.missing.length ? ` (missing: ${check.missing.slice(0, 8).join(' ')})` : ''}`
+      `Seed range read did not say its script: ${take.check.problem}`
     );
   }
+  const { spans } = take.check;
 
   const folder = seedVoiceFolder(input.voiceId);
   const cut = SEED_VOICE_MOODS.map((mood, i) => {
@@ -94,7 +83,7 @@ export async function recordRangeRead(input: {
       mood,
       section: sliceWav(
         take.wav,
-        span.start - LEAD_SECONDS,
+        span.start - WORD_LEAD_SECONDS,
         span.end + TAIL_SECONDS
       ),
     };
@@ -140,7 +129,7 @@ export async function recordRangeRead(input: {
     url: read.publicUrl,
     path: read.fullPath,
     seedSeconds: take.billedSeconds,
-    transcribedSeconds: heard.seconds,
+    transcribedSeconds: take.heardSeconds,
     isolatedSeconds,
   };
 }

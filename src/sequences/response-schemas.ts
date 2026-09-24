@@ -154,7 +154,6 @@ export const musicDesignResultSchema = z.object({
   }),
 });
 
-/** Voice Design brief (#1553) — ElevenLabs' recommended prompt shape. */
 /** A Seed voice's range read (#1765): one section per reference clip. */
 export const voiceRangeScriptSchema = z.object({
   normal: z.string().meta({
@@ -168,6 +167,7 @@ export const voiceRangeScriptSchema = z.object({
   }),
 });
 
+/** Voice Design brief (#1553) — ElevenLabs' recommended prompt shape. */
 export const voiceDescriptionSchema = z.object({
   voiceDescription: z.string().meta({
     description:

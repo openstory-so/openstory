@@ -178,7 +178,7 @@ flowchart LR
         amodel2{{"audioModel"}}
         dur{{"durationSeconds (snapped)"}}
         tags{{"music tags"}}
-        voice{{"character voiceId<br/>(designed ElevenLabs voice)"}}
+        voice{{"character voiceId<br/>(ElevenLabs or Seed voice)"}}
     end
 
     scene --> VP(["visual prompt hash"])
@@ -232,8 +232,9 @@ Key consequences of the shape:
   character's `physicalDescription` and the visual + motion **prompts** go stale;
   the rendered thumbnail goes stale only because the **character-sheet hash**
   changes and feeds the thumbnail hash.
-- **Voice ids bind on the clip**, not the motion prompt. A designed ElevenLabs
-  id is `VideoManifestEntry.audioSourceKey` (shape-stable: omitted when
+- **Voice ids bind on the clip**, not the motion prompt. A voice id (an
+  ElevenLabs id, or a `seed:` id for a Seed voice, #1765) is in
+  `VideoManifestEntry.audioSourceKey` (shape-stable: omitted when
   voiceless), the sheet analogue of `characterSheetHashes` on the still. The
   LLM never sees it, so swapping a voice re-stales the render, not the prompt.
 - **Image → video is a hash cascade.** The video hash includes the source image's
@@ -467,7 +468,7 @@ analysisModel and hashVersion as the visual body, plus `startingFrameImageUrl`,
 
 Voice ids are **not** in this hash. They bind on the clip
 (`VideoManifestEntry.audioSourceKey`), the sheet analogue of
-`characterSheetHashes` on the still — the LLM never sees the ElevenLabs id, so
+`characterSheetHashes` on the still — the LLM never sees the voice id, so
 swapping a voice must not rewrite the prompt.
 
 #### 5. Sequence music prompt — `computeMusicPromptInputHash`
@@ -506,10 +507,11 @@ sha256Hex({
 The stamp is over the render manifest (motion-prompt / still version ids,
 `usesStartFrame`, duration, `audioClipIds`, `audioSourceKey`). The UI compare
 (`isSelectedVersionStale`) is pointer-based: stored entries vs the shot's
-current prompt / still version ids **and** the live `audioSourceKey` (voice id
-
-- line + tone + TTS model, omitted when voiceless). A voice change therefore
-  re-stales the clip, not the motion prompt.
+current prompt / still version ids **and** the live `audioSourceKey` (voice
+id, line, tone and TTS model, omitted when voiceless). A voice change therefore
+re-stales the clip, not the motion prompt. The TTS model follows the voice
+(`eleven_v3` for an ElevenLabs voice, `seed-audio-1.0` for a Seed voice,
+#1765), so it moves only when the voice does.
 
 ```ts
 sha256Hex({

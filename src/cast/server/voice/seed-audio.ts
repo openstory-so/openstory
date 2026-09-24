@@ -18,6 +18,9 @@ import { acquireSeedSpeechToken } from '@/models/server/byteplus-governor';
 import { getSeedSpeechBaseUrl } from '@/models/server/seed-speech-config';
 import { base64ToBytes, bytesToBase64 } from '@/platform/base64';
 import { generateId } from '@/platform/id';
+import { honestDataSize } from '@/motion/server/pad-dialogue-audio';
+import { transcribeSpeech } from './elevenlabs-voice';
+import { checkParts, type PartsCheck } from './take-check';
 
 export const SEED_AUDIO_MAX_REFERENCES = 3;
 export const SEED_AUDIO_MAX_PROMPT_CHARS = 3000;
@@ -30,7 +33,7 @@ const QUOTA_RETRIES = 6;
 export const SEED_BOOTH_PROMPT =
   "Voice-over recording in a silent, treated vocal booth. A single close microphone captures only the speaker's voice. There is nothing else in the recording: no music, no ambience, no room tone, no sound effects, no foley.";
 
-export type SeedAudioResult = {
+type SeedAudioResult = {
   wav: Uint8Array<ArrayBuffer>;
   /** Seconds billed (`original_duration`). */
   billedSeconds: number;
@@ -43,7 +46,7 @@ type SeedResponse = {
   original_duration?: number;
 };
 
-export async function seedAudio(input: {
+async function seedAudio(input: {
   apiKey: string;
   prompt: string;
   /** Reference clips as bytes, `@Audio1` first. */
@@ -84,9 +87,42 @@ export async function seedAudio(input: {
         `Seed Audio ${res.status}${json.code ? ` ${json.code}` : ''}: ${json.message ?? 'no audio returned'}`
       );
     }
-    return {
-      wav: base64ToBytes(json.audio),
-      billedSeconds: json.original_duration ?? 0,
-    };
+    const wav = base64ToBytes(json.audio);
+    honestDataSize(wav);
+    return { wav, billedSeconds: json.original_duration ?? 0 };
   }
+}
+
+export type CheckedTake = SeedAudioResult & {
+  /** Seconds Scribe transcribed, for billing. */
+  heardSeconds: number;
+  check: PartsCheck;
+};
+
+/**
+ * One Seed take, transcribed and held against the parts it was asked to say
+ * in order. Seed sometimes speaks invented words, so no take is used unchecked.
+ */
+export async function recordCheckedTake(input: {
+  seedKey: string;
+  elevenLabsKey: string;
+  prompt: string;
+  references: readonly Uint8Array[];
+  parts: readonly string[];
+}): Promise<CheckedTake> {
+  const take = await seedAudio({
+    apiKey: input.seedKey,
+    prompt: input.prompt,
+    references: input.references,
+  });
+  const heard = await transcribeSpeech(
+    input.elevenLabsKey,
+    take.wav,
+    'audio/wav'
+  );
+  return {
+    ...take,
+    heardSeconds: heard.seconds,
+    check: checkParts(heard.words, input.parts),
+  };
 }

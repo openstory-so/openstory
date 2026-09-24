@@ -29,7 +29,7 @@ import {
   ttsUtterance,
 } from '@/motion/dialogue-tts';
 import {
-  parseWavHeader,
+  honestDataSize,
   trimmedEndSeconds,
   wavDurationSeconds,
 } from './pad-dialogue-audio';
@@ -164,20 +164,6 @@ export function dialogueClipsAsReferences(
     token: clip.token,
     durationSeconds: clip.durationSeconds,
   }));
-}
-
-/**
- * Make the header's `data` size describe the bytes that are there. Every
- * later reader — `cutAudioSection` above all, which sees only the header —
- * does its arithmetic off that field, so a header claiming more than the file
- * holds (a streaming encoder's placeholder) is corrected once, here, in place.
- */
-export function honestDataSize(wav: Uint8Array<ArrayBuffer>): void {
-  const fmt = parseWavHeader(wav);
-  if (!fmt) return;
-  const available = wav.length - fmt.dataStart;
-  if (fmt.dataSize <= available) return;
-  new DataView(wav.buffer).setUint32(fmt.dataStart - 4, available, true);
 }
 
 /**

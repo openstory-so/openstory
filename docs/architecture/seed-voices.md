@@ -33,7 +33,9 @@ transcription check on every take.
 
 A `voiceId` of `seed:<ulid>` (`@/cast/seed-voice`). It rides in the same
 column as an ElevenLabs id, so matching, hashing, staleness and history do
-not change. It is **not** an account slot: `releaseVoiceIfUnreferenced`
+not change. The prefix is how the id carries its provider: code asks
+`voiceProviderOf(voiceId)` (a `VoiceProvider`, `'seed' | 'elevenlabs'`) and never
+reads the prefix itself. It is **not** an account slot: `releaseVoiceIfUnreferenced`
 returns at once for it, and its history rows are never stamped released.
 
 It is three reference clips cut from one range read, in R2 under
@@ -47,7 +49,7 @@ recording on ElevenLabs; there is no hop between the two.
 
 ## Making one (`CharacterVoiceWorkflow`, `voiceProvider: 'seed'`)
 
-`voiceProvider` is fixed at trigger (`isSeedVoiceConfigured()`: Seed AND
+`voiceProvider` is chosen when the run is triggered (`newVoiceProvider()`, `isSeedVoiceConfigured()`: Seed AND
 ElevenLabs configured) and snapshotted on the payload.
 
 1. The voice description (drafted by `phase/voice-design-chat` when empty).
@@ -58,14 +60,14 @@ ElevenLabs configured) and snapshotted on the payload.
 3. `takes` takes (1–3, default 2), run side by side, each its own step (`seed-range-read-N`); the three clips of a take are isolated side by side too. One Seed call reads
    all three sections (one voice throughout, booth wording, "natural
    conversational pace" — pace cues like "slow" get over-applied), Scribe
-   transcribes it, `checkTake` + `locateParts` find each section, the WAV is
+   transcribes it, `recordCheckedTake` finds each section (`checkParts`), the WAV is
    cut by the word timings, each section is isolated, and the bundle is
    written. A take that says anything but its script throws and the step
    retry re-records it; a take that still fails is dropped.
    Each take is a different person reading the same description, paid for
    separately, so the user picks the count: the character card's Generate
    has a 1 / 2 / 3 picker (`SEED_VOICE_DEFAULT_TAKES` = 2), priced at
-   `SEED_VOICE_TAKE_ESTIMATE` per take. Story generation uses the default.
+   `seedVoiceEstimate(takes)`. Story generation uses the default.
 4. The first surviving take is the voice. "Use this take" on another costs
    nothing — a Seed take is its voice, there is nothing to save.
 

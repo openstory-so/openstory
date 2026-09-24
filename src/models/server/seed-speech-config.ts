@@ -11,6 +11,7 @@
  * `isSeedVoiceConfigured` asks for both.
  */
 
+import type { VoiceProvider } from '@/cast/seed-voice';
 import { getEnv } from '#env';
 import { optionalEnv } from '@/platform/server/env/environment';
 import { isElevenLabsConfigured } from './elevenlabs-config';
@@ -46,4 +47,9 @@ export function isSeedSpeechConfigured(): boolean {
  */
 export function isSeedVoiceConfigured(): boolean {
   return isSeedSpeechConfigured() && isElevenLabsConfigured();
+}
+
+/** The provider a voice made now gets, for life. */
+export function newVoiceProvider(): VoiceProvider {
+  return isSeedVoiceConfigured() ? 'seed' : 'elevenlabs';
 }

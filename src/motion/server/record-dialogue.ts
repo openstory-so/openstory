@@ -28,7 +28,7 @@
  *    so matching, staleness and the manifest's `audioSourceKey` do not move.
  */
 
-import { isSeedVoiceId } from '@/cast/seed-voice';
+import { voiceProviderOf } from '@/cast/seed-voice';
 import { deductWorkflowCredits } from '@/billing/server/workflow-deduction';
 import {
   dialogueClipSourceKey,
@@ -212,7 +212,9 @@ async function recordClaimed(
             await args.scopedDb.credentials.resolveKey('elevenlabs');
           // A Seed voice is recorded by Seed, an ElevenLabs voice by
           // ElevenLabs (#1765) — `chunkTakeLines` never puts both in a call.
-          const made = callLines.some((line) => isSeedVoiceId(line.voiceId))
+          const made = callLines.some(
+            (line) => voiceProviderOf(line.voiceId) === 'seed'
+          )
             ? await recordSeedDialogueCall({
                 seedKey: (
                   await args.scopedDb.credentials.resolveKey('seed-speech')
@@ -229,16 +231,20 @@ async function recordClaimed(
                 lines: callLines,
               });
           // One ledger line per provider, so a Seed call's Scribe pass is
-          // booked as ElevenLabs spend. The first keeps the pre-#1765 key.
-          const chargeKey = `${args.workflowRunId}:dialogue-tts:${args.stepPrefix}:${call.index}${suffix}`;
+          // booked as ElevenLabs spend.
+          const callKey = `${args.workflowRunId}:dialogue-tts:${args.stepPrefix}:${call.index}${suffix}`;
           for (const [at, charge] of made.charges.entries()) {
+            // The call's main charge keeps the key it had before #1765, so a
+            // step retried across the deploy is not billed twice.
+            const isMainCharge = at === 0;
             await deductWorkflowCredits({
               scopedDb: args.scopedDb,
               costMicros: charge.costMicros,
               usedOwnKey: false,
               description: `Dialogue (${callLines.length} line${callLines.length === 1 ? '' : 's'})`,
-              idempotencyKey:
-                at === 0 ? chargeKey : `${chargeKey}:${charge.endpointId}`,
+              idempotencyKey: isMainCharge
+                ? callKey
+                : `${callKey}:${charge.endpointId}`,
               reservationId: args.reservationId,
               metadata: {
                 endpointId: charge.endpointId,
@@ -495,7 +501,7 @@ export function chunkTakeLines<
   let current: T[] = [];
   let size = 0;
   const seed = (chunk: readonly T[]) =>
-    chunk.some((line) => isSeedVoiceId(line.voiceId));
+    chunk.some((line) => voiceProviderOf(line.voiceId) === 'seed');
   const speakers = (chunk: readonly T[]) =>
     new Set(chunk.map((line) => line.voiceId)).size;
   for (const group of groups) {

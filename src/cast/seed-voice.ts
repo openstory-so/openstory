@@ -5,9 +5,9 @@
  * one range read (normal / quiet / loud), stored in R2 under the voice's id,
  * and every line is recorded with the clip that matches its mood. The id
  * rides in the same `voiceId` column as an ElevenLabs id, so matching,
- * hashing and staleness do not change; the `seed:` prefix is what says which
- * provider records it. A voice keeps its provider for life — there is no
- * hop between the two.
+ * hashing and staleness do not change; the `seed:` prefix is how the id
+ * carries its provider, and `voiceProviderOf` is the only reader of it. A
+ * voice keeps its provider for life — there is no hop between the two.
  */
 
 import { generateId } from '@/platform/id';
@@ -35,13 +35,17 @@ export type SeedVoiceBundle = {
   clips: Record<SeedVoiceMood, string>;
 };
 
-export function isSeedVoiceId(voiceId: string | null | undefined): boolean {
-  return typeof voiceId === 'string' && voiceId.startsWith(SEED_VOICE_PREFIX);
+/** Who makes and records a voice. */
+export type VoiceProvider = 'seed' | 'elevenlabs';
+
+/** Which provider made (and records) a voice, read off its id. */
+export function voiceProviderOf(voiceId: string): VoiceProvider {
+  return voiceId.startsWith(SEED_VOICE_PREFIX) ? 'seed' : 'elevenlabs';
 }
 
-/** Which provider made (and records) a voice — shown on the voice card. */
-export function voiceProviderLabel(voiceId: string): string {
-  return isSeedVoiceId(voiceId) ? 'Seed Audio' : 'ElevenLabs';
+/** A provider as the voice card names it. */
+export function voiceProviderLabel(provider: VoiceProvider): string {
+  return provider === 'seed' ? 'Seed Audio' : 'ElevenLabs';
 }
 
 export function newSeedVoiceId(): string {

@@ -17,7 +17,7 @@ import {
   elevenLabsStatus,
   getElevenLabsVoice,
 } from './elevenlabs-voice';
-import { isSeedVoiceId } from '@/cast/seed-voice';
+import { voiceProviderOf } from '@/cast/seed-voice';
 import { voiceConsumesAccountSlot } from '@/cast/voice';
 import { getLogger } from '@/platform/logger';
 
@@ -38,7 +38,7 @@ export async function releaseVoiceIfUnreferenced(
 ): Promise<void> {
   // A Seed voice holds no provider slot (#1765): its clips stay in R2, so a
   // history row naming it can always be selected again.
-  if (isSeedVoiceId(voiceId)) return;
+  if (voiceProviderOf(voiceId) === 'seed') return;
   if ((await scopedDb.characters.getVoiceReferenceCount(voiceId)) > heldBy) {
     return;
   }

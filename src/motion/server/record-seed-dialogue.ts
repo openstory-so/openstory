@@ -25,24 +25,21 @@ import {
   seedAudioCost,
 } from '@/billing/seed-speech-pricing';
 import {
-  isSeedVoiceId,
+  voiceProviderOf,
   moodForTone,
   SEED_AUDIO_MODEL,
   type SeedVoiceBundle,
   type SeedVoiceMood,
 } from '@/cast/seed-voice';
-import {
-  SCRIBE_MODEL,
-  transcribeSpeech,
-} from '@/cast/server/voice/elevenlabs-voice';
+import { SCRIBE_MODEL } from '@/cast/server/voice/elevenlabs-voice';
 import {
   SEED_AUDIO_MAX_PROMPT_CHARS,
   SEED_AUDIO_MAX_REFERENCES,
+  recordCheckedTake,
   SEED_BOOTH_PROMPT,
-  seedAudio,
 } from '@/cast/server/voice/seed-audio';
 import { loadSeedVoice, readSeedClip } from '@/cast/server/voice/seed-voice';
-import { checkTake, locateParts } from '@/cast/server/voice/take-check';
+import { WORD_LEAD_SECONDS } from '@/cast/server/voice/take-check';
 import { generateId } from '@/platform/id';
 import { getLogger } from '@/platform/logger';
 import type { DialogueRecordingTurn } from '@/platform/server/db/schema';
@@ -51,7 +48,6 @@ import { uploadFile } from '#storage';
 import { NonRetryableError } from 'cloudflare:workflows';
 import { trimmedEndSeconds, wavDurationSeconds } from './pad-dialogue-audio';
 import {
-  honestDataSize,
   shotSliceWindows,
   type DialogueCallLine,
   type RecordedDialogueCall,
@@ -61,9 +57,6 @@ const logger = getLogger(['openstory', 'workflow', 'seed-dialogue']);
 
 /** Takes per call before the recording fails (#1765: 1 of 6 scenes needed a retake). */
 const SEED_TAKE_ATTEMPTS = 3;
-
-/** Room kept before the script's first word when nonsense is cut off. */
-const LEAD_SECONDS = 0.15;
 
 export type SeedReference = { voiceId: string; mood: SeedVoiceMood };
 
@@ -138,7 +131,7 @@ export async function recordSeedDialogueCall(input: {
   const older = [
     ...new Set(
       lines
-        .filter((line) => !isSeedVoiceId(line.voiceId))
+        .filter((line) => voiceProviderOf(line.voiceId) !== 'seed')
         .map((line) => line.character.trim() || 'The narrator')
     ),
   ];
@@ -176,26 +169,20 @@ export async function recordSeedDialogueCall(input: {
 
   let lastProblem = '';
   for (let attempt = 1; attempt <= SEED_TAKE_ATTEMPTS; attempt++) {
-    const take = await seedAudio({ apiKey: input.seedKey, prompt, references });
-    honestDataSize(take.wav);
+    const take = await recordCheckedTake({
+      seedKey: input.seedKey,
+      elevenLabsKey: input.elevenLabsKey,
+      prompt,
+      references,
+      parts: lines.map((line) => line.text),
+    });
     const durationSeconds = wavDurationSeconds(take.wav);
     if (durationSeconds == null) {
       throw new Error('Seed Audio returned audio that is not a PCM WAV');
     }
-    const heard = await transcribeSpeech(
-      input.elevenLabsKey,
-      take.wav,
-      'audio/wav'
-    );
-    const check = checkTake(script, heard.words);
-    const spans = locateParts(
-      heard.words,
-      lines.map((line) => line.text)
-    );
-    if (!check.ok || spans.some((span) => !span)) {
-      lastProblem = check.extraText
-        ? `heard "${check.extraText.slice(0, 120)}"`
-        : `missing ${check.missing.slice(0, 8).join(' ')}`;
+    const { check } = take;
+    if (!check.ok) {
+      lastProblem = check.problem;
       logger.warn(
         `[seed-dialogue] take ${attempt}/${SEED_TAKE_ATTEMPTS} failed its check: ${lastProblem}`
       );
@@ -203,7 +190,7 @@ export async function recordSeedDialogueCall(input: {
     }
 
     const turns: DialogueRecordingTurn[] = lines.map((line, at) => {
-      const span = spans[at];
+      const span = check.spans[at];
       if (!span) throw new Error(`Turn ${at + 1} was not found in the take`);
       return {
         shotId: line.shotId,
@@ -218,7 +205,7 @@ export async function recordSeedDialogueCall(input: {
     // starts just before the script's first word.
     const scriptStart = Math.max(
       0,
-      (check.scriptStartSeconds ?? 0) - LEAD_SECONDS
+      (check.scriptStartSeconds ?? 0) - WORD_LEAD_SECONDS
     );
     const windows = shotSliceWindows(turns, durationSeconds).map(
       (window, at) => {
@@ -261,7 +248,7 @@ export async function recordSeedDialogueCall(input: {
         {
           endpointId: ELEVENLABS_SCRIBE_ENDPOINT,
           model: SCRIBE_MODEL,
-          costMicros: scribeCost(heard.seconds),
+          costMicros: scribeCost(take.heardSeconds),
         },
       ],
     };

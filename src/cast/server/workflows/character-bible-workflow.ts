@@ -28,7 +28,7 @@ import type {
 } from '@/platform/server/workflow/types';
 import { SEED_VOICE_DEFAULT_TAKES } from '@/cast/seed-voice';
 import { usesVoice } from '@/cast/voice';
-import { isSeedVoiceConfigured } from '@/models/server/seed-speech-config';
+import { newVoiceProvider } from '@/models/server/seed-speech-config';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { getLogger } from '@/platform/logger';
 
@@ -235,7 +235,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
             characterBible: character,
             voiceDescription: row.voiceDescription ?? '',
             analysisModelId: input.analysisModelId,
-            voiceProvider: isSeedVoiceConfigured() ? 'seed' : 'elevenlabs',
+            voiceProvider: newVoiceProvider(),
             takes: SEED_VOICE_DEFAULT_TAKES,
             targetVersionId: claim.version.id,
           };

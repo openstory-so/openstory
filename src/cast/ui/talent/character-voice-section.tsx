@@ -1,21 +1,14 @@
-import {
-  SEED_VOICE_TAKE_ESTIMATE,
-  VOICE_DESIGN_COST,
-} from '@/billing/elevenlabs-pricing';
-import { micros } from '@/billing/money';
+import { VOICE_DESIGN_COST } from '@/billing/elevenlabs-pricing';
+import { seedVoiceEstimate } from '@/billing/seed-speech-pricing';
 import {
   SEED_VOICE_DEFAULT_TAKES,
   SEED_VOICE_MAX_TAKES,
   voiceProviderLabel,
+  voiceProviderOf,
 } from '@/cast/seed-voice';
 import { useSeedVoices } from '@/cast/ui/use-voice-design-available';
 import { ToggleGroup, ToggleGroupItem } from '@/ui/shadcn/toggle-group';
 
-/** 1…SEED_VOICE_MAX_TAKES, for the takes picker. */
-const TAKE_CHOICES = Array.from(
-  { length: SEED_VOICE_MAX_TAKES },
-  (_, i) => i + 1
-);
 import { ActionCost } from '@/billing/ui/action-cost';
 import {
   catalogVoiceBrief,
@@ -53,6 +46,12 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Library, Loader2, Mic } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+
+/** 1…SEED_VOICE_MAX_TAKES, for the takes picker. */
+const TAKE_CHOICES = Array.from(
+  { length: SEED_VOICE_MAX_TAKES },
+  (_, i) => i + 1
+);
 
 /**
  * Voice on the character card (#1553 / #1629): the per-character switch,
@@ -230,7 +229,12 @@ export const CharacterVoiceSection: React.FC<{
                   <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                     Pending
                   </p>
-                  <VoiceTakeCard src={null} label="Designing voice" pending />
+                  <VoiceTakeCard
+                    src={null}
+                    label="Designing voice"
+                    voiceId={null}
+                    pending
+                  />
                 </section>
               )}
               {(inUseTake || catalogVoice || character.voiceId) && (
@@ -242,7 +246,7 @@ export const CharacterVoiceSection: React.FC<{
                     <VoiceTakeCard
                       src={catalogVoice.previewUrl}
                       label={catalogVoice.name}
-                      provider={voiceProviderLabel(catalogVoice.voiceId)}
+                      voiceId={catalogVoice.voiceId}
                       inUse
                       isPremade={catalogVoice.isPremade}
                     />
@@ -250,20 +254,14 @@ export const CharacterVoiceSection: React.FC<{
                     <VoiceTakeCard
                       src={inUseTake.preview.url}
                       label={inUseTake.label}
-                      provider={voiceProviderLabel(
-                        inUseTake.preview.generatedVoiceId
-                      )}
+                      voiceId={inUseTake.preview.generatedVoiceId}
                       inUse
                     />
                   ) : (
                     <VoiceTakeCard
                       src={null}
                       label="Saved voice"
-                      provider={
-                        character.voiceId
-                          ? voiceProviderLabel(character.voiceId)
-                          : undefined
-                      }
+                      voiceId={character.voiceId}
                       inUse
                     />
                   )}
@@ -283,9 +281,7 @@ export const CharacterVoiceSection: React.FC<{
                         <VoiceTakeCard
                           src={take.preview.url}
                           label={take.label}
-                          provider={voiceProviderLabel(
-                            take.preview.generatedVoiceId
-                          )}
+                          voiceId={take.preview.generatedVoiceId}
                           disabled={busy || chooseTake.isPending}
                           choosing={
                             choosingId === take.preview.generatedVoiceId
@@ -353,9 +349,7 @@ export const CharacterVoiceSection: React.FC<{
               </Button>
               <ActionCost
                 estimate={
-                  seedVoices
-                    ? micros(SEED_VOICE_TAKE_ESTIMATE * takeCount)
-                    : VOICE_DESIGN_COST
+                  seedVoices ? seedVoiceEstimate(takeCount) : VOICE_DESIGN_COST
                 }
               />
             </div>
@@ -519,8 +513,8 @@ const VoiceHistory: React.FC<{
 const VoiceTakeCard: React.FC<{
   src: string | null;
   label: string;
-  /** Who made the voice ("Seed Audio" / "ElevenLabs"), #1765. */
-  provider?: string;
+  /** Names who made it (#1765); null while it is still being made. */
+  voiceId: string | null;
   inUse?: boolean;
   isPremade?: boolean;
   pending?: boolean;
@@ -531,7 +525,7 @@ const VoiceTakeCard: React.FC<{
 }> = ({
   src,
   label,
-  provider,
+  voiceId,
   inUse = false,
   isPremade,
   pending = false,
@@ -551,8 +545,10 @@ const VoiceTakeCard: React.FC<{
     <div className="flex items-center justify-between gap-2">
       <div className="flex min-w-0 flex-col">
         <p className="truncate text-sm font-medium">{label}</p>
-        {provider && (
-          <p className="text-xs text-muted-foreground">{provider}</p>
+        {voiceId && (
+          <p className="text-xs text-muted-foreground">
+            {voiceProviderLabel(voiceProviderOf(voiceId))}
+          </p>
         )}
       </div>
       <VoiceTakeCardAction

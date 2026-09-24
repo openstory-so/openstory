@@ -12,7 +12,7 @@ import {
   getElevenLabsVoice,
   listLibraryVoices,
 } from '@/cast/server/voice/elevenlabs-voice';
-import { isSeedVoiceId, seedVoiceFolder } from '@/cast/seed-voice';
+import { voiceProviderOf, seedVoiceFolder } from '@/cast/seed-voice';
 import { isSeedVoiceConfigured } from '@/models/server/seed-speech-config';
 import {
   getPublicUrl,
@@ -88,12 +88,12 @@ export const listElevenLabsVoicesFn = createServerFn({ method: 'GET' })
     });
   });
 
-export const getElevenLabsVoiceFn = createServerFn({ method: 'GET' })
+export const getSavedVoiceFn = createServerFn({ method: 'GET' })
   .middleware([authWithTeamMiddleware])
   .validator(zodValidator(z.object({ voiceId: z.string().min(1).max(128) })))
   .handler(async ({ data }): Promise<SavedVoiceMeta | null> => {
     // A Seed voice is clips in R2, not an ElevenLabs voice (#1765).
-    if (isSeedVoiceId(data.voiceId)) {
+    if (voiceProviderOf(data.voiceId) === 'seed') {
       return {
         voiceId: data.voiceId,
         name: 'Seed voice',

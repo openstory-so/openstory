@@ -14,6 +14,9 @@
 
 import type { HeardWord } from './elevenlabs-voice';
 
+/** Room kept before a heard word, so a cut never opens on it. */
+export const WORD_LEAD_SECONDS = 0.15;
+
 const normWords = (text: string): string[] =>
   text
     .toLowerCase()
@@ -91,6 +94,8 @@ export function checkTake(
   };
 }
 
+type Span = { start: number; end: number };
+
 /**
  * Where each part of a script was spoken, in order: from its first words to
  * its last words, each part searched for after the previous one ended.
@@ -99,7 +104,7 @@ export function checkTake(
 export function locateParts(
   heard: readonly HeardWord[],
   parts: readonly string[]
-): Array<{ start: number; end: number } | undefined> {
+): Array<Span | undefined> {
   const got = heardWords(heard);
   let from = 0;
   return parts.map((part) => {
@@ -115,6 +120,36 @@ export function locateParts(
     from = j + tail.length;
     return { start: first.start, end: last.end };
   });
+}
+
+export type PartsCheck =
+  | { ok: true; spans: Span[]; scriptStartSeconds: number | undefined }
+  | { ok: false; problem: string };
+
+/**
+ * Did a take say `parts`, in order, and where is each? The parts are checked
+ * as one script (`checkTake`), then located (`locateParts`).
+ */
+export function checkParts(
+  heard: readonly HeardWord[],
+  parts: readonly string[]
+): PartsCheck {
+  const check = checkTake(parts.join(' '), heard);
+  const spans = locateParts(heard, parts).filter(
+    (span): span is Span => span !== undefined
+  );
+  if (check.ok && spans.length === parts.length) {
+    return { ok: true, spans, scriptStartSeconds: check.scriptStartSeconds };
+  }
+  const problem =
+    [
+      check.extraText && `heard "${check.extraText.slice(0, 120)}"`,
+      check.missing.length > 0 &&
+        `missing ${check.missing.slice(0, 8).join(' ')}`,
+    ]
+      .filter(Boolean)
+      .join('; ') || 'a part was not found in order';
+  return { ok: false, problem };
 }
 
 function levenshtein(a: string, b: string): number {

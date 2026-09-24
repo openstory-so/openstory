@@ -4,7 +4,7 @@
  * hash body.
  */
 
-import { isSeedVoiceId, SEED_AUDIO_MODEL } from '@/cast/seed-voice';
+import { voiceProviderOf, SEED_AUDIO_MODEL } from '@/cast/seed-voice';
 import { matchSpeaker } from '@/cast/voice';
 import {
   getMotionReferenceEndpoint,
@@ -324,9 +324,10 @@ export function voicedDialogueLines(
       voiceId: match.voiceId,
       text,
       tone: line.tone ?? '',
-      ttsModel: isSeedVoiceId(match.voiceId)
-        ? SEED_AUDIO_MODEL
-        : DIALOGUE_TTS_MODEL,
+      ttsModel:
+        voiceProviderOf(match.voiceId) === 'seed'
+          ? SEED_AUDIO_MODEL
+          : DIALOGUE_TTS_MODEL,
       character: line.character,
     });
   });
