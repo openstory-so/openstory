@@ -20,7 +20,7 @@ vi.doMock('@/platform/realtime', () => ({
 const { enqueueLibraryTalentSheet } =
   await import('./enqueue-library-talent-sheet');
 
-const claimSheet = vi.fn(async () => undefined);
+const claimSheet = vi.fn(async () => true);
 // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the claim method
 const scopedDb = { talent: { claimSheet } } as unknown as Pick<
   ScopedDb,
@@ -34,6 +34,8 @@ const params = {
     teamId: 'team-1',
     talentId: 'tal-1',
     talentName: 'Sam',
+    talentDescription: 'tall',
+    referenceImageUrls: ['/r2/a.png'],
   },
   activity: 'sheet' as const,
   deduplicationId: 'library-talent-sheet:generate:tal-1',
@@ -56,7 +58,10 @@ describe('enqueueLibraryTalentSheet claim', () => {
     // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the mocked trigger's payload
     const { sheetId } = payload as { sheetId: string };
     expect(sheetId).toBeTruthy();
-    expect(claimSheet).toHaveBeenCalledWith('tal-1', sheetId);
+    expect(claimSheet).toHaveBeenCalledWith('tal-1', sheetId, {
+      description: 'tall',
+      referenceImageUrls: ['/r2/a.png'],
+    });
   });
 
   it('leaves the claim alone when the trigger reused an in-flight run', async () => {
@@ -77,5 +82,27 @@ describe('enqueueLibraryTalentSheet claim', () => {
       'no binding'
     );
     expect(claimSheet).not.toHaveBeenCalled();
+  });
+});
+
+describe('enqueueLibraryTalentSheet after the run started', () => {
+  it('does not report failure when the claim write throws', async () => {
+    mockTriggerWorkflowRun.mockResolvedValue({
+      workflowRunId: 'run-1',
+      reused: false,
+    });
+    claimSheet.mockRejectedValueOnce(new Error('d1 down'));
+
+    await expect(enqueueLibraryTalentSheet(scopedDb, params)).resolves.toBe(
+      'run-1'
+    );
+    expect(mockEmit).toHaveBeenCalledWith(
+      'talent.sheet:progress',
+      expect.objectContaining({ status: 'generating' })
+    );
+    expect(mockEmit).not.toHaveBeenCalledWith(
+      'talent.sheet:progress',
+      expect.objectContaining({ status: 'failed' })
+    );
   });
 });

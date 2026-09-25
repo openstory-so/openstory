@@ -448,9 +448,10 @@ describe('library location claims', () => {
 });
 
 describe('library talent claims', () => {
+  const NO_INPUTS = { description: null, referenceImageUrls: [] };
   const claimTalent = async () => {
     const sheetId = generateId();
-    await talents().claimSheet(talentId, sheetId);
+    await talents().claimSheet(talentId, sheetId, NO_INPUTS);
     return sheetId;
   };
   const T_HASH = talentSheetInputHash('e'.repeat(64));
@@ -490,6 +491,30 @@ describe('library talent claims', () => {
     expect(landed).toBe(false);
     expect(sheet.divergedAt).not.toBeNull();
     expect(sheet.isDefault).toBe(false);
+  });
+
+  it('refuses the claim when an input moved after the snapshot', async () => {
+    const media = await talents().media.create({
+      talentId,
+      type: 'image',
+      url: '/r2/photo.png',
+      path: 'photo.png',
+    });
+    const inputs = { description: null, referenceImageUrls: [media.url] };
+    expect(await talents().claimSheet(talentId, generateId(), inputs)).toBe(
+      true
+    );
+
+    await talents().update(talentId, { description: 'edited' });
+    expect(await talents().claimSheet(talentId, generateId(), inputs)).toBe(
+      false
+    );
+
+    const edited = { ...inputs, description: 'edited' };
+    await talents().media.delete(media.id);
+    expect(await talents().claimSheet(talentId, generateId(), edited)).toBe(
+      false
+    );
   });
 
   it('parks an older run once a newer run claims', async () => {

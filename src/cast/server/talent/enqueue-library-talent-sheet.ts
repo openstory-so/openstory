@@ -47,7 +47,30 @@ export async function enqueueLibraryTalentSheet(
       { deduplicationId: params.deduplicationId }
     );
     if (!run.reused) {
-      await scopedDb.talent.claimSheet(params.talentId, sheetId);
+      // The run has started: a failed claim parks it, it does not fail it,
+      // so this never reaches the `failed` path below.
+      try {
+        const held = await scopedDb.talent.claimSheet(
+          params.talentId,
+          sheetId,
+          {
+            description: params.workflowInput.talentDescription ?? null,
+            referenceImageUrls: params.workflowInput.referenceImageUrls ?? [],
+          }
+        );
+        if (!held) {
+          logger.warn('Talent sheet inputs moved before the claim; run parks', {
+            talentId: params.talentId,
+            sheetId,
+          });
+        }
+      } catch (error) {
+        logger.error('Failed to claim talent sheet; run parks', {
+          err: error,
+          talentId: params.talentId,
+          sheetId,
+        });
+      }
     }
     await getTalentChannel(params.talentId).emit('talent.sheet:progress', {
       talentId: params.talentId,

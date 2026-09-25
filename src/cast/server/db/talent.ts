@@ -34,6 +34,7 @@ import {
   desc,
   eq,
   exists,
+  inArray,
   ne,
   notExists,
   or,
@@ -403,13 +404,44 @@ export function createTalentMethods(
      * the run will write. Taken only once a trigger started a NEW run — a
      * deduplicated trigger that reused an in-flight run must leave that run's
      * claim alone. Last kickoff wins.
+     *
+     * Taken only while the inputs the run was snapshotted from still hold:
+     * the same description and every reference photo still present. An edit
+     * that landed between the snapshot and this write found no claim to
+     * revoke, so it fails the claim instead and the run parks. Returns
+     * whether the claim was taken.
      */
-    claimSheet: async (talentId: string, sheetId: string): Promise<void> => {
+    claimSheet: async (
+      talentId: string,
+      sheetId: string,
+      inputs: { description: string | null; referenceImageUrls: string[] }
+    ): Promise<boolean> => {
       await requireWritableTalent(db, talentId, teamId);
-      await db
+      const urls = [...new Set(inputs.referenceImageUrls)];
+      const photosStillThere =
+        urls.length === 0
+          ? undefined
+          : sql`(${db
+              .select({ n: sql`count(distinct ${talentMedia.url})` })
+              .from(talentMedia)
+              .where(
+                and(
+                  eq(talentMedia.talentId, talentId),
+                  eq(talentMedia.type, 'image'),
+                  inArray(talentMedia.url, urls)
+                )
+              )}) = ${urls.length}`;
+      const result = await db
         .update(talent)
         .set({ pendingPromoteSheetId: sheetId, updatedAt: new Date() })
-        .where(eq(talent.id, talentId));
+        .where(
+          and(
+            eq(talent.id, talentId),
+            sql`${talent.description} IS ${inputs.description}`,
+            photosStillThere
+          )
+        );
+      return (result.rowsAffected ?? 0) > 0;
     },
 
     /** A failed run clears its claim — only while it still holds it. */
