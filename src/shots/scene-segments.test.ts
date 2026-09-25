@@ -269,6 +269,7 @@ const segShot = (
   renderSegmentId,
   selectedMotionPromptVersionId,
   rendersReferenceOnly,
+  motionPromptRenamedFrom: [],
   audioClips: null,
   durationMs: null,
 });
@@ -285,17 +286,48 @@ const stale = (
   v: SegmentVersionInput | undefined,
   live: Partial<LiveShotInputs> = {}
 ) =>
-  isSelectedVersionStale(v, motion, frame, {
-    ...NO_LOADED,
-    audioClipIdsByShot: new Map(),
-    durationMsByShot: new Map(),
-    audioSecondsByShot: new Map(),
-    ...live,
-  });
+  isSelectedVersionStale(
+    v,
+    motion,
+    frame,
+    {
+      ...NO_LOADED,
+      audioClipIdsByShot: new Map(),
+      durationMsByShot: new Map(),
+      audioSecondsByShot: new Map(),
+      ...live,
+    },
+    new Map()
+  );
 
 describe('isSelectedVersionStale', () => {
   it('is false with no selection', () => {
     expect(stale(undefined)).toBe(false);
+  });
+
+  it('a token rename of the rendered prompt keeps the clip fresh; an edit after it does not (#1827)', () => {
+    const v = version('v1', 'seg', 'kling', [
+      {
+        shotId: 'shot-1',
+        motionPromptVersionId: 'mp-0',
+        frameVersionId: 'fv-1',
+      },
+    ]);
+    const live = {
+      ...NO_LOADED,
+      audioClipIdsByShot: new Map(),
+      durationMsByShot: new Map(),
+      audioSecondsByShot: new Map(),
+    };
+    // mp-1 renamed from r1, renamed from the rendered mp-0.
+    const renamedTwice = new Map([['shot-1', ['r1', 'mp-0']]]);
+    expect(isSelectedVersionStale(v, motion, frame, live, renamedTwice)).toBe(
+      false
+    );
+    // An edit after the rename is not a rename: no chain, so stale.
+    expect(isSelectedVersionStale(v, motion, frame, live, new Map())).toBe(
+      true
+    );
   });
 
   it('is fresh when the manifest matches current pointers', () => {
@@ -418,12 +450,18 @@ describe('isSelectedVersionStale', () => {
         })
       ).toBe(false);
       expect(
-        isSelectedVersionStale(v, new Map([['shot-1', 'mp-2']]), frame, {
-          ...NO_LOADED,
-          audioClipIdsByShot: new Map(),
-          durationMsByShot: new Map(),
-          audioSecondsByShot: new Map(),
-        })
+        isSelectedVersionStale(
+          v,
+          new Map([['shot-1', 'mp-2']]),
+          frame,
+          {
+            ...NO_LOADED,
+            audioClipIdsByShot: new Map(),
+            durationMsByShot: new Map(),
+            audioSecondsByShot: new Map(),
+          },
+          new Map()
+        )
       ).toBe(true);
     }
   );
@@ -620,7 +658,8 @@ describe('legacy packed video provenance (#1720)', () => {
         ['b', 'mp-b'],
       ]),
       new Map(),
-      { ...live, ...changes }
+      { ...live, ...changes },
+      new Map()
     );
 
   it('recognizes an unchanged historical conversation and sub-minimum member durations', () => {
