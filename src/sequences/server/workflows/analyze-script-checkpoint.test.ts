@@ -34,7 +34,7 @@ import type {
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { GenerationCheckpoint } from '@/sequences/pipeline';
-import { snapshotDialogueContinuation } from '../dialogue-continuation';
+import { snapshotImageStageContinuation } from '../image-stage-continuation';
 import type {
   CharacterMinimal,
   SequenceLocationMinimal,
@@ -704,7 +704,7 @@ describe('AnalyzeScriptWorkflow script checkpoint', () => {
             ),
         },
       } as unknown as ScopedDb;
-      savedCheckpoint = await snapshotDialogueContinuation(
+      savedCheckpoint = await snapshotImageStageContinuation(
         selectionDb,
         {
           id: 'seq_1',
@@ -827,7 +827,7 @@ describe('AnalyzeScriptWorkflow script checkpoint', () => {
             ),
         },
       } as unknown as ScopedDb;
-      const checkpoint = await snapshotDialogueContinuation(
+      const checkpoint = await snapshotImageStageContinuation(
         selectionDb,
         {
           id: 'seq_1',
@@ -894,6 +894,106 @@ describe('AnalyzeScriptWorkflow script checkpoint', () => {
           completedStage: 'dialogue',
           dialogueClipsByShotId: { sh_1: [] },
         },
+      });
+    }
+  );
+
+  test.each([
+    { referenceOnly: false, completedStage: 'images' as const },
+    { referenceOnly: true, completedStage: 'references' as const },
+  ])(
+    'startFrom motion reuses the selected image stage ($referenceOnly)',
+    async ({ referenceOnly, completedStage }) => {
+      const scene: Scene = {
+        sceneId: 'as_1',
+        sceneNumber: 1,
+        originalScript: {
+          extract: 'Ada walks through the hallway.',
+          dialogue: [],
+        },
+        metadata: {
+          title: 'Hallway',
+          durationSeconds: 5,
+          location: '',
+          timeOfDay: '',
+          storyBeat: '',
+        },
+        continuity: {
+          characterTags: [],
+          environmentTag: '',
+          colorPalette: '',
+          lightingSetup: '',
+          styleTag: '',
+        },
+      };
+      const prompts: MotionMusicPromptsWorkflowResult = {
+        completeScenes: [scene],
+        motionPromptsBySceneId: {},
+        motionPromptVersionIdsBySceneId: {},
+        motionPromptsByShotId: {
+          sh_1: {
+            fullPrompt: 'Selected motion prompt',
+            dialogue: { presence: false, lines: [] },
+            audio: { ambientSound: '', soundEffects: [] },
+          },
+        },
+        motionPromptVersionIdsByShotId: { sh_1: 'mp_selected' },
+        musicPrompt: 'Selected music prompt',
+        musicTags: 'ambient',
+      };
+      const checkpoint: GenerationCheckpoint = {
+        ...SPLIT,
+        completedStage,
+        scenes: [scene],
+        scenesWithVisualPrompts: [scene],
+        characterBible: [],
+        locationBible: [],
+        elementBible: [],
+        charactersWithSheets: [],
+        locationsWithSheets: [],
+        allElements: [],
+        visualPromptBySceneId: { as_1: 'A quiet hallway' },
+        imageStage: {
+          images: {
+            imageUrls: ['/r2/selected-still.png'],
+            frameVersionIds: ['fv_selected'],
+          },
+          prompts,
+        },
+      };
+      const update: UpdateMock = vi.fn(async () => undefined);
+
+      const result = await makeWorkflow().invokeRunImpl(
+        makeEvent({
+          ...noStyle,
+          startFrom: 'motion',
+          stopAt: 'motion',
+          referenceOnly,
+          autoGenerateMotion: true,
+          autoGenerateMusic: false,
+          generateVoices: false,
+          checkpoint,
+        }),
+        makeStep(),
+        makeScopedDb(update)
+      );
+
+      expect(result).toEqual([scene]);
+      expect(spawned()).toEqual(['spawn-motion-batch']);
+      expect(childPayload('spawn-motion-batch')).toMatchObject({
+        shots: [
+          {
+            shotId: 'sh_1',
+            motionPromptVersionId: 'mp_selected',
+            frameVersionId: referenceOnly ? null : 'fv_selected',
+            motionPrompt: { fullPrompt: 'Selected motion prompt' },
+          },
+        ],
+      });
+      expect(writeVisualPrompt).not.toHaveBeenCalled();
+      expect(checkpointWrite(update, 'images')).toBeUndefined();
+      expect(checkpointWrite(update, 'motion')).toMatchObject({
+        generationCheckpoint: { completedStage: 'motion' },
       });
     }
   );

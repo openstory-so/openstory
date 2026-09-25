@@ -585,7 +585,7 @@ export type GenerationCheckpoint = {
   allElements?: SequenceElementMinimal[];
   visualPromptBySceneId?: Record<string, string>;
   scenesWithVisualPrompts?: Scene[];
-  /** Selected stills and prompts snapshotted at a Dialogue continue click. */
+  /** Selected stills and prompts snapshotted for a Dialogue or Motion continue. */
   imageStage?: {
     images: ShotImagesWorkflowResult;
     prompts: MotionMusicPromptsWorkflowResult;

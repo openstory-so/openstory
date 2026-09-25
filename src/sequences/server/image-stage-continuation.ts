@@ -6,7 +6,7 @@ import type { MotionPrompt } from '@/shots/scene-analysis.schema';
 import { shotWorkItems } from '@/shots/server/shot-work-items';
 
 /** Freeze completed work at the continue click, including edits since the stop. */
-export async function snapshotDialogueContinuation(
+export async function snapshotImageStageContinuation(
   scopedDb: ScopedDb,
   sequence: Pick<Sequence, 'id' | 'musicPrompt' | 'musicTags'>,
   checkpoint: GenerationCheckpoint
@@ -14,7 +14,7 @@ export async function snapshotDialogueContinuation(
   const savedScenes = checkpoint.scenesWithVisualPrompts ?? checkpoint.scenes;
   if (!savedScenes || !checkpoint.shotMapping) {
     throw new ValidationError(
-      'Cannot continue dialogue: missing script checkpoint'
+      'Cannot continue generation: missing script checkpoint'
     );
   }
   // ID-based asset reads also return soft-deleted shots. Reconcile before
@@ -25,7 +25,7 @@ export async function snapshotDialogueContinuation(
     liveShotIds.has(shot.shotId)
   );
   if (shotMapping.length === 0) {
-    throw new ValidationError('Cannot continue dialogue: no remaining shots');
+    throw new ValidationError('Cannot continue generation: no remaining shots');
   }
   const sceneIds = new Set(shotMapping.map((shot) => shot.analysisSceneId));
   const scenes = savedScenes.filter((scene) => sceneIds.has(scene.sceneId));
@@ -50,7 +50,7 @@ export async function snapshotDialogueContinuation(
     const motion = motionByShot.get(shotId);
     if (!motion?.text.trim()) {
       throw new ValidationError(
-        `Shot ${shotId} needs a motion prompt before continuing dialogue`
+        `Shot ${shotId} needs a motion prompt before continuing generation`
       );
     }
     imageUrls.push(image?.url ?? null);

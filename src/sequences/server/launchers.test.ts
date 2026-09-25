@@ -16,16 +16,41 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { DEFAULT_IMAGE_MODEL, DEFAULT_VIDEO_MODEL } from '@/models/models';
 import { DEFAULT_ANALYSIS_MODEL } from '@/models/models.config';
 import type { ScopedDb } from '@/platform/server/db/scoped';
-import type { StyleConfig } from '@/platform/server/db/schema';
-import type { GenerationStage } from '@/sequences/pipeline';
+import type { Sequence, StyleConfig } from '@/platform/server/db/schema';
+import type {
+  GenerationCheckpoint,
+  GenerationStage,
+} from '@/sequences/pipeline';
 import type { StoryboardTriggerInput } from '@/platform/server/workflow/types';
 
 const triggerWorkflowMock = vi.fn();
+const refreshCheckpointFromCastMock = vi.fn(
+  async (
+    _scopedDb: ScopedDb,
+    _sequenceId: string,
+    checkpoint: GenerationCheckpoint
+  ) => checkpoint
+);
+const snapshotImageStageContinuationMock = vi.fn(
+  async (
+    _scopedDb: ScopedDb,
+    _sequence: Pick<Sequence, 'id' | 'musicPrompt' | 'musicTags'>,
+    checkpoint: GenerationCheckpoint
+  ) => checkpoint
+);
 const getRequestHeader = vi.fn<(name: string) => string | undefined>();
 vi.doMock('@tanstack/react-start/server', () => ({ getRequestHeader }));
 beforeEach(() => {
   getRequestHeader.mockReset();
+  refreshCheckpointFromCastMock.mockClear();
+  snapshotImageStageContinuationMock.mockClear();
 });
+vi.doMock('./refresh-checkpoint', () => ({
+  refreshCheckpointFromCast: refreshCheckpointFromCastMock,
+}));
+vi.doMock('./image-stage-continuation', () => ({
+  snapshotImageStageContinuation: snapshotImageStageContinuationMock,
+}));
 vi.doMock('@/platform/server/workflow/client', () => ({
   triggerWorkflow: triggerWorkflowMock,
 }));
@@ -277,6 +302,39 @@ describe('triggerStoryboard', () => {
       stopAt: 'images',
     });
   });
+
+  test.each(['dialogue', 'motion'] as const)(
+    'snapshots image-stage inputs when continuing from %s',
+    async (startFrom) => {
+      runStateResult = 'failed';
+      triggerWorkflowMock.mockReset();
+      triggerWorkflowMock.mockResolvedValue('run-1');
+      const checkpoint: GenerationCheckpoint = { completedStage: 'images' };
+      const { scopedDb } = makeScopedDb({ workflowRunId: null });
+
+      await triggerStoryboard(scopedDb, {
+        ...INPUT,
+        startFrom,
+        stopAt: 'motion',
+        checkpoint,
+      });
+
+      expect(refreshCheckpointFromCastMock).toHaveBeenCalledWith(
+        scopedDb,
+        'seq_1',
+        checkpoint
+      );
+      expect(snapshotImageStageContinuationMock).toHaveBeenCalledWith(
+        scopedDb,
+        expect.objectContaining({ id: 'seq_1' }),
+        checkpoint
+      );
+      expect(triggerWorkflowMock.mock.calls[0]?.[1]).toMatchObject({
+        startFrom,
+        checkpoint,
+      });
+    }
+  );
 
   test('pins explicit stopAt so flags cannot collapse References to Images', async () => {
     runStateResult = 'failed';

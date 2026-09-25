@@ -998,10 +998,10 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     }
 
     const imageStage = await (async () => {
-      if (startFrom === 'dialogue') {
+      if (startFrom === 'dialogue' || startFrom === 'motion') {
         if (!checkpoint?.imageStage) {
           throw new WorkflowValidationError(
-            'Cannot continue dialogue: missing render inputs'
+            `Cannot continue ${startFrom}: missing render inputs`
           );
         }
         return checkpoint.imageStage;

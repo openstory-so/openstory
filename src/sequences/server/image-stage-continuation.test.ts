@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { GenerationCheckpoint } from '@/sequences/pipeline';
 import type { Scene } from '@/shots/scene-analysis.schema';
-import { snapshotDialogueContinuation } from './dialogue-continuation';
+import { snapshotImageStageContinuation } from './image-stage-continuation';
 
 const scene: Scene = {
   sceneId: 'scene_1',
@@ -92,7 +92,7 @@ function mockDb() {
   return { db, getSelectedMotionByShots, listBySequence };
 }
 
-describe('snapshotDialogueContinuation', () => {
+describe('snapshotImageStageContinuation', () => {
   it.each([false, true])(
     'excludes deleted shots and keeps surviving inputs aligned (same scene: %s)',
     async (sameScene) => {
@@ -112,7 +112,7 @@ describe('snapshotDialogueContinuation', () => {
           : {}),
         dialogueClipsByShotId: { shot_1: [], shot_2: [] },
       };
-      const snapshot = await snapshotDialogueContinuation(
+      const snapshot = await snapshotImageStageContinuation(
         db,
         { id: 'seq_1', musicPrompt: null, musicTags: null },
         original
@@ -145,7 +145,7 @@ describe('snapshotDialogueContinuation', () => {
     const { db, listBySequence, getSelectedMotionByShots } = mockDb();
     listBySequence.mockResolvedValue([]);
     await expect(
-      snapshotDialogueContinuation(
+      snapshotImageStageContinuation(
         db,
         { id: 'seq_1', musicPrompt: null, musicTags: null },
         checkpoint
@@ -156,7 +156,7 @@ describe('snapshotDialogueContinuation', () => {
 
   it('pins selected stills and prompts in clip order, including edits and voice bindings', async () => {
     const { db } = mockDb();
-    const snapshot = await snapshotDialogueContinuation(
+    const snapshot = await snapshotImageStageContinuation(
       db,
       { id: 'seq_1', musicPrompt: 'Edited music', musicTags: 'ambient' },
       checkpoint
@@ -193,7 +193,7 @@ describe('snapshotDialogueContinuation', () => {
     const { db, getSelectedMotionByShots } = mockDb();
     getSelectedMotionByShots.mockResolvedValue(new Map());
     await expect(
-      snapshotDialogueContinuation(
+      snapshotImageStageContinuation(
         db,
         { id: 'seq_1', musicPrompt: null, musicTags: null },
         checkpoint
