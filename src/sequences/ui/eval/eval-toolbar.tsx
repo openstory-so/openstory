@@ -1,6 +1,6 @@
 import type React from 'react';
 import { useEffect, useRef, useState } from 'react';
-import { Link } from '@tanstack/react-router';
+import { ManualSequenceDialog } from '../manual-sequence-dialog';
 import { Input } from '@/ui/shadcn/input';
 import {
   Select,
@@ -17,7 +17,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/ui/shadcn/popover';
 import { SCRIPT_ANALYSIS_MODELS } from '@/models/models.config';
 import { IMAGE_MODELS } from '@/models/models';
 import { ASPECT_RATIOS } from '@/models/aspect-ratios';
-import { Plus, Search, ShieldCheck, SlidersHorizontal, X } from 'lucide-react';
+import { Search, ShieldCheck, SlidersHorizontal, X } from 'lucide-react';
 import {
   isValidViewMode,
   type FilterState,
@@ -384,12 +384,7 @@ export const EvalToolbar: React.FC<EvalToolbarProps> = ({
             ))}
           </SelectContent>
         </Select>
-        <Button asChild className="h-11 sm:h-10">
-          <Link to="/">
-            <Plus className="size-4" />
-            New sequence
-          </Link>
-        </Button>
+        <ManualSequenceDialog />
       </div>
       {hasActiveFilters && (
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">

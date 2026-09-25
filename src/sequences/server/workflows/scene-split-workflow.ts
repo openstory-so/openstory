@@ -1,3 +1,5 @@
+import type { ShotSpec } from '@/shots/shot-list.schema';
+import { hashVisualPromptInput } from '@/shots/input-hash';
 /**
  * Scene-split workflow (#1035: boundary annotation, several small LLM calls).
  *
@@ -447,6 +449,7 @@ async function persistSceneShots({
   orderIndex: number;
   announcedShotIds?: ReadonlySet<string>;
 }): Promise<SceneSplitWorkflowResult['shotMapping']> {
+  if (input.additiveScenes) return [];
   const sceneRow = await scopedDb.scenes.upsert(
     buildSceneInsert(sequenceId, scene, orderIndex)
   );
@@ -566,6 +569,21 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
       'scene-splitting-stream',
       STREAM_STEP_RETRIES,
       async (): Promise<string> => {
+        if (input.additiveScenes) {
+          let offset = 0;
+          const offsets = input.additiveScenes.map((scene) => {
+            const start = offset;
+            offset += scene.originalScript.extract.length + 2;
+            return start;
+          });
+          return JSON.stringify({
+            scenes: input.additiveScenes,
+            title: '',
+            offsets,
+            llmCostMicros: ZERO_MICROS,
+            llmKeySource: 'platform',
+          } satisfies StreamResult);
+        }
         const { messages } = await getChatPrompt(input.promptName, {
           script: gutteredScript,
         });
@@ -916,7 +934,11 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
       ? durationGridForModel(input.videoModel)
       : [];
     const batchStarts: number[] = [];
-    for (let i = 0; i < reconciledScenes.length; i += SHOT_LIST_BATCH_SCENES) {
+    for (
+      let i = 0;
+      input.additiveAction !== 'characters' && i < reconciledScenes.length;
+      i += SHOT_LIST_BATCH_SCENES
+    ) {
       batchStarts.push(i);
     }
     const batchSteps = await Promise.all(
@@ -1041,7 +1063,10 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
         'WorkflowValidationError'
       );
     }
-    const scenesWithShots = shotListBatches.flatMap((batch) => batch.scenes);
+    const scenesWithShots =
+      input.additiveAction === 'characters'
+        ? reconciledScenes
+        : shotListBatches.flatMap((batch) => batch.scenes);
     const shotListStep: LlmStepBilling = {
       llmCostMicros: shotListBatches.reduce(
         (sum, batch) => addMicros(sum, batch.llmCostMicros),
@@ -1056,7 +1081,7 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
       'reconcile-shots',
       async (): Promise<string> => {
         const resolvedTitle = streamResult.title || 'Untitled';
-        if (sequenceId) {
+        if (sequenceId && !input.additiveScenes) {
           // Status stays 'processing' until storyboard-workflow completes
           // all phases.
           await scopedDb.sequences.updateTitle(sequenceId, resolvedTitle);
@@ -1090,7 +1115,11 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
     // Addressed by the element ids snapshotted in the payload, not by a live
     // token lookup: tokens are user-renameable mid-run, so a re-read could
     // resolve the same token to a different row (or miss a renamed one).
-    if (sequenceId && reconciled.elementBible.length > 0) {
+    if (
+      sequenceId &&
+      !input.additiveScenes &&
+      reconciled.elementBible.length > 0
+    ) {
       const elementIdByToken = new Map(elements.map((el) => [el.token, el.id]));
       await step.do('reconcile-element-bible', async () => {
         for (const entry of reconciled.elementBible) {
@@ -1116,7 +1145,7 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
     // `REFERENCES scenes(id)` in the migration (no ON DELETE SET NULL), so
     // deleting stream-linked scenes fails with DrizzleQueryError (#1072).
     let dialogueVersionIdByShotId: Record<string, string> = {};
-    if (sequenceId && reconciled.scenes.length > 0) {
+    if (sequenceId && !input.additiveScenes && reconciled.scenes.length > 0) {
       dialogueVersionIdByShotId = await step.do('persist-scenes', async () => {
         const versionIds: Record<string, string> = {};
         const sceneRows = [];
@@ -1225,6 +1254,105 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
         }
         return versionIds;
       });
+    }
+
+    if (sequenceId && input.additiveAction === 'shots') {
+      const allocated = await step.do('allocate-additive-shot-ids', async () =>
+        reconciled.scenes.map((scene) => ({
+          sceneId: scene.sceneId,
+          ids: (scene.shots ?? []).map(() => generateId()),
+        }))
+      );
+      const added = await step.do('append-manual-shots', async () => {
+        const mapping: SceneSplitWorkflowResult['shotMapping'] = [];
+        const versions: Record<string, string> = {};
+        const updatedScenes = [];
+        for (const scene of reconciled.scenes) {
+          const ids =
+            allocated.find((entry) => entry.sceneId === scene.sceneId)?.ids ??
+            [];
+          const nextShots: ShotSpec[] = [];
+          for (const [index, spec] of (scene.shots ?? []).entries()) {
+            const id = ids[index];
+            if (!id) throw new Error('Missing allocated shot id');
+            const row = await scopedDb.shots.appendOnce({
+              id,
+              sequenceId,
+              sceneId: scene.sceneId,
+              durationMs: Math.round(spec.durationSeconds * 1000),
+            });
+            if (input.styleConfig) {
+              await scopedDb.framePromptVersions.writeAiVersion({
+                frameId: row.anchorFrameId,
+                text: previewTextForShot(
+                  {
+                    ...scene,
+                    metadata: scene.metadata ?? {
+                      title: '',
+                      location: '',
+                      timeOfDay: '',
+                    },
+                  },
+                  spec.shotNumber
+                ),
+                inputHash: await hashVisualPromptInput({
+                  scene,
+                  styleConfig: input.styleConfig,
+                  characterBible: reconciled.characterBible,
+                  locationBible: reconciled.locationBible,
+                  elementBible: reconciled.elementBible,
+                  aspectRatio: input.aspectRatio,
+                  analysisModel: modelId,
+                }),
+                analysisModel: modelId,
+              });
+            }
+            const shotNumber = row.shotNumber ?? 1;
+            nextShots.push({ ...spec, shotNumber });
+            mapping.push({
+              analysisSceneId: scene.sceneId,
+              shotId: row.id,
+              frameId: row.anchorFrameId,
+              shotNumber,
+            });
+            const lines = deriveShotDialogueLines(
+              scene.originalScript.dialogue,
+              { shotNumber: spec.shotNumber },
+              index === 0
+            );
+            const version = await scopedDb.shotDialogue.write(
+              row.id,
+              lines,
+              'prompt'
+            );
+            if (version) versions[row.id] = version.id;
+          }
+          const shotNumbers = new Map(
+            (scene.shots ?? []).map((spec, index) => [
+              spec.shotNumber,
+              nextShots[index]?.shotNumber,
+            ])
+          );
+          updatedScenes.push({
+            ...scene,
+            shots: nextShots,
+            originalScript: {
+              ...scene.originalScript,
+              dialogue: scene.originalScript.dialogue.map((line) => ({
+                ...line,
+                shotNumber:
+                  line.shotNumber === undefined
+                    ? undefined
+                    : shotNumbers.get(line.shotNumber),
+              })),
+            },
+          });
+        }
+        return { mapping, versions, scenes: updatedScenes };
+      });
+      reconciled.shotMapping = added.mapping;
+      reconciled.scenes = added.scenes;
+      dialogueVersionIdByShotId = added.versions;
     }
 
     // Step 5: Deduct credits — one deduction per LLM call.

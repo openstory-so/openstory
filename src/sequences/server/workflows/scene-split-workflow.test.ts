@@ -1,3 +1,4 @@
+import { placeholderAutoStyleDraft } from '@/look/auto-style';
 /**
  * Blast-radius test for the preview-image fan-out (#1149).
  *
@@ -1031,5 +1032,71 @@ describe('SceneSplitWorkflow shot-list pass (#1486)', () => {
       )?.[0];
     expect(shotListCall?.model).toBe(INPUT.modelId);
     expect(shotListCall?.responseSchema).toBeDefined();
+  });
+});
+
+describe('manual additive analysis', () => {
+  test('determines shots inside saved scenes without rewriting or trimming existing work', async () => {
+    const db = makeScopedDb();
+    const upsertScene = vi.spyOn(db.scenes, 'upsert');
+    const trimScenes = vi.spyOn(db.scenes, 'deleteFromOrderIndex');
+    const trimShots = vi.spyOn(db.shots, 'deleteFromShotNumber');
+    const bulkUpsert = vi.spyOn(db.shots, 'bulkUpsert');
+    const updateTitle = vi.spyOn(db.sequences, 'updateTitle');
+    const seedScripts = vi.spyOn(db.sceneScriptVersions, 'seedSplitVersions');
+    const appendOnce = vi.fn(async (data: { id: string; sceneId: string }) => ({
+      ...data,
+      shotNumber: 7,
+      anchorFrameId: `frame-${data.id}`,
+    }));
+    Object.assign(db.shots, { appendOnce });
+    const writeAiVersion = vi.fn(async () => ({}));
+    Object.assign(db, { framePromptVersions: { writeAiVersion } });
+    const result = await makeWorkflow().split(
+      makeEvent({
+        ...INPUT,
+        additiveScenes: SCENES,
+        additiveAction: 'shots',
+        styleConfig: placeholderAutoStyleDraft().config,
+      }),
+      makeStep(),
+      db
+    );
+    expect(appendOnce).toHaveBeenCalledTimes(SCENES.length);
+    expect(writeAiVersion).toHaveBeenCalledTimes(SCENES.length);
+    expect(result.shotMapping).toHaveLength(SCENES.length);
+    expect(result.shotMapping[0]).toMatchObject({
+      analysisSceneId: SCENES[0]?.sceneId,
+      shotNumber: 7,
+    });
+    expect(upsertScene).not.toHaveBeenCalled();
+    expect(trimScenes).not.toHaveBeenCalled();
+    expect(trimShots).not.toHaveBeenCalled();
+    expect(bulkUpsert).not.toHaveBeenCalled();
+    expect(updateTitle).not.toHaveBeenCalled();
+    expect(seedScripts).not.toHaveBeenCalled();
+    expect(updateSplitContent).not.toHaveBeenCalled();
+    expect(triggerWorkflow).not.toHaveBeenCalled();
+  });
+
+  test('character scanning never creates shots, edits scripts, or generates previews', async () => {
+    const db = makeScopedDb();
+    const upsertScene = vi.spyOn(db.scenes, 'upsert');
+    const bulkUpsert = vi.spyOn(db.shots, 'bulkUpsert');
+    const result = await makeWorkflow().split(
+      makeEvent({
+        ...INPUT,
+        additiveScenes: SCENES,
+        additiveAction: 'characters',
+      }),
+      makeStep(),
+      db
+    );
+    expect(result.scenes).toHaveLength(SCENES.length);
+    expect(result.shotMapping).toEqual([]);
+    expect(upsertScene).not.toHaveBeenCalled();
+    expect(bulkUpsert).not.toHaveBeenCalled();
+    expect(updateSplitContent).not.toHaveBeenCalled();
+    expect(triggerWorkflow).not.toHaveBeenCalled();
   });
 });

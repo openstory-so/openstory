@@ -1,4 +1,8 @@
 import {
+  MANUAL_ANALYSIS_WORKFLOW,
+  MANUAL_ANALYSIS_RETRY_MESSAGE,
+} from './manual-sequence.schema';
+import {
   DEFAULT_IMAGE_MODEL,
   DEFAULT_MUSIC_MODEL,
   DEFAULT_VIDEO_MODEL,
@@ -643,6 +647,8 @@ export const retryStoryboardFn = createServerFn({ method: 'POST' })
   .handler(async ({ context }) => {
     const { sequence, user, teamId } = context;
 
+    if (sequence.workflow === MANUAL_ANALYSIS_WORKFLOW)
+      throw new ValidationError(MANUAL_ANALYSIS_RETRY_MESSAGE);
     if (sequence.status !== 'failed') {
       throw new Error('Only failed sequences can be retried');
     }

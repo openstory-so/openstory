@@ -1,3 +1,5 @@
+import { AnalyzeManualSequenceButton } from '@/sequences/ui/analyze-manual-sequence-button';
+import { useSequence } from '@/sequences/ui/use-sequences';
 import { AspectRatioIcon } from '@/ui/icons/aspect-ratio-icon';
 import { ModelBadge } from '@/models/ui/pickers/model-badge';
 import { Button } from '@/ui/shadcn/button';
@@ -23,8 +25,7 @@ import { CopyPlus } from 'lucide-react';
  * apply to the whole sequence.
  *
  * Sequence scope is the only home for these now: style, aspect ratio and the
- * script model are fixed at generation time (changing them means re-running the
- * script from the Script tab), while the image and video rows switch which
+ * script model summarize the choices in Sequence settings, while the image and video rows switch which
  * model's output the canvas shows. Every row is one badge, so the block reads
  * as a settings summary rather than a second set of pickers. It replaced the
  * pill bar that used to sit above the Script/Scenes tabs.
@@ -50,7 +51,7 @@ type SceneModelBarProps = {
   resolution?: Resolution;
   /** `sequences.targetDurationSeconds`; null = auto. */
   targetDurationSeconds?: number | null;
-  /** The LLM that analysed the script into scenes. Fixed post-analysis. */
+  /** Text model selected for future analysis. */
   analysisModel?: string;
 };
 
@@ -79,6 +80,11 @@ export const SceneModelBar: React.FC<SceneModelBarProps> = ({
   analysisModel,
 }) => {
   const posthog = usePostHog();
+  const { data: sequence } = useSequence(sequenceId ?? '');
+  const selectedScene =
+    selection.sceneIds.length === 1
+      ? scenes?.find((scene) => scene.id === selection.sceneIds[0])
+      : undefined;
   const scope = selectionScope(selection);
   const showSequenceSettings = scope === 'sequence';
   const ratio = aspectRatio ? getAspectRatioData(aspectRatio) : undefined;
@@ -94,6 +100,16 @@ export const SceneModelBar: React.FC<SceneModelBarProps> = ({
           </span>
         )}
       </div>
+      {sequenceId && selectedScene && (
+        <AnalyzeManualSequenceButton
+          sequenceId={sequenceId}
+          sceneId={selectedScene.id}
+          disabled={
+            sequence?.status === 'processing' ||
+            !selectedScene.script?.extract.trim()
+          }
+        />
+      )}
       {showSequenceSettings && (
         <div className="space-y-2">
           <SettingRow label="Style">
@@ -155,12 +171,7 @@ export const SceneModelBar: React.FC<SceneModelBarProps> = ({
             </>
           )}
 
-          {/* The escape hatch for the three fixed rows above: they can only
-              change by re-running analysis, which produces a new sequence
-              (#1037, formerly on the script page). A plain Link, not a dialog —
-              it lands on the real composer with everything pre-populated, so
-              Enhance, style recommendations and element drop all come for free
-              rather than being reproduced in a modal. */}
+          {/* Start a separate generated sequence from this script and its settings. */}
           {sequenceId && (
             <Button variant="outline" size="sm" className="w-full" asChild>
               <Link

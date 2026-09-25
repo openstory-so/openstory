@@ -1,3 +1,4 @@
+import { MANUAL_ANALYSIS_WORKFLOW } from '@/sequences/manual-sequence.schema';
 /**
  * Centralised top-level workflow launchers.
  *
@@ -140,7 +141,12 @@ async function resolveStoryboardPayload(
   input: StoryboardTriggerInput,
   sequenceId: string
 ): Promise<StoryboardWorkflowInput> {
-  if (!sequence.script || sequence.script.trim().length === 0) {
+  const script = input.additiveScenes
+    ? input.additiveScenes
+        .map((scene) => scene.originalScript.extract)
+        .join('\n\n')
+    : sequence.script;
+  if (!script || script.trim().length === 0) {
     throw new ValidationError('Sequence has no script');
   }
   const hasSnapshot = sequence.styleConfig != null;
@@ -223,7 +229,7 @@ async function resolveStoryboardPayload(
       description: l.description,
     })),
     title: sequence.title,
-    script: sequence.script,
+    script,
     aspectRatio: sequence.aspectRatio,
     resolution: sequence.resolution,
     draftMotion: sequence.draftMotion,
@@ -299,6 +305,14 @@ export async function triggerStoryboard(
 
   // Eager status write so the UI flips immediately; the workflow's first
   // step re-asserts 'processing' either way. Clears any prior statusError.
+  if (input.additiveAction || sequence.workflow === MANUAL_ANALYSIS_WORKFLOW) {
+    await scopedDb.sequences.updateWorkflow(
+      sequenceId,
+      input.additiveAction
+        ? MANUAL_ANALYSIS_WORKFLOW
+        : 'analyze-script-shorter-prompts-batch-size-1'
+    );
+  }
   await scopedDb.sequence(sequenceId).updateStatus('processing');
 
   // Mutex step 3: the claim id IS the deduplication id — if this call

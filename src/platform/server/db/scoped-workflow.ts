@@ -146,11 +146,12 @@ type WorkflowLiveReads = Pick<ScopedDb, 'teamId' | 'userId'> & {
    * `getById`: divergence recompute, and the pending-promote pointer at
    * Voice Design persist (#1715) — demote must win. `listWithSheets`: live
    * bibles for a re-render. `getVoiceReferenceCount`: slot occupancy when
-   * releasing a replaced or demoted designed voice.
+   * releasing a replaced or demoted designed voice. `list`: additive character
+   * scans check all existing names (including characters without sheets) before inserting.
    */
   characters: Pick<
     ScopedDb['characters'],
-    'getById' | 'listWithSheets' | 'getVoiceReferenceCount'
+    'getById' | 'list' | 'listWithSheets' | 'getVoiceReferenceCount'
   >;
   /**
    * `getSelected` only, and only for `getAnchorImageUrl`

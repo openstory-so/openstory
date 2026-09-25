@@ -235,6 +235,27 @@ export function createShotsMethods(db: Database) {
       return shot;
     },
 
+    /** Atomic append with a stable, workflow-allocated id. Replays never rewrite a shot. */
+    appendOnce: async (data: {
+      id: string;
+      sequenceId: string;
+      sceneId: string;
+      durationMs: number;
+    }): Promise<ShotWithAnchorFrame> => {
+      await db
+        .insert(shots)
+        .values({
+          ...data,
+          shotNumber: sql`(SELECT COALESCE(MAX(shot_number), 0) + 1 FROM shots WHERE scene_id = ${data.sceneId})`,
+        })
+        .onConflictDoNothing({ target: shots.id });
+      const [shot] = await db.select().from(shots).where(eq(shots.id, data.id));
+      if (!shot) throw new Error('Failed to append analysis shot');
+      const anchorFrameId = (await ensureAnchorFrames([shot])).get(shot.id);
+      if (!anchorFrameId) throw new Error('Failed to create anchor frame');
+      return { ...shot, anchorFrameId };
+    },
+
     update: async (
       shotId: string,
       data: Partial<NewShot>,

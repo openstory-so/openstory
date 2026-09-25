@@ -1048,3 +1048,17 @@ describe('executeSmartRetry — resolution forwarding (#1570)', () => {
     );
   });
 });
+
+test('failed manual assistance cannot fall back to replacing the storyboard', async () => {
+  resetMocks();
+  const { context, listBySequence } = makeContext(
+    makeSequence({ workflow: 'manual-analysis' }),
+    []
+  );
+  await expect(executeSmartRetry(context)).rejects.toThrow(
+    'Retry Determine shots or Scan for characters'
+  );
+  expect(listBySequence).not.toHaveBeenCalled();
+  expect(triggerStoryboardMock).not.toHaveBeenCalled();
+  expect(triggerWorkflowMock).not.toHaveBeenCalled();
+});

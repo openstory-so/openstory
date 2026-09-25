@@ -347,3 +347,59 @@ describe('createCastRecords (voice only, #1585)', () => {
     });
   });
 });
+
+test('manual character scans preserve existing cast and append new names even when AI ids collide', async () => {
+  const create = vi.fn(
+    async (row: { name: string; consistencyTag?: string | null }) => row
+  );
+  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- focused workflow database stub
+  const db = {
+    characters: { create },
+    sequenceLocations: { createBulk: vi.fn(async () => []) },
+    liveRead: {
+      characters: {
+        list: vi.fn(async () => [
+          { characterId: 'char_1', name: 'Maya', consistencyTag: 'maya' },
+        ]),
+      },
+      sequenceLocations: { listWithReferences: vi.fn(async () => []) },
+    },
+  } as unknown as WorkflowScopedDb;
+  const character = {
+    characterId: 'char_1',
+    name: 'Maya',
+    consistencyTag: 'maya',
+    age: '30s',
+    gender: '',
+    ethnicity: '',
+    physicalDescription: 'New description',
+    standardClothing: '',
+    distinguishingFeatures: '',
+    personality: '',
+    movement: '',
+    voiceDescription: '',
+    voiceOnly: false,
+    isPerson: true,
+  };
+  await createCastRecords(db, {
+    sequenceId: 'seq_1',
+    additive: true,
+    characterBible: [
+      character,
+      { ...character, name: 'Robin', consistencyTag: 'robin' },
+      { ...character, name: 'ROBIN', consistencyTag: 'robin' },
+    ],
+    talentMatches: [],
+    locationBible: [],
+    locationMatches: [],
+    elementBible: [],
+    existingElements: [],
+  });
+  expect(create).toHaveBeenCalledTimes(1);
+  expect(create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      name: 'Robin',
+      characterId: expect.not.stringMatching(/^char_1$/),
+    })
+  );
+});

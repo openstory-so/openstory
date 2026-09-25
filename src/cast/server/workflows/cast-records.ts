@@ -167,6 +167,7 @@ export async function createCastRecords(
     locationBible: LocationBibleEntry[];
     locationMatches: LibraryLocationMatch[];
     elementBible: ElementBibleEntry[];
+    additive?: boolean;
     existingElements: Array<
       Pick<SequenceElementMinimal, 'id' | 'token' | 'imageUrl'>
     >;
@@ -176,15 +177,32 @@ export async function createCastRecords(
   const talentByCharacter = new Map(
     args.talentMatches.map((m) => [m.characterId, m])
   );
+  const existingCharacters: Array<{
+    name: string;
+    consistencyTag: string | null;
+  }> = args.additive ? await scopedDb.liveRead.characters.list(sequenceId) : [];
   for (const character of args.characterBible) {
-    await scopedDb.characters.create(
+    if (
+      existingCharacters.some(
+        (existing) =>
+          existing.name.trim().toLowerCase() ===
+            character.name.trim().toLowerCase() ||
+          (!!character.consistencyTag &&
+            existing.consistencyTag === character.consistencyTag)
+      )
+    )
+      continue;
+    const created = await scopedDb.characters.create(
       buildCharacterInsert({
         sequenceId,
-        character,
+        character: args.additive
+          ? { ...character, characterId: generateId() }
+          : character,
         talentMatch: talentByCharacter.get(character.characterId),
         sheetStatus: 'pending',
       })
     );
+    if (args.additive) existingCharacters.push(created);
   }
 
   const libraryByLocation = new Map(

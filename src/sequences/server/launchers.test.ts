@@ -128,7 +128,12 @@ function makeScopedDb(opts: {
   const getLocationsByIds = vi.fn(async () => opts.locations ?? []);
   const getMemberEmail = vi.fn(async () => 'owner@example.com');
   const stub = {
-    sequences: { getForUser, claimWorkflowSlot, update },
+    sequences: {
+      getForUser,
+      claimWorkflowSlot,
+      update,
+      updateWorkflow: vi.fn(),
+    },
     styles: { getById: getStyleById },
     sequenceElements: { list: listElements },
     talent: { getByIds: getTalentByIds },
@@ -588,5 +593,47 @@ describe('assertNoActiveStoryboard', () => {
     await expect(
       assertNoActiveStoryboard(scopedDb, 'seq_1')
     ).resolves.toBeUndefined();
+  });
+});
+
+test('manual analysis snapshots saved scene scripts even when the sequence started blank', async () => {
+  triggerWorkflowMock.mockReset();
+  triggerWorkflowMock.mockResolvedValue('manual-run');
+  const { scopedDb } = makeScopedDb({ workflowRunId: null, script: '' });
+  const additiveScenes = [
+    {
+      sceneId: 'scene-1',
+      sceneNumber: 1,
+      originalScript: { extract: 'Maya opens the door.', dialogue: [] },
+      metadata: {
+        title: 'The door',
+        durationSeconds: 5,
+        location: '',
+        timeOfDay: '',
+        storyBeat: '',
+      },
+      continuity: {
+        characterTags: [],
+        environmentTag: '',
+        elementTags: [],
+        colorPalette: '',
+        lightingSetup: '',
+        styleTag: '',
+      },
+    },
+  ];
+  await triggerStoryboard(scopedDb, {
+    ...INPUT,
+    resume: true,
+    additiveScenes,
+    additiveAction: 'shots',
+    stopAt: 'script',
+  });
+  expect(triggerWorkflowMock.mock.calls[0]?.[1]).toMatchObject({
+    script: 'Maya opens the door.',
+    resume: true,
+    additiveScenes,
+    additiveAction: 'shots',
+    stopAt: 'script',
   });
 });

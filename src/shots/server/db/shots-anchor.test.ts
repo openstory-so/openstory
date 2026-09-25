@@ -213,3 +213,43 @@ describe('listBySequence hierarchical order', () => {
     expect(ordered.map((s) => s.id)).toEqual([inScene.id, orphan.id]);
   });
 });
+
+it('appendOnce preserves existing and deleted shot slots and is idempotent', async () => {
+  const methods = createShotsMethods(db);
+  const existing = await methods.create({
+    sequenceId,
+    sceneId,
+    shotNumber: 1,
+    durationMs: 9000,
+  });
+  await methods.create({
+    sequenceId,
+    sceneId,
+    shotNumber: 2,
+    deletedAt: new Date(),
+  });
+  const id = generateId();
+  const added = await methods.appendOnce({
+    id,
+    sequenceId,
+    sceneId,
+    durationMs: 4000,
+  });
+  const replay = await methods.appendOnce({
+    id,
+    sequenceId,
+    sceneId,
+    durationMs: 8000,
+  });
+  expect(added.shotNumber).toBe(3);
+  expect(replay.id).toBe(added.id);
+  expect(replay.durationMs).toBe(4000);
+  expect(replay.anchorFrameId).toBe(added.anchorFrameId);
+  const [unchanged] = await db
+    .select()
+    .from(shots)
+    .where(eq(shots.id, existing.id));
+  expect(unchanged?.durationMs).toBe(9000);
+  const rows = await db.select().from(shots).where(eq(shots.sceneId, sceneId));
+  expect(rows).toHaveLength(3);
+});
