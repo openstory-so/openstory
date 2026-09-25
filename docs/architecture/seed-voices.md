@@ -62,7 +62,7 @@ ElevenLabs configured) and snapshotted on the payload.
    conversational pace" — pace cues like "slow" get over-applied), Scribe
    transcribes it, `recordCheckedTake` finds each section (`checkParts`), the WAV is
    cut by the word timings, each section is isolated, and the bundle is
-   written. A take that says anything but its script throws and the step
+   written. A take where a section cannot be found throws and the step
    retry re-records it; a take that still fails is dropped.
    Each take is a different person reading the same description, paid for
    separately, so the user picks the count: the character card's Generate
@@ -89,12 +89,19 @@ a normal clip, so moods go in words only.
 - **The prompt**: booth, each speaker as "the exact voice and accent of
   @AudioN" (plus the mood clips) and their description, then `Name (tone):
 line` in order.
-- **The check.** Seed speaks invented words — before the script, or where a
-  reference changes. Every take is transcribed with Scribe. Nonsense before
-  the script is cut off (the first shot's range starts at the script);
-  anything else is a retake, up to 3 per call, then the recording fails.
-  Seed's own subtitles are an alignment of the script and can never show an
-  invented word, so they are not requested; turn timings come from Scribe.
+- **Finding the lines** (`take-check.ts`, #1803). Every take is
+  transcribed with Scribe and each line is found in what was heard. Lines
+  are compared as letters, not words, so however a transcript spells a line
+  ("before you rent" for "BeforeYouRent", "all right" for "alright", "B.Y.R."
+  for "BYR") it is the same string; the script is aligned against the
+  transcript in order, and a line is found when half its letters are.
+  Speech before the script is cut off (the first shot's range starts at the
+  script); speech between lines belongs to neither. Invented words are not
+  checked for — the user regenerates a reading they do not like. A take
+  where a line cannot be found is retaken, up to 3 per call, then the
+  recording fails. Seed's own subtitles are not used: they run adjacent
+  lines together into one timed word, so a line break is lost (up to 2.3 s
+  off in testing).
 - Failed takes are not billed to the team.
 - **A failed scene does not fail the run.** `DialogueAudioWorkflow` keeps the
   scenes that recorded and logs the rest; the failed scene's shots record at

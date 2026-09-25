@@ -9,11 +9,11 @@
  *    normal clip is always sent; a whispered or raised line also gets that
  *    mood's clip while a slot is free (none is, with three speakers). A line whose mood clip did not fit is spoken
  *    against the normal clip, with its tone in words.
- *  - **Every take is transcribed.** Seed sometimes speaks invented words.
- *    Nonsense before the script is cut off (the first shot's range starts at
- *    the script); anything else is a retake, up to {@link SEED_TAKE_ATTEMPTS}.
  *  - **Timings come from the transcription**, not from the provider: each
- *    turn is found in what Scribe heard, in order.
+ *    turn is found in what Scribe heard, in order (`checkParts`). Speech
+ *    before the script is cut off (the first shot's range starts at the
+ *    script); a take where a turn cannot be found is a retake, up to
+ *    {@link SEED_TAKE_ATTEMPTS}.
  */
 
 import {
@@ -201,11 +201,11 @@ export async function recordSeedDialogueCall(input: {
         endSeconds: Math.min(durationSeconds, span.end),
       };
     });
-    // Nonsense before the script belongs to nobody: the first shot's range
+    // Speech before the script belongs to nobody: the first shot's range
     // starts just before the script's first word.
     const scriptStart = Math.max(
       0,
-      (check.scriptStartSeconds ?? 0) - WORD_LEAD_SECONDS
+      check.scriptStartSeconds - WORD_LEAD_SECONDS
     );
     const windows = shotSliceWindows(turns, durationSeconds).map(
       (window, at) => {
