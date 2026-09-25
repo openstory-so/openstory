@@ -20,6 +20,7 @@ import type { VersionListOptions } from '@/platform/server/db/read-page';
 import { insertDivergentRaceTolerant } from '@/platform/server/db/scoped/divergent-insert';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
 import type { CharacterSheetInputHash } from '@/shots/input-hash';
+import { landCharacterSheet } from './sheet-claims';
 
 export function createCharacterSheetVariantsMethods(db: Database) {
   return {
@@ -211,6 +212,8 @@ export function createCharacterSheetVariantsMethods(db: Database) {
           sheetStatus: 'completed',
           sheetError: null,
           selectedSheetVersionId: version.id,
+          // An unclaimed write picks the sheet: it demotes a run's claim.
+          pendingPromoteSheetVersionId: null,
           updatedAt: now,
           ...(isPerson !== undefined ? { isPerson } : {}),
         })
@@ -274,6 +277,8 @@ export function createCharacterSheetVariantsMethods(db: Database) {
             sheetStatus: 'completed',
             sheetError: null,
             selectedSheetVersionId: version.id,
+            // The user's pick wins over an in-flight run (#1113).
+            pendingPromoteSheetVersionId: null,
             updatedAt: now,
           })
           .where(eq(characters.id, characterId)),
@@ -298,6 +303,14 @@ export function createCharacterSheetVariantsMethods(db: Database) {
       ]);
       return { ...version, divergedAt: null };
     },
+
+    /**
+     * A sheet run's completion (#1113): append its row under the claimed id
+     * and select it only while the claim still names it; otherwise park it
+     * as divergent. See {@link landCharacterSheet}.
+     */
+    promoteIfPending: (args: Parameters<typeof landCharacterSheet>[1]) =>
+      landCharacterSheet(db, args),
 
     insert: async (
       values: NewCharacterSheetVariant

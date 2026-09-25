@@ -12,6 +12,7 @@ import {
   getTableColumns,
   inArray,
   isNull,
+  or,
   sql,
 } from 'drizzle-orm';
 import type { Database } from '@/platform/server/db/client';
@@ -49,6 +50,18 @@ import { matchCharacterToShotTags } from '@/shots/scene-matching';
 import { createCharacterSheetVariantsMethods } from './character-sheet-variants';
 import type { CharacterSheetInputHash } from '@/shots/input-hash';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
+
+/** The bible fields the sheet prompt and its hash read (#1113). */
+const SHEET_BIBLE_FIELDS = [
+  'name',
+  'age',
+  'gender',
+  'ethnicity',
+  'physicalDescription',
+  'standardClothing',
+  'distinguishingFeatures',
+  'consistencyTag',
+] as const;
 
 /**
  * The user-editable character bible fields (#1108 Phase 2). Everything else on
@@ -574,6 +587,49 @@ export function createCharactersMethods(db: Database) {
       return result.rowsAffected ?? 0;
     },
 
+    /**
+     * Take the sheet claim (#1113): mint the id the run's version row will
+     * carry and point the claim at it. Last kickoff wins. Returns the id.
+     */
+    claimSheet: async (id: string): Promise<string> => {
+      const versionId = generateId();
+      await update(id, {
+        pendingPromoteSheetVersionId: versionId,
+        sheetStatus: 'generating',
+        sheetError: null,
+      });
+      return versionId;
+    },
+
+    /**
+     * A sheet run failed (#1113): clear its claim and mark the sheet failed —
+     * only while it still holds the claim, or nobody does. A newer run's claim
+     * and its `generating` status are left alone.
+     */
+    failSheetClaim: async (
+      id: string,
+      versionId: string,
+      error: string
+    ): Promise<void> => {
+      await db
+        .update(characters)
+        .set({
+          pendingPromoteSheetVersionId: null,
+          sheetStatus: 'failed',
+          sheetError: error,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(characters.id, id),
+            or(
+              eq(characters.pendingPromoteSheetVersionId, versionId),
+              isNull(characters.pendingPromoteSheetVersionId)
+            )
+          )
+        );
+    },
+
     updateSheetStatus: async (
       id: string,
       status: SheetStatus,
@@ -840,10 +896,19 @@ export function createCharactersMethods(db: Database) {
         if (value === undefined) continue;
         prev[key] = existing[key] ?? null;
       }
+      // An edit to a field the sheet reads revokes an in-flight sheet run's
+      // claim (#1113): its result parks as divergent instead of landing.
+      const sheetInputMoved = SHEET_BIBLE_FIELDS.some(
+        (key) => data[key] !== undefined && data[key] !== existing[key]
+      );
       const [updatedRows] = await db.batch([
         db
           .update(characters)
-          .set({ ...data, updatedAt: new Date() })
+          .set({
+            ...data,
+            ...(sheetInputMoved ? { pendingPromoteSheetVersionId: null } : {}),
+            updatedAt: new Date(),
+          })
           .where(eq(characters.id, id))
           .returning(),
         buildEventInsert(db, {
@@ -957,9 +1022,14 @@ export function createCharactersMethods(db: Database) {
       characterId: string,
       talentId: string | null
     ): Promise<Character> => {
+      // The cast talent feeds the sheet: a recast revokes its claim (#1113).
       const [character] = await db
         .update(characters)
-        .set({ talentId, updatedAt: new Date() })
+        .set({
+          talentId,
+          pendingPromoteSheetVersionId: null,
+          updatedAt: new Date(),
+        })
         .where(eq(characters.id, characterId))
         .returning();
 

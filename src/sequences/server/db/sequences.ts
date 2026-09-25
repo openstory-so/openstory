@@ -47,6 +47,7 @@ import {
   SETTINGS_CHANGED_LABELS,
 } from './sequence-events';
 import { ValidationError } from '@/platform/errors';
+import { demoteSequenceSheetClaims } from '@/cast/server/db/sheet-claims';
 
 /**
  * {@link ShotReadiness} plus the scalars a production status derives from: which
@@ -533,6 +534,12 @@ export function createSequencesMethods(
       // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: DB query may return undefined
       if (!data) {
         throw new ValidationError('Sequence not found');
+      }
+
+      // The style feeds every sheet in the sequence: a style change revokes
+      // the in-flight sheet runs' claims (#1113).
+      if (styleConfig !== undefined) {
+        await db.batch(demoteSequenceSheetClaims(db, id));
       }
 
       // Date hash-bearing setting changes so staleness can name them (#1194);

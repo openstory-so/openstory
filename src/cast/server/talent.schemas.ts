@@ -23,6 +23,8 @@ export const SERVER_MANAGED_TALENT_COLUMNS = {
   updatedAt: true,
   isPublic: true,
   isTemplate: true,
+  // The sheet claim (#1113) moves only through claimSheet / its demotes.
+  pendingPromoteSheetId: true,
 } as const;
 
 export type ServerManagedTalentColumn =

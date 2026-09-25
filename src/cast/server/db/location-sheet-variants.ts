@@ -29,6 +29,10 @@ import type {
   LibraryLocationReferenceInputHash,
   LocationSheetInputHash,
 } from '@/shots/input-hash';
+import {
+  demoteLocationReferenceClaims,
+  landLocationReference,
+} from './sheet-claims';
 
 /** Sequence location sheets and library location references share this table. */
 type LocationSheetVariantInputHash =
@@ -232,6 +236,8 @@ export function createLocationSheetVariantsMethods(db: Database) {
           referenceStatus: 'completed',
           referenceError: null,
           selectedReferenceVersionId: version.id,
+          // An unclaimed write picks the reference: it demotes a run's claim.
+          pendingPromoteReferenceVersionId: null,
           updatedAt: now,
         })
         .where(eq(sequenceLocations.id, locationDbId))
@@ -297,6 +303,8 @@ export function createLocationSheetVariantsMethods(db: Database) {
             referenceStatus: 'completed',
             referenceError: null,
             selectedReferenceVersionId: version.id,
+            // The user's pick wins over an in-flight run (#1113).
+            pendingPromoteReferenceVersionId: null,
             updatedAt: now,
           })
           .where(eq(sequenceLocations.id, locationDbId)),
@@ -321,6 +329,13 @@ export function createLocationSheetVariantsMethods(db: Database) {
       ]);
       return { ...version, divergedAt: null };
     },
+
+    /**
+     * A location sheet run's completion (#1113). See
+     * {@link landLocationReference}.
+     */
+    promoteIfPending: (args: Parameters<typeof landLocationReference>[1]) =>
+      landLocationReference(db, args),
 
     insert: async (
       values: NewLocationSheetVariant
@@ -439,9 +454,11 @@ export function createLocationSheetVariantsMethods(db: Database) {
       }
 
       const now = new Date();
+      // The user's pick wins over an in-flight library run, and the new
+      // reference revokes the linked sequence locations' claims (#1113).
       const updateParent = db
         .update(locationLibrary)
-        .set({ ...parentUpdate, updatedAt: now })
+        .set({ ...parentUpdate, pendingReferenceClaimId: null, updatedAt: now })
         .where(eq(locationLibrary.id, libraryLocationId))
         .returning({ id: locationLibrary.id });
       const discardVariant = db
@@ -452,6 +469,10 @@ export function createLocationSheetVariantsMethods(db: Database) {
       const [parentRows, variantRows] = await db.batch([
         updateParent,
         discardVariant,
+        demoteLocationReferenceClaims(
+          db,
+          eq(sequenceLocations.libraryLocationId, libraryLocationId)
+        ),
       ]);
       if (parentRows.length === 0) {
         throw new Error(

@@ -31,6 +31,11 @@ export const locationLibrary = snakeCase.table(
     isPublic: integer({ mode: 'boolean' }).default(false),
     isTemplate: integer({ mode: 'boolean' }).default(false),
     referenceInputHash: text(),
+    // The reference claim (#1113): a token the in-flight library sheet run
+    // holds. Set at the trigger; cleared by a name/description edit or a
+    // reference the user picks. The run publishes its preview only while
+    // this still names it, else parks it as divergent.
+    pendingReferenceClaimId: text(),
     // Tracking
     createdBy: text().references(() => user.id, {
       onDelete: 'set null',
