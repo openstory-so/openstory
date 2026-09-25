@@ -35,7 +35,7 @@ import {
 } from './sheet-divergence';
 import {
   computeCharacterSheetHashCurrent,
-  computeCharacterSheetHashFromDto,
+  characterSheetHashMatchesStored,
 } from './sheet-snapshots';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { getLogger } from '@/platform/logger';
@@ -189,9 +189,14 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     // payload must halt the run from inside a step, not silently.
     await step.do('validate-snapshot', async () => {
       if (input.snapshotInputHash) {
-        const expected = input.snapshotInputHash;
-        const recomputed = await computeCharacterSheetHashFromDto(input);
-        if (recomputed !== expected) {
+        // Accepts the pre-#1785 shape too, so a run queued before the
+        // hash grew a channel does not read as tampered.
+        if (
+          !(await characterSheetHashMatchesStored(
+            input.snapshotInputHash,
+            input
+          ))
+        ) {
           throw new WorkflowValidationError(
             'snapshotInputHash does not match the inlined DTO; payload was tampered with or serialized inconsistently'
           );

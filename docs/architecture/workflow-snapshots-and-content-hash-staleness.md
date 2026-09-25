@@ -42,11 +42,11 @@ The rule is: anything that, if changed, should cause the user to see a "regenera
 - **Shot audio** (`shots.audioInputHash`) — music prompt, tags, duration, audio model.
 - **Visual prompt** (`frames.visualPromptInputHash`) — upstream scene metadata + style config + character/location bible + analysis model.
 - **Motion prompt** (`shots.motionPromptInputHash`) — same upstream context plus the starting-frame image hash.
-- **Character sheet** (`characters.sheetInputHash`) — character bible entry, talent reference hash (if any), style config, image model.
-- **Sequence location reference** (`sequence_locations.referenceInputHash`) and **library location template** (`location_library.referenceInputHash`) — location bible entry, library reference hash (if any), style config, image model. Per-sequence generated sheets also carry `location_sheets.inputHash`.
+- **Character sheet** (`characters.sheetInputHash`) — character bible entry, talent reference hash (if any), and when cast the talent's own description plus the default talent sheet's image and look (#1785), style config, image model.
+- **Sequence location reference** (`sequence_locations.referenceInputHash`) — every location bible field the sheet prompt reads (#1785), library reference hash (if any), style config, image model. **Library location template** (`location_library.referenceInputHash`) — name/description, reference media, image model. Per-sequence generated sheets also carry `location_sheets.inputHash`.
 - **Talent sheet** (`talent_sheets.inputHash`) — talent metadata, reference media hashes, image model.
 
-Model _version strings_ count as inputs. If we upgrade an image model, every existing artifact it produced becomes stale — which is the correct behaviour.
+Model _version strings_ are in the hashes, but verify recomputes each artifact with the model that made it (#1785), so switching a sequence's image, script or video model never stales existing work — the switch applies to the next generation, and the staleness causes never name it. An uploaded sheet, which has no model of its own, is the one artifact that follows the sequence model. See `prompt-staleness-dependency-graph.md` §3.
 
 ### Editor batch read (#1795)
 

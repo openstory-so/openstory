@@ -804,6 +804,7 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
       imageModel,
       // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
       talentSheetInputHash: defaultSheet?.inputHash ?? null,
+      castTalentDescription: talentWithSheets.description,
       styleConfig,
       aspectRatio: sequence.aspectRatio,
       resolution: sequence.resolution,

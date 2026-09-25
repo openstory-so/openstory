@@ -93,6 +93,7 @@ describe('character-sheet hash', () => {
     },
     imageModel: 'nano_banana_2',
     talentSheetInputHash: 'talent-v1',
+    castTalentDescription: null,
   };
 
   it('FromDto and Current produce identical hashes when DB matches DTO', async () => {
@@ -132,6 +133,36 @@ describe('character-sheet hash', () => {
       asScopedDb(stub)
     );
     expect(dtoHash).not.toBe(currentHash);
+  });
+
+  it('detects divergence when the cast talent is edited or its sheet swapped (#1785)', async () => {
+    const castInput: CharacterSheetWorkflowInput = {
+      ...baseInput,
+      referenceImageUrl: '/r2/talent/sheet-1.png',
+      castTalentDescription: 'Freckles',
+    };
+    const talentRow = (description: string, imageUrl: string) => ({
+      characters: { getById: async () => ({ id: 'c1', talentId: 'tal1' }) },
+      talent: {
+        getWithRelations: async () => ({
+          id: 'tal1',
+          description,
+          sheets: [{ isDefault: true, inputHash: 'talent-v1', imageUrl }],
+        }),
+      },
+    });
+    const dtoHash = await computeCharacterSheetHashFromDto(castInput);
+    const current = (stub: CharacterStub) =>
+      computeCharacterSheetHashCurrent(castInput, asScopedDb(stub));
+    expect(await current(talentRow('Freckles', '/r2/talent/sheet-1.png'))).toBe(
+      dtoHash
+    );
+    expect(
+      await current(talentRow('Grey hair', '/r2/talent/sheet-1.png'))
+    ).not.toBe(dtoHash);
+    expect(
+      await current(talentRow('Freckles', '/r2/talent/sheet-2.png'))
+    ).not.toBe(dtoHash);
   });
 
   it('treats missing imageModel as DEFAULT_IMAGE_MODEL on both paths', async () => {

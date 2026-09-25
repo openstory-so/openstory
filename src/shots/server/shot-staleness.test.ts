@@ -425,6 +425,12 @@ describe('staleness causes (#1194)', () => {
             data: { fields: ['styleId'] },
           },
           {
+            // Recorded before #1785; a model switch never stales, so never a cause.
+            kind: 'sequence.settings-changed',
+            createdAt: afterGen,
+            data: { fields: ['imageModel', 'analysisModel'] },
+          },
+          {
             kind: 'sequence.settings-changed',
             createdAt: before,
             data: { fields: ['aspectRatio'] },

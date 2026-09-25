@@ -21,8 +21,9 @@ import {
   sha256Hex,
   type CharacterBibleHashFields,
   type CharacterSheetInputHash,
+  type CharacterSheetTalentHashFields,
   type LibraryLocationReferenceInputHash,
-  type LocationBibleHashFields,
+  type LocationSheetBibleHashFields,
   type LocationSheetInputHash,
   type ShotImageHashInput,
   type ShotImageInputHash,
@@ -67,26 +68,48 @@ export type SheetSnapshotReadDb = {
   sequenceLocations: Pick<ScopedDb['sequenceLocations'], 'getById'>;
 };
 
+/** The payload fields a cast talent supplies to a character sheet. */
+export type CastTalentFields = Pick<
+  CharacterSheetWorkflowInput,
+  | 'referenceImageUrl'
+  | 'talentMetadata'
+  | 'talentSheetInputHash'
+  | 'castTalentDescription'
+>;
+
+const NOT_CAST: CastTalentFields = {
+  referenceImageUrl: undefined,
+  talentMetadata: undefined,
+  talentSheetInputHash: null,
+  castTalentDescription: null,
+};
+
 /**
- * Resolve the upstream talent-sheet's `input_hash` for a sequence character.
- * Returns `null` when the character has no talent assignment, when the talent
- * has no sheets, or when the sheet predates hash tracking.
+ * Resolve what a cast talent feeds a character sheet: the default convergent
+ * talent sheet (image, look metadata, `input_hash`) and the talent's own
+ * description. One resolver for the regenerate/verify payload, the upload
+ * stamp and the workflow's divergence recompute, so they cannot drift.
  */
-async function resolveTalentSheetHash(
-  scopedDb: SheetSnapshotReadDb,
-  characterDbId: string
-): Promise<string | null> {
-  const character = await scopedDb.characters.getById(characterDbId);
-  if (!character?.talentId) return null;
-  const talent = await scopedDb.talent.getWithRelations(character.talentId);
+export async function resolveCastTalent(
+  scopedDb: Pick<SheetSnapshotReadDb, 'talent'>,
+  talentId: string | null
+): Promise<CastTalentFields> {
+  if (!talentId) return NOT_CAST;
+  const talent = await scopedDb.talent.getWithRelations(talentId);
+  if (!talent) return NOT_CAST;
   // Exclude divergent sheets from the fallback identity. A divergent row's
   // `inputHash` represents the parked workflow's snapshot, not the talent's
   // current upstream identity — binding a downstream character sheet to it
   // would fork off a stale lineage from first-time generation onward.
-  const convergentSheets = talent?.sheets.filter((s) => !s.divergedAt) ?? [];
+  const convergentSheets = talent.sheets.filter((s) => !s.divergedAt);
   const defaultSheet =
     convergentSheets.find((s) => s.isDefault) ?? convergentSheets[0];
-  return defaultSheet?.inputHash ?? null;
+  return {
+    referenceImageUrl: defaultSheet?.imageUrl ?? undefined,
+    talentMetadata: defaultSheet?.metadata ?? undefined,
+    talentSheetInputHash: defaultSheet?.inputHash ?? null,
+    castTalentDescription: talent.description,
+  };
 }
 
 /**
@@ -136,22 +159,48 @@ function characterBibleFields(
 }
 
 /**
+ * The cast-talent channel of the sheet hash (#1785): what the prompt reads
+ * from the talent, keyed on the talent's own description rather than the
+ * prompt wording each path builds from it. `null` when not cast.
+ */
+export function characterSheetTalentHashFields(
+  input: CastTalentFields
+): CharacterSheetTalentHashFields | null {
+  const meta = input.talentMetadata;
+  if (!input.referenceImageUrl && !meta && !input.castTalentDescription) {
+    return null;
+  }
+  return {
+    // `?? null`: a payload queued before #1785 has no such field.
+    description: input.castTalentDescription ?? null,
+    sheetImageUrl: input.referenceImageUrl ?? null,
+    sheetLook: meta
+      ? {
+          age: meta.age,
+          gender: meta.gender,
+          ethnicity: meta.ethnicity,
+          physicalDescription: meta.physicalDescription,
+        }
+      : null,
+  };
+}
+
+/**
  * Hash the character-sheet workflow payload. The `talentSheetInputHash` field
  * inlines the upstream talent-sheet's `input_hash` so that a recast triggered
  * against a then-current talent sheet binds to that exact upstream version.
  */
-function characterSheetHashInput(
-  input: CharacterSheetWorkflowInput & { talentSheetInputHash?: string | null }
-) {
+function characterSheetHashInput(input: CharacterSheetWorkflowInput) {
   return {
     characterBible: characterBibleFields(input.characterMetadata),
     talentSheetHash: input.talentSheetInputHash ?? null,
+    talent: characterSheetTalentHashFields(input),
     imageModel: input.imageModel ?? DEFAULT_IMAGE_MODEL,
   };
 }
 
 export async function computeCharacterSheetHashFromDto(
-  input: CharacterSheetWorkflowInput & { talentSheetInputHash?: string | null }
+  input: CharacterSheetWorkflowInput
 ): Promise<CharacterSheetInputHash> {
   return computeCharacterSheetInputHash({
     ...characterSheetHashInput(input),
@@ -162,7 +211,7 @@ export async function computeCharacterSheetHashFromDto(
 /** Dual-hash verify against a stored sheet digest. */
 export async function characterSheetHashMatchesStored(
   stored: string | null,
-  input: CharacterSheetWorkflowInput & { talentSheetInputHash?: string | null }
+  input: CharacterSheetWorkflowInput
 ): Promise<boolean> {
   return characterSheetInputHashMatches(stored, {
     ...characterSheetHashInput(input),
@@ -173,27 +222,34 @@ export async function characterSheetHashMatchesStored(
 /**
  * Recompute the hash from the current DB state. The character bible, style
  * config, and image model are frozen on the payload (they must not drift
- * mid-flight); we re-read the upstream talent sheet's `input_hash` since
- * that's the only upstream entity whose hash can change between trigger and
- * write.
+ * mid-flight); the cast talent is re-read, since the talent and its default
+ * sheet are the upstream rows that can change between trigger and write.
  */
 export async function computeCharacterSheetHashCurrent(
   input: CharacterSheetWorkflowInput,
   scopedDb: SheetSnapshotReadDb
 ): Promise<CharacterSheetInputHash> {
-  const talentSheetInputHash = await resolveTalentSheetHash(
-    scopedDb,
-    input.characterDbId
-  );
-  return computeCharacterSheetHashFromDto({ ...input, talentSheetInputHash });
+  const character = await scopedDb.characters.getById(input.characterDbId);
+  return computeCharacterSheetHashFromDto({
+    ...input,
+    ...(await resolveCastTalent(scopedDb, character?.talentId ?? null)),
+  });
 }
 
-function locationBibleFields(
+/** Every bible field the location-sheet prompt reads (#1785). */
+export function locationSheetBibleFields(
   metadata: LocationSheetWorkflowInput['locationMetadata']
-): LocationBibleHashFields {
+): LocationSheetBibleHashFields {
   return {
     name: metadata.name,
+    type: metadata.type,
+    timeOfDay: metadata.timeOfDay,
     description: metadata.description,
+    architecturalStyle: metadata.architecturalStyle,
+    keyFeatures: metadata.keyFeatures,
+    colorPalette: metadata.colorPalette,
+    lightingSetup: metadata.lightingSetup,
+    ambiance: metadata.ambiance,
   };
 }
 
@@ -208,7 +264,7 @@ function locationSheetHashInput(
   }
 ) {
   return {
-    locationBible: locationBibleFields(input.locationMetadata),
+    locationBible: locationSheetBibleFields(input.locationMetadata),
     libraryLocationReferenceHash: input.libraryLocationReferenceHash ?? null,
     imageModel: input.imageModel ?? DEFAULT_IMAGE_MODEL,
   };

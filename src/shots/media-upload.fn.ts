@@ -32,7 +32,13 @@ import {
 } from '@/cast/server/upload-rights';
 import { StyleConfigSchema } from '@/look/style-config';
 import { NotFoundError } from '@/platform/errors';
-import { computeStyleConfigHash } from '@/cast/server/workflows/sheet-snapshots';
+import {
+  characterSheetTalentHashFields,
+  computeStyleConfigHash,
+  locationSheetBibleFields,
+  resolveCastTalent,
+} from '@/cast/server/workflows/sheet-snapshots';
+import { toLocationMetadata } from '@/cast/server/sheets/location-sheet-trigger';
 import {
   loadShotPromptContext,
   narrowShotPromptContext,
@@ -724,15 +730,8 @@ export const setCharacterSheetFromUploadFn = createServerFn({ method: 'POST' })
       await likenessFromLedger(scopedDb, data.publicUrl)
     );
 
-    // Same upstream resolution the character-sheet workflow uses: the matched
-    // talent's default convergent sheet hash, else null.
-    let talentSheetHash: string | null = null;
-    if (character.talentId) {
-      const talent = await scopedDb.talent.getWithRelations(character.talentId);
-      const convergent = talent?.sheets.filter((s) => !s.divergedAt) ?? [];
-      const defaultSheet = convergent.find((s) => s.isDefault) ?? convergent[0];
-      talentSheetHash = defaultSheet?.inputHash ?? null;
-    }
+    // Same upstream resolution the character-sheet workflow uses.
+    const cast = await resolveCastTalent(scopedDb, character.talentId);
     const { styleConfigHash, imageModel } = await resolveSheetHashContext(
       scopedDb,
       sequence
@@ -748,7 +747,8 @@ export const setCharacterSheetFromUploadFn = createServerFn({ method: 'POST' })
         distinguishingFeatures: character.distinguishingFeatures,
         consistencyTag: character.consistencyTag,
       },
-      talentSheetHash,
+      talentSheetHash: cast.talentSheetInputHash ?? null,
+      talent: characterSheetTalentHashFields(cast),
       styleConfigHash,
       imageModel,
     });
@@ -850,10 +850,7 @@ export const setLocationSheetFromUploadFn = createServerFn({ method: 'POST' })
       sequence
     );
     const inputHash = await computeLocationSheetInputHash({
-      locationBible: {
-        name: location.name,
-        description: location.description,
-      },
+      locationBible: locationSheetBibleFields(toLocationMetadata(location)),
       libraryLocationReferenceHash,
       styleConfigHash,
       imageModel,

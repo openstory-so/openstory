@@ -783,6 +783,12 @@ export interface CharacterSheetWorkflowInput extends SequenceWorkflowContext {
    * docs/architecture/workflow-snapshots-and-content-hash-staleness.md.
    */
   talentSheetInputHash?: string | null;
+  /**
+   * The cast talent's own `description` (#1785), hashed in place of
+   * `talentDescription`, which each path words differently for the prompt.
+   * `null` when not cast or blank. Snapshot pattern only.
+   */
+  castTalentDescription: string | null;
   /** Hash over the inlined DTO; validated by the snapshot middleware. */
   snapshotInputHash?: CharacterSheetInputHash;
 }
@@ -921,6 +927,8 @@ export interface RecastCharacterWorkflowInput extends SequenceWorkflowContext {
    * different talent identity than the one the user recast to.
    */
   talentSheetInputHash: string | null;
+  /** The cast talent's own description; see `CharacterSheetWorkflowInput`. */
+  castTalentDescription: string | null;
   /** Sequence style config to apply to the character sheet */
   styleConfig?: StyleConfig;
   /** Aspect ratio (frozen at trigger time, replaces a live sequence read). */

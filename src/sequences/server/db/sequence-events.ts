@@ -142,15 +142,19 @@ export function createSequenceEventsMethods(db: Database) {
 
 /**
  * Event appended by `scopedDb.sequences.update` when a hash-bearing sequence
- * setting changes (#1194). Style / aspect ratio / model switches leave no
- * timestamp on any row (style is a snapshot), so this is the only way to date
- * them for `findStalenessCauses`.
+ * setting changes (#1194). Style / aspect ratio switches leave no timestamp
+ * on any row (style is a snapshot), so this is the only way to date them for
+ * `findStalenessCauses`.
+ *
+ * Model switches are not here (#1785): a switch applies to the next
+ * generation and never stales what exists — verify pins the still's own
+ * image model, the prompt's own analysis model and the sheet version's own
+ * model, and clips ignore the video model. Naming them would blame a switch
+ * for staleness it cannot cause.
  */
 export const SETTINGS_CHANGED_EVENT = 'sequence.settings-changed';
 
 export const SETTINGS_CHANGED_LABELS: Record<string, string> = {
   styleId: 'Style',
   aspectRatio: 'Aspect ratio',
-  imageModel: 'Image model',
-  analysisModel: 'Script model',
 };

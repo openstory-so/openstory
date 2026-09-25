@@ -208,6 +208,7 @@ flowchart LR
     style --> CS
     imodel --> CS
     TS(["talent-sheet hash"]) --> CS
+    talentrow{{"talent description<br/>+ default sheet image/look"}} --> CS
 
     lbible --> LS
     style --> LS
@@ -242,6 +243,17 @@ Key consequences of the shape:
   invalidates its motion without the video needing to know _why_ the image changed.
 - **`durationSeconds` deliberately feeds video/audio but NOT prompts** — it's a
   generation parameter, not a prompt driver. (Fixed in #767; see §5-B.)
+- **A model switch never stales anything (#1785).** The model ids are in the
+  hashes, but verify always recomputes with the model the artifact was made
+  with: a still with its own `frame_variants.model`, a prompt with its latest
+  version's `analysisModel`, a generated sheet with its selected version's
+  `model` (`resolveSheetImageModel`), and the clip pointer compare ignores the
+  video model entirely. So `imodel` / `amodel` / `vmodel` above only ever
+  differ when the artifact itself was re-made. A sequence switch applies to
+  the next generation. `findStalenessCauses` therefore never names "Image
+  model" or "Script model" (they are not in `SETTINGS_CHANGED_LABELS`). One
+  exception: an uploaded sheet has no model of its own, so its verify uses
+  the sequence model and a switch does re-stale it.
 
 ---
 
@@ -254,8 +266,8 @@ Listed in generation order (matching §4.1):
 | Artifact                      | Stamp site                                                                                                               | Verify site                                              | Hashed inputs                                                                                                                                     |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Talent sheet** (library)    | `library-talent-sheet-workflow`                                                                                          | sheet-staleness reads                                    | talent name/description, referenceMediaHashes (sorted set), imageModel                                                                            |
-| **Character sheet**           | `character-sheet-workflow`                                                                                               | sheet-staleness reads                                    | character bible fields, talentSheetHash, styleConfigHash, imageModel                                                                              |
-| **Location sheet**            | `location-sheet-workflow`                                                                                                | sheet-staleness reads                                    | location bible fields, libraryLocationReferenceHash, styleConfigHash, imageModel                                                                  |
+| **Character sheet**           | `character-sheet-workflow`                                                                                               | sheet-staleness reads                                    | character bible fields, talentSheetHash, cast talent (description, default sheet image + look), styleConfigHash, imageModel                       |
+| **Location sheet**            | `location-sheet-workflow`                                                                                                | sheet-staleness reads                                    | every location bible field the sheet prompt reads, libraryLocationReferenceHash, styleConfigHash, imageModel                                      |
 | **Visual prompt**             | `frame-prompt-workflow.ts` (1-shot) · `persist-derived-visual-prompts` in `analyze-script-workflow.ts` (2+ shots, #1517) | `computeShotStaleness`                                   | scene input surface, styleConfig, character/location/element bibles (narrowed, **cast**), aspectRatio, analysisModel, `PROMPT_INPUT_HASH_VERSION` |
 | **Motion prompt**             | `motion-prompt-workflow.ts` · `motion-prompt-batch-workflow.ts` (derived)                                                | `computeShotStaleness`                                   | _same as visual_, plus starting-frame URL and `referenceOnly`. Voice ids are **not** a prompt channel.                                            |
 | **Sequence music prompt**     | `music-prompt-workflow`                                                                                                  | sequence music checks                                    | sceneSummaries, analysisModel                                                                                                                     |
@@ -350,22 +362,53 @@ sha256Hex({
     consistencyTag: trim(consistencyTag),
   },
   talentSheetHash: talentSheetHash ?? null, // ← cascade from the talent sheet above
+  // #1785 — only when cast, so no uncast digest moved. What the sheet prompt
+  // reads from the talent LIVE: a description edit or a promoted talent-sheet
+  // variant (same inputHash, new image) re-stales the character sheet.
+  talent: {
+    description: trim(talent.description), // the talent ROW's text (`castTalentDescription`),
+    //   not `talentDescription`, which recast / bible / regenerate each word differently
+    sheetImageUrl: trim(sheetImageUrl), // the default convergent talent sheet
+    sheetLook: { age, gender, ethnicity, physicalDescription } | null, // its metadata
+  },
   styleConfigHash, // hash of the StyleConfig, not the object
   imageModel,
 });
 ```
+
+One resolver, `resolveCastTalent` (`sheet-snapshots.ts`), feeds the
+regenerate/verify payload, the upload stamp and the workflow's divergence
+recompute, so the three cannot pick different talent sheets. Pre-#1785 digests
+(no talent channel) still verify until `LEGACY_HASH_UNTIL`.
 
 #### 2. Location sheet — `computeLocationSheetInputHash`
 
 ```ts
 sha256Hex({
   artifact: 'location:sheet',
-  locationBible: { description: trim(description) }, // `name` is a label, dropped like the bible projections
+  // #1785: every field `buildLocationSheetPrompt` reads — the same projection
+  // as the prompt hashes (`projectLocationForPrompt`). `name` is a label.
+  locationBible: {
+    (type,
+      timeOfDay,
+      description,
+      architecturalStyle,
+      keyFeatures,
+      colorPalette,
+      lightingSetup,
+      ambiance);
+  },
   libraryLocationReferenceHash: libraryLocationReferenceHash ?? null, // ← cascade from library loc
   styleConfigHash,
   imageModel,
 });
 ```
+
+Pre-#1785 digests (description only) still verify until `LEGACY_HASH_UNTIL`.
+**Known gap:** the linked library location's `description` and
+`referenceImageUrl` are read live into the prompt but reach this hash only
+through `libraryLocationReferenceHash`, i.e. after the library reference is
+regenerated — the location twin of the talent channel above.
 
 #### 3. Visual prompt — `computeVisualPromptInputHash`
 
@@ -568,16 +611,16 @@ in #867, measured against what the prompt LLM was handed
 `sceneBefore`, `sceneAfter`, `scene`, `characterBible`, `locationBible`,
 `elementBible`, `styleConfig`, `aspectRatio`.
 
-| LLM receives                                                                                                                                                                             | Real prompt driver?                                        | In the hash?                            | Verdict                                                                                          |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `scene` appearance surface (`originalScript`, metadata `title`/`location`/`timeOfDay`/`storyBeat`)                                                                                       | yes                                                        | yes                                     | ✅ aligned                                                                                       |
-| `scene.metadata.durationSeconds`                                                                                                                                                         | no (video param)                                           | no — stripped                           | under-hash, intentional (#767)                                                                   |
-| `sceneBefore` / `sceneAfter` (neighbour scenes)                                                                                                                                          | **yes** (continuity context)                               | **no**                                  | ⚠️ **under-hash** — editing a neighbour's script can change this prompt, but it won't be flagged |
-| **all** character / location / element entries                                                                                                                                           | yes (LLM sees the full set as context)                     | **narrowed** to referenced entries      | ⚠️ under-hash on unreferenced entries (intentional, #683)                                        |
-| referenced entry → appearance fields (`name`, `age`, `gender`, `ethnicity`, `physicalDescription`, `standardClothing`, `distinguishingFeatures`; location `description`/`keyFeatures`/…) | yes                                                        | yes (whole entry)                       | ✅ aligned                                                                                       |
-| referenced entry → **provenance / identity / tags** (`characterId`, `locationId`, `consistencyTag`, `firstMention`)                                                                      | **no** — internal IDs, an image-gen tag, script provenance | **yes** (rides in the whole-entry hash) | 🔴 **over-hash**                                                                                 |
-| `styleConfig` (all fields)                                                                                                                                                               | mostly                                                     | yes (full)                              | ✅ (possible minor over-hash if the template ignores a field)                                    |
-| `aspectRatio`, `analysisModel`                                                                                                                                                           | yes                                                        | yes                                     | ✅ aligned                                                                                       |
+| LLM receives                                                                                                                                                                             | Real prompt driver?                                        | In the hash?                            | Verdict                                                       |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | --------------------------------------- | ------------------------------------------------------------- |
+| `scene` appearance surface (`originalScript`, metadata `title`/`location`/`timeOfDay`/`storyBeat`)                                                                                       | yes                                                        | yes                                     | ✅ aligned                                                    |
+| `scene.metadata.durationSeconds`                                                                                                                                                         | no (video param)                                           | no — stripped                           | under-hash, intentional (#767)                                |
+| `sceneBefore` / `sceneAfter` (neighbour scenes)                                                                                                                                          | **yes** (continuity context)                               | **no**                                  | under-hash, **deliberate** (#1785, see §6)                    |
+| **all** character / location / element entries                                                                                                                                           | yes (LLM sees the full set as context)                     | **narrowed** to referenced entries      | ⚠️ under-hash on unreferenced entries (intentional, #683)     |
+| referenced entry → appearance fields (`name`, `age`, `gender`, `ethnicity`, `physicalDescription`, `standardClothing`, `distinguishingFeatures`; location `description`/`keyFeatures`/…) | yes                                                        | yes (whole entry)                       | ✅ aligned                                                    |
+| referenced entry → **provenance / identity / tags** (`characterId`, `locationId`, `consistencyTag`, `firstMention`)                                                                      | **no** — internal IDs, an image-gen tag, script provenance | **yes** (rides in the whole-entry hash) | 🔴 **over-hash**                                              |
+| `styleConfig` (all fields)                                                                                                                                                               | mostly                                                     | yes (full)                              | ✅ (possible minor over-hash if the template ignores a field) |
+| `aspectRatio`, `analysisModel`                                                                                                                                                           | yes                                                        | yes                                     | ✅ aligned                                                    |
 
 **Net:** the hash is **narrower** than the real LLM input in scope (it drops
 `sceneBefore`/`sceneAfter`, `durationSeconds`, and unreferenced entries) but
@@ -763,15 +806,23 @@ Ordered by value / risk. **1, 2, 4 and 5 shipped; 3 is still open** (see C).
    source fix. Mirror the projection on both stamp and verify sides so they stay
    symmetric.
 
-### Known gap, not a #867 fix (tracked, deferred)
+### Deliberately not hashed (#1785)
 
-- **Neighbour-scene under-hash.** The prompt LLM is fed `sceneBefore`/`sceneAfter`
-  for continuity, but the hash ignores them — so editing scene _N_'s script can
-  change scene _N±1_'s regenerated prompt without flagging it stale. Opposite
-  failure mode (missed staleness, not false positive); low impact. Add the
-  neighbouring scenes' input surface to the hash only if this becomes a real
-  complaint — it widens the invalidation blast radius, so it's a deliberate
-  trade, not an obvious win.
+- **Neighbour scenes.** The visual and motion prompt LLMs are fed
+  `sceneBefore`/`sceneAfter` for continuity, but the hash ignores them, so
+  editing scene _N_'s script can change scene _N±1_'s regenerated prompt
+  without flagging it stale. That is a decision, not a gap: hashing them would
+  re-stale three scenes' prompts (and their stills and clips) per script edit,
+  and a pure reorder — which the v5 contract keeps inert — would re-stale
+  every scene whose neighbours moved. The neighbours are context, not the
+  subject of the prompt. Pinned by the "neighbour scene script edited" row in
+  `staleness-matrix.test.ts`.
+- **A voice-only character's look** (visual prompt only). The visual LLM
+  never sees a voice-only character (#1585), so the visual hash drops it too
+  (#1785); the toggle itself still moves the digest because the entry leaves
+  the bible. The motion hash keeps it (delivery). Pre-#1785 digests that
+  hashed the character (`v5-voiced`) still verify until `LEGACY_HASH_UNTIL`.
+- **Model switches.** See §3: verify pins each artifact to its own model.
 
 ---
 

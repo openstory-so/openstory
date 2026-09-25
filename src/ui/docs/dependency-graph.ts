@@ -144,8 +144,12 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     kind: 'input',
     band: 'library',
     summary:
-      'A library person. Cast onto a character automatically at the Script stage or by hand; casting copies their look, performance and voice onto the character once. These fields only reach a sequence through a regenerated talent sheet: edit the description and the character keeps the old face until the sheet is redone.',
-    counts: ['Description', 'Reference photos'],
+      'A library person. Cast onto a character automatically at the Script stage or by hand; casting copies their look, performance and voice onto the character bible once. The character sheet keeps reading the talent: its description and default sheet are in the sheet hash, so editing either re-stales the cast character sheet.',
+    counts: [
+      'Description (talent sheet and cast character sheet)',
+      'Reference photos',
+      'The default talent sheet image and look (cast character sheet)',
+    ],
     ignored: [
       'Name',
       {
@@ -162,7 +166,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Extracted from the script at the Script stage, linked to a library location when one matches, then yours to edit.',
     counts: [
       'Description',
-      'Type, time of day, architectural style, key features, colour palette, lighting, ambiance (prompts only)',
+      'Type, time of day, architectural style, key features, colour palette, lighting, ambiance',
     ],
     ignored: ['Name'],
   },
@@ -248,8 +252,10 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     kind: 'input',
     band: 'settings',
     summary: 'The LLM that writes prompts.',
-    counts: ['Model id'],
-    ignored: [],
+    counts: ['Nothing is compared on a switch'],
+    ignored: [
+      'Switching model: a prompt is checked against the model that wrote it, so the switch applies to the next generation',
+    ],
   },
   {
     id: 'imageModel',
@@ -257,8 +263,12 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     kind: 'input',
     band: 'settings',
     summary: 'The model that renders sheets and stills.',
-    counts: ['Model id'],
-    ignored: [],
+    counts: [
+      'Model id, for a talent sheet, a library location reference, and an uploaded sheet (which has no model of its own)',
+    ],
+    ignored: [
+      'Switching model: a still or generated sheet is checked against the model that rendered it, so the switch applies to the next render',
+    ],
   },
   {
     id: 'videoModel',
@@ -388,8 +398,9 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     counts: [
       'Character bible (age, gender, ethnicity, description, clothing, features, consistency tag)',
       'Talent sheet hash, when cast',
+      "The talent's description and default sheet image and look, when cast",
       'Style config',
-      'Image model',
+      'Image model it was rendered with',
     ],
     ignored: [
       'Character name',
@@ -483,14 +494,16 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     band: 'references',
     summary: 'Reference image for a location in this sequence.',
     counts: [
-      'Location description',
+      'Location bible (type, time of day, description, architectural style, key features, colour palette, lighting, ambiance)',
       'Library location reference hash, when linked',
       'Style config',
-      'Image model',
+      'Image model it was rendered with',
     ],
     ignored: [
       'Name',
-      'Type, time of day, architectural style, key features, colour palette, lighting, ambiance',
+      {
+        gap: "The linked library location's description and reference image, read live: they reach the sheet only through a regenerated library reference",
+      },
     ],
     storedAs: 'sequence_locations.referenceInputHash',
   },
@@ -509,9 +522,15 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Character, location and element bibles, narrowed to this scene — as cast, so a talent match moves nothing afterwards',
       "The shot's framing and start state, on a multi-shot scene",
       'Aspect ratio',
-      'Script model',
+      'Script model it was written with',
     ],
-    ignored: ['Duration', 'Names and titles', 'The still it produces'],
+    ignored: [
+      'Duration',
+      'Names and titles',
+      'The still it produces',
+      "A voice-only character's look: heard, never framed, so the still prompt never sees it (the voice-only toggle itself counts)",
+      'The scenes before and after, which the model reads for continuity: hashing them would re-stale three scenes per edit and every scene on a reorder',
+    ],
     storedAs: 'frame_prompt_versions.inputHash',
   },
   {
@@ -532,6 +551,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Duration',
       'Names and titles',
       'Voice ids (they bind on the clip, like sheets on the still)',
+      'The scenes before and after, as for the visual prompt',
     ],
     storedAs: 'shot_prompt_versions.inputHash',
   },
@@ -630,7 +650,12 @@ const bibleToPrompt: GraphEdge[] = ['visualPrompt', 'motionPrompt'].flatMap(
     { from: 'element', to, tracking: 'hash' as const },
     { from: 'style', to, tracking: 'hash' as const },
     { from: 'aspectRatio', to, tracking: 'hash' as const },
-    { from: 'analysisModel', to, tracking: 'hash' as const },
+    {
+      from: 'analysisModel',
+      to,
+      tracking: 'untracked' as const,
+      note: 'checked against the model that wrote the prompt; a switch applies to the next generation',
+    },
   ]
 );
 
@@ -696,6 +721,12 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
   },
   { from: 'style', to: 'characterSheet', tracking: 'hash' },
   {
+    from: 'talent',
+    to: 'characterSheet',
+    tracking: 'hash',
+    note: "the talent's description and default sheet image and look, read by the sheet prompt",
+  },
+  {
     from: 'character',
     to: 'voice',
     tracking: 'untracked',
@@ -708,7 +739,12 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     gap: true,
     note: 'a library voice is copied onto the character at cast, not designed — and redesigning the talent voice later reaches nothing, since talent voices have no version history',
   },
-  { from: 'imageModel', to: 'characterSheet', tracking: 'hash' },
+  {
+    from: 'imageModel',
+    to: 'characterSheet',
+    tracking: 'untracked',
+    note: 'checked against the model that rendered the selected version; only an uploaded sheet follows a switch',
+  },
   {
     from: 'dialogue',
     to: 'dialogueRecording',
@@ -746,11 +782,16 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     from: 'location',
     to: 'locationSheet',
     tracking: 'hash',
-    note: 'description only',
+    note: 'every bible field the sheet prompt reads',
   },
   { from: 'libraryLocationReference', to: 'locationSheet', tracking: 'hash' },
   { from: 'style', to: 'locationSheet', tracking: 'hash' },
-  { from: 'imageModel', to: 'locationSheet', tracking: 'hash' },
+  {
+    from: 'imageModel',
+    to: 'locationSheet',
+    tracking: 'untracked',
+    note: 'checked against the model that rendered the selected version; only an uploaded sheet follows a switch',
+  },
   // Prompts
   ...bibleToPrompt,
   {
@@ -782,7 +823,12 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     tracking: 'hash',
     note: 'the selected prompt text',
   },
-  { from: 'imageModel', to: 'still', tracking: 'hash' },
+  {
+    from: 'imageModel',
+    to: 'still',
+    tracking: 'untracked',
+    note: 'checked against the model that rendered the still; a switch applies to the next render',
+  },
   { from: 'aspectRatio', to: 'still', tracking: 'hash' },
   {
     from: 'characterSheet',
