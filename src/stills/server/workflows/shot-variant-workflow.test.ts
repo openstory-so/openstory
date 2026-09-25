@@ -39,6 +39,7 @@ const stamp = (model: TextToImageModel) =>
       characterSheetHashes: [],
       locationSheetHashes: [],
       elementReferenceHashes: [],
+      elementTokens: [],
     },
   });
 

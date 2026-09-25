@@ -13,11 +13,24 @@
 import type { Scene } from '@/shots/scene-analysis.schema';
 import type { Shot } from '@/platform/server/db/schema';
 
-/** Whole-token regex. Boundaries are anything that isn't `[A-Za-z0-9_]`. */
-function tokenRegex(token: string): RegExp {
-  const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`(^|[^A-Za-z0-9_])(${escaped})(?=[^A-Za-z0-9_]|$)`, 'gi');
+/**
+ * Whole-token regex over any of `tokens`, longest first. Boundaries are
+ * anything that isn't `[A-Za-z0-9_]`. Group 1 is the boundary, group 2 the
+ * token. The content hashes match tokens with this too (#1827), so what a
+ * rename rewrites is exactly what the hashes read as an element.
+ */
+export function tokensRegex(tokens: readonly string[]): RegExp {
+  const alternation = [...tokens]
+    .sort((a, b) => b.length - a.length)
+    .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('|');
+  return new RegExp(
+    `(^|[^A-Za-z0-9_])(${alternation})(?=[^A-Za-z0-9_]|$)`,
+    'gi'
+  );
 }
+
+const tokenRegex = (token: string): RegExp => tokensRegex([token]);
 
 export function replaceTokenInText(
   text: string,

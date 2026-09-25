@@ -112,6 +112,7 @@ export async function buildRegenerateShotSnapshot(params: {
     characterSheetHashes: refs.characterSheetHashes,
     locationSheetHashes: refs.locationSheetHashes,
     elementReferenceHashes: refs.elementReferenceHashes,
+    elementTokens: refs.elementTokens,
   };
 
   const snapshotInputHash = await computeShotImageInputHash(hashInput);
@@ -124,6 +125,7 @@ export async function buildRegenerateShotSnapshot(params: {
     characterSheetHashes: refs.characterSheetHashes,
     locationSheetHashes: refs.locationSheetHashes,
     elementReferenceHashes: refs.elementReferenceHashes,
+    elementTokens: refs.elementTokens,
     characterRefs,
     locationRefs,
     snapshotInputHash,

@@ -79,6 +79,7 @@ function imageHash(state: PipelineState): Promise<string> {
       characterSheetHashes: state.characterSheetHashes,
       locationSheetHashes: state.locationSheetHashes,
       elementReferenceHashes: state.elementReferenceHashes,
+      elementTokens: [],
     },
     state.imageModel,
     state.aspectRatio
