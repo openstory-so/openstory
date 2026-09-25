@@ -34,12 +34,33 @@ describe('buildBytePlusVideoRequest', () => {
         'seedance_v2_5'
       ).size
     ).toBe('adaptive_720p');
+  });
+
+  // A still demoted into the reference list is no frame role, so `adaptive`
+  // would let Ark size the clip from the first reference — a 3:4 character
+  // sheet rendered a 3:4 clip into a 9:16 sequence (#1809).
+  it('states the sequence ratio when the still is demoted to a reference (#1809)', () => {
+    const portrait = buildBytePlusVideoRequest(
+      {
+        ...base,
+        aspectRatio: '9:16',
+        resolution: '1080p',
+        referenceImages: references,
+      },
+      'seedance_v2_5'
+    );
+    expect(portrait.size).toBe('9:16_1080p');
+    expect(
+      portrait.prompt
+        .filter((part) => part.type === 'image')
+        .map((part) => part.metadata?.role)
+    ).toEqual(['reference', 'reference']);
     expect(
       buildBytePlusVideoRequest(
-        { ...base, referenceImages: references },
+        { ...base, resolution: '1080p', referenceImages: references },
         'seedance_v2_5'
       ).size
-    ).toBe('adaptive_720p');
+    ).toBe('16:9_1080p');
   });
 
   it('pins the still as start_frame when there are no references', () => {

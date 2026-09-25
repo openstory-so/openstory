@@ -168,7 +168,11 @@ all. The whole `maxImages` budget goes to references.
 **BytePlus Ark** switches `size` from `adaptive_720p` to the sequence's own
 ratio. `adaptive` means "follow the frame", and there is no frame role in the
 request; Ark would size the clip from the first reference, so a portrait
-character sheet would silently render a 9:16 clip into a 16:9 sequence.
+character sheet would silently render a 9:16 clip into a 16:9 sequence. The
+same holds when a still IS supplied but the shot carries references: Ark's
+mix-ban demotes the still to a `reference` role, so `size` follows the roles
+actually emitted, not the presence of a still (#1809). `adaptive` is sent
+only with a real `start_frame`.
 
 Billing prices the reference-to-video endpoint the job actually hits, not the
 image-to-video row — the post-hoc charge (`motionCostFromUsage`), the workflow

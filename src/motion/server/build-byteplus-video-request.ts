@@ -18,9 +18,10 @@
  * 2.5 tags are `@Image1`/`@Image2` on fal and Ark. Ark does not want a
  * trailing "Reference images:" legend.
  *
- * Reference-only mode has no still to demote, so the mix-ban stops mattering
- * and `size` switches from `adaptive` to the sequence's own ratio (nothing is
- * left for `adaptive` to adapt to — see the comment at the `size` assignment).
+ * `size` is `adaptive` only when a `start_frame` role is actually sent. A
+ * demoted still is a reference like any other, so reference mode states the
+ * sequence's own ratio, as reference-only and text-only do (nothing is left
+ * for `adaptive` to adapt to — see the comment at the `size` assignment).
  *
  * Client-safe: no env, no adapters.
  */
@@ -118,17 +119,22 @@ export function buildBytePlusVideoRequest(
   // (`9:16`, `16:9`, …). Output follows the first-frame still; `adaptive`
   // is the only accepted value there. Sequence motion normally sends a still.
   //
-  // Reference-only inverts that: with no frame role in the request there is
-  // nothing for `adaptive` to adapt TO, and Ark would size the clip from the
-  // first reference — a portrait character sheet would silently render a
-  // 9:16 clip into a 16:9 sequence. So the sequence's own ratio is stated.
+  // With no frame role in the request there is nothing for `adaptive` to
+  // adapt TO, and Ark would size the clip from the first reference — a
+  // portrait character sheet would silently render a 9:16 clip into a 16:9
+  // sequence, or a 3:4 clip into a 9:16 one (#1809). So the sequence's own
+  // ratio is stated. That covers reference-only AND a still demoted into the
+  // reference list by the mix-ban (below): `adaptive` follows the roles the
+  // request actually emits, never the mere presence of a still.
   // A draft is 480p or Ark rejects it (#1756); the tier is for the final.
   const resolution = options.draft
     ? DRAFT_RESOLUTION
     : ((options.resolution &&
         pickVideoResolution(BYTEPLUS_RESOLUTIONS, options.resolution)) ??
       '720p');
-  const size = options.imageUrl
+  const startFrameUrl = options.imageUrl;
+  const pinsStartFrame = Boolean(startFrameUrl) && references.length === 0;
+  const size = pinsStartFrame
     ? `adaptive_${resolution}`
     : `${options.aspectRatio ?? '16:9'}_${resolution}`;
 
@@ -142,8 +148,6 @@ export function buildBytePlusVideoRequest(
       generate_audio: options.generateAudio,
     }),
   };
-
-  const startFrameUrl = options.imageUrl;
 
   if (references.length === 0) {
     return {
