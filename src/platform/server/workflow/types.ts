@@ -1545,16 +1545,19 @@ export interface RecastLocationWorkflowInput extends SequenceWorkflowContext {
 }
 
 /**
- * Compact scene summary passed to the music workflow for AI prompt generation
+ * One scene as the music LLM reads it, and as its prompt hash covers it.
+ * Built only by `src/audio/server/workflows/music-scene-summaries.ts`, from
+ * the scene row and its shots' durations, so the stamp and the verify
+ * cannot drift (#1783).
  */
 export type MusicSceneSummary = {
   sceneId: string;
   title: string;
   storyBeat: string;
+  /** The scene's shot durations, summed. */
   durationSeconds: number;
   location: string;
   timeOfDay: string;
-  visualSummary: string;
 };
 
 /**
@@ -1830,13 +1833,6 @@ export interface MotionMusicPromptsWorkflowInput extends SequenceWorkflowContext
    * {@link MotionPromptBatchWorkflowInput.startingFrameImageUrls}.
    */
   startingFrameImageUrls?: Record<string, string | null>;
-  /**
-   * Visual prompt text per scene (`sceneId` → `frame.imagePrompt`), used as the
-   * music prompt's visual grounding. The structured visual prompt moved off
-   * `scene.prompts` to `frame_prompt_versions` (#713), so analyze-script (which
-   * loaded the mirror) threads it here rather than via `scene.prompts.visual`.
-   */
-  visualSummaryBySceneId?: Record<string, string>;
   /** @see StoryboardWorkflowInput.musicPromptSource — passed to the music-prompt child. */
   musicPromptSource: 'ai-generated' | 'regenerated';
   /**

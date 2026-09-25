@@ -1,8 +1,16 @@
 import type { Scene } from '@/shots/scene-analysis.schema';
 import { describe, expect, it } from 'vitest';
 import {
-  buildMusicSceneSummaries,
+  computeLegacyMusicPromptInputHash,
+  computeMusicPromptInputHash,
+  musicPromptInputHashMatches,
+} from '@/shots/input-hash';
+import { buildShotInserts, defaultSingleShot } from '@/shots/shot-list-pass';
+import { buildSceneInsert } from '@/sequences/server/scene-persistence';
+import {
   joinMusicDesignByIndex,
+  musicSceneSummariesFromAnalysis,
+  musicSceneSummariesFromRows,
 } from './music-scene-summaries';
 
 const baseMetadata: NonNullable<Scene['metadata']> = {
@@ -31,60 +39,179 @@ function sceneWithMetadata(
   };
 }
 
-describe('buildMusicSceneSummaries', () => {
+const shot = (shotNumber: number, durationSeconds: number) => ({
+  ...defaultSingleShot(durationSeconds),
+  shotNumber,
+});
+
+/** A two-shot scene and a scene the shot-list pass left empty. */
+const analysisScenes: Scene[] = [
+  sceneWithMetadata(
+    { sceneId: 'analysis-a', shots: [shot(1, 4), shot(2, 6)] },
+    { title: '**Pickup**', durationSeconds: 12, storyBeat: 'inciting' }
+  ),
+  sceneWithMetadata(
+    { sceneId: 'analysis-b', sceneNumber: 2 },
+    { durationSeconds: 5, location: 'rooftop', timeOfDay: 'night' }
+  ),
+];
+
+/** The rows scene-split writes for them, under their own (row) ids. */
+function storedRows(scenes: readonly Scene[]) {
+  const rowIds = scenes.map((_, index) => `row-${index}`);
+  const sceneRows = scenes.map((scene, index) => ({
+    id: rowIds[index] ?? '',
+    ...buildSceneInsert('seq', scene, index),
+  }));
+  const shots = buildShotInserts(
+    'seq',
+    scenes.map((scene) => ({
+      ...scene,
+      metadata: scene.metadata ?? baseMetadata,
+      continuity: {
+        characterTags: [],
+        environmentTag: '',
+        colorPalette: '',
+        lightingSetup: '',
+        styleTag: '',
+      },
+    })),
+    new Map(rowIds.map((id, index) => [index, id]))
+  ).map((row) => ({
+    sceneId: row.sceneId ?? null,
+    durationMs: row.durationMs ?? null,
+  }));
+  return { sceneRows, shots };
+}
+
+describe('music scene summaries', () => {
   it('throws with sceneId in the message when a scene is missing metadata', () => {
-    // The throw is the safety contract: silently defaulting to "Untitled Scene"
-    // would hash-alias corrupt scenes with real ones, keeping the music
-    // prompt's input_hash matching after upstream metadata went missing.
+    // Defaulting would hash-alias a corrupt scene with a real one.
     const broken: Scene = {
       sceneId: 'scene-broken',
       sceneNumber: 1,
       originalScript: { extract: '', dialogue: [] },
     };
-    expect(() => buildMusicSceneSummaries([broken])).toThrow(/scene-broken/);
+    expect(() => musicSceneSummariesFromAnalysis([broken])).toThrow(
+      /scene-broken/
+    );
   });
 
-  it('propagates every metadata field verbatim', () => {
-    const scene = sceneWithMetadata(
-      {},
+  it('is one row per scene, its shot durations summed, no visual prompt', () => {
+    expect(musicSceneSummariesFromAnalysis(analysisScenes)).toEqual([
       {
+        sceneId: 'analysis-a',
         title: 'Pickup',
         storyBeat: 'inciting',
-        durationSeconds: 12,
+        durationSeconds: 10,
+        location: 'Location',
+        timeOfDay: 'day',
+      },
+      {
+        sceneId: 'analysis-b',
+        title: 'Title',
+        storyBeat: 'Beat',
+        durationSeconds: 5,
         location: 'rooftop',
         timeOfDay: 'night',
-      }
+      },
+    ]);
+  });
+
+  it('a pipeline stamp reads fresh against the rows it wrote (#1783)', async () => {
+    const stamped = await computeMusicPromptInputHash({
+      sceneSummaries: musicSceneSummariesFromAnalysis(analysisScenes),
+      analysisModel: 'm',
+    });
+    const { sceneRows, shots } = storedRows(analysisScenes);
+    const verify = musicSceneSummariesFromRows(sceneRows, shots);
+    expect(
+      await musicPromptInputHashMatches(
+        stamped,
+        { sceneSummaries: verify.sceneSummaries, analysisModel: 'm' },
+        verify.legacyShotSummaries
+      )
+    ).toBe(true);
+
+    const edited = musicSceneSummariesFromRows(
+      sceneRows.map((row, index) =>
+        index === 1 ? { ...row, storyBeat: 'twist' } : row
+      ),
+      shots
     );
-
-    const [summary] = buildMusicSceneSummaries([scene]);
-
-    expect(summary).toEqual({
-      sceneId: 's1',
-      title: 'Pickup',
-      storyBeat: 'inciting',
-      durationSeconds: 12,
-      location: 'rooftop',
-      timeOfDay: 'night',
-      visualSummary: '',
-    });
+    expect(
+      await musicPromptInputHashMatches(
+        stamped,
+        { sceneSummaries: edited.sceneSummaries, analysisModel: 'm' },
+        edited.legacyShotSummaries
+      )
+    ).toBe(false);
   });
 
-  it('falls back to empty string for visualSummary when prompts.visual is absent', () => {
-    const scene = sceneWithMetadata();
-    const [summary] = buildMusicSceneSummaries([scene]);
-    if (!summary) throw new Error('expected summary to be defined');
-    expect(summary.visualSummary).toBe('');
+  it('a pre-#1783 per-shot stamp still reads fresh until LEGACY_HASH_UNTIL', async () => {
+    const { sceneRows, shots } = storedRows(analysisScenes);
+    const verify = musicSceneSummariesFromRows(sceneRows, shots);
+    expect(verify.legacyShotSummaries).toHaveLength(3);
+    for (const kind of ['v5', 'v5-titled', 'v4'] as const) {
+      const stamped = await computeLegacyMusicPromptInputHash(
+        verify.legacyShotSummaries,
+        'm',
+        kind
+      );
+      expect(
+        await musicPromptInputHashMatches(
+          stamped,
+          { sceneSummaries: verify.sceneSummaries, analysisModel: 'm' },
+          verify.legacyShotSummaries
+        )
+      ).toBe(true);
+    }
   });
 
-  it('uses the supplied per-scene visual summary when present (#713)', () => {
-    // The visual prompt moved off `scene.prompts` to `frame_prompt_versions`,
-    // so the caller threads it in via `visualSummaryBySceneId` keyed by sceneId.
-    const scene = sceneWithMetadata();
-    const [summary] = buildMusicSceneSummaries([scene], {
-      s1: 'tense corporate',
-    });
-    if (!summary) throw new Error('expected summary to be defined');
-    expect(summary.visualSummary).toBe('tense corporate');
+  it('pins the legacy digests to what the pre-#1783 verify stamped', async () => {
+    // Hex values computed on the pre-#1783 branch: `buildMusicSceneSummaries`
+    // over one scene row with two shots (4s, 6s), analysis model 'm'.
+    const { sceneSummaries, legacyShotSummaries } = musicSceneSummariesFromRows(
+      [
+        {
+          id: 'row-0',
+          title: 'Pickup',
+          storyBeat: 'inciting',
+          location: 'rooftop',
+          timeOfDay: 'night',
+        },
+      ],
+      [
+        { sceneId: 'row-0', durationMs: 4000 },
+        { sceneId: 'row-0', durationMs: 6000 },
+      ]
+    );
+    const pinned = [
+      [
+        'v5',
+        '69d4082c3fef58db0e5e0d3298d1cf211a73863a0084a53cddd1782cb3753bac',
+      ],
+      [
+        'v5-titled',
+        '989fb920692bd00c4b1409e29eaf261eba55685ad8ab027a13b0250ace941314',
+      ],
+      [
+        'v4',
+        '2ed390d36ed57dece9786ea994214dd32d63b969d122813647589fbdb8d5b3ff',
+      ],
+    ] as const;
+    for (const [kind, hex] of pinned) {
+      expect(
+        await computeLegacyMusicPromptInputHash(legacyShotSummaries, 'm', kind)
+      ).toBe(hex);
+      expect(
+        await musicPromptInputHashMatches(
+          hex,
+          { sceneSummaries, analysisModel: 'm' },
+          legacyShotSummaries
+        )
+      ).toBe(true);
+    }
   });
 });
 

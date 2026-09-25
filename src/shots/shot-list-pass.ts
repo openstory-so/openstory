@@ -326,6 +326,15 @@ export function shotDurationMs(shot: ShotSpec): number {
   return Math.round((shot.durationSeconds || 3) * 1000);
 }
 
+/** The shot specs a scene persists: its own, or one shot covering it. */
+export function sceneShotSpecs(
+  scene: Pick<SceneSplittingScene, 'shots' | 'metadata'>
+): ShotSpec[] {
+  return scene.shots && scene.shots.length > 0
+    ? scene.shots
+    : [defaultSingleShot(sceneDurationSeconds(scene))];
+}
+
 /**
  * `shots` insert rows for a sequence: one per spec, conflict key
  * `(sceneId, shotNumber)`.
@@ -340,11 +349,7 @@ export function buildShotInserts(
     const scene = scenes[index];
     if (!scene) continue;
     const sceneId = sceneIdByOrderIndex.get(index) ?? null;
-    const shots =
-      scene.shots && scene.shots.length > 0
-        ? scene.shots
-        : [defaultSingleShot(sceneDurationSeconds(scene))];
-    for (const shot of shots) {
+    for (const shot of sceneShotSpecs(scene)) {
       inserts.push({
         sequenceId,
         sceneId,

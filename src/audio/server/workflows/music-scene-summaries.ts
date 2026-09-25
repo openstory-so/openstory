@@ -1,6 +1,11 @@
 import type { Scene } from '@/shots/scene-analysis.schema';
 import { getLogger } from '@/platform/logger';
+import { plainSceneTitle } from '@/platform/markdown-plain';
+import type { NewScene, Shot } from '@/platform/server/db/schema';
 import type { MusicSceneSummary } from '@/platform/server/workflow/types';
+import type { LegacyMusicShotSummary } from '@/shots/input-hash';
+import { sceneShotSpecs, shotDurationMs } from '@/shots/shot-list-pass';
+import { buildSceneInsert } from '@/sequences/server/scene-persistence';
 
 const logger = getLogger(['openstory', 'workflow', 'music']);
 
@@ -9,39 +14,104 @@ type MusicSceneRow = {
   musicDesign: NonNullable<Scene['musicDesign']>;
 };
 
+type SceneFields = Pick<
+  NewScene,
+  'title' | 'storyBeat' | 'location' | 'timeOfDay'
+> & { id: string };
+type ShotFields = Pick<Shot, 'sceneId' | 'durationMs'>;
+
+/** `composeSceneForShot`'s default for a shot row with no duration. */
+const shotMs = (shot: ShotFields) => shot.durationMs ?? 3000;
+
 /**
- * Throws when `scene.metadata` is missing rather than `||`-defaulting to
- * placeholders. Defaulting would hash-alias corrupt scenes with real
- * "Untitled Scene" / 5s values, silently keeping the music prompt's
- * input_hash matching after upstream metadata went missing.
+ * The music LLM's input and its prompt hash: one summary per scene with
+ * shots, in scene order, from the scene row and its shots' durations (#1783).
+ * The ONLY builder — the pipeline stamp reaches it through
+ * {@link musicSceneSummariesFromAnalysis}, every verify and regenerate through
+ * {@link musicSceneSummariesFromRows}, so the two cannot hash different
+ * values for the same sequence.
  */
-export function buildMusicSceneSummaries(
-  scenes: readonly Scene[],
-  /**
-   * Visual prompt text per scene (the shot's `frame.imagePrompt` mirror),
-   * keyed by `sceneId`. The structured visual prompt moved off `scene.prompts`
-   * to `frame_prompt_versions` (#713), so the caller (which has DB access)
-   * supplies it here for the music prompt's visual grounding. Empty when a
-   * scene has no generated visual prompt yet.
-   */
-  visualSummaryBySceneId: Record<string, string> = {}
+function buildMusicSceneSummaries(
+  scenes: readonly SceneFields[],
+  shots: readonly ShotFields[]
 ): MusicSceneSummary[] {
-  return scenes.map((scene) => {
-    if (!scene.metadata) {
+  return scenes.flatMap((scene) => {
+    const own = shots.filter((shot) => shot.sceneId === scene.id);
+    if (own.length === 0) return [];
+    return [
+      {
+        sceneId: scene.id,
+        title: scene.title ?? '',
+        storyBeat: scene.storyBeat ?? '',
+        durationSeconds:
+          own.reduce((total, shot) => total + shotMs(shot), 0) / 1000,
+        location: scene.location ?? '',
+        timeOfDay: scene.timeOfDay ?? '',
+      },
+    ];
+  });
+}
+
+/**
+ * Pipeline side: the analysis scenes through the SAME insert builders that
+ * wrote their `scenes` / `shots` rows (`buildSceneInsert`,
+ * `buildShotInserts`' `sceneShotSpecs`), so the stamp hashes the rows verify
+ * will read — without a mid-run read.
+ *
+ * Throws when `scene.metadata` is missing rather than defaulting, which would
+ * hash-alias a corrupt scene with a real one.
+ */
+export function musicSceneSummariesFromAnalysis(
+  scenes: readonly Scene[]
+): MusicSceneSummary[] {
+  const rows: SceneFields[] = [];
+  const shots: ShotFields[] = [];
+  for (const [index, scene] of scenes.entries()) {
+    const { metadata } = scene;
+    if (!metadata) {
       throw new Error(
         `Scene ${scene.sceneId} is missing metadata; cannot build music scene summary`
       );
     }
-    return {
-      sceneId: scene.sceneId,
-      title: scene.metadata.title,
-      storyBeat: scene.metadata.storyBeat,
-      durationSeconds: scene.metadata.durationSeconds,
-      location: scene.metadata.location,
-      timeOfDay: scene.metadata.timeOfDay,
-      visualSummary: visualSummaryBySceneId[scene.sceneId] ?? '',
-    };
-  });
+    rows.push({ id: scene.sceneId, ...buildSceneInsert('', scene, index) });
+    for (const spec of sceneShotSpecs({ shots: scene.shots, metadata })) {
+      shots.push({ sceneId: scene.sceneId, durationMs: shotDurationMs(spec) });
+    }
+  }
+  return buildMusicSceneSummaries(rows, shots);
+}
+
+/**
+ * Verify / regenerate side, from the stored rows (scenes in `orderIndex`
+ * order). `legacyShotSummaries` is the pre-#1783 per-shot shape, for
+ * `musicPromptInputHashMatches` only — delete after `LEGACY_HASH_UNTIL`.
+ */
+export function musicSceneSummariesFromRows(
+  scenes: readonly SceneFields[],
+  shots: readonly ShotFields[]
+): {
+  sceneSummaries: MusicSceneSummary[];
+  legacyShotSummaries: LegacyMusicShotSummary[];
+} {
+  const byId = new Map(scenes.map((scene) => [scene.id, scene]));
+  return {
+    sceneSummaries: buildMusicSceneSummaries(scenes, shots),
+    legacyShotSummaries: shots.flatMap((shot) => {
+      const scene = shot.sceneId ? byId.get(shot.sceneId) : undefined;
+      if (!scene) return [];
+      return [
+        {
+          sceneId: scene.id,
+          title: plainSceneTitle(scene.title),
+          storyBeat: scene.storyBeat ?? '',
+          durationSeconds: shotMs(shot) / 1000,
+          location: scene.location ?? '',
+          timeOfDay: scene.timeOfDay ?? '',
+          visualSummary: '',
+        },
+      ];
+    }),
+  };
 }
 
 /**

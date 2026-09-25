@@ -566,11 +566,15 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     band: 'prompts',
     summary: 'One prompt for the whole sequence.',
     counts: [
-      'Per scene: story beat, duration, heading, time of day',
-      'Per scene: the visual prompt text',
+      'Per scene: story beat, heading, time of day',
+      "Per scene: its shots' durations, summed",
       'Script model',
     ],
-    ignored: ['Scene titles'],
+    ignored: [
+      'Scene titles',
+      'Scene ids (order is the key)',
+      'The visual prompt (the brief never reads it, #1783)',
+    ],
     storedAs: 'sequences.musicPromptInputHash',
   },
   // --- Renders -------------------------------------------------------------
@@ -818,12 +822,11 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     note: 'each mode uses a different prompt template',
   },
   { from: 'script', to: 'musicPrompt', tracking: 'hash' },
-  { from: 'duration', to: 'musicPrompt', tracking: 'hash' },
   {
-    from: 'visualPrompt',
+    from: 'duration',
     to: 'musicPrompt',
     tracking: 'hash',
-    note: 'the visual prompt text grounds the music brief',
+    note: "each scene's shot durations, summed",
   },
   { from: 'analysisModel', to: 'musicPrompt', tracking: 'hash' },
   // Renders

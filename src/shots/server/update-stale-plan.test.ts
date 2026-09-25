@@ -94,17 +94,19 @@ const realMusicSummaries =
   await import('@/audio/server/workflows/music-scene-summaries');
 vi.doMock('@/audio/server/workflows/music-scene-summaries', () => ({
   ...realMusicSummaries,
-  buildMusicSceneSummaries: vi.fn(() => [
-    {
-      sceneId: 'scene-1',
-      title: 'Scene 1',
-      storyBeat: 'beat',
-      durationSeconds: 10,
-      location: 'here',
-      timeOfDay: 'day',
-      visualSummary: 'summary',
-    },
-  ]),
+  musicSceneSummariesFromRows: vi.fn(() => ({
+    sceneSummaries: [
+      {
+        sceneId: 'scene-1',
+        title: 'Scene 1',
+        storyBeat: 'beat',
+        durationSeconds: 10,
+        location: 'here',
+        timeOfDay: 'day',
+      },
+    ],
+    legacyShotSummaries: [],
+  })),
 }));
 const realInputHash = await import('@/shots/input-hash');
 vi.doMock('@/shots/input-hash', () => ({
@@ -176,6 +178,7 @@ function buildScopedDb(
           ...opts.sequence,
         }),
     },
+    scenes: { listBySequence: () => Promise.resolve([]) },
     shots: {
       listBySequence: () => Promise.resolve(shots),
       ensureAnchorFrames: () => Promise.resolve(undefined),
