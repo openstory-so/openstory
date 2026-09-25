@@ -174,18 +174,17 @@ function composeWav(
 }
 
 /**
- * The audio a packed clip sends (#1794). Each member shot holds its own
- * section of the scene's recording, and neighbouring sections can overlap
- * (one ends on the last loud sample, the next starts at the previous last
- * word), so sending them side by side plays the overlap twice and counts it
- * twice against the model's combined cap. Consecutive clips from one
- * recording become ONE cut from the first section's start to the last's end:
- * never longer than the recording, which was fit to the cap.
+ * A packed clip's dialogue is one longer section of the scene's recording
+ * (#1794): from the first member's start to the last member's end. Sending
+ * each member's own section instead plays the overlap between neighbours
+ * twice, and counts it twice against the model's combined cap. The longer
+ * section is never longer than the recording, which was fit to the cap.
  *
- * Only the wire changes — each shot keeps its own clip. A run whose sections
- * cannot be read, or are not in recording order, is sent as it was.
+ * Only the wire changes — each shot keeps its own clip. Consecutive clips
+ * from one recording are spanned; a run whose sections cannot be read, or
+ * are not in recording order, is sent as it was.
  */
-export async function joinRecordingSections(
+export async function cutSpanningSection(
   clips: readonly MotionAudioClip[],
   input: {
     teamId: string;

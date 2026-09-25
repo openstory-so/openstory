@@ -80,7 +80,7 @@ vi.doMock('#storage', () => ({
   uploadFile,
 }));
 
-const { cutAudioSection, joinRecordingSections } =
+const { cutAudioSection, cutSpanningSection } =
   await import('./cut-audio-section');
 
 const base = {
@@ -298,7 +298,7 @@ describe('cutAudioSection', () => {
   });
 });
 
-describe('joinRecordingSections (#1794)', () => {
+describe('cutSpanningSection (#1794)', () => {
   const clip = (
     id: string,
     recordingId: string | undefined,
@@ -319,8 +319,8 @@ describe('joinRecordingSections (#1794)', () => {
       ? { ...sections[id], recording: { storageKey: base.storageKey } }
       : null;
 
-  it('sends overlapping sections of one recording as one cut, first start to last end', async () => {
-    const joined = await joinRecordingSections(
+  it('sends one longer section, from the first member start to the last member end', async () => {
+    const joined = await cutSpanningSection(
       [clip('a', 'rec-1', 7.43), clip('b', 'rec-1', 2.96)],
       { teamId: 'team-1', sequenceId: 'seq-1', getSection }
     );
@@ -337,7 +337,7 @@ describe('joinRecordingSections (#1794)', () => {
 
     for (const clips of [apart, unknown]) {
       expect(
-        await joinRecordingSections(clips, {
+        await cutSpanningSection(clips, {
           teamId: 'team-1',
           sequenceId: 'seq-1',
           getSection,

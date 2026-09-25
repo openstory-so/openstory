@@ -31,7 +31,7 @@ import {
 import { dialogueClipsAsReferences } from '@/motion/server/synthesize-dialogue';
 import { referenceKeysFrom } from '@/motion/reference-provenance';
 import { recordDialogue } from '@/motion/server/record-dialogue';
-import { joinRecordingSections } from '@/motion/server/cut-audio-section';
+import { cutSpanningSection } from '@/motion/server/cut-audio-section';
 import { raiseShotDurationToCoverAudio } from '@/motion/resolve-shot-duration';
 import type { MotionAudioClip } from '@/platform/server/db/schema';
 import type {
@@ -311,11 +311,11 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       const packedClip = Boolean(
         input.coveredShots && input.coveredShots.length > 1
       );
-      // A packed clip sends one cut per recording, not each member's
+      // A packed clip sends one longer section of the recording, not each member's
       // overlapping section (#1794). The members keep their own clips.
       const wireClips = packedClip
-        ? await step.do('join-dialogue-sections', () =>
-            joinRecordingSections(audioClips, {
+        ? await step.do('cut-spanning-section', () =>
+            cutSpanningSection(audioClips, {
               teamId: input.teamId,
               sequenceId,
               minDurationSeconds:
