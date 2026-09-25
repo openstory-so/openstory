@@ -28,7 +28,7 @@ import { playerPosterSrc } from './player-poster';
 import { createPackedPlayback } from './packed-playback';
 import { usePostHog } from '@posthog/react';
 import { Download, Link, Loader2, Share2, VideoIcon } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   generatePackedShotChaptersVTT,
   packedClipWindows,
@@ -173,7 +173,11 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
     packedWindows.length > 1
       ? generatePackedShotChaptersVTT(packedGroup)
       : null;
-  const chaptersUrl = usePackedChaptersUrl(packedChaptersVtt);
+  // A data: URL, not a blob URL: it is a plain string, so SSR renders the same
+  // track as the client (workerd's URL.createObjectURL throws).
+  const chaptersUrl = packedChaptersVtt
+    ? `data:text/vtt;charset=utf-8,${encodeURIComponent(packedChaptersVtt)}`
+    : undefined;
   const showsStillImage =
     selectedTab === 'image-prompt' || selectedTab === 'scene-variants';
   const playbackVideoUrl = showsStillImage
@@ -631,20 +635,3 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
     </div>
   );
 };
-
-function usePackedChaptersUrl(vtt: string | null): string | undefined {
-  // Minted in an effect, never during render: workerd's SSR defines
-  // URL.createObjectURL but throws "not implemented".
-  const [url, setUrl] = useState<string>();
-  useEffect(() => {
-    if (!vtt) {
-      // oxlint-disable-next-line react/set-state-in-effect -- blob URL is an external resource; minting it during render breaks SSR and hydration.
-      setUrl(undefined);
-      return;
-    }
-    const next = URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' }));
-    setUrl(next);
-    return () => URL.revokeObjectURL(next);
-  }, [vtt]);
-  return url;
-}
