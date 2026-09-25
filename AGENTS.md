@@ -240,7 +240,9 @@ category doesn't match the hatch it came through. Full rationale:
 **A run's result reaches a selection pointer only through a claim (#1130).**
 The trigger takes the claim, completion consumes it in one guarded UPDATE, and
 failure clears it only if the run still holds it. A workflow never calls a
-user selector (`frameVariants.select` and the like). A new generated table
+user selector (`frameVariants.select` and the like). The pipeline's prompt
+passes still select with no claim; those call sites are pinned in the test,
+so do not add one. A new generated table
 needs claim/clear/promote or an exception entry in
 `src/platform/server/workflow/claim-discipline.test.ts`; the contract is in the
 same doc, § The claim contract.

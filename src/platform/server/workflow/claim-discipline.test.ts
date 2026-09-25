@@ -135,6 +135,43 @@ const EXCEPTIONS: Record<string, string> = {
   shot_dialogue_versions: 'authored; re-analysis replaces by design',
 };
 
+/**
+ * Writers that move a claim domain's pointer with NO claim: `write` /
+ * `writeAiVersion` append and select unless `select: false`, and demote live
+ * claims like a user edit. Each workflow call site is pinned here with why, so
+ * a new unclaimed promote fails the test. Shrinking this is the goal.
+ */
+const UNCLAIMED_WRITERS: readonly ScopedMethod[] = [
+  'framePromptVersions.write',
+  'framePromptVersions.writeAiVersion',
+  'shotPromptVersions.write',
+  'shotPromptVersions.writeAiVersion',
+  'characters.updateVoice',
+];
+const UNCLAIMED_CALL_SITES: Record<string, string> = {
+  // The pipeline's prompt passes take no claim: their output is selected,
+  // superseding a user override (which stays in history).
+  'src/sequences/server/workflows/analyze-script-workflow.ts: framePromptVersions.writeAiVersion':
+    'pipeline: derived prompts selected, no claim',
+  'src/stills/server/workflows/frame-prompt-workflow.ts: framePromptVersions.writeAiVersion':
+    'run with no targetVersionId (pipeline) selects, no claim',
+  'src/motion/server/workflows/motion-prompt-workflow.ts: shotPromptVersions.writeAiVersion':
+    'run with no targetVersionId (pipeline) selects, no claim',
+  'src/motion/server/workflows/motion-prompt-batch-workflow.ts: shotPromptVersions.writeAiVersion':
+    'pipeline batch selects, no claim',
+  // A run queued before #1786 carries the user's typed edit (drain path);
+  // the other write in motion-workflow passes `select: false`.
+  'src/stills/server/workflows/image-workflow.ts: framePromptVersions.write':
+    'pre-#1786 payload: the user edit, written at run time',
+  'src/motion/server/workflows/motion-workflow.ts: shotPromptVersions.write':
+    'pre-#1786 user edit; the rescue write is select: false',
+  'src/stills/server/workflows/soften-image-prompt.ts: framePromptVersions.write':
+    'select: false, lands unselected (#1786)',
+  // A pre-#1715 payload has no husk to claim (drain path).
+  'src/cast/server/workflows/character-voice-workflow.ts: characters.updateVoice':
+    'pre-#1715 payload, no husk',
+};
+
 /** Every table a workflow writes results into or that holds generated history. */
 function generatedTables(): string[] {
   const names = new Set<string>();
@@ -217,5 +254,20 @@ describe('claim discipline (#1130)', () => {
       'A run moved a selection pointer without consuming its claim. Use the ' +
         "domain's promote method; a claim miss lands in history."
     ).toEqual([]);
+  });
+
+  test('every unclaimed pointer write from a workflow is pinned', () => {
+    const found: string[] = [];
+    for (const path of WORKFLOW_SOURCES) {
+      const source = readFileSync(path, 'utf8');
+      for (const method of UNCLAIMED_WRITERS) {
+        if (source.includes(`.${method}(`)) found.push(`${path}: ${method}`);
+      }
+    }
+    expect(
+      found.sort(),
+      'A run moves a selection pointer with no claim. Take a claim, pass ' +
+        '`select: false`, or pin the call site in UNCLAIMED_CALL_SITES.'
+    ).toEqual(Object.keys(UNCLAIMED_CALL_SITES).sort());
   });
 });
