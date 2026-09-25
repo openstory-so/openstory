@@ -1212,7 +1212,9 @@ export type MusicPromptInputHashInput = {
  * always-empty `visualSummary`. Verify only — delete with the legacy kinds
  * after {@link LEGACY_HASH_UNTIL}.
  */
-export type LegacyMusicShotSummary = MusicSceneSummary;
+export type LegacyMusicShotSummary = MusicSceneSummary & {
+  visualSummary: string;
+};
 
 /**
  * #1783: per scene, content only. The scene id is left out (order is the
@@ -1228,7 +1230,6 @@ function musicPromptHashBody(input: MusicPromptInputHashInput): unknown {
       durationSeconds: summary.durationSeconds,
       location: summary.location,
       timeOfDay: summary.timeOfDay,
-      visualSummary: summary.visualSummary,
     })),
     analysisModel: trim(input.analysisModel),
   };

@@ -53,7 +53,6 @@ export class MotionMusicPromptsWorkflow extends OpenStoryWorkflowEntrypoint<Moti
       styleConfig,
       shotMapping,
       startingFrameImageUrls,
-      visualSummaryBySceneId,
       referenceOnly,
     } = input;
 
@@ -84,11 +83,10 @@ export class MotionMusicPromptsWorkflow extends OpenStoryWorkflowEntrypoint<Moti
     );
 
     // Music reads the rows scene-split wrote — each scene's shot durations,
-    // not the snapped scene label — and each head shot's visual prompt, so
-    // its stamp is what verify rebuilds (#1783).
+    // not the snapped scene label — so its stamp is what verify rebuilds
+    // (#1783).
     const sceneSummaries = musicSceneSummariesFromAnalysis(
-      scenesWithVisualPrompts,
-      visualSummaryBySceneId
+      scenesWithVisualPrompts
     );
 
     // Run motion prompts and music design in parallel via Pattern 3.

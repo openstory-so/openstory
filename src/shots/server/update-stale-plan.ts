@@ -18,7 +18,6 @@ import {
 import { musicPromptInputHashMatches } from '@/shots/input-hash';
 import {
   musicRequestDurationSeconds,
-  loadMusicSceneSummaries,
   readMusicTrackStaleness,
 } from '@/audio/server/music-staleness';
 import {
@@ -85,6 +84,7 @@ import {
   depthIncludes,
   type UpdateStaleDepth,
 } from '@/shots/update-stale-depth';
+import { musicSceneSummariesFromRows } from '@/audio/server/workflows/music-scene-summaries';
 import { NotFoundError } from '@/platform/errors';
 import type { MusicSceneSummary } from '@/platform/server/workflow/types';
 
@@ -922,8 +922,10 @@ async function computeMusicPlan(
   if (!sequence.musicPromptInputHash) return none;
 
   try {
-    const { sceneSummaries, legacyShotSummaries } =
-      await loadMusicSceneSummaries(scopedDb, sequence.id, allShots);
+    const { sceneSummaries, legacyShotSummaries } = musicSceneSummariesFromRows(
+      await scopedDb.scenes.listBySequence(sequence.id),
+      allShots
+    );
     if (sceneSummaries.length === 0) return none;
     const latest = await scopedDb.sequenceMusicPromptVersions.getLatest(
       sequence.id

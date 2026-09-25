@@ -77,26 +77,12 @@ function storedRows(scenes: readonly Scene[]) {
       },
     })),
     new Map(rowIds.map((id, index) => [index, id]))
-  ).map((row, index) => ({
-    id: `shot-${index}`,
-    shotNumber: row.shotNumber ?? null,
+  ).map((row) => ({
     sceneId: row.sceneId ?? null,
     durationMs: row.durationMs ?? null,
   }));
   return { sceneRows, shots };
 }
-
-/** What the pipeline wrote onto each scene's head shot. */
-const pipelineVisuals = {
-  'analysis-a': 'dawn wide',
-  'analysis-b': 'neon roof',
-};
-/** The same prompts as selected on the stored shots (shot-1 is not a head). */
-const selectedVisuals = new Map([
-  ['shot-0', 'dawn wide'],
-  ['shot-1', 'a later clip'],
-  ['shot-2', 'neon roof'],
-]);
 
 describe('music scene summaries', () => {
   it('throws with sceneId in the message when a scene is missing metadata', () => {
@@ -106,15 +92,13 @@ describe('music scene summaries', () => {
       sceneNumber: 1,
       originalScript: { extract: '', dialogue: [] },
     };
-    expect(() => musicSceneSummariesFromAnalysis([broken], {})).toThrow(
+    expect(() => musicSceneSummariesFromAnalysis([broken])).toThrow(
       /scene-broken/
     );
   });
 
-  it("is one row per scene, its shot durations summed, its head's visual prompt", () => {
-    expect(
-      musicSceneSummariesFromAnalysis(analysisScenes, pipelineVisuals)
-    ).toEqual([
+  it('is one row per scene, its shot durations summed, no visual prompt', () => {
+    expect(musicSceneSummariesFromAnalysis(analysisScenes)).toEqual([
       {
         sceneId: 'analysis-a',
         title: 'Pickup',
@@ -122,7 +106,6 @@ describe('music scene summaries', () => {
         durationSeconds: 10,
         location: 'Location',
         timeOfDay: 'day',
-        visualSummary: 'dawn wide',
       },
       {
         sceneId: 'analysis-b',
@@ -131,25 +114,17 @@ describe('music scene summaries', () => {
         durationSeconds: 5,
         location: 'rooftop',
         timeOfDay: 'night',
-        visualSummary: 'neon roof',
       },
     ]);
   });
 
   it('a pipeline stamp reads fresh against the rows it wrote (#1783)', async () => {
     const stamped = await computeMusicPromptInputHash({
-      sceneSummaries: musicSceneSummariesFromAnalysis(
-        analysisScenes,
-        pipelineVisuals
-      ),
+      sceneSummaries: musicSceneSummariesFromAnalysis(analysisScenes),
       analysisModel: 'm',
     });
     const { sceneRows, shots } = storedRows(analysisScenes);
-    const verify = musicSceneSummariesFromRows(
-      sceneRows,
-      shots,
-      selectedVisuals
-    );
+    const verify = musicSceneSummariesFromRows(sceneRows, shots);
     expect(
       await musicPromptInputHashMatches(
         stamped,
@@ -162,8 +137,7 @@ describe('music scene summaries', () => {
       sceneRows.map((row, index) =>
         index === 1 ? { ...row, storyBeat: 'twist' } : row
       ),
-      shots,
-      selectedVisuals
+      shots
     );
     expect(
       await musicPromptInputHashMatches(
@@ -172,34 +146,11 @@ describe('music scene summaries', () => {
         edited.legacyShotSummaries
       )
     ).toBe(false);
-
-    // A head shot's visual prompt is hashed; a later clip's is not.
-    for (const [shotId, fresh] of [
-      ['shot-0', false],
-      ['shot-1', true],
-    ] as const) {
-      const reprompted = musicSceneSummariesFromRows(
-        sceneRows,
-        shots,
-        new Map([...selectedVisuals, [shotId, 'edited']])
-      );
-      expect(
-        await musicPromptInputHashMatches(
-          stamped,
-          { sceneSummaries: reprompted.sceneSummaries, analysisModel: 'm' },
-          reprompted.legacyShotSummaries
-        )
-      ).toBe(fresh);
-    }
   });
 
   it('a pre-#1783 per-shot stamp still reads fresh until LEGACY_HASH_UNTIL', async () => {
     const { sceneRows, shots } = storedRows(analysisScenes);
-    const verify = musicSceneSummariesFromRows(
-      sceneRows,
-      shots,
-      selectedVisuals
-    );
+    const verify = musicSceneSummariesFromRows(sceneRows, shots);
     expect(verify.legacyShotSummaries).toHaveLength(3);
     for (const kind of ['v5', 'v5-titled', 'v4'] as const) {
       const stamped = await computeLegacyMusicPromptInputHash(

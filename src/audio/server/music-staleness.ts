@@ -26,32 +26,6 @@ export function musicRequestDurationSeconds(
 }
 
 /**
- * The music scene summaries from the stored rows — each scene's head shot's
- * SELECTED visual prompt included — for every verify and regenerate path
- * (#1783). A server-fn read; a workflow gets the result on its payload.
- */
-export async function loadMusicSceneSummaries(
-  scopedDb: Pick<ScopedDb, 'scenes' | 'frames' | 'framePromptVersions'>,
-  sequenceId: string,
-  shots: Parameters<typeof musicSceneSummariesFromRows>[1]
-) {
-  const [sceneRows, anchors] = await Promise.all([
-    scopedDb.scenes.listBySequence(sequenceId),
-    scopedDb.frames.listAnchorsBySequence(sequenceId),
-  ]);
-  const selected = await scopedDb.framePromptVersions.getSelectedByFrameIds(
-    anchors.map((frame) => frame.id)
-  );
-  const visualPromptByShotId = new Map(
-    anchors.flatMap((frame) => {
-      const text = selected.get(frame.id)?.text;
-      return frame.shotId && text !== undefined ? [[frame.shotId, text]] : [];
-    })
-  );
-  return musicSceneSummariesFromRows(sceneRows, shots, visualPromptByShotId);
-}
-
-/**
  * Live read behind {@link musicTrackStaleness}: the completed primary music
  * variant for the model that produced `sequences.musicUrl`, compared against
  * the sequence's current prompt / tags / shot durations (#1657).
@@ -111,8 +85,10 @@ export async function readMusicPromptStaleness(
   }
 
   try {
-    const { sceneSummaries, legacyShotSummaries } =
-      await loadMusicSceneSummaries(scopedDb, sequence.id, shots);
+    const { sceneSummaries, legacyShotSummaries } = musicSceneSummariesFromRows(
+      await scopedDb.scenes.listBySequence(sequence.id),
+      shots
+    );
     if (sceneSummaries.length === 0) {
       return { musicPrompt: 'untracked' as const, musicTrack };
     }

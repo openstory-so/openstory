@@ -1,7 +1,4 @@
-import {
-  loadMusicSceneSummaries,
-  readMusicPromptStaleness,
-} from '@/audio/server/music-staleness';
+import { readMusicPromptStaleness } from '@/audio/server/music-staleness';
 import {
   rendersReferenceOnly,
   shotPromptSequence,
@@ -46,6 +43,7 @@ import type {
   MusicPromptWorkflowInput,
   FramePromptWorkflowInput,
 } from '@/platform/server/workflow/types';
+import { musicSceneSummariesFromRows } from '@/audio/server/workflows/music-scene-summaries';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
@@ -855,12 +853,14 @@ export const regenerateMusicPromptFn = createServerFn({ method: 'POST' })
   .handler(async ({ context }) => {
     const { sequence, scopedDb, user, teamId } = context;
 
-    const { sceneSummaries, legacyShotSummaries } =
-      await loadMusicSceneSummaries(
-        scopedDb,
-        sequence.id,
-        await scopedDb.shots.listBySequence(sequence.id)
-      );
+    const [shots, sceneRows] = await Promise.all([
+      scopedDb.shots.listBySequence(sequence.id),
+      scopedDb.scenes.listBySequence(sequence.id),
+    ]);
+    const { sceneSummaries, legacyShotSummaries } = musicSceneSummariesFromRows(
+      sceneRows,
+      shots
+    );
     if (sceneSummaries.length === 0) {
       throw new Error(
         'Sequence has no scenes to regenerate the music prompt from'

@@ -103,7 +103,6 @@ vi.doMock('@/audio/server/workflows/music-scene-summaries', () => ({
         durationSeconds: 10,
         location: 'here',
         timeOfDay: 'day',
-        visualSummary: 'summary',
       },
     ],
     legacyShotSummaries: [],

@@ -81,8 +81,7 @@ removed in #713), the three bibles, `<DIRECTOR_STYLE>` and `<ASPECT_RATIO>` —
 it composes the opening frame from the bibles itself, which is the reason it is
 a separate template at all. Nothing else read them: no still is rendered from
 them, and the only live consumer was the music prompt's visual grounding, which
-is empty in reference-only (#1783: the pipeline sends `{}` and verify finds no
-visual prompt on the head shot). So it was one LLM call per scene for a cache.
+#1783 removed (the music brief reads scene rows and shot durations only). So it was one LLM call per scene for a cache.
 `visualPromptsBySceneId` comes back empty and the motion-prompt hash is
 unaffected (it never included the visual prompt).
 
