@@ -639,6 +639,32 @@ export function createShotPromptVersionsMethods(db: Database) {
      * `shot-view-query.ts` instead; this serves callers that hold shot ids
      * only.
      */
+    /**
+     * Every `renamed` motion row of a sequence and the row it rewrote
+     * (#1827), for following a selection back through its renames.
+     */
+    listRenameLinksBySequence: async (
+      sequenceId: string
+    ): Promise<Map<string, string>> => {
+      const rows = await db
+        .select({
+          id: shotPromptVersions.id,
+          renamedFromId: shotPromptVersions.renamedFromId,
+        })
+        .from(shotPromptVersions)
+        .innerJoin(shots, eq(shots.id, shotPromptVersions.shotId))
+        .where(
+          and(
+            eq(shots.sequenceId, sequenceId),
+            eq(shotPromptVersions.source, 'renamed'),
+            isNotNull(shotPromptVersions.renamedFromId)
+          )
+        );
+      return new Map(
+        rows.flatMap((r) => (r.renamedFromId ? [[r.id, r.renamedFromId]] : []))
+      );
+    },
+
     getSelectedMotionByShots: async (
       shotIds: string[]
     ): Promise<Map<string, ShotPromptVersion>> => {
