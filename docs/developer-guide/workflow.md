@@ -374,6 +374,16 @@ Each phase enriches the `Scene` object. The frame's `metadata` column is updated
 
 Events emitted on a per-sequence realtime channel (`getGenerationChannel(sequenceId)`, a `RealtimeChannel` Durable Object). Every emit is persisted for history replay, so payloads carry ids and small strings only; a `/history` replay is bounded by rows and bytes (#1811).
 
+Realtime requires the `enable_request_signal` compatibility flag in
+`wrangler.jsonc` (inherited by production and test). `/api/realtime` listens
+for request cancellation to clear its heartbeat, release the write queue,
+and abort its upstream Durable Object subscriptions. Cloudflare does not
+enable this signal by compatibility date alone. Without the flag, closed
+browser connections can retain subscribers and timers indefinitely, even
+with bounded queues and history. Node stream mocks do not exercise this
+runtime behavior: verify disconnect cleanup over real HTTP in Workerd.
+See [Cloudflare's request cancellation documentation](https://developers.cloudflare.com/changelog/post/2025-05-22-handle-request-cancellation/).
+
 | Event                                 | When Emitted                                       | Payload                                                               |
 | ------------------------------------- | -------------------------------------------------- | --------------------------------------------------------------------- |
 | `generation.phase:start`              | Before each LLM call or generation phase           | `{ phase, phaseName }`                                                |

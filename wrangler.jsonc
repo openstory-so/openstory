@@ -3,7 +3,10 @@
   "main": "./src/server.ts",
   "name": "openstory",
   "compatibility_date": "2025-11-18",
-  "compatibility_flags": ["nodejs_compat"],
+  // Realtime closes its upstream DO streams on request.signal abort. This
+  // opt-in has no default date: without it, disconnected SSE clients leave
+  // subscriptions and heartbeat timers alive. Inherited by production/test.
+  "compatibility_flags": ["nodejs_compat", "enable_request_signal"],
   "triggers": {
     // Sweep stuck generating-status rows every 5 minutes (#727) and refresh
     // the model_pricing table daily (#1069 — the expression must match
