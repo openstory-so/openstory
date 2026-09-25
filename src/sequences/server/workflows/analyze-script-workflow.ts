@@ -659,7 +659,6 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     const runMotionMusicPrompts = (args: {
       scenesForPrompts: Scene[];
       startingFrameImageUrls: Record<string, string | null>;
-      visualSummaryBySceneId: Record<string, string>;
     }) =>
       spawnAndAwaitChild<
         MotionMusicPromptsWorkflowInput,
@@ -685,7 +684,6 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           videoModel,
           videoModels,
           startingFrameImageUrls: args.startingFrameImageUrls,
-          visualSummaryBySceneId: args.visualSummaryBySceneId,
           musicPromptSource: input.musicPromptSource,
           referenceOnly,
           // A continue re-read these from the shot node (#1784): a line
@@ -876,7 +874,6 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
                 startingFrameImageUrls: Object.fromEntries(
                   scenes.map((scene) => [scene.sceneId, null])
                 ),
-                visualSummaryBySceneId: {},
               })
             : Promise.resolve(null),
         ])
@@ -1033,16 +1030,6 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       const derivedShots = clipItems.map((item) =>
         derivedShotForItem(item, styleConfig)
       );
-      // The music prompt grounds on one visual per scene; a derived scene has
-      // no LLM visual, so its head's assembled prompt stands in.
-      for (const [index, item] of clipItems.entries()) {
-        const derived = derivedShots[index];
-        if (derived && item.isSceneHead) {
-          visualPromptBySceneId[item.scene.sceneId] =
-            derived.visualPrompt.fullPrompt;
-        }
-      }
-
       if (!referenceOnly) {
         await step.do('persist-derived-visual-prompts', async () => {
           for (const [index, item] of clipItems.entries()) {
@@ -1204,7 +1191,6 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
                   runMotionMusicPrompts({
                     scenesForPrompts: scenesWithVisualPrompts,
                     startingFrameImageUrls,
-                    visualSummaryBySceneId: visualPromptBySceneId,
                   }),
                 ])
               )[0];

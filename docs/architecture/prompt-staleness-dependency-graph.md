@@ -541,11 +541,32 @@ Generated in Phase 4 alongside motion prompts.
 ```ts
 sha256Hex({
   artifact: 'sequence:music-prompt',
-  hashVersion: 5, // PROMPT_INPUT_HASH_VERSION, shared with the prompt bodies
-  sceneSummaries, // MusicSceneSummary[], projected — `title` dropped as a label
+  hashVersion: 6,
+  // One row per scene with shots, in scene order: storyBeat, location,
+  // timeOfDay, and the scene's shot durations summed. Scene id and title
+  // are dropped (order is the key; the title is a label).
+  sceneSummaries,
   analysisModel: trim(analysisModel),
 });
 ```
+
+The summaries have ONE builder (`src/audio/server/workflows/music-scene-summaries.ts`),
+fed the scene row and its shots' durations on both sides (#1783). The pipeline
+stamp reaches it through `musicSceneSummariesFromAnalysis`, which runs the
+analysis scenes through `buildSceneInsert` and `sceneShotSpecs` — the insert
+builders that wrote the rows — so it needs no mid-run read. Verify,
+regenerate, Update all and smart retry use `musicSceneSummariesFromRows`.
+Before #1783 the pipeline stamped per-scene summaries with the analysis scene
+id, the snapped scene label and the visual prompt, while verify hashed one row
+per shot with the row id and an empty visual prompt, so every pipeline music
+prompt read stale from birth. The visual prompt is no longer part of the brief:
+no regenerate path ever sent it, and hashing it would re-stale the track on
+every still-prompt tweak.
+
+Legacy: until `LEGACY_HASH_UNTIL`, verify also accepts the pre-#1783 per-shot
+digests (`musicSceneSummariesFromRows`' `legacyShotSummaries`), so prompts
+stamped by a regenerate stay fresh on deploy. Pipeline stamps from before
+#1783 never matched and stay stale; Update all regenerates them.
 
 #### 6. Thumbnail / variant image — `computeShotImageInputHash`
 

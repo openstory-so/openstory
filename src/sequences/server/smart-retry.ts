@@ -78,7 +78,7 @@ import type {
   MusicPromptWorkflowInput,
   MusicWorkflowInput,
 } from '@/platform/server/workflow/types';
-import { buildMusicSceneSummaries } from '@/audio/server/workflows/music-scene-summaries';
+import { musicSceneSummariesFromRows } from '@/audio/server/workflows/music-scene-summaries';
 import { musicRequestDurationSeconds } from '@/audio/server/music-staleness';
 import { getLogger } from '@/platform/logger';
 
@@ -558,11 +558,9 @@ export async function executeSmartRetry(context: SmartRetryContext) {
     sequence.status === 'failed'
   ) {
     const allShots = await context.scopedDb.shots.listBySequence(sequence.id);
-    const scenes = buildMusicSceneSummaries(
-      allShots.flatMap((shot) => {
-        const scene = sceneOf(shot);
-        return scene ? [scene] : [];
-      })
+    const { sceneSummaries: scenes } = musicSceneSummariesFromRows(
+      [...scenesById.values()],
+      allShots
     );
     const totalDuration = musicRequestDurationSeconds(allShots);
 

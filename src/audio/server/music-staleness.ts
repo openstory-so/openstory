@@ -1,16 +1,11 @@
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Sequence, Shot } from '@/platform/server/db/schema';
-import type { Scene } from '@/shots/scene-analysis.schema';
 import {
   DEFAULT_ANALYSIS_MODEL,
   getAnalysisModelById,
 } from '@/models/models.config';
-import {
-  loadSceneContextBySequence,
-  resolveSceneForShot,
-} from '@/shots/server/scene-script';
 import { musicPromptInputHashMatches } from '@/shots/input-hash';
-import { buildMusicSceneSummaries } from './workflows/music-scene-summaries';
+import { musicSceneSummariesFromRows } from './workflows/music-scene-summaries';
 import {
   musicTrackStaleness,
   type MusicTrackStaleness,
@@ -90,17 +85,13 @@ export async function readMusicPromptStaleness(
   }
 
   try {
-    const sceneContext = await loadSceneContextBySequence(
-      scopedDb,
-      sequence.id
+    const { sceneSummaries, legacyShotSummaries } = musicSceneSummariesFromRows(
+      await scopedDb.scenes.listBySequence(sequence.id),
+      shots
     );
-    const scenes = shots
-      .map((shot) => resolveSceneForShot(shot, sceneContext).scene)
-      .filter((scene): scene is Scene => scene !== null);
-    if (scenes.length === 0) {
+    if (sceneSummaries.length === 0) {
       return { musicPrompt: 'untracked' as const, musicTrack };
     }
-    const sceneSummaries = buildMusicSceneSummaries(scenes);
 
     const latest = await scopedDb.sequenceMusicPromptVersions.getLatest(
       sequence.id
@@ -112,7 +103,8 @@ export async function readMusicPromptStaleness(
 
     const musicUpToDate = await musicPromptInputHashMatches(
       sequence.musicPromptInputHash,
-      { sceneSummaries, analysisModel }
+      { sceneSummaries, analysisModel },
+      legacyShotSummaries
     );
 
     return {

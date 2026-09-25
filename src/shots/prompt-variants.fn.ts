@@ -43,7 +43,7 @@ import type {
   MusicPromptWorkflowInput,
   FramePromptWorkflowInput,
 } from '@/platform/server/workflow/types';
-import { buildMusicSceneSummaries } from '@/audio/server/workflows/music-scene-summaries';
+import { musicSceneSummariesFromRows } from '@/audio/server/workflows/music-scene-summaries';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
@@ -853,19 +853,19 @@ export const regenerateMusicPromptFn = createServerFn({ method: 'POST' })
   .handler(async ({ context }) => {
     const { sequence, scopedDb, user, teamId } = context;
 
-    const [shots, sceneContext] = await Promise.all([
+    const [shots, sceneRows] = await Promise.all([
       scopedDb.shots.listBySequence(sequence.id),
-      loadSceneContextBySequence(scopedDb, sequence.id),
+      scopedDb.scenes.listBySequence(sequence.id),
     ]);
-    const scenes = shots
-      .map((shot) => resolveSceneForShot(shot, sceneContext).scene)
-      .filter((scene): scene is Scene => scene !== null);
-    if (scenes.length === 0) {
+    const { sceneSummaries, legacyShotSummaries } = musicSceneSummariesFromRows(
+      sceneRows,
+      shots
+    );
+    if (sceneSummaries.length === 0) {
       throw new Error(
         'Sequence has no scenes to regenerate the music prompt from'
       );
     }
-    const sceneSummaries = buildMusicSceneSummaries(scenes);
 
     const analysisModelId =
       getAnalysisModelById(sequence.analysisModel)?.id ??
@@ -878,10 +878,11 @@ export const regenerateMusicPromptFn = createServerFn({ method: 'POST' })
       analysisModel: analysisModelId,
     });
     if (
-      await musicPromptInputHashMatches(sequence.musicPromptInputHash, {
-        sceneSummaries,
-        analysisModel: analysisModelId,
-      })
+      await musicPromptInputHashMatches(
+        sequence.musicPromptInputHash,
+        { sceneSummaries, analysisModel: analysisModelId },
+        legacyShotSummaries
+      )
     ) {
       return { workflowRunId: null, alreadyUpToDate: true } as const;
     }

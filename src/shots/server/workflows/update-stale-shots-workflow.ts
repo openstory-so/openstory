@@ -1195,7 +1195,10 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                       {
                         sceneSummaries: music.sceneSummaries,
                         analysisModel: music.analysisModelId,
-                      }
+                      },
+                      // A writer that caught up since the plan stamped the
+                      // current shape; no legacy digest can mean "caught up".
+                      []
                     )
                   )
                     return null;

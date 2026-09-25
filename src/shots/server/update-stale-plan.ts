@@ -84,7 +84,7 @@ import {
   depthIncludes,
   type UpdateStaleDepth,
 } from '@/shots/update-stale-depth';
-import { buildMusicSceneSummaries } from '@/audio/server/workflows/music-scene-summaries';
+import { musicSceneSummariesFromRows } from '@/audio/server/workflows/music-scene-summaries';
 import { NotFoundError } from '@/platform/errors';
 import type { MusicSceneSummary } from '@/platform/server/workflow/types';
 
@@ -921,21 +921,20 @@ async function computeMusicPlan(
   };
   if (!sequence.musicPromptInputHash) return none;
 
-  const sceneContext = await loadSceneContextBySequence(scopedDb, sequence.id);
-  const scenes = allShots
-    .map((s) => resolveSceneForShot(s, sceneContext).scene)
-    .filter((s): s is NonNullable<typeof s> => s !== null);
-  if (scenes.length === 0) return none;
-
   try {
-    const sceneSummaries = buildMusicSceneSummaries(scenes);
+    const { sceneSummaries, legacyShotSummaries } = musicSceneSummariesFromRows(
+      await scopedDb.scenes.listBySequence(sequence.id),
+      allShots
+    );
+    if (sceneSummaries.length === 0) return none;
     const latest = await scopedDb.sequenceMusicPromptVersions.getLatest(
       sequence.id
     );
     const analysisModel = latest?.analysisModel ?? analysisModelId;
     const regenPrompt = !(await musicPromptInputHashMatches(
       sequence.musicPromptInputHash,
-      { sceneSummaries, analysisModel }
+      { sceneSummaries, analysisModel },
+      legacyShotSummaries
     ));
     return {
       regenPrompt,

@@ -38,7 +38,7 @@ import { addLineGutter } from '@/sequences/boundary-split';
 import { narrowShotPromptContext } from '@/shots/server/prompt-context';
 import { buildMatchingPromptVariables } from '@/cast/server/talent-matching-prompt';
 import { buildLocationMatchingPromptVariables } from '@/cast/server/location-matching-prompt';
-import { buildMusicSceneSummaries } from '@/audio/server/workflows/music-scene-summaries';
+import { musicSceneSummariesFromAnalysis } from '@/audio/server/workflows/music-scene-summaries';
 import { STYLE_CATEGORIES } from '@/look/auto-style';
 import { STYLE_PACE_VALUES } from '@/look/style-config';
 import type { LibraryLocation } from '@/platform/server/db/schema/location-library';
@@ -678,7 +678,7 @@ async function runCall(
   }
 
   if (job.call === 'music') {
-    const summaries = buildMusicSceneSummaries(gold.scenes);
+    const summaries = musicSceneSummariesFromAnalysis(gold.scenes);
     const { messages } = await getChatPrompt('phase/music-design-chat', {
       scenes: JSON.stringify(summaries, null, 2),
       sceneCount: String(summaries.length),
