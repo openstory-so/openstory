@@ -121,15 +121,12 @@ function ScenesPage() {
   const search = Route.useSearch();
 
   // The canvas needs the width (#1713): fold the app sidebar to icons on the
-  // way in, put it back on the way out. Once per visit — a sidebar the user
-  // reopens by hand stays open.
-  const { open, setOpen } = useSidebar();
-  const sidebar = useRef({ open, setOpen });
+  // way in. It stays folded until the expand control (#1807) — a sidebar the
+  // user reopens by hand stays open.
+  const { setOpen } = useSidebar();
+  const fold = useRef(setOpen);
   useEffect(() => {
-    const { open, setOpen } = sidebar.current;
-    if (!open) return;
-    setOpen(false);
-    return () => setOpen(true);
+    fold.current(false);
   }, []);
 
   return <ScenesView sequenceId={sequenceId} search={search} />;
