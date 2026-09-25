@@ -237,6 +237,14 @@ Each surface is enumerated in `scoped-workflow.ts` and pinned by
 category doesn't match the hatch it came through. Full rationale:
 `docs/architecture/workflow-snapshots-and-content-hash-staleness.md`.
 
+**A run's result reaches a selection pointer only through a claim (#1130).**
+The trigger takes the claim, completion consumes it in one guarded UPDATE, and
+failure clears it only if the run still holds it. A workflow never calls a
+user selector (`frameVariants.select` and the like). A new generated table
+needs claim/clear/promote or an exception entry in
+`src/platform/server/workflow/claim-discipline.test.ts`; the contract is in the
+same doc, § The claim contract.
+
 ## Feature docs — read before touching the area
 
 Each feature's rules, traps and rationale live in `docs/architecture/`. The

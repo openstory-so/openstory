@@ -279,6 +279,30 @@ A picked 3×3 tile (`kind: 'framing'`) has no snapshot of its own: it inherits t
 
 `divergedVariantId` is required on every branch — emitters in `sheet-divergence.ts` and `music-workflow.ts` park the divergent artifact first, then reference the new variant row's id. Image drift (model A) does **not** use this event. This gives the UI a single event shape across sheet/music (and future video) divergence without adding new channels.
 
+## The claim contract (#1130)
+
+Anything generated and promotable to a selection pointer lands through a claim. Five rules:
+
+1. **Row before result.** An append-only version row (or a claim row) exists before anything is spent: in-flight status, model, run id. The rows are the history.
+2. **One claim per promotion target.** The trigger takes it, and the last kickoff wins by overwrite (#1070).
+3. **Completion consumes the claim.** The pointer moves only through one guarded UPDATE that also consumes the claim. There is no read-then-decide. A run that finds its claim gone lands in history, unselected.
+4. **A user's selection clears claims.** Runs still in flight then find the claim moved and finish into history.
+5. **Failure clears only its own claim.** A failing run clears the claim only while it still holds it, never a newer kickoff's.
+
+Each domain spells the three methods its own way:
+
+| Domain                   | Claim                                       | Conditional clear                               | Claim-consuming promote                    |
+| ------------------------ | ------------------------------------------- | ----------------------------------------------- | ------------------------------------------ |
+| Stills                   | `frames.setPendingPromoteVersionId`         | `frames.clearPendingPromoteVersionIdIf`         | `frameVariants.selectIfPendingPromoteIs`   |
+| Video                    | `renderSegments.setPendingPromoteVersionId` | `renderSegments.clearPendingPromoteVersionIdIf` | `videoVariants.selectIfPendingPromoteIs`   |
+| Voices                   | `characters.createPendingVoiceClaim`        | `characters.markVoiceClaimTerminal`             | `characters.promoteVoiceClaimIfPending`    |
+| Image and motion prompts | `*PromptVersions.createPending`             | `*PromptVersions.markTerminal`                  | `*PromptVersions.completePendingAiVersion` |
+| Dialogue                 | `shotDialogue.claimRecording`               | `shotDialogue.failClaims`                       | `shotDialogue.appendRecording`             |
+
+Stills and video keep the claim as a pointer column on the parent row. Prompts keep it on the pending row itself (live status plus `pendingInputHash`). Dialogue keeps it in a `shot_dialogue_claims` row, because a section row cannot be its own placeholder. Upscale takes the stills claim like any other still (#1129). Previews (`frame_variants.kind = 'preview'`) are never selectable, so they never claim.
+
+**Pinned by** `src/platform/server/workflow/claim-discipline.test.ts`. It scans the schema for every table a workflow writes results into (a `…WorkflowRunId` column) or that holds generated history (`*_variants`, `*_versions`). Each must belong to a claim domain or sit on its exceptions list with a reason. It also checks that each domain still has its three methods, and that no workflow calls a domain's user selector (`frameVariants.select` and the like). The exceptions today are sheets (#1113), music, the authored script and dialogue-line versions (a re-analysis replaces them by design), and tables with no selection pointer (studio assets, exports, provenance, legacy `shot_variants`, the sequence run slot).
+
 ## How it composes with existing patterns
 
 - **Scoped DB** (`src/lib/db/scoped/*`) is the only entry point. Staleness reads go through scoped getters; hash computation helpers accept a `ScopedDb` and use it. No code path bypasses team scoping.
