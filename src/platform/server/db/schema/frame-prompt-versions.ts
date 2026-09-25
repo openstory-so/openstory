@@ -32,6 +32,8 @@ const PROMPT_VERSION_SOURCES = [
   'softened',
   // Auto-shortened after a via refused the prompt for its length (#1754).
   'shortened',
+  // An element-token rename's rewrite of the selected row (#1786).
+  'renamed',
 ] as const;
 export type PromptVersionSource = (typeof PROMPT_VERSION_SOURCES)[number];
 

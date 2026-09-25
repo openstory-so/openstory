@@ -29,9 +29,10 @@ import type {
  * Same type on two columns with different lifecycles:
  * - `shots.audioClips` — working set from References (rewritten when
  *   lines/voices change).
- * - `shot_prompt_versions.audioClips` — clips THIS render consumed,
- *   stamped at submit. Regenerating the working set must not rewrite
- *   an old take. Ids also ride `VideoManifestEntry.audioClipIds`.
+ * - `VideoManifestEntry.audioClipIds` — the clips a render consumed, on
+ *   the clip's own manifest, so regenerating the working set never
+ *   rewrites an old take. `shot_prompt_versions.audioClips` is dead: no
+ *   longer written or read (#1786), kept only to avoid a table rebuild.
  */
 export type MotionAudioClip = {
   id: string;
@@ -102,6 +103,8 @@ const PROMPT_VARIANT_SOURCES = [
   // Nothing is cut inside a request builder any more, so the shortening is
   // an ordinary version the user can read and revert.
   'shortened',
+  // An element-token rename's rewrite of the selected row (#1786).
+  'renamed',
 ] as const;
 export type PromptVariantSource = (typeof PROMPT_VARIANT_SOURCES)[number];
 
@@ -142,10 +145,15 @@ export const shotPromptVersions = snakeCase.table(
     }).$type<MotionAudio>(),
 
     source: text().$type<PromptVariantSource>().notNull(),
+    // A `renamed` row's parent: the row whose text it rewrote (#1827). A
+    // clip rendered from the parent stays fresh when the rename takes the
+    // selection, since a token is a label. Set on every `renamed` row, null
+    // on every other source.
+    renamedFromId: text(),
 
-    // Provenance of this render (#1554): copied from `shots.audioClips`
-    // (or fallback TTS) at submit. Null until stamped; [] = ran and
-    // there was nothing to speak. Never inferred from the shot.
+    // DEAD since #1786 — neither written nor read. It was a third copy of
+    // render clip provenance, which lives on the video manifest's
+    // `audioClipIds`. Kept to avoid a table rebuild; drop in a later cleanup.
     audioClips: text({ mode: 'json' }).$type<MotionAudioClip[]>(),
     // Motion-only: which template authored this text — true for the
     // image-to-video prompt ("the model already sees the still"), false for

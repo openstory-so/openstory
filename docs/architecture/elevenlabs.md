@@ -354,8 +354,9 @@ re-record, so it is DATA on the shot (`shot_dialogue_sections`), never
 `@TOKEN:3-8` prompt text that would re-stale the prompt each time. Recordings
 are not `sequence_elements` rows either: nobody binds or names one.
 
-Motion attaches the stored clip and stamps it onto
-`shot_prompt_versions.audioClips` (provenance of the render). Tone maps to v3
+Motion attaches the stored clip and records its id on the video manifest's
+`audioClipIds` (provenance of the render; `shot_prompt_versions.audioClips` is
+dead since #1786). Tone maps to v3
 audio tags on each turn. User-bound `voiceToken` elements already ride as
 `@AudioN` and are not re-synthesised. The clip binds as `DIALOGUE` /
 `@Audio1`. Voice ids + lines + tone + TTS model fold into the **video

@@ -150,8 +150,11 @@ async function loadPromptProvenance(
 }
 
 /**
- * Append a `softened` prompt version (mirrors onto the frame) and stamp the
- * in-flight still so selecting it restores the text that produced it.
+ * Append a `softened` prompt version to history, UNSELECTED (#1786), and stamp
+ * the in-flight still with it. Selecting mid-run would clobber an edit the user
+ * made meanwhile and demote a regeneration they queued; instead the prompt
+ * rides the still — when the still wins its promote claim,
+ * `frameVariants.select` restores its linked prompt.
  */
 export async function persistSoftenedPromptVersion(args: {
   scopedDb: WorkflowScopedDb;
@@ -168,6 +171,7 @@ export async function persistSoftenedPromptVersion(args: {
     inputHash: args.provenance.inputHash,
     analysisModel: args.provenance.analysisModel,
     createdBy: args.createdBy,
+    select: false,
   });
 
   if (args.versionId) {
@@ -351,9 +355,13 @@ export async function generateImageWithContentRetry(
           promptVersionId: input.promptVersionId ?? null,
           pendingInputHash: fallbackHash,
         });
+        // Hand the promote claim to the fallback row only while the original
+        // still holds it (#1786): a newer kickoff or a manual select made
+        // mid-run keeps its choice, and the fallback lands in history.
         if (!input.variantOnly) {
-          await scopedDb.frames.setPendingPromoteVersionId(
+          await scopedDb.frames.movePendingPromoteVersionIdIf(
             frameId,
+            originalVersionId,
             fallbackVersion.id
           );
         }

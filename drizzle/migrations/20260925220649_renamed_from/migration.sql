@@ -1,0 +1,1 @@
+ALTER TABLE `shot_prompt_versions` ADD `renamed_from_id` text;

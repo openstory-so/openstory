@@ -15,7 +15,6 @@ import type {
   MotionPromptParameters,
 } from '@/shots/scene-analysis.schema';
 import type { MotionPromptInputHash } from '@/shots/input-hash';
-import type { MotionAudioClip } from '@/platform/server/db/schema';
 import type { Database } from '@/platform/server/db/client';
 import {
   shotDialogueVersions,
@@ -33,7 +32,6 @@ import {
   and,
   desc,
   eq,
-  gt,
   inArray,
   isNotNull,
   lte,
@@ -174,6 +172,56 @@ const assertMotionPromptType = (promptType: ShotPromptType): void => {
   }
 };
 
+/**
+ * A shot from before #1657 keeps its lines only on its SELECTED motion
+ * prompt row (`dialogue`), which the resolver reads as a fallback. A new row
+ * carries no copy, so selecting it would strand those lines — and any voice
+ * bound to them. Before that happens, move them to where lines live: one
+ * `shot_dialogue_versions` row. A no-op for every shot that already has
+ * one, which is every shot made since.
+ */
+export async function promoteLegacyMotionDialogue(
+  db: Database,
+  shotId: string
+): Promise<void> {
+  const [row] = await db
+    .select({ dialogue: shotPromptVersions.dialogue })
+    .from(shots)
+    .innerJoin(
+      shotPromptVersions,
+      eq(shotPromptVersions.id, shots.selectedMotionPromptVersionId)
+    )
+    .where(
+      and(
+        eq(shots.id, shotId),
+        notExists(
+          db
+            .select({ one: sql`1` })
+            .from(shotDialogueVersions)
+            .where(
+              and(
+                eq(shotDialogueVersions.shotId, shotId),
+                isNotNull(shotDialogueVersions.selectedAt)
+              )
+            )
+        )
+      )
+    )
+    .limit(1);
+  if (!row?.dialogue || row.dialogue.lines.length === 0) return;
+  await db.insert(shotDialogueVersions).values({
+    shotId,
+    lines: row.dialogue.lines.map((line) => ({
+      character: line.character,
+      line: line.line,
+      tone: line.tone,
+      ...(line.voiceToken ? { voiceToken: line.voiceToken } : {}),
+    })),
+    source: 'prompt',
+    selectedAt: new Date(),
+  });
+}
+
 export function createShotPromptVersionsMethods(db: Database) {
   /**
    * Point the shot at `version`. The render manifest references this pointer
@@ -211,53 +259,6 @@ export function createShotPromptVersionsMethods(db: Database) {
    * Post-transition mirror check for completePendingAiVersion (#1095 TOCTOU).
    * See framePromptVersions.stillHoldsMirrorRight for the race rationale.
    */
-  /**
-   * A shot from before #1657 keeps its lines only on its SELECTED motion
-   * prompt row (`dialogue`), which the resolver reads as a fallback. A new row
-   * carries no copy, so selecting it would strand those lines — and any voice
-   * bound to them. Before that happens, move them to where lines live: one
-   * `shot_dialogue_versions` row. A no-op for every shot that already has
-   * one, which is every shot made since.
-   */
-  const promoteLegacyDialogue = async (shotId: string): Promise<void> => {
-    const [row] = await db
-      .select({ dialogue: shotPromptVersions.dialogue })
-      .from(shots)
-      .innerJoin(
-        shotPromptVersions,
-        eq(shotPromptVersions.id, shots.selectedMotionPromptVersionId)
-      )
-      .where(
-        and(
-          eq(shots.id, shotId),
-          notExists(
-            db
-              .select({ one: sql`1` })
-              .from(shotDialogueVersions)
-              .where(
-                and(
-                  eq(shotDialogueVersions.shotId, shotId),
-                  isNotNull(shotDialogueVersions.selectedAt)
-                )
-              )
-          )
-        )
-      )
-      .limit(1);
-    if (!row?.dialogue || row.dialogue.lines.length === 0) return;
-    await db.insert(shotDialogueVersions).values({
-      shotId,
-      lines: row.dialogue.lines.map((line) => ({
-        character: line.character,
-        line: line.line,
-        tone: line.tone,
-        ...(line.voiceToken ? { voiceToken: line.voiceToken } : {}),
-      })),
-      source: 'prompt',
-      selectedAt: new Date(),
-    });
-  };
-
   const stillHoldsMirrorRight = async (
     shotId: string,
     claimId: string
@@ -268,19 +269,13 @@ export function createShotPromptVersionsMethods(db: Database) {
       .where(eq(shotPromptVersions.id, claimId))
       .limit(1);
     if (!row || row.pendingInputHash === null) return false;
-    const [newer] = await db
-      .select({ id: shotPromptVersions.id })
-      .from(shotPromptVersions)
-      .where(
-        and(
-          eq(shotPromptVersions.shotId, shotId),
-          eq(shotPromptVersions.promptType, 'motion'),
-          eq(shotPromptVersions.status, 'completed'),
-          gt(shotPromptVersions.id, claimId)
-        )
-      )
+    // Pointer, not any newer row (#1786) — see the frame-side twin.
+    const [shot] = await db
+      .select({ selected: shots.selectedMotionPromptVersionId })
+      .from(shots)
+      .where(eq(shots.id, shotId))
       .limit(1);
-    return !newer;
+    return !(shot?.selected && shot.selected > claimId);
   };
 
   const methods = {
@@ -301,7 +296,7 @@ export function createShotPromptVersionsMethods(db: Database) {
       input: WriteShotPromptVersionInput
     ): Promise<ShotPromptVersion> => {
       assertMotionPromptType(input.promptType);
-      await promoteLegacyDialogue(input.shotId);
+      await promoteLegacyMotionDialogue(db, input.shotId);
 
       const nextHash = input.inputHash;
       const analysisModel = input.analysisModel;
@@ -517,7 +512,7 @@ export function createShotPromptVersionsMethods(db: Database) {
       inputHash?: MotionPromptInputHash;
       analysisModel: string;
     }): Promise<ShotPromptVersion | null> => {
-      await promoteLegacyDialogue(input.shotId);
+      await promoteLegacyMotionDialogue(db, input.shotId);
       const [claim] = await db
         .select()
         .from(shotPromptVersions)
@@ -637,21 +632,6 @@ export function createShotPromptVersionsMethods(db: Database) {
     },
 
     /**
-     * Stamp the clips this render consumed onto the prompt version
-     * (#1554) — References working set or fallback TTS. Provenance, not
-     * a new version: the text did not change.
-     */
-    setAudioClips: async (
-      versionId: string,
-      audioClips: MotionAudioClip[]
-    ): Promise<void> => {
-      await db
-        .update(shotPromptVersions)
-        .set({ audioClips })
-        .where(eq(shotPromptVersions.id, versionId));
-    },
-
-    /**
      * Selected motion prompt version for each shot, keyed by shotId. Shots with
      * no selected motion version are absent from the map.
      *
@@ -659,6 +639,32 @@ export function createShotPromptVersionsMethods(db: Database) {
      * `shot-view-query.ts` instead; this serves callers that hold shot ids
      * only.
      */
+    /**
+     * Every `renamed` motion row of a sequence and the row it rewrote
+     * (#1827), for following a selection back through its renames.
+     */
+    listRenameLinksBySequence: async (
+      sequenceId: string
+    ): Promise<Map<string, string>> => {
+      const rows = await db
+        .select({
+          id: shotPromptVersions.id,
+          renamedFromId: shotPromptVersions.renamedFromId,
+        })
+        .from(shotPromptVersions)
+        .innerJoin(shots, eq(shots.id, shotPromptVersions.shotId))
+        .where(
+          and(
+            eq(shots.sequenceId, sequenceId),
+            eq(shotPromptVersions.source, 'renamed'),
+            isNotNull(shotPromptVersions.renamedFromId)
+          )
+        );
+      return new Map(
+        rows.flatMap((r) => (r.renamedFromId ? [[r.id, r.renamedFromId]] : []))
+      );
+    },
+
     getSelectedMotionByShots: async (
       shotIds: string[]
     ): Promise<Map<string, ShotPromptVersion>> => {
@@ -742,6 +748,47 @@ export function createShotPromptVersionsMethods(db: Database) {
         }),
       ]);
       return version;
+    },
+
+    /**
+     * Compare-and-swap select (#1786): repoint the shot at `versionId` only
+     * while it still points at `expectedVersionId`. A content-checker rescue
+     * appends its rewrite unselected mid-run; when the rescued clip wins its
+     * promote claim, this carries the rewrite with it — unless the user moved
+     * the prompt meanwhile, in which case their choice stands. No claim
+     * demotion: a regeneration the user queued after the render started is
+     * newer intent and keeps its mirror right. Returns whether it moved.
+     */
+    selectIfSelectionIs: async (
+      shotId: string,
+      versionId: string,
+      expectedVersionId: string,
+      opts: { actorId: string | null }
+    ): Promise<boolean> => {
+      const [moved] = await db
+        .update(shots)
+        .set({
+          selectedMotionPromptVersionId: versionId,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(shots.id, shotId),
+            eq(shots.selectedMotionPromptVersionId, expectedVersionId)
+          )
+        )
+        .returning({ sequenceId: shots.sequenceId });
+      if (!moved) return false;
+      await buildEventInsert(db, {
+        sequenceId: moved.sequenceId,
+        actorId: opts.actorId,
+        kind: 'prompt.selected',
+        targetType: 'shot',
+        targetId: shotId,
+        summary: 'Selected rewritten motion prompt with its clip',
+        data: { versionId, prevVersionId: expectedVersionId },
+      });
+      return true;
     },
 
     /** List the revision history for a shot's prompt, newest first. */

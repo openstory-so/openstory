@@ -849,6 +849,81 @@ describe('shot_prompt_variants helper', () => {
   });
 });
 
+describe('shotPromptVersions rescue rewrites (#1786)', () => {
+  const HAIKU = 'anthropic/claude-haiku-4.5';
+  const writeMotion = (
+    m: ReturnType<typeof createShotPromptVersionsMethods>,
+    text: string,
+    source: 'ai-generated' | 'softened' | 'user-edit',
+    select: boolean
+  ) => {
+    const base = {
+      shotId,
+      promptType: 'motion' as const,
+      text,
+      usesStartFrame: true,
+      select,
+    };
+    return source === 'ai-generated'
+      ? m.write({
+          ...base,
+          source,
+          inputHash: motionPromptInputHash('h-0'),
+          analysisModel: HAIKU,
+        })
+      : m.write({ ...base, source, inputHash: null, analysisModel: null });
+  };
+
+  it('selectIfSelectionIs carries the rewrite in while the shot still points at the original', async () => {
+    const m = createShotPromptVersionsMethods(db);
+    const original = await writeMotion(m, 'Original', 'ai-generated', true);
+    const softened = await writeMotion(m, 'Softened', 'softened', false);
+    expect((await selectedMotionVersion())?.id).toBe(original.id);
+
+    expect(
+      await m.selectIfSelectionIs(shotId, softened.id, original.id, {
+        actorId: null,
+      })
+    ).toBe(true);
+    expect((await selectedMotionVersion())?.id).toBe(softened.id);
+  });
+
+  it('a user edit made mid-run wins over the rewrite', async () => {
+    const m = createShotPromptVersionsMethods(db);
+    const original = await writeMotion(m, 'Original', 'ai-generated', true);
+    const softened = await writeMotion(m, 'Softened', 'softened', false);
+    const edit = await writeMotion(m, 'Hand edit', 'user-edit', true);
+
+    expect(
+      await m.selectIfSelectionIs(shotId, softened.id, original.id, {
+        actorId: null,
+      })
+    ).toBe(false);
+    expect((await selectedMotionVersion())?.id).toBe(edit.id);
+  });
+
+  it('an unselected rewrite does not cancel a queued regeneration', async () => {
+    const m = createShotPromptVersionsMethods(db);
+    await writeMotion(m, 'Original', 'ai-generated', true);
+    const claim = await m.createPending({
+      usesStartFrame: true,
+      shotId,
+      pendingInputHash: 'live-hash',
+    });
+    await m.markGenerating(claim.id, 'run-1');
+    await writeMotion(m, 'Softened', 'softened', false);
+
+    await m.completePendingAiVersion({
+      usesStartFrame: true,
+      versionId: claim.id,
+      shotId,
+      text: 'Regenerated',
+      analysisModel: HAIKU,
+    });
+    expect((await selectedMotionVersion())?.text).toBe('Regenerated');
+  });
+});
+
 describe('shotPromptVersions.completePendingAiVersion', () => {
   it('completes the claim in place and selects it', async () => {
     const m = createShotPromptVersionsMethods(db);

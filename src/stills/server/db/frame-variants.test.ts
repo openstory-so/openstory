@@ -531,6 +531,53 @@ describe('frameVariants.selectIfPendingPromoteIs (#1070)', () => {
     expect(frame?.pendingPromoteVersionId).toBe(newer.id);
   });
 
+  it('a manual pick made mid-run wins over the late completion (#1786)', async () => {
+    const m = createFrameVariantsMethods(db);
+    const picked = await m.appendVersion(variantInput());
+    const late = await m.appendVersion(variantInput());
+    await db
+      .update(frames)
+      .set({ pendingPromoteVersionId: late.id })
+      .where(eq(frames.id, frameId));
+    await m.select(frameId, picked.id, { actorId: null });
+
+    expect(
+      await m.selectIfPendingPromoteIs(frameId, late.id, { actorId: null })
+    ).toBeNull();
+    const [frame] = await db
+      .select()
+      .from(frames)
+      .where(eq(frames.id, frameId));
+    expect(frame?.selectedImageVersionId).toBe(picked.id);
+  });
+
+  it('a won promote mirrors the still and restores its prompt (#1786)', async () => {
+    const m = createFrameVariantsMethods(db);
+    const [prompt] = await db
+      .insert(framePromptVersions)
+      .values({ frameId, text: 'Softened prompt', source: 'softened' })
+      .returning();
+    if (!prompt) throw new Error('test setup: prompt insert failed');
+    const v = await m.appendVersion(
+      variantInput({ promptVersionId: prompt.id })
+    );
+    await db
+      .update(frames)
+      .set({ pendingPromoteVersionId: v.id, imageStatus: 'generating' })
+      .where(eq(frames.id, frameId));
+
+    await m.selectIfPendingPromoteIs(frameId, v.id, { actorId: null });
+
+    const [frame] = await db
+      .select()
+      .from(frames)
+      .where(eq(frames.id, frameId));
+    expect(frame?.selectedImageVersionId).toBe(v.id);
+    expect(frame?.imageStatus).toBe('completed');
+    expect(frame?.selectedImagePromptVersionId).toBe(prompt.id);
+    expect(frame?.pendingPromoteVersionId).toBeNull();
+  });
+
   it('does not select when no promote claim is held at all', async () => {
     const m = createFrameVariantsMethods(db);
     const v = await m.appendVersion(variantInput());

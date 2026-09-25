@@ -96,6 +96,7 @@ import {
 import type { MotionWorkflowInput } from '@/platform/server/workflow/types';
 import {
   persistMotionCompletion,
+  rescuedMotionPromptOf,
   persistMotionFailure,
 } from './motion-workflow-persist';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
@@ -455,39 +456,28 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           return { shotDeleted: true, videoVersionId: null, sceneId: null };
         }
 
-        // Everything this write needs was resolved at trigger time and threaded
-        // in: whether the edit is real, what it was authored against
-        // (`userEditProvenance`), and the audio direction to carry
-        // forward (`priorMotion`). Re-reading any of it here would be racy
-        // against concurrent append-only version writes and replay-unsafe —
-        // this very write repoints the selection pointer. `components` /
-        // `parameters` stay null on a free-text edit, as they did pre-#713.
-        // The written version is what this clip renders from, so its id — not
-        // the pointer the write just repointed — is what the manifest records.
-        let writtenMotionPromptVersionId: string | null = null;
-        if (input.userEditProvenance) {
-          const written = await scopedDb.shotPromptVersions.write({
-            shotId: input.shotId,
-            promptType: 'motion',
-            text: input.userEditText ?? input.prompt,
-            audio: input.priorMotion?.audio ?? null,
-            source: 'user-edit',
-            usesStartFrame: !input.referenceOnly,
-            inputHash: input.userEditProvenance.inputHash,
-            analysisModel: input.userEditProvenance.analysisModel,
-            createdBy: input.userId,
-          });
-          writtenMotionPromptVersionId = written.id;
-        }
+        // The clips this render consumes are recorded ONCE, as the manifest's
+        // `audioClipIds` below (#1786) — never stamped onto the prompt row.
 
-        const promptVersionId =
-          writtenMotionPromptVersionId ?? input.motionPromptVersionId ?? null;
-        if (promptVersionId && audioClips.length > 0) {
-          await scopedDb.shotPromptVersions.setAudioClips(
-            promptVersionId,
-            audioClips
-          );
-        }
+        // A run queued before #1786 still carries the edit for the run to
+        // write (see PreClickEditPayload); nothing else holds the typed text.
+        const preClickEditId = input.userEditProvenance
+          ? (
+              await scopedDb.shotPromptVersions.write({
+                shotId: input.shotId,
+                promptType: 'motion',
+                text: input.userEditText ?? input.prompt,
+                audio: input.priorMotion?.audio ?? null,
+                source: 'user-edit',
+                usesStartFrame: !input.referenceOnly,
+                inputHash: input.userEditProvenance.inputHash,
+                analysisModel: input.userEditProvenance.analysisModel,
+                createdBy: input.userId,
+              })
+            ).id
+          : null;
+        const renderedPromptVersionId =
+          preClickEditId ?? input.motionPromptVersionId ?? null;
 
         // Open an append-only `video_variants` *version* for this render (#990,
         // replaces the retired `shot_variants` video slice). It is keyed by
@@ -571,9 +561,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                   shotId: member.shotId,
                   motionPromptVersionId:
                     member.shotId === input.shotId
-                      ? (writtenMotionPromptVersionId ??
-                        member.motionPromptVersionId ??
-                        null)
+                      ? (preClickEditId ?? member.motionPromptVersionId ?? null)
                       : (member.motionPromptVersionId ?? null),
                   frameVersionId: member.frameVersionId ?? null,
                   usesStartFrame: !member.referenceOnly,
@@ -597,10 +585,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                     shotId: input.shotId,
                     // No selection-pointer fallback: a payload without the field
                     // records null provenance rather than whatever is selected now.
-                    motionPromptVersionId:
-                      writtenMotionPromptVersionId ??
-                      input.motionPromptVersionId ??
-                      null,
+                    motionPromptVersionId: renderedPromptVersionId,
                     frameVersionId: input.frameVersionId ?? null,
                     // Provenance stamp: the mode this render ran in, independent
                     // of the null-`frameVersionId` encoding above.
@@ -811,9 +796,11 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
      * and the length shorten (#1754): both replace the prompt mid-run, and
      * both must leave the original in Versions for the user to revert to.
      *
-     * A primary render selects the rewrite; a variant-only render appends to
-     * history only — an alternate model's rescue must not move the primary
-     * shot's prompt out from under the primary clip.
+     * The rewrite is appended to history UNSELECTED (#1786): selecting it
+     * mid-run would clobber an edit the user made meanwhile and demote a
+     * regeneration they queued. A primary clip that wins its promote claim
+     * carries it into the selection at completion (`rescuedMotionPrompt`),
+     * and only if the shot still points at the prompt the run started from.
      *
      * A single-shot soften passes the rewritten prose and the version's
      * `audio` (#1773), so a later render still assembles dialogue and trailer
@@ -842,7 +829,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           inputHash: provenance.inputHash,
           analysisModel: provenance.analysisModel,
           createdBy: input.userId,
-          select: !input.variantOnly,
+          select: false,
         });
         if (!videoVersionId || !manifest) return manifest ?? null;
         const rescued = manifest.map((e) => ({
@@ -927,9 +914,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
               workflowRunId,
               sequenceId: input.sequenceId,
               userId: input.userId,
-              prompt: structured
-                ? (input.userEditText ?? structured.fullPrompt)
-                : prompt,
+              prompt: structured ? structured.fullPrompt : prompt,
               rejection: lastRejection ?? 'unknown rejection',
               analysisModelId:
                 getAnalysisModelById(provenance.analysisModel ?? '')?.id ??
@@ -1561,6 +1546,11 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           upload: { url: storageResult.url, path: storageResult.path },
           actorId: input.userId,
           variantOnly: input.variantOnly,
+          rescuedMotionPrompt: rescuedMotionPromptOf(
+            shotId,
+            manifest,
+            renderManifest
+          ),
           emit: async (event, payload) => {
             try {
               await getGenerationChannel(input.sequenceId).emit(event, payload);

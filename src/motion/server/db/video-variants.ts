@@ -88,6 +88,79 @@ export async function getPrimaryVideoByShotIds(
 }
 
 export function createVideoVariantsMethods(db: Database) {
+  /**
+   * Preconditions shared by `select` and `selectIfPendingPromoteIs`: the
+   * version is a finished render with its output, and it belongs to the shot's
+   * segment. Returns the version, the shot's sequence, and the segment's
+   * current pointer + claim.
+   */
+  const loadSelectable = async (shotId: string, versionId: string) => {
+    const [version] = await db
+      .select()
+      .from(videoVariants)
+      .where(eq(videoVariants.id, versionId));
+    if (!version) {
+      throw new Error(`VideoVariant ${versionId} not found`);
+    }
+    // Only a finished render may become a segment's chosen video — mirroring a
+    // pending/failed version would blank a good video.
+    if (version.status !== 'completed') {
+      throw new Error(
+        `VideoVariant ${versionId} is '${version.status}', not 'completed' — cannot select an unfinished video`
+      );
+    }
+    // A completed version must carry its output, or selecting it would
+    // project a null video over a good one.
+    if (!version.url || !version.storagePath) {
+      throw new Error(
+        `VideoVariant ${versionId} is 'completed' but missing its url/storagePath — cannot select`
+      );
+    }
+
+    const [shot] = await db
+      .select({
+        sequenceId: shots.sequenceId,
+        segmentId: shots.renderSegmentId,
+      })
+      .from(shots)
+      .where(eq(shots.id, shotId));
+    if (!shot) {
+      throw new Error(`Shot ${shotId} not found`);
+    }
+    const [segment] = await db
+      .select({
+        prev: renderSegments.selectedVideoVersionId,
+        pendingPromoteVersionId: renderSegments.pendingPromoteVersionId,
+      })
+      .from(renderSegments)
+      .where(eq(renderSegments.id, version.renderSegmentId));
+    // The shot was re-packed onto another segment since this render opened.
+    const foreignSegment = shot.segmentId !== version.renderSegmentId;
+    return { version, sequenceId: shot.sequenceId, segment, foreignSegment };
+  };
+
+  const selectedEvent = (
+    shotId: string,
+    sequenceId: string,
+    version: VideoVariant,
+    prevVersionId: string | null,
+    actorId: string | null
+  ) =>
+    buildEventInsert(db, {
+      sequenceId,
+      actorId,
+      kind: 'video.selected',
+      targetType: 'shot',
+      targetId: shotId,
+      summary: `Selected ${version.model} video`,
+      data: {
+        versionId: version.id,
+        model: version.model,
+        renderSegmentId: version.renderSegmentId,
+        prevVersionId,
+      },
+    });
+
   return {
     getById: async (versionId: string): Promise<VideoVariant | null> => {
       const result = await db
@@ -614,51 +687,20 @@ export function createVideoVariantsMethods(db: Database) {
       versionId: string,
       opts: { actorId: string | null }
     ): Promise<VideoVariant> => {
-      const [version] = await db
-        .select()
-        .from(videoVariants)
-        .where(eq(videoVariants.id, versionId));
-      if (!version) {
-        throw new Error(`VideoVariant ${versionId} not found`);
-      }
-      // Only a finished render may become a segment's chosen video — mirroring a
-      // pending/failed version would blank a good video.
-      if (version.status !== 'completed') {
-        throw new Error(
-          `VideoVariant ${versionId} is '${version.status}', not 'completed' — cannot select an unfinished video`
-        );
-      }
-      // A completed version must carry its output, or selecting it would
-      // project a null video over a good one.
-      if (!version.url || !version.storagePath) {
-        throw new Error(
-          `VideoVariant ${versionId} is 'completed' but missing its url/storagePath — cannot select`
-        );
-      }
-
-      const [shot] = await db
-        .select({
-          sequenceId: shots.sequenceId,
-          segmentId: shots.renderSegmentId,
-        })
-        .from(shots)
-        .where(eq(shots.id, shotId));
-      if (!shot) {
-        throw new Error(`Shot ${shotId} not found`);
-      }
-      if (shot.segmentId !== version.renderSegmentId) {
+      const { version, sequenceId, segment, foreignSegment } =
+        await loadSelectable(shotId, versionId);
+      if (foreignSegment) {
         throw new Error(
           `VideoVariant ${versionId} belongs to segment ${version.renderSegmentId}, not shot ${shotId}'s segment`
         );
       }
-
-      const [segment] = await db
-        .select({
-          prev: renderSegments.selectedVideoVersionId,
-          pendingPromoteVersionId: renderSegments.pendingPromoteVersionId,
-        })
-        .from(renderSegments)
-        .where(eq(renderSegments.id, version.renderSegmentId));
+      const event = selectedEvent(
+        shotId,
+        sequenceId,
+        version,
+        segment?.prev ?? null,
+        opts.actorId
+      );
 
       // Cancel auto-promote only when picking a *different* version than the
       // current primary (#1070). Completing a gen that selects its pending
@@ -676,40 +718,56 @@ export function createVideoVariantsMethods(db: Database) {
               updatedAt: new Date(),
             })
             .where(eq(renderSegments.id, version.renderSegmentId)),
-          buildEventInsert(db, {
-            sequenceId: shot.sequenceId,
-            actorId: opts.actorId,
-            kind: 'video.selected',
-            targetType: 'shot',
-            targetId: shotId,
-            summary: `Selected ${version.model} video`,
-            data: {
-              versionId,
-              model: version.model,
-              renderSegmentId: version.renderSegmentId,
-              prevVersionId: segment?.prev ?? null,
-            },
-          }),
+          event,
         ]);
       } else {
         await db.batch([
           buildRenderSegmentSelect(db, version.renderSegmentId, versionId),
-          buildEventInsert(db, {
-            sequenceId: shot.sequenceId,
-            actorId: opts.actorId,
-            kind: 'video.selected',
-            targetType: 'shot',
-            targetId: shotId,
-            summary: `Selected ${version.model} video`,
-            data: {
-              versionId,
-              model: version.model,
-              renderSegmentId: version.renderSegmentId,
-              prevVersionId: segment?.prev ?? null,
-            },
-          }),
+          event,
         ]);
       }
+      return version;
+    },
+
+    /**
+     * Promote a finished primary render only while the segment's auto-promote
+     * claim still points at it (#1070, #1786). The pointer move and the claim
+     * consumption are ONE guarded UPDATE, so a newer kickoff or a manual select
+     * that moved the claim — at any moment before this statement — wins, with
+     * no read-then-decide gap. Returns null when the claim had moved; the
+     * caller leaves the version in history.
+     */
+    selectIfPendingPromoteIs: async (
+      shotId: string,
+      versionId: string,
+      opts: { actorId: string | null }
+    ): Promise<VideoVariant | null> => {
+      const { version, sequenceId, segment, foreignSegment } =
+        await loadSelectable(shotId, versionId);
+      // History-only: promoting would move a segment the shot left.
+      if (foreignSegment) return null;
+      const claimed = await db
+        .update(renderSegments)
+        .set({
+          selectedVideoVersionId: versionId,
+          pendingPromoteVersionId: null,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(renderSegments.id, version.renderSegmentId),
+            eq(renderSegments.pendingPromoteVersionId, versionId)
+          )
+        )
+        .returning({ id: renderSegments.id });
+      if (claimed.length === 0) return null;
+      await selectedEvent(
+        shotId,
+        sequenceId,
+        version,
+        segment?.prev ?? null,
+        opts.actorId
+      );
       return version;
     },
 

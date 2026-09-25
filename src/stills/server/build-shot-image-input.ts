@@ -31,6 +31,7 @@ import {
   matchLocationsToScene,
 } from '@/shots/scene-matching';
 import { computeShotImageSceneHash } from '@/cast/server/workflows/sheet-snapshots';
+import { elementTokensOf } from '@/shots/input-hash';
 
 function sortedHashes(
   values: ReadonlyArray<string | null | undefined>
@@ -132,6 +133,7 @@ export async function buildShotImageWorkflowInput(opts: {
     elementReferenceHashes: sortedHashes(
       matchedElements.map((e) => e.imageUrl)
     ),
+    elementTokens: elementTokensOf(matchedElements),
   };
   const snapshotInputHash = await computeShotImageSceneHash(
     sceneSnapshot,
@@ -157,8 +159,6 @@ export async function buildShotImageWorkflowInput(opts: {
       ...locationReferences,
       ...elementReferences,
     ],
-    // No `userEditProvenance`: this builder serves the add-model path, which is
-    // never a user edit.
     variantOnly: opts.variantOnly ?? false,
   };
 }

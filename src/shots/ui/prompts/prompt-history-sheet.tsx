@@ -79,6 +79,7 @@ const SOURCE_LABEL: Record<PromptVariantSource, string> = {
   restored: 'Restored',
   softened: 'Softened',
   shortened: 'Shortened',
+  renamed: 'Renamed',
 };
 
 const SOURCE_VARIANT: Record<
@@ -91,6 +92,7 @@ const SOURCE_VARIANT: Record<
   restored: 'outline',
   softened: 'outline',
   shortened: 'outline',
+  renamed: 'outline',
 };
 
 const TITLE: Record<PromptHistoryMode, string> = {

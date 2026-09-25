@@ -177,15 +177,6 @@ describe('buildShotImageWorkflowInput — sceneId + core shape', () => {
     expect(typeof input?.snapshotInputHash).toBe('string');
     expect(input?.snapshotInputHash?.length).toBeGreaterThan(0);
   });
-
-  it('never records a user edit — this builder serves the add-model path', async () => {
-    const input = await buildShotImageWorkflowInput({
-      ...baseOpts,
-      shot: makeShot(),
-      imagePrompt: 'P',
-    });
-    expect(input?.userEditProvenance).toBeUndefined();
-  });
 });
 
 describe('buildShotImageWorkflowInput — reference images', () => {

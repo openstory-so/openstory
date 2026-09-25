@@ -65,7 +65,12 @@ export type PromotableFrameVariant = CompletedFrameVariant & {
 export function buildFrameImageSelection(
   db: Database,
   frameId: string,
-  version: PromotableFrameVariant
+  version: PromotableFrameVariant,
+  /**
+   * The pointer already moved in a claim-consuming UPDATE (#1786): mirror
+   * only while the frame still points at this version.
+   */
+  onlyIfSelected: boolean
 ) {
   return db
     .update(frames)
@@ -75,7 +80,14 @@ export function buildFrameImageSelection(
       imageError: version.error,
       updatedAt: new Date(),
     })
-    .where(eq(frames.id, frameId));
+    .where(
+      onlyIfSelected
+        ? and(
+            eq(frames.id, frameId),
+            eq(frames.selectedImageVersionId, version.id)
+          )
+        : eq(frames.id, frameId)
+    );
 }
 
 type FrameOrderBy = 'orderIndex' | 'createdAt' | 'updatedAt';
@@ -327,6 +339,30 @@ export function createFramesMethods(db: Database) {
             eq(frames.pendingPromoteVersionId, versionId)
           )
         );
+    },
+
+    /**
+     * Move the promote claim from `fromVersionId` to `toVersionId` only while
+     * `fromVersionId` still holds it (#1786) — a run handing its claim to a
+     * replacement row (the content-rejection model fallback) must not re-take
+     * a claim a newer kickoff or a manual select already moved.
+     */
+    movePendingPromoteVersionIdIf: async (
+      frameId: string,
+      fromVersionId: string,
+      toVersionId: string
+    ): Promise<boolean> => {
+      const moved = await db
+        .update(frames)
+        .set({ pendingPromoteVersionId: toVersionId, updatedAt: new Date() })
+        .where(
+          and(
+            eq(frames.id, frameId),
+            eq(frames.pendingPromoteVersionId, fromVersionId)
+          )
+        )
+        .returning({ id: frames.id });
+      return moved.length > 0;
     },
 
     delete: async (frameId: string): Promise<boolean> => {

@@ -40,6 +40,7 @@ import {
   matchLocationsToScene,
 } from '@/shots/scene-matching';
 import { computeShotImageSceneHash } from '@/cast/server/workflows/sheet-snapshots';
+import { elementTokensOf } from '@/shots/input-hash';
 
 /** The sequence-scoped rows reference matching needs, resolved once per run. */
 export type ShotImageRefs = Pick<
@@ -176,6 +177,19 @@ export async function prepareShotImageWorkflowInput(args: {
         scene,
       })
     : undefined;
+  // The edit is the user's act, so it lands NOW, at the click (#1786), and
+  // the run renders from that row by id. Written inside the run, it landed
+  // minutes later as a selected edit and could override a newer one.
+  const editedVersion = userEditProvenance
+    ? await scopedDb.framePromptVersions.write({
+        frameId: frame.id,
+        text: prompt,
+        source: 'user-edit',
+        inputHash: userEditProvenance.inputHash,
+        analysisModel: userEditProvenance.analysisModel,
+        createdBy: userId,
+      })
+    : null;
 
   const continuity = scene?.continuity;
 
@@ -269,6 +283,7 @@ export async function prepareShotImageWorkflowInput(args: {
     elementReferenceHashes: sortedHashes(
       matchedElements.map((e) => e.imageUrl)
     ),
+    elementTokens: elementTokensOf(matchedElements),
   };
   const snapshotInputHash = await computeShotImageSceneHash(
     sceneSnapshot,
@@ -287,11 +302,12 @@ export async function prepareShotImageWorkflowInput(args: {
     frameId: frame.id,
     // The version `prompt` was read from — the workflow stamps it on the
     // variant it writes rather than re-reading the pointer mid-run (#1070). A
-    // user edit supersedes it with the row the workflow writes.
+    // user edit is the row written above.
     promptVersionId:
-      promptVersionOverride === undefined
+      editedVersion?.id ??
+      (promptVersionOverride === undefined
         ? (selectedPrompt?.id ?? null)
-        : promptVersionOverride,
+        : promptVersionOverride),
     sequenceId: sequence.id,
     aspectRatio: sequence.aspectRatio,
     resolution: sequence.resolution,
@@ -302,6 +318,5 @@ export async function prepareShotImageWorkflowInput(args: {
       ...locationReferences,
       ...elementReferences,
     ],
-    userEditProvenance,
   };
 }

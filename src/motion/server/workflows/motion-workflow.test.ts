@@ -78,6 +78,7 @@ vi.doMock('@/platform/realtime', () => ({
   getGenerationChannel: () => ({ emit }),
 }));
 vi.doMock('./motion-workflow-persist', () => ({
+  rescuedMotionPromptOf: () => null,
   persistMotionCompletion: async () => ({ status: 'completed' }),
   persistMotionFailure: async () => {},
 }));
@@ -142,7 +143,6 @@ function makeStep(): WorkflowStep & { names: string[] } {
 function makeScopedDb(shotAudioClips: unknown[] = []) {
   const shotPromptVersions = {
     write: vi.fn(async () => ({ id: 'spv-soft' })),
-    setAudioClips: vi.fn(async () => {}),
   };
   const videoVariants = {
     appendVersion: vi.fn(
@@ -285,7 +285,7 @@ beforeEach(() => {
 });
 
 describe('MotionWorkflow content-flag rescue (#1373)', () => {
-  it('prompt flagged: softens, writes a selected version, repoints the manifest, resubmits on the same model', async () => {
+  it('prompt flagged: softens, appends an unselected version, repoints the manifest, resubmits on the same model', async () => {
     rejectReseeds(PROMPT);
     const { scopedDb, shotPromptVersions, videoVariants } = makeScopedDb();
     const step = makeStep();
@@ -324,7 +324,8 @@ describe('MotionWorkflow content-flag rescue (#1373)', () => {
         usesStartFrame: true,
         inputHash: 'ctx-hash',
         analysisModel: 'anthropic/claude-haiku-4.5',
-        select: true,
+        // Unselected (#1786): the clip carries it in at promote.
+        select: false,
       })
     );
     expect(videoVariants.update).toHaveBeenCalledWith('vv-1', {
@@ -698,6 +699,57 @@ describe('MotionWorkflow reference-only provenance', () => {
   });
 });
 
+describe('MotionWorkflow prompt provenance (#1786)', () => {
+  it('writes no prompt version and records the version the trigger pinned', async () => {
+    // A user's edit is written by the trigger at the click; the run renders
+    // from that row by id and never writes a selected prompt of its own.
+    const { scopedDb, shotPromptVersions, videoVariants } = makeScopedDb();
+
+    await makeWorkflow().runBody(
+      makeEvent({ motionPromptVersionId: 'spv-user-edit' }),
+      makeStep(),
+      scopedDb
+    );
+
+    expect(shotPromptVersions.write).not.toHaveBeenCalled();
+    expect(videoVariants.appendVersion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        manifest: [
+          expect.objectContaining({ motionPromptVersionId: 'spv-user-edit' }),
+        ],
+      })
+    );
+  });
+
+  it('a run queued before #1786 still writes the edit its payload carries', async () => {
+    const { scopedDb, shotPromptVersions, videoVariants } = makeScopedDb();
+
+    await makeWorkflow().runBody(
+      makeEvent({
+        motionPromptVersionId: 'spv-before-edit',
+        userEditProvenance: { inputHash: 'h', analysisModel: 'm' },
+        userEditText: 'what the user typed',
+      }),
+      makeStep(),
+      scopedDb
+    );
+
+    expect(shotPromptVersions.write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: 'what the user typed',
+        source: 'user-edit',
+      })
+    );
+    expect(videoVariants.appendVersion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        manifest: [
+          expect.objectContaining({ motionPromptVersionId: 'spv-soft' }),
+        ],
+      })
+    );
+  });
+});
+
 describe('MotionWorkflow onFailure observation', () => {
   it('records the resolved via, not a hardcoded fal', async () => {
     mockResolveMotionVia.mockResolvedValueOnce('google');
@@ -959,7 +1011,8 @@ describe('fresh MiniMax packed videos (#1720)', () => {
               members.map((member) => [member.shotId, member.duration * 1000])
             ),
             audioSecondsByShot: new Map(),
-          }
+          },
+          new Map()
         )
       ).toBe(false);
     }
@@ -1110,7 +1163,7 @@ describe('recording its own dialogue (#1657)', () => {
     // clip the shot holds NOW is the truth.
     mockRecordDialogue.mockReset();
     mockRecordDialogue.mockResolvedValue({});
-    const { scopedDb, shotPromptVersions } = makeScopedDb([recordedClip]);
+    const { scopedDb, videoVariants } = makeScopedDb([recordedClip]);
 
     await makeWorkflow().runBody(
       makeEvent({ voicedLines: [own] }),
@@ -1118,9 +1171,13 @@ describe('recording its own dialogue (#1657)', () => {
       scopedDb
     );
 
-    expect(shotPromptVersions.setAudioClips).toHaveBeenCalledWith(
-      expect.anything(),
-      [recordedClip]
+    // The manifest is the one record of what the clip spoke (#1786).
+    expect(videoVariants.appendVersion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        manifest: [
+          expect.objectContaining({ audioClipIds: [recordedClip.id] }),
+        ],
+      })
     );
   });
 });

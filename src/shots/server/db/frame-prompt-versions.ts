@@ -20,7 +20,7 @@ import type { VisualPromptInputHash } from '@/shots/input-hash';
 import type { Database } from '@/platform/server/db/client';
 import { framePromptVersions, frames, user } from '@/platform/server/db/schema';
 import type { FramePromptVersion } from '@/platform/server/db/schema';
-import { and, desc, eq, gt, inArray, isNotNull, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, ne, sql } from 'drizzle-orm';
 import { pageOf } from '@/platform/server/db/read-page';
 import type { PageOptions } from '@/platform/server/db/read-page';
 import { getLogger } from '@/platform/logger';
@@ -36,6 +36,13 @@ type WriteFramePromptVersionBase = {
   text: string;
   components?: VisualPromptComponents | null;
   createdBy?: string | null;
+  /**
+   * `false`: append to history only — the frame keeps its selected prompt.
+   * A content-checker soften (#1272) writes its rewrite this way (#1786): the
+   * still it renders carries the prompt into the selection when that still
+   * wins its promote claim (`frameVariants.select` restores its linked prompt).
+   */
+  select?: boolean;
 };
 
 /**
@@ -181,20 +188,17 @@ export function createFramePromptVersionsMethods(db: Database) {
       .where(eq(framePromptVersions.id, claimId))
       .limit(1);
     if (!row || row.pendingInputHash === null) return false;
-    // ULID ids order by creation time: any completed row newer than the claim
-    // is a post-click edit (or a later run) that must keep the mirror.
-    const [newer] = await db
-      .select({ id: framePromptVersions.id })
-      .from(framePromptVersions)
-      .where(
-        and(
-          eq(framePromptVersions.frameId, frameId),
-          eq(framePromptVersions.status, 'completed'),
-          gt(framePromptVersions.id, claimId)
-        )
-      )
+    // ULID ids order by creation time: a selection pointing at a row newer
+    // than the claim is a post-click edit (or a later run) that must keep the
+    // mirror. The POINTER, not any newer row (#1786): a content soften appends
+    // its rewrite unselected, and history the user never saw selected must
+    // not cancel a regeneration they queued.
+    const [frame] = await db
+      .select({ selected: frames.selectedImagePromptVersionId })
+      .from(frames)
+      .where(eq(frames.id, frameId))
       .limit(1);
-    return !newer;
+    return !(frame?.selected && frame.selected > claimId);
   };
 
   const methods = {
@@ -247,6 +251,7 @@ export function createFramePromptVersionsMethods(db: Database) {
       if (!version) {
         throw new Error('Failed to insert frame prompt version');
       }
+      if (input.select === false) return version;
 
       // Mirror the edit onto the frame, then revoke in-flight claims' mirror
       // rights so a concurrent completePendingAiVersion cannot clobber this

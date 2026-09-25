@@ -143,7 +143,8 @@ export const previewShotPromptsFn = createServerFn({ method: 'POST' })
       elements,
       locations,
       byteplusEnabled: isBytePlusConfigured(),
-      audioClips: selectedMotion?.audioClips ?? shot.audioClips ?? [],
+      // The shot's working set is what the next render sends (#1786).
+      audioClips: shot.audioClips ?? [],
       packedMembers: packedPreview?.members,
       packedDurationShotNumbers: packedPreview?.durationShotNumbers,
     });
