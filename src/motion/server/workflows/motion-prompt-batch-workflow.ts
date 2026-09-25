@@ -238,11 +238,7 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
             // lives on the `shot.motionPrompt` mirror, not in metadata.
             await getGenerationChannel(sequenceId).emit(
               'generation.shot:updated',
-              {
-                shotId: item.mapping.shotId,
-                updateType: 'motion-prompt',
-                metadata: item.scene,
-              }
+              { shotId: item.mapping.shotId, updateType: 'motion-prompt' }
             );
           }
           out.push({

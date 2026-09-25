@@ -239,14 +239,10 @@ export class MotionPromptWorkflow extends OpenStoryWorkflowEntrypoint<MotionProm
           }
 
           // The prompt lives on `shot.motionPrompt` (mirror) now, not metadata;
-          // carry the base scene so the client refreshes the shot on this event.
+          // the client refreshes the shot on this event.
           await getGenerationChannel(sequenceId).emit(
             'generation.shot:updated',
-            {
-              shotId,
-              updateType: 'motion-prompt',
-              metadata: scene,
-            }
+            { shotId, updateType: 'motion-prompt' }
           );
 
           if (input.emitStreaming) {

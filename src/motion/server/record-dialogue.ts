@@ -144,7 +144,7 @@ export async function recordDialogue(
         Object.keys(claims).map((shotId) =>
           getGenerationChannel(args.sequenceId).emit(
             'generation.shot:updated',
-            { shotId, updateType: 'dialogue-audio', metadata: null }
+            { shotId, updateType: 'dialogue-audio' }
           )
         )
       );
@@ -436,11 +436,7 @@ async function recordClaimed(
         claimed.map((shotId) =>
           getGenerationChannel(args.sequenceId).emit(
             'generation.shot:updated',
-            {
-              shotId,
-              updateType: 'dialogue-audio',
-              metadata: null,
-            }
+            { shotId, updateType: 'dialogue-audio' }
           )
         )
       );

@@ -464,15 +464,10 @@ export class FramePromptWorkflow extends OpenStoryWorkflowEntrypoint<FramePrompt
           }
 
           // The generated prompt now lives on `frame.imagePrompt` (mirror), not
-          // in `metadata`; carry the base scene so the client refreshes the shot
-          // (and re-projects `imagePrompt`) on this event.
+          // in `metadata`; the client refreshes the shot on this event.
           await getGenerationChannel(sequenceId).emit(
             'generation.shot:updated',
-            {
-              shotId,
-              updateType: 'visual-prompt',
-              metadata: scene,
-            }
+            { shotId, updateType: 'visual-prompt' }
           );
 
           // Signal end-of-stream to the per-shot channel so the UI can swap

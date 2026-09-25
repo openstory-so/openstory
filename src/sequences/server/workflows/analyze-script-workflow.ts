@@ -1071,11 +1071,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
             // prompt lives on the `frame.imagePrompt` mirror, not in metadata.
             await getGenerationChannel(sequenceId).emit(
               'generation.shot:updated',
-              {
-                shotId: item.mapping.shotId,
-                updateType: 'visual-prompt',
-                metadata: item.scene,
-              }
+              { shotId: item.mapping.shotId, updateType: 'visual-prompt' }
             );
           }
         });

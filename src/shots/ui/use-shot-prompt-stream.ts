@@ -12,7 +12,6 @@ export type ShotPromptKind = 'visual' | 'motion';
 
 const historyPayloadSchema = z.object({
   promptType: z.enum(['visual', 'motion']),
-  delta: z.string().optional(),
   error: z.string().optional(),
 });
 
@@ -92,9 +91,10 @@ function reducer(
  *
  * The hook is gated on `enabled` so we only pay realtime + history-fetch
  * costs while the shot is actually being viewed — unsubscribe on nav-away.
- * On re-mount, channel history replays via `getChannelHistoryFn`, rebuilding
- * the streaming text (or terminal state) as if the user had been on the
- * shot the whole time.
+ * On re-mount, channel history replays via `getChannelHistoryFn`, restoring
+ * the terminal state. Streamed deltas are not persisted (#1811), so a
+ * remount mid-stream shows text from the next live delta onward and the
+ * persisted prompt on completion.
  */
 export function useShotPromptStream(
   shotId: string | undefined,
@@ -106,9 +106,9 @@ export function useShotPromptStream(
   const active = enabled && Boolean(channelId);
   const canReplayHistory = active && Boolean(user);
 
-  // Replay history on mount so a user who navigates back mid-regen sees the
-  // accumulated text and the right status. Re-keys on shotId so switching
-  // shots clears and re-fetches.
+  // Replay history on mount so a user who navigates back after a regen sees
+  // the right status. Re-keys on shotId so switching shots clears and
+  // re-fetches.
   useEffect(() => {
     if (!canReplayHistory || !channelId) {
       dispatch({ type: 'RESET' });
@@ -128,16 +128,7 @@ export function useShotPromptStream(
             continue;
           }
           const parsed = result.data;
-          if (
-            evt.event === 'shotPrompt.streaming' &&
-            typeof parsed.delta === 'string'
-          ) {
-            dispatch({
-              type: 'DELTA',
-              promptType: parsed.promptType,
-              delta: parsed.delta,
-            });
-          } else if (evt.event === 'shotPrompt.completed') {
+          if (evt.event === 'shotPrompt.completed') {
             dispatch({ type: 'COMPLETED', promptType: parsed.promptType });
           } else if (
             evt.event === 'shotPrompt.failed' &&

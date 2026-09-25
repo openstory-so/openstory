@@ -144,7 +144,9 @@ export const realtimeSchema = {
         'audio-design',
         'music-design',
       ]),
-      metadata: z.unknown(), // Full Scene object with prompts
+      // No payload beyond the id: the client refetches (#1067). The whole
+      // Scene used to ride here and every emit is persisted to history, which
+      // is what OOMed the replay (#1811).
     }),
 
     // Image generation progress
@@ -500,6 +502,14 @@ type RealtimeChannelApi = {
   history: () => Promise<ChannelHistoryMessage[]>;
 };
 
+/**
+ * Events that are only useful live. They are broadcast but never written to
+ * the channel's history (#1811).
+ */
+const TRANSIENT_EVENTS: ReadonlySet<SchemaEventPath> = new Set([
+  'shotPrompt.streaming',
+]);
+
 /** Resolve the Durable Object stub for a channel id. */
 function channelStub(channel: string) {
   // getEnv()'s type is platform-dependent; the Cloudflare runtime guarantees
@@ -519,7 +529,11 @@ function realtimeChannel(channel: string): RealtimeChannelApi {
           {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ event, data }),
+            body: JSON.stringify({
+              event,
+              data,
+              transient: TRANSIENT_EVENTS.has(event) || undefined,
+            }),
           }
         );
         if (!response.ok) {

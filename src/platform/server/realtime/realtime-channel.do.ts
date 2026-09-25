@@ -24,7 +24,12 @@ import { getLogger } from '@/platform/logger';
  *   stream if it dies. Progress replay is a separate `/history` fetch on page
  *   refresh / hook remount.
  * - **History replay**: events are persisted in the DO's own SQLite storage so a
- *   page refresh mid-generation can replay progress (`/history`). `/emit` deletes
+ *   page refresh mid-generation can replay progress (`/history`). A replay is
+ *   bounded to the newest `HISTORY_MAX_ROWS` rows and stops once
+ *   `HISTORY_REPLAY_MAX_BYTES` of `data` are in hand (#1811): the caller's
+ *   isolate parses and re-serializes whatever comes back, so an unbounded read
+ *   of a channel full of large rows OOMs it. A `transient` emit (streamed LLM
+ *   deltas) is broadcast but never stored. `/emit` deletes
  *   a PK prefix of at most `PRUNE_BATCH_ROWS` so one-row emits stay at the cap.
  *   An alarm set for the oldest row's expiry TTL-deletes up to `PRUNE_BATCH_ROWS` expired rows and the
  *   same PK-prefix cap batch; leftovers reschedule in `PRUNE_CATCHUP_MS`.
@@ -42,6 +47,8 @@ const logger = getLogger(['openstory', 'realtime', 'channel']);
 const HISTORY_EXPIRE_SECS = 60 * 60 * 24 * 30;
 /** Hard cap on stored rows per channel so a chatty channel can't grow without bound. */
 export const HISTORY_MAX_ROWS = 2000;
+/** Newest-first byte budget of `data` one `/history` replay returns (#1811). */
+export const HISTORY_REPLAY_MAX_BYTES = 2 * 1024 * 1024;
 /**
  * Per-subscriber pending-chunk cap. We do not use a TransformStream writer:
  * Workers stub `WritableStreamDefaultWriter.desiredSize` to 1/0/null, so it
@@ -58,7 +65,12 @@ export const PRUNE_BATCH_ROWS = 1_000;
 /** SSE keepalive cadence — keeps intermediaries from dropping an idle stream. */
 const PING_INTERVAL_MS = 25_000;
 
-type EmitBody = { event: string; data: unknown };
+type EmitBody = {
+  event: string;
+  data: unknown;
+  /** Broadcast only — not written to history (#1811). */
+  transient?: boolean;
+};
 
 type HistoryRow = { seq: number; event: string; data: string; ts: number };
 
@@ -121,6 +133,15 @@ export class RealtimeChannel extends DurableObject {
   ): Promise<Response> {
     const body = await request.json<EmitBody>();
     const ts = Date.now();
+    if (body.transient) {
+      this.broadcast({
+        id: String(ts),
+        event: body.event,
+        channel,
+        data: body.data,
+      });
+      return new Response(null, { status: 204 });
+    }
     const row = this.ctx.storage.sql
       .exec<{ seq: number }>(
         'INSERT INTO events (event, data, ts) VALUES (?, ?, ?) RETURNING seq',
@@ -138,10 +159,23 @@ export class RealtimeChannel extends DurableObject {
     return new Response(null, { status: 204 });
   }
 
+  /**
+   * Newest rows first until the byte budget is spent, returned oldest-first.
+   * The window sum runs inside SQLite, so only the rows returned ever reach
+   * the JS heap. The newest row is always included even if it alone exceeds
+   * the budget.
+   */
   private handleHistory(channel: string): Response {
     const rows = this.ctx.storage.sql
       .exec<HistoryRow>(
-        'SELECT seq, event, data, ts FROM events ORDER BY seq ASC'
+        `SELECT seq, event, data, ts FROM (
+           SELECT seq, event, data, ts,
+             SUM(LENGTH(CAST(data AS BLOB))) OVER (ORDER BY seq DESC)
+               - LENGTH(CAST(data AS BLOB)) AS bytes_before
+           FROM events ORDER BY seq DESC LIMIT ?
+         ) WHERE bytes_before < ? ORDER BY seq ASC`,
+        HISTORY_MAX_ROWS,
+        HISTORY_REPLAY_MAX_BYTES
       )
       .toArray();
 
