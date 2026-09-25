@@ -261,6 +261,12 @@ export type SegmentShotInput = {
   id: string;
   renderSegmentId: string | null;
   selectedMotionPromptVersionId: string | null;
+  /**
+   * The rows the selected motion prompt was renamed from, nearest first
+   * (#1827): a token rename is a label change, so a clip rendered from any
+   * of them is still current. `[]` when the selection is not a rename.
+   */
+  motionPromptRenamedFrom: readonly string[];
   audioClips: readonly Pick<MotionAudioClip, 'id' | 'durationSeconds'>[] | null;
   durationMs: number | null;
   /**
@@ -306,7 +312,8 @@ export function isSelectedVersionStale(
   selected: SegmentVersionInput | undefined,
   currentMotionByShot: ReadonlyMap<string, string | null>,
   currentFrameByShot: ReadonlyMap<string, string | null>,
-  live: LiveShotInputs
+  live: LiveShotInputs,
+  renamedFromByShot: ReadonlyMap<string, readonly string[]>
 ): boolean {
   if (!selected) return false;
   return selected.manifest.some((entry, index) => {
@@ -327,8 +334,16 @@ export function isSelectedVersionStale(
       !modelTakesDialogueAudio(selected.model)
         ? null
         : (live.audioSourceKeyByShot.get(entry.shotId) ?? null);
+    const motionMoved =
+      entry.motionPromptVersionId !== currentMotion &&
+      !(
+        entry.motionPromptVersionId != null &&
+        renamedFromByShot
+          .get(entry.shotId)
+          ?.includes(entry.motionPromptVersionId)
+      );
     return (
-      entry.motionPromptVersionId !== currentMotion ||
+      motionMoved ||
       entry.frameVersionId !== currentFrame ||
       ((entry.audioSourceKey ?? null) !== currentAudio &&
         !legacyPackedAudioMatches(selected, index, live)) ||
@@ -460,11 +475,13 @@ export function assembleSequenceSegments(input: {
   const orderedShots = input.shots;
   const shotIdsBySegment = new Map<string, string[]>();
   const currentMotionByShot = new Map<string, string | null>();
+  const renamedFromByShot = new Map<string, readonly string[]>();
   const audioClipIdsByShot = new Map<string, readonly string[]>();
   const durationMsByShot = new Map<string, number | null>();
   const audioSecondsByShot = new Map<string, number>();
   for (const shot of orderedShots) {
     currentMotionByShot.set(shot.id, shot.selectedMotionPromptVersionId);
+    renamedFromByShot.set(shot.id, shot.motionPromptRenamedFrom);
     const clips = shot.audioClips ?? [];
     audioClipIdsByShot.set(
       shot.id,
@@ -533,7 +550,8 @@ export function assembleSequenceSegments(input: {
         selected,
         currentMotionByShot,
         currentFrameByShot,
-        live
+        live,
+        renamedFromByShot
       ),
     };
   });

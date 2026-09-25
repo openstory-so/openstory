@@ -18,18 +18,32 @@ import {
  * missing from the maps reads as stale. A shot regrouped into a new segment
  * would otherwise mark its old segment's unchanged clip stale.
  */
+/** The rows `id` was renamed from, nearest first (#1827). */
+export function renamedFrom(
+  id: string | null,
+  renames: ReadonlyMap<string, string>
+): string[] {
+  const chain: string[] = [];
+  for (let at = id && renames.get(id); at; at = renames.get(at)) {
+    if (chain.includes(at)) break;
+    chain.push(at);
+  }
+  return chain;
+}
+
 export async function loadSequenceSegments(
   scopedDb: ScopedDb,
   sequence: StartFrameSequence & { id: string },
   shots: readonly Shot[]
 ) {
-  const [segments, versions, frames, scriptBySceneId, characters] =
+  const [segments, versions, frames, scriptBySceneId, characters, renames] =
     await Promise.all([
       scopedDb.renderSegments.listBySequence(sequence.id),
       scopedDb.videoVariants.listBySequence(sequence.id),
       scopedDb.frames.listBySequence(sequence.id),
       loadSceneContextBySequence(scopedDb, sequence.id),
       scopedDb.characters.list(sequence.id),
+      scopedDb.shotPromptVersions.listRenameLinksBySequence(sequence.id),
     ]);
   // What each shot would render from NOW beyond its two pointers (#1657):
   // dialogue key and clip ids, reference provenance, duration.
@@ -50,6 +64,10 @@ export async function loadSequenceSegments(
     shots: shots.map((shot) => ({
       ...shot,
       rendersReferenceOnly: rendersReferenceOnly(shot, sequence),
+      motionPromptRenamedFrom: renamedFrom(
+        shot.selectedMotionPromptVersionId,
+        renames
+      ),
     })),
     frames,
     live,
