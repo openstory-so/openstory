@@ -145,6 +145,11 @@ export const shotPromptVersions = snakeCase.table(
     }).$type<MotionAudio>(),
 
     source: text().$type<PromptVariantSource>().notNull(),
+    // A `renamed` row's parent: the row whose text it rewrote (#1827). A
+    // clip rendered from the parent stays fresh when the rename takes the
+    // selection, since a token is a label. Set on every `renamed` row, null
+    // on every other source.
+    renamedFromId: text(),
 
     // DEAD since #1786 — neither written nor read. It was a third copy of
     // render clip provenance, which lives on the video manifest's

@@ -207,6 +207,7 @@ function buildScopedDb(
     },
     shotPromptVersions: {
       getSelectedMotionByShots: () => Promise.resolve(new Map()),
+      listRenameLinksBySequence: () => Promise.resolve(new Map()),
     },
     characters: {
       listWithSheets: () => Promise.resolve([]),
