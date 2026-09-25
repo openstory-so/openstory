@@ -75,7 +75,6 @@ const BASE: PipelineState = {
 function imageHash(state: PipelineState): Promise<string> {
   return computeShotImageSceneHash(
     {
-      sceneId: 'scene-1',
       visualPrompt: state.visualPromptText,
       characterSheetHashes: state.characterSheetHashes,
       locationSheetHashes: state.locationSheetHashes,

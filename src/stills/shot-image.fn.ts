@@ -41,6 +41,8 @@ import type {
   UpscaleShotVariantWorkflowInput,
 } from '@/platform/server/workflow/types';
 import { matchCharactersToShotImage } from '@/shots/scene-matching';
+import { resolveSceneShotImageReferences } from '@/cast/server/workflows/sheet-snapshots';
+import { shotImageInputHash } from '@/shots/input-hash';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
@@ -289,11 +291,13 @@ export const generateShotVariantsFn = createServerFn({ method: 'POST' })
 
     const gridConfig = getVariantGridConfig(sequence.aspectRatio);
 
-    const [allCharacters, allLocations, selectedPrompt] = await Promise.all([
-      context.scopedDb.characters.listWithSheets(sequence.id),
-      context.scopedDb.sequenceLocations.listWithReferences(sequence.id),
-      context.scopedDb.framePromptVersions.getSelected(frame.id),
-    ]);
+    const [allCharacters, allLocations, allElements, selectedPrompt] =
+      await Promise.all([
+        context.scopedDb.characters.listWithSheets(sequence.id),
+        context.scopedDb.sequenceLocations.listWithReferences(sequence.id),
+        context.scopedDb.sequenceElements.list(sequence.id),
+        context.scopedDb.framePromptVersions.getSelected(frame.id),
+      ]);
     const characterReferences = buildCharacterReferenceImages(
       matchCharactersToShotImage(allCharacters, {
         characterTags: scene?.continuity?.characterTags,
@@ -306,6 +310,14 @@ export const generateShotVariantsFn = createServerFn({ method: 'POST' })
       scene?.metadata?.location ?? '',
       scene?.originalScript.extract
     );
+
+    const refs = resolveSceneShotImageReferences({
+      scene,
+      visualPrompt: selectedPrompt?.text,
+      characters: allCharacters,
+      locations: allLocations,
+      elements: allElements,
+    });
 
     const workflowInput: ShotVariantWorkflowInput = {
       userId: user.id,
@@ -324,6 +336,15 @@ export const generateShotVariantsFn = createServerFn({ method: 'POST' })
       seed: data.seed,
       characterReferences,
       locationReferences,
+      // The same reference hashes the staleness check re-derives (#712).
+      tileHashInput: selectedPrompt?.text
+        ? {
+            visualPrompt: selectedPrompt.text,
+            characterSheetHashes: refs.characterSheetHashes,
+            locationSheetHashes: refs.locationSheetHashes,
+            elementReferenceHashes: refs.elementReferenceHashes,
+          }
+        : null,
     };
 
     const workflowRunId = await triggerWorkflow(
@@ -456,6 +477,9 @@ export const selectShotVariantFn = createServerFn({ method: 'POST' })
       model: upscaleModel,
       sourceVariantId: sheet.id,
       promptVersionId: frame.selectedImagePromptVersionId,
+      // The hash the grid was generated against (#712), so the tile reads
+      // stale after a prompt edit. A pre-#712 sheet has none: 'untracked'.
+      inputHash: sheet.inputHash ? shotImageInputHash(sheet.inputHash) : null,
       status: 'generating',
       url: cropResult.url,
       storagePath: cropResult.path || null,

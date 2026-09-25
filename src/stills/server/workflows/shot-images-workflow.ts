@@ -382,6 +382,15 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
                 elementRefs.length > 0 ? elementRefs : undefined,
               aspectRatio,
               model,
+              tileHashInput: sceneSnapshot
+                ? {
+                    visualPrompt: sceneSnapshot.visualPrompt,
+                    characterSheetHashes: sceneSnapshot.characterSheetHashes,
+                    locationSheetHashes: sceneSnapshot.locationSheetHashes,
+                    elementReferenceHashes:
+                      sceneSnapshot.elementReferenceHashes,
+                  }
+                : null,
             },
             {
               // Replay-stable: a retry of this step.do must reuse the
