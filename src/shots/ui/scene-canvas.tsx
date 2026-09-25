@@ -11,7 +11,7 @@ import { Skeleton } from '@/ui/shadcn/skeleton';
 import type { SceneWithScript } from './use-scenes';
 import { useSetSequenceMusic } from '@/sequences/ui/use-sequences';
 import type { TabValue } from './scene-script-prompts';
-import type { TextToImageModel } from '@/models/models';
+import { safeImageToVideoModel, type TextToImageModel } from '@/models/models';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import {
   selectionScope,
@@ -166,7 +166,12 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
         aspectRatio={aspectRatio}
         below={
           selectedShot ? (
-            <ShotDialogueUnderVideo shot={selectedShot} />
+            <ShotDialogueUnderVideo
+              shot={selectedShot}
+              videoModel={safeImageToVideoModel(
+                selectedShot.video?.model ?? sequence?.videoModel
+              )}
+            />
           ) : undefined
         }
       >
