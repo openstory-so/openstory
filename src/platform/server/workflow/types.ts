@@ -14,6 +14,10 @@ import type { AnalysisModelId } from '@/models/models.config';
 import type { VoicedDialogueLine } from '@/motion/dialogue-tts';
 import type { SceneVoicedLine } from '@/shots/shot-dialogue';
 import type {
+  DialogueTakeBase,
+  DialogueTakeLine,
+} from '@/motion/server/record-dialogue-take';
+import type {
   AssemblableMotionPrompt,
   CharacterBibleEntry,
   ElementBibleEntry,
@@ -544,6 +548,33 @@ export interface DialogueAudioWorkflowInput extends UserWorkflowContext {
   maxDurationSeconds: number;
   /** Model that rewrites an over-long section. Defaults to the analysis default. */
   analysisModelId?: AnalysisModelId;
+}
+
+/**
+ * One line performed at the mic, in the speaker's voice (#1802). Everything
+ * the run needs is snapshotted here: the line, the key of the shot's lines,
+ * and the shot's current reading the line is spliced into (null: the shot
+ * has one voiced line and no reading, so the take is the whole recording).
+ */
+export interface DialogueTakeWorkflowInput extends UserWorkflowContext {
+  sequenceId: string;
+  shotId: string;
+  /** `<bucket>/<path>` of the user's take (a PCM WAV). */
+  takeStorageKey: string;
+  line: DialogueTakeLine;
+  /** `dialogueClipSourceKey` of the shot's AUTHORED voiced lines. */
+  sourceKey: string;
+  /** The `shot_dialogue_versions` row spoken; null when derived. */
+  dialogueVersionId: string | null;
+  base:
+    | (DialogueTakeBase & {
+        spokenLines: { index: number; text: string }[] | null;
+      })
+    | null;
+  /** Provider per-file floor (H3 Max 2s). */
+  minDurationSeconds?: number;
+  /** Longest clip the sequence's model carries (`dialogueAudioMaxSeconds`). */
+  maxDurationSeconds: number;
 }
 
 export interface DialogueAudioWorkflowResult {

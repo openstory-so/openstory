@@ -120,6 +120,7 @@ const recording = (
   inputHash: 'hash-1',
   characterCount: 42,
   workflowRunId: 'run-1',
+  adoptedAs: 'recorded',
   sections,
   ...overrides,
 });
