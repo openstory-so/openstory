@@ -50,7 +50,7 @@ export const SceneScriptTab: React.FC<SceneScriptTabProps> = ({
   const savedScript = scriptText ?? '';
   const currentScript = editedScript ?? savedScript;
   const isDirty = editedScript !== undefined && editedScript !== savedScript;
-  const canSave = isDirty && !!sceneId && !isSaving;
+  const canSave = isDirty && !!sceneId && scriptText !== undefined && !isSaving;
 
   // A multi-scene selection has no single script to edit. Say so, rather than
   // showing an empty editor that reads as "this scene has no script".
@@ -60,6 +60,17 @@ export const SceneScriptTab: React.FC<SceneScriptTabProps> = ({
         Select a single scene to edit its script, or use the Script view to edit
         them all in one document.
       </p>
+    );
+  }
+
+  if (scriptText === undefined) {
+    return (
+      <div className="space-y-3">
+        <p className="py-6 text-center text-sm text-muted-foreground">
+          This scene has no script to edit.
+        </p>
+        {dialogue}
+      </div>
     );
   }
 

@@ -1,5 +1,5 @@
 import { dbSceneId } from './scene-id';
-import { NotFoundError } from '@/platform/errors';
+import { NotFoundError, ValidationError } from '@/platform/errors';
 import { plainSceneTitle } from '@/platform/markdown-plain';
 import {
   composeSequenceScriptFromDb,
@@ -81,7 +81,7 @@ export const updateSceneScriptFn = createServerFn({ method: 'POST' })
     const selected = await scopedDb.sceneScriptVersions.getSelected(sceneId);
     const currentScript = selected?.content;
     if (!currentScript) {
-      throw new Error('Scene has no script to edit');
+      throw new ValidationError('Scene has no script to edit');
     }
     const scriptChanged = data.extract !== currentScript.extract;
 

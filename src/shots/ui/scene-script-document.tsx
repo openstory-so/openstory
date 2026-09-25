@@ -37,6 +37,7 @@ export type ScriptBlock = {
   sceneNumber: number;
   title: string;
   extract: string;
+  hasScript: boolean;
 };
 
 /** The scene fields the document reads — kept minimal so the block builder is
@@ -58,6 +59,7 @@ export function buildScriptBlocks(
       sceneNumber: index + 1,
       title: plainSceneTitle(scene.title),
       extract: scene.script?.extract ?? '',
+      hasScript: scene.script != null,
     }));
 }
 
@@ -105,9 +107,11 @@ const SceneScriptBlock: React.FC<SceneScriptBlockProps> = ({
   const saveScript = useSaveSceneScript(sequenceId);
 
   const current = draft ?? block.extract;
-  const isDirty = draft !== undefined && draft !== block.extract;
+  const isDirty =
+    block.hasScript && draft !== undefined && draft !== block.extract;
 
   const handleSave = () => {
+    if (!block.hasScript) return;
     saveScript.mutate(
       { sceneId: block.sceneId, extract: current },
       {
@@ -160,7 +164,7 @@ const SceneScriptBlock: React.FC<SceneScriptBlockProps> = ({
         <div className="ml-auto flex items-center gap-2">
           <VoiceInputButton
             label="scene script"
-            disabled={saveScript.isPending}
+            disabled={!block.hasScript || saveScript.isPending}
             {...voice}
           />
         </div>
@@ -197,9 +201,13 @@ const SceneScriptBlock: React.FC<SceneScriptBlockProps> = ({
         ref={editorRef}
         value={current}
         onValueChange={setDraft}
-        placeholder="Enter the script text for this scene… (type @ to insert elements, cast, locations)"
+        placeholder={
+          !block.hasScript
+            ? 'This scene has no script'
+            : 'Enter the script text for this scene… (type @ to insert elements, cast, locations)'
+        }
         className="min-h-[120px]"
-        disabled={saveScript.isPending}
+        disabled={!block.hasScript || saveScript.isPending}
         mentionItems={mentionItems}
         onMentionRename={onMentionRename}
       />
