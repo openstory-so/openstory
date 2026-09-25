@@ -260,6 +260,7 @@ export class RegenerateShotsWorkflow extends OpenStoryWorkflowEntrypoint<Regener
                   characterSheetHashes: snapshot.characterSheetHashes,
                   locationSheetHashes: snapshot.locationSheetHashes,
                   elementReferenceHashes: snapshot.elementReferenceHashes,
+                  elementTokens: snapshot.elementTokens,
                 },
               },
               {

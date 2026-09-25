@@ -265,6 +265,7 @@ export async function mergeRecastSheetIntoSnapshots(params: {
           characterSheetHashes,
           locationSheetHashes,
           elementReferenceHashes: snapshot.elementReferenceHashes,
+          elementTokens: snapshot.elementTokens,
         }),
       };
     })

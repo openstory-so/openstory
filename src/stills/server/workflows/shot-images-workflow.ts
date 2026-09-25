@@ -389,6 +389,7 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
                     locationSheetHashes: sceneSnapshot.locationSheetHashes,
                     elementReferenceHashes:
                       sceneSnapshot.elementReferenceHashes,
+                    elementTokens: sceneSnapshot.elementTokens,
                   }
                 : null,
             },

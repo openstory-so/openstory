@@ -26,6 +26,7 @@ import type {
 } from '@/shots/scene-analysis.schema';
 import type {
   CharacterSheetInputHash,
+  ElementToken,
   LibraryLocationReferenceInputHash,
   LocationSheetInputHash,
   ShotImageInputHash,
@@ -235,6 +236,7 @@ export type StillHashInput = Pick<
   | 'characterSheetHashes'
   | 'locationSheetHashes'
   | 'elementReferenceHashes'
+  | 'elementTokens'
 >;
 
 export interface ShotVariantWorkflowResult {
@@ -813,6 +815,8 @@ export type RegenerateShotSnapshot = {
   locationSheetHashes: string[];
   /** Sorted element reference-image identities referenced by this shot. */
   elementReferenceHashes: string[];
+  /** The elements the prompt may name, so the hash reads tokens as labels (#1827). */
+  elementTokens: ElementToken[];
   /** Reference image descriptions used for image generation. */
   characterRefs: ReferenceImageDescription[];
   locationRefs: ReferenceImageDescription[];
@@ -1739,6 +1743,8 @@ export type ShotImageSceneSnapshot = {
   characterSheetHashes: string[];
   locationSheetHashes: string[];
   elementReferenceHashes: string[];
+  /** The elements the prompt may name, so the hash reads tokens as labels (#1827). */
+  elementTokens: ElementToken[];
 };
 
 /**
