@@ -30,16 +30,8 @@ function render(scriptText: string | undefined, sceneId = 'scene-1') {
 }
 
 describe('SceneScriptTab', () => {
-  it('shows the missing-script state without edit controls, even with a draft', () => {
-    const html = render(undefined);
-    expect(html).toContain('This scene has no script yet.');
-    expect(html).not.toContain('<textarea');
-    expect(html).not.toContain('<button');
-    expect(html).toContain('Shot dialogue');
-  });
-
-  it.each(['', 'Existing script'])(
-    'allows editing an existing script (%j)',
+  it.each([undefined, '', 'Existing script'])(
+    'allows entering or editing a script (%j)',
     (extract) => {
       const html = render(extract);
       expect(html).toContain('<textarea');

@@ -1,10 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Scene } from './scene-analysis.schema';
-import {
-  openStoryErrorSerializationAdapter,
-  ValidationError,
-} from '@/platform/errors';
-
 const getById = vi.fn().mockResolvedValue({ sequenceId: 'sequence-1' });
 const getSelected = vi.fn();
 const write = vi.fn();
@@ -51,22 +46,45 @@ beforeEach(() => {
 });
 
 describe('updateSceneScriptFn', () => {
-  it('rejects a missing selected script with a serializable validation error and no write', async () => {
-    getSelected.mockResolvedValue(null);
-    const error = await updateScript({ data, context }).catch(
-      (error: Error) => error
-    );
-    expect(error).toBeInstanceOf(ValidationError);
-    if (!(error instanceof ValidationError))
-      throw new Error('Expected validation error');
-    const restored = openStoryErrorSerializationAdapter.fromSerializable(
-      openStoryErrorSerializationAdapter.toSerializable(error)
-    );
-    expect(restored).toMatchObject({
-      message: 'Scene has no script to edit',
-      code: 'VALIDATION_ERROR',
-      statusCode: 400,
+  it.each(['First script', ''])(
+    'creates the first version for a scene without a script (%j)',
+    async (extract) => {
+      getSelected.mockResolvedValue(null);
+      const result = await updateScript({
+        data: { ...data, extract },
+        context,
+      });
+      expect(write).toHaveBeenCalledWith({
+        sceneId: data.sceneId,
+        content: { extract, dialogue: [] },
+        source: 'edit',
+        createdBy: 'user-1',
+      });
+      expect(result).toEqual({
+        sceneId: data.sceneId,
+        script: { extract, dialogue: [] },
+      });
+    }
+  );
+
+  it('preserves dialogue when editing an existing script', async () => {
+    const dialogue = [{ character: 'Ada', line: 'Hello', tone: 'warm' }];
+    getSelected.mockResolvedValue({
+      content: { extract: 'Original', dialogue },
     });
+    await updateScript({ data, context });
+    expect(write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: { extract: data.extract, dialogue },
+      })
+    );
+  });
+
+  it('does not create a version when an existing script is unchanged', async () => {
+    getSelected.mockResolvedValue({
+      content: { extract: data.extract, dialogue: [] },
+    });
+    await updateScript({ data, context });
     expect(write).not.toHaveBeenCalled();
   });
 
