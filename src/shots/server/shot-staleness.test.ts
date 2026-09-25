@@ -66,10 +66,20 @@ function makeScopedDb(overrides: {
     pendingInputHash: string | null;
     dependsOnVersionId: string | null;
   }>;
+  /** Bible history rows (#1600), oldest first. */
+  characterBibleVersions?: unknown[];
 }) {
   return asStub<ScopedDb>({
-    characters: { listWithSheets: vi.fn().mockResolvedValue([]) },
-    sequenceLocations: { listWithReferences: vi.fn().mockResolvedValue([]) },
+    characters: {
+      listWithSheets: vi.fn().mockResolvedValue([]),
+      listBibleVersionsBySequence: vi
+        .fn()
+        .mockResolvedValue(overrides.characterBibleVersions ?? []),
+    },
+    sequenceLocations: {
+      listWithReferences: vi.fn().mockResolvedValue([]),
+      listBibleVersionsBySequence: vi.fn().mockResolvedValue([]),
+    },
     sequenceElements: { list: vi.fn().mockResolvedValue([]) },
     styles: { getById: vi.fn().mockResolvedValue({ config: {} }) },
     framePromptVersions: {
@@ -480,6 +490,94 @@ describe('staleness causes (#1194)', () => {
       'Character "Woman"',
       'Element BOTTLE',
     ]);
+  });
+
+  it('names the bible fields that moved, and not a row that was only touched (#1600)', async () => {
+    buildRegenerateShotSnapshot.mockResolvedValue({
+      snapshotInputHash: 'image-live',
+    });
+    loadNarrowShotPromptContext.mockResolvedValue({});
+    hashVisualPromptInput.mockResolvedValue('visual-stored');
+    hashMotionPromptInput.mockResolvedValue('motion-stored');
+
+    const before = new Date('2025-12-31T00:00:00Z');
+    const generated = new Date('2026-01-01T00:00:00Z');
+    const afterGen = new Date('2026-01-02T00:00:00Z');
+    const bible = {
+      name: 'Woman',
+      age: '30s',
+      gender: null,
+      ethnicity: null,
+      physicalDescription: 'tall',
+      standardClothing: 'coat',
+      distinguishingFeatures: null,
+      personality: null,
+      movement: null,
+      voiceOnly: false,
+      isPerson: true,
+      consistencyTag: 'woman',
+    };
+    const scopedDb = makeScopedDb({
+      motionSelectedHash: 'motion-stored',
+      characterBibleVersions: [
+        { ...bible, characterId: 'c-woman', createdAt: before },
+        // An edit after the still: this is the one live now.
+        {
+          ...bible,
+          standardClothing: 'dress',
+          characterId: 'c-woman',
+          createdAt: afterGen,
+        },
+        { ...bible, name: 'Man', characterId: 'c-man', createdAt: before },
+      ],
+    });
+    Object.assign(scopedDb, {
+      scenes: { getById: vi.fn().mockResolvedValue({ updatedAt: before }) },
+      sceneScriptVersions: {
+        getSelected: vi.fn().mockResolvedValue({ createdAt: before }),
+      },
+      sequenceEvents: { listByTarget: vi.fn().mockResolvedValue([]) },
+    });
+
+    const result = await computeShotStaleness({
+      dialogue: NO_LINES,
+      scopedDb,
+      sequence,
+      shot: asStub<Shot>({ id: 'shot-1', sceneId: 'scene-1' }),
+      frame,
+      selectedImage: asStub<FrameVariant>({
+        id: 'fv-1',
+        inputHash: 'image-old',
+        model: null,
+        url: null,
+        generatedAt: generated,
+      }),
+      scene,
+      refs: asStub({
+        characters: [
+          {
+            ...bible,
+            standardClothing: 'dress',
+            id: 'c-woman',
+            updatedAt: afterGen,
+            sheetGeneratedAt: afterGen,
+          },
+          // Touched after the still (a claim, a voice) with no bible change.
+          {
+            ...bible,
+            name: 'Man',
+            id: 'c-man',
+            updatedAt: afterGen,
+            sheetGeneratedAt: null,
+          },
+        ],
+        locations: [],
+        elements: [],
+        style: null,
+      }),
+    });
+
+    expect(result.causes).toEqual(['Character "Woman": clothing, sheet']);
   });
 });
 

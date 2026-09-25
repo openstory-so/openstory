@@ -12,6 +12,7 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/platform/id';
+import type { LocationBible } from './bible-versions';
 import { locationLibrary } from './location-library';
 import { sequences } from './sequences';
 
@@ -44,17 +45,21 @@ export const sequenceLocations = snakeCase.table(
     }),
     // From script analysis
     locationId: text().notNull(), // e.g. "loc_001" from script analysis
-    name: text({ length: 255 }).notNull(), // e.g. "INT. OFFICE - DAY"
-    // Flattened location bible fields
-    type: text(), // interior, exterior, both
-    timeOfDay: text(), // day, night, dusk, dawn
-    description: text(), // Detailed visual description
-    architecturalStyle: text(), // modern, industrial, vintage
-    keyFeatures: text(), // Notable elements (e.g., "large windows, exposed brick")
-    colorPalette: text(), // Dominant colors
-    lightingSetup: text(), // e.g., "harsh overhead fluorescent"
-    ambiance: text(), // e.g., "tense, corporate"
-    consistencyTag: text(), // e.g. "loc_001: office-modern-steel"
+    // The live `location_bible_versions` row (#1600) — see the `characters`
+    // twin. Null only on a row written by a worker older than #1600.
+    selectedBibleVersionId: text(),
+    // LEGACY bible columns (#1600) — the read fallback for a row with no
+    // version, written only where NOT NULL forces it. See the `characters` twin.
+    legacyName: text('name', { length: 255 }).notNull(),
+    legacyType: text('type'),
+    legacyTimeOfDay: text('time_of_day'),
+    legacyDescription: text('description'),
+    legacyArchitecturalStyle: text('architectural_style'),
+    legacyKeyFeatures: text('key_features'),
+    legacyColorPalette: text('color_palette'),
+    legacyLightingSetup: text('lighting_setup'),
+    legacyAmbiance: text('ambiance'),
+    legacyConsistencyTag: text('consistency_tag'),
     // First appearance in script
     firstMentionSceneId: text(),
     firstMentionText: text(),
@@ -100,11 +105,32 @@ export const sequenceLocations = snakeCase.table(
 
 // Type exports
 
+/** The stored row, legacy bible columns included (scoped module only). */
+export type SequenceLocationRow = InferSelectModel<typeof sequenceLocations>;
+
+/** The legacy bible columns (#1600) — never read outside the resolver. */
+export type LegacyLocationBibleColumn =
+  | 'legacyName'
+  | 'legacyType'
+  | 'legacyTimeOfDay'
+  | 'legacyDescription'
+  | 'legacyArchitecturalStyle'
+  | 'legacyKeyFeatures'
+  | 'legacyColorPalette'
+  | 'legacyLightingSetup'
+  | 'legacyAmbiance'
+  | 'legacyConsistencyTag';
+
 /**
- * The stored row. Carries no reference image — see
+ * A location with its bible resolved from the selected
+ * `location_bible_versions` row (#1600). Carries no reference image — see
  * {@link SequenceLocationWithReference}.
  */
-export type SequenceLocation = InferSelectModel<typeof sequenceLocations>;
+export type SequenceLocation = Omit<
+  SequenceLocationRow,
+  LegacyLocationBibleColumn
+> &
+  LocationBible;
 
 /**
  * A location as every scoped READ returns it: the row plus the live reference,
@@ -118,7 +144,13 @@ export type SequenceLocationWithReference = SequenceLocation & {
   referenceInputHash: string | null;
 };
 
-export type NewSequenceLocation = InferInsertModel<typeof sequenceLocations>;
+/** A new location: its own columns plus the bible of its first version. */
+export type NewSequenceLocation = Omit<
+  InferInsertModel<typeof sequenceLocations>,
+  LegacyLocationBibleColumn | 'selectedBibleVersionId'
+> &
+  Pick<LocationBible, 'name'> &
+  Partial<Omit<LocationBible, 'name'>>;
 
 export type SequenceLocationMinimal = Pick<
   SequenceLocationWithReference,

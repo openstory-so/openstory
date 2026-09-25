@@ -117,11 +117,12 @@ export const GRAPH_NODES: readonly GraphNode[] = [
   },
   {
     id: 'character',
+    versionedIn: 'character_bible_versions',
     label: 'Character',
     kind: 'input',
     band: 'bibles',
     summary:
-      'Extracted from the script at the Script stage, rewritten by casting when a talent is matched, then yours to edit. A voice-only character (a narrator) has a row but never a sheet.',
+      'Extracted from the script at the Script stage, rewritten by casting when a talent is matched, then yours to edit. Every change is a version, so a stale shot names the field that moved. A voice-only character (a narrator) has a row but never a sheet.',
     counts: [
       'Age, gender, ethnicity',
       'Physical description',
@@ -159,11 +160,12 @@ export const GRAPH_NODES: readonly GraphNode[] = [
   },
   {
     id: 'location',
+    versionedIn: 'location_bible_versions',
     label: 'Location',
     kind: 'input',
     band: 'bibles',
     summary:
-      'Extracted from the script at the Script stage, linked to a library location when one matches, then yours to edit.',
+      'Extracted from the script at the Script stage, linked to a library location when one matches, then yours to edit. Every change is a version, so a stale shot names the field that moved.',
     counts: [
       'Description',
       'Type, time of day, architectural style, key features, colour palette, lighting, ambiance',

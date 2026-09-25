@@ -5,6 +5,7 @@
 
 import {
   and,
+  asc,
   eq,
   getTableColumns,
   inArray,
@@ -17,13 +18,19 @@ import { pageOf } from '@/platform/server/db/read-page';
 import type { PageOptions } from '@/platform/server/db/read-page';
 import type { Database } from '@/platform/server/db/client';
 import type {
+  BibleVersionSource,
+  LegacyLocationBibleColumn,
+  LocationBible,
   Shot,
   NewSequenceLocation,
   ReferenceStatus,
+  SequenceLocationRow,
   SequenceLocationWithReference,
   SequenceLocation,
 } from '@/platform/server/db/schema';
 import {
+  LOCATION_BIBLE_FIELDS,
+  locationBibleVersions,
   locationSheetVariants,
   shots,
   sequenceLocations,
@@ -37,7 +44,12 @@ import { typedEntries } from '@/platform/typed-object';
 import type { LocationSheetInputHash } from '@/shots/input-hash';
 import { matchLocationsToScene } from '@/shots/scene-matching';
 import { createLocationSheetVariantsMethods } from './location-sheet-variants';
-import { keepClaimUnlessChanged } from './sheet-claims';
+import {
+  locationBibleChanged,
+  locationBibleColumns,
+  pickLocationBible,
+  mergeDefined,
+} from './bible-versions';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
 
 /** The bible fields the location sheet prompt and its hash read (#1113). */
@@ -53,26 +65,46 @@ const SHEET_BIBLE_FIELDS = [
   'ambiance',
 ] as const;
 
-/** The same inputs as SQL columns, plus the library link, for the upserts. */
-const LOCATION_SHEET_INPUT_COLUMNS = [
-  'name',
-  'type',
-  'time_of_day',
-  'description',
-  'architectural_style',
-  'key_features',
-  'color_palette',
-  'lighting_setup',
-  'ambiance',
-  'library_location_id',
-] as const;
+/** A new location's bible where the caller left a field out. */
+const NEW_LOCATION_BIBLE: Omit<LocationBible, 'name'> = {
+  type: null,
+  timeOfDay: null,
+  description: null,
+  architecturalStyle: null,
+  keyFeatures: null,
+  colorPalette: null,
+  lightingSetup: null,
+  ambiance: null,
+  consistencyTag: null,
+};
 
-// A re-analysis that moves a sheet input revokes the reference claim (#1113).
-const keepLocationClaim = () =>
-  keepClaimUnlessChanged(
-    'pending_promote_reference_version_id',
-    LOCATION_SHEET_INPUT_COLUMNS
-  );
+/** The bible a {@link NewSequenceLocation} carries, undefined where left out. */
+const bibleOf = (data: NewSequenceLocation): Partial<LocationBible> => ({
+  name: data.name,
+  type: data.type,
+  timeOfDay: data.timeOfDay,
+  description: data.description,
+  architecturalStyle: data.architecturalStyle,
+  keyFeatures: data.keyFeatures,
+  colorPalette: data.colorPalette,
+  lightingSetup: data.lightingSetup,
+  ambiance: data.ambiance,
+  consistencyTag: data.consistencyTag,
+});
+
+const mergeBible = (base: LocationBible, patch: Partial<LocationBible>) =>
+  mergeDefined(base, patch, LOCATION_BIBLE_FIELDS);
+
+const touchesSheet = (fields: readonly (keyof LocationBible)[]) =>
+  fields.some((key) => (SHEET_BIBLE_FIELDS as readonly string[]).includes(key));
+
+/** The row's own columns; the bible only moves through a version (#1600). */
+type LocationUpdate = Partial<
+  Omit<
+    typeof sequenceLocations.$inferInsert,
+    LegacyLocationBibleColumn | 'selectedBibleVersionId'
+  >
+>;
 
 /**
  * The user-editable location bible fields (#1108 Phase 2). Casting
@@ -119,8 +151,24 @@ const liveReferenceVersionId = sql`COALESCE(${sequenceLocations.selectedReferenc
  * version. `referenceStatus` / `referenceError` stay on the row — they are
  * generation lifecycle, not version mirrors (see the characters twin).
  */
+// The row's own columns: the legacy bible is read only through the fallback.
+const {
+  legacyName: _name,
+  legacyType: _type,
+  legacyTimeOfDay: _timeOfDay,
+  legacyDescription: _description,
+  legacyArchitecturalStyle: _architecturalStyle,
+  legacyKeyFeatures: _keyFeatures,
+  legacyColorPalette: _colorPalette,
+  legacyLightingSetup: _lightingSetup,
+  legacyAmbiance: _ambiance,
+  legacyConsistencyTag: _consistencyTag,
+  ...locationRowColumns
+} = getTableColumns(sequenceLocations);
+
 const locationsWithLiveReference = {
-  ...getTableColumns(sequenceLocations),
+  ...locationRowColumns,
+  ...locationBibleColumns,
   referenceImageUrl: locationSheetVariants.url,
   referenceImagePath: locationSheetVariants.storagePath,
   referenceGeneratedAt: locationSheetVariants.generatedAt,
@@ -128,10 +176,178 @@ const locationsWithLiveReference = {
 };
 
 export function createSequenceLocationsMethods(db: Database) {
+  /** `select(locationsWithLiveReference)` + the joins it depends on. */
+  const selectWithLiveReference = () =>
+    db
+      .select(locationsWithLiveReference)
+      .from(sequenceLocations)
+      .leftJoin(
+        locationBibleVersions,
+        eq(locationBibleVersions.id, sequenceLocations.selectedBibleVersionId)
+      )
+      .leftJoin(
+        locationSheetVariants,
+        and(
+          eq(locationSheetVariants.parentType, 'sequence_location'),
+          eq(locationSheetVariants.id, liveReferenceVersionId)
+        )
+      );
+
+  /** A write's row, re-read so it carries the resolved bible and reference. */
+  const reread = async (
+    row: Pick<SequenceLocationRow, 'id'> | undefined
+  ): Promise<SequenceLocationWithReference> => {
+    if (!row) throw new Error('SequenceLocation not found');
+    const [location] = await selectWithLiveReference().where(
+      eq(sequenceLocations.id, row.id)
+    );
+    if (!location) throw new Error(`SequenceLocation ${row.id} not found`);
+    return location;
+  };
+
+  /**
+   * The one writer of a location bible (#1600) — the twin of the characters
+   * `bibleWrite`: statements for the caller's batch that append a version and
+   * point the location at it, revoking the reference claim when a field the
+   * sheet reads moved (#1113). Empty when nothing moved.
+   */
+  const bibleWrite = (
+    existing: SequenceLocation,
+    patch: Partial<LocationBible>,
+    opts: { source: BibleVersionSource; createdBy: string | null }
+  ) => {
+    const before = pickLocationBible(existing);
+    const after = mergeBible(before, patch);
+    const moved = locationBibleChanged(before, after);
+    if (moved.length === 0 && existing.selectedBibleVersionId) {
+      return { moved, statements: [] };
+    }
+    const versionId = generateId();
+    return {
+      moved,
+      statements: [
+        db.insert(locationBibleVersions).values({
+          id: versionId,
+          locationId: existing.id,
+          ...after,
+          source: opts.source,
+          createdBy: opts.createdBy,
+        }),
+        db
+          .update(sequenceLocations)
+          .set({
+            selectedBibleVersionId: versionId,
+            ...(touchesSheet(moved)
+              ? { pendingPromoteReferenceVersionId: null }
+              : {}),
+            updatedAt: new Date(),
+          })
+          .where(eq(sequenceLocations.id, existing.id)),
+      ],
+    };
+  };
+
+  /**
+   * Insert, or re-analyse onto, the location keyed by
+   * `(sequenceId, locationId)`. The bible lands as a version row (#1600),
+   * appended only when a field moved; a moved sheet input or library link
+   * revokes the reference claim (#1113). `bulk` is the analysis replay
+   * path: it refreshes first-mention provenance and leaves `referenceStatus`
+   * to the child sheet workflow that owns it; a single create does the
+   * opposite, as the two column upserts did.
+   */
+  const upsertOne = async (
+    data: NewSequenceLocation,
+    opts: {
+      source: BibleVersionSource;
+      createdBy: string | null;
+      bulk: boolean;
+    }
+  ): Promise<SequenceLocationWithReference> => {
+    const [existing] = await selectWithLiveReference().where(
+      and(
+        eq(sequenceLocations.sequenceId, data.sequenceId),
+        eq(sequenceLocations.locationId, data.locationId)
+      )
+    );
+    const {
+      name: _n,
+      type: _t,
+      timeOfDay: _tod,
+      description: _d,
+      architecturalStyle: _as,
+      keyFeatures: _kf,
+      colorPalette: _cp,
+      lightingSetup: _ls,
+      ambiance: _a,
+      consistencyTag: _ct,
+      ...row
+    } = data;
+    // A field left out keeps its value, as the column upsert did.
+    const bible = mergeBible(
+      existing
+        ? pickLocationBible(existing)
+        : { ...NEW_LOCATION_BIBLE, name: data.name },
+      bibleOf(data)
+    );
+    const moved = existing
+      ? locationBibleChanged(pickLocationBible(existing), bible)
+      : [...LOCATION_BIBLE_FIELDS];
+    const appendVersion =
+      !existing || !existing.selectedBibleVersionId || moved.length > 0;
+    const linkMoved =
+      !!existing &&
+      data.libraryLocationId !== undefined &&
+      data.libraryLocationId !== existing.libraryLocationId;
+    const revokeClaim = !!existing && (touchesSheet(moved) || linkMoved);
+    const id = existing?.id ?? data.id ?? generateId();
+    const versionId = generateId();
+    const pointer = appendVersion ? { selectedBibleVersionId: versionId } : {};
+    const upsert = db
+      .insert(sequenceLocations)
+      .values({ ...row, id, legacyName: bible.name, ...pointer })
+      .onConflictDoUpdate({
+        target: [sequenceLocations.sequenceId, sequenceLocations.locationId],
+        set: {
+          libraryLocationId: data.libraryLocationId,
+          ...(opts.bulk
+            ? {
+                firstMentionSceneId: data.firstMentionSceneId ?? null,
+                firstMentionText: data.firstMentionText ?? null,
+                firstMentionLine: data.firstMentionLine ?? null,
+              }
+            : { referenceStatus: data.referenceStatus }),
+          // Reference OUTPUT is not re-written here — see the characters
+          // twin (#1419).
+          ...pointer,
+          ...(revokeClaim ? { pendingPromoteReferenceVersionId: null } : {}),
+          // A re-analysis re-extracting a soft-deleted location revives it
+          // (#1108) — mirrors the characters upsert.
+          deletedAt: null,
+          updatedAt: new Date(),
+        },
+      });
+    await db.batch([
+      upsert,
+      ...(appendVersion
+        ? [
+            db.insert(locationBibleVersions).values({
+              id: versionId,
+              locationId: id,
+              ...bible,
+              source: opts.source,
+              createdBy: opts.createdBy,
+            }),
+          ]
+        : []),
+    ]);
+    return await reread({ id });
+  };
+
   // Private update helper
   const update = async (
     id: string,
-    data: Partial<NewSequenceLocation>
+    data: LocationUpdate
   ): Promise<SequenceLocation> => {
     const [location] = await db
       .update(sequenceLocations)
@@ -144,28 +360,10 @@ export function createSequenceLocationsMethods(db: Database) {
         updatedAt: new Date(),
       })
       .where(eq(sequenceLocations.id, id))
-      .returning();
+      .returning({ id: sequenceLocations.id });
 
-    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: DB query may return undefined
-    if (!location) {
-      throw new Error(`SequenceLocation ${id} not found`);
-    }
-
-    return location;
+    return await reread(location);
   };
-
-  /** `select(locationsWithLiveReference)` + the join it depends on. */
-  const selectWithLiveReference = () =>
-    db
-      .select(locationsWithLiveReference)
-      .from(sequenceLocations)
-      .leftJoin(
-        locationSheetVariants,
-        and(
-          eq(locationSheetVariants.parentType, 'sequence_location'),
-          eq(locationSheetVariants.id, liveReferenceVersionId)
-        )
-      );
 
   return {
     getById: async (
@@ -208,6 +406,21 @@ export function createSequenceLocationsMethods(db: Database) {
       );
     },
 
+    /** Every bible version of the sequence's locations, oldest first (#1600). */
+    listBibleVersionsBySequence: async (sequenceId: string) =>
+      await db
+        .select(getTableColumns(locationBibleVersions))
+        .from(locationBibleVersions)
+        .innerJoin(
+          sequenceLocations,
+          eq(sequenceLocations.id, locationBibleVersions.locationId)
+        )
+        .where(eq(sequenceLocations.sequenceId, sequenceId))
+        .orderBy(
+          asc(locationBibleVersions.createdAt),
+          asc(locationBibleVersions.id)
+        ),
+
     listWithReferences: async (
       sequenceId: string
     ): Promise<SequenceLocationWithReference[]> => {
@@ -229,93 +442,29 @@ export function createSequenceLocationsMethods(db: Database) {
       );
     },
 
-    create: async (data: NewSequenceLocation): Promise<SequenceLocation> => {
-      const [location] = await db
-        .insert(sequenceLocations)
-        .values(data)
-        .onConflictDoUpdate({
-          target: [sequenceLocations.sequenceId, sequenceLocations.locationId],
-          set: {
-            name: data.name,
-            libraryLocationId: data.libraryLocationId,
-            type: data.type,
-            timeOfDay: data.timeOfDay,
-            description: data.description,
-            architecturalStyle: data.architecturalStyle,
-            keyFeatures: data.keyFeatures,
-            colorPalette: data.colorPalette,
-            lightingSetup: data.lightingSetup,
-            ambiance: data.ambiance,
-            consistencyTag: data.consistencyTag,
-            // Reference OUTPUT is not re-written here — see the characters
-            // twin (#1419).
-            referenceStatus: data.referenceStatus,
-            pendingPromoteReferenceVersionId: keepLocationClaim(),
-            // A re-analysis re-extracting a soft-deleted location revives it
-            // (#1108) — mirrors the characters upsert.
-            deletedAt: null,
-            updatedAt: new Date(),
-          },
-        })
-        .returning();
-      if (!location) {
-        throw new Error(
-          `Failed to create SequenceLocation for sequence ${data.sequenceId} (locationId ${data.locationId})`
-        );
-      }
-      return location;
-    },
+    create: async (
+      data: NewSequenceLocation,
+      opts: { source: BibleVersionSource; createdBy: string | null }
+    ): Promise<SequenceLocation> =>
+      await upsertOne(data, { ...opts, bulk: false }),
 
     /**
-     * Bulk insert, upserting on the `(sequenceId, locationId)` unique index
-     * so a workflow-step retry after a partial batch commit converges
-     * instead of failing every replay on a UNIQUE violation (and stranding
-     * locations in `referenceStatus='generating'`). Bible fields are
-     * refreshed from the incoming row; `id`/keys/`createdAt` and the
-     * reference-image columns (owned by the child LocationSheetWorkflow)
-     * are left untouched.
+     * Upsert many on the `(sequenceId, locationId)` unique index, so a
+     * workflow-step retry after a partial commit converges instead of failing
+     * every replay on a UNIQUE violation (and stranding locations in
+     * `referenceStatus='generating'`). Bible fields and first-mention
+     * provenance are refreshed from the incoming row; `id`/keys/`createdAt`
+     * and the reference output (owned by the child LocationSheetWorkflow) are
+     * left untouched. One location per batch: each is its own version append.
      */
     createBulk: async (
-      data: NewSequenceLocation[]
+      data: NewSequenceLocation[],
+      opts: { source: BibleVersionSource; createdBy: string | null }
     ): Promise<SequenceLocation[]> => {
-      if (data.length === 0) return [];
-      const BATCH_SIZE = 3;
       const results: SequenceLocation[] = [];
-
-      for (let i = 0; i < data.length; i += BATCH_SIZE) {
-        const batch = data.slice(i, i + BATCH_SIZE);
-        const batchResults = await db
-          .insert(sequenceLocations)
-          .values(batch)
-          .onConflictDoUpdate({
-            target: [
-              sequenceLocations.sequenceId,
-              sequenceLocations.locationId,
-            ],
-            set: {
-              name: sql.raw(`excluded."name"`),
-              libraryLocationId: sql.raw(`excluded."library_location_id"`),
-              type: sql.raw(`excluded."type"`),
-              timeOfDay: sql.raw(`excluded."time_of_day"`),
-              description: sql.raw(`excluded."description"`),
-              architecturalStyle: sql.raw(`excluded."architectural_style"`),
-              keyFeatures: sql.raw(`excluded."key_features"`),
-              colorPalette: sql.raw(`excluded."color_palette"`),
-              lightingSetup: sql.raw(`excluded."lighting_setup"`),
-              ambiance: sql.raw(`excluded."ambiance"`),
-              consistencyTag: sql.raw(`excluded."consistency_tag"`),
-              firstMentionSceneId: sql.raw(`excluded."first_mention_scene_id"`),
-              firstMentionText: sql.raw(`excluded."first_mention_text"`),
-              firstMentionLine: sql.raw(`excluded."first_mention_line"`),
-              pendingPromoteReferenceVersionId: keepLocationClaim(),
-              deletedAt: null,
-              updatedAt: new Date(),
-            },
-          })
-          .returning();
-        results.push(...batchResults);
+      for (const location of data) {
+        results.push(await upsertOne(location, { ...opts, bulk: true }));
       }
-
       return results;
     },
 
@@ -397,9 +546,7 @@ export function createSequenceLocationsMethods(db: Database) {
       inputHash: LocationSheetInputHash | null = null,
       opts?: { model?: string; workflowRunId?: string | null }
     ): Promise<SequenceLocation> => {
-      const { location } = await createLocationSheetVariantsMethods(
-        db
-      ).applyConvergent({
+      await createLocationSheetVariantsMethods(db).applyConvergent({
         locationDbId: id,
         url: imageUrl,
         storagePath: imagePath,
@@ -407,7 +554,7 @@ export function createSequenceLocationsMethods(db: Database) {
         model: opts?.model ?? 'unknown',
         workflowRunId: opts?.workflowRunId,
       });
-      return location;
+      return await reread({ id });
     },
 
     getNeedingReferences: async (
@@ -432,10 +579,9 @@ export function createSequenceLocationsMethods(db: Database) {
       data: LocationBibleUpdate,
       opts: { actorId: string | null }
     ): Promise<SequenceLocation> => {
-      const [existing] = await db
-        .select()
-        .from(sequenceLocations)
-        .where(eq(sequenceLocations.id, id));
+      const [existing] = await selectWithLiveReference().where(
+        eq(sequenceLocations.id, id)
+      );
       if (!existing) {
         throw new Error(`SequenceLocation ${id} not found`);
       }
@@ -444,22 +590,13 @@ export function createSequenceLocationsMethods(db: Database) {
         if (value === undefined) continue;
         prev[key] = existing[key] ?? null;
       }
-      // Revokes an in-flight sheet run's claim when a field it reads moved.
-      const sheetInputMoved = SHEET_BIBLE_FIELDS.some(
-        (key) => data[key] !== undefined && data[key] !== existing[key]
-      );
-      const [updatedRows] = await db.batch([
-        db
-          .update(sequenceLocations)
-          .set({
-            ...data,
-            ...(sheetInputMoved
-              ? { pendingPromoteReferenceVersionId: null }
-              : {}),
-            updatedAt: new Date(),
-          })
-          .where(eq(sequenceLocations.id, id))
-          .returning(),
+      // Appends a version (#1600); revokes an in-flight sheet run's claim
+      // when a field it reads moved (#1113).
+      const { statements } = bibleWrite(existing, data, {
+        source: 'edit',
+        createdBy: opts.actorId,
+      });
+      await db.batch([
         buildEventInsert(db, {
           sequenceId: existing.sequenceId,
           actorId: opts.actorId,
@@ -469,12 +606,9 @@ export function createSequenceLocationsMethods(db: Database) {
           summary: `Edited location ${data.name ?? existing.name}`,
           data: { prevState: prev },
         }),
+        ...statements,
       ]);
-      const updated = updatedRows[0];
-      if (!updated) {
-        throw new Error(`SequenceLocation ${id} disappeared during update`);
-      }
-      return updated;
+      return await reread(existing);
     },
 
     /**
@@ -486,10 +620,9 @@ export function createSequenceLocationsMethods(db: Database) {
       id: string,
       opts: { actorId: string | null }
     ): Promise<Date> => {
-      const [existing] = await db
-        .select()
-        .from(sequenceLocations)
-        .where(eq(sequenceLocations.id, id));
+      const [existing] = await selectWithLiveReference().where(
+        eq(sequenceLocations.id, id)
+      );
       if (!existing) {
         throw new Error(`SequenceLocation ${id} not found`);
       }
@@ -518,10 +651,9 @@ export function createSequenceLocationsMethods(db: Database) {
       id: string,
       opts: { actorId: string | null }
     ): Promise<SequenceLocation> => {
-      const [existing] = await db
-        .select()
-        .from(sequenceLocations)
-        .where(eq(sequenceLocations.id, id));
+      const [existing] = await selectWithLiveReference().where(
+        eq(sequenceLocations.id, id)
+      );
       if (!existing) {
         throw new Error(`SequenceLocation ${id} not found`);
       }
@@ -531,7 +663,7 @@ export function createSequenceLocationsMethods(db: Database) {
           .update(sequenceLocations)
           .set({ deletedAt: null, updatedAt: now })
           .where(eq(sequenceLocations.id, id))
-          .returning(),
+          .returning({ id: sequenceLocations.id }),
         buildEventInsert(db, {
           sequenceId: existing.sequenceId,
           actorId: opts.actorId,
@@ -542,11 +674,7 @@ export function createSequenceLocationsMethods(db: Database) {
           data: { name: existing.name },
         }),
       ]);
-      const restored = restoredRows[0];
-      if (!restored) {
-        throw new Error(`SequenceLocation ${id} disappeared during restore`);
-      }
-      return restored;
+      return await reread(restoredRows[0]);
     },
 
     getShotsForLocation: async (
@@ -554,10 +682,9 @@ export function createSequenceLocationsMethods(db: Database) {
       locationId: string
     ): Promise<Shot[]> => {
       // Get the location to extract matching patterns
-      const locResult = await db
-        .select()
-        .from(sequenceLocations)
-        .where(eq(sequenceLocations.id, locationId));
+      const locResult = await selectWithLiveReference().where(
+        eq(sequenceLocations.id, locationId)
+      );
       const location = locResult[0] ?? null;
       // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: DB query may return undefined
       if (!location || location.sequenceId !== sequenceId) {
@@ -596,10 +723,9 @@ export function createSequenceLocationsMethods(db: Database) {
       locationId: string
     ): Promise<string[]> => {
       // Get the location to extract matching patterns
-      const locResult = await db
-        .select()
-        .from(sequenceLocations)
-        .where(eq(sequenceLocations.id, locationId));
+      const locResult = await selectWithLiveReference().where(
+        eq(sequenceLocations.id, locationId)
+      );
       const location = locResult[0] ?? null;
       // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: DB query may return undefined
       if (!location || location.sequenceId !== sequenceId) {
@@ -650,6 +776,10 @@ export function createSequenceLocationsMethods(db: Database) {
         })
         .from(sequenceLocations)
         .innerJoin(sequences, eq(sequenceLocations.sequenceId, sequences.id))
+        .leftJoin(
+          locationBibleVersions,
+          eq(locationBibleVersions.id, sequenceLocations.selectedBibleVersionId)
+        )
         .leftJoin(
           locationSheetVariants,
           and(

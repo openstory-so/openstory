@@ -754,19 +754,29 @@ export const setCharacterSheetFromUploadFn = createServerFn({ method: 'POST' })
       imageModel,
     });
 
+    // The upload's likeness verdict is a bible edit (#1600): its own version
+    // row, only when it moved.
+    if (isPerson !== character.isPerson) {
+      await scopedDb.characters.updateBible(
+        character.id,
+        { isPerson },
+        { actorId: user.id, source: 'edit' }
+      );
+    }
     // Append + select: parent + version share the current-inputs hash so later
     // bible/style/model edits re-stale the sheet. The selected version id is
     // what stills hash, so this upload re-stales dependent stills even when
     // inputs didn't change.
-    const { character: updated, version: variant } =
+    const { version: variant } =
       await scopedDb.characterSheetVariants.applyConvergent({
         characterId: character.id,
         url: data.publicUrl,
         storagePath,
         inputHash,
         model: USER_UPLOAD_MODEL,
-        isPerson,
       });
+    const updated = await scopedDb.characters.getById(character.id);
+    if (!updated) throw new NotFoundError('Character not found');
     await scopedDb.sequenceEvents.record({
       sequenceId: sequence.id,
       actorId: user.id,
@@ -857,7 +867,7 @@ export const setLocationSheetFromUploadFn = createServerFn({ method: 'POST' })
       imageModel,
     });
 
-    const { location: updated, version: variant } =
+    const { version: variant } =
       await scopedDb.locationSheetVariants.applyConvergent({
         locationDbId: location.id,
         url: data.publicUrl,
@@ -865,6 +875,8 @@ export const setLocationSheetFromUploadFn = createServerFn({ method: 'POST' })
         inputHash,
         model: USER_UPLOAD_MODEL,
       });
+    const updated = await scopedDb.sequenceLocations.getById(location.id);
+    if (!updated) throw new NotFoundError('Location not found');
     await scopedDb.sequenceEvents.record({
       sequenceId: sequence.id,
       actorId: user.id,

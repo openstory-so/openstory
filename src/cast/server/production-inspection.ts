@@ -2,7 +2,9 @@ import { usesVoice } from '@/cast/voice';
 import { z } from 'zod';
 import { createSelectSchema } from 'drizzle-orm/zod';
 import {
+  characterBibleVersions,
   characters,
+  locationBibleVersions,
   sequenceLocations,
   sequenceElements,
 } from '@/platform/server/db/schema';
@@ -31,21 +33,10 @@ export const characterReadSchema = createSelectSchema(characters)
     id: true,
     sequenceId: true,
     characterId: true,
-    name: true,
     talentId: true,
-    age: true,
-    gender: true,
-    ethnicity: true,
-    physicalDescription: true,
-    standardClothing: true,
-    distinguishingFeatures: true,
-    personality: true,
-    movement: true,
-    voiceOnly: true,
     voiceId: true,
     voiceDescription: true,
     useVoice: true,
-    consistencyTag: true,
     firstMentionSceneId: true,
     firstMentionText: true,
     firstMentionLine: true,
@@ -53,6 +44,22 @@ export const characterReadSchema = createSelectSchema(characters)
     sheetError: true,
     selectedSheetVersionId: true,
   })
+  // The bible lives on its version row (#1600).
+  .extend(
+    createSelectSchema(characterBibleVersions).pick({
+      name: true,
+      age: true,
+      gender: true,
+      ethnicity: true,
+      physicalDescription: true,
+      standardClothing: true,
+      distinguishingFeatures: true,
+      personality: true,
+      movement: true,
+      voiceOnly: true,
+      consistencyTag: true,
+    }).shape
+  )
   .extend({
     createdAt: readDate,
     updatedAt: readDate,
@@ -75,16 +82,6 @@ export const locationReadSchema = createSelectSchema(sequenceLocations)
     sequenceId: true,
     locationId: true,
     libraryLocationId: true,
-    name: true,
-    type: true,
-    timeOfDay: true,
-    description: true,
-    architecturalStyle: true,
-    keyFeatures: true,
-    colorPalette: true,
-    lightingSetup: true,
-    ambiance: true,
-    consistencyTag: true,
     firstMentionSceneId: true,
     firstMentionText: true,
     firstMentionLine: true,
@@ -92,6 +89,20 @@ export const locationReadSchema = createSelectSchema(sequenceLocations)
     referenceError: true,
     selectedReferenceVersionId: true,
   })
+  .extend(
+    createSelectSchema(locationBibleVersions).pick({
+      name: true,
+      type: true,
+      timeOfDay: true,
+      description: true,
+      architecturalStyle: true,
+      keyFeatures: true,
+      colorPalette: true,
+      lightingSetup: true,
+      ambiance: true,
+      consistencyTag: true,
+    }).shape
+  )
   .extend({
     createdAt: readDate,
     updatedAt: readDate,

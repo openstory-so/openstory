@@ -24,6 +24,7 @@ import {
   user,
 } from '@/platform/server/db/schema';
 import { relations } from '@/platform/server/db/schema/relations';
+import type { NewCharacter } from '@/platform/server/db/schema';
 import type { Database } from '@/platform/server/db/client';
 import {
   characterSheetInputHash,
@@ -114,26 +115,25 @@ beforeEach(async () => {
   if (!lib || !tal) throw new Error('setup');
   libraryId = lib.id;
   talentId = tal.id;
-  const [ch] = await db
-    .insert(characters)
-    .values({
+  const ch = await createCharactersMethods(db).create(
+    {
       sequenceId,
       characterId: 'char_001',
       name: 'Sam',
       physicalDescription: 'tall',
       talentId,
-    })
-    .returning();
-  const [loc] = await db
-    .insert(sequenceLocations)
-    .values({
+    },
+    { source: 'analysis', createdBy: null }
+  );
+  const loc = await createSequenceLocationsMethods(db).create(
+    {
       sequenceId,
       locationId: 'loc_001',
       name: 'Diner',
       libraryLocationId: libraryId,
-    })
-    .returning();
-  if (!ch || !loc) throw new Error('setup');
+    },
+    { source: 'analysis', createdBy: null }
+  );
   characterId = ch.id;
   locationId = loc.id;
 });
@@ -146,10 +146,7 @@ const library = () => createLocationsMethods(db, teamId, userId);
 const talents = () => createTalentMethods(db, teamId, userId);
 
 async function character() {
-  const [row] = await db
-    .select()
-    .from(characters)
-    .where(eq(characters.id, characterId));
+  const row = await chars().getById(characterId);
   if (!row) throw new Error('character gone');
   return row;
 }
@@ -162,13 +159,18 @@ async function version(id: string) {
   return row;
 }
 
-const landCharacter = (versionId: string, url = `/r2/${versionId}.png`) =>
+const landCharacter = (
+  versionId: string,
+  url = `/r2/${versionId}.png`,
+  bibleVersionId: string | null = null
+) =>
   charVersions().promoteIfPending({
     characterId,
     versionId,
     url,
     storagePath: url,
     inputHash: HASH,
+    bibleVersionId,
     model: 'm',
     workflowRunId: `run-${versionId}`,
   });
@@ -188,6 +190,16 @@ describe('character sheet claims', () => {
     expect((await version(versionId))?.divergedAt).toBeNull();
   });
 
+  it('stamps the bible version the run read on its sheet row (#1600)', async () => {
+    const bibleVersionId = (await character()).selectedBibleVersionId;
+    expect(bibleVersionId).not.toBeNull();
+    const versionId = await chars().claimSheet(characterId, {
+      markGenerating: true,
+    });
+    await landCharacter(versionId, undefined, bibleVersionId);
+    expect((await version(versionId))?.bibleVersionId).toBe(bibleVersionId);
+  });
+
   it('parks a run whose bible was edited mid-flight, leaving the live sheet', async () => {
     const first = await chars().claimSheet(characterId, {
       markGenerating: true,
@@ -200,7 +212,7 @@ describe('character sheet claims', () => {
     await chars().updateBible(
       characterId,
       { physicalDescription: 'short' },
-      { actorId: userId }
+      { source: 'edit', actorId: userId }
     );
 
     expect(await landCharacter(second)).toBe('parked');
@@ -217,7 +229,7 @@ describe('character sheet claims', () => {
     await chars().updateBible(
       characterId,
       { personality: 'wry', physicalDescription: 'tall' },
-      { actorId: userId }
+      { source: 'edit', actorId: userId }
     );
     expect(await landCharacter(versionId)).toBe('promoted');
   });
@@ -333,6 +345,7 @@ describe('sequence location claims', () => {
       url: `/r2/${versionId}.png`,
       storagePath: `${versionId}.png`,
       inputHash: LOC_HASH,
+      bibleVersionId: null,
       model: 'm',
       workflowRunId: 'run',
     });
@@ -526,14 +539,13 @@ describe('library talent claims', () => {
 });
 
 describe('re-analysis upserts (#1113)', () => {
-  const upsertCharacter = async (
-    change: Partial<typeof characters.$inferInsert>
-  ) => chars().create({ ...(await character()), id: generateId(), ...change });
+  const upsertCharacter = async (change: Partial<NewCharacter>) =>
+    chars().create(
+      { ...(await character()), id: generateId(), ...change },
+      { source: 'analysis', createdBy: null }
+    );
   const location = async () => {
-    const [row] = await db
-      .select()
-      .from(sequenceLocations)
-      .where(eq(sequenceLocations.id, locationId));
+    const row = await locs().getById(locationId);
     if (!row) throw new Error('location gone');
     return row;
   };
@@ -556,9 +568,10 @@ describe('re-analysis upserts (#1113)', () => {
 
   it('revokes a location claim when the bulk upsert moves an input', async () => {
     await locs().claimReference(locationId, { markGenerating: true });
-    await locs().createBulk([
-      { ...(await location()), id: generateId(), description: 'moved' },
-    ]);
+    await locs().createBulk(
+      [{ ...(await location()), id: generateId(), description: 'moved' }],
+      { source: 'analysis', createdBy: null }
+    );
     expect((await location()).pendingPromoteReferenceVersionId).toBeNull();
   });
 
@@ -566,7 +579,10 @@ describe('re-analysis upserts (#1113)', () => {
     const claim = await locs().claimReference(locationId, {
       markGenerating: true,
     });
-    await locs().createBulk([{ ...(await location()), id: generateId() }]);
+    await locs().createBulk([{ ...(await location()), id: generateId() }], {
+      source: 'analysis',
+      createdBy: null,
+    });
     expect((await location()).pendingPromoteReferenceVersionId).toBe(claim);
   });
 

@@ -101,7 +101,10 @@ describe('createBulk', () => {
       locationInsert
     );
 
-    const first = await methods.createBulk(inserts);
+    const first = await methods.createBulk(inserts, {
+      source: 'analysis',
+      createdBy: null,
+    });
     expect(first).toHaveLength(4);
 
     // Workflow-step retry replays the whole closure with fresh ULIDs but the
@@ -109,7 +112,10 @@ describe('createBulk', () => {
     const replayInserts = ['loc_001', 'loc_002', 'loc_003', 'loc_004'].map(
       locationInsert
     );
-    const replay = await methods.createBulk(replayInserts);
+    const replay = await methods.createBulk(replayInserts, {
+      source: 'analysis',
+      createdBy: null,
+    });
 
     // Same row count (the workflow's `created.length` guard keeps working)
     // and the original ids survive — the replay updates, it doesn't insert.
@@ -126,7 +132,10 @@ describe('createBulk', () => {
 
   it('refreshes bible fields but leaves reference-image columns untouched', async () => {
     const methods = createSequenceLocationsMethods(db);
-    const [created] = await methods.createBulk([locationInsert('loc_001')]);
+    const [created] = await methods.createBulk([locationInsert('loc_001')], {
+      source: 'analysis',
+      createdBy: null,
+    });
     if (!created) throw new Error('test setup: createBulk returned nothing');
 
     // Child LocationSheetWorkflow completes the reference in the meantime.
@@ -145,9 +154,10 @@ describe('createBulk', () => {
       status: 'completed',
     });
 
-    const [upserted] = await methods.createBulk([
-      { ...locationInsert('loc_001'), description: 'fresher description' },
-    ]);
+    const [upserted] = await methods.createBulk(
+      [{ ...locationInsert('loc_001'), description: 'fresher description' }],
+      { source: 'analysis', createdBy: null }
+    );
 
     expect(upserted?.id).toBe(created.id);
     expect(upserted?.description).toBe('fresher description');
@@ -161,6 +171,8 @@ describe('createBulk', () => {
 
   it('returns [] for an empty input', async () => {
     const methods = createSequenceLocationsMethods(db);
-    await expect(methods.createBulk([])).resolves.toEqual([]);
+    await expect(
+      methods.createBulk([], { source: 'analysis', createdBy: null })
+    ).resolves.toEqual([]);
   });
 });

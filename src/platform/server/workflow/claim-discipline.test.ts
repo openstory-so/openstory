@@ -160,6 +160,10 @@ const EXCEPTIONS: Record<string, string> = {
   // selection by design — its output IS the new source. User edits append.
   scene_script_versions: 'authored; re-analysis replaces by design',
   shot_dialogue_versions: 'authored; re-analysis replaces by design',
+  // Bible history (#1600): authored, not generated. Analysis, a person's
+  // edit and a recast each append; nothing is generated into it async.
+  character_bible_versions: 'authored; analysis and edits append',
+  location_bible_versions: 'authored; analysis and edits append',
 };
 
 /**

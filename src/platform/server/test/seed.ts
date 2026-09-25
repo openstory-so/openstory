@@ -11,6 +11,7 @@
 import { generateId } from '@/platform/id';
 import {
   characterSheetVariants,
+  characterBibleVersions,
   characters,
   credits,
   frameVariants,
@@ -471,16 +472,28 @@ export async function createTestCharacter(
     sheetStatus = 'completed',
   } = options;
 
+  // The bible lives on its version row (#1600), keyed to the character's
+  // own id like the backfill.
   await db.insert(characters).values({
     id,
     sequenceId,
     characterId,
-    name,
+    legacyName: name,
+    selectedBibleVersionId: id,
     talentId,
-    age: '30s',
     sheetStatus,
     createdAt: now,
     updatedAt: now,
+  });
+  await db.insert(characterBibleVersions).values({
+    id,
+    characterId: id,
+    name,
+    age: '30s',
+    voiceOnly: false,
+    isPerson: true,
+    source: 'backfill',
+    createdAt: now,
   });
 
   // The live sheet is read from the version row, not the mirror (#1419).
@@ -835,24 +848,20 @@ export async function getTestCharacter(characterId: string): Promise<{
   sheetStatus: string | null;
 } | null> {
   const db = getDb();
-  const result = await db.query.characters.findFirst({
-    where: { id: characterId },
-    columns: {
-      id: true,
-      name: true,
-      talentId: true,
-      sheetStatus: true,
-    },
-  });
-
-  if (!result) return null;
-
-  return {
-    id: result.id,
-    name: result.name,
-    talentId: result.talentId,
-    sheetStatus: result.sheetStatus,
-  };
+  const [result] = await db
+    .select({
+      id: characters.id,
+      name: characterBibleVersions.name,
+      talentId: characters.talentId,
+      sheetStatus: characters.sheetStatus,
+    })
+    .from(characters)
+    .innerJoin(
+      characterBibleVersions,
+      eq(characterBibleVersions.id, characters.selectedBibleVersionId)
+    )
+    .where(eq(characters.id, characterId));
+  return result ?? null;
 }
 
 /**

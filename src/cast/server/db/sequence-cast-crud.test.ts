@@ -19,9 +19,11 @@ import type { StyleConfig } from '@/platform/server/db/schema';
 import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
 import {
+  characterBibleVersions,
   characterSheetVariants,
   characterVoiceVersions,
   characters,
+  locationBibleVersions,
   sequenceElements,
   sequenceEvents,
   sequenceLocations,
@@ -151,12 +153,15 @@ beforeEach(async () => {
 describe('characters bible CRUD + soft-remove', () => {
   it('appends and can restore selected voice configurations', async () => {
     const methods = createCharactersMethods(db);
-    const created = await methods.create({
-      sequenceId,
-      characterId: 'voice_001',
-      name: 'Maya',
-      voiceDescription: 'Warm Australian alto',
-    });
+    const created = await methods.create(
+      {
+        sequenceId,
+        characterId: 'voice_001',
+        name: 'Maya',
+        voiceDescription: 'Warm Australian alto',
+      },
+      { source: 'analysis', createdBy: null }
+    );
     // The voice the cast arrived with is history's first row, selected (#1657).
     expect(created.selectedVoiceVersionId).toBeTruthy();
     const [original] = await methods.listVoiceVersions(created.id);
@@ -207,11 +212,14 @@ describe('characters bible CRUD + soft-remove', () => {
 
   it('stamps a take unusable without appending voice history (#1709)', async () => {
     const methods = createCharactersMethods(db);
-    const created = await methods.create({
-      sequenceId,
-      characterId: 'voice_unusable',
-      name: 'Maya',
-    });
+    const created = await methods.create(
+      {
+        sequenceId,
+        characterId: 'voice_unusable',
+        name: 'Maya',
+      },
+      { source: 'analysis', createdBy: null }
+    );
     const saved = await methods.updateVoice(
       created.id,
       {
@@ -255,11 +263,14 @@ describe('characters bible CRUD + soft-remove', () => {
 
   it('creates a generating voice husk and points pending-promote at it (#1715)', async () => {
     const methods = createCharactersMethods(db);
-    const created = await methods.create({
-      sequenceId,
-      characterId: 'voice_husk',
-      name: 'Maya',
-    });
+    const created = await methods.create(
+      {
+        sequenceId,
+        characterId: 'voice_husk',
+        name: 'Maya',
+      },
+      { source: 'analysis', createdBy: null }
+    );
     const before = await methods.listVoiceVersions(created.id);
     const { version: husk } = await methods.createPendingVoiceClaim(
       created.id,
@@ -280,11 +291,14 @@ describe('characters bible CRUD + soft-remove', () => {
 
   it('returns the existing live husk instead of inserting a second (#1715)', async () => {
     const methods = createCharactersMethods(db);
-    const created = await methods.create({
-      sequenceId,
-      characterId: 'voice_husk_unique',
-      name: 'Maya',
-    });
+    const created = await methods.create(
+      {
+        sequenceId,
+        characterId: 'voice_husk_unique',
+        name: 'Maya',
+      },
+      { source: 'analysis', createdBy: null }
+    );
     const first = await methods.createPendingVoiceClaim(created.id, actorId);
     const second = await methods.createPendingVoiceClaim(created.id, actorId);
     expect(first.created).toBe(true);
@@ -295,11 +309,14 @@ describe('characters bible CRUD + soft-remove', () => {
 
   it('does not touch the live voice while a husk is inserted or completed (#1715)', async () => {
     const methods = createCharactersMethods(db);
-    const created = await methods.create({
-      sequenceId,
-      characterId: 'voice_husk_keep_live',
-      name: 'Maya',
-    });
+    const created = await methods.create(
+      {
+        sequenceId,
+        characterId: 'voice_husk_keep_live',
+        name: 'Maya',
+      },
+      { source: 'analysis', createdBy: null }
+    );
     const saved = await methods.updateVoice(
       created.id,
       { voiceId: 'voice-old', voiceDescription: 'Original' },
@@ -332,11 +349,14 @@ describe('characters bible CRUD + soft-remove', () => {
 
   it('completes a live husk in place without appending history (#1715)', async () => {
     const methods = createCharactersMethods(db);
-    const created = await methods.create({
-      sequenceId,
-      characterId: 'voice_husk_complete',
-      name: 'Maya',
-    });
+    const created = await methods.create(
+      {
+        sequenceId,
+        characterId: 'voice_husk_complete',
+        name: 'Maya',
+      },
+      { source: 'analysis', createdBy: null }
+    );
     const { version: husk } = await methods.createPendingVoiceClaim(
       created.id,
       actorId
@@ -365,11 +385,14 @@ describe('characters bible CRUD + soft-remove', () => {
 
   it('does not complete a husk that already failed (#1715)', async () => {
     const methods = createCharactersMethods(db);
-    const created = await methods.create({
-      sequenceId,
-      characterId: 'voice_husk_fail',
-      name: 'Maya',
-    });
+    const created = await methods.create(
+      {
+        sequenceId,
+        characterId: 'voice_husk_fail',
+        name: 'Maya',
+      },
+      { source: 'analysis', createdBy: null }
+    );
     const { version: husk } = await methods.createPendingVoiceClaim(
       created.id,
       actorId
@@ -390,11 +413,14 @@ describe('characters bible CRUD + soft-remove', () => {
 
   it('clears pending-promote when selecting a different completed voice (#1715)', async () => {
     const methods = createCharactersMethods(db);
-    const created = await methods.create({
-      sequenceId,
-      characterId: 'voice_husk_demote',
-      name: 'Maya',
-    });
+    const created = await methods.create(
+      {
+        sequenceId,
+        characterId: 'voice_husk_demote',
+        name: 'Maya',
+      },
+      { source: 'analysis', createdBy: null }
+    );
     const saved = await methods.updateVoice(
       created.id,
       { voiceId: 'voice-a', voiceDescription: 'Original' },
@@ -421,11 +447,14 @@ describe('characters bible CRUD + soft-remove', () => {
 
   it('promotes a completed husk only while pending-promote still names it (#1715)', async () => {
     const methods = createCharactersMethods(db);
-    const created = await methods.create({
-      sequenceId,
-      characterId: 'voice_husk_promote',
-      name: 'Maya',
-    });
+    const created = await methods.create(
+      {
+        sequenceId,
+        characterId: 'voice_husk_promote',
+        name: 'Maya',
+      },
+      { source: 'analysis', createdBy: null }
+    );
     await methods.updateVoice(
       created.id,
       { voiceId: 'voice-old', voiceDescription: 'Original' },
@@ -459,11 +488,14 @@ describe('characters bible CRUD + soft-remove', () => {
 
   it('does not promote when the pointer moved mid-run (#1715)', async () => {
     const methods = createCharactersMethods(db);
-    const created = await methods.create({
-      sequenceId,
-      characterId: 'voice_husk_promote_demote',
-      name: 'Maya',
-    });
+    const created = await methods.create(
+      {
+        sequenceId,
+        characterId: 'voice_husk_promote_demote',
+        name: 'Maya',
+      },
+      { source: 'analysis', createdBy: null }
+    );
     await methods.updateVoice(
       created.id,
       { voiceId: 'voice-old', voiceDescription: 'Original' },
@@ -496,11 +528,14 @@ describe('characters bible CRUD + soft-remove', () => {
 
   it('does not promote a generating husk or a completed empty husk (#1715)', async () => {
     const methods = createCharactersMethods(db);
-    const created = await methods.create({
-      sequenceId,
-      characterId: 'voice_husk_promote_empty',
-      name: 'Maya',
-    });
+    const created = await methods.create(
+      {
+        sequenceId,
+        characterId: 'voice_husk_promote_empty',
+        name: 'Maya',
+      },
+      { source: 'analysis', createdBy: null }
+    );
     const { version: husk } = await methods.createPendingVoiceClaim(
       created.id,
       actorId
@@ -516,11 +551,14 @@ describe('characters bible CRUD + soft-remove', () => {
 
   it('clears pending-promote on a library updateVoice (#1715)', async () => {
     const methods = createCharactersMethods(db);
-    const created = await methods.create({
-      sequenceId,
-      characterId: 'voice_husk_library_demote',
-      name: 'Maya',
-    });
+    const created = await methods.create(
+      {
+        sequenceId,
+        characterId: 'voice_husk_library_demote',
+        name: 'Maya',
+      },
+      { source: 'analysis', createdBy: null }
+    );
     await methods.updateVoice(
       created.id,
       { voiceId: 'voice-a' },
@@ -547,11 +585,14 @@ describe('characters bible CRUD + soft-remove', () => {
 
   it('refuses to select a generating voice husk (#1715)', async () => {
     const methods = createCharactersMethods(db);
-    const created = await methods.create({
-      sequenceId,
-      characterId: 'voice_husk_select',
-      name: 'Maya',
-    });
+    const created = await methods.create(
+      {
+        sequenceId,
+        characterId: 'voice_husk_select',
+        name: 'Maya',
+      },
+      { source: 'analysis', createdBy: null }
+    );
     const { version: husk } = await methods.createPendingVoiceClaim(
       created.id,
       actorId
@@ -563,11 +604,14 @@ describe('characters bible CRUD + soft-remove', () => {
 
   it('refuses to select a completed husk with no voiceId (#1715)', async () => {
     const methods = createCharactersMethods(db);
-    const created = await methods.create({
-      sequenceId,
-      characterId: 'voice_husk_empty_select',
-      name: 'Maya',
-    });
+    const created = await methods.create(
+      {
+        sequenceId,
+        characterId: 'voice_husk_empty_select',
+        name: 'Maya',
+      },
+      { source: 'analysis', createdBy: null }
+    );
     const { version: husk } = await methods.createPendingVoiceClaim(
       created.id,
       actorId
@@ -580,16 +624,22 @@ describe('characters bible CRUD + soft-remove', () => {
 
   it('refuses a released voice version, across every character holding the id', async () => {
     const methods = createCharactersMethods(db);
-    const maya = await methods.create({
-      sequenceId,
-      characterId: 'voice_002',
-      name: 'Maya',
-    });
-    const otto = await methods.create({
-      sequenceId,
-      characterId: 'voice_003',
-      name: 'Otto',
-    });
+    const maya = await methods.create(
+      {
+        sequenceId,
+        characterId: 'voice_002',
+        name: 'Maya',
+      },
+      { source: 'analysis', createdBy: null }
+    );
+    const otto = await methods.create(
+      {
+        sequenceId,
+        characterId: 'voice_003',
+        name: 'Otto',
+      },
+      { source: 'analysis', createdBy: null }
+    );
     await methods.updateVoice(
       maya.id,
       { voiceId: 'shared' },
@@ -633,37 +683,46 @@ describe('characters bible CRUD + soft-remove', () => {
 
   it('create labels a talent-copied voice library, and appends nothing on the re-upsert', async () => {
     const methods = createCharactersMethods(db);
-    const cast = await methods.create({
-      sequenceId,
-      characterId: 'voice_004',
-      name: 'Nora',
-      voiceId: 'talent-voice',
-      voiceDescription: 'Gravelly',
-    });
+    const cast = await methods.create(
+      {
+        sequenceId,
+        characterId: 'voice_004',
+        name: 'Nora',
+        voiceId: 'talent-voice',
+        voiceDescription: 'Gravelly',
+      },
+      { source: 'analysis', createdBy: null }
+    );
     const [original] = await methods.listVoiceVersions(cast.id);
     expect(original?.source).toBe('library');
     expect(original?.voiceId).toBe('talent-voice');
 
     // The References stage re-upserts the same row; history must not grow and
     // the `coalesce` keeps the voice the row already holds.
-    const again = await methods.create({
-      sequenceId,
-      characterId: 'voice_004',
-      name: 'Nora',
-      voiceId: 'other-voice',
-      sheetStatus: 'generating',
-    });
+    const again = await methods.create(
+      {
+        sequenceId,
+        characterId: 'voice_004',
+        name: 'Nora',
+        voiceId: 'other-voice',
+        sheetStatus: 'generating',
+      },
+      { source: 'analysis', createdBy: null }
+    );
     expect(again.voiceId).toBe('talent-voice');
     expect(await methods.listVoiceVersions(cast.id)).toHaveLength(1);
   });
 
   it('update refuses a voice field, and a bible description edit records one', async () => {
     const methods = createCharactersMethods(db);
-    const created = await methods.create({
-      sequenceId,
-      characterId: 'voice_005',
-      name: 'Pia',
-    });
+    const created = await methods.create(
+      {
+        sequenceId,
+        characterId: 'voice_005',
+        name: 'Pia',
+      },
+      { source: 'analysis', createdBy: null }
+    );
     await expect(
       // @ts-expect-error -- the point: a voice write needs updateVoice's source
       methods.update(created.id, { voiceId: 'nope' })
@@ -673,7 +732,7 @@ describe('characters bible CRUD + soft-remove', () => {
     await methods.updateBible(
       created.id,
       { voiceDescription: 'Clipped, dry' },
-      { actorId }
+      { source: 'edit', actorId }
     );
     const versions = await methods.listVoiceVersions(created.id);
     expect(versions).toHaveLength(1);
@@ -684,25 +743,28 @@ describe('characters bible CRUD + soft-remove', () => {
     await methods.updateBible(
       created.id,
       { voiceDescription: 'Clipped, dry', age: '40s' },
-      { actorId }
+      { source: 'edit', actorId }
     );
     expect(await methods.listVoiceVersions(created.id)).toHaveLength(1);
   });
 
   it('updateBible writes the fields and an atomic character.updated event carrying prevState', async () => {
     const m = createCharactersMethods(db);
-    const created = await m.create({
-      sequenceId,
-      characterId: 'char_001',
-      name: 'Alice',
-      physicalDescription: 'tall, brown hair',
-      sheetStatus: 'completed',
-    });
+    const created = await m.create(
+      {
+        sequenceId,
+        characterId: 'char_001',
+        name: 'Alice',
+        physicalDescription: 'tall, brown hair',
+        sheetStatus: 'completed',
+      },
+      { source: 'analysis', createdBy: null }
+    );
 
     const updated = await m.updateBible(
       created.id,
       { physicalDescription: 'short, red hair', age: '40s' },
-      { actorId }
+      { source: 'edit', actorId }
     );
     expect(updated.physicalDescription).toBe('short, red hair');
     expect(updated.age).toBe('40s');
@@ -720,13 +782,16 @@ describe('characters bible CRUD + soft-remove', () => {
 
   it('softDelete hides the row from every default list but keeps it by id; restore is lossless', async () => {
     const m = createCharactersMethods(db);
-    const created = await m.create({
-      sequenceId,
-      characterId: 'char_001',
-      name: 'Alice',
-      physicalDescription: 'tall, brown hair',
-      sheetStatus: 'completed',
-    });
+    const created = await m.create(
+      {
+        sequenceId,
+        characterId: 'char_001',
+        name: 'Alice',
+        physicalDescription: 'tall, brown hair',
+        sheetStatus: 'completed',
+      },
+      { source: 'analysis', createdBy: null }
+    );
     // The sheet lives on the version row (#1419), keyed to the character's id.
     await db.insert(characterSheetVariants).values({
       id: created.id,
@@ -771,14 +836,17 @@ describe('characters bible CRUD + soft-remove', () => {
 
   it('derived staleness: a bible edit moves the visual-prompt hash, a consistencyTag edit does NOT (#867)', async () => {
     const m = createCharactersMethods(db);
-    const created = await m.create({
-      sequenceId,
-      characterId: 'char_001',
-      name: 'Alice',
-      physicalDescription: 'tall, brown hair',
-      consistencyTag: 'char_001: alice-red-coat',
-      sheetStatus: 'completed',
-    });
+    const created = await m.create(
+      {
+        sequenceId,
+        characterId: 'char_001',
+        name: 'Alice',
+        physicalDescription: 'tall, brown hair',
+        consistencyTag: 'char_001: alice-red-coat',
+        sheetStatus: 'completed',
+      },
+      { source: 'analysis', createdBy: null }
+    );
     const before = await liveVisualPromptHash();
 
     // consistencyTag is deliberately projected OUT of the prompt hash — it is
@@ -786,7 +854,7 @@ describe('characters bible CRUD + soft-remove', () => {
     await m.updateBible(
       created.id,
       { consistencyTag: 'char_001: alice-blue-coat' },
-      { actorId }
+      { source: 'edit', actorId }
     );
     expect(await liveVisualPromptHash()).toBe(before);
 
@@ -794,7 +862,7 @@ describe('characters bible CRUD + soft-remove', () => {
     await m.updateBible(
       created.id,
       { physicalDescription: 'short, red hair' },
-      { actorId }
+      { source: 'edit', actorId }
     );
     expect(await liveVisualPromptHash()).not.toBe(before);
 
@@ -805,13 +873,16 @@ describe('characters bible CRUD + soft-remove', () => {
 
   it('derived staleness: soft-removing a character moves the visual-prompt hash; restore puts it back', async () => {
     const m = createCharactersMethods(db);
-    const created = await m.create({
-      sequenceId,
-      characterId: 'char_001',
-      name: 'Alice',
-      physicalDescription: 'tall, brown hair',
-      sheetStatus: 'completed',
-    });
+    const created = await m.create(
+      {
+        sequenceId,
+        characterId: 'char_001',
+        name: 'Alice',
+        physicalDescription: 'tall, brown hair',
+        sheetStatus: 'completed',
+      },
+      { source: 'analysis', createdBy: null }
+    );
     const withCast = await liveVisualPromptHash();
 
     await m.softDelete(created.id, { actorId });
@@ -826,19 +897,22 @@ describe('characters bible CRUD + soft-remove', () => {
 
   it('bible edit and soft-remove move the DERIVED live prompt hash; restore moves it back', async () => {
     const m = createCharactersMethods(db);
-    const created = await m.create({
-      sequenceId,
-      characterId: 'char_001',
-      name: 'Alice',
-      physicalDescription: 'tall, brown hair',
-      sheetStatus: 'completed',
-    });
+    const created = await m.create(
+      {
+        sequenceId,
+        characterId: 'char_001',
+        name: 'Alice',
+        physicalDescription: 'tall, brown hair',
+        sheetStatus: 'completed',
+      },
+      { source: 'analysis', createdBy: null }
+    );
 
     const stamped = await liveVisualPromptHash();
     await m.updateBible(
       created.id,
       { physicalDescription: 'short, red hair' },
-      { actorId }
+      { source: 'edit', actorId }
     );
     const afterEdit = await liveVisualPromptHash();
     expect(afterEdit).not.toBe(stamped);
@@ -854,22 +928,28 @@ describe('characters bible CRUD + soft-remove', () => {
 
   it('a re-analysis upsert on the same characterId revives a soft-deleted character', async () => {
     const m = createCharactersMethods(db);
-    const created = await m.create({
-      sequenceId,
-      characterId: 'char_001',
-      name: 'Alice',
-      sheetStatus: 'pending',
-    });
+    const created = await m.create(
+      {
+        sequenceId,
+        characterId: 'char_001',
+        name: 'Alice',
+        sheetStatus: 'pending',
+      },
+      { source: 'analysis', createdBy: null }
+    );
     await m.softDelete(created.id, { actorId });
     expect(await m.list(sequenceId)).toHaveLength(0);
 
     // Storyboard re-extracts the character → same (sequenceId, characterId).
-    await m.create({
-      sequenceId,
-      characterId: 'char_001',
-      name: 'Alice',
-      sheetStatus: 'pending',
-    });
+    await m.create(
+      {
+        sequenceId,
+        characterId: 'char_001',
+        name: 'Alice',
+        sheetStatus: 'pending',
+      },
+      { source: 'analysis', createdBy: null }
+    );
     const rows = await m.list(sequenceId);
     expect(rows).toHaveLength(1);
     expect(rows[0]?.deletedAt).toBeNull();
@@ -879,13 +959,16 @@ describe('characters bible CRUD + soft-remove', () => {
 describe('sequence locations bible CRUD + soft-remove', () => {
   it('updateBible writes the fields and an atomic location.updated event carrying prevState', async () => {
     const m = createSequenceLocationsMethods(db);
-    const created = await m.create({
-      sequenceId,
-      locationId: 'loc_001',
-      name: 'Beach',
-      description: 'white sand',
-      referenceStatus: 'completed',
-    });
+    const created = await m.create(
+      {
+        sequenceId,
+        locationId: 'loc_001',
+        name: 'Beach',
+        description: 'white sand',
+        referenceStatus: 'completed',
+      },
+      { source: 'analysis', createdBy: null }
+    );
 
     const updated = await m.updateBible(
       created.id,
@@ -909,12 +992,15 @@ describe('sequence locations bible CRUD + soft-remove', () => {
     const m = createSequenceLocationsMethods(db);
     const [seq] = await db.select().from(sequences);
     if (!seq) throw new Error('test setup: sequence missing');
-    const created = await m.create({
-      sequenceId,
-      locationId: 'loc_001',
-      name: 'Beach',
-      referenceStatus: 'completed',
-    });
+    const created = await m.create(
+      {
+        sequenceId,
+        locationId: 'loc_001',
+        name: 'Beach',
+        referenceStatus: 'completed',
+      },
+      { source: 'analysis', createdBy: null }
+    );
 
     await m.softDelete(created.id, { actorId });
     expect(await m.list(sequenceId)).toHaveLength(0);
@@ -935,22 +1021,28 @@ describe('sequence locations bible CRUD + soft-remove', () => {
 
   it('createBulk upsert revives a soft-deleted location', async () => {
     const m = createSequenceLocationsMethods(db);
-    const created = await m.create({
-      sequenceId,
-      locationId: 'loc_001',
-      name: 'Beach',
-      referenceStatus: 'pending',
-    });
-    await m.softDelete(created.id, { actorId });
-
-    await m.createBulk([
+    const created = await m.create(
       {
         sequenceId,
         locationId: 'loc_001',
         name: 'Beach',
         referenceStatus: 'pending',
       },
-    ]);
+      { source: 'analysis', createdBy: null }
+    );
+    await m.softDelete(created.id, { actorId });
+
+    await m.createBulk(
+      [
+        {
+          sequenceId,
+          locationId: 'loc_001',
+          name: 'Beach',
+          referenceStatus: 'pending',
+        },
+      ],
+      { source: 'analysis', createdBy: null }
+    );
     const rows = await m.list(sequenceId);
     expect(rows).toHaveLength(1);
     expect(rows[0]?.deletedAt).toBeNull();
@@ -988,5 +1080,155 @@ describe('sequence elements soft-remove (#1108 item 6)', () => {
     const kinds = (await db.select().from(sequenceEvents)).map((r) => r.kind);
     expect(kinds).toContain('element.deleted');
     expect(kinds).toContain('element.restored');
+  });
+});
+
+describe('bible history (#1600)', () => {
+  const characterVersions = async (characterId: string) =>
+    await db
+      .select()
+      .from(characterBibleVersions)
+      .where(eq(characterBibleVersions.characterId, characterId));
+  const locationVersions = async (locationId: string) =>
+    await db
+      .select()
+      .from(locationBibleVersions)
+      .where(eq(locationBibleVersions.locationId, locationId));
+  const analysis = { source: 'analysis', createdBy: null } as const;
+
+  it('a create appends the first version and points at it', async () => {
+    const m = createCharactersMethods(db);
+    const created = await m.create(
+      {
+        sequenceId,
+        characterId: 'char_001',
+        name: 'Ada',
+        standardClothing: 'coat',
+      },
+      analysis
+    );
+    const [first] = await characterVersions(created.id);
+    expect(first).toMatchObject({
+      name: 'Ada',
+      standardClothing: 'coat',
+      voiceOnly: false,
+      isPerson: true,
+      source: 'analysis',
+    });
+    expect(created.selectedBibleVersionId).toBe(first?.id);
+  });
+
+  it('a re-analysis appends only when a field moved, keeping what it left out', async () => {
+    const m = createCharactersMethods(db);
+    const input = {
+      sequenceId,
+      characterId: 'char_001',
+      name: 'Ada',
+      standardClothing: 'coat',
+      personality: 'wry',
+    };
+    const created = await m.create(input, analysis);
+    await m.create(input, analysis);
+    expect(await characterVersions(created.id)).toHaveLength(1);
+
+    const moved = await m.create(
+      { sequenceId, characterId: 'char_001', name: 'Ada', age: '40s' },
+      analysis
+    );
+    expect(await characterVersions(created.id)).toHaveLength(2);
+    expect(moved).toMatchObject({
+      age: '40s',
+      standardClothing: 'coat',
+      personality: 'wry',
+    });
+  });
+
+  it('an edit appends a version by its author; a no-op edit appends none', async () => {
+    const m = createCharactersMethods(db);
+    const created = await m.create(
+      { sequenceId, characterId: 'char_001', name: 'Ada' },
+      analysis
+    );
+    const edited = await m.updateBible(
+      created.id,
+      { standardClothing: 'dress' },
+      { actorId, source: 'edit' }
+    );
+    expect(edited.standardClothing).toBe('dress');
+    const versions = await characterVersions(created.id);
+    expect(versions).toHaveLength(2);
+    expect(
+      versions.find((v) => v.id === edited.selectedBibleVersionId)
+    ).toMatchObject({ source: 'edit', createdBy: actorId });
+
+    await m.updateBible(
+      created.id,
+      { standardClothing: 'dress' },
+      { actorId, source: 'edit' }
+    );
+    expect(await characterVersions(created.id)).toHaveLength(2);
+  });
+
+  it('a row with no version reads its old columns, and its first edit versions it', async () => {
+    const id = generateId();
+    // The shape a worker older than #1600 writes during the deploy window.
+    await db.insert(characters).values({
+      id,
+      sequenceId,
+      characterId: 'char_old',
+      legacyName: 'Old',
+      legacyStandardClothing: 'coat',
+    });
+    const m = createCharactersMethods(db);
+    expect(await m.getById(id)).toMatchObject({
+      name: 'Old',
+      standardClothing: 'coat',
+      selectedBibleVersionId: null,
+    });
+
+    const edited = await m.updateBible(
+      id,
+      { age: '50s' },
+      { actorId, source: 'edit' }
+    );
+    expect(edited).toMatchObject({ name: 'Old', standardClothing: 'coat' });
+    const [version] = await characterVersions(id);
+    expect(version).toMatchObject({
+      name: 'Old',
+      age: '50s',
+      standardClothing: 'coat',
+    });
+  });
+
+  it('locations: create, bulk re-analysis and edits append the same way', async () => {
+    const m = createSequenceLocationsMethods(db);
+    const created = await m.create(
+      { sequenceId, locationId: 'loc_001', name: 'Diner', description: 'old' },
+      analysis
+    );
+    await m.createBulk(
+      [
+        {
+          sequenceId,
+          locationId: 'loc_001',
+          name: 'Diner',
+          description: 'old',
+        },
+      ],
+      analysis
+    );
+    expect(await locationVersions(created.id)).toHaveLength(1);
+
+    const edited = await m.updateBible(
+      created.id,
+      { timeOfDay: 'night' },
+      { actorId }
+    );
+    expect(edited).toMatchObject({ description: 'old', timeOfDay: 'night' });
+    const versions = await locationVersions(created.id);
+    expect(versions).toHaveLength(2);
+    expect(
+      versions.find((v) => v.id === edited.selectedBibleVersionId)
+    ).toMatchObject({ source: 'edit', createdBy: actorId });
   });
 });

@@ -748,9 +748,9 @@ describe('complete production reads', () => {
       id: characterId,
       sequenceId,
       characterId: 'char_001',
-      name: 'Ada',
-      personality: 'Curious',
-      consistencyTag: 'ada',
+      legacyName: 'Ada',
+      legacyPersonality: 'Curious',
+      legacyConsistencyTag: 'ada',
       voiceId: 'voice-ada',
       voicePreviews: [
         {
@@ -772,9 +772,9 @@ describe('complete production reads', () => {
       id: locationId,
       sequenceId,
       locationId: 'loc_001',
-      name: 'Office',
-      description: 'Bright office',
-      consistencyTag: 'office',
+      legacyName: 'Office',
+      legacyDescription: 'Bright office',
+      legacyConsistencyTag: 'office',
     });
     await db.insert(locationSheetVariants).values({
       id: locationId,
@@ -981,7 +981,7 @@ describe('complete production reads', () => {
       id: generateId(),
       sequenceId,
       characterId: 'char_002',
-      name: 'Other',
+      legacyName: 'Other',
     });
     const pageSchema = z.object({
       characters: z.array(z.object({ id: z.string() })),
@@ -1395,7 +1395,7 @@ describe('complete production reads', () => {
     ).toBe(false);
     await db
       .update(characters)
-      .set({ voiceOnly: true })
+      .set({ legacyVoiceOnly: true })
       .where(eq(characters.id, characterId));
     expect(
       await data('get_reference_staleness', {

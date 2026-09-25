@@ -233,6 +233,12 @@ Key consequences of the shape:
   character's `physicalDescription` and the visual + motion **prompts** go stale;
   the rendered thumbnail goes stale only because the **character-sheet hash**
   changes and feeds the thumbnail hash.
+- **Bibles are versioned (#1600).** Each edit, recast or re-analysis
+  appends a `character_bible_versions` / `location_bible_versions` row, and
+  sheets record the version they read. The edges above are unchanged — the
+  hashes still read the bible's values — but a stale artifact's cause now
+  names the fields that moved (`Character "Jack": clothing`) instead of any
+  row touched after it.
 - **Voice ids bind on the clip**, not the motion prompt. A voice id (an
   ElevenLabs id, or a `seed:` id for a Seed voice, #1765) is in
   `VideoManifestEntry.audioSourceKey` (shape-stable: omitted when

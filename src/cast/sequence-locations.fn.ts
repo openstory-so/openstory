@@ -87,15 +87,18 @@ export const createSequenceLocationFn = createServerFn({ method: 'POST' })
       taken.add(locationId);
       locationId = nextIdentityToken(base, taken);
     }
-    const location = await context.scopedDb.sequenceLocations.create({
-      sequenceId,
-      locationId,
-      name,
-      ...bible,
-      consistencyTag:
-        bible.consistencyTag ?? `${locationId}: ${slugifyTag(name)}`,
-      referenceStatus: 'pending',
-    });
+    const location = await context.scopedDb.sequenceLocations.create(
+      {
+        sequenceId,
+        locationId,
+        name,
+        ...bible,
+        consistencyTag:
+          bible.consistencyTag ?? `${locationId}: ${slugifyTag(name)}`,
+        referenceStatus: 'pending',
+      },
+      { source: 'edit', createdBy: context.user.id }
+    );
     await context.scopedDb.sequenceEvents.record({
       sequenceId,
       actorId: context.user.id,
@@ -404,6 +407,7 @@ export const recastLocationFn = createServerFn({ method: 'POST' })
       libraryLocationId: data.libraryLocationId,
       libraryLocationReferenceHash: libraryLocation.referenceInputHash,
       referenceVersionId,
+      bibleVersionId: updatedLocation.selectedBibleVersionId,
       imageModel,
       styleConfig,
       aspectRatio: sequence.aspectRatio,

@@ -5,6 +5,7 @@
 
 import {
   and,
+  asc,
   count,
   desc,
   eq,
@@ -19,9 +20,13 @@ import type { Database } from '@/platform/server/db/client';
 import { pageOf } from '@/platform/server/db/read-page';
 import type { PageOptions } from '@/platform/server/db/read-page';
 import type {
+  BibleVersionSource,
+  CharacterBible,
   CharacterWithSheet,
   Character,
+  CharacterRow,
   CharacterVoiceVersionSource,
+  LegacyCharacterBibleColumn,
   CharacterWithTalent,
   Shot,
   NewCharacter,
@@ -31,6 +36,8 @@ import type {
   CharacterVoiceVersionStatus,
 } from '@/platform/server/db/schema';
 import {
+  CHARACTER_BIBLE_FIELDS,
+  characterBibleVersions,
   characterSheetVariants,
   characterVoiceVersions,
   characters,
@@ -48,7 +55,12 @@ import {
 import { typedEntries } from '@/platform/typed-object';
 import { matchCharacterToShotTags } from '@/shots/scene-matching';
 import { createCharacterSheetVariantsMethods } from './character-sheet-variants';
-import { keepClaimUnlessChanged } from './sheet-claims';
+import {
+  characterBibleChanged,
+  characterBibleColumns,
+  pickCharacterBible,
+  mergeDefined,
+} from './bible-versions';
 import type { CharacterSheetInputHash } from '@/shots/input-hash';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
 
@@ -64,18 +76,42 @@ const SHEET_BIBLE_FIELDS = [
   'consistencyTag',
 ] as const;
 
-/** The same inputs as SQL columns, plus the cast talent, for the upsert. */
-const CHARACTER_SHEET_INPUT_COLUMNS = [
-  'name',
-  'age',
-  'gender',
-  'ethnicity',
-  'physical_description',
-  'standard_clothing',
-  'distinguishing_features',
-  'consistency_tag',
-  'talent_id',
-] as const;
+/** A new character's bible where the caller left a field out. */
+const NEW_CHARACTER_BIBLE: Omit<CharacterBible, 'name'> = {
+  age: null,
+  gender: null,
+  ethnicity: null,
+  physicalDescription: null,
+  standardClothing: null,
+  distinguishingFeatures: null,
+  personality: null,
+  movement: null,
+  voiceOnly: false,
+  isPerson: true,
+  consistencyTag: null,
+};
+
+/** The bible a {@link NewCharacter} carries, undefined where left out. */
+const bibleOf = (data: NewCharacter): Partial<CharacterBible> => ({
+  name: data.name,
+  age: data.age,
+  gender: data.gender,
+  ethnicity: data.ethnicity,
+  physicalDescription: data.physicalDescription,
+  standardClothing: data.standardClothing,
+  distinguishingFeatures: data.distinguishingFeatures,
+  personality: data.personality,
+  movement: data.movement,
+  voiceOnly: data.voiceOnly,
+  isPerson: data.isPerson,
+  consistencyTag: data.consistencyTag,
+});
+
+const mergeBible = (base: CharacterBible, patch: Partial<CharacterBible>) =>
+  mergeDefined(base, patch, CHARACTER_BIBLE_FIELDS);
+
+const touchesSheet = (fields: readonly (keyof CharacterBible)[]) =>
+  fields.some((key) => (SHEET_BIBLE_FIELDS as readonly string[]).includes(key));
 
 /**
  * The user-editable character bible fields (#1108 Phase 2). Everything else on
@@ -117,8 +153,16 @@ const VOICE_FIELDS = [
 type VoiceField = (typeof VOICE_FIELDS)[number];
 
 type CharacterVoiceUpdate = Partial<Pick<NewCharacter, VoiceField>>;
-/** Everything but the voice mirror — see {@link VOICE_FIELDS}. */
-type CharacterUpdate = Partial<Omit<NewCharacter, VoiceField>>;
+/**
+ * The row's own columns, minus the voice mirror (see {@link VOICE_FIELDS}) and
+ * the bible, which only moves through {@link appendBible} (#1600).
+ */
+type CharacterUpdate = Partial<
+  Omit<
+    typeof characters.$inferInsert,
+    VoiceField | LegacyCharacterBibleColumn | 'selectedBibleVersionId'
+  >
+>;
 
 /**
  * The character's live sheet version (#1419 PR B).
@@ -151,8 +195,26 @@ const liveSheetVersionId = sql`COALESCE(${characters.selectedSheetVersionId}, ${
  * carry them. #1067 kept `frames.imageStatus` / `imageError` for the same
  * reason.
  */
+// The row's own columns: the legacy bible is read only through the fallback.
+const {
+  legacyName: _name,
+  legacyAge: _age,
+  legacyGender: _gender,
+  legacyEthnicity: _ethnicity,
+  legacyPhysicalDescription: _physicalDescription,
+  legacyStandardClothing: _standardClothing,
+  legacyDistinguishingFeatures: _distinguishingFeatures,
+  legacyPersonality: _personality,
+  legacyMovement: _movement,
+  legacyVoiceOnly: _voiceOnly,
+  legacyIsPerson: _isPerson,
+  legacyConsistencyTag: _consistencyTag,
+  ...characterRowColumns
+} = getTableColumns(characters);
+
 const charactersWithLiveSheet = {
-  ...getTableColumns(characters),
+  ...characterRowColumns,
+  ...characterBibleColumns,
   sheetImageUrl: characterSheetVariants.url,
   sheetImagePath: characterSheetVariants.storagePath,
   sheetGeneratedAt: characterSheetVariants.generatedAt,
@@ -171,15 +233,74 @@ const LIVE_VOICE_CLAIM_STATUSES = [
 ] as const satisfies readonly CharacterVoiceVersionStatus[];
 
 export function createCharactersMethods(db: Database) {
-  /** `select(charactersWithLiveSheet)` + the join it depends on. */
+  /** `select(charactersWithLiveSheet)` + the joins it depends on. */
   const selectWithLiveSheet = () =>
     db
       .select(charactersWithLiveSheet)
       .from(characters)
       .leftJoin(
+        characterBibleVersions,
+        eq(characterBibleVersions.id, characters.selectedBibleVersionId)
+      )
+      .leftJoin(
         characterSheetVariants,
         eq(characterSheetVariants.id, liveSheetVersionId)
       );
+
+  /** A write's row, re-read so it carries the resolved bible and sheet. */
+  const reread = async (
+    row: Pick<CharacterRow, 'id'> | undefined
+  ): Promise<CharacterWithSheet> => {
+    if (!row) throw new Error('SequenceCharacter not found');
+    const [character] = await selectWithLiveSheet().where(
+      eq(characters.id, row.id)
+    );
+    if (!character) throw new Error(`SequenceCharacter ${row.id} not found`);
+    return character;
+  };
+
+  /**
+   * The one writer of a bible (#1600): the statements that append a version
+   * row and point the character at it, for the caller's own `db.batch`. A
+   * change to a field the sheet reads revokes the in-flight sheet run's claim
+   * (#1113) in the same batch. Empty when nothing moved and the row already
+   * has a version.
+   */
+  const bibleWrite = (
+    existing: Character,
+    patch: Partial<CharacterBible>,
+    opts: { source: BibleVersionSource; createdBy: string | null }
+  ) => {
+    const before = pickCharacterBible(existing);
+    const after = mergeBible(before, patch);
+    const moved = characterBibleChanged(before, after);
+    if (moved.length === 0 && existing.selectedBibleVersionId) {
+      return { moved, statements: [] };
+    }
+    const versionId = generateId();
+    return {
+      moved,
+      statements: [
+        db.insert(characterBibleVersions).values({
+          id: versionId,
+          characterId: existing.id,
+          ...after,
+          source: opts.source,
+          createdBy: opts.createdBy,
+        }),
+        db
+          .update(characters)
+          .set({
+            selectedBibleVersionId: versionId,
+            ...(touchesSheet(moved)
+              ? { pendingPromoteSheetVersionId: null }
+              : {}),
+            updatedAt: new Date(),
+          })
+          .where(eq(characters.id, existing.id)),
+      ],
+    };
+  };
 
   // Private update helper used by updateSheetStatus and updateSheet. Voice
   // fields are NOT writable here — a new value goes through `updateVoice`,
@@ -200,13 +321,13 @@ export function createCharactersMethods(db: Database) {
       .update(characters)
       .set({ ...data, updatedAt: new Date() })
       .where(eq(characters.id, id))
-      .returning();
+      .returning({ id: characters.id });
 
     if (!character) {
       throw new Error(`SequenceCharacter ${id} not found`);
     }
 
-    return character;
+    return await reread(character);
   };
 
   /**
@@ -257,11 +378,9 @@ export function createCharactersMethods(db: Database) {
           updatedAt: new Date(),
         })
         .where(eq(characters.id, id))
-        .returning(),
+        .returning({ id: characters.id }),
     ]);
-    const character = updatedRows[0];
-    if (!character) throw new Error(`SequenceCharacter ${id} not found`);
-    return character;
+    return await reread(updatedRows[0]);
   };
 
   return {
@@ -302,6 +421,25 @@ export function createCharactersMethods(db: Database) {
       );
     },
 
+    /**
+     * Every bible version of the sequence's characters, oldest first (#1600).
+     * Staleness causes diff the version live when an artifact was made
+     * against the live bible.
+     */
+    listBibleVersionsBySequence: async (sequenceId: string) =>
+      await db
+        .select(getTableColumns(characterBibleVersions))
+        .from(characterBibleVersions)
+        .innerJoin(
+          characters,
+          eq(characters.id, characterBibleVersions.characterId)
+        )
+        .where(eq(characters.sequenceId, sequenceId))
+        .orderBy(
+          asc(characterBibleVersions.createdAt),
+          asc(characterBibleVersions.id)
+        ),
+
     listWithTalent: async (
       sequenceId: string
     ): Promise<CharacterWithTalent[]> => {
@@ -316,6 +454,10 @@ export function createCharactersMethods(db: Database) {
         })
         .from(characters)
         .leftJoin(talent, eq(characters.talentId, talent.id))
+        .leftJoin(
+          characterBibleVersions,
+          eq(characterBibleVersions.id, characters.selectedBibleVersionId)
+        )
         .leftJoin(
           characterSheetVariants,
           eq(characterSheetVariants.id, liveSheetVersionId)
@@ -350,30 +492,71 @@ export function createCharactersMethods(db: Database) {
       );
     },
 
-    create: async (data: NewCharacter): Promise<Character> => {
-      const [character] = await db
+    /**
+     * Insert, or re-analyse onto, the character keyed by
+     * `(sequenceId, characterId)`. The bible lands as a version row (#1600),
+     * appended only when a field moved, so an identical re-analysis adds no
+     * history and keeps an in-flight sheet claim. A move of a field the sheet
+     * reads, or of the cast talent, revokes it (#1113).
+     */
+    create: async (
+      data: NewCharacter,
+      opts: { source: BibleVersionSource; createdBy: string | null }
+    ): Promise<Character> => {
+      const [existing] = await selectWithLiveSheet().where(
+        and(
+          eq(characters.sequenceId, data.sequenceId),
+          eq(characters.characterId, data.characterId)
+        )
+      );
+      const {
+        name: _n,
+        age: _a,
+        gender: _g,
+        ethnicity: _e,
+        physicalDescription: _pd,
+        standardClothing: _sc,
+        distinguishingFeatures: _df,
+        personality: _p,
+        movement: _m,
+        voiceOnly: _vo,
+        isPerson: _ip,
+        consistencyTag: _ct,
+        ...row
+      } = data;
+      // A field left out keeps its value, as the column upsert did.
+      const bible = mergeBible(
+        existing
+          ? pickCharacterBible(existing)
+          : { ...NEW_CHARACTER_BIBLE, name: data.name },
+        bibleOf(data)
+      );
+      const moved = existing
+        ? characterBibleChanged(pickCharacterBible(existing), bible)
+        : [...CHARACTER_BIBLE_FIELDS];
+      const appendVersion =
+        !existing || !existing.selectedBibleVersionId || moved.length > 0;
+      const talentMoved =
+        !!existing &&
+        data.talentId !== undefined &&
+        data.talentId !== existing.talentId;
+      const revokeClaim = !!existing && (touchesSheet(moved) || talentMoved);
+      const id = existing?.id ?? data.id ?? generateId();
+      const versionId = generateId();
+      const pointer = appendVersion
+        ? { selectedBibleVersionId: versionId }
+        : {};
+      const upsert = db
         .insert(characters)
-        .values(data)
+        .values({ ...row, id, legacyName: bible.name, ...pointer })
         .onConflictDoUpdate({
           target: [characters.sequenceId, characters.characterId],
           set: {
-            name: data.name,
-            age: data.age,
-            gender: data.gender,
-            ethnicity: data.ethnicity,
-            physicalDescription: data.physicalDescription,
-            standardClothing: data.standardClothing,
-            distinguishingFeatures: data.distinguishingFeatures,
-            personality: data.personality,
-            movement: data.movement,
-            voiceOnly: data.voiceOnly,
-            isPerson: data.isPerson,
             // A voice already on the row wins (#1553): re-writing it would
             // orphan an ElevenLabs slot. A row without one takes the talent
             // copy the insert carries.
             voiceId: sql`coalesce(${characters.voiceId}, excluded.voice_id)`,
             voiceDescription: sql`coalesce(${characters.voiceDescription}, excluded.voice_description)`,
-            consistencyTag: data.consistencyTag,
             // Sheet OUTPUT is not re-written here (#1419). A re-analysis used
             // to blank `sheetImageUrl` while leaving the version rows intact,
             // so the character rendered sheet-less until it regenerated.
@@ -381,23 +564,29 @@ export function createCharactersMethods(db: Database) {
             // value ('generating' for re-analysis, 'pending' for a manual add).
             sheetStatus: data.sheetStatus,
             talentId: data.talentId,
-            // A re-analysis that moves a sheet input revokes the sheet claim (#1113).
-            pendingPromoteSheetVersionId: keepClaimUnlessChanged(
-              'pending_promote_sheet_version_id',
-              CHARACTER_SHEET_INPUT_COLUMNS
-            ),
+            ...pointer,
+            ...(revokeClaim ? { pendingPromoteSheetVersionId: null } : {}),
             // A re-analysis re-extracting a soft-deleted character revives it —
             // the script says the character exists again (#1108).
             deletedAt: null,
             updatedAt: new Date(),
           },
-        })
-        .returning();
-      if (!character) {
-        throw new Error(
-          `Failed to create Character for sequence ${data.sequenceId} (characterId ${data.characterId})`
-        );
-      }
+        });
+      await db.batch([
+        upsert,
+        ...(appendVersion
+          ? [
+              db.insert(characterBibleVersions).values({
+                id: versionId,
+                characterId: id,
+                ...bible,
+                source: opts.source,
+                createdBy: opts.createdBy,
+              }),
+            ]
+          : []),
+      ]);
+      const character = await reread({ id });
       // The ORIGINAL history row (#1657): the voice the cast arrived with.
       // Without it history starts at the first edit, so the analysed /
       // talent-copied voice can never be selected back. Guarded on the
@@ -445,7 +634,7 @@ export function createCharactersMethods(db: Database) {
         generatedVoiceId,
         reason
       );
-      if (!next) return existing;
+      if (!next) return await reread(existing);
       const versionId = existing.selectedVoiceVersionId;
       const now = new Date();
       if (versionId) {
@@ -458,19 +647,16 @@ export function createCharactersMethods(db: Database) {
             .update(characters)
             .set({ voicePreviews: next, updatedAt: now })
             .where(eq(characters.id, id))
-            .returning(),
+            .returning({ id: characters.id }),
         ]);
-        const character = updatedRows[0];
-        if (!character) throw new Error(`SequenceCharacter ${id} not found`);
-        return character;
+        return await reread(updatedRows[0]);
       }
       const [character] = await db
         .update(characters)
         .set({ voicePreviews: next, updatedAt: now })
         .where(eq(characters.id, id))
-        .returning();
-      if (!character) throw new Error(`SequenceCharacter ${id} not found`);
-      return character;
+        .returning({ id: characters.id });
+      return await reread(character);
     },
 
     /**
@@ -567,9 +753,9 @@ export function createCharactersMethods(db: Database) {
             )
           )
         )
-        .returning();
+        .returning({ id: characters.id });
       if (!updated) throw new Error(RELEASED_VOICE_MESSAGE);
-      return updated;
+      return await reread(updated);
     },
 
     /**
@@ -874,9 +1060,7 @@ export function createCharactersMethods(db: Database) {
       inputHash: CharacterSheetInputHash | null = null,
       opts?: { model?: string; workflowRunId?: string | null }
     ): Promise<Character> => {
-      const { character } = await createCharacterSheetVariantsMethods(
-        db
-      ).applyConvergent({
+      await createCharacterSheetVariantsMethods(db).applyConvergent({
         characterId: id,
         url: imageUrl,
         storagePath: imagePath,
@@ -884,7 +1068,7 @@ export function createCharactersMethods(db: Database) {
         model: opts?.model ?? 'unknown',
         workflowRunId: opts?.workflowRunId,
       });
-      return character;
+      return await reread({ id });
     },
 
     getNeedingSheets: async (
@@ -909,12 +1093,15 @@ export function createCharactersMethods(db: Database) {
     updateBible: async (
       id: string,
       data: CharacterBibleUpdate,
-      opts: { actorId: string | null }
+      opts: {
+        actorId: string | null;
+        /** 'edit' for a person's form/API edit; 'recast' for a talent cast. */
+        source: Extract<BibleVersionSource, 'edit' | 'recast'>;
+      }
     ): Promise<Character> => {
-      const [existing] = await db
-        .select()
-        .from(characters)
-        .where(eq(characters.id, id));
+      const [existing] = await selectWithLiveSheet().where(
+        eq(characters.id, id)
+      );
       if (!existing) {
         throw new Error(`SequenceCharacter ${id} not found`);
       }
@@ -923,51 +1110,41 @@ export function createCharactersMethods(db: Database) {
         if (value === undefined) continue;
         prev[key] = existing[key] ?? null;
       }
-      // An edit to a field the sheet reads revokes an in-flight sheet run's
-      // claim (#1113): its result parks as divergent instead of landing.
-      const sheetInputMoved = SHEET_BIBLE_FIELDS.some(
-        (key) => data[key] !== undefined && data[key] !== existing[key]
-      );
-      const [updatedRows] = await db.batch([
-        db
-          .update(characters)
-          .set({
-            ...data,
-            ...(sheetInputMoved ? { pendingPromoteSheetVersionId: null } : {}),
-            updatedAt: new Date(),
-          })
-          .where(eq(characters.id, id))
-          .returning(),
+      const { voiceDescription, ...bibleData } = data;
+      // Appends a version and moves the pointer (#1600); an edit to a field
+      // the sheet reads also revokes an in-flight sheet run's claim (#1113).
+      const { statements } = bibleWrite(existing, bibleData, {
+        source: opts.source,
+        createdBy: opts.actorId,
+      });
+      await db.batch([
         buildEventInsert(db, {
           sequenceId: existing.sequenceId,
           actorId: opts.actorId,
           kind: 'character.updated',
           targetType: 'character',
           targetId: id,
-          summary: `Edited character ${data.name ?? existing.name}`,
+          summary: `${opts.source === 'recast' ? 'Recast' : 'Edited'} character ${data.name ?? existing.name}`,
           data: { prevState: prev },
         }),
+        ...statements,
       ]);
-      const updated = updatedRows[0];
-      if (!updated) {
-        throw new Error(`SequenceCharacter ${id} disappeared during update`);
-      }
-      // `voiceDescription` is a bible field AND part of the voice mirror, so
-      // an edit to it is a voice write and belongs in the history (#1657).
-      // Only when it actually moved: the form posts every field, and a row
-      // per unrelated bible edit would bury the real takes.
+      // `voiceDescription` is part of the voice mirror, so an edit to it is
+      // a voice write and belongs in the voice history (#1657). Only when it
+      // actually moved: the form posts every field, and a row per unrelated
+      // bible edit would bury the real takes.
       if (
-        data.voiceDescription !== undefined &&
-        data.voiceDescription !== existing.voiceDescription
+        voiceDescription !== undefined &&
+        voiceDescription !== existing.voiceDescription
       ) {
         return await updateVoice(
           id,
-          { voiceDescription: data.voiceDescription },
+          { voiceDescription },
           'user-edit',
           opts.actorId
         );
       }
-      return updated;
+      return await reread(existing);
     },
 
     /**
@@ -982,10 +1159,9 @@ export function createCharactersMethods(db: Database) {
       id: string,
       opts: { actorId: string | null }
     ): Promise<Date> => {
-      const [existing] = await db
-        .select()
-        .from(characters)
-        .where(eq(characters.id, id));
+      const [existing] = await selectWithLiveSheet().where(
+        eq(characters.id, id)
+      );
       if (!existing) {
         throw new Error(`SequenceCharacter ${id} not found`);
       }
@@ -1014,10 +1190,9 @@ export function createCharactersMethods(db: Database) {
       id: string,
       opts: { actorId: string | null }
     ): Promise<Character> => {
-      const [existing] = await db
-        .select()
-        .from(characters)
-        .where(eq(characters.id, id));
+      const [existing] = await selectWithLiveSheet().where(
+        eq(characters.id, id)
+      );
       if (!existing) {
         throw new Error(`SequenceCharacter ${id} not found`);
       }
@@ -1027,7 +1202,7 @@ export function createCharactersMethods(db: Database) {
           .update(characters)
           .set({ deletedAt: null, updatedAt: now })
           .where(eq(characters.id, id))
-          .returning(),
+          .returning({ id: characters.id }),
         buildEventInsert(db, {
           sequenceId: existing.sequenceId,
           actorId: opts.actorId,
@@ -1038,11 +1213,7 @@ export function createCharactersMethods(db: Database) {
           data: { name: existing.name },
         }),
       ]);
-      const restored = restoredRows[0];
-      if (!restored) {
-        throw new Error(`SequenceCharacter ${id} disappeared during restore`);
-      }
-      return restored;
+      return await reread(restoredRows[0]);
     },
 
     updateTalent: async (
@@ -1058,13 +1229,13 @@ export function createCharactersMethods(db: Database) {
           updatedAt: new Date(),
         })
         .where(eq(characters.id, characterId))
-        .returning();
+        .returning({ id: characters.id });
 
       if (!character) {
         throw new Error(`Character ${characterId} not found`);
       }
 
-      return character;
+      return await reread(character);
     },
 
     getShotsForCharacter: async (
@@ -1072,10 +1243,9 @@ export function createCharactersMethods(db: Database) {
       characterId: string
     ): Promise<Shot[]> => {
       // Get the character to extract matching patterns
-      const charResult = await db
-        .select()
-        .from(characters)
-        .where(eq(characters.id, characterId));
+      const charResult = await selectWithLiveSheet().where(
+        eq(characters.id, characterId)
+      );
       const character = charResult[0] ?? null;
       if (!character || character.sequenceId !== sequenceId) {
         return [];
@@ -1104,10 +1274,9 @@ export function createCharactersMethods(db: Database) {
       characterId: string
     ): Promise<string[]> => {
       // Get the character to extract matching patterns
-      const charResult = await db
-        .select()
-        .from(characters)
-        .where(eq(characters.id, characterId));
+      const charResult = await selectWithLiveSheet().where(
+        eq(characters.id, characterId)
+      );
       const character = charResult[0] ?? null;
       if (!character || character.sequenceId !== sequenceId) {
         return [];

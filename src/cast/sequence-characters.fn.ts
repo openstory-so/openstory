@@ -146,15 +146,18 @@ export const createSequenceCharacterFn = createServerFn({ method: 'POST' })
       taken.add(characterId);
       characterId = nextIdentityToken(base, taken);
     }
-    const character = await context.scopedDb.characters.create({
-      sequenceId,
-      characterId,
-      name,
-      ...bible,
-      consistencyTag:
-        bible.consistencyTag ?? `${characterId}: ${slugifyTag(name)}`,
-      sheetStatus: 'pending',
-    });
+    const character = await context.scopedDb.characters.create(
+      {
+        sequenceId,
+        characterId,
+        name,
+        ...bible,
+        consistencyTag:
+          bible.consistencyTag ?? `${characterId}: ${slugifyTag(name)}`,
+        sheetStatus: 'pending',
+      },
+      { source: 'edit', createdBy: context.user.id }
+    );
     await context.scopedDb.sequenceEvents.record({
       sequenceId,
       actorId: context.user.id,
@@ -192,6 +195,7 @@ export const updateSequenceCharacterFn = createServerFn({ method: 'POST' })
     const update: CharacterBibleUpdate = fields;
     return await context.scopedDb.characters.updateBible(characterId, update, {
       actorId: context.user.id,
+      source: 'edit',
     });
   });
 
@@ -703,19 +707,24 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
       data.characterId,
       data.talentId
     );
-    await context.scopedDb.characters.update(data.characterId, {
-      age: castingAttrs.age,
-      gender: castingAttrs.gender,
-      ethnicity: castingAttrs.ethnicity,
-      physicalDescription: castingAttrs.physicalDescription,
-      personality: castingAttrs.personality,
-      movement: castingAttrs.movement,
-      consistencyTag: castingAttrs.consistencyTag,
-      isPerson: isPersonFromTalentCast(
-        character.isPerson,
-        talentWithSheets.isHuman
-      ),
-    });
+    // The talent's appearance becomes a 'recast' bible version (#1600).
+    await context.scopedDb.characters.updateBible(
+      data.characterId,
+      {
+        age: castingAttrs.age,
+        gender: castingAttrs.gender,
+        ethnicity: castingAttrs.ethnicity,
+        physicalDescription: castingAttrs.physicalDescription,
+        personality: castingAttrs.personality,
+        movement: castingAttrs.movement,
+        consistencyTag: castingAttrs.consistencyTag,
+        isPerson: isPersonFromTalentCast(
+          character.isPerson,
+          talentWithSheets.isHuman
+        ),
+      },
+      { actorId: context.user.id, source: 'recast' }
+    );
     // Cast copies the talent's voice (#1553): its own history row, labelled
     // 'library' because that voice came from the talent, not this role's
     // design. The role's old voice is released below once nothing points at
@@ -780,6 +789,8 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
 
     const workflowInput: RecastCharacterWorkflowInput = {
       characterDbId: data.characterId,
+      // The recast bible version the metadata below spells out (#1600).
+      bibleVersionId: updatedCharacter.selectedBibleVersionId,
       characterName: character.name,
       characterMetadata: {
         characterId: character.characterId,

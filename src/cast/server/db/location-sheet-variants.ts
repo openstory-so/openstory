@@ -13,9 +13,9 @@ import type {
   LocationSheetVariant,
   LocationSheetVariantParentType,
   NewLocationSheetVariant,
-  SequenceLocation,
 } from '@/platform/server/db/schema';
 import {
+  locationBibleVersions,
   locationLibrary,
   locationSheetVariants,
   sequenceLocations,
@@ -33,6 +33,7 @@ import {
   demoteLocationReferenceClaims,
   landLocationReference,
 } from './sheet-claims';
+import { locationBibleColumns } from './bible-versions';
 
 /** Sequence location sheets and library location references share this table. */
 type LocationSheetVariantInputHash =
@@ -190,10 +191,7 @@ export function createLocationSheetVariantsMethods(db: Database) {
       inputHash: LocationSheetInputHash | null;
       model: string;
       workflowRunId?: string | null;
-    }): Promise<{
-      location: SequenceLocation;
-      version: LocationSheetVariant;
-    }> => {
+    }): Promise<{ version: LocationSheetVariant }> => {
       const {
         locationDbId,
         url,
@@ -241,13 +239,13 @@ export function createLocationSheetVariantsMethods(db: Database) {
           updatedAt: now,
         })
         .where(eq(sequenceLocations.id, locationDbId))
-        .returning();
+        .returning({ id: sequenceLocations.id });
       if (!location) {
         throw new Error(
           `SequenceLocation ${locationDbId} disappeared during apply`
         );
       }
-      return { location, version };
+      return { version };
     },
 
     /**
@@ -288,8 +286,17 @@ export function createLocationSheetVariantsMethods(db: Database) {
       }
 
       const [existing] = await db
-        .select()
+        .select({
+          sequenceId: sequenceLocations.sequenceId,
+          selectedReferenceVersionId:
+            sequenceLocations.selectedReferenceVersionId,
+          name: locationBibleColumns.name,
+        })
         .from(sequenceLocations)
+        .leftJoin(
+          locationBibleVersions,
+          eq(locationBibleVersions.id, sequenceLocations.selectedBibleVersionId)
+        )
         .where(eq(sequenceLocations.id, locationDbId));
       if (!existing) {
         throw new Error(`SequenceLocation ${locationDbId} not found`);

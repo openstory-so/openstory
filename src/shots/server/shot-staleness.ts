@@ -25,13 +25,21 @@ import {
 import type { Scene } from '@/shots/scene-analysis.schema';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import type {
+  CharacterBible,
+  CharacterBibleVersion,
   Frame,
   FramePromptVersion,
   FrameVariant,
+  LocationBible,
+  LocationBibleVersion,
   SequenceEvent,
   Shot,
   ShotPromptVersion,
 } from '@/platform/server/db/schema';
+import {
+  characterBibleChanged,
+  locationBibleChanged,
+} from '@/cast/server/db/bible-versions';
 import { dbSceneId } from '@/shots/scene-id';
 import {
   SETTINGS_CHANGED_EVENT,
@@ -174,7 +182,47 @@ export type ShotStalenessReads = {
   sceneContext: ReadonlyMap<string, SceneContext>;
   /** What each shot says, for the motion hash (#1784). */
   dialogueOf: (shot: { id: string }) => ShotPromptDialogue;
+  /** Bible history for the causes, loaded once and only when one is stale. */
+  bibleHistory: () => Promise<BibleHistory>;
 };
+
+/** Every bible version of a sequence's cast, by parent row id, oldest first. */
+type BibleHistory = {
+  characters: ReadonlyMap<string, readonly CharacterBibleVersion[]>;
+  locations: ReadonlyMap<string, readonly LocationBibleVersion[]>;
+};
+
+type BibleHistoryDb = {
+  characters: Pick<ScopedDb['characters'], 'listBibleVersionsBySequence'>;
+  sequenceLocations: Pick<
+    ScopedDb['sequenceLocations'],
+    'listBibleVersionsBySequence'
+  >;
+};
+
+function groupBy<T>(rows: readonly T[], key: (row: T) => string) {
+  const map = new Map<string, T[]>();
+  for (const row of rows) {
+    const list = map.get(key(row));
+    if (list) list.push(row);
+    else map.set(key(row), [row]);
+  }
+  return map;
+}
+
+async function loadBibleHistory(
+  scopedDb: BibleHistoryDb,
+  sequenceId: string
+): Promise<BibleHistory> {
+  const [characters, locations] = await Promise.all([
+    scopedDb.characters.listBibleVersionsBySequence(sequenceId),
+    scopedDb.sequenceLocations.listBibleVersionsBySequence(sequenceId),
+  ]);
+  return {
+    characters: groupBy(characters, (v) => v.characterId),
+    locations: groupBy(locations, (v) => v.locationId),
+  };
+}
 
 export async function loadShotStalenessReads(
   scopedDb: Pick<
@@ -184,7 +232,8 @@ export async function loadShotStalenessReads(
     | 'frameVariants'
     | 'sequenceEvents'
     | 'shotDialogue'
-  >,
+  > &
+    BibleHistoryDb,
   sequenceId: string,
   /** Every shot of the sequence — the dialogue first-shot rule needs them. */
   shots: Parameters<typeof shotPromptDialogueResolver>[0]['shots'],
@@ -239,7 +288,10 @@ export async function loadShotStalenessReads(
     }
   }
 
+  let bibleHistory: Promise<BibleHistory> | null = null;
   return {
+    bibleHistory: () =>
+      (bibleHistory ??= loadBibleHistory(scopedDb, sequenceId)),
     selectedPromptByFrame,
     latestPromptByFrame,
     latestHashedPromptByFrame,
@@ -646,6 +698,9 @@ export async function computeShotStaleness(args: {
         selectedImage,
         sceneContext: reads?.sceneContext,
         settingsEvents: reads?.settingsEvents,
+        bibleHistory: reads
+          ? await reads.bibleHistory()
+          : await loadBibleHistory(scopedDb, sequence.id),
         generatedAt: {
           thumbnail:
             thumbnail === 'stale' && selectedImage
@@ -671,13 +726,72 @@ export async function computeShotStaleness(args: {
 const after = (d: Date | null | undefined, at: number) =>
   d != null && d.getTime() > at;
 
+/** Plain words for the bible fields a cause names (#1600). */
+const CHARACTER_LABELS: Record<keyof CharacterBible, string> = {
+  name: 'name',
+  age: 'age',
+  gender: 'gender',
+  ethnicity: 'ethnicity',
+  physicalDescription: 'description',
+  standardClothing: 'clothing',
+  distinguishingFeatures: 'features',
+  personality: 'personality',
+  movement: 'movement',
+  voiceOnly: 'voice only',
+  isPerson: 'person',
+  consistencyTag: 'tag',
+};
+
+const LOCATION_LABELS: Record<keyof LocationBible, string> = {
+  name: 'name',
+  type: 'interior/exterior',
+  timeOfDay: 'time of day',
+  description: 'description',
+  architecturalStyle: 'architecture',
+  keyFeatures: 'features',
+  colorPalette: 'palette',
+  lightingSetup: 'lighting',
+  ambiance: 'ambiance',
+  consistencyTag: 'tag',
+};
+
+/**
+ * The bible fields that moved since `at` (#1600): the version live then —
+ * the newest created at or before it — against the live bible. Null when no
+ * version reaches back that far (an artifact older than the row's history),
+ * so the caller falls back to the timestamp guess.
+ */
+function bibleMoved<V extends { createdAt: Date }>(
+  history: readonly V[] | undefined,
+  at: number,
+  diff: (then: V) => string[]
+): string[] | null {
+  let then: V | undefined;
+  for (const v of history ?? []) {
+    if (v.createdAt.getTime() <= at) then = v;
+  }
+  return then ? diff(then) : null;
+}
+
+/** `Character "Jack": clothing, sheet` — or the bare label when unknown. */
+function namedCause(
+  label: string,
+  moved: string[] | null,
+  extra: string[],
+  touched: () => boolean
+): string | null {
+  if (moved === null) return touched() || extra.length > 0 ? label : null;
+  const fields = [...moved, ...extra];
+  return fields.length > 0 ? `${label}: ${fields.join(', ')}` : null;
+}
+
 /**
  * Name what moved since the stale artifact was generated (#1194). Hashes only
- * say THAT inputs diverged, so this is a timestamp heuristic: every input row
- * touched after `artifactAt` is a candidate. Best-effort — a row saved without
- * a real change can over-name, and nothing here ever changes a verdict.
+ * say THAT inputs diverged. Bibles have history (#1600), so a character or
+ * location names the fields that differ between the version live then and
+ * now; everything else is still a timestamp guess — every input row touched
+ * after the artifact is a candidate. A hint, never a verdict.
  */
-// ponytail: timestamp heuristic; store per-component hashes on the version rows if over-naming bites.
 async function findStalenessCauses(args: {
   scopedDb: ScopedDb;
   sequence: { id: string; styleConfig?: unknown };
@@ -689,6 +803,7 @@ async function findStalenessCauses(args: {
   /** Present on the batched read — skips the per-shot scene and event queries. */
   sceneContext?: ReadonlyMap<string, SceneContext>;
   settingsEvents?: readonly SequenceEvent[];
+  bibleHistory: BibleHistory;
 }): Promise<string[]> {
   const {
     scopedDb,
@@ -699,6 +814,7 @@ async function findStalenessCauses(args: {
     selectedImage,
     sceneContext,
     settingsEvents,
+    bibleHistory,
   } = args;
   const times = [
     generatedAt.thumbnail,
@@ -747,12 +863,23 @@ async function findStalenessCauses(args: {
   }
 
   for (const c of refs.characters) {
-    if (after(c.updatedAt, at) || after(c.sheetGeneratedAt, at)) {
-      causes.push(`Character "${c.name}"`);
-    }
+    const moved = bibleMoved(bibleHistory.characters.get(c.id), at, (then) =>
+      characterBibleChanged(then, c).map((k) => CHARACTER_LABELS[k])
+    );
+    const sheet = after(c.sheetGeneratedAt, at) ? ['sheet'] : [];
+    const cause = namedCause(`Character "${c.name}"`, moved, sheet, () =>
+      after(c.updatedAt, at)
+    );
+    if (cause) causes.push(cause);
   }
   for (const l of refs.locations) {
-    if (after(l.updatedAt, at)) causes.push(`Location "${l.name}"`);
+    const moved = bibleMoved(bibleHistory.locations.get(l.id), at, (then) =>
+      locationBibleChanged(then, l).map((k) => LOCATION_LABELS[k])
+    );
+    const cause = namedCause(`Location "${l.name}"`, moved, [], () =>
+      after(l.updatedAt, at)
+    );
+    if (cause) causes.push(cause);
   }
   for (const el of refs.elements) {
     if (after(el.updatedAt, at)) causes.push(`Element ${el.token}`);

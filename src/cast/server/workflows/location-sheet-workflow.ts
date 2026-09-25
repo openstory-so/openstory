@@ -237,6 +237,8 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
           url: storageResult.url,
           storagePath: storageResult.path,
           inputHash: input.snapshotInputHash ?? null,
+          // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload queued before #1600
+          bibleVersionId: input.bibleVersionId ?? null,
           model: generationParams.model,
           workflowRunId,
         });

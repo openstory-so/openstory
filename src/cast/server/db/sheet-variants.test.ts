@@ -100,7 +100,7 @@ async function seed() {
     ]);
   const [character] = await db
     .insert(characters)
-    .values({ sequenceId, characterId: 'char_001', name: 'Alice' })
+    .values({ sequenceId, characterId: 'char_001', legacyName: 'Alice' })
     .returning();
   if (!character)
     throw new Error('test setup: character insert returned nothing');
@@ -446,7 +446,7 @@ describe('location-sheet-variants promoteAtomically (library only)', () => {
       .values({
         sequenceId,
         locationId: `loc_${generateId()}`,
-        name: 'L',
+        legacyName: 'L',
       })
       .returning();
     if (!loc)
@@ -746,7 +746,7 @@ describe('character sheet versions (append + select)', () => {
       inputHash: 'hash-old',
     });
 
-    const { character, version } = await methods.applyConvergent({
+    const { version } = await methods.applyConvergent({
       characterId,
       url: 'https://example.com/new.png',
       storagePath: '/new.png',
@@ -754,10 +754,10 @@ describe('character sheet versions (append + select)', () => {
       model: 'nano_banana_2',
     });
 
-    expect(character.selectedSheetVersionId).toBe(version.id);
     // The parent's mirror columns are no longer written (#1419) — the live
     // sheet is whatever the pointer names.
     const live = await createCharactersMethods(db).getById(characterId);
+    expect(live?.selectedSheetVersionId).toBe(version.id);
     expect(live?.sheetImageUrl).toBe('https://example.com/new.png');
     expect(live?.sheetInputHash).toBe('hash-new');
 
@@ -786,7 +786,10 @@ describe('character sheet versions (append + select)', () => {
       inputHash: characterSheetInputHash('hash-b'),
       model: 'nano_banana_2',
     });
-    expect(second.character.selectedSheetVersionId).toBe(second.version.id);
+    expect(
+      (await createCharactersMethods(db).getById(characterId))
+        ?.selectedSheetVersionId
+    ).toBe(second.version.id);
 
     await methods.select(characterId, first.version.id, { actorId: null });
     const [after] = await db

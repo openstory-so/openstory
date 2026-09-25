@@ -56,6 +56,10 @@ export const characterSheetVariants = snakeCase.table(
     error: text(),
 
     inputHash: text(),
+    // The `character_bible_versions` row the run read (#1600), snapshotted at
+    // the trigger. Null on rows from before bible history and on uploads,
+    // which read no bible.
+    bibleVersionId: text(),
     divergedAt: integer({ mode: 'timestamp' }),
     // Soft-delete marker; preserves the artifact for the toast Undo.
     discardedAt: integer({ mode: 'timestamp' }),

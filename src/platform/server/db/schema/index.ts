@@ -61,6 +61,10 @@ import { sequenceExports } from './sequence-exports';
 
 import { characters } from './characters';
 import { characterVoiceVersions } from './character-voice-versions';
+import {
+  characterBibleVersions,
+  locationBibleVersions,
+} from './bible-versions';
 import { shotDialogueVersions } from './shot-dialogue-versions';
 import { dialogueRecordings } from './dialogue-recordings';
 import { shotDialogueSections } from './shot-dialogue-sections';
@@ -312,6 +316,22 @@ export type { SequenceExport } from './sequence-exports';
 // Characters (scripted roles)
 export { characters, characterVoiceVersions };
 
+// Bible history (#1600)
+export { characterBibleVersions, locationBibleVersions };
+
+export {
+  CHARACTER_BIBLE_FIELDS,
+  LOCATION_BIBLE_FIELDS,
+} from './bible-versions';
+
+export type {
+  BibleVersionSource,
+  CharacterBible,
+  CharacterBibleVersion,
+  LocationBible,
+  LocationBibleVersion,
+} from './bible-versions';
+
 export type {
   CharacterVoiceVersionSource,
   CharacterVoiceVersionStatus,
@@ -320,6 +340,8 @@ export type {
 export type {
   CharacterWithSheet,
   Character,
+  CharacterRow,
+  LegacyCharacterBibleColumn,
   CharacterMinimal,
   CharacterWithTalent,
   VoicePreview,
@@ -341,6 +363,8 @@ export type {
   ReferenceStatus,
   SequenceLocationWithReference,
   SequenceLocation,
+  SequenceLocationRow,
+  LegacyLocationBibleColumn,
   SequenceLocationMinimal,
 } from './sequence-locations';
 
@@ -505,6 +529,8 @@ export const schema = {
   // Characters (scripted roles extracted from script)
   characters,
   characterVoiceVersions,
+  characterBibleVersions,
+  locationBibleVersions,
 
   // Location Library (team-level templates)
   locationLibrary,
