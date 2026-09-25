@@ -85,6 +85,15 @@ export type VideoManifestEntry = {
    */
   audioSourceKey: string | null;
   /**
+   * The lines the render prompt quoted (#1784, `dialogueLinesKey`): every
+   * line, voiced or not. `null` when none reached the prompt — no lines, no
+   * motion prompt, or a model without audio. Required so stamp and verify
+   * cannot independently omit it; the hash body drops `null` so stored
+   * digests do not move. Absent on rows from before #1784: unknown, never
+   * stale.
+   */
+  dialogueKey: string | null;
+  /**
    * Provenance of every reference that rode on the wire for this render
    * (#1657), in either mode: `character:<id>:<sheetVersionId|url>`,
    * `location:<id>:<refVersionId|url>` and `element:<id>:<url>` (see

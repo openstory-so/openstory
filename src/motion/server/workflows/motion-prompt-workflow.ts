@@ -6,8 +6,12 @@
  * `durableStreamingLLMCallCf`, driven by `step.do`. Spawned per scene by
  * `MotionPromptBatchWorkflow`. */
 
-import { hashMotionPromptInput } from '@/shots/input-hash';
+import {
+  hashMotionPromptInput,
+  sceneWithShotDialogue,
+} from '@/shots/input-hash';
 import { narrowShotPromptContext } from '@/shots/server/prompt-context';
+import { shotDialogue } from '@/shots/shot-dialogue';
 import {
   motionPromptSchema,
   type MotionPrompt,
@@ -63,6 +67,11 @@ export class MotionPromptWorkflow extends OpenStoryWorkflowEntrypoint<MotionProm
       startingFrameImageUrl,
       referenceOnly,
     } = input;
+    // A run queued before #1784 carries no `dialogue`: write it from the
+    // script's lines, as that build would have, instead of failing the run.
+    const dialogue =
+      // oxlint-disable-next-line typescript/no-unnecessary-condition -- in-flight payloads from before #1784
+      input.dialogue ?? shotDialogue(scene.originalScript.dialogue);
 
     // ============================================================
     // PHASE 3: Motion Prompt Generation (using durableLLMCall helper)
@@ -111,6 +120,7 @@ export class MotionPromptWorkflow extends OpenStoryWorkflowEntrypoint<MotionProm
       analysisModel: analysisModelId,
       startingFrameImageUrl: startingFrameImageUrl ?? null,
       referenceOnly,
+      dialogue,
     });
 
     const promptVariables = {
@@ -127,7 +137,9 @@ export class MotionPromptWorkflow extends OpenStoryWorkflowEntrypoint<MotionProm
         ? JSON.stringify(sceneBefore, null, 2)
         : '(none)',
       sceneAfter: sceneAfter ? JSON.stringify(sceneAfter, null, 2) : '(none)',
-      scene: JSON.stringify(scene, null, 2),
+      // The shot's lines, not the script's (#1784): an edited line is what
+      // the prompt has to direct.
+      scene: JSON.stringify(sceneWithShotDialogue(scene, dialogue), null, 2),
       characterBible: JSON.stringify(narrowed.characterBible, null, 2),
       locationBible: JSON.stringify(narrowed.locationBible, null, 2),
       elementBible: JSON.stringify(narrowed.elementBible, null, 2),

@@ -47,7 +47,7 @@ function makeInput(): MotionPromptBatchWorkflowInput {
   const scenes = SCENE_IDS.map((sceneId, i) => ({
     sceneId,
     sceneNumber: i + 1,
-    originalScript: { extract: 'a beat', lineNumber: i + 1 },
+    originalScript: { extract: 'a beat', dialogue: [], lineNumber: i + 1 },
     metadata: { title: sceneId, durationSeconds: 5 },
     continuity: {},
   }));
@@ -245,6 +245,43 @@ describe('MotionPromptBatchWorkflow reference-only', () => {
       ([, args]) => args.childPayload
     );
     expect(payloads.every((p) => p.referenceOnly === true)).toBe(true);
+  });
+});
+
+describe('MotionPromptBatchWorkflow dialogue (#1784)', () => {
+  test("a continue writes from the shot's current lines, not the script's", async () => {
+    spawnAndAwaitChild.mockReset();
+    spawnAndAwaitChild.mockImplementation(
+      (_step: unknown, args: { childId: string }) =>
+        succeed(args.childId.split(':').at(-1) ?? '')
+    );
+    const edited = [{ character: 'Alice', line: 'Stay up.', tone: '' }];
+
+    await makeWorkflow().batch(
+      makeEvent({
+        shotMapping: [
+          {
+            analysisSceneId: 'scene_1',
+            shotId: 'sh-1',
+            frameId: 'fr-1',
+            shotNumber: 1,
+          },
+        ],
+        dialogueLinesByShotId: { 'sh-1': edited },
+      }),
+      makeStep(),
+      SCOPED_DB
+    );
+
+    const byScene = new Map(
+      spawnAndAwaitChild.mock.calls.map(([, args]) => [
+        args.childPayload.scene.sceneId,
+        args.childPayload.dialogue,
+      ])
+    );
+    expect(byScene.get('scene_1')).toEqual({ presence: true, lines: edited });
+    // No entry: the scene's own lines, as scene-split seeded them.
+    expect(byScene.get('scene_2')).toEqual({ presence: false, lines: [] });
   });
 });
 

@@ -40,6 +40,7 @@ const manifest: VideoVariant['manifest'] = [
     durationMs: 5000,
     audioClipIds: [],
     audioSourceKey: null,
+    dialogueKey: null,
     referenceKeys: ['ref-a'],
   },
 ];

@@ -5,6 +5,7 @@ import { productionAccess } from '@/sequences/server/production-access';
 import type { Frame, Shot } from '@/platform/server/db/schema';
 import { loadSceneFacets } from './scene-facets';
 import { resolveSceneForShot } from './scene-script';
+import { loadShotPromptDialogue } from './shot-dialogue';
 import {
   computeShotStaleness,
   loadShotStalenessBatch,
@@ -154,7 +155,13 @@ export async function listEntityUsages(
 
 type StalenessInputs = Pick<
   Parameters<typeof computeShotStaleness>[0],
-  'sequence' | 'shot' | 'selectedImage' | 'scene' | 'refs' | 'reads'
+  | 'sequence'
+  | 'shot'
+  | 'selectedImage'
+  | 'scene'
+  | 'refs'
+  | 'reads'
+  | 'dialogue'
 > & { frame: Frame | null };
 
 /** A shot with no anchor frame has no image surface to compare: untracked. */
@@ -208,6 +215,7 @@ export async function readShotStaleness(
           ? selected
           : null,
       scene: ctx.scene,
+      dialogue: await loadShotPromptDialogue(scopedDb, sequenceId, shot),
     },
     media.get(shot.id)
   );
@@ -246,6 +254,7 @@ export async function listShotStaleness(
     loadShotStalenessReads(
       scopedDb,
       sequence.id,
+      allShots,
       page.items.map((shot) => shot.id),
       frameIds,
       batch.sceneContext
@@ -267,6 +276,7 @@ export async function listShotStaleness(
           scene: resolveSceneForShot(shot, batch.sceneContext).scene,
           refs: batch.refs,
           reads,
+          dialogue: reads.dialogueOf(shot),
         },
         media.get(shot.id)
       );

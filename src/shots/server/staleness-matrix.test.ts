@@ -32,6 +32,9 @@ import { narrowShotPromptContext } from './prompt-context';
 import type { StyleConfig, VideoManifest } from '@/platform/server/db/schema';
 import { computeShotImageSceneHash } from '@/cast/server/workflows/sheet-snapshots';
 import { describe, expect, it } from 'vitest';
+import { dialogueLinesKey } from '@/shots/shot-dialogue';
+
+const NO_DIALOGUE = { presence: false, lines: [] };
 
 /** The inputs each artifact hash is computed over, before/after a mutation. */
 type PipelineState = {
@@ -48,6 +51,8 @@ type PipelineState = {
   selectedMotionPromptVersionId: string | null;
   durationMs: number;
   videoModel: string;
+  /** Lines the render prompt quoted (`dialogueLinesKey`, #1784). */
+  dialogueKey: string | null;
 };
 
 const BASE: PipelineState = {
@@ -61,6 +66,10 @@ const BASE: PipelineState = {
   selectedMotionPromptVersionId: 'motion-v1',
   durationMs: 4000,
   videoModel: 'kling_25',
+  dialogueKey: dialogueLinesKey({
+    presence: true,
+    lines: [{ character: 'Alice', line: 'Stay down.', tone: '' }],
+  }),
 };
 
 function imageHash(state: PipelineState): Promise<string> {
@@ -87,6 +96,7 @@ function videoHash(state: PipelineState): Promise<string | null> {
       durationMs: state.durationMs,
       audioClipIds: [],
       audioSourceKey: null,
+      dialogueKey: state.dialogueKey,
       referenceKeys: [],
     },
   ];
@@ -141,6 +151,20 @@ const MATRIX: MatrixRow[] = [
     // version); the still is not downstream of the motion prompt.
     mutation: 'motion prompt edited — new motion version selected',
     apply: (s) => ({ ...s, selectedMotionPromptVersionId: 'motion-v2' }),
+    expected: { image: 'fresh', video: 'stale' },
+  },
+  {
+    mutation: 'unvoiced shot line edited (audio model, #1784)',
+    // `audioSourceKey` never sees an unvoiced line, and is null on a model
+    // without dialogue-audio input, yet the line is spliced into the render
+    // prompt. The manifest's `dialogueKey` carries it.
+    apply: (s) => ({
+      ...s,
+      dialogueKey: dialogueLinesKey({
+        presence: true,
+        lines: [{ character: 'Alice', line: 'Stay up.', tone: '' }],
+      }),
+    }),
     expected: { image: 'fresh', video: 'stale' },
   },
   {
@@ -489,8 +513,33 @@ describe('staleness matrix — cast/location bible mutations (§4.2, Phase 2)', 
         analysisModel: 'anthropic/claude-haiku-4.5',
         startingFrameImageUrl: null,
         referenceOnly: false,
+        dialogue: NO_DIALOGUE,
       });
     expect(await motionHash(edited)).not.toBe(await motionHash(withNarrator));
+  });
+
+  it('a shot line edit re-stales the motion prompt, never the visual prompt (#1784)', async () => {
+    const motionHash = (
+      lines: { character: string; line: string; tone: string }[]
+    ) =>
+      hashMotionPromptInput({
+        scene: SCENE,
+        styleConfig: STYLE,
+        characterBible: [ALICE],
+        locationBible: [BEACH],
+        elementBible: [],
+        aspectRatio: '16:9',
+        analysisModel: 'anthropic/claude-haiku-4.5',
+        startingFrameImageUrl: null,
+        referenceOnly: false,
+        dialogue: { presence: lines.length > 0, lines },
+      });
+    const line = { character: 'Alice', line: 'Stay down.', tone: '' };
+    // The visual hash reads the scene script, which a shot line edit never
+    // touches (the edit lands on `shot_dialogue_versions`).
+    expect(await motionHash([{ ...line, line: 'Stay up.' }])).not.toBe(
+      await motionHash([line])
+    );
   });
 
   it('a pre-#1785 visual digest that hashed a voice-only character still verifies', async () => {
@@ -558,6 +607,7 @@ describe('staleness matrix — cast/location bible mutations (§4.2, Phase 2)', 
         analysisModel: 'anthropic/claude-haiku-4.5',
         startingFrameImageUrl: null,
         referenceOnly: false,
+        dialogue: NO_DIALOGUE,
       });
     expect(await motionHash(edited)).not.toBe(await motionHash(BIBLE_BASE));
     expect(await promptHash(edited)).toBe(await promptHash(BIBLE_BASE));

@@ -45,7 +45,9 @@ import {
   IMAGE_TO_VIDEO_MODELS,
   supportsDraftMode,
   videoPromptHardLimit,
+  videoModelSupportsAudio,
 } from '@/models/models';
+import { dialogueLinesKey } from '@/shots/shot-dialogue';
 import { DRAFT_FINAL_RESOLUTION, DRAFT_RESOLUTION } from '@/motion/draft-mode';
 import { bindableReferences } from '@/motion/server/build-reference-video-prompt';
 import {
@@ -557,6 +559,12 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
               Boolean(input.imageUrl)
             )
           );
+          // The lines the prompt quoted (#1784). Only an audio-capable model
+          // splices them in, so any other model stamps null.
+          const quotedDialogueKey = (
+            dialogue: Parameters<typeof dialogueLinesKey>[0]
+          ) =>
+            videoModelSupportsAudio(model) ? dialogueLinesKey(dialogue) : null;
           const coveredEntries =
             covered && covered.length > 1
               ? covered.map((member) => ({
@@ -579,6 +587,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                     // match that member's own live dialogue key (#1720).
                     member.voicedLines ?? []
                   ),
+                  dialogueKey: quotedDialogueKey(member.motionPrompt?.dialogue),
                   // One clip, one request: every covered shot was sent the
                   // same references.
                   referenceKeys: sentReferenceKeys,
@@ -600,6 +609,9 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                     audioClipIds: audioClips.map((clip) => clip.id),
                     audioSourceKey:
                       audioSourceKeyFromVoicedLines(authoredLines),
+                    dialogueKey: quotedDialogueKey(
+                      input.motionPrompt?.dialogue
+                    ),
                     referenceKeys: sentReferenceKeys,
                   },
                 ];

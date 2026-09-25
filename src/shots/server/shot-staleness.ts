@@ -43,6 +43,11 @@ import { buildRegenerateShotSnapshot } from '@/shots/server/workflows/regenerate
 import { matchElementsToShotImage } from '@/shots/scene-matching';
 import { getLogger } from '@/platform/logger';
 import { loadSceneContextBySequence, type SceneContext } from './scene-script';
+import {
+  loadShotDialogueLines,
+  shotPromptDialogueResolver,
+  type ShotPromptDialogue,
+} from './shot-dialogue';
 
 const logger = getLogger(['openstory', 'shots', 'staleness']);
 
@@ -167,6 +172,8 @@ export type ShotStalenessReads = {
   promptById: ReadonlyMap<string, FramePromptVersion>;
   settingsEvents: readonly SequenceEvent[];
   sceneContext: ReadonlyMap<string, SceneContext>;
+  /** What each shot says, for the motion hash (#1784). */
+  dialogueOf: (shot: { id: string }) => ShotPromptDialogue;
 };
 
 export async function loadShotStalenessReads(
@@ -176,8 +183,11 @@ export async function loadShotStalenessReads(
     | 'shotPromptVersions'
     | 'frameVariants'
     | 'sequenceEvents'
+    | 'shotDialogue'
   >,
   sequenceId: string,
+  /** Every shot of the sequence — the dialogue first-shot rule needs them. */
+  shots: Parameters<typeof shotPromptDialogueResolver>[0]['shots'],
   shotIds: readonly string[],
   frameIds: readonly string[],
   sceneContext: ReadonlyMap<string, SceneContext>
@@ -193,6 +203,7 @@ export async function loadShotStalenessReads(
     liveMotionClaimsByShot,
     liveImageClaimsByFrame,
     settingsEvents,
+    linesByShotId,
   ] = await Promise.all([
     scopedDb.framePromptVersions.getSelectedByFrameIds([...frameIds]),
     scopedDb.framePromptVersions.getLatestByFrameIds([...frameIds]),
@@ -210,6 +221,7 @@ export async function loadShotStalenessReads(
     scopedDb.sequenceEvents.listBySequence(sequenceId, {
       kind: SETTINGS_CHANGED_EVENT,
     }),
+    loadShotDialogueLines(scopedDb, sequenceId),
   ]);
 
   const dependIds = new Set<string>();
@@ -240,6 +252,13 @@ export async function loadShotStalenessReads(
     promptById,
     settingsEvents,
     sceneContext,
+    dialogueOf: shotPromptDialogueResolver({
+      linesByShotId,
+      shots,
+      legacyDialogueOf: (shotId) => selectedMotionByShot.get(shotId)?.dialogue,
+      scriptDialogueOf: (sceneId) =>
+        sceneContext.get(sceneId)?.script?.dialogue,
+    }),
   };
 }
 
@@ -294,13 +313,28 @@ export async function computeShotStaleness(args: {
   scene: Scene | null;
   refs?: ShotStalenessRefs;
   /**
+   * What the shot says now and whether it sits on its dialogue node
+   * (#1784) — the motion prompt hash reads the shot's lines, not the
+   * script's. Batch callers take it from `reads.dialogueOf`.
+   */
+  dialogue: ShotPromptDialogue;
+  /**
    * Sequence-wide rows from `loadShotStalenessReads`. When set, this shot
    * does not query prompt versions, claims, or settings events itself.
    */
   reads?: ShotStalenessReads;
 }): Promise<ShotStalenessResult> {
-  const { scopedDb, sequence, shot, frame, selectedImage, scene, refs, reads } =
-    args;
+  const {
+    scopedDb,
+    sequence,
+    shot,
+    frame,
+    selectedImage,
+    scene,
+    refs,
+    reads,
+    dialogue,
+  } = args;
   // A shot may override the sequence's start-frame mode, and the motion hash
   // folds that flag in. Recomputing the live hash from the SEQUENCE value would
   // never match the stamp an overridden shot was written with, leaving it
@@ -488,19 +522,24 @@ export async function computeShotStaleness(args: {
         const latest = reads
           ? (reads.latestMotionByShot.get(shot.id) ?? null)
           : await scopedDb.shotPromptVersions.getLatest(shot.id, 'motion');
-        const ctx = await loadNarrowShotPromptContext({
-          scopedDb,
-          sequence: motionSequence,
-          scene,
-          analysisModelOverride: latest?.analysisModel ?? null,
-          startingFrameImageUrl: motionStartingFrameUrl,
-          refs,
-        });
+        const ctx = {
+          ...(await loadNarrowShotPromptContext({
+            scopedDb,
+            sequence: motionSequence,
+            scene,
+            analysisModelOverride: latest?.analysisModel ?? null,
+            startingFrameImageUrl: motionStartingFrameUrl,
+            refs,
+          })),
+          dialogue: dialogue.dialogue,
+        };
         const liveHash = await hashMotionPromptInput(ctx);
         liveHashes.motionPrompt = liveHash;
         motionPrompt =
           referenceHash === liveHash ||
-          (await motionPromptInputHashMatches(referenceHash, ctx))
+          (await motionPromptInputHashMatches(referenceHash, ctx, {
+            legacyScriptDialogue: !dialogue.onNode,
+          }))
             ? 'fresh'
             : 'stale';
       }

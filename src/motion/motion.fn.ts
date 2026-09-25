@@ -202,7 +202,10 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
       linesByShotId: dialogueLinesByShotId,
       shots: allSceneShots,
       legacyDialogueOf: (shotId) => sceneMotionByShot.get(shotId)?.dialogue,
-      scriptDialogueOf: () => context.scene?.originalScript.dialogue,
+      // The raw script: `context.scene` is already narrowed to THIS shot, with
+      // its stamps stripped, so every scene-mate would derive the clicked
+      // shot's lines (#1784).
+      scriptDialogueOf: () => context.script?.dialogue,
     });
     const packedScene = packedSceneFromScene(context.scene);
     const packableSceneShots = sceneShots.map((row) => ({
@@ -470,7 +473,8 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
               scene: context.scene
                 ? { ...context.scene, continuity: effectiveContinuity }
                 : null,
-              startingFrameImageUrl: imageUrl,
+              startingFrameImageUrl: imageUrl ?? null,
+              dialogue: dialogueOf(shot),
             })
           : undefined;
 
@@ -528,9 +532,13 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
           voicedLines,
           audioClips: audioClips.length > 0 ? audioClips : undefined,
           dialogueContext: dialogueContextOf(shot, voicedLines, audioClips),
+          // A typed prompt with no version yet still quoted the shot's lines
+          // (`prompt` above), so the clip must stamp them (#1784 dialogueKey).
           motionPrompt: selectedMotion
             ? motionPromptFromVersion(selectedMotion, shotDialogue)
-            : undefined,
+            : data.prompt
+              ? { fullPrompt: data.prompt, dialogue: shotDialogue, audio: null }
+              : undefined,
           characterTags: context.scene?.continuity?.characterTags,
         };
 

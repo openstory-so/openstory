@@ -10,7 +10,7 @@
  * staleness then reads fresh forever.
  */
 
-import type { Scene } from '@/shots/scene-analysis.schema';
+import type { MotionDialogue, Scene } from '@/shots/scene-analysis.schema';
 import {
   hashMotionPromptInput,
   hashVisualPromptInput,
@@ -25,37 +25,46 @@ import type { UserEditProvenance } from '@/platform/server/workflow/types';
 
 const logger = getLogger(['openstory', 'prompts', 'user-edit-provenance']);
 
-export async function buildUserEditProvenance(args: {
-  kind: 'visual' | 'motion';
-  scopedDb: Pick<
-    ScopedDb,
-    'characters' | 'sequenceLocations' | 'sequenceElements' | 'styles'
-  >;
-  sequence: ShotPromptContextSequence;
-  scene: Scene | null;
-  /** Motion only: the i2v anchor still, which participates in its hash (#929). */
-  startingFrameImageUrl?: string | null;
-}): Promise<UserEditProvenance> {
-  const { kind, scopedDb, sequence, scene, startingFrameImageUrl } = args;
+export async function buildUserEditProvenance(
+  args: {
+    scopedDb: Pick<
+      ScopedDb,
+      'characters' | 'sequenceLocations' | 'sequenceElements' | 'styles'
+    >;
+    sequence: ShotPromptContextSequence;
+    scene: Scene | null;
+  } & (
+    | { kind: 'visual' }
+    | {
+        kind: 'motion';
+        /** The i2v anchor still, which participates in its hash (#929). */
+        startingFrameImageUrl: string | null;
+        /** What the shot says (#1784) — the lines the edit was written against. */
+        dialogue: MotionDialogue;
+      }
+  )
+): Promise<UserEditProvenance> {
+  const { scopedDb, sequence, scene } = args;
   if (!scene) return { inputHash: null, analysisModel: null };
   try {
     const ctx = await loadNarrowShotPromptContext({
       scopedDb,
       sequence,
       scene,
-      startingFrameImageUrl,
+      startingFrameImageUrl:
+        args.kind === 'motion' ? args.startingFrameImageUrl : undefined,
     });
     return {
       inputHash:
-        kind === 'motion'
-          ? await hashMotionPromptInput(ctx)
+        args.kind === 'motion'
+          ? await hashMotionPromptInput({ ...ctx, dialogue: args.dialogue })
           : await hashVisualPromptInput(ctx),
       analysisModel: ctx.analysisModel,
     };
   } catch (err) {
     // Recording the edit with a null hash beats losing the edit.
     logger.warn(
-      `Could not compute upstream ${kind} hash for user edit on sequence ${sequence.id}; recording with null hash`,
+      `Could not compute upstream ${args.kind} hash for user edit on sequence ${sequence.id}; recording with null hash`,
       { err }
     );
     return { inputHash: null, analysisModel: null };

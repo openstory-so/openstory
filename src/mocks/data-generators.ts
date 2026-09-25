@@ -84,6 +84,7 @@ const generateMockShot = (overrides?: Partial<ShotView>): ShotView => {
         durationMs: shot.durationMs ?? 3000,
         audioClipIds: [],
         audioSourceKey: null,
+        dialogueKey: null,
         referenceKeys: [],
       },
     ],

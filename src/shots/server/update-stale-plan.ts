@@ -43,7 +43,9 @@ import type {
 import {
   dialogueContextFor,
   sceneDialogueJobs,
-  shotDialogueResolver,
+  shotPromptDialogueResolver,
+  type ShotDialogueResolver,
+  type ShotPromptDialogue,
 } from './shot-dialogue';
 import {
   dialogueAudioMaxSeconds,
@@ -453,13 +455,15 @@ export async function computePlan(args: {
     dialogueVersions.map((version) => [version.shotId, version.lines])
   );
   const refs: ShotStalenessRefs = { characters, locations, elements, style };
-  const dialogueOf = shotDialogueResolver({
+  const promptDialogueOf = shotPromptDialogueResolver({
     linesByShotId: dialogueLinesByShotId,
     shots: allShots,
     legacyDialogueOf: (shotId) => selectedMotionByShot.get(shotId)?.dialogue,
     scriptDialogueOf: (sceneId) =>
       scriptBySceneId.get(sceneId)?.script?.dialogue,
   });
+  const dialogueOf: ShotDialogueResolver = (shot) =>
+    promptDialogueOf(shot).dialogue;
 
   const targets: PlanTarget[] = [];
   const skipped: SkippedShot[] = [];
@@ -480,7 +484,7 @@ export async function computePlan(args: {
         ? (selectedPromptByFrame.get(frame.id) ?? null)
         : null,
       selectedMotionVersionId: selectedMotionByShot.get(shot.id)?.id ?? null,
-      dialogue: dialogueOf(shot),
+      dialogue: promptDialogueOf(shot),
       characterVoices,
       scene,
       refs,
@@ -670,8 +674,11 @@ async function decideShotTarget(args: {
   selectedPrompt: FramePromptVersion | null;
   /** Selected motion prompt version id — the video-only-regen default. */
   selectedMotionVersionId: string | null;
-  /** What the shot says now (`PlanTarget.dialogue`). */
-  dialogue: MotionDialogue;
+  /**
+   * What the shot says now (`PlanTarget.dialogue`), and whether it is on
+   * its dialogue node — the motion prompt's staleness reads both (#1784).
+   */
+  dialogue: ShotPromptDialogue;
   characterVoices: VoiceCharacter[];
   scene: Scene | null;
   refs: ShotStalenessRefs;
@@ -688,7 +695,7 @@ async function decideShotTarget(args: {
     selectedImage,
     selectedPrompt,
     selectedMotionVersionId,
-    dialogue,
+    dialogue: promptDialogue,
     characterVoices,
     scene,
     refs,
@@ -697,6 +704,7 @@ async function decideShotTarget(args: {
     shotIndexById,
     allShots,
   } = args;
+  const { dialogue } = promptDialogue;
 
   if (!frame) {
     return {
@@ -718,6 +726,7 @@ async function decideShotTarget(args: {
     selectedImage,
     scene,
     refs,
+    dialogue: promptDialogue,
   });
 
   // Fail closed: unknown ≠ fresh. Regenerating on a guess burns credits;

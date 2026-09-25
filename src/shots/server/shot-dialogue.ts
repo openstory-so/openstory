@@ -92,6 +92,53 @@ export function shotDialogueResolver(input: {
 }
 
 /**
+ * What a shot's motion prompt is written from (#1784): the resolver's answer,
+ * and whether it is a row on the shot's dialogue node. A shot with no row
+ * still says what the script says, so a motion digest stamped from the
+ * script before #1784 still describes it (`legacyScriptDialogue`).
+ */
+export type ShotPromptDialogue = { dialogue: MotionDialogue; onNode: boolean };
+
+export function shotPromptDialogueResolver(
+  input: Parameters<typeof shotDialogueResolver>[0]
+): (shot: { id: string }) => ShotPromptDialogue {
+  const dialogueOf = shotDialogueResolver(input);
+  return (shot) => ({
+    dialogue: dialogueOf(shot),
+    onNode: input.linesByShotId.has(shot.id),
+  });
+}
+
+/** {@link ShotPromptDialogue} for one shot, every read made here. */
+export async function loadShotPromptDialogue(
+  scopedDb: Pick<
+    ScopedDb,
+    | 'shotDialogue'
+    | 'scenes'
+    | 'sceneScriptVersions'
+    | 'shots'
+    | 'shotPromptVersions'
+  >,
+  sequenceId: string,
+  shot: { id: string }
+): Promise<ShotPromptDialogue> {
+  const [linesByShotId, sceneContext, shots, selectedMotion] =
+    await Promise.all([
+      loadShotDialogueLines(scopedDb, sequenceId),
+      loadSceneContextBySequence(scopedDb, sequenceId),
+      scopedDb.shots.listBySequence(sequenceId),
+      scopedDb.shotPromptVersions.getSelectedMotion(shot.id),
+    ]);
+  return shotPromptDialogueResolver({
+    linesByShotId,
+    shots,
+    legacyDialogueOf: (shotId) =>
+      shotId === shot.id ? selectedMotion?.dialogue : undefined,
+    scriptDialogueOf: (sceneId) => sceneContext.get(sceneId)?.script?.dialogue,
+  })(shot);
+}
+
+/**
  * {@link shotDialogueResolver} for a caller that holds neither the lines nor
  * the scene scripts yet — both read here, in parallel. `shots` is every shot
  * of the sequence, or of the scene when only one scene is being resolved.

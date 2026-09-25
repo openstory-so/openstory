@@ -59,7 +59,7 @@ export const previewShotPromptsFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
   .validator(zodValidator(previewShotPromptsInputSchema))
   .handler(async ({ data, context }): Promise<ShotPromptPreview> => {
-    const { shot, frame, sequence, scene, scopedDb } = context;
+    const { shot, frame, sequence, scene, script, scopedDb } = context;
     const usesFrame = usesStartFrame(shot, sequence);
     const [
       characters,
@@ -95,7 +95,8 @@ export const previewShotPromptsFn = createServerFn({ method: 'POST' })
       linesByShotId,
       shots: sceneShots,
       legacyDialogueOf: () => selectedMotion?.dialogue,
-      scriptDialogueOf: () => scene?.originalScript.dialogue,
+      // The raw script, not `scene`: that is narrowed to this shot (#1784).
+      scriptDialogueOf: () => script?.dialogue,
     })(shot);
     const overrideText = data.motionPrompt ?? selectedMotion?.text ?? '';
     const motionPrompt = selectedMotion
@@ -115,6 +116,7 @@ export const previewShotPromptsFn = createServerFn({ method: 'POST' })
       scopedDb,
       sequence,
       scene,
+      script,
       shot,
       sceneShots,
       linesByShotId,
@@ -157,6 +159,7 @@ async function loadPackedPreviewMembers(input: {
   scopedDb: ShotContext['scopedDb'];
   sequence: ShotContext['sequence'];
   scene: ShotContext['scene'];
+  script: ShotContext['script'];
   shot: ShotContext['shot'];
   /** Every live shot of the clicked shot's scene. */
   sceneShots: readonly Shot[];
@@ -187,7 +190,7 @@ async function loadPackedPreviewMembers(input: {
     linesByShotId: input.linesByShotId,
     shots: sceneShots,
     legacyDialogueOf: (shotId) => versions.get(shotId)?.dialogue,
-    scriptDialogueOf: () => input.scene?.originalScript.dialogue,
+    scriptDialogueOf: () => input.script?.dialogue,
   });
   const packable = sceneShots.map((row) => ({
     shotId: row.id,

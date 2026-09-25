@@ -19,6 +19,7 @@ import type {
   ElementBibleEntry,
   LocationBibleEntry,
   MotionAudio,
+  MotionDialogue,
   MotionPrompt,
   Scene,
   VisualPrompt,
@@ -61,6 +62,7 @@ export type UserEditProvenance = {
 import type { AspectRatio, ImageSize } from '@/models/aspect-ratios';
 import type { Resolution } from '@/models/resolutions';
 import type { VideoManifest } from '@/platform/server/db/schema/video-variants';
+import type { ShotDialogueLine } from '@/platform/server/db/schema/shot-dialogue-versions';
 import type {
   CharacterMinimal,
   GeneratedAssetActivity,
@@ -1198,10 +1200,23 @@ export interface MotionPromptBatchWorkflowInput extends SequenceWorkflowContext 
    * Required — omitting it defaulted to `false` before the hasher ran (#1616).
    */
   referenceOnly: boolean;
+  /**
+   * What each shot says, per SHOT id (#1784): the checkpoint's
+   * `dialogueLinesByShotId`, which a continue re-reads from the shot node.
+   * A shot absent here (a fresh run, or a payload from before #1784) says
+   * its scene's shot-list lines, which scene-split just seeded as its row.
+   */
+  dialogueLinesByShotId?: Record<string, ShotDialogueLine[]>;
 }
 
 export interface MotionPromptWorkflowInput extends SequenceWorkflowContext {
   scene: Scene;
+  /**
+   * What the shot says, snapshotted at the trigger from
+   * `shotDialogueResolver` (#1784). It replaces `scene`'s script lines in
+   * what the LLM reads and what the hash stamps (`sceneWithShotDialogue`).
+   */
+  dialogue: MotionDialogue;
   sceneBefore?: Scene;
   sceneAfter?: Scene;
   aspectRatio: AspectRatio;
@@ -1831,6 +1846,8 @@ export interface MotionMusicPromptsWorkflowInput extends SequenceWorkflowContext
    * the hasher ran (#1616).
    */
   referenceOnly: boolean;
+  /** Forwarded to the motion-prompt batch — {@link MotionPromptBatchWorkflowInput.dialogueLinesByShotId}. */
+  dialogueLinesByShotId?: Record<string, ShotDialogueLine[]>;
 }
 
 export interface MotionMusicPromptsWorkflowResult {

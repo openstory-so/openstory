@@ -237,7 +237,10 @@ dialogue as a REQUIRED argument, so no builder can assemble a prompt around a
 row's own copy. A workflow cannot read the node, so its form of the ladder is
 fed from the payload (`dialogueLinesByShotId`; a continue snapshots EVERY shot
 resolved in `refreshCheckpointFromCast`), and the motion-prompt LLM's own
-`dialogue` output is never a source of lines. Before a pre-#1657 shot's
+`dialogue` output is never a source of lines. The motion prompt is written from
+the resolved lines too (#1784): its payload snapshots them as `dialogue`, and
+`sceneWithShotDialogue` puts them in place of the script's in both what the LLM
+reads and what the motion hash covers, so a line edit re-stales the prompt. Before a pre-#1657 shot's
 selected prompt row is superseded, `promoteLegacyDialogue`
 (`shot-prompt-versions.ts`) moves its lines — and any voice bound to them —
 onto a `shot_dialogue_versions` row, so rung 2 is never stranded.
@@ -364,7 +367,12 @@ dialogue clip, the section id, which is the selection pointer
 `audioSourceKey` cannot express — and `referenceKeys`
 (`character:<id>:<sheetVersionId|url>`, `location:…`, `element:…` for every
 reference the render was sent, `src/motion/reference-provenance.ts`), dropped
-from the hash body when null or empty so no stored digest moves.
+from the hash body when null or empty so no stored digest moves. `dialogueKey`
+(#1784) records every line the render prompt quoted, voiced or not — an
+audio-capable model splices unvoiced lines into its prompt too, and
+`audioSourceKey` is null on a model without dialogue-audio input — so any line
+edit re-stales the clip. It is null when nothing was quoted, and absent on older
+manifests, which are not compared.
 `isSelectedVersionStale` compares them against live identity:
 `audioClipsMoved` reads the manifest's `audioClipIds` against the shot's
 working-set clip ids (`audioClipIdsByShot`, from `shots.audioClips`) and

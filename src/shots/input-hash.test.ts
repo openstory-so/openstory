@@ -43,6 +43,8 @@ import {
   type LocationSheetHashInput,
   type TalentSheetHashInput,
 } from './input-hash';
+import { deriveShotDialogueLines, shotDialogue } from './shot-dialogue';
+import { sceneForShot } from './server/shot-work-items';
 
 const baseThumbnail: ShotImageHashInput = {
   kind: 'thumbnail',
@@ -743,7 +745,10 @@ describe('prompt input hashes', () => {
     analysisModel: 'anthropic/claude-haiku-4.5',
     startingFrameImageUrl: null,
     referenceOnly: false,
+    dialogue: { presence: false, lines: [] },
   };
+  /** A shot whose lines sit on its dialogue node. */
+  const NODE = { legacyScriptDialogue: false };
 
   it('visual and motion prompt hashes are namespaced by artifact and differ', async () => {
     const visual = await hashVisualPromptInput(sceneCtx);
@@ -786,38 +791,137 @@ describe('prompt input hashes', () => {
     ).toBe(await hashVisualPromptInput(sceneCtx));
   });
 
-  it('dialogue text re-stales the motion prompt; voice ids do not (#1554)', async () => {
+  it("the motion prompt hashes the shot's lines, not the script's; voices do not stale it (#1554, #1784)", async () => {
     // Voice identity binds on the clip (`audioSourceKey`), like a character
-    // sheet on the still. The LLM never sees the ElevenLabs id, so swapping
-    // it must not move the motion-prompt digest.
-    const stayDown = {
+    // sheet on the still. The LLM never sees the ElevenLabs id or the bound
+    // voice token, so neither may move the motion-prompt digest.
+    const line = { character: 'Alice', line: 'Stay down.', tone: '' };
+    const stayDown = { presence: true, lines: [line] };
+    const withDialogue = { ...sceneCtx, dialogue: stayDown };
+    expect(await hashMotionPromptInput(withDialogue)).not.toBe(
+      await hashMotionPromptInput(sceneCtx)
+    );
+    // An edited line re-stales the prompt…
+    expect(
+      await hashMotionPromptInput({
+        ...sceneCtx,
+        dialogue: {
+          presence: true,
+          lines: [
+            { character: 'Alice', line: 'Stay down.', tone: 'whispered' },
+          ],
+        },
+      })
+    ).not.toBe(await hashMotionPromptInput(withDialogue));
+    // …a bound voice does not…
+    expect(
+      await hashMotionPromptInput({
+        ...sceneCtx,
+        dialogue: {
+          presence: true,
+          lines: [{ ...line, voiceToken: '@Audio1' }],
+        },
+      })
+    ).toBe(await hashMotionPromptInput(withDialogue));
+    // …and the script's own lines are not what the shot says.
+    const scriptSaysOther = {
+      ...minimalScene,
+      originalScript: {
+        extract: '',
+        dialogue: [{ character: 'Alice', line: 'Run.', tone: '' }],
+      },
+    };
+    expect(
+      await hashMotionPromptInput({ ...withDialogue, scene: scriptSaysOther })
+    ).toBe(await hashMotionPromptInput(withDialogue));
+    // The visual prompt still reads the script.
+    expect(
+      await hashVisualPromptInput({ ...sceneCtx, scene: scriptSaysOther })
+    ).not.toBe(await hashVisualPromptInput(sceneCtx));
+  });
+
+  it("keeps an unedited shot's stored motion digest (#1784)", async () => {
+    // What `main` stamped before #1784, hashed over the SCRIPT's lines. A shot
+    // whose node row holds the same lines hashes to the same digest now.
+    const line = { character: 'Alice', line: 'Stay down.', tone: 'calm' };
+    const ctx = {
+      ...sceneCtx,
+      scene: {
+        ...minimalScene,
+        originalScript: { extract: '', dialogue: [line] },
+      },
+      characterBible: [],
+      locationBible: [],
+      analysisModel: 'm',
+      dialogue: { presence: true, lines: [line] },
+    };
+    expect(await hashMotionPromptInput(ctx)).toBe(
+      '0821831a048411fcb78c904bcecad4befdfafbba0ced9b7a7090df87bacab534'
+    );
+  });
+
+  it('the pipeline stamp matches the verify of the row scene-split seeds (#1784)', async () => {
+    const lines = [
+      { character: 'Alice', line: 'Run.', tone: 'urgent', shotNumber: 1 },
+      { character: 'Bob', line: 'Where?', tone: '', shotNumber: 2 },
+    ];
+    const scene = {
+      ...minimalScene,
+      originalScript: { extract: '', dialogue: lines },
+    };
+    const base = { ...sceneCtx, characterBible: [], locationBible: [] };
+    // The batch: the scene narrowed to shot 2, its lines as the dialogue.
+    const narrowed = sceneForShot(scene, 2);
+    const stamped = await hashMotionPromptInput({
+      ...base,
+      scene: narrowed,
+      dialogue: shotDialogue(narrowed.originalScript.dialogue),
+    });
+    // Verify: the resolver reads the row scene-split seeded for shot 2.
+    const seeded = deriveShotDialogueLines(lines, { shotNumber: 2 }, false);
+    const verified = await hashMotionPromptInput({
+      ...base,
+      scene: narrowed,
+      dialogue: shotDialogue(seeded),
+    });
+    expect(verified).toBe(stamped);
+  });
+
+  it('accepts a script-shaped digest only for a shot with no node row (#1784)', async () => {
+    const script = {
       ...minimalScene,
       originalScript: {
         extract: '',
         dialogue: [{ character: 'Alice', line: 'Stay down.', tone: '' }],
       },
     };
-    const withDialogue = { ...sceneCtx, scene: stayDown };
-    expect(await hashMotionPromptInput(withDialogue)).not.toBe(
-      await hashMotionPromptInput(sceneCtx)
-    );
-    expect(await hashVisualPromptInput(withDialogue)).not.toBe(
-      await hashVisualPromptInput(sceneCtx)
-    );
+    // Stamped before #1784: the script's lines were the shot's lines.
+    const stamped = await hashMotionPromptInput({
+      ...sceneCtx,
+      scene: script,
+      dialogue: {
+        presence: true,
+        lines: script.originalScript.dialogue,
+      },
+    });
+    // Now the shot says something else.
+    const now = {
+      ...sceneCtx,
+      scene: script,
+      dialogue: {
+        presence: true,
+        lines: [{ character: 'Alice', line: 'Stay up.', tone: '' }],
+      },
+    };
+    // No node row: the difference is the resolver's reading of old data
+    // (unstamped lines, a pre-#1657 prompt row), not an edit. Still fresh.
     expect(
-      await hashMotionPromptInput({
-        ...sceneCtx,
-        scene: {
-          ...stayDown,
-          originalScript: {
-            extract: '',
-            dialogue: [
-              { character: 'Alice', line: 'Stay down.', tone: 'whispered' },
-            ],
-          },
-        },
+      await motionPromptInputHashMatches(stamped, now, {
+        legacyScriptDialogue: true,
       })
-    ).not.toBe(await hashMotionPromptInput(withDialogue));
+    ).toBe(true);
+    // A node row: that is an edit, and it re-stales the prompt.
+    expect(await motionPromptInputHashMatches(stamped, now, NODE)).toBe(false);
   });
 
   it('assembler rejects a missing referenceOnly channel (#1616)', () => {
@@ -850,7 +954,9 @@ describe('prompt input hashes', () => {
       referenceOnly: false,
     });
     expect(explicitFalse).toBe(omitted);
-    expect(await motionPromptInputHashMatches(omitted, sceneCtx)).toBe(true);
+    expect(await motionPromptInputHashMatches(omitted, sceneCtx, NODE)).toBe(
+      true
+    );
   });
 
   it('personality / movement re-stale the motion prompt only, and only when set (#1561)', async () => {
@@ -1046,13 +1152,19 @@ describe('prompt input hashes', () => {
     const current = await hashMotionPromptInput(sceneCtx);
     const v4 = await computeMotionPromptInputHashV4(sceneCtx);
     expect(v4).not.toBe(current);
-    expect(await motionPromptInputHashMatches(current, sceneCtx)).toBe(true);
-    expect(await motionPromptInputHashMatches(v4, sceneCtx)).toBe(true);
+    expect(await motionPromptInputHashMatches(current, sceneCtx, NODE)).toBe(
+      true
+    );
+    expect(await motionPromptInputHashMatches(v4, sceneCtx, NODE)).toBe(true);
     expect(
-      await motionPromptInputHashMatches(v4, {
-        ...sceneCtx,
-        analysisModel: 'anthropic/claude-sonnet-4.6',
-      })
+      await motionPromptInputHashMatches(
+        v4,
+        {
+          ...sceneCtx,
+          analysisModel: 'anthropic/claude-sonnet-4.6',
+        },
+        NODE
+      )
     ).toBe(false);
   });
 

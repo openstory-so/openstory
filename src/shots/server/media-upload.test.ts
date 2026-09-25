@@ -195,6 +195,7 @@ async function seedSegmentAndVideo(frameVersionId: string) {
       durationMs: 4000,
       audioClipIds: [],
       audioSourceKey: null,
+      dialogueKey: null,
       referenceKeys: [],
     },
   ];
@@ -308,6 +309,7 @@ async function verifyThumbnailStaleness(scene: Scene | null) {
     frame,
     selectedImage,
     scene,
+    dialogue: { dialogue: { presence: false, lines: [] }, onNode: false },
   });
   return result.thumbnail;
 }
@@ -520,6 +522,7 @@ describe('§4.3 B — image-only upload (appendUploadedVersion + select)', () =>
         durationMs: 4000,
         audioClipIds: [],
         audioSourceKey: null,
+        dialogueKey: null,
         referenceKeys: [],
       },
     ];
@@ -781,6 +784,7 @@ describe('video upload (appendUploadedVersion + select)', () => {
         durationMs: 4000,
         audioClipIds: [],
         audioSourceKey: null,
+        dialogueKey: null,
         referenceKeys: [],
       },
     ];
@@ -833,6 +837,7 @@ describe('video upload (appendUploadedVersion + select)', () => {
         durationMs: 4000,
         audioClipIds: [],
         audioSourceKey: null,
+        dialogueKey: null,
         referenceKeys: [],
       },
     ];
