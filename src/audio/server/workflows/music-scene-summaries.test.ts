@@ -167,6 +167,52 @@ describe('music scene summaries', () => {
       ).toBe(true);
     }
   });
+
+  it('pins the legacy digests to what the pre-#1783 verify stamped', async () => {
+    // Hex values computed on the pre-#1783 branch: `buildMusicSceneSummaries`
+    // over one scene row with two shots (4s, 6s), analysis model 'm'.
+    const { sceneSummaries, legacyShotSummaries } = musicSceneSummariesFromRows(
+      [
+        {
+          id: 'row-0',
+          title: 'Pickup',
+          storyBeat: 'inciting',
+          location: 'rooftop',
+          timeOfDay: 'night',
+        },
+      ],
+      [
+        { sceneId: 'row-0', durationMs: 4000 },
+        { sceneId: 'row-0', durationMs: 6000 },
+      ]
+    );
+    const pinned = [
+      [
+        'v5',
+        '69d4082c3fef58db0e5e0d3298d1cf211a73863a0084a53cddd1782cb3753bac',
+      ],
+      [
+        'v5-titled',
+        '989fb920692bd00c4b1409e29eaf261eba55685ad8ab027a13b0250ace941314',
+      ],
+      [
+        'v4',
+        '2ed390d36ed57dece9786ea994214dd32d63b969d122813647589fbdb8d5b3ff',
+      ],
+    ] as const;
+    for (const [kind, hex] of pinned) {
+      expect(
+        await computeLegacyMusicPromptInputHash(legacyShotSummaries, 'm', kind)
+      ).toBe(hex);
+      expect(
+        await musicPromptInputHashMatches(
+          hex,
+          { sceneSummaries, analysisModel: 'm' },
+          legacyShotSummaries
+        )
+      ).toBe(true);
+    }
+  });
 });
 
 const musicA = {

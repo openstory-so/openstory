@@ -921,9 +921,12 @@ async function computeMusicPlan(
   };
   if (!sequence.musicPromptInputHash) return none;
 
+  // Outside the try, as before #1783: a failed read must fail the plan, not
+  // quietly skip a music prompt that may be stale.
+  const sceneRows = await scopedDb.scenes.listBySequence(sequence.id);
   try {
     const { sceneSummaries, legacyShotSummaries } = musicSceneSummariesFromRows(
-      await scopedDb.scenes.listBySequence(sequence.id),
+      sceneRows,
       allShots
     );
     if (sceneSummaries.length === 0) return none;
