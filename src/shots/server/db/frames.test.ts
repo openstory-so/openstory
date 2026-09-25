@@ -204,6 +204,62 @@ describe('frames.resolveCurrent', () => {
   });
 });
 
+describe('frames.movePendingPromoteVersionIdIf (#1786)', () => {
+  const setup = async () => {
+    const m = createFramesMethods(db);
+    const frame = await m.upsert({
+      shotId,
+      sequenceId,
+      orderIndex: 0,
+      role: 'first',
+    });
+    const [a, b, c] = await db
+      .insert(frameVariants)
+      .values(
+        ['a', 'b', 'c'].map((model) => ({
+          frameId: frame.id,
+          sequenceId,
+          kind: 'model' as const,
+          model,
+          status: 'generating' as const,
+        }))
+      )
+      .returning();
+    if (!a || !b || !c) throw new Error('test setup: variants missing');
+    return { m, frameId: frame.id, a, b, c };
+  };
+  const claimOf = async (frameId: string) =>
+    (await db.select().from(frames).where(eq(frames.id, frameId)))[0]
+      ?.pendingPromoteVersionId;
+
+  it('hands the claim over while the original still holds it', async () => {
+    const { m, frameId, a, b } = await setup();
+    await m.setPendingPromoteVersionId(frameId, a.id);
+    expect(await m.movePendingPromoteVersionIdIf(frameId, a.id, b.id)).toBe(
+      true
+    );
+    expect(await claimOf(frameId)).toBe(b.id);
+  });
+
+  it('a newer kickoff made mid-run keeps its claim', async () => {
+    const { m, frameId, a, b, c } = await setup();
+    await m.setPendingPromoteVersionId(frameId, c.id);
+    expect(await m.movePendingPromoteVersionIdIf(frameId, a.id, b.id)).toBe(
+      false
+    );
+    expect(await claimOf(frameId)).toBe(c.id);
+  });
+
+  it('a manual select that cleared the claim is not re-taken', async () => {
+    const { m, frameId, a, b } = await setup();
+    await m.setPendingPromoteVersionId(frameId, null);
+    expect(await m.movePendingPromoteVersionIdIf(frameId, a.id, b.id)).toBe(
+      false
+    );
+    expect(await claimOf(frameId)).toBeNull();
+  });
+});
+
 describe('frames.isStale', () => {
   it('throws when the frame does not exist', async () => {
     const m = createFramesMethods(db);

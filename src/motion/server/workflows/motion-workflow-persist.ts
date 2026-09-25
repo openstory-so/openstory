@@ -10,8 +10,9 @@
  *
  * - completion: flip the version to `completed`, then (for a primary, non
  *   `variantOnly` render) repoint the shot's selection via
- *   `videoVariants.select` — which repoints the render segment's
- *   `selectedVideoVersionId` pointer + logs a `video.selected` event, atomically.
+ *   `videoVariants.selectIfPendingPromoteIs` — one guarded UPDATE that moves
+ *   the render segment's `selectedVideoVersionId` pointer only while this
+ *   version still holds the segment's promote claim, then logs `video.selected`.
  * - failure: mark the in-flight version `failed` (by workflow run id), or append
  *   a terminal failed row if the run died before it had one.
  *
@@ -24,7 +25,11 @@
  * testable without bootstrapping a `WorkflowEntrypoint`.
  */
 
-import type { NewShot, NewVideoVariant } from '@/platform/server/db/schema';
+import type {
+  NewShot,
+  NewVideoVariant,
+  VideoManifest,
+} from '@/platform/server/db/schema';
 import type { RecordEventInput } from '@/sequences/server/db/sequence-events';
 import type { VideoManifestInputHash } from '@/shots/input-hash';
 
@@ -81,11 +86,11 @@ export type PersistMotionScopedDb = {
       versionId: string,
       data: Partial<NewVideoVariant>
     ) => Promise<{ id: string } | null>;
-    select: (
+    selectIfPendingPromoteIs: (
       shotId: string,
       versionId: string,
       opts: { actorId: string | null }
-    ) => Promise<{ id: string }>;
+    ) => Promise<{ id: string } | null>;
     markFailedByWorkflowRun: (
       workflowRunId: string,
       error: string
@@ -95,6 +100,14 @@ export type PersistMotionScopedDb = {
         inputHash?: VideoManifestInputHash | null;
       }
     ) => Promise<{ id: string }>;
+  };
+  shotPromptVersions: {
+    selectIfSelectionIs: (
+      shotId: string,
+      versionId: string,
+      expectedVersionId: string,
+      opts: { actorId: string | null }
+    ) => Promise<boolean>;
   };
   renderSegments: {
     setPendingPromoteVersionId: (
@@ -159,10 +172,10 @@ export type PersistMotionOutcome =
 
 /**
  * Completed write. Flips the in-flight `video_variants` version to `completed`,
- * then — for a primary render — repoints the shot's selection
- * (`videoVariants.select` mirrors `shots.video*` + the render segment's
- * `selectedVideoVersionId` pointer + logs `video.selected`). A `variantOnly`
- * render (an added model, #547) only
+ * then — for a primary render that still holds its segment's promote claim —
+ * repoints the segment's `selectedVideoVersionId` in the same guarded UPDATE
+ * that consumes the claim, and carries a rescued prompt rewrite with it (#1786).
+ * A `variantOnly` render (an added model, #547) only
  * finalizes its version, leaving the primary selection untouched. A
  * `video.rendered` activity event is logged either way.
  *
@@ -187,6 +200,13 @@ export async function persistMotionCompletion(opts: {
    * shot's primary selection — adding a video model leaves the primary intact.
    */
   variantOnly?: boolean;
+  /**
+   * A content-checker rescue (#1373) or length shorten (#1754) appended its
+   * rewrite to history unselected (#1786). When this clip wins its promote
+   * claim, the rewrite is selected with it — only if the shot still points at
+   * the prompt the run started from. Null when no rescue rewrote the prompt.
+   */
+  rescuedMotionPrompt: { fromVersionId: string; toVersionId: string } | null;
   now?: () => Date;
 }): Promise<PersistMotionOutcome> {
   const {
@@ -200,6 +220,7 @@ export async function persistMotionCompletion(opts: {
     actorId,
     emit,
     variantOnly,
+    rescuedMotionPrompt,
     now = () => new Date(),
   } = opts;
 
@@ -246,49 +267,66 @@ export async function persistMotionCompletion(opts: {
   }
 
   // A primary render: promote only if this version still holds the pending
-  // claim (#1070 last-kickoff + explicit select cancel).
+  // claim (#1070 last-kickoff + explicit select cancel). The claim check and
+  // the pointer move are one guarded UPDATE (#1786) — no read-then-decide.
   const shot = await scopedDb.liveRead.shots.getById(shotId);
   if (!shot) return { status: 'shot-deleted' };
 
-  const segmentId = shot.renderSegmentId;
-  const segment = segmentId
-    ? await scopedDb.liveRead.renderSegments.getById(segmentId)
+  const promoted = shot.renderSegmentId
+    ? await scopedDb.videoVariants.selectIfPendingPromoteIs(
+        shotId,
+        videoVersionId,
+        { actorId }
+      )
     : null;
-  const shouldPromote = segment?.pendingPromoteVersionId === videoVersionId;
 
-  if (shouldPromote) {
-    await scopedDb.videoVariants.select(shotId, videoVersionId, { actorId });
-    await emit('generation.video:progress', {
+  if (promoted && rescuedMotionPrompt) {
+    await scopedDb.shotPromptVersions.selectIfSelectionIs(
       shotId,
-      status: 'completed',
-      videoUrl: upload.url,
-      model,
-    });
-  } else {
-    // History-only completion — leave the primary selection alone. Clear a
-    // stale self-claim if any (usually already cleared by a newer kickoff or
-    // user select).
-    if (segmentId) {
-      await scopedDb.renderSegments.clearPendingPromoteVersionIdIf(
-        segmentId,
-        videoVersionId
-      );
-    }
-    // Still emit completed so the variant list refreshes; primary video*
-    // columns stay as they are (cache updater must not overwrite when the
-    // client still has a different selected version — emit without
-    // forcing primary: videoUrl is present but selection is separate).
-    await emit('generation.video:progress', {
-      shotId,
-      status: 'completed',
-      videoUrl: upload.url,
-      model,
-      // Not selected as primary — treat like variant-only for cache primary.
-      variantOnly: true,
-    });
+      rescuedMotionPrompt.toVersionId,
+      rescuedMotionPrompt.fromVersionId,
+      { actorId }
+    );
   }
 
+  // History-only when the claim had moved: the primary selection stays, and
+  // the cache updater must not repoint the primary (variant-only flag).
+  await emit('generation.video:progress', {
+    shotId,
+    status: 'completed',
+    videoUrl: upload.url,
+    model,
+    ...(promoted ? {} : { variantOnly: true }),
+  });
+
   return { status: 'completed', videoUrl: upload.url };
+}
+
+/**
+ * The prompt swap a content rescue or length shorten made for `shotId`: the
+ * motion-prompt version the opened clip pinned, and the rewrite the rescue
+ * repointed the manifest at. Null when the run rendered the prompt it started
+ * from.
+ */
+type PinnedPrompts =
+  | ReadonlyArray<
+      Pick<VideoManifest[number], 'shotId' | 'motionPromptVersionId'>
+    >
+  | null
+  | undefined;
+
+export function rescuedMotionPromptOf(
+  shotId: string,
+  opened: PinnedPrompts,
+  rendered: PinnedPrompts
+): { fromVersionId: string; toVersionId: string } | null {
+  const pinned = (manifest: PinnedPrompts) =>
+    manifest?.find((entry) => entry.shotId === shotId)?.motionPromptVersionId;
+  const fromVersionId = pinned(opened);
+  const toVersionId = pinned(rendered);
+  return fromVersionId && toVersionId && fromVersionId !== toVersionId
+    ? { fromVersionId, toVersionId }
+    : null;
 }
 
 /**

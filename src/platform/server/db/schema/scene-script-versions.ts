@@ -17,7 +17,8 @@ import { generateId } from '@/platform/id';
 import { user } from './auth';
 import { scenes } from './scenes';
 
-const SCENE_SCRIPT_SOURCES = ['split', 'edit'] as const;
+// `renamed`: an element-token rename's rewrite of the selected row (#1786).
+const SCENE_SCRIPT_SOURCES = ['split', 'edit', 'renamed'] as const;
 export type SceneScriptSource = (typeof SCENE_SCRIPT_SOURCES)[number];
 
 type SceneScriptContent = Scene['originalScript'];

@@ -481,6 +481,48 @@ describe('framePromptVersions.completePendingAiVersion', () => {
     expect(frame.selectedImagePromptVersionId).toBe(edit.id);
   });
 
+  it('a softened rewrite appended unselected mid-run neither moves the prompt nor cancels a queued regeneration (#1786)', async () => {
+    const m = createFramePromptVersionsMethods(db);
+    const original = await m.write({
+      frameId,
+      text: 'Original',
+      source: 'ai-generated',
+      inputHash: visualPromptInputHash('hash-0'),
+      analysisModel: HAIKU,
+    });
+    // The user queues Update-all; the claim goes live.
+    const claim = await m.createPending({
+      frameId,
+      pendingInputHash: 'live-hash',
+    });
+    await m.markGenerating(claim.id, 'run-1');
+
+    // An image run's content soften lands its rewrite in history.
+    await m.write({
+      frameId,
+      text: 'Softened',
+      source: 'softened',
+      inputHash: visualPromptInputHash('hash-0'),
+      analysisModel: HAIKU,
+      select: false,
+    });
+    const [frame] = await db
+      .select()
+      .from(frames)
+      .where(eq(frames.id, frameId));
+    expect(frame?.selectedImagePromptVersionId).toBe(original.id);
+
+    // The queued regeneration still lands as the selection.
+    await m.completePendingAiVersion({
+      versionId: claim.id,
+      frameId,
+      text: 'Regenerated',
+      inputHash: visualPromptInputHash('live-hash'),
+      analysisModel: HAIKU,
+    });
+    expect((await m.getSelected(frameId))?.text).toBe('Regenerated');
+  });
+
   it('returns null for a claim cancelled mid-flight and never mirrors', async () => {
     const m = createFramePromptVersionsMethods(db);
     await m.write({

@@ -78,6 +78,7 @@ vi.doMock('@/platform/realtime', () => ({
   getGenerationChannel: () => ({ emit }),
 }));
 vi.doMock('./motion-workflow-persist', () => ({
+  rescuedMotionPromptOf: () => null,
   persistMotionCompletion: async () => ({ status: 'completed' }),
   persistMotionFailure: async () => {},
 }));
@@ -285,7 +286,7 @@ beforeEach(() => {
 });
 
 describe('MotionWorkflow content-flag rescue (#1373)', () => {
-  it('prompt flagged: softens, writes a selected version, repoints the manifest, resubmits on the same model', async () => {
+  it('prompt flagged: softens, appends an unselected version, repoints the manifest, resubmits on the same model', async () => {
     rejectReseeds(PROMPT);
     const { scopedDb, shotPromptVersions, videoVariants } = makeScopedDb();
     const step = makeStep();
@@ -324,7 +325,8 @@ describe('MotionWorkflow content-flag rescue (#1373)', () => {
         usesStartFrame: true,
         inputHash: 'ctx-hash',
         analysisModel: 'anthropic/claude-haiku-4.5',
-        select: true,
+        // Unselected (#1786): the clip carries it in at promote.
+        select: false,
       })
     );
     expect(videoVariants.update).toHaveBeenCalledWith('vv-1', {

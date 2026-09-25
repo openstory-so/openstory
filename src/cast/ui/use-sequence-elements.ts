@@ -289,8 +289,9 @@ export function useRenameSequenceElementToken() {
       void queryClient.invalidateQueries({
         queryKey: sequenceElementKeys.bySequence(variables.sequenceId),
       });
-      // cascadeRename rewrites the sequence script and selected scene-script
-      // versions — refresh the composed script so editors showing it update.
+      // cascadeRename rewrites the sequence script and appends renamed
+      // scene-script versions — refresh the composed script so editors
+      // showing it update.
       void queryClient.invalidateQueries({
         queryKey: sceneKeys.composedScript(variables.sequenceId),
       });

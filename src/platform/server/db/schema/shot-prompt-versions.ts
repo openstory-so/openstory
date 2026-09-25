@@ -102,6 +102,8 @@ const PROMPT_VARIANT_SOURCES = [
   // Nothing is cut inside a request builder any more, so the shortening is
   // an ordinary version the user can read and revert.
   'shortened',
+  // An element-token rename's rewrite of the selected row (#1786).
+  'renamed',
 ] as const;
 export type PromptVariantSource = (typeof PROMPT_VARIANT_SOURCES)[number];
 

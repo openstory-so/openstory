@@ -329,6 +329,30 @@ export function createFramesMethods(db: Database) {
         );
     },
 
+    /**
+     * Move the promote claim from `fromVersionId` to `toVersionId` only while
+     * `fromVersionId` still holds it (#1786) — a run handing its claim to a
+     * replacement row (the content-rejection model fallback) must not re-take
+     * a claim a newer kickoff or a manual select already moved.
+     */
+    movePendingPromoteVersionIdIf: async (
+      frameId: string,
+      fromVersionId: string,
+      toVersionId: string
+    ): Promise<boolean> => {
+      const moved = await db
+        .update(frames)
+        .set({ pendingPromoteVersionId: toVersionId, updatedAt: new Date() })
+        .where(
+          and(
+            eq(frames.id, frameId),
+            eq(frames.pendingPromoteVersionId, fromVersionId)
+          )
+        )
+        .returning({ id: frames.id });
+      return moved.length > 0;
+    },
+
     delete: async (frameId: string): Promise<boolean> => {
       const result = await db.delete(frames).where(eq(frames.id, frameId));
       // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime

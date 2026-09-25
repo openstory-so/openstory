@@ -96,6 +96,7 @@ import {
 import type { MotionWorkflowInput } from '@/platform/server/workflow/types';
 import {
   persistMotionCompletion,
+  rescuedMotionPromptOf,
   persistMotionFailure,
 } from './motion-workflow-persist';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
@@ -811,9 +812,11 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
      * and the length shorten (#1754): both replace the prompt mid-run, and
      * both must leave the original in Versions for the user to revert to.
      *
-     * A primary render selects the rewrite; a variant-only render appends to
-     * history only — an alternate model's rescue must not move the primary
-     * shot's prompt out from under the primary clip.
+     * The rewrite is appended to history UNSELECTED (#1786): selecting it
+     * mid-run would clobber an edit the user made meanwhile and demote a
+     * regeneration they queued. A primary clip that wins its promote claim
+     * carries it into the selection at completion (`rescuedMotionPrompt`),
+     * and only if the shot still points at the prompt the run started from.
      *
      * A single-shot soften passes the rewritten prose and the version's
      * `audio` (#1773), so a later render still assembles dialogue and trailer
@@ -842,7 +845,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           inputHash: provenance.inputHash,
           analysisModel: provenance.analysisModel,
           createdBy: input.userId,
-          select: !input.variantOnly,
+          select: false,
         });
         if (!videoVersionId || !manifest) return manifest ?? null;
         const rescued = manifest.map((e) => ({
@@ -1561,6 +1564,11 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           upload: { url: storageResult.url, path: storageResult.path },
           actorId: input.userId,
           variantOnly: input.variantOnly,
+          rescuedMotionPrompt: rescuedMotionPromptOf(
+            shotId,
+            manifest,
+            renderManifest
+          ),
           emit: async (event, payload) => {
             try {
               await getGenerationChannel(input.sequenceId).emit(event, payload);

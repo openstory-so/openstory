@@ -415,6 +415,98 @@ describe('cascadeRename', () => {
     expect(replay.shotsUpdated).toBe(0);
   });
 
+  it('appends renamed rows and repoints; the rows it replaced keep their text (#1786)', async () => {
+    const methods = createSequenceElementsMethods(db);
+    const element = await insertElement('LOGO');
+    const scene = await insertSceneWithShot({
+      orderIndex: 0,
+      elementTags: ['LOGO'],
+      extract: 'The LOGO appears on screen.',
+      motionPrompt: 'Push in on the LOGO.',
+      imagePrompt: 'A LOGO on a wall.',
+    });
+    const [before] = await db
+      .select({
+        shotId: shots.id,
+        motionId: shots.selectedMotionPromptVersionId,
+        scriptId: scenes.selectedScriptVersionId,
+      })
+      .from(shots)
+      .innerJoin(scenes, eq(scenes.id, shots.sceneId))
+      .where(eq(shots.sceneId, scene.id));
+    const [frameBefore] = await db
+      .select()
+      .from(frames)
+      .where(eq(frames.shotId, before?.shotId ?? ''));
+    if (!before?.motionId || !before.scriptId || !frameBefore)
+      throw new Error('test setup: selections missing');
+
+    await methods.cascadeRename({
+      sequenceId,
+      elementId: element.id,
+      oldToken: 'LOGO',
+      newToken: 'BRAND',
+    });
+
+    // History is untouched: the rows stills, clips and hashes pinned still
+    // say what they said.
+    const [oldMotion] = await db
+      .select()
+      .from(shotPromptVersions)
+      .where(eq(shotPromptVersions.id, before.motionId));
+    expect(oldMotion?.text).toBe('Push in on the LOGO.');
+    const [oldImage] = await db
+      .select()
+      .from(framePromptVersions)
+      .where(
+        eq(
+          framePromptVersions.id,
+          frameBefore.selectedImagePromptVersionId ?? ''
+        )
+      );
+    expect(oldImage?.text).toBe('A LOGO on a wall.');
+    const [oldScript] = await db
+      .select()
+      .from(sceneScriptVersions)
+      .where(eq(sceneScriptVersions.id, before.scriptId));
+    expect(oldScript?.content.extract).toBe('The LOGO appears on screen.');
+
+    // The selection moved to new `renamed` rows.
+    const [motion] = await db
+      .select({ version: shotPromptVersions })
+      .from(shots)
+      .innerJoin(
+        shotPromptVersions,
+        eq(shots.selectedMotionPromptVersionId, shotPromptVersions.id)
+      )
+      .where(eq(shots.id, before.shotId));
+    expect(motion?.version.id).not.toBe(before.motionId);
+    expect(motion?.version.source).toBe('renamed');
+    expect(motion?.version.text).toBe('Push in on the BRAND.');
+    const [image] = await db
+      .select({ version: framePromptVersions })
+      .from(frames)
+      .innerJoin(
+        framePromptVersions,
+        eq(frames.selectedImagePromptVersionId, framePromptVersions.id)
+      )
+      .where(eq(frames.id, frameBefore.id));
+    expect(image?.version.source).toBe('renamed');
+    expect(image?.version.text).toBe('A BRAND on a wall.');
+    const [script] = await db
+      .select({ version: sceneScriptVersions })
+      .from(scenes)
+      .innerJoin(
+        sceneScriptVersions,
+        eq(scenes.selectedScriptVersionId, sceneScriptVersions.id)
+      )
+      .where(eq(scenes.id, scene.id));
+    expect(script?.version.source).toBe('renamed');
+    expect(script?.version.content.extract).toBe(
+      'The BRAND appears on screen.'
+    );
+  });
+
   it('short-circuits when oldToken === newToken', async () => {
     const methods = createSequenceElementsMethods(db);
     const element = await insertElement('LOGO');

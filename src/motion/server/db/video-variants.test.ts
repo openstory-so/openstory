@@ -399,6 +399,72 @@ describe('select', () => {
   });
 });
 
+describe('selectIfPendingPromoteIs (#1786)', () => {
+  const claim = (versionId: string | null) =>
+    db
+      .update(renderSegments)
+      .set({ pendingPromoteVersionId: versionId })
+      .where(eq(renderSegments.id, segmentId));
+  const segmentRow = async () => {
+    const [row] = await db
+      .select()
+      .from(renderSegments)
+      .where(eq(renderSegments.id, segmentId));
+    return row;
+  };
+
+  it('promotes and consumes the claim in one write when it still holds it', async () => {
+    const v = await methods.appendVersion(versionInput());
+    await claim(v.id);
+
+    const promoted = await methods.selectIfPendingPromoteIs(shotId, v.id, {
+      actorId: ACTOR,
+    });
+
+    expect(promoted?.id).toBe(v.id);
+    const row = await segmentRow();
+    expect(row?.selectedVideoVersionId).toBe(v.id);
+    expect(row?.pendingPromoteVersionId).toBeNull();
+    const events = await db
+      .select()
+      .from(sequenceEvents)
+      .where(eq(sequenceEvents.kind, 'video.selected'));
+    expect(events).toHaveLength(1);
+  });
+
+  it('a newer kickoff wins: the late completion stays in history', async () => {
+    const late = await methods.appendVersion(versionInput());
+    const newer = await methods.appendVersion(
+      versionInput({ status: 'generating', url: null })
+    );
+    await claim(newer.id);
+
+    expect(
+      await methods.selectIfPendingPromoteIs(shotId, late.id, {
+        actorId: ACTOR,
+      })
+    ).toBeNull();
+    const row = await segmentRow();
+    expect(row?.selectedVideoVersionId).toBeNull();
+    expect(row?.pendingPromoteVersionId).toBe(newer.id);
+  });
+
+  it('a manual select made mid-run wins over the late completion', async () => {
+    const picked = await methods.appendVersion(versionInput());
+    const late = await methods.appendVersion(versionInput());
+    await claim(late.id);
+    // The user picks another clip while the render is still running.
+    await methods.select(shotId, picked.id, { actorId: ACTOR });
+
+    expect(
+      await methods.selectIfPendingPromoteIs(shotId, late.id, {
+        actorId: ACTOR,
+      })
+    ).toBeNull();
+    expect((await segmentRow())?.selectedVideoVersionId).toBe(picked.id);
+  });
+});
+
 describe('listSelectedModelsBySequence (#1066)', () => {
   it("maps each shot to its SELECTED version's model, not the latest", async () => {
     const first = await methods.appendVersion(
