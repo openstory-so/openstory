@@ -204,6 +204,8 @@ type InputHistory = {
   locations: ReadonlyMap<string, readonly LocationBibleVersion[]>;
   scenes: ReadonlyMap<string, readonly SceneScriptVersion[]>;
   style: readonly SequenceStyleVersion[];
+  /** When each shot's current lines were selected (#1784). */
+  dialogueSelectedAt: ReadonlyMap<string, Date>;
 };
 
 type InputHistoryDb = {
@@ -214,6 +216,7 @@ type InputHistoryDb = {
   >;
   sceneScriptVersions: Pick<ScopedDb['sceneScriptVersions'], 'listBySequence'>;
   sequences: Pick<ScopedDb['sequences'], 'listStyleVersions'>;
+  shotDialogue: Pick<ScopedDb['shotDialogue'], 'getSelectedBySequence'>;
 };
 
 function groupBy<T>(rows: readonly T[], key: (row: T) => string) {
@@ -230,11 +233,12 @@ async function loadInputHistory(
   scopedDb: InputHistoryDb,
   sequenceId: string
 ): Promise<InputHistory> {
-  const [characters, locations, scenes, style] = await Promise.all([
+  const [characters, locations, scenes, style, dialogue] = await Promise.all([
     scopedDb.characters.listBibleVersionsBySequence(sequenceId),
     scopedDb.sequenceLocations.listBibleVersionsBySequence(sequenceId),
     scopedDb.sceneScriptVersions.listBySequence(sequenceId),
     scopedDb.sequences.listStyleVersions(sequenceId),
+    scopedDb.shotDialogue.getSelectedBySequence(sequenceId),
   ]);
   return {
     characters: groupBy(characters, (v) => v.characterId),
@@ -244,6 +248,9 @@ async function loadInputHistory(
       (v) => v.sceneId
     ),
     style,
+    dialogueSelectedAt: new Map(
+      dialogue.flatMap((v) => (v.selectedAt ? [[v.shotId, v.selectedAt]] : []))
+    ),
   };
 }
 
@@ -866,6 +873,14 @@ async function loadSceneContext(
 }
 
 /**
+ * The #1600 deploy backfilled every older scene version with the narrative
+ * the scene held on that day, so a version from before it cannot say what
+ * the narrative was then.
+ * ponytail: the migration's date; move it to the production deploy date.
+ */
+const SCENE_NARRATIVE_HISTORY_FROM = Date.parse('2026-09-25T00:00:00Z');
+
+/**
  * What moved in the shot's scene since `at` (#1600): the scene version live
  * then against the live one — `Script` for its text or lines, `Scene: …`
  * for the narrative. A scene whose history does not reach back that far falls
@@ -900,6 +915,12 @@ function sceneCauses(
     return label ? [label] : [];
   });
   if (moved.length > 0) causes.push(`Scene: ${moved.join(', ')}`);
+  else if (
+    at < SCENE_NARRATIVE_HISTORY_FROM &&
+    after(live.scene.updatedAt, at)
+  ) {
+    causes.push('Scene details');
+  }
   return causes;
 }
 
@@ -1006,7 +1027,8 @@ async function findStalenessCauses(args: {
     const moved = bibleMoved(inputHistory.locations.get(l.id), at, (then) =>
       locationBibleChanged(then, l).map((k) => LOCATION_LABELS[k])
     );
-    const cause = namedCause(`Location "${l.name}"`, moved, [], () =>
+    const sheet = after(l.referenceGeneratedAt, at) ? ['sheet'] : [];
+    const cause = namedCause(`Location "${l.name}"`, moved, sheet, () =>
       after(l.updatedAt, at)
     );
     if (cause) causes.push(cause);
@@ -1014,14 +1036,16 @@ async function findStalenessCauses(args: {
   for (const el of refs.elements) {
     if (after(el.updatedAt, at)) causes.push(`Element ${el.token}`);
   }
-  if (
-    generatedAt.motionPrompt &&
-    after(
-      selectedImage?.generatedAt ?? selectedImage?.createdAt,
-      generatedAt.motionPrompt.getTime()
-    )
-  ) {
-    causes.push('Image re-rendered');
+  const motionAt = generatedAt.motionPrompt?.getTime();
+  if (motionAt !== undefined) {
+    if (after(inputHistory.dialogueSelectedAt.get(shot.id), motionAt)) {
+      causes.push('Dialogue');
+    }
+    if (
+      after(selectedImage?.generatedAt ?? selectedImage?.createdAt, motionAt)
+    ) {
+      causes.push('Image re-rendered');
+    }
   }
   return causes;
 }
