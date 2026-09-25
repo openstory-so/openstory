@@ -56,7 +56,7 @@ import type { Sequence } from '@/platform/server/db/schema';
 import { resolveSequenceStyleConfig } from '@/look/style-config';
 import { sequenceScenesUrl } from './notify-sequence-ready';
 import { refreshCheckpointFromCast } from './refresh-checkpoint';
-import { snapshotDialogueContinuation } from './dialogue-continuation';
+import { snapshotImageStageContinuation } from './image-stage-continuation';
 import { resolveStopAt } from '@/sequences/pipeline';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import { resolveRunState } from '@/platform/server/workflow/reconcile';
@@ -190,8 +190,11 @@ async function resolveStoryboardPayload(
   let checkpoint = input.checkpoint
     ? await refreshCheckpointFromCast(scopedDb, sequenceId, input.checkpoint)
     : undefined;
-  if (checkpoint && input.startFrom === 'dialogue') {
-    checkpoint = await snapshotDialogueContinuation(
+  if (
+    checkpoint &&
+    (input.startFrom === 'dialogue' || input.startFrom === 'motion')
+  ) {
+    checkpoint = await snapshotImageStageContinuation(
       scopedDb,
       sequence,
       checkpoint
