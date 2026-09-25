@@ -37,13 +37,20 @@ import {
 const logger = getLogger(['openstory', 'workflow', 'motion-prompt-batch']);
 
 /**
- * A clip's lines in the pipeline (#1784): its scene is already narrowed to
- * the shot (`sceneForShot`), and scene-split seeded the shot's dialogue node
- * from these same stamped shot-list lines moments earlier. A user edit that
- * lands mid-run moves the node, so the prompt honestly reads stale after.
+ * A clip's lines in the pipeline (#1784). A continue carries what each shot
+ * says now (`dialogueLinesByShotId`, re-read from the shot node). Otherwise
+ * its scene is already narrowed to the shot (`sceneForShot`), and scene-split
+ * seeded the shot's dialogue node from these same stamped shot-list lines
+ * moments earlier. A user edit that lands mid-run moves the node, so the
+ * prompt honestly reads stale after.
  */
-function seededDialogue(scene: Scene): MotionDialogue {
-  return shotDialogue(scene.originalScript.dialogue);
+function seededDialogue(
+  scene: Scene,
+  shotId: string | undefined,
+  linesByShotId: MotionPromptBatchWorkflowInput['dialogueLinesByShotId']
+): MotionDialogue {
+  const lines = shotId ? linesByShotId?.[shotId] : undefined;
+  return shotDialogue(lines ?? scene.originalScript.dialogue);
 }
 
 type MotionPromptBatchWorkflowResult = MotionPromptWorkflowResult[];
@@ -68,6 +75,7 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
       sequenceId,
       startingFrameImageUrls,
       referenceOnly,
+      dialogueLinesByShotId,
     } = input;
 
     // ============================================================
@@ -119,7 +127,11 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
         const childPayload: MotionPromptWorkflowInput = {
           reservationId: input.reservationId,
           scene,
-          dialogue: seededDialogue(scene),
+          dialogue: seededDialogue(
+            scene,
+            mapping.shotId,
+            dialogueLinesByShotId
+          ),
           sceneBefore,
           sceneAfter,
           aspectRatio,
@@ -242,7 +254,11 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
                   analysisModel: analysisModelId,
                   startingFrameImageUrl,
                   referenceOnly,
-                  dialogue: seededDialogue(item.scene),
+                  dialogue: seededDialogue(
+                    item.scene,
+                    item.mapping.shotId,
+                    dialogueLinesByShotId
+                  ),
                 })
               ),
               analysisModel: analysisModelId,

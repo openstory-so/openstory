@@ -113,6 +113,7 @@ export class MotionMusicPromptsWorkflow extends OpenStoryWorkflowEntrypoint<Moti
             shotMapping,
             startingFrameImageUrls,
             referenceOnly,
+            dialogueLinesByShotId: input.dialogueLinesByShotId,
           },
           spawnStepName: 'spawn-motion-prompts',
           awaitStepName: 'await-motion-prompts',

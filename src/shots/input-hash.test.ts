@@ -43,6 +43,8 @@ import {
   type LocationSheetHashInput,
   type TalentSheetHashInput,
 } from './input-hash';
+import { deriveShotDialogueLines, shotDialogue } from './shot-dialogue';
+import { sceneForShot } from './server/shot-work-items';
 
 const baseThumbnail: ShotImageHashInput = {
   kind: 'thumbnail',
@@ -856,6 +858,33 @@ describe('prompt input hashes', () => {
     expect(await hashMotionPromptInput(ctx)).toBe(
       '0821831a048411fcb78c904bcecad4befdfafbba0ced9b7a7090df87bacab534'
     );
+  });
+
+  it('the pipeline stamp matches the verify of the row scene-split seeds (#1784)', async () => {
+    const lines = [
+      { character: 'Alice', line: 'Run.', tone: 'urgent', shotNumber: 1 },
+      { character: 'Bob', line: 'Where?', tone: '', shotNumber: 2 },
+    ];
+    const scene = {
+      ...minimalScene,
+      originalScript: { extract: '', dialogue: lines },
+    };
+    const base = { ...sceneCtx, characterBible: [], locationBible: [] };
+    // The batch: the scene narrowed to shot 2, its lines as the dialogue.
+    const narrowed = sceneForShot(scene, 2);
+    const stamped = await hashMotionPromptInput({
+      ...base,
+      scene: narrowed,
+      dialogue: shotDialogue(narrowed.originalScript.dialogue),
+    });
+    // Verify: the resolver reads the row scene-split seeded for shot 2.
+    const seeded = deriveShotDialogueLines(lines, { shotNumber: 2 }, false);
+    const verified = await hashMotionPromptInput({
+      ...base,
+      scene: narrowed,
+      dialogue: shotDialogue(seeded),
+    });
+    expect(verified).toBe(stamped);
   });
 
   it('accepts a script-shaped digest only for a shot with no node row (#1784)', async () => {

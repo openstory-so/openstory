@@ -11,6 +11,8 @@ import {
   type SequenceSegment,
   type LiveShotInputs,
 } from './scene-segments';
+import { dialogueLinesKey, shotDialogue } from './shot-dialogue';
+import { motionPromptFromVersion } from '@/motion/server/resolve-motion-prompt';
 
 const shot = (
   id: string,
@@ -323,6 +325,33 @@ describe('isSelectedVersionStale', () => {
         audioSourceKeyByShot: new Map([
           ['shot-1', 'voice-sarah\tStay down.\t\televen_v3'],
         ]),
+      })
+    ).toBe(false);
+  });
+
+  it('a clip stamped from the render payload reads fresh against the live key (#1784)', () => {
+    // The render stamps the lines on its motion prompt; the live side keys
+    // the resolver's answer. The same lines must give the same key.
+    const said = shotDialogue([
+      { character: 'Alice', line: 'Stay down.', tone: 'calm', voiceToken: 'A' },
+      { character: 'Bob', line: 'No.', tone: '' },
+    ]);
+    const sent = motionPromptFromVersion(
+      { text: 'She ducks.', audio: null },
+      said
+    );
+    const v = version('v1', 'seg', 'kling_v3_pro', [
+      {
+        shotId: 'shot-1',
+        motionPromptVersionId: 'mp-1',
+        frameVersionId: 'fv-1',
+        audioSourceKey: null,
+        dialogueKey: dialogueLinesKey(sent.dialogue),
+      },
+    ]);
+    expect(
+      stale(v, {
+        dialogueKeyByShot: new Map([['shot-1', dialogueLinesKey(said)]]),
       })
     ).toBe(false);
   });

@@ -688,6 +688,9 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           visualSummaryBySceneId: args.visualSummaryBySceneId,
           musicPromptSource: input.musicPromptSource,
           referenceOnly,
+          // A continue re-read these from the shot node (#1784): a line
+          // edited while stopped is what the motion prompt is written from.
+          dialogueLinesByShotId: checkpoint?.dialogueLinesByShotId,
         },
         spawnStepName: 'spawn-motion-music-prompts',
         awaitStepName: 'await-motion-music-prompts',

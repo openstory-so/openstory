@@ -532,9 +532,13 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
           voicedLines,
           audioClips: audioClips.length > 0 ? audioClips : undefined,
           dialogueContext: dialogueContextOf(shot, voicedLines, audioClips),
+          // A typed prompt with no version yet still quoted the shot's lines
+          // (`prompt` above), so the clip must stamp them (#1784 dialogueKey).
           motionPrompt: selectedMotion
             ? motionPromptFromVersion(selectedMotion, shotDialogue)
-            : undefined,
+            : data.prompt
+              ? { fullPrompt: data.prompt, dialogue: shotDialogue, audio: null }
+              : undefined,
           characterTags: context.scene?.continuity?.characterTags,
         };
 
