@@ -16,6 +16,7 @@ import type { Shot } from '@/platform/server/db/schema';
 import type { LoadedShotInputs } from '@/shots/scene-segments';
 import type { SceneContext } from './scene-script';
 import { loadShotDialogueLines, shotDialogueResolver } from './shot-dialogue';
+import { dialogueLinesKey } from '@/shots/shot-dialogue';
 
 export async function loadLiveShotInputs(
   scopedDb: Pick<
@@ -54,7 +55,9 @@ export async function loadLiveShotInputs(
   });
 
   const audioSourceKeyByShot = new Map<string, string | null>();
+  const dialogueKeyByShot = new Map<string, string | null>();
   for (const shot of shots) {
+    dialogueKeyByShot.set(shot.id, dialogueLinesKey(dialogueOf(shot)));
     audioSourceKeyByShot.set(
       shot.id,
       audioSourceKeyFromVoicedLines(
@@ -65,6 +68,7 @@ export async function loadLiveShotInputs(
 
   return {
     audioSourceKeyByShot,
+    dialogueKeyByShot,
     referenceIdentity: liveReferenceIdentity({
       characters,
       locations,

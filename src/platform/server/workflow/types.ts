@@ -19,6 +19,7 @@ import type {
   ElementBibleEntry,
   LocationBibleEntry,
   MotionAudio,
+  MotionDialogue,
   MotionPrompt,
   Scene,
   VisualPrompt,
@@ -1202,6 +1203,12 @@ export interface MotionPromptBatchWorkflowInput extends SequenceWorkflowContext 
 
 export interface MotionPromptWorkflowInput extends SequenceWorkflowContext {
   scene: Scene;
+  /**
+   * What the shot says, snapshotted at the trigger from
+   * `shotDialogueResolver` (#1784). It replaces `scene`'s script lines in
+   * what the LLM reads and what the hash stamps (`sceneWithShotDialogue`).
+   */
+  dialogue: MotionDialogue;
   sceneBefore?: Scene;
   sceneAfter?: Scene;
   aspectRatio: AspectRatio;

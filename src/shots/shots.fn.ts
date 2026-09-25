@@ -43,6 +43,7 @@ import { loadSceneContextBySequence } from '@/shots/server/scene-script';
 import {
   loadShotDialogueLines,
   loadShotDialogueResolver,
+  loadShotPromptDialogue,
   shotDialogueResolver,
 } from '@/shots/server/shot-dialogue';
 import { projectVideoVariants } from '@/motion/server/video-variant-projection';
@@ -774,6 +775,7 @@ export const getShotStalenessFn = createServerFn({ method: 'GET' })
         frame,
         selectedImage: await scopedDb.frameVariants.getSelected(frame.id),
         scene,
+        dialogue: await loadShotPromptDialogue(scopedDb, sequence.id, shot),
       }),
       media.get(shot.id)
     );
@@ -860,6 +862,7 @@ export const getShotStalenessBatchFn = createServerFn({ method: 'GET' })
       loadShotStalenessReads(
         scopedDb,
         sequence.id,
+        allShots,
         targetShots.map((shot) => shot.id),
         frameIds,
         scriptBySceneId
@@ -897,6 +900,7 @@ export const getShotStalenessBatchFn = createServerFn({ method: 'GET' })
                   scene,
                   refs,
                   reads,
+                  dialogue: reads.dialogueOf(shot),
                 }),
                 media.get(shot.id)
               ),

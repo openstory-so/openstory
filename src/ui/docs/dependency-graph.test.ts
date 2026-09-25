@@ -126,6 +126,7 @@ describe('dependency graph', () => {
       'dialogueRecording',
       'dialogueSection',
       'export',
+      'motionPrompt', // the shot's lines are its input (#1784)
     ]);
   });
 

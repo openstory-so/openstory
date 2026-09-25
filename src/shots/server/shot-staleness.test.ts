@@ -124,6 +124,7 @@ function makeScopedDb(overrides: {
 }
 
 const shot = asStub<Shot>({ id: 'shot-1' });
+const NO_LINES = { dialogue: { presence: false, lines: [] }, onNode: false };
 const frame = asStub<Frame>({
   id: 'frame-1',
   imagePrompt: 'a prompt',
@@ -142,6 +143,7 @@ describe('computeShotStaleness', () => {
     hashMotionPromptInput.mockResolvedValue('motion-moved');
 
     const result = await computeShotStaleness({
+      dialogue: NO_LINES,
       scopedDb: makeScopedDb({ motionSelectedHash: 'motion-stored' }),
       sequence,
       shot,
@@ -172,6 +174,7 @@ describe('computeShotStaleness', () => {
     hashMotionPromptInput.mockResolvedValue('motion-moved');
 
     const result = await computeShotStaleness({
+      dialogue: NO_LINES,
       scopedDb: makeScopedDb({
         visualFallbackHash: 'visual-stored',
         motionFallbackHash: 'motion-stored',
@@ -202,6 +205,7 @@ describe('computeShotStaleness', () => {
     hashMotionPromptInput.mockResolvedValue('motion-live');
 
     const result = await computeShotStaleness({
+      dialogue: NO_LINES,
       scopedDb: makeScopedDb({
         motionSelectedHash: 'motion-old',
         visualSelected: { inputHash: 'visual-old' },
@@ -252,6 +256,7 @@ describe('computeShotStaleness', () => {
     hashVisualPromptInput.mockClear();
 
     const result = await computeShotStaleness({
+      dialogue: NO_LINES,
       scopedDb,
       sequence: { ...sequence, status: 'processing' },
       shot,
@@ -285,6 +290,7 @@ describe('computeShotStaleness', () => {
       hashMotionPromptInput.mockResolvedValue('motion-live');
 
       const result = await computeShotStaleness({
+        dialogue: NO_LINES,
         scopedDb: makeScopedDb({
           motionSelectedHash: 'motion-old',
           visualSelected: { inputHash: 'visual-old' },
@@ -324,6 +330,7 @@ describe('computeShotStaleness', () => {
       createdAt: new Date('2026-08-23T00:36:00Z'),
     });
     const result = await computeShotStaleness({
+      dialogue: NO_LINES,
       scopedDb: makeScopedDb({
         visualSelected: {
           text: 'closing around the bottle from (DROPPER_BOTTLE)',
@@ -370,6 +377,7 @@ describe('computeShotStaleness', () => {
       createdAt: new Date('2026-08-23T01:39:00Z'),
     });
     const result = await computeShotStaleness({
+      dialogue: NO_LINES,
       scopedDb: makeScopedDb({
         visualSelected: {
           text: 'closing around the bottle from (DROPPER_BOTTLE)',
@@ -447,6 +455,7 @@ describe('staleness causes (#1194)', () => {
     });
 
     const result = await computeShotStaleness({
+      dialogue: NO_LINES,
       scopedDb,
       sequence,
       shot: asStub<Shot>({ id: 'shot-1', sceneId: 'scene-1' }),
@@ -502,6 +511,7 @@ describe('per-shot start-frame override', () => {
 
   it('hashes a reference-only SHOT with no still, on a start-frame sequence', async () => {
     await computeShotStaleness({
+      dialogue: NO_LINES,
       scopedDb: makeScopedDb({ motionSelectedHash: 'motion-stored' }),
       sequence,
       shot: asStub<Shot>({ id: 'shot-1', useStartFrame: false }),
@@ -520,6 +530,7 @@ describe('per-shot start-frame override', () => {
 
   it('hashes a start-frame SHOT with its still, on a reference-only sequence', async () => {
     await computeShotStaleness({
+      dialogue: NO_LINES,
       scopedDb: makeScopedDb({ motionSelectedHash: 'motion-stored' }),
       sequence: { ...sequence, generateStartFrames: false },
       shot: asStub<Shot>({ id: 'shot-1', useStartFrame: true }),
@@ -544,6 +555,7 @@ describe('per-shot start-frame override', () => {
     const scopedDb = makeScopedDb({ motionSelectedHash: 'motion-stored' });
 
     const result = await computeShotStaleness({
+      dialogue: NO_LINES,
       scopedDb,
       sequence,
       shot,
@@ -618,8 +630,12 @@ describe('loadShotStalenessReads (#1795)', () => {
         shotPromptVersions,
         frameVariants,
         sequenceEvents,
+        shotDialogue: {
+          getSelectedBySequence: vi.fn().mockResolvedValue([]),
+        },
       }),
       'seq-1',
+      [],
       shotIds,
       frameIds,
       new Map()

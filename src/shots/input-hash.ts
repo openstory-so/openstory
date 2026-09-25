@@ -259,6 +259,8 @@ const videoManifestHashEntrySchema = z.object({
   durationMs: z.number(),
   audioClipIds: z.array(z.string()),
   audioSourceKey: z.string().nullable(),
+  // Nullish: a draft from before #1784 lends its manifest to the final.
+  dialogueKey: z.string().nullish(),
   referenceKeys: z.array(z.string()),
 });
 
@@ -275,6 +277,7 @@ function canonicalizeManifestEntry(
       ? { audioClipIds: entry.audioClipIds }
       : {}),
     ...(entry.audioSourceKey ? { audioSourceKey: entry.audioSourceKey } : {}),
+    ...(entry.dialogueKey ? { dialogueKey: entry.dialogueKey } : {}),
     ...(entry.referenceKeys.length > 0
       ? { referenceKeys: [...entry.referenceKeys].sort() }
       : {}),
@@ -717,6 +720,7 @@ import type {
   CharacterBibleEntry,
   ElementBibleEntry,
   LocationBibleEntry,
+  MotionDialogue,
   Scene,
 } from './scene-analysis.schema';
 import type { MusicSceneSummary } from '@/platform/server/workflow/types';
@@ -746,11 +750,40 @@ export type VisualPromptHashInput = {
  * motion-only ones, all required. Voice ids are not a prompt channel —
  * they bind on the clip (`VideoManifestEntry.audioSourceKey`), like
  * character sheets on the still.
+ *
+ * `dialogue` is what the shot says now (`shotDialogueResolver`, #1784). It
+ * replaces the script's lines in the scene the LLM reads and this hash
+ * hashes ({@link sceneWithShotDialogue}), so a shot line edit re-stales the
+ * prompt. Required, so no stamp or verify can fall back to the script.
  */
 export type MotionPromptHashInput = VisualPromptHashInput & {
   startingFrameImageUrl: string | null;
   referenceOnly: boolean;
+  dialogue: MotionDialogue;
 };
+
+/**
+ * The scene the motion prompt is written from (#1784): the script with its
+ * dialogue replaced by what the shot says now. The motion LLM reads this and
+ * the motion hash hashes it. `voiceToken` is dropped: it binds a voice on the
+ * clip, never the prompt, and the LLM cannot know which elements exist.
+ */
+export function sceneWithShotDialogue(
+  scene: Scene,
+  dialogue: MotionDialogue
+): Scene {
+  return {
+    ...scene,
+    originalScript: {
+      ...scene.originalScript,
+      dialogue: dialogue.lines.map(({ character, line, tone }) => ({
+        character,
+        line,
+        tone,
+      })),
+    },
+  };
+}
 
 export type VisualPromptInputHash = string & {
   readonly __brand: 'VisualPromptInputHash';
@@ -786,6 +819,7 @@ const visualPromptHashInputSchema = z.object({
 const motionPromptHashInputSchema = visualPromptHashInputSchema.extend({
   startingFrameImageUrl: z.string().nullable(),
   referenceOnly: z.boolean(),
+  dialogue: requiredObject,
 });
 
 /**
@@ -840,11 +874,20 @@ function toVisualBodyInput(
   };
 }
 
+/**
+ * `scriptDialogue` hashes the scene's own script lines — the shape every
+ * motion digest had before #1784. Verify-only, see
+ * {@link motionPromptInputHashMatches}.
+ */
 function toMotionBodyInput(
-  input: MotionPromptHashInput
+  input: MotionPromptHashInput,
+  scriptDialogue = false
 ): PromptSceneContextHashInput {
   return {
     ...toVisualBodyInput(input),
+    scene: scriptDialogue
+      ? input.scene
+      : sceneWithShotDialogue(input.scene, input.dialogue),
     startingFrameImageUrl: input.startingFrameImageUrl,
     referenceOnly: input.referenceOnly,
   };
@@ -1124,24 +1167,35 @@ export async function computeMotionPromptInputHashV4(
   return sha256Hex(motionPromptHashBody(toMotionBodyInput(input), 'v4'));
 }
 
+/**
+ * True if `stored` matches the current digest or a legacy v5-titled /
+ * v5-named / v4 digest of the same inputs. Remove after
+ * {@link LEGACY_HASH_UNTIL}.
+ *
+ * `legacyScriptDialogue` (#1784): before #1784 every motion digest hashed the
+ * script's lines, not the shot's. Pass true only when the shot has no row on
+ * its dialogue node — then no line edit can hide behind a script-shaped
+ * digest, and the pre-#1784 shapes are matched too. A shot with a node row
+ * never needs them: an unedited seed hashes the same lines either way.
+ */
 export async function motionPromptInputHashMatches(
   stored: string | null,
-  raw: MotionPromptHashInput
+  raw: MotionPromptHashInput,
+  { legacyScriptDialogue }: { legacyScriptDialogue: boolean }
 ): Promise<boolean> {
   if (!stored) return false;
-  const input = toMotionBodyInput(assembleMotionPromptHashInput(raw));
-  const [current, v5titled, v5named, v4] = await Promise.all([
-    sha256Hex(motionPromptHashBody(input, 'current')),
-    sha256Hex(motionPromptHashBody(input, 'v5-titled')),
-    sha256Hex(motionPromptHashBody(input, 'v5-named')),
-    sha256Hex(motionPromptHashBody(input, 'v4')),
-  ]);
-  return (
-    stored === current ||
-    stored === v5titled ||
-    stored === v5named ||
-    stored === v4
+  const assembled = assembleMotionPromptHashInput(raw);
+  const inputs = legacyScriptDialogue
+    ? [toMotionBodyInput(assembled), toMotionBodyInput(assembled, true)]
+    : [toMotionBodyInput(assembled)];
+  const digests = await Promise.all(
+    inputs.flatMap((input) =>
+      (['current', 'v5-titled', 'v5-named', 'v4'] as const).map((kind) =>
+        sha256Hex(motionPromptHashBody(input, kind))
+      )
+    )
   );
+  return digests.includes(stored);
 }
 
 export type MusicPromptInputHashInput = {

@@ -21,7 +21,11 @@ import {
   matchLocationsToScene,
 } from '@/shots/scene-matching';
 
-export type ShotPromptContext = MotionPromptHashInput;
+/**
+ * Everything a prompt hash reads except the shot's lines, which the motion
+ * hash takes separately (`dialogue`, #1784) — the caller resolves them.
+ */
+export type ShotPromptContext = Omit<MotionPromptHashInput, 'dialogue'>;
 
 export type ShotPromptContextSequence = {
   id: string;

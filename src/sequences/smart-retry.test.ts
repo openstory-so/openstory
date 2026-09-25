@@ -222,6 +222,7 @@ function makeShot({
                 durationMs: shot.durationMs ?? 3000,
                 audioClipIds: [],
                 audioSourceKey: null,
+                dialogueKey: null,
                 referenceKeys: [],
               },
             ],

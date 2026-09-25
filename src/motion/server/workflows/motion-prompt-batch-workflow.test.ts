@@ -47,7 +47,7 @@ function makeInput(): MotionPromptBatchWorkflowInput {
   const scenes = SCENE_IDS.map((sceneId, i) => ({
     sceneId,
     sceneNumber: i + 1,
-    originalScript: { extract: 'a beat', lineNumber: i + 1 },
+    originalScript: { extract: 'a beat', dialogue: [], lineNumber: i + 1 },
     metadata: { title: sceneId, durationSeconds: 5 },
     continuity: {},
   }));

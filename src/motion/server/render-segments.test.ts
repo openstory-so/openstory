@@ -195,6 +195,7 @@ describe('buildVideoManifest', () => {
           durationMs: 3000,
           audioClipIds: [],
           audioSourceKey: null,
+          dialogueKey: null,
           referenceKeys: [],
         },
         {
@@ -205,6 +206,7 @@ describe('buildVideoManifest', () => {
           durationMs: 4000,
           audioClipIds: [],
           audioSourceKey: null,
+          dialogueKey: null,
           referenceKeys: [],
         },
       ])
@@ -217,6 +219,7 @@ describe('buildVideoManifest', () => {
         durationMs: 3000,
         audioClipIds: [],
         audioSourceKey: null,
+        dialogueKey: null,
         referenceKeys: [],
       },
       {
@@ -227,6 +230,7 @@ describe('buildVideoManifest', () => {
         durationMs: 4000,
         audioClipIds: [],
         audioSourceKey: null,
+        dialogueKey: null,
         referenceKeys: [],
       },
     ]);

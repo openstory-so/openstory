@@ -365,6 +365,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       "The lines spoken in one shot. Seeded by the shot-list call at the Script stage, then edited on the shot — the script's copy stays as the LLM's seed and is only read for a shot with no row yet. A scene's conversation is its shots in order, then each shot's lines in order, so there is no scene-level list to keep in step.",
     counts: [
       "Voice id + line + tone + TTS model of this shot's voiced lines (the section's sourceKey, the clip's audioSourceKey)",
+      "Every line, voiced or not, in the motion prompt's hash and the clip's dialogueKey",
       'Which voice is bound to which line (a bound audio element skips TTS)',
     ],
     ignored: [
@@ -544,6 +545,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     counts: [
       'Everything the visual prompt counts',
       'Character personality and movement',
+      "The shot's own lines, in place of the script's",
       'The rendered still it was shown (start-frame mode)',
       'Start-frame mode',
     ],
@@ -551,6 +553,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Duration',
       'Names and titles',
       'Voice ids (they bind on the clip, like sheets on the still)',
+      'Which voice element is bound to a line',
       'The scenes before and after, as for the visual prompt',
     ],
     storedAs: 'shot_prompt_versions.inputHash',
@@ -600,6 +603,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Which motion prompt version it rendered',
       'Which still version it rendered (start-frame mode)',
       'Bound dialogue-audio identity (audioSourceKey: voice id + line + tone + TTS model)',
+      'Every line its prompt quoted, voiced or not (dialogueKey), on a model with audio',
       'Which dialogue sections its audio was cut from (audioClipIds, against the clip ids the shot holds now)',
       'Every reference it was sent, as the sheet version or media URL that was current then (referenceKeys)',
       'The length it was rendered at, snapped onto the model grid on both sides',
@@ -802,6 +806,12 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     note: 'the still is a vision input; a re-render changes its URL',
   },
   {
+    from: 'dialogue',
+    to: 'motionPrompt',
+    tracking: 'hash',
+    note: "the shot's lines replace the script's in what the LLM reads and the hash covers",
+  },
+  {
     from: 'startFrameMode',
     to: 'motionPrompt',
     tracking: 'hash',
@@ -879,7 +889,7 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     from: 'dialogue',
     to: 'clip',
     tracking: 'hash',
-    note: 'line + tone fold into audioSourceKey on the manifest',
+    note: 'every line the prompt quoted folds into dialogueKey, and voiced lines into audioSourceKey, on the manifest',
   },
   {
     from: 'voice',

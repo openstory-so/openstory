@@ -238,6 +238,12 @@ Key consequences of the shape:
   `VideoManifestEntry.audioSourceKey` (shape-stable: omitted when
   voiceless), the sheet analogue of `characterSheetHashes` on the still. The
   LLM never sees it, so swapping a voice re-stales the render, not the prompt.
+- **A shot line edit re-stales the motion prompt and the clip (#1784).** The
+  lines live on the shot (`shot_dialogue_versions`), not the script, so the
+  motion prompt hash and the motion LLM read them through
+  `shotDialogueResolver` (the `dialogue` channel), and the clip manifest
+  records every line its render prompt quoted (`dialogueKey`), voiced or not.
+  The visual prompt still reads the scene script: a still has no dialogue.
 - **Image → video is a hash cascade.** The video hash includes the source image's
   hash (`ShotVideoSourceImage = { kind: 'variantHash'; hash }`), so a stale image
   invalidates its motion without the video needing to know _why_ the image changed.
@@ -263,17 +269,17 @@ Source of truth: [`src/shots/input-hash.ts`](../../src/shots/input-hash.ts).
 
 Listed in generation order (matching §4.1):
 
-| Artifact                      | Stamp site                                                                                                               | Verify site                                              | Hashed inputs                                                                                                                                     |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Talent sheet** (library)    | `library-talent-sheet-workflow`                                                                                          | sheet-staleness reads                                    | talent name/description, referenceMediaHashes (sorted set), imageModel                                                                            |
-| **Character sheet**           | `character-sheet-workflow`                                                                                               | sheet-staleness reads                                    | character bible fields, talentSheetHash, cast talent (description, default sheet image + look), styleConfigHash, imageModel                       |
-| **Location sheet**            | `location-sheet-workflow`                                                                                                | sheet-staleness reads                                    | every location bible field the sheet prompt reads, libraryLocationReferenceHash, styleConfigHash, imageModel                                      |
-| **Visual prompt**             | `frame-prompt-workflow.ts` (1-shot) · `persist-derived-visual-prompts` in `analyze-script-workflow.ts` (2+ shots, #1517) | `computeShotStaleness`                                   | scene input surface, styleConfig, character/location/element bibles (narrowed, **cast**), aspectRatio, analysisModel, `PROMPT_INPUT_HASH_VERSION` |
-| **Motion prompt**             | `motion-prompt-workflow.ts` · `motion-prompt-batch-workflow.ts` (derived)                                                | `computeShotStaleness`                                   | _same as visual_, plus starting-frame URL and `referenceOnly`. Voice ids are **not** a prompt channel.                                            |
-| **Sequence music prompt**     | `music-prompt-workflow`                                                                                                  | sequence music checks                                    | sceneSummaries, analysisModel                                                                                                                     |
-| **Thumbnail / variant image** | `shot-images-workflow.ts` / `image-workflow-snapshot.ts`                                                                 | `computeShotStaleness` via the regenerate-shots snapshot | effective visual prompt text, imageModel, aspectRatio, size, seed, characterSheetHashes, locationSheetHashes, elementReferenceHashes              |
-| **Shot video**                | `motion-workflow*`                                                                                                       | pointer compare in `src/shots/scene-segments.ts`         | manifest pointers (motion-prompt / frame version ids, `usesStartFrame`, durationMs, `audioClipIds`, `audioSourceKey`, `referenceKeys`)            |
-| **Shot / sequence audio**     | `music-workflow`                                                                                                         | `frameVariants.isStale` / sequence checks                | musicPrompt, tags (sorted set), durationSeconds, audioModel                                                                                       |
+| Artifact                      | Stamp site                                                                                                               | Verify site                                              | Hashed inputs                                                                                                                                         |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Talent sheet** (library)    | `library-talent-sheet-workflow`                                                                                          | sheet-staleness reads                                    | talent name/description, referenceMediaHashes (sorted set), imageModel                                                                                |
+| **Character sheet**           | `character-sheet-workflow`                                                                                               | sheet-staleness reads                                    | character bible fields, talentSheetHash, cast talent (description, default sheet image + look), styleConfigHash, imageModel                           |
+| **Location sheet**            | `location-sheet-workflow`                                                                                                | sheet-staleness reads                                    | every location bible field the sheet prompt reads, libraryLocationReferenceHash, styleConfigHash, imageModel                                          |
+| **Visual prompt**             | `frame-prompt-workflow.ts` (1-shot) · `persist-derived-visual-prompts` in `analyze-script-workflow.ts` (2+ shots, #1517) | `computeShotStaleness`                                   | scene input surface, styleConfig, character/location/element bibles (narrowed, **cast**), aspectRatio, analysisModel, `PROMPT_INPUT_HASH_VERSION`     |
+| **Motion prompt**             | `motion-prompt-workflow.ts` · `motion-prompt-batch-workflow.ts` (derived)                                                | `computeShotStaleness`                                   | _same as visual_, plus starting-frame URL and `referenceOnly`. Voice ids are **not** a prompt channel.                                                |
+| **Sequence music prompt**     | `music-prompt-workflow`                                                                                                  | sequence music checks                                    | sceneSummaries, analysisModel                                                                                                                         |
+| **Thumbnail / variant image** | `shot-images-workflow.ts` / `image-workflow-snapshot.ts`                                                                 | `computeShotStaleness` via the regenerate-shots snapshot | effective visual prompt text, imageModel, aspectRatio, size, seed, characterSheetHashes, locationSheetHashes, elementReferenceHashes                  |
+| **Shot video**                | `motion-workflow*`                                                                                                       | pointer compare in `src/shots/scene-segments.ts`         | manifest pointers (motion-prompt / frame version ids, `usesStartFrame`, durationMs, `audioClipIds`, `audioSourceKey`, `dialogueKey`, `referenceKeys`) |
+| **Shot / sequence audio**     | `music-workflow`                                                                                                         | `frameVariants.isStale` / sequence checks                | musicPrompt, tags (sorted set), durationSeconds, audioModel                                                                                           |
 
 Two cross-cutting normalizations make the hash order-insensitive and
 default-stable:
@@ -443,6 +449,9 @@ genuine pre-prompt inputs, so no downstream field can leak in:
 // in the allowlist.
 ```
 
+> The **motion** body swaps these lines for what the shot says now
+> (`sceneWithShotDialogue`, #1784) — see §4. The visual body keeps them.
+>
 > **The dialogue filtering happens upstream of the hash**, so it is the one
 > part of the hashed surface the hasher cannot enforce. Both sides go through
 > `scriptForShot` (`shot-list-pass.ts`) — `sceneForShot` at stamp time,
@@ -509,6 +518,17 @@ analysisModel and hashVersion as the visual body, plus `startingFrameImageUrl`,
 `personality` / `movement` (#1561). Discriminator is
 `artifact: 'shot:motion-prompt'`.
 
+The scene's script lines are **replaced** by the shot's own lines — the
+required `dialogue` channel, resolved by `shotDialogueResolver` at every
+stamp and verify (#1784). `sceneWithShotDialogue` builds that scene for both
+the LLM and this hash, dropping `voiceToken`. So a shot line edit re-stales
+the motion prompt and a regenerate quotes the edit. An unedited shot whose
+node row holds the script's lines hashes to the same digest as before #1784.
+Verify still accepts a digest hashed over the script's lines, but only for a
+shot with no node row (`legacyScriptDialogue`, until `LEGACY_HASH_UNTIL`):
+there the difference is the resolver reading old data (unstamped pre-#1585
+lines, a pre-#1657 prompt row), not an edit.
+
 Voice ids are **not** in this hash. They bind on the clip
 (`VideoManifestEntry.audioSourceKey`), the sheet analogue of
 `characterSheetHashes` on the still — the LLM never sees the voice id, so
@@ -548,13 +568,21 @@ sha256Hex({
 #### 7. Clip / frame video — `computeVideoManifestInputHash`
 
 The stamp is over the render manifest (motion-prompt / still version ids,
-`usesStartFrame`, duration, `audioClipIds`, `audioSourceKey`). The UI compare
+`usesStartFrame`, duration, `audioClipIds`, `audioSourceKey`, `dialogueKey`). The UI compare
 (`isSelectedVersionStale`) is pointer-based: stored entries vs the shot's
 current prompt / still version ids **and** the live `audioSourceKey` (voice
 id, line, tone and TTS model, omitted when voiceless). A voice change therefore
 re-stales the clip, not the motion prompt. The TTS model follows the voice
 (`eleven_v3` for an ElevenLabs voice, `seed-audio-1.0` for a Seed voice,
 #1765), so it moves only when the voice does.
+
+`dialogueKey` (#1784) is every line the render prompt quoted, voiced or not,
+with its bound voice token (`dialogueLinesKey`). `audioSourceKey` sees voiced
+lines only, and is null on a model without dialogue-audio input, yet every
+audio-capable model splices all lines into its prompt. It is null when nothing
+was quoted — no lines, no motion prompt, or a model without audio — and the
+compare applies the same rule to the live side. A manifest from before #1784
+has no key and is not compared.
 
 ```ts
 sha256Hex({
@@ -563,7 +591,8 @@ sha256Hex({
   manifest: entries.map(canonicalizeManifestEntry),
   // each entry: shotId, motionPromptVersionId, frameVersionId,
   // usesStartFrame, durationMs, audioClipIds (dropped when []),
-  // audioSourceKey (dropped when null), referenceKeys (sorted, dropped when [])
+  // audioSourceKey (dropped when null), dialogueKey (dropped when null),
+  // referenceKeys (sorted, dropped when [])
 });
 // A manifest whose pointers are ALL null hashes to `null`, not a digest (#1380):
 // no provenance is not the same claim as "generated from nothing".

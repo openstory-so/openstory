@@ -31,6 +31,7 @@ import {
   resolveSceneForShot,
 } from '@/shots/server/scene-script';
 import { getFrameImageUrl } from '@/shots/server/frame-image';
+import { loadShotPromptDialogue } from '@/shots/server/shot-dialogue';
 import { simpleHash } from '@/platform/hash';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import { terminateSingleArtifactRun } from '@/platform/server/workflow/run-outcome';
@@ -369,7 +370,14 @@ export const saveShotPromptFn = createServerFn({ method: 'POST' })
         inputHash =
           data.promptType === 'visual'
             ? await hashVisualPromptInput(narrowed)
-            : await hashMotionPromptInput(narrowed);
+            : await hashMotionPromptInput({
+                ...narrowed,
+                // Read after the write above: the edit is authored against
+                // the lines it saved (#1784).
+                dialogue: (
+                  await loadShotPromptDialogue(scopedDb, sequence.id, shot)
+                ).dialogue,
+              });
         analysisModel = ctx.analysisModel;
       } catch (error) {
         logger.warn(
@@ -562,10 +570,18 @@ export const regenerateShotPromptFn = createServerFn({ method: 'POST' })
     // LLM — there's no other way to get a fresh non-deterministic completion
     // when upstream inputs are unchanged.
     const narrowed = narrowShotPromptContext(ctx);
-    const liveHash =
-      data.promptType === 'visual'
-        ? await hashVisualPromptInput(narrowed)
-        : await hashMotionPromptInput(narrowed);
+    // What the shot says now (#1784): the motion prompt is written from, and
+    // hashed over, the shot's lines — not the script's.
+    const promptDialogue =
+      data.promptType === 'motion'
+        ? await loadShotPromptDialogue(scopedDb, sequence.id, shot)
+        : null;
+    const liveHash = promptDialogue
+      ? await hashMotionPromptInput({
+          ...narrowed,
+          dialogue: promptDialogue.dialogue,
+        })
+      : await hashVisualPromptInput(narrowed);
     const storedHash =
       data.promptType === 'visual'
         ? ((await scopedDb.framePromptVersions.getSelected(frame.id))
@@ -574,9 +590,13 @@ export const regenerateShotPromptFn = createServerFn({ method: 'POST' })
             ?.inputHash ?? null);
     if (
       !data.force &&
-      (data.promptType === 'visual'
-        ? await visualPromptInputHashMatches(storedHash, narrowed)
-        : await motionPromptInputHashMatches(storedHash, narrowed))
+      (promptDialogue
+        ? await motionPromptInputHashMatches(
+            storedHash,
+            { ...narrowed, dialogue: promptDialogue.dialogue },
+            { legacyScriptDialogue: !promptDialogue.onNode }
+          )
+        : await visualPromptInputHashMatches(storedHash, narrowed))
     ) {
       return {
         workflowRunId: null,
@@ -706,43 +726,43 @@ export const regenerateShotPromptFn = createServerFn({ method: 'POST' })
 
     let workflowRunId: string;
     try {
-      workflowRunId =
-        data.promptType === 'visual'
-          ? // `frameId` is REQUIRED on FramePromptWorkflowInput — the workflow
-            // never reads the DB (#991) and persists the visual prompt only
-            // when it's present, so resolving the anchor frame here (from the
-            // access middleware's `frame`) is mandatory, not optional.
-            await triggerWorkflow<FramePromptWorkflowInput>(
-              '/frame-prompt',
-              {
-                ...commonInput,
-                frameId: frame.id,
-                targetVersionId: claim.id,
-              },
-              triggerOpts
-            )
-          : // Snapshot the rendered still at trigger time (#929) so the motion
-            // workflow never looks it up mid-run (a concurrent re-render could
-            // swap it). The still lives on the anchor frame's selected
-            // version now (#989/#1067).
-            await triggerWorkflow<MotionPromptWorkflowInput>(
-              '/motion-prompt',
-              {
-                ...commonInput,
-                startingFrameImageUrl: shotReferenceOnly
-                  ? null
-                  : await getFrameImageUrl(scopedDb, frame.id),
-                // The mode picks which motion-prompt template writes this
-                // version; the hash the bail check above computed folded it in
-                // through the sequence row, so it has to reach the child too or
-                // the stamp and the verify disagree.
-                referenceOnly: shotReferenceOnly,
-                sceneBefore,
-                sceneAfter,
-                targetVersionId: claim.id,
-              },
-              triggerOpts
-            );
+      workflowRunId = !promptDialogue
+        ? // `frameId` is REQUIRED on FramePromptWorkflowInput — the workflow
+          // never reads the DB (#991) and persists the visual prompt only
+          // when it's present, so resolving the anchor frame here (from the
+          // access middleware's `frame`) is mandatory, not optional.
+          await triggerWorkflow<FramePromptWorkflowInput>(
+            '/frame-prompt',
+            {
+              ...commonInput,
+              frameId: frame.id,
+              targetVersionId: claim.id,
+            },
+            triggerOpts
+          )
+        : // Snapshot the rendered still at trigger time (#929) so the motion
+          // workflow never looks it up mid-run (a concurrent re-render could
+          // swap it). The still lives on the anchor frame's selected
+          // version now (#989/#1067).
+          await triggerWorkflow<MotionPromptWorkflowInput>(
+            '/motion-prompt',
+            {
+              ...commonInput,
+              startingFrameImageUrl: shotReferenceOnly
+                ? null
+                : await getFrameImageUrl(scopedDb, frame.id),
+              // The mode picks which motion-prompt template writes this
+              // version; the hash the bail check above computed folded it in
+              // through the sequence row, so it has to reach the child too or
+              // the stamp and the verify disagree.
+              referenceOnly: shotReferenceOnly,
+              sceneBefore,
+              sceneAfter,
+              dialogue: promptDialogue.dialogue,
+              targetVersionId: claim.id,
+            },
+            triggerOpts
+          );
     } catch (error) {
       // The claim must not outlive a trigger that never happened.
       if (data.promptType === 'visual') {

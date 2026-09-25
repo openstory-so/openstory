@@ -523,6 +523,7 @@ export const setShotVideoFromUploadFn = createServerFn({ method: 'POST' })
         durationMs,
         audioClipIds: [],
         audioSourceKey: null,
+        dialogueKey: null,
         referenceKeys: [],
       },
     ]);

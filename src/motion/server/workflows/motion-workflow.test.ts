@@ -574,6 +574,7 @@ describe('MotionWorkflow draft and final (#1756)', () => {
       durationMs: 5000,
       audioClipIds: [],
       audioSourceKey: null,
+      dialogueKey: null,
       referenceKeys: [],
     },
   ];
@@ -940,6 +941,7 @@ describe('fresh MiniMax packed videos (#1720)', () => {
           ),
           new Map(members.map((member) => [member.shotId, null])),
           {
+            dialogueKeyByShot: new Map(),
             audioSourceKeyByShot: new Map(
               members.map((member) => [
                 member.shotId,
@@ -1005,6 +1007,7 @@ describe('manifest audio key (#1671)', () => {
             shotId: 'shot-1',
             audioClipIds: ['clip-1'],
             audioSourceKey: authoredKey,
+            dialogueKey: null,
           }),
         ],
       })
@@ -1059,6 +1062,7 @@ describe('recording its own dialogue (#1657)', () => {
           expect.objectContaining({
             audioClipIds: ['section-1'],
             audioSourceKey: recordedClip.sourceKey,
+            dialogueKey: null,
           }),
         ],
       })

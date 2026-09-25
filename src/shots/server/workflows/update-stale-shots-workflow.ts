@@ -1048,6 +1048,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                   childId: `motion-prompt:${sequenceId}:${target.shotId}`,
                   childPayload: {
                     ...base,
+                    dialogue: target.dialogue,
                     sceneBefore: scenes.sceneBefore,
                     sceneAfter: scenes.sceneAfter,
                     startingFrameImageUrl: target.usesStartFrame

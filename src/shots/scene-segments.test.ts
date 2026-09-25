@@ -273,6 +273,7 @@ const segShot = (
 
 const NO_LOADED = {
   audioSourceKeyByShot: new Map<string, string | null>(),
+  dialogueKeyByShot: new Map<string, string | null>(),
   referenceIdentity: new Map<string, string>(),
 };
 const motion = new Map([['shot-1', 'mp-1']]);
@@ -324,6 +325,46 @@ describe('isSelectedVersionStale', () => {
         ]),
       })
     ).toBe(false);
+  });
+
+  it('is stale when any line the prompt quoted moved, voiced or not (#1784)', () => {
+    const stamped = 'Alice\tStay down.\t\t';
+    const edited = new Map([['shot-1', 'Alice\tStay up.\t\t']]);
+    // kling_v3_pro splices lines into its prompt but takes no dialogue audio,
+    // so `audioSourceKey` is null and never moves.
+    const v = version('v1', 'seg', 'kling_v3_pro', [
+      {
+        shotId: 'shot-1',
+        motionPromptVersionId: 'mp-1',
+        frameVersionId: 'fv-1',
+        audioSourceKey: null,
+        dialogueKey: stamped,
+      },
+    ]);
+    expect(stale(v, { dialogueKeyByShot: edited })).toBe(true);
+    expect(
+      stale(v, { dialogueKeyByShot: new Map([['shot-1', stamped]]) })
+    ).toBe(false);
+    // A model without audio never quoted a line: it stamps null and stays
+    // fresh whatever the lines say.
+    const silent = version('v1', 'seg', 'grok_imagine_video_1_5', [
+      {
+        shotId: 'shot-1',
+        motionPromptVersionId: 'mp-1',
+        frameVersionId: 'fv-1',
+        dialogueKey: null,
+      },
+    ]);
+    expect(stale(silent, { dialogueKeyByShot: edited })).toBe(false);
+    // A clip from before #1784 has no key: unknown, never stale.
+    const legacy = version('v1', 'seg', 'kling_v3_pro', [
+      {
+        shotId: 'shot-1',
+        motionPromptVersionId: 'mp-1',
+        frameVersionId: 'fv-1',
+      },
+    ]);
+    expect(stale(legacy, { dialogueKeyByShot: edited })).toBe(false);
   });
 
   it.each(['grok_imagine_video_1_5', 'kling_v3_pro', 'gemini_omni_flash'])(

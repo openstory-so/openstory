@@ -56,6 +56,24 @@ export function shotDialogue(
 }
 
 /**
+ * The clip's record of the lines its render prompt quoted
+ * (`VideoManifestEntry.dialogueKey`, #1784): every line, voiced or not, with
+ * its bound voice token, in order. `audioSourceKey` covers voiced lines only
+ * and is null on a model without dialogue-audio input, yet an audio-capable
+ * model splices every line into its prompt. Null when there are none.
+ */
+export function dialogueLinesKey(
+  dialogue: MotionDialogue | null | undefined
+): string | null {
+  if (!dialogue?.presence || dialogue.lines.length === 0) return null;
+  return dialogue.lines
+    .map((line) =>
+      [line.character, line.line, line.tone, line.voiceToken ?? ''].join('\t')
+    )
+    .join('\n');
+}
+
+/**
  * A shot's lines derived from the selected script version, for a shot with no
  * `shot_dialogue_versions` row yet — every shot from before #1657. No
  * backfill migration: the derivation IS the old meaning of the data.

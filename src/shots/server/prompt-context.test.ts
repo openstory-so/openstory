@@ -195,6 +195,7 @@ describe('narrowed hash stability (the user-reported bug)', () => {
     analysisModel: 'anthropic/claude-haiku-4.5',
     startingFrameImageUrl: null,
     referenceOnly: false,
+    dialogue: { presence: false, lines: [] },
   };
 
   it('adding an unreferenced element does NOT change the visual hash', async () => {
@@ -321,6 +322,7 @@ describe('prompt-driving projection (#867 §4.2)', () => {
     analysisModel: 'anthropic/claude-haiku-4.5',
     startingFrameImageUrl: null,
     referenceOnly: false,
+    dialogue: { presence: false, lines: [] },
   };
 
   it('a consistencyTag change on a referenced character does NOT move the visual hash', async () => {
@@ -492,6 +494,7 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
       analysisModel: 'anthropic/claude-haiku-4.5',
       startingFrameImageUrl: null,
       referenceOnly: false,
+      dialogue: { presence: false, lines: [] },
     });
 
   it('stamp (cast bible fed to prompt) equals verify (cast bible read from the DB)', async () => {

@@ -19,6 +19,7 @@ const entry = (
   durationMs: 3000,
   audioClipIds: [],
   audioSourceKey: null,
+  dialogueKey: null,
   referenceKeys: [],
   ...overrides,
 });
