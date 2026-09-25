@@ -61,7 +61,8 @@ export function useSequenceCharacters(sequenceId: string) {
     queryFn: async () => {
       return getSequenceCharactersFn({ data: { sequenceId } });
     },
-    staleTime: 5 * 60 * 1000, // 5 minutes - characters don't change often
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
     enabled: !!sequenceId,
   });
 }

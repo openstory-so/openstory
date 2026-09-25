@@ -50,6 +50,7 @@ import { segmentKeys, useSequenceSegments } from './use-segments';
 import { useScenesBySequence, type SceneWithScript } from './use-scenes';
 import { shotIsStale, useSequenceShotStaleness } from './use-shot-staleness';
 import { errorMessage, isInsufficientCreditsError } from '@/platform/errors';
+import { refreshAfterContinueValidationError } from './continue-validation-recovery';
 import { adjacentShotId } from './shot-walk';
 import {
   sequenceKeys,
@@ -1473,6 +1474,11 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
         // Continue reserves credits like any other run, so it hits the same
         // toast as batch motion — not a generic error.
         queryClient.setQueryData<Sequence>(key, previous);
+        await refreshAfterContinueValidationError(
+          queryClient,
+          sequenceId,
+          error
+        );
         if (!isInsufficientCreditsError(error)) throw error;
         notifyInsufficientCredits();
         void queryClient.invalidateQueries({ queryKey: BILLING_BALANCE_KEY });
