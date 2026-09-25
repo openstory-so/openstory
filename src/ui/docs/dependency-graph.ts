@@ -889,7 +889,7 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     from: 'motionPrompt',
     to: 'clip',
     tracking: 'pointer',
-    note: 'the manifest records the prompt version',
+    note: 'the manifest records the prompt version; a token rename’s row counts as the row it rewrote, so a rename leaves the clip fresh',
   },
   {
     from: 'still',

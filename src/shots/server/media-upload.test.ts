@@ -317,7 +317,8 @@ function clipIsStale(
       referenceIdentity: new Map(),
       durationMsByShot: new Map(),
       audioSecondsByShot: new Map(),
-    }
+    },
+    new Map()
   );
 }
 

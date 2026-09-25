@@ -204,6 +204,8 @@ type World = {
   visualPrompt: string;
   still: { id: string; url: string };
   motionVersionId: string;
+  /** The rows the selected motion prompt was renamed from (#1827). */
+  motionRenamedFrom: string[];
   durationMs: number;
   dialogue: MotionDialogue;
 };
@@ -226,6 +228,7 @@ const BASE: World = {
   visualPrompt: 'Alice walks along the beach at dawn, holding the LANTERN.',
   still: { id: 'still-1', url: '/r2/still-1.png' },
   motionVersionId: 'motion-1',
+  motionRenamedFrom: [],
   durationMs: 5000,
   dialogue: {
     presence: true,
@@ -372,6 +375,7 @@ function clipIsStale(world: World): boolean {
         id: 'shot-1',
         renderSegmentId: 'segment-1',
         selectedMotionPromptVersionId: world.motionVersionId,
+        motionPromptRenamedFrom: world.motionRenamedFrom,
         audioClips: null,
         durationMs: world.durationMs,
         rendersReferenceOnly: rendersReferenceOnly(world.shot, world.sequence),
@@ -662,8 +666,7 @@ const SHOT_MATRIX: ShotRow[] = [
   },
   {
     // `cascadeRename` rewrites the script and the prompts with the new
-    // token. A label-only rename reading fresh needs a token-normalised
-    // hash; that is an open owner decision (#1827).
+    // token, appending `renamed` rows the selections move to.
     mutation: 'element token renamed (script and prompts rewritten)',
     apply: (w) => {
       const renamed = withContinuity(withElement(w, { token: 'LAMP' }), {
@@ -679,10 +682,19 @@ const SHOT_MATRIX: ShotRow[] = [
           },
         },
         visualPrompt: 'Alice walks along the beach at dawn, holding the LAMP.',
+        motionVersionId: 'motion-renamed',
+        motionRenamedFrom: ['motion-1'],
       };
     },
-    // A token is a label (#1827): the hashes read it as the element's identity.
+    // A token is a label (#1827): the hashes read it as the element's
+    // identity, and the clip follows the renamed row back to the one it
+    // was rendered from.
     stale: [],
+  },
+  {
+    mutation: 'motion prompt edited after a token rename',
+    apply: (w) => ({ ...w, motionVersionId: 'motion-edit' }),
+    stale: ['clip'],
   },
   {
     mutation: 'element deleted',

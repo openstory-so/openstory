@@ -884,7 +884,9 @@ const PROMPT_INPUT_HASH_VERSION_V4 = 4;
  * Delete the v4 / named / titled verify fallbacks after this date.
  * Tracking: https://github.com/openstory-so/openstory/issues/1371
  */
-export const LEGACY_HASH_UNTIL = '2026-09-28';
+// Milestone 24 (#1783–#1787, #1827) added fallbacks under this date; they
+// need ~a month after that stack deploys, or everything stamped before it flips stale.
+export const LEGACY_HASH_UNTIL = '2026-12-31';
 
 /**
  * `v5-tokened` is the current shape before #1827 read element tokens as
