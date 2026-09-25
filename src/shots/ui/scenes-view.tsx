@@ -48,11 +48,7 @@ import { notifyInsufficientCredits } from '@/billing/ui/notify-insufficient-cred
 import { useSceneSelection } from './use-scene-selection';
 import { segmentKeys, useSequenceSegments } from './use-segments';
 import { useScenesBySequence, type SceneWithScript } from './use-scenes';
-import {
-  shotIsStale,
-  stalenessForShotIds,
-  useSequenceShotStaleness,
-} from './use-shot-staleness';
+import { shotIsStale, useSequenceShotStaleness } from './use-shot-staleness';
 import { errorMessage, isInsufficientCreditsError } from '@/platform/errors';
 import { adjacentShotId } from './shot-walk';
 import {
@@ -836,10 +832,12 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   const scopeStaleness =
     scope === 'sequence'
       ? sequenceStaleness
-      : scopeShots
-        ? stalenessForShotIds(
-            sequenceStaleness,
-            scopeShots.map((shot) => shot.id)
+      : scopeShots && sequenceStaleness
+        ? Object.fromEntries(
+            scopeShots.flatMap((shot) => {
+              const entry = sequenceStaleness[shot.id];
+              return entry ? [[shot.id, entry] as const] : [];
+            })
           )
         : undefined;
   // A failed staleness check must not render as "everything is up to date":

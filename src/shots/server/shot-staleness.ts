@@ -243,15 +243,12 @@ export async function loadShotStalenessReads(
   };
 }
 
-function newestPending<
-  T extends { pendingInputHash: string | null; createdAt: Date },
->(rows: readonly T[] | undefined, hash: string): T | null {
-  let best: T | null = null;
-  for (const row of rows ?? []) {
-    if (row.pendingInputHash !== hash) continue;
-    if (!best || row.createdAt.getTime() > best.createdAt.getTime()) best = row;
-  }
-  return best;
+/** Rows are newest-first (`orderBy createdAt desc`). */
+function newestPending<T extends { pendingInputHash: string | null }>(
+  rows: readonly T[] | undefined,
+  hash: string
+): T | null {
+  return rows?.find((row) => row.pendingInputHash === hash) ?? null;
 }
 
 /**

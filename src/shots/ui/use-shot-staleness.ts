@@ -77,33 +77,12 @@ const shotStalenessKey = (shotId: string | undefined) =>
 /**
  * The sequence batch lives under the same `'shot-staleness'` namespace so
  * script-save and realtime invalidations refresh it too. Shot ids are ULIDs,
- * never `'sequence'`. `'scene'` stays in the batched-key check so an entry
- * written before the scene query was dropped still updates in place.
+ * never `'sequence'`.
  */
 const sequenceShotStalenessKey = (sequenceId: string) =>
   [...shotStalenessNamespace, 'sequence', sequenceId] as const;
 
-/**
- * The scenes editor loads the sequence batch once. Scene and shot scope are
- * a filter of that map — a second server fn for the in-focus scene repeated
- * the same hash work (#1795). `null` shot ids means the whole sequence.
- */
-export function stalenessForShotIds(
-  byShot: Record<string, ShotStaleness> | undefined,
-  shotIds: readonly string[] | null
-): Record<string, ShotStaleness> | undefined {
-  if (!byShot) return undefined;
-  if (shotIds === null) return byShot;
-  const scoped: Record<string, ShotStaleness> = {};
-  for (const id of shotIds) {
-    const entry = byShot[id];
-    if (entry) scoped[id] = entry;
-  }
-  return scoped;
-}
-
-const isBatchedKey = (key: readonly unknown[]) =>
-  key[1] === 'scene' || key[1] === 'sequence';
+const isBatchedKey = (key: readonly unknown[]) => key[1] === 'sequence';
 
 /**
  * Optimistically mark one artifact fresh everywhere it is cached — the shot's
