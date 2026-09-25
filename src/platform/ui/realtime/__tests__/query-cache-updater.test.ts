@@ -383,7 +383,6 @@ describe('updateQueryCacheFromEvent — variant-only guard (#547)', () => {
       updateQueryCacheFromEvent(qc, SEQ, 'generation.shot:updated', {
         shotId: 'shot-1',
         updateType: 'visual-prompt',
-        metadata: { sceneId: 'sc-1', sceneNumber: 1 },
       });
 
       vi.advanceTimersByTime(200);
@@ -398,7 +397,6 @@ describe('updateQueryCacheFromEvent — variant-only guard (#547)', () => {
       updateQueryCacheFromEvent(qc, SEQ, 'generation.shot:updated', {
         shotId: 'shot-1',
         updateType: 'motion-prompt',
-        metadata: { sceneId: 'sc-1', sceneNumber: 1 },
       });
 
       vi.advanceTimersByTime(200);

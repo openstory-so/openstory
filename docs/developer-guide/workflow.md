@@ -372,36 +372,36 @@ Each phase enriches the `Scene` object. The frame's `metadata` column is updated
 
 ## Real-Time Events
 
-Events emitted via Upstash Realtime on a per-sequence channel (`getGenerationChannel(sequenceId)`).
+Events emitted on a per-sequence realtime channel (`getGenerationChannel(sequenceId)`, a `RealtimeChannel` Durable Object). Every emit is persisted for history replay, so payloads carry ids and small strings only; a `/history` replay is bounded by rows and bytes (#1811).
 
-| Event                                 | When Emitted                                      | Payload                                                               |
-| ------------------------------------- | ------------------------------------------------- | --------------------------------------------------------------------- |
-| `generation.phase:start`              | Before each LLM call or generation phase          | `{ phase, phaseName }`                                                |
-| `generation.phase:complete`           | After each phase completes                        | `{ phase }`                                                           |
-| `generation.poster:ready`             | Storyboard workflow — after poster generated      | `{ posterUrl }`                                                       |
-| `generation.scene:new`                | Phase 1 — progressively as scenes stream in       | `{ sceneId, sceneNumber, title, scriptExtract, durationSeconds }`     |
-| `generation.scene:updated`            | Phase 1 — as scene metadata updates during stream | `{ sceneId, sceneNumber, title, scriptExtract, durationSeconds }`     |
-| `generation.updated`                  | Phase 1 — after title detected in stream          | `{ title }`                                                           |
-| `generation.shot:created`             | Phase 1 — progressively as shots are upserted     | `{ shotId, sceneId, orderIndex }`                                     |
-| `generation.frame:updated`            | Phase 4 — after prompts written to DB             | `{ frameId, updateType, metadata }`                                   |
-| `generation.talent:matched`           | Phase 2 — when talent matched to characters       | `{ matches: [{ characterId, characterName, talentId, talentName }] }` |
-| `generation.talent:unmatched`         | Phase 2 — unused talent after matching            | `{ unusedTalentIds, unusedTalentNames }`                              |
-| `generation.location:matched`         | Phase 2 — when locations matched to library       | `{ matches: [{ locationId, locationName, libraryLocationId, ... }] }` |
-| `generation.image:progress`           | Image workflow — generating/completed/failed      | `{ frameId, status, thumbnailUrl? }`                                  |
-| `generation.variant-image:progress`   | Variant workflow — generating/completed/failed    | `{ frameId, status, variantImageUrl? }`                               |
-| `generation.video:progress`           | Motion workflow — generating/completed/failed     | `{ frameId, status, videoUrl? }`                                      |
-| `generation.audio:progress`           | Music workflow — generating/completed/failed      | `{ status, audioUrl? }`                                               |
-| `generation.character-sheet:progress` | Character bible — per character                   | `{ characterId, status, sheetImageUrl? }`                             |
-| `generation.location-sheet:progress`  | Location bible — per location                     | `{ locationId, status, referenceImageUrl? }`                          |
-| `generation.recast:start`             | Recast character — before regenerating frames     | `{ characterId, frameCount }`                                         |
-| `generation.recast:complete`          | Recast character — all frames regenerated         | `{ characterId, successCount, failedCount }`                          |
-| `generation.recast:failed`            | Recast character — on failure                     | `{ characterId, error }`                                              |
-| `generation.recast-location:start`    | Recast location — before regenerating frames      | `{ locationId, frameCount }`                                          |
-| `generation.recast-location:complete` | Recast location — all frames regenerated          | `{ locationId, successCount, failedCount }`                           |
-| `generation.recast-location:failed`   | Recast location — on failure                      | `{ locationId, error }`                                               |
-| `generation.error`                    | On non-fatal workflow error                       | `{ message, phase? }`                                                 |
-| `generation.failed`                   | On workflow failure                               | `{ message }`                                                         |
-| `generation.complete`                 | Storyboard workflow — after everything finishes   | `{ sequenceId }`                                                      |
+| Event                                 | When Emitted                                       | Payload                                                               |
+| ------------------------------------- | -------------------------------------------------- | --------------------------------------------------------------------- |
+| `generation.phase:start`              | Before each LLM call or generation phase           | `{ phase, phaseName }`                                                |
+| `generation.phase:complete`           | After each phase completes                         | `{ phase }`                                                           |
+| `generation.poster:ready`             | Storyboard workflow — after poster generated       | `{ posterUrl }`                                                       |
+| `generation.scene:new`                | Phase 1 — progressively as scenes stream in        | `{ sceneId, sceneNumber, title, scriptExtract, durationSeconds }`     |
+| `generation.scene:updated`            | Phase 1 — as scene metadata updates during stream  | `{ sceneId, sceneNumber, title, scriptExtract, durationSeconds }`     |
+| `generation.updated`                  | Phase 1 — after title detected in stream           | `{ title }`                                                           |
+| `generation.shot:created`             | Phase 1 — progressively as shots are upserted      | `{ shotId, sceneId, orderIndex }`                                     |
+| `generation.shot:updated`             | After a prompt version or dialogue clip is written | `{ shotId, updateType }` (ids only; the client refetches, #1811)      |
+| `generation.talent:matched`           | Phase 2 — when talent matched to characters        | `{ matches: [{ characterId, characterName, talentId, talentName }] }` |
+| `generation.talent:unmatched`         | Phase 2 — unused talent after matching             | `{ unusedTalentIds, unusedTalentNames }`                              |
+| `generation.location:matched`         | Phase 2 — when locations matched to library        | `{ matches: [{ locationId, locationName, libraryLocationId, ... }] }` |
+| `generation.image:progress`           | Image workflow — generating/completed/failed       | `{ frameId, status, thumbnailUrl? }`                                  |
+| `generation.variant-image:progress`   | Variant workflow — generating/completed/failed     | `{ frameId, status, variantImageUrl? }`                               |
+| `generation.video:progress`           | Motion workflow — generating/completed/failed      | `{ frameId, status, videoUrl? }`                                      |
+| `generation.audio:progress`           | Music workflow — generating/completed/failed       | `{ status, audioUrl? }`                                               |
+| `generation.character-sheet:progress` | Character bible — per character                    | `{ characterId, status, sheetImageUrl? }`                             |
+| `generation.location-sheet:progress`  | Location bible — per location                      | `{ locationId, status, referenceImageUrl? }`                          |
+| `generation.recast:start`             | Recast character — before regenerating frames      | `{ characterId, frameCount }`                                         |
+| `generation.recast:complete`          | Recast character — all frames regenerated          | `{ characterId, successCount, failedCount }`                          |
+| `generation.recast:failed`            | Recast character — on failure                      | `{ characterId, error }`                                              |
+| `generation.recast-location:start`    | Recast location — before regenerating frames       | `{ locationId, frameCount }`                                          |
+| `generation.recast-location:complete` | Recast location — all frames regenerated           | `{ locationId, successCount, failedCount }`                           |
+| `generation.recast-location:failed`   | Recast location — on failure                       | `{ locationId, error }`                                               |
+| `generation.error`                    | On non-fatal workflow error                        | `{ message, phase? }`                                                 |
+| `generation.failed`                   | On workflow failure                                | `{ message }`                                                         |
+| `generation.complete`                 | Storyboard workflow — after everything finishes    | `{ sequenceId }`                                                      |
 
 ## Error Handling
 

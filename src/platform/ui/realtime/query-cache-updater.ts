@@ -151,11 +151,10 @@ export function updateQueryCacheFromEvent(
         sceneKeys.list(sequenceId),
         `scenes:${sequenceId}`
       );
-      // Prompt regenerations no longer travel in `metadata` — the visual/motion
-      // prompt now lives in `frame_prompt_versions` / `shot_prompt_versions`
-      // and is resolved into the `ShotView` server-side (#713). The in-place
-      // `setQueryData(metadata)` above can't re-run that resolution, so refetch
-      // the shots list to pick up the new prompt version + `motionPrompt`, and
+      // The event carries only the shot id (#1811); the visual/motion prompt
+      // lives in `frame_prompt_versions` / `shot_prompt_versions` and is
+      // resolved into the `ShotView` server-side (#713), so refetch the shots
+      // list to pick up the new prompt version + `motionPrompt`, and
       // invalidate the matching version-history query so an open prompt history
       // sheet shows the freshly appended version (#991).
       const updateType = getString(data, 'updateType');

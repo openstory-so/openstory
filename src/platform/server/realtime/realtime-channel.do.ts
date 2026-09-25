@@ -27,8 +27,9 @@ import { getLogger } from '@/platform/logger';
  *   page refresh mid-generation can replay progress (`/history`). A replay is
  *   bounded to the newest `HISTORY_MAX_ROWS` rows and stops once
  *   `HISTORY_REPLAY_MAX_BYTES` of `data` are in hand (#1811): the caller's
- *   isolate parses and re-serializes whatever comes back, so an unbounded read
- *   of a channel full of large rows OOMs it. A `transient` emit (streamed LLM
+ *   isolate JSON-parses the whole response and the server fn serializes it
+ *   again for the browser, so an unbounded read of a channel full of large
+ *   rows OOMs it. A `transient` emit (streamed LLM
  *   deltas) is broadcast but never stored. `/emit` deletes
  *   a PK prefix of at most `PRUNE_BATCH_ROWS` so one-row emits stay at the cap.
  *   An alarm set for the oldest row's expiry TTL-deletes up to `PRUNE_BATCH_ROWS` expired rows and the
@@ -47,7 +48,11 @@ const logger = getLogger(['openstory', 'realtime', 'channel']);
 const HISTORY_EXPIRE_SECS = 60 * 60 * 24 * 30;
 /** Hard cap on stored rows per channel so a chatty channel can't grow without bound. */
 export const HISTORY_MAX_ROWS = 2000;
-/** Newest-first byte budget of `data` one `/history` replay returns (#1811). */
+/**
+ * Newest-first `data` byte budget for one `/history` replay (#1811). A row is
+ * admitted while the newer rows already admitted total less than this, so a
+ * reply overshoots by at most one row and the newest row always returns.
+ */
 export const HISTORY_REPLAY_MAX_BYTES = 2 * 1024 * 1024;
 /**
  * Per-subscriber pending-chunk cap. We do not use a TransformStream writer:
