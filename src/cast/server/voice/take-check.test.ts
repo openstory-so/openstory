@@ -91,3 +91,55 @@ describe('checkParts', () => {
     expect(!check.ok && check.problem).toContain('laverame');
   });
 });
+
+describe('ASR spellings (#1803)', () => {
+  it('matches digits heard for number words', () => {
+    const check = checkParts(timed('we leave at 15 10 sharp okay'), [
+      'We leave at fifteen ten sharp.',
+      'Okay.',
+    ]);
+    expect(check.ok).toBe(true);
+  });
+
+  it('matches "all right" heard for "alright"', () => {
+    const check = checkParts(timed('all right lets go then'), [
+      "Alright, let's go then.",
+    ]);
+    expect(check.ok).toBe(true);
+  });
+
+  it('locates a part with one end word misheard', () => {
+    const check = checkParts(timed('hello there mate how era you going'), [
+      'Hello there mate.',
+      'How are you going?',
+    ]);
+    expect(check.ok).toBe(true);
+  });
+
+  it('names the line it could not find', () => {
+    const check = checkParts(timed('hello there mate'), [
+      'Hello there mate.',
+      'How are you going?',
+    ]);
+    expect(!check.ok && check.problem).toContain('line 2');
+  });
+});
+
+describe('only bursts fail (#1803)', () => {
+  it('passes stray misheard words spread through the read', () => {
+    const check = checkTake(
+      'I told him the boat was leaving at nine, and he said fine.',
+      timed('I told him zee boat was leaving at nein and he said fyne')
+    );
+    expect(check.ok).toBe(true);
+  });
+
+  it('passes a first word misheard', () => {
+    const check = checkTake(
+      'Morning all, the rates are up.',
+      timed('Warning all the rates are up')
+    );
+    expect(check.ok).toBe(true);
+    expect(check.scriptStartSeconds).toBe(0);
+  });
+});
