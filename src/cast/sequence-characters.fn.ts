@@ -50,8 +50,8 @@ import {
 } from '@/cast/server/voice/elevenlabs-voice';
 import { voiceProviderOf, SEED_VOICE_MAX_TAKES } from '@/cast/seed-voice';
 import { buildRegenerateCharacterSheetPayload } from '@/cast/server/sheets/character-sheet-trigger';
+import { readReferenceStaleness } from '@/cast/server/production-staleness';
 import type { SheetStaleness } from '@/cast/server/sheets/sheet-staleness';
-import { characterSheetHashMatchesStored } from '@/cast/server/workflows/sheet-snapshots';
 
 import { NotFoundError, ValidationError } from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
@@ -618,26 +618,17 @@ export const regenerateCharacterSheetFn = createServerFn({ method: 'POST' })
 export const getCharacterSheetStalenessFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(characterIdInput))
-  .handler(async ({ context, data }): Promise<SheetStaleness> => {
-    const character = await requireCharacter(context.scopedDb, data);
-    if (character.sheetStatus === 'generating') return 'generating';
-    if (character.sheetInputHash == null) return 'untracked';
-
-    const payload = await buildRegenerateCharacterSheetPayload({
-      scopedDb: context.scopedDb,
-      userId: context.user.id,
-      teamId: context.teamId,
-      sequence: context.sequence,
-      character,
-    });
-    if (!payload.snapshotInputHash) return 'untracked';
-    return (await characterSheetHashMatchesStored(
-      character.sheetInputHash,
-      payload
-    ))
-      ? 'fresh'
-      : 'stale';
-  });
+  .handler(
+    async ({ context, data }): Promise<SheetStaleness> =>
+      (
+        await readReferenceStaleness(
+          context.scopedDb,
+          data.sequenceId,
+          'character',
+          data.characterId
+        )
+      ).status
+  );
 
 /** Recast a character with different talent, triggering sheet regeneration */
 export const recastCharacterFn = createServerFn({ method: 'POST' })

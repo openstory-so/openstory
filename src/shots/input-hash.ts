@@ -84,14 +84,8 @@ export async function sha256Hex(input: unknown): Promise<string> {
 export type ShotImageInputHash = string & {
   readonly __brand: 'ShotImageInputHash';
 };
-export type ShotVideoInputHash = string & {
-  readonly __brand: 'ShotVideoInputHash';
-};
 export type VideoManifestInputHash = string & {
   readonly __brand: 'VideoManifestInputHash';
-};
-export type ShotAudioInputHash = string & {
-  readonly __brand: 'ShotAudioInputHash';
 };
 export type CharacterSheetInputHash = string & {
   readonly __brand: 'CharacterSheetInputHash';
@@ -115,12 +109,8 @@ export type SequenceMusicInputHash = string & {
 /* oxlint-disable typescript/no-unsafe-type-assertion -- sole brand constructors */
 export const shotImageInputHash = (hex: string): ShotImageInputHash =>
   hex as ShotImageInputHash;
-const shotVideoInputHash = (hex: string): ShotVideoInputHash =>
-  hex as ShotVideoInputHash;
 export const videoManifestInputHash = (hex: string): VideoManifestInputHash =>
   hex as VideoManifestInputHash;
-const shotAudioInputHash = (hex: string): ShotAudioInputHash =>
-  hex as ShotAudioInputHash;
 export const characterSheetInputHash = (hex: string): CharacterSheetInputHash =>
   hex as CharacterSheetInputHash;
 export const locationSheetInputHash = (hex: string): LocationSheetInputHash =>
@@ -191,56 +181,6 @@ export function computeShotImageInputHash(
 }
 
 /**
- * Source the video was derived from. A `variantHash` references the prior
- * artifact-hash chain (so a stale upstream image cascades); a `url` is used
- * when the source is an external asset with no hashable upstream.
- */
-type ShotVideoSourceImage =
-  | { kind: 'variantHash'; hash: string }
-  | { kind: 'url'; url: string };
-
-export type ShotVideoHashInput = {
-  sourceImage: ShotVideoSourceImage;
-  motionPrompt: string;
-  motionModel: string;
-  durationSeconds: number;
-  /** Required; `null` is "model default fps". */
-  fps: number | null;
-  aspectRatio: string;
-};
-
-const shotVideoHashInputSchema = z.object({
-  sourceImage: z.union([
-    z.object({ kind: z.literal('variantHash'), hash: z.string() }),
-    z.object({ kind: z.literal('url'), url: z.string() }),
-  ]),
-  motionPrompt: z.string(),
-  motionModel: z.string(),
-  durationSeconds: z.number(),
-  fps: z.number().nullable(),
-  aspectRatio: z.string(),
-});
-
-export function computeShotVideoInputHash(
-  raw: ShotVideoHashInput
-): Promise<ShotVideoInputHash> {
-  const input = shotVideoHashInputSchema.parse(raw);
-  const sourceImage =
-    input.sourceImage.kind === 'variantHash'
-      ? { kind: 'variantHash' as const, hash: trim(input.sourceImage.hash) }
-      : { kind: 'url' as const, url: trim(input.sourceImage.url) };
-  return sha256Hex({
-    artifact: 'shot:video',
-    sourceImage,
-    motionPrompt: trim(input.motionPrompt),
-    motionModel: input.motionModel,
-    durationSeconds: input.durationSeconds,
-    fps: input.fps,
-    aspectRatio: input.aspectRatio,
-  }).then(shotVideoInputHash);
-}
-
-/**
  * Hash a video render's manifest → O(1) staleness for a `video_variants`
  * version. The `VideoManifestEntry` rows ARE the snapshot: each referenced
  * motion-prompt / anchor-frame version id (plus the value-snapshot duration)
@@ -291,8 +231,8 @@ export function computeVideoManifestInputHash(
   const entries = z.array(videoManifestHashEntrySchema).parse(manifest);
   // A hash over null/null immediately diverges from a live hash built from
   // the selected still + prompt — that's how storyboard clips were born
-  // Stale (#1380). Unknown provenance is a null hash, matching
-  // `videoVariants.isStale` for legacy rows (never stale).
+  // Stale (#1380). Unknown provenance is a null hash: never stale, like
+  // `isSelectedVersionStale` on a legacy row.
   if (
     entries.length > 0 &&
     entries.every(
@@ -307,34 +247,6 @@ export function computeVideoManifestInputHash(
     model,
     manifest: entries.map(canonicalizeManifestEntry),
   }).then(videoManifestInputHash);
-}
-
-export type ShotAudioHashInput = {
-  musicPrompt: string;
-  /** Unordered set of music tags. */
-  tags: readonly string[];
-  durationSeconds: number;
-  audioModel: string;
-};
-
-const shotAudioHashInputSchema = z.object({
-  musicPrompt: z.string(),
-  tags: z.array(z.string()),
-  durationSeconds: z.number(),
-  audioModel: z.string(),
-});
-
-export function computeShotAudioInputHash(
-  raw: ShotAudioHashInput
-): Promise<ShotAudioInputHash> {
-  const input = shotAudioHashInputSchema.parse(raw);
-  return sha256Hex({
-    artifact: 'shot:audio',
-    musicPrompt: trim(input.musicPrompt),
-    tags: sortedRefs(input.tags),
-    durationSeconds: input.durationSeconds,
-    audioModel: input.audioModel,
-  }).then(shotAudioInputHash);
 }
 
 export type CharacterBibleHashFields = {
@@ -597,15 +509,11 @@ export type LibraryLocationReferenceHashInput = {
 };
 
 function libraryLocationReferenceHashBody(
-  input: LibraryLocationReferenceHashInput,
-  includeName: boolean
+  input: LibraryLocationReferenceHashInput
 ): unknown {
   return {
     artifact: 'library-location:reference',
-    locationBible: {
-      ...(includeName ? { name: trim(input.locationBible.name) } : {}),
-      description: trim(input.locationBible.description),
-    },
+    locationBible: { description: trim(input.locationBible.description) },
     referenceMediaHashes: sortedRefs(input.referenceMediaHashes),
     styleConfigHash: input.styleConfigHash,
     imageModel: input.imageModel,
@@ -623,22 +531,9 @@ export function computeLibraryLocationReferenceInputHash(
   raw: LibraryLocationReferenceHashInput
 ): Promise<LibraryLocationReferenceInputHash> {
   const input = libraryLocationReferenceHashInputSchema.parse(raw);
-  return sha256Hex(libraryLocationReferenceHashBody(input, false)).then(
+  return sha256Hex(libraryLocationReferenceHashBody(input)).then(
     libraryLocationReferenceInputHash
   );
-}
-
-export async function libraryLocationReferenceInputHashMatches(
-  stored: string | null,
-  raw: LibraryLocationReferenceHashInput
-): Promise<boolean> {
-  if (!stored) return false;
-  const input = libraryLocationReferenceHashInputSchema.parse(raw);
-  const [current, legacy] = await Promise.all([
-    sha256Hex(libraryLocationReferenceHashBody(input, false)),
-    sha256Hex(libraryLocationReferenceHashBody(input, true)),
-  ]);
-  return stored === current || stored === legacy;
 }
 
 export type TalentSheetHashInput = {
@@ -690,19 +585,6 @@ export function computeTalentSheetInputHashLegacy(
 ): Promise<string> {
   const input = talentSheetHashInputSchema.parse(raw);
   return sha256Hex(talentSheetHashBody(input, true));
-}
-
-export async function talentSheetInputHashMatches(
-  stored: string | null,
-  raw: TalentSheetHashInput
-): Promise<boolean> {
-  if (!stored) return false;
-  const input = talentSheetHashInputSchema.parse(raw);
-  const [current, legacy] = await Promise.all([
-    sha256Hex(talentSheetHashBody(input, false)),
-    sha256Hex(talentSheetHashBody(input, true)),
-  ]);
-  return stored === current || stored === legacy;
 }
 
 // ---------------------------------------------------------------------------
@@ -902,7 +784,8 @@ function toMotionBodyInput(
  * (`durationSeconds` snapped mid-pipeline) one field over: `musicDesign`,
  * `audioDesign`, `sourceImageUrl` are all downstream output and must never be
  * hashed here. `durationSeconds` is excluded for the same #767 reason — it is a
- * video parameter (hashed by `computeShotVideoInputHash`), not a prompt driver.
+ * video parameter (the clip compares it through the render manifest), not a
+ * prompt driver.
  */
 function sceneMetadata(scene: Scene, includeTitle: boolean) {
   if (!scene.metadata) return null;

@@ -11,16 +11,13 @@ import {
   characterSheetInputHashMatches,
   computeCharacterSheetInputHash,
   computeCharacterSheetInputHashLegacy,
-  computeShotAudioInputHash,
   computeShotImageInputHash,
-  computeShotVideoInputHash,
   computeLibraryLocationReferenceInputHash,
   computeLocationSheetInputHash,
   hashMotionPromptInput,
   computeMotionPromptInputHashV4,
   computeMusicPromptInputHash,
   LEGACY_HASH_UNTIL,
-  libraryLocationReferenceInputHashMatches,
   computeSequenceMusicInputHash,
   computeTalentSheetInputHash,
   computeTalentSheetInputHashLegacy,
@@ -29,14 +26,11 @@ import {
   computeVisualPromptInputHashV4,
   motionPromptInputHashMatches,
   sha256Hex,
-  talentSheetInputHashMatches,
   visualPromptInputHashMatches,
   type CharacterSheetHashInput,
   type MotionPromptHashInput,
   type MotionPromptInputHash,
-  type ShotAudioHashInput,
   type ShotImageHashInput,
-  type ShotVideoHashInput,
   type LibraryLocationReferenceHashInput,
   type LocationSheetHashInput,
   type TalentSheetHashInput,
@@ -196,94 +190,6 @@ describe('computeShotImageInputHash (variant-image)', () => {
     });
     expect(a).toBe(same);
     expect(a).not.toBe(different);
-  });
-});
-
-describe('computeShotVideoInputHash', () => {
-  const base: ShotVideoHashInput = {
-    sourceImage: { kind: 'variantHash', hash: 'sha-source-image' },
-    motionPrompt: 'Slow dolly forward',
-    motionModel: 'kling-v2.5-turbo-pro',
-    durationSeconds: 5,
-    fps: 30,
-    aspectRatio: '16:9',
-  };
-
-  it('is stable for identical input', async () => {
-    expect(await computeShotVideoInputHash(base)).toBe(
-      await computeShotVideoInputHash({ ...base })
-    );
-  });
-
-  it('changes when the motion model version changes', async () => {
-    const a = await computeShotVideoInputHash(base);
-    const b = await computeShotVideoInputHash({
-      ...base,
-      motionModel: 'kling-v2.6-turbo-pro',
-    });
-    expect(a).not.toBe(b);
-  });
-
-  it('reacts to every tracked field', async () => {
-    const variants = await Promise.all([
-      computeShotVideoInputHash(base),
-      computeShotVideoInputHash({
-        ...base,
-        sourceImage: { kind: 'variantHash', hash: 'sha-other' },
-      }),
-      computeShotVideoInputHash({ ...base, motionPrompt: 'Pan left' }),
-      computeShotVideoInputHash({ ...base, durationSeconds: 8 }),
-      computeShotVideoInputHash({ ...base, fps: 60 }),
-      computeShotVideoInputHash({ ...base, aspectRatio: '9:16' }),
-    ]);
-    expect(new Set(variants).size).toBe(variants.length);
-  });
-
-  it('distinguishes variantHash from url even when the string matches', async () => {
-    const fromHash = await computeShotVideoInputHash({
-      ...base,
-      sourceImage: { kind: 'variantHash', hash: 'shared-string' },
-    });
-    const fromUrl = await computeShotVideoInputHash({
-      ...base,
-      sourceImage: { kind: 'url', url: 'shared-string' },
-    });
-    expect(fromHash).not.toBe(fromUrl);
-  });
-});
-
-describe('computeShotAudioInputHash', () => {
-  const base: ShotAudioHashInput = {
-    musicPrompt: 'Tense orchestral build',
-    tags: ['cinematic', 'tension'],
-    durationSeconds: 5,
-    audioModel: 'cassette-v1',
-  };
-
-  it('is order-insensitive for tags', async () => {
-    const a = await computeShotAudioInputHash(base);
-    const b = await computeShotAudioInputHash({
-      ...base,
-      tags: ['tension', 'cinematic'],
-    });
-    expect(a).toBe(b);
-  });
-
-  it('reacts to prompt, duration, and model', async () => {
-    const a = await computeShotAudioInputHash(base);
-    const prompt = await computeShotAudioInputHash({
-      ...base,
-      musicPrompt: 'Soft piano',
-    });
-    const dur = await computeShotAudioInputHash({
-      ...base,
-      durationSeconds: 9,
-    });
-    const model = await computeShotAudioInputHash({
-      ...base,
-      audioModel: 'cassette-v2',
-    });
-    expect(new Set([a, prompt, dur, model]).size).toBe(4);
   });
 });
 
@@ -540,15 +446,6 @@ describe('computeLibraryLocationReferenceInputHash', () => {
         })
       )
     ).toThrow();
-    expect(await libraryLocationReferenceInputHashMatches(ref, base)).toBe(
-      true
-    );
-    expect(
-      await libraryLocationReferenceInputHashMatches(ref, {
-        ...base,
-        locationBible: { ...base.locationBible, description: 'changed' },
-      })
-    ).toBe(false);
   });
 });
 
@@ -589,40 +486,9 @@ describe('computeTalentSheetInputHash', () => {
     expect(new Set([a, ...variants]).size).toBe(4);
   });
 
-  it('dual-hash verify accepts a pre-drop named talent digest of the same inputs', async () => {
+  it('the pre-drop named talent digest differs from the current one', async () => {
     const named = await computeTalentSheetInputHashLegacy(base);
-    const current = await computeTalentSheetInputHash(base);
-    expect(named).not.toBe(current);
-    expect(await talentSheetInputHashMatches(named, base)).toBe(true);
-    expect(await talentSheetInputHashMatches(current, base)).toBe(true);
-    expect(
-      await talentSheetInputHashMatches(named, {
-        ...base,
-        talent: { ...base.talent, description: 'changed' },
-      })
-    ).toBe(false);
-  });
-});
-
-describe('artifact discrimination', () => {
-  it('returns different hashes for different artifact types with the same input shape', async () => {
-    // Shot audio and video share several scalar fields; the artifact tag in
-    // the canonical body keeps them distinct.
-    const audio = await computeShotAudioInputHash({
-      musicPrompt: '',
-      tags: [],
-      durationSeconds: 5,
-      audioModel: 'shared',
-    });
-    const video = await computeShotVideoInputHash({
-      sourceImage: { kind: 'url', url: '' },
-      motionPrompt: '',
-      motionModel: 'shared',
-      durationSeconds: 5,
-      fps: null,
-      aspectRatio: '',
-    });
-    expect(audio).not.toBe(video);
+    expect(named).not.toBe(await computeTalentSheetInputHash(base));
   });
 });
 
@@ -665,22 +531,16 @@ describe('canonical serialization', () => {
   });
 
   it('rejects non-finite numbers rather than collapsing them to null', async () => {
-    expect(() =>
-      computeShotAudioInputHash({
-        musicPrompt: 'test',
-        tags: [],
-        durationSeconds: Number.NaN,
-        audioModel: 'cassette-v1',
-      })
-    ).toThrow();
-    expect(() =>
-      computeShotAudioInputHash({
-        musicPrompt: 'test',
-        tags: [],
-        durationSeconds: Number.POSITIVE_INFINITY,
-        audioModel: 'cassette-v1',
-      })
-    ).toThrow();
+    for (const durationSeconds of [Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() =>
+        computeSequenceMusicInputHash({
+          prompt: 'test',
+          tags: '',
+          durationSeconds,
+          audioModel: 'cassette-v1',
+        })
+      ).toThrow();
+    }
   });
 });
 

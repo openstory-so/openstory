@@ -21,7 +21,7 @@ import type {
   RecastLocationWorkflowInput,
 } from '@/platform/server/workflow/types';
 import { buildRecastRegenerateSnapshots } from '@/cast/server/workflows/recast-snapshot';
-import { locationSheetHashMatchesStored } from '@/cast/server/workflows/sheet-snapshots';
+import { readReferenceStaleness } from '@/cast/server/production-staleness';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
@@ -283,34 +283,21 @@ export const regenerateLocationSheetFn = createServerFn({ method: 'POST' })
     return { locationDbId: location.id, workflowRunId };
   });
 
+/** Live sheet staleness for the location detail banner. */
 export const getLocationSheetStalenessFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(locationIdInput))
-  .handler(async ({ context, data }): Promise<SheetStaleness> => {
-    const location = await context.scopedDb.sequenceLocations.getById(
-      data.locationDbId
-    );
-    if (!location || location.sequenceId !== data.sequenceId) {
-      throw new NotFoundError('Location not found');
-    }
-    if (location.referenceStatus === 'generating') return 'generating';
-    if (location.referenceInputHash == null) return 'untracked';
-
-    const payload = await buildRegenerateLocationSheetPayload({
-      scopedDb: context.scopedDb,
-      userId: context.user.id,
-      teamId: context.teamId,
-      sequence: context.sequence,
-      location,
-    });
-    if (!payload.snapshotInputHash) return 'untracked';
-    return (await locationSheetHashMatchesStored(
-      location.referenceInputHash,
-      payload
-    ))
-      ? 'fresh'
-      : 'stale';
-  });
+  .handler(
+    async ({ context, data }): Promise<SheetStaleness> =>
+      (
+        await readReferenceStaleness(
+          context.scopedDb,
+          data.sequenceId,
+          'location',
+          data.locationDbId
+        )
+      ).status
+  );
 
 /**
  * Recast a location with a library location reference.

@@ -820,25 +820,6 @@ describe('frameVariants.listLastFailedModelsBySequence (#1066)', () => {
   });
 });
 
-describe('frameVariants.isStale', () => {
-  it('throws when the version does not exist', async () => {
-    const m = createFrameVariantsMethods(db);
-    await expect(m.isStale(generateId(), 'h')).rejects.toThrow(/not found/);
-  });
-
-  it('null stored hash → not stale; match → not stale; differ → stale', async () => {
-    const m = createFrameVariantsMethods(db);
-    const noHash = await m.appendVersion(variantInput({ inputHash: null }));
-    expect(await m.isStale(noHash.id, 'anything')).toBe(false);
-
-    const hashed = await m.appendVersion(
-      variantInput({ inputHash: shotImageInputHash('h-match') })
-    );
-    expect(await m.isStale(hashed.id, 'h-match')).toBe(false);
-    expect(await m.isStale(hashed.id, 'h-new')).toBe(true);
-  });
-});
-
 describe('frameVariants pending claims (#1085)', () => {
   it('createPendingClaim + listLiveClaims only surface claim rows', async () => {
     const m = createFrameVariantsMethods(db);

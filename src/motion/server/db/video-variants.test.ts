@@ -710,25 +710,3 @@ describe('batch getters chunk past D1s parameter ceiling (#1019)', () => {
     expect(primary.get(pastBoundaryId)?.id).toBe(version.id);
   });
 });
-
-describe('isStale', () => {
-  it('compares the stored input hash; null stored is never stale', async () => {
-    const hashed = await methods.appendVersion(
-      versionInput({ inputHash: videoManifestInputHash('h1') })
-    );
-    expect(await methods.isStale(hashed.id, 'h1')).toBe(false);
-    expect(await methods.isStale(hashed.id, 'h2')).toBe(true);
-
-    const legacy = await methods.appendVersion(
-      versionInput({ inputHash: null })
-    );
-    expect(await methods.isStale(legacy.id, 'anything')).toBe(false);
-  });
-
-  it('treats a null live hash as unknown-not-stale (#1380)', async () => {
-    const hashed = await methods.appendVersion(
-      versionInput({ inputHash: videoManifestInputHash('h1') })
-    );
-    expect(await methods.isStale(hashed.id, null)).toBe(false);
-  });
-});

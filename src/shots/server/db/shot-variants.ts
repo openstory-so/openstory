@@ -198,23 +198,6 @@ export function createShotVariantsMethods(db: Database) {
       return variant;
     },
 
-    isStale: async (
-      variantId: string,
-      currentHash: string
-    ): Promise<boolean> => {
-      const result = await db
-        .select({ hash: shotVariants.inputHash })
-        .from(shotVariants)
-        .where(eq(shotVariants.id, variantId));
-      const row = result[0];
-      if (!row) {
-        throw new Error(`ShotVariant ${variantId} not found`);
-      }
-      const stored = row.hash;
-      if (stored === null) return false;
-      return currentHash !== stored;
-    },
-
     /**
      * List divergent alternates for a shot (or all shots in a sequence) that
      * have not been discarded. Ordered oldest-first by divergedAt so the UI

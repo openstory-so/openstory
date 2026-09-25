@@ -401,31 +401,5 @@ export function createFramesMethods(db: Database) {
         .where(eq(frameVariants.id, frame.selectedImageVersionId));
       return { frame, selectedVersion: version ?? null };
     },
-
-    /**
-     * Selected version's `inputHash` vs a fresh hash. Null stored hash (no
-     * selection, or never generated) is "unknown, not stale" — never forces
-     * regeneration. Throws when the frame is missing.
-     */
-    isStale: async (frameId: string, currentHash: string): Promise<boolean> => {
-      const result = await db
-        .select({
-          frameId: frames.id,
-          hash: frameVariants.inputHash,
-        })
-        .from(frames)
-        .leftJoin(
-          frameVariants,
-          eq(frameVariants.id, frames.selectedImageVersionId)
-        )
-        .where(eq(frames.id, frameId));
-      const row = result[0];
-      if (!row) {
-        throw new Error(`Frame ${frameId} not found`);
-      }
-      const stored = row.hash;
-      if (stored === null) return false;
-      return currentHash !== stored;
-    },
   };
 }

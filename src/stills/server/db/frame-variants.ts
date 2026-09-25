@@ -1514,28 +1514,6 @@ export function createFrameVariantsMethods(db: Database) {
       ]);
     },
 
-    /**
-     * Staleness of a single version: stored `inputHash` vs a fresh hash. Null
-     * stored hash (legacy / in-flight) is "unknown, not stale". Throws when the
-     * version is missing. Mirrors `shotVariants.isStale`.
-     */
-    isStale: async (
-      versionId: string,
-      currentHash: string
-    ): Promise<boolean> => {
-      const result = await db
-        .select({ hash: frameVariants.inputHash })
-        .from(frameVariants)
-        .where(eq(frameVariants.id, versionId));
-      const row = result[0];
-      if (!row) {
-        throw new Error(`FrameVariant ${versionId} not found`);
-      }
-      const stored = row.hash;
-      if (stored === null) return false;
-      return currentHash !== stored;
-    },
-
     deleteByFrame: async (frameId: string): Promise<number> => {
       const result = await db
         .delete(frameVariants)
