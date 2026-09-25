@@ -40,6 +40,7 @@ import {
   matchLocationsToScene,
 } from '@/shots/scene-matching';
 import { computeShotImageSceneHash } from '@/cast/server/workflows/sheet-snapshots';
+import { elementTokensOf } from '@/shots/input-hash';
 
 /** The sequence-scoped rows reference matching needs, resolved once per run. */
 export type ShotImageRefs = Pick<
@@ -282,6 +283,7 @@ export async function prepareShotImageWorkflowInput(args: {
     elementReferenceHashes: sortedHashes(
       matchedElements.map((e) => e.imageUrl)
     ),
+    elementTokens: elementTokensOf(matchedElements),
   };
   const snapshotInputHash = await computeShotImageSceneHash(
     sceneSnapshot,
