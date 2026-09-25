@@ -165,6 +165,8 @@ export class RecastLocationWorkflow extends OpenStoryWorkflowEntrypoint<RecastLo
           libraryLocationDescription: input.libraryLocationDescription,
           styleConfig: input.styleConfig,
           libraryLocationReferenceHash: input.libraryLocationReferenceHash,
+          // The claim recastLocationFn took (#1113).
+          referenceVersionId: input.referenceVersionId,
         };
         partial.snapshotInputHash =
           await computeLocationSheetHashFromDto(partial);

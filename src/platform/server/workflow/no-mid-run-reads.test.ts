@@ -154,8 +154,6 @@ function workflowSourceFiles(): string[] {
 type ReadBucket =
   /** The run's designed observation moment — the plan step that decides what to regenerate. */
   | 'TRIGGER-SNAPSHOT'
-  /** Recompute an input hash from CURRENT state to compare against the frozen one. */
-  | 'DIVERGENCE-CHECK'
   /** Poll for a SIBLING workflow's late write. A snapshot would defeat the wait. */
   | 'WAIT-GATE'
   /** Read the run's OWN write back by explicit ULID. Never a selection pointer. */
@@ -182,7 +180,7 @@ type ReadBucket =
  *   - a SERVER-FN snapshot builder that happens to live in this directory
  *     (recast-snapshot.ts), spelled plainly against a full `ScopedDb`; and
  *   - a helper module that declares a narrowed dependency type
- *     (`SheetSnapshotReadDb`, `WaitForSheetsReadDb`) and is HANDED
+ *     (`WaitForSheetsReadDb`) and is HANDED
  *     `scopedDb.liveRead` by its workflow caller — the hatch is applied at the
  *     caller, and the narrowed type is what keeps the helper honest inside.
  */
@@ -190,8 +188,6 @@ const BUCKET_HATCH: Record<ReadBucket, readonly (Hatch | null)[]> = {
   // The run's designed observation moment: either the server-fn builder, or
   // the single load-refs step at the top of an update-stale run.
   'TRIGGER-SNAPSHOT': [null, 'liveRead'],
-  // sheet-snapshots' *Current helpers take SheetSnapshotReadDb.
-  'DIVERGENCE-CHECK': ['liveRead', null],
   // wait-for-sheets takes WaitForSheetsReadDb.
   'WAIT-GATE': ['liveRead', null],
   // Strict: the whole reason `claims` exists is that it cannot name a pointer.
@@ -217,13 +213,6 @@ type SanctionedRead = {
  * entry may not read at all.
  */
 const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
-  'analyze-script-workflow.ts': [
-    {
-      read: 'sequenceElements.listByIds',
-      bucket: 'WAIT-GATE',
-      why: "/element-vision writes description + visionStatus late, so the row must be live — but only for the trigger's elementIds, never a re-enumeration.",
-    },
-  ],
   'motion-batch-workflow.ts': [
     {
       read: 'bytePlusAssets.getAdmission',
@@ -467,28 +456,6 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       why: 'Spawn-time enforcement: a ban applied after the parent started must stop work that has not started yet.',
     },
   ],
-  'sheet-snapshots.ts': [
-    {
-      read: 'characters.getById',
-      bucket: 'DIVERGENCE-CHECK',
-      why: "Resolves the character's current talent assignment for the *Current hash. Freezing it would make divergence unrepresentable.",
-    },
-    {
-      read: 'talent.getWithRelations',
-      bucket: 'DIVERGENCE-CHECK',
-      why: "The upstream talent sheet's inputHash. NOTE the identity it resolves: sheets come back ordered isDefault DESC, createdAt DESC, and resolveTalentSheetHash takes the first NON-DIVERGED one — so with no explicit default the NEWEST convergent sheet wins (src/cast/server/db/talent.ts:234). A new sheet therefore shifts the hash and re-stales downstream character sheets by design.",
-    },
-    {
-      read: 'sequenceLocations.getById',
-      bucket: 'DIVERGENCE-CHECK',
-      why: "Resolves the sequence location's library parent for the *Current hash.",
-    },
-    {
-      read: 'locations.getById',
-      bucket: 'DIVERGENCE-CHECK',
-      why: "The library location's current reference hash / name / description, recomputed live so a mid-run rename registers as divergence.",
-    },
-  ],
   'shot-variant-workflow.ts': [
     {
       read: 'frames.getById',
@@ -687,7 +654,7 @@ describe('workflows read no unsanctioned mutable DB state mid-run', () => {
         unsanctioned,
         `${file} reads mutable DB state that no allow-list entry covers: ${unsanctioned.join(', ')}.\n` +
           `Snapshot it into the workflow payload at the trigger instead. If the read is genuinely ` +
-          `unavoidable (billing balance, credential, sibling-workflow polling, divergence recompute, ` +
+          `unavoidable (billing balance, credential, sibling-workflow polling, ` +
           `own-write claim read, existence guard), route it through scopedDb.liveRead and add it to ` +
           `ALLOWED_LIVE_READS in ${'src/platform/server/workflow/no-mid-run-reads.test.ts'} with a ReadBucket and a ` +
           `one-line justification. If no bucket fits, that IS the answer: the value belongs on the payload.`

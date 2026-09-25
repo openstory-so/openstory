@@ -148,6 +148,7 @@ export class LocationMatchingWorkflow extends OpenStoryWorkflowEntrypoint<Locati
             libraryLocationName: libraryLoc.name,
             referenceImageUrl: libraryLoc.referenceImageUrl,
             description: libraryLoc.description ?? undefined,
+            referenceInputHash: libraryLoc.referenceInputHash,
           });
         }
 

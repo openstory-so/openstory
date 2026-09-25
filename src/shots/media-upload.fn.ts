@@ -36,8 +36,8 @@ import {
   characterSheetTalentHashFields,
   computeStyleConfigHash,
   locationSheetBibleFields,
-  resolveCastTalent,
 } from '@/cast/server/workflows/sheet-snapshots';
+import { resolveCastTalent } from '@/cast/server/sheets/character-sheet-trigger';
 import { toLocationMetadata } from '@/cast/server/sheets/location-sheet-trigger';
 import {
   loadShotPromptContext,

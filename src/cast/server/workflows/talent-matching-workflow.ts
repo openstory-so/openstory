@@ -163,6 +163,7 @@ export class TalentMatchingWorkflow extends OpenStoryWorkflowEntrypoint<TalentMa
             talentName: talent.name,
             sheetImageUrl: talent.defaultSheet?.imageUrl ?? '',
             sheetMetadata: talent.defaultSheet?.metadata ?? undefined,
+            sheetInputHash: talent.defaultSheet?.inputHash ?? null,
             talentDescription: talent.description ?? undefined,
             personality: talent.personality ?? '',
             movement: talent.movement ?? '',

@@ -24,7 +24,10 @@ import {
 } from './bible-field';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
-import type { RecastCharacterWorkflowInput } from '@/platform/server/workflow/types';
+import type {
+  CharacterSheetWorkflowInput,
+  RecastCharacterWorkflowInput,
+} from '@/platform/server/workflow/types';
 import { buildRecastRegenerateSnapshots } from '@/cast/server/workflows/recast-snapshot';
 import { characterToBible } from '@/cast/server/bibles-from-scoped';
 import { enqueueCharacterVoiceDesign } from '@/cast/server/voice/enqueue-character-voice';
@@ -568,9 +571,11 @@ export const regenerateCharacterSheetFn = createServerFn({ method: 'POST' })
       imageModel: data.imageModel,
     });
 
-    await context.scopedDb.characters.updateSheetStatus(
+    // The claim (#1113): last kickoff wins, and any edit to the character's
+    // sheet inputs before this run lands revokes it.
+    const sheetVersionId = await context.scopedDb.characters.claimSheet(
       character.id,
-      'generating'
+      { markGenerating: true }
     );
     try {
       await getGenerationChannel(character.sequenceId).emit(
@@ -583,7 +588,11 @@ export const regenerateCharacterSheetFn = createServerFn({ method: 'POST' })
 
     let workflowRunId: string;
     try {
-      workflowRunId = await triggerWorkflow('/character-sheet', payload, {
+      const claimed: CharacterSheetWorkflowInput = {
+        ...payload,
+        sheetVersionId,
+      };
+      workflowRunId = await triggerWorkflow('/character-sheet', claimed, {
         // Explicit regen must not reuse the bible-child id
         // `character-sheet:${id}` — that instance is already complete, and CF
         // would no-op a second Generate (sheetStatus stuck at generating).
@@ -591,9 +600,9 @@ export const regenerateCharacterSheetFn = createServerFn({ method: 'POST' })
         // new run.
       });
     } catch (error) {
-      await context.scopedDb.characters.updateSheetStatus(
+      await context.scopedDb.characters.failSheetClaim(
         character.id,
-        'failed',
+        sheetVersionId,
         error instanceof Error ? error.message : String(error)
       );
       throw error;
@@ -743,10 +752,11 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
         data.characterId
       );
 
-    // Always generate a character sheet showing the talent in costume
-    await context.scopedDb.characters.updateSheetStatus(
+    // Always generate a character sheet showing the talent in costume. The
+    // claim is taken after the cast writes above, which revoke older ones.
+    const sheetVersionId = await context.scopedDb.characters.claimSheet(
       data.characterId,
-      'generating'
+      { markGenerating: true }
     );
 
     await getGenerationChannel(character.sequenceId).emit(
@@ -805,6 +815,7 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
       // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
       talentSheetInputHash: defaultSheet?.inputHash ?? null,
       castTalentDescription: talentWithSheets.description,
+      sheetVersionId,
       styleConfig,
       aspectRatio: sequence.aspectRatio,
       resolution: sequence.resolution,

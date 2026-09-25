@@ -120,6 +120,12 @@ export const characters = snakeCase.table(
     // selecting: for those the live version is the one keyed to this row's own
     // id, and it fills in the first time anyone re-rolls or selects.
     selectedSheetVersionId: text(),
+    // The sheet claim (#1113): the id the in-flight sheet run's version row
+    // will carry. Set at the trigger (last kickoff wins); cleared by every
+    // write that changes a sheet input or picks a sheet. The run promotes its
+    // row only while this still names it, else parks it as divergent. Null
+    // when no run holds the pointer.
+    pendingPromoteSheetVersionId: text(),
     // Soft-remove from the sequence (#1108 Phase 2, undoable). Deleted rows
     // are excluded from default lists / prompt-context bibles but keep their
     // sheet + bible fields, so restore is lossless. Continuity tags on scenes

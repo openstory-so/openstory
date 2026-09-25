@@ -35,6 +35,7 @@ function character(
     sheetStatus: 'completed',
     sheetError: null,
     selectedSheetVersionId: null,
+    pendingPromoteSheetVersionId: null,
     deletedAt: null,
     createdAt: new Date(0),
     updatedAt: new Date(0),

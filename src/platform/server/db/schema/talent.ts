@@ -52,6 +52,12 @@ export const talent = snakeCase.table(
     voiceDescription: text(),
     imageUrl: text(), // Talent avatar/headshot
     imagePath: text(), // R2 storage path for avatar
+    // The sheet claim (#1113): the `talent_sheets.id` the in-flight library
+    // sheet run will write. Set at the trigger; cleared by an edit to the
+    // name, description or reference photos. The run makes its sheet the
+    // talent's identity (headshot) only while this still names it, else
+    // parks it as divergent.
+    pendingPromoteSheetId: text(),
     isFavorite: integer({ mode: 'boolean' }).default(false),
     isHuman: integer({ mode: 'boolean' }).default(false),
     isInTeamLibrary: integer({ mode: 'boolean' }).default(false),

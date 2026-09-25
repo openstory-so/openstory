@@ -11,6 +11,8 @@ import { DEFAULT_IMAGE_MODEL } from '@/models/models';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { CharacterMinimal } from '@/platform/server/db/schema';
 import { buildCharacterInsert } from './cast-records';
+import { computeCharacterSheetHashFromDto } from './sheet-snapshots';
+import type { SheetPayload } from './sheet-snapshots';
 import { buildCastingAttributes } from '@/cast/character-prompt';
 import { isPersonFromTalentCast } from '@/cast/likeness';
 import { reusesTalentSheet } from '@/cast/server/talent/reuse-talent-sheet';
@@ -145,14 +147,19 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       // actually be billed — see `reusesTalentSheet`.
       const reuseTalentSheet = reusesTalentSheet(character, talentMatch);
 
-      const childPayload: CharacterSheetWorkflowInput = {
+      const unclaimed: SheetPayload<CharacterSheetWorkflowInput> = {
         userId: input.userId,
         teamId: input.teamId,
         sequenceId: input.sequenceId,
         reservationId: input.reservationId,
         characterDbId,
         characterName: character.name,
-        characterMetadata: character,
+        // The cast bible the row holds (`buildCharacterInsert`), so the stamped
+        // hash matches what a regenerate or a staleness check computes from the
+        // row (#1113). The prompt reads the talent's look first either way.
+        characterMetadata: castingAttrs
+          ? { ...character, ...castingAttrs }
+          : character,
         imageModel,
         referenceImageUrl: talentMatch?.sheetImageUrl,
         talentMetadata: talentMatch?.sheetMetadata,
@@ -165,6 +172,22 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         reuseTalentSheet,
         styleConfig: input.styleConfig,
         castTalentDescription: talentMatch?.talentDescription ?? null,
+        talentSheetInputHash: talentMatch?.sheetInputHash ?? null,
+      };
+      // A pipeline sheet is tracked like any other (#1113): stamped with its
+      // input hash, and landed through a claim a bible edit revokes.
+      unclaimed.snapshotInputHash =
+        await computeCharacterSheetHashFromDto(unclaimed);
+      const sheetVersionId = await step.do(
+        `claim-character-sheet-${index}`,
+        async () =>
+          await scopedDb.characters.claimSheet(characterDbId, {
+            markGenerating: false,
+          })
+      );
+      const childPayload: CharacterSheetWorkflowInput = {
+        ...unclaimed,
+        sheetVersionId,
       };
 
       const childResult = await spawnAndAwaitChild<

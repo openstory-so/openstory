@@ -14,12 +14,13 @@ import {
   getExtensionFromUrl,
   getMimeTypeFromExtension,
 } from '@/platform/server/storage/file';
-import { triggerWorkflow } from '@/platform/server/workflow/client';
 import type { LibraryLocationSheetWorkflowInput } from '@/platform/server/workflow/types';
 import { computeLibraryLocationSheetHashFromDto } from '@/cast/server/workflows/sheet-snapshots';
+import type { SheetPayload } from '@/cast/server/workflows/sheet-snapshots';
 import {
   attachLocationReferenceImages,
   createLibraryLocation,
+  triggerLibraryLocationSheet,
 } from '@/cast/server/locations/create-library-location';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
@@ -257,7 +258,7 @@ export const addLocationSheetsFn = createServerFn({ method: 'POST' })
       existingUrls = [];
     }
 
-    const workflowInput: LibraryLocationSheetWorkflowInput = {
+    const workflowInput: SheetPayload<LibraryLocationSheetWorkflowInput> = {
       locationDbId: data.locationId,
       locationName: location.name,
       locationDescription: location.description ?? undefined,
@@ -272,8 +273,8 @@ export const addLocationSheetsFn = createServerFn({ method: 'POST' })
     workflowInput.snapshotInputHash =
       await computeLibraryLocationSheetHashFromDto(workflowInput);
 
-    const workflowRunId = await triggerWorkflow(
-      '/library-location-sheet',
+    const workflowRunId = await triggerLibraryLocationSheet(
+      context.scopedDb,
       workflowInput
     );
 

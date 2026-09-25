@@ -8,7 +8,15 @@ import type {
   NewTalentSheetVariant,
   TalentSheetVariant,
 } from '@/platform/server/db/schema';
-import { talentSheetVariants, talentSheets } from '@/platform/server/db/schema';
+import {
+  characters,
+  talentSheetVariants,
+  talentSheets,
+} from '@/platform/server/db/schema';
+import {
+  demoteCharacterSheetClaims,
+  demoteTalentSheetClaim,
+} from './sheet-claims';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { insertDivergentRaceTolerant } from '@/platform/server/db/scoped/divergent-insert';
 import { assertTalentSheetWritableForTeam } from './talent';
@@ -221,7 +229,7 @@ export function createTalentSheetVariantsMethods(db: Database, teamId: string) {
       variantId: string
     ): Promise<{ discardedAt: Date }> => {
       const [existingSheet] = await db
-        .select({ id: talentSheets.id })
+        .select({ id: talentSheets.id, talentId: talentSheets.talentId })
         .from(talentSheets)
         .where(eq(talentSheets.id, talentSheetId));
       // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
@@ -250,9 +258,16 @@ export function createTalentSheetVariantsMethods(db: Database, teamId: string) {
         .set({ discardedAt: now, updatedAt: now })
         .where(eq(talentSheetVariants.id, variantId))
         .returning({ id: talentSheetVariants.id });
+      // The user's pick wins over an in-flight library run, and the new image
+      // revokes the claims of the characters cast with this talent (#1113).
       const [sheetRows, variantRows] = await db.batch([
         updateSheet,
         discardVariant,
+        demoteTalentSheetClaim(db, existingSheet.talentId),
+        demoteCharacterSheetClaims(
+          db,
+          eq(characters.talentId, existingSheet.talentId)
+        ),
       ]);
       if (sheetRows.length === 0) {
         throw new Error(

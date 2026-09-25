@@ -296,6 +296,12 @@ describe('waitForElementVision', () => {
     expect(listByIds).toHaveBeenNthCalledWith(1, ['e1', 'e2']);
     expect(listByIds).toHaveBeenLastCalledWith(['e2']);
     expect(sleepSpy).toHaveBeenCalledTimes(1);
+    // Every element the wait read, the in-flight one at its final poll —
+    // the caller loads these instead of reading again (#1113).
+    expect(result.rows).toEqual([
+      { id: 'e1', visionStatus: 'completed' },
+      { id: 'e2', visionStatus: 'completed' },
+    ]);
   });
 
   test('scans only the trigger-time set, never the live sequence', async () => {

@@ -3,9 +3,15 @@
  * Team-scoped location library CRUD and location sheet operations.
  */
 
-import { eq, ilike, and, inArray, or } from 'drizzle-orm';
+import { eq, exists, ilike, and, inArray, or, sql } from 'drizzle-orm';
 import type { Database } from '@/platform/server/db/client';
-import { locationLibrary, locationSheets } from '@/platform/server/db/schema';
+import { generateId } from '@/platform/id';
+import {
+  locationLibrary,
+  locationSheets,
+  sequenceLocations,
+} from '@/platform/server/db/schema';
+import { demoteLocationReferenceClaims } from './sheet-claims';
 import { stripServerManagedColumns } from '@/platform/server/db/scoped/server-managed';
 import type {
   LibraryLocation,
@@ -30,6 +36,8 @@ const SERVER_MANAGED_LOCATION_COLUMNS = {
   updatedAt: true,
   isPublic: true,
   isTemplate: true,
+  // The reference claim (#1113) moves only through claimReference / its demotes.
+  pendingReferenceClaimId: true,
 } as const;
 
 type ServerManagedLocationColumn = keyof typeof SERVER_MANAGED_LOCATION_COLUMNS;
@@ -216,14 +224,30 @@ export function createLocationsMethods(
       id: string,
       data: Partial<Omit<NewLibraryLocation, ServerManagedLocationColumn>>
     ): Promise<LibraryLocation> => {
-      const [location] = await db
-        .update(locationLibrary)
-        .set({
-          ...stripServerManagedColumns(data, SERVER_MANAGED_LOCATION_COLUMNS),
-          updatedAt: new Date(),
-        })
-        .where(eq(locationLibrary.id, id))
-        .returning();
+      // Claims (#1113): the description feeds this location's own sheet run
+      // (a rename is not an input: the hash never covered the name), and a
+      // reference the user sets is a pick that run must not overwrite. The
+      // reference also feeds every sequence location linked to it.
+      const referenceMoved =
+        data.referenceImageUrl !== undefined ||
+        data.referenceInputHash !== undefined;
+      const [[location]] = await db.batch([
+        db
+          .update(locationLibrary)
+          .set({
+            ...stripServerManagedColumns(data, SERVER_MANAGED_LOCATION_COLUMNS),
+            ...(data.description !== undefined || referenceMoved
+              ? { pendingReferenceClaimId: null }
+              : {}),
+            updatedAt: new Date(),
+          })
+          .where(eq(locationLibrary.id, id))
+          .returning(),
+        demoteLocationReferenceClaims(
+          db,
+          referenceMoved ? eq(sequenceLocations.libraryLocationId, id) : sql`0`
+        ),
+      ]);
 
       if (!location) {
         throw new Error(`LibraryLocation ${id} not found`);
@@ -233,8 +257,8 @@ export function createLocationsMethods(
     },
 
     /**
-     * `inputHash` stamps `referenceInputHash` alongside the reference so
-     * `resolveLibraryLocationReferenceHash` returns something for generated
+     * `inputHash` stamps `referenceInputHash` alongside the reference so the
+     * linked location sheets' triggers hash something for generated
      * references. Omitting it leaves the stored hash untouched (a null hash
      * disables every downstream divergence check for this location).
      */
@@ -244,22 +268,111 @@ export function createLocationsMethods(
       referenceImagePath: string,
       inputHash?: LibraryLocationReferenceInputHash
     ): Promise<LibraryLocation> => {
-      const [location] = await db
-        .update(locationLibrary)
-        .set({
-          referenceImageUrl,
-          referenceImagePath,
-          ...(inputHash === undefined ? {} : { referenceInputHash: inputHash }),
-          updatedAt: new Date(),
-        })
-        .where(eq(locationLibrary.id, id))
-        .returning();
+      // Unclaimed (a run queued before #1113): still revokes the linked
+      // sequence locations' claims, whose sheets read this reference.
+      const [[location]] = await db.batch([
+        db
+          .update(locationLibrary)
+          .set({
+            referenceImageUrl,
+            referenceImagePath,
+            ...(inputHash === undefined
+              ? {}
+              : { referenceInputHash: inputHash }),
+            updatedAt: new Date(),
+          })
+          .where(eq(locationLibrary.id, id))
+          .returning(),
+        demoteLocationReferenceClaims(
+          db,
+          eq(sequenceLocations.libraryLocationId, id)
+        ),
+      ]);
 
       if (!location) {
         throw new Error(`LibraryLocation ${id} not found`);
       }
 
       return location;
+    },
+
+    /**
+     * Take the reference claim (#1113): a token the library sheet run holds
+     * until it publishes. Last kickoff wins. Returns the token.
+     */
+    claimReference: async (id: string): Promise<string> => {
+      const claimId = generateId();
+      await db
+        .update(locationLibrary)
+        .set({ pendingReferenceClaimId: claimId, updatedAt: new Date() })
+        .where(eq(locationLibrary.id, id));
+      return claimId;
+    },
+
+    /** A failed run clears its claim — only while it still holds it. */
+    clearReferenceClaimIf: async (
+      id: string,
+      claimId: string
+    ): Promise<void> => {
+      await db
+        .update(locationLibrary)
+        .set({ pendingReferenceClaimId: null, updatedAt: new Date() })
+        .where(
+          and(
+            eq(locationLibrary.id, id),
+            eq(locationLibrary.pendingReferenceClaimId, claimId)
+          )
+        );
+    },
+
+    /**
+     * Publish the run's preview as the live reference only while its claim
+     * holds (#1113), in one batch with the revocation of the linked sequence
+     * locations' claims (their sheets read this reference). Returns whether
+     * it landed; a miss is parked by the caller. Retry-safe: the outcome is
+     * read from the row, and the preview path is unique per run.
+     */
+    updateReferenceIfClaimed: async (
+      id: string,
+      claimId: string,
+      referenceImageUrl: string,
+      referenceImagePath: string,
+      inputHash: LibraryLocationReferenceInputHash | null
+    ): Promise<boolean> => {
+      const holds = and(
+        eq(locationLibrary.id, id),
+        eq(locationLibrary.pendingReferenceClaimId, claimId)
+      );
+      const [, , [row]] = await db.batch([
+        demoteLocationReferenceClaims(
+          db,
+          and(
+            eq(sequenceLocations.libraryLocationId, id),
+            exists(
+              db
+                .select({ one: sql`1` })
+                .from(locationLibrary)
+                .where(holds)
+            )
+          ) ?? sql`0`
+        ),
+        db
+          .update(locationLibrary)
+          .set({
+            referenceImageUrl,
+            referenceImagePath,
+            referenceInputHash: inputHash,
+            pendingReferenceClaimId: null,
+            updatedAt: new Date(),
+          })
+          .where(holds),
+        db
+          .select({ path: locationLibrary.referenceImagePath })
+          .from(locationLibrary)
+          .where(eq(locationLibrary.id, id)),
+      ]);
+      if (!row) throw new Error(`LibraryLocation ${id} not found`);
+      return row.path === referenceImagePath;
     },
   };
 }

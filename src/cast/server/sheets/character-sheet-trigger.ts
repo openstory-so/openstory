@@ -9,10 +9,46 @@ import { characterToBible } from '@/cast/server/bibles-from-scoped';
 import { resolveSheetImageModel } from '@/cast/sheet-image-model';
 import { resolveSequenceStyleConfig } from '@/look/style-config';
 import type { CharacterSheetWorkflowInput } from '@/platform/server/workflow/types';
-import {
-  computeCharacterSheetHashFromDto,
-  resolveCastTalent,
+import { computeCharacterSheetHashFromDto } from '@/cast/server/workflows/sheet-snapshots';
+import type {
+  CastTalentFields,
+  SheetPayload,
 } from '@/cast/server/workflows/sheet-snapshots';
+
+const NOT_CAST: CastTalentFields = {
+  referenceImageUrl: undefined,
+  talentMetadata: undefined,
+  talentSheetInputHash: null,
+  castTalentDescription: null,
+};
+
+/**
+ * Resolve what a cast talent feeds a character sheet: the default convergent
+ * talent sheet (image, look metadata, `input_hash`) and the talent's own
+ * description. One resolver for the regenerate/verify payload and the upload
+ * stamp, so they cannot drift.
+ */
+export async function resolveCastTalent(
+  scopedDb: Pick<ScopedDb, 'talent'>,
+  talentId: string | null
+): Promise<CastTalentFields> {
+  if (!talentId) return NOT_CAST;
+  const talent = await scopedDb.talent.getWithRelations(talentId);
+  if (!talent) return NOT_CAST;
+  // Exclude divergent sheets from the fallback identity. A divergent row's
+  // `inputHash` represents the parked workflow's snapshot, not the talent's
+  // current upstream identity — binding a downstream character sheet to it
+  // would fork off a stale lineage from first-time generation onward.
+  const convergentSheets = talent.sheets.filter((s) => !s.divergedAt);
+  const defaultSheet =
+    convergentSheets.find((s) => s.isDefault) ?? convergentSheets[0];
+  return {
+    referenceImageUrl: defaultSheet?.imageUrl ?? undefined,
+    talentMetadata: defaultSheet?.metadata ?? undefined,
+    talentSheetInputHash: defaultSheet?.inputHash ?? null,
+    castTalentDescription: talent.description,
+  };
+}
 
 export async function buildRegenerateCharacterSheetPayload(params: {
   scopedDb: ScopedDb;
@@ -27,7 +63,7 @@ export async function buildRegenerateCharacterSheetPayload(params: {
   character: CharacterWithSheet;
   /** Generate-time pick; omit to reuse the live version's model or the sequence default. */
   imageModel?: string | null;
-}): Promise<CharacterSheetWorkflowInput> {
+}): Promise<SheetPayload<CharacterSheetWorkflowInput>> {
   const { scopedDb, userId, teamId, sequence, character } = params;
   // The UI hides the button; this is the guard for every other caller.
   if (character.voiceOnly) {
@@ -55,7 +91,7 @@ export async function buildRegenerateCharacterSheetPayload(params: {
       )
     : null;
 
-  const partial: CharacterSheetWorkflowInput = {
+  const partial: SheetPayload<CharacterSheetWorkflowInput> = {
     userId,
     teamId,
     sequenceId: sequence.id,

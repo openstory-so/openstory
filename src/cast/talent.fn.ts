@@ -30,6 +30,7 @@ import {
 } from '@/platform/server/storage/file';
 import type { LibraryTalentSheetWorkflowInput } from '@/platform/server/workflow/types';
 import { computeLibraryTalentSheetHashFromDto } from '@/cast/server/workflows/sheet-snapshots';
+import type { SheetPayload } from '@/cast/server/workflows/sheet-snapshots';
 import { characterToBible } from '@/cast/server/bibles-from-scoped';
 import { releaseVoiceIfUnreferenced } from '@/cast/server/voice/release-voice';
 import { isTeamWritableTalent } from '@/cast/server/db/talent';
@@ -398,7 +399,7 @@ export const generateTalentSheetFn = createServerFn({ method: 'POST' })
 
     const imageMedia = talentRecord.media.filter((m) => m.type === 'image');
 
-    const workflowInput: LibraryTalentSheetWorkflowInput = {
+    const workflowInput: SheetPayload<LibraryTalentSheetWorkflowInput> = {
       userId: context.user.id,
       teamId: context.teamId,
       talentId: talentRecord.id,
@@ -410,7 +411,7 @@ export const generateTalentSheetFn = createServerFn({ method: 'POST' })
     workflowInput.snapshotInputHash =
       await computeLibraryTalentSheetHashFromDto(workflowInput);
 
-    const runId = await enqueueLibraryTalentSheet({
+    const runId = await enqueueLibraryTalentSheet(context.scopedDb, {
       talentId: talentRecord.id,
       workflowInput,
       activity: 'sheet',

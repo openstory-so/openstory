@@ -8,6 +8,7 @@ import { resolveSheetImageModel } from '@/cast/sheet-image-model';
 import { resolveSequenceStyleConfig } from '@/look/style-config';
 import type { LocationSheetWorkflowInput } from '@/platform/server/workflow/types';
 import { computeLocationSheetHashFromDto } from '@/cast/server/workflows/sheet-snapshots';
+import type { SheetPayload } from '@/cast/server/workflows/sheet-snapshots';
 
 /** Narrow DB text column to the typed union, defaulting to 'interior'. */
 function parseLocationType(
@@ -56,7 +57,7 @@ export async function buildRegenerateLocationSheetPayload(params: {
   location: SequenceLocationWithReference;
   /** Generate-time pick; omit to reuse the live version's model or the sequence default. */
   imageModel?: string | null;
-}): Promise<LocationSheetWorkflowInput> {
+}): Promise<SheetPayload<LocationSheetWorkflowInput>> {
   const { scopedDb, userId, teamId, sequence, location } = params;
   const style =
     sequence.styleConfig == null && sequence.styleId
@@ -88,7 +89,7 @@ export async function buildRegenerateLocationSheetPayload(params: {
       )
     : null;
 
-  const partial: LocationSheetWorkflowInput = {
+  const partial: SheetPayload<LocationSheetWorkflowInput> = {
     userId,
     teamId,
     sequenceId: sequence.id,

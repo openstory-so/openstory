@@ -3,7 +3,16 @@
  * Location CRUD, reference images, and shot-location matching.
  */
 
-import { and, eq, getTableColumns, inArray, isNull, sql } from 'drizzle-orm';
+import {
+  and,
+  eq,
+  getTableColumns,
+  inArray,
+  isNull,
+  or,
+  sql,
+} from 'drizzle-orm';
+import { generateId } from '@/platform/id';
 import { pageOf } from '@/platform/server/db/read-page';
 import type { PageOptions } from '@/platform/server/db/read-page';
 import type { Database } from '@/platform/server/db/client';
@@ -28,7 +37,42 @@ import { typedEntries } from '@/platform/typed-object';
 import type { LocationSheetInputHash } from '@/shots/input-hash';
 import { matchLocationsToScene } from '@/shots/scene-matching';
 import { createLocationSheetVariantsMethods } from './location-sheet-variants';
+import { keepClaimUnlessChanged } from './sheet-claims';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
+
+/** The bible fields the location sheet prompt and its hash read (#1113). */
+const SHEET_BIBLE_FIELDS = [
+  'name',
+  'type',
+  'timeOfDay',
+  'description',
+  'architecturalStyle',
+  'keyFeatures',
+  'colorPalette',
+  'lightingSetup',
+  'ambiance',
+] as const;
+
+/** The same inputs as SQL columns, plus the library link, for the upserts. */
+const LOCATION_SHEET_INPUT_COLUMNS = [
+  'name',
+  'type',
+  'time_of_day',
+  'description',
+  'architectural_style',
+  'key_features',
+  'color_palette',
+  'lighting_setup',
+  'ambiance',
+  'library_location_id',
+] as const;
+
+// A re-analysis that moves a sheet input revokes the reference claim (#1113).
+const keepLocationClaim = () =>
+  keepClaimUnlessChanged(
+    'pending_promote_reference_version_id',
+    LOCATION_SHEET_INPUT_COLUMNS
+  );
 
 /**
  * The user-editable location bible fields (#1108 Phase 2). Casting
@@ -91,7 +135,14 @@ export function createSequenceLocationsMethods(db: Database) {
   ): Promise<SequenceLocation> => {
     const [location] = await db
       .update(sequenceLocations)
-      .set({ ...data, updatedAt: new Date() })
+      .set({
+        ...data,
+        // The library link feeds the sheet: relinking revokes its claim (#1113).
+        ...(data.libraryLocationId !== undefined
+          ? { pendingPromoteReferenceVersionId: null }
+          : {}),
+        updatedAt: new Date(),
+      })
       .where(eq(sequenceLocations.id, id))
       .returning();
 
@@ -199,6 +250,7 @@ export function createSequenceLocationsMethods(db: Database) {
             // Reference OUTPUT is not re-written here — see the characters
             // twin (#1419).
             referenceStatus: data.referenceStatus,
+            pendingPromoteReferenceVersionId: keepLocationClaim(),
             // A re-analysis re-extracting a soft-deleted location revives it
             // (#1108) — mirrors the characters upsert.
             deletedAt: null,
@@ -255,6 +307,7 @@ export function createSequenceLocationsMethods(db: Database) {
               firstMentionSceneId: sql.raw(`excluded."first_mention_scene_id"`),
               firstMentionText: sql.raw(`excluded."first_mention_text"`),
               firstMentionLine: sql.raw(`excluded."first_mention_line"`),
+              pendingPromoteReferenceVersionId: keepLocationClaim(),
               deletedAt: null,
               updatedAt: new Date(),
             },
@@ -282,6 +335,48 @@ export function createSequenceLocationsMethods(db: Database) {
         .where(eq(sequenceLocations.sequenceId, sequenceId));
       // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
       return result.rowsAffected ?? 0;
+    },
+
+    /**
+     * Take the reference claim (#1113) — the twin of `characters.claimSheet`.
+     */
+    claimReference: async (
+      id: string,
+      opts: { markGenerating: boolean }
+    ): Promise<string> => {
+      const versionId = generateId();
+      await update(id, {
+        pendingPromoteReferenceVersionId: versionId,
+        ...(opts.markGenerating
+          ? { referenceStatus: 'generating' as const, referenceError: null }
+          : {}),
+      });
+      return versionId;
+    },
+
+    /** The twin of `characters.failSheetClaim`. */
+    failReferenceClaim: async (
+      id: string,
+      versionId: string,
+      error: string
+    ): Promise<void> => {
+      await db
+        .update(sequenceLocations)
+        .set({
+          pendingPromoteReferenceVersionId: null,
+          referenceStatus: 'failed',
+          referenceError: error,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(sequenceLocations.id, id),
+            or(
+              eq(sequenceLocations.pendingPromoteReferenceVersionId, versionId),
+              isNull(sequenceLocations.pendingPromoteReferenceVersionId)
+            )
+          )
+        );
     },
 
     updateReferenceStatus: async (
@@ -349,10 +444,20 @@ export function createSequenceLocationsMethods(db: Database) {
         if (value === undefined) continue;
         prev[key] = existing[key] ?? null;
       }
+      // Revokes an in-flight sheet run's claim when a field it reads moved.
+      const sheetInputMoved = SHEET_BIBLE_FIELDS.some(
+        (key) => data[key] !== undefined && data[key] !== existing[key]
+      );
       const [updatedRows] = await db.batch([
         db
           .update(sequenceLocations)
-          .set({ ...data, updatedAt: new Date() })
+          .set({
+            ...data,
+            ...(sheetInputMoved
+              ? { pendingPromoteReferenceVersionId: null }
+              : {}),
+            updatedAt: new Date(),
+          })
           .where(eq(sequenceLocations.id, id))
           .returning(),
         buildEventInsert(db, {

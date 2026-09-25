@@ -21,7 +21,13 @@ const mockEmit = vi.fn();
 
 vi.doMock('@/platform/server/workflow/client', () => ({
   triggerWorkflow: mockTriggerWorkflow,
+  triggerWorkflowRun: async (
+    ...args: Parameters<typeof mockTriggerWorkflow>
+  ) => ({ workflowRunId: await mockTriggerWorkflow(...args), reused: false }),
 }));
+const sheetClaim = {
+  claimSheet: vi.fn(async () => true),
+};
 vi.doMock('@/platform/realtime', () => ({
   getTalentChannel: () => ({ emit: mockEmit }),
 }));
@@ -67,6 +73,7 @@ function scopedDb(row: ReturnType<typeof talentRow>): ScopedDb {
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only getWithRelations
   return {
     talent: {
+      ...sheetClaim,
       getWithRelations: vi.fn(async () => row),
     },
   } as unknown as ScopedDb;

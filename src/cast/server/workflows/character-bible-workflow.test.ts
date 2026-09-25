@@ -6,7 +6,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CharacterBibleEntry } from '@/shots/scene-analysis.schema';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
-import type { CharacterBibleWorkflowInput } from '@/platform/server/workflow/types';
+import type {
+  CharacterBibleWorkflowInput,
+  CharacterSheetWorkflowInput,
+} from '@/platform/server/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 
 const mockSpawnAndAwaitChild = vi.fn();
@@ -65,6 +68,7 @@ function makeScopedDb(): WorkflowScopedDb {
   return {
     characters: {
       create: characterCreate,
+      claimSheet: vi.fn(async (id: string) => `ver-${id}`),
       createPendingVoiceClaim,
       markVoiceClaimTerminal,
     },
@@ -347,5 +351,45 @@ describe('CharacterBibleWorkflow voice-only characters', () => {
       'failed',
       'workflow binding missing'
     );
+  });
+});
+
+describe('CharacterBibleWorkflow pipeline sheets are tracked (#1113)', () => {
+  it('claims each sheet and stamps the hash a regenerate of the row would compute', async () => {
+    const { computeCharacterSheetHashFromDto } =
+      await import('./sheet-snapshots');
+    const { characterToBible } =
+      await import('@/cast/server/bibles-from-scoped');
+
+    await makeWorkflow().runBody(makeEvent([sam]), makeStep(), makeScopedDb());
+
+    const [spawnCall] = mockSpawnAndAwaitChild.mock.calls;
+    if (!spawnCall) throw new Error('expected a sheet child');
+    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the mocked spawn's second argument
+    const { childPayload } = spawnCall[1] as {
+      childPayload: CharacterSheetWorkflowInput;
+    };
+    const [row] = characterCreate.mock.calls[0] ?? [];
+    if (!row) throw new Error('expected the character row');
+
+    expect(childPayload.sheetVersionId).toBe(`ver-${row.id}`);
+    expect(childPayload.snapshotInputHash).toBeDefined();
+
+    // The staleness check hashes the stored row, not the LLM entry: a
+    // pipeline sheet must not read "stale" the moment it lands.
+    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the insert row plus the read-side sheet fields
+    const stored = {
+      ...row,
+      sheetImageUrl: null,
+      sheetImagePath: null,
+      sheetGeneratedAt: null,
+      sheetInputHash: null,
+    } as unknown as Parameters<typeof characterToBible>[0];
+    expect(
+      await computeCharacterSheetHashFromDto({
+        ...childPayload,
+        characterMetadata: characterToBible(stored),
+      })
+    ).toBe(childPayload.snapshotInputHash);
   });
 });

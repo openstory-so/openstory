@@ -60,6 +60,39 @@ const CLAIM_DOMAINS: Record<string, ClaimDomain> = {
     promote: 'videoVariants.selectIfPendingPromoteIs',
     userSelect: 'videoVariants.select',
   },
+  // Sheets (#1113): pointer claims on the parent row naming the id the run's
+  // result will carry. The row is appended at completion (no pending row),
+  // so a claim miss parks it as divergent in the same batch.
+  'character sheets': {
+    tables: ['character_sheet_variants'],
+    claim: 'characters.claimSheet',
+    clear: 'characters.failSheetClaim',
+    promote: 'characterSheetVariants.promoteIfPending',
+    userSelect: 'characterSheetVariants.select',
+  },
+  'location sheets': {
+    tables: ['location_sheet_variants'],
+    claim: 'sequenceLocations.claimReference',
+    clear: 'sequenceLocations.failReferenceClaim',
+    promote: 'locationSheetVariants.promoteIfPending',
+    userSelect: 'locationSheetVariants.select',
+  },
+  // The library location keeps its reference on the row; its parked results
+  // share `location_sheet_variants` with the sequence locations above.
+  'library location references': {
+    tables: ['location_library'],
+    claim: 'locations.claimReference',
+    clear: 'locations.clearReferenceClaimIf',
+    promote: 'locations.updateReferenceIfClaimed',
+    userSelect: 'locationSheetVariants.promoteAtomically',
+  },
+  'talent sheets': {
+    tables: ['talent_sheets', 'talent_sheet_variants'],
+    claim: 'talent.claimSheet',
+    clear: 'talent.clearSheetClaimIf',
+    promote: 'talent.landSheet',
+    userSelect: 'talentSheetVariants.promoteAtomically',
+  },
   // Pointer claim, taken together with the generating husk (#1715).
   voices: {
     tables: ['character_voice_versions'],
@@ -104,14 +137,8 @@ const CLAIM_DOMAINS: Record<string, ClaimDomain> = {
  * the goal; growing it is a reviewed act.
  */
 const EXCEPTIONS: Record<string, string> = {
-  // Sheets detect drift by a write-time hash compare and park divergent
-  // variants. #1113 moves them onto the pending-claim pattern; remove these
-  // three when it lands.
-  character_sheet_variants: '#1113',
-  talent_sheet_variants: '#1113',
-  location_sheet_variants: '#1113',
   // Music parks a divergent variant and promotes by copying onto
-  // `sequences.music*` — the same pre-claim shape as sheets. Not migrated yet.
+  // `sequences.music*` — the pre-claim shape sheets had before #1113.
   // The music prompt run appends and mirrors onto `sequences.musicPrompt`
   // with no claim. Both music tables move together.
   sequence_music_variants: 'music: divergent-variant model, not yet claimed',
@@ -147,6 +174,9 @@ const UNCLAIMED_WRITERS: readonly ScopedMethod[] = [
   'shotPromptVersions.write',
   'shotPromptVersions.writeAiVersion',
   'characters.updateVoice',
+  'characters.updateSheet',
+  'sequenceLocations.updateReference',
+  'locations.updateReference',
 ];
 const UNCLAIMED_CALL_SITES: Record<string, string> = {
   // The pipeline's prompt passes take no claim: their output is selected,
@@ -167,6 +197,14 @@ const UNCLAIMED_CALL_SITES: Record<string, string> = {
     'pre-#1786 user edit; the rescue write is select: false',
   'src/stills/server/workflows/soften-image-prompt.ts: framePromptVersions.write':
     'select: false, lands unselected (#1786)',
+  // A sheet payload queued before #1113 carries no claim (drain path). The
+  // library talent twin is `talent.sheets.create`, nested past this scan.
+  'src/cast/server/workflows/character-sheet-workflow.ts: characters.updateSheet':
+    'pre-#1113 payload, no claim',
+  'src/cast/server/workflows/location-sheet-workflow.ts: sequenceLocations.updateReference':
+    'pre-#1113 payload, no claim',
+  'src/cast/server/workflows/library-location-sheet-workflow.ts: locations.updateReference':
+    'pre-#1113 payload, no claim',
   // A pre-#1715 payload has no husk to claim (drain path).
   'src/cast/server/workflows/character-voice-workflow.ts: characters.updateVoice':
     'pre-#1715 payload, no husk',

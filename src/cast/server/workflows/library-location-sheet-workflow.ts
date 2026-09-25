@@ -25,11 +25,8 @@ import type {
   LibraryLocationSheetWorkflowInput,
   LibraryLocationSheetWorkflowResult,
 } from '@/platform/server/workflow/types';
-import {
-  decideSheetDivergence,
-  saveDivergentLocationSheet,
-} from './sheet-divergence';
-import { computeLibraryLocationSheetHashCurrent } from './sheet-snapshots';
+import { saveDivergentLibraryLocationSheet } from './sheet-divergence';
+import { computeLibraryLocationSheetHashFromDto } from './sheet-snapshots';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { getLogger } from '@/platform/logger';
 
@@ -169,7 +166,9 @@ export class LibraryLocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<Li
         storeGeneratedPng(
           result.imageUrls[0],
           STORAGE_BUCKETS.LOCATIONS,
-          `${input.teamId}/${input.sequenceId}/${input.locationDbId}/preview.png`
+          // Unique per run: a fixed name let a run that later parks overwrite
+          // the bytes behind the live reference's URL.
+          `${input.teamId}/${input.sequenceId}/${input.locationDbId}/preview_${generateId()}.png`
         ),
     });
     const previewStorageResult = previewGeneration.stored;
@@ -241,50 +240,50 @@ export class LibraryLocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<Li
     });
 
     // Step 6: Publish the preview as the location's reference — the single
-    // write that opens `waitForLocationReferences`' gate. Gated on divergence:
-    // if the location was renamed/re-described while this run was in flight the
-    // artifact is parked as a variant and the live reference is left alone.
-    const snapshotHash = input.snapshotInputHash ?? null;
+    // write that opens `waitForLocationReferences`' gate. Through the claim
+    // (#1113): if the location was renamed/re-described, or a newer run or the
+    // user's pick took the reference while this run was in flight, the preview
+    // is parked as a variant and the live reference is left alone.
     const { diverged } = await step.do(
       'update-location-preview',
       async (): Promise<{ diverged: boolean }> => {
-        const currentHash = snapshotHash
-          ? await computeLibraryLocationSheetHashCurrent(
-              input,
-              scopedDb.liveRead
-            )
-          : null;
-        const decision = decideSheetDivergence(snapshotHash, currentHash);
-
-        if (decision.kind === 'divergent') {
-          logger.warn('[LibraryLocationSheetWorkflow:cf] divergence detected', {
-            locationDbId: input.locationDbId,
-            snapshotInputHash: decision.snapshotInputHash,
-            currentInputHash: decision.currentInputHash,
-            storagePath: previewStorageResult.path,
-          });
-          await saveDivergentLocationSheet({
-            scopedDb,
-            parent: { type: 'library_location', id: input.locationDbId },
-            model: input.imageModel ?? DEFAULT_IMAGE_MODEL,
-            url: previewStorageResult.url,
-            storagePath: previewStorageResult.path,
-            workflowRunId: event.instanceId,
-            snapshotInputHash: decision.snapshotInputHash,
-          });
-          return { diverged: true };
+        const claimId = input.referenceClaimId;
+        // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a run queued before #1113 has no claim
+        if (!claimId) {
+          await scopedDb.locations.updateReference(
+            input.locationDbId,
+            previewStorageResult.url,
+            previewStorageResult.path,
+            input.snapshotInputHash
+          );
+          return { diverged: false };
         }
-
-        logger.info(
-          `[LibraryLocationSheetWorkflow:cf] Updating location with preview image`
-        );
-        await scopedDb.locations.updateReference(
+        const snapshotHash =
+          input.snapshotInputHash ??
+          (await computeLibraryLocationSheetHashFromDto(input));
+        const landed = await scopedDb.locations.updateReferenceIfClaimed(
           input.locationDbId,
+          claimId,
           previewStorageResult.url,
           previewStorageResult.path,
-          snapshotHash ?? undefined
+          snapshotHash
         );
-        return { diverged: false };
+        if (landed) return { diverged: false };
+
+        logger.warn('[LibraryLocationSheetWorkflow:cf] claim moved; parked', {
+          locationDbId: input.locationDbId,
+          storagePath: previewStorageResult.path,
+        });
+        await saveDivergentLibraryLocationSheet({
+          scopedDb,
+          libraryLocationId: input.locationDbId,
+          model: input.imageModel ?? DEFAULT_IMAGE_MODEL,
+          url: previewStorageResult.url,
+          storagePath: previewStorageResult.path,
+          workflowRunId: event.instanceId,
+          snapshotInputHash: snapshotHash,
+        });
+        return { diverged: true };
       }
     );
 
@@ -321,12 +320,22 @@ export class LibraryLocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<Li
   protected override async onFailure({
     event,
     error,
+    scopedDb,
   }: {
     event: Readonly<WorkflowEvent<LibraryLocationSheetWorkflowInput>>;
     error: string;
     scopedDb: WorkflowScopedDb;
   }): Promise<void> {
     const input = event.payload;
+
+    // Clear this run's claim only while it still holds it (#1113).
+    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a run queued before #1113 has no claim
+    if (input.referenceClaimId) {
+      await scopedDb.locations.clearReferenceClaimIf(
+        input.locationDbId,
+        input.referenceClaimId
+      );
+    }
 
     logger.error(
       `[LibraryLocationSheetWorkflow:cf] Sheet generation failed for location ${input.locationName}: ${error}`

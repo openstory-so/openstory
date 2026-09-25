@@ -10,6 +10,7 @@ import { isTeamWritableTalent } from '@/cast/server/db/talent';
 import { getLogger } from '@/platform/logger';
 import type { LibraryTalentSheetWorkflowInput } from '@/platform/server/workflow/types';
 import { computeLibraryTalentSheetHashFromDto } from '@/cast/server/workflows/sheet-snapshots';
+import type { SheetPayload } from '@/cast/server/workflows/sheet-snapshots';
 import {
   analyzeTalentMediaForTeam,
   sheetMetadataFromAnalysis,
@@ -71,7 +72,7 @@ export async function maybePromoteOrGenerateSheet(
     return;
   }
 
-  const workflowInput: LibraryTalentSheetWorkflowInput = {
+  const workflowInput: SheetPayload<LibraryTalentSheetWorkflowInput> = {
     userId: params.userId,
     teamId: params.teamId,
     talentId: talentRecord.id,
@@ -85,7 +86,7 @@ export async function maybePromoteOrGenerateSheet(
   workflowInput.snapshotInputHash =
     await computeLibraryTalentSheetHashFromDto(workflowInput);
 
-  await enqueueLibraryTalentSheet({
+  await enqueueLibraryTalentSheet(params.scopedDb, {
     talentId: talentRecord.id,
     workflowInput,
     activity: uploadedSheetUrl ? 'portrait' : 'sheet',
