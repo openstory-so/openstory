@@ -125,6 +125,8 @@ bun setup --prod                   # Production config + deploy (--deploy, --pr-
 
 **Branch + commit conventions:** Branches must be named `<issue-number>-feature-name` (e.g. `393-improve-readme`). Lefthook extracts the issue number and tags commits with `#<issue>` automatically. See `CONTRIBUTING.md`. Lefthook also runs quality checks pre-commit.
 
+**Push completed work proactively.** When the user has authorized pushing or finishing an existing PR, commit and push validated follow-up fixes to that PR branch without asking again. Do not leave completed fixes local or stop to offer to push. Keep normal hooks and checks enabled; force pushes still require explicit authorization.
+
 ---
 
 ## Server Handler Pattern
