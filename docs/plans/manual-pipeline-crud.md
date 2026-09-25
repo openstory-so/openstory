@@ -196,7 +196,8 @@ Every row is asserted as a verdict in `src/shots/server/staleness-matrix.test.ts
 | Scene continuity tags                                  | Prompts (the tags pick which bible entries they hash)                | Stills (they attach the sheets their prompt names)                 |
 | Character look (physicalDescription, clothing, …)      | Visual + motion prompts; character sheet                             | Unrelated characters' artifacts                                    |
 | Character personality / movement                       | Motion prompt                                                        | Visual prompt, sheet                                               |
-| Character or location name, consistency tag            | Nothing (labels)                                                     | Everything                                                         |
+| Character or location name; location consistency tag   | Nothing (labels)                                                     | Everything                                                         |
+| Character consistency tag                              | That character's sheet                                               | Prompts, stills, clips                                             |
 | Character or location sheet re-selected (regen/upload) | Stills using it (selected version id); clips that were sent it       | Prompts                                                            |
 | Cast talent's sheet or description                     | Character sheet                                                      | Prompts                                                            |
 | Location bible fields                                  | Prompts; location sheet                                              | —                                                                  |
