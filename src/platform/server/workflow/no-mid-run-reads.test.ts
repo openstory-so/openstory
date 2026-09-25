@@ -654,7 +654,7 @@ describe('workflows read no unsanctioned mutable DB state mid-run', () => {
         unsanctioned,
         `${file} reads mutable DB state that no allow-list entry covers: ${unsanctioned.join(', ')}.\n` +
           `Snapshot it into the workflow payload at the trigger instead. If the read is genuinely ` +
-          `unavoidable (billing balance, credential, sibling-workflow polling, divergence recompute, ` +
+          `unavoidable (billing balance, credential, sibling-workflow polling, ` +
           `own-write claim read, existence guard), route it through scopedDb.liveRead and add it to ` +
           `ALLOWED_LIVE_READS in ${'src/platform/server/workflow/no-mid-run-reads.test.ts'} with a ReadBucket and a ` +
           `one-line justification. If no bucket fits, that IS the answer: the value belongs on the payload.`

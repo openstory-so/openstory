@@ -159,6 +159,8 @@ This is the core orchestration workflow. It runs durable units via `step.do()`, 
 
 Uses streaming LLM output to create scene rows progressively as scenes arrive. Shots exist only once a scene's shot-list entry has landed (#1593); each shot then gets a preview image, copied into R2.
 
+**Before the split, element vision.** Elements uploaded with the sequence run `/element-vision`, which writes their description late. `waitForElementVision` scans the trigger's `elementIds` (`wait-element-vision-scan-rows`), polls only the ones still analyzing, and returns every row it read; those rows are the elements the split uses (#1113 — there is no second `load-elements` read). Vision still running at the timeout fails the run.
+
 **Steps:**
 
 Since #1035 the split runs as **two parallel LLM calls** (sibling `step.do`s via `Promise.all`), both over the same line-gutter copy of the script, and the LLM never re-emits script text. #1486 adds a third call after slices exist, so a scene can own 1..N shots; since #1585 that call also carries every spoken line, so `originalScript.dialogue` comes from it (the slice regex is only a streaming preview):
@@ -230,6 +232,7 @@ flowchart LR
 - Generates a reference sheet image for each on-screen character (one `CharacterSheetWorkflow` child per character, in parallel); a failed child leaves that row `failed` and the sequence stays at Casting so Generate can retry the misses (`Generate 1 / 3 references`, #1727)
 - A voice-only character (#1585) gets no child: its row is created `completed` with no sheet version, it is left out of the billed sheet count, and it never reaches the still prompt or the reference images. The motion prompt still sees it, for delivery
 - Uses talent match images as reference when available
+- Claims each sheet before spawning its child (`claim-character-sheet-<n>`, `characters.claimSheet`) and stamps the child with the sheet's input hash, computed from the cast bible the row holds, so a pipeline sheet is tracked like a regenerated one (#1113). A bible edit while the child runs revokes the claim and the sheet parks as divergent — see **Sheet claims** below
 - Uploads sheets to R2 storage
 - Makes a voice for each speaking character with voices on (one `CharacterVoiceWorkflow` child each, `src/cast/server/workflows/character-voice-workflow.ts`; also triggered by Generate on the character card). The provider is chosen when the child is triggered (`newVoiceProvider`, carried as `voiceProvider`): **ElevenLabs** runs one Voice Design call and saves the top preview as a voice; **Seed** (#1765) has an LLM write a three-part range script, then records `takes` range reads side by side (`seed-range-read-<n>`, one step each). Each read is transcribed and checked against the script (`recordCheckedTake`), cut into normal / quiet / loud clips, isolated and stored in R2 inside its own step, so only `{ url, path }` crosses. A read that fails the check is retried by its step, and a take that still fails is dropped. The voice is the first take that passed, and the run fails only when none do. Each take is billed as three ledger lines: Seed Audio, Scribe and isolation. See `docs/architecture/seed-voices.md`
 
@@ -238,7 +241,10 @@ flowchart LR
 - Inserts location records into DB from location bible
 - Generates establishing-shot reference images for each location (parallel)
 - Uses library location reference images when matched
+- Claims each reference (`claim-location-sheet-<n>`) and stamps the child with its input hash, including the matched library location's reference hash (#1113)
 - Uploads to R2 storage, updates DB
+
+**Sheet claims (#1113)** — every sheet workflow (`CharacterSheetWorkflow`, `LocationSheetWorkflow`, `LibraryTalentSheetWorkflow`, `LibraryLocationSheetWorkflow`) lands through a claim its trigger took (the bible workflows, the regenerate and recast server fns, the library talent/location funnels). The payload carries the claim id (`sheetVersionId`, `referenceVersionId`, `sheetId`, `referenceClaimId`). The final write (`reconcile-database`, `reconcile-create-sheet`, `update-location-preview`) promotes only while the claim still names the run; otherwise the result parks as a divergent variant, `generation.stale:detected` fires, and the live sheet is untouched. A parked library talent sheet skips the headshot crop. Edits to a sheet's inputs, a recast or relink, a cast talent's sheet or description change, and a style change revoke claims; there is no write-time hash recompute. `onFailure` clears only the run's own claim. A run queued before #1113 has no claim id and lands unconditionally. The library location preview is stored under a unique name per run so a parked run cannot overwrite the live reference's bytes.
 
 **Frame Prompt Batch Workflow** (`src/stills/server/workflows/frame-prompt-batch-workflow.ts`):
 

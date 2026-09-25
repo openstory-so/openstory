@@ -142,21 +142,21 @@ Two mechanisms, so the rule survives without a reviewer noticing it:
 - **`WorkflowScopedDb`** (`src/platform/server/db/scoped-workflow.ts`) is what `runImpl` receives instead of `ScopedDb`: the same write surface with every read-shaped method (`get*`, `list*`, `find*`, `resolve*`, `has*`, …) removed from every domain. A mid-run read is a type error. The narrowing is purely type-level — `toWorkflowScopedDb` returns the same object.
 - **Three named hatches** carry what a run legitimately cannot know at the trigger. One catch-all would make every exception look alike; the name at the call site is the argument:
 
-  | hatch                                   | what it is                                | why it's safe                                                                                             |
-  | --------------------------------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-  | `scopedDb.credentials.…`                | `resolveKey` / `resolveLlmKey`, flat      | returns a secret, never a row a generation decision can turn on                                           |
-  | `scopedDb.claims.<domain>.getById…(id)` | an append-only row by an id the run holds | the id names one immutable row — nothing for a concurrent edit to substitute                              |
-  | `scopedDb.liveRead.<domain>.…`          | live by design                            | divergence recomputation, sibling-workflow polling, balance + spawn-time billing guards, existence guards |
+  | hatch                                   | what it is                                | why it's safe                                                                   |
+  | --------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------- |
+  | `scopedDb.credentials.…`                | `resolveKey` / `resolveLlmKey`, flat      | returns a secret, never a row a generation decision can turn on                 |
+  | `scopedDb.claims.<domain>.getById…(id)` | an append-only row by an id the run holds | the id names one immutable row — nothing for a concurrent edit to substitute    |
+  | `scopedDb.liveRead.<domain>.…`          | live by design                            | sibling-workflow polling, balance + spawn-time billing guards, existence guards |
 
   The split is load-bearing rather than cosmetic: `claims` **cannot express a selection pointer** and `credentials` **cannot express a row**, so the two failure modes behind this work — rendering from a pointer a concurrent edit moved, and treating key access as licence to read data — are unspellable, not merely discouraged.
 
-  `src/platform/server/workflow/no-mid-run-reads.test.ts` scans `src/lib/workflows/*.ts` and fails on any read not in its per-file allow-list, on an allow-list entry whose call site is gone, and on a read whose recorded category doesn't match the hatch its call site used (a `CLAIM-BY-ID` read reached via `liveRead` fails). Helper modules that declare a narrowed dependency type (`SheetSnapshotReadDb`, `WaitForSheetsReadDb`, `FrameImageReadDb`, `PreflightScopedDb`, `CredentialScopedDb`) are handed the hatch by their workflow caller.
+  `src/platform/server/workflow/no-mid-run-reads.test.ts` scans `src/lib/workflows/*.ts` and fails on any read not in its per-file allow-list, on an allow-list entry whose call site is gone, and on a read whose recorded category doesn't match the hatch its call site used (a `CLAIM-BY-ID` read reached via `liveRead` fails). Helper modules that declare a narrowed dependency type (`WaitForSheetsReadDb`, `FrameImageReadDb`, `PreflightScopedDb`, `CredentialScopedDb`) are handed the hatch by their workflow caller. There is no divergence-recompute bucket any more: sheets were its last users, and they land through claims (#1113).
 
 **Chained renders resolve their prompt by id, never by pointer.** `completePendingAiVersion` can end a run on either of two rows: the claim it completed, or — when a completed row already carries the same `(parent, input_hash)` and the same text — the existing row the claim retires in favour of. The prompt children return whichever one ended up live as `finalVersionId` (`FramePromptResult`, `MotionPromptWorkflowResult`), and the parent re-reads that id with `getByIdForFrame` / `getByIdForShot`. Resolving the collision by comparing the selection pointer's `inputHash` against the plan's live hash instead would be wrong twice over: `input_hash` pins the generation _inputs_, not the text, so a same-inputs-different-text version passes the check; and the pointer can move between the check and the render. No child result means the prompt didn't land, which is a stand-down, not a fallback.
 
 The one wide hatch is `scopedDb.stalenessPlanning` (full `ScopedDb`), used only by `update-stale-shots-workflow.ts` for the planner: staleness IS a live-state comparison, so there is nothing to freeze, and the same code renders the "what's stale" preview in the server fns. The same test asserts it has exactly one consumer.
 
-Helper modules shared between server fns and workflows declare a narrowed dependency type instead of taking `ScopedDb` — `SheetSnapshotReadDb`, `WaitForSheetsReadDb`, `FrameImageReadDb`, `PreflightScopedDb`, `CredentialScopedDb` — so a workflow hands over `scopedDb.liveRead` and a server fn its full `ScopedDb`.
+Helper modules shared between server fns and workflows declare a narrowed dependency type instead of taking `ScopedDb` — `WaitForSheetsReadDb`, `FrameImageReadDb`, `PreflightScopedDb`, `CredentialScopedDb` — so a workflow hands over `scopedDb.liveRead` and a server fn its full `ScopedDb`.
 
 ### Per-workflow snapshot modules
 
@@ -165,7 +165,7 @@ There is no centralized `snapshot` config on `OpenStoryWorkflowEntrypoint`. Each
 1. **Builds the inlined DTO at trigger time** (server function / parent workflow) from live scoped-DB state — e.g. `buildRegenerateShotSnapshot` in `regenerate-shots-snapshot.ts`, scene snapshot builders in `sheet-snapshots.ts`.
 2. **Hashes the DTO** for tamper detection — e.g. `computeRegenerateShotsBatchHash`, `computeShotImagesHashFromDto`, per-artifact helpers in `image-workflow-snapshot.ts`.
 3. **Validates at workflow start** inside `step.do('validate-snapshot')` by recomputing the hash from `event.payload` and comparing to `snapshotInputHash`.
-4. **Branches at write time** by recomputing a current hash from live state and comparing to the frozen `snapshotInputHash` — convergent results apply as primary; divergent results route through `sheet-divergence.ts`, `music-workflow.ts`, or (for images) pointer-retention in `image-workflow.ts` (see Pillar 3).
+4. **Lands through a claim** (see [The claim contract](#the-claim-contract-1130)), not by re-hashing live state: a result the claim still names is promoted; a missed claim lands in history (images, video, prompts) or parks as a divergent variant (sheets, #1113). Music is the last workflow that still recomputes a live hash at write time (`music-workflow.ts`).
 
 ```ts
 // illustrative — RegenerateShotsWorkflow start-time validation
@@ -189,9 +189,10 @@ For the workflows that do content generation, "input" is specifically:
 
 - **`regenerateShotsWorkflow`** (`RegenerateShotsWorkflowInput`, `src/shots/server/workflows/regenerate-shots-workflow.ts`) — **reference implementation.** Trigger time inlines `shotSnapshots` (per-shot prompt, reference URLs, and sheet hashes via `buildRegenerateShotSnapshot`), freezes `aspectRatio`, and sets `snapshotInputHash` from `computeRegenerateShotsBatchHash`. The workflow body reads only the inlined DTO; start-time validation runs in `step.do('validate-snapshot')`.
 - **`shotImagesWorkflow`** (`ShotImagesWorkflowInput`, `src/stills/server/workflows/shot-images-workflow.ts`) — inlines `sceneSnapshots` (per-scene upstream sheet hashes) and optional `snapshotInputHash`. Hash helpers live in `image-workflow-snapshot.ts` and `sheet-snapshots.ts`.
-- **`characterSheetWorkflow`** (`CharacterSheetWorkflowInput`) — inlines character/talent metadata and reference URLs; carries `snapshotInputHash`. Write-time divergence routes through `decideSheetDivergence` / `saveDivergentCharacterSheet` in `sheet-divergence.ts`.
-- **`locationSheetWorkflow`** (`LocationSheetWorkflowInput`) — same pattern for location sheets and library-location references.
-- **`libraryTalentSheetWorkflow`** (`LibraryTalentSheetWorkflowInput`) — inlines `referenceImageUrls`, `talentDescription`, and `snapshotInputHash`. Talent media is append-only in practice, so the snapshot is the list of reference URLs themselves.
+- **`characterSheetWorkflow`** (`CharacterSheetWorkflowInput`) — inlines character/talent metadata and reference URLs; carries `snapshotInputHash` (stamped on the version row) and the claim `sheetVersionId`. Lands through `characterSheetVariants.promoteIfPending`; a missed claim parks the row as divergent and `reportParkedCharacterSheet` emits `stale:detected`. Pipeline sheets (`CharacterBibleWorkflow`) are claimed and hashed like any other since #1113 — they used to carry no hash and read "untracked".
+- **`locationSheetWorkflow`** (`LocationSheetWorkflowInput`) — the same, with `referenceVersionId` and `locationSheetVariants.promoteIfPending`; `LocationBibleWorkflow` claims and hashes its children.
+- **`libraryTalentSheetWorkflow`** (`LibraryTalentSheetWorkflowInput`) — inlines `referenceImageUrls`, `talentDescription`, `snapshotInputHash`, and the claim `sheetId` (the `talent_sheets` id it writes). Lands through `talent.landSheet`; a missed claim parks the sheet and skips the headshot.
+- **`libraryLocationSheetWorkflow`** (`LibraryLocationSheetWorkflowInput`) — carries `referenceClaimId`; publishes its preview through `locations.updateReferenceIfClaimed`, else parks it in `location_sheet_variants`.
 
 Most migrations are additive — payloads already carry most of the data. The work is inlining hashes, validating at start, and branching at write time.
 
@@ -201,39 +202,33 @@ Cloudflare Workflows has event payload size limits, but our payloads are dominat
 
 ## Pillar 3: Divergence-on-completion
 
-Before writing a generation result, compare hashes:
+A generation result lands through the claim its trigger took. Sheets are the example (#1113):
 
 ```ts
 // illustrative — character-sheet-workflow reconcile step
-const snapshotInputHash = input.snapshotInputHash ?? null;
-const currentHash = snapshotInputHash
-  ? await computeCharacterSheetHashCurrent(input, scopedDb)
-  : null;
-const decision = decideSheetDivergence(snapshotInputHash, currentHash);
-
-if (decision.kind === 'divergent') {
-  // Parks in character_sheet_variants and emits generation.stale:detected
-  await saveDivergentCharacterSheet({
-    scopedDb,
-    characterId,
-    sequenceId,
-    model,
-    url,
-    storagePath,
-    workflowRunId,
-    snapshotInputHash: decision.snapshotInputHash,
-  });
-  return { kind: 'divergent' };
-}
-
-// Inputs unchanged — apply as the primary sheet (existing behaviour)
-await scopedDb.characters.updateSheet(
+const landing = await scopedDb.characterSheetVariants.promoteIfPending({
   characterId,
+  versionId: input.sheetVersionId, // the claim the trigger took
   url,
   storagePath,
-  snapshotInputHash
-);
+  inputHash: input.snapshotInputHash ?? null,
+  model,
+  workflowRunId,
+});
+if (landing === 'parked') {
+  // The claim moved (an input edit, a newer kickoff, the user's pick): the
+  // row is in character_sheet_variants with divergedAt, the live sheet is
+  // untouched. Tell the UI.
+  await reportParkedCharacterSheet({
+    sequenceId,
+    characterId,
+    versionId,
+    snapshotInputHash,
+  });
+}
 ```
+
+Divergence is event-driven: nothing re-hashes live state at write time. Every write that changes a sheet input, or picks a sheet, clears the claim in the same batch as its own write — character bible edits (only the fields the sheet reads), a recast, a cast talent's new/changed/removed sheet or edited description, a sequence location's bible or library link, the library location's reference, and the sequence's style; for the library runs, the talent's description or a deleted reference photo, and the library location's description (a rename never diverged: neither library hash covers the name). The claim is what the run checks.
 
 Per-shot **image** artifacts use the same hash comparison inside `image-workflow`, but mid-flight drift no longer routes to divergent `frame_variants` rows or `generation.stale:detected` (#989): the workflow appends a new `frame_variants` version, stamps `inputHash`, and deliberately does not repoint `selectedImageVersionId`. `regenerate-shots-workflow` fans out to `image-workflow` children and does not perform its own divergence emit — `divergedShotIds` is always empty today.
 
@@ -245,9 +240,9 @@ Two models — do not conflate them:
 
 A picked 3×3 tile (`kind: 'framing'`) has no snapshot of its own: it inherits the grid sheet's `inputHash`, which the grid run stamps from the trigger's `tileHashInput` hashed under the **upscale** model — staleness recomputes from the selected version's model, and the tile is written with that one (#712). A sheet made before #712 has no stamp, so its tiles read `'untracked'`.
 
-**B. Divergent alternates (sheets, music, legacy shot video/audio).** Write-time hash mismatch parks a row in a `*_variants` table with `divergedAt`, then emits `generation.stale:detected` with a required `divergedVariantId`:
+**B. Divergent alternates (sheets, music, legacy shot video/audio).** A missed sheet claim (#1113) — or, for music, a write-time hash mismatch — parks a row in a `*_variants` table with `divergedAt`, then emits `generation.stale:detected` with a required `divergedVariantId`:
 
-- **Character / location / talent sheets** → `character_sheet_variants`, `location_sheet_variants`, `talent_sheet_variants` via `sheet-divergence.ts`.
+- **Character / location / talent sheets** → `character_sheet_variants`, `location_sheet_variants`, `talent_sheet_variants`. Character and sequence-location rows park inside their land batch (`src/cast/server/db/sheet-claims.ts`); library-location previews and talent sheets park via `sheet-divergence.ts`.
 - **Sequence music** → `sequence_music_variants` via `music-workflow.ts`.
 - **Shot video / audio** (when the divergent path is used) → `shot_variants` with partial unique indexes `shot_variants_primary_key` (WHERE `divergedAt IS NULL`) and `shot_variants_divergent_key` (WHERE `divergedAt IS NOT NULL`). No production workflow emits divergent **image** rows on `shot_variants` today — images moved to model A.
 
@@ -277,7 +272,7 @@ A picked 3×3 tile (`kind: 'framing'`) has no snapshot of its own: it inherits t
 ]),
 ```
 
-`divergedVariantId` is required on every branch — emitters in `sheet-divergence.ts` and `music-workflow.ts` park the divergent artifact first, then reference the new variant row's id. Image drift (model A) does **not** use this event. This gives the UI a single event shape across sheet/music (and future video) divergence without adding new channels.
+`divergedVariantId` is required on every branch — the divergent artifact is parked first (in the sheet land batch, `sheet-divergence.ts` or `music-workflow.ts`), then the event names its row id. Image drift (model A) does **not** use this event. This gives the UI a single event shape across sheet/music (and future video) divergence without adding new channels.
 
 ## The claim contract (#1130)
 
@@ -298,12 +293,18 @@ Each domain spells the three methods its own way:
 | Voices                   | `characters.createPendingVoiceClaim`        | `characters.markVoiceClaimTerminal`             | `characters.promoteVoiceClaimIfPending`    |
 | Image and motion prompts | `*PromptVersions.createPending`             | `*PromptVersions.markTerminal`                  | `*PromptVersions.completePendingAiVersion` |
 | Dialogue                 | `shotDialogue.claimRecording`               | `shotDialogue.failClaims`                       | `shotDialogue.appendRecording`             |
+| Character sheets         | `characters.claimSheet`                     | `characters.failSheetClaim`                     | `characterSheetVariants.promoteIfPending`  |
+| Location sheets          | `sequenceLocations.claimReference`          | `sequenceLocations.failReferenceClaim`          | `locationSheetVariants.promoteIfPending`   |
+| Library location refs    | `locations.claimReference`                  | `locations.clearReferenceClaimIf`               | `locations.updateReferenceIfClaimed`       |
+| Library talent sheets    | `talent.claimSheet`                         | `talent.clearSheetClaimIf`                      | `talent.landSheet`                         |
 
 Stills and video keep the claim as a pointer column on the parent row. Prompts keep it on the pending row itself (live status plus `pendingInputHash`). Dialogue keeps it in a `shot_dialogue_claims` row, because a section row cannot be its own placeholder. Upscale takes the stills claim like any other still (#1129). Previews (`frame_variants.kind = 'preview'`) are never selectable, so they never claim.
 
+**Sheets (#1113)** keep a pointer claim on the parent row (`characters.pendingPromoteSheetVersionId`, `sequence_locations.pendingPromoteReferenceVersionId`, `talent.pendingPromoteSheetId`, `location_library.pendingReferenceClaimId`). The claim names the id the run's result row _will_ carry — they bend rule 1: there is no pending row, because the sheet history tables are read by many surfaces and a row appended at completion under the claimed id needs no failed-husk bookkeeping. Completion is one batch: append the row, move the pointer only while the claim names it, else mark the row divergent (a miss parks rather than landing as plain history, so the sheet banner offers it), and settle the status to `completed` only if no newer run holds the claim. A failure marks the sheet failed only while it holds the claim or nobody does. Library talent triggers can be deduplicated onto an in-flight run; the trigger then hands the claim back (`talent.restoreSheetClaimIf`, compare-and-set) so it does not revoke the run it reused. A payload queued before #1113 has no claim and lands unconditionally (pinned as unclaimed writers).
+
 **Prompts are only partly claimed.** Only a regeneration the user queued (a run with `targetVersionId`) takes a claim. The pipeline's prompt passes (analysis, a prompt run with no `targetVersionId`, the motion batch) call `write` / `writeAiVersion`, which select their output with no claim and demote live claims, superseding a user override (it stays in history). Two drain paths do the same: a pre-#1786 run's typed edit, and a pre-#1715 voice payload with no husk. These call sites are pinned, not endorsed.
 
-**Pinned by** `src/platform/server/workflow/claim-discipline.test.ts`. It scans the schema for every table a workflow writes results into (a `…WorkflowRunId` column) or that holds generated history (`*_variants`, `*_versions`). Each must belong to a claim domain or sit on its exceptions list with a reason. It also checks that each domain still has its three methods, that no workflow calls a domain's user selector (`frameVariants.select` and the like), and that every workflow call to an unclaimed pointer writer (prompt `write` / `writeAiVersion`, `characters.updateVoice`) is on its pinned list. The exceptions today are sheets (#1113), music, the authored script and dialogue-line versions (a re-analysis replaces them by design), and tables with no selection pointer (studio assets, exports, provenance, legacy `shot_variants`, the sequence run slot).
+**Pinned by** `src/platform/server/workflow/claim-discipline.test.ts`. It scans the schema for every table a workflow writes results into (a `…WorkflowRunId` column) or that holds generated history (`*_variants`, `*_versions`). Each must belong to a claim domain or sit on its exceptions list with a reason. It also checks that each domain still has its three methods, that no workflow calls a domain's user selector (`frameVariants.select` and the like), and that every workflow call to an unclaimed pointer writer (prompt `write` / `writeAiVersion`, `characters.updateVoice`, and the pre-#1113 sheet drain writers `characters.updateSheet`, `sequenceLocations.updateReference`, `locations.updateReference`) is on its pinned list. The exceptions today are music, the authored script and dialogue-line versions (a re-analysis replaces them by design), and tables with no selection pointer (studio assets, exports, provenance, legacy `shot_variants`, the sequence run slot).
 
 ## How it composes with existing patterns
 
