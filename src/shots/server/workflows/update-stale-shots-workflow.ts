@@ -123,6 +123,7 @@ type UpdateStage =
   | 'visual-prompt'
   | 'motion-prompt'
   | 'image'
+  | 'dialogue'
   | 'video'
   | 'music-prompt'
   | 'music';
@@ -135,6 +136,8 @@ type UpdateStaleShotsResult = {
   visualPrompts: number;
   motionPrompts: number;
   images: number;
+  /** Target shots whose dialogue reading the up-front recording updated. */
+  dialogues: number;
   videos: number;
   musicPrompts: number;
   musicTracks: number;
@@ -192,6 +195,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
       visualPrompts: 0,
       motionPrompts: 0,
       images: 0,
+      dialogues: 0,
       videos: 0,
       musicPrompts: 0,
       musicTracks: 0,
@@ -827,7 +831,9 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           }
         })
       : false;
-    const dialogueRecorded: Promise<void> =
+    // Settles to the recorded clips, or to why the scene audio was not
+    // recorded — never rejects, so a render awaiting it is never failed by it.
+    const dialogueRecorded: Promise<DialogueOutcome> =
       dialogueRecording && canRecordScenes
         ? spawnAndAwaitChild<
             DialogueAudioWorkflowInput,
@@ -850,15 +856,24 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             awaitStepName: 'await-dialogue-audio',
             timeout: '60 minutes',
           }).then(
-            () => undefined,
-            (error: unknown) => {
+            (result): DialogueOutcome => ({
+              clipsByShotId: result.clipsByShotId,
+            }),
+            (error: unknown): DialogueOutcome => {
               logger.warn(
                 '[UpdateStaleShotsWorkflow] Scene dialogue not recorded up front; each shot records its own',
                 { sequenceId, err: error }
               );
+              return {
+                error: error instanceof Error ? error.message : String(error),
+              };
             }
           )
-        : Promise.resolve();
+        : Promise.resolve<DialogueOutcome>(
+            dialogueRecording
+              ? { error: 'Insufficient credits for dialogue audio' }
+              : { clipsByShotId: {} }
+          );
 
     // ============================================================
     // PHASE 2: fan out — one job per shot, so a shot's scene step runs once
@@ -1303,11 +1318,14 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
         })(musicToRun)
       : null;
 
-    await Promise.allSettled([
-      ...jobs,
-      ...(musicJob ? [musicJob] : []),
-      dialogueRecorded,
-    ]);
+    await Promise.allSettled([...jobs, ...(musicJob ? [musicJob] : [])]);
+    const dialogue = dialogueTargetOutcome(
+      plan.targets,
+      dialogueRecording,
+      await dialogueRecorded
+    );
+    counters.dialogues = dialogue.updated;
+    failures.push(...dialogue.failures);
 
     // A user-initiated action that partly failed is a production issue, not a
     // warning — `error` is the only severity that surfaces in error tracking.
@@ -1331,6 +1349,56 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
       skipped: allSkipped,
     };
   }
+}
+
+type DialogueOutcome =
+  | { clipsByShotId: Record<string, readonly unknown[]> }
+  | { error: string };
+
+/**
+ * What the up-front recording did for the targets that asked for dialogue.
+ * A target counts when the recording returned its audio; neighbours that
+ * came back with the scene do not. A target without audio fails at
+ * 'dialogue' only when no video render follows — that render records the
+ * shot itself, and fails as 'video' if it cannot.
+ */
+export function dialogueTargetOutcome(
+  targets: ReadonlyArray<
+    Pick<PlanTarget, 'shotId' | 'regenDialogue' | 'regenVideo'>
+  >,
+  recording: {
+    scenes: ReadonlyArray<{ voiced: ReadonlyArray<{ shotId: string }> }>;
+  } | null,
+  outcome: DialogueOutcome
+): { updated: number; failures: UpdateFailure[] } {
+  const recordedShotIds = new Set(
+    recording?.scenes.flatMap((job) => job.voiced.map((line) => line.shotId))
+  );
+  let updated = 0;
+  const failures: UpdateFailure[] = [];
+  for (const target of targets) {
+    if (!target.regenDialogue || !recordedShotIds.has(target.shotId)) continue;
+    if ('clipsByShotId' in outcome) {
+      if ((outcome.clipsByShotId[target.shotId]?.length ?? 0) > 0) {
+        updated += 1;
+        continue;
+      }
+      if (!target.regenVideo) {
+        failures.push({
+          shotId: target.shotId,
+          stage: 'dialogue',
+          error: 'Dialogue not recorded for this shot',
+        });
+      }
+    } else if (!target.regenVideo) {
+      failures.push({
+        shotId: target.shotId,
+        stage: 'dialogue',
+        error: outcome.error,
+      });
+    }
+  }
+  return { updated, failures };
 }
 
 function toFailure(

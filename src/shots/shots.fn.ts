@@ -981,6 +981,8 @@ const updateStaleShotsResultSchema = z.object({
   // Depth-picker levels (#1085). Defaulted so a run from a pre-picker
   // deployment still parses during version skew.
   videos: z.number().default(0),
+  // Dialogue depth (#1703/#1740), defaulted for the same version skew.
+  dialogues: z.number().default(0),
   musicPrompts: z.number().default(0),
   musicTracks: z.number().default(0),
   failures: z.array(

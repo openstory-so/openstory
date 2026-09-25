@@ -101,6 +101,41 @@ describe('buildUpdateStalePreview', () => {
     ).toBe(0);
   });
 
+  it('prices a recording only video needs on the video level, once per scene (#1740)', async () => {
+    const { estimateTtsCost } = await import('@/billing/elevenlabs-pricing');
+    const { ttsCharacterCount } = await import('@/motion/dialogue-tts');
+    estimateVideoCost.mockReturnValue(micros(500_000));
+    const sceneA = [
+      { shotId: 'a', index: 0, text: 'Hello there.', tone: 'calm' },
+      { shotId: 'b', index: 0, text: 'General.', tone: 'dry' },
+    ];
+    const sceneC = [{ shotId: 'c', index: 0, text: 'Run.', tone: 'urgent' }];
+    const preview = buildUpdateStalePreview(
+      plan(
+        [
+          // Scene A: one shot re-records, the other only re-renders.
+          target({ shotId: 'a', regenDialogue: true }),
+          target({ shotId: 'b', regenVideo: true }),
+          // Scene C: no dialogue target — its recording rides the video.
+          target({ shotId: 'c', regenVideo: true }),
+        ],
+        null,
+        {
+          scenes: [{ voiced: sceneA }, { voiced: sceneC }],
+          maxDurationSeconds: 15,
+        }
+      ),
+      {},
+      null
+    );
+    expect(preview.costByLevel.dialogue).toBe(
+      estimateTtsCost(ttsCharacterCount(sceneA))
+    );
+    expect(preview.costByLevel.video).toBe(
+      1_000_000 + estimateTtsCost(ttsCharacterCount(sceneC))
+    );
+  });
+
   it('unknown pricing yields null, never an invented number', () => {
     estimateImageCost.mockReturnValue(null);
     const preview = buildUpdateStalePreview(

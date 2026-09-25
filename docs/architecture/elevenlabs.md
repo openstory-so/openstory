@@ -198,7 +198,13 @@ so every voice or reading change also invalidates `segmentKeys.list`.
 counts a stale still: the rail dots, the scene/sequence summary and the confirm
 all see them. Dialogue is its own cascade depth between images and video, so a
 voice change can be re-recorded without paying to re-render the clips; the
-confirm names the two costs separately. Smart retry records each scene once
+confirm names the two costs separately. A scene's recording is priced once, on
+the earliest depth that needs it: dialogue when a shot in it re-records, video
+when only a render does (#1740). The run counts each target whose recording
+came back (`dialogues`), never its neighbours, and a dialogue-only target left
+without audio — child failed, or the balance gate refused — fails at stage
+`dialogue`; a target with a video render left to run falls back to recording
+itself there instead (`dialogueTargetOutcome`). Smart retry records each scene once
 (`snapshotBatchDialogue`) before it fans out, the same as Generate all motion
 and Update Stale. A conversation over `DIALOGUE_TAKE_CHUNK_CHARS` (2,000)
 splits at a **shot boundary**, never inside a shot (`chunkTakeLines`); each
