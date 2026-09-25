@@ -316,9 +316,9 @@ async function shotVerdicts(
   });
 }
 
-/** Stamp every shot artifact from `BASE`, as its generation would have. */
-async function stampShot(): Promise<Stamps> {
-  const { liveHashes } = await shotVerdicts(BASE, {
+/** Stamp every shot artifact from `world`, as its generation would have. */
+async function stampShot(world: World = BASE): Promise<Stamps> {
+  const { liveHashes } = await shotVerdicts(world, {
     still: 'unstamped',
     visualPrompt: 'unstamped',
     motionPrompt: 'unstamped',
@@ -681,7 +681,8 @@ const SHOT_MATRIX: ShotRow[] = [
         visualPrompt: 'Alice walks along the beach at dawn, holding the LAMP.',
       };
     },
-    stale: ['still', 'visualPrompt', 'motionPrompt'],
+    // A token is a label (#1827): the hashes read it as the element's identity.
+    stale: [],
   },
   {
     mutation: 'element deleted',
@@ -727,9 +728,11 @@ describe('staleness matrix — a shot and its clip', () => {
 
   it('a pre-#1785 stamp of a voice-only Alice stays fresh on deploy', async () => {
     // The pre-#1785 digest of a voice-only Alice is the digest of a voiced
-    // one: that shape never read the flag.
-    const stamps = await stampShot();
-    const verdicts = await shotVerdicts(aliceVoiceOnly, stamps, [
+    // one: that shape never read the flag. Without elements, today's stamp
+    // of a voiced Alice is that digest (no token to read as a label, #1827).
+    const noElements = (w: World): World => ({ ...w, elements: [] });
+    const stamps = await stampShot(noElements(BASE));
+    const verdicts = await shotVerdicts(noElements(aliceVoiceOnly), stamps, [
       { characterId: 'c-alice', voiceOnly: true, createdAt: BEFORE },
     ]);
     expect(verdicts).toMatchObject({

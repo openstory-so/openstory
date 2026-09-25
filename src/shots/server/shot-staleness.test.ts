@@ -24,6 +24,8 @@ vi.doMock('@/shots/input-hash', () => ({
   motionPromptInputHashMatches: vi.fn(
     async (stored: string | null) => stored === (await hashMotionPromptInput())
   ),
+  // Snapshots are stubbed, so no still digest has a legacy twin here.
+  shotImageInputHashMatches: vi.fn(async () => false),
 }));
 
 const { computeShotStaleness, loadShotStalenessReads } =

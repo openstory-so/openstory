@@ -26,6 +26,7 @@ import {
   computeVisualPromptInputHashV4,
   motionPromptInputHashMatches,
   sha256Hex,
+  shotImageInputHashMatches,
   visualPromptInputHashMatches,
   voiceOnlyMovedSince,
   type CharacterSheetHashInput,
@@ -38,6 +39,7 @@ import {
 } from './input-hash';
 import { deriveShotDialogueLines, shotDialogue } from './shot-dialogue';
 import { sceneForShot } from './server/shot-work-items';
+import { replaceTokenInText } from '@/cast/cascade-rename';
 
 const baseThumbnail: ShotImageHashInput = {
   kind: 'thumbnail',
@@ -49,6 +51,7 @@ const baseThumbnail: ShotImageHashInput = {
   characterSheetHashes: ['char-a', 'char-b'],
   locationSheetHashes: ['loc-1'],
   elementReferenceHashes: ['el-x'],
+  elementTokens: [],
 };
 
 const SHA256_HEX = /^[0-9a-f]{64}$/;
@@ -1225,5 +1228,164 @@ describe('voiceOnlyMovedSince (#1787)', () => {
     expect(voiceOnlyMovedSince([v('a', false, -2), v('b', true, 1)], at)).toBe(
       false
     );
+  });
+});
+
+describe('an element token is a label (#1827)', () => {
+  const rename = (text: string) => replaceTokenInText(text, 'LAMP', 'LANTERN');
+  const style = migrateStyleConfigV1ToV2({
+    mood: 'neutral',
+    artStyle: 'cinematic',
+    lighting: 'natural',
+    colorPalette: ['neutral'],
+    cameraWork: 'static',
+    referenceFilms: [],
+    colorGrading: 'neutral',
+  });
+  const lamp = {
+    token: 'LAMP',
+    description: 'Brass oil lamp',
+    consistencyTag: 'brass-lamp',
+    firstMention: { sceneId: 's1', text: 'LAMP', lineNumber: 1 },
+  };
+  const ctx = {
+    scene: {
+      sceneId: 's1',
+      sceneNumber: 1,
+      originalScript: { extract: 'Alice lifts the LAMP.', dialogue: [] },
+    } satisfies Scene,
+    styleConfig: style,
+    characterBible: [],
+    locationBible: [],
+    elementBible: [lamp],
+    aspectRatio: '16:9',
+    analysisModel: 'anthropic/claude-haiku-4.5',
+    startingFrameImageUrl: null,
+    referenceOnly: false,
+    dialogue: { presence: false, lines: [] },
+  };
+  // What `cascadeRename` leaves behind: the script and the element row renamed.
+  const renamed = {
+    ...ctx,
+    scene: {
+      ...ctx.scene,
+      originalScript: {
+        extract: rename(ctx.scene.originalScript.extract),
+        dialogue: [],
+      },
+    },
+    elementBible: [{ ...lamp, token: 'LANTERN' }],
+  };
+  // Stamped by the code before #1827, for the same `ctx`.
+  const PRE_1827_VISUAL =
+    '5c96256639d98d522ab58c65bca08f8f5604fead092138ce84ec3afbc6768aa1';
+  const PRE_1827_MOTION =
+    '7ae1498cd6855f1fc4dbd5d49813863057a9a77ada41e916765fdb73735908b0';
+  const NODE = { legacyScriptDialogue: false, voiceOnlyMoved: false };
+  const UNMOVED = { voiceOnlyMoved: false };
+
+  it('a rename leaves the visual and motion prompt stamps fresh', async () => {
+    const visual = await hashVisualPromptInput(ctx);
+    const motion = await hashMotionPromptInput(ctx);
+    expect(await hashVisualPromptInput(renamed)).toBe(visual);
+    expect(await hashMotionPromptInput(renamed)).toBe(motion);
+  });
+
+  it('a description edit or a different element named still stales both', async () => {
+    const described = {
+      ...ctx,
+      elementBible: [{ ...lamp, description: 'Green glass lamp' }],
+    };
+    const badge = {
+      ...lamp,
+      token: 'BADGE',
+      description: 'Police badge',
+    };
+    const twoElements = { ...ctx, elementBible: [lamp, badge] };
+    const namesBadge = {
+      ...twoElements,
+      scene: {
+        ...ctx.scene,
+        originalScript: { extract: 'Alice lifts the BADGE.', dialogue: [] },
+      },
+    };
+    expect(await hashVisualPromptInput(described)).not.toBe(
+      await hashVisualPromptInput(ctx)
+    );
+    expect(await hashMotionPromptInput(described)).not.toBe(
+      await hashMotionPromptInput(ctx)
+    );
+    expect(await hashVisualPromptInput(namesBadge)).not.toBe(
+      await hashVisualPromptInput(twoElements)
+    );
+    expect(await hashMotionPromptInput(namesBadge)).not.toBe(
+      await hashMotionPromptInput(twoElements)
+    );
+  });
+
+  it('a pre-#1827 prompt digest still verifies until the inputs move', async () => {
+    expect(
+      await visualPromptInputHashMatches(PRE_1827_VISUAL, ctx, UNMOVED)
+    ).toBe(true);
+    expect(await motionPromptInputHashMatches(PRE_1827_MOTION, ctx, NODE)).toBe(
+      true
+    );
+    // A rename made before deploy is the one case that still reads stale.
+    expect(
+      await visualPromptInputHashMatches(PRE_1827_VISUAL, renamed, UNMOVED)
+    ).toBe(false);
+  });
+
+  const still: ShotImageHashInput = {
+    kind: 'thumbnail',
+    visualPrompt: 'Alice raises the LAMP over the LAMPLIGHTER sign',
+    imageModel: 'nano_banana_2',
+    aspectRatio: '16:9',
+    size: null,
+    seed: null,
+    characterSheetHashes: [],
+    locationSheetHashes: [],
+    elementReferenceHashes: ['https://r2/lamp.png'],
+    elementTokens: [{ token: 'LAMP', id: 'el-1' }],
+  };
+  const renamedStill: ShotImageHashInput = {
+    ...still,
+    visualPrompt: rename(still.visualPrompt),
+    elementTokens: [{ token: 'LANTERN', id: 'el-1' }],
+  };
+
+  it('a rename leaves the still stamp fresh', async () => {
+    expect(renamedStill.visualPrompt).toContain('LAMPLIGHTER');
+    expect(await computeShotImageInputHash(renamedStill)).toBe(
+      await computeShotImageInputHash(still)
+    );
+  });
+
+  it('a new element image, or a prompt edit, still stales the still', async () => {
+    const stamp = await computeShotImageInputHash(still);
+    expect(
+      await computeShotImageInputHash({
+        ...renamedStill,
+        elementReferenceHashes: ['https://r2/lamp-v2.png'],
+      })
+    ).not.toBe(stamp);
+    expect(
+      await computeShotImageInputHash({
+        ...still,
+        visualPrompt: 'Alice drops the LAMP',
+      })
+    ).not.toBe(stamp);
+  });
+
+  it('a pre-#1827 still digest still verifies', async () => {
+    // Before #1827 the still hashed its prompt raw — the digest an input
+    // with no elements produces today.
+    const legacy = await computeShotImageInputHash({
+      ...still,
+      elementTokens: [],
+    });
+    expect(legacy).not.toBe(await computeShotImageInputHash(still));
+    expect(await shotImageInputHashMatches(legacy, still)).toBe(true);
+    expect(await shotImageInputHashMatches(legacy, renamedStill)).toBe(false);
   });
 });

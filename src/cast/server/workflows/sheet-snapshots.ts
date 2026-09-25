@@ -16,12 +16,15 @@ import {
   computeLibraryLocationReferenceInputHash,
   computeShotImageInputHash,
   computeLocationSheetInputHash,
+  elementTokensOf,
   computeTalentSheetInputHash,
   locationSheetInputHashMatches,
   sha256Hex,
+  shotImageInputHashMatches,
   type CharacterBibleHashFields,
   type CharacterSheetInputHash,
   type CharacterSheetTalentHashFields,
+  type ElementToken,
   type LibraryLocationReferenceInputHash,
   type LocationSheetBibleHashFields,
   type LocationSheetInputHash,
@@ -323,6 +326,7 @@ export function resolveSceneShotImageReferences(params: {
   characterSheetHashes: string[];
   locationSheetHashes: string[];
   elementReferenceHashes: string[];
+  elementTokens: ElementToken[];
 } {
   const { scene, visualPrompt, characters, locations, elements } = params;
   const matchedCharacters = matchCharactersToShotImage(characters, {
@@ -356,6 +360,7 @@ export function resolveSceneShotImageReferences(params: {
     elementReferenceHashes: sortedRefHashes(
       matchedElements.map((e) => e.imageUrl)
     ),
+    elementTokens: elementTokensOf(matchedElements),
   };
 }
 
@@ -363,12 +368,12 @@ export function resolveSceneShotImageReferences(params: {
  * Hash one scene's snapshot — used to populate `thumbnail_input_hash` on the
  * shot row and `input_hash` on the matching primary `shot_variants` row.
  */
-export function computeShotImageSceneHash(
+function shotImageSceneHashInput(
   scene: StillHashInput,
   imageModel: string,
   aspectRatio: string
-): Promise<ShotImageInputHash> {
-  const hashInput: ShotImageHashInput = {
+): ShotImageHashInput {
+  return {
     kind: 'thumbnail',
     visualPrompt: scene.visualPrompt,
     imageModel,
@@ -378,8 +383,31 @@ export function computeShotImageSceneHash(
     characterSheetHashes: scene.characterSheetHashes,
     locationSheetHashes: scene.locationSheetHashes,
     elementReferenceHashes: scene.elementReferenceHashes,
+    elementTokens: scene.elementTokens,
   };
-  return computeShotImageInputHash(hashInput);
+}
+
+export function computeShotImageSceneHash(
+  scene: StillHashInput,
+  imageModel: string,
+  aspectRatio: string
+): Promise<ShotImageInputHash> {
+  return computeShotImageInputHash(
+    shotImageSceneHashInput(scene, imageModel, aspectRatio)
+  );
+}
+
+/** Verify a still's stored hash, accepting the pre-#1827 digest too. */
+export function shotImageSceneHashMatches(
+  stored: string | null,
+  scene: StillHashInput,
+  imageModel: string,
+  aspectRatio: string
+): Promise<boolean> {
+  return shotImageInputHashMatches(
+    stored,
+    shotImageSceneHashInput(scene, imageModel, aspectRatio)
+  );
 }
 
 /**

@@ -194,12 +194,15 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     summary:
       'A prop, effect, sound or clip referenced by @token. Detected in the script at the Script stage or added by hand, then yours to edit.',
     counts: [
-      'Token and description (prompts)',
+      'Description (prompts)',
       'Image (still)',
       'Audio or video clip: sent as a reference when the video model takes one',
       'Its media URL, stamped on every clip it was sent to (referenceKeys)',
     ],
-    ignored: ['Consistency tag'],
+    ignored: [
+      'Token: a label, so a rename stales nothing (text reads it as the element)',
+      'Consistency tag',
+    ],
   },
   // --- You set -------------------------------------------------------------
   {
@@ -607,7 +610,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     band: 'renders',
     summary: 'The rendered start frame for a shot.',
     counts: [
-      'Selected visual prompt text',
+      'Selected visual prompt text, element tokens read as the element',
       'Image model',
       'Aspect ratio',
       'Selected character sheet versions',
