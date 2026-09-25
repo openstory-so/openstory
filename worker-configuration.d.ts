@@ -61,6 +61,7 @@ interface __BaseEnv_Env {
 	CHARACTER_SHEET_WORKFLOW: Workflow<Parameters<import("./src/server").CharacterSheetWorkflow['run']>[0]['payload']>;
 	CHARACTER_VOICE_WORKFLOW: Workflow<Parameters<import("./src/server").CharacterVoiceWorkflow['run']>[0]['payload']>;
 	DIALOGUE_AUDIO_WORKFLOW: Workflow<Parameters<import("./src/server").DialogueAudioWorkflow['run']>[0]['payload']>;
+	DIALOGUE_TAKE_WORKFLOW: Workflow<Parameters<import("./src/server").DialogueTakeWorkflow['run']>[0]['payload']>;
 	LOCATION_SHEET_WORKFLOW: Workflow<Parameters<import("./src/server").LocationSheetWorkflow['run']>[0]['payload']>;
 	LIBRARY_TALENT_SHEET_WORKFLOW: Workflow<Parameters<import("./src/server").LibraryTalentSheetWorkflow['run']>[0]['payload']>;
 	LIBRARY_LOCATION_SHEET_WORKFLOW: Workflow<Parameters<import("./src/server").LibraryLocationSheetWorkflow['run']>[0]['payload']>;
@@ -152,6 +153,7 @@ declare namespace Cloudflare {
 		CHARACTER_SHEET_WORKFLOW: Workflow<Parameters<import("./src/server").CharacterSheetWorkflow['run']>[0]['payload']>;
 		CHARACTER_VOICE_WORKFLOW: Workflow<Parameters<import("./src/server").CharacterVoiceWorkflow['run']>[0]['payload']>;
 		DIALOGUE_AUDIO_WORKFLOW: Workflow<Parameters<import("./src/server").DialogueAudioWorkflow['run']>[0]['payload']>;
+		DIALOGUE_TAKE_WORKFLOW: Workflow<Parameters<import("./src/server").DialogueTakeWorkflow['run']>[0]['payload']>;
 		LOCATION_SHEET_WORKFLOW: Workflow<Parameters<import("./src/server").LocationSheetWorkflow['run']>[0]['payload']>;
 		LIBRARY_TALENT_SHEET_WORKFLOW: Workflow<Parameters<import("./src/server").LibraryTalentSheetWorkflow['run']>[0]['payload']>;
 		LIBRARY_LOCATION_SHEET_WORKFLOW: Workflow<Parameters<import("./src/server").LibraryLocationSheetWorkflow['run']>[0]['payload']>;
@@ -237,6 +239,7 @@ declare namespace Cloudflare {
 		CHARACTER_SHEET_WORKFLOW: Workflow<Parameters<import("./src/server").CharacterSheetWorkflow['run']>[0]['payload']>;
 		CHARACTER_VOICE_WORKFLOW: Workflow<Parameters<import("./src/server").CharacterVoiceWorkflow['run']>[0]['payload']>;
 		DIALOGUE_AUDIO_WORKFLOW: Workflow<Parameters<import("./src/server").DialogueAudioWorkflow['run']>[0]['payload']>;
+		DIALOGUE_TAKE_WORKFLOW: Workflow<Parameters<import("./src/server").DialogueTakeWorkflow['run']>[0]['payload']>;
 		LOCATION_SHEET_WORKFLOW: Workflow<Parameters<import("./src/server").LocationSheetWorkflow['run']>[0]['payload']>;
 		LIBRARY_TALENT_SHEET_WORKFLOW: Workflow<Parameters<import("./src/server").LibraryTalentSheetWorkflow['run']>[0]['payload']>;
 		LIBRARY_LOCATION_SHEET_WORKFLOW: Workflow<Parameters<import("./src/server").LibraryLocationSheetWorkflow['run']>[0]['payload']>;

@@ -62,6 +62,8 @@ export type AppendDialogueSpeechInput = {
   characterCount: number;
   /** Null for a speech no workflow made. */
   workflowRunId: string | null;
+  /** What an adopting section is: a generated speech, or a mic take (#1802). */
+  adoptedAs: 'generated' | 'mic';
   /** One per shot the call spoke. */
   sections: Array<{
     id: string;
@@ -501,7 +503,7 @@ export function createShotDialogueMethods(db: Database) {
               sourceKey: section.sourceKey,
               spokenLines: section.spokenLines,
               dialogueVersionId: section.dialogueVersionId,
-              source: section.adopt ? 'generated' : 'context',
+              source: section.adopt ? input.adoptedAs : 'context',
               workflowRunId: input.workflowRunId,
             })
             .onConflictDoNothing()

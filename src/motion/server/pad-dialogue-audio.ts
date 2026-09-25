@@ -57,8 +57,8 @@ export function wavHeader(
 }
 
 /**
- * Wrap raw PCM in a WAV header. Tests only: the call requests `wav_44100`,
- * so production never sees headerless PCM.
+ * Wrap raw PCM in a WAV header. Providers are asked for `wav_44100`, so the
+ * only headerless PCM is a mic take from the browser (#1802).
  */
 export function pcmToWav(
   pcm: Uint8Array,
@@ -156,6 +156,38 @@ export function trimmedEndSeconds(
   const padded = keep + TRIM_TAIL_PAD_SECONDS * bytesPerSecond;
   const end = Math.ceil(Math.min(to, padded) / frame) * frame;
   return Math.max(from, end) / bytesPerSecond;
+}
+
+/**
+ * Where speech STARTS in `[fromSeconds, toSeconds)` (#1802): the first
+ * audible sample, less a short lead so the first consonant is not clipped.
+ * A mic take opens on however long the user took to start talking. Kept
+ * whole (answers `fromSeconds`) when the window is silent or not 16-bit.
+ */
+export function trimmedStartSeconds(
+  bytes: Uint8Array,
+  fromSeconds: number,
+  toSeconds: number
+): number {
+  const fmt = parseWavHeader(bytes);
+  if (!fmt) {
+    throw new Error('Dialogue trim expected a PCM WAV');
+  }
+  const available = Math.min(fmt.dataSize, bytes.length - fmt.dataStart);
+  const { frame, bytesPerSecond, snap } = wavFrameMath(fmt, available);
+  const from = snap(fromSeconds);
+  const to = Math.max(from, snap(toSeconds));
+  if (fmt.bitsPerSample !== 16) return from / bytesPerSecond;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  for (let offset = from; offset + 2 <= to; offset += 2) {
+    const sample = view.getInt16(fmt.dataStart + offset, true) / 32_768;
+    if (Math.abs(sample) > SILENCE_THRESHOLD) {
+      const first = Math.trunc(offset / frame) * frame;
+      const lead = first - TRIM_TAIL_PAD_SECONDS * bytesPerSecond;
+      return Math.max(from, Math.trunc(lead / frame) * frame) / bytesPerSecond;
+    }
+  }
+  return from / bytesPerSecond;
 }
 
 /**
