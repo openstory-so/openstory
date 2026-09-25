@@ -15,9 +15,13 @@ import {
   shotHierarchicalOrder,
 } from '@/shots/server/db/shot-view-query';
 import {
+  characterBibleVersions,
+  characters,
   frames,
   frameVariants,
+  locationBibleVersions,
   renderSegments,
+  sequenceLocations,
   sequenceStyleVersions,
   sequences,
   shots,
@@ -731,7 +735,36 @@ export function createSequencesMethods(
     },
 
     delete: async (sequenceId: string): Promise<void> => {
-      await db.delete(sequences).where(eq(sequences.id, sequenceId));
+      // The #1600 version tables RESTRICT their parents' delete (the #612
+      // rebuild trap), so they go first, in the same batch as the cascade.
+      await db.batch([
+        db
+          .delete(sequenceStyleVersions)
+          .where(eq(sequenceStyleVersions.sequenceId, sequenceId)),
+        db
+          .delete(characterBibleVersions)
+          .where(
+            inArray(
+              characterBibleVersions.characterId,
+              db
+                .select({ id: characters.id })
+                .from(characters)
+                .where(eq(characters.sequenceId, sequenceId))
+            )
+          ),
+        db
+          .delete(locationBibleVersions)
+          .where(
+            inArray(
+              locationBibleVersions.locationId,
+              db
+                .select({ id: sequenceLocations.id })
+                .from(sequenceLocations)
+                .where(eq(sequenceLocations.sequenceId, sequenceId))
+            )
+          ),
+        db.delete(sequences).where(eq(sequences.id, sequenceId)),
+      ]);
       // An automatic style has no FK to its sequence (#1213); drop it here.
       await db
         .delete(styles)

@@ -41,7 +41,7 @@ export const characterBibleVersions = snakeCase.table(
       .notNull(),
     characterId: text()
       .notNull()
-      .references(() => characters.id, { onDelete: 'cascade' }),
+      .references(() => characters.id, { onDelete: 'restrict' }),
     name: text({ length: 255 }).notNull(),
     age: text(),
     gender: text(),
@@ -78,7 +78,7 @@ export const locationBibleVersions = snakeCase.table(
       .notNull(),
     locationId: text()
       .notNull()
-      .references(() => sequenceLocations.id, { onDelete: 'cascade' }),
+      .references(() => sequenceLocations.id, { onDelete: 'restrict' }),
     name: text({ length: 255 }).notNull(),
     type: text(),
     timeOfDay: text(),

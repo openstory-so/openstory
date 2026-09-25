@@ -2,6 +2,7 @@
  * Sequence-owned style snapshot: create/style-change copy the catalog recipe
  * so later catalog edits cannot stale existing sequences.
  */
+import { clearVersionRows } from '@/platform/server/test/clear-version-rows';
 import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
 import { sequences, styles, teams, user } from '@/platform/server/db/schema';
@@ -46,6 +47,7 @@ afterAll(() => {
 });
 
 beforeEach(async () => {
+  await clearVersionRows(db);
   await db.delete(sequences);
   await db.delete(styles);
   await db.delete(teams);

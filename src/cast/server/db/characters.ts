@@ -778,16 +778,34 @@ export function createCharactersMethods(db: Database) {
       return (chars?.n ?? 0) + (tal?.n ?? 0);
     },
 
+    // Bible versions RESTRICT the parent delete (#1600, the #612 rebuild
+    // trap), so they go first in the same batch.
     delete: async (id: string): Promise<boolean> => {
-      const result = await db.delete(characters).where(eq(characters.id, id));
+      const [, result] = await db.batch([
+        db
+          .delete(characterBibleVersions)
+          .where(eq(characterBibleVersions.characterId, id)),
+        db.delete(characters).where(eq(characters.id, id)),
+      ]);
       // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
       return (result.rowsAffected ?? 0) > 0;
     },
 
     deleteBySequence: async (sequenceId: string): Promise<number> => {
-      const result = await db
-        .delete(characters)
-        .where(eq(characters.sequenceId, sequenceId));
+      const [, result] = await db.batch([
+        db
+          .delete(characterBibleVersions)
+          .where(
+            inArray(
+              characterBibleVersions.characterId,
+              db
+                .select({ id: characters.id })
+                .from(characters)
+                .where(eq(characters.sequenceId, sequenceId))
+            )
+          ),
+        db.delete(characters).where(eq(characters.sequenceId, sequenceId)),
+      ]);
       // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
       return result.rowsAffected ?? 0;
     },

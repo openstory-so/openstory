@@ -3,6 +3,7 @@
  * edit or user pick demotes, completion promotes only while the claim holds
  * and otherwise parks, and a failure clears only its own claim.
  */
+import { clearVersionRows } from '@/platform/server/test/clear-version-rows';
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { type Client, createClient } from '@libsql/client';
@@ -64,6 +65,7 @@ afterAll(() => {
 });
 
 beforeEach(async () => {
+  await clearVersionRows(db);
   for (const table of [
     characterSheetVariants,
     locationSheetVariants,

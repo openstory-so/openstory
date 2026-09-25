@@ -470,18 +470,36 @@ export function createSequenceLocationsMethods(db: Database) {
 
     update,
 
+    // Bible versions RESTRICT the parent delete (#1600, the #612 rebuild
+    // trap), so they go first in the same batch.
     delete: async (id: string): Promise<boolean> => {
-      const result = await db
-        .delete(sequenceLocations)
-        .where(eq(sequenceLocations.id, id));
+      const [, result] = await db.batch([
+        db
+          .delete(locationBibleVersions)
+          .where(eq(locationBibleVersions.locationId, id)),
+        db.delete(sequenceLocations).where(eq(sequenceLocations.id, id)),
+      ]);
       // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
       return (result.rowsAffected ?? 0) > 0;
     },
 
     deleteBySequence: async (sequenceId: string): Promise<number> => {
-      const result = await db
-        .delete(sequenceLocations)
-        .where(eq(sequenceLocations.sequenceId, sequenceId));
+      const [, result] = await db.batch([
+        db
+          .delete(locationBibleVersions)
+          .where(
+            inArray(
+              locationBibleVersions.locationId,
+              db
+                .select({ id: sequenceLocations.id })
+                .from(sequenceLocations)
+                .where(eq(sequenceLocations.sequenceId, sequenceId))
+            )
+          ),
+        db
+          .delete(sequenceLocations)
+          .where(eq(sequenceLocations.sequenceId, sequenceId)),
+      ]);
       // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
       return result.rowsAffected ?? 0;
     },

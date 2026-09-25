@@ -16,7 +16,7 @@ CREATE TABLE `character_bible_versions` (
 	`source` text NOT NULL,
 	`created_at` integer NOT NULL,
 	`created_by` text,
-	CONSTRAINT `fk_character_bible_versions_character_id_characters_id_fk` FOREIGN KEY (`character_id`) REFERENCES `characters`(`id`) ON DELETE CASCADE,
+	CONSTRAINT `fk_character_bible_versions_character_id_characters_id_fk` FOREIGN KEY (`character_id`) REFERENCES `characters`(`id`) ON DELETE RESTRICT,
 	CONSTRAINT `fk_character_bible_versions_created_by_user_id_fk` FOREIGN KEY (`created_by`) REFERENCES `user`(`id`) ON DELETE SET NULL
 );
 --> statement-breakpoint
@@ -36,7 +36,7 @@ CREATE TABLE `location_bible_versions` (
 	`source` text NOT NULL,
 	`created_at` integer NOT NULL,
 	`created_by` text,
-	CONSTRAINT `fk_location_bible_versions_location_id_sequence_locations_id_fk` FOREIGN KEY (`location_id`) REFERENCES `sequence_locations`(`id`) ON DELETE CASCADE,
+	CONSTRAINT `fk_location_bible_versions_location_id_sequence_locations_id_fk` FOREIGN KEY (`location_id`) REFERENCES `sequence_locations`(`id`) ON DELETE RESTRICT,
 	CONSTRAINT `fk_location_bible_versions_created_by_user_id_fk` FOREIGN KEY (`created_by`) REFERENCES `user`(`id`) ON DELETE SET NULL
 );
 --> statement-breakpoint

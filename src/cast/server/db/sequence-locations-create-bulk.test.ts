@@ -10,6 +10,7 @@
  * reference-image columns, owned by the child LocationSheetWorkflow) while
  * bible fields refresh from the incoming row.
  */
+import { clearVersionRows } from '@/platform/server/test/clear-version-rows';
 
 import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
@@ -35,6 +36,7 @@ let teamId = '';
 let sequenceId = '';
 
 async function seed() {
+  await clearVersionRows(db);
   await db.delete(sequenceLocations);
   await db.delete(sequences);
   await db.delete(styles);

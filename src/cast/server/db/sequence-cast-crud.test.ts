@@ -12,6 +12,7 @@
  *   - a re-analysis upsert on the same (sequenceId, characterId/locationId)
  *     revives a soft-deleted row.
  */
+import { clearVersionRows } from '@/platform/server/test/clear-version-rows';
 
 import { charactersToBible } from '@/cast/server/bibles-from-scoped';
 import { hashVisualPromptInput } from '@/shots/input-hash';
@@ -27,6 +28,7 @@ import {
   sequenceElements,
   sequenceEvents,
   sequenceLocations,
+  sequenceStyleVersions,
   sequences,
   styles,
   teams,
@@ -41,6 +43,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createCharactersMethods } from './characters';
 import { createSequenceElementsMethods } from './sequence-elements';
 import { createSequenceLocationsMethods } from './sequence-locations';
+import { createSequencesMethods } from '@/sequences/server/db/sequences';
 
 let client: Client;
 let db: Database;
@@ -48,6 +51,7 @@ let sequenceId = '';
 let actorId = '';
 
 async function seed() {
+  await clearVersionRows(db);
   await db.delete(sequenceEvents);
   await db.delete(characterVoiceVersions);
   await db.delete(characters);
@@ -1230,5 +1234,52 @@ describe('bible history (#1600)', () => {
     expect(
       versions.find((v) => v.id === edited.selectedBibleVersionId)
     ).toMatchObject({ source: 'edit', createdBy: actorId });
+  });
+});
+
+describe('hard deletes clear the #1600 version rows they RESTRICT', () => {
+  it('characters, locations and the sequence delete with their versions', async () => {
+    const chars = createCharactersMethods(db);
+    const locs = createSequenceLocationsMethods(db);
+    const opts = { source: 'analysis' as const, createdBy: null };
+    const [a, b] = await Promise.all(
+      ['Ann', 'Bo'].map((name, i) =>
+        chars.create({ sequenceId, characterId: `char_${i}`, name }, opts)
+      )
+    );
+    const [x, y] = await locs.createBulk(
+      ['Beach', 'Diner'].map((name, i) => ({
+        sequenceId,
+        locationId: `loc_${i}`,
+        name,
+        referenceStatus: 'pending' as const,
+      })),
+      opts
+    );
+    if (!a || !b || !x || !y) throw new Error('test setup: create failed');
+
+    expect(await chars.delete(a.id)).toBe(true);
+    expect(await locs.delete(x.id)).toBe(true);
+
+    const [sequence] = await db
+      .select()
+      .from(sequences)
+      .where(eq(sequences.id, sequenceId));
+    if (!sequence) throw new Error('test setup: no sequence');
+    await db.insert(sequenceStyleVersions).values({
+      id: sequenceId,
+      sequenceId,
+      styleId: sequence.styleId,
+      config: STYLE_CONFIG,
+      source: 'backfill',
+    });
+    await createSequencesMethods(db, sequence.teamId, actorId).delete(
+      sequenceId
+    );
+
+    expect(await db.select().from(characterBibleVersions)).toEqual([]);
+    expect(await db.select().from(locationBibleVersions)).toEqual([]);
+    expect(await db.select().from(sequenceStyleVersions)).toEqual([]);
+    expect(await db.select().from(sequences)).toEqual([]);
   });
 });

@@ -17,10 +17,13 @@ import {
   frameVariants,
   frames,
   shots,
+  locationBibleVersions,
   locationLibrary,
   locationSheets,
   renderSegments,
   scenes,
+  sequenceLocations,
+  sequenceStyleVersions,
   sequences,
   session,
   styles,
@@ -34,7 +37,8 @@ import {
   videoVariants,
 } from '@/platform/server/db/schema';
 import { getDb } from '#db-client';
-import { and, asc, desc, eq, isNotNull, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
+import type { SQL } from 'drizzle-orm';
 
 export type CreatedTestUser = {
   id: string;
@@ -151,6 +155,42 @@ export async function createOtpVerification(
 /**
  * Clean up a test user and related records.
  */
+/**
+ * Delete the #1600 version rows of the sequences `where` matches. They
+ * RESTRICT their parents' delete, so this runs before any sequence delete.
+ */
+async function deleteSequenceVersionRows(where: SQL | undefined) {
+  const db = getDb();
+  const ids = db.select({ id: sequences.id }).from(sequences).where(where);
+  await db.batch([
+    db
+      .delete(sequenceStyleVersions)
+      .where(inArray(sequenceStyleVersions.sequenceId, ids)),
+    db
+      .delete(characterBibleVersions)
+      .where(
+        inArray(
+          characterBibleVersions.characterId,
+          db
+            .select({ id: characters.id })
+            .from(characters)
+            .where(inArray(characters.sequenceId, ids))
+        )
+      ),
+    db
+      .delete(locationBibleVersions)
+      .where(
+        inArray(
+          locationBibleVersions.locationId,
+          db
+            .select({ id: sequenceLocations.id })
+            .from(sequenceLocations)
+            .where(inArray(sequenceLocations.sequenceId, ids))
+        )
+      ),
+  ]);
+}
+
 export async function cleanupTestUser(
   userId: string,
   teamId: string
@@ -159,6 +199,7 @@ export async function cleanupTestUser(
 
   await db.delete(session).where(eq(session.userId, userId));
   await db.delete(teamMembers).where(eq(teamMembers.userId, userId));
+  await deleteSequenceVersionRows(eq(sequences.teamId, teamId));
   await db.delete(teams).where(eq(teams.id, teamId));
   await db.delete(user).where(eq(user.id, userId));
   // Credits will cascade or be cleaned via team if we add FKs later
@@ -520,6 +561,7 @@ export async function createTestCharacter(
  */
 export async function cleanupTestSequences(teamId: string): Promise<void> {
   const db = getDb();
+  await deleteSequenceVersionRows(eq(sequences.teamId, teamId));
   await db.delete(sequences).where(eq(sequences.teamId, teamId));
   await db.delete(styles).where(eq(styles.teamId, teamId));
 }
@@ -532,6 +574,7 @@ export async function cleanupSequenceById(
   styleId: string
 ): Promise<void> {
   const db = getDb();
+  await deleteSequenceVersionRows(eq(sequences.id, sequenceId));
   await db.delete(sequences).where(eq(sequences.id, sequenceId));
   await db.delete(styles).where(eq(styles.id, styleId));
 }

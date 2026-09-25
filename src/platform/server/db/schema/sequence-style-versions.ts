@@ -37,7 +37,7 @@ export const sequenceStyleVersions = snakeCase.table(
       .notNull(),
     sequenceId: text()
       .notNull()
-      .references(() => sequences.id, { onDelete: 'cascade' }),
+      .references(() => sequences.id, { onDelete: 'restrict' }),
     // The catalog style this was copied from. Provenance only — the config
     // below is what renders. Plain text: the catalog row may be deleted.
     styleId: text(),
