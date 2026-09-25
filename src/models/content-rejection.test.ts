@@ -147,11 +147,13 @@ describe('flaggedInputs / clipContentRejectionMessage (#1373)', () => {
       prompt: true,
       image: true,
       audio: false,
+      audioInput: false,
     });
     expect(flaggedInputs('body.prompt: flagged by a content checker')).toEqual({
       prompt: true,
       image: false,
       audio: false,
+      audioInput: false,
     });
     expect(flaggedInputs('body.image_urls.0: flagged')).toMatchObject({
       image: true,
@@ -160,7 +162,57 @@ describe('flaggedInputs / clipContentRejectionMessage (#1373)', () => {
       prompt: false,
       image: false,
       audio: false,
+      audioInput: false,
     });
+  });
+
+  it('tells refused reference audio apart from refused generated speech (#1756)', () => {
+    const input =
+      "BytePlus Ark video task creation failed (400 InputAudioSensitiveContentDetected): The request failed because the input audio 'content[4]' may contain sensitive information.";
+    expect(flaggedInputs(input)).toMatchObject({
+      audio: true,
+      audioInput: true,
+    });
+    expect(
+      flaggedInputs(
+        'AudioSensitiveContentDetected.PolicyViolation: the output audio may be related to copyright restrictions.'
+      )
+    ).toMatchObject({ audio: true, audioInput: false });
+
+    expect(
+      clipContentRejectionMessage({
+        rejections: [input],
+        models: ['Seedance 2.5'],
+        softened: false,
+      })
+    ).toBe(
+      "Content checker rejected the dialogue recording (Seedance 2.5). Set the shot's dialogue audio to Video model, regenerate the dialogue for another reading, or change the lines in the script."
+    );
+    expect(
+      clipContentRejectionMessage({
+        rejections: [input],
+        models: ['Seedance 2.5'],
+        softened: false,
+        inputs: {
+          prompt: 'the prompt',
+          audio: {
+            name: 'a reference audio clip',
+            fix: 'Remove or swap the reference audio',
+          },
+        },
+      })
+    ).toBe(
+      'Content checker rejected a reference audio clip (Seedance 2.5). Remove or swap the reference audio.'
+    );
+    // Other vias name the sent audio by field or in words (#1773).
+    expect(flaggedInputs('body.audio_urls.0: flagged').audioInput).toBe(true);
+    expect(
+      flaggedInputs('The reference audio contains sensitive content.')
+        .audioInput
+    ).toBe(true);
+    expect(
+      flaggedInputs('Output audio has sensitive content.').audioInput
+    ).toBe(false);
   });
 
   it('tells the user what was rejected, by whom, and what to change', () => {

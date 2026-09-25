@@ -1,4 +1,5 @@
 import { GenerationProgressBanner } from '@/sequences/ui/generation/generation-progress-banner';
+import { theatreDraftLabel } from '@/motion/draft-mode';
 import { RenderWaitCopy } from '@/sequences/ui/generation/render-wait-copy';
 import { MotionProgressBanner } from '@/sequences/ui/generation/motion-progress-banner';
 import type { ModelGenerationStatus } from '@/models/ui/pickers/base-model-selector';
@@ -22,7 +23,10 @@ import {
 import { FailureSummaryBanner } from '@/sequences/ui/failure-summary-banner';
 import { SequenceHeaderPortal } from '@/sequences/ui/sequence-header-slot';
 import { ScrollArea } from '@/ui/shadcn/scroll-area';
-import { batchGenerateMotionFn } from '@/motion/motion.fn';
+import {
+  batchGenerateMotionFn,
+  renderSequenceDraftsAtQualityFn,
+} from '@/motion/motion.fn';
 import {
   continueGenerationFn,
   generateMusicFn,
@@ -42,7 +46,7 @@ import { smartRetryFn } from '@/sequences/smart-retry.fn';
 import { BILLING_BALANCE_KEY } from '@/billing/ui/use-billing-balance';
 import { notifyInsufficientCredits } from '@/billing/ui/notify-insufficient-credits';
 import { useSceneSelection } from './use-scene-selection';
-import { useSequenceSegments } from './use-segments';
+import { segmentKeys, useSequenceSegments } from './use-segments';
 import { useScenesBySequence, type SceneWithScript } from './use-scenes';
 import {
   shotIsStale,
@@ -335,6 +339,11 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   const handleAutoPlayConsumed = useCallback(() => {
     setAutoPlaySequence(false);
   }, []);
+  // Where the sequence player's playhead is — the rail marks that shot. Not
+  // selection: the inspector keeps whatever the user is editing (#1771). A
+  // single-shot selection swaps the player out, so nothing is playing then.
+  const [playheadShotId, setPlayheadShotId] = useState<string>();
+  const playingShotId = selection.shotId ? undefined : playheadShotId;
 
   const [regeneratingImages, setRegeneratingImages] = useState<Set<string>>(
     () => new Set()
@@ -1267,6 +1276,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       musicModel,
       videoModel,
       generateAudio,
+      draftMotion,
     }: BatchGenerateMotionArgs) => {
       // Optimistic: compute eligible shots locally (same filter as backend).
       // 'cancelled' is user-initiated (#1108 Phase 4): deliberately eligible
@@ -1318,6 +1328,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
             model: videoModel,
             musicModel: includeMusic ? musicModel : undefined,
             generateAudio,
+            draftMotion,
             leftoverGrokShotIds: [...leftoverGrokShotIds],
           },
         });
@@ -1407,6 +1418,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       stopAt: GenerationStage;
       generateStartFrames: boolean;
       generateVoices: boolean;
+      draftMotion: boolean;
     }) => {
       // Optimistic status flip, as the motion batch does: the chip and the
       // footer key off `sequence.status`, and the server fn reserves credits
@@ -1442,6 +1454,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
               autoGenerateMusic,
               generateStartFrames: args.generateStartFrames,
               generateVoices: args.generateVoices,
+              draftMotion: args.draftMotion,
             }
           : old
       );
@@ -1454,6 +1467,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
             leftoverGrokShotIds: [...leftoverGrokShotIds],
             generateStartFrames: args.generateStartFrames,
             generateVoices: args.generateVoices,
+            draftMotion: args.draftMotion,
           },
         });
       } catch (error) {
@@ -1471,6 +1485,23 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     },
     [sequenceId, leftoverGrokShotIds, queryClient, resetGenerationStream]
   );
+
+  // Render every approved draft at 1080p (#1756). The workflow flips each
+  // segment to generating; invalidate so the list picks that up.
+  const handleRenderDraftsAtQuality = useCallback(async () => {
+    const result = await renderSequenceDraftsAtQualityFn({
+      data: { sequenceId },
+    });
+    toast.success(
+      result.started > 0
+        ? `Rendering ${result.started} ${result.started === 1 ? 'final' : 'finals'}`
+        : 'No drafts ready to render'
+    );
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: shotKeys.list(sequenceId) }),
+      queryClient.invalidateQueries({ queryKey: segmentKeys.list(sequenceId) }),
+    ]);
+  }, [queryClient, sequenceId]);
 
   const handleGenerateMusic = useCallback(
     async (model: AudioModel) => {
@@ -1574,10 +1605,13 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     selection,
     aspectRatio,
     resolution: sequence?.resolution,
+    draftMotion: sequence?.draftMotion,
+    onRenderDraftsAtQuality: handleRenderDraftsAtQuality,
     onSelectScene: handleSelectScene,
     onSelectShot: handleSelectShot,
     onClearSelection: handleClearSelection,
     onPlaySequence: handlePlaySequence,
+    playingShotId,
     regeneratingImages,
     regeneratingMotion,
     onBatchGenerateMotion: handleBatchMotionGeneration,
@@ -1636,6 +1670,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
             scenes={scenes}
             shots={shots}
             selection={selection}
+            playingShotId={playingShotId}
             aspectRatio={aspectRatio}
             staleShotIds={sceneListProps.staleShotIds}
             onExpand={expandRail}
@@ -1665,7 +1700,10 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                   effectiveView === 'script' ? (
                     <CopyScriptButton sequenceId={sequenceId} />
                   ) : (
-                    <SequenceExportActions sequenceExport={sequenceExport} />
+                    <SequenceExportActions
+                      sequenceExport={sequenceExport}
+                      draftLabel={theatreDraftLabel(shots ?? [])}
+                    />
                   )
                 }
               />
@@ -1689,6 +1727,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                     sequenceExport={sequenceExport}
                     autoPlay={autoPlaySequence}
                     onAutoPlayConsumed={handleAutoPlayConsumed}
+                    onPlayingShot={setPlayheadShotId}
                     selection={selection}
                     shots={shots}
                     scenes={scenes}
@@ -1764,6 +1803,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                       sequenceId={sequenceId}
                       resolution={sequence?.resolution}
                       sequenceGeneratesStartFrames={generateStartFrames}
+                      sequenceDraftMotion={sequence?.draftMotion ?? false}
                       selectedTab={effectiveTab}
                       visibleTabs={visibleTabs}
                       onTabChange={setFacet}

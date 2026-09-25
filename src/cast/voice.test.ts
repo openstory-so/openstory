@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  speakersWithoutVoice,
   OTHER_VOICE_LANGUAGES,
   VOICE_NATIONALITIES,
   catalogVoiceBrief,
@@ -370,5 +371,28 @@ describe('catalogVoiceBrief', () => {
         labels: ['female', 'american'],
       })
     ).toBe('Rachel. female, american. Calm narrator');
+  });
+});
+
+describe('speakersWithoutVoice (#1773)', () => {
+  const aria = { id: 'c1', name: 'Aria', voiceId: null };
+  const ben = { id: 'c2', name: 'Ben', voiceId: 'v-ben' };
+  const line = (character: string, voiceToken?: string) => ({
+    character,
+    line: 'Hi.',
+    voiceToken,
+  });
+
+  it('names each unvoiced speaker once, skipping voiced and bound lines', () => {
+    expect(
+      speakersWithoutVoice(
+        [line('Aria'), line('Ben'), line('ARIA'), line('Aria', 'SARAH_VOICE')],
+        [aria, ben]
+      )
+    ).toEqual([aria]);
+  });
+
+  it('ignores a speaker nobody in the cast matches', () => {
+    expect(speakersWithoutVoice([line('Stranger')], [aria, ben])).toEqual([]);
   });
 });

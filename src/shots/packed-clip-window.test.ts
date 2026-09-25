@@ -122,6 +122,13 @@ describe('motionGenerateLabel', () => {
     expect(motionGenerateLabel(1, false)).toBe('Generate Motion');
     expect(motionGenerateLabel(1, true)).toBe('Regenerate Motion');
   });
+
+  it('names a new draft, never a regenerated one, when drafting first', () => {
+    expect(motionGenerateLabel(1, false, true)).toBe('Generate draft');
+    expect(motionGenerateLabel(1, true, true)).toBe('Generate new draft');
+    expect(motionGenerateLabel(3, false, true)).toBe('Generate 3 drafts');
+    expect(motionGenerateLabel(3, true, true)).toBe('Generate new 3 drafts');
+  });
 });
 
 describe('generatePackedShotChaptersVTT', () => {

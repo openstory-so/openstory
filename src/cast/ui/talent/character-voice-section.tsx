@@ -1,4 +1,14 @@
 import { VOICE_DESIGN_COST } from '@/billing/elevenlabs-pricing';
+import { seedVoiceEstimate } from '@/billing/seed-speech-pricing';
+import {
+  SEED_VOICE_DEFAULT_TAKES,
+  SEED_VOICE_MAX_TAKES,
+  voiceProviderLabel,
+  voiceProviderOf,
+} from '@/cast/seed-voice';
+import { useSeedVoices } from '@/cast/ui/use-voice-design-available';
+import { ToggleGroup, ToggleGroupItem } from '@/ui/shadcn/toggle-group';
+
 import { ActionCost } from '@/billing/ui/action-cost';
 import {
   catalogVoiceBrief,
@@ -37,6 +47,12 @@ import { Library, Loader2, Mic } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
+/** 1…SEED_VOICE_MAX_TAKES, for the takes picker. */
+const TAKE_CHOICES = Array.from(
+  { length: SEED_VOICE_MAX_TAKES },
+  (_, i) => i + 1
+);
+
 /**
  * Voice on the character card (#1553 / #1629): the per-character switch,
  * the in-use take vs alternates, Browse voices, and Generate / Regenerate.
@@ -49,6 +65,8 @@ export const CharacterVoiceSection: React.FC<{
 }> = ({ sequenceId, character, generateVoices }) => {
   const queryClient = useQueryClient();
   const generate = useGenerateCharacterVoice();
+  const seedVoices = useSeedVoices();
+  const [takeCount, setTakeCount] = useState(SEED_VOICE_DEFAULT_TAKES);
   const setEnabled = useSetCharacterVoiceEnabled();
   const chooseTake = useChooseCharacterVoiceTake();
   const assignVoice = useAssignCharacterVoice();
@@ -206,12 +224,19 @@ export const CharacterVoiceSection: React.FC<{
         <>
           {character.voiceId || takes.length > 0 || designing ? (
             <div className="flex flex-col gap-3">
-              {pendingHusk && (
+              {/* From the click, not from when the husk row arrives: the
+                  box would otherwise open empty, then grow (#1773). */}
+              {designing && (
                 <section className="flex flex-col gap-2" aria-label="Pending">
                   <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                     Pending
                   </p>
-                  <VoiceTakeCard src={null} label="Designing voice" pending />
+                  <VoiceTakeCard
+                    src={null}
+                    label="Designing voice"
+                    voiceId={null}
+                    pending
+                  />
                 </section>
               )}
               {(inUseTake || catalogVoice || character.voiceId) && (
@@ -223,6 +248,7 @@ export const CharacterVoiceSection: React.FC<{
                     <VoiceTakeCard
                       src={catalogVoice.previewUrl}
                       label={catalogVoice.name}
+                      voiceId={catalogVoice.voiceId}
                       inUse
                       isPremade={catalogVoice.isPremade}
                     />
@@ -230,10 +256,16 @@ export const CharacterVoiceSection: React.FC<{
                     <VoiceTakeCard
                       src={inUseTake.preview.url}
                       label={inUseTake.label}
+                      voiceId={inUseTake.preview.generatedVoiceId}
                       inUse
                     />
                   ) : (
-                    <VoiceTakeCard src={null} label="Saved voice" inUse />
+                    <VoiceTakeCard
+                      src={null}
+                      label="Saved voice"
+                      voiceId={character.voiceId}
+                      inUse
+                    />
                   )}
                 </section>
               )}
@@ -251,6 +283,7 @@ export const CharacterVoiceSection: React.FC<{
                         <VoiceTakeCard
                           src={take.preview.url}
                           label={take.label}
+                          voiceId={take.preview.generatedVoiceId}
                           disabled={busy || chooseTake.isPending}
                           choosing={
                             choosingId === take.preview.generatedVoiceId
@@ -292,7 +325,11 @@ export const CharacterVoiceSection: React.FC<{
                 disabled={busy}
                 onClick={() =>
                   generate.mutate(
-                    { sequenceId, characterId: character.id },
+                    {
+                      sequenceId,
+                      characterId: character.id,
+                      takes: takeCount,
+                    },
                     {
                       onError: (error) =>
                         toast.error('Failed to design voice', {
@@ -312,8 +349,39 @@ export const CharacterVoiceSection: React.FC<{
                   Boolean(character.voiceId || takes.length > 0)
                 )}
               </Button>
-              <ActionCost estimate={VOICE_DESIGN_COST} />
+              <ActionCost
+                estimate={
+                  seedVoices ? seedVoiceEstimate(takeCount) : VOICE_DESIGN_COST
+                }
+              />
             </div>
+            {seedVoices && (
+              <div className="flex flex-col gap-1">
+                <ToggleGroup
+                  type="single"
+                  value={String(takeCount)}
+                  onValueChange={(value) => {
+                    if (value) setTakeCount(Number(value));
+                  }}
+                  variant="outline"
+                  size="sm"
+                  spacing={0}
+                  disabled={busy}
+                  aria-label="Takes to generate"
+                >
+                  {TAKE_CHOICES.map((count) => (
+                    <ToggleGroupItem
+                      key={count}
+                      value={String(count)}
+                      aria-label={`${count} ${count === 1 ? 'take' : 'takes'}`}
+                    >
+                      {count}
+                    </ToggleGroupItem>
+                  ))}
+                </ToggleGroup>
+                <p className="text-xs text-muted-foreground">Takes</p>
+              </div>
+            )}
           </div>
           <VoiceLibraryDialog
             open={libraryOpen}
@@ -447,6 +515,8 @@ const VoiceHistory: React.FC<{
 const VoiceTakeCard: React.FC<{
   src: string | null;
   label: string;
+  /** Names who made it (#1765); null while it is still being made. */
+  voiceId: string | null;
   inUse?: boolean;
   isPremade?: boolean;
   pending?: boolean;
@@ -457,6 +527,7 @@ const VoiceTakeCard: React.FC<{
 }> = ({
   src,
   label,
+  voiceId,
   inUse = false,
   isPremade,
   pending = false,
@@ -474,7 +545,14 @@ const VoiceTakeCard: React.FC<{
     aria-busy={pending || undefined}
   >
     <div className="flex items-center justify-between gap-2">
-      <p className="truncate text-sm font-medium">{label}</p>
+      <div className="flex min-w-0 flex-col">
+        <p className="truncate text-sm font-medium">{label}</p>
+        {voiceId && (
+          <p className="text-xs text-muted-foreground">
+            {voiceProviderLabel(voiceProviderOf(voiceId))}
+          </p>
+        )}
+      </div>
       <VoiceTakeCardAction
         pending={pending}
         inUse={inUse}

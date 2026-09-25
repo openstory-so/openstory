@@ -24,6 +24,7 @@ function asset(
     error: null,
     workflowRunId: 'wf',
     costMicros: 1,
+    draftTaskId: null,
     outputs: [{ url: '/r2/a.png', contentType: 'image/png' }],
     createdAt: new Date(),
     updatedAt: new Date(),

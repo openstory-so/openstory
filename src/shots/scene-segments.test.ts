@@ -250,6 +250,7 @@ const version = (
   renderSegmentId,
   model,
   resolution: null,
+  draftTaskId: null,
   status: 'completed',
   url: `https://cdn.test/${id}.mp4`,
   createdAt: new Date('2026-01-01'),

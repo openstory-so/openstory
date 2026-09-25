@@ -1,7 +1,13 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["DOM", "DOM.Iterable", "ES2022", "ESNext.Disposable"],
+    "lib": [
+      "DOM",
+      "DOM.Iterable",
+      "ES2022",
+      "ESNext.Disposable",
+      "ESNext.TypedArrays"
+    ],
     "types": ["node"],
     "allowJs": true,
     "skipLibCheck": true,

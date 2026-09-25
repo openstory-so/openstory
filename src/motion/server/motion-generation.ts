@@ -44,9 +44,12 @@ import {
   IMAGE_TO_VIDEO_MODELS,
   isNativeBytePlusVideoModel,
   referenceOnlyCapableWith,
+  supportsDraftMode,
   supportsReferenceOnlyMotion,
   type ImageToVideoModel,
 } from '@/models/models';
+import { submitBytePlusFinalRender } from '@/models/server/byteplus-final-render';
+import { DRAFT_FINAL_RESOLUTION, DRAFT_RESOLUTION } from '@/motion/draft-mode';
 import { assertMediaVia, type MediaVia } from '@/models/via';
 import { workersSafeFetch } from '@/platform/server/ai/workers-safe-fetch';
 import { reportMissingBillingCost } from '@/billing/billing-observability';
@@ -127,6 +130,18 @@ export type GenerateMotionOptions = {
    * `multi_prompt[]` + `shot_type: customize` and omits `prompt`.
    */
   multiPrompt?: Array<{ prompt: string; duration: string }>;
+  /**
+   * Ark draft mode (#1756): render a 480p preview. Honoured only when the
+   * model `supportsDraftMode` — other models render as usual — and only on
+   * the BytePlus via; a draft-capable model routed elsewhere refuses.
+   */
+  draft?: boolean;
+  /**
+   * Render the 1080p final of this Ark draft task (#1756). The request's only
+   * content is the id — Ark reuses the draft's prompt, assets and seed — so
+   * `imageUrl` / `referenceImages` / `prompt` are not sent. BytePlus via only.
+   */
+  finalFromDraftTaskId?: string;
 };
 
 export type MotionJobSubmission = {
@@ -148,6 +163,11 @@ export type MotionJobSubmission = {
   via: MediaVia;
   usedOwnKey: boolean;
   submittedAt: number;
+  /**
+   * Set when the job went out as an Ark draft (#1756): the id "Render at
+   * quality" renders the final from. The workflow stamps it on the version.
+   */
+  draftTaskId?: string;
 };
 
 async function resolveFalMotionKey(
@@ -411,6 +431,23 @@ export function arkStillsForMotion(
   return stills;
 }
 
+/**
+ * The stills a batch would actually spend `CreateAsset` on — what pool
+ * admission budgets for (#1756). The same rule as ingest: start frames and
+ * sheets that may show a person; `plain` stills (location, element, known
+ * non-person) ride as URLs and take no slot. Budgeting every reference URL
+ * instead asked for 8 slots where 4 would be created, and stalled the batch.
+ */
+export function arkStillsToRegister(
+  shots: readonly Pick<GenerateMotionOptions, 'imageUrl' | 'referenceImages'>[]
+): string[] {
+  return shots.flatMap((shot) =>
+    arkStillsForMotion(shot)
+      .filter((still) => !still.plain)
+      .map((still) => still.storedUrl)
+  );
+}
+
 export async function submitMotionJob(
   options: SubmitMotionOptions
 ): Promise<MotionJobSubmission> {
@@ -527,6 +564,21 @@ export async function submitMotionJob(
     }
   }
 
+  // Draft mode is an Ark feature (#1756): a draft-capable model that lands
+  // on fal (a BYOK fal team) cannot honour it, and saying so beats a full
+  // render the user thought was a cheap preview. A model without draft mode
+  // ignores the flag, like `generateAudio` on a silent model. A final is
+  // never a draft, whatever its payload says: its task id must not be stamped.
+  const draft =
+    Boolean(options.draft) &&
+    !options.finalFromDraftTaskId &&
+    supportsDraftMode(modelKey);
+  if ((draft || options.finalFromDraftTaskId) && via !== 'byteplus') {
+    throw new Error(
+      `Draft mode needs the BytePlus route, but ${IMAGE_TO_VIDEO_MODELS[modelKey].name} is routed to ${via} for this team`
+    );
+  }
+
   let jobId: string;
   let usedOwnKey: boolean;
   let stampedVia: MediaVia = endpoint.via;
@@ -618,6 +670,24 @@ export async function submitMotionJob(
       if (!arkKey) {
         throw new Error('ARK_API_KEY is required for the BytePlus motion via');
       }
+      // The final of a draft (#1756): only the draft's task id goes out.
+      if (options.finalFromDraftTaskId) {
+        const modelId = getBytePlusVideoModelId(modelKey);
+        if (!modelId) {
+          throw new Error(
+            `No BytePlus model id for motion model "${modelKey}"`
+          );
+        }
+        const final = await submitBytePlusFinalRender({
+          modelId,
+          draftTaskId: options.finalFromDraftTaskId,
+          label: 'motion final submit',
+        });
+        jobId = final.jobId;
+        usedOwnKey = false;
+        stampedEndpointId = modelId;
+        break;
+      }
       // Every still that can carry a face was registered by the workflow
       // (`arkStillsForMotion` → `ingestArkAssets`); the rest are plain URLs.
       // A still missing from the map throws — nothing is re-derived here.
@@ -641,7 +711,7 @@ export async function submitMotionJob(
         }
       }
       const request = buildBytePlusVideoRequest(
-        { ...options, imageUrl, referenceImages },
+        { ...options, imageUrl, referenceImages, draft },
         modelKey
       );
       const { apiKey, ...config } = arkAdapterConfig(
@@ -684,6 +754,7 @@ export async function submitMotionJob(
     via: stampedVia,
     usedOwnKey,
     submittedAt: Date.now(),
+    ...(draft && { draftTaskId: jobId }),
   };
 }
 
@@ -918,16 +989,37 @@ export function calculateMotionMetadata(
     };
   }
 
+  // The final of a draft (#1756) sends only the task id: no still, no
+  // references, no prompt, so there is no request to build — and building
+  // one would demand the start frame a reference-only draft never had. It is
+  // always 1080p on the model's own id.
+  if (options.finalFromDraftTaskId) {
+    return {
+      cost: estimateFalCost(
+        modelConfig.id,
+        {
+          durationSeconds: validatedDuration,
+          resolution: DRAFT_FINAL_RESOLUTION,
+        },
+        pricing
+      ),
+      duration: validatedDuration,
+      model: modelConfig.id,
+      vendor: modelConfig.vendor,
+    };
+  }
+
   const { endpointId, input } = buildMotionRequest(options, modelKey);
+  // A draft is always 480p (#1756), whatever tier the sequence asks for.
+  const resolution =
+    options.draft && supportsDraftMode(modelKey)
+      ? DRAFT_RESOLUTION
+      : 'resolution' in input && typeof input.resolution === 'string'
+        ? input.resolution
+        : undefined;
   const cost = estimateFalCost(
     endpointId,
-    {
-      durationSeconds: validatedDuration,
-      resolution:
-        'resolution' in input && typeof input.resolution === 'string'
-          ? input.resolution
-          : undefined,
-    },
+    { durationSeconds: validatedDuration, resolution },
     pricing
   );
 

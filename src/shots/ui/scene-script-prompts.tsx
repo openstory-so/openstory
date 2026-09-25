@@ -40,7 +40,16 @@ import { useEditorDictation } from '@/ui/use-dictation';
 import { useSequenceMentionItems } from './use-mention-items';
 import { shortenPromptFn } from '@/models/ai.fn';
 import { generateShotImageFn } from '@/stills/shot-image.fn';
-import { cancelVideoRenderFn, generateShotMotionFn } from '@/motion/motion.fn';
+import {
+  cancelVideoRenderFn,
+  generateShotMotionFn,
+  renderShotAtQualityFn,
+} from '@/motion/motion.fn';
+import {
+  DRAFT_FINAL_RESOLUTION,
+  DRAFT_RESOLUTION,
+  draftTaskUsable,
+} from '@/motion/draft-mode';
 import { regenerateShotPromptFn } from '@/shots/prompt-variants.fn';
 import { BILLING_BALANCE_KEY } from '@/billing/ui/use-billing-balance';
 import { notifyInsufficientCredits } from '@/billing/ui/notify-insufficient-credits';
@@ -80,6 +89,7 @@ import {
   IMAGE_TO_VIDEO_MODELS,
   getCompatibleModel,
   safeImageToVideoModel,
+  supportsDraftMode,
   safeTextToImageModel,
   videoModelSupportsAudio,
   type ImageToVideoModel,
@@ -140,7 +150,11 @@ import { SceneLocationTab } from './scene-location-tab';
 import { SceneMusicFacet } from './scene-music-facet';
 import { MotionDialoguePanel } from './motion-dialogue-panel';
 import { SceneScriptTab } from './scene-script-tab';
-import { ShotDialogueReadings } from './shot-dialogue-readings';
+import {
+  SceneDialogueLines,
+  ShotDialogueLines,
+  ShotDialogueReadings,
+} from './shot-dialogue-readings';
 import { ShotDurationField } from './shot-duration-field';
 import { sumShotSeconds } from './scene-group';
 
@@ -256,6 +270,8 @@ type SceneScriptPromptsProps = {
    * (`shots.useStartFrame`); the checkbox below shows the resolved answer.
    */
   sequenceGeneratesStartFrames?: boolean;
+  /** The sequence's draft-first setting (#1756); seeds this shot's Draft switch. */
+  sequenceDraftMotion?: boolean;
   selectedTab: TabValue;
   /** Tabs to render for the current selection scope (#986). */
   visibleTabs: TabDescriptor[];
@@ -335,6 +351,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   shot,
   sequenceId,
   sequenceGeneratesStartFrames = false,
+  sequenceDraftMotion = false,
   selectedTab,
   visibleTabs,
   onTabChange,
@@ -589,6 +606,60 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     },
   });
 
+  // Render the selected Ark draft at 1080p (#1756): a new version on the
+  // draft's segment, promoted when it lands.
+  const renderAtQuality = useMutation({
+    mutationFn: () => {
+      if (!shot?.id) throw new Error('shot required');
+      return renderShotAtQualityFn({
+        data: { sequenceId, shotId: shot.id },
+      });
+    },
+    // Same optimistic flip as Regenerate Motion: the run opens its version a
+    // step later, so without this the click shows nothing until the next
+    // poll. The final covers the whole segment.
+    onMutate: () => {
+      if (!shot?.id) return;
+      const generatingIds = segment?.shotIds ?? [shot.id];
+      for (const id of generatingIds) onRegenerateStart(id, 'motion');
+      const generating = new Set(generatingIds);
+      queryClient.setQueryData<ShotView[]>(shotKeys.list(sequenceId), (old) =>
+        old?.map((f) =>
+          generating.has(f.id) ? { ...f, videoStatus: 'generating' } : f
+        )
+      );
+      queryClient.setQueryData<ShotView>(shotKeys.detail(shot.id), (old) =>
+        old ? { ...old, videoStatus: 'generating' } : old
+      );
+    },
+    onSuccess: async () => {
+      toast.success('Rendering final');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: shotKeys.list(sequenceId) }),
+        queryClient.invalidateQueries({
+          queryKey: ['sequence-video-variants', sequenceId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: segmentKeys.list(sequenceId),
+        }),
+      ]);
+    },
+    onError: (error) => {
+      toast.error('Failed to render the final', {
+        description: errorMessage(error),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: shotKeys.list(sequenceId),
+      });
+    },
+  });
+  const selectedDraft =
+    segment?.selectedVersion?.draftTaskId &&
+    segment.selectedVersion.status === 'completed' &&
+    draftTaskUsable(segment.selectedVersion.createdAt)
+      ? segment.selectedVersion
+      : null;
+
   // Cancel an in-flight render (#1108 Phase 4): flips the generating
   // video_variants row terminal and terminates its single-artifact run — a
   // finishing render can no longer resurrect it. Data-only; idempotent.
@@ -824,6 +895,13 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   // packing model here would show a packed N-shot clip then generate one shot.
   const motionTakesAudioReferences =
     motionReferenceSupport(regenMotionModel).audio;
+  // Draft first for this shot (#1756): the sequence's Draft first switch,
+  // honoured while the model has a draft mode and this team can reach Ark.
+  // A final only ever comes from an approved draft (Render final below).
+  const viaAvailability = useViaAvailability();
+  const offerDraft =
+    supportsDraftMode(regenMotionModel) && viaAvailability.byteplus;
+  const regenAsDraft = offerDraft && sequenceDraftMotion;
 
   const imagePrompt = shot?.imagePromptVersion?.text ?? undefined;
 
@@ -1041,6 +1119,9 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           model: regenMotionModel,
           prompt: editedMotionPrompt || undefined,
           generateAudio: supportsAudio ? generateAudio : undefined,
+          // Always a boolean: `undefined` would hand the decision back to the
+          // sequence's saved setting, which the switch above may be hiding.
+          draft: regenAsDraft,
         },
       });
 
@@ -1069,6 +1150,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     regenMotionModel,
     editedMotionPrompt,
     generateAudio,
+    regenAsDraft,
     queryClient,
     invalidateContinuity,
     onRegenerateStart,
@@ -1153,7 +1235,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     });
     return estimateVideoCost(regenMotionModel, duration, {
       pricing: falPricing,
-      resolution,
+      resolution: regenAsDraft ? DRAFT_RESOLUTION : resolution,
       // Unknown (preview failed or pending) falls back to the mode's default
       // endpoint inside estimateVideoCost — never to "no references".
       hasReferenceImages: promptPreview?.motionHasReferenceImages,
@@ -1163,7 +1245,32 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     falPricing,
     shot,
     regenMotionModel,
+    regenAsDraft,
     resolution,
+    sequenceGeneratesStartFrames,
+    promptPreview?.motionHasReferenceImages,
+    promptPreview?.packedDurationMs,
+  ]);
+  // The final of an approved draft is always 1080p (#1756).
+  const finalCostEstimate = useMemo(() => {
+    if (!falPricing || !shot || !selectedDraft) return null;
+    const duration = resolveShotDuration({
+      durationMs: promptPreview?.packedDurationMs ?? shot.durationMs,
+      model: regenMotionModel,
+    });
+    return estimateVideoCost(regenMotionModel, duration, {
+      pricing: falPricing,
+      resolution: DRAFT_FINAL_RESOLUTION,
+      hasReferenceImages: promptPreview?.motionHasReferenceImages,
+      referenceOnly: !usesStartFrame(shot, {
+        generateStartFrames: sequenceGeneratesStartFrames,
+      }),
+    });
+  }, [
+    falPricing,
+    shot,
+    selectedDraft,
+    regenMotionModel,
     sequenceGeneratesStartFrames,
     promptPreview?.motionHasReferenceImages,
     promptPreview?.packedDurationMs,
@@ -1180,8 +1287,13 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   const storageDomain = storageConfig?.storageDomain ?? null;
 
   // This shot's readings (#1657) — one list for either dialogue panel below.
+  const shotLines = shot?.dialogue?.presence ? shot.dialogue.lines : [];
   const dialogueReadings = shot ? (
-    <ShotDialogueReadings sequenceId={sequenceId} shotId={shot.id} />
+    <ShotDialogueReadings
+      sequenceId={sequenceId}
+      shotId={shot.id}
+      lines={shotLines}
+    />
   ) : undefined;
 
   // Flipping this re-stales the motion prompt — the two modes use different
@@ -1194,7 +1306,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   // The shot's model can't render without a start frame — it stays listed (it
   // is already picked) but submit refuses it, so say so here rather than at the
   // click. Same list the selector filters by.
-  const { referenceOnlyModels } = useViaAvailability();
+  const { referenceOnlyModels } = viaAvailability;
   const modelCannotRenderReferenceOnly =
     !shotUsesStartFrame && !referenceOnlyModels.includes(effectiveMotionModel);
   // With no still, the sheets are the ONLY thing fixing identity and set. None
@@ -1512,6 +1624,18 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           onCopy={(text) => void handleCopy(text, 'script')}
           mentionItems={mentionItems}
           onMentionRename={onMentionRename}
+          dialogue={
+            <SceneDialogueLines
+              sequenceId={sequenceId}
+              shots={
+                scopeShots?.some((s) => s.sceneId === scriptSceneId)
+                  ? scopeShots.filter((s) => s.sceneId === scriptSceneId)
+                  : shot
+                    ? [shot]
+                    : []
+              }
+            />
+          }
         />
       </TabsContent>
 
@@ -1997,6 +2121,16 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             disabled={saveMotionPrompt.isPending || isAwaitingMotionPrompt}
             source={shot?.motionPrompt ? 'prompt' : 'script'}
             readings={dialogueReadings}
+            lineEditor={
+              shot ? (
+                <ShotDialogueLines
+                  key={shot.id}
+                  sequenceId={sequenceId}
+                  shotId={shot.id}
+                  lines={shotLines}
+                />
+              ) : undefined
+            }
           />
 
           {/* Model selector — per-asset (#1066): seeded from the shot's selected
@@ -2195,10 +2329,37 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             </Alert>
           )}
 
+          {/* The selected clip is an approved Ark draft (#1756): render its
+              1080p final from the task id — same seed, prompt and assets.
+              It is the primary action; regenerating drops to a redo. */}
+          {selectedDraft && (
+            <div className="flex flex-col gap-1">
+              <Button
+                type="button"
+                className="w-full"
+                disabled={
+                  renderAtQuality.isPending ||
+                  isGeneratingMotion ||
+                  videoVariantIsGenerating
+                }
+                onClick={() => renderAtQuality.mutate()}
+              >
+                <span className="relative">
+                  {renderAtQuality.isPending ? 'Starting…' : 'Render final'}
+                  <ActionCost
+                    estimate={finalCostEstimate}
+                    className="absolute top-1/2 left-full ml-2 -translate-y-1/2"
+                  />
+                </span>
+              </Button>
+            </div>
+          )}
+
           {/* Motion action button. Switching to another model's existing
               clip is a history pick, like any other version. */}
           <div className="flex flex-col gap-1">
             <Button
+              variant={selectedDraft ? 'outline' : 'default'}
               onClick={() => {
                 if (falNeedsBillingSetup) {
                   showFalGate();
@@ -2224,9 +2385,19 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
               {(isGeneratingMotion || videoVariantIsGenerating) && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
-              {isGeneratingMotion || videoVariantIsGenerating
-                ? 'Generating…'
-                : motionGenerateLabel(packedShotCount, videoModelGenerated)}
+              <span className="relative">
+                {isGeneratingMotion || videoVariantIsGenerating
+                  ? 'Generating…'
+                  : motionGenerateLabel(
+                      packedShotCount,
+                      videoModelGenerated,
+                      regenAsDraft
+                    )}
+                <ActionCost
+                  estimate={motionCostEstimate}
+                  className="absolute top-1/2 left-full ml-2 -translate-y-1/2"
+                />
+              </span>
             </Button>
             <p
               className={
@@ -2241,9 +2412,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             >
               {EMPTY_GENERATION_PROMPT_MESSAGE}
             </p>
-            <ActionCost estimate={motionCostEstimate} />
           </div>
-
           <AlertDialog
             open={confirmSilentOpen}
             onOpenChange={setConfirmSilentOpen}

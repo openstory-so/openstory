@@ -5,6 +5,7 @@ import {
   ELEVENLABS_RATE_CARD,
   ELEVENLABS_TTS_ENDPOINT,
   ELEVENLABS_VOICE_DESIGN_ENDPOINT,
+  elevenLabsTtsCost,
   elevenLabsTtsUnitsBilled,
   estimateMusicCost,
   estimateTtsCost,
@@ -59,9 +60,16 @@ describe('elevenLabsTtsUnitsBilled', () => {
   );
 });
 
-describe('estimateTtsCost', () => {
+describe('elevenLabsTtsCost', () => {
   it('prices 1000 characters at the card’s $0.10', () => {
-    expect(estimateTtsCost(1000)).toBe(100_000);
+    expect(elevenLabsTtsCost(1000)).toBe(100_000);
+  });
+});
+
+describe('estimateTtsCost', () => {
+  it('prices the dearer provider: Seed at 8 characters per billed second', () => {
+    // 1000 / 8 = 125 s × $0.0025.
+    expect(estimateTtsCost(1000)).toBe(312_500);
   });
   it('is zero for empty dialogue', () => {
     expect(estimateTtsCost(0)).toBe(0);

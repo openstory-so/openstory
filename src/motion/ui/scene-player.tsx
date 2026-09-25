@@ -1,4 +1,5 @@
 import type { TabValue } from '@/shots/ui/scene-script-prompts';
+import { shotDraftLabel } from '@/motion/draft-mode';
 import { BlobLoader } from '@/ui/shadcn/blob-loader';
 import { Button } from '@/ui/shadcn/button';
 import {
@@ -430,6 +431,11 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
     !currentShot.image?.url;
   const isVariantPreview =
     !!overrideImageUrl && overrideImageUrl !== currentShot.image?.url;
+  // The selected clip is an Ark draft (#1756): 480p, final not yet rendered.
+  const draftLabel =
+    playbackVideoUrl && !isVariantVideoPreview
+      ? shotDraftLabel(currentShot)
+      : null;
 
   return (
     <div className={cn('relative flex w-full flex-col', wrapperClassName)}>
@@ -596,11 +602,21 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
               {staleLabel}
             </span>
           )}
-          {isPreviewImage && !isVariantPreview && (
-            <span className="absolute top-2 right-2 z-10 rounded bg-background/80 px-2 py-1 text-xs font-medium text-muted-foreground backdrop-blur-sm">
-              Storyboard
-            </span>
-          )}
+          {/* Top-right pills: what is on screen is not the final thing.
+              A draft clip (#1756) says so the way a storyboard still does.
+              They sit left of the Share button (44px on touch, 32px on md). */}
+          <div className="pointer-events-none absolute top-2 right-15 z-10 flex flex-col items-end gap-1 md:right-12">
+            {isPreviewImage && !isVariantPreview && (
+              <span className="rounded bg-background/80 px-2 py-1 text-xs font-medium text-muted-foreground backdrop-blur-sm">
+                Storyboard
+              </span>
+            )}
+            {draftLabel && (
+              <span className="rounded bg-background/80 px-2 py-1 text-xs font-medium text-muted-foreground backdrop-blur-sm">
+                {draftLabel}
+              </span>
+            )}
+          </div>
           {frameOverlay}
         </div>
       )}

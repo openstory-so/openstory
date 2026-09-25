@@ -145,6 +145,9 @@ function answer(secondsByShot: Record<string, number>, id: string) {
       url: `/r2/audio/${id}.wav`,
       durationSeconds: at,
       characterCount: 120,
+      charges: [
+        { endpointId: 'elevenlabs-tts', model: 'eleven_v3', costMicros: 12 },
+      ],
       turns: lines.map((spoken) => {
         const window = windows.find((w) => w.shotId === spoken.shotId);
         return {
@@ -468,8 +471,9 @@ describe('recordDialogue', () => {
   });
 });
 
-const turn = (shotId: string, text: string, tone = '') => ({
+const turn = (shotId: string, text: string, tone = '', voiceId = 'v1') => ({
   shotId,
+  voiceId,
   text,
   tone,
 });
@@ -510,6 +514,37 @@ describe('chunkTakeLines', () => {
 
   it('returns nothing for no turns', () => {
     expect(chunkTakeLines([])).toEqual([]);
+  });
+
+  it('never puts a Seed voice and an ElevenLabs voice in one call', () => {
+    const lines = [
+      turn('a', 'One', '', 'seed:1'),
+      turn('b', 'Two', '', 'eleven-1'),
+      turn('c', 'Three', '', 'seed:1'),
+    ];
+    expect(
+      chunkTakeLines(lines).map((chunk) => chunk.map((l) => l.shotId))
+    ).toEqual([['a'], ['b'], ['c']]);
+  });
+
+  it('keeps three Seed speakers in one call and breaks before a fourth', () => {
+    const lines = [
+      turn('a', 'One', '', 'seed:1'),
+      turn('b', 'Two', '', 'seed:2'),
+      turn('c', 'Three', '', 'seed:3'),
+      turn('d', 'Four', '', 'seed:4'),
+    ];
+    expect(
+      chunkTakeLines(lines).map((chunk) => chunk.map((l) => l.shotId))
+    ).toEqual([['a', 'b', 'c'], ['d']]);
+  });
+
+  it('keeps a Seed call under its own character line', () => {
+    const lines = [
+      turn('a', 'x'.repeat(600), '', 'seed:1'),
+      turn('b', 'y'.repeat(600), '', 'seed:2'),
+    ];
+    expect(chunkTakeLines(lines)).toHaveLength(2);
   });
 });
 

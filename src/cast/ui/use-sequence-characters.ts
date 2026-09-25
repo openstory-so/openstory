@@ -139,13 +139,27 @@ function invalidateAfterVoiceChange(
 export function useGenerateCharacterVoice() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { sequenceId: string; characterId: string }) =>
-      generateCharacterVoiceFn({ data }),
+    mutationFn: (data: {
+      sequenceId: string;
+      characterId: string;
+      takes: number;
+    }) => generateCharacterVoiceFn({ data }),
+    // Stays pending until the husk is on screen: the list and the versions
+    // carry it, and a gap between the two reads as the card vanishing and
+    // coming back.
     onSuccess: (_result, { sequenceId, characterId }) => {
       invalidateAfterVoiceChange(queryClient, sequenceId);
-      void queryClient.invalidateQueries({
-        queryKey: sequenceCharacterKeys.voiceVersions(sequenceId, characterId),
-      });
+      return Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: sequenceCharacterKeys.list(sequenceId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: sequenceCharacterKeys.voiceVersions(
+            sequenceId,
+            characterId
+          ),
+        }),
+      ]);
     },
   });
 }
@@ -158,8 +172,13 @@ export function useSetCharacterVoiceEnabled() {
       characterId: string;
       enabled: boolean;
     }) => setCharacterVoiceEnabledFn({ data }),
+    // Pending until the list says so: the switch and the section it opens
+    // then change together, not in two steps.
     onSuccess: (_result, { sequenceId }) => {
       invalidateAfterVoiceChange(queryClient, sequenceId);
+      return queryClient.invalidateQueries({
+        queryKey: sequenceCharacterKeys.list(sequenceId),
+      });
     },
   });
 }

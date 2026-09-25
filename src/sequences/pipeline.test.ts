@@ -616,3 +616,17 @@ describe('completedStageFromArtifacts / nextActionFromArtifacts', () => {
     ).toBeNull();
   });
 });
+
+describe('draft first copy (#1756)', () => {
+  it('names the motion stop Drafts and keeps every other stop', () => {
+    expect(sliderStopLabel('music', { draftFirst: true })).toBe('Drafts');
+    expect(sliderStopLabel('images', { draftFirst: true })).toBe('Images');
+    expect(stopAfterSentence('music', { draftFirst: true })).toBe(
+      'Stop after drafts'
+    );
+    expect(stopAfterSentence('music')).toBe('Don’t stop');
+    expect(runScopeLabel('music', { draftFirst: true })).toBe(
+      'Stops after drafts'
+    );
+  });
+});

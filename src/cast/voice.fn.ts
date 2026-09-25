@@ -12,9 +12,16 @@ import {
   getElevenLabsVoice,
   listLibraryVoices,
 } from '@/cast/server/voice/elevenlabs-voice';
+import { voiceProviderOf, seedVoiceFolder } from '@/cast/seed-voice';
+import { isSeedVoiceConfigured } from '@/models/server/seed-speech-config';
+import {
+  getPublicUrl,
+  STORAGE_BUCKETS,
+} from '@/platform/server/storage/buckets';
 import {
   VOICE_LANGUAGES,
   VOICE_NATIONALITIES,
+  type SavedVoiceMeta,
   type VoiceLanguageFilter,
   type VoiceNationalityFilter,
 } from '@/cast/voice';
@@ -37,8 +44,10 @@ const nationalitySchema = z
 
 export const getVoiceDesignAvailableFn = createServerFn({
   method: 'GET',
-}).handler((): { available: boolean } => ({
+}).handler((): { available: boolean; seed: boolean } => ({
   available: isElevenLabsConfigured(),
+  // New voices are Seed voices, whose takes are paid one by one (#1765).
+  seed: isSeedVoiceConfigured(),
 }));
 
 function requireElevenLabsKey(): string {
@@ -79,10 +88,23 @@ export const listElevenLabsVoicesFn = createServerFn({ method: 'GET' })
     });
   });
 
-export const getElevenLabsVoiceFn = createServerFn({ method: 'GET' })
+export const getSavedVoiceFn = createServerFn({ method: 'GET' })
   .middleware([authWithTeamMiddleware])
   .validator(zodValidator(z.object({ voiceId: z.string().min(1).max(128) })))
-  .handler(async ({ data }) => {
+  .handler(async ({ data }): Promise<SavedVoiceMeta | null> => {
+    // A Seed voice is clips in R2, not an ElevenLabs voice (#1765).
+    if (voiceProviderOf(data.voiceId) === 'seed') {
+      return {
+        voiceId: data.voiceId,
+        name: 'Seed voice',
+        category: 'generated',
+        previewUrl: getPublicUrl(
+          STORAGE_BUCKETS.AUDIO,
+          `${seedVoiceFolder(data.voiceId)}/read.wav`
+        ),
+        isPremade: false,
+      };
+    }
     const apiKey = requireElevenLabsKey();
     return getElevenLabsVoice(apiKey, data.voiceId);
   });

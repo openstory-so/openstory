@@ -13,6 +13,10 @@ import {
   getElevenLabsApiKey,
   isElevenLabsConfigured,
 } from '@/models/server/elevenlabs-config';
+import {
+  getSeedSpeechApiKey,
+  isSeedSpeechConfigured,
+} from '@/models/server/seed-speech-config';
 import { nativeGeminiTextModel } from '@/models/gemini-native';
 import { nativeGrokTextModel } from '@/models/grok-native';
 import {
@@ -32,9 +36,10 @@ import { getLogger, serializeError } from '@/platform/logger';
 /**
  * Platform-only providers that `resolveKey` can spend but that are NOT on
  * `API_KEY_PROVIDERS` — no team row, no Settings UI, no BYOK. Designed
- * ElevenLabs voices live in the account that created them (#1552).
+ * ElevenLabs voices live in the account that created them (#1552); Seed
+ * Speech is the BytePlus account's (#1765).
  */
-export type ResolvableProvider = ApiKeyProvider | 'elevenlabs';
+export type ResolvableProvider = ApiKeyProvider | 'elevenlabs' | 'seed-speech';
 
 const logger = getLogger(['openstory', 'db', 'api-keys']);
 
@@ -326,6 +331,11 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
     if (provider === 'elevenlabs') {
       if (!isElevenLabsConfigured()) return undefined;
       const key = getElevenLabsApiKey();
+      return key ? { key, source: 'platform' } : undefined;
+    }
+    if (provider === 'seed-speech') {
+      if (!isSeedSpeechConfigured()) return undefined;
+      const key = getSeedSpeechApiKey();
       return key ? { key, source: 'platform' } : undefined;
     }
 

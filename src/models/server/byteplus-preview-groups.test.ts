@@ -31,7 +31,6 @@ vi.mock('./byteplus-assets', () => ({
 
 const {
   deleteMatchingPreviewPrGroups,
-  PREVIEW_GROUP_GRACE_MS,
   sweepOrphanedPreviewBytePlusGroups,
   UNOWNED_GROUP_ASSET_MAX_AGE_MS,
 } = await import('./byteplus-preview-groups');
@@ -78,13 +77,12 @@ describe('sweepOrphanedPreviewBytePlusGroups', () => {
     expect(
       await sweepOrphanedPreviewBytePlusGroups({
         now: NOW,
-        openPullRequests: async () => new Set(),
       })
     ).toBeNull();
     expect(deletedGroups).toEqual([]);
   });
 
-  it('from production, deletes closed-PR groups and old unowned assets', async () => {
+  it('from production, ages out laptop/legacy groups and never touches a PR group', async () => {
     groups = [
       {
         Id: 'g-closed',
@@ -92,14 +90,9 @@ describe('sweepOrphanedPreviewBytePlusGroups', () => {
         CreateTime: hoursAgo(5).toISOString(),
       },
       {
-        Id: 'g-open',
-        Name: 'openstory-virtual-pr-1633-openstory-workers-dev',
-        CreateTime: hoursAgo(5).toISOString(),
-      },
-      {
-        Id: 'g-fresh',
-        Name: 'openstory-virtual-pr-1600-openstory-workers-dev',
-        CreateTime: hoursAgo(0.25).toISOString(),
+        Id: 'g-stale-pr',
+        Name: 'openstory-virtual-pr-1500-openstory-workers-dev',
+        CreateTime: hoursAgo(30).toISOString(),
       },
       { Id: 'g-prod', Name: 'openstory-virtual-openstory-so' },
       { Id: 'g-legacy', Name: 'openstory-virtual' },
@@ -116,40 +109,44 @@ describe('sweepOrphanedPreviewBytePlusGroups', () => {
       'g-prod': [{ Id: 'prod-old', CreateTime: hoursAgo(48).toISOString() }],
     };
 
-    const summary = await sweepOrphanedPreviewBytePlusGroups({
-      now: NOW,
-      openPullRequests: async () => new Set([1633]),
-    });
+    const summary = await sweepOrphanedPreviewBytePlusGroups({ now: NOW });
 
-    expect(deletedGroups).toEqual(['g-closed', 'g-legacy']);
+    // PR groups are the preview's own to tear down (previews hold no assets,
+    // #1756); production's own group is never touched; no CreateTime on a
+    // laptop/legacy group reads as old.
+    expect(deletedGroups).toEqual(['g-legacy']);
     expect(deletedAssets.sort()).toEqual(['legacy-old', 'local-old']);
     expect(summary).toEqual({
-      leftoverGroupsDeleted: 2,
+      leftoverGroupsDeleted: 1,
       leftoverGroupsFailed: 0,
-      leftoverGroupsSkippedOpen: 1,
       unownedAssetsSwept: 2,
     });
-    expect(PREVIEW_GROUP_GRACE_MS).toBe(45 * 60 * 1000);
     expect(UNOWNED_GROUP_ASSET_MAX_AGE_MS).toBe(24 * 60 * 60 * 1000);
   });
 
-  it('does not delete per-PR groups when GitHub is unreachable', async () => {
+  it('keeps an empty unowned group that is younger than a day (#1756)', async () => {
+    // A laptop's bun dev creates its group at first ingest; the batch may
+    // still be waiting on admission when the hour turns, so it holds no
+    // asset yet. Deleting it strands the worker's cached group id.
     groups = [
+      { Id: 'g-prod', Name: 'openstory-virtual-openstory-so' },
       {
-        Id: 'g-closed',
-        Name: 'openstory-virtual-pr-1520-openstory-workers-dev',
-        CreateTime: hoursAgo(5).toISOString(),
+        Id: 'g-laptop',
+        Name: 'openstory-virtual-snappy-wombat-openstory-so',
+        CreateTime: hoursAgo(2).toISOString(),
+      },
+      {
+        Id: 'g-abandoned',
+        Name: 'openstory-virtual-old-laptop-openstory-so',
+        CreateTime: hoursAgo(30).toISOString(),
       },
     ];
 
     const summary = await sweepOrphanedPreviewBytePlusGroups({
       now: NOW,
-      openPullRequests: async () => {
-        throw new Error('GitHub down');
-      },
     });
 
-    expect(deletedGroups).toEqual([]);
-    expect(summary?.leftoverGroupsDeleted).toBe(0);
+    expect(deletedGroups).toEqual(['g-abandoned']);
+    expect(summary?.leftoverGroupsDeleted).toBe(1);
   });
 });

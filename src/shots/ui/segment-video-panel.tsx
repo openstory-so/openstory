@@ -110,7 +110,11 @@ export const SegmentVideoPanel: React.FC<SegmentVideoPanelProps> = ({
                   disabled={!selectable || selecting}
                   onClick={() => onSelectVersion(version.id)}
                   aria-label={`Select version ${i + 1}${
-                    version.resolution ? ` (${version.resolution})` : ''
+                    version.draftTaskId
+                      ? ' (draft)'
+                      : version.resolution
+                        ? ` (${version.resolution})`
+                        : ''
                   }`}
                   aria-pressed={isSelected}
                   className="h-7 gap-1.5 px-2 text-xs"
@@ -118,9 +122,13 @@ export const SegmentVideoPanel: React.FC<SegmentVideoPanelProps> = ({
                   <VersionDot status={version.status} />v{i + 1}
                   {/* A 4K re-roll sits next to its 720p draft; say which is
                       which rather than leaving the chips identical (#1449). */}
-                  {version.resolution && (
+                  {(version.draftTaskId || version.resolution) && (
                     <span className="font-mono text-[10px] opacity-70">
-                      {version.resolution === '4k' ? '4K' : version.resolution}
+                      {version.draftTaskId
+                        ? 'draft'
+                        : version.resolution === '4k'
+                          ? '4K'
+                          : version.resolution}
                     </span>
                   )}
                 </Button>

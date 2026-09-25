@@ -194,11 +194,24 @@ export function contentRejectionSubjects(error: string): string[] {
  * with its `loc` (`body.prompt: …; body.image_url: …`, #1373); a rejection
  * without any prefix (Veo's "could not generate", BytePlus, aimock) classifies
  * as nothing flagged and callers treat it as prompt-shaped.
+ *
+ * `audioInput` is the audio the request SENT (#1756, #1773): Ark's
+ * `InputAudioSensitiveContentDetected`, a `body.audio…` field, or a message
+ * naming the input/reference audio. `audio` alone also covers the model's
+ * own output audio, which a softer prompt can change; a sent recording it
+ * cannot.
  */
 export function flaggedInputs(rejection: string): {
   prompt: boolean;
   image: boolean;
   audio: boolean;
+  /**
+   * Ark's input-side audio moderation (`InputAudioSensitiveContentDetected`,
+   * #1756): the reference audio itself — a dialogue recording, or a studio
+   * audio clip — was refused. Neither a reseed nor a softer prompt changes
+   * the bytes that were sent; only different audio does.
+   */
+  audioInput: boolean;
 } {
   const fields = [...rejection.matchAll(/\bbody\.([\w.[\]]+):/g)].map(
     (m) => m[1] ?? ''
@@ -209,6 +222,10 @@ export function flaggedInputs(rejection: string): {
     audio:
       fields.some((f) => /audio/i.test(f)) ||
       /AudioSensitiveContentDetected/i.test(rejection),
+    audioInput:
+      fields.some((f) => /audio/i.test(f)) ||
+      /InputAudioSensitiveContentDetected/i.test(rejection) ||
+      /\b(?:input|reference|provided|uploaded) audio\b/i.test(rejection),
   };
 }
 
@@ -237,9 +254,26 @@ export function clipContentRejectionMessage(args: {
   inputs?: {
     still?: { name: string; fix: string };
     prompt: string;
+    /** What the reference audio is called and how to change it (#1756). */
+    audio?: { name: string; fix: string };
   };
 }): string {
   const flags = flaggedInputs(args.rejections.join('; '));
+  const tried = [
+    args.models.join(', then '),
+    args.softened ? 'softened prompt also rejected' : null,
+  ]
+    .filter(Boolean)
+    .join('; ');
+  // The audio that was SENT was refused: no prompt rewrite or still touches
+  // it, so say what the audio is and the ways to send different audio.
+  if (flags.audioInput) {
+    const audio = args.inputs?.audio ?? {
+      name: 'the dialogue recording',
+      fix: "Set the shot's dialogue audio to Video model, regenerate the dialogue for another reading, or change the lines in the script",
+    };
+    return `Content checker rejected ${audio.name} (${tried}). ${audio.fix}.`;
+  }
   const still = args.inputs
     ? args.inputs.still
     : { name: 'the still', fix: 'Regenerate the still' };
@@ -261,11 +295,5 @@ export function clipContentRejectionMessage(args: {
     : flags.prompt
       ? `Rewrite ${promptName}.`
       : `Rewrite ${promptName}${still ? ` or ${lower(still.fix)}` : ''}. (${args.rejections.at(-1) ?? ''})`;
-  const tried = [
-    args.models.join(', then '),
-    args.softened ? 'softened prompt also rejected' : null,
-  ]
-    .filter(Boolean)
-    .join('; ');
   return `Content checker rejected ${what} (${tried}). ${hint}`;
 }

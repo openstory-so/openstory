@@ -9,7 +9,7 @@ import {
   stopAtFromSliderIndex,
 } from '@/sequences/pipeline';
 import type { GenerationStage } from '@/sequences/pipeline';
-import { VOICE_DESIGN_COST } from '@/billing/elevenlabs-pricing';
+import { VOICE_ESTIMATE_COST } from '@/billing/elevenlabs-pricing';
 import { microsToDisplayUsd } from '@/billing/money';
 import { Label } from '@/ui/shadcn/label';
 import { Slider } from '@/ui/shadcn/slider';
@@ -32,8 +32,24 @@ type GenerationStopSliderProps = {
   /** Design a voice per speaking character (#1553); offered like start frames. */
   generateVoices?: boolean;
   onGenerateVoicesChange?: (value: boolean) => void;
+  /**
+   * Draft first (#1756): the motion pass renders 480p drafts and the run
+   * stops there; the 1080p finals are rendered from the scene list once the
+   * drafts are approved. Pass `onDraftFirstChange` to offer the switch (a
+   * chosen model has a draft mode and this team can reach Ark).
+   */
+  draftFirst?: boolean;
+  onDraftFirstChange?: (value: boolean) => void;
   disabled?: boolean;
 };
+
+/**
+ * The Finals tick is not a stop the thumb can reach: a run never renders
+ * finals on its own (that would pay for the draft and the final with no look
+ * in between). It is on the track so the road ahead is visible.
+ */
+const FINALS_TICK = 'final';
+type Tick = GenerationStage | typeof FINALS_TICK;
 
 function stopLabelPercent(index: number, lastStop: number): number {
   return lastStop === 0 ? 0 : (index / lastStop) * 100;
@@ -47,10 +63,14 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
   onGenerateStartFramesChange,
   generateVoices = false,
   onGenerateVoicesChange,
+  draftFirst = false,
+  onDraftFirstChange,
   disabled = false,
 }) => {
   const stages = sliderStages(!generateStartFrames, generateVoices);
   const lastStop = stages.length - 1;
+  const ticks: Tick[] = draftFirst ? [...stages, FINALS_TICK] : stages;
+  const lastTick = ticks.length - 1;
   const minIndex = minStage ? sliderThumbIndex(minStage, stages) : 0;
   const clampedIndex = Math.max(minIndex, sliderThumbIndex(value, stages));
   const selected = stopAtFromSliderIndex(clampedIndex, stages);
@@ -69,6 +89,68 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
   const offerVoices =
     Boolean(onGenerateVoicesChange) &&
     (minStage == null || continueOffersVoicesSwitch(minStage));
+  // Six ticks do not fit on one line; alternate them above and below the
+  // track so neighbours never collide.
+  const alternate = ticks.length > 5;
+
+  const tickLabel = (tick: Tick, index: number): string => {
+    if (tick === FINALS_TICK) return 'Finals';
+    if (index === lastStop) return sliderTickLabel(tick, { draftFirst });
+    if (tick === 'dialogue' && combinedStillsAndDialogue) {
+      return sliderTickLabel('dialogue', { generateStartFrames: true });
+    }
+    return GENERATION_STAGE_META[tick].shortName;
+  };
+
+  /*
+    Radix insets each thumb by half its width so it stays on the track
+    (`size-3` → 6px). Labels use the same inset, then sit on the stop
+    percentages — not in equal flex cells, which centre between stops.
+  */
+  const tickRow = (side: 'above' | 'below') => (
+    <div className="px-1.5" aria-hidden="true">
+      <div className="relative min-h-8">
+        {ticks.map((tick, index) => {
+          if (alternate && (index % 2 === 1) !== (side === 'above')) {
+            return null;
+          }
+          const ghost = tick === FINALS_TICK;
+          const locked = ghost || index < minIndex;
+          return (
+            <button
+              key={tick}
+              type="button"
+              disabled={disabled || locked}
+              title={ghost ? 'After you approve the drafts' : undefined}
+              onClick={() => {
+                if (locked) return;
+                onChange(stopAtFromSliderIndex(index, stages));
+              }}
+              className={cn(
+                'absolute max-w-[6.5rem] text-[11px] leading-tight tracking-wide whitespace-pre-line line-clamp-2',
+                side === 'above' ? 'bottom-0' : 'top-0',
+                index === 0
+                  ? 'translate-x-0 text-left'
+                  : index === lastTick
+                    ? '-translate-x-full text-right'
+                    : '-translate-x-1/2 text-center',
+                !ghost && index <= clampedIndex
+                  ? 'font-medium text-foreground'
+                  : 'text-muted-foreground/40',
+                locked && !ghost && 'cursor-not-allowed opacity-50'
+              )}
+              style={{ left: `${stopLabelPercent(index, lastTick)}%` }}
+            >
+              {/* Ticks name the stop; the heading above says what happens
+                  there. The last tick used stopAfterSentence, so it repeated
+                  the heading ("Don't stop") instead of naming the stage. */}
+              {tickLabel(tick, index)}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 
   return (
     <section
@@ -81,63 +163,29 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
       >
         {stopAfterSentence(selected, {
           generateStartFrames: combinedStillsAndDialogue,
+          draftFirst,
         })}
       </h3>
+      {alternate && tickRow('above')}
       <Slider
         min={0}
-        max={lastStop}
+        max={lastTick}
         step={1}
         value={[clampedIndex]}
         disabled={disabled}
         onValueChange={(next) => {
           const index = next[0];
           if (index === undefined) return;
-          onChange(stopAtFromSliderIndex(Math.max(minIndex, index), stages));
+          onChange(
+            stopAtFromSliderIndex(
+              Math.min(lastStop, Math.max(minIndex, index)),
+              stages
+            )
+          );
         }}
         aria-label="How far generation should run"
       />
-      {/*
-        Radix insets each thumb by half its width so it stays on the track
-        (`size-3` → 6px). Labels use the same inset, then sit on the stop
-        percentages — not in equal flex cells, which centre between stops.
-      */}
-      <div className="px-1.5" aria-hidden="true">
-        <div className="relative min-h-8">
-          {stages.map((stage, index) => (
-            <button
-              key={stage}
-              type="button"
-              disabled={disabled || index < minIndex}
-              onClick={() => {
-                if (index < minIndex) return;
-                onChange(stopAtFromSliderIndex(index, stages));
-              }}
-              className={cn(
-                'absolute top-0 max-w-[6.5rem] text-[11px] leading-tight tracking-wide whitespace-pre-line line-clamp-2',
-                index === 0
-                  ? 'translate-x-0 text-left'
-                  : index === lastStop
-                    ? '-translate-x-full text-right'
-                    : '-translate-x-1/2 text-center',
-                index <= clampedIndex
-                  ? 'font-medium text-foreground'
-                  : 'text-muted-foreground/40',
-                index < minIndex && 'cursor-not-allowed opacity-50'
-              )}
-              style={{ left: `${stopLabelPercent(index, lastStop)}%` }}
-            >
-              {/* Ticks name the stop; the heading above says what happens
-                  there. The last tick used stopAfterSentence, so it repeated
-                  the heading ("Don't stop") instead of naming the stage. */}
-              {index === lastStop
-                ? sliderTickLabel(stage)
-                : stage === 'dialogue' && combinedStillsAndDialogue
-                  ? sliderTickLabel('dialogue', { generateStartFrames: true })
-                  : GENERATION_STAGE_META[stage].shortName}
-            </button>
-          ))}
-        </div>
-      </div>
+      {tickRow('below')}
       {offerStartFrames && onGenerateStartFramesChange && (
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
@@ -191,8 +239,28 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
           </div>
           <p className="text-xs text-muted-foreground">
             {generateVoices
-              ? `Each speaking character gets a designed voice (${microsToDisplayUsd(VOICE_DESIGN_COST)} each).`
+              ? `Each speaking character gets a designed voice (${microsToDisplayUsd(VOICE_ESTIMATE_COST)} each).`
               : 'Characters have no voice.'}
+          </p>
+        </div>
+      )}
+      {onDraftFirstChange && (
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <Switch
+              id="draft-first"
+              checked={draftFirst}
+              onCheckedChange={onDraftFirstChange}
+              disabled={disabled}
+            />
+            <Label htmlFor="draft-first" className="text-sm">
+              Draft first
+            </Label>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {draftFirst
+              ? 'Clips render at 480p first. Approve them, then render the 1080p finals. Drafts last seven days.'
+              : 'Clips render at full quality straight away.'}
           </p>
         </div>
       )}

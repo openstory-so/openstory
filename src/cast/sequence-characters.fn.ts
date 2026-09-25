@@ -45,6 +45,7 @@ import {
   saveDesignedVoice,
   type AssignableVoicePick,
 } from '@/cast/server/voice/elevenlabs-voice';
+import { voiceProviderOf, SEED_VOICE_MAX_TAKES } from '@/cast/seed-voice';
 import { buildRegenerateCharacterSheetPayload } from '@/cast/server/sheets/character-sheet-trigger';
 import type { SheetStaleness } from '@/cast/server/sheets/sheet-staleness';
 import { characterSheetHashMatchesStored } from '@/cast/server/workflows/sheet-snapshots';
@@ -223,7 +224,13 @@ export const softDeleteSequenceCharacterFn = createServerFn({ method: 'POST' })
  */
 export const generateCharacterVoiceFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
-  .validator(zodValidator(characterIdInput))
+  .validator(
+    zodValidator(
+      characterIdInput.extend({
+        takes: z.number().int().min(1).max(SEED_VOICE_MAX_TAKES),
+      })
+    )
+  )
   .handler(async ({ context, data }) => {
     if (!isElevenLabsConfigured()) {
       throw new ValidationError('Voice design is not configured');
@@ -234,6 +241,7 @@ export const generateCharacterVoiceFn = createServerFn({ method: 'POST' })
       character,
       userId: context.user.id,
       analysisModel: context.sequence.analysisModel,
+      takes: data.takes,
       trigger: (payload) => triggerWorkflow('/character-voice', payload),
     });
     if (!enqueued.alreadyInFlight) {
@@ -292,10 +300,6 @@ export const chooseCharacterVoiceTakeFn = createServerFn({ method: 'POST' })
     zodValidator(characterIdInput.extend({ generatedVoiceId: z.string() }))
   )
   .handler(async ({ context, data }) => {
-    const apiKey = getElevenLabsApiKey();
-    if (!apiKey || !isElevenLabsConfigured()) {
-      throw new ValidationError('Voice design is not configured');
-    }
     const character = await requireCharacter(context.scopedDb, data);
     const previews = previewListWithChosenTake(
       character.voicePreviews ?? [],
@@ -319,6 +323,25 @@ export const chooseCharacterVoiceTakeFn = createServerFn({ method: 'POST' })
       throw new ValidationError(
         'This take was already saved. Regenerate the voice for fresh takes.'
       );
+    }
+    // A Seed take IS its voice (#1765): nothing to save, no slot to spend.
+    if (voiceProviderOf(take.generatedVoiceId) === 'seed') {
+      await context.scopedDb.characters.updateVoice(
+        character.id,
+        { voiceId: take.generatedVoiceId, voicePreviews: previews },
+        'generated',
+        context.user.id
+      );
+      await releaseReplacedVoice(
+        context.scopedDb,
+        character.voiceId,
+        take.generatedVoiceId
+      );
+      return { characterId: character.id, voiceId: take.generatedVoiceId };
+    }
+    const apiKey = getElevenLabsApiKey();
+    if (!apiKey || !isElevenLabsConfigured()) {
+      throw new ValidationError('Voice design is not configured');
     }
     let voiceId: string;
     try {

@@ -13,6 +13,12 @@
  * the small record below crosses the Workflows checkpoint (#1645, 1 MiB).
  */
 
+import {
+  ELEVENLABS_TTS_ENDPOINT,
+  elevenLabsTtsCost,
+} from '@/billing/elevenlabs-pricing';
+import type { Microdollars } from '@/billing/money';
+import { base64ToBytes } from '@/platform/base64';
 import { generateId } from '@/platform/id';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import { uploadFile } from '#storage';
@@ -23,7 +29,7 @@ import {
   ttsUtterance,
 } from '@/motion/dialogue-tts';
 import {
-  parseWavHeader,
+  honestDataSize,
   trimmedEndSeconds,
   wavDurationSeconds,
 } from './pad-dialogue-audio';
@@ -38,6 +44,8 @@ export type DialogueCallLine = {
   shotId: string;
   index: number;
   voiceId: string;
+  /** The speaker cue, as the lines spell it — Seed's prompt names speakers. */
+  character: string;
   text: string;
   tone: string;
 };
@@ -54,6 +62,15 @@ export type RecordedDialogueCall = {
   turns: DialogueRecordingTurn[];
   /** Each shot's range of the recording, its trailing silence already off. */
   windows: Array<{ shotId: string; fromSeconds: number; toSeconds: number }>;
+  /** What the call cost, one charge per provider it spent with. */
+  charges: DialogueCharge[];
+};
+
+/** One ledger line: its cost and the rate-card id it bills under. */
+type DialogueCharge = {
+  endpointId: string;
+  model: string;
+  costMicros: Microdollars;
 };
 
 /**
@@ -90,7 +107,7 @@ export async function recordDialogueCall(input: {
     inputs,
     settings: { stability: DIALOGUE_TTS_STABILITY },
   });
-  const wav = decodeBase64(result.audioBase64);
+  const wav = base64ToBytes(result.audioBase64);
   if (wav.byteLength === 0) {
     throw new Error('Dialogue TTS returned an empty audio body');
   }
@@ -125,6 +142,13 @@ export async function recordDialogueCall(input: {
     characterCount,
     turns,
     windows,
+    charges: [
+      {
+        endpointId: ELEVENLABS_TTS_ENDPOINT,
+        model: DIALOGUE_TTS_MODEL,
+        costMicros: elevenLabsTtsCost(characterCount),
+      },
+    ],
   };
 }
 
@@ -140,51 +164,6 @@ export function dialogueClipsAsReferences(
     token: clip.token,
     durationSeconds: clip.durationSeconds,
   }));
-}
-
-/** base64 characters decoded per `atob` — a multiple of 4, so no group is split. */
-const BASE64_SLICE_CHARS = 4 * 8192;
-
-/**
- * Decode straight into one preallocated buffer, a slice at a time. A
- * whole-file `atob` builds a binary string as long as the audio before a
- * single byte is copied out of it.
- */
-export function decodeBase64(input: string): Uint8Array<ArrayBuffer> {
-  // `atob` skips whitespace, which would shift a slice off its 4-character
-  // groups. Providers do not send any; the scan is what makes that safe to
-  // rely on, and the copy is only paid when it is wrong.
-  const base64 = /\s/.test(input) ? input.replace(/\s+/g, '') : input;
-  const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
-  const out = new Uint8Array(Math.floor((base64.length * 3) / 4) - padding);
-  let at = 0;
-  for (let from = 0; from < base64.length; from += BASE64_SLICE_CHARS) {
-    const binary = atob(base64.slice(from, from + BASE64_SLICE_CHARS));
-    // Written past the end is dropped by the typed array; caught just below.
-    for (let i = 0; i < binary.length; i++) out[at + i] = binary.charCodeAt(i);
-    at += binary.length;
-  }
-  if (at !== out.length) {
-    // A stray character shifted a group: the bytes are garbage.
-    throw new Error(
-      `Dialogue TTS returned base64 that decodes to ${at} bytes, expected ${out.length}`
-    );
-  }
-  return out;
-}
-
-/**
- * Make the header's `data` size describe the bytes that are there. Every
- * later reader — `cutAudioSection` above all, which sees only the header —
- * does its arithmetic off that field, so a header claiming more than the file
- * holds (a streaming encoder's placeholder) is corrected once, here, in place.
- */
-function honestDataSize(wav: Uint8Array<ArrayBuffer>): void {
-  const fmt = parseWavHeader(wav);
-  if (!fmt) return;
-  const available = wav.length - fmt.dataStart;
-  if (fmt.dataSize <= available) return;
-  new DataView(wav.buffer).setUint32(fmt.dataStart - 4, available, true);
 }
 
 /**

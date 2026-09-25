@@ -231,6 +231,7 @@ flowchart LR
 - A voice-only character (#1585) gets no child: its row is created `completed` with no sheet version, it is left out of the billed sheet count, and it never reaches the still prompt or the reference images. The motion prompt still sees it, for delivery
 - Uses talent match images as reference when available
 - Uploads sheets to R2 storage
+- Makes a voice for each speaking character with voices on (one `CharacterVoiceWorkflow` child each, `src/cast/server/workflows/character-voice-workflow.ts`; also triggered by Generate on the character card). The provider is chosen when the child is triggered (`newVoiceProvider`, carried as `voiceProvider`): **ElevenLabs** runs one Voice Design call and saves the top preview as a voice; **Seed** (#1765) has an LLM write a three-part range script, then records `takes` range reads side by side (`seed-range-read-<n>`, one step each). Each read is transcribed and checked against the script (`recordCheckedTake`), cut into normal / quiet / loud clips, isolated and stored in R2 inside its own step, so only `{ url, path }` crosses. A read that fails the check is retried by its step, and a take that still fails is dropped. The voice is the first take that passed, and the run fails only when none do. Each take is billed as three ledger lines: Seed Audio, Scribe and isolation. See `docs/architecture/seed-voices.md`
 
 **Location Bible Workflow** (`src/cast/server/workflows/location-bible-workflow.ts`):
 
@@ -276,15 +277,15 @@ flowchart LR
 
 ### Phase 4b: Dialogue Audio (Conditional)
 
-**Sub-workflow:** `DialogueAudioWorkflow` (`src/motion/server/workflows/dialogue-audio-workflow.ts`), one `spawnAndAwaitChild` after images and before motion. Runs only for scenes whose speakers hold an ElevenLabs `voiceId` (#1554); a line bound to an uploaded audio element or opted out to the video model is skipped.
+**Sub-workflow:** `DialogueAudioWorkflow` (`src/motion/server/workflows/dialogue-audio-workflow.ts`), one `spawnAndAwaitChild` after images and before motion. Runs only for scenes whose speakers hold a `voiceId` (#1554) — an ElevenLabs voice, recorded by Text to Dialogue, or a `seed:` voice (#1765), recorded by Seed Audio (`recordSeedDialogueCall`, see `docs/architecture/seed-voices.md`); a line bound to an uploaded audio element or opted out to the video model is skipped. Scenes record concurrently. A scene that fails is logged and does not fail the stage: the scenes that recorded keep their clips, and the failed scene's shots have none, so motion records them itself (see "Motion's fallback") and fails just those shots with the reason.
 
 **Record wide, keep narrow (#1657).** Text to Dialogue acts the turns it is given against each other, so a shot recorded alone is a cold read of a reply the model never heard: the call speaks the scene's whole conversation. What is kept is narrow, so one edit disturbs one shot — only shots whose working-set clip no longer matches their lines adopt the new audio; the rest keep the section they had and nothing of theirs goes stale (`recordDialogue`, `src/motion/server/record-dialogue.ts`):
 
 - **The lines come from the shot**, not the script and not a scene list: `shot_dialogue_versions` holds them per shot (append-only, one selected row). The shot-list pass seeds a `prompt` row per shot at scene split; a prompt-editor edit appends `user-edit` for that one shot, so it cannot drop a concurrent edit to another; a shot with no row yet is derived from its scene's script by `deriveShotDialogueLines`. The conversation is assembled at use — shot order, then line order within the shot (`sceneConversation`) — so a shot reorder needs nothing restamped. The lines are snapshotted onto the run (`GenerationCheckpoint.dialogueLinesByShotId`) and re-read from D1 at a continue (`refreshCheckpointFromCast`), so an edit made while the run was stopped is what gets recorded.
 - **Who adopts.** Per scene, the prepare step reads the shots through the existing hatch `scopedDb.liveRead.shots.getByIds` and asks `matchingDialogueClips` which voiced shots hold no clip for their lines — those are `adoptShotIds`. None → the scene is reused and no call is made.
 - **One index.** A turn's `index` is **shot-relative**, which is what lets every #1554/#1651 helper (`dialogueClipSourceKey`, `matchingDialogueClips`, `spokenLinesFor`, `withSpokenText`, the rewrite merge) work unchanged on one shot's lines. A turn's place in the conversation is its array position, never stored.
-- **Chunking.** A conversation over `DIALOGUE_TAKE_CHUNK_CHARS` (2000 characters of `ttsUtterance` text, ElevenLabs' reliability line for v3) is split at a **shot boundary**, never inside a shot (`chunkTakeLines`). Each chunk is its own recording — nothing is joined — and only chunks that contain an adopting shot are recorded.
-- **Bytes never cross a step (#1645).** `recordDialogueCall` decodes the response, measures each shot's window, uploads the WHOLE WAV once inside its `step.do`, and returns only `{ recordingId, storageKey, url, durationSeconds, characterCount, turns, windows }`. There is no read-back or assemble step.
+- **Chunking.** A conversation over `DIALOGUE_TAKE_CHUNK_CHARS` (2000 characters of `ttsUtterance` text, ElevenLabs' reliability line for v3) is split at a **shot boundary**, never inside a shot (`chunkTakeLines`). Each chunk is its own recording — nothing is joined — and only chunks that contain an adopting shot are recorded. A chunk also breaks where the voice provider changes (a Seed voice and an ElevenLabs voice never share a call), and a Seed chunk where a fourth speaker would join (Seed takes one voice clip per speaker, three at most) or past 1,000 line characters.
+- **Bytes never cross a step (#1645).** `recordDialogueCall` decodes the response, measures each shot's window, uploads the WHOLE WAV once inside its `step.do`, and returns only `{ recordingId, storageKey, url, durationSeconds, characterCount, turns, windows, charges }` (`charges`: one ledger line per provider, so a Seed call's Scribe pass is billed as ElevenLabs spend). `recordSeedDialogueCall` returns the same record. There is no read-back or assemble step.
 - **Section boundaries.** The silence between two turns belongs to the shot that is about to speak, so a window starts where the previous shot stopped speaking and runs to the next shot's first word (`shotSliceWindows`). Its tail is measured **once, here** (`trimmedEndSeconds`, in place, no copy) and stored as the section's `toSeconds`.
 - **The cut is a cache.** One `step.do` per adopting shot calls `cutAudioSection` (`src/motion/server/cut-audio-section.ts`), which never loads the recording: a 4 KiB ranged read parses the WAV header, the body is a ranged R2 stream (`readStorageStream`), padding to the provider floor is appended as zeros, and the whole is a `FixedLengthStream` because `r2.put` rejects an unknown length. The key is deterministic (`<recordingId>_<fromMs>_<toMs>_<minMs>.wav`), so an existing file is returned as-is and a replay costs nothing.
 - **Persistence.** One persist step: `scopedDb.shotDialogue.appendRecording(...)` per recorded chunk writes the `dialogue_recordings` row and a `shot_dialogue_sections` row for EVERY shot the call spoke — selected with `source: 'recorded'` for the adopting shots, unselected with `source: 'context'` for the rest — then `shots.setAudioClips(shotId, [clip])` for the adopted shots only. Ids are generated inside the step and both inserts are `onConflictDoNothing`, so a replay is idempotent. The clip's `id` is the section's id and it stamps `recordingId`. Picking another reading — older, or a context one — is the same `selectSection` (`selectShotDialogueSectionFn`), which re-cuts and puts that clip back on the one shot.
@@ -316,6 +317,8 @@ Only runs if `autoGenerateMotion` is enabled, a video model is set, and images w
 
 1. **Parallel generation** — All frame motion child workflows + the optional music workflow spawned simultaneously (`spawnAndAwaitChild` under `Promise.all`)
 2. **Collect video URLs** — Reads from DB (authoritative ordering by `orderIndex`)
+
+**Ark draft mode (#1756).** With `sequences.draftMotion` on, every motion payload carries `draft: true` and a Seedance 2.5 clip on the BytePlus via renders at 480p with Ark's `draft` flag; `MotionWorkflow` stamps the Ark task id on the version (`stamp-draft-task`). "Render at quality" (`renderShotAtQualityFn` / `renderSequenceDraftsAtQualityFn` → `renderDraftAtQuality`) triggers `/motion` directly with `finalFromDraft: { taskId, renderSegmentId, manifest }` and its own reservation: the run opens a 1080p version on the draft's segment with the draft's manifest, skips dialogue (by omission: the payload carries no `voicedLines`, so never snapshot them onto a final), ingest and the content rescue, submits only the task id (`submitBytePlusFinalRender`), and promotes it like any primary render. A content refusal on a final is terminal after one poll (same seed, same assets) and a draft never swaps to the Grok fallback (the user picks another model). One run per segment, and one hold plus one instance per (draft, attempt): the reservation `idempotencyKey` and the trigger `deduplicationId` are both `motion-final-<versionId>-<sibling count>`. The id expires seven days after the draft. `StudioGenerationWorkflow` has the same `finalFromDraftTaskId` shape: `renderStudioAssetAtQuality` opens a NEW studio row from the draft's input at 1080p and the run skips ingest and stamps no `draftTaskId`. `MotionBatchWorkflow`'s Ark pool admission budgets `arkStillsToRegister` (start frames and person sheets — what ingest actually creates), not every reference URL. See `docs/architecture/byteplus-ark.md`.
 
 There is no merge step: the clips stay separate rows. The player stitches them client-side (`src/motion/ui/packed-playback.ts`), and a single MP4 is produced only on demand by `POST /api/v1/sequences/$id/exports` → `SequenceExportWorkflow` → the video-export Container (production-only).
 
@@ -415,6 +418,8 @@ Child workflows (image, motion, music, character bible, location bible, talent m
 
 **BytePlus ACR leases (#1361, #1531).** `MotionWorkflow` and `StudioGenerationWorkflow` lease every still they register on Ark under an owner of `motion:<instanceId>` / `studio:<instanceId>` (`assetLeaseOwner`). Both release by that owner on success (step `release-byteplus-asset-leases`, whichever via the clip finally rendered on; a release that exhausts its retries is logged, never fails the rendered clip) and at the end of `onFailure` (inside the base class's retried `emit-failure` step), via `scopedDb.bytePlusAssets.releaseOwner`. That drops the run's own leases and any reservation it never finalized; another run's lease on the same still is untouched. A batch parent never releases for its children. Every claim and finalize renews all of the run's leases, so a still leased early cannot expire while a later still waits. A miss is a `byteplus_assets` row with NULL `assetId` (counts against capacity); another run for that still gets `pending` and the claim step retries. A full leased pool is `NonRetryableError` — it does not wait out the TTL. Abandoned reservations are takeable after the 45-minute TTL. Ingest per still is `-url` (fal key + fetchable URL) → `-claim` (the only retried-for-minutes step) → `-evict` (an already-deleted asset counts as done) → `-slot` → `-wait` → `-create`. Motion's parents (motion-batch, update-stale-shots) await a motion child for 90 minutes, and analyze-script awaits motion-batch for 120.
 
+**Content soften and refused audio (#1373, #1773).** After the reseeds, the rescue attempt of a single-shot clip softens only `motionPrompt.fullPrompt` (the prose) — never the assembled prompt — and re-assembles the retry with `assembleMotionPrompt`, so the dialogue block, audio trailer and scene header are re-added, not rewritten. The `softened` version stores that prose with the version's `audio`; dialogue stays on the shot's dialogue node. A packed multi-shot clip still softens its assembled prompt. When the clip was sent reference audio (a dialogue reading or an audio element) and the rejection names the input audio (`flaggedInputs(...).inputAudio`: a `body.audio…` field, Ark's `InputAudioSensitiveContentDetected`, or a message naming the input/reference audio), the rescue is skipped — no soften, no model fallback — and the terminal message names the recording and says what to change.
+
 **Prompt-length recovery (#1754).** `MotionWorkflow` never truncates a prompt. When a via that documents a hard ceiling refuses one — our own `PromptTooLongError` thrown before the request, or the provider's 422, both classified by `isPromptTooLongError` — the submit step returns a `tooLong` sentinel instead of throwing. That sentinel does **not** join the content-rejection reseed ladder (reseeding the same prompt cannot shorten it): the loop calls `shortenOverlongMotionPrompt` once under `videoPromptHardLimit(model)`, appends the rewrite as a `shortened` shot prompt version (selected on a primary render, history-only on a variant, and the in-flight clip's manifest is repointed at it via `writeRescuedMotionPrompt` — the same helper the #1373 content soften uses), and resubmits. One rewrite per run; a second refusal is a `NonRetryableError` naming both numbers, because a shot that still will not fit is the user's to shorten.
 
 ### Retry Strategy
@@ -428,7 +433,7 @@ Under Cloudflare Workflows, retries are configured per `step.do()` (and on the w
 | Child workflows (`spawnAndAwaitChild`)     | own step budget | Awaited with a `timeout`; the child retries its own steps                       |
 | Ark still claim (`<prefix>-ark-<n>-claim`) | 40 × 30s        | Constant — waits out another run's create; a full leased pool fails immediately |
 
-Per-scene fan-out (image, variant, motion) uses `Promise.allSettled` over `spawnAndAwaitChild`, so one scene's failure or timeout doesn't kill the rest of the batch — failures are collected and surfaced as a single error.
+Per-scene fan-out (image, variant, motion) uses `Promise.allSettled` over `spawnAndAwaitChild`, so one scene's failure or timeout doesn't kill the rest of the batch — failures are collected and surfaced as a single error. Dialogue audio is the exception: its failed scenes are logged, not raised, because motion records those shots again (Phase 4b).
 
 ### Cloudflare Workflows Durability
 
@@ -438,51 +443,53 @@ Per-scene fan-out (image, variant, motion) uses `Promise.allSettled` over `spawn
 
 ## Key Files Reference
 
-| File                                                           | Purpose                                                             |
-| -------------------------------------------------------------- | ------------------------------------------------------------------- |
-| `src/sequences/sequences.fn.ts`                                | Server functions that trigger the pipeline                          |
-| `src/platform/server/workflow/client.ts`                       | `triggerWorkflow()` — resolves binding + `binding.create()`         |
-| `src/platform/server/workflow/trigger-bindings.ts`             | `TRIGGER_TO_BINDING` — maps trigger path → Workflows binding        |
-| `src/platform/server/workflow/base-workflow.ts`                | `OpenStoryWorkflowEntrypoint` — base class, `onFailure`, `ScopedDb` |
-| `src/platform/server/workflow/await-child.ts`                  | `spawnAndAwaitChild()` — parent→child fan-out + await               |
-| `src/models/server/llm-call-helper.ts`                         | `durableLLMCallCf` / `durableStreamingLLMCallCf`                    |
-| `src/sequences/server/workflows/storyboard-workflow.ts`        | Wrapper: verify, clear, poster, spawn analyze-script                |
-| `src/sequences/server/workflows/analyze-script-workflow.ts`    | Core orchestration (phases 1-5)                                     |
-| `src/sequences/server/workflows/scene-split-workflow.ts`       | Phase 1: scenes + bibles in parallel, then streamed shot lists      |
-| `src/sequences/boundary-split.ts`                              | Anchor resolution + verbatim script slicing                         |
-| `src/sequences/tag-reconcile.ts`                               | Canonicalize scene continuity tags onto bible tags after the join   |
-| `src/sequences/server/streaming-scene-parser.ts`               | Incremental JSON parser for the boundary-annotation stream          |
-| `src/platform/server/workflow/sanitize-fail-response.ts`       | Error message extraction + Cloudflare error-code mapping            |
-| `src/shots/server/db/frames.ts`                                | Scoped-db frame methods (`createFramesMethods`)                     |
-| **Extraction + Matching**                                      |                                                                     |
-| `src/cast/server/workflows/talent-matching-workflow.ts`        | Talent matching against Phase 1 character bible                     |
-| `src/cast/server/workflows/location-matching-workflow.ts`      | Location matching against Phase 1 location bible                    |
-| **Reference Generation**                                       |                                                                     |
-| `src/cast/server/workflows/character-bible-workflow.ts`        | Character sheet generation (parallel per character)                 |
-| `src/cast/server/workflows/character-sheet-workflow.ts`        | Single character sheet image generation                             |
-| `src/cast/server/workflows/location-bible-workflow.ts`         | Location sheet generation (parallel per location)                   |
-| `src/cast/server/workflows/location-sheet-workflow.ts`         | Single location reference image generation                          |
-| **Prompt Generation**                                          |                                                                     |
-| `src/stills/server/workflows/frame-prompt-batch-workflow.ts`   | Visual prompt sub-workflow (parallel per 1-shot scene)              |
-| `src/stills/server/workflows/frame-prompt-workflow.ts`         | Per-scene visual prompt LLM call                                    |
-| `src/motion/server/workflows/motion-prompt-workflow.ts`        | Motion prompt sub-workflow (parallel per scene)                     |
-| `src/motion/server/workflows/motion-prompt-batch-workflow.ts`  | Motion prompts per shot batch; stamps the derived-shot motion hash  |
-| `src/motion/server/workflows/motion-music-prompts-workflow.ts` | Orchestrates motion + music prompts in parallel                     |
-| `src/audio/server/workflows/music-prompt-workflow.ts`          | Music design LLM call                                               |
-| **Image Generation**                                           |                                                                     |
-| `src/stills/server/workflows/shot-images-workflow.ts`          | Orchestrates image + variant gen for all scenes                     |
-| `src/stills/server/workflows/image-workflow.ts`                | Single image generation (Fal.ai)                                    |
-| `src/stills/server/workflows/shot-variant-workflow.ts`         | Shot grid variant generation                                        |
-| **Motion + Music Generation**                                  |                                                                     |
-| `src/motion/server/workflows/motion-batch-workflow.ts`         | Orchestrates motion + music generation                              |
-| `src/motion/server/workflows/motion-workflow.ts`               | Single motion/video generation (Fal.ai)                             |
-| `src/audio/server/workflows/music-workflow.ts`                 | Music generation (Fal.ai)                                           |
-| `src/sequences/server/workflows/sequence-export-workflow.ts`   | Server-side export (video-export Container; production-only)        |
-| **Recasting + Regeneration**                                   |                                                                     |
-| `src/cast/server/workflows/recast-character-workflow.ts`       | Recast a character and regenerate affected frames                   |
-| `src/cast/server/workflows/recast-location-workflow.ts`        | Recast a location and regenerate affected frames                    |
-| `src/shots/server/workflows/regenerate-shots-workflow.ts`      | Regenerate specific shots with new prompts                          |
-| **Schemas + Events**                                           |                                                                     |
-| `src/platform/realtime/index.ts`                               | Real-time event schema and channel helpers                          |
-| `src/shots/scene-analysis.schema.ts`                           | `Scene` type definition                                             |
-| `src/sequences/response-schemas.ts`                            | `musicDesignResultSchema` and other LLM response schemas            |
+| File                                                           | Purpose                                                              |
+| -------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `src/sequences/sequences.fn.ts`                                | Server functions that trigger the pipeline                           |
+| `src/platform/server/workflow/client.ts`                       | `triggerWorkflow()` — resolves binding + `binding.create()`          |
+| `src/platform/server/workflow/trigger-bindings.ts`             | `TRIGGER_TO_BINDING` — maps trigger path → Workflows binding         |
+| `src/platform/server/workflow/base-workflow.ts`                | `OpenStoryWorkflowEntrypoint` — base class, `onFailure`, `ScopedDb`  |
+| `src/platform/server/workflow/await-child.ts`                  | `spawnAndAwaitChild()` — parent→child fan-out + await                |
+| `src/motion/server/render-at-quality.ts`                       | Ark draft → 1080p final: opens the run with `finalFromDraft` (#1756) |
+| `src/models/server/byteplus-final-render.ts`                   | Posts the `draft_task` body Ark renders the final from               |
+| `src/models/server/llm-call-helper.ts`                         | `durableLLMCallCf` / `durableStreamingLLMCallCf`                     |
+| `src/sequences/server/workflows/storyboard-workflow.ts`        | Wrapper: verify, clear, poster, spawn analyze-script                 |
+| `src/sequences/server/workflows/analyze-script-workflow.ts`    | Core orchestration (phases 1-5)                                      |
+| `src/sequences/server/workflows/scene-split-workflow.ts`       | Phase 1: scenes + bibles in parallel, then streamed shot lists       |
+| `src/sequences/boundary-split.ts`                              | Anchor resolution + verbatim script slicing                          |
+| `src/sequences/tag-reconcile.ts`                               | Canonicalize scene continuity tags onto bible tags after the join    |
+| `src/sequences/server/streaming-scene-parser.ts`               | Incremental JSON parser for the boundary-annotation stream           |
+| `src/platform/server/workflow/sanitize-fail-response.ts`       | Error message extraction + Cloudflare error-code mapping             |
+| `src/shots/server/db/frames.ts`                                | Scoped-db frame methods (`createFramesMethods`)                      |
+| **Extraction + Matching**                                      |                                                                      |
+| `src/cast/server/workflows/talent-matching-workflow.ts`        | Talent matching against Phase 1 character bible                      |
+| `src/cast/server/workflows/location-matching-workflow.ts`      | Location matching against Phase 1 location bible                     |
+| **Reference Generation**                                       |                                                                      |
+| `src/cast/server/workflows/character-bible-workflow.ts`        | Character sheet generation (parallel per character)                  |
+| `src/cast/server/workflows/character-sheet-workflow.ts`        | Single character sheet image generation                              |
+| `src/cast/server/workflows/location-bible-workflow.ts`         | Location sheet generation (parallel per location)                    |
+| `src/cast/server/workflows/location-sheet-workflow.ts`         | Single location reference image generation                           |
+| **Prompt Generation**                                          |                                                                      |
+| `src/stills/server/workflows/frame-prompt-batch-workflow.ts`   | Visual prompt sub-workflow (parallel per 1-shot scene)               |
+| `src/stills/server/workflows/frame-prompt-workflow.ts`         | Per-scene visual prompt LLM call                                     |
+| `src/motion/server/workflows/motion-prompt-workflow.ts`        | Motion prompt sub-workflow (parallel per scene)                      |
+| `src/motion/server/workflows/motion-prompt-batch-workflow.ts`  | Motion prompts per shot batch; stamps the derived-shot motion hash   |
+| `src/motion/server/workflows/motion-music-prompts-workflow.ts` | Orchestrates motion + music prompts in parallel                      |
+| `src/audio/server/workflows/music-prompt-workflow.ts`          | Music design LLM call                                                |
+| **Image Generation**                                           |                                                                      |
+| `src/stills/server/workflows/shot-images-workflow.ts`          | Orchestrates image + variant gen for all scenes                      |
+| `src/stills/server/workflows/image-workflow.ts`                | Single image generation (Fal.ai)                                     |
+| `src/stills/server/workflows/shot-variant-workflow.ts`         | Shot grid variant generation                                         |
+| **Motion + Music Generation**                                  |                                                                      |
+| `src/motion/server/workflows/motion-batch-workflow.ts`         | Orchestrates motion + music generation                               |
+| `src/motion/server/workflows/motion-workflow.ts`               | Single motion/video generation (Fal.ai)                              |
+| `src/audio/server/workflows/music-workflow.ts`                 | Music generation (Fal.ai)                                            |
+| `src/sequences/server/workflows/sequence-export-workflow.ts`   | Server-side export (video-export Container; production-only)         |
+| **Recasting + Regeneration**                                   |                                                                      |
+| `src/cast/server/workflows/recast-character-workflow.ts`       | Recast a character and regenerate affected frames                    |
+| `src/cast/server/workflows/recast-location-workflow.ts`        | Recast a location and regenerate affected frames                     |
+| `src/shots/server/workflows/regenerate-shots-workflow.ts`      | Regenerate specific shots with new prompts                           |
+| **Schemas + Events**                                           |                                                                      |
+| `src/platform/realtime/index.ts`                               | Real-time event schema and channel helpers                           |
+| `src/shots/scene-analysis.schema.ts`                           | `Scene` type definition                                              |
+| `src/sequences/response-schemas.ts`                            | `musicDesignResultSchema` and other LLM response schemas             |

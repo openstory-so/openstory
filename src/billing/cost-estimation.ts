@@ -13,6 +13,7 @@ import {
   AUDIO_MODELS,
   IMAGE_MODELS,
   IMAGE_TO_VIDEO_MODELS,
+  supportsDraftMode,
   supportsReferenceOnlyMotion,
   type AudioModel,
   type ImageToVideoModel,
@@ -20,7 +21,8 @@ import {
 } from '@/models/models';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import { aspectRatioToDimensions } from '@/models/aspect-ratios';
-import type { Resolution } from '@/models/resolutions';
+import type { RenderedResolution, Resolution } from '@/models/resolutions';
+import { DRAFT_RESOLUTION } from '@/motion/draft-mode';
 import { imageRequestDimensions } from '@/stills/build-image-request';
 import { resolveMotionEndpoint } from '@/motion/resolve-motion-endpoint';
 import {
@@ -37,7 +39,7 @@ import { reportFlooredEstimate } from './billing-observability';
 import {
   estimateTtsCost,
   TYPICAL_DIALOGUE_CHARS_PER_SHOT,
-  VOICE_DESIGN_COST,
+  VOICE_ESTIMATE_COST,
 } from './elevenlabs-pricing';
 import { type Microdollars, addMicros, micros, multiplyMicros } from './money';
 
@@ -185,7 +187,8 @@ export function estimateVideoCost(
   durationSeconds: number,
   opts: {
     pricing: FalPricingMap;
-    resolution?: Resolution;
+    /** A tier, or '480p' for an Ark draft (#1756). */
+    resolution?: RenderedResolution;
     /**
      * True when cast/element (or other) reference images will be sent so
      * `resolveMotionEndpoint` may route to reference-to-video.
@@ -235,7 +238,8 @@ export function estimateStudioVideoCost(
   opts: {
     pricing: FalPricingMap;
     mode?: StudioVideoMode;
-    resolution?: Resolution;
+    /** A tier, or '480p' for an Ark draft (#1756). */
+    resolution?: RenderedResolution;
   }
 ): Microdollars | null {
   return estimateFalCost(
@@ -349,6 +353,8 @@ export type StoryboardCostOpts = {
    * estimated character — the in-run gate replaces that with the real count.
    */
   generateVoices?: boolean;
+  /** Draft first (#1756): clips price as 480p drafts where the model has a draft mode. */
+  draftMotion?: boolean;
   /** Live pricing map from `getEffectiveFalPricing()`. */
   pricing: FalPricingMap;
 };
@@ -406,7 +412,12 @@ export function estimateStoryboardRenderCost(
       const perShotMotion = gateEstimate(
         estimateVideoCost(model, duration, {
           pricing,
-          resolution: opts.resolution,
+          // Draft first (#1756): the run renders 480p drafts; the 1080p
+          // finals are a separate, later spend.
+          resolution:
+            opts.draftMotion && supportsDraftMode(model)
+              ? DRAFT_RESOLUTION
+              : opts.resolution,
           hasReferenceImages: true,
           referenceOnly: opts.referenceOnly,
         }),
@@ -511,7 +522,7 @@ export function estimateStoryboardCost(opts: StoryboardCostOpts): Microdollars {
   const voiceCost =
     runsReferences && opts.generateVoices
       ? multiplyMicros(
-          VOICE_DESIGN_COST,
+          VOICE_ESTIMATE_COST,
           estimateCharacterSheetCount(sceneCount)
         )
       : micros(0);

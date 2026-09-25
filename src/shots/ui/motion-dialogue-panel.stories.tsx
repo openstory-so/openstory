@@ -3,6 +3,7 @@ import type { SequenceElementMinimal } from '@/platform/server/db/schema';
 import type { Meta, StoryObj } from '@storybook/react';
 import { fn } from 'storybook/test';
 import {
+  DialogueLinesEditor,
   MotionDialoguePanel,
   ShotDialogueBlock,
   ShotDialogueHistory,
@@ -46,6 +47,7 @@ const reading = (
   fromSeconds: 0,
   toSeconds: 2.4,
   recordingUrl: AUDIO_URL,
+  model: 'eleven_v3',
   createdAt: '2026-09-18T10:00:00Z',
   matchesCurrentLines: true,
   mismatch: null,
@@ -53,6 +55,7 @@ const reading = (
 });
 
 const current = reading('r-3', {
+  model: 'seed-audio-1.0',
   selected: true,
   createdAt: '2026-09-20T09:30:00Z',
 });
@@ -211,6 +214,7 @@ export const History: Story = {
           createdAt: '2026-09-20T10:05:00Z',
           selected: true,
           lines: [{ character: 'SARAH', line: 'This deadline will kill me.' }],
+          voiceOnly: false,
         },
         {
           id: 'v1',
@@ -218,9 +222,21 @@ export const History: Story = {
           createdAt: '2026-09-20T09:00:00Z',
           selected: false,
           lines: dialogue.lines,
+          voiceOnly: false,
         },
       ]}
       onUse={fn()}
+    />
+  ),
+};
+
+/** The lines, editable in place (#1773). Edit opens the form. */
+export const EditLines: Story = {
+  render: () => (
+    <DialogueLinesEditor
+      lines={dialogue.lines}
+      onSave={fn()}
+      speakers={['SARAH', 'MARCUS']}
     />
   ),
 };

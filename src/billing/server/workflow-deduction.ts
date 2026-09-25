@@ -14,6 +14,7 @@
 
 import { isBytePlusPricedModel } from '@/billing/byteplus-pricing';
 import { isElevenLabsPricedModel } from '@/billing/elevenlabs-pricing';
+import { isSeedSpeechPricedModel } from '@/billing/seed-speech-pricing';
 import {
   isNativeGeminiImageEndpoint,
   NATIVE_GEMINI_VIDEO_MODEL,
@@ -215,7 +216,8 @@ export async function recordFalUsage(
     isNativeGeminiImageEndpoint(usage.endpointId) ||
     usage.endpointId === NATIVE_GEMINI_VIDEO_MODEL ||
     isBytePlusPricedModel(usage.endpointId) ||
-    isElevenLabsPricedModel(usage.endpointId)
+    isElevenLabsPricedModel(usage.endpointId) ||
+    isSeedSpeechPricedModel(usage.endpointId)
   ) {
     return;
   }

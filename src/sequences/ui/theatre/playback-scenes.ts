@@ -2,6 +2,11 @@ import type { SceneInput } from './concatenated-video-source';
 
 import type { ShotView } from '@/shots/shot-view';
 import {
+  packedClipWindows,
+  shotIdAtTime,
+  type PackedClipShot,
+} from '@/shots/packed-clip-window';
+import {
   aspectRatioToDimensions,
   type AspectRatio,
 } from '@/models/aspect-ratios';
@@ -14,19 +19,34 @@ type PlaybackShot = Pick<
   image: { url: string | null } | null;
 };
 
+/**
+ * Shots per playback scene, in order. Adjacent shots that share a rendered
+ * clip (a packed render, #1510) are one scene; every other shot is its own.
+ */
+export function groupPlaybackShots<
+  S extends { video: { url: string | null } | null },
+>(shots: readonly S[]): S[][] {
+  const groups: S[][] = [];
+  for (const shot of shots) {
+    const url = shot.video?.url;
+    const previous = groups.at(-1);
+    if (url && previous?.[0]?.video?.url === url) previous.push(shot);
+    else groups.push([shot]);
+  }
+  return groups;
+}
+
 /** One continuous timeline: rendered clips where available, stills elsewhere. */
 export function toPlaybackScenes(
   shots: readonly PlaybackShot[],
   aspectRatio: AspectRatio = '16:9'
 ): SceneInput[] {
   const scenes: SceneInput[] = [];
-  for (const shot of shots) {
+  for (const group of groupPlaybackShots(shots)) {
+    const shot = group[0];
+    if (!shot) continue;
     const videoUrl = shot.video?.url;
     if (videoUrl) {
-      const previous = scenes.at(-1);
-      // Only adjacent rendered entries can share a packed clip.
-      if (previous && 'videoUrl' in previous && previous.videoUrl === videoUrl)
-        continue;
       scenes.push({ orderIndex: scenes.length, videoUrl });
     } else {
       const stillUrl = shot.image?.url ?? null;
@@ -91,4 +111,53 @@ export function scenePlaybackKey(scenes: readonly SceneInput[]): string {
           ]
     )
   );
+}
+
+/** What the sequence player knows about its own timeline. */
+export type PlaybackClock = {
+  /** Stitcher: the measured start of each playback scene. */
+  sceneOffsetsSeconds?: readonly number[];
+  /** HLS: only the whole cut's length. */
+  durationSeconds?: number;
+};
+
+/**
+ * Which shot the sequence player is on at `time` (#1771). Scene boundaries
+ * are the stitcher's measured offsets when it has them. Inside a packed
+ * clip, and on HLS (which reports only the total), shots split the scene in
+ * their own `durationMs` proportions, so a clip that came back a little
+ * longer than asked still lands on the right shot.
+ */
+export function shotIdAtSequenceTime<
+  S extends PackedClipShot & { video: { url: string | null } | null },
+>(
+  shots: readonly S[],
+  time: number,
+  clock: PlaybackClock = {}
+): string | undefined {
+  const scenes = groupPlaybackShots(shots).map((group) =>
+    packedClipWindows(group)
+  );
+  const estimatedTotal = scenes.reduce(
+    (sum, windows) => sum + (windows.at(-1)?.endSeconds ?? 0),
+    0
+  );
+  const scale =
+    !clock.sceneOffsetsSeconds && clock.durationSeconds && estimatedTotal > 0
+      ? clock.durationSeconds / estimatedTotal
+      : 1;
+  let cursor = 0;
+  for (const [index, windows] of scenes.entries()) {
+    const estimated = windows.at(-1)?.endSeconds ?? 0;
+    const start = clock.sceneOffsetsSeconds?.[index] ?? cursor;
+    const end =
+      clock.sceneOffsetsSeconds?.[index + 1] ?? start + estimated * scale;
+    if (time < end) {
+      const local =
+        end > start ? ((time - start) / (end - start)) * estimated : 0;
+      return shotIdAtTime(windows, local);
+    }
+    cursor = end;
+  }
+  return shots.at(-1)?.id;
 }

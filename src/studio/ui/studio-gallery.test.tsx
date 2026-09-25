@@ -20,6 +20,7 @@ function asset(input: GeneratedAsset['input']): GeneratedAsset {
     error: null,
     workflowRunId: 'wf',
     costMicros: 1,
+    draftTaskId: null,
     outputs: [{ url: '/r2/clip.mp4', contentType: 'video/mp4' }],
     createdAt: new Date(),
     updatedAt: new Date(),

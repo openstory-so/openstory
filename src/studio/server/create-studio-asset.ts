@@ -36,12 +36,18 @@ import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { GeneratedAssetInput } from '@/platform/server/db/schema';
 import { getLogger } from '@/platform/logger';
 import {
+  studioCreateInputSchema,
   studioEndpointId,
   studioModelName,
   type StudioCreateInput,
   type StudioCreateResult,
 } from '@/studio/schema';
 import { snapStudioVideoDuration } from '@/studio/text-to-video';
+import {
+  DRAFT_FINAL_RESOLUTION,
+  DRAFT_RESOLUTION,
+  draftTaskUsable,
+} from '@/motion/draft-mode';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import { captureProductEvent } from '@/platform/server/observability/product-events';
 import type { StudioGenerationWorkflowInput } from '@/platform/server/workflow/types';
@@ -68,7 +74,8 @@ function estimateStudioCost(
   const perVideo = gateEstimate(
     estimateStudioVideoCost(input.videoModel, duration, {
       pricing,
-      resolution: input.resolution,
+      // A draft is 480p whatever tier was picked (#1756).
+      resolution: input.draft ? DRAFT_RESOLUTION : input.resolution,
       mode: input.mode,
     }),
     { model: input.videoModel, operation: 'studio-video' }
@@ -81,12 +88,14 @@ function snapshotInput(input: StudioCreateInput): GeneratedAssetInput {
     const snapshot: GeneratedAssetInput = {
       prompt: input.prompt,
       aspectRatio: input.aspectRatio,
-      resolution: input.resolution,
+      // The gallery reads this back: a draft renders at 480p (#1756).
+      resolution: input.draft ? DRAFT_RESOLUTION : input.resolution,
       videoModel: input.videoModel,
       duration: snapStudioVideoDuration(input.duration, input.videoModel),
       count: input.count,
       mode: input.mode,
     };
+    if (input.draft) snapshot.draft = true;
     if (input.generateAudio !== undefined) {
       snapshot.generateAudio = input.generateAudio;
     }
@@ -135,7 +144,11 @@ async function zeroUnusedReservations(
  */
 export async function createStudioAssets(
   scopedDb: ScopedDb,
-  input: StudioCreateInput
+  input: StudioCreateInput,
+  options: {
+    /** See `StudioGenerationWorkflowInput.finalFromDraftTaskId` (#1756). */
+    finalFromDraftTaskId?: string;
+  } = {}
 ): Promise<StudioCreateResult> {
   if (input.activity === 'video') {
     // Same answer the picker showed (`getViaAvailabilityFn`): a model gated
@@ -229,6 +242,9 @@ export async function createStudioAssets(
             ownsReservation: true,
             input,
             noPersonImages,
+            ...(options.finalFromDraftTaskId && {
+              finalFromDraftTaskId: options.finalFromDraftTaskId,
+            }),
           };
 
           try {
@@ -293,4 +309,35 @@ export async function createStudioAssets(
   });
 
   return { assets };
+}
+
+/**
+ * Render a finished studio draft at quality (#1756): a new studio row whose
+ * input is the draft's at 1080p, run with only the draft's Ark task id. Same
+ * gates and credit hold as a fresh clip; the id never comes from the client.
+ */
+export async function renderStudioAssetAtQuality(
+  scopedDb: ScopedDb,
+  assetId: string
+): Promise<StudioCreateResult> {
+  const asset = await scopedDb.generatedAssets.getById(assetId);
+  if (!asset || asset.source !== 'studio') {
+    throw new Error('Generated asset not found');
+  }
+  if (!asset.draftTaskId || asset.status !== 'completed') {
+    throw new Error('This clip is not a finished draft');
+  }
+  if (!draftTaskUsable(asset.createdAt)) {
+    throw new Error('The draft is over seven days old — generate it again');
+  }
+  const input = studioCreateInputSchema.parse({
+    ...asset.input,
+    activity: 'video',
+    draft: false,
+    resolution: DRAFT_FINAL_RESOLUTION,
+    count: 1,
+  });
+  return createStudioAssets(scopedDb, input, {
+    finalFromDraftTaskId: asset.draftTaskId,
+  });
 }

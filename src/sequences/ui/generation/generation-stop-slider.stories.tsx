@@ -124,3 +124,31 @@ export const ContinueFromDialogue: Story = {
     </div>
   ),
 };
+
+export const DraftFirst: Story = {
+  name: 'Draft first (six ticks, alternating labels)',
+  render: () => (
+    <div className="mx-auto w-full max-w-lg rounded-lg border p-6">
+      <DraftFirstSlider />
+    </div>
+  ),
+};
+
+function DraftFirstSlider() {
+  const [value, setValue] = useState<GenerationStage>('music');
+  const [startFrames, setStartFrames] = useState(true);
+  const [voices, setVoices] = useState(false);
+  const [draftFirst, setDraftFirst] = useState(true);
+  return (
+    <GenerationStopSlider
+      value={value}
+      onChange={setValue}
+      generateStartFrames={startFrames}
+      onGenerateStartFramesChange={setStartFrames}
+      generateVoices={voices}
+      onGenerateVoicesChange={setVoices}
+      draftFirst={draftFirst}
+      onDraftFirstChange={setDraftFirst}
+    />
+  );
+}

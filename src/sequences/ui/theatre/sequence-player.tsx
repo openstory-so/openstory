@@ -19,7 +19,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/shadcn/tooltip';
 import type { SequencePlayerMeta } from './playback';
 import type { SceneInput } from './concatenated-video-source';
-import { scenePlaybackKey } from './playback-scenes';
+import { scenePlaybackKey, type PlaybackClock } from './playback-scenes';
 import { useTheatreMusic } from './use-theatre-music';
 import {
   captureVideoPlay,
@@ -76,6 +76,10 @@ type SequencePlayerProps = {
    */
   autoPlay?: boolean;
   onAutoPlayConsumed?: () => void;
+  /** Playhead plus what this source knows about scene timing (#1771). */
+  onTimeUpdate?: (time: number, clock: PlaybackClock) => void;
+  /** Draft clips in this cut (#1756): "Draft cut · 2 days left", "3 of 12 shots are drafts". */
+  draftLabel?: string | null;
 };
 
 function useMounted(): boolean {
@@ -98,6 +102,8 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
   sequenceId,
   autoPlay = false,
   onAutoPlayConsumed,
+  onTimeUpdate,
+  draftLabel = null,
 }) => {
   const posthog = usePostHog();
   const mounted = useMounted();
@@ -167,14 +173,24 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
 
   const overlay = (
     <>
-      {cachedVideoUrl === null ? (
-        <span
-          data-testid="theatre-local-preview"
-          className="absolute top-2 left-2 z-10 rounded bg-background/80 px-2 py-1 text-xs font-medium text-muted-foreground backdrop-blur-sm"
-        >
-          Local preview
-        </span>
-      ) : null}
+      <div className="pointer-events-none absolute top-2 left-2 z-10 flex flex-col items-start gap-1">
+        {cachedVideoUrl === null ? (
+          <span
+            data-testid="theatre-local-preview"
+            className="rounded bg-background/80 px-2 py-1 text-xs font-medium text-muted-foreground backdrop-blur-sm"
+          >
+            Local preview
+          </span>
+        ) : null}
+        {draftLabel && (
+          <span
+            data-testid="theatre-draft-label"
+            className="rounded bg-background/80 px-2 py-1 text-xs font-medium text-muted-foreground backdrop-blur-sm"
+          >
+            {draftLabel}
+          </span>
+        )}
+      </div>
       <div className="absolute top-2 right-2 z-10 flex items-center gap-2">
         {meta?.hasMixedResolutions && (
           <Tooltip>
@@ -261,6 +277,14 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
           sequenceId={sequenceId}
           onPlay={onAutoPlayConsumed}
           onLoadedMetadata={() => setServerLoaded(true)}
+          onTimeUpdate={(t) =>
+            onTimeUpdate?.(t, {
+              durationSeconds:
+                media && Number.isFinite(media.duration)
+                  ? media.duration
+                  : undefined,
+            })
+          }
           onMedia={setMedia}
           onError={() => {
             captureVideoPlayFailed(posthog, {
@@ -352,7 +376,12 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
                 setMeta(next);
                 tracker.setDuration(next.durationSeconds);
               }}
-              onTimeUpdate={(t) => tracker.tick(t)}
+              onTimeUpdate={(t) => {
+                tracker.tick(t);
+                onTimeUpdate?.(t, {
+                  sceneOffsetsSeconds: meta?.sceneOffsetsSeconds,
+                });
+              }}
               onPlay={() => {
                 if (!tracker.isActive()) tracker.start();
                 captureVideoPlay(posthog, {

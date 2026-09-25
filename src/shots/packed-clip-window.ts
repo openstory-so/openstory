@@ -127,8 +127,15 @@ export function generatePackedShotChaptersVTT(
 /** Inspector Generate Motion label when the request covers N packed shots. */
 export function motionGenerateLabel(
   packedShotCount: number,
-  hasVideo: boolean
+  hasVideo: boolean,
+  draft = false
 ): string {
+  // A draft is never "regenerated": the clip on screen may be a final, and a
+  // new draft is a new take, not a redo of it (#1756).
+  if (draft) {
+    const noun = packedShotCount > 1 ? `${packedShotCount} drafts` : 'draft';
+    return hasVideo ? `Generate new ${noun}` : `Generate ${noun}`;
+  }
   if (packedShotCount > 1) {
     return hasVideo
       ? `Regenerate ${packedShotCount} shots`

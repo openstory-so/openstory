@@ -12,7 +12,7 @@ import {
 import {
   estimateTtsCost,
   TYPICAL_DIALOGUE_CHARS_PER_SHOT,
-  VOICE_DESIGN_COST,
+  VOICE_ESTIMATE_COST,
 } from './elevenlabs-pricing';
 import { multiplyMicros } from './money';
 import { estimateStoryboardPreflightCost } from './storyboard-preflight-cost';
@@ -275,7 +275,7 @@ describe('estimateStoryboardPreflightCost', () => {
     ).toBe(0);
   });
 
-  it('prices one Voice Design call per estimated character when voices are on (#1553)', () => {
+  it('prices one new voice per estimated character when voices are on (#1553)', () => {
     const script = 'Scene 1 — 5s\nA room.\n\nScene 2 — 5s\nAnother room.';
     const off = estimateStoryboardPreflightCost({
       ...base,
@@ -290,7 +290,7 @@ describe('estimateStoryboardPreflightCost', () => {
     });
     const scenes = estimateSceneCount(script);
     expect(on - off).toBe(
-      multiplyMicros(VOICE_DESIGN_COST, estimateCharacterSheetCount(scenes))
+      multiplyMicros(VOICE_ESTIMATE_COST, estimateCharacterSheetCount(scenes))
     );
     // Not in the slice → not billed.
     expect(

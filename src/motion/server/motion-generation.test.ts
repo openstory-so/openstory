@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { estimateFalCost } from '@/billing/fal-cost';
 import { TEST_FAL_PRICING } from '@/billing/fal-pricing-fixture';
 import type { ArkAssetMap } from '@/models/server/byteplus-asset-steps';
 import { micros } from '@/billing/money';
@@ -59,6 +60,11 @@ vi.doMock('@/models/server/byteplus-asset-ingest', () => ({
   toArkFetchableUrl: async (url: string) => url,
 }));
 
+const mockSubmitFinalRender = vi.fn(async () => ({ jobId: 'ark-final' }));
+vi.doMock('@/models/server/byteplus-final-render', () => ({
+  submitBytePlusFinalRender: mockSubmitFinalRender,
+}));
+
 /** What `ingestArkAssets` would have produced: every still registered. */
 const registeredAssets: ArkAssetMap = new Proxy(
   {},
@@ -67,6 +73,7 @@ const registeredAssets: ArkAssetMap = new Proxy(
 
 const {
   arkStillsForMotion,
+  arkStillsToRegister,
   submitMotionJob,
   pollMotionJob,
   motionCostFromUsage,
@@ -139,6 +146,50 @@ describe('arkStillsForMotion', () => {
         ],
       })
     ).toEqual([{ storedUrl: 'https://cdn/unknown.png', slot: 'library' }]);
+  });
+});
+
+describe('arkStillsToRegister', () => {
+  it('budgets only the stills ingest would create: faces, not sets or props (#1756)', () => {
+    const character = (name: string) => ({
+      referenceImageUrl: `https://cdn/${name}.png`,
+      description: name,
+      role: 'character' as const,
+      token: name,
+      isPerson: true,
+    });
+    const location = {
+      referenceImageUrl: 'https://cdn/pub.png',
+      description: 'The pub',
+      role: 'location' as const,
+      token: 'Pub',
+    };
+    const element = {
+      referenceImageUrl: 'https://cdn/ute.png',
+      description: 'The ute',
+      role: 'element' as const,
+      token: 'Ute',
+    };
+    // Reference-only shots: no start frame, the same sheets on every shot.
+    const shot = {
+      referenceImages: [
+        character('Damo'),
+        character('Shazza'),
+        location,
+        element,
+        { ...character('Cockatoo'), isPerson: false },
+      ],
+    };
+    const stills = arkStillsToRegister([shot, shot, shot]);
+    expect(new Set(stills)).toEqual(
+      new Set(['https://cdn/Damo.png', 'https://cdn/Shazza.png'])
+    );
+  });
+
+  it('counts a start frame', () => {
+    expect(
+      arkStillsToRegister([{ imageUrl: 'https://cdn/still.png' }])
+    ).toEqual(['https://cdn/still.png']);
   });
 });
 
@@ -275,6 +326,96 @@ describe('Motion Service', () => {
       expect(result.via).toBe('byteplus');
       expect(result.usedOwnKey).toBe(false);
       expect(result.jobId).toBe('ark-job-id');
+    });
+
+    it('submits a Seedance 2.5 draft at 480p with draft: true and stamps the task id (#1756)', async () => {
+      testEnv.ARK_API_KEY = 'ark-test';
+      mockGenerateVideo.mockResolvedValue({ jobId: 'ark-draft' });
+
+      const result = await submitMotionJob({
+        arkAssets: registeredAssets,
+        imageUrl: 'https://example.com/image.jpg',
+        prompt: 'Dynamic action sequence',
+        model: 'seedance_v2_5',
+        duration: 5,
+        aspectRatio: '9:16',
+        resolution: '1080p',
+        draft: true,
+      });
+
+      expect(result.draftTaskId).toBe('ark-draft');
+      expect(mockGenerateVideo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          size: expect.stringMatching(/_480p$/),
+          modelOptions: expect.objectContaining({ draft: true }),
+        })
+      );
+    });
+
+    it('ignores draft on a model without draft mode', async () => {
+      testEnv.ARK_API_KEY = 'ark-test';
+      mockGenerateVideo.mockResolvedValue({ jobId: 'ark-full' });
+
+      const result = await submitMotionJob({
+        arkAssets: registeredAssets,
+        imageUrl: 'https://example.com/image.jpg',
+        prompt: 'Dynamic action sequence',
+        model: 'seedance_v2',
+        duration: 5,
+        aspectRatio: '9:16',
+        resolution: '720p',
+        draft: true,
+      });
+
+      expect(result.draftTaskId).toBeUndefined();
+      const call = mockGenerateVideo.mock.calls[0]?.[0];
+      expect(call?.size).toMatch(/_720p$/);
+      expect(call?.modelOptions).not.toHaveProperty('draft');
+    });
+
+    it('refuses a draft when Seedance 2.5 is routed to fal — never a quiet full render', async () => {
+      await expect(
+        submitMotionJob({
+          arkAssets: registeredAssets,
+          imageUrl: 'https://example.com/image.jpg',
+          prompt: 'Dynamic action sequence',
+          model: 'seedance_v2_5',
+          duration: 5,
+          draft: true,
+        })
+      ).rejects.toThrow(/BytePlus route/);
+      expect(mockGenerateVideo).not.toHaveBeenCalled();
+    });
+
+    it('renders the final from the draft task id alone and never stamps it as a draft (#1756)', async () => {
+      testEnv.ARK_API_KEY = 'ark-test';
+      mockSubmitFinalRender.mockClear();
+
+      const result = await submitMotionJob({
+        arkAssets: {},
+        prompt: 'Dynamic action sequence',
+        model: 'seedance_v2_5',
+        duration: 5,
+        aspectRatio: '9:16',
+        resolution: '1080p',
+        // A stray draft flag on a final payload must not stamp the final's id.
+        draft: true,
+        finalFromDraftTaskId: 'cgt-draft',
+      });
+
+      expect(result).toMatchObject({
+        jobId: 'ark-final',
+        via: 'byteplus',
+        endpointId: 'dreamina-seedance-2-5-260628',
+      });
+      expect(result.draftTaskId).toBeUndefined();
+      expect(mockSubmitFinalRender).toHaveBeenCalledWith(
+        expect.objectContaining({
+          modelId: 'dreamina-seedance-2-5-260628',
+          draftTaskId: 'cgt-draft',
+        })
+      );
+      expect(mockGenerateVideo).not.toHaveBeenCalled();
     });
 
     it('registers only character sheets that may show a person; robots go as the mapped plain URL (#1682)', async () => {
@@ -1071,6 +1212,45 @@ describe('Motion Service', () => {
       );
       expect(model).toBe('minimax/h3-max/reference-to-video');
       expect(cost).toBe(micros(400_000));
+    });
+
+    it('prices the final of a draft at 1080p without building a request (#1756)', () => {
+      // A reference-only draft has no still; the final sends only the task
+      // id, so the start-frame guard must not fire here.
+      const base = {
+        prompt: 'Golden hour along the beachfront',
+        model: 'seedance_v2_5' as const,
+        duration: 5,
+        referenceOnly: false,
+        imageUrl: 'https://example.com/still.png',
+      };
+      const final = calculateMotionMetadata(
+        { ...base, imageUrl: undefined, finalFromDraftTaskId: 'cgt-draft' },
+        TEST_FAL_PRICING
+      );
+      expect(final.model).toBe('bytedance/seedance-2.5/image-to-video');
+      expect(final.duration).toBe(5);
+      // Priced exactly as an ordinary 1080p render on the same model.
+      expect(final.cost).toBe(
+        calculateMotionMetadata(
+          { ...base, resolution: '1080p' },
+          TEST_FAL_PRICING
+        ).cost
+      );
+      // And a draft at 480p tokens whatever tier it asked for (an ordinary fal
+      // render cannot ask for 480p on 2.5 — only Ark's draft flag can).
+      expect(
+        calculateMotionMetadata(
+          { ...base, resolution: '1080p', draft: true },
+          TEST_FAL_PRICING
+        ).cost
+      ).toBe(
+        estimateFalCost(
+          'bytedance/seedance-2.5/image-to-video',
+          { durationSeconds: 5, resolution: '480p' },
+          TEST_FAL_PRICING
+        )
+      );
     });
   });
 

@@ -25,6 +25,8 @@
  */
 
 import { micros, multiplyMicros, type Microdollars } from './money';
+import { seedDialogueEstimate, seedVoiceEstimate } from './seed-speech-pricing';
+import { SEED_VOICE_DEFAULT_TAKES } from '@/cast/seed-voice';
 import type { EffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 
 /** Billing id for native ElevenLabs TTS (`eleven_v3` / multilingual v2). */
@@ -49,6 +51,29 @@ export const ELEVENLABS_MUSIC_ENDPOINT = 'elevenlabs-music';
  */
 export const ELEVENLABS_MUSIC_MODEL = 'music_v2_5' as const;
 
+/** Scribe v2 batch transcription (#1765): $0.22 per hour, 2026-09-23. */
+export const ELEVENLABS_SCRIBE_ENDPOINT = 'elevenlabs-scribe';
+
+/** Voice isolation (#1765): $0.12 per minute, 2026-09-23. */
+export const ELEVENLABS_ISOLATION_ENDPOINT = 'elevenlabs-isolation';
+
+const SCRIBE_PER_MINUTE = micros(3_667);
+const ISOLATION_PER_MINUTE = micros(120_000);
+
+/** Scribe for `seconds` of audio. */
+export function scribeCost(seconds: number): Microdollars {
+  return seconds > 0
+    ? multiplyMicros(SCRIBE_PER_MINUTE, seconds / 60)
+    : micros(0);
+}
+
+/** Voice isolation for `seconds` of audio. */
+export function isolationCost(seconds: number): Microdollars {
+  return seconds > 0
+    ? multiplyMicros(ISOLATION_PER_MINUTE, seconds / 60)
+    : micros(0);
+}
+
 /**
  * Per-product ElevenLabs rates.
  *
@@ -69,6 +94,15 @@ export const ELEVENLABS_MUSIC_MODEL = 'music_v2_5' as const;
 /** One Voice Design call (#1553): three previews, no slot. */
 export const VOICE_DESIGN_COST = micros(300_000);
 
+/**
+ * What to reserve for one new character voice made during generation,
+ * whichever provider makes it: the dearer of Voice Design and the default
+ * number of Seed takes.
+ */
+export const VOICE_ESTIMATE_COST = micros(
+  Math.max(VOICE_DESIGN_COST, seedVoiceEstimate(SEED_VOICE_DEFAULT_TAKES))
+);
+
 export const ELEVENLABS_RATE_CARD: Record<string, EffectiveFalPricing> = {
   // eleven_v3 / eleven_multilingual_v2 — $0.10 per 1,000 characters.
   // Flash / Turbo is $0.05; we keep the quality-tier rate so the credit
@@ -87,6 +121,16 @@ export const ELEVENLABS_RATE_CARD: Record<string, EffectiveFalPricing> = {
   [ELEVENLABS_MUSIC_ENDPOINT]: {
     unitPrice: micros(150_000),
     unit: 'minutes',
+  },
+  [ELEVENLABS_SCRIBE_ENDPOINT]: {
+    unitPrice: SCRIBE_PER_MINUTE,
+    unit: 'minutes',
+    typicalUnitsPerCall: 1,
+  },
+  [ELEVENLABS_ISOLATION_ENDPOINT]: {
+    unitPrice: ISOLATION_PER_MINUTE,
+    unit: 'minutes',
+    typicalUnitsPerCall: 1,
   },
 };
 
@@ -109,16 +153,24 @@ export function elevenLabsTtsUnitsBilled(
   return characterCount / 1000;
 }
 
-/**
- * Pre-flight TTS cost from a known character count. Uses the rate card
- * denomination (`1000 characters`) so the gate and the exact charge agree.
- */
-export function estimateTtsCost(characterCount: number): Microdollars {
+/** What ElevenLabs bills for `characterCount` characters of dialogue. */
+export function elevenLabsTtsCost(characterCount: number): Microdollars {
   const units = elevenLabsTtsUnitsBilled(characterCount);
   if (units == null || units <= 0) return micros(0);
   const price = ELEVENLABS_RATE_CARD[ELEVENLABS_TTS_ENDPOINT]?.unitPrice;
   if (price == null) return micros(0);
   return multiplyMicros(price, units);
+}
+
+/**
+ * Pre-flight dialogue cost from a character count. A pre-flight cannot tell
+ * which provider will speak each line, so it prices the dearer one: the gate
+ * must never under-estimate (#1069).
+ */
+export function estimateTtsCost(characterCount: number): Microdollars {
+  const eleven = elevenLabsTtsCost(characterCount);
+  const seed = seedDialogueEstimate(characterCount);
+  return eleven > seed ? eleven : seed;
 }
 
 /**

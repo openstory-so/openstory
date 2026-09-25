@@ -12,13 +12,9 @@
  */
 
 import { getEnv } from '#env';
+import { optionalEnv } from '@/platform/server/env/environment';
 import type { MediaVia } from '@/models/via';
 import { workersSafeFetch } from '@/platform/server/ai/workers-safe-fetch';
-
-function optionalEnv(name: string): string | undefined {
-  const value = Reflect.get(getEnv(), name);
-  return typeof value === 'string' && value.length > 0 ? value : undefined;
-}
 
 /** The platform Ark key, or undefined when BytePlus is not configured. */
 export function getArkApiKey(): string | undefined {

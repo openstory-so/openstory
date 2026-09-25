@@ -7,6 +7,7 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { eq } from 'drizzle-orm';
 import { createClient } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
@@ -58,8 +59,22 @@ vi.doMock('@/platform/server/observability/product-events', () => ({
 vi.doMock('@/billing/server/fal-pricing-live', () => ({
   getEffectiveFalPricing: mockGetEffectiveFalPricing,
 }));
+// Ark is not configured in this harness; flip this to make the via claim
+// answer 'byteplus' the way a production team on the platform key sees it.
+let bytePlusLive = false;
+vi.doMock('@/models/server/byteplus-config', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@/models/server/byteplus-config')>();
+  return {
+    ...actual,
+    claimBytePlusVia: (
+      options: Parameters<typeof actual.claimBytePlusVia>[0]
+    ) => (bytePlusLive ? 'byteplus' : actual.claimBytePlusVia(options)),
+  };
+});
 
-const { createStudioAssets } = await import('./create-studio-asset');
+const { createStudioAssets, renderStudioAssetAtQuality } =
+  await import('./create-studio-asset');
 const { createScopedDb } = await import('@/platform/server/db/scoped');
 
 const TEAM_ID = generateId();
@@ -77,6 +92,7 @@ beforeEach(async () => {
   await db.delete(generatedAssets);
   await db.delete(uploadAttestations);
   vi.clearAllMocks();
+  bytePlusLive = false;
   mockReserveRunCredits.mockResolvedValue('res-studio-1');
   mockTriggerWorkflow.mockResolvedValue('wf-studio-1');
   mockRequireGenerationAllowed.mockResolvedValue(undefined);
@@ -527,6 +543,108 @@ describe('createStudioAssets', () => {
     expect(mockTriggerWorkflow.mock.calls[0]?.[1].input).not.toHaveProperty(
       'imageModel'
     );
+  });
+});
+
+describe('renderStudioAssetAtQuality (#1756)', () => {
+  const draftInput = studioCreateInputSchema.parse({
+    activity: 'video',
+    prompt: 'the fox turns toward camera',
+    videoModel: 'seedance_v2_5',
+    aspectRatio: '9:16',
+    resolution: '720p',
+    duration: 5,
+    count: 3,
+    mode: 'text',
+    referenceImages: [],
+    referenceVideos: [],
+    referenceAudio: [],
+    draft: true,
+  });
+
+  async function seedDraft(
+    extra: Partial<typeof generatedAssets.$inferInsert> = {}
+  ) {
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const row = await scopedDb.generatedAssets.insert({
+      provider: 'byteplus',
+      endpointId: 'dreamina-seedance-2-5-260628',
+      activity: 'video',
+      modelName: 'Seedance 2.5',
+      source: 'studio',
+      input: draftInput,
+      status: 'completed',
+      draftTaskId: 'cgt-1',
+      ...extra,
+    });
+    return { scopedDb, row };
+  }
+
+  beforeEach(() => {
+    bytePlusLive = true;
+  });
+
+  it('opens a NEW row from the draft input at 1080p and runs it from the task id alone', async () => {
+    const { scopedDb, row } = await seedDraft();
+
+    const result = await renderStudioAssetAtQuality(scopedDb, row.id);
+
+    expect(result.assets).toHaveLength(1);
+    const rows = await db.select().from(generatedAssets);
+    expect(rows).toHaveLength(2);
+    const original = rows.find((r) => r.id === row.id);
+    const final = rows.find((r) => r.id !== row.id);
+    expect(original).toMatchObject({
+      status: 'completed',
+      draftTaskId: 'cgt-1',
+    });
+    expect(final).toMatchObject({ status: 'queued', draftTaskId: null });
+    expect(final?.input).toMatchObject({
+      videoModel: 'seedance_v2_5',
+      resolution: '1080p',
+    });
+    expect(mockTriggerWorkflow).toHaveBeenCalledWith(
+      '/studio',
+      expect.objectContaining({
+        assetId: final?.id,
+        finalFromDraftTaskId: 'cgt-1',
+        input: expect.objectContaining({
+          draft: false,
+          resolution: '1080p',
+          count: 1,
+        }),
+      }),
+      expect.objectContaining({ deduplicationId: `studio-${final?.id}` })
+    );
+  });
+
+  it('refuses a row that is not a finished draft, an expired one, and a non-studio one', async () => {
+    const notDraft = await seedDraft({ draftTaskId: null });
+    await expect(
+      renderStudioAssetAtQuality(notDraft.scopedDb, notDraft.row.id)
+    ).rejects.toThrow('not a finished draft');
+
+    const unfinished = await seedDraft({ status: 'running' });
+    await expect(
+      renderStudioAssetAtQuality(unfinished.scopedDb, unfinished.row.id)
+    ).rejects.toThrow('not a finished draft');
+
+    const expired = await seedDraft();
+    await db
+      .update(generatedAssets)
+      .set({ createdAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000) })
+      .where(eq(generatedAssets.id, expired.row.id));
+    await expect(
+      renderStudioAssetAtQuality(expired.scopedDb, expired.row.id)
+    ).rejects.toThrow('seven days');
+
+    const catalog = await seedDraft({ source: 'catalog' });
+    await expect(
+      renderStudioAssetAtQuality(catalog.scopedDb, catalog.row.id)
+    ).rejects.toThrow('not found');
+
+    expect(mockReserveRunCredits).not.toHaveBeenCalled();
+    expect(mockTriggerWorkflow).not.toHaveBeenCalled();
   });
 });
 

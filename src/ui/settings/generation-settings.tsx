@@ -47,6 +47,11 @@ type GenerationSettingsProps = {
    */
   generateStartFrames?: boolean;
   audioModels?: AudioModel[];
+  /**
+   * Draft first (#1756) pins the tier: drafts are 480p and Ark renders the
+   * final at 1080p only. The pills go read-only and this note says why.
+   */
+  resolutionLockNote?: string | null;
   onAspectRatioChange: (value: AspectRatio) => void;
   onResolutionChange: (value: Resolution) => void;
   onAnalysisModelsChange: (value: AnalysisModelId[]) => void;
@@ -73,6 +78,7 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
   videoModels,
   generateStartFrames = false,
   audioModels,
+  resolutionLockNote = null,
   onAspectRatioChange,
   onResolutionChange,
   onAnalysisModelsChange,
@@ -187,8 +193,11 @@ export const GenerationSettings: FC<GenerationSettingsProps> = ({
               value={resolution}
               onChange={onResolutionChange}
               available={availableResolutions(modelSelection)}
-              disabled={disabled}
-              note={resolutionCeilingNote(resolution, modelSelection)}
+              disabled={disabled || Boolean(resolutionLockNote)}
+              note={
+                resolutionLockNote ??
+                resolutionCeilingNote(resolution, modelSelection)
+              }
             />
           </section>
 

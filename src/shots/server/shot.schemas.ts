@@ -68,6 +68,14 @@ export const generateMotionSchema = z.object({
   motionBucket: z.number().min(1).max(255).optional(),
   /** Toggle sfx/dialogue/ambient audio for audio-capable models. */
   generateAudio: z.boolean().optional(),
+  /**
+   * Render this shot as an Ark draft (#1756). Absent = the sequence's Draft
+   * first setting (API callers). The inspector always sends a boolean: the
+   * sequence's setting resolved against the model and the via, so a team the
+   * switch is hidden from never inherits a saved `true`. The only way to a
+   * 1080p is Render final on an approved draft.
+   */
+  draft: z.boolean().optional(),
 });
 
 export const generateVariantSchema = z.object({

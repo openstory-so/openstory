@@ -1,5 +1,11 @@
 # Native ElevenLabs
 
+> **#1765:** when Seed Speech is configured, NEW character voices are Seed
+> voices (`seed:` ids) and their dialogue is recorded by Seed Audio — see
+> `seed-voices.md`. Everything below still holds for ElevenLabs voices, which
+> keep recording on ElevenLabs. ElevenLabs also runs isolation and Scribe for
+> Seed voices.
+
 Character TTS, Voice Design and Music go to `api.elevenlabs.io` via
 `@tanstack/ai-elevenlabs` (`elevenlabsSpeech` / `elevenlabsVoiceDesign` /
 `elevenlabsAudio`) and `@elevenlabs/elevenlabs-js` (create-voice and voice
@@ -180,7 +186,12 @@ scene-mates whose clips match keep them.
 A shot's dialogue audio reads out of date when its CURRENT reading no longer
 matches (`mismatch` on `listShotDialogueSectionsFn`: `voice` when only a
 voice id moved — same version id, or the same words with the key's voice
-column dropped — else `lines`). The readings list shows it as the amber
+column dropped — else `lines`). The words are compared as if every line were
+Generated, so picking Video model or an audio element (same words, now a
+`voiceToken` on each line) reads as `voice`, not `lines` (#1773). While the
+shot's source is not Generated the reading is not in use: the list shows
+"Video model speaks the lines" (or the element) in place of the staleness
+line and the Generate button (`shotSpokenByNote`). The readings list shows it as the amber
 status line with Regenerate; the video's "Stale" chip is the segment verdict,
 so every voice or reading change also invalidates `segmentKeys.list`.
 "Update all" counts a stale dialogue reading and a stale video the same way it
@@ -282,7 +293,12 @@ restored wording becomes usable again — `sourceKey` finds it.
 
 `shot_dialogue_versions` is the authored node. The shot-list pass seeds a `prompt` row per shot; the prompt
 editor appends `user-edit` (`scopedDb.shotDialogue.write`, which returns the
-selected row unchanged when the lines are identical). The save touches one
+selected row unchanged when the lines are identical). The lines are edited in
+place (#1773) — character, words, tone — in the shot's Dialogue section and,
+for every shot of the scene, under the Script tab (`ShotDialogueLines`,
+`saveShotDialogueFn`): the edit writes only that shot's version, never the
+motion prompt. History labels a version whose words match the one before it
+"Audio source changed", not "Edited": only the voice binding moved. The save touches one
 shot's row, so it cannot drop a concurrent edit to another shot — the
 whole-scene list it replaces could. **Speaking order is shot order, then line
 order within the shot** (`sceneConversation`), read at the moment of use, so
@@ -419,3 +435,13 @@ placeholder, preserving the shot's timeline slot. Hard cuts have no
 cross-fades. Mixed previews bypass the cached exported MP4; export continues
 to require rendered videos. There is no separate animatic button, dialog, or
 playback mode.
+
+While that player runs, the shot list marks the shot under the playhead and
+keeps it in view (#1771). That is component state in `ScenesView`, not
+selection and not the URL: the inspector stays on whatever the user is
+editing, and choosing a shot still swaps the canvas to the single-shot
+player. `shotIdAtSequenceTime` maps the playhead to a shot from the
+stitcher's measured scene offsets; inside a packed clip, and on HLS (which
+reports only the total), shots split the scene by their own `durationMs`.
+
+**Ark refuses a recording (#1756).** Seedance 2.5 moderates reference audio on input (`InputAudioSensitiveContentDetected` on the `content[]` slot the clip rode in). That is the recording itself, so `MotionWorkflow`'s rescue does NOT soften the prompt for it (`flaggedInputs().audioInput`) and the terminal message names the dialogue recording and the three ways to send different audio: set the shot's dialogue audio to **Video model** (the lines ride in the prompt, no audio input), **Regenerate dialogue** for another reading, or change the lines in the script. Ark's output-side refusal (`AudioSensitiveContentDetected.PolicyViolation`, "Output audio has sensitive content") is the generated speech and still softens. There is no switch to turn either filter off.

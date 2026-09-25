@@ -29,6 +29,8 @@ Click any scene to select it. On mobile, scenes appear in a bottom drawer that c
 
 At the top of the scene list, a **Generate Motion** button lets you start video generation for all eligible frames at once (frames with completed images but no video). You can optionally include music generation in the batch.
 
+**Draft first** (Seedance 2.5, on by default) renders every shot as a cheap 480p preview instead. It is a switch under the stage slider when you generate or continue a sequence, and a checkbox on the batch button; with it on, the slider shows a **Drafts** stop (drafts plus music) and a greyed **Finals** stop the run never reaches on its own. Every draft clip carries a **Draft** pill in the player, the scene list and the theatre. Approve or regenerate shot by shot, then press **Render N finals** at the bottom of the scene list — each final is rendered from its own draft, so the approved motion, seed and references are kept, and the sequence resolution is pinned to 1080p because that is the only size a final can be. A draft can be rendered as a final for seven days: the pill counts down from three days out (**Draft · 2 days left**), then reads **Draft expired**, and an expired draft can only be regenerated. The export menu says how many shots are still drafts.
+
 ## Scene Player
 
 The central player displays:
@@ -85,6 +87,8 @@ Control over the scene's video generation:
 - **Model selector** — Switch between video models for this scene. Models are filtered by aspect ratio compatibility and style category.
 - **Optimised prompt** — A collapsed panel for the currently selected model only. The header shows character count against that model's maximum prompt length (highlighted if over). Expand it to read the assembled prompt (dialogue, audio cues, reference bindings); toggle **JSON** to copy the exact request body.
 - **Generate Motion** / **Regenerate Motion** — Create a new video clip
+- **Render final** — Shown when the selected clip is a 480p draft: renders the 1080p final from that draft (same seed, prompt and references)
+- **Generate draft** / **Generate new draft** — What the motion button reads while the sequence has **Draft first** on and the model has a draft mode: a 480p draft, a new take rather than a redo of the clip on screen. The only way to a 1080p is **Render final** on an approved draft. Each button carries its estimated cost
 - **Copy Prompt** — Copy the assembled prompt to clipboard
 
 ## Smart Retry

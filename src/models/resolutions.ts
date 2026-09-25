@@ -22,6 +22,13 @@ export const RESOLUTIONS = ['720p', '1080p', '4k'] as const;
 
 export type Resolution = (typeof RESOLUTIONS)[number];
 
+/**
+ * What a rendered row can be stamped with: a pickable tier, or the 480p an
+ * Ark draft renders at (#1756). 480p is not a tier the user picks — draft
+ * mode is a switch — so it stays out of `RESOLUTIONS` and the pickers.
+ */
+export type RenderedResolution = Resolution | '480p';
+
 export const resolutionSchema = z.enum(RESOLUTIONS);
 
 export const DEFAULT_RESOLUTION: Resolution = '720p';

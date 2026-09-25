@@ -7,7 +7,6 @@ import {
   wavDurationSeconds,
   wavHeader,
 } from './pad-dialogue-audio';
-import { decodeBase64 } from './synthesize-dialogue';
 
 /** Mono 16-bit PCM WAV of `seconds` of silence. */
 function wav(seconds: number, sampleRate = 8000): Uint8Array {
@@ -179,24 +178,5 @@ describe('trimmedEndSeconds (#1651, #1657)', () => {
     const before = bytes.slice();
     trimmedEndSeconds(bytes, 0, 5, 2);
     expect(bytes).toEqual(before);
-  });
-});
-
-describe('decodeBase64 (#1657)', () => {
-  it('decodes slice by slice to exactly the bytes a whole-file decode gives', () => {
-    // Over one slice, with every padding shape.
-    for (const length of [0, 1, 2, 3, 24_575, 24_576, 24_577, 70_001]) {
-      const bytes = new Uint8Array(length).map((_, i) => (i * 31 + 7) % 256);
-      const base64 = Buffer.from(bytes).toString('base64');
-      expect(decodeBase64(base64)).toEqual(bytes);
-    }
-  });
-
-  it('skips whitespace the way a whole-file decode would', () => {
-    const bytes = new Uint8Array(100).map((_, i) => i);
-    const base64 = Buffer.from(bytes).toString('base64');
-    expect(decodeBase64(`${base64.slice(0, 41)}\n${base64.slice(41)}`)).toEqual(
-      bytes
-    );
   });
 });

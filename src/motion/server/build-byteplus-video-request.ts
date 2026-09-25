@@ -37,6 +37,7 @@ import {
   substituteReferenceTags,
 } from '@/stills/reference-legend';
 import { pickVideoResolution, type Resolution } from '@/models/resolutions';
+import { DRAFT_RESOLUTION } from '@/motion/draft-mode';
 import { buildReferenceVideoPrompt } from './build-reference-video-prompt';
 import { warnLongPrompt } from '@/models/prompt-length';
 
@@ -82,6 +83,8 @@ export type BytePlusVideoRequestOptions = {
   resolution?: Resolution;
   generateAudio?: boolean;
   referenceImages?: ReferenceImageDescription[];
+  /** Ark draft mode (#1756): 480p preview, `draft: true` on the wire. */
+  draft?: boolean;
 };
 
 /**
@@ -119,10 +122,12 @@ export function buildBytePlusVideoRequest(
   // nothing for `adaptive` to adapt TO, and Ark would size the clip from the
   // first reference — a portrait character sheet would silently render a
   // 9:16 clip into a 16:9 sequence. So the sequence's own ratio is stated.
-  const resolution =
-    (options.resolution &&
-      pickVideoResolution(BYTEPLUS_RESOLUTIONS, options.resolution)) ??
-    '720p';
+  // A draft is 480p or Ark rejects it (#1756); the tier is for the final.
+  const resolution = options.draft
+    ? DRAFT_RESOLUTION
+    : ((options.resolution &&
+        pickVideoResolution(BYTEPLUS_RESOLUTIONS, options.resolution)) ??
+      '720p');
   const size = options.imageUrl
     ? `adaptive_${resolution}`
     : `${options.aspectRatio ?? '16:9'}_${resolution}`;
@@ -132,6 +137,7 @@ export function buildBytePlusVideoRequest(
     // per-request and a provider-side default change would burn a mark into
     // every clip we have already sold.
     watermark: false,
+    ...(options.draft && { draft: true }),
     ...(options.generateAudio !== undefined && {
       generate_audio: options.generateAudio,
     }),

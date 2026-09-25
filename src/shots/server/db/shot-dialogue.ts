@@ -533,11 +533,19 @@ export function createShotDialogueMethods(db: Database) {
     /** A shot's readings, newest first, each with the file it points into. */
     listSections: async (
       shotId: string
-    ): Promise<Array<ShotDialogueSection & { recordingUrl: string }>> => {
+    ): Promise<
+      Array<
+        ShotDialogueSection & {
+          recordingUrl: string;
+          recordingTurns: DialogueRecordingTurn[];
+        }
+      >
+    > => {
       const rows = await db
         .select({
           section: shotDialogueSections,
           recordingUrl: dialogueRecordings.url,
+          recordingTurns: dialogueRecordings.turns,
         })
         .from(shotDialogueSections)
         .innerJoin(
@@ -557,6 +565,7 @@ export function createShotDialogueMethods(db: Database) {
       return rows.map((row) => ({
         ...row.section,
         recordingUrl: row.recordingUrl,
+        recordingTurns: row.recordingTurns,
       }));
     },
 

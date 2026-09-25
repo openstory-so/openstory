@@ -3,6 +3,8 @@ import { ThinkingBar } from '@/ui/ai/thinking-bar';
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
 import { ActionCost } from '@/billing/ui/action-cost';
 import { useVoiceDesignAvailable } from '@/cast/ui/use-voice-design-available';
+import { useViaAvailability } from '@/models/ui/use-via-availability';
+import { DRAFT_FINAL_RESOLUTION } from '@/motion/draft-mode';
 import { useWelcomeCreditsGate } from '@/billing/ui/welcome-credits-dialog';
 import { PremiumCard } from '@/ui/cards/premium-card';
 import {
@@ -57,7 +59,6 @@ import {
 } from '@/sequences/pipeline';
 import { useComposedScript } from '@/shots/ui/use-scenes';
 import { useSequenceCharacters } from '@/cast/ui/use-sequence-characters';
-import { useViaAvailability } from '@/models/ui/use-via-availability';
 import {
   useSequenceElements,
   type DraftElementUpload,
@@ -92,6 +93,7 @@ import {
   safeAudioModel,
   safeImageToVideoModel,
   safeTextToImageModel,
+  supportsDraftMode,
   videoModelDisplayName,
   type AudioModel,
   type ImageToVideoModel,
@@ -267,6 +269,7 @@ export const ScriptView: FC<{
   const queryClient = useQueryClient();
   const isEditing = !!sequence?.id;
   const voiceDesignAvailable = useVoiceDesignAvailable();
+  const viaAvailability = useViaAvailability();
   const { data: composedScriptData } = useComposedScript(sequence?.id);
   const composedScript = composedScriptData?.script;
   // Analyzed sequences derive the document from scene versions (#1030), so the
@@ -334,7 +337,7 @@ export const ScriptView: FC<{
 
   // Which video models can render reference-only for this team — resolved
   // server-side and seeded by the `_app` route loader.
-  const { referenceOnlyModels } = useViaAvailability();
+  const { referenceOnlyModels } = viaAvailability;
 
   // Initialize with sequence values (if editing) or localStorage defaults (if creating)
   const sequenceAnalysisModels: AnalysisModelId[] = useMemo(() => {
@@ -356,6 +359,7 @@ export const ScriptView: FC<{
     stopAt: GenerationStage;
     generateStartFrames: boolean;
     generateVoices: boolean;
+    draftMotion: boolean;
     audioModels: AudioModel[];
   }>(() => ({
     generationMode: savedSettings.generationMode,
@@ -381,6 +385,7 @@ export const ScriptView: FC<{
     generateVoices: isEditing
       ? sequence.generateVoices
       : savedSettings.generateVoices,
+    draftMotion: isEditing ? sequence.draftMotion : savedSettings.draftMotion,
     audioModels:
       isEditing && sequence.musicModel
         ? [safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)]
@@ -394,19 +399,30 @@ export const ScriptView: FC<{
     stopAt,
     generateStartFrames,
     generateVoices,
+    draftMotion,
     audioModels,
   } = genSettings;
+  // Draft first (#1756) is offered while a chosen model has a draft mode and
+  // this team reaches Ark (a team on its own fal key does not, and a draft
+  // submit there refuses). The remembered setting is kept either way; only
+  // what is sent is gated.
+  const offerDraftMotion =
+    videoModels.some(supportsDraftMode) && viaAvailability.byteplus;
+  const draftFirst = draftMotion && offerDraftMotion;
   // Derived, not stored: the picker only offers tiers the chosen models serve,
   // so a 4K pick made under one model reads as the nearest tier under a model
-  // that can't reach it — and comes back if they switch back.
-  const resolution = clampResolution(
-    genSettings.resolution,
-    availableResolutions({
-      imageModels,
-      videoModels: includesStage(stopAt, 'motion') ? videoModels : [],
-      aspectRatio,
-    })
-  );
+  // that can't reach it — and comes back if they switch back. Draft first
+  // pins it: Ark renders a draft's final at 1080p and nothing else.
+  const resolution = draftFirst
+    ? DRAFT_FINAL_RESOLUTION
+    : clampResolution(
+        genSettings.resolution,
+        availableResolutions({
+          imageModels,
+          videoModels: includesStage(stopAt, 'motion') ? videoModels : [],
+          aspectRatio,
+        })
+      );
   const updateGen = <K extends keyof typeof genSettings>(
     key: K,
     value: (typeof genSettings)[K]
@@ -735,6 +751,7 @@ export const ScriptView: FC<{
         stopAt: savedSettings.stopAt,
         generateStartFrames: savedSettings.generateStartFrames,
         generateVoices: savedSettings.generateVoices,
+        draftMotion: savedSettings.draftMotion,
         audioModels: savedSettings.audioModels,
       });
       hasSyncedRef.current = true;
@@ -927,6 +944,7 @@ export const ScriptView: FC<{
       autoGenerateMusic: flags.autoGenerateMusic,
       generateStartFrames,
       generateVoices,
+      draftMotion: draftFirst,
       musicModel: audioModels[0] ?? DEFAULT_MUSIC_MODEL,
       audioModels,
       targetDurationSeconds: enhancedTarget ?? undefined,
@@ -1262,6 +1280,7 @@ export const ScriptView: FC<{
     audioModels,
     aspectRatio,
     resolution,
+    draftMotion: draftFirst,
     targetDurationSeconds: enhancedTarget ?? undefined,
   };
   // The scope line names the current stop-at, and the estimate matches it.
@@ -1274,6 +1293,7 @@ export const ScriptView: FC<{
   const generateScopeLabel = runScopeLabel(stopAt, {
     generateStartFrames,
     generateVoices,
+    draftFirst,
   });
 
   // Nothing written yet: Enhance writes the script instead of expanding one
@@ -1428,6 +1448,9 @@ export const ScriptView: FC<{
             onImageModelsChange={(v) => updateGen('imageModels', v)}
             onVideoModelsChange={(v) => updateGen('videoModels', v)}
             onAudioModelsChange={(v) => updateGen('audioModels', v)}
+            resolutionLockNote={
+              draftFirst ? 'Drafts render at 480p, finals at 1080p' : null
+            }
             disabled={loading}
             styleCategory={styleCategory}
           />
@@ -1783,6 +1806,8 @@ export const ScriptView: FC<{
         stopAt={stopAt}
         generateStartFrames={generateStartFrames}
         generateVoices={generateVoices}
+        draftMotion={draftMotion}
+        offerDraftMotion={offerDraftMotion}
         remember={savedSettings.rememberStopAt}
         confirmLabel={
           stopAlertMode === 'edit'
@@ -1801,14 +1826,24 @@ export const ScriptView: FC<{
           stopAt: nextStopAt,
           generateStartFrames: nextStartFrames,
           generateVoices: nextVoices,
+          draftMotion: nextDraft,
           remember,
         }) => {
           const next = withStartFrames(
-            { ...genSettings, stopAt: nextStopAt, generateVoices: nextVoices },
+            {
+              ...genSettings,
+              stopAt: nextStopAt,
+              generateVoices: nextVoices,
+              draftMotion: nextDraft,
+            },
             nextStartFrames
           );
           setGenSettings(next);
-          saveSettings({ stopAt: nextStopAt, rememberStopAt: remember });
+          saveSettings({
+            stopAt: nextStopAt,
+            rememberStopAt: remember,
+            draftMotion: nextDraft,
+          });
           setShowStopAlert(false);
           if (stopAlertMode === 'generate') {
             executeRegeneration(next);

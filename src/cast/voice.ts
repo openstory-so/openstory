@@ -506,3 +506,30 @@ export function markPreviewUnusable(
       : preview
   );
 }
+
+/**
+ * The cast members a shot's lines name who have no voice yet (#1773), each
+ * once, in speaking order. Their lines cannot be recorded until one exists,
+ * so this is what the dialogue panel offers to generate. Lines bound to the
+ * video model or an audio element are skipped: they are not recorded.
+ */
+export function speakersWithoutVoice<
+  T extends {
+    id: string;
+    name: string;
+    voiceOnly?: boolean;
+    voiceId?: string | null;
+  },
+>(
+  lines: readonly { character: string; line: string; voiceToken?: string }[],
+  characters: readonly T[]
+): T[] {
+  const out: T[] = [];
+  for (const line of lines) {
+    if (line.voiceToken || !line.line.trim()) continue;
+    const speaker = matchSpeaker(line.character, characters);
+    if (!speaker || speaker.voiceId || out.includes(speaker)) continue;
+    out.push(speaker);
+  }
+  return out;
+}

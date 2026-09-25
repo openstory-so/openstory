@@ -1,4 +1,5 @@
 import type { AspectRatio } from '@/models/aspect-ratios';
+import { shotDraftLabel } from '@/motion/draft-mode';
 import { plainSceneTitle } from '@/platform/markdown-plain';
 import type { ShotView } from '@/shots/shot-view';
 import { Button } from '@/ui/shadcn/button';
@@ -22,6 +23,8 @@ export const SceneRail: React.FC<{
   scenes?: SceneWithScript[];
   shots?: ShotView[];
   selection: SceneSelection;
+  /** Shot under the sequence player's playhead (#1771). */
+  playingShotId?: string;
   aspectRatio: AspectRatio;
   staleShotIds?: Set<string>;
   onExpand: () => void;
@@ -30,6 +33,7 @@ export const SceneRail: React.FC<{
   scenes = [],
   shots = [],
   selection,
+  playingShotId,
   aspectRatio,
   staleShotIds,
   onExpand,
@@ -99,6 +103,7 @@ export const SceneRail: React.FC<{
                   .map((shot, i) => {
                     const shotLabel = `${label} — Shot ${shot.shotNumber ?? i + 1}`;
                     const active = shot.id === selection.shotId;
+                    const playing = shot.id === playingShotId;
                     return (
                       <Link
                         key={shot.id}
@@ -108,12 +113,14 @@ export const SceneRail: React.FC<{
                           scenes: undefined,
                           shot: shot.id,
                         })}
-                        title={shotLabel}
-                        aria-current={active ? 'true' : undefined}
+                        title={playing ? `${shotLabel} (playing)` : shotLabel}
+                        aria-current={active || playing ? 'true' : undefined}
+                        data-playing={playing ? 'true' : undefined}
                         className={cn(
                           ringClass,
                           'relative block border-2 border-transparent',
-                          active && 'border-primary'
+                          active && 'border-primary',
+                          playing && 'ring-2 ring-primary/60'
                         )}
                       >
                         <SceneThumbnail
@@ -122,6 +129,7 @@ export const SceneRail: React.FC<{
                           thumbnailStatus={shot.frame.imageStatus || undefined}
                           videoUrl={shot.video?.url}
                           generationError={shot.frame.imageError}
+                          draftLabel={shotDraftLabel(shot)}
                           alt={shotLabel}
                           aspectRatio={aspectRatio}
                           className="w-full rounded-sm"

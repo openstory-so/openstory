@@ -5,6 +5,7 @@
  */
 
 import { characterToBible } from '@/cast/server/bibles-from-scoped';
+import { newVoiceProvider } from '@/models/server/seed-speech-config';
 import type { CharacterWithSheet } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { CharacterVoiceWorkflowInput } from '@/platform/server/workflow/types';
@@ -20,6 +21,8 @@ export async function enqueueCharacterVoiceDesign(args: {
   character: CharacterWithSheet;
   userId: string;
   analysisModel: string | null;
+  /** Seed takes to record (#1765). */
+  takes: number;
   trigger: (payload: CharacterVoiceWorkflowInput) => Promise<string>;
 }): Promise<{
   characterId: string;
@@ -27,7 +30,7 @@ export async function enqueueCharacterVoiceDesign(args: {
   alreadyInFlight: boolean;
   targetVersionId: string;
 }> {
-  const { scopedDb, character, userId, analysisModel, trigger } = args;
+  const { scopedDb, character, userId, analysisModel, takes, trigger } = args;
   const claim = await takeLiveVoiceClaimOrInsert(
     scopedDb,
     character.id,
@@ -52,6 +55,8 @@ export async function enqueueCharacterVoiceDesign(args: {
     analysisModelId:
       (analysisModel ? getAnalysisModelById(analysisModel)?.id : undefined) ??
       DEFAULT_ANALYSIS_MODEL,
+    voiceProvider: newVoiceProvider(),
+    takes,
     targetVersionId: husk.id,
   };
 

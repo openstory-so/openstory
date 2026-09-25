@@ -37,6 +37,31 @@ phase number); there is no separate stage.
   refuses to re-run a completed continue stage. Start frames + Voices share
   one start-frames-and-dialogue slider stop (the two ticks do not fit); the run
   still executes both stages, like Motion & Music.
+- **Draft first (#1756).** `sequences.draftMotion` is not a stage: with it on,
+  the `music` stop renders 480p Ark drafts (music rides along) and the slider
+  labels that tick **Drafts** and appends a greyed **Finals** tick the thumb
+  cannot reach (`GenerationStopSlider`, six ticks alternate above and below
+  the track). A run never renders finals on its own — that would pay for the
+  draft and the final with no look in between — so Finals is the scene-list
+  footer (`Render N finals` → `renderSequenceDraftsAtQualityFn`, one
+  `/motion` run per selected draft segment), which also shows the soonest
+  expiry and the expired count. The switch lives under the slider (Generate
+  dialog and the continue footer, which persists it through
+  `continueGenerationFn`) and a checkbox on the batch footer; it is offered
+  only while a chosen model `supportsDraftMode` and
+  `useViaAvailability().byteplus` says this team reaches Ark (a team on its
+  own fal key does not, and a draft submit there refuses — so every surface
+  sends a boolean, never `undefined`, or a hidden switch would inherit the
+  saved setting). Draft first pins the resolution picker in the Generate
+  dialog to 1080p (`DRAFT_FINAL_RESOLUTION`: the only size Ark renders a
+  final at); the batch checkbox and the continue footer leave the stored tier
+  alone, and a final is 1080p whatever the tier says. It prices the run's
+  motion at 480p per draft-capable shot (`draftMotion` on
+  `estimateStoryboardPreflightCost` / `estimateStoryboardCost`, `draft` on
+  `estimateBatchMotionCost`). Every
+  surface that shows a draft clip says so with `draftBadgeLabel` /
+  `shotDraftLabel` / `theatreDraftLabel` (`src/motion/draft-mode.ts`): "Draft"
+  until three days remain, then the countdown, then "Draft expired".
 - **Ready email** only sends when the run reached motion: the send is a
   one-shot claim per sequence.
 - Reference-only has no Images stop; `pipelineStage` is the only evidence of

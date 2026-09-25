@@ -67,6 +67,8 @@ type GenerationSettings = {
   generateStartFrames: boolean;
   /** Design a voice per speaking character (#1553). */
   generateVoices: boolean;
+  /** Render motion as Ark drafts (#1756); only Seedance 2.5 honours it. */
+  draftMotion: boolean;
   musicModel: AudioModel;
   audioModels: AudioModel[];
 };
@@ -109,6 +111,9 @@ const DEFAULT_SETTINGS: GenerationSettings = withMode({
   // the opt-in for steerable composition.
   generateStartFrames: false,
   generateVoices: false,
+  // On by default: only Seedance 2.5 honours it, and there a 480p look
+  // before the 1080p spend is the cheaper first run (#1756).
+  draftMotion: true,
   musicModel: TURBO_DEFAULT_AUDIO,
   audioModels: [TURBO_DEFAULT_AUDIO],
 });
@@ -275,6 +280,10 @@ function loadSettings(): GenerationSettings {
         'generateVoices' in parsed && typeof parsed.generateVoices === 'boolean'
           ? parsed.generateVoices
           : false,
+      draftMotion:
+        'draftMotion' in parsed && typeof parsed.draftMotion === 'boolean'
+          ? parsed.draftMotion
+          : true,
       musicModel,
       audioModels,
     });
