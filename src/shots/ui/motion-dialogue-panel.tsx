@@ -109,21 +109,42 @@ function shotPlayback(
   };
 }
 
-const DialogueLineList: React.FC<{ lines: readonly DialogueLine[] }> = ({
-  lines,
-}) => (
+/** What a caller hangs on one line (#1802): Record beside it, the take under it. */
+export type LineSlots = (index: number) => {
+  action?: React.ReactNode;
+  below?: React.ReactNode;
+};
+
+const DialogueLineList: React.FC<{
+  lines: readonly DialogueLine[];
+  slots?: LineSlots;
+}> = ({ lines, slots }) => (
   <ul className="flex flex-col gap-2">
-    {lines.map((line, index) => (
-      <li key={`${line.character}-${index}`} className="flex flex-col gap-1.5">
-        <p className="text-sm">
-          <span className="font-medium">{line.character || 'Narrator'}</span>
-          {line.tone && (
-            <span className="text-muted-foreground"> · {line.tone}</span>
-          )}
-        </p>
-        <p className="text-sm text-muted-foreground">“{line.line}”</p>
-      </li>
-    ))}
+    {lines.map((line, index) => {
+      const slot = slots?.(index);
+      return (
+        <li
+          key={`${line.character}-${index}`}
+          className="flex flex-col gap-1.5"
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex flex-col gap-1.5">
+              <p className="text-sm">
+                <span className="font-medium">
+                  {line.character || 'Narrator'}
+                </span>
+                {line.tone && (
+                  <span className="text-muted-foreground"> · {line.tone}</span>
+                )}
+              </p>
+              <p className="text-sm text-muted-foreground">“{line.line}”</p>
+            </div>
+            {slot?.action}
+          </div>
+          {slot?.below}
+        </li>
+      );
+    })}
   </ul>
 );
 
@@ -202,7 +223,9 @@ export const DialogueLinesEditor: React.FC<{
    * speaker is spelled as the cast list spells it, so it is picked, not typed.
    */
   speakers: readonly string[];
-}> = ({ lines, onSave, saving, label = 'Edit lines', speakers }) => {
+  /** Per-line extras while the lines are shown, not edited. */
+  slots?: LineSlots;
+}> = ({ lines, onSave, saving, label = 'Edit lines', speakers, slots }) => {
   const [rows, setRows] = useState<EditorRow[] | null>(null);
   const [nextKey, setNextKey] = useState(lines.length);
   const editing = rows !== null;
@@ -211,7 +234,7 @@ export const DialogueLinesEditor: React.FC<{
     return (
       <div className="flex flex-col gap-2">
         {lines.length > 0 ? (
-          <DialogueLineList lines={lines} />
+          <DialogueLineList lines={lines} slots={slots} />
         ) : (
           <p className="text-sm text-muted-foreground">No lines</p>
         )}
