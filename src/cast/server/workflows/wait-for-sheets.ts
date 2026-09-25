@@ -221,6 +221,10 @@ const ELEMENT_VISION_IN_FLIGHT = new Set(['pending', 'analyzing']);
  * We first scan those ids for the ones still in flight, then poll only those —
  * completed/failed elements never enter the wait set, so a sequence whose
  * vision already finished short-circuits with no added latency.
+ *
+ * `rows` is every element the wait read — the scan's rows, overlaid with the
+ * final poll's — so the caller consumes them instead of reading again (the
+ * talent/location waits' shape, #1113).
  */
 export async function waitForElementVision(
   step: WorkflowStep,
@@ -228,14 +232,16 @@ export async function waitForElementVision(
   elementIds: string[],
   opts?: { onWaitNeeded?: OnWaitNeeded }
 ): Promise<WaitForSheetsResult<SequenceElement>> {
-  const inFlightIds = await step.do('wait-element-vision-scan', async () => {
-    const elements = await scopedDb.sequenceElements.listByIds(elementIds);
-    return elements
-      .filter((el) => ELEMENT_VISION_IN_FLIGHT.has(el.visionStatus))
-      .map((el) => el.id);
-  });
+  // Renamed from `wait-element-vision-scan`, which cached ids, not rows: a run
+  // replaying across the #1113 deploy re-scans instead of reading that shape.
+  const scanned = await step.do('wait-element-vision-scan-rows', async () =>
+    scopedDb.sequenceElements.listByIds(elementIds)
+  );
+  const inFlightIds = scanned
+    .filter((el) => ELEMENT_VISION_IN_FLIGHT.has(el.visionStatus))
+    .map((el) => el.id);
 
-  return pollUntilReady(step, {
+  const polled = await pollUntilReady(step, {
     ids: inFlightIds,
     stepPrefix: 'wait-element-vision',
     label: 'element vision',
@@ -250,4 +256,9 @@ export async function waitForElementVision(
       };
     },
   });
+  const latest = new Map(polled.rows.map((el) => [el.id, el]));
+  return {
+    ...polled,
+    rows: scanned.map((el) => latest.get(el.id) ?? el),
+  };
 }

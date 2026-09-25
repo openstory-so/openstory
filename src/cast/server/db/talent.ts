@@ -377,25 +377,23 @@ export function createTalentMethods(
         return undefined;
       }
 
-      // Claims (#1113): the name and description feed this talent's own
-      // sheet run; the description also feeds every character cast with it.
-      const ownInputMoved =
-        data.name !== undefined || data.description !== undefined;
+      // Claims (#1113): the description feeds this talent's own sheet run
+      // and every character cast with it. (A rename is not a sheet input: the
+      // sheet hash never covered the name.)
+      const descriptionMoved = data.description !== undefined;
       const [[updated]] = await db.batch([
         db
           .update(talent)
           .set({
             ...stripServerManagedColumns(data, SERVER_MANAGED_TALENT_COLUMNS),
-            ...(ownInputMoved ? { pendingPromoteSheetId: null } : {}),
+            ...(descriptionMoved ? { pendingPromoteSheetId: null } : {}),
             updatedAt: new Date(),
           })
           .where(and(eq(talent.id, talentId), eq(talent.teamId, teamId)))
           .returning(),
         demoteCharacterSheetClaims(
           db,
-          data.description !== undefined
-            ? eq(characters.talentId, talentId)
-            : sql`0`
+          descriptionMoved ? eq(characters.talentId, talentId) : sql`0`
         ),
       ]);
       return updated;
@@ -403,16 +401,40 @@ export function createTalentMethods(
 
     /**
      * Take the library sheet claim (#1113): mint the `talent_sheets.id` the
-     * run will write and point the claim at it. Last kickoff wins.
+     * run will write and point the claim at it. Last kickoff wins. Returns
+     * the claim it replaced, for `restoreSheetClaimIf`.
      */
-    claimSheet: async (talentId: string): Promise<string> => {
-      await requireWritableTalent(db, talentId, teamId);
+    claimSheet: async (
+      talentId: string
+    ): Promise<{ sheetId: string; previous: string | null }> => {
+      const existing = await requireWritableTalent(db, talentId, teamId);
       const sheetId = generateId();
       await db
         .update(talent)
         .set({ pendingPromoteSheetId: sheetId, updatedAt: new Date() })
         .where(eq(talent.id, talentId));
-      return sheetId;
+      return { sheetId, previous: existing.pendingPromoteSheetId };
+    },
+
+    /**
+     * Hand a claim back (#1113): the trigger that took `sheetId` started no
+     * run (a deduplicated trigger reused an in-flight one, or it threw). Only
+     * while `sheetId` still holds it — an edit in between keeps its revoke.
+     */
+    restoreSheetClaimIf: async (
+      talentId: string,
+      sheetId: string,
+      previous: string | null
+    ): Promise<void> => {
+      await db
+        .update(talent)
+        .set({ pendingPromoteSheetId: previous, updatedAt: new Date() })
+        .where(
+          and(
+            eq(talent.id, talentId),
+            eq(talent.pendingPromoteSheetId, sheetId)
+          )
+        );
     },
 
     /** A failed run clears its claim — only while it still holds it. */

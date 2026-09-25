@@ -11,6 +11,8 @@ import { generateId } from '@/platform/id';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { SequenceLocationMinimal } from '@/platform/server/db/schema';
 import { buildLocationInsert } from './cast-records';
+import { computeLocationSheetHashFromDto } from './sheet-snapshots';
+import type { SheetPayload } from './sheet-snapshots';
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { WorkflowValidationError } from '@/platform/server/workflow/errors';
@@ -111,7 +113,7 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
 
         const libraryMatch = matchMap.get(location.locationId);
 
-        const childPayload: LocationSheetWorkflowInput = {
+        const unclaimed: SheetPayload<LocationSheetWorkflowInput> = {
           userId: input.userId,
           teamId,
           sequenceId,
@@ -123,6 +125,21 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
           referenceImageUrl: libraryMatch?.referenceImageUrl,
           libraryLocationDescription: libraryMatch?.description,
           styleConfig: input.styleConfig,
+          libraryLocationReferenceHash:
+            libraryMatch?.referenceInputHash ?? null,
+        };
+        // Tracked like any other sheet (#1113): hashed, and landed through a
+        // claim a bible edit revokes.
+        unclaimed.snapshotInputHash =
+          await computeLocationSheetHashFromDto(unclaimed);
+        const referenceVersionId = await step.do(
+          `claim-location-sheet-${index}`,
+          async () =>
+            await scopedDb.sequenceLocations.claimReference(locationDbId)
+        );
+        const childPayload: LocationSheetWorkflowInput = {
+          ...unclaimed,
+          referenceVersionId,
         };
 
         return await spawnAndAwaitChild<

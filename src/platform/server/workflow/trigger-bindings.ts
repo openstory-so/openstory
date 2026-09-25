@@ -58,7 +58,8 @@ const TRIGGER_TO_BINDING: Record<string, keyof CloudflareEnv> = {
   studio: 'STUDIO_WORKFLOW',
 };
 
-export type CfTriggerResult = { workflowRunId: string };
+/** `reused`: a deduplicated trigger landed on an existing instance. */
+export type CfTriggerResult = { workflowRunId: string; reused: boolean };
 
 function normaliseTriggerPath(triggerPath: string): string {
   return triggerPath.startsWith('/') ? triggerPath.slice(1) : triggerPath;
@@ -201,7 +202,7 @@ async function createInstance<T extends Rpc.Serializable<T>>(
   // its id so the runtime doesn't warn about an undisposed result.
   const instance = await binding.create({ id, params: body });
   try {
-    return { workflowRunId: instance.id };
+    return { workflowRunId: instance.id, reused: false };
   } finally {
     disposeRpcStub(instance);
   }
@@ -284,7 +285,7 @@ export async function triggerCfWorkflow<T extends Rpc.Serializable<T>>({
         logger.info(
           `[triggerCfWorkflow] ${id} already exists (${status}); reusing existing instance for '${workflowName}'`
         );
-        return { workflowRunId: id };
+        return { workflowRunId: id, reused: true };
       }
       if (status !== 'errored') {
         logger.warn(

@@ -2,9 +2,9 @@
  * Snapshot DTO hashers for content-generation workflows that opt into the
  * snapshot pattern.
  *
- * The `compute*FromDto` helpers hash the inlined payload; `compute*Current`
- * helpers re-resolve the upstream inputs from the live scoped DB so the
- * workflow can detect divergence at write-time.
+ * The `compute*FromDto` helpers hash the inlined payload. Mid-run divergence
+ * is not detected by re-hashing live state: the sheet workflows land through
+ * a claim that every input edit revokes (#1113).
  *
  * See docs/architecture/workflow-snapshots-and-content-hash-staleness.md
  * § "Per-workflow input surface".
@@ -31,7 +31,6 @@ import {
 } from '@/shots/input-hash';
 import { DEFAULT_IMAGE_MODEL } from '@/models/models';
 import { styleConfigHashBody } from '@/look/style-config';
-import type { ScopedDb } from '@/platform/server/db/scoped';
 import type {
   CharacterMinimal,
   SequenceElementMinimal,
@@ -56,18 +55,14 @@ import {
 export type { ShotImageSceneSnapshot } from '@/platform/server/workflow/types';
 
 /**
- * The live reads the `*Current` divergence-recompute helpers make. Narrowed so
- * a workflow hands over `scopedDb.liveRead`: recomputing an input hash from
- * CURRENT state is the point of these functions — freezing the inputs would
- * make divergence unrepresentable — and this type is what marks that at the
- * boundary. The trigger-side `*FromDto` twins take no db at all.
+ * A sheet payload before its trigger takes the claim (#1113): what the
+ * hashers read, and what the regenerate builders return, since staleness
+ * checks build a payload only to hash it.
  */
-export type SheetSnapshotReadDb = {
-  characters: Pick<ScopedDb['characters'], 'getById'>;
-  talent: Pick<ScopedDb['talent'], 'getWithRelations'>;
-  locations: Pick<ScopedDb['locations'], 'getById'>;
-  sequenceLocations: Pick<ScopedDb['sequenceLocations'], 'getById'>;
-};
+export type SheetPayload<T> = Omit<
+  T,
+  'sheetVersionId' | 'referenceVersionId' | 'sheetId' | 'referenceClaimId'
+>;
 
 /** The payload fields a cast talent supplies to a character sheet. */
 export type CastTalentFields = Pick<
@@ -77,59 +72,6 @@ export type CastTalentFields = Pick<
   | 'talentSheetInputHash'
   | 'castTalentDescription'
 >;
-
-const NOT_CAST: CastTalentFields = {
-  referenceImageUrl: undefined,
-  talentMetadata: undefined,
-  talentSheetInputHash: null,
-  castTalentDescription: null,
-};
-
-/**
- * Resolve what a cast talent feeds a character sheet: the default convergent
- * talent sheet (image, look metadata, `input_hash`) and the talent's own
- * description. One resolver for the regenerate/verify payload, the upload
- * stamp and the workflow's divergence recompute, so they cannot drift.
- */
-export async function resolveCastTalent(
-  scopedDb: Pick<SheetSnapshotReadDb, 'talent'>,
-  talentId: string | null
-): Promise<CastTalentFields> {
-  if (!talentId) return NOT_CAST;
-  const talent = await scopedDb.talent.getWithRelations(talentId);
-  if (!talent) return NOT_CAST;
-  // Exclude divergent sheets from the fallback identity. A divergent row's
-  // `inputHash` represents the parked workflow's snapshot, not the talent's
-  // current upstream identity — binding a downstream character sheet to it
-  // would fork off a stale lineage from first-time generation onward.
-  const convergentSheets = talent.sheets.filter((s) => !s.divergedAt);
-  const defaultSheet =
-    convergentSheets.find((s) => s.isDefault) ?? convergentSheets[0];
-  return {
-    referenceImageUrl: defaultSheet?.imageUrl ?? undefined,
-    talentMetadata: defaultSheet?.metadata ?? undefined,
-    talentSheetInputHash: defaultSheet?.inputHash ?? null,
-    castTalentDescription: talent.description,
-  };
-}
-
-/**
- * Resolve the parent library-location's `reference_input_hash` for a sequence
- * location. Returns `null` when the sequence location has no library
- * reference, or when the library row predates hash tracking.
- */
-async function resolveLibraryLocationReferenceHash(
-  scopedDb: SheetSnapshotReadDb,
-  locationDbId: string
-): Promise<string | null> {
-  const sequenceLocation =
-    await scopedDb.sequenceLocations.getById(locationDbId);
-  if (!sequenceLocation?.libraryLocationId) return null;
-  const libraryLocation = await scopedDb.locations.getById(
-    sequenceLocation.libraryLocationId
-  );
-  return libraryLocation?.referenceInputHash ?? null;
-}
 
 /** Hash a `StyleConfig` deterministically. `null`/`undefined` → 'no-style'. */
 export async function computeStyleConfigHash(
@@ -191,7 +133,9 @@ export function characterSheetTalentHashFields(
  * inlines the upstream talent-sheet's `input_hash` so that a recast triggered
  * against a then-current talent sheet binds to that exact upstream version.
  */
-function characterSheetHashInput(input: CharacterSheetWorkflowInput) {
+function characterSheetHashInput(
+  input: SheetPayload<CharacterSheetWorkflowInput>
+) {
   return {
     characterBible: characterBibleFields(input.characterMetadata),
     talentSheetHash: input.talentSheetInputHash ?? null,
@@ -201,7 +145,7 @@ function characterSheetHashInput(input: CharacterSheetWorkflowInput) {
 }
 
 export async function computeCharacterSheetHashFromDto(
-  input: CharacterSheetWorkflowInput
+  input: SheetPayload<CharacterSheetWorkflowInput>
 ): Promise<CharacterSheetInputHash> {
   return computeCharacterSheetInputHash({
     ...characterSheetHashInput(input),
@@ -212,28 +156,11 @@ export async function computeCharacterSheetHashFromDto(
 /** Dual-hash verify against a stored sheet digest. */
 export async function characterSheetHashMatchesStored(
   stored: string | null,
-  input: CharacterSheetWorkflowInput
+  input: SheetPayload<CharacterSheetWorkflowInput>
 ): Promise<boolean> {
   return characterSheetInputHashMatches(stored, {
     ...characterSheetHashInput(input),
     styleConfigHash: await computeStyleConfigHash(input.styleConfig),
-  });
-}
-
-/**
- * Recompute the hash from the current DB state. The character bible, style
- * config, and image model are frozen on the payload (they must not drift
- * mid-flight); the cast talent is re-read, since the talent and its default
- * sheet are the upstream rows that can change between trigger and write.
- */
-export async function computeCharacterSheetHashCurrent(
-  input: CharacterSheetWorkflowInput,
-  scopedDb: SheetSnapshotReadDb
-): Promise<CharacterSheetInputHash> {
-  const character = await scopedDb.characters.getById(input.characterDbId);
-  return computeCharacterSheetHashFromDto({
-    ...input,
-    ...(await resolveCastTalent(scopedDb, character?.talentId ?? null)),
   });
 }
 
@@ -260,7 +187,7 @@ export function locationSheetBibleFields(
  * was triggered with a library reference; otherwise `null`.
  */
 function locationSheetHashInput(
-  input: LocationSheetWorkflowInput & {
+  input: SheetPayload<LocationSheetWorkflowInput> & {
     libraryLocationReferenceHash?: string | null;
   }
 ) {
@@ -272,7 +199,7 @@ function locationSheetHashInput(
 }
 
 export async function computeLocationSheetHashFromDto(
-  input: LocationSheetWorkflowInput & {
+  input: SheetPayload<LocationSheetWorkflowInput> & {
     libraryLocationReferenceHash?: string | null;
   }
 ): Promise<LocationSheetInputHash> {
@@ -285,25 +212,13 @@ export async function computeLocationSheetHashFromDto(
 /** Dual-hash verify against a stored location-sheet digest. */
 export async function locationSheetHashMatchesStored(
   stored: string | null,
-  input: LocationSheetWorkflowInput & {
+  input: SheetPayload<LocationSheetWorkflowInput> & {
     libraryLocationReferenceHash?: string | null;
   }
 ): Promise<boolean> {
   return locationSheetInputHashMatches(stored, {
     ...locationSheetHashInput(input),
     styleConfigHash: await computeStyleConfigHash(input.styleConfig),
-  });
-}
-
-export async function computeLocationSheetHashCurrent(
-  input: LocationSheetWorkflowInput,
-  scopedDb: SheetSnapshotReadDb
-): Promise<LocationSheetInputHash> {
-  const libraryLocationReferenceHash =
-    await resolveLibraryLocationReferenceHash(scopedDb, input.locationDbId);
-  return computeLocationSheetHashFromDto({
-    ...input,
-    libraryLocationReferenceHash,
   });
 }
 
@@ -316,7 +231,7 @@ export async function computeLocationSheetHashCurrent(
  * the reference-media identity (no external `media_id` lookup required).
  */
 export async function computeLibraryTalentSheetHashFromDto(
-  input: LibraryTalentSheetWorkflowInput
+  input: SheetPayload<LibraryTalentSheetWorkflowInput>
 ): Promise<TalentSheetInputHash> {
   // Sort here so callers that forget to pre-sort get a stable hash. The
   // `Current` helper sorts the live media URLs the same way; without sorting
@@ -332,48 +247,13 @@ export async function computeLibraryTalentSheetHashFromDto(
   });
 }
 
-export async function computeLibraryTalentSheetHashCurrent(
-  input: LibraryTalentSheetWorkflowInput,
-  scopedDb: SheetSnapshotReadDb
-): Promise<TalentSheetInputHash> {
-  const talent = await scopedDb.talent.getWithRelations(input.talentId);
-  // Fall back to the payload when the talent row vanished mid-flight — the
-  // workflow will fail downstream on the missing record, but we shouldn't mask
-  // the divergence check with a noisy lookup error here. Description is
-  // re-read because a mid-run rewrite is a real input change; the display
-  // name is passed through but not hashed.
-  const liveImageUrls =
-    talent?.media
-      .filter((m) => m.type === 'image')
-      .map((m) => m.url)
-      .sort() ??
-    input.referenceImageUrls ??
-    [];
-  const snapshotUrls = input.referenceImageUrls ?? [];
-  const liveSet = new Set(liveImageUrls);
-  // Talent media is append-only. Extra live URLs must not park a generate-if-
-  // missing run as divergent (two photo finalizes, or photos dropped while a
-  // name-only sheet is in flight). Missing snapshot URLs still hash live.
-  const snapshotSubsetOfLive = snapshotUrls.every((url) => liveSet.has(url));
-  return computeLibraryTalentSheetHashFromDto({
-    ...input,
-    talentName: talent?.name ?? input.talentName,
-    // `talent.description` cleared to null must hash as cleared, not fall back
-    // to the payload — so the payload is only consulted when there's no row.
-    talentDescription: talent
-      ? (talent.description ?? undefined)
-      : input.talentDescription,
-    referenceImageUrls: snapshotSubsetOfLive ? snapshotUrls : liveImageUrls,
-  });
-}
-
 /**
  * Library location references are content-addressed the same way the talent
  * twin is: the name/description the sheet was generated for, the inlined
  * reference URLs, and the model.
  */
 export async function computeLibraryLocationSheetHashFromDto(
-  input: LibraryLocationSheetWorkflowInput
+  input: SheetPayload<LibraryLocationSheetWorkflowInput>
 ): Promise<LibraryLocationReferenceInputHash> {
   return computeLibraryLocationReferenceInputHash({
     locationBible: {
@@ -385,26 +265,6 @@ export async function computeLibraryLocationSheetHashFromDto(
     styleConfigHash: await computeStyleConfigHash(null),
     imageModel: input.imageModel ?? DEFAULT_IMAGE_MODEL,
     referenceMediaHashes: [...input.referenceImageUrls].sort(),
-  });
-}
-
-/**
- * Recompute from live DB state. Only name/description are re-read: the
- * reference URL set is the run's frozen input (the payload composes it from
- * sheets + the prior reference), so re-deriving it here would manufacture
- * permanent divergence rather than detect it.
- */
-export async function computeLibraryLocationSheetHashCurrent(
-  input: LibraryLocationSheetWorkflowInput,
-  scopedDb: SheetSnapshotReadDb
-): Promise<LibraryLocationReferenceInputHash> {
-  const location = await scopedDb.locations.getById(input.locationDbId);
-  return computeLibraryLocationSheetHashFromDto({
-    ...input,
-    locationName: location?.name ?? input.locationName,
-    locationDescription: location
-      ? (location.description ?? undefined)
-      : input.locationDescription,
   });
 }
 

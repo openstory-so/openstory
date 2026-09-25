@@ -16,7 +16,10 @@ import {
   toLocationMetadata,
 } from '@/cast/server/sheets/location-sheet-trigger';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
-import type { RecastLocationWorkflowInput } from '@/platform/server/workflow/types';
+import type {
+  LocationSheetWorkflowInput,
+  RecastLocationWorkflowInput,
+} from '@/platform/server/workflow/types';
 import { buildRecastRegenerateSnapshots } from '@/cast/server/workflows/recast-snapshot';
 import { locationSheetHashMatchesStored } from '@/cast/server/workflows/sheet-snapshots';
 import { createServerFn } from '@tanstack/react-start';
@@ -240,10 +243,10 @@ export const regenerateLocationSheetFn = createServerFn({ method: 'POST' })
       imageModel: data.imageModel,
     });
 
-    await context.scopedDb.sequenceLocations.updateReferenceStatus(
-      location.id,
-      'generating'
-    );
+    // The claim (#1113): last kickoff wins, and any edit to the location's
+    // inputs before this run lands revokes it.
+    const referenceVersionId =
+      await context.scopedDb.sequenceLocations.claimReference(location.id);
     try {
       await getGenerationChannel(location.sequenceId).emit(
         'generation.location-sheet:progress',
@@ -255,15 +258,19 @@ export const regenerateLocationSheetFn = createServerFn({ method: 'POST' })
 
     let workflowRunId: string;
     try {
-      workflowRunId = await triggerWorkflow('/location-sheet', payload, {
+      const claimed: LocationSheetWorkflowInput = {
+        ...payload,
+        referenceVersionId,
+      };
+      workflowRunId = await triggerWorkflow('/location-sheet', claimed, {
         // Explicit regen must not reuse the bible-child id
         // `location-sheet:${id}` — that instance is already complete, and CF
         // would no-op a second Generate. Same pattern as generateTalentSheetFn.
       });
     } catch (error) {
-      await context.scopedDb.sequenceLocations.updateReferenceStatus(
+      await context.scopedDb.sequenceLocations.failReferenceClaim(
         location.id,
-        'failed',
+        referenceVersionId,
         error instanceof Error ? error.message : String(error)
       );
       throw error;
@@ -352,10 +359,9 @@ export const recastLocationFn = createServerFn({ method: 'POST' })
       throw new NotFoundError('Location not found');
     }
 
-    await context.scopedDb.sequenceLocations.updateReferenceStatus(
-      data.locationId,
-      'generating'
-    );
+    // Claimed after the relink above, which revokes older claims (#1113).
+    const referenceVersionId =
+      await context.scopedDb.sequenceLocations.claimReference(data.locationId);
 
     await getGenerationChannel(location.sequenceId).emit(
       'generation.location-sheet:progress',
@@ -393,6 +399,7 @@ export const recastLocationFn = createServerFn({ method: 'POST' })
       libraryLocationDescription: data.description,
       libraryLocationId: data.libraryLocationId,
       libraryLocationReferenceHash: libraryLocation.referenceInputHash,
+      referenceVersionId,
       imageModel,
       styleConfig,
       aspectRatio: sequence.aspectRatio,

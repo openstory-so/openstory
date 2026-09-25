@@ -55,6 +55,7 @@ export async function refreshCheckpointFromCast(
         talentName: talent.name,
         sheetImageUrl: sheet.imageUrl,
         sheetMetadata: sheet.metadata ?? undefined,
+        sheetInputHash: sheet.inputHash,
         talentDescription: talent.description ?? undefined,
         personality: talent.personality ?? '',
         movement: talent.movement ?? '',
@@ -80,6 +81,7 @@ export async function refreshCheckpointFromCast(
         libraryLocationName: library.name,
         referenceImageUrl: library.referenceImageUrl,
         description: library.description ?? undefined,
+        referenceInputHash: library.referenceInputHash,
       });
     }
     next.locationMatches = locationMatches;

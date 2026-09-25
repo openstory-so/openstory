@@ -171,6 +171,8 @@ export class RecastCharacterWorkflow extends OpenStoryWorkflowEntrypoint<RecastC
           styleConfig: input.styleConfig,
           talentSheetInputHash: input.talentSheetInputHash,
           castTalentDescription: input.castTalentDescription,
+          // The claim recastCharacterFn took (#1113).
+          sheetVersionId: input.sheetVersionId,
         };
         partial.snapshotInputHash =
           await computeCharacterSheetHashFromDto(partial);

@@ -38,6 +38,7 @@ import {
   type EnqueueLibraryTalentSheetParams,
 } from '@/cast/server/talent/enqueue-library-talent-sheet';
 import type { LibraryLocationSheetWorkflowInput } from '@/platform/server/workflow/types';
+import type { SheetPayload } from '@/cast/server/workflows/sheet-snapshots';
 import { SEQUENCE_STATUSES } from '@/platform/server/db/schema/sequences';
 import { createSequenceLink } from './discovery';
 import {
@@ -324,7 +325,7 @@ export async function runOneShotCreate(
   const deferredTalentSheets: EnqueueLibraryTalentSheetParams[] = [];
   const deferredLocationSheets: Array<{
     locationId: string;
-    workflowInput: LibraryLocationSheetWorkflowInput;
+    workflowInput: SheetPayload<LibraryLocationSheetWorkflowInput>;
   }> = [];
 
   try {
@@ -418,9 +419,11 @@ export async function runOneShotCreate(
     // here must not fail the create: the client already has sequence ids, and
     // the storyboard wait-for-sheets gate will surface a missing sheet.
     await Promise.allSettled([
-      ...deferredTalentSheets.map((sheet) => enqueueLibraryTalentSheet(sheet)),
+      ...deferredTalentSheets.map((sheet) =>
+        enqueueLibraryTalentSheet(ctx.scopedDb, sheet)
+      ),
       ...deferredLocationSheets.map(({ workflowInput }) =>
-        enqueueLibraryLocationSheet(workflowInput)
+        enqueueLibraryLocationSheet(ctx.scopedDb, workflowInput)
       ),
     ]);
 

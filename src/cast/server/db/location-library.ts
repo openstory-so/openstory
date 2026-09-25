@@ -224,10 +224,10 @@ export function createLocationsMethods(
       id: string,
       data: Partial<Omit<NewLibraryLocation, ServerManagedLocationColumn>>
     ): Promise<LibraryLocation> => {
-      // Claims (#1113): the name and description feed this location's own
-      // sheet run; its reference feeds every sequence location linked to it.
-      const ownInputMoved =
-        data.name !== undefined || data.description !== undefined;
+      // Claims (#1113): the description feeds this location's own sheet run
+      // (a rename is not an input: the hash never covered the name); its
+      // reference feeds every sequence location linked to it.
+      const ownInputMoved = data.description !== undefined;
       const referenceMoved =
         data.referenceImageUrl !== undefined ||
         data.referenceInputHash !== undefined;

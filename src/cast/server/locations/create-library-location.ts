@@ -17,6 +17,7 @@ import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import type { LibraryLocationSheetWorkflowInput } from '@/platform/server/workflow/types';
 import { computeLibraryLocationSheetHashFromDto } from '@/cast/server/workflows/sheet-snapshots';
+import type { SheetPayload } from '@/cast/server/workflows/sheet-snapshots';
 
 const logger = getLogger(['openstory', 'locations', 'create-library-location']);
 
@@ -73,14 +74,41 @@ export type CreateLibraryLocationOptions = {
 
 export type CreateLibraryLocationResult = {
   location: LibraryLocation;
-  sheetWorkflowInput: LibraryLocationSheetWorkflowInput;
+  sheetWorkflowInput: SheetPayload<LibraryLocationSheetWorkflowInput>;
 };
 
+/**
+ * Take the reference claim (#1113) and start the library sheet run. A run
+ * whose claim an edit revokes before it publishes parks its preview instead.
+ */
+export async function triggerLibraryLocationSheet(
+  scopedDb: Pick<ScopedDb, 'locations'>,
+  workflowInput: SheetPayload<LibraryLocationSheetWorkflowInput>
+): Promise<string> {
+  const referenceClaimId = await scopedDb.locations.claimReference(
+    workflowInput.locationDbId
+  );
+  try {
+    return await triggerWorkflow('/library-location-sheet', {
+      ...workflowInput,
+      referenceClaimId,
+    });
+  } catch (error) {
+    await scopedDb.locations.clearReferenceClaimIf(
+      workflowInput.locationDbId,
+      referenceClaimId
+    );
+    throw error;
+  }
+}
+
+/** {@link triggerLibraryLocationSheet}, logging instead of throwing. */
 export async function enqueueLibraryLocationSheet(
-  workflowInput: LibraryLocationSheetWorkflowInput
+  scopedDb: Pick<ScopedDb, 'locations'>,
+  workflowInput: SheetPayload<LibraryLocationSheetWorkflowInput>
 ): Promise<void> {
   try {
-    await triggerWorkflow('/library-location-sheet', workflowInput);
+    await triggerLibraryLocationSheet(scopedDb, workflowInput);
   } catch (error) {
     logger.error('Failed to trigger location sheet workflow:', { err: error });
   }
@@ -121,7 +149,7 @@ export async function createLibraryLocation(
 
   // Sheet generation works with or without reference images. The public API
   // defers the trigger until the sequence exists (`enqueueSheet: false`).
-  const workflowInput: LibraryLocationSheetWorkflowInput = {
+  const workflowInput: SheetPayload<LibraryLocationSheetWorkflowInput> = {
     locationDbId: newLocation.id,
     locationName: input.name,
     locationDescription: input.description,
@@ -135,7 +163,7 @@ export async function createLibraryLocation(
 
   if (options?.enqueueSheet !== false) {
     // Dashboard create: fire-and-forget so the dialog can return immediately.
-    void enqueueLibraryLocationSheet(workflowInput);
+    void enqueueLibraryLocationSheet(ctx.scopedDb, workflowInput);
   }
 
   return { location: newLocation, sheetWorkflowInput: workflowInput };

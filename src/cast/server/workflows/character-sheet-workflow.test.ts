@@ -1,8 +1,11 @@
 /**
- * Money-path test for CharacterSheetWorkflow reuse (#1248).
+ * CharacterSheetWorkflow: the reuse money path (#1248) and landing through
+ * the sheet claim (#1113).
  *
  * Casting with a matching costume copies the talent sheet into the
- * characters bucket and must not call fal or deduct credits.
+ * characters bucket and must not call fal or deduct credits. The result
+ * lands through the trigger's claim: promoted while held, parked (with
+ * `stale:detected`) when it moved; a pre-#1113 payload lands unconditionally.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -46,6 +49,12 @@ class Probe extends CharacterSheetWorkflow {
   ) {
     return this.runImpl(event, step, scopedDb);
   }
+  failBody(
+    event: Readonly<WorkflowEvent<CharacterSheetWorkflowInput>>,
+    scopedDb: WorkflowScopedDb
+  ) {
+    return this.onFailure({ event, error: 'boom', scopedDb });
+  }
 }
 
 function makeWorkflow(): Probe {
@@ -64,13 +73,20 @@ function makeStep(): WorkflowStep {
   } as unknown as WorkflowStep;
 }
 
+const mockPromoteIfPending = vi.fn();
+const mockUpdateSheet = vi.fn();
+const mockUpdateSheetStatus = vi.fn();
+const mockFailSheetClaim = vi.fn();
+
 function makeScopedDb(): WorkflowScopedDb {
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the scoped-db surface runImpl touches
   return {
     characters: {
-      updateSheet: vi.fn(async () => ({})),
-      updateSheetStatus: vi.fn(async () => ({})),
+      updateSheet: mockUpdateSheet,
+      updateSheetStatus: mockUpdateSheetStatus,
+      failSheetClaim: mockFailSheetClaim,
     },
+    characterSheetVariants: { promoteIfPending: mockPromoteIfPending },
     provenance: {},
     liveRead: {},
     credentials: {},
@@ -94,7 +110,9 @@ const characterMetadata: CharacterBibleEntry = {
   consistencyTag: 'sam',
 };
 
-function makeEvent(): Readonly<WorkflowEvent<CharacterSheetWorkflowInput>> {
+function makeEvent(
+  overrides: Partial<CharacterSheetWorkflowInput> = {}
+): Readonly<WorkflowEvent<CharacterSheetWorkflowInput>> {
   return {
     payload: {
       userId: 'u1',
@@ -106,6 +124,8 @@ function makeEvent(): Readonly<WorkflowEvent<CharacterSheetWorkflowInput>> {
       referenceImageUrl: '/r2/talent/team-1/tal-1/sheet.png',
       reuseTalentSheet: true,
       castTalentDescription: null,
+      sheetVersionId: 'ver-1',
+      ...overrides,
     },
     instanceId: 'run-1',
     workflowName: 'character-sheet',
@@ -122,6 +142,8 @@ beforeEach(() => {
   });
   mockRecordProvenance.mockResolvedValue(undefined);
   mockEmit.mockResolvedValue(undefined);
+  mockPromoteIfPending.mockResolvedValue('promoted');
+  mockUpdateSheet.mockResolvedValue({ selectedSheetVersionId: 'legacy-ver' });
 });
 
 describe('CharacterSheetWorkflow reuseTalentSheet', () => {
@@ -145,5 +167,69 @@ describe('CharacterSheetWorkflow reuseTalentSheet', () => {
       '/r2/characters/team-1/seq-1/char-1/copied.png'
     );
     expect(result.diverged).toBeUndefined();
+  });
+});
+
+describe('CharacterSheetWorkflow sheet claim (#1113)', () => {
+  it('lands through the claim the trigger took', async () => {
+    const result = await makeWorkflow().runBody(
+      makeEvent(),
+      makeStep(),
+      makeScopedDb()
+    );
+
+    expect(mockPromoteIfPending).toHaveBeenCalledWith(
+      expect.objectContaining({
+        characterId: 'char-1',
+        versionId: 'ver-1',
+        url: '/r2/characters/team-1/seq-1/char-1/copied.png',
+      })
+    );
+    expect(mockUpdateSheet).not.toHaveBeenCalled();
+    expect(result.sheetVersionId).toBe('ver-1');
+  });
+
+  it('parks and reports stale when the claim moved mid-run', async () => {
+    mockPromoteIfPending.mockResolvedValue('parked');
+
+    const result = await makeWorkflow().runBody(
+      makeEvent(),
+      makeStep(),
+      makeScopedDb()
+    );
+
+    expect(result.diverged).toBe(true);
+    expect(mockUpdateSheet).not.toHaveBeenCalled();
+    expect(mockEmit).toHaveBeenCalledWith(
+      'generation.stale:detected',
+      expect.objectContaining({
+        entityType: 'character',
+        entityId: 'char-1',
+        divergedVariantId: 'ver-1',
+      })
+    );
+  });
+
+  it('lands a run queued before #1113 (no claim) unconditionally', async () => {
+    const legacy = makeEvent();
+    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- a pre-#1113 payload lacks the field
+    delete (legacy.payload as Partial<CharacterSheetWorkflowInput>)
+      .sheetVersionId;
+
+    const result = await makeWorkflow().runBody(
+      legacy,
+      makeStep(),
+      makeScopedDb()
+    );
+
+    expect(mockPromoteIfPending).not.toHaveBeenCalled();
+    expect(mockUpdateSheet).toHaveBeenCalledTimes(1);
+    expect(result.sheetVersionId).toBe('legacy-ver');
+  });
+
+  it('fails only its own claim', async () => {
+    await makeWorkflow().failBody(makeEvent(), makeScopedDb());
+    expect(mockFailSheetClaim).toHaveBeenCalledWith('char-1', 'ver-1', 'boom');
+    expect(mockUpdateSheetStatus).not.toHaveBeenCalled();
   });
 });

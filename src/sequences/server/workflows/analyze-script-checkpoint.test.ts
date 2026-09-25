@@ -68,7 +68,11 @@ vi.doMock('@/platform/realtime', () => ({
 }));
 
 vi.doMock('@/cast/server/workflows/wait-for-sheets', () => ({
-  waitForElementVision: vi.fn(async () => undefined),
+  waitForElementVision: vi.fn(async () => ({
+    ready: true,
+    pendingIds: [],
+    rows: [],
+  })),
 }));
 
 const SPLIT: SceneSplitWorkflowResult = {

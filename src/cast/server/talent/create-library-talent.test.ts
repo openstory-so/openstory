@@ -23,7 +23,14 @@ const mockRequireRights = vi.fn();
 
 vi.doMock('@/platform/server/workflow/client', () => ({
   triggerWorkflow: mockTriggerWorkflow,
+  triggerWorkflowRun: async (
+    ...args: Parameters<typeof mockTriggerWorkflow>
+  ) => ({ workflowRunId: await mockTriggerWorkflow(...args), reused: false }),
 }));
+const sheetClaim = {
+  claimSheet: vi.fn(async () => ({ sheetId: 'sheet-claim', previous: null })),
+  restoreSheetClaimIf: vi.fn(async () => undefined),
+};
 vi.doMock('@/platform/realtime', () => ({
   getTalentChannel: () => ({ emit: mockEmit }),
 }));
@@ -62,6 +69,7 @@ function makeCtx(): CreateLibraryTalentContext {
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only talent.create + media.create
   const scopedDb = {
     talent: {
+      ...sheetClaim,
       create: mockCreate,
       media: { create: mockMediaCreate },
     },

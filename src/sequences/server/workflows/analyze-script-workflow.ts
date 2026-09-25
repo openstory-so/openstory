@@ -103,6 +103,7 @@ import { waitForElementVision } from '@/cast/server/workflows/wait-for-sheets';
 import type {
   CharacterMinimal,
   MotionAudioClip,
+  SequenceElement,
   SequenceElementMinimal,
   SequenceLocationMinimal,
 } from '@/platform/server/db/schema';
@@ -214,49 +215,46 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     // split reads those descriptions, so wait (bounded) for any still-running
     // vision before loading — mirrors the talent-sheet / location-reference
     // waits. Already-completed elements short-circuit with no added latency.
-    if (sequenceId) {
-      await waitForElementVision(step, scopedDb.liveRead, elementIds, {
-        onWaitNeeded: async () => {
-          await getGenerationChannel(sequenceId).emit(
-            'generation.phase:start',
-            {
-              phase: 1,
-              phaseName: 'Analyzing elements…',
-            }
-          );
-        },
-      });
-    }
-
-    // Load sequence elements. Vision MUST be terminal before scene-split:
-    // a scene split against a half-described element bakes the wrong look
-    // into every downstream prompt. After the wait above this only trips for
-    // vision that genuinely failed to terminate within the timeout, in which
-    // case we still surface the explicit error.
     //
-    // Reads by the trigger-time `elementIds` — the vision-written fields
-    // arrive late so the ROW read must be live, but re-enumerating the
-    // sequence here would pull in elements uploaded after generation started
+    // Vision MUST be terminal before scene-split:
+    // a scene split against a half-described element bakes the wrong look
+    // into every downstream prompt. After the wait this only trips for vision
+    // that genuinely failed to terminate within the timeout, in which case we
+    // still surface the explicit error.
+    //
+    // The wait reads by the trigger-time `elementIds` — the vision-written
+    // fields arrive late so the ROW read must be live, but re-enumerating the
+    // sequence would pull in elements uploaded after generation started
     // (whose pending vision then hard-fails a run they were never part of).
-    const elements = await step.do('load-elements', async () => {
-      if (!sequenceId) return [];
-      const list =
-        await scopedDb.liveRead.sequenceElements.listByIds(elementIds);
-      const stillRunning = list.filter(
-        (el) => el.visionStatus === 'pending' || el.visionStatus === 'analyzing'
+    // Its rows ARE the load: a second read would re-open the window the wait
+    // just closed (#1113).
+    let elements: SequenceElement[] = [];
+    if (sequenceId) {
+      const vision = await waitForElementVision(
+        step,
+        scopedDb.liveRead,
+        elementIds,
+        {
+          onWaitNeeded: async () => {
+            await getGenerationChannel(sequenceId).emit(
+              'generation.phase:start',
+              {
+                phase: 1,
+                phaseName: 'Analyzing elements…',
+              }
+            );
+          },
+        }
       );
-      if (stillRunning.length > 0) {
-        // NonRetryableError (not WorkflowValidationError) because the base
-        // class's re-wrap only runs at the runImpl catch boundary; a throw
-        // inside step.do gets retried by CF's step machinery first.
+      if (!vision.ready) {
         throw new NonRetryableError(
-          `Element vision is still running for ${stillRunning.length} element(s). ` +
+          `Element vision is still running for ${vision.pendingIds.length} element(s). ` +
             `Wait for vision analysis to finish before regenerating.`,
           'WorkflowValidationError'
         );
       }
-      return list;
-    });
+      elements = vision.rows;
+    }
 
     const elementsMinimal = elements.map((el) => ({
       id: el.id,

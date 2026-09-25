@@ -25,14 +25,8 @@ import type {
   LocationSheetWorkflowResult,
 } from '@/platform/server/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
-import {
-  decideSheetDivergence,
-  saveDivergentLocationSheet,
-} from './sheet-divergence';
-import {
-  computeLocationSheetHashCurrent,
-  locationSheetHashMatchesStored,
-} from './sheet-snapshots';
+import { reportParkedLocationSheet } from './sheet-divergence';
+import { locationSheetHashMatchesStored } from './sheet-snapshots';
 import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'location-sheet']);
@@ -215,64 +209,50 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
       });
     });
 
-    // Step 4: Divergence-aware database write. On convergent, update the
-    // sequence location's primary reference. On divergent, preserve the
-    // artifact as a variant row (the helper emits `stale:detected`) and
-    // skip the primary update so the in-flight run does not overwrite a
-    // now-stale reference.
-    const snapshotInputHash = input.snapshotInputHash ?? null;
+    // Step 4: Land through the claim (#1113) — see the character twin.
+    // A run queued before #1113 carries no claim and lands unconditionally.
     const reconcileOutcome = await step.do(
       'reconcile-database',
       async (): Promise<
         { kind: 'convergent'; versionId: string | null } | { kind: 'divergent' }
       > => {
-        logger.info(
-          `[LocationSheetWorkflow:cf] Updating database for ${input.locationName}`
-        );
-
-        const currentInputHash = snapshotInputHash
-          ? await computeLocationSheetHashCurrent(input, scopedDb.liveRead)
-          : null;
-
-        const decision = decideSheetDivergence(
-          snapshotInputHash,
-          currentInputHash
-        );
-
-        if (decision.kind === 'divergent') {
-          logger.warn('[LocationSheetWorkflow:cf] divergence detected', {
+        const versionId = input.referenceVersionId;
+        // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a run queued before #1113 has no claim
+        if (!versionId) {
+          const location = await scopedDb.sequenceLocations.updateReference(
             locationDbId,
-            snapshotInputHash: decision.snapshotInputHash,
-            currentInputHash: decision.currentInputHash,
-            storagePath: storageResult.path,
-          });
-          await saveDivergentLocationSheet({
-            scopedDb,
-            parent: {
-              type: 'sequence_location',
-              id: locationDbId,
-              sequenceId,
-            },
-            model: generationParams.model,
-            url: storageResult.url,
-            storagePath: storageResult.path,
-            workflowRunId,
-            snapshotInputHash: decision.snapshotInputHash,
-          });
-          return { kind: 'divergent' };
+            storageResult.url,
+            storageResult.path,
+            input.snapshotInputHash ?? null,
+            { model: generationParams.model, workflowRunId }
+          );
+          return {
+            kind: 'convergent',
+            versionId: location.selectedReferenceVersionId,
+          };
         }
-
-        const location = await scopedDb.sequenceLocations.updateReference(
+        const landing = await scopedDb.locationSheetVariants.promoteIfPending({
+          locationId: locationDbId,
+          versionId,
+          url: storageResult.url,
+          storagePath: storageResult.path,
+          inputHash: input.snapshotInputHash ?? null,
+          model: generationParams.model,
+          workflowRunId,
+        });
+        if (landing === 'promoted') return { kind: 'convergent', versionId };
+        logger.warn('[LocationSheetWorkflow:cf] claim moved; sheet parked', {
           locationDbId,
-          storageResult.url,
-          storageResult.path,
-          snapshotInputHash,
-          { model: generationParams.model, workflowRunId }
-        );
-        return {
-          kind: 'convergent',
-          versionId: location.selectedReferenceVersionId,
-        };
+          versionId,
+          storagePath: storageResult.path,
+        });
+        await reportParkedLocationSheet({
+          sequenceId,
+          locationId: locationDbId,
+          versionId,
+          snapshotInputHash: input.snapshotInputHash,
+        });
+        return { kind: 'divergent' };
       }
     );
     if (reconcileOutcome.kind === 'convergent') {
@@ -280,19 +260,9 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
     }
 
     if (reconcileOutcome.kind === 'divergent') {
-      // Helper already emitted `stale:detected` on the sequence channel.
-      // Settle the primary reference status so the UI does not stay wedged
-      // on "Regenerating…". The pre-existing `referenceImageUrl` (if any)
-      // remains the live primary — we deliberately did not overwrite it.
-      // For first-time generation the entity ends in `completed` with a
-      // null referenceImageUrl; the user can manually retry. Either way,
-      // flipping status to `completed` reflects "generation finished,
-      // primary unchanged, divergent variant saved alongside".
+      // `stale:detected` is out and the land batch settled the status
+      // unless a newer run holds the claim — see the character twin.
       await step.do('settle-divergent-status', async () => {
-        await scopedDb.sequenceLocations.updateReferenceStatus(
-          locationDbId,
-          'completed'
-        );
         await getGenerationChannel(sequenceId).emit(
           'generation.location-sheet:progress',
           {
@@ -349,13 +319,22 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
   }): Promise<void> {
     const input = event.payload;
 
-    // Mark location reference as failed
+    // Mark location reference as failed — through the claim (#1113).
     if (input.locationDbId && input.teamId) {
-      await scopedDb.sequenceLocations.updateReferenceStatus(
-        input.locationDbId,
-        'failed',
-        error
-      );
+      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a run queued before #1113 has no claim
+      if (input.referenceVersionId) {
+        await scopedDb.sequenceLocations.failReferenceClaim(
+          input.locationDbId,
+          input.referenceVersionId,
+          error
+        );
+      } else {
+        await scopedDb.sequenceLocations.updateReferenceStatus(
+          input.locationDbId,
+          'failed',
+          error
+        );
+      }
 
       // Emit failure event for realtime UI update
       if (input.sequenceId) {

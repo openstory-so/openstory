@@ -122,8 +122,8 @@ type WorkflowClaims = {
 
 /**
  * Hatch 3 — LIVE READS. What is genuinely live BY DESIGN: the value's whole
- * purpose is that it may have moved since the trigger. Divergence
- * recomputation, sibling-workflow polling, balance and spawn-time billing
+ * purpose is that it may have moved since the trigger. Sibling-workflow
+ * polling, balance and spawn-time billing
  * guards, existence guards, and the bibles an update-stale run re-renders
  * against. Anything here that could have been frozen at the trigger is a bug.
  *
@@ -148,8 +148,8 @@ type WorkflowLiveReads = Pick<ScopedDb, 'teamId' | 'userId'> & {
     'hasEnoughCredits' | 'checkAutoTopUp' | 'getBalance'
   >;
   /**
-   * `getById`: divergence recompute, and the pending-promote pointer at
-   * Voice Design persist (#1715) — demote must win. `listWithSheets`: live
+   * `getById`: the pending-promote pointer at Voice Design persist (#1715) —
+   * demote must win. `listWithSheets`: live
    * bibles for a re-render. `getVoiceReferenceCount`: slot occupancy when
    * releasing a replaced or demoted designed voice.
    */
@@ -166,8 +166,8 @@ type WorkflowLiveReads = Pick<ScopedDb, 'teamId' | 'userId'> & {
   frameVariants: Pick<ScopedDb['frameVariants'], 'getSelected'>;
   /** Existence guards, plus the anchor fallback for triggers that carry no `frameId`. */
   frames: Pick<ScopedDb['frames'], 'getAnchorByShot' | 'getById'>;
-  /** `getById`: divergence recompute. `getByIds`: wait-for-sheets polling. */
-  locations: Pick<ScopedDb['locations'], 'getById' | 'getByIds'>;
+  /** `getByIds`: wait-for-sheets polling. */
+  locations: Pick<ScopedDb['locations'], 'getByIds'>;
   /** Existence guard on the segment a motion render promotes into. */
   renderSegments: Pick<ScopedDb['renderSegments'], 'getById'>;
   /** Idempotency guards, live bibles, and element-vision polling. */
@@ -175,11 +175,8 @@ type WorkflowLiveReads = Pick<ScopedDb, 'teamId' | 'userId'> & {
     ScopedDb['sequenceElements'],
     'getById' | 'getByToken' | 'list' | 'listByIds'
   >;
-  /** `getById`: divergence recompute. `listWithReferences`: live bibles for a re-render. */
-  sequenceLocations: Pick<
-    ScopedDb['sequenceLocations'],
-    'getById' | 'listWithReferences'
-  >;
+  /** `listWithReferences`: live bibles for a re-render. */
+  sequenceLocations: Pick<ScopedDb['sequenceLocations'], 'listWithReferences'>;
   /**
    * Existence guards, the music spawn-time billing guards (music has no claim
    * rows), and the ready-email title (#1453) — scene-split writes it mid-run,
@@ -191,8 +188,8 @@ type WorkflowLiveReads = Pick<ScopedDb, 'teamId' | 'userId'> & {
    * those numbers are this run's own writes, not knowable at the trigger.
    */
   shots: Pick<ScopedDb['shots'], 'getById' | 'getByIds' | 'listBySequence'>;
-  /** `getByIds`: wait-for-sheets polling. `getWithRelations`: divergence recompute. */
-  talent: Pick<ScopedDb['talent'], 'getByIds' | 'getWithRelations'>;
+  /** `getByIds`: wait-for-sheets polling. */
+  talent: Pick<ScopedDb['talent'], 'getByIds'>;
   /** Spawn-time billing guards — video has no claim rows to hold the slot. */
   videoVariants: Pick<
     ScopedDb['videoVariants'],

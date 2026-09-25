@@ -26,15 +26,8 @@ import type {
   LibraryTalentSheetWorkflowInput,
   LibraryTalentSheetWorkflowResult,
 } from '@/platform/server/workflow/types';
-import type { TalentSheetInputHash } from '@/shots/input-hash';
-import {
-  computeLibraryTalentSheetHashCurrent,
-  computeLibraryTalentSheetHashFromDto,
-} from './sheet-snapshots';
-import {
-  decideSheetDivergence,
-  saveDivergentTalentSheet,
-} from './sheet-divergence';
+import { computeLibraryTalentSheetHashFromDto } from './sheet-snapshots';
+import { saveDivergentTalentSheet } from './sheet-divergence';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { getLogger } from '@/platform/logger';
 
@@ -95,7 +88,9 @@ export class LibraryTalentSheetWorkflow extends OpenStoryWorkflowEntrypoint<Libr
         logger.info(
           `[LibraryTalentSheetWorkflow:cf] Copying uploaded character sheet for ${input.talentName}`
         );
-        const sheetId = generateId();
+        // The claimed id (#1113); a pre-#1113 run mints one here.
+        // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a run queued before #1113 has no claim
+        const sheetId = input.sheetId ?? generateId();
         const storagePath = `${input.teamId}/${input.talentId}/${sheetId}.png`;
         const result = await copyStoredImage({
           sourceUrl: uploadedSheetUrl,
@@ -143,9 +138,10 @@ export class LibraryTalentSheetWorkflow extends OpenStoryWorkflowEntrypoint<Libr
         params: generationParams,
         meta: { talentId: input.talentId },
         store: async (result) => {
-          // Minted inside the step: this ULID becomes the sheet row's id, so
-          // it must survive replay rather than be regenerated.
-          const sheetId = generateId();
+          // The claimed id (#1113) becomes the sheet row's id. A pre-#1113
+          // run mints it inside the step so it survives replay.
+          // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a run queued before #1113 has no claim
+          const sheetId = input.sheetId ?? generateId();
           const stored = await storeGeneratedPng(
             result.imageUrls[0],
             STORAGE_BUCKETS.TALENT,
@@ -191,84 +187,71 @@ export class LibraryTalentSheetWorkflow extends OpenStoryWorkflowEntrypoint<Libr
       });
     }
 
-    // Step 4: Divergence-aware sheet record creation. Always create the
-    // talent_sheets row; on divergence, attach a variant to it (preserving
-    // the artifact as a parented sheet against the snapshot identity that
-    // triggered this run) and stop before the headshot + talent.update steps
-    // so this now-stale run cannot overwrite the talent's primary identity.
-    const snapshotHash: TalentSheetInputHash | null =
-      input.snapshotInputHash ?? null;
+    // Step 4: Land the sheet through the claim (#1113). The row is always
+    // written (the artifact is in R2 either way); it becomes the talent's
+    // live sheet only while the trigger's claim still names it. A missed
+    // claim — the name, description or photos edited mid-run, a newer run, or
+    // the user picking a sheet — parks it as divergent and stops before the
+    // headshot, so a stale run cannot overwrite the talent's identity.
     const sheetReconcile = await step.do(
       'reconcile-create-sheet',
       async (): Promise<{
         kind: 'convergent' | 'divergent';
         sheet: Awaited<ReturnType<typeof scopedDb.talent.sheets.create>>;
       }> => {
-        logger.info(
-          `[LibraryTalentSheetWorkflow:cf] Creating sheet record in database`
-        );
-        // Compute divergence first so we can mark the talent_sheets row at
-        // creation time. A divergent sheet must NOT be eligible to back-fill
-        // the talent's primary identity in any UI fallback chain (e.g.
-        // `sheets.find(default) ?? sheets[0]`); the `divergedAt` column is
-        // the marker the read-side filters on.
-        const currentHash = snapshotHash
-          ? await computeLibraryTalentSheetHashCurrent(input, scopedDb.liveRead)
-          : null;
-        const decision = decideSheetDivergence(snapshotHash, currentHash);
+        const sheetFields = {
+          talentId: input.talentId,
+          name: input.sheetName ?? 'Generated Sheet',
+          imageUrl: storageResult.url,
+          imagePath: storageResult.path,
+          metadata: input.uploadedSheetMetadata,
+          source: sheetSource,
+          inputHash: input.snapshotInputHash ?? null,
+        } as const;
 
-        // Re-entry guard: step.do retries this body verbatim if any later
-        // call inside it (e.g. saveDivergentTalentSheet's realtime emit)
-        // throws transiently. talent.sheets.create is keyed on a stable PK
-        // we passed from the upload step, so a retry would raise
-        // SQLITE_CONSTRAINT_PRIMARYKEY without this pre-check — short-circuit
-        // on the existing row.
-        const existing = await scopedDb.talent.sheets.getById(
-          storageResult.sheetId
-        );
-        const created =
-          existing ??
-          (await scopedDb.talent.sheets.create({
-            id: storageResult.sheetId,
-            talentId: input.talentId,
-            name: input.sheetName ?? 'Generated Sheet',
-            imageUrl: storageResult.url,
-            imagePath: storageResult.path,
-            metadata: input.uploadedSheetMetadata,
-            // Divergent and generated rows pass isDefault: false so
-            // sheets.create does not auto-promote the Default badge.
-            // Casting identity still comes from the newest convergent sheet
-            // (defaultSheet fallback) plus the headshot. Convergent uploads
-            // omit isDefault so a first sheet can auto-promote.
-            ...(decision.kind === 'divergent' || sheetSource !== 'manual_upload'
-              ? { isDefault: false }
-              : {}),
-            source: sheetSource,
-            inputHash: snapshotHash,
-            divergedAt: decision.kind === 'divergent' ? new Date() : null,
-          }));
-
-        if (decision.kind === 'divergent') {
-          logger.warn('[LibraryTalentSheetWorkflow:cf] divergence detected', {
-            talentId: input.talentId,
-            snapshotInputHash: decision.snapshotInputHash,
-            currentInputHash: decision.currentInputHash,
-            storagePath: storageResult.path,
-          });
-          await saveDivergentTalentSheet({
-            scopedDb,
-            talentSheetId: created.id,
-            talentId: input.talentId,
-            model: input.imageModel ?? DEFAULT_IMAGE_MODEL,
-            url: storageResult.url,
-            storagePath: storageResult.path,
-            workflowRunId,
-            snapshotInputHash: decision.snapshotInputHash,
-          });
-          return { kind: 'divergent', sheet: created };
+        // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a run queued before #1113 has no claim
+        if (!input.sheetId) {
+          // Pre-#1113 run: lands unconditionally. The pre-check makes a step
+          // retry reuse the row it already created under the stable PK.
+          const existing = await scopedDb.talent.sheets.getById(
+            storageResult.sheetId
+          );
+          const sheet =
+            existing ??
+            (await scopedDb.talent.sheets.create({
+              ...sheetFields,
+              id: storageResult.sheetId,
+              // Generated rows never auto-take the Default badge; a first
+              // upload does (`sheets.create` promotes when omitted).
+              ...(sheetSource !== 'manual_upload' ? { isDefault: false } : {}),
+            }));
+          return { kind: 'convergent', sheet };
         }
 
-        return { kind: 'convergent', sheet: created };
+        const { sheet, landed } = await scopedDb.talent.landSheet({
+          ...sheetFields,
+          sheetId: input.sheetId,
+        });
+        if (landed) return { kind: 'convergent', sheet };
+
+        logger.warn('[LibraryTalentSheetWorkflow:cf] claim moved; parked', {
+          talentId: input.talentId,
+          sheetId: sheet.id,
+          storagePath: storageResult.path,
+        });
+        await saveDivergentTalentSheet({
+          scopedDb,
+          talentSheetId: sheet.id,
+          talentId: input.talentId,
+          model: input.imageModel ?? DEFAULT_IMAGE_MODEL,
+          url: storageResult.url,
+          storagePath: storageResult.path,
+          workflowRunId,
+          snapshotInputHash:
+            input.snapshotInputHash ??
+            (await computeLibraryTalentSheetHashFromDto(input)),
+        });
+        return { kind: 'divergent', sheet };
       }
     );
 
@@ -418,12 +401,19 @@ export class LibraryTalentSheetWorkflow extends OpenStoryWorkflowEntrypoint<Libr
   protected override async onFailure({
     event,
     error,
+    scopedDb,
   }: {
     event: Readonly<WorkflowEvent<LibraryTalentSheetWorkflowInput>>;
     error: string;
     scopedDb: WorkflowScopedDb;
   }): Promise<void> {
     const input = event.payload;
+
+    // Clear this run's claim only while it still holds it (#1113).
+    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a run queued before #1113 has no claim
+    if (input.sheetId) {
+      await scopedDb.talent.clearSheetClaimIf(input.talentId, input.sheetId);
+    }
 
     logger.error(
       `[LibraryTalentSheetWorkflow:cf] Sheet generation failed for talent ${input.talentName}: ${error}`

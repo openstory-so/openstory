@@ -780,6 +780,13 @@ export interface CharacterSheetWorkflowInput extends SequenceWorkflowContext {
   castTalentDescription: string | null;
   /** Hash over the inlined DTO; validated by the snapshot middleware. */
   snapshotInputHash?: CharacterSheetInputHash;
+  /**
+   * The sheet claim (#1113): the id this run's version row will carry, taken at the trigger
+   * (`characters.claimSheet`). The run lands only while the claim still names it,
+   * else it parks as divergent. Absent only on a run queued before #1113,
+   * which lands unconditionally.
+   */
+  sheetVersionId: string;
 }
 
 /**
@@ -918,6 +925,8 @@ export interface RecastCharacterWorkflowInput extends SequenceWorkflowContext {
   talentSheetInputHash: string | null;
   /** The cast talent's own description; see `CharacterSheetWorkflowInput`. */
   castTalentDescription: string | null;
+  /** The sheet claim for the child; see `CharacterSheetWorkflowInput`. */
+  sheetVersionId: string;
   /** Sequence style config to apply to the character sheet */
   styleConfig?: StyleConfig;
   /** Aspect ratio (frozen at trigger time, replaces a live sequence read). */
@@ -965,6 +974,12 @@ export type TalentCharacterMatch = {
    * `isPerson: true` at insert (#1682). Absent on pre-stamp checkpoints.
    */
   hasSignedRelease?: boolean;
+  /**
+   * The matched default sheet's `input_hash`, so a pipeline character sheet
+   * is stamped with the same hash a regenerate would (#1113). Absent on
+   * pre-#1113 checkpoints.
+   */
+  sheetInputHash?: string | null;
 };
 
 /**
@@ -1348,6 +1363,13 @@ export interface LibraryTalentSheetWorkflowInput extends UserWorkflowContext {
   uploadedSheetMetadata?: CharacterBibleEntry;
   /** Hash over the inlined DTO; validated by the snapshot middleware. */
   snapshotInputHash?: TalentSheetInputHash;
+  /**
+   * The sheet claim (#1113): the id of the `talent_sheets` row this run writes, taken at the trigger
+   * (`talent.claimSheet`). The run lands only while the claim still names it,
+   * else it parks as divergent. Absent only on a run queued before #1113,
+   * which lands unconditionally.
+   */
+  sheetId: string;
 }
 
 export interface LibraryTalentSheetWorkflowResult {
@@ -1384,6 +1406,13 @@ export interface LocationSheetWorkflowInput extends SequenceWorkflowContext {
   libraryLocationReferenceHash?: string | null;
   /** Hash over the inlined DTO; validated by the snapshot middleware. */
   snapshotInputHash?: LocationSheetInputHash;
+  /**
+   * The reference claim (#1113): the id this run's version row will carry, taken at the trigger
+   * (`sequenceLocations.claimReference`). The run lands only while the claim still names it,
+   * else it parks as divergent. Absent only on a run queued before #1113,
+   * which lands unconditionally.
+   */
+  referenceVersionId: string;
 }
 
 export interface LocationSheetWorkflowResult {
@@ -1423,6 +1452,13 @@ export interface LibraryLocationSheetWorkflowInput extends UserWorkflowContext {
    * parked as a divergent variant instead of becoming the live reference.
    */
   snapshotInputHash?: LibraryLocationReferenceInputHash;
+  /**
+   * The reference claim (#1113): the id this run holds until it publishes, taken at the trigger
+   * (`locations.claimReference`). The run lands only while the claim still names it,
+   * else it parks as divergent. Absent only on a run queued before #1113,
+   * which lands unconditionally.
+   */
+  referenceClaimId: string;
 }
 
 export interface LibraryLocationSheetWorkflowResult {
@@ -1468,6 +1504,12 @@ export type LibraryLocationMatch = {
   referenceImageUrl: string;
   /** Library location description for prompt enhancement */
   description?: string;
+  /**
+   * The library location's `reference_input_hash`, so a pipeline location
+   * sheet is stamped with the same hash a regenerate would (#1113). Absent on
+   * pre-#1113 checkpoints.
+   */
+  referenceInputHash?: string | null;
 };
 
 /**
@@ -1513,6 +1555,8 @@ export interface RecastLocationWorkflowInput extends SequenceWorkflowContext {
    * The workflow used to re-derive it two DB reads deep, minutes later.
    */
   libraryLocationReferenceHash: string | null;
+  /** The reference claim for the child; see `LocationSheetWorkflowInput`. */
+  referenceVersionId: string;
   /** Sequence style config to apply to the location sheet */
   styleConfig?: StyleConfig;
   /** Aspect ratio (frozen at trigger time, replaces a live sequence read). */
