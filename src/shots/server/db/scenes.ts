@@ -38,6 +38,7 @@ import {
   isNull,
   sql,
 } from 'drizzle-orm';
+import type { SQL } from 'drizzle-orm';
 import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
 
@@ -170,22 +171,44 @@ export function createScenesMethods(db: Database) {
     ) {
       return [];
     }
-    const [selected] = existing.selectedScriptVersionId
-      ? await db
-          .select({ content: sceneScriptVersions.content })
-          .from(sceneScriptVersions)
-          .where(eq(sceneScriptVersions.id, existing.selectedScriptVersionId))
-      : [];
+    // The script and every field the patch leaves alone are copied from the
+    // selected row INSIDE the batch, not from `existing`: a script or
+    // narrative edit landing between the read and this write must survive.
     const versionId = generateId();
+    const field = (key: keyof SceneNarrative, value: SQL) => {
+      const patched: SceneNarrativeUpdate[keyof SceneNarrative] = patch[key];
+      if (patched === undefined) return value.as(sceneScriptVersions[key].name);
+      // Only `continuity` is an object; it is stored as JSON text.
+      const bound =
+        typeof patched === 'object' && patched !== null
+          ? JSON.stringify(patched)
+          : patched;
+      return sql`${bound}`.as(sceneScriptVersions[key].name);
+    };
     return [
-      db.insert(sceneScriptVersions).values({
-        id: versionId,
-        sceneId: existing.id,
-        content: selected?.content ?? EMPTY_SCRIPT,
-        ...after,
-        source: opts.source,
-        createdBy: opts.createdBy,
-      }),
+      db.insert(sceneScriptVersions).select(
+        db
+          .select({
+            id: sql<string>`${versionId}`.as('id'),
+            sceneId: scenes.id,
+            content:
+              sql`coalesce(${sceneScriptVersions.content}, ${JSON.stringify(EMPTY_SCRIPT)})`.as(
+                'content'
+              ),
+            title: field('title', sceneColumns.title),
+            location: field('location', sceneColumns.location),
+            timeOfDay: field('timeOfDay', sceneColumns.timeOfDay),
+            storyBeat: field('storyBeat', sceneColumns.storyBeat),
+            continuity: field('continuity', sceneColumns.continuity),
+            hasNarrative: sql`1`.as('has_narrative'),
+            source: sql`${opts.source}`.as('source'),
+            createdAt: sql`${Math.floor(Date.now() / 1000)}`.as('created_at'),
+            createdBy: sql`${opts.createdBy}`.as('created_by'),
+          })
+          .from(scenes)
+          .leftJoin(sceneScriptVersions, joinSelectedScript)
+          .where(eq(scenes.id, existing.id))
+      ),
       db
         .update(scenes)
         .set({ selectedScriptVersionId: versionId, updatedAt: new Date() })

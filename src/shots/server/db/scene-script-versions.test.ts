@@ -265,6 +265,31 @@ describe('sceneScriptVersions.updateSplitContent', () => {
       ])
     ).rejects.toThrow(/updated 0\/1 split versions/);
   });
+
+  it('lands the analysis on a hand-added scene, which has no split row; a replay adds nothing', async () => {
+    const methods = createSceneScriptVersionsMethods(db);
+    await methods.write({
+      sceneId,
+      content: { extract: '', dialogue: [] },
+      narrative: NO_NARRATIVE,
+      source: 'edit',
+    });
+    const seed = {
+      sceneId,
+      content: { extract: 'Analysed.', dialogue: [] },
+      narrative: { ...NO_NARRATIVE, title: 'Entrance' },
+    };
+
+    await methods.updateSplitContent([seed]);
+    await methods.updateSplitContent([seed]);
+
+    expect(await methods.getSelected(sceneId)).toMatchObject({
+      source: 'split',
+      title: 'Entrance',
+      content: { extract: 'Analysed.' },
+    });
+    expect(await methods.listByScene(sceneId)).toHaveLength(2);
+  });
 });
 
 describe('scene narrative on script versions (#1600)', () => {

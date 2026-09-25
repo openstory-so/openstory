@@ -285,6 +285,7 @@ export function createSceneScriptVersionsMethods(db: Database) {
       >
     ): Promise<number> => {
       let updated = 0;
+      const unseeded: Array<(typeof seeds)[number]> = [];
       for (const seed of seeds) {
         const rows = await db
           .update(sceneScriptVersions)
@@ -297,6 +298,55 @@ export function createSceneScriptVersionsMethods(db: Database) {
           )
           .returning({ id: sceneScriptVersions.id });
         updated += rows.length;
+        if (rows.length === 0) unseeded.push(seed);
+      }
+      // A scene with a version but no split row keyed to it — added by hand
+      // (#1600 gives it an `edit` row) or filled by the #1600 backfill —
+      // which `seedSplitVersions` skipped. The analysis lands as a `split`
+      // version on top; a script the person wrote is kept, as for any scene.
+      // A replay finds the row it already wrote and adds nothing.
+      for (const seed of unseeded) {
+        const [live] = await db
+          .select({ version: sceneScriptVersions })
+          .from(scenes)
+          .innerJoin(
+            sceneScriptVersions,
+            eq(scenes.selectedScriptVersionId, sceneScriptVersions.id)
+          )
+          .where(eq(scenes.id, seed.sceneId));
+        if (!live) continue;
+        updated += 1;
+        const { version } = live;
+        const content =
+          version.content.extract.trim() === ''
+            ? seed.content
+            : version.content;
+        if (
+          JSON.stringify(content) === JSON.stringify(version.content) &&
+          narrativeFieldsChanged(sceneNarrativeOf(version), seed.narrative)
+            .length === 0
+        ) {
+          continue;
+        }
+        const id = generateId();
+        await db.batch([
+          db.insert(sceneScriptVersions).values({
+            id,
+            sceneId: seed.sceneId,
+            content,
+            ...seed.narrative,
+            source: 'split',
+          }),
+          db
+            .update(scenes)
+            .set({ selectedScriptVersionId: id, updatedAt: new Date() })
+            .where(
+              and(
+                eq(scenes.id, seed.sceneId),
+                eq(scenes.selectedScriptVersionId, version.id)
+              )
+            ),
+        ]);
       }
       if (updated !== seeds.length) {
         throw new Error(
