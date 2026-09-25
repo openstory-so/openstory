@@ -254,8 +254,8 @@ async function seedCharacterWithSheet(sheetInputHash: string) {
     .values({
       sequenceId,
       characterId: 'char_001',
-      name: 'Jack',
-      consistencyTag: 'char_001: Jack-denim-jacket',
+      legacyName: 'Jack',
+      legacyConsistencyTag: 'char_001: Jack-denim-jacket',
       sheetStatus: 'completed',
     })
     .returning();

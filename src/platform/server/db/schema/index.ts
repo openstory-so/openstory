@@ -58,9 +58,14 @@ import { sequenceMusicPromptVersions } from './sequence-music-prompt-versions';
 
 import { sequenceMusicVariants } from './sequence-music-variants';
 import { sequenceExports } from './sequence-exports';
+import { sequenceStyleVersions } from './sequence-style-versions';
 
 import { characters } from './characters';
 import { characterVoiceVersions } from './character-voice-versions';
+import {
+  characterBibleVersions,
+  locationBibleVersions,
+} from './bible-versions';
 import { shotDialogueVersions } from './shot-dialogue-versions';
 import { dialogueRecordings } from './dialogue-recordings';
 import { shotDialogueSections } from './shot-dialogue-sections';
@@ -145,17 +150,26 @@ export { teamInvitations, teamMembers, teams };
 // Sequences
 export { sequences };
 
-export type { NewSequence, Sequence } from './sequences';
+export type { NewSequence, Sequence, SequenceRecord } from './sequences';
 
 // Scenes (narrative units; each owns an ordered list of shots)
 export { scenes };
 
-export type { DbSceneId, NewScene, SceneRow } from './scenes';
+export type {
+  DbSceneId,
+  LegacySceneNarrativeColumn,
+  NewScene,
+  SceneRecord,
+  SceneRow,
+} from './scenes';
 
 // Scene script versions (per-scene script history; #1030)
 export { sceneScriptVersions };
 
+export { SCENE_NARRATIVE_FIELDS } from './scene-script-versions';
+
 export type {
+  SceneNarrative,
   SceneScriptVersion,
   SceneScriptSource,
 } from './scene-script-versions';
@@ -307,10 +321,34 @@ export type {
 // Sequence exports (container-rendered MP4 snapshots)
 export { sequenceExports };
 
+// Sequence style history (#1600)
+export { sequenceStyleVersions };
+
+export type {
+  SequenceStyleSource,
+  SequenceStyleVersion,
+} from './sequence-style-versions';
+
 export type { SequenceExport } from './sequence-exports';
 
 // Characters (scripted roles)
 export { characters, characterVoiceVersions };
+
+// Bible history (#1600)
+export { characterBibleVersions, locationBibleVersions };
+
+export {
+  CHARACTER_BIBLE_FIELDS,
+  LOCATION_BIBLE_FIELDS,
+} from './bible-versions';
+
+export type {
+  BibleVersionSource,
+  CharacterBible,
+  CharacterBibleVersion,
+  LocationBible,
+  LocationBibleVersion,
+} from './bible-versions';
 
 export type {
   CharacterVoiceVersionSource,
@@ -320,6 +358,8 @@ export type {
 export type {
   CharacterWithSheet,
   Character,
+  CharacterRow,
+  LegacyCharacterBibleColumn,
   CharacterMinimal,
   CharacterWithTalent,
   VoicePreview,
@@ -341,6 +381,8 @@ export type {
   ReferenceStatus,
   SequenceLocationWithReference,
   SequenceLocation,
+  SequenceLocationRow,
+  LegacyLocationBibleColumn,
   SequenceLocationMinimal,
 } from './sequence-locations';
 
@@ -375,7 +417,14 @@ export type {
 // Library Resources
 export { audio, StyleSampleVideoSchema, styles, vfx };
 
-export type { Audio, NewStyle, Style, StyleConfig, Vfx } from './libraries';
+export type {
+  Audio,
+  NewStyle,
+  StoredStyleConfig,
+  Style,
+  StyleConfig,
+  Vfx,
+} from './libraries';
 
 // Credits, Transactions, and Billing
 export { creditReservations, credits, transactions };
@@ -501,10 +550,13 @@ export const schema = {
   sequenceMusicPromptVersions,
   sequenceMusicVariants,
   sequenceExports,
+  sequenceStyleVersions,
 
   // Characters (scripted roles extracted from script)
   characters,
   characterVoiceVersions,
+  characterBibleVersions,
+  locationBibleVersions,
 
   // Location Library (team-level templates)
   locationLibrary,

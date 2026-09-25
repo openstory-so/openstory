@@ -11,6 +11,7 @@
  * that list fails exactly this silently. The assertion below covers the whole
  * settings set, not just the field that broke.
  */
+import { clearVersionRows } from '@/platform/server/test/clear-version-rows';
 
 import { type Client, createClient } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
@@ -29,6 +30,7 @@ let userId = '';
 let styleId = '';
 
 async function seed() {
+  await clearVersionRows(db);
   await db.delete(sequences);
   await db.delete(styles);
   await db.delete(teams);

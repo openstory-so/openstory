@@ -73,6 +73,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         const results: Array<{
           id: string;
           characterId: string;
+          bibleVersionId: string | null;
           voiceId: string | null;
           voiceDescription: string | null;
           useVoice: boolean | null;
@@ -84,11 +85,13 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
               character,
               talentMatch: matchMap.get(character.characterId),
               sheetStatus: character.voiceOnly ? 'completed' : 'generating',
-            })
+            }),
+            { source: 'analysis', createdBy: null }
           );
           results.push({
             id: created.id,
             characterId: created.characterId,
+            bibleVersionId: created.selectedBibleVersionId,
             voiceId: created.voiceId,
             voiceDescription: created.voiceDescription,
             useVoice: created.useVoice,
@@ -105,6 +108,12 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     // Create mapping from characterId to database id
     const characterIdToDbId = new Map<string, string>(
       createdCharacters.map((c) => [c.characterId, c.id])
+    );
+    // The bible version each row landed on (#1600). A step result cached
+    // before #1600 has none.
+    const bibleVersionByDbId = new Map<string, string | null>(
+      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a result cached before #1600
+      createdCharacters.map((c) => [c.id, c.bibleVersionId ?? null])
     );
 
     const characterSheetBinding = this.env.CHARACTER_SHEET_WORKFLOW;
@@ -153,6 +162,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         sequenceId: input.sequenceId,
         reservationId: input.reservationId,
         characterDbId,
+        bibleVersionId: bibleVersionByDbId.get(characterDbId) ?? null,
         characterName: character.name,
         // The cast bible the row holds (`buildCharacterInsert`), so the stamped
         // hash matches what a regenerate or a staleness check computes from the

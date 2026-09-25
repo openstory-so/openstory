@@ -355,10 +355,10 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
       });
       if (rescan.changed && shot.sceneId) {
         effectiveContinuity = rescan.continuity;
-        await context.scopedDb.scenes.update(
+        await context.scopedDb.scenes.updateContinuity(
           dbSceneId(shot.sceneId),
-          { continuity: rescan.continuity },
-          { throwOnMissing: false }
+          rescan.continuity,
+          { actorId: context.user.id }
         );
       }
     }

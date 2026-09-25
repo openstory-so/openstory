@@ -15,9 +15,14 @@ import {
   shotHierarchicalOrder,
 } from '@/shots/server/db/shot-view-query';
 import {
+  characterBibleVersions,
+  characters,
   frames,
   frameVariants,
+  locationBibleVersions,
   renderSegments,
+  sequenceLocations,
+  sequenceStyleVersions,
   sequences,
   shots,
   styles,
@@ -27,7 +32,9 @@ import type {
   Frame,
   NewSequence,
   Sequence,
+  SequenceStyleSource,
   Shot,
+  StoredStyleConfig,
 } from '@/platform/server/db/schema';
 import type {
   MusicStatus,
@@ -65,7 +72,57 @@ export type ShotProductionReadiness = ShotReadiness &
     videoWorkflowRunId: string | null;
     videoError: string | null;
   };
-import { and, asc, desc, eq, inArray, isNull, lt, not, or } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  getTableColumns,
+  inArray,
+  isNull,
+  lt,
+  not,
+  or,
+  sql,
+} from 'drizzle-orm';
+import { generateId } from '@/platform/id';
+
+// The row's own columns: the legacy snapshot is read only through the fallback.
+const { legacyStyleConfig: _legacyStyleConfig, ...sequenceRecordColumns } =
+  getTableColumns(sequences);
+
+/**
+ * Sequence columns with the style snapshot resolved from the selected
+ * `sequence_style_versions` row (#1600) — the one reader of the snapshot. A
+ * sequence with no version reads the legacy column: null for a new row, the
+ * old snapshot for one a pre-#1600 worker wrote. Needs {@link joinSelectedStyle}.
+ */
+export const sequenceColumns = {
+  ...sequenceRecordColumns,
+  styleConfig:
+    sql<StoredStyleConfig | null>`CASE WHEN ${sequenceStyleVersions.id} IS NULL THEN ${sequences.legacyStyleConfig} ELSE ${sequenceStyleVersions.config} END`.mapWith(
+      sequenceStyleVersions.config
+    ),
+};
+
+/** The join {@link sequenceColumns} reads from. */
+export const joinSelectedStyle = eq(
+  sequenceStyleVersions.id,
+  sequences.selectedStyleVersionId
+);
+
+/** The statement that records a style snapshot as a version row. */
+const insertStyleVersion = (
+  db: Database,
+  row: {
+    id: string;
+    sequenceId: string;
+    styleId: string;
+    config: StoredStyleConfig;
+    source: SequenceStyleSource;
+    createdBy: string | null;
+  }
+) => db.insert(sequenceStyleVersions).values(row);
 
 export type MusicFieldsUpdate = {
   musicStatus?: MusicStatus;
@@ -83,12 +140,18 @@ export type MusicFieldsUpdate = {
 // the 500-item request cap on `getShotsForSequencesFn` — see #957).
 const SHOTS_BY_IDS_BATCH = 90;
 
+/** `select(sequenceColumns)` + the join it reads from. */
+export const selectSequencesFrom = (db: Database) =>
+  db
+    .select(sequenceColumns)
+    .from(sequences)
+    .leftJoin(sequenceStyleVersions, joinSelectedStyle);
+
 function createSequencesReadMethods(db: Database, teamId: string) {
+  const selectSequences = () => selectSequencesFrom(db);
   return {
     list: async (): Promise<Sequence[]> => {
-      const rows = await db
-        .select()
-        .from(sequences)
+      const rows = await selectSequences()
         .where(
           and(
             eq(sequences.teamId, teamId),
@@ -101,9 +164,7 @@ function createSequencesReadMethods(db: Database, teamId: string) {
 
     /** The team's archived sequences — the unarchive picker (#1108 Phase 4). */
     listArchived: async (): Promise<Sequence[]> => {
-      return await db
-        .select()
-        .from(sequences)
+      return await selectSequences()
         .where(
           and(eq(sequences.teamId, teamId), eq(sequences.status, 'archived'))
         )
@@ -124,9 +185,7 @@ function createSequencesReadMethods(db: Database, teamId: string) {
       cursor: { updatedAt: Date; id: string } | null;
     }): Promise<Sequence[]> => {
       const { limit, cursor } = params;
-      return await db
-        .select()
-        .from(sequences)
+      return await selectSequences()
         .where(
           and(
             eq(sequences.teamId, teamId),
@@ -146,18 +205,41 @@ function createSequencesReadMethods(db: Database, teamId: string) {
         .limit(limit + 1);
     },
 
+    /**
+     * Every style snapshot of a team sequence, oldest first (#1600).
+     * Staleness causes diff the one live when an artifact was made against
+     * the live one.
+     */
+    listStyleVersions: async (sequenceId: string) =>
+      await db
+        .select(getTableColumns(sequenceStyleVersions))
+        .from(sequenceStyleVersions)
+        .innerJoin(
+          sequences,
+          eq(sequences.id, sequenceStyleVersions.sequenceId)
+        )
+        .where(
+          and(
+            eq(sequenceStyleVersions.sequenceId, sequenceId),
+            eq(sequences.teamId, teamId)
+          )
+        )
+        .orderBy(
+          asc(sequenceStyleVersions.createdAt),
+          asc(sequenceStyleVersions.id)
+        ),
+
     getById: async (sequenceId: string): Promise<Sequence | null> => {
-      const result = await db
-        .select()
-        .from(sequences)
-        .where(and(eq(sequences.id, sequenceId), eq(sequences.teamId, teamId)));
+      const result = await selectSequences().where(
+        and(eq(sequences.id, sequenceId), eq(sequences.teamId, teamId))
+      );
       return result[0] ?? null;
     },
 
     getForUser: async (params: { sequenceId: string }): Promise<Sequence> => {
-      const sequence = await db.query.sequences.findFirst({
-        where: { id: params.sequenceId, teamId },
-      });
+      const [sequence] = await selectSequences().where(
+        and(eq(sequences.id, params.sequenceId), eq(sequences.teamId, teamId))
+      );
       if (!sequence) {
         throw new ValidationError('Sequence not found');
       }
@@ -343,6 +425,11 @@ export function createSequencesMethods(
   return {
     ...createSequencesReadMethods(db, teamId),
 
+    /**
+     * A new sequence; its style snapshot (#1600) lands as its first
+     * `sequence_style_versions` row in the same batch, unless the automatic
+     * style defers it.
+     */
     create: async (params: {
       /** Pre-allocated id, for callers that bind rows to the sequence first. */
       id?: string;
@@ -379,15 +466,16 @@ export function createSequencesMethods(
       const styleConfig = params.deferStyleSnapshot
         ? null
         : await snapshotConfigForStyleId(db, params.styleId);
+      const id = params.id ?? generateId();
+      const styleVersionId = styleConfig ? generateId() : null;
       const sequenceData: NewSequence = {
-        ...(params.id ? { id: params.id } : {}),
+        id,
         teamId,
         createdBy: userId,
         updatedBy: userId,
         title: params.title,
         script: params.script,
         styleId: params.styleId,
-        styleConfig,
         aspectRatio: params.aspectRatio ?? DEFAULT_ASPECT_RATIO,
         resolution: params.resolution ?? DEFAULT_RESOLUTION,
         // The sequences SQL column defaults are stale literals
@@ -410,12 +498,26 @@ export function createSequencesMethods(
         status: 'draft',
       };
 
-      const [data] = await db
+      const insert = db
         .insert(sequences)
-        .values(sequenceData)
-        .returning();
+        .values({ ...sequenceData, selectedStyleVersionId: styleVersionId });
+      if (styleConfig && styleVersionId) {
+        await db.batch([
+          insert,
+          insertStyleVersion(db, {
+            id: styleVersionId,
+            sequenceId: id,
+            styleId: params.styleId,
+            config: styleConfig,
+            source: 'created',
+            createdBy: userId,
+          }),
+        ]);
+      } else {
+        await insert;
+      }
 
-      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: DB query may return undefined
+      const [data] = await selectSequencesFrom(db).where(eq(sequences.id, id));
       if (!data) {
         throw new Error('No sequence returned from database');
       }
@@ -525,21 +627,47 @@ export function createSequencesMethods(
         params.styleId !== undefined
           ? await snapshotConfigForStyleId(db, params.styleId)
           : undefined;
-      const [data] = await db
-        .update(sequences)
-        .set(styleConfig !== undefined ? { ...values, styleConfig } : values)
-        .where(and(eq(sequences.id, id), eq(sequences.teamId, teamId)))
-        .returning();
-
-      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: DB query may return undefined
+      const scoped = and(eq(sequences.id, id), eq(sequences.teamId, teamId));
+      if (styleConfig !== undefined && params.styleId !== undefined) {
+        const [owned] = await db
+          .select({ id: sequences.id })
+          .from(sequences)
+          .where(scoped);
+        if (!owned) {
+          throw new ValidationError('Sequence not found');
+        }
+        // A style switch is a new snapshot (#1600): its version row, the
+        // pointer, and — since the style feeds every sheet in the sequence —
+        // the revoked sheet claims (#1113), in one batch.
+        const styleVersionId = generateId();
+        await db.batch([
+          insertStyleVersion(db, {
+            id: styleVersionId,
+            sequenceId: id,
+            styleId: params.styleId,
+            config: styleConfig,
+            source: 'switched',
+            createdBy: userId,
+          }),
+          db
+            .update(sequences)
+            .set({ ...values, selectedStyleVersionId: styleVersionId })
+            .where(scoped),
+          ...demoteSequenceSheetClaims(db, id),
+        ]);
+      } else {
+        const [updated] = await db
+          .update(sequences)
+          .set(values)
+          .where(scoped)
+          .returning({ id: sequences.id });
+        if (!updated) {
+          throw new ValidationError('Sequence not found');
+        }
+      }
+      const [data] = await selectSequencesFrom(db).where(scoped);
       if (!data) {
         throw new ValidationError('Sequence not found');
-      }
-
-      // The style feeds every sheet in the sequence: a style change revokes
-      // the in-flight sheet runs' claims (#1113).
-      if (styleConfig !== undefined) {
-        await db.batch(demoteSequenceSheetClaims(db, id));
       }
 
       // Date hash-bearing setting changes so staleness can name them (#1194);
@@ -571,22 +699,72 @@ export function createSequencesMethods(
       styleId: string;
     }): Promise<boolean> => {
       const styleConfig = await snapshotConfigForStyleId(db, params.styleId);
-      const rows = await db
-        .update(sequences)
-        .set({ styleConfig, updatedAt: new Date() })
-        .where(
-          and(
-            eq(sequences.id, params.id),
-            eq(sequences.teamId, teamId),
-            eq(sequences.styleId, params.styleId)
-          )
-        )
-        .returning({ id: sequences.id });
+      const still = and(
+        eq(sequences.id, params.id),
+        eq(sequences.teamId, teamId),
+        eq(sequences.styleId, params.styleId)
+      );
+      const [current] = await db
+        .select({ id: sequences.id })
+        .from(sequences)
+        .where(still);
+      if (!current) return false;
+      // The derived recipe is a snapshot like any other (#1600). The pointer
+      // moves only while the sequence still points at this style; a pick that
+      // lands between the read and the batch leaves the row as history.
+      const styleVersionId = generateId();
+      const [, rows] = await db.batch([
+        insertStyleVersion(db, {
+          id: styleVersionId,
+          sequenceId: params.id,
+          styleId: params.styleId,
+          config: styleConfig,
+          source: 'derived',
+          createdBy: null,
+        }),
+        db
+          .update(sequences)
+          .set({
+            selectedStyleVersionId: styleVersionId,
+            updatedAt: new Date(),
+          })
+          .where(still)
+          .returning({ id: sequences.id }),
+      ]);
       return rows.length > 0;
     },
 
     delete: async (sequenceId: string): Promise<void> => {
-      await db.delete(sequences).where(eq(sequences.id, sequenceId));
+      // The #1600 version tables RESTRICT their parents' delete (the #612
+      // rebuild trap), so they go first, in the same batch as the cascade.
+      await db.batch([
+        db
+          .delete(sequenceStyleVersions)
+          .where(eq(sequenceStyleVersions.sequenceId, sequenceId)),
+        db
+          .delete(characterBibleVersions)
+          .where(
+            inArray(
+              characterBibleVersions.characterId,
+              db
+                .select({ id: characters.id })
+                .from(characters)
+                .where(eq(characters.sequenceId, sequenceId))
+            )
+          ),
+        db
+          .delete(locationBibleVersions)
+          .where(
+            inArray(
+              locationBibleVersions.locationId,
+              db
+                .select({ id: sequenceLocations.id })
+                .from(sequenceLocations)
+                .where(eq(sequenceLocations.sequenceId, sequenceId))
+            )
+          ),
+        db.delete(sequences).where(eq(sequences.id, sequenceId)),
+      ]);
       // An automatic style has no FK to its sequence (#1213); drop it here.
       await db
         .delete(styles)

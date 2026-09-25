@@ -183,7 +183,8 @@ export async function createCastRecords(
         character,
         talentMatch: talentByCharacter.get(character.characterId),
         sheetStatus: 'pending',
-      })
+      }),
+      { source: 'analysis', createdBy: null }
     );
   }
 
@@ -198,7 +199,8 @@ export async function createCastRecords(
         libraryMatch: libraryByLocation.get(location.locationId),
         referenceStatus: 'pending',
       })
-    )
+    ),
+    { source: 'analysis', createdBy: null }
   );
 
   const elements: SequenceElementMinimal[] = [];

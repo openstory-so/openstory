@@ -35,6 +35,7 @@ function character(
     sheetStatus: 'completed',
     sheetError: null,
     selectedSheetVersionId: null,
+    selectedBibleVersionId: null,
     pendingPromoteSheetVersionId: null,
     deletedAt: null,
     createdAt: new Date(0),

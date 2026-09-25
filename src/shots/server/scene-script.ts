@@ -66,10 +66,14 @@ export function composeSequenceScript(
     content: Scene['originalScript'];
   }>
 ): string {
-  return [...rows]
-    .sort((a, b) => a.orderIndex - b.orderIndex)
-    .map((row) => row.content.extract)
-    .join('\n\n');
+  return (
+    [...rows]
+      .sort((a, b) => a.orderIndex - b.orderIndex)
+      .map((row) => row.content.extract)
+      // A scene added by hand has an empty script (#1600): no blank paragraph.
+      .filter((extract) => extract.length > 0)
+      .join('\n\n')
+  );
 }
 
 type SceneContextSource =

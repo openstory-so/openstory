@@ -42,6 +42,7 @@ describe('character-sheet hash', () => {
     teamId: 't1',
     sequenceId: 's1',
     characterDbId: 'c1',
+    bibleVersionId: null,
     characterName: 'Jack',
     characterMetadata: {
       characterId: 'jack',
@@ -85,6 +86,7 @@ describe('location-sheet hash', () => {
     teamId: 't1',
     sequenceId: 's1',
     locationDbId: 'loc1',
+    bibleVersionId: null,
     locationName: 'Docks',
     locationMetadata: {
       locationId: 'docks',

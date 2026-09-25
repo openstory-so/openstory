@@ -1,4 +1,5 @@
 import { dbSceneId } from './scene-id';
+import { sceneNarrativeOf } from './scene-narrative';
 import { NotFoundError } from '@/platform/errors';
 import { plainSceneTitle } from '@/platform/markdown-plain';
 import {
@@ -86,6 +87,20 @@ export const updateSceneScriptFn = createServerFn({ method: 'POST' })
     const scriptChanged = data.extract !== currentScript.extract;
 
     if (scriptChanged) {
+      // Auto-link cast/element/location tags the user @-mentioned in the
+      // script into the scene's continuity (#1341) — the same additive rescan
+      // the shot-prompt paths run (#683). Continuity is what narrows the bible
+      // for prompt generation and picks reference images at render time, so
+      // without this an @-mentioned character never reaches the shot. It
+      // rides the same version as the text (#1600).
+      const rescan = sceneRow.continuity
+        ? await rescanContinuityFromPrompt({
+            scopedDb,
+            sequenceId: sequence.id,
+            existing: sceneRow.continuity,
+            promptText: data.extract,
+          })
+        : null;
       await scopedDb.sceneScriptVersions.write({
         sceneId,
         content: {
@@ -97,30 +112,13 @@ export const updateSceneScriptFn = createServerFn({ method: 'POST' })
           // way. A re-analysis re-extracts it properly.
           dialogue: currentScript.dialogue,
         },
+        narrative: {
+          ...sceneNarrativeOf(sceneRow),
+          ...(rescan?.changed ? { continuity: rescan.continuity } : {}),
+        },
         source: 'edit',
         createdBy: user.id,
       });
-
-      // Auto-link cast/element/location tags the user @-mentioned in the
-      // script into the scene's continuity (#1341) — the same additive rescan
-      // the shot-prompt paths run (#683). Continuity is what narrows the bible
-      // for prompt generation and picks reference images at render time, so
-      // without this an @-mentioned character never reaches the shot.
-      if (sceneRow.continuity) {
-        const rescan = await rescanContinuityFromPrompt({
-          scopedDb,
-          sequenceId: sequence.id,
-          existing: sceneRow.continuity,
-          promptText: data.extract,
-        });
-        if (rescan.changed) {
-          await scopedDb.scenes.update(
-            sceneId,
-            { continuity: rescan.continuity },
-            { throwOnMissing: false }
-          );
-        }
-      }
     }
 
     const refreshedScript =
@@ -187,14 +185,17 @@ export const createSceneFn = createServerFn({ method: 'POST' })
     const { scopedDb, sequence, user } = context;
     const orderIndex =
       (await scopedDb.scenes.getMaxOrderIndex(sequence.id)) + 1;
-    const scene = await scopedDb.scenes.create({
-      sequenceId: sequence.id,
-      orderIndex,
-      title: data.title ?? null,
-      location: data.location ?? null,
-      timeOfDay: data.timeOfDay ?? null,
-      storyBeat: data.storyBeat ?? null,
-    });
+    const scene = await scopedDb.scenes.create(
+      { sequenceId: sequence.id, orderIndex },
+      {
+        title: data.title ?? null,
+        location: data.location ?? null,
+        timeOfDay: data.timeOfDay ?? null,
+        storyBeat: data.storyBeat ?? null,
+        continuity: null,
+      },
+      { createdBy: user.id }
+    );
     await scopedDb.sequenceEvents.record({
       sequenceId: sequence.id,
       actorId: user.id,

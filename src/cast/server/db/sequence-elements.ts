@@ -34,6 +34,8 @@ import {
 import { matchElementsToShotImage } from '@/shots/scene-matching';
 import { promoteLegacyMotionDialogue } from '@/shots/server/db/shot-prompt-versions';
 import { generateId } from '@/platform/id';
+import { sceneNarrativeOf } from '@/shots/scene-narrative';
+import { joinSelectedScript, sceneColumns } from '@/shots/server/db/scenes';
 import { and, eq, inArray, isNull, like, ne, or, sql } from 'drizzle-orm';
 import { pageOf } from '@/platform/server/db/read-page';
 import type { PageOptions } from '@/platform/server/db/read-page';
@@ -253,9 +255,10 @@ export function createSequenceElementsMethods(db: Database) {
 
     /**
      * Rename an element's token and rewrite every reference to the old token
-     * across the sequence: `sequences.script`, `scenes.continuity` +
-     * the selected `scene_script_versions` extract, the anchor frame's
-     * `imagePrompt` and the selected `shot_prompt_versions` motion text.
+     * across the sequence: `sequences.script`, the selected
+     * `scene_script_versions` extract and continuity (one `renamed` row,
+     * #1600), the anchor frame's `imagePrompt` and the selected
+     * `shot_prompt_versions` motion text.
      *
      * All writes (element row, script, shot deltas) run in a single
      * `db.batch()` — one transaction — so a mid-cascade failure can't leave
@@ -406,53 +409,40 @@ export function createSequenceElementsMethods(db: Database) {
         newToken
       );
       const selectedScriptRows = await db
-        .select({ sceneId: scenes.id, version: sceneScriptVersions })
+        .select({
+          sceneId: scenes.id,
+          scene: sceneColumns,
+          version: sceneScriptVersions,
+        })
         .from(scenes)
-        .innerJoin(
-          sceneScriptVersions,
-          eq(scenes.selectedScriptVersionId, sceneScriptVersions.id)
-        )
+        .innerJoin(sceneScriptVersions, joinSelectedScript)
         .where(eq(scenes.sequenceId, sequenceId));
-      // Element tags live on the scene's continuity now, so the token rewrite
-      // targets `scenes.continuity` rather than a per-shot copy.
-      const sceneRows = await db
-        .select()
-        .from(scenes)
-        .where(eq(scenes.sequenceId, sequenceId));
-      const sceneContinuityStatements = sceneRows.flatMap((scene) => {
-        if (!scene.continuity) return [];
-        const rewritten = renameTokenInContinuity(
-          scene.continuity,
-          oldToken,
-          newToken
-        );
-        if (!rewritten) return [];
-        return [
-          db
-            .update(scenes)
-            .set({ continuity: rewritten, updatedAt: now })
-            .where(eq(scenes.id, scene.id)),
-        ];
-      });
-
       // Version rows are append-only history (#1786): a rename appends a
       // `renamed` row carrying the rewritten text and repoints the selection at
       // it — never rewrites the selected row in place, which would make every
       // still, clip and hash that pinned that row claim text it never saw. Each
       // repoint is a compare-and-swap on the pointer this read saw, so an edit
-      // or select that lands meanwhile keeps its choice.
+      // or select that lands meanwhile keeps its choice. Element tags live on
+      // the scene's continuity, which rides the same row as the text (#1600),
+      // so one row carries both rewrites.
       const sceneScriptStatements = selectedScriptRows.flatMap(
-        ({ sceneId, version }) => {
+        ({ sceneId, scene, version }) => {
           const extract = version.content.extract;
-          if (!extract) return [];
-          const rewritten = replaceTokenInText(extract, oldToken, newToken);
-          if (rewritten === extract) return [];
+          const rewritten = extract
+            ? replaceTokenInText(extract, oldToken, newToken)
+            : extract;
+          const continuity = scene.continuity
+            ? renameTokenInContinuity(scene.continuity, oldToken, newToken)
+            : null;
+          if (rewritten === extract && !continuity) return [];
           const id = generateId();
           return [
             db.insert(sceneScriptVersions).values({
               id,
               sceneId,
               content: { ...version.content, extract: rewritten },
+              ...sceneNarrativeOf(scene),
+              ...(continuity ? { continuity } : {}),
               source: 'renamed',
             }),
             db
@@ -546,7 +536,6 @@ export function createSequenceElementsMethods(db: Database) {
       const [elementRows] = await db.batch([
         elementUpdate,
         ...scriptStatements,
-        ...sceneContinuityStatements,
         ...sceneScriptStatements,
         ...shotStatements,
       ]);

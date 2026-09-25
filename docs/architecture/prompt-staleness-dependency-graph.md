@@ -233,6 +233,21 @@ Key consequences of the shape:
   character's `physicalDescription` and the visual + motion **prompts** go stale;
   the rendered thumbnail goes stale only because the **character-sheet hash**
   changes and feeds the thumbnail hash.
+- **The style snapshot is versioned (#1600).** Each create, switch and
+  automatic derivation appends a `sequence_style_versions` row, so a stale
+  prompt names the knobs that moved (`Style: lighting`).
+- **A scene's narrative is versioned with its script (#1600).** Heading, time
+  of day, story beat, title and continuity tags live on the selected
+  `scene_script_versions` row, so an edit to any of them appends a row, and a
+  stale prompt names the field: `Scene: time of day`. The title stays a label
+  (never hashed, never a cause); continuity is named as "cast and tags",
+  because it decides which bible entries a scene's prompts hash.
+- **Bibles are versioned (#1600).** Each edit, recast or re-analysis
+  appends a `character_bible_versions` / `location_bible_versions` row, and
+  sheets record the version they read. The edges above are unchanged — the
+  hashes still read the bible's values — but a stale artifact's cause now
+  names the fields that moved (`Character "Jack": clothing`) instead of any
+  row touched after it.
 - **Voice ids bind on the clip**, not the motion prompt. A voice id (an
   ElevenLabs id, or a `seed:` id for a Seed voice, #1765) is in
   `VideoManifestEntry.audioSourceKey` (shape-stable: omitted when
@@ -551,10 +566,11 @@ sha256Hex({
 ```
 
 The summaries have ONE builder (`src/audio/server/workflows/music-scene-summaries.ts`),
-fed the scene row and its shots' durations on both sides (#1783). The pipeline
-stamp reaches it through `musicSceneSummariesFromAnalysis`, which runs the
-analysis scenes through `buildSceneInsert` and `sceneShotSpecs` — the insert
-builders that wrote the rows — so it needs no mid-run read. Verify,
+fed the scene's narrative and its shots' durations on both sides (#1783). The
+pipeline stamp reaches it through `musicSceneSummariesFromAnalysis`, which runs
+the analysis scenes through `buildSceneNarrative` and `sceneShotSpecs` — the
+builders that wrote the split script version and the shot rows (#1600) — so it
+needs no mid-run read. Verify,
 regenerate, Update all and smart retry use `musicSceneSummariesFromRows`.
 Before #1783 the pipeline stamped per-scene summaries with the analysis scene
 id, the snapped scene label and the visual prompt, while verify hashed one row
@@ -706,8 +722,8 @@ _broken_ state, kept because #1732 proved a new stamp site can walk straight
 back into it.
 
 The stamp and the verify still build their scene from different rows — an
-in-memory analysis `Scene` at trigger time, the `scenes` row plus the selected
-`scene_script_versions` row afterwards — but the **narrowing they apply to it is
+in-memory analysis `Scene` at trigger time, the selected
+`scene_script_versions` row (script and narrative, #1600) afterwards — but the **narrowing they apply to it is
 one function**, `scriptForShot` (#1732). `scene-script.test.ts` hashes the two
 builders against each other for the same underlying script, so a one-sided
 change to the hashed script view fails there rather than in a user's sequence.

@@ -7,15 +7,92 @@
  */
 
 import type { Database } from '@/platform/server/db/client';
-import { scenes, sequenceEvents, shots } from '@/platform/server/db/schema';
+import {
+  sceneScriptVersions,
+  scenes,
+  sequenceEvents,
+  shots,
+} from '@/platform/server/db/schema';
 import type {
   DbSceneId,
   NewScene,
+  SceneNarrative,
   SceneRow,
+  SceneScriptSource,
 } from '@/platform/server/db/schema';
 import { typedEntries } from '@/platform/typed-object';
-import { and, asc, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
+import { generateId } from '@/platform/id';
+import { dbSceneId } from '@/shots/scene-id';
+import {
+  narrativeFieldsChanged,
+  sceneNarrativeOf,
+} from '@/shots/scene-narrative';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  getTableColumns,
+  gte,
+  inArray,
+  isNull,
+  sql,
+} from 'drizzle-orm';
+import type { SQL } from 'drizzle-orm';
+import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
+
+/**
+ * The version's value, or the legacy column's for a scene whose selected row
+ * carries no narrative: none at all, or one a pre-#1600 worker wrote in the
+ * deploy window (`hasNarrative` false).
+ */
+const live = (version: AnySQLiteColumn, legacy: AnySQLiteColumn) =>
+  sql`CASE WHEN ${sceneScriptVersions.id} IS NULL OR ${sceneScriptVersions.hasNarrative} = 0 THEN ${legacy} ELSE ${version} END`;
+
+// The row's own columns: the legacy narrative is read only through the fallback.
+const {
+  legacyLocation: _location,
+  legacyTimeOfDay: _timeOfDay,
+  legacyStoryBeat: _storyBeat,
+  legacyTitle: _title,
+  legacyContinuity: _continuity,
+  ...sceneRecordColumns
+} = getTableColumns(scenes);
+
+/**
+ * Scene columns with the narrative resolved from the selected script version
+ * (#1600) — the one reader of a scene's narrative. Needs
+ * {@link joinSelectedScript}.
+ */
+export const sceneColumns = {
+  ...sceneRecordColumns,
+  title: sql<
+    string | null
+  >`${live(sceneScriptVersions.title, scenes.legacyTitle)}`,
+  location: sql<
+    string | null
+  >`${live(sceneScriptVersions.location, scenes.legacyLocation)}`,
+  timeOfDay: sql<
+    string | null
+  >`${live(sceneScriptVersions.timeOfDay, scenes.legacyTimeOfDay)}`,
+  storyBeat: sql<
+    string | null
+  >`${live(sceneScriptVersions.storyBeat, scenes.legacyStoryBeat)}`,
+  continuity: sql<SceneNarrative['continuity']>`${live(
+    sceneScriptVersions.continuity,
+    scenes.legacyContinuity
+  )}`.mapWith(sceneScriptVersions.continuity),
+};
+
+/** The join {@link sceneColumns} reads from. */
+export const joinSelectedScript = eq(
+  sceneScriptVersions.id,
+  scenes.selectedScriptVersionId
+);
+
+/** A new scene's script before any is written: nothing to say yet. */
+const EMPTY_SCRIPT = { extract: '', dialogue: [] };
 
 /**
  * The shot ids a `scene.deleted` event recorded as its cascade set.
@@ -48,20 +125,100 @@ type SceneFilters = {
  * via reorder; the script only via `updateSceneScriptFn`; `continuity` has its
  * own dedicated writers (rescan) but is included for explicit tag edits.
  */
-export type SceneNarrativeUpdate = Partial<
-  Pick<
-    SceneRow,
-    'title' | 'location' | 'timeOfDay' | 'storyBeat' | 'continuity'
-  >
->;
+export type SceneNarrativeUpdate = Partial<SceneNarrative>;
 
 export function createScenesMethods(db: Database) {
+  const selectScenes = () =>
+    db
+      .select(sceneColumns)
+      .from(scenes)
+      .leftJoin(sceneScriptVersions, joinSelectedScript);
+
+  const reread = async (
+    row: { id: DbSceneId } | undefined
+  ): Promise<SceneRow> => {
+    if (!row) throw new Error('Scene not found');
+    const [scene] = await selectScenes().where(eq(scenes.id, row.id));
+    if (!scene) throw new Error(`Scene ${row.id} not found`);
+    return scene;
+  };
+
+  /**
+   * The one writer of a scene's narrative (#1600): the statements that append
+   * a script version carrying the selected script and the patched narrative,
+   * and point the scene at it, for the caller's `db.batch`. Empty when
+   * nothing moved and the scene already has a version.
+   */
+  const narrativeWrite = async (
+    existing: SceneRow,
+    patch: SceneNarrativeUpdate,
+    opts: { source: SceneScriptSource; createdBy: string | null }
+  ) => {
+    const before = sceneNarrativeOf(existing);
+    const after: SceneNarrative = {
+      title: patch.title === undefined ? before.title : patch.title,
+      location: patch.location === undefined ? before.location : patch.location,
+      timeOfDay:
+        patch.timeOfDay === undefined ? before.timeOfDay : patch.timeOfDay,
+      storyBeat:
+        patch.storyBeat === undefined ? before.storyBeat : patch.storyBeat,
+      continuity:
+        patch.continuity === undefined ? before.continuity : patch.continuity,
+    };
+    if (
+      narrativeFieldsChanged(before, after).length === 0 &&
+      existing.selectedScriptVersionId
+    ) {
+      return [];
+    }
+    // The script and every field the patch leaves alone are copied from the
+    // selected row INSIDE the batch, not from `existing`: a script or
+    // narrative edit landing between the read and this write must survive.
+    const versionId = generateId();
+    const field = (key: keyof SceneNarrative, value: SQL) => {
+      const patched: SceneNarrativeUpdate[keyof SceneNarrative] = patch[key];
+      if (patched === undefined) return value.as(sceneScriptVersions[key].name);
+      // Only `continuity` is an object; it is stored as JSON text.
+      const bound =
+        typeof patched === 'object' && patched !== null
+          ? JSON.stringify(patched)
+          : patched;
+      return sql`${bound}`.as(sceneScriptVersions[key].name);
+    };
+    return [
+      db.insert(sceneScriptVersions).select(
+        db
+          .select({
+            id: sql<string>`${versionId}`.as('id'),
+            sceneId: scenes.id,
+            content:
+              sql`coalesce(${sceneScriptVersions.content}, ${JSON.stringify(EMPTY_SCRIPT)})`.as(
+                'content'
+              ),
+            title: field('title', sceneColumns.title),
+            location: field('location', sceneColumns.location),
+            timeOfDay: field('timeOfDay', sceneColumns.timeOfDay),
+            storyBeat: field('storyBeat', sceneColumns.storyBeat),
+            continuity: field('continuity', sceneColumns.continuity),
+            hasNarrative: sql`1`.as('has_narrative'),
+            source: sql`${opts.source}`.as('source'),
+            createdAt: sql`${Math.floor(Date.now() / 1000)}`.as('created_at'),
+            createdBy: sql`${opts.createdBy}`.as('created_by'),
+          })
+          .from(scenes)
+          .leftJoin(sceneScriptVersions, joinSelectedScript)
+          .where(eq(scenes.id, existing.id))
+      ),
+      db
+        .update(scenes)
+        .set({ selectedScriptVersionId: versionId, updatedAt: new Date() })
+        .where(eq(scenes.id, existing.id)),
+    ];
+  };
+
   return {
     getById: async (sceneId: DbSceneId): Promise<SceneRow | null> => {
-      const result = await db
-        .select()
-        .from(scenes)
-        .where(eq(scenes.id, sceneId));
+      const result = await selectScenes().where(eq(scenes.id, sceneId));
       return result[0] ?? null;
     },
 
@@ -84,21 +241,36 @@ export function createScenesMethods(db: Database) {
       // scene context for prompts, staleness plans, export, theatre and the
       // public status doc all read through here. Id-addressed reads
       // (getById/getByIds) still return deleted rows so restore works.
-      return await db
-        .select()
-        .from(scenes)
+      return await selectScenes()
         .where(and(eq(scenes.sequenceId, sequenceId), isNull(scenes.deletedAt)))
         .orderBy(orderFn(orderColumn));
     },
 
-    create: async (data: NewScene): Promise<SceneRow> => {
-      const [scene] = await db.insert(scenes).values(data).returning();
-      if (!scene) {
-        throw new Error(
-          `Failed to create scene for sequence ${data.sequenceId}`
-        );
-      }
-      return scene;
+    /**
+     * A scene added by hand: the row plus its first script version (#1600),
+     * an empty script carrying the narrative, in one batch.
+     */
+    create: async (
+      data: NewScene,
+      narrative: SceneNarrative,
+      opts: { createdBy: string | null }
+    ): Promise<SceneRow> => {
+      const id = data.id ?? dbSceneId(generateId());
+      const versionId = generateId();
+      await db.batch([
+        db
+          .insert(scenes)
+          .values({ ...data, id, selectedScriptVersionId: versionId }),
+        db.insert(sceneScriptVersions).values({
+          id: versionId,
+          sceneId: id,
+          content: EMPTY_SCRIPT,
+          ...narrative,
+          source: 'edit',
+          createdBy: opts.createdBy,
+        }),
+      ]);
+      return await reread({ id });
     },
 
     /**
@@ -110,30 +282,28 @@ export function createScenesMethods(db: Database) {
      * links stay valid.
      */
     upsert: async (data: NewScene): Promise<SceneRow> => {
+      // The narrative is not on the row (#1600): scene split writes it with
+      // the split script version (`sceneScriptVersions.seedSplitVersions` /
+      // `updateSplitContent`).
       const [scene] = await db
         .insert(scenes)
         .values(data)
         .onConflictDoUpdate({
           target: [scenes.sequenceId, scenes.orderIndex],
           set: {
-            location: sql.raw(`excluded."location"`),
-            timeOfDay: sql.raw(`excluded."time_of_day"`),
-            storyBeat: sql.raw(`excluded."story_beat"`),
-            title: sql.raw(`excluded."title"`),
-            continuity: sql.raw(`excluded."continuity"`),
             // A re-analysis writing this orderIndex slot revives a
             // soft-deleted row — the new split says the scene exists (#1108).
             deletedAt: null,
             updatedAt: new Date(),
           },
         })
-        .returning();
+        .returning({ id: scenes.id });
       if (!scene) {
         throw new Error(
           `Failed to upsert scene for sequence ${data.sequenceId} at orderIndex ${data.orderIndex}`
         );
       }
-      return scene;
+      return await reread(scene);
     },
 
     update: async (
@@ -145,13 +315,37 @@ export function createScenesMethods(db: Database) {
         .update(scenes)
         .set({ ...data, updatedAt: new Date() })
         .where(eq(scenes.id, sceneId))
-        .returning();
+        .returning({ id: scenes.id });
 
-      if (!scene && options?.throwOnMissing !== false) {
-        throw new Error(`Scene ${sceneId} not found`);
+      if (!scene) {
+        if (options?.throwOnMissing !== false) {
+          throw new Error(`Scene ${sceneId} not found`);
+        }
+        return undefined;
       }
 
-      return scene;
+      return await reread(scene);
+    },
+
+    /**
+     * Rewrite a scene's continuity tags — the auto-link rescan a prompt or
+     * script edit runs (#683, #1341). A narrative version like any other
+     * (#1600); no event, as before.
+     */
+    updateContinuity: async (
+      sceneId: DbSceneId,
+      continuity: NonNullable<SceneNarrative['continuity']>,
+      opts: { actorId: string | null }
+    ): Promise<void> => {
+      const [existing] = await selectScenes().where(eq(scenes.id, sceneId));
+      if (!existing) return;
+      const statements = await narrativeWrite(
+        existing,
+        { continuity },
+        { source: 'edit', createdBy: opts.actorId }
+      );
+      const [first, ...rest] = statements;
+      if (first) await db.batch([first, ...rest]);
     },
 
     delete: async (sceneId: DbSceneId): Promise<boolean> => {
@@ -202,8 +396,18 @@ export function createScenesMethods(db: Database) {
 
       for (let i = 0; i < sceneData.length; i += BATCH_SIZE) {
         const batch = sceneData.slice(i, i + BATCH_SIZE);
-        const batchResults = await db.insert(scenes).values(batch).returning();
-        results.push(...batchResults);
+        const batchResults = await db
+          .insert(scenes)
+          .values(batch)
+          .returning({ id: scenes.id });
+        results.push(
+          ...(await selectScenes().where(
+            inArray(
+              scenes.id,
+              batchResults.map((r) => r.id)
+            )
+          ))
+        );
       }
 
       // Fail loud on a short write rather than silently returning fewer rows
@@ -221,7 +425,7 @@ export function createScenesMethods(db: Database) {
 
     getByIds: async (sceneIds: DbSceneId[]): Promise<SceneRow[]> => {
       if (sceneIds.length === 0) return [];
-      return await db.select().from(scenes).where(inArray(scenes.id, sceneIds));
+      return await selectScenes().where(inArray(scenes.id, sceneIds));
     },
 
     /**
@@ -237,21 +441,18 @@ export function createScenesMethods(db: Database) {
     },
 
     /**
-     * User edit of the narrative fields (#1108 Phase 1): update + a
-     * `scene.updated` event (with the previous values of the changed fields)
-     * in one batch. Prompts of the scene's shots re-stale purely by hash
-     * derivation (location/timeOfDay/storyBeat are in the prompt-hash scene
-     * surface; title is a display label); nothing upstream is touched.
+     * User edit of the narrative fields (#1108 Phase 1): a new script version
+     * carrying them (#1600) + a `scene.updated` event (with the previous
+     * values of the changed fields) in one batch. Prompts of the scene's
+     * shots re-stale purely by hash derivation (location/timeOfDay/storyBeat
+     * are in the prompt-hash scene surface; title is a display label).
      */
     updateNarrative: async (
       sceneId: DbSceneId,
       data: SceneNarrativeUpdate,
       opts: { actorId: string | null }
     ): Promise<SceneRow> => {
-      const [existing] = await db
-        .select()
-        .from(scenes)
-        .where(eq(scenes.id, sceneId));
+      const [existing] = await selectScenes().where(eq(scenes.id, sceneId));
       if (!existing) {
         throw new Error(`Scene ${sceneId} not found`);
       }
@@ -268,12 +469,11 @@ export function createScenesMethods(db: Database) {
               ? previous
               : JSON.stringify(previous);
       }
-      const [updatedRows] = await db.batch([
-        db
-          .update(scenes)
-          .set({ ...data, updatedAt: new Date() })
-          .where(eq(scenes.id, sceneId))
-          .returning(),
+      const statements = await narrativeWrite(existing, data, {
+        source: 'edit',
+        createdBy: opts.actorId,
+      });
+      await db.batch([
         buildEventInsert(db, {
           sequenceId: existing.sequenceId,
           actorId: opts.actorId,
@@ -283,12 +483,9 @@ export function createScenesMethods(db: Database) {
           summary: `Edited scene ${data.title ?? existing.title ?? ''}`.trim(),
           data: { prevState: prev },
         }),
+        ...statements,
       ]);
-      const updated = updatedRows[0];
-      if (!updated) {
-        throw new Error(`Scene ${sceneId} disappeared during update`);
-      }
-      return updated;
+      return await reread(existing);
     },
 
     /**
@@ -305,10 +502,7 @@ export function createScenesMethods(db: Database) {
       sceneId: DbSceneId,
       opts: { actorId: string | null }
     ): Promise<{ deletedAt: Date; shotIds: string[] }> => {
-      const [existing] = await db
-        .select()
-        .from(scenes)
-        .where(eq(scenes.id, sceneId));
+      const [existing] = await selectScenes().where(eq(scenes.id, sceneId));
       if (!existing) {
         throw new Error(`Scene ${sceneId} not found`);
       }
@@ -360,10 +554,7 @@ export function createScenesMethods(db: Database) {
       sceneId: DbSceneId,
       opts: { actorId: string | null; restoreShots?: boolean }
     ): Promise<SceneRow> => {
-      const [existing] = await db
-        .select()
-        .from(scenes)
-        .where(eq(scenes.id, sceneId));
+      const [existing] = await selectScenes().where(eq(scenes.id, sceneId));
       if (!existing) {
         throw new Error(`Scene ${sceneId} not found`);
       }
@@ -403,7 +594,7 @@ export function createScenesMethods(db: Database) {
           .update(scenes)
           .set({ deletedAt: null, updatedAt: now })
           .where(eq(scenes.id, sceneId))
-          .returning(),
+          .returning({ id: scenes.id }),
         db
           .update(shots)
           .set({ deletedAt: null, updatedAt: now })
@@ -418,11 +609,7 @@ export function createScenesMethods(db: Database) {
           data: { restoreShots },
         }),
       ]);
-      const restored = restoredRows[0];
-      if (!restored) {
-        throw new Error(`Scene ${sceneId} disappeared during restore`);
-      }
-      return restored;
+      return await reread(restoredRows[0]);
     },
 
     /**

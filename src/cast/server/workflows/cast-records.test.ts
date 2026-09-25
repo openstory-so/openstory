@@ -117,7 +117,11 @@ describe('createCastRecords', () => {
     });
 
     expect(characterCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ characterId: 'char_1', sheetStatus: 'pending' })
+      expect.objectContaining({
+        characterId: 'char_1',
+        sheetStatus: 'pending',
+      }),
+      { source: 'analysis', createdBy: null }
     );
     expect(locationCreateBulk.mock.calls[0]?.[0]).toEqual([
       expect.objectContaining({

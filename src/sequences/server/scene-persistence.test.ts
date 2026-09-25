@@ -5,6 +5,7 @@ import type { Scene } from '@/shots/scene-analysis.schema';
 import {
   buildSceneInsert,
   buildSceneInserts,
+  buildSceneNarrative,
   buildSceneShotLinks,
 } from './scene-persistence';
 
@@ -33,24 +34,29 @@ function makeScene(overrides: Partial<Scene> = {}): Scene {
 }
 
 describe('buildSceneInsert', () => {
-  it('maps a single analysis scene onto a scene row at the given orderIndex', () => {
-    const row = buildSceneInsert('seq-1', makeScene(), 3);
-    expect(row).toMatchObject({
+  it('maps a scene onto a bare row at the given orderIndex', () => {
+    // The narrative and the script live on the split version (#1600).
+    expect(buildSceneInsert('seq-1', 3)).toEqual({
       sequenceId: 'seq-1',
       orderIndex: 3,
+    });
+  });
+});
+
+describe('buildSceneNarrative', () => {
+  it('maps the analysis narrative onto the split version', () => {
+    const narrative = buildSceneNarrative(makeScene());
+    expect(narrative).toMatchObject({
       location: 'INT. OFFICE - DAY',
       timeOfDay: 'day',
       storyBeat: 'introduction',
       title: 'Entrance',
     });
-    expect(row.continuity?.environmentTag).toBe('office');
-    // The script is NOT mapped onto the row — it lives in scene_script_versions.
-    expect(row).not.toHaveProperty('originalScript');
+    expect(narrative.continuity?.environmentTag).toBe('office');
   });
 
   it('stores a plain-text title when the analysis title carries markdown', () => {
-    const row = buildSceneInsert(
-      'seq-1',
+    const narrative = buildSceneNarrative(
       makeScene({
         metadata: {
           title: '**Entrance**',
@@ -59,47 +65,36 @@ describe('buildSceneInsert', () => {
           timeOfDay: 'day',
           storyBeat: 'introduction',
         },
-      }),
-      0
+      })
     );
-    expect(row.title).toBe('Entrance');
+    expect(narrative.title).toBe('Entrance');
+  });
+
+  it('defaults missing scene metadata to null (no analysis metadata yet)', () => {
+    expect(
+      buildSceneNarrative(
+        makeScene({ metadata: undefined, continuity: undefined })
+      )
+    ).toEqual({
+      location: null,
+      timeOfDay: null,
+      storyBeat: null,
+      title: null,
+      continuity: null,
+    });
   });
 });
 
 describe('buildSceneInserts', () => {
-  it('maps scene-level fields onto scene rows with 0-based orderIndex', () => {
+  it('numbers the rows from 0 in analysis order', () => {
     const rows = buildSceneInserts('seq-1', [
       makeScene(),
       makeScene({ sceneId: 'analysis-scene-2', sceneNumber: 2 }),
     ]);
-
-    expect(rows).toHaveLength(2);
-    expect(rows[0]).toMatchObject({
-      sequenceId: 'seq-1',
-      orderIndex: 0,
-      location: 'INT. OFFICE - DAY',
-      timeOfDay: 'day',
-      storyBeat: 'introduction',
-      title: 'Entrance',
-    });
-    expect(rows[1]?.orderIndex).toBe(1);
-  });
-
-  it('carries continuity onto the scene row but never the script', () => {
-    const [row] = buildSceneInserts('seq-1', [makeScene()]);
-    expect(row?.continuity?.environmentTag).toBe('office');
-    expect(row).not.toHaveProperty('originalScript');
-  });
-
-  it('defaults missing scene metadata to null (no analysis metadata yet)', () => {
-    const [row] = buildSceneInserts('seq-1', [
-      makeScene({ metadata: undefined, continuity: undefined }),
+    expect(rows).toEqual([
+      { sequenceId: 'seq-1', orderIndex: 0 },
+      { sequenceId: 'seq-1', orderIndex: 1 },
     ]);
-    expect(row?.location).toBeNull();
-    expect(row?.timeOfDay).toBeNull();
-    expect(row?.storyBeat).toBeNull();
-    expect(row?.title).toBeNull();
-    expect(row?.continuity).toBeNull();
   });
 
   it('returns an empty array for no scenes', () => {

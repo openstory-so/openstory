@@ -25,14 +25,31 @@ import {
 import type { Scene } from '@/shots/scene-analysis.schema';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import type {
+  CharacterBible,
+  CharacterBibleVersion,
+  DbSceneId,
+  SceneNarrative,
+  SceneScriptVersion,
+  SequenceStyleVersion,
   Frame,
   FramePromptVersion,
   FrameVariant,
+  LocationBible,
+  LocationBibleVersion,
   SequenceEvent,
   Shot,
   ShotPromptVersion,
 } from '@/platform/server/db/schema';
+import {
+  characterBibleChanged,
+  locationBibleChanged,
+} from '@/cast/server/db/bible-versions';
 import { dbSceneId } from '@/shots/scene-id';
+import { parseStyleConfig, styleConfigHashBody } from '@/look/style-config';
+import {
+  narrativeFieldsChanged,
+  sceneNarrativeOf,
+} from '@/shots/scene-narrative';
 import {
   SETTINGS_CHANGED_EVENT,
   SETTINGS_CHANGED_LABELS,
@@ -175,7 +192,61 @@ export type ShotStalenessReads = {
   sceneContext: ReadonlyMap<string, SceneContext>;
   /** What each shot says, for the motion hash (#1784). */
   dialogueOf: (shot: { id: string }) => ShotPromptDialogue;
+  /** Input history for the causes, loaded once and only when one is stale. */
+  inputHistory: () => Promise<InputHistory>;
 };
+
+/**
+ * Every version of the inputs with history (#1600) — bibles by parent row id,
+ * scene versions by scene id — oldest first.
+ */
+type InputHistory = {
+  characters: ReadonlyMap<string, readonly CharacterBibleVersion[]>;
+  locations: ReadonlyMap<string, readonly LocationBibleVersion[]>;
+  scenes: ReadonlyMap<string, readonly SceneScriptVersion[]>;
+  style: readonly SequenceStyleVersion[];
+};
+
+type InputHistoryDb = {
+  characters: Pick<ScopedDb['characters'], 'listBibleVersionsBySequence'>;
+  sequenceLocations: Pick<
+    ScopedDb['sequenceLocations'],
+    'listBibleVersionsBySequence'
+  >;
+  sceneScriptVersions: Pick<ScopedDb['sceneScriptVersions'], 'listBySequence'>;
+  sequences: Pick<ScopedDb['sequences'], 'listStyleVersions'>;
+};
+
+function groupBy<T>(rows: readonly T[], key: (row: T) => string) {
+  const map = new Map<string, T[]>();
+  for (const row of rows) {
+    const list = map.get(key(row));
+    if (list) list.push(row);
+    else map.set(key(row), [row]);
+  }
+  return map;
+}
+
+async function loadInputHistory(
+  scopedDb: InputHistoryDb,
+  sequenceId: string
+): Promise<InputHistory> {
+  const [characters, locations, scenes, style] = await Promise.all([
+    scopedDb.characters.listBibleVersionsBySequence(sequenceId),
+    scopedDb.sequenceLocations.listBibleVersionsBySequence(sequenceId),
+    scopedDb.sceneScriptVersions.listBySequence(sequenceId),
+    scopedDb.sequences.listStyleVersions(sequenceId),
+  ]);
+  return {
+    characters: groupBy(characters, (v) => v.characterId),
+    locations: groupBy(locations, (v) => v.locationId),
+    scenes: groupBy(
+      scenes.map((row) => row.version),
+      (v) => v.sceneId
+    ),
+    style,
+  };
+}
 
 export async function loadShotStalenessReads(
   scopedDb: Pick<
@@ -185,7 +256,8 @@ export async function loadShotStalenessReads(
     | 'frameVariants'
     | 'sequenceEvents'
     | 'shotDialogue'
-  >,
+  > &
+    InputHistoryDb,
   sequenceId: string,
   /** Every shot of the sequence — the dialogue first-shot rule needs them. */
   shots: Parameters<typeof shotPromptDialogueResolver>[0]['shots'],
@@ -240,7 +312,10 @@ export async function loadShotStalenessReads(
     }
   }
 
+  let inputHistory: Promise<InputHistory> | null = null;
   return {
+    inputHistory: () =>
+      (inputHistory ??= loadInputHistory(scopedDb, sequenceId)),
     selectedPromptByFrame,
     latestPromptByFrame,
     latestHashedPromptByFrame,
@@ -654,6 +729,9 @@ export async function computeShotStaleness(args: {
         selectedImage,
         sceneContext: reads?.sceneContext,
         settingsEvents: reads?.settingsEvents,
+        inputHistory: reads
+          ? await reads.inputHistory()
+          : await loadInputHistory(scopedDb, sequence.id),
         generatedAt: {
           thumbnail:
             thumbnail === 'stale' && selectedImage
@@ -679,13 +757,179 @@ export async function computeShotStaleness(args: {
 const after = (d: Date | null | undefined, at: number) =>
   d != null && d.getTime() > at;
 
+/** Plain words for the bible fields a cause names (#1600). */
+const CHARACTER_LABELS: Record<keyof CharacterBible, string> = {
+  name: 'name',
+  age: 'age',
+  gender: 'gender',
+  ethnicity: 'ethnicity',
+  physicalDescription: 'description',
+  standardClothing: 'clothing',
+  distinguishingFeatures: 'features',
+  personality: 'personality',
+  movement: 'movement',
+  voiceOnly: 'voice only',
+  isPerson: 'person',
+  consistencyTag: 'tag',
+};
+
+const LOCATION_LABELS: Record<keyof LocationBible, string> = {
+  name: 'name',
+  type: 'interior/exterior',
+  timeOfDay: 'time of day',
+  description: 'description',
+  architecturalStyle: 'architecture',
+  keyFeatures: 'features',
+  colorPalette: 'palette',
+  lightingSetup: 'lighting',
+  ambiance: 'ambiance',
+  consistencyTag: 'tag',
+};
+
+/**
+ * The bible fields that moved since `at` (#1600): the version live then —
+ * the newest created at or before it — against the live bible. Null when no
+ * version reaches back that far (an artifact older than the row's history),
+ * so the caller falls back to the timestamp guess.
+ */
+function bibleMoved<V extends { createdAt: Date }>(
+  history: readonly V[] | undefined,
+  at: number,
+  diff: (then: V) => string[]
+): string[] | null {
+  let then: V | undefined;
+  for (const v of history ?? []) {
+    if (v.createdAt.getTime() <= at) then = v;
+  }
+  return then ? diff(then) : null;
+}
+
+/** Plain words for the style knobs a cause names (the hash body's keys). */
+const STYLE_LABELS: Record<string, string> = {
+  mood: 'mood',
+  artStyle: 'art style',
+  lighting: 'lighting',
+  colorPalette: 'palette',
+  cameraWork: 'camera',
+  referenceFilms: 'references',
+  colorGrading: 'grading',
+  medium: 'medium',
+  shots: 'shots',
+  pace: 'pace',
+  energy: 'energy',
+};
+
+/**
+ * The style knobs that moved since `at` (#1600): the snapshot live then
+ * against the live one, compared over the same body the hashes read. Null
+ * when no snapshot reaches back that far, or either side is unreadable.
+ */
+function styleMoved(
+  history: readonly SequenceStyleVersion[],
+  live: unknown,
+  at: number
+): string[] | null {
+  let then: SequenceStyleVersion | undefined;
+  for (const v of history) {
+    if (v.createdAt.getTime() <= at) then = v;
+  }
+  if (!then || live == null) return null;
+  try {
+    const before = styleConfigHashBody(parseStyleConfig(then.config)) ?? {};
+    const after = styleConfigHashBody(parseStyleConfig(live)) ?? {};
+    const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+    return [...keys]
+      .filter(
+        (key) => JSON.stringify(before[key]) !== JSON.stringify(after[key])
+      )
+      .map((key) => STYLE_LABELS[key] ?? key);
+  } catch {
+    return null;
+  }
+}
+
+/** Plain words for the scene fields a cause names; the title is a label. */
+const SCENE_LABELS: Partial<Record<keyof SceneNarrative, string>> = {
+  location: 'heading',
+  timeOfDay: 'time of day',
+  storyBeat: 'story beat',
+  continuity: 'cast and tags',
+};
+
+async function loadSceneContext(
+  scopedDb: Pick<ScopedDb, 'scenes' | 'sceneScriptVersions'>,
+  sceneId: DbSceneId
+): Promise<SceneContext | null> {
+  const [scene, script] = await Promise.all([
+    scopedDb.scenes.getById(sceneId),
+    scopedDb.sceneScriptVersions.getSelected(sceneId),
+  ]);
+  return scene
+    ? {
+        scene,
+        script: script?.content ?? null,
+        scriptCreatedAt: script?.createdAt ?? null,
+      }
+    : null;
+}
+
+/**
+ * What moved in the shot's scene since `at` (#1600): the scene version live
+ * then against the live one — `Script` for its text or lines, `Scene: …`
+ * for the narrative. A scene whose history does not reach back that far falls
+ * back to the timestamp guess.
+ */
+function sceneCauses(
+  history: readonly SceneScriptVersion[] | undefined,
+  live: SceneContext,
+  at: number
+): string[] {
+  let then: SceneScriptVersion | undefined;
+  for (const v of history ?? []) {
+    if (v.createdAt.getTime() <= at) then = v;
+  }
+  if (!then) {
+    if (after(live.scriptCreatedAt, at)) return ['Script'];
+    return after(live.scene.updatedAt, at) ? ['Scene details'] : [];
+  }
+  const causes: string[] = [];
+  const script = live.script ?? { extract: '', dialogue: [] };
+  if (
+    then.content.extract !== script.extract ||
+    JSON.stringify(then.content.dialogue) !== JSON.stringify(script.dialogue)
+  ) {
+    causes.push('Script');
+  }
+  const moved = narrativeFieldsChanged(
+    sceneNarrativeOf(then),
+    sceneNarrativeOf(live.scene)
+  ).flatMap((key) => {
+    const label = SCENE_LABELS[key];
+    return label ? [label] : [];
+  });
+  if (moved.length > 0) causes.push(`Scene: ${moved.join(', ')}`);
+  return causes;
+}
+
+/** `Character "Jack": clothing, sheet` — or the bare label when unknown. */
+function namedCause(
+  label: string,
+  moved: string[] | null,
+  extra: string[],
+  touched: () => boolean
+): string | null {
+  if (moved === null) return touched() || extra.length > 0 ? label : null;
+  const fields = [...moved, ...extra];
+  return fields.length > 0 ? `${label}: ${fields.join(', ')}` : null;
+}
+
 /**
  * Name what moved since the stale artifact was generated (#1194). Hashes only
- * say THAT inputs diverged, so this is a timestamp heuristic: every input row
- * touched after `artifactAt` is a candidate. Best-effort — a row saved without
- * a real change can over-name, and nothing here ever changes a verdict.
+ * say THAT inputs diverged. Bibles have history (#1600), so a character or
+ * location names the fields that differ between the version live then and
+ * now; everything else is still a timestamp guess — every input row touched
+ * after the artifact is a candidate. A hint, never a verdict.
  */
-// ponytail: timestamp heuristic; store per-component hashes on the version rows if over-naming bites.
 async function findStalenessCauses(args: {
   scopedDb: ScopedDb;
   sequence: { id: string; styleConfig?: unknown };
@@ -697,6 +941,7 @@ async function findStalenessCauses(args: {
   /** Present on the batched read — skips the per-shot scene and event queries. */
   sceneContext?: ReadonlyMap<string, SceneContext>;
   settingsEvents?: readonly SequenceEvent[];
+  inputHistory: InputHistory;
 }): Promise<string[]> {
   const {
     scopedDb,
@@ -707,6 +952,7 @@ async function findStalenessCauses(args: {
     selectedImage,
     sceneContext,
     settingsEvents,
+    inputHistory,
   } = args;
   const times = [
     generatedAt.thumbnail,
@@ -719,18 +965,11 @@ async function findStalenessCauses(args: {
 
   if (shot.sceneId) {
     const sceneId = dbSceneId(shot.sceneId);
-    if (sceneContext) {
-      const ctx = sceneContext.get(sceneId);
-      if (after(ctx?.scriptCreatedAt, at)) causes.push('Script');
-      else if (after(ctx?.scene.updatedAt, at)) causes.push('Scene details');
-    } else {
-      const [sceneRow, script] = await Promise.all([
-        scopedDb.scenes.getById(sceneId),
-        scopedDb.sceneScriptVersions.getSelected(sceneId),
-      ]);
-      if (after(script?.createdAt, at)) causes.push('Script');
-      else if (after(sceneRow?.updatedAt, at)) causes.push('Scene details');
-    }
+    const ctx = sceneContext
+      ? sceneContext.get(sceneId)
+      : await loadSceneContext(scopedDb, sceneId);
+    if (ctx)
+      causes.push(...sceneCauses(inputHistory.scenes.get(sceneId), ctx, at));
   }
 
   const events =
@@ -744,10 +983,17 @@ async function findStalenessCauses(args: {
       for (const f of changed) if (typeof f === 'string') fields.add(f);
     }
   }
+  // A snapshot with history names the knobs that moved (#1600) in place of
+  // the bare "Style" a switch event would give.
+  const styleKnobs = styleMoved(inputHistory.style, sequence.styleConfig, at);
   // Older events also list model switches, which never stale (#1785).
   for (const f of fields) {
+    if (f === 'styleId' && styleKnobs !== null) continue;
     const label = SETTINGS_CHANGED_LABELS[f];
     if (label) causes.push(label);
+  }
+  if (styleKnobs && styleKnobs.length > 0) {
+    causes.push(`Style: ${styleKnobs.join(', ')}`);
   }
   // Catalog style edits only flow through when the sequence has no snapshot.
   if (sequence.styleConfig == null && after(refs.style?.updatedAt, at)) {
@@ -755,12 +1001,23 @@ async function findStalenessCauses(args: {
   }
 
   for (const c of refs.characters) {
-    if (after(c.updatedAt, at) || after(c.sheetGeneratedAt, at)) {
-      causes.push(`Character "${c.name}"`);
-    }
+    const moved = bibleMoved(inputHistory.characters.get(c.id), at, (then) =>
+      characterBibleChanged(then, c).map((k) => CHARACTER_LABELS[k])
+    );
+    const sheet = after(c.sheetGeneratedAt, at) ? ['sheet'] : [];
+    const cause = namedCause(`Character "${c.name}"`, moved, sheet, () =>
+      after(c.updatedAt, at)
+    );
+    if (cause) causes.push(cause);
   }
   for (const l of refs.locations) {
-    if (after(l.updatedAt, at)) causes.push(`Location "${l.name}"`);
+    const moved = bibleMoved(inputHistory.locations.get(l.id), at, (then) =>
+      locationBibleChanged(then, l).map((k) => LOCATION_LABELS[k])
+    );
+    const cause = namedCause(`Location "${l.name}"`, moved, [], () =>
+      after(l.updatedAt, at)
+    );
+    if (cause) causes.push(cause);
   }
   for (const el of refs.elements) {
     if (after(el.updatedAt, at)) causes.push(`Element ${el.token}`);

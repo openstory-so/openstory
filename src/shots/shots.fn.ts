@@ -548,10 +548,10 @@ export const updateShotFn = createServerFn({ method: 'POST' })
       // Continuity is scene-scoped: auto-linking script tokens describes the
       // scene, not one of its shots.
       if (rescan.changed && context.shot.sceneId) {
-        await context.scopedDb.scenes.update(
+        await context.scopedDb.scenes.updateContinuity(
           dbSceneId(context.shot.sceneId),
-          { continuity: rescan.continuity },
-          { throwOnMissing: false }
+          rescan.continuity,
+          { actorId: context.user.id }
         );
       }
     }

@@ -78,11 +78,17 @@ async function seedScene(
 ): Promise<{ scene: SceneRow; sceneShots: Shot[] }> {
   const sceneMethods = createScenesMethods(db);
   const shotMethods = createShotsMethods(db);
-  const scene = await sceneMethods.create({
-    sequenceId,
-    orderIndex,
-    title: `Scene ${orderIndex}`,
-  });
+  const scene = await sceneMethods.create(
+    { sequenceId, orderIndex },
+    {
+      title: `Scene ${orderIndex}`,
+      location: null,
+      timeOfDay: null,
+      storyBeat: null,
+      continuity: null,
+    },
+    { createdBy: null }
+  );
   const sceneShots: Shot[] = [];
   for (let n = 1; n <= shotCount; n++) {
     sceneShots.push(
@@ -314,15 +320,12 @@ describe('re-analysis revival + shot soft-delete details', () => {
     const sceneMethods = createScenesMethods(db);
     const { scene } = await seedScene(0, 0);
     await sceneMethods.softDeleteCascade(scene.id, { actorId });
-    await sceneMethods.upsert({
-      sequenceId,
-      orderIndex: 0,
-      title: 'Re-split scene',
-    });
+    await sceneMethods.upsert({ sequenceId, orderIndex: 0 });
     const live = await sceneMethods.listBySequence(sequenceId);
     expect(live).toHaveLength(1);
     expect(live[0]?.id).toBe(scene.id);
-    expect(live[0]?.title).toBe('Re-split scene');
+    // The narrative moves only with a script version (#1600), not the upsert.
+    expect(live[0]?.title).toBe('Scene 0');
   });
 
   it('shots.upsert on a deleted (sceneId, shotNumber) slot revives it', async () => {
@@ -368,5 +371,60 @@ describe('re-analysis revival + shot soft-delete details', () => {
     const restored = await shotMethods.restore(shot.id, { actorId });
     expect(restored.deletedAt).toBeNull();
     expect(restored.shotNumber).toBe(1);
+  });
+});
+
+describe('narrative writes carry the live script (#1600)', () => {
+  it('a continuity rescan keeps the selected script and the other fields; a narrative edit keeps the tags', async () => {
+    const sceneMethods = createScenesMethods(db);
+    const { scene } = await seedScene(0);
+    const edited = generateId();
+    await db.insert(sceneScriptVersions).values({
+      id: edited,
+      sceneId: scene.id,
+      content: { extract: 'Edited text.', dialogue: [] },
+      title: 'Scene 0',
+      location: 'INT. DINER',
+      source: 'edit',
+    });
+    await db
+      .update(scenes)
+      .set({ selectedScriptVersionId: edited })
+      .where(eq(scenes.id, scene.id));
+    const continuity = {
+      characterTags: ['jack'],
+      environmentTag: 'diner',
+      colorPalette: 'warm',
+      lightingSetup: 'neon',
+      styleTag: 'noir',
+    };
+
+    await sceneMethods.updateContinuity(scene.id, continuity, { actorId });
+    await sceneMethods.updateNarrative(
+      scene.id,
+      { timeOfDay: 'night' },
+      { actorId }
+    );
+
+    const live = await sceneMethods.getById(scene.id);
+    expect(live).toMatchObject({
+      title: 'Scene 0',
+      location: 'INT. DINER',
+      timeOfDay: 'night',
+      continuity,
+    });
+    const [selected] = await db
+      .select()
+      .from(sceneScriptVersions)
+      .where(eq(sceneScriptVersions.id, live?.selectedScriptVersionId ?? ''));
+    expect(selected).toMatchObject({
+      content: { extract: 'Edited text.' },
+      hasNarrative: true,
+      source: 'edit',
+      createdBy: actorId,
+    });
+    expect(
+      Math.abs((selected?.createdAt.getTime() ?? 0) - Date.now())
+    ).toBeLessThan(60_000);
   });
 });

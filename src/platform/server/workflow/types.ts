@@ -789,6 +789,12 @@ export interface CharacterSheetWorkflowInput extends SequenceWorkflowContext {
    * which lands unconditionally.
    */
   sheetVersionId: string;
+  /**
+   * The bible version `characterMetadata` was read from (#1600), stamped on
+   * the sheet's version row so it records what it was made from. Null for a
+   * row with no bible version yet, and absent on a run queued before #1600.
+   */
+  bibleVersionId: string | null;
 }
 
 /**
@@ -931,6 +937,8 @@ export interface RecastCharacterWorkflowInput extends SequenceWorkflowContext {
   castTalentDescription: string | null;
   /** The sheet claim for the child; see `CharacterSheetWorkflowInput`. */
   sheetVersionId: string;
+  /** See `CharacterSheetWorkflowInput.bibleVersionId`. */
+  bibleVersionId: string | null;
   /** Sequence style config to apply to the character sheet */
   styleConfig?: StyleConfig;
   /** Aspect ratio (frozen at trigger time, replaces a live sequence read). */
@@ -1417,6 +1425,11 @@ export interface LocationSheetWorkflowInput extends SequenceWorkflowContext {
    * which lands unconditionally.
    */
   referenceVersionId: string;
+  /**
+   * The bible version `locationMetadata` was read from (#1600); see
+   * `CharacterSheetWorkflowInput.bibleVersionId`.
+   */
+  bibleVersionId: string | null;
 }
 
 export interface LocationSheetWorkflowResult {
@@ -1561,6 +1574,8 @@ export interface RecastLocationWorkflowInput extends SequenceWorkflowContext {
   libraryLocationReferenceHash: string | null;
   /** The reference claim for the child; see `LocationSheetWorkflowInput`. */
   referenceVersionId: string;
+  /** See `LocationSheetWorkflowInput.bibleVersionId`. */
+  bibleVersionId: string | null;
   /** Sequence style config to apply to the location sheet */
   styleConfig?: StyleConfig;
   /** Aspect ratio (frozen at trigger time, replaces a live sequence read). */

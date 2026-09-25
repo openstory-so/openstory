@@ -2,6 +2,7 @@
  * Sequence-owned style snapshot: create/style-change copy the catalog recipe
  * so later catalog edits cannot stale existing sequences.
  */
+import { clearVersionRows } from '@/platform/server/test/clear-version-rows';
 import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
 import { sequences, styles, teams, user } from '@/platform/server/db/schema';
@@ -46,6 +47,7 @@ afterAll(() => {
 });
 
 beforeEach(async () => {
+  await clearVersionRows(db);
   await db.delete(sequences);
   await db.delete(styles);
   await db.delete(teams);
@@ -96,10 +98,7 @@ describe('createSequencesMethods style snapshot', () => {
       .set({ config: V1_B })
       .where(eq(styles.id, style.id));
 
-    const [reread] = await db
-      .select()
-      .from(sequences)
-      .where(eq(sequences.id, sequence.id));
+    const reread = await methods.getById(sequence.id);
     expect(parseStyleConfig(reread?.styleConfig).look.mood).toBe(V1_A.mood);
   });
 
@@ -118,5 +117,50 @@ describe('createSequencesMethods style snapshot', () => {
       styleId: styleB.id,
     });
     expect(parseStyleConfig(updated.styleConfig).look.mood).toBe(V1_B.mood);
+  });
+
+  it('keeps every snapshot as a version and points at the live one (#1600)', async () => {
+    const styleA = await insertStyle('Noir', V1_A);
+    const styleB = await insertStyle('Product', V1_B);
+    const methods = createSequencesMethods(db, teamId, userId);
+    const sequence = await methods.create({
+      title: 'S',
+      styleId: styleA.id,
+      analysisModel: 'anthropic/claude-haiku-4.5',
+    });
+    const updated = await methods.update({
+      id: sequence.id,
+      styleId: styleB.id,
+    });
+
+    const versions = await methods.listStyleVersions(sequence.id);
+    expect(versions.map((v) => [v.source, v.styleId])).toEqual([
+      ['created', styleA.id],
+      ['switched', styleB.id],
+    ]);
+    expect(updated.selectedStyleVersionId).toBe(versions[1]?.id);
+    expect(parseStyleConfig(versions[0]?.config).look.mood).toBe(V1_A.mood);
+  });
+
+  it('a deferred snapshot has no version until the automatic style lands', async () => {
+    const style = await insertStyle('Auto', V1_A);
+    const methods = createSequencesMethods(db, teamId, userId);
+    const sequence = await methods.create({
+      title: 'S',
+      styleId: style.id,
+      deferStyleSnapshot: true,
+      analysisModel: 'anthropic/claude-haiku-4.5',
+    });
+    expect(sequence.styleConfig).toBeNull();
+    expect(await methods.listStyleVersions(sequence.id)).toEqual([]);
+
+    expect(
+      await methods.snapshotAutoStyle({ id: sequence.id, styleId: style.id })
+    ).toBe(true);
+    const [derived] = await methods.listStyleVersions(sequence.id);
+    expect(derived?.source).toBe('derived');
+    expect((await methods.getById(sequence.id))?.selectedStyleVersionId).toBe(
+      derived?.id
+    );
   });
 });

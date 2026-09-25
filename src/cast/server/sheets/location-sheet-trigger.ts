@@ -96,6 +96,7 @@ export async function buildRegenerateLocationSheetPayload(params: {
     locationDbId: location.id,
     locationName: location.name,
     locationMetadata: toLocationMetadata(location),
+    bibleVersionId: location.selectedBibleVersionId,
     imageModel: resolveSheetImageModel({
       explicit: params.imageModel,
       liveVersionModel: liveVersion?.model,

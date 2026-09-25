@@ -119,6 +119,7 @@ function makeEvent(
       teamId: 'team-1',
       sequenceId: 'seq-1',
       characterDbId: 'char-1',
+      bibleVersionId: null,
       characterName: 'Sam',
       characterMetadata,
       referenceImageUrl: '/r2/talent/team-1/tal-1/sheet.png',

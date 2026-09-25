@@ -101,7 +101,8 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     label: 'Script',
     kind: 'input',
     band: 'settings',
-    summary: 'The scene text and its slugline, as split from your script.',
+    summary:
+      'The scene text and its slugline, as split from your script. Heading, time of day, story beat and continuity tags are versioned with the text, so a stale shot names the field that moved.',
     counts: [
       'Scene extract, line number and the dialogue spoken in this shot',
       'INT./EXT. heading',
@@ -117,11 +118,12 @@ export const GRAPH_NODES: readonly GraphNode[] = [
   },
   {
     id: 'character',
+    versionedIn: 'character_bible_versions',
     label: 'Character',
     kind: 'input',
     band: 'bibles',
     summary:
-      'Extracted from the script at the Script stage, rewritten by casting when a talent is matched, then yours to edit. A voice-only character (a narrator) has a row but never a sheet.',
+      'Extracted from the script at the Script stage, rewritten by casting when a talent is matched, then yours to edit. Every change is a version, so a stale shot names the field that moved. A voice-only character (a narrator) has a row but never a sheet.',
     counts: [
       'Age, gender, ethnicity',
       'Physical description',
@@ -159,11 +161,12 @@ export const GRAPH_NODES: readonly GraphNode[] = [
   },
   {
     id: 'location',
+    versionedIn: 'location_bible_versions',
     label: 'Location',
     kind: 'input',
     band: 'bibles',
     summary:
-      'Extracted from the script at the Script stage, linked to a library location when one matches, then yours to edit.',
+      'Extracted from the script at the Script stage, linked to a library location when one matches, then yours to edit. Every change is a version, so a stale shot names the field that moved.',
     counts: [
       'Description',
       'Type, time of day, architectural style, key features, colour palette, lighting, ambiance',
@@ -200,11 +203,12 @@ export const GRAPH_NODES: readonly GraphNode[] = [
   // --- You set -------------------------------------------------------------
   {
     id: 'style',
+    versionedIn: 'sequence_style_versions',
     label: 'Style',
     kind: 'input',
     band: 'bibles',
     summary:
-      'The look and motion config snapshotted onto the sequence: derived from the script by the auto style, or picked from the catalog.',
+      'The look and motion config snapshotted onto the sequence: derived from the script by the auto style, or picked from the catalog. Every snapshot is a version, so a stale shot names the knob that moved.',
     counts: [
       'Mood, art style, lighting, colour palette, colour grading',
       'Camera work, reference films',

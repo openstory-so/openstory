@@ -70,6 +70,8 @@ async function landSheet(
     url: stored.url,
     storagePath: stored.path,
     inputHash: input.snapshotInputHash ?? null,
+    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload queued before #1600
+    bibleVersionId: input.bibleVersionId ?? null,
     model: stored.model,
     workflowRunId,
   });

@@ -12,6 +12,7 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/platform/id';
+import type { CharacterBible } from './bible-versions';
 import { sequences } from './sequences';
 import { talent } from './talent';
 
@@ -61,26 +62,32 @@ export const characters = snakeCase.table(
     }),
     // From script analysis
     characterId: text().notNull(), // e.g. "char_001" from script analysis
-    name: text({ length: 255 }).notNull(),
-    // Flattened character bible fields (previously in metadata JSON)
-    age: text(), // Can be "30s" or "35"; nullable — LLM may omit
-    gender: text(),
-    ethnicity: text(),
-    physicalDescription: text(),
-    standardClothing: text(),
-    distinguishingFeatures: text(),
-    // Performance (#1561): who they are and how the body moves. Only the
-    // motion prompt and its hash take them — a still does not walk. Nullable:
-    // rows that predate the fields, and `bibleField` clears `''` to NULL.
-    personality: text(),
-    movement: text(),
-    // Heard but never seen (#1585): a narrator or an off-screen voice. No
-    // sheet is ever generated. Existing rows are all on-screen cast, so the
-    // default is honest.
-    voiceOnly: integer({ mode: 'boolean' }).default(false).notNull(),
-    // Person vs robot/animal/object (#1682). Existing rows predate the
-    // column and may show a person, so the default keeps them registered.
-    isPerson: integer({ mode: 'boolean' }).default(true).notNull(),
+    // The live `character_bible_versions` row (#1600): the bible IS that row.
+    // No FK (same cycle-avoidance as the sheet pointer). Null only on a row
+    // written by a worker older than #1600, which reads the legacy columns.
+    selectedBibleVersionId: text(),
+    // LEGACY bible columns (#1600). The bible lives in
+    // `character_bible_versions`; these are read only as the fallback for a
+    // row with no version (`scoped/characters.ts`), and written only where
+    // NOT NULL forces a value on insert. The `legacy` names keep the SQL
+    // column names but make every raw reader a compile error. Drop them once
+    // a deploy has run with no writer and a second backfill.
+    legacyName: text('name', { length: 255 }).notNull(),
+    legacyAge: text('age'),
+    legacyGender: text('gender'),
+    legacyEthnicity: text('ethnicity'),
+    legacyPhysicalDescription: text('physical_description'),
+    legacyStandardClothing: text('standard_clothing'),
+    legacyDistinguishingFeatures: text('distinguishing_features'),
+    legacyPersonality: text('personality'),
+    legacyMovement: text('movement'),
+    legacyVoiceOnly: integer('voice_only', { mode: 'boolean' })
+      .default(false)
+      .notNull(),
+    legacyIsPerson: integer('is_person', { mode: 'boolean' })
+      .default(true)
+      .notNull(),
+    legacyConsistencyTag: text('consistency_tag'),
     // Voice (#1553). `voiceId` is an ElevenLabs voice on the PLATFORM account;
     // the same id is copied onto `talent.voiceId` at save-to-library and
     // back at cast, so release through `releaseVoiceIfUnreferenced`, never a
@@ -103,7 +110,6 @@ export const characters = snakeCase.table(
     // no-ops); picking a completed voice or failing this husk clears it.
     // Persist promotes only when this still names the finishing row.
     pendingPromoteVoiceVersionId: text(),
-    consistencyTag: text(), // e.g. "char_001: Jack-denim-jacket"
     // First appearance in script
     firstMentionSceneId: text(),
     firstMentionText: text(),
@@ -152,8 +158,34 @@ export const characters = snakeCase.table(
 
 // Type exports
 
-/** The stored row. Carries no sheet image — see {@link CharacterWithSheet}. */
-export type Character = InferSelectModel<typeof characters>;
+/**
+ * The stored row, legacy bible columns included. Only the scoped characters
+ * module sees it; everything else reads {@link Character}.
+ */
+export type CharacterRow = InferSelectModel<typeof characters>;
+
+/** The legacy bible columns (#1600) — never read outside the resolver. */
+export type LegacyCharacterBibleColumn =
+  | 'legacyName'
+  | 'legacyAge'
+  | 'legacyGender'
+  | 'legacyEthnicity'
+  | 'legacyPhysicalDescription'
+  | 'legacyStandardClothing'
+  | 'legacyDistinguishingFeatures'
+  | 'legacyPersonality'
+  | 'legacyMovement'
+  | 'legacyVoiceOnly'
+  | 'legacyIsPerson'
+  | 'legacyConsistencyTag';
+
+/**
+ * A character with its bible resolved from the selected
+ * `character_bible_versions` row (#1600). Carries no sheet image — see
+ * {@link CharacterWithSheet}.
+ */
+export type Character = Omit<CharacterRow, LegacyCharacterBibleColumn> &
+  CharacterBible;
 
 /**
  * A character as every scoped READ returns it: the row plus the live sheet,
@@ -174,7 +206,17 @@ export type CharacterWithSheet = Character & {
   sheetInputHash: string | null;
 };
 
-export type NewCharacter = InferInsertModel<typeof characters>;
+/**
+ * A new character: the row's own columns plus the bible its first version
+ * row carries. `voiceOnly` / `isPerson` default to false / true, as the
+ * columns did.
+ */
+export type NewCharacter = Omit<
+  InferInsertModel<typeof characters>,
+  LegacyCharacterBibleColumn | 'selectedBibleVersionId'
+> &
+  Pick<CharacterBible, 'name'> &
+  Partial<Omit<CharacterBible, 'name'>>;
 
 export type CharacterMinimal = Pick<
   CharacterWithSheet,

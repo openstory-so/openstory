@@ -4,7 +4,7 @@ import type { Sequence } from '@/platform/server/db/schema';
 import type { Scene } from '@/shots/scene-analysis.schema';
 import { computeMusicPromptInputHash } from '@/shots/input-hash';
 import { buildShotInserts, defaultSingleShot } from '@/shots/shot-list-pass';
-import { buildSceneInsert } from '@/sequences/server/scene-persistence';
+import { buildSceneNarrative } from '@/sequences/server/scene-persistence';
 import { readMusicPromptStaleness } from './music-staleness';
 import { musicSceneSummariesFromAnalysis } from './workflows/music-scene-summaries';
 
@@ -38,7 +38,7 @@ const scenes: Scene[] = [
 /** The scene / shot rows scene-split writes for `scenes`, as D1 returns them. */
 const sceneRows = scenes.map((scene, index) => ({
   id: `row-${index}`,
-  ...buildSceneInsert('seq', scene, index),
+  ...buildSceneNarrative(scene),
 }));
 const shotRows = buildShotInserts(
   'seq',

@@ -173,6 +173,8 @@ export class RecastCharacterWorkflow extends OpenStoryWorkflowEntrypoint<RecastC
           castTalentDescription: input.castTalentDescription,
           // The claim recastCharacterFn took (#1113).
           sheetVersionId: input.sheetVersionId,
+          // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload queued before #1600
+          bibleVersionId: input.bibleVersionId ?? null,
         };
         partial.snapshotInputHash =
           await computeCharacterSheetHashFromDto(partial);

@@ -157,10 +157,10 @@ export const generateShotImageFn = createServerFn({ method: 'POST' })
       });
       if (rescan.changed && shot.sceneId) {
         sceneForInput = { ...resolvedScene, continuity: rescan.continuity };
-        await context.scopedDb.scenes.update(
+        await context.scopedDb.scenes.updateContinuity(
           dbSceneId(shot.sceneId),
-          { continuity: rescan.continuity },
-          { throwOnMissing: false }
+          rescan.continuity,
+          { actorId: context.user.id }
         );
       }
     }

@@ -78,8 +78,13 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
           })
         );
 
-        const created =
-          await scopedDb.sequenceLocations.createBulk(locationInserts);
+        const created = await scopedDb.sequenceLocations.createBulk(
+          locationInserts,
+          {
+            source: 'analysis',
+            createdBy: null,
+          }
+        );
         if (created.length !== input.locationBible.length) {
           throw new NonRetryableError(
             `[LocationBibleWorkflow:cf] expected ${input.locationBible.length} location records, created ${created.length}`
@@ -92,6 +97,15 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
     // Create a mapping from locationId (from bible) to database id
     const locationIdToDbId = new Map<string, string>(
       createdLocations.map((loc) => [loc.locationId, loc.id])
+    );
+    // The bible version each row landed on (#1600). A step result cached
+    // before #1600 has none.
+    const bibleVersionByDbId = new Map<string, string | null>(
+      createdLocations.map((loc) => [
+        loc.id,
+        // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a result cached before #1600
+        loc.selectedBibleVersionId ?? null,
+      ])
     );
 
     const childBinding = this.env.LOCATION_SHEET_WORKFLOW;
@@ -119,6 +133,7 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
           sequenceId,
           reservationId: input.reservationId,
           locationDbId,
+          bibleVersionId: bibleVersionByDbId.get(locationDbId) ?? null,
           locationName: location.name,
           locationMetadata: location,
           imageModel: model,

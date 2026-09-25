@@ -98,6 +98,7 @@ export async function buildRegenerateCharacterSheetPayload(params: {
     characterDbId: character.id,
     characterName: character.name,
     characterMetadata: characterToBible(character),
+    bibleVersionId: character.selectedBibleVersionId,
     imageModel: resolveSheetImageModel({
       explicit: params.imageModel,
       liveVersionModel: liveVersion?.model,

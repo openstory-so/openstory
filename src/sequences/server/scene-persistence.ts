@@ -2,11 +2,10 @@
  * Scene-row persistence mapping (#908)
  * ============================================================================
  *
- * Maps an analysis `Scene` onto the scene-level columns of the `scenes` table
- * (#907). Scene-level shared truth — location, time of day, story beat, title,
- * continuity, music design — lives on the scene row. The script is not mapped
- * here: it is appended to `scene_script_versions` by the caller (see
- * `sceneScriptVersions.seedSplitVersions`).
+ * Maps an analysis `Scene` onto a `scenes` row (#907) and the narrative its
+ * split script version carries (#1600): location, time of day, story beat,
+ * title and continuity live on the version with the script, which the caller
+ * appends (see `sceneScriptVersions.seedSplitVersions`).
  *
  * Pulled out of the workflow so the column mapping is unit-testable without a
  * full Cloudflare-Workflow harness.
@@ -15,6 +14,7 @@
 import type {
   DbSceneId,
   NewScene,
+  SceneNarrative,
   SceneRow,
 } from '@/platform/server/db/schema';
 import { plainSceneTitle } from '@/platform/markdown-plain';
@@ -31,12 +31,14 @@ import type { Scene } from '@/shots/scene-analysis.schema';
  */
 export function buildSceneInsert(
   sequenceId: string,
-  scene: Scene,
   orderIndex: number
 ): NewScene {
+  return { sequenceId, orderIndex };
+}
+
+/** The narrative an analysis scene's split script version carries (#1600). */
+export function buildSceneNarrative(scene: Scene): SceneNarrative {
   return {
-    sequenceId,
-    orderIndex,
     location: scene.metadata?.location ?? null,
     timeOfDay: scene.metadata?.timeOfDay ?? null,
     storyBeat: scene.metadata?.storyBeat ?? null,
@@ -54,9 +56,7 @@ export function buildSceneInserts(
   sequenceId: string,
   scenes: ReadonlyArray<Scene>
 ): NewScene[] {
-  return scenes.map((scene, index) =>
-    buildSceneInsert(sequenceId, scene, index)
-  );
+  return scenes.map((_scene, index) => buildSceneInsert(sequenceId, index));
 }
 
 /** A shot→scene link to apply via `shots.update`. */

@@ -183,7 +183,7 @@ async function addScene(orderIndex: number) {
   const id = dbSceneId(generateId());
   await db
     .insert(scenes)
-    .values({ id, sequenceId, orderIndex, title: 'Another scene' });
+    .values({ id, sequenceId, orderIndex, legacyTitle: 'Another scene' });
   return id;
 }
 beforeAll(async () => {
@@ -243,13 +243,13 @@ beforeEach(async () => {
     id: dbSceneId(sceneId),
     sequenceId,
     orderIndex: 0,
-    title: 'Opening',
     selectedScriptVersionId: scriptId,
   });
   await db.insert(sceneScriptVersions).values({
     id: scriptId,
     sceneId,
     content: { extract: 'Selected script', dialogue: [] },
+    title: 'Opening',
     source: 'edit',
   });
   await db.insert(renderSegments).values({
@@ -748,9 +748,9 @@ describe('complete production reads', () => {
       id: characterId,
       sequenceId,
       characterId: 'char_001',
-      name: 'Ada',
-      personality: 'Curious',
-      consistencyTag: 'ada',
+      legacyName: 'Ada',
+      legacyPersonality: 'Curious',
+      legacyConsistencyTag: 'ada',
       voiceId: 'voice-ada',
       voicePreviews: [
         {
@@ -772,9 +772,9 @@ describe('complete production reads', () => {
       id: locationId,
       sequenceId,
       locationId: 'loc_001',
-      name: 'Office',
-      description: 'Bright office',
-      consistencyTag: 'office',
+      legacyName: 'Office',
+      legacyDescription: 'Bright office',
+      legacyConsistencyTag: 'office',
     });
     await db.insert(locationSheetVariants).values({
       id: locationId,
@@ -839,8 +839,9 @@ describe('complete production reads', () => {
       targetId: frameId,
       data: { versionId: imageId },
     });
+    // The narrative lives on the selected script version (#1600).
     await db
-      .update(scenes)
+      .update(sceneScriptVersions)
       .set({
         location: 'Office',
         continuity: {
@@ -852,7 +853,7 @@ describe('complete production reads', () => {
           elementTags: ['BELL'],
         },
       })
-      .where(eq(scenes.id, dbSceneId(sceneId)));
+      .where(eq(sceneScriptVersions.sceneId, dbSceneId(sceneId)));
     await db
       .update(shots)
       .set({
@@ -981,7 +982,7 @@ describe('complete production reads', () => {
       id: generateId(),
       sequenceId,
       characterId: 'char_002',
-      name: 'Other',
+      legacyName: 'Other',
     });
     const pageSchema = z.object({
       characters: z.array(z.object({ id: z.string() })),
@@ -1363,7 +1364,7 @@ describe('complete production reads', () => {
       })
     ).toMatchObject({ isError: true });
     await db
-      .update(scenes)
+      .update(sceneScriptVersions)
       .set({
         continuity: {
           colorPalette: '',
@@ -1374,7 +1375,7 @@ describe('complete production reads', () => {
           environmentTag: '',
         },
       })
-      .where(eq(scenes.id, dbSceneId(sceneId)));
+      .where(eq(sceneScriptVersions.sceneId, dbSceneId(sceneId)));
     expect(
       await data('list_entity_usages', {
         sequenceId,
@@ -1395,7 +1396,7 @@ describe('complete production reads', () => {
     ).toBe(false);
     await db
       .update(characters)
-      .set({ voiceOnly: true })
+      .set({ legacyVoiceOnly: true })
       .where(eq(characters.id, characterId));
     expect(
       await data('get_reference_staleness', {

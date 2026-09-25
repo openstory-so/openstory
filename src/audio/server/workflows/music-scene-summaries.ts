@@ -1,11 +1,11 @@
 import type { Scene } from '@/shots/scene-analysis.schema';
 import { getLogger } from '@/platform/logger';
 import { plainSceneTitle } from '@/platform/markdown-plain';
-import type { NewScene, Shot } from '@/platform/server/db/schema';
+import type { SceneNarrative, Shot } from '@/platform/server/db/schema';
 import type { MusicSceneSummary } from '@/platform/server/workflow/types';
 import type { LegacyMusicShotSummary } from '@/shots/input-hash';
 import { sceneShotSpecs, shotDurationMs } from '@/shots/shot-list-pass';
-import { buildSceneInsert } from '@/sequences/server/scene-persistence';
+import { buildSceneNarrative } from '@/sequences/server/scene-persistence';
 
 const logger = getLogger(['openstory', 'workflow', 'music']);
 
@@ -15,7 +15,7 @@ type MusicSceneRow = {
 };
 
 type SceneFields = Pick<
-  NewScene,
+  SceneNarrative,
   'title' | 'storyBeat' | 'location' | 'timeOfDay'
 > & { id: string };
 type ShotFields = Pick<Shot, 'sceneId' | 'durationMs'>;
@@ -53,8 +53,8 @@ function buildMusicSceneSummaries(
 }
 
 /**
- * Pipeline side: the analysis scenes through the SAME insert builders that
- * wrote their `scenes` / `shots` rows (`buildSceneInsert`,
+ * Pipeline side: the analysis scenes through the SAME builders that wrote
+ * their scene versions / `shots` rows (`buildSceneNarrative`,
  * `buildShotInserts`' `sceneShotSpecs`), so the stamp hashes the rows verify
  * will read — without a mid-run read.
  *
@@ -66,14 +66,14 @@ export function musicSceneSummariesFromAnalysis(
 ): MusicSceneSummary[] {
   const rows: SceneFields[] = [];
   const shots: ShotFields[] = [];
-  for (const [index, scene] of scenes.entries()) {
+  for (const scene of scenes) {
     const { metadata } = scene;
     if (!metadata) {
       throw new Error(
         `Scene ${scene.sceneId} is missing metadata; cannot build music scene summary`
       );
     }
-    rows.push({ id: scene.sceneId, ...buildSceneInsert('', scene, index) });
+    rows.push({ id: scene.sceneId, ...buildSceneNarrative(scene) });
     for (const spec of sceneShotSpecs({ shots: scene.shots, metadata })) {
       shots.push({ sceneId: scene.sceneId, durationMs: shotDurationMs(spec) });
     }

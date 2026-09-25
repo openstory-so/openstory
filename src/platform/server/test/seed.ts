@@ -11,15 +11,19 @@
 import { generateId } from '@/platform/id';
 import {
   characterSheetVariants,
+  characterBibleVersions,
   characters,
   credits,
   frameVariants,
   frames,
   shots,
+  locationBibleVersions,
   locationLibrary,
   locationSheets,
   renderSegments,
   scenes,
+  sequenceLocations,
+  sequenceStyleVersions,
   sequences,
   session,
   styles,
@@ -33,7 +37,8 @@ import {
   videoVariants,
 } from '@/platform/server/db/schema';
 import { getDb } from '#db-client';
-import { and, asc, desc, eq, isNotNull, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
+import type { SQL } from 'drizzle-orm';
 
 export type CreatedTestUser = {
   id: string;
@@ -150,6 +155,42 @@ export async function createOtpVerification(
 /**
  * Clean up a test user and related records.
  */
+/**
+ * Delete the #1600 version rows of the sequences `where` matches. They
+ * RESTRICT their parents' delete, so this runs before any sequence delete.
+ */
+async function deleteSequenceVersionRows(where: SQL | undefined) {
+  const db = getDb();
+  const ids = db.select({ id: sequences.id }).from(sequences).where(where);
+  await db.batch([
+    db
+      .delete(sequenceStyleVersions)
+      .where(inArray(sequenceStyleVersions.sequenceId, ids)),
+    db
+      .delete(characterBibleVersions)
+      .where(
+        inArray(
+          characterBibleVersions.characterId,
+          db
+            .select({ id: characters.id })
+            .from(characters)
+            .where(inArray(characters.sequenceId, ids))
+        )
+      ),
+    db
+      .delete(locationBibleVersions)
+      .where(
+        inArray(
+          locationBibleVersions.locationId,
+          db
+            .select({ id: sequenceLocations.id })
+            .from(sequenceLocations)
+            .where(inArray(sequenceLocations.sequenceId, ids))
+        )
+      ),
+  ]);
+}
+
 export async function cleanupTestUser(
   userId: string,
   teamId: string
@@ -158,6 +199,7 @@ export async function cleanupTestUser(
 
   await db.delete(session).where(eq(session.userId, userId));
   await db.delete(teamMembers).where(eq(teamMembers.userId, userId));
+  await deleteSequenceVersionRows(eq(sequences.teamId, teamId));
   await db.delete(teams).where(eq(teams.id, teamId));
   await db.delete(user).where(eq(user.id, userId));
   // Credits will cascade or be cleaned via team if we add FKs later
@@ -471,16 +513,28 @@ export async function createTestCharacter(
     sheetStatus = 'completed',
   } = options;
 
+  // The bible lives on its version row (#1600), keyed to the character's
+  // own id like the backfill.
   await db.insert(characters).values({
     id,
     sequenceId,
     characterId,
-    name,
+    legacyName: name,
+    selectedBibleVersionId: id,
     talentId,
-    age: '30s',
     sheetStatus,
     createdAt: now,
     updatedAt: now,
+  });
+  await db.insert(characterBibleVersions).values({
+    id,
+    characterId: id,
+    name,
+    age: '30s',
+    voiceOnly: false,
+    isPerson: true,
+    source: 'backfill',
+    createdAt: now,
   });
 
   // The live sheet is read from the version row, not the mirror (#1419).
@@ -507,6 +561,7 @@ export async function createTestCharacter(
  */
 export async function cleanupTestSequences(teamId: string): Promise<void> {
   const db = getDb();
+  await deleteSequenceVersionRows(eq(sequences.teamId, teamId));
   await db.delete(sequences).where(eq(sequences.teamId, teamId));
   await db.delete(styles).where(eq(styles.teamId, teamId));
 }
@@ -519,6 +574,7 @@ export async function cleanupSequenceById(
   styleId: string
 ): Promise<void> {
   const db = getDb();
+  await deleteSequenceVersionRows(eq(sequences.id, sequenceId));
   await db.delete(sequences).where(eq(sequences.id, sequenceId));
   await db.delete(styles).where(eq(styles.id, styleId));
 }
@@ -835,24 +891,20 @@ export async function getTestCharacter(characterId: string): Promise<{
   sheetStatus: string | null;
 } | null> {
   const db = getDb();
-  const result = await db.query.characters.findFirst({
-    where: { id: characterId },
-    columns: {
-      id: true,
-      name: true,
-      talentId: true,
-      sheetStatus: true,
-    },
-  });
-
-  if (!result) return null;
-
-  return {
-    id: result.id,
-    name: result.name,
-    talentId: result.talentId,
-    sheetStatus: result.sheetStatus,
-  };
+  const [result] = await db
+    .select({
+      id: characters.id,
+      name: characterBibleVersions.name,
+      talentId: characters.talentId,
+      sheetStatus: characters.sheetStatus,
+    })
+    .from(characters)
+    .innerJoin(
+      characterBibleVersions,
+      eq(characterBibleVersions.id, characters.selectedBibleVersionId)
+    )
+    .where(eq(characters.id, characterId));
+  return result ?? null;
 }
 
 /**

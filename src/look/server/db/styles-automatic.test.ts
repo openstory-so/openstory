@@ -2,6 +2,7 @@
  * Automatic (sequence-bound) styles (#1213): outside the library until
  * promoted, written only while still bound, cleaned up with the sequence.
  */
+import { clearVersionRows } from '@/platform/server/test/clear-version-rows';
 import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
 import { sequences, styles, teams, user } from '@/platform/server/db/schema';
@@ -32,6 +33,7 @@ afterAll(() => {
 });
 
 beforeEach(async () => {
+  await clearVersionRows(db);
   await db.delete(sequences);
   await db.delete(styles);
   await db.delete(teams);

@@ -60,6 +60,9 @@ export const locationSheetVariants = snakeCase.table(
     error: text(),
 
     inputHash: text(),
+    // The `location_bible_versions` row a sequence-location run read (#1600).
+    // Null on library-location rows, uploads, and rows from before history.
+    bibleVersionId: text(),
     divergedAt: integer({ mode: 'timestamp' }),
     // Soft-delete marker; preserves the artifact for the toast Undo.
     discardedAt: integer({ mode: 'timestamp' }),
