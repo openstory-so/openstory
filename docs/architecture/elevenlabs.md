@@ -425,11 +425,12 @@ in References; motion just does not bind it.
 
 **The shot's dialogue lives under its video (#1802).** Lines, the audio
 source (Generated / Video model / an audio element — a write of the lines,
-so it needs no motion prompt), readings, history and "Record a line" are all
-in `ShotDialogueUnderVideo`; the Video tab has none of it.
+so it needs no motion prompt), readings, history and a Record button beside
+each voiced line are all in `ShotDialogueUnderVideo`; the Video tab has none
+of it.
 
-**A line at the mic (#1802).** "Record a line" under the shot's video
-records one line in the browser, plays it back, and on "Use"
+**A line at the mic (#1802).** Record beside a line under the shot's video
+records it in the browser, plays it back, and on "Use"
 sends it as 16-bit mono PCM (`recordShotDialogueLineFn`, parked in R2 under
 `dialogue-takes/`). `DialogueTakeWorkflow` turns it into the speaker's voice
 with the user's delivery kept: an ElevenLabs voice goes through **Voice

@@ -39,6 +39,7 @@ import { Button } from '@/ui/shadcn/button';
 import { Skeleton } from '@/ui/shadcn/skeleton';
 import type { QueryClient } from '@tanstack/react-query';
 import {
+  queryOptions,
   useMutation,
   useQueryClient,
   useSuspenseQuery,
@@ -48,11 +49,16 @@ import { toast } from 'sonner';
 import type { DialogueLine } from '@/shots/scene-analysis.schema';
 import { voicedDialogueLines } from '@/motion/dialogue-tts';
 import { bytesToBase64 } from '@/platform/base64';
-import { LineTakeRecorder } from './line-take-recorder';
+import {
+  LineTakeButton,
+  LineTakeReview,
+  useMicTake,
+} from './line-take-recorder';
 import { decodeTake, floatToPcm16, MIC_TAKE_SAMPLE_RATE } from './mic-take';
 import {
   DialogueLinesEditor,
   MotionDialoguePanel,
+  type LineSlots,
   ShotDialogueHistory,
   ShotReadingsList,
   ShotMissingVoices,
@@ -63,6 +69,18 @@ import { StalenessIndicator } from './staleness/staleness-indicator';
 import { segmentKeys } from './use-segments';
 import { shotStalenessNamespace } from './use-shot-staleness';
 import { shotKeys } from './use-shots';
+
+const readingsQuery = (sequenceId: string, shotId: string) =>
+  queryOptions({
+    queryKey: shotKeys.dialogueSections(shotId),
+    queryFn: () => listShotDialogueSectionsFn({ data: { sequenceId, shotId } }),
+  });
+
+const claimsQuery = (sequenceId: string, shotId: string) =>
+  queryOptions({
+    queryKey: shotKeys.dialogueClaims(shotId),
+    queryFn: () => listShotDialogueClaimsFn({ data: { sequenceId, shotId } }),
+  });
 
 type ReadingsProps = {
   sequenceId: string;
@@ -112,10 +130,9 @@ const Readings: React.FC<ReadingsProps> = ({ sequenceId, shotId, lines }) => {
   // Keyed by shot alone: a new recording invalidates it (the realtime
   // `dialogue-audio` event), so the list on screen stays put while it
   // refetches instead of dropping back to the fallback.
-  const { data: readings } = useSuspenseQuery({
-    queryKey: shotKeys.dialogueSections(shotId),
-    queryFn: () => listShotDialogueSectionsFn({ data: { sequenceId, shotId } }),
-  });
+  const { data: readings } = useSuspenseQuery(
+    readingsQuery(sequenceId, shotId)
+  );
   const selectReading = useMutation({
     mutationFn: (sectionId: string) =>
       selectShotDialogueSectionFn({ data: { sequenceId, shotId, sectionId } }),
@@ -155,10 +172,7 @@ const Readings: React.FC<ReadingsProps> = ({ sequenceId, shotId, lines }) => {
   });
   // Recordings in flight. Refreshed by the same realtime event as the list:
   // the key sits under `dialogueSections`.
-  const { data: claims } = useSuspenseQuery({
-    queryKey: shotKeys.dialogueClaims(shotId),
-    queryFn: () => listShotDialogueClaimsFn({ data: { sequenceId, shotId } }),
-  });
+  const { data: claims } = useSuspenseQuery(claimsQuery(sequenceId, shotId));
   const cancelClaim = useMutation({
     mutationFn: (claimId: string) =>
       cancelShotDialogueClaimFn({ data: { sequenceId, shotId, claimId } }),
@@ -186,40 +200,6 @@ const Readings: React.FC<ReadingsProps> = ({ sequenceId, shotId, lines }) => {
   // or the lines it was generated from moved.
   const current = readings.find((reading) => reading.selected);
   const staleBecause = current?.mismatch ?? null;
-  // A mic take (#1802) is spliced into the current reading, so a shot with
-  // more than one voiced line needs one that still matches its lines.
-  const recordable = spokenBy
-    ? []
-    : voicedDialogueLines(
-        { presence: true, lines: [...lines] },
-        characters ?? []
-      );
-  const takeBlockedBecause =
-    recordable.length > 1 && !current?.matchesCurrentLines
-      ? 'Generate dialogue first — a line is recorded into the current reading'
-      : null;
-  const recordLine = async (lineIndex: number, take: Blob) => {
-    try {
-      const pcm = floatToPcm16(await decodeTake(take));
-      await recordShotDialogueLineFn({
-        data: {
-          sequenceId,
-          shotId,
-          lineIndex,
-          pcmBase64: bytesToBase64(pcm),
-          sampleRate: MIC_TAKE_SAMPLE_RATE,
-        },
-      });
-      await queryClient.invalidateQueries({
-        queryKey: shotKeys.dialogueClaims(shotId),
-      });
-    } catch (error) {
-      toast.error('Line not recorded', {
-        description: error instanceof Error ? error.message : String(error),
-      });
-      throw error;
-    }
-  };
   return (
     <>
       {spokenBy ? (
@@ -280,17 +260,6 @@ const Readings: React.FC<ReadingsProps> = ({ sequenceId, shotId, lines }) => {
         cancellingId={cancelClaim.isPending ? cancelClaim.variables : null}
       />
       <DialogueHistory sequenceId={sequenceId} shotId={shotId} />
-      {recording ? null : (
-        <LineTakeRecorder
-          lines={recordable.map((line) => ({
-            index: line.index,
-            character: line.character,
-            text: line.text,
-          }))}
-          blockedBecause={takeBlockedBecause}
-          onUse={recordLine}
-        />
-      )}
       <ShotReadingsList
         readings={readings}
         onUse={(sectionId) => selectReading.mutate(sectionId)}
@@ -400,14 +369,85 @@ const ShotDialogueReadings: React.FC<ReadingsProps> = (props) => (
  * The audio source is a write of the lines (a `voiceToken` on each), the
  * same save as a line edit, so it needs no motion prompt.
  */
-export const ShotDialogueUnderVideo: React.FC<{
+type UnderVideoProps = {
   shot: ShotView;
   /** The video model this shot renders with — the source picker needs audio input. */
   videoModel: ImageToVideoModel;
-}> = ({ shot, videoModel }) => {
+};
+
+export const ShotDialogueUnderVideo: React.FC<UnderVideoProps> = (props) => (
+  <Suspense fallback={<Skeleton className="h-24 w-full" />}>
+    <DialogueUnderVideo {...props} />
+  </Suspense>
+);
+
+const DialogueUnderVideo: React.FC<UnderVideoProps> = ({
+  shot,
+  videoModel,
+}) => {
   const queryClient = useQueryClient();
+  // Read once here: every line's Record button asks the same two questions.
+  const { data: readings } = useSuspenseQuery(
+    readingsQuery(shot.sequenceId, shot.id)
+  );
+  const { data: claims } = useSuspenseQuery(
+    claimsQuery(shot.sequenceId, shot.id)
+  );
   const { data: elements } = useSequenceElements(shot.sequenceId);
+  const { data: characters } = useSequenceCharacters(shot.sequenceId);
   const lines = shot.dialogue?.presence ? shot.dialogue.lines : [];
+  const take = useMicTake(async (lineIndex, blob) => {
+    try {
+      const pcm = floatToPcm16(await decodeTake(blob));
+      await recordShotDialogueLineFn({
+        data: {
+          sequenceId: shot.sequenceId,
+          shotId: shot.id,
+          lineIndex,
+          pcmBase64: bytesToBase64(pcm),
+          sampleRate: MIC_TAKE_SAMPLE_RATE,
+        },
+      });
+      await queryClient.invalidateQueries({
+        queryKey: shotKeys.dialogueClaims(shot.id),
+      });
+    } catch (error) {
+      toast.error('Line not recorded', {
+        description: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  });
+  // Only a line with a voice can be performed into it (#1802), and not while
+  // a recording is on its way. A take is spliced into the current reading,
+  // so a shot with more than one voiced line needs one that still matches.
+  const voiced =
+    shotSpokenByNote(lines) || claims.some((claim) => claim.willBecomeCurrent)
+      ? []
+      : voicedDialogueLines(
+          { presence: true, lines: [...lines] },
+          characters ?? []
+        );
+  const blockedBecause =
+    voiced.length > 1 &&
+    !readings.find((reading) => reading.selected)?.matchesCurrentLines
+      ? 'Generate dialogue first — a line is recorded into the current reading'
+      : null;
+  const slots: LineSlots = (index) => {
+    if (!voiced.some((line) => line.index === index)) return {};
+    const name = lines[index]?.character || 'Narrator';
+    return {
+      action: (
+        <LineTakeButton
+          take={take}
+          index={index}
+          name={name}
+          blockedBecause={blockedBecause}
+        />
+      ),
+      below: <LineTakeReview take={take} index={index} name={name} />,
+    };
+  };
   const save = useMutation({
     mutationFn: (next: DialogueLine[]) =>
       saveShotDialogueFn({
@@ -440,6 +480,7 @@ export const ShotDialogueUnderVideo: React.FC<{
           sequenceId={shot.sequenceId}
           shotId={shot.id}
           lines={lines}
+          slots={slots}
         />
       }
       readings={
@@ -462,7 +503,8 @@ const ShotDialogueLines: React.FC<{
   shotId: string;
   lines: readonly DialogueLine[];
   label?: string;
-}> = ({ sequenceId, shotId, lines, label }) => {
+  slots?: LineSlots;
+}> = ({ sequenceId, shotId, lines, label, slots }) => {
   const queryClient = useQueryClient();
   const { data: characters } = useSequenceCharacters(sequenceId);
   const save = useMutation({
@@ -479,6 +521,7 @@ const ShotDialogueLines: React.FC<{
       saving={save.isPending}
       label={label}
       speakers={(characters ?? []).map((character) => character.name)}
+      slots={slots}
     />
   );
 };
