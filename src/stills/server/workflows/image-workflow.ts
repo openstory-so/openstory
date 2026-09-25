@@ -11,9 +11,10 @@
  *   2. generate-image / deduct-credits / upload-image — unchanged.
  *   3. persist-result — status-guarded complete (`completeIfLive`), emits
  *      `image.generated`, then SELECT-OR-NOT: a new selection is a pointer
- *      repoint (`frameVariants.select`), never an overwrite. `variantOnly`
- *      (adding a model) appends without selecting; mid-flight input drift
- *      retains a stale-flagged version without repointing the primary.
+ *      repoint through the promote claim (`selectIfPendingPromoteIs`), never
+ *      an overwrite. `variantOnly` (adding a model) appends without
+ *      selecting. Mid-flight input drift still promotes; the still is stamped
+ *      with its snapshot's hash and reads stale against the live inputs.
  */
 
 import { DEFAULT_IMAGE_MODEL } from '@/models/models';
