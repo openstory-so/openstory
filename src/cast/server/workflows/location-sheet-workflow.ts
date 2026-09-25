@@ -31,7 +31,7 @@ import {
 } from './sheet-divergence';
 import {
   computeLocationSheetHashCurrent,
-  computeLocationSheetHashFromDto,
+  locationSheetHashMatchesStored,
 } from './sheet-snapshots';
 import { getLogger } from '@/platform/logger';
 
@@ -48,9 +48,14 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
 
     await step.do('validate-snapshot', async () => {
       if (input.snapshotInputHash) {
-        const expected = input.snapshotInputHash;
-        const recomputed = await computeLocationSheetHashFromDto(input);
-        if (recomputed !== expected) {
+        // Accepts the pre-#1785 shape too, so a run queued before the
+        // hash grew a channel does not read as tampered.
+        if (
+          !(await locationSheetHashMatchesStored(
+            input.snapshotInputHash,
+            input
+          ))
+        ) {
           throw new WorkflowValidationError(
             'snapshotInputHash does not match the inlined DTO; payload was tampered with or serialized inconsistently'
           );

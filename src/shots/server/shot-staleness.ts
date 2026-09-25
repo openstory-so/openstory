@@ -697,7 +697,11 @@ async function findStalenessCauses(args: {
       for (const f of changed) if (typeof f === 'string') fields.add(f);
     }
   }
-  for (const f of fields) causes.push(SETTINGS_CHANGED_LABELS[f] ?? f);
+  // Older events also list model switches, which never stale (#1785).
+  for (const f of fields) {
+    const label = SETTINGS_CHANGED_LABELS[f];
+    if (label) causes.push(label);
+  }
   // Catalog style edits only flow through when the sequence has no snapshot.
   if (sequence.styleConfig == null && after(refs.style?.updatedAt, at)) {
     if (!fields.has('styleId')) causes.push('Style');

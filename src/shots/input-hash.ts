@@ -347,23 +347,54 @@ export type CharacterBibleHashFields = {
   isPerson?: boolean;
 };
 
+/**
+ * What the character-sheet prompt reads from a cast talent (#1785), resolved
+ * live by `resolveCastTalent`. `description` is the talent row's own text, not
+ * the path-specific prompt wording built from it, so every stamp path hashes
+ * what verify recomputes. `sheetImageUrl` / `sheetLook` are the default talent
+ * sheet the prompt copies — a promoted variant keeps its sheet's `inputHash`
+ * but changes the image.
+ */
+export type CharacterSheetTalentHashFields = {
+  description: string | null;
+  sheetImageUrl: string | null;
+  /** Required; `null` is "the talent sheet has no look metadata". */
+  sheetLook: {
+    age: string | null;
+    gender: string | null;
+    ethnicity: string | null;
+    physicalDescription: string | null;
+  } | null;
+};
+
 export type CharacterSheetHashInput = {
   characterBible: CharacterBibleHashFields;
   /** Required; `null` is "no talent sheet". */
   talentSheetHash: string | null;
+  /** Required; `null` is "not cast". */
+  talent: CharacterSheetTalentHashFields | null;
   styleConfigHash: string;
   imageModel: string;
 };
 
+/**
+ * Sheet digest shapes. `current` hashes the cast talent (#1785) and drops the
+ * name; `pre-1785` is the nameless digest without the talent channel;
+ * `named` is the pre-#1108 digest. Verify accepts the legacy two until
+ * {@link LEGACY_HASH_UNTIL}.
+ */
+type SheetHashKind = 'current' | 'pre-1785' | 'named';
+
 function characterSheetHashBody(
   input: CharacterSheetHashInput,
-  includeName: boolean
+  kind: SheetHashKind
 ): unknown {
   const cb = input.characterBible;
+  const talent = kind === 'current' ? input.talent : null;
   return {
     artifact: 'character:sheet',
     characterBible: {
-      ...(includeName ? { name: trim(cb.name) } : {}),
+      ...(kind === 'named' ? { name: trim(cb.name) } : {}),
       age: trim(cb.age),
       gender: trim(cb.gender),
       ethnicity: trim(cb.ethnicity),
@@ -373,6 +404,25 @@ function characterSheetHashBody(
       consistencyTag: trim(cb.consistencyTag),
     },
     talentSheetHash: input.talentSheetHash ?? null,
+    // Joined only when cast, so no uncast character's digest moves.
+    ...(talent
+      ? {
+          talent: {
+            description: trim(talent.description),
+            sheetImageUrl: trim(talent.sheetImageUrl),
+            sheetLook: talent.sheetLook
+              ? {
+                  age: trim(talent.sheetLook.age),
+                  gender: trim(talent.sheetLook.gender),
+                  ethnicity: trim(talent.sheetLook.ethnicity),
+                  physicalDescription: trim(
+                    talent.sheetLook.physicalDescription
+                  ),
+                }
+              : null,
+          },
+        }
+      : {}),
     styleConfigHash: input.styleConfigHash,
     imageModel: input.imageModel,
   };
@@ -392,6 +442,20 @@ const characterBibleHashFieldsSchema = z.object({
 const characterSheetHashInputSchema = z.object({
   characterBible: characterBibleHashFieldsSchema,
   talentSheetHash: z.string().nullable(),
+  talent: z
+    .object({
+      description: z.string().nullable(),
+      sheetImageUrl: z.string().nullable(),
+      sheetLook: z
+        .object({
+          age: z.string().nullable(),
+          gender: z.string().nullable(),
+          ethnicity: z.string().nullable(),
+          physicalDescription: z.string().nullable(),
+        })
+        .nullable(),
+    })
+    .nullable(),
   styleConfigHash: z.string(),
   imageModel: z.string(),
 });
@@ -400,7 +464,7 @@ export function computeCharacterSheetInputHash(
   raw: CharacterSheetHashInput
 ): Promise<CharacterSheetInputHash> {
   const input = characterSheetHashInputSchema.parse(raw);
-  return sha256Hex(characterSheetHashBody(input, false)).then(
+  return sha256Hex(characterSheetHashBody(input, 'current')).then(
     characterSheetInputHash
   );
 }
@@ -410,30 +474,47 @@ export function computeCharacterSheetInputHashLegacy(
   raw: CharacterSheetHashInput
 ): Promise<string> {
   const input = characterSheetHashInputSchema.parse(raw);
-  return sha256Hex(characterSheetHashBody(input, true));
+  return sha256Hex(characterSheetHashBody(input, 'named'));
 }
 
-/** Verify: current (nameless) digest or the pre-#1108 digest that hashed `name`. */
+/** Verify: the current digest, or a pre-#1785 / pre-#1108 one. */
 export async function characterSheetInputHashMatches(
   stored: string | null,
   raw: CharacterSheetHashInput
 ): Promise<boolean> {
   if (!stored) return false;
   const input = characterSheetHashInputSchema.parse(raw);
-  const [current, legacy] = await Promise.all([
-    sha256Hex(characterSheetHashBody(input, false)),
-    sha256Hex(characterSheetHashBody(input, true)),
-  ]);
-  return stored === current || stored === legacy;
+  const digests = await Promise.all(
+    (['current', 'pre-1785', 'named'] as const).map((kind) =>
+      sha256Hex(characterSheetHashBody(input, kind))
+    )
+  );
+  return digests.includes(stored);
 }
 
-export type LocationBibleHashFields = {
+type LocationBibleHashFields = {
   name: string;
   description: string | null;
 };
 
+/**
+ * Every bible field the location-sheet prompt reads (#1785). `name` is a
+ * label, hashed only by the pre-#1108 digest.
+ */
+export type LocationSheetBibleHashFields = LocationBibleHashFields &
+  Pick<
+    LocationBibleEntry,
+    | 'type'
+    | 'timeOfDay'
+    | 'architecturalStyle'
+    | 'keyFeatures'
+    | 'colorPalette'
+    | 'lightingSetup'
+    | 'ambiance'
+  >;
+
 export type LocationSheetHashInput = {
-  locationBible: LocationBibleHashFields;
+  locationBible: LocationSheetBibleHashFields;
   /** Required; `null` is "no library reference". */
   libraryLocationReferenceHash: string | null;
   styleConfigHash: string;
@@ -442,14 +523,18 @@ export type LocationSheetHashInput = {
 
 function locationSheetHashBody(
   input: LocationSheetHashInput,
-  includeName: boolean
+  kind: SheetHashKind
 ): unknown {
+  const lb = input.locationBible;
   return {
     artifact: 'location:sheet',
-    locationBible: {
-      ...(includeName ? { name: trim(input.locationBible.name) } : {}),
-      description: trim(input.locationBible.description),
-    },
+    locationBible:
+      kind === 'current'
+        ? projectLocationForPrompt(lb)
+        : {
+            ...(kind === 'named' ? { name: trim(lb.name) } : {}),
+            description: trim(lb.description),
+          },
     libraryLocationReferenceHash: input.libraryLocationReferenceHash ?? null,
     styleConfigHash: input.styleConfigHash,
     imageModel: input.imageModel,
@@ -462,7 +547,15 @@ const locationBibleHashFieldsSchema = z.object({
 });
 
 const locationSheetHashInputSchema = z.object({
-  locationBible: locationBibleHashFieldsSchema,
+  locationBible: locationBibleHashFieldsSchema.extend({
+    type: z.enum(['interior', 'exterior', 'both']),
+    timeOfDay: z.string(),
+    architecturalStyle: z.string(),
+    keyFeatures: z.string(),
+    colorPalette: z.string(),
+    lightingSetup: z.string(),
+    ambiance: z.string(),
+  }),
   libraryLocationReferenceHash: z.string().nullable(),
   styleConfigHash: z.string(),
   imageModel: z.string(),
@@ -472,22 +565,24 @@ export function computeLocationSheetInputHash(
   raw: LocationSheetHashInput
 ): Promise<LocationSheetInputHash> {
   const input = locationSheetHashInputSchema.parse(raw);
-  return sha256Hex(locationSheetHashBody(input, false)).then(
+  return sha256Hex(locationSheetHashBody(input, 'current')).then(
     locationSheetInputHash
   );
 }
 
+/** Verify: the current digest, or a pre-#1785 / pre-#1108 one. */
 export async function locationSheetInputHashMatches(
   stored: string | null,
   raw: LocationSheetHashInput
 ): Promise<boolean> {
   if (!stored) return false;
   const input = locationSheetHashInputSchema.parse(raw);
-  const [current, legacy] = await Promise.all([
-    sha256Hex(locationSheetHashBody(input, false)),
-    sha256Hex(locationSheetHashBody(input, true)),
-  ]);
-  return stored === current || stored === legacy;
+  const digests = await Promise.all(
+    (['current', 'pre-1785', 'named'] as const).map((kind) =>
+      sha256Hex(locationSheetHashBody(input, kind))
+    )
+  );
+  return digests.includes(stored);
 }
 
 export type LibraryLocationReferenceHashInput = {
@@ -793,15 +888,20 @@ const PROMPT_INPUT_HASH_VERSION_V4 = 4;
  */
 export const LEGACY_HASH_UNTIL = '2026-09-28';
 
-type PromptHashKind = 'current' | 'v5-titled' | 'v5-named' | 'v4';
+/**
+ * `v5-voiced` is the current shape before #1785 took voice-only characters
+ * out of the visual body; the older legacy shapes predate that too.
+ */
+type PromptHashKind = 'current' | 'v5-voiced' | 'v5-titled' | 'v5-named' | 'v4';
 
 function promptHashFlags(kind: PromptHashKind) {
   return {
     hashVersion:
       kind === 'v4' ? PROMPT_INPUT_HASH_VERSION_V4 : PROMPT_INPUT_HASH_VERSION,
     named: kind === 'v4' || kind === 'v5-named',
-    includeTitle: kind !== 'current',
+    includeTitle: kind !== 'current' && kind !== 'v5-voiced',
     includeSceneNumber: kind === 'v4',
+    keepVoiceOnly: kind !== 'current',
   };
 }
 
@@ -852,7 +952,9 @@ function projectCharacterPerformance(c: CharacterBibleEntry) {
   };
 }
 
-function projectLocationForPrompt(l: LocationBibleEntry) {
+function projectLocationForPrompt(
+  l: Omit<LocationSheetBibleHashFields, 'name'>
+) {
   return {
     type: l.type,
     timeOfDay: trim(l.timeOfDay),
@@ -925,10 +1027,18 @@ function visualPromptHashBody(
   kind: PromptHashKind
 ): unknown {
   const flags = promptHashFlags(kind);
-  const bibles = promptBibleProjection(input, {
-    named: flags.named,
-    performance: false,
-  });
+  // A voice-only character is heard, never framed (#1585): the visual LLM
+  // never sees it, so neither does this hash. Toggling `voiceOnly` still
+  // moves the digest — the entry leaves or joins the bible.
+  const bibles = promptBibleProjection(
+    flags.keepVoiceOnly
+      ? input
+      : {
+          ...input,
+          characterBible: input.characterBible.filter((c) => !c.voiceOnly),
+        },
+    { named: flags.named, performance: false }
+  );
   return {
     artifact: 'shot:visual-prompt',
     hashVersion: flags.hashVersion,
@@ -989,18 +1099,12 @@ export async function visualPromptInputHashMatches(
 ): Promise<boolean> {
   if (!stored) return false;
   const input = toVisualBodyInput(assembleVisualPromptHashInput(raw));
-  const [current, v5titled, v5named, v4] = await Promise.all([
-    sha256Hex(visualPromptHashBody(input, 'current')),
-    sha256Hex(visualPromptHashBody(input, 'v5-titled')),
-    sha256Hex(visualPromptHashBody(input, 'v5-named')),
-    sha256Hex(visualPromptHashBody(input, 'v4')),
-  ]);
-  return (
-    stored === current ||
-    stored === v5titled ||
-    stored === v5named ||
-    stored === v4
+  const digests = await Promise.all(
+    (['current', 'v5-voiced', 'v5-titled', 'v5-named', 'v4'] as const).map(
+      (kind) => sha256Hex(visualPromptHashBody(input, kind))
+    )
   );
+  return digests.includes(stored);
 }
 
 export async function hashMotionPromptInput(

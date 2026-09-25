@@ -105,6 +105,7 @@ function makeEvent(): Readonly<WorkflowEvent<CharacterSheetWorkflowInput>> {
       characterMetadata,
       referenceImageUrl: '/r2/talent/team-1/tal-1/sheet.png',
       reuseTalentSheet: true,
+      castTalentDescription: null,
     },
     instanceId: 'run-1',
     workflowName: 'character-sheet',

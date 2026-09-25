@@ -300,6 +300,7 @@ describe('computeCharacterSheetInputHash', () => {
       consistencyTag: 'sarah_blonde_30s',
     },
     talentSheetHash: 'talent-sha',
+    talent: null,
     styleConfigHash: 'style-sha',
     imageModel: 'flux-pro-v1.1',
   };
@@ -359,6 +360,41 @@ describe('computeCharacterSheetInputHash', () => {
     expect(new Set([a, talent, style, model]).size).toBe(4);
   });
 
+  it('a cast talent edit re-stales the sheet; pre-#1785 digests still verify (#1785)', async () => {
+    const cast: CharacterSheetHashInput = {
+      ...base,
+      talent: {
+        description: 'Freckles, auburn hair',
+        sheetImageUrl: '/r2/talent/sheet-1.png',
+        sheetLook: {
+          age: '30s',
+          gender: 'female',
+          ethnicity: '',
+          physicalDescription: 'auburn hair',
+        },
+      },
+    };
+    const a = await computeCharacterSheetInputHash(cast);
+    const talent = cast.talent;
+    if (!talent?.sheetLook) throw new Error('fixture is cast');
+    const edits = await Promise.all(
+      [
+        { ...talent, description: 'Freckles, grey hair' },
+        { ...talent, sheetImageUrl: '/r2/talent/sheet-2.png' },
+        {
+          ...talent,
+          sheetLook: { ...talent.sheetLook, physicalDescription: 'grey' },
+        },
+      ].map((t) => computeCharacterSheetInputHash({ ...cast, talent: t }))
+    );
+    expect(new Set([a, ...edits]).size).toBe(4);
+    // Uncast digests do not move, and a sheet stamped before the talent
+    // channel existed still verifies until LEGACY_HASH_UNTIL.
+    expect(await computeCharacterSheetInputHash(base)).not.toBe(a);
+    const preTalent = await computeCharacterSheetInputHash(base);
+    expect(await characterSheetInputHashMatches(preTalent, cast)).toBe(true);
+  });
+
   it('does not fold isPerson into the sheet hash (#1682)', async () => {
     const a = await computeCharacterSheetInputHash(base);
     const flagged = await computeCharacterSheetInputHash({
@@ -391,7 +427,17 @@ describe('computeCharacterSheetInputHash', () => {
 
 describe('computeLocationSheetInputHash', () => {
   const base: LocationSheetHashInput = {
-    locationBible: { name: 'Office', description: 'Modern open-plan, glass' },
+    locationBible: {
+      name: 'Office',
+      description: 'Modern open-plan, glass',
+      type: 'interior',
+      timeOfDay: 'day',
+      architecturalStyle: 'modernist',
+      keyFeatures: 'standing desks',
+      colorPalette: 'white, steel',
+      lightingSetup: 'fluorescent',
+      ambiance: 'busy',
+    },
     libraryLocationReferenceHash: 'lib-sha',
     styleConfigHash: 'style-sha',
     imageModel: 'flux-pro-v1.1',
@@ -420,6 +466,29 @@ describe('computeLocationSheetInputHash', () => {
     expect(new Set([a, ...variants]).size).toBe(5);
   });
 
+  it('every bible field the sheet prompt reads re-stales it (#1785)', async () => {
+    const a = await computeLocationSheetInputHash(base);
+    const edits = await Promise.all(
+      (
+        [
+          ['type', 'exterior'],
+          ['timeOfDay', 'night'],
+          ['architecturalStyle', 'brutalist'],
+          ['keyFeatures', 'a single long table'],
+          ['colorPalette', 'teal, orange'],
+          ['lightingSetup', 'neon'],
+          ['ambiance', 'deserted'],
+        ] as const
+      ).map(([field, value]) =>
+        computeLocationSheetInputHash({
+          ...base,
+          locationBible: { ...base.locationBible, [field]: value },
+        })
+      )
+    );
+    expect(new Set([a, ...edits]).size).toBe(8);
+  });
+
   it('a location rename does not change the sheet hash', async () => {
     const a = await computeLocationSheetInputHash(base);
     const renamed = await computeLocationSheetInputHash({
@@ -443,6 +512,16 @@ describe('computeLibraryLocationReferenceInputHash', () => {
     const refSame = await computeLibraryLocationReferenceInputHash({ ...base });
     const sheetEquivalent = await computeLocationSheetInputHash({
       ...base,
+      locationBible: {
+        ...base.locationBible,
+        type: 'interior',
+        timeOfDay: '',
+        architecturalStyle: '',
+        keyFeatures: '',
+        colorPalette: '',
+        lightingSetup: '',
+        ambiance: '',
+      },
       libraryLocationReferenceHash: null,
     });
     const refModel = await computeLibraryLocationReferenceInputHash({
@@ -561,6 +640,7 @@ describe('canonical serialization', () => {
         consistencyTag: 'alice_30s',
       },
       talentSheetHash: 'talent',
+      talent: null,
       styleConfigHash: 'style',
       imageModel: 'flux-pro',
     });
@@ -569,6 +649,7 @@ describe('canonical serialization', () => {
       imageModel: 'flux-pro',
       styleConfigHash: 'style',
       talentSheetHash: 'talent',
+      talent: null,
       characterBible: {
         consistencyTag: 'alice_30s',
         distinguishingFeatures: 'scar',

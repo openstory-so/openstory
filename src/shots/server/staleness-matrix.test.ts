@@ -19,6 +19,7 @@ import {
   hashMotionPromptInput,
   computeVideoManifestInputHash,
   hashVisualPromptInput,
+  visualPromptInputHashMatches,
   type CharacterBibleHashFields,
   type VisualPromptHashInput,
 } from '@/shots/input-hash';
@@ -163,13 +164,16 @@ const MATRIX: MatrixRow[] = [
     expected: { image: 'stale', video: 'fresh' },
   },
   {
-    // Image model switch re-stales stills of that modality only.
+    // Hash level only: a still stamped under another model. A SEQUENCE
+    // image-model switch never reaches this — verify pins the still's own
+    // model, so a switch applies to the next render (#1785).
     mutation: 'image model changed',
     apply: (s) => ({ ...s, imageModel: 'other_image_model' }),
     expected: { image: 'stale', video: 'fresh' },
   },
   {
-    // Video model switch re-stales renders of that modality only.
+    // Hash level only, like the image row: the clip pointer compare ignores
+    // the sequence video model — a switch starts a new segment (#1785).
     mutation: 'video model changed',
     apply: (s) => ({ ...s, videoModel: 'other_video_model' }),
     expected: { image: 'fresh', video: 'stale' },
@@ -317,6 +321,7 @@ function sheetHash(bible: CharacterBibleHashFields): Promise<string> {
   return computeCharacterSheetInputHash({
     characterBible: bible,
     talentSheetHash: null,
+    talent: null,
     styleConfigHash: 'style-hash-1',
     imageModel: 'nano_banana_2',
   });
@@ -397,6 +402,25 @@ const BIBLE_MATRIX: BibleMatrixRow[] = [
     apply: (s) => ({ ...s, locationBible: [] }),
     expected: 'stale',
   },
+  {
+    // The still prompt drops a voice-only character (#1585), so the toggle
+    // moves the visual hash (#1785).
+    mutation: 'referenced character made voice-only',
+    apply: (s) => ({
+      ...s,
+      characterBible: [{ ...ALICE, voiceOnly: true }],
+    }),
+    expected: 'stale',
+  },
+  {
+    // Deliberately not hashed (#1785): the prompt LLM reads the scenes
+    // before and after for continuity, but hashing them would re-stale three
+    // scenes per edit and break the reorder contract below. The hasher has
+    // no neighbour channel, so a neighbour edit is this state unchanged.
+    mutation: 'neighbour scene script edited (not an edge)',
+    apply: (s) => s,
+    expected: 'fresh',
+  },
 ];
 
 describe('staleness matrix — cast/location bible mutations (§4.2, Phase 2)', () => {
@@ -433,6 +457,59 @@ describe('staleness matrix — cast/location bible mutations (§4.2, Phase 2)', 
     const withBobDeleted = await hashNarrowed([ALICE]);
     expect(withEditedBob).toBe(withBob);
     expect(withBobDeleted).toBe(withBob);
+  });
+
+  it("a voice-only character's look is not in the visual hash, but is in the motion hash (#1785)", async () => {
+    const narrator: CharacterBibleEntry = {
+      ...BOB,
+      voiceOnly: true,
+      physicalDescription: 'never seen',
+    };
+    const withNarrator: BibleState = {
+      ...BIBLE_BASE,
+      characterBible: [ALICE, narrator],
+    };
+    const edited: BibleState = {
+      ...BIBLE_BASE,
+      characterBible: [
+        ALICE,
+        { ...narrator, physicalDescription: 'rewritten' },
+      ],
+    };
+    expect(await promptHash(edited)).toBe(await promptHash(withNarrator));
+    expect(await promptHash(withNarrator)).toBe(await promptHash(BIBLE_BASE));
+    const motionHash = (state: BibleState) =>
+      hashMotionPromptInput({
+        scene: SCENE,
+        styleConfig: STYLE,
+        characterBible: state.characterBible,
+        locationBible: state.locationBible,
+        elementBible: [],
+        aspectRatio: '16:9',
+        analysisModel: 'anthropic/claude-haiku-4.5',
+        startingFrameImageUrl: null,
+        referenceOnly: false,
+      });
+    expect(await motionHash(edited)).not.toBe(await motionHash(withNarrator));
+  });
+
+  it('a pre-#1785 visual digest that hashed a voice-only character still verifies', async () => {
+    const input: VisualPromptHashInput = {
+      scene: SCENE,
+      styleConfig: STYLE,
+      characterBible: [{ ...ALICE, voiceOnly: true }],
+      locationBible: [BEACH],
+      elementBible: [],
+      aspectRatio: '16:9',
+      analysisModel: 'anthropic/claude-haiku-4.5',
+    };
+    // The old current shape equals today's digest with the flag cleared.
+    const preFix = await hashVisualPromptInput({
+      ...input,
+      characterBible: [ALICE],
+    });
+    expect(await hashVisualPromptInput(input)).not.toBe(preFix);
+    expect(await visualPromptInputHashMatches(preFix, input)).toBe(true);
   });
 
   it('a rename does not re-stale the character sheet (name is not hashed)', async () => {

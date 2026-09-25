@@ -3,14 +3,16 @@
  * regenerate-from-bible, no talent picker, no shot regen.
  */
 
-import type { CharacterBibleEntry } from '@/shots/scene-analysis.schema';
 import type { CharacterWithSheet } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { characterToBible } from '@/cast/server/bibles-from-scoped';
 import { resolveSheetImageModel } from '@/cast/sheet-image-model';
 import { resolveSequenceStyleConfig } from '@/look/style-config';
 import type { CharacterSheetWorkflowInput } from '@/platform/server/workflow/types';
-import { computeCharacterSheetHashFromDto } from '@/cast/server/workflows/sheet-snapshots';
+import {
+  computeCharacterSheetHashFromDto,
+  resolveCastTalent,
+} from '@/cast/server/workflows/sheet-snapshots';
 
 export async function buildRegenerateCharacterSheetPayload(params: {
   scopedDb: ScopedDb;
@@ -45,20 +47,7 @@ export async function buildRegenerateCharacterSheetPayload(params: {
         })
       : undefined;
 
-  let referenceImageUrl: string | undefined;
-  let talentMetadata: CharacterBibleEntry | undefined;
-  let talentDescription: string | undefined;
-  let talentSheetInputHash: string | null = null;
-
-  if (character.talentId) {
-    const talent = await scopedDb.talent.getWithRelations(character.talentId);
-    const convergent = talent?.sheets.filter((s) => !s.divergedAt) ?? [];
-    const defaultSheet = convergent.find((s) => s.isDefault) ?? convergent[0];
-    referenceImageUrl = defaultSheet?.imageUrl ?? undefined;
-    talentMetadata = defaultSheet?.metadata ?? undefined;
-    talentDescription = talent?.description ?? undefined;
-    talentSheetInputHash = defaultSheet?.inputHash ?? null;
-  }
+  const cast = await resolveCastTalent(scopedDb, character.talentId);
 
   const liveVersion = character.selectedSheetVersionId
     ? await scopedDb.characterSheetVariants.getById(
@@ -78,13 +67,11 @@ export async function buildRegenerateCharacterSheetPayload(params: {
       liveVersionModel: liveVersion?.model,
       sequenceImageModel: sequence.imageModel,
     }),
-    referenceImageUrl,
-    talentMetadata,
-    talentDescription,
+    ...cast,
+    talentDescription: cast.castTalentDescription ?? undefined,
     // Always generate: reuse would skip the bible edit the user just saved.
     reuseTalentSheet: false,
     styleConfig,
-    talentSheetInputHash,
   };
   partial.snapshotInputHash = await computeCharacterSheetHashFromDto(partial);
   return partial;

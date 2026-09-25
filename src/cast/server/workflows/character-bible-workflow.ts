@@ -164,6 +164,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           : undefined,
         reuseTalentSheet,
         styleConfig: input.styleConfig,
+        castTalentDescription: talentMatch?.talentDescription ?? null,
       };
 
       const childResult = await spawnAndAwaitChild<
