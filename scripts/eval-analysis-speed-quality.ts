@@ -678,7 +678,7 @@ async function runCall(
   }
 
   if (job.call === 'music') {
-    const summaries = musicSceneSummariesFromAnalysis(gold.scenes);
+    const summaries = musicSceneSummariesFromAnalysis(gold.scenes, {});
     const { messages } = await getChatPrompt('phase/music-design-chat', {
       scenes: JSON.stringify(summaries, null, 2),
       sceneCount: String(summaries.length),

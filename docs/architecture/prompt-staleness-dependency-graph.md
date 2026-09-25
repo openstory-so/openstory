@@ -543,25 +543,34 @@ sha256Hex({
   artifact: 'sequence:music-prompt',
   hashVersion: 6,
   // One row per scene with shots, in scene order: storyBeat, location,
-  // timeOfDay, and the scene's shot durations summed. Scene id and title
-  // are dropped (order is the key; the title is a label).
+  // timeOfDay, the scene's shot durations summed, and its head shot's visual
+  // prompt text (visualSummary). Scene id and title are dropped (order is
+  // the key; the title is a label).
   sceneSummaries,
   analysisModel: trim(analysisModel),
 });
 ```
 
 The summaries have ONE builder (`src/audio/server/workflows/music-scene-summaries.ts`),
-fed the scene row and its shots' durations on both sides (#1783). The pipeline
-stamp reaches it through `musicSceneSummariesFromAnalysis`, which runs the
-analysis scenes through `buildSceneInsert` and `sceneShotSpecs` — the insert
-builders that wrote the rows — so it needs no mid-run read. Verify,
-regenerate, Update all and smart retry use `musicSceneSummariesFromRows`.
+fed the scene row, its shots' durations and its head shot's visual prompt text
+on both sides (#1783). The pipeline stamp reaches it through
+`musicSceneSummariesFromAnalysis`, which runs the analysis scenes through
+`buildSceneInsert` and `sceneShotSpecs` — the insert builders that wrote the
+rows — and takes the visual text analyze-script wrote onto each head shot
+(`visualSummaryBySceneId` on the payload: the LLM prompt on a 1-shot scene, the
+derived one on a 2+ shot scene, `{}` in reference-only), so it needs no mid-run
+read. Verify, regenerate, Update all and smart retry use
+`loadMusicSceneSummaries`, which reads the stored rows and each head shot's
+SELECTED visual prompt in the server fn; Update all carries the result on its
+payload.
 Before #1783 the pipeline stamped per-scene summaries with the analysis scene
 id, the snapped scene label and the visual prompt, while verify hashed one row
 per shot with the row id and an empty visual prompt, so every pipeline music
-prompt read stale from birth. The visual prompt is no longer part of the brief:
-no regenerate path ever sent it, and hashing it would re-stale the track on
-every still-prompt tweak.
+prompt read stale from birth. Every path now sends the visual prompt to the
+LLM and hashes it, so a visual-prompt edit on a head shot re-stales the music
+prompt (the `visualPrompt → musicPrompt` edge). An Update all that regenerates
+visual prompts snapshots the music summaries at click time, so the music prompt
+can read stale again after it; the next Update all catches it up.
 
 Legacy: until `LEGACY_HASH_UNTIL`, verify also accepts the pre-#1783 per-shot
 digests (`musicSceneSummariesFromRows`' `legacyShotSummaries`), so prompts

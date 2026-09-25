@@ -1205,6 +1205,7 @@ describe('prompt input hashes', () => {
     durationSeconds: 10,
     location: 'INT. STUDIO - NIGHT',
     timeOfDay: 'night',
+    visualSummary: 'Wide shot, low key lighting',
   };
 
   it('music prompt hash is stable for equivalent inputs and changes with sceneSummaries', async () => {

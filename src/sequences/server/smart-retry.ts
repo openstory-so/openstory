@@ -78,8 +78,10 @@ import type {
   MusicPromptWorkflowInput,
   MusicWorkflowInput,
 } from '@/platform/server/workflow/types';
-import { musicSceneSummariesFromRows } from '@/audio/server/workflows/music-scene-summaries';
-import { musicRequestDurationSeconds } from '@/audio/server/music-staleness';
+import {
+  loadMusicSceneSummaries,
+  musicRequestDurationSeconds,
+} from '@/audio/server/music-staleness';
 import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'sequences', 'smart-retry']);
@@ -558,8 +560,9 @@ export async function executeSmartRetry(context: SmartRetryContext) {
     sequence.status === 'failed'
   ) {
     const allShots = await context.scopedDb.shots.listBySequence(sequence.id);
-    const { sceneSummaries: scenes } = musicSceneSummariesFromRows(
-      [...scenesById.values()],
+    const { sceneSummaries: scenes } = await loadMusicSceneSummaries(
+      context.scopedDb,
+      sequence.id,
       allShots
     );
     const totalDuration = musicRequestDurationSeconds(allShots);

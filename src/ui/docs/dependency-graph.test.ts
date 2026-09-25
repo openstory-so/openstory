@@ -41,13 +41,11 @@ describe('dependency graph', () => {
       'clip',
       'export',
       'motionPrompt',
+      'musicPrompt',
+      'musicTrack',
       'still',
       'visualPrompt',
     ]);
-    // The music brief reads scenes, not prompts (#1783).
-    expect(ids(staleAfterEdit('visualPrompt', 'start-frame'))).not.toContain(
-      'musicPrompt'
-    );
     const still = staleAfterEdit('character', 'start-frame').find(
       (r) => r.id === 'still'
     );
