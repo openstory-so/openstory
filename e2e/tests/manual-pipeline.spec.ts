@@ -313,3 +313,89 @@ testWithUser.describe('Manual pipeline (no storyboard)', () => {
     }
   );
 });
+
+testWithUser(
+  'blank sequence creation, manual script entry and settings survive reload',
+  async ({ page, testUser }) => {
+    testWithUser.setTimeout(120_000);
+    const fixture = await createTestSequence(
+      testUser.teamId,
+      testUser.id,
+      'Blank creation style fixture'
+    );
+    let createdId: string | undefined;
+    const title = `Manual film ${crypto.randomUUID().slice(0, 8)}`;
+    try {
+      await page.goto('/sequences');
+      await page
+        .getByRole('button', { name: 'New sequence', exact: true })
+        .click();
+      await page.getByRole('menuitem', { name: /^New blank sequence/ }).click();
+      const dialog = page.getByRole('dialog', {
+        name: 'New blank sequence',
+        exact: true,
+      });
+      await dialog.getByLabel('Title', { exact: true }).fill(title);
+      await dialog.getByRole('button', { name: 'Select Style' }).click();
+      await page.getByTestId(`style-library-card-${fixture.styleId}`).click();
+      await page.getByRole('button', { name: /^Use the .* style$/ }).click();
+      await dialog.getByRole('button', { name: 'Select aspect ratio' }).click();
+      await page.getByRole('menuitemradio', { name: /9:16/ }).click();
+      await dialog
+        .getByRole('button', { name: 'Create blank sequence', exact: true })
+        .click();
+      await expect(page).toHaveURL(/\/sequences\/[^/]+\/scenes/);
+      createdId = new URL(page.url()).pathname.split('/')[2];
+      await expect(
+        page.getByRole('heading', { name: title, exact: true })
+      ).toBeVisible({ timeout: 30_000 });
+      await page
+        .getByRole('button', { name: 'Add scene', exact: true })
+        .click();
+      const scene = page.getByRole('region', { name: /^Scene 1/ });
+      const script =
+        'MAYA opens the studio door. A shaft of sunlight falls across her desk.';
+      await scene.locator('[contenteditable="true"]').fill(script);
+      await scene.getByRole('button', { name: 'Save', exact: true }).click();
+      await expect(
+        scene.getByRole('button', { name: 'Save', exact: true })
+      ).toHaveCount(0);
+      await page.reload();
+      await expect(
+        page
+          .getByRole('region', { name: /^Scene 1/ })
+          .locator('[contenteditable="true"]')
+      ).toHaveText(script);
+      await page
+        .getByRole('button', { name: 'Sequence settings', exact: true })
+        .click();
+      const settings = page.getByRole('dialog', {
+        name: 'Sequence settings',
+        exact: true,
+      });
+      await expect(settings.getByLabel('Title', { exact: true })).toHaveValue(
+        title
+      );
+      await expect(
+        settings.getByRole('button', { name: 'Select aspect ratio' })
+      ).toContainText('9:16');
+      await settings
+        .getByLabel('Title', { exact: true })
+        .fill(`${title} revised`);
+      await settings.getByRole('button', { name: 'Save settings' }).click();
+      await expect(settings).toBeHidden();
+      await page.reload();
+      await expect(
+        page.getByRole('heading', { name: `${title} revised`, exact: true })
+      ).toBeVisible();
+      await expect(
+        page
+          .getByRole('region', { name: /^Scene 1/ })
+          .locator('[contenteditable="true"]')
+      ).toHaveText(script);
+    } finally {
+      if (createdId) await cleanupSequenceById(createdId, 'unused-style');
+      await cleanupSequenceById(fixture.id, fixture.styleId);
+    }
+  }
+);

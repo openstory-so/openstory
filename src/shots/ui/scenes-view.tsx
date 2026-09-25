@@ -1,3 +1,9 @@
+import {
+  MANUAL_ANALYSIS_WORKFLOW,
+  MANUAL_ANALYSIS_RETRY_MESSAGE,
+} from '@/sequences/manual-sequence.schema';
+import { AnalyzeManualSequenceButton } from '@/sequences/ui/analyze-manual-sequence-button';
+import { ManualSequenceDialog } from '@/sequences/ui/manual-sequence-dialog';
 import { GenerationProgressBanner } from '@/sequences/ui/generation/generation-progress-banner';
 import { theatreDraftLabel } from '@/motion/draft-mode';
 import { RenderWaitCopy } from '@/sequences/ui/generation/render-wait-copy';
@@ -1615,7 +1621,9 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     regeneratingMotion,
     onBatchGenerateMotion: handleBatchMotionGeneration,
     nextStage,
-    onContinueGeneration: handleContinueGeneration,
+    onContinueGeneration: sequence?.generationCheckpoint
+      ? handleContinueGeneration
+      : undefined,
     onGenerateMusic: handleGenerateMusic,
     musicPromptsReady,
     hideBatchButton: isGenerationActive,
@@ -1642,17 +1650,37 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       {/* Progress rides in the sequence title row (#1427) — no layout shift,
           and it never sits on top of anything you might want to click. */}
       <SequenceHeaderPortal>{progressChip}</SequenceHeaderPortal>
+      {sequence && (
+        <div className="flex shrink-0 justify-end gap-2 border-b px-4 py-2">
+          <ManualSequenceDialog sequence={sequence} />
+          <AnalyzeManualSequenceButton
+            sequenceId={sequenceId}
+            disabled={
+              isGenerationActive ||
+              !scenes?.some((scene) => scene.script?.extract.trim())
+            }
+          />
+        </div>
+      )}
 
       {/* Failure summary with smart retry — wait until the run finishes so a
           single in-flight miss doesn't headline the first result (#1286). */}
-      {failureSummary?.hasFailed && !isGenerationActive && (
-        <FailureSummaryBanner
-          summary={failureSummary}
-          onRetry={() => void handleSmartRetry()}
-          onFullRetry={() => void handleSmartRetry()}
-          isRetrying={isRetrying}
-        />
-      )}
+      {sequence?.status === 'failed' &&
+        sequence.workflow === MANUAL_ANALYSIS_WORKFLOW && (
+          <div role="alert" className="border-b px-4 py-3 text-sm">
+            AI assistance failed. {MANUAL_ANALYSIS_RETRY_MESSAGE}
+          </div>
+        )}
+      {failureSummary?.hasFailed &&
+        !isGenerationActive &&
+        sequence?.workflow !== MANUAL_ANALYSIS_WORKFLOW && (
+          <FailureSummaryBanner
+            summary={failureSummary}
+            onRetry={() => void handleSmartRetry()}
+            onFullRetry={() => void handleSmartRetry()}
+            isRetrying={isRetrying}
+          />
+        )}
 
       <div className="flex flex-1 min-h-0">
         <div className="hidden min-h-0 md:block shrink-0 pl-4 py-4">

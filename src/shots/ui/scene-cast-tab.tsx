@@ -1,3 +1,4 @@
+import { AnalyzeManualSequenceButton } from '@/sequences/ui/analyze-manual-sequence-button';
 /**
  * Scene Cast Tab
  * Displays characters appearing in the current shot with a cinematic/editorial design
@@ -221,7 +222,15 @@ export const SceneCastTab: React.FC<SceneCastTabProps> = ({
             ? 'No cast yet'
             : 'No cast in this selection — clear the selection to add one'}
         </p>
-        {canAdd && <AddCharacterDialog sequenceId={sequenceId} />}
+        {canAdd && (
+          <div className="flex flex-wrap gap-2">
+            <AnalyzeManualSequenceButton
+              sequenceId={sequenceId}
+              disabled={false}
+            />
+            <AddCharacterDialog sequenceId={sequenceId} />
+          </div>
+        )}
       </div>
     );
   }
@@ -237,7 +246,15 @@ export const SceneCastTab: React.FC<SceneCastTabProps> = ({
             {scopedCast.length === 1 ? 'character' : 'characters'}
           </span>
         </div>
-        {canAdd && <AddCharacterDialog sequenceId={sequenceId} />}
+        {canAdd && (
+          <div className="flex flex-wrap gap-2">
+            <AnalyzeManualSequenceButton
+              sequenceId={sequenceId}
+              disabled={false}
+            />
+            <AddCharacterDialog sequenceId={sequenceId} />
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-4 @[360px]/inspector:grid-cols-3">

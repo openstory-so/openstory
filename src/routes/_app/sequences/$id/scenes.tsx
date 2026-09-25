@@ -60,7 +60,7 @@ export const Route = createFileRoute('/_app/sequences/$id/scenes')({
         generateVoices: sequence.generateVoices,
       }),
     });
-    if (isContinueStage(nextStage)) {
+    if (sequence.generationCheckpoint && isContinueStage(nextStage)) {
       const stopAt = sequence.generationStopAt ?? DEFAULT_GENERATION_STOP_AT;
       await queryClient.ensureQueryData({
         queryKey: sequenceKeys.generationSlice(

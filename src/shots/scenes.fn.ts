@@ -79,11 +79,8 @@ export const updateSceneScriptFn = createServerFn({ method: 'POST' })
     }
 
     const selected = await scopedDb.sceneScriptVersions.getSelected(sceneId);
-    const currentScript = selected?.content;
-    if (!currentScript) {
-      throw new Error('Scene has no script to edit');
-    }
-    const scriptChanged = data.extract !== currentScript.extract;
+    const currentScript = selected?.content ?? { extract: '', dialogue: [] };
+    const scriptChanged = !selected || data.extract !== currentScript.extract;
 
     if (scriptChanged) {
       await scopedDb.sceneScriptVersions.write({
@@ -194,6 +191,14 @@ export const createSceneFn = createServerFn({ method: 'POST' })
       location: data.location ?? null,
       timeOfDay: data.timeOfDay ?? null,
       storyBeat: data.storyBeat ?? null,
+      continuity: {
+        characterTags: [],
+        environmentTag: '',
+        elementTags: [],
+        colorPalette: '',
+        lightingSetup: '',
+        styleTag: '',
+      },
     });
     await scopedDb.sequenceEvents.record({
       sequenceId: sequence.id,

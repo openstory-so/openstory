@@ -160,3 +160,16 @@ Progress is shown via a real-time banner with phase indicators. You can navigate
 ## Regenerating a Sequence
 
 From the **Script** tab of an existing sequence, you can edit the script and click **Regenerate Sequence**. This creates a new sequence from the modified script (the original is preserved).
+
+## Build a sequence manually
+
+On **Sequences**, select **New sequence → New blank sequence**. Choose a title, style, aspect ratio, and text model, then select **Create blank sequence**. Creating a blank sequence does not start AI generation.
+
+Use **Add scene** to build your script scene by scene. Save each scene's script, add or reorder shots, and upload your own images and video using the existing shot controls. **Sequence settings** lets you change the title and generation options without regenerating existing media.
+
+AI assistance is optional:
+
+- Select a scene and choose **Determine shots** to append suggested shots from its saved script.
+- Choose **Scan for characters**, also available in Cast, to add characters found in the saved script.
+
+These actions preserve existing scenes, scripts, shots, characters, and media. Save script edits before running either action. Repeating **Determine shots** adds another set of suggested shots; it does not replace the earlier set.

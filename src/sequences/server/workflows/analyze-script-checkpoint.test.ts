@@ -1072,3 +1072,31 @@ describe('AnalyzeScriptWorkflow script checkpoint', () => {
     expect(spawnAndAwaitChild).not.toHaveBeenCalled();
   });
 });
+
+test.each(['shots', 'characters'] as const)(
+  'manual %s analysis leaves the generation checkpoint and existing cast intact',
+  async (action) => {
+    const update: UpdateMock = vi.fn(async () => undefined);
+    await makeWorkflow().invokeRunImpl(
+      makeEvent({
+        pendingAutoStyleId: undefined,
+        stopAt: 'script',
+        additiveScenes: [],
+        additiveAction: action,
+      }),
+      makeStep(),
+      makeScopedDb(update)
+    );
+    expect(spawned()).toEqual(['spawn-scene-split']);
+    expect(update).not.toHaveBeenCalled();
+    expect(createCastRecords).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        additive: true,
+        locationBible: [],
+        elementBible: [],
+        ...(action === 'shots' ? { characterBible: [] } : {}),
+      })
+    );
+  }
+);

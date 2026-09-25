@@ -1,3 +1,7 @@
+import {
+  MANUAL_ANALYSIS_WORKFLOW,
+  MANUAL_ANALYSIS_RETRY_MESSAGE,
+} from '@/sequences/manual-sequence.schema';
 /**
  * Smart-retry orchestration (#1257: moved out of `functions/smart-retry.ts`).
  * Detects what failed in a sequence and only retries those parts.
@@ -122,6 +126,8 @@ export type SmartRetryContext = {
  */
 export async function executeSmartRetry(context: SmartRetryContext) {
   const { sequence, user, teamId } = context;
+  if (sequence.workflow === MANUAL_ANALYSIS_WORKFLOW)
+    throw new Error(MANUAL_ANALYSIS_RETRY_MESSAGE);
 
   // A sequence marked failed does NOT imply its workflow tree is dead —
   // children outlive a timed-out parent (#839). Reject every retry shape

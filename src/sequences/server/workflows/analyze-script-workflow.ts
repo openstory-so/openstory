@@ -171,7 +171,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
 
     const persistProgress = async (next: GenerationCheckpoint) => {
       checkpoint = next;
-      if (!sequenceId) return;
+      if (!sequenceId || input.additiveScenes) return;
       await step.do(`persist-pipeline-${next.completedStage}`, async () => {
         await scopedDb.sequences.update({
           id: sequenceId,
@@ -322,7 +322,9 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           reservationId: input.reservationId,
           promptName: 'phase/scene-splitting-boundaries-chat',
           aspectRatio,
-          script: sanitizeScriptContent(script),
+          script: input.additiveScenes ? script : sanitizeScriptContent(script),
+          additiveScenes: input.additiveScenes,
+          additiveAction: input.additiveAction,
           userCountry: input.userCountry,
           modelId: analysisModelId,
           elements: elementsMinimal,
@@ -387,7 +389,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     // Still the Script stage — same banner segment, new caption.
     // ----------------------------------------------------------------------
     const runScript = shouldRunStage(startFrom, stopAt, 'script');
-    if (runScript) {
+    if (runScript && !input.additiveAction) {
       await step.do('phase-1-casting', async () => {
         await getGenerationChannel(sequenceId).emit('generation.phase:start', {
           phase: GENERATION_STAGE_META.script.phase,
@@ -395,54 +397,55 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         });
       });
     }
-    const matchingSettled = runScript
-      ? await Promise.allSettled([
-          spawnAndAwaitChild<
-            TalentMatchingWorkflowInput,
-            TalentMatchingWorkflowOutput
-          >(step, {
-            binding: this.env.TALENT_MATCHING_WORKFLOW,
-            parentBindingName: PARENT_BINDING_NAME,
-            parentInstanceId,
-            childId: `talent-matching:${sequenceId ?? 'no-seq'}`,
-            childPayload: {
-              sequenceId,
-              userId: input.userId,
-              teamId: input.teamId,
-              reservationId: input.reservationId,
-              analysisModelId,
-              suggestedTalentIds,
-              suggestedTalent: input.suggestedTalent,
-              characterBible,
-            },
-            spawnStepName: 'spawn-talent-matching',
-            awaitStepName: 'await-talent-matching',
-            timeout: '45 minutes',
-          }),
-          spawnAndAwaitChild<
-            LocationMatchingWorkflowInput,
-            LocationMatchingWorkflowOutput
-          >(step, {
-            binding: this.env.LOCATION_MATCHING_WORKFLOW,
-            parentBindingName: PARENT_BINDING_NAME,
-            parentInstanceId,
-            childId: `location-matching:${sequenceId ?? 'no-seq'}`,
-            childPayload: {
-              sequenceId,
-              userId: input.userId,
-              teamId: input.teamId,
-              reservationId: input.reservationId,
-              analysisModelId,
-              suggestedLocationIds,
-              suggestedLocations: input.suggestedLocations,
-              locationBible,
-            },
-            spawnStepName: 'spawn-location-matching',
-            awaitStepName: 'await-location-matching',
-            timeout: '45 minutes',
-          }),
-        ])
-      : null;
+    const matchingSettled =
+      runScript && !input.additiveAction
+        ? await Promise.allSettled([
+            spawnAndAwaitChild<
+              TalentMatchingWorkflowInput,
+              TalentMatchingWorkflowOutput
+            >(step, {
+              binding: this.env.TALENT_MATCHING_WORKFLOW,
+              parentBindingName: PARENT_BINDING_NAME,
+              parentInstanceId,
+              childId: `talent-matching:${sequenceId ?? 'no-seq'}`,
+              childPayload: {
+                sequenceId,
+                userId: input.userId,
+                teamId: input.teamId,
+                reservationId: input.reservationId,
+                analysisModelId,
+                suggestedTalentIds,
+                suggestedTalent: input.suggestedTalent,
+                characterBible,
+              },
+              spawnStepName: 'spawn-talent-matching',
+              awaitStepName: 'await-talent-matching',
+              timeout: '45 minutes',
+            }),
+            spawnAndAwaitChild<
+              LocationMatchingWorkflowInput,
+              LocationMatchingWorkflowOutput
+            >(step, {
+              binding: this.env.LOCATION_MATCHING_WORKFLOW,
+              parentBindingName: PARENT_BINDING_NAME,
+              parentInstanceId,
+              childId: `location-matching:${sequenceId ?? 'no-seq'}`,
+              childPayload: {
+                sequenceId,
+                userId: input.userId,
+                teamId: input.teamId,
+                reservationId: input.reservationId,
+                analysisModelId,
+                suggestedLocationIds,
+                suggestedLocations: input.suggestedLocations,
+                locationBible,
+              },
+              spawnStepName: 'spawn-location-matching',
+              awaitStepName: 'await-location-matching',
+              timeout: '45 minutes',
+            }),
+          ])
+        : null;
     const talentSettled = matchingSettled?.[0];
     const locationMatchSettled = matchingSettled?.[1];
 
@@ -488,12 +491,14 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
             if (!sequenceId) return { elements: [] };
             return createCastRecords(scopedDb, {
               sequenceId,
-              characterBible,
+              characterBible:
+                input.additiveAction === 'shots' ? [] : characterBible,
               talentMatches: talentCharacterMatches,
-              locationBible,
+              locationBible: input.additiveAction ? [] : locationBible,
               locationMatches: libraryLocationMatches,
-              elementBible,
+              elementBible: input.additiveAction ? [] : elementBible,
               existingElements: elementsMinimal,
+              additive: !!input.additiveScenes,
             });
           })
         ).elements

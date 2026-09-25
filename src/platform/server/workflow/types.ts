@@ -1,3 +1,4 @@
+import type { SceneSplittingScene } from '@/sequences/server/streaming-scene-parser';
 /**
  * Payload and result types for the Cloudflare Workflows entrypoints.
  */
@@ -299,6 +300,9 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
   checkpoint?: GenerationCheckpoint;
   /** Skip poster + shot delete — this run continues an existing pipeline. */
   resume?: boolean;
+  /** Saved manual scenes: append analysis output without replacing existing work. */
+  additiveScenes?: SceneSplittingScene[];
+  additiveAction?: 'shots' | 'characters';
   musicModel?: keyof typeof AUDIO_MODELS;
   /** Multiple audio models for variant generation (first is primary) */
   audioModels?: (keyof typeof AUDIO_MODELS)[];
@@ -379,6 +383,8 @@ export type StoryboardTriggerInput = Omit<
  * Analyze scenes workflow input
  */
 export interface AnalyzeScriptWorkflowInput extends SequenceWorkflowContext {
+  additiveScenes?: SceneSplittingScene[];
+  additiveAction?: 'shots' | 'characters';
   // Required inputs
   script: string;
   /** @see StoryboardWorkflowInput.userCountry — passed straight through. */
@@ -436,6 +442,8 @@ export interface AnalyzeScriptWorkflowInput extends SequenceWorkflowContext {
  * Scene split workflow input
  */
 export type SceneSplitWorkflowInput = SequenceWorkflowContext & {
+  additiveScenes?: SceneSplittingScene[];
+  additiveAction?: 'shots' | 'characters';
   promptName: string;
   modelId: AnalysisModelId;
   aspectRatio: AspectRatio;
