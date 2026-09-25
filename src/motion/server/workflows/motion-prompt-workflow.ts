@@ -11,6 +11,7 @@ import {
   sceneWithShotDialogue,
 } from '@/shots/input-hash';
 import { narrowShotPromptContext } from '@/shots/server/prompt-context';
+import { shotDialogue } from '@/shots/shot-dialogue';
 import {
   motionPromptSchema,
   type MotionPrompt,
@@ -63,10 +64,14 @@ export class MotionPromptWorkflow extends OpenStoryWorkflowEntrypoint<MotionProm
       analysisModelId,
       sequenceId,
       shotId,
-      dialogue,
       startingFrameImageUrl,
       referenceOnly,
     } = input;
+    // A run queued before #1784 carries no `dialogue`: write it from the
+    // script's lines, as that build would have, instead of failing the run.
+    const dialogue =
+      // oxlint-disable-next-line typescript/no-unnecessary-condition -- in-flight payloads from before #1784
+      input.dialogue ?? shotDialogue(scene.originalScript.dialogue);
 
     // ============================================================
     // PHASE 3: Motion Prompt Generation (using durableLLMCall helper)
