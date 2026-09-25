@@ -225,9 +225,9 @@ export function createLocationsMethods(
       data: Partial<Omit<NewLibraryLocation, ServerManagedLocationColumn>>
     ): Promise<LibraryLocation> => {
       // Claims (#1113): the description feeds this location's own sheet run
-      // (a rename is not an input: the hash never covered the name); its
-      // reference feeds every sequence location linked to it.
-      const ownInputMoved = data.description !== undefined;
+      // (a rename is not an input: the hash never covered the name), and a
+      // reference the user sets is a pick that run must not overwrite. The
+      // reference also feeds every sequence location linked to it.
       const referenceMoved =
         data.referenceImageUrl !== undefined ||
         data.referenceInputHash !== undefined;
@@ -236,7 +236,9 @@ export function createLocationsMethods(
           .update(locationLibrary)
           .set({
             ...stripServerManagedColumns(data, SERVER_MANAGED_LOCATION_COLUMNS),
-            ...(ownInputMoved ? { pendingReferenceClaimId: null } : {}),
+            ...(data.description !== undefined || referenceMoved
+              ? { pendingReferenceClaimId: null }
+              : {}),
             updatedAt: new Date(),
           })
           .where(eq(locationLibrary.id, id))
@@ -255,8 +257,8 @@ export function createLocationsMethods(
     },
 
     /**
-     * `inputHash` stamps `referenceInputHash` alongside the reference so
-     * `resolveLibraryLocationReferenceHash` returns something for generated
+     * `inputHash` stamps `referenceInputHash` alongside the reference so the
+     * linked location sheets' triggers hash something for generated
      * references. Omitting it leaves the stored hash untouched (a null hash
      * disables every downstream divergence check for this location).
      */

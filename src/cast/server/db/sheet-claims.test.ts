@@ -383,6 +383,26 @@ describe('library location claims', () => {
     expect((await library().getById(libraryId))?.referenceImageUrl).toBeNull();
   });
 
+  it('does not overwrite a reference the user set mid-run', async () => {
+    const claimId = await library().claimReference(libraryId);
+    await library().update(libraryId, {
+      referenceImageUrl: '/r2/mine.png',
+      referenceImagePath: 'mine.png',
+    });
+    expect(
+      await library().updateReferenceIfClaimed(
+        libraryId,
+        claimId,
+        '/r2/p3.png',
+        'p3.png',
+        HASH_L
+      )
+    ).toBe(false);
+    expect((await library().getById(libraryId))?.referenceImageUrl).toBe(
+      '/r2/mine.png'
+    );
+  });
+
   it('keeps a newer claim when an older run fails', async () => {
     const older = await library().claimReference(libraryId);
     const newer = await library().claimReference(libraryId);
