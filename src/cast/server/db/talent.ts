@@ -295,23 +295,6 @@ function createTalentReadMethodsScoped(db: Database, teamId: string | null) {
           where: { id: sheetId },
         });
       },
-
-      isStale: async (
-        sheetId: string,
-        currentHash: string
-      ): Promise<boolean> => {
-        const result = await db
-          .select({ hash: talentSheets.inputHash })
-          .from(talentSheets)
-          .where(eq(talentSheets.id, sheetId));
-        const first = result[0];
-        if (!first) {
-          throw new Error(`TalentSheet ${sheetId} not found`);
-        }
-        const stored = first.hash;
-        if (stored === null) return false;
-        return currentHash !== stored;
-      },
     },
 
     media: {

@@ -43,6 +43,7 @@ import {
   resolveUploadExtension,
 } from './upload-media';
 import { USER_UPLOAD_MODEL } from '@/shots/user-upload-model';
+import { isSelectedVersionStale } from '@/shots/scene-segments';
 import { buildRegenerateShotSnapshot } from '@/shots/server/workflows/regenerate-shots-snapshot';
 import { type Client, createClient } from '@libsql/client';
 import { eq } from 'drizzle-orm';
@@ -295,6 +296,32 @@ function stalenessArgs() {
   };
 }
 
+/**
+ * The production clip compare, for a render whose motion pointer and live
+ * inputs have not moved — only the shot's selected still is in question.
+ */
+function clipIsStale(
+  version: Parameters<typeof isSelectedVersionStale>[0] | null,
+  currentFrameVersionId: string | null
+) {
+  if (!version) throw new Error('test setup: no selected clip');
+  const motion = version.manifest[0]?.motionPromptVersionId ?? null;
+  return isSelectedVersionStale(
+    version,
+    new Map([[shotId, motion]]),
+    new Map([[shotId, currentFrameVersionId]]),
+    {
+      audioSourceKeyByShot: new Map(),
+      dialogueKeyByShot: new Map(),
+      audioClipIdsByShot: new Map(),
+      referenceIdentity: new Map(),
+      durationMsByShot: new Map(),
+      audioSecondsByShot: new Map(),
+    },
+    new Map()
+  );
+}
+
 /** Run the real verify path for this shot's anchor frame. */
 async function verifyThumbnailStaleness(scene: Scene | null) {
   const { scopedDb, sequence } = stalenessArgs();
@@ -493,9 +520,6 @@ describe('§4.3 B — image-only upload (appendUploadedVersion + select)', () =>
       aspectRatio: '16:9',
     });
     expect(uploaded.inputHash).toBe(verify.snapshotInputHash);
-    expect(await images.isStale(uploaded.id, verify.snapshotInputHash)).toBe(
-      false
-    );
 
     // Prompt untouched: same selection pointer, no new history rows.
     expect(frame?.selectedImagePromptVersionId).toBe(prompt.id);
@@ -511,26 +535,9 @@ describe('§4.3 B — image-only upload (appendUploadedVersion + select)', () =>
     expect(selectedVideo?.manifest[0]?.frameVersionId).not.toBe(
       frame?.selectedImageVersionId
     );
-    // …and its manifest hash diverges from one recomputed over current
-    // pointers.
-    const currentManifest: VideoManifest = [
-      {
-        shotId,
-        motionPromptVersionId: null,
-        frameVersionId: uploaded.id,
-        usesStartFrame: true,
-        durationMs: 4000,
-        audioClipIds: [],
-        audioSourceKey: null,
-        dialogueKey: null,
-        referenceKeys: [],
-      },
-    ];
+    // …so the clip compare reads it stale.
     expect(
-      await videos.isStale(
-        oldVideo.id,
-        await computeVideoManifestInputHash(currentManifest, 'kling_25')
-      )
+      clipIsStale(selectedVideo, frame?.selectedImageVersionId ?? null)
     ).toBe(true);
 
     // Events: the append logged image.uploaded, the repoint image.selected.
@@ -609,7 +616,7 @@ describe('§4.3 B — image-only upload (appendUploadedVersion + select)', () =>
       actorId,
     });
     await images.select(frameId, uploaded.id, { actorId });
-    expect(await images.isStale(uploaded.id, 'any-live-hash')).toBe(false);
+    expect(uploaded.inputHash).toBeNull();
   });
 });
 
@@ -810,9 +817,8 @@ describe('video upload (appendUploadedVersion + select)', () => {
     expect(selected?.status).toBe('completed');
     expect(selected?.isPrimary).toBe(true);
 
-    // Fresh now: the stamped manifest hash matches a recompute over the same
-    // current pointers.
-    expect(await videos.isStale(uploaded.id, inputHash)).toBe(false);
+    // Fresh now: the manifest names the shot's current pointers.
+    expect(clipIsStale(selected, still.id)).toBe(false);
 
     // Replace the still → manifest diverges → the uploaded clip reads stale.
     const images = createFrameVariantsMethods(db);
@@ -828,25 +834,7 @@ describe('video upload (appendUploadedVersion + select)', () => {
       actorId,
     });
     await images.select(frameId, nextStill.id, { actorId });
-    const divergedManifest: VideoManifest = [
-      {
-        shotId,
-        motionPromptVersionId: null,
-        frameVersionId: nextStill.id,
-        usesStartFrame: true,
-        durationMs: 4000,
-        audioClipIds: [],
-        audioSourceKey: null,
-        dialogueKey: null,
-        referenceKeys: [],
-      },
-    ];
-    expect(
-      await videos.isStale(
-        uploaded.id,
-        await computeVideoManifestInputHash(divergedManifest, USER_UPLOAD_MODEL)
-      )
-    ).toBe(true);
+    expect(clipIsStale(selected, nextStill.id)).toBe(true);
 
     const kinds = await eventKinds();
     expect(kinds).toContain('video.uploaded');

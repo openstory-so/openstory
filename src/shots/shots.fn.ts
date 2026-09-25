@@ -666,7 +666,8 @@ const updateShotDurationSchema = z.object({
  *
  * `sceneInputContext` (input-hash.ts) deliberately allowlists `durationSeconds`
  * OUT of the prompt hashes, so changing it re-stales the render
- * (`computeShotVideoInputHash`) and nothing else. That's why this is its own
+ * (the manifest's `durationMs`, compared by `isSelectedVersionStale`) and
+ * nothing else. That's why this is its own
  * endpoint rather than a field on `updateSceneScriptFn`: a duration edit must
  * not append a `scene_script_versions` row or touch prompt staleness.
  *

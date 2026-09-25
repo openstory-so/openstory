@@ -66,10 +66,9 @@ type ShotOrderBy = 'sceneOrder' | 'createdAt' | 'updatedAt';
  */
 export type ShotWithAnchorFrame = Shot & { anchorFrameId: string };
 
-// A shot owns no hashed artifact of its own any more: image staleness is
-// checked via `frameVariants.isStale` / `frames.isStale` (#989) and video
-// staleness via `videoVariants.isStale` (#1067 phase 2d dropped the
-// `shots.videoInputHash` mirror along with the rest of the video block).
+// A shot owns no hashed artifact of its own any more: the still's hash is on
+// its `frame_variants` row (#989) and a clip is compared by the pointers in
+// its render manifest (#1067 phase 2d dropped `shots.videoInputHash`).
 
 // Anchor-frame inserts bind ~10 params per row; 9 rows/chunk keeps each INSERT
 // well under D1's 100-bound-parameter ceiling (see `ensureAnchorFrames`).

@@ -108,12 +108,13 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'INT./EXT. heading',
       'Time of day',
       'Story beat',
+      'Continuity tags: they pick which characters, locations and elements the prompts read',
     ],
     ignored: [
       'Scene title',
       'Scene number',
       'Duration (a clip setting, not a prompt input)',
-      'The generated prompts and continuity tags',
+      'The generated prompts',
     ],
   },
   {
@@ -193,12 +194,15 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     summary:
       'A prop, effect, sound or clip referenced by @token. Detected in the script at the Script stage or added by hand, then yours to edit.',
     counts: [
-      'Token and description (prompts)',
+      'Description (prompts)',
       'Image (still)',
       'Audio or video clip: sent as a reference when the video model takes one',
       'Its media URL, stamped on every clip it was sent to (referenceKeys)',
     ],
-    ignored: [],
+    ignored: [
+      'Token: a label, so a rename stales nothing (text reads it as the element)',
+      'Consistency tag',
+    ],
   },
   // --- You set -------------------------------------------------------------
   {
@@ -258,7 +262,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     summary: 'The LLM that writes prompts.',
     counts: ['Nothing is compared on a switch'],
     ignored: [
-      'Switching model: a prompt is checked against the model that wrote it, so the switch applies to the next generation',
+      'Switching model: a prompt (visual, motion or music) is checked against the model that wrote it, so the switch applies to the next generation',
     ],
   },
   {
@@ -292,8 +296,11 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     kind: 'input',
     band: 'settings',
     summary: 'The model that renders the score.',
-    counts: ['Model id (music track hash)'],
-    ignored: ['An uploaded score, which has no hash to compare'],
+    counts: ['Nothing is compared on a switch'],
+    ignored: [
+      "Switching model: each model keeps its own track, so the switch reads that model's track, or none",
+      'An uploaded score, which has no hash to compare',
+    ],
   },
   {
     id: 'duration',
@@ -316,8 +323,11 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     kind: 'input',
     band: 'settings',
     summary:
-      'Animate a rendered still, or render straight from the reference sheets.',
-    counts: ['On or off (motion prompt)'],
+      'Animate a rendered still, or render straight from the reference sheets. A shot can override the sequence setting.',
+    counts: [
+      'On or off, per shot (motion prompt)',
+      'On or off, per shot (the clip recorded a still, or none)',
+    ],
     ignored: [],
   },
   {
@@ -389,7 +399,10 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     summary:
       'The talent as a sequence sees it. A cast character usually reuses this sheet as its own and always draws from it, so "the talent changed" means "the selected talent sheet changed".',
     counts: ['Talent description', 'Reference photo hashes', 'Image model'],
-    ignored: ['Talent name'],
+    ignored: [
+      'Talent name',
+      'Nothing reports a talent sheet stale: its hash reaches a sequence only through the character sheet',
+    ],
     storedAs: 'talent_sheets.inputHash',
   },
   {
@@ -399,7 +412,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     kind: 'artifact',
     band: 'references',
     summary:
-      "Turnaround sheet for a character in this sequence. When cast, it is usually the talent sheet reused; a costumed one is generated only when the role's clothing or features diverge from the talent.",
+      "Turnaround sheet for a character in this sequence. When cast, it is usually the talent sheet reused; a costumed one is generated only when the role's clothing or features diverge from the talent. A run holds a claim: an edit to anything the sheet reads revokes it, so the run parks its result instead of landing it.",
     counts: [
       'Character bible (age, gender, ethnicity, description, clothing, features, consistency tag)',
       'Talent sheet hash, when cast',
@@ -412,7 +425,8 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Personality and movement',
       'Voice-only characters never get one',
     ],
-    storedAs: 'characters.sheetInputHash',
+    storedAs:
+      'character_sheet_variants.inputHash of the selected version, plus the bible version it read',
   },
   {
     id: 'voice',
@@ -488,7 +502,10 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Style config',
       'Image model',
     ],
-    ignored: ['Name'],
+    ignored: [
+      'Name',
+      'Nothing reports it stale: its hash reaches a sequence only through the location sheet',
+    ],
     storedAs: 'location_library.referenceInputHash',
   },
   {
@@ -497,7 +514,8 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     label: 'Location sheet',
     kind: 'artifact',
     band: 'references',
-    summary: 'Reference image for a location in this sequence.',
+    summary:
+      'Reference image for a location in this sequence. A run holds a claim: an edit to anything the sheet reads revokes it, so the run parks its result instead of landing it.',
     counts: [
       'Location bible (type, time of day, description, architectural style, key features, colour palette, lighting, ambiance)',
       'Library location reference hash, when linked',
@@ -510,7 +528,8 @@ export const GRAPH_NODES: readonly GraphNode[] = [
         gap: "The linked library location's description and reference image, read live: they reach the sheet only through a regenerated library reference",
       },
     ],
-    storedAs: 'sequence_locations.referenceInputHash',
+    storedAs:
+      'location_sheet_variants.inputHash of the selected version, plus the bible version it read',
   },
   // --- Prompts -------------------------------------------------------------
   {
@@ -533,7 +552,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Duration',
       'Names and titles',
       'The still it produces',
-      "A voice-only character's look: heard, never framed, so the still prompt never sees it (the voice-only toggle itself counts)",
+      "A voice-only character's look: heard, never framed, so the still prompt never sees it",
       'The scenes before and after, which the model reads for continuity: hashing them would re-stale three scenes per edit and every scene on a reorder',
     ],
     storedAs: 'frame_prompt_versions.inputHash',
@@ -552,6 +571,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       "The shot's own lines, in place of the script's",
       'The rendered still it was shown (start-frame mode)',
       'Start-frame mode',
+      'Which characters are voice-only',
     ],
     ignored: [
       'Duration',
@@ -590,7 +610,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     band: 'renders',
     summary: 'The rendered start frame for a shot.',
     counts: [
-      'Selected visual prompt text',
+      'Selected visual prompt text, element tokens read as the element',
       'Image model',
       'Aspect ratio',
       'Selected character sheet versions',
@@ -832,7 +852,12 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     tracking: 'hash',
     note: "each scene's shot durations, summed",
   },
-  { from: 'analysisModel', to: 'musicPrompt', tracking: 'hash' },
+  {
+    from: 'analysisModel',
+    to: 'musicPrompt',
+    tracking: 'untracked',
+    note: 'checked against the model that wrote the prompt; a switch applies to the next generation',
+  },
   // Renders
   {
     from: 'visualPrompt',
@@ -864,7 +889,7 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     from: 'motionPrompt',
     to: 'clip',
     tracking: 'pointer',
-    note: 'the manifest records the prompt version',
+    note: 'the manifest records the prompt version; a token rename’s row counts as the row it rewrote, so a rename leaves the clip fresh',
   },
   {
     from: 'still',
@@ -885,6 +910,12 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     tracking: 'pointer',
     mode: 'reference-only',
     note: 'only reference-only sends the location sheet to the video model; the manifest stamps the version it was sent',
+  },
+  {
+    from: 'startFrameMode',
+    to: 'clip',
+    tracking: 'hash',
+    note: 'a start-frame render records its still and a reference-only one records none, so switching a shot either way flags its clip',
   },
   {
     from: 'duration',
@@ -937,8 +968,8 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
   {
     from: 'musicModel',
     to: 'musicTrack',
-    tracking: 'hash',
-    note: 'the model is in the track hash',
+    tracking: 'untracked',
+    note: "each model keeps its own track; a switch reads that model's track, or none",
   },
   {
     from: 'duration',

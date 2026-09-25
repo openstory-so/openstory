@@ -16,6 +16,7 @@ import {
   hashVisualPromptInput,
   motionPromptInputHashMatches,
   visualPromptInputHashMatches,
+  voiceOnlyMovedSince,
 } from '@/shots/input-hash';
 import {
   loadNarrowShotPromptContext,
@@ -205,6 +206,8 @@ type InputHistory = {
   locations: ReadonlyMap<string, readonly LocationBibleVersion[]>;
   scenes: ReadonlyMap<string, readonly SceneScriptVersion[]>;
   style: readonly SequenceStyleVersion[];
+  /** When each shot's current lines were selected (#1784). */
+  dialogueSelectedAt: ReadonlyMap<string, Date>;
 };
 
 type InputHistoryDb = {
@@ -215,6 +218,7 @@ type InputHistoryDb = {
   >;
   sceneScriptVersions: Pick<ScopedDb['sceneScriptVersions'], 'listBySequence'>;
   sequences: Pick<ScopedDb['sequences'], 'listStyleVersions'>;
+  shotDialogue: Pick<ScopedDb['shotDialogue'], 'getSelectedBySequence'>;
 };
 
 function groupBy<T>(rows: readonly T[], key: (row: T) => string) {
@@ -231,11 +235,12 @@ async function loadInputHistory(
   scopedDb: InputHistoryDb,
   sequenceId: string
 ): Promise<InputHistory> {
-  const [characters, locations, scenes, style] = await Promise.all([
+  const [characters, locations, scenes, style, dialogue] = await Promise.all([
     scopedDb.characters.listBibleVersionsBySequence(sequenceId),
     scopedDb.sequenceLocations.listBibleVersionsBySequence(sequenceId),
     scopedDb.sceneScriptVersions.listBySequence(sequenceId),
     scopedDb.sequences.listStyleVersions(sequenceId),
+    scopedDb.shotDialogue.getSelectedBySequence(sequenceId),
   ]);
   return {
     characters: groupBy(characters, (v) => v.characterId),
@@ -245,6 +250,9 @@ async function loadInputHistory(
       (v) => v.sceneId
     ),
     style,
+    dialogueSelectedAt: new Map(
+      dialogue.flatMap((v) => (v.selectedAt ? [[v.shotId, v.selectedAt]] : []))
+    ),
   };
 }
 
@@ -528,6 +536,15 @@ export async function computeShotStaleness(args: {
 
   let visualPrompt: ArtifactStaleness = 'untracked';
   let motionPrompt: ArtifactStaleness = 'untracked';
+  // Legacy digests ignore the voice-only flag; verify asks whether one moved
+  // since the stamp (#1787). Read only when the current digest missed.
+  const voiceOnlyMoved = async (at: Date) =>
+    voiceOnlyMovedSince(
+      reads
+        ? [...(await reads.inputHistory()).characters.values()].flat()
+        : await scopedDb.characters.listBibleVersionsBySequence(sequence.id),
+      at
+    );
   let selectedMotion: { inputHash: string | null; createdAt: Date } | null =
     null;
 
@@ -540,13 +557,13 @@ export async function computeShotStaleness(args: {
     // the catch exists for, and outside it one bad read rejects the caller's
     // whole batch.
     try {
-      let referenceHash = selectedPrompt?.inputHash ?? null;
-      if (!referenceHash) {
-        const fallback = reads
+      let reference = selectedPrompt?.inputHash ? selectedPrompt : null;
+      if (!reference) {
+        reference = reads
           ? (reads.latestHashedPromptByFrame.get(frame.id) ?? null)
           : await scopedDb.framePromptVersions.getLatestWithInputHash(frame.id);
-        referenceHash = fallback?.inputHash ?? null;
       }
+      const referenceHash = reference?.inputHash ?? null;
       if (referenceHash) {
         const latest = reads
           ? (reads.latestPromptByFrame.get(frame.id) ?? null)
@@ -564,7 +581,11 @@ export async function computeShotStaleness(args: {
         // hashed when it doesn't — the common editor load is the match.
         visualPrompt =
           referenceHash === liveHash ||
-          (await visualPromptInputHashMatches(referenceHash, ctx))
+          (await visualPromptInputHashMatches(referenceHash, ctx, {
+            voiceOnlyMoved: await voiceOnlyMoved(
+              reference?.createdAt ?? new Date(0)
+            ),
+          }))
             ? 'fresh'
             : 'stale';
       }
@@ -591,16 +612,16 @@ export async function computeShotStaleness(args: {
       selectedMotion = reads
         ? (reads.selectedMotionByShot.get(shot.id) ?? null)
         : await scopedDb.shotPromptVersions.getSelectedMotion(shot.id);
-      let referenceHash = selectedMotion?.inputHash ?? null;
-      if (!referenceHash) {
-        const fallback = reads
+      let reference = selectedMotion?.inputHash ? selectedMotion : null;
+      if (!reference) {
+        reference = reads
           ? (reads.latestHashedMotionByShot.get(shot.id) ?? null)
           : await scopedDb.shotPromptVersions.getLatestWithInputHash(
               shot.id,
               'motion'
             );
-        referenceHash = fallback?.inputHash ?? null;
       }
+      const referenceHash = reference?.inputHash ?? null;
       if (referenceHash) {
         const latest = reads
           ? (reads.latestMotionByShot.get(shot.id) ?? null)
@@ -622,6 +643,9 @@ export async function computeShotStaleness(args: {
           referenceHash === liveHash ||
           (await motionPromptInputHashMatches(referenceHash, ctx, {
             legacyScriptDialogue: !dialogue.onNode,
+            voiceOnlyMoved: await voiceOnlyMoved(
+              reference?.createdAt ?? new Date(0)
+            ),
           }))
             ? 'fresh'
             : 'stale';
@@ -908,6 +932,11 @@ function sceneCauses(
     return label ? [label] : [];
   });
   if (moved.length > 0) causes.push(`Scene: ${moved.join(', ')}`);
+  // A backfilled version holds the narrative of the #1600 deploy day, not of
+  // when it was live, so "nothing moved" is unknowable: guess from the time.
+  else if (then.narrativeBackfilled && after(live.scene.updatedAt, at)) {
+    causes.push('Scene details');
+  }
   return causes;
 }
 
@@ -1014,7 +1043,8 @@ async function findStalenessCauses(args: {
     const moved = bibleMoved(inputHistory.locations.get(l.id), at, (then) =>
       locationBibleChanged(then, l).map((k) => LOCATION_LABELS[k])
     );
-    const cause = namedCause(`Location "${l.name}"`, moved, [], () =>
+    const sheet = after(l.referenceGeneratedAt, at) ? ['sheet'] : [];
+    const cause = namedCause(`Location "${l.name}"`, moved, sheet, () =>
       after(l.updatedAt, at)
     );
     if (cause) causes.push(cause);
@@ -1022,14 +1052,16 @@ async function findStalenessCauses(args: {
   for (const el of refs.elements) {
     if (after(el.updatedAt, at)) causes.push(`Element ${el.token}`);
   }
-  if (
-    generatedAt.motionPrompt &&
-    after(
-      selectedImage?.generatedAt ?? selectedImage?.createdAt,
-      generatedAt.motionPrompt.getTime()
-    )
-  ) {
-    causes.push('Image re-rendered');
+  const motionAt = generatedAt.motionPrompt?.getTime();
+  if (motionAt !== undefined) {
+    if (after(inputHistory.dialogueSelectedAt.get(shot.id), motionAt)) {
+      causes.push('Dialogue');
+    }
+    if (
+      after(selectedImage?.generatedAt ?? selectedImage?.createdAt, motionAt)
+    ) {
+      causes.push('Image re-rendered');
+    }
   }
   return causes;
 }

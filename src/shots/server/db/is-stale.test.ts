@@ -1,17 +1,8 @@
 /**
- * Schema-level acceptance test for the input-hash columns plus a behavioral
- * truth-table test for the `isStale` wrappers on `shots` and `shotVariants`.
- *
- * The remaining wrappers (locationLibrary, locationSheets, talent.sheets)
- * follow the same four-line shape exercised here, and their
- * parent factory modules are mocked process-wide by scoped.test.ts (per the
- * preamble of `@/cast/server/db/talent.test.ts`) — so importing them in a sibling test yields
- * stubs. The schema persistence asserts in this file plus the truth-table
- * coverage on frames/shotVariants are the regression guard for the pattern.
- *
- * `characters` and `sequenceLocations` are absent: #1419 dropped their
- * input-hash columns and deleted their `isStale` wrappers. The live sheet
- * hash is the version row's, covered by `sheet-variants.test.ts`.
+ * Schema-level acceptance test for the input-hash columns. The `isStale`
+ * wrappers these columns once fed had no production callers and are gone
+ * (#1787): staleness verdicts come from `computeShotStaleness`,
+ * `isSelectedVersionStale` and `readReferenceStaleness`.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -36,7 +27,6 @@ import {
 } from '@/platform/server/db/schema';
 import { relations } from '@/platform/server/db/schema/relations';
 import type { Database } from '@/platform/server/db/client';
-import { createShotVariantsMethods } from './shot-variants';
 
 let client: Client;
 let db: Database;
@@ -218,54 +208,5 @@ describe('talent_sheets.input_hash', () => {
       .where(eq(talentSheets.id, sheet.id));
     if (!refreshed) throw new Error('test setup: refresh failed');
     expect(refreshed.inputHash).toBe('h');
-  });
-});
-
-// `shots.isStale` is gone with `video_input_hash` (#1067 phase 2d) — it was the
-// method's only remaining artifact, and it had no production callers.
-
-describe('shotVariants.isStale', () => {
-  async function insertVariant(inputHash: string | null) {
-    const [shot] = await db
-      .insert(shots)
-      .values({ sequenceId, shotNumber: 1 })
-      .returning();
-    if (!shot) throw new Error('test setup: shot insert returned nothing');
-    const [variant] = await db
-      .insert(shotVariants)
-      .values({
-        shotId: shot.id,
-        sequenceId,
-        variantType: 'image',
-        model: 'm1',
-        inputHash,
-      })
-      .returning();
-    if (!variant)
-      throw new Error('test setup: variant insert returned nothing');
-    return variant;
-  }
-
-  it('throws when the variant does not exist', async () => {
-    const m = createShotVariantsMethods(db);
-    await expect(m.isStale(generateId(), 'h')).rejects.toThrow(/not found/);
-  });
-
-  it('returns false when stored hash is null', async () => {
-    const variant = await insertVariant(null);
-    const m = createShotVariantsMethods(db);
-    expect(await m.isStale(variant.id, 'anything')).toBe(false);
-  });
-
-  it('returns false when stored hash matches', async () => {
-    const variant = await insertVariant('h-match');
-    const m = createShotVariantsMethods(db);
-    expect(await m.isStale(variant.id, 'h-match')).toBe(false);
-  });
-
-  it('returns true when stored hash differs', async () => {
-    const variant = await insertVariant('h-old');
-    const m = createShotVariantsMethods(db);
-    expect(await m.isStale(variant.id, 'h-new')).toBe(true);
   });
 });

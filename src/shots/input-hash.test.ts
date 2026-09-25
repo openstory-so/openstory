@@ -11,16 +11,13 @@ import {
   characterSheetInputHashMatches,
   computeCharacterSheetInputHash,
   computeCharacterSheetInputHashLegacy,
-  computeShotAudioInputHash,
   computeShotImageInputHash,
-  computeShotVideoInputHash,
   computeLibraryLocationReferenceInputHash,
   computeLocationSheetInputHash,
   hashMotionPromptInput,
   computeMotionPromptInputHashV4,
   computeMusicPromptInputHash,
   LEGACY_HASH_UNTIL,
-  libraryLocationReferenceInputHashMatches,
   computeSequenceMusicInputHash,
   computeTalentSheetInputHash,
   computeTalentSheetInputHashLegacy,
@@ -30,14 +27,12 @@ import {
   motionPromptInputHashMatches,
   sha256Hex,
   shotImageInputHashMatches,
-  talentSheetInputHashMatches,
   visualPromptInputHashMatches,
+  voiceOnlyMovedSince,
   type CharacterSheetHashInput,
   type MotionPromptHashInput,
   type MotionPromptInputHash,
-  type ShotAudioHashInput,
   type ShotImageHashInput,
-  type ShotVideoHashInput,
   type LibraryLocationReferenceHashInput,
   type LocationSheetHashInput,
   type TalentSheetHashInput,
@@ -64,6 +59,9 @@ const SHA256_HEX = /^[0-9a-f]{64}$/;
 /** Incomplete assembler payload for "omitted field throws" tests. */
 // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test-only incomplete DTO
 const incomplete = <T>(value: object): T => value as T;
+
+/** No character's voice-only flag moved since the stamp. */
+const VOICE_STILL = { voiceOnlyMoved: false };
 
 describe('computeShotImageInputHash (thumbnail)', () => {
   it('produces a 64-char hex SHA-256 digest', async () => {
@@ -199,94 +197,6 @@ describe('computeShotImageInputHash (variant-image)', () => {
     });
     expect(a).toBe(same);
     expect(a).not.toBe(different);
-  });
-});
-
-describe('computeShotVideoInputHash', () => {
-  const base: ShotVideoHashInput = {
-    sourceImage: { kind: 'variantHash', hash: 'sha-source-image' },
-    motionPrompt: 'Slow dolly forward',
-    motionModel: 'kling-v2.5-turbo-pro',
-    durationSeconds: 5,
-    fps: 30,
-    aspectRatio: '16:9',
-  };
-
-  it('is stable for identical input', async () => {
-    expect(await computeShotVideoInputHash(base)).toBe(
-      await computeShotVideoInputHash({ ...base })
-    );
-  });
-
-  it('changes when the motion model version changes', async () => {
-    const a = await computeShotVideoInputHash(base);
-    const b = await computeShotVideoInputHash({
-      ...base,
-      motionModel: 'kling-v2.6-turbo-pro',
-    });
-    expect(a).not.toBe(b);
-  });
-
-  it('reacts to every tracked field', async () => {
-    const variants = await Promise.all([
-      computeShotVideoInputHash(base),
-      computeShotVideoInputHash({
-        ...base,
-        sourceImage: { kind: 'variantHash', hash: 'sha-other' },
-      }),
-      computeShotVideoInputHash({ ...base, motionPrompt: 'Pan left' }),
-      computeShotVideoInputHash({ ...base, durationSeconds: 8 }),
-      computeShotVideoInputHash({ ...base, fps: 60 }),
-      computeShotVideoInputHash({ ...base, aspectRatio: '9:16' }),
-    ]);
-    expect(new Set(variants).size).toBe(variants.length);
-  });
-
-  it('distinguishes variantHash from url even when the string matches', async () => {
-    const fromHash = await computeShotVideoInputHash({
-      ...base,
-      sourceImage: { kind: 'variantHash', hash: 'shared-string' },
-    });
-    const fromUrl = await computeShotVideoInputHash({
-      ...base,
-      sourceImage: { kind: 'url', url: 'shared-string' },
-    });
-    expect(fromHash).not.toBe(fromUrl);
-  });
-});
-
-describe('computeShotAudioInputHash', () => {
-  const base: ShotAudioHashInput = {
-    musicPrompt: 'Tense orchestral build',
-    tags: ['cinematic', 'tension'],
-    durationSeconds: 5,
-    audioModel: 'cassette-v1',
-  };
-
-  it('is order-insensitive for tags', async () => {
-    const a = await computeShotAudioInputHash(base);
-    const b = await computeShotAudioInputHash({
-      ...base,
-      tags: ['tension', 'cinematic'],
-    });
-    expect(a).toBe(b);
-  });
-
-  it('reacts to prompt, duration, and model', async () => {
-    const a = await computeShotAudioInputHash(base);
-    const prompt = await computeShotAudioInputHash({
-      ...base,
-      musicPrompt: 'Soft piano',
-    });
-    const dur = await computeShotAudioInputHash({
-      ...base,
-      durationSeconds: 9,
-    });
-    const model = await computeShotAudioInputHash({
-      ...base,
-      audioModel: 'cassette-v2',
-    });
-    expect(new Set([a, prompt, dur, model]).size).toBe(4);
   });
 });
 
@@ -543,15 +453,6 @@ describe('computeLibraryLocationReferenceInputHash', () => {
         })
       )
     ).toThrow();
-    expect(await libraryLocationReferenceInputHashMatches(ref, base)).toBe(
-      true
-    );
-    expect(
-      await libraryLocationReferenceInputHashMatches(ref, {
-        ...base,
-        locationBible: { ...base.locationBible, description: 'changed' },
-      })
-    ).toBe(false);
   });
 });
 
@@ -592,40 +493,9 @@ describe('computeTalentSheetInputHash', () => {
     expect(new Set([a, ...variants]).size).toBe(4);
   });
 
-  it('dual-hash verify accepts a pre-drop named talent digest of the same inputs', async () => {
+  it('the pre-drop named talent digest differs from the current one', async () => {
     const named = await computeTalentSheetInputHashLegacy(base);
-    const current = await computeTalentSheetInputHash(base);
-    expect(named).not.toBe(current);
-    expect(await talentSheetInputHashMatches(named, base)).toBe(true);
-    expect(await talentSheetInputHashMatches(current, base)).toBe(true);
-    expect(
-      await talentSheetInputHashMatches(named, {
-        ...base,
-        talent: { ...base.talent, description: 'changed' },
-      })
-    ).toBe(false);
-  });
-});
-
-describe('artifact discrimination', () => {
-  it('returns different hashes for different artifact types with the same input shape', async () => {
-    // Shot audio and video share several scalar fields; the artifact tag in
-    // the canonical body keeps them distinct.
-    const audio = await computeShotAudioInputHash({
-      musicPrompt: '',
-      tags: [],
-      durationSeconds: 5,
-      audioModel: 'shared',
-    });
-    const video = await computeShotVideoInputHash({
-      sourceImage: { kind: 'url', url: '' },
-      motionPrompt: '',
-      motionModel: 'shared',
-      durationSeconds: 5,
-      fps: null,
-      aspectRatio: '',
-    });
-    expect(audio).not.toBe(video);
+    expect(named).not.toBe(await computeTalentSheetInputHash(base));
   });
 });
 
@@ -668,22 +538,16 @@ describe('canonical serialization', () => {
   });
 
   it('rejects non-finite numbers rather than collapsing them to null', async () => {
-    expect(() =>
-      computeShotAudioInputHash({
-        musicPrompt: 'test',
-        tags: [],
-        durationSeconds: Number.NaN,
-        audioModel: 'cassette-v1',
-      })
-    ).toThrow();
-    expect(() =>
-      computeShotAudioInputHash({
-        musicPrompt: 'test',
-        tags: [],
-        durationSeconds: Number.POSITIVE_INFINITY,
-        audioModel: 'cassette-v1',
-      })
-    ).toThrow();
+    for (const durationSeconds of [Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() =>
+        computeSequenceMusicInputHash({
+          prompt: 'test',
+          tags: '',
+          durationSeconds,
+          audioModel: 'cassette-v1',
+        })
+      ).toThrow();
+    }
   });
 });
 
@@ -749,7 +613,7 @@ describe('prompt input hashes', () => {
     dialogue: { presence: false, lines: [] },
   };
   /** A shot whose lines sit on its dialogue node. */
-  const NODE = { legacyScriptDialogue: false };
+  const NODE = { legacyScriptDialogue: false, ...VOICE_STILL };
 
   it('visual and motion prompt hashes are namespaced by artifact and differ', async () => {
     const visual = await hashVisualPromptInput(sceneCtx);
@@ -919,6 +783,7 @@ describe('prompt input hashes', () => {
     expect(
       await motionPromptInputHashMatches(stamped, now, {
         legacyScriptDialogue: true,
+        voiceOnlyMoved: false,
       })
     ).toBe(true);
     // A node row: that is an edit, and it re-stales the prompt.
@@ -1139,13 +1004,21 @@ describe('prompt input hashes', () => {
     const current = await hashVisualPromptInput(sceneCtx);
     const v4 = await computeVisualPromptInputHashV4(sceneCtx);
     expect(v4).not.toBe(current);
-    expect(await visualPromptInputHashMatches(current, sceneCtx)).toBe(true);
-    expect(await visualPromptInputHashMatches(v4, sceneCtx)).toBe(true);
     expect(
-      await visualPromptInputHashMatches(v4, {
-        ...sceneCtx,
-        analysisModel: 'anthropic/claude-sonnet-4.6',
-      })
+      await visualPromptInputHashMatches(current, sceneCtx, VOICE_STILL)
+    ).toBe(true);
+    expect(await visualPromptInputHashMatches(v4, sceneCtx, VOICE_STILL)).toBe(
+      true
+    );
+    expect(
+      await visualPromptInputHashMatches(
+        v4,
+        {
+          ...sceneCtx,
+          analysisModel: 'anthropic/claude-sonnet-4.6',
+        },
+        VOICE_STILL
+      )
     ).toBe(false);
   });
 
@@ -1335,6 +1208,29 @@ describe('computeSequenceMusicInputHash', () => {
   });
 });
 
+describe('voiceOnlyMovedSince (#1787)', () => {
+  const at = new Date('2026-01-01T00:00:00Z');
+  const v = (characterId: string, voiceOnly: boolean, minutes: number) => ({
+    characterId,
+    voiceOnly,
+    createdAt: new Date(at.getTime() + minutes * 60_000),
+  });
+
+  it('a flip after the stamp moved; a first version or an earlier flip did not', () => {
+    expect(voiceOnlyMovedSince([v('a', false, -2), v('a', true, 1)], at)).toBe(
+      true
+    );
+    expect(voiceOnlyMovedSince([v('a', true, 1)], at)).toBe(false);
+    expect(voiceOnlyMovedSince([v('a', false, -2), v('a', true, -1)], at)).toBe(
+      false
+    );
+    // Another character's first version is not a flip of this one.
+    expect(voiceOnlyMovedSince([v('a', false, -2), v('b', true, 1)], at)).toBe(
+      false
+    );
+  });
+});
+
 describe('an element token is a label (#1827)', () => {
   const rename = (text: string) => replaceTokenInText(text, 'LAMP', 'LANTERN');
   const style = migrateStyleConfigV1ToV2({
@@ -1385,7 +1281,8 @@ describe('an element token is a label (#1827)', () => {
     '5c96256639d98d522ab58c65bca08f8f5604fead092138ce84ec3afbc6768aa1';
   const PRE_1827_MOTION =
     '7ae1498cd6855f1fc4dbd5d49813863057a9a77ada41e916765fdb73735908b0';
-  const NODE = { legacyScriptDialogue: false };
+  const NODE = { legacyScriptDialogue: false, voiceOnlyMoved: false };
+  const UNMOVED = { voiceOnlyMoved: false };
 
   it('a rename leaves the visual and motion prompt stamps fresh', async () => {
     const visual = await hashVisualPromptInput(ctx);
@@ -1427,14 +1324,16 @@ describe('an element token is a label (#1827)', () => {
   });
 
   it('a pre-#1827 prompt digest still verifies until the inputs move', async () => {
-    expect(await visualPromptInputHashMatches(PRE_1827_VISUAL, ctx)).toBe(true);
+    expect(
+      await visualPromptInputHashMatches(PRE_1827_VISUAL, ctx, UNMOVED)
+    ).toBe(true);
     expect(await motionPromptInputHashMatches(PRE_1827_MOTION, ctx, NODE)).toBe(
       true
     );
     // A rename made before deploy is the one case that still reads stale.
-    expect(await visualPromptInputHashMatches(PRE_1827_VISUAL, renamed)).toBe(
-      false
-    );
+    expect(
+      await visualPromptInputHashMatches(PRE_1827_VISUAL, renamed, UNMOVED)
+    ).toBe(false);
   });
 
   const still: ShotImageHashInput = {

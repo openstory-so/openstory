@@ -264,7 +264,7 @@ describe('narrowed hash stability (the user-reported bug)', () => {
   // (e.g. 7 → 8 for a model that only supports {5, 10}) and overwrites
   // `shot.metadata` after the visual prompt hash was already stored. The
   // visual hash must NOT care about that downstream parameter — duration is
-  // hashed by `computeShotVideoInputHash` where it actually matters.
+  // in the render manifest, where it actually matters.
   it('changing metadata.durationSeconds does NOT change the visual hash', async () => {
     const continuityTags = {
       characterTags: ['alice'],

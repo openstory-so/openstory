@@ -85,14 +85,8 @@ export async function sha256Hex(input: unknown): Promise<string> {
 export type ShotImageInputHash = string & {
   readonly __brand: 'ShotImageInputHash';
 };
-export type ShotVideoInputHash = string & {
-  readonly __brand: 'ShotVideoInputHash';
-};
 export type VideoManifestInputHash = string & {
   readonly __brand: 'VideoManifestInputHash';
-};
-export type ShotAudioInputHash = string & {
-  readonly __brand: 'ShotAudioInputHash';
 };
 export type CharacterSheetInputHash = string & {
   readonly __brand: 'CharacterSheetInputHash';
@@ -116,12 +110,8 @@ export type SequenceMusicInputHash = string & {
 /* oxlint-disable typescript/no-unsafe-type-assertion -- sole brand constructors */
 export const shotImageInputHash = (hex: string): ShotImageInputHash =>
   hex as ShotImageInputHash;
-const shotVideoInputHash = (hex: string): ShotVideoInputHash =>
-  hex as ShotVideoInputHash;
 export const videoManifestInputHash = (hex: string): VideoManifestInputHash =>
   hex as VideoManifestInputHash;
-const shotAudioInputHash = (hex: string): ShotAudioInputHash =>
-  hex as ShotAudioInputHash;
 export const characterSheetInputHash = (hex: string): CharacterSheetInputHash =>
   hex as CharacterSheetInputHash;
 export const locationSheetInputHash = (hex: string): LocationSheetInputHash =>
@@ -263,56 +253,6 @@ export async function shotImageInputHashMatches(
 }
 
 /**
- * Source the video was derived from. A `variantHash` references the prior
- * artifact-hash chain (so a stale upstream image cascades); a `url` is used
- * when the source is an external asset with no hashable upstream.
- */
-type ShotVideoSourceImage =
-  | { kind: 'variantHash'; hash: string }
-  | { kind: 'url'; url: string };
-
-export type ShotVideoHashInput = {
-  sourceImage: ShotVideoSourceImage;
-  motionPrompt: string;
-  motionModel: string;
-  durationSeconds: number;
-  /** Required; `null` is "model default fps". */
-  fps: number | null;
-  aspectRatio: string;
-};
-
-const shotVideoHashInputSchema = z.object({
-  sourceImage: z.union([
-    z.object({ kind: z.literal('variantHash'), hash: z.string() }),
-    z.object({ kind: z.literal('url'), url: z.string() }),
-  ]),
-  motionPrompt: z.string(),
-  motionModel: z.string(),
-  durationSeconds: z.number(),
-  fps: z.number().nullable(),
-  aspectRatio: z.string(),
-});
-
-export function computeShotVideoInputHash(
-  raw: ShotVideoHashInput
-): Promise<ShotVideoInputHash> {
-  const input = shotVideoHashInputSchema.parse(raw);
-  const sourceImage =
-    input.sourceImage.kind === 'variantHash'
-      ? { kind: 'variantHash' as const, hash: trim(input.sourceImage.hash) }
-      : { kind: 'url' as const, url: trim(input.sourceImage.url) };
-  return sha256Hex({
-    artifact: 'shot:video',
-    sourceImage,
-    motionPrompt: trim(input.motionPrompt),
-    motionModel: input.motionModel,
-    durationSeconds: input.durationSeconds,
-    fps: input.fps,
-    aspectRatio: input.aspectRatio,
-  }).then(shotVideoInputHash);
-}
-
-/**
  * Hash a video render's manifest → O(1) staleness for a `video_variants`
  * version. The `VideoManifestEntry` rows ARE the snapshot: each referenced
  * motion-prompt / anchor-frame version id (plus the value-snapshot duration)
@@ -363,8 +303,8 @@ export function computeVideoManifestInputHash(
   const entries = z.array(videoManifestHashEntrySchema).parse(manifest);
   // A hash over null/null immediately diverges from a live hash built from
   // the selected still + prompt — that's how storyboard clips were born
-  // Stale (#1380). Unknown provenance is a null hash, matching
-  // `videoVariants.isStale` for legacy rows (never stale).
+  // Stale (#1380). Unknown provenance is a null hash: never stale, like
+  // `isSelectedVersionStale` on a legacy row.
   if (
     entries.length > 0 &&
     entries.every(
@@ -379,34 +319,6 @@ export function computeVideoManifestInputHash(
     model,
     manifest: entries.map(canonicalizeManifestEntry),
   }).then(videoManifestInputHash);
-}
-
-export type ShotAudioHashInput = {
-  musicPrompt: string;
-  /** Unordered set of music tags. */
-  tags: readonly string[];
-  durationSeconds: number;
-  audioModel: string;
-};
-
-const shotAudioHashInputSchema = z.object({
-  musicPrompt: z.string(),
-  tags: z.array(z.string()),
-  durationSeconds: z.number(),
-  audioModel: z.string(),
-});
-
-export function computeShotAudioInputHash(
-  raw: ShotAudioHashInput
-): Promise<ShotAudioInputHash> {
-  const input = shotAudioHashInputSchema.parse(raw);
-  return sha256Hex({
-    artifact: 'shot:audio',
-    musicPrompt: trim(input.musicPrompt),
-    tags: sortedRefs(input.tags),
-    durationSeconds: input.durationSeconds,
-    audioModel: input.audioModel,
-  }).then(shotAudioInputHash);
 }
 
 export type CharacterBibleHashFields = {
@@ -669,15 +581,11 @@ export type LibraryLocationReferenceHashInput = {
 };
 
 function libraryLocationReferenceHashBody(
-  input: LibraryLocationReferenceHashInput,
-  includeName: boolean
+  input: LibraryLocationReferenceHashInput
 ): unknown {
   return {
     artifact: 'library-location:reference',
-    locationBible: {
-      ...(includeName ? { name: trim(input.locationBible.name) } : {}),
-      description: trim(input.locationBible.description),
-    },
+    locationBible: { description: trim(input.locationBible.description) },
     referenceMediaHashes: sortedRefs(input.referenceMediaHashes),
     styleConfigHash: input.styleConfigHash,
     imageModel: input.imageModel,
@@ -695,22 +603,9 @@ export function computeLibraryLocationReferenceInputHash(
   raw: LibraryLocationReferenceHashInput
 ): Promise<LibraryLocationReferenceInputHash> {
   const input = libraryLocationReferenceHashInputSchema.parse(raw);
-  return sha256Hex(libraryLocationReferenceHashBody(input, false)).then(
+  return sha256Hex(libraryLocationReferenceHashBody(input)).then(
     libraryLocationReferenceInputHash
   );
-}
-
-export async function libraryLocationReferenceInputHashMatches(
-  stored: string | null,
-  raw: LibraryLocationReferenceHashInput
-): Promise<boolean> {
-  if (!stored) return false;
-  const input = libraryLocationReferenceHashInputSchema.parse(raw);
-  const [current, legacy] = await Promise.all([
-    sha256Hex(libraryLocationReferenceHashBody(input, false)),
-    sha256Hex(libraryLocationReferenceHashBody(input, true)),
-  ]);
-  return stored === current || stored === legacy;
 }
 
 export type TalentSheetHashInput = {
@@ -762,19 +657,6 @@ export function computeTalentSheetInputHashLegacy(
 ): Promise<string> {
   const input = talentSheetHashInputSchema.parse(raw);
   return sha256Hex(talentSheetHashBody(input, true));
-}
-
-export async function talentSheetInputHashMatches(
-  stored: string | null,
-  raw: TalentSheetHashInput
-): Promise<boolean> {
-  if (!stored) return false;
-  const input = talentSheetHashInputSchema.parse(raw);
-  const [current, legacy] = await Promise.all([
-    sha256Hex(talentSheetHashBody(input, false)),
-    sha256Hex(talentSheetHashBody(input, true)),
-  ]);
-  return stored === current || stored === legacy;
 }
 
 // ---------------------------------------------------------------------------
@@ -974,7 +856,8 @@ function toMotionBodyInput(
  * (`durationSeconds` snapped mid-pipeline) one field over: `musicDesign`,
  * `audioDesign`, `sourceImageUrl` are all downstream output and must never be
  * hashed here. `durationSeconds` is excluded for the same #767 reason — it is a
- * video parameter (hashed by `computeShotVideoInputHash`), not a prompt driver.
+ * video parameter (the clip compares it through the render manifest), not a
+ * prompt driver.
  */
 function sceneMetadata(scene: Scene, includeTitle: boolean) {
   if (!scene.metadata) return null;
@@ -1001,12 +884,15 @@ const PROMPT_INPUT_HASH_VERSION_V4 = 4;
  * Delete the v4 / named / titled verify fallbacks after this date.
  * Tracking: https://github.com/openstory-so/openstory/issues/1371
  */
-export const LEGACY_HASH_UNTIL = '2026-09-28';
+// Milestone 24 (#1783–#1787, #1827) added fallbacks under this date; they
+// need ~a month after that stack deploys, or everything stamped before it flips stale.
+export const LEGACY_HASH_UNTIL = '2026-12-31';
 
 /**
  * `v5-tokened` is the current shape before #1827 read element tokens as
  * labels. `v5-voiced` is that shape before #1785 took voice-only characters
- * out of the visual body; the older legacy shapes predate both.
+ * out of the visual body and #1787 marked them in the motion body; the older
+ * legacy shapes predate both.
  */
 type PromptHashKind =
   | 'current'
@@ -1165,8 +1051,14 @@ function promptBibleProjection(
   {
     named,
     performance,
+    markVoiceOnly = false,
     tokenFree,
-  }: { named: boolean; performance: boolean; tokenFree: boolean }
+  }: {
+    named: boolean;
+    performance: boolean;
+    markVoiceOnly?: boolean;
+    tokenFree: boolean;
+  }
 ) {
   const bibles = sortedBibles(input, tokenFree);
   const character = named
@@ -1179,6 +1071,7 @@ function promptBibleProjection(
     characterBible: bibles.characterBible.map((c) => ({
       ...character(c),
       ...(performance ? projectCharacterPerformance(c) : {}),
+      ...(markVoiceOnly && c.voiceOnly ? { voiceOnly: true } : {}),
     })),
     locationBible: bibles.locationBible.map(location),
     elementBible: bibles.elementBible
@@ -1220,9 +1113,13 @@ function motionPromptHashBody(
   kind: PromptHashKind
 ): unknown {
   const flags = promptHashFlags(kind);
+  // The motion LLM is sent `voiceOnly` (a heard, unframed character), so
+  // the hash reads it (#1787). Only when set, so no stored digest moves for
+  // a cast with no voice-only character; older shapes never read it.
   const bibles = promptBibleProjection(input, {
     named: flags.named,
     performance: true,
+    markVoiceOnly: !flags.keepVoiceOnly,
     tokenFree: flags.tokenFree,
   });
   return {
@@ -1256,26 +1153,66 @@ export async function computeVisualPromptInputHashV4(
 }
 
 /**
+ * True if any character's voice-only flag changed after `at` (#1787).
+ * `versions` are the sequence's character bible versions, oldest first. A
+ * character's first version (a backfill, a new character) is not a change.
+ */
+export function voiceOnlyMovedSince(
+  versions: readonly {
+    characterId: string;
+    voiceOnly: boolean;
+    createdAt: Date;
+  }[],
+  at: Date
+): boolean {
+  const last = new Map<string, boolean>();
+  for (const v of versions) {
+    const prev = last.get(v.characterId);
+    if (
+      prev !== undefined &&
+      prev !== v.voiceOnly &&
+      v.createdAt.getTime() > at.getTime()
+    ) {
+      return true;
+    }
+    last.set(v.characterId, v.voiceOnly);
+  }
+  return false;
+}
+
+/**
+ * Every shape before the current one ignores the voice-only flag, so a
+ * legacy digest is trusted only while no flag moved since the stamp —
+ * otherwise it would equal the stamp and hide the change (#1787).
+ */
+function acceptedKinds<K extends PromptHashKind>(
+  legacy: readonly K[],
+  voiceOnlyMoved: boolean
+): readonly ('current' | 'v5-tokened' | K)[] {
+  // `v5-tokened` reads the flag like `current` does, so it is always safe.
+  return voiceOnlyMoved
+    ? ['current', 'v5-tokened']
+    : ['current', 'v5-tokened', ...legacy];
+}
+
+/**
  * True if `stored` matches the current digest or a legacy v4 / v5-named
  * digest of the same inputs. Remove after {@link LEGACY_HASH_UNTIL}.
+ * `voiceOnlyMoved`: {@link voiceOnlyMovedSince} the stamp.
  */
 export async function visualPromptInputHashMatches(
   stored: string | null,
-  raw: VisualPromptHashInput | MotionPromptHashInput
+  raw: VisualPromptHashInput | MotionPromptHashInput,
+  { voiceOnlyMoved }: { voiceOnlyMoved: boolean }
 ): Promise<boolean> {
   if (!stored) return false;
   const input = toVisualBodyInput(assembleVisualPromptHashInput(raw));
+  const kinds = acceptedKinds(
+    ['v5-voiced', 'v5-titled', 'v5-named', 'v4'] as const,
+    voiceOnlyMoved
+  );
   const digests = await Promise.all(
-    (
-      [
-        'current',
-        'v5-tokened',
-        'v5-voiced',
-        'v5-titled',
-        'v5-named',
-        'v4',
-      ] as const
-    ).map((kind) => sha256Hex(visualPromptHashBody(input, kind)))
+    kinds.map((kind) => sha256Hex(visualPromptHashBody(input, kind)))
   );
   return digests.includes(stored);
 }
@@ -1300,7 +1237,7 @@ export async function computeMotionPromptInputHashV4(
 /**
  * True if `stored` matches the current digest or a legacy v5-titled /
  * v5-named / v4 digest of the same inputs. Remove after
- * {@link LEGACY_HASH_UNTIL}.
+ * {@link LEGACY_HASH_UNTIL}. `voiceOnlyMoved`: as for the visual verify.
  *
  * `legacyScriptDialogue` (#1784): before #1784 every motion digest hashed the
  * script's lines, not the shot's. Pass true only when the shot has no row on
@@ -1311,18 +1248,23 @@ export async function computeMotionPromptInputHashV4(
 export async function motionPromptInputHashMatches(
   stored: string | null,
   raw: MotionPromptHashInput,
-  { legacyScriptDialogue }: { legacyScriptDialogue: boolean }
+  {
+    legacyScriptDialogue,
+    voiceOnlyMoved,
+  }: { legacyScriptDialogue: boolean; voiceOnlyMoved: boolean }
 ): Promise<boolean> {
   if (!stored) return false;
   const assembled = assembleMotionPromptHashInput(raw);
   const inputs = legacyScriptDialogue
     ? [toMotionBodyInput(assembled), toMotionBodyInput(assembled, true)]
     : [toMotionBodyInput(assembled)];
+  const kinds = acceptedKinds(
+    ['v5-voiced', 'v5-titled', 'v5-named', 'v4'] as const,
+    voiceOnlyMoved
+  );
   const digests = await Promise.all(
     inputs.flatMap((input) =>
-      (['current', 'v5-tokened', 'v5-titled', 'v5-named', 'v4'] as const).map(
-        (kind) => sha256Hex(motionPromptHashBody(input, kind))
-      )
+      kinds.map((kind) => sha256Hex(motionPromptHashBody(input, kind)))
     )
   );
   return digests.includes(stored);
