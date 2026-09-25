@@ -116,6 +116,14 @@ Responses; posting those to Chat Completions 400s. `llmtrCompatibleApi`
 picks the endpoint. UI:
 **Settings → API Keys → LLMTR**. Team BYOK only — there is no platform
 LLMTR key; without a team key, resolution falls through to OpenRouter/fal.
+Keep its API key row last, below OpenRouter.
+
+**LLMTR must not block model upgrades.** If its catalog is unreachable or
+support or pricing is unverified, put the upgraded id in
+`LLMTR_UNMAPPED_MODEL_IDS` and ship using the existing OpenRouter/fal
+resolution. Do not delay the upgrade or keep its PR in draft for LLMTR.
+Add its mapping and rates later, once verified; never copy OpenRouter
+rates as assumed LLMTR prices.
 
 `src/models/llmtr.ts` pins the two silent-break traps:
 

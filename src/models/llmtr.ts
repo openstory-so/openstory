@@ -38,14 +38,17 @@ import type { TokenUsage } from '@tanstack/ai';
 export const LLMTR_BASE_URL = 'https://llmtr.com/v1';
 
 /**
- * Registry ids LLMTR does not carry. Absence is a routing decision, not an
+ * Registry ids LLMTR does not carry or whose support is unverified. Absence is a routing decision, not an
  * alias: substituting a neighbour would silently change the model the caller
  * asked for. A new `AnalysisModelId` that is in neither this list nor
  * {@link LLMTR_TEXT_MODELS} is a compile error.
  *
  * Re-check against https://llmtr.com/v1/models when the registry changes.
+ * If support or pricing cannot be verified, leave the id unmapped; LLMTR
+ * must not block model upgrades. Existing OpenRouter/fal resolution applies.
  */
 export const LLMTR_UNMAPPED_MODEL_IDS = [
+  'anthropic/claude-opus-5.5', // LLMTR support and pricing not yet verified.
   'anthropic/claude-opus-5-fast',
   'deepseek/deepseek-v3.2',
   'bytedance-seed/seed-2.0-mini',
@@ -67,7 +70,6 @@ type LlmtrMappedId = Exclude<
  */
 export const LLMTR_TEXT_MODELS = {
   'anthropic/claude-fable-5.1': 'anthropic/claude-fable-5.1',
-  'anthropic/claude-opus-5.5': 'anthropic/claude-opus-5.5',
   'google/gemini-3.8-flash': 'google/gemini-3.8-flash',
   'google/gemini-3.1-pro-preview': 'google/gemini-3.1-pro-preview',
   'openai/gpt-6-astra': 'openai/gpt-6-astra',
@@ -168,7 +170,6 @@ const LLMTR_TEXT_RATES: Record<
   { input: number; output: number }
 > = {
   'anthropic/claude-fable-5.1': { input: 10, output: 50 },
-  'anthropic/claude-opus-5.5': { input: 4, output: 20 },
   'google/gemini-3.8-flash': { input: 0.75, output: 3.75 },
   'google/gemini-3.1-pro-preview': { input: 2, output: 12 },
   'openai/gpt-6-astra': { input: 10, output: 50 },

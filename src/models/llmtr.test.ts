@@ -58,6 +58,10 @@ describe('llmtrTextModel', () => {
     expect(llmtrTextModel('bytedance-seed/seed-2.0-mini')).toBeUndefined();
   });
 
+  it('leaves upgrades with unverified LLMTR support on OpenRouter/fal', () => {
+    expect(llmtrTextModel('anthropic/claude-opus-5.5')).toBeUndefined();
+  });
+
   it('returns undefined for an id that is not in the registry at all', () => {
     expect(llmtrTextModel('openai/gpt-4o')).toBeUndefined();
     expect(llmtrTextModel('')).toBeUndefined();

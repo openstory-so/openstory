@@ -273,23 +273,6 @@ function ApiKeySettingsContent({
           />
 
           <ManualKeyRow
-            provider="llmtr"
-            icon={<LlmtrLogo className="size-5" />}
-            blurb="Turkey-hosted gateway: Claude, GPT, Gemini & Grok on one key."
-            placeholder="llmtr-..."
-            keyUrl="https://llmtr.com/dashboard/keys"
-            existingKey={llmtrKey}
-            status={keyStatus?.llmtr}
-            isLoading={isLoading}
-            onSave={(apiKey) =>
-              saveKeyMutation.mutate({ provider: 'llmtr', apiKey })
-            }
-            onDelete={() => deleteMutation.mutate('llmtr')}
-            isSaving={saveKeyMutation.isPending}
-            isDeleting={deleteMutation.isPending}
-          />
-
-          <ManualKeyRow
             provider="xai"
             icon={<XIcon className="size-4" />}
             blurb="Grok chat, images & video, billed by xAI directly."
@@ -427,6 +410,23 @@ function ApiKeySettingsContent({
               </Alert>
             )}
           </div>
+
+          <ManualKeyRow
+            provider="llmtr"
+            icon={<LlmtrLogo className="size-5" />}
+            blurb="Turkey-hosted gateway: Claude, GPT, Gemini & Grok on one key."
+            placeholder="llmtr-..."
+            keyUrl="https://llmtr.com/dashboard/keys"
+            existingKey={llmtrKey}
+            status={keyStatus?.llmtr}
+            isLoading={isLoading}
+            onSave={(apiKey) =>
+              saveKeyMutation.mutate({ provider: 'llmtr', apiKey })
+            }
+            onDelete={() => deleteMutation.mutate('llmtr')}
+            isSaving={saveKeyMutation.isPending}
+            isDeleting={deleteMutation.isPending}
+          />
         </CardContent>
       </Card>
     </div>
