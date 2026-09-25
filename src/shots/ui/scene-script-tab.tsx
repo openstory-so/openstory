@@ -63,6 +63,17 @@ export const SceneScriptTab: React.FC<SceneScriptTabProps> = ({
     );
   }
 
+  if (scriptText === undefined) {
+    return (
+      <div className="space-y-3">
+        <p className="py-6 text-center text-sm text-muted-foreground">
+          This scene has no script yet.
+        </p>
+        {dialogue}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
       <div className="space-y-2">

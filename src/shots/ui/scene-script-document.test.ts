@@ -15,7 +15,7 @@ function scene(
     id: dbSceneId(id),
     orderIndex,
     title: null,
-    script: extract ? { extract, dialogue: [] } : null,
+    script: extract !== undefined ? { extract, dialogue: [] } : null,
   };
 }
 
@@ -35,6 +35,7 @@ describe('buildScriptBlocks', () => {
     const blocks = buildScriptBlocks([scene('s1', 0, 'Edited copy.')]);
 
     expect(blocks[0]?.extract).toBe('Edited copy.');
+    expect(blocks[0]?.hasScript).toBe(true);
   });
 
   it('renders an empty string rather than dropping a scene with no script', () => {
@@ -42,7 +43,14 @@ describe('buildScriptBlocks', () => {
 
     expect(blocks).toHaveLength(1);
     expect(blocks[0]?.extract).toBe('');
+    expect(blocks[0]?.hasScript).toBe(false);
   });
+});
+
+it('keeps an existing script with an empty extract editable', () => {
+  const blocks = buildScriptBlocks([scene('s1', 0, '')]);
+  expect(blocks[0]?.extract).toBe('');
+  expect(blocks[0]?.hasScript).toBe(true);
 });
 
 describe('unsplitScriptTail', () => {
