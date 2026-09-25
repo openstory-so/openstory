@@ -5,13 +5,15 @@
  * cannot leave a spinner up. On failure we emit `failed` (for optimistic UI
  * and other tabs) then rethrow.
  *
- * The sheet claim (#1113) is taken here, before the run exists, so an edit
- * that lands between the trigger and the run's completion revokes it. A
- * deduplicated trigger that reuses an in-flight run never uses this payload,
- * so the claim is handed back to that run (compare-and-set: an edit in
- * between still wins).
+ * The sheet claim (#1113) is taken here, once the trigger started a NEW run,
+ * so an edit that lands before the run's completion revokes it. A
+ * deduplicated trigger that reuses an in-flight run never uses this payload
+ * and takes no claim: claiming first and handing back would, with two
+ * concurrent reusing triggers, hand back the other trigger's claim and park
+ * the reused run.
  */
 
+import { generateId } from '@/platform/id';
 import { getLogger } from '@/platform/logger';
 import { getTalentChannel } from '@/platform/realtime';
 import type { ScopedDb } from '@/platform/server/db/scoped';
@@ -37,20 +39,15 @@ export async function enqueueLibraryTalentSheet(
   scopedDb: Pick<ScopedDb, 'talent'>,
   params: EnqueueLibraryTalentSheetParams
 ): Promise<string> {
-  const { talent } = scopedDb;
-  const claim = await talent.claimSheet(params.talentId);
+  const sheetId = generateId();
   try {
     const run = await triggerWorkflowRun(
       '/library-talent-sheet',
-      { ...params.workflowInput, sheetId: claim.sheetId },
+      { ...params.workflowInput, sheetId },
       { deduplicationId: params.deduplicationId }
     );
-    if (run.reused) {
-      await talent.restoreSheetClaimIf(
-        params.talentId,
-        claim.sheetId,
-        claim.previous
-      );
+    if (!run.reused) {
+      await scopedDb.talent.claimSheet(params.talentId, sheetId);
     }
     await getTalentChannel(params.talentId).emit('talent.sheet:progress', {
       talentId: params.talentId,
@@ -63,11 +60,6 @@ export async function enqueueLibraryTalentSheet(
       err: error,
       talentId: params.talentId,
     });
-    await talent.restoreSheetClaimIf(
-      params.talentId,
-      claim.sheetId,
-      claim.previous
-    );
     await getTalentChannel(params.talentId).emit('talent.sheet:progress', {
       talentId: params.talentId,
       status: 'failed',

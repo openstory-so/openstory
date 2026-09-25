@@ -28,8 +28,7 @@ vi.doMock('@/platform/server/workflow/client', () => ({
   ) => ({ workflowRunId: await mockTriggerWorkflow(...args), reused: false }),
 }));
 const sheetClaim = {
-  claimSheet: vi.fn(async () => ({ sheetId: 'sheet-claim', previous: null })),
-  restoreSheetClaimIf: vi.fn(async () => undefined),
+  claimSheet: vi.fn(async () => undefined),
 };
 vi.doMock('@/platform/realtime', () => ({
   getTalentChannel: () => ({ emit: mockEmit }),

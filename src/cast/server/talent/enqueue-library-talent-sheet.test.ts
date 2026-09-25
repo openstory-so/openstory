@@ -1,6 +1,7 @@
 /**
- * The talent sheet claim at the trigger (#1113): a deduplicated trigger that
- * reuses an in-flight run must hand the claim back, or that run parks.
+ * The talent sheet claim at the trigger (#1113): only a trigger that started a
+ * new run claims. A deduplicated trigger that reuses an in-flight run must not
+ * touch the claim, or that run parks.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -19,15 +20,12 @@ vi.doMock('@/platform/realtime', () => ({
 const { enqueueLibraryTalentSheet } =
   await import('./enqueue-library-talent-sheet');
 
-const claimSheet = vi.fn(async () => ({
-  sheetId: 'sheet-new',
-  previous: 'sheet-in-flight',
-}));
-const restoreSheetClaimIf = vi.fn(async () => undefined);
-// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the claim methods
-const scopedDb = {
-  talent: { claimSheet, restoreSheetClaimIf },
-} as unknown as Pick<ScopedDb, 'talent'>;
+const claimSheet = vi.fn(async () => undefined);
+// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the claim method
+const scopedDb = { talent: { claimSheet } } as unknown as Pick<
+  ScopedDb,
+  'talent'
+>;
 
 const params = {
   talentId: 'tal-1',
@@ -46,7 +44,7 @@ beforeEach(() => {
 });
 
 describe('enqueueLibraryTalentSheet claim', () => {
-  it('sends the claimed sheet id with a fresh run and keeps the claim', async () => {
+  it('claims the sheet id it sent with a fresh run', async () => {
     mockTriggerWorkflowRun.mockResolvedValue({
       workflowRunId: 'run-1',
       reused: false,
@@ -54,15 +52,14 @@ describe('enqueueLibraryTalentSheet claim', () => {
 
     await enqueueLibraryTalentSheet(scopedDb, params);
 
-    expect(mockTriggerWorkflowRun).toHaveBeenCalledWith(
-      '/library-talent-sheet',
-      expect.objectContaining({ sheetId: 'sheet-new' }),
-      { deduplicationId: params.deduplicationId }
-    );
-    expect(restoreSheetClaimIf).not.toHaveBeenCalled();
+    const [, payload] = mockTriggerWorkflowRun.mock.calls[0] ?? [];
+    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the mocked trigger's payload
+    const { sheetId } = payload as { sheetId: string };
+    expect(sheetId).toBeTruthy();
+    expect(claimSheet).toHaveBeenCalledWith('tal-1', sheetId);
   });
 
-  it('hands the claim back when the trigger reused an in-flight run', async () => {
+  it('leaves the claim alone when the trigger reused an in-flight run', async () => {
     mockTriggerWorkflowRun.mockResolvedValue({
       workflowRunId: 'run-0',
       reused: true,
@@ -70,23 +67,15 @@ describe('enqueueLibraryTalentSheet claim', () => {
 
     await enqueueLibraryTalentSheet(scopedDb, params);
 
-    expect(restoreSheetClaimIf).toHaveBeenCalledWith(
-      'tal-1',
-      'sheet-new',
-      'sheet-in-flight'
-    );
+    expect(claimSheet).not.toHaveBeenCalled();
   });
 
-  it('hands the claim back when the trigger throws', async () => {
+  it('takes no claim when the trigger throws', async () => {
     mockTriggerWorkflowRun.mockRejectedValue(new Error('no binding'));
 
     await expect(enqueueLibraryTalentSheet(scopedDb, params)).rejects.toThrow(
       'no binding'
     );
-    expect(restoreSheetClaimIf).toHaveBeenCalledWith(
-      'tal-1',
-      'sheet-new',
-      'sheet-in-flight'
-    );
+    expect(claimSheet).not.toHaveBeenCalled();
   });
 });

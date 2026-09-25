@@ -19,7 +19,6 @@ import {
   talentMedia,
   talentSheets,
 } from '@/platform/server/db/schema';
-import { generateId } from '@/platform/id';
 import type { TalentSheetInputHash } from '@/shots/input-hash';
 import {
   demoteCharacterSheetClaims,
@@ -400,41 +399,17 @@ export function createTalentMethods(
     },
 
     /**
-     * Take the library sheet claim (#1113): mint the `talent_sheets.id` the
-     * run will write and point the claim at it. Last kickoff wins. Returns
-     * the claim it replaced, for `restoreSheetClaimIf`.
+     * Take the library sheet claim (#1113): point it at the `talent_sheets.id`
+     * the run will write. Taken only once a trigger started a NEW run — a
+     * deduplicated trigger that reused an in-flight run must leave that run's
+     * claim alone. Last kickoff wins.
      */
-    claimSheet: async (
-      talentId: string
-    ): Promise<{ sheetId: string; previous: string | null }> => {
-      const existing = await requireWritableTalent(db, talentId, teamId);
-      const sheetId = generateId();
+    claimSheet: async (talentId: string, sheetId: string): Promise<void> => {
+      await requireWritableTalent(db, talentId, teamId);
       await db
         .update(talent)
         .set({ pendingPromoteSheetId: sheetId, updatedAt: new Date() })
         .where(eq(talent.id, talentId));
-      return { sheetId, previous: existing.pendingPromoteSheetId };
-    },
-
-    /**
-     * Hand a claim back (#1113): the trigger that took `sheetId` started no
-     * run (a deduplicated trigger reused an in-flight one, or it threw). Only
-     * while `sheetId` still holds it — an edit in between keeps its revoke.
-     */
-    restoreSheetClaimIf: async (
-      talentId: string,
-      sheetId: string,
-      previous: string | null
-    ): Promise<void> => {
-      await db
-        .update(talent)
-        .set({ pendingPromoteSheetId: previous, updatedAt: new Date() })
-        .where(
-          and(
-            eq(talent.id, talentId),
-            eq(talent.pendingPromoteSheetId, sheetId)
-          )
-        );
     },
 
     /** A failed run clears its claim — only while it still holds it. */

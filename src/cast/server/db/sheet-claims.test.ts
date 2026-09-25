@@ -414,6 +414,11 @@ describe('library location claims', () => {
 });
 
 describe('library talent claims', () => {
+  const claimTalent = async () => {
+    const sheetId = generateId();
+    await talents().claimSheet(talentId, sheetId);
+    return sheetId;
+  };
   const T_HASH = talentSheetInputHash('e'.repeat(64));
   const land = (sheetId: string, source: 'ai_generated' | 'manual_upload') =>
     talents().landSheet({
@@ -429,7 +434,7 @@ describe('library talent claims', () => {
 
   it('lands a held claim, makes a first upload the default, and revokes cast sheets', async () => {
     const castClaim = await chars().claimSheet(characterId);
-    const { sheetId } = await talents().claimSheet(talentId);
+    const sheetId = await claimTalent();
 
     const { sheet, landed } = await land(sheetId, 'manual_upload');
     expect(landed).toBe(true);
@@ -443,7 +448,7 @@ describe('library talent claims', () => {
   });
 
   it('parks after a description edit, never as default', async () => {
-    const { sheetId } = await talents().claimSheet(talentId);
+    const sheetId = await claimTalent();
     await talents().update(talentId, { description: 'new' });
     const { sheet, landed } = await land(sheetId, 'manual_upload');
     expect(landed).toBe(false);
@@ -451,16 +456,10 @@ describe('library talent claims', () => {
     expect(sheet.isDefault).toBe(false);
   });
 
-  it('hands a claim back only while it still holds', async () => {
-    const first = await talents().claimSheet(talentId);
-    const second = await talents().claimSheet(talentId);
-    expect(second.previous).toBe(first.sheetId);
-    await talents().restoreSheetClaimIf(
-      talentId,
-      second.sheetId,
-      second.previous
-    );
-    const [row] = await db.select().from(talent).where(eq(talent.id, talentId));
-    expect(row?.pendingPromoteSheetId).toBe(first.sheetId);
+  it('parks an older run once a newer run claims', async () => {
+    const older = await claimTalent();
+    const newer = await claimTalent();
+    expect((await land(older, 'ai_generated')).landed).toBe(false);
+    expect((await land(newer, 'ai_generated')).landed).toBe(true);
   });
 });
