@@ -9,13 +9,17 @@
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { getLogger } from '@/platform/logger';
 import {
   HISTORY_MAX_ROWS,
   PRUNE_BATCH_ROWS,
   PRUNE_CATCHUP_MS,
   RealtimeChannel,
+  SSE_MAX_BUFFERED_BYTES,
   SSE_MAX_BUFFERED_CHUNKS,
 } from './realtime-channel.do';
+
+const channelLogger = getLogger(['openstory', 'realtime', 'channel']);
 
 const CHANNEL = 'billing:team-1';
 const THIRTY_DAYS_MS = 60 * 60 * 24 * 30 * 1000;
@@ -580,5 +584,57 @@ describe('RealtimeChannel SSE backpressure (#1332)', () => {
       .filter(isUserEvent)
       .map((frame) => frame.data);
     expect(delivered).toContainEqual({ n: 'after-stall-drop' });
+  });
+
+  it('drops a stalled subscriber once buffered bytes pass the cap', async () => {
+    const warn = vi.spyOn(channelLogger, 'warn');
+    const { channel } = createHarness();
+    const ac = new AbortController();
+    abortControllers.push(ac);
+
+    await channel.fetch(
+      new Request(`https://realtime.do/subscribe?channel=${CHANNEL}`, {
+        signal: ac.signal,
+      })
+    );
+    const chunk = 'x'.repeat(200_000);
+    await emit(channel, { chunk });
+    expect(warn).not.toHaveBeenCalledWith(
+      'dropping slow SSE subscriber',
+      expect.anything()
+    );
+
+    await emit(channel, { chunk });
+    await emit(channel, { chunk });
+    expect(warn).toHaveBeenCalledWith(
+      'dropping slow SSE subscriber',
+      expect.objectContaining({ channel: CHANNEL })
+    );
+    expect(chunk.length * 2).toBeLessThan(SSE_MAX_BUFFERED_BYTES);
+    expect(chunk.length * 3).toBeGreaterThan(SSE_MAX_BUFFERED_BYTES);
+    warn.mockRestore();
+  });
+
+  it('delivers one frame larger than the byte cap when the subscriber is caught up', async () => {
+    const { channel } = createHarness();
+    const ac = new AbortController();
+    abortControllers.push(ac);
+
+    const response = await channel.fetch(
+      new Request(`https://realtime.do/subscribe?channel=${CHANNEL}`, {
+        signal: ac.signal,
+      })
+    );
+    const collected = collectWhile(requireBody(response.body), ac.signal);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const chunk = 'y'.repeat(SSE_MAX_BUFFERED_BYTES + 64);
+    await emit(channel, { chunk });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    ac.abort();
+
+    const delivered = (await collected)
+      .filter(isUserEvent)
+      .map((frame) => frame.data);
+    expect(delivered).toContainEqual({ chunk });
   });
 });

@@ -18,7 +18,7 @@ import { getLogger } from '@/platform/logger';
  *   don't hold an SSE stream open — see the kill-switch note that used to live
  *   in `providers.tsx`). Each subscriber is a pull-driven `ReadableStream` with
  *   a bounded pending queue: a stalled `/subscribe` consumer is dropped rather
- *   than buffering unbounded chunks in the isolate (#1332). The merged
+ *   than buffering unbounded chunks in the isolate (#1332, #1792). The merged
  *   `/api/realtime` pump re-subscribes that channel for live events only;
  *   missed frames are not replayed. Browser EventSource reconnects the merged
  *   stream if it dies. Progress replay is a separate `/history` fetch on page
@@ -48,7 +48,9 @@ export const HISTORY_MAX_ROWS = 2000;
  * cannot bound memory. If pull() does not drain this queue, we close the
  * subscriber rather than grow it.
  */
-export const SSE_MAX_BUFFERED_CHUNKS = 32;
+export const SSE_MAX_BUFFERED_CHUNKS = 8;
+/** Bytes queued for one subscriber. One large scene frame still fits when caught up. */
+export const SSE_MAX_BUFFERED_BYTES = 512 * 1024;
 /** Catch-up cadence when a leftover mountain still exceeds the cap / TTL. */
 export const PRUNE_CATCHUP_MS = 5_000;
 /** Rows deleted per prune statement so one storage op cannot exceed the timeout. */
@@ -73,6 +75,7 @@ export type ChannelHistoryMessage = {
 type Subscriber = {
   channel: string;
   pending: Uint8Array[];
+  bufferedBytes: number;
   controller: ReadableStreamDefaultController<Uint8Array> | null;
   notify: (() => void) | null;
   closed: boolean;
@@ -159,6 +162,7 @@ export class RealtimeChannel extends DurableObject {
     const subscriber: Subscriber = {
       channel,
       pending: [],
+      bufferedBytes: 0,
       controller: null,
       notify: null,
       closed: false,
@@ -194,6 +198,7 @@ export class RealtimeChannel extends DurableObject {
           }
           const chunk = subscriber.pending.shift();
           if (chunk) {
+            subscriber.bufferedBytes -= chunk.byteLength;
             controller.enqueue(chunk);
             return;
           }
@@ -237,11 +242,19 @@ export class RealtimeChannel extends DurableObject {
 
   private enqueue(subscriber: Subscriber, chunk: Uint8Array): void {
     if (subscriber.closed) return;
-    if (subscriber.pending.length >= SSE_MAX_BUFFERED_CHUNKS) {
+    // The first queued chunk is accepted at any size so a caught-up
+    // subscriber still receives one large scene frame. Further chunks
+    // shed the subscriber once the count or byte cap is crossed.
+    const blocked =
+      subscriber.pending.length >= SSE_MAX_BUFFERED_CHUNKS ||
+      (subscriber.pending.length > 0 &&
+        subscriber.bufferedBytes + chunk.byteLength > SSE_MAX_BUFFERED_BYTES);
+    if (blocked) {
       this.dropSubscriber(subscriber, 'overflow');
       return;
     }
     subscriber.pending.push(chunk);
+    subscriber.bufferedBytes += chunk.byteLength;
     subscriber.notify?.();
     subscriber.notify = null;
   }
@@ -254,6 +267,7 @@ export class RealtimeChannel extends DurableObject {
     subscriber.closed = true;
     this.subscribers.delete(subscriber);
     subscriber.pending.length = 0;
+    subscriber.bufferedBytes = 0;
     if (subscriber.ping !== null) {
       clearInterval(subscriber.ping);
       subscriber.ping = null;

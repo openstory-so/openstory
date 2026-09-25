@@ -1,10 +1,20 @@
 import { getEnv } from '#env';
 import { createFileRoute } from '@tanstack/react-router';
 import { authRequestMiddleware } from '@/platform/middleware.fn';
+import { getLogger } from '@/platform/logger';
 import {
-  createPendingWriteGate,
+  coalesceKeyForSsePayload,
+  createSseReassembly,
+  createSseWriteQueue,
+  isBillingSsePayload,
+  isSystemSsePayload,
+  MERGED_SSE_MAX_FRAME_BYTES,
   MERGED_SSE_MAX_PENDING,
+  MERGED_SSE_MAX_PENDING_BYTES,
+  pushSseText,
 } from '@/platform/server/realtime/merged-sse';
+
+const logger = getLogger(['openstory', 'realtime', 'merged']);
 
 /**
  * SSE subscription endpoint. One request carries *many* channels: the client
@@ -12,13 +22,20 @@ import {
  * (see `client.tsx`) and this handler fans that out to one `RealtimeChannel`
  * Durable Object per channel, merging their streams back into one response.
  *
+ * Billing is a second EventSource (`sse-session.ts`). It used to share this
+ * response with talent and sequence payloads; a stalled browser plus a chatty
+ * billing channel, or one full-scene `shot:updated`, filled the isolate until
+ * Cloudflare killed it with `exceededMemory` (#1792). Workers memory is 128 MB
+ * per isolate and cannot be raised.
+ *
  * The multiplexing is not an optimisation — it is required for correctness.
  * Browsers cap concurrent HTTP/1.1 connections per origin at 6, and an SSE
  * stream holds its connection for its entire life. One `EventSource` per
  * channel therefore deadlocked the whole origin as soon as a page rendered ~5
  * cards (each subscribing to its own channel) plus the billing pill: every
  * later request — route chunks, server functions, images — queued forever
- * behind the streams and the app silently stopped navigating (#827).
+ * behind the streams and the app silently stopped navigating (#827). Two
+ * streams (billing, everything else) stay under that cap.
  */
 
 /** Hard cap so one subscriber can't fan a single request out to unbounded DOs. */
@@ -29,6 +46,8 @@ const PING_INTERVAL_MS = 25_000;
 const RECONNECT_MIN_MS = 250;
 /** Cap so a crashing DO cannot tight-loop `/subscribe`. */
 const RECONNECT_MAX_MS = 5_000;
+/** Don't emit a shed warning more than once per response per this window. */
+const SHED_LOG_INTERVAL_MS = 10_000;
 
 function nextReconnectDelay(currentMs: number): number {
   if (currentMs < RECONNECT_MIN_MS) return RECONNECT_MIN_MS;
@@ -51,21 +70,6 @@ function waitForReconnect(ms: number, signal: AbortSignal): Promise<void> {
     }, ms);
     signal.addEventListener('abort', onAbort, { once: true });
   });
-}
-
-/** A DO frame is `data: {json}\n\n`; system frames carry `type` and stop here. */
-function parseFrame(frame: string): unknown {
-  const payload = frame.startsWith('data:') ? frame.slice(5).trim() : '';
-  if (!payload) return null;
-  try {
-    return JSON.parse(payload);
-  } catch {
-    return null;
-  }
-}
-
-function isSystemEvent(payload: unknown): boolean {
-  return typeof payload === 'object' && payload !== null && 'type' in payload;
 }
 
 export const Route = createFileRoute('/api/realtime')({
@@ -104,30 +108,50 @@ export const Route = createFileRoute('/api/realtime')({
         const abort = new AbortController();
 
         let closed = false;
+        let lastShedLog = 0;
+        const noteShed = (bytes: number): void => {
+          const now = Date.now();
+          if (now - lastShedLog < SHED_LOG_INTERVAL_MS) return;
+          lastShedLog = now;
+          logger.warn('shedding SSE frame', {
+            bytes,
+            channels: channels.length,
+          });
+        };
+
         // Writes are chained so frames from different channels can never
-        // interleave mid-frame on the merged stream. Cap the queue: a stalled
-        // EventSource plus a chatty billing channel otherwise buffers every
-        // subsequent event in this Worker isolate (OOM).
-        let tail: Promise<unknown> = Promise.resolve();
-        const pendingWrites = createPendingWriteGate(
-          MERGED_SSE_MAX_PENDING,
-          () => close()
-        );
-        const send = (payload: unknown): void => {
+        // interleave mid-frame. A full queue sheds a frame — it does not
+        // close the response. Closing reconnected every tab at once and
+        // that storm is what exhausted isolate memory (#1792).
+        const queue = createSseWriteQueue({
+          maxPending: MERGED_SSE_MAX_PENDING,
+          maxBytes: MERGED_SSE_MAX_PENDING_BYTES,
+          write: (frame) => writer.write(frame),
+          onShed: (shed) => noteShed(shed.bytes),
+          onFatal: () => close(),
+        });
+
+        const sendPayload = (
+          payload: string,
+          coalesceKey: string | null
+        ): void => {
           if (closed) return;
-          if (!pendingWrites.tryAcquire()) return;
-          const frame = encoder.encode(`data: ${JSON.stringify(payload)}\n\n`);
-          tail = tail
-            .then(() => {
-              if (closed) return;
-              return writer.write(frame);
-            })
-            .then(() => pendingWrites.release())
-            .catch(() => close());
+          queue.enqueue(
+            encoder.encode(`data: ${payload}\n\n`),
+            coalesceKey,
+            isBillingSsePayload(payload)
+          );
+        };
+
+        const sendJson = (
+          payload: unknown,
+          coalesceKey: string | null
+        ): void => {
+          sendPayload(JSON.stringify(payload), coalesceKey);
         };
 
         const ping = setInterval(
-          () => send({ type: 'ping' }),
+          () => sendJson({ type: 'ping' }, 'system:ping'),
           PING_INTERVAL_MS
         );
 
@@ -135,6 +159,7 @@ export const Route = createFileRoute('/api/realtime')({
           if (closed) return;
           closed = true;
           clearInterval(ping);
+          queue.close();
           abort.abort();
           void writer.close().catch(() => {});
         }
@@ -146,7 +171,7 @@ export const Route = createFileRoute('/api/realtime')({
         ): Promise<void> => {
           const reader = body.getReader();
           const decoder = new TextDecoder();
-          let buffer = '';
+          const reassembly = createSseReassembly();
           try {
             let reading = true;
             while (reading && !closed) {
@@ -155,16 +180,17 @@ export const Route = createFileRoute('/api/realtime')({
                 reading = false;
                 continue;
               }
-              buffer += decoder.decode(result.value, { stream: true });
-
-              let boundary = buffer.indexOf('\n\n');
-              while (boundary !== -1) {
-                const payload = parseFrame(buffer.slice(0, boundary));
-                buffer = buffer.slice(boundary + 2);
+              const { frames, shedOversized } = pushSseText(
+                reassembly,
+                decoder.decode(result.value, { stream: true }),
+                MERGED_SSE_MAX_FRAME_BYTES
+              );
+              if (shedOversized > 0) noteShed(MERGED_SSE_MAX_FRAME_BYTES);
+              for (const payload of frames) {
                 // Each DO emits its own connected/ping frames; the merged
                 // stream publishes exactly one of each instead of N.
-                if (payload && !isSystemEvent(payload)) send(payload);
-                boundary = buffer.indexOf('\n\n');
+                if (isSystemSsePayload(payload)) continue;
+                sendPayload(payload, coalesceKeyForSsePayload(payload));
               }
             }
           } finally {
@@ -219,7 +245,7 @@ export const Route = createFileRoute('/api/realtime')({
           )
         ).then(close, close);
 
-        send({ type: 'connected', channels });
+        sendJson({ type: 'connected', channels }, null);
 
         return new Response(readable, {
           headers: {
