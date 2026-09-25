@@ -633,20 +633,18 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
 };
 
 function usePackedChaptersUrl(vtt: string | null): string | undefined {
-  const url = useMemo(() => {
-    if (
-      !vtt ||
-      typeof Blob === 'undefined' ||
-      typeof URL === 'undefined' ||
-      typeof URL.createObjectURL !== 'function'
-    ) {
-      return undefined;
-    }
-    return URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' }));
-  }, [vtt]);
+  // Minted in an effect, never during render: workerd's SSR defines
+  // URL.createObjectURL but throws "not implemented".
+  const [url, setUrl] = useState<string>();
   useEffect(() => {
-    if (!url) return;
-    return () => URL.revokeObjectURL(url);
-  }, [url]);
+    if (!vtt) {
+      // oxlint-disable-next-line react/set-state-in-effect -- blob URL is an external resource; minting it during render breaks SSR and hydration.
+      setUrl(undefined);
+      return;
+    }
+    const next = URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' }));
+    setUrl(next);
+    return () => URL.revokeObjectURL(next);
+  }, [vtt]);
   return url;
 }
