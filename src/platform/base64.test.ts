@@ -33,3 +33,24 @@ describe('bytesToBase64', () => {
     }
   });
 });
+
+describe('base64url', () => {
+  it('round-trips unpadded, matching a whole-file encode', () => {
+    for (const length of LENGTHS) {
+      const bytes = bytesOf(length);
+      const url = bytesToBase64(bytes, { alphabet: 'base64url' });
+      expect(url).toBe(Buffer.from(bytes).toString('base64url'));
+      expect(base64ToBytes(url, { alphabet: 'base64url' })).toEqual(bytes);
+    }
+  });
+
+  it('reads padded input too', () => {
+    const bytes = bytesOf(1);
+    const padded = `${Buffer.from(bytes).toString('base64url')}==`;
+    expect(base64ToBytes(padded, { alphabet: 'base64url' })).toEqual(bytes);
+  });
+
+  it('rejects the standard alphabet', () => {
+    expect(() => base64ToBytes('+/+/', { alphabet: 'base64url' })).toThrow();
+  });
+});

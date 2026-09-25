@@ -1,3 +1,4 @@
+import { base64ToBytes, bytesToBase64 } from '@/platform/base64';
 import { z } from 'zod';
 import { ValidationError } from '@/platform/errors';
 import type { PageOptions } from '@/platform/server/db/read-page';
@@ -43,15 +44,11 @@ export const pageRows =
         .slice(0, page.limit)
     );
 
-/** `btoa` takes Latin-1 only, and a scope can carry any filter text. */
+/** UTF-8 first: a scope can carry any filter text. */
 export const encodeCursorPayload = (value: unknown) =>
-  btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(value))));
+  bytesToBase64(new TextEncoder().encode(JSON.stringify(value)));
 export const decodeCursorPayload = (cursor: string): unknown =>
-  JSON.parse(
-    new TextDecoder().decode(
-      Uint8Array.from(atob(cursor), (char) => char.charCodeAt(0))
-    )
-  );
+  JSON.parse(new TextDecoder().decode(base64ToBytes(cursor)));
 
 export const encodeCursor = (id: string, scope: string[]) =>
   encodeCursorPayload({ scope, id });

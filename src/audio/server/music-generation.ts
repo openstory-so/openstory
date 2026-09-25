@@ -1,3 +1,4 @@
+import { base64ToBytes } from '@/platform/base64';
 import { getEnv } from '#env';
 import { uploadFile } from '#storage';
 import { falCostFromUnits } from '@/billing/server/fal-cost-billing';
@@ -289,7 +290,7 @@ async function parkNativeMusic(
   b64Json: string,
   contentType: string | undefined
 ): Promise<{ url: string; path: string }> {
-  const bytes = Buffer.from(b64Json, 'base64');
+  const bytes = base64ToBytes(b64Json);
   if (bytes.byteLength === 0) {
     throw new Error('ElevenLabs music generation returned an empty audio body');
   }

@@ -26,6 +26,7 @@
  *   mode (`E2E_RECORD=1`) talks to real providers and takes the shim path.
  */
 
+import { bytesToBase64 } from '@/platform/base64';
 import { getEnv } from '#env';
 // Deliberately the UPSTREAM client, not the fal-config wrapper: the shim only
 // runs when talking to REAL fal (local dev / e2e record), and routing the
@@ -168,7 +169,7 @@ function bytesToDataPart(object: {
 }): VisionImageSource {
   return {
     type: 'data',
-    value: toBase64(object.bytes),
+    value: bytesToBase64(object.bytes),
     mimeType: object.contentType || 'image/png',
   };
 }
@@ -200,16 +201,4 @@ async function inlineVisionImageSource(
     bytes,
     contentType: sniffed || headerType || 'image/png',
   });
-}
-
-// Web-safe base64 (no node:buffer — this module sits on an import path that
-// Vite also walks for the client bundle, where node:* is externalized and
-// throws at runtime). Chunked to stay under the JS argument-count limit.
-function toBase64(bytes: Uint8Array): string {
-  let binary = '';
-  const chunkSize = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-  }
-  return btoa(binary);
 }

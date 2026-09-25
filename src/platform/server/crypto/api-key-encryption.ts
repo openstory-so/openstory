@@ -8,6 +8,7 @@
  * reveal user API keys.
  */
 
+import { base64ToBytes, bytesToBase64 } from '@/platform/base64';
 import { getEnv } from '#env';
 
 const ALGORITHM = 'AES-GCM';
@@ -80,9 +81,9 @@ export async function encryptApiKey(
   const tag = cipherArray.slice(cipherArray.length - tagBytes);
 
   return {
-    encryptedKey: uint8ToBase64(ciphertext),
-    keyIv: uint8ToBase64(iv),
-    keyTag: uint8ToBase64(tag),
+    encryptedKey: bytesToBase64(ciphertext),
+    keyIv: bytesToBase64(iv),
+    keyTag: bytesToBase64(tag),
   };
 }
 
@@ -93,9 +94,9 @@ export async function decryptApiKey(
   encrypted: EncryptedApiKey
 ): Promise<string> {
   const key = await getEncryptionKey();
-  const iv = base64ToUint8(encrypted.keyIv);
-  const ciphertext = base64ToUint8(encrypted.encryptedKey);
-  const tag = base64ToUint8(encrypted.keyTag);
+  const iv = base64ToBytes(encrypted.keyIv);
+  const ciphertext = base64ToBytes(encrypted.encryptedKey);
+  const tag = base64ToBytes(encrypted.keyTag);
 
   // Reconstruct the combined ciphertext+tag that AES-GCM expects
   const combined = new Uint8Array(ciphertext.length + tag.length);
@@ -118,25 +119,4 @@ export async function decryptApiKey(
 export function getKeyHint(apiKey: string): string {
   if (apiKey.length <= 4) return '****';
   return `${'*'.repeat(4)}${apiKey.slice(-4)}`;
-}
-
-// -- Base64 helpers (works in Node, Bun, and Cloudflare Workers) --
-
-function uint8ToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) {
-    const byte = bytes[i];
-    if (byte === undefined) throw new Error(`Byte at index ${i} is undefined`);
-    binary += String.fromCharCode(byte);
-  }
-  return btoa(binary);
-}
-
-function base64ToUint8(base64: string): Uint8Array {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
 }

@@ -9,6 +9,7 @@
  * costs one shots round-trip rather than N (see `listShotsByIds`).
  */
 
+import { base64ToBytes, bytesToBase64 } from '@/platform/base64';
 import { z } from 'zod';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Style } from '@/platform/server/db/schema/libraries';
@@ -50,15 +51,15 @@ export type SequenceCursor = { updatedAt: Date; id: string };
 // percent-encoding. The encoded payload is `<updatedAtMs>:<ulid>` — an opaque
 // token to callers, who only ever echo back the `next` link we hand them.
 function toBase64Url(input: string): string {
-  return btoa(input).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return bytesToBase64(new TextEncoder().encode(input), {
+    alphabet: 'base64url',
+  });
 }
 
 function fromBase64Url(input: string): string {
-  const padded = input.padEnd(
-    input.length + ((4 - (input.length % 4)) % 4),
-    '='
+  return new TextDecoder().decode(
+    base64ToBytes(input, { alphabet: 'base64url' })
   );
-  return atob(padded.replace(/-/g, '+').replace(/_/g, '/'));
 }
 
 export function encodeCursor(cursor: SequenceCursor): string {

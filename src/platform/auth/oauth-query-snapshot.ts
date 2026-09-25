@@ -5,6 +5,8 @@
  * single `q` param before the router sees it.
  */
 
+import { base64ToBytes, bytesToBase64 } from '@/platform/base64';
+
 const PACK_PREFIX = 'v1.';
 
 /** React consent page — only ever loaded with a packed `q` param. */
@@ -44,28 +46,18 @@ export function pickOAuthQuery(
 
 export function packOAuthQuery(search: string): string {
   const raw = search.startsWith('?') ? search.slice(1) : search;
-  const bytes = new TextEncoder().encode(raw);
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  const b64 = btoa(binary)
-    .replaceAll('+', '-')
-    .replaceAll('/', '_')
-    .replace(/=+$/, '');
+  const b64 = bytesToBase64(new TextEncoder().encode(raw), {
+    alphabet: 'base64url',
+  });
   return `${PACK_PREFIX}${b64}`;
 }
 
 export function unpackOAuthQuery(packed: string): string | null {
   if (!packed.startsWith(PACK_PREFIX)) return null;
   try {
-    let b64 = packed
-      .slice(PACK_PREFIX.length)
-      .replaceAll('-', '+')
-      .replaceAll('_', '/');
-    const pad = (4 - (b64.length % 4)) % 4;
-    b64 += '='.repeat(pad);
-    const binary = atob(b64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const bytes = base64ToBytes(packed.slice(PACK_PREFIX.length), {
+      alphabet: 'base64url',
+    });
     const raw = new TextDecoder().decode(bytes);
     return raw ? `?${raw}` : '';
   } catch {

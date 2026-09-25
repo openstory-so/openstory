@@ -3,6 +3,7 @@
  * Handles uploading and managing videos in R2 Storage
  */
 
+import { base64ToBytes } from '@/platform/base64';
 import { getEnv } from '#env';
 import {
   STORAGE_BUCKETS,
@@ -302,11 +303,7 @@ function responseFromDataUri(url: string): Response {
     );
   }
   const mimeType = match[1];
-  const binary = atob(match[2]);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
+  const bytes = base64ToBytes(match[2]);
   return new Response(bytes, {
     headers: {
       'Content-Type': mimeType,

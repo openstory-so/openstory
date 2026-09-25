@@ -9,6 +9,7 @@
  * @see https://openrouter.ai/docs/use-cases/oauth-pkce
  */
 
+import { bytesToBase64 } from '@/platform/base64';
 import { z } from 'zod';
 
 const OPENROUTER_AUTH_URL = 'https://openrouter.ai/auth';
@@ -20,7 +21,7 @@ const OPENROUTER_KEY_EXCHANGE_URL = 'https://openrouter.ai/api/v1/auth/keys';
  */
 function generateUrlSafeToken(): string {
   const array = crypto.getRandomValues(new Uint8Array(32));
-  return uint8ToUrlSafeBase64(array);
+  return bytesToBase64(array, { alphabet: 'base64url' });
 }
 
 /**
@@ -29,7 +30,7 @@ function generateUrlSafeToken(): string {
 async function generateCodeChallenge(verifier: string): Promise<string> {
   const encoded = new TextEncoder().encode(verifier);
   const digest = await crypto.subtle.digest('SHA-256', encoded);
-  return uint8ToUrlSafeBase64(new Uint8Array(digest));
+  return bytesToBase64(new Uint8Array(digest), { alphabet: 'base64url' });
 }
 
 export type OAuthState = {
@@ -100,19 +101,4 @@ export async function exchangeCodeForKey(
   const data = z.object({ key: z.string() }).parse(await response.json());
 
   return { apiKey: data.key };
-}
-
-// -- Helpers --
-
-function uint8ToUrlSafeBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) {
-    const byte = bytes[i];
-    if (byte === undefined) throw new Error(`Byte at index ${i} is undefined`);
-    binary += String.fromCharCode(byte);
-  }
-  return btoa(binary)
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
 }

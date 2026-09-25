@@ -12,6 +12,7 @@
  * `CharacterBibleWorkflow`; triggered by Generate on the character card.
  */
 
+import { base64ToBytes } from '@/platform/base64';
 import {
   voiceDescriptionSchema,
   voiceRangeScriptSchema,
@@ -247,7 +248,7 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         const result = await uploadFile(
           STORAGE_BUCKETS.AUDIO,
           path,
-          Buffer.from(preview.audioBase64, 'base64'),
+          base64ToBytes(preview.audioBase64),
           { contentType: preview.mediaType || 'audio/mpeg', upsert: true }
         );
         stored.push({

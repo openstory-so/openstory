@@ -19,13 +19,28 @@ const DECODE_SLICE_CHARS = 4 * 8192;
 /** Bytes per `btoa` — a multiple of 3, so only the last piece is padded. */
 const ENCODE_SLICE_BYTES = 3 * 8192;
 
+/**
+ * `base64url` is the URL-safe alphabet (`-` and `_`), written unpadded and
+ * read with or without padding — the same as the native options.
+ */
+type Base64Options = { alphabet?: 'base64' | 'base64url' };
+
 /** Decode base64 into one buffer. ASCII whitespace is skipped. */
-export function base64ToBytes(input: string): Uint8Array<ArrayBuffer> {
-  if (NATIVE) return Uint8Array.fromBase64(input);
+export function base64ToBytes(
+  input: string,
+  { alphabet = 'base64' }: Base64Options = {}
+): Uint8Array<ArrayBuffer> {
+  if (NATIVE) return Uint8Array.fromBase64(input, { alphabet });
   // `atob` skips whitespace, which would shift a slice off its 4-character
   // groups. Providers do not send any; the scan is what makes that safe to
   // rely on, and the copy is only paid when it is wrong.
-  const base64 = /\s/.test(input) ? input.replace(/\s+/g, '') : input;
+  let base64 = /\s/.test(input) ? input.replace(/\s+/g, '') : input;
+  if (alphabet === 'base64url') {
+    // Each alphabet rejects the other's two characters, as the native does.
+    if (/[+/]/.test(base64)) throw new SyntaxError('not base64url');
+    base64 = base64.replaceAll('-', '+').replaceAll('_', '/');
+    base64 += '='.repeat((4 - (base64.length % 4)) % 4);
+  }
   const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
   const out = new Uint8Array(Math.floor((base64.length * 3) / 4) - padding);
   let at = 0;
@@ -44,13 +59,20 @@ export function base64ToBytes(input: string): Uint8Array<ArrayBuffer> {
   return out;
 }
 
-/** Encode bytes as padded base64. */
-export function bytesToBase64(bytes: Uint8Array): string {
-  if (NATIVE) return bytes.toBase64();
+/** Encode bytes as padded base64, or unpadded base64url. */
+export function bytesToBase64(
+  bytes: Uint8Array,
+  { alphabet = 'base64' }: Base64Options = {}
+): string {
+  const url = alphabet === 'base64url';
+  if (NATIVE) return bytes.toBase64({ alphabet, omitPadding: url });
   const parts: string[] = [];
   for (let from = 0; from < bytes.length; from += ENCODE_SLICE_BYTES) {
     const slice = bytes.subarray(from, from + ENCODE_SLICE_BYTES);
     parts.push(btoa(String.fromCharCode(...slice)));
   }
-  return parts.join('');
+  const base64 = parts.join('');
+  return url
+    ? base64.replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '')
+    : base64;
 }

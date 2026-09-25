@@ -3,6 +3,7 @@
  * Handles uploading and managing images in R2 Storage
  */
 
+import { base64ToBytes } from '@/platform/base64';
 import {
   STORAGE_BUCKETS,
   type StorageBucket,
@@ -49,7 +50,7 @@ function fetchGeneratedImage(url: string): Promise<Response> {
       'Malformed image data URI; expected data:<mime>;base64,<payload>'
     );
   }
-  const bytes = Buffer.from(match[2], 'base64');
+  const bytes = base64ToBytes(match[2]);
   const contentType = sniffImageMimeType(bytes) ?? match[1];
   return Promise.resolve(
     new Response(bytes, {
