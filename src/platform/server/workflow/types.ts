@@ -226,7 +226,24 @@ export interface ShotVariantWorkflowInput extends SequenceWorkflowContext {
   locationReferences?: ReferenceImageDescription[];
   /** Element reference images (uploaded logos/products) for identity consistency */
   elementReferences?: ReferenceImageDescription[];
+  /**
+   * What a tile picked from this grid is judged by (#712): the prompt and
+   * reference-sheet hashes the grid was generated against, snapshotted at the
+   * trigger. The run hashes it and stamps the sheet; a picked tile copies that
+   * stamp, so it reads stale after a prompt edit like any other still. Null
+   * when the trigger had no visual prompt.
+   */
+  tileHashInput: StillHashInput | null;
 }
+
+/** The {@link ShotImageSceneSnapshot} fields a still's input hash covers. */
+export type StillHashInput = Pick<
+  ShotImageSceneSnapshot,
+  | 'visualPrompt'
+  | 'characterSheetHashes'
+  | 'locationSheetHashes'
+  | 'elementReferenceHashes'
+>;
 
 export interface ShotVariantWorkflowResult {
   variantImageUrl: string;

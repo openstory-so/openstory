@@ -255,6 +255,12 @@ export class RegenerateShotsWorkflow extends OpenStoryWorkflowEntrypoint<Regener
                 aspectRatio,
                 resolution,
                 model: imageModel,
+                tileHashInput: {
+                  visualPrompt: snapshot.imagePrompt,
+                  characterSheetHashes: snapshot.characterSheetHashes,
+                  locationSheetHashes: snapshot.locationSheetHashes,
+                  elementReferenceHashes: snapshot.elementReferenceHashes,
+                },
               },
               {
                 // Dedupe: a retry of this step.do mustn't re-fire variants.

@@ -243,6 +243,8 @@ Two models — do not conflate them:
 
 **A. Pointer drift (images, #989).** `image-workflow` compares `snapshotInputHash` vs a live recompute. On drift it appends a new `frame_variants` version with `inputHash`, does **not** repoint `frames.selectedImageVersionId`, and does **not** emit `generation.stale:detected`. The retained unselected version is the drift signal; the user switches primaries via `frameVariants.select` (pointer repoint). Versions are soft-hidden with `discardedAt`, not hard-deleted. `frame_variants` has no `divergedAt` — each row is a flat version (`kind: 'model' | 'framing'`).
 
+A picked 3×3 tile (`kind: 'framing'`) has no snapshot of its own: it inherits the grid sheet's `inputHash`, which the grid run stamps from the trigger's `tileHashInput` hashed under the **upscale** model — staleness recomputes from the selected version's model, and the tile is written with that one (#712). A sheet made before #712 has no stamp, so its tiles read `'untracked'`.
+
 **B. Divergent alternates (sheets, music, legacy shot video/audio).** Write-time hash mismatch parks a row in a `*_variants` table with `divergedAt`, then emits `generation.stale:detected` with a required `divergedVariantId`:
 
 - **Character / location / talent sheets** → `character_sheet_variants`, `location_sheet_variants`, `talent_sheet_variants` via `sheet-divergence.ts`.

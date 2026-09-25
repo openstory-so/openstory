@@ -263,7 +263,7 @@ flowchart LR
 1. Builds per-scene character and location reference maps
 2. For each scene, generates images with each selected model in parallel (one `spawnAndAwaitChild` per scene × model, gathered with `Promise.allSettled`):
    - Spawns the `ImageWorkflow` child (binding `IMAGE_WORKFLOW`) per scene per model
-   - After each image completes, fires the shot-grid variant generation via `triggerWorkflow('/variant-image', …)` (fire-and-forget; its progress is tracked on `frame.variantImageStatus`)
+   - After each image completes, fires the shot-grid variant generation via `triggerWorkflow('/variant-image', …)` (fire-and-forget; its progress is tracked on `frame.variantImageStatus`). Every grid trigger passes `tileHashInput` (the prompt + reference-sheet hashes the grid is generated against); `ShotVariantWorkflow` hashes it under the upscale model (`tileInputHash`) and stamps the sheet, and `selectShotVariantFn` copies that stamp onto the picked tile, so a tile reads stale after a prompt edit like any other still (#712)
 3. Returns `{ imageUrls }` — primary model's URL per scene. The primary still is persisted to `frame.thumbnailUrl`, which the motion-prompt pass reads next.
 
 **Motion + Music Prompts Workflow** (`src/motion/server/workflows/motion-music-prompts-workflow.ts`):
