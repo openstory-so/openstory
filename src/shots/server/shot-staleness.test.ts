@@ -68,6 +68,8 @@ function makeScopedDb(overrides: {
   }>;
   /** Bible history rows (#1600), oldest first. */
   characterBibleVersions?: unknown[];
+  /** Style snapshot rows (#1600), oldest first. */
+  styleVersions?: unknown[];
 }) {
   return asStub<ScopedDb>({
     characters: {
@@ -81,6 +83,11 @@ function makeScopedDb(overrides: {
       listBibleVersionsBySequence: vi.fn().mockResolvedValue([]),
     },
     sceneScriptVersions: { listBySequence: vi.fn().mockResolvedValue([]) },
+    sequences: {
+      listStyleVersions: vi
+        .fn()
+        .mockResolvedValue(overrides.styleVersions ?? []),
+    },
     sequenceElements: { list: vi.fn().mockResolvedValue([]) },
     styles: { getById: vi.fn().mockResolvedValue({ config: {} }) },
     framePromptVersions: {
@@ -831,5 +838,79 @@ describe('loadShotStalenessReads (#1795)', () => {
     expect(frameVariants.listLiveClaimsByFrameIds).toHaveBeenCalledTimes(1);
     expect(sequenceEvents.listBySequence).toHaveBeenCalledTimes(1);
     expect(framePromptVersions.getByIds).not.toHaveBeenCalled();
+  });
+});
+
+describe('style causes (#1600)', () => {
+  it('names the knobs a style switch moved, not a bare "Style"', async () => {
+    buildRegenerateShotSnapshot.mockResolvedValue({
+      snapshotInputHash: 'image-live',
+    });
+    loadNarrowShotPromptContext.mockResolvedValue({});
+    hashVisualPromptInput.mockResolvedValue('visual-stored');
+    hashMotionPromptInput.mockResolvedValue('motion-stored');
+
+    const before = new Date('2025-12-31T00:00:00Z');
+    const generated = new Date('2026-01-01T00:00:00Z');
+    const afterGen = new Date('2026-01-02T00:00:00Z');
+    const look = {
+      mood: 'calm and still',
+      artStyle: 'watercolour',
+      lighting: 'soft window light',
+      colorPalette: ['#fff'],
+      colorGrading: 'warm',
+    };
+    const oldConfig = {
+      version: 2,
+      look,
+      motion: { camera: 'locked off' },
+      references: [],
+    };
+    const newConfig = {
+      ...oldConfig,
+      look: { ...look, lighting: 'hard noon sun' },
+    };
+    const scopedDb = makeScopedDb({
+      motionSelectedHash: 'motion-stored',
+      styleVersions: [
+        { id: 'sv1', config: oldConfig, createdAt: before },
+        { id: 'sv2', config: newConfig, createdAt: afterGen },
+      ],
+    });
+    Object.assign(scopedDb, {
+      sequenceEvents: {
+        listByTarget: vi.fn().mockResolvedValue([
+          {
+            kind: 'sequence.settings-changed',
+            createdAt: afterGen,
+            data: { fields: ['styleId'] },
+          },
+        ]),
+      },
+    });
+
+    const result = await computeShotStaleness({
+      dialogue: NO_LINES,
+      scopedDb,
+      sequence: { ...sequence, styleConfig: newConfig },
+      shot: asStub<Shot>({ id: 'shot-1' }),
+      frame,
+      selectedImage: asStub<FrameVariant>({
+        id: 'fv-1',
+        inputHash: 'image-old',
+        model: null,
+        url: null,
+        generatedAt: generated,
+      }),
+      scene,
+      refs: asStub({
+        characters: [],
+        locations: [],
+        elements: [],
+        style: null,
+      }),
+    });
+
+    expect(result.causes).toEqual(['Style: lighting']);
   });
 });

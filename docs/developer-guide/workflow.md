@@ -128,7 +128,7 @@ flowchart TD
 
 1. Validates auth via `validateSequenceAuth()`
 2. Loads sequence with `getSequenceForUser()` — checks script and style exist
-3. Loads and parses the style config
+3. Loads and parses the style config — the sequence's selected `sequence_style_versions` snapshot (#1600). An automatic style's recipe, derived by the run, lands as a `derived` snapshot (`sequences.snapshotAutoStyle` in `auto-style-step.ts`)
 4. Deletes all existing frames for the sequence
 5. Sets sequence status to `processing`
 6. Returns resolved models: `analysisModelId`, `imageModel`, `videoModel`

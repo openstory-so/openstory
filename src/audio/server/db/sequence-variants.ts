@@ -11,6 +11,7 @@
 
 import type { Database } from '@/platform/server/db/client';
 import { sequenceMusicVariants, sequences } from '@/platform/server/db/schema';
+import { selectSequencesFrom } from '@/sequences/server/db/sequences';
 import type {
   NewSequenceMusicVariant,
   Sequence,
@@ -348,7 +349,7 @@ export function createSequenceVariantsMethods(db: Database) {
           updatedAt: now,
         })
         .where(eq(sequences.id, variant.sequenceId))
-        .returning();
+        .returning({ id: sequences.id });
       const discardVariant = db
         .update(sequenceMusicVariants)
         .set({ discardedAt: now, updatedAt: now })
@@ -358,7 +359,11 @@ export function createSequenceVariantsMethods(db: Database) {
         updateSequence,
         discardVariant,
       ]);
-      const promotedSequence = sequenceRows[0];
+      const [promotedSequence] = sequenceRows[0]
+        ? await selectSequencesFrom(db).where(
+            eq(sequences.id, variant.sequenceId)
+          )
+        : [];
       if (!promotedSequence) {
         throw new Error(
           `Sequence ${variant.sequenceId} disappeared during promote`
@@ -403,13 +408,18 @@ export function createSequenceVariantsMethods(db: Database) {
           updatedAt: now,
         })
         .where(eq(sequences.id, variant.sequenceId))
-        .returning();
-      if (!updated) {
+        .returning({ id: sequences.id });
+      const [resolved] = updated
+        ? await selectSequencesFrom(db).where(
+            eq(sequences.id, variant.sequenceId)
+          )
+        : [];
+      if (!resolved) {
         throw new Error(
           `Sequence ${variant.sequenceId} disappeared during set-music`
         );
       }
-      return updated;
+      return resolved;
     },
   };
 }

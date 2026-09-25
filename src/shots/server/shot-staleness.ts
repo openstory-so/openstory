@@ -30,6 +30,7 @@ import type {
   DbSceneId,
   SceneNarrative,
   SceneScriptVersion,
+  SequenceStyleVersion,
   Frame,
   FramePromptVersion,
   FrameVariant,
@@ -44,6 +45,7 @@ import {
   locationBibleChanged,
 } from '@/cast/server/db/bible-versions';
 import { dbSceneId } from '@/shots/scene-id';
+import { parseStyleConfig, styleConfigHashBody } from '@/look/style-config';
 import {
   narrativeFieldsChanged,
   sceneNarrativeOf,
@@ -201,6 +203,7 @@ type InputHistory = {
   characters: ReadonlyMap<string, readonly CharacterBibleVersion[]>;
   locations: ReadonlyMap<string, readonly LocationBibleVersion[]>;
   scenes: ReadonlyMap<string, readonly SceneScriptVersion[]>;
+  style: readonly SequenceStyleVersion[];
 };
 
 type InputHistoryDb = {
@@ -210,6 +213,7 @@ type InputHistoryDb = {
     'listBibleVersionsBySequence'
   >;
   sceneScriptVersions: Pick<ScopedDb['sceneScriptVersions'], 'listBySequence'>;
+  sequences: Pick<ScopedDb['sequences'], 'listStyleVersions'>;
 };
 
 function groupBy<T>(rows: readonly T[], key: (row: T) => string) {
@@ -226,10 +230,11 @@ async function loadInputHistory(
   scopedDb: InputHistoryDb,
   sequenceId: string
 ): Promise<InputHistory> {
-  const [characters, locations, scenes] = await Promise.all([
+  const [characters, locations, scenes, style] = await Promise.all([
     scopedDb.characters.listBibleVersionsBySequence(sequenceId),
     scopedDb.sequenceLocations.listBibleVersionsBySequence(sequenceId),
     scopedDb.sceneScriptVersions.listBySequence(sequenceId),
+    scopedDb.sequences.listStyleVersions(sequenceId),
   ]);
   return {
     characters: groupBy(characters, (v) => v.characterId),
@@ -238,6 +243,7 @@ async function loadInputHistory(
       scenes.map((row) => row.version),
       (v) => v.sceneId
     ),
+    style,
   };
 }
 
@@ -790,6 +796,50 @@ function bibleMoved<V extends { createdAt: Date }>(
   return then ? diff(then) : null;
 }
 
+/** Plain words for the style knobs a cause names (the hash body's keys). */
+const STYLE_LABELS: Record<string, string> = {
+  mood: 'mood',
+  artStyle: 'art style',
+  lighting: 'lighting',
+  colorPalette: 'palette',
+  cameraWork: 'camera',
+  referenceFilms: 'references',
+  colorGrading: 'grading',
+  medium: 'medium',
+  shots: 'shots',
+  pace: 'pace',
+  energy: 'energy',
+};
+
+/**
+ * The style knobs that moved since `at` (#1600): the snapshot live then
+ * against the live one, compared over the same body the hashes read. Null
+ * when no snapshot reaches back that far, or either side is unreadable.
+ */
+function styleMoved(
+  history: readonly SequenceStyleVersion[],
+  live: unknown,
+  at: number
+): string[] | null {
+  let then: SequenceStyleVersion | undefined;
+  for (const v of history) {
+    if (v.createdAt.getTime() <= at) then = v;
+  }
+  if (!then || live == null) return null;
+  try {
+    const before = styleConfigHashBody(parseStyleConfig(then.config)) ?? {};
+    const after = styleConfigHashBody(parseStyleConfig(live)) ?? {};
+    const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+    return [...keys]
+      .filter(
+        (key) => JSON.stringify(before[key]) !== JSON.stringify(after[key])
+      )
+      .map((key) => STYLE_LABELS[key] ?? key);
+  } catch {
+    return null;
+  }
+}
+
 /** Plain words for the scene fields a cause names; the title is a label. */
 const SCENE_LABELS: Partial<Record<keyof SceneNarrative, string>> = {
   location: 'heading',
@@ -925,10 +975,17 @@ async function findStalenessCauses(args: {
       for (const f of changed) if (typeof f === 'string') fields.add(f);
     }
   }
+  // A snapshot with history names the knobs that moved (#1600) in place of
+  // the bare "Style" a switch event would give.
+  const styleKnobs = styleMoved(inputHistory.style, sequence.styleConfig, at);
   // Older events also list model switches, which never stale (#1785).
   for (const f of fields) {
+    if (f === 'styleId' && styleKnobs !== null) continue;
     const label = SETTINGS_CHANGED_LABELS[f];
     if (label) causes.push(label);
+  }
+  if (styleKnobs && styleKnobs.length > 0) {
+    causes.push(`Style: ${styleKnobs.join(', ')}`);
   }
   // Catalog style edits only flow through when the sequence has no snapshot.
   if (sequence.styleConfig == null && after(refs.style?.updatedAt, at)) {

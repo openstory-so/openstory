@@ -76,10 +76,18 @@ export const sequences = snakeCase.table(
     styleId: text()
       .notNull()
       .references(() => styles.id, { onDelete: 'set null' }),
-    // Recipe this sequence was generated with. Copied from styles.config on
-    // create / style change so catalog edits cannot stale existing work.
-    // Nullable only for the ADD COLUMN + backfill window; new writes always set it.
-    styleConfig: text({ mode: 'json' }).$type<StoredStyleConfig>(),
+    // The live `sequence_style_versions` row (#1600): the recipe this sequence
+    // renders with, copied from styles.config on create / style change so
+    // catalog edits cannot stale existing work. Null while an automatic style
+    // is still being derived (#1213), and on a row a pre-#1600 worker wrote.
+    selectedStyleVersionId: text(),
+    // LEGACY snapshot column (#1600). Read only as the fallback for a
+    // sequence with no style version, never written. The `legacy` name keeps
+    // the SQL column but makes every raw reader a compile error. Drop it after
+    // a second backfill in a later deploy.
+    legacyStyleConfig: text('style_config', {
+      mode: 'json',
+    }).$type<StoredStyleConfig>(),
     aspectRatio: text({ length: 10 })
       .$type<AspectRatio>()
       // Literal on purpose: a SQL default is DDL, and the schema may not
@@ -224,5 +232,19 @@ export const sequences = snakeCase.table(
 );
 
 // Type exports
-export type Sequence = InferSelectModel<typeof sequences>;
-export type NewSequence = InferInsertModel<typeof sequences>;
+/** The stored row, legacy snapshot included (scoped module only). */
+export type SequenceRecord = InferSelectModel<typeof sequences>;
+
+/**
+ * A sequence with its style snapshot resolved from the selected
+ * `sequence_style_versions` row (#1600). What every scoped read returns.
+ */
+export type Sequence = Omit<SequenceRecord, 'legacyStyleConfig'> & {
+  styleConfig: StoredStyleConfig | null;
+};
+
+/** A new sequence row. Its style snapshot is written as its first version. */
+export type NewSequence = Omit<
+  InferInsertModel<typeof sequences>,
+  'legacyStyleConfig' | 'selectedStyleVersionId'
+>;

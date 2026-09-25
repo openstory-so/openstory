@@ -58,6 +58,7 @@ import { sequenceMusicPromptVersions } from './sequence-music-prompt-versions';
 
 import { sequenceMusicVariants } from './sequence-music-variants';
 import { sequenceExports } from './sequence-exports';
+import { sequenceStyleVersions } from './sequence-style-versions';
 
 import { characters } from './characters';
 import { characterVoiceVersions } from './character-voice-versions';
@@ -149,7 +150,7 @@ export { teamInvitations, teamMembers, teams };
 // Sequences
 export { sequences };
 
-export type { NewSequence, Sequence } from './sequences';
+export type { NewSequence, Sequence, SequenceRecord } from './sequences';
 
 // Scenes (narrative units; each owns an ordered list of shots)
 export { scenes };
@@ -320,6 +321,14 @@ export type {
 // Sequence exports (container-rendered MP4 snapshots)
 export { sequenceExports };
 
+// Sequence style history (#1600)
+export { sequenceStyleVersions };
+
+export type {
+  SequenceStyleSource,
+  SequenceStyleVersion,
+} from './sequence-style-versions';
+
 export type { SequenceExport } from './sequence-exports';
 
 // Characters (scripted roles)
@@ -408,7 +417,14 @@ export type {
 // Library Resources
 export { audio, StyleSampleVideoSchema, styles, vfx };
 
-export type { Audio, NewStyle, Style, StyleConfig, Vfx } from './libraries';
+export type {
+  Audio,
+  NewStyle,
+  StoredStyleConfig,
+  Style,
+  StyleConfig,
+  Vfx,
+} from './libraries';
 
 // Credits, Transactions, and Billing
 export { creditReservations, credits, transactions };
@@ -534,6 +550,7 @@ export const schema = {
   sequenceMusicPromptVersions,
   sequenceMusicVariants,
   sequenceExports,
+  sequenceStyleVersions,
 
   // Characters (scripted roles extracted from script)
   characters,

@@ -70,6 +70,7 @@ import { createSequenceVariantsMethods } from '@/audio/server/db/sequence-varian
 import {
   createSequenceMethods,
   createSequencesMethods,
+  selectSequencesFrom,
 } from '@/sequences/server/db/sequences';
 import {
   createPublicStylesReadMethods,
@@ -306,11 +307,9 @@ export async function getSequenceByIdUnscoped(
   sequenceId: string
 ): Promise<Sequence | null> {
   const db = getDb();
-  const [result] = await db
-    .select()
-    .from(sequences)
-    .where(eq(sequences.id, sequenceId));
-  // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
+  const [result] = await selectSequencesFrom(db).where(
+    eq(sequences.id, sequenceId)
+  );
   return result ?? null;
 }
 

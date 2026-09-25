@@ -75,8 +75,11 @@ export const createSequenceSchema = createInsertSchema(sequences, {
     imageModel: true, // Omit - will use imageModel field in extend
     videoModel: true, // Omit - will use videoModel field in extend
     workflow: true, // Omit - set by workflow, not user
-    // Copied from the style row on create — clients send styleId only.
-    styleConfig: true,
+    // Copied from the style row on create — clients send styleId only. The
+    // snapshot is a version row now (#1600); these are its pointer and the
+    // legacy column.
+    legacyStyleConfig: true,
+    selectedStyleVersionId: true,
     // Music fields - managed by workflow, not user input
     musicUrl: true,
     musicPath: true,
@@ -321,8 +324,10 @@ export const updateSequenceSchema = createUpdateSchema(sequences, {
   // path must not set it: no 5s floor, and it is not an aspect-ratio-style
   // regenerate trigger.
   targetDurationSeconds: true,
-  // Copied from the style row on styleId change — clients send styleId only.
-  styleConfig: true,
+  // Copied from the style row on styleId change — clients send styleId only
+  // (#1600: a version row, reached through this pointer).
+  legacyStyleConfig: true,
+  selectedStyleVersionId: true,
   // Music fields - managed by workflow, not user input
   musicUrl: true,
   musicPath: true,

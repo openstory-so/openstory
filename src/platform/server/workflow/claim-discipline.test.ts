@@ -164,6 +164,9 @@ const EXCEPTIONS: Record<string, string> = {
   // edit and a recast each append; nothing is generated into it async.
   character_bible_versions: 'authored; analysis and edits append',
   location_bible_versions: 'authored; analysis and edits append',
+  // Style snapshots (#1600): copied from the catalog on create, switch and
+  // automatic derivation; a snapshot, not a generation.
+  sequence_style_versions: 'snapshot of the catalog style; appended on change',
 };
 
 /**

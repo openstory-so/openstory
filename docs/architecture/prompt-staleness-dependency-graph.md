@@ -233,6 +233,9 @@ Key consequences of the shape:
   character's `physicalDescription` and the visual + motion **prompts** go stale;
   the rendered thumbnail goes stale only because the **character-sheet hash**
   changes and feeds the thumbnail hash.
+- **The style snapshot is versioned (#1600).** Each create, switch and
+  automatic derivation appends a `sequence_style_versions` row, so a stale
+  prompt names the knobs that moved (`Style: lighting`).
 - **A scene's narrative is versioned with its script (#1600).** Heading, time
   of day, story beat, title and continuity tags live on the selected
   `scene_script_versions` row, so an edit to any of them appends a row, and a

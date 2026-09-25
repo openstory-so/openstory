@@ -203,11 +203,12 @@ export const GRAPH_NODES: readonly GraphNode[] = [
   // --- You set -------------------------------------------------------------
   {
     id: 'style',
+    versionedIn: 'sequence_style_versions',
     label: 'Style',
     kind: 'input',
     band: 'bibles',
     summary:
-      'The look and motion config snapshotted onto the sequence: derived from the script by the auto style, or picked from the catalog.',
+      'The look and motion config snapshotted onto the sequence: derived from the script by the auto style, or picked from the catalog. Every snapshot is a version, so a stale shot names the knob that moved.',
     counts: [
       'Mood, art style, lighting, colour palette, colour grading',
       'Camera work, reference films',

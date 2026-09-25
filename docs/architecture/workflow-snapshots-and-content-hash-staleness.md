@@ -138,6 +138,25 @@ narrative. The title is a label, never a cause. History made before #1600
 carries the narrative as it stood at deploy, so an older narrative edit on an
 older artifact is not named.
 
+### Style history (#1600)
+
+A sequence's style recipe is a snapshot of its catalog style. Each snapshot
+is a `sequence_style_versions` row — `created` with the sequence,
+`switched` on a style change, `derived` when an automatic style's recipe
+lands (#1213) — and `sequences.selectedStyleVersionId` points at the live
+one. The three writers are in `src/sequences/server/db/sequences.ts`; a
+switch appends the row, moves the pointer and revokes the sequence's sheet
+claims in one batch. Every sequence read resolves `styleConfig` from the
+live row (`sequenceColumns`). The migration snapshotted every existing
+recipe as a `backfill` row keyed to the sequence's own id; a sequence with
+no snapshot (an automatic style still deriving) stays pointer-less.
+`sequences.style_config` survives as `legacyStyleConfig`, read only for a
+sequence with no version and never written.
+
+A stale artifact's cause names the knobs that moved between the snapshot live
+when it was made and the live one, over the same body the hashes read:
+`Style: lighting, palette` instead of a bare "Style".
+
 ### Where the helpers live
 
 `src/shots/input-hash.ts` exports one named helper per artifact type (e.g. `computeShotImageInputHash`, `computeCharacterSheetInputHash`, `computeMotionPromptInputHash`). Each helper accepts the minimal input DTO it needs (never a whole DB row) and returns a `string`. This keeps callers honest about what counts as input and makes the helpers trivially unit-testable without DB setup.
@@ -367,7 +386,7 @@ Stills and video keep the claim as a pointer column on the parent row. Prompts k
 
 **Prompts are only partly claimed.** Only a regeneration the user queued (a run with `targetVersionId`) takes a claim. The pipeline's prompt passes (analysis, a prompt run with no `targetVersionId`, the motion batch) call `write` / `writeAiVersion`, which select their output with no claim and demote live claims, superseding a user override (it stays in history). Two drain paths do the same: a pre-#1786 run's typed edit, and a pre-#1715 voice payload with no husk. These call sites are pinned, not endorsed.
 
-**Pinned by** `src/platform/server/workflow/claim-discipline.test.ts`. It scans the schema for every table a workflow writes results into (a `…WorkflowRunId` column) or that holds generated history (`*_variants`, `*_versions`). Each must belong to a claim domain or sit on its exceptions list with a reason. It also checks that each domain still has its three methods, that no workflow calls a domain's user selector (`frameVariants.select` and the like), and that every workflow call to an unclaimed pointer writer (prompt `write` / `writeAiVersion`, `characters.updateVoice`, and the pre-#1113 sheet drain writers `characters.updateSheet`, `sequenceLocations.updateReference`, `locations.updateReference`) is on its pinned list. The exceptions today are music, the authored script and dialogue-line versions (a re-analysis replaces them by design), the bible versions (authored, #1600), and tables with no selection pointer (studio assets, exports, provenance, legacy `shot_variants`, the sequence run slot).
+**Pinned by** `src/platform/server/workflow/claim-discipline.test.ts`. It scans the schema for every table a workflow writes results into (a `…WorkflowRunId` column) or that holds generated history (`*_variants`, `*_versions`). Each must belong to a claim domain or sit on its exceptions list with a reason. It also checks that each domain still has its three methods, that no workflow calls a domain's user selector (`frameVariants.select` and the like), and that every workflow call to an unclaimed pointer writer (prompt `write` / `writeAiVersion`, `characters.updateVoice`, and the pre-#1113 sheet drain writers `characters.updateSheet`, `sequenceLocations.updateReference`, `locations.updateReference`) is on its pinned list. The exceptions today are music, the authored script and dialogue-line versions (a re-analysis replaces them by design), the bible versions (authored, #1600), the style snapshots (#1600), and tables with no selection pointer (studio assets, exports, provenance, legacy `shot_variants`, the sequence run slot).
 
 ## How it composes with existing patterns
 
@@ -394,6 +413,8 @@ Much of the original "stage 1" plan is live. This section separates what exists 
 - **Realtime** — `realtimeSchema.generation['stale:detected']` discriminated union is live.
 - **Clip provenance (#1657)** — `VideoManifestEntry.referenceKeys` + the `audioClipIds` compare, duration snapped on both sides, and `src/shots/server/live-shot-state.ts` as the one live-side loader. Closes the reference-sheet, element-media and duration gaps the docs dependency graph drew red.
 - **Authored dialogue + recordings (#1657)** — `shot_dialogue_versions` (append-only lines per shot), `dialogue_recordings` (one whole file per ElevenLabs call, never joined, no selection) and `shot_dialogue_sections` (a time range of a recording per shot, `source: 'recorded' | 'context'`); lines and sections each carry a selected pointer per shot, and `shots.audioClips` mirrors the selected section's cut. A recording in flight is a `shot_dialogue_claims` row (claim → demote → guarded complete → fail, the #1085 lifecycle). The selected lines row is the ONLY source of what a shot says: every reader resolves through `shotDialogueResolver`, and `shot_prompt_versions.dialogue` is no longer written (read only as the resolver's fallback for pre-#1657 rows).
+- **Style history (#1600)** — `sequence_style_versions` + `selectedStyleVersionId`; causes name the style knobs that moved.
+- **Scene narrative (#1600)** — heading, time of day, story beat, title and continuity on the selected `scene_script_versions` row; causes name the fields that moved.
 - **Bible history (#1600)** — `character_bible_versions` / `location_bible_versions` + `selectedBibleVersionId`; sheet version rows carry `bibleVersionId`; staleness causes name the bible fields that moved.
 - **Voice history (#1657)** — `character_voice_versions` + `characters.selectedVoiceVersionId`, with an explicit `source` and `createdBy` per row and `releasedAt` on any row whose ElevenLabs id has been freed (a released row can never be selected).
 - **Music track staleness (#1657)** — `sequence_music_variants.inputHash` is compared, not just written; `musicTrack` is its own facet next to `musicPrompt`.
