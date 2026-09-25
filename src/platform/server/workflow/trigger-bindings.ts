@@ -29,6 +29,7 @@ const TRIGGER_TO_BINDING: Record<string, keyof CloudflareEnv> = {
   'character-sheet': 'CHARACTER_SHEET_WORKFLOW',
   'character-voice': 'CHARACTER_VOICE_WORKFLOW',
   'dialogue-audio': 'DIALOGUE_AUDIO_WORKFLOW',
+  'dialogue-take': 'DIALOGUE_TAKE_WORKFLOW',
   'location-sheet': 'LOCATION_SHEET_WORKFLOW',
   'library-talent-sheet': 'LIBRARY_TALENT_SHEET_WORKFLOW',
   'library-location-sheet': 'LIBRARY_LOCATION_SHEET_WORKFLOW',

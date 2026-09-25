@@ -407,6 +407,7 @@ async function recordClaimed(
           inputHash,
           characterCount: call.characterCount,
           workflowRunId: args.workflowRunId,
+          adoptedAs: 'recorded',
           sections: call.windows.map((window) => {
             const { sourceKey, spokenLines } = spokenOf(window.shotId);
             return {

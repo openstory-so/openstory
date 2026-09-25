@@ -7,7 +7,21 @@
  * playing a different reading than the one marked current.
  */
 
-import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
+import {
+  estimateDialogueTakeCost,
+  estimateTtsCost,
+} from '@/billing/elevenlabs-pricing';
+import { voiceProviderOf } from '@/cast/seed-voice';
+import { isElevenLabsConfigured } from '@/models/server/elevenlabs-config';
+import { isSeedVoiceConfigured } from '@/models/server/seed-speech-config';
+import {
+  pcmToWav,
+  wavDurationSeconds,
+} from '@/motion/server/pad-dialogue-audio';
+import { base64ToBytes } from '@/platform/base64';
+import { generateId } from '@/platform/id';
+import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
+import { uploadFile } from '#storage';
 import {
   releaseReservationOnThrow,
   reserveRunCredits,
@@ -21,6 +35,7 @@ import {
   sectionClip,
   ttsCharacterCount,
   voicedDialogueLines,
+  type VoicedDialogueLine,
 } from '@/motion/dialogue-tts';
 import { resolveShotDuration } from '@/motion/resolve-shot-duration';
 import { cutAudioSection } from '@/motion/server/cut-audio-section';
@@ -29,7 +44,10 @@ import { getLogger } from '@/platform/logger';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
-import type { DialogueAudioWorkflowInput } from '@/platform/server/workflow/types';
+import type {
+  DialogueAudioWorkflowInput,
+  DialogueTakeWorkflowInput,
+} from '@/platform/server/workflow/types';
 import { loadSceneContextBySequence } from '@/shots/server/scene-script';
 import {
   loadShotDialogueResolver,
@@ -65,7 +83,11 @@ async function currentSourceKeys(
   >,
   shotId: string,
   sequenceId: string
-): Promise<{ key: string; untokenedKey: string }> {
+): Promise<{
+  key: string;
+  untokenedKey: string;
+  voiced: VoicedDialogueLine[];
+}> {
   const [shots, selectedMotion, characters] = await Promise.all([
     scopedDb.shots.listBySequence(sequenceId),
     scopedDb.shotPromptVersions.getSelectedMotion(shotId),
@@ -78,8 +100,10 @@ async function currentSourceKeys(
     () => selectedMotion?.dialogue
   );
   const dialogue = dialogueOf({ id: shotId });
+  const voiced = voicedDialogueLines(dialogue, characters);
   return {
-    key: dialogueClipSourceKey(voicedDialogueLines(dialogue, characters)),
+    voiced,
+    key: dialogueClipSourceKey(voiced),
     // The key the lines would have with every line on Generated: a shot moved
     // to Video model or an audio element voices nothing, so `key` is empty,
     // yet its words may be exactly what a reading spoke (#1773).
@@ -339,6 +363,132 @@ export const regenerateShotDialogueFn = createServerFn({ method: 'POST' })
       };
       return {
         workflowRunId: await triggerWorkflow('/dialogue-audio', input),
+      };
+    });
+  });
+
+/** A mic take's limits: Seed takes a reference up to 30 s, and 10 MB. */
+const TAKE_MAX_SECONDS = 30;
+const TAKE_MIN_SECONDS = 0.3;
+const TAKE_MAX_BASE64_CHARS = Math.ceil((10 * 1024 * 1024 * 4) / 3);
+
+/**
+ * Record one line at the mic (#1802): the take becomes the speaker's voice
+ * with the user's delivery, spliced into the shot's current reading. Lands
+ * through a claim like every recording, as a `mic` reading.
+ *
+ * The take arrives as the browser's 16-bit mono PCM; it is wrapped as a WAV
+ * and parked in R2 here
+ * so the run carries only its key.
+ */
+export const recordShotDialogueLineFn = createServerFn({ method: 'POST' })
+  .middleware([shotAccessMiddleware])
+  .validator(
+    zodValidator(
+      shotInput.extend({
+        lineIndex: z.number().int().min(0),
+        /** 16-bit LE mono PCM, as the browser captured it. */
+        pcmBase64: z.string().min(1).max(TAKE_MAX_BASE64_CHARS),
+        sampleRate: z.number().int().min(8000).max(48_000),
+      })
+    )
+  )
+  .handler(async ({ context, data }) => {
+    const { scopedDb, shot, sequence, user } = context;
+    if (!isElevenLabsConfigured()) {
+      throw new Error('Recording a line needs ElevenLabs, which is not set up');
+    }
+    const take = pcmToWav(base64ToBytes(data.pcmBase64), data.sampleRate);
+    const takeSeconds = wavDurationSeconds(take) ?? 0;
+    if (takeSeconds < TAKE_MIN_SECONDS || takeSeconds > TAKE_MAX_SECONDS) {
+      throw new Error(
+        `A take runs ${TAKE_MIN_SECONDS}–${TAKE_MAX_SECONDS}s; this one is ${takeSeconds.toFixed(1)}s`
+      );
+    }
+
+    const [{ key: sourceKey, voiced }, version, sections] = await Promise.all([
+      currentSourceKeys(scopedDb, shot.id, sequence.id),
+      scopedDb.shotDialogue.getSelected(shot.id),
+      scopedDb.shotDialogue.listSections(shot.id),
+    ]);
+    const line = voiced.find((row) => row.index === data.lineIndex);
+    if (!line) {
+      throw new Error('This line has no voice to record it in');
+    }
+    const provider = voiceProviderOf(line.voiceId);
+    if (provider === 'seed' && !isSeedVoiceConfigured()) {
+      throw new Error('Recording a line in a Seed voice needs Seed Speech');
+    }
+
+    // The line goes into the reading the shot plays now — only while that
+    // reading still speaks the shot's lines as they stand.
+    const current = sections.find(
+      (section) => section.selectedAt != null && section.sourceKey === sourceKey
+    );
+    const recording = current
+      ? (await scopedDb.shotDialogue.getSectionById(current.id))?.recording
+      : undefined;
+    let base: DialogueTakeWorkflowInput['base'] = null;
+    if (current && recording) {
+      const turns = recording.turns.filter((turn) => turn.shotId === shot.id);
+      const lineTurn = turns.find((turn) => turn.index === line.index);
+      if (!lineTurn) {
+        throw new Error('The current reading does not hold this line');
+      }
+      base = {
+        storageKey: recording.storageKey,
+        fromSeconds: current.fromSeconds,
+        toSeconds: current.toSeconds,
+        lineStartSeconds: lineTurn.startSeconds,
+        lineEndSeconds: lineTurn.endSeconds,
+        turns,
+        spokenLines: current.spokenLines,
+      };
+    } else if (voiced.length > 1) {
+      throw new Error(
+        'Generate dialogue for this shot first — a line is recorded into its current reading'
+      );
+    }
+
+    const model = safeImageToVideoModel(sequence.videoModel);
+    const reservationId = await reserveRunCredits(
+      scopedDb,
+      estimateDialogueTakeCost(takeSeconds, provider),
+      {
+        errorMessage: 'Insufficient credits to record this line',
+        sequenceId: sequence.id,
+      }
+    );
+    return releaseReservationOnThrow(scopedDb, reservationId, async () => {
+      const uploaded = await uploadFile(
+        STORAGE_BUCKETS.AUDIO,
+        `${sequence.teamId}/${sequence.id}/dialogue-takes/${generateId()}.wav`,
+        take,
+        { contentType: 'audio/wav' }
+      );
+      const input: DialogueTakeWorkflowInput = {
+        userId: user.id,
+        teamId: sequence.teamId,
+        sequenceId: sequence.id,
+        shotId: shot.id,
+        reservationId,
+        ownsReservation: true,
+        takeStorageKey: uploaded.fullPath,
+        line: {
+          index: line.index,
+          voiceId: line.voiceId,
+          character: line.character,
+          text: line.text,
+          tone: line.tone,
+        },
+        sourceKey,
+        dialogueVersionId: version?.id ?? null,
+        base,
+        minDurationSeconds: dialogueAudioMinSeconds([model]),
+        maxDurationSeconds: dialogueAudioMaxSeconds([model]),
+      };
+      return {
+        workflowRunId: await triggerWorkflow('/dialogue-take', input),
       };
     });
   });

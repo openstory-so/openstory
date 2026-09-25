@@ -71,8 +71,11 @@ type DialogueClip = {
  */
 export type ShotDialogueReading = {
   id: string;
-  /** `context`: spoken while recording another shot, never adopted here. */
-  source: 'recorded' | 'context';
+  /**
+   * `context`: spoken while recording another shot, never adopted here.
+   * `mic`: a line performed by the user, in the speaker's voice (#1802).
+   */
+  source: 'recorded' | 'context' | 'mic';
   selected: boolean;
   fromSeconds: number;
   toSeconds: number;
@@ -374,6 +377,7 @@ const ReadingRow: React.FC<{
     recordedAt,
     formatElementDuration(reading.toSeconds - reading.fromSeconds),
     reading.source === 'context' ? 'Generated with another shot' : null,
+    reading.source === 'mic' ? 'Your take' : null,
     reading.mismatch === 'voice'
       ? 'Voice changed since'
       : reading.mismatch === 'lines'

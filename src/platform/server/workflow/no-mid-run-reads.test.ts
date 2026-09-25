@@ -259,6 +259,13 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       why: 'Idempotency and adoption: only a voiced shot whose working-set clip no longer matches its lines adopts the new recording, so a replayed run re-bills nothing and an untouched shot keeps its section (#1657).',
     },
   ],
+  'dialogue-take-workflow.ts': [
+    {
+      read: 'resolveKey',
+      bucket: 'CREDENTIAL',
+      why: 'The platform ElevenLabs (and, for a Seed voice, Seed Speech) key, resolved inside the step that converts the mic take (#1802).',
+    },
+  ],
   'element-sheet-workflow.ts': [
     {
       read: 'sequenceElements.getById',

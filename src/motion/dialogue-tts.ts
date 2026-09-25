@@ -20,10 +20,14 @@ import type {
 /** ElevenLabs model an ElevenLabs voice's dialogue is recorded with (a Seed voice's is `SEED_AUDIO_MODEL`). */
 export const DIALOGUE_TTS_MODEL = 'eleven_v3';
 
+/** ElevenLabs Voice Changer model a mic take is turned into an ElevenLabs voice with (#1802). */
+export const DIALOGUE_STS_MODEL = 'eleven_multilingual_sts_v2';
+
 /** A dialogue model as the readings list names it. */
 export function dialogueModelLabel(model: string): string {
   if (model === SEED_AUDIO_MODEL) return 'Seed Audio';
   if (model === DIALOGUE_TTS_MODEL) return 'ElevenLabs v3';
+  if (model === DIALOGUE_STS_MODEL) return 'ElevenLabs Voice Changer';
   return model;
 }
 

@@ -102,6 +102,16 @@ line` in order.
   still has an ElevenLabs voice sharing a shot with a Seed voice). Fix it and
   retry those shots — nothing else is regenerated.
 
+## A line at the mic (#1802)
+
+A user's take of one line goes to Seed Audio as a second reference
+(`@Audio2`) next to the speaker's normal clip (`@Audio1`): the prompt asks for
+@Audio1's voice and @Audio2's timing, pauses, emphasis and emotion — Seed
+copies a reference's delivery. It is checked by Scribe against the line like
+every take (3 takes, then the line fails) and trimmed to Scribe's span.
+Spliced into the shot's reading like an ElevenLabs Voice Changer take — see
+`elevenlabs.md`.
+
 ## Open
 
 - Seed Speech ASR is not granted on the account (`45000030`); Scribe does

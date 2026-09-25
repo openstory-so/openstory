@@ -422,8 +422,27 @@ JSON carries the audio refs for paste-into-Videos. Models with no audio
 reference slot (Grok, Omni Flash, Kling) still get a section and a cut clip
 in References; motion just does not bind it.
 
-Out of scope here: voice cloning from an uploaded sample, realtime/agents,
-auditioning/regenerating a single line from the scene panel.
+**A line at the mic (#1802).** "Record a line" in the shot's Dialogue section
+(prompt editor) records one line in the browser, plays it back, and on "Use"
+sends it as 16-bit mono PCM (`recordShotDialogueLineFn`, parked in R2 under
+`dialogue-takes/`). `DialogueTakeWorkflow` turns it into the speaker's voice
+with the user's delivery kept: an ElevenLabs voice goes through **Voice
+Changer** (`eleven_multilingual_sts_v2`, `removeBackgroundNoise`, $0.12/min
+on the card as `elevenlabs-voice-changer`); a Seed voice is sent to Seed
+Audio with the take as `@Audio2`, a guide read to copy the delivery of (see
+`seed-voices.md`). The converted line is **spliced into the shot's current
+reading** — that line's turn window is replaced, the shot's other lines keep
+their delivery — and the file is its own `dialogue_recordings` row
+(`inputHash: mic:<id>`), only this shot's turns re-timed onto it. Provider
+recordings are still never joined; this is a file we made, from a ranged read
+of one section. The reading lands through a claim as `source: 'mic'`
+("Your take"), selected. A shot with two or more voiced lines needs a current
+reading that still matches its lines; a one-line shot without one takes the
+line as the whole recording. The take is trimmed to its speech at both ends
+(`trimmedStartSeconds` / `trimmedEndSeconds`, Scribe's span for Seed), and a
+result over `dialogueFitBudget`'s limit fails rather than being rewritten.
+
+Out of scope here: voice cloning from an uploaded sample, realtime/agents.
 
 **Continuous preview playback (#1690).** The existing scene/sequence player
 includes every shot before rendering is complete. `toPlaybackScenes` uses

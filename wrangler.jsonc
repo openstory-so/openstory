@@ -174,6 +174,11 @@
       "class_name": "DialogueAudioWorkflow",
     },
     {
+      "name": "dialogue-take-workflow",
+      "binding": "DIALOGUE_TAKE_WORKFLOW",
+      "class_name": "DialogueTakeWorkflow",
+    },
+    {
       "name": "location-sheet-workflow",
       "binding": "LOCATION_SHEET_WORKFLOW",
       "class_name": "LocationSheetWorkflow",
@@ -455,6 +460,11 @@
           "name": "dialogue-audio-workflow",
           "binding": "DIALOGUE_AUDIO_WORKFLOW",
           "class_name": "DialogueAudioWorkflow",
+        },
+        {
+          "name": "dialogue-take-workflow",
+          "binding": "DIALOGUE_TAKE_WORKFLOW",
+          "class_name": "DialogueTakeWorkflow",
         },
         {
           "name": "location-sheet-workflow",
@@ -776,6 +786,11 @@
           "name": "dialogue-audio-workflow",
           "binding": "DIALOGUE_AUDIO_WORKFLOW",
           "class_name": "DialogueAudioWorkflow",
+        },
+        {
+          "name": "dialogue-take-workflow",
+          "binding": "DIALOGUE_TAKE_WORKFLOW",
+          "class_name": "DialogueTakeWorkflow",
         },
         {
           "name": "location-sheet-workflow",

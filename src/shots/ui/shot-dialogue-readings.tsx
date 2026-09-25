@@ -25,6 +25,7 @@ import {
   listShotDialogueClaimsFn,
   listShotDialogueSectionsFn,
   listShotDialogueVersionsFn,
+  recordShotDialogueLineFn,
   regenerateShotDialogueFn,
   saveShotDialogueFn,
   selectShotDialogueSectionFn,
@@ -42,6 +43,10 @@ import {
 import { Suspense } from 'react';
 import { toast } from 'sonner';
 import type { DialogueLine } from '@/shots/scene-analysis.schema';
+import { voicedDialogueLines } from '@/motion/dialogue-tts';
+import { bytesToBase64 } from '@/platform/base64';
+import { LineTakeRecorder } from './line-take-recorder';
+import { decodeTake, floatToPcm16, MIC_TAKE_SAMPLE_RATE } from './mic-take';
 import {
   DialogueLinesEditor,
   ShotDialogueBlock,
@@ -184,6 +189,40 @@ const Readings: React.FC<ReadingsProps> = ({
   // or the lines it was generated from moved.
   const current = readings.find((reading) => reading.selected);
   const staleBecause = current?.mismatch ?? null;
+  // A mic take (#1802) is spliced into the current reading, so a shot with
+  // more than one voiced line needs one that still matches its lines.
+  const recordable = spokenBy
+    ? []
+    : voicedDialogueLines(
+        { presence: true, lines: [...lines] },
+        characters ?? []
+      );
+  const takeBlockedBecause =
+    recordable.length > 1 && !current?.matchesCurrentLines
+      ? 'Generate dialogue first — a line is recorded into the current reading'
+      : null;
+  const recordLine = async (lineIndex: number, take: Blob) => {
+    try {
+      const pcm = floatToPcm16(await decodeTake(take));
+      await recordShotDialogueLineFn({
+        data: {
+          sequenceId,
+          shotId,
+          lineIndex,
+          pcmBase64: bytesToBase64(pcm),
+          sampleRate: MIC_TAKE_SAMPLE_RATE,
+        },
+      });
+      await queryClient.invalidateQueries({
+        queryKey: shotKeys.dialogueClaims(shotId),
+      });
+    } catch (error) {
+      toast.error('Line not recorded', {
+        description: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  };
   return (
     <>
       {spokenBy ? (
@@ -246,6 +285,17 @@ const Readings: React.FC<ReadingsProps> = ({
       {/* History only where there is room to act on it: the prompt editor. */}
       {collapsible ? null : (
         <DialogueHistory sequenceId={sequenceId} shotId={shotId} />
+      )}
+      {collapsible || recording ? null : (
+        <LineTakeRecorder
+          lines={recordable.map((line) => ({
+            index: line.index,
+            character: line.character,
+            text: line.text,
+          }))}
+          blockedBecause={takeBlockedBecause}
+          onUse={recordLine}
+        />
       )}
       <ShotReadingsList
         readings={readings}
