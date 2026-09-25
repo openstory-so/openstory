@@ -1,28 +1,18 @@
 /**
- * Bound the merged `/api/realtime` write queue (#1792).
+ * Bound the merged `/api/realtime` write queue.
  *
- * The Durable Object drops a slow `/subscribe` consumer
- * (`SSE_MAX_BUFFERED_CHUNKS` / `SSE_MAX_BUFFERED_BYTES`). The Worker that
- * multiplexes those streams used to keep every encoded frame on a promise
- * chain and, once the chain hit 32, **close the response**. The browser
- * reopened immediately, each tab re-subscribed every talent and sequence
- * channel, and the isolate — 128 MB, not raisable — hit `exceededMemory`
- * on `GET /api/realtime`.
- *
- * Shed instead of closing: drop or replace a queued frame, keep the
- * response open, and prefer a `billing:` frame over a talent/sequence one.
- * One in-flight scene update fits; a burst of them does not.
+ * A full queue sheds a frame and keeps the response open. Closing it
+ * reconnects every tab at once. One encoded frame fits; a burst does not.
+ * Billing frames outrank the rest.
  */
 
-/** Queued frames (not bytes). Tiny billing events hit this before the byte cap. */
+/** Queued frames. Tiny billing events hit this before the byte cap. */
 export const MERGED_SSE_MAX_PENDING = 8;
-/** Encoded bytes retained for one EventSource. One scene frame fits; two do not. */
-export const MERGED_SSE_MAX_PENDING_BYTES = 512 * 1024;
 /**
- * A single DO frame above this is discarded while reassembling. The string
- * is never appended, so one oversized `shot:updated` cannot pin the isolate.
+ * Encoded bytes of one SSE frame. Reassembly uses the same cap, so a frame
+ * that is forwarded still fits as the only queued item.
  */
-export const MERGED_SSE_MAX_FRAME_BYTES = 512 * 1024;
+export const MERGED_SSE_MAX_PENDING_BYTES = 512 * 1024;
 
 const COALESCE_PARSE_LIMIT = 8_192;
 
@@ -34,15 +24,34 @@ const PROGRESS_SUBJECT_KEYS = [
   'talentId',
   'locationId',
   'sceneId',
+  'characterId',
 ] as const;
+
+/** `data: ` plus the trailing blank line, on top of the payload bytes. */
+const SSE_FRAMING_BYTES = 8;
 
 export type SseReassembly = {
   buffer: string;
   discarding: boolean;
+  /** Oversized frame ended on a newline, so a leading newline finishes it. */
+  discardSawNl: boolean;
 };
 
 export function createSseReassembly(): SseReassembly {
-  return { buffer: '', discarding: false };
+  return { buffer: '', discarding: false, discardSawNl: false };
+}
+
+function utf8ByteLength(text: string): number {
+  for (let i = 0; i < text.length; i++) {
+    if (text.charCodeAt(i) > 0x7f) {
+      return new TextEncoder().encode(text).byteLength;
+    }
+  }
+  return text.length;
+}
+
+function encodedSseFrameBytes(payload: string): number {
+  return utf8ByteLength(payload) + SSE_FRAMING_BYTES;
 }
 
 /** `data:` payload, or `null` when the frame is empty. */
@@ -52,9 +61,9 @@ function payloadFromFrame(raw: string): string | null {
 }
 
 /**
- * Append one decoded chunk. Frames larger than `maxFrameBytes` are counted
- * in `shedOversized` and are not returned. A partial oversized frame sets
- * `discarding` until the next `\n\n` so the tail is not buffered.
+ * Append one decoded chunk. `maxFrameBytes` is the encoded frame size.
+ * Oversized frames are not returned. A partial oversized frame is discarded
+ * until its blank line, including when that blank line is split across chunks.
  */
 export function pushSseText(
   state: SseReassembly,
@@ -68,17 +77,35 @@ export function pushSseText(
   const take = (raw: string): void => {
     const payload = payloadFromFrame(raw);
     if (!payload) return;
-    if (payload.length > maxFrameBytes) {
+    if (encodedSseFrameBytes(payload) > maxFrameBytes) {
       shed += 1;
       return;
     }
     frames.push(payload);
   };
 
+  const startDiscard = (sawNl: boolean): void => {
+    state.buffer = '';
+    state.discarding = true;
+    state.discardSawNl = sawNl;
+    shed += 1;
+  };
+
   while (rest.length > 0) {
     if (state.discarding) {
+      if (state.discardSawNl) {
+        state.discardSawNl = false;
+        if (rest.startsWith('\n')) {
+          state.discarding = false;
+          rest = rest.slice(1);
+          continue;
+        }
+      }
       const end = rest.indexOf('\n\n');
-      if (end === -1) return { frames, shedOversized: shed };
+      if (end === -1) {
+        state.discardSawNl = rest.endsWith('\n');
+        return { frames, shedOversized: shed };
+      }
       state.discarding = false;
       rest = rest.slice(end + 2);
       continue;
@@ -86,24 +113,24 @@ export function pushSseText(
 
     const boundary = rest.indexOf('\n\n');
     if (boundary === -1) {
-      if (state.buffer.length + rest.length > maxFrameBytes) {
-        state.buffer = '';
-        state.discarding = true;
-        shed += 1;
+      if (utf8ByteLength(state.buffer) + utf8ByteLength(rest) > maxFrameBytes) {
+        startDiscard(rest.endsWith('\n') || state.buffer.endsWith('\n'));
         return { frames, shedOversized: shed };
       }
       state.buffer += rest;
       return { frames, shedOversized: shed };
     }
 
-    if (state.buffer.length + boundary > maxFrameBytes) {
+    const raw = state.buffer + rest.slice(0, boundary);
+    // `raw` omits the closing blank line; the written frame adds those 2 bytes.
+    if (utf8ByteLength(raw) + 2 > maxFrameBytes) {
       shed += 1;
       state.buffer = '';
+      state.discardSawNl = false;
       rest = rest.slice(boundary + 2);
       continue;
     }
 
-    const raw = state.buffer + rest.slice(0, boundary);
     state.buffer = '';
     rest = rest.slice(boundary + 2);
     take(raw);
@@ -145,17 +172,24 @@ export function coalesceKeyForSsePayload(payload: string): string | null {
   if (parsed.event === 'billing.balance:updated') {
     return `${parsed.channel}\0${parsed.event}`;
   }
-  const isProgress =
-    parsed.event.endsWith(':progress') ||
-    parsed.event === 'shotPrompt.streaming';
-  if (!isProgress || !isRecord(parsed.data)) return null;
+  // Deltas append. Replacing one with the next deletes text the client
+  // cannot rebuild until remount.
+  if (parsed.event === 'shotPrompt.streaming') return null;
+  if (!parsed.event.endsWith(':progress') || !isRecord(parsed.data))
+    return null;
   const data = parsed.data;
-  const subject = PROGRESS_SUBJECT_KEYS.map((key) => data[key]).find(
-    (value): value is string => typeof value === 'string'
-  );
+  const subject =
+    PROGRESS_SUBJECT_KEYS.map((key) => data[key]).find(
+      (value): value is string => typeof value === 'string'
+    ) ?? (parsed.event === 'generation.audio:progress' ? 'sequence' : null);
   if (!subject) return null;
   const promptType = typeof data.promptType === 'string' ? data.promptType : '';
-  return `${parsed.channel}\0${parsed.event}\0${subject}\0${promptType}`;
+  // Primary and alternate-model updates share a shot id. The cache updater
+  // applies them to different rows, so they must not replace each other.
+  const variantOnly = data.variantOnly === true ? '1' : '0';
+  const model = typeof data.model === 'string' ? data.model : '';
+  const activity = typeof data.activity === 'string' ? data.activity : '';
+  return `${parsed.channel}\0${parsed.event}\0${subject}\0${promptType}\0${variantOnly}\0${model}\0${activity}`;
 }
 
 type QueuedFrame = {
@@ -200,6 +234,14 @@ export function createSseWriteQueue(opts: {
           ? items.find((item) => item !== protectedItem)
           : undefined);
       if (!victim) {
+        // One frame at the cap stays. Reassembly already refused anything larger.
+        if (
+          items.length === 1 &&
+          items[0] === protectedItem &&
+          protectedItem.frame.byteLength <= opts.maxBytes
+        ) {
+          return;
+        }
         if (over() && items.includes(protectedItem)) {
           items = items.filter((item) => item !== protectedItem);
           shed(protectedItem);

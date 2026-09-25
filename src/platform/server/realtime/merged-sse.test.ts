@@ -4,7 +4,6 @@ import {
   createSseReassembly,
   createSseWriteQueue,
   isSystemSsePayload,
-  MERGED_SSE_MAX_FRAME_BYTES,
   MERGED_SSE_MAX_PENDING,
   MERGED_SSE_MAX_PENDING_BYTES,
   pushSseText,
@@ -58,6 +57,42 @@ describe('pushSseText', () => {
     expect(resumed.frames).toEqual(['{"n":1}']);
     expect(state.discarding).toBe(false);
   });
+
+  it('keeps the next frame when an oversized blank line is split', () => {
+    const state = createSseReassembly();
+    const head = pushSseText(state, `${'x'.repeat(20)}\n`, 8);
+    expect(head.frames).toEqual([]);
+    expect(head.shedOversized).toBe(1);
+    expect(state.discarding).toBe(true);
+    expect(state.discardSawNl).toBe(true);
+
+    const tail = pushSseText(state, '\ndata: {"n":1}\n\n', 32);
+    expect(tail.frames).toEqual(['{"n":1}']);
+    expect(state.discarding).toBe(false);
+  });
+
+  it('sheds a payload whose encoded frame exceeds the cap', () => {
+    const state = createSseReassembly();
+    const payload = '0123456789';
+    const result = pushSseText(state, `data: ${payload}\n\n`, 16);
+    expect(result.frames).toEqual([]);
+    expect(result.shedOversized).toBe(1);
+  });
+
+  it('keeps a payload whose encoded frame equals the cap', () => {
+    const state = createSseReassembly();
+    const payload = '01234567';
+    const result = pushSseText(state, `data: ${payload}\n\n`, 16);
+    expect(result.frames).toEqual([payload]);
+  });
+
+  it('counts UTF-8 bytes rather than UTF-16 code units', () => {
+    const state = createSseReassembly();
+    const payload = '😀';
+    const result = pushSseText(state, `data: ${payload}\n\n`, 10);
+    expect(result.frames).toEqual([]);
+    expect(result.shedOversized).toBe(1);
+  });
 });
 
 describe('coalesceKeyForSsePayload', () => {
@@ -83,7 +118,109 @@ describe('coalesceKeyForSsePayload', () => {
           data: { shotId: 'shot-a', status: 'generating' },
         })
       )
-    ).toBe('seq\0generation.image:progress\0shot-a\0');
+    ).toBe(
+      ['seq', 'generation.image:progress', 'shot-a', '', '0', '', ''].join('\0')
+    );
+
+    const variant = coalesceKeyForSsePayload(
+      JSON.stringify({
+        id: '2b',
+        event: 'generation.image:progress',
+        channel: 'seq',
+        data: {
+          shotId: 'shot-a',
+          status: 'generating',
+          variantOnly: true,
+          model: 'alt',
+        },
+      })
+    );
+    expect(variant).toBe(
+      ['seq', 'generation.image:progress', 'shot-a', '', '1', 'alt', ''].join(
+        '\0'
+      )
+    );
+    expect(variant).not.toBe(
+      coalesceKeyForSsePayload(
+        JSON.stringify({
+          id: '2',
+          event: 'generation.image:progress',
+          channel: 'seq',
+          data: { shotId: 'shot-a', status: 'completed' },
+        })
+      )
+    );
+
+    expect(
+      coalesceKeyForSsePayload(
+        JSON.stringify({
+          id: '4',
+          event: 'generation.character-sheet:progress',
+          channel: 'seq',
+          data: { characterId: 'char-1', status: 'completed' },
+        })
+      )
+    ).toBe(
+      [
+        'seq',
+        'generation.character-sheet:progress',
+        'char-1',
+        '',
+        '0',
+        '',
+        '',
+      ].join('\0')
+    );
+
+    expect(
+      coalesceKeyForSsePayload(
+        JSON.stringify({
+          id: '5',
+          event: 'generation.audio:progress',
+          channel: 'seq',
+          data: { status: 'completed', model: 'music' },
+        })
+      )
+    ).toBe(
+      [
+        'seq',
+        'generation.audio:progress',
+        'sequence',
+        '',
+        '0',
+        'music',
+        '',
+      ].join('\0')
+    );
+
+    expect(
+      coalesceKeyForSsePayload(
+        JSON.stringify({
+          id: '6',
+          event: 'shotPrompt.streaming',
+          channel: 'shot-prompt:1',
+          data: { promptType: 'visual', delta: 'Hi' },
+        })
+      )
+    ).toBeNull();
+
+    const sheet = coalesceKeyForSsePayload(
+      JSON.stringify({
+        id: '7',
+        event: 'talent.sheet:progress',
+        channel: 'talent:1',
+        data: { talentId: '1', status: 'generating', activity: 'sheet' },
+      })
+    );
+    const portrait = coalesceKeyForSsePayload(
+      JSON.stringify({
+        id: '8',
+        event: 'talent.sheet:progress',
+        channel: 'talent:1',
+        data: { talentId: '1', status: 'generating', activity: 'portrait' },
+      })
+    );
+    expect(sheet).not.toBe(portrait);
 
     expect(
       coalesceKeyForSsePayload(
@@ -198,6 +335,5 @@ describe('createSseWriteQueue', () => {
   it('pins the caps used by /api/realtime', () => {
     expect(MERGED_SSE_MAX_PENDING).toBe(8);
     expect(MERGED_SSE_MAX_PENDING_BYTES).toBe(512 * 1024);
-    expect(MERGED_SSE_MAX_FRAME_BYTES).toBe(512 * 1024);
   });
 });

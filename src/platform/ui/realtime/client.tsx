@@ -9,8 +9,12 @@ import {
 } from 'react';
 import type { realtimeSchema } from '@/platform/realtime';
 import {
+  combineRealtimeStatus,
+  jitterReconnectDelay,
   nextClientReconnectDelay,
   partitionRealtimeChannels,
+  REALTIME_HARD_FAIL_ATTEMPTS,
+  REALTIME_STABLE_OPEN_MS,
 } from '@/platform/realtime/sse-session';
 import type {
   ConnectionStatus,
@@ -20,19 +24,9 @@ import type {
 } from '@/platform/server/realtime/shared-types';
 
 /**
- * In-repo realtime client (#802), replacing the removed Upstash-hosted realtime client.
- *
- * At most **two** `EventSource`s are open: one for `billing:*` and one for
- * every other channel. Each request fans out to one `RealtimeChannel` Durable
- * Object per channel and merges them back. Billing used to share the heavy
- * stream; a talent or sequence burst then stalled the credit pill and the
- * Worker isolate (#1792). Two streams stay under the browser's 6-connection
- * cap (#827) — one EventSource per channel deadlocked the origin.
- *
- * A dropped stream is closed and reopened with exponential backoff.
- * EventSource's own retry is a fixed few seconds, which restormed
- * `/api/realtime` after each memory kill. The worker also re-subscribes to a
- * channel's DO if that sub-stream ends (#1332).
+ * At most two EventSources: `billing:*`, then every other channel.
+ * One stream per channel deadlocks the origin (browsers allow six).
+ * A dropped stream is closed and reopened with jittered backoff.
  */
 
 type Subscriber = (msg: RealtimeUserEvent) => void;
@@ -52,25 +46,9 @@ type LiveStream = {
   key: string;
   attempt: number;
   retry: ReturnType<typeof setTimeout> | null;
+  /** Clears the failure count only after the socket has stayed up. */
+  stable: ReturnType<typeof setTimeout> | null;
 };
-
-function combineStatus(
-  billing: ConnectionStatus | null,
-  heavy: ConnectionStatus | null
-): ConnectionStatus {
-  const parts = [billing, heavy].filter(
-    (status): status is ConnectionStatus => status !== null
-  );
-  if (parts.length === 0) return 'disconnected';
-  if (parts.every((status) => status === 'connected')) return 'connected';
-  if (parts.some((status) => status === 'error')) return 'error';
-  if (
-    parts.some((status) => status === 'connecting' || status === 'connected')
-  ) {
-    return 'connecting';
-  }
-  return 'disconnected';
-}
 
 /** Parse one SSE `data:` payload; `null` when it isn't a user event we deliver. */
 function parseUserEvent(raw: string): RealtimeUserEvent | null {
@@ -104,8 +82,8 @@ export const RealtimeProvider: FC<{ children: ReactNode }> = ({ children }) => {
     Map<string, { channels: string[]; cb: Subscriber }>
   >(new Map());
   const streamsRef = useRef<Record<StreamGroup, LiveStream>>({
-    billing: { source: null, key: '', attempt: 0, retry: null },
-    heavy: { source: null, key: '', attempt: 0, retry: null },
+    billing: { source: null, key: '', attempt: 0, retry: null, stable: null },
+    heavy: { source: null, key: '', attempt: 0, retry: null, stable: null },
   });
   const groupStatusRef = useRef<Record<StreamGroup, ConnectionStatus | null>>({
     billing: null,
@@ -116,7 +94,7 @@ export const RealtimeProvider: FC<{ children: ReactNode }> = ({ children }) => {
 
   const publishStatus = (): void => {
     setStatus(
-      combineStatus(
+      combineRealtimeStatus(
         groupStatusRef.current.billing,
         groupStatusRef.current.heavy
       )
@@ -127,6 +105,8 @@ export const RealtimeProvider: FC<{ children: ReactNode }> = ({ children }) => {
     const live = streamsRef.current[group];
     if (live.retry !== null) clearTimeout(live.retry);
     live.retry = null;
+    if (live.stable !== null) clearTimeout(live.stable);
+    live.stable = null;
     live.source?.close();
     live.source = null;
     live.key = '';
@@ -147,20 +127,35 @@ export const RealtimeProvider: FC<{ children: ReactNode }> = ({ children }) => {
 
     source.onopen = () => {
       if (streamsRef.current[group].source !== source) return;
-      live.attempt = 0;
       groupStatusRef.current[group] = 'connected';
       publishStatus();
+      if (live.stable !== null) clearTimeout(live.stable);
+      // An isolate can accept the socket and then die. Keep the failure
+      // count until the stream has stayed up for a ping interval.
+      live.stable = setTimeout(() => {
+        live.stable = null;
+        if (streamsRef.current[group].source !== source) return;
+        live.attempt = 0;
+      }, REALTIME_STABLE_OPEN_MS);
     };
     source.onerror = () => {
       if (streamsRef.current[group].source !== source) return;
-      // Detach before close so a synchronous error event cannot re-enter.
-      // Closing also cancels EventSource's fixed retry, which restormed the
-      // Worker after each memory kill (#1792).
+      // Read readyState before close(). CLOSED means the server refused the
+      // stream (non-200); CONNECTING is a drop after the socket was up.
+      const refused = source.readyState === EventSource.CLOSED;
+      if (live.stable !== null) clearTimeout(live.stable);
+      live.stable = null;
       live.source = null;
       source.close();
-      const delay = nextClientReconnectDelay(live.attempt);
+      const delay = jitterReconnectDelay(
+        nextClientReconnectDelay(live.attempt),
+        Math.random()
+      );
       live.attempt += 1;
-      groupStatusRef.current[group] = 'connecting';
+      groupStatusRef.current[group] =
+        refused || live.attempt >= REALTIME_HARD_FAIL_ATTEMPTS
+          ? 'error'
+          : 'connecting';
       publishStatus();
       live.retry = setTimeout(() => {
         live.retry = null;
@@ -236,6 +231,8 @@ export const RealtimeProvider: FC<{ children: ReactNode }> = ({ children }) => {
         const live = streams[group];
         if (live.retry !== null) clearTimeout(live.retry);
         live.retry = null;
+        if (live.stable !== null) clearTimeout(live.stable);
+        live.stable = null;
         live.source?.close();
         live.source = null;
         live.key = '';

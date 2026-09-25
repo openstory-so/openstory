@@ -8,7 +8,6 @@ import {
   createSseWriteQueue,
   isBillingSsePayload,
   isSystemSsePayload,
-  MERGED_SSE_MAX_FRAME_BYTES,
   MERGED_SSE_MAX_PENDING,
   MERGED_SSE_MAX_PENDING_BYTES,
   pushSseText,
@@ -17,25 +16,12 @@ import {
 const logger = getLogger(['openstory', 'realtime', 'merged']);
 
 /**
- * SSE subscription endpoint. One request carries *many* channels: the client
- * opens a single `EventSource` for the union of everything it is subscribed to
- * (see `client.tsx`) and this handler fans that out to one `RealtimeChannel`
- * Durable Object per channel, merging their streams back into one response.
+ * SSE subscription. One request fans out to one Durable Object per channel.
+ * Billing is a separate request so a large talent or sequence frame cannot
+ * fill this queue. A full queue sheds a frame and keeps the response open.
  *
- * Billing is a second EventSource (`sse-session.ts`). It used to share this
- * response with talent and sequence payloads; a stalled browser plus a chatty
- * billing channel, or one full-scene `shot:updated`, filled the isolate until
- * Cloudflare killed it with `exceededMemory` (#1792). Workers memory is 128 MB
- * per isolate and cannot be raised.
- *
- * The multiplexing is not an optimisation — it is required for correctness.
- * Browsers cap concurrent HTTP/1.1 connections per origin at 6, and an SSE
- * stream holds its connection for its entire life. One `EventSource` per
- * channel therefore deadlocked the whole origin as soon as a page rendered ~5
- * cards (each subscribing to its own channel) plus the billing pill: every
- * later request — route chunks, server functions, images — queued forever
- * behind the streams and the app silently stopped navigating (#827). Two
- * streams (billing, everything else) stay under that cap.
+ * Two streams stay under the browser's six-connection cap. One EventSource
+ * per channel holds a connection for life and wedges the origin.
  */
 
 /** Hard cap so one subscriber can't fan a single request out to unbounded DOs. */
@@ -183,9 +169,9 @@ export const Route = createFileRoute('/api/realtime')({
               const { frames, shedOversized } = pushSseText(
                 reassembly,
                 decoder.decode(result.value, { stream: true }),
-                MERGED_SSE_MAX_FRAME_BYTES
+                MERGED_SSE_MAX_PENDING_BYTES
               );
-              if (shedOversized > 0) noteShed(MERGED_SSE_MAX_FRAME_BYTES);
+              if (shedOversized > 0) noteShed(MERGED_SSE_MAX_PENDING_BYTES);
               for (const payload of frames) {
                 // Each DO emits its own connected/ping frames; the merged
                 // stream publishes exactly one of each instead of N.
