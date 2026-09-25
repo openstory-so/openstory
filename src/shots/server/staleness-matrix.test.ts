@@ -890,6 +890,18 @@ const SHEET_MATRIX: SheetRow[] = [
     location: 'fresh',
   },
   {
+    mutation: "Alice's consistency tag edited (the sheet prompt reads it)",
+    apply: (w) => ({ ...w, alice: { ...w.alice, consistencyTag: 'alice_v2' } }),
+    character: 'stale',
+    location: 'fresh',
+  },
+  {
+    mutation: "the beach's consistency tag edited (a label)",
+    apply: (w) => ({ ...w, beach: { ...w.beach, consistencyTag: 'beach_v2' } }),
+    character: 'fresh',
+    location: 'fresh',
+  },
+  {
     mutation: 'Alice made voice-only (no sheet to be stale)',
     apply: (w) => ({ ...w, alice: { ...w.alice, voiceOnly: true } }),
     character: 'untracked',
