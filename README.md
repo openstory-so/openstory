@@ -45,7 +45,7 @@ OpenStory takes a script and produces a sequence of AI-generated frames — imag
 | **Testing**    | [Vitest](https://vitest.dev) + [Playwright](https://playwright.dev)                                                                                                                           |
 | **Deployment** | [Cloudflare Workers](https://developers.cloudflare.com/workers)                                                                                                                               |
 
-> See [CLAUDE.md](CLAUDE.md) for full architecture documentation, server handler patterns, workflow patterns, and React conventions.
+> See [AGENTS.md](AGENTS.md) for full architecture documentation, server handler patterns, workflow patterns, and React conventions.
 
 ## Prerequisites
 
@@ -140,7 +140,7 @@ e2e/              # Playwright end-to-end tests
 scripts/          # CLI utilities and setup
 ```
 
-> See [CLAUDE.md](CLAUDE.md) for detailed architecture, data model, server handler patterns, and code conventions.
+> See [AGENTS.md](AGENTS.md) for detailed architecture, data model, server handler patterns, and code conventions.
 
 ## Deployment
 
@@ -152,7 +152,7 @@ The deploy button clones the repo into your Cloudflare account, provisions the r
 
 **CI/CD:** Cloudflare Workers Builds auto-deploys on push to `main` — the same mechanism deploy-button clones use. Pull requests get GitHub Actions preview deployments with dedicated D1 databases.
 
-> See the [Platform & Deployment](CLAUDE.md#platform--deployment) section in CLAUDE.md for environment variable configuration and platform detection.
+> See the [Platform & Deployment](AGENTS.md#platform--deployment) section in AGENTS.md for environment variable configuration and platform detection.
 
 ## Contributing
 

@@ -117,7 +117,7 @@ vi.doMock('@tanstack/ai-gemini', () => ({
   createGeminiChat: createGeminiChatMock,
 }));
 
-// Dynamic import so the mocks above apply — see CLAUDE.md module-mocking
+// Dynamic import so the mocks above apply — see AGENTS.md module-mocking
 // pattern.
 const {
   createAdapter,

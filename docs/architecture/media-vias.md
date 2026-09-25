@@ -1,6 +1,6 @@
 # Media vias: fal, Google, xAI, LLMTR
 
-The per-via reference for the vias that are not BytePlus (`byteplus-ark.md`) or ElevenLabs (`elevenlabs.md`). The rules that hold for every via are in `CLAUDE.md` → Media vias.
+The per-via reference for the vias that are not BytePlus (`byteplus-ark.md`) or ElevenLabs (`elevenlabs.md`). The rules that hold for every via are in `AGENTS.md` → Media vias.
 
 ## Prompt length (#1754)
 

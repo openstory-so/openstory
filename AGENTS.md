@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENTS.md
 
 AI-powered video sequence platform built with TanStack Start, deployed to Cloudflare Workers.
 

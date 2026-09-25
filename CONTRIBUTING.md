@@ -2,7 +2,7 @@
 
 Thanks for your interest in contributing! OpenStory is MIT-licensed and we welcome contributions of all kinds — bug reports, feature requests, documentation improvements, and code.
 
-For detailed architecture documentation, see [CLAUDE.md](CLAUDE.md).
+For detailed architecture documentation, see [AGENTS.md](AGENTS.md).
 
 ## Getting Started
 
@@ -131,7 +131,7 @@ Recording always runs `scripts/mirror-e2e-fixture-media.ts` afterwards, which co
 
 Commit the generated fixtures alongside any code change that alters AI prompts or model selection.
 
-> See the [Testing](CLAUDE.md#testing) section in CLAUDE.md for mock patterns and database testing conventions.
+> See the [Testing](AGENTS.md#testing) section in AGENTS.md for mock patterns and database testing conventions.
 
 ## Database Changes
 
@@ -148,7 +148,7 @@ Commit the generated fixtures alongside any code change that alters AI prompts o
 
 ## Code Conventions
 
-A brief summary — see [CLAUDE.md](CLAUDE.md) for full patterns with examples.
+A brief summary — see [AGENTS.md](AGENTS.md) for full patterns with examples.
 
 ### TypeScript
 
@@ -172,7 +172,7 @@ A brief summary — see [CLAUDE.md](CLAUDE.md) for full patterns with examples.
 ### Server
 
 - DB access only in server handlers — never in components
-- Follow the [server handler pattern](CLAUDE.md#server-handler-pattern) in CLAUDE.md
+- Follow the [server handler pattern](AGENTS.md#server-handler-pattern) in AGENTS.md
 - Trigger workflows via `triggerWorkflow()` from `@/platform/server/workflow/client` — never direct `fetch()` calls
 
 ## Pull Request Process

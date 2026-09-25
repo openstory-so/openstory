@@ -239,7 +239,7 @@ Grouped the way an API/MCP layer would wrap them. Auth: `shot…` fns use
   kept for the snapshot chain; delete the legacy hashers after
   `LEGACY_HASH_UNTIL` (2026-09-28, #1371).
 - **D1 schema changes: additive only.** All five #1108 migrations are plain
-  `ALTER TABLE ADD COLUMN` or data-only — see CLAUDE.md "D1 table-rebuild
+  `ALTER TABLE ADD COLUMN` or data-only — see AGENTS.md "D1 table-rebuild
   trap" before touching schema; a rebuild fires `ON DELETE CASCADE` and
   destroys child tables.
 - **`kind`/status unions are TS-only** (`$type<>()` on plain text columns) —

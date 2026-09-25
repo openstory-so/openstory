@@ -80,7 +80,7 @@ the same model, one version newer — or a different product line / tier?_
   `get_model_schema`, `get_pricing` give the same data.
 - **Fallback (zero-auth):** the OpenAPI spec — a 200 means the endpoint is real:
   `curl -s -o /dev/null -w "%{http_code}" "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=<id>"`,
-  and `https://fal.ai/models/<path>/llms.txt` for param specs (see CLAUDE.md).
+  and `https://fal.ai/models/<path>/llms.txt` for param specs (see AGENTS.md).
 
 **text models:** confirm the candidate id resolves on
 `https://openrouter.ai/api/v1/models` and keeps the same tier (don't turn a

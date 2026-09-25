@@ -16,7 +16,7 @@
  *      sorts unapplied migrations by numeric prefix and tracks applied ones
  *      by full filename — a renamed or non-numeric folder would re-order or
  *      RE-APPLY history (a data-destruction event given the D1 table-rebuild
- *      CASCADE trap, see CLAUDE.md).
+ *      CASCADE trap, see AGENTS.md).
  *
  * Follows the wiring-consistency.test.ts pattern: cheap structural reads,
  * loud failures.

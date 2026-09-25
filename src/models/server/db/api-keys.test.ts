@@ -71,7 +71,7 @@ vi.doMock('@/platform/server/crypto/api-key-encryption', async () => {
 });
 
 // Dynamic import so the mocks above apply to the module-under-test (and its
-// crypto dependency) — see CLAUDE.md module-mocking pattern.
+// crypto dependency) — see AGENTS.md module-mocking pattern.
 const { createApiKeysMethods, createApiKeysReadMethods } =
   await import('./api-keys');
 

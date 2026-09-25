@@ -385,7 +385,7 @@ Contract (do not violate):
 9. Never auto-mutate upstream artifacts.
 10. Emit sequence_events for structure and media mutations (include prevState
     for undo).
-11. Follow CLAUDE.md: ULID ids, no hand-written migrations, TanStack Query
+11. Follow AGENTS.md: ULID ids, no hand-written migrations, TanStack Query
    suspense, shadcn + layout-only Tailwind, bun run test / typecheck / lint.
 
 Before coding a phase:

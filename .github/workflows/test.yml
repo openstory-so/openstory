@@ -57,12 +57,12 @@ jobs:
         #    If schema and snapshot agree, `db:generate` is a no-op and the tree
         #    stays clean. Anything appearing here means either a stale snapshot
         #    or a schema edit committed without its migration (the column-default
-        #    rebuild trap in CLAUDE.md).
+        #    rebuild trap in AGENTS.md).
         run: |
           bun db:check
           bun db:generate
           if [ -n "$(git status --porcelain drizzle/migrations)" ]; then
-            echo "::error::Schema and migrations are out of sync. Run 'bun db:generate' locally and commit the result (see CLAUDE.md § schema-drift trap)."
+            echo "::error::Schema and migrations are out of sync. Run 'bun db:generate' locally and commit the result (see AGENTS.md § schema-drift trap)."
             git status --porcelain drizzle/migrations
             exit 1
           fi

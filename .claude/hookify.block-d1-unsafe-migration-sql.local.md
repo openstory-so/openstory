@@ -37,4 +37,4 @@ bun scripts/check-migrations.ts drizzle/migrations/<dir>/migration.sql
 
 Must exit 0. Lefthook runs this on staged `drizzle/migrations/**/*.sql` at pre-commit.
 
-See **CLAUDE.md § D1 table-rebuild trap** and `scripts/check-migrations.ts`.
+See **AGENTS.md § D1 table-rebuild trap** and `scripts/check-migrations.ts`.

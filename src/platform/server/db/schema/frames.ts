@@ -49,7 +49,7 @@ export const frames = snakeCase.table(
       .notNull(),
     // Owning shot. Cascade is correct here — a frame is wholly owned by its
     // shot (mirrors shot_variants → shots). `shots` is not a long-lived
-    // top-level parent, so CLAUDE.md rule 3 (no cascade to user/teams/
+    // top-level parent, so AGENTS.md rule 3 (no cascade to user/teams/
     // sequences) does not apply.
     shotId: text()
       .notNull()

@@ -36,7 +36,7 @@ When implementing features, you follow this workflow:
 - Keep components small and focused on a single responsibility
 - Use composition over complex conditional rendering
 - Implement proper error boundaries and loading states
-- Follow the project's established patterns from CLAUDE.md
+- Follow the project's established patterns from AGENTS.md
 
 **shadcn/ui Integration:**
 You use shadcn/ui components as your primary building blocks, understanding that they provide accessible, customizable foundations. You adapt designs to work with the existing component library rather than creating custom components from scratch. You modify shadcn components through theme variables and component variants, not inline styles.

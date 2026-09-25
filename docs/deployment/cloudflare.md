@@ -101,7 +101,7 @@ bun db:migrate:prd         # flatten → wrangler d1 migrations apply DB --env=p
   files directly against the Miniflare binding (`bun db:migrate:local`).
 
 Migrations must stay backwards-compatible for the moment between migrate and
-deploy, and the D1 table-rebuild CASCADE trap (see CLAUDE.md) applies to every
+deploy, and the D1 table-rebuild CASCADE trap (see AGENTS.md) applies to every
 remote apply path.
 
 ## Seeding

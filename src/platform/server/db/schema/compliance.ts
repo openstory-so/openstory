@@ -23,7 +23,7 @@
  *  - **`onDelete: 'restrict'` on every FK, never CASCADE.** `user` and `teams`
  *    are long-lived parent tables, and a D1 table rebuild fires inbound
  *    CASCADEs even with `PRAGMA foreign_keys = OFF` (the #612 incident — see
- *    the table-rebuild trap in CLAUDE.md). Compliance evidence is the last
+ *    the table-rebuild trap in AGENTS.md). Compliance evidence is the last
  *    thing that should evaporate during a migration; `restrict` also means an
  *    account with open enforcement history cannot be quietly hard-deleted.
  */
