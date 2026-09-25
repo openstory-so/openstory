@@ -292,7 +292,7 @@ The panel shows a claim as "Generating…" with Cancel
 realtime `dialogue-audio` event refreshes both).
 
 **Going back.** `listShotDialogueVersionsFn` / `selectShotDialogueVersionFn`
-(the History list in the prompt editor) re-point the selected version, and
+(the History list under the shot's video) re-point the selected version, and
 that is the whole change: every reader follows the pointer. The current
 reading stops matching (the next render records), and a reading of the
 restored wording becomes usable again — `sourceKey` finds it.
@@ -300,7 +300,8 @@ restored wording becomes usable again — `sourceKey` finds it.
 `shot_dialogue_versions` is the authored node. The shot-list pass seeds a `prompt` row per shot; the prompt
 editor appends `user-edit` (`scopedDb.shotDialogue.write`, which returns the
 selected row unchanged when the lines are identical). The lines are edited in
-place (#1773) — character, words, tone — in the shot's Dialogue section and,
+place (#1773) — character, words, tone — in the shot's dialogue under its
+video and,
 for every shot of the scene, under the Script tab (`ShotDialogueLines`,
 `saveShotDialogueFn`): the edit writes only that shot's version, never the
 motion prompt. History labels a version whose words match the one before it
@@ -422,8 +423,13 @@ JSON carries the audio refs for paste-into-Videos. Models with no audio
 reference slot (Grok, Omni Flash, Kling) still get a section and a cut clip
 in References; motion just does not bind it.
 
-**A line at the mic (#1802).** "Record a line" in the shot's Dialogue section
-(prompt editor) records one line in the browser, plays it back, and on "Use"
+**The shot's dialogue lives under its video (#1802).** Lines, the audio
+source (Generated / Video model / an audio element — a write of the lines,
+so it needs no motion prompt), readings, history and "Record a line" are all
+in `ShotDialogueUnderVideo`; the Video tab has none of it.
+
+**A line at the mic (#1802).** "Record a line" under the shot's video
+records one line in the browser, plays it back, and on "Use"
 sends it as 16-bit mono PCM (`recordShotDialogueLineFn`, parked in R2 under
 `dialogue-takes/`). `DialogueTakeWorkflow` turns it into the speaker's voice
 with the user's delivery kept: an ElevenLabs voice goes through **Voice

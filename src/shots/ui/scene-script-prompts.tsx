@@ -112,11 +112,7 @@ import {
 } from '@/models/content-rejection';
 import { resolveShotDuration } from '@/motion/resolve-shot-duration';
 import { motionGenerateLabel } from '@/shots/packed-clip-window';
-import { motionReferenceSupport } from '@/motion/reference-support';
-import type {
-  AssemblableMotionPrompt,
-  MotionDialogue,
-} from '@/shots/scene-analysis.schema';
+import type { AssemblableMotionPrompt } from '@/shots/scene-analysis.schema';
 
 import { useShotPromptStream } from './use-shot-prompt-stream';
 import type { ShotView } from '@/shots/shot-view';
@@ -148,13 +144,8 @@ import { SceneStaleShots } from './scene-stale-shots';
 import { SceneElementsTab } from './scene-elements-tab';
 import { SceneLocationTab } from './scene-location-tab';
 import { SceneMusicFacet } from './scene-music-facet';
-import { MotionDialoguePanel } from './motion-dialogue-panel';
 import { SceneScriptTab } from './scene-script-tab';
-import {
-  SceneDialogueLines,
-  ShotDialogueLines,
-  ShotDialogueReadings,
-} from './shot-dialogue-readings';
+import { SceneDialogueLines } from './shot-dialogue-readings';
 import { ShotDurationField } from './shot-duration-field';
 import { sumShotSeconds } from './scene-group';
 
@@ -531,11 +522,8 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     ]
   );
 
-  const {
-    items: mentionItems,
-    elements,
-    onMentionRename,
-  } = useSequenceMentionItems(sequenceId);
+  const { items: mentionItems, onMentionRename } =
+    useSequenceMentionItems(sequenceId);
   // The realtime hook owns the per-prompt-type stream status — `'pending'`
   // covers the window between a successful enqueue and the first delta, so
   // the button stays in its busy state without a sibling useState to sync.
@@ -732,9 +720,9 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   );
 
   const handleSaveMotionPrompt = useCallback(
-    (text: string, dialogue?: MotionDialogue) => {
+    (text: string) => {
       saveMotionPrompt.mutate(
-        { text, dialogue },
+        { text },
         {
           onSuccess: (r) => {
             dirtyMotionRef.current = false;
@@ -887,14 +875,12 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     motionModelConfig.requiredStyleCategory !== styleCategory
       ? DEFAULT_VIDEO_MODEL
       : aspectCompatibleMotion;
+  // Preview and submit share this model. Leftover Grok is 1:1; using the
+  // packing model here would show a packed N-shot clip then generate one shot.
   const regenMotionModel: ImageToVideoModel =
     shot && leftoverGrokShotIds?.has(shot.id)
       ? 'grok_imagine_video_1_5'
       : effectiveMotionModel;
-  // Preview and submit share this model. Leftover Grok is 1:1; using the
-  // packing model here would show a packed N-shot clip then generate one shot.
-  const motionTakesAudioReferences =
-    motionReferenceSupport(regenMotionModel).audio;
   // Draft first for this shot (#1756): the sequence's Draft first switch,
   // honoured while the model has a draft mode and this team can reach Ark.
   // A final only ever comes from an approved draft (Render final below).
@@ -1285,16 +1271,6 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     staleTime: Infinity,
   });
   const storageDomain = storageConfig?.storageDomain ?? null;
-
-  // This shot's readings (#1657) — one list for either dialogue panel below.
-  const shotLines = shot?.dialogue?.presence ? shot.dialogue.lines : [];
-  const dialogueReadings = shot ? (
-    <ShotDialogueReadings
-      sequenceId={sequenceId}
-      shotId={shot.id}
-      lines={shotLines}
-    />
-  ) : undefined;
 
   // Flipping this re-stales the motion prompt — the two modes use different
   // templates. See `usesStartFrame`.
@@ -2094,44 +2070,6 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
               </div>
             )}
           </div>
-
-          {/* What the shot says (#1657) — `shot.dialogue`, the same resolved
-              lines a render speaks and assembly appends to the prompt above —
-              plus the one thing only this panel can say: whose recorded voice
-              speaks them. The save rides the prompt save, so until the shot
-              has a motion prompt the lines show with no voice picker. */}
-          <MotionDialoguePanel
-            dialogue={shot?.dialogue}
-            elements={elements}
-            clip={shot?.audioClips?.[0] ?? null}
-            shotSeconds={
-              shot?.durationMs && shot.durationMs > 0
-                ? shot.durationMs / 1000
-                : undefined
-            }
-            onChange={
-              shot?.motionPrompt && motionTakesAudioReferences
-                ? (next) =>
-                    handleSaveMotionPrompt(
-                      editedMotionPrompt || rawMotionPrompt,
-                      next
-                    )
-                : null
-            }
-            disabled={saveMotionPrompt.isPending || isAwaitingMotionPrompt}
-            source={shot?.motionPrompt ? 'prompt' : 'script'}
-            readings={dialogueReadings}
-            lineEditor={
-              shot ? (
-                <ShotDialogueLines
-                  key={shot.id}
-                  sequenceId={sequenceId}
-                  shotId={shot.id}
-                  lines={shotLines}
-                />
-              ) : undefined
-            }
-          />
 
           {/* Model selector — per-asset (#1066): seeded from the shot's selected
               video version; a pick applies to the next generation. */}

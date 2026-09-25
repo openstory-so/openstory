@@ -5,7 +5,6 @@ import { fn } from 'storybook/test';
 import {
   DialogueLinesEditor,
   MotionDialoguePanel,
-  ShotDialogueBlock,
   ShotDialogueHistory,
   ShotReadingsList,
   ShotRecordingsInFlight,
@@ -82,7 +81,6 @@ const meta: Meta<typeof MotionDialoguePanel> = {
     dialogue,
     elements: [voice],
     onChange: fn(),
-    source: 'prompt',
     clip: {
       url: 'https://www.w3.org/WAI/content-assets/wcag-act-rules/test-assets/moon-audio.mp3',
       durationSeconds: 2.4,
@@ -99,8 +97,8 @@ export const NoClipYet: Story = {
   args: { clip: null },
 };
 
-export const ScriptStage: Story = {
-  args: { onChange: null, source: 'script' },
+export const ModelTakesNoAudio: Story = {
+  args: { onChange: null },
 };
 
 export const VideoModel: Story = {
@@ -138,72 +136,19 @@ export const WithReadings: Story = {
   },
 };
 
-// The read-only block under the shot's video (#1657).
-const clip = { url: AUDIO_URL, durationSeconds: 2.4 };
-
-export const BlockNoDialogue: Story = {
-  render: () => (
-    <ShotDialogueBlock
-      dialogue={{ presence: false, lines: [] }}
-      elements={[]}
-    />
-  ),
+export const CollapsedReadings: Story = {
+  args: {
+    readings: (
+      <ShotReadingsList
+        readings={severalReadings}
+        onUse={fn()}
+        onDiscard={fn()}
+        collapsible
+      />
+    ),
+  },
 };
 
-export const BlockLinesNoAudioYet: Story = {
-  render: () => (
-    <ShotDialogueBlock
-      dialogue={dialogue}
-      elements={[]}
-      readings={
-        <ShotReadingsList
-          readings={[]}
-          onUse={fn()}
-          onDiscard={fn()}
-          collapsible
-        />
-      }
-    />
-  ),
-};
-
-export const BlockCurrentReadingOnly: Story = {
-  render: () => (
-    <ShotDialogueBlock
-      dialogue={dialogue}
-      elements={[]}
-      clip={clip}
-      readings={
-        <ShotReadingsList
-          readings={[current]}
-          onUse={fn()}
-          onDiscard={fn()}
-          collapsible
-        />
-      }
-    />
-  ),
-};
-
-export const BlockSeveralReadings: Story = {
-  render: () => (
-    <ShotDialogueBlock
-      dialogue={dialogue}
-      elements={[]}
-      clip={clip}
-      readings={
-        <ShotReadingsList
-          readings={severalReadings}
-          onUse={fn()}
-          onDiscard={fn()}
-          collapsible
-        />
-      }
-    />
-  ),
-};
-
-/** Two sets of lines: the script's, then an edit. "Use" goes back. */
 export const History: Story = {
   render: () => (
     <ShotDialogueHistory

@@ -1,7 +1,8 @@
 /**
- * This shot's readings, fetched (#1657) — the data half of the presentational
- * pieces in `motion-dialogue-panel.tsx`. Mounted in the prompt editor and
- * under the shot's video; both share one query.
+ * A shot's dialogue, fetched (#1657) — the data half of the presentational
+ * pieces in `motion-dialogue-panel.tsx`. It all sits under the shot's video
+ * (`ShotDialogueUnderVideo`); the Script tab edits every shot's lines of a
+ * scene (`SceneDialogueLines`).
  */
 
 import { useSequenceElements } from '@/cast/ui/use-sequence-elements';
@@ -32,6 +33,8 @@ import {
   selectShotDialogueVersionFn,
 } from '@/shots/shot-dialogue.fn';
 import type { ShotView } from '@/shots/shot-view';
+import type { ImageToVideoModel } from '@/models/models';
+import { motionReferenceSupport } from '@/motion/reference-support';
 import { Button } from '@/ui/shadcn/button';
 import { Skeleton } from '@/ui/shadcn/skeleton';
 import type { QueryClient } from '@tanstack/react-query';
@@ -49,7 +52,7 @@ import { LineTakeRecorder } from './line-take-recorder';
 import { decodeTake, floatToPcm16, MIC_TAKE_SAMPLE_RATE } from './mic-take';
 import {
   DialogueLinesEditor,
-  ShotDialogueBlock,
+  MotionDialoguePanel,
   ShotDialogueHistory,
   ShotReadingsList,
   ShotMissingVoices,
@@ -64,7 +67,6 @@ import { shotKeys } from './use-shots';
 type ReadingsProps = {
   sequenceId: string;
   shotId: string;
-  collapsible?: boolean;
   /**
    * What the shot says (#1773). Off Generated (video model, audio element)
    * the reading is not in use, so a note stands in for the staleness line and
@@ -73,12 +75,7 @@ type ReadingsProps = {
   lines: readonly DialogueLine[];
 };
 
-const Readings: React.FC<ReadingsProps> = ({
-  sequenceId,
-  shotId,
-  collapsible,
-  lines,
-}) => {
+const Readings: React.FC<ReadingsProps> = ({ sequenceId, shotId, lines }) => {
   const queryClient = useQueryClient();
   const spokenBy = shotSpokenByNote(lines);
   const { data: characters } = useSequenceCharacters(sequenceId);
@@ -282,11 +279,8 @@ const Readings: React.FC<ReadingsProps> = ({
         onCancel={(claimId) => cancelClaim.mutate(claimId)}
         cancellingId={cancelClaim.isPending ? cancelClaim.variables : null}
       />
-      {/* History only where there is room to act on it: the prompt editor. */}
-      {collapsible ? null : (
-        <DialogueHistory sequenceId={sequenceId} shotId={shotId} />
-      )}
-      {collapsible || recording ? null : (
+      <DialogueHistory sequenceId={sequenceId} shotId={shotId} />
+      {recording ? null : (
         <LineTakeRecorder
           lines={recordable.map((line) => ({
             index: line.index,
@@ -302,7 +296,7 @@ const Readings: React.FC<ReadingsProps> = ({
         onUse={(sectionId) => selectReading.mutate(sectionId)}
         onDiscard={(sectionId) => discardReading.mutate(sectionId)}
         usingId={selectReading.isPending ? selectReading.variables : null}
-        collapsible={collapsible}
+        collapsible
       />
     </>
   );
@@ -386,14 +380,13 @@ const DialogueHistory: React.FC<{ sequenceId: string; shotId: string }> = ({
 };
 
 // The fallback is what the list most often resolves to, so nothing moves when
-// it lands: the record button, then one h-8 row under the video and nothing
-// more in the prompt editor (a lone selected reading renders no list).
-export const ShotDialogueReadings: React.FC<ReadingsProps> = (props) => (
+// it lands: the record button, then the one h-8 readings row.
+const ShotDialogueReadings: React.FC<ReadingsProps> = (props) => (
   <Suspense
     fallback={
       <>
         <Skeleton className="h-8 w-32" />
-        {props.collapsible ? <Skeleton className="h-8 w-full" /> : null}
+        <Skeleton className="h-8 w-full" />
       </>
     }
   >
@@ -401,23 +394,59 @@ export const ShotDialogueReadings: React.FC<ReadingsProps> = (props) => (
   </Suspense>
 );
 
-/** Lines, current audio and readings for the shot whose video is on the canvas. */
-export const ShotDialogueUnderVideo: React.FC<{ shot: ShotView }> = ({
-  shot,
-}) => {
+/**
+ * The shot's dialogue, under its video: the one place it is edited, heard
+ * and recorded — lines, audio source, readings, history, a line at the mic.
+ * The audio source is a write of the lines (a `voiceToken` on each), the
+ * same save as a line edit, so it needs no motion prompt.
+ */
+export const ShotDialogueUnderVideo: React.FC<{
+  shot: ShotView;
+  /** The video model this shot renders with — the source picker needs audio input. */
+  videoModel: ImageToVideoModel;
+}> = ({ shot, videoModel }) => {
+  const queryClient = useQueryClient();
   const { data: elements } = useSequenceElements(shot.sequenceId);
-  const clip = shot.audioClips?.[0] ?? null;
+  const lines = shot.dialogue?.presence ? shot.dialogue.lines : [];
+  const save = useMutation({
+    mutationFn: (next: DialogueLine[]) =>
+      saveShotDialogueFn({
+        data: { sequenceId: shot.sequenceId, shotId: shot.id, lines: next },
+      }),
+    onSuccess: () =>
+      invalidateLinesMoved(queryClient, shot.sequenceId, shot.id),
+    onError: (error: Error) =>
+      toast.error('Audio source not saved', { description: error.message }),
+  });
   return (
-    <ShotDialogueBlock
+    <MotionDialoguePanel
       dialogue={shot.dialogue}
       elements={elements}
-      clip={clip}
+      clip={shot.audioClips?.[0] ?? null}
+      shotSeconds={
+        shot.durationMs && shot.durationMs > 0
+          ? shot.durationMs / 1000
+          : undefined
+      }
+      onChange={
+        motionReferenceSupport(videoModel).audio
+          ? (next) => save.mutate(next.lines)
+          : null
+      }
+      disabled={save.isPending}
+      lineEditor={
+        <ShotDialogueLines
+          key={shot.id}
+          sequenceId={shot.sequenceId}
+          shotId={shot.id}
+          lines={lines}
+        />
+      }
       readings={
         <ShotDialogueReadings
           sequenceId={shot.sequenceId}
           shotId={shot.id}
-          collapsible
-          lines={shot.dialogue?.presence ? shot.dialogue.lines : []}
+          lines={lines}
         />
       }
     />
@@ -428,7 +457,7 @@ export const ShotDialogueUnderVideo: React.FC<{ shot: ShotView }> = ({
  * A shot's lines, editable in place (#1773). The save appends a `user-edit`
  * version of this shot's lines only — no prompt row, no other shot.
  */
-export const ShotDialogueLines: React.FC<{
+const ShotDialogueLines: React.FC<{
   sequenceId: string;
   shotId: string;
   lines: readonly DialogueLine[];

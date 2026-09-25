@@ -7,12 +7,9 @@
  * element, or the video model inventing the voices. Per-line binding was
  * the old grain; the take is a conversation, not a character.
  *
- * Before the shot has a motion prompt the caller hands in the scene's own
- * lines instead (#1585). Voice binding waits for the prompt row it is
- * stored on, so `onChange` is null then.
- *
- * `ShotDialogueBlock` is the same lines + audio + readings, read-only and
- * compact, for under the shot's video (#1657).
+ * It sits under the shot's video, the one place a shot's dialogue is
+ * edited, heard and recorded. The audio choice is a write of the shot's
+ * lines (a `voiceToken` on each), so it needs no motion prompt.
  */
 
 import { formatElementDuration } from '@/cast/element-kind';
@@ -112,37 +109,21 @@ function shotPlayback(
   };
 }
 
-const DialogueLineList: React.FC<{
-  lines: readonly DialogueLine[];
-  /** One row per line: "CHARACTER — line · tone". */
-  compact?: boolean;
-}> = ({ lines, compact }) => (
-  <ul className={compact ? 'flex flex-col gap-1' : 'flex flex-col gap-2'}>
-    {lines.map((line, index) =>
-      compact ? (
-        <li key={`${line.character}-${index}`} className="text-sm">
+const DialogueLineList: React.FC<{ lines: readonly DialogueLine[] }> = ({
+  lines,
+}) => (
+  <ul className="flex flex-col gap-2">
+    {lines.map((line, index) => (
+      <li key={`${line.character}-${index}`} className="flex flex-col gap-1.5">
+        <p className="text-sm">
           <span className="font-medium">{line.character || 'Narrator'}</span>
-          {' — '}
-          {line.line}
           {line.tone && (
             <span className="text-muted-foreground"> · {line.tone}</span>
           )}
-        </li>
-      ) : (
-        <li
-          key={`${line.character}-${index}`}
-          className="flex flex-col gap-1.5"
-        >
-          <p className="text-sm">
-            <span className="font-medium">{line.character || 'Narrator'}</span>
-            {line.tone && (
-              <span className="text-muted-foreground"> · {line.tone}</span>
-            )}
-          </p>
-          <p className="text-sm text-muted-foreground">“{line.line}”</p>
-        </li>
-      )
-    )}
+        </p>
+        <p className="text-sm text-muted-foreground">“{line.line}”</p>
+      </li>
+    ))}
   </ul>
 );
 
@@ -432,7 +413,7 @@ const ReadingRow: React.FC<{
 };
 
 /**
- * This shot's readings, newest first. Boxed (the prompt editor) it shows
+ * This shot's readings, newest first. Boxed it shows
  * only when there is something to pick or the current one went stale;
  * `collapsible` (under the video) it always holds its one row, so the block
  * does not move when the list lands.
@@ -708,35 +689,12 @@ export const ShotDialogueHistory: React.FC<{
   );
 };
 
-/** Lines, the current audio, then the readings — read-only, under the video. */
-export const ShotDialogueBlock: React.FC<{
-  dialogue: MotionDialogue | null | undefined;
-  elements: SequenceElementMinimal[] | undefined;
-  clip?: DialogueClip | null;
-  /** The readings list — a slot, so this stays presentational. */
-  readings?: React.ReactNode;
-}> = ({ dialogue, elements, clip, readings }) => {
-  const lines = dialogue?.presence ? dialogue.lines : [];
-  if (lines.length === 0) return null;
-  const voices = (elements ?? []).filter((el) => el.kind === 'audio');
-  const { url } = shotPlayback(lines, voices, clip);
-  return (
-    <section aria-label="Shot dialogue" className="flex flex-col gap-2">
-      <DialogueLineList lines={lines} compact />
-      {url ? <ShotAudio url={url} /> : null}
-      {readings}
-    </section>
-  );
-};
-
 export const MotionDialoguePanel: React.FC<{
   dialogue: MotionDialogue | null | undefined;
   elements: SequenceElementMinimal[] | undefined;
   /** Null while the model takes no audio at all — the lines still show. */
   onChange: ((next: MotionDialogue) => void) | null;
   disabled?: boolean;
-  /** Where the lines come from: the shot's motion prompt, or the scene script before one exists. */
-  source: 'prompt' | 'script';
   /** References-stage take for this shot, when one exists. */
   clip?: DialogueClip | null;
   /** Shot duration in seconds — noted only when the take is longer. */
@@ -750,7 +708,6 @@ export const MotionDialoguePanel: React.FC<{
   elements,
   onChange,
   disabled,
-  source,
   clip,
   shotSeconds,
   readings,
@@ -797,9 +754,7 @@ export const MotionDialoguePanel: React.FC<{
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-sm font-medium">Dialogue</span>
         <span className="text-xs text-muted-foreground">
-          {source === 'prompt'
-            ? 'Appended to the prompt at render'
-            : 'From the script — bind audio once the motion prompt exists'}
+          Appended to the prompt at render
         </span>
       </div>
       {(onChange || playbackUrl) && (
@@ -860,7 +815,7 @@ export const MotionDialoguePanel: React.FC<{
         {lineEditor ?? <DialogueLineList lines={lines} />}
       </div>
       {readings}
-      {!onChange && source === 'prompt' && (
+      {!onChange && (
         <p className="text-xs text-muted-foreground">
           This model generates its own voices — it takes no audio reference.
         </p>
