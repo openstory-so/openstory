@@ -37,6 +37,7 @@ import { typedEntries } from '@/platform/typed-object';
 import type { LocationSheetInputHash } from '@/shots/input-hash';
 import { matchLocationsToScene } from '@/shots/scene-matching';
 import { createLocationSheetVariantsMethods } from './location-sheet-variants';
+import { keepClaimUnlessChanged } from './sheet-claims';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
 
 /** The bible fields the location sheet prompt and its hash read (#1113). */
@@ -51,6 +52,27 @@ const SHEET_BIBLE_FIELDS = [
   'lightingSetup',
   'ambiance',
 ] as const;
+
+/** The same inputs as SQL columns, plus the library link, for the upserts. */
+const LOCATION_SHEET_INPUT_COLUMNS = [
+  'name',
+  'type',
+  'time_of_day',
+  'description',
+  'architectural_style',
+  'key_features',
+  'color_palette',
+  'lighting_setup',
+  'ambiance',
+  'library_location_id',
+] as const;
+
+// A re-analysis that moves a sheet input revokes the reference claim (#1113).
+const keepLocationClaim = () =>
+  keepClaimUnlessChanged(
+    'pending_promote_reference_version_id',
+    LOCATION_SHEET_INPUT_COLUMNS
+  );
 
 /**
  * The user-editable location bible fields (#1108 Phase 2). Casting
@@ -228,6 +250,7 @@ export function createSequenceLocationsMethods(db: Database) {
             // Reference OUTPUT is not re-written here — see the characters
             // twin (#1419).
             referenceStatus: data.referenceStatus,
+            pendingPromoteReferenceVersionId: keepLocationClaim(),
             // A re-analysis re-extracting a soft-deleted location revives it
             // (#1108) — mirrors the characters upsert.
             deletedAt: null,
@@ -284,6 +307,7 @@ export function createSequenceLocationsMethods(db: Database) {
               firstMentionSceneId: sql.raw(`excluded."first_mention_scene_id"`),
               firstMentionText: sql.raw(`excluded."first_mention_text"`),
               firstMentionLine: sql.raw(`excluded."first_mention_line"`),
+              pendingPromoteReferenceVersionId: keepLocationClaim(),
               deletedAt: null,
               updatedAt: new Date(),
             },
@@ -316,12 +340,16 @@ export function createSequenceLocationsMethods(db: Database) {
     /**
      * Take the reference claim (#1113) — the twin of `characters.claimSheet`.
      */
-    claimReference: async (id: string): Promise<string> => {
+    claimReference: async (
+      id: string,
+      opts: { markGenerating: boolean }
+    ): Promise<string> => {
       const versionId = generateId();
       await update(id, {
         pendingPromoteReferenceVersionId: versionId,
-        referenceStatus: 'generating',
-        referenceError: null,
+        ...(opts.markGenerating
+          ? { referenceStatus: 'generating' as const, referenceError: null }
+          : {}),
       });
       return versionId;
     },

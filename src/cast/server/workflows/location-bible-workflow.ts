@@ -135,7 +135,9 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
         const referenceVersionId = await step.do(
           `claim-location-sheet-${index}`,
           async () =>
-            await scopedDb.sequenceLocations.claimReference(locationDbId)
+            await scopedDb.sequenceLocations.claimReference(locationDbId, {
+              markGenerating: false,
+            })
         );
         const childPayload: LocationSheetWorkflowInput = {
           ...unclaimed,

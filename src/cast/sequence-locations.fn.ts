@@ -246,7 +246,9 @@ export const regenerateLocationSheetFn = createServerFn({ method: 'POST' })
     // The claim (#1113): last kickoff wins, and any edit to the location's
     // inputs before this run lands revokes it.
     const referenceVersionId =
-      await context.scopedDb.sequenceLocations.claimReference(location.id);
+      await context.scopedDb.sequenceLocations.claimReference(location.id, {
+        markGenerating: true,
+      });
     try {
       await getGenerationChannel(location.sequenceId).emit(
         'generation.location-sheet:progress',
@@ -361,7 +363,9 @@ export const recastLocationFn = createServerFn({ method: 'POST' })
 
     // Claimed after the relink above, which revokes older claims (#1113).
     const referenceVersionId =
-      await context.scopedDb.sequenceLocations.claimReference(data.locationId);
+      await context.scopedDb.sequenceLocations.claimReference(data.locationId, {
+        markGenerating: true,
+      });
 
     await getGenerationChannel(location.sequenceId).emit(
       'generation.location-sheet:progress',

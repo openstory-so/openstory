@@ -175,7 +175,9 @@ const landCharacter = (versionId: string, url = `/r2/${versionId}.png`) =>
 
 describe('character sheet claims', () => {
   it('lands a run that still holds its claim', async () => {
-    const versionId = await chars().claimSheet(characterId);
+    const versionId = await chars().claimSheet(characterId, {
+      markGenerating: true,
+    });
     expect((await character()).sheetStatus).toBe('generating');
 
     expect(await landCharacter(versionId)).toBe('promoted');
@@ -187,10 +189,14 @@ describe('character sheet claims', () => {
   });
 
   it('parks a run whose bible was edited mid-flight, leaving the live sheet', async () => {
-    const first = await chars().claimSheet(characterId);
+    const first = await chars().claimSheet(characterId, {
+      markGenerating: true,
+    });
     await landCharacter(first);
 
-    const second = await chars().claimSheet(characterId);
+    const second = await chars().claimSheet(characterId, {
+      markGenerating: true,
+    });
     await chars().updateBible(
       characterId,
       { physicalDescription: 'short' },
@@ -205,7 +211,9 @@ describe('character sheet claims', () => {
   });
 
   it('keeps the claim when the edit touches no field the sheet reads', async () => {
-    const versionId = await chars().claimSheet(characterId);
+    const versionId = await chars().claimSheet(characterId, {
+      markGenerating: true,
+    });
     await chars().updateBible(
       characterId,
       { personality: 'wry', physicalDescription: 'tall' },
@@ -215,8 +223,12 @@ describe('character sheet claims', () => {
   });
 
   it('lets a newer kickoff win over a late completion', async () => {
-    const older = await chars().claimSheet(characterId);
-    const newer = await chars().claimSheet(characterId);
+    const older = await chars().claimSheet(characterId, {
+      markGenerating: true,
+    });
+    const newer = await chars().claimSheet(characterId, {
+      markGenerating: true,
+    });
 
     expect(await landCharacter(older)).toBe('parked');
     let row = await character();
@@ -230,8 +242,12 @@ describe('character sheet claims', () => {
   });
 
   it('clears only its own claim when it fails', async () => {
-    const older = await chars().claimSheet(characterId);
-    const newer = await chars().claimSheet(characterId);
+    const older = await chars().claimSheet(characterId, {
+      markGenerating: true,
+    });
+    const newer = await chars().claimSheet(characterId, {
+      markGenerating: true,
+    });
 
     await chars().failSheetClaim(characterId, older, 'boom');
     let row = await character();
@@ -245,7 +261,9 @@ describe('character sheet claims', () => {
   });
 
   it('is retry-safe: landing twice promotes once', async () => {
-    const versionId = await chars().claimSheet(characterId);
+    const versionId = await chars().claimSheet(characterId, {
+      markGenerating: true,
+    });
     expect(await landCharacter(versionId)).toBe('promoted');
     expect(await landCharacter(versionId)).toBe('promoted');
     const rows = await db
@@ -256,17 +274,21 @@ describe('character sheet claims', () => {
   });
 
   it("parks behind the user's pick of another sheet", async () => {
-    const first = await chars().claimSheet(characterId);
+    const first = await chars().claimSheet(characterId, {
+      markGenerating: true,
+    });
     await landCharacter(first);
-    const second = await chars().claimSheet(characterId);
+    const second = await chars().claimSheet(characterId, {
+      markGenerating: true,
+    });
     await charVersions().select(characterId, first, { actorId: userId });
     expect(await landCharacter(second)).toBe('parked');
   });
 
   it('does not collide with an identical parked twin', async () => {
-    const a = await chars().claimSheet(characterId);
-    const b = await chars().claimSheet(characterId);
-    const c = await chars().claimSheet(characterId);
+    const a = await chars().claimSheet(characterId, { markGenerating: true });
+    const b = await chars().claimSheet(characterId, { markGenerating: true });
+    const c = await chars().claimSheet(characterId, { markGenerating: true });
     expect(await landCharacter(a)).toBe('parked');
     // Same (character, model, hash) as `a`: stays plain history, no throw.
     expect(await landCharacter(b)).toBe('parked');
@@ -275,11 +297,13 @@ describe('character sheet claims', () => {
   });
 
   it('is revoked by a recast and by a change to the cast talent', async () => {
-    let versionId = await chars().claimSheet(characterId);
+    let versionId = await chars().claimSheet(characterId, {
+      markGenerating: true,
+    });
     await chars().updateTalent(characterId, talentId);
     expect(await landCharacter(versionId)).toBe('parked');
 
-    versionId = await chars().claimSheet(characterId);
+    versionId = await chars().claimSheet(characterId, { markGenerating: true });
     await talents().sheets.create({
       talentId,
       name: 'New look',
@@ -287,13 +311,15 @@ describe('character sheet claims', () => {
     });
     expect(await landCharacter(versionId)).toBe('parked');
 
-    versionId = await chars().claimSheet(characterId);
+    versionId = await chars().claimSheet(characterId, { markGenerating: true });
     await talents().update(talentId, { description: 'older now' });
     expect(await landCharacter(versionId)).toBe('parked');
   });
 
   it('is revoked by a style change on the sequence', async () => {
-    const versionId = await chars().claimSheet(characterId);
+    const versionId = await chars().claimSheet(characterId, {
+      markGenerating: true,
+    });
     await db.batch(demoteSequenceSheetClaims(db, sequenceId));
     expect(await landCharacter(versionId)).toBe('parked');
   });
@@ -312,10 +338,14 @@ describe('sequence location claims', () => {
     });
 
   it('lands while held and parks after a bible edit', async () => {
-    const first = await locs().claimReference(locationId);
+    const first = await locs().claimReference(locationId, {
+      markGenerating: true,
+    });
     expect(await landLocation(first)).toBe('promoted');
 
-    const second = await locs().claimReference(locationId);
+    const second = await locs().claimReference(locationId, {
+      markGenerating: true,
+    });
     await locs().updateBible(
       locationId,
       { lightingSetup: 'neon' },
@@ -325,11 +355,15 @@ describe('sequence location claims', () => {
   });
 
   it('is revoked by a relink and by the library reference moving', async () => {
-    let versionId = await locs().claimReference(locationId);
+    let versionId = await locs().claimReference(locationId, {
+      markGenerating: true,
+    });
     await locs().update(locationId, { libraryLocationId: libraryId });
     expect(await landLocation(versionId)).toBe('parked');
 
-    versionId = await locs().claimReference(locationId);
+    versionId = await locs().claimReference(locationId, {
+      markGenerating: true,
+    });
     const claimId = await library().claimReference(libraryId);
     await library().updateReferenceIfClaimed(
       libraryId,
@@ -433,7 +467,9 @@ describe('library talent claims', () => {
     });
 
   it('lands a held claim, makes a first upload the default, and revokes cast sheets', async () => {
-    const castClaim = await chars().claimSheet(characterId);
+    const castClaim = await chars().claimSheet(characterId, {
+      markGenerating: true,
+    });
     const sheetId = await claimTalent();
 
     const { sheet, landed } = await land(sheetId, 'manual_upload');
@@ -461,5 +497,60 @@ describe('library talent claims', () => {
     const newer = await claimTalent();
     expect((await land(older, 'ai_generated')).landed).toBe(false);
     expect((await land(newer, 'ai_generated')).landed).toBe(true);
+  });
+});
+
+describe('re-analysis upserts (#1113)', () => {
+  const upsertCharacter = async (
+    change: Partial<typeof characters.$inferInsert>
+  ) => chars().create({ ...(await character()), id: generateId(), ...change });
+  const location = async () => {
+    const [row] = await db
+      .select()
+      .from(sequenceLocations)
+      .where(eq(sequenceLocations.id, locationId));
+    if (!row) throw new Error('location gone');
+    return row;
+  };
+
+  it('revokes a character claim when a sheet input moved', async () => {
+    const versionId = await chars().claimSheet(characterId, {
+      markGenerating: true,
+    });
+    await upsertCharacter({ physicalDescription: 'short' });
+    expect(await landCharacter(versionId)).toBe('parked');
+  });
+
+  it('keeps a character claim when the rewrite is identical', async () => {
+    const versionId = await chars().claimSheet(characterId, {
+      markGenerating: true,
+    });
+    await upsertCharacter({});
+    expect(await landCharacter(versionId)).toBe('promoted');
+  });
+
+  it('revokes a location claim when the bulk upsert moves an input', async () => {
+    await locs().claimReference(locationId, { markGenerating: true });
+    await locs().createBulk([
+      { ...(await location()), id: generateId(), description: 'moved' },
+    ]);
+    expect((await location()).pendingPromoteReferenceVersionId).toBeNull();
+  });
+
+  it('keeps a location claim when the bulk upsert is identical', async () => {
+    const claim = await locs().claimReference(locationId, {
+      markGenerating: true,
+    });
+    await locs().createBulk([{ ...(await location()), id: generateId() }]);
+    expect((await location()).pendingPromoteReferenceVersionId).toBe(claim);
+  });
+
+  it('a pointer-only claim leaves the status alone', async () => {
+    await db
+      .update(characters)
+      .set({ sheetStatus: 'completed' })
+      .where(eq(characters.id, characterId));
+    await chars().claimSheet(characterId, { markGenerating: false });
+    expect((await character()).sheetStatus).toBe('completed');
   });
 });

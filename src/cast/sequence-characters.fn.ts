@@ -574,7 +574,8 @@ export const regenerateCharacterSheetFn = createServerFn({ method: 'POST' })
     // The claim (#1113): last kickoff wins, and any edit to the character's
     // sheet inputs before this run lands revokes it.
     const sheetVersionId = await context.scopedDb.characters.claimSheet(
-      character.id
+      character.id,
+      { markGenerating: true }
     );
     try {
       await getGenerationChannel(character.sequenceId).emit(
@@ -754,7 +755,8 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
     // Always generate a character sheet showing the talent in costume. The
     // claim is taken after the cast writes above, which revoke older ones.
     const sheetVersionId = await context.scopedDb.characters.claimSheet(
-      data.characterId
+      data.characterId,
+      { markGenerating: true }
     );
 
     await getGenerationChannel(character.sequenceId).emit(

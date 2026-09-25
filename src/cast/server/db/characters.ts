@@ -48,6 +48,7 @@ import {
 import { typedEntries } from '@/platform/typed-object';
 import { matchCharacterToShotTags } from '@/shots/scene-matching';
 import { createCharacterSheetVariantsMethods } from './character-sheet-variants';
+import { keepClaimUnlessChanged } from './sheet-claims';
 import type { CharacterSheetInputHash } from '@/shots/input-hash';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
 
@@ -61,6 +62,19 @@ const SHEET_BIBLE_FIELDS = [
   'standardClothing',
   'distinguishingFeatures',
   'consistencyTag',
+] as const;
+
+/** The same inputs as SQL columns, plus the cast talent, for the upsert. */
+const CHARACTER_SHEET_INPUT_COLUMNS = [
+  'name',
+  'age',
+  'gender',
+  'ethnicity',
+  'physical_description',
+  'standard_clothing',
+  'distinguishing_features',
+  'consistency_tag',
+  'talent_id',
 ] as const;
 
 /**
@@ -367,6 +381,11 @@ export function createCharactersMethods(db: Database) {
             // value ('generating' for re-analysis, 'pending' for a manual add).
             sheetStatus: data.sheetStatus,
             talentId: data.talentId,
+            // A re-analysis that moves a sheet input revokes the sheet claim (#1113).
+            pendingPromoteSheetVersionId: keepClaimUnlessChanged(
+              'pending_promote_sheet_version_id',
+              CHARACTER_SHEET_INPUT_COLUMNS
+            ),
             // A re-analysis re-extracting a soft-deleted character revives it —
             // the script says the character exists again (#1108).
             deletedAt: null,
@@ -590,13 +609,21 @@ export function createCharactersMethods(db: Database) {
     /**
      * Take the sheet claim (#1113): mint the id the run's version row will
      * carry and point the claim at it. Last kickoff wins. Returns the id.
+     * `markGenerating: false` moves only the pointer: the bible path's
+     * upsert already set `generating`, and a bible parent replaying across
+     * the #1113 deploy re-runs this step after its child finished — setting
+     * the status there would leave the sheet stuck on `generating`.
      */
-    claimSheet: async (id: string): Promise<string> => {
+    claimSheet: async (
+      id: string,
+      opts: { markGenerating: boolean }
+    ): Promise<string> => {
       const versionId = generateId();
       await update(id, {
         pendingPromoteSheetVersionId: versionId,
-        sheetStatus: 'generating',
-        sheetError: null,
+        ...(opts.markGenerating
+          ? { sheetStatus: 'generating' as const, sheetError: null }
+          : {}),
       });
       return versionId;
     },

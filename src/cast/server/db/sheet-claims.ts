@@ -267,3 +267,19 @@ export async function landLocationReference(
   if (!row) throw new Error(`SequenceLocation ${locationId} not found`);
   return row.selected === versionId ? 'promoted' : 'parked';
 }
+
+/**
+ * For a bible upsert's `ON CONFLICT DO UPDATE SET` (#1113): keep `claim` while
+ * every sheet input column is unchanged, else clear it. A re-analysis that
+ * rewrites a field the sheet reads revokes an in-flight run, in the same
+ * statement as the write; an identical rewrite does not.
+ */
+export function keepClaimUnlessChanged(
+  claim: string,
+  inputColumns: readonly string[]
+): SQL {
+  const same = inputColumns
+    .map((col) => `"${col}" IS excluded."${col}"`)
+    .join(' AND ');
+  return sql.raw(`CASE WHEN ${same} THEN "${claim}" ELSE NULL END`);
+}

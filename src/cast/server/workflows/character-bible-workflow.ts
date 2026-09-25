@@ -180,7 +180,10 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         await computeCharacterSheetHashFromDto(unclaimed);
       const sheetVersionId = await step.do(
         `claim-character-sheet-${index}`,
-        async () => await scopedDb.characters.claimSheet(characterDbId)
+        async () =>
+          await scopedDb.characters.claimSheet(characterDbId, {
+            markGenerating: false,
+          })
       );
       const childPayload: CharacterSheetWorkflowInput = {
         ...unclaimed,
