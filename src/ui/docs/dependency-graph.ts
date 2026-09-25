@@ -550,9 +550,6 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Names and titles',
       'The still it produces',
       "A voice-only character's look: heard, never framed, so the still prompt never sees it",
-      {
-        gap: 'Making a character voice-only: the hash moves, but verify still accepts the pre-#1785 digest that kept the character, until that fallback is deleted',
-      },
       'The scenes before and after, which the model reads for continuity: hashing them would re-stale three scenes per edit and every scene on a reorder',
     ],
     storedAs: 'frame_prompt_versions.inputHash',
@@ -571,6 +568,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       "The shot's own lines, in place of the script's",
       'The rendered still it was shown (start-frame mode)',
       'Start-frame mode',
+      'Which characters are voice-only',
     ],
     ignored: [
       'Duration',
@@ -578,9 +576,6 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Voice ids (they bind on the clip, like sheets on the still)',
       'Which voice element is bound to a line',
       'The scenes before and after, as for the visual prompt',
-      {
-        gap: 'The voice-only flag: the model is sent it in the character list, but the hash does not read it',
-      },
     ],
     storedAs: 'shot_prompt_versions.inputHash',
   },

@@ -889,12 +889,16 @@ Ordered by value / risk. **1, 2, 4 and 5 shipped; 3 is still open** (see C).
   subject of the prompt. The hash input has no neighbour channel.
 - **A voice-only character's look** (visual prompt only). The visual LLM
   never sees a voice-only character (#1585), so the visual hash drops it too
-  (#1785). The motion hash keeps it (delivery). Pre-#1785 digests that
-  hashed the character (`v5-voiced`) still verify until `LEGACY_HASH_UNTIL`.
-  **Known gap:** that fallback also accepts the toggle itself, so making a
-  character voice-only reads fresh until the fallback is deleted. The motion
-  LLM is sent the `voiceOnly` flag, but the motion hash does not read it.
-  Both are `it.todo` rows in `staleness-matrix.test.ts`.
+  (#1785). The motion hash keeps it (delivery), and marks it
+  `voiceOnly: true` because the motion LLM is sent the flag (#1787). The mark
+  joins only when set, so a cast with no voice-only character hashes as
+  before. Every digest before the current shape (`v5-voiced` and older)
+  ignores the flag, so it would equal the stamp after a toggle. Verify
+  therefore accepts those digests only while no character's `voiceOnly`
+  moved since the prompt was made (`voiceOnlyMovedSince` over the character
+  bible versions). An untouched pre-#1785 stamp stays fresh on deploy; a
+  toggle after it stales both prompts. The regenerate bail uses the same
+  guard.
 - **Model switches.** See §3: verify pins each artifact to its own model.
 
 ---

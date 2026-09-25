@@ -53,6 +53,16 @@ export const sceneScriptVersions = snakeCase.table(
       .default(false)
       .$defaultFn(() => true)
       .notNull(),
+    // Whether this row's narrative was copied in by the #1600 backfill rather
+    // than written with the row (#1787). The SQL default marks every row that
+    // existed when this column was added — the backfilled ones, plus any a
+    // pre-#1600 worker wrote in the deploy window; every row written since
+    // is false (the $defaultFn). Such a row cannot say what the narrative
+    // was when it was live, so stale causes fall back to a timestamp guess.
+    narrativeBackfilled: integer({ mode: 'boolean' })
+      .default(true)
+      .$defaultFn(() => false)
+      .notNull(),
     source: text().$type<SceneScriptSource>().notNull(),
     createdAt: integer({ mode: 'timestamp' })
       .$defaultFn(() => new Date())

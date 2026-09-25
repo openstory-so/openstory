@@ -13,7 +13,9 @@ vi.doMock('@/shots/server/workflows/regenerate-shots-snapshot', () => ({
   buildRegenerateShotSnapshot,
 }));
 vi.doMock('./prompt-context', () => ({ loadNarrowShotPromptContext }));
+const realInputHash = await import('@/shots/input-hash');
 vi.doMock('@/shots/input-hash', () => ({
+  voiceOnlyMovedSince: realInputHash.voiceOnlyMovedSince,
   hashVisualPromptInput,
   hashMotionPromptInput,
   visualPromptInputHashMatches: vi.fn(
@@ -973,7 +975,7 @@ describe('causes left for #1787', () => {
     expect(result.causes).toEqual(['Location "Diner": sheet']);
   });
 
-  it('falls back to the scene timestamp for a narrative older than its history (#1600 backfill)', async () => {
+  it('falls back to the scene timestamp only for a backfilled narrative (#1600, #1787)', async () => {
     hashMotionPromptInput.mockResolvedValue('motion-stored');
     const content = { extract: 'She waits.', dialogue: [] };
     const narrative = {
@@ -985,18 +987,19 @@ describe('causes left for #1787', () => {
     };
     // The backfill copied today's narrative onto the old row, so the rows
     // agree even though the scene was edited after the still.
-    const causesFor = async (at: Date, sceneUpdatedAt: Date) => {
+    const causesFor = async (backfilled: boolean) => {
       const scopedDb = makeScopedDb({ motionSelectedHash: 'motion-stored' });
       withSceneRows(
         scopedDb,
-        { ...narrative, id: 'scene-1', updatedAt: sceneUpdatedAt },
+        { ...narrative, id: 'scene-1', updatedAt: afterGen },
         [
           {
             ...narrative,
             id: 'v1',
             sceneId: 'scene-1',
             content,
-            createdAt: new Date(at.getTime() - 1000),
+            narrativeBackfilled: backfilled,
+            createdAt: new Date(generated.getTime() - 1000),
           },
         ]
       );
@@ -1006,18 +1009,17 @@ describe('causes left for #1787', () => {
         sequence,
         shot: asStub<Shot>({ id: 'shot-1', sceneId: 'scene-1' }),
         frame,
-        selectedImage: still(at),
+        selectedImage: still(generated),
         scene,
         refs: noRefs,
       });
       return result.causes;
     };
 
-    expect(await causesFor(generated, afterGen)).toEqual(['Scene details']);
-    // After the history starts, a touched row with no narrative change is
-    // not a cause.
-    const late = new Date('2026-10-01T00:00:00Z');
-    expect(await causesFor(late, new Date('2026-10-02T00:00:00Z'))).toEqual([]);
+    expect(await causesFor(true)).toEqual(['Scene details']);
+    // A version written with its narrative is the truth: a touched scene
+    // whose narrative did not move is not a cause.
+    expect(await causesFor(false)).toEqual([]);
   });
 });
 

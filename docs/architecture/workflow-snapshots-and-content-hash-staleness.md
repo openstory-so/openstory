@@ -136,7 +136,14 @@ Causes diff the scene version live when the artifact was made against the
 live one: `Script` for text or lines, `Scene: heading, time of day` for the
 narrative. The title is a label, never a cause. History made before #1600
 carries the narrative as it stood at deploy, so an older narrative edit on an
-older artifact is not named.
+older artifact cannot be named. `scene_script_versions.narrativeBackfilled`
+marks those rows (#1787): the column's SQL default marked every row that
+existed when it was added, and every row written since is false. When the
+version live at the artifact is marked and no narrative field moved, the
+cause falls back to "Scene details" if the scene row was touched after the
+artifact. The mark comes from the data, so nothing has to be edited at
+deploy. An INSERT … SELECT writer must set it to false by hand, as the
+narrative edit does.
 
 ### Style history (#1600)
 

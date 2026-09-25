@@ -201,6 +201,9 @@ export function createScenesMethods(db: Database) {
             storyBeat: field('storyBeat', sceneColumns.storyBeat),
             continuity: field('continuity', sceneColumns.continuity),
             hasNarrative: sql`1`.as('has_narrative'),
+            // Written now with the live narrative, so it is history (#1787);
+            // an INSERT … SELECT gets the SQL default (true) otherwise.
+            narrativeBackfilled: sql`0`.as('narrative_backfilled'),
             source: sql`${opts.source}`.as('source'),
             createdAt: sql`${Math.floor(Date.now() / 1000)}`.as('created_at'),
             createdBy: sql`${opts.createdBy}`.as('created_by'),

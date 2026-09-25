@@ -239,7 +239,18 @@ type Stamps = { still: string; visualPrompt: string; motionPrompt: string };
  * The prompt rows as D1 holds them: selected, hashed, and pinning the
  * analysis model they were written with.
  */
-function shotDb(world: World, stamps: Stamps) {
+/** A character bible version, as the voice-only verify reads it. */
+type VoiceVersion = {
+  characterId: string;
+  voiceOnly: boolean;
+  createdAt: Date;
+};
+
+function shotDb(
+  world: World,
+  stamps: Stamps,
+  characterVersions: VoiceVersion[] = []
+) {
   const none = () => Promise.resolve(null);
   const empty = () => Promise.resolve([]);
   return asStub<ScopedDb>({
@@ -263,8 +274,11 @@ function shotDb(world: World, stamps: Stamps) {
       getLivePending: none,
     },
     frameVariants: { listLiveClaims: empty },
-    // Only the stale-cause hints read these.
-    characters: { listBibleVersionsBySequence: empty },
+    // The stale-cause hints read these; the legacy-digest verify reads the
+    // character versions for a moved voice-only flag (#1787).
+    characters: {
+      listBibleVersionsBySequence: () => Promise.resolve(characterVersions),
+    },
     sequenceLocations: { listBibleVersionsBySequence: empty },
     sceneScriptVersions: { listBySequence: empty, getSelected: none },
     scenes: { getById: none },
@@ -274,9 +288,13 @@ function shotDb(world: World, stamps: Stamps) {
   });
 }
 
-async function shotVerdicts(world: World, stamps: Stamps) {
+async function shotVerdicts(
+  world: World,
+  stamps: Stamps,
+  characterVersions?: VoiceVersion[]
+) {
   return computeShotStaleness({
-    scopedDb: shotDb(world, stamps),
+    scopedDb: shotDb(world, stamps, characterVersions),
     sequence: world.sequence,
     shot: asStub<Shot>({ id: 'shot-1', sceneId: null, ...world.shot }),
     frame: asStub<Frame>({ id: 'frame-1' }),
@@ -688,12 +706,37 @@ describe('staleness matrix — a shot and its clip', () => {
     expect(clipIsStale(BASE)).toBe(false);
   });
 
-  // Both prompts read fresh today. The visual hash drops a voice-only
-  // character (#1785), but the pre-#1785 digest kept her, so it equals the
-  // stamp and verify accepts it until the `LEGACY_HASH_UNTIL` fallbacks are
-  // deleted (#1371). The motion LLM is sent the `voiceOnly` flag in the
-  // character JSON, but the motion hash does not read it.
-  it.todo('Alice made voice-only → visual and motion prompts stale');
+  // Every digest before the current shape ignores the voice-only flag, and
+  // for a cast with no voice-only character it equals today's stamp. So a
+  // legacy digest is trusted only while no flag moved since the stamp.
+  const BEFORE = new Date(AT.getTime() - 60_000);
+  const LATER = new Date(AT.getTime() + 60_000);
+  const aliceVoiceOnly = withCharacter(BASE, 'c-alice', { voiceOnly: true });
+
+  it('Alice made voice-only → visual and motion prompts stale', async () => {
+    const stamps = await stampShot();
+    const verdicts = await shotVerdicts(aliceVoiceOnly, stamps, [
+      { characterId: 'c-alice', voiceOnly: false, createdAt: BEFORE },
+      { characterId: 'c-alice', voiceOnly: true, createdAt: LATER },
+    ]);
+    expect(verdicts).toMatchObject({
+      visualPrompt: 'stale',
+      motionPrompt: 'stale',
+    });
+  });
+
+  it('a pre-#1785 stamp of a voice-only Alice stays fresh on deploy', async () => {
+    // The pre-#1785 digest of a voice-only Alice is the digest of a voiced
+    // one: that shape never read the flag.
+    const stamps = await stampShot();
+    const verdicts = await shotVerdicts(aliceVoiceOnly, stamps, [
+      { characterId: 'c-alice', voiceOnly: true, createdAt: BEFORE },
+    ]);
+    expect(verdicts).toMatchObject({
+      visualPrompt: 'fresh',
+      motionPrompt: 'fresh',
+    });
+  });
 
   it.each(SHOT_MATRIX)('$mutation → stale: $stale', async (row) => {
     const stamps = await stampShot();

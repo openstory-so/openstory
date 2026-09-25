@@ -16,6 +16,7 @@ import {
   hashVisualPromptInput,
   motionPromptInputHashMatches,
   visualPromptInputHashMatches,
+  voiceOnlyMovedSince,
 } from '@/shots/input-hash';
 import {
   loadNarrowShotPromptContext,
@@ -527,6 +528,15 @@ export async function computeShotStaleness(args: {
 
   let visualPrompt: ArtifactStaleness = 'untracked';
   let motionPrompt: ArtifactStaleness = 'untracked';
+  // Legacy digests ignore the voice-only flag; verify asks whether one moved
+  // since the stamp (#1787). Read only when the current digest missed.
+  const voiceOnlyMoved = async (at: Date) =>
+    voiceOnlyMovedSince(
+      reads
+        ? [...(await reads.inputHistory()).characters.values()].flat()
+        : await scopedDb.characters.listBibleVersionsBySequence(sequence.id),
+      at
+    );
   let selectedMotion: { inputHash: string | null; createdAt: Date } | null =
     null;
 
@@ -539,13 +549,13 @@ export async function computeShotStaleness(args: {
     // the catch exists for, and outside it one bad read rejects the caller's
     // whole batch.
     try {
-      let referenceHash = selectedPrompt?.inputHash ?? null;
-      if (!referenceHash) {
-        const fallback = reads
+      let reference = selectedPrompt?.inputHash ? selectedPrompt : null;
+      if (!reference) {
+        reference = reads
           ? (reads.latestHashedPromptByFrame.get(frame.id) ?? null)
           : await scopedDb.framePromptVersions.getLatestWithInputHash(frame.id);
-        referenceHash = fallback?.inputHash ?? null;
       }
+      const referenceHash = reference?.inputHash ?? null;
       if (referenceHash) {
         const latest = reads
           ? (reads.latestPromptByFrame.get(frame.id) ?? null)
@@ -563,7 +573,11 @@ export async function computeShotStaleness(args: {
         // hashed when it doesn't — the common editor load is the match.
         visualPrompt =
           referenceHash === liveHash ||
-          (await visualPromptInputHashMatches(referenceHash, ctx))
+          (await visualPromptInputHashMatches(referenceHash, ctx, {
+            voiceOnlyMoved: await voiceOnlyMoved(
+              reference?.createdAt ?? new Date(0)
+            ),
+          }))
             ? 'fresh'
             : 'stale';
       }
@@ -590,16 +604,16 @@ export async function computeShotStaleness(args: {
       selectedMotion = reads
         ? (reads.selectedMotionByShot.get(shot.id) ?? null)
         : await scopedDb.shotPromptVersions.getSelectedMotion(shot.id);
-      let referenceHash = selectedMotion?.inputHash ?? null;
-      if (!referenceHash) {
-        const fallback = reads
+      let reference = selectedMotion?.inputHash ? selectedMotion : null;
+      if (!reference) {
+        reference = reads
           ? (reads.latestHashedMotionByShot.get(shot.id) ?? null)
           : await scopedDb.shotPromptVersions.getLatestWithInputHash(
               shot.id,
               'motion'
             );
-        referenceHash = fallback?.inputHash ?? null;
       }
+      const referenceHash = reference?.inputHash ?? null;
       if (referenceHash) {
         const latest = reads
           ? (reads.latestMotionByShot.get(shot.id) ?? null)
@@ -621,6 +635,9 @@ export async function computeShotStaleness(args: {
           referenceHash === liveHash ||
           (await motionPromptInputHashMatches(referenceHash, ctx, {
             legacyScriptDialogue: !dialogue.onNode,
+            voiceOnlyMoved: await voiceOnlyMoved(
+              reference?.createdAt ?? new Date(0)
+            ),
           }))
             ? 'fresh'
             : 'stale';
@@ -873,14 +890,6 @@ async function loadSceneContext(
 }
 
 /**
- * The #1600 deploy backfilled every older scene version with the narrative
- * the scene held on that day, so a version from before it cannot say what
- * the narrative was then.
- * ponytail: the migration's date; move it to the production deploy date.
- */
-const SCENE_NARRATIVE_HISTORY_FROM = Date.parse('2026-09-25T00:00:00Z');
-
-/**
  * What moved in the shot's scene since `at` (#1600): the scene version live
  * then against the live one — `Script` for its text or lines, `Scene: …`
  * for the narrative. A scene whose history does not reach back that far falls
@@ -915,10 +924,9 @@ function sceneCauses(
     return label ? [label] : [];
   });
   if (moved.length > 0) causes.push(`Scene: ${moved.join(', ')}`);
-  else if (
-    at < SCENE_NARRATIVE_HISTORY_FROM &&
-    after(live.scene.updatedAt, at)
-  ) {
+  // A backfilled version holds the narrative of the #1600 deploy day, not of
+  // when it was live, so "nothing moved" is unknowable: guess from the time.
+  else if (then.narrativeBackfilled && after(live.scene.updatedAt, at)) {
     causes.push('Scene details');
   }
   return causes;

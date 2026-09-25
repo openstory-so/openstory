@@ -27,6 +27,7 @@ import {
   motionPromptInputHashMatches,
   sha256Hex,
   visualPromptInputHashMatches,
+  voiceOnlyMovedSince,
   type CharacterSheetHashInput,
   type MotionPromptHashInput,
   type MotionPromptInputHash,
@@ -55,6 +56,9 @@ const SHA256_HEX = /^[0-9a-f]{64}$/;
 /** Incomplete assembler payload for "omitted field throws" tests. */
 // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test-only incomplete DTO
 const incomplete = <T>(value: object): T => value as T;
+
+/** No character's voice-only flag moved since the stamp. */
+const VOICE_STILL = { voiceOnlyMoved: false };
 
 describe('computeShotImageInputHash (thumbnail)', () => {
   it('produces a 64-char hex SHA-256 digest', async () => {
@@ -606,7 +610,7 @@ describe('prompt input hashes', () => {
     dialogue: { presence: false, lines: [] },
   };
   /** A shot whose lines sit on its dialogue node. */
-  const NODE = { legacyScriptDialogue: false };
+  const NODE = { legacyScriptDialogue: false, ...VOICE_STILL };
 
   it('visual and motion prompt hashes are namespaced by artifact and differ', async () => {
     const visual = await hashVisualPromptInput(sceneCtx);
@@ -776,6 +780,7 @@ describe('prompt input hashes', () => {
     expect(
       await motionPromptInputHashMatches(stamped, now, {
         legacyScriptDialogue: true,
+        voiceOnlyMoved: false,
       })
     ).toBe(true);
     // A node row: that is an edit, and it re-stales the prompt.
@@ -996,13 +1001,21 @@ describe('prompt input hashes', () => {
     const current = await hashVisualPromptInput(sceneCtx);
     const v4 = await computeVisualPromptInputHashV4(sceneCtx);
     expect(v4).not.toBe(current);
-    expect(await visualPromptInputHashMatches(current, sceneCtx)).toBe(true);
-    expect(await visualPromptInputHashMatches(v4, sceneCtx)).toBe(true);
     expect(
-      await visualPromptInputHashMatches(v4, {
-        ...sceneCtx,
-        analysisModel: 'anthropic/claude-sonnet-4.6',
-      })
+      await visualPromptInputHashMatches(current, sceneCtx, VOICE_STILL)
+    ).toBe(true);
+    expect(await visualPromptInputHashMatches(v4, sceneCtx, VOICE_STILL)).toBe(
+      true
+    );
+    expect(
+      await visualPromptInputHashMatches(
+        v4,
+        {
+          ...sceneCtx,
+          analysisModel: 'anthropic/claude-sonnet-4.6',
+        },
+        VOICE_STILL
+      )
     ).toBe(false);
   });
 
@@ -1189,5 +1202,28 @@ describe('computeSequenceMusicInputHash', () => {
       tags: '\tcinematic,tension,strings\n',
     });
     expect(padded).toBe(trimmed);
+  });
+});
+
+describe('voiceOnlyMovedSince (#1787)', () => {
+  const at = new Date('2026-01-01T00:00:00Z');
+  const v = (characterId: string, voiceOnly: boolean, minutes: number) => ({
+    characterId,
+    voiceOnly,
+    createdAt: new Date(at.getTime() + minutes * 60_000),
+  });
+
+  it('a flip after the stamp moved; a first version or an earlier flip did not', () => {
+    expect(voiceOnlyMovedSince([v('a', false, -2), v('a', true, 1)], at)).toBe(
+      true
+    );
+    expect(voiceOnlyMovedSince([v('a', true, 1)], at)).toBe(false);
+    expect(voiceOnlyMovedSince([v('a', false, -2), v('a', true, -1)], at)).toBe(
+      false
+    );
+    // Another character's first version is not a flip of this one.
+    expect(voiceOnlyMovedSince([v('a', false, -2), v('b', true, 1)], at)).toBe(
+      false
+    );
   });
 });

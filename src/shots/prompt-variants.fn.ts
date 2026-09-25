@@ -11,6 +11,7 @@ import {
   motionPromptInputHashMatches,
   musicPromptInputHashMatches,
   visualPromptInputHashMatches,
+  voiceOnlyMovedSince,
 } from './input-hash';
 import {
   DEFAULT_ANALYSIS_MODEL,
@@ -582,21 +583,31 @@ export const regenerateShotPromptFn = createServerFn({ method: 'POST' })
           dialogue: promptDialogue.dialogue,
         })
       : await hashVisualPromptInput(narrowed);
-    const storedHash =
+    const stored =
       data.promptType === 'visual'
-        ? ((await scopedDb.framePromptVersions.getSelected(frame.id))
-            ?.inputHash ?? null)
-        : ((await scopedDb.shotPromptVersions.getSelectedMotion(shot.id))
-            ?.inputHash ?? null);
+        ? await scopedDb.framePromptVersions.getSelected(frame.id)
+        : await scopedDb.shotPromptVersions.getSelectedMotion(shot.id);
+    const storedHash = stored?.inputHash ?? null;
+    // Legacy digests ignore the voice-only flag (#1787); only read the
+    // history when the stored digest is not the current one.
+    const voiceOnlyMoved =
+      !!stored &&
+      storedHash !== liveHash &&
+      voiceOnlyMovedSince(
+        await scopedDb.characters.listBibleVersionsBySequence(sequence.id),
+        stored.createdAt
+      );
     if (
       !data.force &&
       (promptDialogue
         ? await motionPromptInputHashMatches(
             storedHash,
             { ...narrowed, dialogue: promptDialogue.dialogue },
-            { legacyScriptDialogue: !promptDialogue.onNode }
+            { legacyScriptDialogue: !promptDialogue.onNode, voiceOnlyMoved }
           )
-        : await visualPromptInputHashMatches(storedHash, narrowed))
+        : await visualPromptInputHashMatches(storedHash, narrowed, {
+            voiceOnlyMoved,
+          }))
     ) {
       return {
         workflowRunId: null,
