@@ -35,6 +35,7 @@ import {
 import { dbSceneId } from '@/shots/scene-id';
 import { relations } from '@/platform/server/db/schema/relations';
 import { createSequenceElementsMethods } from './sequence-elements';
+import { createScenesMethods } from '@/shots/server/db/scenes';
 
 let client: Client;
 let db: Database;
@@ -108,14 +109,6 @@ async function insertSceneWithShot(args: {
       id: dbSceneId(generateId()),
       sequenceId,
       orderIndex: args.orderIndex,
-      continuity: {
-        environmentTag: '',
-        characterTags: [],
-        elementTags: args.elementTags,
-        colorPalette: '',
-        lightingSetup: '',
-        styleTag: '',
-      },
     })
     .returning();
   if (!scene) throw new Error('test setup: scene insert returned nothing');
@@ -124,6 +117,15 @@ async function insertSceneWithShot(args: {
     .values({
       sceneId: scene.id,
       content: { extract: args.extract, dialogue: [] },
+      // Continuity rides the script version (#1600).
+      continuity: {
+        environmentTag: '',
+        characterTags: [],
+        elementTags: args.elementTags,
+        colorPalette: '',
+        lightingSetup: '',
+        styleTag: '',
+      },
       source: 'split',
     })
     .returning();
@@ -386,10 +388,7 @@ describe('cascadeRename', () => {
       .where(eq(sequences.id, sequenceId));
     expect(seq?.script).toBe('The BRAND appears. Pan across the BRAND.');
 
-    const [renamedScene] = await db
-      .select({ continuity: scenes.continuity })
-      .from(scenes)
-      .where(eq(scenes.id, taggedScene.id));
+    const renamedScene = await createScenesMethods(db).getById(taggedScene.id);
     expect(renamedScene?.continuity?.elementTags).toEqual(['BRAND']);
 
     const [renamedVersion] = await db

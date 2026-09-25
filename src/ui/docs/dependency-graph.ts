@@ -101,7 +101,8 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     label: 'Script',
     kind: 'input',
     band: 'settings',
-    summary: 'The scene text and its slugline, as split from your script.',
+    summary:
+      'The scene text and its slugline, as split from your script. Heading, time of day, story beat and continuity tags are versioned with the text, so a stale shot names the field that moved.',
     counts: [
       'Scene extract, line number and the dialogue spoken in this shot',
       'INT./EXT. heading',

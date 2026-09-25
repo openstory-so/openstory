@@ -78,11 +78,17 @@ async function seedScene(
 ): Promise<{ scene: SceneRow; sceneShots: Shot[] }> {
   const sceneMethods = createScenesMethods(db);
   const shotMethods = createShotsMethods(db);
-  const scene = await sceneMethods.create({
-    sequenceId,
-    orderIndex,
-    title: `Scene ${orderIndex}`,
-  });
+  const scene = await sceneMethods.create(
+    { sequenceId, orderIndex },
+    {
+      title: `Scene ${orderIndex}`,
+      location: null,
+      timeOfDay: null,
+      storyBeat: null,
+      continuity: null,
+    },
+    { createdBy: null }
+  );
   const sceneShots: Shot[] = [];
   for (let n = 1; n <= shotCount; n++) {
     sceneShots.push(
@@ -314,15 +320,12 @@ describe('re-analysis revival + shot soft-delete details', () => {
     const sceneMethods = createScenesMethods(db);
     const { scene } = await seedScene(0, 0);
     await sceneMethods.softDeleteCascade(scene.id, { actorId });
-    await sceneMethods.upsert({
-      sequenceId,
-      orderIndex: 0,
-      title: 'Re-split scene',
-    });
+    await sceneMethods.upsert({ sequenceId, orderIndex: 0 });
     const live = await sceneMethods.listBySequence(sequenceId);
     expect(live).toHaveLength(1);
     expect(live[0]?.id).toBe(scene.id);
-    expect(live[0]?.title).toBe('Re-split scene');
+    // The narrative moves only with a script version (#1600), not the upsert.
+    expect(live[0]?.title).toBe('Scene 0');
   });
 
   it('shots.upsert on a deleted (sceneId, shotNumber) slot revives it', async () => {

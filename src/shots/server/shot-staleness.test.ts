@@ -80,6 +80,7 @@ function makeScopedDb(overrides: {
       listWithReferences: vi.fn().mockResolvedValue([]),
       listBibleVersionsBySequence: vi.fn().mockResolvedValue([]),
     },
+    sceneScriptVersions: { listBySequence: vi.fn().mockResolvedValue([]) },
     sequenceElements: { list: vi.fn().mockResolvedValue([]) },
     styles: { getById: vi.fn().mockResolvedValue({ config: {} }) },
     framePromptVersions: {
@@ -434,6 +435,7 @@ describe('staleness causes (#1194)', () => {
       scenes: { getById: vi.fn().mockResolvedValue({ updatedAt: afterGen }) },
       sceneScriptVersions: {
         getSelected: vi.fn().mockResolvedValue({ createdAt: afterGen }),
+        listBySequence: vi.fn().mockResolvedValue([]),
       },
       sequenceEvents: {
         listByTarget: vi.fn().mockResolvedValue([
@@ -535,6 +537,7 @@ describe('staleness causes (#1194)', () => {
       scenes: { getById: vi.fn().mockResolvedValue({ updatedAt: before }) },
       sceneScriptVersions: {
         getSelected: vi.fn().mockResolvedValue({ createdAt: before }),
+        listBySequence: vi.fn().mockResolvedValue([]),
       },
       sequenceEvents: { listByTarget: vi.fn().mockResolvedValue([]) },
     });
@@ -578,6 +581,85 @@ describe('staleness causes (#1194)', () => {
     });
 
     expect(result.causes).toEqual(['Character "Woman": clothing, sheet']);
+  });
+
+  it('names the scene fields that moved, not the script, when only they did (#1600)', async () => {
+    buildRegenerateShotSnapshot.mockResolvedValue({
+      snapshotInputHash: 'image-live',
+    });
+    loadNarrowShotPromptContext.mockResolvedValue({});
+    hashVisualPromptInput.mockResolvedValue('visual-stored');
+    hashMotionPromptInput.mockResolvedValue('motion-stored');
+
+    const before = new Date('2025-12-31T00:00:00Z');
+    const generated = new Date('2026-01-01T00:00:00Z');
+    const afterGen = new Date('2026-01-02T00:00:00Z');
+    const content = { extract: 'She waits.', dialogue: [] };
+    const narrative = {
+      title: 'Wait',
+      location: 'INT. HALL',
+      timeOfDay: 'day',
+      storyBeat: 'setup',
+      continuity: null,
+    };
+    const live = {
+      ...narrative,
+      title: 'Waiting',
+      timeOfDay: 'night',
+      id: 'v2',
+      sceneId: 'scene-1',
+      content,
+      createdAt: afterGen,
+    };
+    const scopedDb = makeScopedDb({ motionSelectedHash: 'motion-stored' });
+    Object.assign(scopedDb, {
+      scenes: {
+        getById: vi
+          .fn()
+          .mockResolvedValue({ ...live, id: 'scene-1', updatedAt: afterGen }),
+      },
+      sceneScriptVersions: {
+        getSelected: vi.fn().mockResolvedValue(live),
+        listBySequence: vi.fn().mockResolvedValue([
+          {
+            version: {
+              ...narrative,
+              id: 'v1',
+              sceneId: 'scene-1',
+              content,
+              createdAt: before,
+            },
+          },
+          { version: live },
+        ]),
+      },
+      sequenceEvents: { listByTarget: vi.fn().mockResolvedValue([]) },
+    });
+
+    const result = await computeShotStaleness({
+      dialogue: NO_LINES,
+      scopedDb,
+      sequence,
+      shot: asStub<Shot>({ id: 'shot-1', sceneId: 'scene-1' }),
+      frame,
+      selectedImage: asStub<FrameVariant>({
+        id: 'fv-1',
+        inputHash: 'image-old',
+        model: null,
+        url: null,
+        generatedAt: generated,
+      }),
+      scene,
+      refs: asStub({
+        characters: [],
+        locations: [],
+        elements: [],
+        style: null,
+      }),
+    });
+
+    // The title is a display label: renamed, but never a cause.
+    expect(result.causes).toEqual(['Scene: time of day']);
   });
 });
 

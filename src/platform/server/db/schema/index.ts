@@ -154,12 +154,21 @@ export type { NewSequence, Sequence } from './sequences';
 // Scenes (narrative units; each owns an ordered list of shots)
 export { scenes };
 
-export type { DbSceneId, NewScene, SceneRow } from './scenes';
+export type {
+  DbSceneId,
+  LegacySceneNarrativeColumn,
+  NewScene,
+  SceneRecord,
+  SceneRow,
+} from './scenes';
 
 // Scene script versions (per-scene script history; #1030)
 export { sceneScriptVersions };
 
+export { SCENE_NARRATIVE_FIELDS } from './scene-script-versions';
+
 export type {
+  SceneNarrative,
   SceneScriptVersion,
   SceneScriptSource,
 } from './scene-script-versions';

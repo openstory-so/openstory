@@ -106,6 +106,7 @@ import { parsePartialJSON, type TokenUsage } from '@tanstack/ai';
 import { deductWorkflowCredits } from '@/billing/server/workflow-deduction';
 import {
   buildSceneInsert,
+  buildSceneNarrative,
   buildSceneShotLinks,
 } from '@/sequences/server/scene-persistence';
 import { aspectRatioToImageSize } from '@/models/aspect-ratios';
@@ -208,7 +209,7 @@ async function persistStreamedScene(
   orderIndex: number
 ): Promise<void> {
   const sceneRow = await scopedDb.scenes.upsert(
-    buildSceneInsert(sequenceId, scene, orderIndex)
+    buildSceneInsert(sequenceId, orderIndex)
   );
   // Seed the split script version as soon as the scene lands so composed
   // script / the Scenes script view have text mid-stream. Idempotent: the
@@ -218,6 +219,7 @@ async function persistStreamedScene(
     {
       sceneId: sceneRow.id,
       content: scene.originalScript,
+      narrative: buildSceneNarrative(scene),
       createdAt: sceneRow.createdAt,
     },
   ]);
@@ -448,7 +450,7 @@ async function persistSceneShots({
   announcedShotIds?: ReadonlySet<string>;
 }): Promise<SceneSplitWorkflowResult['shotMapping']> {
   const sceneRow = await scopedDb.scenes.upsert(
-    buildSceneInsert(sequenceId, scene, orderIndex)
+    buildSceneInsert(sequenceId, orderIndex)
   );
   const inserts = buildShotInserts(
     sequenceId,
@@ -1125,12 +1127,13 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
           const scene = reconciled.scenes[index];
           if (!scene) continue;
           const sceneRow = await scopedDb.scenes.upsert(
-            buildSceneInsert(sequenceId, scene, index)
+            buildSceneInsert(sequenceId, index)
           );
           sceneRows.push(sceneRow);
           scriptSeeds.push({
             sceneId: sceneRow.id,
             content: scene.originalScript,
+            narrative: buildSceneNarrative(scene),
             createdAt: sceneRow.createdAt,
           });
         }

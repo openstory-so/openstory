@@ -6,7 +6,7 @@ import {
   musicPromptInputHashMatches,
 } from '@/shots/input-hash';
 import { buildShotInserts, defaultSingleShot } from '@/shots/shot-list-pass';
-import { buildSceneInsert } from '@/sequences/server/scene-persistence';
+import { buildSceneNarrative } from '@/sequences/server/scene-persistence';
 import {
   joinMusicDesignByIndex,
   musicSceneSummariesFromAnalysis,
@@ -61,7 +61,7 @@ function storedRows(scenes: readonly Scene[]) {
   const rowIds = scenes.map((_, index) => `row-${index}`);
   const sceneRows = scenes.map((scene, index) => ({
     id: rowIds[index] ?? '',
-    ...buildSceneInsert('seq', scene, index),
+    ...buildSceneNarrative(scene),
   }));
   const shots = buildShotInserts(
     'seq',

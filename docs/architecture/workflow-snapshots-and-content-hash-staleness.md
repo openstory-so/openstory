@@ -111,6 +111,33 @@ What this buys:
   than the bible (talent, style, model, the scene), so a pointer compare
   could not replace them without moving every stored digest.
 
+### Scene narrative (#1600)
+
+A scene's narrative — title, INT./EXT. heading, time of day, story beat and
+continuity tags — lives on its selected `scene_script_versions` row with the
+script, not on the `scenes` row. Every write appends a row carrying the
+selected script plus the new narrative: a person's edit (`updateNarrative`,
+`'edit'`), a continuity rescan after a prompt or script edit
+(`updateContinuity`, or the same row as the script edit), an element rename
+(one `renamed` row with both rewrites), and a hand-added scene (an empty
+script plus its narrative). Scene split writes the narrative into the split
+row with the script, in place like the content. Every scoped scene read joins
+the selected row and returns the fields under their old names (`sceneColumns`
+in `src/shots/server/db/scenes.ts`).
+
+The migration copied each scene's narrative onto all its existing rows and
+gave a scene with no script version a `backfill` row keyed to its own id.
+`scene_script_versions.hasNarrative` marks a row that carries the narrative;
+every row written since #1600 does. A row a pre-#1600 worker wrote during the
+deploy window does not, and reads fall back to the scene's legacy columns for
+it — the only reader of those columns, which nothing writes any more.
+
+Causes diff the scene version live when the artifact was made against the
+live one: `Script` for text or lines, `Scene: heading, time of day` for the
+narrative. The title is a label, never a cause. History made before #1600
+carries the narrative as it stood at deploy, so an older narrative edit on an
+older artifact is not named.
+
 ### Where the helpers live
 
 `src/shots/input-hash.ts` exports one named helper per artifact type (e.g. `computeShotImageInputHash`, `computeCharacterSheetInputHash`, `computeMotionPromptInputHash`). Each helper accepts the minimal input DTO it needs (never a whole DB row) and returns a `string`. This keeps callers honest about what counts as input and makes the helpers trivially unit-testable without DB setup.
