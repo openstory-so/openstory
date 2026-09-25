@@ -127,12 +127,6 @@ export function createVideoVariantsMethods(db: Database) {
     if (!shot) {
       throw new Error(`Shot ${shotId} not found`);
     }
-    if (shot.segmentId !== version.renderSegmentId) {
-      throw new Error(
-        `VideoVariant ${versionId} belongs to segment ${version.renderSegmentId}, not shot ${shotId}'s segment`
-      );
-    }
-
     const [segment] = await db
       .select({
         prev: renderSegments.selectedVideoVersionId,
@@ -140,7 +134,9 @@ export function createVideoVariantsMethods(db: Database) {
       })
       .from(renderSegments)
       .where(eq(renderSegments.id, version.renderSegmentId));
-    return { version, sequenceId: shot.sequenceId, segment };
+    // The shot was re-packed onto another segment since this render opened.
+    const foreignSegment = shot.segmentId !== version.renderSegmentId;
+    return { version, sequenceId: shot.sequenceId, segment, foreignSegment };
   };
 
   const selectedEvent = (
@@ -691,10 +687,13 @@ export function createVideoVariantsMethods(db: Database) {
       versionId: string,
       opts: { actorId: string | null }
     ): Promise<VideoVariant> => {
-      const { version, sequenceId, segment } = await loadSelectable(
-        shotId,
-        versionId
-      );
+      const { version, sequenceId, segment, foreignSegment } =
+        await loadSelectable(shotId, versionId);
+      if (foreignSegment) {
+        throw new Error(
+          `VideoVariant ${versionId} belongs to segment ${version.renderSegmentId}, not shot ${shotId}'s segment`
+        );
+      }
       const event = selectedEvent(
         shotId,
         sequenceId,
@@ -743,10 +742,10 @@ export function createVideoVariantsMethods(db: Database) {
       versionId: string,
       opts: { actorId: string | null }
     ): Promise<VideoVariant | null> => {
-      const { version, sequenceId, segment } = await loadSelectable(
-        shotId,
-        versionId
-      );
+      const { version, sequenceId, segment, foreignSegment } =
+        await loadSelectable(shotId, versionId);
+      // History-only: promoting would move a segment the shot left.
+      if (foreignSegment) return null;
       const claimed = await db
         .update(renderSegments)
         .set({

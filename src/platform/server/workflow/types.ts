@@ -18,6 +18,7 @@ import type {
   CharacterBibleEntry,
   ElementBibleEntry,
   LocationBibleEntry,
+  MotionAudio,
   MotionDialogue,
   MotionPrompt,
   Scene,
@@ -43,6 +44,19 @@ import type {
 export type UserEditProvenance = {
   inputHash: string | null;
   analysisModel: string | null;
+};
+
+/**
+ * Before #1786 the RUN wrote the user's edit, so its payload carried it. A run
+ * queued before that deploy still carries these fields and nothing else holds
+ * the typed prompt, so the run writes the edit as it used to. New triggers
+ * write the edit at the click and never set them. Drop once no pre-#1786 run
+ * can still be in flight.
+ */
+type PreClickEditPayload = {
+  userEditProvenance?: UserEditProvenance;
+  userEditText?: string;
+  priorMotion?: { audio?: MotionAudio | null };
 };
 import type { AspectRatio, ImageSize } from '@/models/aspect-ratios';
 import type { Resolution } from '@/models/resolutions';
@@ -94,7 +108,8 @@ export interface SequenceWorkflowContext extends UserWorkflowContext {
 /**
  * Image generation workflow input
  */
-export interface ImageWorkflowInput extends SequenceWorkflowContext {
+export interface ImageWorkflowInput
+  extends SequenceWorkflowContext, PreClickEditPayload {
   prompt: string;
   style?: Record<string, unknown> | unknown[];
   model?: keyof typeof IMAGE_MODELS;
@@ -549,7 +564,8 @@ export interface DialogueAudioWorkflowResult {
 /**
  * Motion generation workflow input
  */
-export interface MotionWorkflowInput extends SequenceWorkflowContext {
+export interface MotionWorkflowInput
+  extends SequenceWorkflowContext, PreClickEditPayload {
   shotId?: string;
   /**
    * The shot's scene, pinned at the trigger. Storyboard pins the analysis
@@ -1668,6 +1684,10 @@ export interface BatchMotionMusicWorkflowInput extends SequenceWorkflowContext {
     dialogueContext?: SceneVoicedLine[];
     /** See `MotionWorkflowInput.coveredShots`. */
     coveredShots?: PackedMotionCoveredShot[];
+    /** Only a batch queued before #1786; see {@link PreClickEditPayload}. */
+    userEditProvenance?: PreClickEditPayload['userEditProvenance'];
+    userEditText?: PreClickEditPayload['userEditText'];
+    priorMotion?: PreClickEditPayload['priorMotion'];
   }>;
   /**
    * Video models to generate for every shot (#545). First is primary (its

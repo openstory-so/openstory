@@ -220,6 +220,10 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
         generateAudio: shot.generateAudio,
         sceneTitle: shot.sceneTitle,
         sequenceTitle: shot.sequenceTitle,
+        // Only a batch queued before #1786 carries these; see PreClickEditPayload.
+        userEditProvenance: shot.userEditProvenance,
+        userEditText: shot.userEditText,
+        priorMotion: shot.priorMotion,
         // Cast/element reference images (#873) — carried by every model, on
         // the wire or as substituted descriptions.
         referenceImages: shot.referenceImages,

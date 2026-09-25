@@ -463,6 +463,24 @@ describe('selectIfPendingPromoteIs (#1786)', () => {
     ).toBeNull();
     expect((await segmentRow())?.selectedVideoVersionId).toBe(picked.id);
   });
+
+  it('a shot re-packed mid-run lands the clip in history instead of throwing', async () => {
+    const v = await methods.appendVersion(versionInput());
+    await claim(v.id);
+    const repacked = generateId();
+    await db
+      .insert(renderSegments)
+      .values([{ id: repacked, sceneId, sequenceId }]);
+    await db
+      .update(shots)
+      .set({ renderSegmentId: repacked })
+      .where(eq(shots.id, shotId));
+
+    expect(
+      await methods.selectIfPendingPromoteIs(shotId, v.id, { actorId: ACTOR })
+    ).toBeNull();
+    expect((await segmentRow())?.selectedVideoVersionId).toBeNull();
+  });
 });
 
 describe('listSelectedModelsBySequence (#1066)', () => {

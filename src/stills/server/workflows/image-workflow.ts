@@ -197,11 +197,24 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
         // including an explicit null ("this prompt came from no version").
         // Only un-migrated triggers, which omit the field entirely, fall back
         // to a live read.
+        // A run queued before #1786 still carries the edit for the run to
+        // write (see PreClickEditPayload); nothing else holds the typed text.
+        const preClickEdit = input.userEditProvenance
+          ? await scopedDb.framePromptVersions.write({
+              frameId: frame.id,
+              text: input.prompt,
+              source: 'user-edit',
+              inputHash: input.userEditProvenance.inputHash,
+              analysisModel: input.userEditProvenance.analysisModel,
+              createdBy: input.userId,
+            })
+          : null;
         const promptVersionId =
-          input.promptVersionId !== undefined
+          preClickEdit?.id ??
+          (input.promptVersionId !== undefined
             ? input.promptVersionId
             : ((await scopedDb.liveRead.frames.getById(frame.id))
-                ?.selectedImagePromptVersionId ?? null);
+                ?.selectedImagePromptVersionId ?? null));
         let version;
         if (input.targetVariantId) {
           // #1085: a pre-created claim row exists — transition IT rather than

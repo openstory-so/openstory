@@ -720,6 +720,34 @@ describe('MotionWorkflow prompt provenance (#1786)', () => {
       })
     );
   });
+
+  it('a run queued before #1786 still writes the edit its payload carries', async () => {
+    const { scopedDb, shotPromptVersions, videoVariants } = makeScopedDb();
+
+    await makeWorkflow().runBody(
+      makeEvent({
+        motionPromptVersionId: 'spv-before-edit',
+        userEditProvenance: { inputHash: 'h', analysisModel: 'm' },
+        userEditText: 'what the user typed',
+      }),
+      makeStep(),
+      scopedDb
+    );
+
+    expect(shotPromptVersions.write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: 'what the user typed',
+        source: 'user-edit',
+      })
+    );
+    expect(videoVariants.appendVersion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        manifest: [
+          expect.objectContaining({ motionPromptVersionId: 'spv-soft' }),
+        ],
+      })
+    );
+  });
 });
 
 describe('MotionWorkflow onFailure observation', () => {
