@@ -269,6 +269,7 @@ function motionVersionFixture(
     audioClips: null,
     usesStartFrame: true,
     source: 'ai-generated',
+    renamedFromId: null,
     inputHash: null,
     analysisModel: null,
     status: 'completed',

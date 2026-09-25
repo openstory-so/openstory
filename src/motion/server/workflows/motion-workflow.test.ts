@@ -1011,7 +1011,8 @@ describe('fresh MiniMax packed videos (#1720)', () => {
               members.map((member) => [member.shotId, member.duration * 1000])
             ),
             audioSecondsByShot: new Map(),
-          }
+          },
+          new Map()
         )
       ).toBe(false);
     }

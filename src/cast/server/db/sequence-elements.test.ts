@@ -35,6 +35,8 @@ import {
 import { dbSceneId } from '@/shots/scene-id';
 import { relations } from '@/platform/server/db/schema/relations';
 import { createSequenceElementsMethods } from './sequence-elements';
+import { createShotPromptVersionsMethods } from '@/shots/server/db/shot-prompt-versions';
+import { renamedFrom } from '@/shots/server/sequence-segments';
 
 let client: Client;
 let db: Database;
@@ -483,6 +485,8 @@ describe('cascadeRename', () => {
     expect(motion?.version.id).not.toBe(before.motionId);
     expect(motion?.version.source).toBe('renamed');
     expect(motion?.version.text).toBe('Push in on the BRAND.');
+    // The link a clip follows back to the row it was rendered from (#1827).
+    expect(motion?.version.renamedFromId).toBe(before.motionId);
     const [image] = await db
       .select({ version: framePromptVersions })
       .from(frames)
@@ -505,6 +509,26 @@ describe('cascadeRename', () => {
     expect(script?.version.content.extract).toBe(
       'The BRAND appears on screen.'
     );
+
+    // A second rename chains: the selection reaches back through both.
+    await methods.cascadeRename({
+      sequenceId,
+      elementId: element.id,
+      oldToken: 'BRAND',
+      newToken: 'MARK',
+    });
+    const [again] = await db
+      .select({ id: shots.selectedMotionPromptVersionId })
+      .from(shots)
+      .where(eq(shots.id, before.shotId));
+    const links =
+      await createShotPromptVersionsMethods(db).listRenameLinksBySequence(
+        sequenceId
+      );
+    expect(renamedFrom(again?.id ?? null, links)).toEqual([
+      motion?.version.id,
+      before.motionId,
+    ]);
   });
 
   it('short-circuits when oldToken === newToken', async () => {
