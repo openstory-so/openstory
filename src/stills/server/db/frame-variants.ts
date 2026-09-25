@@ -221,6 +221,244 @@ export async function getLatestPreviewByFrameIds(
 }
 
 export function createFrameVariantsMethods(db: Database) {
+  /**
+   * `select`'s body. With `consumeClaim`, the pointer move is gated on the
+   * frame's promote claim still naming `versionId` and consumes it in the
+   * same UPDATE (#1786); returns null when the claim had moved.
+   */
+  const selectFrameVariant = async (
+    frameId: string,
+    versionId: string,
+    opts: { actorId: string | null },
+    consumeClaim: boolean
+  ): Promise<FrameVariant | null> => {
+    const [version] = await db
+      .select()
+      .from(frameVariants)
+      .where(
+        and(eq(frameVariants.id, versionId), eq(frameVariants.frameId, frameId))
+      );
+    if (!version) {
+      throw new Error(
+        `FrameVariant ${versionId} not found for frame ${frameId}`
+      );
+    }
+    // A preview renders the raw scene text, not the frame's prompt (#1101),
+    // so promoting one would pair the still with a prompt it was never
+    // rendered from — and its url expires. Reject at the one door every
+    // selection goes through, so `frames.selectedImageVersionId` (and every
+    // render manifest that snapshots it) can never name a preview.
+    const { kind } = version;
+    if (!isSelectableFrameVariantKind(kind)) {
+      throw new Error(
+        `FrameVariant ${versionId} is kind '${kind}' — a preview is a pre-prompt stand-in and can never become a frame's still`
+      );
+    }
+    // Only a finished image may become the frame's primary still. Selecting a
+    // pending/failed version would mirror its null url + failed status onto
+    // the frame, silently blanking a good image.
+    if (version.status !== 'completed') {
+      throw new Error(
+        `FrameVariant ${versionId} is '${version.status}', not 'completed' — cannot select an unfinished image`
+      );
+    }
+    // `version` is a single object type, so the guards above narrow reads of
+    // its fields but not `version` as a whole — re-affirm both in a typed
+    // local so the mirror builder's precondition is met without an unsafe
+    // assertion.
+    const promotableVersion: PromotableFrameVariant = {
+      ...version,
+      kind,
+      status: 'completed',
+    };
+    const mirrorUpdate = buildFrameImageSelection(
+      db,
+      frameId,
+      promotableVersion,
+      consumeClaim
+    );
+
+    const [frame] = await db
+      .select({
+        sequenceId: frames.sequenceId,
+        prev: frames.selectedImageVersionId,
+        prevPromptVersionId: frames.selectedImagePromptVersionId,
+        pendingPromoteVersionId: frames.pendingPromoteVersionId,
+      })
+      .from(frames)
+      .where(eq(frames.id, frameId));
+    if (!frame) {
+      throw new Error(`Frame ${frameId} not found`);
+    }
+
+    // Cancel auto-promote only when the user picks a *different* version than
+    // the current primary (#1070). Re-selecting the current still leaves
+    // pending intact. Completing a gen that selects its pending version also
+    // hits prev !== versionId and clears pending (promote consumed).
+    // A claim-consuming promote (#1786) moves the pointer and consumes the
+    // claim in ONE guarded UPDATE, below — nothing is left to clear.
+    const shouldClearPending =
+      !consumeClaim &&
+      frame.prev !== versionId &&
+      frame.pendingPromoteVersionId != null;
+
+    // Resolve the prompt that was live when this still was generated, if any.
+    // Soft pointer — the row may have been pruned or never recorded.
+    let linkedPrompt: {
+      id: string;
+      text: string;
+      inputHash: string | null;
+    } | null = null;
+    if (version.promptVersionId) {
+      const [promptRow] = await db
+        .select({
+          id: framePromptVersions.id,
+          text: framePromptVersions.text,
+          inputHash: framePromptVersions.inputHash,
+          frameId: framePromptVersions.frameId,
+          status: framePromptVersions.status,
+        })
+        .from(framePromptVersions)
+        .where(eq(framePromptVersions.id, version.promptVersionId));
+      // A non-completed row is a placeholder — mirroring it would blank the
+      // frame's prompt with empty text (#1085).
+      if (
+        promptRow &&
+        promptRow.frameId === frameId &&
+        promptRow.status === 'completed'
+      ) {
+        linkedPrompt = promptRow;
+      }
+    }
+
+    const imageSelectedEvent = buildEventInsert(db, {
+      sequenceId: frame.sequenceId,
+      actorId: opts.actorId,
+      kind: 'image.selected',
+      targetType: 'frame',
+      targetId: frameId,
+      summary: `Selected ${version.model} image`,
+      data: {
+        versionId,
+        model: version.model,
+        prevVersionId: frame.prev ?? null,
+        promptVersionId: linkedPrompt?.id ?? null,
+        prevPromptVersionId: frame.prevPromptVersionId ?? null,
+      },
+    });
+
+    // Repointing the prompt is an explicit user choice (#1085): revoke the
+    // mirror rights of any in-flight prompt claims on this frame so a
+    // completing regeneration lands in history without clobbering it.
+    const demotePromptClaims = () =>
+      db
+        .update(framePromptVersions)
+        .set({ pendingInputHash: null })
+        .where(
+          and(
+            eq(framePromptVersions.frameId, frameId),
+            inArray(framePromptVersions.status, [...LIVE_PENDING_STATUSES])
+          )
+        );
+
+    if (consumeClaim) {
+      const claimed = await db
+        .update(frames)
+        .set({
+          selectedImageVersionId: versionId,
+          pendingPromoteVersionId: null,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(frames.id, frameId),
+            eq(frames.pendingPromoteVersionId, versionId)
+          )
+        )
+        .returning({ id: frames.id });
+      if (claimed.length === 0) return null;
+    }
+    // After a claim-consuming promote, the rest of the frame writes land
+    // only while the frame still shows this still — a manual pick made in
+    // between keeps its own prompt.
+    const frameWhere = consumeClaim
+      ? and(
+          eq(frames.id, frameId),
+          eq(frames.selectedImageVersionId, versionId)
+        )
+      : eq(frames.id, frameId);
+
+    if (linkedPrompt && shouldClearPending) {
+      await db.batch([
+        mirrorUpdate,
+        imageSelectedEvent,
+        demotePromptClaims(),
+        db
+          .update(frames)
+          .set({
+            selectedImagePromptVersionId: linkedPrompt.id,
+            pendingPromoteVersionId: null,
+            updatedAt: new Date(),
+          })
+          .where(frameWhere),
+        buildEventInsert(db, {
+          sequenceId: frame.sequenceId,
+          actorId: opts.actorId,
+          kind: 'prompt.selected',
+          targetType: 'frame',
+          targetId: frameId,
+          summary: 'Restored image prompt with selected still',
+          data: {
+            versionId: linkedPrompt.id,
+            prevVersionId: frame.prevPromptVersionId ?? null,
+            fromImageVersionId: versionId,
+          },
+        }),
+      ]);
+    } else if (linkedPrompt) {
+      await db.batch([
+        mirrorUpdate,
+        imageSelectedEvent,
+        demotePromptClaims(),
+        db
+          .update(frames)
+          .set({
+            selectedImagePromptVersionId: linkedPrompt.id,
+            updatedAt: new Date(),
+          })
+          .where(frameWhere),
+        buildEventInsert(db, {
+          sequenceId: frame.sequenceId,
+          actorId: opts.actorId,
+          kind: 'prompt.selected',
+          targetType: 'frame',
+          targetId: frameId,
+          summary: 'Restored image prompt with selected still',
+          data: {
+            versionId: linkedPrompt.id,
+            prevVersionId: frame.prevPromptVersionId ?? null,
+            fromImageVersionId: versionId,
+          },
+        }),
+      ]);
+    } else if (shouldClearPending) {
+      await db.batch([
+        mirrorUpdate,
+        imageSelectedEvent,
+        db
+          .update(frames)
+          .set({
+            pendingPromoteVersionId: null,
+            updatedAt: new Date(),
+          })
+          .where(frameWhere),
+      ]);
+    } else {
+      await db.batch([mirrorUpdate, imageSelectedEvent]);
+    }
+    return version;
+  };
+
   const methods = {
     getById: async (versionId: string): Promise<FrameVariant | null> => {
       const result = await db
@@ -1182,201 +1420,8 @@ export function createFrameVariantsMethods(db: Database) {
       versionId: string,
       opts: { actorId: string | null }
     ): Promise<FrameVariant> => {
-      const [version] = await db
-        .select()
-        .from(frameVariants)
-        .where(
-          and(
-            eq(frameVariants.id, versionId),
-            eq(frameVariants.frameId, frameId)
-          )
-        );
-      if (!version) {
-        throw new Error(
-          `FrameVariant ${versionId} not found for frame ${frameId}`
-        );
-      }
-      // A preview renders the raw scene text, not the frame's prompt (#1101),
-      // so promoting one would pair the still with a prompt it was never
-      // rendered from — and its url expires. Reject at the one door every
-      // selection goes through, so `frames.selectedImageVersionId` (and every
-      // render manifest that snapshots it) can never name a preview.
-      const { kind } = version;
-      if (!isSelectableFrameVariantKind(kind)) {
-        throw new Error(
-          `FrameVariant ${versionId} is kind '${kind}' — a preview is a pre-prompt stand-in and can never become a frame's still`
-        );
-      }
-      // Only a finished image may become the frame's primary still. Selecting a
-      // pending/failed version would mirror its null url + failed status onto
-      // the frame, silently blanking a good image.
-      if (version.status !== 'completed') {
-        throw new Error(
-          `FrameVariant ${versionId} is '${version.status}', not 'completed' — cannot select an unfinished image`
-        );
-      }
-      // `version` is a single object type, so the guards above narrow reads of
-      // its fields but not `version` as a whole — re-affirm both in a typed
-      // local so the mirror builder's precondition is met without an unsafe
-      // assertion.
-      const promotableVersion: PromotableFrameVariant = {
-        ...version,
-        kind,
-        status: 'completed',
-      };
-      const mirrorUpdate = buildFrameImageSelection(
-        db,
-        frameId,
-        promotableVersion
-      );
-
-      const [frame] = await db
-        .select({
-          sequenceId: frames.sequenceId,
-          prev: frames.selectedImageVersionId,
-          prevPromptVersionId: frames.selectedImagePromptVersionId,
-          pendingPromoteVersionId: frames.pendingPromoteVersionId,
-        })
-        .from(frames)
-        .where(eq(frames.id, frameId));
-      if (!frame) {
-        throw new Error(`Frame ${frameId} not found`);
-      }
-
-      // Cancel auto-promote only when the user picks a *different* version than
-      // the current primary (#1070). Re-selecting the current still leaves
-      // pending intact. Completing a gen that selects its pending version also
-      // hits prev !== versionId and clears pending (promote consumed).
-      const shouldClearPending =
-        frame.prev !== versionId && frame.pendingPromoteVersionId != null;
-
-      // Resolve the prompt that was live when this still was generated, if any.
-      // Soft pointer — the row may have been pruned or never recorded.
-      let linkedPrompt: {
-        id: string;
-        text: string;
-        inputHash: string | null;
-      } | null = null;
-      if (version.promptVersionId) {
-        const [promptRow] = await db
-          .select({
-            id: framePromptVersions.id,
-            text: framePromptVersions.text,
-            inputHash: framePromptVersions.inputHash,
-            frameId: framePromptVersions.frameId,
-            status: framePromptVersions.status,
-          })
-          .from(framePromptVersions)
-          .where(eq(framePromptVersions.id, version.promptVersionId));
-        // A non-completed row is a placeholder — mirroring it would blank the
-        // frame's prompt with empty text (#1085).
-        if (
-          promptRow &&
-          promptRow.frameId === frameId &&
-          promptRow.status === 'completed'
-        ) {
-          linkedPrompt = promptRow;
-        }
-      }
-
-      const imageSelectedEvent = buildEventInsert(db, {
-        sequenceId: frame.sequenceId,
-        actorId: opts.actorId,
-        kind: 'image.selected',
-        targetType: 'frame',
-        targetId: frameId,
-        summary: `Selected ${version.model} image`,
-        data: {
-          versionId,
-          model: version.model,
-          prevVersionId: frame.prev ?? null,
-          promptVersionId: linkedPrompt?.id ?? null,
-          prevPromptVersionId: frame.prevPromptVersionId ?? null,
-        },
-      });
-
-      // Repointing the prompt is an explicit user choice (#1085): revoke the
-      // mirror rights of any in-flight prompt claims on this frame so a
-      // completing regeneration lands in history without clobbering it.
-      const demotePromptClaims = () =>
-        db
-          .update(framePromptVersions)
-          .set({ pendingInputHash: null })
-          .where(
-            and(
-              eq(framePromptVersions.frameId, frameId),
-              inArray(framePromptVersions.status, [...LIVE_PENDING_STATUSES])
-            )
-          );
-
-      if (linkedPrompt && shouldClearPending) {
-        await db.batch([
-          mirrorUpdate,
-          imageSelectedEvent,
-          demotePromptClaims(),
-          db
-            .update(frames)
-            .set({
-              selectedImagePromptVersionId: linkedPrompt.id,
-              pendingPromoteVersionId: null,
-              updatedAt: new Date(),
-            })
-            .where(eq(frames.id, frameId)),
-          buildEventInsert(db, {
-            sequenceId: frame.sequenceId,
-            actorId: opts.actorId,
-            kind: 'prompt.selected',
-            targetType: 'frame',
-            targetId: frameId,
-            summary: 'Restored image prompt with selected still',
-            data: {
-              versionId: linkedPrompt.id,
-              prevVersionId: frame.prevPromptVersionId ?? null,
-              fromImageVersionId: versionId,
-            },
-          }),
-        ]);
-      } else if (linkedPrompt) {
-        await db.batch([
-          mirrorUpdate,
-          imageSelectedEvent,
-          demotePromptClaims(),
-          db
-            .update(frames)
-            .set({
-              selectedImagePromptVersionId: linkedPrompt.id,
-              updatedAt: new Date(),
-            })
-            .where(eq(frames.id, frameId)),
-          buildEventInsert(db, {
-            sequenceId: frame.sequenceId,
-            actorId: opts.actorId,
-            kind: 'prompt.selected',
-            targetType: 'frame',
-            targetId: frameId,
-            summary: 'Restored image prompt with selected still',
-            data: {
-              versionId: linkedPrompt.id,
-              prevVersionId: frame.prevPromptVersionId ?? null,
-              fromImageVersionId: versionId,
-            },
-          }),
-        ]);
-      } else if (shouldClearPending) {
-        await db.batch([
-          mirrorUpdate,
-          imageSelectedEvent,
-          db
-            .update(frames)
-            .set({
-              pendingPromoteVersionId: null,
-              updatedAt: new Date(),
-            })
-            .where(eq(frames.id, frameId)),
-        ]);
-      } else {
-        await db.batch([mirrorUpdate, imageSelectedEvent]);
-      }
+      const version = await selectFrameVariant(frameId, versionId, opts, false);
+      if (!version) throw new Error(`FrameVariant ${versionId} not selected`);
       return version;
     },
 
@@ -1391,20 +1436,8 @@ export function createFrameVariantsMethods(db: Database) {
       frameId: string,
       versionId: string,
       opts: { actorId: string | null }
-    ): Promise<FrameVariant | null> => {
-      const claimed = await db
-        .update(frames)
-        .set({ pendingPromoteVersionId: null, updatedAt: new Date() })
-        .where(
-          and(
-            eq(frames.id, frameId),
-            eq(frames.pendingPromoteVersionId, versionId)
-          )
-        )
-        .returning({ id: frames.id });
-      if (claimed.length === 0) return null;
-      return await methods.select(frameId, versionId, opts);
-    },
+    ): Promise<FrameVariant | null> =>
+      selectFrameVariant(frameId, versionId, opts, true),
 
     /**
      * Soft-hide a version (undoable). Commits the `discardedAt` write and an

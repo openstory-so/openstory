@@ -143,7 +143,6 @@ function makeStep(): WorkflowStep & { names: string[] } {
 function makeScopedDb(shotAudioClips: unknown[] = []) {
   const shotPromptVersions = {
     write: vi.fn(async () => ({ id: 'spv-soft' })),
-    setAudioClips: vi.fn(async () => {}),
   };
   const videoVariants = {
     appendVersion: vi.fn(
@@ -700,6 +699,29 @@ describe('MotionWorkflow reference-only provenance', () => {
   });
 });
 
+describe('MotionWorkflow prompt provenance (#1786)', () => {
+  it('writes no prompt version and records the version the trigger pinned', async () => {
+    // A user's edit is written by the trigger at the click; the run renders
+    // from that row by id and never writes a selected prompt of its own.
+    const { scopedDb, shotPromptVersions, videoVariants } = makeScopedDb();
+
+    await makeWorkflow().runBody(
+      makeEvent({ motionPromptVersionId: 'spv-user-edit' }),
+      makeStep(),
+      scopedDb
+    );
+
+    expect(shotPromptVersions.write).not.toHaveBeenCalled();
+    expect(videoVariants.appendVersion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        manifest: [
+          expect.objectContaining({ motionPromptVersionId: 'spv-user-edit' }),
+        ],
+      })
+    );
+  });
+});
+
 describe('MotionWorkflow onFailure observation', () => {
   it('records the resolved via, not a hardcoded fal', async () => {
     mockResolveMotionVia.mockResolvedValueOnce('google');
@@ -1112,7 +1134,7 @@ describe('recording its own dialogue (#1657)', () => {
     // clip the shot holds NOW is the truth.
     mockRecordDialogue.mockReset();
     mockRecordDialogue.mockResolvedValue({});
-    const { scopedDb, shotPromptVersions } = makeScopedDb([recordedClip]);
+    const { scopedDb, videoVariants } = makeScopedDb([recordedClip]);
 
     await makeWorkflow().runBody(
       makeEvent({ voicedLines: [own] }),
@@ -1120,9 +1142,13 @@ describe('recording its own dialogue (#1657)', () => {
       scopedDb
     );
 
-    expect(shotPromptVersions.setAudioClips).toHaveBeenCalledWith(
-      expect.anything(),
-      [recordedClip]
+    // The manifest is the one record of what the clip spoke (#1786).
+    expect(videoVariants.appendVersion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        manifest: [
+          expect.objectContaining({ audioClipIds: [recordedClip.id] }),
+        ],
+      })
     );
   });
 });

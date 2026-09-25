@@ -65,7 +65,12 @@ export type PromotableFrameVariant = CompletedFrameVariant & {
 export function buildFrameImageSelection(
   db: Database,
   frameId: string,
-  version: PromotableFrameVariant
+  version: PromotableFrameVariant,
+  /**
+   * The pointer already moved in a claim-consuming UPDATE (#1786): mirror
+   * only while the frame still points at this version.
+   */
+  onlyIfSelected: boolean
 ) {
   return db
     .update(frames)
@@ -75,7 +80,14 @@ export function buildFrameImageSelection(
       imageError: version.error,
       updatedAt: new Date(),
     })
-    .where(eq(frames.id, frameId));
+    .where(
+      onlyIfSelected
+        ? and(
+            eq(frames.id, frameId),
+            eq(frames.selectedImageVersionId, version.id)
+          )
+        : eq(frames.id, frameId)
+    );
 }
 
 type FrameOrderBy = 'orderIndex' | 'createdAt' | 'updatedAt';

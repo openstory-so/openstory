@@ -18,7 +18,6 @@ import type {
   CharacterBibleEntry,
   ElementBibleEntry,
   LocationBibleEntry,
-  MotionAudio,
   MotionDialogue,
   MotionPrompt,
   Scene,
@@ -33,22 +32,8 @@ import type {
 } from '@/shots/input-hash';
 
 /**
- * Structured audio direction carried forward onto a user-edit motion prompt
- * version. (Not the dialogue, #1657: what a shot says lives on the shot's
- * dialogue version, not on a prompt row.) Captured at trigger time from the version
- * being edited and threaded through the workflow input, so the workflow does
- * NOT re-read the DB to find it — that read would be racy (concurrent
- * append-only version writes) and replay-unsafe (after the user-edit row is
- * written, the selection pointer moves to it). #713/#991.
- */
-type PriorMotionDirection = {
-  audio?: MotionAudio | null;
-};
-
-/**
  * The upstream state a user-edited prompt was authored against, captured at
- * trigger time. Same discipline as {@link PriorMotionDirection}, and for the
- * same reason: derived in-workflow it would hash whatever the DB says at
+ * trigger time: derived later it would hash whatever the DB says at
  * execution (or at retry), stamping the edit with inputs the user never saw and
  * leaving staleness permanently reading fresh.
  *
@@ -163,14 +148,6 @@ export interface ImageWorkflowInput extends SequenceWorkflowContext {
   resolution?: Resolution;
   /** Hash over `(prompt, model, aspectRatio, sceneSnapshot)`; validated at start. */
   snapshotInputHash?: ShotImageInputHash;
-  /**
-   * Present when `prompt` is a real user edit (typed in the UI, and different
-   * from the prompt version currently selected) — absent on auto paths
-   * (storyboard generation, smart-retry, preview, scene split). Presence IS the
-   * instruction to append a `user-edit` prompt version; the payload carries the
-   * provenance so the workflow never re-derives it. @see UserEditProvenance
-   */
-  userEditProvenance?: UserEditProvenance;
   /**
    * Variant-only mode (#547). When true, the run NEVER touches the live primary
    * `shots.*` image/video columns — it writes only this model's
@@ -584,11 +561,10 @@ export interface MotionWorkflowInput extends SequenceWorkflowContext {
   sceneId?: string | null;
   /**
    * The motion prompt version this clip renders from, recorded in the render
-   * manifest. Pinned at the trigger because the workflow cannot re-read it: on
-   * the `userEditProvenance` path this very run repoints
-   * `shots.selectedMotionPromptVersionId`, so a live read would describe a
-   * different prompt than the one submitted. On that path the id of the version
-   * written by the run itself wins. Absent falls back to the live selection.
+   * manifest. Pinned at the trigger because the workflow cannot re-read it: the
+   * selection can move while the run records dialogue and renders. A user edit
+   * is written by the trigger at the click (#1786) and this is its id. Absent
+   * falls back to the live selection.
    */
   motionPromptVersionId?: string | null;
   /**
@@ -646,28 +622,6 @@ export interface MotionWorkflowInput extends SequenceWorkflowContext {
    * schema default (true for audio-capable models).
    */
   generateAudio?: boolean;
-  /**
-   * Present when `prompt` is a real user edit (typed in the UI, and different
-   * from the prompt version currently selected) — absent on auto paths (batch
-   * generation, smart-retry) where `prompt` came from `resolveMotionPrompt` and
-   * may include model-specific dialogue/audio assembly. Presence IS the
-   * instruction to append a `user-edit` prompt version. @see UserEditProvenance
-   */
-  userEditProvenance?: UserEditProvenance;
-  /**
-   * With `userEditProvenance`: the text the user typed, persisted as the
-   * `user-edit` version. `prompt` is that text after model assembly (dialogue
-   * tags, audio direction) — storing it would double-assemble on the next run.
-   */
-  userEditText?: string;
-  /**
-   * Only meaningful when `userEditedPrompt`: the audio direction of the
-   * version being edited, captured at trigger time so the recorded user-edit
-   * version carries it forward (audio-capable models still get enrichment after
-   * a raw-text edit). Threaded in instead of re-read in-workflow — see
-   * {@link PriorMotionDirection}.
-   */
-  priorMotion?: PriorMotionDirection;
   /**
    * The scene's title, for the stored video's human-readable filename. Passed
    * in rather than read at upload time — a workflow has no reason to reach for
@@ -1700,16 +1654,10 @@ export interface BatchMotionMusicWorkflowInput extends SequenceWorkflowContext {
     draft?: boolean;
     /** See `MotionWorkflowInput.generateAudio`. */
     generateAudio?: boolean;
-    /** See `MotionWorkflowInput.userEditProvenance`. */
-    userEditProvenance?: UserEditProvenance;
-    /** See `MotionWorkflowInput.userEditText`. */
-    userEditText?: string;
     /** See `MotionWorkflowInput.sceneTitle`. */
     sceneTitle?: string;
     /** See `MotionWorkflowInput.sequenceTitle`. */
     sequenceTitle?: string;
-    /** See `MotionWorkflowInput.priorMotion`. */
-    priorMotion?: PriorMotionDirection;
     /** See `MotionWorkflowInput.referenceImages` (#873). */
     referenceImages?: ReferenceImageDescription[];
     /** See `MotionWorkflowInput.voicedLines`. */

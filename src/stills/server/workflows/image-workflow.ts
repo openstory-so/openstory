@@ -192,30 +192,16 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
           return null;
         }
 
-        // The trigger decided this is a real edit and snapshotted what it was
-        // authored against — see UserEditProvenance.
-        const editedVersion = input.userEditProvenance
-          ? await scopedDb.framePromptVersions.write({
-              frameId: frame.id,
-              text: input.prompt,
-              source: 'user-edit',
-              inputHash: input.userEditProvenance.inputHash,
-              analysisModel: input.userEditProvenance.analysisModel,
-              createdBy: input.userId,
-            })
-          : null;
-
-        // The version this run's prompt text came from (#1070): the edit we
-        // just wrote, else the trigger's snapshot — including an explicit null
-        // ("this prompt came from no version"). Only un-migrated triggers, which
-        // omit the field entirely, fall back to a live read — that read is what
-        // paired a still with a prompt it was never rendered from.
+        // The version this run's prompt text came from (#1070), pinned at the
+        // trigger — a user edit is written there, at the click (#1786) —
+        // including an explicit null ("this prompt came from no version").
+        // Only un-migrated triggers, which omit the field entirely, fall back
+        // to a live read.
         const promptVersionId =
-          editedVersion?.id ??
-          (input.promptVersionId !== undefined
+          input.promptVersionId !== undefined
             ? input.promptVersionId
             : ((await scopedDb.liveRead.frames.getById(frame.id))
-                ?.selectedImagePromptVersionId ?? null));
+                ?.selectedImagePromptVersionId ?? null);
         let version;
         if (input.targetVariantId) {
           // #1085: a pre-created claim row exists — transition IT rather than

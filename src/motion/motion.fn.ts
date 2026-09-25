@@ -457,10 +457,8 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
       context.scopedDb,
       reservationId,
       async () => {
-        // Both of these are snapshotted HERE rather than re-read in the workflow:
-        // that read would be racy against concurrent append-only version writes and
-        // replay-unsafe, since this very run repoints the selection pointer
-        // (#713/#991).
+        // Decided HERE, against the prompt the user was looking at: whether the
+        // edit is real and what it was authored against (#713/#991).
         const userEditProvenance = shouldRecordUserEdit({
           userEditedPrompt,
           prompt: data.prompt,
@@ -477,6 +475,24 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
               dialogue: dialogueOf(shot),
             })
           : undefined;
+        // The edit is the user's act, so it lands NOW, at the click (#1786),
+        // and the run renders from that row by id. Written inside the run, it
+        // landed after dialogue recording — minutes later — as a selected edit
+        // that could override a newer one.
+        const editedMotion = userEditProvenance
+          ? await context.scopedDb.shotPromptVersions.write({
+              shotId: shot.id,
+              promptType: 'motion',
+              text: data.prompt ?? prompt,
+              audio: selectedMotion?.audio ?? null,
+              source: 'user-edit',
+              usesStartFrame: !referenceOnly,
+              inputHash: userEditProvenance.inputHash,
+              analysisModel: userEditProvenance.analysisModel,
+              createdBy: context.user.id,
+            })
+          : null;
+        const renderedMotion = editedMotion ?? selectedMotion;
 
         // A shot with voiced lines and no matching clip is recorded by its
         // motion run, in context (#1657): the conversation around it is
@@ -509,7 +525,7 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
             firstMember.shotId === shot.id
               ? firstFrameVersionId
               : (selectedStill?.id ?? null),
-          motionPromptVersionId: selectedMotion?.id ?? null,
+          motionPromptVersionId: renderedMotion?.id ?? null,
           prompt,
           model,
           duration: packPayloadDurationSeconds(shot.durationMs),
@@ -521,21 +537,14 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
           generateAudio: data.generateAudio,
           sceneTitle: context.scene?.metadata?.title,
           sequenceTitle: sequence.title,
-          userEditProvenance,
-          userEditText: userEditProvenance ? data.prompt : undefined,
-          priorMotion: userEditProvenance
-            ? {
-                audio: selectedMotion?.audio ?? null,
-              }
-            : undefined,
           referenceImages,
           voicedLines,
           audioClips: audioClips.length > 0 ? audioClips : undefined,
           dialogueContext: dialogueContextOf(shot, voicedLines, audioClips),
           // A typed prompt with no version yet still quoted the shot's lines
           // (`prompt` above), so the clip must stamp them (#1784 dialogueKey).
-          motionPrompt: selectedMotion
-            ? motionPromptFromVersion(selectedMotion, shotDialogue)
+          motionPrompt: renderedMotion
+            ? motionPromptFromVersion(renderedMotion, shotDialogue)
             : data.prompt
               ? { fullPrompt: data.prompt, dialogue: shotDialogue, audio: null }
               : undefined,
