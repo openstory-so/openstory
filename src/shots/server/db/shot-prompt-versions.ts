@@ -52,6 +52,51 @@ const logger = getLogger(['openstory', 'db', 'shot-prompt-versions']);
 // under D1's 100-bound-parameter ceiling (matches SHOTS_BY_IDS_BATCH).
 const SELECTED_MOTION_BY_SHOTS_BATCH = 90;
 
+/**
+ * Newest completed prompt per shot for one prompt type. `hashedOnly` skips
+ * null-hash user-edits, matching `getLatestWithInputHash`.
+ */
+async function latestCompletedByShotIds(
+  db: Database,
+  shotIds: string[],
+  promptType: ShotPromptType,
+  hashedOnly: boolean
+): Promise<Map<string, ShotPromptVersion>> {
+  if (shotIds.length === 0) return new Map();
+  const byShot = new Map<string, ShotPromptVersion>();
+  for (let i = 0; i < shotIds.length; i += SELECTED_MOTION_BY_SHOTS_BATCH) {
+    const batch = shotIds.slice(i, i + SELECTED_MOTION_BY_SHOTS_BATCH);
+    const ranked = db
+      .select({
+        id: shotPromptVersions.id,
+        position:
+          sql<number>`row_number() over (partition by ${shotPromptVersions.shotId} order by ${shotPromptVersions.createdAt} desc, ${shotPromptVersions.id} desc)`.as(
+            'position'
+          ),
+      })
+      .from(shotPromptVersions)
+      .where(
+        and(
+          inArray(shotPromptVersions.shotId, batch),
+          eq(shotPromptVersions.promptType, promptType),
+          eq(shotPromptVersions.status, 'completed'),
+          hashedOnly ? isNotNull(shotPromptVersions.inputHash) : undefined
+        )
+      )
+      .as('ranked_shot_prompts');
+    const latest = db
+      .select({ id: ranked.id })
+      .from(ranked)
+      .where(eq(ranked.position, 1));
+    const rows = await db
+      .select()
+      .from(shotPromptVersions)
+      .where(inArray(shotPromptVersions.id, latest));
+    for (const row of rows) byShot.set(row.shotId, row);
+  }
+  return byShot;
+}
+
 type WriteShotPromptVersionBase = {
   shotId: string;
   promptType: ShotPromptType;
@@ -833,6 +878,51 @@ export function createShotPromptVersionsMethods(db: Database) {
         .orderBy(desc(shotPromptVersions.createdAt))
         .limit(1);
       return row ?? null;
+    },
+
+    /** @see latestCompletedByShotIds — motion rows only. */
+    getLatestMotionByShotIds: (
+      shotIds: string[]
+    ): Promise<Map<string, ShotPromptVersion>> =>
+      latestCompletedByShotIds(db, shotIds, 'motion', false),
+
+    /** @see latestCompletedByShotIds — motion rows only. */
+    getLatestMotionWithInputHashByShotIds: (
+      shotIds: string[]
+    ): Promise<Map<string, ShotPromptVersion>> =>
+      latestCompletedByShotIds(db, shotIds, 'motion', true),
+
+    /**
+     * Live motion claims for many shots. Shots with none are absent.
+     * `getLivePending` is this list filtered by hash.
+     */
+    listLiveMotionPendingByShotIds: async (
+      shotIds: string[]
+    ): Promise<Map<string, ShotPromptVersion[]>> => {
+      if (shotIds.length === 0) return new Map();
+      const byShot = new Map<string, ShotPromptVersion[]>();
+      for (let i = 0; i < shotIds.length; i += SELECTED_MOTION_BY_SHOTS_BATCH) {
+        const rows = await db
+          .select()
+          .from(shotPromptVersions)
+          .where(
+            and(
+              inArray(
+                shotPromptVersions.shotId,
+                shotIds.slice(i, i + SELECTED_MOTION_BY_SHOTS_BATCH)
+              ),
+              eq(shotPromptVersions.promptType, 'motion'),
+              inArray(shotPromptVersions.status, [...LIVE_PENDING_STATUSES])
+            )
+          )
+          .orderBy(desc(shotPromptVersions.createdAt));
+        for (const row of rows) {
+          const list = byShot.get(row.shotId);
+          if (list) list.push(row);
+          else byShot.set(row.shotId, [row]);
+        }
+      }
+      return byShot;
     },
   };
   return methods;

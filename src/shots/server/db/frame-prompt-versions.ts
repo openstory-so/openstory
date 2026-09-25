@@ -20,7 +20,7 @@ import type { VisualPromptInputHash } from '@/shots/input-hash';
 import type { Database } from '@/platform/server/db/client';
 import { framePromptVersions, frames, user } from '@/platform/server/db/schema';
 import type { FramePromptVersion } from '@/platform/server/db/schema';
-import { and, desc, eq, gt, inArray, isNotNull, ne } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNotNull, ne, sql } from 'drizzle-orm';
 import { pageOf } from '@/platform/server/db/read-page';
 import type { PageOptions } from '@/platform/server/db/read-page';
 import { getLogger } from '@/platform/logger';
@@ -85,6 +85,50 @@ async function getSelectedImagePromptsByFrameIds(
       )
       .where(inArray(frames.id, batch));
     for (const r of rows) byFrame.set(r.frameId, r.version);
+  }
+  return byFrame;
+}
+
+/**
+ * Newest completed prompt per frame. `hashedOnly` skips null-hash user-edits,
+ * matching `getLatestWithInputHash`. One windowed read for the whole sequence
+ * (#1795) — the per-frame `getLatest` is the single-shot form of this.
+ */
+async function latestCompletedByFrameIds(
+  db: Database,
+  frameIds: string[],
+  hashedOnly: boolean
+): Promise<Map<string, FramePromptVersion>> {
+  if (frameIds.length === 0) return new Map();
+  const byFrame = new Map<string, FramePromptVersion>();
+  for (let i = 0; i < frameIds.length; i += SELECTED_PROMPTS_BY_FRAMES_BATCH) {
+    const batch = frameIds.slice(i, i + SELECTED_PROMPTS_BY_FRAMES_BATCH);
+    const ranked = db
+      .select({
+        id: framePromptVersions.id,
+        position:
+          sql<number>`row_number() over (partition by ${framePromptVersions.frameId} order by ${framePromptVersions.createdAt} desc, ${framePromptVersions.id} desc)`.as(
+            'position'
+          ),
+      })
+      .from(framePromptVersions)
+      .where(
+        and(
+          inArray(framePromptVersions.frameId, batch),
+          eq(framePromptVersions.status, 'completed'),
+          hashedOnly ? isNotNull(framePromptVersions.inputHash) : undefined
+        )
+      )
+      .as('ranked_frame_prompts');
+    const latest = db
+      .select({ id: ranked.id })
+      .from(ranked)
+      .where(eq(ranked.position, 1));
+    const rows = await db
+      .select()
+      .from(framePromptVersions)
+      .where(inArray(framePromptVersions.id, latest));
+    for (const row of rows) byFrame.set(row.frameId, row);
   }
   return byFrame;
 }
@@ -651,6 +695,73 @@ export function createFramePromptVersionsMethods(db: Database) {
         .orderBy(desc(framePromptVersions.createdAt))
         .limit(1);
       return row ?? null;
+    },
+
+    /** @see latestCompletedByFrameIds */
+    getLatestByFrameIds: (
+      frameIds: string[]
+    ): Promise<Map<string, FramePromptVersion>> =>
+      latestCompletedByFrameIds(db, frameIds, false),
+
+    /** @see latestCompletedByFrameIds */
+    getLatestWithInputHashByFrameIds: (
+      frameIds: string[]
+    ): Promise<Map<string, FramePromptVersion>> =>
+      latestCompletedByFrameIds(db, frameIds, true),
+
+    /**
+     * Live claims for many frames. Frames with none are absent. The
+     * single-frame `getLivePending` filters this list by hash.
+     */
+    listLivePendingByFrameIds: async (
+      frameIds: string[]
+    ): Promise<Map<string, FramePromptVersion[]>> => {
+      if (frameIds.length === 0) return new Map();
+      const byFrame = new Map<string, FramePromptVersion[]>();
+      for (
+        let i = 0;
+        i < frameIds.length;
+        i += SELECTED_PROMPTS_BY_FRAMES_BATCH
+      ) {
+        const rows = await db
+          .select()
+          .from(framePromptVersions)
+          .where(
+            and(
+              inArray(
+                framePromptVersions.frameId,
+                frameIds.slice(i, i + SELECTED_PROMPTS_BY_FRAMES_BATCH)
+              ),
+              inArray(framePromptVersions.status, [...LIVE_PENDING_STATUSES])
+            )
+          )
+          .orderBy(desc(framePromptVersions.createdAt));
+        for (const row of rows) {
+          const list = byFrame.get(row.frameId);
+          if (list) list.push(row);
+          else byFrame.set(row.frameId, [row]);
+        }
+      }
+      return byFrame;
+    },
+
+    getByIds: async (ids: string[]): Promise<FramePromptVersion[]> => {
+      if (ids.length === 0) return [];
+      const rows: FramePromptVersion[] = [];
+      for (let i = 0; i < ids.length; i += SELECTED_PROMPTS_BY_FRAMES_BATCH) {
+        rows.push(
+          ...(await db
+            .select()
+            .from(framePromptVersions)
+            .where(
+              inArray(
+                framePromptVersions.id,
+                ids.slice(i, i + SELECTED_PROMPTS_BY_FRAMES_BATCH)
+              )
+            ))
+        );
+      }
+      return rows;
     },
   };
   return methods;

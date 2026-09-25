@@ -8,6 +8,7 @@ import { resolveSceneForShot } from './scene-script';
 import {
   computeShotStaleness,
   loadShotStalenessBatch,
+  loadShotStalenessReads,
   UNTRACKED_STALENESS,
 } from './shot-staleness';
 import {
@@ -153,7 +154,7 @@ export async function listEntityUsages(
 
 type StalenessInputs = Pick<
   Parameters<typeof computeShotStaleness>[0],
-  'sequence' | 'shot' | 'selectedImage' | 'scene' | 'refs'
+  'sequence' | 'shot' | 'selectedImage' | 'scene' | 'refs' | 'reads'
 > & { frame: Frame | null };
 
 /** A shot with no anchor frame has no image surface to compare: untracked. */
@@ -237,7 +238,20 @@ export async function listShotStaleness(
   if (!page.items.length) return { shots: [], nextCursor: page.nextCursor };
   const batch = await loadShotStalenessBatch(scopedDb, sequence);
   const allShots = await scopedDb.shots.listBySequence(sequence.id);
-  const media = await loadShotMediaStaleness(scopedDb, sequence, allShots);
+  const frameIds = page.items.flatMap((shot) => {
+    const frame = batch.anchorsByShot.get(shot.id);
+    return frame ? [frame.id] : [];
+  });
+  const [reads, media] = await Promise.all([
+    loadShotStalenessReads(
+      scopedDb,
+      sequence.id,
+      page.items.map((shot) => shot.id),
+      frameIds,
+      batch.sceneContext
+    ),
+    loadShotMediaStaleness(scopedDb, sequence, allShots),
+  ]);
   const shots = await Promise.all(
     page.items.map((shot) => {
       const frame = batch.anchorsByShot.get(shot.id) ?? null;
@@ -252,6 +266,7 @@ export async function listShotStaleness(
             : null,
           scene: resolveSceneForShot(shot, batch.sceneContext).scene,
           refs: batch.refs,
+          reads,
         },
         media.get(shot.id)
       );

@@ -637,6 +637,42 @@ export function createFrameVariantsMethods(db: Database) {
     },
 
     /**
+     * `listLiveClaims` for many frames. Frames with no live claim are absent.
+     */
+    listLiveClaimsByFrameIds: async (
+      frameIds: string[]
+    ): Promise<Map<string, FrameVariant[]>> => {
+      if (frameIds.length === 0) return new Map();
+      const byFrame = new Map<string, FrameVariant[]>();
+      for (let i = 0; i < frameIds.length; i += PREVIEW_BY_FRAMES_BATCH) {
+        const rows = await db
+          .select()
+          .from(frameVariants)
+          .where(
+            and(
+              inArray(
+                frameVariants.frameId,
+                frameIds.slice(i, i + PREVIEW_BY_FRAMES_BATCH)
+              ),
+              inArray(frameVariants.status, [...LIVE_PENDING_STATUSES]),
+              isNull(frameVariants.discardedAt),
+              or(
+                isNotNull(frameVariants.pendingInputHash),
+                isNotNull(frameVariants.dependsOnVersionId)
+              )
+            )
+          )
+          .orderBy(...newestFirst);
+        for (const row of rows) {
+          const list = byFrame.get(row.frameId);
+          if (list) list.push(row);
+          else byFrame.set(row.frameId, [row]);
+        }
+      }
+      return byFrame;
+    },
+
+    /**
      * Guarded claim → 'generating' transition for a pre-created row (#1085):
      * stamps the working instance, the resolved model, the prompt-version
      * pairing, and (when known) the snapshot hash the render satisfies.

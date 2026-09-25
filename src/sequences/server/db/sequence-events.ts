@@ -86,6 +86,7 @@ export function createSequenceEventsMethods(db: Database) {
         limit?: number;
         targetType?: SequenceEventTargetType;
         targetId?: string;
+        kind?: string;
         page?: PageOptions;
       }
     ): Promise<SequenceEvent[]> => {
@@ -98,7 +99,8 @@ export function createSequenceEventsMethods(db: Database) {
             : undefined,
           options?.targetId
             ? eq(sequenceEvents.targetId, options.targetId)
-            : undefined
+            : undefined,
+          options?.kind ? eq(sequenceEvents.kind, options.kind) : undefined
         ),
         sequenceEvents.id,
         options?.page,

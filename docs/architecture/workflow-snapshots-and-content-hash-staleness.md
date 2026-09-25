@@ -48,6 +48,10 @@ The rule is: anything that, if changed, should cause the user to see a "regenera
 
 Model _version strings_ count as inputs. If we upgrade an image model, every existing artifact it produced becomes stale — which is the correct behaviour.
 
+### Editor batch read (#1795)
+
+`getShotStalenessBatchFn` compares every shot the scenes editor is showing. Prompt versions, live claims, and `sequence.settings-changed` events are loaded once per sequence (a windowed latest-per-frame / latest-per-shot read), then each shot is compared in memory. While `sequences.status` is `processing` the handler returns `generating` for every requested shot and does not load bibles, prompts, or segments. The editor asks for that sequence batch once; scene and shot scope filter the map on the client. `getShotsFn` inserts an anchor frame only when a shot has none — a read does not rewrite anchors that are already there.
+
 ### Where the hash lives
 
 One column per artifact per row. The column is nullable because pre-existing rows won't have one until they're regenerated.

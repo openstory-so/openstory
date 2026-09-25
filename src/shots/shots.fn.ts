@@ -12,7 +12,9 @@ import { workflowNameFromRunId } from '@/platform/server/workflow/trigger-bindin
 import type { NewShot } from '@/platform/server/db/schema';
 import {
   computeShotStaleness,
+  GENERATING_STALENESS,
   loadShotStalenessBatch,
+  loadShotStalenessReads,
   UNTRACKED_STALENESS,
   type ShotStalenessResult,
 } from '@/shots/server/shot-staleness';
@@ -80,12 +82,24 @@ export const getShotsFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
   .handler(async ({ context }) => {
     const { scopedDb, sequence } = context;
-    const shotRows = await scopedDb.shots.listBySequence(sequence.id);
-    // Guarantee every shot has its anchor frame before assembling its view.
-    await scopedDb.shots.ensureAnchorFrames(shotRows);
-    const [anchorRows, gridSheets, motionByShot, linesByShotId, sceneContext] =
+    // Anchors and shots are independent. The repair write runs only for a
+    // shot that has no anchor — a read used to rewrite every anchor on every
+    // poll (#1795).
+    const [shotRows, existingAnchors] = await Promise.all([
+      scopedDb.shots.listBySequence(sequence.id),
+      scopedDb.frames.listAnchorsBySequence(sequence.id),
+    ]);
+    const anchored = new Set(existingAnchors.map((frame) => frame.shotId));
+    const missingAnchors = shotRows.filter((shot) => !anchored.has(shot.id));
+    if (missingAnchors.length > 0) {
+      await scopedDb.shots.ensureAnchorFrames(missingAnchors);
+    }
+    const anchorRows =
+      missingAnchors.length > 0
+        ? await scopedDb.frames.listAnchorsBySequence(sequence.id)
+        : existingAnchors;
+    const [gridSheets, motionByShot, linesByShotId, sceneContext] =
       await Promise.all([
-        scopedDb.frames.listAnchorsBySequence(sequence.id),
         scopedDb.frameVariants.listLatestGridSheetsBySequence(sequence.id),
         scopedDb.shotPromptVersions.getSelectedMotionByShots(
           shotRows.map((s) => s.id)
@@ -810,17 +824,48 @@ export const getShotStalenessBatchFn = createServerFn({ method: 'GET' })
     if (targetShots.length === 0) {
       return {};
     }
+    // Mid-run the per-shot compare returns 'generating' before any read, and
+    // the media overlay then forces dialogue and video to the same. Skip the
+    // bible, prompt, and segment loads entirely (#1121, #1795).
+    if (sequence.status === 'processing') {
+      return typedFromEntries(
+        targetShots.map((shot) => [
+          shot.id,
+          toWireStaleness(GENERATING_STALENESS),
+        ])
+      );
+    }
 
-    await scopedDb.shots.ensureAnchorFrames(targetShots);
     // Loaded once here and threaded into every shot's comparison; without
     // that each shot would re-read the bibles for both prompt branches.
+    let loaded = await loadShotStalenessBatch(scopedDb, sequence);
+    const missingAnchors = targetShots.filter(
+      (shot) => !loaded.anchorsByShot.has(shot.id)
+    );
+    if (missingAnchors.length > 0) {
+      await scopedDb.shots.ensureAnchorFrames(missingAnchors);
+      loaded = await loadShotStalenessBatch(scopedDb, sequence);
+    }
     const {
       anchorsByShot,
       sceneContext: scriptBySceneId,
       selectedByFrame,
       refs,
-    } = await loadShotStalenessBatch(scopedDb, sequence);
-    const media = await loadShotMediaStaleness(scopedDb, sequence, allShots);
+    } = loaded;
+    const frameIds = targetShots.flatMap((shot) => {
+      const frame = anchorsByShot.get(shot.id);
+      return frame ? [frame.id] : [];
+    });
+    const [reads, media] = await Promise.all([
+      loadShotStalenessReads(
+        scopedDb,
+        sequence.id,
+        targetShots.map((shot) => shot.id),
+        frameIds,
+        scriptBySceneId
+      ),
+      loadShotMediaStaleness(scopedDb, sequence, allShots),
+    ]);
 
     const entries = await Promise.all(
       targetShots.map(
@@ -851,6 +896,7 @@ export const getShotStalenessBatchFn = createServerFn({ method: 'GET' })
                   selectedImage: selectedByFrame.get(frame.id) ?? null,
                   scene,
                   refs,
+                  reads,
                 }),
                 media.get(shot.id)
               ),

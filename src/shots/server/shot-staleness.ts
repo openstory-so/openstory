@@ -24,7 +24,14 @@ import {
 } from './prompt-context';
 import type { Scene } from '@/shots/scene-analysis.schema';
 import type { AspectRatio } from '@/models/aspect-ratios';
-import type { Frame, FrameVariant, Shot } from '@/platform/server/db/schema';
+import type {
+  Frame,
+  FramePromptVersion,
+  FrameVariant,
+  SequenceEvent,
+  Shot,
+  ShotPromptVersion,
+} from '@/platform/server/db/schema';
 import { dbSceneId } from '@/shots/scene-id';
 import {
   SETTINGS_CHANGED_EVENT,
@@ -35,7 +42,7 @@ import type { ScopedDb } from '@/platform/server/db/scoped';
 import { buildRegenerateShotSnapshot } from '@/shots/server/workflows/regenerate-shots-snapshot';
 import { matchElementsToShotImage } from '@/shots/scene-matching';
 import { getLogger } from '@/platform/logger';
-import { loadSceneContextBySequence } from './scene-script';
+import { loadSceneContextBySequence, type SceneContext } from './scene-script';
 
 const logger = getLogger(['openstory', 'shots', 'staleness']);
 
@@ -90,7 +97,7 @@ export const UNTRACKED_STALENESS: ShotStalenessResult = {
 };
 
 /** Every artifact deferred — the sequence is mid-run (#1121). */
-const GENERATING_STALENESS: ShotStalenessResult = {
+export const GENERATING_STALENESS: ShotStalenessResult = {
   thumbnail: 'generating',
   visualPrompt: 'generating',
   motionPrompt: 'generating',
@@ -143,6 +150,111 @@ export async function loadShotStalenessBatch(
 }
 
 /**
+ * Prompt versions, live claims, and settings-changed events for a whole
+ * sequence, in a handful of reads (#1795). `computeShotStaleness` consults
+ * this instead of querying once per shot. Absent map keys mean "no row".
+ */
+export type ShotStalenessReads = {
+  selectedPromptByFrame: ReadonlyMap<string, FramePromptVersion>;
+  latestPromptByFrame: ReadonlyMap<string, FramePromptVersion>;
+  latestHashedPromptByFrame: ReadonlyMap<string, FramePromptVersion>;
+  selectedMotionByShot: ReadonlyMap<string, ShotPromptVersion>;
+  latestMotionByShot: ReadonlyMap<string, ShotPromptVersion>;
+  latestHashedMotionByShot: ReadonlyMap<string, ShotPromptVersion>;
+  liveVisualClaimsByFrame: ReadonlyMap<string, FramePromptVersion[]>;
+  liveMotionClaimsByShot: ReadonlyMap<string, ShotPromptVersion[]>;
+  liveImageClaimsByFrame: ReadonlyMap<string, FrameVariant[]>;
+  promptById: ReadonlyMap<string, FramePromptVersion>;
+  settingsEvents: readonly SequenceEvent[];
+  sceneContext: ReadonlyMap<string, SceneContext>;
+};
+
+export async function loadShotStalenessReads(
+  scopedDb: Pick<
+    ScopedDb,
+    | 'framePromptVersions'
+    | 'shotPromptVersions'
+    | 'frameVariants'
+    | 'sequenceEvents'
+  >,
+  sequenceId: string,
+  shotIds: readonly string[],
+  frameIds: readonly string[],
+  sceneContext: ReadonlyMap<string, SceneContext>
+): Promise<ShotStalenessReads> {
+  const [
+    selectedPromptByFrame,
+    latestPromptByFrame,
+    latestHashedPromptByFrame,
+    selectedMotionByShot,
+    latestMotionByShot,
+    latestHashedMotionByShot,
+    liveVisualClaimsByFrame,
+    liveMotionClaimsByShot,
+    liveImageClaimsByFrame,
+    settingsEvents,
+  ] = await Promise.all([
+    scopedDb.framePromptVersions.getSelectedByFrameIds([...frameIds]),
+    scopedDb.framePromptVersions.getLatestByFrameIds([...frameIds]),
+    scopedDb.framePromptVersions.getLatestWithInputHashByFrameIds([
+      ...frameIds,
+    ]),
+    scopedDb.shotPromptVersions.getSelectedMotionByShots([...shotIds]),
+    scopedDb.shotPromptVersions.getLatestMotionByShotIds([...shotIds]),
+    scopedDb.shotPromptVersions.getLatestMotionWithInputHashByShotIds([
+      ...shotIds,
+    ]),
+    scopedDb.framePromptVersions.listLivePendingByFrameIds([...frameIds]),
+    scopedDb.shotPromptVersions.listLiveMotionPendingByShotIds([...shotIds]),
+    scopedDb.frameVariants.listLiveClaimsByFrameIds([...frameIds]),
+    scopedDb.sequenceEvents.listBySequence(sequenceId, {
+      kind: SETTINGS_CHANGED_EVENT,
+    }),
+  ]);
+
+  const dependIds = new Set<string>();
+  for (const claims of liveImageClaimsByFrame.values()) {
+    for (const claim of claims) {
+      if (claim.dependsOnVersionId) dependIds.add(claim.dependsOnVersionId);
+    }
+  }
+  const promptById = new Map<string, FramePromptVersion>();
+  if (dependIds.size > 0) {
+    for (const row of await scopedDb.framePromptVersions.getByIds([
+      ...dependIds,
+    ])) {
+      promptById.set(row.id, row);
+    }
+  }
+
+  return {
+    selectedPromptByFrame,
+    latestPromptByFrame,
+    latestHashedPromptByFrame,
+    selectedMotionByShot,
+    latestMotionByShot,
+    latestHashedMotionByShot,
+    liveVisualClaimsByFrame,
+    liveMotionClaimsByShot,
+    liveImageClaimsByFrame,
+    promptById,
+    settingsEvents,
+    sceneContext,
+  };
+}
+
+function newestPending<
+  T extends { pendingInputHash: string | null; createdAt: Date },
+>(rows: readonly T[] | undefined, hash: string): T | null {
+  let best: T | null = null;
+  for (const row of rows ?? []) {
+    if (row.pendingInputHash !== hash) continue;
+    if (!best || row.createdAt.getTime() > best.createdAt.getTime()) best = row;
+  }
+  return best;
+}
+
+/**
  * Five states per artifact:
  *   - `'stale'`     — stored hash diverges from the freshly computed one.
  *   - `'fresh'`     — stored hash matches.
@@ -184,8 +296,14 @@ export async function computeShotStaleness(args: {
   selectedImage: FrameVariant | null;
   scene: Scene | null;
   refs?: ShotStalenessRefs;
+  /**
+   * Sequence-wide rows from `loadShotStalenessReads`. When set, this shot
+   * does not query prompt versions, claims, or settings events itself.
+   */
+  reads?: ShotStalenessReads;
 }): Promise<ShotStalenessResult> {
-  const { scopedDb, sequence, shot, frame, selectedImage, scene, refs } = args;
+  const { scopedDb, sequence, shot, frame, selectedImage, scene, refs, reads } =
+    args;
   // A shot may override the sequence's start-frame mode, and the motion hash
   // folds that flag in. Recomputing the live hash from the SEQUENCE value would
   // never match the stamp an overridden shot was written with, leaving it
@@ -228,9 +346,9 @@ export async function computeShotStaleness(args: {
     motionPrompt: null,
   };
   let thumbnail: ArtifactStaleness = 'untracked';
-  const selectedPrompt = await scopedDb.framePromptVersions.getSelected(
-    frame.id
-  );
+  const selectedPrompt = reads
+    ? (reads.selectedPromptByFrame.get(frame.id) ?? null)
+    : await scopedDb.framePromptVersions.getSelected(frame.id);
   const effectivePrompt = selectedPrompt?.text ?? null;
   if (effectivePrompt) {
     // Null stored hash: 'untracked' (no opinion), unless a named element's
@@ -310,12 +428,15 @@ export async function computeShotStaleness(args: {
     try {
       let referenceHash = selectedPrompt?.inputHash ?? null;
       if (!referenceHash) {
-        const fallback =
-          await scopedDb.framePromptVersions.getLatestWithInputHash(frame.id);
+        const fallback = reads
+          ? (reads.latestHashedPromptByFrame.get(frame.id) ?? null)
+          : await scopedDb.framePromptVersions.getLatestWithInputHash(frame.id);
         referenceHash = fallback?.inputHash ?? null;
       }
       if (referenceHash) {
-        const latest = await scopedDb.framePromptVersions.getLatest(frame.id);
+        const latest = reads
+          ? (reads.latestPromptByFrame.get(frame.id) ?? null)
+          : await scopedDb.framePromptVersions.getLatest(frame.id);
         const ctx = await loadNarrowShotPromptContext({
           scopedDb,
           sequence: motionSequence,
@@ -325,9 +446,13 @@ export async function computeShotStaleness(args: {
         });
         const liveHash = await hashVisualPromptInput(ctx);
         liveHashes.visualPrompt = liveHash;
-        visualPrompt = (await visualPromptInputHashMatches(referenceHash, ctx))
-          ? 'fresh'
-          : 'stale';
+        // Fresh prompts match the current digest. Legacy digests are only
+        // hashed when it doesn't — the common editor load is the match.
+        visualPrompt =
+          referenceHash === liveHash ||
+          (await visualPromptInputHashMatches(referenceHash, ctx))
+            ? 'fresh'
+            : 'stale';
       }
     } catch (error) {
       // Context unavailable (e.g., style deleted mid-flight). Report
@@ -349,23 +474,23 @@ export async function computeShotStaleness(args: {
 
   if (scene) {
     try {
-      selectedMotion = await scopedDb.shotPromptVersions.getSelectedMotion(
-        shot.id
-      );
+      selectedMotion = reads
+        ? (reads.selectedMotionByShot.get(shot.id) ?? null)
+        : await scopedDb.shotPromptVersions.getSelectedMotion(shot.id);
       let referenceHash = selectedMotion?.inputHash ?? null;
       if (!referenceHash) {
-        const fallback =
-          await scopedDb.shotPromptVersions.getLatestWithInputHash(
-            shot.id,
-            'motion'
-          );
+        const fallback = reads
+          ? (reads.latestHashedMotionByShot.get(shot.id) ?? null)
+          : await scopedDb.shotPromptVersions.getLatestWithInputHash(
+              shot.id,
+              'motion'
+            );
         referenceHash = fallback?.inputHash ?? null;
       }
       if (referenceHash) {
-        const latest = await scopedDb.shotPromptVersions.getLatest(
-          shot.id,
-          'motion'
-        );
+        const latest = reads
+          ? (reads.latestMotionByShot.get(shot.id) ?? null)
+          : await scopedDb.shotPromptVersions.getLatest(shot.id, 'motion');
         const ctx = await loadNarrowShotPromptContext({
           scopedDb,
           sequence: motionSequence,
@@ -376,9 +501,11 @@ export async function computeShotStaleness(args: {
         });
         const liveHash = await hashMotionPromptInput(ctx);
         liveHashes.motionPrompt = liveHash;
-        motionPrompt = (await motionPromptInputHashMatches(referenceHash, ctx))
-          ? 'fresh'
-          : 'stale';
+        motionPrompt =
+          referenceHash === liveHash ||
+          (await motionPromptInputHashMatches(referenceHash, ctx))
+            ? 'fresh'
+            : 'stale';
       }
     } catch (error) {
       motionPrompt = 'unknown';
@@ -401,21 +528,33 @@ export async function computeShotStaleness(args: {
   // prompt's live hash computed above.
   // ============================================================
   if (visualPrompt === 'stale' && liveHashes.visualPrompt) {
-    const claim = await scopedDb.framePromptVersions.getLivePending(
-      frame.id,
-      liveHashes.visualPrompt
-    );
+    const claim = reads
+      ? newestPending(
+          reads.liveVisualClaimsByFrame.get(frame.id),
+          liveHashes.visualPrompt
+        )
+      : await scopedDb.framePromptVersions.getLivePending(
+          frame.id,
+          liveHashes.visualPrompt
+        );
     if (claim) visualPrompt = 'updating';
   }
   if (motionPrompt === 'stale' && liveHashes.motionPrompt) {
-    const claim = await scopedDb.shotPromptVersions.getLivePending(
-      shot.id,
-      liveHashes.motionPrompt
-    );
+    const claim = reads
+      ? newestPending(
+          reads.liveMotionClaimsByShot.get(shot.id),
+          liveHashes.motionPrompt
+        )
+      : await scopedDb.shotPromptVersions.getLivePending(
+          shot.id,
+          liveHashes.motionPrompt
+        );
     if (claim) motionPrompt = 'updating';
   }
   if (thumbnail === 'stale' && liveHashes.thumbnail) {
-    const claims = await scopedDb.frameVariants.listLiveClaims(frame.id);
+    const claims = reads
+      ? (reads.liveImageClaimsByFrame.get(frame.id) ?? [])
+      : await scopedDb.frameVariants.listLiveClaims(frame.id);
     for (const claim of claims) {
       // Direct regen: the claim satisfies the image's live hash itself.
       if (claim.pendingInputHash === liveHashes.thumbnail) {
@@ -428,10 +567,13 @@ export async function computeShotStaleness(args: {
       // inputHash must — either way an edit moves the live hash and honestly
       // re-stales the image.
       if (claim.dependsOnVersionId && liveHashes.visualPrompt) {
-        const dep = await scopedDb.framePromptVersions.getByIdForFrame(
-          claim.dependsOnVersionId,
-          frame.id
-        );
+        const dep = reads
+          ? (reads.promptById.get(claim.dependsOnVersionId) ?? null)
+          : await scopedDb.framePromptVersions.getByIdForFrame(
+              claim.dependsOnVersionId,
+              frame.id
+            );
+        if (reads && dep && dep.frameId !== frame.id) continue;
         if (!dep) continue;
         const depInFlight =
           (dep.status === 'pending' || dep.status === 'generating') &&
@@ -466,6 +608,8 @@ export async function computeShotStaleness(args: {
         shot,
         refs: resolvedRefs,
         selectedImage,
+        sceneContext: reads?.sceneContext,
+        settingsEvents: reads?.settingsEvents,
         generatedAt: {
           thumbnail:
             thumbnail === 'stale' && selectedImage
@@ -506,8 +650,20 @@ async function findStalenessCauses(args: {
   /** When each stale artifact was generated; absent → that artifact isn't stale. */
   generatedAt: { thumbnail?: Date; visualPrompt?: Date; motionPrompt?: Date };
   selectedImage: FrameVariant | null;
+  /** Present on the batched read — skips the per-shot scene and event queries. */
+  sceneContext?: ReadonlyMap<string, SceneContext>;
+  settingsEvents?: readonly SequenceEvent[];
 }): Promise<string[]> {
-  const { scopedDb, sequence, shot, refs, generatedAt, selectedImage } = args;
+  const {
+    scopedDb,
+    sequence,
+    shot,
+    refs,
+    generatedAt,
+    selectedImage,
+    sceneContext,
+    settingsEvents,
+  } = args;
   const times = [
     generatedAt.thumbnail,
     generatedAt.visualPrompt,
@@ -519,18 +675,23 @@ async function findStalenessCauses(args: {
 
   if (shot.sceneId) {
     const sceneId = dbSceneId(shot.sceneId);
-    const [sceneRow, script] = await Promise.all([
-      scopedDb.scenes.getById(sceneId),
-      scopedDb.sceneScriptVersions.getSelected(sceneId),
-    ]);
-    if (after(script?.createdAt, at)) causes.push('Script');
-    else if (after(sceneRow?.updatedAt, at)) causes.push('Scene details');
+    if (sceneContext) {
+      const ctx = sceneContext.get(sceneId);
+      if (after(ctx?.scriptCreatedAt, at)) causes.push('Script');
+      else if (after(ctx?.scene.updatedAt, at)) causes.push('Scene details');
+    } else {
+      const [sceneRow, script] = await Promise.all([
+        scopedDb.scenes.getById(sceneId),
+        scopedDb.sceneScriptVersions.getSelected(sceneId),
+      ]);
+      if (after(script?.createdAt, at)) causes.push('Script');
+      else if (after(sceneRow?.updatedAt, at)) causes.push('Scene details');
+    }
   }
 
-  const events = await scopedDb.sequenceEvents.listByTarget(
-    'sequence',
-    sequence.id
-  );
+  const events =
+    settingsEvents ??
+    (await scopedDb.sequenceEvents.listByTarget('sequence', sequence.id));
   const fields = new Set<string>();
   for (const e of events) {
     if (e.kind !== SETTINGS_CHANGED_EVENT || !after(e.createdAt, at)) continue;

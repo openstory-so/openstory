@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { shotIsStale, shotIsUpdating } from './use-shot-staleness';
+import {
+  shotIsStale,
+  shotIsUpdating,
+  stalenessForShotIds,
+} from './use-shot-staleness';
 import type { ShotStaleness } from './use-shot-staleness';
 
 const fresh = (): ShotStaleness => ({
@@ -24,6 +28,22 @@ describe('shotIsStale (#1703)', () => {
     expect(
       shotIsStale({ ...fresh(), dialogue: 'untracked', video: 'untracked' })
     ).toBe(false);
+  });
+});
+
+describe('stalenessForShotIds (#1795)', () => {
+  it('returns the sequence map when scope is the whole sequence', () => {
+    const byShot = { a: fresh(), b: fresh() };
+    expect(stalenessForShotIds(byShot, null)).toBe(byShot);
+  });
+
+  it('keeps only the shots in scope', () => {
+    const byShot = { a: fresh(), b: { ...fresh(), video: 'stale' as const } };
+    expect(stalenessForShotIds(byShot, ['b'])).toEqual({ b: byShot.b });
+  });
+
+  it('returns undefined when the sequence batch has not loaded', () => {
+    expect(stalenessForShotIds(undefined, ['a'])).toBeUndefined();
   });
 });
 

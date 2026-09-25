@@ -25,6 +25,8 @@ import { scriptForShot } from '@/shots/shot-list-pass';
 export type SceneContext = {
   scene: SceneRow;
   script: Scene['originalScript'] | null;
+  /** Selected script version's `createdAt`. Absent on hand-built contexts. */
+  scriptCreatedAt?: Date | null;
 };
 
 /**
@@ -124,6 +126,7 @@ function buildSceneContext(
     map.set(scene.id, {
       scene,
       script: versions.get(scene.id)?.content ?? null,
+      scriptCreatedAt: versions.get(scene.id)?.createdAt ?? null,
     });
   }
   return map;

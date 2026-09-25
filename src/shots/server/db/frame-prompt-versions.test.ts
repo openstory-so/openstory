@@ -709,3 +709,59 @@ describe('framePromptVersions.getLatestWithInputHash', () => {
     expect(hashed?.inputHash).toBe('ai-hash');
   });
 });
+
+describe('framePromptVersions.getLatestByFrameIds (#1795)', () => {
+  it('returns the newest completed row per frame, and the newest hashed row separately', async () => {
+    const m = createFramePromptVersionsMethods(db);
+    const [otherShot] = await db
+      .insert(shots)
+      .values({ sequenceId, shotNumber: 2 })
+      .returning();
+    if (!otherShot) throw new Error('test setup: shot insert returned nothing');
+    const [otherFrame] = await db
+      .insert(frames)
+      .values({
+        shotId: otherShot.id,
+        sequenceId,
+        orderIndex: 0,
+        role: 'first',
+      })
+      .returning();
+    if (!otherFrame)
+      throw new Error('test setup: frame insert returned nothing');
+
+    const older = await m.write({
+      frameId,
+      text: 'older',
+      source: 'ai-generated',
+      inputHash: visualPromptInputHash('older'),
+      analysisModel: HAIKU,
+    });
+    await m.write({
+      frameId,
+      text: 'Hand-typed',
+      source: 'user-edit',
+      inputHash: null,
+      analysisModel: null,
+    });
+    const other = await m.write({
+      frameId: otherFrame.id,
+      text: 'other',
+      source: 'ai-generated',
+      inputHash: visualPromptInputHash('other'),
+      analysisModel: HAIKU,
+    });
+
+    const latest = await m.getLatestByFrameIds([frameId, otherFrame.id]);
+    expect(latest.get(frameId)?.inputHash).toBeNull();
+    expect(latest.get(otherFrame.id)?.id).toBe(other.id);
+
+    const hashed = await m.getLatestWithInputHashByFrameIds([
+      frameId,
+      otherFrame.id,
+    ]);
+    expect(hashed.get(frameId)?.id).toBe(older.id);
+    expect(hashed.get(otherFrame.id)?.id).toBe(other.id);
+    expect(latest.has('missing')).toBe(false);
+  });
+});

@@ -50,7 +50,7 @@ import { segmentKeys, useSequenceSegments } from './use-segments';
 import { useScenesBySequence, type SceneWithScript } from './use-scenes';
 import {
   shotIsStale,
-  useSceneShotStaleness,
+  stalenessForShotIds,
   useSequenceShotStaleness,
 } from './use-shot-staleness';
 import { errorMessage, isInsufficientCreditsError } from '@/platform/errors';
@@ -62,6 +62,7 @@ import {
 } from '@/sequences/ui/use-sequences';
 import { sumShotSeconds } from './scene-group';
 import {
+  EDITOR_FALLBACK_POLL_MS,
   shotKeys,
   useDiscardVariant,
   useDivergentVariants,
@@ -382,7 +383,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
         shotKeys.list(sequenceId)
       );
       return cachedShots?.some((f) => f.videoStatus === 'generating')
-        ? 2000
+        ? EDITOR_FALLBACK_POLL_MS
         : false;
     },
   });
@@ -510,7 +511,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   // Otherwise realtime events keep the cache fresh via updateQueryCacheFromEvent.
   const { data: shots, error: shotsError } = useShotsBySequence(
     sequenceId,
-    shouldPoll ? { refetchInterval: 2000 } : undefined
+    shouldPoll ? { refetchInterval: EDITOR_FALLBACK_POLL_MS } : undefined
   );
 
   const handleWalkShot = useCallback(
@@ -623,7 +624,9 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   );
   const { data: segments, error: segmentsError } = useSequenceSegments(
     sequenceId,
-    anyVideoGenerating ? { refetchInterval: 2000 } : undefined
+    anyVideoGenerating
+      ? { refetchInterval: EDITOR_FALLBACK_POLL_MS }
+      : undefined
   );
 
   const videoVariantsByShot = useMemo(() => {
@@ -657,7 +660,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   // when realtime is down.
   const { data: divergentVariants } = useDivergentVariants(
     sequenceId,
-    shouldPoll ? { refetchInterval: 2000 } : undefined
+    shouldPoll ? { refetchInterval: EDITOR_FALLBACK_POLL_MS } : undefined
   );
   useStaleDetected(sequenceId);
   const promoteVariant = usePromoteVariantToPrimary();
@@ -818,13 +821,8 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   const scriptScene =
     selectedScenes.length === 1 ? selectedScenes[0] : undefined;
 
-  // Scene batch feeds the in-focus summary; sequence batch feeds the left
-  // rail so unselected shots (including other scenes) still get amber dots.
-  const { data: sceneStaleness, isError: sceneStalenessFailed } =
-    useSceneShotStaleness({
-      sequenceId,
-      sceneId: scriptScene?.id,
-    });
+  // One sequence batch. Scene scope filters it; a second server fn repeated
+  // the same hash work for the in-focus scene (#1795).
   const { data: sequenceStaleness, isError: sequenceStalenessFailed } =
     useSequenceShotStaleness({ sequenceId });
   const scriptSceneShots = useMemo(
@@ -834,24 +832,27 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
         : undefined,
     [scriptScene, shots]
   );
+  const scopeShots = scope === 'sequence' ? shots : scriptSceneShots;
   const scopeStaleness =
-    scope === 'sequence' ? sequenceStaleness : sceneStaleness;
+    scope === 'sequence'
+      ? sequenceStaleness
+      : scopeShots
+        ? stalenessForShotIds(
+            sequenceStaleness,
+            scopeShots.map((shot) => shot.id)
+          )
+        : undefined;
   // A failed staleness check must not render as "everything is up to date":
   // with no data every downstream consumer draws a confidently clean UI (no
   // dots, no chips, no summary) off the back of a request that errored.
-  const scopeStalenessFailed =
-    scope === 'sequence' ? sequenceStalenessFailed : sceneStalenessFailed;
-  const scopeShots = scope === 'sequence' ? shots : scriptSceneShots;
+  const scopeStalenessFailed = sequenceStalenessFailed;
   const staleShotIds = useMemo(() => {
     const set = new Set<string>();
-    // Sequence-wide first so every rail thumbnail can show a dot; the
-    // in-focus scene batch overwrites the same keys when it arrives.
-    const merged = { ...sequenceStaleness, ...sceneStaleness };
-    for (const [shotId, staleness] of Object.entries(merged)) {
+    for (const [shotId, staleness] of Object.entries(sequenceStaleness ?? {})) {
       if (shotIsStale(staleness)) set.add(shotId);
     }
     return set;
-  }, [sequenceStaleness, sceneStaleness]);
+  }, [sequenceStaleness]);
 
   // Model identity lives on the version that produced the asset (#1066), so the
   // tabs target whatever the selected shot's selected image/video version was

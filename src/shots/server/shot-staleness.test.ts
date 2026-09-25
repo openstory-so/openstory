@@ -23,7 +23,8 @@ vi.doMock('@/shots/input-hash', () => ({
   ),
 }));
 
-const { computeShotStaleness } = await import('./shot-staleness');
+const { computeShotStaleness, loadShotStalenessReads } =
+  await import('./shot-staleness');
 
 // Shape-matching stubs: each fixture carries only what this module reads, so a
 // future field read fails loudly rather than silently seeing `undefined`.
@@ -525,5 +526,108 @@ describe('per-shot start-frame override', () => {
       sequence: expect.objectContaining({ referenceOnly: false }),
       startingFrameImageUrl: stillUrl,
     });
+  });
+
+  it('compares a preloaded sequence without per-shot version reads (#1795)', async () => {
+    loadNarrowShotPromptContext.mockResolvedValue({});
+    hashVisualPromptInput.mockResolvedValue('visual-stored');
+    hashMotionPromptInput.mockResolvedValue('motion-stored');
+    buildRegenerateShotSnapshot.mockResolvedValue({
+      snapshotInputHash: 'image-stored',
+    });
+    const scopedDb = makeScopedDb({ motionSelectedHash: 'motion-stored' });
+
+    const result = await computeShotStaleness({
+      scopedDb,
+      sequence,
+      shot,
+      frame,
+      selectedImage: selectedImage('image-stored'),
+      scene,
+      reads: asStub<
+        NonNullable<Parameters<typeof computeShotStaleness>[0]['reads']>
+      >({
+        selectedPromptByFrame: new Map([
+          ['frame-1', { text: 'a prompt', inputHash: 'visual-stored' }],
+        ]),
+        latestPromptByFrame: new Map(),
+        latestHashedPromptByFrame: new Map(),
+        selectedMotionByShot: new Map([
+          ['shot-1', { inputHash: 'motion-stored' }],
+        ]),
+        latestMotionByShot: new Map(),
+        latestHashedMotionByShot: new Map(),
+        liveVisualClaimsByFrame: new Map(),
+        liveMotionClaimsByShot: new Map(),
+        liveImageClaimsByFrame: new Map(),
+        promptById: new Map(),
+        settingsEvents: [],
+        sceneContext: new Map(),
+      }),
+    });
+
+    expect(result).toMatchObject({
+      thumbnail: 'fresh',
+      visualPrompt: 'fresh',
+      motionPrompt: 'fresh',
+    });
+    expect(scopedDb.framePromptVersions.getSelected).not.toHaveBeenCalled();
+    expect(
+      scopedDb.shotPromptVersions.getSelectedMotion
+    ).not.toHaveBeenCalled();
+    expect(scopedDb.framePromptVersions.getLatest).not.toHaveBeenCalled();
+    expect(scopedDb.shotPromptVersions.getLatest).not.toHaveBeenCalled();
+  });
+});
+
+describe('loadShotStalenessReads (#1795)', () => {
+  it('asks for each prompt list once for the whole sequence', async () => {
+    const frameIds = ['f1', 'f2', 'f3'];
+    const shotIds = ['s1', 's2', 's3'];
+    const framePromptVersions = {
+      getSelectedByFrameIds: vi.fn().mockResolvedValue(new Map()),
+      getLatestByFrameIds: vi.fn().mockResolvedValue(new Map()),
+      getLatestWithInputHashByFrameIds: vi.fn().mockResolvedValue(new Map()),
+      listLivePendingByFrameIds: vi.fn().mockResolvedValue(new Map()),
+      getByIds: vi.fn().mockResolvedValue([]),
+    };
+    const shotPromptVersions = {
+      getSelectedMotionByShots: vi.fn().mockResolvedValue(new Map()),
+      getLatestMotionByShotIds: vi.fn().mockResolvedValue(new Map()),
+      getLatestMotionWithInputHashByShotIds: vi
+        .fn()
+        .mockResolvedValue(new Map()),
+      listLiveMotionPendingByShotIds: vi.fn().mockResolvedValue(new Map()),
+    };
+    const frameVariants = {
+      listLiveClaimsByFrameIds: vi.fn().mockResolvedValue(new Map()),
+    };
+    const sequenceEvents = {
+      listBySequence: vi.fn().mockResolvedValue([]),
+    };
+
+    await loadShotStalenessReads(
+      asStub<Parameters<typeof loadShotStalenessReads>[0]>({
+        framePromptVersions,
+        shotPromptVersions,
+        frameVariants,
+        sequenceEvents,
+      }),
+      'seq-1',
+      shotIds,
+      frameIds,
+      new Map()
+    );
+
+    expect(framePromptVersions.getLatestByFrameIds).toHaveBeenCalledTimes(1);
+    expect(framePromptVersions.getLatestByFrameIds).toHaveBeenCalledWith(
+      frameIds
+    );
+    expect(shotPromptVersions.getLatestMotionByShotIds).toHaveBeenCalledWith(
+      shotIds
+    );
+    expect(frameVariants.listLiveClaimsByFrameIds).toHaveBeenCalledTimes(1);
+    expect(sequenceEvents.listBySequence).toHaveBeenCalledTimes(1);
+    expect(framePromptVersions.getByIds).not.toHaveBeenCalled();
   });
 });
