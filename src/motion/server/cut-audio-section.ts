@@ -27,6 +27,7 @@ import {
 } from '@/platform/server/storage/buckets';
 import { fileExists, readStorageObject, readStorageStream } from '#storage';
 import { uploadResponse } from '@/platform/server/storage/upload-response';
+import type { MotionAudioClip } from '@/platform/server/db/schema';
 
 /** Enough for any header ElevenLabs writes (`fmt `, optional `LIST`, `data`). */
 const HEADER_PROBE_BYTES = 4096;
@@ -170,4 +171,87 @@ function composeWav(
     },
     cancel: (reason) => reader.cancel(reason),
   });
+}
+
+/**
+ * The audio a packed clip sends (#1794). Each member shot holds its own
+ * section of the scene's recording, and neighbouring sections can overlap
+ * (one ends on the last loud sample, the next starts at the previous last
+ * word), so sending them side by side plays the overlap twice and counts it
+ * twice against the model's combined cap. Consecutive clips from one
+ * recording become ONE cut from the first section's start to the last's end:
+ * never longer than the recording, which was fit to the cap.
+ *
+ * Only the wire changes — each shot keeps its own clip. A run whose sections
+ * cannot be read, or are not in recording order, is sent as it was.
+ */
+export async function joinRecordingSections(
+  clips: readonly MotionAudioClip[],
+  input: {
+    teamId: string;
+    sequenceId: string;
+    minDurationSeconds?: number;
+    getSection: (id: string) => Promise<{
+      fromSeconds: number;
+      toSeconds: number;
+      recording: { storageKey: string };
+    } | null>;
+  }
+): Promise<MotionAudioClip[]> {
+  const out: MotionAudioClip[] = [];
+  for (const run of sharedRecordingRuns(clips)) {
+    const first = run[0];
+    if (run.length < 2 || !first?.recordingId) {
+      out.push(...run);
+      continue;
+    }
+    const sections = await Promise.all(
+      run.map((clip) => input.getSection(clip.id))
+    );
+    const ordered = sections.every(
+      (section, at) =>
+        section &&
+        (at === 0 ||
+          section.fromSeconds >= (sections[at - 1]?.fromSeconds ?? 0))
+    );
+    const head = sections[0];
+    const tail = sections.at(-1);
+    if (!ordered || !head || !tail) {
+      out.push(...run);
+      continue;
+    }
+    const cut = await cutAudioSection({
+      storageKey: head.recording.storageKey,
+      recordingId: first.recordingId,
+      teamId: input.teamId,
+      sequenceId: input.sequenceId,
+      fromSeconds: head.fromSeconds,
+      toSeconds: tail.toSeconds,
+      minDurationSeconds: input.minDurationSeconds,
+    });
+    out.push({
+      id: run.map((clip) => clip.id).join('+'),
+      url: cut.url,
+      token: first.token,
+      durationSeconds: cut.durationSeconds,
+      recordingId: first.recordingId,
+    });
+  }
+  return out;
+}
+
+/** Consecutive clips cut from the same recording, in order. */
+function sharedRecordingRuns(
+  clips: readonly MotionAudioClip[]
+): MotionAudioClip[][] {
+  const runs: MotionAudioClip[][] = [];
+  for (const clip of clips) {
+    const last = runs.at(-1);
+    if (last && clip.recordingId && last[0]?.recordingId === clip.recordingId) {
+      last.push(clip);
+    } else {
+      runs.push([clip]);
+    }
+  }
+  return runs;
 }

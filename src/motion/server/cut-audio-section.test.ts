@@ -80,7 +80,8 @@ vi.doMock('#storage', () => ({
   uploadFile,
 }));
 
-const { cutAudioSection } = await import('./cut-audio-section');
+const { cutAudioSection, joinRecordingSections } =
+  await import('./cut-audio-section');
 
 const base = {
   storageKey: 'audio/team-1/seq-1/dialogue-recordings/rec-1.wav',
@@ -294,5 +295,55 @@ describe('cutAudioSection', () => {
     await expect(
       cutAudioSection({ ...base, fromSeconds: 2, toSeconds: 5 })
     ).rejects.toThrow(/shorter than its header says/);
+  });
+});
+
+describe('joinRecordingSections (#1794)', () => {
+  const clip = (
+    id: string,
+    recordingId: string | undefined,
+    seconds: number
+  ) => ({
+    id,
+    url: `/r2/${id}.wav`,
+    token: 'DIALOGUE',
+    durationSeconds: seconds,
+    ...(recordingId && { recordingId }),
+  });
+  const sections: Record<string, { fromSeconds: number; toSeconds: number }> = {
+    a: { fromSeconds: 0.37, toSeconds: 7.8 },
+    b: { fromSeconds: 6.72, toSeconds: 9.68 },
+  };
+  const getSection = async (id: string) =>
+    sections[id]
+      ? { ...sections[id], recording: { storageKey: base.storageKey } }
+      : null;
+
+  it('sends overlapping sections of one recording as one cut, first start to last end', async () => {
+    const joined = await joinRecordingSections(
+      [clip('a', 'rec-1', 7.43), clip('b', 'rec-1', 2.96)],
+      { teamId: 'team-1', sequenceId: 'seq-1', getSection }
+    );
+
+    expect(joined).toHaveLength(1);
+    // 7.43 + 2.96 = 10.39 side by side; the span is 9.31.
+    expect(joined[0]?.durationSeconds).toBeCloseTo(9.31, 3);
+    expect(readStorageStream).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves clips from different recordings, and unreadable sections, as they were', async () => {
+    const apart = [clip('a', 'rec-1', 7.43), clip('b', 'rec-2', 2.96)];
+    const unknown = [clip('x', 'rec-1', 1), clip('y', 'rec-1', 1)];
+
+    for (const clips of [apart, unknown]) {
+      expect(
+        await joinRecordingSections(clips, {
+          teamId: 'team-1',
+          sequenceId: 'seq-1',
+          getSection,
+        })
+      ).toEqual(clips);
+    }
+    expect(readStorageStream).not.toHaveBeenCalled();
   });
 });

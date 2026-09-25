@@ -113,6 +113,11 @@ type WorkflowClaims = {
    * completed in place — persist retries must not treat that as a lost claim.
    */
   characters: Pick<ScopedDb['characters'], 'getVoiceVersionById'>;
+  /**
+   * A dialogue section by the clip id the payload carries (a clip's id IS its
+   * section id). Its range and recording never change after it is written.
+   */
+  shotDialogue: Pick<ScopedDb['shotDialogue'], 'getSectionById'>;
 };
 
 /**

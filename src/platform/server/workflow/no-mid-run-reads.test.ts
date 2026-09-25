@@ -386,6 +386,11 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       bucket: 'CLAIM-BY-ID',
       why: 'The motion prompt version this clip renders from, named by the trigger snapshot — its hash + model are copied onto the softened row (#1373), as soften-image-prompt does for stills.',
     },
+    {
+      read: 'shotDialogue.getSectionById',
+      bucket: 'CLAIM-BY-ID',
+      why: 'The ranges of the sections a packed clip joins into one cut (#1794), by the clip ids on the payload. A section range never changes once written.',
+    },
   ],
   'recast-snapshot.ts': [
     {

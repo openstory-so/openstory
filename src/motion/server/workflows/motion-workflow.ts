@@ -31,6 +31,7 @@ import {
 import { dialogueClipsAsReferences } from '@/motion/server/synthesize-dialogue';
 import { referenceKeysFrom } from '@/motion/reference-provenance';
 import { recordDialogue } from '@/motion/server/record-dialogue';
+import { joinRecordingSections } from '@/motion/server/cut-audio-section';
 import { raiseShotDurationToCoverAudio } from '@/motion/resolve-shot-duration';
 import type { MotionAudioClip } from '@/platform/server/db/schema';
 import type {
@@ -307,11 +308,28 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         audioClips = adopted;
         voicedLines = withSpokenText(authoredLines, audioClips);
       }
+      const packedClip = Boolean(
+        input.coveredShots && input.coveredShots.length > 1
+      );
+      // A packed clip sends one cut per recording, not each member's
+      // overlapping section (#1794). The members keep their own clips.
+      const wireClips = packedClip
+        ? await step.do('join-dialogue-sections', () =>
+            joinRecordingSections(audioClips, {
+              teamId: input.teamId,
+              sequenceId,
+              minDurationSeconds:
+                getMotionReferenceEndpoint(model)?.audioSeconds?.min,
+              getSection: (id) =>
+                scopedDb.claims.shotDialogue.getSectionById(id),
+            })
+          )
+        : audioClips;
       referenceImages = [
         ...(input.referenceImages ?? []),
-        ...dialogueClipsAsReferences(audioClips),
+        ...dialogueClipsAsReferences(wireClips),
       ];
-      if (input.coveredShots && input.coveredShots.length > 1) {
+      if (input.coveredShots && packedClip) {
         const packed = assemblePackedMotionPrompt({
           shots: input.coveredShots.map((member) => ({
             durationSeconds: member.duration ?? durationHint ?? 3,
@@ -348,7 +366,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       } else if (input.motionPrompt) {
         prompt = assembleShotPrompt(input.motionPrompt);
       }
-      const audioSeconds = audioClips.reduce(
+      const audioSeconds = wireClips.reduce(
         (sum, clip) => sum + (clip.durationSeconds ?? 0),
         0
       );
