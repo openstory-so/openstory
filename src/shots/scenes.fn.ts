@@ -80,23 +80,19 @@ export const updateSceneScriptFn = createServerFn({ method: 'POST' })
 
     const selected = await scopedDb.sceneScriptVersions.getSelected(sceneId);
     const currentScript = selected?.content;
-    if (!currentScript) {
-      throw new Error('Scene has no script to edit');
-    }
-    const scriptChanged = data.extract !== currentScript.extract;
+    const nextScript = {
+      ...currentScript,
+      extract: data.extract,
+      // A first script has no dialogue; subsequent edits preserve it.
+      dialogue: currentScript?.dialogue ?? [],
+    };
+    const scriptChanged =
+      !currentScript || data.extract !== currentScript.extract;
 
     if (scriptChanged) {
       await scopedDb.sceneScriptVersions.write({
         sceneId,
-        content: {
-          ...currentScript,
-          extract: data.extract,
-          // Preserve prior dialogue on a free-text edit (#1108, plan §8) —
-          // wiping to [] silently degraded audio-capable motion prompts; the
-          // motion user-edit path already carries dialogue forward the same
-          // way. A re-analysis re-extracts it properly.
-          dialogue: currentScript.dialogue,
-        },
+        content: nextScript,
         source: 'edit',
         createdBy: user.id,
       });
@@ -125,7 +121,7 @@ export const updateSceneScriptFn = createServerFn({ method: 'POST' })
 
     const refreshedScript =
       (await scopedDb.sceneScriptVersions.getSelected(sceneId))?.content ??
-      currentScript;
+      nextScript;
 
     return { sceneId: data.sceneId, script: refreshedScript };
   });
@@ -169,7 +165,7 @@ const sceneNarrativeFieldsSchema = z.object({
 /**
  * Create a scene by hand (no storyboard run), appended at the end of the
  * sequence, with an optional first shot. The scene starts script-less; write
- * the script via `updateSceneScriptFn` once it exists.
+ * the first script via `updateSceneScriptFn` when the user saves.
  */
 export const createSceneFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
