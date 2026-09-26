@@ -180,5 +180,40 @@ export async function refreshCheckpointFromCast(
     }));
   }
 
+  // Visual prompts are selected on the anchor frame, so a prompt edited while
+  // the run was stopped must replace the stale checkpoint value on continue.
+  // A scene's visual summary is keyed to its head shot even when the scene has
+  // multiple clips; keep the old value when its frame has no selected version.
+  if (next.visualPromptBySceneId) {
+    const sceneHeadFrameById = new Map<
+      string,
+      { frameId: string; shotNumber: number }
+    >();
+    for (const mapping of next.shotMapping ?? []) {
+      if (!mapping.frameId) continue;
+      const shotNumber = mapping.shotNumber ?? 1;
+      const current = sceneHeadFrameById.get(mapping.analysisSceneId);
+      if (!current || shotNumber < current.shotNumber) {
+        sceneHeadFrameById.set(mapping.analysisSceneId, {
+          frameId: mapping.frameId,
+          shotNumber,
+        });
+      }
+    }
+    const frameIds = [
+      ...new Set([...sceneHeadFrameById.values()].map((head) => head.frameId)),
+    ];
+    if (frameIds.length > 0) {
+      const selectedPrompts =
+        await scopedDb.framePromptVersions.getSelectedByFrameIds(frameIds);
+      const refreshedVisualPrompts = { ...next.visualPromptBySceneId };
+      for (const [sceneId, head] of sceneHeadFrameById) {
+        const prompt = selectedPrompts.get(head.frameId);
+        if (prompt) refreshedVisualPrompts[sceneId] = prompt.text;
+      }
+      next.visualPromptBySceneId = refreshedVisualPrompts;
+    }
+  }
+
   return next;
 }
