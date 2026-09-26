@@ -228,7 +228,7 @@ describe('initSectionLength', () => {
 });
 
 describe('writeFragmentedCopy', () => {
-  it('repackages from ranged reads and a streamed upload, never the whole clip at once', async () => {
+  it('repackages from ranged reads into a multipart upload', async () => {
     await writeFragmentedCopy(CLIP_KEY);
 
     const sidecar = JSON.parse(
@@ -262,12 +262,12 @@ describe('writeFragmentedCopy', () => {
     );
   });
 
-  it('opens no upload until the clip has been read', async () => {
+  it('opens the upload only when it has a part to send', async () => {
     calls.length = 0;
     await writeFragmentedCopy(CLIP_KEY);
-    const lastClipRead = calls.lastIndexOf(`read ${CLIP_KEY}`);
-    expect(lastClipRead).toBeGreaterThanOrEqual(0);
-    expect(calls.indexOf('create')).toBeGreaterThan(lastClipRead);
+    const create = calls.indexOf('create');
+    expect(create).toBeGreaterThan(0);
+    expect(calls[create + 1]).toBe('part');
     expect(calls.filter((c) => c === 'create')).toHaveLength(1);
   });
 

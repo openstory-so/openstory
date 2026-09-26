@@ -7,7 +7,9 @@
  * HLS cannot point at a plain MP4 (`moov` + one `mdat`), which is how every
  * generated clip is stored. So each clip gets a fragmented copy beside it,
  * made once at ingest (`writeFragmentedCopy`): the same encoded packets,
- * repackaged — nothing is decoded. A sidecar JSON next to the copy records
+ * repackaged — nothing is decoded (`fragment-mp4.ts`). The header comes from
+ * the source's `moov`; the sample bytes are copied range by range, so a clip
+ * is never held in Worker memory. A sidecar JSON next to the copy records
  * what the playlist needs (init length, size, duration), and its presence is
  * what says the copy is complete. The playlist route only reads sidecars.
  *
@@ -24,21 +26,9 @@ import {
   uploadFile,
   uploadPart,
 } from '#storage';
-import {
-  ALL_FORMATS,
-  AppendOnlyStreamTarget,
-  CustomSource,
-  EncodedAudioPacketSource,
-  EncodedPacketSink,
-  type EncodedPacket,
-  EncodedVideoPacketSource,
-  Input,
-  Mp4OutputFormat,
-  Output,
-  type InputTrack,
-} from 'mediabunny';
 import { z } from 'zod';
 import { ValidationError } from '@/platform/errors';
+import { planFragment, readBoxHeader } from './fragment-mp4';
 import {
   STORAGE_BUCKETS,
   getPublicUrl,
@@ -50,11 +40,8 @@ import {
 
 const FRAGMENTED_SUFFIX = '.frag.mp4';
 const SIDECAR_SUFFIX = '.frag.json';
-/**
- * Demuxer cache ceiling. Holds the `network` prefetch window (it grows to
- * 8 MiB), so a clip is read in a few large ranges, not one GET per packet.
- */
-const SOURCE_CACHE_BYTES = 16 * 1024 * 1024;
+/** Largest single ranged read of the source clip. */
+const READ_BYTES = 4 * 1024 * 1024;
 /** R2 multipart: every part but the last the same size, at least 5 MiB. */
 const PART_BYTES = 8 * 1024 * 1024;
 
@@ -119,128 +106,34 @@ export function initSectionLength(bytes: Uint8Array): number {
   throw new Error('Fragmented copy has no moof box');
 }
 
-/** Every packet of `track` from time zero on, flagging the first. */
-async function copyPackets(
-  track: InputTrack,
-  add: (packet: EncodedPacket, first: boolean) => Promise<void>
-): Promise<void> {
-  let first = true;
-  for await (const packet of new EncodedPacketSink(track).packets()) {
-    if (packet.timestamp < 0) continue;
-    await add(packet, first);
-    first = false;
-  }
-}
-
-function clipSource(key: string, size: number): CustomSource {
-  return new CustomSource({
-    getSize: () => size,
-    maxCacheSize: SOURCE_CACHE_BYTES,
-    prefetchProfile: 'network',
-    read: async (start, end) => {
-      const object = await readStorageObject(key, {
-        offset: start,
-        length: end - start,
-      });
-      if (!object) throw new Error(`Storage object disappeared: ${key}`);
-      return object.bytes;
-    },
-  });
-}
-
-/**
- * Packet-copy the clip into `target` as fragmented MP4. No `Conversion`: an
- * AAC track starts a frame before zero (encoder priming), and trimming that
- * the library's way means a re-encode, which workerd has no codec for. The
- * early packets are dropped instead; both tracks stay on the clip's own
- * clock. Side by side, because the muxer closes a fragment only once every
- * track covers it.
- */
-async function remuxFragmented(
+async function readRange(
   key: string,
-  size: number,
-  target: AppendOnlyStreamTarget,
-  onFirstMoof?: (position: number) => void
-): Promise<{
-  durationSeconds: number;
-  videoCodec: string;
-  hasAudio: boolean;
-}> {
-  const input = new Input({
-    formats: ALL_FORMATS,
-    source: clipSource(key, size),
-  });
-  let sawMoof = false;
-  const output = new Output({
-    format: new Mp4OutputFormat({
-      fastStart: 'fragmented',
-      onMoof: onFirstMoof
-        ? (_data, position) => {
-            if (sawMoof) return;
-            sawMoof = true;
-            onFirstMoof(position);
-          }
-        : undefined,
-    }),
-    target,
-  });
-  try {
-    const videoTrack = await input.getPrimaryVideoTrack();
-    if (!videoTrack) throw new ValidationError(`Clip has no video: ${key}`);
-    const audioTrack = await input.getPrimaryAudioTrack();
-    const videoCodec = await videoTrack.getCodec();
-    const audioCodec = audioTrack ? await audioTrack.getCodec() : null;
-    if (!videoCodec || (audioTrack && !audioCodec)) {
-      throw new ValidationError(`Clip has an unknown codec: ${key}`);
-    }
-
-    const videoSource = new EncodedVideoPacketSource(videoCodec);
-    output.addVideoTrack(videoSource);
-    const audioSource = audioCodec
-      ? new EncodedAudioPacketSource(audioCodec)
-      : null;
-    if (audioSource) output.addAudioTrack(audioSource);
-    await output.start();
-
-    const videoConfig = await videoTrack.getDecoderConfig();
-    const audioConfig = (await audioTrack?.getDecoderConfig()) ?? null;
-    await Promise.all([
-      copyPackets(videoTrack, (packet, first) =>
-        videoSource.add(
-          packet,
-          first && videoConfig ? { decoderConfig: videoConfig } : undefined
-        )
-      ),
-      audioTrack && audioSource
-        ? copyPackets(audioTrack, (packet, first) =>
-            audioSource.add(
-              packet,
-              first && audioConfig ? { decoderConfig: audioConfig } : undefined
-            )
-          )
-        : null,
-    ]);
-    await output.finalize();
-    return {
-      durationSeconds: await input.computeDuration(),
-      videoCodec,
-      hasAudio: audioSource !== null,
-    };
-  } catch (error) {
-    await output.cancel().catch(() => undefined);
-    throw error;
-  } finally {
-    input.dispose();
+  offset: number,
+  length: number
+): Promise<Uint8Array> {
+  const object = await readStorageObject(key, { offset, length });
+  if (object?.bytes.byteLength !== length) {
+    throw new Error(`Short read of ${key} at ${offset}`);
   }
+  return object.bytes;
+}
+
+/** The source's `moov`, found by walking top-level box headers. */
+async function readMoov(key: string, size: number): Promise<Uint8Array> {
+  let at = 0;
+  while (at + 8 <= size) {
+    const head = await readRange(key, at, Math.min(16, size - at));
+    const box = readBoxHeader(head, size - at);
+    if (box.type === 'moov') return readRange(key, at, box.size);
+    at += box.size;
+  }
+  throw new ValidationError(`Clip has no moov: ${key}`);
 }
 
 /**
- * Where the copy's bytes go. The muxer writes nothing but `ftyp` until the
- * clip's last key frame closes a fragment — and a generated clip usually has
- * one key frame, so everything else arrives at `finalize`. A single `r2.put`
- * opened up front sits idle that whole time and R2 drops it ("Network
- * connection lost"). So the copy goes up as multipart parts, each a whole
- * buffer sent once it is full; nothing is open while the source is read.
+ * The copy goes up as fixed-size multipart parts, each sent whole once full,
+ * so memory is one part and no upload sits open waiting for bytes (an idle
+ * `r2.put` is dropped by R2: "Network connection lost").
  */
 function multipartSink(bucket: StorageBucket, path: string) {
   let uploadId: string | undefined;
@@ -265,19 +158,17 @@ function multipartSink(bucket: StorageBucket, path: string) {
   };
 
   return {
-    writable: new WritableStream<Uint8Array>({
-      async write(chunk) {
-        total += chunk.byteLength;
-        let offset = 0;
-        while (offset < chunk.byteLength) {
-          const n = Math.min(PART_BYTES - filled, chunk.byteLength - offset);
-          pending.set(chunk.subarray(offset, offset + n), filled);
-          filled += n;
-          offset += n;
-          if (filled === PART_BYTES) await sendPart();
-        }
-      },
-    }),
+    async write(chunk: Uint8Array): Promise<void> {
+      total += chunk.byteLength;
+      let offset = 0;
+      while (offset < chunk.byteLength) {
+        const n = Math.min(PART_BYTES - filled, chunk.byteLength - offset);
+        pending.set(chunk.subarray(offset, offset + n), filled);
+        filled += n;
+        offset += n;
+        if (filled === PART_BYTES) await sendPart();
+      }
+    },
     bytesWritten: () => total,
     async complete(): Promise<void> {
       if (filled > 0) await sendPart();
@@ -295,26 +186,34 @@ async function repackage(key: string): Promise<FragmentedClipInfo> {
   const sourceSize = await storageObjectSize(key);
   if (!sourceSize) throw new ValidationError(`Clip is missing: ${key}`);
 
+  const plan = planFragment(await readMoov(key, sourceSize));
   const { bucket, path } = splitKey(key);
   const sink = multipartSink(bucket, `${path}${FRAGMENTED_SUFFIX}`);
-  let initBytes: number | undefined;
-  let meta: Awaited<ReturnType<typeof remuxFragmented>>;
   try {
-    meta = await remuxFragmented(
-      key,
-      sourceSize,
-      new AppendOnlyStreamTarget(sink.writable),
-      (position) => {
-        initBytes = position;
+    await sink.write(plan.init);
+    await sink.write(plan.fragmentHead);
+    for (const range of plan.ranges) {
+      for (let at = 0; at < range.length; at += READ_BYTES) {
+        const length = Math.min(READ_BYTES, range.length - at);
+        await sink.write(await readRange(key, range.offset + at, length));
       }
-    );
-    if (initBytes == null) throw new Error(`Repackage wrote nothing: ${key}`);
+    }
+    if (sink.bytesWritten() !== plan.size) {
+      throw new Error(`Repackage wrote ${sink.bytesWritten()} of ${plan.size}`);
+    }
     await sink.complete();
   } catch (error) {
     await sink.abort();
     throw error;
   }
-  const info = { ...meta, initBytes, size: sink.bytesWritten() };
+
+  const info: FragmentedClipInfo = {
+    initBytes: plan.init.byteLength,
+    size: plan.size,
+    durationSeconds: plan.durationSeconds,
+    videoCodec: plan.videoCodec,
+    hasAudio: plan.hasAudio,
+  };
   // The copy first, the sidecar second: a sidecar is the claim that the copy
   // is whole.
   await uploadFile(

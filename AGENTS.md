@@ -270,9 +270,11 @@ changing the area, and update it in the same PR.**
   export: it plays an HLS playlist that points straight at the clips (#1623).
   Each clip gets a fragmented copy made once at ingest by copying packets
   — never mediabunny's `Conversion`, which re-encodes to trim AAC priming and
-  workerd has no codec. The remux reads ranged R2 bytes and streams the copy
-  through `uploadResponse` (#1735); a whole clip must never sit in Worker
-  memory. The playlist route only reads sidecars. Music plays alongside in
+  workerd has no codec — and never mediabunny's fragmented muxer either: it
+  holds every sample until a key frame, i.e. the whole generated clip.
+  `fragment-mp4.ts` builds the header from the source `moov` and copies the
+  samples as ranged reads into multipart parts; a whole clip must never sit
+  in Worker memory, and no upload may sit open waiting for bytes. The playlist route only reads sidecars. Music plays alongside in
   its own `<audio>`.
 
 ## Frame System
