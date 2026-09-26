@@ -286,8 +286,9 @@ describe('StudioGenerationWorkflow video', () => {
       // Unpins every still the run leased on Ark, whatever via won (#1531).
       'release-byteplus-asset-leases',
       'price-video-generation',
-      'deduct-video-credits',
       'upload-video',
+      // Billed only once the clip is stored.
+      'deduct-video-credits',
       'record-video-observation',
       'record-provenance',
       'persist-result',

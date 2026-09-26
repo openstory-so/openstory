@@ -72,6 +72,7 @@ const {
   buildTheatrePlaylist,
   ensureFragmentedClips,
   initSectionLength,
+  tryWriteFragmentedCopy,
   writeFragmentedCopy,
 } = await import('./theatre-playlist');
 
@@ -219,6 +220,18 @@ describe('writeFragmentedCopy', () => {
     );
     expect(sidecar.videoCodec).toBe('avc');
     expect(sidecar.size).toBeGreaterThan(sidecar.initBytes);
+  });
+});
+
+describe('tryWriteFragmentedCopy', () => {
+  it('swallows a failed copy so ingest keeps the clip', async () => {
+    uploadFile.mockRejectedValueOnce(
+      new Error(
+        'Failed to upload file to videos/team/clip.mp4.frag.mp4: Network connection lost.'
+      )
+    );
+    await expect(tryWriteFragmentedCopy(CLIP_KEY)).resolves.toBeUndefined();
+    expect(objects.has('videos/team/clip.mp4.frag.json')).toBe(false);
   });
 });
 

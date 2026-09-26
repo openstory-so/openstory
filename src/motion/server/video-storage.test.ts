@@ -10,9 +10,9 @@ vi.doMock('@/platform/server/storage/upload-response', () => ({
   uploadResponse: mockUploadResponse,
 }));
 
-const mockWriteFragmentedCopy = vi.fn();
+const mockTryWriteFragmentedCopy = vi.fn();
 vi.doMock('@/sequences/server/theatre-playlist', () => ({
-  writeFragmentedCopy: mockWriteFragmentedCopy,
+  tryWriteFragmentedCopy: mockTryWriteFragmentedCopy,
 }));
 
 const {
@@ -83,7 +83,7 @@ describe('uploadVideoFromUrl', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     mockUploadResponse.mockReset();
-    mockWriteFragmentedCopy.mockReset();
+    mockTryWriteFragmentedCopy.mockReset();
   });
 
   it('returns an already-stored /r2/ URL without fetching or copying', async () => {
@@ -95,7 +95,7 @@ describe('uploadVideoFromUrl', () => {
     });
     expect(fetchMock).not.toHaveBeenCalled();
     expect(mockUploadResponse).not.toHaveBeenCalled();
-    expect(mockWriteFragmentedCopy).toHaveBeenCalledWith(
+    expect(mockTryWriteFragmentedCopy).toHaveBeenCalledWith(
       'videos/teams/t1/studio/a1/video.mp4'
     );
     expect(result).toEqual({
@@ -136,19 +136,35 @@ describe('uploadVideoFromUrl', () => {
       path: 'teams/t1/studio/a1/video.mp4',
       contentType: 'video/mp4',
     });
-    expect(mockWriteFragmentedCopy).toHaveBeenCalledWith(
+    expect(mockTryWriteFragmentedCopy).toHaveBeenCalledWith(
       'videos/teams/t1/studio/a1/video.mp4'
     );
   });
 
-  it('fails the upload when remux fails', async () => {
-    mockWriteFragmentedCopy.mockRejectedValue(
-      new Error('Repackage wrote nothing: videos/teams/t1/studio/a1/video.mp4')
+  it('skips the theatre copy when asked', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response('mp4-bytes', {
+            status: 200,
+            headers: { 'content-type': 'video/mp4' },
+          })
+      )
     );
-    await expect(
-      uploadVideoFromUrl('/r2/videos/teams/t1/studio/a1/video.mp4', () => {
-        throw new Error('should not mint a new key for a stored clip');
-      })
-    ).rejects.toThrow(/Repackage wrote nothing/);
+    mockUploadResponse.mockResolvedValue({
+      publicUrl: '/r2/videos/teams/t1/studio/a1/video.mp4',
+      path: 'teams/t1/studio/a1/video.mp4',
+      fullPath: 'videos/teams/t1/studio/a1/video.mp4',
+    });
+
+    await uploadVideoFromUrl(
+      'https://v3.fal.media/files/out.mp4',
+      (extension) => `teams/t1/studio/a1/video.${extension}`,
+      { theatreCopy: false }
+    );
+
+    expect(mockUploadResponse).toHaveBeenCalled();
+    expect(mockTryWriteFragmentedCopy).not.toHaveBeenCalled();
   });
 });

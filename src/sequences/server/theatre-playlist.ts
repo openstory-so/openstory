@@ -39,6 +39,9 @@ import {
   type StorageBucket,
 } from '@/platform/server/storage/buckets';
 import { uploadResponse } from '@/platform/server/storage/upload-response';
+import { getLogger } from '@/platform/logger';
+
+const logger = getLogger(['openstory', 'sequences', 'theatre-playlist']);
 
 const FRAGMENTED_SUFFIX = '.frag.mp4';
 const SIDECAR_SUFFIX = '.frag.json';
@@ -304,6 +307,22 @@ export async function writeFragmentedCopy(key: string): Promise<void> {
   if (!key.toLowerCase().endsWith('.mp4')) return;
   if (await readSidecar(key)) return;
   await repackage(key);
+}
+
+/**
+ * {@link writeFragmentedCopy} that never fails the ingest. The copy is only an
+ * optimisation: without a sidecar the playlist route 400s and the theatre
+ * stitches the clip in the tab. A remux that stalls on R2 ("Network connection
+ * lost") must not throw away a rendered, already-billed clip.
+ */
+export async function tryWriteFragmentedCopy(key: string): Promise<void> {
+  try {
+    await writeFragmentedCopy(key);
+  } catch (error) {
+    logger.warn(`Fragmented copy failed for ${key}; theatre will stitch`, {
+      err: error,
+    });
+  }
 }
 
 async function readSidecar(key: string): Promise<FragmentedClipInfo | null> {

@@ -462,6 +462,21 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
       );
     }
 
+    const videoUpload = await step.do('upload-video', async () => {
+      const googleKey =
+        job.via === 'google'
+          ? await scopedDb.credentials.resolveOptionalKey('google')
+          : undefined;
+      return uploadStudioVideo({
+        videoUrl,
+        teamId,
+        assetId,
+        googleApiKey: googleKey?.key,
+      });
+    });
+
+    // Charge only for a clip the team can see: a failed upload fails the run
+    // and onFailure zeroes the reservation.
     if (videoCost > 0 && !job.usedOwnKey) {
       await step.do('deduct-video-credits', async () => {
         await deductWorkflowCredits({
@@ -480,19 +495,6 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
         });
       });
     }
-
-    const videoUpload = await step.do('upload-video', async () => {
-      const googleKey =
-        job.via === 'google'
-          ? await scopedDb.credentials.resolveOptionalKey('google')
-          : undefined;
-      return uploadStudioVideo({
-        videoUrl,
-        teamId,
-        assetId,
-        googleApiKey: googleKey?.key,
-      });
-    });
 
     const outputs: GeneratedAssetOutput[] = [
       { url: videoUpload.url, contentType: videoUpload.contentType },
