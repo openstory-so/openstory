@@ -62,17 +62,77 @@ const uploadFile = vi.fn(
   }
 );
 
+/** Every storage call, in order — pins that no upload is open during reads. */
+const calls: string[] = [];
+const multipart = new Map<string, Map<number, Uint8Array>>();
+const createMultipartUpload = vi.fn(async (bucket: string, path: string) => {
+  calls.push('create');
+  const uploadId = `up-${multipart.size + 1}`;
+  multipart.set(uploadId, new Map());
+  return { uploadId, key: `${bucket}/${path}` };
+});
+const uploadPart = vi.fn(
+  async (
+    _bucket: string,
+    _path: string,
+    uploadId: string,
+    partNumber: number,
+    body: Uint8Array
+  ) => {
+    calls.push('part');
+    multipart.get(uploadId)?.set(partNumber, body);
+    return { partNumber, etag: `etag-${partNumber}` };
+  }
+);
+const completeMultipartUpload = vi.fn(
+  async (
+    bucket: string,
+    path: string,
+    uploadId: string,
+    parts: { partNumber: number }[]
+  ) => {
+    calls.push('complete');
+    const stored = multipart.get(uploadId);
+    const chunks = parts.map(
+      (p) => stored?.get(p.partNumber) ?? new Uint8Array()
+    );
+    const out = new Uint8Array(chunks.reduce((n, c) => n + c.byteLength, 0));
+    let offset = 0;
+    for (const chunk of chunks) {
+      out.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    objects.set(`${bucket}/${path}`, out);
+    uploads.push({ path, kind: 'multipart' });
+    return {
+      path: `${bucket}/${path}`,
+      publicUrl: `/r2/${bucket}/${path}`,
+      fullPath: `${bucket}/${path}`,
+    };
+  }
+);
+const abortMultipartUpload = vi.fn(async () => undefined);
+
 vi.doMock('#storage', () => ({
-  readStorageObject,
+  readStorageObject: async (
+    key: string,
+    range?: { offset: number; length: number }
+  ) => {
+    calls.push(`read ${key}`);
+    return readStorageObject(key, range);
+  },
   storageObjectSize,
   uploadFile,
+  createMultipartUpload,
+  uploadPart,
+  completeMultipartUpload,
+  abortMultipartUpload,
 }));
 
 const {
   buildTheatrePlaylist,
   ensureFragmentedClips,
   initSectionLength,
-  tryWriteFragmentedCopy,
   writeFragmentedCopy,
 } = await import('./theatre-playlist');
 
@@ -87,6 +147,9 @@ beforeEach(() => {
   readStorageObject.mockClear();
   storageObjectSize.mockClear();
   uploadFile.mockClear();
+  calls.length = 0;
+  multipart.clear();
+  abortMultipartUpload.mockClear();
   objects.set(CLIP_KEY, CLIP);
 });
 
@@ -195,8 +258,26 @@ describe('writeFragmentedCopy', () => {
       )
     ).toBe(true);
     expect(uploads.find((u) => u.path.endsWith('.frag.mp4'))?.kind).toBe(
-      'stream'
+      'multipart'
     );
+  });
+
+  it('opens no upload until the clip has been read', async () => {
+    calls.length = 0;
+    await writeFragmentedCopy(CLIP_KEY);
+    const lastClipRead = calls.lastIndexOf(`read ${CLIP_KEY}`);
+    expect(lastClipRead).toBeGreaterThanOrEqual(0);
+    expect(calls.indexOf('create')).toBeGreaterThan(lastClipRead);
+    expect(calls.filter((c) => c === 'create')).toHaveLength(1);
+  });
+
+  it('aborts the multipart upload when a part fails', async () => {
+    uploadPart.mockRejectedValueOnce(new Error('Network connection lost.'));
+    await expect(writeFragmentedCopy(CLIP_KEY)).rejects.toThrow(
+      /Network connection lost/
+    );
+    expect(abortMultipartUpload).toHaveBeenCalled();
+    expect(objects.has('videos/team/clip.mp4.frag.json')).toBe(false);
   });
 
   it('skips remux when the sidecar is already there', async () => {
@@ -220,18 +301,6 @@ describe('writeFragmentedCopy', () => {
     );
     expect(sidecar.videoCodec).toBe('avc');
     expect(sidecar.size).toBeGreaterThan(sidecar.initBytes);
-  });
-});
-
-describe('tryWriteFragmentedCopy', () => {
-  it('swallows a failed copy so ingest keeps the clip', async () => {
-    uploadFile.mockRejectedValueOnce(
-      new Error(
-        'Failed to upload file to videos/team/clip.mp4.frag.mp4: Network connection lost.'
-      )
-    );
-    await expect(tryWriteFragmentedCopy(CLIP_KEY)).resolves.toBeUndefined();
-    expect(objects.has('videos/team/clip.mp4.frag.json')).toBe(false);
   });
 });
 

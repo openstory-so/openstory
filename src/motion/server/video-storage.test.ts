@@ -10,9 +10,9 @@ vi.doMock('@/platform/server/storage/upload-response', () => ({
   uploadResponse: mockUploadResponse,
 }));
 
-const mockTryWriteFragmentedCopy = vi.fn();
+const mockWriteFragmentedCopy = vi.fn();
 vi.doMock('@/sequences/server/theatre-playlist', () => ({
-  tryWriteFragmentedCopy: mockTryWriteFragmentedCopy,
+  writeFragmentedCopy: mockWriteFragmentedCopy,
 }));
 
 const {
@@ -83,7 +83,7 @@ describe('uploadVideoFromUrl', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     mockUploadResponse.mockReset();
-    mockTryWriteFragmentedCopy.mockReset();
+    mockWriteFragmentedCopy.mockReset();
   });
 
   it('returns an already-stored /r2/ URL without fetching or copying', async () => {
@@ -95,7 +95,7 @@ describe('uploadVideoFromUrl', () => {
     });
     expect(fetchMock).not.toHaveBeenCalled();
     expect(mockUploadResponse).not.toHaveBeenCalled();
-    expect(mockTryWriteFragmentedCopy).toHaveBeenCalledWith(
+    expect(mockWriteFragmentedCopy).toHaveBeenCalledWith(
       'videos/teams/t1/studio/a1/video.mp4'
     );
     expect(result).toEqual({
@@ -136,9 +136,20 @@ describe('uploadVideoFromUrl', () => {
       path: 'teams/t1/studio/a1/video.mp4',
       contentType: 'video/mp4',
     });
-    expect(mockTryWriteFragmentedCopy).toHaveBeenCalledWith(
+    expect(mockWriteFragmentedCopy).toHaveBeenCalledWith(
       'videos/teams/t1/studio/a1/video.mp4'
     );
+  });
+
+  it('fails the upload when remux fails', async () => {
+    mockWriteFragmentedCopy.mockRejectedValue(
+      new Error('Repackage wrote nothing: videos/teams/t1/studio/a1/video.mp4')
+    );
+    await expect(
+      uploadVideoFromUrl('/r2/videos/teams/t1/studio/a1/video.mp4', () => {
+        throw new Error('should not mint a new key for a stored clip');
+      })
+    ).rejects.toThrow(/Repackage wrote nothing/);
   });
 
   it('skips the theatre copy when asked', async () => {
@@ -165,6 +176,6 @@ describe('uploadVideoFromUrl', () => {
     );
 
     expect(mockUploadResponse).toHaveBeenCalled();
-    expect(mockTryWriteFragmentedCopy).not.toHaveBeenCalled();
+    expect(mockWriteFragmentedCopy).not.toHaveBeenCalled();
   });
 });
