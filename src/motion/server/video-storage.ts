@@ -101,9 +101,10 @@ export async function uploadVideoFromUrl(
   buildPath: (extension: string) => string,
   options?: { googleApiKey?: string; theatreCopy?: boolean }
 ): Promise<UploadedVideo> {
+  const theatreCopy = options?.theatreCopy !== false;
   const alreadyStored = r2KeyFromUrl(videoUrl);
   if (alreadyStored) {
-    await writeFragmentedCopy(alreadyStored);
+    if (theatreCopy) await writeFragmentedCopy(alreadyStored);
     const extension = alreadyStored.split('.').pop() || 'mp4';
     return {
       url: videoUrl,
@@ -128,7 +129,7 @@ export async function uploadVideoFromUrl(
     storagePath,
     { contentType }
   );
-  if (options?.theatreCopy !== false) {
+  if (theatreCopy) {
     await writeFragmentedCopy(buildR2Key(STORAGE_BUCKETS.VIDEOS, storagePath));
   }
   return { url: result.publicUrl, path: storagePath, contentType };
