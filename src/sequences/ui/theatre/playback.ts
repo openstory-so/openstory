@@ -29,7 +29,6 @@ import {
   type WrappedAudioBuffer,
   type WrappedCanvas,
 } from 'mediabunny';
-import { addCorsCacheBuster } from './cors-cache-buster';
 
 import {
   ConcatenatedVideoSource,
@@ -173,7 +172,7 @@ export class SequencePlayerEngine {
     if (this.opts.musicUrl) {
       this.musicInput = new Input({
         formats: ALL_FORMATS,
-        source: new UrlSource(addCorsCacheBuster(this.opts.musicUrl)),
+        source: new UrlSource(this.opts.musicUrl),
       });
       this.musicTrack = await this.musicInput.getPrimaryAudioTrack();
       if (this.musicTrack && (await this.musicTrack.canDecode())) {
