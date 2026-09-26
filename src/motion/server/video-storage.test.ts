@@ -151,4 +151,46 @@ describe('uploadVideoFromUrl', () => {
       })
     ).rejects.toThrow(/Repackage wrote nothing/);
   });
+
+  it('skips the theatre copy for an already-stored clip when asked', async () => {
+    // A Videos-page run whose provider answered inline stores the clip in the
+    // poll step and hands upload-video the /r2/ URL: still no theatre copy.
+    vi.stubGlobal('fetch', vi.fn());
+    const result = await uploadVideoFromUrl(
+      '/r2/videos/teams/t1/studio/a1/video.mp4',
+      () => {
+        throw new Error('should not mint a new key for a stored clip');
+      },
+      { theatreCopy: false }
+    );
+    expect(mockWriteFragmentedCopy).not.toHaveBeenCalled();
+    expect(result.path).toBe('teams/t1/studio/a1/video.mp4');
+  });
+
+  it('skips the theatre copy when asked', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response('mp4-bytes', {
+            status: 200,
+            headers: { 'content-type': 'video/mp4' },
+          })
+      )
+    );
+    mockUploadResponse.mockResolvedValue({
+      publicUrl: '/r2/videos/teams/t1/studio/a1/video.mp4',
+      path: 'teams/t1/studio/a1/video.mp4',
+      fullPath: 'videos/teams/t1/studio/a1/video.mp4',
+    });
+
+    await uploadVideoFromUrl(
+      'https://v3.fal.media/files/out.mp4',
+      (extension) => `teams/t1/studio/a1/video.${extension}`,
+      { theatreCopy: false }
+    );
+
+    expect(mockUploadResponse).toHaveBeenCalled();
+    expect(mockWriteFragmentedCopy).not.toHaveBeenCalled();
+  });
 });

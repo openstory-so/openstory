@@ -15,7 +15,15 @@
  * alongside (`use-theatre-music.ts`).
  */
 
-import { readStorageObject, storageObjectSize, uploadFile } from '#storage';
+import {
+  abortMultipartUpload,
+  completeMultipartUpload,
+  createMultipartUpload,
+  readStorageObject,
+  storageObjectSize,
+  uploadFile,
+  uploadPart,
+} from '#storage';
 import {
   ALL_FORMATS,
   AppendOnlyStreamTarget,
@@ -36,14 +44,19 @@ import {
   getPublicUrl,
   r2KeyFromUrl,
   toShareableUrl,
+  type MultipartPart,
   type StorageBucket,
 } from '@/platform/server/storage/buckets';
-import { uploadResponse } from '@/platform/server/storage/upload-response';
 
 const FRAGMENTED_SUFFIX = '.frag.mp4';
 const SIDECAR_SUFFIX = '.frag.json';
-/** Demuxer cache ceiling — ranged reads, never the whole clip. */
-const SOURCE_CACHE_BYTES = 2 * 1024 * 1024;
+/**
+ * Demuxer cache ceiling. Holds the `network` prefetch window (it grows to
+ * 8 MiB), so a clip is read in a few large ranges, not one GET per packet.
+ */
+const SOURCE_CACHE_BYTES = 16 * 1024 * 1024;
+/** R2 multipart: every part but the last the same size, at least 5 MiB. */
+const PART_BYTES = 8 * 1024 * 1024;
 
 const sidecarSchema = z.object({
   /** Bytes of `ftyp` + `moov` at the head of the copy — the HLS init section. */
@@ -123,6 +136,7 @@ function clipSource(key: string, size: number): CustomSource {
   return new CustomSource({
     getSize: () => size,
     maxCacheSize: SOURCE_CACHE_BYTES,
+    prefetchProfile: 'network',
     read: async (start, end) => {
       const object = await readStorageObject(key, {
         offset: start,
@@ -220,73 +234,89 @@ async function remuxFragmented(
   }
 }
 
-/** First pass: size the copy and find the init section, discarding the bytes. */
-async function measureFragmentedCopy(
-  key: string,
-  size: number
-): Promise<FragmentedClipInfo> {
-  let bytes = 0;
-  let initBytes: number | undefined;
-  const meta = await remuxFragmented(
-    key,
-    size,
-    new AppendOnlyStreamTarget(
-      new WritableStream({
-        write(chunk) {
-          bytes += chunk.byteLength;
-        },
-      })
-    ),
-    (position) => {
-      initBytes = position;
-    }
-  );
-  if (initBytes == null || bytes === 0) {
-    throw new Error(`Repackage wrote nothing: ${key}`);
-  }
-  return { ...meta, initBytes, size: bytes };
-}
-
 /**
- * Second pass: the same packets, streamed into R2 at a known length so
- * `uploadResponse` can wrap a FixedLengthStream and never buffer the clip.
+ * Where the copy's bytes go. The muxer writes nothing but `ftyp` until the
+ * clip's last key frame closes a fragment — and a generated clip usually has
+ * one key frame, so everything else arrives at `finalize`. A single `r2.put`
+ * opened up front sits idle that whole time and R2 drops it ("Network
+ * connection lost"). So the copy goes up as multipart parts, each a whole
+ * buffer sent once it is full; nothing is open while the source is read.
  */
-async function streamFragmentedCopy(
-  key: string,
-  sourceSize: number,
-  copySize: number,
-  bucket: StorageBucket,
-  path: string
-): Promise<void> {
-  const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
-  const upload = uploadResponse(
-    new Response(readable, {
-      headers: { 'content-length': String(copySize) },
+function multipartSink(bucket: StorageBucket, path: string) {
+  let uploadId: string | undefined;
+  const parts: MultipartPart[] = [];
+  const pending = new Uint8Array(PART_BYTES);
+  let filled = 0;
+  let total = 0;
+
+  const sendPart = async () => {
+    uploadId ??= (await createMultipartUpload(bucket, path, 'video/mp4'))
+      .uploadId;
+    parts.push(
+      await uploadPart(
+        bucket,
+        path,
+        uploadId,
+        parts.length + 1,
+        pending.slice(0, filled)
+      )
+    );
+    filled = 0;
+  };
+
+  return {
+    writable: new WritableStream<Uint8Array>({
+      async write(chunk) {
+        total += chunk.byteLength;
+        let offset = 0;
+        while (offset < chunk.byteLength) {
+          const n = Math.min(PART_BYTES - filled, chunk.byteLength - offset);
+          pending.set(chunk.subarray(offset, offset + n), filled);
+          filled += n;
+          offset += n;
+          if (filled === PART_BYTES) await sendPart();
+        }
+      },
     }),
-    bucket,
-    `${path}${FRAGMENTED_SUFFIX}`,
-    { contentType: 'video/mp4' }
-  );
-  try {
-    await Promise.all([
-      remuxFragmented(key, sourceSize, new AppendOnlyStreamTarget(writable)),
-      upload,
-    ]);
-  } catch (error) {
-    await writable.abort(error).catch(() => undefined);
-    throw error;
-  }
+    bytesWritten: () => total,
+    async complete(): Promise<void> {
+      if (filled > 0) await sendPart();
+      if (!uploadId) throw new Error(`Repackage wrote nothing: ${path}`);
+      await completeMultipartUpload(bucket, path, uploadId, parts);
+    },
+    async abort(): Promise<void> {
+      if (!uploadId) return;
+      await abortMultipartUpload(bucket, path, uploadId).catch(() => undefined);
+    },
+  };
 }
 
 async function repackage(key: string): Promise<FragmentedClipInfo> {
   const sourceSize = await storageObjectSize(key);
   if (!sourceSize) throw new ValidationError(`Clip is missing: ${key}`);
 
-  const info = await measureFragmentedCopy(key, sourceSize);
   const { bucket, path } = splitKey(key);
+  const sink = multipartSink(bucket, `${path}${FRAGMENTED_SUFFIX}`);
+  let initBytes: number | undefined;
+  let meta: Awaited<ReturnType<typeof remuxFragmented>>;
+  try {
+    meta = await remuxFragmented(
+      key,
+      sourceSize,
+      new AppendOnlyStreamTarget(sink.writable),
+      (position) => {
+        initBytes = position;
+      }
+    );
+    if (initBytes == null) throw new Error(`Repackage wrote nothing: ${key}`);
+    await sink.complete();
+  } catch (error) {
+    await sink.abort();
+    throw error;
+  }
+  const info = { ...meta, initBytes, size: sink.bytesWritten() };
   // The copy first, the sidecar second: a sidecar is the claim that the copy
   // is whole.
-  await streamFragmentedCopy(key, sourceSize, info.size, bucket, path);
   await uploadFile(
     bucket,
     `${path}${SIDECAR_SUFFIX}`,

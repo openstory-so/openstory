@@ -93,15 +93,18 @@ function storedVideoPath(key: string): string {
  * `/r2/…` URLs are returned as-is (no second copy). The body is streamed
  * through {@link uploadResponse} — not buffered, then re-uploaded. The
  * fragmented theatre copy is written here so play never remuxes (#1735).
+ * `theatreCopy: false` skips it for clips that never play in the theatre
+ * (Images / Videos page assets).
  */
 export async function uploadVideoFromUrl(
   videoUrl: string,
   buildPath: (extension: string) => string,
-  options?: { googleApiKey?: string }
+  options?: { googleApiKey?: string; theatreCopy?: boolean }
 ): Promise<UploadedVideo> {
+  const theatreCopy = options?.theatreCopy !== false;
   const alreadyStored = r2KeyFromUrl(videoUrl);
   if (alreadyStored) {
-    await writeFragmentedCopy(alreadyStored);
+    if (theatreCopy) await writeFragmentedCopy(alreadyStored);
     const extension = alreadyStored.split('.').pop() || 'mp4';
     return {
       url: videoUrl,
@@ -126,7 +129,9 @@ export async function uploadVideoFromUrl(
     storagePath,
     { contentType }
   );
-  await writeFragmentedCopy(buildR2Key(STORAGE_BUCKETS.VIDEOS, storagePath));
+  if (theatreCopy) {
+    await writeFragmentedCopy(buildR2Key(STORAGE_BUCKETS.VIDEOS, storagePath));
+  }
   return { url: result.publicUrl, path: storagePath, contentType };
 }
 

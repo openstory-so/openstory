@@ -34,6 +34,7 @@ export function uploadStudioVideo(params: {
     params.videoUrl,
     (extension) =>
       `teams/${params.teamId}/studio/${params.assetId}/video.${extension}`,
-    { googleApiKey: params.googleApiKey }
+    // Videos-page clips never play in the theatre: no fragmented copy.
+    { googleApiKey: params.googleApiKey, theatreCopy: false }
   );
 }
