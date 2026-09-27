@@ -177,10 +177,20 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
           return null;
         }
 
-        // No frame context (preview mode, or shotless ad-hoc): generate without
-        // claiming a version row — no in-flight row, no status flip. A preview
-        // gets its own `kind: 'preview'` row on completion, in the skipStorage
-        // branch below.
+        // A preview opens its own `kind: 'preview'` row now (#1152), never a
+        // version claim and no status flip: it lands in the skipStorage
+        // branch below, or fails in onFailure — either way a record.
+        if (input.skipStorage && input.frameId && input.sequenceId) {
+          await scopedDb.frameVariants.openPreview({
+            frameId: input.frameId,
+            sequenceId: input.sequenceId,
+            model: params.model,
+            promptHash: input.prompt ? simpleHash(input.prompt) : null,
+            workflowRunId,
+          });
+        }
+        // No frame context (preview mode, or shotless ad-hoc): generate
+        // without claiming a version row.
         if (!input.shotId || !input.sequenceId || input.skipStorage) {
           return { params, versionId: '' };
         }
@@ -615,6 +625,19 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
   }): Promise<void> {
     const input = event.payload;
     if (input.skipStorage) {
+      // The preview's row fails with the run (#1152): a record, not a gap.
+      // The reconciler sweeps it too, so a failed write here stays logged.
+      try {
+        await scopedDb.frameVariants.markFailedByWorkflowRun(
+          event.instanceId,
+          error
+        );
+      } catch (markError) {
+        logger.error(
+          `[ImageWorkflow] Failed to fail preview row for run ${event.instanceId}:`,
+          { err: markError }
+        );
+      }
       // Parent swallows the *trigger* (#1149). The child still has to tell
       // the rail the tile failed — including after a billed generate + R2
       // miss — or it sits empty forever.

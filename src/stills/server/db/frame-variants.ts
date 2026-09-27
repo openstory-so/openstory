@@ -805,6 +805,44 @@ export function createFrameVariantsMethods(db: Database) {
     },
 
     /**
+     * Open a preview's row before it renders (#1152): a `kind: 'preview'`
+     * row in `generating`, so a preview that fails leaves a `failed` record
+     * (`markFailedByWorkflowRun`) the reconciler can sweep, instead of
+     * nothing (#1149). Never selectable, never a claim: it carries no
+     * `pendingInputHash` / `dependsOnVersionId`, so the claim readers skip it.
+     * Idempotent on `(frameId, kind, workflowRunId)` across step retries.
+     */
+    openPreview: async (input: {
+      frameId: string;
+      sequenceId: string;
+      model: string;
+      promptHash: string | null;
+      workflowRunId: string;
+    }): Promise<void> => {
+      const [existing] = await db
+        .select({ id: frameVariants.id })
+        .from(frameVariants)
+        .where(
+          and(
+            eq(frameVariants.frameId, input.frameId),
+            eq(frameVariants.kind, 'preview'),
+            eq(frameVariants.workflowRunId, input.workflowRunId)
+          )
+        );
+      if (existing) return;
+      await db.insert(frameVariants).values({
+        frameId: input.frameId,
+        sequenceId: input.sequenceId,
+        kind: 'preview',
+        model: input.model,
+        status: 'generating',
+        promptHash: input.promptHash,
+        promptVersionId: null,
+        workflowRunId: input.workflowRunId,
+      });
+    },
+
+    /**
      * Record the pre-prompt stand-in for a frame (#1101): a `kind: 'preview'`
      * row holding the R2 url the preview render returned. Keyed by the prompt
      * text it was rendered from (`promptHash`) — never by a prompt version,
@@ -836,7 +874,30 @@ export function createFrameVariantsMethods(db: Database) {
             eq(frameVariants.workflowRunId, input.workflowRunId)
           )
         );
-      if (existing) return existing;
+      // The row `openPreview` opened lands in place; a completed one is a
+      // step retry. A run queued before #1152 opened none and inserts.
+      if (existing?.status === 'completed') return existing;
+      if (existing) {
+        const [landed] = await db
+          .update(frameVariants)
+          .set({
+            model: input.model,
+            url: input.url,
+            storagePath: input.storagePath,
+            status: 'completed',
+            generatedAt: new Date(),
+            promptHash: input.promptHash,
+            updatedAt: new Date(),
+          })
+          .where(eq(frameVariants.id, existing.id))
+          .returning();
+        if (!landed) {
+          throw new Error(
+            `Failed to land preview variant ${existing.id} for frame ${input.frameId}`
+          );
+        }
+        return landed;
+      }
       const [row] = await db
         .insert(frameVariants)
         .values({

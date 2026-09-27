@@ -1123,6 +1123,61 @@ describe("frameVariants kind: 'preview' (#1101)", () => {
     expect(rows).toHaveLength(1);
   });
 
+  it('opens a row before it renders and lands it in place (#1152)', async () => {
+    const m = createFrameVariantsMethods(db);
+    const open = {
+      frameId,
+      sequenceId,
+      model: 'flux_2_turbo',
+      promptHash: 'scene-text-hash',
+      workflowRunId: 'run-preview-2',
+    };
+    await m.openPreview(open);
+    // A step retry opens nothing new.
+    await m.openPreview(open);
+    const opened = await db
+      .select()
+      .from(frameVariants)
+      .where(eq(frameVariants.frameId, frameId));
+    expect(opened).toHaveLength(1);
+    expect(opened[0]).toMatchObject({ kind: 'preview', status: 'generating' });
+    // Not a claim: the claim readers never see it.
+    expect(await m.listLiveClaims(frameId)).toEqual([]);
+    // Nor a projected preview until it lands.
+    expect(await m.getLatestPreview(frameId)).toBeNull();
+
+    const landed = await m.recordPreview({
+      ...open,
+      url: '/r2/p.png',
+      storagePath: 'p.png',
+    });
+    expect(landed.id).toBe(opened[0]?.id);
+    expect(landed).toMatchObject({ status: 'completed', url: '/r2/p.png' });
+    expect((await m.getLatestPreview(frameId))?.id).toBe(landed.id);
+  });
+
+  it('a preview that fails leaves a failed record, not a gap (#1149, #1152)', async () => {
+    const m = createFrameVariantsMethods(db);
+    await m.openPreview({
+      frameId,
+      sequenceId,
+      model: 'flux_2_turbo',
+      promptHash: null,
+      workflowRunId: 'run-preview-3',
+    });
+    await m.markFailedByWorkflowRun('run-preview-3', 'content flagged');
+    const [row] = await db
+      .select()
+      .from(frameVariants)
+      .where(eq(frameVariants.frameId, frameId));
+    expect(row).toMatchObject({
+      kind: 'preview',
+      status: 'failed',
+      error: 'content flagged',
+    });
+    expect(await m.getLatestPreview(frameId)).toBeNull();
+  });
+
   it("can never become the frame's still — select rejects it", async () => {
     const m = createFrameVariantsMethods(db);
     const preview = await m.recordPreview({
