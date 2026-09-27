@@ -251,7 +251,7 @@ export class SequencePlayerEngine {
   private prefetchNearCut(time: number): void {
     const offsets = this.meta?.sceneOffsetsSeconds;
     if (!offsets) return;
-    const next = this.sceneIndexAt(time) + 1;
+    const next = this.videoSource.locate(time).sceneIndex + 1;
     const cut = offsets[next];
     if (
       cut === undefined ||
@@ -267,10 +267,6 @@ export class SequencePlayerEngine {
         err,
       });
     });
-  }
-
-  private sceneIndexAt(time: number): number {
-    return this.videoSource.locate(time).sceneIndex;
   }
 
   getMeta(): SequencePlayerMeta {

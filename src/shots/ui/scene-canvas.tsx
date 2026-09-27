@@ -215,8 +215,8 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
         sequenceId={sequence.id}
         autoPlay={autoPlay}
         onAutoPlayConsumed={onAutoPlayConsumed}
-        onTimeUpdate={(time, clock) =>
-          onPlayingShot?.(shotIdAtSequenceTime(scopedShots, time, clock))
+        onTimeUpdate={(time, offsets) =>
+          onPlayingShot?.(shotIdAtSequenceTime(scopedShots, time, offsets))
         }
         draftLabel={draftLabel}
         overlayActions={

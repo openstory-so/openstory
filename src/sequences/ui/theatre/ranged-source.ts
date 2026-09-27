@@ -14,8 +14,6 @@ const BLOCK = 64 * 1024;
 const MAX_AHEAD_BLOCKS = 32; // 2 MiB
 /** Per source. Only the clip under the playhead holds more than its header. */
 const MAX_CACHED_BLOCKS = 256; // 16 MiB
-/** Re-fetches allowed when a concurrent run evicts a read's blocks. */
-const MAX_EVICTION_RETRIES = 3;
 const RETRY_DELAYS_MS = [500, 1500, 4000];
 
 type FetchFn = typeof fetch;
@@ -43,7 +41,7 @@ export function createRangedReader(
           headers: { Range: `bytes=${start}-${end - 1}` },
           signal: abort.signal,
         });
-        if (response.status !== 206 && response.status !== 200) {
+        if (response.status !== 206) {
           throw new Error(`HTTP ${response.status} for ${url}`);
         }
         break;
@@ -55,16 +53,9 @@ export function createRangedReader(
     }
     const total = /\/(\d+)$/.exec(response.headers.get('Content-Range') ?? '');
     const bytes = new Uint8Array(await response.arrayBuffer());
-    // A server that ignores Range sends the whole file from byte 0.
-    const offset = response.status === 200 ? 0 : start;
-    size ??= total ? Number(total[1]) : offset + bytes.byteLength;
-    for (
-      let b = Math.floor(offset / BLOCK);
-      b * BLOCK < offset + bytes.byteLength;
-      b++
-    ) {
-      const from = b * BLOCK - offset;
-      if (from < 0) continue;
+    size ??= total ? Number(total[1]) : start + bytes.byteLength;
+    for (let b = first; b * BLOCK < start + bytes.byteLength; b++) {
+      const from = (b - first) * BLOCK;
       blocks.delete(b); // re-insert: Map order is the LRU order
       blocks.set(
         b,
@@ -149,16 +140,12 @@ export function createRangedReader(
     read: async (start: number, end: number): Promise<Uint8Array> => {
       const first = Math.floor(start / BLOCK);
       const last = Math.floor((end - 1) / BLOCK);
-      // A run landing for another read can evict this one's blocks while it
-      // waits; fetch them again rather than fail the clip.
-      for (let attempt = 0; ; attempt++) {
-        await ensure(first, last);
-        const out = copyOut(start, end, first, last);
-        if (out) return out;
-        if (attempt === MAX_EVICTION_RETRIES) {
-          throw new Error(`Range ${start}-${end} of ${url} kept being evicted`);
-        }
-      }
+      await ensure(first, last);
+      // ponytail: fails if concurrent runs evict this read's blocks while it
+      // waits (>16 MiB landing meanwhile); raise MAX_CACHED_BLOCKS if seen.
+      const out = copyOut(start, end, first, last);
+      if (!out) throw new Error(`Range ${start}-${end} of ${url} was evicted`);
+      return out;
     },
     dispose: () => {
       abort.abort();

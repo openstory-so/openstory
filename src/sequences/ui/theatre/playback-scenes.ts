@@ -107,12 +107,6 @@ export function scenePlaybackKey(scenes: readonly SceneInput[]): string {
   );
 }
 
-/** What the sequence player knows about its own timeline. */
-export type PlaybackClock = {
-  /** The measured start of each playback scene. */
-  sceneOffsetsSeconds?: readonly number[];
-};
-
 /**
  * Which shot the sequence player is on at `time` (#1771). Scene boundaries
  * are the stitcher's measured offsets when it has them. Inside a packed
@@ -124,7 +118,8 @@ export function shotIdAtSequenceTime<
 >(
   shots: readonly S[],
   time: number,
-  clock: PlaybackClock = {}
+  /** The measured start of each playback scene, when known. */
+  sceneOffsetsSeconds?: readonly number[]
 ): string | undefined {
   const scenes = groupPlaybackShots(shots).map((group) =>
     packedClipWindows(group)
@@ -132,8 +127,8 @@ export function shotIdAtSequenceTime<
   let cursor = 0;
   for (const [index, windows] of scenes.entries()) {
     const estimated = windows.at(-1)?.endSeconds ?? 0;
-    const start = clock.sceneOffsetsSeconds?.[index] ?? cursor;
-    const end = clock.sceneOffsetsSeconds?.[index + 1] ?? start + estimated;
+    const start = sceneOffsetsSeconds?.[index] ?? cursor;
+    const end = sceneOffsetsSeconds?.[index + 1] ?? start + estimated;
     if (time < end) {
       const local =
         end > start ? ((time - start) / (end - start)) * estimated : 0;

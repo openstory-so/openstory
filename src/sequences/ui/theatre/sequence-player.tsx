@@ -16,7 +16,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/shadcn/tooltip';
 import type { SequencePlayerMeta } from './playback';
 import type { SceneInput } from './concatenated-video-source';
-import { scenePlaybackKey, type PlaybackClock } from './playback-scenes';
+import { scenePlaybackKey } from './playback-scenes';
 import {
   captureVideoPlay,
   captureVideoPlayFailed,
@@ -62,8 +62,11 @@ type SequencePlayerProps = {
    */
   autoPlay?: boolean;
   onAutoPlayConsumed?: () => void;
-  /** Playhead plus what this source knows about scene timing (#1771). */
-  onTimeUpdate?: (time: number, clock: PlaybackClock) => void;
+  /** Playhead plus the measured scene starts, once known (#1771). */
+  onTimeUpdate?: (
+    time: number,
+    sceneOffsetsSeconds?: readonly number[]
+  ) => void;
   /** Draft clips in this cut (#1756): "Draft cut · 2 days left", "3 of 12 shots are drafts". */
   draftLabel?: string | null;
 };
@@ -284,9 +287,7 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
               }}
               onTimeUpdate={(t) => {
                 tracker.tick(t);
-                onTimeUpdate?.(t, {
-                  sceneOffsetsSeconds: meta?.sceneOffsetsSeconds,
-                });
+                onTimeUpdate?.(t, meta?.sceneOffsetsSeconds);
               }}
               onPlay={() => {
                 if (!tracker.isActive()) tracker.start();

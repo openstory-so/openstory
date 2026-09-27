@@ -68,8 +68,9 @@ export const SequenceDownloadMenu: React.FC<{
         : hasStaleExport
           ? 'Cut changed since last render'
           : 'Not rendered yet';
+  const shortLabel = isRunning ? `Rendering… ${elapsed}`.trim() : 'Download';
   const triggerLabel = isRunning
-    ? `Rendering… ${elapsed}`.trim()
+    ? shortLabel
     : status
       ? `Download — ${status}`
       : 'Download';
@@ -91,7 +92,7 @@ export const SequenceDownloadMenu: React.FC<{
             {icon}
             {/* Labelled only when the view bar has room (canvas-view-toggle). */}
             <span className="hidden tabular-nums @[40rem]/viewbar:inline">
-              {isRunning ? `Rendering… ${elapsed}`.trim() : 'Download'}
+              {shortLabel}
             </span>
             <ChevronDown className="size-3" />
           </Button>

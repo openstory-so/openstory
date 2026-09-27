@@ -166,16 +166,16 @@ describe('shotIdAtSequenceTime (#1771)', () => {
 
   it('splits a measured scene by the members’ own durations', () => {
     // The packed clip really runs 12s, the still 3s, the last clip 5.5s.
-    const clock = { sceneOffsetsSeconds: [0, 12, 15] };
-    expect(shotIdAtSequenceTime(shots, 0, clock)).toBe('s1');
-    expect(shotIdAtSequenceTime(shots, 4.7, clock)).toBe('s1');
-    expect(shotIdAtSequenceTime(shots, 4.9, clock)).toBe('s2');
-    expect(shotIdAtSequenceTime(shots, 12, clock)).toBe('s3');
-    expect(shotIdAtSequenceTime(shots, 15, clock)).toBe('s4');
-    expect(shotIdAtSequenceTime(shots, 99, clock)).toBe('s4');
+    const offsets = [0, 12, 15];
+    expect(shotIdAtSequenceTime(shots, 0, offsets)).toBe('s1');
+    expect(shotIdAtSequenceTime(shots, 4.7, offsets)).toBe('s1');
+    expect(shotIdAtSequenceTime(shots, 4.9, offsets)).toBe('s2');
+    expect(shotIdAtSequenceTime(shots, 12, offsets)).toBe('s3');
+    expect(shotIdAtSequenceTime(shots, 15, offsets)).toBe('s4');
+    expect(shotIdAtSequenceTime(shots, 99, offsets)).toBe('s4');
   });
 
-  it('falls back to the plain estimate with no clock', () => {
+  it('falls back to the plain estimate with no offsets', () => {
     expect(shotIdAtSequenceTime(shots, 10.5)).toBe('s3');
     expect(shotIdAtSequenceTime([], 0)).toBeUndefined();
   });
