@@ -1,0 +1,642 @@
+[
+  {
+    "name": "Product · user_signed_up · #product-alerts (#1088)",
+    "type": "destination",
+    "channel": "#product-alerts",
+    "filters": {
+      "source": "events",
+      "events": [
+        {
+          "id": "user_signed_up",
+          "name": "user_signed_up",
+          "type": "events",
+          "order": 0,
+          "properties": []
+        }
+      ],
+      "filter_test_accounts": true
+    },
+    "text": "New signup: {person.properties.email ?? event.distinct_id}",
+    "blocks": [
+      {
+        "type": "header",
+        "text": {
+          "type": "plain_text",
+          "text": "🎉 New signup"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*{person.properties.email ?? event.distinct_id}* just created an account"
+        }
+      },
+      {
+        "type": "context",
+        "elements": [
+          {
+            "type": "mrkdwn",
+            "text": "Person: {person.properties.email ?? event.distinct_id}"
+          },
+          {
+            "type": "mrkdwn",
+            "text": "Project: <{project.url}|{project.name}>"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Product · user_signed_in · #product-alerts (#1088)",
+    "type": "destination",
+    "channel": "#product-alerts",
+    "filters": {
+      "source": "events",
+      "events": [
+        {
+          "id": "user_signed_in",
+          "name": "user_signed_in",
+          "type": "events",
+          "order": 0,
+          "properties": []
+        }
+      ],
+      "filter_test_accounts": true
+    },
+    "text": "Sign-in: {person.properties.email ?? event.distinct_id}",
+    "blocks": [
+      {
+        "type": "header",
+        "text": {
+          "type": "plain_text",
+          "text": "👋 User signed in"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*{person.properties.email ?? event.distinct_id}* signed in ({event.properties.path ?? \"session\"})"
+        }
+      },
+      {
+        "type": "context",
+        "elements": [
+          {
+            "type": "mrkdwn",
+            "text": "Person: {person.properties.email ?? event.distinct_id}"
+          },
+          {
+            "type": "mrkdwn",
+            "text": "Project: <{project.url}|{project.name}>"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Product · sequence_generated · #product-alerts (#1088)",
+    "type": "destination",
+    "channel": "#product-alerts",
+    "filters": {
+      "source": "events",
+      "events": [
+        {
+          "id": "sequence_generated",
+          "name": "sequence_generated",
+          "type": "events",
+          "order": 0,
+          "properties": []
+        }
+      ],
+      "filter_test_accounts": true
+    },
+    "text": "Film started: {person.properties.email ?? event.distinct_id}",
+    "blocks": [
+      {
+        "type": "header",
+        "text": {
+          "type": "plain_text",
+          "text": "🎬 Film / sequence created"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*{person.properties.email ?? event.distinct_id}* created a sequence ({event.properties.source ?? \"create\"}, {event.properties.sequence_count ?? 1} seq, style `{event.properties.style_id}`)"
+        }
+      },
+      {
+        "type": "context",
+        "elements": [
+          {
+            "type": "mrkdwn",
+            "text": "Person: {person.properties.email ?? event.distinct_id}"
+          },
+          {
+            "type": "mrkdwn",
+            "text": "Project: <{project.url}|{project.name}>"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Product · welcome_card_setup_opened · #product-alerts (#1667)",
+    "type": "destination",
+    "channel": "#product-alerts",
+    "filters": {
+      "source": "events",
+      "events": [
+        {
+          "id": "welcome_card_setup_opened",
+          "name": "welcome_card_setup_opened",
+          "type": "events",
+          "order": 0,
+          "properties": []
+        }
+      ],
+      "filter_test_accounts": true
+    },
+    "text": "Adding a card: {person.properties.email ?? event.distinct_id}",
+    "blocks": [
+      {
+        "type": "header",
+        "text": {
+          "type": "plain_text",
+          "text": "Adding a card"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*{person.properties.email ?? event.distinct_id}* opened Stripe to save a payment method"
+        }
+      },
+      {
+        "type": "context",
+        "elements": [
+          {
+            "type": "mrkdwn",
+            "text": "Person: {person.properties.email ?? event.distinct_id}"
+          },
+          {
+            "type": "mrkdwn",
+            "text": "Project: <{project.url}|{project.name}>"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Product · welcome_credits_granted · #product-alerts (#1667)",
+    "type": "destination",
+    "channel": "#product-alerts",
+    "filters": {
+      "source": "events",
+      "events": [
+        {
+          "id": "welcome_credits_granted",
+          "name": "welcome_credits_granted",
+          "type": "events",
+          "order": 0,
+          "properties": []
+        }
+      ],
+      "filter_test_accounts": true
+    },
+    "text": "Welcome credits: {person.properties.email ?? event.distinct_id}",
+    "blocks": [
+      {
+        "type": "header",
+        "text": {
+          "type": "plain_text",
+          "text": "Welcome credits"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*{person.properties.email ?? event.distinct_id}* saved a card and received {event.properties.amount_usd} USD ({event.properties.source})"
+        }
+      },
+      {
+        "type": "context",
+        "elements": [
+          {
+            "type": "mrkdwn",
+            "text": "Person: {person.properties.email ?? event.distinct_id}"
+          },
+          {
+            "type": "mrkdwn",
+            "text": "Project: <{project.url}|{project.name}>"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Product · checkout_completed · #product-alerts (#1856)",
+    "type": "destination",
+    "channel": "#product-alerts",
+    "filters": {
+      "source": "events",
+      "events": [
+        {
+          "id": "checkout_completed",
+          "name": "checkout_completed",
+          "type": "events",
+          "order": 0,
+          "properties": []
+        }
+      ],
+      "filter_test_accounts": true
+    },
+    "text": "Credits bought: {person.properties.email ?? event.distinct_id} · {event.properties.amount_usd} USD",
+    "blocks": [
+      {
+        "type": "header",
+        "text": {
+          "type": "plain_text",
+          "text": "💳 Credits bought"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*{person.properties.email ?? event.distinct_id}* bought {event.properties.amount_usd} USD of credits ({event.properties.method == 'saved_card' ? 'saved card' : 'Stripe checkout'})"
+        }
+      },
+      {
+        "type": "context",
+        "elements": [
+          {
+            "type": "mrkdwn",
+            "text": "Person: {person.properties.email ?? event.distinct_id}"
+          },
+          {
+            "type": "mrkdwn",
+            "text": "Project: <{project.url}|{project.name}>"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Content · studio_generation_completed image · #generated-content (#1667)",
+    "type": "destination",
+    "channel": "#generated-content",
+    "filters": {
+      "source": "events",
+      "events": [
+        {
+          "id": "studio_generation_completed",
+          "name": "studio_generation_completed",
+          "type": "events",
+          "order": 0,
+          "properties": [
+            {
+              "key": "activity",
+              "value": "image",
+              "operator": "exact",
+              "type": "event"
+            }
+          ]
+        }
+      ],
+      "filter_test_accounts": true
+    },
+    "text": "Studio still: {person.properties.email ?? event.distinct_id}",
+    "blocks": [
+      {
+        "type": "header",
+        "text": {
+          "type": "plain_text",
+          "text": "Studio still"
+        }
+      },
+      {
+        "type": "image",
+        "image_url": "{event.properties.preview_url}",
+        "alt_text": "Studio still"
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*{person.properties.email ?? event.distinct_id}* generated a still (`{event.properties.model}`)\n>{substring(event.properties.prompt, 1, 280)}"
+        }
+      },
+      {
+        "type": "context",
+        "elements": [
+          {
+            "type": "mrkdwn",
+            "text": "Person: {person.properties.email ?? event.distinct_id}"
+          },
+          {
+            "type": "mrkdwn",
+            "text": "Project: <{project.url}|{project.name}>"
+          }
+        ]
+      },
+      {
+        "type": "divider"
+      },
+      {
+        "type": "actions",
+        "elements": [
+          {
+            "type": "button",
+            "text": {
+              "type": "plain_text",
+              "text": "Open in Images"
+            },
+            "url": "{event.properties.watch_url}"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Content · studio_generation_completed video · #generated-content (#1667)",
+    "type": "destination",
+    "channel": "#generated-content",
+    "filters": {
+      "source": "events",
+      "events": [
+        {
+          "id": "studio_generation_completed",
+          "name": "studio_generation_completed",
+          "type": "events",
+          "order": 0,
+          "properties": [
+            {
+              "key": "activity",
+              "value": "video",
+              "operator": "exact",
+              "type": "event"
+            }
+          ]
+        }
+      ],
+      "filter_test_accounts": true
+    },
+    "text": "Studio clip: {person.properties.email ?? event.distinct_id}",
+    "blocks": [
+      {
+        "type": "header",
+        "text": {
+          "type": "plain_text",
+          "text": "Studio clip"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*{person.properties.email ?? event.distinct_id}* generated a clip (`{event.properties.model}`, {event.properties.duration ?? \"?\"}s)\n<{event.properties.media_url}|Play>\n>{substring(event.properties.prompt, 1, 280)}"
+        }
+      },
+      {
+        "type": "context",
+        "elements": [
+          {
+            "type": "mrkdwn",
+            "text": "Person: {person.properties.email ?? event.distinct_id}"
+          },
+          {
+            "type": "mrkdwn",
+            "text": "Project: <{project.url}|{project.name}>"
+          }
+        ]
+      },
+      {
+        "type": "divider"
+      },
+      {
+        "type": "actions",
+        "elements": [
+          {
+            "type": "button",
+            "text": {
+              "type": "plain_text",
+              "text": "Open in Videos"
+            },
+            "url": "{event.properties.watch_url}"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Content · sequence_content_ready · #generated-content (#1667)",
+    "type": "destination",
+    "channel": "#generated-content",
+    "filters": {
+      "source": "events",
+      "events": [
+        {
+          "id": "sequence_content_ready",
+          "name": "sequence_content_ready",
+          "type": "events",
+          "order": 0,
+          "properties": []
+        }
+      ],
+      "filter_test_accounts": true
+    },
+    "text": "Sequence ready: {event.properties.title}",
+    "blocks": [
+      {
+        "type": "header",
+        "text": {
+          "type": "plain_text",
+          "text": "Sequence ready"
+        }
+      },
+      {
+        "type": "image",
+        "image_url": "{event.properties.preview_url}",
+        "alt_text": "Sequence poster"
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*{person.properties.email ?? event.distinct_id}* finished *{event.properties.title}*"
+        }
+      },
+      {
+        "type": "context",
+        "elements": [
+          {
+            "type": "mrkdwn",
+            "text": "Person: {person.properties.email ?? event.distinct_id}"
+          },
+          {
+            "type": "mrkdwn",
+            "text": "Project: <{project.url}|{project.name}>"
+          }
+        ]
+      },
+      {
+        "type": "divider"
+      },
+      {
+        "type": "actions",
+        "elements": [
+          {
+            "type": "button",
+            "text": {
+              "type": "plain_text",
+              "text": "Watch"
+            },
+            "url": "{event.properties.watch_url}"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Issue spiking · #ops-alerts (#1088)",
+    "type": "internal_destination",
+    "channel": "#ops-alerts",
+    "filters": {
+      "source": "internal-events",
+      "events": [
+        {
+          "id": "$error_tracking_issue_spiking",
+          "name": "$error_tracking_issue_spiking",
+          "type": "events",
+          "order": 0,
+          "properties": []
+        }
+      ],
+      "filter_test_accounts": false
+    },
+    "text": "Issue spiking: {event.properties.name}",
+    "blocks": [
+      {
+        "type": "header",
+        "text": {
+          "type": "plain_text",
+          "text": "📈 Issue spiking"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "```{event.properties.name}: {substring(event.properties.description, 1, 1000)}```"
+        }
+      },
+      {
+        "type": "context",
+        "elements": [
+          {
+            "type": "plain_text",
+            "text": "Exceptions in last 5 minutes: {event.properties.current_bucket_value} ({event.properties.computed_baseline > 0 ? concat(round(event.properties.current_bucket_value / event.properties.computed_baseline), 'x over baseline') : 'no baseline yet'})"
+          },
+          {
+            "type": "mrkdwn",
+            "text": "Project: <{project.url}|{project.name}>"
+          },
+          {
+            "type": "mrkdwn",
+            "text": "Alert: <{source.url}|{source.name}>"
+          }
+        ]
+      },
+      {
+        "type": "divider"
+      },
+      {
+        "type": "actions",
+        "elements": [
+          {
+            "type": "button",
+            "text": {
+              "type": "plain_text",
+              "text": "View Issue"
+            },
+            "url": "{project.url}/error_tracking/fingerprint/{encodeURLComponent(event.properties.fingerprint)}?timestamp={event.properties.exception_timestamp}&utm_source=alert&utm_campaign=error_tracking_alert&utm_medium=slack"
+          }
+        ]
+      }
+    ],
+    "why": "PostHog internal event: internal-events source, no person, so no test-account filter. On the events source it never fires."
+  },
+  {
+    "name": "Product · sequence_error · #product-alerts (#1088)",
+    "type": "destination",
+    "channel": "#product-alerts",
+    "why": "A sequence or generation workflow failed (base-workflow catch). Staff runs included on purpose; de-duplicated per person and workflow for 30 minutes.",
+    "filters": {
+      "source": "events",
+      "events": [
+        {
+          "id": "sequence_error",
+          "name": "sequence_error",
+          "type": "events",
+          "order": 0,
+          "properties": []
+        }
+      ],
+      "filter_test_accounts": false
+    },
+    "masking": {
+      "ttl": 1800,
+      "threshold": null,
+      "hash": "{event.distinct_id}{event.properties.workflow}"
+    },
+    "text": "Sequence error: {person.properties.email ?? event.distinct_id} — {event.properties.workflow}",
+    "blocks": [
+      {
+        "type": "header",
+        "text": {
+          "type": "plain_text",
+          "text": "🚨 Sequence error"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*{person.properties.email ?? event.distinct_id}* hit an error in `{event.properties.workflow}`\n```{event.properties.error}```"
+        }
+      },
+      {
+        "type": "context",
+        "elements": [
+          {
+            "type": "mrkdwn",
+            "text": "Sequence: `{event.properties.sequence_id ?? \"n/a\"}` · Team: `{event.properties.team_id}` · Run: `{event.properties.run_id}`"
+          },
+          {
+            "type": "mrkdwn",
+            "text": "Project: <{project.url}|{project.name}>"
+          }
+        ]
+      },
+      {
+        "type": "actions",
+        "elements": [
+          {
+            "type": "button",
+            "text": {
+              "type": "plain_text",
+              "text": "View person in PostHog"
+            },
+            "url": "{person.url}"
+          }
+        ]
+      }
+    ]
+  }
+]
