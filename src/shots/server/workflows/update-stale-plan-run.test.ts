@@ -90,6 +90,7 @@ function makeStep(): WorkflowStep {
 }
 
 const claimSheet = vi.fn(async (id: string) => `csv-${id}`);
+const failSheetClaim = vi.fn(async () => undefined);
 const claimReference = vi.fn(async (id: string) => `lrv-${id}`);
 const createPendingVoiceClaim = vi.fn(async (id: string) => ({
   created: true,
@@ -101,6 +102,7 @@ function makeScopedDb(): WorkflowScopedDb {
   return {
     characters: {
       claimSheet,
+      failSheetClaim,
       createPendingVoiceClaim,
       markVoiceClaimTerminal: vi.fn(),
     },
@@ -268,6 +270,12 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
         expect.objectContaining({ shotId: 'ravi', stage: 'reference' }),
         expect.objectContaining({ shotId: 's-ravi', stage: 'image' }),
       ])
+    );
+    // Cleared by the run too: a child that never started has no onFailure.
+    expect(failSheetClaim).toHaveBeenCalledWith(
+      'ravi',
+      'csv-ravi',
+      'sheet model refused'
     );
     expect(result.images).toBe(1);
   });

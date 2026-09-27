@@ -327,11 +327,16 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
       await Promise.allSettled([
         ...references.characterSheets.map(async (payload) => {
           const id = payload.characterDbId;
+          let sheetVersionId: string;
           try {
-            const sheetVersionId = await step.do(
-              `claim-character-sheet-${id}`,
-              () => scopedDb.characters.claimSheet(id, { markGenerating: true })
+            sheetVersionId = await step.do(`claim-character-sheet-${id}`, () =>
+              scopedDb.characters.claimSheet(id, { markGenerating: true })
             );
+          } catch (error) {
+            failReference(id, 'reference', error);
+            return;
+          }
+          try {
             await spawnAndAwaitChild<
               CharacterSheetWorkflowInput,
               CharacterSheetWorkflowResult
@@ -347,18 +352,33 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             });
           } catch (error) {
             failReference(id, 'reference', error);
+            // A child that never started has no onFailure to clear the
+            // claim; the guarded clear is a no-op when one did.
+            await step.do(`fail-character-sheet-claim-${id}`, () =>
+              scopedDb.characters.failSheetClaim(
+                id,
+                sheetVersionId,
+                error instanceof Error ? error.message : String(error)
+              )
+            );
           }
         }),
         ...references.locationSheets.map(async (payload) => {
           const id = payload.locationDbId;
+          let referenceVersionId: string;
           try {
-            const referenceVersionId = await step.do(
+            referenceVersionId = await step.do(
               `claim-location-sheet-${id}`,
               () =>
                 scopedDb.sequenceLocations.claimReference(id, {
                   markGenerating: true,
                 })
             );
+          } catch (error) {
+            failReference(id, 'reference', error);
+            return;
+          }
+          try {
             await spawnAndAwaitChild<
               LocationSheetWorkflowInput,
               LocationSheetWorkflowResult
@@ -374,6 +394,13 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             });
           } catch (error) {
             failReference(id, 'reference', error);
+            await step.do(`fail-location-sheet-claim-${id}`, () =>
+              scopedDb.sequenceLocations.failReferenceClaim(
+                id,
+                referenceVersionId,
+                error instanceof Error ? error.message : String(error)
+              )
+            );
           }
         }),
         ...(references.elementSheets
