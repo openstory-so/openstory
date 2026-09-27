@@ -1,32 +1,34 @@
 /**
  * #1088 — Wire PostHog → Slack destinations/alerts (credit purchases: #1856).
  *
- * Creates (idempotent by name) the product-activity Slack destinations and the
- * error-tracking spike alert described in issue #1088, plus the per-exception
- * alert with a replay link from #1513.
+ * The Slack alerts PostHog sends, as code: the product-activity destinations
+ * and error-tracking spike alert from #1088, the per-exception alert with a
+ * replay link from #1513, and the rest listed in `specs()`.
  *
- * Idempotency is by destination NAME: editing a spec below does not update the
- * destination that already exists — delete it in PostHog first, or edit it
- * there.
+ * This file is the source of truth (#1859). Each run matches alerts by NAME:
+ * a missing alert is created, and an existing one whose channel, message,
+ * blocks or event filter differs from its spec is updated to match. Edits made
+ * in PostHog are overwritten, so make them here. Alerts in PostHog that no
+ * spec names are listed and left alone; a disabled alert stays disabled.
  *
  * Prerequisites:
  * 1. Slack is connected in PostHog → Settings → Integrations
  * 2. The PostHog Slack app is invited to `#product-alerts`, `#ops-alerts`,
  *    and `#generated-content`
  * 3. A personal API key with `hog_function:write` (+ integrations read):
- *    https://us.posthog.com/settings/user-api-keys
+ *    https://us.posthog.com/settings/user-api-keys — put it and the project
+ *    id in `.env.local` (Bun loads it) as POSTHOG_PERSONAL_API_KEY and
+ *    POSTHOG_PROJECT_ID.
  *
  * Usage:
- *   POSTHOG_PERSONAL_API_KEY=phx_… \
- *   POSTHOG_PROJECT_ID=… \
- *   bun scripts/setup-posthog-slack-alerts.ts
+ *   DRY_RUN=1 bun scripts/setup-posthog-slack-alerts.ts   # plan + drift, no writes
+ *   bun scripts/setup-posthog-slack-alerts.ts             # apply
  *
  * Optional overrides:
  *   POSTHOG_HOST=https://us.posthog.com
  *   PRODUCT_CHANNEL=#product-alerts
  *   OPS_CHANNEL=#ops-alerts
  *   CONTENT_CHANNEL=#generated-content
- *   DRY_RUN=1   # print planned creates only
  */
 
 import { z } from 'zod';
@@ -57,6 +59,50 @@ const hogFunctionSchema = z.object({
   type: z.string(),
   enabled: z.boolean().optional(),
   deleted: z.boolean().optional(),
+  template: z.object({ id: z.string() }).nullable().optional(),
+  filters: z
+    .object({
+      properties: z.array(z.object({ key: z.string() })).optional(),
+    })
+    .nullable()
+    .optional(),
+});
+
+/**
+ * A destination PostHog made for one of its own alerts (a logs or insight
+ * alert) is filtered on that alert's id and managed there, not here.
+ */
+const ownedByPostHogAlert = (f: HogFunctionSummary): boolean =>
+  (f.filters?.properties ?? []).some((p) => p.key === 'alert_id');
+
+/** The parts of a live alert the file owns; everything else is PostHog's. */
+const hogFunctionDetailSchema = z.object({
+  id: z.string(),
+  type: z.string(),
+  enabled: z.boolean(),
+  filters: z
+    .object({
+      events: z
+        .array(
+          z.object({
+            id: z.string(),
+            properties: z.array(z.unknown()).optional(),
+          })
+        )
+        .default([]),
+      source: z.string().optional(),
+      filter_test_accounts: z.boolean().optional(),
+    })
+    .nullable()
+    .optional(),
+  inputs: z
+    .record(z.string(), z.object({ value: z.unknown() }).nullable())
+    .nullable()
+    .optional(),
+});
+
+const slackChannelListSchema = z.object({
+  channels: z.array(z.object({ id: z.string(), name: z.string() })).default([]),
 });
 
 const hogFunctionListSchema = z.object({
@@ -145,19 +191,25 @@ type PropertyFilter = {
   type: 'event';
 };
 
-function eventFilter(eventName: string, properties: PropertyFilter[] = []) {
+/**
+ * An internal destination listens to PostHog's own events (an issue spiking),
+ * which arrive on the internal-events source and carry no person, so the
+ * test-account filter doesn't apply. On the events source it never fires.
+ */
+function eventFilter(spec: DestinationSpec) {
+  const internal = spec.type === 'internal_destination';
   return {
-    source: 'events',
+    source: internal ? 'internal-events' : 'events',
     events: [
       {
-        id: eventName,
-        name: eventName,
+        id: spec.event,
+        name: spec.event,
         type: 'events',
         order: 0,
-        properties,
+        properties: spec.properties ?? [],
       },
     ],
-    filter_test_accounts: true,
+    filter_test_accounts: !internal,
   };
 }
 
@@ -490,25 +542,88 @@ function specs(): DestinationSpec[] {
   ];
 }
 
-async function ensureDestination(
+/**
+ * Slack channel name → id. PostHog stores whichever it was given, and the UI
+ * stores ids, so both sides are compared as ids. A channel the app can't list
+ * (private, not invited) compares by its raw string.
+ */
+async function slackChannelIds(
+  integrationId: number
+): Promise<Map<string, string>> {
+  try {
+    const data = slackChannelListSchema.parse(
+      await phFetch(
+        `/api/projects/${PROJECT_ID}/integrations/${integrationId}/channels/`
+      )
+    );
+    return new Map(data.channels.map((c) => [`#${c.name}`, c.id]));
+  } catch (err) {
+    console.warn(`  ! could not list Slack channels: ${String(err)}`);
+    return new Map();
+  }
+}
+
+/** Stable JSON: object keys sorted, so key order never reads as drift. */
+function canon(value: unknown): string {
+  const sort = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(sort);
+    if (v !== null && typeof v === 'object') {
+      return Object.fromEntries(
+        Object.entries(v)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([k, x]) => [k, sort(x)])
+      );
+    }
+    return v;
+  };
+  return JSON.stringify(sort(value));
+}
+
+type Detail = z.infer<typeof hogFunctionDetailSchema>;
+
+/** What the file says an alert's filter is, reduced to what it controls. */
+function filterKey(events: Array<{ id: string; properties?: unknown[] }>) {
+  return canon({
+    events: events.map((e) => ({ id: e.id, properties: e.properties ?? [] })),
+  });
+}
+
+/** Fields that differ between the live alert and its spec, by name. */
+function drift(
+  live: Detail,
+  spec: DestinationSpec,
+  channelIds: Map<string, string>
+): string[] {
+  const input = (key: string) => live.inputs?.[key]?.value;
+  const asId = (c: unknown) =>
+    typeof c === 'string' ? (channelIds.get(c) ?? c) : c;
+  const out: string[] = [];
+  if (live.type !== spec.type) out.push('type');
+  if (asId(input('channel')) !== asId(spec.channel)) out.push('channel');
+  if (input('text') !== spec.text) out.push('text');
+  if (canon(input('blocks')) !== canon(spec.blocks)) out.push('blocks');
+  const wanted = eventFilter(spec);
+  if (
+    filterKey(live.filters?.events ?? []) !== filterKey(wanted.events) ||
+    (live.filters?.source ?? 'events') !== wanted.source ||
+    (live.filters?.filter_test_accounts ?? false) !==
+      wanted.filter_test_accounts
+  ) {
+    out.push('filter');
+  }
+  return out;
+}
+
+type Outcome = 'created' | 'updated' | 'unchanged' | 'planned';
+
+async function syncDestination(
   existing: HogFunctionSummary[],
   slackWorkspaceId: number,
+  channelIds: Map<string, string>,
   spec: DestinationSpec
-): Promise<'created' | 'exists' | 'dry-run'> {
-  const match = existing.find((f) => f.name === spec.name);
-  if (match) {
-    console.log(`  ✓ exists: ${spec.name} (${match.id})`);
-    return 'exists';
-  }
-
-  const payload = {
-    type: spec.type,
-    template_id: 'template-slack',
-    name: spec.name,
-    description:
-      'Created by scripts/setup-posthog-slack-alerts.ts (#1088, #1667)',
-    enabled: true,
-    filters: eventFilter(spec.event, spec.properties),
+): Promise<Outcome> {
+  const body = {
+    filters: eventFilter(spec),
     inputs: {
       slack_workspace: { value: slackWorkspaceId },
       channel: { value: spec.channel },
@@ -516,21 +631,64 @@ async function ensureDestination(
       blocks: { value: spec.blocks },
     },
   };
+  const match = existing.find((f) => f.name === spec.name);
 
-  if (DRY_RUN) {
-    console.log(`  · dry-run create: ${spec.name}`);
-    console.log(JSON.stringify(payload, null, 2));
-    return 'dry-run';
+  if (!match) {
+    if (DRY_RUN) {
+      console.log(`  + would create: ${spec.name}`);
+      return 'planned';
+    }
+    const created = createdHogFunctionSchema.parse(
+      await phFetch(`/api/projects/${PROJECT_ID}/hog_functions/`, {
+        method: 'POST',
+        body: JSON.stringify({
+          ...body,
+          type: spec.type,
+          template_id: 'template-slack',
+          name: spec.name,
+          description:
+            'Created by scripts/setup-posthog-slack-alerts.ts (#1088, #1667)',
+          enabled: true,
+        }),
+      })
+    );
+    console.log(`  + created: ${spec.name} (${created.id})`);
+    return 'created';
   }
 
-  const created = createdHogFunctionSchema.parse(
-    await phFetch(`/api/projects/${PROJECT_ID}/hog_functions/`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    })
+  const live = hogFunctionDetailSchema.parse(
+    await phFetch(`/api/projects/${PROJECT_ID}/hog_functions/${match.id}/`)
   );
-  console.log(`  + created: ${spec.name} (${created.id})`);
-  return 'created';
+  const off = live.enabled ? '' : ' [disabled in PostHog, left disabled]';
+  const fields = drift(live, spec, channelIds);
+  if (!fields.length) {
+    console.log(`  ✓ matches: ${spec.name}${off}`);
+    return 'unchanged';
+  }
+  if (fields.includes('type')) {
+    // PostHog won't change a function's type in place.
+    console.log(
+      `  ! ${spec.name}: type is ${live.type}, file says ${spec.type}. Delete it in PostHog and re-run.`
+    );
+    return 'unchanged';
+  }
+  if (DRY_RUN) {
+    console.log(`  ~ would update: ${spec.name} (${fields.join(', ')})${off}`);
+    for (const f of fields.filter((x) => x === 'text' || x === 'blocks')) {
+      const was = canon(live.inputs?.[f]?.value).slice(0, 300);
+      const now = canon(f === 'text' ? spec.text : spec.blocks).slice(0, 300);
+      console.log(
+        `      ${f} in PostHog: ${was}\n      ${f} in file:    ${now}`
+      );
+    }
+    return 'planned';
+  }
+  await phFetch(`/api/projects/${PROJECT_ID}/hog_functions/${match.id}/`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+  console.log(`  ~ updated: ${spec.name} (${fields.join(', ')})${off}`);
+  return 'updated';
 }
 
 async function main() {
@@ -551,17 +709,43 @@ async function main() {
 
   const existing = await listHogFunctions();
   console.log(`Found ${existing.length} existing hog functions`);
+  const channelIds = await slackChannelIds(slackWorkspaceId);
 
-  let created = 0;
-  let skipped = 0;
-  for (const spec of specs()) {
-    const result = await ensureDestination(existing, slackWorkspaceId, spec);
-    if (result === 'created') created += 1;
-    if (result === 'exists') skipped += 1;
+  const all = specs();
+  const counts: Record<Outcome, number> = {
+    created: 0,
+    updated: 0,
+    unchanged: 0,
+    planned: 0,
+  };
+  for (const spec of all) {
+    counts[
+      await syncDestination(existing, slackWorkspaceId, channelIds, spec)
+    ] += 1;
   }
 
-  console.log('\nDone.');
-  console.log(`  created=${created} already_existed=${skipped}`);
+  // Slack alerts made in PostHog that no spec names: reported, never touched.
+  const named = new Set(all.map((s) => s.name));
+  const unmanaged = existing.filter(
+    (f) =>
+      f.template?.id === 'template-slack' &&
+      !ownedByPostHogAlert(f) &&
+      !named.has(f.name ?? '')
+  );
+  if (unmanaged.length) {
+    console.log('\nSlack alerts in PostHog that this file does not define:');
+    for (const f of unmanaged) {
+      console.log(
+        `  ? ${f.name ?? '(unnamed)'} (${f.id})${f.enabled === false ? ' [disabled]' : ''}`
+      );
+    }
+    console.log('  Add a spec for each one you want kept, or delete it.');
+  }
+
+  console.log(`\n${DRY_RUN ? 'Planned (no writes).' : 'Done.'}`);
+  console.log(
+    `  created=${counts.created} updated=${counts.updated} unchanged=${counts.unchanged} planned=${counts.planned}`
+  );
   console.log(`
 Manual follow-ups (not automated — needs baseline tuning):
   1. Invite the PostHog Slack app to ${PRODUCT_CHANNEL}, ${OPS_CHANNEL}, and ${CONTENT_CHANNEL}
