@@ -147,6 +147,30 @@ describe('classifyUpload', () => {
 });
 
 describe('attestUploads', () => {
+  it('lets the user mark a cleared upload as a real person (#1847)', async () => {
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    await recordLikenessFinding(scopedDb, [url], 'animated', request);
+    expect(await likenessFromLedger(scopedDb, url)).toBe('none');
+
+    await attestUploads(
+      scopedDb,
+      [
+        {
+          url,
+          statementVersion: PORTRAIT_RIGHTS_V1.version,
+          authorizationBasis: 'signed release',
+        },
+      ],
+      request
+    );
+
+    expect(
+      await classifyUpload({ scopedDb, userId: USER_ID, url, request })
+    ).toEqual({ status: 'signed' });
+    expect(await likenessFromLedger(scopedDb, url)).toBe('real');
+    expect(mockAnalyze).not.toHaveBeenCalled();
+  });
+
   it('records the portrait statement with the basis; a repeat is a no-op', async () => {
     const scopedDb = createScopedDb(TEAM_ID, USER_ID);
     await recordLikenessFinding(scopedDb, [url], 'human', request);

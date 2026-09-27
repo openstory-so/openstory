@@ -143,6 +143,7 @@ import {
   Shuffle,
   SlidersHorizontal,
   Sparkles,
+  UserRound,
   X,
 } from 'lucide-react';
 import {
@@ -213,6 +214,7 @@ function Tile({
   onRemove,
   removeLabel = `Remove ${reference.label}`,
   checking = false,
+  realPerson,
 }: {
   reference: StudioReference;
   badge: string;
@@ -220,6 +222,8 @@ function Tile({
   removeLabel?: string;
   /** Rights check in flight (#1581): the still is being looked at. */
   checking?: boolean;
+  /** A cleared still the user can mark as a real person (#1847). */
+  realPerson?: { marked: boolean; onToggle: () => void };
 }) {
   return (
     <div
@@ -280,6 +284,24 @@ function Tile({
         )}
         {badge}
       </span>
+      {realPerson && (
+        <Button
+          type="button"
+          size="icon-xs"
+          variant={realPerson.marked ? 'default' : 'secondary'}
+          className={cn(
+            'absolute top-1 left-1 transition-opacity',
+            !realPerson.marked &&
+              'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+          )}
+          aria-label={`${badge} shows a real person`}
+          title="This shows a real person"
+          aria-pressed={realPerson.marked}
+          onClick={realPerson.onToggle}
+        >
+          <UserRound aria-hidden="true" />
+        </Button>
+      )}
       <Button
         type="button"
         size="icon-xs"
@@ -377,6 +399,9 @@ export function StudioComposer({
   // given for, so attaching another unattested still un-ticks it.
   const [portraitTickedFor, setPortraitTickedFor] = useState('');
   const [authorizationBasis, setAuthorizationBasis] = useState('');
+  // Cleared stills the user says show a real person (#1847). Only ever adds
+  // a sign-off; the server still decides what counts as cleared.
+  const [markedReal, setMarkedReal] = useState<string[]>([]);
   const [pendingSeed, setPendingSeed] = useState<StudioReuse | null>(null);
 
   const applySeed = useCallback(
@@ -633,7 +658,26 @@ export function StudioComposer({
     const url = gatedUrls[i];
     return url ? [{ url, query }] : [];
   });
-  const owed = checks.filter((c) => c.query.data?.status === 'needs_portrait');
+  const cleared = new Set(
+    checks.filter((c) => c.query.data?.status === 'cleared').map((c) => c.url)
+  );
+  const owed = checks.filter(
+    (c) =>
+      c.query.data?.status === 'needs_portrait' ||
+      (cleared.has(c.url) && markedReal.includes(c.url))
+  );
+  const realPersonToggle = (url: string) =>
+    cleared.has(url)
+      ? {
+          marked: markedReal.includes(url),
+          onToggle: () =>
+            setMarkedReal((prev) =>
+              prev.includes(url)
+                ? prev.filter((u) => u !== url)
+                : [...prev, url]
+            ),
+        }
+      : undefined;
   const portraitUrls = owed.map((c) => c.url);
   const portraitKey = portraitUrls.join('\n');
   const portraitTicked =
@@ -1208,6 +1252,7 @@ export function StudioComposer({
                     reference={reference}
                     badge={`@Image${index + 1}`}
                     checking={checking.has(reference.url)}
+                    realPerson={realPersonToggle(reference.url)}
                     onRemove={() => removeReference('image', index)}
                   />
                 ))}
@@ -1242,6 +1287,7 @@ export function StudioComposer({
                     reference={startFrame}
                     badge="Start"
                     checking={checking.has(startFrame.url)}
+                    realPerson={realPersonToggle(startFrame.url)}
                     removeLabel="Remove start frame"
                     onRemove={() => setStartFrame(null)}
                   />
@@ -1257,6 +1303,7 @@ export function StudioComposer({
                       reference={endFrame}
                       badge="End"
                       checking={checking.has(endFrame.url)}
+                      realPerson={realPersonToggle(endFrame.url)}
                       removeLabel="Remove end frame"
                       onRemove={() => setEndFrame(null)}
                     />
