@@ -14,6 +14,9 @@ if (all) {
   // dev:bunny pins the renderer to 8080; it would otherwise inherit the
   // app's PORT from .env.local and collide with it.
   process.env.VIDEO_EXPORT_DEV_URL = 'http://localhost:8080';
+  // The renderer runs on this machine: it fetches clips from the app here,
+  // not through VITE_APP_URL, which is the dev tunnel when one is set up.
+  process.env.VIDEO_EXPORT_DEV_MEDIA_ORIGIN = `http://localhost:${process.env.PORT ?? 3000}`;
 }
 
 const child = spawn(

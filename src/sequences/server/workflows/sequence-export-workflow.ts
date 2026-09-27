@@ -48,6 +48,8 @@ type ContainerExportJob = {
 type ContainerEnv = {
   VIDEO_EXPORT_CONTAINER?: DurableObjectNamespace<VideoExportContainer>;
   VIDEO_EXPORT_DEV_URL?: string;
+  /** Where the local renderer fetches `/r2/` media from (set by `bun dev:all`). */
+  VIDEO_EXPORT_DEV_MEDIA_ORIGIN?: string;
 };
 
 export class SequenceExportWorkflow extends OpenStoryWorkflowEntrypoint<SequenceExportWorkflowInput> {
@@ -64,8 +66,12 @@ export class SequenceExportWorkflow extends OpenStoryWorkflowEntrypoint<Sequence
     }
 
     // Absolutize stored `/r2/...` URLs so the off-platform container can fetch
-    // them (CDN domain in prod, else the worker origin).
-    const origin = env.VITE_APP_URL;
+    // them (CDN domain in prod, else the worker origin). The local renderer
+    // uses the app's localhost origin: VITE_APP_URL is the dev tunnel when
+    // one is set up, and a disconnected tunnel answers 530.
+    const origin =
+      (env.VIDEO_EXPORT_DEV_URL && env.VIDEO_EXPORT_DEV_MEDIA_ORIGIN) ||
+      env.VITE_APP_URL;
     const job: ContainerExportJob = {
       scenes: scenes.map((scene) => ({
         orderIndex: scene.orderIndex,

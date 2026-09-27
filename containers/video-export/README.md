@@ -70,9 +70,14 @@ curl -sX POST http://localhost:8080/export -H 'content-type: application/json' \
 **`bun dev:all`** starts this service with the app + Stripe listener AND sets
 `VIDEO_EXPORT_DEV_URL=http://localhost:8080` for the worker, so the app's export
 workflow POSTs here instead of the (production-only) container binding — a full
-local export loop with zero config. If instead you run `bun dev` + `bun dev:bunny`
-in separate terminals, set `VIDEO_EXPORT_DEV_URL=http://localhost:8080` in
-`.env.local` yourself to wire the app to it.
+local export loop with zero config. It also sets
+`VIDEO_EXPORT_DEV_MEDIA_ORIGIN=http://localhost:$PORT`, so this service fetches
+clips from the app directly rather than through `VITE_APP_URL` (the dev tunnel,
+which answers 530 when it is not connected). The service always listens on
+8080; it does not take the app's `PORT`. If instead you run `bun dev` +
+`bun dev:bunny` in separate terminals, set `VIDEO_EXPORT_DEV_URL=http://localhost:8080`
+(and, with a tunnel, `VIDEO_EXPORT_DEV_MEDIA_ORIGIN=http://localhost:<app port>`)
+in `.env.local` yourself.
 
 ## Build / smoke test the image (Docker)
 
