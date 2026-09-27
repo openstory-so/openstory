@@ -89,7 +89,8 @@ export const SequenceDownloadMenu: React.FC<{
             className="hidden md:inline-flex"
           >
             {icon}
-            <span className="tabular-nums">
+            {/* Labelled only when the view bar has room (canvas-view-toggle). */}
+            <span className="hidden tabular-nums @[40rem]/viewbar:inline">
               {isRunning ? `Rendering… ${elapsed}`.trim() : 'Download'}
             </span>
             <ChevronDown className="size-3" />

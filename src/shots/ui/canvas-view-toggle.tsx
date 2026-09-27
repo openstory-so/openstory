@@ -31,8 +31,10 @@ export const CanvasViewToggle: React.FC<CanvasViewToggleProps> = ({
   trailing,
 }) => (
   // Toggle centred over the preview, actions on the right: the empty first
-  // column balances the last so the toggle does not drift left.
-  <div className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 px-2 pt-4 md:px-4">
+  // column balances the last so the toggle does not drift left. The row is
+  // the `viewbar` container: its width, not the screen's, decides whether
+  // the actions have room for labels (the side panels squeeze it).
+  <div className="@container/viewbar grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 px-2 pt-4 md:px-4">
     <div aria-hidden />
     <ToggleGroup
       type="single"
