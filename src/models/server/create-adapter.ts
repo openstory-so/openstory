@@ -121,6 +121,13 @@ export const CATALOG_LAG_MODELS = [
     input: ['text', 'image'],
     features: ['reasoning', 'structured_outputs'],
   }),
+  // Bridged by the model-freshness routine (#792): the installed
+  // @tanstack/ai-openrouter catalog snapshot predates claude-opus-5.5.
+  // Prune when a Dependabot catalog bump ships the id (catalog-lag.test.ts).
+  createModel('anthropic/claude-opus-5.5', {
+    input: ['text', 'image'],
+    features: ['reasoning', 'structured_outputs'],
+  }),
 ] as const;
 
 const openRouterTextExtended = extendAdapter(
