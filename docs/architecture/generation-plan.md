@@ -77,8 +77,20 @@ with work `blocked`. A `done` unit keeps its artifact.
   continue guard; `estimatePlanCost` prices both the quote and the
   reservation. `switchLocks` says which switch can no longer turn off. See
   `stop-at-stages.md` § Continue.
+- **The run (#1818).** `continueGenerationFn` freezes the work as an
+  Update-all plan (`computePlan({ units })` in
+  `src/shots/server/update-stale-plan.ts`: flags from the units, first
+  artifacts included; `buildPlanReferences` for the sheets, element
+  references and voices) and the storyboard runs it through
+  `UpdateStaleShotsWorkflow`. Multi-shot shots that owe a prompt get the
+  per-shot LLM prompt, as Update all does — the shot-list specs the fresh
+  run derives from are not stored.
 
 ## Status
 
-Phase 2 of 4. Phases: #1818 (the run does only its units), #1819 (delete the
-stage + checkpoint; Update all = plan filtered to `stale`).
+Phase 3 of 4. #1819 deletes the stage + checkpoint and makes Update all the
+plan filtered to `stale`.
+
+Not done: `musicDesign` is still not persisted, so the plan cannot tell a
+score whose design is "no music" from one never made; the `music` unit is
+owed whenever there are shots.

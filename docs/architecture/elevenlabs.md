@@ -235,8 +235,8 @@ recording, the prompt text and the panel cannot disagree. It is enforced at
 one seam: `motionPromptFromVersion(version, dialogue)` takes the resolved
 dialogue as a REQUIRED argument, so no builder can assemble a prompt around a
 row's own copy. A workflow cannot read the node, so its form of the ladder is
-fed from the payload (`dialogueLinesByShotId`; a continue snapshots EVERY shot
-resolved in `refreshCheckpointFromCast`), and the motion-prompt LLM's own
+fed from the payload (`dialogueLinesByShotId`, or each Update-all / continue
+target's `dialogue`, resolved at the click), and the motion-prompt LLM's own
 `dialogue` output is never a source of lines. The motion prompt is written from
 the resolved lines too (#1784): its payload snapshots them as `dialogue`, and
 `sceneWithShotDialogue` puts them in place of the script's in both what the LLM

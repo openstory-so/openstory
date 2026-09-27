@@ -22,6 +22,7 @@ import { addMicros } from '@/billing/money';
 import { buildMotionReferenceImages } from '@/motion/server/build-motion-references';
 import {
   releaseReservationOnThrow,
+  requireCredits,
   reserveRunCredits,
 } from '@/billing/server/preflight';
 import { estimateStoryboardPreflightCost } from '@/billing/storyboard-preflight-cost';
@@ -53,7 +54,7 @@ import {
 } from '@/sequences/server/sequence.schemas';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import { triggerStoryboard } from '@/sequences/server/launchers';
-import { ValidationError } from '@/platform/errors';
+import { computePlan } from '@/shots/server/update-stale-plan';
 import {
   allowsUnfundedGeneration,
   flagsFromStopAt,
@@ -219,21 +220,13 @@ export const continueGenerationFn = createServerFn({ method: 'POST' })
       saved.generateVoices === requested.generateVoices
         ? current
         : await computeGenerationPlan(scopedDb, sequence.id, requested);
-    const { work, startFrom } = continueFromPlan({
+    const work = continueFromPlan({
       current,
       next,
       saved,
       requested,
       stopAt: data.stopAt,
     });
-    // Phase-2 shim (#1818 removes it): the stage-shaped run resumes from the
-    // checkpoint's scenes and shot mapping.
-    const checkpoint = sequence.generationCheckpoint;
-    if (!checkpoint) {
-      throw new ValidationError(
-        'Nothing to continue from — generate the sequence first'
-      );
-    }
     const { autoGenerateMotion, autoGenerateMusic } = flagsFromStopAt(
       data.stopAt
     );
@@ -246,10 +239,12 @@ export const continueGenerationFn = createServerFn({ method: 'POST' })
       generateStartFrames: requested.generateStartFrames,
       draftMotion: data.draftMotion,
     });
-    const reservationId = await reserveRunCredits(scopedDb, estimate.micros, {
+    // A balance check, not a hold: the run's per-shot children each
+    // preflight their own spend against the balance (as Update all's do) and
+    // never draw from a reservation, so a hold would refuse them (#1818).
+    await requireCredits(scopedDb, estimate.micros, {
       providers: ['fal', 'openrouter'],
       errorMessage: 'Insufficient credits to continue generation',
-      sequenceId: data.sequenceId,
     });
 
     // The trigger snapshots these off the row, so they save first — and are
@@ -282,31 +277,34 @@ export const continueGenerationFn = createServerFn({ method: 'POST' })
       }
     };
 
-    return releaseReservationOnThrow(context.scopedDb, reservationId, () =>
-      restoreOnThrow(() =>
-        triggerStoryboard(context.scopedDb, {
+    return restoreOnThrow(async () =>
+      triggerStoryboard(context.scopedDb, {
+        userId: context.user.id,
+        teamId: context.teamId,
+        sequenceId: data.sequenceId,
+        resume: true,
+        // The units, frozen now with every input read from D1 — after the
+        // switches saved, so a shot's mode is the one this click chose.
+        plan: await computePlan({
+          scopedDb,
+          sequenceId: sequence.id,
+          units: work.map(({ kind, id }) => ({ kind, id })),
           userId: context.user.id,
-          teamId: context.teamId,
-          sequenceId: data.sequenceId,
-          reservationId,
-          resume: true,
-          startFrom,
-          stopAt: data.stopAt,
-          checkpoint,
-          autoGenerateMotion,
-          autoGenerateMusic,
-          imageModels: [
-            safeTextToImageModel(sequence.imageModel, DEFAULT_IMAGE_MODEL),
-          ],
-          videoModels: [
-            safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
-          ],
-          musicModel: sequence.musicModel
-            ? safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)
-            : undefined,
-          leftoverGrokShotIds: data.leftoverGrokShotIds,
-        })
-      )
+        }),
+        stopAt: data.stopAt,
+        autoGenerateMotion,
+        autoGenerateMusic,
+        imageModels: [
+          safeTextToImageModel(sequence.imageModel, DEFAULT_IMAGE_MODEL),
+        ],
+        videoModels: [
+          safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
+        ],
+        musicModel: sequence.musicModel
+          ? safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)
+          : undefined,
+        leftoverGrokShotIds: data.leftoverGrokShotIds,
+      })
     );
   });
 

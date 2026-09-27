@@ -85,7 +85,7 @@ function makeEvent(
   extras: Partial<
     Pick<
       StoryboardWorkflowInput,
-      'notify' | 'stopAt' | 'resume' | 'userCountry'
+      'notify' | 'stopAt' | 'resume' | 'userCountry' | 'plan'
     >
   > = {}
 ): Readonly<WorkflowEvent<StoryboardWorkflowInput>> {
@@ -348,6 +348,23 @@ describe('StoryboardWorkflow stop-at + resume (#1408)', () => {
       generationStopAt: 'images',
     });
     expect(names).not.toContain('generate-poster');
+  });
+
+  test('a continue runs the plan through the unit executor, not the script run (#1818)', async () => {
+    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the wrapper only forwards it
+    const plan = { targets: [] } as unknown as NonNullable<
+      StoryboardWorkflowInput['plan']
+    >;
+    await run({ stopAt: 'music', resume: true, plan });
+
+    expect(spawnAndAwaitChild).toHaveBeenCalledTimes(1);
+    expect(spawnAndAwaitChild).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        spawnStepName: 'spawn-continue',
+        childPayload: expect.objectContaining({ plan, announcePhases: true }),
+      })
+    );
   });
 
   test('an early stop completes without spending the ready email', async () => {

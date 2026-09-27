@@ -27,6 +27,7 @@ import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-wor
 import { WorkflowValidationError } from '@/platform/server/workflow/errors';
 import type {
   AnalyzeScriptWorkflowInput,
+  UpdateStaleShotsWorkflowInput,
   StoryboardWorkflowInput,
 } from '@/platform/server/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
@@ -178,58 +179,80 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
       });
     }
 
-    // Spawn the analyze-script child and block until it returns. Pattern 3.
-    await spawnAndAwaitChild<AnalyzeScriptWorkflowInput, unknown>(step, {
-      binding: this.env.ANALYZE_SCRIPT_WORKFLOW,
-      parentBindingName: 'STORYBOARD_WORKFLOW',
-      parentInstanceId: event.instanceId,
-      childId: `analyze-script:${sequenceId}`,
-      childPayload: {
-        userId: input.userId,
-        teamId: input.teamId,
-        sequenceId,
-        reservationId: input.reservationId,
-        script,
-        userCountry: input.userCountry,
-        aspectRatio,
-        resolution,
-        draftMotion: input.draftMotion,
-        styleConfig: input.styleConfig,
-        pendingAutoStyleId: input.pendingAutoStyleId,
-        analysisModelId,
-        elementIds,
-        musicPromptSource: input.musicPromptSource,
-        imageModel,
-        imageModels: input.imageModels ?? [imageModel],
-        videoModel,
-        videoModels: input.videoModels ?? [videoModel],
-        autoGenerateMotion: input.autoGenerateMotion ?? false,
-        autoGenerateMusic: input.autoGenerateMusic ?? false,
-        stopAt: input.stopAt,
-        startFrom: input.startFrom,
-        checkpoint: input.checkpoint,
-        musicModel: input.musicModel,
-        audioModels: input.audioModels,
-        suggestedTalentIds: input.suggestedTalentIds,
-        suggestedLocationIds: input.suggestedLocationIds,
-        suggestedTalent: input.suggestedTalent,
-        suggestedLocations: input.suggestedLocations,
-        referenceOnly: input.referenceOnly,
-        generateVoices: input.generateVoices ?? false,
-        leftoverGrokShotIds: input.leftoverGrokShotIds,
-      },
-      spawnStepName: 'spawn-analyze-script',
-      awaitStepName: 'await-analyze-script',
-      // Must exceed the child's own await budget: analyze-script's phases run
-      // sequentially — scene-split (45m) + matching (45m) + bibles/visual
-      // prompts (60m) + shot-images (90m) + motion-batch (90m) ≈ 5.5 hours
-      // worst case — a shorter parent wait here times out first and leaves
-      // the still-running child notifying a terminal parent
-      // (`instance.in_finite_state`, the #801/#839 burst failures).
-      // Completion notifies early, so this ceiling costs nothing in the
-      // common case.
-      timeout: '6 hours',
-    });
+    // A continue (#1818) runs the plan's units — only those, through the
+    // per-shot executor Update all uses — instead of the stage-shaped script
+    // run. The banner still moves: the executor announces its phases.
+    if (input.plan) {
+      await spawnAndAwaitChild<UpdateStaleShotsWorkflowInput, unknown>(step, {
+        binding: this.env.UPDATE_STALE_SHOTS_WORKFLOW,
+        parentBindingName: 'STORYBOARD_WORKFLOW',
+        parentInstanceId: event.instanceId,
+        childId: `continue:${sequenceId}:${event.instanceId}`,
+        childPayload: {
+          userId: input.userId,
+          teamId: input.teamId,
+          sequenceId,
+          reservationId: input.reservationId,
+          plan: input.plan,
+          announcePhases: true,
+        },
+        spawnStepName: 'spawn-continue',
+        awaitStepName: 'await-continue',
+        // Sheets (30m) then prompts + stills + clips per shot (90m each,
+        // in parallel), plus notify lag under a burst.
+        timeout: '4 hours',
+      });
+    } else
+      // Spawn the analyze-script child and block until it returns. Pattern 3.
+      await spawnAndAwaitChild<AnalyzeScriptWorkflowInput, unknown>(step, {
+        binding: this.env.ANALYZE_SCRIPT_WORKFLOW,
+        parentBindingName: 'STORYBOARD_WORKFLOW',
+        parentInstanceId: event.instanceId,
+        childId: `analyze-script:${sequenceId}`,
+        childPayload: {
+          userId: input.userId,
+          teamId: input.teamId,
+          sequenceId,
+          reservationId: input.reservationId,
+          script,
+          userCountry: input.userCountry,
+          aspectRatio,
+          resolution,
+          draftMotion: input.draftMotion,
+          styleConfig: input.styleConfig,
+          pendingAutoStyleId: input.pendingAutoStyleId,
+          analysisModelId,
+          elementIds,
+          musicPromptSource: input.musicPromptSource,
+          imageModel,
+          imageModels: input.imageModels ?? [imageModel],
+          videoModel,
+          videoModels: input.videoModels ?? [videoModel],
+          autoGenerateMotion: input.autoGenerateMotion ?? false,
+          autoGenerateMusic: input.autoGenerateMusic ?? false,
+          stopAt: input.stopAt,
+          musicModel: input.musicModel,
+          audioModels: input.audioModels,
+          suggestedTalentIds: input.suggestedTalentIds,
+          suggestedLocationIds: input.suggestedLocationIds,
+          suggestedTalent: input.suggestedTalent,
+          suggestedLocations: input.suggestedLocations,
+          referenceOnly: input.referenceOnly,
+          generateVoices: input.generateVoices ?? false,
+          leftoverGrokShotIds: input.leftoverGrokShotIds,
+        },
+        spawnStepName: 'spawn-analyze-script',
+        awaitStepName: 'await-analyze-script',
+        // Must exceed the child's own await budget: analyze-script's phases run
+        // sequentially — scene-split (45m) + matching (45m) + bibles/visual
+        // prompts (60m) + shot-images (90m) + motion-batch (90m) ≈ 5.5 hours
+        // worst case — a shorter parent wait here times out first and leaves
+        // the still-running child notifying a terminal parent
+        // (`instance.in_finite_state`, the #801/#839 burst failures).
+        // Completion notifies early, so this ceiling costs nothing in the
+        // common case.
+        timeout: '6 hours',
+      });
 
     const reservationId = input.reservationId;
     if (reservationId) {

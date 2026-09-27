@@ -74,10 +74,7 @@ import type {
 import type { ReferenceImageDescription } from '@/stills/reference-image-prompt';
 import type { UpdateStalePlan } from '@/shots/server/update-stale-plan';
 import type { StudioCreateInput } from '@/studio/schema';
-import type {
-  GenerationCheckpoint,
-  GenerationStage,
-} from '@/sequences/pipeline';
+import type { GenerationStage } from '@/sequences/pipeline';
 import { z } from 'zod';
 import type { musicDesignResultSchema } from '@/sequences/response-schemas';
 
@@ -303,11 +300,12 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
    */
   stopAt: GenerationStage;
   /**
-   * Continue-from-DAG: skip earlier phases and hydrate from `checkpoint`.
-   * Storyboard must pass `resume: true` so it does not wipe existing shots.
+   * A continue (#1818): the generation plan's units up to the stop, frozen
+   * at the click as an Update-all plan. The storyboard runs them through
+   * `UpdateStaleShotsWorkflow` instead of analyze-script — only the units,
+   * inputs read from D1 at the trigger. Requires `resume`.
    */
-  startFrom?: GenerationStage;
-  checkpoint?: GenerationCheckpoint;
+  plan?: UpdateStalePlan;
   /** Skip poster + shot delete — this run continues an existing pipeline. */
   resume?: boolean;
   musicModel?: keyof typeof AUDIO_MODELS;
@@ -415,8 +413,6 @@ export interface AnalyzeScriptWorkflowInput extends SequenceWorkflowContext {
   autoGenerateMotion?: boolean;
   autoGenerateMusic?: boolean;
   stopAt: GenerationStage;
-  startFrom?: GenerationStage;
-  checkpoint?: GenerationCheckpoint;
   musicModel?: keyof typeof AUDIO_MODELS;
   /** Multiple audio models for variant generation (first is primary) */
   audioModels?: (keyof typeof AUDIO_MODELS)[];
@@ -869,6 +865,11 @@ export interface UpdateStaleShotsWorkflowInput extends SequenceWorkflowContext {
    * such a run with a validation error rather than silently doing nothing.
    */
   plan?: UpdateStalePlan;
+  /**
+   * Run as a storyboard continue (#1818): emit the banner's phase events.
+   * Update all runs without the banner.
+   */
+  announcePhases?: boolean;
 }
 
 export interface RegenerateShotsWorkflowInput extends SequenceWorkflowContext {

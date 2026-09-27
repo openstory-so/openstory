@@ -100,6 +100,14 @@ import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { WorkflowValidationError } from '@/platform/server/workflow/errors';
 import type {
+  CharacterSheetWorkflowInput,
+  CharacterSheetWorkflowResult,
+  CharacterVoiceWorkflowInput,
+  CharacterVoiceWorkflowResult,
+  ElementSheetWorkflowInput,
+  ElementSheetWorkflowResult,
+  LocationSheetWorkflowInput,
+  LocationSheetWorkflowResult,
   FramePromptWorkflowInput,
   ImageWorkflowInput,
   MotionPromptWorkflowInput,
@@ -112,6 +120,11 @@ import type {
   MusicWorkflowInput,
   UpdateStaleShotsWorkflowInput,
 } from '@/platform/server/workflow/types';
+import { getGenerationChannel } from '@/platform/realtime';
+import {
+  GENERATION_STAGE_META,
+  type GenerationStage,
+} from '@/sequences/pipeline';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
 
@@ -120,6 +133,8 @@ const logger = getLogger(['openstory', 'workflow', 'update-stale-shots']);
 const PARENT_BINDING_NAME = 'UPDATE_STALE_SHOTS_WORKFLOW';
 
 type UpdateStage =
+  | 'reference'
+  | 'voice'
   | 'visual-prompt'
   | 'motion-prompt'
   | 'image'
@@ -128,7 +143,10 @@ type UpdateStage =
   | 'music-prompt'
   | 'music';
 
-/** `shotId` is the sequence id for the sequence-scoped music stages. */
+/**
+ * `shotId` is the sequence id for the sequence-scoped music stages, and the
+ * character / location / element id for the references wave.
+ */
 type UpdateFailure = { shotId: string; stage: UpdateStage; error: string };
 
 type UpdateStaleShotsResult = {
@@ -201,12 +219,26 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
       musicTracks: 0,
     };
     const failures: UpdateFailure[] = [];
+    // A continue runs under the storyboard banner (#1818): it moves through
+    // the same stops a fresh run does.
+    const announce = (stage: GenerationStage) =>
+      step.do(`phase-start-${stage}`, async () => {
+        await getGenerationChannel(sequenceId).emit('generation.phase:start', {
+          phase: GENERATION_STAGE_META[stage].phase,
+          phaseName: GENERATION_STAGE_META[stage].name,
+        });
+      });
     const musicToRun =
       plan.music && (plan.music.regenPrompt || plan.music.regenTrack)
         ? plan.music
         : null;
 
-    if (plan.targets.length === 0 && musicToRun === null) {
+    const references = plan.references;
+    if (
+      plan.targets.length === 0 &&
+      musicToRun === null &&
+      references === null
+    ) {
       return {
         totalShots: 0,
         ...counters,
@@ -273,6 +305,142 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
         { scene: row.scene, script: row.script },
       ])
     );
+
+    // ============================================================
+    // PHASE 1d (#1818): the references wave — sheets, element references and
+    // voices a continue owes, before any shot renders from them. Payloads
+    // were built at the click; the claims are taken here, as the bible
+    // workflows take theirs. A reference that fails holds the stills and
+    // clips made from it (`referenceIds`) and fails nothing else.
+    // ============================================================
+    const failedReferenceIds = new Set<string>();
+    if (references) {
+      if (input.announcePhases) await announce('references');
+      const failReference = (
+        id: string,
+        stage: UpdateStage,
+        error: unknown
+      ) => {
+        failedReferenceIds.add(id);
+        failures.push(toFailure(id, stage, error));
+      };
+      await Promise.allSettled([
+        ...references.characterSheets.map(async (payload) => {
+          const id = payload.characterDbId;
+          try {
+            const sheetVersionId = await step.do(
+              `claim-character-sheet-${id}`,
+              () => scopedDb.characters.claimSheet(id, { markGenerating: true })
+            );
+            await spawnAndAwaitChild<
+              CharacterSheetWorkflowInput,
+              CharacterSheetWorkflowResult
+            >(step, {
+              binding: this.env.CHARACTER_SHEET_WORKFLOW,
+              parentBindingName: PARENT_BINDING_NAME,
+              parentInstanceId,
+              childId: `character-sheet:${id}`,
+              childPayload: { ...payload, sheetVersionId },
+              spawnStepName: `spawn-character-sheet-${id}`,
+              awaitStepName: `await-character-sheet-${id}`,
+              timeout: '30 minutes',
+            });
+          } catch (error) {
+            failReference(id, 'reference', error);
+          }
+        }),
+        ...references.locationSheets.map(async (payload) => {
+          const id = payload.locationDbId;
+          try {
+            const referenceVersionId = await step.do(
+              `claim-location-sheet-${id}`,
+              () =>
+                scopedDb.sequenceLocations.claimReference(id, {
+                  markGenerating: true,
+                })
+            );
+            await spawnAndAwaitChild<
+              LocationSheetWorkflowInput,
+              LocationSheetWorkflowResult
+            >(step, {
+              binding: this.env.LOCATION_SHEET_WORKFLOW,
+              parentBindingName: PARENT_BINDING_NAME,
+              parentInstanceId,
+              childId: `location-sheet:${id}`,
+              childPayload: { ...payload, referenceVersionId },
+              spawnStepName: `spawn-location-sheet-${id}`,
+              awaitStepName: `await-location-sheet-${id}`,
+              timeout: '30 minutes',
+            });
+          } catch (error) {
+            failReference(id, 'reference', error);
+          }
+        }),
+        ...(references.elementSheets
+          ? [
+              (async (payload: ElementSheetWorkflowInput) => {
+                try {
+                  await spawnAndAwaitChild<
+                    ElementSheetWorkflowInput,
+                    ElementSheetWorkflowResult
+                  >(step, {
+                    binding: this.env.ELEMENT_SHEET_WORKFLOW,
+                    parentBindingName: PARENT_BINDING_NAME,
+                    parentInstanceId,
+                    childId: `element-sheets:${sequenceId}:${parentInstanceId}`,
+                    childPayload: payload,
+                    spawnStepName: 'spawn-element-sheets',
+                    awaitStepName: 'await-element-sheets',
+                  });
+                } catch (error) {
+                  // The child fails as a whole when any entry does.
+                  for (const entry of payload.entries)
+                    failReference(entry.elementId, 'reference', error);
+                }
+              })(references.elementSheets),
+            ]
+          : []),
+        // Voices (#1780 §4): every speaking character the plan owes one,
+        // through the same husk claim the bible workflow takes.
+        ...references.voices.map(async (payload) => {
+          const id = payload.characterDbId;
+          let huskId: string | undefined;
+          try {
+            const claim = await step.do(`claim-voice-${id}`, () =>
+              scopedDb.characters.createPendingVoiceClaim(id, userId)
+            );
+            huskId = claim.version.id;
+            // Someone else's design is in flight: it is making this voice.
+            if (!claim.created && claim.version.workflowRunId) return;
+            await spawnAndAwaitChild<
+              CharacterVoiceWorkflowInput,
+              CharacterVoiceWorkflowResult
+            >(step, {
+              binding: this.env.CHARACTER_VOICE_WORKFLOW,
+              parentBindingName: PARENT_BINDING_NAME,
+              parentInstanceId,
+              childId: `character-voice:${id}`,
+              childPayload: { ...payload, targetVersionId: claim.version.id },
+              spawnStepName: `spawn-character-voice-${id}`,
+              awaitStepName: `await-character-voice-${id}`,
+              timeout: '30 minutes',
+            });
+          } catch (error) {
+            failures.push(toFailure(id, 'voice', error));
+            const husk = huskId;
+            if (husk) {
+              await step.do(`fail-voice-claim-${id}`, () =>
+                scopedDb.characters.markVoiceClaimTerminal(
+                  husk,
+                  'failed',
+                  error instanceof Error ? error.message : String(error)
+                )
+              );
+            }
+          }
+        }),
+      ]);
+    }
 
     // Only the render stages match against these; a prompts-only run would pay
     // three reads for nothing (the prompt children get their bibles from the
@@ -583,7 +751,9 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           // render).
           const selectedVideo =
             await scopedDb.liveRead.videoVariants.getSelectedByShot(shot.id);
-          if (!selectedVideo) return null;
+          // A continue renders the first video (#1818); for Update all a
+          // vanished selection means there is nothing to update.
+          if (!selectedVideo && !target.createsVideo) return null;
           if (shot.renderSegmentId) {
             const segmentVersions =
               await scopedDb.liveRead.videoVariants.listBySegment(
@@ -593,7 +763,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               return null;
             }
           }
-          const manifestEntry = selectedVideo.manifest.find(
+          const manifestEntry = selectedVideo?.manifest.find(
             (entry) => entry.shotId === shot.id
           );
           // A shot rendering from references has no frame pointer at all —
@@ -608,12 +778,12 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             !manifestEntry ||
             manifestEntry.motionPromptVersionId !== motionVersion.id ||
             manifestEntry.frameVersionId !== expectedFrameVersionId;
-          if (!diverged) return null;
+          if (selectedVideo && !diverged) return null;
           // Selected-version model → sequence default. (The single-shot fn
           // also consults a last-failed attempt; irrelevant here — a video
           // must already exist for this target to be planned.)
           const model = resolveVideoModel({
-            selectedVersionModel: selectedVideo.model,
+            selectedVersionModel: selectedVideo?.model,
             sequenceModel: sequenceSnapshot.videoModel,
           });
           const { scene } = resolveSceneForShot(shot, sceneContext);
@@ -807,6 +977,15 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
     // it instead of recording its own window of the scene. Never fatal — a
     // scene that cannot be recorded leaves its shots to record themselves, in
     // context, which fails that shot and not the run.
+    if (input.announcePhases && plan.targets.length > 0) {
+      await announce(
+        plan.targets.some((t) => t.regenVisual || t.regenImage || t.regenMotion)
+          ? 'images'
+          : plan.targets.some((t) => t.regenDialogue)
+            ? 'dialogue'
+            : 'motion'
+      );
+    }
     const dialogueRecording = plan.dialogueRecording;
     // Same balance gate the per-shot render applies to its own TTS, priced on
     // the whole conversation. Short of it, skip the up-front recording: each
@@ -900,7 +1079,15 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               target.regenVisual && claims.visualVersionId !== null;
             const doMotion =
               target.regenMotion && claims.motionVersionId !== null;
-            const doImage = target.regenImage && claims.imageVariantId !== null;
+            // A sheet / element this run failed to make holds the still and
+            // clip made from it (#1818) — never render without it.
+            const heldByReference =
+              failedReferenceIds.size > 0 &&
+              target.referenceIds.some((id) => failedReferenceIds.has(id));
+            const doImage =
+              !heldByReference &&
+              target.regenImage &&
+              claims.imageVariantId !== null;
 
             // Best-effort claim cleanup on a stage failure — a claim must never
             // outlive its run's ability to complete it (the reconciler is the
@@ -1138,10 +1325,25 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               );
             }
 
+            if (heldByReference && target.regenImage) {
+              failures.push({
+                shotId: target.shotId,
+                stage: 'image',
+                error: 'A reference this still needs failed — not rendered',
+              });
+              await failClaims('image');
+            }
+
             await Promise.allSettled(stages);
 
             if (target.regenVideo) {
-              if (upstream.motionOk && upstream.imageOk) {
+              if (heldByReference) {
+                failures.push({
+                  shotId: target.shotId,
+                  stage: 'video',
+                  error: 'A reference this clip needs failed — not rendered',
+                });
+              } else if (upstream.motionOk && upstream.imageOk) {
                 try {
                   await dialogueRecorded;
                   await spawnVideo(target, claims, prompted.motionVersionId);

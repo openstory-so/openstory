@@ -562,19 +562,22 @@ export async function computeShotStaleness(args: {
           : await scopedDb.framePromptVersions.getLatestWithInputHash(frame.id);
       }
       const referenceHash = reference?.inputHash ?? null;
+      // The live hash is taken with or without a stored one: a first prompt
+      // (#1818) is claimed under it like a regeneration. No stored hash is
+      // still no verdict.
+      const latest = reads
+        ? (reads.latestPromptByFrame.get(frame.id) ?? null)
+        : await scopedDb.framePromptVersions.getLatest(frame.id);
+      const ctx = await loadNarrowShotPromptContext({
+        scopedDb,
+        sequence: motionSequence,
+        scene,
+        analysisModelOverride: latest?.analysisModel ?? null,
+        refs,
+      });
+      const liveHash = await hashVisualPromptInput(ctx);
+      liveHashes.visualPrompt = liveHash;
       if (referenceHash) {
-        const latest = reads
-          ? (reads.latestPromptByFrame.get(frame.id) ?? null)
-          : await scopedDb.framePromptVersions.getLatest(frame.id);
-        const ctx = await loadNarrowShotPromptContext({
-          scopedDb,
-          sequence: motionSequence,
-          scene,
-          analysisModelOverride: latest?.analysisModel ?? null,
-          refs,
-        });
-        const liveHash = await hashVisualPromptInput(ctx);
-        liveHashes.visualPrompt = liveHash;
         // Fresh prompts match the current digest. Legacy digests are only
         // hashed when it doesn't — the common editor load is the match.
         visualPrompt =
@@ -620,23 +623,23 @@ export async function computeShotStaleness(args: {
             );
       }
       const referenceHash = reference?.inputHash ?? null;
+      const latest = reads
+        ? (reads.latestMotionByShot.get(shot.id) ?? null)
+        : await scopedDb.shotPromptVersions.getLatest(shot.id, 'motion');
+      const ctx = {
+        ...(await loadNarrowShotPromptContext({
+          scopedDb,
+          sequence: motionSequence,
+          scene,
+          analysisModelOverride: latest?.analysisModel ?? null,
+          startingFrameImageUrl: motionStartingFrameUrl,
+          refs,
+        })),
+        dialogue: dialogue.dialogue,
+      };
+      const liveHash = await hashMotionPromptInput(ctx);
+      liveHashes.motionPrompt = liveHash;
       if (referenceHash) {
-        const latest = reads
-          ? (reads.latestMotionByShot.get(shot.id) ?? null)
-          : await scopedDb.shotPromptVersions.getLatest(shot.id, 'motion');
-        const ctx = {
-          ...(await loadNarrowShotPromptContext({
-            scopedDb,
-            sequence: motionSequence,
-            scene,
-            analysisModelOverride: latest?.analysisModel ?? null,
-            startingFrameImageUrl: motionStartingFrameUrl,
-            refs,
-          })),
-          dialogue: dialogue.dialogue,
-        };
-        const liveHash = await hashMotionPromptInput(ctx);
-        liveHashes.motionPrompt = liveHash;
         motionPrompt =
           referenceHash === liveHash ||
           (await motionPromptInputHashMatches(referenceHash, ctx, {

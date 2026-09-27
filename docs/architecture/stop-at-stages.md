@@ -12,12 +12,10 @@ phase number); there is no separate stage.
   legacy `autoGenerateMotion` / `autoGenerateMusic` columns are DERIVED from it
   (`flagsFromStopAt`) and kept only for old readers — never set them on their
   own, and never gate a phase on them inside a workflow.
-- **Checkpoint.** After each completed stage the workflow writes
-  `sequences.pipelineStage` + `sequences.generationCheckpoint`
-  (`persistProgress`). The checkpoint carries the in-memory DAG state the next
-  stage needs (bibles, matches, sheet rows, prompts) so a continue never
-  re-reads mutable D1 mid-run. A fresh (non-resume) storyboard run nulls both
-  alongside its shot wipe.
+- **No checkpoint (#1818).** A run persists no stage: `stageComplete` only
+  emits the banner's `generation.phase:complete`. What is left to do is the
+  generation plan, derived from live D1 (`docs/architecture/generation-plan.md`).
+  (`pipelineStage` / `generationCheckpoint` columns are dropped in #1819.)
 - **Continue** (`continueGenerationFn`, #1817) reads the generation plan
   (`docs/architecture/generation-plan.md`), never the checkpoint stage. It
   takes `{ stopAt, generateStartFrames, generateVoices, draftMotion }` — no
@@ -27,15 +25,14 @@ phase number); there is no separate stage.
   allowed at any step (it adds `still` / `dialogue` units); turning one OFF
   after its units exist is refused with the reason. The reservation and the
   footer quote are the same number: `estimatePlanCost` over the unit counts.
-  Until #1818 the storyboard run is still stage-shaped: `continueFromPlan`
-  maps the earliest stage with work onto the old `startFrom` (References,
-  Images or Dialogue — motion and music keep their footers), the run still
-  regenerates everything of each kind it passes, and a checkpoint is still
-  required. At the trigger, `refreshCheckpointFromCast` re-snapshots the
-  bibles, matches, sheet rows, elements AND the selected visual prompts from
-  D1 on every continue (a Script checkpoint can start at Images once the
-  sheets were made by hand). A Dialogue continue also snapshots selected
-  stills and motion/music prompts and skips generating them.
+  The storyboard then runs exactly those units: it spawns
+  `UpdateStaleShotsWorkflow` with the plan frozen at the click
+  (`computePlan({ units })` — every input read from D1 then), a references
+  wave first (sheets, element references, voices), then the per-shot jobs and
+  music, first ones included. A reference that fails holds the stills and
+  clips made from it. Credits are a balance check (`requireCredits`), not a
+  hold: the per-shot children preflight their own spend. Script stays a
+  fresh, whole analyze-script run.
 - **The footer** reads `getGenerationPlanFn` (one query, 10s stale time,
   refetch on focus, invalidated by realtime and by any refused continue). The
   first stop with work picks the footer; the continue slider locks the stops
@@ -71,9 +68,8 @@ Maya reference`). The switches show at every step; one whose units exist
 - **Ready email** only sends when the run reached motion: the send is a
   one-shot claim per sequence.
 - Reference-only has no Images stop.
-- Known gap: scenes added/edited during a stop are NOT re-snapshotted (the
-  full `Scene` lives in `frame.metadata`); the staleness tooling covers them
-  after the fact.
+- Scenes and shots added, edited or deleted during a stop reach the continue:
+  every unit is materialised per shot from D1 at the click (#1818).
 - **Failed character sheets (#1727).** A miss does not fail the sequence.
   Analyze-script returns after References without persisting that stage.
   The plan reads the sheet as `missing`, so the footer offers it again

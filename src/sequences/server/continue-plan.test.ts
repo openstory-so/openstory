@@ -36,7 +36,7 @@ function decide(
 }
 
 const units = (r: ReturnType<typeof decide>) =>
-  r.work.map((w) => `${w.kind}:${w.id}`);
+  r.map((w) => `${w.kind}:${w.id}`);
 
 describe('continueFromPlan (#1817)', () => {
   it('references done, two hand-added characters: runs their sheets, not "the last run only reached"', () => {
@@ -55,7 +55,6 @@ describe('continueFromPlan (#1817)', () => {
       'sheet:character:ana',
       'prompt:visual:s1',
     ]);
-    expect(references.startFrom).toBe('references');
     expect(units(decide(plan, 'images'))).toContain('still:s1');
   });
 
@@ -67,7 +66,7 @@ describe('continueFromPlan (#1817)', () => {
     expect(() => decide(plan, 'references')).toThrow(
       'Nothing to generate up to References & Prompts'
     );
-    expect(decide(plan, 'images').startFrom).toBe('images');
+    expect(units(decide(plan, 'images'))).toEqual(['still:s1']);
   });
 
   it('blocked and running units are not work', () => {
@@ -89,7 +88,6 @@ describe('continueFromPlan (#1817)', () => {
       next,
     });
     expect(units(result)).toEqual(['voice:maya', 'dialogue:s1']);
-    expect(result.startFrom).toBe('references');
   });
 
   it('turning Start frames off after stills exist is refused', () => {
@@ -124,32 +122,17 @@ describe('continueFromPlan (#1817)', () => {
     expect(units(result)).toEqual(['sheet:location:l1']);
   });
 
-  it('never resolves startFrom past Dialogue (#1820)', () => {
-    // Checkpoint at Images (or References, reference-only) with Voices off:
-    // the old guard skipped Dialogue and resolved 'motion', which nothing
-    // downstream expected — the Images pass re-rendered every still. The
-    // plan starts where the work is, and the run only starts at a stage it
-    // can hydrate.
+  it('clip-only and music-only work is a continue too (#1818): the run takes units, not a stage', () => {
     const imagesDone = [
-      u('sheet:character', 'maya', 'done'),
-      u('prompt:visual', 's1', 'done'),
       u('still', 's1', 'done'),
       u('prompt:motion', 's1', 'done'),
       u('clip', 's1', 'missing'),
+      u('music', 'seq', 'missing'),
     ];
-    expect(() => decide(imagesDone, 'music')).toThrow(
-      'Nothing before Motion to generate — use Generate Motion'
-    );
-    expect(() => decide([u('music', 'seq', 'missing')], 'music')).toThrow(
-      'Nothing before Music to generate — use Generate Music'
-    );
-    // Earlier work still starts at its own stage, whatever the stop.
-    for (const [plan, expected] of [
-      [[...imagesDone, u('sheet:location', 'l1', 'stale')], 'references'],
-      [[...imagesDone, u('still', 's2', 'missing')], 'images'],
-      [[...imagesDone, u('dialogue', 's1', 'missing')], 'dialogue'],
-    ] as const) {
-      expect(decide([...plan], 'music').startFrom).toBe(expected);
-    }
+    expect(units(decide(imagesDone, 'music'))).toEqual([
+      'clip:s1',
+      'music:seq',
+    ]);
+    expect(units(decide(imagesDone, 'motion'))).toEqual(['clip:s1']);
   });
 });

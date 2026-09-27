@@ -20,19 +20,12 @@ import { resolveShotDuration } from '@/motion/resolve-shot-duration';
 import { ValidationError } from '@/platform/errors';
 import type { Sequence, Shot } from '@/platform/server/db/schema';
 import {
-  firstStageWithWork,
   planCounts,
   planWork,
   switchLocks,
   type PlanUnit,
 } from '@/sequences/generation-plan';
-import {
-  GENERATION_STAGE_META,
-  isContinueStage,
-  sliderStopLabel,
-  type ContinueStage,
-  type GenerationStage,
-} from '@/sequences/pipeline';
+import { sliderStopLabel, type GenerationStage } from '@/sequences/pipeline';
 
 type Flags = { generateStartFrames: boolean; generateVoices: boolean };
 
@@ -44,7 +37,7 @@ export function continueFromPlan(args: {
   saved: Flags;
   requested: Flags;
   stopAt: GenerationStage;
-}): { work: PlanUnit[]; startFrom: ContinueStage } {
+}): PlanUnit[] {
   const locks = switchLocks(args.current);
   if (
     args.saved.generateStartFrames &&
@@ -70,20 +63,7 @@ export function continueFromPlan(args: {
       `Nothing to generate up to ${sliderStopLabel(args.stopAt)}`
     );
   }
-  return { work, startFrom: legacyStartFrom(work) };
-}
-
-/**
- * Phase-2 shim, deleted with #1818: the storyboard run is still stage-shaped,
- * so it starts at the earliest stage the plan has work in. Motion and music
- * keep their own footers until the run takes units.
- */
-function legacyStartFrom(work: readonly PlanUnit[]): ContinueStage {
-  const stage = firstStageWithWork(work) ?? 'motion';
-  if (isContinueStage(stage)) return stage;
-  throw new ValidationError(
-    `Nothing before ${GENERATION_STAGE_META[stage].shortName} to generate — use Generate ${stage === 'music' ? 'Music' : 'Motion'}`
-  );
+  return work;
 }
 
 /**
