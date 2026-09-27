@@ -123,4 +123,33 @@ describe('continueFromPlan (#1817)', () => {
     );
     expect(units(result)).toEqual(['sheet:location:l1']);
   });
+
+  it('never resolves startFrom past Dialogue (#1820)', () => {
+    // Checkpoint at Images (or References, reference-only) with Voices off:
+    // the old guard skipped Dialogue and resolved 'motion', which nothing
+    // downstream expected — the Images pass re-rendered every still. The
+    // plan starts where the work is, and the run only starts at a stage it
+    // can hydrate.
+    const imagesDone = [
+      u('sheet:character', 'maya', 'done'),
+      u('prompt:visual', 's1', 'done'),
+      u('still', 's1', 'done'),
+      u('prompt:motion', 's1', 'done'),
+      u('clip', 's1', 'missing'),
+    ];
+    expect(() => decide(imagesDone, 'music')).toThrow(
+      'Nothing before Motion to generate — use Generate Motion'
+    );
+    expect(() => decide([u('music', 'seq', 'missing')], 'music')).toThrow(
+      'Nothing before Music to generate — use Generate Music'
+    );
+    // Earlier work still starts at its own stage, whatever the stop.
+    for (const [plan, expected] of [
+      [[...imagesDone, u('sheet:location', 'l1', 'stale')], 'references'],
+      [[...imagesDone, u('still', 's2', 'missing')], 'images'],
+      [[...imagesDone, u('dialogue', 's1', 'missing')], 'dialogue'],
+    ] as const) {
+      expect(decide([...plan], 'music').startFrom).toBe(expected);
+    }
+  });
 });
