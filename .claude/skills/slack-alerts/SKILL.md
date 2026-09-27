@@ -37,7 +37,8 @@ once before the first `call` of each tool.
 ## Syncing
 
 1. `call project-get {}` and check the id is **379820** (Production). The MCP
-   can default to Staging.
+   can default to Staging; if it does, switch it to Production
+   (`search switch`), or stop and say so. Never sync against another project.
 2. Look up the Slack connection and channels: `call integrations-list` (kind
    `slack`), then `call integrations-channels-retrieve {"id": <id>}`. PostHog
    stores channels as ids (`C0…`); map each `#name` in the file to its id
@@ -46,6 +47,8 @@ once before the first `call` of each tool.
    (`--json`, or the filters are hidden) and match each file entry to a live
    function by `name`. For a match, `call --json cdp-functions-retrieve {"id": …}`
    and compare only these:
+   - `type`: PostHog can't change it in place, so a mismatch means deleting
+     the function (with a yes) and creating it again;
    - the channel, as an id;
    - `text` and `blocks`;
    - `filters`: `source`, each event's `id` and `properties`, and
@@ -54,8 +57,8 @@ once before the first `call` of each tool.
 
    Ignore key order. PostHog adds fields (`bytecode`, `bytecode_contract`)
    and drops empty ones: a missing `properties` equals `[]`, a missing
-   `filter_test_accounts` equals `false`, and a missing `name` or `order` on an
-   event means nothing. Don't compare `hog`, `description`, `enabled`,
+   `filter_test_accounts` equals `false`, and an event's `name` and `order`
+   aren't compared at all. Don't compare `hog`, `description`, `enabled`,
    `icon_emoji` or `username`; a sync never changes them.
 
 4. Show the plan before writing anything:
@@ -83,7 +86,7 @@ once before the first `call` of each tool.
      Then `call cdp-functions-partial-update {"id": …, "enabled": true}`.
    - Update with `call cdp-functions-partial-update`, sending the whole
      `inputs` object (`slack_workspace`, `channel`, `text`, `blocks`) and
-     `filters`, plus `masking` when the file has it. Don't send `hog`: some
+     `filters`, plus the file's whole `masking` object when it has one. Don't send `hog`: some
      older functions run an earlier version of the Slack template's code, and
      they keep it.
 6. Give the person a link to each created or changed function
