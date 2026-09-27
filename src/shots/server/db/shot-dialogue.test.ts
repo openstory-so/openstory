@@ -619,6 +619,21 @@ describe('recordings and sections', () => {
       expect((await shotRow())?.audioClips ?? []).toEqual([]);
     });
 
+    it('lists shots with a live claim; a demoted claim no longer counts (#1816)', async () => {
+      const methods = createShotDialogueMethods(db);
+      await methods.write(shotId, [line('Old words.')], 'prompt');
+      await methods.claimRecording({
+        shots: [{ shotId, sourceKey: 'k' }],
+        workflowRunId: 'run-live',
+      });
+      expect([
+        ...(await methods.listShotIdsWithLiveClaim([shotId, otherShotId])),
+      ]).toEqual([shotId]);
+
+      await methods.write(shotId, [line('New words.')], 'user-edit');
+      expect((await methods.listShotIdsWithLiveClaim([shotId])).size).toBe(0);
+    });
+
     it("a cancelled claim records but never becomes the shot's audio", async () => {
       const methods = createShotDialogueMethods(db);
       const late = section(shotId, true);

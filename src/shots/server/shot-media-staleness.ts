@@ -32,6 +32,21 @@ export async function loadShotMediaStaleness(
   sequence: StartFrameSequence & { id: string },
   shots: readonly Shot[]
 ): Promise<Map<string, ShotMediaStaleness>> {
+  const states = await loadShotMediaStates(scopedDb, sequence, shots);
+  return new Map([...states].map(([id, state]) => [id, state.staleness]));
+}
+
+/**
+ * The verdicts plus whether a clip render is in flight — `'updating'` only
+ * covers a re-render, and the generation plan (#1816) needs the first one too.
+ */
+export async function loadShotMediaStates(
+  scopedDb: ScopedDb,
+  sequence: StartFrameSequence & { id: string },
+  shots: readonly Shot[]
+): Promise<
+  Map<string, { staleness: ShotMediaStaleness; clipInFlight: boolean }>
+> {
   const { assembled, versions, live } = await loadSequenceSegments(
     scopedDb,
     sequence,
@@ -55,21 +70,27 @@ export async function loadShotMediaStaleness(
     }
   }
 
-  const byShot = new Map<string, ShotMediaStaleness>();
+  const byShot = new Map<
+    string,
+    { staleness: ShotMediaStaleness; clipInFlight: boolean }
+  >();
   for (const shot of shots) {
     const key = live.audioSourceKeyByShot.get(shot.id) ?? null;
     const video = videoByShot.get(shot.id);
     byShot.set(shot.id, {
-      dialogue: dialogueArtifactStaleness({
-        voiced: key != null,
-        hasAudio: (shot.audioClips?.length ?? 0) > 0,
-        matching: clipsMatchKey(shot.audioClips, key),
-      }),
-      video: videoArtifactStaleness({
-        hasVideo: video?.hasVideo ?? false,
-        alreadyStale: video?.alreadyStale ?? false,
-        generating: video?.generating ?? false,
-      }),
+      clipInFlight: video?.generating ?? false,
+      staleness: {
+        dialogue: dialogueArtifactStaleness({
+          voiced: key != null,
+          hasAudio: (shot.audioClips?.length ?? 0) > 0,
+          matching: clipsMatchKey(shot.audioClips, key),
+        }),
+        video: videoArtifactStaleness({
+          hasVideo: video?.hasVideo ?? false,
+          alreadyStale: video?.alreadyStale ?? false,
+          generating: video?.generating ?? false,
+        }),
+      },
     });
   }
   return byShot;

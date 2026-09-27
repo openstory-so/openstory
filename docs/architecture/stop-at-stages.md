@@ -75,3 +75,6 @@ phase number); there is no separate stage.
   the footer shows remaining / total (`Generate 1 / 3 references`). Visual
   prompts that already landed do not count as References-complete while any
   on-screen sheet is still missing.
+- **Generation plan (#1816).** The stage and checkpoint above are being
+  replaced by one plan derived from live D1 (units, missing / stale /
+  blocked / running, a requires graph) — `docs/architecture/generation-plan.md`.

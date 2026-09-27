@@ -390,6 +390,27 @@ export function createShotDialogueMethods(db: Database) {
         .orderBy(desc(shotDialogueClaims.createdAt)),
 
     /**
+     * The shots with a recording in flight that will become their audio —
+     * the unique-index predicate, so a demoted claim does not count (#1816).
+     */
+    listShotIdsWithLiveClaim: async (
+      shotIds: readonly string[]
+    ): Promise<Set<string>> => {
+      if (shotIds.length === 0) return new Set();
+      const rows = await db
+        .selectDistinct({ shotId: shotDialogueClaims.shotId })
+        .from(shotDialogueClaims)
+        .where(
+          and(
+            inArray(shotDialogueClaims.shotId, [...shotIds]),
+            eq(shotDialogueClaims.status, 'generating'),
+            isNotNull(shotDialogueClaims.pendingSourceKey)
+          )
+        );
+      return new Set(rows.map((row) => row.shotId));
+    },
+
+    /**
      * Land one call: the recording, a section for every shot it spoke, and —
      * for each shot it was made FOR — the promotion, guarded by that shot's
      * claim (#1657).
