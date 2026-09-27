@@ -1479,6 +1479,42 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         })
       : {};
 
+    // Step 3: Upload video to storage. Both filename titles ride the payload
+    // (`input.sequenceTitle` / `input.sceneTitle`); a payload without them
+    // gets the static slug rather than a live read of the sequence row.
+    const { shotId } = input;
+    const storageResult = shotId
+      ? await step.do('upload-to-storage', async () => {
+          if (!input.teamId || !input.sequenceId) {
+            throw new Error('Missing teamId or sequenceId for storage upload');
+          }
+
+          const googleKey =
+            succeededJob.via === 'google'
+              ? await scopedDb.credentials.resolveOptionalKey('google')
+              : undefined;
+          const result = await uploadVideoToStorage({
+            videoUrl,
+            teamId: input.teamId,
+            sequenceId: input.sequenceId,
+            shotId,
+            sequenceTitle: input.sequenceTitle ?? 'sequence',
+            sceneTitle: input.sceneTitle,
+            googleApiKey: googleKey?.key,
+          });
+
+          if (!result.success) {
+            throw new Error('Failed to upload video');
+          }
+
+          return { path: result.path, url: result.url };
+        })
+      : undefined;
+    if (storageResult) videoUrl = storageResult.url;
+
+    // Charge only for a clip the team can see: a failed upload fails the run
+    // and onFailure zeroes the reservation (#1845).
+    //
     // Settle the spawn-time reservation against fal's billed cost. If this
     // run never reserved (BYOK / unpriced), deductWorkflowCredits falls back
     // to an atomic try-deduct.
@@ -1503,40 +1539,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       });
     }
 
-    if (input.shotId) {
-      const { shotId } = input;
-
-      // Step 3: Upload video to storage. Both filename titles ride the payload
-      // (`input.sequenceTitle` / `input.sceneTitle`); a payload without them
-      // gets the static slug rather than a live read of the sequence row.
-      const storageResult = await step.do('upload-to-storage', async () => {
-        if (!input.teamId || !input.sequenceId) {
-          throw new Error('Missing teamId or sequenceId for storage upload');
-        }
-
-        const googleKey =
-          succeededJob.via === 'google'
-            ? await scopedDb.credentials.resolveOptionalKey('google')
-            : undefined;
-        const result = await uploadVideoToStorage({
-          videoUrl,
-          teamId: input.teamId,
-          sequenceId: input.sequenceId,
-          shotId,
-          sequenceTitle: input.sequenceTitle ?? 'sequence',
-          sceneTitle: input.sceneTitle,
-          googleApiKey: googleKey?.key,
-        });
-
-        if (!result.success) {
-          throw new Error('Failed to upload video');
-        }
-
-        return { path: result.path, url: result.url };
-      });
-
-      videoUrl = storageResult.url;
-
+    if (shotId && storageResult) {
       // Step 4: Finalize the render — flip the `video_variants` version to
       // `completed` and (for a primary render) repoint the shot's selection,
       // mirroring `shots.video*` + the render segment's selection pointer (#990,
