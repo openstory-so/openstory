@@ -328,11 +328,13 @@ export function firstStageWithWork(
 /**
  * A switch whose units exist cannot be turned off (#1780 §2): Start frames
  * once a shot has a still, Voices once a shot has a recording. Turning either
- * ON is always allowed — it only adds units.
+ * ON is always allowed — it only adds units. Draft first is changeable at the
+ * Motion step and read-only after: once every clip exists.
  */
 export function switchLocks(plan: readonly PlanUnit[]): {
   startFrames: boolean;
   voices: boolean;
+  draft: boolean;
 } {
   const made = (kind: PlanUnitKind) =>
     plan.some(
@@ -340,7 +342,12 @@ export function switchLocks(plan: readonly PlanUnit[]): {
         u.kind === kind &&
         (u.state === 'done' || u.state === 'stale' || u.state === 'running')
     );
-  return { startFrames: made('still'), voices: made('dialogue') };
+  const clips = plan.filter((u) => u.kind === 'clip');
+  return {
+    startFrames: made('still'),
+    voices: made('dialogue'),
+    draft: clips.length > 0 && clips.every((u) => u.state !== 'missing'),
+  };
 }
 
 const KIND_NOUN: Record<PlanUnitKind, [one: string, many: string]> = {

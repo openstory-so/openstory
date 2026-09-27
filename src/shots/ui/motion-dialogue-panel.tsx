@@ -753,7 +753,17 @@ export const MotionDialoguePanel: React.FC<{
   lineEditor,
 }) => {
   const lines = dialogue?.presence ? dialogue.lines : [];
-  if (lines.length === 0) return null;
+  if (lines.length === 0) {
+    // A shot with no lines still gets the section, so lines can be added
+    // from the Video tab too (#1780 §7) — the editor carries Add line.
+    if (!lineEditor) return null;
+    return (
+      <div className="flex flex-col gap-2">
+        <span className="text-sm font-medium">Dialogue</span>
+        <div className="rounded-md border p-3">{lineEditor}</div>
+      </div>
+    );
+  }
 
   const voices = (elements ?? []).filter((el) => el.kind === 'audio');
   const generatedLabel = (() => {

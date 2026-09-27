@@ -141,13 +141,31 @@ plan could not check is reported as `staleness-unknown`.
 
 The scene list reads `getGenerationPlanFn` (one query, 10s stale time,
 refetch on focus, invalidated by realtime and by any refused continue —
-`refetchAfterRefusedContinue`). The first stop with work picks the footer;
-the continue slider locks the stops before it (done) and the button says
-`Generate 2 references, 12 prompts, 12 images` (`planWorkLabel`), with a line
-per blocked noun (`3 images blocked: waiting on Maya reference`,
-`blockedLines`). The switches show at every step; one whose units exist is
-locked on. With the footer's switches flipped, it asks the plan with those
-switches (`getGenerationPlanFn` overrides) before they save.
+`refetchAfterRefusedContinue`).
+
+- **The steps show at every step (#1780 §1)**, a finished sequence included:
+  one sticky footer, the slider first, then the Motion / Music / Drafts
+  controls of whichever step the sequence is at (their own buttons — batch
+  motion, Generate Music, Render finals — are unchanged). Stops before the
+  first with work are locked (done); with no work left every stop is done.
+- **The continue button** (`Generate 2 references, 12 prompts, 12 images`,
+  `planWorkLabel`, with a line per blocked noun, `blockedLines`) shows when the
+  plan's first work is before Motion.
+- **Switches at every step (#1780 §2).** Start frames and Voices show always.
+  Turning one on that was skipped moves the thumb back to its step (Images /
+  Dialogue) and the plan grows its units; turning it off again returns the
+  thumb. One whose units exist is locked on (`switchLocks`). Draft first is
+  changeable until every clip exists, then shown read-only. With the switches
+  flipped the footer asks the plan as if they were saved
+  (`getGenerationPlanFn` overrides).
+- **Going back never redoes finished work (#1780 §3).** `continueFromPlan`
+  caps the stop at the step of a switch turned on (`switchStopAt`: Voices →
+  Dialogue, Start frames → Images, the later when both). Clips rendered from
+  the old inputs then read stale, and Update all re-renders them with each
+  cost shown.
+- **Lines from the Video tab (#1780 §7).** `MotionDialoguePanel` shows the
+  Dialogue section, with the line editor, on every shot — a shot with no
+  lines included.
 
 ## Draft first and the ready email
 

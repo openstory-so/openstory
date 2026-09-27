@@ -448,13 +448,12 @@ const SceneListComponent: React.FC<SceneListProps> = ({
       (nextStage == null && notStartedShots.length > 0));
   const showMusicFooter =
     !hideBatchButton && nextStage === 'music' && Boolean(onGenerateMusic);
-  const showContinueFooter =
+  // The steps show at every step, a finished sequence included (#1780 §1);
+  // the Motion / Music / Drafts controls sit under them.
+  const showSteps =
     !hideBatchButton &&
-    // Motion and music keep their own footers.
-    (nextStage === 'references' ||
-      nextStage === 'images' ||
-      nextStage === 'dialogue') &&
-    Boolean(onContinueGeneration);
+    Boolean(onContinueGeneration) &&
+    (shots?.length ?? 0) > 0;
   // The plan under the footer's switches as they stand (#1817): turning Start
   // frames or Voices on adds units before anything saves. The saved plan says
   // which switches can no longer turn off.
@@ -469,7 +468,10 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   );
   const locks = switchLocks(savedPlan ?? []);
   // Stops before the first one with work are done; the thumb cannot go there.
-  const minStage = firstStageWithWork(footerPlan) ?? nextStage;
+  // With no work left every stop is done (#1780 §1).
+  const minStage =
+    firstStageWithWork(footerPlan) ??
+    (footerPlan.length > 0 ? 'music' : nextStage);
   const continueStopAtClamped =
     minStage && stageIndex(continueStopAt) < stageIndex(minStage)
       ? minStage
@@ -478,6 +480,17 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   const showButton = showMotionFooter;
   const continueWork = planWork(footerPlan, continueStopAtClamped);
   const continueLabel = planWorkLabel(continueWork);
+  // The continue button offers work before Motion; clips and music keep
+  // their own footers' buttons (#1780).
+  const continueStage = firstStageWithWork(continueWork);
+  const offerContinue =
+    continueStage === 'references' ||
+    continueStage === 'images' ||
+    continueStage === 'dialogue';
+  // Turning on a switch that was skipped moves the stop back to its step;
+  // turning it off again returns to where the sequence was (#1780 §2).
+  const setSwitchStop = (on: boolean, stage: GenerationStage) =>
+    setContinueStopAt(on ? stage : (nextStage ?? DEFAULT_GENERATION_STOP_AT));
   const { data: planCharacters } = useSequenceCharacters(sequenceId);
   const { data: planLocations } = useSequenceLocations(sequenceId);
   const nameOf = (ref: PlanUnitRef) =>
@@ -665,7 +678,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     !hideBatchButton &&
     !showButton &&
     !showMusicFooter &&
-    !showContinueFooter &&
+    !offerContinue &&
     canRenderDrafts;
 
   const continueCostEstimate = useGenerationSliceEstimate({
@@ -674,8 +687,66 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     generateStartFrames: draftStartFrames,
     generateVoices: voices,
     draftMotion: draftFirst,
-    enabled: showContinueFooter,
+    enabled: showSteps && offerContinue,
   });
+
+  const stepsSection = (
+    <>
+      <GenerationStopSlider
+        value={continueStopAtClamped}
+        onChange={setContinueStopAt}
+        minStage={minStage ?? undefined}
+        startFramesLocked={locks.startFrames}
+        voicesLocked={locks.voices}
+        generateStartFrames={draftStartFrames}
+        onGenerateStartFramesChange={(on) => {
+          setDraftStartFrames(on);
+          if (!generateStartFrames) setSwitchStop(on, 'images');
+        }}
+        generateVoices={voices}
+        onGenerateVoicesChange={
+          voicesUnavailable
+            ? undefined
+            : (on) => {
+                setDraftVoices(on);
+                if (!generateVoices) setSwitchStop(on, 'dialogue');
+              }
+        }
+        draftFirst={draftFirst}
+        onDraftFirstChange={offerDraftFirst ? setDraftBatch : undefined}
+        draftFirstLocked={locks.draft}
+        disabled={isGenerating}
+      />
+      {offerContinue && (
+        <>
+          <Button
+            variant="default"
+            className="w-full"
+            onClick={() => void handleContinue()}
+            disabled={isGenerating || continueWork.length === 0}
+          >
+            {isGenerating ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Generating…
+              </>
+            ) : (
+              <>
+                <ContinueIcon className="mr-2 h-4 w-4" />
+                {continueLabel}
+              </>
+            )}
+          </Button>
+          {continueBlocked.map((line) => (
+            <p key={line} className="text-xs text-muted-foreground">
+              {line}
+            </p>
+          ))}
+          <ActionCost estimate={continueCostEstimate} />
+        </>
+      )}
+    </>
+  );
 
   const shotsBySceneId = useMemo(() => {
     const map = new Map<string, ShotView[]>();
@@ -903,186 +974,157 @@ const SceneListComponent: React.FC<SceneListProps> = ({
         </div>
       </ScrollArea>
 
-      {/* Sticky footer with Generate Motion button */}
-      {showButton && (
-        <div className="sticky bottom-0 border-t bg-background p-4 flex flex-col gap-3">
-          <MotionModelSelector
-            selectedModel={videoModel}
-            onModelChange={(model) => {
-              setVideoModel(model);
-              onVideoModelChange?.(model);
-            }}
-            aspectRatio={aspectRatio}
-            styleCategory={styleCategory}
-            styleName={styleName}
-            disabled={isGenerating || isMotionInProgress}
-            // A batch can mix modes, and submit validates the model against
-            // every reference-only shot in it — so one such shot is enough to
-            // rule out an image-to-video-only model for the whole run.
-            referenceOnly={batchRendersReferenceOnly}
-          />
-          {includeMusic && (
-            <MusicModelSelector
-              selectedModel={musicModel}
-              onModelChange={setMusicModel}
-              disabled={isGenerating || isMotionInProgress}
-            />
+      {(showSteps || showButton || showMusicFooter || showDraftFooter) && (
+        <div className="sticky bottom-0 border-t bg-background p-4 flex flex-col gap-4">
+          {showSteps && (
+            <div className="flex flex-col gap-3">{stepsSection}</div>
           )}
-          <div className="flex flex-col gap-1">
-            <Button
-              variant="default"
-              className="w-full"
-              onClick={() => void handleGenerateMotion()}
-              disabled={isButtonDisabled}
-            >
-              {isGenerating ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Generating…
-                </>
-              ) : !motionPromptsReady ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Writing motion prompts…
-                </>
-              ) : includeMusic && !musicPromptsReady ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Composing music…
-                </>
-              ) : (
-                <>
-                  <Video className="mr-2 h-4 w-4" />
-                  Generate {notStartedShots.length} / {totalShots}{' '}
-                  {totalShots === 1 ? 'shot' : 'shots'}
-                </>
-              )}
-            </Button>
-            <ActionCost estimate={batchCostEstimate} />
-          </div>
-          <label className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Checkbox
-              checked={includeMusic}
-              onCheckedChange={(checked) => setIncludeMusic(checked === true)}
-              disabled={!musicPromptsReady}
-            />
-            <span>
-              Also generate music
-              {!musicPromptsReady && (
-                <span className="text-xs ml-1">(preparing…)</span>
-              )}
-            </span>
-          </label>
-          <label
-            htmlFor="batch-generate-audio"
-            className="flex items-center gap-2 text-sm text-muted-foreground"
-          >
-            <Checkbox
-              id="batch-generate-audio"
-              checked={generateAudio}
-              onCheckedChange={(checked) => setGenerateAudio(checked === true)}
-            />
-            <span>Include SFX &amp; dialogue (when the model supports it)</span>
-          </label>
-          {offerDraftFirst && (
-            <label
-              htmlFor="batch-draft-motion"
-              className="flex items-center gap-2 text-sm text-muted-foreground"
-            >
-              <Checkbox
-                id="batch-draft-motion"
-                checked={draftBatch}
-                onCheckedChange={(checked) => setDraftBatch(checked === true)}
+
+          {/* Generate Motion */}
+          {showButton && (
+            <div className="flex flex-col gap-3">
+              <MotionModelSelector
+                selectedModel={videoModel}
+                onModelChange={(model) => {
+                  setVideoModel(model);
+                  onVideoModelChange?.(model);
+                }}
+                aspectRatio={aspectRatio}
+                styleCategory={styleCategory}
+                styleName={styleName}
+                disabled={isGenerating || isMotionInProgress}
+                // A batch can mix modes, and submit validates the model against
+                // every reference-only shot in it — so one such shot is enough to
+                // rule out an image-to-video-only model for the whole run.
+                referenceOnly={batchRendersReferenceOnly}
               />
-              <span>Draft first — 480p now, 1080p finals once approved</span>
-            </label>
+              {includeMusic && (
+                <MusicModelSelector
+                  selectedModel={musicModel}
+                  onModelChange={setMusicModel}
+                  disabled={isGenerating || isMotionInProgress}
+                />
+              )}
+              <div className="flex flex-col gap-1">
+                <Button
+                  variant="default"
+                  className="w-full"
+                  onClick={() => void handleGenerateMotion()}
+                  disabled={isButtonDisabled}
+                >
+                  {isGenerating ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Generating…
+                    </>
+                  ) : !motionPromptsReady ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Writing motion prompts…
+                    </>
+                  ) : includeMusic && !musicPromptsReady ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Composing music…
+                    </>
+                  ) : (
+                    <>
+                      <Video className="mr-2 h-4 w-4" />
+                      Generate {notStartedShots.length} / {totalShots}{' '}
+                      {totalShots === 1 ? 'shot' : 'shots'}
+                    </>
+                  )}
+                </Button>
+                <ActionCost estimate={batchCostEstimate} />
+              </div>
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Checkbox
+                  checked={includeMusic}
+                  onCheckedChange={(checked) =>
+                    setIncludeMusic(checked === true)
+                  }
+                  disabled={!musicPromptsReady}
+                />
+                <span>
+                  Also generate music
+                  {!musicPromptsReady && (
+                    <span className="text-xs ml-1">(preparing…)</span>
+                  )}
+                </span>
+              </label>
+              <label
+                htmlFor="batch-generate-audio"
+                className="flex items-center gap-2 text-sm text-muted-foreground"
+              >
+                <Checkbox
+                  id="batch-generate-audio"
+                  checked={generateAudio}
+                  onCheckedChange={(checked) =>
+                    setGenerateAudio(checked === true)
+                  }
+                />
+                <span>
+                  Include SFX &amp; dialogue (when the model supports it)
+                </span>
+              </label>
+              {offerDraftFirst && (
+                <label
+                  htmlFor="batch-draft-motion"
+                  className="flex items-center gap-2 text-sm text-muted-foreground"
+                >
+                  <Checkbox
+                    id="batch-draft-motion"
+                    checked={draftBatch}
+                    onCheckedChange={(checked) =>
+                      setDraftBatch(checked === true)
+                    }
+                  />
+                  <span>
+                    Draft first — 480p now, 1080p finals once approved
+                  </span>
+                </label>
+              )}
+              {renderDraftsButton}
+            </div>
           )}
-          {renderDraftsButton}
-        </div>
-      )}
 
-      {showDraftFooter && (
-        <div className="sticky bottom-0 border-t bg-background p-4 flex flex-col gap-3">
-          {renderDraftsButton}
-        </div>
-      )}
+          {showDraftFooter && (
+            <div className="flex flex-col gap-3">{renderDraftsButton}</div>
+          )}
 
-      {showContinueFooter && (
-        <div className="sticky bottom-0 border-t bg-background p-4 flex flex-col gap-3">
-          <GenerationStopSlider
-            value={continueStopAtClamped}
-            onChange={setContinueStopAt}
-            minStage={minStage ?? undefined}
-            startFramesLocked={locks.startFrames}
-            voicesLocked={locks.voices}
-            generateStartFrames={draftStartFrames}
-            onGenerateStartFramesChange={setDraftStartFrames}
-            generateVoices={voices}
-            onGenerateVoicesChange={
-              voicesUnavailable ? undefined : setDraftVoices
-            }
-            draftFirst={draftFirst}
-            onDraftFirstChange={offerDraftFirst ? setDraftBatch : undefined}
-            disabled={isGenerating}
-          />
-          <Button
-            variant="default"
-            className="w-full"
-            onClick={() => void handleContinue()}
-            disabled={isGenerating || continueWork.length === 0}
-          >
-            {isGenerating ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Generating…
-              </>
-            ) : (
-              <>
-                <ContinueIcon className="mr-2 h-4 w-4" />
-                {continueLabel}
-              </>
-            )}
-          </Button>
-          {continueBlocked.map((line) => (
-            <p key={line} className="text-xs text-muted-foreground">
-              {line}
-            </p>
-          ))}
-          <ActionCost estimate={continueCostEstimate} />
-        </div>
-      )}
-
-      {showMusicFooter && (
-        <div className="sticky bottom-0 border-t bg-background p-4 flex flex-col gap-3">
-          <MusicModelSelector
-            selectedModel={musicModel}
-            onModelChange={setMusicModel}
-            disabled={isGenerating}
-          />
-          <Button
-            variant="default"
-            className="w-full"
-            onClick={() => void handleGenerateMusicClick()}
-            disabled={isGenerating || !musicPromptsReady}
-          >
-            {isGenerating ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Generating…
-              </>
-            ) : !musicPromptsReady ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Composing music…
-              </>
-            ) : (
-              <>
-                <Music className="mr-2 h-4 w-4" />
-                Generate Music
-              </>
-            )}
-          </Button>
-          {renderDraftsButton}
+          {showMusicFooter && (
+            <div className="flex flex-col gap-3">
+              <MusicModelSelector
+                selectedModel={musicModel}
+                onModelChange={setMusicModel}
+                disabled={isGenerating}
+              />
+              <Button
+                variant="default"
+                className="w-full"
+                onClick={() => void handleGenerateMusicClick()}
+                disabled={isGenerating || !musicPromptsReady}
+              >
+                {isGenerating ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Generating…
+                  </>
+                ) : !musicPromptsReady ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Composing music…
+                  </>
+                ) : (
+                  <>
+                    <Music className="mr-2 h-4 w-4" />
+                    Generate Music
+                  </>
+                )}
+              </Button>
+              {renderDraftsButton}
+            </div>
+          )}
         </div>
       )}
     </div>

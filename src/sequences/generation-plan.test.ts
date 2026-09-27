@@ -404,7 +404,12 @@ describe('footer helpers', () => {
   });
 
   it('locks a switch once its units exist', () => {
-    expect(switchLocks(plan)).toEqual({ startFrames: false, voices: true });
+    expect(switchLocks(plan)).toEqual({
+      startFrames: false,
+      voices: true,
+      // Every clip exists (s1's is blocked, not missing): Motion has run.
+      draft: true,
+    });
     expect(
       switchLocks([
         {

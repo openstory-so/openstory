@@ -42,6 +42,8 @@ type GenerationStopSliderProps = {
    */
   draftFirst?: boolean;
   onDraftFirstChange?: (value: boolean) => void;
+  /** Every clip exists: shown, not changeable (#1780 §2). */
+  draftFirstLocked?: boolean;
   disabled?: boolean;
 };
 
@@ -69,6 +71,7 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
   voicesLocked = false,
   draftFirst = false,
   onDraftFirstChange,
+  draftFirstLocked = false,
   disabled = false,
 }) => {
   const stages = sliderStages(!generateStartFrames, generateVoices);
@@ -250,7 +253,7 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
               id="draft-first"
               checked={draftFirst}
               onCheckedChange={onDraftFirstChange}
-              disabled={disabled}
+              disabled={disabled || draftFirstLocked}
             />
             <Label htmlFor="draft-first" className="text-sm">
               Draft first

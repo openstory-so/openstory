@@ -69,6 +69,7 @@ import { computeGenerationPlan } from '@/sequences/server/generation-plan';
 import {
   continueFromPlan,
   estimateContinueCost,
+  switchStopAt,
 } from '@/sequences/server/continue-plan';
 import type {
   BatchMotionMusicWorkflowInput,
@@ -163,7 +164,20 @@ export const estimateGenerationSliceFn = createServerFn({ method: 'GET' })
     const estimate = await estimateContinueCost({
       sequence,
       shots,
-      work: planWork(plan, data.stopAt),
+      work: planWork(
+        plan,
+        switchStopAt({
+          saved: {
+            generateStartFrames: sequence.generateStartFrames,
+            generateVoices: sequence.generateVoices,
+          },
+          requested: {
+            generateStartFrames: data.generateStartFrames,
+            generateVoices: data.generateVoices,
+          },
+          stopAt: data.stopAt,
+        })
+      ),
       generateStartFrames: data.generateStartFrames,
       draftMotion: data.draftMotion,
     });
@@ -227,16 +241,14 @@ export const continueGenerationFn = createServerFn({ method: 'POST' })
       saved.generateVoices === requested.generateVoices
         ? current
         : await computeGenerationPlan(scopedDb, sequence.id, requested);
-    const work = continueFromPlan({
+    const { work, stopAt } = continueFromPlan({
       current,
       next,
       saved,
       requested,
       stopAt: data.stopAt,
     });
-    const { autoGenerateMotion, autoGenerateMusic } = flagsFromStopAt(
-      data.stopAt
-    );
+    const { autoGenerateMotion, autoGenerateMusic } = flagsFromStopAt(stopAt);
 
     const shots = await scopedDb.shots.listBySequence(sequence.id);
     const estimate = await estimateContinueCost({
@@ -258,7 +270,7 @@ export const continueGenerationFn = createServerFn({ method: 'POST' })
     // put back if it refuses (a run already in flight, no style…): a rejected
     // click must not leave its switches on a sequence nothing ran with.
     const settings = {
-      generationStopAt: data.stopAt,
+      generationStopAt: stopAt,
       autoGenerateMotion,
       autoGenerateMusic,
       generateStartFrames: requested.generateStartFrames,
@@ -298,7 +310,7 @@ export const continueGenerationFn = createServerFn({ method: 'POST' })
           units: work.map(({ kind, id }) => ({ kind, id })),
           userId: context.user.id,
         }),
-        stopAt: data.stopAt,
+        stopAt,
         autoGenerateMotion,
         autoGenerateMusic,
         imageModels: [

@@ -241,6 +241,16 @@ export const EditLines: Story = {
   ),
 };
 
+/** A shot with no lines still shows the section, so they can be added (#1780 §7). */
+export const NoLinesYet: Story = {
+  args: {
+    dialogue: { presence: false, lines: [] },
+    lineEditor: (
+      <DialogueLinesEditor lines={[]} onSave={fn()} speakers={['SARAH']} />
+    ),
+  },
+};
+
 /** A recording in flight, and one the user has already overruled. */
 export const RecordingsInFlight: Story = {
   render: () => (

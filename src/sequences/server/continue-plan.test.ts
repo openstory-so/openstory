@@ -36,7 +36,7 @@ function decide(
 }
 
 const units = (r: ReturnType<typeof decide>) =>
-  r.map((w) => `${w.kind}:${w.id}`);
+  r.work.map((w) => `${w.kind}:${w.id}`);
 
 describe('continueFromPlan (#1817)', () => {
   it('references done, two hand-added characters: runs their sheets, not "the last run only reached"', () => {
@@ -134,5 +134,44 @@ describe('continueFromPlan (#1817)', () => {
       'music:seq',
     ]);
     expect(units(decide(imagesDone, 'motion'))).toEqual(['clip:s1']);
+  });
+
+  it('going back never redoes finished work (#1780 §3): Voices on stops at Dialogue', () => {
+    const next = [
+      u('voice', 'maya', 'missing'),
+      u('dialogue', 's1', 'missing'),
+      // Stale only because the recording is new: Update all's, not this run's.
+      u('clip', 's1', 'stale'),
+    ];
+    const result = decide([], 'music', {
+      saved: { generateStartFrames: true, generateVoices: false },
+      requested: { generateStartFrames: true, generateVoices: true },
+      next,
+    });
+    expect(result.stopAt).toBe('dialogue');
+    expect(units(result)).toEqual(['voice:maya', 'dialogue:s1']);
+  });
+
+  it('Start frames on stops at Images; both on stop at the later, Dialogue', () => {
+    const next = [
+      u('prompt:visual', 's1', 'missing'),
+      u('still', 's1', 'missing'),
+      u('dialogue', 's1', 'missing'),
+      u('clip', 's1', 'stale'),
+    ];
+    const framesOn = decide([], 'music', {
+      saved: OFF,
+      requested: { generateStartFrames: true, generateVoices: false },
+      next,
+    });
+    expect(framesOn.stopAt).toBe('images');
+    expect(units(framesOn)).toEqual(['prompt:visual:s1', 'still:s1']);
+    expect(
+      decide([], 'music', { saved: OFF, requested: ON, next }).stopAt
+    ).toBe('dialogue');
+    // A stop already before the step is kept.
+    expect(
+      decide([], 'references', { saved: OFF, requested: ON, next }).stopAt
+    ).toBe('references');
   });
 });

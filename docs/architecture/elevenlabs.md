@@ -62,8 +62,11 @@ the Generate dialog hides the switch (`getVoiceDesignAvailableFn`).
 In-flight Voice Design is a stills-style husk (#1715): a
 `character_voice_versions` row with `status: 'generating'` (no `voiceId` /
 previews yet) and `characters.pendingPromoteVoiceVersionId` pointing at it.
-`generateCharacterVoiceFn` and `CharacterBibleWorkflow` insert the husk
-before trigger / spawn; a second Generate while live no-ops. The current
+`generateCharacterVoiceFn`, `CharacterBibleWorkflow` and a continue's
+references wave (`UpdateStaleShotsWorkflow`, #1818 — every speaking
+character that `usesVoice()` and has no voice gets one before its dialogue
+records, #1780 §4) insert the husk before trigger / spawn; a second Generate
+while live no-ops. The current
 saved voice stays until the husk promotes (do not release first). The child
 stamps `workflowRunId` from `event.instanceId` on its first step so reconcile
 can verify the child (bible insert has no run id). Persist completes that

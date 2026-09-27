@@ -532,6 +532,7 @@ const unit = (
 
 const continueArgs = {
   sequenceId: PS_SEQ,
+  shots: mockShots,
   generateStartFrames: true,
   generateVoices: false,
   onContinueGeneration: async () => undefined,
@@ -578,6 +579,33 @@ export const ContinueSwitchesLocked: Story = {
       unit('still', 's1', 'done'),
       unit('dialogue', 's1', 'done'),
       unit('dialogue', 's2', 'missing'),
+    ]),
+  ],
+};
+
+/** Finished: the steps still show, every one done; a switch can go back (#1780). */
+export const StepsFinished: Story = {
+  name: 'Steps: finished sequence',
+  args: { ...continueArgs, nextStage: null, generateVoices: false },
+  decorators: [
+    withPlan([
+      unit('still', 's1', 'done'),
+      unit('prompt:motion', 's1', 'done'),
+      unit('clip', 's1', 'done'),
+      unit('music', PS_SEQ, 'done'),
+    ]),
+  ],
+};
+
+/** Motion step: the slider sits above the motion footer's own controls. */
+export const StepsAtMotion: Story = {
+  name: 'Steps: Motion step, motion footer under the slider',
+  args: { ...continueArgs, nextStage: 'motion' },
+  decorators: [
+    withPlan([
+      unit('still', 's1', 'done'),
+      unit('prompt:motion', 's1', 'done'),
+      unit('clip', 's1', 'missing'),
     ]),
   ],
 };
