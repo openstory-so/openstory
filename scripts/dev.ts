@@ -11,6 +11,8 @@ await import('./ensure-env.ts');
 const all = process.argv.includes('--all');
 if (all) {
   process.env.CLOUDFLARE_INCLUDE_PROCESS_ENV = 'true';
+  // dev:bunny pins the renderer to 8080; it would otherwise inherit the
+  // app's PORT from .env.local and collide with it.
   process.env.VIDEO_EXPORT_DEV_URL = 'http://localhost:8080';
 }
 
