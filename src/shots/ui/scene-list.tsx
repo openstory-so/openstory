@@ -980,8 +980,9 @@ const SceneListComponent: React.FC<SceneListProps> = ({
             <div className="flex flex-col gap-3">{stepsSection}</div>
           )}
 
-          {/* Generate Motion */}
-          {showButton && (
+          {/* Generate Motion — not while a switch turned on offers earlier
+              work: one primary button at a time. */}
+          {showButton && !offerContinue && (
             <div className="flex flex-col gap-3">
               <MotionModelSelector
                 selectedModel={videoModel}
@@ -1092,7 +1093,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
             <div className="flex flex-col gap-3">{renderDraftsButton}</div>
           )}
 
-          {showMusicFooter && (
+          {showMusicFooter && !offerContinue && (
             <div className="flex flex-col gap-3">
               <MusicModelSelector
                 selectedModel={musicModel}
