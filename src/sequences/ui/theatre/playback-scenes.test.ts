@@ -9,7 +9,6 @@ import {
   groupPlaybackShots,
   scenePlaybackKey,
   shotIdAtSequenceTime,
-  shouldFetchTheatrePlaylist,
   toPlaybackScenes,
 } from './playback-scenes';
 
@@ -82,23 +81,6 @@ describe('scenePlaybackKey', () => {
     expect(scenePlaybackKey(toPlaybackScenes([shot('/a.mp4')]))).not.toBe(
       scenePlaybackKey(toPlaybackScenes([shot('/a-v2.mp4')]))
     );
-  });
-});
-
-describe('shouldFetchTheatrePlaylist', () => {
-  it('is only true when every entry is a rendered clip', () => {
-    expect(shouldFetchTheatrePlaylist([])).toBe(false);
-    expect(shouldFetchTheatrePlaylist(toPlaybackScenes([shot(null)]))).toBe(
-      false
-    );
-    expect(
-      shouldFetchTheatrePlaylist(toPlaybackScenes([shot('/a.mp4'), shot(null)]))
-    ).toBe(false);
-    expect(
-      shouldFetchTheatrePlaylist(
-        toPlaybackScenes([shot('/a.mp4'), shot('/b.mp4')])
-      )
-    ).toBe(true);
   });
 });
 
@@ -189,15 +171,6 @@ describe('shotIdAtSequenceTime (#1771)', () => {
     expect(shotIdAtSequenceTime(shots, 12, clock)).toBe('s3');
     expect(shotIdAtSequenceTime(shots, 15, clock)).toBe('s4');
     expect(shotIdAtSequenceTime(shots, 99, clock)).toBe('s4');
-  });
-
-  it('scales the estimate to the media length when only the total is known', () => {
-    // Estimated 18s, actual 36s: every shot is twice as long.
-    const clock = { durationSeconds: 36 };
-    expect(shotIdAtSequenceTime(shots, 7.9, clock)).toBe('s1');
-    expect(shotIdAtSequenceTime(shots, 8, clock)).toBe('s2');
-    expect(shotIdAtSequenceTime(shots, 20, clock)).toBe('s3');
-    expect(shotIdAtSequenceTime(shots, 26, clock)).toBe('s4');
   });
 
   it('falls back to the plain estimate with no clock', () => {

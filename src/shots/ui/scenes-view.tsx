@@ -8,7 +8,7 @@ import { MobileSceneDrawer } from './mobile-scene-drawer';
 import { CanvasViewToggle } from './canvas-view-toggle';
 import { CopyScriptButton } from './copy-script-button';
 import { SceneCanvas } from './scene-canvas';
-import { SequenceExportActions } from './sequence-export-actions';
+import { SequenceDownloadMenu } from './sequence-export-actions';
 import { useSequenceExport } from '@/sequences/ui/theatre/use-sequence-export';
 import { SceneScriptDocument } from './scene-script-document';
 import type { BatchGenerateMotionArgs } from './scene-list';
@@ -1699,9 +1699,10 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                   effectiveView === 'script' ? (
                     <CopyScriptButton sequenceId={sequenceId} />
                   ) : (
-                    <SequenceExportActions
+                    <SequenceDownloadMenu
                       sequenceExport={sequenceExport}
                       draftLabel={theatreDraftLabel(shots ?? [])}
+                      variant="toolbar"
                     />
                   )
                 }

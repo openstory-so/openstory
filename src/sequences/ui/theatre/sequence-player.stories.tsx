@@ -45,7 +45,6 @@ const meta = {
     musicLoudnessGainDb: null,
     musicEnabled: false,
     onMusicEnabledChange: () => {},
-    playlistUrl: null,
   },
   render: function PlayerStory(args) {
     return (
@@ -82,7 +81,4 @@ export const MissingImages: Story = {
       },
     ],
   },
-};
-export const CachedExportWithMissingVideo: Story = {
-  args: { playlistUrl: videoUrl },
 };

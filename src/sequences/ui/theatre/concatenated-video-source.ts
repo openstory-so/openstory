@@ -46,6 +46,9 @@ const logger = getLogger(['openstory', 'sequence-player', 'concat-source']);
 
 type CanvasFit = 'fill' | 'contain' | 'cover';
 
+/** How much of the next clip `prefetch` reads ahead of the cut. */
+const PREFETCH_SECONDS = 1;
+
 export type SceneInput = {
   orderIndex: number;
 } & (
@@ -423,6 +426,21 @@ export class ConcatenatedVideoSource {
       }
     }
     return { sceneIndex: 0, localTime: 0 };
+  }
+
+  /**
+   * Read the opening second of scene `sceneIndex`'s video so its bytes are in
+   * the `UrlSource` cache before the playhead crosses into it — the first
+   * frame of a clip is otherwise a cold fetch at the cut. Stills have
+   * nothing to read.
+   */
+  async prefetch(sceneIndex: number): Promise<void> {
+    const track = this.videoTracks[sceneIndex];
+    if (!track) return;
+    const sink = new EncodedPacketSink(track);
+    for await (const packet of sink.packets()) {
+      if (this.disposed || packet.timestamp >= PREFETCH_SECONDS) return;
+    }
   }
 
   /**

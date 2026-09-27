@@ -38,10 +38,8 @@ type VideoPlayerProps = {
   onPause?: () => void;
   onEnded?: () => void;
   onPlay?: () => void;
-  /** The media failed (fatal HLS error, undecodable file). */
+  /** The media failed (undecodable file). */
   onError?: (reason: string) => void;
-  /** The media element, once there is one (and null when it goes). */
-  onMedia?: (media: HTMLMediaElement | null) => void;
   /** PostHog `video_play` / `video_play_failed` source. Omit to skip capture. */
   playSource?: VideoPlaySource;
   sequenceId?: string;
@@ -98,7 +96,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   onEnded,
   onPlay,
   onError,
-  onMedia,
   playSource,
   sequenceId,
   shotId,
@@ -188,7 +185,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             posterSrc={null}
             autoPlay={autoPlay}
             seekTo={seekTo}
-            onMedia={onMedia}
             onLoadedMetadata={(duration) => {
               tracker.setDuration(duration);
               onLoadedMetadata?.(duration);

@@ -121,13 +121,20 @@ const StitchedPlayerInner: React.FC<StitchedPlayerSurfaceProps> = ({
     const handleTimeUpdate = () => {
       callbacksRef.current.onTimeUpdate?.(media.currentTime);
     };
+    // `playing` also fires when a buffering stall clears; only the first
+    // one after a pause is a play.
+    let started = false;
     const handlePlaying = () => {
+      if (started) return;
+      started = true;
       callbacksRef.current.onPlay?.();
     };
     const handlePause = () => {
+      started = false;
       callbacksRef.current.onPause?.();
     };
     const handleEnded = () => {
+      started = false;
       callbacksRef.current.onEnded?.();
     };
 

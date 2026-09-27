@@ -1,10 +1,8 @@
 /**
- * On-demand sequence export. Download/Copy reuse a ready row whose
- * `sourceShotsHash` matches the current cut; otherwise they POST
- * `/api/v1/sequences/$id/exports` and poll. There is no in-browser encode.
- *
- * Theatre playback does not wait on an export (#1623): it plays a playlist
- * that points straight at the clips. See `playbackUrl`.
+ * On-demand sequence export. Download/Copy use a ready row whose
+ * `sourceShotsHash` matches the current cut; `render` POSTs
+ * `/api/v1/sequences/$id/exports` and polls until that row exists. There is
+ * no in-browser encode, and theatre playback never waits on an export.
  */
 
 import {
@@ -12,20 +10,13 @@ import {
   listSequenceExportsFn,
 } from '@/sequences/sequence-exports.fn';
 import { useShotsBySequence } from '@/shots/ui/use-shots';
-import {
-  collapseConsecutiveUrls,
-  scenePlaybackKey,
-  shouldFetchTheatrePlaylist,
-  toPlaybackScenes,
-} from './playback-scenes';
+import { collapseConsecutiveUrls } from './playback-scenes';
 import {
   effectiveExportMusicUrl,
   hashSequenceExportInputs,
   sequenceExportInputsKey,
 } from './source-shots-hash';
 import { exportSequenceOnServer } from './server-export-client';
-import { captureVideoPlayFailed } from './player-events';
-import { theatrePlaylistFromHttp } from './theatre-playlist-from-http';
 import type { Sequence } from '@/platform/server/db/schema';
 import { copyTextToClipboard } from '@/ui/clipboard';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -41,32 +32,22 @@ const sequenceExportKeys = {
 const CONTAINER_MISSING_MESSAGE =
   'Export needs the video renderer. Run bun dev:all, or set VIDEO_EXPORT_DEV_URL.';
 
-type SequenceExportAndThen = 'download' | 'copy-link';
-
-export type ExportProgress = {
-  phase: 'server';
-  completed: number;
-  total: number;
-};
-
 export type SequenceExportState = {
+  /** A server render of the current cut is in flight (this tab is waiting on it). */
   isRunning: boolean;
-  progress: ExportProgress | null;
-  /** Cached export URL for the current scenes + music choice, or null. */
+  /** `Date.now()` when the render in flight started, for the elapsed clock. */
+  renderStartedAt: number | null;
+  /** Ready MP4 of the current scenes + music choice, or null. */
   freshExportUrl: string | null;
-  /**
-   * What the theatre plays: the playlist of the clips that exist right now
-   * (`theatre-playlist.ts`). Asked for as soon as the shots are known, not on
-   * the click, so a first visit's one-time repackaging is usually done before
-   * anyone presses play. `undefined` = still finding out — show the first
-   * frame, don't stitch yet. `null` = the server could not list these clips:
-   * stitch in the tab.
-   */
-  playbackUrl: string | null | undefined;
-  /** Download the current state's MP4 — exports first if not cached. */
+  /** A ready MP4 exists, but of an earlier cut. */
+  hasStaleExport: boolean;
+  /** Download the current cut's MP4. No-op until it has been rendered. */
   download: () => void;
-  /** Copy a shareable URL for the current state's MP4 — exports first if not cached. */
+  /** Copy a shareable URL for the current cut's MP4. No-op until rendered. */
   copyLink: () => void;
+  /** Render the current cut to MP4 on the server. */
+  render: () => void;
+  /** Stop waiting. The server keeps rendering; `render` rejoins it. */
   abort: () => void;
   clipsReady: number;
   clipsTotal: number;
@@ -121,17 +102,11 @@ export function useSequenceExport(
   });
 
   const [isRunning, setIsRunning] = useState(false);
-  const [progress, setProgress] = useState<ExportProgress | null>(null);
+  const [renderStartedAt, setRenderStartedAt] = useState<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const exportMutation = useMutation({
-    mutationFn: async ({
-      signal,
-      andThen,
-    }: {
-      signal: AbortSignal;
-      andThen: SequenceExportAndThen;
-    }) => {
+    mutationFn: async ({ signal }: { signal: AbortSignal }) => {
       if (!sequence) throw new Error('No sequence selected.');
       if (!shots || shots.length === 0) {
         throw new Error('This sequence has no shots yet.');
@@ -156,14 +131,9 @@ export function useSequenceExport(
         throw new Error(CONTAINER_MISSING_MESSAGE);
       }
 
-      setProgress({ phase: 'server', completed: 0, total: 0 });
-      const server = await exportSequenceOnServer({
-        sequenceId: sequence.id,
-        signal,
-      });
-      return { url: server.url, andThen };
+      return exportSequenceOnServer({ sequenceId: sequence.id, signal });
     },
-    onSuccess: ({ url, andThen }) => {
+    onSuccess: ({ url }) => {
       posthog.capture('sequence_export_completed', {
         sequence_id: sequenceId,
         via: 'server',
@@ -171,25 +141,12 @@ export function useSequenceExport(
       void queryClient.invalidateQueries({
         queryKey: sequenceExportKeys.list(sequenceId),
       });
-      if (andThen === 'download') {
-        toast.success('MP4 ready to download.');
-        triggerDownload(url, sequence?.title);
-      } else {
-        const shareable = toShareableExportUrl(url);
-        void copyTextToClipboard(shareable).then((copied) => {
-          if (copied) {
-            toast.success('Video link copied.');
-            posthog.capture('video_url_copied', { sequence_id: sequenceId });
-          } else {
-            toast.success('MP4 ready.', {
-              action: {
-                label: 'Copy link',
-                onClick: () => void copyTextToClipboard(shareable),
-              },
-            });
-          }
-        });
-      }
+      toast.success('MP4 ready.', {
+        action: {
+          label: 'Download',
+          onClick: () => triggerDownload(url, sequence?.title),
+        },
+      });
     },
     onError: (error) => {
       if (abortRef.current?.signal.aborted) return;
@@ -198,119 +155,59 @@ export function useSequenceExport(
     },
     onSettled: () => {
       setIsRunning(false);
-      setProgress(null);
+      setRenderStartedAt(null);
       abortRef.current = null;
     },
   });
 
-  const run = useCallback(
-    (andThen: SequenceExportAndThen) => {
-      if (isRunning) return;
-      const controller = new AbortController();
-      abortRef.current = controller;
-      setIsRunning(true);
-      setProgress(null);
-      exportMutation.mutate({ signal: controller.signal, andThen });
-    },
-    [exportMutation, isRunning]
-  );
+  const render = useCallback(() => {
+    if (isRunning) return;
+    posthog.capture('export_clicked', {
+      surface: 'theatre',
+      sequence_id: sequenceId,
+    });
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setIsRunning(true);
+    setRenderStartedAt(Date.now());
+    exportMutation.mutate({ signal: controller.signal });
+  }, [exportMutation, isRunning, posthog, sequenceId]);
 
   const freshExportUrl =
     (inputsHash &&
       exports?.find((e) => e.sourceShotsHash === inputsHash)?.url) ||
     null;
+  // The list is ready rows only.
+  const hasStaleExport = !freshExportUrl && Boolean(exports?.length);
 
   const shotList = shots ?? [];
   const clipsTotal = shotList.length;
   const clipsReady = shotList.filter((s) => Boolean(s.video?.url)).length;
   const canExport = clipsTotal > 0 && clipsReady === clipsTotal;
 
-  // The clip list is the cache key: a changed cut is a new URL, so neither the
-  // query nor the browser can serve the old list. Success means every clip
-  // already has a fragmented copy from ingest, so the URL is safe to play.
-  const playbackScenes = shots ? toPlaybackScenes(shots) : [];
-  const playlistKey = shots ? scenePlaybackKey(playbackScenes) : '';
-  const playback = useQuery({
-    queryKey: ['theatre-playlist', sequenceId, playlistKey],
-    queryFn: async ({ signal }) => {
-      const digest = await crypto.subtle.digest(
-        'SHA-256',
-        new TextEncoder().encode(playlistKey)
-      );
-      const version = Array.from(new Uint8Array(digest).subarray(0, 8), (b) =>
-        b.toString(16).padStart(2, '0')
-      ).join('');
-      const url = `/api/sequences/${sequenceId}/theatre.m3u8?v=${version}`;
-      try {
-        const response = await fetch(url, {
-          credentials: 'same-origin',
-          signal,
-        });
-        if (!response.ok) {
-          captureVideoPlayFailed(posthog, {
-            source: 'theatre',
-            reason: `playlist_http_${response.status}`,
-            sequence_id: sequenceId,
-          });
-        }
-        return theatrePlaylistFromHttp(response.status, url);
-      } catch (error) {
-        if (signal.aborted) throw error;
-        if (
-          error instanceof Error &&
-          error.message.startsWith('theatre playlist HTTP ')
-        ) {
-          throw error;
-        }
-        captureVideoPlayFailed(posthog, {
-          source: 'theatre',
-          reason: 'playlist_fetch_failed',
-          sequence_id: sequenceId,
-        });
-        throw error;
-      }
-    },
-    enabled: Boolean(sequence) && shouldFetchTheatrePlaylist(playbackScenes),
-    staleTime: Infinity,
-    retry: 2,
-  });
-  const playbackUrl = playback.isError ? null : playback.data;
-
   const download = useCallback(() => {
-    posthog.capture('export_clicked', {
-      surface: 'theatre',
-      sequence_id: sequenceId,
-    });
-    if (freshExportUrl) {
-      triggerDownload(freshExportUrl, sequence?.title);
-      posthog.capture('video_downloaded', { sequence_id: sequenceId });
-      return;
-    }
-    if (!canExport) return;
-    run('download');
-  }, [freshExportUrl, canExport, run, sequence?.title, sequenceId, posthog]);
+    if (!freshExportUrl) return;
+    triggerDownload(freshExportUrl, sequence?.title);
+    posthog.capture('video_downloaded', { sequence_id: sequenceId });
+  }, [freshExportUrl, sequence?.title, sequenceId, posthog]);
 
   const copyLink = useCallback(() => {
     posthog.capture('share_clicked', {
       surface: 'theatre',
       sequence_id: sequenceId,
     });
-    if (freshExportUrl) {
-      void copyTextToClipboard(toShareableExportUrl(freshExportUrl)).then(
-        (copied) => {
-          if (copied) {
-            toast.success('Video link copied.');
-            posthog.capture('video_url_copied', { sequence_id: sequenceId });
-          } else {
-            toast.error('Failed to copy URL');
-          }
+    if (!freshExportUrl) return;
+    void copyTextToClipboard(toShareableExportUrl(freshExportUrl)).then(
+      (copied) => {
+        if (copied) {
+          toast.success('Video link copied.');
+          posthog.capture('video_url_copied', { sequence_id: sequenceId });
+        } else {
+          toast.error('Failed to copy URL');
         }
-      );
-      return;
-    }
-    if (!canExport) return;
-    run('copy-link');
-  }, [freshExportUrl, canExport, run, sequenceId, posthog]);
+      }
+    );
+  }, [freshExportUrl, sequenceId, posthog]);
 
   const abort = useCallback(() => {
     abortRef.current?.abort();
@@ -318,11 +215,12 @@ export function useSequenceExport(
 
   return {
     isRunning,
-    progress,
+    renderStartedAt,
     freshExportUrl,
-    playbackUrl,
+    hasStaleExport,
     download,
     copyLink,
+    render,
     abort,
     clipsReady,
     clipsTotal,

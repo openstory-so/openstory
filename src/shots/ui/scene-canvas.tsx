@@ -4,12 +4,10 @@ import { CanvasMediaStage } from './canvas-media-stage';
 import { ShotDialogueUnderVideo } from './shot-dialogue-readings';
 import { ShotMediaDropZone } from './shot-media-drop-zone';
 import { StartingFrameVariants } from './starting-frame-variants';
-import { formatExportProgress } from './sequence-export-actions';
+import { SequenceDownloadMenu } from './sequence-export-actions';
 import { SequencePlayer } from '@/sequences/ui/theatre/sequence-player';
 import type { SequenceExportState } from '@/sequences/ui/theatre/use-sequence-export';
-import { Button } from '@/ui/shadcn/button';
 import { Skeleton } from '@/ui/shadcn/skeleton';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/shadcn/tooltip';
 import type { SceneWithScript } from './use-scenes';
 import { useSetSequenceMusic } from '@/sequences/ui/use-sequences';
 import type { TabValue } from './scene-script-prompts';
@@ -22,7 +20,7 @@ import {
 } from './scene-selection';
 import type { ShotView } from '@/shots/shot-view';
 import type { Sequence } from '@/platform/server/db/schema';
-import { Download, Film, Link, Loader2 } from 'lucide-react';
+import { Film } from 'lucide-react';
 import { useMemo } from 'react';
 import {
   shotIdAtSequenceTime,
@@ -63,84 +61,6 @@ type SceneCanvasProps = {
   onAutoPlayConsumed?: () => void;
   /** The shot under the sequence player's playhead (#1771). */
   onPlayingShot?: (shotId: string | undefined) => void;
-};
-
-/**
- * Download + Copy on the theatre player. Icon-only so they fit the existing
- * overlay row (music + mixed-res). Desktop also has a labeled Export menu in
- * the Canvas/Script toggle trailing slot; mobile keeps these overlay icons
- * at the 44px hit target.
- */
-const TheatreShareOverlay: React.FC<{
-  sequenceExport: SequenceExportState;
-}> = ({ sequenceExport }) => {
-  const running = sequenceExport.isRunning;
-  const progressLabel = formatExportProgress(sequenceExport.progress);
-  const pending =
-    !running && !sequenceExport.canExport && !sequenceExport.freshExportUrl;
-  const wait = running
-    ? progressLabel
-    : pending
-      ? `Export · ${sequenceExport.clipsReady} of ${sequenceExport.clipsTotal} clips ready`
-      : null;
-  const downloadLabel =
-    wait ??
-    (sequenceExport.freshExportUrl
-      ? 'Download MP4'
-      : 'Export and download MP4');
-  const copyLabel =
-    wait ??
-    (sequenceExport.freshExportUrl
-      ? 'Copy video link'
-      : 'Export and copy video link');
-  return (
-    <>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="inline-flex">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-11 w-11 bg-black/50 text-white hover:bg-black/70 md:h-8 md:w-8"
-              aria-label={downloadLabel}
-              aria-busy={running}
-              disabled={pending}
-              onClick={sequenceExport.download}
-            >
-              {running ? (
-                <Loader2 className="h-5 w-5 animate-spin md:h-4 md:w-4" />
-              ) : (
-                <Download className="h-5 w-5 md:h-4 md:w-4" />
-              )}
-            </Button>
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>{downloadLabel}</TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="inline-flex">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-11 w-11 bg-black/50 text-white hover:bg-black/70 md:h-8 md:w-8"
-              aria-label={copyLabel}
-              aria-busy={running}
-              disabled={pending}
-              onClick={sequenceExport.copyLink}
-            >
-              {running ? (
-                <Loader2 className="h-5 w-5 animate-spin md:h-4 md:w-4" />
-              ) : (
-                <Link className="h-5 w-5 md:h-4 md:w-4" />
-              )}
-            </Button>
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>{copyLabel}</TooltipContent>
-      </Tooltip>
-    </>
-  );
 };
 
 export const SceneCanvas: React.FC<SceneCanvasProps> = ({
@@ -299,10 +219,13 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
           onPlayingShot?.(shotIdAtSequenceTime(scopedShots, time, clock))
         }
         draftLabel={draftLabel}
-        playlistUrl={scope !== 'sequence' ? null : sequenceExport.playbackUrl}
         overlayActions={
           scope === 'sequence' ? (
-            <TheatreShareOverlay sequenceExport={sequenceExport} />
+            <SequenceDownloadMenu
+              sequenceExport={sequenceExport}
+              draftLabel={draftLabel}
+              variant="overlay"
+            />
           ) : undefined
         }
       />

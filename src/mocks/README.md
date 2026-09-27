@@ -12,28 +12,9 @@ MSW intercepts HTTP requests and returns mock data, allowing components to be de
 - **Data Generators**: `data-generators.ts` - Functions to generate realistic mock data
 - **Storybook Integration**: `.storybook/preview.ts` - Configures MSW for all stories
 
-## HLS & VTT Mocks
+## VTT Mocks
 
 The following endpoints are mocked for video playback testing:
-
-### GET `/api/sequences/:sequenceId/playlist.m3u8`
-
-Generates an HLS playlist with 5 mock scenes:
-
-- **Scenes 1, 2, 4, 5**: Use Big Buck Bunny sample video (completed)
-- **Scene 3**: Set to "pending" status (shows placeholder)
-- **Duration**: Each scene is 5 seconds
-
-**Example Usage in Stories:**
-
-```tsx
-export const MyStory: Story = {
-  args: {
-    sequenceId: 'demo-sequence-123', // Any ID works
-    shots: mockShots,
-  },
-};
-```
 
 ### GET `/api/sequences/:sequenceId/chapters.vtt`
 

@@ -20,6 +20,7 @@ import type { PlayAttemptResult } from './play-attempt';
 
 const HAVE_NOTHING = 0;
 const HAVE_METADATA = 1;
+const HAVE_CURRENT_DATA = 2;
 const HAVE_ENOUGH_DATA = 4;
 
 export type StitchedSequenceSource = {
@@ -317,6 +318,12 @@ export class StitchedSequenceMedia
       onTimeUpdate: (time) => {
         this.#currentTime = time;
         this.#emit('timeupdate');
+      },
+      // Below HAVE_FUTURE_DATA while playing is what the skin reads as
+      // buffering; `playing` clears it.
+      onBuffering: (buffering) => {
+        this.#readyState = buffering ? HAVE_CURRENT_DATA : HAVE_ENOUGH_DATA;
+        this.#emit(buffering ? 'waiting' : 'playing');
       },
       onEnded: () => {
         this.#paused = true;

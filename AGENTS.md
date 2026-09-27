@@ -267,13 +267,11 @@ changing the area, and update it in the same PR.**
   in-browser encode; `POST /api/v1/sequences/$id/exports` →
   `SequenceExportWorkflow` → the video-export Container (production-only).
   Plain `bun dev` and e2e have no renderer. The theatre does not use the
-  export: it plays an HLS playlist that points straight at the clips (#1623).
-  Each clip gets a fragmented copy made once at ingest by copying packets
-  — never mediabunny's `Conversion`, which re-encodes to trim AAC priming and
-  workerd has no codec. The remux reads ranged R2 bytes and streams the copy
-  through `uploadResponse` (#1735); a whole clip must never sit in Worker
-  memory. The playlist route only reads sidecars. Music plays alongside in
-  its own `<audio>`.
+  export: it always stitches the clips in the tab, loading each as the
+  playhead reaches it (#1845). The HLS playlist and its ingest remux are
+  gone — a whole clip must never sit in Worker memory, and a fragmented MP4
+  cannot be written without holding it. Download only hands over a render of
+  the current cut; "Render MP4 on server" makes one.
 
 ## Frame System
 

@@ -65,10 +65,8 @@ import {
 import { USER_UPLOAD_MODEL } from './user-upload-model';
 import {
   STORAGE_BUCKETS,
-  buildR2Key,
   type StorageBucket,
 } from '@/platform/server/storage/buckets';
-import { writeFragmentedCopy } from '@/sequences/server/theatre-playlist';
 import { getMimeTypeFromExtension } from '@/platform/server/storage/file';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
@@ -481,7 +479,6 @@ export const setShotVideoFromUploadFn = createServerFn({ method: 'POST' })
       STORAGE_BUCKETS.VIDEOS,
       teamId
     );
-    await writeFragmentedCopy(buildR2Key(STORAGE_BUCKETS.VIDEOS, storagePath));
 
     const renderSegmentId = await scopedDb.renderSegments.ensureForShot(shot);
 

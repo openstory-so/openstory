@@ -85,16 +85,6 @@ export function collapseConsecutiveUrls(urls: readonly string[]): string[] {
  * Identity of a stitched clip list (order + URLs). A new `SceneInput[]` of
  * the same clips (shots refetch while others generate) is not a new list (#1284).
  */
-/**
- * HLS can only list rendered clips. A cut that still holds a still (or has
- * no clips yet) stitches in the tab — do not fetch `theatre.m3u8`.
- */
-export function shouldFetchTheatrePlaylist(
-  scenes: readonly SceneInput[]
-): boolean {
-  return scenes.length > 0 && scenes.every((scene) => 'videoUrl' in scene);
-}
-
 export function scenePlaybackKey(scenes: readonly SceneInput[]): string {
   return JSON.stringify(
     scenes.map((scene) =>
@@ -115,17 +105,14 @@ export function scenePlaybackKey(scenes: readonly SceneInput[]): string {
 
 /** What the sequence player knows about its own timeline. */
 export type PlaybackClock = {
-  /** Stitcher: the measured start of each playback scene. */
+  /** The measured start of each playback scene. */
   sceneOffsetsSeconds?: readonly number[];
-  /** HLS: only the whole cut's length. */
-  durationSeconds?: number;
 };
 
 /**
  * Which shot the sequence player is on at `time` (#1771). Scene boundaries
  * are the stitcher's measured offsets when it has them. Inside a packed
- * clip, and on HLS (which reports only the total), shots split the scene in
- * their own `durationMs` proportions, so a clip that came back a little
+ * clip, shots split the scene in their own `durationMs` proportions, so a clip that came back a little
  * longer than asked still lands on the right shot.
  */
 export function shotIdAtSequenceTime<
@@ -138,20 +125,11 @@ export function shotIdAtSequenceTime<
   const scenes = groupPlaybackShots(shots).map((group) =>
     packedClipWindows(group)
   );
-  const estimatedTotal = scenes.reduce(
-    (sum, windows) => sum + (windows.at(-1)?.endSeconds ?? 0),
-    0
-  );
-  const scale =
-    !clock.sceneOffsetsSeconds && clock.durationSeconds && estimatedTotal > 0
-      ? clock.durationSeconds / estimatedTotal
-      : 1;
   let cursor = 0;
   for (const [index, windows] of scenes.entries()) {
     const estimated = windows.at(-1)?.endSeconds ?? 0;
     const start = clock.sceneOffsetsSeconds?.[index] ?? cursor;
-    const end =
-      clock.sceneOffsetsSeconds?.[index + 1] ?? start + estimated * scale;
+    const end = clock.sceneOffsetsSeconds?.[index + 1] ?? start + estimated;
     if (time < end) {
       const local =
         end > start ? ((time - start) / (end - start)) * estimated : 0;
