@@ -232,6 +232,37 @@ describe('planUnits — scenario table (#1816)', () => {
     });
   });
 
+  it('a run whose stop covers the dependents owns them too', () => {
+    const plan = planUnits(
+      input({
+        processing: true,
+        runStopAt: 'music',
+        characterSheets: [{ id: 'maya', sheet: 'missing' }],
+        shots: [
+          shot('s1', {
+            references: refs('maya'),
+            visualPrompt: 'missing',
+            still: 'missing',
+            motionPrompt: 'missing',
+            clip: 'missing',
+          }),
+          shot('s2', { visualPrompt: 'unknown', still: 'missing' }),
+        ],
+        music: { prompt: 'missing', track: 'missing' },
+      }),
+      SEQ
+    );
+    expect(states(plan)).toMatchObject({
+      'sheet:character:maya': 'running',
+      'still:s1': 'running',
+      'prompt:motion:s1': 'running',
+      'clip:s1': 'running',
+      'music:seq-1': 'running',
+      // No verdict is not the run's work.
+      'prompt:visual:s2': 'blocked by -',
+    });
+  });
+
   it('music: the track is made from the prompt', () => {
     const plan = planUnits(
       input({ music: { prompt: 'stale', track: 'done' } }),

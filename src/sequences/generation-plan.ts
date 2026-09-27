@@ -309,9 +309,14 @@ export function planUnits(input: PlanInput, sequenceId: string): PlanUnit[] {
         result = { ...ref, state };
       }
     }
+    // The run making the upstream is the run making this unit too: a
+    // cascade block inside its stop is its own work, not a wait. An
+    // uncomputable verdict (`blockedBy: []`) stays blocked.
+    const runBlocked =
+      result.state === 'blocked' && (result.blockedBy?.length ?? 0) > 0;
     if (
       input.processing &&
-      (result.state === 'missing' || result.state === 'stale') &&
+      (result.state === 'missing' || result.state === 'stale' || runBlocked) &&
       includesStage(input.runStopAt, PLAN_KIND_STAGE[result.kind])
     ) {
       result = { ...ref, state: 'running' };

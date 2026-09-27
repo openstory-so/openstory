@@ -99,6 +99,38 @@ async function loadPlanInput(
       readMusicPromptStaleness(scopedDb, sequence),
     ]);
 
+  // In parallel, as `getShotStalenessBatchFn` does: the reads are shared,
+  // the hashing is per shot. Null = no anchor or an uncomputable compare.
+  const stalenessByShot = new Map(
+    await Promise.all(
+      shots.map(async (shot): Promise<[string, ShotStalenessResult | null]> => {
+        const frame = anchorsByShot.get(shot.id);
+        if (!frame) return [shot.id, null];
+        try {
+          return [
+            shot.id,
+            await computeShotStaleness({
+              scopedDb,
+              sequence,
+              shot,
+              frame,
+              selectedImage: selectedByFrame.get(frame.id) ?? null,
+              scene: resolveSceneForShot(shot, sceneContext).scene,
+              refs,
+              reads,
+              dialogue: reads.dialogueOf(shot),
+            }),
+          ];
+        } catch (error) {
+          logger.warn(`shot ${shot.id} staleness uncomputable`, {
+            err: error,
+          });
+          return [shot.id, null];
+        }
+      })
+    )
+  );
+
   const planShots: PlanShot[] = [];
   const speakers = new Set<string>();
   for (const shot of shots) {
@@ -111,27 +143,9 @@ async function loadPlanInput(
       ? (reads.selectedPromptByFrame.get(frame.id) ?? null)
       : null;
     const dialogue = reads.dialogueOf(shot);
-
-    let staleness: ShotStalenessResult = UNTRACKED_STALENESS;
-    let unknown = !frame;
-    if (frame) {
-      try {
-        staleness = await computeShotStaleness({
-          scopedDb,
-          sequence,
-          shot,
-          frame,
-          selectedImage,
-          scene,
-          refs,
-          reads,
-          dialogue,
-        });
-      } catch (error) {
-        logger.warn(`shot ${shot.id} staleness uncomputable`, { err: error });
-        unknown = true;
-      }
-    }
+    const computed = stalenessByShot.get(shot.id) ?? null;
+    const unknown = computed === null;
+    const staleness = computed ?? UNTRACKED_STALENESS;
     const verdictOf = (v: ArtifactVerdict) => (unknown ? 'unknown' : v);
 
     const matched = resolveSceneShotImageReferences({
