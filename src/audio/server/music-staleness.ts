@@ -34,7 +34,7 @@ export function musicRequestDurationSeconds(
  * per (sequence, model), so there is never a track stamped with a model the
  * sequence no longer selects.
  */
-export async function readMusicTrackStaleness(
+async function readMusicTrackStaleness(
   scopedDb: Pick<ScopedDb, 'sequenceVariants'>,
   sequence: Pick<Sequence, 'id' | 'musicModel' | 'musicPrompt' | 'musicTags'>,
   shots: ReadonlyArray<Pick<Shot, 'durationMs'>>

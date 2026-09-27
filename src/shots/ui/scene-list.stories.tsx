@@ -521,7 +521,14 @@ const unit = (
   id: string,
   state: PlanUnit['state'],
   blockedBy?: PlanUnit['blockedBy']
-): PlanUnit => ({ kind, id, state, ...(blockedBy ? { blockedBy } : {}) });
+): PlanUnit => ({
+  kind,
+  id,
+  state,
+  requires: [],
+  cascaded: false,
+  ...(blockedBy ? { blockedBy } : {}),
+});
 
 const continueArgs = {
   sequenceId: PS_SEQ,

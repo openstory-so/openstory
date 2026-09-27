@@ -40,10 +40,7 @@ import type {
   MusicStatus,
   SequenceStatus,
 } from '@/platform/server/db/schema/sequences';
-import type {
-  GenerationCheckpoint,
-  GenerationStage,
-} from '@/sequences/pipeline';
+import type { GenerationStage } from '@/sequences/pipeline';
 import { parseStyleConfig } from '@/look/style-config';
 import type { ShotReadiness, ShotView } from '@/shots/shot-view';
 import { getLatestPreviewByFrameIds } from '@/stills/server/db/frame-variants';
@@ -605,8 +602,6 @@ export function createSequencesMethods(
       autoGenerateMotion?: boolean;
       autoGenerateMusic?: boolean;
       generationStopAt?: GenerationStage | null;
-      pipelineStage?: GenerationStage | null;
-      generationCheckpoint?: GenerationCheckpoint | null;
       /**
        * Continue-from before Images (#1698): the create-time default can
        * still change because no stills exist yet. The general

@@ -1,20 +1,9 @@
 /**
- * Script-checkpoint durability in `AnalyzeScriptWorkflow` (#1408).
- *
- * Automatic style (#1213) is a second billed LLM call that runs alongside
- * scene-split. It used to be awaited in the same `Promise.all`, so when the
- * model answered in prose instead of JSON the rejection propagated before
- * `persist-pipeline-script` ran: the sequence kept its scenes and shots but
- * `generation_checkpoint` stayed NULL, which is exactly the state "continue
- * from the DAG" refuses with "missing script checkpoint". The only way
- * forward was paying for the split a second time.
- *
- * The contract asserted here: the split's checkpoint is persisted first, and
- * only then does the style failure fail the run.
- *
- * Also pinned: which children each stop-at spawns, what each stage writes
- * to `generation_checkpoint`, and that a continue reads the bible and sheet
- * rows off the checkpoint instead of re-running the stages that made them.
+ * A fresh `AnalyzeScriptWorkflow` run (#1408, #1818): which children each
+ * stop-at spawns, and that the split lands before an automatic style's
+ * failure fails the run — so a continue can pick up from the scenes and shots
+ * it left in D1. A continue never comes here: it runs the generation plan's
+ * units through the Update-all executor.
  */
 
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -181,12 +170,6 @@ const childPayload = (spawnStepName: string) =>
   spawnAndAwaitChild.mock.calls.find(
     ([, args]) => args.spawnStepName === spawnStepName
   )?.[1].childPayload;
-const checkpointWrite = (update: UpdateMock, stage: string) =>
-  update.mock.calls
-    .map(([args]) => args)
-    .filter((args) => args.pipelineStage === stage)
-    .at(-1);
-
 const STYLE_FAILURE = new Error('style: structured-output-parse-failed');
 const deriveAutoStyle = vi.fn(() => Promise.reject(STYLE_FAILURE));
 vi.doMock('@/look/server/workflows/auto-style-step', () => ({
@@ -302,7 +285,7 @@ describe('AnalyzeScriptWorkflow (a fresh run)', () => {
     writeVisualPrompt.mockClear();
   });
 
-  test('the split lands before a style failure fails the run — no checkpoint is written (#1818)', async () => {
+  test('the split lands before a style failure fails the run (#1818)', async () => {
     const update: UpdateMock = vi.fn(async () => undefined);
 
     await expect(
@@ -314,13 +297,6 @@ describe('AnalyzeScriptWorkflow (a fresh run)', () => {
     ).rejects.toThrow(STYLE_FAILURE);
 
     expect(spawned()).toContain('spawn-scene-split');
-    expect(
-      update.mock.calls.some(
-        ([args]) =>
-          args.generationCheckpoint !== undefined ||
-          args.pipelineStage !== undefined
-      )
-    ).toBe(false);
   });
 
   // The runs below have no automatic style, so a stage's own work is what
@@ -345,7 +321,6 @@ describe('AnalyzeScriptWorkflow (a fresh run)', () => {
       userCountry: 'AU',
     });
     expect(createCastRecords).toHaveBeenCalledTimes(1);
-    expect(checkpointWrite(update, 'script')).toBeUndefined();
   });
 
   test('stopAt references: spawns the sheets + prompts, renders nothing', async () => {
@@ -365,7 +340,6 @@ describe('AnalyzeScriptWorkflow (a fresh run)', () => {
       ])
     );
     expect(spawned()).not.toContain('spawn-shot-images');
-    expect(checkpointWrite(update, 'references')).toBeUndefined();
   });
 
   test('a failed character sheet does not render (#1727)', async () => {

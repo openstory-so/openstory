@@ -237,212 +237,23 @@ function asScopedDb<T>(stub: T): ScopedDb {
   return stub as unknown as ScopedDb;
 }
 
+/** Every shot owes a visual prompt unless a test names its units. */
 const plan = (
   shots: Shot[],
   frames: Frame[],
-  scope: {
-    sceneId?: string;
-    shotId?: string;
-    depth?: 'prompts' | 'images' | 'dialogue' | 'video' | 'music';
-    db?: ScopedDb;
-  } = {}
+  opts: { units?: PlanUnitRef[]; db?: ScopedDb } = {}
 ) =>
   computePlan({
-    scopedDb: scope.db ?? buildScopedDb(shots, frames),
+    scopedDb: opts.db ?? buildScopedDb(shots, frames),
     sequenceId: 'seq-1',
-    ...scope,
+    units:
+      opts.units ?? shots.map((s) => ({ kind: 'prompt:visual', id: s.id })),
+    userId: 'u1',
   });
 
 beforeEach(() => stalenessByShot.clear());
 
-describe('computePlan — what gets regenerated', () => {
-  it('targets nothing when every artifact reads fresh', async () => {
-    const result = await plan([makeShot()], [makeFrame()]);
-    expect(result.targets).toEqual([]);
-    expect(result.skipped).toEqual([]);
-  });
-
-  it("depth 'prompts' never renders: a stale visual prompt leaves even a stale image alone", async () => {
-    stalenessByShot.set('shot-1', {
-      ...FRESH,
-      visualPrompt: 'stale',
-      thumbnail: 'stale',
-    });
-    const result = await plan([makeShot()], [makeFrame()], {
-      depth: 'prompts',
-    });
-    expect(result.targets).toHaveLength(1);
-    expect(result.targets[0]).toMatchObject({
-      regenVisual: true,
-      regenMotion: false,
-      regenImage: false,
-      regenVideo: false,
-    });
-  });
-
-  it("depth 'dialogue' (default) cascades: a regenerating visual prompt re-renders its currently-fresh image", async () => {
-    stalenessByShot.set('shot-1', { ...FRESH, visualPrompt: 'stale' });
-    const result = await plan([makeShot()], [makeFrame()]);
-    expect(result.targets).toHaveLength(1);
-    expect(result.targets[0]).toMatchObject({
-      regenVisual: true,
-      regenImage: true,
-    });
-  });
-
-  it('never renders a first still: a stale thumbnail on a shot with no image is not a target', async () => {
-    stalenessByShot.set('shot-1', { ...FRESH, thumbnail: 'stale' });
-    const result = await plan(
-      [makeShot()],
-      [makeFrame({ selectedImageVersionId: null })]
-    );
-    expect(result.targets).toEqual([]);
-  });
-
-  it('re-renders a stale thumbnail when an image already exists', async () => {
-    stalenessByShot.set('shot-1', { ...FRESH, thumbnail: 'stale' });
-    const result = await plan([makeShot()], [makeFrame()]);
-    expect(result.targets[0]).toMatchObject({
-      regenImage: true,
-      regenVisual: false,
-    });
-  });
-
-  it('reports a shot whose staleness could not be computed instead of dropping it', async () => {
-    stalenessByShot.set('shot-1', { ...FRESH, visualPrompt: 'unknown' });
-    const result = await plan([makeShot()], [makeFrame()]);
-    expect(result.targets).toEqual([]);
-    expect(result.skipped).toEqual([
-      { shotId: 'shot-1', reason: 'staleness-unknown' },
-    ]);
-  });
-
-  it('reports a shot with no anchor frame rather than silently skipping it', async () => {
-    stalenessByShot.set('shot-1', { ...FRESH, visualPrompt: 'stale' });
-    const result = await plan([makeShot()], []);
-    expect(result.targets).toEqual([]);
-    expect(result.skipped).toEqual([
-      { shotId: 'shot-1', reason: 'no-anchor-frame' },
-    ]);
-  });
-
-  it('reports a shot still awaiting script analysis', async () => {
-    const result = await plan([makeShot({ sceneId: null })], [makeFrame()]);
-    expect(result.skipped).toEqual([{ shotId: 'shot-1', reason: 'no-scene' }]);
-  });
-});
-
-describe("computePlan — depth 'video' (#1085)", () => {
-  /** One shot, one segment, one selected completed video whose manifest may
-   * or may not match the shot's current pointers. */
-  const videoShot = () =>
-    makeShot({
-      orderIndex: 0,
-      renderSegmentId: 'seg-1',
-      selectedMotionPromptVersionId: 'mpv-1',
-      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub
-    } as Partial<Shot>);
-  const videoFixture = (opts?: {
-    manifestMotionId?: string;
-    selected?: boolean;
-    generating?: boolean;
-  }): VideoFixture => ({
-    segments: [
-      {
-        id: 'seg-1',
-        sceneId: 'scene-1',
-        selectedVideoVersionId: (opts?.selected ?? true) ? 'vv-1' : null,
-      },
-    ],
-    versions: [
-      {
-        id: 'vv-1',
-        renderSegmentId: 'seg-1',
-        model: 'kling',
-        status: 'completed',
-        url: 'https://example.com/v.mp4',
-        createdAt: new Date(0),
-        manifest: [
-          {
-            shotId: 'shot-1',
-            motionPromptVersionId: opts?.manifestMotionId ?? 'mpv-1',
-            frameVersionId: 'fv-1',
-          },
-        ],
-      },
-      ...(opts?.generating
-        ? [
-            {
-              id: 'vv-2',
-              renderSegmentId: 'seg-1',
-              model: 'kling',
-              status: 'generating',
-              url: null,
-              createdAt: new Date(0),
-              manifest: [],
-            },
-          ]
-        : []),
-    ],
-    segFrames: [
-      { shotId: 'shot-1', role: 'first', selectedImageVersionId: 'fv-1' },
-    ],
-  });
-  const videoDb = (opts?: Parameters<typeof videoFixture>[0]) =>
-    buildScopedDb([videoShot()], [makeFrame()], { video: videoFixture(opts) });
-
-  it('re-renders an existing video when its motion prompt regenerates in this run', async () => {
-    stalenessByShot.set('shot-1', { ...FRESH, motionPrompt: 'stale' });
-    const result = await plan([videoShot()], [makeFrame()], {
-      depth: 'video',
-      db: videoDb(),
-    });
-    expect(result.targets[0]).toMatchObject({
-      regenMotion: true,
-      regenVideo: true,
-    });
-  });
-
-  it("depth 'images' never touches video even with a stale upstream", async () => {
-    stalenessByShot.set('shot-1', { ...FRESH, motionPrompt: 'stale' });
-    const result = await plan([videoShot()], [makeFrame()], {
-      depth: 'images',
-      db: videoDb(),
-    });
-    expect(result.targets[0]).toMatchObject({ regenVideo: false });
-  });
-
-  it('re-renders a video whose manifest already diverged, with no other stale artifact', async () => {
-    const result = await plan([videoShot()], [makeFrame()], {
-      depth: 'video',
-      db: videoDb({ manifestMotionId: 'mpv-0' }),
-    });
-    expect(result.targets).toHaveLength(1);
-    expect(result.targets[0]).toMatchObject({
-      regenVisual: false,
-      regenMotion: false,
-      regenImage: false,
-      regenVideo: true,
-    });
-  });
-
-  it('never renders a FIRST video, and leaves an in-flight render alone', async () => {
-    stalenessByShot.set('shot-1', { ...FRESH, motionPrompt: 'stale' });
-    const noVideo = await plan([videoShot()], [makeFrame()], {
-      depth: 'video',
-      db: videoDb({ selected: false }),
-    });
-    expect(noVideo.targets[0]).toMatchObject({ regenVideo: false });
-
-    const inFlight = await plan([videoShot()], [makeFrame()], {
-      depth: 'video',
-      db: videoDb({ generating: true }),
-    });
-    expect(inFlight.targets[0]).toMatchObject({ regenVideo: false });
-  });
-});
-
-describe("computePlan — depth 'dialogue' (#1703)", () => {
+describe('computePlan — a dialogue unit (#1703, #1780 §6)', () => {
   const staleAudio: Shot['audioClips'] = [
     {
       id: 'clip-1',
@@ -474,9 +285,9 @@ describe("computePlan — depth 'dialogue' (#1703)", () => {
     });
   }
 
-  it('re-records stale dialogue without re-rendering video', async () => {
+  it('re-records the reading without re-rendering video', async () => {
     const result = await plan([makeShot()], [makeFrame()], {
-      depth: 'dialogue',
+      units: [{ kind: 'dialogue', id: 'shot-1' }],
       db: withVoices(voiceDb()),
     });
     expect(result.targets).toHaveLength(1);
@@ -487,155 +298,39 @@ describe("computePlan — depth 'dialogue' (#1703)", () => {
     expect(result.dialogueRecording?.scenes).toHaveLength(1);
   });
 
-  it("depth 'images' never records dialogue even when the reading is stale", async () => {
+  it('records a FIRST reading when the plan owes one', async () => {
     const result = await plan([makeShot()], [makeFrame()], {
-      depth: 'images',
-      db: withVoices(voiceDb()),
-    });
-    expect(result.targets).toEqual([]);
-    expect(result.dialogueRecording).toBeNull();
-  });
-
-  it('never creates a FIRST recording', async () => {
-    const result = await plan([makeShot()], [makeFrame()], {
-      depth: 'dialogue',
+      units: [{ kind: 'dialogue', id: 'shot-1' }],
       db: withVoices(voiceDb([])),
     });
-    expect(result.targets).toEqual([]);
-    expect(result.dialogueRecording).toBeNull();
+    expect(result.targets[0]).toMatchObject({ regenDialogue: true });
+    expect(result.dialogueRecording?.scenes).toHaveLength(1);
   });
 });
-
-describe("computePlan — depth 'music' (#1085)", () => {
-  it("is null below depth 'music'", async () => {
-    const result = await plan([makeShot()], [makeFrame()], { depth: 'video' });
-    expect(result.music).toBeNull();
-  });
-
-  it('regenerates a stale music prompt and cascades onto an existing track', async () => {
-    const db = buildScopedDb([makeShot()], [makeFrame()], {
-      sequence: {
-        musicPromptInputHash: 'old-music-hash',
-        musicUrl: 'https://example.com/m.mp3',
-        musicStatus: 'completed',
-      },
-    });
-    const result = await plan([makeShot()], [makeFrame()], {
-      depth: 'music',
-      db,
-    });
-    expect(result.music).toMatchObject({ regenPrompt: true, regenTrack: true });
-    // The children's inputs are frozen with the decision that hashed them.
-    expect(result.music?.sceneSummaries).toHaveLength(1);
-    expect(result.music?.promptSource).toBe('ai-generated');
-    expect(result.music?.durationSeconds).toBe(10);
-  });
-
-  it('never creates a first prompt or track (untracked / no music)', async () => {
-    const untracked = await plan([makeShot()], [makeFrame()], {
-      depth: 'music',
-    });
-    expect(untracked.music).toMatchObject({
-      regenPrompt: false,
-      regenTrack: false,
-    });
-
-    const promptOnly = await plan([makeShot()], [makeFrame()], {
-      depth: 'music',
-      db: buildScopedDb([makeShot()], [makeFrame()], {
-        sequence: { musicPromptInputHash: 'old-music-hash', musicUrl: null },
-      }),
-    });
-    expect(promptOnly.music).toMatchObject({
-      regenPrompt: true,
-      regenTrack: false,
-    });
-  });
-
-  it('regenerates a track stale on its own hash, fresh prompt and all (#1657)', async () => {
-    const trackSequence = {
-      musicPromptInputHash: 'live-music-hash',
-      musicUrl: 'https://example.com/m.mp3',
-      musicStatus: 'completed',
-      musicModel: 'elevenlabs_music',
-      musicPrompt: 'warm analogue synth pad',
-      musicTags: 'ambient, instrumental',
-    };
-    const primary = {
-      status: 'completed',
-      model: 'elevenlabs_music',
-      inputHash: 'hash-of-the-prompt-this-track-was-rendered-from',
-    };
-    const stale = await plan([makeShot()], [makeFrame()], {
-      depth: 'music',
-      db: buildScopedDb([makeShot()], [makeFrame()], {
-        sequence: trackSequence,
-        musicPrimary: primary,
-      }),
-    });
-    expect(stale.music).toMatchObject({
-      regenPrompt: false,
-      regenTrack: true,
-      durationSeconds: 10,
-    });
-
-    // The same row, stamped with the digest the live inputs produce: fresh.
-    const fresh = await plan([makeShot()], [makeFrame()], {
-      depth: 'music',
-      db: buildScopedDb([makeShot()], [makeFrame()], {
-        sequence: trackSequence,
-        musicPrimary: {
-          ...primary,
-          // Real digest (the mock above only replaces the PROMPT hash fns).
-          inputHash: await realInputHash.computeSequenceMusicInputHash({
-            prompt: trackSequence.musicPrompt,
-            tags: trackSequence.musicTags,
-            durationSeconds: 10,
-            audioModel: 'elevenlabs_music',
-          }),
-        },
-      }),
-    });
-    expect(fresh.music).toMatchObject({
-      regenPrompt: false,
-      regenTrack: false,
-    });
-  });
-
-  it('leaves a fresh music prompt and its track alone', async () => {
-    const db = buildScopedDb([makeShot()], [makeFrame()], {
-      sequence: {
-        musicPromptInputHash: 'live-music-hash',
-        musicUrl: 'https://example.com/m.mp3',
-        musicStatus: 'completed',
-      },
-    });
-    const result = await plan([makeShot()], [makeFrame()], {
-      depth: 'music',
-      db,
-    });
-    expect(result.music).toMatchObject({
-      regenPrompt: false,
-      regenTrack: false,
-    });
-  });
-});
-
-describe("computePlan — 'updating' dedup (#1085)", () => {
-  it('does not target an artifact already covered by a live claim', async () => {
-    stalenessByShot.set('shot-1', {
-      ...FRESH,
-      visualPrompt: 'updating',
-      motionPrompt: 'stale',
-    });
+describe('computePlan — what cannot be planned is reported', () => {
+  it('a shot whose staleness could not be computed is skipped, not dropped', async () => {
+    stalenessByShot.set('shot-1', { ...FRESH, visualPrompt: 'unknown' });
     const result = await plan([makeShot()], [makeFrame()]);
-    expect(result.targets).toHaveLength(1);
-    expect(result.targets[0]).toMatchObject({
-      regenVisual: false,
-      regenMotion: true,
-    });
+    expect(result.targets).toEqual([]);
+    expect(result.skipped).toEqual([
+      { shotId: 'shot-1', reason: 'staleness-unknown' },
+    ]);
   });
 
+  it('a shot with no anchor frame', async () => {
+    const result = await plan([makeShot()], []);
+    expect(result.skipped).toEqual([
+      { shotId: 'shot-1', reason: 'no-anchor-frame' },
+    ]);
+  });
+
+  it('a shot still awaiting script analysis', async () => {
+    const result = await plan([makeShot({ sceneId: null })], [makeFrame()]);
+    expect(result.skipped).toEqual([{ shotId: 'shot-1', reason: 'no-scene' }]);
+  });
+});
+
+describe('computePlan — claim hashes (#1085)', () => {
   it('carries the live hashes the claim rows will be stamped with', async () => {
     stalenessByShot.set('shot-1', { ...FRESH, visualPrompt: 'stale' });
     const result = await plan([makeShot()], [makeFrame()]);
@@ -686,6 +381,7 @@ describe("computePlan — a continue's units (#1818)", () => {
         [makeFrame(), makeFrame({ id: 'frame-2', shotId: 'shot-2' })]
       ),
       sequenceId: 'seq-1',
+      userId: 'u1',
       units: units(['prompt:visual', 'shot-1'], ['clip', 'shot-1']),
     });
     expect(result.targets.map((t) => t.shotId)).toEqual(['shot-1']);
@@ -709,6 +405,7 @@ describe("computePlan — a continue's units (#1818)", () => {
         { sequence: { imageModel: 'nano_banana_2_lite' } }
       ),
       sequenceId: 'seq-1',
+      userId: 'u1',
       units: units(['prompt:visual', 'shot-1'], ['still', 'shot-1']),
     });
     expect(result.targets[0]).toMatchObject({
@@ -724,6 +421,7 @@ describe("computePlan — a continue's units (#1818)", () => {
     const result = await computePlan({
       scopedDb: buildScopedDb([makeShot()], [makeFrame()]),
       sequenceId: 'seq-1',
+      userId: 'u1',
       units: units(['prompt:music', 'seq-1'], ['music', 'seq-1']),
     });
     expect(result.targets).toEqual([]);
@@ -994,54 +692,12 @@ describe('claimTargets (#1085)', () => {
   });
 });
 
-describe('computePlan — scope', () => {
-  const shots = [
-    makeShot({ id: 'shot-1', sceneId: 'scene-1' }),
-    makeShot({ id: 'shot-2', sceneId: 'scene-1' }),
-    makeShot({ id: 'shot-3', sceneId: 'scene-2' }),
-  ];
-  const frames = [
-    makeFrame({ id: 'f1', shotId: 'shot-1' }),
-    makeFrame({ id: 'f2', shotId: 'shot-2' }),
-    makeFrame({ id: 'f3', shotId: 'shot-3' }),
-  ];
-  const allStale = () => {
-    for (const id of ['shot-1', 'shot-2', 'shot-3'])
-      stalenessByShot.set(id, { ...FRESH, visualPrompt: 'stale' });
-  };
-
-  it('covers every shot when neither sceneId nor shotId is given', async () => {
-    allStale();
-    const result = await plan(shots, frames);
-    expect(result.targets.map((t) => t.shotId)).toEqual([
-      'shot-1',
-      'shot-2',
-      'shot-3',
-    ]);
-  });
-
-  it('limits to one scene', async () => {
-    allStale();
-    const result = await plan(shots, frames, { sceneId: 'scene-1' });
-    expect(result.targets.map((t) => t.shotId)).toEqual(['shot-1', 'shot-2']);
-  });
-
-  it('lets shotId win over sceneId — a one-shot update never widens', async () => {
-    allStale();
-    const result = await plan(shots, frames, {
-      sceneId: 'scene-1',
-      shotId: 'shot-3',
-    });
-    expect(result.targets.map((t) => t.shotId)).toEqual(['shot-3']);
-  });
-});
-
 describe('computePlan — durable step-result size', () => {
   it('keeps scene bodies out of the plan (1 MiB step-result cap)', async () => {
-    stalenessByShot.set('shot-1', { ...FRESH, motionPrompt: 'stale' });
     const result = await plan(
       [makeShot({ id: 'shot-0' }), makeShot(), makeShot({ id: 'shot-2' })],
-      [makeFrame()]
+      [makeFrame()],
+      { units: [{ kind: 'prompt:motion', id: 'shot-1' }] }
     );
     const target = result.targets[0];
     expect(target).toBeDefined();

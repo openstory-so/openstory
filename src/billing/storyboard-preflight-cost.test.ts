@@ -244,37 +244,6 @@ describe('estimateStoryboardPreflightCost', () => {
     expect(motionAndMusic).toBeGreaterThan(motionOnly);
   });
 
-  it('continue reserves only the slice from startFrom (#1408)', () => {
-    const script = 'Scene 1 — 5s\nA room.';
-    const full = Number(
-      estimateStoryboardPreflightCost({ ...base, script, stopAt: 'images' })
-    );
-    const imagesOnly = Number(
-      estimateStoryboardPreflightCost({
-        ...base,
-        script,
-        startFrom: 'images',
-        stopAt: 'images',
-      })
-    );
-    // Script LLM calls + reference sheets already ran; only stills are gated.
-    expect(imagesOnly).toBeGreaterThan(0);
-    expect(imagesOnly).toBeLessThan(full);
-
-    // Reference-only never renders stills, so the same slice bills nothing.
-    expect(
-      Number(
-        estimateStoryboardPreflightCost({
-          ...base,
-          script,
-          startFrom: 'images',
-          stopAt: 'images',
-          referenceOnly: true,
-        })
-      )
-    ).toBe(0);
-  });
-
   it('prices one new voice per estimated character when voices are on (#1553)', () => {
     const script = 'Scene 1 — 5s\nA room.\n\nScene 2 — 5s\nAnother room.';
     const off = estimateStoryboardPreflightCost({
@@ -291,23 +260,6 @@ describe('estimateStoryboardPreflightCost', () => {
     const scenes = estimateSceneCount(script);
     expect(on - off).toBe(
       multiplyMicros(VOICE_ESTIMATE_COST, estimateCharacterSheetCount(scenes))
-    );
-    // Not in the slice → not billed.
-    expect(
-      estimateStoryboardPreflightCost({
-        ...base,
-        script,
-        startFrom: 'images',
-        stopAt: 'images',
-        generateVoices: true,
-      })
-    ).toBe(
-      estimateStoryboardPreflightCost({
-        ...base,
-        script,
-        startFrom: 'images',
-        stopAt: 'images',
-      })
     );
   });
 
@@ -327,44 +279,5 @@ describe('estimateStoryboardPreflightCost', () => {
     expect(dialogue - images).toBeGreaterThanOrEqual(
       estimateTtsCost(scenes * TYPICAL_DIALOGUE_CHARS_PER_SHOT)
     );
-  });
-
-  it('reserves only TTS when continuing from Dialogue to Dialogue', () => {
-    const script = 'Scene 1 — 5s\nA room.\n\nScene 2 — 5s\nAnother room.';
-    const cost = estimateStoryboardPreflightCost({
-      ...base,
-      script,
-      startFrom: 'dialogue',
-      stopAt: 'dialogue',
-      generateVoices: true,
-      videoModels: [DEFAULT_VIDEO_MODEL],
-    });
-    expect(cost).toBe(
-      estimateTtsCost(
-        estimateSceneCount(script) * TYPICAL_DIALOGUE_CHARS_PER_SHOT
-      )
-    );
-  });
-
-  it('does not reserve TTS in the motion slice — clips already ran (#1554)', () => {
-    const script = 'Scene 1 — 5s\nA room.\n\nScene 2 — 5s\nAnother room.';
-    const off = estimateStoryboardPreflightCost({
-      ...base,
-      script,
-      startFrom: 'motion',
-      stopAt: 'motion',
-      autoGenerateMotion: true,
-      videoModels: [DEFAULT_VIDEO_MODEL],
-    });
-    const on = estimateStoryboardPreflightCost({
-      ...base,
-      script,
-      startFrom: 'motion',
-      stopAt: 'motion',
-      autoGenerateMotion: true,
-      videoModels: [DEFAULT_VIDEO_MODEL],
-      generateVoices: true,
-    });
-    expect(on).toBe(off);
   });
 });

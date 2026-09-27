@@ -13,10 +13,7 @@ import { user } from './auth';
 // shots.ts imports sequences for foreign key reference
 import { styles } from './libraries';
 import { teams } from './teams';
-import type {
-  GenerationCheckpoint,
-  GenerationStage,
-} from '@/sequences/pipeline';
+import type { GenerationStage } from '@/sequences/pipeline';
 import type { StoredStyleConfig } from '@/look/style-config';
 
 // Enum values as constants (SQLite doesn't have native enums)
@@ -208,12 +205,10 @@ export const sequences = snakeCase.table(
     autoGenerateMotion: integer({ mode: 'boolean' }).default(false).notNull(),
     autoGenerateMusic: integer({ mode: 'boolean' }).default(false).notNull(),
 
-    // How far the current/last run was asked to go, and how far it actually
-    // got. Checkpoint holds in-memory DAG state (bibles, matches) that is
-    // not yet in character/location rows, so a stopped run can resume.
+    // How far the current/last run was asked to go. How far it got is not
+    // stored: what is left is the generation plan, derived from live rows
+    // (#1816, #1819).
     generationStopAt: text().$type<GenerationStage>(),
-    pipelineStage: text().$type<GenerationStage>(),
-    generationCheckpoint: text({ mode: 'json' }).$type<GenerationCheckpoint>(),
 
     // Suggested talent/location IDs used during generation (for pre-populating the UI)
     suggestedTalentIds: text({

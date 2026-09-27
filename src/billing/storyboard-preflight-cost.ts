@@ -28,7 +28,7 @@ import type { Resolution } from '@/models/resolutions';
 import { estimateStoryboardCost } from './cost-estimation';
 import type { Microdollars } from './money';
 import { estimateSceneCount } from '@/sequences/time-estimate';
-import { shouldRunStage, type GenerationStage } from '@/sequences/pipeline';
+import { includesStage, type GenerationStage } from '@/sequences/pipeline';
 
 export type StoryboardPreflightInput = {
   script: string;
@@ -40,8 +40,6 @@ export type StoryboardPreflightInput = {
   resolution?: Resolution;
   autoGenerateMotion?: boolean;
   stopAt?: GenerationStage;
-  /** Continue-from: stages before this already ran and are not gated (#1408). */
-  startFrom?: GenerationStage;
   videoModels?: ImageToVideoModel[];
   autoGenerateMusic?: boolean;
   audioModels?: AudioModel[];
@@ -111,14 +109,11 @@ export function estimateStoryboardPreflightCost(
     sceneCount = headingCount;
   }
 
-  const startFrom = opts.startFrom ?? 'script';
   const motionOn = opts.stopAt
-    ? shouldRunStage(startFrom, opts.stopAt, 'motion') &&
-      Boolean(opts.videoModels?.length)
+    ? includesStage(opts.stopAt, 'motion') && Boolean(opts.videoModels?.length)
     : Boolean(opts.autoGenerateMotion && opts.videoModels?.length);
   const musicOn = opts.stopAt
-    ? shouldRunStage(startFrom, opts.stopAt, 'music') &&
-      Boolean(opts.audioModels?.length)
+    ? includesStage(opts.stopAt, 'music') && Boolean(opts.audioModels?.length)
     : Boolean(motionOn && opts.autoGenerateMusic && opts.audioModels?.length);
 
   const motionDurations = motionOn
@@ -138,7 +133,6 @@ export function estimateStoryboardPreflightCost(
     estimatedSceneCount: sceneCount,
     autoGenerateMotion: motionOn,
     stopAt: opts.stopAt,
-    startFrom: opts.startFrom,
     videoModels: motionOn ? opts.videoModels : undefined,
     videoDurationSeconds: motionDurations?.perShotSeconds,
     autoGenerateMusic: musicOn,

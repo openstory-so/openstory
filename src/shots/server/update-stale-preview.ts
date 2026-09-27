@@ -14,7 +14,12 @@ import {
 import type { EffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 
 type FalPricingMap = Record<string, EffectiveFalPricing>;
-import { safeAudioModel, safeImageToVideoModel } from '@/models/models';
+import {
+  DEFAULT_IMAGE_MODEL,
+  safeAudioModel,
+  safeImageToVideoModel,
+  safeTextToImageModel,
+} from '@/models/models';
 import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
 import { addMicros, ZERO_MICROS, type Microdollars } from '@/billing/money';
 import { ttsCharacterCount } from '@/motion/dialogue-tts';
@@ -72,6 +77,23 @@ export function buildUpdateStalePreview(
       })
     )
   );
+  // Sheets and element references ride on the images level (#1819): a
+  // stale sheet is an image, and the stills made from it wait for it.
+  const references = plan.references;
+  const sheetCount = references
+    ? references.characterSheets.length +
+      references.locationSheets.length +
+      (references.elementSheets?.entries.length ?? 0)
+    : 0;
+  const sheetsCost =
+    sheetCount > 0
+      ? estimateImageCost(
+          safeTextToImageModel(plan.sequence.imageModel, DEFAULT_IMAGE_MODEL),
+          '16:9',
+          sheetCount,
+          { pricing }
+        )
+      : ZERO_MICROS;
   const videoModel = safeImageToVideoModel(plan.sequence.videoModel);
   // Dialogue is recorded once per SCENE before the renders (#1657), so it is
   // priced per scene: the whole conversation, on the earliest depth that needs
@@ -124,7 +146,7 @@ export function buildUpdateStalePreview(
     musicTrack: music?.regenTrack ?? false,
     costByLevel: {
       prompts: promptsCost,
-      images: imagesCost,
+      images: addMaybe(imagesCost, sheetsCost),
       dialogue:
         recordingChars.dialogue > 0
           ? estimateTtsCost(recordingChars.dialogue)

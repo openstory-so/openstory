@@ -58,6 +58,7 @@ shipped).
 | Motion prompt edit                                | Video (manifest names the superseded motion version)                                                                        | Still, visual prompt                                                      |
 | Music prompt user-edit                            | The track (rendered from the old text, `musicTrackStaleness`). The prompt's own hash goes **null → 'untracked'**            | Uploaded scores (null hash, untracked)                                    |
 | Sheet manual upload                               | Stills (selected version id is a new identity); the sheet itself is fresh if inputs match                                   | Prompts                                                                   |
+| Any of the above                                  | Readiness is derived like staleness: the generation plan re-reads the rows (`docs/architecture/generation-plan.md`)         | No stored stage or checkpoint to move (#1819)                             |
 
 ### 1.3 Prompt + still replace (the atomic rule)
 

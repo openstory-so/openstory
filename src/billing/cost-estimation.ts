@@ -30,11 +30,7 @@ import {
   type StudioVideoMode,
 } from '@/studio/text-to-video';
 import { getLogger } from '@/platform/logger';
-import {
-  shouldRunStage,
-  stageIndex,
-  type GenerationStage,
-} from '@/sequences/pipeline';
+import { includesStage, type GenerationStage } from '@/sequences/pipeline';
 import type { PlanUnitKind } from '@/sequences/generation-plan';
 import { reportFlooredEstimate } from './billing-observability';
 import {
@@ -325,8 +321,6 @@ export type StoryboardCostOpts = {
   autoGenerateMotion?: boolean;
   /** How far the run will go (#1408). Overrides auto-generate flags. */
   stopAt?: GenerationStage;
-  /** Continue-from: skip stages before this (#1408). */
-  startFrom?: GenerationStage;
   /**
    * Video models for per-shot motion (#545). Each is priced from its own
    * parameters — a uniform multiplier would mis-estimate a mixed selection.
@@ -364,15 +358,11 @@ export type StoryboardCostOpts = {
 function estimateRunsStage(
   opts: Pick<
     StoryboardCostOpts,
-    'startFrom' | 'stopAt' | 'autoGenerateMotion' | 'autoGenerateMusic'
+    'stopAt' | 'autoGenerateMotion' | 'autoGenerateMusic'
   >,
   stage: GenerationStage
 ): boolean {
-  const startFrom = opts.startFrom ?? 'script';
-  if (opts.stopAt) {
-    return shouldRunStage(startFrom, opts.stopAt, stage);
-  }
-  if (stageIndex(stage) < stageIndex(startFrom)) return false;
+  if (opts.stopAt) return includesStage(opts.stopAt, stage);
   if (stage === 'motion') return Boolean(opts.autoGenerateMotion);
   if (stage === 'music') return Boolean(opts.autoGenerateMusic);
   return true;

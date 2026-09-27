@@ -26,7 +26,7 @@ import {
   DEFAULT_UPDATE_STALE_DEPTH,
   UPDATE_STALE_DEPTHS,
 } from './update-stale-depth';
-import { computePlan } from '@/shots/server/update-stale-plan';
+import { planUpdateAll } from '@/shots/server/update-stale-plan';
 import {
   buildUpdateStalePreview,
   type UpdateStalePreview,
@@ -993,12 +993,13 @@ export const updateStaleShotsFn = createServerFn({ method: 'POST' })
         { errorMessage: 'Insufficient credits to update out-of-date shots' }
       );
     }
-    const plan = await computePlan({
+    const plan = await planUpdateAll({
       scopedDb,
       sequenceId: sequence.id,
       sceneId: data.sceneId,
       shotId: data.shotId,
       depth,
+      userId: user.id,
     });
     const workflowRunId = await triggerWorkflow<UpdateStaleShotsWorkflowInput>(
       '/update-stale-shots',
@@ -1131,12 +1132,13 @@ export const getUpdateStalePreviewFn = createServerFn({ method: 'GET' })
   )
   .handler(async ({ data, context }): Promise<UpdateStalePreview> => {
     const { sequence, scopedDb } = context;
-    const plan = await computePlan({
+    const plan = await planUpdateAll({
       scopedDb,
       sequenceId: sequence.id,
       sceneId: data.sceneId,
       shotId: data.shotId,
       depth: 'music',
+      userId: context.user.id,
     });
     return buildUpdateStalePreview(
       plan,

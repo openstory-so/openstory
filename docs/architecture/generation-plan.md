@@ -1,18 +1,41 @@
 # Generation plan (#1816)
 
 What a sequence still owes, per entity, as a function of **live D1 only**.
-One answer for the scene-list footer, `continueGenerationFn` and the
-storyboard trigger, so nothing can drift from it the way `pipelineStage` /
-`generationCheckpoint` did (a cache with one writer and ~80 edits that never
-moved it).
+One answer for the scene-list footer, `continueGenerationFn`, the storyboard
+run and Update all. There is no stored stage and no checkpoint: the old
+`pipelineStage` / `generationCheckpoint` pair was a cache with one writer and
+~80 edits that never moved it, and every mismatch was a refused click. The
+columns are gone (#1819).
 
-- Pure half (units, requires graph, cascade): `src/sequences/generation-plan.ts`.
+- Pure half (units, requires graph, cascade, Update all's filter, footer
+  copy): `src/sequences/generation-plan.ts`.
 - Loader (rows + verdicts, one read per table): `src/sequences/server/generation-plan.ts`.
 - Wire: `getGenerationPlanFn` (`src/sequences/generation-plan.fn.ts`).
 
+## Stops: how far a run goes
+
+Generate asks how far to run. **One ordered list**, `GENERATION_STAGES` in
+`src/sequences/pipeline.ts` (script → references → images → dialogue →
+motion → music), drives the Generate-dialog slider, the progress banner and
+the continue slider. Casting is part of `script`.
+
+- **`stopAt` is the only word on how far a run goes.** It is chosen per click,
+  snapshotted onto `sequences.generationStopAt`, and REQUIRED on the
+  storyboard / analyze-script payloads (the launcher resolves it via
+  `resolveStopAt`). The legacy `autoGenerateMotion` / `autoGenerateMusic`
+  columns are DERIVED from it (`flagsFromStopAt`) and kept only for old
+  readers — never set them on their own, and never gate a phase on them.
+- Each unit kind has a stop (`PLAN_KIND_STAGE`, below); `stopAt` caps the
+  kinds a run makes. Where a run starts is not a choice: it is wherever the
+  plan has work.
+- **Script is a fresh, whole run** (`AnalyzeScriptWorkflow`). It persists no
+  stage: `stageComplete` only emits the banner's `generation.phase:complete`.
+  A run whose character sheets failed returns after References (#1727); the
+  plan then reads those sheets `missing`.
+
 ## Units
 
-`{ kind, id, state, blockedBy? }`. Kinds, with the stop that caps them
+`{ kind, id, state, requires, cascaded, blockedBy? }`. Kinds, with the stop that caps them
 (`PLAN_KIND_STAGE`):
 
 | kind                                | id        | stop       |
@@ -64,33 +87,98 @@ Generation preconditions (`SHOT_UNITS`, plus `music` ← `prompt:music`), not th
 - `music` ← `prompt:music`.
 
 Cascade, in kind order: an upstream `missing` / `stale` turns a `done` unit
-`stale` (a sheet in the plan puts its stills in the plan, as Update all's
-`cascadeFlags` does per shot); an upstream `running` / `blocked` turns a unit
-with work `blocked`. A `done` unit keeps its artifact.
+`stale` with `cascaded: true` (a sheet in the plan puts its stills in the
+plan); an upstream `running` / `blocked` turns a unit with work `blocked`. A
+`done` unit keeps its artifact. `requires` is the graph resolved to the
+plan's own units.
 
-## Readers
+## What a continue does
 
-- **Footer + continue (#1817).** `getGenerationPlanFn` (optionally with
-  `generateStartFrames` / `generateVoices` overrides: the plan as if the
-  footer's switches were saved) feeds the scene-list footer;
-  `continueFromPlan` (`src/sequences/server/continue-plan.ts`) is the
-  continue guard; `estimatePlanCost` prices both the quote and the
-  reservation. `switchLocks` says which switch can no longer turn off. See
-  `stop-at-stages.md` § Continue.
-- **The run (#1818).** `continueGenerationFn` freezes the work as an
-  Update-all plan (`computePlan({ units })` in
-  `src/shots/server/update-stale-plan.ts`: flags from the units, first
-  artifacts included; `buildPlanReferences` for the sheets, element
-  references and voices) and the storyboard runs it through
-  `UpdateStaleShotsWorkflow`. Multi-shot shots that owe a prompt get the
-  per-shot LLM prompt, as Update all does — the shot-list specs the fresh
-  run derives from are not stored.
+`continueGenerationFn` (#1817, #1818) takes `{ stopAt, generateStartFrames,
+generateVoices, draftMotion }` — no `startFrom`.
 
-## Status
+1. It recomputes the plan under the requested switches and runs its
+   `missing | stale` units up to `stopAt` (`continueFromPlan`), refusing only
+   when that set is empty (`Nothing to generate up to …`). Turning Start
+   frames or Voices ON is allowed at any step — it only adds `still` /
+   `dialogue` units; turning one OFF after its units exist is refused with
+   the reason (`switchLocks`).
+2. The quote and the credit check are the same number: `estimatePlanCost`
+   over the unit counts. It is a balance check (`requireCredits`), not a
+   hold: the run's per-shot children preflight their own spend.
+3. The switches save, then the work is frozen as an executor plan
+   (`computePlan({ units })` in `src/shots/server/update-stale-plan.ts`:
+   flags from the units, first artifacts included, every input read from D1
+   now; `buildPlanReferences` for the sheet / element / voice payloads). A
+   refused trigger puts the switches back.
+4. The storyboard run (mutex, processing status, banner) spawns
+   `UpdateStaleShotsWorkflow` with that plan instead of analyze-script: a
+   references wave first (sheets, element references, voices — each claimed
+   in the run), then the per-shot jobs (prompts, stills, dialogue, clips)
+   and music. A reference that fails holds the stills and clips made from it
+   (`PlanTarget.referenceIds`) and fails nothing else. Multi-shot shots that
+   owe a prompt get the per-shot LLM prompt: the shot-list specs a fresh run
+   derives from are not stored.
 
-Phase 3 of 4. #1819 deletes the stage + checkpoint and makes Update all the
-plan filtered to `stale`.
+Scenes and shots edited, added or deleted during a stop reach the continue:
+every unit is materialised per shot from D1 at the click.
 
-Not done: `musicDesign` is still not persisted, so the plan cannot tell a
-score whose design is "no music" from one never made; the `music` unit is
-owed whenever there are shots.
+## What Update all does
+
+Update all is the plan filtered to `stale` (`updateAllUnits`, #1819) up to
+the depth picked (`update-stale-depth.ts`), through the same executor. A
+unit stale only by the cascade comes along only with the upstream it
+cascades from. Sheets and element references are in Update all at
+`images`; a shot with voiced lines, every speaker voiced and no reading yet
+records its first one at `dialogue` (#1780 §6). A scoped run (scene / shot)
+takes along the sheets its shots are made from; music stays sequence-wide.
+It never makes a first sheet, still or clip — that is a continue. A shot the
+plan could not check is reported as `staleness-unknown`.
+
+## What the footer shows
+
+The scene list reads `getGenerationPlanFn` (one query, 10s stale time,
+refetch on focus, invalidated by realtime and by any refused continue —
+`refetchAfterRefusedContinue`). The first stop with work picks the footer;
+the continue slider locks the stops before it (done) and the button says
+`Generate 2 references, 12 prompts, 12 images` (`planWorkLabel`), with a line
+per blocked noun (`3 images blocked: waiting on Maya reference`,
+`blockedLines`). The switches show at every step; one whose units exist is
+locked on. With the footer's switches flipped, it asks the plan with those
+switches (`getGenerationPlanFn` overrides) before they save.
+
+## Draft first and the ready email
+
+- **Draft first (#1756).** `sequences.draftMotion` is not a stage: with it on,
+  the `music` stop renders 480p Ark drafts (music rides along) and the slider
+  labels that tick **Drafts** and appends a greyed **Finals** tick the thumb
+  cannot reach (`GenerationStopSlider`, six ticks alternate above and below
+  the track). A run never renders finals on its own — that would pay for the
+  draft and the final with no look in between — so Finals is the scene-list
+  footer (`Render N finals` → `renderSequenceDraftsAtQualityFn`, one
+  `/motion` run per selected draft segment), which also shows the soonest
+  expiry and the expired count. The switch lives under the slider (Generate
+  dialog and the continue footer, which persists it through
+  `continueGenerationFn`) and a checkbox on the batch footer; it is offered
+  only while a chosen model `supportsDraftMode` and
+  `useViaAvailability().byteplus` says this team reaches Ark (a team on its
+  own fal key does not, and a draft submit there refuses — so every surface
+  sends a boolean, never `undefined`, or a hidden switch would inherit the
+  saved setting). Draft first pins the resolution picker in the Generate
+  dialog to 1080p (`DRAFT_FINAL_RESOLUTION`: the only size Ark renders a
+  final at); the batch checkbox and the continue footer leave the stored tier
+  alone, and a final is 1080p whatever the tier says. It prices the run's
+  motion at 480p per draft-capable shot (`draftMotion` on
+  `estimateStoryboardPreflightCost` / `estimateStoryboardCost`, `draft` on
+  `estimateBatchMotionCost`). Every
+  surface that shows a draft clip says so with `draftBadgeLabel` /
+  `shotDraftLabel` / `theatreDraftLabel` (`src/motion/draft-mode.ts`): "Draft"
+  until three days remain, then the countdown, then "Draft expired".
+- **Ready email** only sends when the run reached motion: the send is a
+  one-shot claim per sequence.
+
+## Not done
+
+`musicDesign` is not persisted, so the plan cannot tell a score whose design
+is "no music" from one never made; the `music` unit is owed whenever there
+are shots.

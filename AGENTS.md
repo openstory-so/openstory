@@ -261,11 +261,13 @@ changing the area, and update it in the same PR.**
   never defaulted (`!undefined` is `true`). Where a team's keys are reachable
   ask `canRenderReferenceOnly(model, credentials)`, not the model-only
   `supportsReferenceOnlyMotion`.
-- **Stop-at stages and continue (#1408)** —
-  `docs/architecture/stop-at-stages.md`. `stopAt` is the only word on how far a
-  run goes (`GENERATION_STAGES` in `src/sequences/pipeline.ts`). The legacy
-  `autoGenerateMotion` / `autoGenerateMusic` columns are derived from it — never
-  set them on their own, never gate a workflow phase on them.
+- **Generation plan, stop-at and continue (#1408, #1816)** —
+  `docs/architecture/generation-plan.md`. What a sequence still owes is the
+  generation plan, derived from live D1 — never a stored stage. `stopAt` is the
+  only word on how far a run goes (`GENERATION_STAGES` in
+  `src/sequences/pipeline.ts`). The legacy `autoGenerateMotion` /
+  `autoGenerateMusic` columns are derived from it — never set them on their
+  own, never gate a workflow phase on them.
 - **Public API OpenAPI document** — `docs/architecture/public-api-internals.md`.
   Every schema is generated, nothing hand-authored. `.extend()` drops
   `.meta({ id })`, so tag the `_links`-bearing resource schema you return.

@@ -1,20 +1,19 @@
 /**
  * "Update all" cascade depth (#1085). Cumulative levels — each includes the
- * ones before it:
+ * ones before it. Update all is the generation plan filtered to `stale` up
+ * to the depth (#1819, `updateAllUnits`):
  *
  *   - 'prompts' — stale visual/motion prompts only. Nothing renders.
- *   - 'images'  — + images: stale stills re-render, and a still whose visual
- *                 prompt regenerates in this run is re-rendered too (it would
- *                 read stale the moment the prompt lands). Never creates a
- *                 FIRST still.
+ *   - 'images'  — + stale sheets, element references and stills — a still
+ *                 whose prompt or sheet regenerates in this run too. Never
+ *                 creates a FIRST sheet or still: that is a continue.
  *   - 'dialogue'— + dialogue audio: re-records a reading whose voice or
- *                 lines moved. Never creates a FIRST recording. Video is
- *                 left for the next tick so the new take can be reviewed.
+ *                 lines moved, and records a shot's FIRST reading once every
+ *                 speaker has a voice (#1780 §6).
  *   - 'video'   — + videos: a shot whose motion prompt, still, or dialogue
  *                 changed in this run gets its video re-rendered. Never
  *                 renders a FIRST video.
- *   - 'music'   — + sequence music: regenerates a stale music prompt, then
- *                 the track itself when one already exists.
+ *   - 'music'   — + sequence music: a stale music prompt, then the track.
  *
  * Kept in its own dependency-light module because both the client menu and
  * the server fn / workflow need the vocabulary.

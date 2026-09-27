@@ -7,7 +7,6 @@ import { Checkbox } from '@/ui/shadcn/checkbox';
 import { ScrollArea } from '@/ui/shadcn/scroll-area';
 import {
   DEFAULT_GENERATION_STOP_AT,
-  isContinueStage,
   stageIndex,
   type GenerationStage,
 } from '@/sequences/pipeline';
@@ -451,7 +450,10 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     !hideBatchButton && nextStage === 'music' && Boolean(onGenerateMusic);
   const showContinueFooter =
     !hideBatchButton &&
-    isContinueStage(nextStage) &&
+    // Motion and music keep their own footers.
+    (nextStage === 'references' ||
+      nextStage === 'images' ||
+      nextStage === 'dialogue') &&
     Boolean(onContinueGeneration);
   // The plan under the footer's switches as they stand (#1817): turning Start
   // frames or Voices on adds units before anything saves. The saved plan says

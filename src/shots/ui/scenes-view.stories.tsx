@@ -72,8 +72,6 @@ const mockSequence: Sequence = {
   autoGenerateMotion: false,
   autoGenerateMusic: false,
   generationStopAt: null,
-  pipelineStage: null,
-  generationCheckpoint: null,
   generateStartFrames: true,
   generateVoices: false,
   draftMotion: false,

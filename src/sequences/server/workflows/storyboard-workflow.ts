@@ -87,11 +87,6 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
       await scopedDb.sequences.update({
         id: sequenceId,
         generationStopAt: input.stopAt,
-        // A fresh run just deleted the shots the old checkpoint maps to; a
-        // stale stage would offer a continue into them (#1408).
-        ...(input.resume
-          ? {}
-          : { pipelineStage: null, generationCheckpoint: null }),
       });
     });
 

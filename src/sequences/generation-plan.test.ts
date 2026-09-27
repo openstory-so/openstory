@@ -6,6 +6,7 @@ import {
   planCounts,
   planWorkLabel,
   switchLocks,
+  updateAllUnits,
   planUnits,
   planWork,
   type PlanInput,
@@ -324,24 +325,65 @@ describe('artifactVerdict', () => {
 
 describe('footer helpers', () => {
   const plan: PlanUnit[] = [
-    { kind: 'sheet:character', id: 'maya', state: 'running' },
-    { kind: 'sheet:character', id: 'ravi', state: 'missing' },
-    { kind: 'prompt:visual', id: 's1', state: 'stale' },
-    { kind: 'prompt:motion', id: 's1', state: 'missing' },
+    {
+      kind: 'sheet:character',
+      id: 'maya',
+      state: 'running',
+      requires: [],
+      cascaded: false,
+    },
+    {
+      kind: 'sheet:character',
+      id: 'ravi',
+      state: 'missing',
+      requires: [],
+      cascaded: false,
+    },
+    {
+      kind: 'prompt:visual',
+      id: 's1',
+      state: 'stale',
+      requires: [],
+      cascaded: false,
+    },
+    {
+      kind: 'prompt:motion',
+      id: 's1',
+      state: 'missing',
+      requires: [],
+      cascaded: false,
+    },
     {
       kind: 'still',
       id: 's1',
       state: 'blocked',
       blockedBy: [{ kind: 'sheet:character', id: 'maya' }],
+      requires: [],
+      cascaded: false,
     },
     {
       kind: 'still',
       id: 's2',
       state: 'blocked',
       blockedBy: [{ kind: 'prompt:visual', id: 's2' }],
+      requires: [],
+      cascaded: false,
     },
-    { kind: 'clip', id: 's1', state: 'blocked', blockedBy: [] },
-    { kind: 'dialogue', id: 's1', state: 'done' },
+    {
+      kind: 'clip',
+      id: 's1',
+      state: 'blocked',
+      blockedBy: [],
+      requires: [],
+      cascaded: false,
+    },
+    {
+      kind: 'dialogue',
+      id: 's1',
+      state: 'done',
+      requires: [],
+      cascaded: false,
+    },
   ];
 
   it('names the count and the noun', () => {
@@ -364,7 +406,15 @@ describe('footer helpers', () => {
   it('locks a switch once its units exist', () => {
     expect(switchLocks(plan)).toEqual({ startFrames: false, voices: true });
     expect(
-      switchLocks([{ kind: 'still', id: 's1', state: 'stale' }]).startFrames
+      switchLocks([
+        {
+          kind: 'still',
+          id: 's1',
+          state: 'stale',
+          requires: [],
+          cascaded: false,
+        },
+      ]).startFrames
     ).toBe(true);
   });
 
@@ -373,5 +423,87 @@ describe('footer helpers', () => {
     expect(counts['sheet:character']).toBe(1);
     expect(counts['prompt:visual'] + counts['prompt:motion']).toBe(2);
     expect(counts.still).toBe(0);
+  });
+});
+
+describe('updateAllUnits — Update all is the plan filtered to stale (#1819)', () => {
+  const plan = planUnits(
+    input({
+      characterSheets: [
+        { id: 'maya', sheet: 'stale' },
+        { id: 'ravi', sheet: 'missing' },
+      ],
+      voices: [
+        { id: 'maya', voice: 'done' },
+        { id: 'ana', voice: 'missing' },
+      ],
+      shots: [
+        // Maya's sheet moved: the still and clip read stale by cascade.
+        shot('s1', { references: refs('maya') }),
+        // A first reading, every speaker voiced.
+        shot('s2', { speakerIds: ['maya'], dialogue: 'missing' }),
+        // A first reading whose speaker has no voice yet: not Update all's.
+        shot('s3', { speakerIds: ['ana'], dialogue: 'missing' }),
+        // Never a first still: missing work is a continue's.
+        shot('s4', { still: 'missing', clip: 'missing' }),
+      ],
+      music: { prompt: 'stale', track: 'done' },
+    }),
+    SEQ
+  );
+  const keys = (units: ReturnType<typeof updateAllUnits>) =>
+    units.map((u) => `${u.kind}:${u.id}`);
+
+  it('reaches only as deep as asked', () => {
+    expect(
+      keys(updateAllUnits(plan, { depth: 'prompts', shotIds: null }))
+    ).toEqual([]);
+    expect(
+      keys(updateAllUnits(plan, { depth: 'images', shotIds: null }))
+    ).toEqual([
+      'sheet:character:maya',
+      'still:s1',
+      // The new still re-conditions its motion prompt (#929).
+      'prompt:motion:s1',
+    ]);
+  });
+
+  it('records a first reading only when every speaker has a voice (#1780 §6)', () => {
+    const units = keys(
+      updateAllUnits(plan, { depth: 'dialogue', shotIds: null })
+    );
+    expect(units).toContain('dialogue:s2');
+    expect(units).not.toContain('dialogue:s3');
+    expect(units).not.toContain('voice:ana');
+  });
+
+  it('never makes a first sheet, still or clip — those are a continue', () => {
+    const units = keys(updateAllUnits(plan, { depth: 'music', shotIds: null }));
+    expect(units).not.toContain('sheet:character:ravi');
+    expect(units).not.toContain('still:s4');
+    expect(units).not.toContain('clip:s4');
+    expect(units).toEqual(
+      expect.arrayContaining(['clip:s1', 'prompt:music:seq-1', 'music:seq-1'])
+    );
+  });
+
+  it('a scoped run takes along the sheets its shots are made from; music stays sequence-wide', () => {
+    const units = keys(
+      updateAllUnits(plan, { depth: 'music', shotIds: new Set(['s1']) })
+    );
+    expect(units).toEqual(
+      expect.arrayContaining([
+        'still:s1',
+        'sheet:character:maya',
+        'clip:s1',
+        'prompt:music:seq-1',
+        'music:seq-1',
+      ])
+    );
+    expect(units).not.toContain('dialogue:s2');
+    const other = keys(
+      updateAllUnits(plan, { depth: 'images', shotIds: new Set(['s4']) })
+    );
+    expect(other).toEqual([]);
   });
 });

@@ -101,8 +101,7 @@ export function buildStoryboardMotionBatchShots(input: {
    * stage recorded from, so the prompt's voiced lines and the clips bound to
    * them describe one set of words. A shot with no entry says what the script
    * stamps onto it — never the motion-prompt LLM's own extraction, which is
-   * not a source of lines. A continue re-snapshots every shot resolved
-   * (`refreshCheckpointFromCast`), so pre-#1657 rows arrive here as entries.
+   * not a source of lines.
    */
   dialogueLinesByShotId?: Record<string, ShotDialogueLine[]>;
   leftoverGrokShotIds?: readonly string[];

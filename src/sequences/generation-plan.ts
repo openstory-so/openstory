@@ -2,7 +2,7 @@
  * The generation plan (#1816): what a sequence still owes, per entity, as a
  * function of live D1 only. The footer, `continueGenerationFn` and the
  * storyboard trigger read this one answer, so there is no second opinion to
- * drift the way `pipelineStage` / `generationCheckpoint` did.
+ * drift the way the stored pipeline stage and checkpoint did (#1819).
  *
  * This half is pure and client-safe: the unit vocabulary, the requires graph
  * and the cascade over it. `server/generation-plan.ts` loads the live rows and
@@ -19,6 +19,11 @@ import {
 } from '@/sequences/pipeline';
 import type { ArtifactStaleness } from '@/shots/server/shot-staleness';
 import { typedEntries, typedFromEntries } from '@/platform/typed-object';
+import {
+  UPDATE_STALE_DEPTHS,
+  depthIncludes,
+  type UpdateStaleDepth,
+} from '@/shots/update-stale-depth';
 
 /**
  * Every kind with the stop that caps it — the cap `stopAt` puts on a run.
@@ -57,6 +62,13 @@ export type PlanUnit = PlanUnitRef & {
    * computed.
    */
   blockedBy?: PlanUnitRef[];
+  /** The plan's units this one is made from (the requires graph, resolved). */
+  requires: PlanUnitRef[];
+  /**
+   * `stale` only because an upstream is owed — its own verdict is fresh.
+   * Update all takes such a unit only alongside that upstream.
+   */
+  cascaded: boolean;
 };
 
 /**
@@ -238,16 +250,20 @@ export function planUnits(input: PlanInput, sequenceId: string): PlanUnit[] {
 
   const settled = new Map<string, PlanUnit>();
   for (const unit of base) {
-    const self = ref(unit.kind, unit.id);
+    const upstream = unit.upstream.flatMap((up) => {
+      const found = settled.get(key(up));
+      return found ? [found] : [];
+    });
+    const self = {
+      ...ref(unit.kind, unit.id),
+      requires: upstream.map((up) => ref(up.kind, up.id)),
+      cascaded: false,
+    };
     let result: PlanUnit;
     if (unit.verdict === 'unknown') {
       result = { ...self, state: 'blocked', blockedBy: [] };
     } else {
-      let state: PlanUnitState = unit.verdict;
-      const upstream = unit.upstream.flatMap((up) => {
-        const found = settled.get(key(up));
-        return found ? [found] : [];
-      });
+      const state: PlanUnitState = unit.verdict;
       const holding = upstream.filter(
         (up) => up.state === 'running' || up.state === 'blocked'
       );
@@ -262,9 +278,10 @@ export function planUnits(input: PlanInput, sequenceId: string): PlanUnit[] {
           state === 'done' &&
           upstream.some((up) => up.state === 'missing' || up.state === 'stale')
         ) {
-          state = 'stale';
+          result = { ...self, state: 'stale', cascaded: true };
+        } else {
+          result = { ...self, state };
         }
-        result = { ...self, state };
       }
     }
     // The run making the upstream is the run making this unit too: a
@@ -411,4 +428,74 @@ export function planCounts(
   );
   for (const unit of work) counts[unit.kind] += 1;
   return counts;
+}
+
+const SEQUENCE_KINDS = new Set<PlanUnitKind>(['prompt:music', 'music']);
+const REFERENCE_KINDS = new Set<PlanUnitKind>([
+  'sheet:character',
+  'sheet:location',
+  'ref:element',
+  'voice',
+]);
+
+/** What each Update-all depth reaches, cumulatively (#1819). */
+const UPDATE_ALL_KINDS: Record<UpdateStaleDepth, readonly PlanUnitKind[]> = {
+  prompts: ['prompt:visual', 'prompt:motion'],
+  images: ['sheet:character', 'sheet:location', 'ref:element', 'still'],
+  dialogue: ['dialogue'],
+  video: ['clip'],
+  music: ['prompt:music', 'music'],
+};
+
+/**
+ * Update all is the plan filtered to `stale` (#1819): the same units a
+ * continue runs, through the same executor — sheets included, which it
+ * could not touch before. Up to `depth`; narrowed to `shotIds` when a scene
+ * or shot is in scope, taking along the sheets those shots are made from.
+ * Music stays sequence-wide. One `missing` kind rides along: a shot with
+ * voiced lines and every speaker's voice made, but no reading yet, records
+ * its first one (#1780 §6).
+ */
+export function updateAllUnits(
+  plan: readonly PlanUnit[],
+  opts: { depth: UpdateStaleDepth; shotIds: ReadonlySet<string> | null }
+): PlanUnitRef[] {
+  const kinds = new Set(
+    UPDATE_STALE_DEPTHS.filter((d) => depthIncludes(opts.depth, d)).flatMap(
+      (d) => UPDATE_ALL_KINDS[d]
+    )
+  );
+  const byKey = new Map(plan.map((u) => [key(u), u]));
+  // In kind order, so an upstream is decided before what is made from it.
+  const taken = new Set<string>();
+  for (const u of plan) {
+    const take =
+      kinds.has(u.kind) &&
+      ((u.state === 'stale' &&
+        // Stale only by the cascade: worth it only if the upstream is redone.
+        (!u.cascaded || u.requires.some((r) => taken.has(key(r))))) ||
+        (u.state === 'missing' &&
+          u.kind === 'dialogue' &&
+          u.requires.every((r) => byKey.get(key(r))?.state === 'done')));
+    if (take) taken.add(key(u));
+  }
+  const wanted = (u: PlanUnit) => taken.has(key(u));
+  const picked = new Map<string, PlanUnitRef>();
+  const take = (u: PlanUnitRef) =>
+    picked.set(key(u), { kind: u.kind, id: u.id });
+  for (const unit of plan) {
+    if (!wanted(unit)) continue;
+    if (opts.shotIds === null || SEQUENCE_KINDS.has(unit.kind)) {
+      take(unit);
+      continue;
+    }
+    // In a scoped run a sheet comes along only with a shot made from it.
+    if (REFERENCE_KINDS.has(unit.kind) || !opts.shotIds.has(unit.id)) continue;
+    take(unit);
+    for (const ref of unit.requires) {
+      const up = byKey.get(key(ref));
+      if (up && REFERENCE_KINDS.has(up.kind) && wanted(up)) take(up);
+    }
+  }
+  return [...picked.values()];
 }

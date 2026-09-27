@@ -155,26 +155,6 @@ describe('estimateStoryboardCost', () => {
     expect(music).toBeGreaterThan(images);
   });
 
-  it('startFrom images excludes analysis and sheets', () => {
-    const stills = Number(
-      estimateStoryboardCost({ ...base, stopAt: 'images' })
-    );
-    const continueImages = Number(
-      estimateStoryboardCost({
-        ...base,
-        startFrom: 'images',
-        stopAt: 'images',
-      })
-    );
-    const shotImages = Number(
-      estimateImageCost(IMAGE_MODEL, base.aspectRatio, SCENE_COUNT, {
-        pricing: FAL_PRICING,
-      })
-    );
-    expect(continueImages).toBe(shotImages);
-    expect(stills).toBeGreaterThan(continueImages);
-  });
-
   it('adds exactly one extra per-shot image pass per image model', () => {
     const one = Number(estimateStoryboardCost({ ...base, imageModelCount: 1 }));
     const two = Number(estimateStoryboardCost({ ...base, imageModelCount: 2 }));
