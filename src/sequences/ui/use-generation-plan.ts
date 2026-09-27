@@ -1,5 +1,12 @@
 import { getGenerationPlanFn } from '@/sequences/generation-plan.fn';
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { sequenceCharacterKeys } from '@/cast/ui/use-sequence-characters';
+import { sequenceKeys } from '@/sequences/ui/use-sequences';
+import { shotKeys } from '@/shots/ui/use-shots';
+import {
+  keepPreviousData,
+  useQuery,
+  type QueryClient,
+} from '@tanstack/react-query';
 
 type PlanFlags = { generateStartFrames: boolean; generateVoices: boolean };
 
@@ -32,4 +39,23 @@ export function useGenerationPlan(sequenceId: string, flags?: PlanFlags) {
     // A switch flip asks for a new plan; keep the last one on screen meanwhile.
     placeholderData: keepPreviousData,
   });
+}
+
+/**
+ * A refused continue means the footer read old rows. Refetch everything it
+ * reads so the NEXT click is right — leaving the cache alone made the same
+ * wrong click 25 times in a row (#1822).
+ */
+export function refetchAfterRefusedContinue(
+  queryClient: QueryClient,
+  sequenceId: string
+): void {
+  for (const queryKey of [
+    generationPlanKeys.bySequence(sequenceId),
+    sequenceKeys.detail(sequenceId),
+    sequenceCharacterKeys.list(sequenceId),
+    shotKeys.list(sequenceId),
+  ]) {
+    void queryClient.invalidateQueries({ queryKey });
+  }
 }

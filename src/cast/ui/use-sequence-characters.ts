@@ -61,7 +61,11 @@ export function useSequenceCharacters(sequenceId: string) {
     queryFn: async () => {
       return getSequenceCharactersFn({ data: { sequenceId } });
     },
-    staleTime: 5 * 60 * 1000, // 5 minutes - characters don't change often
+    // Sheets, voices and recasts live on the row, and realtime is the only
+    // other refresh — one dropped event held a stale cast for minutes (#1822).
+    // Same freshness as the shot list.
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
     enabled: !!sequenceId,
   });
 }

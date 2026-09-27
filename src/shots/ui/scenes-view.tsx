@@ -36,6 +36,7 @@ import { flagsFromStopAt } from '@/sequences/pipeline';
 import { firstStageWithWork } from '@/sequences/generation-plan';
 import {
   generationPlanKeys,
+  refetchAfterRefusedContinue,
   useGenerationPlan,
 } from '@/sequences/ui/use-generation-plan';
 import type { ContinueFlags } from '@/sequences/ui/use-sequences';
@@ -1437,12 +1438,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
         // toast as batch motion — not a generic error.
         queryClient.setQueryData<Sequence>(key, previous);
         if (!isInsufficientCreditsError(error)) {
-          // A refused continue means the footer read an old plan: refetch so
-          // the next click is right, not the same click again (#1817).
-          void queryClient.invalidateQueries({
-            queryKey: generationPlanKeys.bySequence(sequenceId),
-          });
-          void queryClient.invalidateQueries({ queryKey: key });
+          refetchAfterRefusedContinue(queryClient, sequenceId);
           throw error;
         }
         notifyInsufficientCredits();
