@@ -360,6 +360,28 @@
       // `openstory-production`, which is a DIFFERENT worker — the deploy
       // would succeed but the live site would never update.
       "name": "openstory",
+      // Replaces the top-level block wholesale (inheritable keys are not
+      // merged), so logs are restated. Traces also go to PostHog Tracing via
+      // the `posthog-traces-openstory-prd` destination (Cloudflare dashboard →
+      // Workers → Observability → Destinations). Logs stay on the tail
+      // forwarder: the native logs destination shipped LogTape JSON as a blob.
+      // Traces sample 10% — every span is a billed event from 2026-10-01.
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1,
+        "logs": {
+          "enabled": true,
+          "head_sampling_rate": 1,
+          "persist": true,
+          "invocation_logs": false,
+        },
+        "traces": {
+          "enabled": true,
+          "persist": true,
+          "head_sampling_rate": 0.1,
+          "destinations": ["posthog-traces-openstory-prd"],
+        },
+      },
       "d1_databases": [
         {
           "binding": "DB",
