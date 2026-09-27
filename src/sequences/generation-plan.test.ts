@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   artifactVerdict,
+  blockedLines,
   firstStageWithWork,
+  planCounts,
+  planWorkLabel,
+  switchLocks,
   planUnits,
   planWork,
   type PlanInput,
@@ -315,5 +319,59 @@ describe('artifactVerdict', () => {
     [{ exists: false, staleness: 'generating' as const }, 'missing'],
   ])('%o → %s', (args, expected) => {
     expect(artifactVerdict(args)).toBe(expected);
+  });
+});
+
+describe('footer helpers', () => {
+  const plan: PlanUnit[] = [
+    { kind: 'sheet:character', id: 'maya', state: 'running' },
+    { kind: 'sheet:character', id: 'ravi', state: 'missing' },
+    { kind: 'prompt:visual', id: 's1', state: 'stale' },
+    { kind: 'prompt:motion', id: 's1', state: 'missing' },
+    {
+      kind: 'still',
+      id: 's1',
+      state: 'blocked',
+      blockedBy: [{ kind: 'sheet:character', id: 'maya' }],
+    },
+    {
+      kind: 'still',
+      id: 's2',
+      state: 'blocked',
+      blockedBy: [{ kind: 'prompt:visual', id: 's2' }],
+    },
+    { kind: 'clip', id: 's1', state: 'blocked', blockedBy: [] },
+    { kind: 'dialogue', id: 's1', state: 'done' },
+  ];
+
+  it('names the count and the noun', () => {
+    expect(planWorkLabel(planWork(plan, 'images'))).toBe(
+      'Generate 1 reference, 2 prompts'
+    );
+    expect(planWorkLabel([])).toBe('Nothing to generate');
+  });
+
+  it('says what a blocked unit waits on', () => {
+    const names: Record<string, string> = { maya: 'Maya' };
+    expect(blockedLines(plan, 'images', (ref) => names[ref.id])).toEqual([
+      '2 images blocked: waiting on Maya reference, 1 prompt',
+    ]);
+    expect(blockedLines(plan, 'music', () => undefined)).toContain(
+      '1 video blocked: couldn’t check'
+    );
+  });
+
+  it('locks a switch once its units exist', () => {
+    expect(switchLocks(plan)).toEqual({ startFrames: false, voices: true });
+    expect(
+      switchLocks([{ kind: 'still', id: 's1', state: 'stale' }]).startFrames
+    ).toBe(true);
+  });
+
+  it('counts units per kind', () => {
+    const counts = planCounts(planWork(plan, 'music'));
+    expect(counts['sheet:character']).toBe(1);
+    expect(counts['prompt:visual'] + counts['prompt:motion']).toBe(2);
+    expect(counts.still).toBe(0);
   });
 });

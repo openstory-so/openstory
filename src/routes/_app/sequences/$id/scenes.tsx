@@ -1,20 +1,13 @@
 import { ScenesView } from '@/shots/ui/scenes-view';
 import { getScenesFn } from '@/shots/scenes.fn';
 import { getShotsFn } from '@/shots/shots.fn';
-import {
-  estimateGenerationSliceFn,
-  getSequenceFn,
-} from '@/sequences/sequences.fn';
+import { getSequenceFn } from '@/sequences/sequences.fn';
+import { getGenerationPlanFn } from '@/sequences/generation-plan.fn';
+import { generationPlanKeys } from '@/sequences/ui/use-generation-plan';
 import { sceneKeys } from '@/shots/ui/use-scenes';
 import { shotKeys } from '@/shots/ui/use-shots';
 import { sequenceKeys } from '@/sequences/ui/use-sequences';
 import { scenesSearchSchema } from '@/shots/ui/scene-selection';
-import {
-  continueStageFromState,
-  isContinueStage,
-  artifactsFromSequenceState,
-  DEFAULT_GENERATION_STOP_AT,
-} from '@/sequences/pipeline';
 import { getCompatibleModel } from '@/models/models';
 import {
   resolveImageModel,
@@ -34,7 +27,7 @@ export const Route = createFileRoute('/_app/sequences/$id/scenes')({
   // hydrating over a generic "Generation failed" from `shots ?? []`.
   loaderDeps: ({ search }) => ({ shot: search.shot }),
   loader: async ({ params, context: { queryClient }, deps }) => {
-    const [shots, scenes, sequence] = await Promise.all([
+    const [shots, , sequence] = await Promise.all([
       queryClient.ensureQueryData({
         queryKey: shotKeys.list(params.id),
         queryFn: () => getShotsFn({ data: { sequenceId: params.id } }),
@@ -48,40 +41,13 @@ export const Route = createFileRoute('/_app/sequences/$id/scenes')({
         queryFn: () => getSequenceFn({ data: { sequenceId: params.id } }),
       }),
     ]);
-    const nextStage = continueStageFromState({
-      isProcessing: sequence.status === 'processing',
-      artifacts: artifactsFromSequenceState({
-        sceneCount: scenes.length,
-        shots,
-        musicStatus: sequence.musicStatus,
-        musicUrl: sequence.musicUrl,
-        pipelineStage: sequence.pipelineStage,
-        referenceOnly: !sequence.generateStartFrames,
-        generateVoices: sequence.generateVoices,
-      }),
+    // The footer reads the generation plan (#1817); prefetch it so the
+    // continue footer is in the SSR HTML, and so the loader and the client
+    // are one opinion (the loader used to derive its own stage).
+    await queryClient.ensureQueryData({
+      queryKey: generationPlanKeys.detail(params.id),
+      queryFn: () => getGenerationPlanFn({ data: { sequenceId: params.id } }),
     });
-    if (isContinueStage(nextStage)) {
-      const stopAt = sequence.generationStopAt ?? DEFAULT_GENERATION_STOP_AT;
-      await queryClient.ensureQueryData({
-        queryKey: sequenceKeys.generationSlice(
-          params.id,
-          nextStage,
-          stopAt,
-          sequence.generateStartFrames,
-          sequence.generateVoices
-        ),
-        queryFn: () =>
-          estimateGenerationSliceFn({
-            data: {
-              sequenceId: params.id,
-              startFrom: nextStage,
-              stopAt,
-              generateStartFrames: sequence.generateStartFrames,
-              generateVoices: sequence.generateVoices,
-            },
-          }),
-      });
-    }
 
     // Optimised prompt lives in the shot inspector. Prefetch the selected
     // shot's request so the collapsed header is in the SSR HTML instead of

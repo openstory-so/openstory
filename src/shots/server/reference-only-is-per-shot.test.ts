@@ -52,9 +52,15 @@ const SEQUENCE_LEVEL_BY_DESIGN: Record<string, string> = {
   'src/billing/pricing.fn.ts': 'whole-run credit estimate',
   'src/sequences/ui/use-draft-generation-estimate.ts':
     'whole-run credit estimate',
-  // Continue-stage prefetch for the whole sequence, not a per-shot render.
-  'src/routes/_app/sequences/$id/scenes.tsx':
-    'sequence-wide continue-stage estimate',
+  // The generation plan (#1817) asks "what if the sequence DEFAULT were
+  // this" — the footer switch and the continue guard edit the default; each
+  // shot's mode is then resolved with `usesStartFrame`.
+  'src/sequences/server/generation-plan.ts':
+    'overrides the sequence default, then resolves per shot',
+  'src/sequences/generation-plan.fn.ts': 'plan under a sequence default',
+  'src/sequences/ui/use-generation-plan.ts': 'plan under a sequence default',
+  'src/sequences/server/continue-plan.ts':
+    'the continue switch edits the sequence default',
   'src/sequences/ui/use-sequences.ts':
     'sequence-wide continue-stage estimate cache',
   // Continue slider / next-stage skips for the whole run. Per-shot overrides

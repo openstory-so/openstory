@@ -40,61 +40,35 @@ export const sequenceKeys = {
   list: (teamId?: string) => [...sequenceKeys.lists(), teamId] as const,
   details: () => [...sequenceKeys.all, 'detail'] as const,
   detail: (id?: string) => [...sequenceKeys.details(), id] as const,
-  generationSlice: (
-    id: string,
-    startFrom: GenerationStage,
-    stopAt: GenerationStage,
-    generateStartFrames?: boolean,
-    generateVoices?: boolean,
-    draftMotion?: boolean
-  ) =>
+  generationSlice: (id: string, flags: ContinueFlags) =>
     [
       ...sequenceKeys.detail(id),
       'generation-slice',
-      startFrom,
-      stopAt,
-      generateStartFrames,
-      draftMotion,
-      generateVoices,
+      flags.stopAt,
+      flags.generateStartFrames,
+      flags.generateVoices,
+      flags.draftMotion,
     ] as const,
 };
 
-export function useGenerationSliceEstimate(args: {
-  sequenceId: string;
-  startFrom: GenerationStage | null | undefined;
+/** What a continue click sends besides the sequence (#1817). */
+export type ContinueFlags = {
   stopAt: GenerationStage;
-  generateStartFrames?: boolean;
-  generateVoices?: boolean;
-  /** Draft first (#1756): motion priced as 480p drafts. */
-  draftMotion?: boolean;
-  enabled?: boolean;
-}): Microdollars | null | undefined {
+  generateStartFrames: boolean;
+  generateVoices: boolean;
+  draftMotion: boolean;
+};
+
+/** The continue footer's quote: the plan's work up to the stop, priced per unit. */
+export function useGenerationSliceEstimate(
+  args: ContinueFlags & { sequenceId: string; enabled: boolean }
+): Microdollars | null | undefined {
+  const { sequenceId, enabled, ...flags } = args;
   const { data } = useQuery({
-    queryKey:
-      args.startFrom == null
-        ? sequenceKeys.generationSlice(args.sequenceId, 'script', args.stopAt)
-        : sequenceKeys.generationSlice(
-            args.sequenceId,
-            args.startFrom,
-            args.stopAt,
-            args.generateStartFrames,
-            args.generateVoices,
-            args.draftMotion
-          ),
-    queryFn: async () => {
-      if (args.startFrom == null) return { estimateMicros: null };
-      return estimateGenerationSliceFn({
-        data: {
-          sequenceId: args.sequenceId,
-          startFrom: args.startFrom,
-          stopAt: args.stopAt,
-          generateStartFrames: args.generateStartFrames,
-          generateVoices: args.generateVoices,
-          draftMotion: args.draftMotion,
-        },
-      });
-    },
-    enabled: Boolean(args.enabled ?? true) && args.startFrom != null,
+    queryKey: sequenceKeys.generationSlice(sequenceId, flags),
+    queryFn: () =>
+      estimateGenerationSliceFn({ data: { sequenceId, ...flags } }),
+    enabled,
     staleTime: 60_000,
   });
   if (data === undefined) return undefined;

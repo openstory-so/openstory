@@ -14,6 +14,7 @@ import {
   estimateReferenceSheetCost,
   estimateLLMCost,
   estimateLocationSheetCount,
+  estimatePlanCost,
   estimateStoryboardCost,
   estimateStoryboardRenderCost,
   estimateStudioVideoCost,
@@ -781,5 +782,77 @@ describe('preview image vs still cost (#1642)', () => {
     // Lite is the cheapest picker still. Two sketches would approach it;
     // that's why we do not re-fire after the visual prompt exists.
     expect(preview).toBeLessThan(cheapestStill * 0.5);
+  });
+});
+
+describe('estimatePlanCost (#1817)', () => {
+  const none = {
+    'sheet:character': 0,
+    'sheet:location': 0,
+    'ref:element': 0,
+    voice: 0,
+    'prompt:visual': 0,
+    still: 0,
+    'prompt:motion': 0,
+    dialogue: 0,
+    clip: 0,
+    'prompt:music': 0,
+    music: 0,
+  };
+  const plan = (counts: Partial<typeof none>) =>
+    Number(
+      estimatePlanCost({
+        counts: { ...none, ...counts },
+        imageModel: IMAGE_MODEL,
+        aspectRatio: '16:9',
+        videoModels: [VIDEO_A],
+        videoDurationSeconds: DURATION,
+        referenceOnly: false,
+        draftMotion: false,
+        audioModels: [AUDIO_A],
+        audioDurationSeconds: 30,
+        pricing: FAL_PRICING,
+      })
+    );
+
+  it('prices nothing when the plan owes nothing', () => {
+    expect(plan({})).toBe(0);
+  });
+
+  it('two missing sheets cost two sheets, not a guessed cast', () => {
+    expect(plan({ 'sheet:character': 2 })).toBe(
+      Number(
+        estimateReferenceSheetCost({
+          imageModel: IMAGE_MODEL,
+          characterSheets: 2,
+          locationSheets: 0,
+          pricing: FAL_PRICING,
+        })
+      )
+    );
+  });
+
+  it('prices each kind on its own line', () => {
+    expect(plan({ still: 3 })).toBe(
+      Number(
+        estimateImageCost(IMAGE_MODEL, '16:9', 3, { pricing: FAL_PRICING })
+      )
+    );
+    expect(plan({ clip: 2 })).toBe(
+      2 *
+        Number(
+          estimateVideoCost(VIDEO_A, DURATION, {
+            pricing: FAL_PRICING,
+            hasReferenceImages: true,
+            referenceOnly: false,
+          })
+        )
+    );
+    expect(plan({ dialogue: 4 })).toBe(
+      Number(estimateTtsCost(4 * TYPICAL_DIALOGUE_CHARS_PER_SHOT))
+    );
+    expect(plan({ 'prompt:visual': 2, 'prompt:motion': 1 })).toBe(
+      Number(estimateLLMCost(3))
+    );
   });
 });

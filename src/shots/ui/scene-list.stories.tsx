@@ -7,7 +7,10 @@ import type {
   SequenceSegment,
 } from '@/shots/scene-segments';
 import type { ShotView } from '@/shots/shot-view';
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Decorator, Meta, StoryObj } from '@storybook/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { PlanUnit } from '@/sequences/generation-plan';
+import { generationPlanKeys } from '@/sequences/ui/use-generation-plan';
 import { SceneList } from './scene-list';
 
 const mockShots = generateMockShots(5, 'mock-sequence-id');
@@ -495,28 +498,91 @@ export const WidthExtraLarge: Story = {
   ],
 };
 
-export const ContinueFromReferences: Story = {
-  name: 'Continue from References with switches',
-  args: {
-    nextStage: 'references',
-    generateStartFrames: false,
-    generateVoices: false,
-    onContinueGeneration: async () => undefined,
-  },
+/**
+ * The continue footer reads the generation plan (#1817). Each story seeds
+ * one plan shape into the query the footer (and the page) share.
+ */
+const withPlan =
+  (plan: PlanUnit[]): Decorator =>
+  (Story) => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    queryClient.setQueryData(generationPlanKeys.detail(PS_SEQ), plan);
+    return (
+      <QueryClientProvider client={queryClient}>
+        <Story />
+      </QueryClientProvider>
+    );
+  };
+
+const unit = (
+  kind: PlanUnit['kind'],
+  id: string,
+  state: PlanUnit['state'],
+  blockedBy?: PlanUnit['blockedBy']
+): PlanUnit => ({ kind, id, state, ...(blockedBy ? { blockedBy } : {}) });
+
+const continueArgs = {
+  sequenceId: PS_SEQ,
+  generateStartFrames: true,
+  generateVoices: false,
+  onContinueGeneration: async () => undefined,
 };
 
-export const ContinueDialogue: Story = {
-  name: 'Continue to Dialogue with Voices',
-  args: {
-    nextStage: 'dialogue',
-    generateVoices: true,
-    generateStartFrames: true,
-    onContinueGeneration: async () => undefined,
-  },
+/** References done except two hand-added characters (the #1816 bug). */
+export const ContinuePartial: Story = {
+  name: 'Continue: two sheets, their prompts and stills',
+  args: { ...continueArgs, nextStage: 'references' },
+  decorators: [
+    withPlan([
+      unit('sheet:character', 'ravi', 'missing'),
+      unit('sheet:character', 'ana', 'missing'),
+      unit('prompt:visual', 's1', 'stale'),
+      unit('prompt:visual', 's2', 'stale'),
+      unit('still', 's1', 'stale'),
+      unit('still', 's2', 'stale'),
+      unit('clip', 's1', 'missing'),
+      unit('clip', 's2', 'missing'),
+    ]),
+  ],
 };
 
-export const ContinueDialogueReferenceOnly: Story = {
-  ...ContinueDialogue,
-  name: 'Continue to Dialogue without start frames',
-  args: { ...ContinueDialogue.args, generateStartFrames: false },
+/** A sheet regenerating elsewhere holds the stills that use it. */
+export const ContinueBlocked: Story = {
+  name: 'Continue: images waiting on a sheet',
+  args: { ...continueArgs, nextStage: 'images' },
+  decorators: [
+    withPlan([
+      unit('sheet:character', 'maya', 'running'),
+      unit('still', 's1', 'blocked', [{ kind: 'sheet:character', id: 'maya' }]),
+      unit('still', 's2', 'blocked', [{ kind: 'sheet:character', id: 'maya' }]),
+      unit('prompt:motion', 's3', 'missing'),
+    ]),
+  ],
+};
+
+/** Stills and recordings exist: both switches can only stay on. */
+export const ContinueSwitchesLocked: Story = {
+  name: 'Continue: dialogue with switches locked on',
+  args: { ...continueArgs, nextStage: 'dialogue', generateVoices: true },
+  decorators: [
+    withPlan([
+      unit('still', 's1', 'done'),
+      unit('dialogue', 's1', 'done'),
+      unit('dialogue', 's2', 'missing'),
+    ]),
+  ],
+};
+
+/** A run holds the sequence: no footer, every unit reads running. */
+export const ContinueRunning: Story = {
+  name: 'Continue: run in flight (no footer)',
+  args: { ...continueArgs, nextStage: null, hideBatchButton: true },
+  decorators: [
+    withPlan([
+      unit('sheet:character', 'maya', 'running'),
+      unit('still', 's1', 'running'),
+    ]),
+  ],
 };

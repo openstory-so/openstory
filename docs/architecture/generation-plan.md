@@ -68,8 +68,17 @@ Cascade, in kind order: an upstream `missing` / `stale` turns a `done` unit
 `cascadeFlags` does per shot); an upstream `running` / `blocked` turns a unit
 with work `blocked`. A `done` unit keeps its artifact.
 
+## Readers
+
+- **Footer + continue (#1817).** `getGenerationPlanFn` (optionally with
+  `generateStartFrames` / `generateVoices` overrides: the plan as if the
+  footer's switches were saved) feeds the scene-list footer;
+  `continueFromPlan` (`src/sequences/server/continue-plan.ts`) is the
+  continue guard; `estimatePlanCost` prices both the quote and the
+  reservation. `switchLocks` says which switch can no longer turn off. See
+  `stop-at-stages.md` § Continue.
+
 ## Status
 
-Phase 1 of 4: built and served, read by nothing yet. Phases: #1817 (footer +
-continue read it), #1818 (the run does only its units), #1819 (delete the
+Phase 2 of 4. Phases: #1818 (the run does only its units), #1819 (delete the
 stage + checkpoint; Update all = plan filtered to `stale`).

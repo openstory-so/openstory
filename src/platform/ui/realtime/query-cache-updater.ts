@@ -4,6 +4,7 @@ import { sceneFacetKeys } from '@/shots/ui/use-scene-facets';
 import { sceneKeys } from '@/shots/ui/use-scenes';
 import { sequenceElementKeys } from '@/cast/ui/use-sequence-elements';
 import { shotStalenessNamespace } from '@/shots/ui/use-shot-staleness';
+import { generationPlanKeys } from '@/sequences/ui/use-generation-plan';
 import { segmentKeys } from '@/shots/ui/use-segments';
 import { shotKeys } from '@/shots/ui/use-shots';
 import { locationSheetVariantKeys } from '@/cast/ui/use-location-sheet-variants';
@@ -55,6 +56,22 @@ function debouncedInvalidate(
   }, DEBOUNCE_MS);
 
   pendingInvalidations.set(debounceKey, timeout);
+}
+
+/**
+ * The generation plan (#1817) is derived from the same rows as staleness and
+ * the cast lists; refresh it wherever those move. It also refetches on focus
+ * and after a refused continue, so a dropped event cannot strand it.
+ */
+function invalidateGenerationPlan(
+  queryClient: QueryClient,
+  sequenceId: string
+) {
+  debouncedInvalidate(
+    queryClient,
+    generationPlanKeys.bySequence(sequenceId),
+    `generation-plan:${sequenceId}`
+  );
 }
 
 /**
@@ -593,6 +610,7 @@ export function updateQueryCacheFromEvent(
       const entityType = getString(data, 'entityType');
       const entityId = getString(data, 'entityId');
       if (!entityId) break;
+      invalidateGenerationPlan(queryClient, sequenceId);
       switch (entityType) {
         case 'shot':
           // Shot thumbnail/video divergence: refresh variants list, the shot
@@ -706,6 +724,7 @@ export function updateQueryCacheFromEvent(
         `character-sheet-variants:${sequenceId}`
       );
       invalidateSceneFacets(queryClient, sequenceId);
+      invalidateGenerationPlan(queryClient, sequenceId);
       break;
 
     case 'generation.location:matched':
@@ -729,6 +748,7 @@ export function updateQueryCacheFromEvent(
         `location-sheet-variants:${sequenceId}`
       );
       invalidateSceneFacets(queryClient, sequenceId);
+      invalidateGenerationPlan(queryClient, sequenceId);
       break;
 
     case 'generation.phase:start':
@@ -753,6 +773,7 @@ export function updateQueryCacheFromEvent(
         `sequence-elements:${sequenceId}`
       );
       invalidateSceneFacets(queryClient, sequenceId);
+      invalidateGenerationPlan(queryClient, sequenceId);
       break;
 
     case 'generation.preview:replaced':
@@ -803,6 +824,9 @@ export function updateQueryCacheFromEvent(
       });
       void queryClient.invalidateQueries({
         queryKey: musicPromptStalenessKey(sequenceId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: generationPlanKeys.bySequence(sequenceId),
       });
       break;
 

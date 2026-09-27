@@ -35,6 +35,7 @@ import {
   stageIndex,
   type GenerationStage,
 } from '@/sequences/pipeline';
+import type { PlanUnitKind } from '@/sequences/generation-plan';
 import { reportFlooredEstimate } from './billing-observability';
 import {
   estimateTtsCost,
@@ -538,4 +539,92 @@ export function estimateStoryboardCost(opts: StoryboardCostOpts): Microdollars {
     addMicros(llmCost, addMicros(sheetCost, addMicros(voiceCost, ttsCost))),
     estimateStoryboardRenderCost(opts)
   );
+}
+
+/**
+ * A run priced on the generation plan's units (#1817): what the plan says is
+ * missing or stale up to the stop, one line per kind. No stage guesses — a
+ * References continue for two hand-added characters prices two sheets, not
+ * a heuristic cast. Prompts price as one LLM call each (the batches share
+ * calls per scene, so this errs high).
+ */
+export function estimatePlanCost(opts: {
+  counts: Record<PlanUnitKind, number>;
+  imageModel: TextToImageModel;
+  imageModelCount?: number;
+  aspectRatio: AspectRatio;
+  resolution?: Resolution;
+  videoModels: readonly ImageToVideoModel[];
+  videoDurationSeconds: number;
+  /** Reference-only clips price on the reference-to-video route. */
+  referenceOnly: boolean;
+  draftMotion: boolean;
+  audioModels: readonly AudioModel[];
+  audioDurationSeconds: number;
+  pricing: FalPricingMap;
+}): Microdollars {
+  const { counts, pricing } = opts;
+  const prompts =
+    counts['prompt:visual'] + counts['prompt:motion'] + counts['prompt:music'];
+  let total = addMicros(
+    estimateLLMCost(prompts),
+    addMicros(
+      estimateReferenceSheetCost({
+        imageModel: opts.imageModel,
+        characterSheets: counts['sheet:character'],
+        locationSheets: counts['sheet:location'],
+        elementSheets: counts['ref:element'],
+        pricing,
+      }),
+      addMicros(
+        multiplyMicros(VOICE_ESTIMATE_COST, counts.voice),
+        estimateTtsCost(counts.dialogue * TYPICAL_DIALOGUE_CHARS_PER_SHOT)
+      )
+    )
+  );
+  if (counts.still > 0) {
+    total = addMicros(
+      total,
+      multiplyMicros(
+        gateEstimate(
+          estimateImageCost(opts.imageModel, opts.aspectRatio, counts.still, {
+            pricing,
+            resolution: opts.resolution,
+          }),
+          { model: opts.imageModel, operation: 'storyboard:shot-images' },
+          counts.still
+        ),
+        opts.imageModelCount ?? 1
+      )
+    );
+  }
+  if (counts.clip > 0) {
+    for (const model of opts.videoModels) {
+      const perClip = gateEstimate(
+        estimateVideoCost(model, opts.videoDurationSeconds, {
+          pricing,
+          resolution:
+            opts.draftMotion && supportsDraftMode(model)
+              ? DRAFT_RESOLUTION
+              : opts.resolution,
+          hasReferenceImages: true,
+          referenceOnly: opts.referenceOnly,
+        }),
+        { model, operation: 'storyboard:motion' }
+      );
+      total = addMicros(total, multiplyMicros(perClip, counts.clip));
+    }
+  }
+  if (counts.music > 0) {
+    for (const model of opts.audioModels) {
+      total = addMicros(
+        total,
+        gateEstimate(
+          estimateAudioCost(model, opts.audioDurationSeconds, { pricing }),
+          { model, operation: 'storyboard:music' }
+        )
+      );
+    }
+  }
+  return total;
 }

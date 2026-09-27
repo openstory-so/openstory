@@ -1,4 +1,5 @@
 import { getShotStalenessBatchFn, getShotStalenessFn } from '@/shots/shots.fn';
+import { generationPlanKeys } from '@/sequences/ui/use-generation-plan';
 import type { ArtifactStaleness } from '@/shots/server/shot-staleness';
 import {
   type QueryClient,
@@ -120,6 +121,8 @@ export function markArtifactFresh(
     });
     rollbacks.push(() => queryClient.setQueryData(key, byShot));
   }
+  // The plan reads the same verdicts (#1817).
+  void queryClient.invalidateQueries({ queryKey: generationPlanKeys.all });
 
   return () => {
     for (const rollback of rollbacks) rollback();

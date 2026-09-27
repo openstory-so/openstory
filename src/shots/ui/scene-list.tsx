@@ -6,14 +6,22 @@ import { Button } from '@/ui/shadcn/button';
 import { Checkbox } from '@/ui/shadcn/checkbox';
 import { ScrollArea } from '@/ui/shadcn/scroll-area';
 import {
-  actionLabelForStage,
-  continueStartFrom,
   DEFAULT_GENERATION_STOP_AT,
   isContinueStage,
   stageIndex,
-  type ContinueStage,
   type GenerationStage,
 } from '@/sequences/pipeline';
+import {
+  blockedLines,
+  firstStageWithWork,
+  planWork,
+  planWorkLabel,
+  switchLocks,
+  type PlanUnitRef,
+} from '@/sequences/generation-plan';
+import { useGenerationPlan } from '@/sequences/ui/use-generation-plan';
+import { useSequenceCharacters } from '@/cast/ui/use-sequence-characters';
+import { useSequenceLocations } from '@/cast/ui/use-sequence-locations';
 import { useHydrated } from '@/ui/use-hydrated';
 import { useCreateScene, useReorderScenes } from './use-scene-structure';
 import {
@@ -41,7 +49,10 @@ import type { AspectRatio } from '@/models/aspect-ratios';
 import type { Resolution } from '@/models/resolutions';
 import { useFalPricing } from '@/billing/ui/use-fal-pricing';
 import { useVoiceDesignAvailable } from '@/cast/ui/use-voice-design-available';
-import { useGenerationSliceEstimate } from '@/sequences/ui/use-sequences';
+import {
+  useGenerationSliceEstimate,
+  type ContinueFlags,
+} from '@/sequences/ui/use-sequences';
 import type { SceneWithScript } from './use-scenes';
 import type { ShotVariant } from '@/platform/server/db/schema';
 import { errorMessage } from '@/platform/errors';
@@ -165,13 +176,7 @@ export type SceneListProps = {
   regeneratingMotion: Set<string>;
   onBatchGenerateMotion?: (args: BatchGenerateMotionArgs) => Promise<void>;
   nextStage?: GenerationStage | null;
-  onContinueGeneration?: (args: {
-    startFrom: ContinueStage;
-    stopAt: GenerationStage;
-    generateStartFrames: boolean;
-    generateVoices: boolean;
-    draftMotion: boolean;
-  }) => Promise<void>;
+  onContinueGeneration?: (args: ContinueFlags) => Promise<void>;
   onGenerateMusic?: (model: AudioModel) => Promise<void>;
   musicPromptsReady: boolean;
   hideBatchButton?: boolean;
@@ -211,8 +216,6 @@ export type SceneListProps = {
   isAnalyzing?: boolean;
   leftoverGrokShotIds?: ReadonlySet<string>;
   onLeftoverGrokChange?: (shotIds: readonly string[], useGrok: boolean) => void;
-  /** Remaining / total on-screen sheets when continue starts at References. */
-  referenceProgress?: { remaining: number; total: number };
   /** The sequence's draft-first setting (#1756); seeds the batch and continue switches. */
   draftMotion?: boolean;
   /** Render every selected draft's 1080p final (#1756). */
@@ -260,7 +263,6 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   isAnalyzing = false,
   leftoverGrokShotIds,
   onLeftoverGrokChange,
-  referenceProgress,
   draftMotion = false,
   onRenderDraftsAtQuality,
 }) => {
@@ -440,13 +442,6 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   // Draft first applies to the model this footer would send (#1756).
   const offerDraftFirst = supportsDraftMode(videoModel) && draftAvailable;
   const draftFirst = draftBatch && offerDraftFirst;
-  const continueStart =
-    nextStage == null
-      ? null
-      : continueStartFrom(nextStage, {
-          generateStartFrames: draftStartFrames,
-          generateVoices: voices,
-        });
   const showMotionFooter =
     !hideBatchButton &&
     !isMotionInProgress &&
@@ -458,38 +453,52 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     !hideBatchButton &&
     isContinueStage(nextStage) &&
     Boolean(onContinueGeneration);
+  // The plan under the footer's switches as they stand (#1817): turning Start
+  // frames or Voices on adds units before anything saves. The saved plan says
+  // which switches can no longer turn off.
+  const { data: savedPlan } = useGenerationPlan(sequenceId);
+  const switchesMoved =
+    draftStartFrames !== generateStartFrames || voices !== generateVoices;
+  const { data: footerPlan = [] } = useGenerationPlan(
+    sequenceId,
+    switchesMoved
+      ? { generateStartFrames: draftStartFrames, generateVoices: voices }
+      : undefined
+  );
+  const locks = switchLocks(savedPlan ?? []);
+  // Stops before the first one with work are done; the thumb cannot go there.
+  const minStage = firstStageWithWork(footerPlan) ?? nextStage;
   const continueStopAtClamped =
-    nextStage && stageIndex(continueStopAt) < stageIndex(nextStage)
-      ? nextStage
+    minStage && stageIndex(continueStopAt) < stageIndex(minStage)
+      ? minStage
       : continueStopAt;
   const ContinueIcon = CONTINUE_ICON[continueStopAtClamped];
   const showButton = showMotionFooter;
-  const continueLabelOpts = {
-    generateStartFrames: draftStartFrames,
-    startFrom: continueStart ?? nextStage ?? undefined,
-    remaining: referenceProgress?.remaining,
-    total: referenceProgress?.total,
-    draftFirst,
-  };
+  const continueWork = planWork(footerPlan, continueStopAtClamped);
+  const continueLabel = planWorkLabel(continueWork);
+  const { data: planCharacters } = useSequenceCharacters(sequenceId);
+  const { data: planLocations } = useSequenceLocations(sequenceId);
+  const nameOf = (ref: PlanUnitRef) =>
+    ref.kind === 'sheet:location'
+      ? planLocations?.find((l) => l.id === ref.id)?.name
+      : ref.kind === 'sheet:character' || ref.kind === 'voice'
+        ? planCharacters?.find((c) => c.id === ref.id)?.name
+        : undefined;
+  const continueBlocked = blockedLines(
+    footerPlan,
+    continueStopAtClamped,
+    nameOf
+  );
 
   const handleContinue = async () => {
-    if (!onContinueGeneration || !isContinueStage(nextStage)) return;
-    const startFrom = isContinueStage(continueStart)
-      ? continueStart
-      : nextStage;
-    await runFooterAction(
-      `Failed to ${actionLabelForStage(continueStopAtClamped, {
-        ...continueLabelOpts,
-        startFrom,
-      }).toLowerCase()}`,
-      () =>
-        onContinueGeneration({
-          startFrom,
-          stopAt: continueStopAtClamped,
-          generateStartFrames: draftStartFrames,
-          generateVoices: voices,
-          draftMotion: draftFirst,
-        })
+    if (!onContinueGeneration || continueWork.length === 0) return;
+    await runFooterAction(`Failed to ${continueLabel.toLowerCase()}`, () =>
+      onContinueGeneration({
+        stopAt: continueStopAtClamped,
+        generateStartFrames: draftStartFrames,
+        generateVoices: voices,
+        draftMotion: draftFirst,
+      })
     );
   };
 
@@ -659,7 +668,6 @@ const SceneListComponent: React.FC<SceneListProps> = ({
 
   const continueCostEstimate = useGenerationSliceEstimate({
     sequenceId,
-    startFrom: continueStart,
     stopAt: continueStopAtClamped,
     generateStartFrames: draftStartFrames,
     generateVoices: voices,
@@ -1002,7 +1010,9 @@ const SceneListComponent: React.FC<SceneListProps> = ({
           <GenerationStopSlider
             value={continueStopAtClamped}
             onChange={setContinueStopAt}
-            minStage={nextStage ?? undefined}
+            minStage={minStage ?? undefined}
+            startFramesLocked={locks.startFrames}
+            voicesLocked={locks.voices}
             generateStartFrames={draftStartFrames}
             onGenerateStartFramesChange={setDraftStartFrames}
             generateVoices={voices}
@@ -1017,7 +1027,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
             variant="default"
             className="w-full"
             onClick={() => void handleContinue()}
-            disabled={isGenerating}
+            disabled={isGenerating || continueWork.length === 0}
           >
             {isGenerating ? (
               <>
@@ -1027,10 +1037,15 @@ const SceneListComponent: React.FC<SceneListProps> = ({
             ) : (
               <>
                 <ContinueIcon className="mr-2 h-4 w-4" />
-                {actionLabelForStage(continueStopAtClamped, continueLabelOpts)}
+                {continueLabel}
               </>
             )}
           </Button>
+          {continueBlocked.map((line) => (
+            <p key={line} className="text-xs text-muted-foreground">
+              {line}
+            </p>
+          ))}
           <ActionCost estimate={continueCostEstimate} />
         </div>
       )}
@@ -1100,9 +1115,6 @@ const areEqual = (
     prevProps.styleName !== nextProps.styleName ||
     prevProps.staleShotIds !== nextProps.staleShotIds ||
     prevProps.leftoverGrokShotIds !== nextProps.leftoverGrokShotIds ||
-    prevProps.referenceProgress?.remaining !==
-      nextProps.referenceProgress?.remaining ||
-    prevProps.referenceProgress?.total !== nextProps.referenceProgress?.total ||
     prevProps.className !== nextProps.className
   ) {
     return false;

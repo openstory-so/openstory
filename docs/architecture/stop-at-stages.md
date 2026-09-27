@@ -18,25 +18,31 @@ phase number); there is no separate stage.
   stage needs (bibles, matches, sheet rows, prompts) so a continue never
   re-reads mutable D1 mid-run. A fresh (non-resume) storyboard run nulls both
   alongside its shot wipe.
-- **Continue** (`continueGenerationFn`) only starts from `references`,
-  `images`, or `dialogue` (`ContinueStage`); Script is a fresh run, motion/music
-  have batch footers. It validates `startFrom ≤ stopAt` and that the checkpoint reaches
-  `startFrom` BEFORE reserving credits, reserves only the slice
-  (`estimateStoryboardPreflightCost({ startFrom, stopAt, referenceOnly })`),
-  and triggers storyboard with `resume: true` (no shot wipe, no poster). At
-  the trigger, `refreshCheckpointFromCast` re-snapshots the bibles, matches AND
-  sheet rows from D1 so edits made while stopped (recast, regenerated sheet)
-  survive — the checkpoint's LLM values would otherwise silently revert them.
-  A Dialogue continue also snapshots selected stills and motion/music prompts
-  at the trigger and skips generating them. The scenes slider offers the same
-  start-frames and Voices switches as the initial Generate dialog, but only
-  for stages that have not run yet (#1698): start frames before Images,
-  Voices before Dialogue. Confirming Continue persists those flags with
-  `generationStopAt`. After a stage completes, continue starts at the next
-  unrun stage (`pipelineStage` is a floor even when shot rows lag) and
-  refuses to re-run a completed continue stage. Start frames + Voices share
-  one start-frames-and-dialogue slider stop (the two ticks do not fit); the run
-  still executes both stages, like Motion & Music.
+- **Continue** (`continueGenerationFn`, #1817) reads the generation plan
+  (`docs/architecture/generation-plan.md`), never the checkpoint stage. It
+  takes `{ stopAt, generateStartFrames, generateVoices, draftMotion }` — no
+  `startFrom` — recomputes the plan under the requested switches, and runs
+  the `missing | stale` units up to `stopAt`; it refuses only when that set is
+  empty (`Nothing to generate up to …`). Turning Start frames or Voices ON is
+  allowed at any step (it adds `still` / `dialogue` units); turning one OFF
+  after its units exist is refused with the reason. The reservation and the
+  footer quote are the same number: `estimatePlanCost` over the unit counts.
+  Until #1818 the storyboard run is still stage-shaped: `continueFromPlan`
+  maps the earliest stage with work onto the old `startFrom` (References,
+  Images or Dialogue — motion and music keep their footers), the run still
+  regenerates everything of each kind it passes, and a checkpoint is still
+  required. At the trigger, `refreshCheckpointFromCast` re-snapshots the
+  bibles, matches, sheet rows, elements AND the selected visual prompts from
+  D1 on every continue (a Script checkpoint can start at Images once the
+  sheets were made by hand). A Dialogue continue also snapshots selected
+  stills and motion/music prompts and skips generating them.
+- **The footer** reads `getGenerationPlanFn` (one query, 10s stale time,
+  refetch on focus, invalidated by realtime and by any refused continue). The
+  first stop with work picks the footer; the continue slider locks the stops
+  before it (done) and the button says `Generate 2 references, 12 prompts,
+12 images`, with a line per blocked noun (`3 images blocked: waiting on
+Maya reference`). The switches show at every step; one whose units exist
+  is locked on.
 - **Draft first (#1756).** `sequences.draftMotion` is not a stage: with it on,
   the `music` stop renders 480p Ark drafts (music rides along) and the slider
   labels that tick **Drafts** and appends a greyed **Finals** tick the thumb
@@ -64,17 +70,14 @@ phase number); there is no separate stage.
   until three days remain, then the countdown, then "Draft expired".
 - **Ready email** only sends when the run reached motion: the send is a
   one-shot claim per sequence.
-- Reference-only has no Images stop; `pipelineStage` is the only evidence of
-  References there (`artifactsFromSequenceState({ referenceOnly })`).
+- Reference-only has no Images stop.
 - Known gap: scenes added/edited during a stop are NOT re-snapshotted (the
   full `Scene` lives in `frame.metadata`); the staleness tooling covers them
   after the fact.
 - **Failed character sheets (#1727).** A miss does not fail the sequence.
-  Analyze-script returns after References without persisting that stage, so
-  `pipelineStage` stays `script` (Casting). Continue offers References again;
-  the footer shows remaining / total (`Generate 1 / 3 references`). Visual
-  prompts that already landed do not count as References-complete while any
-  on-screen sheet is still missing.
+  Analyze-script returns after References without persisting that stage.
+  The plan reads the sheet as `missing`, so the footer offers it again
+  (`Generate 1 reference, …`) and the continue guard accepts it.
 - **Generation plan (#1816).** The stage and checkpoint above are being
   replaced by one plan derived from live D1 (units, missing / stale /
   blocked / running, a requires graph) — `docs/architecture/generation-plan.md`.

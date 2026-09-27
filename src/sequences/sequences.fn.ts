@@ -12,7 +12,6 @@ import {
 import {
   estimateAudioCost,
   estimateImageCost,
-  estimateStoryboardCost,
   estimateVideoCost,
   gateEstimate,
 } from '@/billing/cost-estimation';
@@ -21,7 +20,6 @@ import { musicRequestDurationSeconds } from '@/audio/server/music-staleness';
 import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
 import { addMicros } from '@/billing/money';
 import { buildMotionReferenceImages } from '@/motion/server/build-motion-references';
-import { resolveShotDuration } from '@/motion/resolve-shot-duration';
 import {
   releaseReservationOnThrow,
   reserveRunCredits,
@@ -58,16 +56,16 @@ import { triggerStoryboard } from '@/sequences/server/launchers';
 import { ValidationError } from '@/platform/errors';
 import {
   allowsUnfundedGeneration,
-  alignContinueStartFrom,
-  continueReachableFrom,
-  continueStageSchema,
   flagsFromStopAt,
   generationStageSchema,
-  includesStage,
-  resolveContinueGenerationFlags,
   resolveStopAt,
-  stageIndex,
 } from './pipeline';
+import { planWork } from './generation-plan';
+import { computeGenerationPlan } from '@/sequences/server/generation-plan';
+import {
+  continueFromPlan,
+  estimateContinueCost,
+} from '@/sequences/server/continue-plan';
 import type {
   BatchMotionMusicWorkflowInput,
   MusicWorkflowInput,
@@ -132,87 +130,40 @@ export const getSequenceFn = createServerFn({ method: 'GET' })
     return context.sequence;
   });
 
-const estimateGenerationSliceInputSchema = z.object({
+const continueFlagsSchema = z.object({
   sequenceId: ulidSchema,
-  startFrom: generationStageSchema,
   stopAt: generationStageSchema,
-  generateStartFrames: z.boolean().optional(),
-  generateVoices: z.boolean().optional(),
-  draftMotion: z.boolean().optional(),
+  generateStartFrames: z.boolean(),
+  generateVoices: z.boolean(),
+  /** Draft first (#1756). */
+  draftMotion: z.boolean(),
 });
 
 /**
- * Pre-flight cost of a generation slice on a saved sequence (continue footer,
- * and later the Generate dialog). The client must not run estimateStoryboardCost.
+ * The continue footer's quote (#1817): the generation plan under the footer's
+ * switches, filtered to work up to the stop, priced per unit — the same
+ * number `continueGenerationFn` reserves.
  */
 export const estimateGenerationSliceFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
-  .validator(zodValidator(estimateGenerationSliceInputSchema))
+  .validator(zodValidator(continueFlagsSchema))
   .handler(async ({ data, context }) => {
     const { sequence, scopedDb } = context;
-    const [shots, scenes, pricing] = await Promise.all([
-      scopedDb.shots.listBySequence(sequence.id),
-      scopedDb.scenes.listBySequence(sequence.id),
-      getEffectiveFalPricing(),
-    ]);
-    const imageModel = safeTextToImageModel(
-      sequence.imageModel,
-      DEFAULT_IMAGE_MODEL
-    );
-    const flags = resolveContinueGenerationFlags({
-      startFrom: data.startFrom,
-      current: {
-        generateStartFrames: sequence.generateStartFrames,
-        generateVoices: sequence.generateVoices,
-      },
-      requested: {
+    const [plan, shots] = await Promise.all([
+      computeGenerationPlan(scopedDb, sequence.id, {
         generateStartFrames: data.generateStartFrames,
         generateVoices: data.generateVoices,
-      },
+      }),
+      scopedDb.shots.listBySequence(sequence.id),
+    ]);
+    const estimate = await estimateContinueCost({
+      sequence,
+      shots,
+      work: planWork(plan, data.stopAt),
+      generateStartFrames: data.generateStartFrames,
+      draftMotion: data.draftMotion,
     });
-    if (
-      flags.generateStartFrames &&
-      includesStage(data.stopAt, 'images') &&
-      estimateImageCost(imageModel, sequence.aspectRatio, 1, { pricing }) ===
-        null
-    ) {
-      return { estimateMicros: null };
-    }
-    const videoModel = safeImageToVideoModel(
-      sequence.videoModel,
-      DEFAULT_VIDEO_MODEL
-    );
-    const sceneCount = Math.max(scenes.length, shots.length, 1);
-    const perShotSeconds =
-      shots.length > 0
-        ? resolveShotDuration({
-            durationMs: shots[0]?.durationMs,
-            model: videoModel,
-          })
-        : 5;
-    const motionOn = includesStage(data.stopAt, 'motion');
-    const musicOn = includesStage(data.stopAt, 'music');
-    const estimate = estimateStoryboardCost({
-      imageModel,
-      aspectRatio: sequence.aspectRatio,
-      resolution: sequence.resolution,
-      estimatedSceneCount: sceneCount,
-      startFrom: data.startFrom,
-      stopAt: data.stopAt,
-      referenceOnly: !flags.generateStartFrames,
-      generateVoices: flags.generateVoices,
-      draftMotion: data.draftMotion ?? sequence.draftMotion,
-      autoGenerateMotion: motionOn,
-      videoModels: motionOn ? [videoModel] : undefined,
-      videoDurationSeconds: motionOn ? perShotSeconds : undefined,
-      autoGenerateMusic: musicOn,
-      audioModels: musicOn
-        ? [safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)]
-        : undefined,
-      audioDurationSeconds: musicOn ? perShotSeconds * sceneCount : undefined,
-      pricing,
-    });
-    return { estimateMicros: Number(estimate) };
+    return { estimateMicros: estimate.priced ? Number(estimate.micros) : null };
   });
 
 /**
@@ -236,114 +187,79 @@ export const createSequenceFn = createServerFn({ method: 'POST' })
   });
 
 /**
- * Continue a stopped pipeline from `startFrom` through `stopAt` (#1408).
- * Does not wipe existing shots — storyboard runs in resume mode.
- *
- * References, Images, and Dialogue continue here: Script is a fresh run, and
- * motion/music have their own batch footers. Everything is checked before a
- * credit is reserved or the mutex claimed — the workflow would otherwise
- * reject the same input minutes later, after the UI flipped to processing.
+ * Continue a sequence up to `stopAt` (#1408, #1817). What runs is the
+ * generation plan filtered to missing / stale work up to the stop — the same
+ * plan the footer shows, so the two cannot disagree. Turning Start frames or
+ * Voices on only adds units; turning one off after its units exist is refused.
+ * Does not wipe existing shots — storyboard runs in resume mode. Everything is
+ * checked before a credit is reserved or the mutex claimed.
  */
 export const continueGenerationFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(
     zodValidator(
-      z
-        .object({
-          sequenceId: ulidSchema,
-          startFrom: continueStageSchema,
-          stopAt: generationStageSchema,
-          leftoverGrokShotIds: z.array(ulidSchema).optional(),
-          generateStartFrames: z.boolean().optional(),
-          generateVoices: z.boolean().optional(),
-          /** Draft first (#1756); motion has not run yet at any continue. */
-          draftMotion: z.boolean().optional(),
-        })
-        .refine((d) => stageIndex(d.startFrom) <= stageIndex(d.stopAt), {
-          path: ['stopAt'],
-          message: 'stopAt must not be earlier than startFrom',
-        })
+      continueFlagsSchema.extend({
+        leftoverGrokShotIds: z.array(ulidSchema).optional(),
+      })
     )
   )
   .handler(async ({ data, context }) => {
-    const { sequence } = context;
+    const { sequence, scopedDb } = context;
+    const saved = {
+      generateStartFrames: sequence.generateStartFrames,
+      generateVoices: sequence.generateVoices,
+    };
+    const requested = {
+      generateStartFrames: data.generateStartFrames,
+      generateVoices: data.generateVoices,
+    };
+    const current = await computeGenerationPlan(scopedDb, sequence.id);
+    const next =
+      saved.generateStartFrames === requested.generateStartFrames &&
+      saved.generateVoices === requested.generateVoices
+        ? current
+        : await computeGenerationPlan(scopedDb, sequence.id, requested);
+    const { work, startFrom } = continueFromPlan({
+      current,
+      next,
+      saved,
+      requested,
+      stopAt: data.stopAt,
+    });
+    // Phase-2 shim (#1818 removes it): the stage-shaped run resumes from the
+    // checkpoint's scenes and shot mapping.
     const checkpoint = sequence.generationCheckpoint;
     if (!checkpoint) {
       throw new ValidationError(
         'Nothing to continue from — generate the sequence first'
       );
     }
-    const flags = resolveContinueGenerationFlags({
-      startFrom: data.startFrom,
-      current: {
-        generateStartFrames: sequence.generateStartFrames,
-        generateVoices: sequence.generateVoices,
-      },
-      requested: {
-        generateStartFrames: data.generateStartFrames,
-        generateVoices: data.generateVoices,
-      },
-    });
-    // Start exactly at the next unrun stage. Re-running a completed continue
-    // stage would regenerate work the slider has already progressed past.
-    const reachable = continueReachableFrom(checkpoint.completedStage, flags);
-    const startFrom =
-      reachable && alignContinueStartFrom(data.startFrom, reachable, flags);
-    if (!startFrom) {
-      throw new ValidationError(
-        `The last run only reached ${checkpoint.completedStage}; ${data.startFrom} cannot start from there`
-      );
-    }
     const { autoGenerateMotion, autoGenerateMusic } = flagsFromStopAt(
       data.stopAt
     );
-    const draftMotion = data.draftMotion ?? sequence.draftMotion;
 
-    const shots = await context.scopedDb.shots.listBySequence(sequence.id);
-    const reservationId = allowsUnfundedGeneration(data.stopAt)
-      ? undefined
-      : await reserveRunCredits(
-          context.scopedDb,
-          estimateStoryboardPreflightCost({
-            script: sequence.script ?? '',
-            imageModel: safeTextToImageModel(
-              sequence.imageModel,
-              DEFAULT_IMAGE_MODEL
-            ),
-            aspectRatio: sequence.aspectRatio,
-            resolution: sequence.resolution,
-            autoGenerateMotion,
-            stopAt: data.stopAt,
-            startFrom,
-            referenceOnly: !flags.generateStartFrames,
-            generateVoices: flags.generateVoices,
-            draftMotion,
-            videoModels: [
-              safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
-            ],
-            autoGenerateMusic,
-            audioModels: [
-              safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL),
-            ],
-            targetDurationSeconds: sequence.targetDurationSeconds ?? undefined,
-            shotCount: shots.length > 0 ? shots.length : undefined,
-            pricing: await getEffectiveFalPricing(),
-          }),
-          {
-            providers: ['fal', 'openrouter'],
-            errorMessage: 'Insufficient credits to continue generation',
-            sequenceId: data.sequenceId,
-          }
-        );
+    const shots = await scopedDb.shots.listBySequence(sequence.id);
+    const estimate = await estimateContinueCost({
+      sequence,
+      shots,
+      work,
+      generateStartFrames: requested.generateStartFrames,
+      draftMotion: data.draftMotion,
+    });
+    const reservationId = await reserveRunCredits(scopedDb, estimate.micros, {
+      providers: ['fal', 'openrouter'],
+      errorMessage: 'Insufficient credits to continue generation',
+      sequenceId: data.sequenceId,
+    });
 
-    await context.scopedDb.sequences.update({
+    await scopedDb.sequences.update({
       id: data.sequenceId,
       generationStopAt: data.stopAt,
       autoGenerateMotion,
       autoGenerateMusic,
-      generateStartFrames: flags.generateStartFrames,
-      generateVoices: flags.generateVoices,
-      draftMotion,
+      generateStartFrames: requested.generateStartFrames,
+      generateVoices: requested.generateVoices,
+      draftMotion: data.draftMotion,
     });
 
     return releaseReservationOnThrow(context.scopedDb, reservationId, () =>

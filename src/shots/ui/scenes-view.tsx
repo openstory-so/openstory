@@ -32,15 +32,13 @@ import {
   generateMusicFn,
   getSequencesFn,
 } from '@/sequences/sequences.fn';
+import { flagsFromStopAt } from '@/sequences/pipeline';
+import { firstStageWithWork } from '@/sequences/generation-plan';
 import {
-  artifactsFromSequenceState,
-  continueStageFromState,
-  flagsFromStopAt,
-  referenceSheetProgress,
-  type ContinueStage,
-  type GenerationStage,
-} from '@/sequences/pipeline';
-import { useSequenceCharacters } from '@/cast/ui/use-sequence-characters';
+  generationPlanKeys,
+  useGenerationPlan,
+} from '@/sequences/ui/use-generation-plan';
+import type { ContinueFlags } from '@/sequences/ui/use-sequences';
 import { getDivergentVariantPromptDiffFn } from '@/shots/prompt-variants.fn';
 import { smartRetryFn } from '@/sequences/smart-retry.fn';
 import { BILLING_BALANCE_KEY } from '@/billing/ui/use-billing-balance';
@@ -1374,51 +1372,17 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   );
 
   const musicPromptsReady = !!(sequence?.musicPrompt && sequence.musicTags);
-  const { data: sequenceCharacters } = useSequenceCharacters(sequenceId);
-  const referenceProgress = useMemo(
-    () =>
-      sequenceCharacters
-        ? referenceSheetProgress(sequenceCharacters)
-        : undefined,
-    [sequenceCharacters]
-  );
-
+  // The generation plan is the footer's only opinion (#1817): the first stop
+  // with missing or stale work picks the footer. Null while a run holds the
+  // sequence — its units read running.
+  const { data: plan } = useGenerationPlan(sequenceId);
   const nextStage = useMemo(
-    () =>
-      continueStageFromState({
-        isProcessing,
-        artifacts: artifactsFromSequenceState({
-          sceneCount: scenes?.length ?? 0,
-          shots: shots ?? [],
-          musicStatus: sequence?.musicStatus,
-          musicUrl: sequence?.musicUrl,
-          pipelineStage: sequence?.pipelineStage,
-          referenceOnly: !generateStartFrames,
-          generateVoices: sequence?.generateVoices,
-          characters: sequenceCharacters,
-        }),
-      }),
-    [
-      isProcessing,
-      scenes?.length,
-      shots,
-      sequence?.musicStatus,
-      sequence?.musicUrl,
-      sequence?.pipelineStage,
-      sequence?.generateVoices,
-      generateStartFrames,
-      sequenceCharacters,
-    ]
+    () => (isProcessing || !plan ? null : firstStageWithWork(plan)),
+    [isProcessing, plan]
   );
 
   const handleContinueGeneration = useCallback(
-    async (args: {
-      startFrom: ContinueStage;
-      stopAt: GenerationStage;
-      generateStartFrames: boolean;
-      generateVoices: boolean;
-      draftMotion: boolean;
-    }) => {
+    async (args: ContinueFlags) => {
       // Optimistic status flip, as the motion batch does: the chip and the
       // footer key off `sequence.status`, and the server fn reserves credits
       // and triggers the workflow before it returns.
@@ -1461,7 +1425,6 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
         await continueGenerationFn({
           data: {
             sequenceId,
-            startFrom: args.startFrom,
             stopAt: args.stopAt,
             leftoverGrokShotIds: [...leftoverGrokShotIds],
             generateStartFrames: args.generateStartFrames,
@@ -1473,13 +1436,24 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
         // Continue reserves credits like any other run, so it hits the same
         // toast as batch motion — not a generic error.
         queryClient.setQueryData<Sequence>(key, previous);
-        if (!isInsufficientCreditsError(error)) throw error;
+        if (!isInsufficientCreditsError(error)) {
+          // A refused continue means the footer read an old plan: refetch so
+          // the next click is right, not the same click again (#1817).
+          void queryClient.invalidateQueries({
+            queryKey: generationPlanKeys.bySequence(sequenceId),
+          });
+          void queryClient.invalidateQueries({ queryKey: key });
+          throw error;
+        }
         notifyInsufficientCredits();
         void queryClient.invalidateQueries({ queryKey: BILLING_BALANCE_KEY });
         return;
       }
       void queryClient.invalidateQueries({
         queryKey: sequenceKeys.detail(sequenceId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: generationPlanKeys.bySequence(sequenceId),
       });
     },
     [sequenceId, leftoverGrokShotIds, queryClient, resetGenerationStream]
@@ -1634,7 +1608,6 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     isAnalyzing: isProcessing,
     leftoverGrokShotIds,
     onLeftoverGrokChange: handleLeftoverGrokChange,
-    referenceProgress,
   };
 
   return (

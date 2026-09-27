@@ -100,37 +100,34 @@ export async function refreshCheckpointFromCast(
     }));
   }
 
-  // Sheet snapshots exist only past References; a Script checkpoint has none
-  // and must not gain any, or the workflow would think References ran.
-  if (next.charactersWithSheets) {
-    next.charactersWithSheets = characters.map((c): CharacterMinimal => ({
-      id: c.id,
-      characterId: c.characterId,
-      name: c.name,
-      sheetImageUrl: c.sheetImageUrl,
-      sheetStatus: c.sheetStatus,
-      sheetInputHash: c.sheetInputHash,
-      selectedSheetVersionId: c.selectedSheetVersionId,
-      physicalDescription: c.physicalDescription,
-      voiceOnly: c.voiceOnly,
-      isPerson: c.isPerson,
-      consistencyTag: c.consistencyTag,
-      voiceId: c.voiceId,
-    }));
-  }
-  if (next.locationsWithSheets) {
-    next.locationsWithSheets = locations.map((l): SequenceLocationMinimal => ({
-      id: l.id,
-      locationId: l.locationId,
-      name: l.name,
-      referenceImageUrl: l.referenceImageUrl,
-      referenceStatus: l.referenceStatus,
-      referenceInputHash: l.referenceInputHash,
-      selectedReferenceVersionId: l.selectedReferenceVersionId,
-      description: l.description,
-      consistencyTag: l.consistencyTag,
-    }));
-  }
+  // Sheet snapshots come from D1 on every continue (#1817): the plan may
+  // start a Script checkpoint at Images once the sheets were made by hand,
+  // and a run handed no snapshot renders stills with no sheets at all.
+  next.charactersWithSheets = characters.map((c): CharacterMinimal => ({
+    id: c.id,
+    characterId: c.characterId,
+    name: c.name,
+    sheetImageUrl: c.sheetImageUrl,
+    sheetStatus: c.sheetStatus,
+    sheetInputHash: c.sheetInputHash,
+    selectedSheetVersionId: c.selectedSheetVersionId,
+    physicalDescription: c.physicalDescription,
+    voiceOnly: c.voiceOnly,
+    isPerson: c.isPerson,
+    consistencyTag: c.consistencyTag,
+    voiceId: c.voiceId,
+  }));
+  next.locationsWithSheets = locations.map((l): SequenceLocationMinimal => ({
+    id: l.id,
+    locationId: l.locationId,
+    name: l.name,
+    referenceImageUrl: l.referenceImageUrl,
+    referenceStatus: l.referenceStatus,
+    referenceInputHash: l.referenceInputHash,
+    selectedReferenceVersionId: l.selectedReferenceVersionId,
+    description: l.description,
+    consistencyTag: l.consistencyTag,
+  }));
   // Dialogue: the clips on the shots, and the authored lines behind them.
   // Both are live by the time a stopped run continues — a user reviewing a
   // References stop can edit a line, and the recording has to say what the
@@ -166,21 +163,46 @@ export async function refreshCheckpointFromCast(
       .filter((shot) => !shot.deletedAt)
       .map((shot) => [shot.id, dialogueOf(shot).lines])
   );
+  // The still's prompt is the SELECTED visual prompt (#1821): one edited
+  // while the run was stopped is what the Images continue renders, and the
+  // still's hash stamps that version. Keyed by analysis scene, from the
+  // scene's first shot — the head the 1-shot path renders from.
+  if (next.shotMapping) {
+    const liveShotIds = new Set(
+      shotRows.filter((shot) => !shot.deletedAt).map((shot) => shot.id)
+    );
+    const headByScene = new Map<string, string>();
+    for (const row of next.shotMapping) {
+      if (liveShotIds.has(row.shotId) && !headByScene.has(row.analysisSceneId))
+        headByScene.set(row.analysisSceneId, row.shotId);
+    }
+    const anchors = await scopedDb.frames.getAnchorsByShots([
+      ...headByScene.values(),
+    ]);
+    const prompts = await scopedDb.framePromptVersions.getSelectedByFrameIds(
+      [...anchors.values()].map((frame) => frame.id)
+    );
+    next.visualPromptBySceneId = Object.fromEntries(
+      [...headByScene].flatMap(([sceneId, shotId]) => {
+        const frame = anchors.get(shotId);
+        const text = frame ? prompts.get(frame.id)?.text : undefined;
+        return text ? [[sceneId, text]] : [];
+      })
+    );
+  }
   next.dialogueVersionIdByShotId = Object.fromEntries(
     dialogueVersions.map((version) => [version.shotId, version.id])
   );
 
-  if (next.allElements) {
-    next.allElements = elements.map((el) => ({
-      id: el.id,
-      token: el.token,
-      description: el.description,
-      imageUrl: el.imageUrl,
-      consistencyTag: el.consistencyTag,
-      kind: el.kind,
-      durationSeconds: el.durationSeconds,
-    }));
-  }
+  next.allElements = elements.map((el) => ({
+    id: el.id,
+    token: el.token,
+    description: el.description,
+    imageUrl: el.imageUrl,
+    consistencyTag: el.consistencyTag,
+    kind: el.kind,
+    durationSeconds: el.durationSeconds,
+  }));
 
   return next;
 }

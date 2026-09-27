@@ -1,6 +1,4 @@
 import {
-  continueOffersStartFramesSwitch,
-  continueOffersVoicesSwitch,
   GENERATION_STAGE_META,
   sliderStages,
   sliderTickLabel,
@@ -24,14 +22,18 @@ type GenerationStopSliderProps = {
   minStage?: GenerationStage;
   /**
    * Render a still per shot before motion. Off = reference-only, which has no
-   * Images stop. Pass `onGenerateStartFramesChange` to offer the switch.
-   * Continue (`minStage`) hides it once Images has already finished.
+   * Images stop. Pass `onGenerateStartFramesChange` to offer the switch; it
+   * shows at every step (#1780 §2).
    */
   generateStartFrames?: boolean;
   onGenerateStartFramesChange?: (value: boolean) => void;
+  /** Stills exist: the switch can turn on, never off (#1817). */
+  startFramesLocked?: boolean;
   /** Design a voice per speaking character (#1553); offered like start frames. */
   generateVoices?: boolean;
   onGenerateVoicesChange?: (value: boolean) => void;
+  /** Recordings exist: Voices can turn on, never off (#1817). */
+  voicesLocked?: boolean;
   /**
    * Draft first (#1756): the motion pass renders 480p drafts and the run
    * stops there; the 1080p finals are rendered from the scene list once the
@@ -61,8 +63,10 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
   minStage,
   generateStartFrames = true,
   onGenerateStartFramesChange,
+  startFramesLocked = false,
   generateVoices = false,
   onGenerateVoicesChange,
+  voicesLocked = false,
   draftFirst = false,
   onDraftFirstChange,
   disabled = false,
@@ -80,15 +84,6 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
   useEffect(() => {
     if (selected !== value) onChange(selected);
   }, [onChange, selected, value]);
-  // Generate dialog has no minStage, so both switches stay if handlers are
-  // passed. Continue keys off the sequence's actual next stage (not a
-  // draft skip): turning start frames off must not hide the switches.
-  const offerStartFrames =
-    Boolean(onGenerateStartFramesChange) &&
-    (minStage == null || continueOffersStartFramesSwitch(minStage));
-  const offerVoices =
-    Boolean(onGenerateVoicesChange) &&
-    (minStage == null || continueOffersVoicesSwitch(minStage));
   // Six ticks do not fit on one line; alternate them above and below the
   // track so neighbours never collide.
   const alternate = ticks.length > 5;
@@ -186,7 +181,7 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
         aria-label="How far generation should run"
       />
       {tickRow('below')}
-      {offerStartFrames && onGenerateStartFramesChange && (
+      {onGenerateStartFramesChange && (
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <Switch
@@ -203,20 +198,22 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
                 );
                 if (moved !== value) onChange(moved);
               }}
-              disabled={disabled}
+              disabled={disabled || (startFramesLocked && generateStartFrames)}
             />
             <Label htmlFor="generate-start-frames" className="text-sm">
               Use start frames
             </Label>
           </div>
           <p className="text-xs text-muted-foreground">
-            {generateStartFrames
-              ? 'Each shot’s video starts from a generated still.'
-              : 'Video is generated straight from the reference sheets.'}
+            {startFramesLocked && generateStartFrames
+              ? 'Shots have stills, so start frames stay on.'
+              : generateStartFrames
+                ? 'Each shot’s video starts from a generated still.'
+                : 'Video is generated straight from the reference sheets.'}
           </p>
         </div>
       )}
-      {offerVoices && onGenerateVoicesChange && (
+      {onGenerateVoicesChange && (
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <Switch
@@ -231,16 +228,18 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
                 );
                 if (moved !== value) onChange(moved);
               }}
-              disabled={disabled}
+              disabled={disabled || (voicesLocked && generateVoices)}
             />
             <Label htmlFor="generate-voices" className="text-sm">
               Voices
             </Label>
           </div>
           <p className="text-xs text-muted-foreground">
-            {generateVoices
-              ? `Each speaking character gets a designed voice (${microsToDisplayUsd(VOICE_ESTIMATE_COST)} each).`
-              : 'Characters have no voice.'}
+            {voicesLocked && generateVoices
+              ? 'Shots have recorded dialogue, so voices stay on.'
+              : generateVoices
+                ? `Each speaking character gets a designed voice (${microsToDisplayUsd(VOICE_ESTIMATE_COST)} each).`
+                : 'Characters have no voice.'}
           </p>
         </div>
       )}

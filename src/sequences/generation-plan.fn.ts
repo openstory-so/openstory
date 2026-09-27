@@ -12,7 +12,19 @@ import { sequenceAccessMiddleware } from '@/platform/middleware.fn';
 
 export const getGenerationPlanFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
-  .validator(zodValidator(z.object({ sequenceId: ulidSchema })))
-  .handler(({ context }) =>
-    computeGenerationPlan(context.scopedDb, context.sequence.id)
+  .validator(
+    zodValidator(
+      z.object({
+        sequenceId: ulidSchema,
+        // Absent: the saved setting. Set: the plan as if it were saved.
+        generateStartFrames: z.boolean().optional(),
+        generateVoices: z.boolean().optional(),
+      })
+    )
+  )
+  .handler(({ data, context }) =>
+    computeGenerationPlan(context.scopedDb, context.sequence.id, {
+      generateStartFrames: data.generateStartFrames,
+      generateVoices: data.generateVoices,
+    })
   );

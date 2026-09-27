@@ -55,12 +55,22 @@ async function sheetVerdict(
   }
 }
 
+/**
+ * `flags` asks "what would the plan be with Start frames / Voices set like
+ * this" — the footer's switches and the continue guard, before either saves.
+ */
 export async function computeGenerationPlan(
   scopedDb: ScopedDb,
-  sequenceId: string
+  sequenceId: string,
+  flags?: Partial<Pick<Sequence, 'generateStartFrames' | 'generateVoices'>>
 ): Promise<PlanUnit[]> {
-  const sequence = await scopedDb.sequences.getById(sequenceId);
-  if (!sequence) throw new NotFoundError(`Sequence ${sequenceId} not found`);
+  const row = await scopedDb.sequences.getById(sequenceId);
+  if (!row) throw new NotFoundError(`Sequence ${sequenceId} not found`);
+  const sequence = {
+    ...row,
+    generateStartFrames: flags?.generateStartFrames ?? row.generateStartFrames,
+    generateVoices: flags?.generateVoices ?? row.generateVoices,
+  };
   const shots = await scopedDb.shots.listBySequence(sequenceId);
   // Script is the root, not a unit: nothing to plan until it made shots.
   if (shots.length === 0) return [];

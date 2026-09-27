@@ -18,6 +18,7 @@ import {
   type GenerationStage,
 } from '@/sequences/pipeline';
 import type { ArtifactStaleness } from '@/shots/server/shot-staleness';
+import { typedEntries, typedFromEntries } from '@/platform/typed-object';
 
 /**
  * Every kind with the stop that caps it — the cap `stopAt` puts on a run.
@@ -39,14 +40,14 @@ const PLAN_KIND_STAGE = {
   music: 'music',
 } as const satisfies Record<string, GenerationStage>;
 
-type PlanUnitKind = keyof typeof PLAN_KIND_STAGE;
+export type PlanUnitKind = keyof typeof PLAN_KIND_STAGE;
 
 const KIND_ORDER = Object.keys(PLAN_KIND_STAGE);
 
 type PlanUnitState = 'done' | 'missing' | 'stale' | 'blocked' | 'running';
 
 /** A unit's identity: the entity is a character, location, element, shot or the sequence. */
-type PlanUnitRef = { kind: PlanUnitKind; id: string };
+export type PlanUnitRef = { kind: PlanUnitKind; id: string };
 
 export type PlanUnit = PlanUnitRef & {
   state: PlanUnitState;
@@ -305,4 +306,109 @@ export function firstStageWithWork(
     if (first === null || stageIndex(stage) < stageIndex(first)) first = stage;
   }
   return first;
+}
+
+/**
+ * A switch whose units exist cannot be turned off (#1780 §2): Start frames
+ * once a shot has a still, Voices once a shot has a recording. Turning either
+ * ON is always allowed — it only adds units.
+ */
+export function switchLocks(plan: readonly PlanUnit[]): {
+  startFrames: boolean;
+  voices: boolean;
+} {
+  const made = (kind: PlanUnitKind) =>
+    plan.some(
+      (u) =>
+        u.kind === kind &&
+        (u.state === 'done' || u.state === 'stale' || u.state === 'running')
+    );
+  return { startFrames: made('still'), voices: made('dialogue') };
+}
+
+const KIND_NOUN: Record<PlanUnitKind, [one: string, many: string]> = {
+  'sheet:character': ['reference', 'references'],
+  'sheet:location': ['reference', 'references'],
+  'ref:element': ['reference', 'references'],
+  voice: ['voice', 'voices'],
+  'prompt:visual': ['prompt', 'prompts'],
+  still: ['image', 'images'],
+  'prompt:motion': ['prompt', 'prompts'],
+  dialogue: ['recording', 'recordings'],
+  clip: ['video', 'videos'],
+  'prompt:music': ['prompt', 'prompts'],
+  music: ['music track', 'music tracks'],
+};
+
+/** `2 references, 12 prompts, 12 images` — counts per noun, in plan order. */
+function countNouns(units: readonly PlanUnitRef[]): string {
+  const counts = new Map<string, { n: number; noun: [string, string] }>();
+  for (const unit of units) {
+    const noun = KIND_NOUN[unit.kind];
+    const entry = counts.get(noun[1]) ?? { n: 0, noun };
+    entry.n += 1;
+    counts.set(noun[1], entry);
+  }
+  return [...counts.values()]
+    .map(({ n, noun }) => `${n} ${n === 1 ? noun[0] : noun[1]}`)
+    .join(', ');
+}
+
+/** Footer button: `Generate 2 references, 12 prompts, 12 images`. */
+export function planWorkLabel(work: readonly PlanUnit[]): string {
+  return work.length === 0
+    ? 'Nothing to generate'
+    : `Generate ${countNouns(work)}`;
+}
+
+/**
+ * One line per blocked noun up to `stopAt`, naming what it waits on:
+ * `3 images blocked: waiting on Maya sheet, Ravi sheet`. `nameOf` resolves a
+ * character / location id to its name; anything else is counted.
+ */
+export function blockedLines(
+  plan: readonly PlanUnit[],
+  stopAt: GenerationStage,
+  nameOf: (ref: PlanUnitRef) => string | undefined
+): string[] {
+  const blocked = plan.filter(
+    (u) =>
+      u.state === 'blocked' && includesStage(stopAt, PLAN_KIND_STAGE[u.kind])
+  );
+  const byNoun = new Map<string, PlanUnit[]>();
+  for (const unit of blocked) {
+    const noun = KIND_NOUN[unit.kind][1];
+    byNoun.set(noun, [...(byNoun.get(noun) ?? []), unit]);
+  }
+  return [...byNoun.values()].map((units) => {
+    const blockers = new Map<string, PlanUnitRef>();
+    for (const unit of units)
+      for (const ref of unit.blockedBy ?? [])
+        blockers.set(`${ref.kind}:${ref.id}`, ref);
+    const named: string[] = [];
+    const counted: PlanUnitRef[] = [];
+    for (const ref of blockers.values()) {
+      const name = nameOf(ref);
+      if (name) named.push(`${name} ${KIND_NOUN[ref.kind][0]}`);
+      else counted.push(ref);
+    }
+    const reasons = [
+      ...named,
+      ...(counted.length ? [countNouns(counted)] : []),
+    ];
+    return `${countNouns(units)} blocked: ${
+      reasons.length ? `waiting on ${reasons.join(', ')}` : 'couldn’t check'
+    }`;
+  });
+}
+
+/** Unit counts per kind — what a run up to a stop is priced on. */
+export function planCounts(
+  work: readonly PlanUnit[]
+): Record<PlanUnitKind, number> {
+  const counts = typedFromEntries(
+    typedEntries(PLAN_KIND_STAGE).map(([kind]) => [kind, 0] as const)
+  );
+  for (const unit of work) counts[unit.kind] += 1;
+  return counts;
 }
