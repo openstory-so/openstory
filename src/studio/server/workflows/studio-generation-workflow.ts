@@ -467,12 +467,22 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
         job.via === 'google'
           ? await scopedDb.credentials.resolveOptionalKey('google')
           : undefined;
-      return uploadStudioVideo({
-        videoUrl,
-        teamId,
-        assetId,
-        googleApiKey: googleKey?.key,
-      });
+      try {
+        return await uploadStudioVideo({
+          videoUrl,
+          teamId,
+          assetId,
+          googleApiKey: googleKey?.key,
+        });
+      } catch (error) {
+        // The storage error names the R2 key: log it, show the user a line.
+        logger.warn(
+          `[StudioGenerationWorkflow] Upload failed for ${assetId}: ${error instanceof Error ? error.message : String(error)}`
+        );
+        throw new Error("Couldn't save the video. Try again.", {
+          cause: error,
+        });
+      }
     });
 
     // Charge only for a clip the team can see: a failed upload fails the run

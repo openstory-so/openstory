@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ArkAssetMap } from '@/models/server/byteplus-asset-steps';
+import { BYTEPLUS_PORTRAIT_FILTER_MESSAGE } from '@/models/server/byteplus-portrait-filter';
 
 /** What `ingestArkAssets` would have produced: every still registered. */
 const registeredAssets: ArkAssetMap = new Proxy(
@@ -540,7 +541,7 @@ describe('submitStudioVideoJob', () => {
         startImageUrl: 'https://example.com/start.jpg',
         duration: 5,
       })
-    ).rejects.toThrow(/asset:\/\//);
+    ).rejects.toThrow(BYTEPLUS_PORTRAIT_FILTER_MESSAGE);
     expect(mockFalVideo).not.toHaveBeenCalled();
     expect(mockGenerateVideo).toHaveBeenCalledTimes(1);
   });

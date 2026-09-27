@@ -52,7 +52,8 @@ describe('isBytePlusPortraitFilterError', () => {
   });
 
   it('keeps the message as something the UI can show', () => {
-    expect(BYTEPLUS_PORTRAIT_FILTER_MESSAGE).toMatch(/asset:\/\//);
-    expect(BYTEPLUS_PORTRAIT_FILTER_MESSAGE).not.toMatch(/fall back/);
+    expect(BYTEPLUS_PORTRAIT_FILTER_MESSAGE).not.toMatch(
+      /BYTEPLUS_|asset:\/\/|fall back/
+    );
   });
 });

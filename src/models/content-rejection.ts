@@ -294,6 +294,19 @@ export function clipContentRejectionMessage(args: {
     ? `${still.fix}${flags.prompt ? ` or rewrite ${promptName}` : ''}.`
     : flags.prompt
       ? `Rewrite ${promptName}.`
-      : `Rewrite ${promptName}${still ? ` or ${lower(still.fix)}` : ''}. (${args.rejections.at(-1) ?? ''})`;
+      : `Rewrite ${promptName}${still ? ` or ${lower(still.fix)}` : ''}.${rejectionReason(args.rejections.at(-1) ?? '')}`;
   return `Content checker rejected ${what} (${tried}). ${hint}`;
+}
+
+/**
+ * The provider's own words when no input was named, minus Ark's error code
+ * and request id — those are for the logs, not the user.
+ */
+function rejectionReason(raw: string): string {
+  if (/copyright/i.test(raw)) return ' It may be copyrighted.';
+  const text = raw
+    .replace(/^[\w.]*SensitiveContentDetected[\w.]*:\s*/i, '')
+    .replace(/\s*Request id:.*$/is, '')
+    .trim();
+  return text ? ` (${text})` : '';
 }

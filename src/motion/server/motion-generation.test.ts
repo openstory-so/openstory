@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { estimateFalCost } from '@/billing/fal-cost';
 import { TEST_FAL_PRICING } from '@/billing/fal-pricing-fixture';
 import type { ArkAssetMap } from '@/models/server/byteplus-asset-steps';
+import { BYTEPLUS_PORTRAIT_FILTER_MESSAGE } from '@/models/server/byteplus-portrait-filter';
 import { micros } from '@/billing/money';
 import {
   mockFalVideo,
@@ -589,7 +590,7 @@ describe('Motion Service', () => {
           model: 'seedance_v2_5',
           duration: 5,
         })
-      ).rejects.toThrow(/asset:\/\//);
+      ).rejects.toThrow(BYTEPLUS_PORTRAIT_FILTER_MESSAGE);
       expect(mockGenerateVideo).toHaveBeenCalledTimes(1);
     });
 
@@ -613,7 +614,7 @@ describe('Motion Service', () => {
       expect(mockGenerateVideo).toHaveBeenCalledTimes(1);
     });
 
-    it('names the asset:// gap when Ark blocks the still and there is no fal key', async () => {
+    it('shows the portrait-filter message when Ark blocks the still and there is no fal key', async () => {
       testEnv.ARK_API_KEY = 'ark-test';
       testEnv.FAL_KEY = undefined;
       mockGenerateVideo.mockRejectedValue(
@@ -630,7 +631,7 @@ describe('Motion Service', () => {
           model: 'seedance_v2_5',
           duration: 5,
         })
-      ).rejects.toThrow(/asset:\/\//);
+      ).rejects.toThrow(BYTEPLUS_PORTRAIT_FILTER_MESSAGE);
     });
 
     it('keeps Kling on fal even when Ark is configured', async () => {

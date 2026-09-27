@@ -285,4 +285,34 @@ describe('flaggedInputs / clipContentRejectionMessage (#1373)', () => {
       'Content checker rejected the clip (Seedance 2.5). Rewrite the prompt. (flagged by a content checker)'
     );
   });
+
+  it('names a copyright refusal without Ark codes or request ids', () => {
+    expect(
+      clipContentRejectionMessage({
+        rejections: [
+          'OutputVideoSensitiveContentDetected.PolicyViolation: The request failed because the output video may be related to copyright restrictions. Request id: 0217904582535460000',
+        ],
+        models: ['Seedance 2.5'],
+        softened: false,
+        inputs: {
+          still: { name: 'a reference image', fix: 'Swap the reference image' },
+          prompt: 'the prompt',
+        },
+      })
+    ).toBe(
+      'Content checker rejected the clip (Seedance 2.5). Rewrite the prompt or swap the reference image. It may be copyrighted.'
+    );
+    expect(
+      clipContentRejectionMessage({
+        rejections: [
+          'OutputVideoSensitiveContentDetected: The output video contains sensitive content. Request id: 02179',
+        ],
+        models: ['Seedance 2.5'],
+        softened: false,
+        inputs: { prompt: 'the prompt' },
+      })
+    ).toBe(
+      'Content checker rejected the clip (Seedance 2.5). Rewrite the prompt. (The output video contains sensitive content.)'
+    );
+  });
 });
