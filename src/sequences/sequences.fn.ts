@@ -252,39 +252,61 @@ export const continueGenerationFn = createServerFn({ method: 'POST' })
       sequenceId: data.sequenceId,
     });
 
-    await scopedDb.sequences.update({
-      id: data.sequenceId,
+    // The trigger snapshots these off the row, so they save first — and are
+    // put back if it refuses (a run already in flight, no style…): a rejected
+    // click must not leave its switches on a sequence nothing ran with.
+    const settings = {
       generationStopAt: data.stopAt,
       autoGenerateMotion,
       autoGenerateMusic,
       generateStartFrames: requested.generateStartFrames,
       generateVoices: requested.generateVoices,
       draftMotion: data.draftMotion,
-    });
+    };
+    const before = {
+      generationStopAt: sequence.generationStopAt,
+      autoGenerateMotion: sequence.autoGenerateMotion,
+      autoGenerateMusic: sequence.autoGenerateMusic,
+      generateStartFrames: sequence.generateStartFrames,
+      generateVoices: sequence.generateVoices,
+      draftMotion: sequence.draftMotion,
+    };
+    await scopedDb.sequences.update({ id: data.sequenceId, ...settings });
+
+    const restoreOnThrow = async <T>(run: () => Promise<T>): Promise<T> => {
+      try {
+        return await run();
+      } catch (error) {
+        await scopedDb.sequences.update({ id: data.sequenceId, ...before });
+        throw error;
+      }
+    };
 
     return releaseReservationOnThrow(context.scopedDb, reservationId, () =>
-      triggerStoryboard(context.scopedDb, {
-        userId: context.user.id,
-        teamId: context.teamId,
-        sequenceId: data.sequenceId,
-        reservationId,
-        resume: true,
-        startFrom,
-        stopAt: data.stopAt,
-        checkpoint,
-        autoGenerateMotion,
-        autoGenerateMusic,
-        imageModels: [
-          safeTextToImageModel(sequence.imageModel, DEFAULT_IMAGE_MODEL),
-        ],
-        videoModels: [
-          safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
-        ],
-        musicModel: sequence.musicModel
-          ? safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)
-          : undefined,
-        leftoverGrokShotIds: data.leftoverGrokShotIds,
-      })
+      restoreOnThrow(() =>
+        triggerStoryboard(context.scopedDb, {
+          userId: context.user.id,
+          teamId: context.teamId,
+          sequenceId: data.sequenceId,
+          reservationId,
+          resume: true,
+          startFrom,
+          stopAt: data.stopAt,
+          checkpoint,
+          autoGenerateMotion,
+          autoGenerateMusic,
+          imageModels: [
+            safeTextToImageModel(sequence.imageModel, DEFAULT_IMAGE_MODEL),
+          ],
+          videoModels: [
+            safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
+          ],
+          musicModel: sequence.musicModel
+            ? safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)
+            : undefined,
+          leftoverGrokShotIds: data.leftoverGrokShotIds,
+        })
+      )
     );
   });
 
