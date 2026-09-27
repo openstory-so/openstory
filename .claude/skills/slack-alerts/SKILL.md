@@ -42,22 +42,37 @@ once before the first `call` of each tool.
    `slack`), then `call integrations-channels-retrieve {"id": <id>}`. PostHog
    stores channels as ids (`C0…`); map each `#name` in the file to its id
    before comparing.
-3. `call cdp-functions-list {"type":["destination","internal_destination"],"limit":1000}`
-   and match each file entry to a live function by `name`. For a match,
-   `call --json cdp-functions-retrieve {"id": …}` and compare the channel
-   (as an id), `text`, `blocks`, `filters` (`source`, `events` and their
-   `properties`, `filter_test_accounts`) and `masking` (`ttl`, `hash`).
-   Ignore key order and fields PostHog adds (`bytecode`, `order`).
+3. `call --json cdp-functions-list {"type":["destination","internal_destination"],"limit":1000}`
+   (`--json`, or the filters are hidden) and match each file entry to a live
+   function by `name`. For a match, `call --json cdp-functions-retrieve {"id": …}`
+   and compare only these:
+   - the channel, as an id;
+   - `text` and `blocks`;
+   - `filters`: `source`, each event's `id` and `properties`, and
+     `filter_test_accounts`;
+   - `masking`: `ttl` and `hash`.
+
+   Ignore key order. PostHog adds fields (`bytecode`, `bytecode_contract`)
+   and drops empty ones: a missing `properties` equals `[]`, a missing
+   `filter_test_accounts` equals `false`, and a missing `name` or `order` on an
+   event means nothing. Don't compare `hog`, `description`, `enabled`,
+   `icon_emoji` or `username`; a sync never changes them.
+
 4. Show the plan before writing anything:
    - **Create**: in the file, not in PostHog.
-   - **Update**: in both, but different. Name the fields and show both
-     versions of any changed text. A difference nobody made in the file is
-     someone's edit in PostHog: ask whether to keep it (copy it into the file)
-     or overwrite it.
+   - **Update**: in both, but different. Name each difference as block type
+     plus field (`header text`, `image alt_text`, `section text`) and show
+     both versions. Work out which side moved: compare the function's
+     `updated_at` with the last change to `alerts.json`
+     (`git log -1 --format=%cI -- alerts.json`). If PostHog is newer, it's
+     someone's edit there: ask whether to keep it (copy it into the file) or
+     overwrite it. When several functions differ the same way, ask once for
+     the group.
    - **Not in the file**: live functions using `template-slack` whose name
-     isn't in the file. Skip functions filtered on an `alert_id` property;
-     PostHog manages those for its logs and insight alerts. Ask whether to
-     add each one to the file or delete it; never delete without a yes.
+     isn't in the file. Skip functions whose `filters.properties` has an
+     `alert_id` entry; PostHog made those for its own logs and insight
+     alerts. Ask whether to add each one to the file or delete it; never
+     delete without a yes.
    - **Disabled**: report it; don't switch it back on.
 5. Apply what the person agreed to:
    - Create with `call cdp-functions-create`, `template_id: "template-slack"`,
@@ -68,6 +83,8 @@ once before the first `call` of each tool.
      Then `call cdp-functions-partial-update {"id": …, "enabled": true}`.
    - Update with `call cdp-functions-partial-update`, sending the whole
      `inputs` object (`slack_workspace`, `channel`, `text`, `blocks`) and
-     `filters`, plus `masking` when the file has it.
+     `filters`, plus `masking` when the file has it. Don't send `hog`: some
+     older functions run an earlier version of the Slack template's code, and
+     they keep it.
 6. Give the person a link to each created or changed function
    (`call generate-app-url {"url": "/functions/{id}", "params": {"id": …}}`).
