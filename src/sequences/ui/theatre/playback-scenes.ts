@@ -46,11 +46,15 @@ export function toPlaybackScenes(
     const shot = group[0];
     if (!shot) continue;
     const videoUrl = shot.video?.url;
+    const stillUrl = shot.image?.url ?? null;
+    const previewUrl = shot.previewThumbnailUrl ?? null;
     if (videoUrl) {
-      scenes.push({ orderIndex: scenes.length, videoUrl });
+      scenes.push({
+        orderIndex: scenes.length,
+        videoUrl,
+        posterUrl: stillUrl ?? previewUrl,
+      });
     } else {
-      const stillUrl = shot.image?.url ?? null;
-      const previewUrl = shot.previewThumbnailUrl ?? null;
       scenes.push({
         orderIndex: scenes.length,
         imageUrl: stillUrl ?? previewUrl,

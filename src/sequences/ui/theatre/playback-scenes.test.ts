@@ -25,14 +25,14 @@ describe('toPlaybackScenes', () => {
     expect(
       toPlaybackScenes([shot('/a.mp4'), shot(null), shot('/c.mp4'), shot(null)])
     ).toEqual([
-      { orderIndex: 0, videoUrl: '/a.mp4' },
+      { orderIndex: 0, videoUrl: '/a.mp4', posterUrl: null },
       expect.objectContaining({
         orderIndex: 1,
         imageUrl: null,
         durationSeconds: 5,
         audioUrls: [],
       }),
-      { orderIndex: 2, videoUrl: '/c.mp4' },
+      { orderIndex: 2, videoUrl: '/c.mp4', posterUrl: null },
       expect.objectContaining({ orderIndex: 3, imageUrl: null }),
     ]);
   });
@@ -45,8 +45,8 @@ describe('toPlaybackScenes', () => {
         shot('/b.mp4'),
       ])
     ).toEqual([
-      { orderIndex: 0, videoUrl: '/packed.mp4' },
-      { orderIndex: 1, videoUrl: '/b.mp4' },
+      { orderIndex: 0, videoUrl: '/packed.mp4', posterUrl: null },
+      { orderIndex: 1, videoUrl: '/b.mp4', posterUrl: null },
     ]);
   });
 });
@@ -110,7 +110,9 @@ it('prefers the selected still and plays its recorded take only when there is no
   });
   expect(
     toPlaybackScenes([{ ...input, video: { url: '/render.mp4' } }])
-  ).toEqual([{ orderIndex: 0, videoUrl: '/render.mp4' }]);
+  ).toEqual([
+    { orderIndex: 0, videoUrl: '/render.mp4', posterUrl: '/still.png' },
+  ]);
 });
 
 it('uses the preview when there is no selected still', () => {

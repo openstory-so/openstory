@@ -184,38 +184,25 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
     </>
   );
 
-  // The cut opens on its first entry, which is already on hand — a clip's
-  // first frame, or the still of a shot with no video yet. Show it while the
-  // stitcher warms up, not a grey box. `#t` makes iOS paint a
-  // frame without playback.
+  // The cut opens on its first shot's still — a clip's opening frame, or the
+  // still of a shot with no video yet — while the stitcher warms up, not a
+  // grey box.
   const opening = scenes[0];
-  const openingClass =
-    'pointer-events-none absolute inset-0 z-10 h-full w-full bg-black object-contain';
-  const firstFrame =
-    opening && 'videoUrl' in opening ? (
-      <video
-        data-testid="player-loading"
-        src={`${opening.videoUrl}#t=0.001`}
-        muted
-        playsInline
-        preload="auto"
-        aria-hidden
-        tabIndex={-1}
-        className={openingClass}
-      />
-    ) : opening?.imageUrl ? (
-      <img
-        data-testid="player-loading"
-        src={opening.imageUrl}
-        alt=""
-        className={openingClass}
-      />
-    ) : (
-      <Skeleton
-        data-testid="player-loading"
-        className="absolute inset-0 z-10 h-full w-full bg-muted/40"
-      />
-    );
+  const openingUrl =
+    opening && 'videoUrl' in opening ? opening.posterUrl : opening?.imageUrl;
+  const firstFrame = openingUrl ? (
+    <img
+      data-testid="player-loading"
+      src={openingUrl}
+      alt=""
+      className="pointer-events-none absolute inset-0 z-10 h-full w-full bg-black object-contain"
+    />
+  ) : (
+    <Skeleton
+      data-testid="player-loading"
+      className="absolute inset-0 z-10 h-full w-full bg-muted/40"
+    />
+  );
 
   const stitchError =
     error ?? (scenes.length === 0 ? 'No scenes ready to play yet.' : null);

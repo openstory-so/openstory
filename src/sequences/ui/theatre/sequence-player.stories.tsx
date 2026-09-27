@@ -61,7 +61,7 @@ export const Mixed: Story = {
   args: {
     scenes: [
       still,
-      { orderIndex: 1, videoUrl },
+      { orderIndex: 1, videoUrl, posterUrl: null },
       {
         ...still,
         orderIndex: 2,

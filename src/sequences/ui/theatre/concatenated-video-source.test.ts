@@ -50,6 +50,9 @@ vi.doMock('mediabunny', () => ({
   EncodedPacket: class {},
   EncodedPacketSink: class {},
 }));
+vi.doMock('./ranged-source', () => ({
+  createRangedSource: (url: string) => ({ url }),
+}));
 const { ConcatenatedVideoSource } = await import('./concatenated-video-source');
 const still = (
   overrides: Partial<Extract<SceneInput, { imageUrl: string | null }>> = {}
@@ -104,7 +107,7 @@ describe('mixed canvas timeline', () => {
   });
   it('uses measured dialogue duration and offsets every audio clip on a mixed timeline', async () => {
     const source = new ConcatenatedVideoSource([
-      { orderIndex: 0, videoUrl: '/render.mp4' },
+      { orderIndex: 0, videoUrl: '/render.mp4', posterUrl: null },
       still({
         orderIndex: 1,
         audioUrls: ['/one.wav', '/two.wav'],
