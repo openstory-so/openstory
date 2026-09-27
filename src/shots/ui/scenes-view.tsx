@@ -1696,15 +1696,14 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                 onViewChange={setView}
                 canvasDisabled={!canvasReady}
                 trailing={
-                  effectiveView === 'script' ? (
+                  <>
                     <CopyScriptButton sequenceId={sequenceId} />
-                  ) : (
                     <SequenceDownloadMenu
                       sequenceExport={sequenceExport}
                       draftLabel={theatreDraftLabel(shots ?? [])}
                       variant="toolbar"
                     />
-                  )
+                  </>
                 }
               />
               {/* flex-col so SceneCanvas's flex-1 chain still stretches — in a
