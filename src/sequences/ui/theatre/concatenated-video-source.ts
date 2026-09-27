@@ -275,11 +275,7 @@ export class ConcatenatedVideoSource {
       for (const url of scene.audioUrls) {
         const input = new Input({
           formats: ALL_FORMATS,
-          source: new UrlSource(
-            url.startsWith('data:') || url.startsWith('blob:')
-              ? url
-              : addCorsCacheBuster(url)
-          ),
+          source: new UrlSource(url),
         });
         inputs.push(input);
         const track = await input.getPrimaryAudioTrack();
