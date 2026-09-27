@@ -530,3 +530,17 @@ Before editing files for a substantial task:
 - Multiple matches: prefer the most specific local skill for the package or concern you are changing; load additional skills only when the task spans multiple packages or concerns.
 
 <!-- intent-skills:end -->
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues on `openstory-so/openstory`, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: root `CONTEXT.md` + `docs/adr/`, alongside the existing `docs/architecture/` feature docs. See `docs/agents/domain.md`.
