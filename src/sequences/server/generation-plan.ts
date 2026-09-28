@@ -103,7 +103,9 @@ async function loadPlanInput(
       ),
       loadShotMediaStates(scopedDb, sequence, shots),
       scopedDb.shotDialogue.listShotIdsWithLiveClaim(shotIds),
-      readMusicPromptStaleness(scopedDb, sequence),
+      sequence.includeMusic
+        ? readMusicPromptStaleness(scopedDb, sequence)
+        : Promise.resolve(null),
     ]);
 
   // In parallel, as `getShotStalenessBatchFn` does: the reads are shared,
@@ -290,7 +292,8 @@ async function loadPlanInput(
         }),
       })),
     shots: planShots,
-    music: {
+    // The Music switch (`includeMusic`): off, the sequence owes no music.
+    music: music && {
       prompt: artifactVerdict({
         exists: !!sequence.musicPrompt,
         staleness: music.musicPrompt,

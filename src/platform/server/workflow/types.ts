@@ -346,6 +346,11 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
    */
   generateVoices?: boolean;
   /**
+   * The Music switch (`sequences.includeMusic`), snapshotted by the
+   * launcher. Off, a run to Music makes no track.
+   */
+  includeMusic: boolean;
+  /**
    * Shot ids the user routed to Grok on leftover packs (sum under the
    * packing model's min). Snap-to-min is the default; this is the
    * stop-and-pick override. Omitted when the leftover dropdown is not
@@ -363,6 +368,7 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
 export type StoryboardTriggerInput = Omit<
   StoryboardWorkflowInput,
   | 'stopAt'
+  | 'includeMusic'
   | 'title'
   | 'script'
   | 'userCountry'
@@ -435,6 +441,8 @@ export interface AnalyzeScriptWorkflowInput extends SequenceWorkflowContext {
   referenceOnly: boolean;
   /** @see StoryboardWorkflowInput.generateVoices — passed straight through. */
   generateVoices?: boolean;
+  /** @see StoryboardWorkflowInput.includeMusic — passed straight through. */
+  includeMusic: boolean;
   /** @see StoryboardWorkflowInput.leftoverGrokShotIds — passed straight through. */
   leftoverGrokShotIds?: string[];
 }

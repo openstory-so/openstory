@@ -53,6 +53,7 @@ import { adjacentShotId } from './shot-walk';
 import {
   sequenceKeys,
   useSequence,
+  useSetSequenceMusic,
   useSetSequenceVideoModel,
 } from '@/sequences/ui/use-sequences';
 import { sumShotSeconds } from './scene-group';
@@ -458,6 +459,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     DEFAULT_VIDEO_MODEL
   );
   const { mutate: persistVideoModel } = useSetSequenceVideoModel(sequenceId);
+  const { mutate: persistIncludeMusic } = useSetSequenceMusic(sequenceId);
   const persistSequenceVideoModel = useCallback(
     (model: ImageToVideoModel) => {
       if (model === sequenceVideoModel) return;
@@ -1575,6 +1577,8 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     aspectRatio,
     resolution: sequence?.resolution,
     draftMotion: sequence?.draftMotion,
+    includeMusic: sequence?.includeMusic ?? true,
+    onIncludeMusicChange: persistIncludeMusic,
     onRenderDraftsAtQuality: handleRenderDraftsAtQuality,
     onSelectScene: handleSelectScene,
     onSelectShot: handleSelectShot,

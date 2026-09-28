@@ -336,17 +336,17 @@ export function switchLocks(plan: readonly PlanUnit[]): {
   voices: boolean;
   draft: boolean;
 } {
+  // A blocked unit is not counted as made: it may be waiting on work that
+  // has not produced it yet.
+  const exists = (u: PlanUnit) =>
+    u.state === 'done' || u.state === 'stale' || u.state === 'running';
   const made = (kind: PlanUnitKind) =>
-    plan.some(
-      (u) =>
-        u.kind === kind &&
-        (u.state === 'done' || u.state === 'stale' || u.state === 'running')
-    );
+    plan.some((u) => u.kind === kind && exists(u));
   const clips = plan.filter((u) => u.kind === 'clip');
   return {
     startFrames: made('still'),
     voices: made('dialogue'),
-    draft: clips.length > 0 && clips.every((u) => u.state !== 'missing'),
+    draft: clips.length > 0 && clips.every(exists),
   };
 }
 
@@ -505,4 +505,28 @@ export function updateAllUnits(
     }
   }
   return [...picked.values()];
+}
+
+/**
+ * Going back never redoes finished work (#1780 §3): a switch turned on stops
+ * the run at its own step — Voices at Dialogue, Start frames at Images (the
+ * later of the two when both). Clips rendered from the old inputs then read
+ * stale, for Update all to re-render with its cost shown.
+ */
+type PlanSwitches = { generateStartFrames: boolean; generateVoices: boolean };
+
+export function switchStopAt(args: {
+  saved: PlanSwitches;
+  requested: PlanSwitches;
+  stopAt: GenerationStage;
+}): GenerationStage {
+  const backTo: GenerationStage | null =
+    !args.saved.generateVoices && args.requested.generateVoices
+      ? 'dialogue'
+      : !args.saved.generateStartFrames && args.requested.generateStartFrames
+        ? 'images'
+        : null;
+  return backTo && stageIndex(args.stopAt) > stageIndex(backTo)
+    ? backTo
+    : args.stopAt;
 }

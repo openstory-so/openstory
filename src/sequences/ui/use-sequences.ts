@@ -29,6 +29,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePostHog } from '@posthog/react';
 import { toast } from 'sonner';
 
+import { generationPlanKeys } from '@/sequences/ui/use-generation-plan';
 import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'ui', 'use-sequences']);
@@ -61,11 +62,19 @@ export type ContinueFlags = {
 
 /** The continue footer's quote: the plan's work up to the stop, priced per unit. */
 export function useGenerationSliceEstimate(
-  args: ContinueFlags & { sequenceId: string; enabled: boolean }
+  args: ContinueFlags & {
+    sequenceId: string;
+    enabled: boolean;
+    /**
+     * The units the footer offers. Keyed on so the quote moves with the
+     * plan — a sheet finishing elsewhere changes the price, not the switches.
+     */
+    workKey: string;
+  }
 ): Microdollars | null | undefined {
-  const { sequenceId, enabled, ...flags } = args;
+  const { sequenceId, enabled, workKey, ...flags } = args;
   const { data } = useQuery({
-    queryKey: sequenceKeys.generationSlice(sequenceId, flags),
+    queryKey: [...sequenceKeys.generationSlice(sequenceId, flags), workKey],
     queryFn: () =>
       estimateGenerationSliceFn({ data: { sequenceId, ...flags } }),
     enabled,
@@ -427,6 +436,10 @@ export function useSetSequenceMusic(sequenceId: string) {
       // Reconcile against the server's true state once the write settles.
       void queryClient.invalidateQueries({
         queryKey: sequenceKeys.detail(sequenceId),
+      });
+      // The Music switch decides whether the plan owes a track.
+      void queryClient.invalidateQueries({
+        queryKey: generationPlanKeys.bySequence(sequenceId),
       });
     },
   });

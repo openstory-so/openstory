@@ -240,6 +240,7 @@ function makeEvent(
   const payload: AnalyzeScriptWorkflowInput = {
     userId: 'u1',
     teamId: 't1',
+    includeMusic: true,
     sequenceId: 'seq_1',
     script: 'INT. HALLWAY — NIGHT',
     aspectRatio: '16:9',

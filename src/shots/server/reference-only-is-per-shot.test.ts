@@ -61,6 +61,8 @@ const SEQUENCE_LEVEL_BY_DESIGN: Record<string, string> = {
   'src/sequences/ui/use-generation-plan.ts': 'plan under a sequence default',
   'src/sequences/server/continue-plan.ts':
     'the continue switch edits the sequence default',
+  'src/sequences/generation-plan.ts':
+    'a switch turned on caps the stop (`switchStopAt`): sequence defaults',
   'src/sequences/ui/use-sequences.ts':
     'sequence-wide continue-stage estimate cache',
   // Continue slider / next-stage skips for the whole run. Per-shot overrides

@@ -146,7 +146,10 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
 
     // Stop-at is the only word on how far to run; the legacy flags on the
     // payload are derived from it and never consulted (#1408).
-    const { autoGenerateMotion, autoGenerateMusic } = flagsFromStopAt(stopAt);
+    const stopFlags = flagsFromStopAt(stopAt);
+    const { autoGenerateMotion } = stopFlags;
+    // The Music switch decides whether there is a track at all.
+    const autoGenerateMusic = stopFlags.autoGenerateMusic && input.includeMusic;
 
     const imageModels = resolveImageModels(imageModelsInput, imageModel);
     const videoModels = resolveVideoModels(videoModelsInput, videoModel);
@@ -1184,13 +1187,9 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       autoGenerateMotion &&
       primaryVideoModel &&
       (referenceOnly || imageUrls.some((url) => url !== null));
-    const shouldGenerateMusic = Boolean(
-      autoGenerateMusic &&
-      sequenceId &&
-      completeScenes.some(
-        (s) => s.musicDesign?.presence && s.musicDesign.presence !== 'none'
-      )
-    );
+    // The switch, not the scenes' music presence, decides: the plan owes a
+    // track whenever it is on, so the run must make one.
+    const shouldGenerateMusic = Boolean(autoGenerateMusic && sequenceId);
 
     if (shouldGenerateMotion) {
       let totalDuration = 0;

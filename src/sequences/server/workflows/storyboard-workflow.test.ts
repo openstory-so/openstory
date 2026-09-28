@@ -92,6 +92,7 @@ function makeEvent(
   const payload: StoryboardWorkflowInput = {
     userId: 'u1',
     teamId: 't1',
+    includeMusic: true,
     sequenceId,
     title: 'The Long Walk',
     script: 'INT. HALLWAY — NIGHT',

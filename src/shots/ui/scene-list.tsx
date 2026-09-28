@@ -16,6 +16,7 @@ import {
   planWork,
   planWorkLabel,
   switchLocks,
+  switchStopAt,
   type PlanUnitRef,
 } from '@/sequences/generation-plan';
 import { useGenerationPlan } from '@/sequences/ui/use-generation-plan';
@@ -215,6 +216,9 @@ export type SceneListProps = {
   isAnalyzing?: boolean;
   leftoverGrokShotIds?: ReadonlySet<string>;
   onLeftoverGrokChange?: (shotIds: readonly string[], useGrok: boolean) => void;
+  /** The Music switch (`sequences.includeMusic`): whether the sequence has a track. */
+  includeMusic: boolean;
+  onIncludeMusicChange: (includeMusic: boolean) => void;
   /** The sequence's draft-first setting (#1756); seeds the batch and continue switches. */
   draftMotion?: boolean;
   /** Render every selected draft's 1080p final (#1756). */
@@ -263,6 +267,8 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   leftoverGrokShotIds,
   onLeftoverGrokChange,
   draftMotion = false,
+  includeMusic,
+  onIncludeMusicChange,
   onRenderDraftsAtQuality,
 }) => {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -339,7 +345,6 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   }, [generateVoices]);
   const voicesUnavailable = useVoiceDesignAvailable() === false;
   const voices = voicesUnavailable ? false : draftVoices;
-  const [includeMusic, setIncludeMusic] = useState(true);
   const [generateAudio, setGenerateAudio] = useState(true);
   // Draft first (#1756): one local switch for the batch footer and the
   // continue slider, seeded from the sequence and persisted by either click.
@@ -460,22 +465,40 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   const { data: savedPlan } = useGenerationPlan(sequenceId);
   const switchesMoved =
     draftStartFrames !== generateStartFrames || voices !== generateVoices;
-  const { data: footerPlan = [] } = useGenerationPlan(
-    sequenceId,
-    switchesMoved
-      ? { generateStartFrames: draftStartFrames, generateVoices: voices }
-      : undefined
-  );
+  // While a switch's plan loads the last one stays on screen; the click
+  // waits for the plan it would actually run.
+  const { data: footerPlan = [], isPlaceholderData: planLoading } =
+    useGenerationPlan(
+      sequenceId,
+      switchesMoved
+        ? { generateStartFrames: draftStartFrames, generateVoices: voices }
+        : undefined
+    );
   const locks = switchLocks(savedPlan ?? []);
   // Stops before the first one with work are done; the thumb cannot go there.
   // With no work left every stop is done (#1780 §1).
   const minStage =
     firstStageWithWork(footerPlan) ??
     (footerPlan.length > 0 ? 'music' : nextStage);
-  const continueStopAtClamped =
-    minStage && stageIndex(continueStopAt) < stageIndex(minStage)
-      ? minStage
+  // A switch turned on stops the run at its own step (#1780 §3). The cap is
+  // derived, never written, so turning the switch off again frees the thumb
+  // back to where it was.
+  const maxStage = switchStopAt({
+    saved: { generateStartFrames, generateVoices },
+    requested: {
+      generateStartFrames: draftStartFrames,
+      generateVoices: voices,
+    },
+    stopAt: 'music',
+  });
+  const cappedStopAt =
+    stageIndex(continueStopAt) > stageIndex(maxStage)
+      ? maxStage
       : continueStopAt;
+  const continueStopAtClamped =
+    minStage && stageIndex(cappedStopAt) < stageIndex(minStage)
+      ? minStage
+      : cappedStopAt;
   const ContinueIcon = CONTINUE_ICON[continueStopAtClamped];
   const showButton = showMotionFooter;
   const continueWork = planWork(footerPlan, continueStopAtClamped);
@@ -487,10 +510,6 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     continueStage === 'references' ||
     continueStage === 'images' ||
     continueStage === 'dialogue';
-  // Turning on a switch that was skipped moves the stop back to its step;
-  // turning it off again returns to where the sequence was (#1780 §2).
-  const setSwitchStop = (on: boolean, stage: GenerationStage) =>
-    setContinueStopAt(on ? stage : (nextStage ?? DEFAULT_GENERATION_STOP_AT));
   const { data: planCharacters } = useSequenceCharacters(sequenceId);
   const { data: planLocations } = useSequenceLocations(sequenceId);
   const nameOf = (ref: PlanUnitRef) =>
@@ -688,6 +707,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     generateVoices: voices,
     draftMotion: draftFirst,
     enabled: showSteps && offerContinue,
+    workKey: continueWork.map((u) => `${u.kind}:${u.id}`).join(','),
   });
 
   const stepsSection = (
@@ -696,22 +716,15 @@ const SceneListComponent: React.FC<SceneListProps> = ({
         value={continueStopAtClamped}
         onChange={setContinueStopAt}
         minStage={minStage ?? undefined}
+        maxStage={maxStage}
         startFramesLocked={locks.startFrames}
         voicesLocked={locks.voices}
         generateStartFrames={draftStartFrames}
-        onGenerateStartFramesChange={(on) => {
-          setDraftStartFrames(on);
-          if (!generateStartFrames) setSwitchStop(on, 'images');
-        }}
+        onGenerateStartFramesChange={setDraftStartFrames}
         generateVoices={voices}
-        onGenerateVoicesChange={
-          voicesUnavailable
-            ? undefined
-            : (on) => {
-                setDraftVoices(on);
-                if (!generateVoices) setSwitchStop(on, 'dialogue');
-              }
-        }
+        onGenerateVoicesChange={voicesUnavailable ? undefined : setDraftVoices}
+        includeMusic={includeMusic}
+        onIncludeMusicChange={onIncludeMusicChange}
         draftFirst={draftFirst}
         onDraftFirstChange={offerDraftFirst ? setDraftBatch : undefined}
         draftFirstLocked={locks.draft}
@@ -723,7 +736,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
             variant="default"
             className="w-full"
             onClick={() => void handleContinue()}
-            disabled={isGenerating || continueWork.length === 0}
+            disabled={isGenerating || planLoading || continueWork.length === 0}
           >
             {isGenerating ? (
               <>
@@ -1038,21 +1051,6 @@ const SceneListComponent: React.FC<SceneListProps> = ({
                 </Button>
                 <ActionCost estimate={batchCostEstimate} />
               </div>
-              <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Checkbox
-                  checked={includeMusic}
-                  onCheckedChange={(checked) =>
-                    setIncludeMusic(checked === true)
-                  }
-                  disabled={!musicPromptsReady}
-                />
-                <span>
-                  Also generate music
-                  {!musicPromptsReady && (
-                    <span className="text-xs ml-1">(preparing…)</span>
-                  )}
-                </span>
-              </label>
               <label
                 htmlFor="batch-generate-audio"
                 className="flex items-center gap-2 text-sm text-muted-foreground"

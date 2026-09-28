@@ -230,6 +230,7 @@ async function resolveStoryboardPayload(
     // leave one half of the pipeline rendering stills and the other half not.
     referenceOnly: !sequence.generateStartFrames,
     generateVoices: sequence.generateVoices,
+    includeMusic: sequence.includeMusic,
     ownerEmail: await scopedDb.teamManagement.getMemberEmail(input.userId),
     sequenceUrl: sequenceScenesUrl(sequenceId),
     // Pin stop-at from this click, else the sequence snapshot — never let

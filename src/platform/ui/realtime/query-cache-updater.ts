@@ -138,6 +138,7 @@ export function updateQueryCacheFromEvent(
 
   switch (eventName) {
     case 'generation.shot:created':
+      invalidateGenerationPlan(queryClient, sequenceId);
       // Debounced invalidation - multiple rapid events = one refetch.
       // Stream-time scene-split now also writes a `scenes` row + sceneId
       // link for each shot (#1072), so the spine list must refetch too.
@@ -160,6 +161,7 @@ export function updateQueryCacheFromEvent(
       break;
 
     case 'generation.shot:updated': {
+      invalidateGenerationPlan(queryClient, sequenceId);
       // Scene metadata (title, continuity, music/audio design) lives on the
       // `scenes` row now (#1067), not on the shot — there is nothing left to
       // patch in place on the cached shot, so refresh the scene spine instead.
@@ -218,6 +220,10 @@ export function updateQueryCacheFromEvent(
         'previewThumbnailUrl'
       );
       const status = data.status;
+      // A finished or failed artifact changes what the plan owes.
+      if (status === 'completed' || status === 'failed') {
+        invalidateGenerationPlan(queryClient, sequenceId);
+      }
       const errorMessage = getOptionalString(data, 'error');
       // Variant-only (#547): an added (alternate) model finished — its output
       // belongs in `shot_variants`, NOT on the live primary. Skip the
@@ -356,6 +362,10 @@ export function updateQueryCacheFromEvent(
     case 'generation.video:progress': {
       const videoUrl = getOptionalString(data, 'videoUrl');
       const status = data.status;
+      // A finished or failed artifact changes what the plan owes.
+      if (status === 'completed' || status === 'failed') {
+        invalidateGenerationPlan(queryClient, sequenceId);
+      }
       const errorMessage = getOptionalString(data, 'error');
       const promptSoftened = data.promptSoftened === true;
       const modelFallback = data.modelFallback === true;
@@ -522,6 +532,10 @@ export function updateQueryCacheFromEvent(
 
     case 'generation.audio:progress': {
       const status = data.status;
+      // A finished or failed artifact changes what the plan owes.
+      if (status === 'completed' || status === 'failed') {
+        invalidateGenerationPlan(queryClient, sequenceId);
+      }
       const audioUrl = getOptionalString(data, 'audioUrl');
       const model = getOptionalString(data, 'model');
       if (isValidMusicStatus(status)) {
@@ -864,6 +878,7 @@ export function updateQueryCacheFromEvent(
     }
 
     case 'generation.scene:new':
+      invalidateGenerationPlan(queryClient, sequenceId);
       // Analysis now persists a scenes row as each scene completes (#1072).
       // Refetch so the spine grows scene groups live instead of only after
       // the late bulk persist-scenes step — and so the Script tab collapses

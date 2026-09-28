@@ -322,7 +322,7 @@ The shot-list pass is the prevention half: its Dialogue rules give each shot a w
 
 **Sub-workflow:** `motionBatchWorkflow` (`src/motion/server/workflows/motion-batch-workflow.ts`)
 
-Only runs if `autoGenerateMotion` is enabled, a video model is set, and images were generated. A single orchestrator handles:
+Only runs if `autoGenerateMotion` is enabled, a video model is set, and images were generated. A single orchestrator handles: The music track rides along when the stop is Music and the Music switch (`includeMusic`, snapshotted on the payload by the launcher) is on — the scenes' `musicDesign.presence` no longer gates it.
 
 1. **Parallel generation** — All frame motion child workflows + the optional music workflow spawned simultaneously (`spawnAndAwaitChild` under `Promise.all`)
 2. **Collect video URLs** — Reads from DB (authoritative ordering by `orderIndex`)

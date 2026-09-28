@@ -23,37 +23,12 @@ import {
   planCounts,
   planWork,
   switchLocks,
+  switchStopAt,
   type PlanUnit,
 } from '@/sequences/generation-plan';
-import {
-  sliderStopLabel,
-  stageIndex,
-  type GenerationStage,
-} from '@/sequences/pipeline';
+import { sliderStopLabel, type GenerationStage } from '@/sequences/pipeline';
 
 type Flags = { generateStartFrames: boolean; generateVoices: boolean };
-
-/**
- * Going back never redoes finished work (#1780 §3): a switch turned on stops
- * the run at its own step — Voices at Dialogue, Start frames at Images (the
- * later of the two when both). Clips rendered from the old inputs then read
- * stale, for Update all to re-render with its cost shown.
- */
-export function switchStopAt(args: {
-  saved: Flags;
-  requested: Flags;
-  stopAt: GenerationStage;
-}): GenerationStage {
-  const backTo: GenerationStage | null =
-    !args.saved.generateVoices && args.requested.generateVoices
-      ? 'dialogue'
-      : !args.saved.generateStartFrames && args.requested.generateStartFrames
-        ? 'images'
-        : null;
-  return backTo && stageIndex(args.stopAt) > stageIndex(backTo)
-    ? backTo
-    : args.stopAt;
-}
 
 export function continueFromPlan(args: {
   /** The plan under the saved flags — what already exists. */

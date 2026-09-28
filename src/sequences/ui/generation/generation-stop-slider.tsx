@@ -1,5 +1,6 @@
 import {
   GENERATION_STAGE_META,
+  includesStage,
   sliderStages,
   sliderTickLabel,
   sliderThumbIndex,
@@ -20,6 +21,11 @@ type GenerationStopSliderProps = {
   onChange: (stage: GenerationStage) => void;
   /** Continue-from: the thumb cannot move earlier than this stage. */
   minStage?: GenerationStage;
+  /**
+   * The thumb cannot move past this stage: a switch just turned on stops the
+   * run at its own step (`switchStopAt`, #1780 §3).
+   */
+  maxStage?: GenerationStage;
   /**
    * Render a still per shot before motion. Off = reference-only, which has no
    * Images stop. Pass `onGenerateStartFramesChange` to offer the switch; it
@@ -44,6 +50,12 @@ type GenerationStopSliderProps = {
   onDraftFirstChange?: (value: boolean) => void;
   /** Every clip exists: shown, not changeable (#1780 §2). */
   draftFirstLocked?: boolean;
+  /**
+   * The sequence has music (`sequences.includeMusic`). Pass
+   * `onIncludeMusicChange` to offer the switch; it shows at the Music stop.
+   */
+  includeMusic?: boolean;
+  onIncludeMusicChange?: (value: boolean) => void;
   disabled?: boolean;
 };
 
@@ -63,6 +75,7 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
   value,
   onChange,
   minStage,
+  maxStage,
   generateStartFrames = true,
   onGenerateStartFramesChange,
   startFramesLocked = false,
@@ -72,6 +85,8 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
   draftFirst = false,
   onDraftFirstChange,
   draftFirstLocked = false,
+  includeMusic = true,
+  onIncludeMusicChange,
   disabled = false,
 }) => {
   const stages = sliderStages(!generateStartFrames, generateVoices);
@@ -79,7 +94,14 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
   const ticks: Tick[] = draftFirst ? [...stages, FINALS_TICK] : stages;
   const lastTick = ticks.length - 1;
   const minIndex = minStage ? sliderThumbIndex(minStage, stages) : 0;
-  const clampedIndex = Math.max(minIndex, sliderThumbIndex(value, stages));
+  const maxIndex = Math.max(
+    minIndex,
+    maxStage ? sliderThumbIndex(maxStage, stages) : lastStop
+  );
+  const clampedIndex = Math.min(
+    maxIndex,
+    Math.max(minIndex, sliderThumbIndex(value, stages))
+  );
   const selected = stopAtFromSliderIndex(clampedIndex, stages);
   const combinedStillsAndDialogue = generateStartFrames && generateVoices;
   // Images is not a slider stop when Voices is also on — promote so the
@@ -113,7 +135,7 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
             return null;
           }
           const ghost = tick === FINALS_TICK;
-          const locked = ghost || index < minIndex;
+          const locked = ghost || index < minIndex || index > maxIndex;
           return (
             <button
               key={tick}
@@ -176,7 +198,7 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
           if (index === undefined) return;
           onChange(
             stopAtFromSliderIndex(
-              Math.min(lastStop, Math.max(minIndex, index)),
+              Math.min(maxIndex, Math.max(minIndex, index)),
               stages
             )
           );
@@ -184,7 +206,8 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
         aria-label="How far generation should run"
       />
       {tickRow('below')}
-      {onGenerateStartFramesChange && (
+      {/* A switch shows only when it changes a step this run takes. */}
+      {onGenerateStartFramesChange && includesStage(selected, 'images') && (
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <Switch
@@ -216,7 +239,7 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
           </p>
         </div>
       )}
-      {onGenerateVoicesChange && (
+      {onGenerateVoicesChange && includesStage(selected, 'references') && (
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <Switch
@@ -246,7 +269,27 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
           </p>
         </div>
       )}
-      {onDraftFirstChange && (
+      {onIncludeMusicChange && selected === 'music' && (
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <Switch
+              id="include-music"
+              checked={includeMusic}
+              onCheckedChange={onIncludeMusicChange}
+              disabled={disabled}
+            />
+            <Label htmlFor="include-music" className="text-sm">
+              Music
+            </Label>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {includeMusic
+              ? 'One track for the whole sequence.'
+              : 'No music track.'}
+          </p>
+        </div>
+      )}
+      {onDraftFirstChange && includesStage(selected, 'motion') && (
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <Switch

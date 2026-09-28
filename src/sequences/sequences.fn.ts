@@ -69,8 +69,8 @@ import { computeGenerationPlan } from '@/sequences/server/generation-plan';
 import {
   continueFromPlan,
   estimateContinueCost,
-  switchStopAt,
 } from '@/sequences/server/continue-plan';
+import { switchStopAt } from '@/sequences/generation-plan';
 import type {
   BatchMotionMusicWorkflowInput,
   MusicWorkflowInput,

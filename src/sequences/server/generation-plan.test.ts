@@ -91,7 +91,7 @@ function asScopedDb<T>(stub: T): ScopedDb {
 }
 
 describe('computeGenerationPlan', () => {
-  it('a hand-added pending character owes a sheet and stales the stills that name it', async () => {
+  const planStates = async (includeMusic: boolean) => {
     const plan = await computeGenerationPlan(
       asScopedDb({
         sequences: {
@@ -101,6 +101,7 @@ describe('computeGenerationPlan', () => {
               status: 'completed',
               generateStartFrames: true,
               generateVoices: false,
+              includeMusic,
               generationStopAt: 'references',
               musicPrompt: null,
               musicUrl: null,
@@ -125,10 +126,11 @@ describe('computeGenerationPlan', () => {
       }),
       'seq-1'
     );
-    const state = Object.fromEntries(
-      plan.map((u) => [`${u.kind}:${u.id}`, u.state])
-    );
-    expect(state).toMatchObject({
+    return Object.fromEntries(plan.map((u) => [`${u.kind}:${u.id}`, u.state]));
+  };
+
+  it('a hand-added pending character owes a sheet and stales the stills that name it', async () => {
+    expect(await planStates(true)).toMatchObject({
       'sheet:character:maya': 'done',
       'sheet:character:ravi': 'missing',
       'prompt:visual:s1': 'stale',
@@ -138,6 +140,12 @@ describe('computeGenerationPlan', () => {
       'prompt:music:seq-1': 'missing',
       'music:seq-1': 'missing',
     });
+  });
+
+  it('with the Music switch off the sequence owes no music', async () => {
+    const state = await planStates(false);
+    expect(state).not.toHaveProperty(['music:seq-1']);
+    expect(state).not.toHaveProperty(['prompt:music:seq-1']);
   });
 
   it('a sequence with no shots has an empty plan', async () => {

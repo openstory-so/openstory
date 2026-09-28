@@ -151,13 +151,21 @@ refetch on focus, invalidated by realtime and by any refused continue —
 - **The continue button** (`Generate 2 references, 12 prompts, 12 images`,
   `planWorkLabel`, with a line per blocked noun, `blockedLines`) shows when the
   plan's first work is before Motion.
-- **Switches at every step (#1780 §2).** Start frames and Voices show always.
-  Turning one on that was skipped moves the thumb back to its step (Images /
-  Dialogue) and the plan grows its units; turning it off again returns the
-  thumb. One whose units exist is locked on (`switchLocks`). Draft first is
-  changeable until every clip exists, then shown read-only. With the switches
-  flipped the footer asks the plan as if they were saved
-  (`getGenerationPlanFn` overrides).
+- **A switch shows only when it changes a step the run takes.** Voices from
+  References (voices ride that step), Start frames from Images, Draft first
+  from Motion, Music at the Music stop. Turning on one that was skipped caps
+  the thumb at its step (Images / Dialogue; `switchStopAt`, shared by the
+  footer and the server, so the label, the quote and the run agree) and the
+  plan grows its units. The cap is derived, never written: turning the switch
+  off again frees the thumb to where it was. One whose units exist is locked
+  on (`switchLocks`; a `blocked` unit does not count as existing). Draft
+  first is changeable until every clip exists, then shown read-only. With
+  the switches flipped the footer asks the plan as if they were saved
+  (`getGenerationPlanFn` overrides) and the continue waits for that plan.
+- **Music is `sequences.includeMusic`** — the same setting as the Music
+  panel's "Include music in playback & export". Off, the plan owes no music
+  prompt or track and a fresh run to Music makes none; on, both do, whatever
+  the scenes' music presence says. It saves on toggle.
 - **Going back never redoes finished work (#1780 §3).** `continueFromPlan`
   caps the stop at the step of a switch turned on (`switchStopAt`: Voices →
   Dialogue, Start frames → Images, the later when both). Clips rendered from
@@ -197,8 +205,9 @@ refetch on focus, invalidated by realtime and by any refused continue —
 - **Ready email** only sends when the run reached motion: the send is a
   one-shot claim per sequence.
 
-## Not done
+## Freshness
 
-`musicDesign` is not persisted, so the plan cannot tell a score whose design
-is "no music" from one never made; the `music` unit is owed whenever there
-are shots.
+The plan refetches when an image, clip or track finishes or fails, a shot
+or scene lands, a stale verdict arrives, a sheet or voice moves, a phase
+starts or a run ends. The continue quote is keyed on the units the footer
+offers, so it moves with the plan.
