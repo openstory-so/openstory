@@ -92,6 +92,8 @@ export type ShotPromptType = (typeof SHOT_PROMPT_TYPES)[number];
 
 const PROMPT_VARIANT_SOURCES = [
   'ai-generated',
+  // Shot-list derivation consumes no rendered start frame (#1892).
+  'derived',
   'user-edit',
   'regenerated',
   'restored',

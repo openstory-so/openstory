@@ -743,6 +743,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
               )
             : null;
         return {
+          derived: original?.source === 'derived',
           inputHash: original?.inputHash ?? null,
           analysisModel: original?.analysisModel ?? null,
         };
@@ -771,7 +772,11 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     const writeRescuedMotionPrompt = (
       stepName: string,
       text: string,
-      provenance: { inputHash: string | null; analysisModel: string | null },
+      provenance: {
+        inputHash: string | null;
+        analysisModel: string | null;
+        derived?: boolean;
+      },
       source: 'softened' | 'shortened',
       audio: MotionAudio | null = null
     ) =>
@@ -783,7 +788,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           promptType: 'motion',
           text,
           audio,
-          source,
+          source: provenance.derived ? 'derived' : source,
           usesStartFrame: !input.referenceOnly,
           inputHash: provenance.inputHash,
           analysisModel: provenance.analysisModel,

@@ -25,6 +25,7 @@ vi.doMock('@/shots/server/shot-staleness', () => ({
       selectedPromptByFrame: new Map([
         ['f1', { text: 'Maya hands Ravi a cup of tea' }],
       ]),
+      latestHashedMotionByShot: new Map(),
       selectedMotionByShot: new Map([['s1', {}]]),
       liveVisualClaimsByFrame: new Map(),
       liveImageClaimsByFrame: new Map(),
@@ -91,14 +92,18 @@ function asScopedDb<T>(stub: T): ScopedDb {
 }
 
 describe('computeGenerationPlan', () => {
-  const planStates = async (includeMusic: boolean, existingMusic = false) => {
+  const planStates = async (
+    includeMusic: boolean,
+    existingMusic = false,
+    ownProcessing = false
+  ) => {
     const plan = await computeGenerationPlan(
       asScopedDb({
         sequences: {
           getById: () =>
             Promise.resolve({
               id: 'seq-1',
-              status: 'completed',
+              status: ownProcessing ? 'processing' : 'completed',
               generateStartFrames: true,
               generateVoices: false,
               includeMusic,
@@ -124,7 +129,9 @@ describe('computeGenerationPlan', () => {
           listShotIdsWithLiveClaim: () => Promise.resolve(new Set()),
         },
       }),
-      'seq-1'
+      'seq-1',
+      undefined,
+      { ignoreOwnProcessing: ownProcessing }
     );
     return Object.fromEntries(plan.map((u) => [`${u.kind}:${u.id}`, u.state]));
   };
@@ -153,6 +160,12 @@ describe('computeGenerationPlan', () => {
     const state = await planStates(false);
     expect(state).not.toHaveProperty(['music:seq-1']);
     expect(state).not.toHaveProperty(['prompt:music:seq-1']);
+  });
+
+  it('the fresh handoff sees pending materialized rows as owed work, never its own processing banner', async () => {
+    const states = await planStates(true, false, true);
+    expect(states['sheet:character:ravi']).toBe('missing');
+    expect(Object.values(states)).not.toContain('running');
   });
 
   it('a sequence with no shots has an empty plan', async () => {

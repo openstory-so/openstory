@@ -58,6 +58,7 @@ function makeScopedDb(overrides: {
   motionFallbackHash?: string | null;
   /** `inputHash` of the shot's SELECTED motion version — the reference hash. */
   motionSelectedHash?: string | null;
+  motionSource?: string;
   /** Text + `inputHash` of the frame's SELECTED visual version. */
   visualSelected?: { text?: string | null; inputHash?: string | null } | null;
   /** Live visual claim for the 'updating' overlay (#1085). */
@@ -137,6 +138,7 @@ function makeScopedDb(overrides: {
       getLatest: vi.fn().mockResolvedValue(null),
       getSelectedMotion: vi.fn().mockResolvedValue({
         inputHash: overrides.motionSelectedHash ?? null,
+        source: overrides.motionSource ?? 'ai-generated',
         createdAt: overrides.motionSelectedAt,
       }),
       getLatestWithInputHash: vi
@@ -729,6 +731,53 @@ describe('per-shot start-frame override', () => {
     expect(motionContextArgs()).toMatchObject({
       sequence: expect.objectContaining({ referenceOnly: true }),
       startingFrameImageUrl: null,
+    });
+  });
+
+  it('derived direction remains fresh when its first still lands, but keeps scene/style invalidation', async () => {
+    const db = makeScopedDb({
+      motionSelectedHash: 'motion-stored',
+      motionSource: 'derived',
+    });
+    const args = {
+      dialogue: NO_LINES,
+      scopedDb: db,
+      sequence,
+      shot,
+      frame,
+      scene,
+    };
+    expect(
+      (await computeShotStaleness({ ...args, selectedImage: null }))
+        .motionPrompt
+    ).toBe('fresh');
+    expect(
+      (await computeShotStaleness({ ...args, selectedImage: still }))
+        .motionPrompt
+    ).toBe('fresh');
+    expect(motionContextArgs()).toMatchObject({ startingFrameImageUrl: null });
+    hashMotionPromptInput.mockResolvedValue('scene-style-changed');
+    expect(
+      (await computeShotStaleness({ ...args, selectedImage: still }))
+        .motionPrompt
+    ).toBe('stale');
+  });
+
+  it('a later LLM version again consumes the rendered still', async () => {
+    await computeShotStaleness({
+      dialogue: NO_LINES,
+      scopedDb: makeScopedDb({
+        motionSelectedHash: 'motion-stored',
+        motionSource: 'regenerated',
+      }),
+      sequence,
+      shot,
+      frame,
+      scene,
+      selectedImage: still,
+    });
+    expect(motionContextArgs()).toMatchObject({
+      startingFrameImageUrl: stillUrl,
     });
   });
 

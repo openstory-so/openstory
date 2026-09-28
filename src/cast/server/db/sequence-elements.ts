@@ -487,7 +487,7 @@ export function createSequenceElementsMethods(db: Database) {
                   parameters: motion.parameters,
                   audio: motion.audio,
                   usesStartFrame: motion.usesStartFrame,
-                  source: 'renamed',
+                  source: motion.source === 'derived' ? 'derived' : 'renamed',
                   inputHash: motion.inputHash,
                   analysisModel: motion.analysisModel,
                 }),

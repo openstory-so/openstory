@@ -155,32 +155,6 @@ export function firstShotIdByScene(
 }
 
 /**
- * Each shot of one scene mapped to the lines it speaks: its selected
- * `shot_dialogue_versions` row, else derived from the script.
- * `shotsInOrder` is shot order — index 0 takes the unstamped lines.
- */
-export function sceneShotLines(
-  shotsInOrder: readonly { id: string; shotNumber?: number | null }[],
-  selectedLines: (shotId: string) => readonly ShotDialogueLine[] | undefined,
-  scriptDialogue: readonly DialogueLine[] | undefined
-): Map<string, readonly ShotDialogueLine[]> {
-  return new Map(
-    shotsInOrder.map((shot, index) => [
-      shot.id,
-      resolveShotDialogue({
-        selectedLines: selectedLines(shot.id),
-        // A run reads lines off its payload, and a continue snapshots every
-        // shot resolved, so there is no prompt-row copy left to consult.
-        legacyDialogue: undefined,
-        scriptDialogue,
-        shot,
-        isFirstShot: index === 0,
-      }).lines,
-    ])
-  );
-}
-
-/**
  * Every voiced turn of the scene, in speaking order: shot order, then line
  * order within the shot. Built per shot so the voicing rule
  * (`voicedDialogueLines`) and the shot-relative `index` come from exactly one

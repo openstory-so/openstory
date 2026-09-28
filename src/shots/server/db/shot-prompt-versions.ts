@@ -157,7 +157,7 @@ export type WriteShotPromptVersionInput = WriteShotPromptVersionBase &
         // length rewrite a hard-capped via forced (#1754). All three carry
         // the original version's hash + model verbatim so staleness stays
         // detectable.
-        source: 'restored' | 'softened' | 'shortened';
+        source: 'restored' | 'softened' | 'shortened' | 'derived';
         inputHash: string | null;
         analysisModel: string | null;
       }

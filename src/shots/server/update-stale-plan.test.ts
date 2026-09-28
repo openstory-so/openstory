@@ -170,6 +170,8 @@ function buildScopedDb(
   frames: Frame[],
   opts: {
     video?: VideoFixture;
+    visualPrompts?: Map<string, { text: string }>;
+    motionPrompts?: Map<string, { text: string }>;
     sequence?: Record<string, unknown>;
     /** The completed primary `sequence_music_variants` row, if any (#1657). */
     musicPrimary?: Record<string, unknown>;
@@ -222,10 +224,12 @@ function buildScopedDb(
         ),
     },
     framePromptVersions: {
-      getSelectedByFrameIds: () => Promise.resolve(new Map()),
+      getSelectedByFrameIds: () =>
+        Promise.resolve(opts.visualPrompts ?? new Map()),
     },
     shotPromptVersions: {
-      getSelectedMotionByShots: () => Promise.resolve(new Map()),
+      getSelectedMotionByShots: () =>
+        Promise.resolve(opts.motionPrompts ?? new Map()),
     },
     characters: {
       listWithSheets: () => Promise.resolve([]),
@@ -832,6 +836,49 @@ describe('fresh plan model choices', () => {
       imageModels: ['seedream_v5', 'nano_banana_2'],
       videoModels: ['seedance_v2', 'kling_v3_pro'],
       audioModels: ['elevenlabs_music'],
+    });
+  });
+});
+
+describe('saved sibling direction snapshots', () => {
+  it('carries visual and motion framing from the same scene while excluding the target and other scenes', async () => {
+    const shots = [
+      makeShot(),
+      makeShot({ id: 'sibling' }),
+      makeShot({ id: 'other', sceneId: 'elsewhere' }),
+    ];
+    const frames = [
+      makeFrame(),
+      makeFrame({ id: 'sibling-frame', shotId: 'sibling' }),
+      makeFrame({ id: 'other-frame', shotId: 'other' }),
+    ];
+    const plan = await computePlan({
+      scopedDb: buildScopedDb(shots, frames, {
+        visualPrompts: new Map([
+          ['frame-1', { text: 'Target' }],
+          ['sibling-frame', { text: 'Close-up of the listener' }],
+          ['other-frame', { text: 'Another room' }],
+        ]),
+        motionPrompts: new Map([
+          ['shot-1', { text: 'Target' }],
+          ['sibling', { text: 'Listener turns toward camera' }],
+          ['other', { text: 'Other action' }],
+        ]),
+      }),
+      sequenceId: 'seq-1',
+      userId: 'user',
+      units: [
+        { kind: 'prompt:visual', id: 'shot-1' },
+        { kind: 'prompt:motion', id: 'shot-1' },
+      ],
+    });
+    expect(plan.targets[0]).toMatchObject({
+      siblingVisualPrompts: [
+        { shotId: 'sibling', text: 'Close-up of the listener' },
+      ],
+      siblingMotionPrompts: [
+        { shotId: 'sibling', text: 'Listener turns toward camera' },
+      ],
     });
   });
 });

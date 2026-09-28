@@ -137,7 +137,12 @@ export class FramePromptWorkflow extends OpenStoryWorkflowEntrypoint<FramePrompt
             ? JSON.stringify(sceneAfter, null, 2)
             : '(none)',
           scene: JSON.stringify(
-            scenePromptContext(scene, styleConfig),
+            {
+              ...scenePromptContext(scene, styleConfig),
+              ...(input.siblingVisualPrompts?.length
+                ? { siblingShotDirections: input.siblingVisualPrompts }
+                : {}),
+            },
             null,
             2
           ),

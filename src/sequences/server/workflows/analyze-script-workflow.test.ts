@@ -10,7 +10,11 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { migrateStyleConfigV1ToV2 } from '@/look/style-config';
 import { DEFAULT_IMAGE_MODEL, DEFAULT_VIDEO_MODEL } from '@/models/models';
 import { DEFAULT_ANALYSIS_MODEL } from '@/models/models.config';
-import { hashVisualPromptInput, sha256Hex } from '@/shots/input-hash';
+import {
+  hashVisualPromptInput,
+  hashMotionPromptInput,
+  sha256Hex,
+} from '@/shots/input-hash';
 import { narrowShotPromptContext } from '@/shots/server/prompt-context';
 import { shotWorkItems } from '@/shots/server/shot-work-items';
 import type { CharacterBibleEntry, Scene } from '@/shots/scene-analysis.schema';
@@ -21,10 +25,6 @@ import type {
   WorkflowStepConfig,
 } from 'cloudflare:workers';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
-import type {
-  CharacterMinimal,
-  SequenceLocationMinimal,
-} from '@/platform/server/db/schema';
 import type {
   AnalyzeScriptWorkflowInput,
   SceneSplitWorkflowResult,
@@ -101,53 +101,11 @@ const LOCATION_MATCH = {
   libraryLocationName: 'Hallway',
   referenceImageUrl: '/r2/hall.png',
 };
-const CHARACTER_ROW: CharacterMinimal = {
-  id: 'ch_1',
-  characterId: 'c1',
-  name: 'Ada',
-  sheetImageUrl: '/r2/ada-sheet.png',
-  sheetStatus: 'completed',
-  sheetInputHash: 'hash_ada',
-  selectedSheetVersionId: 'csv_1',
-  physicalDescription: 'tall',
-  voiceOnly: false,
-  isPerson: true,
-  consistencyTag: 'ADA',
-};
-const LOCATION_ROW: SequenceLocationMinimal = {
-  id: 'loc_1',
-  locationId: 'l1',
-  name: 'Hallway',
-  referenceImageUrl: '/r2/hall-sheet.png',
-  referenceStatus: 'completed',
-  referenceInputHash: 'hash_hall',
-  selectedReferenceVersionId: 'lrv_1',
-  description: 'dim corridor',
-  consistencyTag: 'HALL',
-};
-const VISUAL_PROMPTS = {
-  scenes: [],
-  visualPromptsBySceneId: { as_1: { fullPrompt: 'wide shot of the hallway' } },
-};
-
 /** One plausible result per child, keyed by its spawn step. */
 const CHILD_RESULTS: Record<string, unknown> = {
   'spawn-scene-split': SPLIT,
   'spawn-talent-matching': { matches: [TALENT_MATCH] },
   'spawn-location-matching': { matches: [LOCATION_MATCH] },
-  'spawn-character-bible': [CHARACTER_ROW],
-  'spawn-location-bible': [LOCATION_ROW],
-  'spawn-visual-prompts': VISUAL_PROMPTS,
-  'spawn-dialogue-audio': { clipsByShotId: { sh_1: [] } },
-  'spawn-motion-batch': {},
-  'spawn-shot-images': { imageUrls: [], frameVersionIds: [] },
-  'spawn-motion-music-prompts': {
-    completeScenes: [],
-    motionPromptsBySceneId: {},
-    motionPromptVersionIdsBySceneId: {},
-    musicPrompt: '',
-    musicTags: [],
-  },
 };
 const defaultSpawn = async (
   _step: WorkflowStep,
@@ -222,6 +180,15 @@ const writeVisualPrompt = vi.fn(
   })
 );
 
+const writeMotionPrompt = vi.fn(
+  async (_input: {
+    shotId: string;
+    source: string;
+    inputHash?: string;
+    text?: string;
+  }) => ({ id: 'mpv-derived' })
+);
+
 function makeScopedDb(update: UpdateMock): WorkflowScopedDb {
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal stub: the run stops at the script stage
   return {
@@ -231,6 +198,7 @@ function makeScopedDb(update: UpdateMock): WorkflowScopedDb {
     },
     liveRead: { sequenceElements: { listByIds: vi.fn(async () => []) } },
     framePromptVersions: { writeAiVersion: writeVisualPrompt },
+    shotPromptVersions: { write: writeMotionPrompt },
   } as unknown as WorkflowScopedDb;
 }
 
@@ -284,6 +252,7 @@ describe('AnalyzeScriptWorkflow (a fresh run)', () => {
     spawnAndAwaitChild.mockClear();
     createCastRecords.mockClear();
     writeVisualPrompt.mockClear();
+    writeMotionPrompt.mockClear();
   });
 
   test('the split lands before a style failure fails the run (#1818)', async () => {
@@ -324,83 +293,22 @@ describe('AnalyzeScriptWorkflow (a fresh run)', () => {
     expect(createCastRecords).toHaveBeenCalledTimes(1);
   });
 
-  test('stopAt references: spawns the sheets + prompts, renders nothing', async () => {
-    const update: UpdateMock = vi.fn(async () => undefined);
-
-    await makeWorkflow().invokeRunImpl(
-      makeEvent({ ...noStyle, stopAt: 'references' }),
-      makeStep(),
-      makeScopedDb(update)
-    );
-
-    expect(spawned()).toEqual(
-      expect.arrayContaining([
-        'spawn-character-bible',
-        'spawn-location-bible',
-        'spawn-visual-prompts',
-      ])
-    );
-    expect(spawned()).not.toContain('spawn-shot-images');
-  });
-
-  test('a failed character sheet does not render (#1727)', async () => {
-    const update: UpdateMock = vi.fn(async () => undefined);
-    const bibleEntry = (characterId: string, name: string) => ({
-      characterId,
-      name,
-      age: '',
-      gender: '',
-      ethnicity: '',
-      physicalDescription: '',
-      standardClothing: '',
-      distinguishingFeatures: '',
-      personality: '',
-      movement: '',
-      voiceDescription: '',
-      voiceOnly: false,
-      isPerson: true,
-      consistencyTag: characterId,
-    });
-    const bible = [bibleEntry('c1', 'Ada'), bibleEntry('c2', 'Bob')];
-    const bobFailed: CharacterMinimal = {
-      ...CHARACTER_ROW,
-      id: 'ch_2',
-      characterId: 'c2',
-      name: 'Bob',
-      sheetImageUrl: null,
-      sheetStatus: 'failed',
-      selectedSheetVersionId: null,
-    };
-    spawnAndAwaitChild.mockImplementation(async (_step, args) => {
-      if (args.spawnStepName === 'spawn-scene-split') {
-        return { ...SPLIT, characterBible: bible };
-      }
-      if (args.spawnStepName === 'spawn-character-bible') {
-        return [CHARACTER_ROW, bobFailed];
-      }
-      return defaultSpawn(_step, args);
-    });
-
-    try {
+  test.each(['references', 'images', 'dialogue', 'motion', 'music'] as const)(
+    'stopAt %s: analysis leaves every generation unit to the executor',
+    async (stopAt) => {
       await makeWorkflow().invokeRunImpl(
-        makeEvent({ ...noStyle, stopAt: 'music' }),
+        makeEvent({ ...noStyle, stopAt }),
         makeStep(),
-        makeScopedDb(update)
+        makeScopedDb(vi.fn())
       );
-
-      expect(spawned()).toEqual(
-        expect.arrayContaining([
-          'spawn-character-bible',
-          'spawn-location-bible',
-          'spawn-visual-prompts',
-        ])
-      );
-      expect(spawned()).not.toContain('spawn-shot-images');
-      expect(spawned()).not.toContain('spawn-motion-batch');
-    } finally {
-      spawnAndAwaitChild.mockImplementation(defaultSpawn);
+      expect(spawned()).toEqual([
+        'spawn-scene-split',
+        'spawn-talent-matching',
+        'spawn-location-matching',
+      ]);
+      expect(createCastRecords).toHaveBeenCalledTimes(1);
     }
-  });
+  );
 
   test('derived visual prompts stamp the verify hash, not the prompt text', async () => {
     const twoShot: Scene = {
@@ -476,9 +384,6 @@ describe('AnalyzeScriptWorkflow (a fresh run)', () => {
           shotMapping,
         };
       }
-      if (args.spawnStepName === 'spawn-visual-prompts') {
-        return { scenes: [twoShot], visualPromptsBySceneId: {} };
-      }
       return defaultSpawn(_step, args);
     });
 
@@ -490,6 +395,7 @@ describe('AnalyzeScriptWorkflow (a fresh run)', () => {
 
     const items = shotWorkItems([twoShot], shotMapping);
     expect(writeVisualPrompt).toHaveBeenCalledTimes(2);
+    expect(writeMotionPrompt).toHaveBeenCalledTimes(2);
     for (const [index, call] of writeVisualPrompt.mock.calls.entries()) {
       const item = items[index];
       const written = call[0];
@@ -524,6 +430,24 @@ describe('AnalyzeScriptWorkflow (a fresh run)', () => {
       });
       expect(written.inputHash).toBe(verifyHash);
       expect(written.inputHash).not.toBe(textDigest);
+      expect(writeMotionPrompt.mock.calls[index]?.[0]).toMatchObject({
+        shotId: item.mapping.shotId,
+        source: 'derived',
+        inputHash: await hashMotionPromptInput(
+          narrowShotPromptContext({
+            scene: item.scene,
+            styleConfig: event.payload.styleConfig,
+            characterBible: buildCastCharacterBible([RAW_ADA], [TALENT_MATCH]),
+            locationBible: SPLIT.locationBible,
+            elementBible: SPLIT.elementBible,
+            aspectRatio: event.payload.aspectRatio,
+            analysisModel: event.payload.analysisModelId,
+            startingFrameImageUrl: null,
+            referenceOnly: false,
+            dialogue: { presence: false, lines: [] },
+          })
+        ),
+      });
     }
     spawnAndAwaitChild.mockImplementation(defaultSpawn);
   });

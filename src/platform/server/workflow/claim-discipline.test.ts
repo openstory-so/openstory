@@ -192,8 +192,8 @@ const UNCLAIMED_CALL_SITES: Record<string, string> = {
     'run with no targetVersionId (pipeline) selects, no claim',
   'src/motion/server/workflows/motion-prompt-workflow.ts: shotPromptVersions.writeAiVersion':
     'run with no targetVersionId (pipeline) selects, no claim',
-  'src/motion/server/workflows/motion-prompt-batch-workflow.ts: shotPromptVersions.writeAiVersion':
-    'pipeline batch selects, no claim',
+  'src/sequences/server/workflows/analyze-script-workflow.ts: shotPromptVersions.write':
+    'analysis persists first derived directions, no claim',
   // A run queued before #1786 carries the user's typed edit (drain path);
   // the other write in motion-workflow passes `select: false`.
   'src/stills/server/workflows/image-workflow.ts: framePromptVersions.write':

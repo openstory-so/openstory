@@ -471,3 +471,13 @@ Stage 1 core is shipped (see "Shipped vs deferred"). Remaining work, roughly in 
 3. **Video variants (#990)** — `video_variants` divergence emitters + render-segment selection pointers.
 4. **Prompt history UX** — expose `frame_prompt_versions` / `shot_prompt_versions` in the UI (storage exists).
 5. **Dependency materialization** (stage 5) — only if runtime inference via `matchCharactersToScene` becomes a bottleneck.
+
+### Fresh analysis planning checkpoint (#1892)
+
+`WorkflowScopedDb.generationPlanning` is limited to Storyboard's
+`freeze-generation-plan` checkpoint after AnalyzeScript has materialized the
+run's scenes, shots, bibles and first derived prompts. It freezes a complete
+executor payload under the original switches/model choices and suppresses only
+its own parent processing overlay. `no-mid-run-reads.test.ts` pins that caller.
+All rendering after this point consumes the frozen plan and its own child
+outputs, exactly as Continue does.

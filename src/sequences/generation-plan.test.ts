@@ -523,3 +523,31 @@ describe('updateAllUnits — Update all is the plan filtered to stale (#1819)', 
     expect(other).toEqual([]);
   });
 });
+
+it('keeps initial derived direction done while its still is missing, then restores the dependency for LLM regeneration', () => {
+  const derived = planUnits(
+    input({
+      shots: [
+        shot('s', {
+          motionPromptDerived: true,
+          still: 'missing',
+          clip: 'missing',
+        }),
+      ],
+    }),
+    SEQ
+  );
+  expect(derived.find((unit) => unit.kind === 'prompt:motion')).toMatchObject({
+    state: 'done',
+    requires: [],
+  });
+  const regenerated = planUnits(
+    input({
+      shots: [shot('s', { motionPromptDerived: false, still: 'missing' })],
+    }),
+    SEQ
+  );
+  expect(
+    regenerated.find((unit) => unit.kind === 'prompt:motion')
+  ).toMatchObject({ state: 'stale', requires: [{ kind: 'still', id: 's' }] });
+});

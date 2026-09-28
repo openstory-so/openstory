@@ -141,7 +141,15 @@ export class MotionPromptWorkflow extends OpenStoryWorkflowEntrypoint<MotionProm
       // The shot's lines, not the script's (#1784): an edited line is what
       // the prompt has to direct.
       scene: JSON.stringify(
-        scenePromptContext(sceneWithShotDialogue(scene, dialogue), styleConfig),
+        {
+          ...scenePromptContext(
+            sceneWithShotDialogue(scene, dialogue),
+            styleConfig
+          ),
+          ...(input.siblingMotionPrompts?.length
+            ? { siblingShotDirections: input.siblingMotionPrompts }
+            : {}),
+        },
         null,
         2
       ),

@@ -665,6 +665,15 @@ describe('workflows read no unsanctioned mutable DB state mid-run', () => {
     ).toEqual(['update-stale-shots-workflow.ts']);
   });
 
+  test('generation planning is restricted to the storyboard handoff', () => {
+    const users = workflowSourceFiles().filter((file) =>
+      stripCommentLines(readFileSync(workflowPath(file), 'utf8')).includes(
+        'generationPlanning'
+      )
+    );
+    expect(users).toEqual(['storyboard-workflow.ts']);
+  });
+
   test('each read comes through the hatch its bucket requires', () => {
     // The regex records which of `credentials` / `claims` / `liveRead` the call
     // site used; the allow-list records what the read IS. They must agree —

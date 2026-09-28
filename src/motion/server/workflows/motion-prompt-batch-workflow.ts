@@ -24,15 +24,9 @@ import type { MotionPromptWorkflowResult } from './motion-prompt-workflow';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
 import { getLogger } from '@/platform/logger';
-import { getGenerationChannel } from '@/platform/realtime';
 import type { MotionDialogue, Scene } from '@/shots/scene-analysis.schema';
 import { shotDialogue } from '@/shots/shot-dialogue';
-import { hashMotionPromptInput } from '@/shots/input-hash';
-import { narrowShotPromptContext } from '@/shots/server/prompt-context';
-import {
-  derivedShotForItem,
-  shotWorkItems,
-} from '@/shots/server/shot-work-items';
+import { shotWorkItems } from '@/shots/server/shot-work-items';
 
 const logger = getLogger(['openstory', 'workflow', 'motion-prompt-batch']);
 
@@ -59,7 +53,7 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
   protected override async runImpl(
     event: Readonly<WorkflowEvent<MotionPromptBatchWorkflowInput>>,
     step: WorkflowStep,
-    scopedDb: WorkflowScopedDb
+    _scopedDb: WorkflowScopedDb
   ): Promise<MotionPromptBatchWorkflowResult> {
     const input = event.payload;
     const parentInstanceId = event.instanceId;
@@ -92,21 +86,11 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
 
     const childBinding = this.env.MOTION_PROMPT_WORKFLOW;
     const clipItems = shotWorkItems(scenes, shotMapping);
-    // A 2+ shot scene assembles every clip's prompt from its shot-list spec
-    // (#1517); the LLM only authors 1-shot scenes.
-    const derivedItems = clipItems.filter(
-      (item) => !item.isSceneHead || derivedShotForItem(item, styleConfig)
-    );
-    const headItems = clipItems.filter(
-      (item) => item.isSceneHead && !derivedItems.includes(item)
-    );
+    // Regeneration always asks the LLM; first derived versions are authored
+    // once by analysis, before the generation plan is frozen.
 
-    // ============================================================
-    // PHASE 3: Motion Prompt Generation — LLM per 1-shot scene, derived
-    // clips for the rest (#1486 one clip per shot).
-    // ============================================================
     const settled = await Promise.allSettled(
-      headItems.map((item) => {
+      clipItems.map((item) => {
         const { scene, sceneIndex, mapping } = item;
         const startingFrameImageUrl =
           (mapping.shotId
@@ -155,10 +139,10 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
           binding: childBinding,
           parentBindingName: 'MOTION_PROMPT_BATCH_WORKFLOW',
           parentInstanceId,
-          childId: `motion-prompt:${sequenceId}:${scene.sceneId}`,
+          childId: `motion-prompt:${sequenceId}:${mapping.shotId || scene.sceneId}`,
           childPayload,
-          spawnStepName: `spawn-mp-scene-${sceneIndex}`,
-          awaitStepName: `await-mp-scene-${sceneIndex}`,
+          spawnStepName: `spawn-mp-scene-${sceneIndex}-${mapping.shotNumber}`,
+          awaitStepName: `await-mp-scene-${sceneIndex}-${mapping.shotNumber}`,
         });
       })
     );
@@ -169,13 +153,13 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
     const results: MotionPromptWorkflowResult[] = [];
     for (const [i, outcome] of settled.entries()) {
       if (outcome.status === 'fulfilled') {
-        const head = headItems[i];
+        const head = clipItems[i];
         results.push({
           ...outcome.value,
           shotId: outcome.value.shotId ?? head?.mapping.shotId,
         });
       } else {
-        const scene = headItems[i]?.scene;
+        const scene = clipItems[i]?.scene;
         const reason =
           outcome.reason instanceof Error
             ? outcome.reason.message
@@ -186,7 +170,7 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
 
     if (failures.length > 0) {
       logger.warn(
-        `[MotionPromptBatchWorkflow:cf] Motion prompt generation failed for ${failures.length}/${headItems.length} scenes; continuing with ${results.length}: ${failures.join('; ')}`
+        `[MotionPromptBatchWorkflow:cf] Motion prompt generation failed for ${failures.length}/${clipItems.length} scenes; continuing with ${results.length}: ${failures.join('; ')}`
       );
     }
 
@@ -202,87 +186,17 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
     // under one `Promise.all`, so throwing here rejected that immediately and
     // left the still-running music child to finish into a parent already in a
     // finite state.
-    if (results.length === 0 && headItems.length > 0) {
+    if (results.length === 0 && clipItems.length > 0) {
       // NonRetryableError so CF doesn't retry the entire fan-out when every
       // child has already exhausted its own retries. The base class routes
       // this through onFailure + notifyParentOfFailure.
       throw new NonRetryableError(
-        `[MotionPromptBatchWorkflow:cf] Motion prompt generation failed for all ${headItems.length} scenes: ${failures.join('; ')}`,
+        `[MotionPromptBatchWorkflow:cf] Motion prompt generation failed for all ${clipItems.length} scenes: ${failures.join('; ')}`,
         'MotionPromptFanOutError'
       );
     }
 
-    const extras = await step.do(
-      'derive-extra-shot-motion-prompts',
-      async (): Promise<MotionPromptWorkflowResult[]> => {
-        const out: MotionPromptWorkflowResult[] = [];
-        const headByScene = new Map(
-          results.map((result) => [result.sceneId, result])
-        );
-        for (const item of derivedItems) {
-          const derived = derivedShotForItem(item, styleConfig, {
-            referenceOnly,
-          });
-          // Reference-only prefixes unique framing (no still). Scene lighting /
-          // palette / look stay off the body — the packed assemble header
-          // states them once (#1510).
-          const motionPrompt =
-            derived?.motionPrompt ??
-            headByScene.get(item.scene.sceneId)?.motionPrompt;
-          if (!motionPrompt?.fullPrompt) continue;
-          let finalVersionId: string | null = null;
-          if (item.mapping.shotId) {
-            const startingFrameImageUrl =
-              (item.mapping.shotId
-                ? startingFrameImageUrls?.[item.mapping.shotId]
-                : undefined) ??
-              startingFrameImageUrls?.[item.scene.sceneId] ??
-              null;
-            const written = await scopedDb.shotPromptVersions.writeAiVersion({
-              shotId: item.mapping.shotId,
-              text: motionPrompt.fullPrompt,
-              audio: motionPrompt.audio,
-              usesStartFrame: !referenceOnly,
-              inputHash: await hashMotionPromptInput(
-                narrowShotPromptContext({
-                  scene: item.scene,
-                  styleConfig,
-                  characterBible,
-                  locationBible,
-                  elementBible,
-                  aspectRatio,
-                  analysisModel: analysisModelId,
-                  startingFrameImageUrl,
-                  referenceOnly,
-                  dialogue: seededDialogue(
-                    item.scene,
-                    item.mapping.shotId,
-                    dialogueLinesByShotId
-                  ),
-                })
-              ),
-              analysisModel: analysisModelId,
-            });
-            finalVersionId = written.id;
-            // Same refresh the LLM child emits after its write: the prompt
-            // lives on the `shot.motionPrompt` mirror, not in metadata.
-            await getGenerationChannel(sequenceId).emit(
-              'generation.shot:updated',
-              { shotId: item.mapping.shotId, updateType: 'motion-prompt' }
-            );
-          }
-          out.push({
-            sceneId: item.scene.sceneId,
-            shotId: item.mapping.shotId,
-            motionPrompt,
-            finalVersionId,
-          });
-        }
-        return out;
-      }
-    );
-
-    return [...results, ...extras].map((result) => ({
+    return results.map((result) => ({
       sceneId: result.sceneId,
       shotId: result.shotId,
       motionPrompt: result.motionPrompt,

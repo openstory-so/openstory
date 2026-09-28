@@ -25,6 +25,8 @@ import { frames } from './frames';
 
 const PROMPT_VERSION_SOURCES = [
   'ai-generated',
+  // Shot-list derivation consumes no rendered start frame (#1892).
+  'derived',
   'user-edit',
   'regenerated',
   'restored',

@@ -17,7 +17,6 @@
  */
 
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
-import { migrateStyleConfigV1ToV2 } from '@/look/style-config';
 import type {
   MotionPromptBatchWorkflowInput,
   MotionPromptWorkflowInput,
@@ -285,204 +284,41 @@ describe('MotionPromptBatchWorkflow dialogue (#1784)', () => {
   });
 });
 
-describe('MotionPromptBatchWorkflow multi-shot scenes (#1517)', () => {
-  test('derives every clip from the spec, no LLM call', async () => {
+describe('MotionPromptBatchWorkflow multi-shot regeneration (#1892)', () => {
+  test('asks the LLM for each shot with distinct children even when old specs are present', async () => {
     spawnAndAwaitChild.mockReset();
-    spawnAndAwaitChild.mockImplementation(
-      (_step: unknown, args: { childId: string }) =>
-        succeed(args.childId.split(':').at(-1) ?? '')
+    spawnAndAwaitChild.mockImplementation((_step, args) =>
+      succeed(args.childPayload.scene.sceneId)
     );
-
-    const multiShotScenes: MotionPromptBatchWorkflowInput['scenes'] = [
-      {
-        sceneId: 'scene_1',
-        sceneNumber: 1,
-        originalScript: { extract: 'a beat', dialogue: [] },
-        metadata: {
-          title: 'scene_1',
-          durationSeconds: 13,
-          location: '',
-          timeOfDay: '',
-          storyBeat: '',
-        },
-        continuity: {
-          characterTags: [],
-          environmentTag: '',
-          colorPalette: '',
-          lightingSetup: '',
-          styleTag: '',
-        },
-        shots: [
+    const scene = makeInput().scenes[0];
+    if (!scene) throw new Error('missing fixture scene');
+    const result = await makeWorkflow().batch(
+      makeEvent({
+        scenes: [scene],
+        referenceOnly: true,
+        shotMapping: [
           {
+            analysisSceneId: scene.sceneId,
+            shotId: 'a',
+            frameId: null,
             shotNumber: 1,
-            framing: {
-              shotSize: 'wide',
-              angle: 'eye level',
-              composition: '',
-              subjectStartState: '',
-            },
-            action: 'opens the door',
-            cameraMovement: { move: 'static', pacing: 'slow' },
-            soundCue: '',
-            dialogue: [],
-            durationSeconds: 7,
           },
           {
+            analysisSceneId: scene.sceneId,
+            shotId: 'b',
+            frameId: null,
             shotNumber: 2,
-            framing: {
-              shotSize: 'medium',
-              angle: 'eye level',
-              composition: '',
-              subjectStartState: '',
-            },
-            action: 'cut to the hallway',
-            cameraMovement: { move: 'truck', pacing: 'smooth' },
-            soundCue: '',
-            dialogue: [],
-            durationSeconds: 6,
           },
         ],
-      },
-    ];
-    const event = makeEvent({
-      styleConfig: migrateStyleConfigV1ToV2({
-        mood: 'tense',
-        artStyle: 'cinematic',
-        lighting: 'soft',
-        colorPalette: ['#111'],
-        cameraWork: 'handheld',
-        referenceFilms: [],
-        colorGrading: 'neutral',
       }),
-      scenes: multiShotScenes,
-      shotMapping: [
-        {
-          analysisSceneId: 'scene_1',
-          shotId: 'sh-1',
-          frameId: 'fr-1',
-          shotNumber: 1,
-        },
-        {
-          analysisSceneId: 'scene_1',
-          shotId: 'sh-2',
-          frameId: 'fr-2',
-          shotNumber: 2,
-        },
-      ],
-      startingFrameImageUrls: {
-        scene_1: 'https://example.com/scene_1.png',
-        'sh-1': 'https://example.com/sh-1.png',
-        'sh-2': 'https://example.com/sh-2.png',
-      },
-    });
-
-    const result = await makeWorkflow().batch(event, makeStep(), SCOPED_DB);
-
-    // The head is a spec clip like any other: no per-scene re-author.
-    expect(spawnAndAwaitChild).not.toHaveBeenCalled();
-    expect(result).toHaveLength(2);
-    expect(result[0]?.shotId).toBe('sh-1');
-    expect(result[0]?.motionPrompt.fullPrompt).toContain('opens the door');
-    expect(result[0]?.finalVersionId).toBe('mpv-derived-sh-1');
-    expect(result[1]?.shotId).toBe('sh-2');
-    expect(result[1]?.motionPrompt.fullPrompt).toContain('cut to the hallway');
-    expect(SCOPED_DB.shotPromptVersions.writeAiVersion).toHaveBeenCalledTimes(
-      2
+      makeStep(),
+      SCOPED_DB
     );
-  });
-
-  test('reference-only derived motion is framing+action, not the visual prompt', async () => {
-    spawnAndAwaitChild.mockReset();
-    vi.mocked(SCOPED_DB.shotPromptVersions.writeAiVersion).mockClear();
-
-    const event = makeEvent({
-      styleConfig: migrateStyleConfigV1ToV2({
-        mood: 'tense',
-        artStyle: 'cinematic live action with tactile observational detail',
-        lighting: 'soft',
-        colorPalette: ['#111'],
-        cameraWork: 'handheld',
-        referenceFilms: [],
-        colorGrading: 'neutral',
-      }),
-      scenes: [
-        {
-          sceneId: 'scene_1',
-          sceneNumber: 1,
-          originalScript: { extract: 'a beat', dialogue: [] },
-          metadata: {
-            title: 'scene_1',
-            durationSeconds: 13,
-            location: 'INT. HALLWAY - NIGHT',
-            timeOfDay: 'night',
-            storyBeat: '',
-          },
-          continuity: {
-            characterTags: ['mara'],
-            environmentTag: 'dim_hallway',
-            colorPalette: 'cold blues',
-            lightingSetup: 'single overhead bulb',
-            styleTag: '',
-          },
-          shots: [
-            {
-              shotNumber: 1,
-              framing: {
-                shotSize: 'wide',
-                angle: 'eye level',
-                composition: 'centered',
-                subjectStartState: 'Sarah at the door',
-              },
-              action: 'opens the door',
-              cameraMovement: { move: 'static', pacing: 'slow' },
-              soundCue: '',
-              dialogue: [],
-              durationSeconds: 7,
-            },
-            {
-              shotNumber: 2,
-              framing: {
-                shotSize: 'medium',
-                angle: 'eye level',
-                composition: '',
-                subjectStartState: '',
-              },
-              action: 'cut to the hallway',
-              cameraMovement: { move: 'truck', pacing: 'smooth' },
-              soundCue: '',
-              dialogue: [],
-              durationSeconds: 6,
-            },
-          ],
-        },
-      ],
-      shotMapping: [
-        {
-          analysisSceneId: 'scene_1',
-          shotId: 'sh-1',
-          frameId: 'fr-1',
-          shotNumber: 1,
-        },
-        {
-          analysisSceneId: 'scene_1',
-          shotId: 'sh-2',
-          frameId: 'fr-2',
-          shotNumber: 2,
-        },
-      ],
-      startingFrameImageUrls: undefined,
-      referenceOnly: true,
-    });
-
-    const result = await makeWorkflow().batch(event, makeStep(), SCOPED_DB);
-
-    expect(spawnAndAwaitChild).not.toHaveBeenCalled();
-    const first = result[0]?.motionPrompt.fullPrompt ?? '';
-    expect(first).toContain('wide');
-    expect(first).toContain('opens the door');
-    expect(first).not.toContain('single overhead bulb');
-    expect(first).not.toContain('cold blues');
-    expect(first).not.toContain('cinematic live action');
-    expect(first).not.toContain('INT. HALLWAY');
+    expect(spawnAndAwaitChild).toHaveBeenCalledTimes(2);
+    expect(
+      spawnAndAwaitChild.mock.calls.map(([, args]) => args.childId)
+    ).toEqual(['motion-prompt:seq_1:a', 'motion-prompt:seq_1:b']);
+    expect(result.map((row) => row.shotId)).toEqual(['a', 'b']);
+    expect(SCOPED_DB.shotPromptVersions.writeAiVersion).not.toHaveBeenCalled();
   });
 });

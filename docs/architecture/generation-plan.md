@@ -30,8 +30,9 @@ the continue slider. Casting is part of `script`.
   plan has work.
 - **Script is a fresh, whole run** (`AnalyzeScriptWorkflow`). It persists no
   stage: `stageComplete` only emits the banner's `generation.phase:complete`.
-  A run whose character sheets failed returns after References (#1727); the
-  plan then reads those sheets `missing`.
+  Analysis ends after scene split, matching, persisted bibles and initial
+  derived multi-shot prompts. All subsequent work runs through the plan
+  executor; failed references hold only their dependent renders.
 
 ## Units
 
@@ -271,3 +272,25 @@ Music prompt and track flags come only from the chosen units. A completed,
 non-stale track is `done` and is not remade just because the stop is Music.
 Track-only regeneration uses the prompt and tags frozen on `MusicPlan`;
 a prompt child replaces them with its own returned text.
+
+## Fresh analysis handoff (#1892)
+
+After analysis materializes scenes, shots, cast and first derived prompts,
+Storyboard freezes the same plan a Continue click uses and spawns the same
+`spawn-continue` executor. Its one `freeze-generation-plan` checkpoint uses
+`generationPlanning`: a narrowly pinned hatch for reading the rows this run
+just created. The loader ignores this parent run's processing banner, while
+retaining actual artifact claims. Frozen stop-at, switches and model choices
+remain authoritative. The reservation grows from this materialized plan before
+rendering. Missing first character sheets reuse a compatible matched talent
+sheet, with zero generation cost; explicit regeneration still renders the edit.
+Voice-only cast never owes a sheet.
+
+The shot-list specification remains ephemeral. Analysis persists its derived
+visual and motion directions as ordinary first prompt versions. Motion source
+`derived` hashes the inputs derivation consumed, excluding a starting still;
+the first still therefore does not invalidate it or add a still prerequisite.
+Scene and style changes still invalidate it. Later LLM regeneration uses saved
+sibling directions as context and restores the normal still dependency. Restore,
+rename and provider rescue preserve derived provenance when they retain that
+origin. A user edit uses the ordinary current-input provenance.

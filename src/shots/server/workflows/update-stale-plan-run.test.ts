@@ -1,16 +1,3 @@
-import type { StyleConfig } from '@/look/style-config';
-const styleConfig: StyleConfig = {
-  version: 2,
-  look: {
-    mood: 'quiet',
-    artStyle: 'watercolour',
-    lighting: 'soft light',
-    colorPalette: ['silver', 'blue'],
-    colorGrading: 'cool shadows',
-  },
-  motion: { camera: 'locked' },
-  references: [],
-};
 /**
  * A continue runs the generation plan's units through the Update-all
  * executor (#1818). These pin the references wave: only the owed sheets,
@@ -30,9 +17,7 @@ import type { PlanTarget, UpdateStalePlan } from '../update-stale-plan';
 import { DEFAULT_ANALYSIS_MODEL } from '@/models/models.config';
 import * as realPlan from '../update-stale-plan';
 import { buildMotionRender } from '@/motion/server/build-motion-render';
-import { buildStoryboardMotionBatchShots } from '@/sequences/server/workflows/storyboard-motion-batch-shots';
 import { motionPromptFromVersion } from '@/motion/server/resolve-motion-prompt';
-import type { Scene } from '@/shots/scene-analysis.schema';
 
 vi.doMock('@/billing/server/fal-pricing-live', () => ({
   getEffectiveFalPricing: vi.fn(async () => ({})),
@@ -426,107 +411,61 @@ describe('executor packed clips', () => {
     });
     expect(result.videos).toBe(1);
   });
-  it('submits identical packed prompts from fresh, manual and executor sources', async () => {
-    const dialogue = { presence: false, lines: [] };
-    const version = { text: 'She crosses the room.', audio: null };
-    // Only the scene fields read by the fresh source factory are needed.
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- intentionally minimal analysis fixture
-    const scene = {
-      sceneId: 'scene-1',
-      sceneNumber: 1,
-      metadata: {
-        title: 'Room',
+  it.each([true, false])(
+    'submits manual-equivalent packed prompts through the shared executor (freshRun=%s)',
+    async (freshRun) => {
+      const dialogue = { presence: false, lines: [] };
+      const version = { text: 'She crosses the room.', audio: null };
+      const ids = ['a', 'b'];
+      const context = { userId: 'u1', teamId: 't1', sequenceId: 'seq-1' };
+      const header = {
         location: 'Frozen room',
         timeOfDay: 'Night',
-        durationSeconds: 4,
-      },
-      originalScript: { extract: '', dialogue: [] },
-      continuity: {
-        characterTags: [],
         lightingSetup: 'overhead lamp',
         colorPalette: 'cold blue',
-      },
-      shots: [
-        { shotNumber: 1, durationSeconds: 2 },
-        { shotNumber: 2, durationSeconds: 2 },
-      ],
-    } as unknown as Scene;
-    const ids = ['a', 'b'];
-    const fresh = buildStoryboardMotionBatchShots({
-      styleConfig,
-      scenes: [scene],
-      shotMapping: ids.map((shotId, index) => ({
-        analysisSceneId: 'scene-1',
-        shotId,
-        shotNumber: index + 1,
-      })),
-      imageUrls: [],
-      frameVersionIds: [],
-      motionPromptsBySceneId: {
-        'scene-1': {
-          fullPrompt: version.text,
-          dialogue,
-          audio: { ambientSound: '', soundEffects: [] },
-        },
-      },
-      motionPromptVersionIdsBySceneId: {},
-      motionPromptVersionIdsByShotId: { a: 'prompt-a', b: 'prompt-b' },
-      videoModel: 'kling_v3_pro',
-      aspectRatio: '16:9',
-      referenceOnly: true,
-      characters: [],
-      elements: [],
-    });
-    const context = { userId: 'u1', teamId: 't1', sequenceId: 'seq-1' };
-    const freshJobs = buildMotionRender({ ...context, shots: fresh });
-    expect(freshJobs).toHaveLength(1);
-    const header = {
-      location: 'Frozen room',
-      timeOfDay: 'Night',
-      lightingSetup: 'overhead lamp',
-      colorPalette: 'cold blue',
-      look: 'watercolour, cool shadows',
-    };
-    // The manual path reconstructs selected immutable prompt rows and D1 scene data.
-    const manualJobs = buildMotionRender({
-      ...context,
-      shots: ids.map((shotId) => ({
-        shotId,
-        sceneId: 'scene-1',
-        renderSegmentId: 'segment-1',
-        referenceOnly: true,
-        packedScene: header,
+        look: 'watercolour, cool shadows',
+      };
+      // The manual path reconstructs selected immutable prompt rows and D1 scene data.
+      const manualJobs = buildMotionRender({
+        ...context,
+        shots: ids.map((shotId) => ({
+          shotId,
+          sceneId: 'scene-1',
+          renderSegmentId: 'segment-1',
+          referenceOnly: true,
+          packedScene: header,
+          attachSceneHeader: true,
+          duration: 2,
+          model: 'kling_v3_pro',
+          prompt: version.text,
+          motionPrompt: motionPromptFromVersion(version, dialogue),
+          characterTags: [],
+          motionPromptVersionId: `prompt-${shotId}`,
+        })),
+      });
+      const expected = {
+        prompt: manualJobs[0]?.input.prompt,
+        multiPrompt: manualJobs[0]?.input.multiPrompt,
+      };
+      expect(manualJobs).toHaveLength(1);
+      const targets = ids.map((id) => ({
+        ...clipTarget(id),
+        durationMs: 2000,
         attachSceneHeader: true,
-        duration: 2,
-        model: 'kling_v3_pro',
-        prompt: version.text,
-        motionPrompt: motionPromptFromVersion(version, dialogue),
-        characterTags: [],
-        motionPromptVersionId: `prompt-${shotId}`,
-      })),
-    });
-    const expected = {
-      prompt: freshJobs[0]?.input.prompt,
-      multiPrompt: freshJobs[0]?.input.multiPrompt,
-    };
-    expect(manualJobs[0]?.input).toMatchObject(expected);
-    const targets = ids.map((id) => ({
-      ...clipTarget(id),
-      durationMs: 2000,
-      attachSceneHeader: true,
-      motionRender: {
-        ...clipTarget(id).motionRender,
-        packedScene: header,
-        characterTags: [],
-      },
-    }));
-    const result = await run(plan({ targets }));
-    expect(result.failures).toEqual([]);
-    expect(spawned().filter((name) => name.startsWith('spawn-video-'))).toEqual(
-      ['spawn-video-a']
-    );
-    expect(payloadOf('spawn-video-a')).toMatchObject(expected);
-  });
+        motionRender: {
+          ...clipTarget(id).motionRender,
+          packedScene: header,
+          characterTags: [],
+        },
+      }));
+      const result = await run(plan({ targets }), { freshRun });
+      expect(result.failures).toEqual([]);
+      expect(
+        spawned().filter((name) => name.startsWith('spawn-video-'))
+      ).toEqual(['spawn-video-a']);
+      expect(payloadOf('spawn-video-a')).toMatchObject(expected);
+    }
+  );
 
   it('uses click-time reference URLs instead of reloading selection pointers', async () => {
     const shot = clipTarget('a');

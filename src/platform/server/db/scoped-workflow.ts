@@ -225,6 +225,10 @@ export type WorkflowScopedDb = WorkflowDomains & {
    * references it.
    */
   stalenessPlanning: ScopedDb;
+  /** Storyboard only: one checkpoint after analysis writes its scenes, shots and
+   * initial prompts. Those rows cannot exist at the original trigger. It freezes
+   * a generation plan; later stages consume that snapshot, never this hatch. */
+  generationPlanning: ScopedDb;
 };
 
 export function toWorkflowScopedDb(scopedDb: ScopedDb): WorkflowScopedDb {
@@ -247,6 +251,7 @@ export function toWorkflowScopedDb(scopedDb: ScopedDb): WorkflowScopedDb {
     claims: scopedDb,
     liveRead: scopedDb,
     stalenessPlanning: scopedDb,
+    generationPlanning: scopedDb,
   };
 }
 

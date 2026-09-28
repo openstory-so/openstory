@@ -1392,6 +1392,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                     dialogue: target.dialogue,
                     sceneBefore: scenes.sceneBefore,
                     sceneAfter: scenes.sceneAfter,
+                    siblingMotionPrompts: target.siblingMotionPrompts,
                     startingFrameImageUrl: target.usesStartFrame
                       ? (startingFrameImageUrl ?? undefined)
                       : undefined,
@@ -1430,6 +1431,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                       childPayload: {
                         ...base,
                         frameId: target.frameId,
+                        siblingVisualPrompts: target.siblingVisualPrompts,
                         targetVersionId: claims.visualVersionId ?? undefined,
                       },
                       spawnStepName: `spawn-frame-prompt-${target.shotId}`,

@@ -243,7 +243,7 @@ export const restoreShotPromptVariantFn = createServerFn({ method: 'POST' })
       components: chosen.components,
       parameters: chosen.parameters,
       audio: chosen.audio,
-      source: 'restored',
+      source: chosen.source === 'derived' ? 'derived' : 'restored',
       usesStartFrame: chosen.usesStartFrame,
       inputHash: chosen.inputHash,
       analysisModel: chosen.analysisModel,
@@ -608,10 +608,40 @@ export const regenerateShotPromptFn = createServerFn({ method: 'POST' })
 
     // Neighbour scenes give the motion LLM the same continuity context the
     // analysis batch pipeline passes via MotionPromptBatchWorkflow (#929).
+    let siblingVisualPrompts: Array<{ shotId: string; text: string }> = [];
+    let siblingMotionPrompts: Array<{ shotId: string; text: string }> = [];
     let sceneBefore: Scene | undefined;
     let sceneAfter: Scene | undefined;
-    if (data.promptType === 'motion') {
+    {
       const shotsInSeq = await scopedDb.shots.listBySequence(sequence.id);
+      const siblings = shotsInSeq.filter(
+        (sibling) =>
+          shot.sceneId &&
+          sibling.sceneId === shot.sceneId &&
+          sibling.id !== shot.id &&
+          !sibling.deletedAt
+      );
+      const siblingFrames = await scopedDb.frames.getAnchorsByShots(
+        siblings.map((sibling) => sibling.id)
+      );
+      const visualVersions =
+        await scopedDb.framePromptVersions.getSelectedByFrameIds(
+          [...siblingFrames.values()].map((anchor) => anchor.id)
+        );
+      siblingVisualPrompts = [...siblingFrames.values()].flatMap((anchor) => {
+        const prompt = visualVersions.get(anchor.id);
+        return prompt?.text
+          ? [{ shotId: anchor.shotId, text: prompt.text }]
+          : [];
+      });
+      const siblingVersions =
+        await scopedDb.shotPromptVersions.getSelectedMotionByShots(
+          siblings.map((sibling) => sibling.id)
+        );
+      siblingMotionPrompts = siblings.flatMap((sibling) => {
+        const prompt = siblingVersions.get(sibling.id);
+        return prompt?.text ? [{ shotId: sibling.id, text: prompt.text }] : [];
+      });
       const idx = shotsInSeq.findIndex((s) => s.id === shot.id);
       const prevShot = idx > 0 ? shotsInSeq[idx - 1] : undefined;
       const nextShot =
@@ -642,6 +672,7 @@ export const regenerateShotPromptFn = createServerFn({ method: 'POST' })
             {
               ...commonInput,
               frameId: frame.id,
+              siblingVisualPrompts,
               targetVersionId: claim.id,
             },
             triggerOpts
@@ -664,6 +695,7 @@ export const regenerateShotPromptFn = createServerFn({ method: 'POST' })
               referenceOnly: shotReferenceOnly,
               sceneBefore,
               sceneAfter,
+              siblingMotionPrompts,
               dialogue: promptDialogue.dialogue,
               targetVersionId: claim.id,
             },

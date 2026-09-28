@@ -543,8 +543,11 @@ export async function computeShotStaleness(args: {
         : await scopedDb.characters.listBibleVersionsBySequence(sequence.id),
       at
     );
-  let selectedMotion: { inputHash: string | null; createdAt: Date } | null =
-    null;
+  let selectedMotion: {
+    inputHash: string | null;
+    createdAt: Date;
+    source: string;
+  } | null = null;
 
   // Reference hash resolution: prefer the SELECTED version's `inputHash`, but
   // fall back to the most recent version with a non-null one for prompts whose
@@ -632,7 +635,8 @@ export async function computeShotStaleness(args: {
           sequence: motionSequence,
           scene,
           analysisModelOverride: latest?.analysisModel ?? null,
-          startingFrameImageUrl: motionStartingFrameUrl,
+          startingFrameImageUrl:
+            reference?.source === 'derived' ? null : motionStartingFrameUrl,
           refs,
         })),
         dialogue: dialogue.dialogue,

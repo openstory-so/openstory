@@ -103,6 +103,8 @@ export function artifactVerdict(args: {
 }
 
 export type PlanShot = {
+  /** Derived direction did not consume the still; later LLM versions do. */
+  motionPromptDerived?: boolean;
   id: string;
   /** `usesStartFrame(shot, sequence)` — the mode is per shot. */
   usesStartFrame: boolean;
@@ -177,7 +179,8 @@ const SHOT_UNITS: ReadonlyArray<{
   {
     kind: 'prompt:motion',
     verdict: (s) => s.motionPrompt,
-    requires: (s) => (s.usesStartFrame ? [ref('still', s.id)] : []),
+    requires: (s) =>
+      s.usesStartFrame && !s.motionPromptDerived ? [ref('still', s.id)] : [],
   },
   {
     kind: 'dialogue',

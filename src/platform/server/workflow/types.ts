@@ -1150,6 +1150,7 @@ export interface FramePromptBatchWorkflowResult {
 }
 
 export interface FramePromptWorkflowInput extends SequenceWorkflowContext {
+  siblingVisualPrompts?: Array<{ shotId: string; text: string }>;
   scene: Scene;
   sceneBefore?: Scene;
   sceneAfter?: Scene;
@@ -1228,6 +1229,8 @@ export interface MotionPromptBatchWorkflowInput extends SequenceWorkflowContext 
 
 export interface MotionPromptWorkflowInput extends SequenceWorkflowContext {
   scene: Scene;
+  /** Saved sibling directions, context only: never re-derived from a shot spec. */
+  siblingMotionPrompts?: Array<{ shotId: string; text: string }>;
   /**
    * What the shot says, snapshotted at the trigger from
    * `shotDialogueResolver` (#1784). It replaces `scene`'s script lines in

@@ -49,6 +49,17 @@ vi.doMock('@/sequences/server/notify-sequence-ready', () => ({
     `https://openstory.so/sequences/${id}/scenes`,
 }));
 
+const freezeFreshGenerationPlan = vi.fn(async () => ({
+  plan: { targets: [], references: null, music: null },
+  remainingCost: 0,
+}));
+vi.doMock('@/sequences/server/freeze-fresh-generation-plan', () => ({
+  freezeFreshGenerationPlan,
+}));
+vi.doMock('@/billing/server/storyboard-render-gate', () => ({
+  gateStoryboardRenders: vi.fn(async () => ({ spawnRenders: true })),
+}));
+
 // Dynamic import so the mocks above apply (vi.doMock is not hoisted).
 const { StoryboardWorkflow } = await import('./storyboard-workflow');
 
@@ -351,6 +362,48 @@ describe('StoryboardWorkflow stop-at + resume (#1408)', () => {
       generationStopAt: 'images',
     });
     expect(names).not.toContain('generate-poster');
+  });
+
+  test('fresh analysis hands its frozen plan to the same executor as a continue', async () => {
+    const freshPlan = {
+      targets: [{ shotId: 'new-shot' }],
+      references: null,
+      music: null,
+    };
+    freezeFreshGenerationPlan.mockResolvedValueOnce({
+      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- only forwarding is tested here
+      plan: freshPlan as never,
+      remainingCost: 0,
+    });
+    await run({ stopAt: 'motion' });
+    const freshCalls = spawnAndAwaitChild.mock.calls;
+    expect(freshCalls).toHaveLength(2);
+    expect(spawnAndAwaitChild).toHaveBeenNthCalledWith(
+      2,
+      expect.anything(),
+      expect.objectContaining({
+        spawnStepName: 'spawn-continue',
+        childPayload: expect.objectContaining({
+          plan: freshPlan,
+          announcePhases: true,
+          freshRun: true,
+        }),
+      })
+    );
+    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- only forwarding is tested here
+    await run({ stopAt: 'motion', resume: true, plan: freshPlan as never });
+    expect(spawnAndAwaitChild).toHaveBeenCalledTimes(1);
+    expect(spawnAndAwaitChild).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        spawnStepName: 'spawn-continue',
+        childPayload: expect.objectContaining({
+          plan: freshPlan,
+          announcePhases: true,
+          freshRun: false,
+        }),
+      })
+    );
   });
 
   test('a continue runs the plan through the unit executor, not the script run (#1818)', async () => {

@@ -1,3 +1,4 @@
+import type { FreshPlanSequenceOverrides } from '@/shots/server/update-stale-plan';
 /**
  * Load the generation plan (#1816) from live D1: the rows, the existing
  * staleness verdicts and the claims, one read per table, compared in memory
@@ -62,14 +63,23 @@ async function sheetVerdict(
 export async function computeGenerationPlan(
   scopedDb: ScopedDb,
   sequenceId: string,
-  flags?: Partial<Pick<Sequence, 'generateStartFrames' | 'generateVoices'>>
+  flags?: Partial<
+    Pick<Sequence, 'generateStartFrames' | 'generateVoices' | 'includeMusic'>
+  >,
+  options?: {
+    ignoreOwnProcessing?: boolean;
+    sequenceOverrides?: FreshPlanSequenceOverrides;
+  }
 ): Promise<PlanUnit[]> {
   const row = await scopedDb.sequences.getById(sequenceId);
   if (!row) throw new NotFoundError(`Sequence ${sequenceId} not found`);
   const sequence = {
     ...row,
+    ...options?.sequenceOverrides,
     generateStartFrames: flags?.generateStartFrames ?? row.generateStartFrames,
     generateVoices: flags?.generateVoices ?? row.generateVoices,
+    includeMusic: flags?.includeMusic ?? row.includeMusic,
+    status: options?.ignoreOwnProcessing ? ('completed' as const) : row.status,
   };
   const shots = await scopedDb.shots.listBySequence(sequenceId);
   // Script is the root, not a unit: nothing to plan until it made shots.
@@ -211,6 +221,11 @@ async function loadPlanInput(
                 0),
         })
       ),
+      motionPromptDerived:
+        (reads.selectedMotionByShot.get(shot.id)?.inputHash
+          ? reads.selectedMotionByShot.get(shot.id)
+          : reads.latestHashedMotionByShot.get(shot.id)
+        )?.source === 'derived',
       motionPrompt: verdictOf(
         artifactVerdict({
           exists: reads.selectedMotionByShot.has(shot.id),

@@ -194,6 +194,8 @@ export type PlanTarget = {
    * footer apply.
    */
   attachSceneHeader: boolean;
+  siblingVisualPrompts?: Array<{ shotId: string; text: string }>;
+  siblingMotionPrompts?: Array<{ shotId: string; text: string }>;
   /** Compact render context frozen at the click, including persisted membership. */
   motionRender: Pick<
     MotionRenderShot,
@@ -482,8 +484,27 @@ const SHOT_UNIT_KINDS = new Set<PlanUnitKind>([
  * Update all the plan filtered to `stale`. The workflow persists this as its
  * payload — the run's durable snapshot of what will be billed.
  */
+export type FreshPlanSequenceOverrides = Partial<
+  Pick<
+    Sequence,
+    | 'generateStartFrames'
+    | 'generateVoices'
+    | 'includeMusic'
+    | 'draftMotion'
+    | 'imageModel'
+    | 'videoModel'
+    | 'aspectRatio'
+    | 'resolution'
+    | 'status'
+    | 'styleConfig'
+    | 'analysisModel'
+  >
+>;
+
 export async function computePlan(args: {
   scopedDb: ScopedDb;
+  /** Fresh handoff retains the switches/models frozen by the original click. */
+  sequenceOverrides?: FreshPlanSequenceOverrides;
   sequenceId: string;
   units: readonly PlanUnitRef[];
   /** Who clicked — stamped on the references wave's payloads. */
@@ -492,7 +513,8 @@ export async function computePlan(args: {
 }): Promise<UpdateStalePlan> {
   const { scopedDb, sequenceId, units } = args;
 
-  const sequence = await scopedDb.sequences.getById(sequenceId);
+  const row = await scopedDb.sequences.getById(sequenceId);
+  const sequence = row ? { ...row, ...args.sequenceOverrides } : null;
   if (!sequence) {
     // Trigger-side (computePlan runs in the server fn): OpenStoryError rides
     // the serialization adapter to the client as a typed 404, not a 500.
@@ -688,6 +710,27 @@ export async function computePlan(args: {
   const shotById = new Map(allShots.map((shot) => [shot.id, shot]));
   for (const target of targets) {
     const sceneId = shotById.get(target.shotId)?.sceneId;
+    target.siblingVisualPrompts = allShots.flatMap((sibling) => {
+      const frame = anchorsByShot.get(sibling.id);
+      const prompt = frame ? selectedPromptByFrame.get(frame.id) : null;
+      return sceneId &&
+        sibling.sceneId === sceneId &&
+        sibling.id !== target.shotId &&
+        !sibling.deletedAt &&
+        prompt?.text
+        ? [{ shotId: sibling.id, text: prompt.text }]
+        : [];
+    });
+    target.siblingMotionPrompts = allShots.flatMap((sibling) => {
+      const prompt = selectedMotionByShot.get(sibling.id);
+      return sceneId &&
+        sibling.sceneId === sceneId &&
+        sibling.id !== target.shotId &&
+        !sibling.deletedAt &&
+        prompt?.text
+        ? [{ shotId: sibling.id, text: prompt.text }]
+        : [];
+    });
     target.dialogueContext =
       dialogueContextFor({
         shot: { id: target.shotId },
