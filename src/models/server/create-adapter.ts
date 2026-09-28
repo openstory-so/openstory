@@ -132,8 +132,8 @@ const createOpenRouterTextExtended = extendAdapter(
   CATALOG_LAG_MODELS
 );
 
-/** {@link CATALOG_LAG_MODELS} for the Grok adapter. Native `grok-4.6` is
- *  in the 0.16 catalog; `grok-4.20-0309-reasoning` is still lag-bridged.
+/** {@link CATALOG_LAG_MODELS} for the Grok adapter. Native `grok-4.7` is
+ *  in the 0.20 catalog; `grok-4.20-0309-reasoning` is still lag-bridged.
  *  Same prune contract as the OpenRouter list. */
 const GROK_CATALOG_LAG_MODELS = [
   createModel('grok-4.20-0309-reasoning', {

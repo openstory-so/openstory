@@ -49,6 +49,7 @@ export const LLMTR_BASE_URL = 'https://llmtr.com/v1';
  */
 export const LLMTR_UNMAPPED_MODEL_IDS = [
   'anthropic/claude-opus-5.5', // LLMTR support and pricing not yet verified.
+  'x-ai/grok-4.7', // LLMTR support and pricing not yet verified.
   'anthropic/claude-opus-5-fast',
   'deepseek/deepseek-v3.2',
   'bytedance-seed/seed-2.0-mini',
@@ -82,7 +83,6 @@ export const LLMTR_TEXT_MODELS = {
   'openai/gpt-5.6-terra': 'openai/gpt-5.6-terra',
   'deepseek/deepseek-v4-pro-0813': 'deepseek/deepseek-v4-pro-0813',
   'anthropic/claude-sonnet-5': 'anthropic/claude-sonnet-5',
-  'x-ai/grok-4.6': 'xai/grok-4.6',
   'openai/gpt-5.6-luna': 'openai/gpt-5.6-luna',
   'openai/gpt-5.4-mini': 'openai/gpt-5.4-mini',
   'openai/gpt-5.4-nano': 'openai/gpt-5.4-nano',
@@ -114,7 +114,6 @@ export function llmtrTextModel(model: string): LlmtrTextModel | undefined {
  * changes.
  */
 export const LLMTR_RESPONSES_ONLY_MODEL_IDS = [
-  'xai/grok-4.6',
   'xai/grok-4.20-0309-reasoning',
 ] as const satisfies ReadonlyArray<LlmtrTextModel>;
 
@@ -137,13 +136,12 @@ export function llmtrCompatibleApi(
 
 /**
  * The LLMTR catalog ids that are NOT valid OpenRouter slugs. Identity
- * mappings share OpenRouter's spelling; these four are the renamed set
+ * mappings share OpenRouter's spelling; these three are the renamed set
  * (`xai/` not `x-ai/`, etc.). `llmtr.test.ts` asserts this list equals the
  * renamed entries of {@link LLMTR_TEXT_MODELS}.
  */
 export const LLMTR_ONLY_MODEL_IDS = [
   'mistral/mistral-small-latest',
-  'xai/grok-4.6',
   'xai/grok-4.20-0309-reasoning',
   'zai/glm-5.3-flash',
 ] as const satisfies ReadonlyArray<LlmtrTextModel>;
@@ -182,7 +180,6 @@ const LLMTR_TEXT_RATES: Record<
   'openai/gpt-5.6-terra': { input: 2, output: 12 },
   'deepseek/deepseek-v4-pro-0813': { input: 1.32, output: 3.96 },
   'anthropic/claude-sonnet-5': { input: 2, output: 10 },
-  'xai/grok-4.6': { input: 2, output: 6 },
   'openai/gpt-5.6-luna': { input: 0.2, output: 1.2 },
   'openai/gpt-5.4-mini': { input: 0.75, output: 4.5 },
   'openai/gpt-5.4-nano': { input: 0.2, output: 1.25 },

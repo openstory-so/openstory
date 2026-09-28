@@ -31,7 +31,9 @@ const usage = (promptTokens: number, completionTokens: number) => ({
 
 describe('llmtrTextModel', () => {
   it('translates the vendor prefixes LLMTR spells differently', () => {
-    expect(llmtrTextModel('x-ai/grok-4.6')).toBe('xai/grok-4.6');
+    expect(llmtrTextModel('x-ai/grok-4.20')).toBe(
+      'xai/grok-4.20-0309-reasoning'
+    );
     expect(llmtrTextModel('z-ai/glm-5.3-flash')).toBe('zai/glm-5.3-flash');
     expect(llmtrTextModel('mistralai/mistral-small-2603')).toBe(
       'mistral/mistral-small-latest'
@@ -98,7 +100,7 @@ describe('llmtrTextModel', () => {
     expect(llmtrCompatibleApi('openai/gpt-6-astra')).toBe('responses');
     expect(llmtrCompatibleApi('openai/gpt-5.6-luna')).toBe('responses');
     expect(llmtrCompatibleApi('openai/gpt-5.4-mini')).toBe('responses');
-    expect(llmtrCompatibleApi('x-ai/grok-4.6')).toBe('responses');
+    expect(llmtrCompatibleApi('x-ai/grok-4.20')).toBe('responses');
     expect(llmtrCompatibleApi('anthropic/claude-sonnet-5')).toBe(
       'chat-completions'
     );
@@ -122,10 +124,13 @@ describe('llmtrTextCostFromUsage', () => {
 
   it('prices a renamed model under its registry id, not its LLMTR id', () => {
     // Callers only ever hold the registry id — the translation is internal.
-    const cost = llmtrTextCostFromUsage(usage(1_000_000, 0), 'x-ai/grok-4.6');
-    expect(microsToUsd(cost ?? ZERO_MICROS)).toBeCloseTo(2, 6);
+    const cost = llmtrTextCostFromUsage(usage(1_000_000, 0), 'x-ai/grok-4.20');
+    expect(microsToUsd(cost ?? ZERO_MICROS)).toBeCloseTo(1.25, 6);
     expect(
-      llmtrTextCostFromUsage(usage(1_000_000, 0), 'xai/grok-4.6')
+      llmtrTextCostFromUsage(
+        usage(1_000_000, 0),
+        'xai/grok-4.20-0309-reasoning'
+      )
     ).toBeUndefined();
   });
 

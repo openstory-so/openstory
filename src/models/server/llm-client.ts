@@ -297,7 +297,7 @@ export type LLMRequestParams<T = unknown> = {
  * https://openrouter.ai/docs/guides/features/structured-outputs
  */
 const STRUCTURED_OUTPUT_MODELS = new Set([
-  'x-ai/grok-4.6',
+  'x-ai/grok-4.7',
   'anthropic/claude-fable-5.1',
   'anthropic/claude-sonnet-5',
   'x-ai/grok-4.20',
@@ -459,7 +459,7 @@ function buildGrokModelOptions(params: LLMRequestParams) {
   };
 }
 
-/** Our five-level effort scale onto xAI's (no `minimal`; grok-4.6 has `xhigh`). */
+/** Our five-level effort scale onto xAI's (no `minimal`; grok-4.7 has `xhigh`). */
 function toGrokReasoningEffort(
   effort: NonNullable<LLMRequestParams['reasoning']>['effort']
 ): 'low' | 'medium' | 'high' | 'xhigh' {

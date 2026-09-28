@@ -575,11 +575,11 @@ describe('SceneSplitWorkflow stream step config', () => {
       key: 'or-platform-key',
     };
     const resolveLlmKey = vi.fn(async (model?: string) =>
-      model === 'x-ai/grok-4.6' ? grokKey : splitKey
+      model === 'x-ai/grok-4.7' ? grokKey : splitKey
     );
 
     await makeWorkflow().split(
-      makeEvent({ ...INPUT, modelId: 'x-ai/grok-4.6' }),
+      makeEvent({ ...INPUT, modelId: 'x-ai/grok-4.7' }),
       makeStep(),
       makeScopedDb(resolveLlmKey)
     );
@@ -594,7 +594,7 @@ describe('SceneSplitWorkflow stream step config', () => {
       .mock.calls.find(
         ([params]) => params.observationName === 'phase-1-scene-bibles'
       )?.[0];
-    expect(bibleCall?.model).toBe('x-ai/grok-4.6');
+    expect(bibleCall?.model).toBe('x-ai/grok-4.7');
     expect(bibleCall?.apiKey).toEqual(grokKey);
   });
 });

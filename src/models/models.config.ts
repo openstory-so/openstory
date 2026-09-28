@@ -206,11 +206,12 @@ export const SCRIPT_ANALYSIS_MODELS = [
     description: 'State-of-the-art coding and structured output',
   },
   {
-    id: 'x-ai/grok-4.6',
-    name: 'Grok 4.6',
+    id: 'x-ai/grok-4.7',
+    name: 'Grok 4.7',
     vendor: 'SpaceXAI',
     license: 'proprietary' as const,
-    // Arena 1456 (grok-4.6-high).
+    // Bumped from Grok 4.6 (Arena 1456, grok-4.6-high); re-rank on next
+    // LMArena snapshot.
     qualityRank: 16,
     contextWindow: 500_000,
     maxOutputTokens: 450_000,

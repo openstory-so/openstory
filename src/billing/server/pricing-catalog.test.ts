@@ -33,9 +33,9 @@ describe('buildPricingCatalog native vias', () => {
     });
     expect(r['Gemini Omni Flash 1.1']).toMatchObject({ via: 'Google' });
     expect(r['Seedream 5.0 Pro']).toMatchObject({ via: 'BytePlus' });
-    expect(r['Grok 4.6']).toMatchObject({
+    expect(r['Grok 4.7']).toMatchObject({
       via: 'xAI',
-      price: '$2.00 / M in · $6.00 / M out',
+      price: '$1.60 / M in · $4.80 / M out',
     });
     expect(r['Gemini 3.1 Pro']).toMatchObject({ via: 'Google' });
     expect(r['ElevenLabs Music']).toMatchObject({
@@ -52,7 +52,7 @@ describe('buildPricingCatalog native vias', () => {
       price: 'from $0.01 / generation',
     });
     expect(r['Seedream 5.0 Pro']?.via).toBe('fal.ai');
-    expect(r['Grok 4.6']?.via).toBe('OpenRouter');
+    expect(r['Grok 4.7']?.via).toBe('OpenRouter');
     expect(r['ElevenLabs Music']?.via).toBe('ElevenLabs');
   });
 });

@@ -13,7 +13,7 @@ const callLLMStream = vi.fn((_params: { messages: ChatMessage[] }) => ({
 vi.doMock('@/models/server/llm-client', () => ({
   callLLMStream,
   ENHANCE_REASONING: 'low',
-  RECOMMENDED_MODELS: { creative: 'x-ai/grok-4.6' },
+  RECOMMENDED_MODELS: { creative: 'x-ai/grok-4.7' },
   llmCostFromUsage: vi.fn(() => 0),
 }));
 

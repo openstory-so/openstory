@@ -126,7 +126,7 @@ const {
   resolveNativeGrokModel,
 } = await import('./create-adapter');
 
-const MODEL = 'x-ai/grok-4.6';
+const MODEL = 'x-ai/grok-4.7';
 const FAL_URL = 'https://fal.run/openrouter/router/openai/v1';
 const LLMTR_URL = 'https://llmtr.com/v1';
 
@@ -189,7 +189,7 @@ afterEach(() => {
 
 describe('createAdapter LLMTR routing', () => {
   it('routes via:"llmtr" through openaiCompatibleText, translating the slug', () => {
-    createAdapter(MODEL, { key: 'llmtr-team', via: 'llmtr' });
+    createAdapter('x-ai/grok-4.20', { key: 'llmtr-team', via: 'llmtr' });
 
     const call = lastLlmtrCall();
     expect(call.config.apiKey).toBe('llmtr-team');
@@ -197,7 +197,7 @@ describe('createAdapter LLMTR routing', () => {
     expect(call.config.name).toBe('llmtr');
     expect(call.config.api).toBe('responses');
     // LLMTR spells this vendor `xai/`; sending the OpenRouter slug 404s.
-    expect(call.model).toBe('xai/grok-4.6');
+    expect(call.model).toBe('xai/grok-4.20-0309-reasoning');
     expect(createOpenRouterTextMock).not.toHaveBeenCalled();
     expect(openRouterTextMock).not.toHaveBeenCalled();
   });
@@ -238,7 +238,7 @@ describe('createAdapter LLMTR routing', () => {
     // Aimock's OpenRouter fixtures are the wrong wire format for the
     // Chat Completions adapter. LLMTR stays on its own URL.
     testEnv.OPENROUTER_BASE_URL = 'http://localhost:4010/v1';
-    createAdapter(MODEL, { key: 'llmtr-team', via: 'llmtr' });
+    createAdapter('x-ai/grok-4.20', { key: 'llmtr-team', via: 'llmtr' });
 
     expect(lastLlmtrCall().config.baseURL).toBe(LLMTR_URL);
     expect(createOpenRouterTextMock).not.toHaveBeenCalled();
@@ -365,7 +365,7 @@ describe('native xAI routing (issue #1167)', () => {
 
     expect(grokCalls).toStrictEqual([
       {
-        model: 'grok-4.6',
+        model: 'grok-4.7',
         key: 'xai-team',
         config: expect.objectContaining({ fetch: expect.any(Function) }),
       },
@@ -527,7 +527,7 @@ describe('getPlatformLlmKey with GEMINI_API_KEY', () => {
 describe('resolveNativeGrokModel', () => {
   it('agrees with createAdapter about which route a request takes', () => {
     expect(resolveNativeGrokModel(MODEL, { key: 'k', via: 'xai' })).toBe(
-      'grok-4.6'
+      'grok-4.7'
     );
     expect(
       resolveNativeGrokModel(MODEL, { key: 'k', via: 'openrouter' })

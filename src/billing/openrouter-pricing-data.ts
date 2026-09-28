@@ -102,8 +102,8 @@ export const OPENROUTER_PRICING: Record<string, OpenRouterPricing> = {
     completionPerMillionTokens: 10,
     webSearchPerQuery: 0.01,
   },
-  'x-ai/grok-4.6': {
-    name: 'SpaceXAI: Grok 4.6',
+  'x-ai/grok-4.7': {
+    name: 'SpaceXAI: Grok 4.7',
     promptPerMillionTokens: 2,
     completionPerMillionTokens: 6,
     webSearchPerQuery: 0.005,
