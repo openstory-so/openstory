@@ -14,8 +14,8 @@ import {
 import { BalancePillButton } from './credit-balance-pill';
 
 /**
- * The welcome grant landing (#1668). In the app the claim dialog announces
- * the gain after the card is saved; here the button does.
+ * A credit gain landing (#1668). The button announces it with
+ * `celebrateBalanceGain`.
  */
 function GainHarness() {
   const [balance, setBalance] = useState(0);
@@ -62,4 +62,4 @@ const meta: Meta<typeof GainHarness> = {
 export default meta;
 type Story = StoryObj<typeof GainHarness>;
 
-export const WelcomeGrantLands: Story = {};
+export const GainLands: Story = {};

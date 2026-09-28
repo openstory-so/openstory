@@ -13,11 +13,8 @@ import {
   DialogTitle,
 } from '@/ui/shadcn/dialog';
 import { AskFounderCard, founderOptionCardClassName } from './ask-founder-card';
-import { useWelcomeCreditsGate } from './welcome-credits-dialog';
 import { openAddCreditsDialog } from './use-add-credits-dialog';
-import { useBillingBalance } from './use-billing-balance';
 import { useBillingGateQuery } from './use-billing-gate';
-import { shouldOfferWelcomeClaim } from '@/billing/constants';
 import {
   closeBillingGate,
   getBillingGateReason,
@@ -214,37 +211,21 @@ export const BillingGateDialog: React.FC<BillingGateDialogProps> = ({
 
 /**
  * Globally-mounted gate instance (#1099), opened via `openBillingGate()`.
- * If the welcome grant is still unpaid, openers get the claim dialog
- * instead of this gate (same as the low-balance toast). The onboarding
- * flow on the home composer keeps its own instance for its dismissal memory.
+ * The onboarding flow on the home composer keeps its own instance for its
+ * dismissal memory.
  */
 export const GlobalBillingGateDialog: React.FC = () => {
   const open = useBillingGateDialogOpen();
   const { data } = useBillingGateQuery();
-  const { stripeEnabled, hasSignupGrant, hasOtherCredits } =
-    useBillingBalance();
-  const { reopen } = useWelcomeCreditsGate();
-  const offerClaim = shouldOfferWelcomeClaim({
-    stripeEnabled,
-    hasSignupGrant,
-    hasOtherCredits,
-  });
-
-  useEffect(() => {
-    if (!open || !offerClaim) return;
-    closeBillingGate();
-    reopen();
-  }, [open, offerClaim, reopen]);
-
   return (
     <BillingGateDialog
-      open={open && !offerClaim}
+      open={open}
       onOpenChange={(next) => {
         if (!next) closeBillingGate();
       }}
       hasFalKey={data?.hasFalKey ?? false}
       stripeEnabled={data?.stripeEnabled ?? true}
-      reason={open && !offerClaim ? getBillingGateReason() : undefined}
+      reason={open ? getBillingGateReason() : undefined}
     />
   );
 };

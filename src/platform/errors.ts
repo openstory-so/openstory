@@ -61,15 +61,6 @@ export class ValidationError extends OpenStoryError {
   }
 }
 
-/** This Stripe card fingerprint already unlocked the welcome grant on another team. */
-export class WelcomeCardAlreadyClaimedError extends OpenStoryError {
-  constructor(
-    message: string = 'This card has already been used to claim welcome credits'
-  ) {
-    super(message, 'WELCOME_CARD_ALREADY_CLAIMED', 409);
-  }
-}
-
 export class AuthenticationError extends OpenStoryError {
   constructor(message: string, details?: Record<string, unknown>) {
     super(message, 'AUTHENTICATION_ERROR', 401, details);
@@ -141,10 +132,6 @@ export function errorCode(error: unknown): string | undefined {
 /** Is this OUR insufficient-credits failure? Callers gate the billing dialog on it. */
 export function isInsufficientCreditsError(error: unknown): boolean {
   return errorCode(error) === 'INSUFFICIENT_CREDITS';
-}
-
-export function isWelcomeCardAlreadyClaimedError(error: unknown): boolean {
-  return errorCode(error) === 'WELCOME_CARD_ALREADY_CLAIMED';
 }
 
 /**

@@ -55,17 +55,6 @@ function PricingPage() {
         <p className="mt-3 text-base leading-relaxed text-muted-foreground">
           Pay providers as you go. We show an estimate under each action before
           you spend.
-          {filmCosts?.welcomeCredits ? (
-            <>
-              {' '}
-              New accounts get{' '}
-              <span className="font-medium text-foreground tabular-nums">
-                {filmCosts.welcomeCredits}
-              </span>{' '}
-              free after saving a card (no charge) — enough for a typical 30s
-              short with motion and music.
-            </>
-          ) : null}
         </p>
       </header>
 

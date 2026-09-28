@@ -5,7 +5,6 @@ import { ActionCost } from '@/billing/ui/action-cost';
 import { useVoiceDesignAvailable } from '@/cast/ui/use-voice-design-available';
 import { useViaAvailability } from '@/models/ui/use-via-availability';
 import { DRAFT_FINAL_RESOLUTION } from '@/motion/draft-mode';
-import { useWelcomeCreditsGate } from '@/billing/ui/welcome-credits-dialog';
 import { PremiumCard } from '@/ui/cards/premium-card';
 import {
   ElementSelector,
@@ -1234,7 +1233,6 @@ export const ScriptView: FC<{
   // enhance nudge, billing gate, generation — continues without a second
   // click. Covers both the in-dialog OTP sign-in (no remount) and the OAuth
   // round-trip (fresh mount). Ref'd so the effect calls the fresh closure.
-  const { blocking: welcomeCreditsBlocking } = useWelcomeCreditsGate();
   const handleSubmitRef = useRef(handleSubmit);
   handleSubmitRef.current = handleSubmit;
   const handleEnhanceRef = useRef(handleEnhance);
@@ -1244,10 +1242,6 @@ export const ScriptView: FC<{
     if (isEditing || loading || !isAuthenticated) return;
     if (resumeTriedRef.current) return;
     if (!draftLoaded || !isReady || isSubmitting || isEnhancing) return;
-    // Let the welcome-credits moment finish first — its "Keep creating"
-    // dismiss is what hands the flow back to us, instead of the nudge
-    // stacking on top of the gift dialog.
-    if (welcomeCreditsBlocking) return;
     resumeTriedRef.current = true;
     const intent = takePendingIntent();
     if (intent === 'generate') void handleSubmitRef.current();
@@ -1260,7 +1254,6 @@ export const ScriptView: FC<{
     isReady,
     isSubmitting,
     isEnhancing,
-    welcomeCreditsBlocking,
   ]);
 
   const scriptValue = script ?? baseScript ?? '';

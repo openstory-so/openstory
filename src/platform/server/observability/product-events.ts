@@ -30,9 +30,7 @@ type ProductEventName =
   | 'auto_top_up_failed_email_sent'
   | 'studio_generation_started'
   | 'studio_generation_completed'
-  | 'sequence_content_ready'
-  | 'welcome_card_setup_opened'
-  | 'welcome_credits_granted';
+  | 'sequence_content_ready';
 
 export type CaptureProductEventArgs = {
   distinctId: string;

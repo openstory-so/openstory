@@ -4,32 +4,11 @@
  */
 
 import { getEnv } from '#env';
-import {
-  type Microdollars,
-  microsToDisplayUsd,
-  microsToUsd,
-  usdToMicros,
-} from './money';
+import { type Microdollars, microsToUsd, usdToMicros } from './money';
 
 /** Whether Stripe payment processing is available (checkout, webhooks, auto-top-up). */
 export function isStripeEnabled(): boolean {
   return !!getEnv().STRIPE_SECRET_KEY;
-}
-
-/**
- * Whether a new team gets the welcome grant in the user-create hook.
- *
- * Hosted Stripe pays on save-card / purchase, not at signup. e2e and
- * self-host (no Stripe key) still fund a first short at team create.
- * Gate is `E2E_TEST` or `!STRIPE_SECRET_KEY`, so CI stays funded even
- * when a Stripe key is in the env.
- */
-export function grantsWelcomeCreditsOnSignup(): boolean {
-  return getEnv().E2E_TEST === 'true' || !isStripeEnabled();
-}
-
-export function signupGrantIdempotencyKey(teamId: string): string {
-  return `signup-grant:${teamId}`;
 }
 
 /**
@@ -38,21 +17,6 @@ export function signupGrantIdempotencyKey(teamId: string): string {
  * each generation. Generations deduct wallet balance at lab rates.
  */
 export const PLATFORM_FEE_PERCENT = 0.07;
-
-/**
- * Welcome-grant amount in USD. Paid when a card is saved or a credit
- * purchase succeeds — not at team create, except e2e / self-host
- * (`grantsWelcomeCreditsOnSignup`). 0 still hides the dialog / signed-out
- * pill / pricing blurb (#1529).
- *
- * Must cover a typical first short with product defaults: Enhance 30s target
- * (~6 shots × 5s), stills + motion + music (Turbo: Nano Banana 2 Lite /
- * H3 Max / ElevenLabs). Guarded by the signup-grant test in
- * constants.test.ts.
- */
-const SIGNUP_GRANT_USD = 0;
-
-export const SIGNUP_GRANT_MICROS: Microdollars = usdToMicros(SIGNUP_GRANT_USD);
 
 /**
  * Rough cost of another default short, used in the ready-email balance line
@@ -149,81 +113,4 @@ export function splitCheckoutAmounts(creditAmountUsd: number): {
 export function totalCheckoutCents(creditAmountMicros: Microdollars): number {
   const { totalUsd } = splitCheckoutAmounts(microsToUsd(creditAmountMicros));
   return Math.round(totalUsd * 100);
-}
-
-type AddCredits = (
-  amountMicros: Microdollars,
-  opts: {
-    type?: 'credit_adjustment';
-    description?: string;
-    metadata?: Record<string, unknown>;
-    idempotencyKey?: string;
-  }
-) => Promise<{ newBalance: Microdollars; transactionId: string } | null>;
-
-/** Callers must pass `hasSignupGrant()` — pre-#1516 rows have no idempotency key. */
-export async function grantSignupCredits(opts: {
-  teamId: string;
-  addCredits: AddCredits;
-  alreadyGranted: boolean;
-}): Promise<{ granted: boolean; newBalance?: Microdollars }> {
-  if (SIGNUP_GRANT_MICROS <= 0) return { granted: false };
-  if (opts.alreadyGranted) return { granted: false };
-
-  const result = await opts.addCredits(SIGNUP_GRANT_MICROS, {
-    type: 'credit_adjustment',
-    description: `Welcome credit: ${microsToDisplayUsd(SIGNUP_GRANT_MICROS)}`,
-    idempotencyKey: signupGrantIdempotencyKey(opts.teamId),
-    metadata: { signupGrant: true, gatedByCard: true },
-  });
-
-  if (!result) return { granted: false };
-  return { granted: true, newBalance: result.newBalance };
-}
-
-export type WelcomeDialogMode = 'claim' | 'gift' | 'none';
-
-/**
- * Which welcome surface to show.
- *
- * - `claim`: Stripe on and the grant is unpaid (BYOK spend does not suppress this).
- * - `gift`: Stripe off, grant exists, unused.
- * - `none`: the team already holds credits the grant did not give it, Stripe
- *   on and already granted, or Stripe off and (spent or no grant).
- */
-export function welcomeDialogMode(input: {
-  stripeEnabled: boolean;
-  hasSignupGrant: boolean;
-  hasUsedCredits: boolean;
-  hasOtherCredits: boolean;
-}): WelcomeDialogMode {
-  if (input.hasOtherCredits) return 'none';
-  if (input.stripeEnabled) {
-    return input.hasSignupGrant ? 'none' : 'claim';
-  }
-  if (input.hasUsedCredits) return 'none';
-  if (input.hasSignupGrant) return 'gift';
-  return 'none';
-}
-
-/** Credits the welcome grant did not put there — seeded, bought, or
- *  adjusted. A team that already holds credits is never offered the
- *  welcome grant (gift or claim), whatever it has spent. */
-export function hasOtherCredits(
-  balance: Microdollars,
-  hasSignupGrant: boolean
-): boolean {
-  return balance > (hasSignupGrant ? SIGNUP_GRANT_MICROS : 0);
-}
-
-/** Hosted Stripe, grant unpaid, and the grant amount is on. Generate should
- *  reopen the claim dialog instead of the billing gate. */
-export function shouldOfferWelcomeClaim(input: {
-  stripeEnabled: boolean;
-  hasSignupGrant: boolean;
-  hasOtherCredits: boolean;
-}): boolean {
-  if (SIGNUP_GRANT_MICROS <= 0) return false;
-  if (input.hasOtherCredits) return false;
-  return input.stripeEnabled && !input.hasSignupGrant;
 }

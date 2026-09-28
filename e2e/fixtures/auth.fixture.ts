@@ -94,16 +94,6 @@ export async function authenticateUser(
 ): Promise<void> {
   const testOtp = '123456';
 
-  // Welcome-credits dialog (#1096) re-shows every 3h until the team has a
-  // credit_usage row. Fresh e2e users have none — pre-seed a recent dismiss
-  // so the modal never overlays the UI under test. storageState carries it
-  // into specs that reuse the shared session.
-  await page.addInitScript(() => {
-    localStorage.setItem(
-      'openstory:welcome-credits-dismissed-at',
-      String(Date.now())
-    );
-  });
   // Replay fal fixtures were recorded on Quality + Grok Imagine 2.0 /
   // MiniMax H3 Max. Turbo (Lite) is the product default.
   await pinRecordedPipelineSettings(page);

@@ -296,15 +296,13 @@ export function createAuth(db: ReturnType<typeof getDb> = getDb()) {
       user: {
         create: {
           after: async (user) => {
-            // Team + owner membership + one-time welcome credit (#1047; preflight
-            // fixed in #1062). The SQL lives in db/scoped so this file never
+            // Team + owner membership (#1047; preflight fixed in #1062). The SQL lives in db/scoped so this file never
             // writes a table directly.
             const team = await createDefaultTeam({
               userId: user.id,
               teamName: user.name
                 ? `${user.name}'s Team`
                 : `Team ${user.id.slice(0, 8)}`,
-              welcomeCredit: true,
             });
 
             // First-time account only — drives #product-alerts via PostHog (#1088).

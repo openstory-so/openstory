@@ -20,12 +20,6 @@ import {
   user,
 } from '@/platform/server/db/schema';
 import type { TeamMemberRole } from '@/platform/server/db/schema/teams';
-import {
-  grantsWelcomeCreditsOnSignup,
-  SIGNUP_GRANT_MICROS,
-  signupGrantIdempotencyKey,
-} from '@/billing/constants';
-import { microsToDisplayUsd } from '@/billing/money';
 import { createAdminMethods } from '@/platform/server/db/scoped/admin';
 import { createApiKeysMethods } from '@/models/server/db/api-keys';
 import { createBillingMethods } from '@/billing/server/db/billing';
@@ -322,12 +316,6 @@ export async function getSequenceByIdUnscoped(
 export async function createDefaultTeam(input: {
   userId: string;
   teamName: string;
-  /**
-   * Sign-up grant (#1047). Hosted Stripe grants on save-card / purchase
-   * (#1516); e2e and self-host (no Stripe) still fund a first short here. Off
-   * on the anonymous bootstrap path. A $0 grant writes no ledger row (#1529).
-   */
-  welcomeCredit?: boolean;
 }) {
   const db = getDb();
   const [team] = await db
@@ -343,21 +331,6 @@ export async function createDefaultTeam(input: {
     userId: input.userId,
     role: 'owner',
   });
-  if (
-    input.welcomeCredit &&
-    SIGNUP_GRANT_MICROS > 0 &&
-    grantsWelcomeCreditsOnSignup()
-  ) {
-    await createBillingMethods(db, team.id, input.userId).addCredits(
-      SIGNUP_GRANT_MICROS,
-      {
-        type: 'credit_adjustment',
-        description: `Welcome credit: ${microsToDisplayUsd(SIGNUP_GRANT_MICROS)}`,
-        idempotencyKey: signupGrantIdempotencyKey(team.id),
-        metadata: { signupGrant: true },
-      }
-    );
-  }
   return team;
 }
 

@@ -276,26 +276,6 @@ describe('getTransactionHistory (#1881)', () => {
   });
 });
 
-describe('hasUsedCredits (#1881)', () => {
-  it('is false until a credit_usage row exists, for this team only', async () => {
-    const billing = createBillingMethods(db, teamId, userId);
-    await billing.addCredits(micros(1_000_000), {
-      type: 'credit_adjustment',
-      description: 'seed',
-    });
-    expect(await billing.hasUsedCredits()).toBe(false);
-
-    await billing.deductCredits(micros(1_000_000));
-    expect(await billing.hasUsedCredits()).toBe(true);
-
-    const otherTeamId = generateId();
-    await db.insert(teams).values({ id: otherTeamId, name: 'O', slug: 'o' });
-    expect(
-      await createBillingMethods(db, otherTeamId, userId).hasUsedCredits()
-    ).toBe(false);
-  });
-});
-
 describe('getAvailable asOfMs (#1881)', () => {
   it('stamps each snapshot with the database clock, never going back', async () => {
     const billing = createBillingMethods(db, teamId, userId);

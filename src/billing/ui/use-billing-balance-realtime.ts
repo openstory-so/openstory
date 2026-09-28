@@ -12,8 +12,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { BILLING_BALANCE_KEY } from './use-billing-balance';
 import type { BillingBalanceData } from './use-billing-balance';
-import { hasOtherCredits } from '@/billing/constants';
-import { usdToMicros } from '@/billing/money';
 import { billingChannelId, realtimeSchema } from '@/platform/realtime';
 import type { BalanceUpdatedPayload } from '@/platform/realtime';
 import { useRealtime } from '@/platform/ui/realtime/client';
@@ -23,10 +21,8 @@ export const BILLING_TRANSACTIONS_KEY = ['billing-transactions'] as const;
 const balanceUpdatedSchema = realtimeSchema.billing['balance:updated'];
 
 /**
- * Apply one event to the cached balance. `refetch` is true when the event
- * leaves something unknown: a purchase / refund / adjustment (may change
- * `hasSignupGrant`), or a team whose first usage may have been coalesced
- * away before it arrived. An event older than the cache is dropped by the
+ * Apply one event to the cached balance. `refetch` is true only when
+ * nothing is cached yet. An event older than the cache is dropped by the
  * query's `keepNewestBalance`.
  */
 export function applyBalanceEvent(
@@ -34,22 +30,11 @@ export function applyBalanceEvent(
   event: BalanceUpdatedPayload
 ): { next: BillingBalanceData | undefined; refetch: boolean } {
   if (!prev) return { next: prev, refetch: true };
-  const { balanceUsd, availableUsd, reservedUsd, asOfMs, type } = event;
-  const next: BillingBalanceData = {
-    ...prev,
-    balance: balanceUsd,
-    availableUsd,
-    reservedUsd,
-    asOfMs,
-    hasUsedCredits: prev.hasUsedCredits || type === 'credit_usage',
-    hasOtherCredits: hasOtherCredits(
-      usdToMicros(balanceUsd),
-      prev.hasSignupGrant
-    ),
+  const { balanceUsd, availableUsd, reservedUsd, asOfMs } = event;
+  return {
+    next: { ...prev, balance: balanceUsd, availableUsd, reservedUsd, asOfMs },
+    refetch: false,
   };
-  const refetch =
-    (type !== undefined && type !== 'credit_usage') || !next.hasUsedCredits;
-  return { next, refetch };
 }
 
 /**

@@ -47,11 +47,6 @@ function peek(): PendingIntent | null {
   }
 }
 
-/** Non-consuming peek — welcome-credits CTA without eating the intent. */
-export function hasPendingGenerate(): boolean {
-  return peek() != null;
-}
-
 /** Read-and-clear. The action to resume, or null if nothing fresh is stored. */
 export function takePendingIntent(): PendingIntent | null {
   const action = peek();

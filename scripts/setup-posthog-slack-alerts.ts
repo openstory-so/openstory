@@ -372,28 +372,6 @@ function specs(): DestinationSpec[] {
       ),
     },
     {
-      name: `Product · welcome_card_setup_opened · ${PRODUCT_CHANNEL} (#1667)`,
-      type: 'destination',
-      event: 'welcome_card_setup_opened',
-      channel: PRODUCT_CHANNEL,
-      text: 'Adding a card: {person.properties.email ?? event.distinct_id}',
-      blocks: productBlocks(
-        '💳 Adding a card',
-        '*{person.properties.email ?? event.distinct_id}* opened Stripe to save a payment method'
-      ),
-    },
-    {
-      name: `Product · welcome_credits_granted · ${PRODUCT_CHANNEL} (#1667)`,
-      type: 'destination',
-      event: 'welcome_credits_granted',
-      channel: PRODUCT_CHANNEL,
-      text: 'Welcome credits: {person.properties.email ?? event.distinct_id}',
-      blocks: productBlocks(
-        '🎁 Welcome credits',
-        '*{person.properties.email ?? event.distinct_id}* saved a card and received {event.properties.amount_usd} USD ({event.properties.source})'
-      ),
-    },
-    {
       name: `Product · checkout_completed · ${PRODUCT_CHANNEL} (#1856)`,
       type: 'destination',
       event: 'checkout_completed',

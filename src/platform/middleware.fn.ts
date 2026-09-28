@@ -98,8 +98,6 @@ export const EXPECTED_REJECTION_CODES = new Set([
   // Upload-rights gate (#1581): the client is supposed to attest first; a
   // miss is a 400 the user can complete, not a fault.
   'ATTESTATION_REQUIRED',
-  // Same Stripe card already unlocked the welcome grant on another team.
-  'WELCOME_CARD_ALREADY_CLAIMED',
 ]);
 const serverFnLogger = getLogger(['openstory', 'serverFn']);
 

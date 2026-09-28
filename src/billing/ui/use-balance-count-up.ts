@@ -1,11 +1,10 @@
 /**
- * Counts the sidebar balance up when a gift lands (#1668) — the welcome grant
- * after a card is saved.
+ * Counts the sidebar balance up when a gain is announced (#1668).
  *
  * The gain is announced, not inferred from the balance moving: available
- * balance also rises whenever a reservation is released, and the grant can
- * reach the cache before or after the claim call returns (webhook, realtime
- * push, refetch). Counting up TO the live balance is right in every order.
+ * balance also rises whenever a reservation is released, and the credit can
+ * reach the cache before or after the announcing call returns (webhook,
+ * realtime push, refetch). Counting up TO the live balance is right in every order.
  */
 
 import { triggerBalanceFlash } from '@/billing/ui/use-balance-flash';

@@ -32,7 +32,6 @@ import {
   estimateStoryboardCost,
 } from '@/billing/cost-estimation';
 import { microsToDisplayUsd, type Microdollars } from '@/billing/money';
-import { SIGNUP_GRANT_MICROS } from '@/billing/constants';
 
 /**
  * Composer default target duration (`script-view` duration chip: 15 / 30 / 60 / 120 / 180 / 300).
@@ -58,8 +57,6 @@ type FilmCostExample = {
 
 export type FilmCostExamples = {
   examples: FilmCostExample[];
-  /** e.g. "$20.00" — from SIGNUP_GRANT_MICROS; null when free credits are off (#1529). */
-  welcomeCredits: string | null;
   imageModelName: string;
   videoModelName: string;
   audioModelName: string;
@@ -140,8 +137,6 @@ export function buildFilmCostExamples(
   const locationSheets = estimateLocationSheetCount(TYPICAL_SCENE_COUNT);
 
   return {
-    welcomeCredits:
-      SIGNUP_GRANT_MICROS > 0 ? microsToDisplayUsd(SIGNUP_GRANT_MICROS) : null,
     imageModelName: imageName,
     videoModelName: videoName,
     audioModelName: audioName,

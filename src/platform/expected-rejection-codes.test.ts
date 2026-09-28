@@ -10,8 +10,5 @@ describe('EXPECTED_REJECTION_CODES', () => {
     expect(EXPECTED_REJECTION_CODES.has('VALIDATION_ERROR')).toBe(true);
     expect(EXPECTED_REJECTION_CODES.has('NOT_FOUND')).toBe(true);
     expect(EXPECTED_REJECTION_CODES.has('ATTESTATION_REQUIRED')).toBe(true);
-    expect(EXPECTED_REJECTION_CODES.has('WELCOME_CARD_ALREADY_CLAIMED')).toBe(
-      true
-    );
   });
 });

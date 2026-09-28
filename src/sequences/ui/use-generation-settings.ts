@@ -104,7 +104,7 @@ const DEFAULT_SETTINGS: GenerationSettings = withMode({
   motionModel: TURBO_DEFAULT_VIDEO,
   videoModels: [TURBO_DEFAULT_VIDEO],
   // Motion + music on by default so the first Generate is a short film aha
-  // (welcome grant sized for a ~30s stills+motion+music board — #1140).
+  // (#1140).
   stopAt: DEFAULT_GENERATION_STOP_AT,
   rememberStopAt: false,
   // Off by default: a new sequence renders reference-only; start frames are

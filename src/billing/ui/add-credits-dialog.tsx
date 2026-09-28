@@ -1,7 +1,7 @@
 /**
  * Add Credits Dialog (#1099)
  * OpenAI-style "Add to credit balance" modal — the in-app purchase surface.
- * (Credits also arrive via gift codes, the signup grant, founder grants, and
+ * (Credits also arrive via gift codes, founder grants, and
  * auto-top-up.) A saved card is charged in place; "+ Add payment method" (or
  * having no saved card) falls back to Stripe Checkout — card, Alipay or WeChat
  * Pay (#1537); a card is saved for next time. Globally mounted in AppLayout,

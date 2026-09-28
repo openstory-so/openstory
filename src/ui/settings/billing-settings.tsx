@@ -346,8 +346,7 @@ export function BillingSettings({
                 <Skeleton className="h-5 w-64" />
               ) : !balanceData?.hasPaymentMethod ? (
                 <p className="text-sm text-muted-foreground">
-                  Save a card (no charge) or make a purchase to enable
-                  auto-reload.
+                  Make a purchase to enable auto-reload.
                 </p>
               ) : balanceData.autoTopUp.enabled ? (
                 <p className="text-sm text-muted-foreground tabular-nums">

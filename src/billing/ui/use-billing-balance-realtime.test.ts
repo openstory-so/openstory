@@ -16,9 +16,6 @@ const prev: Prev = {
   reservedUsd: 2,
   asOfMs: 1_000,
   stripeEnabled: true,
-  hasUsedCredits: true,
-  hasSignupGrant: false,
-  hasOtherCredits: true,
   autoTopUp: {
     enabled: false,
     thresholdUsd: null,
@@ -40,7 +37,7 @@ const usage = {
 };
 
 describe('applyBalanceEvent (#1881)', () => {
-  it('settles a full usage event without a refetch', () => {
+  it('settles an event without a refetch', () => {
     const { next, refetch } = applyBalanceEvent(prev, usage);
     expect(refetch).toBe(false);
     expect(next).toMatchObject({
@@ -49,47 +46,6 @@ describe('applyBalanceEvent (#1881)', () => {
       reservedUsd: 2,
       asOfMs: 2_000,
     });
-  });
-
-  it('settles a hold-only snapshot without a refetch', () => {
-    const { transactionId: _, type: __, ...hold } = usage;
-    expect(applyBalanceEvent(prev, hold).refetch).toBe(false);
-  });
-
-  it('flips hasUsedCredits on the first usage and settles it', () => {
-    const { next, refetch } = applyBalanceEvent(
-      { ...prev, hasUsedCredits: false },
-      usage
-    );
-    expect(next?.hasUsedCredits).toBe(true);
-    expect(refetch).toBe(false);
-  });
-
-  it('refetches while the first usage has not been seen', () => {
-    const { transactionId: _, type: __, ...hold } = usage;
-    expect(
-      applyBalanceEvent({ ...prev, hasUsedCredits: false }, hold).refetch
-    ).toBe(true);
-  });
-
-  it('refetches on a purchase, refund, or adjustment', () => {
-    for (const type of [
-      'credit_purchase',
-      'credit_refund',
-      'credit_adjustment',
-    ] as const) {
-      expect(applyBalanceEvent(prev, { ...usage, type }).refetch).toBe(true);
-    }
-  });
-
-  it('recomputes hasOtherCredits from the new balance', () => {
-    const { next } = applyBalanceEvent(prev, {
-      ...usage,
-      balanceUsd: 0,
-      availableUsd: 0,
-      reservedUsd: 0,
-    });
-    expect(next?.hasOtherCredits).toBe(false);
   });
 
   it('refetches when nothing is cached', () => {
