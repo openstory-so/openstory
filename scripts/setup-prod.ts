@@ -1045,15 +1045,15 @@ export async function runProdSetup(mode: ProdSetupMode) {
     process.exit(0);
   });
 
-  function checkCancel<T>(value: T | symbol): T {
-    // isCancel is `value is typeof CANCEL_SYMBOL` (a unique symbol), which
-    // does not exclude the rest of `symbol` from `T | symbol`.
+  function checkCancel<T>(value: T): Exclude<T, symbol> {
+    // @clack/prompts >=1.8.1 types a cancel as `T | unique symbol`, which a
+    // `T | symbol` parameter infers straight into T; exclude it explicitly.
     if (p.isCancel(value) || typeof value === 'symbol') {
       saveProgress();
       p.cancel(`Setup cancelled. Progress saved to ${ENV_FILENAME}`);
       process.exit(0);
     }
-    return value;
+    return value as Exclude<T, symbol>;
   }
 
   // --pr-preview: push secrets to GitHub staging environment for PR previews
