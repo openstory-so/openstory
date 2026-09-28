@@ -233,6 +233,30 @@ describe('hasUsedCredits (#1881)', () => {
   });
 });
 
+describe('getAvailable asOfMs (#1881)', () => {
+  it('stamps each snapshot with the database clock, never going back', async () => {
+    const billing = createBillingMethods(db, teamId, userId);
+    const first = await billing.getAvailable();
+    await billing.deductCredits(micros(1_000_000));
+    const second = await billing.getAvailable();
+    expect(first.asOfMs).toBeGreaterThan(Date.UTC(2020, 0, 1));
+    expect(second.asOfMs).toBeGreaterThanOrEqual(first.asOfMs);
+    expect(second.balance).toBe(STARTING_BALANCE - 1_000_000);
+  });
+
+  it('reads a team with no credits row as zero', async () => {
+    const otherTeamId = generateId();
+    await db.insert(teams).values({ id: otherTeamId, name: 'O', slug: 'o' });
+    const funds = await createBillingMethods(
+      db,
+      otherTeamId,
+      userId
+    ).getAvailable();
+    expect(funds.balance).toBe(0);
+    expect(funds.available).toBe(0);
+  });
+});
+
 describe('createReservation / captureReservation / zeroReservation (#1310)', () => {
   const cost = micros(1_000_000); // $1
 

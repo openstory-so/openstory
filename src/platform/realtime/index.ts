@@ -56,13 +56,15 @@ export const realtimeSchema = {
       teamId: z.string(),
       /** Posted ledger balance in USD. */
       balanceUsd: z.number(),
-      /**
-       * Spendable funds (posted minus unexpired holds). Additive so old
-       * clients keep using `balanceUsd` (#1310).
-       */
-      availableUsd: z.number().optional(),
+      /** Spendable funds (posted minus unexpired holds, #1310). */
+      availableUsd: z.number(),
       /** Sum of unexpired reservation remaining. */
-      reservedUsd: z.number().optional(),
+      reservedUsd: z.number(),
+      /**
+       * D1 clock (ms) when the snapshot was read. Events can arrive out of
+       * order; the client keeps the newest snapshot (#1881).
+       */
+      asOfMs: z.number(),
       /** Signed ledger amount in USD (negative for usage, positive for top-ups). */
       amountUsd: z.number(),
       /** Absent on hold-only snapshots (create/grow/zero). */

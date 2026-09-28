@@ -99,6 +99,7 @@ describe('billing.balance:updated emit (#1090)', () => {
       balanceUsd: 99,
       availableUsd: 99,
       reservedUsd: 0,
+      asOfMs: expect.any(Number),
       amountUsd: -1,
       transactionId: result.transactionId,
       type: 'credit_usage',
@@ -136,6 +137,7 @@ describe('billing.balance:updated emit (#1090)', () => {
       balanceUsd: 105,
       availableUsd: 105,
       reservedUsd: 0,
+      asOfMs: expect.any(Number),
       amountUsd: 5,
       transactionId: result.transactionId,
       type: 'credit_purchase',
@@ -156,6 +158,7 @@ describe('billing.balance:updated emit (#1090)', () => {
       balanceUsd: 100,
       availableUsd: 90,
       reservedUsd: 10,
+      asOfMs: expect.any(Number),
       amountUsd: 0,
     });
 
@@ -185,6 +188,7 @@ describe('billing.balance:updated emit (#1090)', () => {
       balanceUsd: 100,
       availableUsd: 100,
       reservedUsd: 0,
+      asOfMs: expect.any(Number),
       amountUsd: 0,
     });
   });

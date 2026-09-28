@@ -462,6 +462,7 @@ export const getBillingBalanceFn = createServerFn({ method: 'GET' })
       balance: microsToUsd(funds.balance),
       availableUsd: microsToUsd(funds.available),
       reservedUsd: microsToUsd(funds.reserved),
+      asOfMs: funds.asOfMs,
       stripeEnabled: isStripeEnabled(),
       hasUsedCredits,
       hasSignupGrant,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { applyBalanceEvent } from './use-billing-balance-realtime';
+import { keepNewestBalance } from './use-billing-balance';
 
 type Prev = NonNullable<Parameters<typeof applyBalanceEvent>[0]>;
 
@@ -8,6 +9,7 @@ const prev: Prev = {
   balance: 10,
   availableUsd: 8,
   reservedUsd: 2,
+  asOfMs: 1_000,
   stripeEnabled: true,
   hasUsedCredits: true,
   hasSignupGrant: false,
@@ -26,6 +28,7 @@ const usage = {
   balanceUsd: 9,
   availableUsd: 7,
   reservedUsd: 2,
+  asOfMs: 2_000,
   amountUsd: -1,
   transactionId: 'tx_1',
   type: 'credit_usage' as const,
@@ -35,7 +38,12 @@ describe('applyBalanceEvent (#1881)', () => {
   it('settles a full usage event without a refetch', () => {
     const { next, refetch } = applyBalanceEvent(prev, usage);
     expect(refetch).toBe(false);
-    expect(next).toMatchObject({ balance: 9, availableUsd: 7, reservedUsd: 2 });
+    expect(next).toMatchObject({
+      balance: 9,
+      availableUsd: 7,
+      reservedUsd: 2,
+      asOfMs: 2_000,
+    });
   });
 
   it('settles a hold-only snapshot without a refetch', () => {
@@ -57,11 +65,6 @@ describe('applyBalanceEvent (#1881)', () => {
     expect(
       applyBalanceEvent({ ...prev, hasUsedCredits: false }, hold).refetch
     ).toBe(true);
-  });
-
-  it('refetches when the hold fields are missing', () => {
-    const { availableUsd: _, reservedUsd: __, ...old } = usage;
-    expect(applyBalanceEvent(prev, old).refetch).toBe(true);
   });
 
   it('refetches on a purchase, refund, or adjustment', () => {
@@ -89,5 +92,21 @@ describe('applyBalanceEvent (#1881)', () => {
       next: undefined,
       refetch: true,
     });
+  });
+});
+
+describe('keepNewestBalance (#1881)', () => {
+  it('keeps the cache when an older snapshot lands', () => {
+    const newer = { ...prev, balance: 7, asOfMs: 3_000 };
+    expect(keepNewestBalance(newer, prev)).toBe(newer);
+  });
+
+  it('takes a newer snapshot', () => {
+    const newer = { ...prev, balance: 7, asOfMs: 3_000 };
+    expect(keepNewestBalance(prev, newer)).toEqual(newer);
+  });
+
+  it('takes the first snapshot', () => {
+    expect(keepNewestBalance(undefined, prev)).toEqual(prev);
   });
 });

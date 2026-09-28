@@ -11,8 +11,8 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { BILLING_BALANCE_KEY } from './use-billing-balance';
+import type { BillingBalanceData } from './use-billing-balance';
 import { hasOtherCredits } from '@/billing/constants';
-import type { getBillingBalanceFn } from '@/billing/billing.fn';
 import { usdToMicros } from '@/billing/money';
 import { billingChannelId } from '@/platform/realtime';
 import type { BalanceUpdatedPayload } from '@/platform/realtime';
@@ -20,25 +20,25 @@ import { useRealtime } from '@/platform/ui/realtime/client';
 
 export const BILLING_TRANSACTIONS_KEY = ['billing-transactions'] as const;
 
-type BalanceQueryData = Awaited<ReturnType<typeof getBillingBalanceFn>>;
-
 /**
  * Apply one event to the cached balance. `refetch` is true when the event
- * leaves something unknown: an old payload without the hold fields, a
- * purchase / refund / adjustment (may change `hasSignupGrant`), or a team
- * whose first usage may have been coalesced away before it arrived.
+ * leaves something unknown: a purchase / refund / adjustment (may change
+ * `hasSignupGrant`), or a team whose first usage may have been coalesced
+ * away before it arrived. An event older than the cache is dropped by the
+ * query's `keepNewestBalance`.
  */
 export function applyBalanceEvent(
-  prev: BalanceQueryData | undefined,
+  prev: BillingBalanceData | undefined,
   event: BalanceUpdatedPayload
-): { next: BalanceQueryData | undefined; refetch: boolean } {
+): { next: BillingBalanceData | undefined; refetch: boolean } {
   if (!prev) return { next: prev, refetch: true };
-  const { balanceUsd, availableUsd, reservedUsd, type } = event;
-  const next: BalanceQueryData = {
+  const { balanceUsd, availableUsd, reservedUsd, asOfMs, type } = event;
+  const next: BillingBalanceData = {
     ...prev,
     balance: balanceUsd,
-    availableUsd: availableUsd ?? prev.availableUsd,
-    reservedUsd: reservedUsd ?? prev.reservedUsd,
+    availableUsd,
+    reservedUsd,
+    asOfMs,
     hasUsedCredits: prev.hasUsedCredits || type === 'credit_usage',
     hasOtherCredits: hasOtherCredits(
       usdToMicros(balanceUsd),
@@ -46,10 +46,7 @@ export function applyBalanceEvent(
     ),
   };
   const refetch =
-    availableUsd === undefined ||
-    reservedUsd === undefined ||
-    (type !== undefined && type !== 'credit_usage') ||
-    !next.hasUsedCredits;
+    (type !== undefined && type !== 'credit_usage') || !next.hasUsedCredits;
   return { next, refetch };
 }
 
@@ -69,11 +66,11 @@ export function useBillingBalanceRealtime(
       data: BalanceUpdatedPayload;
     }) => {
       const { next, refetch } = applyBalanceEvent(
-        queryClient.getQueryData<BalanceQueryData>([...BILLING_BALANCE_KEY]),
+        queryClient.getQueryData<BillingBalanceData>([...BILLING_BALANCE_KEY]),
         msg.data
       );
       if (next) {
-        queryClient.setQueryData<BalanceQueryData>(
+        queryClient.setQueryData<BillingBalanceData>(
           [...BILLING_BALANCE_KEY],
           next
         );
