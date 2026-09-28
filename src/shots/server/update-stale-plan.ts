@@ -89,6 +89,7 @@ import { NotFoundError } from '@/platform/errors';
 import type { PlanUnitKind, PlanUnitRef } from '@/sequences/generation-plan';
 import { resolveSceneShotImageReferences } from '@/cast/server/workflows/sheet-snapshots';
 import { buildRegenerateShotSnapshot } from '@/shots/server/workflows/regenerate-shots-snapshot';
+import { pendingVoiceId } from './pending-voices';
 import {
   buildPlanReferences,
   type PlanReferences,
@@ -484,11 +485,17 @@ export async function computePlan(args: {
       : Promise.resolve(null),
     scopedDb.characters.list(sequenceId),
   ]);
-  const characterVoices = voiceRows.flatMap((row) =>
-    row.voiceId
-      ? [{ name: row.name, voiceId: row.voiceId, voiceOnly: row.voiceOnly }]
-      : []
-  );
+  // A voice this run designs (#1818) speaks under a placeholder until the
+  // references wave lands it — `bindPendingVoices`.
+  const owedVoiceIds = new Set(references?.voices.map((v) => v.characterDbId));
+  const characterVoices = voiceRows.flatMap((row) => {
+    const voiceId = owedVoiceIds.has(row.id)
+      ? pendingVoiceId(row.id)
+      : row.voiceId;
+    return voiceId
+      ? [{ name: row.name, voiceId, voiceOnly: row.voiceOnly }]
+      : [];
+  });
   const anchorsByShot = new Map(anchorRows.map((f) => [f.shotId, f]));
   // Stills live on the selected `frame_variants` rows (#1067) — one batch read
   // so the per-shot loop below stays query-free on the image surface.

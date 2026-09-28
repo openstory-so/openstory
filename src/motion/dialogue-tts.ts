@@ -294,6 +294,13 @@ export function dialogueTtsToken(character: string, index: number): string {
   return `${slug || 'VOICE'}_L${index + 1}`;
 }
 
+/** The model a voice records with: Seed voices on Seed Audio, the rest on ElevenLabs. */
+export function ttsModelForVoice(voiceId: string): string {
+  return voiceProviderOf(voiceId) === 'seed'
+    ? SEED_AUDIO_MODEL
+    : DIALOGUE_TTS_MODEL;
+}
+
 /**
  * Dialogue lines whose speaker has a designed ElevenLabs voice and no
  * user-bound audio element (`voiceToken`). Those elements already ride as
@@ -324,10 +331,7 @@ export function voicedDialogueLines(
       voiceId: match.voiceId,
       text,
       tone: line.tone ?? '',
-      ttsModel:
-        voiceProviderOf(match.voiceId) === 'seed'
-          ? SEED_AUDIO_MODEL
-          : DIALOGUE_TTS_MODEL,
+      ttsModel: ttsModelForVoice(match.voiceId),
       character: line.character,
     });
   });
