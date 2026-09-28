@@ -2,6 +2,7 @@ import { ScenePlayer } from '@/motion/ui/scene-player';
 import { theatreDraftLabel } from '@/motion/draft-mode';
 import { CanvasMediaStage } from './canvas-media-stage';
 import { ShotDialogueUnderVideo } from './shot-dialogue-readings';
+import { SequenceDialogueLines } from './sequence-dialogue-lines';
 import { ShotMediaDropZone } from './shot-media-drop-zone';
 import { StartingFrameVariants } from './starting-frame-variants';
 import { SequenceDownloadMenu } from './sequence-export-actions';
@@ -61,6 +62,8 @@ type SceneCanvasProps = {
   onAutoPlayConsumed?: () => void;
   /** The shot under the sequence player's playhead (#1771). */
   onPlayingShot?: (shotId: string | undefined) => void;
+  /** The shot under the sequence player's playhead — its lines are marked. */
+  playingShotId?: string;
 };
 
 export const SceneCanvas: React.FC<SceneCanvasProps> = ({
@@ -86,6 +89,7 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
   autoPlay = false,
   onAutoPlayConsumed,
   onPlayingShot,
+  playingShotId,
 }) => {
   const scope = selectionScope(selection);
   const scopedShots = useMemo(
@@ -207,7 +211,16 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
   }
 
   return (
-    <CanvasMediaStage aspectRatio={aspectRatio}>
+    <CanvasMediaStage
+      aspectRatio={aspectRatio}
+      below={
+        <SequenceDialogueLines
+          shots={scopedShots}
+          scenes={scenes}
+          playingShotId={playingShotId}
+        />
+      }
+    >
       <SequencePlayer
         clips={playbackClips}
         musicUrl={scope === 'sequence' ? (sequence.musicUrl ?? null) : null}

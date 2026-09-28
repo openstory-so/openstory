@@ -453,7 +453,10 @@ in References; motion just does not bind it.
 source (Generated / Video model / an audio element — a write of the lines,
 so it needs no motion prompt), readings, history and a Record button beside
 each voiced line are all in `ShotDialogueUnderVideo`; the Video tab has none
-of it.
+of it. With a sequence or scenes on the canvas, `SequenceDialogueLines` lists
+every line read-only by scene and marks the playhead's shot; each scene's
+Play dialogue plays its shots' `audioClips` back to back. Per shot, not per
+word — no word timings are stored.
 
 **A line at the mic (#1802).** Record beside a line under the shot's video
 records it in the browser, plays it back, and on "Use"

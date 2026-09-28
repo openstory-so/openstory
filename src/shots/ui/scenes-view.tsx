@@ -1685,6 +1685,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                     autoPlay={autoPlaySequence}
                     onAutoPlayConsumed={handleAutoPlayConsumed}
                     onPlayingShot={setPlayheadShotId}
+                    playingShotId={playingShotId}
                     selection={selection}
                     shots={shots}
                     scenes={scenes}
