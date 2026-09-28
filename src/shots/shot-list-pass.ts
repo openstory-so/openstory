@@ -456,7 +456,7 @@ export function buildSceneWithShots(
       characterTags: scene.continuity.characterTags,
       environmentTag: scene.continuity.environmentTag,
       elementTags: scene.continuity.elementTags ?? [],
-      colorPalette: scene.continuity.colorPalette,
+      colorPalette: scene.continuity.colorPalette ?? '',
       lightingSetup: scene.continuity.lightingSetup,
       styleTag: scene.continuity.styleTag,
     },

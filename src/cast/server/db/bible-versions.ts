@@ -76,9 +76,6 @@ export const locationBibleColumns = {
   type: sql<
     string | null
   >`${live(lbv.id, lbv.type, sequenceLocations.legacyType)}`,
-  timeOfDay: sql<
-    string | null
-  >`${live(lbv.id, lbv.timeOfDay, sequenceLocations.legacyTimeOfDay)}`,
   description: sql<
     string | null
   >`${live(lbv.id, lbv.description, sequenceLocations.legacyDescription)}`,
@@ -88,12 +85,6 @@ export const locationBibleColumns = {
   keyFeatures: sql<
     string | null
   >`${live(lbv.id, lbv.keyFeatures, sequenceLocations.legacyKeyFeatures)}`,
-  colorPalette: sql<
-    string | null
-  >`${live(lbv.id, lbv.colorPalette, sequenceLocations.legacyColorPalette)}`,
-  lightingSetup: sql<
-    string | null
-  >`${live(lbv.id, lbv.lightingSetup, sequenceLocations.legacyLightingSetup)}`,
   ambiance: sql<
     string | null
   >`${live(lbv.id, lbv.ambiance, sequenceLocations.legacyAmbiance)}`,
@@ -122,12 +113,9 @@ export const pickCharacterBible = (c: CharacterBible): CharacterBible => ({
 export const pickLocationBible = (l: LocationBible): LocationBible => ({
   name: l.name,
   type: l.type,
-  timeOfDay: l.timeOfDay,
   description: l.description,
   architecturalStyle: l.architecturalStyle,
   keyFeatures: l.keyFeatures,
-  colorPalette: l.colorPalette,
-  lightingSetup: l.lightingSetup,
   ambiance: l.ambiance,
   consistencyTag: l.consistencyTag,
 });

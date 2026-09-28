@@ -224,7 +224,6 @@ export const SceneLocationTab: React.FC<SceneLocationTabProps> = ({
           <dl className="space-y-3">
             <DetailRow label="Description" value={shotLocation.description} />
             <div className="grid grid-cols-2 gap-3">
-              <DetailRow label="Time of Day" value={shotLocation.timeOfDay} />
               <DetailRow
                 label="Architectural Style"
                 value={shotLocation.architecturalStyle}

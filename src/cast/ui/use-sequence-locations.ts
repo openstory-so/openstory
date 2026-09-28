@@ -122,12 +122,9 @@ export function useShotIdsForLocation(sequenceId: string, locationId: string) {
 /** Editable bible fields; `''` clears a nullable field server-side. */
 type LocationBibleInput = {
   type?: 'interior' | 'exterior' | 'both';
-  timeOfDay?: string;
   description?: string;
   architecturalStyle?: string;
   keyFeatures?: string;
-  colorPalette?: string;
-  lightingSetup?: string;
   ambiance?: string;
 };
 

@@ -394,7 +394,7 @@ describe('sequence location claims', () => {
     });
     await locs().updateBible(
       locationId,
-      { lightingSetup: 'neon' },
+      { keyFeatures: 'neon sign' },
       { actorId: userId }
     );
     expect(await landLocation(second)).toBe('parked');

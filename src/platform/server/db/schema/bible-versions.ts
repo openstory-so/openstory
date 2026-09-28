@@ -130,12 +130,9 @@ export const CHARACTER_BIBLE_FIELDS = [
 export const LOCATION_BIBLE_FIELDS = [
   'name',
   'type',
-  'timeOfDay',
   'description',
   'architecturalStyle',
   'keyFeatures',
-  'colorPalette',
-  'lightingSetup',
   'ambiance',
   'consistencyTag',
 ] as const satisfies readonly (keyof LocationBibleVersion)[];

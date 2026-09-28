@@ -25,7 +25,7 @@ const REMOTE_LOCATION_GUIDANCE = `## Remote conversations: physical locations
 A video call is a connection between places, not a physical location. Even under one heading such as "INT. VIDEO CALL", create a separate location bible entry for each visible participant joining from a different place. This applies to two-person calls and groups, including participants who join later.
 - Preserve explicitly shared rooms: two people using the same camera in the same room share one location. Do not create one location per person when they are physically together.
 - If remote participants' rooms are unspecified, design a modest, concrete background for each separate feed. Name an inferred location after its participant (e.g., "Nora's study", "Finn's kitchen") instead of naming every room "Office". Keep the participant's name in the description so ownership is unambiguous.
-- Give each room its own stable locationId and consistencyTag, layout, wall colors, furniture, fixed background objects, and lighting. Reuse that entry on every return to its participant; do not merge different people's rooms just because both are offices or appear in the same call.
+- Give each room its own stable locationId and consistencyTag, layout, wall colors, furniture, fixed background objects, and practical light fixtures. Reuse that entry on every return to its participant; do not merge different people's rooms just because both are offices or appear in the same call.
 - Describe the actual room behind the participant. Do not substitute a call interface, participant grid, screen borders, or a generic virtual meeting space for the physical locations. A shared virtual backdrop does not make remote callers physically co-located.
 - For inferred rooms, firstMention still quotes real script text at the participant's first visible appearance; never fabricate a slugline or quote. An audio-only participant whose surroundings are never shown does not need an invented location.`;
 
@@ -503,12 +503,12 @@ Your task is to analyze scripts and identify all unique locations, building a co
 For each location:
 1. Extract the location name exactly as written (e.g., "INT. OFFICE - DAY")
 2. Determine if it's interior, exterior, or both
-3. Identify the typical time of day
+3. Describe the permanent place, independent of time of day
 4. Provide detailed visual descriptions including:
    - Architectural style and design aesthetic
    - Key visual features that define the space
-   - Color palette and dominant colors
-   - Lighting characteristics
+   - Materials and surface colours in the description
+   - Fixed practical light fixtures (lamps, signs), never scene lighting
    - Mood and ambiance
 5. Create a short consistency tag for image generation
 
@@ -531,7 +531,7 @@ For each unique location that appears:
 2. Provide COMPLETE visual descriptions for visual consistency
 3. Include architectural style and design details
 4. Identify key visual features that define the location
-5. Specify the color palette and lighting setup
+5. Describe materials and surface colours, and fixed lamps/signs as features. Do not assign time of day, scene lighting or a palette
 6. Create a short consistency_tag for quick reference (e.g., "office_modern_steel_glass")
 
 Notes:
@@ -1091,12 +1091,11 @@ Track first mentions:
 Build a complete location bible. For each unique location:
 - Name as written in the script (e.g., "INT. OFFICE - DAY")
 - Type: interior, exterior, or both
-- Time of day: day, night, dusk, dawn, etc.
 - Description: detailed visual description including layout, size, atmosphere
 - Architectural style and design aesthetic
 - Key visual features that define the space
-- Color palette and dominant colors
-- Lighting characteristics
+- Materials and surface colours in the description
+- Fixed light fixtures as physical features; render the sheet in neutral, even light
 - Mood and ambiance
 - consistencyTag — HARD FORMAT CONTRACT: snake_case, starting with the core location name ("office_modern_steel_glass")
 - firstMention: { text, lineNumber } — the exact script text and gutter line where the location first appears
@@ -1156,7 +1155,7 @@ For each unique location:
 1. Provide COMPLETE visual descriptions for visual consistency
 2. Include architectural style and design details
 3. Identify key visual features that define the location
-4. Specify the color palette and lighting setup
+4. Describe materials and surface colours, and fixed lamps/signs as features. Do not assign time of day, scene lighting or a palette
 5. Create a consistencyTag starting with the core location name
 
 Respond with ONLY valid JSON matching the schema.`,
@@ -1248,7 +1247,7 @@ Use each character's full name exactly as written in <CHARACTER_BIBLE>, in CAPS,
 Include an element from <ELEMENT_BIBLE> only if it is on camera at this instant, not merely spoken about. Bind it by role noun then token in parentheses, e.g. "holding the product from (HERO_PRODUCT)", "the screen shows (BONDI_SCREEN)". Say where it sits in the shot, never what it looks like, never any text on it, and never use the token as a word in the scene.
 
 ### HARD RULES
-No text, signs or subtitles. No holograms or floating UI. One coherent frame. Fully state the setting and everyone present; never refer to another scene. Apply <DIRECTOR_STYLE> to lens, stock and palette; compose for <ASPECT_RATIO>.`,
+No text, signs or subtitles. No holograms or floating UI. One coherent frame. Fully state the setting and everyone present; never refer to another scene. Use CURRENT_SCENE.direction as the authoritative location, time, lighting, palette and look. Its palette already resolves the optional scene override over the sequence style. Ignore legacy continuity.styleTag. Apply <DIRECTOR_STYLE> to lens and stock; compose for <ASPECT_RATIO>.`,
     },
     {
       role: 'user',

@@ -106,10 +106,6 @@ export function reconcileSceneTags(
       extract
     );
     const environmentTag = locationMatches.map(canonicalLocationTag).join(', ');
-    // A remote conversation can span rooms. Never borrow one participant's
-    // palette or lighting for everyone; shots select their room separately.
-    const locationMatch =
-      locationMatches.length === 1 ? locationMatches[0] : undefined;
     if (environmentTag) stats.assignedEnvironmentTags++;
 
     const elementTagsList: string[] = [];
@@ -130,10 +126,8 @@ export function reconcileSceneTags(
         characterTags,
         environmentTag,
         elementTags,
-        colorPalette:
-          scene.continuity.colorPalette || locationMatch?.colorPalette || '',
-        lightingSetup:
-          scene.continuity.lightingSetup || locationMatch?.lightingSetup || '',
+        colorPalette: scene.continuity.colorPalette ?? '',
+        lightingSetup: scene.continuity.lightingSetup,
       },
     };
   });

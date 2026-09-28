@@ -1,3 +1,4 @@
+import { sceneDirection } from './scene-direction';
 /**
  * Shot-list prompt derivation (#908)
  * ============================================================================
@@ -42,20 +43,20 @@ function sceneContextParts(
   styleConfig: StyleConfig
 ): string[] {
   const { continuity, metadata } = scene;
+  const direction = sceneDirection(scene, styleConfig);
   const multipleLocations = continuity.environmentTag.includes(',');
   return [
     multipleLocations ? '' : metadata.location,
     metadata.timeOfDay,
     // A multi-location scene's roster is not a single shot's background.
     multipleLocations ? '' : continuity.environmentTag,
-    continuity.lightingSetup,
-    continuity.colorPalette,
+    direction.lightingSetup,
+    direction.colorPalette,
     // Cast belongs to the shot's framing, not the scene-wide roster. Appending
     // that roster here puts later arrivals and off-camera listeners in every
     // start frame, overriding the subjectStartState above.
     // Style is the single look authored for the whole sequence.
-    styleConfig.look.artStyle,
-    continuity.styleTag,
+    direction.look,
   ].filter((p): p is string => typeof p === 'string' && p.trim().length > 0);
 }
 

@@ -92,12 +92,9 @@ export const locationBibleEntrySchema = z.object({
       'As written in the script, or a participant-named physical setting for an unspecified remote video-call location',
   }),
   type: z.enum(['interior', 'exterior', 'both']),
-  timeOfDay: z.string(),
   description: z.string(),
   architecturalStyle: z.string(),
   keyFeatures: z.string(),
-  colorPalette: z.string(),
-  lightingSetup: z.string(),
   ambiance: z.string(),
   consistencyTag: z.string().meta({ description: 'snake_case name slug' }),
   firstMention: firstMentionSchema,
@@ -413,7 +410,10 @@ const continuitySchema = z.object({
     description:
       'UPPERCASE element tokens referenced in this scene (null when none)',
   }),
-  colorPalette: z.string(),
+  colorPalette: z.string().optional().meta({
+    description:
+      'Optional user-authored palette override; leave empty during analysis. The sequence style owns palette.',
+  }),
   lightingSetup: z.string(),
   styleTag: z.string(),
 });

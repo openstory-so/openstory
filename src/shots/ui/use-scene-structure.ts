@@ -103,6 +103,7 @@ export function useUpdateScene(sequenceId: string) {
       location?: string;
       timeOfDay?: string;
       storyBeat?: string;
+      continuity?: { lightingSetup?: string; colorPalette?: string };
     }) => updateSceneFn({ data: { sequenceId, ...input } }),
     onSuccess: () =>
       invalidateStructure(queryClient, sequenceId, { staleness: true }),

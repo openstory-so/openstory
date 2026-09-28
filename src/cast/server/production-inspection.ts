@@ -93,12 +93,9 @@ export const locationReadSchema = createSelectSchema(sequenceLocations)
     createSelectSchema(locationBibleVersions).pick({
       name: true,
       type: true,
-      timeOfDay: true,
       description: true,
       architecturalStyle: true,
       keyFeatures: true,
-      colorPalette: true,
-      lightingSetup: true,
       ambiance: true,
       consistencyTag: true,
     }).shape

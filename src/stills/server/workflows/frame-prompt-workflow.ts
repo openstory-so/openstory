@@ -1,3 +1,4 @@
+import { sceneDirection } from '@/shots/scene-direction';
 /**
  * Per-scene visual (image) prompt generation.
  *
@@ -135,7 +136,11 @@ export class FramePromptWorkflow extends OpenStoryWorkflowEntrypoint<FramePrompt
           sceneAfter: sceneAfter
             ? JSON.stringify(sceneAfter, null, 2)
             : '(none)',
-          scene: JSON.stringify(scene, null, 2),
+          scene: JSON.stringify(
+            { ...scene, direction: sceneDirection(scene, styleConfig) },
+            null,
+            2
+          ),
           // Performance drives motion only and is not in the visual hash, so
           // the visual LLM must not see it either (#1561). A voice-only
           // character is heard, never framed (#1585): the motion prompt keeps

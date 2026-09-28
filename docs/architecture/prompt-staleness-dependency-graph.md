@@ -937,3 +937,13 @@ Ordered by value / risk. **1, 2, 4 and 5 shipped; 3 is still open** (see C).
 | Verdict matrix (every edge, as verdicts) | `src/shots/server/staleness-matrix.test.ts`                                                                         |
 | Still snapshot hash                      | `src/stills/server/workflows/image-workflow-snapshot.ts`, `src/shots/server/workflows/regenerate-shots-snapshot.ts` |
 | Design rationale                         | `docs/architecture/workflow-snapshots-and-content-hash-staleness.md`                                                |
+
+### Field ownership update (#1889)
+
+Location bible projections no longer contain timeOfDay, colorPalette or
+lightingSetup. Location sheet hashes carry explicit version 2. Those columns
+are retained physically until #1890 has its own deploy. Scene prompt hash
+inputs now include nonempty continuity.lightingSetup and continuity.colorPalette:
+they are editable inputs, not generated output. Empty palette means the
+sequence style; the custom migration clears prior analysis palettes. See
+[scene direction ownership](reference-only-motion.md#scene-direction-ownership-1889).

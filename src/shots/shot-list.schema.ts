@@ -85,9 +85,10 @@ const shotListContinuitySchema = z.object({
     description:
       'UPPERCASE tokens for elements referenced in this scene. Empty array when none.',
   }),
-  colorPalette: z
-    .string()
-    .meta({ description: 'Dominant colors for visual continuity' }),
+  colorPalette: z.string().meta({
+    description:
+      'Optional scene palette override; empty uses the sequence style',
+  }),
   lightingSetup: z
     .string()
     .meta({ description: 'Lighting configuration shared across the shots' }),

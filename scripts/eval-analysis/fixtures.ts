@@ -123,13 +123,10 @@ export const LOCATION_CASE = {
       locationId: 'loc_office',
       name: 'INT. MODERN OFFICE - DAY',
       type: 'interior',
-      timeOfDay: 'day',
       description:
         'Open-plan glass office with white desks, monitor glow, city view through floor-to-ceiling windows.',
       architecturalStyle: 'Contemporary glass-and-steel corporate',
       keyFeatures: 'Glass walls, white desks, skyline view',
-      colorPalette: 'white, cool grey, skyline blue',
-      lightingSetup: 'Daylight through floor-to-ceiling glass',
       ambiance: 'Bright, professional, hushed',
       consistencyTag: 'office_modern_glass',
       firstMention: {
@@ -142,13 +139,10 @@ export const LOCATION_CASE = {
       locationId: 'loc_park',
       name: 'EXT. CITY PARK - LATE AFTERNOON',
       type: 'exterior',
-      timeOfDay: 'late afternoon',
       description:
         'A downtown park with gravel paths, plane trees, and a stone fountain in warm low sun.',
       architecturalStyle: 'Municipal park landscape',
       keyFeatures: 'Gravel paths, plane trees, stone fountain',
-      colorPalette: 'warm green, stone, late-afternoon gold',
-      lightingSetup: 'Low sun through plane trees',
       ambiance: 'Open, warm, public',
       consistencyTag: 'park_city_afternoon',
       firstMention: {
@@ -161,13 +155,10 @@ export const LOCATION_CASE = {
       locationId: 'loc_subway',
       name: 'INT. SUBWAY PLATFORM - NIGHT',
       type: 'interior',
-      timeOfDay: 'night',
       description:
         'Deep underground express platform: tiled columns, yellow edge strip, a dark tunnel mouth.',
       architecturalStyle: 'Early 20th-century mass-transit',
       keyFeatures: 'Tiled columns, yellow platform edge, tunnel mouth',
-      colorPalette: 'institutional green, white tile, yellow strip',
-      lightingSetup: 'Overhead fluorescents, train-strobe reflections',
       ambiance: 'Loud, rushing, subterranean',
       consistencyTag: 'subway_platform_night',
       firstMention: {

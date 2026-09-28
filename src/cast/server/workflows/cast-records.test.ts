@@ -95,12 +95,9 @@ describe('createCastRecords', () => {
           locationId: 'loc_1',
           name: 'INT. CAFE - DAY',
           type: 'interior',
-          timeOfDay: 'day',
           description: 'a cafe',
           architecturalStyle: '',
           keyFeatures: '',
-          colorPalette: '',
-          lightingSetup: '',
           ambiance: '',
           consistencyTag: 'cafe',
           firstMention: {

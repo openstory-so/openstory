@@ -1,3 +1,5 @@
+import { sceneDirection } from '@/shots/scene-direction';
+import type { StyleConfig } from '@/look/style-config';
 /**
  * Model-Aware Motion Prompt Builder
  *
@@ -205,17 +207,10 @@ export function packedSceneFromScene(
         } | null;
       }
     | null
-    | undefined
+    | undefined,
+  styleConfig?: StyleConfig
 ): PackedMotionSceneHeader {
-  if (!scene) return {};
-  const header: PackedMotionSceneHeader = {
-    location: scene.metadata?.location,
-    timeOfDay: scene.metadata?.timeOfDay,
-    lightingSetup: scene.continuity?.lightingSetup,
-    colorPalette: scene.continuity?.colorPalette,
-    look: scene.continuity?.styleTag,
-  };
-  return header;
+  return sceneDirection(scene ?? {}, styleConfig);
 }
 
 /**

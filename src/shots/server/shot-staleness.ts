@@ -801,12 +801,9 @@ const CHARACTER_LABELS: Record<keyof CharacterBible, string> = {
 const LOCATION_LABELS: Record<keyof LocationBible, string> = {
   name: 'name',
   type: 'interior/exterior',
-  timeOfDay: 'time of day',
   description: 'description',
   architecturalStyle: 'architecture',
   keyFeatures: 'features',
-  colorPalette: 'palette',
-  lightingSetup: 'lighting',
   ambiance: 'ambiance',
   consistencyTag: 'tag',
 };

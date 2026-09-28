@@ -94,17 +94,11 @@ export function buildLocationInsert(args: {
     // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
     type: location.type ?? null,
     // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-    timeOfDay: location.timeOfDay ?? null,
-    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
     description: location.description ?? null,
     // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
     architecturalStyle: location.architecturalStyle ?? null,
     // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
     keyFeatures: location.keyFeatures ?? null,
-    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-    colorPalette: location.colorPalette ?? null,
-    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-    lightingSetup: location.lightingSetup ?? null,
     // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
     ambiance: location.ambiance ?? null,
     // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard

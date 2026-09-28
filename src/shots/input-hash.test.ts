@@ -341,11 +341,8 @@ describe('computeLocationSheetInputHash', () => {
       name: 'Office',
       description: 'Modern open-plan, glass',
       type: 'interior',
-      timeOfDay: 'day',
       architecturalStyle: 'modernist',
       keyFeatures: 'standing desks',
-      colorPalette: 'white, steel',
-      lightingSetup: 'fluorescent',
       ambiance: 'busy',
     },
     libraryLocationReferenceHash: 'lib-sha',
@@ -382,11 +379,8 @@ describe('computeLocationSheetInputHash', () => {
       (
         [
           ['type', 'exterior'],
-          ['timeOfDay', 'night'],
           ['architecturalStyle', 'brutalist'],
           ['keyFeatures', 'a single long table'],
-          ['colorPalette', 'teal, orange'],
-          ['lightingSetup', 'neon'],
           ['ambiance', 'deserted'],
         ] as const
       ).map(([field, value]) =>
@@ -396,7 +390,7 @@ describe('computeLocationSheetInputHash', () => {
         })
       )
     );
-    expect(new Set([a, ...edits]).size).toBe(8);
+    expect(new Set([a, ...edits]).size).toBe(5);
   });
 
   it('a location rename does not change the sheet hash', async () => {
@@ -425,11 +419,8 @@ describe('computeLibraryLocationReferenceInputHash', () => {
       locationBible: {
         ...base.locationBible,
         type: 'interior',
-        timeOfDay: '',
         architecturalStyle: '',
         keyFeatures: '',
-        colorPalette: '',
-        lightingSetup: '',
         ambiance: '',
       },
       libraryLocationReferenceHash: null,
@@ -586,12 +577,9 @@ describe('prompt input hashes', () => {
     locationId: 'l1',
     name: 'Beach',
     type: 'exterior',
-    timeOfDay: '',
     description: '',
     architecturalStyle: '',
     keyFeatures: '',
-    colorPalette: '',
-    lightingSetup: '',
     ambiance: '',
     consistencyTag: '',
     firstMention: { sceneId: '', text: '', lineNumber: 0 },
@@ -1121,10 +1109,8 @@ describe('prompt input hashes', () => {
     expect(a).toBe(b);
   });
 
-  it('hash excludes LLM output: same upstream context with different continuity hashes the same', async () => {
-    // The generated prompts moved off the Scene shape entirely (#713), so the
-    // only LLM-derived field still on the scene is `continuity` — confirm it is
-    // excluded from both the visual and motion input hashes.
+  it('scene lighting and palette overrides change both prompt hashes', async () => {
+    // These fields are now editable scene inputs (#1889), not LLM output.
     const upstream = await hashVisualPromptInput(sceneCtx);
     const enriched = await hashVisualPromptInput({
       ...sceneCtx,
@@ -1139,7 +1125,7 @@ describe('prompt input hashes', () => {
         },
       },
     });
-    expect(upstream).toBe(enriched);
+    expect(upstream).not.toBe(enriched);
 
     const motionUpstream = await hashMotionPromptInput(sceneCtx);
     const motionEnriched = await hashMotionPromptInput({
@@ -1155,7 +1141,7 @@ describe('prompt input hashes', () => {
         },
       },
     });
-    expect(motionUpstream).toBe(motionEnriched);
+    expect(motionUpstream).not.toBe(motionEnriched);
   });
 });
 

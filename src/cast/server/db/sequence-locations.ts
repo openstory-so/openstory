@@ -54,24 +54,18 @@ import { buildEventInsert } from '@/sequences/server/db/sequence-events';
 const SHEET_BIBLE_FIELDS = [
   'name',
   'type',
-  'timeOfDay',
   'description',
   'architecturalStyle',
   'keyFeatures',
-  'colorPalette',
-  'lightingSetup',
   'ambiance',
 ] as const;
 
 /** A new location's bible where the caller left a field out. */
 const NEW_LOCATION_BIBLE: Omit<LocationBible, 'name'> = {
   type: null,
-  timeOfDay: null,
   description: null,
   architecturalStyle: null,
   keyFeatures: null,
-  colorPalette: null,
-  lightingSetup: null,
   ambiance: null,
   consistencyTag: null,
 };
@@ -80,12 +74,9 @@ const NEW_LOCATION_BIBLE: Omit<LocationBible, 'name'> = {
 const bibleOf = (data: NewSequenceLocation): Partial<LocationBible> => ({
   name: data.name,
   type: data.type,
-  timeOfDay: data.timeOfDay,
   description: data.description,
   architecturalStyle: data.architecturalStyle,
   keyFeatures: data.keyFeatures,
-  colorPalette: data.colorPalette,
-  lightingSetup: data.lightingSetup,
   ambiance: data.ambiance,
   consistencyTag: data.consistencyTag,
 });
@@ -115,12 +106,9 @@ export type LocationBibleUpdate = Partial<
     SequenceLocationWithReference,
     | 'name'
     | 'type'
-    | 'timeOfDay'
     | 'description'
     | 'architecturalStyle'
     | 'keyFeatures'
-    | 'colorPalette'
-    | 'lightingSetup'
     | 'ambiance'
     | 'consistencyTag'
   >
@@ -271,12 +259,9 @@ export function createSequenceLocationsMethods(db: Database) {
     const {
       name: _n,
       type: _t,
-      timeOfDay: _tod,
       description: _d,
       architecturalStyle: _as,
       keyFeatures: _kf,
-      colorPalette: _cp,
-      lightingSetup: _ls,
       ambiance: _a,
       consistencyTag: _ct,
       ...row

@@ -1225,10 +1225,13 @@ describe('bible history (#1600)', () => {
 
     const edited = await m.updateBible(
       created.id,
-      { timeOfDay: 'night' },
+      { architecturalStyle: 'modern' },
       { actorId }
     );
-    expect(edited).toMatchObject({ description: 'old', timeOfDay: 'night' });
+    expect(edited).toMatchObject({
+      description: 'old',
+      architecturalStyle: 'modern',
+    });
     const versions = await locationVersions(created.id);
     expect(versions).toHaveLength(2);
     expect(

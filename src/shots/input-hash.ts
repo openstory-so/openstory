@@ -412,11 +412,8 @@ type LocationBibleHashFields = z.infer<typeof locationBibleHashFieldsSchema>;
 const locationSheetBibleHashFieldsSchema = locationBibleHashFieldsSchema.extend(
   {
     type: z.enum(['interior', 'exterior', 'both']),
-    timeOfDay: z.string(),
     architecturalStyle: z.string(),
     keyFeatures: z.string(),
-    colorPalette: z.string(),
-    lightingSetup: z.string(),
     ambiance: z.string(),
   }
 );
@@ -439,6 +436,7 @@ function locationSheetHashBody(
   const lb = input.locationBible;
   return {
     artifact: 'location:sheet',
+    version: 2, // #1889: neutral place; scene light and style palette have new owners.
     locationBible:
       kind === 'current'
         ? projectLocationForPrompt(lb)
@@ -825,6 +823,12 @@ function sceneInputContext(scene: Scene, kind: PromptHashKind) {
     ...(flags.includeSceneNumber ? { sceneNumber: scene.sceneNumber } : {}),
     originalScript: scene.originalScript,
     metadata: sceneMetadata(scene, flags.includeTitle),
+    ...(scene.continuity?.lightingSetup
+      ? { lightingSetup: scene.continuity.lightingSetup }
+      : {}),
+    ...(scene.continuity?.colorPalette
+      ? { colorPalette: scene.continuity.colorPalette }
+      : {}),
   };
 }
 
@@ -871,12 +875,9 @@ function projectLocationForPrompt(
 ) {
   return {
     type: l.type,
-    timeOfDay: trim(l.timeOfDay),
     description: trim(l.description),
     architecturalStyle: trim(l.architecturalStyle),
     keyFeatures: trim(l.keyFeatures),
-    colorPalette: trim(l.colorPalette),
-    lightingSetup: trim(l.lightingSetup),
     ambiance: trim(l.ambiance),
   };
 }

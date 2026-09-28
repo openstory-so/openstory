@@ -375,6 +375,53 @@ describe('re-analysis revival + shot soft-delete details', () => {
 });
 
 describe('narrative writes carry the live script (#1600)', () => {
+  it('versions scene lighting and palette overrides and allows clearing them', async () => {
+    const sceneMethods = createScenesMethods(db);
+    const { scene } = await seedScene(0);
+    const continuity = {
+      characterTags: ['jack'],
+      environmentTag: 'diner',
+      elementTags: [],
+      colorPalette: 'sepia',
+      lightingSetup: 'moonlight',
+      styleTag: '',
+    };
+    const edited = await sceneMethods.updateNarrative(
+      scene.id,
+      {
+        location: 'Diner',
+        timeOfDay: 'night',
+        continuity,
+      },
+      { actorId }
+    );
+    expect(edited).toMatchObject({
+      location: 'Diner',
+      timeOfDay: 'night',
+      continuity,
+    });
+    const cleared = await sceneMethods.updateNarrative(
+      scene.id,
+      {
+        continuity: { ...continuity, colorPalette: '', lightingSetup: '' },
+      },
+      { actorId }
+    );
+    expect(cleared.selectedScriptVersionId).not.toBe(
+      edited.selectedScriptVersionId
+    );
+    expect(cleared).toMatchObject({
+      location: 'Diner',
+      timeOfDay: 'night',
+      continuity: {
+        characterTags: ['jack'],
+        environmentTag: 'diner',
+        colorPalette: '',
+        lightingSetup: '',
+      },
+    });
+  });
+
   it('a continuity rescan keeps the selected script and the other fields; a narrative edit keeps the tags', async () => {
     const sceneMethods = createScenesMethods(db);
     const { scene } = await seedScene(0);
