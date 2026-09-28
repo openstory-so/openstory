@@ -301,9 +301,3 @@ optional. Filtering these inputs to completed sheets changes a derived prompt's
 hash during the fresh handoff and loses the reference IDs needed to attach the
 executor's newly generated sheets. Sheet-only readers keep their narrower APIs;
 prompt contexts and frozen plan reference membership use the complete bible.
-
-Reference builders order characters by their logical `characterId`, locations
-by `locationId`, and elements by `token` before assigning image numbers. This
-keeps fresh, continued and manual requests consistent regardless of database
-row order. Each role retains its existing priority, including the primary image;
-labels and URLs are assembled from the same ordered references.
