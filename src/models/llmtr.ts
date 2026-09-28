@@ -49,6 +49,7 @@ export const LLMTR_BASE_URL = 'https://llmtr.com/v1';
  */
 export const LLMTR_UNMAPPED_MODEL_IDS = [
   'anthropic/claude-opus-5.5', // LLMTR support and pricing not yet verified.
+  'openai/gpt-6-sol', // LLMTR support and pricing not yet verified.
   'anthropic/claude-opus-5-fast',
   'deepseek/deepseek-v3.2',
   'bytedance-seed/seed-2.0-mini',
@@ -73,7 +74,6 @@ export const LLMTR_TEXT_MODELS = {
   'google/gemini-3.8-flash': 'google/gemini-3.8-flash',
   'google/gemini-3.1-pro-preview': 'google/gemini-3.1-pro-preview',
   'openai/gpt-6-astra': 'openai/gpt-6-astra',
-  'openai/gpt-5.6-sol': 'openai/gpt-5.6-sol',
   'openai/gpt-5.5': 'openai/gpt-5.5',
   'anthropic/claude-opus-4.8': 'anthropic/claude-opus-4.8',
   'x-ai/grok-4.20': 'xai/grok-4.20-0309-reasoning',
@@ -173,7 +173,6 @@ const LLMTR_TEXT_RATES: Record<
   'google/gemini-3.8-flash': { input: 0.75, output: 3.75 },
   'google/gemini-3.1-pro-preview': { input: 2, output: 12 },
   'openai/gpt-6-astra': { input: 10, output: 50 },
-  'openai/gpt-5.6-sol': { input: 4, output: 20 },
   'openai/gpt-5.5': { input: 5, output: 30 },
   'anthropic/claude-opus-4.8': { input: 5, output: 25 },
   'xai/grok-4.20-0309-reasoning': { input: 1.25, output: 2.5 },
