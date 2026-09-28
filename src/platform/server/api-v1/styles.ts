@@ -42,7 +42,24 @@ export const styleListResultSchema = z
   })
   .meta({ id: 'StyleListResult' });
 
-export function styleDocument(style: Style) {
+/** Columns the HAL document reads. `config` is parsed, not trusted as v2. */
+type StyleDocumentSource = Pick<
+  Style,
+  | 'id'
+  | 'name'
+  | 'description'
+  | 'category'
+  | 'tags'
+  | 'useCases'
+  | 'isTemplate'
+  | 'defaultAspectRatio'
+  | 'recommendedImageModel'
+  | 'recommendedVideoModel'
+  | 'previewUrl'
+  | 'createdAt'
+> & { config: unknown };
+
+export function styleDocument(style: StyleDocumentSource) {
   return withLinks(
     styleDocumentSchema.parse({
       id: style.id,

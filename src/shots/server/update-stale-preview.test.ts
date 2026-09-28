@@ -17,34 +17,58 @@ vi.mock('@/billing/cost-estimation', async (importOriginal) => ({
 
 const { buildUpdateStalePreview } = await import('./update-stale-preview');
 
-const target = (o: object) =>
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test stub
-  ({
-    shotId: 's1',
-    regenVisual: false,
-    regenMotion: false,
-    regenImage: false,
-    regenVideo: false,
-    durationMs: 4000,
-    imageModel: 'seedream_v5',
-    ...o,
-  }) as never;
+type PreviewPlan = Parameters<typeof buildUpdateStalePreview>[0];
+type PreviewTarget = PreviewPlan['targets'][number];
+
+const target = (
+  o: {
+    shotId?: string;
+    regenVisual?: boolean;
+    regenMotion?: boolean;
+    regenImage?: boolean;
+    regenDialogue?: boolean;
+    regenVideo?: boolean;
+    durationMs?: number | null;
+    imageModel?: PreviewTarget['imageModel'];
+  } = {}
+): PreviewTarget => ({
+  shotId: o.shotId ?? 's1',
+  regenVisual: o.regenVisual === true,
+  regenMotion: o.regenMotion === true,
+  regenImage: o.regenImage === true,
+  regenDialogue: o.regenDialogue === true,
+  regenVideo: o.regenVideo === true,
+  durationMs: o.durationMs === undefined ? 4000 : o.durationMs,
+  imageModel: o.imageModel ?? 'seedream_v5',
+});
 
 const plan = (
-  targets: unknown[],
-  music: unknown = null,
-  dialogueRecording: unknown = null
-) =>
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test stub
-  ({
-    aspectRatio: '16:9',
-    sequence: { videoModel: 'seedance_v2' },
-    targets,
-    music,
-    dialogueRecording,
-    skipped: [],
-    promptContext: null,
-  }) as never;
+  targets: readonly PreviewTarget[],
+  music:
+    | (NonNullable<PreviewPlan['music']> & {
+        sceneSummaries?: readonly unknown[];
+        analysisModelId?: string;
+        promptSource?: string;
+      })
+    | null = null,
+  dialogueRecording: {
+    scenes: readonly {
+      voiced: readonly {
+        shotId: string;
+        text: string;
+        tone: string;
+        index?: number;
+      }[];
+    }[];
+    maxDurationSeconds?: number;
+  } | null = null
+): PreviewPlan => ({
+  aspectRatio: '16:9',
+  sequence: { videoModel: 'seedance_v2' },
+  targets,
+  music,
+  dialogueRecording,
+});
 
 describe('buildUpdateStalePreview', () => {
   it('buckets targets per level and accumulates cost by depth', () => {

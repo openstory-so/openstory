@@ -108,6 +108,8 @@ export const createTalentFn = createServerFn({ method: 'POST' })
   .handler(async ({ context, data }) => {
     return createLibraryTalent(data, {
       scopedDb: context.scopedDb,
+      rightsDb: context.scopedDb,
+      visionDb: context.scopedDb,
       user: context.user,
       teamId: context.teamId,
     });
@@ -362,6 +364,7 @@ export const finalizeTalentUploadFn = createServerFn({ method: 'POST' })
     if (data.type === 'image') {
       await maybePromoteOrGenerateSheet({
         scopedDb: context.scopedDb,
+        visionDb: context.scopedDb,
         userId: context.user.id,
         teamId: context.teamId,
         talentId: data.talentId,

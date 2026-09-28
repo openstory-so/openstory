@@ -228,7 +228,12 @@ const ELEMENT_VISION_IN_FLIGHT = new Set(['pending', 'analyzing']);
  */
 export async function waitForElementVision(
   step: WorkflowStep,
-  scopedDb: WaitForSheetsReadDb,
+  scopedDb: {
+    sequenceElements: Pick<
+      WaitForSheetsReadDb['sequenceElements'],
+      'listByIds'
+    >;
+  },
   elementIds: string[],
   opts?: { onWaitNeeded?: OnWaitNeeded }
 ): Promise<WaitForSheetsResult<SequenceElement>> {

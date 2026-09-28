@@ -153,13 +153,45 @@ export function findMissingElementEntries(
 }
 
 /**
+ * Cast and location writes, plus the element-token re-read that keeps a
+ * retry off the unique index. `WorkflowScopedDb` assigns; a test passes
+ * only these methods.
+ */
+export type CastRecordsDb = {
+  characters: {
+    create: (
+      ...args: Parameters<WorkflowScopedDb['characters']['create']>
+    ) => Promise<unknown>;
+  };
+  sequenceLocations: {
+    createBulk: (
+      ...args: Parameters<WorkflowScopedDb['sequenceLocations']['createBulk']>
+    ) => Promise<unknown>;
+  };
+  sequenceElements: {
+    create: (
+      ...args: Parameters<WorkflowScopedDb['sequenceElements']['create']>
+    ) => Promise<SequenceElementMinimal>;
+  };
+  liveRead: {
+    sequenceElements: {
+      getByToken: (
+        ...args: Parameters<
+          WorkflowScopedDb['liveRead']['sequenceElements']['getByToken']
+        >
+      ) => Promise<SequenceElementMinimal | null>;
+    };
+  };
+};
+
+/**
  * Create the cast, location and element rows for a sequence, sheet-less.
  * Idempotent: characters and locations upsert on their bible id; elements
  * are guarded by a token lookup (a step retry must not trip the unique
  * (sequenceId, token) index).
  */
 export async function createCastRecords(
-  scopedDb: WorkflowScopedDb,
+  scopedDb: CastRecordsDb,
   args: {
     sequenceId: string;
     characterBible: CharacterBibleEntry[];

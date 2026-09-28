@@ -23,8 +23,29 @@ import {
 
 const logger = getLogger(['openstory', 'talent', 'promote-or-generate-sheet']);
 
+/** Fields this path reads off the talent, plus the sheet claim it hands on. */
+type PromoteTalentView = {
+  id: string;
+  teamId: string;
+  isPublic: boolean | null;
+  name: string;
+  description: string | null;
+  media: Array<{ type: string; url: string }>;
+  sheets: Array<{ divergedAt: Date | null }>;
+};
+
+type PromoteTalentDb = {
+  talent: {
+    getWithRelations: (
+      ...args: Parameters<ScopedDb['talent']['getWithRelations']>
+    ) => Promise<PromoteTalentView | undefined>;
+    claimSheet: ScopedDb['talent']['claimSheet'];
+  };
+};
+
 export type PromoteOrGenerateSheetInput = {
-  scopedDb: ScopedDb;
+  scopedDb: PromoteTalentDb;
+  visionDb: Parameters<typeof analyzeTalentMediaForTeam>[0]['scopedDb'];
   userId: string;
   teamId: string;
   talentId: string;
@@ -49,7 +70,7 @@ export async function maybePromoteOrGenerateSheet(
   let uploadedSheetMetadata: CharacterBibleEntry | undefined;
   try {
     const analysis = await analyzeTalentMediaForTeam({
-      scopedDb: params.scopedDb,
+      scopedDb: params.visionDb,
       userId: params.userId,
       imageUrls: [params.imageUrl],
       idempotencyKey: `talent-vision:finalize:${params.talentId}:${params.imageUrl}`,

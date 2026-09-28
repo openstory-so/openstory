@@ -36,6 +36,30 @@ import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'character-sheet']);
 
+/**
+ * Claim landing, provenance, and the image charge. A full
+ * `WorkflowScopedDb` assigns.
+ */
+type CharacterSheetDb = {
+  userId: WorkflowScopedDb['userId'];
+  teamId: WorkflowScopedDb['teamId'];
+  credentials: Pick<
+    WorkflowScopedDb['credentials'],
+    'userId' | 'resolveKey' | 'resolveOptionalKey' | 'resolveLlmKey'
+  >;
+  billing: Pick<
+    WorkflowScopedDb['billing'],
+    'captureReservation' | 'tryDeductCredits' | 'checkAutoTopUp'
+  >;
+  modelUsage: Pick<WorkflowScopedDb['modelUsage'], 'record'>;
+  provenance: Pick<WorkflowScopedDb['provenance'], 'record'>;
+  characters: Pick<WorkflowScopedDb['characters'], 'failSheetClaim'>;
+  characterSheetVariants: Pick<
+    WorkflowScopedDb['characterSheetVariants'],
+    'promoteIfPending'
+  >;
+};
+
 type SheetLanding =
   | { kind: 'convergent'; versionId: string | null }
   | { kind: 'divergent' };
@@ -47,7 +71,7 @@ type SheetLanding =
  * holds one, and otherwise parks instead of revoking that run's claim.
  */
 async function landSheet(
-  scopedDb: WorkflowScopedDb,
+  scopedDb: CharacterSheetDb,
   input: CharacterSheetWorkflowInput,
   stored: { url: string; path: string; model: string },
   workflowRunId: string
@@ -95,7 +119,7 @@ async function landSheet(
 async function persistReusedTalentSheet(params: {
   event: Readonly<WorkflowEvent<CharacterSheetWorkflowInput>>;
   step: WorkflowStep;
-  scopedDb: WorkflowScopedDb;
+  scopedDb: CharacterSheetDb;
   input: CharacterSheetWorkflowInput;
   workflowRunId: string;
 }): Promise<CharacterSheetWorkflowResult> {
@@ -202,7 +226,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
   protected override async runImpl(
     event: Readonly<WorkflowEvent<CharacterSheetWorkflowInput>>,
     step: WorkflowStep,
-    scopedDb: WorkflowScopedDb
+    scopedDb: CharacterSheetDb
   ): Promise<CharacterSheetWorkflowResult> {
     const input = event.payload;
     const workflowRunId = event.instanceId;
@@ -461,7 +485,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
   }: {
     event: Readonly<WorkflowEvent<CharacterSheetWorkflowInput>>;
     error: string;
-    scopedDb: WorkflowScopedDb;
+    scopedDb: CharacterSheetDb;
   }): Promise<void> {
     const input = event.payload;
 

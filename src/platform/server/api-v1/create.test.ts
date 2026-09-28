@@ -1,7 +1,7 @@
 import type { Style } from '@/platform/server/db/schema';
-import type { ScopedDb } from '@/platform/server/db/scoped';
 import { ValidationError } from '@/platform/errors';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { OneShotContext } from './create';
 
 const mocks = vi.hoisted(() => ({
   createLibraryTalent: vi.fn(),
@@ -97,6 +97,63 @@ const baseInput = {
   music: false,
 };
 
+function pipelineDb(): OneShotContext['pipelineDb'] {
+  return {
+    apiKeys: {
+      hasUsableKey: vi.fn(),
+      resolveOptionalKey: vi.fn(),
+      resolveLlmKey: vi.fn(),
+    },
+    billing: {
+      hasEnoughCredits: vi.fn(),
+      createReservation: vi.fn(),
+      zeroReservation: vi.fn(),
+      deductCredits: vi.fn(),
+    },
+    sequences: {
+      listPage: vi.fn(),
+      getById: vi.fn(),
+      create: vi.fn(),
+      getForUser: vi.fn(),
+      claimWorkflowSlot: vi.fn(),
+      update: vi.fn(),
+    },
+    styles: {
+      getById: vi.fn(),
+      createForSequence: vi.fn(),
+      incrementUsage: vi.fn(),
+    },
+    sequenceElements: {
+      create: vi.fn(),
+      ensureUniqueToken: vi.fn(),
+      updateVisionStatus: vi.fn(),
+      list: vi.fn(),
+      update: vi.fn(),
+    },
+    sequence: () => ({ updateStatus: vi.fn() }),
+    talent: {
+      create: vi.fn(),
+      claimSheet: vi.fn(),
+      getByIds: vi.fn(),
+      media: { create: vi.fn() },
+    },
+    locations: {
+      create: vi.fn(),
+      claimReference: vi.fn(),
+      clearReferenceClaimIf: vi.fn(),
+      getByIds: vi.fn(),
+    },
+    locationSheets: { insert: vi.fn() },
+    teamManagement: { getMemberEmail: vi.fn() },
+    compliance: {
+      attestations: {
+        listForSubject: vi.fn(),
+        record: vi.fn(),
+      },
+    },
+  };
+}
+
 function pngResponse(): Response {
   return new Response(new Uint8Array([1, 2, 3, 4]), {
     status: 200,
@@ -113,12 +170,12 @@ describe('runOneShotCreate', () => {
     user: { id: 'user-1' },
     teamId: 'team-1',
     request: { ipAddress: '203.0.113.9', userAgent: 'vitest' },
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- stub covering styles.list + talent/location list/delete
     scopedDb: {
       styles: { list: async () => [makeStyle()] },
       talent: { list: async () => [], delete: talentDelete },
       locations: { list: async () => [], delete: locationDelete },
-    } as unknown as ScopedDb,
+    },
+    pipelineDb: pipelineDb(),
   };
 
   beforeEach(() => {

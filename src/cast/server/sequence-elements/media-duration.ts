@@ -82,7 +82,9 @@ type MeasurableElement = Pick<
  * are created, because the rows that need it most already exist.
  */
 export async function withMeasuredDurations<T extends MeasurableElement>(
-  scopedDb: ScopedDb,
+  scopedDb: {
+    sequenceElements: Pick<ScopedDb['sequenceElements'], 'update'>;
+  },
   elements: T[]
 ): Promise<T[]> {
   return Promise.all(

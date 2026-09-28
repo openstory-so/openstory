@@ -28,13 +28,16 @@ import {
   WorkflowValidationError,
 } from './errors';
 import { sanitizeFailResponse } from './sanitize-fail-response';
-import type { UserWorkflowContext } from './types';
+import type {
+  CloudflareEnv,
+  UserWorkflowContext,
+  WorkflowBindingsEnv,
+} from './types';
 import {
   notifyParent,
   notifyParentOfFailure,
   type ParentNotifyHint,
 } from './await-child';
-import type { CloudflareEnv } from './types';
 import {
   WorkflowEntrypoint,
   type WorkflowEvent,
@@ -102,7 +105,8 @@ export type OpenStoryFailureContext<T extends UserWorkflowContext> = {
 
 export abstract class OpenStoryWorkflowEntrypoint<
   T extends UserWorkflowContext,
-> extends WorkflowEntrypoint<CloudflareEnv, T> {
+  Env extends WorkflowBindingsEnv = CloudflareEnv,
+> extends WorkflowEntrypoint<Env, T> {
   /**
    * Subclasses implement workflow logic here. Receives the same `event` /
    * `step` the engine hands to `run()`, plus a `WorkflowScopedDb` bound to the

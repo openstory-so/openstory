@@ -209,8 +209,6 @@ describe('buildBytePlusVideoRequest — reference-only', () => {
               locationId: 'metropolitan_sidewalk_corner',
               name: 'EXT. METROPOLITAN SIDEWALK CORNER - DAY',
               referenceImageUrl: 'https://cdn.example.com/corner.png',
-              referenceStatus: 'completed',
-              referenceInputHash: 'hash',
               selectedReferenceVersionId: null,
               description: 'A busy corner',
               consistencyTag: 'metropolitan_sidewalk_corner',

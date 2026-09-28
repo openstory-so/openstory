@@ -6,6 +6,7 @@
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { AutoStyleResponse } from '@/look/auto-style';
 import type { WorkflowStep } from 'cloudflare:workers';
+import { workflowStep } from '@/platform/server/workflow/test-doubles';
 import { describe, expect, it, vi } from 'vitest';
 import type { z } from 'zod';
 
@@ -19,10 +20,7 @@ vi.doMock('@/platform/realtime', () => ({
 
 const { deriveAutoStyle } = await import('./auto-style-step');
 
-// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowStep stub: the step only uses `do`
-const step = {
-  do: async <T>(_name: string, fn: () => Promise<T>) => fn(),
-} as unknown as WorkflowStep;
+const step: WorkflowStep = workflowStep();
 
 const RESPONSE: AutoStyleResponse = {
   name: 'Rain-slick Neon Noir',

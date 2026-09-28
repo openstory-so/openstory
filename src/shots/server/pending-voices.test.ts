@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { voicedDialogueLines } from '@/motion/dialogue-tts';
 import { bindPendingVoices, pendingVoiceId } from './pending-voices';
-import type { UpdateStalePlan } from './update-stale-plan';
 
 const characterVoices = [
   { name: 'Ana', voiceId: pendingVoiceId('c-ana'), voiceOnly: false },
@@ -17,7 +16,7 @@ const sceneLine = (shotId: string, character: string) => {
   return { ...line, shotId };
 };
 
-function planWith(): UpdateStalePlan {
+function planWith() {
   const target = (shotId: string, character: string) => ({
     shotId,
     regenDialogue: true,
@@ -25,7 +24,6 @@ function planWith(): UpdateStalePlan {
     dialogue: dialogue(character),
     dialogueContext: [sceneLine(shotId, character)],
   });
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- only the dialogue fields are read
   return {
     characterVoices,
     dialogueRecording: {
@@ -46,7 +44,7 @@ function planWith(): UpdateStalePlan {
       maxDurationSeconds: 10,
     },
     targets: [target('s1', 'Ana'), target('s2', 'Ben')],
-  } as unknown as UpdateStalePlan;
+  };
 }
 
 describe('bindPendingVoices', () => {
@@ -59,9 +57,7 @@ describe('bindPendingVoices', () => {
       'el-ana',
       'el-ben',
     ]);
-    expect(plan.dialogueRecording?.scenes[0]?.voiced[0]?.voiceId).toBe(
-      'el-ana'
-    );
+    expect(plan.dialogueRecording.scenes[0]?.voiced[0]?.voiceId).toBe('el-ana');
     expect(plan.targets[0]?.dialogueContext[0]?.voiceId).toBe('el-ana');
   });
 
@@ -69,7 +65,7 @@ describe('bindPendingVoices', () => {
     const { plan, unvoicedShotIds } = bindPendingVoices(planWith(), {});
     expect([...unvoicedShotIds]).toEqual(['s1']);
     expect(plan.characterVoices.map((c) => c.name)).toEqual(['Ben']);
-    expect(plan.dialogueRecording?.scenes).toHaveLength(1);
-    expect(plan.dialogueRecording?.scenes[0]?.voiced[0]?.shotId).toBe('s2');
+    expect(plan.dialogueRecording.scenes).toHaveLength(1);
+    expect(plan.dialogueRecording.scenes[0]?.voiced[0]?.shotId).toBe('s2');
   });
 });

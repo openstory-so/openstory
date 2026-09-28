@@ -40,8 +40,32 @@ export type LikenessRequestContext = {
   userAgent?: string | null;
 };
 
+/** Ledger read: the latest row for an uploaded image. */
+type UploadRightsReadDb = {
+  compliance: {
+    attestations: Pick<
+      ScopedDb['compliance']['attestations'],
+      'listForSubject'
+    >;
+  };
+};
+
+/** Ledger read plus a new attestation row. */
+type UploadRightsWriteDb = {
+  compliance: {
+    attestations: Pick<
+      ScopedDb['compliance']['attestations'],
+      'listForSubject' | 'record'
+    >;
+  };
+};
+
+type TalentVisionDb = Parameters<
+  typeof analyzeTalentMediaForTeam
+>[0]['scopedDb'];
+
 async function latestRow(
-  scopedDb: ScopedDb,
+  scopedDb: UploadRightsReadDb,
   url: string
 ): Promise<UploadAttestation | undefined> {
   const [latest] = await scopedDb.compliance.attestations.listForSubject(
@@ -69,7 +93,7 @@ function rightsFromRow(row: UploadAttestation): UploadRights {
 }
 
 async function record(
-  scopedDb: ScopedDb,
+  scopedDb: UploadRightsWriteDb,
   url: string,
   statement: AttestationStatement,
   authorizationBasis: string | null,
@@ -92,7 +116,7 @@ async function record(
  * already has a row (a re-check never downgrades a sign-off).
  */
 export async function recordLikenessFinding(
-  scopedDb: ScopedDb,
+  scopedDb: UploadRightsWriteDb,
   urls: string[],
   subjectKind: TalentSubjectKind,
   request: LikenessRequestContext
@@ -123,7 +147,7 @@ export async function recordLikenessFinding(
  * no row, so the gate keeps refusing.
  */
 export async function classifyUpload(opts: {
-  scopedDb: ScopedDb;
+  scopedDb: UploadRightsWriteDb & TalentVisionDb;
   userId: string;
   url: string;
   /** Original filename, appended to the vision prompt as a hint. */
@@ -152,7 +176,7 @@ export async function classifyUpload(opts: {
 
 /** Record the portrait sign-off for each URL. Signing is always allowed. */
 export async function attestUploads(
-  scopedDb: ScopedDb,
+  scopedDb: UploadRightsWriteDb,
   attestations: PortraitAttestation[],
   request: LikenessRequestContext
 ): Promise<void> {
@@ -174,7 +198,7 @@ export async function attestUploads(
  * a real person, so a caller can derive `isHuman` from the ledger.
  */
 export async function requireUploadRights(
-  scopedDb: ScopedDb,
+  scopedDb: UploadRightsReadDb,
   urls: string[]
 ): Promise<Map<string, { depictsRealPerson: boolean }>> {
   const result = new Map<string, { depictsRealPerson: boolean }>();
@@ -203,7 +227,7 @@ export async function requireUploadRights(
  * plain URL; anything else registers.
  */
 export async function likenessFromLedger(
-  scopedDb: ScopedDb,
+  scopedDb: UploadRightsReadDb,
   url: string
 ): Promise<Likeness | null> {
   const row = await latestRow(scopedDb, url);
@@ -223,7 +247,7 @@ export async function likenessFromLedger(
  * the library copy passes the gate without a second look.
  */
 export async function carryUploadRights(
-  scopedDb: ScopedDb,
+  scopedDb: UploadRightsWriteDb,
   fromUrl: string,
   toUrl: string
 ): Promise<void> {

@@ -4,13 +4,13 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type {
   ImageWorkflowInput,
   RegenerateShotsWorkflowInput,
 } from '@/platform/server/workflow/types';
 import { shotImageInputHash } from '@/shots/input-hash';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
+import { workflowStep } from '@/platform/server/workflow/test-doubles';
 
 const spawnAndAwaitChild =
   vi.fn<
@@ -37,7 +37,7 @@ class Probe extends RegenerateShotsWorkflow {
   runBody(
     event: Readonly<WorkflowEvent<RegenerateShotsWorkflowInput>>,
     step: WorkflowStep,
-    scopedDb: WorkflowScopedDb
+    scopedDb: Parameters<Probe['runImpl']>[2]
   ) {
     return this.runImpl(event, step, scopedDb);
   }
@@ -53,10 +53,7 @@ function makeWorkflow(): Probe {
 }
 
 function makeStep(): WorkflowStep {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- runImpl only uses `do`
-  return {
-    do: vi.fn((_name: string, fn: () => Promise<unknown>) => fn()),
-  } as unknown as WorkflowStep;
+  return workflowStep();
 }
 
 function makeEvent(): Readonly<WorkflowEvent<RegenerateShotsWorkflowInput>> {
@@ -92,12 +89,11 @@ function makeEvent(): Readonly<WorkflowEvent<RegenerateShotsWorkflowInput>> {
   };
 }
 
-// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the surface runImpl touches
 const SCOPED_DB = {
   liveRead: {
-    compliance: { listEnforcementFor: async () => ({}) },
+    compliance: { listEnforcementFor: async () => [] },
   },
-} as unknown as WorkflowScopedDb;
+};
 
 describe('RegenerateShotsWorkflow resolution forwarding (#1570)', () => {
   beforeEach(() => {

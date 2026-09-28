@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChatMessage } from '@/platform/server/ai/prompts-index';
-import type { ScopedDb } from '@/platform/server/db/scoped';
 
 const getRequestHeader = vi.fn<(name: string) => string | undefined>();
 vi.doMock('@tanstack/react-start/server', () => ({ getRequestHeader }));
@@ -20,14 +19,24 @@ vi.doMock('@/models/server/llm-client', () => ({
 const { streamScriptEnhancement, enhanceScriptToString } =
   await import('./script-enhancement');
 
-function context() {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- only the team-key billing preflight is reached
-  const scopedDb = {
-    apiKeys: {
-      resolveLlmKey: vi.fn(async () => ({ source: 'team', via: 'openrouter' })),
+function context(): Parameters<typeof streamScriptEnhancement>[1] {
+  return {
+    scopedDb: {
+      apiKeys: {
+        resolveLlmKey: async () => ({
+          source: 'team',
+          via: 'openrouter',
+          key: 'team-key',
+        }),
+      },
+      billing: {
+        hasEnoughCredits: async () => true,
+        deductCredits: async () => undefined,
+      },
     },
-  } as unknown as ScopedDb;
-  return { scopedDb, userId: 'u1', teamId: 't1' };
+    userId: 'u1',
+    teamId: 't1',
+  };
 }
 
 beforeEach(() => {

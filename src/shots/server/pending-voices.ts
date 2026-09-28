@@ -8,7 +8,25 @@
 
 import { ttsModelForVoice, voicedDialogueLines } from '@/motion/dialogue-tts';
 import type { VoicedDialogueLine } from '@/motion/dialogue-tts';
-import type { UpdateStalePlan } from './update-stale-plan';
+
+/** The plan fields a designed voice is written back onto. */
+type PendingVoicePlan = {
+  characterVoices: {
+    name: string;
+    voiceId: string;
+    voiceOnly?: boolean;
+  }[];
+  dialogueRecording: {
+    scenes: readonly {
+      voiced: readonly (VoicedDialogueLine & { shotId: string })[];
+    }[];
+  } | null;
+  targets: {
+    shotId: string;
+    dialogue: Parameters<typeof voicedDialogueLines>[0];
+    dialogueContext: readonly (VoicedDialogueLine & { shotId: string })[];
+  }[];
+};
 
 const PENDING_VOICE_PREFIX = 'pending-voice:';
 
@@ -48,10 +66,10 @@ function bindLines<L extends VoicedDialogueLine>(
  * whole: it is one conversation, and recording it without a speaker would
  * hand every shot in it the wrong audio.
  */
-export function bindPendingVoices(
-  plan: UpdateStalePlan,
+export function bindPendingVoices<P extends PendingVoicePlan>(
+  plan: P,
   designed: Readonly<Record<string, string>>
-): { plan: UpdateStalePlan; unvoicedShotIds: Set<string> } {
+): { plan: P; unvoicedShotIds: Set<string> } {
   const unvoicedShotIds = new Set<string>();
   const characterVoices = plan.characterVoices.flatMap((character) => {
     if (!character.voiceId.startsWith(PENDING_VOICE_PREFIX)) return [character];
@@ -80,15 +98,16 @@ export function bindPendingVoices(
   });
 
   return {
-    plan: {
-      ...plan,
+    // Intersection with P keeps every field the caller passed. A spread of
+    // the generic is not assignable back to P.
+    plan: Object.assign({}, plan, {
       characterVoices,
       dialogueRecording:
         plan.dialogueRecording && scenes.length > 0
-          ? { ...plan.dialogueRecording, scenes }
+          ? Object.assign({}, plan.dialogueRecording, { scenes })
           : null,
       targets,
-    },
+    }),
     unvoicedShotIds,
   };
 }

@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { LibraryTalentSheetWorkflowInput } from '@/platform/server/workflow/types';
 import type { CreateLibraryTalentContext } from './create-library-talent';
 import { libraryTalentGenerateDedupId } from './library-talent-sheet-dedup';
@@ -65,16 +64,21 @@ function makeCtx(): CreateLibraryTalentContext {
     name: values.name,
     description: null,
   }));
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only talent.create + media.create
-  const scopedDb = {
-    talent: {
-      ...sheetClaim,
-      create: mockCreate,
-      media: { create: mockMediaCreate },
-    },
-  } as unknown as ScopedDb;
   return {
-    scopedDb,
+    scopedDb: {
+      talent: {
+        ...sheetClaim,
+        create: mockCreate,
+        media: { create: mockMediaCreate },
+      },
+    },
+    rightsDb: {
+      compliance: { attestations: { listForSubject: vi.fn() } },
+    },
+    visionDb: {
+      apiKeys: { resolveLlmKey: vi.fn() },
+      billing: { hasEnoughCredits: vi.fn(), deductCredits: vi.fn() },
+    },
     user: { id: 'user-1' },
     teamId: 'team-1',
   };

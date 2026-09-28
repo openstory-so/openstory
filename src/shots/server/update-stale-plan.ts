@@ -1006,8 +1006,24 @@ async function computeMusicPlanForUnits(
  * instance id is reused; one stamped by anyone else → `already-in-flight`.
  * Video/music have no claim rows (status columns instead).
  */
+/** Claim rows a continue writes before it spawns. A full `ScopedDb` assigns. */
+type ClaimPlanningDb = {
+  framePromptVersions: Pick<
+    ScopedDb['framePromptVersions'],
+    'getLivePending' | 'createPending'
+  >;
+  shotPromptVersions: Pick<
+    ScopedDb['shotPromptVersions'],
+    'getLivePending' | 'createPending'
+  >;
+  frameVariants: Pick<
+    ScopedDb['frameVariants'],
+    'listLiveClaims' | 'createPendingClaim'
+  >;
+};
+
 export async function claimTargets(args: {
-  scopedDb: ScopedDb;
+  scopedDb: ClaimPlanningDb;
   targets: PlanTarget[];
   sequenceId: string;
   parentInstanceId: string;
@@ -1043,7 +1059,7 @@ export async function claimTargets(args: {
 }
 
 async function claimShotArtifacts(args: {
-  scopedDb: ScopedDb;
+  scopedDb: ClaimPlanningDb;
   target: PlanTarget;
   sequenceId: string;
   parentInstanceId: string;
@@ -1153,7 +1169,7 @@ async function claimOrReuse(args: {
 }
 
 async function claimImageArtifact(args: {
-  scopedDb: ScopedDb;
+  scopedDb: ClaimPlanningDb;
   target: PlanTarget;
   sequenceId: string;
   parentInstanceId: string;

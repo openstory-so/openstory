@@ -8,11 +8,17 @@ import type { Scene } from '@/shots/scene-analysis.schema';
  */
 
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
-import type { ShotPromptContextRefs } from './prompt-context';
+import type {
+  PromptContextReadDb,
+  ShotPromptContextRefs,
+} from './prompt-context';
 import { isValidTextToImageModel } from '@/models/models';
 import { resolveImageModel } from '@/models/resolve-asset-models';
 import { estimateImageCost, gateEstimate } from '@/billing/cost-estimation';
-import { requireCredits } from '@/billing/server/preflight';
+import {
+  requireCredits,
+  type PreflightScopedDb,
+} from '@/billing/server/preflight';
 import type { Resolution } from '@/models/resolutions';
 import {
   aspectRatioToImageSize,
@@ -82,8 +88,21 @@ export function getSceneLocationReferenceImages(
  * Throws when the shot has no prompt/description, and rethrows the credits
  * preflight's `InsufficientCreditsError`.
  */
+/** Reads a still's prompt, model, and credit gate. A full `ScopedDb` assigns. */
+type ShotImagePrepareDb = PreflightScopedDb &
+  PromptContextReadDb & {
+    framePromptVersions: Pick<
+      ScopedDb['framePromptVersions'],
+      'getSelected' | 'write'
+    >;
+    frameVariants: Pick<
+      ScopedDb['frameVariants'],
+      'getSelected' | 'getLastFailed'
+    >;
+  };
+
 export async function prepareShotImageWorkflowInput(args: {
-  scopedDb: ScopedDb;
+  scopedDb: ShotImagePrepareDb;
   sequence: {
     id: string;
     teamId: string;
@@ -99,8 +118,8 @@ export async function prepareShotImageWorkflowInput(args: {
      */
     referenceOnly: boolean;
   };
-  shot: Shot;
-  frame: Frame;
+  shot: Pick<Shot, 'id'>;
+  frame: Pick<Frame, 'id'>;
   /** The shot's scene, composed from `scenes` + its selected script version. */
   scene: Scene | null;
   /** Selected scene-script extract. Fallback prompt AND fallback element match when no visual prompt exists. */

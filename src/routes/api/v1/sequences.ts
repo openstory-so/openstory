@@ -93,6 +93,7 @@ export const Route = createFileRoute('/api/v1/sequences')({
           const input = apiCreateSequenceSchema.parse(body);
           const result = await runOneShotCreate(input, {
             scopedDb: context.scopedDb,
+            pipelineDb: context.scopedDb,
             user: context.user,
             teamId: context.teamId,
             request: {

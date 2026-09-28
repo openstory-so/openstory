@@ -32,7 +32,6 @@ import { createUserPrompt } from '@/sequences/script-enhancer';
 import { reportMissingBillingCost } from '@/billing/billing-observability';
 import { estimateLLMCost } from '@/billing/cost-estimation';
 import { addMicros, ZERO_MICROS, type Microdollars } from '@/billing/money';
-import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { ResolvedLlmKey } from '@/models/server/db/api-keys';
 import { InsufficientCreditsError } from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
@@ -48,6 +47,26 @@ import { getRequestCountry } from '@/platform/server/request-country';
 
 export type { EnhanceChunk } from '@/sequences/enhance-script-turns';
 
+/** Key resolution plus the credit check a non-team key reaches. */
+type EnhanceBillingDb = {
+  apiKeys: {
+    resolveLlmKey: (model?: string) => Promise<ResolvedLlmKey>;
+  };
+  billing: {
+    hasEnoughCredits: (cost: Microdollars) => Promise<boolean>;
+    deductCredits: (
+      actualCost: Microdollars,
+      opts: { description?: string; metadata?: Record<string, unknown> }
+    ) => Promise<unknown>;
+  };
+};
+
+type EnhanceContext = {
+  scopedDb: EnhanceBillingDb;
+  userId: string;
+  teamId: string;
+};
+
 const logger = getLogger(['openstory', 'serverFn', 'ai']);
 
 /**
@@ -57,7 +76,7 @@ const logger = getLogger(['openstory', 'serverFn', 'ai']);
  * OpenRouter endpoint (issue #895).
  */
 export async function prepareBilling(
-  scopedDb: ScopedDb,
+  scopedDb: EnhanceBillingDb,
   description: string,
   metadata?: Record<string, unknown>,
   opts?: { allowUnfunded?: boolean }
@@ -116,7 +135,7 @@ export async function prepareBilling(
  */
 export async function* streamScriptEnhancement(
   data: EnhanceScriptInput,
-  ctx: { scopedDb: ScopedDb; userId: string; teamId: string }
+  ctx: EnhanceContext
 ): AsyncGenerator<EnhanceChunk> {
   const model =
     data.analysisModel && isValidAnalysisModelId(data.analysisModel)
@@ -274,10 +293,7 @@ export async function* streamScriptEnhancement(
  * Used by the public API where there is no client streaming channel.
  */
 export const enhanceScriptToString = createServerOnlyFn(
-  async (
-    data: EnhanceScriptInput,
-    ctx: { scopedDb: ScopedDb; userId: string; teamId: string }
-  ): Promise<string> => {
+  async (data: EnhanceScriptInput, ctx: EnhanceContext): Promise<string> => {
     let enhanced = '';
     for await (const chunk of streamScriptEnhancement(data, ctx)) {
       if (chunk.replace) enhanced = chunk.delta;

@@ -9,19 +9,30 @@
 
 import type { CharacterBibleEntry } from '@/shots/scene-analysis.schema';
 
-import type {
-  CharacterMinimal,
-  StyleConfig,
-} from '@/platform/server/db/schema';
+import type { StyleConfig } from '@/platform/server/db/schema';
 import { referenceProvenanceKey } from '@/motion/reference-provenance';
 import type { ReferenceImageDescription } from '@/stills/reference-image-prompt';
+
+/** Sheet fields a reference image is built from. A `CharacterMinimal` stays assignable. */
+type CharacterReferenceSource = {
+  id: string;
+  name: string;
+  sheetImageUrl: string | null;
+  voiceOnly?: boolean;
+  physicalDescription?: string | null;
+  selectedSheetVersionId?: string | null;
+  isPerson?: boolean;
+};
+
 /**
  * Build a concise character description from character data
  *
  * @param character - Character with flattened fields
  * @returns Concise description string
  */
-const buildCharacterDescription = (character: CharacterMinimal): string => {
+const buildCharacterDescription = (
+  character: Pick<CharacterReferenceSource, 'name' | 'physicalDescription'>
+): string => {
   const parts: string[] = [];
 
   if (character.physicalDescription) {
@@ -45,7 +56,7 @@ const buildCharacterDescription = (character: CharacterMinimal): string => {
  * ```
  */
 export const buildCharacterReferenceImages = (
-  characters: CharacterMinimal[]
+  characters: readonly CharacterReferenceSource[]
 ): ReferenceImageDescription[] => {
   // A voice-only character has no face to anchor (#1585); a sheet left over
   // from before it was reclassified must not ride along as a reference.

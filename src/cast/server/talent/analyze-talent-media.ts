@@ -14,8 +14,14 @@ import { estimateLLMCost } from '@/billing/cost-estimation';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { InsufficientCreditsError } from '@/platform/errors';
 
+/** Key resolution and the credit check a non-team key reaches. */
+type TalentVisionDb = {
+  apiKeys: Pick<ScopedDb['apiKeys'], 'resolveLlmKey'>;
+  billing: Pick<ScopedDb['billing'], 'hasEnoughCredits' | 'deductCredits'>;
+};
+
 export type AnalyzeTalentMediaForTeamInput = {
-  scopedDb: ScopedDb;
+  scopedDb: TalentVisionDb;
   userId: string;
   imageUrls: string[];
   filenames?: string[];

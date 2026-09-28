@@ -12,9 +12,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { IMAGE_TO_VIDEO_MODELS } from '@/models/models';
 import { audioSourceKeyFromVoicedLines } from '@/motion/dialogue-tts';
 import { isSelectedVersionStale } from '@/shots/scene-segments';
-import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
+import type { MotionAudioClip } from '@/platform/server/db/schema';
 import type { MotionWorkflowInput } from '@/platform/server/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
+import { workflowStep } from '@/platform/server/workflow/test-doubles';
 
 const mockSubmit = vi.fn();
 const mockPoll = vi.fn();
@@ -105,16 +106,19 @@ class Probe extends MotionWorkflow {
   runBody(
     event: Readonly<WorkflowEvent<MotionWorkflowInput>>,
     step: WorkflowStep,
-    scopedDb: WorkflowScopedDb
+    scopedDb: Parameters<Probe['runImpl']>[2]
   ) {
     return this.runImpl(event, step, scopedDb);
   }
   fail(
     event: Readonly<WorkflowEvent<MotionWorkflowInput>>,
-    scopedDb: WorkflowScopedDb,
+    scopedDb: Parameters<Probe['runImpl']>[2],
     error = 'Motion generation failed: boom'
   ) {
     return this.onFailure({ event, error, scopedDb });
+  }
+  static accept(db: Parameters<Probe['runImpl']>[2]) {
+    return db;
   }
 }
 
@@ -129,42 +133,63 @@ function makeWorkflow(): Probe {
 
 function makeStep(): WorkflowStep & { names: string[] } {
   const names: string[] = [];
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub: runImpl only uses `do` and `sleep`
-  return {
-    names,
-    do: vi.fn((name: string, fn: () => Promise<unknown>) => {
-      names.push(name);
-      return fn();
+  return Object.assign(
+    workflowStep({
+      names,
+      sleep: async () => {},
     }),
-    sleep: vi.fn(async () => {}),
-  } as unknown as WorkflowStep & { names: string[] };
+    { names }
+  );
 }
 
-function makeScopedDb(shotAudioClips: unknown[] = []) {
+function makeScopedDb(shotAudioClips: MotionAudioClip[] = []) {
   const shotPromptVersions = {
     write: vi.fn(async () => ({ id: 'spv-soft' })),
+    selectIfSelectionIs: async () => false,
   };
   const videoVariants = {
     appendVersion: vi.fn(
       async (
         _input: Parameters<
-          WorkflowScopedDb['videoVariants']['appendVersion']
+          Parameters<Probe['runImpl']>[2]['videoVariants']['appendVersion']
         >[0]
       ) => ({ id: 'vv-1' })
     ),
-    update: vi.fn(async () => {}),
+    update: vi.fn(async () => ({ id: 'vv-1' })),
+    completeIfLive: async () => null,
+    selectIfPendingPromoteIs: async () => null,
+    markFailedByWorkflowRun: async () => 0,
   };
   const bytePlusAssets = {
     releaseOwner: vi.fn(async (_owner: string) => {}),
+    claimSlot: async () => ({ kind: 'exhausted' as const }),
+    finalizeSlot: async () => false,
   };
   const renderSegments = {
     ensureForShot: vi.fn(async () => 'seg-1'),
     ensureForShots: vi.fn(async () => 'seg-packed'),
     setPendingPromoteVersionId: vi.fn(async () => {}),
+    clearPendingPromoteVersionIdIf: async () => {},
   };
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the surface runImpl touches
-  const scopedDb = {
-    credentials: { resolveKey: async () => ({ source: 'platform' }) },
+  const scopedDb = Probe.accept({
+    userId: 'u1',
+    teamId: 't1',
+    credentials: {
+      userId: 'u1',
+      resolveKey: async () => ({ key: 'fal-key', source: 'platform' }),
+      resolveOptionalKey: async () => undefined,
+      resolveLlmKey: async () => ({
+        key: 'llm-key',
+        source: 'platform',
+        via: 'openrouter',
+      }),
+    },
+    billing: {
+      captureReservation: async () => ({ ok: false, reason: 'missing' }),
+      tryDeductCredits: async () => ({ ok: false }),
+      checkAutoTopUp: async () => {},
+    },
+    modelUsage: { record: async () => {} },
     liveRead: {
       shots: {
         getById: async () => ({
@@ -182,22 +207,32 @@ function makeScopedDb(shotAudioClips: unknown[] = []) {
             renderSegmentId: null,
           })),
       },
+      renderSegments: { getById: async () => null },
       billing: { hasEnoughCredits: async () => true },
     },
     renderSegments,
     claims: {
+      videoVariants: { getById: async () => null },
       shotPromptVersions: {
         getByIdForShot: async () => ({
           inputHash: 'ctx-hash',
           analysisModel: 'anthropic/claude-haiku-4.5',
         }),
       },
+      shotDialogue: { getSectionById: async () => null },
     },
+    shots: { update: async () => undefined },
     shotPromptVersions,
     videoVariants,
+    sequenceEvents: { record: async () => ({ id: 'ev' }) },
+    shotDialogue: {
+      claimRecording: async () => ({}),
+      failClaims: async () => {},
+      appendRecording: async () => ({ promotedShotIds: [] }),
+    },
     bytePlusAssets,
-    provenance: {},
-  } as unknown as WorkflowScopedDb;
+    provenance: { record: async () => undefined },
+  });
   return {
     scopedDb,
     shotPromptVersions,

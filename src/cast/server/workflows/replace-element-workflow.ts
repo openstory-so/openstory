@@ -34,10 +34,15 @@ import {
   type ReplaceElementStartPayload,
 } from '@/platform/realtime';
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
+import {
+  readImageChildOutput,
+  readMotionWorkflowResult,
+} from '@/platform/server/workflow/child-output';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import type {
   ImageWorkflowInput,
   MotionWorkflowInput,
+  MotionWorkflowResult,
   ReplaceElementShotSnapshot,
   ReplaceElementWorkflowInput,
   ReplaceElementWorkflowResult,
@@ -58,11 +63,6 @@ type ImageChildResult = {
   imageUrl: string;
   shotId?: string;
   sequenceId?: string;
-};
-
-type MotionChildResult = {
-  videoUrl: string;
-  duration: number;
 };
 
 export type ShotResult =
@@ -468,6 +468,7 @@ export class ReplaceElementWorkflow extends OpenStoryWorkflowEntrypoint<ReplaceE
             childPayload,
             spawnStepName: `spawn-image-${index}`,
             awaitStepName: `await-image-${index}`,
+            readOutput: readImageChildOutput,
             timeout: '30 minutes',
           });
 
@@ -586,7 +587,7 @@ export class ReplaceElementWorkflow extends OpenStoryWorkflowEntrypoint<ReplaceE
           };
 
           try {
-            await spawnAndAwaitChild<MotionWorkflowInput, MotionChildResult>(
+            await spawnAndAwaitChild<MotionWorkflowInput, MotionWorkflowResult>(
               step,
               {
                 binding: motionBinding,
@@ -596,6 +597,7 @@ export class ReplaceElementWorkflow extends OpenStoryWorkflowEntrypoint<ReplaceE
                 childPayload,
                 spawnStepName: `spawn-motion-${index}`,
                 awaitStepName: `await-motion-${index}`,
+                readOutput: readMotionWorkflowResult,
                 timeout: '30 minutes',
               }
             );

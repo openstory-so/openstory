@@ -1,5 +1,6 @@
 import { copyFile } from '#storage';
 import { generateId } from '@/platform/id';
+import type { SequenceElement } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import {
   STORAGE_BUCKETS,
@@ -8,6 +9,31 @@ import {
 import { getExtensionFromUrl } from '@/platform/server/storage/file';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import type { ElementVisionWorkflowInput } from '@/platform/server/workflow/types';
+
+type CopiedElement = Pick<
+  SequenceElement,
+  | 'imagePath'
+  | 'visionStatus'
+  | 'uploadedFilename'
+  | 'token'
+  | 'kind'
+  | 'durationSeconds'
+  | 'description'
+  | 'consistencyTag'
+  | 'visionGeneratedAt'
+>;
+
+/** `list` and `create` — the only sequence-element calls a copy makes. */
+export type CopySequenceElementsDb = {
+  sequenceElements: {
+    list: (
+      ...args: Parameters<ScopedDb['sequenceElements']['list']>
+    ) => Promise<CopiedElement[]>;
+    create: (
+      ...args: Parameters<ScopedDb['sequenceElements']['create']>
+    ) => Promise<Pick<SequenceElement, 'id' | 'uploadedFilename' | 'token'>>;
+  };
+};
 
 /**
  * Copy all elements from one sequence into another. R2 files are duplicated
@@ -19,7 +45,7 @@ import type { ElementVisionWorkflowInput } from '@/platform/server/workflow/type
  * description catches up.
  */
 export async function copySequenceElements(params: {
-  scopedDb: ScopedDb;
+  scopedDb: CopySequenceElementsDb;
   teamId: string;
   userId: string;
   sourceSequenceId: string;

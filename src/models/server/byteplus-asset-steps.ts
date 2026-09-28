@@ -95,7 +95,8 @@ export async function ingestArkAssets(
     ledger: AssetPoolLedger;
     /** The run holding the leases — see `assetLeaseOwner`. */
     owner: string;
-    credentials: CredentialScopedDb;
+    /** Only the optional fal key is read; Ark itself is platform-only. */
+    credentials: Pick<CredentialScopedDb, 'resolveOptionalKey'>;
   }
 ): Promise<ArkAssetMap> {
   const map: ArkAssetMap = {};

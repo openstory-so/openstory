@@ -7,7 +7,11 @@ import {
   type FC,
   type ReactNode,
 } from 'react';
-import type { realtimeSchema } from '@/platform/realtime';
+import type { realtimeSchema } from '@/platform/realtime/schema';
+import {
+  isSelectedRealtimeEvent,
+  parseRealtimeUserEvent,
+} from '@/platform/realtime/parse-event';
 import {
   combineRealtimeStatus,
   jitterReconnectDelay,
@@ -255,9 +259,11 @@ interface UseRealtimeOpts<T, E extends string> {
   enabled?: boolean;
 }
 
-function useRealtimeImpl<T, E extends string>(
-  opts: UseRealtimeOpts<T, E>
-): { status: ConnectionStatus } {
+function useRealtimeImpl<const E extends EventPaths<typeof realtimeSchema>>(
+  opts: UseRealtimeOpts<typeof realtimeSchema, E>
+): {
+  status: ConnectionStatus;
+} {
   const { channels = [], events, onData, enabled } = opts;
   const context = useContext(RealtimeContext);
   if (!context) {
@@ -288,22 +294,10 @@ function useRealtimeImpl<T, E extends string>(
     }
 
     register(registrationId, validChannels, (msg) => {
-      if (
-        events &&
-        events.length > 0 &&
-        !events.some((name) => name === msg.event)
-      ) {
-        return;
-      }
-      // The DO delivers the channel's events untyped; the `events` filter above
-      // guarantees `msg` matches one of the requested paths, but TS can't prove
-      // the narrowing at this typed/untyped boundary.
-      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- runtime-validated event/payload boundary
-      onDataRef.current?.({
-        event: msg.event,
-        channel: msg.channel,
-        data: msg.data,
-      } as unknown as EventPayloadUnion<T, E>);
+      const parsed = parseRealtimeUserEvent(msg);
+      if (!parsed || !events || events.length === 0) return;
+      if (!isSelectedRealtimeEvent(parsed, events)) return;
+      onDataRef.current?.(parsed);
     });
 
     return () => unregister(registrationId);
@@ -314,14 +308,15 @@ function useRealtimeImpl<T, E extends string>(
 }
 
 /**
- * Type-safe `useRealtime` factory. Binding to `typeof realtimeSchema` gives the
+ * Type-safe `useRealtime` factory. Binding to `realtimeSchema` gives the
  * same event-name + payload inference the call sites relied on under Upstash.
  */
-function createRealtime<T extends Record<string, unknown>>() {
+function createRealtime() {
   return {
-    useRealtime: <const E extends EventPaths<T>>(opts: UseRealtimeOpts<T, E>) =>
-      useRealtimeImpl<T, E>(opts),
+    useRealtime: <const E extends EventPaths<typeof realtimeSchema>>(
+      opts: UseRealtimeOpts<typeof realtimeSchema, E>
+    ) => useRealtimeImpl(opts),
   };
 }
 
-export const { useRealtime } = createRealtime<typeof realtimeSchema>();
+export const { useRealtime } = createRealtime();

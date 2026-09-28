@@ -49,6 +49,8 @@ import {
   recordDialogueCall,
   type RecordedDialogueCall,
 } from '@/motion/server/synthesize-dialogue';
+import type { DurableLLMCallContext } from '@/models/server/llm-call-helper';
+import type { ResolvedApiKey } from '@/models/server/db/api-keys';
 import type { AnalysisModelId } from '@/models/models.config';
 import { generateId } from '@/platform/id';
 import { getLogger } from '@/platform/logger';
@@ -74,8 +76,26 @@ const logger = getLogger(['openstory', 'workflow', 'dialogue-recording']);
  */
 const SEED_TAKE_CHUNK_CHARS = 1000;
 
+type DialogueLlmDb = NonNullable<DurableLLMCallContext['scopedDb']>;
+
+/**
+ * The key the call spends, the credit charge, the fit-ladder LLM call, and
+ * the claim writes. A full `WorkflowScopedDb` still assigns.
+ */
+type RecordDialogueDb = DialogueLlmDb & {
+  credentials: DialogueLlmDb['credentials'] & {
+    resolveKey: (
+      ...args: Parameters<WorkflowScopedDb['credentials']['resolveKey']>
+    ) => Promise<Pick<ResolvedApiKey, 'key'>>;
+  };
+  shotDialogue: Pick<
+    WorkflowScopedDb['shotDialogue'],
+    'claimRecording' | 'failClaims' | 'appendRecording'
+  >;
+};
+
 export type RecordDialogueArgs = {
-  scopedDb: WorkflowScopedDb;
+  scopedDb: RecordDialogueDb;
   workflowRunId: string;
   userId: string;
   teamId: string;

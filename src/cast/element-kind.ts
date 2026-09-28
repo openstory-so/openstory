@@ -12,7 +12,7 @@
  * on the row. Sorted by MIME type, exactly like `studio-composer`'s `fileKind`.
  */
 
-const ELEMENT_KINDS = ['image', 'video', 'audio'] as const;
+export const ELEMENT_KINDS = ['image', 'video', 'audio'] as const;
 export type SequenceElementKind = (typeof ELEMENT_KINDS)[number];
 
 /**

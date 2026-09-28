@@ -6,11 +6,8 @@
  * attribution from every $ai_generation event.
  */
 
-import type { ChatMiddleware, ChatMiddlewareContext } from '@tanstack/ai';
-import type {
-  OtelMiddlewareOptions,
-  OtelSpanInfo,
-} from '@tanstack/ai/middlewares/otel';
+import type { ChatMiddleware } from '@tanstack/ai';
+import type { AttributeValue } from '@opentelemetry/api';
 import type { Attributes, SpanOptions, SpanStatus } from '@opentelemetry/api';
 import { diag, SpanStatusCode } from '@opentelemetry/api';
 import { micros } from '@/billing/money';
@@ -32,9 +29,24 @@ vi.doMock('@/platform/logger', async () => {
   };
 });
 
+/** Fields the formatter reads. The enricher ignores its argument. */
+type ObservabilitySpanInfo = {
+  kind: string;
+  iteration?: number;
+};
+
+type CapturedOtelOptions = {
+  captureContent?: boolean;
+  meter?: unknown;
+  spanNameFormatter?: (info: ObservabilitySpanInfo) => string;
+  attributeEnricher?: (
+    info: ObservabilitySpanInfo
+  ) => Record<string, AttributeValue>;
+};
+
 const otelMiddlewareReturn: ChatMiddleware = { name: 'mock-otel' };
 const mockOtelMiddleware = vi.fn(
-  (_options: OtelMiddlewareOptions): ChatMiddleware => otelMiddlewareReturn
+  (_options: CapturedOtelOptions): ChatMiddleware => otelMiddlewareReturn
 );
 vi.doMock('@tanstack/ai/middlewares/otel', () => ({
   otelMiddleware: mockOtelMiddleware,
@@ -88,38 +100,9 @@ vi.doMock('@opentelemetry/sdk-metrics', () => ({
   PeriodicExportingMetricReader: class {},
 }));
 
-// The enricher/formatter ignore ctx, so an inert stub is sufficient. The
-// capability-DI members (`capabilities`/`get`/`getOptional`/`provide`) are
-// unused here and back a class with private state that no literal can satisfy,
-// so we assert the documented fields to the context type.
-// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- inert test stub; capability-DI members are unused and unconstructable from a literal
-const middlewareCtx = {
-  requestId: 'req-1',
-  streamId: 'stream-1',
-  runId: 'run-1',
-  threadId: 'thread-1',
-  phase: 'beforeModel',
-  iteration: 0,
-  chunkIndex: 0,
-  abort: () => {},
-  context: undefined,
-  defer: () => {},
-  provider: 'test',
-  model: 'test-model',
-  source: 'server',
-  streaming: true,
-  systemPrompts: [],
-  messageCount: 0,
-  hasTools: false,
-  currentMessageId: null,
-  accumulatedContent: '',
-  messages: [],
-  createId: (prefix: string) => `${prefix}-1`,
-} as unknown as ChatMiddlewareContext;
-const chatSpanInfo = (): OtelSpanInfo => ({ kind: 'chat', ctx: middlewareCtx });
-const iterationSpanInfo = (iteration: number): OtelSpanInfo => ({
+const chatSpanInfo = (): ObservabilitySpanInfo => ({ kind: 'chat' });
+const iterationSpanInfo = (iteration: number): ObservabilitySpanInfo => ({
   kind: 'iteration',
-  ctx: middlewareCtx,
   iteration,
 });
 
@@ -139,7 +122,7 @@ async function importAiOtel({
   return await import('./ai-otel');
 }
 
-function capturedOptions(): OtelMiddlewareOptions {
+function capturedOptions(): CapturedOtelOptions {
   const options = mockOtelMiddleware.mock.calls[0]?.[0];
   if (!options) throw new Error('expected otelMiddleware to have been called');
   return options;

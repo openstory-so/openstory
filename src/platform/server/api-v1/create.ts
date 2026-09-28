@@ -67,8 +67,32 @@ import type { PortraitAttestation } from '@/cast/upload-rights';
 
 const logger = getLogger(['openstory', 'api-v1', 'create']);
 
+/** Library lookups and the rollback deletes. The create test fixture is this. */
+type OneShotLibraryDb = {
+  styles: Pick<ScopedDb['styles'], 'list'>;
+  talent: Pick<ScopedDb['talent'], 'list' | 'delete'>;
+  locations: Pick<ScopedDb['locations'], 'list' | 'delete'>;
+};
+
+/**
+ * Everything the create path writes or checks beyond those lookups: likeness,
+ * vision, talent and location inserts, and `createSequences`. A full
+ * `ScopedDb` assigns; the library fixture does not, so it stays on
+ * {@link OneShotLibraryDb}.
+ */
+type OneShotPipelineDb = Parameters<typeof createSequences>[1]['scopedDb'] &
+  Parameters<typeof createLibraryTalent>[1]['scopedDb'] &
+  Parameters<typeof createLibraryTalent>[1]['rightsDb'] &
+  Parameters<typeof createLibraryTalent>[1]['visionDb'] &
+  Parameters<typeof createLibraryLocation>[1]['scopedDb'] &
+  Parameters<typeof attestUploads>[0] &
+  Parameters<typeof classifyUpload>[0]['scopedDb'] &
+  Parameters<typeof enqueueLibraryTalentSheet>[0] &
+  Parameters<typeof enqueueLibraryLocationSheet>[0];
+
 export type OneShotContext = {
-  scopedDb: ScopedDb;
+  scopedDb: OneShotLibraryDb;
+  pipelineDb: OneShotPipelineDb;
   user: { id: string };
   teamId: string;
   /** Recorded on any portrait sign-off the request carries. */
@@ -179,7 +203,7 @@ async function requireIngestedImageRights(
   for (const item of items) {
     for (const url of item.urls) {
       const rights = await classifyUpload({
-        scopedDb: ctx.scopedDb,
+        scopedDb: ctx.pipelineDb,
         userId: ctx.user.id,
         url,
         request: ctx.request,
@@ -191,7 +215,7 @@ async function requireIngestedImageRights(
         );
       }
       await attestUploads(
-        ctx.scopedDb,
+        ctx.pipelineDb,
         [{ url, ...item.attestation }],
         ctx.request
       );
@@ -309,7 +333,7 @@ export async function runOneShotCreate(
         // Feed the enhancer the same style + element inputs the UI does.
         ...toEnhanceInputs({ style, elements: elementUploads }),
       },
-      { scopedDb: ctx.scopedDb, userId: ctx.user.id, teamId: ctx.teamId }
+      { scopedDb: ctx.pipelineDb, userId: ctx.user.id, teamId: ctx.teamId }
     );
     if (result.length > 0) {
       enhancedScript = result;
@@ -342,7 +366,13 @@ export async function runOneShotCreate(
                 referenceImageUrls: ingestedCharacters.get(item) ?? [],
                 enqueueSheet: false,
               },
-              ctx
+              {
+                scopedDb: ctx.pipelineDb,
+                rightsDb: ctx.pipelineDb,
+                visionDb: ctx.pipelineDb,
+                user: ctx.user,
+                teamId: ctx.teamId,
+              }
             );
             createdTalentIds.push(talent.id);
             if (deferredSheet) deferredTalentSheets.push(deferredSheet);
@@ -362,7 +392,11 @@ export async function runOneShotCreate(
                   description: item.description,
                   referenceImageUrls: ingestedLocations.get(item) ?? [],
                 },
-                ctx,
+                {
+                  scopedDb: ctx.pipelineDb,
+                  user: ctx.user,
+                  teamId: ctx.teamId,
+                },
                 { enqueueSheet: false }
               );
             createdLocationIds.push(location.id);
@@ -411,7 +445,9 @@ export async function runOneShotCreate(
 
     // 4. Run the shared create core (credits → fan-out → trigger storyboard).
     const { entries } = await createSequences(parsed, {
-      ...ctx,
+      scopedDb: ctx.pipelineDb,
+      user: ctx.user,
+      teamId: ctx.teamId,
       notify: false,
     });
 
@@ -420,10 +456,10 @@ export async function runOneShotCreate(
     // the storyboard wait-for-sheets gate will surface a missing sheet.
     await Promise.allSettled([
       ...deferredTalentSheets.map((sheet) =>
-        enqueueLibraryTalentSheet(ctx.scopedDb, sheet)
+        enqueueLibraryTalentSheet(ctx.pipelineDb, sheet)
       ),
       ...deferredLocationSheets.map(({ workflowInput }) =>
-        enqueueLibraryLocationSheet(ctx.scopedDb, workflowInput)
+        enqueueLibraryLocationSheet(ctx.pipelineDb, workflowInput)
       ),
     ]);
 

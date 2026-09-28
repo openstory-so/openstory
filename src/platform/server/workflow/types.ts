@@ -2103,3 +2103,19 @@ export interface SequenceExportWorkflowInput extends UserWorkflowContext {
  * `spawnAndAwaitChild`.
  */
 export type CloudflareEnv = Cloudflare.Env;
+
+/**
+ * `CloudflareEnv` slots whose value accepts a `Workflow` binding.
+ * `Workflow<unknown>` is the wide binding tests construct; production
+ * bindings are the specific payload types and still match this direction.
+ */
+type WorkflowBindingName = {
+  [K in keyof CloudflareEnv]-?: Workflow<unknown> extends CloudflareEnv[K]
+    ? K
+    : never;
+}[keyof CloudflareEnv];
+
+/** Any subset of the workflow bindings. A full `CloudflareEnv` still assigns. */
+export type WorkflowBindingsEnv = Partial<
+  Pick<CloudflareEnv, WorkflowBindingName>
+>;

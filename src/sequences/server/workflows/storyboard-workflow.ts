@@ -23,6 +23,7 @@ import { getGenerationChannel } from '@/platform/realtime';
 import { includesStage } from '@/sequences/pipeline';
 import { validateSequenceAuth } from '@/platform/server/workflow/auth';
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
+import { readUnknown } from '@/platform/server/workflow/child-output';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { WorkflowValidationError } from '@/platform/server/workflow/errors';
 import type {
@@ -30,7 +31,10 @@ import type {
   UpdateStaleShotsWorkflowInput,
   StoryboardWorkflowInput,
 } from '@/platform/server/workflow/types';
-import type { UpdateStaleShotsResult } from '@/shots/server/workflows/update-stale-shots-workflow';
+import {
+  readUpdateStaleShotsResult,
+  type UpdateStaleShotsResult,
+} from '@/shots/server/workflows/update-stale-shots-workflow';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { getLogger } from '@/platform/logger';
 
@@ -199,6 +203,7 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
         },
         spawnStepName: 'spawn-continue',
         awaitStepName: 'await-continue',
+        readOutput: readUpdateStaleShotsResult,
         // Sheets (30m) then prompts + stills + clips per shot (90m each,
         // in parallel), plus notify lag under a burst.
         timeout: '4 hours',
@@ -255,6 +260,7 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
         },
         spawnStepName: 'spawn-analyze-script',
         awaitStepName: 'await-analyze-script',
+        readOutput: readUnknown,
         // Must exceed the child's own await budget: analyze-script's phases run
         // sequentially — scene-split (45m) + matching (45m) + bibles/visual
         // prompts (60m) + shot-images (90m) + motion-batch (90m) ≈ 5.5 hours

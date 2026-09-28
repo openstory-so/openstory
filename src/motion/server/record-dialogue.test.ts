@@ -19,6 +19,7 @@ import {
   type SceneVoicedLine,
 } from '@/shots/shot-dialogue';
 import type { WorkflowStep } from 'cloudflare:workers';
+import { workflowStep } from '@/platform/server/workflow/test-doubles';
 
 const recordCall = vi.fn();
 const llmCall = vi.fn();
@@ -56,39 +57,26 @@ vi.doMock('@/billing/server/workflow-deduction', () => ({
 const { chunkTakeLines, recordDialogue } = await import('./record-dialogue');
 const { MAX_DIALOGUE_FIT_ATTEMPTS } = await import('./fit-dialogue-clip');
 
+function acceptDb(db: Parameters<typeof recordDialogue>[1]['scopedDb']) {
+  return db;
+}
+
 /** Runs each step body inline and records the durable names used. */
 function fakeStep(): { names: string[]; step: WorkflowStep } {
   const names: string[] = [];
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- minimal WorkflowStep stub: recording only uses `do`
-  const step = {
-    do: (name: string, body: () => Promise<unknown>) => {
-      names.push(name);
-      return body();
-    },
-  } as unknown as WorkflowStep;
+  const step = workflowStep({ names });
   return { names, step };
 }
 
-type Appended = {
-  id: string;
-  inputHash: string;
-  turns: Array<{ shotId: string; index: number; spokenText?: string }>;
-  sections: Array<{
-    id: string;
-    shotId: string;
-    adopt: { claimId: string; audioClips: unknown[] } | null;
-    sourceKey: string;
-    spokenLines: unknown;
-    dialogueVersionId: string | null;
-  }>;
-};
 // The db's half of the claim lifecycle (#1657): every shot asked for is
 // claimed, and a live claim's reading is promoted. `unclaimable` and `demoted`
 // are the two ways a test makes that not happen.
 const unclaimable = new Set<string>();
 const demoted = new Set<string>();
 const claimRecording = vi.fn(
-  async (input: { shots: { shotId: string }[]; workflowRunId: string }) =>
+  async (
+    input: Parameters<WorkflowScopedDb['shotDialogue']['claimRecording']>[0]
+  ) =>
     Object.fromEntries(
       input.shots
         .filter((shot) => !unclaimable.has(shot.shotId))
@@ -96,16 +84,33 @@ const claimRecording = vi.fn(
     )
 );
 const failClaims = vi.fn(async (_ids: readonly string[], _error: string) => {});
-const appendRecording = vi.fn(async (input: Appended) => ({
-  promotedShotIds: input.sections
-    .filter((section) => section.adopt && !demoted.has(section.shotId))
-    .map((section) => section.shotId),
-}));
-// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- only the key hatch and the claim/land writes are touched
-const scopedDb = {
-  credentials: { resolveKey: async () => ({ key: 'el-key' }) },
+const appendRecording = vi.fn(
+  async (
+    input: Parameters<WorkflowScopedDb['shotDialogue']['appendRecording']>[0]
+  ) => ({
+    promotedShotIds: input.sections
+      .filter((section) => section.adopt && !demoted.has(section.shotId))
+      .map((section) => section.shotId),
+  })
+);
+const scopedDb = acceptDb({
+  userId: 'user-1',
+  teamId: 'team-1',
+  credentials: {
+    resolveKey: async () => ({ key: 'el-key' }),
+    resolveLlmKey: async () => ({
+      key: 'llm-key',
+      source: 'platform',
+      via: 'openrouter',
+    }),
+  },
+  billing: {
+    captureReservation: async () => ({ ok: false, reason: 'missing' }),
+    tryDeductCredits: async () => ({ ok: false }),
+    checkAutoTopUp: async () => {},
+  },
   shotDialogue: { claimRecording, failClaims, appendRecording },
-} as unknown as WorkflowScopedDb;
+});
 
 const line = (
   shotId: string,
@@ -192,7 +197,7 @@ function reset() {
   deduct.mockClear();
 }
 
-const appended = (call = 0): Appended => {
+const appended = (call = 0) => {
   const row = appendRecording.mock.calls[call]?.[0];
   if (!row) throw new Error(`appendRecording call ${call} never happened`);
   return row;

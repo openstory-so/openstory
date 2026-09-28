@@ -5,7 +5,6 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ScopedDb } from '@/platform/server/db/scoped';
 
 const mockTriggerWorkflowRun = vi.fn();
 const mockEmit = vi.fn(async () => undefined);
@@ -21,11 +20,7 @@ const { enqueueLibraryTalentSheet } =
   await import('./enqueue-library-talent-sheet');
 
 const claimSheet = vi.fn(async () => true);
-// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the claim method
-const scopedDb = { talent: { claimSheet } } as unknown as Pick<
-  ScopedDb,
-  'talent'
->;
+const scopedDb = { talent: { claimSheet } };
 
 const params = {
   talentId: 'tal-1',

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { ScopedDb } from '@/platform/server/db/scoped';
+import type { CopySequenceElementsDb } from './copy-sequence-elements';
 
 const copyFile = vi.fn(async () => undefined);
 const triggerWorkflow = vi.fn(async () => 'run-1');
@@ -8,12 +8,24 @@ vi.doMock('@/platform/server/workflow/client', () => ({ triggerWorkflow }));
 
 const { copySequenceElements } = await import('./copy-sequence-elements');
 
-function fakeDb(source: Record<string, unknown>) {
-  const create = vi.fn(async (row: Record<string, unknown>) => row);
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- copy only reaches sequenceElements.list/create
-  const scopedDb = {
-    sequenceElements: { list: vi.fn(async () => [source]), create },
-  } as unknown as ScopedDb;
+type CopiedElement = Awaited<
+  ReturnType<CopySequenceElementsDb['sequenceElements']['list']>
+>[number];
+
+function fakeDb(source: CopiedElement) {
+  const create = vi.fn<CopySequenceElementsDb['sequenceElements']['create']>(
+    async (row) => ({
+      id: row.id ?? '',
+      uploadedFilename: row.uploadedFilename,
+      token: row.token,
+    })
+  );
+  const scopedDb: CopySequenceElementsDb = {
+    sequenceElements: {
+      list: vi.fn(async () => [source]),
+      create,
+    },
+  };
   return { scopedDb, create };
 }
 

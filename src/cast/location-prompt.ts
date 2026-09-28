@@ -19,6 +19,17 @@ import {
 } from '@/stills/reference-image-prompt';
 import { referenceProvenanceKey } from '@/motion/reference-provenance';
 
+/** Reference fields a location sheet image is built from. */
+type LocationReferenceSource = {
+  id: string;
+  locationId: string;
+  name: string;
+  consistencyTag: string | null;
+  referenceImageUrl: string | null;
+  description?: string | null;
+  selectedReferenceVersionId?: string | null;
+};
+
 /**
  * Build a concise location description from location data
  *
@@ -26,7 +37,7 @@ import { referenceProvenanceKey } from '@/motion/reference-provenance';
  * @returns Concise description string
  */
 export const buildLocationDescription = (
-  location: SequenceLocationMinimal
+  location: Pick<LocationReferenceSource, 'name' | 'description'>
 ): string => {
   const parts: string[] = [];
 
@@ -46,7 +57,7 @@ export const buildLocationDescription = (
  * @returns Array of reference images
  */
 export const buildLocationReferenceImages = (
-  locations: SequenceLocationMinimal[]
+  locations: readonly LocationReferenceSource[]
 ): ReferenceImageDescription[] => {
   return locations
     .filter((l) => l.referenceImageUrl)

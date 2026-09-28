@@ -48,6 +48,28 @@ type WranglerConfigShape = Record<string, unknown> & {
   env?: Record<string, Record<string, unknown>>;
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readWranglerConfig(value: unknown): WranglerConfigShape {
+  if (!isRecord(value)) {
+    throw new Error('wrangler.jsonc did not parse to an object');
+  }
+  if (value.env === undefined) return value;
+  if (!isRecord(value.env)) {
+    throw new Error('wrangler.jsonc env is not an object');
+  }
+  const env: Record<string, Record<string, unknown>> = {};
+  for (const [name, block] of Object.entries(value.env)) {
+    if (!isRecord(block)) {
+      throw new Error(`wrangler.jsonc env.${name} is not an object`);
+    }
+    env[name] = block;
+  }
+  return { ...value, env };
+}
+
 function stripUnhostable(block: Record<string, unknown>): void {
   for (const key of UNHOSTABLE_KEYS) delete block[key];
 }
@@ -57,13 +79,10 @@ function stripUnhostable(block: Record<string, unknown>): void {
  * return its path. Per-pid filename so concurrent runs don't clobber each other.
  */
 function writeSlimmedConfig(): string {
-  // JSON5 handles wrangler.jsonc's comments + trailing commas. Parsing untyped
-  // config is an inherent type boundary; we only read/delete top-level and
-  // per-env keys on the result.
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- JSON parse boundary
-  const config = JSON5.parse(
-    readFileSync(WRANGLER_CONFIG, 'utf8')
-  ) as WranglerConfigShape;
+  // JSON5 handles wrangler.jsonc's comments + trailing commas. Only the
+  // top-level object and each env block are read, so that is all we check.
+  const parsed: unknown = JSON5.parse(readFileSync(WRANGLER_CONFIG, 'utf8'));
+  const config = readWranglerConfig(parsed);
 
   stripUnhostable(config);
   if (config.env) {

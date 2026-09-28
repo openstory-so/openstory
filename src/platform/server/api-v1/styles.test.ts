@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import type { Style } from '@/platform/server/db/schema/libraries';
 import {
   apiCreateStyleSchema,
   EXAMPLE_CREATE_STYLE_BODY,
@@ -30,7 +29,6 @@ describe('apiCreateStyleSchema', () => {
 
 describe('styleDocument', () => {
   it('links self and a create-sequence affordance pre-filled with the id', () => {
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- minimal fixture: the document reads only the listed columns
     const row = {
       id: '01STYLE',
       name: 'Neon',
@@ -45,7 +43,7 @@ describe('styleDocument', () => {
       recommendedVideoModel: null,
       previewUrl: null,
       createdAt: new Date('2026-01-01T00:00:00Z'),
-    } as unknown as Style;
+    };
     const doc = styleDocument(row);
     expect(doc._links.self?.href).toBe('/api/v1/styles/01STYLE');
     expect(doc._links['create-sequence']?.examples?.[0]).toMatchObject({

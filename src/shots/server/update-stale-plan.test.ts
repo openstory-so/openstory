@@ -7,7 +7,7 @@
  * clean one.
  */
 
-import type { Frame, FrameVariant, Shot } from '@/platform/server/db/schema';
+import type { Frame, Shot } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Scene } from '@/shots/scene-analysis.schema';
 import type { ShotStalenessResult } from './shot-staleness';
@@ -28,37 +28,35 @@ const FRESH: ShotStalenessResult = {
 // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test stub; computePlan only reads sceneId off the scene
 const scene = { sceneId: 'scene-1' } as unknown as Scene;
 
-function makeShot(overrides: Partial<Shot> = {}): Shot {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal Shot stub exposing only what computePlan reads
-  return {
-    id: 'shot-1',
-    sceneId: 'scene-1',
-    ...overrides,
-  } as unknown as Shot;
+function makeShot(overrides: Partial<Shot> = {}) {
+  const { id = 'shot-1', sceneId = 'scene-1', ...rest } = overrides;
+  return { ...rest, id, sceneId };
 }
 
-function makeFrame(overrides: Partial<Frame> = {}): Frame {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal Frame stub exposing only what computePlan reads
-  return {
-    id: 'frame-1',
-    shotId: 'shot-1',
+function makeFrame(overrides: Partial<Frame> = {}) {
+  const {
+    id = 'frame-1',
+    shotId = 'shot-1',
     // The still lives on the selected version (#1067); a set pointer is what
     // "this shot already has an image" means. Null it for a still-less shot.
-    selectedImageVersionId: 'fv-1',
-    ...overrides,
-  } as unknown as Frame;
+    selectedImageVersionId = 'fv-1',
+    ...rest
+  } = overrides;
+  return { ...rest, id, shotId, selectedImageVersionId };
 }
 
 /** The selected `frame_variants` row `getSelectedByFrameIds` would return. */
-function makeSelectedImage(frame: Frame): FrameVariant {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal FrameVariant stub exposing only what computePlan reads
+function makeSelectedImage(frame: {
+  id: string;
+  selectedImageVersionId?: string | null;
+}) {
   return {
     id: frame.selectedImageVersionId,
     frameId: frame.id,
     url: `https://example.com/${frame.id}.jpg`,
     model: 'nano_banana_2',
     inputHash: 'stored-thumb',
-  } as unknown as FrameVariant;
+  };
 }
 
 /** Staleness keyed by shot id; anything unlisted reads fresh. */
@@ -149,8 +147,8 @@ type VideoFixture = {
 };
 
 function buildScopedDb(
-  shots: Shot[],
-  frames: Frame[],
+  shots: readonly { id: string }[],
+  frames: readonly { id: string; selectedImageVersionId?: string | null }[],
   opts: {
     video?: VideoFixture;
     sequence?: Record<string, unknown>;
@@ -239,8 +237,8 @@ function asScopedDb<T>(stub: T): ScopedDb {
 
 /** Every shot owes a visual prompt unless a test names its units. */
 const plan = (
-  shots: Shot[],
-  frames: Frame[],
+  shots: readonly { id: string }[],
+  frames: readonly { id: string; selectedImageVersionId?: string | null }[],
   opts: { units?: PlanUnitRef[]; db?: ScopedDb } = {}
 ) =>
   computePlan({

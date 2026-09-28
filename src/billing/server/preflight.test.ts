@@ -7,28 +7,36 @@
  */
 
 import { micros } from '@/billing/money';
-import type { ScopedDb } from '@/platform/server/db/scoped';
+import type { ApiKeyProvider } from '@/platform/server/db/schema/team-api-keys';
 import { InsufficientCreditsError } from '@/platform/errors';
 import { describe, expect, it, vi } from 'vitest';
 import {
   releaseReservationOnThrow,
   requireCredits,
   reserveRunCredits,
+  type ReservationPreflightScopedDb,
 } from './preflight';
 
 type StubProvider = 'fal' | 'openrouter' | 'llmtr';
+
+function isStubProvider(provider: ApiKeyProvider): provider is StubProvider {
+  return (
+    provider === 'fal' || provider === 'openrouter' || provider === 'llmtr'
+  );
+}
 
 function fakeScopedDb(opts: {
   keys: Array<StubProvider>;
   invalidKeys?: Array<StubProvider>;
   canAfford?: boolean;
-}): ScopedDb {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- minimal stub of the two methods requireCredits touches
+}): ReservationPreflightScopedDb {
   return {
     apiKeys: {
-      hasUsableKey: (provider: StubProvider) =>
+      hasUsableKey: (provider) =>
         Promise.resolve(
-          opts.keys.includes(provider) && !opts.invalidKeys?.includes(provider)
+          isStubProvider(provider) &&
+            opts.keys.includes(provider) &&
+            !opts.invalidKeys?.includes(provider)
         ),
     },
     billing: {
@@ -37,15 +45,15 @@ function fakeScopedDb(opts: {
         Promise.resolve(
           opts.canAfford
             ? {
-                ok: true as const,
+                ok: true,
                 reservationId: 'res_1',
                 remaining: COST,
                 replay: false,
               }
-            : { ok: false as const }
+            : { ok: false }
         ),
     },
-  } as unknown as ScopedDb;
+  };
 }
 
 const COST = micros(1000);

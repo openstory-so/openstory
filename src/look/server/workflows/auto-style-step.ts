@@ -16,16 +16,30 @@ import {
   type AutoStyleDraft,
 } from '@/look/auto-style';
 import { STYLE_PACE_VALUES, type StyleConfig } from '@/look/style-config';
-import { durableLLMCallCf } from '@/models/server/llm-call-helper';
+import {
+  durableLLMCallCf,
+  type DurableLLMCallContext,
+} from '@/models/server/llm-call-helper';
 import type { WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
 
 const logger = getLogger(['openstory', 'workflow', 'auto-style']);
 
+/** The billed style call plus the two writes that store its recipe. */
+type AutoStyleDb = NonNullable<DurableLLMCallContext['scopedDb']> & {
+  styles: Pick<WorkflowScopedDb['styles'], 'setGeneratedForSequence'>;
+  sequences: Pick<WorkflowScopedDb['sequences'], 'snapshotAutoStyle'>;
+};
+
+const _autoStyleDbAcceptsWorkflow: WorkflowScopedDb extends AutoStyleDb
+  ? true
+  : never = true;
+void _autoStyleDbAcceptsWorkflow;
+
 export async function deriveAutoStyle(
   step: WorkflowStep,
   params: {
-    scopedDb: WorkflowScopedDb;
+    scopedDb: AutoStyleDb;
     workflowRunId: string;
     sequenceId: string;
     styleId: string;

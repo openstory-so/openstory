@@ -13,7 +13,15 @@ import {
 import { narrowShotPromptContext } from '@/shots/server/prompt-context';
 import { shotDialogue } from '@/shots/shot-dialogue';
 import {
+  nullableString,
+  optionalString,
+  recordOf,
+  requiredString,
+  withOptional,
+} from '@/platform/server/workflow/child-output';
+import {
   motionPromptSchema,
+  readMotionPrompt,
   type MotionPrompt,
 } from '@/shots/scene-analysis.schema';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
@@ -44,6 +52,18 @@ export type MotionPromptWorkflowResult = {
    */
   finalVersionId: string | null;
 };
+
+export function readMotionPromptWorkflowResult(
+  value: unknown
+): MotionPromptWorkflowResult {
+  const record = recordOf(value, 'motion prompt result');
+  return {
+    sceneId: requiredString(record, 'sceneId'),
+    ...withOptional('shotId', optionalString(record, 'shotId')),
+    motionPrompt: readMotionPrompt(record.motionPrompt),
+    finalVersionId: nullableString(record, 'finalVersionId'),
+  };
+}
 
 export class MotionPromptWorkflow extends OpenStoryWorkflowEntrypoint<MotionPromptWorkflowInput> {
   protected override async runImpl(

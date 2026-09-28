@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { CharacterWithSheet } from '@/platform/server/db/schema';
-import type { ScopedDb } from '@/platform/server/db/scoped';
-import { enqueueCharacterVoiceDesign } from './enqueue-character-voice';
+import {
+  enqueueCharacterVoiceDesign,
+  type EnqueueCharacterVoiceDb,
+} from './enqueue-character-voice';
 
 function character(
   overrides: Partial<CharacterWithSheet> = {}
@@ -51,21 +53,23 @@ function character(
 function makeScopedDb(overrides: {
   live?: { id: string; workflowRunId: string | null }[];
 }) {
-  const listLiveVoiceClaims = vi.fn(async () => overrides.live ?? []);
-  const createPendingVoiceClaim = vi.fn(
-    async (): Promise<{
-      version: { id: string; workflowRunId: string | null };
-      created: boolean;
-    }> => ({
-      version: { id: 'husk-1', workflowRunId: null },
-      created: true,
-    })
-  );
-  const markVoiceClaimTerminal = vi.fn(async () => ({}));
-  const stampVoiceClaimWorkflowRunId = vi.fn(async () => ({}));
+  const listLiveVoiceClaims = vi.fn<
+    EnqueueCharacterVoiceDb['characters']['listLiveVoiceClaims']
+  >(async () => overrides.live ?? []);
+  const createPendingVoiceClaim = vi.fn<
+    EnqueueCharacterVoiceDb['characters']['createPendingVoiceClaim']
+  >(async () => ({
+    version: { id: 'husk-1', workflowRunId: null },
+    created: true,
+  }));
+  const markVoiceClaimTerminal = vi.fn<
+    EnqueueCharacterVoiceDb['characters']['markVoiceClaimTerminal']
+  >(async () => ({}));
+  const stampVoiceClaimWorkflowRunId = vi.fn<
+    EnqueueCharacterVoiceDb['characters']['stampVoiceClaimWorkflowRunId']
+  >(async () => ({}));
   const releaseCharacterVoice = vi.fn();
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub of the enqueue surface
-  const scopedDb = {
+  const scopedDb: EnqueueCharacterVoiceDb = {
     teamId: 'team-1',
     characters: {
       listLiveVoiceClaims,
@@ -73,7 +77,7 @@ function makeScopedDb(overrides: {
       markVoiceClaimTerminal,
       stampVoiceClaimWorkflowRunId,
     },
-  } as unknown as ScopedDb;
+  };
   return {
     scopedDb,
     listLiveVoiceClaims,

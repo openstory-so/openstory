@@ -19,8 +19,10 @@ import {
   spawnAndAwaitChild,
 } from './await-child';
 import { NonRetryableError } from 'cloudflare:workflows';
-import type { CloudflareEnv } from './types';
 import type { WorkflowStep } from 'cloudflare:workers';
+import { readUnknown } from './child-output';
+import type { CloudflareEnv } from './types';
+import { workflowBinding, workflowInstance } from './test-doubles';
 
 // Cloudflare's documented event-type rule.
 const CF_EVENT_TYPE = /^[a-zA-Z0-9_][a-zA-Z0-9-_]*$/;
@@ -34,15 +36,14 @@ function fakeStep(): { step: WorkflowStep; doSpy: ReturnType<typeof vi.fn> } {
 }
 
 /** Env whose `get()` returns an instance exposing the given `sendEvent`. */
-function fakeEnv(sendEvent: ReturnType<typeof vi.fn>): {
-  env: CloudflareEnv;
+function fakeEnv(sendEvent: WorkflowInstance['sendEvent']): {
+  env: { IMAGE_WORKFLOW: Workflow<unknown> };
   get: ReturnType<typeof vi.fn>;
 } {
-  const get = vi.fn(() => ({ sendEvent }));
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal CloudflareEnv stub exposing only the parent binding under test
+  const get = vi.fn(async () => workflowInstance({ sendEvent }));
   const env = {
-    IMAGE_WORKFLOW: { get, create: vi.fn() },
-  } as unknown as CloudflareEnv;
+    IMAGE_WORKFLOW: workflowBinding({ get }),
+  };
   return { env, get };
 }
 
@@ -183,6 +184,7 @@ describe('spawnAndAwaitChild', () => {
     childPayload: { userId: 'u1', teamId: 't1' },
     spawnStepName: 'spawn-motion-0',
     awaitStepName: 'await-motion-0',
+    readOutput: readUnknown,
   };
 
   test('creates the child under a run-scoped instance id', async () => {
@@ -208,6 +210,22 @@ describe('spawnAndAwaitChild', () => {
 
     expect(waitForEvent).toHaveBeenCalledTimes(1);
     expect(result).toEqual({ ok: true });
+  });
+
+  test('rejects a child output the reader cannot accept without retrying', async () => {
+    const { step, binding } = harness(() => Promise.resolve(undefined));
+
+    await expect(
+      spawnAndAwaitChild(step, {
+        ...baseArgs,
+        binding,
+        readOutput: () => {
+          throw new Error('missing shots');
+        },
+      })
+    ).rejects.toThrow(
+      'Child workflow motion:01SEQ:01FRAME returned an output the parent cannot read: missing shots'
+    );
   });
 
   test('rethrows unrelated create errors', async () => {

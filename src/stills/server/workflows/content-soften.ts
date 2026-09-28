@@ -63,8 +63,25 @@ export const softenImagePromptResponseSchema = z.object({
   prompt: z.string(),
 });
 
+/**
+ * Credentials for the render, plus the LLM key and the charge a softened
+ * prompt books. A full `WorkflowScopedDb` assigns.
+ */
+type ImageSofteningDb = {
+  userId: WorkflowScopedDb['userId'];
+  teamId: WorkflowScopedDb['teamId'];
+  credentials: Pick<
+    WorkflowScopedDb['credentials'],
+    'userId' | 'resolveKey' | 'resolveOptionalKey' | 'resolveLlmKey'
+  >;
+  billing: Pick<
+    WorkflowScopedDb['billing'],
+    'captureReservation' | 'tryDeductCredits' | 'checkAutoTopUp'
+  >;
+};
+
 export type SoftenRejectedPromptArgs = {
-  scopedDb: WorkflowScopedDb;
+  scopedDb: ImageSofteningDb;
   workflowRunId: string;
   sequenceId?: string;
   userId: string;
@@ -196,7 +213,7 @@ type StoredGeneratedImage = {
 
 export type GenerateImageSofteningArgs = {
   step: WorkflowStep;
-  scopedDb: WorkflowScopedDb;
+  scopedDb: ImageSofteningDb;
   workflowRunId: string;
   userId: string;
   sequenceId?: string;

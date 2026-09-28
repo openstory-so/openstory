@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorkflowStep } from 'cloudflare:workers';
-import type { CredentialScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { AssetPoolLedger } from './byteplus-asset-pool';
 
 const mockConfig = vi.fn<() => unknown>(() => ({
@@ -68,10 +67,9 @@ const ledger: AssetPoolLedger = {
   claimSlot: async () => ({ kind: 'exhausted' }),
   finalizeSlot: async () => true,
 };
-// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- only resolveOptionalKey is called
 const credentials = {
   resolveOptionalKey: async () => undefined,
-} as unknown as CredentialScopedDb;
+};
 
 beforeEach(() => {
   vi.clearAllMocks();

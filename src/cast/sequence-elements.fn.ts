@@ -206,6 +206,7 @@ export const finalizeElementUploadFn = createServerFn({ method: 'POST' })
     elementKindOrThrow(data.filename);
     return await attachElementUpload({
       scopedDb: context.scopedDb,
+      rightsDb: context.scopedDb,
       teamId: context.teamId,
       userId: context.user.id,
       sequenceId: data.sequenceId,
@@ -409,7 +410,7 @@ export const replaceSequenceElementFn = createServerFn({ method: 'POST' })
   )
   .handler(async ({ context, data }) => {
     await assertElementUploadAttachable({
-      scopedDb: context.scopedDb,
+      rightsDb: context.scopedDb,
       path: data.path,
       filename: data.filename,
       teamId: context.teamId,

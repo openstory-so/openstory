@@ -22,6 +22,7 @@ import {
 } from '@/shots/server/shot-work-items';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
+import { readFramePromptResult } from '@/stills/server/workflows/frame-prompt-workflow';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import type {
   FramePromptWorkflowInput,
@@ -130,6 +131,7 @@ export class FramePromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<FrameP
         childPayload,
         spawnStepName: `spawn-vp-scene-${sceneIndex}`,
         awaitStepName: `await-vp-scene-${sceneIndex}`,
+        readOutput: readFramePromptResult,
         timeout: '30 minutes',
       });
 

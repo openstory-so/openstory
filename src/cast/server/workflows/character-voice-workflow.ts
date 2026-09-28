@@ -69,11 +69,100 @@ const SEED_READ_STEP = {
   timeout: '10 minutes',
 } as const satisfies WorkflowStepConfig;
 
+type CharacterVoiceLive = Pick<
+  NonNullable<
+    Awaited<ReturnType<WorkflowScopedDb['liveRead']['characters']['getById']>>
+  >,
+  'voiceId' | 'selectedVoiceVersionId' | 'pendingPromoteVoiceVersionId'
+>;
+
+type CharacterVoiceHusk = Pick<
+  NonNullable<
+    Awaited<
+      ReturnType<
+        WorkflowScopedDb['claims']['characters']['getVoiceVersionById']
+      >
+    >
+  >,
+  'status' | 'voiceId'
+>;
+
+type IgnoredVoiceWrite<M extends (...args: never[]) => unknown> = (
+  ...args: Parameters<M>
+) => Promise<unknown>;
+
+/**
+ * Voice writes, the live promote pointer, the husk this run holds, and the
+ * LLM charge. `resolveKey` only yields `key` — that is all a design call
+ * reads. A full `WorkflowScopedDb` assigns.
+ */
+type CharacterVoiceDb = {
+  userId: WorkflowScopedDb['userId'];
+  teamId: WorkflowScopedDb['teamId'];
+  credentials: {
+    resolveKey: (
+      ...args: Parameters<WorkflowScopedDb['credentials']['resolveKey']>
+    ) => Promise<
+      Pick<
+        Awaited<ReturnType<WorkflowScopedDb['credentials']['resolveKey']>>,
+        'key'
+      >
+    >;
+    resolveLlmKey: WorkflowScopedDb['credentials']['resolveLlmKey'];
+  };
+  billing: Pick<
+    WorkflowScopedDb['billing'],
+    'captureReservation' | 'tryDeductCredits' | 'checkAutoTopUp'
+  >;
+  provenance: Pick<WorkflowScopedDb['provenance'], 'record'>;
+  characters: {
+    stampVoiceClaimWorkflowRunId: IgnoredVoiceWrite<
+      WorkflowScopedDb['characters']['stampVoiceClaimWorkflowRunId']
+    >;
+    updateVoice: IgnoredVoiceWrite<
+      WorkflowScopedDb['characters']['updateVoice']
+    >;
+    markVoiceClaimTerminal: IgnoredVoiceWrite<
+      WorkflowScopedDb['characters']['markVoiceClaimTerminal']
+    >;
+    markVoiceReleased: WorkflowScopedDb['characters']['markVoiceReleased'];
+    completeVoiceClaimIfLive: (
+      ...args: Parameters<
+        WorkflowScopedDb['characters']['completeVoiceClaimIfLive']
+      >
+    ) => Promise<{ id: string } | null>;
+    promoteVoiceClaimIfPending: (
+      ...args: Parameters<
+        WorkflowScopedDb['characters']['promoteVoiceClaimIfPending']
+      >
+    ) => Promise<{ id: string } | null>;
+  };
+  liveRead: {
+    characters: {
+      getById: (
+        ...args: Parameters<
+          WorkflowScopedDb['liveRead']['characters']['getById']
+        >
+      ) => Promise<CharacterVoiceLive | null>;
+      getVoiceReferenceCount: WorkflowScopedDb['liveRead']['characters']['getVoiceReferenceCount'];
+    };
+  };
+  claims: {
+    characters: {
+      getVoiceVersionById: (
+        ...args: Parameters<
+          WorkflowScopedDb['claims']['characters']['getVoiceVersionById']
+        >
+      ) => Promise<CharacterVoiceHusk | null>;
+    };
+  };
+};
+
 export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<CharacterVoiceWorkflowInput> {
   protected override async runImpl(
     event: Readonly<WorkflowEvent<CharacterVoiceWorkflowInput>>,
     step: WorkflowStep,
-    scopedDb: WorkflowScopedDb
+    scopedDb: CharacterVoiceDb
   ): Promise<CharacterVoiceWorkflowResult> {
     const input = event.payload;
     const { characterDbId, sequenceId, characterBible } = input;
@@ -82,12 +171,13 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     // Stamp the child instance id before design so reconcile can verify a
     // bible-spawned husk (insert has no run id) instead of failing it at 5 min.
     if (targetVersionId) {
-      await step.do('stamp-voice-claim-run', async () =>
-        scopedDb.characters.stampVoiceClaimWorkflowRunId(
+      await step.do('stamp-voice-claim-run', async () => {
+        await scopedDb.characters.stampVoiceClaimWorkflowRunId(
           targetVersionId,
           event.instanceId
-        )
-      );
+        );
+        return null;
+      });
     }
     await channel.emit('generation.character-voice:progress', {
       characterId: characterDbId,
@@ -231,7 +321,7 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
   /** ElevenLabs Voice Design: three previews, the first saved as a voice. */
   private async designElevenLabsVoice(
     step: WorkflowStep,
-    scopedDb: WorkflowScopedDb,
+    scopedDb: CharacterVoiceDb,
     event: Readonly<WorkflowEvent<CharacterVoiceWorkflowInput>>,
     voiceDescription: string
   ): Promise<{ previews: VoicePreview[]; voiceId: string }> {
@@ -310,7 +400,7 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
    */
   private async designSeedVoice(
     step: WorkflowStep,
-    scopedDb: WorkflowScopedDb,
+    scopedDb: CharacterVoiceDb,
     event: Readonly<WorkflowEvent<CharacterVoiceWorkflowInput>>,
     voiceDescription: string
   ): Promise<{ previews: VoicePreview[]; voiceId: string }> {
@@ -439,7 +529,7 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
 
   private async recordVoiceProvenance(
     step: WorkflowStep,
-    scopedDb: WorkflowScopedDb,
+    scopedDb: CharacterVoiceDb,
     event: Readonly<WorkflowEvent<CharacterVoiceWorkflowInput>>,
     asset: {
       path: string | undefined;
@@ -473,7 +563,7 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
   }: {
     event: Readonly<WorkflowEvent<CharacterVoiceWorkflowInput>>;
     error: string;
-    scopedDb: WorkflowScopedDb;
+    scopedDb: CharacterVoiceDb;
   }): Promise<void> {
     const { sequenceId, characterDbId, targetVersionId } = event.payload;
     logger.error(

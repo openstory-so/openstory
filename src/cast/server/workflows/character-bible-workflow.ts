@@ -17,6 +17,10 @@ import { buildCastingAttributes } from '@/cast/character-prompt';
 import { isPersonFromTalentCast } from '@/cast/likeness';
 import { reusesTalentSheet } from '@/cast/server/talent/reuse-talent-sheet';
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
+import {
+  readCharacterSheetWorkflowResult,
+  readCharacterVoiceWorkflowResult,
+} from '@/platform/server/workflow/child-output';
 import { contentRejectionSummary } from '@/models/content-rejection';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { WorkflowValidationError } from '@/platform/server/workflow/errors';
@@ -26,6 +30,7 @@ import type {
   CharacterSheetWorkflowResult,
   CharacterVoiceWorkflowInput,
   CharacterVoiceWorkflowResult,
+  CloudflareEnv,
   TalentCharacterMatch,
 } from '@/platform/server/workflow/types';
 import { SEED_VOICE_DEFAULT_TAKES } from '@/cast/seed-voice';
@@ -38,11 +43,49 @@ const logger = getLogger(['openstory', 'workflow', 'character-bible']);
 
 const PARENT_BINDING_NAME = 'CHARACTER_BIBLE_WORKFLOW';
 
-export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<CharacterBibleWorkflowInput> {
+type CreatedCharacter = Pick<
+  Awaited<ReturnType<WorkflowScopedDb['characters']['create']>>,
+  | 'id'
+  | 'characterId'
+  | 'selectedBibleVersionId'
+  | 'voiceId'
+  | 'voiceDescription'
+  | 'useVoice'
+>;
+
+/** The character writes this run performs. A full `WorkflowScopedDb` still assigns. */
+export type CharacterBibleDb = {
+  characters: {
+    create: (
+      ...args: Parameters<WorkflowScopedDb['characters']['create']>
+    ) => Promise<CreatedCharacter>;
+    claimSheet: WorkflowScopedDb['characters']['claimSheet'];
+    createPendingVoiceClaim: (
+      ...args: Parameters<
+        WorkflowScopedDb['characters']['createPendingVoiceClaim']
+      >
+    ) => Promise<{
+      created: boolean;
+      version: { id: string; workflowRunId: string | null };
+    }>;
+    markVoiceClaimTerminal: (
+      ...args: Parameters<
+        WorkflowScopedDb['characters']['markVoiceClaimTerminal']
+      >
+    ) => Promise<unknown>;
+  };
+};
+
+export class CharacterBibleWorkflow<
+  Env extends Pick<
+    CloudflareEnv,
+    'CHARACTER_SHEET_WORKFLOW' | 'CHARACTER_VOICE_WORKFLOW'
+  > = CloudflareEnv,
+> extends OpenStoryWorkflowEntrypoint<CharacterBibleWorkflowInput, Env> {
   protected override async runImpl(
     event: Readonly<WorkflowEvent<CharacterBibleWorkflowInput>>,
     step: WorkflowStep,
-    scopedDb: WorkflowScopedDb
+    scopedDb: CharacterBibleDb
   ): Promise<CharacterMinimal[]> {
     const input = event.payload;
     const { talentMatches = [] } = input;
@@ -216,6 +259,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         childPayload,
         spawnStepName: `spawn-character-sheet-${index}`,
         awaitStepName: `await-character-sheet-${index}`,
+        readOutput: readCharacterSheetWorkflowResult,
         timeout: '30 minutes',
       });
 
@@ -289,6 +333,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
             childPayload,
             spawnStepName: `spawn-character-voice-${row.characterId}`,
             awaitStepName: `await-character-voice-${row.characterId}`,
+            readOutput: readCharacterVoiceWorkflowResult,
             timeout: '30 minutes',
           });
           if (result.voiceId) {

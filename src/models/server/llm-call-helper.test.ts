@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { WorkflowStep } from 'cloudflare:workers';
+import { workflowStep } from '@/platform/server/workflow/test-doubles';
 
 // Import real modules before vi.doMock so mocks can re-export the rest.
 import * as tanstackAi from '@tanstack/ai';
@@ -55,11 +56,8 @@ const {
 } = await import('./llm-call-helper');
 const { usdToMicros, ZERO_MICROS } = await import('@/billing/money');
 
-// Minimal WorkflowStep: run every step body immediately, no retries.
-// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowStep stub: the helper only uses `do`
-const step = {
-  do: (_name: string, fn: () => Promise<unknown>) => fn(),
-} as unknown as WorkflowStep;
+/** Runs every step body immediately, including the config overload of `do`. */
+const step: WorkflowStep = workflowStep();
 
 const schema = z.object({
   visual: z.object({ fullPrompt: z.string() }),

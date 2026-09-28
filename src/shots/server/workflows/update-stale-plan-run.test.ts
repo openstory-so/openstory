@@ -11,8 +11,19 @@ import type {
   WorkflowStepConfig,
 } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { UpdateStaleShotsWorkflowInput } from '@/platform/server/workflow/types';
+import { DEFAULT_ANALYSIS_MODEL } from '@/models/models.config';
+import { ZERO_MICROS } from '@/billing/money';
+import {
+  characterSheetInputHash,
+  locationSheetInputHash,
+} from '@/shots/input-hash';
+import type {
+  CharacterBibleEntry,
+  ElementBibleEntry,
+  LocationBibleEntry,
+} from '@/shots/scene-analysis.schema';
+import type { PlanReferences } from '../update-stale-references';
 import type { PlanTarget, UpdateStalePlan } from '../update-stale-plan';
 import * as realPlan from '../update-stale-plan';
 
@@ -69,6 +80,10 @@ vi.doMock('@/platform/server/workflow/await-child', () => ({
 const { UpdateStaleShotsWorkflow } =
   await import('./update-stale-shots-workflow');
 
+type RunDb = Parameters<
+  InstanceType<typeof UpdateStaleShotsWorkflow>['runImpl']
+>[2];
+
 class Testable extends UpdateStaleShotsWorkflow {
   invoke(event: Readonly<WorkflowEvent<UpdateStaleShotsWorkflowInput>>) {
     return this.runImpl(event, makeStep(), makeScopedDb());
@@ -89,38 +104,182 @@ function makeStep(): WorkflowStep {
   return { do: run } as unknown as WorkflowStep;
 }
 
-const claimSheet = vi.fn(async (id: string) => `csv-${id}`);
-const failSheetClaim = vi.fn(async () => undefined);
-const claimReference = vi.fn(async (id: string) => `lrv-${id}`);
-const createPendingVoiceClaim = vi.fn(async (id: string) => ({
+const claimSheet = vi.fn<RunDb['characters']['claimSheet']>(
+  async (id) => `csv-${id}`
+);
+const failSheetClaim = vi.fn<RunDb['characters']['failSheetClaim']>(
+  async () => undefined
+);
+const claimReference = vi.fn<RunDb['sequenceLocations']['claimReference']>(
+  async (id) => `lrv-${id}`
+);
+const createPendingVoiceClaim = vi.fn<
+  RunDb['characters']['createPendingVoiceClaim']
+>(async (id) => ({
   created: true,
   version: { id: `husk-${id}`, workflowRunId: null },
 }));
 
-function makeScopedDb(): WorkflowScopedDb {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal stub for the paths under test
+function idle<M extends (...args: never[]) => unknown>(): M {
+  return vi.fn<M>();
+}
+
+function makeScopedDb(): RunDb {
+  const listed = {
+    characters: {
+      listWithSheets: idle<RunDb['liveRead']['characters']['listWithSheets']>(),
+    },
+    sequenceLocations: {
+      listWithReferences:
+        idle<RunDb['liveRead']['sequenceLocations']['listWithReferences']>(),
+    },
+    sequenceElements: {
+      list: idle<RunDb['liveRead']['sequenceElements']['list']>(),
+    },
+  };
   return {
     characters: {
       claimSheet,
       failSheetClaim,
       createPendingVoiceClaim,
-      markVoiceClaimTerminal: vi.fn(),
+      markVoiceClaimTerminal:
+        idle<RunDb['characters']['markVoiceClaimTerminal']>(),
     },
-    sequenceLocations: { claimReference },
-    frameVariants: { markTerminal: vi.fn() },
-    stalenessPlanning: {},
-    liveRead: {
-      apiKeys: { hasUsableKey: vi.fn(async () => false) },
-      billing: { hasEnoughCredits: vi.fn(async () => true) },
-      characters: { listWithSheets: vi.fn(async () => []) },
-      sequenceLocations: { listWithReferences: vi.fn(async () => []) },
-      sequenceElements: { list: vi.fn(async () => []) },
-      shots: { getById: vi.fn(async (id: string) => ({ id })) },
-      frames: {
-        getAnchorByShot: vi.fn(async (id: string) => ({ id: `f-${id}` })),
+    sequenceLocations: {
+      claimReference,
+      failReferenceClaim:
+        idle<RunDb['sequenceLocations']['failReferenceClaim']>(),
+    },
+    frameVariants: {
+      markTerminal: idle<RunDb['frameVariants']['markTerminal']>(),
+      cancelByDependency: idle<RunDb['frameVariants']['cancelByDependency']>(),
+    },
+    framePromptVersions: {
+      markTerminal: idle<RunDb['framePromptVersions']['markTerminal']>(),
+    },
+    shotPromptVersions: {
+      markTerminal: idle<RunDb['shotPromptVersions']['markTerminal']>(),
+    },
+    stalenessPlanning: {
+      framePromptVersions: {
+        getLivePending:
+          idle<
+            RunDb['stalenessPlanning']['framePromptVersions']['getLivePending']
+          >(),
+        createPending:
+          idle<
+            RunDb['stalenessPlanning']['framePromptVersions']['createPending']
+          >(),
+        getSelected:
+          idle<
+            RunDb['stalenessPlanning']['framePromptVersions']['getSelected']
+          >(),
+        write:
+          idle<RunDb['stalenessPlanning']['framePromptVersions']['write']>(),
+      },
+      shotPromptVersions: {
+        getLivePending:
+          idle<
+            RunDb['stalenessPlanning']['shotPromptVersions']['getLivePending']
+          >(),
+        createPending:
+          idle<
+            RunDb['stalenessPlanning']['shotPromptVersions']['createPending']
+          >(),
+      },
+      frameVariants: {
+        listLiveClaims:
+          idle<RunDb['stalenessPlanning']['frameVariants']['listLiveClaims']>(),
+        createPendingClaim:
+          idle<
+            RunDb['stalenessPlanning']['frameVariants']['createPendingClaim']
+          >(),
+        getSelected:
+          idle<RunDb['stalenessPlanning']['frameVariants']['getSelected']>(),
+        getLastFailed:
+          idle<RunDb['stalenessPlanning']['frameVariants']['getLastFailed']>(),
+      },
+      scenes: {
+        listBySequence:
+          idle<RunDb['stalenessPlanning']['scenes']['listBySequence']>(),
+      },
+      sceneScriptVersions: {
+        listSelectedBySequence:
+          idle<
+            RunDb['stalenessPlanning']['sceneScriptVersions']['listSelectedBySequence']
+          >(),
+      },
+      characters: listed.characters,
+      sequenceLocations: listed.sequenceLocations,
+      sequenceElements: listed.sequenceElements,
+      styles: {
+        getById: idle<RunDb['stalenessPlanning']['styles']['getById']>(),
+      },
+      apiKeys: {
+        hasUsableKey:
+          idle<RunDb['stalenessPlanning']['apiKeys']['hasUsableKey']>(),
+      },
+      billing: {
+        hasEnoughCredits:
+          idle<RunDb['stalenessPlanning']['billing']['hasEnoughCredits']>(),
       },
     },
-  } as unknown as WorkflowScopedDb;
+    liveRead: {
+      apiKeys: {
+        hasUsableKey: vi.fn<RunDb['liveRead']['apiKeys']['hasUsableKey']>(
+          async () => false
+        ),
+      },
+      billing: {
+        hasEnoughCredits: vi.fn<
+          RunDb['liveRead']['billing']['hasEnoughCredits']
+        >(async () => true),
+      },
+      characters: listed.characters,
+      sequenceLocations: listed.sequenceLocations,
+      sequenceElements: listed.sequenceElements,
+      shots: {
+        getById: vi.fn<RunDb['liveRead']['shots']['getById']>(async (id) => ({
+          id,
+          sceneId: null,
+          durationMs: null,
+          shotNumber: null,
+          renderSegmentId: null,
+          audioClips: null,
+        })),
+      },
+      frames: {
+        getAnchorByShot: vi.fn<RunDb['liveRead']['frames']['getAnchorByShot']>(
+          async (id) => ({ id: `f-${id}` })
+        ),
+      },
+      frameVariants: {
+        getSelected: idle<RunDb['liveRead']['frameVariants']['getSelected']>(),
+      },
+      videoVariants: {
+        getSelectedByShot:
+          idle<RunDb['liveRead']['videoVariants']['getSelectedByShot']>(),
+        listBySegment:
+          idle<RunDb['liveRead']['videoVariants']['listBySegment']>(),
+      },
+      sequences: {
+        getById: idle<RunDb['liveRead']['sequences']['getById']>(),
+      },
+    },
+    claims: {
+      framePromptVersions: {
+        getByIdForFrame:
+          idle<RunDb['claims']['framePromptVersions']['getByIdForFrame']>(),
+      },
+      frameVariants: {
+        getById: idle<RunDb['claims']['frameVariants']['getById']>(),
+      },
+      shotPromptVersions: {
+        getByIdForShot:
+          idle<RunDb['claims']['shotPromptVersions']['getByIdForShot']>(),
+      },
+    },
+  };
 }
 
 function target(shotId: string, referenceIds: string[]): PlanTarget {
@@ -154,26 +313,56 @@ function target(shotId: string, referenceIds: string[]): PlanTarget {
 }
 
 function plan(overrides: Partial<UpdateStalePlan>): UpdateStalePlan {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the executor reads only these fields here
-  return {
+  const sequence: UpdateStalePlan['sequence'] = {
+    id: 'seq-1',
+    teamId: 't1',
+    title: 'S',
     aspectRatio: '16:9',
     resolution: '1080p',
-    sequence: { title: 'S', videoModel: 'kling_v3_pro' },
-    music: null,
-    promptContext: {
-      characterBible: [],
-      locationBible: [],
-      elementBible: [],
-      styleConfig: {},
-      analysisModelId: 'x',
+    imageModel: 'nano_banana_2',
+    videoModel: 'kling_v3_pro',
+    styleId: null,
+    analysisModel: 'x',
+    generateStartFrames: true,
+    draftMotion: false,
+  };
+  const promptContext: NonNullable<UpdateStalePlan['promptContext']> = {
+    characterBible: [],
+    locationBible: [],
+    elementBible: [],
+    styleConfig: {
+      version: 2,
+      look: {
+        mood: 'tense',
+        artStyle: 'photo',
+        lighting: 'hard',
+        colorPalette: ['#111111'],
+        colorGrading: 'cool',
+      },
+      motion: { camera: 'handheld' },
+      references: [],
     },
-    characterVoices: [],
-    dialogueRecording: null,
-    targets: [],
-    skipped: [],
-    references: null,
-    ...overrides,
-  } as unknown as UpdateStalePlan;
+    analysisModelId: DEFAULT_ANALYSIS_MODEL,
+  };
+  return {
+    aspectRatio: overrides.aspectRatio ?? '16:9',
+    resolution: overrides.resolution ?? '1080p',
+    sequence: overrides.sequence ?? sequence,
+    music: overrides.music === undefined ? null : overrides.music,
+    promptContext:
+      overrides.promptContext === undefined
+        ? promptContext
+        : overrides.promptContext,
+    characterVoices: overrides.characterVoices ?? [],
+    dialogueRecording:
+      overrides.dialogueRecording === undefined
+        ? null
+        : overrides.dialogueRecording,
+    targets: overrides.targets ?? [],
+    skipped: overrides.skipped ?? [],
+    references:
+      overrides.references === undefined ? null : overrides.references,
+  };
 }
 
 const run = (p: UpdateStalePlan) =>
@@ -182,19 +371,18 @@ const run = (p: UpdateStalePlan) =>
     undefined as unknown as ConstructorParameters<typeof Testable>[0],
     // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- children are mocked, no binding is dereferenced
     {} as unknown as ConstructorParameters<typeof Testable>[1]
-  ).invoke(
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal event stub
-    {
-      payload: {
-        userId: 'u1',
-        teamId: 't1',
-        sequenceId: 'seq-1',
-        plan: p,
-        announcePhases: true,
-      },
-      instanceId: 'run-1',
-    } as unknown as Readonly<WorkflowEvent<UpdateStaleShotsWorkflowInput>>
-  );
+  ).invoke({
+    payload: {
+      userId: 'u1',
+      teamId: 't1',
+      sequenceId: 'seq-1',
+      plan: p,
+      announcePhases: true,
+    },
+    timestamp: new Date(0),
+    instanceId: 'run-1',
+    workflowName: 'UPDATE_STALE_SHOTS_WORKFLOW',
+  });
 
 const spawned = () =>
   spawnAndAwaitChild.mock.calls.map(([, args]) => args.spawnStepName);
@@ -202,12 +390,109 @@ const payloadOf = (step: string) =>
   spawnAndAwaitChild.mock.calls.find(([, a]) => a.spawnStepName === step)?.[1]
     .childPayload;
 
-const references = {
-  characterSheets: [{ characterDbId: 'maya' }, { characterDbId: 'ravi' }],
-  locationSheets: [{ locationDbId: 'hall' }],
-  elementSheets: { entries: [{ elementId: 'mug' }] },
-  voices: [{ characterDbId: 'maya' }],
-  cost: { sheets: 0, voices: 0 },
+function characterBible(id: string, name: string): CharacterBibleEntry {
+  return {
+    characterId: id,
+    name,
+    age: '',
+    gender: '',
+    ethnicity: '',
+    physicalDescription: '',
+    standardClothing: '',
+    distinguishingFeatures: '',
+    personality: '',
+    movement: '',
+    voiceDescription: '',
+    voiceOnly: false,
+    isPerson: true,
+    consistencyTag: id,
+  };
+}
+
+function locationBible(id: string, name: string): LocationBibleEntry {
+  return {
+    locationId: id,
+    name,
+    type: 'interior',
+    timeOfDay: '',
+    description: '',
+    architecturalStyle: '',
+    keyFeatures: '',
+    colorPalette: '',
+    lightingSetup: '',
+    ambiance: '',
+    consistencyTag: id,
+    firstMention: { text: '', lineNumber: 0, sceneId: 'sc-1' },
+  };
+}
+
+function elementBible(id: string): ElementBibleEntry & { elementId: string } {
+  return {
+    elementId: id,
+    token: id.toUpperCase(),
+    description: '',
+    consistencyTag: id,
+    firstMention: { text: '', lineNumber: 0, sceneId: 'sc-1' },
+  };
+}
+
+const references: PlanReferences = {
+  characterSheets: [
+    {
+      userId: 'u1',
+      teamId: 't1',
+      sequenceId: 'seq-1',
+      characterDbId: 'maya',
+      characterName: 'Maya',
+      characterMetadata: characterBible('maya', 'Maya'),
+      castTalentDescription: null,
+      snapshotInputHash: characterSheetInputHash('maya'),
+      bibleVersionId: null,
+    },
+    {
+      userId: 'u1',
+      teamId: 't1',
+      sequenceId: 'seq-1',
+      characterDbId: 'ravi',
+      characterName: 'Ravi',
+      characterMetadata: characterBible('ravi', 'Ravi'),
+      castTalentDescription: null,
+      snapshotInputHash: characterSheetInputHash('ravi'),
+      bibleVersionId: null,
+    },
+  ],
+  locationSheets: [
+    {
+      userId: 'u1',
+      teamId: 't1',
+      sequenceId: 'seq-1',
+      locationDbId: 'hall',
+      locationName: 'Hall',
+      locationMetadata: locationBible('hall', 'Hall'),
+      snapshotInputHash: locationSheetInputHash('hall'),
+      bibleVersionId: null,
+    },
+  ],
+  elementSheets: {
+    userId: 'u1',
+    teamId: 't1',
+    sequenceId: 'seq-1',
+    entries: [elementBible('mug')],
+  },
+  voices: [
+    {
+      userId: 'u1',
+      teamId: 't1',
+      sequenceId: 'seq-1',
+      characterDbId: 'maya',
+      characterBible: characterBible('maya', 'Maya'),
+      voiceDescription: '',
+      analysisModelId: DEFAULT_ANALYSIS_MODEL,
+      voiceProvider: 'elevenlabs',
+      takes: 1,
+    },
+  ],
+  cost: { sheets: ZERO_MICROS, voices: ZERO_MICROS },
 };
 
 describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
@@ -218,10 +503,7 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
   });
 
   it('spawns only the owed references, each behind its claim', async () => {
-    const result = await run(
-      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- payload stubs
-      plan({ references: references as never })
-    );
+    const result = await run(plan({ references }));
     expect(spawned().sort()).toEqual(
       [
         'spawn-character-sheet-maya',
@@ -232,15 +514,15 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
       ].sort()
     );
     expect(payloadOf('spawn-character-sheet-ravi')).toEqual({
-      characterDbId: 'ravi',
+      ...references.characterSheets[1],
       sheetVersionId: 'csv-ravi',
     });
     expect(payloadOf('spawn-location-sheet-hall')).toEqual({
-      locationDbId: 'hall',
+      ...references.locationSheets[0],
       referenceVersionId: 'lrv-hall',
     });
     expect(payloadOf('spawn-character-voice-maya')).toEqual({
-      characterDbId: 'maya',
+      ...references.voices[0],
       targetVersionId: 'husk-maya',
     });
     expect(claimSheet).toHaveBeenCalledWith('ravi', { markGenerating: true });
@@ -256,12 +538,11 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
     failCharacter.add('ravi');
     const result = await run(
       plan({
-        // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- payload stubs
         references: {
           ...references,
           elementSheets: null,
           voices: [],
-        } as never,
+        },
         targets: [
           target('s-ravi', ['ravi', 'hall']),
           target('s-maya', ['maya']),

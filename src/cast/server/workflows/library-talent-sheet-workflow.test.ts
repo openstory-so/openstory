@@ -8,9 +8,9 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
-import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { LibraryTalentSheetWorkflowInput } from '@/platform/server/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
+import { workflowStep } from '@/platform/server/workflow/test-doubles';
 
 const mockCopyStoredImage = vi.fn();
 const mockGenerateImageWithProvider = vi.fn();
@@ -50,17 +50,21 @@ const { LibraryTalentSheetWorkflow } =
 const { computeLibraryTalentSheetHashFromDto } =
   await import('./sheet-snapshots');
 
+type Db = Parameters<
+  InstanceType<typeof LibraryTalentSheetWorkflow>['runImpl']
+>[2];
+
 class Probe extends LibraryTalentSheetWorkflow {
   runBody(
     event: Readonly<WorkflowEvent<LibraryTalentSheetWorkflowInput>>,
     step: WorkflowStep,
-    scopedDb: WorkflowScopedDb
+    scopedDb: Db
   ) {
     return this.runImpl(event, step, scopedDb);
   }
   failBody(
     event: Readonly<WorkflowEvent<LibraryTalentSheetWorkflowInput>>,
-    scopedDb: WorkflowScopedDb
+    scopedDb: Db
   ) {
     return this.onFailure({ event, error: 'boom', scopedDb });
   }
@@ -76,36 +80,48 @@ function makeWorkflow(): Probe {
 }
 
 function makeStep(): WorkflowStep {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowStep stub: runImpl only uses `do`
-  return {
-    do: vi.fn((_name: string, fn: () => Promise<unknown>) => fn()),
-  } as unknown as WorkflowStep;
+  return workflowStep();
 }
 
-const mockLandSheet = vi.fn();
-const mockTalentUpdate = vi.fn();
-const mockClearSheetClaimIf = vi.fn();
+const mockLandSheet = vi.fn<Db['talent']['landSheet']>();
+const mockTalentUpdate = vi.fn<Db['talent']['update']>();
+const mockClearSheetClaimIf = vi.fn<Db['talent']['clearSheetClaimIf']>();
 
-function makeScopedDb(): WorkflowScopedDb {
+function makeScopedDb(): Db {
   const sheet = { id: 'sheet-1' };
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the scoped-db surface runImpl touches
   return {
+    userId: 'u1',
+    teamId: 'team-1',
+    credentials: {
+      userId: 'u1',
+      resolveKey: vi.fn<Db['credentials']['resolveKey']>(),
+      resolveOptionalKey: vi.fn<Db['credentials']['resolveOptionalKey']>(),
+      resolveLlmKey: vi.fn<Db['credentials']['resolveLlmKey']>(),
+    },
+    billing: {
+      captureReservation: vi.fn<Db['billing']['captureReservation']>(),
+      tryDeductCredits: vi.fn<Db['billing']['tryDeductCredits']>(),
+      checkAutoTopUp: vi.fn<Db['billing']['checkAutoTopUp']>(),
+    },
+    modelUsage: { record: vi.fn<Db['modelUsage']['record']>() },
+    provenance: { record: vi.fn<Db['provenance']['record']>() },
     talent: {
       sheets: {
-        getById: vi.fn(async () => null),
-        create: vi.fn(async (row: { id: string }) => ({ ...sheet, ...row })),
+        getById: vi.fn<Db['talent']['sheets']['getById']>(async () => null),
+        create: vi.fn<Db['talent']['sheets']['create']>(async (row) => ({
+          id: row.id ?? sheet.id,
+        })),
       },
       update: mockTalentUpdate,
       landSheet: mockLandSheet,
       clearSheetClaimIf: mockClearSheetClaimIf,
     },
     talentSheetVariants: {
-      insertDivergent: vi.fn(async () => ({ id: 'variant-1' })),
+      insertDivergent: vi.fn<Db['talentSheetVariants']['insertDivergent']>(
+        async () => ({ id: 'variant-1' })
+      ),
     },
-    provenance: {},
-    liveRead: {},
-    credentials: {},
-  } as unknown as WorkflowScopedDb;
+  };
 }
 
 async function makeInput(
@@ -166,8 +182,8 @@ beforeEach(() => {
   mockRecordProvenance.mockResolvedValue(undefined);
   mockEmit.mockResolvedValue(undefined);
   mockTalentUpdate.mockResolvedValue({});
-  mockLandSheet.mockImplementation(async (args: { sheetId: string }) => ({
-    sheet: { id: args.sheetId, divergedAt: null },
+  mockLandSheet.mockImplementation(async (args) => ({
+    sheet: { id: args.sheetId },
     landed: true,
   }));
   vi.stubGlobal(
@@ -240,7 +256,7 @@ describe('LibraryTalentSheetWorkflow sheet claim (#1113)', () => {
 
   it('parks without touching the headshot when the claim moved', async () => {
     mockLandSheet.mockResolvedValue({
-      sheet: { id: 'sheet-claim', divergedAt: new Date() },
+      sheet: { id: 'sheet-claim' },
       landed: false,
     });
 

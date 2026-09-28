@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { LibraryTalentSheetWorkflowInput } from '@/platform/server/workflow/types';
 import {
   libraryTalentGenerateDedupId,
@@ -69,15 +68,19 @@ function talentRow(opts: {
   };
 }
 
-function scopedDb(row: ReturnType<typeof talentRow>): ScopedDb {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only getWithRelations
+function scopedDb(row: ReturnType<typeof talentRow>) {
   return {
     talent: {
       ...sheetClaim,
       getWithRelations: vi.fn(async () => row),
     },
-  } as unknown as ScopedDb;
+  };
 }
+
+const visionDb = {
+  apiKeys: { resolveLlmKey: vi.fn() },
+  billing: { hasEnoughCredits: vi.fn(), deductCredits: vi.fn() },
+};
 
 function lastTrigger() {
   const call = mockTriggerWorkflow.mock.calls[0];
@@ -107,6 +110,7 @@ describe('maybePromoteOrGenerateSheet', () => {
   it('does not trigger when a photo is added and a convergent sheet exists', async () => {
     await maybePromoteOrGenerateSheet({
       scopedDb: scopedDb(talentRow({ sheets: [{ divergedAt: null }] })),
+      visionDb,
       userId: 'u1',
       teamId: TEAM,
       talentId: TALENT_ID,
@@ -118,6 +122,7 @@ describe('maybePromoteOrGenerateSheet', () => {
   it('triggers generate-if-missing when there is no convergent sheet', async () => {
     await maybePromoteOrGenerateSheet({
       scopedDb: scopedDb(talentRow({ sheets: [] })),
+      visionDb,
       userId: 'u1',
       teamId: TEAM,
       talentId: TALENT_ID,
@@ -152,6 +157,7 @@ describe('maybePromoteOrGenerateSheet', () => {
           media: [{ type: 'image', url: SHEET_URL }],
         })
       ),
+      visionDb,
       userId: 'u1',
       teamId: TEAM,
       talentId: TALENT_ID,
@@ -168,6 +174,7 @@ describe('maybePromoteOrGenerateSheet', () => {
     mockAnalyze.mockRejectedValueOnce(new Error('vision down'));
     await maybePromoteOrGenerateSheet({
       scopedDb: scopedDb(talentRow({ sheets: [{ divergedAt: null }] })),
+      visionDb,
       userId: 'u1',
       teamId: TEAM,
       talentId: TALENT_ID,
@@ -180,6 +187,7 @@ describe('maybePromoteOrGenerateSheet', () => {
     mockAnalyze.mockRejectedValueOnce(new Error('vision down'));
     await maybePromoteOrGenerateSheet({
       scopedDb: scopedDb(talentRow({ sheets: [] })),
+      visionDb,
       userId: 'u1',
       teamId: TEAM,
       talentId: TALENT_ID,
@@ -191,6 +199,7 @@ describe('maybePromoteOrGenerateSheet', () => {
   it('treats only-divergent sheets as missing', async () => {
     await maybePromoteOrGenerateSheet({
       scopedDb: scopedDb(talentRow({ sheets: [{ divergedAt: new Date() }] })),
+      visionDb,
       userId: 'u1',
       teamId: TEAM,
       talentId: TALENT_ID,
@@ -204,6 +213,7 @@ describe('maybePromoteOrGenerateSheet', () => {
     await expect(
       maybePromoteOrGenerateSheet({
         scopedDb: scopedDb(talentRow({ sheets: [] })),
+        visionDb,
         userId: 'u1',
         teamId: TEAM,
         talentId: TALENT_ID,

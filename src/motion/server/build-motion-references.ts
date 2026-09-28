@@ -39,6 +39,30 @@ import {
   matchLocationsToScene,
 } from '@/shots/scene-matching';
 
+/** Cast row the motion reference matcher and the sheet builder both read. */
+type MotionCharacterRef = {
+  id: string;
+  name: string;
+  characterId: string;
+  consistencyTag: string | null;
+  sheetImageUrl: string | null;
+  voiceOnly?: boolean;
+  physicalDescription?: string | null;
+  selectedSheetVersionId?: string | null;
+  isPerson?: boolean;
+};
+
+/** Location row the matcher and the sheet builder both read. */
+type MotionLocationRef = {
+  id: string;
+  locationId: string;
+  name: string;
+  consistencyTag: string | null;
+  referenceImageUrl: string | null;
+  description?: string | null;
+  selectedReferenceVersionId?: string | null;
+};
+
 type SceneReferenceInput = {
   continuity?: {
     characterTags?: string[];
@@ -51,7 +75,7 @@ type SceneReferenceInput = {
 
 export function buildMotionReferenceImages(params: {
   scene: SceneReferenceInput;
-  characters: CharacterMinimal[];
+  characters: MotionCharacterRef[];
   elements: SequenceElementMinimal[];
   /**
    * The shot's motion prompt. Cast and element refs follow it as well as the
@@ -75,7 +99,7 @@ export function buildMotionReferenceImages(params: {
    * the prompt alone decide the elements (`matchElementsToMotion`).
    */
   referenceOnly?: boolean;
-  locations?: SequenceLocationMinimal[];
+  locations?: MotionLocationRef[];
 }): ReferenceImageDescription[] {
   const {
     scene,

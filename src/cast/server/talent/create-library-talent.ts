@@ -59,8 +59,17 @@ export type CreateLibraryTalentInput = {
   enqueueSheet?: boolean;
 };
 
+/** Talent row, its media, and the sheet claim enqueue takes on this db. */
+type LibraryTalentWriteDb = {
+  talent: Pick<ScopedDb['talent'], 'create' | 'claimSheet'> & {
+    media: Pick<ScopedDb['talent']['media'], 'create'>;
+  };
+};
+
 export type CreateLibraryTalentContext = {
-  scopedDb: ScopedDb;
+  scopedDb: LibraryTalentWriteDb;
+  rightsDb: Parameters<typeof requireUploadRights>[0];
+  visionDb: Parameters<typeof analyzeTalentMediaForTeam>[0]['scopedDb'];
   user: { id: string };
   teamId: string;
 };
@@ -80,7 +89,7 @@ export async function createLibraryTalent(
   // The gate runs before the row: every still must be cleared or signed on
   // the likeness ledger, and that ledger — not the client — says whether the
   // talent is a real person.
-  const rights = await requireUploadRights(ctx.scopedDb, uploadUrls);
+  const rights = await requireUploadRights(ctx.rightsDb, uploadUrls);
   const depictsRealPerson = uploadUrls.length
     ? [...rights.values()].some((r) => r.depictsRealPerson)
     : input.isHuman === true;
@@ -130,7 +139,7 @@ export async function createLibraryTalent(
       // rather than pick the wrong URL to promote.
       try {
         const analysis = await analyzeTalentMediaForTeam({
-          scopedDb: ctx.scopedDb,
+          scopedDb: ctx.visionDb,
           userId: ctx.user.id,
           imageUrls: attachedUrls,
           idempotencyKey: `talent-vision:create:${newTalent.id}`,
@@ -158,7 +167,7 @@ export async function createLibraryTalent(
     ) {
       try {
         const analysis = await analyzeTalentMediaForTeam({
-          scopedDb: ctx.scopedDb,
+          scopedDb: ctx.visionDb,
           userId: ctx.user.id,
           imageUrls: [uploadedSheetUrl],
           idempotencyKey: `talent-vision:create-meta:${newTalent.id}:${uploadedSheetUrl}`,

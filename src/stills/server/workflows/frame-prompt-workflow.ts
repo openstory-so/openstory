@@ -30,6 +30,7 @@ import {
 import { chatModelOptionsForCall } from '@/models/server/llm-call-helper';
 import { narrowShotPromptContext } from '@/shots/server/prompt-context';
 import {
+  readVisualPrompt,
   type VisualPrompt,
   type VisualPromptResult,
   visualPromptResultSchema,
@@ -47,6 +48,11 @@ import {
 } from '@/platform/realtime';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { WorkflowValidationError } from '@/platform/server/workflow/errors';
+import {
+  nullableString,
+  recordOf,
+  requiredString,
+} from '@/platform/server/workflow/child-output';
 import type { FramePromptWorkflowInput } from '@/platform/server/workflow/types';
 import { chat } from '@tanstack/ai';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
@@ -67,6 +73,15 @@ export type FramePromptResult = {
    */
   finalVersionId: string | null;
 };
+
+export function readFramePromptResult(value: unknown): FramePromptResult {
+  const record = recordOf(value, 'frame prompt result');
+  return {
+    sceneId: requiredString(record, 'sceneId'),
+    visual: readVisualPrompt(record.visual),
+    finalVersionId: nullableString(record, 'finalVersionId'),
+  };
+}
 
 const PHASE = { number: 3, name: 'Writing image prompts…' } as const;
 const STEP_NAME = 'visual-prompts';

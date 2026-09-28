@@ -10,28 +10,24 @@ import {
   dialogueClipSourceKey,
   voicedDialogueLines,
 } from '@/motion/dialogue-tts';
-import type { MotionPrompt, Scene } from '@/shots/scene-analysis.schema';
-import type {
-  CharacterMinimal,
-  SequenceLocationMinimal,
-} from '@/platform/server/db/schema';
+import type { MotionPrompt } from '@/shots/scene-analysis.schema';
 import { WorkflowValidationError } from '@/platform/server/workflow/errors';
 import { buildStoryboardMotionBatchShots } from './storyboard-motion-batch-shots';
 
-function scene(
+function scene<E extends object>(
   sceneId: string,
   durationSeconds = 5,
-  extra: Record<string, unknown> = {}
-): Scene {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- helper only reads sceneId, metadata.durationSeconds, continuity.characterTags
+  extra?: E
+) {
+  const characterTags: string[] = [];
   return {
     sceneId,
     sceneNumber: 1,
     originalScript: { extract: 'a beat', lineNumber: 1 },
     metadata: { title: sceneId, durationSeconds },
-    continuity: { characterTags: [] },
+    continuity: { characterTags },
     ...extra,
-  } as unknown as Scene;
+  };
 }
 
 const prompt = (fullPrompt: string): MotionPrompt => ({
@@ -364,8 +360,6 @@ describe('buildStoryboardMotionBatchShots', () => {
           characterId: 'char_001',
           name: 'SARAH',
           sheetImageUrl: null,
-          sheetStatus: 'completed',
-          sheetInputHash: null,
           selectedSheetVersionId: null,
           physicalDescription: null,
           voiceOnly: false,
@@ -502,26 +496,22 @@ describe('buildStoryboardMotionBatchShots — reference-only', () => {
         }),
       ],
       characters: [
-        // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- matcher reads name/tag + sheet url only
         {
           id: 'ch-alice',
           characterId: 'alice',
           name: 'Alice',
           consistencyTag: 'alice',
           sheetImageUrl: 'https://cdn/alice.png',
-          sheetStatus: 'completed',
-        } as unknown as CharacterMinimal,
+        },
       ],
       locations: [
-        // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- matcher reads name/tag + reference url only
         {
           id: 'loc-rooftop',
           locationId: 'rooftop',
           name: 'Rooftop',
           referenceImageUrl: 'https://cdn/rooftop.png',
-          referenceStatus: 'completed',
           consistencyTag: 'rooftop',
-        } as unknown as SequenceLocationMinimal,
+        },
       ],
     });
 
@@ -549,15 +539,13 @@ describe('buildStoryboardMotionBatchShots — reference-only', () => {
         }),
       ],
       locations: [
-        // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- matcher reads name/tag + reference url only
         {
           id: 'loc-rooftop',
           locationId: 'rooftop',
           name: 'Rooftop',
           referenceImageUrl: 'https://cdn/rooftop.png',
-          referenceStatus: 'completed',
           consistencyTag: 'rooftop',
-        } as unknown as SequenceLocationMinimal,
+        },
       ],
     });
 

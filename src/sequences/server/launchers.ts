@@ -88,6 +88,29 @@ export class GenerationStatusUnknownError extends Error {
   }
 }
 
+type StoryboardSequenceDb = {
+  sequences: Pick<ScopedDb['sequences'], 'getForUser'>;
+};
+
+type StoryboardPayloadDb = {
+  styles: Pick<ScopedDb['styles'], 'getById'>;
+  sequenceElements: Pick<ScopedDb['sequenceElements'], 'list' | 'update'>;
+  talent: Pick<ScopedDb['talent'], 'getByIds'>;
+  locations: Pick<ScopedDb['locations'], 'getByIds'>;
+  teamManagement: Pick<ScopedDb['teamManagement'], 'getMemberEmail'>;
+};
+
+type StoryboardLaunchDb = StoryboardSequenceDb &
+  StoryboardPayloadDb & {
+    sequences: Pick<
+      ScopedDb['sequences'],
+      'getForUser' | 'claimWorkflowSlot' | 'update'
+    >;
+    sequence: (
+      sequenceId: string
+    ) => Pick<ReturnType<ScopedDb['sequence']>, 'updateStatus'>;
+  };
+
 /**
  * Mutex step 1 — fetch the sequence and reject unless its most recent
  * storyboard run can be ruled out as live:
@@ -98,7 +121,7 @@ export class GenerationStatusUnknownError extends Error {
  * that match what we actually know.
  */
 export async function getSequenceRejectingActiveRun(
-  scopedDb: ScopedDb,
+  scopedDb: StoryboardSequenceDb,
   sequenceId: string
 ) {
   const sequence = await scopedDb.sequences.getForUser({ sequenceId });
@@ -117,7 +140,7 @@ export async function getSequenceRejectingActiveRun(
  * race a live full pipeline but don't start a storyboard themselves.
  */
 export async function assertNoActiveStoryboard(
-  scopedDb: ScopedDb,
+  scopedDb: StoryboardSequenceDb,
   sequenceId: string
 ): Promise<void> {
   await getSequenceRejectingActiveRun(scopedDb, sequenceId);
@@ -133,7 +156,7 @@ export async function assertNoActiveStoryboard(
  * accepts the trigger and dies mid-run.
  */
 async function resolveStoryboardPayload(
-  scopedDb: ScopedDb,
+  scopedDb: StoryboardPayloadDb,
   sequence: Sequence,
   input: StoryboardTriggerInput,
   sequenceId: string
@@ -254,7 +277,7 @@ async function resolveStoryboardPayload(
  * smart-retry fallback) go through here.
  */
 export async function triggerStoryboard(
-  scopedDb: ScopedDb,
+  scopedDb: StoryboardLaunchDb,
   input: StoryboardTriggerInput
 ): Promise<{ workflowRunId: string }> {
   const { sequenceId } = input;

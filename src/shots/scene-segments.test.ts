@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import type { ShotView } from './shot-view';
 import {
   assembleSequenceSegments,
   formatShotSpan,
@@ -19,14 +18,12 @@ const shot = (
   shotNumber: number,
   renderSegmentId: string | null,
   durationMs = 3000
-): ShotView =>
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- minimal fixture: grouping reads only id/renderSegmentId/shotNumber/durationMs
-  ({
-    id,
-    shotNumber,
-    renderSegmentId,
-    durationMs,
-  }) as ShotView;
+) => ({
+  id,
+  shotNumber,
+  renderSegmentId,
+  durationMs,
+});
 
 const segment = (id: string, shotIds: string[]): SequenceSegment => ({
   id,

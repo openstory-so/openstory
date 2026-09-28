@@ -35,9 +35,26 @@ import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'billing', 'workflow-deduction']);
 
+/**
+ * Team id plus the three billing calls a charge makes. A full
+ * `WorkflowScopedDb` assigns; a caller can pass only this slice.
+ */
+type WorkflowChargeDb = {
+  teamId: WorkflowScopedDb['teamId'];
+  billing: Pick<
+    WorkflowScopedDb['billing'],
+    'captureReservation' | 'tryDeductCredits' | 'checkAutoTopUp'
+  >;
+};
+
+/** The usage-sample write. Observations are not team-scoped, but still need a handle. */
+type WorkflowUsageDb = {
+  modelUsage: Pick<WorkflowScopedDb['modelUsage'], 'record'>;
+};
+
 type WorkflowDeductionOpts = {
   /** Scoped DB context for the team. Skips deduction if undefined (e.g., anonymous workflows). */
-  scopedDb: WorkflowScopedDb | undefined;
+  scopedDb: WorkflowChargeDb | undefined;
   costMicros: Microdollars;
   /** Set to true if the team used their own API key for this generation */
   usedOwnKey: boolean;
@@ -61,7 +78,7 @@ function logPrefix(workflowName: string | undefined): string {
 }
 
 function skipDeduction(
-  scopedDb: WorkflowScopedDb,
+  scopedDb: WorkflowChargeDb,
   opts: WorkflowDeductionOpts
 ): void {
   const prefix = logPrefix(opts.workflowName);
@@ -201,7 +218,7 @@ function falUsageMetadata(metadata: FalUsage): FalUsage {
  * call.
  */
 export async function recordFalUsage(
-  scopedDb: WorkflowScopedDb | undefined,
+  scopedDb: WorkflowUsageDb | undefined,
   usage: FalUsage
 ): Promise<void> {
   // Observations are platform-global telemetry with no teamId (see
@@ -253,7 +270,7 @@ export async function recordFalUsage(
  */
 export async function recordFalUsageStep(
   step: { do: (name: string, fn: () => Promise<void>) => Promise<void> },
-  scopedDb: WorkflowScopedDb | undefined,
+  scopedDb: WorkflowUsageDb | undefined,
   metadata: FalUsage,
   stepName = 'record-fal-usage'
 ): Promise<FalUsage> {

@@ -48,6 +48,7 @@
  */
 
 import { musicPromptInputHashMatches } from '@/shots/input-hash';
+import { isValidAnalysisModelId } from '@/models/models.config';
 import { resolveVideoModel } from '@/models/resolve-asset-models';
 import type { Scene } from '@/shots/scene-analysis.schema';
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
@@ -60,7 +61,10 @@ import {
   ttsCharacterCount,
   voicedDialogueLines,
 } from '@/motion/dialogue-tts';
-import { requireCredits } from '@/billing/server/preflight';
+import {
+  requireCredits,
+  type PreflightScopedDb,
+} from '@/billing/server/preflight';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { isInsufficientCreditsError } from '@/platform/errors';
 import { buildMotionReferenceImages } from '@/motion/server/build-motion-references';
@@ -70,14 +74,25 @@ import {
   resolveMotionPromptFromVersion,
 } from '@/motion/server/resolve-motion-prompt';
 import { resolveShotDuration } from '@/motion/resolve-shot-duration';
-import { getAnchorImageUrl } from '@/shots/server/frame-image';
+import {
+  getAnchorImageUrl,
+  type FrameImageReadDb,
+} from '@/shots/server/frame-image';
 import type {
   FramePromptVersion,
   FrameVariant,
+  Sequence,
+  Shot,
   ShotPromptVersion,
 } from '@/platform/server/db/schema';
-import type { FramePromptResult } from '@/stills/server/workflows/frame-prompt-workflow';
-import type { MotionPromptWorkflowResult } from '@/motion/server/workflows/motion-prompt-workflow';
+import {
+  readFramePromptResult,
+  type FramePromptResult,
+} from '@/stills/server/workflows/frame-prompt-workflow';
+import {
+  readMotionPromptWorkflowResult,
+  type MotionPromptWorkflowResult,
+} from '@/motion/server/workflows/motion-prompt-workflow';
 import { getLogger } from '@/platform/logger';
 import { reinforceInstrumentalTags } from '@/audio/server/music-prompt';
 import {
@@ -99,6 +114,24 @@ import {
 } from '@/shots/server/update-stale-plan';
 import { bindPendingVoices } from '@/shots/server/pending-voices';
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
+import {
+  readArray as readItems,
+  readCharacterSheetWorkflowResult,
+  readCharacterVoiceWorkflowResult,
+  readDialogueAudioWorkflowResult,
+  readImageChildOutput,
+  readLocationSheetWorkflowResult,
+  readMotionWorkflowResult,
+  readUnknown,
+  recordOf,
+  requiredNumber as requiredRecordNumber,
+  requiredString as requiredRecordString,
+  stringEnum,
+} from '@/platform/server/workflow/child-output';
+import {
+  readElementSheetWorkflowResult,
+  readMusicPromptWorkflowResult,
+} from '@/shots/server/workflow-output';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { WorkflowValidationError } from '@/platform/server/workflow/errors';
 import type {
@@ -119,6 +152,7 @@ import type {
   MotionWorkflowResult,
   MusicPromptWorkflowInput,
   MusicPromptWorkflowResult,
+  MusicSceneSummary,
   MusicWorkflowInput,
   UpdateStaleShotsWorkflowInput,
 } from '@/platform/server/workflow/types';
@@ -134,16 +168,19 @@ const logger = getLogger(['openstory', 'workflow', 'update-stale-shots']);
 
 const PARENT_BINDING_NAME = 'UPDATE_STALE_SHOTS_WORKFLOW';
 
-type UpdateStage =
-  | 'reference'
-  | 'voice'
-  | 'visual-prompt'
-  | 'motion-prompt'
-  | 'image'
-  | 'dialogue'
-  | 'video'
-  | 'music-prompt'
-  | 'music';
+const UPDATE_STAGES = [
+  'reference',
+  'voice',
+  'visual-prompt',
+  'motion-prompt',
+  'image',
+  'dialogue',
+  'video',
+  'music-prompt',
+  'music',
+] as const;
+
+type UpdateStage = (typeof UPDATE_STAGES)[number];
 
 /**
  * `shotId` is the sequence id for the sequence-scoped music stages, and the
@@ -168,6 +205,48 @@ export type UpdateStaleShotsResult = {
 
 type ImageChildOutput = { imageUrl?: string; cancelled?: boolean };
 
+const SKIP_REASONS = [
+  'no-anchor-frame',
+  'no-scene',
+  'staleness-unknown',
+  'already-in-flight',
+] as const satisfies readonly SkippedShot['reason'][];
+
+export function readUpdateStaleShotsResult(
+  value: unknown
+): UpdateStaleShotsResult {
+  const record = recordOf(value, 'update result');
+  return {
+    totalShots: requiredRecordNumber(record, 'totalShots'),
+    visualPrompts: requiredRecordNumber(record, 'visualPrompts'),
+    motionPrompts: requiredRecordNumber(record, 'motionPrompts'),
+    images: requiredRecordNumber(record, 'images'),
+    dialogues: requiredRecordNumber(record, 'dialogues'),
+    videos: requiredRecordNumber(record, 'videos'),
+    musicPrompts: requiredRecordNumber(record, 'musicPrompts'),
+    musicTracks: requiredRecordNumber(record, 'musicTracks'),
+    failures: readItems(record.failures, readUpdateFailure, 'failures'),
+    skipped: readItems(record.skipped, readSkippedShot, 'skipped'),
+  };
+}
+
+function readUpdateFailure(value: unknown): UpdateFailure {
+  const record = recordOf(value, 'update failure');
+  return {
+    shotId: requiredRecordString(record, 'shotId'),
+    stage: stringEnum(record.stage, UPDATE_STAGES, 'stage'),
+    error: requiredRecordString(record, 'error'),
+  };
+}
+
+function readSkippedShot(value: unknown): SkippedShot {
+  const record = recordOf(value, 'skipped shot');
+  return {
+    shotId: requiredRecordString(record, 'shotId'),
+    reason: stringEnum(record.reason, SKIP_REASONS, 'reason'),
+  };
+}
+
 /** A prompt target's scenes, materialised per shot in `prepare-prompt-*`. */
 type PromptScenes = {
   /** Script-overlaid scene metadata, the prompt children's primary input. */
@@ -177,11 +256,112 @@ type PromptScenes = {
   sceneAfter?: Scene;
 };
 
+type UpdateShotRow = Pick<
+  Shot,
+  | 'id'
+  | 'sceneId'
+  | 'durationMs'
+  | 'shotNumber'
+  | 'renderSegmentId'
+  | 'audioClips'
+>;
+
+type UpdateSequenceMusicRow = Pick<
+  Sequence,
+  'musicPromptInputHash' | 'musicStatus' | 'musicPrompt' | 'musicTags'
+>;
+
+/**
+ * The reads and claim writes this run makes. A full `WorkflowScopedDb`
+ * still assigns: each member is a slice of the real method.
+ */
+type UpdateStaleRunDb = {
+  characters: Pick<
+    WorkflowScopedDb['characters'],
+    'claimSheet' | 'failSheetClaim' | 'markVoiceClaimTerminal'
+  > & {
+    createPendingVoiceClaim: (
+      ...args: Parameters<
+        WorkflowScopedDb['characters']['createPendingVoiceClaim']
+      >
+    ) => Promise<{
+      created: boolean;
+      version: { id: string; workflowRunId: string | null };
+    }>;
+  };
+  sequenceLocations: Pick<
+    WorkflowScopedDb['sequenceLocations'],
+    'claimReference' | 'failReferenceClaim'
+  >;
+  frameVariants: Pick<
+    WorkflowScopedDb['frameVariants'],
+    'markTerminal' | 'cancelByDependency'
+  >;
+  framePromptVersions: Pick<
+    WorkflowScopedDb['framePromptVersions'],
+    'markTerminal'
+  >;
+  shotPromptVersions: Pick<
+    WorkflowScopedDb['shotPromptVersions'],
+    'markTerminal'
+  >;
+  stalenessPlanning: Parameters<typeof claimTargets>[0]['scopedDb'] &
+    Parameters<typeof loadSceneContextBySequence>[0] &
+    Parameters<typeof prepareShotImageWorkflowInput>[0]['scopedDb'];
+  liveRead: FrameImageReadDb &
+    PreflightScopedDb & {
+      characters: Pick<
+        WorkflowScopedDb['liveRead']['characters'],
+        'listWithSheets'
+      >;
+      sequenceLocations: Pick<
+        WorkflowScopedDb['liveRead']['sequenceLocations'],
+        'listWithReferences'
+      >;
+      sequenceElements: Pick<
+        WorkflowScopedDb['liveRead']['sequenceElements'],
+        'list'
+      >;
+      videoVariants: Pick<
+        WorkflowScopedDb['liveRead']['videoVariants'],
+        'getSelectedByShot' | 'listBySegment'
+      >;
+      shots: {
+        getById: (
+          ...args: Parameters<WorkflowScopedDb['liveRead']['shots']['getById']>
+        ) => Promise<UpdateShotRow | null>;
+      };
+      sequences: {
+        getById: (
+          ...args: Parameters<
+            WorkflowScopedDb['liveRead']['sequences']['getById']
+          >
+        ) => Promise<UpdateSequenceMusicRow | null>;
+      };
+    };
+  claims: {
+    framePromptVersions: Pick<
+      WorkflowScopedDb['claims']['framePromptVersions'],
+      'getByIdForFrame'
+    >;
+    frameVariants: Pick<WorkflowScopedDb['claims']['frameVariants'], 'getById'>;
+    shotPromptVersions: Pick<
+      WorkflowScopedDb['claims']['shotPromptVersions'],
+      'getByIdForShot'
+    >;
+  };
+};
+
+const _updateStaleRunDbAcceptsWorkflow: WorkflowScopedDb extends UpdateStaleRunDb
+  ? true
+  : never = true;
+void _updateStaleRunDbAcceptsWorkflow;
+
 export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<UpdateStaleShotsWorkflowInput> {
   protected override async runImpl(
     event: Readonly<WorkflowEvent<UpdateStaleShotsWorkflowInput>>,
     step: WorkflowStep,
-    scopedDb: WorkflowScopedDb
+    scopedDb: UpdateStaleRunDb
   ): Promise<UpdateStaleShotsResult> {
     const input = event.payload;
     const parentInstanceId = event.instanceId;
@@ -366,6 +546,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               childPayload: { ...payload, sheetVersionId },
               spawnStepName: `spawn-character-sheet-${id}`,
               awaitStepName: `await-character-sheet-${id}`,
+              readOutput: readCharacterSheetWorkflowResult,
               timeout: '30 minutes',
             });
           } catch (error) {
@@ -408,6 +589,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               childPayload: { ...payload, referenceVersionId },
               spawnStepName: `spawn-location-sheet-${id}`,
               awaitStepName: `await-location-sheet-${id}`,
+              readOutput: readLocationSheetWorkflowResult,
               timeout: '30 minutes',
             });
           } catch (error) {
@@ -436,6 +618,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                     childPayload: payload,
                     spawnStepName: 'spawn-element-sheets',
                     awaitStepName: 'await-element-sheets',
+                    readOutput: readElementSheetWorkflowResult,
                   });
                 } catch (error) {
                   // The child fails as a whole when any entry does.
@@ -468,6 +651,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               childPayload: { ...payload, targetVersionId: claim.version.id },
               spawnStepName: `spawn-character-voice-${id}`,
               awaitStepName: `await-character-voice-${id}`,
+              readOutput: readCharacterVoiceWorkflowResult,
               timeout: '30 minutes',
             });
             if (designed.voiceId) designedVoices[id] = designed.voiceId;
@@ -657,6 +841,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
         childPayload: imageInput,
         spawnStepName: `spawn-image-${target.shotId}`,
         awaitStepName: `await-image-${target.shotId}`,
+        readOutput: readImageChildOutput,
       });
       // A user cancel (before or during the render) is a stand-down, not a
       // failure — and definitely not a render to count (#1095 review).
@@ -980,6 +1165,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           childPayload: motionInput,
           spawnStepName: `spawn-video-${target.shotId}`,
           awaitStepName: `await-video-${target.shotId}`,
+          readOutput: readMotionWorkflowResult,
           // Same budget as motion-batch's motion children: 30 minutes of
           // polling plus BytePlus still ingest.
           timeout: '90 minutes',
@@ -1099,6 +1285,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             },
             spawnStepName: 'spawn-dialogue-audio',
             awaitStepName: 'await-dialogue-audio',
+            readOutput: readDialogueAudioWorkflowResult,
             timeout: '60 minutes',
           }).then(
             (result): DialogueOutcome => ({
@@ -1312,6 +1499,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                   },
                   spawnStepName: `spawn-motion-prompt-${target.shotId}`,
                   awaitStepName: `await-motion-prompt-${target.shotId}`,
+                  readOutput: readMotionPromptWorkflowResult,
                 });
                 prompted.motionVersionId = motionResult.finalVersionId;
                 counters.motionPrompts += 1;
@@ -1346,6 +1534,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                       },
                       spawnStepName: `spawn-frame-prompt-${target.shotId}`,
                       awaitStepName: `await-frame-prompt-${target.shotId}`,
+                      readOutput: readFramePromptResult,
                     });
                     prompted.visualVersionId = visualResult.finalVersionId;
                     counters.visualPrompts += 1;
@@ -1508,12 +1697,12 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                 parentBindingName: PARENT_BINDING_NAME,
                 parentInstanceId,
                 childId: `music-prompt:${sequenceId}`,
-                // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the step above serialized exactly this type
-                childPayload: JSON.parse(
-                  musicPromptInputJson
-                ) as MusicPromptWorkflowInput,
+                childPayload: readMusicPromptWorkflowInput(
+                  jsonUnknown(musicPromptInputJson)
+                ),
                 spawnStepName: 'spawn-music-prompt',
                 awaitStepName: 'await-music-prompt',
+                readOutput: readMusicPromptWorkflowResult,
               });
               regeneratedPrompt = {
                 prompt: musicDesign.prompt,
@@ -1595,6 +1784,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               childPayload: JSON.parse(musicInputJson) as MusicWorkflowInput,
               spawnStepName: 'spawn-music-track',
               awaitStepName: 'await-music-track',
+              readOutput: readUnknown,
             });
             counters.musicTracks += 1;
           } catch (error) {
@@ -1695,5 +1885,114 @@ function toFailure(
     shotId,
     stage,
     error: error instanceof Error ? error.message : String(error),
+  };
+}
+
+function jsonUnknown(text: string): unknown {
+  return JSON.parse(text);
+}
+
+function musicPayloadError(message: string): NonRetryableError {
+  return new NonRetryableError(message, 'WorkflowValidationError');
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function requiredString(value: unknown, field: string): string {
+  if (typeof value !== 'string') {
+    throw musicPayloadError(`Music prompt payload ${field} must be a string`);
+  }
+  return value;
+}
+
+function requiredNumber(value: unknown, field: string): number {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    throw musicPayloadError(`Music prompt payload ${field} must be a number`);
+  }
+  return value;
+}
+
+function optionalString(value: unknown, field: string): string | undefined {
+  if (value === undefined) return undefined;
+  return requiredString(value, field);
+}
+
+function optionalNumber(value: unknown, field: string): number | undefined {
+  if (value === undefined) return undefined;
+  return requiredNumber(value, field);
+}
+
+function optionalBoolean(value: unknown, field: string): boolean | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'boolean') {
+    throw musicPayloadError(`Music prompt payload ${field} must be a boolean`);
+  }
+  return value;
+}
+
+function readPromptSource(
+  value: unknown
+): MusicPromptWorkflowInput['promptSource'] | undefined {
+  if (value === undefined) return undefined;
+  if (value === 'ai-generated' || value === 'regenerated') return value;
+  throw musicPayloadError(
+    'Music prompt payload promptSource must be ai-generated or regenerated'
+  );
+}
+
+function readMusicSceneSummary(value: unknown): MusicSceneSummary {
+  if (!isPlainRecord(value)) {
+    throw musicPayloadError('Music prompt scene summary must be an object');
+  }
+  return {
+    sceneId: requiredString(value.sceneId, 'sceneSummaries.sceneId'),
+    title: requiredString(value.title, 'sceneSummaries.title'),
+    storyBeat: requiredString(value.storyBeat, 'sceneSummaries.storyBeat'),
+    durationSeconds: requiredNumber(
+      value.durationSeconds,
+      'sceneSummaries.durationSeconds'
+    ),
+    location: requiredString(value.location, 'sceneSummaries.location'),
+    timeOfDay: requiredString(value.timeOfDay, 'sceneSummaries.timeOfDay'),
+  };
+}
+
+/** The previous step stringified this value. Reject anything that is not that shape. */
+function readMusicPromptWorkflowInput(
+  value: unknown
+): MusicPromptWorkflowInput {
+  if (!isPlainRecord(value)) {
+    throw musicPayloadError('Music prompt payload must be an object');
+  }
+  if (!isValidAnalysisModelId(value.analysisModelId)) {
+    throw musicPayloadError(
+      'Music prompt payload analysisModelId is not a known model'
+    );
+  }
+  if (!Array.isArray(value.sceneSummaries)) {
+    throw musicPayloadError(
+      'Music prompt payload sceneSummaries must be an array'
+    );
+  }
+  const sequenceId = optionalString(value.sequenceId, 'sequenceId');
+  const reservationId = optionalString(value.reservationId, 'reservationId');
+  const ownsReservation = optionalBoolean(
+    value.ownsReservation,
+    'ownsReservation'
+  );
+  const duration = optionalNumber(value.duration, 'duration');
+  const promptSource = readPromptSource(value.promptSource);
+  return {
+    userId: requiredString(value.userId, 'userId'),
+    teamId: requiredString(value.teamId, 'teamId'),
+    sceneSummaries: value.sceneSummaries.map(readMusicSceneSummary),
+    analysisModelId: value.analysisModelId,
+    ...(sequenceId !== undefined ? { sequenceId } : {}),
+    ...(reservationId !== undefined ? { reservationId } : {}),
+    ...(ownsReservation !== undefined ? { ownsReservation } : {}),
+    ...(duration !== undefined ? { duration } : {}),
+    ...(promptSource !== undefined ? { promptSource } : {}),
   };
 }

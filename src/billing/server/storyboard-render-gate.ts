@@ -14,6 +14,20 @@ import {
 
 const logger = getLogger(['openstory', 'billing', 'storyboard-render-gate']);
 
+/** The envelope grow, the short-funds zero, and the team the short is reported for. */
+type StoryboardGateDb = {
+  teamId: WorkflowScopedDb['teamId'];
+  billing: Pick<
+    WorkflowScopedDb['billing'],
+    'growReservation' | 'checkAutoTopUp' | 'zeroReservation'
+  >;
+};
+
+const _storyboardGateDbAcceptsWorkflow: WorkflowScopedDb extends StoryboardGateDb
+  ? true
+  : never = true;
+void _storyboardGateDbAcceptsWorkflow;
+
 export type StoryboardRenderGateResult =
   | { spawnRenders: true }
   | {
@@ -23,7 +37,7 @@ export type StoryboardRenderGateResult =
     };
 
 export async function gateStoryboardRenders(opts: {
-  scopedDb: WorkflowScopedDb;
+  scopedDb: StoryboardGateDb;
   reservationId?: string;
   remainingWork: Microdollars;
   sceneCount: number;

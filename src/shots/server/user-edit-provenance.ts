@@ -19,7 +19,7 @@ import {
   loadNarrowShotPromptContext,
   type ShotPromptContextSequence,
 } from './prompt-context';
-import type { ScopedDb } from '@/platform/server/db/scoped';
+import type { PromptContextReadDb } from './prompt-context';
 import { getLogger } from '@/platform/logger';
 import type { UserEditProvenance } from '@/platform/server/workflow/types';
 
@@ -27,10 +27,7 @@ const logger = getLogger(['openstory', 'prompts', 'user-edit-provenance']);
 
 export async function buildUserEditProvenance(
   args: {
-    scopedDb: Pick<
-      ScopedDb,
-      'characters' | 'sequenceLocations' | 'sequenceElements' | 'styles'
-    >;
+    scopedDb: PromptContextReadDb;
     sequence: ShotPromptContextSequence;
     scene: Scene | null;
   } & (

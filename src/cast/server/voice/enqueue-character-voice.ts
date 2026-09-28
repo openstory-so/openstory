@@ -16,8 +16,39 @@ import {
 
 const VOICE_DESIGN_NEVER_STARTED = 'Voice design never started';
 
+type LiveVoiceClaim = Pick<
+  Awaited<ReturnType<ScopedDb['characters']['listLiveVoiceClaims']>>[number],
+  'id' | 'workflowRunId'
+>;
+
+type InsertedVoiceClaim = {
+  version: LiveVoiceClaim;
+  created: boolean;
+};
+
+/** Team id plus the voice-claim methods enqueue reads and writes. */
+export type EnqueueCharacterVoiceDb = {
+  teamId: ScopedDb['teamId'];
+  characters: {
+    listLiveVoiceClaims: (
+      ...args: Parameters<ScopedDb['characters']['listLiveVoiceClaims']>
+    ) => Promise<LiveVoiceClaim[]>;
+    createPendingVoiceClaim: (
+      ...args: Parameters<ScopedDb['characters']['createPendingVoiceClaim']>
+    ) => Promise<InsertedVoiceClaim>;
+    markVoiceClaimTerminal: (
+      ...args: Parameters<ScopedDb['characters']['markVoiceClaimTerminal']>
+    ) => Promise<unknown>;
+    stampVoiceClaimWorkflowRunId: (
+      ...args: Parameters<
+        ScopedDb['characters']['stampVoiceClaimWorkflowRunId']
+      >
+    ) => Promise<unknown>;
+  };
+};
+
 export async function enqueueCharacterVoiceDesign(args: {
-  scopedDb: ScopedDb;
+  scopedDb: EnqueueCharacterVoiceDb;
   character: CharacterWithSheet;
   userId: string;
   analysisModel: string | null;
@@ -88,7 +119,7 @@ export async function enqueueCharacterVoiceDesign(args: {
  * (insert-then-crash); fail it so Generate can insert a new claim.
  */
 async function takeLiveVoiceClaimOrInsert(
-  scopedDb: ScopedDb,
+  scopedDb: EnqueueCharacterVoiceDb,
   characterId: string,
   userId: string
 ): Promise<{

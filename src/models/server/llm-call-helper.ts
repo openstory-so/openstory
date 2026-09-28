@@ -278,6 +278,20 @@ export function chatModelOptionsForCall(
   };
 }
 
+/**
+ * Key resolution plus the charge a durable LLM call books. A full
+ * `WorkflowScopedDb` assigns.
+ */
+type LlmCallDb = {
+  userId: WorkflowScopedDb['userId'];
+  teamId: WorkflowScopedDb['teamId'];
+  credentials: Pick<WorkflowScopedDb['credentials'], 'resolveLlmKey'>;
+  billing: Pick<
+    WorkflowScopedDb['billing'],
+    'captureReservation' | 'tryDeductCredits' | 'checkAutoTopUp'
+  >;
+};
+
 export type DurableLLMCallContext = {
   sequenceId?: string;
   userId?: string;
@@ -288,7 +302,7 @@ export type DurableLLMCallContext = {
    */
   workflowRunId: string;
   /** Scoped DB context for resolving team API keys + deducting credits. */
-  scopedDb?: WorkflowScopedDb;
+  scopedDb?: LlmCallDb;
   /** Run envelope to capture against when the parent held one (#1310). */
   reservationId?: string;
 };

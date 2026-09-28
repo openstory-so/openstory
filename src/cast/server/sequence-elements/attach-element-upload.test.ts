@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { DraftElementUploadInput } from '@/cast/draft-element-upload';
 
 const mockTriggerWorkflow = vi.fn();
@@ -23,15 +22,22 @@ const {
   attachElementUpload,
 } = await import('./attach-element-upload');
 
-function makeScopedDb(): ScopedDb {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the sequenceElements methods attach calls
+function makeScopedDb() {
   return {
     sequenceElements: {
       create: mockCreate,
       ensureUniqueToken: mockEnsureUniqueToken,
       updateVisionStatus: mockUpdateVisionStatus,
     },
-  } as unknown as ScopedDb;
+  };
+}
+
+function makeRightsDb() {
+  return {
+    compliance: {
+      attestations: { listForSubject: vi.fn() },
+    },
+  };
 }
 
 function makeUpload(
@@ -54,6 +60,7 @@ function attachDrafts(
 ) {
   return attachDraftElementUploads({
     scopedDb: makeScopedDb(),
+    rightsDb: makeRightsDb(),
     teamId: 'team-1',
     userId: 'user-1',
     sequenceId,
@@ -168,6 +175,7 @@ describe('attachElementUpload', () => {
     await expect(
       attachElementUpload({
         scopedDb: makeScopedDb(),
+        rightsDb: makeRightsDb(),
         teamId: 'team-1',
         userId: 'user-1',
         sequenceId: 'seq-1',
@@ -199,7 +207,7 @@ describe('assertDraftElementUploadsAttachable', () => {
 
     await expect(
       assertDraftElementUploadsAttachable({
-        scopedDb: makeScopedDb(),
+        rightsDb: makeRightsDb(),
         teamId: 'team-1',
         uploads: [
           makeUpload(),
@@ -216,7 +224,7 @@ describe('assertDraftElementUploadsAttachable', () => {
 
     await expect(
       assertDraftElementUploadsAttachable({
-        scopedDb: makeScopedDb(),
+        rightsDb: makeRightsDb(),
         teamId: 'team-1',
         uploads: [makeUpload()],
       })
@@ -227,7 +235,7 @@ describe('assertDraftElementUploadsAttachable', () => {
 
     mockRequireRights.mockClear();
     await assertDraftElementUploadsAttachable({
-      scopedDb: makeScopedDb(),
+      rightsDb: makeRightsDb(),
       teamId: 'team-1',
       uploads: [
         makeUpload({

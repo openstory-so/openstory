@@ -23,6 +23,7 @@ import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { WorkflowValidationError } from './errors';
+import { workflowStep } from './test-doubles';
 import type { UserWorkflowContext } from './types';
 
 const zeroReservation = vi.fn(async () => undefined);
@@ -104,10 +105,7 @@ function makeEvent(
 }
 
 function makeStep(): WorkflowStep {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowStep stub: run() only uses `do`
-  return {
-    do: vi.fn((_name: string, fn: () => Promise<unknown>) => fn()),
-  } as unknown as WorkflowStep;
+  return workflowStep();
 }
 
 function makeWorkflow(impl: () => Promise<unknown>) {

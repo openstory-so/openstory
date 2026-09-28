@@ -455,7 +455,8 @@ export function aiObservabilityMiddleware(
       meter: active.meter,
       captureContent: true,
       ...(observationName && {
-        spanNameFormatter: (info) =>
+        // Only kind and iteration are read; the library still passes full span info.
+        spanNameFormatter: (info: { kind: string; iteration?: number }) =>
           info.kind === 'iteration'
             ? `${observationName} #${info.iteration}`
             : observationName,

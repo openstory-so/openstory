@@ -13,6 +13,10 @@ import { DEFAULT_IMAGE_MODEL } from '@/models/models';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { getGenerationChannel } from '@/platform/realtime';
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
+import {
+  readLocationSheetWorkflowResult,
+  readRegenerateShotsChildResult,
+} from '@/platform/server/workflow/child-output';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import type { CloudflareEnv } from '@/platform/server/workflow/types';
 import type {
@@ -130,6 +134,7 @@ async function regenerateShots(
     ),
     spawnStepName: 'spawn-regenerate-shots',
     awaitStepName: 'await-regenerate-shots',
+    readOutput: readRegenerateShotsChildResult,
   });
 
   return {
@@ -193,6 +198,7 @@ export class RecastLocationWorkflow extends OpenStoryWorkflowEntrypoint<RecastLo
       childPayload: sheetBody,
       spawnStepName: 'spawn-location-sheet',
       awaitStepName: 'await-location-sheet',
+      readOutput: readLocationSheetWorkflowResult,
     });
 
     // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard

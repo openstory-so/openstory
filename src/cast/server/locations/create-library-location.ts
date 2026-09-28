@@ -29,7 +29,7 @@ export type ProcessedImage = { url: string; path: string };
  * cleared or signed. The object stays at its `uploads/` key (#1634).
  */
 export async function attachLocationReferenceImages(
-  scopedDb: ScopedDb,
+  scopedDb: Parameters<typeof requireUploadRights>[0],
   uploadUrls: string[],
   teamId: string
 ): Promise<ProcessedImage[]> {
@@ -56,8 +56,16 @@ export type CreateLibraryLocationInput = {
   referenceImageUrls?: string[];
 };
 
+type LocationLibraryDb = {
+  locations: Pick<
+    ScopedDb['locations'],
+    'create' | 'claimReference' | 'clearReferenceClaimIf'
+  >;
+  locationSheets: Pick<ScopedDb['locationSheets'], 'insert'>;
+} & Parameters<typeof requireUploadRights>[0];
+
 export type CreateLibraryLocationContext = {
-  scopedDb: ScopedDb;
+  scopedDb: LocationLibraryDb;
   user: { id: string };
   teamId: string;
 };
@@ -82,7 +90,12 @@ export type CreateLibraryLocationResult = {
  * whose claim an edit revokes before it publishes parks its preview instead.
  */
 export async function triggerLibraryLocationSheet(
-  scopedDb: Pick<ScopedDb, 'locations'>,
+  scopedDb: {
+    locations: Pick<
+      ScopedDb['locations'],
+      'claimReference' | 'clearReferenceClaimIf'
+    >;
+  },
   workflowInput: SheetPayload<LibraryLocationSheetWorkflowInput>
 ): Promise<string> {
   const referenceClaimId = await scopedDb.locations.claimReference(
@@ -104,7 +117,7 @@ export async function triggerLibraryLocationSheet(
 
 /** {@link triggerLibraryLocationSheet}, logging instead of throwing. */
 export async function enqueueLibraryLocationSheet(
-  scopedDb: Pick<ScopedDb, 'locations'>,
+  scopedDb: Parameters<typeof triggerLibraryLocationSheet>[0],
   workflowInput: SheetPayload<LibraryLocationSheetWorkflowInput>
 ): Promise<void> {
   try {

@@ -12,6 +12,7 @@ import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import { WorkflowValidationError } from '@/platform/server/workflow/errors';
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
+import { readImageChildOutput } from '@/platform/server/workflow/child-output';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import type {
   ImageWorkflowInput,
@@ -55,11 +56,21 @@ type ImageChildOutput = {
   sequenceId?: string;
 };
 
+/** Spawn-time enforcement read. A full `WorkflowScopedDb` still assigns. */
+type RegenerateShotsDb = {
+  liveRead: {
+    compliance: Pick<
+      WorkflowScopedDb['liveRead']['compliance'],
+      'listEnforcementFor'
+    >;
+  };
+};
+
 export class RegenerateShotsWorkflow extends OpenStoryWorkflowEntrypoint<RegenerateShotsWorkflowInput> {
   protected override async runImpl(
     event: Readonly<WorkflowEvent<RegenerateShotsWorkflowInput>>,
     step: WorkflowStep,
-    scopedDb: WorkflowScopedDb
+    scopedDb: RegenerateShotsDb
   ): Promise<RegenerateShotsResult> {
     const input = event.payload;
     const parentInstanceId = event.instanceId;
@@ -164,6 +175,7 @@ export class RegenerateShotsWorkflow extends OpenStoryWorkflowEntrypoint<Regener
             childPayload,
             spawnStepName: `spawn-image-${shotIndex}`,
             awaitStepName: `await-image-${shotIndex}`,
+            readOutput: readImageChildOutput,
           });
           if (!body.imageUrl) {
             logger.error(

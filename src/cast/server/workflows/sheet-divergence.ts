@@ -128,7 +128,9 @@ export async function saveDivergentLibraryLocationSheet({
 }
 
 export type SaveDivergentTalentSheetArgs = {
-  scopedDb: SheetDivergenceScopedDb;
+  scopedDb: {
+    talentSheetVariants: SheetDivergenceScopedDb['talentSheetVariants'];
+  };
   talentSheetId: string;
   /**
    * Parent talent id — used for realtime channel routing. Required: the

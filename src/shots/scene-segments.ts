@@ -84,7 +84,7 @@ export type SequenceSegment = {
  * own singleton group so the strip still accounts for it, unless
  * {@link groupShotsForSceneList} tiles a planned pack onto them.
  */
-export type SegmentGroup = {
+type SegmentGroup = {
   segmentId: string | null;
   segment: SequenceSegment | null;
   shots: ShotView[];
@@ -99,20 +99,31 @@ export type SegmentGroup = {
   belowMin?: true;
 };
 
+/** Fields the strip grouping actually reads off a shot. */
+type GroupableShot = {
+  id: string;
+  durationMs: number | null;
+  renderSegmentId: string | null;
+};
+
+type SegmentGroupOf<T> = Omit<SegmentGroup, 'shots'> & { shots: T[] };
+
 /**
  * Group ordered shots into their render segments for the shot strip. Shots are
  * sorted by `orderIndex` first (segment identity depends on order), then split
  * into contiguous runs sharing a `renderSegmentId`; a null `renderSegmentId`
  * (unrendered shot) yields a singleton group with `segment: null`.
  */
-export function groupShotsBySegment(
-  shots: readonly ShotView[],
+export function groupShotsBySegment<
+  T extends Pick<GroupableShot, 'renderSegmentId'>,
+>(
+  shots: readonly T[],
   segmentsById: ReadonlyMap<string, SequenceSegment>
-): SegmentGroup[] {
+): SegmentGroupOf<T>[] {
   // Callers pass shots already in hierarchical order (scene, then shot
   // number) — the read paths sort them that way.
   const ordered = shots;
-  const groups: SegmentGroup[] = [];
+  const groups: SegmentGroupOf<T>[] = [];
 
   for (const shot of ordered) {
     const segmentId = shot.renderSegmentId;
@@ -142,11 +153,11 @@ export function groupShotsBySegment(
  * snap vs Grok. A run that already has a `renderSegmentId` is never re-tiled
  * — the existing clip's membership wins until a new render lands.
  */
-export function groupShotsForSceneList(
-  shots: readonly ShotView[],
+export function groupShotsForSceneList<T extends GroupableShot>(
+  shots: readonly T[],
   segmentsById: ReadonlyMap<string, SequenceSegment>,
   videoModel: ImageToVideoModel
-): SegmentGroup[] {
+): SegmentGroupOf<T>[] {
   const persisted = groupShotsBySegment(shots, segmentsById);
   if (!videoModelSupportsInClipMultiShot(videoModel)) return persisted;
 
@@ -154,8 +165,8 @@ export function groupShotsForSceneList(
   const capMs =
     grid.length > 0 ? Math.max(...grid) * 1000 : DEFAULT_SEGMENT_CAP_MS;
   const minMs = grid.length > 0 ? Math.min(...grid) * 1000 : 0;
-  const out: SegmentGroup[] = [];
-  let pending: ShotView[] = [];
+  const out: SegmentGroupOf<T>[] = [];
+  let pending: T[] = [];
 
   const flushPending = () => {
     if (pending.length === 0) return;

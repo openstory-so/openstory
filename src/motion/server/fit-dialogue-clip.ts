@@ -29,12 +29,14 @@ import {
   spokenWordCount,
   type VoicedDialogueLine,
 } from '@/motion/dialogue-tts';
-import { durableLLMCallCf } from '@/models/server/llm-call-helper';
+import {
+  durableLLMCallCf,
+  type DurableLLMCallContext,
+} from '@/models/server/llm-call-helper';
 import {
   DEFAULT_ANALYSIS_MODEL,
   type AnalysisModelId,
 } from '@/models/models.config';
-import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { WorkflowStep } from 'cloudflare:workers';
 import { z } from 'zod';
 
@@ -64,7 +66,7 @@ export const shortenDialogueResponseSchema = z.object({
  * the null return reports.
  */
 export type ShortenDialogueArgs = {
-  scopedDb: WorkflowScopedDb;
+  scopedDb: NonNullable<DurableLLMCallContext['scopedDb']>;
   workflowRunId: string;
   userId: string;
   sequenceId: string;

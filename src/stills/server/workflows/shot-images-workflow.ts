@@ -22,6 +22,7 @@ import type { ReferenceImageDescription } from '@/stills/reference-image-prompt'
 import { shotVariantDedupId } from '@/platform/server/workflow/dedup-ids';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
+import { readImageChildOutput } from '@/platform/server/workflow/child-output';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import { WorkflowValidationError } from '@/platform/server/workflow/errors';
 import { NonRetryableError } from 'cloudflare:workflows';
@@ -342,6 +343,7 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
         childPayload: childBody,
         spawnStepName: `spawn-image-${item.hasSiblingShots && item.mapping.shotId ? item.mapping.shotId : scene.sceneId}-${model}${stepSuffix}`,
         awaitStepName: `await-image-${item.hasSiblingShots && item.mapping.shotId ? item.mapping.shotId : scene.sceneId}-${model}${stepSuffix}`,
+        readOutput: readImageChildOutput,
         timeout: '30 minutes',
       });
 

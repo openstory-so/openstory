@@ -16,7 +16,7 @@ import type { CharacterBible } from './bible-versions';
 import { sequences } from './sequences';
 import { talent } from './talent';
 
-const SHEET_STATUSES = [
+export const SHEET_STATUSES = [
   'pending',
   'generating',
   'completed',

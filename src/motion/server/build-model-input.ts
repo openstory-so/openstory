@@ -95,12 +95,27 @@ type ModelOutputMap = {
   >;
 };
 
+/** Output of any registered fal transform: the reference-to-video and
+ *  text-to-video rows `MOTION_REFERENCE_ENDPOINTS` names are typed
+ *  `MotionEndpointId`, so this can never drift from the map. */
+type RegisteredMotionOutput = z.output<
+  (typeof MOTION_TRANSFORMS)[MotionEndpointId]
+>;
+
+// The public signature keeps each model's output. The implementation sees
+// every endpoint's parse result at once, and those outputs disagree on
+// fields such as `duration`, so a generic body cannot prove `ModelOutputMap[T]`.
 export function buildModelInput<T extends ImageToVideoModel>(
   options: GenerateMotionOptions,
   modelConfig: (typeof IMAGE_TO_VIDEO_MODELS)[T],
   modelKey: T
-): ModelOutputMap[T] {
-  const endpointId: (typeof IMAGE_TO_VIDEO_MODELS)[T]['id'] = modelConfig.id;
+): ModelOutputMap[T];
+export function buildModelInput(
+  options: GenerateMotionOptions,
+  modelConfig: (typeof IMAGE_TO_VIDEO_MODELS)[ImageToVideoModel],
+  modelKey: ImageToVideoModel
+): RegisteredMotionOutput {
+  const endpointId = modelConfig.id;
   const transform = MOTION_TRANSFORMS[endpointId];
   // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- defensive guard for exhaustiveness
   if (!transform) {
@@ -126,7 +141,6 @@ export function buildModelInput<T extends ImageToVideoModel>(
         ).prompt
       : options.prompt;
 
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion safe to cast here because we know the transform is valid
   const result = transform.parse({
     prompt: promptForSchema(prompt, options.multiPrompt),
     duration: options.duration,
@@ -150,7 +164,7 @@ export function buildModelInput<T extends ImageToVideoModel>(
         multi_prompt: options.multiPrompt,
         shot_type: 'customize',
       }),
-  }) as ModelOutputMap[T];
+  });
 
   return applyKlingMultiPrompt(result, options.multiPrompt);
 }
@@ -196,13 +210,6 @@ function applyKlingMultiPrompt<T extends { prompt?: unknown }>(
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- packed Kling body is T minus prompt
   return packed as unknown as T;
 }
-
-/** Output of any registered fal transform: the reference-to-video and
- *  text-to-video rows `MOTION_REFERENCE_ENDPOINTS` names are typed
- *  `MotionEndpointId`, so this can never drift from the map. */
-type RegisteredMotionOutput = z.output<
-  (typeof MOTION_TRANSFORMS)[MotionEndpointId]
->;
 
 /**
  * Resolve the endpoint and build the exact fal request body for a motion run

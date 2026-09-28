@@ -12,7 +12,10 @@ import {
   flaggedInputs,
   isContentRejectionError,
 } from '@/models/content-rejection';
-import { assetLeaseOwner } from '@/models/server/byteplus-asset-pool';
+import {
+  assetLeaseOwner,
+  type AssetPoolLedger,
+} from '@/models/server/byteplus-asset-pool';
 import { ingestArkAssets } from '@/models/server/byteplus-asset-steps';
 import { extractFalErrorMessage } from '@/models/fal-error';
 import { isPromptTooLongError } from '@/models/prompt-length';
@@ -33,7 +36,11 @@ import { referenceKeysFrom } from '@/motion/reference-provenance';
 import { recordDialogue } from '@/motion/server/record-dialogue';
 import { cutSpanningSection } from '@/motion/server/cut-audio-section';
 import { raiseShotDurationToCoverAudio } from '@/motion/resolve-shot-duration';
-import type { MotionAudioClip } from '@/platform/server/db/schema';
+import type {
+  MotionAudioClip,
+  Shot,
+  ShotPromptVersion,
+} from '@/platform/server/db/schema';
 import type {
   AssemblableMotionPrompt,
   MotionAudio,
@@ -83,7 +90,10 @@ import {
   uploadVideoToStorage,
   videoUrlFitsWorkflowCheckpoint,
 } from '@/motion/server/video-storage';
-import { recordProvenance } from '@/platform/server/compliance/provenance';
+import {
+  recordProvenance,
+  type ProvenanceRecorder,
+} from '@/platform/server/compliance/provenance';
 import { buildR2Key, STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import { recordMediaGenerationSpan } from '@/platform/server/observability/ai-otel';
 import { getLogger } from '@/platform/logger';
@@ -98,6 +108,7 @@ import {
   persistMotionCompletion,
   rescuedMotionPromptOf,
   persistMotionFailure,
+  type PersistMotionScopedDb,
 } from './motion-workflow-persist';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
@@ -148,11 +159,89 @@ function classifyMotionFailure(message: string): MotionPollOutcome {
     : { kind: 'failed', error: `Motion generation failed: ${message}` };
 }
 
+type MotionShotRow = Pick<
+  Shot,
+  'id' | 'sceneId' | 'sequenceId' | 'renderSegmentId' | 'audioClips'
+>;
+
+/**
+ * What this run reads and writes. Callees (persist, dialogue, soften, charge)
+ * still accept it, and a full `WorkflowScopedDb` still assigns.
+ */
+type MotionRunDb = {
+  userId: WorkflowScopedDb['userId'];
+  teamId: WorkflowScopedDb['teamId'];
+  credentials: Pick<
+    WorkflowScopedDb['credentials'],
+    'userId' | 'resolveKey' | 'resolveOptionalKey' | 'resolveLlmKey'
+  >;
+  billing: Pick<
+    WorkflowScopedDb['billing'],
+    'captureReservation' | 'tryDeductCredits' | 'checkAutoTopUp'
+  >;
+  modelUsage: Pick<WorkflowScopedDb['modelUsage'], 'record'>;
+  liveRead: {
+    shots: {
+      getById: (
+        ...args: Parameters<WorkflowScopedDb['liveRead']['shots']['getById']>
+      ) => Promise<MotionShotRow | null>;
+      getByIds: (
+        ...args: Parameters<WorkflowScopedDb['liveRead']['shots']['getByIds']>
+      ) => Promise<
+        Pick<Shot, 'id' | 'sceneId' | 'sequenceId' | 'renderSegmentId'>[]
+      >;
+    };
+    renderSegments: PersistMotionScopedDb['liveRead']['renderSegments'];
+    billing: Pick<WorkflowScopedDb['liveRead']['billing'], 'hasEnoughCredits'>;
+  };
+  claims: PersistMotionScopedDb['claims'] & {
+    shotPromptVersions: {
+      getByIdForShot: (
+        ...args: Parameters<
+          WorkflowScopedDb['claims']['shotPromptVersions']['getByIdForShot']
+        >
+      ) => Promise<Pick<
+        ShotPromptVersion,
+        'inputHash' | 'analysisModel'
+      > | null>;
+    };
+    shotDialogue: Pick<
+      WorkflowScopedDb['claims']['shotDialogue'],
+      'getSectionById'
+    >;
+  };
+  shots: PersistMotionScopedDb['shots'];
+  videoVariants: PersistMotionScopedDb['videoVariants'];
+  shotPromptVersions: PersistMotionScopedDb['shotPromptVersions'] & {
+    write: (
+      ...args: Parameters<WorkflowScopedDb['shotPromptVersions']['write']>
+    ) => Promise<Pick<ShotPromptVersion, 'id'>>;
+  };
+  renderSegments: Pick<
+    WorkflowScopedDb['renderSegments'],
+    'ensureForShot' | 'ensureForShots'
+  > &
+    PersistMotionScopedDb['renderSegments'];
+  sequenceEvents: PersistMotionScopedDb['sequenceEvents'];
+  shotDialogue: Pick<
+    WorkflowScopedDb['shotDialogue'],
+    'claimRecording' | 'failClaims' | 'appendRecording'
+  >;
+  bytePlusAssets: AssetPoolLedger &
+    Pick<WorkflowScopedDb['bytePlusAssets'], 'releaseOwner'>;
+  provenance: ProvenanceRecorder;
+};
+
+const _motionRunDbAcceptsWorkflow: WorkflowScopedDb extends MotionRunDb
+  ? true
+  : never = true;
+void _motionRunDbAcceptsWorkflow;
+
 export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowInput> {
   protected override async runImpl(
     event: Readonly<WorkflowEvent<MotionWorkflowInput>>,
     step: WorkflowStep,
-    scopedDb: WorkflowScopedDb
+    scopedDb: MotionRunDb
   ): Promise<MotionWorkflowResult> {
     const rawInput = event.payload;
     // Back-compat: accept shotId or shotId from in-flight instances serialized before #906
@@ -1625,7 +1714,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
   }: {
     event: Readonly<WorkflowEvent<MotionWorkflowInput>>;
     error: string;
-    scopedDb: WorkflowScopedDb;
+    scopedDb: MotionRunDb;
   }): Promise<void> {
     const input = event.payload;
     const model = input.model || DEFAULT_VIDEO_MODEL;

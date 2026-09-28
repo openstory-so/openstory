@@ -112,6 +112,18 @@ type FirstMentionWithScene = z.infer<typeof firstMentionSchema> & {
   sceneId: string;
 };
 
+const storedFirstMentionSchema = firstMentionSchema.extend({
+  sceneId: z.string(),
+});
+
+const storedLocationBibleEntrySchema = locationBibleEntrySchema.extend({
+  firstMention: storedFirstMentionSchema,
+});
+
+const storedElementBibleEntrySchema = elementBibleEntrySchema.extend({
+  firstMention: storedFirstMentionSchema,
+});
+
 // ============================================================================
 // Project Metadata Schema
 // ============================================================================
@@ -232,6 +244,12 @@ const dialogueLineSchema = z.object({
     description:
       'Voice tone and emotion for delivery (e.g., "calm serious", "trembling frustrated", "whispered urgent")',
   }),
+});
+
+/** Dialogue line as stored: the wire fields plus the user's voice binding and shot stamp. */
+export const storedDialogueLineSchema = dialogueLineSchema.extend({
+  voiceToken: z.string().optional(),
+  shotNumber: z.number().optional(),
 });
 
 const dialogueSchema = z.object({
@@ -463,7 +481,7 @@ export const sceneMetadataSchema = z.object({
 // Scene Schema
 // ============================================================================
 
-const sceneSchema = z.object({
+export const sceneSchema = z.object({
   sceneId: z
     .string()
     .meta({ description: 'Unique identifier for this scene (required)' }),
@@ -552,6 +570,26 @@ export type VisualPromptComponents = z.infer<
 >;
 export type MotionPrompt = z.infer<typeof motionPromptSchema>;
 export type MotionAudio = MotionPrompt['audio'];
+
+export function readCharacterBibleEntry(value: unknown): CharacterBibleEntry {
+  return characterBibleEntrySchema.parse(value);
+}
+
+export function readLocationBibleEntry(value: unknown): LocationBibleEntry {
+  return storedLocationBibleEntrySchema.parse(value);
+}
+
+export function readElementBibleEntry(value: unknown): ElementBibleEntry {
+  return storedElementBibleEntrySchema.parse(value);
+}
+
+export function readVisualPrompt(value: unknown): VisualPrompt {
+  return visualPromptSchema.parse(value);
+}
+
+export function readMotionPrompt(value: unknown): MotionPrompt {
+  return motionPromptSchema.parse(value);
+}
 /**
  * A dialogue line, plus the voice the USER bound to it (#1559).
  *

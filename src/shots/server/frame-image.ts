@@ -21,7 +21,11 @@ import type { ScopedDb } from '@/platform/server/db/scoped';
  * `ScopedDb`.
  */
 export type FrameImageReadDb = {
-  frames: Pick<ScopedDb['frames'], 'getAnchorByShot'>;
+  frames: {
+    getAnchorByShot: (
+      ...args: Parameters<ScopedDb['frames']['getAnchorByShot']>
+    ) => Promise<{ id: string } | null>;
+  };
   frameVariants: Pick<ScopedDb['frameVariants'], 'getSelected'>;
 };
 

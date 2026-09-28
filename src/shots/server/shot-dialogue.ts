@@ -48,7 +48,13 @@ export type ShotDialogueLinesByShotId = ReadonlyMap<string, ShotDialogueLine[]>;
 
 /** One read for a whole sequence — a trigger resolves every shot off it. */
 export async function loadShotDialogueLines(
-  scopedDb: Pick<ScopedDb, 'shotDialogue'>,
+  scopedDb: {
+    shotDialogue: {
+      getSelectedBySequence: (
+        sequenceId: string
+      ) => Promise<readonly { shotId: string; lines: ShotDialogueLine[] }[]>;
+    };
+  },
   sequenceId: string
 ): Promise<ShotDialogueLinesByShotId> {
   const versions =

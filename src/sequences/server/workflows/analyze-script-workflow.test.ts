@@ -184,9 +184,13 @@ class TestableAnalyzeScriptWorkflow extends AnalyzeScriptWorkflow {
   invokeRunImpl(
     event: Readonly<WorkflowEvent<AnalyzeScriptWorkflowInput>>,
     step: WorkflowStep,
-    scopedDb: WorkflowScopedDb
+    scopedDb: Parameters<TestableAnalyzeScriptWorkflow['runImpl']>[2]
   ) {
     return this.runImpl(event, step, scopedDb);
+  }
+
+  static accept(db: Parameters<TestableAnalyzeScriptWorkflow['runImpl']>[2]) {
+    return db;
   }
 }
 
@@ -217,21 +221,66 @@ type UpdateMock = ReturnType<
 >;
 
 const writeVisualPrompt = vi.fn(
-  async (input: { frameId: string; inputHash?: string; text?: string }) => ({
+  async (
+    input: Parameters<
+      WorkflowScopedDb['framePromptVersions']['writeAiVersion']
+    >[0]
+  ) => ({
     id: `fpv-${input.frameId}`,
   })
 );
 
-function makeScopedDb(update: UpdateMock): WorkflowScopedDb {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal stub: the run stops at the script stage
-  return {
+function makeScopedDb(update: UpdateMock) {
+  // Named, not a fresh literal: `sequences.update` is unused by the run.
+  const scopedDb = {
+    userId: 'u1',
+    teamId: 't1',
+    credentials: {
+      resolveLlmKey: async () => ({
+        key: 'llm-key',
+        source: 'platform' as const,
+        via: 'openrouter' as const,
+      }),
+    },
+    billing: {
+      captureReservation: async () => ({
+        ok: false as const,
+        reason: 'missing' as const,
+      }),
+      tryDeductCredits: async () => ({ ok: false as const }),
+      checkAutoTopUp: async () => {},
+      growReservation: async () => ({ ok: false as const }),
+      zeroReservation: async () => {},
+    },
+    styles: { setGeneratedForSequence: async () => false },
     sequences: {
       update,
       updateAnalysisDurationMs: vi.fn(async () => undefined),
+      snapshotAutoStyle: async () => false,
     },
-    liveRead: { sequenceElements: { listByIds: vi.fn(async () => []) } },
+    sequence: () => ({ updateStatus: async () => {} }),
     framePromptVersions: { writeAiVersion: writeVisualPrompt },
-  } as unknown as WorkflowScopedDb;
+    characters: { create: async () => undefined },
+    sequenceLocations: { createBulk: async () => undefined },
+    sequenceElements: {
+      create: async () => ({
+        id: 'el',
+        token: 'EL',
+        description: null,
+        imageUrl: null,
+        consistencyTag: null,
+        kind: 'image' as const,
+        durationSeconds: null,
+      }),
+    },
+    liveRead: {
+      sequenceElements: {
+        listByIds: vi.fn(async () => []),
+        getByToken: async () => null,
+      },
+    },
+  };
+  return TestableAnalyzeScriptWorkflow.accept(scopedDb);
 }
 
 function makeEvent(

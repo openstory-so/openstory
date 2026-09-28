@@ -5,7 +5,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ScopedDb } from '@/platform/server/db/scoped';
+import type { CharacterVoiceReleaseDb } from './release-voice';
 
 const mockDelete = vi.fn();
 const mockGetVoice = vi.fn();
@@ -31,16 +31,19 @@ const {
 } = await import('./release-voice');
 
 function makeScopedDb(referenceCount: number) {
-  const updateVoice = vi.fn(async () => ({}));
-  const markVoiceReleased = vi.fn(async () => undefined);
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the surface release touches
-  const scopedDb = {
+  const updateVoice = vi.fn<
+    CharacterVoiceReleaseDb['characters']['updateVoice']
+  >(async () => ({}));
+  const markVoiceReleased = vi.fn<
+    CharacterVoiceReleaseDb['characters']['markVoiceReleased']
+  >(async () => undefined);
+  const scopedDb: CharacterVoiceReleaseDb = {
     characters: {
       getVoiceReferenceCount: vi.fn(async () => referenceCount),
       markVoiceReleased,
       updateVoice,
     },
-  } as unknown as ScopedDb;
+  };
   return { scopedDb, updateVoice, markVoiceReleased };
 }
 

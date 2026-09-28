@@ -11,6 +11,7 @@
 
 import { captureProductEvent } from '@/platform/server/observability/product-events';
 import type Stripe from 'stripe';
+import { z } from 'zod';
 
 type CheckoutMethod = 'checkout' | 'saved_card';
 
@@ -192,17 +193,62 @@ function baseFromMetadata(
   };
 }
 
+const metadataSchema = z.record(z.string(), z.string());
+
+const paymentIntentRefSchema = z.union([
+  z.string(),
+  z.object({ id: z.string() }),
+  z.null(),
+]);
+
+const checkoutSessionSchema = z.object({
+  id: z.string(),
+  metadata: metadataSchema.nullish(),
+  payment_status: z.string().nullish(),
+  payment_intent: paymentIntentRefSchema.optional(),
+});
+
+const paymentIntentSchema = z.object({
+  id: z.string(),
+  metadata: metadataSchema.nullish(),
+  status: z.string().nullish(),
+  last_payment_error: z
+    .object({
+      code: z.string().nullish(),
+      decline_code: z.string().nullish(),
+    })
+    .nullish(),
+});
+
+/** Fields this module reads. A full Stripe event satisfies it. */
+type CheckoutAnalyticsEvent = {
+  type: string;
+  data: { object: unknown };
+};
+
+function readCheckoutSession(value: unknown) {
+  const parsed = checkoutSessionSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+function readPaymentIntent(value: unknown) {
+  const parsed = paymentIntentSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
 /**
  * Analytics-only: credit grants stay in the webhook handler.
- * Safe to call for every verified Stripe event; unknown types are ignored.
+ * Safe to call for every verified Stripe event; unknown types and objects
+ * that lack the fields below are ignored.
  */
 export function captureCheckoutAnalyticsForStripeEvent(
-  event: Stripe.Event,
+  event: CheckoutAnalyticsEvent,
   ctx: { teamId: string; userId: string }
 ): void {
   switch (event.type) {
     case 'checkout.session.completed': {
-      const session = event.data.object;
+      const session = readCheckoutSession(event.data.object);
+      if (!session) return;
       const base = baseFromMetadata(session.metadata, ctx, {
         sessionId: session.id,
         paymentIntentId: stripeId(session.payment_intent),
@@ -212,7 +258,8 @@ export function captureCheckoutAnalyticsForStripeEvent(
       return;
     }
     case 'checkout.session.expired': {
-      const session = event.data.object;
+      const session = readCheckoutSession(event.data.object);
+      if (!session) return;
       const base = baseFromMetadata(session.metadata, ctx, {
         sessionId: session.id,
         paymentIntentId: stripeId(session.payment_intent),
@@ -222,7 +269,8 @@ export function captureCheckoutAnalyticsForStripeEvent(
       return;
     }
     case 'payment_intent.succeeded': {
-      const paymentIntent = event.data.object;
+      const paymentIntent = readPaymentIntent(event.data.object);
+      if (!paymentIntent) return;
       const base = baseFromMetadata(paymentIntent.metadata, ctx, {
         paymentIntentId: paymentIntent.id,
       });
@@ -231,7 +279,8 @@ export function captureCheckoutAnalyticsForStripeEvent(
       return;
     }
     case 'payment_intent.payment_failed': {
-      const paymentIntent = event.data.object;
+      const paymentIntent = readPaymentIntent(event.data.object);
+      if (!paymentIntent) return;
       const base = baseFromMetadata(paymentIntent.metadata, ctx, {
         paymentIntentId: paymentIntent.id,
       });
@@ -250,7 +299,8 @@ export function captureCheckoutAnalyticsForStripeEvent(
       return;
     }
     case 'payment_intent.canceled': {
-      const paymentIntent = event.data.object;
+      const paymentIntent = readPaymentIntent(event.data.object);
+      if (!paymentIntent) return;
       const base = baseFromMetadata(paymentIntent.metadata, ctx, {
         paymentIntentId: paymentIntent.id,
       });

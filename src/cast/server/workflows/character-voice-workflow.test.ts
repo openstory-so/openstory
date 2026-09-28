@@ -6,9 +6,9 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CharacterBibleEntry } from '@/shots/scene-analysis.schema';
-import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { CharacterVoiceWorkflowInput } from '@/platform/server/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
+import { workflowStep } from '@/platform/server/workflow/test-doubles';
 import { VOICE_DESIGN_COST } from '@/billing/elevenlabs-pricing';
 
 const mockDesign = vi.fn();
@@ -45,11 +45,16 @@ vi.doMock('@/cast/server/voice/release-voice', () => ({
 
 const { CharacterVoiceWorkflow } = await import('./character-voice-workflow');
 
+type Db = Parameters<InstanceType<typeof CharacterVoiceWorkflow>['runImpl']>[2];
+type VoiceHusk = NonNullable<
+  Awaited<ReturnType<Db['claims']['characters']['getVoiceVersionById']>>
+>;
+
 class Probe extends CharacterVoiceWorkflow {
   runBody(
     event: Readonly<WorkflowEvent<CharacterVoiceWorkflowInput>>,
     step: WorkflowStep,
-    scopedDb: WorkflowScopedDb
+    scopedDb: Db
   ) {
     return this.runImpl(event, step, scopedDb);
   }
@@ -57,7 +62,7 @@ class Probe extends CharacterVoiceWorkflow {
   failBody(
     event: Readonly<WorkflowEvent<CharacterVoiceWorkflowInput>>,
     error: string,
-    scopedDb: WorkflowScopedDb
+    scopedDb: Db
   ) {
     return this.onFailure({ event, error, scopedDb });
   }
@@ -73,45 +78,55 @@ function makeWorkflow(): Probe {
 }
 
 function makeStep(): WorkflowStep {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowStep stub: runImpl only uses `do`
-  return {
-    do: vi.fn((_name: string, fn: () => Promise<unknown>) => fn()),
-  } as unknown as WorkflowStep;
+  return workflowStep();
 }
 
 function makeScopedDb(opts?: {
   pendingPromoteVoiceVersionId?: string | null;
   voiceId?: string | null;
   selectedVoiceVersionId?: string | null;
-  promote?: unknown;
-  complete?: unknown;
-  husk?: { status: string; voiceId: string | null } | null;
+  promote?: { id: string } | null;
+  complete?: { id: string } | null;
+  husk?: VoiceHusk | null;
 }) {
-  const completeVoiceClaimIfLive = vi.fn(async () =>
-    opts?.complete === null ? null : { id: 'ver-1' }
+  const completeVoiceClaimIfLive = vi.fn<
+    Db['characters']['completeVoiceClaimIfLive']
+  >(async () => (opts?.complete === null ? null : { id: 'ver-1' }));
+  const promoteVoiceClaimIfPending = vi.fn<
+    Db['characters']['promoteVoiceClaimIfPending']
+  >(async () =>
+    opts && 'promote' in opts ? (opts.promote ?? null) : { id: 'char-1' }
   );
-  const promoteVoiceClaimIfPending = vi.fn(async () =>
-    opts && 'promote' in opts ? opts.promote : { id: 'char-1' }
-  );
-  const markVoiceClaimTerminal = vi.fn(async () => ({ id: 'ver-1' }));
-  const stampVoiceClaimWorkflowRunId = vi.fn(async () => ({ id: 'ver-1' }));
-  const updateVoice = vi.fn(async () => ({ id: 'char-1' }));
-  const markVoiceReleased = vi.fn(async () => undefined);
-  const getById = vi.fn(async () => ({
+  const markVoiceClaimTerminal = vi.fn<
+    Db['characters']['markVoiceClaimTerminal']
+  >(async () => ({ id: 'ver-1' }));
+  const stampVoiceClaimWorkflowRunId = vi.fn<
+    Db['characters']['stampVoiceClaimWorkflowRunId']
+  >(async () => ({ id: 'ver-1' }));
+  const updateVoice = vi.fn<Db['characters']['updateVoice']>(async () => ({
     id: 'char-1',
+  }));
+  const markVoiceReleased = vi.fn<Db['characters']['markVoiceReleased']>(
+    async () => undefined
+  );
+  const pendingPromoteVoiceVersionId = opts?.pendingPromoteVoiceVersionId;
+  const getById = vi.fn<Db['liveRead']['characters']['getById']>(async () => ({
     voiceId: opts?.voiceId ?? null,
     selectedVoiceVersionId: opts?.selectedVoiceVersionId ?? null,
     pendingPromoteVoiceVersionId:
-      opts?.pendingPromoteVoiceVersionId === undefined
+      pendingPromoteVoiceVersionId === undefined
         ? 'ver-1'
-        : opts.pendingPromoteVoiceVersionId,
+        : pendingPromoteVoiceVersionId,
   }));
-  const getVoiceReferenceCount = vi.fn(async () => 0);
-  const getVoiceVersionById = vi.fn(async () =>
-    opts && 'husk' in opts ? opts.husk : null
-  );
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the scoped-db surface runImpl touches
-  const scopedDb = {
+  const getVoiceReferenceCount = vi.fn<
+    Db['liveRead']['characters']['getVoiceReferenceCount']
+  >(async () => 0);
+  const getVoiceVersionById = vi.fn<
+    Db['claims']['characters']['getVoiceVersionById']
+  >(async () => (opts && 'husk' in opts ? (opts.husk ?? null) : null));
+  const scopedDb: Db = {
+    userId: 'u1',
+    teamId: 'team-1',
     characters: {
       completeVoiceClaimIfLive,
       promoteVoiceClaimIfPending,
@@ -126,9 +141,19 @@ function makeScopedDb(opts?: {
     claims: {
       characters: { getVoiceVersionById },
     },
-    provenance: {},
-    credentials: { resolveKey: vi.fn(async () => ({ key: 'el-key' })) },
-  } as unknown as WorkflowScopedDb;
+    provenance: { record: vi.fn<Db['provenance']['record']>() },
+    credentials: {
+      resolveKey: vi.fn<Db['credentials']['resolveKey']>(async () => ({
+        key: 'el-key',
+      })),
+      resolveLlmKey: vi.fn<Db['credentials']['resolveLlmKey']>(),
+    },
+    billing: {
+      captureReservation: vi.fn<Db['billing']['captureReservation']>(),
+      tryDeductCredits: vi.fn<Db['billing']['tryDeductCredits']>(),
+      checkAutoTopUp: vi.fn<Db['billing']['checkAutoTopUp']>(),
+    },
+  };
   return {
     scopedDb,
     completeVoiceClaimIfLive,

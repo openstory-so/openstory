@@ -13,6 +13,7 @@ import type {
 import type { Scene } from '@/shots/scene-analysis.schema';
 import type { ShotSpec } from '@/shots/shot-list.schema';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
+import { workflowStep } from '@/platform/server/workflow/test-doubles';
 import { describe, expect, test, vi } from 'vitest';
 
 const spawnAndAwaitChild =
@@ -138,10 +139,7 @@ describe('FramePromptBatchWorkflow multi-shot scenes (#1517)', () => {
     const ctx = undefined as unknown as Ctor[0];
     // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- only FRAME_PROMPT_WORKFLOW is read, and the spawn is mocked
     const env = { FRAME_PROMPT_WORKFLOW: {} } as unknown as Ctor[1];
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- runImpl only uses `do`
-    const step = {
-      do: vi.fn((_name: string, fn: () => Promise<unknown>) => fn()),
-    } as unknown as WorkflowStep;
+    const step = workflowStep();
     // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- runImpl never touches scopedDb
     const scopedDb = {} as unknown as WorkflowScopedDb;
 

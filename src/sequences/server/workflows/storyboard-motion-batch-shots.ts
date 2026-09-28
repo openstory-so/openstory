@@ -15,16 +15,15 @@
 
 import type { ImageToVideoModel } from '@/models/models';
 import type {
+  DialogueLine,
   MotionDialogue,
   MotionPrompt,
-  Scene,
 } from '@/shots/scene-analysis.schema';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import type { Resolution } from '@/models/resolutions';
 import type {
-  CharacterMinimal,
+  MotionAudioClip,
   SequenceElementMinimal,
-  SequenceLocationMinimal,
 } from '@/platform/server/db/schema';
 import {
   matchingDialogueClips,
@@ -36,7 +35,6 @@ import {
   resolveShotDialogue,
   type ShotDialogueLine,
 } from '@/shots/shot-dialogue';
-import type { MotionAudioClip } from '@/platform/server/db/schema';
 import {
   assembleMotionPrompt,
   packedSceneFromScene,
@@ -50,6 +48,54 @@ import {
   shotWorkItems,
   type ShotMappingRow,
 } from '@/shots/server/shot-work-items';
+
+/** Scene fields the batch payload reads. A full `Scene` stays assignable. */
+type StoryboardMotionScene = {
+  sceneId: string;
+  originalScript: {
+    extract: string;
+    dialogue?: readonly DialogueLine[];
+  };
+  continuity?: {
+    characterTags?: string[];
+    elementTags?: string[] | null;
+    environmentTag?: string | null;
+    lightingSetup?: string;
+    colorPalette?: string;
+    styleTag?: string;
+  } | null;
+  metadata?: {
+    durationSeconds?: number;
+    location?: string;
+    timeOfDay?: string;
+  } | null;
+  shots?: readonly { shotNumber: number; durationSeconds: number }[] | null;
+};
+
+/** Cast fields the batch reads: matcher, sheet, and voice. */
+type StoryboardMotionCharacter = {
+  id: string;
+  name: string;
+  characterId: string;
+  consistencyTag: string | null;
+  sheetImageUrl: string | null;
+  voiceId?: string | null;
+  voiceOnly?: boolean;
+  physicalDescription?: string | null;
+  selectedSheetVersionId?: string | null;
+  isPerson?: boolean;
+};
+
+/** Location fields the batch reads: matcher and reference sheet. */
+type StoryboardMotionLocation = {
+  id: string;
+  locationId: string;
+  name: string;
+  consistencyTag: string | null;
+  referenceImageUrl: string | null;
+  description?: string | null;
+  selectedReferenceVersionId?: string | null;
+};
 
 const logger = getLogger(['openstory', 'workflow', 'analyze-script']);
 
@@ -65,7 +111,7 @@ export function sceneShotsOf(
 }
 
 export function buildStoryboardMotionBatchShots(input: {
-  scenes: readonly Scene[];
+  scenes: readonly StoryboardMotionScene[];
   shotMapping: ShotMappingRow[];
   /**
    * Primary still URL per clip, ALIGNED to `shotWorkItems(scenes, shotMapping)`
@@ -85,10 +131,10 @@ export function buildStoryboardMotionBatchShots(input: {
   resolution?: Resolution;
   /** See `MotionWorkflowInput.draft` (#1756). */
   draftMotion?: boolean;
-  characters: CharacterMinimal[];
+  characters: StoryboardMotionCharacter[];
   elements: SequenceElementMinimal[];
   /** Location sheets. Only attached in reference-only mode. */
-  locations?: SequenceLocationMinimal[];
+  locations?: StoryboardMotionLocation[];
   /**
    * Reference-only mode: no stills were rendered, so `imageUrls` is empty by
    * design and the missing-still skip below must not eat every shot.

@@ -36,7 +36,7 @@ export type EnqueueLibraryTalentSheetParams = {
 };
 
 export async function enqueueLibraryTalentSheet(
-  scopedDb: Pick<ScopedDb, 'talent'>,
+  scopedDb: { talent: Pick<ScopedDb['talent'], 'claimSheet'> },
   params: EnqueueLibraryTalentSheetParams
 ): Promise<string> {
   const sheetId = generateId();

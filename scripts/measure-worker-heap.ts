@@ -37,6 +37,30 @@ const { values: args } = parseArgs({
 if (!args.cookie || !args['studio-cookie'] || !args.scenes) {
   throw new Error('--cookie, --studio-cookie and --scenes are required');
 }
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+/** Bun's WebSocket accepts `{ headers }`. Present only when this process is Bun. */
+interface HeaderWebSocket {
+  new (url: string, options?: { headers?: Record<string, string> }): WebSocket;
+}
+
+function isHeaderWebSocket(value: unknown): value is HeaderWebSocket {
+  return typeof value === 'function';
+}
+
+function connectInspector(url: string): WebSocket {
+  const host: unknown = globalThis;
+  const ctor = isRecord(host) ? host.WebSocket : undefined;
+  if (!isRecord(host) || !('Bun' in host) || !isHeaderWebSocket(ctor)) {
+    throw new Error(
+      'measure-worker-heap.ts must run under Bun so the inspector socket can send an Origin header'
+    );
+  }
+  return new ctor(url, { headers: { Origin: 'http://localhost' } });
+}
+
 const base = args.base;
 const scenesPath = args.scenes;
 const readCookie = (file: string) => readFileSync(file, 'utf8').trim();
@@ -44,12 +68,10 @@ const cookie = readCookie(args.cookie);
 const studioCookie = readCookie(args['studio-cookie']);
 
 // --- CDP over the wrangler inspector proxy ---------------------------------
-// The proxy rejects a connection with no Origin.
-// Bun's WebSocket takes headers; the DOM type does not know it.
-// oxlint-disable-next-line typescript/no-unsafe-type-assertion
-const ws = new WebSocket(args.inspector, {
-  headers: { Origin: 'http://localhost' },
-} as unknown as string[]);
+// The proxy rejects a connection with no Origin. Bun's WebSocket constructor
+// accepts a headers bag; the DOM constructor does not, so this script refuses
+// to run unless that Bun constructor is actually present.
+const ws = connectInspector(args.inspector);
 await new Promise((resolve, reject) => {
   ws.addEventListener('open', resolve, { once: true });
   ws.addEventListener('error', reject, { once: true });

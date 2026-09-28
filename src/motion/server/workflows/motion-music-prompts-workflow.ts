@@ -12,6 +12,7 @@ import { snapDuration } from '@/motion/snap-duration';
 import { reinforceInstrumentalTags } from '@/audio/server/music-prompt';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
+import { readArray } from '@/platform/server/workflow/child-output';
 import type {
   MotionMusicPromptsWorkflowInput,
   MotionMusicPromptsWorkflowResult,
@@ -19,7 +20,11 @@ import type {
   MusicPromptWorkflowInput,
   MusicPromptWorkflowResult,
 } from '@/platform/server/workflow/types';
-import type { MotionPromptWorkflowResult } from './motion-prompt-workflow';
+import {
+  readMotionPromptWorkflowResult,
+  type MotionPromptWorkflowResult,
+} from './motion-prompt-workflow';
+import { readMusicPromptWorkflowResult } from '@/shots/server/workflow-output';
 import {
   joinMusicDesignByIndex,
   musicSceneSummariesFromAnalysis,
@@ -117,6 +122,8 @@ export class MotionMusicPromptsWorkflow extends OpenStoryWorkflowEntrypoint<Moti
           },
           spawnStepName: 'spawn-motion-prompts',
           awaitStepName: 'await-motion-prompts',
+          readOutput: (value) =>
+            readArray(value, readMotionPromptWorkflowResult, 'motion prompts'),
           // Must exceed the child's own await budget: motion-prompts awaits
           // each per-scene grandchild for 30 minutes, plus notify lag under a
           // burst.
@@ -141,6 +148,7 @@ export class MotionMusicPromptsWorkflow extends OpenStoryWorkflowEntrypoint<Moti
           },
           spawnStepName: 'spawn-music-prompt',
           awaitStepName: 'await-music-prompt',
+          readOutput: readMusicPromptWorkflowResult,
           // LLM-only child; headroom is for burst notify lag.
           timeout: '45 minutes',
         }

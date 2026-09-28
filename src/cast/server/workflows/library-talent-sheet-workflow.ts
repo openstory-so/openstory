@@ -33,11 +33,63 @@ import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'library-talent-sheet']);
 
+type TalentSheetId = Pick<
+  NonNullable<
+    Awaited<ReturnType<WorkflowScopedDb['talent']['sheets']['getById']>>
+  >,
+  'id'
+>;
+
+/**
+ * Sheet landing, the divergent park, and the image charge. A full
+ * `WorkflowScopedDb` assigns.
+ */
+type LibraryTalentSheetDb = {
+  userId: WorkflowScopedDb['userId'];
+  teamId: WorkflowScopedDb['teamId'];
+  credentials: Pick<
+    WorkflowScopedDb['credentials'],
+    'userId' | 'resolveKey' | 'resolveOptionalKey' | 'resolveLlmKey'
+  >;
+  billing: Pick<
+    WorkflowScopedDb['billing'],
+    'captureReservation' | 'tryDeductCredits' | 'checkAutoTopUp'
+  >;
+  modelUsage: Pick<WorkflowScopedDb['modelUsage'], 'record'>;
+  provenance: Pick<WorkflowScopedDb['provenance'], 'record'>;
+  talent: {
+    sheets: {
+      getById: (
+        ...args: Parameters<WorkflowScopedDb['talent']['sheets']['getById']>
+      ) => Promise<TalentSheetId | null | undefined>;
+      create: (
+        ...args: Parameters<WorkflowScopedDb['talent']['sheets']['create']>
+      ) => Promise<TalentSheetId>;
+    };
+    update: (
+      ...args: Parameters<WorkflowScopedDb['talent']['update']>
+    ) => Promise<unknown>;
+    landSheet: (
+      ...args: Parameters<WorkflowScopedDb['talent']['landSheet']>
+    ) => Promise<{ sheet: TalentSheetId; landed: boolean }>;
+    clearSheetClaimIf: (
+      ...args: Parameters<WorkflowScopedDb['talent']['clearSheetClaimIf']>
+    ) => Promise<unknown>;
+  };
+  talentSheetVariants: {
+    insertDivergent: (
+      ...args: Parameters<
+        WorkflowScopedDb['talentSheetVariants']['insertDivergent']
+      >
+    ) => Promise<{ id: string }>;
+  };
+};
+
 export class LibraryTalentSheetWorkflow extends OpenStoryWorkflowEntrypoint<LibraryTalentSheetWorkflowInput> {
   protected override async runImpl(
     event: Readonly<WorkflowEvent<LibraryTalentSheetWorkflowInput>>,
     step: WorkflowStep,
-    scopedDb: WorkflowScopedDb
+    scopedDb: LibraryTalentSheetDb
   ): Promise<LibraryTalentSheetWorkflowResult> {
     const input = event.payload;
     const workflowRunId = event.instanceId;
@@ -401,7 +453,7 @@ export class LibraryTalentSheetWorkflow extends OpenStoryWorkflowEntrypoint<Libr
   }: {
     event: Readonly<WorkflowEvent<LibraryTalentSheetWorkflowInput>>;
     error: string;
-    scopedDb: WorkflowScopedDb;
+    scopedDb: LibraryTalentSheetDb;
   }): Promise<void> {
     const input = event.payload;
 

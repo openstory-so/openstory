@@ -60,11 +60,16 @@ export type ShotPromptContextRefs = {
   style: Awaited<ReturnType<ScopedDb['styles']['getById']>> | null;
 };
 
+/** The four reads a prompt-context load makes. A full `ScopedDb` assigns. */
+export type PromptContextReadDb = {
+  characters: Pick<ScopedDb['characters'], 'listWithSheets'>;
+  sequenceLocations: Pick<ScopedDb['sequenceLocations'], 'listWithReferences'>;
+  sequenceElements: Pick<ScopedDb['sequenceElements'], 'list'>;
+  styles: Pick<ScopedDb['styles'], 'getById'>;
+};
+
 export async function loadShotPromptContext(args: {
-  scopedDb: Pick<
-    ScopedDb,
-    'characters' | 'sequenceLocations' | 'sequenceElements' | 'styles'
-  >;
+  scopedDb: PromptContextReadDb;
   sequence: ShotPromptContextSequence;
   scene: Scene;
   /** Override analysis model — used when a stored variant pins one. */
@@ -143,10 +148,7 @@ export async function loadShotPromptContext(args: {
  * really would see different inputs.
  */
 export async function loadNarrowShotPromptContext(args: {
-  scopedDb: Pick<
-    ScopedDb,
-    'characters' | 'sequenceLocations' | 'sequenceElements' | 'styles'
-  >;
+  scopedDb: PromptContextReadDb;
   sequence: ShotPromptContextSequence;
   scene: Scene;
   analysisModelOverride?: string | null;

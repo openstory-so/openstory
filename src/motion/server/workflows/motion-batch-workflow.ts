@@ -35,6 +35,11 @@ import type { MotionAudioClip } from '@/platform/server/db/schema';
 import { getGenerationChannel } from '@/platform/realtime';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
+import {
+  readDialogueAudioWorkflowResult,
+  readMotionWorkflowResult,
+  readMusicWorkflowResult,
+} from '@/platform/server/workflow/child-output';
 import { WorkflowValidationError } from '@/platform/server/workflow/errors';
 import { attachRecordedClips, buildMotionJobs } from './motion-batch-jobs';
 import type {
@@ -257,6 +262,7 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
           childPayload: motionBody,
           spawnStepName: `spawn-motion-${shotIndex}-${model}`,
           awaitStepName: `await-motion-${shotIndex}-${model}`,
+          readOutput: readMotionWorkflowResult,
           // Must exceed the child's own budget: motion polls for up to 30
           // minutes (MAX_BATCHES in motion-workflow.ts), and a BytePlus shot
           // first ingests its stills — up to 20 minutes waiting on another
@@ -310,6 +316,7 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
         },
         spawnStepName: `spawn-music-${index}-${model}`,
         awaitStepName: `await-music-${index}-${model}`,
+        readOutput: readMusicWorkflowResult,
         // Same budget as the motion children — queue backlog under a burst
         // applies to audio generation too.
         timeout: '45 minutes',
@@ -418,6 +425,7 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
         },
         spawnStepName: 'spawn-dialogue-audio',
         awaitStepName: 'await-dialogue-audio',
+        readOutput: readDialogueAudioWorkflowResult,
         timeout: '60 minutes',
       });
       clipsByShotId = result.clipsByShotId;

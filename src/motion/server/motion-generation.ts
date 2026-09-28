@@ -177,10 +177,15 @@ async function resolveFalMotionKey(
   return { key: getEnv().FAL_KEY, source: 'platform' };
 }
 
+/** The only credential `canRenderReferenceOnly` asks for. */
+type OptionalProviderKeyDb = {
+  resolveOptionalKey: CredentialScopedDb['resolveOptionalKey'];
+};
+
 /** Undefined when the model isn't Grok or no xAI key exists — it then goes to
  *  fal as before (#1167). */
 async function resolveOptionalXaiKey(
-  scopedDb?: CredentialScopedDb
+  scopedDb?: OptionalProviderKeyDb
 ): Promise<ResolvedApiKey | undefined> {
   if (scopedDb) return scopedDb.resolveOptionalKey('xai');
   const platformKey = getEnv().XAI_API_KEY;
@@ -216,7 +221,7 @@ async function resolveOptionalGoogleKey(
  */
 export async function canRenderReferenceOnly(
   modelKey: ImageToVideoModel,
-  scopedDb?: CredentialScopedDb
+  scopedDb?: OptionalProviderKeyDb
 ): Promise<boolean> {
   if (supportsReferenceOnlyMotion(modelKey)) return true;
   return referenceOnlyCapableWith(modelKey, {

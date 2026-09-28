@@ -7,10 +7,10 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { micros } from '@/billing/money';
-import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { StudioCreateInput } from '@/studio/schema';
 import type { StudioGenerationWorkflowInput } from '@/platform/server/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
+import { workflowStep } from '@/platform/server/workflow/test-doubles';
 
 const mockGenerateImageWithProvider = vi.fn();
 const mockDeductWorkflowCredits = vi.fn();
@@ -75,15 +75,18 @@ class Probe extends StudioGenerationWorkflow {
   runBody(
     event: Readonly<WorkflowEvent<StudioGenerationWorkflowInput>>,
     step: WorkflowStep,
-    scopedDb: WorkflowScopedDb
+    scopedDb: Parameters<Probe['runImpl']>[2]
   ) {
     return this.runImpl(event, step, scopedDb);
   }
   fail(
     event: Readonly<WorkflowEvent<StudioGenerationWorkflowInput>>,
-    scopedDb: WorkflowScopedDb
+    scopedDb: Parameters<Probe['runImpl']>[2]
   ) {
     return this.onFailure({ event, error: 'boom', scopedDb });
+  }
+  static accept(db: Parameters<Probe['runImpl']>[2]) {
+    return db;
   }
 }
 
@@ -98,15 +101,13 @@ function makeWorkflow(): Probe {
 
 function makeStep(): WorkflowStep & { names: string[] } {
   const names: string[] = [];
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub: runImpl only uses `do` and `sleep`
-  return {
-    names,
-    do: vi.fn((name: string, fn: () => Promise<unknown>) => {
-      names.push(name);
-      return fn();
+  return Object.assign(
+    workflowStep({
+      names,
+      sleep: async () => {},
     }),
-    sleep: vi.fn(async () => {}),
-  } as unknown as WorkflowStep & { names: string[] };
+    { names }
+  );
 }
 
 function makeScopedDb() {
@@ -117,14 +118,26 @@ function makeScopedDb() {
   };
   const bytePlusAssets = {
     releaseOwner: vi.fn(async (_owner: string) => {}),
+    claimSlot: async () => ({ kind: 'exhausted' as const }),
+    finalizeSlot: async () => false,
   };
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the surface runImpl touches
-  const scopedDb = {
+  const scopedDb = Probe.accept({
+    teamId: 't1',
     generatedAssets,
     bytePlusAssets,
-    provenance: {},
-    credentials: {},
-  } as unknown as WorkflowScopedDb;
+    provenance: { record: async () => undefined },
+    credentials: {
+      userId: 'u1',
+      resolveKey: async () => ({ key: 'fal-key', source: 'platform' }),
+      resolveOptionalKey: async () => undefined,
+    },
+    billing: {
+      captureReservation: async () => ({ ok: false, reason: 'missing' }),
+      tryDeductCredits: async () => ({ ok: false }),
+      checkAutoTopUp: async () => {},
+    },
+    modelUsage: { record: async () => {} },
+  });
   return { scopedDb, generatedAssets, bytePlusAssets };
 }
 

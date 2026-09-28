@@ -23,11 +23,15 @@ import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import {
   releaseReservationOnThrow,
   reserveRunCredits,
+  type ReservationPreflightScopedDb,
 } from '@/billing/server/preflight';
 import { DEFAULT_VIDEO_MODEL, safeImageToVideoModel } from '@/models/models';
 import { DRAFT_FINAL_RESOLUTION, draftTaskUsable } from '@/motion/draft-mode';
 import type { ScopedDb } from '@/platform/server/db/scoped';
-import type { VideoVariant } from '@/platform/server/db/schema';
+import type {
+  ShotPromptVersion,
+  VideoVariant,
+} from '@/platform/server/db/schema';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import type { MotionWorkflowInput } from '@/platform/server/workflow/types';
 
@@ -59,8 +63,28 @@ export function draftRenderBlocker(
   return null;
 }
 
+/**
+ * What a quality render reads, plus the credit hold it hands to preflight.
+ * Sibling rows are only checked for `status`; the prompt row only for `text`.
+ * A full `ScopedDb` still assigns.
+ */
+type RenderAtQualityDb = ReservationPreflightScopedDb & {
+  teamId: ScopedDb['teamId'];
+  billing: Pick<ScopedDb['billing'], 'zeroReservation'>;
+  videoVariants: {
+    listBySegment: (
+      ...args: Parameters<ScopedDb['videoVariants']['listBySegment']>
+    ) => Promise<Array<Pick<VideoVariant, 'status'>>>;
+  };
+  shotPromptVersions: {
+    getByIdForShot: (
+      ...args: Parameters<ScopedDb['shotPromptVersions']['getByIdForShot']>
+    ) => Promise<Pick<ShotPromptVersion, 'text'> | null>;
+  };
+};
+
 export async function renderDraftAtQuality(options: {
-  scopedDb: ScopedDb;
+  scopedDb: RenderAtQualityDb;
   userId: string;
   sequence: RenderableSequence;
   version: VideoVariant;

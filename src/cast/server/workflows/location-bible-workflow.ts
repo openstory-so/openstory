@@ -14,6 +14,7 @@ import { buildLocationInsert } from './cast-records';
 import { computeLocationSheetHashFromDto } from './sheet-snapshots';
 import type { SheetPayload } from './sheet-snapshots';
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
+import { readLocationSheetWorkflowResult } from '@/platform/server/workflow/child-output';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { WorkflowValidationError } from '@/platform/server/workflow/errors';
 import type {
@@ -173,6 +174,7 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
           childPayload,
           spawnStepName: `spawn-location-sheet-${index}`,
           awaitStepName: `await-location-sheet-${index}`,
+          readOutput: readLocationSheetWorkflowResult,
           timeout: '30 minutes',
         });
       }

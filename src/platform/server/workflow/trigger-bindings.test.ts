@@ -21,12 +21,9 @@
 import { describe, expect, test, vi } from 'vitest';
 import { triggerCfWorkflow, workflowNameFromRunId } from './trigger-bindings';
 import { buildInstanceId } from './instance-id';
-import type { CloudflareEnv } from './types';
-
-// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal env stub: triggerCfWorkflow only reads VITE_APP_URL (via buildInstanceId)
 const env = {
   VITE_APP_URL: 'https://openstory.so',
-} as unknown as CloudflareEnv;
+};
 
 const body = { userId: 'u1', teamId: 't1' };
 

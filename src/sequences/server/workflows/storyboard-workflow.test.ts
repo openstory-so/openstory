@@ -20,6 +20,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { DEFAULT_IMAGE_MODEL, DEFAULT_VIDEO_MODEL } from '@/models/models';
 import { DEFAULT_ANALYSIS_MODEL } from '@/models/models.config';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
+import { workflowStep } from '@/platform/server/workflow/test-doubles';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { StoryboardWorkflowInput } from '@/platform/server/workflow/types';
 
@@ -214,13 +215,7 @@ describe('StoryboardWorkflow.onFailure', () => {
 
 function makeStep() {
   const names: string[] = [];
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowStep stub: runImpl only uses `do`
-  const step = {
-    do: vi.fn((_name: string, fn: () => Promise<unknown>) => {
-      names.push(_name);
-      return fn();
-    }),
-  } as unknown as WorkflowStep;
+  const step = workflowStep({ names });
   return { step, names };
 }
 

@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from 'vitest';
-import type Stripe from 'stripe';
 
 const captureProductEvent = vi.fn();
 vi.doMock('@/platform/server/observability/product-events', () => ({
@@ -16,16 +15,12 @@ const {
 
 const CTX = { teamId: 'team_1', userId: 'user_1' };
 
-function stripeEvent(
-  type: Stripe.Event['type'],
-  object: Record<string, unknown>
-): Stripe.Event {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- Stripe.Event is a 260-member union; tests only need type + data.object
+function stripeEvent(type: string, object: Record<string, unknown>) {
   return {
     id: 'evt_1',
     type,
     data: { object },
-  } as unknown as Stripe.Event;
+  };
 }
 
 function lastCapture() {

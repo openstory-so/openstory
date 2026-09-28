@@ -30,12 +30,18 @@ import {
   deductWorkflowCredits,
   recordFalUsageStep,
 } from '@/billing/server/workflow-deduction';
-import { recordProvenance } from '@/platform/server/compliance/provenance';
+import {
+  recordProvenance,
+  type ProvenanceRecorder,
+} from '@/platform/server/compliance/provenance';
 import { aspectRatioToImageSize } from '@/models/aspect-ratios';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { GeneratedAssetOutput } from '@/platform/server/db/schema';
 import { generateImageWithProvider } from '@/stills/server/image-generation';
-import { assetLeaseOwner } from '@/models/server/byteplus-asset-pool';
+import {
+  assetLeaseOwner,
+  type AssetPoolLedger,
+} from '@/models/server/byteplus-asset-pool';
 import { ingestArkAssets } from '@/models/server/byteplus-asset-steps';
 import { resolveMotionVia } from '@/motion/server/motion-generation';
 import { videoUrlFitsWorkflowCheckpoint } from '@/motion/server/video-storage';
@@ -78,11 +84,37 @@ function classifyMotionFailure(message: string): StudioPollOutcome {
     : { kind: 'failed', error: `Motion generation failed: ${message}` };
 }
 
+/** The asset row, the via's keys, the charge, and the Ark ledger. A full `WorkflowScopedDb` still assigns. */
+type StudioRunDb = {
+  teamId: WorkflowScopedDb['teamId'];
+  credentials: Pick<
+    WorkflowScopedDb['credentials'],
+    'userId' | 'resolveKey' | 'resolveOptionalKey'
+  >;
+  billing: Pick<
+    WorkflowScopedDb['billing'],
+    'captureReservation' | 'tryDeductCredits' | 'checkAutoTopUp'
+  >;
+  modelUsage: Pick<WorkflowScopedDb['modelUsage'], 'record'>;
+  generatedAssets: Pick<
+    WorkflowScopedDb['generatedAssets'],
+    'markRunning' | 'markCompleted' | 'markFailed'
+  >;
+  bytePlusAssets: AssetPoolLedger &
+    Pick<WorkflowScopedDb['bytePlusAssets'], 'releaseOwner'>;
+  provenance: ProvenanceRecorder;
+};
+
+const _studioRunDbAcceptsWorkflow: WorkflowScopedDb extends StudioRunDb
+  ? true
+  : never = true;
+void _studioRunDbAcceptsWorkflow;
+
 export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<StudioGenerationWorkflowInput> {
   protected override async runImpl(
     event: Readonly<WorkflowEvent<StudioGenerationWorkflowInput>>,
     step: WorkflowStep,
-    scopedDb: WorkflowScopedDb
+    scopedDb: StudioRunDb
   ): Promise<{ assetId: string; outputs: GeneratedAssetOutput[] }> {
     const { assetId, input } = event.payload;
 
@@ -100,7 +132,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
     event: Readonly<WorkflowEvent<StudioGenerationWorkflowInput>>,
     input: Extract<StudioCreateInput, { activity: 'image' }>,
     step: WorkflowStep,
-    scopedDb: WorkflowScopedDb
+    scopedDb: StudioRunDb
   ): Promise<{ assetId: string; outputs: GeneratedAssetOutput[] }> {
     const { assetId, teamId, userId } = event.payload;
     const { imageModel } = input;
@@ -213,7 +245,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
     event: Readonly<WorkflowEvent<StudioGenerationWorkflowInput>>,
     input: Extract<StudioCreateInput, { activity: 'video' }>,
     step: WorkflowStep,
-    scopedDb: WorkflowScopedDb
+    scopedDb: StudioRunDb
   ): Promise<{ assetId: string; outputs: GeneratedAssetOutput[] }> {
     const { assetId, teamId, userId } = event.payload;
     const { videoModel } = input;
@@ -601,7 +633,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
   }: {
     event: Readonly<WorkflowEvent<StudioGenerationWorkflowInput>>;
     error: string;
-    scopedDb: WorkflowScopedDb;
+    scopedDb: StudioRunDb;
   }): Promise<void> {
     const { assetId, userId, input } = event.payload;
     // An image run only learns its via from the generate result, so a failed

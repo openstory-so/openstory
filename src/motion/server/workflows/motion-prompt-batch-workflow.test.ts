@@ -16,13 +16,18 @@
  * nothing succeeded is fatal.
  */
 
-import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { migrateStyleConfigV1ToV2 } from '@/look/style-config';
 import type {
   MotionPromptBatchWorkflowInput,
   MotionPromptWorkflowInput,
 } from '@/platform/server/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
+import type { CloudflareEnv } from '@/platform/server/workflow/types';
+import type { MotionPromptBatchDb } from './motion-prompt-batch-workflow';
+import {
+  workflowBinding,
+  workflowStep,
+} from '@/platform/server/workflow/test-doubles';
 import { describe, expect, test, vi } from 'vitest';
 
 // Typed so `.mock.calls` yields the child payload rather than `any` — the
@@ -86,17 +91,16 @@ function makeEvent(
 }
 
 function makeStep(): WorkflowStep {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowStep stub: runImpl only uses `do`
-  return {
-    do: vi.fn((_name: string, fn: () => Promise<unknown>) => fn()),
-  } as unknown as WorkflowStep;
+  return workflowStep();
 }
 
-class Probe extends MotionPromptBatchWorkflow {
+class Probe extends MotionPromptBatchWorkflow<
+  Pick<CloudflareEnv, 'MOTION_PROMPT_WORKFLOW'>
+> {
   batch(
     event: Readonly<WorkflowEvent<MotionPromptBatchWorkflowInput>>,
     step: WorkflowStep,
-    scopedDb: WorkflowScopedDb
+    scopedDb: MotionPromptBatchDb
   ) {
     return this.runImpl(event, step, scopedDb);
   }
@@ -106,23 +110,18 @@ function makeWorkflow(): Probe {
   type Ctor = ConstructorParameters<typeof Probe>;
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- tests construct the entrypoint directly; runImpl never reads ctx
   const ctx = undefined as unknown as Ctor[0];
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal env stub; only MOTION_PROMPT_WORKFLOW is read, and the spawn is mocked
-  const env = {
-    MOTION_PROMPT_WORKFLOW: {},
-  } as unknown as Ctor[1];
-  return new Probe(ctx, env);
+  return new Probe(ctx, {
+    MOTION_PROMPT_WORKFLOW: workflowBinding(),
+  });
 }
 
-// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- runImpl never touches scopedDb
+const writeAiVersion = vi.fn(async (input: { shotId: string }) => ({
+  id: `mpv-derived-${input.shotId}`,
+}));
+
 const SCOPED_DB = {
-  shotPromptVersions: {
-    writeAiVersion: vi.fn(
-      async (input: { shotId: string; inputHash: string }) => ({
-        id: `mpv-derived-${input.shotId}`,
-      })
-    ),
-  },
-} as unknown as WorkflowScopedDb;
+  shotPromptVersions: { writeAiVersion },
+} satisfies MotionPromptBatchDb;
 
 const succeed = (sceneId: string) =>
   Promise.resolve({
@@ -386,14 +385,12 @@ describe('MotionPromptBatchWorkflow multi-shot scenes (#1517)', () => {
     expect(result[0]?.finalVersionId).toBe('mpv-derived-sh-1');
     expect(result[1]?.shotId).toBe('sh-2');
     expect(result[1]?.motionPrompt.fullPrompt).toContain('cut to the hallway');
-    expect(SCOPED_DB.shotPromptVersions.writeAiVersion).toHaveBeenCalledTimes(
-      2
-    );
+    expect(writeAiVersion).toHaveBeenCalledTimes(2);
   });
 
   test('reference-only derived motion is framing+action, not the visual prompt', async () => {
     spawnAndAwaitChild.mockReset();
-    vi.mocked(SCOPED_DB.shotPromptVersions.writeAiVersion).mockClear();
+    writeAiVersion.mockClear();
 
     const event = makeEvent({
       styleConfig: migrateStyleConfigV1ToV2({

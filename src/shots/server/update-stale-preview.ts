@@ -12,19 +12,57 @@ import {
   estimateVideoCost,
 } from '@/billing/cost-estimation';
 import type { EffectiveFalPricing } from '@/billing/server/fal-pricing-live';
-
-type FalPricingMap = Record<string, EffectiveFalPricing>;
+import type { AspectRatio } from '@/models/aspect-ratios';
 import {
   DEFAULT_IMAGE_MODEL,
   safeAudioModel,
   safeImageToVideoModel,
   safeTextToImageModel,
+  type TextToImageModel,
 } from '@/models/models';
+import type { Resolution } from '@/models/resolutions';
 import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
 import { addMicros, ZERO_MICROS, type Microdollars } from '@/billing/money';
 import { ttsCharacterCount } from '@/motion/dialogue-tts';
-import type { UpdateStalePlan } from './update-stale-plan';
 import type { UpdateStaleDepth } from '@/shots/update-stale-depth';
+
+type FalPricingMap = Record<string, EffectiveFalPricing>;
+
+/** Fields the dry-run prices. A full `UpdateStalePlan` stays assignable. */
+type UpdateStalePreviewPlan = {
+  aspectRatio: AspectRatio;
+  sequence: {
+    videoModel: string;
+    imageModel?: string | null;
+    resolution?: Resolution;
+  };
+  targets: readonly {
+    shotId: string;
+    regenVisual?: boolean;
+    regenMotion?: boolean;
+    regenImage?: boolean;
+    regenDialogue?: boolean;
+    regenVideo?: boolean;
+    durationMs?: number | null;
+    usesStartFrame?: boolean;
+    imageModel: TextToImageModel;
+  }[];
+  music: {
+    regenPrompt: boolean;
+    regenTrack: boolean;
+    durationSeconds: number;
+  } | null;
+  dialogueRecording: {
+    scenes: readonly {
+      voiced: readonly { shotId: string; text: string; tone: string }[];
+    }[];
+  } | null;
+  references?: {
+    characterSheets: { length: number };
+    locationSheets: { length: number };
+    elementSheets?: { entries: { length: number } } | null;
+  } | null;
+};
 
 export type UpdateStalePreview = {
   visualPromptShotIds: string[];
@@ -57,7 +95,7 @@ const addMaybe = (
 ): Microdollars | null => (a == null || b == null ? null : addMicros(a, b));
 
 export function buildUpdateStalePreview(
-  plan: UpdateStalePlan,
+  plan: UpdateStalePreviewPlan,
   pricing: FalPricingMap,
   musicModel: string | null
 ): UpdateStalePreview {

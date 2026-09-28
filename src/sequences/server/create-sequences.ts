@@ -35,7 +35,6 @@ import {
 import { estimateStoryboardPreflightCost } from '@/billing/storyboard-preflight-cost';
 import { generateId } from '@/platform/id';
 import type { ScopedDb } from '@/platform/server/db/scoped';
-import { toWorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { ValidationError } from '@/platform/errors';
 import { allowsUnfundedGeneration } from '@/sequences/pipeline';
 import { DEFAULT_RESOLUTION } from '@/models/resolutions';
@@ -72,7 +71,7 @@ export type StyleSource =
 
 export async function resolveStyleSource(
   scopedDb: {
-    styles: ScopedDb['styles'];
+    styles: Pick<ScopedDb['styles'], 'getById'>;
     sequences: Pick<ScopedDb['sequences'], 'getById'>;
   },
   styleId: string
@@ -105,8 +104,50 @@ export async function resolveStyleSource(
   };
 }
 
+/**
+ * Every scoped-db call `createSequences` makes: credit preflight, style
+ * binding, element attach, and the storyboard launch. A full `ScopedDb`
+ * still assigns; partial fixtures only need the methods they exercise.
+ */
+type CreateSequencesDb = {
+  apiKeys: Pick<ScopedDb['apiKeys'], 'hasUsableKey' | 'resolveOptionalKey'>;
+  billing: Pick<
+    ScopedDb['billing'],
+    'hasEnoughCredits' | 'createReservation' | 'zeroReservation'
+  >;
+  sequences: Pick<
+    ScopedDb['sequences'],
+    | 'listPage'
+    | 'getById'
+    | 'create'
+    | 'getForUser'
+    | 'claimWorkflowSlot'
+    | 'update'
+  >;
+  styles: Pick<
+    ScopedDb['styles'],
+    'getById' | 'createForSequence' | 'incrementUsage'
+  >;
+  sequenceElements: Pick<
+    ScopedDb['sequenceElements'],
+    'create' | 'ensureUniqueToken' | 'updateVisionStatus' | 'list' | 'update'
+  >;
+  sequence: (
+    sequenceId: string
+  ) => Pick<ReturnType<ScopedDb['sequence']>, 'updateStatus'>;
+  talent: Pick<ScopedDb['talent'], 'getByIds'>;
+  locations: Pick<ScopedDb['locations'], 'getByIds'>;
+  teamManagement: Pick<ScopedDb['teamManagement'], 'getMemberEmail'>;
+  compliance: {
+    attestations: Pick<
+      ScopedDb['compliance']['attestations'],
+      'listForSubject'
+    >;
+  };
+};
+
 export type CreateSequencesContext = {
-  scopedDb: ScopedDb;
+  scopedDb: CreateSequencesDb;
   user: { id: string };
   teamId: string;
   /**
@@ -244,13 +285,17 @@ export const createSequences = createServerOnlyFn(
     // image-to-video endpoint that requires `image_url`, and every shot would
     // fail at submit. Reject here instead, before a single credit is reserved.
     if (!generateStartFrames) {
-      // `credentials` is the flattened key-resolver surface these helpers take
-      // — the same one the workflows get, so create-time and submit-time ask
-      // the identical question.
-      const { credentials } = toWorkflowScopedDb(context.scopedDb);
+      // Same question submit asks: Grok is reference-only only when this
+      // team's xAI key resolves. Workflows pass flattened credentials; the
+      // resolver underneath is this one.
+      const referenceOnlyKeys = {
+        resolveOptionalKey: (
+          provider: Parameters<ScopedDb['apiKeys']['resolveOptionalKey']>[0]
+        ) => context.scopedDb.apiKeys.resolveOptionalKey(provider),
+      };
       const incapable: string[] = [];
       for (const model of videoModels) {
-        if (!(await canRenderReferenceOnly(model, credentials))) {
+        if (!(await canRenderReferenceOnly(model, referenceOnlyKeys))) {
           incapable.push(IMAGE_TO_VIDEO_MODELS[model].name);
         }
       }
@@ -287,7 +332,7 @@ export const createSequences = createServerOnlyFn(
     // sequence with no workflow behind it.
     if (elementUploads && elementUploads.length > 0) {
       await assertDraftElementUploadsAttachable({
-        scopedDb: context.scopedDb,
+        rightsDb: context.scopedDb,
         teamId,
         uploads: elementUploads,
       });
@@ -378,6 +423,7 @@ export const createSequences = createServerOnlyFn(
             if (elementUploads && elementUploads.length > 0) {
               await attachDraftElementUploads({
                 scopedDb: context.scopedDb,
+                rightsDb: context.scopedDb,
                 teamId,
                 userId: context.user.id,
                 sequenceId: sequence.id,

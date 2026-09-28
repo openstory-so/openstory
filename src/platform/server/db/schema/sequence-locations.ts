@@ -16,7 +16,7 @@ import type { LocationBible } from './bible-versions';
 import { locationLibrary } from './location-library';
 import { sequences } from './sequences';
 
-const REFERENCE_STATUSES = [
+export const REFERENCE_STATUSES = [
   'pending',
   'generating',
   'completed',

@@ -11,29 +11,63 @@ import {
   type VoiceCharacter,
 } from '@/motion/dialogue-tts';
 import { liveReferenceIdentity } from '@/motion/reference-provenance';
-import type { ScopedDb } from '@/platform/server/db/scoped';
-import type { Shot } from '@/platform/server/db/schema';
 import type { LoadedShotInputs } from '@/shots/scene-segments';
-import type { SceneContext } from './scene-script';
+import type {
+  DialogueLine,
+  MotionDialogue,
+} from '@/shots/scene-analysis.schema';
+import { dialogueLinesKey, type ShotDialogueLine } from '@/shots/shot-dialogue';
 import { loadShotDialogueLines, shotDialogueResolver } from './shot-dialogue';
-import { dialogueLinesKey } from '@/shots/shot-dialogue';
+
+type LiveReferenceRows = Parameters<typeof liveReferenceIdentity>[0];
+
+/** Shot columns the dialogue resolver and the live key walk read. */
+type LiveShotRow = {
+  id: string;
+  sceneId: string | null;
+  shotNumber: number | null;
+  deletedAt?: Date | null;
+};
+
+/**
+ * The four reads `loadLiveShotInputs` makes. Richer rows stay assignable:
+ * only `shotId` / `lines`, motion `dialogue`, and the reference identity
+ * fields are read.
+ */
+type LiveShotInputDb = {
+  shotDialogue: {
+    getSelectedBySequence: (
+      sequenceId: string
+    ) => Promise<readonly { shotId: string; lines: ShotDialogueLine[] }[]>;
+  };
+  shotPromptVersions: {
+    getSelectedMotionByShots: (
+      shotIds: string[]
+    ) => Promise<ReadonlyMap<string, { dialogue: MotionDialogue | null }>>;
+  };
+  sequenceLocations: {
+    listWithReferences: (
+      sequenceId: string
+    ) => Promise<LiveReferenceRows['locations']>;
+  };
+  sequenceElements: {
+    list: (sequenceId: string) => Promise<LiveReferenceRows['elements']>;
+  };
+};
 
 export async function loadLiveShotInputs(
-  scopedDb: Pick<
-    ScopedDb,
-    | 'shotDialogue'
-    | 'shotPromptVersions'
-    | 'sequenceLocations'
-    | 'sequenceElements'
-  >,
+  scopedDb: LiveShotInputDb,
   sequenceId: string,
-  shots: readonly Shot[],
+  shots: readonly LiveShotRow[],
   characters: readonly (VoiceCharacter & {
     id: string;
     selectedSheetVersionId: string | null;
     sheetImageUrl: string | null;
   })[],
-  scriptBySceneId: ReadonlyMap<string, SceneContext>
+  scriptBySceneId: ReadonlyMap<
+    string,
+    { script: { dialogue: readonly DialogueLine[] } | null }
+  >
 ): Promise<LoadedShotInputs> {
   const [linesByShotId, selectedMotionByShot, locations, elements] =
     await Promise.all([

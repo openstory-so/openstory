@@ -11,9 +11,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import type { CharacterBibleEntry } from '@/shots/scene-analysis.schema';
-import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { CharacterSheetWorkflowInput } from '@/platform/server/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
+import { workflowStep } from '@/platform/server/workflow/test-doubles';
 
 const mockCopyStoredImage = vi.fn();
 const mockGenerateImageWithProvider = vi.fn();
@@ -42,17 +42,19 @@ vi.doMock('@/platform/realtime', () => ({
 const { CharacterSheetWorkflow } = await import('./character-sheet-workflow');
 const { computeCharacterSheetHashFromDto } = await import('./sheet-snapshots');
 
+type Db = Parameters<InstanceType<typeof CharacterSheetWorkflow>['runImpl']>[2];
+
 class Probe extends CharacterSheetWorkflow {
   runBody(
     event: Readonly<WorkflowEvent<CharacterSheetWorkflowInput>>,
     step: WorkflowStep,
-    scopedDb: WorkflowScopedDb
+    scopedDb: Db
   ) {
     return this.runImpl(event, step, scopedDb);
   }
   failBody(
     event: Readonly<WorkflowEvent<CharacterSheetWorkflowInput>>,
-    scopedDb: WorkflowScopedDb
+    scopedDb: Db
   ) {
     return this.onFailure({ event, error: 'boom', scopedDb });
   }
@@ -68,28 +70,34 @@ function makeWorkflow(): Probe {
 }
 
 function makeStep(): WorkflowStep {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowStep stub: runImpl only uses `do`
-  return {
-    do: vi.fn((_name: string, fn: () => Promise<unknown>) => fn()),
-  } as unknown as WorkflowStep;
+  return workflowStep();
 }
 
-const mockPromoteIfPending = vi.fn();
+const mockPromoteIfPending =
+  vi.fn<Db['characterSheetVariants']['promoteIfPending']>();
 const mockUpdateSheetStatus = vi.fn();
-const mockFailSheetClaim = vi.fn();
+const mockFailSheetClaim = vi.fn<Db['characters']['failSheetClaim']>();
 
-function makeScopedDb(): WorkflowScopedDb {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the scoped-db surface runImpl touches
+function makeScopedDb(): Db {
   return {
-    characters: {
-      updateSheetStatus: mockUpdateSheetStatus,
-      failSheetClaim: mockFailSheetClaim,
+    userId: 'u1',
+    teamId: 'team-1',
+    credentials: {
+      userId: 'u1',
+      resolveKey: vi.fn<Db['credentials']['resolveKey']>(),
+      resolveOptionalKey: vi.fn<Db['credentials']['resolveOptionalKey']>(),
+      resolveLlmKey: vi.fn<Db['credentials']['resolveLlmKey']>(),
     },
+    billing: {
+      captureReservation: vi.fn<Db['billing']['captureReservation']>(),
+      tryDeductCredits: vi.fn<Db['billing']['tryDeductCredits']>(),
+      checkAutoTopUp: vi.fn<Db['billing']['checkAutoTopUp']>(),
+    },
+    modelUsage: { record: vi.fn<Db['modelUsage']['record']>() },
+    provenance: { record: vi.fn<Db['provenance']['record']>() },
+    characters: { failSheetClaim: mockFailSheetClaim },
     characterSheetVariants: { promoteIfPending: mockPromoteIfPending },
-    provenance: {},
-    liveRead: {},
-    credentials: {},
-  } as unknown as WorkflowScopedDb;
+  };
 }
 
 const characterMetadata: CharacterBibleEntry = {

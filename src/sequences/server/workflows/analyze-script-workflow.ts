@@ -43,6 +43,21 @@ import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { buildCastCharacterBible } from '@/cast/character-prompt';
 import { getGenerationChannel } from '@/platform/realtime';
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
+import {
+  readCharacterMinimals,
+  readDialogueAudioWorkflowResult,
+  readSequenceLocationMinimals,
+  readShotImagesWorkflowResult,
+  readUnknown,
+} from '@/platform/server/workflow/child-output';
+import {
+  readElementSheetWorkflowResult,
+  readFramePromptBatchWorkflowResult,
+  readLocationMatchingWorkflowOutput,
+  readMotionMusicPromptsWorkflowResult,
+  readSceneSplitWorkflowResult,
+  readTalentMatchingWorkflowOutput,
+} from '@/shots/server/workflow-output';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { WorkflowValidationError } from '@/platform/server/workflow/errors';
 import { handleLlmAuthFailure } from '@/platform/server/workflow/llm-auth-failure';
@@ -80,6 +95,7 @@ import {
 import {
   createCastRecords,
   findMissingElementEntries,
+  type CastRecordsDb,
 } from '@/cast/server/workflows/cast-records';
 import {
   buildStoryboardMotionBatchShots,
@@ -98,7 +114,11 @@ import {
   resolveSceneShotImageReferences,
 } from '@/cast/server/workflows/sheet-snapshots';
 import { deriveAutoStyle } from '@/look/server/workflows/auto-style-step';
-import { waitForElementVision } from '@/cast/server/workflows/wait-for-sheets';
+import {
+  waitForElementVision,
+  type WaitForSheetsReadDb,
+} from '@/cast/server/workflows/wait-for-sheets';
+import type { DurableLLMCallContext } from '@/models/server/llm-call-helper';
 import type {
   CharacterMinimal,
   MotionAudioClip,
@@ -112,13 +132,53 @@ import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'analyze-script']);
 
+/**
+ * The script run's writes: the style call, the cast rows, the vision poll,
+ * the render-gate envelope, and the derived visual prompts. A full
+ * `WorkflowScopedDb` still assigns.
+ */
+type AnalyzeRunDb = NonNullable<DurableLLMCallContext['scopedDb']> &
+  CastRecordsDb & {
+    styles: Pick<WorkflowScopedDb['styles'], 'setGeneratedForSequence'>;
+    sequences: Pick<
+      WorkflowScopedDb['sequences'],
+      'snapshotAutoStyle' | 'updateAnalysisDurationMs'
+    >;
+    sequence: (
+      ...args: Parameters<WorkflowScopedDb['sequence']>
+    ) => Pick<ReturnType<WorkflowScopedDb['sequence']>, 'updateStatus'>;
+    framePromptVersions: {
+      writeAiVersion: (
+        ...args: Parameters<
+          WorkflowScopedDb['framePromptVersions']['writeAiVersion']
+        >
+      ) => Promise<unknown>;
+    };
+    billing: NonNullable<DurableLLMCallContext['scopedDb']>['billing'] &
+      Pick<
+        WorkflowScopedDb['billing'],
+        'growReservation' | 'checkAutoTopUp' | 'zeroReservation'
+      >;
+    liveRead: CastRecordsDb['liveRead'] & {
+      sequenceElements: Pick<
+        WaitForSheetsReadDb['sequenceElements'],
+        'listByIds'
+      >;
+    };
+  };
+
+const _analyzeRunDbAcceptsWorkflow: WorkflowScopedDb extends AnalyzeRunDb
+  ? true
+  : never = true;
+void _analyzeRunDbAcceptsWorkflow;
+
 const PARENT_BINDING_NAME = 'ANALYZE_SCRIPT_WORKFLOW' as const;
 
 export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeScriptWorkflowInput> {
   protected override async runImpl(
     event: Readonly<WorkflowEvent<AnalyzeScriptWorkflowInput>>,
     step: WorkflowStep,
-    scopedDb: WorkflowScopedDb
+    scopedDb: AnalyzeRunDb
   ): Promise<Scene[]> {
     const input = event.payload;
     const parentInstanceId = event.instanceId;
@@ -317,6 +377,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       },
       spawnStepName: 'spawn-scene-split',
       awaitStepName: 'await-scene-split',
+      readOutput: readSceneSplitWorkflowResult,
       // LLM-only child, but under a many-sequence burst the engine's notify
       // delivery alone has been observed to lag >25 minutes — every await in
       // this workflow carries explicit burst headroom.
@@ -361,6 +422,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         },
         spawnStepName: 'spawn-talent-matching',
         awaitStepName: 'await-talent-matching',
+        readOutput: readTalentMatchingWorkflowOutput,
         timeout: '45 minutes',
       }),
       spawnAndAwaitChild<
@@ -383,6 +445,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         },
         spawnStepName: 'spawn-location-matching',
         awaitStepName: 'await-location-matching',
+        readOutput: readLocationMatchingWorkflowOutput,
         timeout: '45 minutes',
       }),
     ]);
@@ -602,6 +665,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         },
         spawnStepName: 'spawn-motion-music-prompts',
         awaitStepName: 'await-motion-music-prompts',
+        readOutput: readMotionMusicPromptsWorkflowResult,
         // Must exceed the child's own await budget: motion-prompt scene
         // children get 30 minutes each, plus notify lag under a burst.
         timeout: '60 minutes',
@@ -657,6 +721,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         },
         spawnStepName: 'spawn-element-sheets',
         awaitStepName: 'await-element-sheets',
+        readOutput: readElementSheetWorkflowResult,
       });
       return result.elements;
     };
@@ -705,6 +770,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           },
           spawnStepName: 'spawn-visual-prompts',
           awaitStepName: 'await-visual-prompts',
+          readOutput: readFramePromptBatchWorkflowResult,
           // See await-character-bible — same grandchild budget + notify lag.
           timeout: '60 minutes',
         });
@@ -739,6 +805,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           },
           spawnStepName: 'spawn-character-bible',
           awaitStepName: 'await-character-bible',
+          readOutput: readCharacterMinimals,
           // Must exceed the child's own await budget: the bible awaits each
           // sheet grandchild for 30 minutes, plus notify lag under a burst
           // (the June 7 run lost a sequence to the 30-minute default here
@@ -768,6 +835,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           },
           spawnStepName: 'spawn-location-bible',
           awaitStepName: 'await-location-bible',
+          readOutput: readSequenceLocationMinimals,
           // See await-character-bible — same grandchild budget + notify lag.
           timeout: '60 minutes',
         }
@@ -1002,6 +1070,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
                   childPayload: shotImagesPayload,
                   spawnStepName: 'spawn-shot-images',
                   awaitStepName: 'await-shot-images',
+                  readOutput: readShotImagesWorkflowResult,
                   // Must exceed the child's own budget — under a many-sequence
                   // burst the image queue alone can outlast the 30-minute
                   // default.
@@ -1167,6 +1236,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           },
           spawnStepName: 'spawn-dialogue-audio',
           awaitStepName: 'await-dialogue-audio',
+          readOutput: readDialogueAudioWorkflowResult,
           timeout: '60 minutes',
         });
         dialogueClipsByShotId = result.clipsByShotId;
@@ -1255,6 +1325,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         },
         spawnStepName: 'spawn-motion-batch',
         awaitStepName: 'await-motion-batch',
+        readOutput: readUnknown,
         // Must exceed the child's own await budget: motion-batch waits up to
         // 90 minutes per motion grandchild (in parallel) plus queue backlog
         // under a many-sequence burst.

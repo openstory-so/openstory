@@ -24,7 +24,6 @@ import {
   useRef,
   useState,
 } from 'react';
-import type { MentionOptions } from '@tiptap/extension-mention';
 import {
   mentionInsertAttrs,
   type MentionItem,
@@ -85,8 +84,6 @@ const mentionPosAtCaret = (view: EditorView): number | null => {
   if ($from.nodeBefore?.type.name === 'mention') return $from.pos - 1;
   return null;
 };
-
-type MentionConfigure = Partial<MentionOptions>;
 
 /**
  * Collapse every line-break form to `\n`. Web/Docs/Word often put U+2028
@@ -406,18 +403,13 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
         placeholder: '',
         emptyEditorClass: 'is-editor-empty',
       }),
-      // The Mention extension is generically typed for `MentionNodeAttrs`
-      // (id, label), but our `section` attr is added via `addAttributes` —
-      // structurally present, not visible in the configure() option types.
-      // The ProseMirror schema is the actual enforcer at runtime.
       ...(hasMentions
         ? [
             PromptMention.configure({
-              // oxlint-disable-next-line typescript/no-unsafe-type-assertion
               suggestion: createMentionSuggestion(
                 () => mentionItemsRef.current,
                 () => onMentionSelectRef.current
-              ) as MentionConfigure['suggestion'],
+              ),
             }),
           ]
         : []),

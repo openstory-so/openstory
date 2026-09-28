@@ -31,6 +31,15 @@ export type VoiceReleaseDb = {
   >;
 };
 
+/** Slot release plus the pointer clear on the character row. */
+export type CharacterVoiceReleaseDb = VoiceReleaseDb & {
+  characters: {
+    updateVoice: (
+      ...args: Parameters<ScopedDb['characters']['updateVoice']>
+    ) => Promise<unknown>;
+  };
+};
+
 export async function releaseVoiceIfUnreferenced(
   scopedDb: VoiceReleaseDb,
   voiceId: string,
@@ -106,7 +115,7 @@ export async function releaseReplacedVoice(
 
 /** Free the slot if nothing else uses it, then drop the character's pointer. */
 export async function releaseCharacterVoice(
-  scopedDb: ScopedDb,
+  scopedDb: CharacterVoiceReleaseDb,
   character: { id: string; voiceId: string | null },
   /** Who dropped the voice — stamped on the 'removed' history row. */
   createdBy: string | null

@@ -7,6 +7,10 @@ import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { ImageGenerationParams } from '@/stills/build-image-request';
 import type { ImageGenerationResult } from '@/stills/server/image-generation';
 import type { WorkflowStep } from 'cloudflare:workers';
+import {
+  workflowStep,
+  workflowStepContext,
+} from '@/platform/server/workflow/test-doubles';
 
 const generateImageWithProvider =
   vi.fn<(p: ImageGenerationParams) => Promise<ImageGenerationResult>>();
@@ -30,15 +34,14 @@ const { NonRetryableError } = await import('cloudflare:workflows');
 const stepNames: string[] = [];
 /** Every value a step handed back — what Workflows would checkpoint. */
 const stepOutputs: unknown[] = [];
-// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- helper only uses `do`
-const step = {
-  do: async <T>(name: string, fn: () => Promise<T>) => {
-    stepNames.push(name);
-    const output = await fn();
+const step: WorkflowStep = workflowStep({
+  names: stepNames,
+  run: async (name, fn) => {
+    const output = await fn(workflowStepContext(name));
     stepOutputs.push(output);
     return output;
   },
-} as unknown as WorkflowStep;
+});
 
 // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- only `credentials` is read
 const scopedDb = { credentials: {} } as unknown as WorkflowScopedDb;

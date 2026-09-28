@@ -17,10 +17,14 @@ import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { WorkflowValidationError } from '@/platform/server/workflow/errors';
 import type {
+  CloudflareEnv,
   MotionPromptWorkflowInput,
   MotionPromptBatchWorkflowInput,
 } from '@/platform/server/workflow/types';
-import type { MotionPromptWorkflowResult } from './motion-prompt-workflow';
+import {
+  readMotionPromptWorkflowResult,
+  type MotionPromptWorkflowResult,
+} from './motion-prompt-workflow';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
 import { getLogger } from '@/platform/logger';
@@ -55,11 +59,28 @@ function seededDialogue(
 
 type MotionPromptBatchWorkflowResult = MotionPromptWorkflowResult[];
 
-export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<MotionPromptBatchWorkflowInput> {
+type WrittenMotionPrompt = Pick<
+  Awaited<ReturnType<WorkflowScopedDb['shotPromptVersions']['writeAiVersion']>>,
+  'id'
+>;
+
+export type MotionPromptBatchDb = {
+  shotPromptVersions: {
+    writeAiVersion: (
+      ...args: Parameters<
+        WorkflowScopedDb['shotPromptVersions']['writeAiVersion']
+      >
+    ) => Promise<WrittenMotionPrompt>;
+  };
+};
+
+export class MotionPromptBatchWorkflow<
+  Env extends Pick<CloudflareEnv, 'MOTION_PROMPT_WORKFLOW'> = CloudflareEnv,
+> extends OpenStoryWorkflowEntrypoint<MotionPromptBatchWorkflowInput, Env> {
   protected override async runImpl(
     event: Readonly<WorkflowEvent<MotionPromptBatchWorkflowInput>>,
     step: WorkflowStep,
-    scopedDb: WorkflowScopedDb
+    scopedDb: MotionPromptBatchDb
   ): Promise<MotionPromptBatchWorkflowResult> {
     const input = event.payload;
     const parentInstanceId = event.instanceId;
@@ -159,6 +180,7 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
           childPayload,
           spawnStepName: `spawn-mp-scene-${sceneIndex}`,
           awaitStepName: `await-mp-scene-${sceneIndex}`,
+          readOutput: readMotionPromptWorkflowResult,
         });
       })
     );

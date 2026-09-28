@@ -10,15 +10,14 @@
  * (imageUrls[i] ↔ scenes[i]) keep working.
  */
 
-import type { Scene } from '@/shots/scene-analysis.schema';
+import type { DialogueLine, Scene } from '@/shots/scene-analysis.schema';
 import {
   deriveShots,
   type DerivedShot,
   type DeriveShotPromptOptions,
 } from '@/shots/shot-list.derive';
-import type { ShotSpec } from '@/shots/shot-list.schema';
 import type { StyleConfig } from '@/look/style-config';
-import { scriptForShot } from '@/shots/shot-list-pass';
+import { dialogueForShot } from '@/shots/shot-list-pass';
 
 /**
  * The scene as one clip sees it: only the dialogue spoken in that shot
@@ -27,11 +26,26 @@ import { scriptForShot } from '@/shots/shot-list-pass';
  * visual-prompt batch included, which is per scene but stores and verifies
  * against the anchor shot.
  */
-export function sceneForShot(scene: Scene, shotNumber: number): Scene {
-  return {
-    ...scene,
-    originalScript: scriptForShot(scene.originalScript, shotNumber),
+/** What `shotWorkItems` reads off a scene. A full `Scene` stays assignable. */
+type WorkItemScene = {
+  sceneId: string;
+  originalScript: {
+    extract: string;
+    dialogue?: readonly DialogueLine[];
   };
+};
+
+export function sceneForShot<S extends WorkItemScene>(
+  scene: S,
+  shotNumber: number
+): S {
+  // Object.assign keeps S (a spread of the generic is not assignable back
+  // to S) and copies extra script fields such as lineNumber.
+  return Object.assign({}, scene, {
+    originalScript: Object.assign({}, scene.originalScript, {
+      dialogue: dialogueForShot(scene.originalScript.dialogue, shotNumber),
+    }),
+  });
 }
 
 /**
@@ -57,8 +71,8 @@ export type ShotMappingRow = {
   shotNumber?: number;
 };
 
-export type ShotWorkItem = {
-  scene: Scene;
+export type ShotWorkItem<S extends WorkItemScene = Scene> = {
+  scene: S;
   sceneIndex: number;
   mapping: {
     analysisSceneId: string;
@@ -72,12 +86,12 @@ export type ShotWorkItem = {
   hasSiblingShots: boolean;
 };
 
-export function shotWorkItems(
-  scenes: readonly Scene[],
+export function shotWorkItems<S extends WorkItemScene>(
+  scenes: readonly S[],
   shotMapping: ReadonlyArray<ShotMappingRow> | undefined
-): ShotWorkItem[] {
+): ShotWorkItem<S>[] {
   const mapping = shotMapping ?? [];
-  const items: ShotWorkItem[] = [];
+  const items: ShotWorkItem<S>[] = [];
 
   for (const [sceneIndex, scene] of scenes.entries()) {
     const rows = mapping
@@ -122,7 +136,13 @@ export function shotWorkItems(
 }
 
 /** Clip length written onto the motion job: spec for 2+ shots, scene total otherwise. */
-export function clipDurationSeconds(item: ShotWorkItem): number {
+export function clipDurationSeconds(item: {
+  scene: {
+    shots?: readonly { shotNumber: number; durationSeconds: number }[] | null;
+    metadata?: { durationSeconds?: number } | null;
+  };
+  mapping: { shotNumber: number };
+}): number {
   const specs = item.scene.shots;
   if (specs && specs.length > 1) {
     const spec = specForItem(item, specs);
@@ -148,9 +168,9 @@ export function snapshotLookupKey(snapshot: {
 }
 
 function specForItem(
-  item: ShotWorkItem,
-  specs: readonly ShotSpec[] = item.scene.shots ?? []
-): ShotSpec | undefined {
+  item: { mapping: { shotNumber: number } },
+  specs: readonly { shotNumber: number; durationSeconds: number }[]
+): { shotNumber: number; durationSeconds: number } | undefined {
   return specs.find((spec) => spec.shotNumber === item.mapping.shotNumber);
 }
 

@@ -9,8 +9,27 @@ import type {
   SequenceLocationWithReference,
 } from '@/platform/server/db/schema';
 
+/** Columns `characterToBible` reads. A full `CharacterWithSheet` still assigns. */
+type CharacterBibleSource = Pick<
+  CharacterWithSheet,
+  | 'characterId'
+  | 'name'
+  | 'age'
+  | 'gender'
+  | 'ethnicity'
+  | 'physicalDescription'
+  | 'standardClothing'
+  | 'distinguishingFeatures'
+  | 'personality'
+  | 'movement'
+  | 'voiceDescription'
+  | 'voiceOnly'
+  | 'isPerson'
+  | 'consistencyTag'
+>;
+
 /** Nullable columns read as `''` — a bible entry's fields are all required. */
-export function characterToBible(c: CharacterWithSheet): CharacterBibleEntry {
+export function characterToBible(c: CharacterBibleSource): CharacterBibleEntry {
   return {
     characterId: c.characterId,
     name: c.name,

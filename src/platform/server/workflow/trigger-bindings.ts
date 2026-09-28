@@ -245,7 +245,7 @@ export async function triggerCfWorkflow<T extends Rpc.Serializable<T>>({
   binding: Workflow<T>;
   triggerPath: string;
   body: T;
-  env: CloudflareEnv;
+  env: { VITE_APP_URL?: string };
   deduplicationId?: string;
 }): Promise<CfTriggerResult> {
   const workflowName = normaliseTriggerPath(triggerPath);

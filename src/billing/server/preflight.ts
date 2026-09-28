@@ -24,7 +24,7 @@ export type PreflightScopedDb = {
   billing: Pick<ScopedDb['billing'], 'hasEnoughCredits'>;
 };
 
-type ReservationPreflightScopedDb = {
+export type ReservationPreflightScopedDb = {
   apiKeys: Pick<ScopedDb['apiKeys'], 'hasUsableKey'>;
   billing: Pick<ScopedDb['billing'], 'hasEnoughCredits' | 'createReservation'>;
 };

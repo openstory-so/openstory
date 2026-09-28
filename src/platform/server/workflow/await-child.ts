@@ -26,6 +26,7 @@
  * and event type so the leaf workflow doesn't need to know who its caller is.
  */
 
+import { recordOf } from '@/platform/server/workflow/child-output';
 import { simpleHash } from '@/platform/hash';
 import { getLogger } from '@/platform/logger';
 import {
@@ -33,7 +34,7 @@ import {
   isRecipientInFiniteStateError,
 } from './errors';
 import { disposeRpcStub } from './rpc-dispose';
-import type { CloudflareEnv } from './types';
+import type { CloudflareEnv, WorkflowBindingsEnv } from './types';
 import type { WorkflowSleepDuration, WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
 
@@ -122,7 +123,7 @@ type ChildWorkflowBinding<TInput> = Workflow<
   TInput & { _parent: ParentNotifyHint }
 >;
 
-type SpawnAndAwaitArgs<TInput> = {
+type SpawnAndAwaitArgs<TInput, TOutput> = {
   binding: ChildWorkflowBinding<TInput>;
   parentBindingName: keyof CloudflareEnv;
   parentInstanceId: string;
@@ -134,6 +135,12 @@ type SpawnAndAwaitArgs<TInput> = {
   awaitStepName: string;
   /** Defaults to 30 minutes — long enough for the slowest leaf (motion). */
   timeout?: WorkflowSleepDuration;
+  /**
+   * Check the child's JSON (the wake payload, and the status-fallback output)
+   * and return it as the parent's result type. Pass `readUnknown` from
+   * `child-output.ts` when the parent does not use the output.
+   */
+  readOutput: (value: unknown) => TOutput;
 };
 
 /**
@@ -147,7 +154,7 @@ type SpawnAndAwaitArgs<TInput> = {
  */
 export async function spawnAndAwaitChild<TInput, TOutput>(
   step: WorkflowStep,
-  args: SpawnAndAwaitArgs<TInput>
+  args: SpawnAndAwaitArgs<TInput, TOutput>
 ): Promise<TOutput> {
   // The generated env types say bindings are always present, but they're
   // derived from wrangler.jsonc at typegen time — deploy-time config patching
@@ -251,10 +258,9 @@ export async function spawnAndAwaitChild<TInput, TOutput>(
       logger.warn(
         `[spawnAndAwaitChild] ${args.awaitStepName} timed out but child ${childInstanceId} completed; recovering its output from instance status`
       );
-      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the recovered output is the child's runImpl return value, the same TOutput notifyParent would have delivered
-      return (
-        child.outputJson === null ? undefined : JSON.parse(child.outputJson)
-      ) as TOutput;
+      const output =
+        child.outputJson === null ? undefined : jsonUnknown(child.outputJson);
+      return readChildOutput(args.childId, output, args.readOutput);
     }
     if (child.status === 'errored' || child.status === 'terminated') {
       throw new Error(
@@ -264,13 +270,69 @@ export async function spawnAndAwaitChild<TInput, TOutput>(
     // Still queued/running/paused — the await budget is genuinely exhausted.
     throw waitError;
   }
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- payload shape is enforced by notifyParent / notifyParentOfFailure which are the only senders for this event type
-  const outcome = event.payload as ChildOutcome<TOutput>;
+  const outcome = readChildOutcome(event.payload);
 
   if (outcome.status === 'failed') {
     throw new Error(`Child workflow ${args.childId} failed: ${outcome.error}`);
   }
-  return outcome.output;
+  return readChildOutput(args.childId, outcome.output, args.readOutput);
+}
+
+function jsonUnknown(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new NonRetryableError(
+      `Child output is not JSON: ${detail}`,
+      'WorkflowValidationError'
+    );
+  }
+}
+
+function readChildOutput<TOutput>(
+  childId: string,
+  value: unknown,
+  readOutput: (value: unknown) => TOutput
+): TOutput {
+  try {
+    return readOutput(value);
+  } catch (error) {
+    if (error instanceof NonRetryableError) throw error;
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new NonRetryableError(
+      `Child workflow ${childId} returned an output the parent cannot read: ${detail}`,
+      'WorkflowValidationError'
+    );
+  }
+}
+
+function readChildOutcome(
+  value: unknown
+): { status: 'ok'; output: unknown } | { status: 'failed'; error: string } {
+  let record: Record<string, unknown>;
+  try {
+    record = recordOf(value, 'child completion');
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new NonRetryableError(detail, 'WorkflowValidationError');
+  }
+  if (record.status === 'failed') {
+    if (typeof record.error !== 'string') {
+      throw new NonRetryableError(
+        'Child failure event is missing an error string',
+        'WorkflowValidationError'
+      );
+    }
+    return { status: 'failed', error: record.error };
+  }
+  if (record.status === 'ok') {
+    return { status: 'ok', output: record.output };
+  }
+  throw new NonRetryableError(
+    'Child completion event has no ok/failed status',
+    'WorkflowValidationError'
+  );
 }
 
 /**
@@ -280,7 +342,7 @@ export async function spawnAndAwaitChild<TInput, TOutput>(
  */
 export async function notifyParent<TOutput>(
   step: WorkflowStep,
-  env: CloudflareEnv,
+  env: WorkflowBindingsEnv,
   hint: ParentNotifyHint | undefined,
   output: TOutput
 ): Promise<void> {
@@ -311,7 +373,7 @@ export async function notifyParent<TOutput>(
  */
 export async function notifyParentOfFailure(
   step: WorkflowStep,
-  env: CloudflareEnv,
+  env: WorkflowBindingsEnv,
   hint: ParentNotifyHint | undefined,
   error: string
 ): Promise<void> {
@@ -355,11 +417,19 @@ async function sendEventFailFast(
   }
 }
 
+function workflowBindingValue(
+  env: WorkflowBindingsEnv,
+  name: keyof CloudflareEnv
+): unknown {
+  const slots: Partial<Record<keyof CloudflareEnv, unknown>> = env;
+  return slots[name];
+}
+
 async function resolveParentInstance(
-  env: CloudflareEnv,
+  env: WorkflowBindingsEnv,
   hint: ParentNotifyHint
 ): Promise<WorkflowInstance> {
-  const binding = env[hint.bindingName];
+  const binding = workflowBindingValue(env, hint.bindingName);
   if (!isWorkflowBinding(binding)) {
     throw new Error(
       `Parent binding '${String(hint.bindingName)}' is not a Workflow binding on env`
