@@ -386,7 +386,11 @@ export async function computeShotStaleness(args: {
       status: SequenceStatus;
     };
   shot: Shot;
-  frame: Frame;
+  /**
+   * The anchor frame. Null leaves the still and visual prompt `'untracked'`
+   * (both are keyed by frame); the motion prompt is the shot's own.
+   */
+  frame: Frame | null;
   /**
    * The `frame_variants` row the frame's selection points at — the still's
    * url / model / inputHash live there since #1067, not on the frame. Passed in
@@ -460,11 +464,13 @@ export async function computeShotStaleness(args: {
     motionPrompt: null,
   };
   let thumbnail: ArtifactStaleness = 'untracked';
-  const selectedPrompt = reads
-    ? (reads.selectedPromptByFrame.get(frame.id) ?? null)
-    : await scopedDb.framePromptVersions.getSelected(frame.id);
+  const selectedPrompt = !frame
+    ? null
+    : reads
+      ? (reads.selectedPromptByFrame.get(frame.id) ?? null)
+      : await scopedDb.framePromptVersions.getSelected(frame.id);
   const effectivePrompt = selectedPrompt?.text ?? null;
-  if (effectivePrompt) {
+  if (frame && effectivePrompt) {
     // Null stored hash: 'untracked' (no opinion), unless a named element's
     // row is newer than the still — replace would otherwise hide it (#1192).
     if (selectedImage?.inputHash == null && !selectedImage?.url) {
@@ -544,7 +550,7 @@ export async function computeShotStaleness(args: {
   // fall back to the most recent version with a non-null one for prompts whose
   // selected row carries a null hash (a pre-fix user-edit, or the force-regen
   // path). Without the fallback, those are stuck at `'untracked'` permanently.
-  if (scene) {
+  if (frame && scene) {
     // The fallback read is inside the try: it is exactly the transient-D1 case
     // the catch exists for, and outside it one bad read rejects the caller's
     // whole batch.
@@ -662,7 +668,7 @@ export async function computeShotStaleness(args: {
   // Runs last so the thumbnail's chained-claim check can use the visual
   // prompt's live hash computed above.
   // ============================================================
-  if (visualPrompt === 'stale' && liveHashes.visualPrompt) {
+  if (frame && visualPrompt === 'stale' && liveHashes.visualPrompt) {
     const claim = reads
       ? newestPending(
           reads.liveVisualClaimsByFrame.get(frame.id),
@@ -686,7 +692,7 @@ export async function computeShotStaleness(args: {
         );
     if (claim) motionPrompt = 'updating';
   }
-  if (thumbnail === 'stale' && liveHashes.thumbnail) {
+  if (frame && thumbnail === 'stale' && liveHashes.thumbnail) {
     const claims = reads
       ? (reads.liveImageClaimsByFrame.get(frame.id) ?? [])
       : await scopedDb.frameVariants.listLiveClaims(frame.id);

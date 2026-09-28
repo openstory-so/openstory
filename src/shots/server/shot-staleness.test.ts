@@ -732,6 +732,26 @@ describe('per-shot start-frame override', () => {
     });
   });
 
+  it('judges the motion prompt of a shot with no anchor frame', async () => {
+    const scopedDb = makeScopedDb({ motionSelectedHash: 'motion-stored' });
+    const result = await computeShotStaleness({
+      dialogue: NO_LINES,
+      scopedDb,
+      sequence,
+      shot: asStub<Shot>({ id: 'shot-1', useStartFrame: false }),
+      frame: null,
+      selectedImage: null,
+      scene,
+    });
+
+    expect(result).toMatchObject({
+      thumbnail: 'untracked',
+      visualPrompt: 'untracked',
+      motionPrompt: 'fresh',
+    });
+    expect(scopedDb.framePromptVersions.getSelected).not.toHaveBeenCalled();
+  });
+
   it('hashes a start-frame SHOT with its still, on a reference-only sequence', async () => {
     await computeShotStaleness({
       dialogue: NO_LINES,

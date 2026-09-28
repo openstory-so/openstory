@@ -2,7 +2,7 @@ import type { ScopedDb } from '@/platform/server/db/scoped';
 import { pageRows, readPage } from '@/platform/server/read-page';
 import type { PageInput } from '@/platform/server/read-page';
 import { productionAccess } from '@/sequences/server/production-access';
-import type { Frame, Shot } from '@/platform/server/db/schema';
+import type { Shot } from '@/platform/server/db/schema';
 import { loadSceneFacets } from './scene-facets';
 import { resolveSceneForShot } from './scene-script';
 import { loadShotPromptDialogue } from './shot-dialogue';
@@ -10,7 +10,6 @@ import {
   computeShotStaleness,
   loadShotStalenessBatch,
   loadShotStalenessReads,
-  UNTRACKED_STALENESS,
 } from './shot-staleness';
 import {
   loadShotMediaStaleness,
@@ -153,33 +152,23 @@ export async function listEntityUsages(
   };
 }
 
-type StalenessInputs = Pick<
+type StalenessInputs = Omit<
   Parameters<typeof computeShotStaleness>[0],
-  | 'sequence'
-  | 'shot'
-  | 'selectedImage'
-  | 'scene'
-  | 'refs'
-  | 'reads'
-  | 'dialogue'
-> & { frame: Frame | null };
+  'scopedDb'
+>;
 
-/** A shot with no anchor frame has no image surface to compare: untracked. */
 async function shotStaleness(
   scopedDb: ScopedDb,
   inputs: StalenessInputs,
   media?: ShotMediaStaleness
 ) {
-  const { frame, ...rest } = inputs;
   const result = overlayMediaStaleness(
-    frame
-      ? await computeShotStaleness({ scopedDb, frame, ...rest })
-      : UNTRACKED_STALENESS,
+    await computeShotStaleness({ scopedDb, ...inputs }),
     media
   );
   return {
     shotId: inputs.shot.id,
-    frameId: frame?.id ?? null,
+    frameId: inputs.frame?.id ?? null,
     thumbnail: result.thumbnail,
     visualPrompt: result.visualPrompt,
     motionPrompt: result.motionPrompt,

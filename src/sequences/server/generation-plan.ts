@@ -100,12 +100,11 @@ async function loadPlanInput(
     ]);
 
   // In parallel, as `getShotStalenessBatchFn` does: the reads are shared,
-  // the hashing is per shot. Null = no anchor or an uncomputable compare.
+  // the hashing is per shot. Null = an uncomputable compare.
   const stalenessByShot = new Map(
     await Promise.all(
       shots.map(async (shot): Promise<[string, ShotStalenessResult | null]> => {
-        const frame = anchorsByShot.get(shot.id);
-        if (!frame) return [shot.id, null];
+        const frame = anchorsByShot.get(shot.id) ?? null;
         try {
           return [
             shot.id,
@@ -114,7 +113,9 @@ async function loadPlanInput(
               sequence,
               shot,
               frame,
-              selectedImage: selectedByFrame.get(frame.id) ?? null,
+              selectedImage: frame
+                ? (selectedByFrame.get(frame.id) ?? null)
+                : null,
               scene: resolveSceneForShot(shot, sceneContext).scene,
               refs,
               reads,
