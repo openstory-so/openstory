@@ -10,6 +10,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { IMAGE_TO_VIDEO_MODELS } from '@/models/models';
+import { buildMotionRender } from '@/motion/server/build-motion-render';
 import { audioSourceKeyFromVoicedLines } from '@/motion/dialogue-tts';
 import { isSelectedVersionStale } from '@/shots/scene-segments';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
@@ -1087,6 +1088,64 @@ describe('recording its own dialogue (#1657)', () => {
     sourceKey: `voice-sarah\t${own.text}\t\televen_v3`,
     recordingId: 'rec-1',
   };
+
+  it('keeps an edited prompt through dialogue recording and submission (#1836)', async () => {
+    mockRecordDialogue.mockReset();
+    mockRecordDialogue.mockResolvedValue({
+      'shot-1': [
+        { ...recordedClip, spokenLines: [{ index: 0, text: 'Run!' }] },
+      ],
+    });
+    const { scopedDb, videoVariants } = makeScopedDb();
+    const [job] = buildMotionRender({
+      userId: 'u1',
+      teamId: 'team-1',
+      sequenceId: 'seq-1',
+      shots: [
+        {
+          shotId: 'shot-1',
+          sceneId: 'scene-1',
+          imageUrl: '/r2/stills/a.png',
+          referenceOnly: false,
+          frameVersionId: 'fv-1',
+          packedScene: {},
+          prompt: 'Sarah waits beside the window.',
+          motionPromptVersionId: 'spv-user-edit',
+          model: MODEL,
+          duration: 5,
+          motionPrompt: {
+            fullPrompt: 'Sarah pushes through the blue door.',
+            dialogue: {
+              presence: true,
+              lines: [{ character: 'Sarah', line: own.text, tone: '' }],
+            },
+            audio: null,
+          },
+          voicedLines: [own],
+          dialogueContext: [{ ...own, shotId: 'shot-1' }],
+        },
+      ],
+    });
+    expect(job).toBeDefined();
+    await makeWorkflow().runBody(makeEvent(job?.input), makeStep(), scopedDb);
+    expect(mockRecordDialogue).toHaveBeenCalledTimes(1);
+    const submitted = submittedArgs(0).prompt;
+    expect(submitted).toContain('Sarah pushes through the blue door.');
+    // Recorded dialogue is bound by token, proving post-recording assembly ran.
+    expect(submitted).toContain('Lipsync Sarah to DIALOGUE.');
+    expect(submitted).not.toContain('Sarah waits beside the window.');
+    expect(submitted).not.toContain('Now run.');
+    expect(videoVariants.appendVersion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        manifest: [
+          expect.objectContaining({
+            motionPromptVersionId: 'spv-user-edit',
+            audioClipIds: ['section-1'],
+          }),
+        ],
+      })
+    );
+  });
 
   it('speaks the snapshotted conversation, adopts only its own shot, and stamps the clip', async () => {
     mockRecordDialogue.mockReset();
