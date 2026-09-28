@@ -209,6 +209,11 @@ export const sequences = snakeCase.table(
     // stored: what is left is the generation plan, derived from live rows
     // (#1816, #1819).
     generationStopAt: text().$type<GenerationStage>(),
+    // Unread and unwritten since #1819. They stay in the schema until this
+    // worker is live, because the migration runs before the deploy and the
+    // old worker still selects them; the follow-up PR drops both.
+    pipelineStage: text().$type<GenerationStage>(),
+    generationCheckpoint: text(),
 
     // Suggested talent/location IDs used during generation (for pre-populating the UI)
     suggestedTalentIds: text({

@@ -158,6 +158,8 @@ function makeSequence(overrides: Partial<Sequence> = {}): Sequence {
     autoGenerateMotion: false,
     autoGenerateMusic: false,
     generationStopAt: null,
+    pipelineStage: null,
+    generationCheckpoint: null,
     generateStartFrames: true,
     generateVoices: false,
     draftMotion: false,
