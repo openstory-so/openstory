@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { DEFAULT_STYLE_TEMPLATES } from '@/look/style-templates';
+import { getVariantImagePrompt } from '@/stills/server/variant-image';
 import { deriveShots } from '@/shots/shot-list.derive';
 import { sceneWithShotsSchema } from '@/shots/shot-list.schema';
 import { buildShotImageReferenceImages } from '@/motion/server/build-motion-references';
@@ -248,6 +249,19 @@ describe('recorded derived still fixtures', () => {
           });
           const prompt = buildReferenceImagePrompt(visualPrompt, refs).prompt;
           expect(requests).toContain(prompt);
+          const grid = buildReferenceImagePrompt(
+            getVariantImagePrompt('landscape_16_9', visualPrompt),
+            [
+              {
+                referenceImageUrl: 'https://fixture/primary',
+                description:
+                  'Primary source scene — generate 9 variant shots from this image',
+                role: 'primary',
+              },
+              ...refs,
+            ]
+          ).prompt;
+          expect(requests).toContain(grid);
           count++;
         }
       }
