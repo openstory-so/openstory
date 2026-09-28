@@ -235,8 +235,9 @@ it('keeps persisted derived prompts current before sheets exist, while retaining
   expect(plan.promptContext?.locationBible).toHaveLength(1);
   const cast = await scopedDb.characters.list(sequenceId);
   const places = await scopedDb.sequenceLocations.list(sequenceId);
-  expect(plan.targets[0]?.referenceIds.sort()).toEqual(
-    [cast[0]?.id, places[0]?.id].sort()
+  expect(plan.targets[0]?.referenceIds).toHaveLength(2);
+  expect(plan.targets[0]?.referenceIds).toEqual(
+    expect.arrayContaining([cast[0]?.id, places[0]?.id])
   );
   expect(
     plan.targets.every((target) => !target.regenVisual && !target.regenMotion)
