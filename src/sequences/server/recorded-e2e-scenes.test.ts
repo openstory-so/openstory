@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { DEFAULT_VIDEO_MODEL } from '@/models/models';
+import { buildLocationMatchingPromptVariables } from '@/cast/server/location-matching-prompt';
 import { durationGridForModel } from '@/motion/model-capabilities';
 import { getChatPrompt } from '@/platform/server/ai/prompts-index';
 import { formatScenesForShotListPrompt } from '@/shots/shot-list-pass';
@@ -124,5 +125,25 @@ describe('recorded krea preview fixtures (#1642)', () => {
       }
     }
     expect(missing).toEqual([]);
+  });
+});
+
+describe('recorded location matching fixture', () => {
+  it('matches the physical location descriptions parsed from the recorded bibles', () => {
+    const { locationBible } = replayRecordedE2eScenes();
+    const { locationsDescription } = buildLocationMatchingPromptVariables(
+      locationBible,
+      []
+    );
+    const recorded = loadOpenrouterStage('location-match')
+      .flatMap((file) => file.fixtures)
+      .find((fixture) =>
+        fixture.match.userMessage.includes('downtown_apartment_bathroom')
+      )?.match.userMessage;
+    expect(recorded).toBeDefined();
+    expect(recorded).toContain(
+      `EXTRACTED LOCATIONS FROM SCRIPT (${locationBible.length} total):\n${locationsDescription}\n\nLIBRARY LOCATIONS TO MATCH`
+    );
+    expect(recorded).not.toContain('Time of Day:');
   });
 });
