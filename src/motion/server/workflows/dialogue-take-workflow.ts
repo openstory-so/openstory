@@ -34,7 +34,6 @@ export class DialogueTakeWorkflow extends OpenStoryWorkflowEntrypoint<DialogueTa
       getGenerationChannel(input.sequenceId).emit('generation.shot:updated', {
         shotId: input.shotId,
         updateType: 'dialogue-audio',
-        metadata: null,
       });
 
     const claimId = await step.do('claim', async () => {
