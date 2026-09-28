@@ -1,3 +1,4 @@
+import { loadSequenceStyle } from '@/look/server/sequence-style';
 import { packedSceneFromScene } from '@/motion/server/build-motion-render';
 /**
  * Smart-retry orchestration (#1257: moved out of `functions/smart-retry.ts`).
@@ -385,6 +386,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
   // 2. Retry failed motion — one batch so a scene is recorded ONCE (#1703),
   // the same shape Generate all motion / Update Stale already use.
   if (failedMotionShots.length > 0) {
+    const styleConfig = await loadSequenceStyle(context.scopedDb, sequence);
     const { snapDuration } = await import('@/motion/snap-duration');
     // Match normal motion generation: cast and element references also keep
     // identity consistent when animating a start frame. Only location sheets
@@ -448,7 +450,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
       batchShots.push({
         shotId: shot.id,
         sceneId: shot.sceneId,
-        packedScene: packedSceneFromScene(scene),
+        packedScene: packedSceneFromScene(scene, styleConfig),
         attachSceneHeader:
           shots.filter((row) => row.sceneId === shot.sceneId).length > 1,
         sequenceTitle: sequence.title,

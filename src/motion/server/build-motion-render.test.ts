@@ -27,6 +27,30 @@ const shot = (shotId: string, fullPrompt: string): MotionRenderShot => ({
 });
 
 describe('buildMotionRender', () => {
+  it('adds scene settings to standalone structured and raw-text shots', () => {
+    for (const structured of [true, false]) {
+      const input = buildMotionRender({
+        ...context,
+        shots: [
+          {
+            ...shot('only', 'The door opens.'),
+            attachSceneHeader: false,
+            motionPrompt: structured
+              ? { fullPrompt: 'The door opens.' }
+              : undefined,
+            prompt: 'The door opens.',
+            model: 'grok_imagine_video_1_5',
+          },
+        ],
+      })[0]?.input;
+      expect(input?.prompt).toContain('Dock');
+      expect(input?.prompt).toContain('single overhead bulb');
+      expect(input?.prompt).toContain('cold blues');
+      expect(input?.prompt).toContain('The door opens.');
+      expect(input?.attachSceneHeader).toBe(true);
+    }
+  });
+
   it('packs siblings once with one scene header and every member version', () => {
     const shots = [
       shot('a', 'opens the door'),

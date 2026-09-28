@@ -1,3 +1,4 @@
+import { scenePromptContext } from '@/shots/scene-direction';
 /**
  * Per-scene motion prompt generation.
  *
@@ -139,7 +140,11 @@ export class MotionPromptWorkflow extends OpenStoryWorkflowEntrypoint<MotionProm
       sceneAfter: sceneAfter ? JSON.stringify(sceneAfter, null, 2) : '(none)',
       // The shot's lines, not the script's (#1784): an edited line is what
       // the prompt has to direct.
-      scene: JSON.stringify(sceneWithShotDialogue(scene, dialogue), null, 2),
+      scene: JSON.stringify(
+        scenePromptContext(sceneWithShotDialogue(scene, dialogue), styleConfig),
+        null,
+        2
+      ),
       characterBible: JSON.stringify(narrowed.characterBible, null, 2),
       locationBible: JSON.stringify(narrowed.locationBible, null, 2),
       elementBible: JSON.stringify(narrowed.elementBible, null, 2),

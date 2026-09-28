@@ -1,3 +1,4 @@
+import { resolveSequenceStyleConfig } from '@/look/style-config';
 /**
  * "Update all" planning (#1077/#1085) — pure domain logic that decides *what*
  * regenerates (and therefore what gets billed). The workflow only freezes the
@@ -995,7 +996,13 @@ async function decideShotTarget(args: {
               )
               .map((member) => member.id)
           : [],
-        packedScene: packedSceneFromScene(scene),
+        packedScene: packedSceneFromScene(
+          scene,
+          resolveSequenceStyleConfig({
+            snapshot: sequence.styleConfig,
+            live: refs.style?.config,
+          })
+        ),
         characterTags: scene.continuity?.characterTags,
         sceneTitle: scene.metadata?.title,
         description: scene.originalScript.extract,

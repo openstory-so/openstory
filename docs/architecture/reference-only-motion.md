@@ -378,3 +378,12 @@ with zero writes.
 Location sheet hashes are explicitly version 2 for the neutral-place prompt.
 Scene lighting and palette overrides participate in both prompt hashes, so
 a scene-setting edit marks the downstream prompt stale.
+
+Every `packedSceneFromScene` call requires the resolved style, including
+previews and retries. Request handlers load the saved sequence style first;
+only legacy rows without a snapshot fall back to the live library style.
+The executor freezes the resolved header at plan time, and fresh analysis
+passes its existing style snapshot. The render builder includes this header
+for standalone shots as well as packed siblings; dialogue reassembly retains
+the same header. Prompt-authoring workflows share `scenePromptContext`, which
+removes legacy `styleTag` and supplies the resolved scene direction.

@@ -208,7 +208,7 @@ export function packedSceneFromScene(
       }
     | null
     | undefined,
-  styleConfig?: StyleConfig
+  styleConfig: StyleConfig
 ): PackedMotionSceneHeader {
   return sceneDirection(scene ?? {}, styleConfig);
 }

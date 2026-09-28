@@ -1,3 +1,4 @@
+import type { Scene } from './scene-analysis.schema';
 import type { StyleConfig } from '@/look/style-config';
 
 /** The moment belongs to the scene; palette, grading and art style to the look. */
@@ -27,5 +28,20 @@ export function sceneDirection(
     look: [style?.look.medium, style?.look.artStyle, style?.look.colorGrading]
       .filter(Boolean)
       .join(', '),
+  };
+}
+
+/** Prompt authors receive only the editable direction; legacy styleTag never competes. */
+export function scenePromptContext(scene: Scene, style: StyleConfig) {
+  const direction = sceneDirection(scene, style);
+  return {
+    ...scene,
+    continuity: scene.continuity && {
+      ...scene.continuity,
+      lightingSetup: direction.lightingSetup,
+      colorPalette: direction.colorPalette,
+      styleTag: undefined,
+    },
+    direction,
   };
 }

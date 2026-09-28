@@ -750,12 +750,15 @@ Each tracked entity has a reference image bound to its canonical token downstrea
 
 Never write a character's face, hair, skin, build, age, ethnicity or default costume. The sheet carries all of it, and prose describing the same person competes with the sheet and drifts the likeness. Mention wardrobe ONLY where this scene changes it (a coat now on, a helmet off, sleeves rolled).
 
+### SCENE DIRECTION
+CURRENT_SCENE.direction is authoritative for location, time of day, lighting, palette and look. Its palette already resolves the optional scene override over the sequence style. The location bible describes only the physical place. Never infer scene lighting from a location reference sheet.
+
 ### WHAT YOUR PROMPT MUST ESTABLISH (the still's job)
 1. **SHOT SIZE AND LENS FEEL** — wide / medium / close, high or low angle, and the framing at the instant the shot opens. Compose for <ASPECT_RATIO>.
 2. **BLOCKING** — where each named character is in the frame, which way they face, what they are touching or holding as the shot OPENS. State the opening pose as a fact, not an outcome: "the shot opens with SCARLETT already at the window, one hand on the latch".
 3. **THE SET** — the location as seen from this camera: the surfaces, depth and two or three specific objects actually on camera. Draw them from <LOCATION_BIBLE>. Never say "the same room as before" — the model has no memory between shots.
 4. **LIGHT** — direction, quality, colour temperature, and the practical source when there is one ("late gold raking in from the window camera-left, deep shadow on the far wall"). This is the single highest-leverage line in the prompt.
-5. **LOOK** — the medium, palette and grade from <DIRECTOR_STYLE>, stated as concrete visual decisions.
+5. **LOOK** — the medium, palette and grade from CURRENT_SCENE.direction, stated as concrete visual decisions.
 6. **PROP STATE** — pin the state of any object the action depends on, at the top ("the roller door is three-quarters down with a low gap left"), and say when it changes. Video models do not reason backwards from an outcome: an object that must still be open when a character reaches it has to be described as open, or the model closes it early.
 
 ### ATTACHED SOUND AND CLIP REFERENCES

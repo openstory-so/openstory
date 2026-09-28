@@ -1,9 +1,17 @@
+import { z } from 'zod';
 import type { SceneWithScript } from './use-scenes';
 import { useUpdateScene } from './use-scene-structure';
 import { Input } from '@/ui/shadcn/input';
 import { Button } from '@/ui/shadcn/button';
 import { toast } from 'sonner';
 import { errorMessage } from '@/platform/errors';
+
+const settingSchema = z.object({
+  location: z.string().max(2000),
+  timeOfDay: z.string().max(2000),
+  lightingSetup: z.string().max(2000),
+  colorPalette: z.string().max(2000),
+});
 
 /** Scene-owned prompt inputs, beside the shot list they direct. */
 export function SceneSettingForm({
@@ -20,22 +28,26 @@ export function SceneSettingForm({
         Scene setting
       </summary>
       <form
-        className="mt-2 grid gap-3 sm:grid-cols-2"
+        className="grid gap-3 pt-2 sm:grid-cols-2"
         onSubmit={(event) => {
           event.preventDefault();
           const fields = new FormData(event.currentTarget);
-          const value = (name: string) => {
-            const field = fields.get(name);
-            return typeof field === 'string' ? field : '';
-          };
+          const parsed = settingSchema.safeParse(Object.fromEntries(fields));
+          if (!parsed.success) {
+            toast.error('Could not save scene setting', {
+              description: parsed.error.issues[0]?.message,
+            });
+            return;
+          }
+          const values = parsed.data;
           update.mutate(
             {
               sceneId: scene.id,
-              location: value('location'),
-              timeOfDay: value('timeOfDay'),
+              location: values.location,
+              timeOfDay: values.timeOfDay,
               continuity: {
-                lightingSetup: value('lightingSetup'),
-                colorPalette: value('colorPalette'),
+                lightingSetup: values.lightingSetup,
+                colorPalette: values.colorPalette,
               },
             },
             {

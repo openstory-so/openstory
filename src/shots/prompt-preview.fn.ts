@@ -1,3 +1,5 @@
+import type { StyleConfig } from '@/look/style-config';
+import { loadSequenceStyle } from '@/look/server/sequence-style';
 import { buildPackedMotionPrompt } from '@/motion/server/build-motion-render';
 /**
  * Optimised-prompt inspector (#1242). The scene editor used to run the same
@@ -60,6 +62,7 @@ export const previewShotPromptsFn = createServerFn({ method: 'POST' })
   .validator(zodValidator(previewShotPromptsInputSchema))
   .handler(async ({ data, context }): Promise<ShotPromptPreview> => {
     const { shot, frame, sequence, scene, script, scopedDb } = context;
+    const styleConfig = await loadSequenceStyle(scopedDb, sequence);
     const usesFrame = usesStartFrame(shot, sequence);
     const [
       characters,
@@ -116,6 +119,7 @@ export const previewShotPromptsFn = createServerFn({ method: 'POST' })
       scopedDb,
       sequence,
       scene,
+      styleConfig,
       script,
       shot,
       sceneShots,
@@ -139,6 +143,7 @@ export const previewShotPromptsFn = createServerFn({ method: 'POST' })
       aspectRatio: sequence.aspectRatio,
       resolution: sequence.resolution,
       scene,
+      styleConfig,
       characters,
       elements,
       locations,
@@ -164,6 +169,7 @@ async function loadPackedPreviewMembers(input: {
   shot: ShotContext['shot'];
   /** Every live shot of the clicked shot's scene. */
   sceneShots: readonly Shot[];
+  styleConfig: StyleConfig;
   linesByShotId: ShotDialogueLinesByShotId;
   videoModel: ImageToVideoModel;
   motionPrompt: AssemblableMotionPrompt | null;
@@ -202,7 +208,7 @@ async function loadPackedPreviewMembers(input: {
     renderSegmentId: row.renderSegmentId,
     shotNumber: row.shotNumber,
   }));
-  const packedScene = packedSceneFromScene(input.scene);
+  const packedScene = packedSceneFromScene(input.scene, input.styleConfig);
   const promptFits = (members: readonly (typeof packable)[number][]) =>
     packedPromptFitsLimit(
       buildPackedMotionPrompt({

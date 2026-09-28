@@ -1,3 +1,4 @@
+import type { StyleConfig } from '@/look/style-config';
 import { buildMotionShotPrompt } from '@/motion/server/build-motion-render';
 /**
  * Build the per-shot payload analyze-script hands to motion-batch.
@@ -63,6 +64,7 @@ export function sceneShotsOf(
 
 export function buildStoryboardMotionBatchShots(input: {
   scenes: readonly Scene[];
+  styleConfig: StyleConfig;
   shotMapping: ShotMappingRow[];
   /**
    * Primary still URL per clip, ALIGNED to `shotWorkItems(scenes, shotMapping)`
@@ -183,7 +185,7 @@ export function buildStoryboardMotionBatchShots(input: {
     return {
       shotId: mapping.shotId,
       sceneId: scene.sceneId,
-      packedScene: packedSceneFromScene(scene),
+      packedScene: packedSceneFromScene(scene, input.styleConfig),
       attachSceneHeader: item.hasSiblingShots,
       ...(input.referenceOnly
         ? { referenceOnly: true as const }

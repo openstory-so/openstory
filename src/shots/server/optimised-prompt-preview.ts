@@ -1,3 +1,4 @@
+import type { StyleConfig } from '@/look/style-config';
 import { buildPackedMotionPrompt } from '@/motion/server/build-motion-render';
 /**
  * Assembled request the scene editor's optimised-prompt inspector shows
@@ -49,7 +50,6 @@ import {
   buildMotionReferenceImages,
   buildShotImageReferenceImages,
 } from '@/motion/server/build-motion-references';
-import { resolveMotionPrompt } from '@/motion/server/resolve-motion-prompt';
 import { formatShotSpan } from '@/shots/scene-segments';
 import {
   missingVoiceLines,
@@ -268,6 +268,7 @@ function absolutizeRefs<T extends { referenceImageUrl: string }>(
 }
 
 export function buildShotPromptPreview(input: {
+  styleConfig: StyleConfig;
   imageModel: TextToImageModel;
   videoModel: ImageToVideoModel;
   imagePrompt: string;
@@ -343,20 +344,27 @@ export function buildShotPromptPreview(input: {
         })),
         model: input.videoModel,
         generateAudio: input.generateAudio,
-        scene: packedSceneFromScene(input.scene),
+        scene: packedSceneFromScene(input.scene, input.styleConfig),
       })
     : null;
   const assembledMotionPrompt = packed
     ? packed.prompt
-    : resolveMotionPrompt(
-        {
-          motionPrompt,
-          characterTags: input.scene?.continuity?.characterTags,
-          description: input.scene?.originalScript?.extract ?? null,
+    : motionPrompt || input.scene?.originalScript?.extract
+      ? buildPackedMotionPrompt({
+          shots: [
+            {
+              durationSeconds: (input.shotDurationMs ?? 3000) / 1000,
+              motionPrompt: motionPrompt ?? undefined,
+              prompt: input.scene?.originalScript?.extract,
+              characterTags: input.scene?.continuity?.characterTags,
+              attachSceneHeader: true,
+            },
+          ],
+          model: input.videoModel,
           generateAudio: input.generateAudio,
-        },
-        input.videoModel
-      );
+          scene: packedSceneFromScene(input.scene, input.styleConfig),
+        }).prompt
+      : '';
   const motionUsesStartFrame = packedFirst
     ? packedFirst.usesStartFrame
     : input.usesStartFrame;

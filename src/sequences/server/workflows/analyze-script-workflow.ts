@@ -1198,6 +1198,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       }
 
       const batchShots = buildStoryboardMotionBatchShots({
+        styleConfig,
         leftoverGrokShotIds: input.leftoverGrokShotIds,
         scenes: completeScenes,
         shotMapping,

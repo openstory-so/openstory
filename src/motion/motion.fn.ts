@@ -1,3 +1,4 @@
+import { loadSequenceStyle } from '@/look/server/sequence-style';
 import { buildPackedMotionPrompt } from '@/motion/server/build-motion-render';
 /**
  * Motion Server Functions
@@ -208,7 +209,8 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
       // shot's lines (#1784).
       scriptDialogueOf: () => context.script?.dialogue,
     });
-    const packedScene = packedSceneFromScene(context.scene);
+    const styleConfig = await loadSequenceStyle(context.scopedDb, sequence);
+    const packedScene = packedSceneFromScene(context.scene, styleConfig);
     const packableSceneShots = sceneShots.map((row) => ({
       ...row,
       shotId: row.id,
@@ -754,6 +756,8 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
       }
     }
 
+    const styleConfig = await loadSequenceStyle(context.scopedDb, sequence);
+
     // Batch-load the selected motion prompt version for every eligible shot —
     // the resolution source of truth (#713), replacing `metadata.prompts.motion`.
     // Loaded BEFORE the estimate, not just before the submit: cast and element
@@ -951,7 +955,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
               shotId: shot.id,
               sceneId: shot.sceneId,
               renderSegmentId: shot.renderSegmentId,
-              packedScene: packedSceneFromScene(scene),
+              packedScene: packedSceneFromScene(scene, styleConfig),
               attachSceneHeader:
                 !!shot.sceneId &&
                 allShots.filter((row) => row.sceneId === shot.sceneId).length >

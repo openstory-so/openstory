@@ -1,3 +1,16 @@
+import type { StyleConfig } from '@/look/style-config';
+const styleConfig: StyleConfig = {
+  version: 2,
+  look: {
+    mood: 'quiet',
+    artStyle: 'watercolour',
+    lighting: 'soft light',
+    colorPalette: ['silver', 'blue'],
+    colorGrading: 'cool shadows',
+  },
+  motion: { camera: 'locked' },
+  references: [],
+};
 /**
  * Storyboard auto-motion batch shots must pin the still + motion-prompt
  * version ids the render actually consumed (#1380). Omitting them stamps
@@ -43,6 +56,7 @@ const prompt = (fullPrompt: string): MotionPrompt => ({
 describe('buildStoryboardMotionBatchShots', () => {
   it('pins frameVersionId and motionPromptVersionId on each shot', () => {
     const shots = buildStoryboardMotionBatchShots({
+      styleConfig,
       scenes: [scene('sc-1'), scene('sc-2')],
       shotMapping: [
         { analysisSceneId: 'sc-1', shotId: 'shot-1', frameId: 'fr-1' },
@@ -82,6 +96,7 @@ describe('buildStoryboardMotionBatchShots', () => {
 
   it('skips a scene whose still failed rather than throwing', () => {
     const shots = buildStoryboardMotionBatchShots({
+      styleConfig,
       scenes: [scene('sc-1'), scene('sc-2')],
       shotMapping: [
         { analysisSceneId: 'sc-1', shotId: 'shot-1', frameId: 'fr-1' },
@@ -107,6 +122,7 @@ describe('buildStoryboardMotionBatchShots', () => {
 
   it('emits one clip per mapping row, using each shot duration (#1486)', () => {
     const shots = buildStoryboardMotionBatchShots({
+      styleConfig,
       scenes: [
         scene('sc-1', 13, {
           shots: [
@@ -194,6 +210,7 @@ describe('buildStoryboardMotionBatchShots', () => {
 
   it('stamps leftoverGrokShotIds onto Grok at 1s, not the packing model', () => {
     const shots = buildStoryboardMotionBatchShots({
+      styleConfig,
       scenes: [
         scene('sc-1', 16, {
           shots: [
@@ -277,6 +294,7 @@ describe('buildStoryboardMotionBatchShots', () => {
   it('throws when a still exists but the motion prompt does not', () => {
     expect(() =>
       buildStoryboardMotionBatchShots({
+        styleConfig,
         scenes: [scene('sc-1')],
         shotMapping: [
           { analysisSceneId: 'sc-1', shotId: 'shot-1', frameId: 'fr-1' },
@@ -295,6 +313,7 @@ describe('buildStoryboardMotionBatchShots', () => {
 
   it("puts what the SHOT says into the prompt, not the prompt LLM's own lines (#1657)", () => {
     const shots = buildStoryboardMotionBatchShots({
+      styleConfig,
       scenes: [scene('sc-1')],
       shotMapping: [
         { analysisSceneId: 'sc-1', shotId: 'shot-1', frameId: 'fr-1' },
@@ -348,6 +367,7 @@ describe('buildStoryboardMotionBatchShots', () => {
       sourceKey: dialogueClipSourceKey(voiced),
     };
     const shots = buildStoryboardMotionBatchShots({
+      styleConfig,
       scenes: [scene('sc-1')],
       shotMapping: [
         { analysisSceneId: 'sc-1', shotId: 'shot-1', frameId: 'fr-1' },
@@ -412,6 +432,7 @@ describe('buildStoryboardMotionBatchShots', () => {
       sourceKey: dialogueClipSourceKey(shotOneLines),
     };
     const shots = buildStoryboardMotionBatchShots({
+      styleConfig,
       scenes: [scene('sc-1')],
       shotMapping: [
         { analysisSceneId: 'sc-1', shotId: 'shot-1', shotNumber: 1 },
@@ -450,6 +471,7 @@ describe('buildStoryboardMotionBatchShots', () => {
 
 describe('buildStoryboardMotionBatchShots — reference-only', () => {
   const referenceOnlyArgs = {
+    styleConfig,
     scenes: [scene('sc-1'), scene('sc-2')],
     shotMapping: [
       { analysisSceneId: 'sc-1', shotId: 'shot-1', frameId: 'fr-1' },

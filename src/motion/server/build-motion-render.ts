@@ -6,7 +6,6 @@ import {
 } from '@/models/models';
 import type { ImageToVideoModel } from '@/models/models';
 import {
-  buildMotionShotPrompt,
   buildPackedMotionPrompt,
   packedPromptFitsLimit,
 } from './build-motion-prompts';
@@ -94,18 +93,23 @@ export function buildMotionRender(sources: MotionRenderSources): Array<{
         `This ${members?.length}-shot clip's prompt exceeds ${IMAGE_TO_VIDEO_MODELS[model].name}'s ${videoPromptHardLimit(model)}-character limit. Shorten a shot prompt to generate it as one clip.`
       );
     }
-    const prompt = packed
-      ? packed.prompt
-      : shot.motionPrompt
-        ? buildMotionShotPrompt({
+    const prompt =
+      packed?.prompt ??
+      buildPackedMotionPrompt({
+        shots: [
+          {
+            durationSeconds: shot.duration ?? 3,
             motionPrompt: shot.motionPrompt,
-            model,
+            prompt: shot.prompt,
             characterTags: shot.characterTags,
             generateAudio: shot.generateAudio,
-            attachSceneHeader: shot.attachSceneHeader,
-            scene: shot.packedScene,
-          })
-        : shot.prompt;
+            attachSceneHeader: true,
+          },
+        ],
+        model,
+        generateAudio: shot.generateAudio,
+        scene: shot.packedScene,
+      }).prompt;
     const voicedLines = members
       ? members.flatMap((member) => member.voicedLines ?? [])
       : shot.voicedLines;
@@ -150,7 +154,7 @@ export function buildMotionRender(sources: MotionRenderSources): Array<{
       motionPrompt: shot.motionPrompt,
       characterTags: shot.characterTags,
       packedScene: shot.packedScene,
-      attachSceneHeader: shot.attachSceneHeader,
+      attachSceneHeader: true,
       // Add-model (#547) batches generate alternates only — the child must
       // not write the legacy `shots.video*` columns.
       variantOnly: sources.variantOnly,

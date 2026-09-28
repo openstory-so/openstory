@@ -1,4 +1,4 @@
-import { sceneDirection } from '@/shots/scene-direction';
+import { scenePromptContext } from '@/shots/scene-direction';
 /**
  * Per-scene visual (image) prompt generation.
  *
@@ -137,7 +137,7 @@ export class FramePromptWorkflow extends OpenStoryWorkflowEntrypoint<FramePrompt
             ? JSON.stringify(sceneAfter, null, 2)
             : '(none)',
           scene: JSON.stringify(
-            { ...scene, direction: sceneDirection(scene, styleConfig) },
+            scenePromptContext(scene, styleConfig),
             null,
             2
           ),

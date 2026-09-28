@@ -1,3 +1,16 @@
+import type { StyleConfig } from '@/look/style-config';
+const styleConfig: StyleConfig = {
+  version: 2,
+  look: {
+    mood: 'quiet',
+    artStyle: 'watercolour',
+    lighting: 'soft light',
+    colorPalette: ['silver', 'blue'],
+    colorGrading: 'cool shadows',
+  },
+  motion: { camera: 'locked' },
+  references: [],
+};
 /**
  * A continue runs the generation plan's units through the Update-all
  * executor (#1818). These pin the references wave: only the owed sheets,
@@ -400,6 +413,7 @@ describe('executor packed clips', () => {
     } as unknown as Scene;
     const ids = ['a', 'b'];
     const fresh = buildStoryboardMotionBatchShots({
+      styleConfig,
       scenes: [scene],
       shotMapping: ids.map((shotId, index) => ({
         analysisSceneId: 'scene-1',
@@ -431,6 +445,7 @@ describe('executor packed clips', () => {
       timeOfDay: 'Night',
       lightingSetup: 'overhead lamp',
       colorPalette: 'cold blue',
+      look: 'watercolour, cool shadows',
     };
     // The manual path reconstructs selected immutable prompt rows and D1 scene data.
     const manualJobs = buildMotionRender({

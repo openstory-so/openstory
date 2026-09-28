@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sceneDirection } from './scene-direction';
+import { sceneDirection, scenePromptContext } from './scene-direction';
 import type { StyleConfig } from '@/look/style-config';
 const style: StyleConfig = {
   version: 2,
@@ -14,6 +14,36 @@ const style: StyleConfig = {
   references: [],
 };
 describe('scene direction ownership', () => {
+  it('removes obsolete style tags from LLM context and resolves the same editable direction', () => {
+    const scene = {
+      sceneId: 'scene',
+      sceneNumber: 1,
+      originalScript: { extract: 'The door opens.', dialogue: [] },
+      metadata: {
+        title: 'Kitchen',
+        location: 'Kitchen',
+        timeOfDay: 'night',
+        storyBeat: '',
+        durationSeconds: 3,
+      },
+      continuity: {
+        characterTags: [],
+        environmentTag: '',
+        lightingSetup: '',
+        colorPalette: 'sepia',
+        styleTag: 'obsolete neon comic',
+      },
+    };
+    const context = scenePromptContext(scene, style);
+    expect(context.continuity?.styleTag).toBeUndefined();
+    expect(context.direction.colorPalette).toBe('sepia');
+    expect(context.continuity?.lightingSetup).toBe(
+      context.direction.lightingSetup
+    );
+    expect(JSON.stringify(context)).not.toContain('obsolete neon comic');
+    expect(scene.continuity.styleTag).toBe('obsolete neon comic');
+  });
+
   it('takes the moment from the scene and the look from the style', () => {
     expect(
       sceneDirection(

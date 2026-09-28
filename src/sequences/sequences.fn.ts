@@ -1,3 +1,4 @@
+import { loadSequenceStyle } from '@/look/server/sequence-style';
 import { packedSceneFromScene } from '@/motion/server/build-motion-render';
 import {
   DEFAULT_IMAGE_MODEL,
@@ -1019,6 +1020,7 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
       // in its manifest, but the add-guard only needs (model, status).
       const existing = await scopedDb.videoVariants.listBySequence(sequence.id);
       assertModelNotAlreadyAdded(existing, model, 'video');
+      const styleConfig = await loadSequenceStyle(scopedDb, sequence);
       const allShots = await scopedDb.shots.listBySequence(sequence.id);
       // Eligibility and the per-shot `imageUrl` below read the anchor frame's
       // selected still, so every shot needs its anchor first (#989).
@@ -1207,7 +1209,7 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
                 return {
                   shotId: f.id,
                   sceneId: f.sceneId,
-                  packedScene: packedSceneFromScene(sceneOf(f)),
+                  packedScene: packedSceneFromScene(sceneOf(f), styleConfig),
                   attachSceneHeader:
                     allShots.filter((row) => row.sceneId === f.sceneId).length >
                     1,

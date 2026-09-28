@@ -1,3 +1,16 @@
+import type { StyleConfig } from '@/look/style-config';
+const styleConfig: StyleConfig = {
+  version: 2,
+  look: {
+    mood: 'quiet',
+    artStyle: 'watercolour',
+    lighting: 'soft light',
+    colorPalette: ['silver', 'blue'],
+    colorGrading: 'cool shadows',
+  },
+  motion: { camera: 'locked' },
+  references: [],
+};
 /**
  * `computePlan` decides what "Update all" (#1077) regenerates — and therefore
  * what the user is billed for. These cover the gating rules that are cheap to
@@ -86,7 +99,7 @@ vi.doMock('./prompt-context', () => ({
       characterBible: [],
       locationBible: [],
       elementBible: [],
-      styleConfig: {},
+      styleConfig,
       analysisModel: 'x',
     })
   ),
@@ -171,6 +184,7 @@ function buildScopedDb(
           title: 'Sequence 1',
           aspectRatio: '16:9',
           styleId: 'st-1',
+          styleConfig,
           imageModel: 'nano_banana_2',
           videoModel: 'kling_v3_pro',
           analysisModel: null,
@@ -307,7 +321,15 @@ describe('computePlan — a dialogue unit (#1703, #1780 §6)', () => {
       units: [{ kind: 'dialogue', id: 'shot-1' }],
       db: withVoices(voiceDb([])),
     });
-    expect(result.targets[0]).toMatchObject({ regenDialogue: true });
+    expect(result.targets[0]).toMatchObject({
+      regenDialogue: true,
+      motionRender: {
+        packedScene: {
+          colorPalette: 'silver, blue',
+          look: 'watercolour, cool shadows',
+        },
+      },
+    });
     expect(result.dialogueRecording?.scenes).toHaveLength(1);
   });
 });
