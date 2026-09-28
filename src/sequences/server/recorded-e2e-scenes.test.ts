@@ -18,6 +18,11 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import { DEFAULT_STYLE_TEMPLATES } from '@/look/style-templates';
+import { deriveShots } from '@/shots/shot-list.derive';
+import { sceneWithShotsSchema } from '@/shots/shot-list.schema';
+import { buildShotImageReferenceImages } from '@/motion/server/build-motion-references';
+import { buildReferenceImagePrompt } from '@/stills/reference-image-prompt';
 import { DEFAULT_VIDEO_MODEL } from '@/models/models';
 import { buildLocationMatchingPromptVariables } from '@/cast/server/location-matching-prompt';
 import { durationGridForModel } from '@/motion/model-capabilities';
@@ -146,4 +151,89 @@ describe('recorded location matching fixture', () => {
     );
     expect(recorded).not.toContain('Time of Day:');
   });
+});
+
+describe('recorded derived still fixtures', () => {
+  it.each(['original', 'current'] as const)(
+    '%s recording matches canonical scene direction and reference bindings',
+    (recording) => {
+      const replay = replayRecordedE2eScenes(recording);
+      const style = DEFAULT_STYLE_TEMPLATES.find(
+        (entry) => entry.name === 'Product Ad'
+      )?.config;
+      if (!style) throw new Error('Missing Product Ad style');
+      // Fixture identities stand in for generated URLs; request text depends on tokens/order, not URLs.
+      const characters: Parameters<
+        typeof buildShotImageReferenceImages
+      >[0]['characters'] = replay.characterBible.map((entry) => ({
+        ...entry,
+        id: entry.characterId,
+        sheetImageUrl: `https://fixture/${entry.characterId}`,
+        sheetInputHash: null,
+        selectedSheetVersionId: null,
+        sheetStatus: 'completed',
+      }));
+      const locations: Parameters<
+        typeof buildShotImageReferenceImages
+      >[0]['locations'] = replay.locationBible.map((entry) => ({
+        ...entry,
+        id: entry.locationId,
+        referenceImageUrl: `https://fixture/${entry.locationId}`,
+        referenceInputHash: null,
+        selectedReferenceVersionId: null,
+        referenceStatus: 'completed',
+      }));
+      const elements: Parameters<
+        typeof buildShotImageReferenceImages
+      >[0]['elements'] = replay.elementBible.map((entry) => ({
+        ...entry,
+        id: entry.token,
+        imageUrl: `https://fixture/${entry.token}`,
+        kind: 'image',
+        durationSeconds: null,
+      }));
+      const dir = resolve(
+        dirname(fileURLToPath(import.meta.url)),
+        '../../../e2e/fixtures/recorded/xai'
+      );
+      const schema = z.object({
+        fixtures: z.array(
+          z.object({ match: z.object({ userMessage: z.string() }) })
+        ),
+      });
+      const requests = readdirSync(dir)
+        .filter((name) => name.endsWith('.json'))
+        .flatMap((name) =>
+          schema
+            .parse(JSON.parse(readFileSync(resolve(dir, name), 'utf8')))
+            .fixtures.map((fixture) => fixture.match.userMessage)
+        );
+      let count = 0;
+      for (const rawScene of replay.scenes) {
+        const scene = sceneWithShotsSchema.parse({
+          ...rawScene,
+          dialoguePresent: false,
+          continuousFromPrevious: false,
+          continuity: {
+            ...rawScene.continuity,
+            elementTags: rawScene.continuity?.elementTags ?? [],
+          },
+        });
+        for (const shot of deriveShots(scene, style)) {
+          const visualPrompt = shot.visualPrompt.fullPrompt;
+          const refs = buildShotImageReferenceImages({
+            scene,
+            visualPrompt,
+            characters,
+            locations,
+            elements,
+          });
+          const prompt = buildReferenceImagePrompt(visualPrompt, refs).prompt;
+          expect(requests).toContain(prompt);
+          count++;
+        }
+      }
+      expect(count).toBe(10);
+    }
+  );
 });

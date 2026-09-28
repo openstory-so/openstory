@@ -84,7 +84,24 @@ function block(source: string, tag: string): string {
 // ("Your clip duration labels sum to …") whose answer replaces the first.
 // The app strips the enhancer's closing `TOTAL: <sum>s` line before the
 // script is saved (enhance-script-turns.ts), so the split never sees it.
-function recordedEnhancedScript(): string {
+type Recording = 'original' | 'current';
+
+const currentFiles: Record<string, string> = {
+  'script-enhance': 'script-enhance__40651532',
+  'script-analyze': 'script-analyze__6a9632fc',
+  'script-bibles': 'script-bibles__f82b8cf7',
+  'script-shot-list': 'script-shot-list__853d9e62',
+};
+
+function recordingFile(stage: string, recording: Recording): string {
+  return `${stage}/${recording === 'current' ? (currentFiles[stage] ?? stage) : stage}.json`;
+}
+
+function recordedEnhancedScript(recording: Recording): string {
+  if (recording === 'current')
+    return stripTotalLine(
+      responseContent(recordingFile('script-enhance', recording))
+    );
   const correction = loadOpenrouterStage('script-enhance').find((file) =>
     file.fixtures[0]?.match.userMessage?.startsWith(
       'Your clip duration labels sum to'
@@ -105,24 +122,24 @@ function recordedSceneIds(): string[] {
 }
 
 /** The recorded split, sliced locally: what the shot-list call was handed. */
-export function recordedSplitScenes(): {
+export function recordedSplitScenes(recording: Recording = 'original'): {
   script: string;
   assembled: ReturnType<typeof assembleScenes>;
 } {
-  const script = recordedEnhancedScript();
+  const script = recordedEnhancedScript(recording);
   const split = sceneSplitScenesResultSchema.parse(
-    parseJson(responseContent('script-analyze/script-analyze.json'))
+    parseJson(responseContent(recordingFile('script-analyze', recording)))
   );
   const ids = recordedSceneIds();
   const assembled = assembleScenes(script, split, (index) => {
-    const id = ids[index];
+    const id = recording === 'current' ? `scene_${index + 1}` : ids[index];
     if (!id) throw new Error(`No recorded scene id for index ${index}`);
     return id;
   });
   return { script, assembled };
 }
 
-export function replayRecordedE2eScenes(): {
+export function replayRecordedE2eScenes(recording: Recording = 'original'): {
   script: string;
   scenes: SceneSplittingScene[];
   characterBible: z.infer<
@@ -131,10 +148,10 @@ export function replayRecordedE2eScenes(): {
   locationBible: LocationBibleEntry[];
   elementBible: ElementBibleEntry[];
 } {
-  const { script, assembled } = recordedSplitScenes();
+  const { script, assembled } = recordedSplitScenes(recording);
 
   const bibles = sceneSplitBiblesResultSchema.parse(
-    parseJson(responseContent('script-bibles/script-bibles.json'))
+    parseJson(responseContent(recordingFile('script-bibles', recording)))
   );
 
   const sceneIdForLine = (lineNumber: number): string =>
@@ -175,7 +192,7 @@ export function replayRecordedE2eScenes(): {
   const scenes = attachShotLists(
     tagged,
     shotListPassResultSchema.parse(
-      parseJson(responseContent('script-shot-list/script-shot-list.json'))
+      parseJson(responseContent(recordingFile('script-shot-list', recording)))
     ),
     []
   );
