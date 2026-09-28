@@ -32,10 +32,7 @@ import { ensureLocalModelPricingSeeded } from '@/billing/server/seed-model-prici
 import { ensureSystemTemplatesSeeded } from '@/platform/server/db/seed-system-templates';
 
 import { getLogger, toErrorPayload } from '@/platform/logger';
-import {
-  logIsolateStamp,
-  requestRouteClass,
-} from '@/platform/server/isolate-stamp';
+import { logIsolateStamp } from '@/platform/server/isolate-stamp';
 import {
   isStaleServerFnPath,
   rewriteStaleServerFnResponse,
@@ -149,7 +146,7 @@ interface WorkerEnv {
 const exportedHandler: ExportedHandler<WorkerEnv> = {
   async fetch(request, env) {
     // Before any await, so the line is on this request when the isolate dies.
-    logIsolateStamp(requestRouteClass(request.url));
+    logIsolateStamp();
     const { pathname } = new URL(request.url);
 
     // Media serving (/r2/<key>) never needs templates — don't put the
