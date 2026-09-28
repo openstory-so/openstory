@@ -89,7 +89,7 @@ export const locationBibleEntrySchema = z.object({
   locationId: z.string(),
   name: z.string().meta({
     description:
-      'As written in the script, or a participant-named physical setting for an unspecified remote video-call location',
+      'Physical place name without slugline markers or a time-of-day suffix (INT. OFFICE - DAY and INT. OFFICE - NIGHT both become OFFICE); time of day belongs to the scene. Preserve genuine place-name words such as Night Owl Cafe. For an unspecified remote video-call location, use a participant-named physical setting',
   }),
   type: z.enum(['interior', 'exterior', 'both']),
   description: z.string(),

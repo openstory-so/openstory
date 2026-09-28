@@ -358,7 +358,10 @@ visual prompts, derived shot stills and motion headers. The location is only
 the physical place: layout, architecture, materials, surface colours and fixed
 features such as practical light fixtures. Its sheet is rendered in neutral,
 even light, and its bible no longer reads or writes time of day, lighting or
-palette. The columns remain until the separately deployed #1890 migration.
+palette. Extraction names the physical place without slugline time suffixes, so
+day and night scenes share a location. The original heading stays in the
+scene and first mention; existing names and real names such as Night Owl Cafe
+are not mechanically stripped. The columns remain until the separately deployed #1890 migration.
 
 The scene owns location, time of day and lighting. Scene setting in the scene
 header edits these through `updateSceneFn`, which appends the same narrative

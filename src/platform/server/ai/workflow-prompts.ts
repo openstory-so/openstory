@@ -501,7 +501,7 @@ Respond with ONLY valid JSON matching the schema.`,
 Your task is to analyze scripts and identify all unique locations, building a comprehensive Location Bible.
 
 For each location:
-1. Extract the location name exactly as written (e.g., "INT. OFFICE - DAY")
+1. Name the physical place without a time-of-day suffix (e.g., "INT. OFFICE - DAY" and "INT. OFFICE - NIGHT" both become "OFFICE"). Keep time of day on the scene. Preserve genuine place-name words such as "Night Owl Cafe"
 2. Determine if it's interior, exterior, or both
 3. Describe the permanent place, independent of time of day
 4. Provide detailed visual descriptions including:
@@ -1092,7 +1092,7 @@ Track first mentions:
 ## Location Bible
 
 Build a complete location bible. For each unique location:
-- Name as written in the script (e.g., "INT. OFFICE - DAY")
+- Name the physical place without a time-of-day suffix (e.g., "INT. OFFICE - DAY" and "INT. OFFICE - NIGHT" both become "OFFICE"). Keep time of day on the scene. Preserve genuine place-name words such as "Night Owl Cafe"
 - Type: interior, exterior, or both
 - Description: detailed visual description including layout, size, atmosphere
 - Architectural style and design aesthetic
