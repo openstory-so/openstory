@@ -7,7 +7,7 @@
  * writing the primary as before.
  */
 
-import { QueryClient } from '@tanstack/react-query';
+import { QueryClient, QueryObserver } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { promptVariantKeys } from '@/shots/ui/use-prompt-variants';
@@ -428,6 +428,41 @@ describe('updateQueryCacheFromEvent — variant-only guard (#547)', () => {
         expect(invalidate.mock.calls.map((c) => c[0]?.queryKey)).toContainEqual(
           shotKeys.list(SEQ)
         );
+      }
+    );
+
+    it.each(['generation.complete', 'generation.failed'])(
+      '%s recovers scenes when creation events predate the subscription',
+      async (eventName) => {
+        const sceneList = sceneKeys.list(SEQ);
+        const script = sceneKeys.composedScript(SEQ);
+        qc.setQueryData(sceneList, []);
+        qc.setQueryData(script, { script: '' });
+        const scenesObserver = new QueryObserver(qc, {
+          queryKey: sceneList,
+          queryFn: async () => [{ id: 'persisted-scene' }],
+          staleTime: Infinity,
+        });
+        const scriptObserver = new QueryObserver(qc, {
+          queryKey: script,
+          queryFn: async () => ({ script: 'Persisted scene script' }),
+          staleTime: Infinity,
+        });
+        const unsubscribeScenes = scenesObserver.subscribe(() => {});
+        const unsubscribeScript = scriptObserver.subscribe(() => {});
+        try {
+          updateQueryCacheFromEvent(qc, SEQ, eventName, {});
+          await vi.advanceTimersByTimeAsync(0);
+          expect(qc.getQueryData(sceneList)).toEqual([
+            { id: 'persisted-scene' },
+          ]);
+          expect(qc.getQueryData(script)).toEqual({
+            script: 'Persisted scene script',
+          });
+        } finally {
+          unsubscribeScenes();
+          unsubscribeScript();
+        }
       }
     );
 

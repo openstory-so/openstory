@@ -301,3 +301,8 @@ optional. Filtering these inputs to completed sheets changes a derived prompt's
 hash during the fresh handoff and loses the reference IDs needed to attach the
 executor's newly generated sheets. Sheet-only readers keep their narrower APIs;
 prompt contexts and frozen plan reference membership use the complete bible.
+
+Fresh analysis can persist scenes before the browser subscribes to creation
+events. Terminal generation events therefore reconcile the scene list and
+composed script as well as shots and generated media, so the scene rail recovers
+without a reload even when those early events were missed.

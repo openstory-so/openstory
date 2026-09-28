@@ -813,6 +813,14 @@ export function updateQueryCacheFromEvent(
       void queryClient.invalidateQueries({
         queryKey: shotKeys.dialogueSectionsAll(),
       });
+      // Fast analysis can finish before the client subscribes to scene/shot
+      // creation events. Reconcile the scene spine and script at completion too.
+      void queryClient.invalidateQueries({
+        queryKey: sceneKeys.list(sequenceId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: sceneKeys.composedScript(sequenceId),
+      });
       // Final catch-all so the cast, location and element lists — and the
       // per-scene membership the tabs filter by — reflect the finished run
       // even if an intermediate event was missed.
