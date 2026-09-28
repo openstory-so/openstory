@@ -30,6 +30,7 @@ import type {
   UpdateStaleShotsWorkflowInput,
   StoryboardWorkflowInput,
 } from '@/platform/server/workflow/types';
+import type { UpdateStaleShotsResult } from '@/shots/server/workflows/update-stale-shots-workflow';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { getLogger } from '@/platform/logger';
 
@@ -177,8 +178,12 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
     // A continue (#1818) runs the plan's units — only those, through the
     // per-shot executor Update all uses — instead of the stage-shaped script
     // run. The banner still moves: the executor announces its phases.
+    let continueFailure: string | null = null;
     if (input.plan) {
-      await spawnAndAwaitChild<UpdateStaleShotsWorkflowInput, unknown>(step, {
+      const result = await spawnAndAwaitChild<
+        UpdateStaleShotsWorkflowInput,
+        UpdateStaleShotsResult
+      >(step, {
         binding: this.env.UPDATE_STALE_SHOTS_WORKFLOW,
         parentBindingName: 'STORYBOARD_WORKFLOW',
         parentInstanceId: event.instanceId,
@@ -190,6 +195,7 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
           reservationId: input.reservationId,
           plan: input.plan,
           announcePhases: true,
+          leftoverGrokShotIds: input.leftoverGrokShotIds,
         },
         spawnStepName: 'spawn-continue',
         awaitStepName: 'await-continue',
@@ -197,6 +203,16 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
         // in parallel), plus notify lag under a burst.
         timeout: '4 hours',
       });
+      // The executor records a unit's failure and carries on; the run as a
+      // whole did not finish what was asked, so it ends failed, not
+      // completed, and sends no "ready" email.
+      const [first] = result.failures;
+      if (first) {
+        continueFailure =
+          result.failures.length === 1
+            ? first.error
+            : `${result.failures.length} steps failed. First: ${first.error}`;
+      }
     } else
       // Spawn the analyze-script child and block until it returns. Pattern 3.
       await spawnAndAwaitChild<AnalyzeScriptWorkflowInput, unknown>(step, {
@@ -254,6 +270,19 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
       await step.do('zero-reservation', async () => {
         await scopedDb.billing.zeroReservation(reservationId);
       });
+    }
+
+    if (continueFailure) {
+      const message = continueFailure;
+      await step.do('mark-failed', async () => {
+        await seq.updateStatus('failed', message);
+      });
+      await step.do('emit-failed', async () => {
+        await getGenerationChannel(sequenceId).emit('generation.failed', {
+          message,
+        });
+      });
+      return;
     }
 
     await step.do('mark-completed', async () => {

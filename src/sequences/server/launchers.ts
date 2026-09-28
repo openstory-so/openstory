@@ -97,7 +97,7 @@ export class GenerationStatusUnknownError extends Error {
  * Both fail closed — the right direction for a mutex — but with messages
  * that match what we actually know.
  */
-async function getSequenceRejectingActiveRun(
+export async function getSequenceRejectingActiveRun(
   scopedDb: ScopedDb,
   sequenceId: string
 ) {

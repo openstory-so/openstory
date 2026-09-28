@@ -110,6 +110,8 @@ function makeScopedDb(): WorkflowScopedDb {
     frameVariants: { markTerminal: vi.fn() },
     stalenessPlanning: {},
     liveRead: {
+      apiKeys: { hasUsableKey: vi.fn(async () => false) },
+      billing: { hasEnoughCredits: vi.fn(async () => true) },
       characters: { listWithSheets: vi.fn(async () => []) },
       sequenceLocations: { listWithReferences: vi.fn(async () => []) },
       sequenceElements: { list: vi.fn(async () => []) },
@@ -142,6 +144,7 @@ function target(shotId: string, referenceIds: string[]): PlanTarget {
     imageModel: 'nano_banana_2',
     regenVideo: false,
     createsVideo: false,
+    staleVideoVersionId: null,
     referenceIds,
     attachSceneHeader: false,
     regenDialogue: false,
@@ -204,6 +207,7 @@ const references = {
   locationSheets: [{ locationDbId: 'hall' }],
   elementSheets: { entries: [{ elementId: 'mug' }] },
   voices: [{ characterDbId: 'maya' }],
+  cost: { sheets: 0, voices: 0 },
 };
 
 describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {

@@ -82,6 +82,7 @@ import {
 import { computeGenerationPlan } from '@/sequences/server/generation-plan';
 import { resolveSceneShotImageReferences } from '@/cast/server/workflows/sheet-snapshots';
 import { buildRegenerateShotSnapshot } from '@/shots/server/workflows/regenerate-shots-snapshot';
+import { pendingVoiceId } from './pending-voices';
 import {
   buildPlanReferences,
   type PlanReferences,
@@ -167,6 +168,13 @@ export type PlanTarget = {
    * does, so the render stands down when the selection is gone.
    */
   createsVideo: boolean;
+  /**
+   * The clip's selected version at the click, when `regenVideo` judged it
+   * stale. While it is still the selection the run renders, whatever made
+   * it stale (a sheet, a recording, the prompt); a different selection means
+   * someone rendered since, and the manifest check decides.
+   */
+  staleVideoVersionId: string | null;
   /**
    * The sheet / element rows the still (or reference-only clip) is made
    * from. A references-wave unit of this run that fails holds the shot's
@@ -516,11 +524,17 @@ export async function computePlan(args: {
       : Promise.resolve(null),
     scopedDb.characters.list(sequenceId),
   ]);
-  const characterVoices = voiceRows.flatMap((row) =>
-    row.voiceId
-      ? [{ name: row.name, voiceId: row.voiceId, voiceOnly: row.voiceOnly }]
-      : []
-  );
+  // A voice this run designs (#1818) speaks under a placeholder until the
+  // references wave lands it — `bindPendingVoices`.
+  const owedVoiceIds = new Set(references?.voices.map((v) => v.characterDbId));
+  const characterVoices = voiceRows.flatMap((row) => {
+    const voiceId = owedVoiceIds.has(row.id)
+      ? pendingVoiceId(row.id)
+      : row.voiceId;
+    return voiceId
+      ? [{ name: row.name, voiceId, voiceOnly: row.voiceOnly }]
+      : [];
+  });
   const anchorsByShot = new Map(anchorRows.map((f) => [f.shotId, f]));
   // Stills live on the selected `frame_variants` rows (#1067) — one batch read
   // so the per-shot loop below stays query-free on the image surface.
@@ -707,6 +721,7 @@ function buildShotIndex(allShots: Shot[]): Map<string, number> {
 
 type ShotVideoState = {
   hasVideo: boolean;
+  selectedVersionId: string | null;
   alreadyStale: boolean;
   generating: boolean;
 };
@@ -739,6 +754,7 @@ async function loadVideoStateByShot(
     for (const segShotId of segment.shotIds) {
       byShot.set(segShotId, {
         hasVideo: segment.selectedVersion !== null,
+        selectedVersionId: segment.selectedVersion?.id ?? null,
         alreadyStale: segment.stale,
         generating,
       });
@@ -917,6 +933,9 @@ async function decideShotTarget(args: {
       imageModel,
       regenVideo: flags.regenVideo,
       createsVideo: flags.regenVideo && !videoState?.hasVideo,
+      staleVideoVersionId: flags.regenVideo
+        ? (videoState?.selectedVersionId ?? null)
+        : null,
       referenceIds,
       attachSceneHeader:
         !!shot.sceneId &&

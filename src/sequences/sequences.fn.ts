@@ -53,7 +53,10 @@ import {
   updateSequenceSchema,
 } from '@/sequences/server/sequence.schemas';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
-import { triggerStoryboard } from '@/sequences/server/launchers';
+import {
+  getSequenceRejectingActiveRun,
+  triggerStoryboard,
+} from '@/sequences/server/launchers';
 import { computePlan } from '@/shots/server/update-stale-plan';
 import {
   allowsUnfundedGeneration,
@@ -206,6 +209,10 @@ export const continueGenerationFn = createServerFn({ method: 'POST' })
   )
   .handler(async ({ data, context }) => {
     const { sequence, scopedDb } = context;
+    // Refuse before anything saves: the switches below are written onto the
+    // row the trigger snapshots, so a click on a running sequence must not
+    // touch it (the trigger's own mutex would refuse only after the write).
+    await getSequenceRejectingActiveRun(scopedDb, sequence.id);
     const saved = {
       generateStartFrames: sequence.generateStartFrames,
       generateVoices: sequence.generateVoices,

@@ -97,6 +97,7 @@ import {
   type ShotClaims,
   type SkippedShot,
 } from '@/shots/server/update-stale-plan';
+import { bindPendingVoices } from '@/shots/server/pending-voices';
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { WorkflowValidationError } from '@/platform/server/workflow/errors';
@@ -150,7 +151,7 @@ type UpdateStage =
  */
 type UpdateFailure = { shotId: string; stage: UpdateStage; error: string };
 
-type UpdateStaleShotsResult = {
+export type UpdateStaleShotsResult = {
   totalShots: number;
   visualPrompts: number;
   motionPrompts: number;
@@ -314,9 +315,25 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
     // workflows take theirs. A reference that fails holds the stills and
     // clips made from it (`referenceIds`) and fails nothing else.
     // ============================================================
+    const leftoverGrok = new Set(input.leftoverGrokShotIds ?? []);
     const failedReferenceIds = new Set<string>();
+    // character id → the voice this run designed, for `bindPendingVoices`.
+    const designedVoices: Record<string, string> = {};
     if (references) {
       if (input.announcePhases) await announce('references');
+      // Sheets and voices have no preflight of their own (per-shot renders
+      // do): check the wave's click-time price before spawning any of it.
+      await step.do('gate-references', async () => {
+        await requireCredits(scopedDb.liveRead, references.cost.sheets, {
+          providers: ['fal'],
+          errorMessage: 'Insufficient credits for reference sheets',
+        });
+        // Voices are platform-only: no team key pays for them.
+        await requireCredits(scopedDb.liveRead, references.cost.voices, {
+          providers: [],
+          errorMessage: 'Insufficient credits for voices',
+        });
+      });
       const failReference = (
         id: string,
         stage: UpdateStage,
@@ -440,7 +457,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             huskId = claim.version.id;
             // Someone else's design is in flight: it is making this voice.
             if (!claim.created && claim.version.workflowRunId) return;
-            await spawnAndAwaitChild<
+            const designed = await spawnAndAwaitChild<
               CharacterVoiceWorkflowInput,
               CharacterVoiceWorkflowResult
             >(step, {
@@ -453,6 +470,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               awaitStepName: `await-character-voice-${id}`,
               timeout: '30 minutes',
             });
+            if (designed.voiceId) designedVoices[id] = designed.voiceId;
           } catch (error) {
             failures.push(toFailure(id, 'voice', error));
             const husk = huskId;
@@ -469,6 +487,13 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
         }),
       ]);
     }
+
+    // Speakers whose voice this run designed now speak in it; a shot whose
+    // voice did not land is held below, never rendered without it.
+    const { plan: voicedPlan, unvoicedShotIds } = bindPendingVoices(
+      plan,
+      designedVoices
+    );
 
     // Only the render stages match against these; a prompts-only run would pay
     // three reads for nothing (the prompt children get their bibles from the
@@ -806,14 +831,23 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             !manifestEntry ||
             manifestEntry.motionPromptVersionId !== motionVersion.id ||
             manifestEntry.frameVersionId !== expectedFrameVersionId;
-          if (selectedVideo && !diverged) return null;
+          // The plan judged this very clip stale — for any reason, not only
+          // the two ids above — so it renders while it is still selected.
+          const unchangedSinceClick =
+            selectedVideo !== null &&
+            selectedVideo.id === target.staleVideoVersionId;
+          if (selectedVideo && !diverged && !unchangedSinceClick) return null;
           // Selected-version model → sequence default. (The single-shot fn
           // also consults a last-failed attempt; irrelevant here — a video
           // must already exist for this target to be planned.)
-          const model = resolveVideoModel({
-            selectedVersionModel: selectedVideo?.model,
-            sequenceModel: sequenceSnapshot.videoModel,
-          });
+          // A leftover the user sent to Grok renders there at its 1s floor,
+          // as the fresh run's batch does.
+          const model = leftoverGrok.has(target.shotId)
+            ? 'grok_imagine_video_1_5'
+            : resolveVideoModel({
+                selectedVersionModel: selectedVideo?.model,
+                sequenceModel: sequenceSnapshot.videoModel,
+              });
           const { scene } = resolveSceneForShot(shot, sceneContext);
           const prompt = resolveMotionPromptFromVersion(
             motionVersion,
@@ -847,7 +881,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           // What the shot says, snapshotted on the target at click time
           // (#1657).
           const voicedLines = modelTakesDialogueAudio(model)
-            ? voicedDialogueLines(target.dialogue, plan.characterVoices)
+            ? voicedDialogueLines(target.dialogue, voicedPlan.characterVoices)
             : [];
           const audioClips = matchingDialogueClips(
             shot.audioClips,
@@ -1018,7 +1052,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             : 'motion'
       );
     }
-    const dialogueRecording = plan.dialogueRecording;
+    const dialogueRecording = voicedPlan.dialogueRecording;
     // Same balance gate the per-shot render applies to its own TTS, priced on
     // the whole conversation. Short of it, skip the up-front recording: each
     // shot's own gate then refuses it by name instead of the run failing here.
@@ -1098,7 +1132,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
     // the same empty job list a target-less (music-only) run needs.
     const jobs = !promptCommon
       ? []
-      : plan.targets.map((target) =>
+      : voicedPlan.targets.map((target) =>
           (async (): Promise<void> => {
             const claims = claimed.claimsByShot[target.shotId] ?? {
               visualVersionId: null,
@@ -1368,8 +1402,21 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
 
             await Promise.allSettled(stages);
 
+            if (target.regenDialogue && unvoicedShotIds.has(target.shotId)) {
+              failures.push({
+                shotId: target.shotId,
+                stage: 'dialogue',
+                error: 'A voice these lines need was not made — not recorded',
+              });
+            }
             if (target.regenVideo) {
-              if (heldByReference) {
+              if (unvoicedShotIds.has(target.shotId)) {
+                failures.push({
+                  shotId: target.shotId,
+                  stage: 'video',
+                  error: 'A voice this clip needs was not made — not rendered',
+                });
+              } else if (heldByReference) {
                 failures.push({
                   shotId: target.shotId,
                   stage: 'video',
@@ -1558,7 +1605,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
 
     await Promise.allSettled([...jobs, ...(musicJob ? [musicJob] : [])]);
     const dialogue = dialogueTargetOutcome(
-      plan.targets,
+      voicedPlan.targets,
       dialogueRecording,
       await dialogueRecorded
     );

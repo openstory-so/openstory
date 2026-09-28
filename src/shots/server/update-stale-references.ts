@@ -26,6 +26,10 @@ import type {
   LocationSheetWorkflowInput,
 } from '@/platform/server/workflow/types';
 import type { PlanUnitRef } from '@/sequences/generation-plan';
+import { estimateReferenceSheetCost } from '@/billing/cost-estimation';
+import { VOICE_ESTIMATE_COST } from '@/billing/elevenlabs-pricing';
+import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
+import { multiplyMicros, type Microdollars } from '@/billing/money';
 
 export type PlanReferences = {
   characterSheets: Omit<CharacterSheetWorkflowInput, 'sheetVersionId'>[];
@@ -33,6 +37,12 @@ export type PlanReferences = {
   /** Null when no element reference is owed. */
   elementSheets: ElementSheetWorkflowInput | null;
   voices: Omit<CharacterVoiceWorkflowInput, 'targetVersionId'>[];
+  /**
+   * The wave's price at the click. Its children have no preflight of their
+   * own, so the run checks the balance against this before it spawns them.
+   * Split because a team's fal key pays for sheets, never for voices.
+   */
+  cost: { sheets: Microdollars; voices: Microdollars };
 };
 
 export async function buildPlanReferences(args: {
@@ -140,5 +150,19 @@ export async function buildPlanReferences(args: {
       takes: SEED_VOICE_DEFAULT_TAKES,
     }));
 
-  return { characterSheets, locationSheets, elementSheets, voices };
+  const cost = {
+    sheets: estimateReferenceSheetCost({
+      imageModel: safeTextToImageModel(
+        sequence.imageModel,
+        DEFAULT_IMAGE_MODEL
+      ),
+      characterSheets: characterSheets.length,
+      locationSheets: locationSheets.length,
+      elementSheets: owedElements.length,
+      pricing: await getEffectiveFalPricing(),
+    }),
+    voices: multiplyMicros(VOICE_ESTIMATE_COST, voices.length),
+  };
+
+  return { characterSheets, locationSheets, elementSheets, voices, cost };
 }
