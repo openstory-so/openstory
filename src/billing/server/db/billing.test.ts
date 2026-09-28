@@ -239,7 +239,8 @@ describe('getAvailable asOfMs (#1881)', () => {
     const first = await billing.getAvailable();
     await billing.deductCredits(micros(1_000_000));
     const second = await billing.getAvailable();
-    expect(first.asOfMs).toBeGreaterThan(Date.UTC(2020, 0, 1));
+    // The database clock, not a constant: within a minute of now.
+    expect(Math.abs(first.asOfMs - Date.now())).toBeLessThan(60_000);
     expect(second.asOfMs).toBeGreaterThanOrEqual(first.asOfMs);
     expect(second.balance).toBe(STARTING_BALANCE - 1_000_000);
   });

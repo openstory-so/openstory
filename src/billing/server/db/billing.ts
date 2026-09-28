@@ -219,7 +219,12 @@ function createBillingReadMethods(db: Database, teamId: string) {
     const reserved = micros(Number(held?.total ?? 0));
     const available =
       balance > reserved ? subtractMicros(balance, reserved) : ZERO_MICROS;
-    return { balance, reserved, available, asOfMs: Number(held?.asOfMs) };
+    // A NaN would compare false both ways and turn ordering off unnoticed.
+    const asOfMs = Number(held?.asOfMs);
+    if (!Number.isFinite(asOfMs)) {
+      throw new Error(`D1 returned no clock for the balance read: ${asOfMs}`);
+    }
+    return { balance, reserved, available, asOfMs };
   }
 
   async function hasEnoughCredits(

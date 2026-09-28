@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { applyBalanceEvent } from './use-billing-balance-realtime';
-import { keepNewestBalance } from './use-billing-balance';
+import {
+  BILLING_BALANCE_KEY,
+  billingBalanceQueryOptions,
+  keepNewestBalance,
+} from './use-billing-balance';
+import { QueryClient } from '@tanstack/react-query';
 
 type Prev = NonNullable<Parameters<typeof applyBalanceEvent>[0]>;
 
@@ -108,5 +113,20 @@ describe('keepNewestBalance (#1881)', () => {
 
   it('takes the first snapshot', () => {
     expect(keepNewestBalance(undefined, prev)).toEqual(prev);
+  });
+});
+
+describe('billingBalanceQueryOptions (#1881)', () => {
+  it('rejects an older snapshot written to the cache', async () => {
+    const queryClient = new QueryClient();
+    const newer = { ...prev, balance: 7, asOfMs: 5_000 };
+    await queryClient.ensureQueryData({
+      ...billingBalanceQueryOptions,
+      queryFn: () => Promise.resolve(newer),
+    });
+
+    queryClient.setQueryData([...BILLING_BALANCE_KEY], prev);
+
+    expect(queryClient.getQueryData([...BILLING_BALANCE_KEY])).toBe(newer);
   });
 });

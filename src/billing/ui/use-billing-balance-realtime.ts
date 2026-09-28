@@ -14,11 +14,13 @@ import { BILLING_BALANCE_KEY } from './use-billing-balance';
 import type { BillingBalanceData } from './use-billing-balance';
 import { hasOtherCredits } from '@/billing/constants';
 import { usdToMicros } from '@/billing/money';
-import { billingChannelId } from '@/platform/realtime';
+import { billingChannelId, realtimeSchema } from '@/platform/realtime';
 import type { BalanceUpdatedPayload } from '@/platform/realtime';
 import { useRealtime } from '@/platform/ui/realtime/client';
 
 export const BILLING_TRANSACTIONS_KEY = ['billing-transactions'] as const;
+
+const balanceUpdatedSchema = realtimeSchema.billing['balance:updated'];
 
 /**
  * Apply one event to the cached balance. `refetch` is true when the event
@@ -65,9 +67,21 @@ export function useBillingBalanceRealtime(
       event: 'billing.balance:updated';
       data: BalanceUpdatedPayload;
     }) => {
+      void queryClient.invalidateQueries({
+        queryKey: [...BILLING_TRANSACTIONS_KEY],
+      });
+      // The transport only JSON-parses. An event from a worker on the other
+      // side of a deploy can lack `asOfMs`; refetch rather than patch.
+      const event = balanceUpdatedSchema.safeParse(msg.data);
+      if (!event.success) {
+        void queryClient.invalidateQueries({
+          queryKey: [...BILLING_BALANCE_KEY],
+        });
+        return;
+      }
       const { next, refetch } = applyBalanceEvent(
         queryClient.getQueryData<BillingBalanceData>([...BILLING_BALANCE_KEY]),
-        msg.data
+        event.data
       );
       if (next) {
         queryClient.setQueryData<BillingBalanceData>(
@@ -81,9 +95,6 @@ export function useBillingBalanceRealtime(
           queryKey: [...BILLING_BALANCE_KEY],
         });
       }
-      void queryClient.invalidateQueries({
-        queryKey: [...BILLING_TRANSACTIONS_KEY],
-      });
     },
     [queryClient]
   );
