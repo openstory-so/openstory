@@ -125,7 +125,7 @@ export type ArtifactVerdict =
  */
 export function artifactVerdict(args: {
   exists: boolean;
-  staleness?: ArtifactStaleness | 'generating';
+  staleness?: ArtifactStaleness;
   inFlight?: boolean;
 }): ArtifactVerdict {
   const { exists, staleness, inFlight } = args;
