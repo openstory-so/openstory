@@ -50,6 +50,9 @@ export const buildLocationReferenceImages = (
 ): ReferenceImageDescription[] => {
   return locations
     .filter((l) => l.referenceImageUrl)
+    .sort((a, b) =>
+      a.locationId < b.locationId ? -1 : a.locationId > b.locationId ? 1 : 0
+    )
     .map((l) => ({
       referenceImageUrl: l.referenceImageUrl ?? '',
       description: buildLocationDescription(l),

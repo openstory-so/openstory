@@ -233,3 +233,9 @@ saved, before capturing its upstream hash. The standalone Save and a typed
 motion render share `saveShotPrompt`; rendering an existing version does not
 rewrite scene continuity. This also ensures a voiced render snapshots the
 new selected prompt text before recording and assembling dialogue.
+
+Reference builders order characters by their logical `characterId`, locations
+by `locationId`, and elements by `token` before assigning image numbers. This
+keeps fresh, continued and manual requests consistent regardless of database
+row order. Each role retains its existing priority, including the primary image;
+labels and URLs are assembled from the same ordered references.
