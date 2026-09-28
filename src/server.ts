@@ -33,6 +33,10 @@ import { ensureSystemTemplatesSeeded } from '@/platform/server/db/seed-system-te
 
 import { getLogger, toErrorPayload } from '@/platform/logger';
 import {
+  logIsolateStamp,
+  requestRouteClass,
+} from '@/platform/server/isolate-stamp';
+import {
   isStaleServerFnPath,
   rewriteStaleServerFnResponse,
 } from '@/platform/stale-server-fn';
@@ -144,6 +148,8 @@ interface WorkerEnv {
 
 const exportedHandler: ExportedHandler<WorkerEnv> = {
   async fetch(request, env) {
+    // Before any await, so the line is on this request when the isolate dies.
+    logIsolateStamp(requestRouteClass(request.url));
     const { pathname } = new URL(request.url);
 
     // Media serving (/r2/<key>) never needs templates — don't put the
@@ -173,6 +179,7 @@ const exportedHandler: ExportedHandler<WorkerEnv> = {
     return withDiscoveryLinkHeader(response, pathname);
   },
   scheduled(controller, _env, ctx) {
+    logIsolateStamp('cron');
     // Daily fal pricing refresh into the model_pricing table (#1069).
     if (controller.cron === FAL_PRICING_CRON) {
       ctx.waitUntil(
