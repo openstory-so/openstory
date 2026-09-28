@@ -91,7 +91,7 @@ function asScopedDb<T>(stub: T): ScopedDb {
 }
 
 describe('computeGenerationPlan', () => {
-  const planStates = async (includeMusic: boolean) => {
+  const planStates = async (includeMusic: boolean, existingMusic = false) => {
     const plan = await computeGenerationPlan(
       asScopedDb({
         sequences: {
@@ -103,8 +103,8 @@ describe('computeGenerationPlan', () => {
               generateVoices: false,
               includeMusic,
               generationStopAt: 'references',
-              musicPrompt: null,
-              musicUrl: null,
+              musicPrompt: existingMusic ? 'Saved score' : null,
+              musicUrl: existingMusic ? 'https://x/score.mp3' : null,
               musicStatus: 'pending',
             }),
         },
@@ -139,6 +139,13 @@ describe('computeGenerationPlan', () => {
       'clip:s1': 'missing',
       'prompt:music:seq-1': 'missing',
       'music:seq-1': 'missing',
+    });
+  });
+
+  it('an existing track and prompt are done, so continuing to Music does not regenerate them', async () => {
+    expect(await planStates(true, true)).toMatchObject({
+      'prompt:music:seq-1': 'done',
+      'music:seq-1': 'done',
     });
   });
 

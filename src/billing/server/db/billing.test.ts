@@ -342,6 +342,43 @@ describe('createReservation / captureReservation / zeroReservation (#1310)', () 
     expect(holds).toHaveLength(5);
   });
 
+  it('a child preflight includes its own hold but excludes other runs holds', async () => {
+    const billing = createBillingMethods(db, teamId, userId);
+    const own = await billing.createReservation(micros(2_000_000), {
+      idempotencyKey: 'own',
+    });
+    const other = await billing.createReservation(micros(2_000_000), {
+      idempotencyKey: 'other',
+    });
+    expect(own.ok && other.ok).toBe(true);
+    if (!own.ok || !other.ok) throw new Error('fixture reservation failed');
+    const { available } = await billing.getAvailable();
+    expect(await billing.hasEnoughCredits(micros(available + 1))).toBe(false);
+    expect(
+      await billing.hasEnoughCredits(
+        micros(available + 2_000_000),
+        own.reservationId
+      )
+    ).toBe(true);
+    expect(
+      await billing.hasEnoughCredits(
+        micros(available + 2_000_001),
+        own.reservationId
+      )
+    ).toBe(false);
+    expect(
+      await billing.hasEnoughCredits(micros(available + 1), 'missing')
+    ).toBe(false);
+    await billing.zeroReservation(own.reservationId);
+    const after = await billing.getAvailable();
+    expect(
+      await billing.hasEnoughCredits(
+        micros(after.available + 1),
+        own.reservationId
+      )
+    ).toBe(false);
+  });
+
   it('replay of the same reservation key is a no-op', async () => {
     const billing = createBillingMethods(db, teamId, userId);
     const first = await billing.createReservation(cost, {

@@ -245,7 +245,11 @@ function asScopedDb<T>(stub: T): ScopedDb {
 const plan = (
   shots: Shot[],
   frames: Frame[],
-  opts: { units?: PlanUnitRef[]; db?: ScopedDb } = {}
+  opts: {
+    units?: PlanUnitRef[];
+    db?: ScopedDb;
+    renderOptions?: Parameters<typeof computePlan>[0]['renderOptions'];
+  } = {}
 ) =>
   computePlan({
     scopedDb: opts.db ?? buildScopedDb(shots, frames),
@@ -253,6 +257,7 @@ const plan = (
     units:
       opts.units ?? shots.map((s) => ({ kind: 'prompt:visual', id: s.id })),
     userId: 'u1',
+    renderOptions: opts.renderOptions,
   });
 
 beforeEach(() => stalenessByShot.clear());
@@ -782,6 +787,29 @@ describe('computePlan — persisted clip membership', () => {
       regenImage: false,
       regenMotion: false,
       motionRender: { renderSegmentId: 'segment', siblingShotIds: ['a', 'b'] },
+    });
+  });
+});
+
+describe('fresh plan model choices', () => {
+  it('freezes model variants and claims the first image at its requested model', async () => {
+    const result = await plan(
+      [makeShot()],
+      [makeFrame({ selectedImageVersionId: null })],
+      {
+        units: [{ kind: 'still', id: 'shot-1' }],
+        renderOptions: {
+          imageModels: ['seedream_v5', 'nano_banana_2'],
+          videoModels: ['seedance_v2', 'kling_v3_pro'],
+          audioModels: ['elevenlabs_music'],
+        },
+      }
+    );
+    expect(result.targets[0]?.imageModel).toBe('seedream_v5');
+    expect(result.renderOptions).toEqual({
+      imageModels: ['seedream_v5', 'nano_banana_2'],
+      videoModels: ['seedance_v2', 'kling_v3_pro'],
+      audioModels: ['elevenlabs_music'],
     });
   });
 });

@@ -47,6 +47,8 @@
  * are skipped, not rendered from stale inputs.
  */
 
+import { supportsDraftMode, type TextToImageModel } from '@/models/models';
+import { DRAFT_RESOLUTION } from '@/motion/draft-mode';
 import { musicPromptInputHashMatches } from '@/shots/input-hash';
 import { resolveVideoModel } from '@/models/resolve-asset-models';
 import type { Scene } from '@/shots/scene-analysis.schema';
@@ -243,6 +245,14 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           phaseName: GENERATION_STAGE_META[stage].name,
         });
       });
+    const completePhase = (stage: GenerationStage) =>
+      step.do(`phase-complete-${stage}`, async () => {
+        await getGenerationChannel(sequenceId).emit(
+          'generation.phase:complete',
+          { phase: GENERATION_STAGE_META[stage].phase }
+        );
+      });
+    const freshPhases = input.freshRun && input.announcePhases;
     const musicToRun =
       plan.music && (plan.music.regenPrompt || plan.music.regenTrack)
         ? plan.music
@@ -343,15 +353,20 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
       // Sheets and voices have no preflight of their own (per-shot renders
       // do): check the wave's click-time price before spawning any of it.
       await step.do('gate-references', async () => {
-        await requireCredits(scopedDb.liveRead, references.cost.sheets, {
-          providers: ['fal'],
-          errorMessage: 'Insufficient credits for reference sheets',
-        });
-        // Voices are platform-only: no team key pays for them.
-        await requireCredits(scopedDb.liveRead, references.cost.voices, {
-          providers: [],
-          errorMessage: 'Insufficient credits for voices',
-        });
+        // One aggregate check covers this wave's simultaneous platform spend.
+        // A fal BYOK key covers sheets, but never the platform-only voices.
+        const ownSheets = await scopedDb.liveRead.apiKeys.hasUsableKey('fal');
+        await requireCredits(
+          scopedDb.liveRead,
+          ownSheets
+            ? references.cost.voices
+            : addMicros(references.cost.sheets, references.cost.voices),
+          {
+            providers: [],
+            errorMessage: 'Insufficient credits for references and voices',
+            reservationId: input.reservationId,
+          }
+        );
       });
       const failReference = (
         id: string,
@@ -382,7 +397,11 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               parentBindingName: PARENT_BINDING_NAME,
               parentInstanceId,
               childId: `character-sheet:${id}`,
-              childPayload: { ...payload, sheetVersionId },
+              childPayload: {
+                ...payload,
+                sheetVersionId,
+                reservationId: input.reservationId,
+              },
               spawnStepName: `spawn-character-sheet-${id}`,
               awaitStepName: `await-character-sheet-${id}`,
               timeout: '30 minutes',
@@ -428,7 +447,11 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               parentBindingName: PARENT_BINDING_NAME,
               parentInstanceId,
               childId: `location-sheet:${id}`,
-              childPayload: { ...payload, referenceVersionId },
+              childPayload: {
+                ...payload,
+                referenceVersionId,
+                reservationId: input.reservationId,
+              },
               spawnStepName: `spawn-location-sheet-${id}`,
               awaitStepName: `await-location-sheet-${id}`,
               timeout: '30 minutes',
@@ -460,7 +483,10 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                     parentBindingName: PARENT_BINDING_NAME,
                     parentInstanceId,
                     childId: `element-sheets:${sequenceId}:${parentInstanceId}`,
-                    childPayload: payload,
+                    childPayload: {
+                      ...payload,
+                      reservationId: input.reservationId,
+                    },
                     spawnStepName: 'spawn-element-sheets',
                     awaitStepName: 'await-element-sheets',
                   });
@@ -494,7 +520,11 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               parentBindingName: PARENT_BINDING_NAME,
               parentInstanceId,
               childId: `character-voice:${id}`,
-              childPayload: { ...payload, targetVersionId: claim.version.id },
+              childPayload: {
+                ...payload,
+                targetVersionId: claim.version.id,
+                reservationId: input.reservationId,
+              },
               spawnStepName: `spawn-character-voice-${id}`,
               awaitStepName: `await-character-voice-${id}`,
               timeout: '30 minutes',
@@ -516,6 +546,8 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
         }),
       ]);
     }
+
+    if (freshPhases && references) await completePhase('references');
 
     // Speakers whose voice this run designed now speak in it; a shot whose
     // voice did not land is held below, never rendered without it.
@@ -553,7 +585,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
       })),
     };
 
-    const spawnImage = async (
+    const spawnImageModel = async (
       target: PlanTarget,
       claims: ShotClaims,
       /**
@@ -562,7 +594,9 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
        * into on the unique-index collision path. Null when no prompt child
        * ran (a direct render) or it persisted nothing.
        */
-      promptedVisualVersionId: string | null
+      promptedVisualVersionId: string | null,
+      model: TextToImageModel,
+      alternate: boolean
     ): Promise<void> => {
       // The prompt source is deterministic (#1085): a chained render consumes
       // the prompt its OWN dependency row produced — never a re-read of
@@ -574,7 +608,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
       // typed `Json`, which the step's Serializable constraint rejects even
       // though the value is plain JSON (same pattern as await-child.ts).
       const imageInputJson = await step.do(
-        `prepare-image-${target.shotId}`,
+        `prepare-image-${target.shotId}${alternate ? `-${model}` : ''}`,
         async (): Promise<string | null> => {
           const [shot, frame] = await Promise.all([
             scopedDb.liveRead.shots.getById(target.shotId),
@@ -657,12 +691,17 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               promptOverride: visualPrompt?.text,
               promptVersionOverride: visualPrompt?.id,
               // The claim row advertises this model; render what it promised.
-              modelOverride: target.imageModel,
+              modelOverride: model,
+              reservationId: input.reservationId,
               refs: renderRefs,
             });
             return JSON.stringify({
               ...prepared,
-              targetVariantId: claims.imageVariantId ?? undefined,
+              targetVariantId: alternate
+                ? undefined
+                : (claims.imageVariantId ?? undefined),
+              variantOnly: alternate,
+              reservationId: input.reservationId,
             });
           } catch (error) {
             // Running out of credits is terminal, not transient: retrying
@@ -695,10 +734,10 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
         binding: this.env.IMAGE_WORKFLOW,
         parentBindingName: PARENT_BINDING_NAME,
         parentInstanceId,
-        childId: `image:${sequenceId}:${target.shotId}`,
+        childId: `image:${sequenceId}:${target.shotId}${alternate ? `:${model}` : ''}`,
         childPayload: imageInput,
-        spawnStepName: `spawn-image-${target.shotId}`,
-        awaitStepName: `await-image-${target.shotId}`,
+        spawnStepName: `spawn-image-${target.shotId}${alternate ? `-${model}` : ''}`,
+        awaitStepName: `await-image-${target.shotId}${alternate ? `-${model}` : ''}`,
       });
       // A user cancel (before or during the render) is a stand-down, not a
       // failure — and definitely not a render to count (#1095 review).
@@ -715,6 +754,37 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
         throw new Error('Image workflow completed without producing an image');
       }
       counters.images += 1;
+    };
+
+    const spawnImage = async (
+      target: PlanTarget,
+      claims: ShotClaims,
+      promptedVisualVersionId: string | null
+    ): Promise<void> => {
+      const models = [
+        ...new Set(
+          plan.renderOptions?.imageModels?.length
+            ? plan.renderOptions.imageModels
+            : [target.imageModel]
+        ),
+      ];
+      const outcomes = await Promise.allSettled(
+        models.map((model, index) =>
+          spawnImageModel(
+            target,
+            claims,
+            promptedVisualVersionId,
+            model,
+            index > 0
+          )
+        )
+      );
+      for (const [index, result] of outcomes.entries()) {
+        if (result.status === 'rejected') {
+          if (index === 0) throw result.reason;
+          failures.push(toFailure(target.shotId, 'image', result.reason));
+        }
+      }
     };
 
     /**
@@ -887,10 +957,11 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           // as the fresh run's batch does.
           const model = leftoverGrok.has(target.shotId)
             ? 'grok_imagine_video_1_5'
-            : resolveVideoModel({
+            : (plan.renderOptions?.videoModels?.[0] ??
+              resolveVideoModel({
                 selectedVersionModel: target.motionRender.selectedModel,
                 sequenceModel: sequenceSnapshot.videoModel,
-              });
+              }));
           const prompt = resolveMotionPromptFromVersion(
             motionVersion,
             {
@@ -1042,7 +1113,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
     // it instead of recording its own window of the scene. Never fatal — a
     // scene that cannot be recorded leaves its shots to record themselves, in
     // context, which fails that shot and not the run.
-    if (input.announcePhases && plan.targets.length > 0) {
+    if (!input.freshRun && input.announcePhases && plan.targets.length > 0) {
       await announce(
         plan.targets.some((t) => t.regenVisual || t.regenImage || t.regenMotion)
           ? 'images'
@@ -1051,6 +1122,10 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             : 'motion'
       );
     }
+    const hasImageWork = plan.targets.some(
+      (target) => target.regenVisual || target.regenImage || target.regenMotion
+    );
+    if (freshPhases && hasImageWork) await announce('images');
     const dialogueRecording = voicedPlan.dialogueRecording;
     // Same balance gate the per-shot render applies to its own TTS, priced on
     // the whole conversation. Short of it, skip the up-front recording: each
@@ -1066,7 +1141,10 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                   0
                 )
               ),
-              { errorMessage: 'Insufficient credits for dialogue audio' }
+              {
+                errorMessage: 'Insufficient credits for dialogue audio',
+                reservationId: input.reservationId,
+              }
             );
             return true;
           } catch (error) {
@@ -1079,7 +1157,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
     // recorded — never rejects, so a render awaiting it is never failed by it.
     let recordedClipsByShotId: DialogueAudioWorkflowResult['clipsByShotId'] =
       {};
-    const dialogueRecorded: Promise<DialogueOutcome> =
+    const recordDialogue = (): Promise<DialogueOutcome> =>
       dialogueRecording && canRecordScenes
         ? spawnAndAwaitChild<
             DialogueAudioWorkflowInput,
@@ -1120,6 +1198,15 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               ? { error: 'Insufficient credits for dialogue audio' }
               : { clipsByShotId: {} }
           );
+
+    let dialogueRecorded = input.freshRun
+      ? Promise.resolve<DialogueOutcome>({ clipsByShotId: {} })
+      : recordDialogue();
+    const eligibleVideos: Array<{
+      target: PlanTarget;
+      claims: ShotClaims;
+      motionVersionId: string | null;
+    }> = [];
 
     // ============================================================
     // PHASE 2: fan out — one job per shot, so a shot's scene step runs once
@@ -1250,6 +1337,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               scene: scenes.scene,
               aspectRatio: plan.aspectRatio,
               ...promptCommon,
+              reservationId: input.reservationId,
               // The user just clicked Update all, so a mounted shot panel should
               // see its prompt stream in — same as the single-shot regen path.
               emitStreaming: true,
@@ -1425,8 +1513,11 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                 });
               } else if (upstream.motionOk && upstream.imageOk) {
                 try {
-                  await dialogueRecorded;
-                  await prepareVideo(target, claims, prompted.motionVersionId);
+                  eligibleVideos.push({
+                    target,
+                    claims,
+                    motionVersionId: prompted.motionVersionId,
+                  });
                 } catch (error) {
                   failures.push(toFailure(target.shotId, 'video', error));
                 }
@@ -1448,8 +1539,8 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
     // shot jobs. Prompt first; the track then renders when it is stale on its
     // own hash or the prompt regeneration cascades into it (see MusicPlan).
     // ============================================================
-    const musicJob = musicToRun
-      ? (async (music: MusicPlan): Promise<void> => {
+    const runMusic = musicToRun
+      ? async (music: MusicPlan): Promise<void> => {
           // What the prompt child actually produced — the track renders from
           // this rather than from the sequence mirror the child happened to
           // write, which a concurrent regenerate can overwrite in between.
@@ -1491,6 +1582,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                     sceneSummaries: music.sceneSummaries,
                     analysisModelId: music.analysisModelId,
                     promptSource: music.promptSource,
+                    reservationId: input.reservationId,
                   };
                   return JSON.stringify(payload);
                 }
@@ -1558,9 +1650,8 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                 // A track stale on its OWN hash (#1657) renders from the
                 // prompt already on the sequence — there was no prompt child
                 // to take it from.
-                const prompt =
-                  regeneratedPrompt?.prompt ?? sequence.musicPrompt;
-                const tags = regeneratedPrompt?.tags ?? sequence.musicTags;
+                const prompt = regeneratedPrompt?.prompt ?? music.prompt;
+                const tags = regeneratedPrompt?.tags ?? music.tags;
                 if (!prompt || !tags) {
                   throw new NonRetryableError(
                     'Sequence has no music prompt to regenerate from',
@@ -1577,6 +1668,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                   tags,
                   duration: music.durationSeconds,
                   isPrimary: true,
+                  reservationId: input.reservationId,
                 };
                 return JSON.stringify(payload);
               }
@@ -1587,24 +1679,61 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               );
               return;
             }
-            await spawnAndAwaitChild<MusicWorkflowInput, unknown>(step, {
-              binding: this.env.MUSIC_WORKFLOW,
-              parentBindingName: PARENT_BINDING_NAME,
-              parentInstanceId,
-              childId: `music:${sequenceId}`,
-              // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the step above serialized exactly this type
-              childPayload: JSON.parse(musicInputJson) as MusicWorkflowInput,
-              spawnStepName: 'spawn-music-track',
-              awaitStepName: 'await-music-track',
-            });
-            counters.musicTracks += 1;
+            // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the durable step serialized this exact payload
+            const musicInput = JSON.parse(musicInputJson) as MusicWorkflowInput;
+            const models = [
+              ...new Set(
+                plan.renderOptions?.audioModels?.length
+                  ? plan.renderOptions.audioModels
+                  : [musicInput.model]
+              ),
+            ];
+            await Promise.all(
+              models.map(async (model, index) => {
+                const suffix = index > 0 ? `-${model}` : '';
+                await spawnAndAwaitChild<MusicWorkflowInput, unknown>(step, {
+                  binding: this.env.MUSIC_WORKFLOW,
+                  parentBindingName: PARENT_BINDING_NAME,
+                  parentInstanceId,
+                  childId: `music:${sequenceId}${suffix}`,
+                  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the step above serialized exactly this type
+                  childPayload: {
+                    ...musicInput,
+                    model,
+                    isPrimary: index === 0,
+                  },
+                  spawnStepName: `spawn-music-track${suffix}`,
+                  awaitStepName: `await-music-track${suffix}`,
+                });
+                counters.musicTracks += 1;
+              })
+            );
           } catch (error) {
             failures.push(toFailure(sequenceId, 'music', error));
           }
-        })(musicToRun)
+        }
       : null;
 
+    const musicJob =
+      !input.freshRun && runMusic && musicToRun ? runMusic(musicToRun) : null;
     await Promise.allSettled([...jobs, ...(musicJob ? [musicJob] : [])]);
+    if (freshPhases && hasImageWork) await completePhase('images');
+    if (input.freshRun) {
+      if (freshPhases && dialogueRecording) await announce('dialogue');
+      dialogueRecorded = recordDialogue();
+    }
+    await dialogueRecorded;
+    if (freshPhases && dialogueRecording) await completePhase('dialogue');
+    if (freshPhases && eligibleVideos.length > 0) await announce('motion');
+    await Promise.all(
+      eligibleVideos.map(async ({ target, claims, motionVersionId }) => {
+        try {
+          await prepareVideo(target, claims, motionVersionId);
+        } catch (error) {
+          failures.push(toFailure(target.shotId, 'video', error));
+        }
+      })
+    );
     // Prepare every eligible target before any video child can claim a segment.
     // Preserve plan order despite concurrent prompt/image completion.
     const heldSegments = new Set(
@@ -1635,20 +1764,45 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
       const shot = preparedVideos.get(target.shotId);
       return shot ? [shot] : [];
     });
-    const renderJobs = buildMotionRender({
-      userId,
-      teamId,
-      sequenceId,
-      shots: renderShots,
-    });
+    const renderJobs = plan.renderOptions?.videoModels?.length
+      ? [
+          ...buildMotionRender({
+            userId,
+            teamId,
+            sequenceId,
+            reservationId: input.reservationId,
+            shots: renderShots.filter((shot) => !leftoverGrok.has(shot.shotId)),
+            videoModels: plan.renderOptions.videoModels,
+          }),
+          ...buildMotionRender({
+            userId,
+            teamId,
+            sequenceId,
+            reservationId: input.reservationId,
+            shots: renderShots.filter((shot) => leftoverGrok.has(shot.shotId)),
+          }),
+        ]
+      : buildMotionRender({
+          userId,
+          teamId,
+          sequenceId,
+          reservationId: input.reservationId,
+          shots: renderShots,
+        });
     await Promise.all(
       renderJobs.map(async ({ input }) => {
         const shotId = input.shotId;
+        const variant =
+          !!plan.renderOptions?.videoModels?.length &&
+          !leftoverGrok.has(shotId) &&
+          input.model !== plan.renderOptions.videoModels[0];
+        input.variantOnly = variant;
+        const suffix = variant ? `-${input.model}` : '';
         try {
           const model = input.model;
           const voicedLines = input.voicedLines ?? [];
           const audioClips = input.audioClips ?? [];
-          await step.do(`preflight-video-${shotId}`, async () => {
+          await step.do(`preflight-video-${shotId}${suffix}`, async () => {
             const ttsChars =
               audioClips.length > 0 ? 0 : ttsCharacterCount(voicedLines);
             await requireCredits(
@@ -1657,7 +1811,10 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                 gateEstimate(
                   estimateVideoCost(model, input.duration ?? 3, {
                     pricing: await getEffectiveFalPricing(),
-                    resolution: input.resolution,
+                    resolution:
+                      input.draft && supportsDraftMode(model)
+                        ? DRAFT_RESOLUTION
+                        : input.resolution,
                     referenceOnly: input.referenceOnly,
                     hasReferenceImages:
                       (input.referenceImages?.length ?? 0) > 0,
@@ -1666,7 +1823,10 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                 ),
                 estimateTtsCost(ttsChars)
               ),
-              { errorMessage: 'Insufficient credits for video generation' }
+              {
+                errorMessage: 'Insufficient credits for video generation',
+                reservationId: input.reservationId,
+              }
             );
           });
           await spawnAndAwaitChild<MotionWorkflowInput, MotionWorkflowResult>(
@@ -1675,10 +1835,10 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               binding: this.env.MOTION_WORKFLOW,
               parentBindingName: PARENT_BINDING_NAME,
               parentInstanceId,
-              childId: `motion:${sequenceId}:${shotId}`,
+              childId: `motion:${sequenceId}:${shotId}${suffix}`,
               childPayload: input,
-              spawnStepName: `spawn-video-${shotId}`,
-              awaitStepName: `await-video-${shotId}`,
+              spawnStepName: `spawn-video-${shotId}${suffix}`,
+              awaitStepName: `await-video-${shotId}${suffix}`,
               timeout: '90 minutes',
             }
           );
@@ -1690,6 +1850,12 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
         }
       })
     );
+    if (freshPhases && eligibleVideos.length > 0) await completePhase('motion');
+    if (input.freshRun && runMusic && musicToRun) {
+      if (freshPhases) await announce('music');
+      await runMusic(musicToRun);
+      if (freshPhases) await completePhase('music');
+    }
     const dialogue = dialogueTargetOutcome(
       voicedPlan.targets,
       dialogueRecording,

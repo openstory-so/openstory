@@ -27,6 +27,8 @@ import {
   safeImageToVideoModel,
   safeTextToImageModel,
   type TextToImageModel,
+  type ImageToVideoModel,
+  type AudioModel,
 } from '@/models/models';
 import { loadShotPromptContext } from './prompt-context';
 import type {
@@ -283,6 +285,9 @@ export type MusicPlan = {
   promptSource: 'ai-generated' | 'regenerated';
   /** Track length: shot durations with the 30s empty floor (generateMusicFn). */
   durationSeconds: number;
+  /** Existing music text frozen at the click for a track-only unit. */
+  prompt: string | null;
+  tags: string | null;
 };
 
 /**
@@ -320,7 +325,15 @@ type PlanPromptContext = {
   analysisModelId: AnalysisModelId;
 };
 
+/** Explicit fresh-run choices; absent on continue and Update all. */
+export type PlanRenderOptions = {
+  imageModels?: TextToImageModel[];
+  videoModels?: ImageToVideoModel[];
+  audioModels?: AudioModel[];
+};
+
 export type UpdateStalePlan = {
+  renderOptions?: PlanRenderOptions;
   aspectRatio: AspectRatio;
   resolution: Resolution;
   sequence: PlanSequence;
@@ -474,6 +487,7 @@ export async function computePlan(args: {
   units: readonly PlanUnitRef[];
   /** Who clicked — stamped on the references wave's payloads. */
   userId: string;
+  renderOptions?: PlanRenderOptions;
 }): Promise<UpdateStalePlan> {
   const { scopedDb, sequenceId, units } = args;
 
@@ -529,6 +543,7 @@ export async function computePlan(args: {
   });
 
   const empty: UpdateStalePlan = {
+    renderOptions: args.renderOptions,
     aspectRatio: sequence.aspectRatio,
     resolution: sequence.resolution,
     sequence: toPlanSequence(sequence),
@@ -627,7 +642,9 @@ export async function computePlan(args: {
 
     const decision = await decideShotTarget({
       scopedDb,
-      sequence,
+      sequence: args.renderOptions?.imageModels?.[0]
+        ? { ...sequence, imageModel: args.renderOptions.imageModels[0] }
+        : sequence,
       shot,
       frame,
       selectedImage: frame ? (selectedByFrame.get(frame.id) ?? null) : null,
@@ -712,6 +729,7 @@ export async function computePlan(args: {
     aspectRatio: sequence.aspectRatio,
     resolution: sequence.resolution,
     sequence: toPlanSequence(sequence),
+    renderOptions: args.renderOptions,
     music,
     characterVoices,
     renderRefs: { characters, locations, elements },
@@ -1058,6 +1076,8 @@ async function computeMusicPlanForUnits(
       DEFAULT_ANALYSIS_MODEL,
     promptSource: latest ? 'regenerated' : 'ai-generated',
     durationSeconds: musicRequestDurationSeconds(allShots),
+    prompt: sequence.musicPrompt,
+    tags: sequence.musicTags,
   };
 }
 

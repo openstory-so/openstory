@@ -14,30 +14,45 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { UpdateStaleShotsWorkflowInput } from '@/platform/server/workflow/types';
 import type { PlanTarget, UpdateStalePlan } from '../update-stale-plan';
+import { DEFAULT_ANALYSIS_MODEL } from '@/models/models.config';
 import * as realPlan from '../update-stale-plan';
 
 vi.doMock('@/billing/server/fal-pricing-live', () => ({
   getEffectiveFalPricing: vi.fn(async () => ({})),
 }));
-vi.doMock('@/billing/server/preflight', () => ({
-  requireCredits: vi.fn(async () => undefined),
-}));
+const requireCredits = vi.fn(async (..._args: unknown[]) => undefined);
+vi.doMock('@/billing/server/preflight', () => ({ requireCredits }));
+const estimateVideoCost = vi.fn((..._args: unknown[]) => 0);
 vi.doMock('@/billing/cost-estimation', () => ({
-  estimateVideoCost: vi.fn(() => 0),
+  estimateVideoCost,
   gateEstimate: vi.fn(() => 0),
 }));
 
-const emit = vi.fn(async () => undefined);
+const emit = vi.fn(
+  async (_event: string, _payload: { phase: number }) => undefined
+);
 vi.doMock('@/platform/realtime', () => ({
   getGenerationChannel: vi.fn(() => ({ emit })),
 }));
 vi.doMock('@/platform/server/db/scoped', () => ({ createScopedDb: vi.fn() }));
 vi.doMock('@/shots/server/scene-script', () => ({
   loadSceneContextBySequence: vi.fn(async () => new Map()),
-  resolveSceneForShot: vi.fn(() => ({ scene: null, script: null })),
+  resolveSceneForShot: vi.fn((shot: { id: string }) => ({
+    scene: {
+      sceneId: shot.id,
+      metadata: { title: shot.id },
+      originalScript: { extract: 'Scene' },
+    },
+    script: null,
+  })),
 }));
 vi.doMock('@/shots/server/shot-image-input', () => ({
-  prepareShotImageWorkflowInput: vi.fn(async () => ({ prompt: 'p' })),
+  prepareShotImageWorkflowInput: vi.fn(
+    async (args: { modelOverride: string }) => ({
+      prompt: 'p',
+      model: args.modelOverride,
+    })
+  ),
 }));
 vi.doMock('../update-stale-plan', () => ({
   ...realPlan,
@@ -46,7 +61,7 @@ vi.doMock('../update-stale-plan', () => ({
       targets.map((t) => [
         t.shotId,
         {
-          visualVersionId: null,
+          visualVersionId: t.regenVisual ? `visual-${t.shotId}` : null,
           motionVersionId: null,
           imageVariantId: `claim-${t.shotId}`,
         },
@@ -67,6 +82,12 @@ const spawnAndAwaitChild = vi.fn(
         throw new Error('sheet model refused');
       }
     }
+    if (args.spawnStepName.startsWith('spawn-frame-prompt-'))
+      return { finalVersionId: 'visual-result' };
+    if (args.spawnStepName === 'spawn-dialogue-audio')
+      return { clipsByShotId: {} };
+    if (args.spawnStepName === 'spawn-music-prompt')
+      return { prompt: 'New music', tags: 'calm' };
     if (args.spawnStepName === 'spawn-element-sheets') return { elements: [] };
     if (args.spawnStepName.startsWith('spawn-image-')) {
       return { imageUrl: 'https://x/still.png' };
@@ -122,6 +143,13 @@ function makeScopedDb(): WorkflowScopedDb {
     frameVariants: { markTerminal: vi.fn() },
     stalenessPlanning: {},
     claims: {
+      frameVariants: {
+        getById: vi.fn(async (id: string) => ({
+          id,
+          status: 'completed',
+          url: 'https://x/still.png',
+        })),
+      },
       shotPromptVersions: {
         getByIdForShot: vi.fn(async (id: string) => ({
           id,
@@ -132,6 +160,13 @@ function makeScopedDb(): WorkflowScopedDb {
       },
     },
     liveRead: {
+      sequences: {
+        getById: vi.fn(async () => ({
+          musicStatus: 'completed',
+          musicPrompt: 'edited later',
+          musicTags: 'edited later',
+        })),
+      },
       apiKeys: { hasUsableKey: vi.fn(async () => false) },
       billing: { hasEnoughCredits: vi.fn(async () => true) },
       characters: { listWithSheets: vi.fn(async () => []) },
@@ -221,7 +256,10 @@ function plan(overrides: Partial<UpdateStalePlan>): UpdateStalePlan {
   } as unknown as UpdateStalePlan;
 }
 
-const run = (p: UpdateStalePlan) =>
+const run = (
+  p: UpdateStalePlan,
+  options: Partial<UpdateStaleShotsWorkflowInput> = {}
+) =>
   new Testable(
     // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- ctx is never read
     undefined as unknown as ConstructorParameters<typeof Testable>[0],
@@ -236,6 +274,7 @@ const run = (p: UpdateStalePlan) =>
         sequenceId: 'seq-1',
         plan: p,
         announcePhases: true,
+        ...options,
       },
       instanceId: 'run-1',
     } as unknown as Readonly<WorkflowEvent<UpdateStaleShotsWorkflowInput>>
@@ -331,26 +370,27 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
   });
 });
 
+const clipTarget = (id: string): PlanTarget => ({
+  ...target(id, []),
+  regenImage: false,
+  regenVideo: true,
+  usesStartFrame: false,
+  standingMotionVersionId: `prompt-${id}`,
+  staleVideoVersionId: 'old-video',
+  durationMs: 4000,
+  motionRender: {
+    sceneId: 'scene-1',
+    renderSegmentId: 'segment-1',
+    packedScene: { location: 'Frozen room' },
+    description: '',
+    selectedModel: 'kling_v3_pro',
+  },
+});
+
 describe('executor packed clips', () => {
   beforeEach(() => {
     spawnAndAwaitChild.mockClear();
     failCharacter.clear();
-  });
-  const clipTarget = (id: string): PlanTarget => ({
-    ...target(id, []),
-    regenImage: false,
-    regenVideo: true,
-    usesStartFrame: false,
-    standingMotionVersionId: `prompt-${id}`,
-    staleVideoVersionId: 'old-video',
-    durationMs: 4000,
-    motionRender: {
-      sceneId: 'scene-1',
-      renderSegmentId: 'segment-1',
-      packedScene: { location: 'Frozen room' },
-      description: '',
-      selectedModel: 'kling_v3_pro',
-    },
   });
   it('deduplicates stale siblings into one generation using frozen membership and model', async () => {
     const result = await run(
@@ -402,5 +442,195 @@ describe('executor packed clips', () => {
       'a',
       'b',
     ]);
+  });
+});
+
+describe('fresh executor parity (#1891)', () => {
+  beforeEach(() => {
+    spawnAndAwaitChild.mockClear();
+    requireCredits.mockClear();
+    emit.mockClear();
+    failCharacter.clear();
+  });
+  it('uses one prompt child per single-shot scene and carries the reservation', async () => {
+    const targets = ['a', 'b'].map((id) => ({
+      ...target(id, []),
+      regenVisual: true,
+      regenImage: false,
+    }));
+    const result = await run(plan({ targets }), {
+      freshRun: true,
+      reservationId: 'hold',
+    });
+    expect(result.failures).toEqual([]);
+    expect(result.visualPrompts).toBe(2);
+    expect(spawned()).toEqual(['spawn-frame-prompt-a', 'spawn-frame-prompt-b']);
+    expect(payloadOf('spawn-frame-prompt-a')).toMatchObject({
+      reservationId: 'hold',
+    });
+  });
+  it('gates simultaneous sheet and platform voice spend together against the parent envelope', async () => {
+    const p = plan({
+      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- children are stubbed; only ids and wave cost are consumed
+      references: { ...references, cost: { sheets: 20, voices: 30 } } as never,
+    });
+    await run(p, { reservationId: 'hold' });
+    expect(requireCredits).toHaveBeenCalledWith(
+      expect.anything(),
+      50,
+      expect.objectContaining({ providers: [], reservationId: 'hold' })
+    );
+    expect(payloadOf('spawn-character-voice-maya')).toMatchObject({
+      reservationId: 'hold',
+    });
+  });
+
+  it('renders each image model once with one selectable primary and shared reservation', async () => {
+    const result = await run(
+      plan({
+        targets: [target('a', [])],
+        renderOptions: { imageModels: ['nano_banana_2', 'seedream_v5'] },
+      }),
+      { freshRun: true, reservationId: 'hold' }
+    );
+    expect(result.failures).toEqual([]);
+    expect(result.images).toBe(2);
+    expect(payloadOf('spawn-image-a')).toMatchObject({
+      model: 'nano_banana_2',
+      targetVariantId: 'claim-a',
+      variantOnly: false,
+      reservationId: 'hold',
+    });
+    expect(payloadOf('spawn-image-a-seedream_v5')).toMatchObject({
+      model: 'seedream_v5',
+      variantOnly: true,
+      reservationId: 'hold',
+    });
+    expect(payloadOf('spawn-image-a-seedream_v5')).not.toHaveProperty(
+      'targetVariantId',
+      'claim-a'
+    );
+  });
+  it('renders video alternatives without overriding a leftover Grok choice', async () => {
+    const result = await run(
+      plan({
+        targets: [
+          clipTarget('a'),
+          {
+            ...clipTarget('b'),
+            motionRender: {
+              ...clipTarget('b').motionRender,
+              renderSegmentId: 'other',
+            },
+          },
+        ],
+        renderOptions: { videoModels: ['kling_v3_pro', 'seedance_v2'] },
+      }),
+      { freshRun: true, reservationId: 'hold', leftoverGrokShotIds: ['b'] }
+    );
+    expect(result.failures).toEqual([]);
+    expect(result.videos).toBe(3);
+    expect(payloadOf('spawn-video-a')).toMatchObject({
+      model: 'kling_v3_pro',
+      variantOnly: false,
+      reservationId: 'hold',
+    });
+    expect(payloadOf('spawn-video-a-seedance_v2')).toMatchObject({
+      model: 'seedance_v2',
+      variantOnly: true,
+      reservationId: 'hold',
+    });
+    expect(payloadOf('spawn-video-b')).toMatchObject({
+      model: 'grok_imagine_video_1_5',
+      reservationId: 'hold',
+    });
+  });
+  it('keeps the saved draft switch on motion payloads', async () => {
+    const a = clipTarget('a');
+    a.motionRender.selectedModel = 'seedance_v2_5';
+    const p = plan({ targets: [a] });
+    p.sequence.draftMotion = true;
+    await run(p);
+    expect(payloadOf('spawn-video-a')).toMatchObject({ draft: true });
+    expect(estimateVideoCost).toHaveBeenLastCalledWith(
+      'seedance_v2_5',
+      expect.any(Number),
+      expect.objectContaining({ resolution: '480p' })
+    );
+  });
+  it('freezes track-only music text and shares the reservation with music', async () => {
+    const p = plan({
+      music: {
+        regenPrompt: false,
+        regenTrack: true,
+        sceneSummaries: [],
+        analysisModelId: DEFAULT_ANALYSIS_MODEL,
+        promptSource: 'regenerated',
+        durationSeconds: 30,
+        prompt: 'Frozen score',
+        tags: 'frozen',
+      },
+    });
+    const result = await run(p, { freshRun: true, reservationId: 'hold' });
+    expect(result.failures).toEqual([]);
+    expect(payloadOf('spawn-music-track')).toMatchObject({
+      prompt: 'Frozen score',
+      tags: 'frozen',
+      reservationId: 'hold',
+      isPrimary: true,
+    });
+  });
+  it('announces every fresh phase in order and completes each', async () => {
+    const a = clipTarget('a');
+    a.regenImage = true;
+    const p = plan({
+      targets: [a],
+      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- reference children consume only fixture ids
+      references: { ...references, voices: [] } as never,
+      dialogueRecording: {
+        scenes: [
+          {
+            voiced: [],
+            dialogueVersionIdByShotId: {},
+            shotSeconds: {},
+            forceAdoptShotIds: [],
+          },
+        ],
+        minDurationSeconds: 1,
+        maxDurationSeconds: 10,
+      },
+      music: {
+        regenPrompt: false,
+        regenTrack: true,
+        sceneSummaries: [],
+        analysisModelId: DEFAULT_ANALYSIS_MODEL,
+        promptSource: 'regenerated',
+        durationSeconds: 30,
+        prompt: 'score',
+        tags: 'calm',
+      },
+    });
+    const result = await run(p, { freshRun: true, reservationId: 'hold' });
+    expect(result.failures).toEqual([]);
+    const phases = emit.mock.calls;
+    expect(
+      phases
+        .filter(([event]) => event === 'generation.phase:start')
+        .map(([, body]) => body.phase)
+    ).toEqual([2, 3, 4, 5, 6]);
+    expect(
+      phases
+        .filter(([event]) => event === 'generation.phase:complete')
+        .map(([, body]) => body.phase)
+    ).toEqual([2, 3, 4, 5, 6]);
+    expect(payloadOf('spawn-character-sheet-maya')).toMatchObject({
+      reservationId: 'hold',
+    });
+    expect(payloadOf('spawn-location-sheet-hall')).toMatchObject({
+      reservationId: 'hold',
+    });
+    expect(payloadOf('spawn-element-sheets')).toMatchObject({
+      reservationId: 'hold',
+    });
   });
 });
