@@ -64,6 +64,7 @@ import { requireCredits } from '@/billing/server/preflight';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { isInsufficientCreditsError } from '@/platform/errors';
 import { buildMotionReferenceImages } from '@/motion/server/build-motion-references';
+import { packedSceneFromScene } from '@/motion/server/assemble-motion-prompt';
 import {
   motionPromptFromVersion,
   resolveMotionPromptFromVersion,
@@ -919,6 +920,10 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               target.dialogue
             ),
             characterTags: scene?.continuity?.characterTags,
+            // One shot of a multi-shot scene renders alone here, so it
+            // carries the scene header a packed clip states once (#1874).
+            packedScene: packedSceneFromScene(scene),
+            attachSceneHeader: target.attachSceneHeader,
           };
           return JSON.stringify(motionInput);
         }

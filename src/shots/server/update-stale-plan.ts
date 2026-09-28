@@ -183,6 +183,13 @@ export type PlanTarget = {
    */
   referenceIds: string[];
   /**
+   * The shot's scene has other live shots. Its clip renders on its own, so
+   * it carries the scene header (location, time, lighting, palette, look) a
+   * packed clip states once — the same rule the fresh run and the batch
+   * footer apply.
+   */
+  attachSceneHeader: boolean;
+  /**
    * Re-record this shot's dialogue audio. True only when a reading already
    * exists (never a FIRST recording) and no longer matches the current
    * lines or voice. Independent of `regenVideo` so a take can be reviewed
@@ -898,6 +905,10 @@ async function decideShotTarget(args: {
       regenVideo: flags.regenVideo,
       createsVideo: flags.regenVideo && !videoState?.hasVideo,
       referenceIds,
+      attachSceneHeader:
+        !!shot.sceneId &&
+        allShots.filter((row) => row.sceneId === shot.sceneId && !row.deletedAt)
+          .length > 1,
       regenDialogue: flags.regenDialogue,
       dialogue,
       // Filled in by `computePlan` once the voices are loaded.

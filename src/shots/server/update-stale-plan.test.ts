@@ -695,6 +695,9 @@ describe("computePlan — a continue's units (#1818)", () => {
       regenVideo: true,
       // No video yet: the continue renders the first one.
       createsVideo: true,
+      // shot-2 shares its scene: the clip renders alone, so it carries the
+      // scene header a packed clip would state once.
+      attachSceneHeader: true,
     });
   });
 
@@ -712,6 +715,8 @@ describe("computePlan — a continue's units (#1818)", () => {
       regenVisual: true,
       regenImage: true,
       imageModel: 'nano_banana_2_lite',
+      // A one-shot scene keeps the LLM prompt path, byte-identical.
+      attachSceneHeader: false,
     });
   });
 
@@ -759,6 +764,7 @@ describe('claimTargets (#1085)', () => {
       regenVideo: false,
       createsVideo: false,
       referenceIds: [],
+      attachSceneHeader: false,
       dialogue: { presence: false, lines: [] },
       dialogueContext: [],
       ...overrides,

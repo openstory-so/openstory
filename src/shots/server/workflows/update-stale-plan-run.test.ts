@@ -143,6 +143,7 @@ function target(shotId: string, referenceIds: string[]): PlanTarget {
     regenVideo: false,
     createsVideo: false,
     referenceIds,
+    attachSceneHeader: false,
     regenDialogue: false,
     dialogue: { presence: false, lines: [] },
     dialogueContext: [],
