@@ -3,7 +3,11 @@
  * Balance, checkout, transactions, and auto-top-up
  */
 
-import { requireTeamAdminAccess } from '@/platform/server/auth/action-utils';
+import {
+  requireTeamAdminAccess,
+  requireTeamMemberAccess,
+} from '@/platform/server/auth/action-utils';
+import { hasMinimumRole } from '@/platform/server/auth/constants';
 import {
   createCheckoutSession,
   createSetupCheckoutSession,
@@ -141,18 +145,32 @@ export type SavedPaymentMethod = {
  * none are on file.
  *
  * Admin-only: these cards belong to whoever set billing up, and
- * `purchaseCreditsFn` can charge them without further consent.
+ * `purchaseCreditsFn` can charge them without further consent. A member
+ * gets `canManage: false` and no cards, so the page can say so.
  */
 export const listPaymentMethodsFn = createServerFn({ method: 'GET' })
   .middleware([authWithTeamMiddleware])
   .handler(
-    async ({ context }): Promise<{ paymentMethods: SavedPaymentMethod[] }> => {
-      if (!isStripeEnabled()) return { paymentMethods: [] };
+    async ({
+      context,
+    }): Promise<{
+      canManage: boolean;
+      paymentMethods: SavedPaymentMethod[];
+    }> => {
+      if (!isStripeEnabled()) return { canManage: false, paymentMethods: [] };
 
-      await requireTeamAdminAccess(context.user.id, context.teamId);
+      const role = await requireTeamMemberAccess(
+        context.user.id,
+        context.teamId
+      );
+      if (!hasMinimumRole(role, 'admin')) {
+        return { canManage: false, paymentMethods: [] };
+      }
 
       const settings = await context.scopedDb.billing.getBillingSettings();
-      if (!settings.stripeCustomerId) return { paymentMethods: [] };
+      if (!settings.stripeCustomerId) {
+        return { canManage: true, paymentMethods: [] };
+      }
 
       // Dynamic import — keeps the Stripe Node SDK out of the client bundle (#1253).
       const { getStripeOrThrow } = await import('@/billing/server/stripe');
@@ -189,7 +207,7 @@ export const listPaymentMethodsFn = createServerFn({ method: 'GET' })
         )
         .sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
 
-      return { paymentMethods };
+      return { canManage: true, paymentMethods };
     }
   );
 

@@ -362,7 +362,7 @@ export function BillingSettings({
                 title="Auto-reload"
                 description="Automatically add credits when your balance runs low"
                 action={
-                  hasCard ? (
+                  !pmData?.canManage ? null : hasCard ? (
                     <Button
                       variant="outline"
                       onClick={() => setAutoTopUpDialogOpen(true)}
@@ -372,7 +372,7 @@ export function BillingSettings({
                   ) : (
                     <Button
                       variant="outline"
-                      disabled={pmLoading || addCardMutation.isPending}
+                      disabled={addCardMutation.isPending}
                       onClick={() => addCardMutation.mutate()}
                     >
                       {addCardMutation.isPending ? 'Opening…' : 'Add card'}
@@ -387,6 +387,10 @@ export function BillingSettings({
               ) : pmError ? (
                 <p className="text-sm text-destructive">
                   Could not load your cards: {pmError.message}
+                </p>
+              ) : !pmData?.canManage ? (
+                <p className="text-sm text-muted-foreground">
+                  Only a team admin can manage cards.
                 </p>
               ) : !hasCard || !balanceData ? (
                 <p className="text-sm text-muted-foreground">
