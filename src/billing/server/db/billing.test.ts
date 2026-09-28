@@ -228,6 +228,30 @@ describe('getTransactionHistory (#1881)', () => {
     expect(last.transactions).toHaveLength(1);
     expect(last.hasMore).toBe(false);
   });
+
+  it('reports no more when the page is exactly full', async () => {
+    const billing = createBillingMethods(db, teamId, userId);
+    for (let i = 0; i < 2; i++) {
+      await billing.deductCredits(micros(1_000));
+    }
+
+    const page = await billing.getTransactionHistory({ limit: 2 });
+    expect(page.transactions).toHaveLength(2);
+    expect(page.hasMore).toBe(false);
+  });
+
+  it('filters by type', async () => {
+    const billing = createBillingMethods(db, teamId, userId);
+    await billing.addCredits(micros(1_000_000), {
+      type: 'credit_adjustment',
+      description: 'seed',
+    });
+    await billing.deductCredits(micros(1_000));
+
+    const usage = await billing.getTransactionHistory({ type: 'credit_usage' });
+    expect(usage.transactions.map((t) => t.type)).toEqual(['credit_usage']);
+    expect(usage.hasMore).toBe(false);
+  });
 });
 
 describe('hasUsedCredits (#1881)', () => {
