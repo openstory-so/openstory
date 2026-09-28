@@ -4,10 +4,8 @@ What a sequence still owes, per entity, as a function of **live D1 only**.
 One answer for the scene-list footer, `continueGenerationFn`, the storyboard
 run and Update all. There is no stored stage and no checkpoint: the old
 `pipelineStage` / `generationCheckpoint` pair was a cache with one writer and
-~80 edits that never moved it, and every mismatch was a refused click.
-Nothing reads or writes the columns since #1819; a follow-up migration drops
-them once that worker is live (migrations run before the deploy, and the old
-worker still selects them).
+~80 edits that never moved it, and every mismatch was a refused click. The
+columns are gone (#1819).
 
 - Pure half (units, requires graph, cascade, Update all's filter, footer
   copy): `src/sequences/generation-plan.ts`.

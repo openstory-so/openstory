@@ -90,8 +90,6 @@ export const createSequenceSchema = createInsertSchema(sequences, {
     musicPrompt: true,
     musicTags: true,
     generationStopAt: true,
-    pipelineStage: true,
-    generationCheckpoint: true,
   })
   .extend({
     // Accept array of models for multi-model sequence creation
@@ -338,8 +336,6 @@ export const updateSequenceSchema = createUpdateSchema(sequences, {
   musicPrompt: true,
   musicTags: true,
   generationStopAt: true,
-  pipelineStage: true,
-  generationCheckpoint: true,
 });
 
 export type CreateSequenceInput = z.infer<typeof createSequenceSchema>;

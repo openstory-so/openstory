@@ -209,14 +209,6 @@ export const sequences = snakeCase.table(
     // stored: what is left is the generation plan, derived from live rows
     // (#1816, #1819).
     generationStopAt: text().$type<GenerationStage>(),
-    // Unread and unwritten since #1819, and left out of every select
-    // (`sequenceColumns`) so the follow-up drop migration, which runs before
-    // its deploy, does not break this worker's reads. They stay here only
-    // because schema and snapshot must agree. Inserts still name them, so a
-    // sequence created in the seconds between that migration and that deploy
-    // fails.
-    pipelineStage: text().$type<GenerationStage>(),
-    generationCheckpoint: text(),
 
     // Suggested talent/location IDs used during generation (for pre-populating the UI)
     suggestedTalentIds: text({
@@ -242,10 +234,7 @@ export type SequenceRecord = InferSelectModel<typeof sequences>;
  * A sequence with its style snapshot resolved from the selected
  * `sequence_style_versions` row (#1600). What every scoped read returns.
  */
-export type Sequence = Omit<
-  SequenceRecord,
-  'legacyStyleConfig' | 'pipelineStage' | 'generationCheckpoint'
-> & {
+export type Sequence = Omit<SequenceRecord, 'legacyStyleConfig'> & {
   styleConfig: StoredStyleConfig | null;
 };
 

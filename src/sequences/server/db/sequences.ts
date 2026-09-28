@@ -85,15 +85,8 @@ import {
 import { generateId } from '@/platform/id';
 
 // The row's own columns: the legacy snapshot is read only through the fallback.
-// `pipelineStage` / `generationCheckpoint` are never selected (#1819): the
-// follow-up drop migration runs before its worker deploys, so this worker must
-// not name them.
-const {
-  legacyStyleConfig: _legacyStyleConfig,
-  pipelineStage: _pipelineStage,
-  generationCheckpoint: _generationCheckpoint,
-  ...sequenceRecordColumns
-} = getTableColumns(sequences);
+const { legacyStyleConfig: _legacyStyleConfig, ...sequenceRecordColumns } =
+  getTableColumns(sequences);
 
 /**
  * Sequence columns with the style snapshot resolved from the selected
