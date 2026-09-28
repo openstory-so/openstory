@@ -365,7 +365,8 @@
       // the `posthog-traces-openstory-prd` destination (Cloudflare dashboard →
       // Workers → Observability → Destinations). Logs stay on the tail
       // forwarder: the native logs destination shipped LogTape JSON as a blob.
-      // Traces sample 10% — every span is a billed event from 2026-10-01.
+      // Traces sample 100% so every error has a trace. Every span is a billed
+      // event from 2026-10-01; ~4M/month measured (Sep 2026) vs 20M included.
       "observability": {
         "enabled": true,
         "head_sampling_rate": 1,
@@ -378,7 +379,7 @@
         "traces": {
           "enabled": true,
           "persist": true,
-          "head_sampling_rate": 0.1,
+          "head_sampling_rate": 1,
           "destinations": ["posthog-traces-openstory-prd"],
         },
       },
