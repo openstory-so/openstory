@@ -478,11 +478,12 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
     },
   ],
   // compute-plan now runs at the trigger, so the plan arrives on the payload.
-  // The three TRIGGER-SNAPSHOT reads below stayed deliberately: they are the
-  // `load-render-refs` step, which is kept OUT of the payload because the
-  // combined plan + scene-context + refs would put a user-supplied input
-  // (script length) against the same 1 MiB cap as everything else.
   'update-stale-shots-workflow.ts': [
+    {
+      read: 'apiKeys.hasUsableKey',
+      bucket: 'BILLING-GUARD',
+      why: 'The references wave bills only platform sheets when fal BYOK is unavailable; voices always spend platform funds.',
+    },
     {
       read: 'shots.getById',
       bucket: 'EXISTENCE-GUARD',

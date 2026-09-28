@@ -860,6 +860,8 @@ export type RegenerateShotSnapshot = {
  * gap on the same terms.
  */
 export interface UpdateStaleShotsWorkflowInput extends SequenceWorkflowContext {
+  /** Fresh handoff announces each phase in order; existing continue keeps its schedule. */
+  freshRun?: boolean;
   sequenceId: string;
   /**
    * The frozen regeneration plan. Optional only because an instance queued by

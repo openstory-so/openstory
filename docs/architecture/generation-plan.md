@@ -239,3 +239,35 @@ by `locationId`, and elements by `token` before assigning image numbers. This
 keeps fresh, continued and manual requests consistent regardless of database
 row order. Each role retains its existing priority, including the primary image;
 labels and URLs are assembled from the same ordered references.
+
+## Executor parity for a fresh handoff (#1891)
+
+`computePlan` accepts optional `renderOptions` with the fresh run's
+`imageModels`, `videoModels` and `audioModels`. Those choices are frozen with
+its units; absent choices retain continue and Update all's single-model
+behavior. Each model gets its own durable child id. The first image/video
+model owns promotion, while alternatives stay selectable history; the first
+music model is primary. A leftover Grok shot remains a single Grok job even
+when the fresh run requests several video models. Draft motion remains on
+the payload and draft-capable models preflight at 480p.
+
+The executor's `freshRun` flag orders and completes every phase with work:
+references, images/prompts, dialogue, motion, music. Existing continue and
+Update all retain their parallel schedule. Visual prompt batching already
+means **one prompt child per one-shot scene**, not one LLM call for several
+scenes (`FramePromptBatchWorkflow`); the executor has the same call count.
+Multi-shot first prompts are supplied by the analysis handoff, so they need
+no additional LLM call in the executor.
+
+All spending children inherit the parent's `reservationId`. A preflight can
+spend the remaining own envelope plus unheld balance, excluding other runs'
+holds. This is checked in one billing read: a missing or exhausted envelope
+never bypasses the balance check. The references wave gates the combined
+sheet and voice liability immediately before its fan-out (a fal key covers
+only sheets); another per-child gate would repeat that same check without
+reserving anything further.
+
+Music prompt and track flags come only from the chosen units. A completed,
+non-stale track is `done` and is not remade just because the stop is Music.
+Track-only regeneration uses the prompt and tags frozen on `MusicPlan`;
+a prompt child replaces them with its own returned text.
