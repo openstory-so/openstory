@@ -870,6 +870,8 @@ export interface UpdateStaleShotsWorkflowInput extends SequenceWorkflowContext {
    * Update all runs without the banner.
    */
   announcePhases?: boolean;
+  /** @see StoryboardWorkflowInput.leftoverGrokShotIds — a continue passes it through. */
+  leftoverGrokShotIds?: string[];
 }
 
 export interface RegenerateShotsWorkflowInput extends SequenceWorkflowContext {

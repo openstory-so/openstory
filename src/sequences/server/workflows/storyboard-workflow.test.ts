@@ -296,11 +296,15 @@ describe('StoryboardWorkflow email-ready', () => {
 });
 
 describe('StoryboardWorkflow stop-at + resume (#1408)', () => {
-  const run = async (extras: Parameters<typeof makeEvent>[1]) => {
+  const run = async (
+    extras: Parameters<typeof makeEvent>[1],
+    childResult: unknown = { failures: [] }
+  ) => {
     notifySequenceReady.mockReset();
     notifySequenceReady.mockResolvedValue('sent');
     spawnAndAwaitChild.mockReset();
-    spawnAndAwaitChild.mockResolvedValue(undefined);
+    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the mock's inferred return is undefined
+    spawnAndAwaitChild.mockResolvedValue(childResult as undefined);
     const db = makeRunImplDb();
     const { step, names } = makeStep();
     await makeWorkflow().invokeRunImpl(
@@ -365,6 +369,26 @@ describe('StoryboardWorkflow stop-at + resume (#1408)', () => {
         childPayload: expect.objectContaining({ plan, announcePhases: true }),
       })
     );
+  });
+
+  test('a continue with a failed unit ends failed and sends no ready email', async () => {
+    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the wrapper only forwards it
+    const plan = { targets: [] } as unknown as NonNullable<
+      StoryboardWorkflowInput['plan']
+    >;
+    const { updateStatus, names } = await run(
+      { stopAt: 'motion', resume: true, plan },
+      {
+        failures: [
+          { shotId: 'shot_1', stage: 'video', error: 'Insufficient credits' },
+        ],
+      }
+    );
+
+    expect(updateStatus).toHaveBeenCalledWith('failed', 'Insufficient credits');
+    expect(updateStatus).not.toHaveBeenCalledWith('completed');
+    expect(names).toContain('emit-failed');
+    expect(names).not.toContain('email-ready');
   });
 
   test('an early stop completes without spending the ready email', async () => {

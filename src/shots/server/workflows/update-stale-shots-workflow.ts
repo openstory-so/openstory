@@ -151,7 +151,7 @@ type UpdateStage =
  */
 type UpdateFailure = { shotId: string; stage: UpdateStage; error: string };
 
-type UpdateStaleShotsResult = {
+export type UpdateStaleShotsResult = {
   totalShots: number;
   visualPrompts: number;
   motionPrompts: number;
@@ -315,11 +315,25 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
     // workflows take theirs. A reference that fails holds the stills and
     // clips made from it (`referenceIds`) and fails nothing else.
     // ============================================================
+    const leftoverGrok = new Set(input.leftoverGrokShotIds ?? []);
     const failedReferenceIds = new Set<string>();
     // character id → the voice this run designed, for `bindPendingVoices`.
     const designedVoices: Record<string, string> = {};
     if (references) {
       if (input.announcePhases) await announce('references');
+      // Sheets and voices have no preflight of their own (per-shot renders
+      // do): check the wave's click-time price before spawning any of it.
+      await step.do('gate-references', async () => {
+        await requireCredits(scopedDb.liveRead, references.cost.sheets, {
+          providers: ['fal'],
+          errorMessage: 'Insufficient credits for reference sheets',
+        });
+        // Voices are platform-only: no team key pays for them.
+        await requireCredits(scopedDb.liveRead, references.cost.voices, {
+          providers: [],
+          errorMessage: 'Insufficient credits for voices',
+        });
+      });
       const failReference = (
         id: string,
         stage: UpdateStage,
@@ -817,14 +831,23 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             !manifestEntry ||
             manifestEntry.motionPromptVersionId !== motionVersion.id ||
             manifestEntry.frameVersionId !== expectedFrameVersionId;
-          if (selectedVideo && !diverged) return null;
+          // The plan judged this very clip stale — for any reason, not only
+          // the two ids above — so it renders while it is still selected.
+          const unchangedSinceClick =
+            selectedVideo !== null &&
+            selectedVideo.id === target.staleVideoVersionId;
+          if (selectedVideo && !diverged && !unchangedSinceClick) return null;
           // Selected-version model → sequence default. (The single-shot fn
           // also consults a last-failed attempt; irrelevant here — a video
           // must already exist for this target to be planned.)
-          const model = resolveVideoModel({
-            selectedVersionModel: selectedVideo?.model,
-            sequenceModel: sequenceSnapshot.videoModel,
-          });
+          // A leftover the user sent to Grok renders there at its 1s floor,
+          // as the fresh run's batch does.
+          const model = leftoverGrok.has(target.shotId)
+            ? 'grok_imagine_video_1_5'
+            : resolveVideoModel({
+                selectedVersionModel: selectedVideo?.model,
+                sequenceModel: sequenceSnapshot.videoModel,
+              });
           const { scene } = resolveSceneForShot(shot, sceneContext);
           const prompt = resolveMotionPromptFromVersion(
             motionVersion,

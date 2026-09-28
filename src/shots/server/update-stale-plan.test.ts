@@ -763,6 +763,7 @@ describe('claimTargets (#1085)', () => {
       imageModel: 'nano_banana_2',
       regenVideo: false,
       createsVideo: false,
+      staleVideoVersionId: null,
       referenceIds: [],
       attachSceneHeader: false,
       dialogue: { presence: false, lines: [] },

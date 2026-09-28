@@ -178,6 +178,13 @@ export type PlanTarget = {
    */
   createsVideo: boolean;
   /**
+   * The clip's selected version at the click, when `regenVideo` judged it
+   * stale. While it is still the selection the run renders, whatever made
+   * it stale (a sheet, a recording, the prompt); a different selection means
+   * someone rendered since, and the manifest check decides.
+   */
+  staleVideoVersionId: string | null;
+  /**
    * The sheet / element rows the still (or reference-only clip) is made
    * from. A references-wave unit of this run that fails holds the shot's
    * image and video rather than render without it.
@@ -684,6 +691,7 @@ function buildShotIndex(allShots: Shot[]): Map<string, number> {
 
 type ShotVideoState = {
   hasVideo: boolean;
+  selectedVersionId: string | null;
   alreadyStale: boolean;
   generating: boolean;
 };
@@ -716,6 +724,7 @@ async function loadVideoStateByShot(
     for (const segShotId of segment.shotIds) {
       byShot.set(segShotId, {
         hasVideo: segment.selectedVersion !== null,
+        selectedVersionId: segment.selectedVersion?.id ?? null,
         alreadyStale: segment.stale,
         generating,
       });
@@ -911,6 +920,9 @@ async function decideShotTarget(args: {
       imageModel,
       regenVideo: flags.regenVideo,
       createsVideo: flags.regenVideo && !videoState?.hasVideo,
+      staleVideoVersionId: flags.regenVideo
+        ? (videoState?.selectedVersionId ?? null)
+        : null,
       referenceIds,
       attachSceneHeader:
         !!shot.sceneId &&

@@ -11,10 +11,11 @@ const dialogue = (character: string) => ({
   presence: true,
   lines: [{ character, line: 'Hello.', tone: '' }],
 });
-const sceneLine = (shotId: string, character: string) => ({
-  ...voicedDialogueLines(dialogue(character), characterVoices)[0]!,
-  shotId,
-});
+const sceneLine = (shotId: string, character: string) => {
+  const [line] = voicedDialogueLines(dialogue(character), characterVoices);
+  if (!line) throw new Error(`no voiced line for ${character}`);
+  return { ...line, shotId };
+};
 
 function planWith(): UpdateStalePlan {
   const target = (shotId: string, character: string) => ({
@@ -24,6 +25,7 @@ function planWith(): UpdateStalePlan {
     dialogue: dialogue(character),
     dialogueContext: [sceneLine(shotId, character)],
   });
+  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- only the dialogue fields are read
   return {
     characterVoices,
     dialogueRecording: {
