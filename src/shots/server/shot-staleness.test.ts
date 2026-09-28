@@ -83,13 +83,13 @@ function makeScopedDb(overrides: {
 }) {
   return asStub<ScopedDb>({
     characters: {
-      listWithSheets: vi.fn().mockResolvedValue([]),
+      list: vi.fn().mockResolvedValue([]),
       listBibleVersionsBySequence: vi
         .fn()
         .mockResolvedValue(overrides.characterBibleVersions ?? []),
     },
     sequenceLocations: {
-      listWithReferences: vi.fn().mockResolvedValue([]),
+      list: vi.fn().mockResolvedValue([]),
       listBibleVersionsBySequence: vi
         .fn()
         .mockResolvedValue(overrides.locationBibleVersions ?? []),

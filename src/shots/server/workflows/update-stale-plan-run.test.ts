@@ -84,6 +84,16 @@ const spawnAndAwaitChild = vi.fn(
         throw new Error('sheet model refused');
       }
     }
+    if (args.spawnStepName === 'spawn-character-sheet-maya')
+      return {
+        sheetImageUrl: 'https://x/new-maya.png',
+        sheetVersionId: 'new-maya-version',
+      };
+    if (args.spawnStepName === 'spawn-location-sheet-hall')
+      return {
+        referenceImageUrl: 'https://x/new-hall.png',
+        referenceVersionId: 'new-hall-version',
+      };
     if (args.spawnStepName.startsWith('spawn-frame-prompt-'))
       return { finalVersionId: 'visual-result' };
     if (args.spawnStepName === 'spawn-dialogue-audio')
@@ -739,4 +749,61 @@ describe('fresh executor parity (#1891)', () => {
       reservationId: 'hold',
     });
   });
+});
+
+it('overlays first generated sheets onto the pending bible rows before a fresh still', async () => {
+  spawnAndAwaitChild.mockClear();
+  failCharacter.clear();
+  const { prepareShotImageWorkflowInput } =
+    await import('@/shots/server/shot-image-input');
+  vi.mocked(prepareShotImageWorkflowInput).mockClear();
+  const result = await run(
+    plan({
+      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal child payloads
+      references: {
+        characterSheets: [{ characterDbId: 'maya' }],
+        locationSheets: [{ locationDbId: 'hall' }],
+        elementSheets: null,
+        voices: [],
+        cost: { sheets: 0, voices: 0 },
+      } as never,
+      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- pending row identity and media are the exercised fields
+      renderRefs: {
+        characters: [
+          { id: 'maya', sheetImageUrl: null, selectedSheetVersionId: null },
+        ],
+        locations: [
+          {
+            id: 'hall',
+            referenceImageUrl: null,
+            selectedReferenceVersionId: null,
+          },
+        ],
+        elements: [],
+      } as never,
+      targets: [target('fresh-shot', ['maya', 'hall'])],
+    }),
+    { freshRun: true }
+  );
+  expect(result.failures).toEqual([]);
+  expect(prepareShotImageWorkflowInput).toHaveBeenCalledWith(
+    expect.objectContaining({
+      refs: expect.objectContaining({
+        characters: [
+          expect.objectContaining({
+            id: 'maya',
+            sheetImageUrl: 'https://x/new-maya.png',
+            selectedSheetVersionId: 'new-maya-version',
+          }),
+        ],
+        locations: [
+          expect.objectContaining({
+            id: 'hall',
+            referenceImageUrl: 'https://x/new-hall.png',
+            selectedReferenceVersionId: 'lrv-hall',
+          }),
+        ],
+      }),
+    })
+  );
 });

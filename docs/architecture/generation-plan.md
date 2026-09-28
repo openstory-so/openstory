@@ -294,3 +294,10 @@ Scene and style changes still invalidate it. Later LLM regeneration uses saved
 sibling directions as context and restores the normal still dependency. Restore,
 rename and provider rescue preserve derived provenance when they retain that
 origin. A user edit uses the ordinary current-input provenance.
+
+Planning and prompt staleness load every active character/location bible, even
+before its first sheet exists. The selected sheet fields on these rows remain
+optional. Filtering these inputs to completed sheets changes a derived prompt's
+hash during the fresh handoff and loses the reference IDs needed to attach the
+executor's newly generated sheets. Sheet-only readers keep their narrower APIs;
+prompt contexts and frozen plan reference membership use the complete bible.

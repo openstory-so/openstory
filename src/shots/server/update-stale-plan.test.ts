@@ -232,10 +232,12 @@ function buildScopedDb(
         Promise.resolve(opts.motionPrompts ?? new Map()),
     },
     characters: {
-      listWithSheets: () => Promise.resolve([]),
       list: () => Promise.resolve([]),
     },
-    sequenceLocations: { listWithReferences: () => Promise.resolve([]) },
+    sequenceLocations: {
+      list: () => Promise.resolve([]),
+      listWithReferences: () => Promise.resolve([]),
+    },
     sequenceElements: { list: () => Promise.resolve([]) },
     styles: { getById: () => Promise.resolve(null) },
     renderSegments: {
@@ -305,7 +307,6 @@ describe('computePlan — a dialogue unit (#1703, #1780 §6)', () => {
         getSelectedBySequence: () => Promise.resolve([voicedVersion]),
       },
       characters: {
-        listWithSheets: () => Promise.resolve([]),
         list: () =>
           Promise.resolve([{ name: 'Woman', voiceId: 'voice-woman' }]),
       },

@@ -153,8 +153,8 @@ export async function loadShotStalenessBatch(
     await Promise.all([
       scopedDb.frames.listAnchorsBySequence(sequence.id),
       loadSceneContextBySequence(scopedDb, sequence.id),
-      scopedDb.characters.listWithSheets(sequence.id),
-      scopedDb.sequenceLocations.listWithReferences(sequence.id),
+      scopedDb.characters.list(sequence.id),
+      scopedDb.sequenceLocations.list(sequence.id),
       scopedDb.sequenceElements.list(sequence.id),
       sequence.styleId
         ? scopedDb.styles.getById(sequence.styleId)
@@ -480,8 +480,8 @@ export async function computeShotStaleness(args: {
         const [characters, locations, elements] = refs
           ? [refs.characters, refs.locations, refs.elements]
           : await Promise.all([
-              scopedDb.characters.listWithSheets(sequence.id),
-              scopedDb.sequenceLocations.listWithReferences(sequence.id),
+              scopedDb.characters.list(sequence.id),
+              scopedDb.sequenceLocations.list(sequence.id),
               scopedDb.sequenceElements.list(sequence.id),
             ]);
 
@@ -741,10 +741,8 @@ export async function computeShotStaleness(args: {
   if ([thumbnail, visualPrompt, motionPrompt].includes('stale')) {
     try {
       const resolvedRefs: ShotStalenessRefs = refs ?? {
-        characters: await scopedDb.characters.listWithSheets(sequence.id),
-        locations: await scopedDb.sequenceLocations.listWithReferences(
-          sequence.id
-        ),
+        characters: await scopedDb.characters.list(sequence.id),
+        locations: await scopedDb.sequenceLocations.list(sequence.id),
         elements: await scopedDb.sequenceElements.list(sequence.id),
         style: sequence.styleId
           ? await scopedDb.styles.getById(sequence.styleId)

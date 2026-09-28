@@ -586,29 +586,21 @@ export async function computePlan(args: {
     : new Map<string, ShotVideoState>();
 
   await scopedDb.shots.ensureAnchorFrames(inScope);
-  const [
-    anchorRows,
-    scriptBySceneId,
-    characters,
-    locations,
-    elements,
-    style,
-    voiceRows,
-  ] = await Promise.all([
-    scopedDb.frames.listAnchorsBySequence(sequenceId),
-    loadSceneContextBySequence(scopedDb, sequenceId),
-    scopedDb.characters.listWithSheets(sequenceId),
-    scopedDb.sequenceLocations.listWithReferences(sequenceId),
-    scopedDb.sequenceElements.list(sequenceId),
-    sequence.styleId
-      ? scopedDb.styles.getById(sequence.styleId)
-      : Promise.resolve(null),
-    scopedDb.characters.list(sequenceId),
-  ]);
+  const [anchorRows, scriptBySceneId, characters, locations, elements, style] =
+    await Promise.all([
+      scopedDb.frames.listAnchorsBySequence(sequenceId),
+      loadSceneContextBySequence(scopedDb, sequenceId),
+      scopedDb.characters.list(sequenceId),
+      scopedDb.sequenceLocations.list(sequenceId),
+      scopedDb.sequenceElements.list(sequenceId),
+      sequence.styleId
+        ? scopedDb.styles.getById(sequence.styleId)
+        : Promise.resolve(null),
+    ]);
   // A voice this run designs (#1818) speaks under a placeholder until the
   // references wave lands it — `bindPendingVoices`.
   const owedVoiceIds = new Set(references?.voices.map((v) => v.characterDbId));
-  const characterVoices = voiceRows.flatMap((row) => {
+  const characterVoices = characters.flatMap((row) => {
     const voiceId = owedVoiceIds.has(row.id)
       ? pendingVoiceId(row.id)
       : row.voiceId;
