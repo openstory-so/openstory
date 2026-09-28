@@ -1,3 +1,4 @@
+import { packedSceneFromScene } from '@/motion/server/assemble-motion-prompt';
 import {
   DEFAULT_IMAGE_MODEL,
   DEFAULT_MUSIC_MODEL,
@@ -1206,6 +1207,10 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
                 return {
                   shotId: f.id,
                   sceneId: f.sceneId,
+                  packedScene: packedSceneFromScene(sceneOf(f)),
+                  attachSceneHeader:
+                    allShots.filter((row) => row.sceneId === f.sceneId).length >
+                    1,
                   // Reference-only carries no still; every other eligible shot
                   // has one. Same encoding as the batch path in
                   // `generateBatchMotionFn`: a null `frameVersionId` means the

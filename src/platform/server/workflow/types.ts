@@ -706,7 +706,7 @@ export interface MotionWorkflowInput
    * Scene look for the packed prompt header (environment first, once).
    * Snapshotted at the trigger — the run must not re-read the scene.
    */
-  packedScene?: PackedMotionSceneHeader;
+  packedScene: PackedMotionSceneHeader;
   /**
    * This shot belongs to a 2+ shot scene. A 1-shot job (Grok, or a tile
    * that did not pack) still prepends the packed environment so lighting /
@@ -1698,7 +1698,7 @@ export interface BatchMotionMusicWorkflowInput extends SequenceWorkflowContext {
     /** Persisted clip membership — packing keeps this group on regenerate. */
     renderSegmentId?: string | null;
     /** See `MotionWorkflowInput.packedScene`. */
-    packedScene?: PackedMotionSceneHeader;
+    packedScene: PackedMotionSceneHeader;
     /** See `MotionWorkflowInput.attachSceneHeader`. */
     attachSceneHeader?: boolean;
     /** The start frame. Absent only when `referenceOnly` is set. */

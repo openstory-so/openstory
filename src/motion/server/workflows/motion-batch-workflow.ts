@@ -19,24 +19,17 @@ import {
 import { reportBytePlusAssetPool } from '@/models/server/byteplus-observability';
 import { isBytePlusAssetsConfigured } from '@/models/server/byteplus-config';
 import { arkStillsToRegister } from '@/motion/server/motion-generation';
-import {
-  videoPromptHardLimit,
-  isNativeBytePlusVideoModel,
-} from '@/models/models';
+import { isNativeBytePlusVideoModel } from '@/models/models';
 import { resolveAudioModels } from '@/models/resolve-audio-models';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
-import {
-  assembleMotionPrompt,
-  assemblePackedMotionPrompt,
-  packedPromptFitsLimit,
-} from '@/motion/server/assemble-motion-prompt';
-import { packMotionBatchShots } from '@/motion/server/pack-motion-jobs';
+
+import { buildMotionRender } from '@/motion/server/build-motion-render';
 import type { MotionAudioClip } from '@/platform/server/db/schema';
 import { getGenerationChannel } from '@/platform/realtime';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
 import { WorkflowValidationError } from '@/platform/server/workflow/errors';
-import { attachRecordedClips, buildMotionJobs } from './motion-batch-jobs';
+import { attachRecordedClips } from './motion-batch-jobs';
 import type {
   BatchMotionMusicWorkflowInput,
   DialogueAudioWorkflowInput,
@@ -128,123 +121,9 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
     // the rest are alternates in `shot_variants`. Pattern 3 spawns + awaits
     // each child via `spawnAndAwaitChild`; Promise.allSettled lets a single
     // failing (shot, model) not poison the rest of the batch.
-    const packedShots = packMotionBatchShots(shots, input.videoModels, {
-      promptFits: (members) => {
-        const models = input.videoModels?.length
-          ? [...new Set(input.videoModels)]
-          : members[0]?.model
-            ? [members[0].model]
-            : [];
-        if (models.length === 0) return true;
-        return models.every((packModel) =>
-          packedPromptFitsLimit(
-            assemblePackedMotionPrompt({
-              shots: members.map((member) => ({
-                durationSeconds: member.duration ?? 3,
-                motionPrompt: member.motionPrompt,
-                prompt: member.prompt,
-                characterTags: member.characterTags,
-                generateAudio: member.generateAudio,
-              })),
-              model: packModel,
-              generateAudio: members[0]?.generateAudio,
-              scene: members[0]?.packedScene,
-            }),
-            videoPromptHardLimit(packModel)
-          )
-        );
-      },
-    });
-    const motionJobs = buildMotionJobs(packedShots, input.videoModels);
-
-    const motionAwaits = motionJobs.map(({ shot, shotIndex, model }) => {
-      // Per-model prompt: re-assemble from the structured motion prompt when
-      // present so audio-capable models get dialogue/audio sections, falling
-      // back to the pre-assembled `prompt` for manual single-model paths.
-      // Packed in-clip jobs (#1510) compose every member's prompt with that
-      // model's cut syntax; a 1-shot job stays the existing path.
-      const members = shot.coveredShots;
-      const packed =
-        members && members.length > 1
-          ? assemblePackedMotionPrompt({
-              shots: members.map((member) => ({
-                durationSeconds: member.duration ?? shot.duration ?? 3,
-                motionPrompt: member.motionPrompt,
-                prompt: member.prompt ?? shot.prompt,
-                characterTags: member.characterTags ?? shot.characterTags,
-                generateAudio: shot.generateAudio,
-              })),
-              model,
-              generateAudio: shot.generateAudio,
-              scene: shot.packedScene ?? members[0]?.packedScene,
-            })
-          : null;
-      const prompt = packed
-        ? packed.prompt
-        : shot.motionPrompt
-          ? assembleMotionPrompt({
-              motionPrompt: shot.motionPrompt,
-              model,
-              characterTags: shot.characterTags,
-              generateAudio: shot.generateAudio,
-              attachSceneHeader: shot.attachSceneHeader,
-              scene: shot.packedScene,
-            })
-          : shot.prompt;
-      const voicedLines = members
-        ? members.flatMap((member) => member.voicedLines ?? [])
-        : shot.voicedLines;
-      const audioClips = members
-        ? members.flatMap((member) => member.audioClips ?? [])
-        : shot.audioClips;
-
-      const motionBody: MotionWorkflowInput = {
-        userId: input.userId,
-        teamId: input.teamId,
-        shotId: shot.shotId,
-        sequenceId,
-        // Pinned at the trigger — passed through untouched, never re-derived.
-        sceneId: shot.sceneId,
-        imageUrl: shot.imageUrl,
-        referenceOnly: shot.referenceOnly,
-        frameVersionId: shot.frameVersionId,
-        motionPromptVersionId: shot.motionPromptVersionId,
-        prompt,
-        model,
-        duration: shot.duration,
-        fps: shot.fps,
-        motionBucket: shot.motionBucket,
-        aspectRatio: shot.aspectRatio,
-        resolution: shot.resolution,
-        draft: shot.draft,
-        generateAudio: shot.generateAudio,
-        sceneTitle: shot.sceneTitle,
-        sequenceTitle: shot.sequenceTitle,
-        // Only a batch queued before #1786 carries these; see PreClickEditPayload.
-        userEditProvenance: shot.userEditProvenance,
-        userEditText: shot.userEditText,
-        priorMotion: shot.priorMotion,
-        // Cast/element reference images (#873) — carried by every model, on
-        // the wire or as substituted descriptions.
-        referenceImages: shot.referenceImages,
-        voicedLines,
-        // The conversation around the shot (#1657) — without it the child
-        // records the shot's lines as a cold read.
-        dialogueContext: shot.dialogueContext,
-        audioClips:
-          audioClips && audioClips.length > 0 ? audioClips : undefined,
-        motionPrompt: shot.motionPrompt,
-        characterTags: shot.characterTags,
-        packedScene: shot.packedScene,
-        attachSceneHeader: shot.attachSceneHeader,
-        // Add-model (#547) batches generate alternates only — the child must
-        // not write the legacy `shots.video*` columns.
-        variantOnly: input.variantOnly,
-        reservationId: input.reservationId,
-        coveredShots: members,
-        multiPrompt: packed?.multiPrompt,
-      };
-
+    const motionJobs = buildMotionRender({ ...input, shots });
+    const motionAwaits = motionJobs.map(({ input: motionBody, shotIndex }) => {
+      const { model, shotId } = motionBody;
       return spawnAndAwaitChild<MotionWorkflowInput, MotionWorkflowResult>(
         step,
         {
@@ -253,7 +132,7 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
           parentInstanceId,
           // The model token keeps sibling-model children from colliding on the
           // global CF instance id (mirrors shot-images' childId scheme).
-          childId: `motion:${sequenceId}:${shot.shotId}:${model}`,
+          childId: `motion:${sequenceId}:${shotId}:${model}`,
           childPayload: motionBody,
           spawnStepName: `spawn-motion-${shotIndex}-${model}`,
           awaitStepName: `await-motion-${shotIndex}-${model}`,
@@ -332,7 +211,7 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
         // don't reliably survive into the log body (the June 7 run produced
         // bare "Motion failed for shot …:" lines with no cause attached).
         logger.warn(
-          `[MotionBatchWorkflow:cf] Motion failed for shot ${job?.shot.shotId ?? '(unknown)'} model ${job?.model ?? '(unknown)'}: ${String(r.reason)}`,
+          `[MotionBatchWorkflow:cf] Motion failed for shot ${job?.input.shotId ?? '(unknown)'} model ${job?.input.model ?? '(unknown)'}: ${String(r.reason)}`,
           {
             err: r.reason,
           }

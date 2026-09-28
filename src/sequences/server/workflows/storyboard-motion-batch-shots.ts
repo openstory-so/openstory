@@ -1,3 +1,4 @@
+import { buildMotionShotPrompt } from '@/motion/server/build-motion-render';
 /**
  * Build the per-shot payload analyze-script hands to motion-batch.
  *
@@ -37,10 +38,7 @@ import {
   type ShotDialogueLine,
 } from '@/shots/shot-dialogue';
 import type { MotionAudioClip } from '@/platform/server/db/schema';
-import {
-  assembleMotionPrompt,
-  packedSceneFromScene,
-} from '@/motion/server/assemble-motion-prompt';
+import { packedSceneFromScene } from '@/motion/server/assemble-motion-prompt';
 import { buildMotionReferenceImages } from '@/motion/server/build-motion-references';
 import { getLogger } from '@/platform/logger';
 import { WorkflowValidationError } from '@/platform/server/workflow/errors';
@@ -168,7 +166,7 @@ export function buildStoryboardMotionBatchShots(input: {
       mapping.shotId && leftoverGrok.has(mapping.shotId)
         ? 'grok_imagine_video_1_5'
         : input.videoModel;
-    const prompt = assembleMotionPrompt({
+    const prompt = buildMotionShotPrompt({
       motionPrompt: motionPromptData,
       model: shotModel,
       characterTags,

@@ -26,7 +26,11 @@ const FRESH: ShotStalenessResult = {
 };
 
 // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test stub; computePlan only reads sceneId off the scene
-const scene = { sceneId: 'scene-1' } as unknown as Scene;
+const scene = {
+  sceneId: 'scene-1',
+  metadata: { title: 'Scene 1' },
+  originalScript: { extract: '' },
+} as unknown as Scene;
 
 function makeShot(overrides: Partial<Shot> = {}): Shot {
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal Shot stub exposing only what computePlan reads
@@ -464,6 +468,7 @@ describe('claimTargets (#1085)', () => {
       staleVideoVersionId: null,
       referenceIds: [],
       attachSceneHeader: false,
+      motionRender: { packedScene: {}, description: '', selectedModel: null },
       dialogue: { presence: false, lines: [] },
       dialogueContext: [],
       ...overrides,
@@ -707,7 +712,11 @@ describe('computePlan — durable step-result size', () => {
       beforeShotId: 'shot-0',
       afterShotId: 'shot-2',
     });
-    expect(JSON.stringify(target)).not.toContain('sceneId');
+    expect(target).not.toHaveProperty('scene');
+    expect(target?.motionRender).toMatchObject({
+      sceneId: 'scene-1',
+      packedScene: {},
+    });
   });
 });
 
@@ -750,5 +759,29 @@ describe('findTargetMissingStartFrameMode', () => {
 
   it('passes an empty plan', () => {
     expect(findTargetMissingStartFrameMode({ targets: [] })).toBeNull();
+  });
+});
+
+describe('computePlan — persisted clip membership', () => {
+  it('freezes fresh siblings without adding their prompt or still work', async () => {
+    const result = await plan(
+      [
+        makeShot({ id: 'a', renderSegmentId: 'segment' }),
+        makeShot({ id: 'b', renderSegmentId: 'segment' }),
+      ],
+      [
+        makeFrame({ id: 'fa', shotId: 'a' }),
+        makeFrame({ id: 'fb', shotId: 'b' }),
+      ],
+      { units: [{ kind: 'clip', id: 'a' }] }
+    );
+    expect(result.targets.map((target) => target.shotId)).toEqual(['a', 'b']);
+    expect(result.targets[1]).toMatchObject({
+      regenVideo: true,
+      regenVisual: false,
+      regenImage: false,
+      regenMotion: false,
+      motionRender: { renderSegmentId: 'segment', siblingShotIds: ['a', 'b'] },
+    });
   });
 });

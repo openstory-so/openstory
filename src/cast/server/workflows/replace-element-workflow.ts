@@ -1,3 +1,4 @@
+import { buildMotionRender } from '@/motion/server/build-motion-render';
 /**
  * The `replaceElementWorkflow` durable workflow.
  *
@@ -571,19 +572,27 @@ export class ReplaceElementWorkflow extends OpenStoryWorkflowEntrypoint<ReplaceE
           }
 
           const durationMs = snapshots[shotId]?.durationMs;
-          const childPayload: MotionWorkflowInput = {
+          const renderJobs = buildMotionRender({
             userId: input.userId,
             teamId: input.teamId,
             sequenceId,
-            shotId,
-            imageUrl: newThumbnailUrl,
-            referenceOnly: false,
-            prompt: motionPrompt,
-            model: videoModel,
-            aspectRatio,
-            resolution: input.resolution,
-            duration: durationMs ? durationMs / 1000 : undefined,
-          };
+            shots: [
+              {
+                packedScene: {},
+                shotId,
+                imageUrl: newThumbnailUrl,
+                referenceOnly: false,
+                prompt: motionPrompt,
+                model: videoModel,
+                aspectRatio,
+                resolution: input.resolution,
+                duration: durationMs ? durationMs / 1000 : undefined,
+              },
+            ],
+          });
+          const childPayload = renderJobs[0]?.input;
+          if (!childPayload)
+            throw new NonRetryableError('Missing motion render');
 
           try {
             await spawnAndAwaitChild<MotionWorkflowInput, MotionChildResult>(
