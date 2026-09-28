@@ -162,36 +162,54 @@ describe('recorded derived still fixtures', () => {
         (entry) => entry.name === 'Product Ad'
       )?.config;
       if (!style) throw new Error('Missing Product Ad style');
-      // Fixture identities stand in for generated URLs; request text depends on tokens/order, not URLs.
+      // Use canonical bible identity order, independent of SQL row order.
+      // Fixture identities stand in for generated URLs; text depends on tokens/order, not URLs.
       const characters: Parameters<
         typeof buildShotImageReferenceImages
-      >[0]['characters'] = replay.characterBible.map((entry) => ({
-        ...entry,
-        id: entry.characterId,
-        sheetImageUrl: `https://fixture/${entry.characterId}`,
-        sheetInputHash: null,
-        selectedSheetVersionId: null,
-        sheetStatus: 'completed',
-      }));
+      >[0]['characters'] = replay.characterBible
+        .slice()
+        .sort((a, b) =>
+          a.characterId < b.characterId
+            ? -1
+            : a.characterId > b.characterId
+              ? 1
+              : 0
+        )
+        .map((entry) => ({
+          ...entry,
+          id: entry.characterId,
+          sheetImageUrl: `https://fixture/${entry.characterId}`,
+          sheetInputHash: null,
+          selectedSheetVersionId: null,
+          sheetStatus: 'completed',
+        }));
       const locations: Parameters<
         typeof buildShotImageReferenceImages
-      >[0]['locations'] = replay.locationBible.map((entry) => ({
-        ...entry,
-        id: entry.locationId,
-        referenceImageUrl: `https://fixture/${entry.locationId}`,
-        referenceInputHash: null,
-        selectedReferenceVersionId: null,
-        referenceStatus: 'completed',
-      }));
+      >[0]['locations'] = replay.locationBible
+        .slice()
+        .sort((a, b) =>
+          a.locationId < b.locationId ? -1 : a.locationId > b.locationId ? 1 : 0
+        )
+        .map((entry) => ({
+          ...entry,
+          id: entry.locationId,
+          referenceImageUrl: `https://fixture/${entry.locationId}`,
+          referenceInputHash: null,
+          selectedReferenceVersionId: null,
+          referenceStatus: 'completed',
+        }));
       const elements: Parameters<
         typeof buildShotImageReferenceImages
-      >[0]['elements'] = replay.elementBible.map((entry) => ({
-        ...entry,
-        id: entry.token,
-        imageUrl: `https://fixture/${entry.token}`,
-        kind: 'image',
-        durationSeconds: null,
-      }));
+      >[0]['elements'] = replay.elementBible
+        .slice()
+        .sort((a, b) => (a.token < b.token ? -1 : a.token > b.token ? 1 : 0))
+        .map((entry) => ({
+          ...entry,
+          id: entry.token,
+          imageUrl: `https://fixture/${entry.token}`,
+          kind: 'image',
+          durationSeconds: null,
+        }));
       const dir = resolve(
         dirname(fileURLToPath(import.meta.url)),
         '../../../e2e/fixtures/recorded/xai'
