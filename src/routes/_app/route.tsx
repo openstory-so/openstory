@@ -30,8 +30,8 @@ export const Route = createFileRoute('/_app')({
     // a team, and the hook's conservative fallback is the right answer for
     // them. Never fatal: a failure here must not take down the app shell over
     // an advisory capability hint.
-    // The balance seed is what lets the welcome dialog decide whether to
-    // open at all on first paint.
+    // The balance seed lets the credit pill paint its balance on first
+    // render instead of after a client fetch.
     if (session) {
       await Promise.all([
         queryClient

@@ -302,7 +302,7 @@ describe('captureSavedCardStripeError', () => {
         distinctId: 'user_1',
         teamId: 'team_1',
         amountUsd: 10,
-        surface: 'welcome_dialog',
+        surface: 'sidebar_pill',
       }
     );
     expect(captureProductEvent).toHaveBeenCalledTimes(2);
@@ -316,7 +316,7 @@ describe('captureSavedCardStripeError', () => {
         reason: 'card_declined',
         stripe_error_code: 'card_declined',
         stripe_decline_code: 'generic_decline',
-        surface: 'welcome_dialog',
+        surface: 'sidebar_pill',
       },
     });
   });

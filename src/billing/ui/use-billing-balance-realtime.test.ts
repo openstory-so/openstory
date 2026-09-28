@@ -22,7 +22,6 @@ const prev: Prev = {
     amountUsd: null,
     lastFailure: null,
   },
-  hasPaymentMethod: false,
 };
 
 const usage = {

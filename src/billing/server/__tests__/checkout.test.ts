@@ -1,14 +1,18 @@
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { describe, expect, it, vi } from 'vitest';
+import type Stripe from 'stripe';
 
 const create = vi.fn();
+const updateCustomer = vi.fn();
+const retrieveSetupIntent = vi.fn();
 vi.doMock('@/billing/server/stripe', () => ({
   getStripeOrThrow: () => ({
     customers: {
       retrieve: vi.fn().mockResolvedValue({ deleted: false }),
       create: vi.fn().mockResolvedValue({ id: 'cus_new' }),
-      update: vi.fn(),
+      update: updateCustomer,
     },
+    setupIntents: { retrieve: retrieveSetupIntent },
     checkout: {
       sessions: { create },
     },
@@ -20,8 +24,11 @@ vi.doMock('@/platform/server/observability/product-events', () => ({
   captureProductEvent,
 }));
 
-const { createCheckoutSession, createSetupCheckoutSession } =
-  await import('@/billing/server/checkout');
+const {
+  createCheckoutSession,
+  createSetupCheckoutSession,
+  saveCardFromCheckout,
+} = await import('@/billing/server/checkout');
 
 function makeScopedDb() {
   const stub = {
@@ -30,6 +37,7 @@ function makeScopedDb() {
         .fn()
         .mockResolvedValue({ stripeCustomerId: 'cus_1' }),
       saveStripeCustomerId: vi.fn(),
+      clearAutoTopUpFailure: vi.fn(),
     },
   };
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal ScopedDb stub
@@ -139,5 +147,54 @@ describe('createCheckoutSession', () => {
       type: 'save_card',
     });
     expect(session.setup_intent_data.metadata).toEqual(session.metadata);
+  });
+});
+
+describe('saveCardFromCheckout', () => {
+  function setup(session: object) {
+    const billing = {
+      saveStripeCustomerId: vi.fn(),
+      clearAutoTopUpFailure: vi.fn(),
+    };
+    updateCustomer.mockClear();
+    return {
+      billing,
+      run: () =>
+        saveCardFromCheckout(
+          // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal Checkout session
+          session as Stripe.Checkout.Session,
+          // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal ScopedDb stub
+          { billing } as unknown as ScopedDb
+        ),
+    };
+  }
+
+  it('makes the SetupIntent card the default and records the customer', async () => {
+    retrieveSetupIntent.mockResolvedValue({ payment_method: 'pm_1' });
+    const { billing, run } = setup({
+      customer: 'cus_1',
+      setup_intent: 'seti_1',
+    });
+
+    await run();
+
+    expect(retrieveSetupIntent).toHaveBeenCalledWith('seti_1');
+    expect(updateCustomer).toHaveBeenCalledWith('cus_1', {
+      invoice_settings: { default_payment_method: 'pm_1' },
+    });
+    expect(billing.saveStripeCustomerId).toHaveBeenCalledWith('cus_1');
+    expect(billing.clearAutoTopUpFailure).toHaveBeenCalled();
+  });
+
+  it('throws so Stripe retries when the card is missing', async () => {
+    retrieveSetupIntent.mockResolvedValue({ payment_method: null });
+    const { billing, run } = setup({
+      customer: 'cus_1',
+      setup_intent: 'seti_1',
+    });
+
+    await expect(run()).rejects.toThrow('missing customer or payment method');
+    expect(updateCustomer).not.toHaveBeenCalled();
+    expect(billing.saveStripeCustomerId).not.toHaveBeenCalled();
   });
 });

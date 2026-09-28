@@ -230,18 +230,37 @@ export async function createSetupCheckoutSession(
   return { url: session.url };
 }
 
-/** A saved card becomes the default — auto top-up charges it. */
-export async function setDefaultCard(opts: {
-  scopedDb: ScopedDb;
-  customerId: string;
-  paymentMethodId: string;
-}): Promise<void> {
+/**
+ * A completed save-card Checkout: the card becomes the customer's default,
+ * which auto top-up charges. Throws when Stripe left out the customer or
+ * card, so the webhook 400s and Stripe retries.
+ */
+export async function saveCardFromCheckout(
+  session: Stripe.Checkout.Session,
+  scopedDb: ScopedDb
+): Promise<void> {
   const stripe = getStripeOrThrow();
-  await stripe.customers.update(opts.customerId, {
-    invoice_settings: { default_payment_method: opts.paymentMethodId },
+  const customerId = objectId(session.customer);
+  const setupIntent =
+    typeof session.setup_intent === 'string'
+      ? await stripe.setupIntents.retrieve(session.setup_intent)
+      : session.setup_intent;
+  const paymentMethodId = objectId(setupIntent?.payment_method);
+  if (!customerId || !paymentMethodId) {
+    throw new Error('save_card checkout missing customer or payment method');
+  }
+  await stripe.customers.update(customerId, {
+    invoice_settings: { default_payment_method: paymentMethodId },
   });
-  await opts.scopedDb.billing.saveStripeCustomerId(opts.customerId);
-  await opts.scopedDb.billing.clearAutoTopUpFailure();
+  await scopedDb.billing.saveStripeCustomerId(customerId);
+  await scopedDb.billing.clearAutoTopUpFailure();
+}
+
+function objectId(
+  value: string | { id: string } | null | undefined
+): string | undefined {
+  if (!value) return undefined;
+  return typeof value === 'string' ? value : value.id;
 }
 
 export async function teamHasSavedCard(scopedDb: ScopedDb): Promise<boolean> {

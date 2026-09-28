@@ -2,8 +2,8 @@
  * Add Credits Dialog Store (#1099)
  *
  * Opens the single globally-mounted AddCreditsDialog. Callers: the sidebar
- * wallet pill, the billing gate's "Add credits" card, billing settings, the
- * welcome dialog, and the pricing page CTA.
+ * wallet pill, the billing gate's "Add credits" card, billing settings, and
+ * the pricing page CTA.
  */
 
 import { createDialogStore } from '@/ui/create-dialog-store';

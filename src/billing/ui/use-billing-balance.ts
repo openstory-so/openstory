@@ -40,7 +40,7 @@ function asOfMs(data: unknown): number {
     : -Infinity;
 }
 
-/** Seeded in the app shell's beforeLoad so the welcome dialog paints on
+/** Seeded in the app shell's beforeLoad so the credit pill paints on
  *  first render instead of after a client fetch. */
 export const billingBalanceQueryOptions = queryOptions({
   queryKey: [...BILLING_BALANCE_KEY],

@@ -87,7 +87,7 @@ export const createSetupCheckoutSessionFn = createServerFn({ method: 'POST' })
       teamId: context.teamId,
       userId: context.user.id,
       userEmail: context.user.email,
-      successUrl: `${appUrl}/credits`,
+      successUrl: `${appUrl}/credits?card_saved=true`,
       cancelUrl: `${appUrl}/credits`,
     });
   });
@@ -419,7 +419,6 @@ export const getBillingBalanceFn = createServerFn({ method: 'GET' })
           ? { at: new Date(settings.autoTopUpFailedAt).toISOString() }
           : null,
       },
-      hasPaymentMethod: !!settings.stripeCustomerId,
     };
   });
 

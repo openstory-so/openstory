@@ -1645,7 +1645,6 @@ export async function runProdSetup(mode: ProdSetupMode) {
         'Events to enable:',
         '  - checkout.session.completed',
         '  - checkout.session.expired',
-        '  - setup_intent.succeeded',
         '  - payment_intent.succeeded',
         '  - payment_intent.payment_failed',
         '  - payment_intent.canceled',
