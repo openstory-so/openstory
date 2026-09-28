@@ -206,8 +206,8 @@ export function packedSceneFromScene(
       }
     | null
     | undefined
-): PackedMotionSceneHeader | undefined {
-  if (!scene) return undefined;
+): PackedMotionSceneHeader {
+  if (!scene) return {};
   const header: PackedMotionSceneHeader = {
     location: scene.metadata?.location,
     timeOfDay: scene.metadata?.timeOfDay,
@@ -215,15 +215,6 @@ export function packedSceneFromScene(
     colorPalette: scene.continuity?.colorPalette,
     look: scene.continuity?.styleTag,
   };
-  if (
-    !header.location &&
-    !header.timeOfDay &&
-    !header.lightingSetup &&
-    !header.colorPalette &&
-    !header.look
-  ) {
-    return undefined;
-  }
   return header;
 }
 

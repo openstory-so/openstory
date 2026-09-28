@@ -25,8 +25,8 @@
  *     immutable, identical across replays. Edits made after it can't add or
  *     remove targets — they simply produce new staleness that the indicators
  *     surface after the run. The plan holds ids, flags and prompt text; scene
- *     bodies and the cast/location/element rows stay in `load-scene-context` /
- *     `load-render-refs` steps, which get their OWN 1 MiB budgets — the script
+ *     bodies stay in `load-scene-context`, with its own 1 MiB budget; render
+ *     references and compact motion scene headers are frozen in the plan. The script
  *     term grows with script length, so folding it into the payload would put
  *     a user-supplied input against the same cap as everything else.
  *   - `claim-targets` pre-creates a pending version row per prompt/image
@@ -39,7 +39,7 @@
  *     wrong.
  *   - A chained image consumes the prompt its OWN dependency claim produced
  *     (see `spawnImage`), so a post-click edit cannot leak into the run; the
- *     video stage then reads the freshly-completed selection pointers.
+ *     video stage reads the returned claim rows and packs eligible siblings.
  *
  * Failures are per-shot and per-stage: one child failing (including an
  * insufficient-credits preflight) leaves that artifact out of date and
@@ -64,12 +64,15 @@ import { requireCredits } from '@/billing/server/preflight';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { isInsufficientCreditsError } from '@/platform/errors';
 import { buildMotionReferenceImages } from '@/motion/server/build-motion-references';
-import { packedSceneFromScene } from '@/motion/server/assemble-motion-prompt';
+import {
+  buildMotionRender,
+  type MotionRenderShot,
+} from '@/motion/server/build-motion-render';
+import { packPayloadDurationSeconds } from '@/motion/server/pack-motion-jobs';
 import {
   motionPromptFromVersion,
   resolveMotionPromptFromVersion,
 } from '@/motion/server/resolve-motion-prompt';
-import { resolveShotDuration } from '@/motion/resolve-shot-duration';
 import { getAnchorImageUrl } from '@/shots/server/frame-image';
 import type {
   FramePromptVersion,
@@ -211,6 +214,16 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
       );
     }
 
+    if (
+      // oxlint-disable-next-line typescript/no-unnecessary-condition -- queued pre-1888 payloads lack this required snapshot
+      !plan.renderRefs ||
+      plan.targets.some((target) => !target.motionRender)
+    ) {
+      throw new WorkflowValidationError(
+        'Update-all plan predates frozen motion sources; re-trigger the update'
+      );
+    }
+
     const counters = {
       visualPrompts: 0,
       motionPrompts: 0,
@@ -319,6 +332,12 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
     const failedReferenceIds = new Set<string>();
     // character id → the voice this run designed, for `bindPendingVoices`.
     const designedVoices: Record<string, string> = {};
+    const generatedCharacters = new Map<string, CharacterSheetWorkflowResult>();
+    const generatedLocations = new Map<string, LocationSheetWorkflowResult>();
+    const generatedElements = new Map<
+      string,
+      ElementSheetWorkflowResult['elements'][number]
+    >();
     if (references) {
       if (input.announcePhases) await announce('references');
       // Sheets and voices have no preflight of their own (per-shot renders
@@ -355,7 +374,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             return;
           }
           try {
-            await spawnAndAwaitChild<
+            const generated = await spawnAndAwaitChild<
               CharacterSheetWorkflowInput,
               CharacterSheetWorkflowResult
             >(step, {
@@ -367,6 +386,10 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               spawnStepName: `spawn-character-sheet-${id}`,
               awaitStepName: `await-character-sheet-${id}`,
               timeout: '30 minutes',
+            });
+            generatedCharacters.set(id, {
+              ...generated,
+              sheetVersionId: generated.sheetVersionId ?? sheetVersionId,
             });
           } catch (error) {
             failReference(id, 'reference', error);
@@ -397,7 +420,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             return;
           }
           try {
-            await spawnAndAwaitChild<
+            const generated = await spawnAndAwaitChild<
               LocationSheetWorkflowInput,
               LocationSheetWorkflowResult
             >(step, {
@@ -409,6 +432,10 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               spawnStepName: `spawn-location-sheet-${id}`,
               awaitStepName: `await-location-sheet-${id}`,
               timeout: '30 minutes',
+            });
+            generatedLocations.set(id, {
+              ...generated,
+              sheetVersionId: generated.sheetVersionId ?? referenceVersionId,
             });
           } catch (error) {
             failReference(id, 'reference', error);
@@ -425,7 +452,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           ? [
               (async (payload: ElementSheetWorkflowInput) => {
                 try {
-                  await spawnAndAwaitChild<
+                  const generated = await spawnAndAwaitChild<
                     ElementSheetWorkflowInput,
                     ElementSheetWorkflowResult
                   >(step, {
@@ -437,6 +464,8 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                     spawnStepName: 'spawn-element-sheets',
                     awaitStepName: 'await-element-sheets',
                   });
+                  for (const element of generated.elements)
+                    generatedElements.set(element.id, element);
                 } catch (error) {
                   // The child fails as a whole when any entry does.
                   for (const entry of payload.entries)
@@ -495,21 +524,34 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
       designedVoices
     );
 
-    // Only the render stages match against these; a prompts-only run would pay
-    // three reads for nothing (the prompt children get their bibles from the
-    // plan's `promptContext`).
-    const renderRefs: ShotImageRefs = plan.targets.some(
-      (t) => t.regenImage || t.regenVideo
-    )
-      ? await step.do('load-render-refs', async () => {
-          const [characters, locations, elements] = await Promise.all([
-            scopedDb.liveRead.characters.listWithSheets(sequenceId),
-            scopedDb.liveRead.sequenceLocations.listWithReferences(sequenceId),
-            scopedDb.liveRead.sequenceElements.list(sequenceId),
-          ]);
-          return { characters, locations, elements };
-        })
-      : { characters: [], locations: [], elements: [] };
+    // Frozen click-time rows, overlaid only with this run's child results.
+    // A concurrent sheet selection cannot change a render already requested.
+    const renderRefs: ShotImageRefs = {
+      characters: plan.renderRefs.characters.map((row) => {
+        const generated = generatedCharacters.get(row.id);
+        return generated
+          ? {
+              ...row,
+              sheetImageUrl: generated.sheetImageUrl,
+              selectedSheetVersionId: generated.sheetVersionId ?? null,
+            }
+          : row;
+      }),
+      locations: plan.renderRefs.locations.map((row) => {
+        const generated = generatedLocations.get(row.id);
+        return generated
+          ? {
+              ...row,
+              referenceImageUrl: generated.referenceImageUrl,
+              selectedReferenceVersionId: generated.sheetVersionId ?? null,
+            }
+          : row;
+      }),
+      elements: plan.renderRefs.elements.map((row) => ({
+        ...row,
+        ...generatedElements.get(row.id),
+      })),
+    };
 
     const spawnImage = async (
       target: PlanTarget,
@@ -684,7 +726,8 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
      * version → sequence default, #873 reference images, model-snapped
      * duration, credits preflight.
      */
-    const spawnVideo = async (
+    const preparedVideos = new Map<string, MotionRenderShot>();
+    const prepareVideo = async (
       target: PlanTarget,
       claims: ShotClaims,
       /** @see spawnImage — the motion-prompt child's twin. */
@@ -807,10 +850,10 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           // A continue renders the first video (#1818); for Update all a
           // vanished selection means there is nothing to update.
           if (!selectedVideo && !target.createsVideo) return null;
-          if (shot.renderSegmentId) {
+          if (target.motionRender.renderSegmentId) {
             const segmentVersions =
               await scopedDb.liveRead.videoVariants.listBySegment(
-                shot.renderSegmentId
+                target.motionRender.renderSegmentId
               );
             if (segmentVersions.some((v) => v.status === 'generating')) {
               return null;
@@ -845,16 +888,15 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           const model = leftoverGrok.has(target.shotId)
             ? 'grok_imagine_video_1_5'
             : resolveVideoModel({
-                selectedVersionModel: selectedVideo?.model,
+                selectedVersionModel: target.motionRender.selectedModel,
                 sequenceModel: sequenceSnapshot.videoModel,
               });
-          const { scene } = resolveSceneForShot(shot, sceneContext);
           const prompt = resolveMotionPromptFromVersion(
             motionVersion,
             {
               dialogue: target.dialogue,
-              characterTags: scene?.continuity?.characterTags,
-              description: scene?.originalScript.extract ?? null,
+              characterTags: target.motionRender.characterTags,
+              description: target.motionRender.description,
             },
             model
           );
@@ -865,7 +907,15 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             );
           }
           const referenceImages = buildMotionReferenceImages({
-            scene,
+            scene: {
+              continuity: {
+                characterTags: target.motionRender.characterTags,
+                elementTags: target.motionRender.elementTags,
+                environmentTag: target.motionRender.environmentTag,
+              },
+              metadata: { location: target.motionRender.location },
+              originalScript: { extract: target.motionRender.description },
+            },
             characters: renderRefs.characters,
             elements: renderRefs.elements,
             motionPrompt: prompt,
@@ -874,57 +924,21 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             referenceOnly: !target.usesStartFrame,
             locations: renderRefs.locations,
           });
-          const duration = resolveShotDuration({
-            durationMs: target.durationMs,
-            model,
-          });
+          const duration = packPayloadDurationSeconds(target.durationMs);
           // What the shot says, snapshotted on the target at click time
           // (#1657).
           const voicedLines = modelTakesDialogueAudio(model)
             ? voicedDialogueLines(target.dialogue, voicedPlan.characterVoices)
             : [];
           const audioClips = matchingDialogueClips(
-            shot.audioClips,
+            recordedClipsByShotId[target.shotId] ??
+              target.motionRender.audioClips,
             voicedLines
           );
-          const ttsChars =
-            audioClips.length > 0 ? 0 : ttsCharacterCount(voicedLines);
-          try {
-            await requireCredits(
-              scopedDb.liveRead,
-              addMicros(
-                gateEstimate(
-                  estimateVideoCost(model, duration, {
-                    pricing: await getEffectiveFalPricing(),
-                    resolution: plan.resolution,
-                    // Same route the submit below takes, or a reference-only
-                    // shot is gated at the image-to-video rate.
-                    referenceOnly: !target.usesStartFrame,
-                    hasReferenceImages: referenceImages.length > 0,
-                  }),
-                  { model, operation: 'update-stale-shots:video' }
-                ),
-                estimateTtsCost(ttsChars)
-              ),
-              {
-                errorMessage: 'Insufficient credits for video generation',
-              }
-            );
-          } catch (error) {
-            if (isInsufficientCreditsError(error)) {
-              throw new NonRetryableError(
-                error instanceof Error ? error.message : String(error),
-                'InsufficientCreditsError'
-              );
-            }
-            throw error;
-          }
-          const motionInput: MotionWorkflowInput = {
-            userId,
-            teamId,
-            sequenceId,
+          const motionInput: MotionRenderShot = {
             shotId: shot.id,
-            sceneId: shot.sceneId,
+            sceneId: target.motionRender.sceneId,
+            renderSegmentId: target.motionRender.renderSegmentId,
             imageUrl: target.usesStartFrame
               ? (still?.url ?? undefined)
               : undefined,
@@ -939,7 +953,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             aspectRatio: plan.aspectRatio,
             resolution: plan.resolution,
             draft: plan.sequence.draftMotion,
-            sceneTitle: scene?.metadata?.title,
+            sceneTitle: target.motionRender.sceneTitle,
             sequenceTitle: sequenceSnapshot.title,
             referenceImages,
             voicedLines,
@@ -953,10 +967,10 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               motionVersion,
               target.dialogue
             ),
-            characterTags: scene?.continuity?.characterTags,
+            characterTags: target.motionRender.characterTags,
             // One shot of a multi-shot scene renders alone here, so it
             // carries the scene header a packed clip states once (#1874).
-            packedScene: packedSceneFromScene(scene),
+            packedScene: target.motionRender.packedScene,
             attachSceneHeader: target.attachSceneHeader,
           };
           return JSON.stringify(motionInput);
@@ -969,23 +983,8 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
         return;
       }
       // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the step above serialized exactly this type
-      const motionInput = JSON.parse(motionInputJson) as MotionWorkflowInput;
-      await spawnAndAwaitChild<MotionWorkflowInput, MotionWorkflowResult>(
-        step,
-        {
-          binding: this.env.MOTION_WORKFLOW,
-          parentBindingName: PARENT_BINDING_NAME,
-          parentInstanceId,
-          childId: `motion:${sequenceId}:${target.shotId}`,
-          childPayload: motionInput,
-          spawnStepName: `spawn-video-${target.shotId}`,
-          awaitStepName: `await-video-${target.shotId}`,
-          // Same budget as motion-batch's motion children: 30 minutes of
-          // polling plus BytePlus still ingest.
-          timeout: '90 minutes',
-        }
-      );
-      counters.videos += 1;
+      const motionInput = JSON.parse(motionInputJson) as MotionRenderShot;
+      preparedVideos.set(target.shotId, motionInput);
     };
 
     /**
@@ -1038,7 +1037,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
 
     // Dialogue is recorded ONCE PER SCENE (#1657), started now because what a
     // shot says does not wait on its prompts or its still. Every video render
-    // awaits this first: `prepare-video` reads the shot's clips live, so the
+    // awaits this first: `prepare-video` consumes the returned clips, so the
     // clip the recording saved is simply there, and the motion child attaches
     // it instead of recording its own window of the scene. Never fatal — a
     // scene that cannot be recorded leaves its shots to record themselves, in
@@ -1078,6 +1077,8 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
       : false;
     // Settles to the recorded clips, or to why the scene audio was not
     // recorded — never rejects, so a render awaiting it is never failed by it.
+    let recordedClipsByShotId: DialogueAudioWorkflowResult['clipsByShotId'] =
+      {};
     const dialogueRecorded: Promise<DialogueOutcome> =
       dialogueRecording && canRecordScenes
         ? spawnAndAwaitChild<
@@ -1102,7 +1103,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             timeout: '60 minutes',
           }).then(
             (result): DialogueOutcome => ({
-              clipsByShotId: result.clipsByShotId,
+              clipsByShotId: (recordedClipsByShotId = result.clipsByShotId),
             }),
             (error: unknown): DialogueOutcome => {
               logger.warn(
@@ -1425,7 +1426,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               } else if (upstream.motionOk && upstream.imageOk) {
                 try {
                   await dialogueRecorded;
-                  await spawnVideo(target, claims, prompted.motionVersionId);
+                  await prepareVideo(target, claims, prompted.motionVersionId);
                 } catch (error) {
                   failures.push(toFailure(target.shotId, 'video', error));
                 }
@@ -1604,6 +1605,91 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
       : null;
 
     await Promise.allSettled([...jobs, ...(musicJob ? [musicJob] : [])]);
+    // Prepare every eligible target before any video child can claim a segment.
+    // Preserve plan order despite concurrent prompt/image completion.
+    const heldSegments = new Set(
+      plan.targets.flatMap((target) =>
+        target.regenVideo &&
+        target.motionRender.renderSegmentId &&
+        (!preparedVideos.has(target.shotId) ||
+          target.motionRender.siblingShotIds?.some(
+            (id) => !preparedVideos.has(id)
+          ))
+          ? [target.motionRender.renderSegmentId]
+          : []
+      )
+    );
+    const renderShots = plan.targets.flatMap((target) => {
+      if (
+        target.motionRender.renderSegmentId &&
+        heldSegments.has(target.motionRender.renderSegmentId)
+      ) {
+        if (preparedVideos.has(target.shotId))
+          failures.push({
+            shotId: target.shotId,
+            stage: 'video',
+            error: 'A sibling in this clip could not render — clip held',
+          });
+        return [];
+      }
+      const shot = preparedVideos.get(target.shotId);
+      return shot ? [shot] : [];
+    });
+    const renderJobs = buildMotionRender({
+      userId,
+      teamId,
+      sequenceId,
+      shots: renderShots,
+    });
+    await Promise.all(
+      renderJobs.map(async ({ input }) => {
+        const shotId = input.shotId;
+        try {
+          const model = input.model;
+          const voicedLines = input.voicedLines ?? [];
+          const audioClips = input.audioClips ?? [];
+          await step.do(`preflight-video-${shotId}`, async () => {
+            const ttsChars =
+              audioClips.length > 0 ? 0 : ttsCharacterCount(voicedLines);
+            await requireCredits(
+              scopedDb.liveRead,
+              addMicros(
+                gateEstimate(
+                  estimateVideoCost(model, input.duration ?? 3, {
+                    pricing: await getEffectiveFalPricing(),
+                    resolution: input.resolution,
+                    referenceOnly: input.referenceOnly,
+                    hasReferenceImages:
+                      (input.referenceImages?.length ?? 0) > 0,
+                  }),
+                  { model, operation: 'update-stale-shots:video' }
+                ),
+                estimateTtsCost(ttsChars)
+              ),
+              { errorMessage: 'Insufficient credits for video generation' }
+            );
+          });
+          await spawnAndAwaitChild<MotionWorkflowInput, MotionWorkflowResult>(
+            step,
+            {
+              binding: this.env.MOTION_WORKFLOW,
+              parentBindingName: PARENT_BINDING_NAME,
+              parentInstanceId,
+              childId: `motion:${sequenceId}:${shotId}`,
+              childPayload: input,
+              spawnStepName: `spawn-video-${shotId}`,
+              awaitStepName: `await-video-${shotId}`,
+              timeout: '90 minutes',
+            }
+          );
+          counters.videos += 1;
+        } catch (error) {
+          for (const member of input.coveredShots ?? [{ shotId }]) {
+            failures.push(toFailure(member.shotId, 'video', error));
+          }
+        }
+      })
+    );
     const dialogue = dialogueTargetOutcome(
       voicedPlan.targets,
       dialogueRecording,

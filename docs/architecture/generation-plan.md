@@ -211,3 +211,25 @@ The plan refetches when an image, clip or track finishes or fails, a shot
 or scene lands, a stale verdict arrives, a sheet or voice moves, a phase
 starts or a run ends. The continue quote is keyed on the units the footer
 offers, so it moves with the plan.
+
+## Shared motion requests (#1888)
+
+Fresh generation, the shot and batch motion actions, and the plan executor
+use `buildMotionRender` in `src/motion/server/build-motion-render.ts`. Its
+sources require a scene header and carry the selected prompt, resolved shot
+dialogue, still and reference snapshots. It tiles siblings into render
+segments and assembles the same header, shot bodies and model guards for
+all callers. Multiple stale members of a packed segment produce one job.
+Server actions gather these sources from scoped D1; the executor uses its
+frozen plan and the results named by its claims. The plan includes every
+member of a selected segment, even when only one member was requested, while
+preserving the other members' existing prompts and stills. `renderRefs` freezes
+the reference rows at the click; successful reference children replace only
+the rows this run generated. A missing or failed member holds the whole
+selected segment.
+
+An edited prompt links its character, element and location tags when it is
+saved, before capturing its upstream hash. The standalone Save and a typed
+motion render share `saveShotPrompt`; rendering an existing version does not
+rewrite scene continuity. This also ensures a voiced render snapshots the
+new selected prompt text before recording and assembling dialogue.

@@ -82,6 +82,9 @@ import {
 import { computeGenerationPlan } from '@/sequences/server/generation-plan';
 import { resolveSceneShotImageReferences } from '@/cast/server/workflows/sheet-snapshots';
 import { buildRegenerateShotSnapshot } from '@/shots/server/workflows/regenerate-shots-snapshot';
+import { packedSceneFromScene } from '@/motion/server/assemble-motion-prompt';
+import type { MotionRenderShot } from '@/motion/server/build-motion-render';
+import type { ShotImageRefs } from './shot-image-input';
 import { pendingVoiceId } from './pending-voices';
 import {
   buildPlanReferences,
@@ -188,6 +191,23 @@ export type PlanTarget = {
    * footer apply.
    */
   attachSceneHeader: boolean;
+  /** Compact render context frozen at the click, including persisted membership. */
+  motionRender: Pick<
+    MotionRenderShot,
+    | 'sceneId'
+    | 'renderSegmentId'
+    | 'packedScene'
+    | 'characterTags'
+    | 'audioClips'
+    | 'sceneTitle'
+  > & {
+    description: string;
+    selectedModel: string | null;
+    elementTags?: string[];
+    environmentTag?: string;
+    location?: string;
+    siblingShotIds?: string[];
+  };
   /**
    * Re-record this shot's dialogue audio. True only when a reading already
    * exists (never a FIRST recording) and no longer matches the current
@@ -324,6 +344,8 @@ export type UpdateStalePlan = {
    * Null when no target speaks.
    */
   dialogueRecording: BatchDialogueRecording | null;
+  /** Reference rows frozen once at the click; this run overlays its own sheet results. */
+  renderRefs: ShotImageRefs;
   targets: PlanTarget[];
   skipped: SkippedShot[];
   /**
@@ -469,6 +491,26 @@ export async function computePlan(args: {
     kinds.add(unit.kind);
     unitKindsByShot.set(unit.id, kinds);
   }
+  // A persisted clip is one render: freeze its fresh siblings too, without
+  // adding prompt/still work for them. Only the requested artifacts cascade.
+  const renderSegmentIds = new Set(
+    allShots.flatMap((shot) =>
+      shot.renderSegmentId && unitKindsByShot.get(shot.id)?.has('clip')
+        ? [shot.renderSegmentId]
+        : []
+    )
+  );
+  for (const shot of allShots) {
+    if (
+      !shot.deletedAt &&
+      shot.renderSegmentId &&
+      renderSegmentIds.has(shot.renderSegmentId)
+    ) {
+      const kinds = unitKindsByShot.get(shot.id) ?? new Set<PlanUnitKind>();
+      kinds.add('clip');
+      unitKindsByShot.set(shot.id, kinds);
+    }
+  }
   const inScope = allShots.filter((shot) => unitKindsByShot.has(shot.id));
   const shotIndexById = buildShotIndex(allShots);
 
@@ -494,6 +536,7 @@ export async function computePlan(args: {
     promptContext: null,
     characterVoices: [],
     dialogueRecording: null,
+    renderRefs: { characters: [], locations: [], elements: [] },
     targets: [],
     skipped: [],
     references,
@@ -671,6 +714,7 @@ export async function computePlan(args: {
     sequence: toPlanSequence(sequence),
     music,
     characterVoices,
+    renderRefs: { characters, locations, elements },
     dialogueRecording:
       dialogueScenes.length > 0
         ? {
@@ -722,6 +766,7 @@ function buildShotIndex(allShots: Shot[]): Map<string, number> {
 type ShotVideoState = {
   hasVideo: boolean;
   selectedVersionId: string | null;
+  selectedModel: string | null;
   alreadyStale: boolean;
   generating: boolean;
 };
@@ -755,6 +800,7 @@ async function loadVideoStateByShot(
       byShot.set(segShotId, {
         hasVideo: segment.selectedVersion !== null,
         selectedVersionId: segment.selectedVersion?.id ?? null,
+        selectedModel: segment.selectedVersion?.model ?? null,
         alreadyStale: segment.stale,
         generating,
       });
@@ -937,6 +983,28 @@ async function decideShotTarget(args: {
         ? (videoState?.selectedVersionId ?? null)
         : null,
       referenceIds,
+      motionRender: {
+        sceneId: shot.sceneId,
+        renderSegmentId: shot.renderSegmentId,
+        siblingShotIds: shot.renderSegmentId
+          ? allShots
+              .filter(
+                (member) =>
+                  !member.deletedAt &&
+                  member.renderSegmentId === shot.renderSegmentId
+              )
+              .map((member) => member.id)
+          : [],
+        packedScene: packedSceneFromScene(scene),
+        characterTags: scene.continuity?.characterTags,
+        sceneTitle: scene.metadata?.title,
+        description: scene.originalScript.extract,
+        elementTags: scene.continuity?.elementTags ?? undefined,
+        environmentTag: scene.continuity?.environmentTag,
+        location: scene.metadata?.location,
+        audioClips: shot.audioClips ?? undefined,
+        selectedModel: videoState?.selectedModel ?? null,
+      },
       attachSceneHeader:
         !!shot.sceneId &&
         allShots.filter((row) => row.sceneId === shot.sceneId && !row.deletedAt)

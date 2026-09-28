@@ -1,3 +1,4 @@
+import { saveShotPrompt } from '@/shots/server/save-shot-prompt';
 import { readMusicPromptStaleness } from '@/audio/server/music-staleness';
 import {
   rendersReferenceOnly,
@@ -308,114 +309,8 @@ export const saveShotPromptFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
   .validator(zodValidator(shotSaveInput))
   .handler(async ({ context, data }) => {
-    const { shot, frame, sequence, scopedDb, user, scene } = context;
-    const text = data.text.trim();
-    if (!text) {
-      throw new Error('Cannot save an empty prompt');
-    }
-
-    // No-op guard: don't append a `user-edit` identical to the live prompt —
-    // mirrors `shouldRecordUserEdit` in the render workflows so a Save with no
-    // actual change doesn't spawn a duplicate history row.
-    const selectedMotion =
-      data.promptType === 'motion'
-        ? await scopedDb.shotPromptVersions.getSelectedMotion(shot.id)
-        : null;
-    const currentPrompt =
-      data.promptType === 'visual'
-        ? ((await scopedDb.framePromptVersions.getSelected(frame.id))?.text ??
-          null)
-        : (selectedMotion?.text ?? null);
-    // Dialogue is its own authored/versioned node, per SHOT (#1657), and the
-    // ONLY place lines are written: the edit appends a `user-edit` version of
-    // THIS shot's lines and no prompt row carries a copy. No other shot is
-    // touched, so nothing of theirs goes stale. `write` hands back the
-    // selected row untouched when the lines did not move, so the id tells a
-    // real edit (a changed word, a bound voice, #1559) from a plain re-save.
-    let dialogueChanged = false;
-    if (data.promptType === 'motion' && data.dialogue !== undefined) {
-      const before = await scopedDb.shotDialogue.getSelected(shot.id);
-      const after = await scopedDb.shotDialogue.write(
-        shot.id,
-        data.dialogue.lines,
-        'user-edit',
-        { createdBy: user.id }
-      );
-      dialogueChanged = (after?.id ?? null) !== (before?.id ?? null);
-    }
-    if (currentPrompt !== null && currentPrompt === text) {
-      // The lines moved but the prompt text did not: nothing to append to the
-      // prompt history.
-      return { unchanged: !dialogueChanged };
-    }
-
-    // Capture the current upstream hash so staleness keeps tracking: a manual
-    // edit aligns the prompt with the live context, and it should later light
-    // up 'stale' if that context changes. Best-effort — a null hash just
-    // disables staleness for this prompt, it never blocks the save (matches the
-    // render-workflow user-edit path).
-    let inputHash: string | null = null;
-    let analysisModel: string | null = null;
-    if (scene) {
-      try {
-        const ctx = await loadShotPromptContext({
-          scopedDb,
-          sequence: shotPromptSequence(sequence, shot),
-          scene,
-          // No-op for visual; the motion hash folds in the rendered still.
-          startingFrameImageUrl: rendersReferenceOnly(shot, sequence)
-            ? null
-            : await getFrameImageUrl(scopedDb, frame.id),
-        });
-        const narrowed = narrowShotPromptContext(ctx);
-        inputHash =
-          data.promptType === 'visual'
-            ? await hashVisualPromptInput(narrowed)
-            : await hashMotionPromptInput({
-                ...narrowed,
-                // Read after the write above: the edit is authored against
-                // the lines it saved (#1784).
-                dialogue: (
-                  await loadShotPromptDialogue(scopedDb, sequence.id, shot)
-                ).dialogue,
-              });
-        analysisModel = ctx.analysisModel;
-      } catch (error) {
-        logger.warn(
-          `saveShotPrompt: uncomputable hash for shot ${shot.id}; recording with null hash`,
-          { err: error }
-        );
-      }
-    }
-
-    if (data.promptType === 'visual') {
-      const inserted = await scopedDb.framePromptVersions.write({
-        frameId: frame.id,
-        text,
-        source: 'user-edit',
-        inputHash,
-        analysisModel,
-        createdBy: user.id,
-      });
-      return { unchanged: false, versionId: inserted.id } as const;
-    }
-
-    // Carry the selected version's audio direction forward onto the user-edit
-    // so audio-capable models keep their enrichment after a free-text edit
-    // (mirrors the motion-workflow user-edit path). `components` /
-    // `parameters` stay null on a hand edit.
-    const inserted = await scopedDb.shotPromptVersions.write({
-      shotId: shot.id,
-      promptType: 'motion',
-      text,
-      audio: selectedMotion?.audio ?? null,
-      source: 'user-edit',
-      usesStartFrame: usesStartFrame(shot, sequence),
-      inputHash,
-      analysisModel,
-      createdBy: user.id,
-    });
-    return { unchanged: false, versionId: inserted.id } as const;
+    const { scene: _scene, ...result } = await saveShotPrompt(context, data);
+    return result;
   });
 
 /**

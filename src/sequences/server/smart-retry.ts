@@ -1,3 +1,4 @@
+import { packedSceneFromScene } from '@/motion/server/assemble-motion-prompt';
 /**
  * Smart-retry orchestration (#1257: moved out of `functions/smart-retry.ts`).
  * Detects what failed in a sequence and only retries those parts.
@@ -447,6 +448,9 @@ export async function executeSmartRetry(context: SmartRetryContext) {
       batchShots.push({
         shotId: shot.id,
         sceneId: shot.sceneId,
+        packedScene: packedSceneFromScene(scene),
+        attachSceneHeader:
+          shots.filter((row) => row.sceneId === shot.sceneId).length > 1,
         sequenceTitle: sequence.title,
         imageUrl: referenceOnly ? undefined : (imageUrl ?? undefined),
         referenceOnly,

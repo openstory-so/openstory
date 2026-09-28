@@ -222,6 +222,7 @@ function makeEvent(
       sequenceId: 'seq-1',
       shotId: 'shot-1',
       sceneId: 'scene-1',
+      packedScene: {},
       imageUrl: '/r2/stills/a.png',
       referenceOnly: false,
       prompt: 'the original prompt',

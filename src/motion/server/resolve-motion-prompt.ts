@@ -1,3 +1,4 @@
+import { buildMotionShotPrompt } from '@/motion/server/build-motion-render';
 /**
  * Shared Motion Prompt Resolution
  *
@@ -17,7 +18,6 @@ import type {
   MotionDialogue,
 } from '@/shots/scene-analysis.schema';
 import type { ImageToVideoModel } from '@/models/models';
-import { assembleMotionPrompt } from './assemble-motion-prompt';
 
 /** The `shot_prompt_versions` motion-row fields needed to rebuild a prompt. */
 type MotionVersionRow = {
@@ -75,7 +75,7 @@ export function resolveMotionPrompt(
   model: ImageToVideoModel
 ): string {
   if (input.motionPrompt) {
-    return assembleMotionPrompt({
+    return buildMotionShotPrompt({
       motionPrompt: input.motionPrompt,
       model,
       characterTags: input.characterTags,

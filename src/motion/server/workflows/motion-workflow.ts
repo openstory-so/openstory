@@ -1,3 +1,7 @@
+import {
+  buildMotionShotPrompt,
+  buildPackedMotionPrompt,
+} from '@/motion/server/build-motion-render';
 /**
  * The `generateMotionWorkflow` durable workflow.
 
@@ -16,11 +20,7 @@ import { assetLeaseOwner } from '@/models/server/byteplus-asset-pool';
 import { ingestArkAssets } from '@/models/server/byteplus-asset-steps';
 import { extractFalErrorMessage } from '@/models/fal-error';
 import { isPromptTooLongError } from '@/models/prompt-length';
-import {
-  assembleMotionPrompt,
-  assemblePackedMotionPrompt,
-  packedPromptFitsLimit,
-} from '@/motion/server/assemble-motion-prompt';
+import { packedPromptFitsLimit } from '@/motion/server/assemble-motion-prompt';
 import {
   audioSourceKeyFromVoicedLines,
   dialogueAudioMaxSeconds,
@@ -238,7 +238,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
      * content soften re-assembles (#1773): only the prose is rewritten.
      */
     const assembleShotPrompt = (motionPrompt: AssemblableMotionPrompt) =>
-      assembleMotionPrompt({
+      buildMotionShotPrompt({
         motionPrompt: {
           ...motionPrompt,
           dialogue: withVoicedLineTokens(motionPrompt.dialogue, voicedLines),
@@ -333,7 +333,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         ...dialogueClipsAsReferences(wireClips),
       ];
       if (input.coveredShots && packedClip) {
-        const packed = assemblePackedMotionPrompt({
+        const packed = buildPackedMotionPrompt({
           shots: input.coveredShots.map((member) => ({
             durationSeconds: member.duration ?? durationHint ?? 3,
             motionPrompt: member.motionPrompt
