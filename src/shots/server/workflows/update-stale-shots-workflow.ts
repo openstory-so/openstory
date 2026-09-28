@@ -1106,9 +1106,10 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
         };
       });
 
-    // Dialogue is recorded ONCE PER SCENE (#1657), before video fan-out.
-    // `prepare-video` requires a matching clip; if this recording fails, the
-    // affected video is blocked before its motion child is spawned.
+    // Dialogue is recorded ONCE PER SCENE (#1657). Fresh runs record after
+    // Images; updates can start immediately. Every video render awaits this
+    // result, and `prepare-video` blocks any voiced shot without a matching
+    // clip before its motion child is spawned.
     if (!input.freshRun && input.announcePhases && plan.targets.length > 0) {
       await announce(
         plan.targets.some((t) => t.regenVisual || t.regenImage || t.regenMotion)
@@ -1118,9 +1119,11 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             : 'motion'
       );
     }
-    const hasImageWork = plan.targets.some(
-      (target) => target.regenVisual || target.regenImage || target.regenMotion
-    );
+    const hasImageWork =
+      plan.targets.some(
+        (target) =>
+          target.regenVisual || target.regenImage || target.regenMotion
+      ) || !!(musicToRun?.regenPrompt && !musicToRun.regenTrack);
     if (freshPhases && hasImageWork) await announce('images');
     const dialogueRecording = voicedPlan.dialogueRecording;
     // Same balance gate the per-shot render applies to its own TTS, priced on
@@ -1508,15 +1511,11 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                   error: 'A reference this clip needs failed — not rendered',
                 });
               } else if (upstream.motionOk && upstream.imageOk) {
-                try {
-                  eligibleVideos.push({
-                    target,
-                    claims,
-                    motionVersionId: prompted.motionVersionId,
-                  });
-                } catch (error) {
-                  failures.push(toFailure(target.shotId, 'video', error));
-                }
+                eligibleVideos.push({
+                  target,
+                  claims,
+                  motionVersionId: prompted.motionVersionId,
+                });
               } else {
                 // Rendering from the prompt/still the run failed to replace would
                 // bill for a video the user didn't ask for.
@@ -1531,8 +1530,8 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
         );
 
     // ============================================================
-    // PHASE 3 (depth 'music', #1085): sequence-level music, alongside the
-    // shot jobs. Prompt first; the track then renders when it is stale on its
+    // Sequence-level music runs alongside update jobs, or after fresh motion.
+    // Prompt-only work belongs to Images. The track renders when stale on its
     // own hash or the prompt regeneration cascades into it (see MusicPlan).
     // ============================================================
     const runMusic = musicToRun
@@ -1644,7 +1643,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                 }
                 if (sequence.musicStatus === 'generating') return null;
                 // A track stale on its OWN hash (#1657) renders from the
-                // prompt already on the sequence — there was no prompt child
+                // prompt frozen in the plan — there was no prompt child
                 // to take it from.
                 const prompt = regeneratedPrompt?.prompt ?? music.prompt;
                 const tags = regeneratedPrompt?.tags ?? music.tags;
@@ -1692,7 +1691,6 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                   parentBindingName: PARENT_BINDING_NAME,
                   parentInstanceId,
                   childId: `music:${sequenceId}${suffix}`,
-                  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the step above serialized exactly this type
                   childPayload: {
                     ...musicInput,
                     model,
@@ -1711,7 +1709,9 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
       : null;
 
     const musicJob =
-      !input.freshRun && runMusic && musicToRun ? runMusic(musicToRun) : null;
+      runMusic && musicToRun && (!input.freshRun || !musicToRun.regenTrack)
+        ? runMusic(musicToRun)
+        : null;
     await Promise.allSettled([...jobs, ...(musicJob ? [musicJob] : [])]);
     if (freshPhases && hasImageWork) await completePhase('images');
     if (input.freshRun) {
@@ -1767,7 +1767,11 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             teamId,
             sequenceId,
             reservationId: input.reservationId,
-            shots: renderShots.filter((shot) => !leftoverGrok.has(shot.shotId)),
+            shots: renderShots
+              .filter((shot) => !leftoverGrok.has(shot.shotId))
+              // The explicit leftover partition owns fallback identity;
+              // every other shot uses the full requested model list.
+              .map((shot) => ({ ...shot, model: undefined })),
             videoModels: plan.renderOptions.videoModels,
           }),
           ...buildMotionRender({
@@ -1847,7 +1851,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
       })
     );
     if (freshPhases && eligibleVideos.length > 0) await completePhase('motion');
-    if (input.freshRun && runMusic && musicToRun) {
+    if (input.freshRun && runMusic && musicToRun?.regenTrack) {
       if (freshPhases) await announce('music');
       await runMusic(musicToRun);
       if (freshPhases) await completePhase('music');

@@ -664,6 +664,54 @@ describe('fresh executor parity (#1891)', () => {
       reservationId: 'hold',
     });
   });
+  it('renders all alternatives when Grok is the first model', async () => {
+    const result = await run(
+      plan({
+        targets: [clipTarget('a')],
+        renderOptions: {
+          videoModels: ['grok_imagine_video_1_5', 'kling_v3_pro'],
+        },
+      }),
+      { freshRun: true }
+    );
+    expect(result.failures).toEqual([]);
+    expect(result.videos).toBe(2);
+    expect(payloadOf('spawn-video-a')).toMatchObject({
+      model: 'grok_imagine_video_1_5',
+      variantOnly: false,
+    });
+    expect(payloadOf('spawn-video-a-kling_v3_pro')).toMatchObject({
+      model: 'kling_v3_pro',
+      variantOnly: true,
+    });
+  });
+  it('keeps prompt-only music work in the fresh Images phase', async () => {
+    const result = await run(
+      plan({
+        targets: [],
+        music: {
+          regenPrompt: true,
+          regenTrack: false,
+          sceneSummaries: [],
+          analysisModelId: DEFAULT_ANALYSIS_MODEL,
+          promptSource: 'regenerated',
+          durationSeconds: 30,
+          prompt: null,
+          tags: null,
+        },
+      }),
+      { freshRun: true }
+    );
+    expect(result.failures).toEqual([]);
+    expect(result.musicPrompts).toBe(1);
+    expect(result.musicTracks).toBe(0);
+    expect(emit.mock.calls.map(([event, body]) => [event, body.phase])).toEqual(
+      [
+        ['generation.phase:start', 3],
+        ['generation.phase:complete', 3],
+      ]
+    );
+  });
   it('keeps the saved draft switch on motion payloads', async () => {
     const a = clipTarget('a');
     a.motionRender.selectedModel = 'seedance_v2_5';
