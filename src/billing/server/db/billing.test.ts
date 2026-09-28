@@ -229,6 +229,28 @@ describe('getTransactionHistory (#1881)', () => {
     expect(last.hasMore).toBe(false);
   });
 
+  it('breaks same-second ties by id, not insert order', async () => {
+    const billing = createBillingMethods(db, teamId, userId);
+    const createdAt = new Date('2026-01-01T00:00:00Z');
+    // Inserted out of id order, so insert order alone would read B, C, A.
+    for (const id of ['01A', '01C', '01B']) {
+      await db.insert(transactions).values({
+        id,
+        teamId,
+        type: 'credit_usage',
+        amount: -1,
+        balanceAfter: 0,
+        createdAt,
+      });
+    }
+
+    const first = await billing.getTransactionHistory({ limit: 2 });
+    const last = await billing.getTransactionHistory({ limit: 2, offset: 2 });
+    expect(
+      [...first.transactions, ...last.transactions].map((t) => t.id)
+    ).toEqual(['01C', '01B', '01A']);
+  });
+
   it('reports no more when the page is exactly full', async () => {
     const billing = createBillingMethods(db, teamId, userId);
     for (let i = 0; i < 2; i++) {

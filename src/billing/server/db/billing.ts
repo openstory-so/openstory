@@ -270,7 +270,9 @@ function createBillingReadMethods(db: Database, teamId: string) {
           opts.type ? eq(transactions.type, opts.type) : undefined
         )
       )
-      .orderBy(desc(transactions.createdAt))
+      // created_at is in seconds; the ULID id breaks ties so rows written in
+      // the same second keep one order across pages.
+      .orderBy(desc(transactions.createdAt), desc(transactions.id))
       .limit(limit + 1)
       .offset(offset);
 
