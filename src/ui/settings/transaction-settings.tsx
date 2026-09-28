@@ -80,10 +80,10 @@ export function TransactionSettings() {
         data: { limit: PAGE_SIZE, offset: pageParam },
       }),
     initialPageParam: 0,
-    getNextPageParam: (lastPage, allPages) => {
-      const loaded = allPages.flatMap((p) => p.transactions).length;
-      return loaded < lastPage.total ? loaded : undefined;
-    },
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.hasMore
+        ? allPages.flatMap((p) => p.transactions).length
+        : undefined,
     staleTime: 5 * 60 * 1000,
   });
 

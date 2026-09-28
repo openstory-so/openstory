@@ -77,7 +77,9 @@ export const transactions = snakeCase.table(
   (table) => [
     index('idx_transactions_created_at').on(table.createdAt),
     index('idx_transactions_type').on(table.type),
-    index('idx_transactions_team_id').on(table.teamId),
+    // Team ledger newest first — the history page (#1881). Also serves every
+    // team_id lookup, so there is no single-column team index.
+    index('idx_transactions_team_created').on(table.teamId, table.createdAt),
     // Team ledger by type, newest first — hasUsedCredits and the typed
     // history page (#1881).
     index('idx_transactions_team_type_created').on(

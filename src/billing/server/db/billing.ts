@@ -234,6 +234,8 @@ function createBillingReadMethods(db: Database, teamId: string) {
     return available >= estimatedCostMicros;
   }
 
+  /** One page of the team ledger, newest first. `hasMore` comes from reading
+   *  one extra row — a `count(*)` would read every ledger row (#1881). */
   async function getTransactionHistory(
     opts: { limit?: number; offset?: number; type?: TransactionType } = {}
   ): Promise<{
@@ -246,42 +248,33 @@ function createBillingReadMethods(db: Database, teamId: string) {
       metadata: unknown;
       createdAt: Date;
     }>;
-    total: number;
+    hasMore: boolean;
   }> {
     const limit = opts.limit ?? 50;
     const offset = opts.offset ?? 0;
 
-    const conditions = [eq(transactions.teamId, teamId)];
-    if (opts.type) {
-      conditions.push(eq(transactions.type, opts.type));
-    }
-    const whereClause =
-      conditions.length === 1 ? conditions[0] : and(...conditions);
+    const rows = await db
+      .select({
+        id: transactions.id,
+        type: transactions.type,
+        amount: transactions.amount,
+        balanceAfter: transactions.balanceAfter,
+        description: transactions.description,
+        metadata: transactions.metadata,
+        createdAt: transactions.createdAt,
+      })
+      .from(transactions)
+      .where(
+        and(
+          eq(transactions.teamId, teamId),
+          opts.type ? eq(transactions.type, opts.type) : undefined
+        )
+      )
+      .orderBy(desc(transactions.createdAt))
+      .limit(limit + 1)
+      .offset(offset);
 
-    const [rows, countResult] = await Promise.all([
-      db
-        .select({
-          id: transactions.id,
-          type: transactions.type,
-          amount: transactions.amount,
-          balanceAfter: transactions.balanceAfter,
-          description: transactions.description,
-          metadata: transactions.metadata,
-          createdAt: transactions.createdAt,
-        })
-        .from(transactions)
-        .where(whereClause)
-        .orderBy(desc(transactions.createdAt))
-        .limit(limit)
-        .offset(offset),
-      db
-        .select({ count: sql<number>`count(*)` })
-        .from(transactions)
-        .where(whereClause),
-    ]);
-
-    const total = countResult[0]?.count ?? 0;
-    return { transactions: rows, total };
+    return { transactions: rows.slice(0, limit), hasMore: rows.length > limit };
   }
 
   async function getBillingSettings(): Promise<TeamBillingSetting> {

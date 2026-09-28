@@ -582,7 +582,7 @@ export const getTransactionsFn = createServerFn({ method: 'GET' })
       context,
     }): Promise<{
       transactions: Transaction[];
-      total: number;
+      hasMore: boolean;
     }> => {
       const type =
         data.type && isTransactionType(data.type) ? data.type : undefined;
@@ -600,7 +600,7 @@ export const getTransactionsFn = createServerFn({ method: 'GET' })
         metadata: parseTransactionMetadata(tx.metadata),
       }));
 
-      return { transactions, total: result.total };
+      return { transactions, hasMore: result.hasMore };
     }
   );
 

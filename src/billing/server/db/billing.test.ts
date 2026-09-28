@@ -213,6 +213,23 @@ describe('deductCredits without an idempotencyKey (keyless path)', () => {
   });
 });
 
+describe('getTransactionHistory (#1881)', () => {
+  it('pages newest first and reports hasMore without a count', async () => {
+    const billing = createBillingMethods(db, teamId, userId);
+    for (let i = 0; i < 3; i++) {
+      await billing.deductCredits(micros(1_000));
+    }
+
+    const first = await billing.getTransactionHistory({ limit: 2 });
+    expect(first.transactions).toHaveLength(2);
+    expect(first.hasMore).toBe(true);
+
+    const last = await billing.getTransactionHistory({ limit: 2, offset: 2 });
+    expect(last.transactions).toHaveLength(1);
+    expect(last.hasMore).toBe(false);
+  });
+});
+
 describe('hasUsedCredits (#1881)', () => {
   it('is false until a credit_usage row exists, for this team only', async () => {
     const billing = createBillingMethods(db, teamId, userId);
