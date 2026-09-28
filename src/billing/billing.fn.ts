@@ -6,6 +6,7 @@
 import { requireTeamAdminAccess } from '@/platform/server/auth/action-utils';
 import {
   createCheckoutSession,
+  createSetupCheckoutSession,
   teamHasSavedCard,
 } from '@/billing/server/checkout';
 import {
@@ -68,6 +69,27 @@ export const createCheckoutSessionFn = createServerFn({ method: 'POST' })
     });
 
     return { url };
+  });
+
+/** Save a card with no charge (Stripe Checkout `mode: 'setup'`). */
+export const createSetupCheckoutSessionFn = createServerFn({ method: 'POST' })
+  .middleware([authWithTeamMiddleware])
+  .handler(async ({ context }) => {
+    if (!isStripeEnabled()) {
+      throw new ValidationError('Stripe is not configured');
+    }
+
+    await requireTeamAdminAccess(context.user.id, context.teamId);
+
+    const appUrl = getServerAppUrl(getRequest());
+    return createSetupCheckoutSession({
+      scopedDb: context.scopedDb,
+      teamId: context.teamId,
+      userId: context.user.id,
+      userEmail: context.user.email,
+      successUrl: `${appUrl}/credits`,
+      cancelUrl: `${appUrl}/credits`,
+    });
   });
 
 const reportCheckoutCanceledSchema = z.object({
@@ -549,7 +571,7 @@ export const updateAutoTopUpFn = createServerFn({ method: 'POST' })
     await requireTeamAdminAccess(context.user.id, context.teamId);
 
     if (data.enabled && !(await teamHasSavedCard(context.scopedDb))) {
-      throw new ValidationError('Make a purchase first');
+      throw new ValidationError('Add a card first');
     }
 
     await context.scopedDb.billing.updateAutoTopUpSettings({

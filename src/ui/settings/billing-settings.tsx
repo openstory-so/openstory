@@ -29,6 +29,7 @@ import {
 import { Skeleton } from '@/ui/shadcn/skeleton';
 import { Switch } from '@/ui/shadcn/switch';
 import {
+  createSetupCheckoutSessionFn,
   getTransactionsFn,
   reportCheckoutCanceledFn,
   updateAutoTopUpFn,
@@ -209,6 +210,16 @@ export function BillingSettings({
     },
   });
 
+  const addCardMutation = useMutation({
+    mutationFn: () => createSetupCheckoutSessionFn(),
+    onSuccess: ({ url }) => {
+      window.location.href = url;
+    },
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : 'Could not add card');
+    },
+  });
+
   const autoTopUpThreshold =
     autoTopUpPrompt !== null ? Math.ceil((autoTopUpPrompt * 0.1) / 5) * 5 : 5;
 
@@ -337,7 +348,15 @@ export function BillingSettings({
                     >
                       Modify
                     </Button>
-                  ) : undefined
+                  ) : (
+                    <Button
+                      variant="outline"
+                      disabled={addCardMutation.isPending}
+                      onClick={() => addCardMutation.mutate()}
+                    >
+                      {addCardMutation.isPending ? 'Opening…' : 'Add card'}
+                    </Button>
+                  )
                 }
               />
             </CardHeader>
@@ -346,7 +365,7 @@ export function BillingSettings({
                 <Skeleton className="h-5 w-64" />
               ) : !balanceData?.hasPaymentMethod ? (
                 <p className="text-sm text-muted-foreground">
-                  Make a purchase to enable auto-reload.
+                  Add a card to enable auto-reload.
                 </p>
               ) : balanceData.autoTopUp.enabled ? (
                 <p className="text-sm text-muted-foreground tabular-nums">

@@ -20,7 +20,8 @@ vi.doMock('@/platform/server/observability/product-events', () => ({
   captureProductEvent,
 }));
 
-const { createCheckoutSession } = await import('@/billing/server/checkout');
+const { createCheckoutSession, createSetupCheckoutSession } =
+  await import('@/billing/server/checkout');
 
 function makeScopedDb() {
   const stub = {
@@ -111,5 +112,32 @@ describe('createCheckoutSession', () => {
       card: { setup_future_usage: 'off_session' },
       wechat_pay: { client: 'web' },
     });
+  });
+
+  it('saves a card with Checkout setup mode and no charge', async () => {
+    create.mockReset();
+    create.mockResolvedValue({
+      id: 'cs_setup',
+      url: 'https://checkout.stripe.com/setup',
+    });
+
+    await createSetupCheckoutSession({
+      scopedDb: makeScopedDb(),
+      teamId: 'team_1',
+      userId: 'user_1',
+      userEmail: 'test@example.com',
+      successUrl: 'https://app/credits',
+      cancelUrl: 'https://app/credits',
+    });
+
+    const session = create.mock.calls[0]?.[0];
+    expect(session.mode).toBe('setup');
+    expect(session.line_items).toBeUndefined();
+    expect(session.metadata).toEqual({
+      teamId: 'team_1',
+      userId: 'user_1',
+      type: 'save_card',
+    });
+    expect(session.setup_intent_data.metadata).toEqual(session.metadata);
   });
 });

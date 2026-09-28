@@ -1,6 +1,6 @@
 /**
  * Stripe Checkout Service
- * Credit top-up Checkout sessions.
+ * Credit top-up Checkout sessions and save-card setup (#1516).
  */
 
 import { ValidationError } from '@/platform/errors';
@@ -13,6 +13,9 @@ import { captureCheckoutOpened } from './checkout-events';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { getStripeOrThrow } from './stripe';
 import type Stripe from 'stripe';
+
+/** Metadata `type` for save-card Checkout / SetupIntent — no charge. */
+export const SAVE_CARD_METADATA_TYPE = 'save_card';
 
 type CreateCheckoutParams = {
   scopedDb: ScopedDb;
@@ -174,6 +177,71 @@ export async function createCheckoutSession(
   }
 
   return { url: session.url };
+}
+
+type CreateSetupCheckoutParams = {
+  scopedDb: ScopedDb;
+  teamId: string;
+  userId: string;
+  userEmail: string;
+  successUrl: string;
+  cancelUrl: string;
+};
+
+/**
+ * Checkout in `mode: 'setup'` — Stripe's UI says save a card, not pay.
+ * Webhook middleware requires teamId + userId on the object metadata, so
+ * both the session and the SetupIntent carry them.
+ */
+export async function createSetupCheckoutSession(
+  params: CreateSetupCheckoutParams
+): Promise<{ url: string }> {
+  const { scopedDb, teamId, userId, userEmail, successUrl, cancelUrl } = params;
+
+  const stripe = getStripeOrThrow();
+  const customerId = await ensureStripeCustomer({
+    stripe,
+    scopedDb,
+    teamId,
+    userId,
+    userEmail,
+  });
+
+  const metadata: Record<string, string> = {
+    teamId,
+    userId,
+    type: SAVE_CARD_METADATA_TYPE,
+  };
+
+  const session = await stripe.checkout.sessions.create({
+    mode: 'setup',
+    customer: customerId,
+    payment_method_types: ['card'],
+    metadata,
+    setup_intent_data: { metadata },
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+  });
+
+  if (!session.url) {
+    throw new Error('Stripe did not return a checkout URL');
+  }
+
+  return { url: session.url };
+}
+
+/** A saved card becomes the default — auto top-up charges it. */
+export async function setDefaultCard(opts: {
+  scopedDb: ScopedDb;
+  customerId: string;
+  paymentMethodId: string;
+}): Promise<void> {
+  const stripe = getStripeOrThrow();
+  await stripe.customers.update(opts.customerId, {
+    invoice_settings: { default_payment_method: opts.paymentMethodId },
+  });
+  await opts.scopedDb.billing.saveStripeCustomerId(opts.customerId);
+  await opts.scopedDb.billing.clearAutoTopUpFailure();
 }
 
 export async function teamHasSavedCard(scopedDb: ScopedDb): Promise<boolean> {

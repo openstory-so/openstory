@@ -4,12 +4,18 @@
  */
 
 import { stripeWebhookMiddleware } from '@/billing/stripe-webhook-middleware.fn';
+import {
+  SAVE_CARD_METADATA_TYPE,
+  setDefaultCard,
+} from '@/billing/server/checkout';
 import { captureCheckoutAnalyticsForStripeEvent } from '@/billing/server/checkout-events';
 import { microsToDisplayUsd, usdToMicros } from '@/billing/money';
 import { getStripeOrThrow } from '@/billing/server/stripe';
 import { getPostHogClient } from '@/platform/server/observability/posthog-server';
 import { createFileRoute } from '@tanstack/react-router';
 import { scheduleFlushAnalytics } from '#flush-scheduler';
+import type Stripe from 'stripe';
+import type { ScopedDb } from '@/platform/server/db/scoped';
 
 import { getLogger } from '@/platform/logger';
 
@@ -36,6 +42,14 @@ export const Route = createFileRoute('/api/billing/webhook')({
           switch (event.type) {
             case 'checkout.session.completed': {
               const session = event.data.object;
+
+              if (
+                session.mode === 'setup' &&
+                session.metadata?.type === SAVE_CARD_METADATA_TYPE
+              ) {
+                await handleSaveCardCheckout(session, scopedDb);
+                break;
+              }
 
               if (
                 // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
@@ -211,4 +225,21 @@ function stripeObjectId(
 ): string | undefined {
   if (!value) return undefined;
   return typeof value === 'string' ? value : value.id;
+}
+
+async function handleSaveCardCheckout(
+  session: Stripe.Checkout.Session,
+  scopedDb: ScopedDb
+): Promise<void> {
+  const customerId = stripeObjectId(session.customer);
+  const setupIntentRef = session.setup_intent;
+  const setupIntent =
+    typeof setupIntentRef === 'string'
+      ? await getStripeOrThrow().setupIntents.retrieve(setupIntentRef)
+      : setupIntentRef;
+  const paymentMethodId = stripeObjectId(setupIntent?.payment_method);
+  if (!customerId || !paymentMethodId) {
+    throw new Error('save_card checkout missing customer or payment method');
+  }
+  await setDefaultCard({ scopedDb, customerId, paymentMethodId });
 }
