@@ -5,8 +5,8 @@
  *
  * The prune check is compile-time: when an `@tanstack/ai-openrouter` or
  * `@tanstack/ai-gemini` bump ships a lag id, `bun typecheck` fails here
- * naming the id — delete that entry in the same PR. Dependabot owns those
- * package bumps (#792 no longer touches npm deps).
+ * naming the id — delete that entry in the same PR. The model-freshness
+ * routine (#792) bumps these packages first and never adds entries.
  */
 import type { GeminiTextModel } from '@tanstack/ai-gemini';
 import type { OpenRouterModelOptionsByName } from '@tanstack/ai-openrouter';

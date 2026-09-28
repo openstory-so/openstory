@@ -5,9 +5,10 @@ description: >
   video/motion, audio; BytePlus Ark ids; OpenRouter text) have shipped, and
   open a PR bumping any genuine successor. Use when asked to "check for model
   updates", "are our models current", "bump models", or when run by the daily
-  model-freshness routine. Only bumps EXISTING models to a newer version of
-  the same model — it does not add net-new models. npm dependency bumps
-  (including @tanstack/ai*) are out of scope: Dependabot owns those.
+  model-freshness routine. Bumps @tanstack/ai* first, then bumps EXISTING
+  models to a newer version of the same model — only ids the TanStack AI
+  adapters already support. It does not add net-new models. Other npm
+  dependency bumps are Dependabot's.
 ---
 
 # Update model versions
@@ -29,12 +30,49 @@ older model (and vice versa), and the pricing alias
 (`applyBytePlusRouteAliases`) would quote the wrong rate for whichever id was
 left behind.
 
-The goal each run: detect newer versions → verify each is a real successor →
-open a focused PR that bumps it → leave everything green.
+The goal each run: bump `@tanstack/ai*` → detect newer model versions →
+verify each is a real successor the adapters support → open a focused PR that
+bumps it → leave everything green.
 
-**npm dependencies are out of scope.** Bumping `@tanstack/ai*` (or any other npm
-package) is Dependabot's job, not this routine's — the detector no longer checks
-the npm registry. Don't open model-freshness PRs or issues for package versions.
+**Never hack around TanStack AI.** A model the installed adapter doesn't know
+is not ready to adopt. Do not add `CATALOG_LAG_MODELS` (or Grok/Gemini lag)
+entries, casts, or patches to force an id through — skip the model and say so
+in the run summary. It gets picked up on a later run, once TanStack AI ships it.
+Other npm packages stay out of scope (Dependabot).
+
+## 0. Bump TanStack AI first
+
+```bash
+bun outdated '@tanstack/ai*'
+```
+
+If anything is behind **Latest** (not just Update — 0.x minors break), bump
+the whole family in lockstep before looking at models: `@tanstack/ai` and
+every `@tanstack/ai-*` adapter in `package.json` (they peer on `@tanstack/ai`),
+plus the `@tanstack/ai-devtools-core` override. Then follow through:
+
+- `@openrouter/sdk` is hard-pinned to the exact version `@tanstack/ai-openrouter`
+  depends on — move it to the new adapter's version, or `createAdapter` stops
+  typechecking (two SDK copies).
+- `patches/@tanstack%2Fai-grok@<version>.patch` is version-pinned. On a Grok
+  bump, check whether upstream fixed what the patch does; drop it if so, else
+  re-create it for the new version (`bun patch`).
+- `bun typecheck` fails in `catalog-lag.test.ts` for every bridged id the new
+  catalogs now ship — delete those `CATALOG_LAG_MODELS` / `GROK_CATALOG_LAG_MODELS` /
+  `GEMINI_CATALOG_LAG_MODELS` entries (`src/models/server/create-adapter.ts`).
+- Read each adapter's changelog for breaking changes and fix call sites.
+
+Gates: `bun install`, `bun typecheck`, `bun lint`, `bun run test`. Open it as
+its own PR — branch `auto/tanstack-ai-<@tanstack/ai version>`, title
+`chore(deps): bump @tanstack/ai* to <version>` — so a model bump never hides a
+dependency break. If Dependabot (or an earlier run) already has an open PR
+bumping these packages, don't open a second one: use that branch.
+If the bump cascades into non-trivial breakage, open an issue instead and run
+the model check against the installed versions.
+
+Every model step below then runs **on top of that branch** (branch model PRs
+from it, base them on it), so "does the adapter support it" is answered
+against the newest TanStack AI.
 
 ## 1. Detect candidates
 
@@ -123,16 +161,11 @@ Per class, edit and follow through:
 - **Text** (`models.config.ts`): update `id`, `name`, `description`,
   `contextWindow`. If you bump `DEFAULT_ANALYSIS_MODEL`'s model, the constant
   references a key, so it's unaffected.
-  **Catalog-lag bridge:** the `@tanstack/ai-openrouter` adapter ships a codegen
-  snapshot of OpenRouter's model list that lags new releases, so a freshly
-  shipped id may not be in its typed union yet. When a text-model bump adopts an
-  id the installed catalog lacks, `bun typecheck` fails at the `createAdapter`
-  call sites — add a `createModel` entry for the id to `CATALOG_LAG_MODELS`
-  (`src/models/server/create-adapter.ts`) with the correct `input` modalities, plus
-  `features: ['reasoning', 'structured_outputs']` when the model supports them.
-  (The reverse — pruning a bridged id once the adapter package catches up — is
-  handled by Dependabot's package bump, guided by `catalog-lag.test.ts`, not by
-  this routine.)
+  **Adapter support gate:** the `@tanstack/ai-openrouter` (and native Grok /
+  Gemini) adapters ship a codegen snapshot of the provider's model list. If the
+  new id isn't in it — `bun typecheck` fails at the `createAdapter` call sites —
+  the model is not supported yet: revert the bump and skip it. Never bridge it
+  with a `CATALOG_LAG_MODELS` entry.
 - **Image** (`models.ts` `IMAGE_MODELS`): update `id`, `name`, `description`,
   `maxPromptLength`. If the model has an `EDIT_ENDPOINTS` entry, update that
   endpoint id too. Confirm the new endpoint still supports the edit/reference
