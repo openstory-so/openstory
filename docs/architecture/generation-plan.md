@@ -306,3 +306,9 @@ Fresh analysis can persist scenes before the browser subscribes to creation
 events. Terminal generation events therefore reconcile the scene list and
 composed script as well as shots and generated media, so the scene rail recovers
 without a reload even when those early events were missed.
+
+A fresh run also starts a framing grid after each successful still/model, using
+the completed still and its frozen prompt/reference inputs. These replay-deduplicated
+grids remain independent enrichment workflows: they can finish after the parent
+and retain their own idempotent debit, outside its reservation envelope. Cancelled
+or empty still results never start a grid; Continue and Update retain their existing behavior.

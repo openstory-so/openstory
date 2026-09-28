@@ -480,6 +480,11 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
   // compute-plan now runs at the trigger, so the plan arrives on the payload.
   'update-stale-shots-workflow.ts': [
     {
+      read: 'compliance.listEnforcementFor',
+      bucket: 'BILLING-GUARD',
+      why: 'Spawn-time enforcement for independent fresh-run framing grids, as in ShotImagesWorkflow.',
+    },
+    {
       read: 'apiKeys.hasUsableKey',
       bucket: 'BILLING-GUARD',
       why: 'The references wave bills only platform sheets when fal BYOK is unavailable; voices always spend platform funds.',

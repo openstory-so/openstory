@@ -103,6 +103,8 @@ import {
   type SkippedShot,
 } from '@/shots/server/update-stale-plan';
 import { bindPendingVoices } from '@/shots/server/pending-voices';
+import { triggerWorkflow } from '@/platform/server/workflow/client';
+import { shotVariantDedupId } from '@/platform/server/workflow/dedup-ids';
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { WorkflowValidationError } from '@/platform/server/workflow/errors';
@@ -117,6 +119,7 @@ import type {
   LocationSheetWorkflowResult,
   FramePromptWorkflowInput,
   ImageWorkflowInput,
+  ShotVariantWorkflowInput,
   MotionPromptWorkflowInput,
   DialogueAudioWorkflowInput,
   DialogueAudioWorkflowResult,
@@ -753,7 +756,44 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
       if (!output.imageUrl) {
         throw new Error('Image workflow completed without producing an image');
       }
+      const thumbnailUrl = output.imageUrl;
       counters.images += 1;
+      if (input.freshRun) {
+        // Independent enrichment, as in ShotImagesWorkflow: it can outlive
+        // this run and bills its own instance rather than the parent envelope.
+        await step.do(`trigger-variant-${target.shotId}-${model}`, async () => {
+          const enforcement =
+            await scopedDb.liveRead.compliance.listEnforcementFor(
+              userId,
+              teamId
+            );
+          await triggerWorkflow<ShotVariantWorkflowInput>(
+            '/variant-image',
+            {
+              userId,
+              teamId,
+              sequenceId,
+              shotId: target.shotId,
+              frameId: imageInput.frameId,
+              thumbnailUrl,
+              scenePrompt: imageInput.prompt,
+              promptVersionId: imageInput.promptVersionId,
+              referenceImages: imageInput.referenceImages,
+              aspectRatio: imageInput.aspectRatio,
+              model,
+              tileHashInput: imageInput.sceneSnapshot ?? null,
+            },
+            {
+              deduplicationId: shotVariantDedupId(
+                parentInstanceId,
+                target.shotId,
+                model
+              ),
+              enforcement,
+            }
+          );
+        });
+      }
     };
 
     const spawnImage = async (

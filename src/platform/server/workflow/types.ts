@@ -209,6 +209,8 @@ export interface ShotVariantWorkflowInput extends SequenceWorkflowContext {
   /** The `frame_prompt_versions` row `scenePrompt` was read from, snapshotted
    * at the trigger — stamped on the sheet version for provenance (#1070). */
   promptVersionId?: string | null;
+  /** Already ordered still references, frozen by the shared plan executor. */
+  referenceImages?: ReferenceImageDescription[];
   /** Character reference sheets for visual consistency */
   characterReferences?: ReferenceImageDescription[];
   /** Location reference images for environment consistency */

@@ -53,6 +53,18 @@ vi.doMock('@/shots/server/shot-image-input', () => ({
     async (args: { modelOverride: string }) => ({
       prompt: 'p',
       model: args.modelOverride,
+      frameId: 'anchor',
+      promptVersionId: 'saved-visual',
+      referenceImages: [
+        { referenceImageUrl: 'https://x/cast.png', description: 'cast' },
+      ],
+      sceneSnapshot: {
+        sceneId: 'scene',
+        visualPrompt: 'p',
+        characterSheetHashes: ['sheet-v1'],
+        locationSheetHashes: [],
+        elementReferenceHashes: [],
+      },
     })
   ),
 }));
@@ -73,6 +85,8 @@ vi.doMock('../update-stale-plan', () => ({
   })),
 }));
 
+const triggerWorkflow = vi.fn(async (..._args: unknown[]) => 'grid-run');
+vi.doMock('@/platform/server/workflow/client', () => ({ triggerWorkflow }));
 const failCharacter = new Set<string>();
 const spawnAndAwaitChild = vi.fn(
   async (
@@ -172,6 +186,7 @@ function makeScopedDb(): WorkflowScopedDb {
       },
     },
     liveRead: {
+      compliance: { listEnforcementFor: vi.fn(async () => []) },
       sequences: {
         getById: vi.fn(async () => ({
           musicStatus: 'completed',
@@ -309,6 +324,7 @@ const references = {
 describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
   beforeEach(() => {
     spawnAndAwaitChild.mockClear();
+    triggerWorkflow.mockClear();
     emit.mockClear();
     failCharacter.clear();
   });
@@ -402,6 +418,7 @@ const clipTarget = (id: string): PlanTarget => ({
 describe('executor packed clips', () => {
   beforeEach(() => {
     spawnAndAwaitChild.mockClear();
+    triggerWorkflow.mockClear();
     failCharacter.clear();
   });
   it('deduplicates stale siblings into one generation using frozen membership and model', async () => {
@@ -516,6 +533,7 @@ describe('executor packed clips', () => {
 describe('fresh executor parity (#1891)', () => {
   beforeEach(() => {
     spawnAndAwaitChild.mockClear();
+    triggerWorkflow.mockClear();
     requireCredits.mockClear();
     emit.mockClear();
     failCharacter.clear();
@@ -563,6 +581,37 @@ describe('fresh executor parity (#1891)', () => {
     );
     expect(result.failures).toEqual([]);
     expect(result.images).toBe(2);
+    expect(triggerWorkflow).toHaveBeenCalledTimes(2);
+    for (const model of ['nano_banana_2', 'seedream_v5']) {
+      expect(triggerWorkflow).toHaveBeenCalledWith(
+        '/variant-image',
+        expect.objectContaining({
+          shotId: 'a',
+          thumbnailUrl: 'https://x/still.png',
+          scenePrompt: 'p',
+          frameId: 'anchor',
+          promptVersionId: 'saved-visual',
+          referenceImages: [
+            { referenceImageUrl: 'https://x/cast.png', description: 'cast' },
+          ],
+          tileHashInput: expect.objectContaining({
+            visualPrompt: 'p',
+            characterSheetHashes: ['sheet-v1'],
+          }),
+          model,
+        }),
+        expect.objectContaining({
+          deduplicationId: expect.stringContaining(`-a-${model}`),
+          enforcement: [],
+        })
+      );
+    }
+    expect(
+      triggerWorkflow.mock.calls.every(
+        (call) => !Object.hasOwn(Object(call[1]), 'reservationId')
+      )
+    ).toBe(true);
+
     expect(payloadOf('spawn-image-a')).toMatchObject({
       model: 'nano_banana_2',
       targetVariantId: 'claim-a',
@@ -579,6 +628,20 @@ describe('fresh executor parity (#1891)', () => {
       'claim-a'
     );
   });
+  it('does not start fresh enrichment grids during Continue', async () => {
+    await run(plan({ targets: [target('a', [])] }));
+    expect(triggerWorkflow).not.toHaveBeenCalled();
+  });
+
+  it.each([{ cancelled: true, imageUrl: '' }, { imageUrl: '' }])(
+    'does not start a grid when the still produces no artifact (%j)',
+    async (output) => {
+      spawnAndAwaitChild.mockResolvedValueOnce(output);
+      await run(plan({ targets: [target('a', [])] }), { freshRun: true });
+      expect(triggerWorkflow).not.toHaveBeenCalled();
+    }
+  );
+
   it('renders video alternatives without overriding a leftover Grok choice', async () => {
     const result = await run(
       plan({

@@ -114,6 +114,7 @@ export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariant
             description: `Primary source scene — generate ${gridConfig?.count ?? 9} variant shots from this image`,
             role: 'primary',
           },
+          ...(input.referenceImages ?? []),
           ...(input.characterReferences ?? []),
           ...(input.locationReferences ?? []),
           ...(input.elementReferences ?? []),
