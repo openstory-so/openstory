@@ -72,13 +72,10 @@ async function loadPlanInput(
   sequence: Sequence,
   shots: Awaited<ReturnType<ScopedDb['shots']['listBySequence']>>
 ) {
-  let batch = await loadShotStalenessBatch(scopedDb, sequence);
-  const missingAnchors = shots.filter((s) => !batch.anchorsByShot.has(s.id));
-  if (missingAnchors.length > 0) {
-    await scopedDb.shots.ensureAnchorFrames(missingAnchors);
-    batch = await loadShotStalenessBatch(scopedDb, sequence);
-  }
-  const { anchorsByShot, sceneContext, selectedByFrame, refs } = batch;
+  // No anchor backfill: a read does not write. A frameless shot's prompt and
+  // still read `missing`, which is what a fresh anchor would say too.
+  const { anchorsByShot, sceneContext, selectedByFrame, refs } =
+    await loadShotStalenessBatch(scopedDb, sequence);
   const frameIds = [...anchorsByShot.values()].map((frame) => frame.id);
   const shotIds = shots.map((shot) => shot.id);
 
