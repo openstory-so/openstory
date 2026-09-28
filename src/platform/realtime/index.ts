@@ -48,8 +48,9 @@ export const realtimeSchema = {
 
   // Team billing ledger updates (#1090). Channel `billing:${teamId}`; the
   // credit-balance pill subscribes only while visible so idle sessions pay no
-  // SSE cost. Payload is enough to patch the pill optimistically; clients also
-  // invalidate the balance + transactions queries.
+  // SSE cost. Payload is enough to patch the balance query; clients refetch it
+  // only when the payload cannot settle it (#1881), and always invalidate
+  // transactions.
   billing: {
     'balance:updated': z.object({
       teamId: z.string(),
@@ -478,6 +479,10 @@ export type ReplaceElementCompletePayload = z.infer<
 >;
 export type ReplaceElementFailedPayload = z.infer<
   (typeof realtimeSchema.generation)['replace-element:failed']
+>;
+
+export type BalanceUpdatedPayload = z.infer<
+  (typeof realtimeSchema.billing)['balance:updated']
 >;
 
 /** Every dotted event path declared in `realtimeSchema`. */

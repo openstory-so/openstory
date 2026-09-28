@@ -295,6 +295,22 @@ function createBillingReadMethods(db: Database, teamId: string) {
     return existing;
   }
 
+  /** True once any credit_usage row exists (#1096). An existence check on
+   *  `idx_transactions_team_type_created` — never a `count(*)` (#1881). */
+  async function hasUsedCredits(): Promise<boolean> {
+    const [row] = await db
+      .select({ id: transactions.id })
+      .from(transactions)
+      .where(
+        and(
+          eq(transactions.teamId, teamId),
+          eq(transactions.type, 'credit_usage')
+        )
+      )
+      .limit(1);
+    return !!row;
+  }
+
   /** True if this team already received the $20 welcome grant.
    *  Match idempotency key OR metadata.signupGrant: pre-#1516 rows have
    *  no key, so the key alone would miss them and double-pay. */
@@ -322,6 +338,7 @@ function createBillingReadMethods(db: Database, teamId: string) {
     hasEnoughCredits,
     getTransactionHistory,
     getBillingSettings,
+    hasUsedCredits,
     hasSignupGrant,
   };
 }

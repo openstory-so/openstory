@@ -1,0 +1,1 @@
+CREATE INDEX `idx_transactions_team_type_created` ON `transactions` (`team_id`,`type`,`created_at`);

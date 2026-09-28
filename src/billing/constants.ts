@@ -206,6 +206,16 @@ export function welcomeDialogMode(input: {
   return 'none';
 }
 
+/** Credits the welcome grant did not put there — seeded, bought, or
+ *  adjusted. A team that already holds credits is never offered the
+ *  welcome grant (gift or claim), whatever it has spent. */
+export function hasOtherCredits(
+  balance: Microdollars,
+  hasSignupGrant: boolean
+): boolean {
+  return balance > (hasSignupGrant ? SIGNUP_GRANT_MICROS : 0);
+}
+
 /** Hosted Stripe, grant unpaid, and the grant amount is on. Generate should
  *  reopen the claim dialog instead of the billing gate. */
 export function shouldOfferWelcomeClaim(input: {

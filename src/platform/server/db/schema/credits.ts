@@ -78,6 +78,13 @@ export const transactions = snakeCase.table(
     index('idx_transactions_created_at').on(table.createdAt),
     index('idx_transactions_type').on(table.type),
     index('idx_transactions_team_id').on(table.teamId),
+    // Team ledger by type, newest first — hasUsedCredits and the typed
+    // history page (#1881).
+    index('idx_transactions_team_type_created').on(
+      table.teamId,
+      table.type,
+      table.createdAt
+    ),
     index('idx_transactions_user_id').on(table.userId),
     uniqueIndex('idx_transactions_stripe_session_id').on(table.stripeSessionId),
     uniqueIndex('idx_transactions_team_idempotency_key')

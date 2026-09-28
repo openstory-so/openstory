@@ -19,10 +19,10 @@ import {
   mapCheckoutFailureReason,
 } from '@/billing/server/checkout-events';
 import {
+  hasOtherCredits,
   isStripeEnabled,
   MAX_TOPUP_AMOUNT_USD,
   MIN_TOPUP_AMOUNT_USD,
-  SIGNUP_GRANT_MICROS,
   totalCheckoutCents,
 } from './constants';
 import { micros, microsToDisplayUsd, microsToUsd, usdToMicros } from './money';
@@ -447,16 +447,15 @@ export const getBillingBalanceFn = createServerFn({ method: 'GET' })
   .handler(async ({ context }) => {
     const { scopedDb } = context;
 
-    const [funds, settings, usageHistory, hasSignupGrant] = await Promise.all([
-      scopedDb.billing.getAvailable(),
-      scopedDb.billing.getBillingSettings(),
-      // One credit_usage row is enough — drives welcome-credits suppression (#1096).
-      scopedDb.billing.getTransactionHistory({
-        limit: 1,
-        type: 'credit_usage',
-      }),
-      scopedDb.billing.hasSignupGrant(),
-    ]);
+    const [funds, settings, hasUsedCredits, hasSignupGrant] = await Promise.all(
+      [
+        scopedDb.billing.getAvailable(),
+        scopedDb.billing.getBillingSettings(),
+        // Drives welcome-credits suppression (#1096).
+        scopedDb.billing.hasUsedCredits(),
+        scopedDb.billing.hasSignupGrant(),
+      ]
+    );
 
     return {
       teamId: context.teamId,
@@ -464,15 +463,9 @@ export const getBillingBalanceFn = createServerFn({ method: 'GET' })
       availableUsd: microsToUsd(funds.available),
       reservedUsd: microsToUsd(funds.reserved),
       stripeEnabled: isStripeEnabled(),
-      // D1 `count(*)` can arrive as a string — coerce. Prefer row presence too.
-      hasUsedCredits:
-        usageHistory.transactions.length > 0 || Number(usageHistory.total) > 0,
+      hasUsedCredits,
       hasSignupGrant,
-      // Credits the welcome grant did not put there — seeded, bought, or
-      // adjusted. A team that already holds credits is never offered the
-      // welcome grant (gift or claim), whatever it has spent.
-      hasOtherCredits:
-        funds.balance > (hasSignupGrant ? SIGNUP_GRANT_MICROS : 0),
+      hasOtherCredits: hasOtherCredits(funds.balance, hasSignupGrant),
       autoTopUp: {
         enabled: settings.autoTopUpEnabled,
         thresholdUsd: settings.autoTopUpThresholdMicros
