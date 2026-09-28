@@ -52,7 +52,7 @@ holds a recording keeps its `dialogue` unit either way.
 
 ## Requires graph
 
-Generation preconditions (`PLAN_REQUIRES`), not the invalidation edges in
+Generation preconditions (`SHOT_UNITS`, plus `music` ← `prompt:music`), not the invalidation edges in
 `src/ui/docs/dependency-graph.ts`:
 
 - `still` ← its `prompt:visual` + the sheets / element refs it references

@@ -19,21 +19,29 @@ import {
 } from '@/sequences/pipeline';
 import type { ArtifactStaleness } from '@/shots/server/shot-staleness';
 
-const PLAN_UNIT_KINDS = [
-  'sheet:character',
-  'sheet:location',
-  'ref:element',
-  'voice',
-  'prompt:visual',
-  'still',
-  'prompt:motion',
-  'dialogue',
-  'clip',
-  'prompt:music',
-  'music',
-] as const;
+/**
+ * Every kind with the stop that caps it — the cap `stopAt` puts on a run.
+ * Mirrors what the stage-shaped run does today: visual prompts and voices
+ * ride with References, motion and music prompts with Images. Key order is
+ * settle order: every upstream comes before its dependents.
+ */
+const PLAN_KIND_STAGE = {
+  'sheet:character': 'references',
+  'sheet:location': 'references',
+  'ref:element': 'references',
+  voice: 'references',
+  'prompt:visual': 'references',
+  still: 'images',
+  'prompt:motion': 'images',
+  dialogue: 'dialogue',
+  clip: 'motion',
+  'prompt:music': 'images',
+  music: 'music',
+} as const satisfies Record<string, GenerationStage>;
 
-type PlanUnitKind = (typeof PLAN_UNIT_KINDS)[number];
+type PlanUnitKind = keyof typeof PLAN_KIND_STAGE;
+
+const KIND_ORDER = Object.keys(PLAN_KIND_STAGE);
 
 type PlanUnitState = 'done' | 'missing' | 'stale' | 'blocked' | 'running';
 
@@ -48,61 +56,6 @@ export type PlanUnit = PlanUnitRef & {
    * computed.
    */
   blockedBy?: PlanUnitRef[];
-};
-
-/**
- * The stop each kind belongs to — the cap `stopAt` puts on a run. Mirrors
- * what the stage-shaped run does today: visual prompts and voices ride with
- * References, motion and music prompts with Images.
- */
-const PLAN_KIND_STAGE: Record<PlanUnitKind, GenerationStage> = {
-  'sheet:character': 'references',
-  'sheet:location': 'references',
-  'ref:element': 'references',
-  voice: 'references',
-  'prompt:visual': 'references',
-  still: 'images',
-  'prompt:motion': 'images',
-  dialogue: 'dialogue',
-  clip: 'motion',
-  'prompt:music': 'images',
-  music: 'music',
-};
-
-/**
- * Generation preconditions: which kinds a unit is made from. Distinct from
- * the invalidation edges in `src/ui/docs/dependency-graph.ts` — these say
- * what must exist before a unit can be generated. Which entities of the
- * upstream kind apply (the sheets a still references, the voices a shot's
- * speakers need) is resolved per unit by `upstreamOf`.
- *
- * - `still` ← its `prompt:visual` + every sheet / element it references
- *   (start-frame shots only; a reference-only shot has no still).
- * - `prompt:motion` ← its `still` in start-frame mode, else the scene alone.
- * - `clip` ← `prompt:motion` + `still` (start frame) or the referenced sheets
- *   (reference-only) + `dialogue` when the shot has voiced lines.
- * - `dialogue` ← a `voice` on every speaker.
- * - `music` ← `prompt:music`; `prompt:music` ← the scenes (the root).
- */
-const PLAN_REQUIRES: Record<PlanUnitKind, readonly PlanUnitKind[]> = {
-  'sheet:character': [],
-  'sheet:location': [],
-  'ref:element': [],
-  voice: [],
-  'prompt:visual': [],
-  still: ['prompt:visual', 'sheet:character', 'sheet:location', 'ref:element'],
-  'prompt:motion': ['still'],
-  dialogue: ['voice'],
-  clip: [
-    'prompt:motion',
-    'still',
-    'sheet:character',
-    'sheet:location',
-    'ref:element',
-    'dialogue',
-  ],
-  'prompt:music': [],
-  music: ['prompt:music'],
 };
 
 /**
@@ -175,44 +128,70 @@ export type PlanInput = {
 };
 
 const key = (ref: PlanUnitRef) => `${ref.kind}:${ref.id}`;
+const ref = (kind: PlanUnitKind, id: string): PlanUnitRef => ({ kind, id });
 
-function upstreamOf(
+/** The sheets and element refs a shot is rendered from. */
+const sheetRefs = (shot: PlanShot): PlanUnitRef[] => [
+  ...shot.references.characterIds.map((id) => ref('sheet:character', id)),
+  ...shot.references.locationIds.map((id) => ref('sheet:location', id)),
+  ...shot.references.elementIds.map((id) => ref('ref:element', id)),
+];
+
+/**
+ * A shot's units and the requires graph over them: generation
+ * preconditions, distinct from the invalidation edges in
+ * `src/ui/docs/dependency-graph.ts` — what must exist before a unit can be
+ * generated. A null verdict means the shot has no such unit: a
+ * reference-only shot has no visual prompt or still, a silent one no
+ * dialogue. The rest of the graph is `music` ← `prompt:music`; sheets,
+ * element refs, voices and `prompt:music` hang off the root (the scenes).
+ */
+const SHOT_UNITS: ReadonlyArray<{
+  kind: PlanUnitKind;
+  verdict: (shot: PlanShot) => ArtifactVerdict | null;
+  requires: (shot: PlanShot) => PlanUnitRef[];
+}> = [
+  {
+    kind: 'prompt:visual',
+    verdict: (s) => (s.usesStartFrame ? s.visualPrompt : null),
+    requires: () => [],
+  },
+  {
+    kind: 'still',
+    verdict: (s) => (s.usesStartFrame ? s.still : null),
+    requires: (s) => [ref('prompt:visual', s.id), ...sheetRefs(s)],
+  },
+  {
+    kind: 'prompt:motion',
+    verdict: (s) => s.motionPrompt,
+    requires: (s) => (s.usesStartFrame ? [ref('still', s.id)] : []),
+  },
+  {
+    kind: 'dialogue',
+    verdict: (s) => s.dialogue,
+    requires: (s) => s.speakerIds.map((id) => ref('voice', id)),
+  },
+  {
+    kind: 'clip',
+    verdict: (s) => s.clip,
+    requires: (s) => [
+      ref('prompt:motion', s.id),
+      ...(s.usesStartFrame ? [ref('still', s.id)] : sheetRefs(s)),
+      ...(s.dialogue ? [ref('dialogue', s.id)] : []),
+    ],
+  },
+];
+
+type BaseUnit = PlanUnitRef & {
+  verdict: ArtifactVerdict;
+  upstream: PlanUnitRef[];
+};
+
+const rootUnit = (
   kind: PlanUnitKind,
-  shot: PlanShot | undefined,
-  sequenceId: string
-): PlanUnitRef[] {
-  const allowed = new Set(PLAN_REQUIRES[kind]);
-  const refs: PlanUnitRef[] = [];
-  const add = (k: PlanUnitKind, id: string) => {
-    if (allowed.has(k)) refs.push({ kind: k, id });
-  };
-  if (kind === 'music') add('prompt:music', sequenceId);
-  if (!shot) return refs;
-  const sheets = () => {
-    for (const id of shot.references.characterIds) add('sheet:character', id);
-    for (const id of shot.references.locationIds) add('sheet:location', id);
-    for (const id of shot.references.elementIds) add('ref:element', id);
-  };
-  switch (kind) {
-    case 'still':
-      add('prompt:visual', shot.id);
-      sheets();
-      break;
-    case 'prompt:motion':
-      if (shot.usesStartFrame) add('still', shot.id);
-      break;
-    case 'dialogue':
-      for (const id of shot.speakerIds) add('voice', id);
-      break;
-    case 'clip':
-      add('prompt:motion', shot.id);
-      if (shot.usesStartFrame) add('still', shot.id);
-      else sheets();
-      if (shot.dialogue) add('dialogue', shot.id);
-      break;
-  }
-  return refs;
-}
+  id: string,
+  verdict: ArtifactVerdict
+): BaseUnit => ({ kind, id, verdict, upstream: [] });
 
 /**
  * Apply the requires graph to the live verdicts, in kind order so every
@@ -228,74 +207,52 @@ function upstreamOf(
  *   that run's stop is `running`.
  */
 export function planUnits(input: PlanInput, sequenceId: string): PlanUnit[] {
-  const base: Array<
-    PlanUnitRef & { verdict: ArtifactVerdict; shot?: PlanShot }
-  > = [];
-  for (const c of input.characterSheets)
-    base.push({ kind: 'sheet:character', id: c.id, verdict: c.sheet });
-  for (const l of input.locationSheets)
-    base.push({ kind: 'sheet:location', id: l.id, verdict: l.sheet });
-  for (const e of input.elementRefs)
-    base.push({ kind: 'ref:element', id: e.id, verdict: e.ref });
-  for (const v of input.voices)
-    base.push({ kind: 'voice', id: v.id, verdict: v.voice });
-  for (const shot of input.shots) {
-    if (shot.usesStartFrame) {
-      base.push({
-        kind: 'prompt:visual',
-        id: shot.id,
-        verdict: shot.visualPrompt,
-        shot,
-      });
-      base.push({ kind: 'still', id: shot.id, verdict: shot.still, shot });
-    }
-    base.push({
-      kind: 'prompt:motion',
-      id: shot.id,
-      verdict: shot.motionPrompt,
-      shot,
-    });
-    if (shot.dialogue)
-      base.push({
-        kind: 'dialogue',
-        id: shot.id,
-        verdict: shot.dialogue,
-        shot,
-      });
-    base.push({ kind: 'clip', id: shot.id, verdict: shot.clip, shot });
-  }
+  const base: BaseUnit[] = [
+    ...input.characterSheets.map((c) =>
+      rootUnit('sheet:character', c.id, c.sheet)
+    ),
+    ...input.locationSheets.map((l) =>
+      rootUnit('sheet:location', l.id, l.sheet)
+    ),
+    ...input.elementRefs.map((e) => rootUnit('ref:element', e.id, e.ref)),
+    ...input.voices.map((v) => rootUnit('voice', v.id, v.voice)),
+    ...input.shots.flatMap((shot) =>
+      SHOT_UNITS.flatMap(({ kind, verdict, requires }) => {
+        const v = verdict(shot);
+        return v === null
+          ? []
+          : [{ kind, id: shot.id, verdict: v, upstream: requires(shot) }];
+      })
+    ),
+  ];
   if (input.music) {
-    base.push({
-      kind: 'prompt:music',
+    base.push(rootUnit('prompt:music', sequenceId, input.music.prompt), {
+      kind: 'music',
       id: sequenceId,
-      verdict: input.music.prompt,
+      verdict: input.music.track,
+      upstream: [ref('prompt:music', sequenceId)],
     });
-    base.push({ kind: 'music', id: sequenceId, verdict: input.music.track });
   }
-  base.sort(
-    (a, b) => PLAN_UNIT_KINDS.indexOf(a.kind) - PLAN_UNIT_KINDS.indexOf(b.kind)
-  );
+  base.sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind));
 
   const settled = new Map<string, PlanUnit>();
   for (const unit of base) {
-    const ref = { kind: unit.kind, id: unit.id };
+    const self = ref(unit.kind, unit.id);
     let result: PlanUnit;
     if (unit.verdict === 'unknown') {
-      result = { ...ref, state: 'blocked', blockedBy: [] };
+      result = { ...self, state: 'blocked', blockedBy: [] };
     } else {
       let state: PlanUnitState = unit.verdict;
-      const upstream = upstreamOf(unit.kind, unit.shot, sequenceId).flatMap(
-        (up) => {
-          const found = settled.get(key(up));
-          return found ? [found] : [];
-        }
-      );
+      const upstream = unit.upstream.flatMap((up) => {
+        const found = settled.get(key(up));
+        return found ? [found] : [];
+      });
       const holding = upstream.filter(
         (up) => up.state === 'running' || up.state === 'blocked'
       );
       if ((state === 'missing' || state === 'stale') && holding.length > 0) {
         result = {
-          ...ref,
+          ...self,
           state: 'blocked',
           blockedBy: holding.map((up) => ({ kind: up.kind, id: up.id })),
         };
@@ -306,7 +263,7 @@ export function planUnits(input: PlanInput, sequenceId: string): PlanUnit[] {
         ) {
           state = 'stale';
         }
-        result = { ...ref, state };
+        result = { ...self, state };
       }
     }
     // The run making the upstream is the run making this unit too: a
@@ -319,13 +276,11 @@ export function planUnits(input: PlanInput, sequenceId: string): PlanUnit[] {
       (result.state === 'missing' || result.state === 'stale' || runBlocked) &&
       includesStage(input.runStopAt, PLAN_KIND_STAGE[result.kind])
     ) {
-      result = { ...ref, state: 'running' };
+      result = { ...self, state: 'running' };
     }
-    settled.set(key(ref), result);
+    settled.set(key(self), result);
   }
-  return base.map(
-    (unit) => settled.get(key(unit)) ?? { ...unit, state: 'done' }
-  );
+  return [...settled.values()];
 }
 
 /** Units a run up to `stopAt` would make. */
