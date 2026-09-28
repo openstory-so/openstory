@@ -484,21 +484,6 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
   // (script length) against the same 1 MiB cap as everything else.
   'update-stale-shots-workflow.ts': [
     {
-      read: 'characters.listWithSheets',
-      bucket: 'TRIGGER-SNAPSHOT',
-      why: 'load-render-refs, once at run start: this workflow re-renders stale artifacts against CURRENT sheets, and the plan hashed those same rows moments earlier.',
-    },
-    {
-      read: 'sequenceLocations.listWithReferences',
-      bucket: 'TRIGGER-SNAPSHOT',
-      why: 'Same load-render-refs step.',
-    },
-    {
-      read: 'sequenceElements.list',
-      bucket: 'TRIGGER-SNAPSHOT',
-      why: 'Same load-render-refs step.',
-    },
-    {
       read: 'shots.getById',
       bucket: 'EXISTENCE-GUARD',
       why: 'A shot deleted mid-update aborts its own target, not the run.',
