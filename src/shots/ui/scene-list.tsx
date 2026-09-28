@@ -345,7 +345,6 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   }, [generateVoices]);
   const voicesUnavailable = useVoiceDesignAvailable() === false;
   const voices = voicesUnavailable ? false : draftVoices;
-  const [generateAudio, setGenerateAudio] = useState(true);
   // Draft first (#1756): one local switch for the batch footer and the
   // continue slider, seeded from the sequence and persisted by either click.
   const [draftBatch, setDraftBatch] = useState(draftMotion);
@@ -436,7 +435,8 @@ const SceneListComponent: React.FC<SceneListProps> = ({
         includeMusic,
         musicModel,
         videoModel,
-        generateAudio,
+        // Always on for the batch; a single shot can turn it off (scene editor).
+        generateAudio: true,
         draftMotion: draftFirst,
       })
     );
@@ -453,16 +453,18 @@ const SceneListComponent: React.FC<SceneListProps> = ({
       (nextStage == null && notStartedShots.length > 0));
   const showMusicFooter =
     !hideBatchButton && nextStage === 'music' && Boolean(onGenerateMusic);
-  // The steps show at every step, a finished sequence included (#1780 §1);
-  // the Motion / Music / Drafts controls sit under them.
-  const showSteps =
-    !hideBatchButton &&
-    Boolean(onContinueGeneration) &&
-    (shots?.length ?? 0) > 0;
   // The plan under the footer's switches as they stand (#1817): turning Start
   // frames or Voices on adds units before anything saves. The saved plan says
   // which switches can no longer turn off.
   const { data: savedPlan } = useGenerationPlan(sequenceId);
+  // The steps show at every step until every unit is done (#1780 §1): out of
+  // date, missing, blocked or running keeps them. The Motion / Music / Drafts
+  // controls sit under them.
+  const showSteps =
+    !hideBatchButton &&
+    Boolean(onContinueGeneration) &&
+    (shots?.length ?? 0) > 0 &&
+    (savedPlan?.some((u) => u.state !== 'done') ?? false);
   const switchesMoved =
     draftStartFrames !== generateStartFrames || voices !== generateVoices;
   // While a switch's plan loads the last one stays on screen; the click
@@ -1051,21 +1053,6 @@ const SceneListComponent: React.FC<SceneListProps> = ({
                 </Button>
                 <ActionCost estimate={batchCostEstimate} />
               </div>
-              <label
-                htmlFor="batch-generate-audio"
-                className="flex items-center gap-2 text-sm text-muted-foreground"
-              >
-                <Checkbox
-                  id="batch-generate-audio"
-                  checked={generateAudio}
-                  onCheckedChange={(checked) =>
-                    setGenerateAudio(checked === true)
-                  }
-                />
-                <span>
-                  Include SFX &amp; dialogue (when the model supports it)
-                </span>
-              </label>
               {offerDraftFirst && (
                 <label
                   htmlFor="batch-draft-motion"

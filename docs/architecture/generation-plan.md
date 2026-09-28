@@ -141,11 +141,13 @@ The scene list reads `getGenerationPlanFn` (one query, 10s stale time,
 refetch on focus, invalidated by realtime and by any refused continue —
 `refetchAfterRefusedContinue`).
 
-- **The steps show at every step (#1780 §1)**, a finished sequence included:
-  one sticky footer, the slider first, then the Motion / Music / Drafts
+- **The steps show at every step (#1780 §1)** until every unit is done — a
+  finished sequence hides them: one sticky footer, the slider first, then the Motion / Music / Drafts
   controls of whichever step the sequence is at (their own buttons — batch
   motion, Generate Music, Render finals — are unchanged). Stops before the
-  first with work are locked (done); with no work left every stop is done.
+  first with work are locked (done).
+- **SFX & dialogue is always on for a batch.** Only a single shot's editor can
+  turn it off.
 - **The continue button** (`Generate 2 references, 12 prompts, 12 images`,
   `planWorkLabel`, with a line per blocked noun, `blockedLines`) shows when the
   plan's first work is before Motion.
