@@ -326,13 +326,13 @@ export function firstStageWithWork(
 }
 
 /**
- * A switch whose units exist cannot be turned off (#1780 §2): Start frames
- * once a shot has a still, Voices once a shot has a recording. Turning either
- * ON is always allowed — it only adds units. Draft first is changeable at the
+ * Voices cannot be turned off once a shot has a recording (#1780 §2): the
+ * recording would still ride the clip. Start frames can always turn off — the
+ * stills stay, shots render from references, and their motion prompts go
+ * stale. Turning either ON is always allowed — it only adds units. Draft first is changeable at the
  * Motion step and read-only after: once every clip exists.
  */
 export function switchLocks(plan: readonly PlanUnit[]): {
-  startFrames: boolean;
   voices: boolean;
   draft: boolean;
 } {
@@ -344,7 +344,6 @@ export function switchLocks(plan: readonly PlanUnit[]): {
     plan.some((u) => u.kind === kind && exists(u));
   const clips = plan.filter((u) => u.kind === 'clip');
   return {
-    startFrames: made('still'),
     voices: made('dialogue'),
     draft: clips.length > 0 && clips.every(exists),
   };
@@ -381,9 +380,13 @@ export function planWorkSummary(units: readonly PlanUnitRef[]): string {
     .join(', ');
 }
 
-/** Footer button: `Generate`; {@link planWorkSummary} says what. */
+/**
+ * Footer button: `Generate`, or `Regenerate` when every unit already exists
+ * and is only out of date. {@link planWorkSummary} says what.
+ */
 export function planWorkLabel(work: readonly PlanUnit[]): string {
-  return work.length === 0 ? 'Nothing to generate' : 'Generate';
+  if (work.length === 0) return 'Nothing to generate';
+  return work.every((u) => u.state === 'stale') ? 'Regenerate' : 'Generate';
 }
 
 /**

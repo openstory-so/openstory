@@ -90,13 +90,13 @@ describe('continueFromPlan (#1817)', () => {
     expect(units(result)).toEqual(['voice:maya', 'dialogue:s1']);
   });
 
-  it('turning Start frames off after stills exist is refused', () => {
+  it('turning Start frames off after stills exist is allowed', () => {
     expect(() =>
       decide([u('still', 's1', 'done'), u('clip', 's1', 'missing')], 'music', {
         saved: ON,
         requested: { ...ON, generateStartFrames: false },
       })
-    ).toThrow('Start frames can’t be turned off: shots already have stills');
+    ).not.toThrow();
   });
 
   it('turning Voices off after a recording exists is refused', () => {

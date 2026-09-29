@@ -148,8 +148,10 @@ refetch on focus, invalidated by realtime and by any refused continue —
   first with work are locked (done).
 - **SFX & dialogue is always on for a batch.** Only a single shot's editor can
   turn it off.
-- **The continue button** (`Generate 2 references, 12 prompts, 12 images`,
-  `planWorkLabel`, with a line per blocked noun, `blockedLines`) shows when the
+- **The continue button** (`Generate`, or `Regenerate` when every unit it owes
+  exists and is only stale — `planWorkLabel`; under it `2 references, 12
+prompts, 12 images`, `planWorkSummary`, and a line per blocked noun,
+  `blockedLines`) shows when the
   plan's first work is before Motion.
 - **A switch shows only when it changes a step the run takes.** Voices from
   References (voices ride that step), Start frames from Images, Draft first
@@ -157,8 +159,10 @@ refetch on focus, invalidated by realtime and by any refused continue —
   the thumb at its step (Images / Dialogue; `switchStopAt`, shared by the
   footer and the server, so the label, the quote and the run agree) and the
   plan grows its units. The cap is derived, never written: turning the switch
-  off again frees the thumb to where it was. One whose units exist is locked
-  on (`switchLocks`; a `blocked` unit does not count as existing). Draft
+  off again frees the thumb to where it was. Voices is locked on once a shot has a recording
+  (`switchLocks`; a `blocked` unit does not count as existing): the recording
+  would still ride the clip. Start frames can always turn off — the stills
+  stay, shots render from references, and their motion prompts go stale. Draft
   first is changeable until every clip exists, then shown read-only. With
   the switches flipped the footer asks the plan as if they were saved
   (`getGenerationPlanFn` overrides) and the continue waits for that plan.
