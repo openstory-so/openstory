@@ -629,20 +629,28 @@ export async function computeShotStaleness(args: {
       const latest = reads
         ? (reads.latestMotionByShot.get(shot.id) ?? null)
         : await scopedDb.shotPromptVersions.getLatest(shot.id, 'motion');
-      const ctx = {
+      const contextWithFrame = async (
+        startingFrameImageUrl: string | null
+      ) => ({
         ...(await loadNarrowShotPromptContext({
           scopedDb,
           sequence: motionSequence,
           scene,
           analysisModelOverride: latest?.analysisModel ?? null,
-          startingFrameImageUrl:
-            reference?.source === 'derived' ? null : motionStartingFrameUrl,
+          startingFrameImageUrl,
           refs,
         })),
         dialogue: dialogue.dialogue,
-      };
-      const liveHash = await hashMotionPromptInput(ctx);
-      liveHashes.motionPrompt = liveHash;
+      });
+      // The live hash stamps the next LLM-written prompt, which sees the still.
+      // Only a derived reference is verified without one, as it was written.
+      const withFrame = await contextWithFrame(motionStartingFrameUrl);
+      liveHashes.motionPrompt = await hashMotionPromptInput(withFrame);
+      const derived = reference?.source === 'derived';
+      const ctx = derived ? await contextWithFrame(null) : withFrame;
+      const liveHash = derived
+        ? await hashMotionPromptInput(ctx)
+        : liveHashes.motionPrompt;
       if (referenceHash) {
         motionPrompt =
           referenceHash === liveHash ||

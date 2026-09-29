@@ -134,8 +134,12 @@ vi.doMock('@/shots/input-hash', () => ({
   ),
 }));
 
-const { computePlan, claimTargets, findTargetMissingStartFrameMode } =
-  await import('./update-stale-plan');
+const {
+  computePlan,
+  claimTargets,
+  findTargetMissingStartFrameMode,
+  siblingPrompts,
+} = await import('./update-stale-plan');
 type PlanTarget = import('./update-stale-plan').PlanTarget;
 type PlanUnitRef = import('@/sequences/generation-plan').PlanUnitRef;
 
@@ -873,13 +877,13 @@ describe('saved sibling direction snapshots', () => {
         { kind: 'prompt:motion', id: 'shot-1' },
       ],
     });
-    expect(plan.targets[0]).toMatchObject({
-      siblingVisualPrompts: [
-        { shotId: 'sibling', text: 'Close-up of the listener' },
-      ],
-      siblingMotionPrompts: [
-        { shotId: 'sibling', text: 'Listener turns toward camera' },
-      ],
+    // One copy per scene, not per target (#1903): the other scene is absent.
+    expect(Object.keys(plan.scenePrompts)).toEqual(['scene-1']);
+    const [target] = plan.targets;
+    if (!target) throw new Error('expected a target');
+    expect(siblingPrompts(plan, target)).toEqual({
+      visual: [{ shotId: 'sibling', text: 'Close-up of the listener' }],
+      motion: [{ shotId: 'sibling', text: 'Listener turns toward camera' }],
     });
   });
 });

@@ -194,8 +194,6 @@ export type PlanTarget = {
    * footer apply.
    */
   attachSceneHeader: boolean;
-  siblingVisualPrompts?: Array<{ shotId: string; text: string }>;
-  siblingMotionPrompts?: Array<{ shotId: string; text: string }>;
   /** Compact render context frozen at the click, including persisted membership. */
   motionRender: Pick<
     MotionRenderShot,
@@ -335,6 +333,25 @@ export type PlanRenderOptions = {
   audioModels?: AudioModel[];
 };
 
+type ShotPromptText = { shotId: string; text: string };
+export type ScenePrompts = {
+  visual: ShotPromptText[];
+  motion: ShotPromptText[];
+};
+
+/** A target's scene siblings: the scene's prompts without its own. */
+export function siblingPrompts(
+  plan: Pick<UpdateStalePlan, 'scenePrompts'>,
+  target: Pick<PlanTarget, 'shotId' | 'motionRender'>
+): ScenePrompts {
+  const scene = target.motionRender.sceneId
+    ? plan.scenePrompts[target.motionRender.sceneId]
+    : undefined;
+  const others = (list: ShotPromptText[] | undefined) =>
+    (list ?? []).filter((prompt) => prompt.shotId !== target.shotId);
+  return { visual: others(scene?.visual), motion: others(scene?.motion) };
+}
+
 export type UpdateStalePlan = {
   renderOptions?: PlanRenderOptions;
   aspectRatio: AspectRatio;
@@ -362,6 +379,12 @@ export type UpdateStalePlan = {
   dialogueRecording: BatchDialogueRecording | null;
   /** Reference rows frozen once at the click; this run overlays its own sheet results. */
   renderRefs: ShotImageRefs;
+  /**
+   * Each rewritten scene's selected prompts, stated once per scene: a target
+   * reads its siblings here minus itself. Per-target copies grow with the
+   * square of a scene's shots and can burst the 1 MiB step output.
+   */
+  scenePrompts: Record<string, ScenePrompts>;
   targets: PlanTarget[];
   skipped: SkippedShot[];
   /**
@@ -575,6 +598,7 @@ export async function computePlan(args: {
     characterVoices: [],
     dialogueRecording: null,
     renderRefs: { characters: [], locations: [], elements: [] },
+    scenePrompts: {},
     targets: [],
     skipped: [],
     references,
@@ -700,29 +724,29 @@ export async function computePlan(args: {
   });
 
   const shotById = new Map(allShots.map((shot) => [shot.id, shot]));
+  const scenePrompts: Record<string, ScenePrompts> = {};
   for (const target of targets) {
     const sceneId = shotById.get(target.shotId)?.sceneId;
-    target.siblingVisualPrompts = allShots.flatMap((sibling) => {
-      const frame = anchorsByShot.get(sibling.id);
-      const prompt = frame ? selectedPromptByFrame.get(frame.id) : null;
-      return sceneId &&
-        sibling.sceneId === sceneId &&
-        sibling.id !== target.shotId &&
-        !sibling.deletedAt &&
-        prompt?.text
-        ? [{ shotId: sibling.id, text: prompt.text }]
-        : [];
-    });
-    target.siblingMotionPrompts = allShots.flatMap((sibling) => {
-      const prompt = selectedMotionByShot.get(sibling.id);
-      return sceneId &&
-        sibling.sceneId === sceneId &&
-        sibling.id !== target.shotId &&
-        !sibling.deletedAt &&
-        prompt?.text
-        ? [{ shotId: sibling.id, text: prompt.text }]
-        : [];
-    });
+    if (
+      sceneId &&
+      !scenePrompts[sceneId] &&
+      (target.regenVisual || target.regenMotion)
+    ) {
+      const live = allShots.filter(
+        (shot) => shot.sceneId === sceneId && !shot.deletedAt
+      );
+      scenePrompts[sceneId] = {
+        visual: live.flatMap((shot) => {
+          const frame = anchorsByShot.get(shot.id);
+          const text = frame ? selectedPromptByFrame.get(frame.id)?.text : null;
+          return text ? [{ shotId: shot.id, text }] : [];
+        }),
+        motion: live.flatMap((shot) => {
+          const text = selectedMotionByShot.get(shot.id)?.text;
+          return text ? [{ shotId: shot.id, text }] : [];
+        }),
+      };
+    }
     target.dialogueContext =
       dialogueContextFor({
         shot: { id: target.shotId },
@@ -756,11 +780,10 @@ export async function computePlan(args: {
       return durationMs && durationMs > 0 ? durationMs / 1000 : undefined;
     },
   });
-  // ponytail: bounds come from the sequence's video model; a target whose
-  // selected version used a tighter model is still checked by its own render.
-  const dialogueModels = [
-    safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
-  ];
+  // A take must fit every model this run renders: a fresh run names them all.
+  const dialogueModels = args.renderOptions?.videoModels?.length
+    ? args.renderOptions.videoModels
+    : [safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL)];
   return {
     aspectRatio: sequence.aspectRatio,
     resolution: sequence.resolution,
@@ -769,6 +792,7 @@ export async function computePlan(args: {
     music,
     characterVoices,
     renderRefs: { characters, locations, elements },
+    scenePrompts,
     dialogueRecording:
       dialogueScenes.length > 0
         ? {

@@ -763,6 +763,34 @@ describe('per-shot start-frame override', () => {
     ).toBe('stale');
   });
 
+  it('stamps the next LLM version over a derived one with the still it will see', async () => {
+    loadNarrowShotPromptContext.mockImplementation(
+      async (args: { startingFrameImageUrl?: string | null }) => ({
+        frameUrl: args.startingFrameImageUrl ?? null,
+      })
+    );
+    hashMotionPromptInput.mockImplementation(
+      async (ctx: { frameUrl: string | null }) =>
+        ctx.frameUrl ? 'with-still' : 'motion-stored'
+    );
+    const result = await computeShotStaleness({
+      dialogue: NO_LINES,
+      scopedDb: makeScopedDb({
+        motionSelectedHash: 'motion-stored',
+        motionSource: 'derived',
+      }),
+      sequence,
+      shot,
+      frame,
+      scene,
+      selectedImage: still,
+    });
+    // The derived row is judged as written; the claim it seeds must match the
+    // hash the replacement is checked against once it is no longer derived.
+    expect(result.motionPrompt).toBe('fresh');
+    expect(result.liveHashes.motionPrompt).toBe('with-still');
+  });
+
   it('a later LLM version again consumes the rendered still', async () => {
     await computeShotStaleness({
       dialogue: NO_LINES,

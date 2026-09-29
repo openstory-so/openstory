@@ -1,4 +1,5 @@
 import { creditsShortStatusError } from '@/billing/credits-short';
+import { microsToUsd } from '@/billing/money';
 import { freezeFreshGenerationPlan } from '@/sequences/server/freeze-fresh-generation-plan';
 import { gateStoryboardRenders } from '@/billing/server/storyboard-render-gate';
 /**
@@ -35,6 +36,7 @@ import type {
 } from '@/platform/server/workflow/types';
 import type { UpdateStaleShotsResult } from '@/shots/server/workflows/update-stale-shots-workflow';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
+import { NonRetryableError } from 'cloudflare:workflows';
 import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'storyboard']);
@@ -237,17 +239,41 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
           sceneCount: result.plan.targets.length,
           sequenceId,
         });
+        // The gate already zeroed the leftover, so a retry can only fail again:
+        // report the shortfall once, outside the step.
         if (!gate.spawnRenders)
-          throw new WorkflowValidationError(
-            creditsShortStatusError({
+          return {
+            plan: null,
+            short: {
               sceneCount: result.plan.targets.length,
               neededMicros: gate.neededMicros,
-            })
-          );
-        return JSON.stringify(result.plan);
+              remainingMicros: gate.remainingMicros,
+            },
+          };
+        return { plan: JSON.stringify(result.plan), short: null };
       });
+      const { short } = frozen;
+      if (short) {
+        const message = creditsShortStatusError(short);
+        await step.do('emit-reservation-short', async () => {
+          await seq.updateStatus('failed', message);
+          // A top-up prompt, not a failure toast (#1328).
+          await getGenerationChannel(sequenceId).emit(
+            'generation.reservation:short',
+            {
+              neededUsd: microsToUsd(short.neededMicros),
+              remainingUsd: microsToUsd(short.remainingMicros),
+              sceneCount: short.sceneCount,
+            }
+          );
+        });
+        throw new NonRetryableError(message);
+      }
+      if (!frozen.plan) throw new NonRetryableError('Fresh plan missing');
       // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- exact checkpoint above
-      plan = JSON.parse(frozen) as NonNullable<StoryboardWorkflowInput['plan']>;
+      plan = JSON.parse(frozen.plan) as NonNullable<
+        StoryboardWorkflowInput['plan']
+      >;
     }
     // Fresh and continue share the same durable execution path.
     let continueFailure: string | null = null;

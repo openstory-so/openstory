@@ -276,6 +276,7 @@ function plan(overrides: Partial<UpdateStalePlan>): UpdateStalePlan {
     characterVoices: [],
     dialogueRecording: null,
     renderRefs: { characters: [], locations: [], elements: [] },
+    scenePrompts: {},
     targets: [],
     skipped: [],
     references: null,

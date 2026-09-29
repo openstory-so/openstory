@@ -97,6 +97,7 @@ import {
 import {
   claimTargets,
   findTargetMissingStartFrameMode,
+  siblingPrompts,
   type MusicPlan,
   type PlanTarget,
   type ShotClaims,
@@ -222,6 +223,8 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
     if (
       // oxlint-disable-next-line typescript/no-unnecessary-condition -- queued pre-1888 payloads lack this required snapshot
       !plan.renderRefs ||
+      // oxlint-disable-next-line typescript/no-unnecessary-condition -- plans frozen before per-scene prompts
+      !plan.scenePrompts ||
       plan.targets.some((target) => !target.motionRender)
     ) {
       throw new WorkflowValidationError(
@@ -1214,6 +1217,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               scenes: dialogueRecording.scenes,
               minDurationSeconds: dialogueRecording.minDurationSeconds,
               maxDurationSeconds: dialogueRecording.maxDurationSeconds,
+              analysisModelId: plan.promptContext?.analysisModelId,
             },
             spawnStepName: 'spawn-dialogue-audio',
             awaitStepName: 'await-dialogue-audio',
@@ -1432,7 +1436,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                     dialogue: target.dialogue,
                     sceneBefore: scenes.sceneBefore,
                     sceneAfter: scenes.sceneAfter,
-                    siblingMotionPrompts: target.siblingMotionPrompts,
+                    siblingMotionPrompts: siblingPrompts(plan, target).motion,
                     startingFrameImageUrl: target.usesStartFrame
                       ? (startingFrameImageUrl ?? undefined)
                       : undefined,
@@ -1471,7 +1475,8 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                       childPayload: {
                         ...base,
                         frameId: target.frameId,
-                        siblingVisualPrompts: target.siblingVisualPrompts,
+                        siblingVisualPrompts: siblingPrompts(plan, target)
+                          .visual,
                         targetVersionId: claims.visualVersionId ?? undefined,
                       },
                       spawnStepName: `spawn-frame-prompt-${target.shotId}`,
