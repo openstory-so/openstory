@@ -1,5 +1,4 @@
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
-import { SignInButton } from '@/platform/ui/auth/sign-in-button';
 import { routeParams } from '@/ui/layout/breadcrumbs';
 import { PageContainer } from '@/ui/layout/page-container';
 import { EditLocationDialog } from '@/cast/ui/location-library/edit-location-dialog';
@@ -179,7 +178,6 @@ function LocationDetailPage() {
           {location.description && (
             <PageDescription>{location.description}</PageDescription>
           )}
-          <SignInButton />
         </PageHeader>
 
         {/* Location Sheet Section */}

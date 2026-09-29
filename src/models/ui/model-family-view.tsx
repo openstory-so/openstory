@@ -4,7 +4,6 @@
  * linking to that endpoint's run page. Labels come from endpoint ids — the
  * catalog's display names are unreliable (see model-families.ts).
  */
-import { SignInButton } from '@/platform/ui/auth/sign-in-button';
 import { ACTIVITY_ICONS, ACTIVITY_LABELS, categoryLabel } from './model-card';
 import { getModelGradient } from './model-gradient';
 import { ReleaseBadge } from './release-badge';
@@ -114,7 +113,6 @@ const ModelFamilyContent: FC<{
         <code className="font-mono text-xs text-muted-foreground">
           {data.family}
         </code>
-        <SignInButton />
       </header>
 
       <div className="flex flex-col gap-6">

@@ -68,6 +68,7 @@ baseTest.describe('Route Protection', () => {
       await page.goto('/images');
       await expect(page).toHaveURL(/\/images/);
       await expect(page).not.toHaveURL(/\/login/);
+      // Library empty state, under the copy.
       await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
       await expect(
         page.locator('[data-testid="studio-prompt"] .ProseMirror')

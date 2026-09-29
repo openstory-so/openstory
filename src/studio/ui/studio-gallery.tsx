@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from '@/ui/shadcn/dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/shadcn/tooltip';
+import { SignInButton } from '@/platform/ui/auth/sign-in-button';
 import { EmptyState } from '@/ui/shadcn/empty-state';
 import { Skeleton } from '@/ui/shadcn/skeleton';
 import { AppImage } from '@/ui/shadcn/app-image';
@@ -736,6 +737,7 @@ export function StudioGallery({
                 : 'Your stills land here. Start with a prompt below.'
               : 'Browse the composer, then sign in to generate and keep a library.'
         }
+        action={!supportMode && !isAuthenticated ? <SignInButton /> : undefined}
       />
     );
   }
