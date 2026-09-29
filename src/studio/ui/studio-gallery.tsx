@@ -29,7 +29,11 @@ import type { MentionItem } from '@/shots/ui/prompt-mention/mention-items';
 import { Textarea } from '@/ui/shadcn/textarea';
 import { isOfferedVideoModel } from '@/models/models';
 import { useViaAvailability } from '@/models/ui/use-via-availability';
-import { STUDIO_EDIT_MODEL, studioCanEditSource } from '@/studio/text-to-video';
+import {
+  STUDIO_EDIT_MODEL,
+  studioCanEditSource,
+  studioUsedReferenceVideo,
+} from '@/studio/text-to-video';
 import {
   useDeleteStudioAsset,
   useEditStudioAsset,
@@ -946,7 +950,9 @@ export function StudioGallery({
               onPrev={prevAsset ? () => step(prevAsset) : undefined}
               onNext={nextAsset ? () => step(nextAsset) : undefined}
               onEdit={
-                canEdit && studioCanEditSource(openAsset.input.videoModel)
+                canEdit &&
+                studioCanEditSource(openAsset.input.videoModel) &&
+                !studioUsedReferenceVideo(openAsset.input)
                   ? (prompt) => {
                       edit.mutate(
                         { id: openAsset.id, prompt },

@@ -258,6 +258,15 @@ export function studioCanEditSource(videoModel: unknown): boolean {
   );
 }
 
+/** Whether a studio run took reference clips; such a clip is never edited. */
+export function studioUsedReferenceVideo(input: {
+  referenceVideos?: unknown;
+}): boolean {
+  return (
+    Array.isArray(input.referenceVideos) && input.referenceVideos.length > 0
+  );
+}
+
 /** The instruction Seedance reads an edit from: the source is `@Video1`. */
 export function studioEditPrompt(prompt: string): string {
   return /^\s*edit @?video1\b/i.test(prompt)

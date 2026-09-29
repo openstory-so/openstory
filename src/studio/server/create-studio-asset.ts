@@ -46,6 +46,7 @@ import {
   snapStudioVideoDuration,
   STUDIO_EDIT_MODEL,
   studioCanEditSource,
+  studioUsedReferenceVideo,
   studioBillableSeconds,
 } from '@/studio/text-to-video';
 import { studioAspectRatio, studioPrimaryOutput } from '@/studio/ui/outputs';
@@ -171,6 +172,19 @@ async function requireOwnEditSource(
     studioPrimaryOutput(source)?.url !== input.sourceVideoUrl
   ) {
     throw new Error('Video to edit not found');
+  }
+  // An edit registers its source in Ark's portrait library, which vouches
+  // for whoever is in it. Reference clips skip the likeness gate (only stills
+  // are classified), so a clip made from one could put an unsigned real
+  // person there. An edit's own source already passed this check, so the
+  // source alone covers the whole chain (#1925).
+  // ponytail: any reference clip refuses, uploaded or generated — a clip URL
+  // does not say which row made it. Relax once uploaded videos are
+  // classified like stills.
+  if (studioUsedReferenceVideo(source.input)) {
+    throw new Error(
+      'This clip was made from a reference video, so it cannot be edited'
+    );
   }
 }
 

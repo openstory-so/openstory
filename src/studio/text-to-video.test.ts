@@ -13,6 +13,7 @@ import {
   studioBillableSeconds,
   studioCanEditSource,
   studioEditPrompt,
+  studioUsedReferenceVideo,
   studioCombinedRefCap,
   studioSupportsEndFrame,
   studioSupportsMode,
@@ -374,6 +375,14 @@ describe('auto length and edit (#1925)', () => {
     expect(studioCanEditSource('seedance_v2_5')).toBe(true);
     expect(studioCanEditSource('kling_v3_pro')).toBe(false);
     expect(studioCanEditSource(undefined)).toBe(false);
+  });
+
+  it('flags a run that took reference clips', () => {
+    expect(studioUsedReferenceVideo({ referenceVideos: ['/r2/a.mp4'] })).toBe(
+      true
+    );
+    expect(studioUsedReferenceVideo({ referenceVideos: [] })).toBe(false);
+    expect(studioUsedReferenceVideo({})).toBe(false);
   });
 
   it('offers edit on Seedance 2.5 only', () => {
