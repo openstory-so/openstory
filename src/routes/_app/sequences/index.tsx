@@ -86,7 +86,7 @@ function SequencesPage() {
 
   return (
     <>
-      <PageIntro title="Sequences" maxWidth="full">
+      <PageIntro title="Sequences" maxWidth="full" signIn={false}>
         Your films, from first draft to final cut.
       </PageIntro>
       <PageContainer

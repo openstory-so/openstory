@@ -4,6 +4,7 @@
  */
 
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
+import { SignInButton } from '@/platform/ui/auth/sign-in-button';
 import { createFileRoute } from '@tanstack/react-router';
 import { Badge } from '@/ui/shadcn/badge';
 import { Button } from '@/ui/shadcn/button';
@@ -48,14 +49,17 @@ function PricingPage() {
 
   return (
     <div className="mx-auto w-full max-w-5xl p-6 pb-16">
-      <header className="max-w-2xl">
-        <h1 className="font-heading text-3xl font-bold tracking-tight">
-          Pricing
-        </h1>
-        <p className="mt-3 text-base leading-relaxed text-muted-foreground">
-          Pay providers as you go. We show an estimate under each action before
-          you spend.
-        </p>
+      <header className="flex max-w-2xl flex-col gap-4">
+        <div className="flex flex-col gap-3">
+          <h1 className="font-heading text-3xl font-bold tracking-tight">
+            Pricing
+          </h1>
+          <p className="text-base leading-relaxed text-muted-foreground">
+            Pay providers as you go. We show an estimate under each action
+            before you spend.
+          </p>
+        </div>
+        <SignInButton />
       </header>
 
       {filmCosts && (

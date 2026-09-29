@@ -1,3 +1,4 @@
+import { SignInButton } from '@/platform/ui/auth/sign-in-button';
 import { PageContainer } from '@/ui/layout/page-container';
 import { SampleVideoCard } from '@/look/ui/sample-video-showcase';
 import { EmptyState } from '@/ui/shadcn/empty-state';
@@ -20,6 +21,7 @@ function GalleryPage() {
     <div className="h-full overflow-auto">
       <PageContainer>
         <h1 className="sr-only">Gallery</h1>
+        <SignInButton />
 
         {isPending ? (
           // Masonry columns mirror the final layout's mixed aspect ratios.

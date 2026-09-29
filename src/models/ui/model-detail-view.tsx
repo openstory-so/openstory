@@ -8,6 +8,7 @@
  * live schema — its per-field messages flow back into `<SchemaForm errors>`.
  */
 
+import { SignInButton } from '@/platform/ui/auth/sign-in-button';
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
 import { ACTIVITY_ICONS, ACTIVITY_LABELS, categoryLabel } from './model-card';
 import { AssetResult } from '@/ui/schema-form/asset-result';
@@ -267,6 +268,7 @@ const ModelRunPanel: FC<{ detail: ModelDetail }> = ({ detail }) => {
             <ExternalLink aria-hidden="true" className="size-3.5" />
           </a>
         </div>
+        <SignInButton />
       </header>
 
       <div className="grid gap-10 lg:grid-cols-2">

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
+import { SignInButton } from '@/platform/ui/auth/sign-in-button';
 import { routeParams } from '@/ui/layout/breadcrumbs';
 import { EditTalentDialog } from '@/cast/ui/talent-library/edit-talent-dialog';
 import { TalentMediaUpload } from '@/cast/ui/talent-library/talent-media-upload';
@@ -217,6 +218,7 @@ function TalentDetailPage() {
           {talent.description && (
             <PageDescription>{talent.description}</PageDescription>
           )}
+          <SignInButton />
         </PageHeader>
 
         {/* Media Section */}
