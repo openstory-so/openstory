@@ -257,6 +257,12 @@ scenes (`FramePromptBatchWorkflow`); the executor has the same call count.
 Multi-shot first prompts are supplied by the analysis handoff, so they need
 no additional LLM call in the executor.
 
+The prompt bibles (`promptContext`) are the characters and locations with a
+finished sheet PLUS the ones whose sheet this run makes. The prompts are
+written after this run's sheets land, and the live check reads every
+finished sheet; snapshotting only the finished ones wrote a first run's
+prompts with no cast and left them stale the moment the sheets landed.
+
 All spending children inherit the parent's `reservationId`. A preflight can
 spend the remaining own envelope plus unheld balance, excluding other runs'
 holds. This is checked in one billing read: a missing or exhausted envelope

@@ -571,6 +571,7 @@ export async function computePlan(args: {
     elements,
     style,
     voiceRows,
+    locationRows,
   ] = await Promise.all([
     scopedDb.frames.listAnchorsBySequence(sequenceId),
     loadSceneContextBySequence(scopedDb, sequenceId),
@@ -581,6 +582,7 @@ export async function computePlan(args: {
       ? scopedDb.styles.getById(sequence.styleId)
       : Promise.resolve(null),
     scopedDb.characters.list(sequenceId),
+    scopedDb.sequenceLocations.list(sequenceId),
   ]);
   // A voice this run designs (#1818) speaks under a placeholder until the
   // references wave lands it — `bindPendingVoices`.
@@ -678,10 +680,28 @@ export async function computePlan(args: {
   // Sequence-wide bibles + style — same loader as single-shot regen. Only
   // the bibles are read off this context, so the sequence default stands in
   // for the per-shot mode (which is frozen per target as `usesStartFrame`).
+  // The prompts are written after this run's own sheets land, and the live
+  // check reads every character / location with a finished sheet. So the
+  // bibles are the finished ones plus the ones this run makes: snapshot only
+  // the finished ones and a first run writes every prompt with no cast.
+  const owedSheets = new Set([
+    ...(references?.characterSheets.map((s) => s.characterDbId) ?? []),
+    ...(references?.locationSheets.map((s) => s.locationDbId) ?? []),
+  ]);
   const ctx = await loadShotPromptContext({
     scopedDb,
     sequence: { ...sequence, referenceOnly: !sequence.generateStartFrames },
     scene: sceneForBibles,
+    refs: {
+      characters: voiceRows.filter(
+        (c) => c.sheetStatus === 'completed' || owedSheets.has(c.id)
+      ),
+      locations: locationRows.filter(
+        (l) => l.referenceStatus === 'completed' || owedSheets.has(l.id)
+      ),
+      elements,
+      style,
+    },
   });
 
   const shotById = new Map(allShots.map((shot) => [shot.id, shot]));

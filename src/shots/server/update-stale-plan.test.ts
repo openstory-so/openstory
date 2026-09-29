@@ -121,6 +121,14 @@ vi.doMock('@/shots/input-hash', () => ({
   ),
 }));
 
+// The references wave this run makes; null = none owed.
+let referencesFixture: unknown = null;
+const realReferences = await import('./update-stale-references');
+vi.doMock('./update-stale-references', () => ({
+  ...realReferences,
+  buildPlanReferences: vi.fn(() => Promise.resolve(referencesFixture)),
+}));
+
 const { computePlan, claimTargets, findTargetMissingStartFrameMode } =
   await import('./update-stale-plan');
 type PlanTarget = import('./update-stale-plan').PlanTarget;
@@ -217,7 +225,10 @@ function buildScopedDb(
       listWithSheets: () => Promise.resolve([]),
       list: () => Promise.resolve([]),
     },
-    sequenceLocations: { listWithReferences: () => Promise.resolve([]) },
+    sequenceLocations: {
+      listWithReferences: () => Promise.resolve([]),
+      list: () => Promise.resolve([]),
+    },
     sequenceElements: { list: () => Promise.resolve([]) },
     styles: { getById: () => Promise.resolve(null) },
     renderSegments: {
@@ -260,7 +271,10 @@ const plan = (
     renderOptions: opts.renderOptions,
   });
 
-beforeEach(() => stalenessByShot.clear());
+beforeEach(() => {
+  stalenessByShot.clear();
+  referencesFixture = null;
+});
 
 describe('computePlan — a dialogue unit (#1703, #1780 §6)', () => {
   const staleAudio: Shot['audioClips'] = [
@@ -811,5 +825,43 @@ describe('fresh plan model choices', () => {
       videoModels: ['seedance_v2', 'kling_v3_pro'],
       audioModels: ['elevenlabs_music'],
     });
+  });
+});
+
+describe('computePlan — the prompt bibles', () => {
+  it('include a character whose sheet this run makes, not one no one makes', async () => {
+    referencesFixture = {
+      characterSheets: [{ characterDbId: 'maya' }],
+      locationSheets: [{ locationDbId: 'road' }],
+      elementSheets: null,
+      voices: [],
+    };
+    const base = buildScopedDb([makeShot()], [makeFrame()]);
+    const db = asScopedDb({
+      ...base,
+      characters: {
+        listWithSheets: () => Promise.resolve([]),
+        list: () =>
+          Promise.resolve([
+            { id: 'maya', name: 'Maya', sheetStatus: 'pending' },
+            { id: 'ravi', name: 'Ravi', sheetStatus: 'pending' },
+            { id: 'jo', name: 'Jo', sheetStatus: 'completed' },
+          ]),
+      },
+      sequenceLocations: {
+        listWithReferences: () => Promise.resolve([]),
+        list: () =>
+          Promise.resolve([
+            { id: 'road', referenceStatus: 'pending' },
+            { id: 'yard', referenceStatus: 'failed' },
+          ]),
+      },
+    });
+    const { loadShotPromptContext } = await import('./prompt-context');
+    vi.mocked(loadShotPromptContext).mockClear();
+    await plan([makeShot()], [makeFrame()], { db });
+    const refs = vi.mocked(loadShotPromptContext).mock.calls[0]?.[0].refs;
+    expect(refs?.characters.map((c) => c.id)).toEqual(['maya', 'jo']);
+    expect(refs?.locations.map((l) => l.id)).toEqual(['road']);
   });
 });
