@@ -256,6 +256,7 @@ export async function createTestSequence(
     title,
     status: 'completed',
     styleId: style.id,
+    generationStopAt: 'images',
     createdBy: userId,
     createdAt: now,
     updatedAt: now,

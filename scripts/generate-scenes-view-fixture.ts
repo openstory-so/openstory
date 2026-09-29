@@ -51,13 +51,7 @@ async function q(sql: string): Promise<Row[]> {
 const camel = (s: string) => s.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
 
 // SQLite stores these as 0/1; the typed shapes want real booleans.
-const BOOL_COLS = new Set([
-  'auto_generate_motion',
-  'auto_generate_music',
-  'include_music',
-  'is_public',
-  'is_template',
-]);
+const BOOL_COLS = new Set(['include_music', 'is_public', 'is_template']);
 
 // Sentinels we string-replace into real expressions after JSON.stringify.
 const dateMark = (iso: string) => ({ __date__: iso });

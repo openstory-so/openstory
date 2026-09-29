@@ -40,8 +40,6 @@ export const settingsSchema = createSelectSchema(sequences)
     generateStartFrames: true,
     generateVoices: true,
     targetDurationSeconds: true,
-    autoGenerateMotion: true,
-    autoGenerateMusic: true,
     generationStopAt: true,
     workflow: true,
     workflowRunId: true,

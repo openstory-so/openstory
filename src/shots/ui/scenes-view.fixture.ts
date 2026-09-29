@@ -58,9 +58,7 @@ export const fixtureSequence: Sequence = {
   musicTags:
     'instrumental, ambient, ethereal, serene, slow, intimate, cinematic, pads, spacious, luxurious',
   statusError: null,
-  autoGenerateMotion: false,
-  autoGenerateMusic: false,
-  generationStopAt: null,
+  generationStopAt: 'images',
   generateStartFrames: true,
   generateVoices: false,
   draftMotion: false,

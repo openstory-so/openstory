@@ -60,6 +60,7 @@ import type {
   Shot,
 } from '@/platform/server/db/schema';
 import { analyzeFailures } from '@/sequences/failure-analysis';
+import { flagsFromStopAt, resolveStopAt } from '@/sequences/pipeline';
 import {
   motionPromptFromVersion,
   resolveMotionPromptFromVersion,
@@ -212,6 +213,9 @@ export async function executeSmartRetry(context: SmartRetryContext) {
       DEFAULT_VIDEO_MODEL
     );
 
+    const stopAt = resolveStopAt({
+      generationStopAt: sequence.generationStopAt,
+    });
     const reservationId = await reserveRunCredits(
       context.scopedDb,
       estimateStoryboardPreflightCost({
@@ -219,9 +223,8 @@ export async function executeSmartRetry(context: SmartRetryContext) {
         imageModel,
         aspectRatio: sequence.aspectRatio,
         resolution: sequence.resolution,
-        autoGenerateMotion: sequence.autoGenerateMotion,
+        stopAt,
         videoModels: [videoModel],
-        autoGenerateMusic: sequence.autoGenerateMusic,
         audioModels: [safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)],
         referenceOnly: !sequence.generateStartFrames,
         generateVoices: sequence.generateVoices,
@@ -251,8 +254,8 @@ export async function executeSmartRetry(context: SmartRetryContext) {
           aiProvider: 'openrouter',
           regenerateAll: true,
         },
-        autoGenerateMotion: sequence.autoGenerateMotion,
-        autoGenerateMusic: sequence.autoGenerateMusic,
+        ...flagsFromStopAt(stopAt),
+        stopAt,
       })
     );
 

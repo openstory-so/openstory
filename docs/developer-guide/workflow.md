@@ -102,8 +102,9 @@ All three use `triggerWorkflow()` from `src/platform/server/workflow/client.ts`,
 | `teamId`               | string    | Auth context                                 |
 | `sequenceId`           | string    | Target sequence                              |
 | `options`              | object    | `framesPerScene`, `generateThumbnails`, etc. |
-| `autoGenerateMotion`   | boolean   | Whether to generate video for each frame     |
-| `autoGenerateMusic`    | boolean   | Whether to generate music for the sequence   |
+| `stopAt`               | stage     | How far the run goes (`GENERATION_STAGES`)   |
+| `autoGenerateMotion`   | boolean   | `flagsFromStopAt(stopAt)`; never set alone   |
+| `autoGenerateMusic`    | boolean   | `flagsFromStopAt(stopAt)`; never set alone   |
 | `musicModel`           | string?   | Override music model                         |
 | `imageModels`          | string[]? | Multiple image models for parallel gen       |
 | `suggestedTalentIds`   | string[]? | Pre-selected talent for casting              |
@@ -315,7 +316,7 @@ The shot-list pass is the prevention half: its Dialogue rules give each shot a w
 
 **Sub-workflow:** `motionBatchWorkflow` (`src/motion/server/workflows/motion-batch-workflow.ts`)
 
-Only runs if `autoGenerateMotion` is enabled, a video model is set, and images were generated. A single orchestrator handles: The music track rides along when the stop is Music and the Music switch (`includeMusic`, snapshotted on the payload by the launcher) is on — the scenes' `musicDesign.presence` no longer gates it.
+Only runs if the run's `stopAt` includes motion, a video model is set, and images were generated. A single orchestrator handles: The music track rides along when the stop is Music and the Music switch (`includeMusic`, snapshotted on the payload by the launcher) is on — the scenes' `musicDesign.presence` no longer gates it.
 
 1. **Parallel generation** — All frame motion child workflows + the optional music workflow spawned simultaneously (`spawnAndAwaitChild` under `Promise.all`)
 2. **Collect video URLs** — Reads from DB (authoritative ordering by `orderIndex`)

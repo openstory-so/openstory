@@ -293,8 +293,6 @@ async function loadPlanInput(
     processing: sequence.status === 'processing',
     runStopAt: resolveStopAt({
       generationStopAt: sequence.generationStopAt,
-      autoGenerateMotion: sequence.autoGenerateMotion,
-      autoGenerateMusic: sequence.autoGenerateMusic,
     }),
     characterSheets,
     locationSheets,

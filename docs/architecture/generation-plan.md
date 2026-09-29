@@ -22,9 +22,12 @@ the continue slider. Casting is part of `script`.
 - **`stopAt` is the only word on how far a run goes.** It is chosen per click,
   snapshotted onto `sequences.generationStopAt`, and REQUIRED on the
   storyboard / analyze-script payloads (the launcher resolves it via
-  `resolveStopAt`). The legacy `autoGenerateMotion` / `autoGenerateMusic`
-  columns are DERIVED from it (`flagsFromStopAt`) and kept only for old
-  readers — never set them on their own, and never gate a phase on them.
+  `resolveStopAt`). Every row has one: #1118 backfilled the rows from before
+  #1408 out of the old `auto_generate_*` columns and dropped them, and
+  `resolveStopAt` throws on a sequence with none — no silent default. The
+  `autoGenerateMotion` / `autoGenerateMusic` payload and estimator flags are
+  DERIVED from it (`flagsFromStopAt`) — never set them on their own, and never
+  gate a phase on them.
 - Each unit kind has a stop (`PLAN_KIND_STAGE`, below); `stopAt` caps the
   kinds a run makes. Where a run starts is not a choice: it is wherever the
   plan has work.

@@ -4,8 +4,8 @@
  *
  * One ordered list drives the generate-dialog slider, the progress banner,
  * and the scene-list continue button. Stop-at is chosen per run and
- * snapshotted onto `sequences.generationStopAt`; the auto-generate flags are
- * derived from it. What is left to generate is not a stage: it is the
+ * snapshotted onto `sequences.generationStopAt`; payload/estimator flags are
+ * derived from it (`flagsFromStopAt`). What is left to generate is not a stage: it is the
  * generation plan (`generation-plan.ts`), derived from live rows.
  */
 
@@ -150,25 +150,20 @@ export function stopAtFromFlags(flags: {
 }
 
 /**
- * Resolve how far a run should go. The explicit stop-at (this click, or the
- * value snapshotted onto the sequence) wins. Flags are last-resort for rows
- * that predate `generationStopAt` — they cannot express Script/References,
- * so they must not override a stored stage.
+ * Resolve how far a run should go: this click's stop-at, else the value
+ * snapshotted onto the sequence. Every row has one (#1118 backfilled the
+ * rows that predate it from the dropped auto-generate columns, and create
+ * always writes it), so a missing stage is a bug and fails loudly.
  */
 export function resolveStopAt(opts: {
   stopAt?: GenerationStage | null;
-  generationStopAt?: GenerationStage | null;
-  autoGenerateMotion?: boolean;
-  autoGenerateMusic?: boolean;
+  generationStopAt: GenerationStage | null;
 }): GenerationStage {
-  return (
-    coerceStage(opts.stopAt) ??
-    coerceStage(opts.generationStopAt) ??
-    stopAtFromFlags({
-      autoGenerateMotion: opts.autoGenerateMotion,
-      autoGenerateMusic: opts.autoGenerateMusic,
-    })
-  );
+  const stage = coerceStage(opts.stopAt) ?? coerceStage(opts.generationStopAt);
+  if (!stage) {
+    throw new Error('Sequence has no generation stop-at');
+  }
+  return stage;
 }
 
 /** Voice-only characters never get a sheet; they do not count as misses. */

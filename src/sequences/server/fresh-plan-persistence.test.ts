@@ -139,6 +139,7 @@ it('keeps persisted derived prompts current before sheets exist, while retaining
     aspectRatio: '16:9',
     generateStartFrames: true,
     includeMusic: false,
+    generationStopAt: 'images',
   });
   const scopedDb = createScopedDb(teamId, actorId);
   const narrative = {

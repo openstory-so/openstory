@@ -446,9 +446,7 @@ export function createSequencesMethods(
       imageModel?: string;
       videoModel?: string;
       musicModel?: string;
-      autoGenerateMotion?: boolean;
-      autoGenerateMusic?: boolean;
-      generationStopAt?: GenerationStage;
+      generationStopAt: GenerationStage;
       /** Opt-in to the frame-based workflow; off = reference-only (the default). */
       generateStartFrames?: boolean;
       /** Design a voice per speaking character (#1553); off by default. */
@@ -484,8 +482,6 @@ export function createSequencesMethods(
         imageModel: params.imageModel ?? DEFAULT_IMAGE_MODEL,
         videoModel: params.videoModel ?? DEFAULT_VIDEO_MODEL,
         musicModel: params.musicModel,
-        autoGenerateMotion: params.autoGenerateMotion ?? false,
-        autoGenerateMusic: params.autoGenerateMusic ?? false,
         generationStopAt: params.generationStopAt,
         generateStartFrames: params.generateStartFrames ?? false,
         generateVoices: params.generateVoices ?? false,
@@ -599,9 +595,7 @@ export function createSequencesMethods(
       musicGeneratedAt?: Date;
       posterUrl?: string | null;
       includeMusic?: boolean;
-      autoGenerateMotion?: boolean;
-      autoGenerateMusic?: boolean;
-      generationStopAt?: GenerationStage | null;
+      generationStopAt?: GenerationStage;
       /**
        * Continue-from before Images (#1698): the create-time default can
        * still change because no stills exist yet. The general

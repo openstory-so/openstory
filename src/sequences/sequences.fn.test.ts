@@ -15,7 +15,6 @@ import { toShotView, type ShotView } from '@/shots/shot-view';
 import {
   assertModelNotAlreadyAdded,
   buildAddAudioMusicInput,
-  musicWithoutMotion,
   resolveUnarchiveRestore,
   selectEligibleVideoShots,
 } from './sequences.fn';
@@ -252,48 +251,6 @@ describe('buildAddAudioMusicInput (#547)', () => {
       model: 'elevenlabs_music',
       isPrimary: false,
     });
-  });
-});
-
-describe('musicWithoutMotion (#823)', () => {
-  const flags = (autoGenerateMusic: boolean, autoGenerateMotion: boolean) => ({
-    autoGenerateMusic,
-    autoGenerateMotion,
-  });
-
-  it('rejects an update that sets music on while motion is off', () => {
-    expect(musicWithoutMotion(flags(true, false), flags(false, false))).toBe(
-      true
-    );
-  });
-
-  it('rejects music set alone onto a motion-off sequence', () => {
-    expect(
-      musicWithoutMotion({ autoGenerateMusic: true }, flags(false, false))
-    ).toBe(true);
-  });
-
-  it('rejects motion turned off while music stays on', () => {
-    expect(
-      musicWithoutMotion({ autoGenerateMotion: false }, flags(true, true))
-    ).toBe(true);
-  });
-
-  it('accepts music set alone when motion is already on', () => {
-    expect(
-      musicWithoutMotion({ autoGenerateMusic: true }, flags(false, true))
-    ).toBe(false);
-  });
-
-  it('accepts an update that leaves both flags untouched', () => {
-    expect(musicWithoutMotion({}, flags(false, false))).toBe(false);
-    expect(musicWithoutMotion({}, flags(true, true))).toBe(false);
-  });
-
-  it('accepts turning music off regardless of motion', () => {
-    expect(
-      musicWithoutMotion({ autoGenerateMusic: false }, flags(true, false))
-    ).toBe(false);
   });
 });
 

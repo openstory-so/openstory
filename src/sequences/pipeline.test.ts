@@ -57,20 +57,14 @@ describe('generation pipeline stages', () => {
     });
   });
 
-  it('prefers an explicit stop-at over auto-generate flags', () => {
+  it('prefers this click over the snapshot, and throws with neither', () => {
     expect(
-      resolveStopAt({
-        stopAt: 'references',
-        autoGenerateMotion: false,
-        autoGenerateMusic: false,
-      })
+      resolveStopAt({ stopAt: 'references', generationStopAt: 'music' })
     ).toBe('references');
-    expect(
-      resolveStopAt({
-        autoGenerateMotion: false,
-        autoGenerateMusic: false,
-      })
-    ).toBe('images');
+    expect(resolveStopAt({ generationStopAt: 'motion' })).toBe('motion');
+    expect(() => resolveStopAt({ generationStopAt: null })).toThrow(
+      'no generation stop-at'
+    );
   });
 
   it('maps legacy flags back onto a stop-at stage', () => {

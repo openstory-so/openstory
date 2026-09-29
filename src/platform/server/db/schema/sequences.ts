@@ -199,15 +199,11 @@ export const sequences = snakeCase.table(
     // script label and its shots divide that.
     targetDurationSeconds: integer(),
 
-    // Auto-generation flags (derived from generationStopAt at trigger time).
-    // Kept so existing readers (progress banner, smart-retry, API v1) keep
-    // working; stop-at is the source of truth (#1408).
-    autoGenerateMotion: integer({ mode: 'boolean' }).default(false).notNull(),
-    autoGenerateMusic: integer({ mode: 'boolean' }).default(false).notNull(),
-
-    // How far the current/last run was asked to go. How far it got is not
-    // stored: what is left is the generation plan, derived from live rows
-    // (#1816, #1819).
+    // How far the current/last run was asked to go — the only word on it
+    // (#1118 dropped the derived auto-generate columns). Nullable in SQL
+    // only; create always writes it and #1118 backfilled older rows. How far
+    // it got is not stored: what is left is the generation plan, derived
+    // from live rows (#1816, #1819).
     generationStopAt: text().$type<GenerationStage>(),
 
     // Suggested talent/location IDs used during generation (for pre-populating the UI)

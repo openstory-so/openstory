@@ -266,9 +266,10 @@ changing the area, and update it in the same PR.**
   `docs/architecture/generation-plan.md`. What a sequence still owes is the
   generation plan, derived from live D1 — never a stored stage. `stopAt` is the
   only word on how far a run goes (`GENERATION_STAGES` in
-  `src/sequences/pipeline.ts`). The legacy `autoGenerateMotion` /
-  `autoGenerateMusic` columns are derived from it — never set them on their
-  own, never gate a workflow phase on them.
+  `src/sequences/pipeline.ts`), stored as `sequences.generationStopAt`. The
+  `autoGenerateMotion` / `autoGenerateMusic` columns are gone (#1118); the
+  payload flags of that name come from `flagsFromStopAt` — never set them on
+  their own, never gate a workflow phase on them.
 - **Public API OpenAPI document** — `docs/architecture/public-api-internals.md`.
   Every schema is generated, nothing hand-authored. `.extend()` drops
   `.meta({ id })`, so tag the `_links`-bearing resource schema you return.
