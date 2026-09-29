@@ -257,6 +257,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
             referenceVideos: input.referenceVideos,
             referenceAudio: input.referenceAudio,
             startImageUrl: input.startImageUrl,
+            sourceVideoUrl: input.sourceVideoUrl,
             endImageUrl: input.endImageUrl,
             draft: input.draft,
             finalFromDraftTaskId: event.payload.finalFromDraftTaskId,

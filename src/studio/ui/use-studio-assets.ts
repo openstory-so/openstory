@@ -4,6 +4,8 @@ import {
   createStudioAssetsFn,
   deleteStudioAssetFn,
   draftStudioPromptFn,
+  editStudioAssetFn,
+  getStudioEditHistoryFn,
   listStudioAssetsFn,
   listStudioUploadsFn,
   setStudioAssetFavoriteFn,
@@ -21,6 +23,7 @@ import {
   useMutationState,
   useQuery,
   useQueryClient,
+  useSuspenseQuery,
 } from '@tanstack/react-query';
 import { isInsufficientCreditsError } from '@/platform/errors';
 import { toast } from 'sonner';
@@ -172,6 +175,32 @@ export function useRenderStudioAssetAtQuality() {
       if (isInsufficientCreditsError(error)) return;
       toast.error(error.message);
     },
+  });
+}
+
+/** Rewrite a finished clip from a prompt (#1925). */
+export function useEditStudioAsset() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: { id: string; prompt: string }) =>
+      editStudioAssetFn({ data: input }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: studioAssetKeys.all });
+      toast.success('Editing video');
+    },
+    onError: (error) => {
+      if (isInsufficientCreditsError(error)) return;
+      toast.error(error.message);
+    },
+  });
+}
+
+/** The prompts a clip was made from, oldest first (#1925). */
+export function useStudioEditHistory(id: string) {
+  return useSuspenseQuery({
+    queryKey: [...studioAssetKeys.all, 'edit-history', id],
+    queryFn: () => getStudioEditHistoryFn({ data: { id } }),
   });
 }
 

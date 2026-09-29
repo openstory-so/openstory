@@ -25,7 +25,9 @@ import {
   studioAudioLimit,
   studioCombinedRefCap,
   studioReferenceLimit,
+  studioSupportsAutoDuration,
   studioSupportsEndFrame,
+  studioSupportsMode,
   studioVideoEndpointId,
   studioVideoRefLimit,
 } from './text-to-video';
@@ -104,7 +106,8 @@ export const studioCreateInputSchema = z.discriminatedUnion('activity', [
       videoModel: videoModelKeySchema,
       aspectRatio: aspectRatioSchema,
       resolution: resolutionSchema.default(DEFAULT_RESOLUTION),
-      duration: z.number().positive(),
+      /** `'auto'`: the model picks the length (Seedance, #1925). */
+      duration: z.union([z.number().positive(), z.literal('auto')]),
       count: countSchema.default(1),
       generateAudio: z.boolean().optional(),
       /** Ark draft mode (#1756): a 480p preview; `resolution` is ignored. */
@@ -119,8 +122,53 @@ export const studioCreateInputSchema = z.discriminatedUnion('activity', [
       /** Frames mode: the first frame, and optionally the last. */
       startImageUrl: mediaUrlSchema.optional(),
       endImageUrl: mediaUrlSchema.optional(),
+      /** Edit mode (#1925): the clip being rewritten, bound as `@Video1`. */
+      sourceVideoUrl: mediaUrlSchema.optional(),
+      /** Edit mode: the studio row the source came from — the edit history. */
+      sourceAssetId: z.string().optional(),
     })
     .superRefine((input, ctx) => {
+      if (
+        input.duration === 'auto' &&
+        !studioSupportsAutoDuration(input.videoModel)
+      ) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['duration'],
+          message: `${IMAGE_TO_VIDEO_MODELS[input.videoModel].name} needs a length in seconds`,
+        });
+      }
+      if (input.mode === 'edit') {
+        if (!studioSupportsMode(input.videoModel, 'edit')) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['mode'],
+            message: `${IMAGE_TO_VIDEO_MODELS[input.videoModel].name} cannot edit a video`,
+          });
+        }
+        if (!input.sourceVideoUrl || !input.sourceAssetId) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['sourceVideoUrl'],
+            message: 'Pick a video to edit',
+          });
+        }
+        // Seedance 2.5 edits keep the source's length; nothing else is valid.
+        if (input.duration !== 'auto') {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['duration'],
+            message: 'An edit keeps the length of the video',
+          });
+        }
+        if (input.draft) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['draft'],
+            message: 'An edit cannot be a draft',
+          });
+        }
+      }
       if (input.draft && !supportsDraftMode(input.videoModel)) {
         ctx.addIssue({
           code: 'custom',

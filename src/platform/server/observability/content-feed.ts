@@ -35,7 +35,7 @@ export type StudioGenerationCompletedArgs = {
   contentType: string;
   prompt: string;
   aspectRatio: string;
-  duration?: number;
+  duration?: number | 'auto';
 };
 
 export function captureStudioGenerationCompleted(

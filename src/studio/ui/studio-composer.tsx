@@ -113,6 +113,9 @@ import {
   unresolvedStudioReferences,
   resolveStudioAliases,
   snapStudioVideoDuration,
+  studioBillableSeconds,
+  studioSupportsAutoDuration,
+  type StudioDuration,
   studioAudioLimit,
   studioCombinedRefCap,
   studioReferenceEndpoint,
@@ -161,6 +164,7 @@ const MODE_LABELS: Record<StudioVideoMode, string> = {
   text: 'Text to video',
   reference: 'Reference to video',
   frames: 'Image to video',
+  edit: 'Edit video',
 };
 
 type PickerTarget = 'reference' | 'start' | 'end';
@@ -372,7 +376,7 @@ export function StudioComposer({
   const [pickedResolution, setResolution] =
     useState<Resolution>(DEFAULT_RESOLUTION);
   const [count, setCount] = useState<(typeof COUNTS)[number]>(1);
-  const [duration, setDuration] = useState(5);
+  const [duration, setDuration] = useState<StudioDuration>(5);
   const [generateAudio, setGenerateAudio] = useState(true);
   // On by default (#1756): a 480p look before the 1080p spend.
   const [draftMode, setDraftMode] = useState(true);
@@ -561,7 +565,7 @@ export function StudioComposer({
     }
     const motion = estimateStudioVideoCost(
       compatibleVideoModel,
-      snappedDuration,
+      studioBillableSeconds(snappedDuration, compatibleVideoModel),
       {
         pricing,
         mode: effectiveMode,
@@ -1193,7 +1197,11 @@ export function StudioComposer({
     resolutionTiers.length > 0
       ? RESOLUTION_OPTIONS.find((r) => r.value === resolution)?.label
       : null,
-    isVideo && durationCapable ? `${snappedDuration}s` : null,
+    isVideo && durationCapable
+      ? snappedDuration === 'auto'
+        ? 'Auto length'
+        : `${snappedDuration}s`
+      : null,
     isVideo && audioCapable ? (generateAudio ? 'Audio' : 'Silent') : null,
     draftOn ? 'Draft 480p' : null,
     `×${count}`,
@@ -1572,6 +1580,10 @@ export function StudioComposer({
                     <Select
                       value={String(snappedDuration)}
                       onValueChange={(value) => {
+                        if (value === 'auto') {
+                          setDuration('auto');
+                          return;
+                        }
                         const next = Number(value);
                         if (Number.isFinite(next) && next > 0)
                           setDuration(next);
@@ -1584,6 +1596,14 @@ export function StudioComposer({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
+                        {studioSupportsAutoDuration(compatibleVideoModel) && (
+                          <SelectItem
+                            value="auto"
+                            className="font-mono text-xs"
+                          >
+                            Auto
+                          </SelectItem>
+                        )}
                         {studioVideoDurations(compatibleVideoModel).map(
                           (value) => (
                             <SelectItem

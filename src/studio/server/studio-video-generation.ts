@@ -64,10 +64,14 @@ import {
 } from '@/platform/server/storage/external-url';
 import {
   buildStudioVideoInput,
+  snapStudioVideoDuration,
+  studioBillableSeconds,
+  studioEditPrompt,
   studioReferenceEndpoint,
   studioVideoEndpointId,
   studioVideoResolution,
   tagStudioReferences,
+  type StudioDuration,
   type StudioVideoMode,
   type StudioVideoRequest,
 } from '@/studio/text-to-video';
@@ -90,11 +94,13 @@ type StudioVideoJobOptions = {
   scopedDb?: CredentialScopedDb;
   prompt: string;
   model: ImageToVideoModel;
-  duration?: number;
+  duration?: StudioDuration;
   aspectRatio?: AspectRatio;
   resolution?: Resolution;
   generateAudio?: boolean;
   mode?: StudioVideoMode;
+  /** Edit mode (#1925): the clip being rewritten. */
+  sourceVideoUrl?: string;
   referenceImages?: string[];
   referenceVideos?: string[];
   referenceAudio?: string[];
@@ -220,9 +226,11 @@ async function buildStudioImageModeInput(
   );
   const urls = await ensureExternallyFetchableUrls(stored, falApiKey);
   const resolution = studioVideoResolution(modelKey, options.resolution);
+  const snapped = snapStudioVideoDuration(options.duration, modelKey);
+  const duration = studioBillableSeconds(snapped, modelKey);
   const { prompt, ...modelOptions } = transform.parse({
     prompt: options.prompt,
-    duration: options.duration,
+    duration,
     aspectRatio: options.aspectRatio,
     imageUrl: urls[0],
     ...(urls[1] && { end_image_url: urls[1] }),
@@ -235,8 +243,13 @@ async function buildStudioImageModeInput(
     endpointId,
     built: {
       prompt: typeof prompt === 'string' ? prompt : options.prompt,
-      duration: options.duration ?? 5,
-      modelOptions,
+      duration,
+      auto: snapped === 'auto',
+      // The transform snaps to seconds; fal's Seedance schemas take 'auto'.
+      modelOptions:
+        snapped === 'auto'
+          ? { ...modelOptions, duration: 'auto' }
+          : modelOptions,
     },
   };
 }
@@ -246,6 +259,13 @@ async function submitFalStudioVideoJob(
   modelKey: ImageToVideoModel,
   mode: StudioVideoMode
 ): Promise<StudioVideoJobSubmission> {
+  // No fal fallback (#1925): an edit is an Ark task. Seedance 2.5 is only
+  // offered where Ark is claimed, so this is a BYOK-fal team or a bug.
+  if (mode === 'edit') {
+    throw new Error(
+      `Editing a video needs the BytePlus route, but ${IMAGE_TO_VIDEO_MODELS[modelKey].name} is routed to fal for this team`
+    );
+  }
   if (mode !== 'text') {
     const key = await resolveFalKey(options.scopedDb);
     const { endpointId, built } = await buildStudioImageModeInput(
@@ -349,6 +369,24 @@ async function buildStudioBytePlusPrompt(
   promptText: string
 ) {
   if (mode === 'text') return promptText;
+
+  // The source clip is the only media: Ark reads it as `@Video1`.
+  if (mode === 'edit') {
+    if (!options.sourceVideoUrl) {
+      throw new Error('Studio edit needs a source video');
+    }
+    const falKey = await resolveOptionalFalKey(options.scopedDb);
+    return [
+      { type: 'text' as const, content: promptText },
+      {
+        type: 'video' as const,
+        source: {
+          type: 'url' as const,
+          value: await toArkFetchableUrl(options.sourceVideoUrl, falKey?.key),
+        },
+      },
+    ];
+  }
 
   if (mode === 'reference') {
     const falKey = await resolveOptionalFalKey(options.scopedDb);
@@ -637,9 +675,11 @@ export async function submitStudioVideoJob(
         };
       }
       const promptText =
-        mode === 'reference'
-          ? tagStudioReferences(options.prompt, modelKey)
-          : options.prompt;
+        mode === 'edit'
+          ? studioEditPrompt(tagStudioReferences(options.prompt, modelKey))
+          : mode === 'reference'
+            ? tagStudioReferences(options.prompt, modelKey)
+            : options.prompt;
       const built = buildStudioVideoInput({
         prompt: promptText,
         model: modelKey,
@@ -667,6 +707,9 @@ export async function submitStudioVideoJob(
             ...(arkSize && { size: arkSize }),
             modelOptions: {
               watermark: false,
+              // Sent verbatim, over the snapped generic `duration`: the model
+              // picks the length (an edit requires it, #1925).
+              ...(built.auto && { duration: -1 }),
               ...(draft && { draft: true }),
               ...(options.generateAudio !== undefined && {
                 generate_audio: options.generateAudio,

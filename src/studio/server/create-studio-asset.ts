@@ -42,7 +42,13 @@ import {
   type StudioCreateInput,
   type StudioCreateResult,
 } from '@/studio/schema';
-import { snapStudioVideoDuration } from '@/studio/text-to-video';
+import {
+  snapStudioVideoDuration,
+  STUDIO_EDIT_MODEL,
+  studioBillableSeconds,
+} from '@/studio/text-to-video';
+import { studioAspectRatio, studioPrimaryOutput } from '@/studio/ui/outputs';
+import { isResolution } from '@/models/resolutions';
 import {
   DRAFT_FINAL_RESOLUTION,
   DRAFT_RESOLUTION,
@@ -70,7 +76,7 @@ function estimateStudioCost(
     return multiplyMicros(perImage, input.count);
   }
 
-  const duration = snapStudioVideoDuration(input.duration, input.videoModel);
+  const duration = studioBillableSeconds(input.duration, input.videoModel);
   const perVideo = gateEstimate(
     estimateStudioVideoCost(input.videoModel, duration, {
       pricing,
@@ -103,6 +109,10 @@ function snapshotInput(input: StudioCreateInput): GeneratedAssetInput {
       snapshot.referenceImages = input.referenceImages;
       snapshot.referenceVideos = input.referenceVideos;
       snapshot.referenceAudio = input.referenceAudio;
+    }
+    if (input.mode === 'edit' && input.sourceVideoUrl && input.sourceAssetId) {
+      snapshot.sourceVideoUrl = input.sourceVideoUrl;
+      snapshot.sourceAssetId = input.sourceAssetId;
     }
     if (input.mode === 'frames' && input.startImageUrl) {
       snapshot.startImageUrl = input.startImageUrl;
@@ -140,6 +150,29 @@ async function zeroUnusedReservations(
 }
 
 /**
+ * An edit's source must be this team's finished studio clip, and the URL the
+ * clip's own output — so the history chain (`sourceAssetId`) never points at
+ * a row the video did not come from.
+ */
+async function requireOwnEditSource(
+  scopedDb: ScopedDb,
+  input: { sourceAssetId?: string; sourceVideoUrl?: string }
+): Promise<void> {
+  const source = input.sourceAssetId
+    ? await scopedDb.generatedAssets.getById(input.sourceAssetId)
+    : undefined;
+  if (
+    !source ||
+    source.source !== 'studio' ||
+    source.status !== 'completed' ||
+    source.activity !== 'video' ||
+    studioPrimaryOutput(source)?.url !== input.sourceVideoUrl
+  ) {
+    throw new Error('Video to edit not found');
+  }
+}
+
+/**
  * Reserve `count` studio rows and trigger a `/studio` run for each.
  */
 export async function createStudioAssets(
@@ -162,6 +195,7 @@ export async function createStudioAssets(
     if (!isOfferedVideoModel(input.videoModel, { byteplus })) {
       throw new Error('Unknown video model');
     }
+    if (input.mode === 'edit') await requireOwnEditSource(scopedDb, input);
     input = {
       ...input,
       duration: snapStudioVideoDuration(input.duration, input.videoModel),
@@ -340,4 +374,43 @@ export async function renderStudioAssetAtQuality(
   return createStudioAssets(scopedDb, input, {
     finalFromDraftTaskId: asset.draftTaskId,
   });
+}
+
+/**
+ * Edit a finished studio clip (#1925): a new row whose input is `prompt`
+ * applied to the clip, on Seedance 2.5 with the length left to the model.
+ * The source URL is read off the row, never taken from the client.
+ */
+export async function editStudioAsset(
+  scopedDb: ScopedDb,
+  assetId: string,
+  prompt: string
+): Promise<StudioCreateResult> {
+  const asset = await scopedDb.generatedAssets.getById(assetId);
+  if (!asset || asset.source !== 'studio' || asset.activity !== 'video') {
+    throw new Error('Generated asset not found');
+  }
+  const video = studioPrimaryOutput(asset);
+  if (asset.status !== 'completed' || !video) {
+    throw new Error('This clip has not finished');
+  }
+  const input = studioCreateInputSchema.parse({
+    activity: 'video',
+    prompt,
+    videoModel: STUDIO_EDIT_MODEL,
+    // The output keeps the source's shape (`adaptive`); this is the label.
+    aspectRatio: studioAspectRatio(asset),
+    ...(isResolution(asset.input.resolution) && {
+      resolution: asset.input.resolution,
+    }),
+    duration: 'auto',
+    count: 1,
+    ...(typeof asset.input.generateAudio === 'boolean' && {
+      generateAudio: asset.input.generateAudio,
+    }),
+    mode: 'edit',
+    sourceVideoUrl: video.url,
+    sourceAssetId: asset.id,
+  });
+  return createStudioAssets(scopedDb, input);
 }

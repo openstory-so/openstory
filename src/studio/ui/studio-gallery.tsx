@@ -26,9 +26,15 @@ import { AppImage } from '@/ui/shadcn/app-image';
 import { ElementThumbnail } from '@/cast/ui/element/element-thumbnail';
 import { HighlightedPrompt } from '@/ui/text-editor/mention/highlighted-prompt';
 import type { MentionItem } from '@/shots/ui/prompt-mention/mention-items';
+import { Textarea } from '@/ui/shadcn/textarea';
+import { isOfferedVideoModel } from '@/models/models';
+import { useViaAvailability } from '@/models/ui/use-via-availability';
+import { STUDIO_EDIT_MODEL } from '@/studio/text-to-video';
 import {
   useDeleteStudioAsset,
+  useEditStudioAsset,
   useRenderStudioAssetAtQuality,
+  useStudioEditHistory,
   useStudioPendingCreates,
   useToggleStudioFavorite,
 } from './use-studio-assets';
@@ -73,7 +79,7 @@ import {
   Trash2,
   Sparkles,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 /** Wall clock ticking once a second while `active`; null otherwise. */
@@ -458,6 +464,104 @@ function ReferenceTile({ reference }: { reference: StudioShownReference }) {
 }
 
 /**
+ * The prompts this clip was made from (#1925), oldest first, when it is an
+ * edit of another clip. An ancestor still in the gallery opens on click.
+ */
+function EditHistory({
+  assetId,
+  onOpen,
+}: {
+  assetId: string;
+  /** An opener for a step still in the gallery; undefined otherwise. */
+  onOpen?: (id: string) => (() => void) | undefined;
+}) {
+  const { data: history } = useStudioEditHistory(assetId);
+  const earlier = history.slice(0, -1);
+  if (earlier.length === 0) return null;
+  return (
+    <section className="flex shrink-0 flex-col gap-2" aria-label="History">
+      <h3 className="text-sm font-medium">History</h3>
+      <ol className="flex max-h-48 flex-col gap-2 overflow-y-auto">
+        {earlier.map((step, index) => {
+          const text = readableStudioPrompt(step.prompt) || 'No prompt';
+          const label = index === 0 ? 'Original' : `Edit ${index}`;
+          const open = onOpen?.(step.id);
+          return (
+            <li key={step.id} className="flex flex-col gap-0.5 text-sm">
+              <span className="text-xs text-muted-foreground">{label}</span>
+              {open ? (
+                <button
+                  type="button"
+                  className="line-clamp-3 rounded-sm text-left break-words hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  onClick={open}
+                >
+                  {text}
+                </button>
+              ) : (
+                <p className="line-clamp-3 break-words">{text}</p>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
+
+/**
+ * Edit this clip with a prompt (#1925): Seedance 2.5 rewrites it, keeping
+ * its length and shape. Cmd/Ctrl+Enter submits.
+ */
+function EditVideoForm({
+  pending,
+  onEdit,
+}: {
+  pending: boolean;
+  onEdit: (prompt: string) => void;
+}) {
+  return (
+    <form
+      className="flex shrink-0 flex-col gap-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const prompt = new FormData(event.currentTarget).get('prompt');
+        if (typeof prompt !== 'string' || !prompt.trim()) return;
+        onEdit(prompt.trim());
+        event.currentTarget.reset();
+      }}
+    >
+      <label htmlFor="studio-edit-prompt" className="text-sm font-medium">
+        Edit video
+      </label>
+      <Textarea
+        id="studio-edit-prompt"
+        name="prompt"
+        required
+        rows={3}
+        placeholder="Make it night, keep everything else"
+        className="text-base md:text-sm"
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+            event.preventDefault();
+            event.currentTarget.form?.requestSubmit();
+          }
+        }}
+      />
+      <Button
+        type="submit"
+        className="self-start pointer-coarse:h-11"
+        disabled={pending}
+      >
+        {pending ? 'Starting…' : 'Edit'}
+      </Button>
+      <p className="text-xs text-muted-foreground">
+        Seedance 2.5 · keeps the length
+      </p>
+    </form>
+  );
+}
+
+/**
  * The clip fills the dialog. The recipe sits against it and only grows with
  * its content: model, settings, the references, the prompt, then the actions.
  * The prompt is the one flexible row: a short one leaves the card compact, a
@@ -476,6 +580,9 @@ export function GenerationDetail({
   renderAtQualityPending = false,
   onPrev,
   onNext,
+  onEdit,
+  editPending = false,
+  onOpenHistory,
 }: {
   asset: StudioGalleryAsset;
   supportMode: boolean;
@@ -490,6 +597,11 @@ export function GenerationDetail({
   /** Step to the neighbouring generation in the gallery; absent at the ends. */
   onPrev?: () => void;
   onNext?: () => void;
+  /** Rewrite this clip from a prompt (#1925); absent where it cannot. */
+  onEdit?: (prompt: string) => void;
+  editPending?: boolean;
+  /** An opener for an earlier step of the edit history, if it is loaded. */
+  onOpenHistory?: (id: string) => (() => void) | undefined;
 }) {
   const prompt = readableStudioPrompt(studioPrompt(asset));
   const references = studioShownReferences(asset);
@@ -560,6 +672,16 @@ export function GenerationDetail({
             <p className="text-sm text-muted-foreground">No prompt</p>
           )}
         </div>
+        {asset.activity === 'video' && !supportMode && (
+          <Suspense fallback={<Skeleton className="h-16 w-full shrink-0" />}>
+            <EditHistory assetId={asset.id} onOpen={onOpenHistory} />
+          </Suspense>
+        )}
+        {onEdit &&
+          asset.activity === 'video' &&
+          asset.status === 'completed' && (
+            <EditVideoForm pending={editPending} onEdit={onEdit} />
+          )}
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           <Button
             type="button"
@@ -660,6 +782,9 @@ export function StudioGallery({
   const [copied, setCopied] = useState(false);
   const remove = useDeleteStudioAsset();
   const renderAtQuality = useRenderStudioAssetAtQuality();
+  const edit = useEditStudioAsset();
+  const vias = useViaAvailability();
+  const canEdit = !supportMode && isOfferedVideoModel(STUDIO_EDIT_MODEL, vias);
   useEffect(() => {
     if (!copied) return;
     const id = window.setTimeout(() => setCopied(false), 2000);
@@ -820,6 +945,21 @@ export function StudioGallery({
               renderAtQualityPending={renderAtQuality.isPending}
               onPrev={prevAsset ? () => step(prevAsset) : undefined}
               onNext={nextAsset ? () => step(nextAsset) : undefined}
+              onEdit={
+                canEdit
+                  ? (prompt) => {
+                      edit.mutate(
+                        { id: openAsset.id, prompt },
+                        { onSuccess: () => setOpenId(null) }
+                      );
+                    }
+                  : undefined
+              }
+              editPending={edit.isPending}
+              onOpenHistory={(id) => {
+                const target = assets.find((asset) => asset.id === id);
+                return target ? () => step(target) : undefined;
+              }}
             />
           )}
         </DialogContent>

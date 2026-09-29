@@ -8,6 +8,9 @@
  *   - `frames`    — image-to-video: a start frame, plus an end frame where the
  *                   endpoint has `end_image_url` (Kling, Seedance, H3 Max,
  *                   Omni Flash)
+ *   - `edit`      — rewrite an existing clip (#1925): the source rides as
+ *                   `@Video1` and the length follows it (`duration: 'auto'`).
+ *                   Seedance 2.5 on Ark only (`studioSupportsMode`).
  *
  * Client-safe: no env, no adapters.
  */
@@ -74,7 +77,12 @@ const STUDIO_VIDEO_HAS_AUDIO = {
   seedance_v2_mini: true,
 } as const satisfies Record<ImageToVideoModel, boolean>;
 
-export const STUDIO_VIDEO_MODES = ['text', 'reference', 'frames'] as const;
+export const STUDIO_VIDEO_MODES = [
+  'text',
+  'reference',
+  'frames',
+  'edit',
+] as const;
 
 export type StudioVideoMode = (typeof STUDIO_VIDEO_MODES)[number];
 
@@ -221,11 +229,27 @@ export function studioSupportsEndFrame(model: ImageToVideoModel): boolean {
   return model in STUDIO_END_FRAME_MODELS;
 }
 
+/**
+ * Models that can rewrite an existing clip (#1925). Seedance 2.5 edits on Ark
+ * (the source as a reference video, `duration: -1`). Omni Flash, Kling, H3
+ * and Grok 1.5 have no edit API; Seedance 2.0's enterprise video-to-video is
+ * unwired.
+ */
+export const STUDIO_EDIT_MODEL = 'seedance_v2_5' satisfies ImageToVideoModel;
+
 export function studioSupportsMode(
   model: ImageToVideoModel,
   mode: StudioVideoMode
 ): boolean {
+  if (mode === 'edit') return model === STUDIO_EDIT_MODEL;
   return mode !== 'reference' || studioReferenceLimit(model) > 0;
+}
+
+/** The instruction Seedance reads an edit from: the source is `@Video1`. */
+export function studioEditPrompt(prompt: string): string {
+  return /^\s*edit @?video1\b/i.test(prompt)
+    ? prompt
+    : `Edit @Video1. ${prompt}`;
 }
 
 /** Prompt-token prefix, not a media kind (that is `StudioReferenceKind`). */
@@ -401,6 +425,9 @@ export function studioVideoEndpointId(
   switch (mode) {
     case 'text':
       return STUDIO_TEXT_TO_VIDEO_ENDPOINTS[model];
+    // Priced and labelled as the reference sibling: an edit is a
+    // reference-to-video task with the source as its one clip.
+    case 'edit':
     case 'reference': {
       const reference = STUDIO_REFERENCE_ENDPOINTS[model];
       if (!reference) {
@@ -432,7 +459,47 @@ export function studioVideoDurations(
   return STUDIO_VIDEO_DURATIONS[model];
 }
 
+/**
+ * A clip length, or `'auto'`: the model picks it (#1925). Seedance only —
+ * fal takes the string `'auto'`, Ark `duration: -1`.
+ */
+export type StudioDuration = number | 'auto';
+
+const STUDIO_AUTO_DURATION = {
+  seedance_v2: true,
+  seedance_v2_5: true,
+  seedance_v2_mini: true,
+} as const satisfies Partial<Record<ImageToVideoModel, true>>;
+
+export function studioSupportsAutoDuration(model: ImageToVideoModel): boolean {
+  return model in STUDIO_AUTO_DURATION;
+}
+
+/** `'auto'` where the model takes it, else the nearest second it accepts. */
 export function snapStudioVideoDuration(
+  requested: StudioDuration | undefined,
+  model: ImageToVideoModel
+): StudioDuration {
+  if (requested === 'auto' && studioSupportsAutoDuration(model)) return 'auto';
+  return snapStudioSeconds(requested === 'auto' ? undefined : requested, model);
+}
+
+/**
+ * Seconds to price a clip at. Auto holds the model's longest clip — the
+ * settle bills what the provider reports, and the leftover is released.
+ */
+export function studioBillableSeconds(
+  duration: StudioDuration | undefined,
+  model: ImageToVideoModel
+): number {
+  if (duration === 'auto') {
+    const valid = STUDIO_VIDEO_DURATIONS[model];
+    return valid[valid.length - 1] ?? 5;
+  }
+  return snapStudioSeconds(duration, model);
+}
+
+function snapStudioSeconds(
   requested: number | undefined,
   model: ImageToVideoModel
 ): number {
@@ -445,9 +512,10 @@ export function snapStudioVideoDuration(
 }
 
 function encodeDuration(
-  seconds: number,
+  seconds: StudioDuration,
   model: ImageToVideoModel
 ): string | number {
+  if (seconds === 'auto') return 'auto';
   switch (model) {
     case 'kling_v3_pro':
     case 'seedance_v2':
@@ -462,7 +530,7 @@ function encodeDuration(
 type StudioVideoInput = {
   prompt: string;
   model: ImageToVideoModel;
-  duration?: number;
+  duration?: StudioDuration;
   aspectRatio?: AspectRatio;
   resolution?: Resolution;
   generateAudio?: boolean;
@@ -470,7 +538,10 @@ type StudioVideoInput = {
 
 export type StudioVideoRequest = {
   prompt: string;
+  /** Whole seconds; the longest clip when `auto` (see `studioBillableSeconds`). */
   duration: number;
+  /** The model picks the length: fal `'auto'`, Ark `duration: -1`. */
+  auto: boolean;
   modelOptions: Record<string, unknown>;
 };
 
@@ -498,11 +569,12 @@ export function buildStudioVideoInput(
     model,
     surface: 'studio',
   });
-  const duration = snapStudioVideoDuration(options.duration, model);
+  const snapped = snapStudioVideoDuration(options.duration, model);
+  const duration = studioBillableSeconds(snapped, model);
   const modelOptions: Record<string, unknown> = {};
 
   if (STUDIO_VIDEO_DURATIONS[model].length > 0) {
-    modelOptions.duration = encodeDuration(duration, model);
+    modelOptions.duration = encodeDuration(snapped, model);
   }
 
   const allowedAspects: readonly AspectRatio[] = STUDIO_VIDEO_ASPECTS[model];
@@ -521,5 +593,5 @@ export function buildStudioVideoInput(
     modelOptions.prompt_expansion_mode = 'balanced';
   }
 
-  return { prompt, duration, modelOptions };
+  return { prompt, duration, auto: snapped === 'auto', modelOptions };
 }

@@ -10,6 +10,8 @@ import {
   resolveStudioAliases,
   unresolvedStudioReferences,
   snapStudioVideoDuration,
+  studioBillableSeconds,
+  studioEditPrompt,
   studioCombinedRefCap,
   studioSupportsEndFrame,
   studioSupportsMode,
@@ -352,5 +354,31 @@ describe('studioVideoEndpointId modes', () => {
     expect(studioSupportsEndFrame('kling_v3_pro')).toBe(true);
     expect(studioSupportsEndFrame('gemini_omni_flash')).toBe(true);
     expect(studioSupportsEndFrame('grok_imagine_video_1_5')).toBe(false);
+  });
+});
+
+describe('auto length and edit (#1925)', () => {
+  it('keeps auto on Seedance and snaps it to seconds elsewhere', () => {
+    expect(snapStudioVideoDuration('auto', 'seedance_v2_5')).toBe('auto');
+    expect(snapStudioVideoDuration('auto', 'kling_v3_pro')).toBe(3);
+  });
+
+  it('prices auto at the longest clip', () => {
+    expect(studioBillableSeconds('auto', 'seedance_v2_5')).toBe(30);
+    expect(studioBillableSeconds(7, 'seedance_v2_5')).toBe(7);
+  });
+
+  it('offers edit on Seedance 2.5 only', () => {
+    expect(studioSupportsMode('seedance_v2_5', 'edit')).toBe(true);
+    expect(studioSupportsMode('gemini_omni_flash', 'edit')).toBe(false);
+  });
+
+  it('leads the prompt with the edit instruction once', () => {
+    expect(studioEditPrompt('Make it night')).toBe(
+      'Edit @Video1. Make it night'
+    );
+    expect(studioEditPrompt('Edit @Video1. Make it night')).toBe(
+      'Edit @Video1. Make it night'
+    );
   });
 });
