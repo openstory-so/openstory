@@ -151,7 +151,9 @@ refetch on focus, invalidated by realtime and by any refused continue —
   turn it off.
 - **The continue button** (`Generate`, or `Regenerate` when every unit it owes
   exists and is only stale — `planWorkLabel`; under it `2 references, 12
-prompts, 12 images`, `planWorkSummary`, and a line per blocked noun,
+prompts, 12 images`, `planWorkLine` — a Generate that also redoes stale
+  work names it apart, `8 videos, 1 music track · redo 15 prompts, 8 images` —
+  and a line per blocked noun,
   `blockedLines`) shows when the
   plan's first work is before Motion.
 - **A switch shows only when it changes a step the run takes.** Voices from

@@ -5,6 +5,7 @@ import {
   firstStageWithWork,
   planCounts,
   planWorkLabel,
+  planWorkLine,
   planWorkSummary,
   switchLocks,
   updateAllUnits,
@@ -404,6 +405,19 @@ describe('footer helpers', () => {
         },
       ])
     ).toBe('Regenerate');
+  });
+
+  it('names redone work apart only when new work rides with it', () => {
+    const unit = (
+      kind: PlanUnit['kind'],
+      id: string,
+      state: PlanUnit['state']
+    ): PlanUnit => ({ kind, id, state, requires: [], cascaded: false });
+    const stale = [unit('still', 's1', 'stale'), unit('still', 's2', 'stale')];
+    const fresh = [unit('clip', 's1', 'missing')];
+    expect(planWorkLine([...stale, ...fresh])).toBe('1 video · redo 2 images');
+    expect(planWorkLine(stale)).toBe('2 images');
+    expect(planWorkLine(fresh)).toBe('1 video');
   });
 
   it('says what a blocked unit waits on', () => {
