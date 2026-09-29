@@ -716,16 +716,13 @@ const SceneListComponent: React.FC<SceneListProps> = ({
         <>
           <Button
             variant="default"
-            className="w-full"
+            className="h-auto min-h-8 w-full whitespace-normal py-1.5"
             onClick={() => void handleContinue()}
             disabled={isGenerating || planLoading || continueWork.length === 0}
           >
-            <span className="relative">
+            <span className="flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5">
               {isGenerating ? 'Generating…' : continueLabel}
-              <ActionCost
-                estimate={continueCostEstimate}
-                className="absolute top-1/2 left-full ml-2 -translate-y-1/2"
-              />
+              <ActionCost estimate={continueCostEstimate} onPrimary />
             </span>
           </Button>
           {continueWork.length > 0 && (
@@ -999,11 +996,11 @@ const SceneListComponent: React.FC<SceneListProps> = ({
               <div className="flex flex-col gap-1">
                 <Button
                   variant="default"
-                  className="w-full"
+                  className="h-auto min-h-8 w-full whitespace-normal py-1.5"
                   onClick={() => void handleGenerateMotion()}
                   disabled={isButtonDisabled}
                 >
-                  <span className="relative">
+                  <span className="flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5">
                     {isGenerating
                       ? 'Generating…'
                       : !motionPromptsReady
@@ -1011,10 +1008,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
                         : includeMusic && !musicPromptsReady
                           ? 'Composing music…'
                           : `Generate ${notStartedShots.length} / ${totalShots} ${totalShots === 1 ? 'shot' : 'shots'}`}
-                    <ActionCost
-                      estimate={batchCostEstimate}
-                      className="absolute top-1/2 left-full ml-2 -translate-y-1/2"
-                    />
+                    <ActionCost estimate={batchCostEstimate} onPrimary />
                   </span>
                 </Button>
               </div>

@@ -2373,7 +2373,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             <div className="flex flex-col gap-1">
               <Button
                 type="button"
-                className="w-full"
+                className="h-auto min-h-8 w-full whitespace-normal py-1.5"
                 disabled={
                   renderAtQuality.isPending ||
                   isGeneratingMotion ||
@@ -2381,12 +2381,9 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                 }
                 onClick={() => renderAtQuality.mutate()}
               >
-                <span className="relative">
+                <span className="flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5">
                   {renderAtQuality.isPending ? 'Starting…' : 'Render final'}
-                  <ActionCost
-                    estimate={finalCostEstimate}
-                    className="absolute top-1/2 left-full ml-2 -translate-y-1/2"
-                  />
+                  <ActionCost estimate={finalCostEstimate} onPrimary />
                 </span>
               </Button>
             </div>
@@ -2417,12 +2414,12 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                 !shot ||
                 !hasMotionPrompt
               }
-              className="w-full"
+              className="h-auto min-h-8 w-full whitespace-normal py-1.5"
             >
               {(isGeneratingMotion || videoVariantIsGenerating) && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
-              <span className="relative">
+              <span className="flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5">
                 {isGeneratingMotion || videoVariantIsGenerating
                   ? 'Generating…'
                   : motionGenerateLabel(
@@ -2432,7 +2429,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                     )}
                 <ActionCost
                   estimate={motionCostEstimate}
-                  className="absolute top-1/2 left-full ml-2 -translate-y-1/2"
+                  onPrimary={!selectedDraft}
                 />
               </span>
             </Button>

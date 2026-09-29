@@ -17,6 +17,8 @@
  * Prefixes with `~` — these are pre-flight estimates; billed units may differ.
  * When the signed-in wallet balance is below the estimate (and generation is
  * not covered by a team fal key), the amount is amber so over-budget is obvious.
+ * On a primary button pass `onPrimary` — that fill stays light in dark mode,
+ * where the page amber is too pale and the line used to clip past the button.
  */
 
 import { useBillingBalance } from './use-billing-balance';
@@ -44,6 +46,11 @@ type ActionCostProps = {
    * control, not part of the number.
    */
   prefix?: ReactNode;
+  /**
+   * The amount is painted on the primary button (light in both themes).
+   * Dark-mode amber is for the page background and washes out on that fill.
+   */
+  onPrimary?: boolean;
 };
 
 export function ActionCost({
@@ -51,6 +58,7 @@ export function ActionCost({
   className,
   align = 'center',
   prefix,
+  onPrimary = false,
 }: ActionCostProps) {
   const { showCosts } = useShowCosts();
   const { data: session } = useAuthSession();
@@ -58,7 +66,7 @@ export function ActionCost({
   const { data: gate } = useBillingGateQuery();
 
   const justify = cn(
-    'flex items-center gap-1 text-xs',
+    'flex max-w-full flex-wrap items-center gap-1 text-xs whitespace-normal',
     align === 'end' && 'justify-end',
     align === 'start' && 'justify-start',
     align === 'center' && 'justify-center'
@@ -117,7 +125,9 @@ export function ActionCost({
         justify,
         'tabular-nums',
         exceedsBalance
-          ? 'text-amber-600 dark:text-amber-400'
+          ? onPrimary
+            ? 'text-amber-800'
+            : 'text-amber-600 dark:text-amber-400'
           : 'text-muted-foreground',
         className
       )}
