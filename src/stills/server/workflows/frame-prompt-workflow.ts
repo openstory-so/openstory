@@ -84,8 +84,6 @@ export class FramePromptWorkflow extends OpenStoryWorkflowEntrypoint<FramePrompt
     const input = event.payload;
     const {
       scene,
-      sceneBefore,
-      sceneAfter,
       aspectRatio,
       characterBible,
       locationBible,
@@ -130,12 +128,6 @@ export class FramePromptWorkflow extends OpenStoryWorkflowEntrypoint<FramePrompt
       const { messages: msgs } = await getChatPrompt(
         'phase/visual-prompt-scene-generation-chat',
         {
-          sceneBefore: sceneBefore
-            ? JSON.stringify(sceneBefore, null, 2)
-            : '(none)',
-          sceneAfter: sceneAfter
-            ? JSON.stringify(sceneAfter, null, 2)
-            : '(none)',
           scene: JSON.stringify(
             {
               ...scenePromptContext(scene, styleConfig),

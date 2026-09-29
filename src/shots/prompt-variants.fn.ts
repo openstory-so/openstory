@@ -28,17 +28,12 @@ import {
   type SequenceMusicPromptVersion,
 } from '@/platform/server/db/schema';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
-import {
-  loadSceneContextBySequence,
-  resolveSceneForShot,
-} from '@/shots/server/scene-script';
 import { getFrameImageUrl } from '@/shots/server/frame-image';
 import { loadShotPromptDialogue } from '@/shots/server/shot-dialogue';
 import { simpleHash } from '@/platform/hash';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import { terminateSingleArtifactRun } from '@/platform/server/workflow/run-outcome';
 import { storedMotionDialogueSchema } from './scene-analysis.schema';
-import type { Scene } from './scene-analysis.schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type {
   MotionPromptWorkflowInput,
@@ -606,12 +601,9 @@ export const regenerateShotPromptFn = createServerFn({ method: 'POST' })
       deduplicationId,
     };
 
-    // Neighbour scenes give the motion LLM the same continuity context the
-    // analysis batch pipeline passes via MotionPromptBatchWorkflow (#929).
+    // The scene's other shots, so a rewrite keeps continuity with them.
     let siblingVisualPrompts: Array<{ shotId: string; text: string }> = [];
     let siblingMotionPrompts: Array<{ shotId: string; text: string }> = [];
-    let sceneBefore: Scene | undefined;
-    let sceneAfter: Scene | undefined;
     {
       const shotsInSeq = await scopedDb.shots.listBySequence(sequence.id);
       const siblings = shotsInSeq.filter(
@@ -642,22 +634,6 @@ export const regenerateShotPromptFn = createServerFn({ method: 'POST' })
         const prompt = siblingVersions.get(sibling.id);
         return prompt?.text ? [{ shotId: sibling.id, text: prompt.text }] : [];
       });
-      const idx = shotsInSeq.findIndex((s) => s.id === shot.id);
-      const prevShot = idx > 0 ? shotsInSeq[idx - 1] : undefined;
-      const nextShot =
-        idx >= 0 && idx < shotsInSeq.length - 1
-          ? shotsInSeq[idx + 1]
-          : undefined;
-      const sceneContext = await loadSceneContextBySequence(
-        scopedDb,
-        sequence.id
-      );
-      sceneBefore = prevShot
-        ? (resolveSceneForShot(prevShot, sceneContext).scene ?? undefined)
-        : undefined;
-      sceneAfter = nextShot
-        ? (resolveSceneForShot(nextShot, sceneContext).scene ?? undefined)
-        : undefined;
     }
 
     let workflowRunId: string;
@@ -693,8 +669,6 @@ export const regenerateShotPromptFn = createServerFn({ method: 'POST' })
               // through the sequence row, so it has to reach the child too or
               // the stamp and the verify disagree.
               referenceOnly: shotReferenceOnly,
-              sceneBefore,
-              sceneAfter,
               siblingMotionPrompts,
               dialogue: promptDialogue.dialogue,
               targetVersionId: claim.id,

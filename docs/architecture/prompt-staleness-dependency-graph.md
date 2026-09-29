@@ -696,16 +696,16 @@ in #867, measured against what the prompt LLM was handed
 `sceneBefore`, `sceneAfter`, `scene`, `characterBible`, `locationBible`,
 `elementBible`, `styleConfig`, `aspectRatio`.
 
-| LLM receives                                                                                                                                                                             | Real prompt driver?                                        | In the hash?                            | Verdict                                                       |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | --------------------------------------- | ------------------------------------------------------------- |
-| `scene` appearance surface (`originalScript`, metadata `title`/`location`/`timeOfDay`/`storyBeat`)                                                                                       | yes                                                        | yes                                     | ✅ aligned                                                    |
-| `scene.metadata.durationSeconds`                                                                                                                                                         | no (video param)                                           | no — stripped                           | under-hash, intentional (#767)                                |
-| `sceneBefore` / `sceneAfter` (neighbour scenes)                                                                                                                                          | **yes** (continuity context)                               | **no**                                  | under-hash, **deliberate** (#1785, see §6)                    |
-| **all** character / location / element entries                                                                                                                                           | yes (LLM sees the full set as context)                     | **narrowed** to referenced entries      | ⚠️ under-hash on unreferenced entries (intentional, #683)     |
-| referenced entry → appearance fields (`name`, `age`, `gender`, `ethnicity`, `physicalDescription`, `standardClothing`, `distinguishingFeatures`; location `description`/`keyFeatures`/…) | yes                                                        | yes (whole entry)                       | ✅ aligned                                                    |
-| referenced entry → **provenance / identity / tags** (`characterId`, `locationId`, `consistencyTag`, `firstMention`)                                                                      | **no** — internal IDs, an image-gen tag, script provenance | **yes** (rides in the whole-entry hash) | 🔴 **over-hash**                                              |
-| `styleConfig` (all fields)                                                                                                                                                               | mostly                                                     | yes (full)                              | ✅ (possible minor over-hash if the template ignores a field) |
-| `aspectRatio`, `analysisModel`                                                                                                                                                           | yes                                                        | yes                                     | ✅ aligned                                                    |
+| LLM receives                                                                                                                                                                             | Real prompt driver?                                        | In the hash?                            | Verdict                                                                |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | --------------------------------------- | ---------------------------------------------------------------------- |
+| `scene` appearance surface (`originalScript`, metadata `title`/`location`/`timeOfDay`/`storyBeat`)                                                                                       | yes                                                        | yes                                     | ✅ aligned                                                             |
+| `scene.metadata.durationSeconds`                                                                                                                                                         | no (video param)                                           | no — stripped                           | under-hash, intentional (#767)                                         |
+| `sceneBefore` / `sceneAfter` (neighbour scenes)                                                                                                                                          | **yes** (continuity context)                               | **no**                                  | under-hash, **deliberate** (#1785, see §6; no longer sent since #1903) |
+| **all** character / location / element entries                                                                                                                                           | yes (LLM sees the full set as context)                     | **narrowed** to referenced entries      | ⚠️ under-hash on unreferenced entries (intentional, #683)              |
+| referenced entry → appearance fields (`name`, `age`, `gender`, `ethnicity`, `physicalDescription`, `standardClothing`, `distinguishingFeatures`; location `description`/`keyFeatures`/…) | yes                                                        | yes (whole entry)                       | ✅ aligned                                                             |
+| referenced entry → **provenance / identity / tags** (`characterId`, `locationId`, `consistencyTag`, `firstMention`)                                                                      | **no** — internal IDs, an image-gen tag, script provenance | **yes** (rides in the whole-entry hash) | 🔴 **over-hash**                                                       |
+| `styleConfig` (all fields)                                                                                                                                                               | mostly                                                     | yes (full)                              | ✅ (possible minor over-hash if the template ignores a field)          |
+| `aspectRatio`, `analysisModel`                                                                                                                                                           | yes                                                        | yes                                     | ✅ aligned                                                             |
 
 **Net:** the hash is **narrower** than the real LLM input in scope (it drops
 `sceneBefore`/`sceneAfter`, `durationSeconds`, and unreferenced entries) but
@@ -893,14 +893,11 @@ Ordered by value / risk. **1, 2, 4 and 5 shipped; 3 is still open** (see C).
 
 ### Deliberately not hashed (#1785)
 
-- **Neighbour scenes.** The visual and motion prompt LLMs are fed
-  `sceneBefore`/`sceneAfter` for continuity, but the hash ignores them, so
-  editing scene _N_'s script can change scene _N±1_'s regenerated prompt
-  without flagging it stale. That is a decision, not a gap: hashing them would
-  re-stale three scenes' prompts (and their stills and clips) per script edit,
-  and a pure reorder — which the v5 contract keeps inert — would re-stale
-  every scene whose neighbours moved. The neighbours are context, not the
-  subject of the prompt. The hash input has no neighbour channel.
+- **Neighbour scenes.** No longer sent to the visual or motion prompt LLMs
+  (#1903). A shot's continuity comes from its own scene's other shot
+  prompts; the scene before and after were mostly the same scene again, and
+  hashing them would have re-staled neighbours on every script edit or
+  reorder. The hash input has no neighbour channel.
 - **A voice-only character's look** (visual prompt only). The visual LLM
   never sees a voice-only character (#1585), so the visual hash drops it too
   (#1785). The motion hash keeps it (delivery), and marks it

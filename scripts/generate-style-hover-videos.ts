@@ -375,8 +375,8 @@ const HOVER_STORY_BEAT =
   'light, particles, steam, water or fabric.';
 
 /**
- * A single honest scene for the motion-prompt template. No sceneBefore/After,
- * no character bible — those don't exist for a lone hover still — just the
+ * A single honest scene for the motion-prompt template. No character
+ * bible — it doesn't exist for a lone hover still — just the
  * title, duration, and the liveliness beat. The attached image carries the
  * actual content (#929 vision input).
  */
@@ -411,8 +411,6 @@ async function generateMotionPrompt(
   // attached image + storyBeat carry everything; styleConfig drives the camera.
   const promptVariables = {
     scene: JSON.stringify(previewScene(style), null, 2),
-    sceneBefore: '(none)',
-    sceneAfter: '(none)',
     characterBible: '(none)',
     styleConfig: JSON.stringify(style.config, null, 2),
     aspectRatio: ASPECT_RATIO,

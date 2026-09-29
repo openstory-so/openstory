@@ -182,8 +182,6 @@ type PromptScenes = {
   /** Script-overlaid scene metadata, the prompt children's primary input. */
   scene: Scene;
   /** Raw neighbour metadata for motion continuity. */
-  sceneBefore?: Scene;
-  sceneAfter?: Scene;
 };
 
 export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<UpdateStaleShotsWorkflowInput> {
@@ -1124,29 +1122,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             'WorkflowValidationError'
           );
         }
-        const neighbourIds = [target.beforeShotId, target.afterShotId].filter(
-          (id): id is string => id !== null
-        );
-        const neighbours = await Promise.all(
-          neighbourIds.map((id) => scopedDb.liveRead.shots.getById(id))
-        );
-        const sceneById = new Map(
-          neighbours
-            .filter((s) => !!s)
-            .map((s) => [
-              s.id,
-              resolveSceneForShot(s, sceneContext).scene ?? undefined,
-            ])
-        );
-        return {
-          scene,
-          sceneBefore: target.beforeShotId
-            ? sceneById.get(target.beforeShotId)
-            : undefined,
-          sceneAfter: target.afterShotId
-            ? sceneById.get(target.afterShotId)
-            : undefined,
-        };
+        return { scene };
       });
 
     // Dialogue is recorded ONCE PER SCENE (#1657). Fresh runs record after
@@ -1434,8 +1410,6 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                   childPayload: {
                     ...base,
                     dialogue: target.dialogue,
-                    sceneBefore: scenes.sceneBefore,
-                    sceneAfter: scenes.sceneAfter,
                     siblingMotionPrompts: siblingPrompts(plan, target).motion,
                     startingFrameImageUrl: target.usesStartFrame
                       ? (startingFrameImageUrl ?? undefined)

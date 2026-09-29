@@ -208,8 +208,6 @@ export type EvalGold = {
   aspectRatio: '16:9';
   /** Scene used for visual + motion (dialogue beat, not the title card). */
   focusScene: Scene;
-  sceneBefore: Scene | null;
-  sceneAfter: Scene | null;
   startingFrameDataUri: string;
   screenplayHeadingStarts: number[];
 };
@@ -255,8 +253,6 @@ export function loadEvalGold(): EvalGold {
     styleConfig: style,
     aspectRatio: '16:9',
     focusScene,
-    sceneBefore: sceneAt(scenes, focusIndex - 1),
-    sceneAfter: sceneAt(scenes, focusIndex + 1),
     startingFrameDataUri,
     screenplayHeadingStarts: headingStarts(replayed.script),
   };

@@ -19,8 +19,6 @@ async function render(name: string) {
   const { messages } = await getChatPrompt(name, {
     startingFrameNote: 'NOTE',
     scene: '{"sceneId":"sc-1"}',
-    sceneBefore: '(none)',
-    sceneAfter: '(none)',
     characterBible: '[CHARACTERS]',
     locationBible: '[LOCATIONS]',
     elementBible: '[ELEMENTS]',

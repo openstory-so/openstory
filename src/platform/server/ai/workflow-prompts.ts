@@ -649,7 +649,7 @@ The one rule is negative: **do not invent what the reference already supplies.**
    - *Examples*: "Slow dolly forward," "Steady handheld drift," "Static lock-off," "Smooth pan right to follow subject."
    - Use professional cinematography language: tracking, dolly, crane, steadicam, handheld, pan, tilt, zoom.
    - NEVER stack movements ("push in, then pan left, then orbit") — stacked moves cause jitter and read poorly on every video model. One move, start to end.
-3. **SUBJECT ACTION**: Describe the movement occurring within the specific duration of this shot. Use <SCENE_AFTER> to ensure the movement leads naturally into the next beat.
+3. **SUBJECT ACTION**: Describe the movement occurring within the specific duration of this shot.
 4. **DIALOGUE & PERFORMANCE**: If the scene has dialogue (check \`originalScript.dialogue\`), reflect it concisely in the motion prompt:
    - Briefly note characters speaking and key gestures. Do NOT describe every micro-expression or body shift.
    - The actual dialogue lines are extracted separately into the \`dialogue\` field — do NOT embed quoted speech in \`fullPrompt\`.
@@ -691,16 +691,6 @@ Always populate the \`audio\` field:
 <CURRENT_SCENE>
 {{scene}}
 </CURRENT_SCENE>
-
-<SCENE_BEFORE>
-(Context: Where is the movement coming from?)
-{{sceneBefore}}
-</SCENE_BEFORE>
-
-<SCENE_AFTER>
-(Context: Where does the movement need to end up?)
-{{sceneAfter}}
-</SCENE_AFTER>
 
 <CHARACTER_BIBLE>
 (Use "personality" for performance, expressions, reactions and delivery; "movement" for gait, posture and blocking. Never describe physical appearance — the starting frame carries it.)
@@ -772,7 +762,7 @@ The one rule is negative: **do not invent what the reference already supplies.**
 3. **FOCUS ON VERBS** for the action: strong and specific. "Turns abruptly," "smoke billows," "spray fans off the rear tyre." Name the physical interaction, not an adjective for it.
 4. **ONE SINGLE TAKE.** This shot is one continuous camera take with no cuts. Never write "cut to", "then we see", or a second camera setup.
 5. **ONE PHYSICS EVENT.** A shot carrying two interacting physical events (a rider separating from a sliding bike; a catch during a fall) fails no matter how well it is worded. Keep to one; let the second live off-screen in the audio.
-6. **SUBJECT ACTION** must fit this shot's \`metadata.durationSeconds\` and lead into <SCENE_AFTER>.
+6. **SUBJECT ACTION** must fit this shot's \`metadata.durationSeconds\`.
 7. **ATMOSPHERE**: one or two secondary motions that sell the physics — fabric fluttering, dust drifting, rain streaking. Not more.
 
 ### CONTENT RULES
@@ -811,16 +801,6 @@ You will be called via a structured output tool. Follow the provided schema exac
 <CURRENT_SCENE>
 {{scene}}
 </CURRENT_SCENE>
-
-<SCENE_BEFORE>
-(Context for continuity of position and light only — never refer to it in the prompt)
-{{sceneBefore}}
-</SCENE_BEFORE>
-
-<SCENE_AFTER>
-(Context: where the movement needs to end up)
-{{sceneAfter}}
-</SCENE_AFTER>
 
 <CHARACTER_BIBLE>
 (Use for names; "personality" for performance, expressions, reactions and delivery; "movement" for gait, posture and blocking; wardrobe ONLY where this scene changes it. Never describe physical appearance — the reference sheet carries identity.)
@@ -1238,7 +1218,7 @@ You will be called via a structured output tool. Follow the provided schema exac
 Shot size and lens. Who is in frame and what they are doing at this exact instant. Where they are. Light. Style.
 
 ### STAGING
-The frame is the instant BEFORE the action in <CURRENT_SCENE>. Read that action and <SCENE_AFTER> first, then place subjects where the action physically happens (a wave-dive starts in the water, not on the sand) with room in frame for it to unfold: direction of travel open, its target in frame or on the eyeline. Pose is potential energy: weight shifted, eyes on the target.
+The frame is the instant BEFORE the action in <CURRENT_SCENE>. Read that action first, then place subjects where the action physically happens (a wave-dive starts in the water, not on the sand) with room in frame for it to unfold: direction of travel open, its target in frame or on the eyeline. Pose is potential energy: weight shifted, eyes on the target.
 
 ### PHYSICS
 The frame must be photographable on a real set. Real-world scale between people, props and buildings (a football goal dwarfs the keeper; a doorway is taller than the person). Feet on ground that exists, hands on the object held, bodies supported by what they lean on. Distances and eyelines that make the action possible. A camera position that could exist in the space. Stage the scripted action plausibly; never change it.
@@ -1259,16 +1239,6 @@ No text, signs or subtitles. No holograms or floating UI. One coherent frame. Fu
 <CURRENT_SCENE>
 {{scene}}
 </CURRENT_SCENE>
-
-<SCENE_BEFORE>
-(Context for position/lighting continuity only)
-{{sceneBefore}}
-</SCENE_BEFORE>
-
-<SCENE_AFTER>
-(Context for action setup only)
-{{sceneAfter}}
-</SCENE_AFTER>
 
 <CHARACTER_BIBLE>
 (Use ONLY for character names and costume/wardrobe. Do NOT describe physical appearance — the reference image handles identity.)

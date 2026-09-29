@@ -34,22 +34,6 @@ export function sceneForShot(scene: Scene, shotNumber: number): Scene {
   };
 }
 
-/**
- * A neighbouring scene as prompt context: every line, stamps stripped. Not
- * hashed, but it is prompt text, and the stamp is a storage fact.
- */
-export function sceneAsContext(scene: Scene): Scene {
-  return {
-    ...scene,
-    originalScript: {
-      ...scene.originalScript,
-      dialogue: scene.originalScript.dialogue.map(
-        ({ shotNumber: _stamp, ...line }) => line
-      ),
-    },
-  };
-}
-
 export type ShotMappingRow = {
   analysisSceneId: string;
   shotId: string;

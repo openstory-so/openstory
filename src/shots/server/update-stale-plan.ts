@@ -106,13 +106,6 @@ import type { MusicSceneSummary } from '@/platform/server/workflow/types';
 export type PlanTarget = {
   shotId: string;
   frameId: string;
-  /**
-   * Neighbour shot ids for motion continuity, resolved to raw metadata at
-   * spawn time (parity with regenerateShotPromptFn). Null when not a motion
-   * target, or at the ends of the sequence.
-   */
-  beforeShotId: string | null;
-  afterShotId: string | null;
   /** Frame image URL at plan time; image stage may produce a newer one later. */
   startingFrameImageUrl: string | null;
   /**
@@ -572,7 +565,6 @@ export async function computePlan(args: {
     }
   }
   const inScope = allShots.filter((shot) => unitKindsByShot.has(shot.id));
-  const shotIndexById = buildShotIndex(allShots);
 
   // Music is always sequence-scoped (not narrowed by scene/shot).
   const music = await computeMusicPlanForUnits(
@@ -695,7 +687,6 @@ export async function computePlan(args: {
       scene,
       refs,
       videoState: videoStateByShot.get(shot.id),
-      shotIndexById,
       allShots,
       unitKinds: unitKindsByShot.get(shot.id) ?? new Set(),
     });
@@ -832,15 +823,6 @@ function filterInScopeShots(
   });
 }
 
-function buildShotIndex(allShots: Shot[]): Map<string, number> {
-  const index = new Map<string, number>();
-  for (let i = 0; i < allShots.length; i++) {
-    const shot = allShots[i];
-    if (shot) index.set(shot.id, i);
-  }
-  return index;
-}
-
 type ShotVideoState = {
   hasVideo: boolean;
   selectedVersionId: string | null;
@@ -916,7 +898,6 @@ async function decideShotTarget(args: {
   scene: Scene | null;
   refs: ShotStalenessRefs;
   videoState: ShotVideoState | undefined;
-  shotIndexById: Map<string, number>;
   allShots: Shot[];
   /** The plan's units for this shot. */
   unitKinds: ReadonlySet<PlanUnitKind>;
@@ -933,7 +914,6 @@ async function decideShotTarget(args: {
     scene,
     refs,
     videoState,
-    shotIndexById,
     allShots,
     unitKinds,
   } = args;
@@ -1032,16 +1012,11 @@ async function decideShotTarget(args: {
     ];
   })();
 
-  const idx = shotIndexById.get(shot.id) ?? -1;
   return {
     kind: 'target',
     target: {
       shotId: shot.id,
       frameId: frame.id,
-      beforeShotId:
-        flags.regenMotion && idx > 0 ? (allShots[idx - 1]?.id ?? null) : null,
-      afterShotId:
-        flags.regenMotion && idx >= 0 ? (allShots[idx + 1]?.id ?? null) : null,
       startingFrameImageUrl: selectedImage?.url ?? null,
       usesStartFrame: usesStartFrame(shot, sequence),
       durationMs: shot.durationMs,

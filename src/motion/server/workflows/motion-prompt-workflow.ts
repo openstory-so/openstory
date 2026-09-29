@@ -55,8 +55,6 @@ export class MotionPromptWorkflow extends OpenStoryWorkflowEntrypoint<MotionProm
     const input = event.payload;
     const {
       scene,
-      sceneBefore,
-      sceneAfter,
       aspectRatio,
       characterBible,
       locationBible,
@@ -134,10 +132,6 @@ export class MotionPromptWorkflow extends OpenStoryWorkflowEntrypoint<MotionProm
       startingFrameNote: startingFrameImageUrl
         ? 'The rendered starting frame is attached below as an image — animate strictly from it.'
         : 'No rendered starting frame exists yet — derive the motion strictly from the scene data below.',
-      sceneBefore: sceneBefore
-        ? JSON.stringify(sceneBefore, null, 2)
-        : '(none)',
-      sceneAfter: sceneAfter ? JSON.stringify(sceneAfter, null, 2) : '(none)',
       // The shot's lines, not the script's (#1784): an edited line is what
       // the prompt has to direct.
       scene: JSON.stringify(

@@ -583,12 +583,6 @@ async function runCall(
         : 'phase/motion-prompt-scene-generation-chat';
     const variables: Record<string, string> = {
       scene: JSON.stringify(gold.focusScene, null, 2),
-      sceneBefore: gold.sceneBefore
-        ? JSON.stringify(gold.sceneBefore, null, 2)
-        : '(none)',
-      sceneAfter: gold.sceneAfter
-        ? JSON.stringify(gold.sceneAfter, null, 2)
-        : '(none)',
       characterBible: JSON.stringify(narrowed.characterBible, null, 2),
       locationBible: JSON.stringify(narrowed.locationBible, null, 2),
       elementBible: JSON.stringify(narrowed.elementBible, null, 2),

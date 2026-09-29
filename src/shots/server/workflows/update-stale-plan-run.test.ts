@@ -232,8 +232,6 @@ function target(shotId: string, referenceIds: string[]): PlanTarget {
   return {
     shotId,
     frameId: `f-${shotId}`,
-    beforeShotId: null,
-    afterShotId: null,
     startingFrameImageUrl: null,
     usesStartFrame: true,
     durationMs: null,

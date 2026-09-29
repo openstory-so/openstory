@@ -483,8 +483,6 @@ describe('claimTargets (#1085)', () => {
     return {
       shotId: 'shot-1',
       frameId: 'frame-1',
-      beforeShotId: null,
-      afterShotId: null,
       startingFrameImageUrl: null,
       usesStartFrame: true,
       durationMs: null,
@@ -744,10 +742,7 @@ describe('computePlan — durable step-result size', () => {
     const target = result.targets[0];
     expect(target).toBeDefined();
     // Neighbours are carried as ids, resolved to scenes per shot at spawn time.
-    expect(target).toMatchObject({
-      beforeShotId: 'shot-0',
-      afterShotId: 'shot-2',
-    });
+    expect(target).toMatchObject({});
     expect(target).not.toHaveProperty('scene');
     expect(target?.motionRender).toMatchObject({
       sceneId: 'scene-1',

@@ -105,9 +105,6 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
             )
           );
         }
-        const sceneBefore = sceneIndex > 0 ? scenes[sceneIndex - 1] : undefined;
-        const sceneAfter =
-          sceneIndex < scenes.length - 1 ? scenes[sceneIndex + 1] : undefined;
         const childPayload: MotionPromptWorkflowInput = {
           reservationId: input.reservationId,
           scene,
@@ -116,8 +113,6 @@ export class MotionPromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<Motio
             mapping.shotId,
             dialogueLinesByShotId
           ),
-          sceneBefore,
-          sceneAfter,
           aspectRatio,
           characterBible,
           locationBible,

@@ -1154,8 +1154,6 @@ export interface FramePromptBatchWorkflowResult {
 export interface FramePromptWorkflowInput extends SequenceWorkflowContext {
   siblingVisualPrompts?: Array<{ shotId: string; text: string }>;
   scene: Scene;
-  sceneBefore?: Scene;
-  sceneAfter?: Scene;
   aspectRatio: AspectRatio;
   characterBible: CharacterBibleEntry[];
   locationBible: LocationBibleEntry[];
@@ -1239,8 +1237,6 @@ export interface MotionPromptWorkflowInput extends SequenceWorkflowContext {
    * what the LLM reads and what the hash stamps (`sceneWithShotDialogue`).
    */
   dialogue: MotionDialogue;
-  sceneBefore?: Scene;
-  sceneAfter?: Scene;
   aspectRatio: AspectRatio;
   characterBible: CharacterBibleEntry[];
   locationBible: LocationBibleEntry[];

@@ -16,7 +16,6 @@ import { contentRejectionSummary } from '@/models/content-rejection';
 import type { Scene, VisualPrompt } from '@/shots/scene-analysis.schema';
 import {
   derivedShotForItem,
-  sceneAsContext,
   sceneForShot,
   shotWorkItems,
 } from '@/shots/server/shot-work-items';
@@ -88,10 +87,6 @@ export class FramePromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<FrameP
     // ============================================================
     const spawnPromises = llmScenes.map(async (scene) => {
       const sceneIndex = scenes.indexOf(scene);
-      const sceneBefore = sceneIndex > 0 ? scenes[sceneIndex - 1] : undefined;
-      const sceneAfter =
-        sceneIndex < scenes.length - 1 ? scenes[sceneIndex + 1] : undefined;
-
       const mappingEntry = shotMapping?.find(
         (f) => f.analysisSceneId === scene.sceneId
       );
@@ -101,8 +96,6 @@ export class FramePromptBatchWorkflow extends OpenStoryWorkflowEntrypoint<FrameP
         // The prompt is stored on the anchor shot and verified against the
         // scene composed for it (#1585), so hand the child that same view.
         scene: sceneForShot(scene, mappingEntry?.shotNumber ?? 1),
-        sceneBefore: sceneBefore && sceneAsContext(sceneBefore),
-        sceneAfter: sceneAfter && sceneAsContext(sceneAfter),
         aspectRatio,
         characterBible,
         locationBible,
