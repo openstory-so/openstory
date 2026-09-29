@@ -112,11 +112,12 @@ export const editStudioAssetFn = createServerFn({ method: 'POST' })
       z.object({
         id: ulidSchema,
         prompt: z.string().trim().min(1, 'Enter a prompt').max(50_000),
+        draft: z.boolean(),
       })
     )
   )
   .handler(async ({ context, data }) => {
-    return editStudioAsset(context.scopedDb, data.id, data.prompt);
+    return editStudioAsset(context.scopedDb, data.id, data.prompt, data.draft);
   });
 
 /** Longest edit chain walked; a cycle cannot form, this bounds a bad row. */

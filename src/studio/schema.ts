@@ -161,13 +161,6 @@ export const studioCreateInputSchema = z.discriminatedUnion('activity', [
             message: 'An edit keeps the length of the video',
           });
         }
-        if (input.draft) {
-          ctx.addIssue({
-            code: 'custom',
-            path: ['draft'],
-            message: 'An edit cannot be a draft',
-          });
-        }
       }
       if (input.draft && !supportsDraftMode(input.videoModel)) {
         ctx.addIssue({

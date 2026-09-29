@@ -183,7 +183,7 @@ export function useEditStudioAsset() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: { id: string; prompt: string }) =>
+    mutationFn: (input: { id: string; prompt: string; draft: boolean }) =>
       editStudioAssetFn({ data: input }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: studioAssetKeys.all });

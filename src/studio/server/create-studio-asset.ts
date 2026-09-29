@@ -400,7 +400,12 @@ export async function renderStudioAssetAtQuality(
 export async function editStudioAsset(
   scopedDb: ScopedDb,
   assetId: string,
-  prompt: string
+  prompt: string,
+  /**
+   * Edit a final as a 480p Ark draft (#1756). A draft's edit is always a
+   * draft, whatever is asked: its final comes from Render final.
+   */
+  draft: boolean
 ): Promise<StudioCreateResult> {
   const asset = await scopedDb.generatedAssets.getById(assetId);
   if (!asset || asset.source !== 'studio' || asset.activity !== 'video') {
@@ -419,6 +424,7 @@ export async function editStudioAsset(
     ...(isResolution(asset.input.resolution) && {
       resolution: asset.input.resolution,
     }),
+    draft: asset.input.draft === true || draft,
     duration: 'auto',
     count: 1,
     ...(typeof asset.input.generateAudio === 'boolean' && {

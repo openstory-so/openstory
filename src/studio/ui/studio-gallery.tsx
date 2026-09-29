@@ -27,6 +27,7 @@ import { ElementThumbnail } from '@/cast/ui/element/element-thumbnail';
 import { HighlightedPrompt } from '@/ui/text-editor/mention/highlighted-prompt';
 import type { MentionItem } from '@/shots/ui/prompt-mention/mention-items';
 import { Textarea } from '@/ui/shadcn/textarea';
+import { Switch } from '@/ui/shadcn/switch';
 import { isOfferedVideoModel } from '@/models/models';
 import { useViaAvailability } from '@/models/ui/use-via-availability';
 import {
@@ -517,20 +518,24 @@ function EditHistory({
  * its length and shape. Cmd/Ctrl+Enter submits.
  */
 function EditVideoForm({
+  sourceIsDraft,
   pending,
   onEdit,
 }: {
+  /** A draft's edit stays a draft; only a final offers the choice. */
+  sourceIsDraft: boolean;
   pending: boolean;
-  onEdit: (prompt: string) => void;
+  onEdit: (prompt: string, draft: boolean) => void;
 }) {
   return (
     <form
       className="flex shrink-0 flex-col gap-2"
       onSubmit={(event) => {
         event.preventDefault();
-        const prompt = new FormData(event.currentTarget).get('prompt');
+        const form = new FormData(event.currentTarget);
+        const prompt = form.get('prompt');
         if (typeof prompt !== 'string' || !prompt.trim()) return;
-        onEdit(prompt.trim());
+        onEdit(prompt.trim(), sourceIsDraft || form.get('draft') === 'on');
         event.currentTarget.reset();
       }}
     >
@@ -551,6 +556,17 @@ function EditVideoForm({
           }
         }}
       />
+      {!sourceIsDraft && (
+        <div className="flex items-center justify-between gap-4">
+          <label htmlFor="studio-edit-draft" className="text-sm">
+            Draft first
+            <span className="block text-xs text-muted-foreground">
+              480p now; render the final later
+            </span>
+          </label>
+          <Switch id="studio-edit-draft" name="draft" defaultChecked />
+        </div>
+      )}
       <Button
         type="submit"
         className="self-start pointer-coarse:h-11"
@@ -559,7 +575,9 @@ function EditVideoForm({
         {pending ? 'Starting…' : 'Edit'}
       </Button>
       <p className="text-xs text-muted-foreground">
-        Seedance 2.5 · keeps the length
+        {sourceIsDraft
+          ? 'Seedance 2.5 · keeps the length · stays a draft'
+          : 'Seedance 2.5 · keeps the length'}
       </p>
     </form>
   );
@@ -602,7 +620,7 @@ export function GenerationDetail({
   onPrev?: () => void;
   onNext?: () => void;
   /** Rewrite this clip from a prompt (#1925); absent where it cannot. */
-  onEdit?: (prompt: string) => void;
+  onEdit?: (prompt: string, draft: boolean) => void;
   editPending?: boolean;
   /** An opener for an earlier step of the edit history, if it is loaded. */
   onOpenHistory?: (id: string) => (() => void) | undefined;
@@ -684,7 +702,12 @@ export function GenerationDetail({
         {onEdit &&
           asset.activity === 'video' &&
           asset.status === 'completed' && (
-            <EditVideoForm pending={editPending} onEdit={onEdit} />
+            <EditVideoForm
+              key={asset.id}
+              sourceIsDraft={asset.input.draft === true}
+              pending={editPending}
+              onEdit={onEdit}
+            />
           )}
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           <Button
@@ -953,9 +976,9 @@ export function StudioGallery({
                 canEdit &&
                 studioCanEditSource(openAsset.input.videoModel) &&
                 !studioUsedReferenceVideo(openAsset.input)
-                  ? (prompt) => {
+                  ? (prompt, draft) => {
                       edit.mutate(
-                        { id: openAsset.id, prompt },
+                        { id: openAsset.id, prompt, draft },
                         { onSuccess: () => setOpenId(null) }
                       );
                     }
