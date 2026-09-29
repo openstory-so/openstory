@@ -201,9 +201,16 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
         } else {
           setIsRegenerating(false);
           setRetryLabel(null);
-          // Invalidate query to refetch updated character data
+          // The sheet and its version strip are separate queries. A completed
+          // run appends a version after the kickoff mutation has returned.
           void queryClient.invalidateQueries({
             queryKey: sequenceCharacterKeys.list(sequenceId),
+          });
+          void queryClient.invalidateQueries({
+            queryKey: characterSheetVariantKeys.history(
+              sequenceId,
+              characterId
+            ),
           });
         }
       }
