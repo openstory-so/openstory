@@ -185,9 +185,13 @@ export const LocationDetailView: React.FC<LocationDetailViewProps> = ({
         } else {
           setIsRegenerating(false);
           setRetryLabel(null);
-          // Invalidate query to refetch updated location data
+          // The reference and its version strip are separate queries. A
+          // completed run appends a version after the kickoff mutation returns.
           void queryClient.invalidateQueries({
             queryKey: sequenceLocationKeys.list(sequenceId),
+          });
+          void queryClient.invalidateQueries({
+            queryKey: locationSheetVariantKeys.history(sequenceId, locationId),
           });
         }
       }
