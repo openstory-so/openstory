@@ -1003,17 +1003,23 @@ const SceneListComponent: React.FC<SceneListProps> = ({
                   onClick={() => void handleGenerateMotion()}
                   disabled={isButtonDisabled}
                 >
-                  {isGenerating
-                    ? 'Generating…'
-                    : !motionPromptsReady
-                      ? 'Writing motion prompts…'
-                      : includeMusic && !musicPromptsReady
-                        ? 'Composing music…'
-                        : `Generate ${notStartedShots.length} / ${totalShots} ${totalShots === 1 ? 'shot' : 'shots'}`}
+                  <span className="relative">
+                    {isGenerating
+                      ? 'Generating…'
+                      : !motionPromptsReady
+                        ? 'Writing motion prompts…'
+                        : includeMusic && !musicPromptsReady
+                          ? 'Composing music…'
+                          : `Generate ${notStartedShots.length} / ${totalShots} ${totalShots === 1 ? 'shot' : 'shots'}`}
+                    <ActionCost
+                      estimate={batchCostEstimate}
+                      className="absolute top-1/2 left-full ml-2 -translate-y-1/2"
+                    />
+                  </span>
                 </Button>
-                <ActionCost estimate={batchCostEstimate} />
               </div>
-              {offerDraftFirst && (
+              {/* The steps carry the Draft first switch; one control at a time. */}
+              {offerDraftFirst && !showSteps && (
                 <label
                   htmlFor="batch-draft-motion"
                   className="flex items-center gap-2 text-sm text-muted-foreground"
