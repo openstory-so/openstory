@@ -364,8 +364,11 @@ const KIND_NOUN: Record<PlanUnitKind, [one: string, many: string]> = {
   music: ['music track', 'music tracks'],
 };
 
-/** `2 references, 12 prompts, 12 images` — counts per noun, in plan order. */
-function countNouns(units: readonly PlanUnitRef[]): string {
+/**
+ * `2 references, 12 prompts, 12 images` — counts per noun, in plan order.
+ * Shown under the button, which stays one word so it never overflows.
+ */
+export function planWorkSummary(units: readonly PlanUnitRef[]): string {
   const counts = new Map<string, { n: number; noun: [string, string] }>();
   for (const unit of units) {
     const noun = KIND_NOUN[unit.kind];
@@ -378,11 +381,9 @@ function countNouns(units: readonly PlanUnitRef[]): string {
     .join(', ');
 }
 
-/** Footer button: `Generate 2 references, 12 prompts, 12 images`. */
+/** Footer button: `Generate`; {@link planWorkSummary} says what. */
 export function planWorkLabel(work: readonly PlanUnit[]): string {
-  return work.length === 0
-    ? 'Nothing to generate'
-    : `Generate ${countNouns(work)}`;
+  return work.length === 0 ? 'Nothing to generate' : 'Generate';
 }
 
 /**
@@ -418,9 +419,9 @@ export function blockedLines(
     }
     const reasons = [
       ...named,
-      ...(counted.length ? [countNouns(counted)] : []),
+      ...(counted.length ? [planWorkSummary(counted)] : []),
     ];
-    return `${countNouns(units)} blocked: ${
+    return `${planWorkSummary(units)} blocked: ${
       reasons.length ? `waiting on ${reasons.join(', ')}` : 'couldn’t check'
     }`;
   });

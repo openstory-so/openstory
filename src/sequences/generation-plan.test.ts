@@ -5,6 +5,7 @@ import {
   firstStageWithWork,
   planCounts,
   planWorkLabel,
+  planWorkSummary,
   switchLocks,
   updateAllUnits,
   planUnits,
@@ -387,8 +388,9 @@ describe('footer helpers', () => {
   ];
 
   it('names the count and the noun', () => {
-    expect(planWorkLabel(planWork(plan, 'images'))).toBe(
-      'Generate 1 reference, 2 prompts'
+    expect(planWorkLabel(planWork(plan, 'images'))).toBe('Generate');
+    expect(planWorkSummary(planWork(plan, 'images'))).toBe(
+      '1 reference, 2 prompts'
     );
     expect(planWorkLabel([])).toBe('Nothing to generate');
   });

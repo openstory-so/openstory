@@ -484,6 +484,7 @@ See `src/ui/` and any domain's `ui/` for the house pattern.
 - Feedback: optimistic UI with rollback or Undo; confirm destructive actions; `aria-live="polite"` for toasts; ellipsis (`…`) for loading states.
 - Animation: honor `prefers-reduced-motion`; animate `transform`/`opacity`; interruptible. CSS > WAAPI > JS libs.
 - Accessibility: redundant cues (not color-only), `aria-label` for icon-only buttons, tabular numerics for comparisons, prefer native semantics.
+- Buttons: no icons on labelled buttons — text only, and loading is the label (`Generating…`), not a spinner. Only an icon-only button (`size="icon"` + `aria-label`) carries an icon. Keep labels one line: a count list goes in muted text under the button, not in it.
 - Performance: virtualize long lists (`virtua`); explicit image dimensions; mutations <500ms.
 
 ---

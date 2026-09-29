@@ -15,6 +15,7 @@ import {
   firstStageWithWork,
   planWork,
   planWorkLabel,
+  planWorkSummary,
   switchLocks,
   switchStopAt,
   type PlanUnitRef,
@@ -66,17 +67,7 @@ import {
   type ShotView,
 } from '@/shots/shot-view';
 import { cn } from '@/ui/utils';
-import {
-  CirclePlay,
-  FileText,
-  Images,
-  Loader2,
-  Mic,
-  Music,
-  PanelLeftClose,
-  Plus,
-  Video,
-} from 'lucide-react';
+import { CirclePlay, PanelLeftClose } from 'lucide-react';
 import {
   memo,
   useCallback,
@@ -90,15 +81,6 @@ import { toast } from 'sonner';
 import { SceneGroup, sumShotSeconds } from './scene-group';
 import { TargetDurationChip } from '@/sequences/ui/target-duration-chip';
 import { SceneListItem } from './scene-list-item';
-
-const CONTINUE_ICON = {
-  script: FileText,
-  references: Images,
-  images: Images,
-  dialogue: Mic,
-  motion: Video,
-  music: Music,
-} as const;
 
 /**
  * Center `el` in the nearest Radix ScrollArea viewport. Returns false when
@@ -501,7 +483,6 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     minStage && stageIndex(cappedStopAt) < stageIndex(minStage)
       ? minStage
       : cappedStopAt;
-  const ContinueIcon = CONTINUE_ICON[continueStopAtClamped];
   const showButton = showMotionFooter;
   const continueWork = planWork(footerPlan, continueStopAtClamped);
   const continueLabel = planWorkLabel(continueWork);
@@ -740,18 +721,13 @@ const SceneListComponent: React.FC<SceneListProps> = ({
             onClick={() => void handleContinue()}
             disabled={isGenerating || planLoading || continueWork.length === 0}
           >
-            {isGenerating ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Generating…
-              </>
-            ) : (
-              <>
-                <ContinueIcon className="mr-2 h-4 w-4" />
-                {continueLabel}
-              </>
-            )}
+            {isGenerating ? 'Generating…' : continueLabel}
           </Button>
+          {continueWork.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {planWorkSummary(continueWork)}
+            </p>
+          )}
           {continueBlocked.map((line) => (
             <p key={line} className="text-xs text-muted-foreground">
               {line}
@@ -978,11 +954,6 @@ const SceneListComponent: React.FC<SceneListProps> = ({
               onClick={handleAddScene}
               disabled={!isHydrated || createScene.isPending}
             >
-              {createScene.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Plus className="mr-2 h-4 w-4" />
-              )}
               {createScene.isPending ? 'Adding scene…' : 'Add scene'}
             </Button>
           )}
@@ -1028,28 +999,13 @@ const SceneListComponent: React.FC<SceneListProps> = ({
                   onClick={() => void handleGenerateMotion()}
                   disabled={isButtonDisabled}
                 >
-                  {isGenerating ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Generating…
-                    </>
-                  ) : !motionPromptsReady ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Writing motion prompts…
-                    </>
-                  ) : includeMusic && !musicPromptsReady ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Composing music…
-                    </>
-                  ) : (
-                    <>
-                      <Video className="mr-2 h-4 w-4" />
-                      Generate {notStartedShots.length} / {totalShots}{' '}
-                      {totalShots === 1 ? 'shot' : 'shots'}
-                    </>
-                  )}
+                  {isGenerating
+                    ? 'Generating…'
+                    : !motionPromptsReady
+                      ? 'Writing motion prompts…'
+                      : includeMusic && !musicPromptsReady
+                        ? 'Composing music…'
+                        : `Generate ${notStartedShots.length} / ${totalShots} ${totalShots === 1 ? 'shot' : 'shots'}`}
                 </Button>
                 <ActionCost estimate={batchCostEstimate} />
               </div>
@@ -1091,22 +1047,11 @@ const SceneListComponent: React.FC<SceneListProps> = ({
                 onClick={() => void handleGenerateMusicClick()}
                 disabled={isGenerating || !musicPromptsReady}
               >
-                {isGenerating ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Generating…
-                  </>
-                ) : !musicPromptsReady ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Composing music…
-                  </>
-                ) : (
-                  <>
-                    <Music className="mr-2 h-4 w-4" />
-                    Generate Music
-                  </>
-                )}
+                {isGenerating
+                  ? 'Generating…'
+                  : !musicPromptsReady
+                    ? 'Composing music…'
+                    : 'Generate Music'}
               </Button>
               {renderDraftsButton}
             </div>
