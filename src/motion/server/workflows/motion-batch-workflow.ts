@@ -24,12 +24,14 @@ import { resolveAudioModels } from '@/models/resolve-audio-models';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 
 import { buildMotionRender } from '@/motion/server/build-motion-render';
-import type { MotionAudioClip } from '@/platform/server/db/schema';
 import { getGenerationChannel } from '@/platform/realtime';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
 import { WorkflowValidationError } from '@/platform/server/workflow/errors';
-import { attachRecordedClips } from './motion-batch-jobs';
+import {
+  attachRecordedClips,
+  missingDialogueAudioShotIds,
+} from './motion-batch-jobs';
 import type {
   BatchMotionMusicWorkflowInput,
   DialogueAudioWorkflowInput,
@@ -107,11 +109,16 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
     // minutes later.
     await this.awaitBytePlusPoolAdmission(input, step, scopedDb);
 
-    // Step 0b: record dialogue ONCE PER SCENE (#1657). Without this each
-    // child with voiced lines and no matching clip records its own window of
-    // the scene — N overlapping ElevenLabs calls for N shots, and N different
-    // performances of one conversation. The children only attach.
+    // Step 0b: record dialogue ONCE PER SCENE (#1657). The parent must not
+    // fan out motion until every voiced shot has a matching take; a failed or
+    // partial scene recording blocks the batch below.
     const shots = await this.recordScenesOnce(input, step, parentInstanceId);
+    const missingDialogueShotIds = missingDialogueAudioShotIds(shots);
+    if (missingDialogueShotIds.length > 0) {
+      throw new WorkflowValidationError(
+        `Dialogue audio was not generated for shot${missingDialogueShotIds.length === 1 ? '' : 's'} ${missingDialogueShotIds.join(', ')}; motion is blocked.`
+      );
+    }
 
     // Step 1: Fan out motion workflows + optional music workflow in parallel.
     // Multi-model video (#545/#1510): one MOTION_WORKFLOW child per packed
@@ -257,12 +264,10 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
    */
   /**
    * Record every scene in `input.dialogueRecording` once, then return the
-   * shots with their new clips attached. A shot that ends up with a matching
-   * clip drops its `dialogueContext` — its child has nothing left to record.
+   * shots with their new clips attached.
    *
-   * Never fatal: a scene that cannot be recorded (a reading that will not fit,
-   * a provider outage) leaves its shots as they were, and each child falls
-   * back to recording itself in context — which fails that SHOT, not the batch.
+   * A failed scene remains without clips. The caller validates every voiced
+   * shot before fan-out and blocks motion for any shot without a matching take.
    */
   private async recordScenesOnce(
     input: BatchMotionMusicWorkflowInput,
@@ -275,40 +280,30 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
       return input.shots;
     }
 
-    let clipsByShotId: Record<string, MotionAudioClip[]> = {};
-    try {
-      const result = await spawnAndAwaitChild<
-        DialogueAudioWorkflowInput,
-        DialogueAudioWorkflowResult
-      >(step, {
-        binding: this.env.DIALOGUE_AUDIO_WORKFLOW,
-        parentBindingName: 'MOTION_BATCH_WORKFLOW',
-        parentInstanceId,
-        childId: `dialogue-audio:${sequenceId}:${parentInstanceId}`,
-        childPayload: {
-          userId: input.userId,
-          teamId: input.teamId,
-          sequenceId,
-          reservationId: input.reservationId,
-          scenes: recording.scenes,
-          minDurationSeconds: recording.minDurationSeconds,
-          maxDurationSeconds: recording.maxDurationSeconds,
-          analysisModelId: recording.analysisModelId,
-        },
-        spawnStepName: 'spawn-dialogue-audio',
-        awaitStepName: 'await-dialogue-audio',
-        timeout: '60 minutes',
-      });
-      clipsByShotId = result.clipsByShotId;
-    } catch (error) {
-      logger.warn(
-        '[MotionBatchWorkflow] Scene dialogue not recorded up front; each shot records its own',
-        { sequenceId, err: error }
-      );
-      return input.shots;
-    }
+    const result = await spawnAndAwaitChild<
+      DialogueAudioWorkflowInput,
+      DialogueAudioWorkflowResult
+    >(step, {
+      binding: this.env.DIALOGUE_AUDIO_WORKFLOW,
+      parentBindingName: 'MOTION_BATCH_WORKFLOW',
+      parentInstanceId,
+      childId: `dialogue-audio:${sequenceId}:${parentInstanceId}`,
+      childPayload: {
+        userId: input.userId,
+        teamId: input.teamId,
+        sequenceId,
+        reservationId: input.reservationId,
+        scenes: recording.scenes,
+        minDurationSeconds: recording.minDurationSeconds,
+        maxDurationSeconds: recording.maxDurationSeconds,
+        analysisModelId: recording.analysisModelId,
+      },
+      spawnStepName: 'spawn-dialogue-audio',
+      awaitStepName: 'await-dialogue-audio',
+      timeout: '60 minutes',
+    });
 
-    return attachRecordedClips(input.shots, clipsByShotId);
+    return attachRecordedClips(input.shots, result.clipsByShotId);
   }
 
   private async awaitBytePlusPoolAdmission(

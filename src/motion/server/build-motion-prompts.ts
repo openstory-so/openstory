@@ -1,5 +1,5 @@
 /**
- * Model-Aware Motion Prompt Assembly
+ * Model-Aware Motion Prompt Builder
  *
  * The LLM generates a rich `fullPrompt` with camera direction, performance,
  * and atmosphere. This module enriches that prompt with model-specific
@@ -99,7 +99,7 @@ type AssembleOptions = {
  * models, we append dialogue lines and audio direction in the format each
  * model handles best. Non-audio models get `fullPrompt` as-is.
  */
-export function assembleMotionPrompt({
+export function buildMotionShotPrompt({
   motionPrompt,
   model,
   characterTags,
@@ -253,14 +253,14 @@ export type PackedMotionPrompt = {
 
 /**
  * Assemble one generation covering several shots of a scene. Per-shot bodies
- * come from {@link assembleMotionPrompt}; this only adds vendor shot-list
+ * come from {@link buildMotionShotPrompt}; this only adds vendor shot-list
  * syntax and timings. A 1-shot list is the existing single-take path.
  *
  * A 2+ shot clip is a scene header (environment, no-music, jitter) once,
  * then short per-shot bodies. Truncating the joined prompt would drop a
  * whole trailing shot — callers split membership instead.
  */
-export function assemblePackedMotionPrompt({
+export function buildPackedMotionPrompt({
   shots,
   model,
   generateAudio,
@@ -390,7 +390,7 @@ function assembleOnePackedShot(
   omitSharedConstraints: boolean
 ): string {
   if (shot.motionPrompt) {
-    return assembleMotionPrompt({
+    return buildMotionShotPrompt({
       motionPrompt: shot.motionPrompt,
       model,
       characterTags: shot.characterTags,

@@ -40,7 +40,7 @@ import {
   packedPromptFitsLimit,
   packedSceneFromScene,
   type PackedMotionPromptShot,
-} from '@/motion/server/assemble-motion-prompt';
+} from '@/motion/server/build-motion-render';
 import { buildBytePlusVideoRequest } from '@/motion/server/build-byteplus-video-request';
 import { buildGeminiVideoRequest } from '@/motion/server/build-gemini-video-request';
 import { buildGrokVideoRequest } from '@/motion/server/build-grok-video-request';

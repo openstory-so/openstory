@@ -206,19 +206,17 @@ the earliest depth that needs it: dialogue when a shot in it re-records, video
 when only a render does (#1740). The run counts each target whose recording
 came back (`dialogues`), never its neighbours, and a dialogue-only target left
 without audio — child failed, or the balance gate refused — fails at stage
-`dialogue`; a target with a video render left to run falls back to recording
-itself there instead (`dialogueTargetOutcome`). Smart retry records each scene once
+`dialogue`; a target with a video render left to run is handed to the normal
+motion path, which records its scene before fanout and blocks the video if a
+take is still missing. Smart retry records each scene once
 (`snapshotBatchDialogue`) before it fans out, the same as Generate all motion
 and Update Stale. A conversation over `DIALOGUE_TAKE_CHUNK_CHARS` (2,000)
 splits at a **shot boundary**, never inside a shot (`chunkTakeLines`); each
 chunk is its own recording, and only chunks holding an adopting shot are
 recorded at all. `recordDialogue` (`src/motion/server/record-dialogue.ts`) is
-the one entry: `DialogueAudioWorkflow` calls it per scene, and motion's
-fallback (clip missing, or the voice/lines moved since) calls it with
-`lines: input.dialogueContext` — the `contextWindow` snapshotted at the
-trigger, the shot's own turns plus whole neighbouring shots grown outward
-while under the chunk limit — and `adoptShotIds: [shotId]`, so it records the
-window and keeps only its own shot.
+the one entry: `DialogueAudioWorkflow` calls it per scene. Motion workflows
+only accept matching recorded clips in their payload; they never synthesize
+speech or continue without a take for every voiced shot.
 
 **The shot is the one source of lines, and the only place they are written.**
 What a shot says is resolved by ONE ladder — `resolveShotDialogue`
@@ -250,18 +248,19 @@ onto a `shot_dialogue_versions` row, so rung 2 is never stranded.
 
 **Recorded once per scene, everywhere.** The `dialogue` stage is not the only
 caller. Every batch-style trigger — Generate all motion, add-a-video-model,
-Update Stale — snapshots `snapshotBatchDialogue` (`src/shots/server/shot-dialogue.ts`):
-each shot's `voicedLines`, its matching clips and its fallback
-`dialogueContext`, plus `dialogueRecording` — ONE `DialogueAudioSceneJob` per
-scene that holds a shot with no matching clip — and `ttsChars` priced per scene.
-`MotionBatchWorkflow.recordScenesOnce` and `UpdateStaleShotsWorkflow` run
-`DialogueAudioWorkflow` over those jobs BEFORE they fan out, and the children
-only attach. Without it a recast (the voice id is in the clip key, so every
-shot the character speaks in loses its clip at once) recorded the scene once
-per speaking shot. Never fatal: a scene that cannot be recorded leaves its
-shots to record themselves in context. Smart retry and single-shot Generate
-still record per shot — they start one motion run per shot, with no parent to
-record first.
+single-shot Generate, smart retry, Update Stale — snapshots
+`snapshotBatchDialogue` (`src/shots/server/shot-dialogue.ts`): each shot's
+`voicedLines`, its matching clips and `dialogueRecording` — ONE
+`DialogueAudioSceneJob` per scene that holds a shot with no matching clip —
+and `ttsChars` priced per scene. `MotionBatchWorkflow.recordScenesOnce` and
+`UpdateStaleShotsWorkflow` run `DialogueAudioWorkflow` over those jobs BEFORE
+they fan out. The parent checks every voiced shot has its exact matching take;
+a recording failure or partial result blocks motion for any shot still missing
+audio. The `MotionWorkflow` child repeats that check before reserving credits
+or submitting a video, so malformed or older payloads cannot render silently.
+Without scene-wide recording a recast (the voice id is in the clip key, so
+every shot the character speaks in loses its clip at once) would record the
+scene once per speaking shot.
 
 **Claims — a recording lands like every other generation (#1085 pattern).**
 `shot_dialogue_claims`, one row per shot about to take new audio; a reading
@@ -287,8 +286,8 @@ cannot be its own placeholder because a section needs a recording and a range.
   `discardSection` are the only writers of a shot's dialogue clip, and each
   moves the pointer in the same batch. A demoted or cancelled claim's reading
   is kept, unselected, pickable later. `recordDialogue` returns clips only for
-  PROMOTED shots; `MotionWorkflow` then renders from the shot's live clips
-  (`dialogue-audio-from-shot`) and fails the shot only if it has none.
+  PROMOTED shots; the parent attaches those clips to the snapshotted shot
+  payload and blocks fanout if a voiced shot has no matching take.
 - **Fail**: the recorder fails its own claims when it gives up
   (`fail-claims` step); `reconcileDialogueClaimsPass` (the 5-minute sweep)
   fails the claims of a run that died.

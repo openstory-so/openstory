@@ -57,17 +57,13 @@ export function buildMotionJobs<F extends { model?: ImageToVideoModel }>(
 
 /**
  * Hand each shot the clip its scene's recording cut for it (#1657). A shot
- * that ends up with a clip matching its lines drops its `dialogueContext`:
- * its child has nothing left to record, so it must not try. A shot the
- * recording did not cover (or whose lines it does not match) is returned
- * untouched and records itself, in context, as before.
+ * left without a matching clip is rejected by the parent before motion fan-out.
  */
 export function attachRecordedClips<
   T extends {
     shotId: string;
     voicedLines?: VoicedDialogueLine[];
     audioClips?: MotionAudioClip[];
-    dialogueContext?: unknown;
   },
 >(shots: readonly T[], clipsByShotId: Record<string, MotionAudioClip[]>): T[] {
   return shots.map((shot) => {
@@ -76,8 +72,24 @@ export function attachRecordedClips<
       shot.voicedLines ?? []
     );
     if (clips.length === 0) return shot;
-    const { dialogueContext: _recorded, ...rest } = shot;
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- T minus an optional key, plus a key T already has
-    return { ...rest, audioClips: clips } as T;
+    return { ...shot, audioClips: clips };
   });
+}
+
+/** Shots with voiced lines cannot enter motion until their exact take exists. */
+export function missingDialogueAudioShotIds<
+  T extends {
+    shotId: string;
+    voicedLines?: VoicedDialogueLine[];
+    audioClips?: MotionAudioClip[];
+  },
+>(shots: readonly T[]): string[] {
+  return shots
+    .filter(
+      (shot) =>
+        (shot.voicedLines?.length ?? 0) > 0 &&
+        matchingDialogueClips(shot.audioClips, shot.voicedLines ?? [])
+          .length === 0
+    )
+    .map((shot) => shot.shotId);
 }

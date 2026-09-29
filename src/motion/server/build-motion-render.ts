@@ -6,10 +6,17 @@ import {
 } from '@/models/models';
 import type { ImageToVideoModel } from '@/models/models';
 import {
-  assembleMotionPrompt,
-  assemblePackedMotionPrompt,
+  buildMotionShotPrompt,
+  buildPackedMotionPrompt,
   packedPromptFitsLimit,
-} from './assemble-motion-prompt';
+} from './build-motion-prompts';
+export {
+  buildMotionShotPrompt,
+  buildPackedMotionPrompt,
+  packedPromptFitsLimit,
+  packedSceneFromScene,
+} from './build-motion-prompts';
+export type { PackedMotionPromptShot } from './build-motion-prompts';
 import { packMotionBatchShots } from './pack-motion-jobs';
 import { buildMotionJobs } from './workflows/motion-batch-jobs';
 import type {
@@ -41,7 +48,7 @@ export function buildMotionRender(sources: MotionRenderSources): Array<{
           : [DEFAULT_VIDEO_MODEL];
       return models.every((packModel) =>
         packedPromptFitsLimit(
-          assemblePackedMotionPrompt({
+          buildPackedMotionPrompt({
             shots: members.map((member) => ({
               durationSeconds: member.duration ?? 3,
               motionPrompt: member.motionPrompt,
@@ -69,7 +76,7 @@ export function buildMotionRender(sources: MotionRenderSources): Array<{
     const members = shot.coveredShots;
     const packed =
       members && members.length > 1
-        ? assemblePackedMotionPrompt({
+        ? buildPackedMotionPrompt({
             shots: members.map((member) => ({
               durationSeconds: member.duration ?? shot.duration ?? 3,
               motionPrompt: member.motionPrompt,
@@ -90,7 +97,7 @@ export function buildMotionRender(sources: MotionRenderSources): Array<{
     const prompt = packed
       ? packed.prompt
       : shot.motionPrompt
-        ? assembleMotionPrompt({
+        ? buildMotionShotPrompt({
             motionPrompt: shot.motionPrompt,
             model,
             characterTags: shot.characterTags,
@@ -139,9 +146,6 @@ export function buildMotionRender(sources: MotionRenderSources): Array<{
       // the wire or as substituted descriptions.
       referenceImages: shot.referenceImages,
       voicedLines,
-      // The conversation around the shot (#1657) — without it the child
-      // records the shot's lines as a cold read.
-      dialogueContext: shot.dialogueContext,
       audioClips: audioClips && audioClips.length > 0 ? audioClips : undefined,
       motionPrompt: shot.motionPrompt,
       characterTags: shot.characterTags,
@@ -158,10 +162,6 @@ export function buildMotionRender(sources: MotionRenderSources): Array<{
     return { input, shotIndex };
   });
 }
-
-/** Reassembly after recording or softening uses the same prompt implementation. */
-export const buildMotionShotPrompt = assembleMotionPrompt;
-export const buildPackedMotionPrompt = assemblePackedMotionPrompt;
 
 /** Finals reuse the provider's frozen draft request; the builder stamps its provenance. */
 export function buildDraftFinalRender(source: {

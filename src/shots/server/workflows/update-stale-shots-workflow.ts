@@ -935,6 +935,11 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               target.motionRender.audioClips,
             voicedLines
           );
+          if (voicedLines.length > 0 && audioClips.length === 0) {
+            throw new NonRetryableError(
+              `Dialogue audio is not ready for shot ${target.shotId}; motion is blocked.`
+            );
+          }
           const motionInput: MotionRenderShot = {
             shotId: shot.id,
             sceneId: target.motionRender.sceneId,
@@ -958,11 +963,6 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             referenceImages,
             voicedLines,
             audioClips: audioClips.length > 0 ? audioClips : undefined,
-            // Only read when no clip matches: the recording is then acted in
-            // the conversation around the shot, not as a cold read.
-            ...(voicedLines.length > 0 && target.dialogueContext.length > 0
-              ? { dialogueContext: target.dialogueContext }
-              : {}),
             motionPrompt: motionPromptFromVersion(
               motionVersion,
               target.dialogue
@@ -1035,13 +1035,9 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
         };
       });
 
-    // Dialogue is recorded ONCE PER SCENE (#1657), started now because what a
-    // shot says does not wait on its prompts or its still. Every video render
-    // awaits this first: `prepare-video` consumes the returned clips, so the
-    // clip the recording saved is simply there, and the motion child attaches
-    // it instead of recording its own window of the scene. Never fatal — a
-    // scene that cannot be recorded leaves its shots to record themselves, in
-    // context, which fails that shot and not the run.
+    // Dialogue is recorded ONCE PER SCENE (#1657), before video fan-out.
+    // `prepare-video` requires a matching clip; if this recording fails, the
+    // affected video is blocked before its motion child is spawned.
     if (input.announcePhases && plan.targets.length > 0) {
       await announce(
         plan.targets.some((t) => t.regenVisual || t.regenImage || t.regenMotion)
@@ -1107,7 +1103,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             }),
             (error: unknown): DialogueOutcome => {
               logger.warn(
-                '[UpdateStaleShotsWorkflow] Scene dialogue not recorded up front; each shot records its own',
+                '[UpdateStaleShotsWorkflow] Scene dialogue not recorded; its voiced clips will be blocked',
                 { sequenceId, err: error }
               );
               return {
@@ -1730,8 +1726,8 @@ type DialogueOutcome =
  * What the up-front recording did for the targets that asked for dialogue.
  * A target counts when the recording returned its audio; neighbours that
  * came back with the scene do not. A target without audio fails at
- * 'dialogue' only when no video render follows — that render records the
- * shot itself, and fails as 'video' if it cannot.
+ * `dialogue` when no video render follows; otherwise `prepare-video` blocks
+ * the motion child before fan-out.
  */
 export function dialogueTargetOutcome(
   targets: ReadonlyArray<

@@ -22,12 +22,10 @@ function violationsIn(text: string): string[] {
   const input = `(?:${[...names].join('|')})`;
   const violations: string[] = [];
   const rules: Array<[string, RegExp]> = [
-    ['assembly import', /import\s*\{[^}]*\bassemble(?:Packed)?MotionPrompt\b/],
     [
-      'namespace assembly import',
-      /import\s+\*\s+as\s+\w+\s+from\s+['"][^'"]*assemble-motion-prompt['"]/,
+      'prompt implementation import',
+      /import\s*(?:\{[^}]*\}|\*\s+as\s+\w+)\s*from\s*['"][^'"]*build-motion-prompts['"]/,
     ],
-    ['assembly call', /\bassemble(?:Packed)?MotionPrompt\s*\(/],
     ['typed construction', new RegExp(`:\\s*${input}\\s*(?:&[^=]+)?=\\s*\\{`)],
     [
       'asserted construction',
@@ -56,13 +54,12 @@ function violationsIn(text: string): string[] {
   return violations;
 }
 
-it('only the builder assembles prompts and constructs motion workflow inputs', () => {
+it('render paths use the canonical prompt builder and construct inputs centrally', () => {
   const violations = globSync('src/**/*.ts')
     .filter(
       (path) =>
         !path.endsWith('.test.ts') &&
-        path !== 'src/motion/server/build-motion-render.ts' &&
-        path !== 'src/motion/server/assemble-motion-prompt.ts'
+        path !== 'src/motion/server/build-motion-render.ts'
     )
     .flatMap((path) =>
       violationsIn(readFileSync(path, 'utf8')).map(
@@ -73,8 +70,8 @@ it('only the builder assembles prompts and constructs motion workflow inputs', (
 });
 
 it.each([
-  `import { assembleMotionPrompt as assemble } from './assemble-motion-prompt'; assemble({});`,
-  `import * as assembly from './assemble-motion-prompt'; assembly.assemblePackedMotionPrompt({});`,
+  `import { buildMotionShotPrompt as assemble } from './build-motion-prompts'; assemble({});`,
+  `import * as assembly from './build-motion-prompts'; assembly.buildPackedMotionPrompt({});`,
   `import type { MotionWorkflowInput as Input } from './types'; const input: Input = {};`,
   `function render(): MotionWorkflowInput { return {}; }`,
   `const render = (): MotionWorkflowInput => ({});`,

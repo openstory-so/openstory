@@ -8,10 +8,10 @@ import {
   VIDEO_MODEL_VOICE_TOKEN,
 } from '@/motion/dialogue-tts';
 import {
-  assembleMotionPrompt,
-  assemblePackedMotionPrompt,
+  buildMotionShotPrompt,
+  buildPackedMotionPrompt,
   packedPromptFitsLimit,
-} from './assemble-motion-prompt';
+} from './build-motion-prompts';
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -54,12 +54,12 @@ function makeMotionPrompt(overrides: Partial<MotionPrompt> = {}): MotionPrompt {
 // Kling v3 Pro (audio-capable — default model)
 // ---------------------------------------------------------------------------
 
-describe('assembleMotionPrompt', () => {
+describe('buildMotionShotPrompt', () => {
   describe('Kling v3 Pro (audio)', () => {
     const model = 'kling_v3_pro';
 
     it('starts with the fullPrompt as the base', () => {
-      const result = assembleMotionPrompt({
+      const result = buildMotionShotPrompt({
         motionPrompt: makeMotionPrompt(),
         model,
       });
@@ -68,7 +68,7 @@ describe('assembleMotionPrompt', () => {
     });
 
     it('appends character labels with tone and dialogue text', () => {
-      const result = assembleMotionPrompt({
+      const result = buildMotionShotPrompt({
         motionPrompt: makeMotionPrompt(),
         model,
       });
@@ -82,7 +82,7 @@ describe('assembleMotionPrompt', () => {
     });
 
     it('uses temporal markers between dialogue lines', () => {
-      const result = assembleMotionPrompt({
+      const result = buildMotionShotPrompt({
         motionPrompt: makeMotionPrompt(),
         model,
       });
@@ -91,7 +91,7 @@ describe('assembleMotionPrompt', () => {
     });
 
     it('appends ambient sound descriptions', () => {
-      const result = assembleMotionPrompt({
+      const result = buildMotionShotPrompt({
         motionPrompt: makeMotionPrompt(),
         model,
       });
@@ -102,7 +102,7 @@ describe('assembleMotionPrompt', () => {
     });
 
     it('omits dialogue section when not present', () => {
-      const result = assembleMotionPrompt({
+      const result = buildMotionShotPrompt({
         motionPrompt: makeMotionPrompt({
           dialogue: { presence: false, lines: [] },
         }),
@@ -116,7 +116,7 @@ describe('assembleMotionPrompt', () => {
     });
 
     it('omits ambient sounds when no audio data, keeps the no-music direction', () => {
-      const result = assembleMotionPrompt({
+      const result = buildMotionShotPrompt({
         motionPrompt: makeMotionPrompt({ audio: undefined }),
         model,
       });
@@ -128,7 +128,7 @@ describe('assembleMotionPrompt', () => {
     });
 
     it('suppresses model-generated music alongside the ambient sounds', () => {
-      const result = assembleMotionPrompt({
+      const result = buildMotionShotPrompt({
         motionPrompt: makeMotionPrompt(),
         model,
       });
@@ -147,7 +147,7 @@ describe('assembleMotionPrompt', () => {
     'ByteDance %s (audio)',
     (model) => {
       it('starts with fullPrompt as the base', () => {
-        const result = assembleMotionPrompt({
+        const result = buildMotionShotPrompt({
           motionPrompt: makeMotionPrompt(),
           model,
         });
@@ -156,7 +156,7 @@ describe('assembleMotionPrompt', () => {
       });
 
       it('weaves ambience as prose and marks each effect with <>', () => {
-        const result = assembleMotionPrompt({
+        const result = buildMotionShotPrompt({
           motionPrompt: makeMotionPrompt(),
           model,
         });
@@ -170,7 +170,7 @@ describe('assembleMotionPrompt', () => {
       });
 
       it("wraps the spoken words in ByteDance's {} dialogue markers", () => {
-        const result = assembleMotionPrompt({
+        const result = buildMotionShotPrompt({
           motionPrompt: makeMotionPrompt(),
           model,
         });
@@ -186,7 +186,7 @@ describe('assembleMotionPrompt', () => {
       });
 
       it('speaks a recorded line once, from the recording', () => {
-        const result = assembleMotionPrompt({
+        const result = buildMotionShotPrompt({
           motionPrompt: makeMotionPrompt({
             dialogue: {
               presence: true,
@@ -216,7 +216,7 @@ describe('assembleMotionPrompt', () => {
       });
 
       it('treats the conversation clip token as a recording', () => {
-        const result = assembleMotionPrompt({
+        const result = buildMotionShotPrompt({
           motionPrompt: makeMotionPrompt({
             dialogue: {
               presence: true,
@@ -247,7 +247,7 @@ describe('assembleMotionPrompt', () => {
       });
 
       it('does not treat video-model as a recording', () => {
-        const result = assembleMotionPrompt({
+        const result = buildMotionShotPrompt({
           motionPrompt: makeMotionPrompt({
             dialogue: {
               presence: true,
@@ -269,7 +269,7 @@ describe('assembleMotionPrompt', () => {
       });
 
       it('emits no voice binding when no line has one', () => {
-        const result = assembleMotionPrompt({
+        const result = buildMotionShotPrompt({
           motionPrompt: makeMotionPrompt(),
           model,
         });
@@ -278,7 +278,7 @@ describe('assembleMotionPrompt', () => {
       });
 
       it('always appends the no-music and single-continuous-shot guards', () => {
-        const result = assembleMotionPrompt({
+        const result = buildMotionShotPrompt({
           motionPrompt: makeMotionPrompt(),
           model,
         });
@@ -289,7 +289,7 @@ describe('assembleMotionPrompt', () => {
       });
 
       it('drops the no-cuts pin when the clip is a packed multi-shot', () => {
-        const result = assembleMotionPrompt({
+        const result = buildMotionShotPrompt({
           motionPrompt: makeMotionPrompt(),
           model,
           singleTake: false,
@@ -300,12 +300,12 @@ describe('assembleMotionPrompt', () => {
       });
 
       it('adds the jitter guard only when the scene has characters', () => {
-        const withCharacters = assembleMotionPrompt({
+        const withCharacters = buildMotionShotPrompt({
           motionPrompt: makeMotionPrompt(),
           model,
           characterTags: ['sarah', 'james'],
         });
-        const withoutCharacters = assembleMotionPrompt({
+        const withoutCharacters = buildMotionShotPrompt({
           motionPrompt: makeMotionPrompt(),
           model,
           characterTags: [],
@@ -316,7 +316,7 @@ describe('assembleMotionPrompt', () => {
       });
 
       it('omits dialogue and sound prose when absent, keeps guards', () => {
-        const result = assembleMotionPrompt({
+        const result = buildMotionShotPrompt({
           motionPrompt: makeMotionPrompt({
             dialogue: { presence: false, lines: [] },
             audio: undefined,
@@ -339,7 +339,7 @@ describe('assembleMotionPrompt', () => {
     const model = 'grok_imagine_video_1_5';
 
     it('returns fullPrompt for non-audio model', () => {
-      const result = assembleMotionPrompt({
+      const result = buildMotionShotPrompt({
         motionPrompt: makeMotionPrompt(),
         model,
       });
@@ -350,7 +350,7 @@ describe('assembleMotionPrompt', () => {
 
   describe('Gemini Omni Flash (oner pin)', () => {
     it('pins a 1-shot clip as a single unbroken scene', () => {
-      const result = assembleMotionPrompt({
+      const result = buildMotionShotPrompt({
         motionPrompt: makeMotionPrompt(),
         model: 'gemini_omni_flash',
       });
@@ -358,7 +358,7 @@ describe('assembleMotionPrompt', () => {
     });
 
     it('does not pin a packed multi-shot', () => {
-      const result = assembleMotionPrompt({
+      const result = buildMotionShotPrompt({
         motionPrompt: makeMotionPrompt(),
         model: 'gemini_omni_flash',
         singleTake: false,
@@ -371,7 +371,7 @@ describe('assembleMotionPrompt', () => {
     const model = 'minimax_h3_max';
 
     it('tags dialogue as <d>[English] …</d> with speaker and tone in prose', () => {
-      const result = assembleMotionPrompt({
+      const result = buildMotionShotPrompt({
         motionPrompt: makeMotionPrompt(),
         model,
       });
@@ -386,7 +386,7 @@ describe('assembleMotionPrompt', () => {
     });
 
     it('ends with the native soundscape section and non_diegetic_music: N/A', () => {
-      const result = assembleMotionPrompt({
+      const result = buildMotionShotPrompt({
         motionPrompt: makeMotionPrompt(),
         model,
       });
@@ -399,7 +399,7 @@ describe('assembleMotionPrompt', () => {
     });
 
     it('writes "off" into the prompt when generateAudio is false (no API field)', () => {
-      const result = assembleMotionPrompt({
+      const result = buildMotionShotPrompt({
         motionPrompt: makeMotionPrompt(),
         model,
         generateAudio: false,
@@ -413,7 +413,7 @@ describe('assembleMotionPrompt', () => {
     });
 
     it('still switches music off when the scene has no dialogue or audio data', () => {
-      const result = assembleMotionPrompt({
+      const result = buildMotionShotPrompt({
         motionPrompt: makeMotionPrompt({
           dialogue: undefined,
           audio: undefined,
@@ -433,7 +433,7 @@ describe('assembleMotionPrompt', () => {
 
   describe('edge cases', () => {
     it('handles dialogue lines without tone', () => {
-      const result = assembleMotionPrompt({
+      const result = buildMotionShotPrompt({
         motionPrompt: makeMotionPrompt({
           dialogue: {
             presence: true,
@@ -448,7 +448,7 @@ describe('assembleMotionPrompt', () => {
     });
 
     it('handles narrator (empty character)', () => {
-      const result = assembleMotionPrompt({
+      const result = buildMotionShotPrompt({
         motionPrompt: makeMotionPrompt({
           dialogue: {
             presence: true,
@@ -464,7 +464,7 @@ describe('assembleMotionPrompt', () => {
     });
 
     it('handles audio with only ambient sound', () => {
-      const result = assembleMotionPrompt({
+      const result = buildMotionShotPrompt({
         motionPrompt: makeMotionPrompt({
           audio: { ambientSound: 'rain on windows', soundEffects: [] },
         }),
@@ -475,7 +475,7 @@ describe('assembleMotionPrompt', () => {
     });
 
     it('handles audio with only sound effects', () => {
-      const result = assembleMotionPrompt({
+      const result = buildMotionShotPrompt({
         motionPrompt: makeMotionPrompt({
           audio: { ambientSound: '', soundEffects: ['door slam'] },
         }),
@@ -486,7 +486,7 @@ describe('assembleMotionPrompt', () => {
     });
 
     it('handles empty audio (no ambient, no SFX)', () => {
-      const result = assembleMotionPrompt({
+      const result = buildMotionShotPrompt({
         motionPrompt: makeMotionPrompt({
           audio: { ambientSound: '', soundEffects: [] },
         }),
@@ -501,7 +501,7 @@ describe('assembleMotionPrompt', () => {
     });
 
     it('never adds a no-music direction to a model that generates no audio', () => {
-      const result = assembleMotionPrompt({
+      const result = buildMotionShotPrompt({
         motionPrompt: makeMotionPrompt(),
         model: 'grok_imagine_video_1_5',
       });
@@ -511,7 +511,7 @@ describe('assembleMotionPrompt', () => {
   });
 
   it('attachSceneHeader prepends environment without repeating it in the body', () => {
-    const result = assembleMotionPrompt({
+    const result = buildMotionShotPrompt({
       motionPrompt: makeMotionPrompt({
         fullPrompt: 'opens the door',
         dialogue: { presence: false, lines: [] },
@@ -530,7 +530,7 @@ describe('assembleMotionPrompt', () => {
   });
 });
 
-describe('assemblePackedMotionPrompt', () => {
+describe('buildPackedMotionPrompt', () => {
   const shot = (
     fullPrompt: string,
     durationSeconds: number
@@ -547,7 +547,7 @@ describe('assemblePackedMotionPrompt', () => {
   });
 
   it('a 1-shot list is the existing single-take Seedance path', () => {
-    const packed = assemblePackedMotionPrompt({
+    const packed = buildPackedMotionPrompt({
       shots: [shot('opens the door', 4)],
       model: 'seedance_v2',
     });
@@ -556,7 +556,7 @@ describe('assemblePackedMotionPrompt', () => {
   });
 
   it('a 1-shot sibling of a packed scene prepends environment once', () => {
-    const packed = assemblePackedMotionPrompt({
+    const packed = buildPackedMotionPrompt({
       shots: [
         {
           ...shot('opens the door', 4),
@@ -575,7 +575,7 @@ describe('assemblePackedMotionPrompt', () => {
   });
 
   it('Seedance 2.0 packs with Shot N prose and cut to, no oner pin', () => {
-    const packed = assemblePackedMotionPrompt({
+    const packed = buildPackedMotionPrompt({
       shots: [shot('opens the door', 4), shot('the hallway beyond', 6)],
       model: 'seedance_v2',
     });
@@ -586,7 +586,7 @@ describe('assemblePackedMotionPrompt', () => {
   });
 
   it('Seedance 2.5 packs Shot N (timestamps) as paragraphs, no cut to', () => {
-    const packed = assemblePackedMotionPrompt({
+    const packed = buildPackedMotionPrompt({
       shots: [shot('opens the door', 4), shot('the hallway beyond', 6)],
       model: 'seedance_v2_5',
     });
@@ -602,7 +602,7 @@ describe('assemblePackedMotionPrompt', () => {
   });
 
   it('H3 Max uses a timed shot list', () => {
-    const packed = assemblePackedMotionPrompt({
+    const packed = buildPackedMotionPrompt({
       shots: [shot('opens the door', 4), shot('the hallway beyond', 6)],
       model: 'minimax_h3_max',
     });
@@ -611,7 +611,7 @@ describe('assemblePackedMotionPrompt', () => {
   });
 
   it('Kling v3 returns multi_prompt with per-shot durations', () => {
-    const packed = assemblePackedMotionPrompt({
+    const packed = buildPackedMotionPrompt({
       shots: [shot('opens the door', 4), shot('the hallway beyond', 6)],
       model: 'kling_v3_pro',
     });
@@ -625,7 +625,7 @@ describe('assemblePackedMotionPrompt', () => {
   });
 
   it('Omni Flash packed list has no oner pin', () => {
-    const packed = assemblePackedMotionPrompt({
+    const packed = buildPackedMotionPrompt({
       shots: [shot('opens the door', 4), shot('the hallway beyond', 6)],
       model: 'gemini_omni_flash',
     });
@@ -635,7 +635,7 @@ describe('assemblePackedMotionPrompt', () => {
   });
 
   it('states environment and clip-wide guards once, then short shot bodies', () => {
-    const packed = assemblePackedMotionPrompt({
+    const packed = buildPackedMotionPrompt({
       shots: [
         {
           ...shot('opens the door', 4),
@@ -668,7 +668,7 @@ describe('assemblePackedMotionPrompt', () => {
   });
 
   it('puts the Kling header on the first multi_prompt element only', () => {
-    const packed = assemblePackedMotionPrompt({
+    const packed = buildPackedMotionPrompt({
       shots: [shot('opens the door', 4), shot('the hallway beyond', 6)],
       model: 'kling_v3_pro',
       scene: { location: 'INT. HALLWAY - NIGHT' },
@@ -681,7 +681,7 @@ describe('assemblePackedMotionPrompt', () => {
   });
 
   it('packedPromptFitsLimit leaves headroom under the model cap', () => {
-    const packed = assemblePackedMotionPrompt({
+    const packed = buildPackedMotionPrompt({
       shots: [shot('opens the door', 4), shot('the hallway beyond', 6)],
       model: 'seedance_v2_5',
     });
@@ -694,7 +694,7 @@ describe('assemblePackedMotionPrompt', () => {
       'At dawn, cool natural light enters through the stairwell windows and mixes with weak interior light. At night, a warm bedside lamp and the cold glow of Mara’s phone illuminate the room before the lamp is switched off and the space falls into blue darkness.';
     const palette =
       'Muted gray, off-white, warm wood, faded black, and worn neutrals, with occasional saturated color from Mara’s artwork and paint marks.';
-    const packed = assemblePackedMotionPrompt({
+    const packed = buildPackedMotionPrompt({
       shots: [
         shot(
           "extreme close-up, eye level, The alarm clock displays 5:59, buzzing beside the bed; Mara's hand is just outside frame. Mara slaps the alarm off as the digits flip to 6:00. Camera: smooth static",

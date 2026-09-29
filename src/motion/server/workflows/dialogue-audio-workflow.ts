@@ -148,7 +148,7 @@ export class DialogueAudioWorkflow extends OpenStoryWorkflowEntrypoint<DialogueA
     const { clipsByShotId, failures } = collectDialogueResults(settled, scenes);
     for (const failure of failures) {
       logger.warn(
-        `[DialogueAudioWorkflow:cf] Scene starting at shot ${failure.name} not recorded; its shots record at motion: ${failure.reason}`
+        `[DialogueAudioWorkflow:cf] Scene starting at shot ${failure.name} not recorded; downstream motion will be blocked for shots without a matching take: ${failure.reason}`
       );
     }
     return { clipsByShotId };

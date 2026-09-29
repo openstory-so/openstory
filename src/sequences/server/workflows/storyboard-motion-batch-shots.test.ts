@@ -382,11 +382,9 @@ describe('buildStoryboardMotionBatchShots', () => {
     });
     expect(shots[0]?.audioClips).toEqual([clip]);
     expect(shots[0]?.voicedLines).toHaveLength(1);
-    // A shot with its clip records nothing, so it carries no conversation.
-    expect(shots[0]?.dialogueContext).toBeUndefined();
   });
 
-  it('reads lines per shot, and hands a clipless shot its conversation (#1657)', () => {
+  it('reads lines and matching clips per shot for the upstream recorder (#1657)', () => {
     const sarah = {
       id: 'c1',
       characterId: 'char_001',
@@ -442,14 +440,11 @@ describe('buildStoryboardMotionBatchShots', () => {
 
     expect(shots[0]?.voicedLines?.map((l) => l.text)).toEqual(['Stay down.']);
     expect(shots[0]?.audioClips).toEqual([clip]);
-    expect(shots[0]?.dialogueContext).toBeUndefined();
 
-    // shot-2 has lines and no clip: motion will record it, in context.
+    // shot-2 has lines but no clip; the upstream batch recorder must fill it
+    // before any motion child is spawned.
+    expect(shots[1]?.voicedLines?.map((l) => l.text)).toEqual(['Now run.']);
     expect(shots[1]?.audioClips).toBeUndefined();
-    expect(shots[1]?.dialogueContext?.map((l) => [l.shotId, l.text])).toEqual([
-      ['shot-1', 'Stay down.'],
-      ['shot-2', 'Now run.'],
-    ]);
   });
 });
 

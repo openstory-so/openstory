@@ -25,7 +25,7 @@
  *
  * Reuses production code end to end: the motion-prompt template + schema, the
  * vision-model routing (`resolveVisionModel`/`toVisionImageSource`), the
- * OpenRouter adapter, model-specific prompt assembly (`assembleMotionPrompt`),
+ * OpenRouter adapter, model-specific prompt assembly (`buildMotionShotPrompt`),
  * and the real `submitMotionJob`/`pollMotionJob` motion generation. The only
  * locally-inlined bit is `buildChatMessages` (a copy of the private helper in
  * `llm-call-helper.ts`, which can't be imported here because it pulls in
@@ -71,7 +71,7 @@ import {
   motionPromptSchema,
   type MotionPrompt,
 } from '@/shots/scene-analysis.schema';
-import { assembleMotionPrompt } from '@/motion/server/assemble-motion-prompt';
+import { buildMotionShotPrompt } from '@/motion/server/build-motion-render';
 import { fetchVideoForUpload } from '@/motion/server/video-storage';
 import {
   pollMotionJob,
@@ -552,7 +552,7 @@ async function processStyle(
   }
 
   const motionPrompt = await generateMotionPrompt(style, visionUrl, llmKey);
-  const assembled = assembleMotionPrompt({
+  const assembled = buildMotionShotPrompt({
     motionPrompt,
     model,
     characterTags: [],

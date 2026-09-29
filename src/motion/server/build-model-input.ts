@@ -78,7 +78,7 @@ function resolutionOverride(
 /**
  * Second lever against model-generated music (#1165) for the two endpoints
  * that expose `negative_prompt`; the in-prompt direction from
- * `assembleMotionPrompt` covers every audio-capable model, and is Seedance
+ * `buildMotionShotPrompt` covers every audio-capable model, and is Seedance
  * 2.5's only lever since its schema has no negative prompt.
  *
  * Kling's `negative_prompt` defaults to 'blur, distort, and low quality' when

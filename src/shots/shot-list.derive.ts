@@ -102,7 +102,7 @@ export type DeriveShotPromptOptions = {
  *
  * fullPrompt = the shot's action + its single camera move (with pacing adverb)
  * + the sound cue. Reference-only also prefixes unique framing. Model-agnostic:
- * no vendor syntax — `assembleMotionPrompt` adapts per model at render time.
+ * no vendor syntax — `buildMotionShotPrompt` adapts per model at render time.
  * Scene context is never copied in: that is the packed prompt header.
  */
 export function deriveMotionPrompt(

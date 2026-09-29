@@ -1,4 +1,4 @@
-import { packedSceneFromScene } from '@/motion/server/assemble-motion-prompt';
+import { packedSceneFromScene } from '@/motion/server/build-motion-render';
 import {
   DEFAULT_IMAGE_MODEL,
   DEFAULT_MUSIC_MODEL,
@@ -1238,14 +1238,10 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
                   model,
                   motionPrompt,
                   // The audio that goes with the words in the prompt: the clip
-                  // when one matches, the lines either way, and the
-                  // conversation to fall back on. This path used to send none.
+                  // when one matches and the lines either way.
                   voicedLines: spoken?.voicedLines ?? [],
                   ...(spoken && spoken.audioClips.length > 0
                     ? { audioClips: spoken.audioClips }
-                    : {}),
-                  ...(spoken?.dialogueContext
-                    ? { dialogueContext: spoken.dialogueContext }
                     : {}),
                   sceneTitle: sceneOf(f)?.metadata?.title,
                   characterTags: sceneOf(f)?.continuity?.characterTags,

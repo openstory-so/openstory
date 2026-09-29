@@ -167,7 +167,7 @@ describe('buildModelInput', () => {
       });
 
       // Seedance has no negative_prompt field — its only music lever is the
-      // in-prompt constraint from assembleMotionPrompt (#1165).
+      // in-prompt constraint from buildMotionShotPrompt (#1165).
       it('sends no negative_prompt', () => {
         expect(build(model)).not.toHaveProperty('negative_prompt');
       });

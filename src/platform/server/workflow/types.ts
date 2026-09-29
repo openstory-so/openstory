@@ -2,6 +2,8 @@
  * Payload and result types for the Cloudflare Workflows entrypoints.
  */
 
+import type { VoiceProvider } from '@/cast/seed-voice';
+import type { AspectRatio, ImageSize } from '@/models/aspect-ratios';
 import type {
   AUDIO_MODELS,
   IMAGE_MODELS,
@@ -9,10 +11,29 @@ import type {
   ImageToVideoModel,
   TextToImageModel,
 } from '@/models/models';
-import type { VoiceProvider } from '@/cast/seed-voice';
 import type { AnalysisModelId } from '@/models/models.config';
+import type { Resolution } from '@/models/resolutions';
 import type { VoicedDialogueLine } from '@/motion/dialogue-tts';
-import type { SceneVoicedLine } from '@/shots/shot-dialogue';
+import type {
+  CharacterMinimal,
+  GeneratedAssetActivity,
+  GeneratedAssetInput,
+  MotionAudioClip,
+  SequenceElementMinimal,
+  SequenceLocationMinimal,
+  StyleConfig,
+} from '@/platform/server/db/schema';
+import type { ShotDialogueLine } from '@/platform/server/db/schema/shot-dialogue-versions';
+import type { VideoManifest } from '@/platform/server/db/schema/video-variants';
+import type { GenerationStage } from '@/sequences/pipeline';
+import type { musicDesignResultSchema } from '@/sequences/response-schemas';
+import type {
+  CharacterSheetInputHash,
+  LibraryLocationReferenceInputHash,
+  LocationSheetInputHash,
+  ShotImageInputHash,
+  TalentSheetInputHash,
+} from '@/shots/input-hash';
 import type {
   AssemblableMotionPrompt,
   CharacterBibleEntry,
@@ -24,13 +45,11 @@ import type {
   Scene,
   VisualPrompt,
 } from '@/shots/scene-analysis.schema';
-import type {
-  CharacterSheetInputHash,
-  LibraryLocationReferenceInputHash,
-  LocationSheetInputHash,
-  ShotImageInputHash,
-  TalentSheetInputHash,
-} from '@/shots/input-hash';
+import type { UpdateStalePlan } from '@/shots/server/update-stale-plan';
+import type { SceneVoicedLine } from '@/shots/shot-dialogue';
+import type { ReferenceImageDescription } from '@/stills/reference-image-prompt';
+import type { StudioCreateInput } from '@/studio/schema';
+import { z } from 'zod';
 
 /**
  * The upstream state a user-edited prompt was authored against, captured at
@@ -58,25 +77,6 @@ type PreClickEditPayload = {
   userEditText?: string;
   priorMotion?: { audio?: MotionAudio | null };
 };
-import type { AspectRatio, ImageSize } from '@/models/aspect-ratios';
-import type { Resolution } from '@/models/resolutions';
-import type { VideoManifest } from '@/platform/server/db/schema/video-variants';
-import type { ShotDialogueLine } from '@/platform/server/db/schema/shot-dialogue-versions';
-import type {
-  CharacterMinimal,
-  GeneratedAssetActivity,
-  GeneratedAssetInput,
-  MotionAudioClip,
-  SequenceElementMinimal,
-  SequenceLocationMinimal,
-  StyleConfig,
-} from '@/platform/server/db/schema';
-import type { ReferenceImageDescription } from '@/stills/reference-image-prompt';
-import type { UpdateStalePlan } from '@/shots/server/update-stale-plan';
-import type { StudioCreateInput } from '@/studio/schema';
-import type { GenerationStage } from '@/sequences/pipeline';
-import { z } from 'zod';
-import type { musicDesignResultSchema } from '@/sequences/response-schemas';
 
 /**
  * Base workflow context that includes authentication
@@ -582,7 +582,7 @@ export interface MotionWorkflowInput
   /**
    * The motion prompt version this clip renders from, recorded in the render
    * manifest. Pinned at the trigger because the workflow cannot re-read it: the
-   * selection can move while the run records dialogue and renders. A user edit
+   * selection can move while the run renders. A user edit
    * is written by the trigger at the click (#1786) and this is its id. Absent
    * falls back to the live selection.
    */
@@ -664,29 +664,23 @@ export interface MotionWorkflowInput
    */
   referenceImages?: ReferenceImageDescription[];
   /**
-   * Dialogue lines to synthesise before submit (#1554). Snapshotted at the
-   * trigger from the shot's dialogue + each speaker's `voiceId` — the run
-   * must not re-read characters. Empty / omitted = voiceless shot.
+   * Spoken lines for which the upstream dialogue stage generated audio
+   * (#1554). Snapshotted with each speaker's `voiceId`; empty / omitted means
+   * the shot does not require dialogue audio.
    */
   voicedLines?: VoicedDialogueLine[];
   /**
-   * Dialogue clips already synthesised in the `dialogue` stage (#1554).
-   * When present, motion attaches them and does not call ElevenLabs.
-   * Snapshotted at the trigger from `shots.audioClips`.
+   * Dialogue clips synthesised before the motion workflow starts (#1554).
+   * Required to match `voicedLines` whenever that list is non-empty.
    */
   audioClips?: MotionAudioClip[];
   /**
-   * The conversation around this shot (#1657), snapshotted at the trigger
-   * when the shot has voiced lines and no matching clip. Motion's fallback
-   * records it and keeps only this shot's section.
-   */
-  dialogueContext?: SceneVoicedLine[];
-  /**
-   * Structured motion prompt so the TTS step can re-assemble with audio
-   * tokens after the clips exist. Absent on paths that only pass `prompt`.
+   * Structured motion prompt so render assembly can bind the resolved audio
+   * lines after the clips have been generated upstream. Absent on paths that
+   * only pass `prompt`.
    */
   motionPrompt?: AssemblableMotionPrompt;
-  /** Scene character tags, for per-model re-assembly after TTS. */
+  /** Scene character tags, for per-model prompt assembly. */
   characterTags?: string[];
   /**
    * Variant-only mode (#547). When true, the run NEVER touches the legacy
@@ -1719,7 +1713,7 @@ export interface BatchMotionMusicWorkflowInput extends SequenceWorkflowContext {
     /**
      * Structured motion prompt (#545). When present, `motion-batch` assembles
      * a model-specific prompt for each model in `videoModels` via
-     * `assembleMotionPrompt`. Absent on manual single-model paths, which pass
+     * `buildMotionShotPrompt`. Absent on manual single-model paths, which pass
      * a pre-assembled `prompt` instead. Carries only the assemblable fields
      * (fullPrompt + dialogue/audio) — sourced from the shot's selected motion
      * `shot_prompt_versions` row, not `metadata.prompts.motion` (#713).
@@ -1750,8 +1744,6 @@ export interface BatchMotionMusicWorkflowInput extends SequenceWorkflowContext {
     voicedLines?: VoicedDialogueLine[];
     /** See `MotionWorkflowInput.audioClips`. */
     audioClips?: MotionAudioClip[];
-    /** See `MotionWorkflowInput.dialogueContext`. */
-    dialogueContext?: SceneVoicedLine[];
     /** See `MotionWorkflowInput.coveredShots`. */
     coveredShots?: PackedMotionCoveredShot[];
     /** Only a batch queued before #1786; see {@link PreClickEditPayload}. */

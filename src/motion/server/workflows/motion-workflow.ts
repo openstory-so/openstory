@@ -7,100 +7,100 @@ import {
 
  */
 
+import { gateEstimate } from '@/billing/cost-estimation';
+import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import {
+  deductWorkflowCredits,
+  recordFalUsageStep,
+} from '@/billing/server/workflow-deduction';
+import {
+  clipContentRejectionMessage,
   CONTENT_REJECTION_EVENT,
   CONTENT_REJECTION_FALLBACK_EVENT,
   CONTENT_REJECTION_RETRY_EVENT,
   CONTENT_REJECTION_SOFTEN_EVENT,
-  clipContentRejectionMessage,
   flaggedInputs,
   isContentRejectionError,
 } from '@/models/content-rejection';
-import { assetLeaseOwner } from '@/models/server/byteplus-asset-pool';
-import { ingestArkAssets } from '@/models/server/byteplus-asset-steps';
 import { extractFalErrorMessage } from '@/models/fal-error';
-import { isPromptTooLongError } from '@/models/prompt-length';
-import { packedPromptFitsLimit } from '@/motion/server/assemble-motion-prompt';
-import {
-  audioSourceKeyFromVoicedLines,
-  dialogueAudioMaxSeconds,
-  matchingDialogueClips,
-  withSpokenText,
-  withVoicedLineTokens,
-} from '@/motion/dialogue-tts';
-import { dialogueClipsAsReferences } from '@/motion/server/synthesize-dialogue';
-import { referenceKeysFrom } from '@/motion/reference-provenance';
-import { recordDialogue } from '@/motion/server/record-dialogue';
-import { cutSpanningSection } from '@/motion/server/cut-audio-section';
-import { raiseShotDurationToCoverAudio } from '@/motion/resolve-shot-duration';
-import type { MotionAudioClip } from '@/platform/server/db/schema';
-import type {
-  AssemblableMotionPrompt,
-  MotionAudio,
-} from '@/shots/scene-analysis.schema';
-import { computeVideoManifestInputHash } from '@/shots/input-hash';
 import {
   DEFAULT_VIDEO_MODEL,
   getMotionReferenceEndpoint,
   IMAGE_TO_VIDEO_MODELS,
   supportsDraftMode,
-  videoPromptHardLimit,
   videoModelSupportsAudio,
+  videoPromptHardLimit,
 } from '@/models/models';
-import { dialogueLinesKey } from '@/shots/shot-dialogue';
-import { DRAFT_FINAL_RESOLUTION, DRAFT_RESOLUTION } from '@/motion/draft-mode';
-import { bindableReferences } from '@/motion/server/build-reference-video-prompt';
 import {
   DEFAULT_ANALYSIS_MODEL,
   getAnalysisModelById,
 } from '@/models/models.config';
-import type { VideoManifest } from '@/platform/server/db/schema';
+import { isPromptTooLongError } from '@/models/prompt-length';
+import { assetLeaseOwner } from '@/models/server/byteplus-asset-pool';
+import { ingestArkAssets } from '@/models/server/byteplus-asset-steps';
 import {
-  MOTION_CONTENT_FALLBACK_MODEL,
-  shortenOverlongMotionPrompt,
-  softenRejectedMotionPrompt,
-} from '@/stills/server/workflows/content-soften';
+  audioSourceKeyFromVoicedLines,
+  matchingDialogueClips,
+  withSpokenText,
+  withVoicedLineTokens,
+} from '@/motion/dialogue-tts';
+import { DRAFT_FINAL_RESOLUTION, DRAFT_RESOLUTION } from '@/motion/draft-mode';
+import { referenceKeysFrom } from '@/motion/reference-provenance';
+import { raiseShotDurationToCoverAudio } from '@/motion/resolve-shot-duration';
+import { packedPromptFitsLimit } from '@/motion/server/build-motion-render';
+import { bindableReferences } from '@/motion/server/build-reference-video-prompt';
+import { cutSpanningSection } from '@/motion/server/cut-audio-section';
 import {
-  deductWorkflowCredits,
-  recordFalUsageStep,
-} from '@/billing/server/workflow-deduction';
-import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
-import { ensureImageUnderLimit } from '@/stills/server/image-compress';
-import {
+  arkStillsForMotion,
   calculateMotionMetadata,
   canRenderReferenceOnly,
   motionCostFromUsage,
   pollMotionJob,
-  arkStillsForMotion,
   resolveMotionVia,
   submitMotionJob,
 } from '@/motion/server/motion-generation';
-import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
-import { gateEstimate } from '@/billing/cost-estimation';
-import type { TokenUsage } from '@tanstack/ai';
 import { buildVideoManifest } from '@/motion/server/render-segments';
+import { dialogueClipsAsReferences } from '@/motion/server/synthesize-dialogue';
 import {
   uploadVideoToStorage,
   videoUrlFitsWorkflowCheckpoint,
 } from '@/motion/server/video-storage';
-import { recordProvenance } from '@/platform/server/compliance/provenance';
-import { buildR2Key, STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
-import { recordMediaGenerationSpan } from '@/platform/server/observability/ai-otel';
 import { getLogger } from '@/platform/logger';
 import { getGenerationChannel } from '@/platform/realtime';
+import { recordProvenance } from '@/platform/server/compliance/provenance';
+import type {
+  MotionAudioClip,
+  VideoManifest,
+} from '@/platform/server/db/schema';
+import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
+import { recordMediaGenerationSpan } from '@/platform/server/observability/ai-otel';
+import { buildR2Key, STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import {
   isEngineAbortError,
   WorkflowValidationError,
 } from '@/platform/server/workflow/errors';
 import type { MotionWorkflowInput } from '@/platform/server/workflow/types';
+import { computeVideoManifestInputHash } from '@/shots/input-hash';
+import type {
+  AssemblableMotionPrompt,
+  MotionAudio,
+} from '@/shots/scene-analysis.schema';
+import { dialogueLinesKey } from '@/shots/shot-dialogue';
+import { ensureImageUnderLimit } from '@/stills/server/image-compress';
 import {
-  persistMotionCompletion,
-  rescuedMotionPromptOf,
-  persistMotionFailure,
-} from './motion-workflow-persist';
+  MOTION_CONTENT_FALLBACK_MODEL,
+  shortenOverlongMotionPrompt,
+  softenRejectedMotionPrompt,
+} from '@/stills/server/workflows/content-soften';
+import type { TokenUsage } from '@tanstack/ai';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
+import {
+  persistMotionCompletion,
+  persistMotionFailure,
+  rescuedMotionPromptOf,
+} from './motion-workflow-persist';
 
 const logger = getLogger(['openstory', 'workflow', 'motion']);
 
@@ -154,19 +154,34 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     step: WorkflowStep,
     scopedDb: WorkflowScopedDb
   ): Promise<MotionWorkflowResult> {
-    const rawInput = event.payload;
-    // Back-compat: accept shotId or shotId from in-flight instances serialized before #906
-    // TODO(#906): remove shotId shim one release after deploy
-    const input = {
-      ...rawInput,
-      shotId:
-        rawInput.shotId ??
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- back-compat shim for in-flight CF Workflow instances serialized before #906
-        (rawInput as { shotId?: string }).shotId ??
-        undefined,
-    };
+    const input: Readonly<MotionWorkflowInput> = event.payload;
     const workflowRunId = event.instanceId;
     const model = input.model || DEFAULT_VIDEO_MODEL;
+
+    // Speech is an upstream prerequisite. Dialogue generation runs before the
+    // motion child (scene-wide in batch flows); a missing or stale take blocks
+    // this render before it can reserve credits or submit a silent clip.
+    const packedMembers =
+      (input.coveredShots?.length ?? 0) > 1 ? input.coveredShots : null;
+    const missingDialogueShotIds = packedMembers
+      ? packedMembers
+          .filter(
+            (member) =>
+              (member.voicedLines?.length ?? 0) > 0 &&
+              matchingDialogueClips(member.audioClips, member.voicedLines ?? [])
+                .length === 0
+          )
+          .map((member) => member.shotId)
+      : (input.voicedLines?.length ?? 0) > 0 &&
+          matchingDialogueClips(input.audioClips, input.voicedLines ?? [])
+            .length === 0
+        ? [input.shotId ?? '(unknown)']
+        : [];
+    if (missingDialogueShotIds.length > 0) {
+      throw new NonRetryableError(
+        `Dialogue audio is not ready for shot${missingDialogueShotIds.length === 1 ? '' : 's'} ${missingDialogueShotIds.join(', ')}; motion requires a completed dialogue take.`
+      );
+    }
 
     // Reference-only shots have no still by design — the reference sheets and
     // the prompt are the whole input. Every other shot must carry one.
@@ -213,20 +228,18 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       );
     }
 
-    // Dialogue clips (#1554) before the credit check: they raise duration
-    // (Seedance 2.5 is 4–30 s) and ride the request as audio refs, so both
-    // the video estimate and the manifest have to see them. Prefer the
-    // dialogue-stage clip snapshotted onto the payload; synthesise only
-    // when that is missing (standalone motion, stale lines, pre-#1554 rows).
+    // Upstream dialogue clips (#1554) raise duration (Seedance 2.5 is 4–30 s)
+    // and ride the request as audio refs, so both the video estimate and the
+    // manifest have to see them. Missing or stale audio was rejected above.
     let prompt = input.prompt;
     let multiPrompt = input.multiPrompt;
     let referenceImages = input.referenceImages;
     let durationHint = input.duration;
-    let audioClips: MotionAudioClip[] = input.audioClips ?? [];
+    const audioClips: MotionAudioClip[] = input.audioClips ?? [];
     // The words the bound audio actually SAYS (#1651): a dialogue-stage section
     // that was rewritten to fit records its delivered wording on the clip, and
     // the prompt drives lip movement, so assembly has to read it back.
-    let voicedLines = withSpokenText(input.voicedLines ?? [], audioClips);
+    const voicedLines = withSpokenText(input.voicedLines ?? [], audioClips);
     // The manifest key is the AUTHORED lines (#1671): every reader computes
     // it from the scene, so stamping the shortened wording would read stale
     // forever. `voicedLines` above is for the prompt, which must say what the
@@ -249,68 +262,13 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         attachSceneHeader: input.attachSceneHeader,
         scene: input.packedScene,
       });
-    if (voicedLines.length > 0 && input.shotId && input.sequenceId) {
-      const shotId = input.shotId;
-      const sequenceId = input.sequenceId;
-      if (audioClips.length === 0) {
-        // The conversation around this shot, snapshotted at the trigger so
-        // the reading is acted in context (#1657) — only THIS shot adopts it.
-        // Without one (an older trigger), the shot's own lines are the whole
-        // conversation.
-        // ponytail: N shots of one scene each record their own window; record once per scene at the batch level if this shows up in the bill.
-        const snapshotted = input.dialogueContext?.some(
-          (line) => line.shotId === shotId
+    if (voicedLines.length > 0) {
+      if (!input.sequenceId) {
+        throw new WorkflowValidationError(
+          'sequenceId is required when dialogue audio is attached to motion'
         );
-        if (!snapshotted) {
-          logger.warn('No dialogue context; recording the shot alone', {
-            shotId,
-            sequenceId,
-          });
-        }
-        const context =
-          snapshotted && input.dialogueContext
-            ? input.dialogueContext
-            : authoredLines.map((line) => ({ ...line, shotId }));
-        const recorded = await recordDialogue(step, {
-          scopedDb,
-          workflowRunId,
-          userId: input.userId,
-          teamId: input.teamId,
-          sequenceId,
-          lines: context,
-          adoptShotIds: [shotId],
-          dialogueVersionIdByShotId: {},
-          shotSeconds: { [shotId]: input.duration },
-          minDurationSeconds:
-            getMotionReferenceEndpoint(model)?.audioSeconds?.min,
-          // One model here, not the sequence's list: this is the clip about to
-          // be submitted, so its own window is the only one that binds.
-          maxDurationSeconds: dialogueAudioMaxSeconds([model]),
-          reservationId: input.reservationId,
-          stepPrefix: 'synthesize-dialogue-audio',
-          workflowName: 'MotionWorkflow',
-        });
-        // Nothing promoted for this shot is a legitimate answer (#1657):
-        // another run holds the claim for these words, or the user picked a
-        // reading while this recorded. Either way the shot's OWN audio is the
-        // truth, read live — it is what a render has to match.
-        const adopted =
-          recorded[shotId] ??
-          (await step.do('dialogue-audio-from-shot', async () =>
-            matchingDialogueClips(
-              (await scopedDb.liveRead.shots.getById(shotId))?.audioClips,
-              authoredLines
-            )
-          ));
-        if (adopted.length === 0) {
-          // Voiced lines with no audio must not render silently.
-          throw new NonRetryableError(
-            `Shot ${shotId} has no audio for its lines yet — another run may still be recording them. Try again.`
-          );
-        }
-        audioClips = adopted;
-        voicedLines = withSpokenText(authoredLines, audioClips);
       }
+      const sequenceId = input.sequenceId;
       const packedClip = Boolean(
         input.coveredShots && input.coveredShots.length > 1
       );

@@ -15,7 +15,7 @@ import {
   loadSceneContextBySequence,
   resolveSceneForShot,
 } from '@/shots/server/scene-script';
-import type { MotionAudioClip, Shot } from '@/platform/server/db/schema';
+import type { Shot } from '@/platform/server/db/schema';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 
@@ -31,7 +31,7 @@ import {
 import {
   packedPromptFitsLimit,
   packedSceneFromScene,
-} from '@/motion/server/assemble-motion-prompt';
+} from '@/motion/server/build-motion-render';
 import {
   coveredMembersForShot,
   packPayloadDurationSeconds,
@@ -50,12 +50,9 @@ import { addMicros } from '@/billing/money';
 import {
   matchingDialogueClips,
   modelTakesDialogueAudio,
-  ttsCharacterCount,
   voicedDialogueLines,
-  type VoicedDialogueLine,
 } from '@/motion/dialogue-tts';
 import {
-  dialogueContextFor,
   loadShotDialogueLines,
   shotDialogueResolver,
   snapshotBatchDialogue,
@@ -400,16 +397,17 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
       ? voicedDialogueLines(shotDialogue, voiceCharacters)
       : [];
     const audioClips = matchingDialogueClips(shot.audioClips, voicedLines);
-    const ttsChars =
-      (audioClips.length > 0 ? 0 : ttsCharacterCount(voicedLines)) +
-      covered.reduce((sum, member) => {
-        if (member.shotId === shot.id || !modelTakesDialogueAudio(model)) {
-          return sum;
-        }
-        const lines = voicedDialogueLines(dialogueOf(member), voiceCharacters);
-        const clips = matchingDialogueClips(member.audioClips, lines);
-        return sum + (clips.length > 0 ? 0 : ttsCharacterCount(lines));
-      }, 0);
+    const batchDialogue = snapshotBatchDialogue({
+      rendering: covered,
+      modelOf: () => model,
+      shots: allSceneShots,
+      dialogueOf,
+      characters: voiceCharacters,
+      versionIdByShotId: new Map(
+        [...sceneMotionByShot].map(([shotId, version]) => [shotId, version.id])
+      ),
+    });
+    const ttsChars = batchDialogue.ttsChars;
 
     const reservationId = await reserveRunCredits(
       context.scopedDb,
@@ -435,24 +433,6 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
       context.scopedDb,
       reservationId,
       async () => {
-        // A shot with voiced lines and no matching clip is recorded by its
-        // motion run, in context (#1657): the conversation around it is
-        // snapshotted here, because the run cannot read its neighbours' lines.
-        // Every covered member shares the clicked shot's scene.
-        const dialogueContextOf = (
-          row: { id: string },
-          voiced: readonly VoicedDialogueLine[],
-          clips: readonly MotionAudioClip[]
-        ) =>
-          dialogueContextFor({
-            shot: row,
-            voicedLines: voiced,
-            audioClips: clips,
-            sceneShots: allSceneShots,
-            dialogueOf,
-            characters: voiceCharacters,
-          });
-
         const attachSceneHeader = allSceneShots.length > 1;
         const clickedPayload = {
           shotId: shot.id,
@@ -481,7 +461,6 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
           referenceImages,
           voicedLines,
           audioClips: audioClips.length > 0 ? audioClips : undefined,
-          dialogueContext: dialogueContextOf(shot, voicedLines, audioClips),
           // A typed prompt with no version yet still quoted the shot's lines
           // (`prompt` above), so the clip must stamp them (#1784 dialogueKey).
           motionPrompt: selectedMotion
@@ -566,11 +545,6 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
                 }),
                 voicedLines: memberVoiced,
                 audioClips: memberClips,
-                dialogueContext: dialogueContextOf(
-                  member,
-                  memberVoiced,
-                  memberClips
-                ),
                 motionPrompt: version
                   ? motionPromptFromVersion(version, dialogueOf(member))
                   : undefined,
@@ -592,6 +566,9 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
           reservationId,
           includeMusic: false,
           videoModels: [model],
+          ...(batchDialogue.dialogueRecording
+            ? { dialogueRecording: batchDialogue.dialogueRecording }
+            : {}),
           shots: packedShotIds.flatMap((id) => {
             const payload = shotsById.get(id);
             return payload ? [payload] : [];
@@ -1025,10 +1002,6 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
               }),
               voicedLines,
               audioClips,
-              // The fallback only: the batch records the scene once up front
-              // (`dialogueRecording`). If that fails, the run records alone,
-              // acted in this conversation.
-              dialogueContext: spoken?.dialogueContext,
               motionPrompt: selectedMotion
                 ? motionPromptFromVersion(selectedMotion, shotDialogue)
                 : undefined,

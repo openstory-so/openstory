@@ -10,7 +10,7 @@ import { isBytePlusConfigured } from '@/models/server/byteplus-config';
 import {
   packedPromptFitsLimit,
   packedSceneFromScene,
-} from '@/motion/server/assemble-motion-prompt';
+} from '@/motion/server/build-motion-render';
 import { packMotionBatchShots } from '@/motion/server/pack-motion-jobs';
 import { motionPromptFromVersion } from '@/motion/server/resolve-motion-prompt';
 import { resolveShotDuration } from '@/motion/resolve-shot-duration';

@@ -166,7 +166,7 @@ const visualPromptSchema = z.object({
   }),
 });
 
-// No longer part of `motionPromptSchema` (#1035): `assembleMotionPrompt` uses
+// No longer part of `motionPromptSchema` (#1035): `buildMotionShotPrompt` uses
 // only `fullPrompt`/`dialogue`/`audio`, so the eight camera fields were pure
 // write-only output cost per shot. Kept solely to type old `shot_prompt_versions`
 // rows via `MotionPromptComponents`.
@@ -577,7 +577,7 @@ export type MotionDialogue = {
   lines: DialogueLine[];
 };
 /**
- * The fields model-specific assembly (`assembleMotionPrompt`) actually consumes:
+ * The fields model-specific assembly (`buildMotionShotPrompt`) actually consumes:
  * the narrative base plus the dialogue/audio direction appended for audio-capable
  * video models. This is what a `shot_prompt_versions` motion row reconstructs to
  * at resolution time (#713). Stored rows and UI overrides may still omit

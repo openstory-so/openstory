@@ -168,13 +168,13 @@ export async function loadShotDialogueResolver(
 }
 
 /**
- * The conversation to record around one shot (`dialogueContext` on its motion
- * payload): the scene's live shots in shot order, each saying what
+ * The conversation to record around one shot: the scene's live shots in shot
+ * order, each saying what
  * `dialogueOf` resolves for it, windowed around `shot`. The same resolver
  * built the payload's `voicedLines`, so the section that gets recorded keys
  * the words the render asks for.
  *
- * Undefined unless the run has to record: voiced lines and no matching clip.
+ * Undefined unless this shot's voiced lines need a new recording.
  */
 export function dialogueContextFor(input: {
   shot: { id: string };
@@ -275,8 +275,7 @@ export function sceneDialogueJobs(input: {
  * Everything a batch-style trigger has to say about dialogue, in one call
  * (#1657) — so no trigger can send the prompt and forget the audio:
  *
- * - per shot: its `voicedLines`, the clips that still match them, and the
- *   `dialogueContext` its run falls back to if it has to record alone;
+ * - per shot: its `voicedLines` and the clips that still match them;
  * - `dialogueRecording`: one job per scene that needs audio, which the batch
  *   records ONCE before it fans out;
  * - `ttsChars`: what to reserve — a scene is one call over its whole
@@ -304,7 +303,6 @@ export function snapshotBatchDialogue<
     {
       voicedLines: VoicedDialogueLine[];
       audioClips: MotionAudioClip[];
-      dialogueContext: SceneVoicedLine[] | undefined;
     }
   >;
   dialogueRecording: BatchDialogueRecording | undefined;
@@ -321,19 +319,6 @@ export function snapshotBatchDialogue<
         {
           voicedLines,
           audioClips,
-          dialogueContext: dialogueContextFor({
-            shot,
-            voicedLines,
-            audioClips,
-            sceneShots: input.shots.filter(
-              (other) =>
-                shot.sceneId !== null &&
-                other.sceneId === shot.sceneId &&
-                !other.deletedAt
-            ),
-            dialogueOf: input.dialogueOf,
-            characters: input.characters,
-          }),
         },
       ] as const;
     })

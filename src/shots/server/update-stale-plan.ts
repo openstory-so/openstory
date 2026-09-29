@@ -82,7 +82,7 @@ import {
 import { computeGenerationPlan } from '@/sequences/server/generation-plan';
 import { resolveSceneShotImageReferences } from '@/cast/server/workflows/sheet-snapshots';
 import { buildRegenerateShotSnapshot } from '@/shots/server/workflows/regenerate-shots-snapshot';
-import { packedSceneFromScene } from '@/motion/server/assemble-motion-prompt';
+import { packedSceneFromScene } from '@/motion/server/build-motion-render';
 import type { MotionRenderShot } from '@/motion/server/build-motion-render';
 import type { ShotImageRefs } from './shot-image-input';
 import { pendingVoiceId } from './pending-voices';
