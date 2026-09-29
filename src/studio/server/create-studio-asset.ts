@@ -45,6 +45,7 @@ import {
 import {
   snapStudioVideoDuration,
   STUDIO_EDIT_MODEL,
+  studioCanEditSource,
   studioBillableSeconds,
 } from '@/studio/text-to-video';
 import { studioAspectRatio, studioPrimaryOutput } from '@/studio/ui/outputs';
@@ -166,6 +167,7 @@ async function requireOwnEditSource(
     source.source !== 'studio' ||
     source.status !== 'completed' ||
     source.activity !== 'video' ||
+    !studioCanEditSource(source.input.videoModel) ||
     studioPrimaryOutput(source)?.url !== input.sourceVideoUrl
   ) {
     throw new Error('Video to edit not found');

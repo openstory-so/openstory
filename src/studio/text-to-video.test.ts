@@ -11,6 +11,7 @@ import {
   unresolvedStudioReferences,
   snapStudioVideoDuration,
   studioBillableSeconds,
+  studioCanEditSource,
   studioEditPrompt,
   studioCombinedRefCap,
   studioSupportsEndFrame,
@@ -366,6 +367,13 @@ describe('auto length and edit (#1925)', () => {
   it('prices auto at the longest clip', () => {
     expect(studioBillableSeconds('auto', 'seedance_v2_5')).toBe(30);
     expect(studioBillableSeconds(7, 'seedance_v2_5')).toBe(7);
+  });
+
+  it('edits only a clip Seedance made', () => {
+    expect(studioCanEditSource('seedance_v2')).toBe(true);
+    expect(studioCanEditSource('seedance_v2_5')).toBe(true);
+    expect(studioCanEditSource('kling_v3_pro')).toBe(false);
+    expect(studioCanEditSource(undefined)).toBe(false);
   });
 
   it('offers edit on Seedance 2.5 only', () => {

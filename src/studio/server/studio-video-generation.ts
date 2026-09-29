@@ -335,18 +335,32 @@ function urlPart(
  * user supplied that may be a face. `noPersonImages` (ledger stills whose
  * ledger verdict is `none`, snapshotted at the trigger)
  * are marked `plain` and go as fetchable URLs so they do not spend
- * CreateAsset turns (`BYTEPLUS_ASSET_WRITE_QPM`, #1674, #1682). Videos and
- * audio are not assets.
+ * CreateAsset turns (`BYTEPLUS_ASSET_WRITE_QPM`, #1674, #1682). Reference
+ * clips and audio are not assets; the source of an edit is (#1925).
  */
 export function arkStillsForStudio(
   options: Pick<
     StudioVideoJobOptions,
-    'mode' | 'referenceImages' | 'startImageUrl' | 'endImageUrl'
+    | 'mode'
+    | 'referenceImages'
+    | 'startImageUrl'
+    | 'endImageUrl'
+    | 'sourceVideoUrl'
   >,
   noPersonImages: string[]
 ): ArkStill[] {
   const noPerson = new Set(noPersonImages);
   const mode = options.mode ?? 'text';
+  // The clip an edit rewrites (#1925) is Seedance output, and Ark's filter
+  // refuses a lifelike face in it — generated or not — unless it is in the
+  // portrait library. So it is always registered, as a Video asset. No
+  // sign-off is asked: every still that made the clip passed the likeness
+  // gate when it was generated.
+  if (mode === 'edit') {
+    return options.sourceVideoUrl
+      ? [{ storedUrl: options.sourceVideoUrl, slot: 'library', kind: 'Video' }]
+      : [];
+  }
   const stills: ArkStill[] =
     mode === 'reference'
       ? (options.referenceImages ?? []).map((storedUrl) => ({
@@ -375,14 +389,14 @@ async function buildStudioBytePlusPrompt(
     if (!options.sourceVideoUrl) {
       throw new Error('Studio edit needs a source video');
     }
-    const falKey = await resolveOptionalFalKey(options.scopedDb);
     return [
       { type: 'text' as const, content: promptText },
       {
         type: 'video' as const,
+        // Registered by the workflow (`arkStillsForStudio`); a miss throws.
         source: {
           type: 'url' as const,
-          value: await toArkFetchableUrl(options.sourceVideoUrl, falKey?.key),
+          value: arkUrlFor(options.arkAssets, options.sourceVideoUrl),
         },
       },
     ];

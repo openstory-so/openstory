@@ -73,8 +73,12 @@ vi.doMock('@/models/server/byteplus-final-render', () => ({
   submitBytePlusFinalRender: mockSubmitFinalRender,
 }));
 
-const { submitStudioVideoJob, pollStudioVideoJob, studioVideoCostFromUsage } =
-  await import('./studio-video-generation');
+const {
+  arkStillsForStudio,
+  submitStudioVideoJob,
+  pollStudioVideoJob,
+  studioVideoCostFromUsage,
+} = await import('./studio-video-generation');
 
 describe('submitStudioVideoJob', () => {
   beforeEach(() => {
@@ -632,7 +636,21 @@ describe('submitStudioVideoJob edit and auto length (#1925)', () => {
     testEnv.E2E_TEST = undefined;
   });
 
-  it('sends an edit to Ark as the source clip with duration -1', async () => {
+  it('registers the source of an edit as a Video asset, never plain', () => {
+    expect(
+      arkStillsForStudio(
+        {
+          mode: 'edit',
+          sourceVideoUrl: '/r2/videos/source.mp4',
+        },
+        ['/r2/videos/source.mp4']
+      )
+    ).toEqual([
+      { storedUrl: '/r2/videos/source.mp4', slot: 'library', kind: 'Video' },
+    ]);
+  });
+
+  it('sends an edit to Ark as the registered source clip with duration -1', async () => {
     mockGenerateVideo.mockResolvedValue({ jobId: 'ark-edit' });
 
     await submitStudioVideoJob({
@@ -651,7 +669,10 @@ describe('submitStudioVideoJob edit and auto length (#1925)', () => {
           { type: 'text', content: 'Edit @Video1. Make it night' },
           {
             type: 'video',
-            source: { type: 'url', value: 'https://example.com/source.mp4' },
+            source: {
+              type: 'url',
+              value: 'asset://https://example.com/source.mp4',
+            },
           },
         ],
         size: 'adaptive_720p',

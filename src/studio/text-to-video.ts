@@ -17,6 +17,7 @@
 
 import {
   IMAGE_TO_VIDEO_MODELS,
+  isValidImageToVideoModel,
   videoPromptHardLimit,
   type ImageToVideoModel,
 } from '@/models/models';
@@ -243,6 +244,18 @@ export function studioSupportsMode(
 ): boolean {
   if (mode === 'edit') return model === STUDIO_EDIT_MODEL;
   return mode !== 'reference' || studioReferenceLimit(model) > 0;
+}
+
+/**
+ * Only a Seedance clip is edited (#1925): Seedance rewriting another
+ * family's clip is a different look, not an edit of it.
+ */
+export function studioCanEditSource(videoModel: unknown): boolean {
+  return (
+    typeof videoModel === 'string' &&
+    isValidImageToVideoModel(videoModel) &&
+    studioSupportsAutoDuration(videoModel)
+  );
 }
 
 /** The instruction Seedance reads an edit from: the source is `@Video1`. */
