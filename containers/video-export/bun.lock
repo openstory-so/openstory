@@ -5,8 +5,8 @@
     "": {
       "name": "openstory-video-export-container",
       "dependencies": {
-        "@mediabunny/server": "^1.58.1",
-        "mediabunny": "^1.58.1",
+        "@mediabunny/server": "^1.60.0",
+        "mediabunny": "^1.60.0",
       },
       "devDependencies": {
         "@types/node": "^22.20.4",
@@ -26,9 +26,9 @@
 
     "@leichtgewicht/ip-codec": ["@leichtgewicht/ip-codec@2.0.5", "", {}, "sha512-Vo+PSpZG2/fmgmiNzYK9qWRh8h/CHrwD0mo1h1DzL4yzHNSfWYujGTYsWGreD000gcgmZ7K4Ys6Tx9TxtsKdDw=="],
 
-    "@mediabunny/prores": ["@mediabunny/prores@1.59.0", "", { "dependencies": { "turbores": "^1.2.2" }, "peerDependencies": { "mediabunny": "^1.49.0" } }, "sha512-/aQ//7msoRdnKjMFlHMDQ7Lm8rdzV35VGWgPc1LBXOk/3osKh81a4iwER3XKckOsql14zUMuaeS1ohQ36vv5/A=="],
+    "@mediabunny/prores": ["@mediabunny/prores@1.61.0", "", { "dependencies": { "turbores": "^1.2.2" }, "peerDependencies": { "mediabunny": "^1.49.0" } }, "sha512-Ytd/Pc2SrifUmESw9/j4QF53mjJRtZSG670ZRkYkS0rWVS8mHI4wTDcbxiz/F1Dswbp8VQJtFzH/Y7c2+EoooQ=="],
 
-    "@mediabunny/server": ["@mediabunny/server@1.58.1", "", { "dependencies": { "@mediabunny/prores": "^1.58.1", "node-av": "^6.0.0" }, "peerDependencies": { "mediabunny": "^1.45.0" } }, "sha512-6/OKj7ooiLYPi+uNhmyUlJhtQN787+YL/zTGgRImeE2bDahXC8Kxr9g5tUuMPwctM4Jw773Wc7XJgZM/v1YOvA=="],
+    "@mediabunny/server": ["@mediabunny/server@1.60.0", "", { "dependencies": { "@mediabunny/prores": "^1.60.0", "node-av": "^6.0.0" }, "peerDependencies": { "mediabunny": "^1.45.0" } }, "sha512-8oTQ4wHalZfYTwsaOALfS2ysX4jtJ3q0omAOtP4D0YTC8K477IeuLB4sbs7fHxBXPopDIDqr5xl7+gW7Soxl7A=="],
 
     "@minhducsun2002/leb128": ["@minhducsun2002/leb128@1.0.0", "", {}, "sha512-eFrYUPDVHeuwWHluTG1kwNQUEUcFjVKYwPkU8z9DR1JH3AW7JtJsG9cRVGmwz809kKtGfwGJj58juCZxEvnI/g=="],
 
@@ -178,7 +178,7 @@
 
     "lodash": ["lodash@4.18.1", "", {}, "sha512-dMInicTPVE8d1e5otfwmmjlxkZoUpiVLwyeTdUsi/Caj/gfzzblBcCE5sRHV/AsjuCmxWrte2TNGSYuCeCq+0Q=="],
 
-    "mediabunny": ["mediabunny@1.58.1", "", { "dependencies": { "@types/dom-mediacapture-transform": "^0.1.11", "@types/dom-webcodecs": "0.1.13" } }, "sha512-edscMXOwBgUlMT+45wpAHdiXTGukCQb1nOJPE2D+fM4esNhAvGyB2yGGgnEer2VSwhEg+7gMliZDDQQqLaR7nA=="],
+    "mediabunny": ["mediabunny@1.60.0", "", { "dependencies": { "@types/dom-mediacapture-transform": "^0.1.11", "@types/dom-webcodecs": "0.1.13" } }, "sha512-CRQ/2D+qUF9w2IyjbjTxxSLEG+PeWeD4whb43UpUBpeNomWb/ffn+ngKgqJSPZ+bmO66MX2yBJQITZ6ijfRjug=="],
 
     "mp4box": ["mp4box@0.5.4", "", {}, "sha512-GcCH0fySxBurJtvr0dfhz0IxHZjc1RP+F+I8xw+LIwkU1a+7HJx8NCDiww1I5u4Hz6g4eR1JlGADEGJ9r4lSfA=="],
 
