@@ -123,8 +123,11 @@ const sceneRows = await q(
    LEFT JOIN scene_script_versions v ON v.id = s.selected_script_version_id
    WHERE s.sequence_id='${SEQ}' ORDER BY s.order_index`
 );
+// A shot's place is `(scenes.order_index, shots.shot_number)` — shots have
+// no order column of their own (#1107).
 const shotRows = await q(
-  `SELECT * FROM shots WHERE sequence_id='${SEQ}' ORDER BY order_index`
+  `SELECT sh.* FROM shots sh LEFT JOIN scenes sc ON sc.id = sh.scene_id
+   WHERE sh.sequence_id='${SEQ}' ORDER BY sc.order_index, sh.shot_number`
 );
 
 const sequence = mapRow(seqRow);

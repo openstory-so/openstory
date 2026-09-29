@@ -88,21 +88,15 @@ export const characters = snakeCase.table(
       .default(true)
       .notNull(),
     legacyConsistencyTag: text('consistency_tag'),
-    // Voice (#1553). `voiceId` is an ElevenLabs voice on the PLATFORM account;
-    // the same id is copied onto `talent.voiceId` at save-to-library and
-    // back at cast, so release through `releaseVoiceIfUnreferenced`, never a
-    // bare delete. Nullable: a character without a voice is a legitimate
-    // state, not an unknown. `voicePreviews` are the Voice Design auditions
-    // in R2 (the first is the saved voice). `useVoice` NULL = inherit
-    // `sequences.generateVoices` — resolve with `usesVoice()`, never raw.
-    voiceId: text(),
-    voiceDescription: text(),
-    voicePreviews: text({ mode: 'json' }).$type<VoicePreview[]>(),
+    // `useVoice` NULL = inherit `sequences.generateVoices` (#1553) — resolve
+    // with `usesVoice()`, never raw.
     useVoice: integer({ mode: 'boolean' }),
-    // The selected `character_voice_versions` row (#1657). The voice columns
-    // above are that row's values, mirrored for readers; `selectVoiceVersion`
-    // moves the pointer and the mirror together. Null on rows from before
-    // voice history, and until the first voice write.
+    // The selected `character_voice_versions` row (#1657): the voice IS that
+    // row (#1788). Its `voiceId` is an ElevenLabs/Seed voice on the PLATFORM
+    // account, copied onto `talent.voiceId` at save-to-library and back at
+    // cast, so release through `releaseVoiceIfUnreferenced`, never a bare
+    // delete. Null until the first voice write: a character without a voice
+    // is a legitimate state, not an unknown.
     selectedVoiceVersionId: text(),
     // Soft pointer to the in-flight `character_voice_versions` husk that
     // should become selected when Voice Design completes (#1715) — same job
@@ -185,7 +179,19 @@ export type LegacyCharacterBibleColumn =
  * {@link CharacterWithSheet}.
  */
 export type Character = Omit<CharacterRow, LegacyCharacterBibleColumn> &
-  CharacterBible;
+  CharacterBible &
+  CharacterVoice;
+
+/**
+ * A character's voice, resolved from the selected `character_voice_versions`
+ * row (#1788). All null when no version is selected. Every scoped read joins
+ * that row and re-adds these under the names the old mirror columns had.
+ */
+export type CharacterVoice = {
+  voiceId: string | null;
+  voiceDescription: string | null;
+  voicePreviews: VoicePreview[] | null;
+};
 
 /**
  * A character as every scoped READ returns it: the row plus the live sheet,
@@ -209,14 +215,17 @@ export type CharacterWithSheet = Character & {
 /**
  * A new character: the row's own columns plus the bible its first version
  * row carries. `voiceOnly` / `isPerson` default to false / true, as the
- * columns did.
+ * columns did. `voiceId` / `voiceDescription` are the voice the cast arrives
+ * with (the talent's, or the analysed description); a voice the character
+ * already has wins, and one that lands becomes its first voice version.
  */
 export type NewCharacter = Omit<
   InferInsertModel<typeof characters>,
   LegacyCharacterBibleColumn | 'selectedBibleVersionId'
 > &
   Pick<CharacterBible, 'name'> &
-  Partial<Omit<CharacterBible, 'name'>>;
+  Partial<Omit<CharacterBible, 'name'>> &
+  Partial<Pick<CharacterVoice, 'voiceId' | 'voiceDescription'>>;
 
 export type CharacterMinimal = Pick<
   CharacterWithSheet,

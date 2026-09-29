@@ -399,7 +399,7 @@ export type UpdateStalePlan = {
   promptContext: PlanPromptContext | null;
   /**
    * Speakers with a designed voice at click time (#1554). Snapshotted so the
-   * motion *render* (TTS) never re-reads `characters.voiceId`. Not a prompt
+   * motion *render* (TTS) never re-reads the character's voice. Not a prompt
    * hash channel — voice identity binds on the clip.
    */
   characterVoices: {

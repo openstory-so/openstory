@@ -66,7 +66,7 @@ export const framePromptVersions = snakeCase.table(
       .notNull()
       .references(() => frames.id, { onDelete: 'cascade' }),
 
-    // Full prompt text (mirrors the cached column on `frames`).
+    // Full prompt text.
     text: text().notNull(),
     // Structured visual prompt components (composition / lighting / etc.).
     // User-edits without structured components persist null.

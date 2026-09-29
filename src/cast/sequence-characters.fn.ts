@@ -498,7 +498,7 @@ export const listCharacterVoiceVersionsFn = createServerFn({ method: 'GET' })
 
 /**
  * Point the character back at an earlier voice (#1657). Same order as
- * choosing a take: the pointer and the mirror move first, then the voice the
+ * choosing a take: the pointer moves first, then the voice the
  * row was holding is released if nothing else uses it. A failed release is
  * logged, not thrown (`releaseReplacedVoice`): the switch already happened.
  * A release stamps the old id's history rows, which is why a voice, once
@@ -719,7 +719,7 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
     // Cast copies the talent's voice (#1553): its own history row, labelled
     // 'library' because that voice came from the talent, not this role's
     // design. The role's old voice is released below once nothing points at
-    // it. Separate write — the voice mirror only moves through `updateVoice`.
+    // it. Separate write — the voice only moves through `updateVoice`.
     if (talentWithSheets.voiceId) {
       await context.scopedDb.characters.updateVoice(
         data.characterId,

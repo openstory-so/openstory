@@ -16,6 +16,7 @@ import { registerLibraryReads } from './tools/library-reads';
 import {
   characters,
   characterSheetVariants,
+  characterVoiceVersions,
   sequenceLocations,
   locationSheetVariants,
   sequenceElements,
@@ -751,8 +752,14 @@ describe('complete production reads', () => {
       legacyName: 'Ada',
       legacyPersonality: 'Curious',
       legacyConsistencyTag: 'ada',
+      selectedVoiceVersionId: characterId,
+    });
+    await db.insert(characterVoiceVersions).values({
+      id: characterId,
+      characterId,
+      source: 'generated',
       voiceId: 'voice-ada',
-      voicePreviews: [
+      previews: [
         {
           generatedVoiceId: 'take-1',
           url: '/r2/voice.mp3',

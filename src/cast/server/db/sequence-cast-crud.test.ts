@@ -31,6 +31,7 @@ import {
   sequenceStyleVersions,
   sequences,
   styles,
+  talent,
   teams,
   user,
 } from '@/platform/server/db/schema';
@@ -715,6 +716,70 @@ describe('characters bible CRUD + soft-remove', () => {
     );
     expect(again.voiceId).toBe('talent-voice');
     expect(await methods.listVoiceVersions(cast.id)).toHaveLength(1);
+  });
+
+  it('a re-cast fills a voice id the selected version lacks, as a library version (#1788)', async () => {
+    const methods = createCharactersMethods(db);
+    const created = await methods.create(
+      {
+        sequenceId,
+        characterId: 'voice_fill',
+        name: 'Lia',
+        voiceDescription: 'Bright',
+      },
+      { source: 'analysis', createdBy: null }
+    );
+    expect(created.voiceDescription).toBe('Bright');
+    const recast = await methods.create(
+      {
+        sequenceId,
+        characterId: 'voice_fill',
+        name: 'Lia',
+        voiceId: 'talent-voice',
+        voiceDescription: 'Husky',
+      },
+      { source: 'analysis', createdBy: null }
+    );
+    // The id is new, the description the character already had wins.
+    expect(recast.voiceId).toBe('talent-voice');
+    expect(recast.voiceDescription).toBe('Bright');
+    const versions = await methods.listVoiceVersions(created.id);
+    expect(versions.map((v) => v.source)).toEqual(['library', 'analysis']);
+    expect(recast.selectedVoiceVersionId).toBe(versions[0]?.id);
+  });
+
+  it('counts voice references through the selected version, soft-deleted included (#1788)', async () => {
+    const methods = createCharactersMethods(db);
+    const shared = 'shared-voice';
+    const live = await methods.create(
+      { sequenceId, characterId: 'ref_live', name: 'A', voiceId: shared },
+      { source: 'analysis', createdBy: null }
+    );
+    const deleted = await methods.create(
+      { sequenceId, characterId: 'ref_deleted', name: 'B', voiceId: shared },
+      { source: 'analysis', createdBy: null }
+    );
+    await methods.softDelete(deleted.id, { actorId });
+    // A completed version holding the id, but no longer selected: not a
+    // reference — only the selected row is the character's voice.
+    const moved = await methods.create(
+      { sequenceId, characterId: 'ref_moved', name: 'C', voiceId: shared },
+      { source: 'analysis', createdBy: null }
+    );
+    await methods.updateVoice(moved.id, { voiceId: 'other' }, 'library', null);
+    const [seq] = await db
+      .select({ teamId: sequences.teamId })
+      .from(sequences)
+      .where(eq(sequences.id, sequenceId));
+    if (!seq) throw new Error('test setup: sequence missing');
+    await db
+      .insert(talent)
+      .values({ teamId: seq.teamId, name: 'T', voiceId: shared });
+
+    expect(live.voiceId).toBe(shared);
+    expect(await methods.getVoiceReferenceCount(shared)).toBe(3);
+    expect(await methods.getVoiceReferenceCount('other')).toBe(1);
+    expect(await methods.getVoiceReferenceCount('nobody')).toBe(0);
   });
 
   it('update refuses a voice field, and a bible description edit records one', async () => {

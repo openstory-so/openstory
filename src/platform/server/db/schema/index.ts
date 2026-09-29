@@ -362,6 +362,7 @@ export type {
   CharacterWithSheet,
   Character,
   CharacterRow,
+  CharacterVoice,
   LegacyCharacterBibleColumn,
   CharacterMinimal,
   CharacterWithTalent,

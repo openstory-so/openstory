@@ -122,7 +122,7 @@ export const shotPromptVersions = snakeCase.table(
       .references(() => shots.id, { onDelete: 'cascade' }),
     promptType: text().$type<ShotPromptType>().notNull(),
 
-    // Full prompt text (mirrors the cached column on `shots`).
+    // Full prompt text.
     text: text().notNull(),
     // Structured prompt components (when available — visual prompts split into
     // composition / lighting / etc.; user-edits may not have components).

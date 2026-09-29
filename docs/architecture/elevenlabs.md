@@ -97,7 +97,7 @@ runs for each such character that resolves true and has no `voiceId` yet.
 A failed voice child is logged and the run continues — that character's
 lines just have no designed voice for TTS. The LLM drafts `voiceDescription` when empty
 (`phase/voice-design-chat`), Voice Design's previews are parked in R2
-(`characters.voicePreviews`, AUDIO bucket) and the first is saved as the
+(the selected voice version's `previews`, AUDIO bucket) and the first is saved as the
 voice; "Use" on another take saves it instead (`chooseCharacterVoiceTakeFn`,
 which writes the new id then releases the old, and moves the take to the
 front — while `voiceId` is set, `voicePreviews[0]` is the saved voice; a gone
@@ -110,7 +110,8 @@ succeeds (or ElevenLabs says it already did / the preview aged out) the
 take is `unusable` and Use this take is hidden — the R2 MP3 stays. Previews cost no slot; a saved voice is an
 **account-wide** ElevenLabs slot, so the id is shared by copy (talent ↔
 character at cast / save-to-library) and freed only through
-`releaseVoiceIfUnreferenced` (`getVoiceReferenceCount` over both tables,
+`releaseVoiceIfUnreferenced` (`getVoiceReferenceCount` over characters'
+selected voice versions and `talent.voiceId`, soft-deleted characters included,
 **provider delete first, row write second** so a failed delete stays
 retryable; `heldBy: 1` when the caller's own row still holds the id) on
 character soft-delete, per-character switch-off, choose-take, recast to a
@@ -123,8 +124,12 @@ in-run gate the real speaking count. **Voices are versioned (#1657):** every
 `updateVoice` write appends a `character_voice_versions` row with an explicit `source`
 ('analysis' | 'generated' | 'library' | 'user-edit' | 'disabled' |
 'removed' — never inferred from which columns moved) and moves
-`characters.selectedVoiceVersionId`, the only selection pointer, whose values
-the voice columns mirror. `createdBy` is the person whose action made the
+`characters.selectedVoiceVersionId`, the only selection pointer. The voice
+IS that row (#1788): `characters` has no voice columns except `useVoice`;
+every scoped read joins the selected version and re-adds `voiceId` /
+`voiceDescription` / `voicePreviews` under those names. A cast's talent
+voice only fills what the selected version lacks, as a new 'library' (or
+'analysis', description only) version. `createdBy` is the person whose action made the
 version — required on `updateVoice` so no writer forgets it, null when nobody
 did (the cast-records seed). 'removed' means the character dropped its voice id;
 only `releasedAt` means the ElevenLabs slot was actually freed.
