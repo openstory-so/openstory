@@ -8,7 +8,7 @@ import { deriveShots } from '@/shots/shot-list.derive';
 import { sceneWithShotsSchema } from '@/shots/shot-list.schema';
 import { sceneForShot } from '@/shots/server/shot-work-items';
 import { buildMotionRender } from '@/motion/server/build-motion-render';
-import { packedSceneFromScene } from '@/motion/server/assemble-motion-prompt';
+import { packedSceneFromScene } from '@/motion/server/build-motion-prompts';
 import { buildMotionReferenceImages } from '@/motion/server/build-motion-references';
 import { buildReferenceVideoPrompt } from '@/motion/server/build-reference-video-prompt';
 import { getMotionReferenceEndpoint } from '@/models/models';
