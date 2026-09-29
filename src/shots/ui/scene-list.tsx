@@ -15,7 +15,7 @@ import {
   firstStageWithWork,
   planWork,
   planWorkLabel,
-  planWorkSummary,
+  planWorkLine,
   switchLocks,
   switchStopAt,
   type PlanUnitRef,
@@ -730,7 +730,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
           </Button>
           {continueWork.length > 0 && (
             <p className="text-xs text-muted-foreground">
-              {planWorkSummary(continueWork)}
+              {planWorkLine(continueWork)}
             </p>
           )}
           {continueBlocked.map((line) => (

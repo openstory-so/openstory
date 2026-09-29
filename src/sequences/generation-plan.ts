@@ -381,8 +381,20 @@ export function planWorkSummary(units: readonly PlanUnitRef[]): string {
 }
 
 /**
+ * The line under the continue button. When the run both makes new work and
+ * redoes stale work, the redo is named apart — `8 videos · redo 8 images` —
+ * so moving the thumb forward never hides a re-roll inside `Generate`.
+ */
+export function planWorkLine(work: readonly PlanUnit[]): string {
+  const fresh = work.filter((u) => u.state !== 'stale');
+  const redo = work.filter((u) => u.state === 'stale');
+  if (fresh.length === 0 || redo.length === 0) return planWorkSummary(work);
+  return `${planWorkSummary(fresh)} · redo ${planWorkSummary(redo)}`;
+}
+
+/**
  * Footer button: `Generate`, or `Regenerate` when every unit already exists
- * and is only out of date. {@link planWorkSummary} says what.
+ * and is only out of date. {@link planWorkLine} says what.
  */
 export function planWorkLabel(work: readonly PlanUnit[]): string {
   if (work.length === 0) return 'Nothing to generate';
