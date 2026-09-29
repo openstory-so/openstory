@@ -700,7 +700,6 @@ const SceneListComponent: React.FC<SceneListProps> = ({
         onChange={setContinueStopAt}
         minStage={minStage ?? undefined}
         maxStage={maxStage}
-        startFramesLocked={locks.startFrames}
         voicesLocked={locks.voices}
         generateStartFrames={draftStartFrames}
         onGenerateStartFramesChange={setDraftStartFrames}
@@ -721,7 +720,13 @@ const SceneListComponent: React.FC<SceneListProps> = ({
             onClick={() => void handleContinue()}
             disabled={isGenerating || planLoading || continueWork.length === 0}
           >
-            {isGenerating ? 'Generating…' : continueLabel}
+            <span className="relative">
+              {isGenerating ? 'Generating…' : continueLabel}
+              <ActionCost
+                estimate={continueCostEstimate}
+                className="absolute top-1/2 left-full ml-2 -translate-y-1/2"
+              />
+            </span>
           </Button>
           {continueWork.length > 0 && (
             <p className="text-xs text-muted-foreground">
@@ -733,7 +738,6 @@ const SceneListComponent: React.FC<SceneListProps> = ({
               {line}
             </p>
           ))}
-          <ActionCost estimate={continueCostEstimate} />
         </>
       )}
     </>

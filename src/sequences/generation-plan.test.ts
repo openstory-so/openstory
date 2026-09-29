@@ -393,6 +393,17 @@ describe('footer helpers', () => {
       '1 reference, 2 prompts'
     );
     expect(planWorkLabel([])).toBe('Nothing to generate');
+    expect(
+      planWorkLabel([
+        {
+          kind: 'still',
+          id: 's1',
+          state: 'stale',
+          requires: [],
+          cascaded: false,
+        },
+      ])
+    ).toBe('Regenerate');
   });
 
   it('says what a blocked unit waits on', () => {
@@ -407,7 +418,6 @@ describe('footer helpers', () => {
 
   it('locks a switch once its units exist', () => {
     expect(switchLocks(plan)).toEqual({
-      startFrames: false,
       voices: true,
       // s1's clip is blocked, so it may not exist yet: Draft first stays open.
       draft: false,
@@ -422,17 +432,6 @@ describe('footer helpers', () => {
           cascaded: false,
         },
       ]).draft
-    ).toBe(true);
-    expect(
-      switchLocks([
-        {
-          kind: 'still',
-          id: 's1',
-          state: 'stale',
-          requires: [],
-          cascaded: false,
-        },
-      ]).startFrames
     ).toBe(true);
   });
 
