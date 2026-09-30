@@ -37,6 +37,7 @@ import {
   videoVariants,
 } from '@/platform/server/db/schema';
 import { getDb } from '#db-client';
+import { getSequenceByIdUnscoped } from '@/platform/server/db/scoped';
 import { and, asc, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 
@@ -915,13 +916,7 @@ export async function getTestSequenceStatus(sequenceId: string): Promise<{
   musicStatus: string | null;
   musicUrl: string | null;
 } | null> {
-  const db = getDb();
-  const row = await db.query.sequences.findFirst({
-    where: { id: sequenceId },
-    columns: {
-      musicStatus: true,
-      musicUrl: true,
-    },
-  });
-  return row ?? null;
+  // The music surface is projected from the version tables (#1115).
+  const row = await getSequenceByIdUnscoped(sequenceId);
+  return row ? { musicStatus: row.musicStatus, musicUrl: row.musicUrl } : null;
 }

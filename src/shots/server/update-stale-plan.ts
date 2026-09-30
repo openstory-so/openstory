@@ -1173,9 +1173,9 @@ async function computeMusicPlanForUnits(
   const regenPrompt = units.some((u) => u.kind === 'prompt:music');
   const regenTrack = units.some((u) => u.kind === 'music');
   if (!regenPrompt && !regenTrack) return null;
-  const [sceneRows, latest] = await Promise.all([
+  const [sceneRows, selectedPrompt] = await Promise.all([
     scopedDb.scenes.listBySequence(sequence.id),
-    scopedDb.sequenceMusicPromptVersions.getLatest(sequence.id),
+    scopedDb.sequenceMusicPromptVersions.getSelected(sequence.id),
   ]);
   return {
     regenPrompt,
@@ -1186,7 +1186,7 @@ async function computeMusicPlanForUnits(
     analysisModelId:
       getAnalysisModelById(sequence.analysisModel)?.id ??
       DEFAULT_ANALYSIS_MODEL,
-    promptSource: latest ? 'regenerated' : 'ai-generated',
+    promptSource: selectedPrompt ? 'regenerated' : 'ai-generated',
     durationSeconds: musicRequestDurationSeconds(allShots),
     prompt: sequence.musicPrompt,
     tags: sequence.musicTags,

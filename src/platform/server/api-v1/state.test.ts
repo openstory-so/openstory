@@ -153,6 +153,9 @@ function makeSequence(overrides: Partial<Sequence> = {}): Sequence {
     musicTags: null,
     musicPromptInputHash: null,
     includeMusic: true,
+    selectedMusicVariantId: null,
+    selectedMusicPromptVersionId: null,
+    pendingPromoteMusicVariantId: null,
     statusError: null,
     workflowRunId: null,
     posterUrl: null,
@@ -322,10 +325,10 @@ describe('buildSequenceState', () => {
     });
   });
 
-  it('null poster and falls back to pending music status', async () => {
+  it('null poster and pending music status', async () => {
     const state = await build(
       depsWithShots([]),
-      makeSequence({ posterUrl: null, musicStatus: null })
+      makeSequence({ posterUrl: null, musicStatus: 'pending' })
     );
     expect(state.poster).toBeNull();
     expect(state.music.status).toBe('pending');

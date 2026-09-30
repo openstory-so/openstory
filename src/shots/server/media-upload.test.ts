@@ -11,6 +11,7 @@
  *       against the NEW prompt text), committed in one batch; video stale.
  */
 
+import { selectSequencesFrom } from '@/sequences/server/db/sequences';
 import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/models/models';
 import {
   computeVideoManifestInputHash,
@@ -415,31 +416,23 @@ describe('resolveUploadExtension', () => {
 });
 
 describe('music upload — append-only across uploads', () => {
-  it('retires the previous upload instead of overwriting it, keeping it promotable', async () => {
+  it('parks the previous upload instead of overwriting it, keeping it promotable', async () => {
     const variants = createSequenceVariantsMethods(db);
-    const upload = (url: string) => ({
-      sequenceId,
-      model: USER_UPLOAD_MODEL,
-      url,
-      storagePath: url.replace('/r2/audio/', ''),
-      status: 'completed' as const,
-      generatedAt: new Date(),
-      inputHash: null,
-    });
+    const upload = (url: string) =>
+      variants.appendUploadedMusic({
+        sequenceId,
+        model: USER_UPLOAD_MODEL,
+        url,
+        storagePath: url.replace('/r2/audio/', ''),
+        prompt: null,
+        tags: null,
+        durationSeconds: null,
+      });
 
-    const first = await variants.upsertMusicPrimary(upload('/r2/audio/v1.mp3'));
-
-    // Second upload: retire, then insert — the shape the server fn uses.
-    const retired = await variants.retireMusicPrimary(
-      sequenceId,
-      USER_UPLOAD_MODEL
-    );
-    const second = await variants.upsertMusicPrimary(
-      upload('/r2/audio/v2.mp3')
-    );
+    const first = await upload('/r2/audio/v1.mp3');
+    const second = await upload('/r2/audio/v2.mp3');
 
     // A distinct row, not an in-place update of the first.
-    expect(retired?.id).toBe(first.id);
     expect(second.id).not.toBe(first.id);
 
     // The first upload's bytes are still addressable.
@@ -453,12 +446,11 @@ describe('music upload — append-only across uploads', () => {
     const alternates = await variants.listDivergentMusic(sequenceId);
     expect(alternates.map((v) => v.id)).toContain(first.id);
 
-    // The live slot is the newest upload.
-    const primary = await variants.getMusicPrimary(
-      sequenceId,
-      USER_UPLOAD_MODEL
+    // The sequence plays the newest upload.
+    const [seq] = await selectSequencesFrom(db).where(
+      eq(sequences.id, sequenceId)
     );
-    expect(primary?.id).toBe(second.id);
+    expect(seq?.selectedMusicVariantId).toBe(second.id);
   });
 });
 
@@ -918,20 +910,17 @@ describe('video cancel parity (#1108 Phase 4)', () => {
 describe('music prompt edit vs uploaded score (#1108 Phase 4)', () => {
   it('a post-completion user edit updates the prompt, reads untracked (no nag), and never flags the uploaded score', async () => {
     const variants = createSequenceVariantsMethods(db);
-    // The user's uploaded score in the user-upload primary slot — inputHash
-    // null is the §4.4 "untracked" contract for manual audio.
-    const uploaded = await variants.upsertMusicPrimary({
+    // The user's uploaded score — inputHash null is the §4.4 "untracked"
+    // contract for manual audio.
+    const uploaded = await variants.appendUploadedMusic({
       sequenceId,
       model: 'user-upload',
       url: '/r2/audio/score.mp3',
       storagePath: 'score.mp3',
       prompt: 'old prompt',
       tags: 'calm',
-      status: 'completed',
-      generatedAt: new Date(),
-      inputHash: null,
+      durationSeconds: null,
     });
-    await variants.setMusicFromVariant(uploaded.id);
 
     // Edit the prompt AFTER the track exists — the saveMusicPromptFn path.
     const prompts = createSequenceMusicPromptVersionsMethods(db);
@@ -943,14 +932,15 @@ describe('music prompt edit vs uploaded score (#1108 Phase 4)', () => {
       createdBy: actorId,
     });
 
-    const [seq] = await db
-      .select()
-      .from(sequences)
-      .where(eq(sequences.id, sequenceId));
+    const [seq] = await selectSequencesFrom(db).where(
+      eq(sequences.id, sequenceId)
+    );
     expect(seq?.musicPrompt).toBe('a brand new mood');
     // Null stored hash → getMusicPromptStalenessFn short-circuits to
     // 'untracked': no regenerate nag from the prompt side.
     expect(seq?.musicPromptInputHash).toBeNull();
+    // The score still plays.
+    expect(seq?.musicUrl).toBe('/r2/audio/score.mp3');
 
     // The uploaded score is untouched and itself untracked — no staleness
     // derivation exists that can flag a null-hash score for regeneration.
@@ -959,33 +949,5 @@ describe('music prompt edit vs uploaded score (#1108 Phase 4)', () => {
     expect(score?.inputHash).toBeNull();
     expect(score?.divergedAt).toBeNull();
     expect(score?.discardedAt).toBeNull();
-
-    // The user-upload slot is only ever written by the upload path, which
-    // RETIRES the previous primary before upserting (never overwrites): after
-    // a second upload the first score survives as a parked alternate
-    // (divergedAt set, promotable back), and the new upload owns the slot.
-    const retired = await variants.retireMusicPrimary(
-      sequenceId,
-      'user-upload'
-    );
-    expect(retired?.id).toBe(uploaded.id);
-    const second = await variants.upsertMusicPrimary({
-      sequenceId,
-      model: 'user-upload',
-      url: '/r2/audio/score2.mp3',
-      storagePath: 'score2.mp3',
-      prompt: 'a brand new mood',
-      tags: 'tense',
-      status: 'completed',
-      generatedAt: new Date(),
-      inputHash: null,
-    });
-    expect(second.id).not.toBe(uploaded.id);
-    const first = await variants.getMusicById(uploaded.id);
-    expect(first?.url).toBe('/r2/audio/score.mp3');
-    expect(first?.divergedAt).not.toBeNull();
-    expect(await variants.getMusicPrimary(sequenceId, 'user-upload')).toEqual(
-      second
-    );
   });
 });

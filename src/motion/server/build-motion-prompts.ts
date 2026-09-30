@@ -28,7 +28,7 @@ import {
 } from '@/motion/dialogue-tts';
 
 /**
- * Music is a sequence-level track (`sequences.music*`) the user can mute, swap
+ * Music is a sequence-level track (`sequence_music_variants`) the user can mute, swap
  * or regenerate; a score the video model bakes into the clip cannot be removed
  * and fights the real one on playback (#1165). Dialogue and diegetic sound are
  * still wanted, so `generate_audio: false` is the wrong lever — every

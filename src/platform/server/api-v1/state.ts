@@ -279,8 +279,8 @@ export function buildSequenceSummary(params: {
       ? { url: toShareableUrl(sequence.posterUrl, origin) }
       : null,
     music: {
-      status: sequence.musicStatus ?? 'pending',
-      url: share(sequence.musicUrl ?? null),
+      status: sequence.musicStatus,
+      url: share(sequence.musicUrl),
     },
     counts,
   };

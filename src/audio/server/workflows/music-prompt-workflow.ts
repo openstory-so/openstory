@@ -62,10 +62,9 @@ export class MusicPromptWorkflow extends OpenStoryWorkflowEntrypoint<MusicPrompt
         );
       }
 
-      // The variants helper appends a row tagged 'ai-generated' /
-      // 'regenerated' and updates the cached `musicPrompt` / `musicTags` /
-      // `musicPromptInputHash` on `sequences`. The two writes are
-      // sequential, not transactional — see the helper docstring.
+      // The versions helper appends a row tagged 'ai-generated' /
+      // 'regenerated' and selects it — no claim (pinned in
+      // claim-discipline.test.ts).
       const inputHash = await computeMusicPromptInputHash({
         sceneSummaries,
         analysisModel: analysisModelId,
@@ -107,12 +106,22 @@ export class MusicPromptWorkflow extends OpenStoryWorkflowEntrypoint<MusicPrompt
   }): Promise<void> {
     const input = event.payload;
     if (input.sequenceId) {
-      const failSeq = scopedDb.sequence(input.sequenceId);
-
-      await failSeq.updateMusicFields({
-        musicStatus: 'failed',
-        musicError: error,
-      });
+      // A failed prompt is a failed track (#1115): the track claim a parent
+      // took for it fails, or — with no claim — a failed primary row records
+      // it, so the sequence reads `failed`, never a silent `pending`.
+      if (input.musicVariantId) {
+        await scopedDb.sequenceVariants.failMusicClaim(
+          { sequenceId: input.sequenceId, variantId: input.musicVariantId },
+          error
+        );
+      } else {
+        await scopedDb.sequenceVariants.recordMusicFailure({
+          sequenceId: input.sequenceId,
+          model: input.musicModel,
+          error,
+          workflowRunId: event.instanceId,
+        });
+      }
 
       try {
         await getGenerationChannel(input.sequenceId).emit(

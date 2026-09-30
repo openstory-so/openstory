@@ -86,7 +86,6 @@ import {
   sequenceAccessMiddleware,
 } from '@/platform/middleware.fn';
 import { bumpStylePopularity } from '@/look/server/bump-style-popularity';
-import { simpleHash } from '@/platform/hash';
 import { getLogger } from '@/platform/logger';
 import { createSequences } from '@/sequences/server/create-sequences';
 import { canRenderReferenceOnly } from '@/motion/server/motion-generation';
@@ -805,6 +804,11 @@ export function assertModelNotAlreadyAdded(
   }
 }
 
+/** The newest row per model, from rows in id (insertion) order. */
+function newestPerModel<T extends { model: string }>(rows: readonly T[]): T[] {
+  return [...new Map(rows.map((row) => [row.model, row])).values()];
+}
+
 /**
  * Shots eligible for a video add-model run (#547): those with a completed
  * primary image to animate, PLUS the ones that render reference-only — those
@@ -826,11 +830,11 @@ export function selectEligibleVideoShots(
 
 /**
  * Build the music-workflow input for an ADD-MODEL audio run (#547). Always
- * `isPrimary: false`: an added audio model lands as an alternate in
- * `sequence_music_variants` and must never repoint the live `sequences.music*`
- * primary track. The music workflow defaults `isPrimary` to true (#546), so
- * omitting it here would clobber the user's working primary on both success AND
- * failure — the exact regression this helper exists to prevent.
+ * `isPrimary: false`: an added audio model lands as its own
+ * `sequence_music_variants` row and must never take the sequence's track
+ * pointer. The music workflow defaults `isPrimary` to true (#546), so omitting
+ * it here would repoint the user's working track on success and fail the
+ * sequence's music on failure — the regression this helper exists to prevent.
  */
 export function buildAddAudioMusicInput(args: {
   baseCtx: { userId: string; teamId: string; sequenceId: string };
@@ -853,9 +857,9 @@ export function buildAddAudioMusicInput(args: {
  * Add a new image / video / audio model to an existing sequence (#547).
  * Generates that model's output for every eligible shot (image/video) or the
  * whole sequence (audio) using the EXISTING prompts — no re-analysis. Each unit
- * lands as a `shot_variants` row (image/video) or `sequence_music_variants`
- * row (audio), pre-stamped `pending` so the new model appears in the header
- * dropdown immediately. Reuses the per-shot image / motion-batch / music
+ * lands as a version row (image/video) or `sequence_music_variants` row
+ * (audio), opened `pending` so the new model appears in the header dropdown
+ * immediately. Reuses the per-shot image / motion-batch / music
  * workflows unchanged.
  */
 export const addModelToSequenceFn = createServerFn({ method: 'POST' })
@@ -883,8 +887,9 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
       if (!isValidAudioModel(model)) {
         throw new Error('Invalid audio model');
       }
-      const existing = await scopedDb.sequenceVariants.listMusicBySequence(
-        sequence.id
+      // Tracks are append-only (#1115): a model's state is its newest row.
+      const existing = newestPerModel(
+        await scopedDb.sequenceVariants.listMusicBySequence(sequence.id)
       );
       assertModelNotAlreadyAdded(existing, model, 'audio');
       const musicPrompt = sequence.musicPrompt;
@@ -915,20 +920,24 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
         }
       );
 
+      // Row before the run (#547, #1130): an added model's track opens its
+      // own row — no claim, it never takes the sequence's pointer — so the
+      // model shows in the header dropdown immediately.
+      const variantId = await scopedDb.sequenceVariants.claimMusic({
+        sequenceId: sequence.id,
+        model,
+        prompt: musicPrompt,
+        tags: musicTags,
+        durationSeconds: Math.round(totalDuration),
+        isPrimary: false,
+        workflowRunId: null,
+      });
+      if (!variantId) throw new Error('Sequence not found');
       try {
         return await releaseReservationOnThrow(
           scopedDb,
           reservationId,
           async () => {
-            await scopedDb.sequenceVariants.upsertMusicPrimary({
-              sequenceId: sequence.id,
-              model,
-              prompt: musicPrompt,
-              tags: musicTags,
-              durationSeconds: Math.round(totalDuration),
-              status: 'pending',
-            });
-
             const musicInput = {
               ...buildAddAudioMusicInput({
                 baseCtx,
@@ -937,11 +946,12 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
                 durationSeconds: totalDuration,
                 model,
               }),
+              variantId,
               reservationId,
               ownsReservation: true,
             };
             const workflowRunId = await triggerWorkflow('/music', musicInput, {
-              deduplicationId: `add-audio-${sequence.id}-${model}-${Date.now()}`,
+              deduplicationId: `add-audio-${variantId}`,
             });
             return {
               workflowRunId,
@@ -958,18 +968,14 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
           sequenceId: sequence.id,
           model,
         });
-        // Mark the pre-stamped row failed so the model can be re-added. Guard
-        // the compensating write so its own failure can't mask the original
+        // Fail the opened row so the model can be re-added. Guard the
+        // compensating write so its own failure can't mask the original
         // trigger error (which is what we want to surface to the user).
         try {
-          await scopedDb.sequenceVariants.upsertMusicPrimary({
-            sequenceId: sequence.id,
-            model,
-            prompt: musicPrompt,
-            tags: musicTags,
-            durationSeconds: Math.round(totalDuration),
-            status: 'failed',
-          });
+          await scopedDb.sequenceVariants.failMusicClaim(
+            { sequenceId: sequence.id, variantId },
+            error instanceof Error ? error.message : String(error)
+          );
         } catch (cleanupError) {
           logger.error('add-model: failed to mark music row failed', {
             err: cleanupError,
@@ -1525,34 +1531,6 @@ export const setSequenceModelFn = createServerFn({ method: 'POST' })
   });
 
 /**
- * Deduplication id for a primary music run. CF instance ids are unique
- * FOREVER, so a constant `music-<sequenceId>` would block every legitimate
- * rerun; instead the id is the music slot's OBSERVED state (status + last
- * generated-at) plus this request's inputs. Two rapid triggers read the same
- * state and collapse onto one instance; a rerun after the slot completed,
- * failed, or with changed inputs hashes differently and starts a fresh run.
- */
-function musicRunDedupId(args: {
-  sequenceId: string;
-  musicStatus: string | null;
-  musicGeneratedAt: Date | null;
-  prompt: string;
-  tags: string;
-  duration: number;
-  model: string | undefined;
-}): string {
-  const state = JSON.stringify([
-    args.musicStatus,
-    args.musicGeneratedAt?.getTime() ?? null,
-    args.prompt,
-    args.tags,
-    args.duration,
-    args.model ?? null,
-  ]);
-  return `music-${simpleHash(state)}-${args.sequenceId}`;
-}
-
-/**
  * Trigger sequence-level music generation.
  * Uses pre-generated prompt/tags when available, otherwise builds from shot audio specs.
  */
@@ -1586,8 +1564,8 @@ export const generateMusicFn = createServerFn({ method: 'POST' })
 
     // Persist the user's intent before triggering the workflow. Both
     // `data.prompt` and `data.tags` are surfaced as a single user-edit
-    // revision; the variants helper updates the cached columns on `sequences`
-    // alongside the row insert so a tags-only edit isn't dropped.
+    // revision, which the versions helper selects, so a tags-only edit isn't
+    // dropped.
     if (data.prompt !== undefined || data.tags !== undefined) {
       await context.scopedDb.sequenceMusicPromptVersions.write({
         sequenceId: sequence.id,
@@ -1619,22 +1597,30 @@ export const generateMusicFn = createServerFn({ method: 'POST' })
       tags: effectiveTags,
     };
 
-    await context.scopedDb.sequence(sequence.id).updateMusicFields({
-      musicStatus: 'generating',
-      musicError: null,
+    // Row + claim before the run (#1130), compare-and-swapped on the claim
+    // this request saw: of two rapid clicks the second finds the claim moved
+    // and starts nothing — the first click's run is the one it asked for.
+    const variantId = await context.scopedDb.sequenceVariants.claimMusic({
+      sequenceId: sequence.id,
+      model: baseInput.model ?? DEFAULT_MUSIC_MODEL,
+      prompt: effectivePrompt,
+      tags: effectiveTags,
+      durationSeconds: baseInput.duration,
+      isPrimary: true,
+      workflowRunId: null,
+      ifPendingIs: sequence.pendingPromoteMusicVariantId,
     });
+    if (!variantId) return { success: true };
 
-    await triggerWorkflow('/music', musicInput, {
-      deduplicationId: musicRunDedupId({
-        sequenceId: sequence.id,
-        musicStatus: sequence.musicStatus,
-        musicGeneratedAt: sequence.musicGeneratedAt,
-        prompt: effectivePrompt,
-        tags: effectiveTags,
-        duration: baseInput.duration,
-        model: baseInput.model,
-      }),
-    });
+    try {
+      await triggerWorkflow('/music', { ...musicInput, variantId });
+    } catch (error) {
+      await context.scopedDb.sequenceVariants.failMusicClaim(
+        { sequenceId: sequence.id, variantId },
+        error instanceof Error ? error.message : String(error)
+      );
+      throw error;
+    }
 
     return { success: true };
   });

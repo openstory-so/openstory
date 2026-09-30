@@ -130,6 +130,15 @@ const CLAIM_DOMAINS: Record<string, ClaimDomain> = {
     promote: 'shotDialogue.appendRecording',
     userSelect: 'shotDialogue.selectSection',
   },
+  // Pointer claim on the sequence, taken with the track's pending row
+  // (#1115). An added model's row opens with no claim and never selects.
+  music: {
+    tables: ['sequence_music_variants'],
+    claim: 'sequenceVariants.claimMusic',
+    clear: 'sequenceVariants.failMusicClaim',
+    promote: 'sequenceVariants.completeMusicClaim',
+    userSelect: 'sequenceVariants.selectMusic',
+  },
   // Pointer claim (#1923). Analysis still seeds v1 through `write` (pinned
   // below). Rewrite shot is the async generation into the table.
   'shot specs': {
@@ -146,12 +155,11 @@ const CLAIM_DOMAINS: Record<string, ClaimDomain> = {
  * the goal; growing it is a reviewed act.
  */
 const EXCEPTIONS: Record<string, string> = {
-  // Music parks a divergent variant and promotes by copying onto
-  // `sequences.music*` — the pre-claim shape sheets had before #1113.
-  // The music prompt run appends and mirrors onto `sequences.musicPrompt`
-  // with no claim. Both music tables move together.
-  sequence_music_variants: 'music: divergent-variant model, not yet claimed',
-  sequence_music_prompt_versions: 'music: appended and mirrored, no claim',
+  // The music prompt run appends and selects with no claim, like the
+  // pipeline's image/motion prompt passes (#1115); its call site is pinned in
+  // UNCLAIMED_CALL_SITES.
+  sequence_music_prompt_versions:
+    'music prompt: appended and selected, no claim',
   // `sequences.workflowRunId` is the pipeline's run slot
   // (`sequences.claimWorkflowSlot`), not a selection.
   sequences: 'run slot, not a selection pointer',
@@ -192,6 +200,7 @@ const UNCLAIMED_WRITERS: readonly ScopedMethod[] = [
   'shotSpecVersions.write',
   'characters.updateVoice',
   'locations.updateReference',
+  'sequenceMusicPromptVersions.write',
 ];
 const UNCLAIMED_CALL_SITES: Record<string, string> = {
   // Analysis seeds each new shot's spec and the prompts derived from it.
@@ -215,6 +224,10 @@ const UNCLAIMED_CALL_SITES: Record<string, string> = {
   // nested past this scan.
   'src/cast/server/workflows/library-location-sheet-workflow.ts: locations.updateReference':
     'pre-#1113 payload, no claim',
+  // The music prompt pass selects its output with no claim (#1115); a track
+  // regeneration claims the track, not the prompt.
+  'src/audio/server/workflows/music-prompt-workflow.ts: sequenceMusicPromptVersions.write':
+    'music prompt pass, no claim',
   // A pre-#1715 payload has no husk to claim (drain path).
   'src/cast/server/workflows/character-voice-workflow.ts: characters.updateVoice':
     'pre-#1715 payload, no husk',

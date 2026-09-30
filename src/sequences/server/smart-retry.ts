@@ -535,26 +535,47 @@ export async function executeSmartRetry(context: SmartRetryContext) {
           })
         : undefined;
 
-    const musicInput: MusicWorkflowInput = {
-      userId: user.id,
-      teamId,
+    const musicTags = sequence.musicTags ?? '';
+    // Row + claim before the run (#1130), compare-and-swapped on the claim
+    // this request saw: a concurrent retry that already claimed wins and this
+    // one starts nothing.
+    const variantId = await context.scopedDb.sequenceVariants.claimMusic({
       sequenceId: sequence.id,
-      reservationId,
-      ownsReservation: true,
-      prompt: sequence.musicPrompt,
       model: musicModel,
-      tags: sequence.musicTags ?? '',
-      duration: totalDuration,
-    };
-
-    await context.scopedDb.sequence(sequence.id).updateMusicFields({
-      musicStatus: 'generating',
-      musicError: null,
+      prompt: sequence.musicPrompt,
+      tags: musicTags,
+      durationSeconds: totalDuration,
+      isPrimary: true,
+      workflowRunId: null,
+      ifPendingIs: sequence.pendingPromoteMusicVariantId,
     });
-
-    await releaseReservationOnThrow(context.scopedDb, reservationId, () =>
-      triggerWorkflow('/music', musicInput)
-    );
+    if (variantId) {
+      const musicInput: MusicWorkflowInput = {
+        userId: user.id,
+        teamId,
+        sequenceId: sequence.id,
+        reservationId,
+        ownsReservation: true,
+        prompt: sequence.musicPrompt,
+        model: musicModel,
+        tags: musicTags,
+        duration: totalDuration,
+        variantId,
+      };
+      try {
+        await releaseReservationOnThrow(context.scopedDb, reservationId, () =>
+          triggerWorkflow('/music', musicInput)
+        );
+      } catch (error) {
+        await context.scopedDb.sequenceVariants.failMusicClaim(
+          { sequenceId: sequence.id, variantId },
+          error instanceof Error ? error.message : String(error)
+        );
+        throw error;
+      }
+    } else if (reservationId) {
+      await context.scopedDb.billing.zeroReservation(reservationId);
+    }
 
     retried.push('music');
   }
@@ -584,6 +605,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
       duration: totalDuration,
       // This branch only runs when the sequence has no music prompt at all.
       promptSource: 'ai-generated',
+      musicModel: safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL),
     });
 
     retried.push('music prompt');

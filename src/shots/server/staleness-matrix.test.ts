@@ -1111,7 +1111,7 @@ async function musicVerdicts(world: MusicWorld) {
     shots: { listBySequence: () => Promise.resolve(world.shots) },
     scenes: { listBySequence: () => Promise.resolve(world.scenes) },
     sequenceVariants: {
-      getMusicPrimary: () =>
+      getMusicById: () =>
         Promise.resolve({
           status: 'completed',
           model: AUDIO_MODEL,
@@ -1119,7 +1119,7 @@ async function musicVerdicts(world: MusicWorld) {
         }),
     },
     sequenceMusicPromptVersions: {
-      getLatest: () => Promise.resolve({ analysisModel: ANALYSIS_MODEL }),
+      getSelected: () => Promise.resolve({ analysisModel: ANALYSIS_MODEL }),
     },
   });
   return readMusicPromptStaleness(
@@ -1128,7 +1128,7 @@ async function musicVerdicts(world: MusicWorld) {
       id: 'seq',
       status: 'completed',
       analysisModel: ANALYSIS_MODEL,
-      musicModel: AUDIO_MODEL,
+      selectedMusicVariantId: 'track',
       musicPrompt: world.musicPrompt,
       musicTags: world.musicTags,
       musicPromptInputHash: world.promptStamped ? promptStamp : null,

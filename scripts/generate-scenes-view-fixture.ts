@@ -100,8 +100,16 @@ function requireRow(rows: Row[], what: string): Row {
   return row;
 }
 
+// The music prompt is the sequence's SELECTED prompt version (#1115).
 const seqRow = requireRow(
-  await q(`SELECT * FROM sequences WHERE id='${SEQ}'`),
+  await q(
+    `SELECT s.*, p.prompt AS music_prompt, p.tags AS music_tags,
+       p.input_hash AS music_prompt_input_hash
+     FROM sequences s
+     LEFT JOIN sequence_music_prompt_versions p
+       ON p.id = s.selected_music_prompt_version_id
+     WHERE s.id='${SEQ}'`
+  ),
   'sequence'
 );
 const styleRow = requireRow(
@@ -126,7 +134,14 @@ const shotRows = await q(
 
 const sequence = mapRow(seqRow);
 if (sequence.posterUrl) sequence.posterUrl = null;
-if (sequence.musicUrl) sequence.musicUrl = null;
+// The track's media is stripped like the poster's, so the fixture has none.
+Object.assign(sequence, {
+  musicUrl: null,
+  musicPath: null,
+  musicGeneratedAt: null,
+  musicStatus: 'pending',
+  musicError: null,
+});
 
 const style = mapRow(styleRow);
 if (style.previewUrl) style.previewUrl = null;

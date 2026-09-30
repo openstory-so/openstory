@@ -596,7 +596,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Scene ids (order is the key)',
       'The visual prompt (the brief never reads it, #1783)',
     ],
-    storedAs: 'sequences.musicPromptInputHash',
+    storedAs: 'sequence_music_prompt_versions.inputHash',
   },
   // --- Renders -------------------------------------------------------------
   {

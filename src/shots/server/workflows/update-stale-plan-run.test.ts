@@ -157,6 +157,8 @@ function makeStep(): WorkflowStep {
 const claimSheet = vi.fn(async (id: string) => `csv-${id}`);
 const failSheetClaim = vi.fn(async () => undefined);
 const claimReference = vi.fn(async (id: string) => `lrv-${id}`);
+const claimMusic = vi.fn(async (): Promise<string | null> => 'music-claim');
+const failMusicClaim = vi.fn(async () => undefined);
 const createPendingVoiceClaim = vi.fn(async (id: string) => ({
   created: true,
   version: { id: `husk-${id}`, workflowRunId: null },
@@ -172,6 +174,7 @@ function makeScopedDb(): WorkflowScopedDb {
       markVoiceClaimTerminal: vi.fn(),
     },
     sequenceLocations: { claimReference },
+    sequenceVariants: { claimMusic, failMusicClaim },
     frameVariants: {
       markTerminal: vi.fn(),
       cancelByDependency: vi.fn(),
@@ -208,13 +211,6 @@ function makeScopedDb(): WorkflowScopedDb {
     },
     liveRead: {
       compliance: { listEnforcementFor: vi.fn(async () => []) },
-      sequences: {
-        getById: vi.fn(async () => ({
-          musicStatus: 'completed',
-          musicPrompt: 'edited later',
-          musicTags: 'edited later',
-        })),
-      },
       apiKeys: { hasUsableKey: vi.fn(async () => false) },
       billing: { hasEnoughCredits: vi.fn(async () => true) },
       characters: { listWithSheets: vi.fn(async () => []) },
@@ -814,6 +810,61 @@ describe('fresh executor parity (#1891)', () => {
       tags: 'frozen',
       reservationId: 'hold',
       isPrimary: true,
+      variantId: 'music-claim',
+    });
+    // The claim is taken only while no other primary track run holds it.
+    expect(claimMusic).toHaveBeenLastCalledWith(
+      expect.objectContaining({ isPrimary: true, ifPendingIs: null })
+    );
+  });
+  it('makes neither prompt nor track while another run holds the music claim', async () => {
+    claimMusic.mockResolvedValueOnce(null);
+    spawnAndAwaitChild.mockClear();
+    const result = await run(
+      plan({
+        music: {
+          regenPrompt: true,
+          regenTrack: true,
+          sceneSummaries: [],
+          analysisModelId: DEFAULT_ANALYSIS_MODEL,
+          promptSource: 'regenerated',
+          durationSeconds: 30,
+          prompt: 'score',
+          tags: 'calm',
+        },
+      })
+    );
+    expect(result.failures).toEqual([]);
+    expect(result.musicPrompts).toBe(0);
+    expect(result.musicTracks).toBe(0);
+    const spawned = spawnAndAwaitChild.mock.calls.map(
+      ([, args]) => args.spawnStepName
+    );
+    expect(spawned).not.toContain('spawn-music-prompt');
+    expect(spawned).not.toContain('spawn-music-track');
+  });
+  it('hands the track claim to the prompt child so a failed prompt fails it', async () => {
+    const result = await run(
+      plan({
+        music: {
+          regenPrompt: true,
+          regenTrack: true,
+          sceneSummaries: [],
+          analysisModelId: DEFAULT_ANALYSIS_MODEL,
+          promptSource: 'regenerated',
+          durationSeconds: 30,
+          prompt: 'score',
+          tags: 'calm',
+        },
+      })
+    );
+    expect(result.failures).toEqual([]);
+    expect(payloadOf('spawn-music-prompt')).toMatchObject({
+      musicVariantId: 'music-claim',
+    });
+    expect(payloadOf('spawn-music-track')).toMatchObject({
+      prompt: 'New music',
+      variantId: 'music-claim',
     });
   });
   it('announces every fresh phase in order and completes each', async () => {

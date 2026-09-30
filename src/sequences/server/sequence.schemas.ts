@@ -80,15 +80,12 @@ export const createSequenceSchema = createInsertSchema(sequences, {
     // legacy column.
     legacyStyleConfig: true,
     selectedStyleVersionId: true,
-    // Music fields - managed by workflow, not user input
-    musicUrl: true,
-    musicPath: true,
-    musicStatus: true,
-    musicGeneratedAt: true,
-    musicError: true,
+    // Music pointers - moved by the music claim lifecycle, not user input
+    // (#1115); the model is set from `musicModel` in the extend.
     musicModel: true,
-    musicPrompt: true,
-    musicTags: true,
+    selectedMusicVariantId: true,
+    selectedMusicPromptVersionId: true,
+    pendingPromoteMusicVariantId: true,
     generationStopAt: true,
   })
   .extend({
@@ -326,15 +323,12 @@ export const updateSequenceSchema = createUpdateSchema(sequences, {
   // (#1600: a version row, reached through this pointer).
   legacyStyleConfig: true,
   selectedStyleVersionId: true,
-  // Music fields - managed by workflow, not user input
-  musicUrl: true,
-  musicPath: true,
-  musicStatus: true,
-  musicGeneratedAt: true,
-  musicError: true,
+  // Music pointers - moved by the music claim lifecycle, not user input
+  // (#1115).
   musicModel: true,
-  musicPrompt: true,
-  musicTags: true,
+  selectedMusicVariantId: true,
+  selectedMusicPromptVersionId: true,
+  pendingPromoteMusicVariantId: true,
   generationStopAt: true,
 });
 

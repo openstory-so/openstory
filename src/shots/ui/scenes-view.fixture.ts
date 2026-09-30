@@ -71,6 +71,9 @@ export const fixtureSequence: Sequence = {
     '60d6365089ac968e73546fb2b9330ca73d60b38d96279af1556d047b18271174',
   workflowRunId: null,
   includeMusic: true,
+  selectedMusicVariantId: null,
+  selectedMusicPromptVersionId: null,
+  pendingPromoteMusicVariantId: null,
 };
 
 export const fixtureStyle: Style = {

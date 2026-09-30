@@ -155,10 +155,10 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
     });
 
     // Multi-model audio (#546): one MUSIC_WORKFLOW child per selected model,
-    // each reusing the same prompt/tags/duration and writing its own primary
-    // row in sequence_music_variants (keyed by (sequenceId, model)). Only the
-    // first model is primary — it alone writes the live `sequences.music*`
-    // columns; the rest persist only their variant row (see `isPrimary` below).
+    // each reusing the same prompt/tags/duration and opening its own row in
+    // sequence_music_variants. Only the first model is primary — it alone
+    // claims the sequence's track pointer (#1115); the rest land as their own
+    // rows (see `isPrimary` below).
     // Falls back to the single `music.model` when no audioModels were threaded.
     const audioModels =
       includeMusic && input.music
@@ -190,7 +190,7 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
           duration: music.duration,
           model,
           // audioModels[0] is primary (resolveAudioModels preserves order +
-          // dedupes); only it writes the live `sequences.music*` columns.
+          // dedupes); only it claims the sequence's track pointer.
           isPrimary: index === 0,
           reservationId: input.reservationId,
         },

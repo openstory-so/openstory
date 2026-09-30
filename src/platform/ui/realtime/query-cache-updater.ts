@@ -537,23 +537,14 @@ export function updateQueryCacheFromEvent(
         invalidateGenerationPlan(queryClient, sequenceId);
       }
       const audioUrl = getOptionalString(data, 'audioUrl');
-      const model = getOptionalString(data, 'model');
-      if (isValidMusicStatus(status)) {
+      if (isValidMusicStatus(status) && data.primary !== false) {
         queryClient.setQueryData<Sequence>(
           sequenceKeys.detail(sequenceId),
           (old) => {
+            // A secondary model's run (#546) emits only to refresh the
+            // per-model queries below; applying it here would clobber the
+            // sequence's own track.
             if (!old) return old;
-            // Only the primary model owns the live `sequences.music*` columns.
-            // In a multi-model fan-out (#546) secondary models emit model-scoped
-            // events purely to refresh the per-model queries below — applying
-            // their status/url here would clobber the primary (last-writer-wins,
-            // and a secondary failure would mask a working primary track). The
-            // primary's `set-generating-status` writes `musicModel` first, so
-            // match against it; a missing `model` (single-model / legacy
-            // emitters) is treated as the primary.
-            if (model && old.musicModel && model !== old.musicModel) {
-              return old;
-            }
             return {
               ...old,
               musicStatus: status,

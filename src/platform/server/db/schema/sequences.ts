@@ -132,22 +132,23 @@ export const sequences = snakeCase.table(
     videoModel: text({ length: 100 }).default('kling_v3_pro').notNull(),
     workflow: text({ length: 100 }),
 
-    // TB-20260804: DB-Audit: music* should not be stored on the sequence directly and instead should point to a variant / version table
-    // Music track fields (sequence-level background music)
-    musicUrl: text(),
-    musicPath: text(),
-    musicStatus: text().$type<MusicStatus>().default('pending'),
-    musicGeneratedAt: integer({
-      mode: 'timestamp',
-    }),
-    musicError: text(),
+    // The sequence's audio-model SETTING (like imageModel / videoModel) — the
+    // model a new primary track is asked of. Not a mirror of any track.
     musicModel: text({ length: 100 }),
-    musicPrompt: text(),
-    musicTags: text(),
-    // SHA-256 of the upstream context that produced the cached AI music
-    // prompt (musicDesign + analysis model). Null when no AI prompt has been
-    // generated yet, or when the most recent variant was a user-edit.
-    musicPromptInputHash: text(),
+    // The music track the sequence plays (#1115): a `sequence_music_variants`
+    // row. Soft pointer (no FK), like `selectedStyleVersionId`. Every scoped
+    // read projects the row's url / path / generatedAt under the old
+    // `musicUrl` / `musicPath` / `musicGeneratedAt` names.
+    selectedMusicVariantId: text(),
+    // The live music prompt: a `sequence_music_prompt_versions` row, projected
+    // as `musicPrompt` / `musicTags` / `musicPromptInputHash`. A pointer, not
+    // the newest row — an AI write whose hash already exists resolves to the
+    // older row.
+    selectedMusicPromptVersionId: text(),
+    // The claim (#1130): the primary track run whose result may take the
+    // pointer. Set by the trigger, consumed by completion in one guarded
+    // UPDATE, cleared by failure only while it still names that run's row.
+    pendingPromoteMusicVariantId: text(),
     // Whether the sequence's background music is included in theatre playback
     // and MP4 export. Default on (mirrors the old #687 "Include music in merged
     // video" checkbox). Toggling it off mutes only the music track — scene and
@@ -232,6 +233,22 @@ export type SequenceRecord = InferSelectModel<typeof sequences>;
  */
 export type Sequence = Omit<SequenceRecord, 'legacyStyleConfig'> & {
   styleConfig: StoredStyleConfig | null;
+} & SequenceMusicProjection;
+
+/**
+ * The music surface every scoped read projects from the version tables
+ * (#1115) — the selected prompt row, the selected track row, and the newest
+ * primary track row's lifecycle. Read-only: nothing writes these names.
+ */
+type SequenceMusicProjection = {
+  musicPrompt: string | null;
+  musicTags: string | null;
+  musicPromptInputHash: string | null;
+  musicUrl: string | null;
+  musicPath: string | null;
+  musicGeneratedAt: Date | null;
+  musicStatus: MusicStatus;
+  musicError: string | null;
 };
 
 /** A new sequence row. Its style snapshot is written as its first version. */

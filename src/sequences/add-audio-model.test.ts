@@ -56,7 +56,8 @@ function makeContext(canAfford = false) {
       },
       sequenceVariants: {
         listMusicBySequence: vi.fn(async () => []),
-        upsertMusicPrimary: vi.fn(async () => {}),
+        claimMusic: vi.fn(async () => 'music_row_1'),
+        failMusicClaim: vi.fn(async () => {}),
       },
     },
   };
@@ -86,9 +87,7 @@ describe('add audio model — music credits', () => {
     ).rejects.toThrow('Insufficient credits to add this audio model');
 
     expect(context.scopedDb.billing.createReservation).toHaveBeenCalledTimes(1);
-    expect(
-      context.scopedDb.sequenceVariants.upsertMusicPrimary
-    ).not.toHaveBeenCalled();
+    expect(context.scopedDb.sequenceVariants.claimMusic).not.toHaveBeenCalled();
     expect(triggerWorkflow).not.toHaveBeenCalled();
   });
 
@@ -111,6 +110,8 @@ describe('add audio model — music credits', () => {
         model: 'elevenlabs_music',
         reservationId: 'res_music',
         ownsReservation: true,
+        variantId: 'music_row_1',
+        isPrimary: false,
       }),
       expect.anything()
     );

@@ -822,9 +822,9 @@ describe('complete production reads', () => {
       .update(sequences)
       .set({
         script: 'Original script',
-        musicUrl: '/r2/music.mp3',
+        selectedMusicVariantId: musicId,
+        selectedMusicPromptVersionId: musicPromptId,
         musicModel: 'music-test',
-        musicPrompt: 'Quiet piano',
         generateVoices: true,
       })
       .where(eq(sequences.id, sequenceId));

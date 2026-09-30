@@ -1,3 +1,4 @@
+import { safeAudioModel } from '@/models/models';
 import { saveShotPrompt } from '@/shots/server/save-shot-prompt';
 import { regenerateShotPrompt } from '@/shots/server/regenerate-shot-prompt';
 import { readMusicPromptStaleness } from '@/audio/server/music-staleness';
@@ -450,8 +451,8 @@ const saveMusicPromptInput = z.object({
 /**
  * Persist a hand-edited music prompt WITHOUT regenerating the track (#1108
  * Phase 4 — "editable after the track exists"). Appends a `user-edit`
- * `sequence_music_prompt_versions` row and mirrors it onto
- * `sequences.musicPrompt`/`musicTags` (the scoped write does both). A
+ * `sequence_music_prompt_versions` row and selects it (the scoped write does
+ * both). A
  * user-edit carries no upstream hash, so music-prompt staleness reads
  * 'untracked' until the next AI regeneration — never falsely fresh or stale.
  * The existing track keeps playing; whether it matches the new prompt is the
@@ -547,6 +548,7 @@ export const regenerateMusicPromptFn = createServerFn({ method: 'POST' })
         // Provenance snapshotted here: a prompt already on the sequence makes
         // this a regeneration.
         promptSource: sequence.musicPrompt ? 'regenerated' : 'ai-generated',
+        musicModel: safeAudioModel(sequence.musicModel),
       },
       {
         // Dedup by the live input hash so a retry of the same upstream context

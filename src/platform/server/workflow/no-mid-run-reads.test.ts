@@ -517,11 +517,6 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       bucket: 'BILLING-GUARD',
       why: 'Same guard: a segment already rendering is producing the fix.',
     },
-    {
-      read: 'sequences.getById',
-      bucket: 'BILLING-GUARD',
-      why: 'The music twin: musicPromptInputHash / musicStatus are the only in-flight signal, since music has no claim rows either.',
-    },
   ],
   'upscale-shot-variant-workflow.ts': [
     {

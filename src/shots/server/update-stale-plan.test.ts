@@ -179,7 +179,7 @@ function buildScopedDb(
     visualPrompts?: Map<string, { text: string }>;
     motionPrompts?: Map<string, { text: string }>;
     sequence?: Record<string, unknown>;
-    /** The completed primary `sequence_music_variants` row, if any (#1657). */
+    /** The selected `sequence_music_variants` row, if any (#1657, #1115). */
     musicPrimary?: Record<string, unknown>;
   } = {}
 ): ScopedDb {
@@ -253,10 +253,10 @@ function buildScopedDb(
       listBySequence: () => Promise.resolve(opts.video?.versions ?? []),
     },
     sequenceMusicPromptVersions: {
-      getLatest: () => Promise.resolve(null),
+      getSelected: () => Promise.resolve(null),
     },
     sequenceVariants: {
-      getMusicPrimary: () => Promise.resolve(opts.musicPrimary ?? null),
+      getMusicById: () => Promise.resolve(opts.musicPrimary ?? null),
     },
     shotSpecVersions: {
       getSelectedByShotIds: () => Promise.resolve(new Map()),

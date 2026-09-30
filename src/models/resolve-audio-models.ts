@@ -7,8 +7,8 @@ import { DEFAULT_MUSIC_MODEL, type AudioModel } from './models';
  * Guarantees a non-empty, deduplicated result. Mirrors
  * {@link resolveImageModels} / {@link resolveVideoModels}. Audio is generated
  * per-sequence (one track per model in `sequence_music_variants`), so the
- * first element is the primary whose track also lands on the live
- * `sequences.music*` columns; the rest are alternates.
+ * first element is the primary whose track takes the sequence's music
+ * pointer (#1115); the rest are alternates.
  */
 export function resolveAudioModels(
   audioModels: AudioModel[] | undefined,

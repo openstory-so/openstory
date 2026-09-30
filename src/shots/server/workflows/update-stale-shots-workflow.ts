@@ -47,9 +47,13 @@
  * are skipped, not rendered from stale inputs.
  */
 
-import { supportsDraftMode, type TextToImageModel } from '@/models/models';
+import {
+  DEFAULT_MUSIC_MODEL,
+  supportsDraftMode,
+  type AudioModel,
+  type TextToImageModel,
+} from '@/models/models';
 import { DRAFT_RESOLUTION } from '@/motion/draft-mode';
-import { musicPromptInputHashMatches } from '@/shots/input-hash';
 import { resolveVideoModel } from '@/models/resolve-asset-models';
 import type { Scene } from '@/shots/scene-analysis.schema';
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
@@ -1656,58 +1660,64 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
     // ============================================================
     const runMusic = musicToRun
       ? async (music: MusicPlan): Promise<void> => {
+          // Model stays the workflow default unless the plan chose models —
+          // parity with the manual regenerate path. audioModels[0] is primary.
+          const models: (AudioModel | undefined)[] = [
+            ...new Set(
+              plan.renderOptions?.audioModels?.length
+                ? plan.renderOptions.audioModels
+                : [undefined]
+            ),
+          ];
+          const primaryModel = models[0] ?? DEFAULT_MUSIC_MODEL;
+
+          // The track's row and claim come first (#1130), and only while no
+          // other primary track run holds the claim: a concurrent run or a
+          // manual regenerate already producing the fix wins, and this run
+          // makes neither the prompt nor the track — no double bill. Replaces
+          // the live `musicStatus` / `musicPromptInputHash` guards (#1115).
+          let trackVariantId: string | null = null;
+          if (music.regenTrack) {
+            trackVariantId = await step.do('claim-music-track', async () =>
+              scopedDb.sequenceVariants.claimMusic({
+                sequenceId,
+                model: primaryModel,
+                prompt: music.prompt,
+                tags: music.tags,
+                durationSeconds: music.durationSeconds,
+                isPrimary: true,
+                workflowRunId: null,
+                ifPendingIs: null,
+              })
+            );
+            if (trackVariantId === null) {
+              logger.info(
+                `[UpdateStaleShotsWorkflow] music track for ${sequenceId} already rendering elsewhere; skipping`
+              );
+              return;
+            }
+          }
+          const claimedTrack = trackVariantId;
+          const failTrackClaim = async (error: unknown) => {
+            if (!claimedTrack) return;
+            await step.do('fail-music-track-claim', async () => {
+              await scopedDb.sequenceVariants.failMusicClaim(
+                { sequenceId, variantId: claimedTrack },
+                error instanceof Error ? error.message : String(error)
+              );
+            });
+          };
+
           // What the prompt child actually produced — the track renders from
-          // this rather than from the sequence mirror the child happened to
-          // write, which a concurrent regenerate can overwrite in between.
+          // this rather than from the selected prompt, which a concurrent
+          // regenerate can move in between.
           let regeneratedPrompt: { prompt: string; tags: string } | null = null;
           if (music.regenPrompt) {
+            // ponytail: a prompt-only regeneration has no claim to guard it,
+            // so two concurrent runs can both call the LLM; the hash unique
+            // index keeps the version write idempotent. Claim the prompt if
+            // the duplicate spend ever matters.
             try {
-              const musicPromptInputJson = await step.do(
-                'prepare-music-prompt',
-                async (): Promise<string | null> => {
-                  // Live only for the guard (music has no claim rows): if the
-                  // stored hash caught up with the plan's inputs meanwhile, a
-                  // concurrent run or manual regenerate already produced this
-                  // prompt — skip quietly and let that run own the cascade.
-                  const sequence =
-                    await scopedDb.liveRead.sequences.getById(sequenceId);
-                  if (!sequence) {
-                    throw new NonRetryableError(
-                      `Sequence ${sequenceId} disappeared mid-update`,
-                      'WorkflowValidationError'
-                    );
-                  }
-                  if (
-                    await musicPromptInputHashMatches(
-                      sequence.musicPromptInputHash,
-                      {
-                        sceneSummaries: music.sceneSummaries,
-                        analysisModel: music.analysisModelId,
-                      },
-                      // A writer that caught up since the plan stamped the
-                      // current shape; no legacy digest can mean "caught up".
-                      []
-                    )
-                  )
-                    return null;
-                  const payload: MusicPromptWorkflowInput = {
-                    userId,
-                    teamId,
-                    sequenceId,
-                    sceneSummaries: music.sceneSummaries,
-                    analysisModelId: music.analysisModelId,
-                    promptSource: music.promptSource,
-                    reservationId: input.reservationId,
-                  };
-                  return JSON.stringify(payload);
-                }
-              );
-              if (musicPromptInputJson === null) {
-                logger.info(
-                  `[UpdateStaleShotsWorkflow] music prompt for ${sequenceId} already regenerated elsewhere; skipping`
-                );
-                return;
-              }
               const musicDesign = await spawnAndAwaitChild<
                 MusicPromptWorkflowInput,
                 MusicPromptWorkflowResult
@@ -1716,10 +1726,17 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                 parentBindingName: PARENT_BINDING_NAME,
                 parentInstanceId,
                 childId: `music-prompt:${sequenceId}`,
-                // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the step above serialized exactly this type
-                childPayload: JSON.parse(
-                  musicPromptInputJson
-                ) as MusicPromptWorkflowInput,
+                childPayload: {
+                  userId,
+                  teamId,
+                  sequenceId,
+                  sceneSummaries: music.sceneSummaries,
+                  analysisModelId: music.analysisModelId,
+                  promptSource: music.promptSource,
+                  reservationId: input.reservationId,
+                  musicModel: primaryModel,
+                  ...(claimedTrack ? { musicVariantId: claimedTrack } : {}),
+                },
                 spawnStepName: 'spawn-music-prompt',
                 awaitStepName: 'await-music-prompt',
               });
@@ -1740,69 +1757,24 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                   stage: 'music',
                   error: 'Upstream music prompt failed — track not regenerated',
                 });
+                await failTrackClaim(error);
               }
               return;
             }
           }
 
-          if (!music.regenTrack) return;
+          if (!claimedTrack) return;
           try {
-            const musicInputJson = await step.do(
-              'prepare-music-track',
-              async (): Promise<string | null> => {
-                // Live only for the guard: a concurrent run or manual
-                // regenerate already has a track render in flight — it is
-                // producing the fix, don't double-bill.
-                const sequence =
-                  await scopedDb.liveRead.sequences.getById(sequenceId);
-                if (!sequence) {
-                  throw new NonRetryableError(
-                    `Sequence ${sequenceId} disappeared mid-update`,
-                    'WorkflowValidationError'
-                  );
-                }
-                if (sequence.musicStatus === 'generating') return null;
-                // A track stale on its OWN hash (#1657) renders from the
-                // prompt frozen in the plan — there was no prompt child
-                // to take it from.
-                const prompt = regeneratedPrompt?.prompt ?? music.prompt;
-                const tags = regeneratedPrompt?.tags ?? music.tags;
-                if (!prompt || !tags) {
-                  throw new NonRetryableError(
-                    'Sequence has no music prompt to regenerate from',
-                    'WorkflowValidationError'
-                  );
-                }
-                // Model stays the workflow default — parity with the manual
-                // regenerate path.
-                const payload: MusicWorkflowInput = {
-                  userId,
-                  teamId,
-                  sequenceId,
-                  prompt,
-                  tags,
-                  duration: music.durationSeconds,
-                  isPrimary: true,
-                  reservationId: input.reservationId,
-                };
-                return JSON.stringify(payload);
-              }
-            );
-            if (musicInputJson === null) {
-              logger.info(
-                `[UpdateStaleShotsWorkflow] music track for ${sequenceId} already rendering elsewhere; skipping`
+            // A track stale on its OWN hash (#1657) renders from the prompt
+            // frozen in the plan — there was no prompt child to take it from.
+            const prompt = regeneratedPrompt?.prompt ?? music.prompt;
+            const tags = regeneratedPrompt?.tags ?? music.tags;
+            if (!prompt || !tags) {
+              throw new NonRetryableError(
+                'Sequence has no music prompt to regenerate from',
+                'WorkflowValidationError'
               );
-              return;
             }
-            // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the durable step serialized this exact payload
-            const musicInput = JSON.parse(musicInputJson) as MusicWorkflowInput;
-            const models = [
-              ...new Set(
-                plan.renderOptions?.audioModels?.length
-                  ? plan.renderOptions.audioModels
-                  : [musicInput.model]
-              ),
-            ];
             await Promise.all(
               models.map(async (model, index) => {
                 const suffix = index > 0 ? `-${model}` : '';
@@ -1812,9 +1784,18 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                   parentInstanceId,
                   childId: `music:${sequenceId}${suffix}`,
                   childPayload: {
-                    ...musicInput,
+                    userId,
+                    teamId,
+                    sequenceId,
+                    prompt,
+                    tags,
+                    duration: music.durationSeconds,
                     model,
                     isPrimary: index === 0,
+                    // The primary renders into the row claimed above; the
+                    // other models open their own.
+                    ...(index === 0 ? { variantId: claimedTrack } : {}),
+                    reservationId: input.reservationId,
                   },
                   spawnStepName: `spawn-music-track${suffix}`,
                   awaitStepName: `await-music-track${suffix}`,
@@ -1824,6 +1805,9 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             );
           } catch (error) {
             failures.push(toFailure(sequenceId, 'music', error));
+            // A child that ran failed its own row; this covers one that never
+            // started. Only a still-pending row is touched.
+            await failTrackClaim(error);
           }
         }
       : null;

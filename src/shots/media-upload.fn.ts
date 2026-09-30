@@ -564,19 +564,13 @@ const setSequenceMusicFromUploadInput = z.object({
 });
 
 /**
- * Finalize an uploaded audio file as the sequence's score: write it into the
- * `user-upload` primary slot of `sequence_music_variants` and copy it onto
- * `sequences.music*` via the existing non-destructive `setMusicFromVariant`
- * path, so generated tracks stay switchable alongside it.
+ * Finalize an uploaded audio file as the sequence's score: append it as a
+ * completed `user-upload` track and point the sequence at it (#1115), so
+ * generated tracks stay switchable alongside it. Tracks are append-only, so
+ * an earlier upload stays a row of its own — never a silent delete.
  *
- * Every upload shares the one `user-upload` slot, so the previous upload is
- * RETIRED (not overwritten) first — it stays in the alternates list where
- * Promote restores it. Versions are append-only; a second upload must not be a
- * silent delete of the first.
- *
- * `inputHash` is deliberately null (§4.4 "untracked" escape hatch): nothing
- * verifies track-level music staleness today, and the user chose this exact
- * track — a prompt edit should not push regeneration over it.
+ * `inputHash` is deliberately null (§4.4 "untracked" escape hatch): the user
+ * chose this exact track — a prompt edit should not push regeneration over it.
  */
 export const setSequenceMusicFromUploadFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
@@ -590,26 +584,17 @@ export const setSequenceMusicFromUploadFn = createServerFn({ method: 'POST' })
       teamId
     );
 
-    const retired = await scopedDb.sequenceVariants.retireMusicPrimary(
-      sequence.id,
-      USER_UPLOAD_MODEL
-    );
-    const variant = await scopedDb.sequenceVariants.upsertMusicPrimary({
+    const variant = await scopedDb.sequenceVariants.appendUploadedMusic({
       sequenceId: sequence.id,
       model: USER_UPLOAD_MODEL,
       url: data.publicUrl,
       storagePath,
-      prompt: sequence.musicPrompt ?? null,
-      tags: sequence.musicTags ?? null,
+      prompt: sequence.musicPrompt,
+      tags: sequence.musicTags,
       durationSeconds: data.durationSeconds ?? null,
-      status: 'completed',
-      generatedAt: new Date(),
-      error: null,
-      inputHash: null,
     });
-    const withMusicSet = await scopedDb.sequenceVariants.setMusicFromVariant(
-      variant.id
-    );
+    const withMusicSet = await scopedDb.sequences.getById(sequence.id);
+    if (!withMusicSet) throw new Error('Sequence not found');
     // An uploaded score the sequence then excludes from the mix is a dead end
     // the user gets no feedback about — choosing a track IS opting in.
     const updatedSequence = withMusicSet.includeMusic
@@ -625,7 +610,7 @@ export const setSequenceMusicFromUploadFn = createServerFn({ method: 'POST' })
       targetType: 'sequence',
       targetId: sequence.id,
       summary: 'Uploaded music track',
-      data: { variantId: variant.id, retiredVariantId: retired?.id ?? null },
+      data: { variantId: variant.id },
     });
 
     try {

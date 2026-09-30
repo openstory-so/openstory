@@ -229,7 +229,7 @@ describe('buildAddAudioMusicInput (#547)', () => {
       model: 'elevenlabs_music',
     });
     // The regression guard: the music workflow defaults isPrimary to true, which
-    // would clobber the live sequences.music* columns on success AND failure.
+    // would repoint the sequence's track on success and fail its music on failure.
     expect(input.isPrimary).toBe(false);
   });
 

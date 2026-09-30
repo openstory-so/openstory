@@ -8,6 +8,7 @@
 import type { Scene } from '@/shots/scene-analysis.schema';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { reinforceInstrumentalTags } from '@/audio/server/music-prompt';
+import { DEFAULT_MUSIC_MODEL } from '@/models/models';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
 import type {
@@ -60,6 +61,10 @@ export class MotionMusicPromptsWorkflow extends OpenStoryWorkflowEntrypoint<Moti
         sceneSummaries,
         analysisModelId,
         promptSource: input.musicPromptSource,
+        // Nothing spawns this workflow any more (drain path, #1923) and its
+        // payload carries no audio model; a failure is recorded against the
+        // default one.
+        musicModel: DEFAULT_MUSIC_MODEL,
       },
       spawnStepName: 'spawn-music-prompt',
       awaitStepName: 'await-music-prompt',

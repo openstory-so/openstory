@@ -1,8 +1,6 @@
 /**
- * Schema-level acceptance tests for the partial-index split on
- * `sequence_music_variants`, plus the divergence routing in `writeMusicVariant`
- * (the contract that keeps a re-run with a different `inputHash` from silently
- * replacing the previous primary).
+ * The music claim lifecycle on `sequence_music_variants` (#1115, #1130) and
+ * the read projection it drives, against a migrated in-memory libSQL.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -22,6 +20,7 @@ import {
 import { relations } from '@/platform/server/db/schema/relations';
 import type { Database } from '@/platform/server/db/client';
 import { createSequenceVariantsMethods } from './sequence-variants';
+import { selectSequencesFrom } from '@/sequences/server/db/sequences';
 
 let client: Client;
 let db: Database;
@@ -81,199 +80,261 @@ beforeEach(async () => {
   await seed();
 });
 
-describe('createSequenceVariantsMethods — music', () => {
-  it('writeMusicVariant forks to divergent on hash mismatch', async () => {
-    const methods = createSequenceVariantsMethods(db);
-    await methods.writeMusicVariant({
-      sequenceId,
-      url: 'https://example.com/m1.mp3',
-      storagePath: null,
-      prompt: 'p',
-      tags: 't',
-      durationSeconds: 60,
-      model: 'cassette',
-      status: 'completed',
-      generatedAt: new Date(),
-      error: null,
-      inputHash: sequenceMusicInputHash('m-hash-1'),
-    });
-    const second = await methods.writeMusicVariant({
-      sequenceId,
-      url: 'https://example.com/m2.mp3',
-      storagePath: null,
-      prompt: 'p2',
-      tags: 't2',
-      durationSeconds: 90,
-      model: 'cassette',
-      status: 'completed',
-      generatedAt: new Date(),
-      error: null,
-      inputHash: sequenceMusicInputHash('m-hash-2'),
-    });
-    expect(second.divergent).toBe(true);
-
-    const primary = await methods.getMusicPrimary(sequenceId, 'cassette');
-    expect(primary?.url).toBe('https://example.com/m1.mp3');
-  });
-
-  it('promoteMusicVariant copies prompt/tags/url onto sequences.music* AND soft-deletes the source row in one batch', async () => {
-    const methods = createSequenceVariantsMethods(db);
-    // Seed a divergent alternate via the divergence-routing path so the
-    // variant has divergedAt set — then promote it.
-    await methods.upsertMusicPrimary({
-      sequenceId,
-      url: 'https://example.com/old.mp3',
-      storagePath: null,
-      prompt: 'old',
-      tags: 'old',
-      durationSeconds: 60,
-      model: 'cassette',
-      status: 'completed',
-      generatedAt: new Date('2026-04-01T00:00:00Z'),
-      error: null,
-      inputHash: 'old-hash',
-    });
-    const divergent = await methods.insertDivergentMusic({
-      sequenceId,
-      url: 'https://example.com/m.mp3',
-      storagePath: '/p/m.mp3',
-      prompt: 'jazzy',
-      tags: 'lofi',
-      durationSeconds: 60,
-      model: 'cassette',
-      status: 'completed',
-      generatedAt: new Date('2026-04-29T00:00:00Z'),
-      error: null,
-      inputHash: sequenceMusicInputHash('new-hash'),
-      divergedAt: new Date('2026-04-29T00:00:00Z'),
-    });
-
-    const { discardedAt } = await methods.promoteMusicVariant(divergent.id);
-
-    const rows = await db.select().from(sequences);
-    const updated = rows.find((s) => s.id === sequenceId);
-    expect(updated).toBeDefined();
-    expect(updated?.musicUrl).toBe('https://example.com/m.mp3');
-    expect(updated?.musicPrompt).toBe('jazzy');
-    expect(updated?.musicModel).toBe('cassette');
-    expect(updated?.musicStatus).toBe('completed');
-
-    // Atomic-promote leg: source row must be soft-deleted in the same batch.
-    // SQLite stores timestamps at second resolution.
-    const variantRow = await methods.getMusicById(divergent.id);
-    expect(variantRow?.discardedAt).not.toBeNull();
-    expect(Math.floor((variantRow?.discardedAt?.getTime() ?? 0) / 1000)).toBe(
-      Math.floor(discardedAt.getTime() / 1000)
-    );
-    const stillDivergent = await methods.listDivergentMusic(sequenceId);
-    expect(stillDivergent).toHaveLength(0);
-  });
-
-  it('promoteMusicVariant throws when the variant id does not exist', async () => {
-    const methods = createSequenceVariantsMethods(db);
-    let error: Error | null = null;
-    try {
-      await methods.promoteMusicVariant(generateId());
-    } catch (e) {
-      if (!(e instanceof Error)) throw e;
-      error = e;
-    }
-    expect(error?.message).toMatch(/not found/);
-  });
-
-  it('insertDivergentMusic idempotent on retry', async () => {
-    const methods = createSequenceVariantsMethods(db);
-    await methods.upsertMusicPrimary({
-      sequenceId,
-      url: 'https://example.com/p.mp3',
-      storagePath: null,
-      prompt: 'p',
-      tags: 't',
-      durationSeconds: 60,
-      model: 'cassette',
-      status: 'completed',
-      generatedAt: new Date(),
-      error: null,
-      inputHash: 'p-hash',
-    });
-    const divergedAt = new Date('2026-04-29T00:00:00Z');
-    const first = await methods.insertDivergentMusic({
-      sequenceId,
-      url: 'https://example.com/d.mp3',
-      storagePath: null,
-      prompt: 'd',
-      tags: 't',
-      durationSeconds: 60,
-      model: 'cassette',
-      status: 'completed',
-      generatedAt: new Date(),
-      error: null,
-      inputHash: sequenceMusicInputHash('d-hash'),
-      divergedAt,
-    });
-    const second = await methods.insertDivergentMusic({
-      sequenceId,
-      url: 'https://example.com/d.mp3',
-      storagePath: null,
-      prompt: 'd',
-      tags: 't',
-      durationSeconds: 60,
-      model: 'cassette',
-      status: 'completed',
-      generatedAt: new Date(),
-      error: null,
-      inputHash: sequenceMusicInputHash('d-hash'),
-      divergedAt,
-    });
-    expect(second.id).toBe(first.id);
-  });
+const track = {
+  model: 'cassette',
+  prompt: 'p',
+  tags: 't',
+  durationSeconds: 30,
+};
+const landing = (url: string) => ({
+  sequenceId,
+  url,
+  storagePath: url.replace('/r2/audio/', ''),
+  durationSeconds: 30,
+  inputHash: sequenceMusicInputHash('h'),
 });
+const readSequence = async () => {
+  const [row] = await selectSequencesFrom(db).where(
+    eq(sequences.id, sequenceId)
+  );
+  if (!row) throw new Error('sequence missing');
+  return row;
+};
 
-describe('createSequenceVariantsMethods — markMusicFailed (#547)', () => {
-  it('flips a pre-stamped pending variant row to failed', async () => {
+describe('music claim lifecycle (#1115)', () => {
+  it('claim → complete moves the pointer, consumes the claim, and projects the track', async () => {
     const methods = createSequenceVariantsMethods(db);
-    await methods.upsertMusicPrimary({
+    const id = await methods.claimMusic({
       sequenceId,
-      model: 'cassette',
-      prompt: 'p',
-      tags: 't',
-      durationSeconds: 60,
-      status: 'pending',
+      ...track,
+      isPrimary: true,
+      workflowRunId: 'run-1',
     });
+    if (!id) throw new Error('claim returned null');
+    expect((await readSequence()).musicStatus).toBe('generating');
 
-    await methods.markMusicFailed(sequenceId, 'cassette', 'boom');
+    const landed = await methods.completeMusicClaim(
+      id,
+      landing('/r2/audio/a.mp3')
+    );
+    expect(landed.status).toBe('completed');
+    expect(landed.divergedAt).toBeNull();
 
-    const row = await methods.getMusicPrimary(sequenceId, 'cassette');
-    expect(row?.status).toBe('failed');
-    expect(row?.error).toBe('boom');
+    const seq = await readSequence();
+    expect(seq.selectedMusicVariantId).toBe(id);
+    expect(seq.pendingPromoteMusicVariantId).toBeNull();
+    expect(seq.musicStatus).toBe('completed');
+    expect(seq.musicUrl).toBe('/r2/audio/a.mp3');
+    expect(seq.musicPath).toBe('a.mp3');
   });
 
-  it('is update-only — never inserts a row for a model that has none', async () => {
+  it('a replayed completion changes nothing', async () => {
     const methods = createSequenceVariantsMethods(db);
+    const id = await methods.claimMusic({
+      sequenceId,
+      ...track,
+      isPrimary: true,
+      workflowRunId: null,
+    });
+    if (!id) throw new Error('claim returned null');
+    const first = await methods.completeMusicClaim(
+      id,
+      landing('/r2/audio/a.mp3')
+    );
+    const again = await methods.completeMusicClaim(
+      id,
+      landing('/r2/audio/b.mp3')
+    );
+    expect(again).toEqual(first);
+    expect((await readSequence()).musicUrl).toBe('/r2/audio/a.mp3');
+  });
 
-    await methods.markMusicFailed(sequenceId, 'cassette', 'boom');
+  it('a run whose claim a newer kickoff took lands parked, pointer untouched', async () => {
+    const methods = createSequenceVariantsMethods(db);
+    const older = await methods.claimMusic({
+      sequenceId,
+      ...track,
+      isPrimary: true,
+      workflowRunId: null,
+    });
+    const newer = await methods.claimMusic({
+      sequenceId,
+      ...track,
+      isPrimary: true,
+      workflowRunId: null,
+    });
+    if (!older || !newer) throw new Error('claim returned null');
 
+    const parked = await methods.completeMusicClaim(
+      older,
+      landing('/r2/audio/old.mp3')
+    );
+    expect(parked.divergedAt).not.toBeNull();
+    let seq = await readSequence();
+    expect(seq.selectedMusicVariantId).toBeNull();
+    expect(seq.pendingPromoteMusicVariantId).toBe(newer);
+    expect(seq.musicStatus).toBe('generating');
+
+    await methods.completeMusicClaim(newer, landing('/r2/audio/new.mp3'));
+    seq = await readSequence();
+    expect(seq.selectedMusicVariantId).toBe(newer);
+    expect(seq.musicUrl).toBe('/r2/audio/new.mp3');
+    expect(
+      (await methods.listDivergentMusic(sequenceId)).map((v) => v.id)
+    ).toEqual([older]);
+  });
+
+  it('ifPendingIs: null takes the claim only while no run holds it', async () => {
+    const methods = createSequenceVariantsMethods(db);
+    const first = await methods.claimMusic({
+      sequenceId,
+      ...track,
+      isPrimary: true,
+      workflowRunId: null,
+      ifPendingIs: null,
+    });
+    const busy = await methods.claimMusic({
+      sequenceId,
+      ...track,
+      isPrimary: true,
+      workflowRunId: null,
+      ifPendingIs: null,
+    });
+    expect(first).not.toBeNull();
+    expect(busy).toBeNull();
+    // A lost compare-and-swap opens no row.
+    expect(await methods.listMusicBySequence(sequenceId)).toHaveLength(1);
+  });
+
+  it('failure fails the row and clears only its own claim', async () => {
+    const methods = createSequenceVariantsMethods(db);
+    const older = await methods.claimMusic({
+      sequenceId,
+      ...track,
+      isPrimary: true,
+      workflowRunId: 'run-old',
+    });
+    const newer = await methods.claimMusic({
+      sequenceId,
+      ...track,
+      isPrimary: true,
+      workflowRunId: 'run-new',
+    });
+    if (!older || !newer) throw new Error('claim returned null');
+
+    await methods.failMusicClaim({ sequenceId, workflowRunId: 'run-old' }, 'x');
+    expect((await methods.getMusicById(older))?.status).toBe('failed');
+    expect((await readSequence()).pendingPromoteMusicVariantId).toBe(newer);
+
+    await methods.failMusicClaim({ sequenceId, variantId: newer }, 'boom');
+    const seq = await readSequence();
+    expect(seq.pendingPromoteMusicVariantId).toBeNull();
+    expect(seq.musicStatus).toBe('failed');
+    expect(seq.musicError).toBe('boom');
+  });
+
+  it('failure with no row of the run records one when asked', async () => {
+    const methods = createSequenceVariantsMethods(db);
+    await methods.failMusicClaim(
+      { sequenceId, workflowRunId: 'dead', recordIfMissing: { model: 'x' } },
+      'died early'
+    );
     const rows = await methods.listMusicBySequence(sequenceId);
-    expect(rows).toHaveLength(0);
+    expect(rows.map((r) => [r.status, r.error, r.isPrimary])).toEqual([
+      ['failed', 'died early', true],
+    ]);
+    // A completed row of the run is never overwritten nor duplicated.
+    const id = await methods.claimMusic({
+      sequenceId,
+      ...track,
+      isPrimary: true,
+      workflowRunId: 'done',
+    });
+    if (!id) throw new Error('claim returned null');
+    await methods.completeMusicClaim(id, landing('/r2/audio/a.mp3'));
+    await methods.failMusicClaim(
+      { sequenceId, workflowRunId: 'done', recordIfMissing: { model: 'x' } },
+      'late'
+    );
+    expect((await methods.getMusicById(id))?.status).toBe('completed');
+    expect(await methods.listMusicBySequence(sequenceId)).toHaveLength(2);
   });
 
-  it('never overwrites a completed alternate', async () => {
+  it('an added model opens its row with no claim and never touches the sequence', async () => {
     const methods = createSequenceVariantsMethods(db);
-    await methods.upsertMusicPrimary({
+    const id = await methods.claimMusic({
       sequenceId,
-      model: 'cassette',
-      url: 'https://example.com/done.mp3',
-      prompt: 'p',
-      tags: 't',
-      durationSeconds: 60,
-      status: 'completed',
+      ...track,
+      model: 'other',
+      isPrimary: false,
+      workflowRunId: null,
     });
+    if (!id) throw new Error('claim returned null');
+    expect((await readSequence()).musicStatus).toBe('pending');
+    await methods.completeMusicClaim(id, landing('/r2/audio/o.mp3'));
+    const seq = await readSequence();
+    expect(seq.selectedMusicVariantId).toBeNull();
+    expect((await methods.getMusicById(id))?.divergedAt).toBeNull();
+    expect(await methods.listMusicModels(sequenceId)).toEqual(['other']);
+  });
 
-    await methods.markMusicFailed(sequenceId, 'cassette', 'boom');
+  it('selectMusic points at a finished track, un-parks it and clears the claim', async () => {
+    const methods = createSequenceVariantsMethods(db);
+    const older = await methods.claimMusic({
+      sequenceId,
+      ...track,
+      isPrimary: true,
+      workflowRunId: null,
+    });
+    const newer = await methods.claimMusic({
+      sequenceId,
+      ...track,
+      isPrimary: true,
+      workflowRunId: null,
+    });
+    if (!older || !newer) throw new Error('claim returned null');
+    await methods.completeMusicClaim(older, landing('/r2/audio/old.mp3'));
 
-    const row = await methods.getMusicPrimary(sequenceId, 'cassette');
-    expect(row?.status).toBe('completed');
-    expect(row?.error).toBeNull();
+    const seq = await methods.selectMusic(sequenceId, older);
+    expect(seq.selectedMusicVariantId).toBe(older);
+    expect(seq.pendingPromoteMusicVariantId).toBeNull();
+    expect((await methods.getMusicById(older))?.divergedAt).toBeNull();
+    // The in-flight run now lands parked (rule 4).
+    const late = await methods.completeMusicClaim(
+      newer,
+      landing('/r2/audio/new.mp3')
+    );
+    expect(late.divergedAt).not.toBeNull();
+    expect((await readSequence()).musicUrl).toBe('/r2/audio/old.mp3');
+
+    await expect(methods.selectMusic(sequenceId, generateId())).rejects.toThrow(
+      /not found/
+    );
+  });
+
+  it('an upload is a selected completed track; earlier uploads park as alternates', async () => {
+    const methods = createSequenceVariantsMethods(db);
+    const upload = (url: string) =>
+      methods.appendUploadedMusic({
+        sequenceId,
+        model: 'user-upload',
+        url,
+        storagePath: url,
+        prompt: null,
+        tags: null,
+        durationSeconds: null,
+      });
+    const first = await upload('/r2/audio/u1.mp3');
+    const second = await upload('/r2/audio/u2.mp3');
+    const seq = await readSequence();
+    expect(seq.selectedMusicVariantId).toBe(second.id);
+    expect(seq.musicStatus).toBe('completed');
+    expect((await methods.getMusicById(first.id))?.url).toBe(
+      '/r2/audio/u1.mp3'
+    );
+    expect(
+      (await methods.listDivergentMusic(sequenceId)).map((v) => v.id)
+    ).toEqual([first.id]);
   });
 });
 

@@ -21,6 +21,7 @@ import {
   shotVariants,
   shots,
   sequenceElements,
+  sequenceMusicVariants,
   sequences,
 } from '@/platform/server/db/schema';
 
@@ -35,7 +36,8 @@ type SchemaTable =
   | typeof shotPromptVersions
   | typeof frameVariants
   | typeof characterVoiceVersions
-  | typeof characters;
+  | typeof characters
+  | typeof sequenceMusicVariants;
 type SetPayload = Record<string, Date | string | null>;
 type UpdateCall = {
   table: SchemaTable;
@@ -129,21 +131,6 @@ beforeEach(() => {
 });
 
 describe('reconcileAllStuckJobs — blind-fail passes', () => {
-  test('sequences.music writes musicStatus=failed', async () => {
-    blindFailReturning = [{ id: 'seq_1' }];
-    const { reconcileAllStuckJobs } = await import('./reconcile-all');
-
-    const counts = await reconcileAllStuckJobs();
-
-    const musicUpdate = updateCalls.find(
-      (c) => c.table === sequences && 'musicStatus' in c.payload
-    );
-    expect(musicUpdate).toBeDefined();
-    expect(musicUpdate?.payload.musicStatus).toBe('failed');
-    expect(musicUpdate?.returning).toBe(true);
-    expect(counts['sequences.music']).toBe(1);
-  });
-
   test('sequence_elements.vision writes visionStatus=failed', async () => {
     blindFailReturning = [{ id: 'el_1' }];
     const { reconcileAllStuckJobs } = await import('./reconcile-all');
@@ -181,7 +168,7 @@ describe('reconcileAllStuckJobs — pass isolation', () => {
     // The first (now-throwing) pass is the frame image pass (#989 moved image
     // off shots onto frames/frame_variants).
     expect(counts['frames.image']).toBe(PASS_ERRORED);
-    expect(counts['sequences.music']).toBeGreaterThan(0);
+    expect(counts['sequence_music_variants.claims']).toBeGreaterThan(0);
     expect(counts['sequence_elements.vision']).toBeGreaterThan(0);
   });
 });
@@ -194,9 +181,10 @@ describe('reconcileAllStuckJobs — run-id-verified passes', () => {
     // video_variants.status (#1076) + 2 shot_variants + sequences.status (#989)
     // + generated_assets.status (#458) + the three pending-claim passes (#1085:
     // frame/shot prompt claims + image claims) + dialogue recording claims
-    // (#1657) + character voice husks (#1715). The old shots.video pass went
-    // with the shot's video columns — video_variants.status already swept it.
-    expect(limitArgs.filter((n) => n === 100)).toHaveLength(12);
+    // (#1657) + character voice husks (#1715) + music track rows (#1115). The
+    // old shots.video pass went with the shot's video columns —
+    // video_variants.status already swept it.
+    expect(limitArgs.filter((n) => n === 100)).toHaveLength(13);
   });
 
   test('in-flight instance (resolveRunState null) → no per-row update on verified tables', async () => {
@@ -206,8 +194,8 @@ describe('reconcileAllStuckJobs — run-id-verified passes', () => {
     await reconcileAllStuckJobs();
 
     const verifiedTables: SchemaTable[] = [shots, shotVariants, sequences];
-    const verifiedUpdates = updateCalls.filter(
-      (c) => verifiedTables.includes(c.table) && !('musicStatus' in c.payload) // sequences.music is blind-fail, not verified
+    const verifiedUpdates = updateCalls.filter((c) =>
+      verifiedTables.includes(c.table)
     );
     expect(verifiedUpdates).toHaveLength(0);
   });
@@ -220,8 +208,8 @@ describe('reconcileAllStuckJobs — run-id-verified passes', () => {
     await reconcileAllStuckJobs();
 
     const verifiedTables: SchemaTable[] = [shots, shotVariants, sequences];
-    const verifiedUpdates = updateCalls.filter(
-      (c) => verifiedTables.includes(c.table) && !('musicStatus' in c.payload) // sequences.music is blind-fail, not verified
+    const verifiedUpdates = updateCalls.filter((c) =>
+      verifiedTables.includes(c.table)
     );
     expect(verifiedUpdates).toHaveLength(0);
   });
@@ -475,5 +463,57 @@ describe('reconcileAllStuckJobs — character voice husks (#1715)', () => {
     );
     expect(pointerClear).toBeDefined();
     expect(counts['character_voice_versions.claims']).toBeGreaterThan(0);
+  });
+});
+
+describe('reconcileAllStuckJobs — music track rows (#1115)', () => {
+  test('dead instance → row failed and the sequence claim cleared', async () => {
+    stuckRows = [{ id: 'smv_1', runId: 'openstory-so_music_dead' }];
+    stuckSelectTable = sequenceMusicVariants;
+    runStateResult = 'completed';
+    const { reconcileAllStuckJobs } = await import('./reconcile-all');
+
+    const counts = await reconcileAllStuckJobs();
+
+    const rowFail = updateCalls.find(
+      (c) =>
+        c.table === sequenceMusicVariants &&
+        c.returning &&
+        c.payload.status === 'failed'
+    );
+    expect(rowFail?.payload.error).toMatch(/died before completing/);
+    const pointerClear = updateCalls.find(
+      (c) =>
+        c.table === sequences && c.payload.pendingPromoteMusicVariantId === null
+    );
+    expect(pointerClear).toBeDefined();
+    expect('updatedAt' in (pointerClear?.payload ?? {})).toBe(false);
+    expect(counts['sequence_music_variants.claims']).toBeGreaterThan(0);
+  });
+
+  test('in-flight instance → no row fail', async () => {
+    stuckRows = [{ id: 'smv_1', runId: 'openstory-so_music_running' }];
+    stuckSelectTable = sequenceMusicVariants;
+    const { reconcileAllStuckJobs } = await import('./reconcile-all');
+
+    const counts = await reconcileAllStuckJobs();
+
+    expect(counts['sequence_music_variants.claims']).toBe(0);
+  });
+
+  test('a row no run ever stamped blind-fails and clears the claim', async () => {
+    blindFailReturning = [{ id: 'smv_orphan' }];
+    const { reconcileAllStuckJobs } = await import('./reconcile-all');
+
+    const counts = await reconcileAllStuckJobs();
+
+    expect(
+      updateCalls.find(
+        (c) =>
+          c.table === sequences &&
+          c.payload.pendingPromoteMusicVariantId === null
+      )
+    ).toBeDefined();
+    expect(counts['sequence_music_variants.claims']).toBeGreaterThan(0);
   });
 });

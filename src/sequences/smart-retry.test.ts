@@ -130,6 +130,9 @@ function makeSequence(overrides: Partial<Sequence> = {}): Sequence {
     musicTags: null,
     musicPromptInputHash: null,
     includeMusic: true,
+    selectedMusicVariantId: null,
+    selectedMusicPromptVersionId: null,
+    pendingPromoteMusicVariantId: null,
     posterUrl: null,
     readyEmailSentAt: null,
     generationStopAt: 'images',
@@ -309,7 +312,7 @@ function makeContext(
   selectedModels: SelectedModels = {}
 ) {
   const updateStatus = vi.fn();
-  const updateMusicFields = vi.fn();
+  const claimMusic = vi.fn(async (): Promise<string | null> => 'music_row_1');
   const listBySequence = vi.fn(async () => shots);
   const ensureAnchorFrames = vi.fn(async () => {});
   // The source re-assembles each `ShotView` from these reads, so serve back the
@@ -405,7 +408,8 @@ function makeContext(
     // No shot dialogue rows: the retry reads the motion row's mirror (#1657).
     shotDialogue: { getSelectedBySequence: vi.fn(async () => []) },
     shotPromptVersions: { getSelectedMotionByShots },
-    sequence: vi.fn(() => ({ updateStatus, updateMusicFields })),
+    sequence: vi.fn(() => ({ updateStatus })),
+    sequenceVariants: { claimMusic, failMusicClaim: vi.fn(async () => {}) },
     teamManagement: {
       getMemberEmail: vi.fn(async () => 'owner@example.com'),
     },
@@ -418,7 +422,7 @@ function makeContext(
     updateStatus,
     listBySequence,
     listWithSheets,
-    updateMusicFields,
+    claimMusic,
     createReservation: stub.billing.createReservation,
   };
 }
@@ -440,7 +444,7 @@ describe('executeSmartRetry — music credits', () => {
   test('blocks native music for a fal BYOK team with insufficient credits', async () => {
     resetMocks();
     reserveRunCreditsMock.mockImplementation(realPreflight.reserveRunCredits);
-    const { context, createReservation, updateMusicFields } = makeContext(
+    const { context, createReservation, claimMusic } = makeContext(
       makeSequence({ musicStatus: 'failed', musicModel: 'elevenlabs_music' }),
       [makeShot({ videoStatus: 'completed' })]
     );
@@ -449,7 +453,7 @@ describe('executeSmartRetry — music credits', () => {
       'Insufficient credits to retry failed items'
     );
     expect(createReservation).toHaveBeenCalledTimes(1);
-    expect(updateMusicFields).not.toHaveBeenCalled();
+    expect(claimMusic).not.toHaveBeenCalled();
     expect(triggerWorkflowMock).not.toHaveBeenCalled();
   });
 
@@ -475,8 +479,32 @@ describe('executeSmartRetry — music credits', () => {
         model: 'elevenlabs_music',
         reservationId: 'res_music',
         ownsReservation: true,
+        variantId: 'music_row_1',
       })
     );
+  });
+
+  test('a retry that lost the music claim starts no run and frees its credits', async () => {
+    resetMocks();
+    reserveRunCreditsMock.mockResolvedValue('res_music');
+    const { context, claimMusic } = makeContext(
+      makeSequence({ musicStatus: 'failed', musicModel: 'elevenlabs_music' }),
+      [makeShot({ videoStatus: 'completed' })]
+    );
+    claimMusic.mockResolvedValue(null);
+    const zeroReservation = vi.fn(async () => {});
+    Object.assign(context.scopedDb.billing, { zeroReservation });
+
+    await executeSmartRetry(context);
+
+    expect(claimMusic).toHaveBeenCalledWith(
+      expect.objectContaining({ isPrimary: true, ifPendingIs: null })
+    );
+    expect(triggerWorkflowMock).not.toHaveBeenCalledWith(
+      '/music',
+      expect.anything()
+    );
+    expect(zeroReservation).toHaveBeenCalledWith('res_music');
   });
 
   test('keeps fal BYOK for ACE-Step and retries the model that was priced', async () => {

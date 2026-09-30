@@ -113,7 +113,7 @@ export function registerProductionReads(
     server,
     context,
     'get_sequence_music',
-    'Inspect current sequence music, enabled state, prompt, tags and generation result. Use list_versions kind music or music_prompt for histories; music selection is matched by output URL and model, not a stored version pointer.',
+    'Inspect current sequence music, enabled state, prompt, tags and generation result. Use list_versions kind music or music_prompt for histories; the selected track and prompt are the sequence version pointers.',
     sequenceInput,
     z.object({ music: musicReadSchema }),
     async (input, { scopedDb, origin }) => ({

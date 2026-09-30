@@ -857,7 +857,7 @@ export type RegenerateShotSnapshot = {
  * and `depth` are inputs to that computation and don't outlive it.
  *
  * Nothing downstream needs run-start freshness: the spawn-time guards (claim
- * hashes, in-flight checks, the music `musicPromptInputHash` re-check) already
+ * hashes, in-flight checks, the music claim) already
  * absorb drift that happens after plan time, so they absorb the trigger→start
  * gap on the same terms.
  */
@@ -1522,6 +1522,19 @@ export interface MusicPromptWorkflowInput extends SequenceWorkflowContext {
    * that predate it fall back to an in-workflow lookup.
    */
   promptSource?: 'ai-generated' | 'regenerated';
+
+  /**
+   * The audio model a failed prompt is recorded against (#1115): with no
+   * claim to fail, the failure lands as a failed primary track row, so the
+   * sequence reads `failed` rather than silently `pending`.
+   */
+  musicModel: string;
+
+  /**
+   * The track claim a parent took before this prompt (update-stale's
+   * regeneration). A failed prompt fails that row instead of recording one.
+   */
+  musicVariantId?: string;
 }
 
 export type MusicPromptWorkflowResult = z.infer<typeof musicDesignResultSchema>;
@@ -1539,13 +1552,18 @@ export interface MusicWorkflowInput extends SequenceWorkflowContext {
   /** Audio model to use */
   model?: keyof typeof AUDIO_MODELS;
   /**
-   * Whether this model owns the live `sequences.music*` columns (#546). In a
-   * multi-model fan-out only the primary (audioModels[0]) writes the shared
-   * sequence row + drives `musicStatus`; secondary models persist only their
-   * own `sequence_music_variants` row and emit model-scoped events. Defaults
-   * to true for single-model / legacy callers that don't set it.
+   * Whether this run's track may take the sequence's pointer (#546, #1115).
+   * In a multi-model fan-out only the primary (audioModels[0]) claims it and
+   * drives the music status; secondary models open their own row only.
+   * Defaults to true for single-model / legacy callers that don't set it.
    */
   isPrimary?: boolean;
+  /**
+   * The `sequence_music_variants` row the trigger opened with its claim
+   * (#1115). Absent when the run opens its own (a pipeline child, or a
+   * payload queued before the claim).
+   */
+  variantId?: string;
 }
 
 export interface MusicWorkflowResult {
@@ -1662,9 +1680,8 @@ export interface BatchMotionMusicWorkflowInput extends SequenceWorkflowContext {
   };
   /**
    * Audio models to generate for the sequence (#546). First is primary (its
-   * track also lands on the live `sequences.music*` columns); the rest are
-   * alternates stored as separate primary rows in `sequence_music_variants`
-   * keyed by (sequenceId, model). When absent, falls back to `music.model`
+   * track takes the sequence's music pointer through the claim, #1115); the
+   * rest land as their own `sequence_music_variants` rows. When absent, falls back to `music.model`
    * (single-model behaviour). Each model reuses `music.prompt/tags/duration`.
    */
   audioModels?: (keyof typeof AUDIO_MODELS)[];

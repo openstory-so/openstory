@@ -178,11 +178,10 @@ type WorkflowLiveReads = Pick<ScopedDb, 'teamId' | 'userId'> & {
   /** `listWithReferences`: live bibles for a re-render. */
   sequenceLocations: Pick<ScopedDb['sequenceLocations'], 'listWithReferences'>;
   /**
-   * Existence guards, the music spawn-time billing guards (music has no claim
-   * rows), and the ready-email title (#1453) — scene-split writes it mid-run,
-   * so the trigger snapshot only ever holds the placeholder.
+   * The ready-email title (#1453) — scene-split writes it mid-run, so the
+   * trigger snapshot only ever holds the placeholder.
    */
-  sequences: Pick<ScopedDb['sequences'], 'getById' | 'getForUser'>;
+  sequences: Pick<ScopedDb['sequences'], 'getForUser'>;
   /**
    * Existence guards, plus the ready-email clip/duration line (#1276) —
    * those numbers are this run's own writes, not knowable at the trigger.

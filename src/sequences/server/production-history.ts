@@ -429,10 +429,7 @@ const VERSION_KINDS = {
       const row = await db.sequenceVariants.getMusicById(id);
       return row?.sequenceId === sequence.id ? row : null;
     },
-    selected: (row, sequence) =>
-      row.url !== null &&
-      row.url === sequence.musicUrl &&
-      row.model === sequence.musicModel,
+    selected: (row, sequence) => row.id === sequence.selectedMusicVariantId,
     schema: sequenceMusicVariantsReadSchema,
   }),
   visual_prompt: versionKind({
@@ -462,7 +459,7 @@ const VERSION_KINDS = {
     get: (db, sequence, id) =>
       db.sequenceMusicPromptVersions.getByIdForSequence(id, sequence.id),
     selected: (row, sequence) =>
-      row.prompt === sequence.musicPrompt && row.tags === sequence.musicTags,
+      row.id === sequence.selectedMusicPromptVersionId,
     schema: sequenceMusicPromptVersionsReadSchema,
   }),
   scene_script: versionKind({
