@@ -1,4 +1,4 @@
-import { ActionCost } from '@/billing/ui/action-cost';
+import { InButtonCost } from '@/billing/ui/action-cost';
 import { ImageModelSelector } from '@/models/ui/pickers/image-model-selector';
 import { UploadMediaButton } from '@/shots/ui/upload-media-button';
 import { SheetComparisonDialog } from '@/cast/ui/sheets/sheet-comparison-dialog';
@@ -538,11 +538,11 @@ export const LocationDetailView: React.FC<LocationDetailViewProps> = ({
                 Used for this location's reference. Shot stills still follow the
                 sequence image model.
               </p>
-              <div className="flex w-fit flex-col gap-1">
-                <Button
-                  onClick={handleRegenerateSheet}
-                  disabled={regenerateSheet.isPending}
-                >
+              <Button
+                onClick={handleRegenerateSheet}
+                disabled={regenerateSheet.isPending}
+              >
+                <InButtonCost estimate={sheetCostEstimate}>
                   {regenerateSheet.isPending ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   ) : (
@@ -557,9 +557,8 @@ export const LocationDetailView: React.FC<LocationDetailViewProps> = ({
                         ? 'Generate again'
                         : 'Regenerate Reference'
                       : 'Generate Reference'}
-                </Button>
-                <ActionCost estimate={sheetCostEstimate} />
-              </div>
+                </InButtonCost>
+              </Button>
 
               <div className="flex flex-wrap gap-2">
                 <Button

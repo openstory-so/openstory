@@ -178,6 +178,7 @@ export const estimateGenerationSliceFn = createServerFn({ method: 'GET' })
             generateVoices: data.generateVoices,
           },
           stopAt: data.stopAt,
+          plan,
         })
       ),
       generateStartFrames: data.generateStartFrames,

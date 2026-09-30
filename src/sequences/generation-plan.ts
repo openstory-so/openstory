@@ -539,8 +539,10 @@ export function updateAllUnits(
 /**
  * Going back never redoes finished work (#1780 §3): a switch turned on stops
  * the run at its own step — Voices at Dialogue, Start frames at Images (the
- * later of the two when both). Clips rendered from the old inputs then read
- * stale, for Update all to re-render with its cost shown.
+ * later of the two when both) — when something past that step already exists
+ * (done or stale). With nothing later made, the thumb can still run on to
+ * Motion. Clips rendered from the old inputs then read stale, for Update all
+ * to re-render with its cost shown.
  */
 type PlanSwitches = { generateStartFrames: boolean; generateVoices: boolean };
 
@@ -548,6 +550,12 @@ export function switchStopAt(args: {
   saved: PlanSwitches;
   requested: PlanSwitches;
   stopAt: GenerationStage;
+  /**
+   * The plan this click would owe. Omit it and the cap always applies.
+   * Pass it and the cap applies only when a later unit is already done or
+   * stale — a missing clip is work this run may still include.
+   */
+  plan?: readonly PlanUnit[];
 }): GenerationStage {
   const backTo: GenerationStage | null =
     !args.saved.generateVoices && args.requested.generateVoices
@@ -555,7 +563,18 @@ export function switchStopAt(args: {
       : !args.saved.generateStartFrames && args.requested.generateStartFrames
         ? 'images'
         : null;
-  return backTo && stageIndex(args.stopAt) > stageIndex(backTo)
-    ? backTo
-    : args.stopAt;
+  if (!backTo || stageIndex(args.stopAt) <= stageIndex(backTo)) {
+    return args.stopAt;
+  }
+  if (
+    args.plan &&
+    !args.plan.some(
+      (unit) =>
+        (unit.state === 'done' || unit.state === 'stale') &&
+        stageIndex(PLAN_KIND_STAGE[unit.kind]) > stageIndex(backTo)
+    )
+  ) {
+    return args.stopAt;
+  }
+  return backTo;
 }

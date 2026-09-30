@@ -1,5 +1,5 @@
 import { ThinkingBar } from '@/ui/ai/thinking-bar';
-import { ActionCost } from '@/billing/ui/action-cost';
+import { InButtonCost, costButtonClassName } from '@/billing/ui/action-cost';
 import type { ModelGenerationStatus } from '@/models/ui/pickers/base-model-selector';
 import { ImageModelSelector } from '@/models/ui/pickers/image-model-selector';
 import { MotionModelSelector } from '@/models/ui/pickers/motion-model-selector';
@@ -1926,16 +1926,18 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
               disabled={
                 isGenerating || variantIsGenerating || !shot || !hasVisualPrompt
               }
-              className="w-full"
+              className={costButtonClassName}
             >
-              {(isGenerating || variantIsGenerating) && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              {isGenerating || variantIsGenerating
-                ? 'Generating…'
-                : imageModelGenerated
-                  ? 'Regenerate Image'
-                  : 'Generate Image'}
+              <InButtonCost estimate={imageCostEstimate}>
+                {(isGenerating || variantIsGenerating) && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
+                {isGenerating || variantIsGenerating
+                  ? 'Generating…'
+                  : imageModelGenerated
+                    ? 'Regenerate Image'
+                    : 'Generate Image'}
+              </InButtonCost>
             </Button>
             <p
               className={
@@ -1949,7 +1951,6 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             >
               {EMPTY_GENERATION_PROMPT_MESSAGE}
             </p>
-            <ActionCost estimate={imageCostEstimate} />
           </div>
 
           {/* Manual still inject (#1108) — upload replaces the selected image;
@@ -2373,7 +2374,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             <div className="flex flex-col gap-1">
               <Button
                 type="button"
-                className="h-auto min-h-8 w-full whitespace-normal py-1.5"
+                className={costButtonClassName}
                 disabled={
                   renderAtQuality.isPending ||
                   isGeneratingMotion ||
@@ -2381,10 +2382,9 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                 }
                 onClick={() => renderAtQuality.mutate()}
               >
-                <span className="flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5">
+                <InButtonCost estimate={finalCostEstimate}>
                   {renderAtQuality.isPending ? 'Starting…' : 'Render final'}
-                  <ActionCost estimate={finalCostEstimate} onPrimary />
-                </span>
+                </InButtonCost>
               </Button>
             </div>
           )}
@@ -2414,12 +2414,15 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                 !shot ||
                 !hasMotionPrompt
               }
-              className="h-auto min-h-8 w-full whitespace-normal py-1.5"
+              className={costButtonClassName}
             >
               {(isGeneratingMotion || videoVariantIsGenerating) && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
-              <span className="flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5">
+              <InButtonCost
+                estimate={motionCostEstimate}
+                onPrimary={!selectedDraft}
+              >
                 {isGeneratingMotion || videoVariantIsGenerating
                   ? 'Generating…'
                   : motionGenerateLabel(
@@ -2427,11 +2430,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                       videoModelGenerated,
                       regenAsDraft
                     )}
-                <ActionCost
-                  estimate={motionCostEstimate}
-                  onPrimary={!selectedDraft}
-                />
-              </span>
+              </InButtonCost>
             </Button>
             <p
               className={

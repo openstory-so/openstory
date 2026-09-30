@@ -152,6 +152,21 @@ describe('continueFromPlan (#1817)', () => {
     expect(units(result)).toEqual(['voice:maya', 'dialogue:s1']);
   });
 
+  it('Voices on still reaches Motion when no later unit exists', () => {
+    const next = [
+      u('voice', 'maya', 'missing'),
+      u('dialogue', 's1', 'missing'),
+      u('clip', 's1', 'missing'),
+    ];
+    const result = decide([], 'music', {
+      saved: { generateStartFrames: true, generateVoices: false },
+      requested: { generateStartFrames: true, generateVoices: true },
+      next,
+    });
+    expect(result.stopAt).toBe('music');
+    expect(units(result)).toEqual(['voice:maya', 'dialogue:s1', 'clip:s1']);
+  });
+
   it('Start frames on stops at Images; both on stop at the later, Dialogue', () => {
     const next = [
       u('prompt:visual', 's1', 'missing'),

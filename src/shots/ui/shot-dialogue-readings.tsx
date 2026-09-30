@@ -201,6 +201,8 @@ const Readings: React.FC<ReadingsProps> = ({
           onGenerate={voiceDesign ? (id) => void generateVoice(id) : null}
           cost={
             <ActionCost
+              onPrimary={false}
+              inline
               estimate={
                 seedVoices
                   ? seedVoiceEstimate(SEED_VOICE_DEFAULT_TAKES)

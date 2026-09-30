@@ -1,4 +1,4 @@
-import { ActionCost } from '@/billing/ui/action-cost';
+import { InButtonCost, costButtonClassName } from '@/billing/ui/action-cost';
 import { GenerationStopSlider } from '@/sequences/ui/generation/generation-stop-slider';
 import { MotionModelSelector } from '@/models/ui/pickers/motion-model-selector';
 import { MusicModelSelector } from '@/models/ui/pickers/music-model-selector';
@@ -474,6 +474,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
       generateVoices: voices,
     },
     stopAt: 'music',
+    plan: footerPlan,
   });
   const cappedStopAt =
     stageIndex(continueStopAt) > stageIndex(maxStage)
@@ -653,15 +654,19 @@ const SceneListComponent: React.FC<SceneListProps> = ({
       {draftSegments.length > 0 && (
         <Button
           variant={showButton ? 'outline' : 'default'}
-          className="w-full"
+          className={costButtonClassName}
           onClick={() => void handleRenderDrafts()}
           disabled={isGenerating}
         >
-          Render {draftSegments.length}{' '}
-          {draftSegments.length === 1 ? 'final' : 'finals'}
+          <InButtonCost
+            estimate={draftFinalCostEstimate}
+            onPrimary={!showButton}
+          >
+            Render {draftSegments.length}{' '}
+            {draftSegments.length === 1 ? 'final' : 'finals'}
+          </InButtonCost>
         </Button>
       )}
-      <ActionCost estimate={draftFinalCostEstimate} />
       {(soonestDraftExpiry || expiredDrafts > 0) && (
         <p className="text-xs text-muted-foreground">
           {[
@@ -716,14 +721,13 @@ const SceneListComponent: React.FC<SceneListProps> = ({
         <>
           <Button
             variant="default"
-            className="h-auto min-h-8 w-full whitespace-normal py-1.5"
+            className={costButtonClassName}
             onClick={() => void handleContinue()}
             disabled={isGenerating || planLoading || continueWork.length === 0}
           >
-            <span className="flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5">
+            <InButtonCost estimate={continueCostEstimate}>
               {isGenerating ? 'Generating…' : continueLabel}
-              <ActionCost estimate={continueCostEstimate} onPrimary />
-            </span>
+            </InButtonCost>
           </Button>
           {continueWork.length > 0 && (
             <p className="text-xs text-muted-foreground">
@@ -996,11 +1000,11 @@ const SceneListComponent: React.FC<SceneListProps> = ({
               <div className="flex flex-col gap-1">
                 <Button
                   variant="default"
-                  className="h-auto min-h-8 w-full whitespace-normal py-1.5"
+                  className={costButtonClassName}
                   onClick={() => void handleGenerateMotion()}
                   disabled={isButtonDisabled}
                 >
-                  <span className="flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5">
+                  <InButtonCost estimate={batchCostEstimate}>
                     {isGenerating
                       ? 'Generating…'
                       : !motionPromptsReady
@@ -1008,8 +1012,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
                         : includeMusic && !musicPromptsReady
                           ? 'Composing music…'
                           : `Generate ${notStartedShots.length} / ${totalShots} ${totalShots === 1 ? 'shot' : 'shots'}`}
-                    <ActionCost estimate={batchCostEstimate} onPrimary />
-                  </span>
+                  </InButtonCost>
                 </Button>
               </div>
               {/* The steps carry the Draft first switch; one control at a time. */}

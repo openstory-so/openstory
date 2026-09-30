@@ -1,4 +1,4 @@
-import { ActionCost } from '@/billing/ui/action-cost';
+import { InButtonCost } from '@/billing/ui/action-cost';
 import type { ModelGenerationStatus } from '@/models/ui/pickers/base-model-selector';
 import { MusicModelSelector } from '@/models/ui/pickers/music-model-selector';
 import { PromptHistorySheet } from '@/shots/ui/prompts/prompt-history-sheet';
@@ -84,7 +84,7 @@ type MusicViewProps = {
 
 type LoadingButtonProps = React.ComponentProps<typeof Button> & {
   isLoading: boolean;
-  loadingText: string;
+  loadingText: React.ReactNode;
   children: React.ReactNode;
 };
 
@@ -306,18 +306,21 @@ export const MusicView: React.FC<MusicViewProps> = ({
       Set Music
     </LoadingButton>
   ) : (
-    <div className="flex flex-col gap-1">
-      <LoadingButton
-        variant={selectedIsSet ? 'outline' : 'default'}
-        onClick={handleGenerate}
-        disabled={!editPrompt}
-        isLoading={isGeneratingMusic}
-        loadingText={selectedIsSet ? 'Regenerating…' : 'Generating…'}
-      >
+    <LoadingButton
+      variant={selectedIsSet ? 'outline' : 'default'}
+      onClick={handleGenerate}
+      disabled={!editPrompt}
+      isLoading={isGeneratingMusic}
+      loadingText={
+        <InButtonCost estimate={musicCostEstimate} onPrimary={!selectedIsSet}>
+          {selectedIsSet ? 'Regenerating…' : 'Generating…'}
+        </InButtonCost>
+      }
+    >
+      <InButtonCost estimate={musicCostEstimate} onPrimary={!selectedIsSet}>
         {selectedIsSet ? 'Regenerate Music' : 'Generate Music'}
-      </LoadingButton>
-      <ActionCost estimate={musicCostEstimate} />
-    </div>
+      </InButtonCost>
+    </LoadingButton>
   );
 
   if (musicStatus === 'completed' && musicUrl) {

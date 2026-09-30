@@ -49,7 +49,7 @@ export function continueFromPlan(args: {
       'Voices can’t be turned off: shots already have recorded dialogue'
     );
   }
-  const stopAt = switchStopAt(args);
+  const stopAt = switchStopAt({ ...args, plan: args.next });
   const work = planWork(args.next, stopAt);
   if (work.length === 0) {
     throw new ValidationError(

@@ -18,7 +18,8 @@
  * When the signed-in wallet balance is below the estimate (and generation is
  * not covered by a team fal key), the amount is amber so over-budget is obvious.
  * On a primary button pass `onPrimary` — that fill stays light in dark mode,
- * where the page amber is too pale and the line used to clip past the button.
+ * where the page amber is too pale. The amount sits in the button
+ * (`InButtonCost`); over budget is the warning icon and colour, not extra words.
  */
 
 import { useBillingBalance } from './use-billing-balance';
@@ -51,7 +52,34 @@ type ActionCostProps = {
    * Dark-mode amber is for the page background and washes out on that fill.
    */
   onPrimary?: boolean;
+  /**
+   * Inside a button: render nothing until the amount exists, so a late
+   * estimate does not open a line under the control.
+   */
+  inline?: boolean;
 };
+
+/** Label + price, wrapping together inside a generate button. */
+export function InButtonCost({
+  children,
+  estimate,
+  onPrimary = true,
+}: {
+  children: ReactNode;
+  estimate: Microdollars | null | undefined;
+  onPrimary?: boolean;
+}) {
+  return (
+    <span className="inline-flex max-w-full flex-wrap items-center justify-center gap-x-2 gap-y-0.5">
+      {children}
+      <ActionCost estimate={estimate} onPrimary={onPrimary} inline />
+    </span>
+  );
+}
+
+/** Lets a wrapped price fit a full-width generate button. */
+export const costButtonClassName =
+  'h-auto min-h-8 w-full whitespace-normal py-1.5';
 
 export function ActionCost({
   estimate,
@@ -59,6 +87,7 @@ export function ActionCost({
   align = 'center',
   prefix,
   onPrimary = false,
+  inline = false,
 }: ActionCostProps) {
   const { showCosts } = useShowCosts();
   const { data: session } = useAuthSession();
@@ -73,11 +102,12 @@ export function ActionCost({
   );
 
   if (!showCosts) {
-    return prefix ? (
+    if (inline || !prefix) return null;
+    return (
       <span className={cn(justify, 'text-muted-foreground', className)}>
         {prefix}
       </span>
-    ) : null;
+    );
   }
   if (!session) {
     return (
@@ -97,6 +127,7 @@ export function ActionCost({
   // The estimate arrives client-side after the pricing query, so an empty
   // line is reserved until then — otherwise every button it sits under jumps.
   if (estimate == null) {
+    if (inline) return null;
     return (
       <span className={cn(justify, 'min-h-4 text-muted-foreground', className)}>
         {prefix}
@@ -128,7 +159,9 @@ export function ActionCost({
           ? onPrimary
             ? 'text-amber-800'
             : 'text-amber-600 dark:text-amber-400'
-          : 'text-muted-foreground',
+          : onPrimary
+            ? 'text-primary-foreground/70'
+            : 'text-muted-foreground',
         className
       )}
       aria-label={label}
@@ -137,10 +170,7 @@ export function ActionCost({
       {exceedsBalance ? (
         <AlertTriangle className="size-3 shrink-0" aria-hidden />
       ) : null}
-      <span>
-        ~{amount}
-        {exceedsBalance && <span> · over balance</span>}
-      </span>
+      <span>~{amount}</span>
     </span>
   );
 }

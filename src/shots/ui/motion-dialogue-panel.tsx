@@ -554,17 +554,17 @@ export const ShotMissingVoices: React.FC<{
             : `${speaker.name} has no voice`}
         </span>
         {onGenerate && !speaker.generating ? (
-          <div className="flex items-center gap-2">
-            {cost}
-            <Button
-              size="sm"
-              variant="outline"
-              aria-label={`Generate a voice for ${speaker.name}`}
-              onClick={() => onGenerate(speaker.characterId)}
-            >
+          <Button
+            size="sm"
+            variant="outline"
+            aria-label={`Generate a voice for ${speaker.name}`}
+            onClick={() => onGenerate(speaker.characterId)}
+          >
+            <span className="inline-flex items-center gap-2">
               Generate voice
-            </Button>
-          </div>
+              {cost}
+            </span>
+          </Button>
         ) : null}
       </li>
     ))}
