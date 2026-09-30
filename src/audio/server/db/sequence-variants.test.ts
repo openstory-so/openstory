@@ -312,6 +312,76 @@ describe('music claim lifecycle (#1115)', () => {
     );
   });
 
+  it('a retried claim with the same id returns its own row, not busy', async () => {
+    const methods = createSequenceVariantsMethods(db);
+    const id = generateId();
+    const claim = () =>
+      methods.claimMusic({
+        id,
+        sequenceId,
+        ...track,
+        isPrimary: true,
+        workflowRunId: 'run-1',
+        ifPendingIs: null,
+      });
+    expect(await claim()).toBe(id);
+    expect(await claim()).toBe(id);
+    expect(await methods.listMusicBySequence(sequenceId)).toHaveLength(1);
+    // A retry after a newer kickoff moved the claim does not take it back.
+    const newer = await methods.claimMusic({
+      sequenceId,
+      ...track,
+      isPrimary: true,
+      workflowRunId: null,
+    });
+    expect(await claim()).toBe(id);
+    expect((await readSequence()).pendingPromoteMusicVariantId).toBe(newer);
+  });
+
+  it('picking a track after a failed regeneration reads completed', async () => {
+    const methods = createSequenceVariantsMethods(db);
+    const good = await methods.claimMusic({
+      sequenceId,
+      ...track,
+      isPrimary: true,
+      workflowRunId: null,
+    });
+    if (!good) throw new Error('claim returned null');
+    await methods.completeMusicClaim(good, landing('/r2/audio/good.mp3'));
+    const bad = await methods.claimMusic({
+      sequenceId,
+      ...track,
+      isPrimary: true,
+      workflowRunId: null,
+    });
+    if (!bad) throw new Error('claim returned null');
+    await methods.failMusicClaim({ sequenceId, variantId: bad }, 'boom');
+    expect((await readSequence()).musicStatus).toBe('failed');
+
+    const seq = await methods.selectMusic(sequenceId, good);
+    expect(seq.musicStatus).toBe('completed');
+    expect(seq.musicError).toBeNull();
+    // The failure stays in history.
+    expect((await methods.getMusicById(bad))?.status).toBe('failed');
+  });
+
+  it('lists tracks oldest first', async () => {
+    const methods = createSequenceVariantsMethods(db);
+    const ids = [generateId(), generateId(), generateId()];
+    for (const id of [...ids].reverse()) {
+      await methods.claimMusic({
+        id,
+        sequenceId,
+        ...track,
+        isPrimary: false,
+        workflowRunId: null,
+      });
+    }
+    expect(
+      (await methods.listMusicBySequence(sequenceId)).map((r) => r.id)
+    ).toEqual(ids);
+  });
+
   it('an upload is a selected completed track; earlier uploads park as alternates', async () => {
     const methods = createSequenceVariantsMethods(db);
     const upload = (url: string) =>

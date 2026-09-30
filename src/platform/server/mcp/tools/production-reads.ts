@@ -113,15 +113,20 @@ export function registerProductionReads(
     server,
     context,
     'get_sequence_music',
-    'Inspect current sequence music, enabled state, prompt, tags and generation result. Use list_versions kind music or music_prompt for histories; the selected track and prompt are the sequence version pointers.',
+    'Inspect current sequence music, enabled state, prompt, tags and generation result. model is the one the selected track was made with; variantId and promptVersionId are the selected rows in list_versions kind music and music_prompt.',
     sequenceInput,
     z.object({ music: musicReadSchema }),
-    async (input, { scopedDb, origin }) => ({
-      music: inspectMusic(
-        await productionAccess(scopedDb).sequence(input.sequenceId),
-        origin
-      ),
-    })
+    async (input, { scopedDb, origin }) => {
+      const sequence = await productionAccess(scopedDb).sequence(
+        input.sequenceId
+      );
+      const track = sequence.selectedMusicVariantId
+        ? await scopedDb.sequenceVariants.getMusicById(
+            sequence.selectedMusicVariantId
+          )
+        : null;
+      return { music: inspectMusic(sequence, track, origin) };
+    }
   );
   registerProductionRead(
     server,

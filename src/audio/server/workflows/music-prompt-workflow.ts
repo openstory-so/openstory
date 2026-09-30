@@ -13,6 +13,7 @@ import { musicDesignResultSchema } from '@/sequences/response-schemas';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { reinforceInstrumentalTags } from '@/audio/server/music-prompt';
 import { getGenerationChannel } from '@/platform/realtime';
+import { DEFAULT_MUSIC_MODEL } from '@/models/models';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import type {
   MusicPromptWorkflowInput,
@@ -109,18 +110,29 @@ export class MusicPromptWorkflow extends OpenStoryWorkflowEntrypoint<MusicPrompt
       // A failed prompt is a failed track (#1115): the track claim a parent
       // took for it fails, or — with no claim — a failed primary row records
       // it, so the sequence reads `failed`, never a silent `pending`.
-      if (input.musicVariantId) {
-        await scopedDb.sequenceVariants.failMusicClaim(
-          { sequenceId: input.sequenceId, variantId: input.musicVariantId },
-          error
+      // Recorded before the event, but never in its way: a failed write
+      // must not leave the UI spinning on a run that is over.
+      try {
+        if (input.musicVariantId) {
+          await scopedDb.sequenceVariants.failMusicClaim(
+            { sequenceId: input.sequenceId, variantId: input.musicVariantId },
+            error
+          );
+        } else {
+          await scopedDb.sequenceVariants.recordMusicFailure({
+            sequenceId: input.sequenceId,
+            // The default only labels the failed row of a payload queued
+            // before #1115, which carried no model.
+            model: input.musicModel ?? DEFAULT_MUSIC_MODEL,
+            error,
+            workflowRunId: event.instanceId,
+          });
+        }
+      } catch (recordError) {
+        logger.error(
+          `[MusicPromptWorkflow:cf] Failed to record the music failure for sequence ${input.sequenceId}:`,
+          { err: recordError }
         );
-      } else {
-        await scopedDb.sequenceVariants.recordMusicFailure({
-          sequenceId: input.sequenceId,
-          model: input.musicModel,
-          error,
-          workflowRunId: event.instanceId,
-        });
       }
 
       try {

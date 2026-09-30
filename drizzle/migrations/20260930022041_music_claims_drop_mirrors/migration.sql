@@ -28,7 +28,11 @@
 --      model's tracks (#547): `is_primary = 0`, so they never read as the
 --      sequence's status.
 --   6. A failed mirror with no track gets a failed primary row carrying
---      `music_error`, so the failure survives the drop.
+--      `music_error`, so the failure survives the drop. Its id is the
+--      sequence's (the oldest), so that sequence's other rows leave the
+--      status race (`is_primary = 0`) — otherwise a newer row would outrank
+--      it and the error would vanish. With no track selected they were not
+--      the sequence's music anyway; they stay history.
 -- Not backfilled: a failed regeneration over a live track (reads completed)
 -- and 'generating' (an in-flight run opens its own row on replay; a dead one
 -- reads by its rows).
@@ -131,6 +135,13 @@ LEFT JOIN `sequence_music_variants` own ON own.`id` = s.`id`
 WHERE s.`music_status` = 'failed'
   AND s.`music_url` IS NULL
   AND own.`id` IS NULL;--> statement-breakpoint
+UPDATE `sequence_music_variants`
+SET `is_primary` = 0
+FROM `sequences` s
+WHERE s.`id` = `sequence_music_variants`.`sequence_id`
+  AND s.`music_status` = 'failed'
+  AND s.`music_url` IS NULL
+  AND `sequence_music_variants`.`id` != s.`id`;--> statement-breakpoint
 ALTER TABLE `sequences` DROP COLUMN `music_url`;--> statement-breakpoint
 ALTER TABLE `sequences` DROP COLUMN `music_path`;--> statement-breakpoint
 ALTER TABLE `sequences` DROP COLUMN `music_status`;--> statement-breakpoint

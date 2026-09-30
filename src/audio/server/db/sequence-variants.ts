@@ -21,7 +21,7 @@ import type {
   Sequence,
   SequenceMusicVariant,
 } from '@/platform/server/db/schema';
-import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import { pageOf } from '@/platform/server/db/read-page';
 import type { VersionListOptions } from '@/platform/server/db/read-page';
@@ -48,6 +48,11 @@ export type ClaimMusicInput = MusicRunInputs & {
    * (null = no primary run in flight). Omitted = last kickoff wins (#1070).
    */
   ifPendingIs?: string | null;
+  /**
+   * The row id, minted in an earlier durable step so a retried claim step
+   * finds its own row rather than a busy claim. Omitted = a fresh id.
+   */
+  id?: string;
 };
 
 export type CompleteMusicClaimInput = {
@@ -113,7 +118,8 @@ export function createSequenceVariantsMethods(db: Database) {
   return {
     // ── Reads ─────────────────────────────────────────────────────────────
     /**
-     * Every music track of a sequence, oldest first. Unlike the other version
+     * Every music track of a sequence, oldest first (id order — callers take
+     * a model's newest from the end). Unlike the other version
      * lists this one has always returned discarded rows too, so
      * `includeDiscarded` defaults to true here; pass `false` to drop them.
      */
@@ -130,7 +136,8 @@ export function createSequenceVariantsMethods(db: Database) {
             : isNull(sequenceMusicVariants.discardedAt)
         ),
         sequenceMusicVariants.id,
-        options?.page
+        options?.page,
+        asc(sequenceMusicVariants.id)
       );
     },
 
@@ -159,25 +166,32 @@ export function createSequenceVariantsMethods(db: Database) {
      * run also takes the pointer claim — in one batch whose INSERT only lands
      * if the claim does, so a lost compare-and-swap (`ifPendingIs`) opens
      * nothing. Returns the new row's id, or null when the claim was busy.
+     * Idempotent per `id`: a row already open under it is returned as is.
      */
     claimMusic: async (input: ClaimMusicInput): Promise<string | null> => {
-      const id = generateId();
+      const id = input.id ?? generateId();
       const at = new Date();
-      const husk = {
-        id,
-        sequenceId: input.sequenceId,
-        model: input.model,
-        prompt: input.prompt,
-        tags: input.tags,
-        durationSeconds: input.durationSeconds,
-        status: 'pending' as const,
-        isPrimary: input.isPrimary,
-        workflowRunId: input.workflowRunId,
-        createdAt: at,
-        updatedAt: at,
-      };
+      const opened = db
+        .select({ id: sequenceMusicVariants.id })
+        .from(sequenceMusicVariants)
+        .where(eq(sequenceMusicVariants.id, id));
       if (!input.isPrimary) {
-        await db.insert(sequenceMusicVariants).values(husk);
+        await db
+          .insert(sequenceMusicVariants)
+          .values({
+            id,
+            sequenceId: input.sequenceId,
+            model: input.model,
+            prompt: input.prompt,
+            tags: input.tags,
+            durationSeconds: input.durationSeconds,
+            status: 'pending',
+            isPrimary: false,
+            workflowRunId: input.workflowRunId,
+            createdAt: at,
+            updatedAt: at,
+          })
+          .onConflictDoNothing();
         return id;
       }
       const casGuard: SQL | undefined =
@@ -186,38 +200,54 @@ export function createSequenceVariantsMethods(db: Database) {
           : input.ifPendingIs === null
             ? isNull(sequences.pendingPromoteMusicVariantId)
             : eq(sequences.pendingPromoteMusicVariantId, input.ifPendingIs);
-      const bound = <T>(value: T, name: string) => sql`${value}`.as(name);
-      const [claimed] = await db.batch([
+      const bound = (value: string | number | null, name: string) =>
+        sql`${value}`.as(name);
+      // A retried step with the same id finds its row already open: the
+      // pointer statement skips (it must not take back a claim a newer
+      // kickoff moved since), the insert is a no-op, and the row answers.
+      const [, , rows] = await db.batch([
         db
           .update(sequences)
           .set({ pendingPromoteMusicVariantId: id, updatedAt: at })
-          .where(and(eq(sequences.id, input.sequenceId), casGuard))
-          .returning({ id: sequences.id }),
-        db.insert(sequenceMusicVariants).select(
-          db
-            .select({
-              id: bound(id, 'id'),
-              sequenceId: sequences.id,
-              model: bound(input.model, 'model'),
-              prompt: bound(input.prompt, 'prompt'),
-              tags: bound(input.tags, 'tags'),
-              durationSeconds: bound(input.durationSeconds, 'duration_seconds'),
-              status: bound('pending', 'status'),
-              isPrimary: bound(1, 'is_primary'),
-              workflowRunId: bound(input.workflowRunId, 'workflow_run_id'),
-              createdAt: bound(nowSeconds(), 'created_at'),
-              updatedAt: bound(nowSeconds(), 'updated_at'),
-            })
-            .from(sequences)
-            .where(
-              and(
-                eq(sequences.id, input.sequenceId),
-                eq(sequences.pendingPromoteMusicVariantId, id)
-              )
+          .where(
+            and(
+              eq(sequences.id, input.sequenceId),
+              casGuard,
+              sql`not exists ${opened}`
             )
-        ),
+          ),
+        db
+          .insert(sequenceMusicVariants)
+          .select(
+            db
+              .select({
+                id: bound(id, 'id'),
+                sequenceId: sequences.id,
+                model: bound(input.model, 'model'),
+                prompt: bound(input.prompt, 'prompt'),
+                tags: bound(input.tags, 'tags'),
+                durationSeconds: bound(
+                  input.durationSeconds,
+                  'duration_seconds'
+                ),
+                status: bound('pending', 'status'),
+                isPrimary: bound(1, 'is_primary'),
+                workflowRunId: bound(input.workflowRunId, 'workflow_run_id'),
+                createdAt: bound(nowSeconds(), 'created_at'),
+                updatedAt: bound(nowSeconds(), 'updated_at'),
+              })
+              .from(sequences)
+              .where(
+                and(
+                  eq(sequences.id, input.sequenceId),
+                  eq(sequences.pendingPromoteMusicVariantId, id)
+                )
+              )
+          )
+          .onConflictDoNothing(),
+        opened,
       ]);
-      return claimed.length > 0 ? id : null;
+      return rows.length > 0 ? id : null;
     },
 
     /**
@@ -357,8 +387,9 @@ export function createSequenceVariantsMethods(db: Database) {
 
     /**
      * The user's pick (Set Music, Promote): point the sequence at a finished
-     * track, un-park it, and clear any claim — a run still in flight then
-     * finds its claim gone and lands parked (rule 4).
+     * track, un-park it, clear any claim — a run still in flight then finds
+     * its claim gone and lands parked (rule 4) — and retire failed primary
+     * runs from the status, so the sequence reads completed.
      */
     selectMusic: async (
       sequenceId: string,
@@ -387,6 +418,20 @@ export function createSequenceVariantsMethods(db: Database) {
           .update(sequenceMusicVariants)
           .set({ divergedAt: null, updatedAt: now })
           .where(eq(sequenceMusicVariants.id, variantId)),
+        // A failure the user answered by picking a track no longer speaks
+        // for the sequence: its failed runs leave the status race, so the
+        // music reads completed (as the old copy-onto-the-sequence did) and
+        // smart retry does not pay for a new track. The rows stay history.
+        db
+          .update(sequenceMusicVariants)
+          .set({ isPrimary: false, updatedAt: now })
+          .where(
+            and(
+              eq(sequenceMusicVariants.sequenceId, sequenceId),
+              eq(sequenceMusicVariants.isPrimary, true),
+              eq(sequenceMusicVariants.status, 'failed')
+            )
+          ),
       ]);
       return readSequence(sequenceId);
     },

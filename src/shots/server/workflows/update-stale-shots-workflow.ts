@@ -47,6 +47,7 @@
  * are skipped, not rendered from stale inputs.
  */
 
+import { generateId } from '@/platform/id';
 import {
   DEFAULT_MUSIC_MODEL,
   supportsDraftMode,
@@ -1678,8 +1679,14 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           // the live `musicStatus` / `musicPromptInputHash` guards (#1115).
           let trackVariantId: string | null = null;
           if (music.regenTrack) {
+            // Minted in its own step so a retried claim step finds the row
+            // it already opened instead of reading its own claim as busy.
+            const mintedId = await step.do('mint-music-track-id', async () =>
+              generateId()
+            );
             trackVariantId = await step.do('claim-music-track', async () =>
               scopedDb.sequenceVariants.claimMusic({
+                id: mintedId,
                 sequenceId,
                 model: primaryModel,
                 prompt: music.prompt,

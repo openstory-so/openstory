@@ -1526,9 +1526,10 @@ export interface MusicPromptWorkflowInput extends SequenceWorkflowContext {
   /**
    * The audio model a failed prompt is recorded against (#1115): with no
    * claim to fail, the failure lands as a failed primary track row, so the
-   * sequence reads `failed` rather than silently `pending`.
+   * sequence reads `failed` rather than silently `pending`. Every trigger
+   * sets it; optional only for payloads queued before #1115 deployed.
    */
-  musicModel: string;
+  musicModel?: string;
 
   /**
    * The track claim a parent took before this prompt (update-stale's

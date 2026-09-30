@@ -19,7 +19,10 @@ import {
   textWindowSchema,
 } from '@/platform/server/read-projection';
 import type { ScopedDb } from '@/platform/server/db/scoped';
-import type { Sequence } from '@/platform/server/db/schema';
+import type {
+  Sequence,
+  SequenceMusicVariant,
+} from '@/platform/server/db/schema';
 import { productionAccess } from './production-access';
 import { ValidationError } from '@/platform/errors';
 
@@ -101,9 +104,21 @@ export const musicReadSchema = z.object({
   prompt: z.string().nullable(),
   tags: z.string().nullable(),
   generatedAt: readDate.nullable(),
-  selection: z.literal('output_url_and_model'),
+  /** The selected `sequence_music_variants` row (list_versions kind music). */
+  variantId: z.string().nullable(),
+  /** The selected `sequence_music_prompt_versions` row (kind music_prompt). */
+  promptVersionId: z.string().nullable(),
+  selection: z.literal('version_pointer'),
 });
-export function inspectMusic(sequence: Sequence, origin: string) {
+/**
+ * The sequence's music: the selected track (its own model — the sequence's
+ * audio-model setting is on the settings read) and the selected prompt.
+ */
+export function inspectMusic(
+  sequence: Sequence,
+  track: Pick<SequenceMusicVariant, 'model'> | null,
+  origin: string
+) {
   return projectRead(
     musicReadSchema,
     {
@@ -111,12 +126,14 @@ export function inspectMusic(sequence: Sequence, origin: string) {
       enabled: sequence.includeMusic,
       status: sequence.musicStatus,
       url: sequence.musicUrl,
-      model: sequence.musicModel,
+      model: track?.model ?? null,
       error: sequence.musicError,
       prompt: sequence.musicPrompt,
       tags: sequence.musicTags,
       generatedAt: sequence.musicGeneratedAt,
-      selection: 'output_url_and_model',
+      variantId: sequence.selectedMusicVariantId,
+      promptVersionId: sequence.selectedMusicPromptVersionId,
+      selection: 'version_pointer',
     },
     origin
   );

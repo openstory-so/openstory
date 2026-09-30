@@ -2,6 +2,7 @@
  * The `generateMusicWorkflow` durable workflow.
  */
 
+import { generateId } from '@/platform/id';
 import { computeSequenceMusicInputHash } from '@/shots/input-hash';
 import { DEFAULT_MUSIC_MODEL } from '@/models/models';
 import { uploadAudioToStorage } from '@/audio/server/audio-storage';
@@ -54,6 +55,12 @@ export class MusicWorkflow extends OpenStoryWorkflowEntrypoint<MusicWorkflowInpu
     // opens it here. Nothing is spent before it exists.
     let variantId: string | null = null;
     if (sequenceId) {
+      // Minted in its own step so a retried open step finds the row it
+      // already opened (and stamped with this run's id) instead of opening
+      // a second one.
+      const mintedId = input.variantId
+        ? null
+        : await step.do('mint-music-variant-id', async () => generateId());
       variantId = await step.do('open-music-variant', async () => {
         const inputs = {
           model,
@@ -69,6 +76,7 @@ export class MusicWorkflow extends OpenStoryWorkflowEntrypoint<MusicWorkflowInpu
           return input.variantId;
         }
         return scopedDb.sequenceVariants.claimMusic({
+          id: mintedId ?? undefined,
           sequenceId,
           ...inputs,
           isPrimary,
