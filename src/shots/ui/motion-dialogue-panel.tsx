@@ -2,7 +2,7 @@
  * The dialogue an audio-capable video model will be told to speak (#1559).
  *
  * The lines are the shot's dialogue node (`shot_dialogue_versions`; the
- * script only seeds it), edited in place through the `lines` slot (#1773). Audio is one choice
+ * script only seeds it), shown and edited through the `lineList` slot (#1773). Audio is one choice
  * for the whole shot (#1554): the generated take, a user-uploaded audio
  * element, or the video model inventing the voices. Per-line binding was
  * the old grain; the take is a conversation, not a character.
@@ -51,9 +51,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/ui/shadcn/select';
-import { Input } from '@/ui/shadcn/input';
-import { Textarea } from '@/ui/shadcn/textarea';
-import { Check, ChevronDown, Loader2, Pencil, Plus, X } from 'lucide-react';
+import { Check, ChevronDown, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 
 type DialogueClip = {
@@ -92,7 +90,7 @@ function voiceLabel(element: SequenceElementMinimal): string {
 }
 
 /** What the shot's one audio choice plays: the generated clip or a bound element. */
-function shotPlayback(
+export function shotPlayback(
   lines: readonly DialogueLine[],
   voices: SequenceElementMinimal[],
   clip: DialogueClip | null | undefined
@@ -109,45 +107,6 @@ function shotPlayback(
   };
 }
 
-/** What a caller hangs on one line (#1802): Record beside it, the take under it. */
-export type LineSlots = (index: number) => {
-  action?: React.ReactNode;
-  below?: React.ReactNode;
-};
-
-const DialogueLineList: React.FC<{
-  lines: readonly DialogueLine[];
-  slots?: LineSlots;
-}> = ({ lines, slots }) => (
-  <ul className="flex flex-col gap-2">
-    {lines.map((line, index) => {
-      const slot = slots?.(index);
-      return (
-        <li
-          key={`${line.character}-${index}`}
-          className="flex flex-col gap-1.5"
-        >
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex flex-col gap-1.5">
-              <p className="text-sm">
-                <span className="font-medium">
-                  {line.character || 'Narrator'}
-                </span>
-                {line.tone && (
-                  <span className="text-muted-foreground"> · {line.tone}</span>
-                )}
-              </p>
-              <p className="text-sm text-muted-foreground">“{line.line}”</p>
-            </div>
-            {slot?.action}
-          </div>
-          {slot?.below}
-        </li>
-      );
-    })}
-  </ul>
-);
-
 /**
  * Who speaks the lines when it is not the generated reading (#1773): the
  * reading is then not in use, so it can be neither out of date nor worth
@@ -162,213 +121,6 @@ export function shotSpokenByNote(
     ? 'Video model speaks the lines'
     : `${value} speaks the lines`;
 }
-
-/** Select value for a line nobody could attribute (an empty `character`). */
-const NO_SPEAKER = '__none__';
-
-const speakerFromValue = (value: string | undefined): string =>
-  !value || value === NO_SPEAKER ? '' : value;
-
-/**
- * Who says a line: one of the cast. A speaker no longer in the cast (renamed
- * or removed) stays pickable, so opening the editor never changes a line.
- */
-const SpeakerSelect: React.FC<{
-  speakers: readonly string[];
-  current: string;
-  label: string;
-}> = ({ speakers, current, label }) => {
-  const names =
-    current && !speakers.includes(current) ? [...speakers, current] : speakers;
-  const items: Record<string, string> = {
-    [NO_SPEAKER]: 'Unattributed',
-    ...Object.fromEntries(names.map((name) => [name, name])),
-  };
-  return (
-    <Select name="character" defaultValue={current || NO_SPEAKER} items={items}>
-      <SelectTrigger className="w-full" aria-label={label}>
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {names.map((name) => (
-          <SelectItem key={name} value={name}>
-            {name}
-          </SelectItem>
-        ))}
-        <SelectItem value={NO_SPEAKER}>Unattributed</SelectItem>
-      </SelectContent>
-    </Select>
-  );
-};
-
-/** One row of the editor: the line it started as (null = added here). */
-type EditorRow = { key: number; line: DialogueLine | null };
-
-const toRows = (lines: readonly DialogueLine[]): EditorRow[] =>
-  lines.map((line, index) => ({ key: index, line }));
-
-/**
- * The shot's lines, editable in place (#1773): character, words, tone. Reads
- * as the plain list until Edit. Save hands back the whole set; each line keeps
- * its voice binding, and an added line takes the shot's current audio source.
- */
-export const DialogueLinesEditor: React.FC<{
-  lines: readonly DialogueLine[];
-  onSave: (lines: DialogueLine[]) => void;
-  saving?: boolean;
-  /** Label for the Edit button, e.g. "Edit lines for shot 3". */
-  label?: string;
-  /**
-   * The sequence's cast names — who a line can be given to. A line's
-   * speaker is spelled as the cast list spells it, so it is picked, not typed.
-   */
-  speakers: readonly string[];
-  /** Per-line extras while the lines are shown, not edited. */
-  slots?: LineSlots;
-}> = ({ lines, onSave, saving, label = 'Edit lines', speakers, slots }) => {
-  const [rows, setRows] = useState<EditorRow[] | null>(null);
-  const [nextKey, setNextKey] = useState(lines.length);
-  const editing = rows !== null;
-
-  if (!editing) {
-    return (
-      <div className="flex flex-col gap-2">
-        {lines.length > 0 ? (
-          <DialogueLineList lines={lines} slots={slots} />
-        ) : (
-          <p className="text-sm text-muted-foreground">No lines</p>
-        )}
-        <Button
-          size="sm"
-          variant="ghost"
-          className="self-start"
-          aria-label={label}
-          onClick={() => {
-            setRows(toRows(lines));
-            setNextKey(lines.length);
-          }}
-        >
-          <Pencil className="h-3 w-3" aria-hidden />
-          Edit
-        </Button>
-      </div>
-    );
-  }
-
-  const shotToken = lines[0]?.voiceToken;
-  const onSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const read = (name: string) => form.getAll(name).map(String);
-    const [characters, words, tones] = [
-      read('character'),
-      read('line'),
-      read('tone'),
-    ];
-    const next = rows.flatMap((row, index) => {
-      const text = (words[index] ?? '').trim();
-      if (!text) return [];
-      const base = row.line ?? { voiceToken: shotToken };
-      return [
-        {
-          ...base,
-          character: speakerFromValue(characters[index]),
-          line: text,
-          tone: (tones[index] ?? '').trim(),
-        },
-      ];
-    });
-    onSave(next);
-    setRows(null);
-  };
-
-  return (
-    <form onSubmit={onSubmit} className="flex flex-col gap-3">
-      <ul className="flex flex-col gap-3">
-        {rows.map((row, index) => (
-          <li key={row.key} className="flex flex-col gap-1.5">
-            <div className="flex items-center gap-2">
-              <SpeakerSelect
-                speakers={speakers}
-                current={row.line?.character ?? ''}
-                label={`Line ${index + 1} character`}
-              />
-              <Input
-                name="tone"
-                defaultValue={row.line?.tone ?? ''}
-                placeholder="Tone"
-                aria-label={`Line ${index + 1} tone`}
-                autoComplete="off"
-              />
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                aria-label={`Remove line ${index + 1}`}
-                onClick={() =>
-                  setRows(rows.filter((other) => other.key !== row.key))
-                }
-              >
-                <X className="h-4 w-4" aria-hidden />
-              </Button>
-            </div>
-            <Textarea
-              name="line"
-              defaultValue={row.line?.line ?? ''}
-              placeholder="What they say"
-              aria-label={`Line ${index + 1} words`}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-                  event.preventDefault();
-                  event.currentTarget.form?.requestSubmit();
-                }
-              }}
-              rows={2}
-            />
-          </li>
-        ))}
-      </ul>
-      <div className="flex items-center justify-between gap-2">
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          onClick={() => {
-            setRows([...rows, { key: nextKey, line: null }]);
-            setNextKey(nextKey + 1);
-          }}
-        >
-          <Plus className="h-3 w-3" aria-hidden />
-          Add line
-        </Button>
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => setRows(null)}
-          >
-            Cancel
-          </Button>
-          <Button type="submit" size="sm" disabled={saving}>
-            {saving ? 'Saving…' : 'Save'}
-          </Button>
-        </div>
-      </div>
-    </form>
-  );
-};
-
-const ShotAudio: React.FC<{ url: string }> = ({ url }) => (
-  // oxlint-disable-next-line jsx-a11y/media-has-caption -- generated or uploaded take; the transcript is the lines beside it
-  <audio
-    controls
-    preload="none"
-    src={url}
-    className="w-full"
-    aria-label="Shot dialogue audio"
-  />
-);
 
 const ReadingRow: React.FC<{
   reading: ShotDialogueReading;
@@ -724,8 +476,10 @@ export const MotionDialoguePanel: React.FC<{
   shotSeconds?: number;
   /** This shot's readings list (#1657) — a slot, so the panel stays presentational. */
   readings?: React.ReactNode;
-  /** The lines, editable (#1773) — a slot in place of the read-only list. */
-  lineEditor?: React.ReactNode;
+  /** The lines, with Record and Edit on each (`DialogueLineRows`). */
+  lineList: React.ReactNode;
+  /** Beside the heading: Play dialogue. */
+  play?: React.ReactNode;
 }> = ({
   dialogue,
   elements,
@@ -734,17 +488,23 @@ export const MotionDialoguePanel: React.FC<{
   clip,
   shotSeconds,
   readings,
-  lineEditor,
+  lineList,
+  play,
 }) => {
   const lines = dialogue?.presence ? dialogue.lines : [];
+  const heading = (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-sm font-medium">Dialogue</span>
+      {play}
+    </div>
+  );
   if (lines.length === 0) {
     // A shot with no lines still gets the section, so lines can be added
-    // from the Video tab too (#1780 §7) — the editor carries Add line.
-    if (!lineEditor) return null;
+    // under the video too (#1780 §7) — the list carries Add line.
     return (
       <div className="flex flex-col gap-2">
-        <span className="text-sm font-medium">Dialogue</span>
-        <div className="rounded-md border p-3">{lineEditor}</div>
+        {heading}
+        {lineList}
       </div>
     );
   }
@@ -754,11 +514,7 @@ export const MotionDialoguePanel: React.FC<{
     const length = formatElementDuration(clip?.durationSeconds ?? null);
     return length ? `Generated · ${length}` : 'Generated';
   })();
-  const {
-    value,
-    url: playbackUrl,
-    seconds: audioSeconds,
-  } = shotPlayback(lines, voices, clip);
+  const { value, seconds: audioSeconds } = shotPlayback(lines, voices, clip);
   const orphans =
     elements === undefined
       ? []
@@ -784,69 +540,52 @@ export const MotionDialoguePanel: React.FC<{
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="text-sm font-medium">Dialogue</span>
-        <span className="text-xs text-muted-foreground">
-          Appended to the prompt at render
-        </span>
-      </div>
-      {(onChange || playbackUrl) && (
-        <div className="flex flex-col gap-2 rounded-md border p-3">
-          {onChange && (
-            <Select
-              value={value}
-              items={voiceItems}
-              onValueChange={(next) => {
-                if (typeof next === 'string') setShotVoice(next);
-              }}
-              disabled={disabled}
-            >
-              <SelectTrigger
-                size="sm"
-                className="w-full"
-                aria-label="Shot audio"
-              >
-                <SelectValue placeholder="Generated" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={GENERATED_VOICE}>
-                  {generatedLabel}
-                </SelectItem>
-                <SelectItem value={VIDEO_MODEL_VOICE_TOKEN}>
-                  Video model
-                </SelectItem>
-                {voices.map((el) => (
-                  <SelectItem key={el.id} value={el.token}>
-                    <span>{voiceLabel(el)}</span>
-                  </SelectItem>
-                ))}
-                {orphans.map((token) => (
-                  <SelectItem key={token} value={token}>
-                    <span>{token} (deleted)</span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          {orphans.length > 0 && (
-            <p className="text-xs text-warning">
-              {orphans.join(', ')} was deleted — pick another source, or this
-              shot won't render.
-            </p>
-          )}
-          {dialogueLonger && audioSeconds != null && shotSeconds != null && (
-            <p className="text-xs text-muted-foreground">
-              Dialogue is {formatElementDuration(audioSeconds)} — this shot is{' '}
-              {formatElementDuration(shotSeconds)}. Generate will stretch the
-              shot to cover it.
-            </p>
-          )}
-          {playbackUrl ? <ShotAudio url={playbackUrl} /> : null}
-        </div>
+      {heading}
+      <p className="text-xs text-muted-foreground">
+        Appended to the prompt at render
+      </p>
+      {onChange && (
+        <Select
+          value={value}
+          items={voiceItems}
+          onValueChange={(next) => {
+            if (typeof next === 'string') setShotVoice(next);
+          }}
+          disabled={disabled}
+        >
+          <SelectTrigger size="sm" className="w-full" aria-label="Shot audio">
+            <SelectValue placeholder="Generated" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={GENERATED_VOICE}>{generatedLabel}</SelectItem>
+            <SelectItem value={VIDEO_MODEL_VOICE_TOKEN}>Video model</SelectItem>
+            {voices.map((el) => (
+              <SelectItem key={el.id} value={el.token}>
+                <span>{voiceLabel(el)}</span>
+              </SelectItem>
+            ))}
+            {orphans.map((token) => (
+              <SelectItem key={token} value={token}>
+                <span>{token} (deleted)</span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       )}
-      <div className="rounded-md border p-3">
-        {lineEditor ?? <DialogueLineList lines={lines} />}
-      </div>
+      {orphans.length > 0 && (
+        <p className="text-xs text-warning">
+          {orphans.join(', ')} was deleted — pick another source, or this shot
+          won't render.
+        </p>
+      )}
+      {dialogueLonger && audioSeconds != null && shotSeconds != null && (
+        <p className="text-xs text-muted-foreground">
+          Dialogue is {formatElementDuration(audioSeconds)} — this shot is{' '}
+          {formatElementDuration(shotSeconds)}. Generate will stretch the shot
+          to cover it.
+        </p>
+      )}
+      {lineList}
       {readings}
       {!onChange && (
         <p className="text-xs text-muted-foreground">

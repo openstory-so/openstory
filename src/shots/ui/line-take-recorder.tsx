@@ -7,28 +7,33 @@
 
 import { Button } from '@/ui/shadcn/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/shadcn/tooltip';
-import { Mic, Square } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { MIC_TAKE_MAX_SECONDS } from './mic-take';
 
+/** One line of one shot. `index` is shot-relative, as everywhere. */
+export type LineRef = { shotId: string; index: number };
+
+const sameLine = (a: LineRef, b: LineRef) =>
+  a.shotId === b.shotId && a.index === b.index;
+
 type TakeState =
   | { kind: 'idle' }
-  | { kind: 'recording'; index: number }
-  | { kind: 'review'; index: number; blob: Blob; url: string }
-  | { kind: 'sending'; index: number; blob: Blob; url: string };
+  | { kind: 'recording'; line: LineRef }
+  | { kind: 'review'; line: LineRef; blob: Blob; url: string }
+  | { kind: 'sending'; line: LineRef; blob: Blob; url: string };
 
 /**
- * One take at a time across the shot's lines: a Blob until the user uses it.
+ * One take at a time across every line on screen: a Blob until the user uses it.
  * `onUse` resolves once the run is triggered; a rejection keeps the take so
  * it can be sent again.
  */
 export function useMicTake(
-  onUse: (index: number, take: Blob) => Promise<void>
+  onUse: (line: LineRef, take: Blob) => Promise<void>
 ) {
   const [state, setState] = useState<TakeState>({ kind: 'idle' });
   const recorder = useRef<MediaRecorder | null>(null);
-  const start = async (index: number) => {
+  const start = async (line: LineRef) => {
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -45,11 +50,11 @@ export function useMicTake(
       for (const track of stream.getTracks()) track.stop();
       recorder.current = null;
       const blob = new Blob(chunks, { type: media.mimeType });
-      setState({ kind: 'review', index, blob, url: URL.createObjectURL(blob) });
+      setState({ kind: 'review', line, blob, url: URL.createObjectURL(blob) });
     };
     recorder.current = media;
     media.start();
-    setState({ kind: 'recording', index });
+    setState({ kind: 'recording', line });
     setTimeout(() => {
       if (media.state === 'recording') media.stop();
     }, MIC_TAKE_MAX_SECONDS * 1000);
@@ -67,7 +72,7 @@ export function useMicTake(
   const use = () => {
     if (state.kind !== 'review') return;
     setState({ ...state, kind: 'sending' });
-    onUse(state.index, state.blob).then(
+    onUse(state.line, state.blob).then(
       () => {
         URL.revokeObjectURL(state.url);
         setState({ kind: 'idle' });
@@ -78,7 +83,7 @@ export function useMicTake(
 
   return {
     state,
-    start: (index: number) => void start(index),
+    start: (line: LineRef) => void start(line),
     stop: () => recorder.current?.stop(),
     use,
     discard: drop,
@@ -90,13 +95,13 @@ export type MicTake = ReturnType<typeof useMicTake>;
 /** Record / Stop, beside the line. */
 export const LineTakeButton: React.FC<{
   take: MicTake;
-  index: number;
+  line: LineRef;
   name: string;
   /** Why this line cannot be recorded now, or null. */
   blockedBecause: string | null;
-}> = ({ take, index, name, blockedBecause }) => {
+}> = ({ take, line, name, blockedBecause }) => {
   const { state } = take;
-  if (state.kind === 'recording' && state.index === index) {
+  if (state.kind === 'recording' && sameLine(state.line, line)) {
     return (
       <Button
         size="sm"
@@ -104,7 +109,6 @@ export const LineTakeButton: React.FC<{
         onClick={take.stop}
         aria-label={`Stop recording ${name}'s line`}
       >
-        <Square className="h-3 w-3" aria-hidden />
         Stop
       </Button>
     );
@@ -114,7 +118,7 @@ export const LineTakeButton: React.FC<{
       size="sm"
       variant="ghost"
       disabled={state.kind !== 'idle' || blockedBecause !== null}
-      onClick={() => take.start(index)}
+      onClick={() => take.start(line)}
       // The reason rides the label too: a disabled button gets no focus, so
       // a keyboard user never sees the tooltip.
       aria-label={
@@ -123,7 +127,6 @@ export const LineTakeButton: React.FC<{
           : `Record ${name}'s line`
       }
     >
-      <Mic className="h-3 w-3" aria-hidden />
       Record
     </Button>
   );
@@ -142,11 +145,11 @@ export const LineTakeButton: React.FC<{
 /** Under the line: "Recording…", or the take to hear and Use / Discard. */
 export const LineTakeReview: React.FC<{
   take: MicTake;
-  index: number;
+  line: LineRef;
   name: string;
-}> = ({ take, index, name }) => {
+}> = ({ take, line, name }) => {
   const { state } = take;
-  const mine = state.kind !== 'idle' && state.index === index;
+  const mine = state.kind !== 'idle' && sameLine(state.line, line);
   return (
     <>
       <p

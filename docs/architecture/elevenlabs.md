@@ -449,17 +449,19 @@ JSON carries the audio refs for paste-into-Videos. Models with no audio
 reference slot (Grok, Omni Flash, Kling) still get a section and a cut clip
 in References; motion just does not bind it.
 
-**The shot's dialogue lives under its video (#1802).** Lines, the audio
-source (Generated / Video model / an audio element — a write of the lines,
-so it needs no motion prompt), readings, history and a Record button beside
-each voiced line are all in `ShotDialogueUnderVideo`; the Video tab has none
-of it. With a sequence or scenes on the canvas, `SequenceDialogueLines` lists
-every line read-only by scene and marks the playhead's shot; each scene's
-Play dialogue plays its shots' `audioClips` back to back. Per shot, not per
+**The shot's dialogue lives under its video (#1802).** The audio source
+(Generated / Video model / an audio element — a write of the lines, so it
+needs no motion prompt), readings and history are in
+`ShotDialogueUnderVideo`; the Video tab has none of it. Every list of lines
+— the shot's, the Script tab's, and `SequenceDialogueLines` under the
+player with a sequence or scenes on the canvas — is `DialogueLineRows`
+(`dialogue-lines.tsx`): speaker and words, with Record beside each voiced
+line and Edit beside every line. The tone shows only in the edit form. Play
+dialogue (`useDialoguePlayer`) plays the shot's audio, or a scene's shots'
+`audioClips` back to back, and marks the shot being heard. Per shot, not per
 word — no word timings are stored.
 
-**A line at the mic (#1802).** Record beside a line under the shot's video
-records it in the browser, plays it back, and on "Use"
+**A line at the mic (#1802).** Record beside a line records it in the browser, plays it back, and on "Use"
 sends it as 16-bit mono PCM (`recordShotDialogueLineFn`, parked in R2 under
 `dialogue-takes/`). `DialogueTakeWorkflow` turns it into the speaker's voice
 with the user's delivery kept: an ElevenLabs voice goes through **Voice

@@ -215,6 +215,7 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
       aspectRatio={aspectRatio}
       below={
         <SequenceDialogueLines
+          sequenceId={sequence.id}
           shots={scopedShots}
           scenes={scenes}
           playingShotId={playingShotId}
