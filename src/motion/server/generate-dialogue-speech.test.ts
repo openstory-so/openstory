@@ -53,7 +53,7 @@ vi.doMock('@/billing/server/workflow-deduction', () => ({
   deductWorkflowCredits: deduct,
 }));
 
-const { chunkTakeLines, generateDialogueSpeech } =
+const { chunkTakeLines, generateDialogueSpeech, withSpeechId } =
   await import('./generate-dialogue-speech');
 const { MAX_DIALOGUE_FIT_ATTEMPTS } = await import('./fit-dialogue-clip');
 
@@ -479,6 +479,18 @@ const turn = (shotId: string, text: string, tone = '', voiceId = 'v1') => ({
   voiceId,
   text,
   tone,
+});
+
+describe('withSpeechId', () => {
+  it('reads a pre-#1913 cached chunk result by its recordingId', () => {
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the shape a step cached before #1913 replays
+    const cached = { recordingId: 'rec-1', url: 'u' } as unknown as {
+      speechId: string;
+      url: string;
+    };
+    expect(withSpeechId(cached).speechId).toBe('rec-1');
+    expect(withSpeechId({ speechId: 's-1', url: 'u' }).speechId).toBe('s-1');
+  });
 });
 
 describe('chunkTakeLines', () => {

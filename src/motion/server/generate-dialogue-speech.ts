@@ -100,6 +100,18 @@ export type GenerateDialogueSpeechArgs = {
 };
 
 /** A call's record plus the section id minted for each shot it spoke. */
+/**
+ * A chunk step cached before #1913 replays with `recordingId` and no
+ * `speechId`; the step keeps its durable name, so its old result comes back.
+ */
+// ponytail: delete once no pre-#1913 run can be in flight.
+export function withSpeechId<T extends { speechId: string }>(
+  result: T & { recordingId?: string }
+): T {
+  // oxlint-disable-next-line typescript/no-unnecessary-condition -- a cached pre-#1913 result has no speechId
+  return { ...result, speechId: result.speechId ?? result.recordingId };
+}
+
 type SpeechCall = DialogueSpeechCall & {
   sectionIdByShotId: Record<string, string>;
 };
@@ -266,7 +278,7 @@ async function recordClaimed(
           };
         }
       );
-      recorded.set(call.index, result);
+      recorded.set(call.index, withSpeechId(result));
     }
 
     const over = [...recorded.entries()].flatMap(([callIndex, call]) =>
