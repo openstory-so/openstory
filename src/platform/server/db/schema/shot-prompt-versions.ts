@@ -56,10 +56,17 @@ export type MotionAudioClip = {
    */
   spokenLines?: { index: number; text: string }[];
   /**
-   * The `dialogue_recordings` row this clip was cut from (#1657); the clip's
+   * The `dialogue_speeches` row this clip was cut from (#1657); the clip's
    * `id` is then its `shot_dialogue_sections.id`. Absent on a row from before
-   * recordings, and on a user-bound element clip.
+   * speeches, and on a user-bound element clip.
    */
+  speechId?: string;
+  /**
+   * @deprecated The pre-#1913 name of `speechId`. The #1913 migration rewrites
+   * stored clips, but a workflow payload snapshotted before the deploy can
+   * still carry it. Read through `clipSpeechId`, never directly.
+   */
+  // ponytail: delete with `clipSpeechId`'s fallback once no pre-#1913 run can be in flight.
   recordingId?: string;
 };
 import { type InferSelectModel, sql } from 'drizzle-orm';

@@ -295,7 +295,7 @@ function plan(overrides: Partial<UpdateStalePlan>): UpdateStalePlan {
       analysisModelId: 'x',
     },
     characterVoices: [],
-    dialogueRecording: null,
+    dialogueSpeech: null,
     renderRefs: { characters: [], locations: [], elements: [] },
     scenePrompts: {},
     targets: [],
@@ -874,7 +874,7 @@ describe('fresh executor parity (#1891)', () => {
       targets: [a],
       // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- reference children consume only fixture ids
       references: { ...references, voices: [] } as never,
-      dialogueRecording: {
+      dialogueSpeech: {
         scenes: [
           {
             voiced: [],

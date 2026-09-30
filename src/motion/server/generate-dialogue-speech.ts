@@ -15,16 +15,16 @@
  *  - **Bytes never cross a step.** A call is recorded and parked whole in R2
  *    inside its own step, and each adopting shot's file is cut R2 → R2 inside
  *    its own step. Only small records ride the Workflows checkpoint (#1645).
- *  - **Recordings are never joined.** A conversation over the provider's
+ *  - **Speeches are never joined.** A conversation over the provider's
  *    reliability line is split at a shot boundary into separate calls, each
- *    its own `dialogue_recordings` row; a call with no adopting shot in it is
+ *    its own `dialogue_speeches` row; a call with no adopting shot in it is
  *    not made at all.
  *  - **The fit ladder is per adopting SHOT** (#1651). A section over its
  *    shot's limit sends THAT shot's turns to the rewrite, and the call it
  *    sits in is re-recorded — delivery is not independent of the words around
  *    it. A context shot is never measured: it is not adopting anything.
  *  - **`sourceKey` keys the authored lines.** A rewrite records its delivered
- *    wording as `spokenLines` (and on the recording's turn as `spokenText`),
+ *    wording as `spokenLines` (and on the speech's turn as `spokenText`),
  *    so matching, staleness and the manifest's `audioSourceKey` do not move.
  */
 
@@ -44,10 +44,10 @@ import {
 } from '@/motion/server/fit-dialogue-clip';
 import { AUDIO_MIN_PAD_SLACK_SECONDS } from '@/motion/server/pad-dialogue-audio';
 import { SEED_AUDIO_MAX_REFERENCES } from '@/cast/server/voice/seed-audio';
-import { recordSeedDialogueCall } from '@/motion/server/record-seed-dialogue';
+import { generateSeedDialogueSpeech } from '@/motion/server/generate-seed-dialogue-speech';
 import {
-  recordDialogueCall,
-  type RecordedDialogueCall,
+  generateDialogueSpeechCall,
+  type DialogueSpeechCall,
 } from '@/motion/server/synthesize-dialogue';
 import type { AnalysisModelId } from '@/models/models.config';
 import { generateId } from '@/platform/id';
@@ -57,14 +57,14 @@ import type { MotionAudioClip } from '@/platform/server/db/schema';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import {
   DIALOGUE_TAKE_CHUNK_CHARS,
-  recordingKey,
+  speechKey,
   voicedShotIds,
   type SceneVoicedLine,
 } from '@/shots/shot-dialogue';
 import type { WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
 
-const logger = getLogger(['openstory', 'workflow', 'dialogue-recording']);
+const logger = getLogger(['openstory', 'workflow', 'dialogue-speech']);
 
 /**
  * Line characters per Seed Audio call (#1765). Its prompt also carries the
@@ -74,7 +74,7 @@ const logger = getLogger(['openstory', 'workflow', 'dialogue-recording']);
  */
 const SEED_TAKE_CHUNK_CHARS = 1000;
 
-export type RecordDialogueArgs = {
+export type GenerateDialogueSpeechArgs = {
   scopedDb: WorkflowScopedDb;
   workflowRunId: string;
   userId: string;
@@ -100,46 +100,46 @@ export type RecordDialogueArgs = {
 };
 
 /** A call's record plus the section id minted for each shot it spoke. */
-type RecordedCall = RecordedDialogueCall & {
+type SpeechCall = DialogueSpeechCall & {
   sectionIdByShotId: Record<string, string>;
 };
 
 /** Every shot a call spoke was minted a section id; a miss is a bug, not silence. */
-function sectionIdOf(call: RecordedCall, shotId: string): string {
+function sectionIdOf(call: SpeechCall, shotId: string): string {
   const id = call.sectionIdByShotId[shotId];
   if (!id) {
     throw new NonRetryableError(
-      `Recording ${call.recordingId} has no section for shot ${shotId}`
+      `Speech ${call.speechId} has no section for shot ${shotId}`
     );
   }
   return id;
 }
 
-export async function recordDialogue(
+export async function generateDialogueSpeech(
   step: WorkflowStep,
-  args: RecordDialogueArgs
+  args: GenerateDialogueSpeechArgs
 ): Promise<Record<string, MotionAudioClip[]>> {
   const spokenShotIds = new Set(voicedShotIds(args.lines));
   const adopting = args.adoptShotIds.filter((id) => spokenShotIds.has(id));
   if (adopting.length === 0 || adopting.length !== args.adoptShotIds.length) {
     throw new NonRetryableError(
-      'recordDialogue requires every adopting shot to have a voiced line'
+      'generateDialogueSpeech requires every adopting shot to have a voiced line'
     );
   }
   // Claim before anything is spent (#1657) — the same lifecycle every other
-  // generation has. A shot another run is already recording, for the same
+  // generation has. A shot another run is already generating, for the same
   // words, is not ours to adopt; with none left there is nothing to do.
   const claimIdByShotId = await step.do(
     `${args.stepPrefix}-claim`,
     async () => {
-      const claims = await args.scopedDb.shotDialogue.claimRecording({
+      const claims = await args.scopedDb.shotDialogue.claimSpeech({
         shots: adopting.map((shotId) => ({
           shotId,
           sourceKey: dialogueClipSourceKey(linesOf(args.lines, shotId)),
         })),
         workflowRunId: args.workflowRunId,
       });
-      // The open panel shows "Recording…" from here (#1653).
+      // The open panel shows "Generating…" from here (#1653).
       await Promise.all(
         Object.keys(claims).map((shotId) =>
           getGenerationChannel(args.sequenceId).emit(
@@ -167,10 +167,10 @@ export async function recordDialogue(
   }
 }
 
-/** The recording itself, for the shots this run holds a claim on. */
+/** The speech itself, for the shots this run holds a claim on. */
 async function recordClaimed(
   step: WorkflowStep,
-  args: RecordDialogueArgs,
+  args: GenerateDialogueSpeechArgs,
   claimed: readonly string[],
   claimIdByShotId: Record<string, string>
 ): Promise<Record<string, MotionAudioClip[]>> {
@@ -196,7 +196,7 @@ async function recordClaimed(
     .filter((call) => call.shotIds.some((id) => adopts.has(id)));
 
   let spoken: SceneVoicedLine[] = [...args.lines];
-  const recorded = new Map<number, RecordedCall>();
+  const recorded = new Map<number, SpeechCall>();
   let toRecord = calls;
 
   for (let attempt = 0; ; attempt++) {
@@ -207,7 +207,7 @@ async function recordClaimed(
       );
       const result = await step.do(
         `${args.stepPrefix}-chunk-${call.index}${suffix}`,
-        async (): Promise<RecordedCall> => {
+        async (): Promise<SpeechCall> => {
           const eleven =
             await args.scopedDb.credentials.resolveKey('elevenlabs');
           // A Seed voice is recorded by Seed, an ElevenLabs voice by
@@ -215,7 +215,7 @@ async function recordClaimed(
           const made = callLines.some(
             (line) => voiceProviderOf(line.voiceId) === 'seed'
           )
-            ? await recordSeedDialogueCall({
+            ? await generateSeedDialogueSpeech({
                 seedKey: (
                   await args.scopedDb.credentials.resolveKey('seed-speech')
                 ).key,
@@ -224,7 +224,7 @@ async function recordClaimed(
                 sequenceId: args.sequenceId,
                 lines: callLines,
               })
-            : await recordDialogueCall({
+            : await generateDialogueSpeechCall({
                 apiKey: eleven.key,
                 teamId: args.teamId,
                 sequenceId: args.sequenceId,
@@ -256,7 +256,7 @@ async function recordClaimed(
               workflowName: args.workflowName,
             });
           }
-          // Section ids are minted with the recording, inside this step: the
+          // Section ids are minted with the speech, inside this step: the
           // clip and the row have to agree on them across a persist retry.
           return {
             ...made,
@@ -324,7 +324,7 @@ async function recordClaimed(
       throw tooLong(first.shotId, first.measured, firstLimit);
     }
     logger.warn(
-      `[dialogue-recording] ${args.stepPrefix}: ${over.length} section(s) over budget — re-recording ${rerecord.size} call(s) (attempt ${attempt + 1}/${MAX_DIALOGUE_FIT_ATTEMPTS})`
+      `[dialogue-speech] ${args.stepPrefix}: ${over.length} section(s) over budget — regenerating ${rerecord.size} call(s) (attempt ${attempt + 1}/${MAX_DIALOGUE_FIT_ATTEMPTS})`
     );
     toRecord = calls.filter((call) => rerecord.has(call.index));
   }
@@ -348,7 +348,7 @@ async function recordClaimed(
       const cut = await step.do(`${args.stepPrefix}-cut-${shotId}`, () =>
         cutAudioSection({
           storageKey: call.storageKey,
-          recordingId: call.recordingId,
+          speechId: call.speechId,
           teamId: args.teamId,
           sequenceId: args.sequenceId,
           fromSeconds: window.fromSeconds,
@@ -361,7 +361,7 @@ async function recordClaimed(
         sectionClip(
           {
             id: sectionId,
-            recordingId: call.recordingId,
+            speechId: call.speechId,
             sourceKey,
             spokenLines: spokenLines ?? null,
           },
@@ -371,10 +371,10 @@ async function recordClaimed(
     }
   }
 
-  // Only the recordings that survived the ladder get rows. `appendRecording`
+  // Only the speeches that survived the ladder get rows. `appendSpeech`
   // lands the reading AND promotes it — pointer and `shots.audioClips` in one
   // transaction, each guarded by the shot's claim — and is a no-op for a
-  // recording id it already holds, so a retry of this step lands on the same
+  // speech id it already holds, so a retry of this step lands on the same
   // state. The step returns only the promoted shot ids: small, and what a
   // replay has to agree on.
   const promotedShotIds = await step.do(
@@ -383,16 +383,16 @@ async function recordClaimed(
       const promoted: string[] = [];
       for (const call of recorded.values()) {
         const callShotIds = call.windows.map((window) => window.shotId);
-        const inputHash = recordingKey(
+        const inputHash = speechKey(
           args.lines.filter((line) => callShotIds.includes(line.shotId))
         );
         if (!inputHash) {
           throw new NonRetryableError(
-            `Recording ${call.recordingId} has no voiced lines to key`
+            `Speech ${call.speechId} has no voiced lines to key`
           );
         }
-        const landed = await args.scopedDb.shotDialogue.appendRecording({
-          id: call.recordingId,
+        const landed = await args.scopedDb.shotDialogue.appendSpeech({
+          id: call.speechId,
           sequenceId: args.sequenceId,
           storageKey: call.storageKey,
           url: call.url,
@@ -431,7 +431,7 @@ async function recordClaimed(
         promoted.push(...landed.promotedShotIds);
       }
       // The open panel re-reads the shot (#1653) — promoted or not, its list of
-      // readings and its "recording…" state both moved.
+      // readings and its "Generating…" state both moved.
       await Promise.all(
         claimed.map((shotId) =>
           getGenerationChannel(args.sequenceId).emit(
@@ -479,7 +479,7 @@ function tooLong(
 /**
  * Split a conversation into calls, breaking only between shots. Consecutive
  * turns of one shot are grouped first, so a shot is never split across two
- * recordings. A call also breaks where the provider changes (a Seed voice and
+ * speeches. A call also breaks where the provider changes (a Seed voice and
  * an ElevenLabs voice cannot share one, #1765), and a Seed call where a fourth
  * speaker would join or past {@link SEED_TAKE_CHUNK_CHARS}: Seed takes one
  * voice clip per speaker and three at most.

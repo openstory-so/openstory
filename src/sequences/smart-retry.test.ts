@@ -795,7 +795,7 @@ describe('executeSmartRetry — partial retry status reset', () => {
     expect(triggerWorkflowMock).toHaveBeenCalledWith(
       '/motion-batch',
       expect.objectContaining({
-        dialogueRecording: expect.objectContaining({
+        dialogueSpeech: expect.objectContaining({
           scenes: [
             expect.objectContaining({
               voiced: expect.arrayContaining([

@@ -122,12 +122,12 @@ const CLAIM_DOMAINS: Record<string, ClaimDomain> = {
   dialogue: {
     tables: [
       'shot_dialogue_claims',
-      'dialogue_recordings',
+      'dialogue_speeches',
       'shot_dialogue_sections',
     ],
-    claim: 'shotDialogue.claimRecording',
+    claim: 'shotDialogue.claimSpeech',
     clear: 'shotDialogue.failClaims',
-    promote: 'shotDialogue.appendRecording',
+    promote: 'shotDialogue.appendSpeech',
     userSelect: 'shotDialogue.selectSection',
   },
   // Pointer claim on the sequence, taken with the track's pending row
@@ -252,7 +252,7 @@ const WORKFLOW_SOURCES = [
     (f) => !f.endsWith('.test.ts')
   ),
   // A workflow-step helper, not a workflow (#1651, #1657).
-  'src/motion/server/record-dialogue.ts',
+  'src/motion/server/generate-dialogue-speech.ts',
   // Analysis's spec-and-prompts step (#1915).
   'src/shots/server/persist-shot-spec.ts',
 ].sort();

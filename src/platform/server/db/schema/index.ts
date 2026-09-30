@@ -68,7 +68,7 @@ import {
 } from './bible-versions';
 import { shotDialogueVersions } from './shot-dialogue-versions';
 import { shotSpecVersions } from './shot-spec-versions';
-import { dialogueRecordings } from './dialogue-recordings';
+import { dialogueSpeeches } from './dialogue-speeches';
 import { shotDialogueSections } from './shot-dialogue-sections';
 import { shotDialogueClaims } from './shot-dialogue-claims';
 
@@ -180,7 +180,7 @@ export { shots };
 export {
   shotDialogueVersions,
   shotSpecVersions,
-  dialogueRecordings,
+  dialogueSpeeches,
   shotDialogueSections,
   shotDialogueClaims,
 };
@@ -190,10 +190,7 @@ export type {
   ShotDialogueSource,
   ShotDialogueVersion,
 } from './shot-dialogue-versions';
-export type {
-  DialogueRecording,
-  DialogueRecordingTurn,
-} from './dialogue-recordings';
+export type { DialogueSpeech, DialogueSpeechTurn } from './dialogue-speeches';
 export type { ShotDialogueSection } from './shot-dialogue-sections';
 export type { ShotSpecSource, ShotSpecVersion } from './shot-spec-versions';
 export type { ShotDialogueClaim } from './shot-dialogue-claims';
@@ -535,7 +532,7 @@ export const schema = {
   sceneScriptVersions,
   shots,
   shotDialogueVersions,
-  dialogueRecordings,
+  dialogueSpeeches,
   shotDialogueSections,
   shotDialogueClaims,
   shotVariants,

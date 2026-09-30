@@ -93,17 +93,17 @@ describe('dependency graph', () => {
     );
   });
 
-  it('a voice change re-stales the recording, the section and the clip, not the motion prompt', () => {
+  it('a voice change re-stales the speech, the section and the clip, not the motion prompt', () => {
     expect(ids(staleAfterEdit('voice', 'start-frame'))).toEqual([
       'clip',
-      'dialogueRecording',
       'dialogueSection',
+      'dialogueSpeech',
       'export',
     ]);
     expect(ids(staleAfterEdit('voice', 'reference-only'))).toEqual([
       'clip',
-      'dialogueRecording',
       'dialogueSection',
+      'dialogueSpeech',
       'export',
     ]);
     expect(ids(staleBecauseOf('motionPrompt', 'start-frame'))).not.toContain(
@@ -125,8 +125,8 @@ describe('dependency graph', () => {
     ]);
     expect(ids(staleAfterEdit('dialogue', 'start-frame'))).toEqual([
       'clip',
-      'dialogueRecording',
       'dialogueSection',
+      'dialogueSpeech',
       'export',
       'motionPrompt', // the shot's lines are its input (#1784)
     ]);

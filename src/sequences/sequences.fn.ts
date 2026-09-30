@@ -1172,8 +1172,8 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
               // video. Promote later with "Set". (#547)
               variantOnly: true,
               // Record each scene once before the fan-out (#1657).
-              ...(batchDialogue.dialogueRecording
-                ? { dialogueRecording: batchDialogue.dialogueRecording }
+              ...(batchDialogue.dialogueSpeech
+                ? { dialogueSpeech: batchDialogue.dialogueSpeech }
                 : {}),
               shots: eligible.map((f) => {
                 const selectedMotion = selectedMotionByShot.get(f.id);

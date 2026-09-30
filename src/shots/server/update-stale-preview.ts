@@ -102,12 +102,12 @@ export function buildUpdateStalePreview(
   // render records it. An upper bound — a scene whose clips still match its
   // lines is not recorded again.
   const dialogueShotIds = new Set(dialogues.map((t) => t.shotId));
-  const recordingChars = { dialogue: 0, video: 0 };
-  for (const job of plan.dialogueRecording?.scenes ?? []) {
+  const speechChars = { dialogue: 0, video: 0 };
+  for (const job of plan.dialogueSpeech?.scenes ?? []) {
     const level = job.voiced.some((line) => dialogueShotIds.has(line.shotId))
       ? 'dialogue'
       : 'video';
-    recordingChars[level] += ttsCharacterCount(job.voiced);
+    speechChars[level] += ttsCharacterCount(job.voiced);
   }
   const videosCost = sum(
     videos.map((t) =>
@@ -149,12 +149,12 @@ export function buildUpdateStalePreview(
       prompts: promptsCost,
       images: addMaybe(imagesCost, sheetsCost),
       dialogue:
-        recordingChars.dialogue > 0
-          ? estimateTtsCost(recordingChars.dialogue)
+        speechChars.dialogue > 0
+          ? estimateTtsCost(speechChars.dialogue)
           : ZERO_MICROS,
       video:
-        recordingChars.video > 0
-          ? addMaybe(videosCost, estimateTtsCost(recordingChars.video))
+        speechChars.video > 0
+          ? addMaybe(videosCost, estimateTtsCost(speechChars.video))
           : videosCost,
       music: musicCost,
     },

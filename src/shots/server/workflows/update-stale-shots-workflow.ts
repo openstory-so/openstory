@@ -201,7 +201,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
   ): Promise<UpdateStaleShotsResult> {
     const input = event.payload;
     const parentInstanceId = event.instanceId;
-    const { userId, teamId, sequenceId, plan } = input;
+    const { userId, teamId, sequenceId, plan: payloadPlan } = input;
     if (!sequenceId) {
       throw new WorkflowValidationError('Sequence ID is required');
     }
@@ -212,13 +212,18 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
     // snapshot available: identical across replays, and bound to the state the
     // user clicked on rather than to run-start state minutes later.
     // ============================================================
-    if (!plan || !Array.isArray(plan.targets)) {
+    if (!payloadPlan || !Array.isArray(payloadPlan.targets)) {
       // Only reachable for an instance queued by a build that predates the
       // move. Failing loudly beats a run that reports "nothing was stale".
       throw new WorkflowValidationError(
         'Update-all plan missing from payload; re-trigger the update'
       );
     }
+    const plan = {
+      ...payloadPlan,
+      dialogueSpeech:
+        payloadPlan.dialogueSpeech ?? payloadPlan.dialogueRecording ?? null,
+    };
     // Rationale lives with the plan type: `findTargetMissingStartFrameMode`.
     const untyped = findTargetMissingStartFrameMode(plan);
     if (untyped) {
@@ -1052,7 +1057,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             ? voicedDialogueLines(target.dialogue, voicedPlan.characterVoices)
             : [];
           const audioClips = matchingDialogueClips(
-            recordedClipsByShotId[target.shotId] ??
+            speechClipsByShotId[target.shotId] ??
               target.motionRender.audioClips,
             voicedLines
           );
@@ -1153,17 +1158,17 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           target.regenVisual || target.regenImage || target.regenMotion
       ) || !!(musicToRun?.regenPrompt && !musicToRun.regenTrack);
     if (freshPhases && hasImageWork) await announce('images');
-    const dialogueRecording = voicedPlan.dialogueRecording;
+    const dialogueSpeech = voicedPlan.dialogueSpeech;
     // Same balance gate the per-shot render applies to its own TTS, priced on
     // the whole conversation. Short of it, skip the up-front recording: each
     // shot's own gate then refuses it by name instead of the run failing here.
-    const canRecordScenes = dialogueRecording
+    const canRecordScenes = dialogueSpeech
       ? await step.do('gate-dialogue-audio', async () => {
           try {
             await requireCredits(
               scopedDb.liveRead,
               estimateTtsCost(
-                dialogueRecording.scenes.reduce(
+                dialogueSpeech.scenes.reduce(
                   (sum, job) => sum + ttsCharacterCount(job.voiced),
                   0
                 )
@@ -1182,10 +1187,9 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
       : false;
     // Settles to the recorded clips, or to why the scene audio was not
     // recorded — never rejects, so a render awaiting it is never failed by it.
-    let recordedClipsByShotId: DialogueAudioWorkflowResult['clipsByShotId'] =
-      {};
-    const recordDialogue = (): Promise<DialogueOutcome> =>
-      dialogueRecording && canRecordScenes
+    let speechClipsByShotId: DialogueAudioWorkflowResult['clipsByShotId'] = {};
+    const generateDialogueSpeech = (): Promise<DialogueOutcome> =>
+      dialogueSpeech && canRecordScenes
         ? spawnAndAwaitChild<
             DialogueAudioWorkflowInput,
             DialogueAudioWorkflowResult
@@ -1199,9 +1203,9 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               teamId,
               sequenceId,
               reservationId: input.reservationId,
-              scenes: dialogueRecording.scenes,
-              minDurationSeconds: dialogueRecording.minDurationSeconds,
-              maxDurationSeconds: dialogueRecording.maxDurationSeconds,
+              scenes: dialogueSpeech.scenes,
+              minDurationSeconds: dialogueSpeech.minDurationSeconds,
+              maxDurationSeconds: dialogueSpeech.maxDurationSeconds,
               analysisModelId: plan.promptContext?.analysisModelId,
             },
             spawnStepName: 'spawn-dialogue-audio',
@@ -1209,7 +1213,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             timeout: '60 minutes',
           }).then(
             (result): DialogueOutcome => ({
-              clipsByShotId: (recordedClipsByShotId = result.clipsByShotId),
+              clipsByShotId: (speechClipsByShotId = result.clipsByShotId),
             }),
             (error: unknown): DialogueOutcome => {
               logger.warn(
@@ -1222,14 +1226,14 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             }
           )
         : Promise.resolve<DialogueOutcome>(
-            dialogueRecording
+            dialogueSpeech
               ? { error: 'Insufficient credits for dialogue audio' }
               : { clipsByShotId: {} }
           );
 
-    let dialogueRecorded = input.freshRun
+    let dialogueGenerated = input.freshRun
       ? Promise.resolve<DialogueOutcome>({ clipsByShotId: {} })
-      : recordDialogue();
+      : generateDialogueSpeech();
     const eligibleVideos: Array<{
       target: PlanTarget;
       claims: ShotClaims;
@@ -1826,11 +1830,11 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
     await Promise.allSettled([...jobs, ...(musicJob ? [musicJob] : [])]);
     if (freshPhases && hasImageWork) await completePhase('images');
     if (input.freshRun) {
-      if (freshPhases && dialogueRecording) await announce('dialogue');
-      dialogueRecorded = recordDialogue();
+      if (freshPhases && dialogueSpeech) await announce('dialogue');
+      dialogueGenerated = generateDialogueSpeech();
     }
-    await dialogueRecorded;
-    if (freshPhases && dialogueRecording) await completePhase('dialogue');
+    await dialogueGenerated;
+    if (freshPhases && dialogueSpeech) await completePhase('dialogue');
     if (freshPhases && eligibleVideos.length > 0) await announce('motion');
     await Promise.all(
       eligibleVideos.map(async ({ target, claims, motionVersionId }) => {
@@ -1969,8 +1973,8 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
     }
     const dialogue = dialogueTargetOutcome(
       voicedPlan.targets,
-      dialogueRecording,
-      await dialogueRecorded
+      dialogueSpeech,
+      await dialogueGenerated
     );
     counters.dialogues = dialogue.updated;
     failures.push(...dialogue.failures);

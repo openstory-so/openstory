@@ -8,7 +8,7 @@
  * `convertWithTimestamps` rather than `convert` (#1651): the voice segments
  * it returns are where each turn sits, which is what the per-shot ranges are
  * built from, and how we learn where speech ends so the trailing silence can
- * come off. It answers base64 JSON instead of a stream, so the recording is
+ * come off. It answers base64 JSON instead of a stream, so the speech is
  * buffered once either way — the caller runs this inside its own step so only
  * the small record below crosses the Workflows checkpoint (#1645, 1 MiB).
  */
@@ -34,7 +34,7 @@ import {
   wavDurationSeconds,
 } from './pad-dialogue-audio';
 import type {
-  DialogueRecordingTurn,
+  DialogueSpeechTurn,
   MotionAudioClip,
 } from '@/platform/server/db/schema';
 import type { ReferenceImageDescription } from '@/stills/reference-image-prompt';
@@ -50,17 +50,17 @@ export type DialogueCallLine = {
   tone: string;
 };
 
-export type RecordedDialogueCall = {
+export type DialogueSpeechCall = {
   /** Minted in here, inside the caller's step, so a replay keeps the id. */
-  recordingId: string;
+  speechId: string;
   /** `<bucket>/<path>` — what `cutAudioSection` ranges into. */
   storageKey: string;
   url: string;
   durationSeconds: number;
   characterCount: number;
-  /** Where each turn sits in the recording, in the order it was sent. */
-  turns: DialogueRecordingTurn[];
-  /** Each shot's range of the recording, its trailing silence already off. */
+  /** Where each turn sits in the speech, in the order it was sent. */
+  turns: DialogueSpeechTurn[];
+  /** Each shot's range of the speech, its trailing silence already off. */
   windows: Array<{ shotId: string; fromSeconds: number; toSeconds: number }>;
   /** What the call cost, one charge per provider it spent with. */
   charges: DialogueCharge[];
@@ -82,14 +82,14 @@ type DialogueCharge = {
  * WAV — and the trailing silence is MEASURED in place, not trimmed into a
  * new buffer. The WAV is handed to `r2.put` as it is.
  */
-export async function recordDialogueCall(input: {
+export async function generateDialogueSpeechCall(input: {
   apiKey: string;
   teamId: string;
   sequenceId: string;
   lines: readonly DialogueCallLine[];
-}): Promise<RecordedDialogueCall> {
+}): Promise<DialogueSpeechCall> {
   if (input.lines.length === 0) {
-    throw new Error('recordDialogueCall requires at least one line');
+    throw new Error('generateDialogueSpeechCall requires at least one line');
   }
   const inputs = input.lines.map((line) => ({
     text: ttsUtterance(line.text, line.tone),
@@ -117,7 +117,7 @@ export async function recordDialogueCall(input: {
     throw new Error('Dialogue TTS returned audio that is not a PCM WAV');
   }
 
-  const turns = recordingTurns(input.lines, result, durationSeconds);
+  const turns = speechTurns(input.lines, result, durationSeconds);
   // `speechEnd` only ever moves a range's end LATER (see `trimmedEndSeconds`),
   // so a short-reporting segment cannot cut a word.
   const windows = shotSliceWindows(turns, durationSeconds).map((window) => ({
@@ -126,16 +126,16 @@ export async function recordDialogueCall(input: {
     toSeconds: trimmedEndSeconds(wav, window.from, window.to, window.speechEnd),
   }));
 
-  const recordingId = generateId();
+  const speechId = generateId();
   const uploaded = await uploadFile(
     STORAGE_BUCKETS.AUDIO,
-    `${input.teamId}/${input.sequenceId}/dialogue-recordings/${recordingId}.wav`,
+    `${input.teamId}/${input.sequenceId}/dialogue-speeches/${speechId}.wav`,
     wav,
     { contentType: 'audio/wav', upsert: true }
   );
 
   return {
-    recordingId,
+    speechId,
     storageKey: uploaded.fullPath,
     url: uploaded.publicUrl,
     durationSeconds,
@@ -167,20 +167,20 @@ export function dialogueClipsAsReferences(
 }
 
 /**
- * Where each turn sits in the recording. `dialogueInputIndex` is the position
+ * Where each turn sits in the speech. `dialogueInputIndex` is the position
  * in the `inputs` we sent, so it maps straight back onto the lines; a turn
  * reported as several segments spans the outermost of them.
  *
  * A response with no segments can still be ranged when every line belongs to
- * ONE shot — there is nothing to divide, the whole recording is that shot's.
+ * ONE shot — there is nothing to divide, the whole speech is that shot's.
  * Across shots it cannot, and that fails here rather than handing some shot a
  * range of someone else's lines.
  */
-function recordingTurns(
+function speechTurns(
   lines: readonly DialogueCallLine[],
   result: { voiceSegments?: Array<VoiceSegmentTimes> | null },
   durationSeconds: number
-): DialogueRecordingTurn[] {
+): DialogueSpeechTurn[] {
   const spans = new Map<number, { start: number; end: number }>();
   for (const segment of result.voiceSegments ?? []) {
     const at = segment.dialogueInputIndex;
@@ -242,24 +242,24 @@ type VoiceSegmentTimes = {
 };
 
 /**
- * The range of the recording each shot keeps, in speaking order (#1657).
+ * The range of the speech each shot keeps, in speaking order (#1657).
  *
  * A shot's range starts where the PREVIOUS shot stopped speaking, so the
  * silence between two turns belongs to the shot that is about to speak — a
  * clip that opened on its own first syllable would sound cut into. It runs to
- * the next shot's first word (the last shot, to the end of the recording),
+ * the next shot's first word (the last shot, to the end of the speech),
  * and `speechEnd` is its own last word, which is where the tail is trimmed
  * back to.
  *
  * Precondition: a shot's turns are contiguous. `sceneConversation` builds
  * them that way (shot order, then line order) and `chunkTakeLines` groups by
- * shot, so two shots never trade turns inside one recording.
+ * shot, so two shots never trade turns inside one speech.
  */
 export function shotSliceWindows(
   turns: ReadonlyArray<
-    Pick<DialogueRecordingTurn, 'shotId' | 'startSeconds' | 'endSeconds'>
+    Pick<DialogueSpeechTurn, 'shotId' | 'startSeconds' | 'endSeconds'>
   >,
-  recordingSeconds: number
+  speechSeconds: number
 ): Array<{ shotId: string; from: number; to: number; speechEnd: number }> {
   const shotIds = [...new Set(turns.map((turn) => turn.shotId))];
   const spanOf = (shotId: string) => {
@@ -274,7 +274,7 @@ export function shotSliceWindows(
     const previous = index === 0 ? null : shotIds[index - 1];
     const following = shotIds[index + 1];
     const from = previous ? spanOf(previous).lastWord : 0;
-    const to = following ? spanOf(following).firstWord : recordingSeconds;
+    const to = following ? spanOf(following).firstWord : speechSeconds;
     return {
       shotId,
       from,

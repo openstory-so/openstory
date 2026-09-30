@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { moodForTone } from '@/cast/seed-voice';
-import { pickSeedReferences, seedScenePrompt } from './record-seed-dialogue';
+import {
+  pickSeedReferences,
+  seedScenePrompt,
+} from './generate-seed-dialogue-speech';
 
 const line = (voiceId: string, character: string, text: string, tone = '') => ({
   shotId: 's1',

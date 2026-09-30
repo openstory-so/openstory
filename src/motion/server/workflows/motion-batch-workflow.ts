@@ -29,7 +29,7 @@ import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-wor
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
 import { WorkflowValidationError } from '@/platform/server/workflow/errors';
 import {
-  attachRecordedClips,
+  attachSpeechClips,
   missingDialogueAudioShotIds,
 } from './motion-batch-jobs';
 import type {
@@ -111,7 +111,7 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
 
     // Step 0b: record dialogue ONCE PER SCENE (#1657). The parent must not
     // fan out motion until every voiced shot has a matching take; a failed or
-    // partial scene recording blocks the batch below.
+    // partial scene speech blocks the batch below.
     const shots = await this.recordScenesOnce(input, step, parentInstanceId);
     const missingDialogueShotIds = missingDialogueAudioShotIds(shots);
     if (missingDialogueShotIds.length > 0) {
@@ -263,7 +263,7 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
    * `deferred` event will show if it ever matters.
    */
   /**
-   * Record every scene in `input.dialogueRecording` once, then return the
+   * Record every scene in `input.dialogueSpeech` once, then return the
    * shots with their new clips attached.
    *
    * A failed scene remains without clips. The caller validates every voiced
@@ -274,9 +274,9 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
     step: WorkflowStep,
     parentInstanceId: string
   ): Promise<BatchMotionMusicWorkflowInput['shots']> {
-    const recording = input.dialogueRecording;
+    const speech = input.dialogueSpeech ?? input.dialogueRecording;
     const sequenceId = input.sequenceId;
-    if (!recording || recording.scenes.length === 0 || !sequenceId) {
+    if (!speech || speech.scenes.length === 0 || !sequenceId) {
       return input.shots;
     }
 
@@ -293,17 +293,17 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
         teamId: input.teamId,
         sequenceId,
         reservationId: input.reservationId,
-        scenes: recording.scenes,
-        minDurationSeconds: recording.minDurationSeconds,
-        maxDurationSeconds: recording.maxDurationSeconds,
-        analysisModelId: recording.analysisModelId,
+        scenes: speech.scenes,
+        minDurationSeconds: speech.minDurationSeconds,
+        maxDurationSeconds: speech.maxDurationSeconds,
+        analysisModelId: speech.analysisModelId,
       },
       spawnStepName: 'spawn-dialogue-audio',
       awaitStepName: 'await-dialogue-audio',
       timeout: '60 minutes',
     });
 
-    return attachRecordedClips(input.shots, result.clipsByShotId);
+    return attachSpeechClips(input.shots, result.clipsByShotId);
   }
 
   private async awaitBytePlusPoolAdmission(

@@ -4,7 +4,7 @@
  * Lines belong to the SHOT. A scene's conversation is its shots in order,
  * then each shot's lines in order — built here, never stored. One ElevenLabs
  * Text to Dialogue call records a conversation so every turn is acted in
- * context, and each shot it spoke keeps a time range of that recording.
+ * context, and each shot it spoke keeps a time range of that speech.
  *
  * A turn's `index` is its position among THAT SHOT's lines, which is what
  * `VoicedDialogueLine.index` has always meant: the prompt mirror
@@ -16,7 +16,7 @@
  * Keeping `index` shot-relative is what lets every #1554/#1651 helper —
  * `voicedDialogueLines`, `dialogueClipSourceKey`, `matchingDialogueClips`,
  * `withSpokenText`, `spokenLinesFor` — work unchanged on one shot's section
- * of a recording. Nothing downstream learns that the recording was wider.
+ * of a speech. Nothing downstream learns that the speech was wider.
  */
 
 import {
@@ -39,7 +39,7 @@ export type { ShotDialogueLine };
  * Characters of `ttsUtterance` text per Text to Dialogue call. ElevenLabs'
  * own reliability line for v3 — past it a long conversation starts dropping
  * turns. A conversation over the line is split at a SHOT boundary, never
- * inside a shot, so no section is ever cut across two recordings.
+ * inside a shot, so no section is ever cut across two speeches.
  */
 export const DIALOGUE_TAKE_CHUNK_CHARS = 2000;
 
@@ -105,7 +105,7 @@ export function deriveShotDialogueLines(
 
 /**
  * What a shot says NOW — the one answer every reader uses (#1657), so the
- * recording, the prompt text and the panel cannot disagree:
+ * speech, the prompt text and the panel cannot disagree:
  *
  * 1. its selected `shot_dialogue_versions` row;
  * 2. else the dialogue its motion prompt row carried — only rows from before
@@ -181,7 +181,7 @@ export function voicedShotIds(lines: readonly SceneVoicedLine[]): string[] {
 }
 
 /**
- * The recording key (`dialogue_recordings.inputHash`): the voiced turns in
+ * The speech key (`dialogue_speeches.inputHash`): the voiced turns in
  * speaking order, each with the shot it belongs to, the voice speaking it,
  * the words, the tone, and the TTS model + stability the whole call is
  * recorded with. Null when nothing is voiced — there is nothing to key.
@@ -189,9 +189,7 @@ export function voicedShotIds(lines: readonly SceneVoicedLine[]): string[] {
  * Order, not sorted: a call records a conversation, so who speaks after whom
  * is part of what was recorded.
  */
-export function recordingKey(
-  voiced: readonly SceneVoicedLine[]
-): string | null {
+export function speechKey(voiced: readonly SceneVoicedLine[]): string | null {
   if (voiced.length === 0) return null;
   const body = voiced
     .map((line) => [line.shotId, line.voiceId, line.text, line.tone].join('\t'))

@@ -332,7 +332,7 @@ describe('computePlan — a dialogue unit (#1703, #1780 §6)', () => {
       regenDialogue: true,
       regenVideo: false,
     });
-    expect(result.dialogueRecording?.scenes).toHaveLength(1);
+    expect(result.dialogueSpeech?.scenes).toHaveLength(1);
   });
 
   it('records a FIRST reading when the plan owes one', async () => {
@@ -349,7 +349,7 @@ describe('computePlan — a dialogue unit (#1703, #1780 §6)', () => {
         },
       },
     });
-    expect(result.dialogueRecording?.scenes).toHaveLength(1);
+    expect(result.dialogueSpeech?.scenes).toHaveLength(1);
   });
 });
 describe('computePlan — what cannot be planned is reported', () => {

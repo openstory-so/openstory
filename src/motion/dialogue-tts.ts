@@ -40,13 +40,13 @@ export const DIALOGUE_TTS_STABILITY = 0.35;
 export const DIALOGUE_CLIP_TOKEN = 'DIALOGUE';
 
 /**
- * The clip a shot holds for a section of a recording (#1657). The one place
+ * The clip a shot holds for a section of a speech (#1657). The one place
  * that says a generated dialogue clip's `id` IS its section id.
  */
 export function sectionClip(
   section: {
     id: string;
-    recordingId: string;
+    speechId: string;
     sourceKey: string;
     spokenLines: MotionAudioClip['spokenLines'] | null;
   },
@@ -58,7 +58,7 @@ export function sectionClip(
     token: DIALOGUE_CLIP_TOKEN,
     durationSeconds: cut.durationSeconds,
     sourceKey: section.sourceKey,
-    recordingId: section.recordingId,
+    speechId: section.speechId,
     ...(section.spokenLines && { spokenLines: section.spokenLines }),
   };
 }

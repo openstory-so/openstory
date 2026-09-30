@@ -61,12 +61,12 @@ export const relations = defineRelations(schema, (r) => ({
     locations: r.many.sequenceLocations(),
     elements: r.many.sequenceElements(),
     musicPromptVariants: r.many.sequenceMusicPromptVersions(),
-    dialogueRecordings: r.many.dialogueRecordings(),
+    dialogueSpeeches: r.many.dialogueSpeeches(),
   },
 
-  dialogueRecordings: {
+  dialogueSpeeches: {
     sequence: r.one.sequences({
-      from: r.dialogueRecordings.sequenceId,
+      from: r.dialogueSpeeches.sequenceId,
       to: r.sequences.id,
     }),
   },

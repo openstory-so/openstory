@@ -33,7 +33,7 @@ const target = (o: object) =>
 const plan = (
   targets: unknown[],
   music: unknown = null,
-  dialogueRecording: unknown = null
+  dialogueSpeech: unknown = null
 ) =>
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test stub
   ({
@@ -41,7 +41,7 @@ const plan = (
     sequence: { videoModel: 'seedance_v2' },
     targets,
     music,
-    dialogueRecording,
+    dialogueSpeech,
     skipped: [],
     promptContext: null,
   }) as never;

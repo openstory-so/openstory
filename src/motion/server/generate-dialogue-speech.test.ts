@@ -25,13 +25,13 @@ const llmCall = vi.fn();
 const deduct = vi.fn(async () => undefined);
 const cut = vi.fn(
   async (input: {
-    recordingId: string;
+    speechId: string;
     fromSeconds: number;
     toSeconds: number;
     minDurationSeconds?: number;
   }) => ({
-    url: `/r2/audio/cut-${input.recordingId}.wav`,
-    path: `audio/cut-${input.recordingId}.wav`,
+    url: `/r2/audio/cut-${input.speechId}.wav`,
+    path: `audio/cut-${input.speechId}.wav`,
     durationSeconds: Math.max(
       input.toSeconds - input.fromSeconds,
       input.minDurationSeconds == null ? 0 : input.minDurationSeconds + 0.15
@@ -41,7 +41,7 @@ const cut = vi.fn(
 
 vi.doMock('@/motion/server/synthesize-dialogue', () => ({
   ...realSynthesize,
-  recordDialogueCall: recordCall,
+  generateDialogueSpeechCall: recordCall,
 }));
 vi.doMock('@/motion/server/cut-audio-section', () => ({
   cutAudioSection: cut,
@@ -53,7 +53,8 @@ vi.doMock('@/billing/server/workflow-deduction', () => ({
   deductWorkflowCredits: deduct,
 }));
 
-const { chunkTakeLines, recordDialogue } = await import('./record-dialogue');
+const { chunkTakeLines, generateDialogueSpeech } =
+  await import('./generate-dialogue-speech');
 const { MAX_DIALOGUE_FIT_ATTEMPTS } = await import('./fit-dialogue-clip');
 
 /** Runs each step body inline and records the durable names used. */
@@ -87,7 +88,7 @@ type Appended = {
 // are the two ways a test makes that not happen.
 const unclaimable = new Set<string>();
 const demoted = new Set<string>();
-const claimRecording = vi.fn(
+const claimSpeech = vi.fn(
   async (input: { shots: { shotId: string }[]; workflowRunId: string }) =>
     Object.fromEntries(
       input.shots
@@ -96,7 +97,7 @@ const claimRecording = vi.fn(
     )
 );
 const failClaims = vi.fn(async (_ids: readonly string[], _error: string) => {});
-const appendRecording = vi.fn(async (input: Appended) => ({
+const appendSpeech = vi.fn(async (input: Appended) => ({
   promotedShotIds: input.sections
     .filter((section) => section.adopt && !demoted.has(section.shotId))
     .map((section) => section.shotId),
@@ -104,7 +105,7 @@ const appendRecording = vi.fn(async (input: Appended) => ({
 // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- only the key hatch and the claim/land writes are touched
 const scopedDb = {
   credentials: { resolveKey: async () => ({ key: 'el-key' }) },
-  shotDialogue: { claimRecording, failClaims, appendRecording },
+  shotDialogue: { claimSpeech, failClaims, appendSpeech },
 } as unknown as WorkflowScopedDb;
 
 const line = (
@@ -140,7 +141,7 @@ function answer(secondsByShot: Record<string, number>, id: string) {
       return { shotId, fromSeconds, toSeconds: at };
     });
     return Promise.resolve({
-      recordingId: id,
+      speechId: id,
       storageKey: `audio/${id}.wav`,
       url: `/r2/audio/${id}.wav`,
       durationSeconds: at,
@@ -162,7 +163,9 @@ function answer(secondsByShot: Record<string, number>, id: string) {
   };
 }
 
-function args(overrides: Partial<Parameters<typeof recordDialogue>[1]> = {}) {
+function args(
+  overrides: Partial<Parameters<typeof generateDialogueSpeech>[1]> = {}
+) {
   return {
     scopedDb,
     workflowRunId: 'run-1',
@@ -183,8 +186,8 @@ function args(overrides: Partial<Parameters<typeof recordDialogue>[1]> = {}) {
 function reset() {
   recordCall.mockReset();
   llmCall.mockReset();
-  appendRecording.mockClear();
-  claimRecording.mockClear();
+  appendSpeech.mockClear();
+  claimSpeech.mockClear();
   failClaims.mockClear();
   unclaimable.clear();
   demoted.clear();
@@ -193,18 +196,18 @@ function reset() {
 }
 
 const appended = (call = 0): Appended => {
-  const row = appendRecording.mock.calls[call]?.[0];
-  if (!row) throw new Error(`appendRecording call ${call} never happened`);
+  const row = appendSpeech.mock.calls[call]?.[0];
+  if (!row) throw new Error(`appendSpeech call ${call} never happened`);
   return row;
 };
 
-describe('recordDialogue', () => {
+describe('generateDialogueSpeech', () => {
   it('speaks the whole conversation, and only the adopting shot takes the audio', async () => {
     reset();
     recordCall.mockImplementation(answer({ 'shot-a': 7.4, 'shot-b': 2 }, 'r1'));
     const { step, names } = fakeStep();
 
-    const result = await recordDialogue(step, args());
+    const result = await generateDialogueSpeech(step, args());
 
     expect(recordCall).toHaveBeenCalledTimes(1);
     expect(recordCall.mock.calls[0]?.[0].lines).toHaveLength(3);
@@ -233,7 +236,7 @@ describe('recordDialogue', () => {
     const clip = result['shot-a']?.[0];
     expect(clip).toMatchObject({
       id: row.sections[0]?.id,
-      recordingId: 'r1',
+      speechId: 'r1',
       token: DIALOGUE_CLIP_TOKEN,
       durationSeconds: 7.4,
       sourceKey: dialogueClipSourceKey(
@@ -251,11 +254,11 @@ describe('recordDialogue', () => {
     unclaimable.add('shot-a');
     const { step } = fakeStep();
 
-    expect(await recordDialogue(step, args())).toEqual({});
+    expect(await generateDialogueSpeech(step, args())).toEqual({});
 
-    expect(claimRecording).toHaveBeenCalledTimes(1);
+    expect(claimSpeech).toHaveBeenCalledTimes(1);
     expect(recordCall).not.toHaveBeenCalled();
-    expect(appendRecording).not.toHaveBeenCalled();
+    expect(appendSpeech).not.toHaveBeenCalled();
   });
 
   it('returns no clip for a claim the user demoted while it recorded', async () => {
@@ -266,8 +269,8 @@ describe('recordDialogue', () => {
 
     // The reading is still written — kept, unselected — but it is not the
     // shot's audio, so the caller must not render with it.
-    expect(await recordDialogue(step, args())).toEqual({});
-    expect(appendRecording).toHaveBeenCalledTimes(1);
+    expect(await generateDialogueSpeech(step, args())).toEqual({});
+    expect(appendSpeech).toHaveBeenCalledTimes(1);
   });
 
   it('never measures a shot that is only context', async () => {
@@ -275,7 +278,7 @@ describe('recordDialogue', () => {
     recordCall.mockImplementation(answer({ 'shot-a': 5, 'shot-b': 40 }, 'r1'));
     const { step } = fakeStep();
 
-    await recordDialogue(step, args());
+    await generateDialogueSpeech(step, args());
 
     expect(recordCall).toHaveBeenCalledTimes(1);
     expect(llmCall).not.toHaveBeenCalled();
@@ -298,7 +301,7 @@ describe('recordDialogue', () => {
     recordCall.mockImplementation(answer({ 'shot-a': 11.2 }, 'r1'));
     const { step } = fakeStep();
 
-    await recordDialogue(step, args());
+    await generateDialogueSpeech(step, args());
 
     expect(recordCall).toHaveBeenCalledTimes(1);
     expect(llmCall).not.toHaveBeenCalled();
@@ -318,7 +321,7 @@ describe('recordDialogue', () => {
     });
     const { step, names } = fakeStep();
 
-    const result = await recordDialogue(step, args());
+    const result = await generateDialogueSpeech(step, args());
 
     expect(recordCall).toHaveBeenCalledTimes(2);
     expect(names).toContain('scene-0-chunk-0-refit-1');
@@ -332,7 +335,7 @@ describe('recordDialogue', () => {
 
     // Both attempts billed; only the recording that fit gets a row.
     expect(deduct).toHaveBeenCalledTimes(2);
-    expect(appendRecording).toHaveBeenCalledTimes(1);
+    expect(appendSpeech).toHaveBeenCalledTimes(1);
     const row = appended();
     expect(row.id).toBe('r2');
 
@@ -368,11 +371,11 @@ describe('recordDialogue', () => {
     });
     const { step } = fakeStep();
 
-    await expect(recordDialogue(step, args())).rejects.toThrow(
+    await expect(generateDialogueSpeech(step, args())).rejects.toThrow(
       /shot-a's dialogue records at 16\.4s and has to fit 14\.8s/
     );
     expect(recordCall).toHaveBeenCalledTimes(MAX_DIALOGUE_FIT_ATTEMPTS + 1);
-    expect(appendRecording).not.toHaveBeenCalled();
+    expect(appendSpeech).not.toHaveBeenCalled();
     // A claim never outlives its run's ability to complete it.
     expect(failClaims).toHaveBeenCalledWith(
       ['claim-shot-a'],
@@ -392,7 +395,7 @@ describe('recordDialogue', () => {
     });
     const { step } = fakeStep();
 
-    await expect(recordDialogue(step, args())).rejects.toThrow(
+    await expect(generateDialogueSpeech(step, args())).rejects.toThrow(
       /has to fit 14\.8s/
     );
     expect(recordCall).toHaveBeenCalledTimes(1);
@@ -409,7 +412,7 @@ describe('recordDialogue', () => {
     const { step } = fakeStep();
 
     await expect(
-      recordDialogue(
+      generateDialogueSpeech(
         step,
         args({ maxDurationSeconds: 30.2, shotSeconds: { 'shot-a': 15 } })
       )
@@ -421,14 +424,14 @@ describe('recordDialogue', () => {
     recordCall.mockImplementation(answer({ 'shot-a': 1 }, 'r1'));
     const { step } = fakeStep();
 
-    const result = await recordDialogue(
+    const result = await generateDialogueSpeech(
       step,
       args({ minDurationSeconds: 2, maxDurationSeconds: 15 })
     );
 
     expect(cut.mock.calls[0]?.[0]).toMatchObject({
       storageKey: 'audio/r1.wav',
-      recordingId: 'r1',
+      speechId: 'r1',
       fromSeconds: 0,
       toSeconds: 1,
       minDurationSeconds: 2,
@@ -446,7 +449,7 @@ describe('recordDialogue', () => {
     recordCall.mockImplementation(answer({ 'shot-b': 9 }, 'r1'));
     const { step, names } = fakeStep();
 
-    const result = await recordDialogue(
+    const result = await generateDialogueSpeech(
       step,
       args({ lines, adoptShotIds: ['shot-b'] })
     );
@@ -465,7 +468,7 @@ describe('recordDialogue', () => {
     reset();
     const { step } = fakeStep();
     await expect(
-      recordDialogue(step, args({ adoptShotIds: ['shot-z'] }))
+      generateDialogueSpeech(step, args({ adoptShotIds: ['shot-z'] }))
     ).rejects.toThrow(/every adopting shot/);
     expect(recordCall).not.toHaveBeenCalled();
   });

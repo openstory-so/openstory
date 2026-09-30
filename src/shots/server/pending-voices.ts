@@ -59,7 +59,7 @@ export function bindPendingVoices(
       designed[character.voiceId.slice(PENDING_VOICE_PREFIX.length)];
     return voiceId ? [{ ...character, voiceId }] : [];
   });
-  const scenes = (plan.dialogueRecording?.scenes ?? []).flatMap((job) => {
+  const scenes = (plan.dialogueSpeech?.scenes ?? []).flatMap((job) => {
     const voiced = bindLines(job.voiced, designed);
     if (voiced) return [{ ...job, voiced }];
     for (const line of job.voiced) unvoicedShotIds.add(line.shotId);
@@ -83,9 +83,9 @@ export function bindPendingVoices(
     plan: {
       ...plan,
       characterVoices,
-      dialogueRecording:
-        plan.dialogueRecording && scenes.length > 0
-          ? { ...plan.dialogueRecording, scenes }
+      dialogueSpeech:
+        plan.dialogueSpeech && scenes.length > 0
+          ? { ...plan.dialogueSpeech, scenes }
           : null,
       targets,
     },

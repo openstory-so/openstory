@@ -320,7 +320,7 @@ export function isSelectedVersionStale(
     const currentFrame = currentFrameByShot.get(entry.shotId) ?? null;
     // Match the render triggers: models without an uploaded-audio input
     // receive no voiced lines and stamp a null key, even with voices enabled.
-    // Keep the shared live key intact for the dialogue recording's own check.
+    // Keep the shared live key intact for the dialogue speech's own check.
     const currentAudio =
       entry.audioSourceKey == null &&
       isValidImageToVideoModel(selected.model) &&

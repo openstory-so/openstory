@@ -485,7 +485,7 @@ export type SceneSplitWorkflowResult = {
   elementBible: ElementBibleEntry[];
   /**
    * The `shot_dialogue_versions` row seeded (or already selected) for each
-   * shot with lines (#1657), so a fresh run's recordings can name the version
+   * shot with lines (#1657), so a fresh run's speeches can name the version
    * they spoke instead of only a continue's.
    */
   dialogueVersionIdByShotId: Record<string, string>;
@@ -528,7 +528,7 @@ export interface ElementSheetWorkflowResult {
  * motion (#1554, #1657). The
  * scene's conversation is recorded whole so every turn is acted in context,
  * but only the shots whose clip no longer matches their lines adopt the new
- * audio — each as a section of the recording, cut to a file and persisted on
+ * audio — each as a section of the speech, cut to a file and persisted on
  * `shots.audioClips` so motion only attaches it.
  */
 export interface DialogueAudioSceneJob {
@@ -1533,7 +1533,7 @@ export interface MusicPromptWorkflowInput extends SequenceWorkflowContext {
 
   /**
    * The track claim a parent took before this prompt (update-stale's
-   * regeneration). A failed prompt fails that row instead of recording one.
+   * regeneration). A failed prompt fails that row instead of generating one.
    */
   musicVariantId?: string;
 }
@@ -1585,7 +1585,7 @@ export interface MusicWorkflowResult {
  * shots of one scene are ONE ElevenLabs call acted as one conversation — not N
  * overlapping windows, each billed in full.
  */
-export type BatchDialogueRecording = {
+export type BatchDialogueSpeech = {
   scenes: DialogueAudioSceneJob[];
   /** See `DialogueAudioWorkflowInput`. */
   minDurationSeconds?: number;
@@ -1594,8 +1594,14 @@ export type BatchDialogueRecording = {
 };
 
 export interface BatchMotionMusicWorkflowInput extends SequenceWorkflowContext {
-  /** See {@link BatchDialogueRecording}. Absent when no shot needs a recording. */
-  dialogueRecording?: BatchDialogueRecording;
+  /** See {@link BatchDialogueSpeech}. Absent when no shot needs a speech. */
+  dialogueSpeech?: BatchDialogueSpeech;
+  /**
+   * @deprecated The pre-#1913 name of `dialogueSpeech`, on a batch queued
+   * before the deploy. `MotionBatchWorkflow` reads it as a fallback.
+   */
+  // ponytail: delete once no pre-#1913 motion batch can be in flight.
+  dialogueRecording?: BatchDialogueSpeech;
   /** Per-shot motion inputs (ordered by scene) */
   shots: Array<{
     shotId: string;

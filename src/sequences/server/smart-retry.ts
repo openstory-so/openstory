@@ -504,8 +504,8 @@ export async function executeSmartRetry(context: SmartRetryContext) {
         ownsReservation: true,
         sequenceId: sequence.id,
         includeMusic: false,
-        ...(batchDialogue.dialogueRecording
-          ? { dialogueRecording: batchDialogue.dialogueRecording }
+        ...(batchDialogue.dialogueSpeech
+          ? { dialogueSpeech: batchDialogue.dialogueSpeech }
           : {}),
         shots: batchShots,
       };

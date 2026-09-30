@@ -180,7 +180,7 @@ describe('reconcileAllStuckJobs — run-id-verified passes', () => {
     // 12 verified (run-id) passes: frames.image + frame_variants.status +
     // video_variants.status (#1076) + 2 shot_variants + sequences.status (#989)
     // + generated_assets.status (#458) + the three pending-claim passes (#1085:
-    // frame/shot prompt claims + image claims) + dialogue recording claims
+    // frame/shot prompt claims + image claims) + dialogue speech claims
     // (#1657) + character voice husks (#1715) + music track rows (#1115). The
     // old shots.video pass went with the shot's video columns —
     // video_variants.status already swept it.

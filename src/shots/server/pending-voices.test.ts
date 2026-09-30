@@ -28,7 +28,7 @@ function planWith(): UpdateStalePlan {
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- only the dialogue fields are read
   return {
     characterVoices,
-    dialogueRecording: {
+    dialogueSpeech: {
       scenes: [
         {
           voiced: [sceneLine('s1', 'Ana')],
@@ -59,9 +59,7 @@ describe('bindPendingVoices', () => {
       'el-ana',
       'el-ben',
     ]);
-    expect(plan.dialogueRecording?.scenes[0]?.voiced[0]?.voiceId).toBe(
-      'el-ana'
-    );
+    expect(plan.dialogueSpeech?.scenes[0]?.voiced[0]?.voiceId).toBe('el-ana');
     expect(plan.targets[0]?.dialogueContext[0]?.voiceId).toBe('el-ana');
   });
 
@@ -69,7 +67,7 @@ describe('bindPendingVoices', () => {
     const { plan, unvoicedShotIds } = bindPendingVoices(planWith(), {});
     expect([...unvoicedShotIds]).toEqual(['s1']);
     expect(plan.characterVoices.map((c) => c.name)).toEqual(['Ben']);
-    expect(plan.dialogueRecording?.scenes).toHaveLength(1);
-    expect(plan.dialogueRecording?.scenes[0]?.voiced[0]?.shotId).toBe('s2');
+    expect(plan.dialogueSpeech?.scenes).toHaveLength(1);
+    expect(plan.dialogueSpeech?.scenes[0]?.voiced[0]?.shotId).toBe('s2');
   });
 });

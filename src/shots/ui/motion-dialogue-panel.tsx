@@ -65,19 +65,19 @@ type DialogueClip = {
 };
 
 /**
- * One reading of this shot's lines (#1657): a time range of a recording.
- * The whole recording is the file; the range rides the URL as a media
+ * One reading of this shot's lines (#1657): a time range of a speech.
+ * The whole speech is the file; the range rides the URL as a media
  * fragment, so one file serves every shot it spoke.
  */
 export type ShotDialogueReading = {
   id: string;
-  /** `context`: spoken while recording another shot, never adopted here. */
-  source: 'recorded' | 'context';
+  /** `context`: spoken while generating another shot, never adopted here. */
+  source: 'generated' | 'context';
   selected: boolean;
   fromSeconds: number;
   toSeconds: number;
-  recordingUrl: string;
-  /** The model the recording ran on (`ttsModel` of its turns). */
+  speechUrl: string;
+  /** The model the speech ran on (`ttsModel` of its turns). */
   model: string;
   createdAt: Date | string;
   /** False once the shot's lines or voices moved — it cannot be used. */
@@ -419,7 +419,7 @@ const ReadingRow: React.FC<{
       <audio
         controls
         preload="none"
-        src={`${reading.recordingUrl}#t=${reading.fromSeconds},${reading.toSeconds}`}
+        src={`${reading.speechUrl}#t=${reading.fromSeconds},${reading.toSeconds}`}
         className="w-full"
         aria-label={`Reading from ${recordedAt}`}
       />
@@ -571,7 +571,7 @@ export const ShotMissingVoices: React.FC<{
   </ul>
 );
 
-/** A dialogue recording in flight for this shot (#1657). */
+/** A dialogue speech in flight for this shot (#1657). */
 export type ShotDialogueClaimRow = {
   id: string;
   /** False once the user acted: it still records, but will not take over. */
@@ -579,11 +579,11 @@ export type ShotDialogueClaimRow = {
 };
 
 /**
- * "Generating…" — one row per recording in flight, with the same way out every
+ * "Generating…" — one row per speech in flight, with the same way out every
  * other generation has. Cancel does not stop the run (it records the scene for
  * other shots too); it stops the reading from becoming this shot's audio.
  */
-export const ShotRecordingsInFlight: React.FC<{
+export const ShotSpeechesInFlight: React.FC<{
   claims: ShotDialogueClaimRow[];
   onCancel: (claimId: string) => void;
   cancellingId?: string | null;

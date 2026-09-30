@@ -56,10 +56,10 @@ export function buildMotionJobs<F extends { model?: ImageToVideoModel }>(
 }
 
 /**
- * Hand each shot the clip its scene's recording cut for it (#1657). A shot
+ * Hand each shot the clip its scene's speech cut for it (#1657). A shot
  * left without a matching clip is rejected by the parent before motion fan-out.
  */
-export function attachRecordedClips<
+export function attachSpeechClips<
   T extends {
     shotId: string;
     voicedLines?: VoicedDialogueLine[];

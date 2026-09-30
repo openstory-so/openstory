@@ -568,8 +568,8 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
           reservationId,
           includeMusic: false,
           videoModels: [model],
-          ...(batchDialogue.dialogueRecording
-            ? { dialogueRecording: batchDialogue.dialogueRecording }
+          ...(batchDialogue.dialogueSpeech
+            ? { dialogueSpeech: batchDialogue.dialogueSpeech }
             : {}),
           shots: packedShotIds.flatMap((id) => {
             const payload = shotsById.get(id);
@@ -940,8 +940,8 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
           reservationId,
           includeMusic,
           videoModels: [packingModel],
-          ...(batchDialogue.dialogueRecording
-            ? { dialogueRecording: batchDialogue.dialogueRecording }
+          ...(batchDialogue.dialogueSpeech
+            ? { dialogueSpeech: batchDialogue.dialogueSpeech }
             : {}),
           shots: eligibleShots.map((shot) => {
             const shotModel = resolveShotVideoModel(shot);

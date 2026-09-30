@@ -6,7 +6,7 @@
  * `src/shots/input-hash.ts`, the still snapshot in
  * `cast/server/workflows/sheet-snapshots.ts`, the clip pointer compare in
  * `shots/scene-segments.ts`, the reference provenance keys in
- * `motion/reference-provenance.ts`, the recording key in
+ * `motion/reference-provenance.ts`, the speech key in
  * `shots/shot-dialogue.ts`, the track compare in
  * `audio/music-track-staleness.ts` and the Update-all plan in
  * `shots/server/update-stale-plan.ts`. When one of those changes, this graph
@@ -435,19 +435,19 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     summary:
       'A designed ElevenLabs voice for a speaking character. Bound on the clip like a character sheet on the still — the LLM never sees the id, so a voice change does not rewrite the motion prompt. Every write appends a row and moves the pointer; a row whose ElevenLabs slot has been freed is stamped released and can never be selected again.',
     counts: [
-      "Voice id (folds into the recording key, the section's sourceKey, and the clip manifest as audioSourceKey with line, tone and TTS model)",
+      "Voice id (folds into the speech key, the section's sourceKey, and the clip manifest as audioSourceKey with line, tone and TTS model)",
     ],
     ignored: [
       'Voice description edits ("Generate voice" releases the old one and designs again)',
       'Character bible edits',
     ],
     storedAs:
-      'characters.selectedVoiceVersionId → dialogue_recordings.inputHash, shot_dialogue_sections.sourceKey, VideoManifestEntry.audioSourceKey',
+      'characters.selectedVoiceVersionId → dialogue_speeches.inputHash, shot_dialogue_sections.sourceKey, VideoManifestEntry.audioSourceKey',
   },
   {
-    id: 'dialogueRecording',
+    id: 'dialogueSpeech',
     optional: 'when voices are on and someone speaks in the scene',
-    label: 'Dialogue recording (whole file)',
+    label: 'Dialogue speech (whole file)',
     kind: 'artifact',
     band: 'references',
     summary:
@@ -462,7 +462,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'The voiceId and ttsModel stamped on each turn: a readable copy of what the key already counts, so they move nothing',
     ],
     storedAs:
-      'dialogue_recordings.inputHash (the key), dialogue_recordings.turns (voice id and TTS model per turn, readable)',
+      'dialogue_speeches.inputHash (the key), dialogue_speeches.turns (voice id and TTS model per turn, readable)',
   },
   {
     id: 'dialogueSection',
@@ -472,15 +472,15 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     kind: 'artifact',
     band: 'references',
     summary:
-      "The time range of a recording this shot speaks in. A recording adds a row for every shot it spoke: selected for the shots it was made for, left as an unselected context reading for the rest, so an edit to one shot re-points one shot. The selected row is cut to a file on shots.audioClips, and that clip's id is the row's id.",
+      "The time range of a speech this shot speaks in. A speech adds a row for every shot it spoke: selected for the shots it was made for, left as an unselected context reading for the rest, so an edit to one shot re-points one shot. The selected row is cut to a file on shots.audioClips, and that clip's id is the row's id.",
     counts: [
       "Voice id + line + tone + TTS model of the shot's authored voiced lines (sourceKey)",
-      'Which recording, and from where to where in it',
+      'Which speech, and from where to where in it',
     ],
     ignored: [
-      'A newer recording made for another shot (its reading of this shot waits, unselected, until picked)',
+      'A newer speech made for another shot (its reading of this shot waits, unselected, until picked)',
       'The wording a fit rewrite actually delivered (kept as spokenLines; sourceKey keys the authored lines)',
-      'The cut file itself: a cache at a key made from the recording id, the range and the pad floor',
+      'The cut file itself: a cache at a key made from the speech id, the range and the pad floor',
     ],
     storedAs: 'shot_dialogue_sections.sourceKey → shots.audioClips',
   },
@@ -777,15 +777,15 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
   },
   {
     from: 'dialogue',
-    to: 'dialogueRecording',
+    to: 'dialogueSpeech',
     tracking: 'hash',
     note: 'the voiced turns that were sent, in speaking order, with the shot each belongs to',
   },
   {
     from: 'voice',
-    to: 'dialogueRecording',
+    to: 'dialogueSpeech',
     tracking: 'hash',
-    note: 'the voice speaking each turn is part of the recording key',
+    note: 'the voice speaking each turn is part of the speech key',
   },
   {
     from: 'dialogue',
@@ -800,10 +800,10 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     note: 'the voice id is part of sourceKey, so a new voice re-records the shots that voice speaks in',
   },
   {
-    from: 'dialogueRecording',
+    from: 'dialogueSpeech',
     to: 'dialogueSection',
     tracking: 'pointer',
-    note: 'a section is a time range of one recording; a re-record appends a recording and re-points only the shots it was made for',
+    note: 'a section is a time range of one speech; a regeneration appends a speech and re-points only the shots it was made for',
   },
   { from: 'libraryLocation', to: 'libraryLocationReference', tracking: 'hash' },
   { from: 'style', to: 'libraryLocationReference', tracking: 'hash' },

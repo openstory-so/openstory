@@ -83,7 +83,7 @@ export async function reconcileAllStuckJobs(): Promise<ReconcileCounts> {
       () => reconcilePromptClaimsPass(db, 'shot'),
     ],
     ['frame_variants.claims', () => reconcileImageClaimsPass(db)],
-    // Dialogue recordings in flight (#1657): same rule, same reason.
+    // Dialogue speeches in flight (#1657): same rule, same reason.
     ['shot_dialogue_claims', () => reconcileDialogueClaimsPass(db)],
     // Video versions live on video_variants now (#990) — without this pass a
     // dead motion run leaves a permanent "generating" chip on the Video tab
@@ -488,7 +488,7 @@ async function reconcilePromptClaimsPass(
 }
 
 /**
- * Sweep dialogue-recording claims whose run died (#1657). The recorder fails
+ * Sweep dialogue-speech claims whose run died (#1657). The recorder fails
  * its own claims when it gives up; this covers the run that never got the
  * chance. Every claim carries a run id, so there is no blind-fail branch.
  */

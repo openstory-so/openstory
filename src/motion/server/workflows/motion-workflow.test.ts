@@ -498,7 +498,7 @@ describe('MotionWorkflow content-flag rescue (#1373)', () => {
         scopedDb
       )
     ).rejects.toThrow(
-      `Content checker rejected the dialogue recording (${NAME}). Set the shot's dialogue audio to Video model, regenerate the dialogue for another reading, or change the lines in the script.`
+      `Content checker rejected the generated dialogue (${NAME}). Set the shot's dialogue audio to Video model, regenerate the dialogue for another reading, or change the lines in the script.`
     );
     expect(mockSubmit).toHaveBeenCalledTimes(3);
     expect(mockSoften).not.toHaveBeenCalled();
@@ -1081,7 +1081,7 @@ describe('recording its own dialogue (#1657)', () => {
     token: 'DIALOGUE',
     durationSeconds: 2,
     sourceKey: `voice-sarah\t${own.text}\t\televen_v3`,
-    recordingId: 'rec-1',
+    speechId: 'rec-1',
   };
 
   it('assembles an edited prompt with the upstream dialogue take (#1836)', async () => {

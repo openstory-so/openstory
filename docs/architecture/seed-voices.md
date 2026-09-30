@@ -71,10 +71,10 @@ ElevenLabs configured) and snapshotted on the payload.
 4. The first surviving take is the voice. "Use this take" on another costs
    nothing — a Seed take is its voice, there is nothing to save.
 
-## Recording (`recordSeedDialogueCall`)
+## Speech (`generateSeedDialogueSpeech`)
 
 Same claim → record → cut → promote lifecycle as ElevenLabs; only the call
-differs. `recordDialogue` sends a call to Seed when its lines are Seed
+differs. `generateDialogueSpeech` sends a call to Seed when its lines are Seed
 voices; `chunkTakeLines` never mixes providers in one call, breaks a Seed
 call before a fourth speaker joins (a fourth would have no reference clip)
 and keeps it under 1,000 line characters. With three speakers every slot is

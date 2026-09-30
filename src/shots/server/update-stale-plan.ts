@@ -51,7 +51,7 @@ import {
   dialogueAudioMinSeconds,
   voicedDialogueLines,
 } from '@/motion/dialogue-tts';
-import type { BatchDialogueRecording } from '@/platform/server/workflow/types';
+import type { BatchDialogueSpeech } from '@/platform/server/workflow/types';
 import type { SceneVoicedLine } from '@/shots/shot-dialogue';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import type { Resolution } from '@/models/resolutions';
@@ -413,7 +413,14 @@ export type UpdateStalePlan = {
    * live clips itself, so a scene whose audio still matches costs nothing.
    * Null when no target speaks.
    */
-  dialogueRecording: BatchDialogueRecording | null;
+  dialogueSpeech: BatchDialogueSpeech | null;
+  /**
+   * @deprecated The pre-#1913 name of `dialogueSpeech`, on a plan queued
+   * before the deploy. `UpdateStaleShotsWorkflow` folds it into
+   * `dialogueSpeech`; nothing else reads it.
+   */
+  // ponytail: delete once no pre-#1913 update-all run can be in flight.
+  dialogueRecording?: BatchDialogueSpeech | null;
   /** Reference rows frozen once at the click; this run overlays its own sheet results. */
   renderRefs: ShotImageRefs;
   /**
@@ -640,7 +647,7 @@ export async function computePlan(args: {
     music,
     promptContext: null,
     characterVoices: [],
-    dialogueRecording: null,
+    dialogueSpeech: null,
     renderRefs: { characters: [], locations: [], elements: [] },
     scenePrompts: {},
     sceneSpecs: {},
@@ -841,7 +848,7 @@ export async function computePlan(args: {
     renderRefs: { characters, locations, elements },
     scenePrompts,
     sceneSpecs: sceneSpecsFor(allShots, selectedSpecByShot),
-    dialogueRecording:
+    dialogueSpeech:
       dialogueScenes.length > 0
         ? {
             scenes: dialogueScenes,

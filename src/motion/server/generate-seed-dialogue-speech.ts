@@ -1,6 +1,6 @@
 /**
  * Record a conversation with Seed Audio (#1765) — the Seed side of
- * `recordDialogueCall`, returning the same record so everything after the
+ * `generateDialogueSpeechCall`, returning the same record so everything after the
  * call (sections, cuts, claims) is unchanged.
  *
  * What is different from ElevenLabs Text to Dialogue:
@@ -42,7 +42,7 @@ import { loadSeedVoice, readSeedClip } from '@/cast/server/voice/seed-voice';
 import { WORD_LEAD_SECONDS } from '@/cast/server/voice/take-check';
 import { generateId } from '@/platform/id';
 import { getLogger } from '@/platform/logger';
-import type { DialogueRecordingTurn } from '@/platform/server/db/schema';
+import type { DialogueSpeechTurn } from '@/platform/server/db/schema';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import { uploadFile } from '#storage';
 import { NonRetryableError } from 'cloudflare:workflows';
@@ -50,12 +50,12 @@ import { trimmedEndSeconds, wavDurationSeconds } from './pad-dialogue-audio';
 import {
   shotSliceWindows,
   type DialogueCallLine,
-  type RecordedDialogueCall,
+  type DialogueSpeechCall,
 } from './synthesize-dialogue';
 
 const logger = getLogger(['openstory', 'workflow', 'seed-dialogue']);
 
-/** Takes per call before the recording fails (#1765: 1 of 6 scenes needed a retake). */
+/** Takes per call before the speech fails (#1765: 1 of 6 scenes needed a retake). */
 const SEED_TAKE_ATTEMPTS = 3;
 
 export type SeedReference = { voiceId: string; mood: SeedVoiceMood };
@@ -117,16 +117,16 @@ export function seedScenePrompt(
   return `${SEED_BOOTH_PROMPT} ${who}, at a natural conversational pace.\n${cast.join('\n')}\n\n${said.join('\n')}`;
 }
 
-export async function recordSeedDialogueCall(input: {
+export async function generateSeedDialogueSpeech(input: {
   seedKey: string;
   elevenLabsKey: string;
   teamId: string;
   sequenceId: string;
   lines: readonly DialogueCallLine[];
-}): Promise<RecordedDialogueCall> {
+}): Promise<DialogueSpeechCall> {
   const { lines } = input;
   if (lines.length === 0) {
-    throw new Error('recordSeedDialogueCall requires at least one line');
+    throw new Error('generateSeedDialogueSpeech requires at least one line');
   }
   const older = [
     ...new Set(
@@ -189,7 +189,7 @@ export async function recordSeedDialogueCall(input: {
       continue;
     }
 
-    const turns: DialogueRecordingTurn[] = lines.map((line, at) => {
+    const turns: DialogueSpeechTurn[] = lines.map((line, at) => {
       const span = check.spans[at];
       if (!span) throw new Error(`Turn ${at + 1} was not found in the take`);
       return {
@@ -224,15 +224,15 @@ export async function recordSeedDialogueCall(input: {
       }
     );
 
-    const recordingId = generateId();
+    const speechId = generateId();
     const uploaded = await uploadFile(
       STORAGE_BUCKETS.AUDIO,
-      `${input.teamId}/${input.sequenceId}/dialogue-recordings/${recordingId}.wav`,
+      `${input.teamId}/${input.sequenceId}/dialogue-speeches/${speechId}.wav`,
       take.wav,
       { contentType: 'audio/wav', upsert: true }
     );
     return {
-      recordingId,
+      speechId,
       storageKey: uploaded.fullPath,
       url: uploaded.publicUrl,
       durationSeconds,

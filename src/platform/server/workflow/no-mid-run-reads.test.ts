@@ -34,9 +34,9 @@ const WORKFLOW_PATHS = [
     (f) => !f.endsWith('.test.ts')
   ),
   'src/models/server/llm-call-helper.ts',
-  // A workflow-step helper, not a workflow: dialogue recording spends the
+  // A workflow-step helper, not a workflow: dialogue speech spends the
   // ElevenLabs key inside the step it drives (#1651, #1657).
-  'src/motion/server/record-dialogue.ts',
+  'src/motion/server/generate-dialogue-speech.ts',
 ].sort();
 
 const WORKFLOW_PATH_BY_BASE: Record<string, string> = (() => {
@@ -234,7 +234,7 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       why: 'Re-resolved inside each step that talks to fal, because a replayed step may run in a fresh isolate with an unconfigured singleton.',
     },
   ],
-  'record-dialogue.ts': [
+  'generate-dialogue-speech.ts': [
     {
       read: 'resolveKey',
       bucket: 'CREDENTIAL',

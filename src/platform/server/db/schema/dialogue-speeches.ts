@@ -7,9 +7,9 @@
  *
  * Append-only and never joined or concatenated. There is NO selected flag and
  * NO per-shot copy here: selection is per shot, on the section rows, so a new
- * recording only moves the shots that adopt it.
+ * speech only moves the shots that adopt it.
  *
- * `inputHash` is `recordingKey`: the ordered turns with their shot ids, the
+ * `inputHash` is `speechKey`: the ordered turns with their shot ids, the
  * words, the voice id per turn, tone, TTS model and stability.
  */
 import { sql, type InferSelectModel } from 'drizzle-orm';
@@ -24,8 +24,8 @@ import {
 import { generateId } from '@/platform/id';
 import { sequences } from './sequences';
 
-/** Where one spoken turn sits in the recording, and which shot it belongs to. */
-export type DialogueRecordingTurn = {
+/** Where one spoken turn sits in the speech, and which shot it belongs to. */
+export type DialogueSpeechTurn = {
   shotId: string;
   /** Index into THAT SHOT's dialogue lines. */
   index: number;
@@ -39,8 +39,8 @@ export type DialogueRecordingTurn = {
   spokenText?: string;
 };
 
-export const dialogueRecordings = snakeCase.table(
-  'dialogue_recordings',
+export const dialogueSpeeches = snakeCase.table(
+  'dialogue_speeches',
   {
     id: text()
       .$defaultFn(() => generateId())
@@ -53,7 +53,7 @@ export const dialogueRecordings = snakeCase.table(
     storageKey: text().notNull(),
     url: text().notNull(),
     durationSeconds: real().notNull(),
-    turns: text({ mode: 'json' }).$type<DialogueRecordingTurn[]>().notNull(),
+    turns: text({ mode: 'json' }).$type<DialogueSpeechTurn[]>().notNull(),
     inputHash: text().notNull(),
     /** TTS characters billed for this call. */
     characterCount: integer().notNull(),
@@ -63,12 +63,13 @@ export const dialogueRecordings = snakeCase.table(
       .notNull(),
   },
   (table) => [
-    index('idx_dialogue_recordings_sequence_created').on(
+    index('idx_dialogue_speeches_sequence_created').on(
       table.sequenceId,
       table.createdAt
     ),
+    // Keeps its pre-#1913 name: renaming a CHECK rebuilds the table (#612).
     check('dialogue_recordings_duration', sql`${table.durationSeconds} > 0`),
   ]
 );
 
-export type DialogueRecording = InferSelectModel<typeof dialogueRecordings>;
+export type DialogueSpeech = InferSelectModel<typeof dialogueSpeeches>;

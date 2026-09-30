@@ -6,7 +6,7 @@ import {
   voicedDialogueLines,
 } from '@/motion/dialogue-tts';
 import {
-  attachRecordedClips,
+  attachSpeechClips,
   buildMotionJobs,
   missingDialogueAudioShotIds,
 } from './motion-batch-jobs';
@@ -126,7 +126,7 @@ describe('packMotionBatchShots then buildMotionJobs (#1510)', () => {
   });
 });
 
-describe('attachRecordedClips (#1657)', () => {
+describe('attachSpeechClips (#1657)', () => {
   const voiced = (text: string) =>
     voicedDialogueLines(
       {
@@ -149,7 +149,7 @@ describe('attachRecordedClips (#1657)', () => {
       voicedLines: ReturnType<typeof voiced>;
       audioClips?: ReturnType<typeof clipFor>[];
     }[] = [{ shotId: 's1', voicedLines: voiced('Hello.') }];
-    const [shot] = attachRecordedClips(input, {
+    const [shot] = attachSpeechClips(input, {
       s1: [clipFor('section-1', 'Hello.')],
     });
     expect(shot?.audioClips?.map((clip) => clip.id)).toEqual(['section-1']);
@@ -160,7 +160,7 @@ describe('attachRecordedClips (#1657)', () => {
       { shotId: 's1', voicedLines: voiced('Hello.') },
       { shotId: 's2', voicedLines: voiced('Bye.') },
     ];
-    const out = attachRecordedClips(shots, {
+    const out = attachSpeechClips(shots, {
       // s1's clip was cut from different words; s2 got nothing.
       s1: [clipFor('section-9', 'Something else.')],
     });

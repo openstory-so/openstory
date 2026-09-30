@@ -13,7 +13,7 @@
  * marking its other videos out of date. A scene where every clip still
  * matches is not sent to the provider at all.
  *
- * `recordDialogue` owns the calls, the #1651 fit ladder (per adopting shot:
+ * `generateDialogueSpeech` owns the calls, the #1651 fit ladder (per adopting shot:
  * trailing silence off, bounded rewrite-and-re-record, then a hard failure
  * rather than a file no model can take), the cuts and the rows.
  *
@@ -23,7 +23,7 @@
  */
 
 import { matchingDialogueClips } from '@/motion/dialogue-tts';
-import { recordDialogue } from '@/motion/server/record-dialogue';
+import { generateDialogueSpeech } from '@/motion/server/generate-dialogue-speech';
 import type { MotionAudioClip } from '@/platform/server/db/schema';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
@@ -114,7 +114,7 @@ export class DialogueAudioWorkflow extends OpenStoryWorkflowEntrypoint<DialogueA
       scenes.map(async (job, index) => {
         const stepPrefix = `dialogue-scene-${index}`;
         // Its own step, so a refit's extra steps do not shift the durable
-        // names of a scene that needed no recording. The live read is the
+        // names of a scene that needed no speech. The live read is the
         // point: the clips on the shots are what a retry has to see.
         const plan = await step.do(`${stepPrefix}-prepare`, async () =>
           planSceneAdoption(
@@ -124,7 +124,7 @@ export class DialogueAudioWorkflow extends OpenStoryWorkflowEntrypoint<DialogueA
         );
         if (plan.adoptShotIds.length === 0) return plan.kept;
 
-        const recorded = await recordDialogue(step, {
+        const recorded = await generateDialogueSpeech(step, {
           scopedDb,
           workflowRunId,
           userId: input.userId,
