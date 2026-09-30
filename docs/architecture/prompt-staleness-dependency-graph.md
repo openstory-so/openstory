@@ -667,7 +667,7 @@ sha256Hex({
 sha256Hex({
   artifact: 'sequence:music',
   prompt: trim(prompt),
-  tags: trim(tags), // comma-joined string from sequences.musicTags
+  tags: trim(tags), // comma-joined string from the selected music prompt version
   durationSeconds,
   audioModel,
 });

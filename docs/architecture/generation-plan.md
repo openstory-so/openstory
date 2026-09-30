@@ -70,7 +70,8 @@ holds a recording keeps its `dialogue` unit either way.
 - `running` — a claim or status column: pending prompt/image claims,
   `shot_dialogue_claims` (live, not demoted), `sheetStatus` /
   `referenceStatus`, `pendingPromote*`, a generating `video_variants` row,
-  `musicStatus`. While the storyboard run holds the sequence
+  `musicStatus` (projected from the newest primary `sequence_music_variants`
+  row, #1115). While the storyboard run holds the sequence
   (`status === 'processing'`), every unit with work up to its stop reads
   `running`.
 - `blocked` — an upstream is `running` elsewhere or `blocked` itself, or the

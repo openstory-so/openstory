@@ -62,7 +62,7 @@ flowchart TD
 
     subgraph "Phase 5 — Motion + Music Generation (conditional) · ~1-5min"
         MotionBatch["<b>Motion Batch</b> · Fal.ai ×N parallel<br/>IN: imageUrls[], motionPrompts[],<br/>videoModel, aspectRatio, durations<br/>OUT: videoUrl per frame"]
-        MusicGen["<b>Music Generation</b> · Fal.ai<br/>IN: prompt, tags, totalDuration, musicModel<br/>OUT: musicUrl on sequence"]
+        MusicGen["<b>Music Generation</b> · Fal.ai<br/>IN: prompt, tags, totalDuration, musicModel<br/>OUT: a sequence_music_variants track,<br/>selected through the claim (#1115)"]
     end
 
     ImageGen -->|"imageUrls"| MotionBatch
@@ -325,6 +325,8 @@ Only runs if the run's `stopAt` includes motion, a video model is set, and image
 
 **Ark draft mode (#1756).** With `sequences.draftMotion` on, every motion payload carries `draft: true` and a Seedance 2.5 clip on the BytePlus via renders at 480p with Ark's `draft` flag; `MotionWorkflow` stamps the Ark task id on the version (`stamp-draft-task`). "Render at quality" (`renderShotAtQualityFn` / `renderSequenceDraftsAtQualityFn` → `renderDraftAtQuality`) triggers `/motion` directly with `finalFromDraft: { taskId, renderSegmentId, manifest }` and its own reservation: the run opens a 1080p version on the draft's segment with the draft's manifest, skips dialogue (by omission: the payload carries no `voicedLines`, so never snapshot them onto a final), ingest and the content rescue, submits only the task id (`submitBytePlusFinalRender`), and promotes it like any primary render. A content refusal on a final is terminal after one poll (same seed, same assets) and a draft never swaps to the Grok fallback (the user picks another model). One run per segment, and one hold plus one instance per (draft, attempt): the reservation `idempotencyKey` and the trigger `deduplicationId` are both `motion-final-<versionId>-<sibling count>`. The id expires seven days after the draft. A studio edit (#1925) is an ordinary `/studio` run in `mode: 'edit'` whose input carries `sourceVideoUrl` (the clip Ark rewrites) and `sourceAssetId` (the history chain); it ingests no stills. `StudioGenerationWorkflow` has the same `finalFromDraftTaskId` shape: `renderStudioAssetAtQuality` opens a NEW studio row from the draft's input at 1080p and the run skips ingest and stamps no `draftTaskId`. `MotionBatchWorkflow`'s Ark pool admission budgets `arkStillsToRegister` (start frames and person sheets — what ingest actually creates), not every reference URL. See `docs/architecture/byteplus-ark.md`.
 
+**Music lands through a claim (#1115).** Each `MusicWorkflow` child opens its `sequence_music_variants` row in its first step (`open-music-variant`): the primary model (`audioModels[0]`) takes the sequence's claim with it (`claimMusic`, last kickoff wins), the other models open `isPrimary: false` rows that never touch the pointer. A run a trigger started (generate, smart retry, update-stale) adopts the row the trigger opened with its claim (`variantId` → `stampMusicRun`). `complete-music-variant` lands the track and moves `sequences.selectedMusicVariantId` only while the claim still names the row; a moved claim parks it (`divergedAt`) and the run emits `generation.stale:detected`. `onFailure` fails the run's pending row and clears the claim only while it names it (`failMusicClaim`). The sequence's `musicUrl` / `musicStatus` / `musicPrompt` … are projected on every read from the selected track, the newest primary row and the selected prompt version — nothing writes them. A failed `MusicPromptWorkflow` fails the track claim its parent took (`musicVariantId`) or records a failed track row.
+
 There is no merge step: the clips stay separate rows. The player stitches them client-side (`src/motion/ui/packed-playback.ts`), and a single MP4 is produced only on demand by `POST /api/v1/sequences/$id/exports` → `SequenceExportWorkflow` → the video-export Container (production-only).
 
 ```mermaid
@@ -353,7 +355,7 @@ flowchart TD
     P2["Phase 2: Casting Characters<br/>& Locations"] -->|"talent + library matches<br/>(bibles already from Phase 1)"| P3
     P3["Phase 3: References &<br/>Prompts"] -->|"+ visual fullPrompt +<br/>negativePrompt (no components)"| P4
     P4["Phase 4: Images +<br/>Motion/Music Prompts"] -->|"Frames get thumbnailUrl +<br/>variants. Scenes get<br/>prompts.motion + musicDesign"| P5
-    P5["Phase 5: Motion + Music<br/>Generation"] -->|"Sequence gets musicUrl.<br/>Frames get videoUrl"| Final["Complete Scene"]
+    P5["Phase 5: Motion + Music<br/>Generation"] -->|"Sequence selects its track.<br/>Frames get videoUrl"| Final["Complete Scene"]
 
     style Final fill:#1a472a,color:#fff
 ```
@@ -388,34 +390,34 @@ with bounded queues and history. Node stream mocks do not exercise this
 runtime behavior: verify disconnect cleanup over real HTTP in Workerd.
 See [Cloudflare's request cancellation documentation](https://developers.cloudflare.com/changelog/post/2025-05-22-handle-request-cancellation/).
 
-| Event                                 | When Emitted                                       | Payload                                                               |
-| ------------------------------------- | -------------------------------------------------- | --------------------------------------------------------------------- |
-| `generation.phase:start`              | Before each LLM call or generation phase           | `{ phase, phaseName }`                                                |
-| `generation.phase:complete`           | After each phase completes                         | `{ phase }`                                                           |
-| `generation.poster:ready`             | Storyboard workflow — after poster generated       | `{ posterUrl }`                                                       |
-| `generation.scene:new`                | Phase 1 — progressively as scenes stream in        | `{ sceneId, sceneNumber, title, scriptExtract, durationSeconds }`     |
-| `generation.scene:updated`            | Phase 1 — as scene metadata updates during stream  | `{ sceneId, sceneNumber, title, scriptExtract, durationSeconds }`     |
-| `generation.updated`                  | Phase 1 — after title detected in stream           | `{ title }`                                                           |
-| `generation.shot:created`             | Phase 1 — progressively as shots are upserted      | `{ shotId, sceneId, orderIndex }`                                     |
-| `generation.shot:updated`             | After a prompt version or dialogue clip is written | `{ shotId, updateType }` (ids only; the client refetches, #1811)      |
-| `generation.talent:matched`           | Phase 2 — when talent matched to characters        | `{ matches: [{ characterId, characterName, talentId, talentName }] }` |
-| `generation.talent:unmatched`         | Phase 2 — unused talent after matching             | `{ unusedTalentIds, unusedTalentNames }`                              |
-| `generation.location:matched`         | Phase 2 — when locations matched to library        | `{ matches: [{ locationId, locationName, libraryLocationId, ... }] }` |
-| `generation.image:progress`           | Image workflow — generating/completed/failed       | `{ frameId, status, thumbnailUrl? }`                                  |
-| `generation.variant-image:progress`   | Variant workflow — generating/completed/failed     | `{ frameId, status, variantImageUrl? }`                               |
-| `generation.video:progress`           | Motion workflow — generating/completed/failed      | `{ frameId, status, videoUrl? }`                                      |
-| `generation.audio:progress`           | Music workflow — generating/completed/failed       | `{ status, audioUrl? }`                                               |
-| `generation.character-sheet:progress` | Character bible — per character                    | `{ characterId, status, sheetImageUrl? }`                             |
-| `generation.location-sheet:progress`  | Location bible — per location                      | `{ locationId, status, referenceImageUrl? }`                          |
-| `generation.recast:start`             | Recast character — before regenerating frames      | `{ characterId, frameCount }`                                         |
-| `generation.recast:complete`          | Recast character — all frames regenerated          | `{ characterId, successCount, failedCount }`                          |
-| `generation.recast:failed`            | Recast character — on failure                      | `{ characterId, error }`                                              |
-| `generation.recast-location:start`    | Recast location — before regenerating frames       | `{ locationId, frameCount }`                                          |
-| `generation.recast-location:complete` | Recast location — all frames regenerated           | `{ locationId, successCount, failedCount }`                           |
-| `generation.recast-location:failed`   | Recast location — on failure                       | `{ locationId, error }`                                               |
-| `generation.error`                    | On non-fatal workflow error                        | `{ message, phase? }`                                                 |
-| `generation.failed`                   | On workflow failure                                | `{ message }`                                                         |
-| `generation.complete`                 | Storyboard workflow — after everything finishes    | `{ sequenceId }`                                                      |
+| Event                                 | When Emitted                                       | Payload                                                                    |
+| ------------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------- |
+| `generation.phase:start`              | Before each LLM call or generation phase           | `{ phase, phaseName }`                                                     |
+| `generation.phase:complete`           | After each phase completes                         | `{ phase }`                                                                |
+| `generation.poster:ready`             | Storyboard workflow — after poster generated       | `{ posterUrl }`                                                            |
+| `generation.scene:new`                | Phase 1 — progressively as scenes stream in        | `{ sceneId, sceneNumber, title, scriptExtract, durationSeconds }`          |
+| `generation.scene:updated`            | Phase 1 — as scene metadata updates during stream  | `{ sceneId, sceneNumber, title, scriptExtract, durationSeconds }`          |
+| `generation.updated`                  | Phase 1 — after title detected in stream           | `{ title }`                                                                |
+| `generation.shot:created`             | Phase 1 — progressively as shots are upserted      | `{ shotId, sceneId, orderIndex }`                                          |
+| `generation.shot:updated`             | After a prompt version or dialogue clip is written | `{ shotId, updateType }` (ids only; the client refetches, #1811)           |
+| `generation.talent:matched`           | Phase 2 — when talent matched to characters        | `{ matches: [{ characterId, characterName, talentId, talentName }] }`      |
+| `generation.talent:unmatched`         | Phase 2 — unused talent after matching             | `{ unusedTalentIds, unusedTalentNames }`                                   |
+| `generation.location:matched`         | Phase 2 — when locations matched to library        | `{ matches: [{ locationId, locationName, libraryLocationId, ... }] }`      |
+| `generation.image:progress`           | Image workflow — generating/completed/failed       | `{ frameId, status, thumbnailUrl? }`                                       |
+| `generation.variant-image:progress`   | Variant workflow — generating/completed/failed     | `{ frameId, status, variantImageUrl? }`                                    |
+| `generation.video:progress`           | Motion workflow — generating/completed/failed      | `{ frameId, status, videoUrl? }`                                           |
+| `generation.audio:progress`           | Music workflow — generating/completed/failed       | `{ status, audioUrl?, model?, primary? }` (`primary: false` = added model) |
+| `generation.character-sheet:progress` | Character bible — per character                    | `{ characterId, status, sheetImageUrl? }`                                  |
+| `generation.location-sheet:progress`  | Location bible — per location                      | `{ locationId, status, referenceImageUrl? }`                               |
+| `generation.recast:start`             | Recast character — before regenerating frames      | `{ characterId, frameCount }`                                              |
+| `generation.recast:complete`          | Recast character — all frames regenerated          | `{ characterId, successCount, failedCount }`                               |
+| `generation.recast:failed`            | Recast character — on failure                      | `{ characterId, error }`                                                   |
+| `generation.recast-location:start`    | Recast location — before regenerating frames       | `{ locationId, frameCount }`                                               |
+| `generation.recast-location:complete` | Recast location — all frames regenerated           | `{ locationId, successCount, failedCount }`                                |
+| `generation.recast-location:failed`   | Recast location — on failure                       | `{ locationId, error }`                                                    |
+| `generation.error`                    | On non-fatal workflow error                        | `{ message, phase? }`                                                      |
+| `generation.failed`                   | On workflow failure                                | `{ message }`                                                              |
+| `generation.complete`                 | Storyboard workflow — after everything finishes    | `{ sequenceId }`                                                           |
 
 ## Error Handling
 
