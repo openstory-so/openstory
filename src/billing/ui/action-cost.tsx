@@ -57,7 +57,9 @@ type ActionCostProps = {
   onPrimary?: boolean;
   /**
    * Inside a button. A missing honest price (`null`) renders nothing; a
-   * price still loading (`undefined`) keeps the skeleton.
+   * price still loading (`undefined`) keeps the skeleton. The cost is
+   * `aria-hidden` so it does not rename the button ("Generate" stays
+   * "Generate"; "sign in" in the logged-out label must not match Sign in).
    */
   inline?: boolean;
   /**
@@ -134,7 +136,9 @@ export function ActionCost({
           'min-h-4 tabular-nums text-muted-foreground',
           className
         )}
-        aria-label="Estimated cost shown after sign in"
+        {...(inline
+          ? { 'aria-hidden': true as const }
+          : { 'aria-label': 'Estimated cost shown after sign in' })}
       >
         {prefix}
         <span>~$x.xx</span>
@@ -147,8 +151,9 @@ export function ActionCost({
     return (
       <span
         className={cn(justify, 'min-h-4', className)}
-        aria-busy="true"
-        aria-label="Estimating cost"
+        {...(inline
+          ? { 'aria-hidden': true as const }
+          : { 'aria-busy': true as const, 'aria-label': 'Estimating cost' })}
       >
         {prefix}
         <span className="relative inline-flex">
@@ -203,7 +208,7 @@ export function ActionCost({
             : 'text-muted-foreground',
         className
       )}
-      aria-label={label}
+      {...(inline ? { 'aria-hidden': true as const } : { 'aria-label': label })}
     >
       {prefix}
       {exceedsBalance ? (
