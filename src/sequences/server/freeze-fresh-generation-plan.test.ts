@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { StoryboardWorkflowInput } from '@/platform/server/workflow/types';
 import type { StyleConfig } from '@/look/style-config';
+import { asStub } from '@/test/as-stub';
 
 const computeGenerationPlan = vi.fn(async () => [
   {
@@ -60,10 +61,10 @@ const input: StoryboardWorkflowInput & { sequenceId: string } = {
   styleConfig,
   musicPromptSource: 'ai-generated',
 };
-// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- focused planning read surface
-const db = {
+// focused planning read surface
+const db = asStub<ScopedDb>({
   shots: { listBySequence: vi.fn(async () => []) },
-} as unknown as ScopedDb;
+});
 
 describe('fresh planning checkpoint', () => {
   it('caps the materialized work and freezes click switches, style and models', async () => {

@@ -38,6 +38,7 @@ import {
 } from './input-hash';
 import { deriveShotDialogueLines, shotDialogue } from './shot-dialogue';
 import { sceneForShot } from './server/shot-work-items';
+import { asStub } from '@/test/as-stub';
 
 const baseThumbnail: ShotImageHashInput = {
   kind: 'thumbnail',
@@ -54,8 +55,8 @@ const baseThumbnail: ShotImageHashInput = {
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 
 /** Incomplete assembler payload for "omitted field throws" tests. */
-// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test-only incomplete DTO
-const incomplete = <T>(value: object): T => value as T;
+// test-only incomplete DTO
+const incomplete = <T>(value: object): T => asStub<T>(value);
 
 /** No character's voice-only flag moved since the stamp. */
 const VOICE_STILL = { voiceOnlyMoved: false };
@@ -853,8 +854,8 @@ describe('prompt input hashes', () => {
     const { personality: _p, movement: _m, ...legacyAlice } = aliceCharacter;
     const legacy = {
       ...sceneCtx,
-      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stored JSON that predates the fields
-      characterBible: [legacyAlice as CharacterBibleEntry],
+      // stored JSON that predates the fields
+      characterBible: [asStub<CharacterBibleEntry>(legacyAlice)],
     };
     expect(await hashMotionPromptInput(legacy)).toBe(
       await hashMotionPromptInput(sceneCtx)

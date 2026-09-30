@@ -13,6 +13,7 @@ import {
 } from './scene-segments';
 import { dialogueLinesKey, shotDialogue } from './shot-dialogue';
 import { motionPromptFromVersion } from '@/motion/server/resolve-motion-prompt';
+import { asStub } from '@/test/as-stub';
 
 const shot = (
   id: string,
@@ -20,13 +21,13 @@ const shot = (
   renderSegmentId: string | null,
   durationMs = 3000
 ): ShotView =>
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- minimal fixture: grouping reads only id/renderSegmentId/shotNumber/durationMs
-  ({
+  // minimal fixture: grouping reads only id/renderSegmentId/shotNumber/durationMs
+  asStub<ShotView>({
     id,
     shotNumber,
     renderSegmentId,
     durationMs,
-  }) as ShotView;
+  });
 
 const segment = (id: string, shotIds: string[]): SequenceSegment => ({
   id,

@@ -52,11 +52,7 @@ import {
   computeSequenceMusicInputHash,
 } from '@/shots/input-hash';
 import { computeShotStaleness } from './shot-staleness';
-
-function asStub<T>(stub: unknown): T {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test stub
-  return stub as T;
-}
+import { asStub } from '@/test/as-stub';
 
 const ANALYSIS_MODEL = 'anthropic/claude-haiku-4.5';
 /** Takes dialogue audio and reference images, so both reach its manifest. */

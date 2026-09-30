@@ -11,6 +11,7 @@ import {
   toMcpAuthInfo,
 } from './server';
 import type { User } from '@/platform/server/auth/config';
+import { asStub } from '@/test/as-stub';
 
 const user = {
   id: 'user_1',
@@ -297,8 +298,8 @@ describe('production tool authorization', () => {
       const getById = vi.fn(async () => null);
       const createDb = vi
         .spyOn(dbModule, 'createScopedDb')
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- ownership rejection must stop after getById, before any child reads
-        .mockReturnValue({ sequences: { getById } } as unknown as ScopedDb);
+        // ownership rejection must stop after getById, before any child reads
+        .mockReturnValue(asStub<ScopedDb>({ sequences: { getById } }));
       const { body } = await rpc(
         'tools/call',
         {

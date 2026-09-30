@@ -10,6 +10,7 @@ vi.mock('@/shots/input-hash', () => ({
 
 import { persistShotSpec } from './persist-shot-spec';
 import type { ShotWorkItem } from './shot-work-items';
+import { asStub } from '@/test/as-stub';
 
 const specShot = {
   shotNumber: 1,
@@ -28,14 +29,14 @@ const specShot = {
 };
 
 const scene = (shots: unknown[]): Scene =>
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- a scene carrying only what derivation reads
-  ({
+  // a scene carrying only what derivation reads
+  asStub<Scene>({
     sceneId: 's1',
     originalScript: { extract: '', dialogue: [] },
     metadata: { title: 't', durationSeconds: 3 },
     continuity: { characterTags: [], environmentTag: '', colorPalette: 'blue' },
     shots,
-  }) as unknown as Scene;
+  });
 
 const item = (
   shots: unknown[],
@@ -79,12 +80,12 @@ const fakeDb = () => {
   const spec = vi.fn(async (_input: { spec: object }) => ({ id: 'spec1' }));
   const frame = vi.fn(async (_input: object) => ({}));
   const motion = vi.fn(async (_input: object) => ({}));
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- only the write methods persistShotSpec calls
-  const db = {
+  // only the write methods persistShotSpec calls
+  const db = asStub<Parameters<typeof persistShotSpec>[0]>({
     shotSpecVersions: { write: spec },
     framePromptVersions: { write: frame },
     shotPromptVersions: { write: motion },
-  } as unknown as Parameters<typeof persistShotSpec>[0];
+  });
   return { db, spec, frame, motion };
 };
 

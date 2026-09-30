@@ -1,6 +1,7 @@
 import type { Shot } from '@/platform/server/db/schema';
 import { describe, expect, it } from 'vitest';
 import { loadLiveShotInputs } from './live-shot-state';
+import { asStub } from '@/test/as-stub';
 
 const line = (character: string, text: string) => ({
   character,
@@ -8,8 +9,8 @@ const line = (character: string, text: string) => ({
   tone: 'calm',
 });
 const shot = (id: string, shotNumber: number, clipIds: string[] = []) =>
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- only the fields the loader reads
-  ({
+  // only the fields the loader reads
+  asStub<Shot>({
     id,
     sceneId: 'scene-1',
     shotNumber,
@@ -21,19 +22,19 @@ const shot = (id: string, shotNumber: number, clipIds: string[] = []) =>
       token: '@Audio1',
       durationSeconds: 2,
     })),
-  }) as Shot;
+  });
 
 const load = (rows: { shotId: string; lines: ReturnType<typeof line>[] }[]) =>
   loadLiveShotInputs(
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub exposing only the three reads the loader makes
-    {
+    // stub exposing only the three reads the loader makes
+    asStub<Parameters<typeof loadLiveShotInputs>[0]>({
       shotDialogue: { getSelectedBySequence: () => Promise.resolve(rows) },
       shotPromptVersions: {
         getSelectedMotionByShots: () => Promise.resolve(new Map()),
       },
       sequenceLocations: { listWithReferences: () => Promise.resolve([]) },
       sequenceElements: { list: () => Promise.resolve([]) },
-    } as unknown as Parameters<typeof loadLiveShotInputs>[0],
+    }),
     'seq-1',
     [shot('shot-1', 1, ['section-1']), shot('shot-2', 2)],
     [
@@ -48,12 +49,12 @@ const load = (rows: { shotId: string; lines: ReturnType<typeof line>[] }[]) =>
     new Map([
       [
         'scene-1',
-        // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- only `script.dialogue` is read
-        {
+        // only `script.dialogue` is read
+        asStub<never>({
           script: {
             dialogue: [{ ...line('Ana', 'From the script.'), shotNumber: 2 }],
           },
-        } as never,
+        }),
       ],
     ])
   );

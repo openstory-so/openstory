@@ -6,6 +6,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ScopedDb } from '@/platform/server/db/scoped';
+import { asStub } from '@/test/as-stub';
 
 const mockDelete = vi.fn();
 const mockGetVoice = vi.fn();
@@ -33,14 +34,14 @@ const {
 function makeScopedDb(referenceCount: number) {
   const updateVoice = vi.fn(async () => ({}));
   const markVoiceReleased = vi.fn(async () => undefined);
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the surface release touches
-  const scopedDb = {
+  // stub covering only the surface release touches
+  const scopedDb = asStub<ScopedDb>({
     characters: {
       getVoiceReferenceCount: vi.fn(async () => referenceCount),
       markVoiceReleased,
       updateVoice,
     },
-  } as unknown as ScopedDb;
+  });
   return { scopedDb, updateVoice, markVoiceReleased };
 }
 

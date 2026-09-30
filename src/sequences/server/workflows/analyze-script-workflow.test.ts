@@ -31,6 +31,7 @@ import type {
   SceneSplitWorkflowResult,
 } from '@/platform/server/workflow/types';
 import * as realCastRecords from '@/cast/server/workflows/cast-records';
+import { asStub } from '@/test/as-stub';
 
 vi.doMock('@/platform/server/db/scoped', () => ({ createScopedDb: vi.fn() }));
 vi.doMock('@/models/server/fal-config', () => ({
@@ -166,8 +167,8 @@ function makeStep(): WorkflowStep {
       ? body()
       : Promise.reject(new Error('step.do called without a callback'));
   };
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- only `do` is exercised
-  return { do: run } as unknown as WorkflowStep;
+  // only `do` is exercised
+  return asStub<WorkflowStep>({ do: run });
 }
 
 type SequenceUpdate = Record<string, unknown>;
@@ -195,8 +196,8 @@ const writeMotionPrompt = vi.fn(
 );
 
 function makeScopedDb(update: UpdateMock): WorkflowScopedDb {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal stub: the run stops at the script stage
-  return {
+  // minimal stub: the run stops at the script stage
+  return asStub<WorkflowScopedDb>({
     sequences: {
       update,
       updateAnalysisDurationMs: vi.fn(async () => undefined),
@@ -205,7 +206,7 @@ function makeScopedDb(update: UpdateMock): WorkflowScopedDb {
     shotSpecVersions: { write: writeSpec },
     framePromptVersions: { write: writeVisualPrompt },
     shotPromptVersions: { write: writeMotionPrompt },
-  } as unknown as WorkflowScopedDb;
+  });
 }
 
 function makeEvent(
@@ -238,18 +239,19 @@ function makeEvent(
     stopAt: 'script',
     ...extras,
   };
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowEvent stub
-  return { payload, instanceId: 'analyze_run_A' } as unknown as Readonly<
-    WorkflowEvent<AnalyzeScriptWorkflowInput>
-  >;
+  // minimal WorkflowEvent stub
+  return asStub<Readonly<WorkflowEvent<AnalyzeScriptWorkflowInput>>>({
+    payload,
+    instanceId: 'analyze_run_A',
+  });
 }
 
 function makeWorkflow(): TestableAnalyzeScriptWorkflow {
   type Ctor = ConstructorParameters<typeof TestableAnalyzeScriptWorkflow>;
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the run never reads ctx or bindings
-  const ctx = undefined as unknown as Ctor[0];
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- child spawns are mocked, so no binding is dereferenced
-  const env = {} as unknown as Ctor[1];
+  // the run never reads ctx or bindings
+  const ctx = asStub<Ctor[0]>(undefined);
+  // child spawns are mocked, so no binding is dereferenced
+  const env = asStub<Ctor[1]>({});
   return new TestableAnalyzeScriptWorkflow(ctx, env);
 }
 describe('AnalyzeScriptWorkflow (a fresh run)', () => {

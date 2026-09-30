@@ -22,6 +22,7 @@ import { DEFAULT_ANALYSIS_MODEL } from '@/models/models.config';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { StoryboardWorkflowInput } from '@/platform/server/workflow/types';
+import { asStub } from '@/test/as-stub';
 
 vi.doMock('@/platform/server/db/scoped', () => ({
   createScopedDb: vi.fn(),
@@ -84,10 +85,10 @@ class TestableStoryboardWorkflow extends StoryboardWorkflow {
 
 function makeWorkflow(): TestableStoryboardWorkflow {
   type Ctor = ConstructorParameters<typeof TestableStoryboardWorkflow>;
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- tests construct the entrypoint directly; onFailure never reads ctx
-  const ctx = undefined as unknown as Ctor[0];
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal env stub; onFailure never reads bindings
-  const env = {} as unknown as Ctor[1];
+  // tests construct the entrypoint directly; onFailure never reads ctx
+  const ctx = asStub<Ctor[0]>(undefined);
+  // minimal env stub; onFailure never reads bindings
+  const env = asStub<Ctor[1]>({});
   return new TestableStoryboardWorkflow(ctx, env);
 }
 
@@ -135,7 +136,7 @@ function makeEvent(
       regenerateAll: true,
     },
   };
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowEvent stub: onFailure only reads payload
+  // minimal WorkflowEvent stub: onFailure only reads payload
   return {
     payload,
     instanceId: 'storyboard_run_A',
@@ -152,8 +153,8 @@ function makeScopedDb(status: 'processing' | 'failed' | 'completed') {
     liveRead: { sequences: { getForUser } },
     sequence: vi.fn(() => ({ updateStatus })),
   };
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowScopedDb stub exposing only what onFailure touches
-  const scopedDb = stub as unknown as WorkflowScopedDb;
+  // minimal WorkflowScopedDb stub exposing only what onFailure touches
+  const scopedDb = asStub<WorkflowScopedDb>(stub);
   return { scopedDb, updateStatus, getForUser };
 }
 
@@ -225,13 +226,13 @@ describe('StoryboardWorkflow.onFailure', () => {
 
 function makeStep() {
   const names: string[] = [];
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowStep stub: runImpl only uses `do`
-  const step = {
+  // minimal WorkflowStep stub: runImpl only uses `do`
+  const step = asStub<WorkflowStep>({
     do: vi.fn((_name: string, fn: () => Promise<unknown>) => {
       names.push(_name);
       return fn();
     }),
-  } as unknown as WorkflowStep;
+  });
   return { step, names };
 }
 
@@ -247,8 +248,8 @@ function makeRunImplDb() {
     credentials: {},
     sequences: { update },
   };
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the runImpl surface
-  const scopedDb = stub as unknown as WorkflowScopedDb;
+  // stub covering only the runImpl surface
+  const scopedDb = asStub<WorkflowScopedDb>(stub);
   return { scopedDb, updateStatus, deleteBySequence, update };
 }
 
@@ -315,8 +316,8 @@ describe('StoryboardWorkflow stop-at + resume (#1408)', () => {
     notifySequenceReady.mockReset();
     notifySequenceReady.mockResolvedValue('sent');
     spawnAndAwaitChild.mockReset();
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the mock's inferred return is undefined
-    spawnAndAwaitChild.mockResolvedValue(childResult as undefined);
+    // the mock's inferred return is undefined
+    spawnAndAwaitChild.mockResolvedValue(asStub<undefined>(childResult));
     const db = makeRunImplDb();
     const { step, names } = makeStep();
     await makeWorkflow().invokeRunImpl(
@@ -371,8 +372,8 @@ describe('StoryboardWorkflow stop-at + resume (#1408)', () => {
       music: null,
     };
     freezeFreshGenerationPlan.mockResolvedValueOnce({
-      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- only forwarding is tested here
-      plan: freshPlan as never,
+      // only forwarding is tested here
+      plan: asStub<never>(freshPlan),
       remainingCost: 0,
     });
     await run({ stopAt: 'motion' });
@@ -390,8 +391,12 @@ describe('StoryboardWorkflow stop-at + resume (#1408)', () => {
         }),
       })
     );
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- only forwarding is tested here
-    await run({ stopAt: 'motion', resume: true, plan: freshPlan as never });
+    // only forwarding is tested here
+    await run({
+      stopAt: 'motion',
+      resume: true,
+      plan: asStub<never>(freshPlan),
+    });
     expect(spawnAndAwaitChild).toHaveBeenCalledTimes(1);
     expect(spawnAndAwaitChild).toHaveBeenCalledWith(
       expect.anything(),
@@ -407,10 +412,10 @@ describe('StoryboardWorkflow stop-at + resume (#1408)', () => {
   });
 
   test('a continue runs the plan through the unit executor, not the script run (#1818)', async () => {
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the wrapper only forwards it
-    const plan = { targets: [] } as unknown as NonNullable<
-      StoryboardWorkflowInput['plan']
-    >;
+    // the wrapper only forwards it
+    const plan = asStub<NonNullable<StoryboardWorkflowInput['plan']>>({
+      targets: [],
+    });
     await run({ stopAt: 'music', resume: true, plan });
 
     expect(spawnAndAwaitChild).toHaveBeenCalledTimes(1);
@@ -424,10 +429,10 @@ describe('StoryboardWorkflow stop-at + resume (#1408)', () => {
   });
 
   test('a continue with a failed unit ends failed and sends no ready email', async () => {
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the wrapper only forwards it
-    const plan = { targets: [] } as unknown as NonNullable<
-      StoryboardWorkflowInput['plan']
-    >;
+    // the wrapper only forwards it
+    const plan = asStub<NonNullable<StoryboardWorkflowInput['plan']>>({
+      targets: [],
+    });
     const { updateStatus, names } = await run(
       { stopAt: 'motion', resume: true, plan },
       {

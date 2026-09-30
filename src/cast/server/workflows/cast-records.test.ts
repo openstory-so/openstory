@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from 'vitest';
 import type { ElementBibleEntry } from '@/shots/scene-analysis.schema';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { createCastRecords, findMissingElementEntries } from './cast-records';
+import { asStub } from '@/test/as-stub';
 
 const entry = (token: string): ElementBibleEntry => ({
   token,
@@ -60,13 +61,13 @@ describe('createCastRecords', () => {
     const locationCreateBulk = vi.fn(async (rows: unknown[]) => rows);
     const elementCreate = vi.fn(async (row: Record<string, unknown>) => row);
     const getByToken = vi.fn(async () => null);
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal stub
-    const scopedDb = {
+    // minimal stub
+    const scopedDb = asStub<WorkflowScopedDb>({
       characters: { create: characterCreate },
       sequenceLocations: { createBulk: locationCreateBulk },
       sequenceElements: { create: elementCreate },
       liveRead: { sequenceElements: { getByToken } },
-    } as unknown as WorkflowScopedDb;
+    });
 
     const result = await createCastRecords(scopedDb, {
       sequenceId: 'seq_1',
@@ -147,15 +148,15 @@ describe('createCastRecords', () => {
       consistencyTag: null,
     };
     const elementCreate = vi.fn();
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal stub
-    const scopedDb = {
+    // minimal stub
+    const scopedDb = asStub<WorkflowScopedDb>({
       characters: { create: vi.fn() },
       sequenceLocations: { createBulk: vi.fn(async () => []) },
       sequenceElements: { create: elementCreate },
       liveRead: {
         sequenceElements: { getByToken: vi.fn(async () => existing) },
       },
-    } as unknown as WorkflowScopedDb;
+    });
 
     const result = await createCastRecords(scopedDb, {
       sequenceId: 'seq_1',
@@ -200,13 +201,13 @@ describe('createCastRecords (talent match, #1561)', () => {
 
   const run = async (personality: string, movement: string) => {
     const characterCreate = vi.fn(async (row: { id: string }) => row);
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal stub
-    const scopedDb = {
+    // minimal stub
+    const scopedDb = asStub<WorkflowScopedDb>({
       characters: { create: characterCreate },
       sequenceLocations: { createBulk: vi.fn(async () => []) },
       sequenceElements: { create: vi.fn() },
       liveRead: { sequenceElements: { getByToken: vi.fn(async () => null) } },
-    } as unknown as WorkflowScopedDb;
+    });
     await createCastRecords(scopedDb, {
       sequenceId: 'seq_1',
       characterBible: [sarah],
@@ -236,13 +237,13 @@ describe('createCastRecords (talent match, #1561)', () => {
 
   test('a signed talent portrait stamps likeness real (#1682)', async () => {
     const characterCreate = vi.fn(async (row: { id: string }) => row);
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal stub
-    const scopedDb = {
+    // minimal stub
+    const scopedDb = asStub<WorkflowScopedDb>({
       characters: { create: characterCreate },
       sequenceLocations: { createBulk: vi.fn(async () => []) },
       sequenceElements: { create: vi.fn() },
       liveRead: { sequenceElements: { getByToken: vi.fn(async () => null) } },
-    } as unknown as WorkflowScopedDb;
+    });
     await createCastRecords(scopedDb, {
       sequenceId: 'seq_1',
       characterBible: [sarah],
@@ -263,13 +264,13 @@ describe('createCastRecords (talent match, #1561)', () => {
 describe('createCastRecords (voice only, #1585)', () => {
   test('a narrator persists with voiceOnly true and no talent', async () => {
     const characterCreate = vi.fn(async (row: { id: string }) => row);
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal stub
-    const scopedDb = {
+    // minimal stub
+    const scopedDb = asStub<WorkflowScopedDb>({
       characters: { create: characterCreate },
       sequenceLocations: { createBulk: vi.fn(async () => []) },
       sequenceElements: { create: vi.fn() },
       liveRead: { sequenceElements: { getByToken: vi.fn(async () => null) } },
-    } as unknown as WorkflowScopedDb;
+    });
     await createCastRecords(scopedDb, {
       sequenceId: 'seq_1',
       characterBible: [
@@ -308,13 +309,13 @@ describe('createCastRecords (voice only, #1585)', () => {
 
   test('persists the bible Voice Design brief', async () => {
     const characterCreate = vi.fn(async (row: { id: string }) => row);
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal stub
-    const scopedDb = {
+    // minimal stub
+    const scopedDb = asStub<WorkflowScopedDb>({
       characters: { create: characterCreate },
       sequenceLocations: { createBulk: vi.fn(async () => []) },
       sequenceElements: { create: vi.fn() },
       liveRead: { sequenceElements: { getByToken: vi.fn(async () => null) } },
-    } as unknown as WorkflowScopedDb;
+    });
     await createCastRecords(scopedDb, {
       sequenceId: 'seq_1',
       characterBible: [

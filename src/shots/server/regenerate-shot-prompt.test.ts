@@ -8,6 +8,7 @@ import {
   specCurrencyFromScene,
 } from '@/shots/shot-spec-currency';
 import * as realPromptContext from './prompt-context';
+import { asStub } from '@/test/as-stub';
 
 const styleConfig = migrateStyleConfigV1ToV2({
   mood: 'tense',
@@ -168,8 +169,8 @@ function harness(opts: {
     teamId: 'team-1',
   };
   return {
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test stub
-    context: context as unknown as Parameters<typeof regenerateShotPrompt>[0],
+    // test stub
+    context: asStub<Parameters<typeof regenerateShotPrompt>[0]>(context),
     visualWrites,
     motionWrites,
     visualClaims,

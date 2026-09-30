@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { UpscaleShotVariantWorkflowInput } from '@/platform/server/workflow/types';
 import type { WorkflowEvent } from 'cloudflare:workers';
+import { asStub } from '@/test/as-stub';
 
 const emit = vi.fn((_event: string, _data: unknown) => Promise.resolve());
 vi.doMock('@/platform/realtime', () => ({
@@ -30,10 +31,10 @@ class Probe extends UpscaleShotVariantWorkflow {
 
 function makeWorkflow(): Probe {
   type Ctor = ConstructorParameters<typeof Probe>;
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- onFailure never reads ctx
-  const ctx = undefined as unknown as Ctor[0];
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- onFailure never reads bindings
-  const env = {} as unknown as Ctor[1];
+  // onFailure never reads ctx
+  const ctx = asStub<Ctor[0]>(undefined);
+  // onFailure never reads bindings
+  const env = asStub<Ctor[1]>({});
   return new Probe(ctx, env);
 }
 
@@ -52,8 +53,8 @@ function makeDb() {
     },
     liveRead: { frames: { getById: vi.fn(() => Promise.resolve(null)) } },
   };
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub of the surface onFailure touches
-  return { frameVariants, scopedDb: db as unknown as WorkflowScopedDb };
+  // stub of the surface onFailure touches
+  return { frameVariants, scopedDb: asStub<WorkflowScopedDb>(db) };
 }
 
 function fail(versionId: string | undefined, scopedDb: WorkflowScopedDb) {

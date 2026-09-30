@@ -11,6 +11,7 @@ import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { StudioCreateInput } from '@/studio/schema';
 import type { StudioGenerationWorkflowInput } from '@/platform/server/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
+import { asStub } from '@/test/as-stub';
 
 const mockGenerateImageWithProvider = vi.fn();
 const mockDeductWorkflowCredits = vi.fn();
@@ -89,24 +90,24 @@ class Probe extends StudioGenerationWorkflow {
 
 function makeWorkflow(): Probe {
   type Ctor = ConstructorParameters<typeof Probe>;
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- runImpl never reads ctx
-  const ctx = undefined as unknown as Ctor[0];
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- runImpl never reads bindings
-  const env = {} as unknown as Ctor[1];
+  // runImpl never reads ctx
+  const ctx = asStub<Ctor[0]>(undefined);
+  // runImpl never reads bindings
+  const env = asStub<Ctor[1]>({});
   return new Probe(ctx, env);
 }
 
 function makeStep(): WorkflowStep & { names: string[] } {
   const names: string[] = [];
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub: runImpl only uses `do` and `sleep`
-  return {
+  // stub: runImpl only uses `do` and `sleep`
+  return asStub<WorkflowStep & { names: string[] }>({
     names,
     do: vi.fn((name: string, fn: () => Promise<unknown>) => {
       names.push(name);
       return fn();
     }),
     sleep: vi.fn(async () => {}),
-  } as unknown as WorkflowStep & { names: string[] };
+  });
 }
 
 function makeScopedDb() {
@@ -118,13 +119,13 @@ function makeScopedDb() {
   const bytePlusAssets = {
     releaseOwner: vi.fn(async (_owner: string) => {}),
   };
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the surface runImpl touches
-  const scopedDb = {
+  // stub covering only the surface runImpl touches
+  const scopedDb = asStub<WorkflowScopedDb>({
     generatedAssets,
     bytePlusAssets,
     provenance: {},
     credentials: {},
-  } as unknown as WorkflowScopedDb;
+  });
   return { scopedDb, generatedAssets, bytePlusAssets };
 }
 

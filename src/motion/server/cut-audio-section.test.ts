@@ -10,6 +10,7 @@ import {
   parseWavHeader,
   pcmToWav,
 } from '@/motion/server/pad-dialogue-audio';
+import { asStub } from '@/test/as-stub';
 
 const SAMPLE_RATE = 8000;
 const BYTES_PER_SECOND = SAMPLE_RATE * 2;
@@ -277,8 +278,8 @@ describe('cutAudioSection', () => {
 
   it('fails on a recording that is missing or is not a PCM WAV', async () => {
     readStorageObject.mockResolvedValueOnce(
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the real signature's "no such key"
-      null as unknown as Awaited<ReturnType<typeof readStorageObject>>
+      // the real signature's "no such key"
+      asStub<Awaited<ReturnType<typeof readStorageObject>>>(null)
     );
     await expect(
       cutAudioSection({ ...base, fromSeconds: 0, toSeconds: 1 })

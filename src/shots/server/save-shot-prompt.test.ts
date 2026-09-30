@@ -22,6 +22,7 @@ vi.mock('./shot-dialogue', () => ({
   loadShotPromptDialogue: mocks.loadDialogue,
 }));
 import { saveShotPrompt } from './save-shot-prompt';
+import { asStub } from '@/test/as-stub';
 
 const continuity = { characterTags: [], environmentTag: '', elementTags: [] };
 const linked = { ...continuity, elementTags: ['LOGO'] };
@@ -29,8 +30,8 @@ const write = vi.fn();
 const updateContinuity = vi.fn();
 const getSelectedMotion = vi.fn();
 const writeDialogue = vi.fn();
-// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- only the fields read by this helper are needed in the fixture
-const context = {
+// only the fields read by this helper are needed in the fixture
+const context = asStub<ShotContext>({
   shot: { id: 'shot-1', sceneId: 'scene-1', useStartFrame: false },
   frame: { id: 'frame-1' },
   sequence: { id: 'sequence-1', generateStartFrames: false },
@@ -41,7 +42,7 @@ const context = {
     scenes: { updateContinuity },
     shotDialogue: { getSelected: vi.fn(() => null), write: writeDialogue },
   },
-} as unknown as ShotContext;
+});
 
 beforeEach(() => {
   vi.clearAllMocks();

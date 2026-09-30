@@ -10,6 +10,7 @@ import { TEST_FAL_PRICING } from '@/billing/fal-pricing-fixture';
 import { estimateVideoCost, gateEstimate } from '@/billing/cost-estimation';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { VideoVariant } from '@/platform/server/db/schema';
+import { asStub } from '@/test/as-stub';
 
 const mockReserve = vi.fn(async () => 'res-final');
 const mockTrigger = vi.fn(
@@ -71,15 +72,15 @@ function makeVersion(extra: Partial<VideoVariant> = {}): VideoVariant {
 
 function makeScopedDb(siblings: VideoVariant[]) {
   const zeroReservation = vi.fn(async () => {});
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the surface the module touches
-  const scopedDb = {
+  // stub covering only the surface the module touches
+  const scopedDb = asStub<ScopedDb>({
     teamId: 'team-1',
     videoVariants: { listBySegment: vi.fn(async () => siblings) },
     shotPromptVersions: {
       getByIdForShot: vi.fn(async () => ({ text: 'the draft prompt' })),
     },
     billing: { zeroReservation },
-  } as unknown as ScopedDb;
+  });
   return { scopedDb, zeroReservation };
 }
 

@@ -7,6 +7,7 @@ import * as tanstackAi from '@tanstack/ai';
 import * as createAdapterModule from './create-adapter';
 import * as promptsModule from '@/platform/server/ai/prompts-index';
 import * as realtimeModule from '@/platform/realtime';
+import { asStub } from '@/test/as-stub';
 
 const mockChat = vi.fn();
 vi.doMock('@tanstack/ai', () => ({
@@ -56,10 +57,10 @@ const {
 const { usdToMicros, ZERO_MICROS } = await import('@/billing/money');
 
 // Minimal WorkflowStep: run every step body immediately, no retries.
-// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowStep stub: the helper only uses `do`
-const step = {
+// minimal WorkflowStep stub: the helper only uses `do`
+const step = asStub<WorkflowStep>({
   do: (_name: string, fn: () => Promise<unknown>) => fn(),
-} as unknown as WorkflowStep;
+});
 
 const schema = z.object({
   visual: z.object({ fullPrompt: z.string() }),

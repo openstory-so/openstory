@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { loadSequenceStyle } from './sequence-style';
 import type { StyleConfig } from '@/look/style-config';
+import { asStub } from '@/test/as-stub';
 const style: StyleConfig = {
   version: 2,
   look: {
@@ -20,11 +21,11 @@ function database() {
     styleConfig: style,
   }));
   const getStyle = vi.fn(async () => ({ config: style }));
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- only the two read methods are used by this loader.
-  const scopedDb = {
+  // only the two read methods are used by this loader.
+  const scopedDb = asStub<Parameters<typeof loadSequenceStyle>[0]>({
     sequences: { getById: getSequence },
     styles: { getById: getStyle },
-  } as unknown as Parameters<typeof loadSequenceStyle>[0];
+  });
   return { scopedDb, getSequence, getStyle };
 }
 describe('loadSequenceStyle', () => {

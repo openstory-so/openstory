@@ -7,6 +7,7 @@ import {
   completeDerivedPrompts,
   type DerivedPromptDb,
 } from './rebuild-shot-prompts';
+import { asStub } from '@/test/as-stub';
 
 const styleConfig: StyleConfig = migrateStyleConfigV1ToV2({
   mood: 'tense',
@@ -84,23 +85,27 @@ function recordingDb(): {
     framePromptVersions: {
       completePendingAiVersion: async (input) => {
         visuals.push(input);
-        // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the helper only reads id
-        return { id: 'visual-done' } as Awaited<
-          ReturnType<
-            DerivedPromptDb['framePromptVersions']['completePendingAiVersion']
+        // the helper only reads id
+        return asStub<
+          Awaited<
+            ReturnType<
+              DerivedPromptDb['framePromptVersions']['completePendingAiVersion']
+            >
           >
-        >;
+        >({ id: 'visual-done' });
       },
     },
     shotPromptVersions: {
       completePendingAiVersion: async (input) => {
         motions.push(input);
-        // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the helper only reads id
-        return { id: 'motion-done' } as Awaited<
-          ReturnType<
-            DerivedPromptDb['shotPromptVersions']['completePendingAiVersion']
+        // the helper only reads id
+        return asStub<
+          Awaited<
+            ReturnType<
+              DerivedPromptDb['shotPromptVersions']['completePendingAiVersion']
+            >
           >
-        >;
+        >({ id: 'motion-done' });
       },
     },
     shotSpecVersions: {

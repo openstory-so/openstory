@@ -3,6 +3,7 @@ import type { Scene } from '@/shots/scene-analysis.schema';
 import type { Frame, FrameVariant, Shot } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { ShotStalenessRefs } from './shot-staleness';
+import { asStub } from '@/test/as-stub';
 
 const buildRegenerateShotSnapshot = vi.fn();
 const loadNarrowShotPromptContext = vi.fn();
@@ -33,10 +34,6 @@ const { computeShotStaleness, loadShotStalenessReads } =
 // Shape-matching stubs: each fixture carries only what this module reads, so a
 // future field read fails loudly rather than silently seeing `undefined`.
 // Same pattern as `sheet-snapshots.test.ts`.
-function asStub<T>(stub: unknown): T {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test stub
-  return stub as T;
-}
 
 const scene = asStub<Scene>({
   sceneId: 'scene-1',
@@ -711,8 +708,10 @@ describe('per-shot start-frame override', () => {
   });
   /** The motion branch is the only caller that passes `startingFrameImageUrl`. */
   const motionContextArgs = () =>
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- mock call args
-    (loadNarrowShotPromptContext.mock.calls as Array<[Record<string, unknown>]>)
+    // mock call args
+    asStub<Array<[Record<string, unknown>]>>(
+      loadNarrowShotPromptContext.mock.calls
+    )
       .map(([args]) => args)
       .filter((args) => 'startingFrameImageUrl' in args)
       .at(-1);

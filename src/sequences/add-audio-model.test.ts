@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TEST_FAL_PRICING } from '@/billing/fal-pricing-fixture';
 import { ZERO_MICROS } from '@/billing/money';
+import { asStub } from '@/test/as-stub';
 
 // Expose the handler so these tests exercise its real credit preflight with
 // an authenticated context, without the server-fn transport or middleware.
@@ -63,11 +64,14 @@ function makeContext(canAfford = false) {
   };
 }
 
-// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- createServerFn mock exposes the handler instead of its transport wrapper
-const addAudioModel = addModelToSequenceFn as unknown as (input: {
-  data: { sequenceId: string; variantType: 'audio'; model: string };
-  context: ReturnType<typeof makeContext>;
-}) => Promise<unknown>;
+// createServerFn mock exposes the handler instead of its transport wrapper
+const addAudioModel =
+  asStub<
+    (input: {
+      data: { sequenceId: string; variantType: 'audio'; model: string };
+      context: ReturnType<typeof makeContext>;
+    }) => Promise<unknown>
+  >(addModelToSequenceFn);
 
 describe('add audio model — music credits', () => {
   beforeEach(() => triggerWorkflow.mockClear());

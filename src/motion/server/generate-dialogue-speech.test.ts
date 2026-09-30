@@ -19,6 +19,7 @@ import {
   type SceneVoicedLine,
 } from '@/shots/shot-dialogue';
 import type { WorkflowStep } from 'cloudflare:workers';
+import { asStub } from '@/test/as-stub';
 
 const recordCall = vi.fn();
 const llmCall = vi.fn();
@@ -60,13 +61,13 @@ const { MAX_DIALOGUE_FIT_ATTEMPTS } = await import('./fit-dialogue-clip');
 /** Runs each step body inline and records the durable names used. */
 function fakeStep(): { names: string[]; step: WorkflowStep } {
   const names: string[] = [];
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- minimal WorkflowStep stub: recording only uses `do`
-  const step = {
+  // minimal WorkflowStep stub: recording only uses `do`
+  const step = asStub<WorkflowStep>({
     do: (name: string, body: () => Promise<unknown>) => {
       names.push(name);
       return body();
     },
-  } as unknown as WorkflowStep;
+  });
   return { names, step };
 }
 
@@ -102,11 +103,11 @@ const appendSpeech = vi.fn(async (input: Appended) => ({
     .filter((section) => section.adopt && !demoted.has(section.shotId))
     .map((section) => section.shotId),
 }));
-// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- only the key hatch and the claim/land writes are touched
-const scopedDb = {
+// only the key hatch and the claim/land writes are touched
+const scopedDb = asStub<WorkflowScopedDb>({
   credentials: { resolveKey: async () => ({ key: 'el-key' }) },
   shotDialogue: { claimSpeech, failClaims, appendSpeech },
-} as unknown as WorkflowScopedDb;
+});
 
 const line = (
   shotId: string,
@@ -483,11 +484,11 @@ const turn = (shotId: string, text: string, tone = '', voiceId = 'v1') => ({
 
 describe('withSpeechId', () => {
   it('reads a pre-#1913 cached chunk result by its recordingId', () => {
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the shape a step cached before #1913 replays
-    const cached = { recordingId: 'rec-1', url: 'u' } as unknown as {
+    // the shape a step cached before #1913 replays
+    const cached = asStub<{
       speechId: string;
       url: string;
-    };
+    }>({ recordingId: 'rec-1', url: 'u' });
     expect(withSpeechId(cached).speechId).toBe('rec-1');
     expect(withSpeechId({ speechId: 's-1', url: 'u' }).speechId).toBe('s-1');
   });

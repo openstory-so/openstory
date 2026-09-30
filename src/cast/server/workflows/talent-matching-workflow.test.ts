@@ -8,6 +8,7 @@ import type { CharacterBibleEntry } from '@/shots/scene-analysis.schema';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { TalentMatchingWorkflowInput } from '@/platform/server/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
+import { asStub } from '@/test/as-stub';
 
 const mockDurableLLMCallCf = vi.fn();
 const mockEmit = vi.fn();
@@ -49,18 +50,18 @@ class Probe extends TalentMatchingWorkflow {
 
 function makeWorkflow(): Probe {
   type Ctor = ConstructorParameters<typeof Probe>;
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- tests construct the entrypoint directly; runImpl never reads ctx
-  const ctx = undefined as unknown as Ctor[0];
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- runImpl never reads bindings
-  const env = {} as unknown as Ctor[1];
+  // tests construct the entrypoint directly; runImpl never reads ctx
+  const ctx = asStub<Ctor[0]>(undefined);
+  // runImpl never reads bindings
+  const env = asStub<Ctor[1]>({});
   return new Probe(ctx, env);
 }
 
 function makeStep(): WorkflowStep {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowStep stub: runImpl only uses `do`
-  return {
+  // minimal WorkflowStep stub: runImpl only uses `do`
+  return asStub<WorkflowStep>({
     do: vi.fn((_name: string, fn: () => Promise<unknown>) => fn()),
-  } as unknown as WorkflowStep;
+  });
 }
 
 const entry = (
@@ -116,8 +117,8 @@ describe('TalentMatchingWorkflow voice-only characters', () => {
     const result = await makeWorkflow().runBody(
       makeEvent(),
       makeStep(),
-      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- liveRead is consumed by the mocked wait only
-      { liveRead: {} } as unknown as WorkflowScopedDb
+      // liveRead is consumed by the mocked wait only
+      asStub<WorkflowScopedDb>({ liveRead: {} })
     );
 
     expect(mockDurableLLMCallCf.mock.calls[0]?.[1]).toMatchObject({

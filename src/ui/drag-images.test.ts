@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { snapshotDataTransfer } from './drag-images';
+import { asStub } from '@/test/as-stub';
 
 /**
  * #1559 — the snapshot used to keep `image/*` local files only, which made a
@@ -15,8 +16,8 @@ function dataTransfer(files: File[]): DataTransfer {
     types: ['Files'],
     getData: () => '',
   };
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test stub, see above
-  return stub as unknown as DataTransfer;
+  // test stub, see above
+  return asStub<DataTransfer>(stub);
 }
 
 const file = (name: string, type: string) => new File(['x'], name, { type });

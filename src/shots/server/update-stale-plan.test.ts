@@ -25,6 +25,7 @@ import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Scene } from '@/shots/scene-analysis.schema';
 import type { ShotStalenessResult } from './shot-staleness';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { asStub } from '@/test/as-stub';
 
 const FRESH: ShotStalenessResult = {
   thumbnail: 'fresh',
@@ -40,44 +41,44 @@ const FRESH: ShotStalenessResult = {
   },
 };
 
-// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test stub; computePlan only reads sceneId off the scene
-const scene = {
+// test stub; computePlan only reads sceneId off the scene
+const scene = asStub<Scene>({
   sceneId: 'scene-1',
   metadata: { title: 'Scene 1' },
   originalScript: { extract: '' },
-} as unknown as Scene;
+});
 
 function makeShot(overrides: Partial<Shot> = {}): Shot {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal Shot stub exposing only what computePlan reads
-  return {
+  // minimal Shot stub exposing only what computePlan reads
+  return asStub<Shot>({
     id: 'shot-1',
     sceneId: 'scene-1',
     ...overrides,
-  } as unknown as Shot;
+  });
 }
 
 function makeFrame(overrides: Partial<Frame> = {}): Frame {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal Frame stub exposing only what computePlan reads
-  return {
+  // minimal Frame stub exposing only what computePlan reads
+  return asStub<Frame>({
     id: 'frame-1',
     shotId: 'shot-1',
     // The still lives on the selected version (#1067); a set pointer is what
     // "this shot already has an image" means. Null it for a still-less shot.
     selectedImageVersionId: 'fv-1',
     ...overrides,
-  } as unknown as Frame;
+  });
 }
 
 /** The selected `frame_variants` row `getSelectedByFrameIds` would return. */
 function makeSelectedImage(frame: Frame): FrameVariant {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal FrameVariant stub exposing only what computePlan reads
-  return {
+  // minimal FrameVariant stub exposing only what computePlan reads
+  return asStub<FrameVariant>({
     id: frame.selectedImageVersionId,
     frameId: frame.id,
     url: `https://example.com/${frame.id}.jpg`,
     model: 'nano_banana_2',
     inputHash: 'stored-thumb',
-  } as unknown as FrameVariant;
+  });
 }
 
 /** Staleness keyed by shot id; anything unlisted reads fresh. */
@@ -266,8 +267,8 @@ function buildScopedDb(
 
 /** Minimal ScopedDb stub exposing only the namespaces computePlan touches. */
 function asScopedDb<T>(stub: T): ScopedDb {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test stub
-  return stub as unknown as ScopedDb;
+  // test stub
+  return asStub<ScopedDb>(stub);
 }
 
 /** Every shot owes a visual prompt unless a test names its units. */
@@ -769,8 +770,8 @@ describe('findTargetMissingStartFrameMode', () => {
   // would SUCCEED — rewriting prompts with the wrong template and re-rendering
   // every clip with no start frame, billed, silently.
   const target = (over: Record<string, unknown>) =>
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- shape drift is the thing under test
-    ({ shotId: 'shot-1', ...over }) as PlanTarget;
+    // shape drift is the thing under test
+    asStub<PlanTarget>({ shotId: 'shot-1', ...over });
 
   it('passes a plan whose targets all carry the flag', () => {
     expect(

@@ -16,6 +16,7 @@ import {
   settledToResult,
   shouldDowngradeVisionOnFailure,
 } from './replace-element-workflow';
+import { asStub } from '@/test/as-stub';
 
 const snapshot = (
   overrides: Partial<ReplaceElementShotSnapshot> = {}
@@ -243,13 +244,13 @@ describe('ReplaceElementWorkflow onFailure (#1942)', () => {
 
   it('fails every image claim no child picked up', async () => {
     type Ctor = ConstructorParameters<typeof Probe>;
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- onFailure never reads ctx
-    const ctx = undefined as unknown as Ctor[0];
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- onFailure never reads bindings
-    const env = {} as unknown as Ctor[1];
+    // onFailure never reads ctx
+    const ctx = asStub<Ctor[0]>(undefined);
+    // onFailure never reads bindings
+    const env = asStub<Ctor[1]>({});
     const markFailedByWorkflowRun = vi.fn(() => Promise.resolve(2));
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub of the surface onFailure touches
-    const scopedDb = {
+    // stub of the surface onFailure touches
+    const scopedDb = asStub<WorkflowScopedDb>({
       frameVariants: { markFailedByWorkflowRun },
       sequenceElements: { updateVisionStatus: vi.fn() },
       liveRead: {
@@ -257,15 +258,15 @@ describe('ReplaceElementWorkflow onFailure (#1942)', () => {
           getById: vi.fn(() => Promise.resolve({ visionStatus: 'completed' })),
         },
       },
-    } as unknown as WorkflowScopedDb;
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- onFailure reads only these fields
-    const payload = {
+    });
+    // onFailure reads only these fields
+    const payload = asStub<ReplaceElementWorkflowInput>({
       userId: 'u1',
       teamId: 't1',
       sequenceId: 'seq_1',
       elementId: 'el_1',
       token: 'LOGO',
-    } as ReplaceElementWorkflowInput;
+    });
     await new Probe(ctx, env).fail(
       {
         payload,

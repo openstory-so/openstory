@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChatMessage } from '@/platform/server/ai/prompts-index';
 import type { ScopedDb } from '@/platform/server/db/scoped';
+import { asStub } from '@/test/as-stub';
 
 const getRequestHeader = vi.fn<(name: string) => string | undefined>();
 vi.doMock('@tanstack/react-start/server', () => ({ getRequestHeader }));
@@ -21,12 +22,12 @@ const { streamScriptEnhancement, enhanceScriptToString } =
   await import('./script-enhancement');
 
 function context() {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- only the team-key billing preflight is reached
-  const scopedDb = {
+  // only the team-key billing preflight is reached
+  const scopedDb = asStub<ScopedDb>({
     apiKeys: {
       resolveLlmKey: vi.fn(async () => ({ source: 'team', via: 'openrouter' })),
     },
-  } as unknown as ScopedDb;
+  });
   return { scopedDb, userId: 'u1', teamId: 't1' };
 }
 

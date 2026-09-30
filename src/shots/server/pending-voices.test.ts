@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { voicedDialogueLines } from '@/motion/dialogue-tts';
 import { bindPendingVoices, pendingVoiceId } from './pending-voices';
 import type { UpdateStalePlan } from './update-stale-plan';
+import { asStub } from '@/test/as-stub';
 
 const characterVoices = [
   { name: 'Ana', voiceId: pendingVoiceId('c-ana'), voiceOnly: false },
@@ -25,8 +26,8 @@ function planWith(): UpdateStalePlan {
     dialogue: dialogue(character),
     dialogueContext: [sceneLine(shotId, character)],
   });
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- only the dialogue fields are read
-  return {
+  // only the dialogue fields are read
+  return asStub<UpdateStalePlan>({
     characterVoices,
     dialogueSpeech: {
       scenes: [
@@ -46,7 +47,7 @@ function planWith(): UpdateStalePlan {
       maxDurationSeconds: 10,
     },
     targets: [target('s1', 'Ana'), target('s2', 'Ben')],
-  } as unknown as UpdateStalePlan;
+  });
 }
 
 describe('bindPendingVoices', () => {

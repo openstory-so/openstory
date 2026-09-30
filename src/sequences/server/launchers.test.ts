@@ -19,6 +19,7 @@ import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { StyleConfig } from '@/platform/server/db/schema';
 import type { GenerationStage } from '@/sequences/pipeline';
 import type { StoryboardTriggerInput } from '@/platform/server/workflow/types';
+import { asStub } from '@/test/as-stub';
 
 const triggerWorkflowMock = vi.fn();
 const getRequestHeader = vi.fn<(name: string) => string | undefined>();
@@ -132,8 +133,8 @@ function makeScopedDb(opts: {
     teamManagement: { getMemberEmail },
     sequence: () => ({ updateStatus }),
   };
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal ScopedDb stub exposing only what the launcher touches
-  const scopedDb = stub as unknown as ScopedDb;
+  // minimal ScopedDb stub exposing only what the launcher touches
+  const scopedDb = asStub<ScopedDb>(stub);
   return {
     scopedDb,
     updateStatus,

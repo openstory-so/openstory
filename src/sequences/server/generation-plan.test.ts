@@ -7,6 +7,7 @@
 
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { describe, expect, it, vi } from 'vitest';
+import { asStub } from '@/test/as-stub';
 
 const frame = { id: 'f1', shotId: 's1', pendingPromoteVersionId: null };
 /** The anchor's selected still; null for a frame that has none yet. */
@@ -91,8 +92,8 @@ function character(id: string, name: string, sheetImageUrl: string | null) {
 }
 
 function asScopedDb<T>(stub: T): ScopedDb {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test stub
-  return stub as unknown as ScopedDb;
+  // test stub
+  return asStub<ScopedDb>(stub);
 }
 
 describe('computeGenerationPlan', () => {

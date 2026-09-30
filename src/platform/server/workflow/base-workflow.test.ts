@@ -24,6 +24,7 @@ import { NonRetryableError } from 'cloudflare:workflows';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { WorkflowValidationError } from './errors';
 import type { UserWorkflowContext } from './types';
+import { asStub } from '@/test/as-stub';
 
 const zeroReservation = vi.fn(async () => undefined);
 const SCOPED_DB = { scoped: true, billing: { zeroReservation } };
@@ -89,7 +90,7 @@ function makeEvent(
   withParent: boolean,
   extra: Partial<TestPayload> = {}
 ): Readonly<WorkflowEvent<TestPayload>> {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowEvent stub: run() only reads payload + instanceId
+  // minimal WorkflowEvent stub: run() only reads payload + instanceId
   return {
     payload: {
       userId: 'u1',
@@ -104,10 +105,10 @@ function makeEvent(
 }
 
 function makeStep(): WorkflowStep {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowStep stub: run() only uses `do`
-  return {
+  // minimal WorkflowStep stub: run() only uses `do`
+  return asStub<WorkflowStep>({
     do: vi.fn((_name: string, fn: () => Promise<unknown>) => fn()),
-  } as unknown as WorkflowStep;
+  });
 }
 
 function makeWorkflow(impl: () => Promise<unknown>) {
@@ -125,10 +126,10 @@ function makeWorkflow(impl: () => Promise<unknown>) {
     }
   }
   type Ctor = ConstructorParameters<typeof TestWorkflow>;
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- tests construct the entrypoint directly; the stubbed base class ignores ctx
-  const ctx = undefined as unknown as Ctor[0];
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal env stub; run() under test never reads bindings
-  const env = {} as unknown as Ctor[1];
+  // tests construct the entrypoint directly; the stubbed base class ignores ctx
+  const ctx = asStub<Ctor[0]>(undefined);
+  // minimal env stub; run() under test never reads bindings
+  const env = asStub<Ctor[1]>({});
   const workflow = new TestWorkflow(ctx, env);
   return { workflow, onFailure };
 }

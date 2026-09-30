@@ -18,6 +18,7 @@ import { DEFAULT_ANALYSIS_MODEL } from '@/models/models.config';
 import * as realPlan from '../update-stale-plan';
 import { buildMotionRender } from '@/motion/server/build-motion-render';
 import { motionPromptFromVersion } from '@/motion/server/resolve-motion-prompt';
+import { asStub } from '@/test/as-stub';
 
 vi.doMock('@/billing/server/fal-pricing-live', () => ({
   getEffectiveFalPricing: vi.fn(async () => ({})),
@@ -150,8 +151,8 @@ function makeStep(): WorkflowStep {
       ? body()
       : Promise.reject(new Error('step.do called without a callback'));
   };
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- only `do` is exercised
-  return { do: run } as unknown as WorkflowStep;
+  // only `do` is exercised
+  return asStub<WorkflowStep>({ do: run });
 }
 
 const claimSheet = vi.fn(async (id: string) => `csv-${id}`);
@@ -165,8 +166,8 @@ const createPendingVoiceClaim = vi.fn(async (id: string) => ({
 }));
 
 function makeScopedDb(): WorkflowScopedDb {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal stub for the paths under test
-  return {
+  // minimal stub for the paths under test
+  return asStub<WorkflowScopedDb>({
     characters: {
       claimSheet,
       failSheetClaim,
@@ -242,7 +243,7 @@ function makeScopedDb(): WorkflowScopedDb {
         getAnchorByShot: vi.fn(async (id: string) => ({ id: `f-${id}` })),
       },
     },
-  } as unknown as WorkflowScopedDb;
+  });
 }
 
 function target(shotId: string, referenceIds: string[]): PlanTarget {
@@ -281,8 +282,8 @@ function target(shotId: string, referenceIds: string[]): PlanTarget {
 }
 
 function plan(overrides: Partial<UpdateStalePlan>): UpdateStalePlan {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the executor reads only these fields here
-  return {
+  // the executor reads only these fields here
+  return asStub<UpdateStalePlan>({
     aspectRatio: '16:9',
     resolution: '1080p',
     sequence: { title: 'S', videoModel: 'kling_v3_pro' },
@@ -302,7 +303,7 @@ function plan(overrides: Partial<UpdateStalePlan>): UpdateStalePlan {
     skipped: [],
     references: null,
     ...overrides,
-  } as unknown as UpdateStalePlan;
+  });
 }
 
 const run = (
@@ -310,13 +311,13 @@ const run = (
   options: Partial<UpdateStaleShotsWorkflowInput> = {}
 ) =>
   new Testable(
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- ctx is never read
-    undefined as unknown as ConstructorParameters<typeof Testable>[0],
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- children are mocked, no binding is dereferenced
-    {} as unknown as ConstructorParameters<typeof Testable>[1]
+    // ctx is never read
+    asStub<ConstructorParameters<typeof Testable>[0]>(undefined),
+    // children are mocked, no binding is dereferenced
+    asStub<ConstructorParameters<typeof Testable>[1]>({})
   ).invoke(
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal event stub
-    {
+    // minimal event stub
+    asStub<Readonly<WorkflowEvent<UpdateStaleShotsWorkflowInput>>>({
       payload: {
         userId: 'u1',
         teamId: 't1',
@@ -326,7 +327,7 @@ const run = (
         ...options,
       },
       instanceId: 'run-1',
-    } as unknown as Readonly<WorkflowEvent<UpdateStaleShotsWorkflowInput>>
+    })
   );
 
 const spawned = () =>
@@ -353,8 +354,8 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
 
   it('spawns only the owed references, each behind its claim', async () => {
     const result = await run(
-      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- payload stubs
-      plan({ references: references as never })
+      // payload stubs
+      plan({ references: asStub<never>(references) })
     );
     expect(spawned().sort()).toEqual(
       [
@@ -390,12 +391,12 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
     failCharacter.add('ravi');
     const result = await run(
       plan({
-        // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- payload stubs
-        references: {
+        // payload stubs
+        references: asStub<never>({
           ...references,
           elementSheets: null,
           voices: [],
-        } as never,
+        }),
         targets: [
           target('s-ravi', ['ravi', 'hall']),
           target('s-maya', ['maya']),
@@ -520,8 +521,8 @@ describe('executor packed clips', () => {
     const shot = clipTarget('a');
     shot.motionRender.location = 'Frozen room';
     const p = plan({ targets: [shot] });
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- only matching and reference fields are used
-    p.renderRefs.locations = [
+    // only matching and reference fields are used
+    p.renderRefs.locations = asStub<typeof p.renderRefs.locations>([
       {
         id: 'room',
         locationId: 'room',
@@ -530,7 +531,7 @@ describe('executor packed clips', () => {
         referenceImageUrl: 'https://x/frozen.jpg',
         selectedReferenceVersionId: 'frozen-version',
       },
-    ] as typeof p.renderRefs.locations;
+    ]);
     const result = await run(p);
     expect(result.failures).toEqual([]);
     expect(payloadOf('spawn-video-a')).toMatchObject({
@@ -610,8 +611,11 @@ describe('fresh executor parity (#1891)', () => {
   });
   it('gates simultaneous sheet and platform voice spend together against the parent envelope', async () => {
     const p = plan({
-      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- children are stubbed; only ids and wave cost are consumed
-      references: { ...references, cost: { sheets: 20, voices: 30 } } as never,
+      // children are stubbed; only ids and wave cost are consumed
+      references: asStub<never>({
+        ...references,
+        cost: { sheets: 20, voices: 30 },
+      }),
     });
     await run(p, { reservationId: 'hold' });
     expect(requireCredits).toHaveBeenCalledWith(
@@ -872,8 +876,8 @@ describe('fresh executor parity (#1891)', () => {
     a.regenImage = true;
     const p = plan({
       targets: [a],
-      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- reference children consume only fixture ids
-      references: { ...references, voices: [] } as never,
+      // reference children consume only fixture ids
+      references: asStub<never>({ ...references, voices: [] }),
       dialogueSpeech: {
         scenes: [
           {
@@ -930,16 +934,16 @@ it('overlays first generated sheets onto the pending bible rows before a fresh s
   vi.mocked(prepareShotImageWorkflowInput).mockClear();
   const result = await run(
     plan({
-      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal child payloads
-      references: {
+      // minimal child payloads
+      references: asStub<never>({
         characterSheets: [{ characterDbId: 'maya' }],
         locationSheets: [{ locationDbId: 'hall' }],
         elementSheets: null,
         voices: [],
         cost: { sheets: 0, voices: 0 },
-      } as never,
-      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- pending row identity and media are the exercised fields
-      renderRefs: {
+      }),
+      // pending row identity and media are the exercised fields
+      renderRefs: asStub<never>({
         characters: [
           { id: 'maya', sheetImageUrl: null, selectedSheetVersionId: null },
         ],
@@ -951,7 +955,7 @@ it('overlays first generated sheets onto the pending bible rows before a fresh s
           },
         ],
         elements: [],
-      } as never,
+      }),
       targets: [target('fresh-shot', ['maya', 'hall'])],
     }),
     { freshRun: true }

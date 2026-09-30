@@ -11,6 +11,7 @@ import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { LibraryTalentSheetWorkflowInput } from '@/platform/server/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
+import { asStub } from '@/test/as-stub';
 
 const mockCopyStoredImage = vi.fn();
 const mockGenerateImageWithProvider = vi.fn();
@@ -68,18 +69,18 @@ class Probe extends LibraryTalentSheetWorkflow {
 
 function makeWorkflow(): Probe {
   type Ctor = ConstructorParameters<typeof Probe>;
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- tests construct the entrypoint directly; runImpl never reads ctx
-  const ctx = undefined as unknown as Ctor[0];
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal env stub; runImpl never reads bindings
-  const env = {} as unknown as Ctor[1];
+  // tests construct the entrypoint directly; runImpl never reads ctx
+  const ctx = asStub<Ctor[0]>(undefined);
+  // minimal env stub; runImpl never reads bindings
+  const env = asStub<Ctor[1]>({});
   return new Probe(ctx, env);
 }
 
 function makeStep(): WorkflowStep {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowStep stub: runImpl only uses `do`
-  return {
+  // minimal WorkflowStep stub: runImpl only uses `do`
+  return asStub<WorkflowStep>({
     do: vi.fn((_name: string, fn: () => Promise<unknown>) => fn()),
-  } as unknown as WorkflowStep;
+  });
 }
 
 const mockLandSheet = vi.fn();
@@ -88,8 +89,8 @@ const mockClearSheetClaimIf = vi.fn();
 
 function makeScopedDb(): WorkflowScopedDb {
   const sheet = { id: 'sheet-1' };
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the scoped-db surface runImpl touches
-  return {
+  // stub covering only the scoped-db surface runImpl touches
+  return asStub<WorkflowScopedDb>({
     talent: {
       sheets: {
         getById: vi.fn(async () => null),
@@ -105,7 +106,7 @@ function makeScopedDb(): WorkflowScopedDb {
     provenance: {},
     liveRead: {},
     credentials: {},
-  } as unknown as WorkflowScopedDb;
+  });
 }
 
 async function makeInput(

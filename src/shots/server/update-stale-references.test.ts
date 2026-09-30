@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Character, Sequence } from '@/platform/server/db/schema';
 import { buildPlanReferences } from './update-stale-references';
+import { asStub } from '@/test/as-stub';
 
 const { buildSheet, estimateSheets } = vi.hoisted(() => ({
   buildSheet: vi.fn(),
@@ -26,26 +27,26 @@ vi.mock('@/models/server/seed-speech-config', () => ({
 }));
 
 async function references(overrides: Partial<Character> = {}) {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- only these character fields are consumed; payload construction is mocked
-  const character = {
+  // only these character fields are consumed; payload construction is mocked
+  const character = asStub<Character>({
     id: 'maya',
     voiceOnly: false,
     selectedSheetVersionId: null,
     standardClothing: 'yellow rain jacket',
     distinguishingFeatures: '',
     ...overrides,
-  } as Character;
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- this sheet-only plan only reads the character list and team id
-  const scopedDb = {
+  });
+  // this sheet-only plan only reads the character list and team id
+  const scopedDb = asStub<ScopedDb>({
     teamId: 'team',
     characters: { list: async () => [character] },
-  } as unknown as ScopedDb;
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- sheet-only planning reads the id and model settings
-  const sequence = {
+  });
+  // sheet-only planning reads the id and model settings
+  const sequence = asStub<Sequence>({
     id: 'sequence',
     imageModel: 'nano_banana_2',
     analysisModel: null,
-  } as unknown as Sequence;
+  });
   return buildPlanReferences({
     scopedDb,
     sequence,

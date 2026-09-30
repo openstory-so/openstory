@@ -7,6 +7,7 @@ import type { ImageGenerationParams } from '@/stills/build-image-request';
 import type { ImageGenerationResult } from '@/stills/server/image-generation';
 import type { ImageWorkflowInput } from '@/platform/server/workflow/types';
 import type { WorkflowStep } from 'cloudflare:workers';
+import { asStub } from '@/test/as-stub';
 
 /**
  * Real callers upload to the final key here, inside the generating step
@@ -39,10 +40,10 @@ const { generateImageWithContentRetry, persistSoftenedPromptVersion } =
   await import('./soften-image-prompt');
 const { NonRetryableError } = await import('cloudflare:workflows');
 
-// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- helper only uses `do`
-const step = {
+// helper only uses `do`
+const step = asStub<WorkflowStep>({
   do: async <T>(_name: string, fn: () => Promise<T>) => fn(),
-} as unknown as WorkflowStep;
+});
 
 const PARAMS: ImageGenerationParams = {
   model: 'nano_banana_2',
@@ -112,8 +113,8 @@ function makeScopedDb() {
     credentials: {},
   };
   return {
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub of the soften-path surface
-    scopedDb: stub as unknown as WorkflowScopedDb,
+    // stub of the soften-path surface
+    scopedDb: asStub<WorkflowScopedDb>(stub),
     write,
     update,
     appendVersion,
@@ -249,11 +250,11 @@ describe('generateImageWithContentRetry', () => {
     });
     const { scopedDb, appendVersion, movePendingPromoteVersionIdIf } =
       makeScopedDb();
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- helper only uses `do`
-    const retryingStep = {
+    // helper only uses `do`
+    const retryingStep = asStub<WorkflowStep>({
       do: async <T>(_name: string, fn: () => Promise<T>) =>
         fn().catch(async () => fn()),
-    } as unknown as WorkflowStep;
+    });
 
     const out = await generateImageWithContentRetry({
       ...BASE_ARGS,

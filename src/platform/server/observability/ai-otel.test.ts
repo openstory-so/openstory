@@ -15,6 +15,7 @@ import type { Attributes, SpanOptions, SpanStatus } from '@opentelemetry/api';
 import { diag, SpanStatusCode } from '@opentelemetry/api';
 import { micros } from '@/billing/money';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { asStub } from '@/test/as-stub';
 
 const mockLogError = vi.fn(
   (_message: string, _properties?: Record<string, unknown>) => {}
@@ -92,8 +93,8 @@ vi.doMock('@opentelemetry/sdk-metrics', () => ({
 // capability-DI members (`capabilities`/`get`/`getOptional`/`provide`) are
 // unused here and back a class with private state that no literal can satisfy,
 // so we assert the documented fields to the context type.
-// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- inert test stub; capability-DI members are unused and unconstructable from a literal
-const middlewareCtx = {
+// inert test stub; capability-DI members are unused and unconstructable from a literal
+const middlewareCtx = asStub<ChatMiddlewareContext>({
   requestId: 'req-1',
   streamId: 'stream-1',
   runId: 'run-1',
@@ -115,7 +116,7 @@ const middlewareCtx = {
   accumulatedContent: '',
   messages: [],
   createId: (prefix: string) => `${prefix}-1`,
-} as unknown as ChatMiddlewareContext;
+});
 const chatSpanInfo = (): OtelSpanInfo => ({ kind: 'chat', ctx: middlewareCtx });
 const iterationSpanInfo = (iteration: number): OtelSpanInfo => ({
   kind: 'iteration',

@@ -37,6 +37,7 @@ import {
 import { toShotView, type ImageStatus, type ShotView } from '@/shots/shot-view';
 import { estimateImageCost, gateEstimate } from '@/billing/cost-estimation';
 import { ZERO_MICROS } from '@/billing/money';
+import { asStub } from '@/test/as-stub';
 
 const assertNoActiveStoryboardMock = vi.fn();
 const triggerStoryboardMock = vi.fn();
@@ -432,8 +433,8 @@ function makeContext(
       getMemberEmail: vi.fn(async () => 'owner@example.com'),
     },
   };
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal ScopedDb stub exposing only what executeSmartRetry touches
-  const scopedDb = stub as unknown as ScopedDb;
+  // minimal ScopedDb stub exposing only what executeSmartRetry touches
+  const scopedDb = asStub<ScopedDb>(stub);
   return {
     context: { sequence, user: { id: 'u1' }, teamId: 't1', scopedDb },
     scopedDb,
@@ -784,13 +785,13 @@ describe('executeSmartRetry — partial retry status reset', () => {
       makeSequence({ videoModel: 'seedance_v2' }),
       [shotA, shotB]
     );
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test stub
-    const stub = context.scopedDb as unknown as {
+    // test stub
+    const stub = asStub<{
       shotDialogue: {
         getSelectedBySequence: () => Promise<unknown>;
       };
       characters: { list: () => Promise<unknown> };
-    };
+    }>(context.scopedDb);
     stub.shotDialogue.getSelectedBySequence = () =>
       Promise.resolve([
         {
