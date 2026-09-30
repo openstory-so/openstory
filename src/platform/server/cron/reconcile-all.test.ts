@@ -165,9 +165,9 @@ describe('reconcileAllStuckJobs — pass isolation', () => {
 
     const counts = await reconcileAllStuckJobs();
 
-    // The first (now-throwing) pass is the frame image pass (#989 moved image
-    // off shots onto frames/frame_variants).
-    expect(counts['frames.image']).toBe(PASS_ERRORED);
+    // The first (now-throwing) pass is the frame_variants pass (#1942: a
+    // frame's image status is its rows').
+    expect(counts['frame_variants.status']).toBe(PASS_ERRORED);
     expect(counts['sequence_music_variants.claims']).toBeGreaterThan(0);
     expect(counts['sequence_elements.vision']).toBeGreaterThan(0);
   });
@@ -177,14 +177,15 @@ describe('reconcileAllStuckJobs — run-id-verified passes', () => {
   test('caps stuck-row selection at MAX_ROWS_PER_PASS (100) per verified pass', async () => {
     const { reconcileAllStuckJobs } = await import('./reconcile-all');
     await reconcileAllStuckJobs();
-    // 12 verified (run-id) passes: frames.image + frame_variants.status +
+    // 12 verified (run-id) passes: frame_variants.status (#1942 retired the
+    // frames.image pass) +
     // video_variants.status (#1076) + 2 shot_variants + sequences.status (#989)
     // + generated_assets.status (#458) + the three pending-claim passes (#1085:
     // frame/shot prompt claims + image claims) + dialogue speech claims
     // (#1657) + character voice husks (#1715) + music track rows (#1115). The
     // old shots.video pass went with the shot's video columns —
     // video_variants.status already swept it.
-    expect(limitArgs.filter((n) => n === 100)).toHaveLength(13);
+    expect(limitArgs.filter((n) => n === 100)).toHaveLength(12);
   });
 
   test('in-flight instance (resolveRunState null) → no per-row update on verified tables', async () => {

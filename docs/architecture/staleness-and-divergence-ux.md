@@ -70,7 +70,7 @@ The default flow (**sheets / music / shot video-audio only** — not images):
 3. `<DivergentAlternateBanner>` appears in-place (detail right rail; corner dot on the scene card for sheet/music paths that surface it).
 4. User picks one of three branches:
 
-**Image mid-flight drift (#989)** does not use this flow: `image-workflow` retains an unselected `frame_variants` version and resets `imageStatus` without emitting `stale:detected`. The user switches primaries via the version picker (`frameVariants.select`).
+**Image mid-flight drift (#989)** does not use this flow: `image-workflow` retains an unselected `frame_variants` version (the frame's status is its rows', #1942) without emitting `stale:detected`. The user switches primaries via the version picker (`frameVariants.select`).
 
 ### Compare
 

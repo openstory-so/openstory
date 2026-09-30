@@ -110,8 +110,8 @@ export const characters = snakeCase.table(
     firstMentionLine: integer(),
     // Generation lifecycle. NOT a mirror of the version row's status: these
     // are stamped when no variant exists yet — 'generating' at trigger time,
-    // 'failed' when the workflow dies. #1067 kept frames.imageStatus /
-    // imageError for the same reason (#1419).
+    // 'failed' when the workflow dies (#1419). Frames solved the same gap by
+    // opening a primary row before the status flips (#1942).
     sheetStatus: text().$type<SheetStatus>().default('pending').notNull(),
     sheetError: text(),
     // Soft pointer to the live `character_sheet_variants` row (#1108 sheet

@@ -11,6 +11,7 @@ import {
   musicReadSchema,
   inspectMusic,
   frameReadSchema,
+  withImageAttempts,
   segmentReadSchema,
   shotMembershipSchema,
   exportReadSchema,
@@ -143,7 +144,7 @@ export function registerProductionReads(
         (next) => scopedDb.frames.listByShot(input.shotId, next)
       );
       return {
-        frames: page.items.map((row) =>
+        frames: (await withImageAttempts(scopedDb, page.items)).map((row) =>
           projectRead(frameReadSchema, row, origin)
         ),
         nextCursor: page.nextCursor,
@@ -157,13 +158,13 @@ export function registerProductionReads(
     'Inspect a frame by database frameId, including role, selections, pending promotion and current image attempt.',
     sequenceInput.extend({ frameId: ulidSchema }),
     z.object({ frame: frameReadSchema }),
-    async (input, { scopedDb, origin }) => ({
-      frame: projectRead(
-        frameReadSchema,
+    async (input, { scopedDb, origin }) => {
+      const [frame] = await withImageAttempts(scopedDb, [
         await productionAccess(scopedDb).frame(input.sequenceId, input.frameId),
-        origin
-      ),
-    })
+      ]);
+      if (!frame) throw new Error(`Frame ${input.frameId} not found`);
+      return { frame: projectRead(frameReadSchema, frame, origin) };
+    }
   );
   registerProductionRead(
     server,

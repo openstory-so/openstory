@@ -183,8 +183,8 @@ const liveSheetVersionId = sql`COALESCE(${characters.selectedSheetVersionId}, ${
  * `sheetStatus` and `sheetError` are NOT in this list. They are character-level
  * generation lifecycle, not version mirrors: `generating` is stamped at trigger
  * time and `failed` on workflow failure, both when no variant row exists to
- * carry them. #1067 kept `frames.imageStatus` / `imageError` for the same
- * reason.
+ * carry them. (Frames solved the same gap by opening a primary row before the
+ * status flips, #1942.)
  */
 // The row's own columns: the legacy bible is read only through the fallback.
 const {

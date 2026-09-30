@@ -570,7 +570,7 @@ type Has<T, K extends string> = K extends keyof T ? true : false;
 const _frameReadRemoved: Has<WorkflowScopedDb['frames'], 'getById'> = false;
 const _frameWriteKept: Has<
   WorkflowScopedDb['frames'],
-  'setImageGenerationStatus'
+  'setPendingPromoteVersionId'
 > = true;
 const _liveReadKeepsIt: Has<WorkflowScopedDb['liveRead']['frames'], 'getById'> =
   true;

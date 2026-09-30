@@ -34,7 +34,7 @@ import {
   frameVariantFixture,
   videoVariantFixture,
 } from '@/mocks/frame-fixtures';
-import { toShotView, type ShotView } from '@/shots/shot-view';
+import { toShotView, type ImageStatus, type ShotView } from '@/shots/shot-view';
 import { estimateImageCost, gateEstimate } from '@/billing/cost-estimation';
 import { ZERO_MICROS } from '@/billing/money';
 
@@ -154,7 +154,8 @@ function makeSequence(overrides: Partial<Sequence> = {}): Sequence {
  * `ShotView` the real read path would.
  */
 type ShotFixtureOptions = Partial<Shot> & {
-  imageStatus?: Frame['imageStatus'];
+  /** Carried by the frame's newest primary still render (#1942). */
+  imageStatus?: ImageStatus;
   imageUrl?: FrameVariant['url'];
   imagePrompt?: string | null;
   videoStatus?: VideoVariant['status'] | null;
@@ -193,7 +194,6 @@ function makeShot({
     id: frameId,
     shotId: shot.id,
     sequenceId: shot.sequenceId,
-    imageStatus,
     selectedImageVersionId: imageUrl === null ? null : `${frameId}-v1`,
     selectedImagePromptVersionId: imagePrompt === null ? null : `${frameId}-ip`,
     createdAt: NOW,
@@ -212,6 +212,16 @@ function makeShot({
           }),
     imagePromptVersion:
       imagePrompt === null ? null : promptVersionFixture(frameId, imagePrompt),
+    primaryImage:
+      imageStatus === 'generating' || imageStatus === 'failed'
+        ? frameVariantFixture({
+            id: `${frameId}-primary`,
+            frameId,
+            sequenceId: shot.sequenceId,
+            status: imageStatus,
+            url: null,
+          })
+        : null,
     // Selection only ever points at a completed render; these fixtures drive
     // the lifecycle through the primary render instead.
     video: null,
@@ -387,6 +397,14 @@ function makeContext(
       listSelectedModelsBySequence: listSelectedImageModels,
       listLastFailedModelsBySequence: listFailedImageModels,
       getSelectedByFrameIds,
+      getPrimaryByFrameIds: vi.fn(
+        async () =>
+          new Map(
+            shots.flatMap((s) =>
+              s.primaryImage ? [[s.frame.id, s.primaryImage]] : []
+            )
+          )
+      ),
     },
     videoVariants: {
       listSelectedModelsBySequence: listSelectedVideoModels,

@@ -824,7 +824,7 @@ export function selectEligibleVideoShots(
   return shots.filter(
     (f) =>
       rendersReferenceOnly(f, sequence) ||
-      (f.frame.imageStatus === 'completed' && Boolean(f.image?.url))
+      (f.imageStatus === 'completed' && Boolean(f.image?.url))
   );
 }
 
@@ -1012,6 +1012,7 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
         selectedPromptByFrame,
         selectedVideoByShot,
         primaryVideoByShot,
+        primaryImageByFrame,
       ] = await Promise.all([
         scopedDb.frameVariants.getSelectedByFrameIds(
           [...anchorsByShot.values()].map((fr) => fr.id)
@@ -1021,6 +1022,9 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
         ),
         scopedDb.videoVariants.getSelectedByShotIds(allShots.map((s) => s.id)),
         scopedDb.videoVariants.getPrimaryByShotIds(allShots.map((s) => s.id)),
+        scopedDb.frameVariants.getPrimaryByFrameIds(
+          [...anchorsByShot.values()].map((fr) => fr.id)
+        ),
       ]);
       const shotViews = allShots.flatMap((shot) => {
         const frame = anchorsByShot.get(shot.id);
@@ -1032,6 +1036,7 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
                 // pre-prompt stand-in (#1101) is not resolved.
                 preview: null,
                 imagePromptVersion: selectedPromptByFrame.get(frame.id) ?? null,
+                primaryImage: primaryImageByFrame.get(frame.id) ?? null,
                 video: selectedVideoByShot.get(shot.id) ?? null,
                 primaryVideo: primaryVideoByShot.get(shot.id) ?? null,
               }),

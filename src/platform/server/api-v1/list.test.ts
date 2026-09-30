@@ -142,6 +142,7 @@ function makeShot(
     image: null,
     preview: null,
     imagePromptVersion: null,
+    primaryImage: null,
     video: null,
     primaryVideo: null,
     ...params.sources,

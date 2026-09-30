@@ -38,7 +38,16 @@ import {
 } from '@/platform/server/db/schema';
 import { getDb } from '#db-client';
 import { getSequenceByIdUnscoped } from '@/platform/server/db/scoped';
-import { and, asc, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  ne,
+} from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 
 export type CreatedTestUser = {
@@ -313,7 +322,6 @@ export async function createTestShot(
     sequenceId,
     orderIndex: 0,
     role: 'first',
-    imageStatus: 'completed',
     selectedImageVersionId: primaryVersionId,
     createdAt: now,
     updatedAt: now,
@@ -344,6 +352,8 @@ export async function createTestShot(
       model: 'nano_banana_2',
       url: variantImageUrl,
       status: variantImageStatus,
+      // A sheet never speaks for the frame's status (#1942).
+      isPrimary: false,
       createdAt: now,
       updatedAt: now,
     });
@@ -787,7 +797,6 @@ export async function getTestSequenceShots(sequenceId: string): Promise<
     .select({
       shotId: frames.shotId,
       imageUrl: frameVariants.url,
-      imageStatus: frames.imageStatus,
     })
     .from(frames)
     .leftJoin(
@@ -817,6 +826,31 @@ export async function getTestSequenceShots(sequenceId: string): Promise<
   const previewByShot = new Map(
     previewRows.map((row) => [row.shotId, row.previewUrl])
   );
+  // The still's status is the newest primary non-preview row's (#1942) —
+  // the same rule as `readinessImageStatus`, spelled out because platform
+  // code cannot import the shots domain.
+  const primaryImageRows = await db
+    .select({ shotId: frames.shotId, status: frameVariants.status })
+    .from(frames)
+    .innerJoin(frameVariants, eq(frameVariants.frameId, frames.id))
+    .where(
+      and(
+        eq(frames.sequenceId, sequenceId),
+        eq(frames.orderIndex, 0),
+        eq(frameVariants.isPrimary, true),
+        ne(frameVariants.kind, 'preview')
+      )
+    )
+    .orderBy(asc(frameVariants.id));
+  const primaryImageByShot = new Map(
+    primaryImageRows.map((row) => [row.shotId, row.status])
+  );
+  const imageStatusOf = (shotId: string, hasSelected: boolean) => {
+    const primary = primaryImageByShot.get(shotId);
+    if (primary === 'pending' || primary === 'generating') return 'generating';
+    if (primary === 'failed') return 'failed';
+    return hasSelected ? 'completed' : 'pending';
+  };
   return rows
     .map((row) => {
       const frame = framesByShot.get(row.id);
@@ -828,11 +862,11 @@ export async function getTestSequenceShots(sequenceId: string): Promise<
         orderIndex: row.sceneOrderIndex ?? 0,
         shotNumber: row.shotNumber ?? 0,
         thumbnailUrl,
-        thumbnailStatus: selectedUrl
-          ? (frame?.imageStatus ?? null)
-          : previewUrl
-            ? 'completed'
-            : (frame?.imageStatus ?? null),
+        thumbnailStatus: !frame
+          ? null
+          : selectedUrl || !previewUrl
+            ? imageStatusOf(row.id, selectedUrl !== null)
+            : 'completed',
         videoUrl: videoByShot.get(row.id) ?? null,
         videoStatus: statusByShot.get(row.id) ?? null,
       };

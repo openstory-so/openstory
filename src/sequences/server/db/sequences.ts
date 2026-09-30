@@ -32,7 +32,6 @@ import {
   videoVariants,
 } from '@/platform/server/db/schema';
 import type {
-  Frame,
   NewSequence,
   Sequence,
   SequenceStyleSource,
@@ -46,8 +45,16 @@ import type {
 import { alias } from 'drizzle-orm/sqlite-core';
 import type { GenerationStage } from '@/sequences/pipeline';
 import { parseStyleConfig } from '@/look/style-config';
-import type { ShotReadiness, ShotView } from '@/shots/shot-view';
-import { getLatestPreviewByFrameIds } from '@/stills/server/db/frame-variants';
+import {
+  type ImageStatus,
+  type ShotReadiness,
+  type ShotView,
+  readinessImageStatus,
+} from '@/shots/shot-view';
+import {
+  getLatestPreviewByFrameIds,
+  getPrimaryImageByFrameIds,
+} from '@/stills/server/db/frame-variants';
 import { getPrimaryVideoByShotIds } from '@/motion/server/db/video-variants';
 import {
   buildEventInsert,
@@ -67,7 +74,9 @@ export type ShotProductionReadiness = ShotReadiness &
     shotId: string;
     /** Null while the selected render has no file, even though it is selected. */
     selectedVideoUrl: string | null;
-    imageStatus: Frame['imageStatus'] | null;
+    /** Derived — see `readinessImageStatus`. */
+    imageStatus: ImageStatus;
+    /** The primary still render's run, null when the frame has none. */
     imageWorkflowRunId: string | null;
     primaryVideoId: string | null;
     videoWorkflowRunId: string | null;
@@ -379,8 +388,6 @@ function createSequencesReadMethods(db: Database, teamId: string) {
               useStartFrame: shots.useStartFrame,
               renderSegmentId: shots.renderSegmentId,
               frameId: frames.id,
-              imageStatus: frames.imageStatus,
-              imageWorkflowRunId: frames.imageWorkflowRunId,
               selectedImageUrl: frameVariants.url,
               selectedVideoId: videoVariants.id,
               selectedVideoUrl: videoVariants.url,
@@ -428,27 +435,38 @@ function createSequencesReadMethods(db: Database, teamId: string) {
       );
       const rows = batched.flat();
 
-      const [primaryByShot, previewByFrame] = await Promise.all([
-        getPrimaryVideoByShotIds(
-          db,
-          rows.map((row) => row.shotId)
-        ),
-        getLatestPreviewByFrameIds(
-          db,
-          rows.flatMap((row) => (row.frameId ? [row.frameId] : []))
-        ),
-      ]);
+      const frameIds = rows.flatMap((row) =>
+        row.frameId ? [row.frameId] : []
+      );
+      const [primaryByShot, primaryImageByFrame, previewByFrame] =
+        await Promise.all([
+          getPrimaryVideoByShotIds(
+            db,
+            rows.map((row) => row.shotId)
+          ),
+          getPrimaryImageByFrameIds(db, frameIds),
+          getLatestPreviewByFrameIds(db, frameIds),
+        ]);
 
       return rows.map((row) => {
         const primary = primaryByShot.get(row.shotId);
+        const primaryImage = row.frameId
+          ? primaryImageByFrame.get(row.frameId)
+          : undefined;
+        const selectedImageUrl = row.selectedImageUrl ?? null;
+        const primaryImageStatus = primaryImage?.status ?? null;
         return {
           sequenceId: row.sequenceId,
           shotId: row.shotId,
           useStartFrame: row.useStartFrame,
           renderSegmentId: row.renderSegmentId,
-          imageStatus: row.imageStatus,
-          imageWorkflowRunId: row.imageWorkflowRunId,
-          selectedImageUrl: row.selectedImageUrl ?? null,
+          imageStatus: readinessImageStatus({
+            hasSelectedImage: selectedImageUrl !== null,
+            primaryImageStatus,
+          }),
+          imageWorkflowRunId: primaryImage?.workflowRunId ?? null,
+          primaryImageStatus,
+          selectedImageUrl,
           previewImageUrl: row.frameId
             ? (previewByFrame.get(row.frameId)?.url ?? null)
             : null,

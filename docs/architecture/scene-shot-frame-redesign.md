@@ -88,9 +88,6 @@ frames
   sequenceId → sequences.id (cascade)   // denormalized for sequence-scoped queries
   orderIndex (0 = first/anchor)
   role:   'first' | 'last' | 'key'
-  imageStatus, imageWorkflowRunId, imageError   // in-flight lifecycle only; a
-                          // failed primary CLEARS pendingPromoteVersionId, so
-                          // no pointer survives to carry 'failed' or its message
   selectedImageVersionId → frame_variants.id (set null)
   selectedImagePromptVersionId → frame_prompt_versions.id (set null)
   pendingPromoteVersionId // auto-promote claim; last kickoff wins
@@ -116,6 +113,8 @@ frame_variants
   sourceVariantId?        // for 'framing' rows: which model image's 3×3 this came from
   url, storagePath
   status, workflowRunId, generatedAt, error
+  isPrimary               // the newest primary non-preview row IS the frame's
+                          // image status/error (#1942); false for added models
   promptHash, inputHash   // staleness of THIS version
   discardedAt?            // soft-hide (undoable)
   timestamps

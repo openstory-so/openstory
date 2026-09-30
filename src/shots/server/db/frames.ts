@@ -78,8 +78,6 @@ export function buildFrameImageSelection(
     .update(frames)
     .set({
       selectedImageVersionId: version.id,
-      imageStatus: version.status,
-      imageError: version.error,
       ...(claim && { pendingPromoteVersionId: null }),
       ...(claim?.restorePromptVersionId && {
         selectedImagePromptVersionId: claim.restorePromptVersionId,
@@ -105,8 +103,6 @@ type FrameOrderBy = 'orderIndex' | 'createdAt' | 'updatedAt';
  */
 type FrameMirrorColumn =
   | 'selectedImageVersionId'
-  | 'imageStatus'
-  | 'imageError'
   | 'selectedImagePromptVersionId';
 
 /** Fields `update` accepts — everything on a frame except the mirror columns. */
@@ -258,26 +254,6 @@ export function createFramesMethods(db: Database) {
     update: async (
       frameId: string,
       data: FrameUpdateInput,
-      options?: { throwOnMissing?: boolean }
-    ): Promise<Frame | undefined> => {
-      const [frame] = await db
-        .update(frames)
-        .set({ ...data, updatedAt: new Date() })
-        .where(eq(frames.id, frameId))
-        .returning();
-      if (!frame && options?.throwOnMissing !== false) {
-        throw new Error(`Frame ${frameId} not found`);
-      }
-      return frame;
-    },
-
-    /** The primary render's in-flight lifecycle. No `frame_variants` row records it. */
-    setImageGenerationStatus: async (
-      frameId: string,
-      data: Pick<
-        Partial<NewFrame>,
-        'imageStatus' | 'imageWorkflowRunId' | 'imageError'
-      >,
       options?: { throwOnMissing?: boolean }
     ): Promise<Frame | undefined> => {
       const [frame] = await db

@@ -146,6 +146,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
     selectedPromptByFrame,
     selectedVideoByShot,
     primaryVideoByShot,
+    primaryImageByFrame,
     selectedMotionByShot,
     dialogueLinesByShotId,
     sceneContext,
@@ -158,6 +159,9 @@ export async function executeSmartRetry(context: SmartRetryContext) {
     ),
     context.scopedDb.videoVariants.getSelectedByShotIds(shots.map((s) => s.id)),
     context.scopedDb.videoVariants.getPrimaryByShotIds(shots.map((s) => s.id)),
+    context.scopedDb.frameVariants.getPrimaryByFrameIds(
+      [...anchorsByShot.values()].map((fr) => fr.id)
+    ),
     context.scopedDb.shotPromptVersions.getSelectedMotionByShots(
       shots.map((s) => s.id)
     ),
@@ -183,6 +187,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
         // pre-prompt stand-in (#1101) is not resolved.
         preview: null,
         imagePromptVersion: selectedPromptByFrame.get(frame.id) ?? null,
+        primaryImage: primaryImageByFrame.get(frame.id) ?? null,
         video: selectedVideoByShot.get(shot.id) ?? null,
         primaryVideo: primaryVideoByShot.get(shot.id) ?? null,
         motionPrompt: selectedMotion
@@ -295,9 +300,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
     });
 
   // Collect failed items and estimate costs
-  const failedImageShots = shotViews.filter(
-    (f) => f.frame.imageStatus === 'failed'
-  );
+  const failedImageShots = shotViews.filter((f) => f.imageStatus === 'failed');
   // Reference-only shots have no still by design, so requiring one here made
   // every failed reference-only clip invisible to retry — and the empty result
   // reported "none of the failed items can be retried", pushing the user at a

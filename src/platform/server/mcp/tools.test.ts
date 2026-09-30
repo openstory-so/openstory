@@ -272,7 +272,6 @@ beforeEach(async () => {
     shotId,
     sequenceId,
     selectedImageVersionId: imageId,
-    imageStatus: 'completed',
   });
   await db.insert(frameVariants).values({
     id: imageId,
@@ -574,10 +573,14 @@ describe('paging and deleted children', () => {
 
 describe('status and result limits', () => {
   it('shares partially-ready counts across summaries and keeps selected assets after failed attempts', async () => {
-    await db
-      .update(frames)
-      .set({ imageStatus: 'failed', imageError: 'Image failed' })
-      .where(eq(frames.id, frameId));
+    // The frame's current image attempt is its newest primary row (#1942).
+    await db.insert(frameVariants).values({
+      frameId,
+      sequenceId,
+      model: 'nano_banana_2',
+      status: 'failed',
+      error: 'Image failed',
+    });
     const failedId = generateId();
     await db.insert(videoVariants).values({
       id: failedId,
@@ -625,10 +628,14 @@ describe('status and result limits', () => {
       .update(sequences)
       .set({ status: 'processing', workflowRunId: 'story-run' })
       .where(eq(sequences.id, sequenceId));
-    await db
-      .update(frames)
-      .set({ imageStatus: 'generating', imageWorkflowRunId: 'image-run' })
-      .where(eq(frames.id, frameId));
+    // The frame's current image attempt is its newest primary row (#1942).
+    await db.insert(frameVariants).values({
+      frameId,
+      sequenceId,
+      model: 'nano_banana_2',
+      status: 'generating',
+      workflowRunId: 'image-run',
+    });
     await db
       .update(videoVariants)
       .set({ status: 'generating', workflowRunId: 'video-run' })
@@ -651,10 +658,13 @@ describe('status and result limits', () => {
       .update(shots)
       .set({ useStartFrame: false })
       .where(eq(shots.id, shotId));
-    await db
-      .update(frames)
-      .set({ imageStatus: 'failed' })
-      .where(eq(frames.id, frameId));
+    // The frame's current image attempt is its newest primary row (#1942).
+    await db.insert(frameVariants).values({
+      frameId,
+      sequenceId,
+      model: 'nano_banana_2',
+      status: 'failed',
+    });
     expect(await data('get_sequence_status', { sequenceId })).toMatchObject({
       status: 'completed',
       counts: { imagesFailed: 1 },

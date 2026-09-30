@@ -33,13 +33,6 @@ const generateMockShot = (overrides?: Partial<ShotView>): ShotView => {
   const frame = frameFixture({
     shotId: shot.id,
     sequenceId: shot.sequenceId,
-    imageStatus: faker.helpers.arrayElement([
-      'pending',
-      'generating',
-      'completed',
-      'failed',
-    ]),
-    imageWorkflowRunId: faker.string.ulid(),
     selectedImageVersionId: faker.string.ulid(),
     createdAt,
     updatedAt,
@@ -64,7 +57,21 @@ const generateMockShot = (overrides?: Partial<ShotView>): ShotView => {
       '1507003211169-0a1dd7228f2d', // Portrait
     ])}/1920/1080`,
     storagePath: `teams/${faker.string.ulid()}/sequences/${faker.string.ulid()}/frames/${faker.string.ulid()}/thumbnail.jpg`,
-    workflowRunId: frame.imageWorkflowRunId,
+    workflowRunId: faker.string.ulid(),
+    createdAt,
+    updatedAt,
+  });
+  // The newest primary render — its lifecycle is the shot's image status.
+  const primaryImage = frameVariantFixture({
+    frameId: frame.id,
+    sequenceId: shot.sequenceId,
+    status: faker.helpers.arrayElement([
+      'pending',
+      'generating',
+      'completed',
+      'failed',
+    ]),
+    workflowRunId: faker.string.ulid(),
     createdAt,
     updatedAt,
   });
@@ -110,6 +117,7 @@ const generateMockShot = (overrides?: Partial<ShotView>): ShotView => {
       image,
       preview: null,
       imagePromptVersion: null,
+      primaryImage,
       // Only a completed render is ever selectable.
       video: primaryVideo.status === 'completed' ? primaryVideo : null,
       primaryVideo,

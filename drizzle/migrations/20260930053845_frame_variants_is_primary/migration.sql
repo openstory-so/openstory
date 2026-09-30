@@ -1,0 +1,1 @@
+ALTER TABLE `frame_variants` ADD `is_primary` integer DEFAULT true NOT NULL;

@@ -162,6 +162,7 @@ async function seedSelectedImage(inputHash: string) {
     url: '/r2/thumbnails/old.png',
     storagePath: 'old.png',
     generatedAt: new Date(),
+    isPrimary: true,
     inputHash: shotImageInputHash(inputHash),
   });
   await images.select(frameId, version.id, { actorId });
@@ -663,7 +664,6 @@ describe('§4.3 C — atomic prompt+image replace (replaceContent)', () => {
       .where(eq(frames.id, frameId));
     expect(frame?.selectedImagePromptVersionId).toBe(promptVersion.id);
     expect(frame?.selectedImageVersionId).toBe(imageVersion.id);
-    expect(frame?.imageStatus).toBe('completed');
 
     // Prompt fresh: the new user-edit version carries its upstream hash.
     expect(promptVersion.text).toBe(newText);

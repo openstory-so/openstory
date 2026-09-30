@@ -636,6 +636,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
       selectedPromptByFrame,
       selectedVideoByShot,
       primaryVideoByShot,
+      primaryImageByFrame,
     ] = await Promise.all([
       context.scopedDb.frameVariants.getSelectedByFrameIds(
         [...anchorsByShot.values()].map((f) => f.id)
@@ -649,6 +650,9 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
       context.scopedDb.videoVariants.getPrimaryByShotIds(
         rawShots.map((s) => s.id)
       ),
+      context.scopedDb.frameVariants.getPrimaryByFrameIds(
+        [...anchorsByShot.values()].map((f) => f.id)
+      ),
     ]);
     const allShots = rawShots.flatMap((s) => {
       const frame = anchorsByShot.get(s.id);
@@ -660,6 +664,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
               // pre-prompt stand-in (#1101) is not resolved.
               preview: null,
               imagePromptVersion: selectedPromptByFrame.get(frame.id) ?? null,
+              primaryImage: primaryImageByFrame.get(frame.id) ?? null,
               video: selectedVideoByShot.get(s.id) ?? null,
               primaryVideo: primaryVideoByShot.get(s.id) ?? null,
             }),

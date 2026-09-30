@@ -16,6 +16,7 @@ import { describe, expect, it } from 'vitest';
 import {
   isBrowserDisplayableStillUrl,
   pendingUpscaleUrlFromVersion,
+  readinessImageStatus,
   shotAfterVariantSelect,
   shotViewMissingFrame,
   toShotView,
@@ -47,8 +48,6 @@ function makeFrame(shot: Shot, overrides: Partial<Frame> = {}): Frame {
   return frameFixture({
     shotId: shot.id,
     sequenceId: shot.sequenceId,
-    imageStatus: 'completed',
-    imageWorkflowRunId: 'run-123',
     ...overrides,
   });
 }
@@ -76,6 +75,7 @@ describe('toShotView', () => {
     const video = makeVideo();
 
     const view = toShotView(shot, frame, {
+      primaryImage: null,
       image,
       preview: null,
       imagePromptVersion: null,
@@ -106,6 +106,7 @@ describe('toShotView', () => {
       url: '/r2/thumbnails/crop.png',
     });
     const view = toShotView(shot, frame, {
+      primaryImage: null,
       image: null,
       preview: null,
       imagePromptVersion: null,
@@ -142,6 +143,7 @@ describe('toShotView', () => {
     });
 
     const withPreview = toShotView(shot, frame, {
+      primaryImage: null,
       image: null,
       preview,
       imagePromptVersion: null,
@@ -155,6 +157,7 @@ describe('toShotView', () => {
     // No preview row → null, not undefined: the client treats the field as the
     // fallback behind `image.url`, and `undefined` would read as "not loaded".
     const withoutPreview = toShotView(shot, frame, {
+      primaryImage: null,
       image: null,
       preview: null,
       imagePromptVersion: null,
@@ -168,6 +171,7 @@ describe('toShotView', () => {
     const shot = makeShot();
 
     const view = toShotView(shot, makeFrame(shot), {
+      primaryImage: null,
       image: null,
       preview: null,
       imagePromptVersion: null,
@@ -189,6 +193,7 @@ describe('toShotView', () => {
     const shot = makeShot();
 
     const view = toShotView(shot, makeFrame(shot), {
+      primaryImage: null,
       image: null,
       preview: null,
       imagePromptVersion: null,
@@ -204,6 +209,7 @@ describe('toShotView', () => {
     const shot = makeShot();
 
     const view = toShotView(shot, makeFrame(shot), {
+      primaryImage: null,
       image: null,
       preview: null,
       imagePromptVersion: null,
@@ -227,6 +233,7 @@ describe('toShotView', () => {
     });
 
     const view = toShotView(shot, makeFrame(shot), {
+      primaryImage: null,
       image: null,
       preview: null,
       imagePromptVersion: null,
@@ -249,6 +256,7 @@ describe('toShotView', () => {
     });
 
     const view = toShotView(shot, makeFrame(shot), {
+      primaryImage: null,
       image: null,
       preview: null,
       imagePromptVersion: null,
@@ -290,6 +298,7 @@ describe('shotAfterVariantSelect', () => {
     const frame = makeFrame(shot);
     const video = makeVideo();
     const view = toShotView(shot, frame, {
+      primaryImage: null,
       image: frameVariantFixture({
         frameId: frame.id,
         sequenceId: SEQ,
@@ -305,7 +314,7 @@ describe('shotAfterVariantSelect', () => {
     const next = shotAfterVariantSelect(view, undefined, 4);
     expect(next.image?.url).toBe('https://cdn/old-still.png');
     expect(next.pendingUpscaleIndex).toBe(4);
-    expect(next.frame.imageStatus).toBe('generating');
+    expect(next.imageStatus).toBe('generating');
     expect(next.video).toBeNull();
     expect(next.videoStatus).toBe('pending');
   });
@@ -314,6 +323,7 @@ describe('shotAfterVariantSelect', () => {
     const shot = makeShot();
     const view = shotAfterVariantSelect(
       toShotView(shot, makeFrame(shot), {
+        primaryImage: null,
         image: frameVariantFixture({
           frameId: 'frame-1',
           sequenceId: SEQ,
@@ -345,7 +355,7 @@ describe('shotViewMissingFrame', () => {
 
     expect(view.id).toBe(shot.id);
     expect(view.frame.shotId).toBe(shot.id);
-    expect(view.frame.imageStatus).toBeNull();
+    expect(view.imageStatus).toBe('pending');
     expect(view.image).toBeNull();
     expect(view.imagePromptVersion).toBeNull();
     expect(view.gridSheet).toBeNull();
@@ -363,5 +373,47 @@ describe('shotViewMissingFrame', () => {
     expect(view.video).toBe(video);
     expect(view.videoStatus).toBe('completed');
     expect(view.image).toBeNull();
+  });
+});
+
+describe('readinessImageStatus (#1942)', () => {
+  it.each([
+    ['pending', false, 'generating'],
+    ['generating', true, 'generating'],
+    ['failed', true, 'failed'],
+    ['completed', true, 'completed'],
+    // A cancel is the user standing down: the shot reads its selection.
+    ['cancelled', true, 'completed'],
+    ['cancelled', false, 'pending'],
+    [null, true, 'completed'],
+    [null, false, 'pending'],
+  ] as const)(
+    'primary %s with a selection=%s reads %s',
+    (primaryImageStatus, hasSelectedImage, expected) => {
+      expect(
+        readinessImageStatus({ primaryImageStatus, hasSelectedImage })
+      ).toBe(expected);
+    }
+  );
+
+  it('exposes the failed primary row error on the view', () => {
+    const shot = makeShot();
+    const frame = makeFrame(shot);
+    const primaryImage = frameVariantFixture({
+      frameId: frame.id,
+      sequenceId: SEQ,
+      status: 'failed',
+      error: 'content flagged',
+    });
+    const view = toShotView(shot, frame, {
+      image: null,
+      preview: null,
+      imagePromptVersion: null,
+      primaryImage,
+      video: null,
+      primaryVideo: null,
+    });
+    expect(view.imageStatus).toBe('failed');
+    expect(view.imageError).toBe('content flagged');
   });
 });

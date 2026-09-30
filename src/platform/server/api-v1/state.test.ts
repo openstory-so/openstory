@@ -116,6 +116,7 @@ function makeShot(
     image: null,
     preview: null,
     imagePromptVersion: null,
+    primaryImage: null,
     video: null,
     primaryVideo: null,
     ...params.sources,
@@ -241,6 +242,12 @@ function depsWithShots(
     frameVariants: {
       getSelectedByFrameIds: async () =>
         new Map(shots.flatMap((s) => (s.image ? [[s.frame.id, s.image]] : []))),
+      getPrimaryByFrameIds: async () =>
+        new Map(
+          shots.flatMap((s) =>
+            s.primaryImage ? [[s.frame.id, s.primaryImage]] : []
+          )
+        ),
       // The pre-prompt stand-in is a `kind: 'preview'` row (#1101); the view
       // carries only its url, so re-derive a row from it here.
       listLatestPreviewsByFrameIds: async () =>

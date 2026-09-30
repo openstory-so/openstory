@@ -69,8 +69,8 @@ export async function reconcileAllStuckJobs(): Promise<ReconcileCounts> {
   const counts: ReconcileCounts = {};
 
   const passes: Array<[string, () => Promise<number>]> = [
-    // Image lives on frames / frame_variants now (#989).
-    ['frames.image', () => reconcileFramesImagePass(db)],
+    // Image lives on frame_variants now (#989); a frame's status is its
+    // newest primary row's (#1942), so sweeping the rows covers it.
     ['frame_variants.status', () => reconcileFrameVariantsPass(db)],
     // Pending artifact claims (#1085): a dead run must not leave rows that
     // read as "a job is fixing this" forever.
@@ -147,35 +147,6 @@ export async function reconcileAllStuckJobs(): Promise<ReconcileCounts> {
 // passes all see the row as stale until each one has flipped its own
 // status column. The on-load reconciler doesn't have this issue because it
 // collects all stale entries from in-memory data before writing.
-/**
- * Reconcile stuck anchor-frame image generation (#989 — the old
- * `shots.thumbnail*` pass). Frame image status with a known workflow run id.
- */
-async function reconcileFramesImagePass(db: Database): Promise<number> {
-  const staleCutoff = new Date(Date.now() - STALE_THRESHOLD_MS);
-  const stuck = await db
-    .select({ id: frames.id, runId: frames.imageWorkflowRunId })
-    .from(frames)
-    .where(
-      and(
-        eq(frames.imageStatus, 'generating'),
-        lt(frames.updatedAt, staleCutoff)
-      )
-    )
-    .limit(MAX_ROWS_PER_PASS);
-  let updated = 0;
-  for (const row of stuck) {
-    const next = await resolveRunState(row.runId ?? '');
-    if (next === null || next === 'unknown') continue;
-    await db
-      .update(frames)
-      .set({ imageStatus: next })
-      .where(eq(frames.id, row.id));
-    updated++;
-  }
-  return updated;
-}
-
 /**
  * Reconcile stuck `frame_variants` versions (model re-rolls + the 3×3 grid /
  * upscaled framing tiles) — the image-variant analog of the retired

@@ -169,6 +169,9 @@ export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariant
           inputHash: await tileInputHash(input),
           status: 'generating',
           workflowRunId,
+          // A sheet is never the frame's still, so its render never speaks
+          // for the frame's status (#1942).
+          isPrimary: false,
         });
 
         await getGenerationChannel(input.sequenceId).emit(

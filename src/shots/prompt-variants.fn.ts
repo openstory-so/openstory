@@ -320,36 +320,17 @@ const cancelPendingInput = z.object({
 });
 
 /**
- * Settle the frame's primary in-flight state after an image claim cancel
- * (#1095 review): the producing run may be terminated (or abandon the claim
- * before its own settle path runs), which would leave `image_status` stuck
- * 'generating' with nothing in flight. Only touches the frame when THIS
- * cancelled row is what holds it — a newer kickoff's state is left alone.
+ * Settle the frame after an image claim cancel (#1095 review): the producing
+ * run may be terminated before its own settle path runs, so drop the promote
+ * claim if THIS row holds it. The status needs no write: a cancelled row
+ * reads as the frame's selection (#1942), and a newer kickoff's row is newer.
  */
 async function settleFrameAfterImageCancel(
   scopedDb: ScopedDb,
   frameId: string,
-  row: { id: string; workflowRunId: string | null }
+  row: { id: string }
 ): Promise<void> {
-  const frameNow = await scopedDb.frames.getById(frameId);
-  if (!frameNow) return;
-  const heldByThisRow =
-    frameNow.pendingPromoteVersionId === row.id ||
-    (row.workflowRunId !== null &&
-      frameNow.imageWorkflowRunId === row.workflowRunId);
-  if (!heldByThisRow) return;
   await scopedDb.frames.clearPendingPromoteVersionIdIf(frameId, row.id);
-  if (frameNow.imageStatus === 'generating') {
-    await scopedDb.frames.setImageGenerationStatus(
-      frameId,
-      {
-        imageStatus: frameNow.selectedImageVersionId ? 'completed' : 'pending',
-        imageWorkflowRunId: null,
-        imageError: null,
-      },
-      { throwOnMissing: false }
-    );
-  }
 }
 
 export const cancelPendingArtifactFn = createServerFn({ method: 'POST' })

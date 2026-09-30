@@ -1,10 +1,6 @@
 import type { SceneWithScript } from '@/shots/ui/use-scenes';
 import { dbSceneId } from '@/shots/scene-id';
-import type {
-  Frame,
-  FrameVariant,
-  VideoVariant,
-} from '@/platform/server/db/schema';
+import type { FrameVariant, VideoVariant } from '@/platform/server/db/schema';
 import {
   frameFixture,
   frameVariantFixture,
@@ -39,7 +35,7 @@ type Story = StoryObj<typeof ScenePlayer>;
 const mockShot = (spec: {
   id: string;
   sceneId: string;
-  frame?: Partial<Frame>;
+  primaryImage?: Partial<FrameVariant>;
   image?: Partial<FrameVariant>;
   render?: Partial<VideoVariant>;
   gridSheet?: ShotGridSheet;
@@ -48,7 +44,6 @@ const mockShot = (spec: {
   const frame = frameFixture({
     shotId: spec.id,
     sequenceId: 'seq-1',
-    ...spec.frame,
   });
   const image = spec.image
     ? frameVariantFixture({
@@ -57,6 +52,13 @@ const mockShot = (spec: {
         ...spec.image,
       })
     : null;
+  const primaryImage = spec.primaryImage
+    ? frameVariantFixture({
+        frameId: frame.id,
+        sequenceId: 'seq-1',
+        ...spec.primaryImage,
+      })
+    : image;
   const render = spec.render
     ? videoVariantFixture({
         renderSegmentId: `${spec.id}-segment`,
@@ -87,6 +89,7 @@ const mockShot = (spec: {
       image,
       preview: null,
       imagePromptVersion: null,
+      primaryImage,
       video: render?.url ? render : null,
       primaryVideo: render,
       gridSheet: spec.gridSheet ?? null,
@@ -119,7 +122,6 @@ const mockShots: ShotView[] = [
   mockShot({
     id: '1',
     sceneId: 'scene-1',
-    frame: { imageStatus: 'completed' },
     image: {
       url: 'https://picsum.photos/seed/scene1/1280/720',
       storagePath: 'teams/mock/sequences/mock/frames/1/thumbnail.jpg',
@@ -137,7 +139,6 @@ const mockShots: ShotView[] = [
   mockShot({
     id: '2',
     sceneId: 'scene-2',
-    frame: { imageStatus: 'completed' },
     image: {
       url: 'https://picsum.photos/seed/scene2/1280/720',
       storagePath: 'teams/mock/sequences/mock/frames/2/thumbnail.jpg',
@@ -155,7 +156,6 @@ const mockShots: ShotView[] = [
   mockShot({
     id: '3',
     sceneId: 'scene-3',
-    frame: { imageStatus: 'completed' },
     image: { url: 'https://picsum.photos/seed/scene3/1280/720' },
     render: { status: 'pending' },
     gridSheet: {
@@ -201,7 +201,6 @@ export const AllVideoStates: Story = {
       mockShot({
         id: '1',
         sceneId: 'scene-1',
-        frame: { imageStatus: 'completed' },
         image: {
           url: 'https://picsum.photos/seed/state1/1280/720',
           storagePath: 'teams/mock/sequences/mock/frames/state1/thumbnail.jpg',
@@ -219,7 +218,6 @@ export const AllVideoStates: Story = {
       mockShot({
         id: '2',
         sceneId: 'scene-2',
-        frame: { imageStatus: 'completed' },
         image: {
           url: 'https://picsum.photos/seed/state2/1280/720',
           storagePath: 'teams/mock/sequences/mock/frames/state2/thumbnail.jpg',
@@ -233,7 +231,6 @@ export const AllVideoStates: Story = {
       mockShot({
         id: '3',
         sceneId: 'scene-3',
-        frame: { imageStatus: 'completed' },
         image: {
           url: 'https://picsum.photos/seed/state3/1280/720',
           storagePath: 'teams/mock/sequences/mock/frames/state3/thumbnail.jpg',
@@ -247,7 +244,6 @@ export const AllVideoStates: Story = {
       mockShot({
         id: '4',
         sceneId: 'scene-4',
-        frame: { imageStatus: 'completed' },
         image: {
           url: 'https://picsum.photos/seed/state4/1280/720',
           storagePath: 'teams/mock/sequences/mock/frames/state4/thumbnail.jpg',
@@ -285,7 +281,6 @@ export const OnlyPendingVideos: Story = {
       mockShot({
         id: '1',
         sceneId: 'scene-1',
-        frame: { imageStatus: 'completed' },
         image: {
           url: 'https://picsum.photos/seed/pending1/1280/720',
           storagePath:
@@ -300,7 +295,6 @@ export const OnlyPendingVideos: Story = {
       mockShot({
         id: '2',
         sceneId: 'scene-2',
-        frame: { imageStatus: 'completed' },
         image: {
           url: 'https://picsum.photos/seed/pending2/1280/720',
           storagePath:
@@ -334,7 +328,6 @@ export const FailedVideoWithThumbnail: Story = {
       mockShot({
         id: '1',
         sceneId: 'scene-1',
-        frame: { imageStatus: 'completed' },
         image: {
           url: 'https://picsum.photos/seed/failed-thumb/1280/720',
           storagePath: 'teams/mock/sequences/mock/frames/failed/thumbnail.jpg',
@@ -364,8 +357,8 @@ export const PreviewMode: Story = {
       mockShot({
         id: '1',
         sceneId: 'scene-1',
-        frame: {
-          imageStatus: 'generating',
+        primaryImage: {
+          status: 'generating',
         },
         render: { status: 'pending' },
         gridSheet: { url: null, status: 'pending' },
@@ -373,8 +366,8 @@ export const PreviewMode: Story = {
       mockShot({
         id: '2',
         sceneId: 'scene-2',
-        frame: {
-          imageStatus: 'generating',
+        primaryImage: {
+          status: 'generating',
         },
         render: { status: 'pending' },
         gridSheet: { url: null, status: 'pending' },
@@ -382,9 +375,6 @@ export const PreviewMode: Story = {
       mockShot({
         id: '3',
         sceneId: 'scene-3',
-        frame: {
-          imageStatus: 'completed',
-        },
         image: {
           url: 'https://picsum.photos/seed/final3/1280/720',
           storagePath: 'teams/mock/sequences/mock/frames/3/thumbnail.jpg',
@@ -418,9 +408,9 @@ export const FailedVideoWithoutThumbnail: Story = {
       mockShot({
         id: '1',
         sceneId: 'scene-1',
-        frame: {
-          imageStatus: 'failed',
-          imageError: 'Image generation failed',
+        primaryImage: {
+          status: 'failed',
+          error: 'Image generation failed',
         },
         render: {
           status: 'failed',

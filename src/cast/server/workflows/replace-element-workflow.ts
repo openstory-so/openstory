@@ -353,23 +353,51 @@ export class ReplaceElementWorkflow extends OpenStoryWorkflowEntrypoint<ReplaceE
       survivingShotIds
     );
 
-    // Flip every affected shot to `generating` and emit progress events
-    // BEFORE fanning out per-shot edits. Otherwise the user can navigate to
-    // a scene during the vision phase and see stale "completed" thumbnails —
-    // the image-workflow's own set-generating-status step runs too late to
-    // cover that window. Same upfront flip for videos: any shot with a
-    // prior video will be regenerated, so its video tile should already read
-    // as in-flight.
+    // Prefer the frame's own model when it supports edits, so the swap reads
+    // as a continuation of the original render. Fall back to the workflow's
+    // edit-capable default otherwise.
+    const modelFor = (snapshot: (typeof snapshots)[string] | undefined) => {
+      const shotModel = safeTextToImageModel(
+        snapshot?.sourceModel,
+        DEFAULT_IMAGE_MODEL
+      );
+      return supportsReferenceImages(shotModel) ? shotModel : imageModel;
+    };
+
+    // Open every affected shot's primary image row BEFORE fanning out
+    // per-shot edits (#1942): the row is the shot's in-flight state, so the
+    // shot reads `generating` through the vision phase instead of a stale
+    // "completed" thumbnail — the image-workflow's own set-generating-status
+    // step runs too late to cover that window. Each child claims its row
+    // (`targetVariantId`). One insert per step, the step's only write, so a
+    // retry never opens a second row. Stamped with this run's id so the
+    // claim sweep fails it if this run dies before its child starts.
+    const claimIdByShot = new Map<string, string>();
+    for (const [index, shotId] of liveShotIds.entries()) {
+      const snapshot = snapshots[shotId];
+      const frameId = snapshot?.frameId;
+      if (!frameId || !snapshot.sourceImageUrl) continue;
+      const claimId = await step.do(`open-image-claim-${index}`, async () => {
+        const claim = await scopedDb.frameVariants.createPendingClaim({
+          frameId,
+          sequenceId,
+          model: modelFor(snapshot),
+          workflowRunId: event.instanceId,
+          isPrimary: true,
+        });
+        return claim.id;
+      });
+      claimIdByShot.set(shotId, claimId);
+    }
+
+    // Emit progress up front for the same reason. Same for videos: any shot
+    // with a prior video will be regenerated, so its video tile should
+    // already read as in-flight.
     await step.do('mark-shots-generating', async () => {
       for (const shotId of liveShotIds) {
         const snapshot = snapshots[shotId];
         if (!snapshot) continue;
-        if (snapshot.frameId && snapshot.sourceImageUrl) {
-          await scopedDb.frames.setImageGenerationStatus(
-            snapshot.frameId,
-            { imageStatus: 'generating', imageError: null },
-            { throwOnMissing: false }
-          );
+        if (claimIdByShot.has(shotId)) {
           await safeEmit(sequenceId, `image-progress:${shotId}`, () =>
             getGenerationChannel(sequenceId).emit('generation.image:progress', {
               shotId,
@@ -419,16 +447,8 @@ export class ReplaceElementWorkflow extends OpenStoryWorkflowEntrypoint<ReplaceE
           };
         }
 
-        // Prefer the frame's own model when it supports edits, so the swap
-        // reads as a continuation of the original render. Fall back to the
-        // workflow's edit-capable default otherwise.
-        const shotModel = safeTextToImageModel(
-          snapshot.sourceModel,
-          DEFAULT_IMAGE_MODEL
-        );
-        const model = supportsReferenceImages(shotModel)
-          ? shotModel
-          : imageModel;
+        const model = modelFor(snapshot);
+        const claimId = claimIdByShot.get(shotId);
 
         const childPayload: ImageWorkflowInput = {
           userId: input.userId,
@@ -438,6 +458,7 @@ export class ReplaceElementWorkflow extends OpenStoryWorkflowEntrypoint<ReplaceE
           // Mandatory alongside `shotId` — without it the child renders and
           // bills, then writes nothing back to the frame (#1119).
           frameId: snapshot.frameId ?? undefined,
+          targetVariantId: claimId,
           prompt: editPrompt,
           model,
           imageSize: aspectRatioToImageSize(aspectRatio),
@@ -493,6 +514,15 @@ export class ReplaceElementWorkflow extends OpenStoryWorkflowEntrypoint<ReplaceE
           logger.error(
             `[ReplaceElementWorkflow:cf] Image edit failed shot=${shotId} reason=${reason}`
           );
+          // A child that never started leaves its claim open; a child that
+          // failed already failed it (the write is guarded on a live row).
+          if (claimId) {
+            await step.do(`fail-image-claim-${index}`, () =>
+              scopedDb.frameVariants
+                .markTerminal(claimId, 'failed', `Image edit failed: ${reason}`)
+                .then(() => undefined)
+            );
+          }
           return {
             shotId,
             success: false,

@@ -368,12 +368,7 @@ const fixtureShotSources: FixtureShotSource[] = [
       createdAt: new Date('2026-06-02T00:11:09.000Z'),
       updatedAt: new Date('2026-06-02T00:19:03.000Z'),
     },
-    frame: {
-      imageStatus: 'completed',
-      imageWorkflowRunId:
-        'image_01KT2TPG5WYQ15H79SAV88EH45_01KT2TQ072YB92D8NWRQC5W9C6_nano_banana_pro_rewldhr',
-      imageError: null,
-    },
+    frame: {},
     image: {
       url: 'https://picsum.photos/seed/01KT2TQ072YB92D8NWRQC5W9C6/720/1280',
       storagePath:
@@ -423,12 +418,7 @@ const fixtureShotSources: FixtureShotSource[] = [
       createdAt: new Date('2026-06-02T00:11:12.000Z'),
       updatedAt: new Date('2026-06-02T00:14:57.000Z'),
     },
-    frame: {
-      imageStatus: 'completed',
-      imageWorkflowRunId:
-        'image_01KT2TPG5WYQ15H79SAV88EH45_01KT2TQ2A3VNHR4NKMFZE9XAAC_nano_banana_pro_rewldhr',
-      imageError: null,
-    },
+    frame: {},
     image: {
       url: 'https://picsum.photos/seed/01KT2TQ2A3VNHR4NKMFZE9XAAC/720/1280',
       storagePath:
@@ -478,12 +468,7 @@ const fixtureShotSources: FixtureShotSource[] = [
       createdAt: new Date('2026-06-02T00:11:14.000Z'),
       updatedAt: new Date('2026-06-02T00:15:17.000Z'),
     },
-    frame: {
-      imageStatus: 'completed',
-      imageWorkflowRunId:
-        'image_01KT2TPG5WYQ15H79SAV88EH45_01KT2TQ4BPDYFBAG7AHWAAY43C_nano_banana_pro_rewldhr',
-      imageError: null,
-    },
+    frame: {},
     image: {
       url: 'https://picsum.photos/seed/01KT2TQ4BPDYFBAG7AHWAAY43C/720/1280',
       storagePath:
@@ -533,12 +518,7 @@ const fixtureShotSources: FixtureShotSource[] = [
       createdAt: new Date('2026-06-02T00:11:16.000Z'),
       updatedAt: new Date('2026-06-02T00:15:04.000Z'),
     },
-    frame: {
-      imageStatus: 'completed',
-      imageWorkflowRunId:
-        'image_01KT2TPG5WYQ15H79SAV88EH45_01KT2TQ6B0MH3VDAXH16G54X33_nano_banana_pro_rewldhr',
-      imageError: null,
-    },
+    frame: {},
     image: {
       url: 'https://picsum.photos/seed/01KT2TQ6B0MH3VDAXH16G54X33/720/1280',
       storagePath:
@@ -588,12 +568,7 @@ const fixtureShotSources: FixtureShotSource[] = [
       createdAt: new Date('2026-06-02T00:11:18.000Z'),
       updatedAt: new Date('2026-06-02T00:15:18.000Z'),
     },
-    frame: {
-      imageStatus: 'completed',
-      imageWorkflowRunId:
-        'image_01KT2TPG5WYQ15H79SAV88EH45_01KT2TQ8E692CA985WMB9SNXMX_nano_banana_pro_rewldhr',
-      imageError: null,
-    },
+    frame: {},
     image: {
       url: 'https://picsum.photos/seed/01KT2TQ8E692CA985WMB9SNXMX/720/1280',
       storagePath:
@@ -643,12 +618,7 @@ const fixtureShotSources: FixtureShotSource[] = [
       createdAt: new Date('2026-06-02T00:11:20.000Z'),
       updatedAt: new Date('2026-06-02T00:14:32.000Z'),
     },
-    frame: {
-      imageStatus: 'completed',
-      imageWorkflowRunId:
-        'image_01KT2TPG5WYQ15H79SAV88EH45_01KT2TQA9A3SYCK47G14S0YB8Y_nano_banana_pro_rewldhr',
-      imageError: null,
-    },
+    frame: {},
     image: {
       url: 'https://picsum.photos/seed/01KT2TQA9A3SYCK47G14S0YB8Y/720/1280',
       storagePath:
@@ -698,12 +668,7 @@ const fixtureShotSources: FixtureShotSource[] = [
       createdAt: new Date('2026-06-02T00:11:20.000Z'),
       updatedAt: new Date('2026-06-02T00:14:18.000Z'),
     },
-    frame: {
-      imageStatus: 'completed',
-      imageWorkflowRunId:
-        'image_01KT2TPG5WYQ15H79SAV88EH45_01KT2TQAY2YNXFX1GVKP7HK43K_nano_banana_pro_rewldhr',
-      imageError: null,
-    },
+    frame: {},
     image: {
       url: 'https://picsum.photos/seed/01KT2TQAY2YNXFX1GVKP7HK43K/720/1280',
       storagePath:
@@ -771,6 +736,8 @@ function fixtureShotView(source: FixtureShotSource): ShotView {
           url: source.previewUrl,
         })
       : null,
+    // Every fixture still is its frame's newest primary render.
+    primaryImage: image,
     imagePromptVersion: source.imagePromptVersion
       ? {
           id: `${frame.id}-prompt`,

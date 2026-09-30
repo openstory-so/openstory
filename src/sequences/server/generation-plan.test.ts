@@ -125,6 +125,9 @@ describe('computeGenerationPlan', () => {
             ]),
         },
         sequenceLocations: { list: () => Promise.resolve([]) },
+        frameVariants: {
+          getPrimaryByFrameIds: () => Promise.resolve(new Map()),
+        },
         shotDialogue: {
           listShotIdsWithLiveClaim: () => Promise.resolve(new Set()),
         },

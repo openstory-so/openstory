@@ -584,8 +584,8 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
             videoStatus={
               isVariantVideoPreview ? 'completed' : currentShot.videoStatus
             }
-            imageStatus={currentShot.frame.imageStatus}
-            imageError={currentShot.frame.imageError}
+            imageStatus={currentShot.imageStatus}
+            imageError={currentShot.imageError}
             videoError={currentShot.primaryVideo?.error ?? null}
             progressMessage={progressMessage}
             retry={retry}

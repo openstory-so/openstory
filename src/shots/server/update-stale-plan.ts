@@ -1393,6 +1393,7 @@ async function claimImageArtifact(args: {
       model: target.imageModel,
       dependsOnVersionId: visualVersionId,
       workflowRunId: parentInstanceId,
+      isPrimary: true,
     });
     return { kind: 'ours', id: row.id };
   }
@@ -1415,6 +1416,7 @@ async function claimImageArtifact(args: {
       model: target.imageModel,
       pendingInputHash: target.imageLiveHash,
       workflowRunId: parentInstanceId,
+      isPrimary: true,
     });
     return { kind: 'ours', id: row.id };
   } catch (error) {

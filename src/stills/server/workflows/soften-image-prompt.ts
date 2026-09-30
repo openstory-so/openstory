@@ -358,6 +358,7 @@ export async function generateImageWithContentRetry(
             workflowRunId,
             promptVersionId: input.promptVersionId ?? null,
             pendingInputHash: fallbackHash,
+            isPrimary: !input.variantOnly,
           });
           return fallbackVersion.id;
         }

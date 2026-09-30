@@ -1168,10 +1168,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     if (!shots) return;
 
     for (const shot of shots) {
-      if (
-        regeneratingImages.has(shot.id) &&
-        isTerminalStatus(shot.frame.imageStatus)
-      )
+      if (regeneratingImages.has(shot.id) && isTerminalStatus(shot.imageStatus))
         handleRegenerateEnd(shot.id, 'image');
       if (regeneratingMotion.has(shot.id) && isTerminalStatus(shot.videoStatus))
         handleRegenerateEnd(shot.id, 'motion');

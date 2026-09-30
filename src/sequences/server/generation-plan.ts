@@ -31,6 +31,7 @@ import {
   UNTRACKED_STALENESS,
   type ShotStalenessResult,
 } from '@/shots/server/shot-staleness';
+import { readinessImageStatus } from '@/shots/shot-view';
 import { usesStartFrame } from '@/shots/use-start-frame';
 
 const logger = getLogger(['openstory', 'sequences', 'generation-plan']);
@@ -99,24 +100,32 @@ async function loadPlanInput(
   const frameIds = [...anchorsByShot.values()].map((frame) => frame.id);
   const shotIds = shots.map((shot) => shot.id);
 
-  const [characters, locations, reads, media, liveDialogue, music] =
-    await Promise.all([
-      scopedDb.characters.list(sequence.id),
-      scopedDb.sequenceLocations.list(sequence.id),
-      loadShotStalenessReads(
-        scopedDb,
-        sequence.id,
-        shots,
-        shotIds,
-        frameIds,
-        sceneContext
-      ),
-      loadShotMediaStates(scopedDb, sequence, shots),
-      scopedDb.shotDialogue.listShotIdsWithLiveClaim(shotIds),
-      sequence.includeMusic
-        ? readMusicPromptStaleness(scopedDb, sequence)
-        : Promise.resolve(null),
-    ]);
+  const [
+    characters,
+    locations,
+    reads,
+    media,
+    liveDialogue,
+    music,
+    primaryImageByFrame,
+  ] = await Promise.all([
+    scopedDb.characters.list(sequence.id),
+    scopedDb.sequenceLocations.list(sequence.id),
+    loadShotStalenessReads(
+      scopedDb,
+      sequence.id,
+      shots,
+      shotIds,
+      frameIds,
+      sceneContext
+    ),
+    loadShotMediaStates(scopedDb, sequence, shots),
+    scopedDb.shotDialogue.listShotIdsWithLiveClaim(shotIds),
+    sequence.includeMusic
+      ? readMusicPromptStaleness(scopedDb, sequence)
+      : Promise.resolve(null),
+    scopedDb.frameVariants.getPrimaryByFrameIds(frameIds),
+  ]);
 
   // In parallel, as `getShotStalenessBatchFn` does: the reads are shared,
   // the hashing is per shot. Null = an uncomputable compare.
@@ -162,6 +171,12 @@ async function loadPlanInput(
     const selectedPrompt = frame
       ? (reads.selectedPromptByFrame.get(frame.id) ?? null)
       : null;
+    const imageStatus = readinessImageStatus({
+      hasSelectedImage: selectedImage !== null,
+      primaryImageStatus: frame
+        ? (primaryImageByFrame.get(frame.id)?.status ?? null)
+        : null,
+    });
     const dialogue = reads.dialogueOf(shot);
     const computed = stalenessByShot.get(shot.id) ?? null;
     const unknown = computed === null;
@@ -216,7 +231,7 @@ async function loadPlanInput(
           inFlight:
             !selectedImage?.url &&
             (frame?.pendingPromoteVersionId != null ||
-              frame?.imageStatus === 'generating' ||
+              imageStatus === 'generating' ||
               (reads.liveImageClaimsByFrame.get(frame?.id ?? '')?.length ?? 0) >
                 0),
         })

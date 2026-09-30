@@ -8,7 +8,6 @@ import { SceneListItem } from './scene-list-item';
 const anchorFrame = frameFixture({
   shotId: 'shot-1',
   sequenceId: 'seq-1',
-  imageStatus: 'completed',
 });
 
 const mockShot: ShotView = toShotView(
@@ -38,6 +37,7 @@ const mockShot: ShotView = toShotView(
     }),
     preview: null,
     imagePromptVersion: null,
+    primaryImage: null,
     video: null,
     primaryVideo: null,
   }
@@ -124,7 +124,7 @@ export const Generating: Story = {
     shot: {
       ...mockShot,
       image: null,
-      frame: { ...mockShot.frame, imageStatus: 'generating' },
+      imageStatus: 'generating',
     },
     isActive: false,
   },
@@ -135,7 +135,7 @@ export const GeneratingActive: Story = {
     shot: {
       ...mockShot,
       image: null,
-      frame: { ...mockShot.frame, imageStatus: 'generating' },
+      imageStatus: 'generating',
     },
     isActive: true,
   },
@@ -146,11 +146,8 @@ export const Failed: Story = {
     shot: {
       ...mockShot,
       image: null,
-      frame: {
-        ...mockShot.frame,
-        imageStatus: 'failed',
-        imageError: 'Generation timeout',
-      },
+      imageStatus: 'failed',
+      imageError: 'Generation timeout',
     },
     isActive: false,
   },

@@ -11,7 +11,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Frame, FrameVariant, Shot } from '@/platform/server/db/schema';
 import { frameVariantFixture } from '@/mocks/frame-fixtures';
-import { toShotView, type ShotView } from '@/shots/shot-view';
+import { toShotView, type ImageStatus, type ShotView } from '@/shots/shot-view';
 import {
   assertModelNotAlreadyAdded,
   buildAddAudioMusicInput,
@@ -23,14 +23,15 @@ import { sumShotDurationsSeconds } from '@/sequences/server/shot-durations';
 const NOW = new Date('2026-06-03T00:00:00.000Z');
 
 // The shot read path returns `ShotView` (#1067): a Shot plus the rows its
-// still/video resolve from. Image readiness is the frame's `imageStatus` and
-// the selected version's `url`, so those are what the fixtures vary.
+// still/video resolve from. Image readiness is the frame's newest primary
+// still render (#1942) and the selected version's `url`, so those are what
+// the fixtures vary. A `pending` still has no selection.
 function makeShot({
   imageStatus = 'completed',
   imageUrl = 'https://cdn/thumb.jpg',
   ...overrides
 }: Partial<Shot> & {
-  imageStatus?: Frame['imageStatus'];
+  imageStatus?: ImageStatus;
   imageUrl?: FrameVariant['url'];
 } = {}): ShotView {
   const id = overrides.id ?? 'shot-1';
@@ -58,10 +59,7 @@ function makeShot({
     sequenceId,
     orderIndex: 0,
     role: 'first',
-    imageStatus,
-    imageWorkflowRunId: null,
-    imageError: null,
-    selectedImageVersionId: 'fv-1',
+    selectedImageVersionId: imageStatus === 'pending' ? null : 'fv-1',
     selectedImagePromptVersionId: null,
     pendingPromoteVersionId: null,
     createdAt: NOW,
@@ -70,13 +68,25 @@ function makeShot({
   // These fixtures exercise the IMAGE-readiness helpers only, so the shot's
   // segment has no render at all (#1067).
   return toShotView(shot, frame, {
-    image: frameVariantFixture({
-      frameId: frame.id,
-      sequenceId,
-      url: imageUrl,
-    }),
+    image:
+      imageStatus === 'pending'
+        ? null
+        : frameVariantFixture({
+            frameId: frame.id,
+            sequenceId,
+            url: imageUrl,
+          }),
     preview: null,
     imagePromptVersion: null,
+    primaryImage:
+      imageStatus === 'generating' || imageStatus === 'failed'
+        ? frameVariantFixture({
+            frameId: frame.id,
+            sequenceId,
+            status: imageStatus,
+            url: null,
+          })
+        : null,
     video: null,
     primaryVideo: null,
   });

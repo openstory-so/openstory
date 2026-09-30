@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createSelectSchema } from 'drizzle-orm/zod';
+import { SHOT_GENERATION_STATUSES } from '@/platform/server/db/schema/shots';
 import {
   frames,
   renderSegments,
@@ -20,9 +21,11 @@ import {
 } from '@/platform/server/read-projection';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type {
+  Frame,
   Sequence,
   SequenceMusicVariant,
 } from '@/platform/server/db/schema';
+import { readinessImageStatus } from '@/shots/shot-view';
 import { productionAccess } from './production-access';
 import { ValidationError } from '@/platform/errors';
 
@@ -138,19 +141,44 @@ export function inspectMusic(
     origin
   );
 }
-export const frameReadSchema = createSelectSchema(frames).pick({
-  id: true,
-  sequenceId: true,
-  shotId: true,
-  role: true,
-  orderIndex: true,
-  imageStatus: true,
-  imageError: true,
-  imageWorkflowRunId: true,
-  selectedImageVersionId: true,
-  selectedImagePromptVersionId: true,
-  pendingPromoteVersionId: true,
-});
+export const frameReadSchema = createSelectSchema(frames)
+  .pick({
+    id: true,
+    sequenceId: true,
+    shotId: true,
+    role: true,
+    orderIndex: true,
+    selectedImageVersionId: true,
+    selectedImagePromptVersionId: true,
+    pendingPromoteVersionId: true,
+  })
+  .extend({
+    // The current image attempt: the newest primary `frame_variants` row's
+    // (#1942), no longer a copy on the frame.
+    imageStatus: z.enum(SHOT_GENERATION_STATUSES),
+    imageError: z.string().nullable(),
+    imageWorkflowRunId: z.string().nullable(),
+  });
+
+/** Frames with their current image attempt, for {@link frameReadSchema}. */
+export async function withImageAttempts(scopedDb: ScopedDb, rows: Frame[]) {
+  const primaryByFrame = await scopedDb.frameVariants.getPrimaryByFrameIds(
+    rows.map((frame) => frame.id)
+  );
+  return rows.map((frame) => {
+    const primary = primaryByFrame.get(frame.id);
+    const imageStatus = readinessImageStatus({
+      hasSelectedImage: frame.selectedImageVersionId !== null,
+      primaryImageStatus: primary?.status ?? null,
+    });
+    return {
+      ...frame,
+      imageStatus,
+      imageError: imageStatus === 'failed' ? (primary?.error ?? null) : null,
+      imageWorkflowRunId: primary?.workflowRunId ?? null,
+    };
+  });
+}
 export const segmentReadSchema = createSelectSchema(renderSegments).pick({
   id: true,
   sequenceId: true,

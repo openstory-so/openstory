@@ -1430,7 +1430,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
 
   // Check if image is currently generating
   const isGenerating =
-    shot?.frame.imageStatus === 'generating' ||
+    shot?.imageStatus === 'generating' ||
     (shot?.id ? regeneratingImages.has(shot.id) : false);
 
   // Check if motion is currently generating

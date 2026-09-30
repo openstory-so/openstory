@@ -140,12 +140,14 @@ function variantInput(
   overrides: Partial<Omit<NewFrameVariant, 'inputHash'>> & {
     inputHash?: ShotImageInputHash | null;
   } = {}
-): Omit<NewFrameVariant, 'inputHash'> & {
+): Omit<NewFrameVariant, 'inputHash' | 'isPrimary'> & {
   inputHash?: ShotImageInputHash | null;
+  isPrimary: boolean;
 } {
   return {
     frameId,
     sequenceId,
+    isPrimary: true,
     kind: 'model',
     model: 'nano_banana_2',
     status: 'completed',
@@ -248,10 +250,9 @@ describe('frameVariants.select', () => {
       .from(frames)
       .where(eq(frames.id, frameId));
     if (!frame) throw new Error('test setup: refresh failed');
-    // #1067: selecting moves the POINTER (plus the primary-render status);
-    // the url/path/model/hash are read off the version, never copied down.
+    // #1067: selecting moves the POINTER; the url/path/model/hash are read
+    // off the version, never copied down.
     expect(frame.selectedImageVersionId).toBe(v2.id);
-    expect(frame.imageStatus).toBe('completed');
     const selected = await m.getSelected(frameId);
     expect(selected?.url).toBe('https://cdn/v2.png');
     expect(selected?.storagePath).toBe('r2/v2.png');
@@ -563,7 +564,7 @@ describe('frameVariants.selectIfPendingPromoteIs (#1070)', () => {
     );
     await db
       .update(frames)
-      .set({ pendingPromoteVersionId: v.id, imageStatus: 'generating' })
+      .set({ pendingPromoteVersionId: v.id })
       .where(eq(frames.id, frameId));
 
     await m.selectIfPendingPromoteIs(frameId, v.id, { actorId: null });
@@ -573,7 +574,6 @@ describe('frameVariants.selectIfPendingPromoteIs (#1070)', () => {
       .from(frames)
       .where(eq(frames.id, frameId));
     expect(frame?.selectedImageVersionId).toBe(v.id);
-    expect(frame?.imageStatus).toBe('completed');
     expect(frame?.selectedImagePromptVersionId).toBe(prompt.id);
     expect(frame?.pendingPromoteVersionId).toBeNull();
   });
@@ -891,6 +891,7 @@ describe('frameVariants pending claims (#1085)', () => {
       })
     );
     const direct = await m.createPendingClaim({
+      isPrimary: true,
       frameId,
       sequenceId,
       model: 'nano_banana_2',
@@ -898,6 +899,7 @@ describe('frameVariants pending claims (#1085)', () => {
       workflowRunId: 'run-claim',
     });
     const chained = await m.createPendingClaim({
+      isPrimary: true,
       frameId,
       sequenceId,
       model: 'nano_banana_2',
@@ -914,6 +916,7 @@ describe('frameVariants pending claims (#1085)', () => {
   it('claimForGeneration returns null after markTerminal (cancel wins)', async () => {
     const m = createFrameVariantsMethods(db);
     const claim = await m.createPendingClaim({
+      isPrimary: true,
       frameId,
       sequenceId,
       model: 'nano_banana_2',
@@ -937,6 +940,7 @@ describe('frameVariants pending claims (#1085)', () => {
   it('completeIfLive returns null when cancelled mid-flight (no resurrection)', async () => {
     const m = createFrameVariantsMethods(db);
     const claim = await m.createPendingClaim({
+      isPrimary: true,
       frameId,
       sequenceId,
       model: 'nano_banana_2',
@@ -964,6 +968,7 @@ describe('frameVariants pending claims (#1085)', () => {
   it('completeIfLive completes a live claim in place', async () => {
     const m = createFrameVariantsMethods(db);
     const claim = await m.createPendingClaim({
+      isPrimary: true,
       frameId,
       sequenceId,
       model: 'nano_banana_2',
@@ -988,18 +993,21 @@ describe('frameVariants pending claims (#1085)', () => {
   it('cancelByDependency cancels only live dependents of that prompt version', async () => {
     const m = createFrameVariantsMethods(db);
     const dep = await m.createPendingClaim({
+      isPrimary: true,
       frameId,
       sequenceId,
       model: 'nano_banana_2',
       dependsOnVersionId: 'fpv-1',
     });
     const other = await m.createPendingClaim({
+      isPrimary: true,
       frameId,
       sequenceId,
       model: 'nano_banana_2',
       dependsOnVersionId: 'fpv-other',
     });
     const direct = await m.createPendingClaim({
+      isPrimary: true,
       frameId,
       sequenceId,
       model: 'nano_banana_2',
@@ -1029,6 +1037,7 @@ describe('frameVariants pending claims (#1085)', () => {
     const m = createFrameVariantsMethods(db);
     // Direct claim already holds the live hash slot.
     const holder = await m.createPendingClaim({
+      isPrimary: true,
       frameId,
       sequenceId,
       model: 'nano_banana_2',
@@ -1037,6 +1046,7 @@ describe('frameVariants pending claims (#1085)', () => {
     });
     // Chained claim starts with null hash (excluded from unique index).
     const chained = await m.createPendingClaim({
+      isPrimary: true,
       frameId,
       sequenceId,
       model: 'nano_banana_2',
@@ -1386,5 +1396,60 @@ describe('frameVariants.getSelectedByFrameIds (#1322)', () => {
     for (const id of ids) expect(byFrame.get(id)?.frameId).toBe(id);
     expect(select).toHaveBeenCalledTimes(3);
     select.mockRestore();
+  });
+});
+
+describe('frameVariants primary still status (#1942)', () => {
+  it('reads the newest primary non-preview row, skipping added models and previews', async () => {
+    const m = createFrameVariantsMethods(db);
+    const primary = await m.appendVersion(
+      variantInput({ status: 'failed', url: null, error: 'boom' })
+    );
+    await m.appendVersion(variantInput({ isPrimary: false }));
+    await m.appendVersion(variantInput({ kind: 'preview', url: 'p' }));
+
+    expect((await m.getPrimary(frameId))?.id).toBe(primary.id);
+    const byFrame = await m.getPrimaryByFrameIds([frameId]);
+    expect(byFrame.get(frameId)?.id).toBe(primary.id);
+  });
+
+  it('a pick takes earlier failures out of the race', async () => {
+    const m = createFrameVariantsMethods(db);
+    const good = await m.appendVersion(variantInput());
+    const failed = await m.appendVersion(
+      variantInput({ status: 'failed', url: null, error: 'boom' })
+    );
+    expect((await m.getPrimary(frameId))?.id).toBe(failed.id);
+
+    await m.select(frameId, good.id, { actorId: null });
+
+    expect((await m.getPrimary(frameId))?.id).toBe(good.id);
+    expect((await m.getById(failed.id))?.status).toBe('failed');
+  });
+
+  it('markFailedByWorkflowRun counts rows, so only a rowless run returns 0', async () => {
+    const m = createFrameVariantsMethods(db);
+    await m.appendVersion(
+      variantInput({ status: 'generating', url: null, workflowRunId: 'run-a' })
+    );
+    expect(await m.markFailedByWorkflowRun('run-a', 'boom')).toBe(1);
+    // Already terminal: still accounted for.
+    expect(await m.markFailedByWorkflowRun('run-a', 'boom')).toBe(1);
+    expect(await m.markFailedByWorkflowRun('run-none', 'boom')).toBe(0);
+  });
+
+  it('a failed upscale can leave the race so the shot keeps its still', async () => {
+    const m = createFrameVariantsMethods(db);
+    const still = await m.appendVersion(variantInput());
+    await m.appendVersion(
+      variantInput({
+        kind: 'framing',
+        status: 'generating',
+        url: null,
+        workflowRunId: 'run-up',
+      })
+    );
+    await m.markFailedByWorkflowRun('run-up', 'boom', { isPrimary: false });
+    expect((await m.getPrimary(frameId))?.id).toBe(still.id);
   });
 });

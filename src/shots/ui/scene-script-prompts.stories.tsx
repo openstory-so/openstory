@@ -15,7 +15,6 @@ const anchorFrame = frameFixture({
   id: 'frame-1',
   shotId: 'shot-1',
   sequenceId: 'seq-1',
-  imageStatus: 'completed',
 });
 
 const mockShot: ShotView = toShotView(
@@ -45,6 +44,7 @@ const mockShot: ShotView = toShotView(
     }),
     preview: null,
     imagePromptVersion: null,
+    primaryImage: null,
     video: null,
     primaryVideo: null,
   }
