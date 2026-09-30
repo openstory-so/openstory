@@ -334,15 +334,15 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
     )?.model,
     sequenceImageModel: sequence?.imageModel ?? null,
   });
-  const { pricing: falPricing } = useFalPricing();
+  const { pricing: falPricing, isPending: pricingPending } = useFalPricing();
   const sheetCostEstimate = useMemo(() => {
-    if (!falPricing) return null;
+    if (!falPricing) return pricingPending ? undefined : null;
     return estimateImageCost(selectedSheetModel, '16:9', 1, {
       pricing: falPricing,
       // Talent refs go through the model's edit endpoint (same as the workflow).
       edit: Boolean(character?.talentId),
     });
-  }, [falPricing, selectedSheetModel, character?.talentId]);
+  }, [falPricing, pricingPending, selectedSheetModel, character?.talentId]);
 
   const handleRegenerateSheet = useCallback(() => {
     regenerateSheet.mutate(

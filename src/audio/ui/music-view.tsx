@@ -273,13 +273,13 @@ export const MusicView: React.FC<MusicViewProps> = ({
     editDuration ?? videoDuration ?? durationLimits.default;
   const durationExceedsMax = effectiveDuration > durationLimits.max;
 
-  const { pricing: falPricing } = useFalPricing();
+  const { pricing: falPricing, isPending: pricingPending } = useFalPricing();
   const musicCostEstimate = useMemo(() => {
-    if (!falPricing) return null;
+    if (!falPricing) return pricingPending ? undefined : null;
     return estimateAudioCost(selectedModel, effectiveDuration, {
       pricing: falPricing,
     });
-  }, [falPricing, selectedModel, effectiveDuration]);
+  }, [falPricing, pricingPending, selectedModel, effectiveDuration]);
 
   function handleGenerate(): void {
     onGenerateMusic({

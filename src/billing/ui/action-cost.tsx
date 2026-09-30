@@ -20,6 +20,8 @@
  * On a primary button pass `onPrimary` — that fill stays light in dark mode,
  * where the page amber is too pale. The amount sits in the button
  * (`InButtonCost`); over budget is the warning icon and colour, not extra words.
+ * `undefined` is still calculating: a skeleton holds the amount's width so the
+ * button does not jump when the number arrives. `null` is no honest price.
  */
 
 import { useBillingBalance } from './use-billing-balance';
@@ -31,6 +33,7 @@ import {
   type Microdollars,
 } from '@/billing/money';
 import { useAuthSession } from '@/platform/ui/auth/session-query';
+import { Skeleton } from '@/ui/shadcn/skeleton';
 import { cn } from '@/ui/utils';
 import { AlertTriangle } from 'lucide-react';
 import type { ReactNode } from 'react';
@@ -53,8 +56,8 @@ type ActionCostProps = {
    */
   onPrimary?: boolean;
   /**
-   * Inside a button: render nothing until the amount exists, so a late
-   * estimate does not open a line under the control.
+   * Inside a button. A missing honest price (`null`) renders nothing; a
+   * price still loading (`undefined`) keeps the skeleton.
    */
   inline?: boolean;
 };
@@ -124,8 +127,25 @@ export function ActionCost({
       </span>
     );
   }
-  // The estimate arrives client-side after the pricing query, so an empty
-  // line is reserved until then — otherwise every button it sits under jumps.
+  // Still calculating. The skeleton is the width of a short amount so the
+  // button does not grow when the figure lands.
+  if (estimate === undefined) {
+    return (
+      <span
+        className={cn(justify, 'min-h-4', className)}
+        aria-busy="true"
+        aria-label="Estimating cost"
+      >
+        {prefix}
+        <Skeleton
+          className={cn(
+            'h-3 w-12',
+            onPrimary ? 'bg-primary-foreground/25' : 'bg-foreground/15'
+          )}
+        />
+      </span>
+    );
+  }
   if (estimate == null) {
     if (inline) return null;
     return (

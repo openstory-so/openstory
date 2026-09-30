@@ -1223,18 +1223,19 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       : [];
 
   // Transparent pricing under Generate Image / Generate Motion (#1140).
-  const { pricing: falPricing } = useFalPricing();
+  const { pricing: falPricing, isPending: pricingPending } = useFalPricing();
   const imageCostEstimate = useMemo(() => {
-    if (!falPricing) return null;
+    if (!falPricing) return pricingPending ? undefined : null;
     return estimateImageCost(
       regenImageModel,
       aspectRatio ?? DEFAULT_ASPECT_RATIO,
       1,
       { pricing: falPricing, resolution }
     );
-  }, [falPricing, regenImageModel, aspectRatio, resolution]);
+  }, [falPricing, pricingPending, regenImageModel, aspectRatio, resolution]);
   const motionCostEstimate = useMemo(() => {
-    if (!falPricing || !shot) return null;
+    if (!shot) return null;
+    if (!falPricing) return pricingPending ? undefined : null;
     const duration = resolveShotDuration({
       durationMs: promptPreview?.packedDurationMs ?? shot.durationMs,
       model: regenMotionModel,
@@ -1252,6 +1253,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     });
   }, [
     falPricing,
+    pricingPending,
     shot,
     regenMotionModel,
     regenAsDraft,
@@ -1262,7 +1264,8 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   ]);
   // The final of an approved draft is always 1080p (#1756).
   const finalCostEstimate = useMemo(() => {
-    if (!falPricing || !shot || !selectedDraft) return null;
+    if (!shot || !selectedDraft) return null;
+    if (!falPricing) return pricingPending ? undefined : null;
     const duration = resolveShotDuration({
       durationMs: promptPreview?.packedDurationMs ?? shot.durationMs,
       model: regenMotionModel,
@@ -1277,6 +1280,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     });
   }, [
     falPricing,
+    pricingPending,
     shot,
     selectedDraft,
     regenMotionModel,

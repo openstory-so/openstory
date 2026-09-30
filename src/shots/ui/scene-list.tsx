@@ -534,9 +534,10 @@ const SceneListComponent: React.FC<SceneListProps> = ({
 
   // Batch cost = sum of per-shot motion at the selected video model
   // (+ optional music track) (#1140). Matches server `data.model` override.
-  const { pricing: falPricing } = useFalPricing();
-  const batchCostEstimate = useMemo((): Microdollars | null => {
-    if (!falPricing || notStartedShots.length === 0) return null;
+  const { pricing: falPricing, isPending: pricingPending } = useFalPricing();
+  const batchCostEstimate = useMemo((): Microdollars | null | undefined => {
+    if (notStartedShots.length === 0) return null;
+    if (!falPricing) return pricingPending ? undefined : null;
     let total: Microdollars = ZERO_MICROS;
     let anyHonest = false;
     for (const shot of notStartedShots) {
@@ -584,6 +585,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     videoModel,
     resolution,
     generateStartFrames,
+    pricingPending,
   ]);
 
   // Selected drafts (#1756): selection is approval. Finished and inside
@@ -611,8 +613,12 @@ const SceneListComponent: React.FC<SceneListProps> = ({
         soonest === null ? null : (draftExpirySuffix(soonest)?.trim() ?? null),
     };
   }, [segments]);
-  const draftFinalCostEstimate = useMemo((): Microdollars | null => {
-    if (!falPricing || draftSegments.length === 0) return null;
+  const draftFinalCostEstimate = useMemo(():
+    | Microdollars
+    | null
+    | undefined => {
+    if (draftSegments.length === 0) return null;
+    if (!falPricing) return pricingPending ? undefined : null;
     let total: Microdollars = ZERO_MICROS;
     let anyHonest = false;
     for (const segment of draftSegments) {
@@ -638,7 +644,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
       total = addMicros(total, perSegment);
     }
     return anyHonest ? total : null;
-  }, [draftSegments, falPricing, shots, videoModel]);
+  }, [draftSegments, falPricing, pricingPending, shots, videoModel]);
   const handleRenderDrafts = async () => {
     if (!onRenderDraftsAtQuality) return;
     await runFooterAction('Failed to render at quality', () =>

@@ -350,7 +350,7 @@ export function StudioComposer({
 }: StudioComposerProps) {
   const { requireAuth, isAuthenticated } = useAuthGate();
   const posthog = usePostHog();
-  const { pricing } = useFalPricing();
+  const { pricing, isPending: pricingPending } = useFalPricing();
   const create = useCreateStudioAssets();
   const draft = useDraftStudioPrompt();
   const pendingCreates = useStudioPendingCreates(activity);
@@ -554,7 +554,7 @@ export function StudioComposer({
       : mode;
 
   const estimate = useMemo(() => {
-    if (!pricing) return null;
+    if (!pricing) return pricingPending ? undefined : null;
     if (activity === 'image') {
       const still = estimateImageCost(imageModel, aspectRatio, 1, {
         pricing,
@@ -582,6 +582,7 @@ export function StudioComposer({
     effectiveMode,
     imageModel,
     pricing,
+    pricingPending,
     references.length,
     resolution,
     snappedDuration,

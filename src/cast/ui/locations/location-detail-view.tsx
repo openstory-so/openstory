@@ -313,14 +313,19 @@ export const LocationDetailView: React.FC<LocationDetailViewProps> = ({
     )?.model,
     sequenceImageModel: sequence?.imageModel ?? null,
   });
-  const { pricing: falPricing } = useFalPricing();
+  const { pricing: falPricing, isPending: pricingPending } = useFalPricing();
   const sheetCostEstimate = useMemo(() => {
-    if (!falPricing) return null;
+    if (!falPricing) return pricingPending ? undefined : null;
     return estimateImageCost(selectedSheetModel, '16:9', 1, {
       pricing: falPricing,
       edit: Boolean(location?.libraryLocationId),
     });
-  }, [falPricing, selectedSheetModel, location?.libraryLocationId]);
+  }, [
+    falPricing,
+    pricingPending,
+    selectedSheetModel,
+    location?.libraryLocationId,
+  ]);
 
   const handleRegenerateSheet = useCallback(() => {
     regenerateSheet.mutate(
