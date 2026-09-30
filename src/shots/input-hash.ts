@@ -359,6 +359,10 @@ const characterBibleHashFieldsSchema = z.object({
   consistencyTag: z.string().nullable(),
 });
 
+/** The character bible fields the sheet hash reads; an edit to one revokes a sheet claim. */
+export const CHARACTER_SHEET_BIBLE_FIELDS =
+  characterBibleHashFieldsSchema.keyof().options;
+
 const characterSheetHashInputSchema = z.object({
   characterBible: characterBibleHashFieldsSchema,
   talentSheetHash: z.string().nullable(),
@@ -417,6 +421,9 @@ const locationSheetBibleHashFieldsSchema = locationBibleHashFieldsSchema.extend(
     ambiance: z.string(),
   }
 );
+/** The location bible fields the sheet hash reads; an edit to one revokes a sheet claim. */
+export const LOCATION_SHEET_BIBLE_FIELDS =
+  locationSheetBibleHashFieldsSchema.keyof().options;
 export type LocationSheetBibleHashFields = z.infer<
   typeof locationSheetBibleHashFieldsSchema
 >;

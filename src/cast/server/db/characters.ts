@@ -62,18 +62,7 @@ import {
   mergeDefined,
 } from './bible-versions';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
-
-/** The bible fields the sheet prompt and its hash read (#1113). */
-const SHEET_BIBLE_FIELDS = [
-  'name',
-  'age',
-  'gender',
-  'ethnicity',
-  'physicalDescription',
-  'standardClothing',
-  'distinguishingFeatures',
-  'consistencyTag',
-] as const;
+import { CHARACTER_SHEET_BIBLE_FIELDS } from '@/shots/input-hash';
 
 /** A new character's bible where the caller left a field out. */
 const NEW_CHARACTER_BIBLE: Omit<CharacterBible, 'name'> = {
@@ -110,7 +99,9 @@ const mergeBible = (base: CharacterBible, patch: Partial<CharacterBible>) =>
   mergeDefined(base, patch, CHARACTER_BIBLE_FIELDS);
 
 const touchesSheet = (fields: readonly (keyof CharacterBible)[]) =>
-  fields.some((key) => (SHEET_BIBLE_FIELDS as readonly string[]).includes(key));
+  fields.some((key) =>
+    (CHARACTER_SHEET_BIBLE_FIELDS as readonly string[]).includes(key)
+  );
 
 /**
  * The user-editable character bible fields (#1108 Phase 2). Everything else on

@@ -275,7 +275,7 @@ For the workflows that do content generation, "input" is specifically:
 
 - **`regenerateShotsWorkflow`** (`RegenerateShotsWorkflowInput`, `src/shots/server/workflows/regenerate-shots-workflow.ts`) — **reference implementation.** Trigger time inlines `shotSnapshots` (per-shot prompt, reference URLs, and sheet hashes via `buildRegenerateShotSnapshot`), freezes `aspectRatio`, and sets `snapshotInputHash` from `computeRegenerateShotsBatchHash`. The workflow body reads only the inlined DTO; start-time validation runs in `step.do('validate-snapshot')`.
 - **`shotImagesWorkflow`** (`ShotImagesWorkflowInput`, `src/stills/server/workflows/shot-images-workflow.ts`) — inlines `sceneSnapshots` (per-scene upstream sheet hashes) and optional `snapshotInputHash`. Hash helpers live in `image-workflow-snapshot.ts` and `sheet-snapshots.ts`.
-- **`characterSheetWorkflow`** (`CharacterSheetWorkflowInput`) — inlines character/talent metadata and reference URLs; carries `snapshotInputHash` (stamped on the version row) and the claim `sheetVersionId`. Lands through `characterSheetVariants.promoteIfPending`; a missed claim parks the row as divergent and `reportParkedCharacterSheet` emits `stale:detected`. Pipeline sheets (`CharacterBibleWorkflow`) are claimed and hashed like any other since #1113 — they used to carry no hash and read "untracked".
+- **`characterSheetWorkflow`** (`CharacterSheetWorkflowInput`) — inlines character/talent metadata and reference URLs; carries `snapshotInputHash` (stamped on the version row) and the claim `sheetVersionId`. Lands through `characterSheetVariants.promoteIfPending`; a missed claim parks the row as divergent and `reportParkedSheet` emits `stale:detected`. The character and sequence-location workflows share this landing: one batch (`landSheetVersion` in `sheet-claims.ts`) and one run helper (`landSheetRun` in `sheet-divergence.ts`, #1865). Pipeline sheets (`CharacterBibleWorkflow`) are claimed and hashed like any other since #1113 — they used to carry no hash and read "untracked".
 - **`locationSheetWorkflow`** (`LocationSheetWorkflowInput`) — the same, with `referenceVersionId` and `locationSheetVariants.promoteIfPending`; `LocationBibleWorkflow` claims and hashes its children.
 - **`libraryTalentSheetWorkflow`** (`LibraryTalentSheetWorkflowInput`) — inlines `referenceImageUrls`, `talentDescription`, `snapshotInputHash`, and the claim `sheetId` (the `talent_sheets` id it writes). Lands through `talent.landSheet`; a missed claim parks the sheet and skips the headshot.
 - **`libraryLocationSheetWorkflow`** (`LibraryLocationSheetWorkflowInput`) — carries `referenceClaimId`; publishes its preview through `locations.updateReferenceIfClaimed`, else parks it in `location_sheet_variants`.
@@ -307,16 +307,17 @@ if (landing === 'parked') {
   // The claim moved (an input edit, a newer kickoff, the user's pick): the
   // row is in character_sheet_variants with divergedAt, the live sheet is
   // untouched. Tell the UI.
-  await reportParkedCharacterSheet({
+  await reportParkedSheet({
     sequenceId,
-    characterId,
+    entityType: 'character',
+    entityId: characterId,
     versionId,
     snapshotInputHash,
   });
 }
 ```
 
-Divergence is event-driven: nothing re-hashes live state at write time. Every write that changes a sheet input, or picks a sheet, clears the claim in the same batch as its own write — character bible edits (only the fields the sheet reads), a recast, a cast talent's new/changed/removed sheet or edited description, a sequence location's bible or library link, the library location's reference, and the sequence's style; for the library runs, the talent's description or a deleted reference photo, and the library location's description (a rename never diverged: neither library hash covers the name). The claim is what the run checks.
+Divergence is event-driven: nothing re-hashes live state at write time. Every write that changes a sheet input, or picks a sheet, clears the claim in the same batch as its own write — character bible edits (only the fields the sheet reads: `CHARACTER_SHEET_BIBLE_FIELDS` / `LOCATION_SHEET_BIBLE_FIELDS`, derived from the hash schemas in `src/shots/input-hash.ts`, #1865), a recast, a cast talent's new/changed/removed sheet or edited description, a sequence location's bible or library link, the library location's reference, and the sequence's style; for the library runs, the talent's description or a deleted reference photo, and the library location's description (a rename never diverged: neither library hash covers the name). The claim is what the run checks.
 
 Per-shot **image** artifacts do not check for drift at all (#989): the workflow appends a new `frame_variants` version stamped with its snapshot's `inputHash` and promotes it through its claim (`frameVariants.selectIfPendingPromoteIs`) even if the prompt or references moved mid-flight. The still then reads stale against the live inputs. Only a newer kickoff or the user's own pick cancels the promote. `regenerate-shots-workflow` fans out to `image-workflow` children and does not perform its own divergence emit — `divergedShotIds` is always empty today.
 

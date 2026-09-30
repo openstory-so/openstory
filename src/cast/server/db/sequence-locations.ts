@@ -49,16 +49,7 @@ import {
   mergeDefined,
 } from './bible-versions';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
-
-/** The bible fields the location sheet prompt and its hash read (#1113). */
-const SHEET_BIBLE_FIELDS = [
-  'name',
-  'type',
-  'description',
-  'architecturalStyle',
-  'keyFeatures',
-  'ambiance',
-] as const;
+import { LOCATION_SHEET_BIBLE_FIELDS } from '@/shots/input-hash';
 
 /** A new location's bible where the caller left a field out. */
 const NEW_LOCATION_BIBLE: Omit<LocationBible, 'name'> = {
@@ -85,7 +76,9 @@ const mergeBible = (base: LocationBible, patch: Partial<LocationBible>) =>
   mergeDefined(base, patch, LOCATION_BIBLE_FIELDS);
 
 const touchesSheet = (fields: readonly (keyof LocationBible)[]) =>
-  fields.some((key) => (SHEET_BIBLE_FIELDS as readonly string[]).includes(key));
+  fields.some((key) =>
+    (LOCATION_SHEET_BIBLE_FIELDS as readonly string[]).includes(key)
+  );
 
 /** The row's own columns; the bible only moves through a version (#1600). */
 type LocationUpdate = Partial<

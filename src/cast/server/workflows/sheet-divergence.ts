@@ -11,6 +11,8 @@
  */
 
 import type { ScopedDb } from '@/platform/server/db/scoped';
+import type { SheetLanding } from '@/cast/server/db/sheet-claims';
+import type { getLogger } from '@/platform/logger';
 import type {
   CharacterSheetInputHash,
   LibraryLocationReferenceInputHash,
@@ -44,18 +46,19 @@ export type SheetDivergenceScopedDb = {
   };
 };
 
-/** A character sheet run parked its result: tell the sequence's UI. */
-export async function reportParkedCharacterSheet(args: {
+/** A sequence sheet run parked its result: tell the sequence's UI. */
+export async function reportParkedSheet(args: {
   sequenceId: string;
-  characterId: string;
+  entityType: 'character' | 'location';
+  entityId: string;
   versionId: string;
-  snapshotInputHash: CharacterSheetInputHash;
+  snapshotInputHash: CharacterSheetInputHash | LocationSheetInputHash;
 }): Promise<void> {
   await getGenerationChannel(args.sequenceId).emit(
     'generation.stale:detected',
     {
-      entityType: 'character',
-      entityId: args.characterId,
+      entityType: args.entityType,
+      entityId: args.entityId,
       artifact: 'sheet',
       snapshotInputHash: args.snapshotInputHash,
       divergedVariantId: args.versionId,
@@ -63,23 +66,36 @@ export async function reportParkedCharacterSheet(args: {
   );
 }
 
-/** A sequence location sheet run parked its result: tell the sequence's UI. */
-export async function reportParkedLocationSheet(args: {
-  sequenceId: string;
-  locationId: string;
-  versionId: string;
-  snapshotInputHash: LocationSheetInputHash;
-}): Promise<void> {
-  await getGenerationChannel(args.sequenceId).emit(
-    'generation.stale:detected',
-    {
-      entityType: 'location',
-      entityId: args.locationId,
-      artifact: 'sheet',
-      snapshotInputHash: args.snapshotInputHash,
-      divergedVariantId: args.versionId,
-    }
-  );
+export type SheetRunOutcome =
+  | { kind: 'convergent'; versionId: string }
+  | { kind: 'divergent' };
+
+/**
+ * Land a sequence sheet run through the claim its trigger took (#1113):
+ * `land` promotes only while the claim still names `versionId`, else parks it;
+ * a park is logged and reported to the sequence's UI.
+ */
+export async function landSheetRun(
+  args: Parameters<typeof reportParkedSheet>[0] & {
+    land: () => Promise<SheetLanding>;
+    logger: ReturnType<typeof getLogger>;
+    logTag: string;
+    claimed: boolean;
+    storagePath: string;
+  }
+): Promise<SheetRunOutcome> {
+  const { land, logger, logTag, claimed, storagePath, ...report } = args;
+  if ((await land()) === 'promoted') {
+    return { kind: 'convergent', versionId: report.versionId };
+  }
+  logger.warn(`${logTag} claim moved; sheet parked`, {
+    entityId: report.entityId,
+    versionId: report.versionId,
+    claimed,
+    storagePath,
+  });
+  await reportParkedSheet(report);
+  return { kind: 'divergent' };
 }
 
 export type SaveDivergentLibraryLocationSheetArgs = {
