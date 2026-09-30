@@ -83,18 +83,23 @@ export function readinessVideoStatus(
  * the selection: `completed` with a selected still, else `pending`.
  */
 export function readinessImageStatus(
-  readiness: Pick<ShotReadiness, 'primaryImageStatus'> & {
-    hasSelectedImage: boolean;
-  }
+  readiness: Pick<ShotReadiness, 'selectedImageUrl' | 'primaryImageStatus'>
 ): ImageStatus {
-  switch (readiness.primaryImageStatus) {
+  const status = readiness.primaryImageStatus;
+  switch (status) {
     case 'pending':
     case 'generating':
       return 'generating';
     case 'failed':
       return 'failed';
-    default:
-      return readiness.hasSelectedImage ? 'completed' : 'pending';
+    case 'completed':
+    case 'cancelled':
+    case null:
+      return readiness.selectedImageUrl !== null ? 'completed' : 'pending';
+    default: {
+      const unhandled: never = status;
+      throw new Error(`Unhandled image status: ${String(unhandled)}`);
+    }
   }
 }
 
@@ -245,7 +250,7 @@ export function toShotView(
   const { image, preview, imagePromptVersion, primaryImage, video } = sources;
   const { primaryVideo } = sources;
   const imageStatus = readinessImageStatus({
-    hasSelectedImage: image !== null,
+    selectedImageUrl: image?.url ?? null,
     primaryImageStatus: primaryImage?.status ?? null,
   });
   return {

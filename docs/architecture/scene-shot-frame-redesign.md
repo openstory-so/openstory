@@ -114,7 +114,9 @@ frame_variants
   url, storagePath
   status, workflowRunId, generatedAt, error
   isPrimary               // the newest primary non-preview row IS the frame's
-                          // image status/error (#1942); false for added models
+                          // image status/error (#1942); false for added
+                          // models, grid tiles and previews; flipped false on
+                          // a failed upscale or a failure a pick answered
   promptHash, inputHash   // staleness of THIS version
   discardedAt?            // soft-hide (undoable)
   timestamps

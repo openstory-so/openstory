@@ -508,6 +508,7 @@ export class UpscaleShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<Upsc
           shotId: input.shotId,
           status: 'completed',
           ...(thumbnailUrl ? { thumbnailUrl } : {}),
+          upscaleError: error,
         }
       );
     }

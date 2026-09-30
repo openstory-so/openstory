@@ -302,6 +302,7 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
 
       const childBody: ImageWorkflowInput = {
         userId: input.userId,
+        variantOnly: false,
         teamId: input.teamId,
         reservationId: input.reservationId,
         prompt: visualPrompt,

@@ -2,11 +2,11 @@
  * Image generation workflow (#989: writes to `frames` / `frame_variants`).
  *
  * The still image is the FRAME's surface now. Each run:
- *   1. set-generating-status — claim-or-append a `frame_variants` version, then
- *      (unless variantOnly) flip the primary frame to 'generating'. With
- *      `targetVariantId` (#1085) a pre-created pending claim is transitioned
- *      in place via `claimForGeneration` (no append). Without it, a new
- *      in-flight version is appended. Prep can exit null when the claim was
+ *   1. set-generating-status — claim-or-append a `frame_variants` version
+ *      (`isPrimary: !variantOnly`); that row IS the frame's in-flight state
+ *      (#1942). With `targetVariantId` (#1085) a pre-created pending claim
+ *      is transitioned in place via `claimForGeneration` (no append).
+ *      Without it, a new in-flight version is appended. Prep can exit null when the claim was
  *      cancelled mid-flight or the anchor frame vanished.
  *   2. generate-image / deduct-credits / upload-image — unchanged.
  *   3. persist-result — status-guarded complete (`completeIfLive`), emits
@@ -37,6 +37,7 @@ import { buildR2Key, STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import { buildReferenceImagePrompt } from '@/stills/reference-image-prompt';
 import { getGenerationChannel } from '@/platform/realtime';
 import { simpleHash } from '@/platform/hash';
+import { generateIdAt } from '@/platform/id';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { WorkflowValidationError } from '@/platform/server/workflow/errors';
 import type { ImageWorkflowInput } from '@/platform/server/workflow/types';
@@ -649,8 +650,8 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
         }
       }
     }
-    // A claim row the trigger opened carries no run id until the run's
-    // first step stamps it, so it is failed by its own id.
+    // A claim row the trigger opened carries no run id (or its parent's)
+    // until this run's first step stamps it, so it is failed by its own id.
     if (input.targetVariantId) {
       await scopedDb.frameVariants.markTerminal(
         input.targetVariantId,
@@ -667,8 +668,10 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
     if (marked === 0 && !input.targetVariantId && anchor) {
       // The run died before `set-generating-status` opened its row. Record
       // the failure as its own terminal row, or the shot reads as if nothing
-      // had happened (#1942).
+      // had happened (#1942). The id sorts at the click: a run clicked since
+      // stays newer, so this failure never masks it.
       await scopedDb.frameVariants.appendVersion({
+        id: generateIdAt(event.timestamp.getTime()),
         frameId: anchor.id,
         sequenceId: anchor.sequenceId,
         kind: 'model',

@@ -573,6 +573,10 @@ describe('paging and deleted children', () => {
 
 describe('status and result limits', () => {
   it('shares partially-ready counts across summaries and keeps selected assets after failed attempts', async () => {
+    // A frame with a selected still and nothing newer reads completed.
+    expect(await data('get_frame', { sequenceId, frameId })).toMatchObject({
+      frame: { imageStatus: 'completed', imageError: null },
+    });
     // The frame's current image attempt is its newest primary row (#1942).
     await db.insert(frameVariants).values({
       frameId,
@@ -612,6 +616,12 @@ describe('status and result limits', () => {
     });
     expect(await data('list_sequences', {})).toMatchObject({
       sequences: [{ status: 'partially_ready', counts: status?.counts }],
+    });
+    expect(await data('get_frame', { sequenceId, frameId })).toMatchObject({
+      frame: { imageStatus: 'failed', imageError: 'Image failed' },
+    });
+    expect(await data('list_frames', { sequenceId, shotId })).toMatchObject({
+      frames: [{ imageStatus: 'failed', imageError: 'Image failed' }],
     });
     expect(await data('get_shot', { sequenceId, shotId })).toMatchObject({
       anchorFrame: { status: 'failed', selectedImage: { usable: true } },

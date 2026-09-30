@@ -624,6 +624,8 @@ export function createFrameVariantsMethods(db: Database) {
             url: input.url,
             storagePath: input.storagePath,
             status: 'completed',
+            // The user's own still answers the primary slot (#1942).
+            isPrimary: true,
             generatedAt: new Date(),
             inputHash: input.inputHash,
             promptHash: input.promptText ? simpleHash(input.promptText) : null,
@@ -725,6 +727,7 @@ export function createFrameVariantsMethods(db: Database) {
             url: input.image.url,
             storagePath: input.image.storagePath,
             status: 'completed',
+            isPrimary: true,
             generatedAt: now,
             inputHash: input.image.inputHash,
             promptHash: simpleHash(input.prompt.text),
@@ -912,6 +915,8 @@ export function createFrameVariantsMethods(db: Database) {
         kind: 'preview',
         model: input.model,
         status: 'generating',
+        // A preview never speaks for the frame's status (#1942).
+        isPrimary: false,
         promptHash: input.promptHash,
         promptVersionId: null,
         workflowRunId: input.workflowRunId,
@@ -984,6 +989,7 @@ export function createFrameVariantsMethods(db: Database) {
           url: input.url,
           storagePath: input.storagePath,
           status: 'completed',
+          isPrimary: false,
           generatedAt: new Date(),
           promptHash: input.promptHash,
           promptVersionId: null,
@@ -1149,6 +1155,27 @@ export function createFrameVariantsMethods(db: Database) {
           and(
             eq(frameVariants.id, versionId),
             inArray(frameVariants.status, [...LIVE_PENDING_STATUSES])
+          )
+        )
+        .returning();
+      return row ?? null;
+    },
+
+    /** Fail a claim no run has picked up yet (still `pending`); null once a
+     * run holds it (`generating`) or it is terminal. A parent that stops
+     * waiting on a child uses this, not `markTerminal`: a child still
+     * rendering owns its row and fails it itself. */
+    failUnclaimed: async (
+      versionId: string,
+      error: string
+    ): Promise<FrameVariant | null> => {
+      const [row] = await db
+        .update(frameVariants)
+        .set({ status: 'failed', error, updatedAt: new Date() })
+        .where(
+          and(
+            eq(frameVariants.id, versionId),
+            eq(frameVariants.status, 'pending')
           )
         )
         .returning();

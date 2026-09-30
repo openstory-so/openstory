@@ -275,6 +275,7 @@ async function triggerPreviewImage({
         // `record-preview-variant` (#1119).
         frameId: shot.frameId,
         skipStorage: true,
+        variantOnly: false,
       } satisfies ImageWorkflowInput,
       {
         deduplicationId: previewImageDedupId(parentInstanceId, shot.id),

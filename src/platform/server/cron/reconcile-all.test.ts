@@ -38,7 +38,7 @@ type SchemaTable =
   | typeof characterVoiceVersions
   | typeof characters
   | typeof sequenceMusicVariants;
-type SetPayload = Record<string, Date | string | null>;
+type SetPayload = Record<string, Date | string | boolean | null>;
 type UpdateCall = {
   table: SchemaTable;
   payload: SetPayload;
@@ -48,7 +48,7 @@ type UpdateCall = {
 const updateCalls: UpdateCall[] = [];
 let limitArgs: number[] = [];
 
-let stuckRows: Array<{ id: string; runId: string | null }> = [];
+let stuckRows: Array<{ id: string; runId: string | null; kind?: string }> = [];
 /** When set, only this table's verified select returns stuckRows (others []). */
 let stuckSelectTable: SchemaTable | null = null;
 /**
@@ -517,4 +517,32 @@ describe('reconcileAllStuckJobs — music track rows (#1115)', () => {
     ).toBeDefined();
     expect(counts['sequence_music_variants.claims']).toBeGreaterThan(0);
   });
+});
+
+describe('reconcileAllStuckJobs — frame_variants.status pass (#1942)', () => {
+  test.each([
+    { kind: 'framing', leavesRace: true },
+    { kind: 'model', leavesRace: false },
+  ])(
+    'a dead $kind render fails with a reason; leaves the race=$leavesRace',
+    async ({ kind, leavesRace }) => {
+      stuckRows = [{ id: 'fv_1', runId: 'openstory-so_image_dead', kind }];
+      stuckSelectTable = frameVariants;
+      runStateResult = 'failed';
+      const { reconcileAllStuckJobs } = await import('./reconcile-all');
+
+      await reconcileAllStuckJobs();
+
+      const reaped = updateCalls.find(
+        (c) =>
+          c.table === frameVariants &&
+          !c.returning &&
+          c.payload.status === 'failed'
+      );
+      expect(reaped?.payload).toMatchObject({
+        error: 'Generation stopped without reporting',
+      });
+      expect(reaped?.payload.isPrimary).toBe(leavesRace ? false : undefined);
+    }
+  );
 });

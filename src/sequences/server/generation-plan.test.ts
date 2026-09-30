@@ -9,6 +9,10 @@ import type { ScopedDb } from '@/platform/server/db/scoped';
 import { describe, expect, it, vi } from 'vitest';
 
 const frame = { id: 'f1', shotId: 's1', pendingPromoteVersionId: null };
+/** The anchor's selected still; null for a frame that has none yet. */
+let selectedStill: { url: string } | null = { url: 'https://x/still.jpg' };
+/** Status of the anchor's newest primary `frame_variants` row (#1942). */
+let primaryImageStatus: string | null = null;
 
 vi.doMock('@/shots/server/shot-staleness', () => ({
   UNTRACKED_STALENESS: {},
@@ -16,7 +20,7 @@ vi.doMock('@/shots/server/shot-staleness', () => ({
     Promise.resolve({
       anchorsByShot: new Map([['s1', frame]]),
       sceneContext: new Map(),
-      selectedByFrame: new Map([['f1', { url: 'https://x/still.jpg' }]]),
+      selectedByFrame: new Map(selectedStill ? [['f1', selectedStill]] : []),
       refs: { characters: [], locations: [], elements: [], style: null },
     })
   ),
@@ -126,7 +130,14 @@ describe('computeGenerationPlan', () => {
         },
         sequenceLocations: { list: () => Promise.resolve([]) },
         frameVariants: {
-          getPrimaryByFrameIds: () => Promise.resolve(new Map()),
+          getPrimaryByFrameIds: () =>
+            Promise.resolve(
+              new Map(
+                primaryImageStatus
+                  ? [['f1', { status: primaryImageStatus }]]
+                  : []
+              )
+            ),
         },
         shotDialogue: {
           listShotIdsWithLiveClaim: () => Promise.resolve(new Set()),
@@ -169,6 +180,17 @@ describe('computeGenerationPlan', () => {
     const states = await planStates(true, false, true);
     expect(states['sheet:character:ravi']).toBe('missing');
     expect(Object.values(states)).not.toContain('running');
+  });
+
+  it('a still whose primary row is rendering is in flight, not owed (#1942)', async () => {
+    selectedStill = null;
+    primaryImageStatus = 'generating';
+    try {
+      expect((await planStates(true))['still:s1']).toBe('running');
+    } finally {
+      selectedStill = { url: 'https://x/still.jpg' };
+      primaryImageStatus = null;
+    }
   });
 
   it('a sequence with no shots has an empty plan', async () => {

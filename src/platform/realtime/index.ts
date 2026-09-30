@@ -187,6 +187,10 @@ export const realtimeSchema = {
       // content-flagged (#1272). Invalidates the per-model variant list so the
       // fallback still shows up, and toasts the swap.
       modelFallback: z.boolean().optional(),
+      // A failed upscale's reason (#1942). The shot keeps its still and reads
+      // `completed`, so this is the only signal the user gets; the client
+      // toasts it.
+      upscaleError: z.string().optional(),
     }),
 
     // Fast preview shots replaced by AI-analyzed shots

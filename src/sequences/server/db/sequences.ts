@@ -76,7 +76,8 @@ export type ShotProductionReadiness = ShotReadiness &
     selectedVideoUrl: string | null;
     /** Derived — see `readinessImageStatus`. */
     imageStatus: ImageStatus;
-    /** The primary still render's run, null when the frame has none. */
+    /** The primary still render's run, null when the frame has none or its
+     * newest primary row is a claim no run has stamped yet. */
     imageWorkflowRunId: string | null;
     primaryVideoId: string | null;
     videoWorkflowRunId: string | null;
@@ -461,7 +462,7 @@ function createSequencesReadMethods(db: Database, teamId: string) {
           useStartFrame: row.useStartFrame,
           renderSegmentId: row.renderSegmentId,
           imageStatus: readinessImageStatus({
-            hasSelectedImage: selectedImageUrl !== null,
+            selectedImageUrl,
             primaryImageStatus,
           }),
           imageWorkflowRunId: primaryImage?.workflowRunId ?? null,

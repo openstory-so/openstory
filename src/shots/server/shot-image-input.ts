@@ -295,6 +295,7 @@ export async function prepareShotImageWorkflowInput(args: {
 
   return {
     userId,
+    variantOnly: false,
     teamId: sequence.teamId,
     prompt,
     model,

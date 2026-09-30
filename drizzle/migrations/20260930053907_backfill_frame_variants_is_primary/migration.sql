@@ -14,7 +14,10 @@
 -- 2. The run the copy names speaks again when the copy says it is in flight
 --    or failed and that run's newest non-preview row agrees. Its error takes
 --    the frame's message, which is what the shot showed.
--- 3. A failed frame with no such row (the run died before opening one) gets a
+-- 3. A claim still `pending` at deploy speaks too. Only primary triggers
+--    open one (an added model appends its own row), and its run has not
+--    reached the step that flipped the copy, so step 2 cannot see it.
+-- 4. A failed frame with no such row (the run died before opening one) gets a
 --    failed primary row. THE ID IS THE FRAME'S OWN ULID (SQL cannot mint one;
 --    the #1419 rule), which also makes a re-run insert nothing. The model is
 --    the selected still's, else the default image model.
@@ -44,6 +47,11 @@ FROM (
   GROUP BY `f`.`id`
 ) AS `run`
 WHERE `frame_variants`.`id` = `run`.`id`;
+--> statement-breakpoint
+UPDATE `frame_variants`
+SET `is_primary` = 1
+WHERE `status` = 'pending'
+  AND `kind` != 'preview';
 --> statement-breakpoint
 INSERT INTO `frame_variants` (
   `id`,

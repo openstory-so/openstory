@@ -39,6 +39,7 @@ describe('ImageWorkflow onFailure skipStorage', () => {
     emit.mockClear();
     const payload: ImageWorkflowInput = {
       userId: 'u1',
+      variantOnly: false,
       teamId: 't1',
       sequenceId: 'seq_1',
       prompt: 'preview',

@@ -387,11 +387,15 @@ describe('readinessImageStatus (#1942)', () => {
     ['cancelled', false, 'pending'],
     [null, true, 'completed'],
     [null, false, 'pending'],
+    ['completed', false, 'pending'],
   ] as const)(
     'primary %s with a selection=%s reads %s',
-    (primaryImageStatus, hasSelectedImage, expected) => {
+    (primaryImageStatus, selected, expected) => {
       expect(
-        readinessImageStatus({ primaryImageStatus, hasSelectedImage })
+        readinessImageStatus({
+          primaryImageStatus,
+          selectedImageUrl: selected ? 'https://cdn/still.png' : null,
+        })
       ).toBe(expected);
     }
   );

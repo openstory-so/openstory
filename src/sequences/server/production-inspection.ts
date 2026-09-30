@@ -162,13 +162,15 @@ export const frameReadSchema = createSelectSchema(frames)
 
 /** Frames with their current image attempt, for {@link frameReadSchema}. */
 export async function withImageAttempts(scopedDb: ScopedDb, rows: Frame[]) {
-  const primaryByFrame = await scopedDb.frameVariants.getPrimaryByFrameIds(
-    rows.map((frame) => frame.id)
-  );
+  const frameIds = rows.map((frame) => frame.id);
+  const [primaryByFrame, selectedByFrame] = await Promise.all([
+    scopedDb.frameVariants.getPrimaryByFrameIds(frameIds),
+    scopedDb.frameVariants.getSelectedByFrameIds(frameIds),
+  ]);
   return rows.map((frame) => {
     const primary = primaryByFrame.get(frame.id);
     const imageStatus = readinessImageStatus({
-      hasSelectedImage: frame.selectedImageVersionId !== null,
+      selectedImageUrl: selectedByFrame.get(frame.id)?.url ?? null,
       primaryImageStatus: primary?.status ?? null,
     });
     return {

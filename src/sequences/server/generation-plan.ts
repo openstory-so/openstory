@@ -172,7 +172,7 @@ async function loadPlanInput(
       ? (reads.selectedPromptByFrame.get(frame.id) ?? null)
       : null;
     const imageStatus = readinessImageStatus({
-      hasSelectedImage: selectedImage !== null,
+      selectedImageUrl: selectedImage?.url ?? null,
       primaryImageStatus: frame
         ? (primaryImageByFrame.get(frame.id)?.status ?? null)
         : null,

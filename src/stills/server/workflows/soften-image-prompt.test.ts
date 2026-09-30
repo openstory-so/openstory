@@ -78,6 +78,7 @@ function makeInput(
 ): ImageWorkflowInput {
   return {
     userId: 'u1',
+    variantOnly: false,
     teamId: 't1',
     sequenceId: 'seq_1',
     shotId: 'shot-1',
@@ -262,6 +263,9 @@ describe('generateImageWithContentRetry', () => {
     });
 
     expect(appendVersion).toHaveBeenCalledTimes(1);
+    expect(appendVersion).toHaveBeenCalledWith(
+      expect.objectContaining({ isPrimary: true })
+    );
     expect(movePendingPromoteVersionIdIf).toHaveBeenCalledTimes(2);
     expect(out.versionId).toBe('var-grok');
   });
@@ -281,7 +285,10 @@ describe('generateImageWithContentRetry', () => {
       input: makeInput({ variantOnly: true }),
     });
 
-    expect(appendVersion).toHaveBeenCalled();
+    // An added model's fallback never speaks for the frame (#1942).
+    expect(appendVersion).toHaveBeenCalledWith(
+      expect.objectContaining({ isPrimary: false })
+    );
     expect(movePendingPromoteVersionIdIf).not.toHaveBeenCalled();
   });
 

@@ -363,6 +363,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
 
       const workflowInput: ImageWorkflowInput = {
         userId: user.id,
+        variantOnly: false,
         teamId,
         reservationId,
         ownsReservation: true,

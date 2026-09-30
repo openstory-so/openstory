@@ -102,7 +102,7 @@ export function createShotsMethods(db: Database) {
   // instead of reading it back (#991: no DB reads in workflows).
   //
   // Chunked to stay under D1's 100-bound-parameter ceiling: each anchor row binds
-  // ~10 params (id, shotId, sequenceId, orderIndex, role,
+  // a handful of params (id, shotId, sequenceId, orderIndex, role,
   // createdAt, updatedAt — the schema defaults are inlined as binds),
   // so a single INSERT of a whole sequence's shots overflowed the limit and threw
   // (#1019: getShotsFn calls this with every shot on each read, so sequences with

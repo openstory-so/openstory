@@ -1413,18 +1413,119 @@ describe('frameVariants primary still status (#1942)', () => {
     expect(byFrame.get(frameId)?.id).toBe(primary.id);
   });
 
-  it('a pick takes earlier failures out of the race', async () => {
+  // One case per `select` batch branch: each must carry `retireFailures`.
+  it.each([
+    { linkedPrompt: false, heldPromote: false },
+    { linkedPrompt: true, heldPromote: false },
+    { linkedPrompt: false, heldPromote: true },
+    { linkedPrompt: true, heldPromote: true },
+  ])(
+    'a pick takes earlier failures out of the race (%o)',
+    async ({ linkedPrompt, heldPromote }) => {
+      const m = createFrameVariantsMethods(db);
+      let promptVersionId: string | null = null;
+      if (linkedPrompt) {
+        const [prompt] = await db
+          .insert(framePromptVersions)
+          .values({
+            frameId,
+            text: 'Wide shot',
+            source: 'ai-generated',
+            inputHash: 'prompt-hash',
+            analysisModel: 'claude',
+          })
+          .returning();
+        promptVersionId = prompt?.id ?? null;
+      }
+      const good = await m.appendVersion(variantInput({ promptVersionId }));
+      const failed = await m.appendVersion(
+        variantInput({ status: 'failed', url: null, error: 'boom' })
+      );
+      if (heldPromote) {
+        await db
+          .update(frames)
+          .set({ pendingPromoteVersionId: 'in-flight-ver' })
+          .where(eq(frames.id, frameId));
+      }
+      expect((await m.getPrimary(frameId))?.id).toBe(failed.id);
+
+      await m.select(frameId, good.id, { actorId: null });
+
+      expect((await m.getPrimary(frameId))?.id).toBe(good.id);
+      expect((await m.getById(failed.id))?.status).toBe('failed');
+    }
+  );
+
+  it('an upload after a failure is the newest primary row, completed', async () => {
     const m = createFrameVariantsMethods(db);
-    const good = await m.appendVersion(variantInput());
-    const failed = await m.appendVersion(
+    await m.appendVersion(
       variantInput({ status: 'failed', url: null, error: 'boom' })
     );
-    expect((await m.getPrimary(frameId))?.id).toBe(failed.id);
+    const upload = await m.appendUploadedVersion({
+      frameId,
+      sequenceId,
+      model: 'user_upload',
+      url: '/r2/up.png',
+      storagePath: 'up.png',
+      inputHash: null,
+      promptVersionId: null,
+      promptText: null,
+      actorId: null,
+    });
+    const primary = (await m.getPrimaryByFrameIds([frameId])).get(frameId);
+    expect(primary?.id).toBe(upload.id);
+    expect(primary?.status).toBe('completed');
+  });
 
-    await m.select(frameId, good.id, { actorId: null });
+  it('a preview never speaks for the frame, opened or recorded', async () => {
+    const m = createFrameVariantsMethods(db);
+    const preview = {
+      frameId,
+      sequenceId,
+      model: 'flux_2_turbo',
+      promptHash: null,
+      workflowRunId: 'run-preview',
+    };
+    await m.openPreview(preview);
+    const opened = await db
+      .select()
+      .from(frameVariants)
+      .where(eq(frameVariants.frameId, frameId));
+    expect(opened.map((row) => row.isPrimary)).toEqual([false]);
+    const recorded = await m.recordPreview({
+      ...preview,
+      workflowRunId: 'run-preview-2',
+      url: '/r2/p.png',
+      storagePath: 'p.png',
+    });
+    expect(recorded.isPrimary).toBe(false);
+  });
 
-    expect((await m.getPrimary(frameId))?.id).toBe(good.id);
-    expect((await m.getById(failed.id))?.status).toBe('failed');
+  it('failUnclaimed fails only a claim no run holds', async () => {
+    const m = createFrameVariantsMethods(db);
+    const claim = await m.createPendingClaim({
+      frameId,
+      sequenceId,
+      model: 'nano_banana_2',
+      isPrimary: true,
+    });
+    const failed = await m.failUnclaimed(claim.id, 'never started');
+    expect(failed).toMatchObject({ status: 'failed', error: 'never started' });
+    // Already terminal: nothing to fail.
+    expect(await m.failUnclaimed(claim.id, 'again')).toBeNull();
+
+    const held = await m.createPendingClaim({
+      frameId,
+      sequenceId,
+      model: 'nano_banana_2',
+      isPrimary: true,
+    });
+    await m.claimForGeneration(held.id, {
+      workflowRunId: 'child-run',
+      model: 'nano_banana_2',
+    });
+    expect(await m.failUnclaimed(held.id, 'timed out')).toBeNull();
+    expect((await m.getById(held.id))?.status).toBe('generating');
   });
 
   it('markFailedByWorkflowRun counts rows, so only a rowless run returns 0', async () => {

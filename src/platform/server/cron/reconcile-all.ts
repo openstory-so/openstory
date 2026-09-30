@@ -155,7 +155,11 @@ export async function reconcileAllStuckJobs(): Promise<ReconcileCounts> {
 async function reconcileFrameVariantsPass(db: Database): Promise<number> {
   const staleCutoff = new Date(Date.now() - STALE_THRESHOLD_MS);
   const stuck = await db
-    .select({ id: frameVariants.id, runId: frameVariants.workflowRunId })
+    .select({
+      id: frameVariants.id,
+      runId: frameVariants.workflowRunId,
+      kind: frameVariants.kind,
+    })
     .from(frameVariants)
     .where(
       and(
@@ -170,7 +174,17 @@ async function reconcileFrameVariantsPass(db: Database): Promise<number> {
     if (next === null || next === 'unknown') continue;
     await db
       .update(frameVariants)
-      .set({ status: next })
+      .set(
+        next === 'failed'
+          ? {
+              status: next,
+              error: 'Generation stopped without reporting',
+              // A dead upscale / grid tile leaves the good still standing, as
+              // the upscale's own onFailure does (#1942).
+              ...(row.kind === 'framing' ? { isPrimary: false } : {}),
+            }
+          : { status: next }
+      )
       .where(eq(frameVariants.id, row.id));
     // Drop auto-promote claim if this stuck version held it (#1070).
     if (next === 'failed') {

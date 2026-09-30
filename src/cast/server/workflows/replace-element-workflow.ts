@@ -366,9 +366,9 @@ export class ReplaceElementWorkflow extends OpenStoryWorkflowEntrypoint<ReplaceE
 
     // Open every affected shot's primary image row BEFORE fanning out
     // per-shot edits (#1942): the row is the shot's in-flight state, so the
-    // shot reads `generating` through the vision phase instead of a stale
-    // "completed" thumbnail — the image-workflow's own set-generating-status
-    // step runs too late to cover that window. Each child claims its row
+    // shot reads `generating` from here until its child lands, instead of a
+    // stale "completed" thumbnail while children queue. The image-workflow's
+    // own set-generating-status step runs too late to cover that window. Each child claims its row
     // (`targetVariantId`). One insert per step, the step's only write, so a
     // retry never opens a second row. Stamped with this run's id so the
     // claim sweep fails it if this run dies before its child starts.
@@ -452,6 +452,7 @@ export class ReplaceElementWorkflow extends OpenStoryWorkflowEntrypoint<ReplaceE
 
         const childPayload: ImageWorkflowInput = {
           userId: input.userId,
+          variantOnly: false,
           teamId: input.teamId,
           sequenceId,
           shotId,
@@ -514,12 +515,13 @@ export class ReplaceElementWorkflow extends OpenStoryWorkflowEntrypoint<ReplaceE
           logger.error(
             `[ReplaceElementWorkflow:cf] Image edit failed shot=${shotId} reason=${reason}`
           );
-          // A child that never started leaves its claim open; a child that
-          // failed already failed it (the write is guarded on a live row).
+          // A child that never started leaves its claim `pending`; fail
+          // only that. A child that timed out while rendering holds the row
+          // (`generating`) and lands or fails it itself.
           if (claimId) {
             await step.do(`fail-image-claim-${index}`, () =>
               scopedDb.frameVariants
-                .markTerminal(claimId, 'failed', `Image edit failed: ${reason}`)
+                .failUnclaimed(claimId, `Image edit failed: ${reason}`)
                 .then(() => undefined)
             );
           }
@@ -744,6 +746,20 @@ export class ReplaceElementWorkflow extends OpenStoryWorkflowEntrypoint<ReplaceE
           }
         );
       }
+    }
+
+    // Claims no child picked up still carry this run's id (a child
+    // re-stamps its own), so this fails exactly the shots left waiting.
+    try {
+      await scopedDb.frameVariants.markFailedByWorkflowRun(
+        event.instanceId,
+        error
+      );
+    } catch (e) {
+      logger.error(
+        '[ReplaceElementWorkflow:cf] Failed to fail open image claims:',
+        { e }
+      );
     }
 
     await safeEmit(input.sequenceId, 'failed', () =>

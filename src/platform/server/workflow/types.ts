@@ -171,7 +171,7 @@ export interface ImageWorkflowInput
    * happens later via an explicit "Set". Skips divergence detection entirely
    * (there is no primary to protect).
    */
-  variantOnly?: boolean;
+  variantOnly: boolean;
   /**
    * Pre-created pending `frame_variants` claim row to complete in place
    * (#1085). When set, `set-generating-status` transitions THIS row to
