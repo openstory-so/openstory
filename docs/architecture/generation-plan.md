@@ -28,6 +28,11 @@ the continue slider. Casting is part of `script`.
 - Each unit kind has a stop (`PLAN_KIND_STAGE`, below); `stopAt` caps the
   kinds a run makes. Where a run starts is not a choice: it is wherever the
   plan has work.
+- A stop the continue slider does not offer is the next tick it does
+  (`sliderCommittedStop`). Reference-only has no Images tick, and the music
+  prompt's stop is Images, so that thumb is Motion & Music — the quote and
+  the click run through music, including missing clips. Stale units stay in
+  the work and regenerate.
 - **Script is a fresh, whole run** (`AnalyzeScriptWorkflow`). It persists no
   stage: `stageComplete` only emits the banner's `generation.phase:complete`.
   Analysis ends after scene split, matching, persisted bibles and initial

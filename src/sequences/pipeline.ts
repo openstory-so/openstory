@@ -261,9 +261,20 @@ export function sliderThumbIndex(
   const index = stages.indexOf(stopAt);
   if (index >= 0) return index;
   // A stop the slider does not offer (Images in reference-only) shows on the
-  // next stop up; nothing renders in Images there, so the two look the same.
+  // next stop up. The quote and the run must use that stop too — Images still
+  // owes the music prompt, and the next tick is Motion & Music.
   const next = stages.findIndex((s) => stageIndex(s) > stageIndex(stopAt));
   return next < 0 ? stages.length - 1 : next;
+}
+
+/** The stop the slider paints and stores for `stopAt`. */
+export function sliderCommittedStop(
+  stopAt: GenerationStage,
+  referenceOnly: boolean,
+  generateVoices = false
+): GenerationStage {
+  const stages = sliderStages(referenceOnly, generateVoices);
+  return stopAtFromSliderIndex(sliderThumbIndex(stopAt, stages), stages);
 }
 
 export function stopAtFromSliderIndex(

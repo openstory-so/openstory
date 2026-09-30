@@ -8,6 +8,7 @@ import { ScrollArea } from '@/ui/shadcn/scroll-area';
 import {
   DEFAULT_GENERATION_STOP_AT,
   includesStage,
+  sliderCommittedStop,
   stageIndex,
   type GenerationStage,
 } from '@/sequences/pipeline';
@@ -481,10 +482,17 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     stageIndex(continueStopAt) > stageIndex(maxStage)
       ? maxStage
       : continueStopAt;
-  const continueStopAtClamped =
+  const raisedStop =
     minStage && stageIndex(cappedStopAt) < stageIndex(minStage)
       ? minStage
       : cappedStopAt;
+  // Price and run the stop the slider actually shows. A hidden Images stop
+  // paints on Motion & Music; leaving it as Images quotes only the music prompt.
+  const continueStopAtClamped = sliderCommittedStop(
+    raisedStop,
+    !draftStartFrames,
+    voices
+  );
   const showButton = showMotionFooter;
   const continueWork = planWork(footerPlan, continueStopAtClamped);
   const continueLabel = planWorkLabel(continueWork);

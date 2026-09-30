@@ -6,6 +6,7 @@ import {
   sliderTickLabel,
   stopAfterSentence,
   runScopeLabel,
+  sliderCommittedStop,
   sliderThumbIndex,
   stopAtFromSliderIndex,
   DEFAULT_GENERATION_STOP_AT,
@@ -165,6 +166,8 @@ describe('banner and slider stops', () => {
     // A remembered Images stop lands on the next stop up, Motion & Music.
     expect(sliderThumbIndex('images', stages)).toBe(2);
     expect(stopAtFromSliderIndex(2, stages)).toBe('music');
+    expect(sliderCommittedStop('images', true)).toBe('music');
+    expect(sliderCommittedStop('references', true)).toBe('references');
     expect(sliderThumbIndex('references', stages)).toBe(1);
   });
   it('slider inserts Dialogue before motion when Voices is on without start frames', () => {
