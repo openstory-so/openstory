@@ -1748,7 +1748,11 @@ export function StudioComposer({
               Clear all
             </Button>
           )}
-          <ActionCost estimate={estimate} align="end" />
+          <ActionCost
+            estimate={estimate}
+            align="end"
+            amountWidth={activity === 'video' ? 'double' : 'single'}
+          />
           <VoiceInputButton label="prompt" {...promptVoice} />
           <Button
             type="submit"

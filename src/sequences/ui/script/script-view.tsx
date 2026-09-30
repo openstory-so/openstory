@@ -1643,7 +1643,12 @@ export const ScriptView: FC<{
                   className="group relative px-6 bg-linear-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground font-semibold tracking-wide shadow-lg shadow-primary/20 hover:shadow-primary/30 overflow-hidden"
                 >
                   <span className="relative z-10">
-                    <InButtonCost estimate={storyboardCostEstimate}>
+                    <InButtonCost
+                      estimate={storyboardCostEstimate}
+                      amountWidth={
+                        includesStage(stopAt, 'motion') ? 'double' : 'single'
+                      }
+                    >
                       {isSubmitting || isElementBusy ? (
                         <Loader2 className="size-4 animate-spin" />
                       ) : (

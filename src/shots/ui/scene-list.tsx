@@ -7,6 +7,7 @@ import { Checkbox } from '@/ui/shadcn/checkbox';
 import { ScrollArea } from '@/ui/shadcn/scroll-area';
 import {
   DEFAULT_GENERATION_STOP_AT,
+  includesStage,
   stageIndex,
   type GenerationStage,
 } from '@/sequences/pipeline';
@@ -667,6 +668,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
           <InButtonCost
             estimate={draftFinalCostEstimate}
             onPrimary={!showButton}
+            amountWidth="double"
           >
             Render {draftSegments.length}{' '}
             {draftSegments.length === 1 ? 'final' : 'finals'}
@@ -731,7 +733,14 @@ const SceneListComponent: React.FC<SceneListProps> = ({
             onClick={() => void handleContinue()}
             disabled={isGenerating || planLoading || continueWork.length === 0}
           >
-            <InButtonCost estimate={continueCostEstimate}>
+            <InButtonCost
+              estimate={continueCostEstimate}
+              amountWidth={
+                includesStage(continueStopAtClamped, 'motion')
+                  ? 'double'
+                  : 'single'
+              }
+            >
               {isGenerating ? 'Generating…' : continueLabel}
             </InButtonCost>
           </Button>
@@ -1010,7 +1019,10 @@ const SceneListComponent: React.FC<SceneListProps> = ({
                   onClick={() => void handleGenerateMotion()}
                   disabled={isButtonDisabled}
                 >
-                  <InButtonCost estimate={batchCostEstimate}>
+                  <InButtonCost
+                    estimate={batchCostEstimate}
+                    amountWidth="double"
+                  >
                     {isGenerating
                       ? 'Generating…'
                       : !motionPromptsReady

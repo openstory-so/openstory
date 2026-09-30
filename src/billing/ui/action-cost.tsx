@@ -60,6 +60,11 @@ type ActionCostProps = {
    * price still loading (`undefined`) keeps the skeleton.
    */
   inline?: boolean;
+  /**
+   * Width of the loading skeleton. Motion totals are usually two digits
+   * (`~$00.00`); earlier steps are usually one (`~$0.00`).
+   */
+  amountWidth?: 'single' | 'double';
 };
 
 /** Label + price, wrapping together inside a generate button. */
@@ -67,15 +72,23 @@ export function InButtonCost({
   children,
   estimate,
   onPrimary = true,
+  amountWidth = 'single',
 }: {
   children: ReactNode;
   estimate: Microdollars | null | undefined;
   onPrimary?: boolean;
+  /** Motion totals reserve two digits; earlier steps reserve one. */
+  amountWidth?: 'single' | 'double';
 }) {
   return (
     <span className="inline-flex max-w-full flex-wrap items-center justify-center gap-x-2 gap-y-0.5">
       {children}
-      <ActionCost estimate={estimate} onPrimary={onPrimary} inline />
+      <ActionCost
+        estimate={estimate}
+        onPrimary={onPrimary}
+        inline
+        amountWidth={amountWidth}
+      />
     </span>
   );
 }
@@ -91,6 +104,7 @@ export function ActionCost({
   prefix,
   onPrimary = false,
   inline = false,
+  amountWidth = 'single',
 }: ActionCostProps) {
   const { showCosts } = useShowCosts();
   const { data: session } = useAuthSession();
@@ -137,12 +151,17 @@ export function ActionCost({
         aria-label="Estimating cost"
       >
         {prefix}
-        <Skeleton
-          className={cn(
-            'h-3 w-12',
-            onPrimary ? 'bg-primary-foreground/25' : 'bg-foreground/15'
-          )}
-        />
+        <span className="relative inline-flex">
+          <span className="invisible tabular-nums" aria-hidden>
+            {amountWidth === 'double' ? '~$00.00' : '~$0.00'}
+          </span>
+          <Skeleton
+            className={cn(
+              'absolute inset-y-0.5 inset-x-0',
+              onPrimary ? 'bg-primary-foreground/25' : 'bg-foreground/15'
+            )}
+          />
+        </span>
       </span>
     );
   }

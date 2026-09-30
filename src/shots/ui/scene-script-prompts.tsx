@@ -2386,7 +2386,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                 }
                 onClick={() => renderAtQuality.mutate()}
               >
-                <InButtonCost estimate={finalCostEstimate}>
+                <InButtonCost estimate={finalCostEstimate} amountWidth="double">
                   {renderAtQuality.isPending ? 'Starting…' : 'Render final'}
                 </InButtonCost>
               </Button>
@@ -2426,6 +2426,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
               <InButtonCost
                 estimate={motionCostEstimate}
                 onPrimary={!selectedDraft}
+                amountWidth="double"
               >
                 {isGeneratingMotion || videoVariantIsGenerating
                   ? 'Generating…'

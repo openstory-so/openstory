@@ -15,6 +15,7 @@ import {
   useDraftGenerationEstimate,
   type DraftGenerationEstimateInput,
 } from '@/sequences/ui/use-draft-generation-estimate';
+import { includesStage } from '@/sequences/pipeline';
 import type { GenerationStage } from '@/sequences/pipeline';
 import { useVoiceDesignAvailable } from '@/cast/ui/use-voice-design-available';
 import { useEffect, useState, type FC } from 'react';
@@ -151,7 +152,14 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
               })
             }
           >
-            <InButtonCost estimate={estimate}>{confirmLabel}</InButtonCost>
+            <InButtonCost
+              estimate={estimate}
+              amountWidth={
+                includesStage(draftStopAt, 'motion') ? 'double' : 'single'
+              }
+            >
+              {confirmLabel}
+            </InButtonCost>
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
