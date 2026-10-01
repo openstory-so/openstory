@@ -164,9 +164,14 @@ describe('tools/list and whoami', () => {
       'openstory.list_generated_assets',
       'openstory.get_generated_asset',
       'openstory.list_studio_uploads',
+      'openstory.update_scene',
     ]);
     expect(tools[0]?.description).toMatch(/user and team/i);
-    for (const tool of tools.slice(1))
+    expect(tools.at(-1)?.annotations).toMatchObject({
+      readOnlyHint: false,
+      destructiveHint: false,
+    });
+    for (const tool of tools.slice(1, -1))
       expect(tool.annotations).toMatchObject({
         readOnlyHint: true,
         destructiveHint: false,
@@ -348,4 +353,28 @@ describe('production tool authorization', () => {
       expect(createDb).not.toHaveBeenCalled();
     }
   );
+});
+
+describe('write tool authorization', () => {
+  it('refuses update_scene for an OAuth token without sequences:write, before any db', async () => {
+    const createDb = vi.spyOn(dbModule, 'createScopedDb');
+    const { body } = await rpc(
+      'tools/call',
+      {
+        name: 'openstory.update_scene',
+        arguments: {
+          sequenceId: '01J00000000000000000000000',
+          sceneId: '01J00000000000000000000001',
+          expectedScriptVersionId: null,
+          title: 'x',
+        },
+      },
+      { ...auth, kind: 'oauth', scopes: ['sequences:read'] }
+    );
+    expect(body.result).toMatchObject({
+      isError: true,
+      structuredContent: { error: { code: 'AUTHENTICATION_ERROR' } },
+    });
+    expect(createDb).not.toHaveBeenCalled();
+  });
 });

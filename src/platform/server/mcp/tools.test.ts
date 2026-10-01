@@ -77,6 +77,7 @@ let sceneId: string;
 let shotId: string;
 let frameId: string;
 let segmentId: string;
+let actorId: string;
 let imageId: string;
 let videoId: string;
 let scopedDb: ReturnType<typeof createScopedDb>;
@@ -112,7 +113,11 @@ async function call(name: string, args: Record<string, unknown> = {}) {
     }),
     {
       context: {
-        readContext: () => ({ scopedDb, origin: 'https://openstory.test' }),
+        scoped: () => ({
+          scopedDb,
+          origin: 'https://openstory.test',
+          userId: actorId,
+        }),
       },
     }
   );
@@ -282,7 +287,11 @@ beforeEach(async () => {
     .update(shots)
     .set({ selectedMotionPromptVersionId: motionId })
     .where(eq(shots.id, shotId));
-  scopedDb = createScopedDb(teamId, generateId());
+  actorId = generateId();
+  await db
+    .insert(user)
+    .values({ id: actorId, name: 'Actor', email: `${actorId}@test.invalid` });
+  scopedDb = createScopedDb(teamId, actorId);
   queries.length = 0;
 });
 
@@ -1941,5 +1950,170 @@ describe('Studio, Gallery and library reads', () => {
     expect(
       (await call('list_studio_uploads', { cursor: first.nextCursor })).isError
     ).toBe(true);
+  });
+});
+
+describe('update_scene (#1459)', () => {
+  const sceneScript = z.object({
+    script: z.object({
+      id: z.string(),
+      content: z.object({
+        extract: z.string(),
+        dialogue: z.array(z.unknown()),
+      }),
+    }),
+  });
+  async function selectedScriptId() {
+    return sceneScript.parse(await data('get_scene', { sequenceId, sceneId }))
+      .script.id;
+  }
+
+  it('selects a new script version by the actor, keeps dialogue, and matches get_scene', async () => {
+    const dialogue = [{ character: 'ADA', line: 'Hello.', tone: 'warm' }];
+    await db
+      .update(sceneScriptVersions)
+      .set({ content: { extract: 'Selected script', dialogue } })
+      .where(eq(sceneScriptVersions.sceneId, sceneId));
+    await addShot();
+    const expected = await selectedScriptId();
+    const updated = await data('update_scene', {
+      sequenceId,
+      sceneId,
+      expectedScriptVersionId: expected,
+      scriptExtract: 'A rewritten scene.',
+      storyBeat: 'the turn',
+    });
+    const parsed = z
+      .object({
+        changed: z.literal(true),
+        storyBeat: z.string(),
+        staleness: z.object({
+          shots: z.array(z.object({ shotId: z.string() })),
+        }),
+      })
+      .merge(sceneScript)
+      .parse(updated);
+    expect(parsed.script.id).not.toBe(expected);
+    expect(parsed.script.content).toEqual({
+      extract: 'A rewritten scene.',
+      dialogue,
+    });
+    expect(parsed.storyBeat).toBe('the turn');
+    expect(parsed.staleness.shots).toHaveLength(2);
+    const { changed, staleness, ...scene } = z
+      .record(z.string(), z.unknown())
+      .parse(updated);
+    expect(changed).toBe(true);
+    expect(staleness).toBeDefined();
+    expect(scene).toEqual(await data('get_scene', { sequenceId, sceneId }));
+    const [row] = await db
+      .select()
+      .from(sceneScriptVersions)
+      .where(eq(sceneScriptVersions.id, parsed.script.id));
+    expect(row?.createdBy).toBe(actorId);
+  });
+
+  it('writes no version for unchanged input and clears a field with an empty string', async () => {
+    const expected = await selectedScriptId();
+    const unchanged = await data('update_scene', {
+      sequenceId,
+      sceneId,
+      expectedScriptVersionId: expected,
+      scriptExtract: 'Selected script',
+      title: 'Opening',
+    });
+    expect(unchanged).toMatchObject({ changed: false });
+    expect(await selectedScriptId()).toBe(expected);
+    const cleared = await data('update_scene', {
+      sequenceId,
+      sceneId,
+      expectedScriptVersionId: expected,
+      title: '',
+    });
+    expect(cleared).toMatchObject({ changed: true, title: null });
+  });
+
+  it('refuses a stale selected version and writes nothing', async () => {
+    const before = await db.select().from(sceneScriptVersions);
+    const result = await call('update_scene', {
+      sequenceId,
+      sceneId,
+      expectedScriptVersionId: generateId(),
+      scriptExtract: 'Stale edit.',
+    });
+    expect(result).toMatchObject({
+      isError: true,
+      structuredContent: { error: { code: 'CONFLICT' } },
+    });
+    expect(await db.select().from(sceneScriptVersions)).toEqual(before);
+  });
+
+  it('reports a scene without a script instead of inventing one', async () => {
+    const bare = await addScene(1);
+    const result = await call('update_scene', {
+      sequenceId,
+      sceneId: bare,
+      expectedScriptVersionId: null,
+      scriptExtract: 'New text.',
+    });
+    expect(result).toMatchObject({
+      isError: true,
+      structuredContent: { error: { code: 'VALIDATION_ERROR' } },
+    });
+    const titled = await data('update_scene', {
+      sequenceId,
+      sceneId: bare,
+      expectedScriptVersionId: null,
+      title: 'Named',
+    });
+    expect(titled).toMatchObject({ changed: true, title: 'Named' });
+  });
+
+  it('rejects shot IDs, removed scene fields, empty edits and foreign, deleted or wrong-sequence scenes', async () => {
+    const expectedScriptVersionId = await selectedScriptId();
+    const base = { sequenceId, sceneId, expectedScriptVersionId };
+    for (const args of [
+      { ...base, sceneId: shotId, title: 'x' },
+      { ...base, shotId, title: 'x' },
+      { ...base, durationSeconds: 4 },
+      { ...base, imageModel: 'nano_banana_2', title: 'x' },
+      { ...base, videoModel: 'wan_i2v', title: 'x' },
+      { ...base, continuity: { styleTag: 'noir' } },
+      base,
+    ])
+      expect(
+        (await call('update_scene', args)).isError,
+        JSON.stringify(args)
+      ).toBe(true);
+    const otherSequence = generateId();
+    await db.insert(sequences).values({
+      id: otherSequence,
+      teamId,
+      title: 'Other',
+      styleId: (await db.select().from(sequences))[0]?.styleId ?? '',
+    });
+    expect(
+      await call('update_scene', {
+        ...base,
+        sequenceId: otherSequence,
+        title: 'x',
+      })
+    ).toMatchObject({
+      isError: true,
+      structuredContent: { error: { code: 'NOT_FOUND' } },
+    });
+    await db
+      .update(scenes)
+      .set({ deletedAt: new Date() })
+      .where(eq(scenes.id, dbSceneId(sceneId)));
+    expect(await call('update_scene', { ...base, title: 'x' })).toMatchObject({
+      isError: true,
+      structuredContent: { error: { code: 'NOT_FOUND' } },
+    });
+    scopedDb = createScopedDb(generateId(), actorId);
+    expect(await call('update_scene', { ...base, title: 'x' })).toMatchObject({
+      isError: true,
+      structuredContent: { error: { code: 'NOT_FOUND' } },
+    });
   });
 });

@@ -1,6 +1,6 @@
-# MCP production read coverage
+# MCP capability map
 
-This branch implements **46 read tools plus `whoami`** at `/mcp`. It expands [#1458](https://github.com/openstory-so/openstory/issues/1458) from sequence/scene/shot inspection to the active sequence production graph, Studio, Gallery and asset libraries. Every production tool requires `sequences:read` for OAuth; existing API keys retain their unscoped semantics.
+`/mcp` serves **46 read tools, `whoami`, and the write tools below** (#1459 onwards). It expands [#1458](https://github.com/openstory-so/openstory/issues/1458) from sequence/scene/shot inspection to the active sequence production graph, Studio, Gallery and asset libraries. Every production tool requires `sequences:read` for OAuth; existing API keys retain their unscoped semantics.
 
 ## Registered tools
 
@@ -99,6 +99,16 @@ Inspect how a video was produced:
 4. Follow manifest frame/motion-prompt IDs through the relevant `get_version` calls.
 5. `get_render_segment_staleness` → comparison with current inputs and voice bindings.
 
+## Write tools
+
+A write tool is an adapter over the same service the editor calls. It checks its OAuth scope before building a db (API keys stay unscoped), and returns the same projection a read tool would.
+
+| Tool                   | Scope             | Service                                                                                                   | Behaviour                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ---------------------- | ----------------- | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `update_scene` (#1459) | `sequences:write` | `updateScene` in `src/shots/server/scene-edit.ts` (also behind `updateSceneScriptFn` and `updateSceneFn`) | Takes `sequenceId` + `sceneId` (no shot ID) and `expectedScriptVersionId` from `get_scene`'s `script.id`. Optional `scriptExtract`, `title`, `location`, `timeOfDay`, `storyBeat`, `continuity`; at least one is required, any other field is refused. Omitted = unchanged, `""` clears a narrative field, continuity keys merge and a sent array replaces. One new selected script version by the caller; dialogue is carried in SQL (`json_set`) and 15734 15734mentions are rescanned into continuity. Unchanged input writes nothing (`changed: false`). A scene that no longer selects `expectedScriptVersionId` is `CONFLICT` and nothing is written (the guard is inside the INSERT … SELECT batch). A scene with no script refuses `scriptExtract` (`VALIDATION_ERROR`); narrative edits still work. Returns the `get_scene` projection plus the first page (5) of the scene's shot staleness. Starts no generation. |
+
+Shot duration and starting-frame mode (`shots.fn.ts`), prompts (`prompt-variants.fn.ts`) and start-frame upload/selection are separate shot tools, not scene fields.
+
 ## Authorization and read-only behavior
 
 The MCP server is a request composition boundary. Its narrow `no-scoped-factory` exception permits `createScopedDb(auth.teamId, auth.user.id)` after checking the OAuth read scope. It has no raw-DB or SQL exception. Discovery and `whoami` do not create a scoped DB.
@@ -111,7 +121,7 @@ Staleness uses existing domain semantics. A missing anchor is reported as untrac
 
 ## Remaining MCP work
 
-This PR covers active production inspection, retained histories, Studio, Gallery, talent/location/style libraries and stored audio/VFX assets. It does not expose mutations, paid execution, archived/deleted entity recovery, live provider model catalogs, billing administration or cross-team support/admin views. Retained model-catalog generations are readable through generated-asset tools.
+This PR covers active production inspection, retained histories, Studio, Gallery, talent/location/style libraries and stored audio/VFX assets. It does not expose paid execution, archived/deleted entity recovery, live provider model catalogs, billing administration or cross-team support/admin views. Retained model-catalog generations are readable through generated-asset tools.
 
 The intended next boundaries are:
 

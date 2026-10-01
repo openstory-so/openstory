@@ -7,17 +7,22 @@ import { OpenStoryError } from '@/platform/errors';
 import { getLogger, toErrorPayload } from '@/platform/logger';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { McpCallerIdentity } from './auth';
+import type { OAuthApiScope } from '@/platform/server/auth/oauth-scopes';
 
-export type ReadToolContext = { scopedDb: ScopedDb; origin: string };
+export type ReadToolContext = {
+  scopedDb: ScopedDb;
+  origin: string;
+  userId: string;
+};
 
 /**
  * What `handle.ts` passes to `server.handle(request, { context })` for one
- * request. The db is built only when a production tool runs, after its scope
- * check; discovery and `whoami` need none.
+ * request. The db is built only when a production tool runs, after the
+ * check for that tool's OAuth scope; discovery and `whoami` need none.
  */
 export type OpenStoryMcpContext = {
   caller: McpCallerIdentity;
-  readContext: () => ReadToolContext;
+  scoped: (scope: OAuthApiScope) => ReadToolContext;
 };
 export type OpenStoryToolContext = MCPToolContext<OpenStoryMcpContext>;
 
@@ -56,15 +61,15 @@ function toolError(text: string, code?: string): CallToolResult {
  * advertised schema, and a mismatch is our bug, so it is logged, not returned
  * as a validation error.
  */
-async function runRead<I extends z.ZodObject, O extends z.ZodObject>(
-  spec: ReadToolSpec<I, O>,
+async function runTool<I extends z.ZodObject, O extends z.ZodObject>(
+  spec: ToolSpec<I, O>,
   input: unknown,
-  readContext: () => ReadToolContext
+  context: () => ReadToolContext
 ): Promise<CallToolResult> {
   try {
     const { data, summary } = await spec.run(
       spec.inputSchema.parse(input),
-      readContext()
+      context()
     );
     const parsed = spec.outputSchema.safeParse(data);
     if (!parsed.success) {
@@ -97,16 +102,28 @@ async function runRead<I extends z.ZodObject, O extends z.ZodObject>(
     if (error instanceof OpenStoryError && error.statusCode < 500) {
       return toolError(error.message, error.code);
     }
-    getLogger(['openstory', 'mcp']).error('MCP read tool failed', {
+    getLogger(['openstory', 'mcp']).error('MCP tool failed', {
       tool: spec.name,
       err: toErrorPayload(error),
     });
-    return toolError('Unable to read production data. Please retry.');
+    return toolError(
+      spec.scope === 'sequences:read'
+        ? 'Unable to read production data. Please retry.'
+        : 'Unable to complete the request. Please retry.'
+    );
   }
 }
 
-type ReadToolSpec<I extends z.ZodObject, O extends z.ZodObject> = {
+type ToolSpec<I extends z.ZodObject, O extends z.ZodObject> = {
   name: string;
+  /** The OAuth scope the tool needs (`osk_` keys are unscoped). */
+  scope: OAuthApiScope;
+  annotations: {
+    readOnlyHint: boolean;
+    destructiveHint: boolean;
+    idempotentHint: boolean;
+    openWorldHint: boolean;
+  };
   description: string;
   inputSchema: I;
   outputSchema: O;
@@ -116,27 +133,40 @@ type ReadToolSpec<I extends z.ZodObject, O extends z.ZodObject> = {
   ) => Promise<{ data: z.input<O>; summary: string }>;
 };
 
-/** One read-only `openstory.*` tool as a `toolDefinition().server()`. */
-export function readToolDefinition<
-  I extends z.ZodObject,
-  O extends z.ZodObject,
->(spec: ReadToolSpec<I, O>) {
+/** One `openstory.*` tool as a `toolDefinition().server()`. */
+export function openstoryTool<I extends z.ZodObject, O extends z.ZodObject>(
+  spec: ToolSpec<I, O>
+) {
   return toolDefinition({
     name: `openstory.${spec.name}` as const,
     description: spec.description,
     inputSchema: spec.inputSchema,
     outputSchema: spec.outputSchema,
-    metadata: { annotations: readOnlyAnnotations },
+    metadata: { annotations: spec.annotations },
   }).server<OpenStoryToolContext>(
     // createMCPServer sends a CallToolResult as is, which keeps the error
     // envelope and the JSON text fallback; the typed output is its
     // structuredContent.
     async (input, ctx) => {
-      const result = await runRead(spec, input, ctx.context.readContext);
+      const result = await runTool(spec, input, () =>
+        ctx.context.scoped(spec.scope)
+      );
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the result is a CallToolResult, passed through as is (see above)
       return result as never;
     }
   );
+}
+
+/** A read-only tool needing `sequences:read`. */
+export function readToolDefinition<
+  I extends z.ZodObject,
+  O extends z.ZodObject,
+>(spec: Omit<ToolSpec<I, O>, 'scope' | 'annotations'>) {
+  return openstoryTool({
+    ...spec,
+    scope: 'sequences:read',
+    annotations: readOnlyAnnotations,
+  });
 }
 
 /** A read whose model-visible summary is the first sentence of its description. */

@@ -179,6 +179,7 @@ describe('handleMcpPost Origin and auth gates', () => {
       'openstory.list_generated_assets',
       'openstory.get_generated_asset',
       'openstory.list_studio_uploads',
+      'openstory.update_scene',
     ]);
   });
 

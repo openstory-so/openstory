@@ -76,6 +76,13 @@ export class NotFoundError extends OpenStoryError {
   }
 }
 
+/** The target moved since the caller read it (stale read-then-edit). */
+export class ConflictError extends OpenStoryError {
+  constructor(message: string, details?: Record<string, unknown>) {
+    super(message, 'CONFLICT', 409, details);
+  }
+}
+
 export class InsufficientCreditsError extends OpenStoryError {
   constructor(
     message: string = 'Insufficient credits',

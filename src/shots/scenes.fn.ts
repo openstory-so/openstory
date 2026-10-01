@@ -1,13 +1,12 @@
 import { dbSceneId } from './scene-id';
-import { sceneNarrativeOf } from './scene-narrative';
+import { sceneNarrativeFieldsSchema } from './scene-narrative';
 import { NotFoundError } from '@/platform/errors';
-import { plainSceneTitle } from '@/platform/markdown-plain';
 import {
   composeSequenceScriptFromDb,
   loadSceneContextBySequence,
 } from '@/shots/server/scene-script';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
-import { rescanContinuityFromPrompt } from '@/shots/server/rescan-continuity-from-prompt';
+import { updateScene } from '@/shots/server/scene-edit';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
@@ -72,99 +71,25 @@ export const updateSceneScriptFn = createServerFn({ method: 'POST' })
   .validator(zodValidator(updateSceneScriptSchema))
   .handler(async ({ data, context }) => {
     const { sequence, scopedDb, user } = context;
-
     const sceneId = dbSceneId(data.sceneId);
-    const sceneRow = await scopedDb.scenes.getById(sceneId);
-    if (!sceneRow || sceneRow.sequenceId !== sequence.id) {
-      throw new NotFoundError('Scene not found in this sequence');
-    }
-
-    const selected = await scopedDb.sceneScriptVersions.getSelected(sceneId);
-    const currentScript = selected?.content;
-    if (!currentScript) {
-      throw new Error('Scene has no script to edit');
-    }
-    const scriptChanged = data.extract !== currentScript.extract;
-
-    if (scriptChanged) {
-      // Auto-link cast/element/location tags the user @-mentioned in the
-      // script into the scene's continuity (#1341) — the same additive rescan
-      // the shot-prompt paths run (#683). Continuity is what narrows the bible
-      // for prompt generation and picks reference images at render time, so
-      // without this an @-mentioned character never reaches the shot. It
-      // rides the same version as the text (#1600).
-      const rescan = sceneRow.continuity
-        ? await rescanContinuityFromPrompt({
-            scopedDb,
-            sequenceId: sequence.id,
-            existing: sceneRow.continuity,
-            promptText: data.extract,
-          })
-        : null;
-      await scopedDb.sceneScriptVersions.write({
+    await updateScene(
+      scopedDb,
+      { userId: user.id },
+      {
+        sequenceId: sequence.id,
         sceneId,
-        content: {
-          ...currentScript,
-          extract: data.extract,
-          // Preserve prior dialogue on a free-text edit (#1108, plan §8) —
-          // wiping to [] silently degraded audio-capable motion prompts; the
-          // motion user-edit path already carries dialogue forward the same
-          // way. A re-analysis re-extracts it properly.
-          dialogue: currentScript.dialogue,
-        },
-        narrative: {
-          ...sceneNarrativeOf(sceneRow),
-          ...(rescan?.changed ? { continuity: rescan.continuity } : {}),
-        },
-        source: 'edit',
-        createdBy: user.id,
-      });
-    }
-
-    const refreshedScript =
-      (await scopedDb.sceneScriptVersions.getSelected(sceneId))?.content ??
-      currentScript;
-
-    return { sceneId: data.sceneId, script: refreshedScript };
+        scriptExtract: data.extract,
+        narrative: {},
+      }
+    );
+    const selected = await scopedDb.sceneScriptVersions.getSelected(sceneId);
+    if (!selected) throw new Error('Scene has no script to edit');
+    return { sceneId: data.sceneId, script: selected.content };
   });
 
 // ============================================================================
 // Structure CRUD (#1108 Phase 1)
 // ============================================================================
-
-/** `''` / whitespace clears a nullable narrative field; otherwise trimmed. */
-const narrativeField = z
-  .string()
-  .max(2000)
-  .transform((v) => {
-    const trimmed = v.trim();
-    return trimmed.length > 0 ? trimmed : null;
-  });
-
-/** Titles are labels: drop markdown sigils from the script editor. */
-const sceneTitleField = z
-  .string()
-  .max(2000)
-  .transform((v) => {
-    const plain = plainSceneTitle(v);
-    return plain.length > 0 ? plain : null;
-  });
-
-const sceneNarrativeFieldsSchema = z.object({
-  title: sceneTitleField.optional(),
-  location: narrativeField.optional(),
-  timeOfDay: narrativeField.optional(),
-  storyBeat: narrativeField.optional(),
-  continuity: z
-    .object({
-      characterTags: z.array(z.string()).optional(),
-      environmentTag: z.string().optional(),
-      elementTags: z.array(z.string()).optional(),
-      lightingSetup: z.string().trim().max(2000).optional(),
-      colorPalette: z.string().trim().max(2000).optional(),
-    })
-    .optional(),
-});
 
 /**
  * Create a scene by hand (no storyboard run), appended at the end of the
@@ -247,44 +172,13 @@ export const updateSceneFn = createServerFn({ method: 'POST' })
   )
   .handler(async ({ context, data }) => {
     const { scopedDb, sequence, user } = context;
-    const sceneId = dbSceneId(data.sceneId);
-    const existing = await scopedDb.scenes.getById(sceneId);
-    if (!existing || existing.sequenceId !== sequence.id) {
-      throw new NotFoundError('Scene not found in this sequence');
-    }
-    const { continuity, ...fields } = data;
-    const mergedContinuity = continuity
-      ? {
-          characterTags:
-            continuity.characterTags ??
-            existing.continuity?.characterTags ??
-            [],
-          environmentTag:
-            continuity.environmentTag ??
-            existing.continuity?.environmentTag ??
-            '',
-          elementTags:
-            continuity.elementTags ?? existing.continuity?.elementTags ?? [],
-          colorPalette:
-            continuity.colorPalette ?? existing.continuity?.colorPalette ?? '',
-          lightingSetup:
-            continuity.lightingSetup ??
-            existing.continuity?.lightingSetup ??
-            '',
-          styleTag: existing.continuity?.styleTag ?? '',
-        }
-      : undefined;
-    return await scopedDb.scenes.updateNarrative(
-      sceneId,
-      {
-        title: fields.title,
-        location: fields.location,
-        timeOfDay: fields.timeOfDay,
-        storyBeat: fields.storyBeat,
-        ...(mergedContinuity ? { continuity: mergedContinuity } : {}),
-      },
-      { actorId: user.id }
+    const { sequenceId: _sequenceId, sceneId, ...narrative } = data;
+    const { scene } = await updateScene(
+      scopedDb,
+      { userId: user.id },
+      { sequenceId: sequence.id, sceneId: dbSceneId(sceneId), narrative }
     );
+    return scene;
   });
 
 /** Reorder the live scenes; a pure reorder changes no content hash. */

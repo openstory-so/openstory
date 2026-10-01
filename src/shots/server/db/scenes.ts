@@ -148,11 +148,23 @@ export function createScenesMethods(db: Database) {
    * a script version carrying the selected script and the patched narrative,
    * and point the scene at it, for the caller's `db.batch`. Empty when
    * nothing moved and the scene already has a version.
+   *
+   * `extract` replaces the script text inside SQL (`json_set`), so the
+   * selected row's dialogue is carried as it is at write time.
+   * `expectedScriptVersionId` (#1459) guards both statements on the scene
+   * still selecting that version: a stale edit writes nothing, which the
+   * caller detects by re-reading the selection.
    */
   const narrativeWrite = async (
     existing: SceneRow,
     patch: SceneNarrativeUpdate,
-    opts: { source: SceneScriptSource; createdBy: string | null }
+    opts: {
+      source: SceneScriptSource;
+      createdBy: string | null;
+      extract?: string;
+      expectedScriptVersionId?: string | null;
+      versionId?: string;
+    }
   ) => {
     const before = sceneNarrativeOf(existing);
     const after: SceneNarrative = {
@@ -167,6 +179,7 @@ export function createScenesMethods(db: Database) {
     };
     if (
       narrativeFieldsChanged(before, after).length === 0 &&
+      opts.extract === undefined &&
       existing.selectedScriptVersionId
     ) {
       return [];
@@ -174,7 +187,17 @@ export function createScenesMethods(db: Database) {
     // The script and every field the patch leaves alone are copied from the
     // selected row INSIDE the batch, not from `existing`: a script or
     // narrative edit landing between the read and this write must survive.
-    const versionId = generateId();
+    const versionId = opts.versionId ?? generateId();
+    const guard =
+      opts.expectedScriptVersionId === undefined
+        ? eq(scenes.id, existing.id)
+        : and(
+            eq(scenes.id, existing.id),
+            opts.expectedScriptVersionId === null
+              ? isNull(scenes.selectedScriptVersionId)
+              : eq(scenes.selectedScriptVersionId, opts.expectedScriptVersionId)
+          );
+    const script = sql`coalesce(${sceneScriptVersions.content}, ${JSON.stringify(EMPTY_SCRIPT)})`;
     const field = (key: keyof SceneNarrative, value: SQL) => {
       const patched: SceneNarrativeUpdate[keyof SceneNarrative] = patch[key];
       if (patched === undefined) return value.as(sceneScriptVersions[key].name);
@@ -191,10 +214,10 @@ export function createScenesMethods(db: Database) {
           .select({
             id: sql<string>`${versionId}`.as('id'),
             sceneId: scenes.id,
-            content:
-              sql`coalesce(${sceneScriptVersions.content}, ${JSON.stringify(EMPTY_SCRIPT)})`.as(
-                'content'
-              ),
+            content: (opts.extract === undefined
+              ? script
+              : sql`json_set(${script}, '$.extract', ${opts.extract})`
+            ).as('content'),
             title: field('title', sceneColumns.title),
             location: field('location', sceneColumns.location),
             timeOfDay: field('timeOfDay', sceneColumns.timeOfDay),
@@ -210,12 +233,12 @@ export function createScenesMethods(db: Database) {
           })
           .from(scenes)
           .leftJoin(sceneScriptVersions, joinSelectedScript)
-          .where(eq(scenes.id, existing.id))
+          .where(guard)
       ),
       db
         .update(scenes)
         .set({ selectedScriptVersionId: versionId, updatedAt: new Date() })
-        .where(eq(scenes.id, existing.id)),
+        .where(guard),
     ];
   };
 
@@ -444,23 +467,31 @@ export function createScenesMethods(db: Database) {
     },
 
     /**
-     * User edit of the narrative fields (#1108 Phase 1): a new script version
-     * carrying them (#1600) + a `scene.updated` event (with the previous
-     * values of the changed fields) in one batch. Prompts of the scene's
-     * shots re-stale purely by hash derivation (location/timeOfDay/storyBeat
-     * are in the prompt-hash scene surface; title is a display label).
+     * User edit of a scene (#1108 Phase 1, #1459): the script text and/or
+     * the narrative fields, as ONE new script version (#1600). Prompts of the
+     * scene's shots re-stale purely by hash derivation (script, location,
+     * timeOfDay, storyBeat are in the prompt-hash scene surface; title is a
+     * display label). A narrative change also records `scene.updated` with
+     * the previous values of the changed fields.
+     *
+     * With `expectedScriptVersionId` the write lands only if the scene still
+     * selects that version; otherwise nothing is written and the result is
+     * `conflict`. Nothing to change is `unchanged`, with no version.
      */
-    updateNarrative: async (
+    edit: async (
       sceneId: DbSceneId,
-      data: SceneNarrativeUpdate,
-      opts: { actorId: string | null }
-    ): Promise<SceneRow> => {
+      data: { extract?: string; narrative: SceneNarrativeUpdate },
+      opts: { actorId: string | null; expectedScriptVersionId?: string | null }
+    ): Promise<
+      | { status: 'updated' | 'unchanged'; scene: SceneRow }
+      | { status: 'conflict' }
+    > => {
       const [existing] = await selectScenes().where(eq(scenes.id, sceneId));
       if (!existing) {
         throw new Error(`Scene ${sceneId} not found`);
       }
       const prev: Record<string, string | null> = {};
-      for (const [key, value] of typedEntries(data)) {
+      for (const [key, value] of typedEntries(data.narrative)) {
         if (value === undefined) continue;
         // Continuity is a JSON object; store its prior form as JSON text so
         // the event stays a flat string map.
@@ -472,23 +503,42 @@ export function createScenesMethods(db: Database) {
               ? previous
               : JSON.stringify(previous);
       }
-      const statements = await narrativeWrite(existing, data, {
+      const versionId = generateId();
+      const statements = await narrativeWrite(existing, data.narrative, {
         source: 'edit',
         createdBy: opts.actorId,
+        extract: data.extract,
+        expectedScriptVersionId: opts.expectedScriptVersionId,
+        versionId,
       });
-      await db.batch([
-        buildEventInsert(db, {
-          sequenceId: existing.sequenceId,
-          actorId: opts.actorId,
-          kind: 'scene.updated',
-          targetType: 'scene',
-          targetId: sceneId,
-          summary: `Edited scene ${data.title ?? existing.title ?? ''}`.trim(),
-          data: { prevState: prev },
-        }),
-        ...statements,
-      ]);
-      return await reread(existing);
+      const [first, ...rest] = statements;
+      if (!first) {
+        return opts.expectedScriptVersionId !== undefined &&
+          existing.selectedScriptVersionId !== opts.expectedScriptVersionId
+          ? { status: 'conflict' }
+          : { status: 'unchanged', scene: existing };
+      }
+      await db.batch([first, ...rest]);
+      const scene = await reread(existing);
+      if (scene.selectedScriptVersionId !== versionId) {
+        return { status: 'conflict' };
+      }
+      // After the guarded batch, so a conflicted edit records no event.
+      if (Object.keys(prev).length > 0) {
+        await db.batch([
+          buildEventInsert(db, {
+            sequenceId: existing.sequenceId,
+            actorId: opts.actorId,
+            kind: 'scene.updated',
+            targetType: 'scene',
+            targetId: sceneId,
+            summary:
+              `Edited scene ${data.narrative.title ?? existing.title ?? ''}`.trim(),
+            data: { prevState: prev },
+          }),
+        ]);
+      }
+      return { status: 'updated', scene };
     },
 
     /**
