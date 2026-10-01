@@ -12,6 +12,8 @@ OpenStory has two agent surfaces:
 
 ## Connect
 
+Every tool name has the `openstory.` prefix (`openstory.get_scene`); this guide drops it for brevity. Only `whoami` has none.
+
 | What              | Value                                                                                                                                                                                                                                                     |
 | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Server URL        | `https://<your-openstory-host>/mcp` (Streamable HTTP, POST only, no sessions)                                                                                                                                                                             |
@@ -42,7 +44,7 @@ A missing scope is a tool error with code `INSUFFICIENT_SCOPE` and `details.scop
 - Start with `list_sequences`, then `get_sequence` (summary and counts) or `get_sequence_status` (failures, cheaper).
 - `list_scenes` and `list_shots` page with `limit` and the opaque `nextCursor`. Prompts and media are opt-in (`includePrompts`, `includeAssets`).
 - `get_production_bible` returns style, cast, locations, elements and every scene's narrative in one call. When it cannot include everything, a `*Truncated` field names the list tool (and cursor) that continues it.
-- Every result has structured content and the same JSON as text. A result over 256 KiB is refused with a message telling you to page; nothing is silently cut.
+- A successful result has structured content and the same JSON as text; a coded error carries `structuredContent.error` (`code`, `message`, `details`). A result over 256 KiB is refused with a message telling you to page; nothing is silently cut.
 
 ### Resources
 
@@ -56,20 +58,20 @@ For hosts that attach context rather than call tools:
 
 ### Inline views (MCP Apps)
 
-`get_sequence` links an MCP Apps view (`ui://openstory/sequence-card.html`): hosts that render MCP Apps show the poster, status, counts and music inline. Hosts without MCP Apps get the same structured result as before.
+`get_sequence` links an MCP Apps view (`ui://openstory/sequence-card.html`): hosts that render MCP Apps show the poster, status, counts and music inline. Hosts without MCP Apps get the plain structured result; the view changes nothing in it.
 
 ## The production workflow
 
 This is the loop an agent should follow. It is also the procedure to put in an agent skill.
 
 1. **Inspect.** `get_sequence_status` for what is ready and what failed. `get_production_bible` for the story and cast. `get_scene` for the scene you will touch — note `script.id`.
-2. **Edit.** `update_scene` with `sequenceId`, `sceneId`, `expectedScriptVersionId` (the `script.id` you read) and only the fields you change (`scriptExtract`, `title`, `location`, `timeOfDay`, `storyBeat`, `continuity`). A `CONFLICT` means someone else edited the scene: read it again and redo the edit. `changed: false` means nothing differed.
+2. **Edit.** `update_scene` with `sequenceId`, `sceneId`, `expectedScriptVersionId` (the `script.id` you read) and only the fields you change (`scriptExtract`, `title`, `location`, `timeOfDay`, `storyBeat`, `continuity`). A `CONFLICT` means the scene changed since you read it — possibly your own edit whose reply was lost (`details.selectedScriptVersionId` is the current version): read it again and redo the edit only if it is still needed. `changed: false` means nothing differed.
 3. **See the effect.** The edit returns the scene and its first shots' staleness. `list_shot_staleness` pages the rest. Editing starts no generation.
-4. **Plan.** `plan_generation` with `mode: "stale"` (update what the edit made stale; whole sequence, `sceneIds` or `shotIds`) or `mode: "missing"` (continue an unfinished sequence, `stopAt` a stage), or `retry_failed_work` after failures. A plan starts nothing. It returns per-stage shot ids, skipped shots, models, an estimate in USD and `blockers`.
+4. **Plan.** `plan_generation` with `mode: "stale"` and a `depth` (`prompts`, `images`, `dialogue`, `video` or `music`: how far to update what the edit made stale; whole sequence, `sceneIds` or `shotIds`) or `mode: "missing"` with `stopAt` (continue an unfinished sequence, whole sequence only), or `retry_failed_work` after failures. A plan starts nothing. It returns per-stage shot ids, skipped shots, models, an estimate in USD (`null` when a component has no price) and `blockers`.
 5. **Ask for approval.** Show the user the concrete work and the cost from the plan. Do not execute without a yes.
-6. **Execute.** `execute_generation` with `planId` and `confirm: true`. If the work or price moved since planning it is refused (`PLAN_CHANGED`, plan again); after 30 minutes `PLAN_EXPIRED`. Calling it again for the same plan returns the same operation and never charges twice — safe to retry after a timeout.
-7. **Poll.** `get_operation_status` with the `operationId`, every `pollAfterSeconds`. It reports this run only: per-shot failures, skips, and a `terminal` flag. `partially_failed` lists what failed; plan a retry for it.
-8. **Inspect and export.** Read the shots again. `plan_export` then `start_export` (with `confirm: true`) renders an MP4; a ready MP4 of the same cut is reused. Poll `get_export_status`.
+6. **Execute.** `execute_generation` with `planId` and `confirm: true`. If the work or price moved since planning it is refused (`CONFLICT` with `details.code: "PLAN_CHANGED"`: plan again); after 30 minutes `PLAN_EXPIRED`. A live run, a blocker or too few credits also refuse it, and the plan stays executable. Calling it again for the same plan returns the same operation and never charges twice — safe to retry after a timeout.
+7. **Poll.** `get_operation_status` with the `operationId`, every `pollAfterSeconds`. It reports this run only: per-shot failures, skips, and a `terminal` flag. `partially_failed` lists what failed; plan a retry for it. `dispatch_lost` (not terminal) means the launch was not confirmed: call `execute_generation` again with the same `planId` — it never charges twice.
+8. **Inspect and export.** Read the shots again. `plan_export` then `start_export` (with `confirm: true`) renders an MP4; a ready MP4 of the same cut is reused. Poll `get_export_status`. The MP4 renderer runs in production only: on previews, local dev and self-hosted Deploy-button installs an export does not render.
 
 ## Not available through MCP yet
 
@@ -80,13 +82,13 @@ This is the loop an agent should follow. It is also the procedure to put in an a
 
 ## Client compatibility
 
-| Client                                                     | Status                                                                                                                                  |
-| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| Official MCP SDK client 2.1.0 (`versionNegotiation: auto`) | Tested in CI over Streamable HTTP: discovery, reads and paging, scene ↔ shot navigation, resources, stale-edit conflict, missing scope. |
-| Clients that only speak the 2025 handshake                 | Refused with `-32022` (tested).                                                                                                         |
-| Claude Code                                                | Untested against a deployment.                                                                                                          |
-| Claude.ai custom connector                                 | Untested.                                                                                                                               |
-| Cursor                                                     | Untested.                                                                                                                               |
-| Codex, ChatGPT                                             | Untested.                                                                                                                               |
+| Client                                                     | Status                                                                                                                                                                                                            |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Official MCP SDK client 2.1.0 (`versionNegotiation: auto`) | Tested in CI against the server handler (auth stubbed; the HTTP auth layer has its own tests): discovery, reads, sequence-wide and scene-filtered shot paging, scene ↔ shot navigation, resources, missing scope. |
+| Clients that only speak the 2025 handshake                 | Refused with `-32022` (tested).                                                                                                                                                                                   |
+| Claude Code                                                | Untested against a deployment.                                                                                                                                                                                    |
+| Claude.ai custom connector                                 | Untested.                                                                                                                                                                                                         |
+| Cursor                                                     | Untested.                                                                                                                                                                                                         |
+| Codex, ChatGPT                                             | Untested.                                                                                                                                                                                                         |
 
 "Untested" means no one has connected that client to a deployment and run the workflow above. Results are recorded here as they are verified.

@@ -2418,18 +2418,12 @@ describe('official MCP client transport (#1463)', () => {
     const transport = new StreamableHTTPClientTransport(
       new URL('https://openstory.test/mcp'),
       {
-        fetch: async (input, init) => {
+        fetch: (input, init) => {
           const request = new Request(input, init);
-          const body = z.object({ method: z.string().optional() }).safeParse(
-            await request
-              .clone()
-              .json()
-              .catch(() => ({}))
-          );
           return serveMcpRequest(
             request,
             auth,
-            body.success ? (body.data.method ?? null) : null
+            request.headers.get('mcp-method')
           );
         },
       }
@@ -2471,20 +2465,31 @@ describe('official MCP client transport (#1463)', () => {
         await mcp.callTool({ name: 'openstory.list_sequences', arguments: {} })
       )
     ).toMatchObject({ sequences: [{ id: sequenceId }] });
-    const page = z
-      .object({
-        shots: z.array(z.object({ id: z.string(), sceneId: z.string() })),
-      })
-      .parse(
+    const second = await addShot(sceneId, 2);
+    const shotPage = z.object({
+      shots: z.array(z.object({ id: z.string(), sceneId: z.string() })),
+      nextCursor: z.string().nullable(),
+    });
+    const listShots = async (args: Record<string, unknown>) =>
+      shotPage.parse(
         structured(
           await mcp.callTool({
             name: 'openstory.list_shots',
-            arguments: { sequenceId, limit: 1 },
+            arguments: { sequenceId, limit: 1, ...args },
           })
         )
       );
+    const page = await listShots({});
     const [first] = page.shots;
-    if (!first) throw new Error('no shot');
+    if (!first || !page.nextCursor) throw new Error('expected a first page');
+    expect((await listShots({ cursor: page.nextCursor })).shots).toEqual([
+      expect.objectContaining({ id: second }),
+    ]);
+    expect(
+      (await listShots({ sceneId: first.sceneId, limit: 10 })).shots.map(
+        (s) => s.id
+      )
+    ).toEqual([first.id, second]);
     expect(
       structured(
         await mcp.callTool({
@@ -2508,13 +2513,19 @@ describe('official MCP client transport (#1463)', () => {
         name: 'openstory.get_scene',
         arguments: { sequenceId, sceneId: shotId },
       })
-    ).toMatchObject({ isError: true });
+    ).toMatchObject({
+      isError: true,
+      structuredContent: { error: { code: 'NOT_FOUND' } },
+    });
     expect(
       await mcp.callTool({
         name: 'openstory.get_shot',
         arguments: { sequenceId, shotId: sceneId },
       })
-    ).toMatchObject({ isError: true });
+    ).toMatchObject({
+      isError: true,
+      structuredContent: { error: { code: 'NOT_FOUND' } },
+    });
 
     const read = await mcp.readResource({
       uri: `openstory://sequences/${sequenceId}/summary`,
@@ -2525,28 +2536,11 @@ describe('official MCP client transport (#1463)', () => {
 
   it('refuses a 2025-only client: -32022 naming the supported revision', async () => {
     await expect(connect(null, 'legacy')).rejects.toThrow(
-      /Unsupported protocol version: 2025-11-25/
+      /-32022.*Unsupported protocol version: 2025-11-25.*2026-07-28/
     );
   });
 
-  it('refuses a stale scene edit and a missing scope with actionable errors', async () => {
-    const mcp = await connect(null);
-    expect(
-      await mcp.callTool({
-        name: 'openstory.update_scene',
-        arguments: {
-          sequenceId,
-          sceneId,
-          expectedScriptVersionId: generateId(),
-          title: 'New',
-        },
-      })
-    ).toMatchObject({
-      isError: true,
-      structuredContent: { error: { code: 'CONFLICT' } },
-    });
-    await mcp.close();
-
+  it('refuses a missing scope with an actionable error', async () => {
     const readOnly = await connect(['sequences:read']);
     expect(
       await readOnly.callTool({

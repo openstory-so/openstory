@@ -108,11 +108,8 @@ matching HTTP status — never an HTML page or redirect.
 Machine-readable spec: GET /api/v1/openapi.json returns the full OpenAPI 3.1
 document (generated from the same schema this API validates against).
 
-MCP: an MCP client can connect to /mcp (Streamable HTTP, protocol 2026-07-28;
-OAuth or an osk_ key as a Bearer header) to inspect a whole production, edit
-scenes, plan and approve generation, poll operations and export. The guide is
-/docs/developer-guide/agents ('agent-guide' link). Creating a sequence stays
-on this API.`;
+MCP: to inspect and edit a whole production from an MCP client, connect to
+/mcp; see the 'agent-guide' link.`;
 
 /** A representative `POST /api/v1/sequences` body (schema defaults applied). */
 function exampleCreateBody(): unknown {
