@@ -18,8 +18,20 @@ import {
   sequenceInput,
 } from '../tool-context';
 import { productionAccess } from '@/sequences/server/production-access';
+import {
+  productionBibleSchema,
+  readProductionBible,
+} from '@/sequences/server/production-bible';
 
 export const contextReadTools = [
+  productionRead(
+    'get_production_bible',
+    'Read the production bible in one call: style, characters, locations, elements and each scene’s selected narrative with a script excerpt. Lists are capped (50 per kind, 100 scenes, 400-char excerpts); a cap that bites names the list tool and cursor that continue it. Also the openstory://sequences/{sequenceId}/bible resource.',
+    sequenceInput,
+    productionBibleSchema,
+    (input, { scopedDb, origin }) =>
+      readProductionBible(scopedDb, input.sequenceId, origin)
+  ),
   productionRead(
     'list_shot_references',
     "Find the characters, locations or elements a shot uses, from the editor inspector's own resolution. IDs can be passed to the entity detail tools.",

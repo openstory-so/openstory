@@ -92,6 +92,9 @@ function mcpPost(
   if (typeof options.params?.name === 'string') {
     headers['mcp-name'] = options.params.name;
   }
+  if (typeof options.params?.uri === 'string') {
+    headers['mcp-name'] = options.params.uri;
+  }
   return new Request('https://openstory.test/mcp', {
     method: 'POST',
     headers,
@@ -104,7 +107,11 @@ async function rpc(
   params?: Record<string, unknown>,
   caller: Parameters<typeof serveMcpRequest>[1] = auth
 ) {
-  const res = await serveMcpRequest(mcpPost(method, { params }), caller);
+  const res = await serveMcpRequest(
+    mcpPost(method, { params }),
+    caller,
+    method
+  );
   return {
     status: res.status,
     body: rpcEnvelope.parse(await res.json()),
@@ -145,6 +152,7 @@ describe('tools/list and whoami', () => {
       'openstory.get_export_status',
       'openstory.list_sequence_events',
       'openstory.get_sequence_event',
+      'openstory.get_production_bible',
       'openstory.list_shot_references',
       'openstory.list_entity_usages',
       'openstory.get_shot_staleness',
@@ -220,13 +228,13 @@ describe('tools/list and whoami', () => {
     });
   });
 
-  it('server/discover returns name, version, and tools capability', async () => {
+  it('server/discover returns name, version, tools and resources capabilities', async () => {
     const { status, body } = await rpc('server/discover');
     expect(status).toBe(200);
     const result = z
       .object({
         supportedVersions: z.array(z.string()),
-        capabilities: z.object({ tools: z.unknown() }),
+        capabilities: z.object({ tools: z.unknown(), resources: z.unknown() }),
         _meta: z.object({
           'io.modelcontextprotocol/serverInfo': z.object({
             name: z.string(),
@@ -237,6 +245,7 @@ describe('tools/list and whoami', () => {
       .parse(body.result);
     expect(result.supportedVersions).toContain(PROTOCOL);
     expect(result.capabilities.tools).toBeDefined();
+    expect(result.capabilities.resources).toBeDefined();
     expect(result._meta['io.modelcontextprotocol/serverInfo']).toEqual({
       name: MCP_SERVER_NAME,
       version: MCP_SERVER_VERSION,
@@ -277,7 +286,8 @@ describe('tools/list and whoami', () => {
           capabilities: {},
           clientInfo: { name: 'legacy', version: '0' },
         }),
-        auth
+        auth,
+        'initialize'
       );
       expect(res.status).toBe(200);
       expect(res.headers.get('mcp-session-id')).toBeNull();
@@ -292,7 +302,8 @@ describe('tools/list and whoami', () => {
     it('calls a tool with no session, on any isolate', async () => {
       const res = await serveMcpRequest(
         legacyPost('tools/call', { name: 'whoami', arguments: {} }),
-        auth
+        auth,
+        'tools/call'
       );
       expect(res.status).toBe(200);
       const body = await readRpc(res);
@@ -467,6 +478,32 @@ describe('export tool authorization', () => {
           details: { scope: 'sequences:write' },
         },
       },
+    });
+    expect(createDb).not.toHaveBeenCalled();
+  });
+});
+
+describe('resources routing (#1462)', () => {
+  it('serves resources/templates/list from the resource server', async () => {
+    const { body } = await rpc('resources/templates/list', {});
+    expect(body.result).toMatchObject({
+      resourceTemplates: expect.arrayContaining([
+        expect.objectContaining({
+          uriTemplate: 'openstory://sequences/{sequenceId}/bible',
+        }),
+      ]),
+    });
+  });
+
+  it('refuses a read without sequences:read, before any db', async () => {
+    const createDb = vi.spyOn(dbModule, 'createScopedDb');
+    const { body } = await rpc(
+      'resources/read',
+      { uri: 'openstory://sequences/01J00000000000000000000000/summary' },
+      { ...auth, kind: 'oauth', scopes: [] }
+    );
+    expect(body.error).toMatchObject({
+      message: 'This token requires the sequences:read scope.',
     });
     expect(createDb).not.toHaveBeenCalled();
   });

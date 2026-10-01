@@ -160,6 +160,7 @@ describe('handleMcpPost Origin and auth gates', () => {
       'openstory.get_export_status',
       'openstory.list_sequence_events',
       'openstory.get_sequence_event',
+      'openstory.get_production_bible',
       'openstory.list_shot_references',
       'openstory.list_entity_usages',
       'openstory.get_shot_staleness',

@@ -11,12 +11,14 @@
  */
 
 import { toolDefinition } from '@tanstack/ai';
-import { createMCPServer } from '@tanstack/ai-mcp/server';
+import { createMCPServer, resourceDefinition } from '@tanstack/ai-mcp/server';
 import { z } from 'zod';
 import { InsufficientScopeError } from '@/platform/errors';
 import { getLogger, toErrorPayload } from '@/platform/logger';
 import { createScopedDb } from '@/platform/server/db/scoped';
 import type { McpAuthContext } from './auth';
+import { serveResourceRequest } from './resources';
+import { MCP_RESOURCE_TEMPLATES } from './tools/resource-reads';
 import type { OpenStoryMcpContext, OpenStoryToolContext } from './tool-context';
 import { listSequences } from './tools/list-sequences';
 import { getSequence } from './tools/get-sequence';
@@ -97,6 +99,17 @@ export const mcpServer = createMCPServer({
     planExportTool,
     startExportTool,
   ],
+  // Advertises the resources capability; `resources/*` requests never reach
+  // these reads (see resources.ts).
+  resources: MCP_RESOURCE_TEMPLATES.map(({ name, uriTemplate }) =>
+    resourceDefinition({
+      name,
+      uriTemplate,
+      mimeType: 'application/json',
+    }).read(() => {
+      throw new Error('resources/* is served by resources.ts');
+    })
+  ),
   // Many Worker isolates: a 2025 session opened here would not be found on
   // the next request, so a 2025 client gets a fresh server per request and
   // no session (2026 clients are stateless by spec).
@@ -131,12 +144,18 @@ function mcpToolContext(
   };
 }
 
-/** Serve one authenticated MCP request; media URLs use the host it reached. */
+/**
+ * Serve one authenticated MCP request; media URLs use the host it reached.
+ * `method` is the JSON-RPC body's: `resources/*` goes to resources.ts.
+ */
 export function serveMcpRequest(
   request: Request,
-  auth: McpAuthContext
+  auth: McpAuthContext,
+  method: string | null
 ): Promise<Response> {
-  return mcpServer.handle(request, {
-    context: mcpToolContext(auth, new URL(request.url).origin),
-  });
+  const context = mcpToolContext(auth, new URL(request.url).origin);
+  if (method?.startsWith('resources/')) {
+    return serveResourceRequest(request, context);
+  }
+  return mcpServer.handle(request, { context });
 }

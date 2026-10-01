@@ -118,6 +118,21 @@ See `docs/architecture/generation-plan.md` § Agent plans for the replay and dis
 
 Shot duration and starting-frame mode (`shots.fn.ts`), prompts (`prompt-variants.fn.ts`) and start-frame upload/selection are separate shot tools, not scene fields.
 
+## Resources (#1462)
+
+| URI template                                          | Same projection as     | Listed by `resources/list`                  |
+| ----------------------------------------------------- | ---------------------- | ------------------------------------------- |
+| `openstory://sequences/{sequenceId}/summary`          | `get_sequence`         | yes, the team's 50 latest sequences         |
+| `openstory://sequences/{sequenceId}/bible`            | `get_production_bible` | yes, the team's 50 latest sequences         |
+| `openstory://sequences/{sequenceId}/scenes/{sceneId}` | `get_scene`            | no (templates/list; ids from `list_scenes`) |
+
+- `resources/templates/list` returns the three templates; `resources/list` returns concrete URIs only, never a template.
+- `sceneId` is the database `scenes.id`. A shot id, another sequence's scene, a deleted scene, a foreign team, a non-ULID or any extra path or query is not found (`-32602` with `data.uri`). Reads need `sequences:read`, as the tools do.
+- The bible (`readProductionBible`, `src/sequences/server/production-bible.ts`) is composed from existing records, nothing persisted: sequence, style, characters, locations and elements (50 each, the list tools' projections), and every scene's selected narrative and continuity with a 400-character script excerpt (100 scenes). A cap that bites is never silent: `charactersTruncated` / `locationsTruncated` / `elementsTruncated` carry `{ continueWith, cursor }` for the list tool, `scenesTruncated` names `list_scenes`, and `scriptExcerptTruncated` marks a cut excerpt (`get_scene` has the whole scene). Scenes without a script version are not listed. Reads are batched: one query per list.
+- A read over 256 KiB (the tools' cap) is refused, never cut; the tools and their list tools page it.
+- Every resource also has a tool, so a host that does not hand resource content to the agent loses nothing.
+- **Why a second server.** `@tanstack/ai-mcp` 0.6.0's resource `read()` gets no URI variables, no request context and no `list`, so it cannot serve a scoped template. `serveMcpRequest` sends `resources/*` (by the JSON-RPC body's method) to an SDK `McpServer` in `src/platform/server/mcp/resources.ts` that holds only these templates; the ai-mcp server registers the same templates so `initialize` advertises the capability. Fold it back into `createMCPServer` once ai-mcp passes the URI, variables and context.
+
 ## Authorization and read-only behavior
 
 The MCP server is a request composition boundary. Its narrow `no-scoped-factory` exception permits `createScopedDb(auth.teamId, auth.user.id)` after checking the tool's OAuth scope. It has no raw-DB or SQL exception. Discovery and `whoami` do not create a scoped DB.
@@ -138,4 +153,4 @@ The intended next boundaries are:
 2. **Editing:** sequence creation/settings, scene/shot structure, cast/location/element editing, prompts, media uploads and version selection through shared domain operations.
 3. **Execution:** generation plans/approval, replay-safe execution, operation polling, cancellation, retries and export rendering.
 
-[#1462](https://github.com/openstory-so/openstory/issues/1462) can assemble bible/resources from shared read projections without waiting for mutations. [#1463](https://github.com/openstory-so/openstory/issues/1463) covers incremental client compatibility and workflow documentation. Local tests exercise the official server handler with real migrated SQLite; a deployed client compatibility matrix is separate release evidence and is not claimed by those tests.
+[#1462](https://github.com/openstory-so/openstory/issues/1462) adds the summary, bible and scene resources (above). [#1463](https://github.com/openstory-so/openstory/issues/1463) covers incremental client compatibility and workflow documentation. Local tests exercise the official server handler with real migrated SQLite; a deployed client compatibility matrix is separate release evidence and is not claimed by those tests.

@@ -26,6 +26,9 @@ export type OpenStoryMcpContext = {
 };
 export type OpenStoryToolContext = MCPToolContext<OpenStoryMcpContext>;
 
+/** One tool result or resource read, structured data and text together. */
+export const MCP_RESPONSE_BYTES = 256 * 1024;
+
 export const sequenceInput = z.strictObject({
   sequenceId: ulidSchema,
 });
@@ -97,7 +100,10 @@ async function runTool<I extends z.ZodObject, O extends z.ZodObject>(
       ],
       structuredContent: parsed.data,
     };
-    if (new TextEncoder().encode(JSON.stringify(result)).length > 256 * 1024) {
+    if (
+      new TextEncoder().encode(JSON.stringify(result)).length >
+      MCP_RESPONSE_BYTES
+    ) {
       return toolError(
         'Response exceeds 256 KiB. Retry the collection with a smaller limit, disable optional prompts/assets, or use the entity/version document read with a smaller length.'
       );

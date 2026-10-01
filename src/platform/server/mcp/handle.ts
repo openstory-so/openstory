@@ -174,7 +174,7 @@ export async function handleMcpPost(request: Request): Promise<Response> {
   });
 
   try {
-    const response = await serveMcpRequest(request, auth);
+    const response = await serveMcpRequest(request, auth, fields.method);
     const durationMs = Math.round(performance.now() - start);
     const outcome = response.ok ? 'ok' : `http_${response.status}`;
     reqLogger.info('MCP {method} {outcome} {durationMs}ms', {
