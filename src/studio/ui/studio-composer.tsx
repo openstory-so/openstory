@@ -1377,77 +1377,74 @@ export function StudioComposer({
         </div>
       )}
 
-      {isAuthenticated &&
-        checks.length > 0 && (
-          // oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- Enter in the basis field confirms rights, not Generate (the outer form)
-          <div
-            className="flex shrink-0 flex-col gap-2"
-            onKeyDown={(event) => {
-              if (event.key !== 'Enter') return;
-              if (!(event.target instanceof HTMLInputElement)) return;
-              event.preventDefault();
-              if (rightsTicked && !attest.isPending) confirmRights();
-            }}
-          >
-            {checks
-              .filter((c) => c.query.isError)
-              .map((c) => (
-                <p key={c.url} className="text-xs text-destructive">
-                  Couldn't check {badgeFor(c.url)}: {c.query.error?.message}{' '}
-                  {isInsufficientCreditsError(c.query.error) ? (
-                    <Button
-                      type="button"
-                      variant="link"
-                      size="sm"
-                      className="h-auto p-0 text-xs"
-                      onClick={() =>
-                        openAddCreditsDialog('studio-rights-check')
-                      }
-                    >
-                      Add credits
-                    </Button>
-                  ) : (
-                    <Button
-                      type="button"
-                      variant="link"
-                      size="sm"
-                      className="h-auto p-0 text-xs"
-                      onClick={() => void c.query.refetch()}
-                    >
-                      Retry
-                    </Button>
-                  )}
-                </p>
-              ))}
-            {portraitUrls.length > 0 && (
-              <PortraitAttestationFields
-                id="studio-portrait-attestation"
-                attested={portraitTicked}
-                onAttestedChange={(checked) =>
-                  setPortraitTickedFor(checked ? portraitKey : '')
-                }
-                authorizationBasis={authorizationBasis}
-                onAuthorizationBasisChange={setAuthorizationBasis}
+      {isAuthenticated && checks.length > 0 && (
+        // oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- Enter in the basis field confirms rights, not Generate (the outer form)
+        <div
+          className="flex shrink-0 flex-col gap-2"
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter') return;
+            if (!(event.target instanceof HTMLInputElement)) return;
+            event.preventDefault();
+            if (rightsTicked && !attest.isPending) confirmRights();
+          }}
+        >
+          {checks
+            .filter((c) => c.query.isError)
+            .map((c) => (
+              <p key={c.url} className="text-xs text-destructive">
+                Couldn't check {badgeFor(c.url)}: {c.query.error?.message}{' '}
+                {isInsufficientCreditsError(c.query.error) ? (
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-xs"
+                    onClick={() => openAddCreditsDialog('studio-rights-check')}
+                  >
+                    Add credits
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-xs"
+                    onClick={() => void c.query.refetch()}
+                  >
+                    Retry
+                  </Button>
+                )}
+              </p>
+            ))}
+          {portraitUrls.length > 0 && (
+            <PortraitAttestationFields
+              id="studio-portrait-attestation"
+              attested={portraitTicked}
+              onAttestedChange={(checked) =>
+                setPortraitTickedFor(checked ? portraitKey : '')
+              }
+              authorizationBasis={authorizationBasis}
+              onAuthorizationBasisChange={setAuthorizationBasis}
+            >
+              <p className="text-xs font-medium">
+                Real person in {badges(portraitUrls)}
+              </p>
+            </PortraitAttestationFields>
+          )}
+          {owed.length > 0 && (
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                size="sm"
+                disabled={!rightsTicked || attest.isPending}
+                onClick={confirmRights}
               >
-                <p className="text-xs font-medium">
-                  Real person in {badges(portraitUrls)}
-                </p>
-              </PortraitAttestationFields>
-            )}
-            {owed.length > 0 && (
-              <div className="flex justify-end">
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={!rightsTicked || attest.isPending}
-                  onClick={confirmRights}
-                >
-                  {attest.isPending ? 'Saving…' : 'Confirm rights'}
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
+                {attest.isPending ? 'Saving…' : 'Confirm rights'}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="flex shrink-0 flex-wrap items-center gap-2">
         {isVideo && (

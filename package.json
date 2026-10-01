@@ -205,7 +205,7 @@
     "lefthook": "^2.1.12",
     "msw": "^2.15.0",
     "msw-storybook-addon": "^3.0.0",
-    "oxfmt": "0.67.0",
+    "oxfmt": "0.70.0",
     "oxlint": "^1.82.0",
     "oxlint-tsgolint": "7.0.2001",
     "playwright": "^1.63.0",
