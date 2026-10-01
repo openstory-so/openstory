@@ -53,6 +53,13 @@ updates:
         patterns:
           - '@logtape/*'
         update-types: ['minor', 'patch']
+      # `better-auth` (prod) needs `@better-auth/core` (dev) at the same
+      # release (#1956). Keep above `production` / `development`.
+      better-auth:
+        patterns:
+          - 'better-auth'
+          - '@better-auth/*'
+        update-types: ['minor', 'patch']
       production:
         dependency-type: production
         update-types: ['minor', 'patch']
