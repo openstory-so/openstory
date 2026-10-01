@@ -79,9 +79,10 @@ export const updateSceneTool = openstoryTool({
       ),
   }),
   run: async (input, { scopedDb, origin, userId }) => {
-    const access = productionAccess(scopedDb);
-    const sequence = await access.sequence(input.sequenceId);
-    await access.scene(sequence.id, input.sceneId);
+    // Team ownership; the service checks the scene belongs to it.
+    const sequence = await productionAccess(scopedDb).sequence(
+      input.sequenceId
+    );
     const { changed } = await updateScene(
       scopedDb,
       { userId },

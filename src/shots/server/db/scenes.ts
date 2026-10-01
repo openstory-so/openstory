@@ -238,7 +238,8 @@ export function createScenesMethods(db: Database) {
       db
         .update(scenes)
         .set({ selectedScriptVersionId: versionId, updatedAt: new Date() })
-        .where(guard),
+        .where(guard)
+        .returning({ id: scenes.id }),
     ];
   };
 
@@ -490,12 +491,16 @@ export function createScenesMethods(db: Database) {
       if (!existing) {
         throw new Error(`Scene ${sceneId} not found`);
       }
-      const prev: Record<string, string | null> = {};
+      const before = sceneNarrativeOf(existing);
+      const after = { ...before };
       for (const [key, value] of typedEntries(data.narrative)) {
-        if (value === undefined) continue;
+        if (value !== undefined) Object.assign(after, { [key]: value });
+      }
+      const prev: Record<string, string | null> = {};
+      for (const key of narrativeFieldsChanged(before, after)) {
         // Continuity is a JSON object; store its prior form as JSON text so
         // the event stays a flat string map.
-        const previous = existing[key];
+        const previous = before[key];
         prev[key] =
           previous == null
             ? null
@@ -511,34 +516,49 @@ export function createScenesMethods(db: Database) {
         expectedScriptVersionId: opts.expectedScriptVersionId,
         versionId,
       });
-      const [first, ...rest] = statements;
-      if (!first) {
+      const [insertVersion, select] = statements;
+      if (!insertVersion || !select) {
         return opts.expectedScriptVersionId !== undefined &&
           existing.selectedScriptVersionId !== opts.expectedScriptVersionId
           ? { status: 'conflict' }
           : { status: 'unchanged', scene: existing };
       }
-      await db.batch([first, ...rest]);
-      const scene = await reread(existing);
-      if (scene.selectedScriptVersionId !== versionId) {
+      // The event rides the same batch and lands only if the guarded
+      // selection did, so a conflicted edit records nothing.
+      const event = db.insert(sequenceEvents).select(
+        db
+          .select({
+            id: sql<string>`${generateId()}`.as('id'),
+            sequenceId: scenes.sequenceId,
+            actorId: sql`${opts.actorId}`.as('actor_id'),
+            kind: sql`'scene.updated'`.as('kind'),
+            targetType: sql`'scene'`.as('target_type'),
+            targetId: scenes.id,
+            summary:
+              sql`${`Edited scene ${data.narrative.title ?? existing.title ?? ''}`.trim()}`.as(
+                'summary'
+              ),
+            data: sql`${JSON.stringify({ prevState: prev })}`.as('data'),
+            createdAt: sql`${Math.floor(Date.now() / 1000)}`.as('created_at'),
+          })
+          .from(scenes)
+          .where(
+            and(
+              eq(scenes.id, sceneId),
+              eq(scenes.selectedScriptVersionId, versionId)
+            )
+          )
+      );
+      const [, selected] =
+        Object.keys(prev).length > 0
+          ? await db.batch([insertVersion, select, event])
+          : await db.batch([insertVersion, select]);
+      // Decided by the guarded UPDATE itself, not a re-read: a later edit
+      // landing after ours must not turn our write into a reported conflict.
+      if (!Array.isArray(selected) || selected.length === 0) {
         return { status: 'conflict' };
       }
-      // After the guarded batch, so a conflicted edit records no event.
-      if (Object.keys(prev).length > 0) {
-        await db.batch([
-          buildEventInsert(db, {
-            sequenceId: existing.sequenceId,
-            actorId: opts.actorId,
-            kind: 'scene.updated',
-            targetType: 'scene',
-            targetId: sceneId,
-            summary:
-              `Edited scene ${data.narrative.title ?? existing.title ?? ''}`.trim(),
-            data: { prevState: prev },
-          }),
-        ]);
-      }
-      return { status: 'updated', scene };
+      return { status: 'updated', scene: await reread(existing) };
     },
 
     /**

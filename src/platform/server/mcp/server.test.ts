@@ -348,7 +348,7 @@ describe('production tool authorization', () => {
       );
       expect(body.result).toMatchObject({
         isError: true,
-        structuredContent: { error: { code: 'AUTHENTICATION_ERROR' } },
+        structuredContent: { error: { code: 'INSUFFICIENT_SCOPE' } },
       });
       expect(createDb).not.toHaveBeenCalled();
     }
@@ -373,7 +373,7 @@ describe('write tool authorization', () => {
     );
     expect(body.result).toMatchObject({
       isError: true,
-      structuredContent: { error: { code: 'AUTHENTICATION_ERROR' } },
+      structuredContent: { error: { code: 'INSUFFICIENT_SCOPE' } },
     });
     expect(createDb).not.toHaveBeenCalled();
   });

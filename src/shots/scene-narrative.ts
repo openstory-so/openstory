@@ -62,9 +62,9 @@ export const sceneNarrativeFieldsSchema = z.object({
   storyBeat: narrativeField.optional(),
   continuity: z
     .object({
-      characterTags: z.array(z.string()).optional(),
-      environmentTag: z.string().optional(),
-      elementTags: z.array(z.string()).optional(),
+      characterTags: z.array(z.string().trim().max(200)).max(100).optional(),
+      environmentTag: z.string().trim().max(200).optional(),
+      elementTags: z.array(z.string().trim().max(200)).max(100).optional(),
       lightingSetup: z.string().trim().max(2000).optional(),
       colorPalette: z.string().trim().max(2000).optional(),
     })

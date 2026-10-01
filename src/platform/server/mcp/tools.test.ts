@@ -36,7 +36,7 @@ import {
 import { createClient, type Client } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
-import { eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { mcpServer } from './server';
 // oxlint-disable-next-line boundaries/no-raw-db -- substitute the isolated in-memory DB at the factory boundary
@@ -2115,5 +2115,58 @@ describe('update_scene (#1459)', () => {
       isError: true,
       structuredContent: { error: { code: 'NOT_FOUND' } },
     });
+  });
+});
+
+describe('update_scene continuity (#1459)', () => {
+  it('rescans @-mentions into continuity, merges sent keys and records only moved fields', async () => {
+    await db.insert(characters).values({
+      id: generateId(),
+      sequenceId,
+      characterId: 'char_001',
+      legacyName: 'Ada',
+      legacyConsistencyTag: 'ada',
+    });
+    const read = z.object({ script: z.object({ id: z.string() }) });
+    const first = await data('update_scene', {
+      sequenceId,
+      sceneId,
+      expectedScriptVersionId: read.parse(
+        await data('get_scene', { sequenceId, sceneId })
+      ).script.id,
+      scriptExtract: 'ADA walks in.',
+      continuity: { lightingSetup: 'neon' },
+    });
+    const continuity = z.object({
+      continuity: z.object({
+        characterTags: z.array(z.string()),
+        lightingSetup: z.string(),
+        colorPalette: z.string(),
+      }),
+    });
+    const afterFirst = continuity.parse(first).continuity;
+    expect(afterFirst.characterTags).toHaveLength(1);
+    expect(afterFirst).toMatchObject({
+      lightingSetup: 'neon',
+      colorPalette: '',
+    });
+    const second = await data('update_scene', {
+      sequenceId,
+      sceneId,
+      expectedScriptVersionId: read.parse(first).script.id,
+      title: 'Opening',
+      continuity: { colorPalette: 'teal' },
+    });
+    expect(continuity.parse(second).continuity).toEqual({
+      ...afterFirst,
+      colorPalette: 'teal',
+    });
+    const [event] = await db
+      .select()
+      .from(sequenceEvents)
+      .where(eq(sequenceEvents.kind, 'scene.updated'))
+      .orderBy(desc(sequenceEvents.id))
+      .limit(1);
+    expect(Object.keys(event?.data?.prevState ?? {})).toEqual(['continuity']);
   });
 });

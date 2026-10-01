@@ -13,7 +13,7 @@
 import { toolDefinition } from '@tanstack/ai';
 import { createMCPServer } from '@tanstack/ai-mcp/server';
 import { z } from 'zod';
-import { AuthenticationError } from '@/platform/errors';
+import { InsufficientScopeError } from '@/platform/errors';
 import { getLogger, toErrorPayload } from '@/platform/logger';
 import { createScopedDb } from '@/platform/server/db/scoped';
 import type { McpAuthContext } from './auth';
@@ -106,9 +106,7 @@ function mcpToolContext(
     caller: { user: auth.user, teamId: auth.teamId, teamName: auth.teamName },
     scoped: (scope) => {
       if (auth.kind === 'oauth' && !auth.scopes.includes(scope)) {
-        throw new AuthenticationError(
-          `This token requires the ${scope} scope.`
-        );
+        throw new InsufficientScopeError(scope);
       }
       return {
         scopedDb: createScopedDb(auth.teamId, auth.user.id),

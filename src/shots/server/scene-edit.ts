@@ -53,27 +53,17 @@ export async function updateScene(
   }
 
   const { continuity: continuityPatch, ...fields } = input.narrative;
+  // Only the keys sent change; omitted keys are absent after zod parsing.
   let continuity: SceneRow['continuity'] | undefined = continuityPatch
     ? {
-        characterTags:
-          continuityPatch.characterTags ??
-          existing.continuity?.characterTags ??
-          [],
-        environmentTag:
-          continuityPatch.environmentTag ??
-          existing.continuity?.environmentTag ??
-          '',
-        elementTags:
-          continuityPatch.elementTags ?? existing.continuity?.elementTags ?? [],
-        colorPalette:
-          continuityPatch.colorPalette ??
-          existing.continuity?.colorPalette ??
-          '',
-        lightingSetup:
-          continuityPatch.lightingSetup ??
-          existing.continuity?.lightingSetup ??
-          '',
-        styleTag: existing.continuity?.styleTag ?? '',
+        characterTags: [],
+        environmentTag: '',
+        elementTags: [],
+        colorPalette: '',
+        lightingSetup: '',
+        styleTag: '',
+        ...existing.continuity,
+        ...continuityPatch,
       }
     : undefined;
 
@@ -116,8 +106,12 @@ export async function updateScene(
     }
   );
   if (result.status === 'conflict') {
+    // The current selection lets a caller whose reply was lost see that the
+    // newer version may be its own edit.
+    const current = await scopedDb.scenes.getById(input.sceneId);
     throw new ConflictError(
-      'The scene changed since it was read. Read it again and reapply the edit.'
+      'The scene changed since it was read. Read it again and reapply the edit.',
+      { selectedScriptVersionId: current?.selectedScriptVersionId ?? null }
     );
   }
   return { scene: result.scene, changed: result.status === 'updated' };

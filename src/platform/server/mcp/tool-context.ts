@@ -46,11 +46,21 @@ const readOnlyAnnotations = {
   openWorldHint: false,
 };
 
-function toolError(text: string, code?: string): CallToolResult {
+function toolError(
+  text: string,
+  code?: string,
+  details?: Record<string, unknown>
+): CallToolResult {
   return {
     isError: true,
     content: [{ type: 'text', text }],
-    ...(code ? { structuredContent: { error: { code, message: text } } } : {}),
+    ...(code
+      ? {
+          structuredContent: {
+            error: { code, message: text, ...(details ? { details } : {}) },
+          },
+        }
+      : {}),
   };
 }
 
@@ -100,17 +110,13 @@ async function runTool<I extends z.ZodObject, O extends z.ZodObject>(
       return toolError(z.prettifyError(error), 'VALIDATION_ERROR');
     }
     if (error instanceof OpenStoryError && error.statusCode < 500) {
-      return toolError(error.message, error.code);
+      return toolError(error.message, error.code, error.details);
     }
     getLogger(['openstory', 'mcp']).error('MCP tool failed', {
       tool: spec.name,
       err: toErrorPayload(error),
     });
-    return toolError(
-      spec.scope === 'sequences:read'
-        ? 'Unable to read production data. Please retry.'
-        : 'Unable to complete the request. Please retry.'
-    );
+    return toolError('Unable to complete the request. Please retry.');
   }
 }
 
