@@ -537,6 +537,50 @@ describe('updateAllUnits — Update all is the plan filtered to stale (#1819)', 
     );
     expect(other).toEqual([]);
   });
+
+  it('a stale prompt whose spec is missing pulls that rewrite in; a done spec does not (#1945)', () => {
+    const missing = planUnits(
+      input({
+        shots: [
+          shot('old', {
+            spec: 'missing',
+            visualPrompt: 'stale',
+            motionPrompt: 'stale',
+          }),
+        ],
+      }),
+      SEQ
+    );
+    expect(
+      keys(updateAllUnits(missing, { depth: 'prompts', shotIds: null }))
+    ).toEqual(
+      expect.arrayContaining([
+        'spec:old',
+        'prompt:visual:old',
+        'prompt:motion:old',
+      ])
+    );
+
+    const current = planUnits(
+      input({
+        shots: [
+          shot('s', {
+            spec: 'done',
+            visualPrompt: 'stale',
+            motionPrompt: 'stale',
+          }),
+        ],
+      }),
+      SEQ
+    );
+    const currentKeys = keys(
+      updateAllUnits(current, { depth: 'prompts', shotIds: null })
+    );
+    expect(currentKeys).toEqual(
+      expect.arrayContaining(['prompt:visual:s', 'prompt:motion:s'])
+    );
+    expect(currentKeys).not.toContain('spec:s');
+  });
 });
 
 it('a derived motion prompt requires the spec and ignores the still; a written one does not (#1923)', () => {

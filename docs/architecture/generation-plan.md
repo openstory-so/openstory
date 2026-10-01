@@ -164,7 +164,9 @@ the depth picked (`update-stale-depth.ts`), through the same executor. A
 unit stale only by the cascade comes along only with the upstream it
 cascades from. Sheets and element references are in Update all at
 `images`; a shot with voiced lines, every speaker voiced and no reading yet
-records its first one at `dialogue` (#1780 §6). A scoped run (scene / shot)
+records its first one at `dialogue` (#1780 §6). A taken prompt whose spec
+is `missing` takes that spec too (#1945): one Rewrite shot, then the prompts
+rebuild, and the quote counts the rewrite. A scoped run (scene / shot)
 takes along the sheets its shots are made from; music stays sequence-wide.
 It never makes a first sheet, still or clip — that is a continue. A shot the
 plan could not check is reported as `staleness-unknown`.
