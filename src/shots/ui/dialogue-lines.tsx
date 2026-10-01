@@ -125,6 +125,9 @@ export function useLineTake(sequenceId: string): MicTake {
   });
 }
 
+/** Off while mic takes are reworked (#1802): hides Record beside each line. */
+const MIC_TAKES_ENABLED = false as boolean;
+
 /**
  * Which lines take a Record button: a line with a voice, on a shot whose
  * audio is Generated. A take is spliced into the shot's current reading, so a
@@ -527,7 +530,9 @@ export const DialogueLineRows: React.FC<{
                     </p>
                   )}
                   <div className="flex shrink-0 items-center gap-1">
-                    {take && blockedBecause !== undefined ? (
+                    {MIC_TAKES_ENABLED &&
+                    take &&
+                    blockedBecause !== undefined ? (
                       <LineTakeButton
                         take={take}
                         line={ref}
@@ -555,8 +560,10 @@ export const DialogueLineRows: React.FC<{
                   <p className="flex items-center gap-1 px-2 text-xs text-amber-600">
                     <AlertTriangle aria-hidden className="h-3 w-3 shrink-0" />
                     May not be said clearly ·{' '}
-                    {Math.round((unclear.get(index) ?? 0) * 100)}% heard. Record
-                    it, or regenerate.
+                    {Math.round((unclear.get(index) ?? 0) * 100)}% heard.{' '}
+                    {MIC_TAKES_ENABLED
+                      ? 'Record it, or regenerate.'
+                      : 'Regenerate it.'}
                   </p>
                 ) : null}
                 {take ? (
