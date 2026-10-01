@@ -16,8 +16,8 @@
         "@elevenlabs/elevenlabs-js": "^2.68.0",
         "@fal-ai/client": "^1.10.1",
         "@fontsource-variable/geist": "^5.3.0",
-        "@logtape/logtape": "^2.3.2",
-        "@logtape/redaction": "^2.3.2",
+        "@logtape/logtape": "^2.3.10",
+        "@logtape/redaction": "^2.3.10",
         "@modelcontextprotocol/server": "2.0.0",
         "@openrouter/sdk": "0.13.20",
         "@opentelemetry/api": "^1.9.1",
@@ -86,7 +86,7 @@
         "@faker-js/faker": "^10.6.0",
         "@hey-api/openapi-ts": "0.0.0-next-20260824173136",
         "@libsql/client": "^0.18.0",
-        "@logtape/pretty": "^2.3.4",
+        "@logtape/pretty": "^2.3.10",
         "@storybook/addon-a11y": "^10.6.0",
         "@storybook/addon-docs": "^10.6.0",
         "@storybook/addon-themes": "^10.6.0",
@@ -530,11 +530,11 @@
 
     "@livekit/protocol": ["@livekit/protocol@1.50.4", "", { "dependencies": { "@bufbuild/protobuf": "^1.10.0" } }, "sha512-L1uggNQAqyY21smQY8AllyOYbcv9Me9TaxwuLytL1R8ck9nbYPmQLNwEDi3pOFGAMa5F8I2nUi2Jc59W5awxlA=="],
 
-    "@logtape/logtape": ["@logtape/logtape@2.3.2", "", {}, "sha512-SfxHfSdDlTp6tLpYP5uezNitSCTQUB3FZ1MXDbgDBN9t9kvF+XL0rOGTIa/pJcDMy1o9FELaZ25E/Ypmsf5fNQ=="],
+    "@logtape/logtape": ["@logtape/logtape@2.3.10", "", {}, "sha512-IdOrFCHMSGYz+fq7xrxKCjXxItHHdiVenNaHeFJhXOkaVXFAHCdrPPBQJvJVmYbAUY5PCP8kSMxY+GIoxkmwHA=="],
 
-    "@logtape/pretty": ["@logtape/pretty@2.3.4", "", { "peerDependencies": { "@logtape/logtape": "^2.3.4" } }, "sha512-l4g4/9+6FoqVWsdmC8qqHt7a1VchL6YYkxWeNuQEGu11ewSE2Ng04/56xjRrkCictGgSjG/T66kRVi/SP+tYyA=="],
+    "@logtape/pretty": ["@logtape/pretty@2.3.10", "", { "peerDependencies": { "@logtape/logtape": "^2.3.10" } }, "sha512-gu2o3ajb2BAQjguNPhgE48JN9sw0lP2gzVSM59L0Aq7cvV0QJXgvIhgrKyd5E1qSAdZ1k4V2rueOcf3eabuR+w=="],
 
-    "@logtape/redaction": ["@logtape/redaction@2.3.2", "", { "peerDependencies": { "@logtape/logtape": "^2.3.2" } }, "sha512-tLiLxtMm99oKP6g19+yBUmk54HawuVKh4xlW9lAPhyayjisnJ9gwjihxjqd6lo0Bf090/gQvI9eJ3MWSS8w+aw=="],
+    "@logtape/redaction": ["@logtape/redaction@2.3.10", "", { "peerDependencies": { "@logtape/logtape": "^2.3.10" } }, "sha512-vZDC4iUnXUtlhwnoawoKU0WJdqOQCbc7ckGlEr/h9Ztu3yUPV2IkrspzBJvBf5HLb/L7VVPPfnJwhhwjqioJwQ=="],
 
     "@lukeed/ms": ["@lukeed/ms@2.0.2", "", {}, "sha512-9I2Zn6+NJLfaGoz9jN3lpwDgAYvfGeNYdbAIjJOqzs4Tpc+VU3Jqq4IofSUBKajiDS8k9fZIg18/z13mpk1bsA=="],
 
