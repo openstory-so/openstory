@@ -61,6 +61,9 @@ const SEQUENCE_LEVEL_BY_DESIGN: Record<string, string> = {
   'src/sequences/ui/use-generation-plan.ts': 'plan under a sequence default',
   'src/sequences/server/continue-plan.ts':
     'the continue switch edits the sequence default',
+  // Agent plans (#1460) run Continue under the sequence's own switches.
+  'src/sequences/server/generation-operations.ts':
+    'continue switches and whole-run estimate, as continueGenerationFn',
   'src/sequences/generation-plan.ts':
     'a switch turned on caps the stop (`switchStopAt`): sequence defaults',
   'src/sequences/ui/use-sequences.ts':

@@ -26,6 +26,11 @@ import { getScene } from './tools/get-scene';
 import { listShots } from './tools/list-shots';
 import { getShot } from './tools/get-shot';
 import { updateSceneTool } from './tools/update-scene';
+import {
+  executeGenerationTool,
+  getOperationStatusTool,
+  planGenerationTool,
+} from './tools/generation';
 import { castReadTools } from './tools/cast-reads';
 import { productionReadTools } from './tools/production-reads';
 import { contextReadTools } from './tools/context-reads';
@@ -82,6 +87,9 @@ export const mcpServer = createMCPServer({
     ...contextReadTools,
     ...libraryReadTools,
     updateSceneTool,
+    planGenerationTool,
+    executeGenerationTool,
+    getOperationStatusTool,
   ],
   // Many Worker isolates: a 2025 session opened here would not be found on
   // the next request, so a 2025 client gets a fresh server per request and

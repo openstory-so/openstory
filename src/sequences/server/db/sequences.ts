@@ -23,6 +23,7 @@ import {
   sequenceMusicPromptVersions,
   sequenceMusicVariants,
   sequenceStyleVersions,
+  generationPlans,
   sequences,
   shotPromptVersions,
   shots,
@@ -919,6 +920,9 @@ export function createSequencesMethods(
                 .where(eq(sequenceLocations.sequenceId, sequenceId))
             )
           ),
+        db
+          .delete(generationPlans)
+          .where(eq(generationPlans.sequenceId, sequenceId)),
         db.delete(sequences).where(eq(sequences.id, sequenceId)),
       ]);
       // An automatic style has no FK to its sequence (#1213); drop it here.

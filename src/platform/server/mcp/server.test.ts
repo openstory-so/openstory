@@ -165,15 +165,19 @@ describe('tools/list and whoami', () => {
       'openstory.get_generated_asset',
       'openstory.list_studio_uploads',
       'openstory.update_scene',
+      'openstory.plan_generation',
+      'openstory.execute_generation',
+      'openstory.get_operation_status',
     ]);
     expect(tools[0]?.description).toMatch(/user and team/i);
-    expect(tools.at(-1)?.annotations).toMatchObject({
-      readOnlyHint: false,
-      destructiveHint: false,
-    });
-    for (const tool of tools.slice(1, -1))
-      expect(tool.annotations).toMatchObject({
-        readOnlyHint: true,
+    const writes = new Set([
+      'openstory.update_scene',
+      'openstory.plan_generation',
+      'openstory.execute_generation',
+    ]);
+    for (const tool of tools.slice(1))
+      expect(tool.annotations, tool.name).toMatchObject({
+        readOnlyHint: !writes.has(tool.name),
         destructiveHint: false,
       });
     // MCP input schemas are object-rooted, so the kind/parentId union is
@@ -376,5 +380,66 @@ describe('write tool authorization', () => {
       structuredContent: { error: { code: 'INSUFFICIENT_SCOPE' } },
     });
     expect(createDb).not.toHaveBeenCalled();
+  });
+});
+
+describe('generation tool authorization', () => {
+  it.each(['plan_generation', 'execute_generation'])(
+    'refuses %s for an OAuth token without generate, before any db',
+    async (name) => {
+      const createDb = vi.spyOn(dbModule, 'createScopedDb');
+      const args =
+        name === 'plan_generation'
+          ? { mode: 'stale', depth: 'images' }
+          : { planId: '01J00000000000000000000001', confirm: true };
+      const { body } = await rpc(
+        'tools/call',
+        {
+          name: `openstory.${name}`,
+          arguments: { sequenceId: '01J00000000000000000000000', ...args },
+        },
+        {
+          ...auth,
+          kind: 'oauth',
+          scopes: ['sequences:read', 'sequences:write'],
+        }
+      );
+      expect(body.result).toMatchObject({
+        isError: true,
+        structuredContent: {
+          error: { code: 'INSUFFICIENT_SCOPE', details: { scope: 'generate' } },
+        },
+      });
+      expect(createDb).not.toHaveBeenCalled();
+    }
+  );
+
+  it('refuses execute without confirm: true and mixed targets', async () => {
+    for (const [name, args] of [
+      ['execute_generation', { planId: '01J00000000000000000000001' }],
+      [
+        'execute_generation',
+        { planId: '01J00000000000000000000001', confirm: false },
+      ],
+      [
+        'plan_generation',
+        {
+          mode: 'stale',
+          depth: 'images',
+          sceneIds: ['01J00000000000000000000001'],
+          shotIds: ['01J00000000000000000000002'],
+        },
+      ],
+      ['plan_generation', { mode: 'stale', stopAt: 'images' }],
+      ['plan_generation', { mode: 'missing', depth: 'images' }],
+    ] as const) {
+      const { body } = await rpc('tools/call', {
+        name: `openstory.${name}`,
+        arguments: { sequenceId: '01J00000000000000000000000', ...args },
+      });
+      expect(body.result, JSON.stringify(args)).toMatchObject({
+        isError: true,
+      });
+    }
   });
 });

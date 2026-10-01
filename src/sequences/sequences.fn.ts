@@ -57,6 +57,7 @@ import {
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import {
   getSequenceRejectingActiveRun,
+  triggerContinue,
   triggerStoryboard,
 } from '@/sequences/server/launchers';
 import { computePlan } from '@/shots/server/update-stale-plan';
@@ -250,8 +251,6 @@ export const continueGenerationFn = createServerFn({ method: 'POST' })
       requested,
       stopAt: data.stopAt,
     });
-    const { autoGenerateMotion, autoGenerateMusic } = flagsFromStopAt(stopAt);
-
     const shots = await scopedDb.shots.listBySequence(sequence.id);
     const estimate = await estimateContinueCost({
       sequence,
@@ -297,11 +296,10 @@ export const continueGenerationFn = createServerFn({ method: 'POST' })
     };
 
     return restoreOnThrow(async () =>
-      triggerStoryboard(context.scopedDb, {
+      triggerContinue(context.scopedDb, {
         userId: context.user.id,
         teamId: context.teamId,
-        sequenceId: data.sequenceId,
-        resume: true,
+        sequence,
         // The units, frozen now with every input read from D1 — after the
         // switches saved, so a shot's mode is the one this click chose.
         plan: await computePlan({
@@ -311,17 +309,6 @@ export const continueGenerationFn = createServerFn({ method: 'POST' })
           userId: context.user.id,
         }),
         stopAt,
-        autoGenerateMotion,
-        autoGenerateMusic,
-        imageModels: [
-          safeTextToImageModel(sequence.imageModel, DEFAULT_IMAGE_MODEL),
-        ],
-        videoModels: [
-          safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
-        ],
-        musicModel: sequence.musicModel
-          ? safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)
-          : undefined,
         leftoverGrokShotIds: data.leftoverGrokShotIds,
       })
     );

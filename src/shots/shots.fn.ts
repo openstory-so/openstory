@@ -7,8 +7,6 @@ import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/models/models';
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import { estimateImageCost, gateEstimate } from '@/billing/cost-estimation';
 import { requireCredits } from '@/billing/server/preflight';
-import { getWorkflowRunOutcome } from '@/platform/server/workflow/run-outcome';
-import { workflowNameFromRunId } from '@/platform/server/workflow/trigger-bindings';
 import type { NewShot } from '@/platform/server/db/schema';
 import {
   computeShotStaleness,
@@ -27,6 +25,10 @@ import {
   UPDATE_STALE_DEPTHS,
 } from './update-stale-depth';
 import { planUpdateAll } from '@/shots/server/update-stale-plan';
+import {
+  launchUpdateStale,
+  readUpdateStaleRun,
+} from '@/shots/server/update-stale-run';
 import {
   buildUpdateStalePreview,
   type UpdateStalePreview,
@@ -58,8 +60,6 @@ import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { typedFromEntries } from '@/platform/typed-object';
 import { resolveSceneForShot } from '@/shots/server/scene-script';
 import { rescanContinuityFromPrompt } from '@/shots/server/rescan-continuity-from-prompt';
-import { triggerWorkflow } from '@/platform/server/workflow/client';
-import type { UpdateStaleShotsWorkflowInput } from '@/platform/server/workflow/types';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
@@ -1010,47 +1010,20 @@ export const updateStaleShotsFn = createServerFn({ method: 'POST' })
       depth,
       userId: user.id,
     });
-    const workflowRunId = await triggerWorkflow<UpdateStaleShotsWorkflowInput>(
-      '/update-stale-shots',
-      {
-        userId: user.id,
-        teamId,
-        sequenceId: sequence.id,
-        plan,
-      },
-      {
-        // Embed the sequence id in the instance id (the timestamp+uuid tail
-        // keeps it unique per click) so `getUpdateStaleShotsRunFn` can verify
-        // a polled run id actually belongs to the sequence being authorized —
-        // without this, any authenticated user could read any run's output.
-        deduplicationId: `${sequence.id}-${Date.now()}-${crypto.randomUUID()}`,
-      }
-    );
+    // launchUpdateStale → triggerWorkflow, which runs the generation gate.
+    const workflowRunId = await launchUpdateStale({
+      userId: user.id,
+      teamId,
+      sequenceId: sequence.id,
+      plan,
+      // Embed the sequence id in the instance id (the timestamp+uuid tail
+      // keeps it unique per click) so `getUpdateStaleShotsRunFn` can verify
+      // a polled run id actually belongs to the sequence being authorized —
+      // without this, any authenticated user could read any run's output.
+      runKey: `${sequence.id}-${Date.now()}-${crypto.randomUUID()}`,
+    });
     return { workflowRunId };
   });
-
-/**
- * Shape of `UpdateStaleShotsWorkflow`'s return value. Parsed rather than cast:
- * it crosses the Cloudflare Workflows boundary as `unknown`, and a run from a
- * previously-deployed version of the workflow can legitimately not match.
- */
-const updateStaleShotsResultSchema = z.object({
-  totalShots: z.number(),
-  visualPrompts: z.number(),
-  motionPrompts: z.number(),
-  images: z.number(),
-  // Depth-picker levels (#1085). Defaulted so a run from a pre-picker
-  // deployment still parses during version skew.
-  videos: z.number().default(0),
-  // Dialogue depth (#1703/#1740), defaulted for the same version skew.
-  dialogues: z.number().default(0),
-  musicPrompts: z.number().default(0),
-  musicTracks: z.number().default(0),
-  failures: z.array(
-    z.object({ shotId: z.string(), stage: z.string(), error: z.string() })
-  ),
-  skipped: z.array(z.object({ shotId: z.string(), reason: z.string() })),
-});
 
 /**
  * Terminal outcome of an "Update all" run (#1077).
@@ -1068,31 +1041,11 @@ export const getUpdateStaleShotsRunFn = createServerFn({ method: 'GET' })
       z.object({ sequenceId: ulidSchema, workflowRunId: z.string().min(1) })
     )
   )
-  .handler(async ({ data, context }) => {
-    // The middleware authorizes the SEQUENCE; the run id is caller-supplied
-    // and would otherwise let any authenticated user read any run's output.
-    // `updateStaleShotsFn` embeds the sequence id in the instance id — require
-    // both the right workflow and the right sequence before reading anything.
-    if (
-      workflowNameFromRunId(data.workflowRunId) !== 'update-stale-shots' ||
-      !data.workflowRunId.includes(context.sequence.id)
-    ) {
-      return { state: 'unknown' as const };
-    }
-    const outcome = await getWorkflowRunOutcome(data.workflowRunId);
-    if (outcome.state !== 'complete') return outcome;
-    const parsed = updateStaleShotsResultSchema.safeParse(outcome.output);
-    // A complete run whose output we can't read is not a failure to report as
-    // one — fall back to 'unknown' so the UI defers to the staleness map.
-    if (!parsed.success) {
-      logger.error(
-        `getUpdateStaleShotsRunFn: unrecognised output for ${data.workflowRunId}`,
-        { issues: parsed.error.issues }
-      );
-      return { state: 'unknown' as const };
-    }
-    return { state: 'complete' as const, result: parsed.data };
-  });
+  .handler(async ({ data, context }) =>
+    // The middleware authorizes the SEQUENCE; the run id is caller-supplied,
+    // so the reader requires the right workflow and sequence first.
+    readUpdateStaleRun(context.sequence.id, data.workflowRunId)
+  );
 
 /**
  * Get a signed download URL for a shot's video.

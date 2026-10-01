@@ -59,6 +59,7 @@ import { createBytePlusAssetsMethods } from '@/models/server/db/byteplus-assets'
 import { createModelUsageMethods } from '@/billing/server/db/model-usage';
 import { createSequenceElementsMethods } from '@/cast/server/db/sequence-elements';
 import { createSequenceExportsMethods } from '@/sequences/server/db/sequence-exports';
+import { createGenerationPlansMethods } from '@/sequences/server/db/generation-plans';
 import { createSequenceLocationsMethods } from '@/cast/server/db/sequence-locations';
 import { createSequenceMusicPromptVersionsMethods } from '@/audio/server/db/sequence-music-prompt-versions';
 import { createSequenceVariantsMethods } from '@/audio/server/db/sequence-variants';
@@ -465,6 +466,8 @@ export function createScopedDb(teamId: string, userId: string) {
     sequenceMusicPromptVersions: createSequenceMusicPromptVersionsMethods(db),
     sequenceVariants: createSequenceVariantsMethods(db),
     sequenceExports: createSequenceExportsMethods(db),
+    // #1460 — agent generation plans; the row is also the operation.
+    generationPlans: createGenerationPlansMethods(db, teamId),
 
     characters: createCharactersMethods(db),
     sequenceLocations: createSequenceLocationsMethods(db),

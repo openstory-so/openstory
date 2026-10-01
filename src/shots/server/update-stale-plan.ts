@@ -502,6 +502,8 @@ export async function planUpdateAll(args: {
   sequenceId: string;
   sceneId?: string;
   shotId?: string;
+  /** An explicit shot list (agent plans, #1460); wins over sceneId/shotId. */
+  shotIds?: readonly string[];
   depth: UpdateStaleDepth;
   userId: string;
 }): Promise<UpdateStalePlan> {
@@ -510,8 +512,9 @@ export async function planUpdateAll(args: {
     computeGenerationPlan(scopedDb, sequenceId),
     scopedDb.shots.listBySequence(sequenceId),
   ]);
-  const shotIds =
-    sceneId || shotId
+  const shotIds = args.shotIds
+    ? new Set(args.shotIds)
+    : sceneId || shotId
       ? new Set(
           filterInScopeShots(allShots, { sceneId, shotId }).map((s) => s.id)
         )

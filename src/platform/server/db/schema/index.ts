@@ -58,6 +58,7 @@ import { sequenceMusicPromptVersions } from './sequence-music-prompt-versions';
 
 import { sequenceMusicVariants } from './sequence-music-variants';
 import { sequenceExports } from './sequence-exports';
+import { generationPlans } from './generation-plans';
 import { sequenceStyleVersions } from './sequence-style-versions';
 
 import { characters } from './characters';
@@ -321,6 +322,10 @@ export type {
 // Sequence exports (container-rendered MP4 snapshots)
 export { sequenceExports };
 
+// Agent generation plans and their operations (#1460)
+export { generationPlans };
+export type { GenerationPlanRow } from './generation-plans';
+
 // Sequence style history (#1600)
 export { sequenceStyleVersions };
 
@@ -552,6 +557,7 @@ export const schema = {
   sequenceMusicVariants,
   sequenceExports,
   sequenceStyleVersions,
+  generationPlans,
 
   // Characters (scripted roles extracted from script)
   characters,

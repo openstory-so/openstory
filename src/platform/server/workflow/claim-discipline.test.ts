@@ -155,6 +155,10 @@ const CLAIM_DOMAINS: Record<string, ClaimDomain> = {
  * the goal; growing it is a reviewed act.
  */
 const EXCEPTIONS: Record<string, string> = {
+  // #1460: an agent's plan and the operation that runs it. Its run id is
+  // the launched root run; every artifact that run makes lands through that
+  // run's own claims.
+  generation_plans: 'agent plan/operation record, not a generated artifact',
   // The music prompt run appends and selects with no claim, like the
   // pipeline's image/motion prompt passes (#1115); its call site is pinned in
   // UNCLAIMED_CALL_SITES.

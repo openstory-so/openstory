@@ -351,3 +351,48 @@ the completed still and its frozen prompt/reference inputs. These replay-dedupli
 grids remain independent enrichment workflows: they can finish after the parent
 and retain their own idempotent debit, outside its reservation envelope. Cancelled
 or empty still results never start a grid; Continue and Update retain their existing behavior.
+
+## Agent plans (#1460)
+
+MCP's `plan_generation` / `execute_generation` / `get_operation_status`
+(`src/sequences/server/generation-operations.ts`) are a third caller of the
+same plan, not a second planner.
+
+- **Modes.** `stale` is Update all (`planUpdateAll` up to a depth) for the
+  sequence, an explicit list of scene IDs or an explicit list of shot IDs
+  (never inferred from each other). `missing` is Continue
+  (`continueFromPlan` → `computePlan`) up to a stop, for the whole sequence
+  only, under the sequence's current switches and models. Anything else is
+  refused with an actionable `VALIDATION_ERROR`. Failed-item retry is #1461.
+- **No side effects.** Planning prices with the editor's preview/estimate
+  and reports insufficient credits, a running sequence or nothing-to-do as
+  `blockers`; it starts nothing. The one write is the `generation_plans` row
+  (and `computePlan`'s existing anchor-frame repair).
+- **The row is the handle and the operation.** It holds the request, the
+  digest, the estimate (the approved limit; `null` when a component has no
+  price), what it targets per stage, and a 30-minute expiry.
+- **Execute** re-plans from live D1 and requires the same digest: the digest
+  covers the request, the frozen plan (ids, flags, pinned version ids, input
+  hashes, models) and the estimate, with Dates left out — so a moved
+  selection, model or target is `PLAN_CHANGED`, a touched timestamp is not.
+  It refuses a running sequence and rechecks the balance (`requireCredits`;
+  these paths hold no reservation, as in the editor), then takes the row
+  `planned` → `executing` in one guarded UPDATE and launches through the
+  editor's launchers: `launchUpdateStale` with run key
+  `<sequenceId>-plan-<planId>`, or `triggerContinue` (which holds the
+  storyboard mutex). A repeated or concurrent execute finds the row taken and
+  returns the same operation: one launch, one spend.
+- **Dispatch failure.** A throwing launch marks the row `dispatch_failed` and
+  is never retried. A row left `executing` with no run id (the request died
+  between claim and launch) reads `dispatch_unknown` after two minutes and is
+  never relaunched: check `get_sequence_status` and plan again if the work is
+  still owed.
+- **Status** reads the operation's own run (`readUpdateStaleRun` for per-shot
+  failures and skips), never a sequence aggregate. Poll every 15 s. Terminal:
+  `completed`, `partially_failed`, `failed`, `dispatch_failed`,
+  `dispatch_unknown`. Non-terminal: `not_started`, `dispatching`, `running`,
+  `unknown`.
+- **Scopes.** Plan and execute need OAuth `generate`; polling needs
+  `sequences:read`. API keys stay unscoped. `confirm: true` is the caller's
+  assertion that a human approved the plan; scope, digest, expiry, credits
+  and the guarded claim are what the server enforces.
