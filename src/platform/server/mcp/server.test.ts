@@ -2,7 +2,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as dbModule from '@/platform/server/db/scoped';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { z } from 'zod';
-import { MCP_SERVER_NAME, MCP_SERVER_VERSION, serveMcpRequest } from './server';
+import {
+  MCP_SERVER_NAME,
+  MCP_SERVER_VERSION,
+  serveMcpRequest,
+  withToolViews,
+} from './server';
 import type { User } from '@/platform/server/auth/config';
 import { asStub } from '@/test/as-stub';
 
@@ -566,5 +571,18 @@ describe('MCP Apps views (#1673)', () => {
     expect(content?.text).toContain('ui/initialize');
     expect(content?.text).not.toMatch(/<script[^>]+src=/);
     expect(content?.text).not.toContain('innerHTML');
+  });
+});
+
+describe('withToolViews passthrough', () => {
+  it('returns a non-JSON or malformed tools/list unchanged', async () => {
+    const sse = new Response('event: message\ndata: {}\n\n', {
+      headers: { 'content-type': 'text/event-stream' },
+    });
+    expect(await withToolViews(sse)).toBe(sse);
+    const broken = new Response('{not json', {
+      headers: { 'content-type': 'application/json' },
+    });
+    expect(await withToolViews(broken)).toBe(broken);
   });
 });

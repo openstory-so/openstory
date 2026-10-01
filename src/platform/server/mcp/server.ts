@@ -184,12 +184,22 @@ const toolsListSchema = z.looseObject({
  * deprecated flat key older hosts read. ai-mcp 0.6.0 drops a tool's `_meta`,
  * so it is added to the listed tools here; clients without MCP Apps ignore it.
  */
-async function withToolViews(response: Response): Promise<Response> {
+export async function withToolViews(response: Response): Promise<Response> {
+  // Never fails the list: an unexpected shape loses the view links, logged.
   if (!response.headers.get('content-type')?.includes('application/json')) {
+    logger.warn('MCP tools/list not JSON; views not linked');
     return response;
   }
-  const parsed = toolsListSchema.safeParse(await response.clone().json());
-  if (!parsed.success) return response;
+  const parsed = toolsListSchema.safeParse(
+    await response
+      .clone()
+      .json()
+      .catch(() => null)
+  );
+  if (!parsed.success) {
+    logger.warn('MCP tools/list shape unexpected; views not linked');
+    return response;
+  }
   for (const tool of parsed.data.result.tools) {
     const resourceUri = TOOL_VIEWS[tool.name];
     if (!resourceUri) continue;

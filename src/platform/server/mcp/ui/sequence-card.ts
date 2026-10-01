@@ -10,40 +10,24 @@
 
 export const SEQUENCE_CARD_URI = 'ui://openstory/sequence-card.html';
 
-export const SEQUENCE_CARD_HTML = `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sequence</title>
-<style>
-  :root { color-scheme: light dark; font-family: var(--font-sans, system-ui, sans-serif); }
-  body { margin: 0; padding: 12px; background: var(--color-background-primary, transparent); color: var(--color-text-primary, CanvasText); }
-  .card { display: flex; flex-direction: column; gap: 12px; }
-  img { width: 100%; height: auto; border-radius: 8px; display: block; }
-  h1 { margin: 0; font-size: 1.1rem; }
-  .muted { color: var(--color-text-secondary, GrayText); font-size: 0.875rem; }
-  dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0; font-size: 0.875rem; font-variant-numeric: tabular-nums; }
-  dt { color: var(--color-text-secondary, GrayText); }
-  dd { margin: 0; }
-  audio { width: 100%; }
-  [hidden] { display: none !important; }
-</style>
-</head>
-<body>
-<div class="card">
-  <img id="poster" alt="" hidden>
-  <div>
-    <h1 id="title">Loading…</h1>
-    <div class="muted" id="meta"></div>
-  </div>
-  <dl id="counts"></dl>
-  <audio id="music" controls preload="none" hidden></audio>
-</div>
-<script>
-(() => {
+/** The page's bridge, exported so a test can run it against a fake window. */
+export const SEQUENCE_CARD_SCRIPT = `(() => {
   const post = (message) => window.parent.postMessage({ jsonrpc: '2.0', ...message }, '*');
   const byId = (id) => document.getElementById(id);
+  let lastHeight = -1;
+
+  const reportSize = () => {
+    const height = Math.ceil(document.documentElement.scrollHeight);
+    if (height === lastHeight) return;
+    lastHeight = height;
+    post({ method: 'ui/notifications/size-changed', params: { height } });
+  };
+  const watchSize = () => {
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => requestAnimationFrame(reportSize));
+    observer.observe(document.documentElement);
+    observer.observe(document.body);
+  };
 
   const applyHost = (context) => {
     if (!context) return;
@@ -56,22 +40,26 @@ export const SEQUENCE_CARD_HTML = `<!doctype html>
     }
   };
 
-  const reportSize = () => post({
-    method: 'ui/notifications/size-changed',
-    params: { width: document.body.scrollWidth, height: document.body.scrollHeight },
-  });
+  const showError = (text) => {
+    byId('title').textContent = 'Sequence unavailable';
+    const error = byId('error');
+    error.textContent = text;
+    error.hidden = false;
+    reportSize();
+  };
 
   const render = (data) => {
-    if (!data || typeof data !== 'object') return;
     byId('title').textContent = data.title || 'Untitled sequence';
     const style = data.style && data.style.name;
     byId('meta').textContent = [data.status, style, data.aspectRatio].filter(Boolean).join(' · ');
     const poster = byId('poster');
     if (data.poster && data.poster.url) {
+      poster.onload = reportSize;
+      // A row on a host the CSP does not allow: hide it, not a broken image.
+      poster.onerror = () => { poster.hidden = true; reportSize(); };
       poster.src = data.poster.url;
       poster.alt = 'Poster for ' + (data.title || 'the sequence');
       poster.hidden = false;
-      poster.onload = reportSize;
     }
     const counts = byId('counts');
     counts.replaceChildren();
@@ -91,17 +79,46 @@ export const SEQUENCE_CARD_HTML = `<!doctype html>
     reportSize();
   };
 
+  const onToolResult = (result) => {
+    const data = result && result.structuredContent;
+    if (!result || result.isError || !data || typeof data !== 'object') {
+      const text =
+        (data && data.error && data.error.message) ||
+        (result && result.content && result.content[0] && result.content[0].text) ||
+        'The sequence could not be loaded.';
+      showError(text);
+      return;
+    }
+    render(data);
+  };
+
   window.addEventListener('message', (event) => {
     if (event.source !== window.parent) return;
     const message = event.data;
     if (!message || message.jsonrpc !== '2.0') return;
-    if (message.id === 1 && message.result) {
-      applyHost(message.result.hostContext);
+    if (message.id === 1 && !message.method) {
+      if (message.error) {
+        showError('This host could not start the view.');
+        return;
+      }
+      applyHost(message.result && message.result.hostContext);
       post({ method: 'ui/notifications/initialized', params: {} });
+      watchSize();
+      return;
+    }
+    if (message.method && message.id !== undefined) {
+      // Host -> View requests: teardown and ping need an answer.
+      if (message.method === 'ui/resource-teardown' || message.method === 'ping') {
+        post({ id: message.id, result: {} });
+      } else {
+        post({ id: message.id, error: { code: -32601, message: 'Method not found' } });
+      }
       return;
     }
     if (message.method === 'ui/notifications/tool-result') {
-      render(message.params && message.params.structuredContent);
+      onToolResult(message.params);
+    } else if (message.method === 'ui/notifications/tool-cancelled') {
+      showError('The request was cancelled.');
     } else if (message.method === 'ui/notifications/host-context-changed') {
       applyHost(message.params);
     }
@@ -116,7 +133,41 @@ export const SEQUENCE_CARD_HTML = `<!doctype html>
       protocolVersion: '2026-01-26',
     },
   });
-})();
+})();`;
+
+export const SEQUENCE_CARD_HTML = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sequence</title>
+<style>
+  :root { color-scheme: light dark; font-family: var(--font-sans, system-ui, sans-serif); }
+  body { margin: 0; padding: 12px; background: var(--color-background-primary, transparent); color: var(--color-text-primary, CanvasText); }
+  .card { display: flex; flex-direction: column; gap: 12px; }
+  img { width: 100%; height: auto; border-radius: 8px; }
+  h1 { margin: 0; font-size: 1.1rem; }
+  .muted { color: var(--color-text-secondary, GrayText); font-size: 0.875rem; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0; font-size: 0.875rem; font-variant-numeric: tabular-nums; }
+  dt { color: var(--color-text-secondary, GrayText); }
+  dd { margin: 0; }
+  audio { width: 100%; }
+  .error { color: var(--color-text-danger, #b00020); }
+</style>
+</head>
+<body>
+<div class="card">
+  <img id="poster" alt="" hidden>
+  <div>
+    <h1 id="title">Loading…</h1>
+    <div class="muted" id="meta"></div>
+    <div class="error" id="error" role="alert" hidden></div>
+  </div>
+  <dl id="counts"></dl>
+  <audio id="music" controls preload="none" hidden></audio>
+</div>
+<script>
+${SEQUENCE_CARD_SCRIPT}
 </script>
 </body>
 </html>
