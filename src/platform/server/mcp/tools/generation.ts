@@ -5,6 +5,7 @@ import { GENERATION_STAGES } from '@/sequences/pipeline';
 import {
   executeGeneration,
   getOperationStatus,
+  generationWorkSchema,
   planGeneration,
   type GenerationRequest,
 } from '@/sequences/server/generation-operations';
@@ -74,28 +75,6 @@ function toRequest(input: z.output<typeof planInput>): GenerationRequest {
   throw new Error('unreachable: planInput refines mode against depth/stopAt');
 }
 
-const stageShots = z.array(z.string());
-const workSchema = z.object({
-  targetShotIds: z.array(z.string()),
-  stages: z.object({
-    visualPrompts: stageShots,
-    motionPrompts: stageShots,
-    specs: stageShots,
-    images: stageShots,
-    dialogue: stageShots,
-    videos: stageShots,
-  }),
-  music: z.object({ prompt: z.boolean(), track: z.boolean() }).nullable(),
-  skipped: z.array(z.object({ shotId: z.string(), reason: z.string() })),
-  inFlightShotIds: z.array(z.string()),
-  referenceOnlyShotIds: z.array(z.string()),
-  models: z.object({
-    image: z.string(),
-    video: z.string(),
-    perShotImage: z.record(z.string(), z.string()),
-  }),
-});
-
 export const planGenerationTool = openstoryTool({
   name: 'plan_generation',
   description:
@@ -111,9 +90,8 @@ export const planGenerationTool = openstoryTool({
     estimate: z.object({
       micros: z.number().nullable(),
       usd: z.number().nullable(),
-      complete: z.boolean(),
     }),
-    work: workSchema,
+    work: generationWorkSchema,
     blockers: z.array(z.object({ code: z.string(), message: z.string() })),
   }),
   run: async (input, { scopedDb, userId }) => {
@@ -123,9 +101,8 @@ export const planGenerationTool = openstoryTool({
       input.sequenceId,
       toRequest(input)
     );
-    const { request: _request, ...data } = plan;
     return {
-      data,
+      data: plan,
       summary: `Plan ${plan.planId}: ${plan.work.targetShotIds.length} shots, estimate ${plan.estimate.usd === null ? 'unknown' : `$${plan.estimate.usd.toFixed(2)}`}${plan.blockers.length ? `; blocked: ${plan.blockers.map((b) => b.code).join(', ')}` : ''}.`,
     };
   },
@@ -172,7 +149,7 @@ export const getOperationStatusTool = readToolDefinition({
   outputSchema: operationSchema.extend({
     state: z.string(),
     terminal: z.boolean(),
-    targeted: z.record(z.string(), z.unknown()),
+    targeted: generationWorkSchema,
     error: z.string().nullable().optional(),
     failures: z
       .array(

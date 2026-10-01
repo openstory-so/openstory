@@ -8,16 +8,15 @@
  * - `missing`: Continue (`continueFromPlan` → `computePlan`) up to a stop,
  *   for the whole sequence, with its current switches and models.
  *
- * The plan row stores a digest of the frozen plan, its estimate and what it
- * targets. Execute re-plans from live D1, requires the same digest (a moved
- * selection, model or target changes it; an unrelated timestamp does not),
- * rechecks the balance, then takes the row `planned` → `executing` in one
- * guarded UPDATE before launching through the editor's launchers. A repeated
- * or concurrent execute finds the row taken and returns the same operation:
- * no second launch, no second spend. A lost dispatch (`executing` with no run
- * id) is reported, never relaunched.
+ * The plan row stores a digest of what will run and what it costs, the
+ * estimate and the work it targets. Execute re-plans from live D1, requires
+ * the same digest, rejects a live run and a short balance, then takes the row
+ * `planned` → `executing` in one guarded UPDATE before launching through the
+ * editor's launchers. A repeated or concurrent execute finds the row taken
+ * and returns the same operation: no second launch, no second spend.
  */
 
+import { z } from 'zod';
 import {
   ConflictError,
   NotFoundError,
@@ -25,11 +24,13 @@ import {
   ValidationError,
 } from '@/platform/errors';
 import type { ScopedDb } from '@/platform/server/db/scoped';
-import type { GenerationPlanRow } from '@/platform/server/db/schema';
+import type { GenerationPlanRow, Sequence } from '@/platform/server/db/schema';
 import { getWorkflowRunOutcome } from '@/platform/server/workflow/run-outcome';
 import { requireCredits } from '@/billing/server/preflight';
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
+import { estimateImageCost, gateEstimate } from '@/billing/cost-estimation';
 import type { Microdollars } from '@/billing/money';
+import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/models/models';
 import { sha256Hex } from '@/shots/input-hash';
 import { planUpdateAll, computePlan } from '@/shots/server/update-stale-plan';
 import type { UpdateStalePlan } from '@/shots/server/update-stale-plan';
@@ -43,14 +44,17 @@ import type { GenerationStage } from '@/sequences/pipeline';
 import { productionAccess } from './production-access';
 import { computeGenerationPlan } from './generation-plan';
 import { continueFromPlan, estimateContinueCost } from './continue-plan';
-import { triggerContinue } from './launchers';
+import { getSequenceRejectingActiveRun, triggerContinue } from './launchers';
+import { readProductionStatus } from './production-status';
 
 /** How long an approved plan may wait before execute refuses it. */
 const PLAN_TTL_MS = 30 * 60 * 1000;
 /** Suggested polling interval for get_operation_status. */
 const OPERATION_POLL_SECONDS = 15;
-/** An `executing` row older than this with no run id lost its dispatch. */
+/** An `executing` row older than this with no run lost its dispatch. */
 const DISPATCH_GRACE_MS = 2 * 60 * 1000;
+/** A run with no readable outcome this long after launch stops being polled. */
+const UNKNOWN_GIVE_UP_MS = 24 * 60 * 60 * 1000;
 
 type GenerationTarget =
   | { kind: 'sequence' }
@@ -62,6 +66,30 @@ export type GenerationRequest =
   | { mode: 'missing'; stopAt: GenerationStage; target: GenerationTarget };
 
 type Actor = { userId: string; teamId: string };
+
+const shotList = z.array(z.string());
+/** What a plan does, per stage — shown for approval, kept for polling. */
+export const generationWorkSchema = z.object({
+  targetShotIds: shotList,
+  stages: z.object({
+    visualPrompts: shotList,
+    motionPrompts: shotList,
+    specs: shotList,
+    images: shotList,
+    dialogue: shotList,
+    videos: shotList,
+  }),
+  music: z.object({ prompt: z.boolean(), track: z.boolean() }).nullable(),
+  skipped: z.array(z.object({ shotId: z.string(), reason: z.string() })),
+  inFlightShotIds: shotList,
+  referenceOnlyShotIds: shotList,
+  models: z.object({
+    image: z.string(),
+    video: z.string(),
+    perShotImage: z.record(z.string(), z.string()),
+  }),
+});
+type GenerationWork = z.infer<typeof generationWorkSchema>;
 
 async function shotIdsFor(
   scopedDb: ScopedDb,
@@ -81,6 +109,18 @@ async function shotIdsFor(
     .map((shot) => shot.id);
 }
 
+/** Update all's floor (as `updateStaleShotsFn`): one image of the sequence model. */
+async function oneImageFloor(sequence: Sequence): Promise<Microdollars> {
+  const model = safeTextToImageModel(sequence.imageModel, DEFAULT_IMAGE_MODEL);
+  return gateEstimate(
+    estimateImageCost(model, sequence.aspectRatio, 1, {
+      pricing: await getEffectiveFalPricing(),
+      resolution: sequence.resolution,
+    }),
+    { model, operation: 'update-stale-shots' }
+  );
+}
+
 /** Freeze the plan and price it, exactly as the editor would. */
 async function buildPlan(
   scopedDb: ScopedDb,
@@ -88,23 +128,18 @@ async function buildPlan(
   sequenceId: string,
   request: GenerationRequest
 ): Promise<{
+  sequence: Sequence;
   plan: UpdateStalePlan;
+  shotIds: string[] | undefined;
+  /** For display and the digest; null when a component has no price. */
   estimateMicros: Microdollars | null;
-  inFlightShotIds: string[];
+  /** What the balance must cover: the known parts, never skipped. */
+  creditCheckMicros: Microdollars;
   /** Continue's effective stop (it can move past a switch lock). */
   stopAt?: GenerationStage;
 }> {
   const sequence = await productionAccess(scopedDb).sequence(sequenceId);
   const shotIds = await shotIdsFor(scopedDb, sequence.id, request.target);
-  const generationPlan = await computeGenerationPlan(scopedDb, sequence.id);
-  const inScope = (id: string) => !shotIds || shotIds.includes(id);
-  const inFlightShotIds = [
-    ...new Set(
-      generationPlan
-        .filter((u) => u.state === 'running' && inScope(u.id))
-        .map((u) => u.id)
-    ),
-  ];
 
   if (request.mode === 'stale') {
     const plan = await planUpdateAll({
@@ -114,23 +149,29 @@ async function buildPlan(
       depth: request.depth,
       userId: actor.userId,
     });
-    const preview = buildUpdateStalePreview(
+    const estimateMicros = buildUpdateStalePreview(
       plan,
       await getEffectiveFalPricing(),
       sequence.musicModel
-    );
+    ).costByLevel[request.depth];
+    const floor =
+      request.depth === 'prompts' ? 0 : await oneImageFloor(sequence);
     return {
+      sequence,
       plan,
-      estimateMicros: preview.costByLevel[request.depth],
-      inFlightShotIds,
+      shotIds,
+      estimateMicros,
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- max of two Microdollars
+      creditCheckMicros: Math.max(estimateMicros ?? 0, floor) as Microdollars,
     };
   }
 
   if (request.target.kind !== 'sequence') {
     throw new ValidationError(
-      'mode "missing" (Continue) plans the whole sequence. Use target {"kind":"sequence"}, or mode "stale" for scenes or shots.'
+      'mode "missing" (Continue) plans the whole sequence. Omit sceneIds/shotIds, or use mode "stale" for scenes or shots.'
     );
   }
+  const generationPlan = await computeGenerationPlan(scopedDb, sequence.id);
   const switches = {
     generateStartFrames: sequence.generateStartFrames,
     generateVoices: sequence.generateVoices,
@@ -158,15 +199,20 @@ async function buildPlan(
     }),
   ]);
   return {
+    sequence,
     plan,
+    shotIds,
     stopAt,
     estimateMicros: estimate.priced ? estimate.micros : null,
-    inFlightShotIds,
+    // The editor checks the partial sum when a part has no price; so do we.
+    creditCheckMicros: estimate.micros,
   };
 }
 
-/** What the plan does, per stage, for the agent to show and for polling. */
-function summarize(plan: UpdateStalePlan, inFlightShotIds: string[]) {
+function summarize(
+  plan: UpdateStalePlan,
+  inFlightShotIds: string[]
+): GenerationWork {
   const shots = (flag: keyof UpdateStalePlan['targets'][number]) =>
     plan.targets.filter((t) => t[flag] === true).map((t) => t.shotId);
   return {
@@ -198,10 +244,11 @@ function summarize(plan: UpdateStalePlan, inFlightShotIds: string[]) {
 }
 
 /**
- * The digest binds everything that changes what runs or what it costs:
- * the request, the frozen plan (ids, flags, pinned versions, input hashes,
- * models) and the estimate. Dates are left out, so a touched timestamp does
- * not change it.
+ * The digest binds what runs and what it costs: the request, every target
+ * (ids, flags, pinned versions, input hashes, models), music, skips, the
+ * render-affecting sequence settings and the estimate. Display fields (the
+ * sequence title, the reference rows) and Dates are left out, so a rename or
+ * a touched timestamp does not change it.
  */
 function planDigest(
   request: GenerationRequest,
@@ -210,14 +257,25 @@ function planDigest(
     'plan' | 'estimateMicros' | 'stopAt'
   >
 ) {
+  const { plan } = built;
   const material = JSON.stringify(
     {
       request,
-      plan: built.plan,
+      targets: plan.targets,
+      music: plan.music,
+      skipped: plan.skipped,
+      sequence: {
+        imageModel: plan.sequence.imageModel,
+        videoModel: plan.sequence.videoModel,
+        generateStartFrames: plan.sequence.generateStartFrames,
+        draftMotion: plan.sequence.draftMotion,
+        aspectRatio: plan.aspectRatio,
+        resolution: plan.resolution,
+      },
       estimateMicros: built.estimateMicros,
       stopAt: built.stopAt ?? null,
     },
-    // Timestamps are not what runs; `undefined` optionals are dropped.
+    // `undefined` optionals are dropped; so are timestamps.
     function (this: Record<string, unknown>, key: string, value: unknown) {
       return this[key] instanceof Date ? undefined : value;
     }
@@ -239,10 +297,18 @@ export async function planGeneration(
   request: GenerationRequest
 ) {
   const built = await buildPlan(scopedDb, actor, sequenceId, request);
-  const { plan, estimateMicros, inFlightShotIds } = built;
+  const { sequence, plan, shotIds, estimateMicros } = built;
+  const inFlightShotIds = [
+    ...new Set(
+      (await computeGenerationPlan(scopedDb, sequence.id))
+        .filter(
+          (u) => u.state === 'running' && (!shotIds || shotIds.includes(u.id))
+        )
+        .map((u) => u.id)
+    ),
+  ];
   const work = summarize(plan, inFlightShotIds);
   const blockers: { code: string; message: string }[] = [];
-  const sequence = await productionAccess(scopedDb).sequence(sequenceId);
   if (sequence.status === 'processing') {
     blockers.push({
       code: 'GENERATION_IN_PROGRESS',
@@ -252,16 +318,14 @@ export async function planGeneration(
   if (!hasWork(plan)) {
     blockers.push({ code: 'NOTHING_TO_DO', message: 'Nothing to generate.' });
   }
-  if (estimateMicros !== null) {
-    // Reported, not thrown: funds can still change before execute.
-    try {
-      await requireCredits(scopedDb, estimateMicros, {
-        providers: ['fal', 'openrouter'],
-      });
-    } catch (error) {
-      if (!(error instanceof OpenStoryError)) throw error;
-      blockers.push({ code: error.code, message: error.message });
-    }
+  // Reported, not thrown: funds can still change before execute.
+  try {
+    await requireCredits(scopedDb, built.creditCheckMicros, {
+      providers: ['fal', 'openrouter'],
+    });
+  } catch (error) {
+    if (!(error instanceof OpenStoryError)) throw error;
+    blockers.push({ code: error.code, message: error.message });
   }
   const row = await scopedDb.generationPlans.create({
     sequenceId,
@@ -275,13 +339,11 @@ export async function planGeneration(
   return {
     planId: row.id,
     sequenceId,
-    request,
     digest: row.digest,
     expiresAt: row.expiresAt.toISOString(),
     estimate: {
       micros: estimateMicros,
-      usd: estimateMicros === null ? null : Number(estimateMicros) / 1e6,
-      complete: estimateMicros !== null,
+      usd: estimateMicros === null ? null : estimateMicros / 1e6,
     },
     work,
     blockers,
@@ -293,7 +355,7 @@ function operationOf(row: GenerationPlanRow) {
     operationId: row.id,
     sequenceId: row.sequenceId,
     status: row.status,
-    workflowRunIds: row.workflowRunId ? [row.workflowRunId] : [],
+    workflowRunIds: row.workflowRunIds,
     pollAfterSeconds: OPERATION_POLL_SECONDS,
   };
 }
@@ -311,6 +373,23 @@ async function ownPlan(
   return row;
 }
 
+/** The mutex refusals are plain Errors; give them a code the agent can act on. */
+async function rejectActiveRun(scopedDb: ScopedDb, sequenceId: string) {
+  try {
+    await getSequenceRejectingActiveRun(scopedDb, sequenceId);
+  } catch (error) {
+    if (error instanceof OpenStoryError) throw error;
+    throw new OpenStoryError(
+      error instanceof Error ? error.message : String(error),
+      'GENERATION_IN_PROGRESS',
+      409
+    );
+  }
+}
+
+// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- written by planGeneration from a GenerationRequest
+const requestOf = (row: GenerationPlanRow) => row.request as GenerationRequest;
+
 export async function executeGeneration(
   scopedDb: ScopedDb,
   actor: Actor,
@@ -321,6 +400,24 @@ export async function executeGeneration(
   if (row.actorId !== actor.userId) {
     throw new NotFoundError('Plan not found for this sequence');
   }
+  const request = requestOf(row);
+
+  if (
+    row.status === 'executing' &&
+    row.workflowRunIds.length === 0 &&
+    request.mode === 'stale'
+  ) {
+    // A lost Update all dispatch is re-sent with the same run key: the
+    // trigger reuses a live or finished instance, so nothing runs twice. A
+    // lost Continue dispatch is not (its mutex claim id is per call).
+    const lost = await scopedDb.generationPlans.reclaimLostDispatch(
+      planId,
+      new Date(Date.now() - DISPATCH_GRACE_MS)
+    );
+    if (!lost) return operationOf(row);
+    const { plan } = await buildPlan(scopedDb, actor, sequenceId, request);
+    return launch(scopedDb, actor, lost, request, plan);
+  }
   // Already executed (or executing): the same operation, never a relaunch.
   if (row.status !== 'planned') return operationOf(row);
   if (row.expiresAt.getTime() < Date.now()) {
@@ -330,70 +427,79 @@ export async function executeGeneration(
       409
     );
   }
-  // The request is the one this row was planned with.
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- written by planGeneration from a GenerationRequest
-  const request = row.request as GenerationRequest;
   const built = await buildPlan(scopedDb, actor, sequenceId, request);
-  const { plan, estimateMicros } = built;
   if ((await planDigest(request, built)) !== row.digest) {
     throw new ConflictError(
       'The work changed since it was planned. Call plan_generation again and approve the new plan.',
       { code: 'PLAN_CHANGED' }
     );
   }
-  if (!hasWork(plan)) throw new ValidationError('Nothing to generate.');
-  const sequence = await productionAccess(scopedDb).sequence(sequenceId);
-  if (sequence.status === 'processing') {
-    throw new ValidationError(
-      'This sequence is still generating — execute after the run finishes.'
-    );
-  }
-  if (estimateMicros !== null) {
-    await requireCredits(scopedDb, estimateMicros, {
-      providers: ['fal', 'openrouter'],
-    });
-  }
+  if (!hasWork(built.plan)) throw new ValidationError('Nothing to generate.');
+  // Refusals before the claim leave the plan executable.
+  await rejectActiveRun(scopedDb, sequenceId);
+  await requireCredits(scopedDb, built.creditCheckMicros, {
+    providers: ['fal', 'openrouter'],
+  });
 
   const claimed = await scopedDb.generationPlans.claimExecution(planId);
   if (!claimed) {
-    const current = await scopedDb.generationPlans.getById(planId);
-    if (!current) throw new NotFoundError('Plan not found for this sequence');
-    return operationOf(current);
+    return operationOf((await scopedDb.generationPlans.getById(planId)) ?? row);
   }
+  return launch(scopedDb, actor, claimed, request, built.plan, built);
+}
+
+async function launch(
+  scopedDb: ScopedDb,
+  actor: Actor,
+  row: GenerationPlanRow,
+  request: GenerationRequest,
+  plan: UpdateStalePlan,
+  built?: { sequence: Sequence; stopAt?: GenerationStage }
+) {
+  let workflowRunId: string;
   try {
-    const workflowRunId =
-      request.mode === 'stale'
-        ? await launchUpdateStale({
-            userId: actor.userId,
-            teamId: actor.teamId,
-            sequenceId,
-            plan,
-            runKey: `${sequenceId}-plan-${planId}`,
-          })
-        : (
-            await triggerContinue(scopedDb, {
-              userId: actor.userId,
-              teamId: actor.teamId,
-              sequence,
-              plan,
-              stopAt: built.stopAt ?? request.stopAt,
-            })
-          ).workflowRunId;
-    await scopedDb.generationPlans.markLaunched(planId, workflowRunId);
-    return operationOf({ ...claimed, status: 'launched', workflowRunId });
+    if (request.mode === 'stale') {
+      workflowRunId = await launchUpdateStale({
+        userId: actor.userId,
+        teamId: actor.teamId,
+        sequenceId: row.sequenceId,
+        plan,
+        runKey: `${row.sequenceId}-plan-${row.id}`,
+      });
+    } else {
+      const sequence =
+        built?.sequence ??
+        (await productionAccess(scopedDb).sequence(row.sequenceId));
+      ({ workflowRunId } = await triggerContinue(scopedDb, {
+        userId: actor.userId,
+        teamId: actor.teamId,
+        sequence,
+        plan,
+        stopAt: built?.stopAt ?? request.stopAt,
+      }));
+    }
   } catch (error) {
+    // Only a launch that threw is a failed dispatch.
     await scopedDb.generationPlans.markDispatchFailed(
-      planId,
+      row.id,
       error instanceof Error ? error.message : String(error)
     );
     throw error;
   }
+  // Outside the try: a bookkeeping failure must not mark a live run failed.
+  await scopedDb.generationPlans.addRun(row.id, workflowRunId);
+  await scopedDb.generationPlans.markLaunched(row.id);
+  return operationOf({
+    ...row,
+    status: 'launched',
+    workflowRunIds: [workflowRunId],
+  });
 }
 
 /**
  * One operation's state, from its own run — not a sequence aggregate.
- * Terminal states: `completed`, `partially_failed`, `failed`,
- * `dispatch_failed`, `dispatch_unknown`.
+ * Terminal: `completed`, `partially_failed`, `failed`, `dispatch_failed`,
+ * `dispatch_unknown`, `unknown` (no readable outcome a day after launch).
  */
 export async function getOperationStatus(
   scopedDb: ScopedDb,
@@ -401,7 +507,8 @@ export async function getOperationStatus(
   operationId: string
 ) {
   const row = await ownPlan(scopedDb, sequenceId, operationId);
-  const base = { ...operationOf(row), targeted: row.work };
+  const targeted = generationWorkSchema.parse(row.work);
+  const base = { ...operationOf(row), targeted };
   const done = (state: string, extra: Record<string, unknown> = {}) => ({
     ...base,
     state,
@@ -409,27 +516,36 @@ export async function getOperationStatus(
     ...extra,
   });
   const pending = (state: string) => ({ ...base, state, terminal: false });
+  const executedMs = row.executedAt?.getTime() ?? 0;
+  const stale = requestOf(row).mode === 'stale';
 
   if (row.status === 'planned') return pending('not_started');
   if (row.status === 'dispatch_failed') {
     return done('dispatch_failed', { error: row.error });
   }
-  if (!row.workflowRunId) {
-    const since = row.executedAt?.getTime() ?? 0;
-    return Date.now() - since > DISPATCH_GRACE_MS
-      ? done('dispatch_unknown', {
-          error:
-            'The launch was not confirmed. It is not retried automatically: check get_sequence_status, then plan again if the work is still owed.',
-        })
-      : pending('dispatching');
+  const [runId] = row.workflowRunIds;
+  if (!runId) {
+    if (Date.now() - executedMs <= DISPATCH_GRACE_MS) {
+      return pending('dispatching');
+    }
+    // Update all re-sends safely: call execute_generation again.
+    if (stale) return pending('dispatch_lost');
+    return done('dispatch_unknown', {
+      error:
+        'The launch was not confirmed and is not retried. Check get_sequence_status, then plan again if the work is still owed.',
+    });
   }
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- written by planGeneration from a GenerationRequest
-  const request = row.request as GenerationRequest;
-  if (request.mode === 'stale') {
-    const run = await readUpdateStaleRun(sequenceId, row.workflowRunId);
-    if (run.state === 'running') return pending('running');
-    if (run.state === 'failed') return done('failed', { error: run.error });
-    if (run.state === 'unknown') return pending('unknown');
+  const run = stale
+    ? await readUpdateStaleRun(sequenceId, runId)
+    : await getWorkflowRunOutcome(runId);
+  if (run.state === 'running') return pending('running');
+  if (run.state === 'failed') return done('failed', { error: run.error });
+  if (run.state === 'unknown') {
+    return Date.now() - executedMs > UNKNOWN_GIVE_UP_MS
+      ? done('unknown')
+      : pending('unknown');
+  }
+  if ('result' in run) {
     const { failures, skipped } = run.result;
     return done(failures.length > 0 ? 'partially_failed' : 'completed', {
       result: run.result,
@@ -437,10 +553,18 @@ export async function getOperationStatus(
       skipped,
     });
   }
-  const outcome = await getWorkflowRunOutcome(row.workflowRunId);
-  if (outcome.state === 'running') return pending('running');
-  if (outcome.state === 'failed')
-    return done('failed', { error: outcome.error });
-  if (outcome.state === 'unknown') return pending('unknown');
-  return done('completed');
+  // A Continue run reports run-level success; its targets' own failures are
+  // read from their current state.
+  const sequence = await productionAccess(scopedDb).sequence(sequenceId);
+  const targets = new Set(targeted.targetShotIds);
+  const failures = (
+    (await readProductionStatus(scopedDb, sequence, true)).failures ?? []
+  ).flatMap((f) =>
+    f.shotId && targets.has(f.shotId)
+      ? [{ shotId: f.shotId, stage: f.stage, error: f.error ?? 'failed' }]
+      : []
+  );
+  return done(failures.length > 0 ? 'partially_failed' : 'completed', {
+    failures,
+  });
 }

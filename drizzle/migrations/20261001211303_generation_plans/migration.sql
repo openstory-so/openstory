@@ -9,7 +9,7 @@ CREATE TABLE `generation_plans` (
 	`work` text NOT NULL,
 	`expires_at` integer NOT NULL,
 	`status` text DEFAULT 'planned' NOT NULL,
-	`workflow_run_id` text,
+	`workflow_run_ids` text DEFAULT '[]' NOT NULL,
 	`error` text,
 	`executed_at` integer,
 	`created_at` integer NOT NULL,

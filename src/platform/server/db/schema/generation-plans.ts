@@ -8,13 +8,13 @@
  * so repeated or concurrent executes of a plan launch at most once and all
  * return this row. The row id is both the plan handle and the operation id.
  *
- * `workflowRunId` is the launched root run (update-stale-shots, or the
- * storyboard for `missing` work). A row stuck in `executing` with no run id
- * lost its dispatch; it is never relaunched (see docs/architecture/
+ * `workflowRunIds` are the launched root runs, in launch order. A row stuck
+ * in `executing` with none lost its dispatch: only an Update all run, whose
+ * run key is deterministic, is re-sent (see docs/architecture/
  * generation-plan.md § Agent plans).
  */
 
-import type { InferSelectModel } from 'drizzle-orm';
+import { sql, type InferSelectModel } from 'drizzle-orm';
 import { index, integer, snakeCase, text } from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/platform/id';
 import { sequences } from './sequences';
@@ -40,7 +40,8 @@ export const generationPlans = snakeCase.table(
     // sha-256 of the planned work (ids, flags, pinned versions, input
     // hashes, models, estimate). Timestamps are not in it.
     digest: text().notNull(),
-    // The approved spending limit; null when a component has no price.
+    // The approved estimate (display + digest); null when a component has
+    // no price. It is not a cap on what the run spends.
     estimateMicros: integer(),
     // The work this operation targets: per-stage shot ids, music, skips.
     work: text({ mode: 'json' }).$type<Record<string, unknown>>().notNull(),
@@ -50,7 +51,12 @@ export const generationPlans = snakeCase.table(
     })
       .notNull()
       .default('planned'),
-    workflowRunId: text(),
+    // Every root run this operation launched, in launch order (a smart retry
+    // can start several, #1461). Appended as each one starts.
+    workflowRunIds: text({ mode: 'json' })
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'`),
     error: text(),
     executedAt: integer({ mode: 'timestamp' }),
     createdAt: integer({ mode: 'timestamp' })

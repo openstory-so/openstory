@@ -9,7 +9,7 @@ import {
   generationPlans,
   type GenerationPlanRow,
 } from '@/platform/server/db/schema';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, lt, sql } from 'drizzle-orm';
 
 export function createGenerationPlansMethods(db: Database, teamId: string) {
   const own = (id: string) =>
@@ -18,7 +18,7 @@ export function createGenerationPlansMethods(db: Database, teamId: string) {
     create: async (
       row: Omit<
         typeof generationPlans.$inferInsert,
-        'teamId' | 'status' | 'workflowRunId' | 'error' | 'executedAt'
+        'teamId' | 'status' | 'workflowRunIds' | 'error' | 'executedAt'
       >
     ): Promise<GenerationPlanRow> => {
       const [inserted] = await db
@@ -44,10 +44,43 @@ export function createGenerationPlansMethods(db: Database, teamId: string) {
       return row ?? null;
     },
 
-    markLaunched: async (id: string, workflowRunId: string): Promise<void> => {
+    /**
+     * Retake an `executing` row whose dispatch was lost (claimed before
+     * `before`, nothing launched); null when another call retook it.
+     */
+    reclaimLostDispatch: async (
+      id: string,
+      before: Date
+    ): Promise<GenerationPlanRow | null> => {
+      const [row] = await db
+        .update(generationPlans)
+        .set({ executedAt: new Date() })
+        .where(
+          and(
+            own(id),
+            eq(generationPlans.status, 'executing'),
+            lt(generationPlans.executedAt, before),
+            eq(generationPlans.workflowRunIds, [])
+          )
+        )
+        .returning();
+      return row ?? null;
+    },
+
+    /** Record one launched run as soon as it starts. */
+    addRun: async (id: string, workflowRunId: string): Promise<void> => {
       await db
         .update(generationPlans)
-        .set({ status: 'launched', workflowRunId })
+        .set({
+          workflowRunIds: sql`json_insert(${generationPlans.workflowRunIds}, '$[#]', ${workflowRunId})`,
+        })
+        .where(and(own(id), eq(generationPlans.status, 'executing')));
+    },
+
+    markLaunched: async (id: string): Promise<void> => {
+      await db
+        .update(generationPlans)
+        .set({ status: 'launched' })
         .where(and(own(id), eq(generationPlans.status, 'executing')));
     },
 

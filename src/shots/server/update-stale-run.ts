@@ -50,9 +50,6 @@ export function launchUpdateStale(input: {
   plan: UpdateStalePlan;
   runKey: string;
 }): Promise<string> {
-  if (!input.runKey.startsWith(input.sequenceId)) {
-    throw new Error('Update all run key must start with the sequence id');
-  }
   return triggerWorkflow<UpdateStaleShotsWorkflowInput>(
     '/update-stale-shots',
     {

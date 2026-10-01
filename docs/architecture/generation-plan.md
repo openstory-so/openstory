@@ -367,30 +367,44 @@ same plan, not a second planner.
 - **No side effects.** Planning prices with the editor's preview/estimate
   and reports insufficient credits, a running sequence or nothing-to-do as
   `blockers`; it starts nothing. The one write is the `generation_plans` row
-  (and `computePlan`'s existing anchor-frame repair).
+  (and `computePlan`'s existing anchor-frame repair). Rows stay until their
+  sequence is deleted.
 - **The row is the handle and the operation.** It holds the request, the
-  digest, the estimate (the approved limit; `null` when a component has no
-  price), what it targets per stage, and a 30-minute expiry.
-- **Execute** re-plans from live D1 and requires the same digest: the digest
-  covers the request, the frozen plan (ids, flags, pinned version ids, input
-  hashes, models) and the estimate, with Dates left out — so a moved
-  selection, model or target is `PLAN_CHANGED`, a touched timestamp is not.
-  It refuses a running sequence and rechecks the balance (`requireCredits`;
-  these paths hold no reservation, as in the editor), then takes the row
-  `planned` → `executing` in one guarded UPDATE and launches through the
-  editor's launchers: `launchUpdateStale` with run key
+  digest, the approved estimate (`null` when a component has no price; it
+  is not a cap on what the run spends), what it targets per stage, a
+  30-minute expiry and the launched run ids.
+- **Digest.** It covers the request, every target (ids, flags, pinned
+  version ids, input hashes, models), music, skips, the render-affecting
+  sequence settings and the estimate. Display fields (the sequence title,
+  reference rows) and Dates are left out: a moved selection, model, target
+  or price is `PLAN_CHANGED`; a rename or a touched timestamp is not.
+- **Credits.** The balance check never skips: Update all checks the larger
+  of the estimate and the editor's one-image floor, Continue the known part
+  of its estimate (as `continueGenerationFn`). These paths hold no
+  reservation, as in the editor.
+- **Execute** re-plans and requires the same digest, then rejects a live run
+  (`getSequenceRejectingActiveRun`, `GENERATION_IN_PROGRESS`) and a short
+  balance — all before the claim, so a refusal leaves the plan executable.
+  Then it takes the row `planned` → `executing` in one guarded UPDATE and
+  launches through the editor's launchers: `launchUpdateStale` with run key
   `<sequenceId>-plan-<planId>`, or `triggerContinue` (which holds the
   storyboard mutex). A repeated or concurrent execute finds the row taken and
   returns the same operation: one launch, one spend.
-- **Dispatch failure.** A throwing launch marks the row `dispatch_failed` and
-  is never retried. A row left `executing` with no run id (the request died
-  between claim and launch) reads `dispatch_unknown` after two minutes and is
-  never relaunched: check `get_sequence_status` and plan again if the work is
-  still owed.
-- **Status** reads the operation's own run (`readUpdateStaleRun` for per-shot
-  failures and skips), never a sequence aggregate. Poll every 15 s. Terminal:
-  `completed`, `partially_failed`, `failed`, `dispatch_failed`,
-  `dispatch_unknown`. Non-terminal: `not_started`, `dispatching`, `running`,
+- **Dispatch failure.** Only a launch that throws marks the row
+  `dispatch_failed`; it is never retried. A failure to record a run that
+  did start is not a dispatch failure. A row left `executing` with no run id
+  for two minutes lost its dispatch: Update all reads `dispatch_lost` and
+  calling `execute_generation` again re-sends it with the same run key (the
+  trigger reuses a live or finished instance; one guarded UPDATE lets one
+  caller re-send). Continue reads `dispatch_unknown` and is not re-sent,
+  because its mutex claim id is per call: check `get_sequence_status`, then
+  plan again.
+- **Status** reads the operation's own run, never a sequence aggregate:
+  Update all from its result (per-shot failures and skips); Continue from the
+  run's outcome plus the current failures of the shots it targeted. Poll
+  every 15 s. Terminal: `completed`, `partially_failed`, `failed`,
+  `dispatch_failed`, `dispatch_unknown`, and `unknown` a day after launch.
+  Non-terminal: `not_started`, `dispatching`, `dispatch_lost`, `running`,
   `unknown`.
 - **Scopes.** Plan and execute need OAuth `generate`; polling needs
   `sequences:read`. API keys stay unscoped. `confirm: true` is the caller's

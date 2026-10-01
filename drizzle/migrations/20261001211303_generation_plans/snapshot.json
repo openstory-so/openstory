@@ -1,7 +1,7 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "02ace24f-090d-49ff-b0b3-2b7d565a87d2",
+  "id": "9c8b69e3-75a3-47ac-ba54-96281610f80e",
   "prevIds": ["4fe372c2-87b0-49ad-87b7-79830466ff22"],
   "ddl": [
     {
@@ -3324,11 +3324,11 @@
     },
     {
       "type": "text",
-      "notNull": false,
+      "notNull": true,
       "autoincrement": false,
-      "default": null,
+      "default": "'[]'",
       "generated": null,
-      "name": "workflow_run_id",
+      "name": "workflow_run_ids",
       "entityType": "columns",
       "table": "generation_plans"
     },

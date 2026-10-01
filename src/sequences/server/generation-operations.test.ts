@@ -65,7 +65,17 @@ vi.doMock('@/shots/server/update-stale-run', () => ({
   launchUpdateStale,
   readUpdateStaleRun,
 }));
-vi.doMock('./launchers', () => ({ triggerContinue }));
+const getSequenceRejectingActiveRun = vi.fn();
+const readProductionStatus = vi.fn();
+vi.doMock('./launchers', () => ({
+  triggerContinue,
+  getSequenceRejectingActiveRun,
+}));
+vi.doMock('./production-status', () => ({ readProductionStatus }));
+vi.doMock('@/billing/cost-estimation', () => ({
+  estimateImageCost: () => 400_000,
+  gateEstimate: (micros: number) => micros,
+}));
 vi.doMock('./continue-plan', () => ({
   continueFromPlan,
   estimateContinueCost: vi.fn(async () => ({
@@ -178,7 +188,6 @@ describe('plan_generation', () => {
     expect(first.estimate).toEqual({
       micros: 2_500_000,
       usd: 2.5,
-      complete: true,
     });
     expect(first.work.stages.images).toEqual([shotId]);
     expect(first.blockers.map((b) => b.code)).toEqual(['INSUFFICIENT_CREDITS']);
@@ -410,5 +419,106 @@ describe('get_operation_status', () => {
         planId
       )
     ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+});
+
+describe('review fixes (#1460)', () => {
+  it('credit-checks the one-image floor when the estimate has no price', async () => {
+    planUpdateAll.mockImplementation(async () => stalePlan());
+    const preview = await import('@/shots/server/update-stale-preview');
+    vi.spyOn(preview, 'buildUpdateStalePreview').mockReturnValue(
+      asStub({ costByLevel: { images: null } })
+    );
+    const plan = await planGeneration(scoped(), actor(), sequenceId, stale);
+    expect(plan.estimate).toEqual({ micros: null, usd: null });
+    expect(requireCredits).toHaveBeenLastCalledWith(
+      expect.anything(),
+      400_000,
+      expect.anything()
+    );
+    vi.mocked(preview.buildUpdateStalePreview).mockRestore();
+  });
+
+  it('a mutex refusal before the claim leaves the plan executable', async () => {
+    const { planId } = await planGeneration(
+      scoped(),
+      actor(),
+      sequenceId,
+      stale
+    );
+    getSequenceRejectingActiveRun.mockRejectedValueOnce(
+      new Error('A generation is already running')
+    );
+    await expect(
+      executeGeneration(scoped(), actor(), sequenceId, planId)
+    ).rejects.toMatchObject({ code: 'GENERATION_IN_PROGRESS' });
+    expect(
+      await executeGeneration(scoped(), actor(), sequenceId, planId)
+    ).toMatchObject({ status: 'launched' });
+  });
+
+  it('a bookkeeping failure after launch is not a failed dispatch, and the lost run is re-sent with the same key', async () => {
+    const { planId } = await planGeneration(
+      scoped(),
+      actor(),
+      sequenceId,
+      stale
+    );
+    const db1 = scoped();
+    vi.spyOn(db1.generationPlans, 'addRun').mockRejectedValueOnce(
+      new Error('D1 blip')
+    );
+    await expect(
+      executeGeneration(db1, actor(), sequenceId, planId)
+    ).rejects.toThrow('D1 blip');
+    expect(
+      await getOperationStatus(scoped(), sequenceId, planId)
+    ).toMatchObject({ state: 'dispatching', terminal: false });
+    await db
+      .update(generationPlans)
+      .set({ executedAt: new Date(Date.now() - 10 * 60_000) });
+    expect(
+      await getOperationStatus(scoped(), sequenceId, planId)
+    ).toMatchObject({ state: 'dispatch_lost', terminal: false });
+    expect(
+      await executeGeneration(scoped(), actor(), sequenceId, planId)
+    ).toMatchObject({
+      status: 'launched',
+      workflowRunIds: [`run-${sequenceId}`],
+    });
+    const keys = launchUpdateStale.mock.calls.map(([input]) => input.runKey);
+    expect(keys).toEqual([keys[0], keys[0]]);
+  });
+
+  it('reports a Continue run’s failed targets from their state', async () => {
+    continueFromPlan.mockReturnValue({
+      work: [{ kind: 'still', id: shotId }],
+      stopAt: 'images',
+    });
+    computePlan.mockResolvedValue(stalePlan());
+    triggerContinue.mockResolvedValue({ workflowRunId: 'storyboard-run' });
+    readProductionStatus.mockResolvedValue({
+      failures: [
+        { stage: 'image', id: 'f1', shotId, error: 'safety' },
+        { stage: 'image', id: 'f2', shotId: generateId(), error: 'other shot' },
+      ],
+    });
+    const { planId } = await planGeneration(scoped(), actor(), sequenceId, {
+      mode: 'missing',
+      stopAt: 'images',
+      target: { kind: 'sequence' },
+    });
+    await executeGeneration(scoped(), actor(), sequenceId, planId);
+    const runOutcome = await import('@/platform/server/workflow/run-outcome');
+    vi.spyOn(runOutcome, 'getWorkflowRunOutcome').mockResolvedValue({
+      state: 'complete',
+      output: null,
+    });
+    expect(
+      await getOperationStatus(scoped(), sequenceId, planId)
+    ).toMatchObject({
+      state: 'partially_failed',
+      failures: [{ shotId, stage: 'image', error: 'safety' }],
+    });
   });
 });
