@@ -15,6 +15,7 @@
  * § prompt versioning and docs/architecture/scene-shot-frame-redesign.md.
  */
 
+import type { ShotDialogueSectionSource } from './shot-dialogue-sections';
 import type {
   MotionAudio,
   MotionDialogue,
@@ -61,6 +62,16 @@ export type MotionAudioClip = {
    * speeches, and on a user-bound element clip.
    */
   speechId?: string;
+  /**
+   * The section's source: `mic` marks the user's own take (#1802). Absent on
+   * clips cut before it was stamped.
+   */
+  source?: ShotDialogueSectionSource;
+  /**
+   * This shot's lines the take check could not find (#1802), by line index,
+   * with the share of each heard. Absent: every line was heard.
+   */
+  unclearLines?: { index: number; heardShare: number }[];
   /**
    * @deprecated The pre-#1913 name of `speechId`. The #1913 migration rewrites
    * stored clips, but a workflow payload snapshotted before the deploy can

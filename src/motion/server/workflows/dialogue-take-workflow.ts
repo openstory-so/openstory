@@ -111,6 +111,10 @@ export class DialogueTakeWorkflow extends OpenStoryWorkflowEntrypoint<DialogueTa
         speechId: take.speechId,
         sourceKey: input.sourceKey,
         spokenLines: spokenLines.length > 0 ? spokenLines : null,
+        source: 'mic' as const,
+        // A mic take is the user's own: nothing in it is doubtful.
+        speechTurns: [],
+        shotId: input.shotId,
       };
       const cut = await step.do('cut', () =>
         cutAudioSection({

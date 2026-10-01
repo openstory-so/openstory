@@ -41,6 +41,7 @@ import type {
 } from '@/shots/scene-analysis.schema';
 import {
   dialogueContextFor,
+  loadVoiceMovedShotIds,
   sceneDialogueJobs,
   shotPromptDialogueResolver,
   type ShotDialogueResolver,
@@ -833,6 +834,11 @@ export async function computePlan(args: {
       const durationMs = shotById.get(shotId)?.durationMs;
       return durationMs && durationMs > 0 ? durationMs / 1000 : undefined;
     },
+    voiceMovedShotIds: await loadVoiceMovedShotIds(
+      scopedDb,
+      sequenceId,
+      allShots
+    ),
   });
   // A take must fit every model this run renders: a fresh run names them all.
   const dialogueModels = args.renderOptions?.videoModels?.length

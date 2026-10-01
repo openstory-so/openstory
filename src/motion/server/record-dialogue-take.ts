@@ -35,10 +35,7 @@ import {
 } from '@/billing/seed-speech-pricing';
 import { SEED_AUDIO_MODEL, voiceProviderOf } from '@/cast/seed-voice';
 import { SCRIBE_MODEL } from '@/cast/server/voice/elevenlabs-voice';
-import {
-  recordCheckedTake,
-  SEED_BOOTH_PROMPT,
-} from '@/cast/server/voice/seed-audio';
+import { recordCheckedTake } from '@/cast/server/voice/seed-audio';
 import { loadSeedVoice, readSeedClip } from '@/cast/server/voice/seed-voice';
 import { WORD_LEAD_SECONDS } from '@/cast/server/voice/take-check';
 import type { Microdollars } from '@/billing/money';
@@ -328,16 +325,14 @@ async function convertWithVoiceChanger(
   };
 }
 
-/** The Seed prompt: the character's voice from @Audio1, the delivery from @Audio2. */
+/** The Seed prompt: each reference's job, then the line. */
 function seedGuidedPrompt(
-  line: Pick<DialogueTakeLine, 'character' | 'text'>,
-  description: string
+  line: Pick<DialogueTakeLine, 'character' | 'text'>
 ): string {
   const name = line.character.trim() || 'Narrator';
   return [
-    `${SEED_BOOTH_PROMPT} One speaker.`,
-    `${name}: the exact voice and accent of @Audio1. ${description}`.trim(),
-    `@Audio2 is a guide read of the same line. Copy its timing, pauses, emphasis, pitch movement and emotion exactly, but not its voice.`,
+    '@Audio1: Exact master audio track; preserve word-for-word delivery, exact vocal timbre, room tone, and sound effects completely intact. Do not replace, remix, or add underlying music.',
+    '@Audio2: the lines that should be delivered',
     '',
     `${name}: ${line.text.trim()}`,
   ].join('\n');
@@ -354,7 +349,7 @@ async function convertWithSeed(
   }
   const bundle = await loadSeedVoice(line.voiceId);
   const voice = await readSeedClip(bundle.clips.normal);
-  const prompt = seedGuidedPrompt(line, bundle.description);
+  const prompt = seedGuidedPrompt(line);
   let lastProblem = '';
   for (let attempt = 1; attempt <= SEED_TAKE_ATTEMPTS; attempt++) {
     const made = await recordCheckedTake({

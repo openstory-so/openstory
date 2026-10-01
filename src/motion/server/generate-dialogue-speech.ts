@@ -376,6 +376,9 @@ async function recordClaimed(
             speechId: call.speechId,
             sourceKey,
             spokenLines: spokenLines ?? null,
+            source: 'generated',
+            speechTurns: call.turns,
+            shotId,
           },
           cut
         ),

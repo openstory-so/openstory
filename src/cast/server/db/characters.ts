@@ -677,6 +677,28 @@ export function createCharactersMethods(db: Database) {
           desc(characterVoiceVersions.id)
         ),
 
+    /**
+     * Every voice a sequence's cast has had, and which one each live
+     * character speaks in now — who a recorded turn was, and since when their
+     * voice is the current one (#1802).
+     */
+    listVoiceHistoryBySequence: async (sequenceId: string) => {
+      const rows = await db
+        .select({
+          characterId: characterVoiceVersions.characterId,
+          voiceId: characterVoiceVersions.voiceId,
+          createdAt: characterVoiceVersions.createdAt,
+          current: sql<number>`(${characters.selectedVoiceVersionId} = ${characterVoiceVersions.id} and ${characters.deletedAt} is null)`,
+        })
+        .from(characterVoiceVersions)
+        .innerJoin(
+          characters,
+          eq(characters.id, characterVoiceVersions.characterId)
+        )
+        .where(eq(characters.sequenceId, sequenceId));
+      return rows.map((row) => ({ ...row, current: Boolean(row.current) }));
+    },
+
     /** The husk this run holds, including after it completed in place (#1715). */
     getVoiceVersionById: async (id: string) => {
       const [row] = await db

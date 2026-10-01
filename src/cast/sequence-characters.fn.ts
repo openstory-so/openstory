@@ -24,6 +24,7 @@ import {
 } from './bible-field';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
+import { terminateSingleArtifactRun } from '@/platform/server/workflow/run-outcome';
 import type {
   CharacterSheetWorkflowInput,
   RecastCharacterWorkflowInput,
@@ -266,6 +267,38 @@ export const generateCharacterVoiceFn = createServerFn({ method: 'POST' })
       workflowRunId: enqueued.workflowRunId,
       alreadyInFlight: enqueued.alreadyInFlight,
     };
+  });
+
+/**
+ * Cancel a voice still generating: the husk fails as cancelled and the
+ * character keeps the voice it had. The run is terminated best-effort; one
+ * that lands anyway finds its claim no longer live and promotes nothing.
+ */
+export const cancelCharacterVoiceFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(zodValidator(characterIdInput))
+  .handler(async ({ context, data }) => {
+    const character = await requireCharacter(context.scopedDb, data);
+    const versionId = character.pendingPromoteVoiceVersionId;
+    if (!versionId) return { cancelled: false };
+    const version =
+      await context.scopedDb.characters.getVoiceVersionById(versionId);
+    const failed = await context.scopedDb.characters.markVoiceClaimTerminal(
+      versionId,
+      'failed',
+      'Cancelled'
+    );
+    if (!failed) return { cancelled: false };
+    await terminateSingleArtifactRun(version?.workflowRunId ?? null);
+    try {
+      await getGenerationChannel(character.sequenceId).emit(
+        'generation.character-voice:progress',
+        { characterId: character.id, status: 'failed', error: 'Cancelled' }
+      );
+    } catch (error) {
+      logger.error('realtime emit failed', { err: error });
+    }
+    return { cancelled: true };
   });
 
 /**

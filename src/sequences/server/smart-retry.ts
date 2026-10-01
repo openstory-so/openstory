@@ -44,6 +44,7 @@ import { addMicros, ZERO_MICROS } from '@/billing/money';
 import {
   loadShotDialogueLines,
   shotDialogueResolver,
+  loadVoiceMovedShotIds,
   snapshotBatchDialogue,
 } from '@/shots/server/shot-dialogue';
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
@@ -415,6 +416,11 @@ export async function executeSmartRetry(context: SmartRetryContext) {
       shots,
       dialogueOf,
       characters: voiceCharacters,
+      voiceMovedShotIds: await loadVoiceMovedShotIds(
+        context.scopedDb,
+        sequence.id,
+        shots
+      ),
       versionIdByShotId: new Map(
         dialogueVersions.map((version) => [version.shotId, version.id])
       ),

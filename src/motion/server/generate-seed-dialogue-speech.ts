@@ -167,7 +167,11 @@ export async function generateSeedDialogueSpeech(input: {
   }
   const script = lines.map((line) => line.text).join(' ');
 
-  let lastProblem = '';
+  // A clean take returns at once. When none is clean, the best of the tries
+  // is kept and its doubtful lines are flagged for the user (#1802): three
+  // paid takes and a silent shot help nobody.
+  type Take = Awaited<ReturnType<typeof recordCheckedTake>>;
+  let best: { take: Take; worstShare: number } | null = null;
   for (let attempt = 1; attempt <= SEED_TAKE_ATTEMPTS; attempt++) {
     const take = await recordCheckedTake({
       seedKey: input.seedKey,
@@ -176,22 +180,32 @@ export async function generateSeedDialogueSpeech(input: {
       references,
       parts: lines.map((line) => line.text),
     });
+    if (take.check.ok) return keep(take);
+    logger.warn(
+      `[seed-dialogue] take ${attempt}/${SEED_TAKE_ATTEMPTS} failed its check: ${take.check.problem}`
+    );
+    if (!best || take.check.worstShare > best.worstShare) {
+      best = { take, worstShare: take.check.worstShare };
+    }
+  }
+  if (!best) throw new Error('Seed Audio made no take');
+  return keep(best.take);
+
+  async function keep(take: Take) {
     const durationSeconds = wavDurationSeconds(take.wav);
     if (durationSeconds == null) {
       throw new Error('Seed Audio returned audio that is not a PCM WAV');
     }
     const { check } = take;
-    if (!check.ok) {
-      lastProblem = check.problem;
-      logger.warn(
-        `[seed-dialogue] take ${attempt}/${SEED_TAKE_ATTEMPTS} failed its check: ${lastProblem}`
-      );
-      continue;
-    }
-
+    const heardShareOf = new Map(
+      check.ok
+        ? []
+        : check.doubtful.map((line) => [line.line, line.heardShare] as const)
+    );
     const turns: DialogueSpeechTurn[] = lines.map((line, at) => {
       const span = check.spans[at];
       if (!span) throw new Error(`Turn ${at + 1} was not found in the take`);
+      const heardShare = heardShareOf.get(at);
       return {
         shotId: line.shotId,
         index: line.index,
@@ -199,6 +213,7 @@ export async function generateSeedDialogueSpeech(input: {
         ttsModel: SEED_AUDIO_MODEL,
         startSeconds: Math.max(0, span.start),
         endSeconds: Math.min(durationSeconds, span.end),
+        ...(heardShare !== undefined && { heardShare }),
       };
     });
     // Speech before the script belongs to nobody: the first shot's range
@@ -231,6 +246,8 @@ export async function generateSeedDialogueSpeech(input: {
       take.wav,
       { contentType: 'audio/wav', upsert: true }
     );
+    // ponytail: only the kept take is billed to the team; the platform eats
+    // the tries it threw away.
     return {
       speechId,
       storageKey: uploaded.fullPath,
@@ -253,8 +270,4 @@ export async function generateSeedDialogueSpeech(input: {
       ],
     };
   }
-  // ponytail: failed takes are not billed to the team; the platform eats them.
-  throw new NonRetryableError(
-    `Seed Audio did not say the lines in ${SEED_TAKE_ATTEMPTS} takes (last: ${lastProblem}). Try again, or reword the lines.`
-  );
 }

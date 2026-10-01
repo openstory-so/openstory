@@ -27,6 +27,7 @@ import {
   type VoiceCharacter,
   type VoicedDialogueLine,
 } from '@/motion/dialogue-tts';
+import type { MotionAudioClip } from '@/platform/server/db/schema';
 import type { ShotDialogueLine } from '@/platform/server/db/schema/shot-dialogue-versions';
 import type {
   DialogueLine,
@@ -42,6 +43,82 @@ export type { ShotDialogueLine };
  * inside a shot, so no section is ever cut across two speeches.
  */
 export const DIALOGUE_TAKE_CHUNK_CHARS = 2000;
+
+/** The speech a clip was cut from, under its pre-#1913 key too. */
+export function clipSpeechId(clip: MotionAudioClip): string | undefined {
+  return clip.speechId ?? clip.recordingId;
+}
+
+/**
+ * A voice change re-records everyone it was recorded with (#1802): a speech
+ * is out of date once any voice that spoke in it is no longer a cast voice —
+ * a scene-mate was acting against the old one. A line edit stays narrow: it
+ * moves only the edited shot's key.
+ */
+export function speechVoicesMoved(
+  turns: readonly { voiceId: string }[],
+  castVoiceIds: ReadonlySet<string>
+): boolean {
+  return turns.some((turn) => !castVoiceIds.has(turn.voiceId));
+}
+
+/**
+ * The shots whose audio a voice change has dated (#1802). A voice change
+ * re-records the whole scene, so a shot is out of date when its speech
+ * - was spoken by a voice the cast no longer uses (`speechVoicesMoved`), or
+ * - predates the current voice of anyone who speaks in its scene — a speech
+ *   can leave a scene-mate out (a Seed and an ElevenLabs voice never share a
+ *   call), and that shot must not keep a take from before the change.
+ *
+ * Who speaks in a scene is read off its shots' speeches: every turn names
+ * its voice, and every voice belongs to one character.
+ */
+export function voiceMovedShotIds(input: {
+  shots: readonly { id: string; sceneId: string | null; speechIds: string[] }[];
+  speeches: ReadonlyMap<
+    string,
+    { turns: readonly { voiceId: string }[]; createdAt: Date }
+  >;
+  castVoiceIds: ReadonlySet<string>;
+  /** Voice id → the character it belongs to (any version, old ones too). */
+  characterOfVoice: ReadonlyMap<string, string>;
+  /** Character id → when the voice it speaks in now was made. */
+  currentVoiceSince: ReadonlyMap<string, Date>;
+}): Set<string> {
+  const latestBySceneOrShot = new Map<string, number>();
+  for (const shot of input.shots) {
+    const group = shot.sceneId ?? shot.id;
+    for (const speechId of shot.speechIds) {
+      for (const turn of input.speeches.get(speechId)?.turns ?? []) {
+        const character = input.characterOfVoice.get(turn.voiceId);
+        const since = character && input.currentVoiceSince.get(character);
+        if (since && since.getTime() > (latestBySceneOrShot.get(group) ?? 0)) {
+          latestBySceneOrShot.set(group, since.getTime());
+        }
+      }
+    }
+  }
+  return new Set(
+    input.shots.flatMap((shot) => {
+      const latest = latestBySceneOrShot.get(shot.sceneId ?? shot.id) ?? 0;
+      const moved = shot.speechIds.some((speechId) => {
+        const speech = input.speeches.get(speechId);
+        return (
+          speech !== undefined &&
+          (speechVoicesMoved(speech.turns, input.castVoiceIds) ||
+            speech.createdAt.getTime() < latest)
+        );
+      });
+      return moved ? [shot.id] : [];
+    })
+  );
+}
+
+/** The voices the cast speaks in now. */
+export const castVoiceIds = (
+  characters: readonly { voiceId: string | null }[]
+): Set<string> =>
+  new Set(characters.flatMap((c) => (c.voiceId ? [c.voiceId] : [])));
 
 /** A voiced turn of a conversation; `index` is shot-relative. */
 export type SceneVoicedLine = VoicedDialogueLine & {

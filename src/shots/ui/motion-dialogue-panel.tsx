@@ -80,6 +80,8 @@ export type ShotDialogueReading = {
   createdAt: Date | string;
   /** False once the shot's lines or voices moved — it cannot be used. */
   matchesCurrentLines: boolean;
+  /** Lines the take check could not find; the take was kept anyway. */
+  unclearLineCount: number;
   /** Why it no longer matches: the words moved, or only the voice did. */
   mismatch: 'lines' | 'voice' | null;
 };
@@ -134,6 +136,9 @@ const ReadingRow: React.FC<{
     formatElementDuration(reading.toSeconds - reading.fromSeconds),
     reading.source === 'context' ? 'Generated with another shot' : null,
     reading.source === 'mic' ? 'Your take' : null,
+    reading.unclearLineCount > 0
+      ? `${reading.unclearLineCount} ${reading.unclearLineCount === 1 ? 'line' : 'lines'} may not be said clearly`
+      : null,
     reading.mismatch === 'voice'
       ? 'Voice changed since'
       : reading.mismatch === 'lines'

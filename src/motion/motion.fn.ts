@@ -56,6 +56,7 @@ import {
 import {
   loadShotDialogueLines,
   shotDialogueResolver,
+  loadVoiceMovedShotIds,
   snapshotBatchDialogue,
 } from '@/shots/server/shot-dialogue';
 import {
@@ -405,6 +406,11 @@ export const generateShotMotionFn = createServerFn({ method: 'POST' })
       shots: allSceneShots,
       dialogueOf,
       characters: voiceCharacters,
+      voiceMovedShotIds: await loadVoiceMovedShotIds(
+        context.scopedDb,
+        sequence.id,
+        allSceneShots
+      ),
       versionIdByShotId: new Map(
         [...sceneMotionByShot].map(([shotId, version]) => [shotId, version.id])
       ),
@@ -843,6 +849,11 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
       shots: rawShots,
       dialogueOf: batchDialogueOf,
       characters: voiceCharacters,
+      voiceMovedShotIds: await loadVoiceMovedShotIds(
+        context.scopedDb,
+        sequence.id,
+        rawShots
+      ),
       versionIdByShotId: new Map(
         batchDialogueVersions.map((version) => [version.shotId, version.id])
       ),

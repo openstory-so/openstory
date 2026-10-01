@@ -151,7 +151,20 @@ of a reply the model never heard — the call speaks the whole conversation.
 What is KEPT is narrow, so one edit disturbs one shot: only a shot whose
 working-set clip no longer matches its lines (`matchingDialogueClips` empty →
 `adoptShotIds`) adopts the new audio; every other shot keeps the section it
-had, so nothing of theirs goes stale. Three tables, all append-only:
+had, so nothing of theirs goes stale. **A voice is the exception (#1802):**
+a voice change dates the whole scene (`voiceMovedShotIds`). A shot reads out
+of date, and is adopted by its scene's next speech though its own key still
+matches, when its speech was spoken by a voice the cast no longer uses, or
+predates the current voice of anyone who speaks in its scene — a speech can
+leave a scene-mate out (Seed and ElevenLabs voices never share a call).
+Speakers are read off the speeches' per-turn `voiceId`, mapped to characters
+through their voice history. `loadVoiceMovedShotIds` feeds every job builder (`sceneDialogueJobs`
+→ `forceAdoptShotIds`, `snapshotBatchDialogue` counts their clips as not
+matching) and the media staleness verdict. A line edit stays narrow.
+"Regenerate" on a scene in the dialogue list (`regenerateShotDialogueFn`,
+`scope: 'scene'`) forces every voiced shot in the scene. Cut clips carry the
+section's `source`, so the list can mark the user's own take. Three tables,
+all append-only:
 
 - `shot_dialogue_versions` — the authored lines, one selected row per shot.
 - `dialogue_speeches` — a **speech** (#1913): one row per synthesis call,

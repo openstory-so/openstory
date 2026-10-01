@@ -37,6 +37,12 @@ export type DialogueSpeechTurn = {
   endSeconds: number;
   /** The wording actually spoken when a fit rewrite shortened this turn. */
   spokenText?: string;
+  /**
+   * Set when the take check could not find this line (#1802): the share of
+   * its letters heard. The take was kept as the best of its tries; the line
+   * is flagged for the user to re-record. Absent: the line was heard.
+   */
+  heardShare?: number;
 };
 
 export const dialogueSpeeches = snakeCase.table(

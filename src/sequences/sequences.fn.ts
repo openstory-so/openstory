@@ -36,6 +36,7 @@ import {
 } from '@/shots/server/scene-script';
 import {
   shotDialogueResolver,
+  loadVoiceMovedShotIds,
   snapshotBatchDialogue,
 } from '@/shots/server/shot-dialogue';
 import { buildShotImageWorkflowInput } from '@/stills/server/build-shot-image-input';
@@ -1108,6 +1109,11 @@ export const addModelToSequenceFn = createServerFn({ method: 'POST' })
         shots: allShots,
         dialogueOf,
         characters: voiceCharacters,
+        voiceMovedShotIds: await loadVoiceMovedShotIds(
+          scopedDb,
+          sequence.id,
+          allShots
+        ),
         versionIdByShotId: new Map(
           dialogueVersions.map((version) => [version.shotId, version.id])
         ),

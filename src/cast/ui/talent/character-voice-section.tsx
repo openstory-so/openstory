@@ -26,6 +26,7 @@ import {
   useAssignCharacterVoice,
   useCharacterVoiceVersions,
   useChooseCharacterVoiceTake,
+  useCancelCharacterVoice,
   useGenerateCharacterVoice,
   useSelectCharacterVoiceVersion,
   useSetCharacterVoiceEnabled,
@@ -65,6 +66,7 @@ export const CharacterVoiceSection: React.FC<{
 }> = ({ sequenceId, character, generateVoices }) => {
   const queryClient = useQueryClient();
   const generate = useGenerateCharacterVoice();
+  const cancel = useCancelCharacterVoice();
   const seedVoices = useSeedVoices();
   const [takeCount, setTakeCount] = useState(SEED_VOICE_DEFAULT_TAKES);
   const setEnabled = useSetCharacterVoiceEnabled();
@@ -123,7 +125,8 @@ export const CharacterVoiceSection: React.FC<{
             character.id
           ),
         });
-        if (data.status === 'failed') {
+        const cancelled = 'error' in data && data.error === 'Cancelled';
+        if (data.status === 'failed' && !cancelled) {
           toast.error('Voice design failed', {
             description:
               'error' in data && typeof data.error === 'string'
@@ -355,6 +358,17 @@ export const CharacterVoiceSection: React.FC<{
                 )}
               </InButtonCost>
             </Button>
+            {pendingHusk ? (
+              <Button
+                variant="ghost"
+                disabled={cancel.isPending}
+                onClick={() =>
+                  cancel.mutate({ sequenceId, characterId: character.id })
+                }
+              >
+                {cancel.isPending ? 'Cancelling…' : 'Cancel'}
+              </Button>
+            ) : null}
             {seedVoices && (
               <div className="flex flex-col gap-1">
                 <ToggleGroup

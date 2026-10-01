@@ -50,6 +50,7 @@ const reading = (
   model: 'eleven_v3',
   createdAt: '2026-09-18T10:00:00Z',
   matchesCurrentLines: true,
+  unclearLineCount: 0,
   mismatch: null,
   ...over,
 });
@@ -88,6 +89,7 @@ const Lines: React.FC<{ lines: typeof dialogue.lines }> = ({ lines }) => {
       saving={false}
       take={take}
       recordable={new Map([[0, null]])}
+      unclear={new Map([[1, 0.49]])}
       canAdd
     />
   );

@@ -14,6 +14,7 @@
  * one block, whatever the speech weighs.
  */
 
+import { clipSpeechId } from '@/shots/shot-dialogue';
 import {
   AUDIO_MIN_PAD_SLACK_SECONDS,
   parseWavHeader,
@@ -238,11 +239,6 @@ export async function cutSpanningSection(
     });
   }
   return out;
-}
-
-/** The speech a clip was cut from, under its pre-#1913 key too. */
-function clipSpeechId(clip: MotionAudioClip): string | undefined {
-  return clip.speechId ?? clip.recordingId;
 }
 
 /** Consecutive clips cut from the same speech, in order. */

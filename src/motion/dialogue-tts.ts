@@ -53,9 +53,22 @@ export function sectionClip(
     speechId: string;
     sourceKey: string;
     spokenLines: MotionAudioClip['spokenLines'] | null;
+    source: NonNullable<MotionAudioClip['source']>;
+    /** The speech's turns: its doubtful lines are flagged on the clip. */
+    speechTurns: readonly {
+      shotId: string;
+      index: number;
+      heardShare?: number;
+    }[];
+    shotId: string;
   },
   cut: { url: string; durationSeconds: number }
 ): MotionAudioClip {
+  const unclearLines = section.speechTurns.flatMap((turn) =>
+    turn.shotId === section.shotId && turn.heardShare !== undefined
+      ? [{ index: turn.index, heardShare: turn.heardShare }]
+      : []
+  );
   return {
     id: section.id,
     url: cut.url,
@@ -63,6 +76,8 @@ export function sectionClip(
     durationSeconds: cut.durationSeconds,
     sourceKey: section.sourceKey,
     speechId: section.speechId,
+    source: section.source,
+    ...(unclearLines.length > 0 && { unclearLines }),
     ...(section.spokenLines && { spokenLines: section.spokenLines }),
   };
 }

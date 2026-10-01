@@ -46,6 +46,8 @@ type SceneCanvasProps = {
   progressMessage?: React.ReactNode;
   retry?: { attempt: number; maxAttempts?: number };
   onSelectShot?: (shotId: string) => void;
+  /** A scene title in the dialogue list was clicked. */
+  onSelectScene?: (sceneId: string) => void;
   /** Scene-level image model (#909) used to generate starting-frame variants. */
   sceneImageModel?: TextToImageModel;
   /** Shots with an in-flight scene-variants generation (#882). */
@@ -81,6 +83,7 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
   progressMessage,
   retry,
   onSelectShot,
+  onSelectScene,
   sceneImageModel,
   regeneratingSceneVariants,
   onGenerateSceneVariantsStart,
@@ -217,8 +220,11 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
         <SequenceDialogueLines
           sequenceId={sequence.id}
           shots={scopedShots}
+          sequenceShots={shots}
           scenes={scenes}
           playingShotId={playingShotId}
+          onSelectShot={onSelectShot}
+          onSelectScene={onSelectScene}
         />
       }
     >

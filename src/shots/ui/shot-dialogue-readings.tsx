@@ -23,7 +23,6 @@ import { ActionCost } from '@/billing/ui/action-cost';
 import {
   cancelShotDialogueClaimFn,
   discardShotDialogueSectionFn,
-  listShotDialogueClaimsFn,
   listShotDialogueSectionsFn,
   listShotDialogueVersionsFn,
   regenerateShotDialogueFn,
@@ -47,11 +46,14 @@ import type { DialogueLine } from '@/shots/scene-analysis.schema';
 import {
   DialogueLineRows,
   invalidateLinesMoved,
+  invalidateRecordingStarted,
   PlayDialogueButton,
   recordableLines,
+  unclearLines,
   useDialoguePlayer,
   useLineTake,
   useSaveShotLines,
+  dialogueClaimsQuery as claimsQuery,
 } from './dialogue-lines';
 import {
   MotionDialoguePanel,
@@ -71,12 +73,6 @@ const readingsQuery = (sequenceId: string, shotId: string) =>
   queryOptions({
     queryKey: shotKeys.dialogueSections(shotId),
     queryFn: () => listShotDialogueSectionsFn({ data: { sequenceId, shotId } }),
-  });
-
-const claimsQuery = (sequenceId: string, shotId: string) =>
-  queryOptions({
-    queryKey: shotKeys.dialogueClaims(shotId),
-    queryFn: () => listShotDialogueClaimsFn({ data: { sequenceId, shotId } }),
   });
 
 type ReadingsProps = {
@@ -184,11 +180,11 @@ const Readings: React.FC<ReadingsProps> = ({ sequenceId, shotId, lines }) => {
   // refetches it and "Generating…" takes over from the button.
   const record = useMutation({
     mutationFn: () =>
-      regenerateShotDialogueFn({ data: { sequenceId, shotId } }),
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: shotKeys.dialogueClaims(shotId),
+      regenerateShotDialogueFn({
+        data: { sequenceId, shotId, scope: 'shot' },
       }),
+    onSuccess: () =>
+      invalidateRecordingStarted(queryClient, sequenceId, [shotId]),
     onError: (error: Error) =>
       toast.error('Dialogue not generated', { description: error.message }),
   });
@@ -395,7 +391,7 @@ const DialogueUnderVideo: React.FC<UnderVideoProps> = ({
         play={
           <PlayDialogueButton
             player={player}
-            clips={url ? [{ shotId: shot.id, url }] : []}
+            clips={url ? [{ shotIds: [shot.id], url }] : []}
             label="this shot"
           />
         }
@@ -404,7 +400,7 @@ const DialogueUnderVideo: React.FC<UnderVideoProps> = ({
             key={shot.id}
             shotId={shot.id}
             lines={lines}
-            active={player.playingShotId === shot.id}
+            active={player.isPlaying(shot.id)}
             speakers={(characters ?? []).map((character) => character.name)}
             onSave={(next) => save.mutate({ shotId: shot.id, lines: next })}
             saving={save.isPending}
@@ -414,6 +410,7 @@ const DialogueUnderVideo: React.FC<UnderVideoProps> = ({
                 ? new Map()
                 : recordableLines(lines, shot.audioClips, characters ?? [])
             }
+            unclear={unclearLines(shot.audioClips)}
             canAdd
           />
         }
@@ -469,6 +466,7 @@ export const SceneDialogueLines: React.FC<{
                   shot.audioClips,
                   characters ?? []
                 )}
+                unclear={unclearLines(shot.audioClips)}
                 canAdd
               />
             </li>

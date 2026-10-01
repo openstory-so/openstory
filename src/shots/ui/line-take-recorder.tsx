@@ -7,6 +7,7 @@
 
 import { Button } from '@/ui/shadcn/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/shadcn/tooltip';
+import { Mic, Square } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { MIC_TAKE_MAX_SECONDS } from './mic-take';
@@ -103,19 +104,24 @@ export const LineTakeButton: React.FC<{
   const { state } = take;
   if (state.kind === 'recording' && sameLine(state.line, line)) {
     return (
-      <Button
-        size="sm"
-        variant="destructive"
-        onClick={take.stop}
-        aria-label={`Stop recording ${name}'s line`}
-      >
-        Stop
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            size="icon-sm"
+            variant="destructive"
+            onClick={take.stop}
+            aria-label={`Stop recording ${name}'s line`}
+          >
+            <Square />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Stop recording</TooltipContent>
+      </Tooltip>
     );
   }
   const button = (
     <Button
-      size="sm"
+      size="icon-sm"
       variant="ghost"
       disabled={state.kind !== 'idle' || blockedBecause !== null}
       onClick={() => take.start(line)}
@@ -127,17 +133,20 @@ export const LineTakeButton: React.FC<{
           : `Record ${name}'s line`
       }
     >
-      Record
+      <Mic />
     </Button>
   );
-  if (!blockedBecause) return button;
   // A disabled button gets no pointer events; the span carries the tooltip.
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="inline-flex">{button}</span>
+        {blockedBecause ? (
+          <span className="inline-flex">{button}</span>
+        ) : (
+          button
+        )}
       </TooltipTrigger>
-      <TooltipContent>{blockedBecause}</TooltipContent>
+      <TooltipContent>{blockedBecause ?? 'Record'}</TooltipContent>
     </Tooltip>
   );
 };

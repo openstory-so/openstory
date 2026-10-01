@@ -553,6 +553,33 @@ export function createShotDialogueMethods(db: Database) {
       return await promoted();
     },
 
+    /** Each speech's file, turns and when it was made, by id (#1802). */
+    listSpeeches: async (
+      speechIds: readonly string[]
+    ): Promise<
+      Map<string, { url: string; turns: DialogueSpeechTurn[]; createdAt: Date }>
+    > => {
+      const ids = [...new Set(speechIds)];
+      const out = new Map<
+        string,
+        { url: string; turns: DialogueSpeechTurn[]; createdAt: Date }
+      >();
+      // Under D1's 100-bound-parameter cap (#1019).
+      for (let i = 0; i < ids.length; i += 90) {
+        const rows = await db
+          .select({
+            id: dialogueSpeeches.id,
+            url: dialogueSpeeches.url,
+            turns: dialogueSpeeches.turns,
+            createdAt: dialogueSpeeches.createdAt,
+          })
+          .from(dialogueSpeeches)
+          .where(inArray(dialogueSpeeches.id, ids.slice(i, i + 90)));
+        for (const { id, ...speech } of rows) out.set(id, speech);
+      }
+      return out;
+    },
+
     /** A shot's readings, newest first, each with the file it points into. */
     listSections: async (
       shotId: string

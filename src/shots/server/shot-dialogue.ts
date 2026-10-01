@@ -34,11 +34,13 @@ import type {
   MotionDialogue,
 } from '@/shots/scene-analysis.schema';
 import {
+  clipSpeechId,
   contextWindow,
   firstShotIdByScene,
   resolveShotDialogue,
   sceneConversation,
   voicedShotIds,
+  voiceMovedShotIds,
   type SceneVoicedLine,
   type ShotDialogueLine,
 } from '@/shots/shot-dialogue';
@@ -204,6 +206,52 @@ export function dialogueContextFor(input: {
 }
 
 /**
+ * The shots whose audio a voice change has dated (`voiceMovedShotIds`) —
+ * out of date, and adopted by the next recording of their scene, though
+ * their own lines did not change.
+ */
+export async function loadVoiceMovedShotIds(
+  scopedDb: Pick<ScopedDb, 'shotDialogue' | 'characters'>,
+  sequenceId: string,
+  shots: readonly {
+    id: string;
+    sceneId: string | null;
+    deletedAt?: Date | null;
+    audioClips?: MotionAudioClip[] | null;
+  }[]
+): Promise<Set<string>> {
+  const live = shots
+    .filter((shot) => !shot.deletedAt)
+    .map((shot) => ({
+      id: shot.id,
+      sceneId: shot.sceneId,
+      speechIds: (shot.audioClips ?? []).flatMap(
+        (clip) => clipSpeechId(clip) ?? []
+      ),
+    }));
+  const speechIds = live.flatMap((shot) => shot.speechIds);
+  if (speechIds.length === 0) return new Set();
+  const [speeches, history] = await Promise.all([
+    scopedDb.shotDialogue.listSpeeches(speechIds),
+    scopedDb.characters.listVoiceHistoryBySequence(sequenceId),
+  ]);
+  const current = history.filter((row) => row.current && row.voiceId);
+  return voiceMovedShotIds({
+    shots: live,
+    speeches,
+    castVoiceIds: new Set(current.flatMap((row) => row.voiceId ?? [])),
+    characterOfVoice: new Map(
+      history.flatMap((row) =>
+        row.voiceId ? [[row.voiceId, row.characterId] as const] : []
+      )
+    ),
+    currentVoiceSince: new Map(
+      current.map((row) => [row.characterId, row.createdAt])
+    ),
+  });
+}
+
+/**
  * One speech job per scene that holds a shot needing audio (#1657) — what a
  * batch trigger snapshots so the batch records each scene ONCE before it fans
  * out, instead of every clip-less child generating its own window of it.
@@ -229,6 +277,11 @@ export function sceneDialogueJobs(input: {
   versionIdByShotId: ReadonlyMap<string, string>;
   /** The clip length a reading has to fit, per shot. */
   shotSecondsOf: (shotId: string) => number | undefined;
+  /**
+   * Shots whose audio a moved voice spoke in (`loadVoiceMovedShotIds`): the
+   * job adopts them even where their own key still matches.
+   */
+  voiceMovedShotIds: ReadonlySet<string>;
 }): DialogueAudioSceneJob[] {
   const byId = new Map(input.shots.map((shot) => [shot.id, shot]));
   const sceneIds = new Set(
@@ -265,7 +318,9 @@ export function sceneDialogueJobs(input: {
             return seconds === undefined ? [] : [[shotId, seconds]];
           })
         ),
-        forceAdoptShotIds: [],
+        forceAdoptShotIds: speaking.filter((shotId) =>
+          input.voiceMovedShotIds.has(shotId)
+        ),
       },
     ];
   });
@@ -297,6 +352,8 @@ export function snapshotBatchDialogue<
   dialogueOf: ShotDialogueResolver;
   characters: readonly VoiceCharacter[];
   versionIdByShotId: ReadonlyMap<string, string>;
+  /** See `sceneDialogueJobs`: their clips count as not matching. */
+  voiceMovedShotIds: ReadonlySet<string>;
 }): {
   byShotId: ReadonlyMap<
     string,
@@ -313,7 +370,9 @@ export function snapshotBatchDialogue<
       const voicedLines = modelTakesDialogueAudio(input.modelOf(shot))
         ? voicedDialogueLines(input.dialogueOf(shot), input.characters)
         : [];
-      const audioClips = matchingDialogueClips(shot.audioClips, voicedLines);
+      const audioClips = input.voiceMovedShotIds.has(shot.id)
+        ? []
+        : matchingDialogueClips(shot.audioClips, voicedLines);
       return [
         shot.id,
         {
@@ -336,6 +395,7 @@ export function snapshotBatchDialogue<
     dialogueOf: input.dialogueOf,
     characters: input.characters,
     versionIdByShotId: input.versionIdByShotId,
+    voiceMovedShotIds: input.voiceMovedShotIds,
     // A scene-mate outside the batch has no model resolved for it; its
     // reading then only has to fit the provider's limit.
     shotSecondsOf: (shotId) => {

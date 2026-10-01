@@ -27,6 +27,8 @@ import { shots } from './shots';
 
 /** `mic`: a line the user performed, spliced into the reading (#1802). */
 const SHOT_DIALOGUE_SECTION_SOURCES = ['generated', 'context', 'mic'] as const;
+export type ShotDialogueSectionSource =
+  (typeof SHOT_DIALOGUE_SECTION_SOURCES)[number];
 
 export const shotDialogueSections = snakeCase.table(
   'shot_dialogue_sections',

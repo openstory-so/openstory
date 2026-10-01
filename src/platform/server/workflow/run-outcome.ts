@@ -46,7 +46,11 @@ export type WorkflowRunOutcome =
  * work. For parent-owned claims, cancellation is data-only — the running
  * child discards its output against the cancelled row's status guard.
  */
-const SINGLE_ARTIFACT_WORKFLOWS = new Set(['shot-spec-rewrite', 'image']);
+const SINGLE_ARTIFACT_WORKFLOWS = new Set([
+  'shot-spec-rewrite',
+  'image',
+  'character-voice',
+]);
 
 /**
  * Best-effort terminate of a single-artifact workflow run. Returns false —

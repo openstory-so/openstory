@@ -341,6 +341,10 @@ type SceneScriptPromptsProps = {
   scopeStalenessFailed?: boolean;
   /** Navigate down to a shot — same handler the left rail uses. */
   onSelectShot?: (shotId: string) => void;
+  /** Every scene, for the scene chips across several scenes. */
+  scenes?: readonly SceneWithScript[];
+  /** Navigate down to a scene — same handler the left rail uses. */
+  onSelectScene?: (sceneId: string) => void;
 };
 
 export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
@@ -382,6 +386,8 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   scopeStaleness,
   scopeStalenessFailed,
   onSelectShot,
+  scenes,
+  onSelectScene,
 }) => {
   const scriptSceneId = scene?.id;
   const scriptText = scene?.script?.extract;
@@ -1553,6 +1559,8 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           staleness={scopeStaleness}
           stalenessFailed={scopeStalenessFailed}
           onSelectShot={onSelectShot}
+          scenes={scenes}
+          onSelectScene={onSelectScene}
           onUpdateAll={handleScopeUpdateAll}
           isUpdating={updateStaleShots.isRunning}
         />

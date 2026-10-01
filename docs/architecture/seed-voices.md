@@ -98,11 +98,15 @@ line` in order.
   Speech before the script is cut off (the first shot's range starts at the
   script); speech between lines belongs to neither. Invented words are not
   checked for — the user regenerates a reading they do not like. A take
-  where a line cannot be found is retaken, up to 3 per call, then the
-  recording fails. Seed's own subtitles are not used: they run adjacent
+  where a line cannot be found is retaken, up to 3 per call. When none is
+  clean the best (highest worst-line share) is **kept**, not failed (#1802):
+  a doubtful line is placed in the gap between the lines that were found,
+  its turn carries `heardShare`, and the shot's clip lists it in
+  `unclearLines`, so the line list flags it ("May not be said clearly") for
+  the user to record or regenerate. Character voice samples stay strict. Seed's own subtitles are not used: they run adjacent
   lines together into one timed word, so a line break is lost (up to 2.3 s
   off in testing).
-- Failed takes are not billed to the team.
+- Takes thrown away are not billed to the team; a kept one is.
 - **A failed scene does not fail the run.** `DialogueAudioWorkflow` keeps the
   scenes that recorded and logs the rest; the failed scene's shots record at
   motion and fail there, one by one, with the reason (e.g. which character

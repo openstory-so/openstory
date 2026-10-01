@@ -17,9 +17,13 @@ import { bytesToBase64 } from '@/platform/base64';
 import type { MotionAudioClip } from '@/platform/server/db/schema';
 import type { DialogueLine } from '@/shots/scene-analysis.schema';
 import {
+  listShotDialogueClaimsFn,
   recordShotDialogueLineFn,
+  regenerateShotDialogueFn,
   saveShotDialogueFn,
 } from '@/shots/shot-dialogue.fn';
+import { InButtonCost } from '@/billing/ui/action-cost';
+import type { Microdollars } from '@/billing/money';
 import { Button } from '@/ui/shadcn/button';
 import { Input } from '@/ui/shadcn/input';
 import {
@@ -30,9 +34,16 @@ import {
   SelectValue,
 } from '@/ui/shadcn/select';
 import { Textarea } from '@/ui/shadcn/textarea';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/shadcn/tooltip';
 import { cn } from '@/ui/utils';
 import type { QueryClient } from '@tanstack/react-query';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  queryOptions,
+  useMutation,
+  useQueries,
+  useQueryClient,
+} from '@tanstack/react-query';
+import { AlertTriangle, Pencil, Play, Square } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import {
@@ -44,6 +55,7 @@ import {
 import { decodeTake, floatToPcm16, MIC_TAKE_SAMPLE_RATE } from './mic-take';
 import { shotSpokenByNote } from './motion-dialogue-panel';
 import { segmentKeys } from './use-segments';
+import { generationPlanKeys } from '@/sequences/ui/use-generation-plan';
 import { shotStalenessNamespace } from './use-shot-staleness';
 import { shotKeys } from './use-shots';
 
@@ -136,11 +148,31 @@ export function recordableLines(
   return new Map(voiced.map((line) => [line.index, blockedBecause]));
 }
 
-type PlayerClip = { shotId: string; url: string };
+/**
+ * The lines a kept Seed take may not say (#1802): the take check could not
+ * find them, so the best of the tries was kept and they are flagged. Line
+ * index → share of the line heard.
+ */
+export const unclearLines = (
+  clips: readonly MotionAudioClip[] | null | undefined
+): Map<number, number> =>
+  new Map(
+    (clips ?? []).flatMap((clip) =>
+      (clip.unclearLines ?? []).map(
+        (line) => [line.index, line.heardShare] as const
+      )
+    )
+  );
 
 /**
- * Plays shots' dialogue clips one after another, off screen. `playingShotId`
- * is the shot being heard, so its lines can be marked.
+ * One file to play and the shots it speaks: a shot's own clip, or a scene's
+ * whole speech when the scene is one take (#1802) — no cut at each shot.
+ */
+type PlayerClip = { shotIds: readonly string[]; url: string };
+
+/**
+ * Plays dialogue files one after another, off screen. `isPlaying` says
+ * whether a shot's lines are being heard, so they can be marked.
  */
 export function useDialoguePlayer() {
   const [heard, setHeard] = useState<{
@@ -153,7 +185,7 @@ export function useDialoguePlayer() {
       h && h.index + 1 < h.clips.length ? { ...h, index: h.index + 1 } : null
     );
   return {
-    playingShotId: clip?.shotId,
+    isPlaying: (shotId: string) => clip?.shotIds.includes(shotId) ?? false,
     play: (clips: PlayerClip[]) => setHeard({ clips, index: 0 }),
     stop: () => setHeard(null),
     audio: clip ? (
@@ -178,20 +210,102 @@ export const PlayDialogueButton: React.FC<{
   clips: PlayerClip[];
   label: string;
 }> = ({ player, clips, label }) => {
-  const playing =
-    player.playingShotId !== undefined &&
-    clips.some((clip) => clip.shotId === player.playingShotId);
+  const playing = clips.some((clip) => clip.shotIds.some(player.isPlaying));
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          disabled={clips.length === 0}
+          aria-label={
+            playing
+              ? `Stop dialogue for ${label}`
+              : `Play dialogue for ${label}`
+          }
+          onClick={() => (playing ? player.stop() : player.play(clips))}
+        >
+          {playing ? <Square /> : <Play />}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{playing ? 'Stop' : 'Play dialogue'}</TooltipContent>
+    </Tooltip>
+  );
+};
+
+/**
+ * A recording just started: its shots' dialogue reads Updating, not out of
+ * date, so Update all and the plan stop offering to record it again.
+ */
+export const invalidateRecordingStarted = (
+  queryClient: QueryClient,
+  sequenceId: string,
+  shotIds: readonly string[]
+) =>
+  Promise.all([
+    ...shotIds.map((shotId) =>
+      queryClient.invalidateQueries({
+        queryKey: shotKeys.dialogueClaims(shotId),
+      })
+    ),
+    queryClient.invalidateQueries({ queryKey: shotStalenessNamespace }),
+    queryClient.invalidateQueries({
+      queryKey: generationPlanKeys.bySequence(sequenceId),
+    }),
+  ]);
+
+/** A shot's speeches in flight; refreshed by the readings' realtime event. */
+export const dialogueClaimsQuery = (sequenceId: string, shotId: string) =>
+  queryOptions({
+    queryKey: shotKeys.dialogueClaims(shotId),
+    queryFn: () => listShotDialogueClaimsFn({ data: { sequenceId, shotId } }),
+  });
+
+/**
+ * Regenerate a whole scene's dialogue: one new take of the conversation that
+ * every voiced shot in the scene adopts. Each shot's readings list then shows
+ * "Generating…" through its claim.
+ */
+export const RegenerateSceneDialogueButton: React.FC<{
+  sequenceId: string;
+  /** The scene's shots, in order; any one names the scene. */
+  shotIds: readonly string[];
+  label: string;
+  /** What the recording costs: the whole conversation, one call. Undefined while the cast loads. */
+  estimate: Microdollars | undefined;
+}> = ({ sequenceId, shotIds, label, estimate }) => {
+  const queryClient = useQueryClient();
+  const regenerate = useMutation({
+    mutationFn: () =>
+      regenerateShotDialogueFn({
+        data: { sequenceId, shotId: shotIds[0] ?? '', scope: 'scene' },
+      }),
+    onSuccess: () =>
+      invalidateRecordingStarted(queryClient, sequenceId, shotIds),
+    onError: (error: Error) =>
+      toast.error('Dialogue not generated', { description: error.message }),
+  });
+  // Generating until every shot's new reading has landed: the claim is the
+  // only record of a speech in flight.
+  const generating = useQueries({
+    queries: shotIds.map((shotId) => dialogueClaimsQuery(sequenceId, shotId)),
+    combine: (results) =>
+      results.some((result) =>
+        result.data?.some((claim) => claim.willBecomeCurrent)
+      ),
+  });
+  const busy = regenerate.isPending || generating;
   return (
     <Button
-      variant="ghost"
+      variant="outline"
       size="sm"
-      disabled={clips.length === 0}
-      aria-label={
-        playing ? `Stop dialogue for ${label}` : `Play dialogue for ${label}`
-      }
-      onClick={() => (playing ? player.stop() : player.play(clips))}
+      disabled={shotIds.length === 0 || busy}
+      aria-label={`Regenerate dialogue for ${label}`}
+      onClick={() => regenerate.mutate()}
     >
-      {playing ? 'Stop' : 'Play dialogue'}
+      <InButtonCost estimate={estimate} onPrimary={false}>
+        {busy ? 'Generating…' : 'Regenerate'}
+      </InButtonCost>
     </Button>
   );
 };
@@ -311,6 +425,16 @@ const LineForm: React.FC<{
   </form>
 );
 
+const LineWords: React.FC<{ name: string; words: string }> = ({
+  name,
+  words,
+}) => (
+  <>
+    <span className="font-medium">{name}</span>{' '}
+    <span className="text-muted-foreground">“{words}”</span>
+  </>
+);
+
 /**
  * One shot's lines. Each save hands back the shot's whole set with one line
  * changed; an added line takes the shot's current audio source.
@@ -327,8 +451,12 @@ export const DialogueLineRows: React.FC<{
   take: MicTake | null;
   /** Line index → why it cannot be recorded now (null: it can). Absent: no Record. */
   recordable: ReadonlyMap<number, string | null>;
+  /** Line index → share heard, for lines the audio may not say (`unclearLines`). */
+  unclear: ReadonlyMap<number, number>;
   /** Offer Add line under the lines. */
   canAdd?: boolean;
+  /** Clicking a line's words goes to its shot. */
+  onSelect?: () => void;
 }> = ({
   shotId,
   lines,
@@ -338,7 +466,9 @@ export const DialogueLineRows: React.FC<{
   saving,
   take,
   recordable,
+  unclear,
   canAdd,
+  onSelect,
 }) => {
   const [editing, setEditing] = useState<number | 'new' | null>(null);
   const save = (next: DialogueLine[]) => {
@@ -383,10 +513,19 @@ export const DialogueLineRows: React.FC<{
                     active && 'bg-accent'
                   )}
                 >
-                  <p>
-                    <span className="font-medium">{name}</span>{' '}
-                    <span className="text-muted-foreground">“{line.line}”</span>
-                  </p>
+                  {onSelect ? (
+                    <button
+                      type="button"
+                      className="rounded-sm text-left hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                      onClick={onSelect}
+                    >
+                      <LineWords name={name} words={line.line} />
+                    </button>
+                  ) : (
+                    <p>
+                      <LineWords name={name} words={line.line} />
+                    </p>
+                  )}
                   <div className="flex shrink-0 items-center gap-1">
                     {take && blockedBecause !== undefined ? (
                       <LineTakeButton
@@ -396,17 +535,30 @@ export const DialogueLineRows: React.FC<{
                         blockedBecause={blockedBecause}
                       />
                     ) : null}
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      aria-label={`Edit ${name}'s line`}
-                      disabled={editing !== null}
-                      onClick={() => setEditing(index)}
-                    >
-                      Edit
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          aria-label={`Edit ${name}'s line`}
+                          disabled={editing !== null}
+                          onClick={() => setEditing(index)}
+                        >
+                          <Pencil />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Edit</TooltipContent>
+                    </Tooltip>
                   </div>
                 </div>
+                {unclear.has(index) ? (
+                  <p className="flex items-center gap-1 px-2 text-xs text-amber-600">
+                    <AlertTriangle aria-hidden className="h-3 w-3 shrink-0" />
+                    May not be said clearly ·{' '}
+                    {Math.round((unclear.get(index) ?? 0) * 100)}% heard. Record
+                    it, or regenerate.
+                  </p>
+                ) : null}
                 {take ? (
                   <LineTakeReview take={take} line={ref} name={name} />
                 ) : null}
