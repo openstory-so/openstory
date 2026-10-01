@@ -49,29 +49,14 @@ import {
   mergeDefined,
 } from './bible-versions';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
-
-/** The bible fields the location sheet prompt and its hash read (#1113). */
-const SHEET_BIBLE_FIELDS = [
-  'name',
-  'type',
-  'timeOfDay',
-  'description',
-  'architecturalStyle',
-  'keyFeatures',
-  'colorPalette',
-  'lightingSetup',
-  'ambiance',
-] as const;
+import { LOCATION_SHEET_BIBLE_FIELDS } from '@/shots/input-hash';
 
 /** A new location's bible where the caller left a field out. */
 const NEW_LOCATION_BIBLE: Omit<LocationBible, 'name'> = {
   type: null,
-  timeOfDay: null,
   description: null,
   architecturalStyle: null,
   keyFeatures: null,
-  colorPalette: null,
-  lightingSetup: null,
   ambiance: null,
   consistencyTag: null,
 };
@@ -80,12 +65,9 @@ const NEW_LOCATION_BIBLE: Omit<LocationBible, 'name'> = {
 const bibleOf = (data: NewSequenceLocation): Partial<LocationBible> => ({
   name: data.name,
   type: data.type,
-  timeOfDay: data.timeOfDay,
   description: data.description,
   architecturalStyle: data.architecturalStyle,
   keyFeatures: data.keyFeatures,
-  colorPalette: data.colorPalette,
-  lightingSetup: data.lightingSetup,
   ambiance: data.ambiance,
   consistencyTag: data.consistencyTag,
 });
@@ -94,7 +76,9 @@ const mergeBible = (base: LocationBible, patch: Partial<LocationBible>) =>
   mergeDefined(base, patch, LOCATION_BIBLE_FIELDS);
 
 const touchesSheet = (fields: readonly (keyof LocationBible)[]) =>
-  fields.some((key) => (SHEET_BIBLE_FIELDS as readonly string[]).includes(key));
+  fields.some((key) =>
+    (LOCATION_SHEET_BIBLE_FIELDS as readonly string[]).includes(key)
+  );
 
 /** The row's own columns; the bible only moves through a version (#1600). */
 type LocationUpdate = Partial<
@@ -115,12 +99,9 @@ export type LocationBibleUpdate = Partial<
     SequenceLocationWithReference,
     | 'name'
     | 'type'
-    | 'timeOfDay'
     | 'description'
     | 'architecturalStyle'
     | 'keyFeatures'
-    | 'colorPalette'
-    | 'lightingSetup'
     | 'ambiance'
     | 'consistencyTag'
   >
@@ -153,12 +134,9 @@ const liveReferenceVersionId = sql`COALESCE(${sequenceLocations.selectedReferenc
 const {
   legacyName: _name,
   legacyType: _type,
-  legacyTimeOfDay: _timeOfDay,
   legacyDescription: _description,
   legacyArchitecturalStyle: _architecturalStyle,
   legacyKeyFeatures: _keyFeatures,
-  legacyColorPalette: _colorPalette,
-  legacyLightingSetup: _lightingSetup,
   legacyAmbiance: _ambiance,
   legacyConsistencyTag: _consistencyTag,
   ...locationRowColumns
@@ -271,12 +249,9 @@ export function createSequenceLocationsMethods(db: Database) {
     const {
       name: _n,
       type: _t,
-      timeOfDay: _tod,
       description: _d,
       architecturalStyle: _as,
       keyFeatures: _kf,
-      colorPalette: _cp,
-      lightingSetup: _ls,
       ambiance: _a,
       consistencyTag: _ct,
       ...row

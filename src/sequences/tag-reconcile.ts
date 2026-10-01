@@ -8,16 +8,9 @@
  */
 
 import { matchLocationsToScene } from '@/shots/scene-matching';
+import { canonicalBibleTag } from '@/cast/bible-field';
 import type { SceneSplitBiblesResult } from './response-schemas';
 import type { SceneSplittingScene } from '@/sequences/server/streaming-scene-parser';
-
-function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter(Boolean)
-    .join('_');
-}
 
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -75,14 +68,8 @@ export function reconcileSceneTags(
     assignedElementTags: 0,
   };
 
-  const canonicalCharacterTag = (entry: {
-    name: string;
-    consistencyTag: string;
-  }): string => entry.consistencyTag || slugify(entry.name);
-  const canonicalLocationTag = (entry: {
-    name: string;
-    consistencyTag: string;
-  }): string => entry.consistencyTag || slugify(entry.name);
+  const canonicalCharacterTag = canonicalBibleTag;
+  const canonicalLocationTag = canonicalBibleTag;
 
   const reconciled = scenes.map((scene) => {
     const extract = scene.originalScript.extract;
@@ -106,10 +93,6 @@ export function reconcileSceneTags(
       extract
     );
     const environmentTag = locationMatches.map(canonicalLocationTag).join(', ');
-    // A remote conversation can span rooms. Never borrow one participant's
-    // palette or lighting for everyone; shots select their room separately.
-    const locationMatch =
-      locationMatches.length === 1 ? locationMatches[0] : undefined;
     if (environmentTag) stats.assignedEnvironmentTags++;
 
     const elementTagsList: string[] = [];
@@ -130,10 +113,8 @@ export function reconcileSceneTags(
         characterTags,
         environmentTag,
         elementTags,
-        colorPalette:
-          scene.continuity.colorPalette || locationMatch?.colorPalette || '',
-        lightingSetup:
-          scene.continuity.lightingSetup || locationMatch?.lightingSetup || '',
+        colorPalette: scene.continuity.colorPalette ?? '',
+        lightingSetup: scene.continuity.lightingSetup,
       },
     };
   });

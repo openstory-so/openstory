@@ -89,15 +89,12 @@ export const locationBibleEntrySchema = z.object({
   locationId: z.string(),
   name: z.string().meta({
     description:
-      'As written in the script, or a participant-named physical setting for an unspecified remote video-call location',
+      'Physical place name without slugline markers or a time-of-day suffix (INT. OFFICE - DAY and INT. OFFICE - NIGHT both become OFFICE); time of day belongs to the scene. Preserve genuine place-name words such as Night Owl Cafe. For an unspecified remote video-call location, use a participant-named physical setting',
   }),
   type: z.enum(['interior', 'exterior', 'both']),
-  timeOfDay: z.string(),
   description: z.string(),
   architecturalStyle: z.string(),
   keyFeatures: z.string(),
-  colorPalette: z.string(),
-  lightingSetup: z.string(),
   ambiance: z.string(),
   consistencyTag: z.string().meta({ description: 'snake_case name slug' }),
   firstMention: firstMentionSchema,
@@ -178,7 +175,7 @@ const visualPromptSchema = z.object({
   }),
 });
 
-// No longer part of `motionPromptSchema` (#1035): `assembleMotionPrompt` uses
+// No longer part of `motionPromptSchema` (#1035): `buildMotionShotPrompt` uses
 // only `fullPrompt`/`dialogue`/`audio`, so the eight camera fields were pure
 // write-only output cost per shot. Kept solely to type old `shot_prompt_versions`
 // rows via `MotionPromptComponents`.
@@ -431,7 +428,10 @@ const continuitySchema = z.object({
     description:
       'UPPERCASE element tokens referenced in this scene (null when none)',
   }),
-  colorPalette: z.string(),
+  colorPalette: z.string().optional().meta({
+    description:
+      'Optional user-authored palette override; leave empty during analysis. The sequence style owns palette.',
+  }),
   lightingSetup: z.string(),
   styleTag: z.string(),
 });
@@ -446,7 +446,6 @@ export const visualPromptResultSchema = z.object({
     description: 'Image generation prompt data',
   }),
 });
-export type VisualPromptResult = z.infer<typeof visualPromptResultSchema>;
 
 // ============================================================================
 // Original Script Schema
@@ -564,7 +563,6 @@ export type ElementBibleEntry = Omit<
   z.infer<typeof elementBibleEntrySchema>,
   'firstMention'
 > & { firstMention: FirstMentionWithScene };
-export type VisualPrompt = z.infer<typeof visualPromptSchema>;
 export type VisualPromptComponents = z.infer<
   typeof visualPromptComponentsSchema
 >;
@@ -583,13 +581,6 @@ export function readElementBibleEntry(value: unknown): ElementBibleEntry {
   return storedElementBibleEntrySchema.parse(value);
 }
 
-export function readVisualPrompt(value: unknown): VisualPrompt {
-  return visualPromptSchema.parse(value);
-}
-
-export function readMotionPrompt(value: unknown): MotionPrompt {
-  return motionPromptSchema.parse(value);
-}
 /**
  * A dialogue line, plus the voice the USER bound to it (#1559).
  *
@@ -615,7 +606,7 @@ export type MotionDialogue = {
   lines: DialogueLine[];
 };
 /**
- * The fields model-specific assembly (`assembleMotionPrompt`) actually consumes:
+ * The fields model-specific assembly (`buildMotionShotPrompt`) actually consumes:
  * the narrative base plus the dialogue/audio direction appended for audio-capable
  * video models. This is what a `shot_prompt_versions` motion row reconstructs to
  * at resolution time (#713). Stored rows and UI overrides may still omit

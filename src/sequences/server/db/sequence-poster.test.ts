@@ -129,6 +129,7 @@ async function still(frameId: string, url = '/r2/start.png') {
     status: 'completed',
     url,
     storagePath: url,
+    isPrimary: true,
   });
   await m.select(frameId, version.id, { actorId: null });
 }

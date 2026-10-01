@@ -44,7 +44,10 @@ import {
   motionPromptSchema,
   visualPromptResultSchema,
 } from '@/shots/scene-analysis.schema';
-import { shotListPassResultSchema } from '@/shots/shot-list.schema';
+import {
+  shotListPassResultSchema,
+  storedShotSpecSchema,
+} from '@/shots/shot-list.schema';
 
 const MEASURED_SCHEMAS: Record<string, z.ZodType> = {
   sceneSplitScenesResultSchema,
@@ -62,6 +65,7 @@ const MEASURED_SCHEMAS: Record<string, z.ZodType> = {
   softenImagePromptResponseSchema,
   shortenDialogueResponseSchema,
   shotListPassResultSchema,
+  storedShotSpecSchema,
   voiceDescriptionSchema,
   voiceRangeScriptSchema,
 };

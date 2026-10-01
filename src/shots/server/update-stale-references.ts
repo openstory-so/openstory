@@ -1,3 +1,4 @@
+import { reusesTalentSheet } from '@/cast/server/talent/reuse-talent-sheet';
 /**
  * The references wave of a plan run (#1818): the sheets, element references
  * and voices a continue owes, each as the payload its per-entity workflow
@@ -85,10 +86,23 @@ export async function buildPlanReferences(args: {
 
   const characterSheets = await Promise.all(
     characters
-      .filter((c) => sheetIds.has(c.id))
-      .map((character) =>
-        buildRegenerateCharacterSheetPayload({ ...context, character })
-      )
+      .filter((c) => sheetIds.has(c.id) && !c.voiceOnly)
+      .map(async (character) => {
+        const payload = await buildRegenerateCharacterSheetPayload({
+          ...context,
+          character,
+        });
+        // A first sheet can copy the matched talent. An existing sheet's
+        // regeneration must apply the edited bible instead.
+        if (!character.selectedSheetVersionId) {
+          payload.reuseTalentSheet = reusesTalentSheet(character, {
+            sheetImageUrl: payload.referenceImageUrl,
+            sheetMetadata: payload.talentMetadata,
+            talentDescription: payload.castTalentDescription,
+          });
+        }
+        return payload;
+      })
   );
   const locationSheets = await Promise.all(
     locations
@@ -156,7 +170,9 @@ export async function buildPlanReferences(args: {
         sequence.imageModel,
         DEFAULT_IMAGE_MODEL
       ),
-      characterSheets: characterSheets.length,
+      characterSheets: characterSheets.filter(
+        (sheet) => !sheet.reuseTalentSheet
+      ).length,
       locationSheets: locationSheets.length,
       elementSheets: owedElements.length,
       pricing: await getEffectiveFalPricing(),

@@ -41,15 +41,6 @@ export function continueFromPlan(args: {
 }): { work: PlanUnit[]; stopAt: GenerationStage } {
   const locks = switchLocks(args.current);
   if (
-    args.saved.generateStartFrames &&
-    !args.requested.generateStartFrames &&
-    locks.startFrames
-  ) {
-    throw new ValidationError(
-      'Start frames can’t be turned off: shots already have stills'
-    );
-  }
-  if (
     args.saved.generateVoices &&
     !args.requested.generateVoices &&
     locks.voices
@@ -58,7 +49,7 @@ export function continueFromPlan(args: {
       'Voices can’t be turned off: shots already have recorded dialogue'
     );
   }
-  const stopAt = switchStopAt(args);
+  const stopAt = switchStopAt({ ...args, plan: args.next });
   const work = planWork(args.next, stopAt);
   if (work.length === 0) {
     throw new ValidationError(

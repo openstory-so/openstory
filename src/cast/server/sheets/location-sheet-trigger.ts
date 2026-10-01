@@ -28,12 +28,9 @@ export function toLocationMetadata(
     locationId: location.locationId,
     name: location.name,
     type: parseLocationType(location.type),
-    timeOfDay: location.timeOfDay ?? '',
     description: location.description ?? '',
     architecturalStyle: location.architecturalStyle ?? '',
     keyFeatures: location.keyFeatures ?? '',
-    colorPalette: location.colorPalette ?? '',
-    lightingSetup: location.lightingSetup ?? '',
     ambiance: location.ambiance ?? '',
     consistencyTag: location.consistencyTag ?? '',
     firstMention: {

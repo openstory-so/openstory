@@ -115,11 +115,8 @@ const perSegmentShots: ShotView[] = PS_SHOT_CONFIGS.map((cfg, index) => {
     sceneId: cfg.sceneId,
     shotNumber: cfg.shotNumber,
     renderSegmentId: cfg.segmentId,
-    frame: {
-      ...base.frame,
-      imageStatus: 'completed' as const,
-      imageError: null,
-    },
+    imageStatus: 'completed' as const,
+    imageError: null,
     image: base.image ? { ...base.image, url: cfg.img } : null,
     video,
     primaryVideo: video,
@@ -293,11 +290,8 @@ const plannedShots: ShotView[] = PS_SHOT_CONFIGS.filter(
     shotNumber: cfg.shotNumber,
     durationMs: plannedDurationsMs[index] ?? 3000,
     renderSegmentId: null,
-    frame: {
-      ...base.frame,
-      imageStatus: 'completed' as const,
-      imageError: null,
-    },
+    imageStatus: 'completed' as const,
+    imageError: null,
     image: base.image ? { ...base.image, url: cfg.img } : null,
     video: null,
     primaryVideo: null,
@@ -388,10 +382,7 @@ export const GeneratingThumbnails: Story = {
   args: {
     shots: mockShots.map((shot, idx) => ({
       ...shot,
-      frame: {
-        ...shot.frame,
-        imageStatus: idx < 3 ? ('generating' as const) : ('completed' as const),
-      },
+      imageStatus: idx < 3 ? ('generating' as const) : ('completed' as const),
       image: idx < 3 ? null : shot.image,
     })),
     selection: { sceneIds: [], shotId: mockShots[0]?.id },
@@ -402,11 +393,8 @@ export const WithFailures: Story = {
   args: {
     shots: mockShots.map((shot, idx) => ({
       ...shot,
-      frame: {
-        ...shot.frame,
-        imageStatus: idx === 2 ? ('failed' as const) : ('completed' as const),
-        imageError: idx === 2 ? 'Generation timeout' : null,
-      },
+      imageStatus: idx === 2 ? ('failed' as const) : ('completed' as const),
+      imageError: idx === 2 ? 'Generation timeout' : null,
       image: idx === 2 ? null : shot.image,
     })),
     selection: { sceneIds: [] },
@@ -419,31 +407,28 @@ export const MixedStates: Story = {
       if (idx === 0) {
         return {
           ...shot,
-          frame: { ...shot.frame, imageStatus: 'pending' as const },
+          imageStatus: 'pending' as const,
           image: null,
         };
       }
       if (idx === 1) {
         return {
           ...shot,
-          frame: { ...shot.frame, imageStatus: 'generating' as const },
+          imageStatus: 'generating' as const,
           image: null,
         };
       }
       if (idx === 2) {
         return {
           ...shot,
-          frame: {
-            ...shot.frame,
-            imageStatus: 'failed' as const,
-            imageError: 'API error',
-          },
+          imageStatus: 'failed' as const,
+          imageError: 'API error',
           image: null,
         };
       }
       return {
         ...shot,
-        frame: { ...shot.frame, imageStatus: 'completed' as const },
+        imageStatus: 'completed' as const,
       };
     }),
     selection: { sceneIds: [], shotId: mockShots[1]?.id },

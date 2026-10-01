@@ -10,14 +10,9 @@
  * (imageUrls[i] ↔ scenes[i]) keep working.
  */
 
-import type { DialogueLine, Scene } from '@/shots/scene-analysis.schema';
-import {
-  deriveShots,
-  type DerivedShot,
-  type DeriveShotPromptOptions,
-} from '@/shots/shot-list.derive';
-import type { StyleConfig } from '@/look/style-config';
-import { dialogueForShot } from '@/shots/shot-list-pass';
+import type { Scene } from '@/shots/scene-analysis.schema';
+import type { ShotSpec } from '@/shots/shot-list.schema';
+import { scriptForShot } from '@/shots/shot-list-pass';
 
 /**
  * The scene as one clip sees it: only the dialogue spoken in that shot
@@ -26,41 +21,10 @@ import { dialogueForShot } from '@/shots/shot-list-pass';
  * visual-prompt batch included, which is per scene but stores and verifies
  * against the anchor shot.
  */
-/** What `shotWorkItems` reads off a scene. A full `Scene` stays assignable. */
-type WorkItemScene = {
-  sceneId: string;
-  originalScript: {
-    extract: string;
-    dialogue?: readonly DialogueLine[];
-  };
-};
-
-export function sceneForShot<S extends WorkItemScene>(
-  scene: S,
-  shotNumber: number
-): S {
-  // Object.assign keeps S (a spread of the generic is not assignable back
-  // to S) and copies extra script fields such as lineNumber.
-  return Object.assign({}, scene, {
-    originalScript: Object.assign({}, scene.originalScript, {
-      dialogue: dialogueForShot(scene.originalScript.dialogue, shotNumber),
-    }),
-  });
-}
-
-/**
- * A neighbouring scene as prompt context: every line, stamps stripped. Not
- * hashed, but it is prompt text, and the stamp is a storage fact.
- */
-export function sceneAsContext(scene: Scene): Scene {
+export function sceneForShot(scene: Scene, shotNumber: number): Scene {
   return {
     ...scene,
-    originalScript: {
-      ...scene.originalScript,
-      dialogue: scene.originalScript.dialogue.map(
-        ({ shotNumber: _stamp, ...line }) => line
-      ),
-    },
+    originalScript: scriptForShot(scene.originalScript, shotNumber),
   };
 }
 
@@ -71,8 +35,8 @@ export type ShotMappingRow = {
   shotNumber?: number;
 };
 
-export type ShotWorkItem<S extends WorkItemScene = Scene> = {
-  scene: S;
+export type ShotWorkItem = {
+  scene: Scene;
   sceneIndex: number;
   mapping: {
     analysisSceneId: string;
@@ -80,18 +44,18 @@ export type ShotWorkItem<S extends WorkItemScene = Scene> = {
     frameId: string | null;
     shotNumber: number;
   };
-  /** First mapping row for this scene — the LLM prompt path when 1-shot. */
+  /** First mapping row for this scene. */
   isSceneHead: boolean;
-  /** This scene has 2+ mapping rows: every clip derives its prompts (#1517). */
+  /** This scene has 2+ mapping rows. */
   hasSiblingShots: boolean;
 };
 
-export function shotWorkItems<S extends WorkItemScene>(
-  scenes: readonly S[],
+export function shotWorkItems(
+  scenes: readonly Scene[],
   shotMapping: ReadonlyArray<ShotMappingRow> | undefined
-): ShotWorkItem<S>[] {
+): ShotWorkItem[] {
   const mapping = shotMapping ?? [];
-  const items: ShotWorkItem<S>[] = [];
+  const items: ShotWorkItem[] = [];
 
   for (const [sceneIndex, scene] of scenes.entries()) {
     const rows = mapping
@@ -136,16 +100,10 @@ export function shotWorkItems<S extends WorkItemScene>(
 }
 
 /** Clip length written onto the motion job: spec for 2+ shots, scene total otherwise. */
-export function clipDurationSeconds(item: {
-  scene: {
-    shots?: readonly { shotNumber: number; durationSeconds: number }[] | null;
-    metadata?: { durationSeconds?: number } | null;
-  };
-  mapping: { shotNumber: number };
-}): number {
+export function clipDurationSeconds(item: ShotWorkItem): number {
   const specs = item.scene.shots;
   if (specs && specs.length > 1) {
-    const spec = specForItem(item, specs);
+    const spec = shotSpecForItem(item, specs);
     if (spec && spec.durationSeconds > 0) return spec.durationSeconds;
   }
   return item.scene.metadata?.durationSeconds || 3;
@@ -167,59 +125,15 @@ export function snapshotLookupKey(snapshot: {
     : snapshot.sceneId;
 }
 
-function specForItem(
-  item: { mapping: { shotNumber: number } },
-  specs: readonly { shotNumber: number; durationSeconds: number }[]
-): { shotNumber: number; durationSeconds: number } | undefined {
-  return specs.find((spec) => spec.shotNumber === item.mapping.shotNumber);
-}
-
 /**
- * Assembled visual + motion prompts for a clip of a 2+ shot scene (#1517):
- * every shot, the head included, comes from the shot-list spec — the
- * visual-prompt / motion-prompt LLMs never re-author it. Null when the scene
- * is 1-shot (LLM path, byte-identical to before shot lists) or the spec is
- * missing.
+ * This clip's shot-list spec, or undefined when analysis did not carry one
+ * (a scene composed from D1). Every shot with a spec — one-shot scenes
+ * included (#1919) — takes its first prompts from it, never from the
+ * per-shot prompt LLMs.
  */
-export function derivedShotForItem(
+export function shotSpecForItem(
   item: ShotWorkItem,
-  styleConfig: StyleConfig,
-  options?: DeriveShotPromptOptions
-): DerivedShot | null {
-  if (!item.hasSiblingShots) return null;
-  const specs = item.scene.shots;
-  if (!specs || specs.length <= 1) return null;
-  const derived = deriveShots(
-    {
-      sceneId: item.scene.sceneId,
-      sceneNumber: item.scene.sceneNumber,
-      originalScript: {
-        extract: item.scene.originalScript.extract,
-        dialogue: item.scene.originalScript.dialogue,
-      },
-      metadata: {
-        title: item.scene.metadata?.title ?? '',
-        durationSeconds: item.scene.metadata?.durationSeconds ?? 3,
-        location: item.scene.metadata?.location ?? '',
-        timeOfDay: item.scene.metadata?.timeOfDay ?? '',
-        storyBeat: item.scene.metadata?.storyBeat ?? '',
-      },
-      continuity: {
-        characterTags: item.scene.continuity?.characterTags ?? [],
-        environmentTag: item.scene.continuity?.environmentTag ?? '',
-        elementTags: item.scene.continuity?.elementTags ?? [],
-        colorPalette: item.scene.continuity?.colorPalette ?? '',
-        lightingSetup: item.scene.continuity?.lightingSetup ?? '',
-        styleTag: item.scene.continuity?.styleTag ?? '',
-      },
-      dialoguePresent: item.scene.originalScript.dialogue.length > 0,
-      continuousFromPrevious: false,
-      shots: [...specs],
-    },
-    styleConfig,
-    options
-  );
-  return (
-    derived.find((shot) => shot.shotNumber === item.mapping.shotNumber) ?? null
-  );
+  specs: readonly ShotSpec[] = item.scene.shots ?? []
+): ShotSpec | undefined {
+  return specs.find((spec) => spec.shotNumber === item.mapping.shotNumber);
 }

@@ -245,7 +245,7 @@ export const IMAGE_MODELS = {
     // No number: Grok images always route natively and xAI documents no cap
     // (fal's 8000 is fal's, not xAI's). The 4000 we carried was
     // @tanstack/ai-grok's stale grok-2-image constant, which threw
-    // client-side — patched out under patches/ until upstream drops it (#1754).
+    // client-side until @tanstack/ai-grok 0.19 dropped it (#1754).
     maxPromptLength: undefined,
   },
   grok_imagine_image_quality: {

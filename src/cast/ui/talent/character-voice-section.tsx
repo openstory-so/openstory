@@ -9,7 +9,7 @@ import {
 import { useSeedVoices } from '@/cast/ui/use-voice-design-available';
 import { ToggleGroup, ToggleGroupItem } from '@/ui/shadcn/toggle-group';
 
-import { ActionCost } from '@/billing/ui/action-cost';
+import { InButtonCost } from '@/billing/ui/action-cost';
 import {
   catalogVoiceBrief,
   designedTakesForDisplay,
@@ -319,24 +319,29 @@ export const CharacterVoiceSection: React.FC<{
               <Library className="mr-2 h-4 w-4" />
               Browse voices
             </Button>
-            <div className="flex w-fit flex-col gap-1">
-              <Button
-                variant="outline"
-                disabled={busy}
-                onClick={() =>
-                  generate.mutate(
-                    {
-                      sequenceId,
-                      characterId: character.id,
-                      takes: takeCount,
-                    },
-                    {
-                      onError: (error) =>
-                        toast.error('Failed to design voice', {
-                          description: errorMessage(error),
-                        }),
-                    }
-                  )
+            <Button
+              variant="outline"
+              disabled={busy}
+              onClick={() =>
+                generate.mutate(
+                  {
+                    sequenceId,
+                    characterId: character.id,
+                    takes: takeCount,
+                  },
+                  {
+                    onError: (error) =>
+                      toast.error('Failed to design voice', {
+                        description: errorMessage(error),
+                      }),
+                  }
+                )
+              }
+            >
+              <InButtonCost
+                onPrimary={false}
+                estimate={
+                  seedVoices ? seedVoiceEstimate(takeCount) : VOICE_DESIGN_COST
                 }
               >
                 {designing ? (
@@ -348,13 +353,8 @@ export const CharacterVoiceSection: React.FC<{
                   designing,
                   Boolean(character.voiceId || takes.length > 0)
                 )}
-              </Button>
-              <ActionCost
-                estimate={
-                  seedVoices ? seedVoiceEstimate(takeCount) : VOICE_DESIGN_COST
-                }
-              />
-            </div>
+              </InButtonCost>
+            </Button>
             {seedVoices && (
               <div className="flex flex-col gap-1">
                 <ToggleGroup

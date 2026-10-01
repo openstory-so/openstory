@@ -62,13 +62,14 @@ beforeEach(() => {
   talentInsertDivergent.mockClear();
 });
 
-describe('reportParkedCharacterSheet', () => {
+describe('reportParkedSheet', () => {
   it('emits stale:detected on the sequence channel, naming the parked version', async () => {
-    const { reportParkedCharacterSheet } = await import('./sheet-divergence');
+    const { reportParkedSheet } = await import('./sheet-divergence');
 
-    await reportParkedCharacterSheet({
+    await reportParkedSheet({
       sequenceId: 'seq-1',
-      characterId: 'char-1',
+      entityType: 'character',
+      entityId: 'char-1',
       versionId: 'ver-1',
       snapshotInputHash: characterSheetInputHash('hash-snap'),
     });
@@ -82,15 +83,14 @@ describe('reportParkedCharacterSheet', () => {
       divergedVariantId: 'ver-1',
     });
   });
-});
 
-describe('reportParkedLocationSheet', () => {
-  it('emits on the sequence channel as entityType "location"', async () => {
-    const { reportParkedLocationSheet } = await import('./sheet-divergence');
+  it('emits a location on the sequence channel, not the location channel', async () => {
+    const { reportParkedSheet } = await import('./sheet-divergence');
 
-    await reportParkedLocationSheet({
+    await reportParkedSheet({
       sequenceId: 'seq-9',
-      locationId: 'loc-1',
+      entityType: 'location',
+      entityId: 'loc-1',
       versionId: 'ver-2',
       snapshotInputHash: locationSheetInputHash('hash-loc'),
     });

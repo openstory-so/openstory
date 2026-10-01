@@ -535,8 +535,8 @@ export function estimateStoryboardCost(opts: StoryboardCostOpts): Microdollars {
  * A run priced on the generation plan's units (#1817): what the plan says is
  * missing or stale up to the stop, one line per kind. No stage guesses — a
  * References continue for two hand-added characters prices two sheets, not
- * a heuristic cast. Prompts price as one LLM call each (the batches share
- * calls per scene, so this errs high).
+ * a heuristic cast. A shot rewrite is one LLM call. Rebuilding a still or
+ * motion prompt from the spec is free. Music prompts stay one call each.
  */
 export function estimatePlanCost(opts: {
   counts: Record<PlanUnitKind, number>;
@@ -554,8 +554,7 @@ export function estimatePlanCost(opts: {
   pricing: FalPricingMap;
 }): Microdollars {
   const { counts, pricing } = opts;
-  const prompts =
-    counts['prompt:visual'] + counts['prompt:motion'] + counts['prompt:music'];
+  const prompts = counts.spec + counts['prompt:music'];
   let total = addMicros(
     estimateLLMCost(prompts),
     addMicros(

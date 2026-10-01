@@ -25,6 +25,8 @@ import { frames } from './frames';
 
 const PROMPT_VERSION_SOURCES = [
   'ai-generated',
+  // Shot-list derivation consumes no rendered start frame (#1892).
+  'derived',
   'user-edit',
   'regenerated',
   'restored',
@@ -64,13 +66,16 @@ export const framePromptVersions = snakeCase.table(
       .notNull()
       .references(() => frames.id, { onDelete: 'cascade' }),
 
-    // Full prompt text (mirrors the cached column on `frames`).
+    // Full prompt text.
     text: text().notNull(),
     // Structured visual prompt components (composition / lighting / etc.).
     // User-edits without structured components persist null.
     components: text({ mode: 'json' }).$type<VisualPromptComponents>(),
 
     source: text().$type<PromptVersionSource>().notNull(),
+    // The `shot_spec_versions` row this text was derived from (#1915). Null
+    // for text that was not derived from a spec (an LLM or a user wrote it).
+    specVersionId: text(),
 
     // SHA-256 of the upstream context that produced an AI prompt; null for
     // user-edits since they have no upstream input surface.

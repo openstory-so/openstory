@@ -5,8 +5,8 @@
  * a shot overrides it (`shots.useStartFrame`, NULL = inherit). One function so
  * every consumer agrees — they drifted before.
  *
- * Not only a render switch: it picks the motion-prompt template
- * (`motion-prompt-workflow`) and folds into the motion hash
+ * Not only a render switch: it picks whether the derived motion prompt
+ * prefixes the shot's framing, and it folds into the motion hash
  * (`shot-staleness`), so flipping it re-stales the shot's motion prompt.
  */
 

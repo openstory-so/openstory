@@ -1,4 +1,4 @@
-import { ActionCost } from '@/billing/ui/action-cost';
+import { InButtonCost } from '@/billing/ui/action-cost';
 import { ImageModelSelector } from '@/models/ui/pickers/image-model-selector';
 import { UploadMediaButton } from '@/shots/ui/upload-media-button';
 import { SheetComparisonDialog } from '@/cast/ui/sheets/sheet-comparison-dialog';
@@ -201,9 +201,16 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
         } else {
           setIsRegenerating(false);
           setRetryLabel(null);
-          // Invalidate query to refetch updated character data
+          // The sheet and its version strip are separate queries. A completed
+          // run appends a version after the kickoff mutation has returned.
           void queryClient.invalidateQueries({
             queryKey: sequenceCharacterKeys.list(sequenceId),
+          });
+          void queryClient.invalidateQueries({
+            queryKey: characterSheetVariantKeys.history(
+              sequenceId,
+              characterId
+            ),
           });
         }
       }
@@ -327,15 +334,15 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
     )?.model,
     sequenceImageModel: sequence?.imageModel ?? null,
   });
-  const { pricing: falPricing } = useFalPricing();
+  const { pricing: falPricing, isPending: pricingPending } = useFalPricing();
   const sheetCostEstimate = useMemo(() => {
-    if (!falPricing) return null;
+    if (!falPricing) return pricingPending ? undefined : null;
     return estimateImageCost(selectedSheetModel, '16:9', 1, {
       pricing: falPricing,
       // Talent refs go through the model's edit endpoint (same as the workflow).
       edit: Boolean(character?.talentId),
     });
-  }, [falPricing, selectedSheetModel, character?.talentId]);
+  }, [falPricing, pricingPending, selectedSheetModel, character?.talentId]);
 
   const handleRegenerateSheet = useCallback(() => {
     regenerateSheet.mutate(
@@ -557,11 +564,11 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                     Used for this character's sheet. Shot stills still follow
                     the sequence image model.
                   </p>
-                  <div className="flex w-fit flex-col gap-1">
-                    <Button
-                      onClick={handleRegenerateSheet}
-                      disabled={regenerateSheet.isPending}
-                    >
+                  <Button
+                    onClick={handleRegenerateSheet}
+                    disabled={regenerateSheet.isPending}
+                  >
+                    <InButtonCost estimate={sheetCostEstimate}>
                       {regenerateSheet.isPending ? (
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       ) : (
@@ -576,9 +583,8 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                             ? 'Generate again'
                             : 'Regenerate Sheet'
                           : 'Generate Sheet'}
-                    </Button>
-                    <ActionCost estimate={sheetCostEstimate} />
-                  </div>
+                    </InButtonCost>
+                  </Button>
                 </>
               )}
 

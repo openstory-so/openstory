@@ -1,3 +1,4 @@
+import { buildDraftFinalRender } from './build-motion-render';
 /**
  * Render an approved Ark draft at quality (#1756).
  *
@@ -138,29 +139,23 @@ export async function renderDraftAtQuality(options: {
   );
 
   return releaseReservationOnThrow(scopedDb, reservationId, async () => {
-    const payload: MotionWorkflowInput = {
+    const payload = buildDraftFinalRender({
       userId: options.userId,
       teamId: scopedDb.teamId,
-      sequenceId: sequence.id,
-      shotId: lead.shotId,
+      sequence,
+      lead,
       sceneId: options.sceneId,
-      // The mode the draft ran in, so the final is stamped the same way and
-      // a reference-only draft is not asked for a start frame it never had.
-      referenceOnly: !lead.usesStartFrame,
       // Provenance only — the final sends the task id, not a prompt.
-      prompt: promptVersion?.text ?? '',
+      authoredPrompt: promptVersion?.text ?? '',
       model,
       duration,
-      aspectRatio: sequence.aspectRatio,
-      sequenceTitle: sequence.title,
       reservationId,
-      ownsReservation: true,
-      finalFromDraft: {
+      draft: {
         taskId: draftTaskId,
         renderSegmentId: version.renderSegmentId,
         manifest: version.manifest,
       },
-    };
+    });
     const workflowRunId = await triggerWorkflow('/motion', payload, {
       deduplicationId: runKey,
     });

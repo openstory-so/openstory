@@ -1,5 +1,5 @@
 /**
- * Pins how "Update all" reports the up-front dialogue recording (#1740): a
+ * Pins how "Update all" reports the up-front dialogue speech (#1740): a
  * dialogue-only target that got no audio is a failure, not a quiet no-op, and
  * a target that did is counted — its neighbours in the scene are not.
  */

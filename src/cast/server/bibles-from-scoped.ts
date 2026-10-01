@@ -61,12 +61,9 @@ export function sequenceLocationsToBible(
     locationId: l.locationId,
     name: l.name,
     type: l.type === 'exterior' || l.type === 'both' ? l.type : 'interior',
-    timeOfDay: l.timeOfDay ?? '',
     description: l.description ?? '',
     architecturalStyle: l.architecturalStyle ?? '',
     keyFeatures: l.keyFeatures ?? '',
-    colorPalette: l.colorPalette ?? '',
-    lightingSetup: l.lightingSetup ?? '',
     ambiance: l.ambiance ?? '',
     consistencyTag: l.consistencyTag ?? '',
     firstMention: {

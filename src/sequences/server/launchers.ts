@@ -256,14 +256,10 @@ async function resolveStoryboardPayload(
     includeMusic: sequence.includeMusic,
     ownerEmail: await scopedDb.teamManagement.getMemberEmail(input.userId),
     sequenceUrl: sequenceScenesUrl(sequenceId),
-    // Pin stop-at from this click, else the sequence snapshot — never let
-    // auto-generate flags collapse References to Images (#1408).
+    // Pin stop-at from this click, else the sequence snapshot (#1408).
     stopAt: resolveStopAt({
       stopAt: input.stopAt,
       generationStopAt: sequence.generationStopAt,
-      autoGenerateMotion:
-        input.autoGenerateMotion ?? sequence.autoGenerateMotion,
-      autoGenerateMusic: input.autoGenerateMusic ?? sequence.autoGenerateMusic,
     }),
   };
 }

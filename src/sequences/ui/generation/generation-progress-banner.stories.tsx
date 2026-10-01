@@ -43,25 +43,13 @@ function withPhaseProgress(
   };
 }
 
-const fourPhases = createInitialState({
-  autoGenerateMotion: false,
-  autoGenerateMusic: false,
-});
+const fourPhases = createInitialState({ stopAt: 'images' });
 
-const fivePhasesMotion = createInitialState({
-  autoGenerateMotion: true,
-  autoGenerateMusic: false,
-});
+const fivePhasesMotion = createInitialState({ stopAt: 'motion' });
 
-const fivePhasesMusic = createInitialState({
-  autoGenerateMotion: false,
-  autoGenerateMusic: true,
-});
+const fivePhasesMusic = createInitialState({ stopAt: 'images' });
 
-const fivePhasesBoth = createInitialState({
-  autoGenerateMotion: true,
-  autoGenerateMusic: true,
-});
+const fivePhasesBoth = createInitialState({ stopAt: 'music' });
 
 const meta: Meta<typeof GenerationProgressBanner> = {
   title: 'Generation/GenerationProgressBanner',

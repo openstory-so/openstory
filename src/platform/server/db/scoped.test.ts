@@ -14,11 +14,8 @@ const mockSequencesDelete = vi.fn();
 const mockSequencesGetForUser = vi.fn();
 const mockSequencesUpdateTitle = vi.fn();
 const mockSequencesUpdateAnalysisDurationMs = vi.fn();
-const mockSequencesUpdateMusicPrompt = vi.fn();
 const mockSequencesUpdateWorkflow = vi.fn();
 const mockUpdateStatus = vi.fn();
-const mockUpdateMusicFields = vi.fn();
-const mockGetMusicStatus = vi.fn();
 
 vi.doMock('@/sequences/server/db/sequences', () => ({
   createSequencesReadMethods: vi.fn(() => ({
@@ -35,18 +32,11 @@ vi.doMock('@/sequences/server/db/sequences', () => ({
     getForUser: mockSequencesGetForUser,
     updateTitle: mockSequencesUpdateTitle,
     updateAnalysisDurationMs: mockSequencesUpdateAnalysisDurationMs,
-    updateMusicPrompt: mockSequencesUpdateMusicPrompt,
     updateWorkflow: mockSequencesUpdateWorkflow,
-  })),
-  createSequenceReadMethods: vi.fn((_db: unknown, sequenceId: string) => ({
-    sequenceId,
-    getMusicStatus: mockGetMusicStatus,
   })),
   createSequenceMethods: vi.fn((_db: unknown, sequenceId: string) => ({
     sequenceId,
     updateStatus: mockUpdateStatus,
-    updateMusicFields: mockUpdateMusicFields,
-    getMusicStatus: mockGetMusicStatus,
   })),
 }));
 
@@ -309,14 +299,11 @@ describe('createScopedDb', () => {
       mockSequencesCreate,
       mockSequencesGetById,
       mockUpdateStatus,
-      mockUpdateMusicFields,
-      mockGetMusicStatus,
       mockSequencesUpdate,
       mockSequencesDelete,
       mockSequencesGetForUser,
       mockSequencesUpdateTitle,
       mockSequencesUpdateAnalysisDurationMs,
-      mockSequencesUpdateMusicPrompt,
       mockSequencesUpdateWorkflow,
       mockTalentList,
       mockTalentGetByIds,
@@ -449,24 +436,6 @@ describe('createScopedDb', () => {
         'failed',
         'Something broke'
       );
-    });
-
-    it('updateMusicFields() delegates to sub-module', async () => {
-      const fields = { musicStatus: 'generating' as const, musicError: null };
-      const db = createScopedDb(TEAM_ID, USER_ID);
-      await db.sequence('seq_01').updateMusicFields(fields);
-
-      expect(mockUpdateMusicFields).toHaveBeenCalledWith(fields);
-    });
-
-    it('getMusicStatus() delegates to sub-module', async () => {
-      const sentinel = { musicStatus: 'completed', musicUrl: 'url' };
-      mockGetMusicStatus.mockResolvedValue(sentinel);
-
-      const db = createScopedDb(TEAM_ID, USER_ID);
-      const result = await db.sequence('seq_01').getMusicStatus();
-
-      expect(result).toEqual(sentinel);
     });
   });
 

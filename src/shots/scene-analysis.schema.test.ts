@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { motionPromptSchema } from './scene-analysis.schema';
+import {
+  locationBibleEntrySchema,
+  motionPromptSchema,
+} from './scene-analysis.schema';
 
 describe('motionPromptSchema', () => {
   it('fills omitted or null dialogue/audio so parse never requires those keys', () => {
@@ -31,4 +34,16 @@ describe('motionPromptSchema', () => {
     expect(parsed.dialogue.lines).toHaveLength(1);
     expect(parsed.audio.ambientSound).toBe('rain');
   });
+});
+
+it('guides location names toward stable physical identity while preserving authored names', () => {
+  const name = locationBibleEntrySchema.shape.name;
+  expect(name.meta()?.description).toContain(
+    'without slugline markers or a time-of-day suffix'
+  );
+  expect(name.meta()?.description).toContain(
+    'time of day belongs to the scene'
+  );
+  expect(name.parse('Night Owl Cafe')).toBe('Night Owl Cafe');
+  expect(name.parse('INT. OFFICE - DAY')).toBe('INT. OFFICE - DAY');
 });

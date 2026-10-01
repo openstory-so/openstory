@@ -48,7 +48,7 @@ import {
   ShotDialogueHistory,
   ShotReadingsList,
   ShotMissingVoices,
-  ShotRecordingsInFlight,
+  ShotSpeechesInFlight,
   shotSpokenByNote,
 } from './motion-dialogue-panel';
 import { StalenessIndicator } from './staleness/staleness-indicator';
@@ -107,7 +107,7 @@ const Readings: React.FC<ReadingsProps> = ({
       });
     }
   };
-  // Keyed by shot alone: a new recording invalidates it (the realtime
+  // Keyed by shot alone: a new speech invalidates it (the realtime
   // `dialogue-audio` event), so the list on screen stays put while it
   // refetches instead of dropping back to the fallback.
   const { data: readings } = useSuspenseQuery({
@@ -151,7 +151,7 @@ const Readings: React.FC<ReadingsProps> = ({
     onError: (error: Error) =>
       toast.error('Reading not discarded', { description: error.message }),
   });
-  // Recordings in flight. Refreshed by the same realtime event as the list:
+  // Speeches in flight. Refreshed by the same realtime event as the list:
   // the key sits under `dialogueSections`.
   const { data: claims } = useSuspenseQuery({
     queryKey: shotKeys.dialogueClaims(shotId),
@@ -201,6 +201,8 @@ const Readings: React.FC<ReadingsProps> = ({
           onGenerate={voiceDesign ? (id) => void generateVoice(id) : null}
           cost={
             <ActionCost
+              onPrimary={false}
+              inline
               estimate={
                 seedVoices
                   ? seedVoiceEstimate(SEED_VOICE_DEFAULT_TAKES)
@@ -238,7 +240,7 @@ const Readings: React.FC<ReadingsProps> = ({
               : 'Generate dialogue'}
         </Button>
       )}
-      <ShotRecordingsInFlight
+      <ShotSpeechesInFlight
         claims={claims}
         onCancel={(claimId) => cancelClaim.mutate(claimId)}
         cancellingId={cancelClaim.isPending ? cancelClaim.variables : null}

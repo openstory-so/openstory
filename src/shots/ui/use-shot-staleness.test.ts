@@ -28,7 +28,7 @@ describe('shotIsStale (#1703)', () => {
 });
 
 describe('shotIsUpdating (#1703)', () => {
-  it('counts an in-flight dialogue recording', () => {
+  it('counts an in-flight dialogue speech', () => {
     expect(shotIsUpdating({ ...fresh(), dialogue: 'updating' })).toBe(true);
   });
 

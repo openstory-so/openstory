@@ -174,7 +174,10 @@ function createBillingReadMethods(db: Database, teamId: string) {
    * serializes a database's statements, so a later read has a later clock
    * whichever isolate took it (#1881).
    */
-  async function getAvailable(now = new Date()): Promise<{
+  async function readAvailable(
+    now = new Date(),
+    reservationId?: string
+  ): Promise<{
     balance: Microdollars;
     reserved: Microdollars;
     available: Microdollars;
@@ -196,6 +199,9 @@ function createBillingReadMethods(db: Database, teamId: string) {
         .where(
           and(
             eq(creditReservations.teamId, teamId),
+            reservationId
+              ? sql`${creditReservations.id} <> ${reservationId}`
+              : undefined,
             sql`${creditReservations.remainingAmount} > 0`,
             sql`${creditReservations.expiresAt} > ${nowSeconds}`
           )
@@ -215,10 +221,15 @@ function createBillingReadMethods(db: Database, teamId: string) {
     return { balance, reserved, available, asOfMs };
   }
 
+  const getAvailable = (now = new Date()) => readAvailable(now);
+
   async function hasEnoughCredits(
-    estimatedCostMicros: Microdollars
+    estimatedCostMicros: Microdollars,
+    reservationId?: string
   ): Promise<boolean> {
-    const { available } = await getAvailable();
+    // Children may spend their own envelope plus unheld funds, never another
+    // run's hold. A missing, zero or expired envelope grants no extra balance.
+    const { available } = await readAvailable(new Date(), reservationId);
     return available >= estimatedCostMicros;
   }
 

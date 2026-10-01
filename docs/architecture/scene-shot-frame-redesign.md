@@ -88,9 +88,6 @@ frames
   sequenceId → sequences.id (cascade)   // denormalized for sequence-scoped queries
   orderIndex (0 = first/anchor)
   role:   'first' | 'last' | 'key'
-  imageStatus, imageWorkflowRunId, imageError   // in-flight lifecycle only; a
-                          // failed primary CLEARS pendingPromoteVersionId, so
-                          // no pointer survives to carry 'failed' or its message
   selectedImageVersionId → frame_variants.id (set null)
   selectedImagePromptVersionId → frame_prompt_versions.id (set null)
   pendingPromoteVersionId // auto-promote claim; last kickoff wins
@@ -116,6 +113,10 @@ frame_variants
   sourceVariantId?        // for 'framing' rows: which model image's 3×3 this came from
   url, storagePath
   status, workflowRunId, generatedAt, error
+  isPrimary               // the newest primary non-preview row IS the frame's
+                          // image status/error (#1942); false for added
+                          // models, grid tiles and previews; flipped false on
+                          // a failed upscale or a failure a pick answered
   promptHash, inputHash   // staleness of THIS version
   discardedAt?            // soft-hide (undoable)
   timestamps
@@ -141,6 +142,36 @@ Symmetry that justifies keeping the motion prompt here (not "shot versions"):
 
 A shot is a structural container, not a generated artifact — so we version its
 _inputs_ (prompt) and _outputs_ (video) separately, never the container.
+
+### Shot specs (#1915)
+
+`shot_spec_versions` holds a shot's structured spec — framing (shot size,
+angle, composition, subject start state), action, camera move, pacing,
+direction and sound cue — append-only, selected by
+`shots.selectedSpecVersionId`. Shot number, duration and lines are not in it:
+they already live on `shots` and `shot_dialogue_versions`. Analysis writes
+v1 for every shot. A still or motion prompt version derived from a spec
+(`source: 'derived'`) records `specVersionId`, so framing is stored once.
+Text is derived when the version is written (`deriveStillPrompt`,
+`deriveMotionPrompt` in `src/shots/shot-list.derive.ts`), never at render
+time. Rebuild does that again from the selected spec. Rewrite shot refills
+the spec with one LLM call, then rebuilds the same way (#1923). The prompt
+hash includes the spec's canonical content, so two versions of the same
+words share a hash and a version id is only provenance. `move` and `pacing`
+are free text: a move may chain motions ("arc around the actor, then follow
+as she runs"). A shot from before specs has no row and keeps its text as
+written until Rewrite shot.
+
+The shot inspector edits the spec above each prompt (#1929): framing and
+action on the Start Frame tab; action, camera move, pacing, direction and
+sound on the Video tab. Suggestions come from `shot-spec-vocabulary.ts`, the
+same lists the shot-list prompt names; every field stays free text. A save
+appends a `source: 'edit'` version stamped current, then rebuilds the
+prompts from it (`saveShotSpecFn` → `regenerateShotPrompt`). When a prompt
+is written, the save asks first: replace it with the rebuilt text, or keep
+it. The Rebuild prompt button reads Rewrite shot when the spec is stale or
+missing, and asks the same question before it touches written text. A save
+while a rewrite is in flight is refused.
 
 ### Video variants + the 15s constraint _(Phase 3)_
 

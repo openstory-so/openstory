@@ -4,17 +4,8 @@
  * For each style this animates the EXACT scene image its tile thumbnail was cut
  * from (see THUMBNAIL_SCENES), so the hover clip matches what the user sees:
  *
- *   1. Motion prompt — generated FROM the still via the production
- *      vision-conditioned path (#929): the
- *      `phase/motion-prompt-scene-generation-chat` template + `motionPromptSchema`,
- *      with the still attached as a vision input on a vision-capable model.
- *      Uses the 512px `{scene}-preview.webp` here — the 2048px originals are
- *      ~5MB, over common vision-API per-image limits (see eval-redo-sequences.ts).
- *      There's no script/scene-before/after/cast for a lone still, so instead
- *      of fabricating one we tell the model to READ the frame and bring exactly
- *      what's there to life — a person turns to and engages the viewer; a
- *      product/empty scene gets a confident camera move + world motion. The
- *      vision model decides which case applies (it won't invent a person).
+ *   1. Motion prompt — the style's camera line. Product prompts are derived
+ *      from a shot spec (#1923); a hover tile has no spec.
  *   2. Motion generation — image-to-video the FULL-RES `{scene}.webp` (2048px,
  *      some older styles 1024px) with the style's recommended video model.
  *
@@ -23,17 +14,11 @@
  * `bespoke.mp4`. Upload to R2 with `upload-style-hover-videos-to-r2.ts` (which
  * only ever writes `hover.mp4`, never the canonical/bespoke samples).
  *
- * Reuses production code end to end: the motion-prompt template + schema, the
- * vision-model routing (`resolveVisionModel`/`toVisionImageSource`), the
- * OpenRouter adapter, model-specific prompt assembly (`assembleMotionPrompt`),
- * and the real `submitMotionJob`/`pollMotionJob` motion generation. The only
- * locally-inlined bit is `buildChatMessages` (a copy of the private helper in
- * `llm-call-helper.ts`, which can't be imported here because it pulls in
- * `cloudflare:workers`).
+ * Reuses production motion submit (`submitMotionJob` / `pollMotionJob`) and
+ * `buildMotionShotPrompt`.
  *
  * Run:
- *   OPENROUTER_KEY=… FAL_KEY=… bun scripts/generate-style-hover-videos.ts [styleNameOrSlug]
- *   (FAL_KEY alone also works — LLM calls route through fal's OpenRouter proxy.)
+ *   FAL_KEY=… bun scripts/generate-style-hover-videos.ts [styleNameOrSlug]
  *
  * Flags:
  *   [styleNameOrSlug]   Only this style (matched by exact name OR slug).
@@ -49,44 +34,22 @@
  */
 
 import {
-  createAdapter,
-  getPlatformLlmKey,
-  type LlmKeyInfo,
-} from '@/models/server/create-adapter';
-import { PROMPT_REASONING } from '@/models/server/llm-client';
-import {
   DEFAULT_VIDEO_MODEL,
   IMAGE_TO_VIDEO_MODELS,
   isValidImageToVideoModel,
   safeImageToVideoModel,
   type ImageToVideoModel,
 } from '@/models/models';
-import {
-  analysisModelSupportsVision,
-  DEFAULT_ANALYSIS_MODEL,
-  getContextWindow,
-  resolveVisionModel,
-} from '@/models/models.config';
-import {
-  motionPromptSchema,
-  type MotionPrompt,
-} from '@/shots/scene-analysis.schema';
-import { assembleMotionPrompt } from '@/motion/server/assemble-motion-prompt';
+import type { MotionPrompt } from '@/shots/scene-analysis.schema';
+import { buildMotionShotPrompt } from '@/motion/server/build-motion-render';
 import { fetchVideoForUpload } from '@/motion/server/video-storage';
 import {
   pollMotionJob,
   submitMotionJob,
 } from '@/motion/server/motion-generation';
 import { snapDuration } from '@/motion/snap-duration';
-import {
-  getChatPrompt,
-  type ChatMessage,
-  type ChatMessageImagePart,
-} from '@/platform/server/ai/prompts-index';
-import { toVisionImageSource } from '@/platform/server/storage/external-url';
 import { styleSlug } from '@/look/style-slug';
 import { DEFAULT_STYLE_TEMPLATES } from '@/look/style-templates';
-import { chat } from '@tanstack/ai';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
@@ -278,176 +241,23 @@ function previewAsset(style: StyleTemplate, file: string): string {
   return style.previewUrl.replace(/thumbnail\.webp$/, file);
 }
 
-/** 512px render — small enough for vision-API per-image limits. */
-function visionSourceUrl(style: StyleTemplate): string {
-  return previewAsset(style, `${sceneFor(style)}-preview.webp`);
-}
-
 /** Full-res render (2048px / 1024px) — best fidelity for image-to-video. */
 function motionSourceUrl(style: StyleTemplate): string {
   return previewAsset(style, `${sceneFor(style)}.webp`);
 }
 
-// ---------------------------------------------------------------------------
-// Motion prompt — vision-conditioned on the style's existing preview still.
-// ---------------------------------------------------------------------------
-
 /**
- * Flatten chat-prompt messages into `chat()`-ready form and append the vision
- * still to the last user turn. Verbatim copy of the private `buildChatMessages`
- * in `src/models/server/llm-call-helper.ts` — duplicated, not imported, because
- * that module pulls in `cloudflare:workers` (unavailable under Node).
+ * Motion text for a style hover clip. Still and motion prompts are derived
+ * in the product (#1923); this script has no shot spec, so the clip uses the
+ * style's camera line.
  */
-function buildChatMessages(
-  messages: ChatMessage[],
-  visionImageSources: ChatMessageImagePart['source'][] | undefined
-): {
-  systemPrompts: string[];
-  chatMessages: Array<{
-    role: 'user' | 'assistant';
-    content: ChatMessage['content'];
-  }>;
-} {
-  const systemPrompts: string[] = [];
-  const chatMessages: Array<{
-    role: 'user' | 'assistant';
-    content: ChatMessage['content'];
-  }> = [];
-  for (const msg of messages) {
-    const flat =
-      typeof msg.content === 'string'
-        ? msg.content
-        : msg.content
-            .map((part) => (part.type === 'text' ? part.content : ''))
-            .filter(Boolean)
-            .join('\n');
-    if (msg.role === 'system') {
-      systemPrompts.push(flat);
-    } else {
-      chatMessages.push({ role: msg.role, content: flat });
-    }
-  }
-
-  if (visionImageSources && visionImageSources.length > 0) {
-    const imageParts: ChatMessageImagePart[] = visionImageSources.map(
-      (source) => ({ type: 'image', source })
-    );
-    let lastUserIdx = -1;
-    for (let i = chatMessages.length - 1; i >= 0; i--) {
-      if (chatMessages[i]?.role === 'user') {
-        lastUserIdx = i;
-        break;
-      }
-    }
-    if (lastUserIdx >= 0) {
-      const target = chatMessages[lastUserIdx];
-      const text = typeof target?.content === 'string' ? target.content : '';
-      chatMessages[lastUserIdx] = {
-        role: 'user',
-        content: [{ type: 'text', content: text }, ...imageParts],
-      };
-    } else {
-      chatMessages.push({ role: 'user', content: imageParts });
-    }
-  }
-
-  return { systemPrompts, chatMessages };
-}
-
-/**
- * The one instruction that does the work. A hover clip is a single still with
- * no script, no scene before/after, and no known cast — so instead of feeding
- * the template a fabricated story, we tell it to READ the attached frame and
- * bring exactly what's there to life. The vision model is what knows whether a
- * person is in shot; the conditional keeps it from inventing one on a product
- * still. This is the lever for "give the characters life + engage the viewer".
- */
-const HOVER_STORY_BEAT =
-  'This is a SHORT LOOPING PREVIEW that plays when a viewer hovers the style ' +
-  'tile, so it must feel alive and eye-catching, never static. Read the ' +
-  'ATTACHED FRAME and animate exactly what is in it — never add a person, ' +
-  'object or element that is not already there. If a person is in the frame, ' +
-  'bring them to life: they turn toward the camera and engage the viewer — ' +
-  'meeting the lens with a warm smile, a knowing look, a small nod or inviting ' +
-  'gesture — with natural secondary motion in the hair, clothing and a shift ' +
-  'of weight. If there is no person (a product, object or empty scene), keep ' +
-  'it lively with one confident camera move and motion in the world: drifting ' +
-  'light, particles, steam, water or fabric.';
-
-/**
- * A single honest scene for the motion-prompt template. No sceneBefore/After,
- * no character bible — those don't exist for a lone hover still — just the
- * title, duration, and the liveliness beat. The attached image carries the
- * actual content (#929 vision input).
- */
-function previewScene(style: StyleTemplate) {
+function generateMotionPrompt(style: StyleTemplate): MotionPrompt {
+  const camera = style.config.motion.camera.trim() || 'a slow push in';
   return {
-    sceneId: `style-hover-${styleSlug(style.name)}`,
-    sceneNumber: 1,
-    metadata: {
-      title: style.name,
-      durationSeconds: DURATION_SECONDS,
-      storyBeat: HOVER_STORY_BEAT,
-    },
-    originalScript: { dialogue: null },
+    fullPrompt: `Camera: ${camera}. The scene comes to life.`,
+    dialogue: { presence: false, lines: [] },
+    audio: { ambientSound: '', soundEffects: [] },
   };
-}
-
-/**
- * Generate the structured motion prompt for a style's preview still, mirroring
- * `durableLLMCallCf`'s non-streaming path: same template, same schema, same
- * vision routing, same reasoning + token budget.
- */
-async function generateMotionPrompt(
-  style: StyleTemplate,
-  visionUrl: string,
-  llmKey: LlmKeyInfo
-): Promise<MotionPrompt> {
-  // Image-bearing call: route a text-only analysis model to DEFAULT_VISION_MODEL.
-  const modelId = resolveVisionModel(DEFAULT_ANALYSIS_MODEL, true);
-  const adapter = createAdapter(modelId, llmKey);
-
-  // A lone hover still: no surrounding scenes and no script-derived cast. The
-  // attached image + storyBeat carry everything; styleConfig drives the camera.
-  const promptVariables = {
-    scene: JSON.stringify(previewScene(style), null, 2),
-    sceneBefore: '(none)',
-    sceneAfter: '(none)',
-    characterBible: '(none)',
-    styleConfig: JSON.stringify(style.config, null, 2),
-    aspectRatio: ASPECT_RATIO,
-  };
-
-  const { messages } = await getChatPrompt(
-    'phase/motion-prompt-scene-generation-chat',
-    promptVariables
-  );
-
-  // Attach the still only when the effective model accepts image input.
-  const visionImageSources = analysisModelSupportsVision(modelId)
-    ? [await toVisionImageSource(visionUrl)]
-    : undefined;
-  const { systemPrompts, chatMessages } = buildChatMessages(
-    messages,
-    visionImageSources
-  );
-
-  const result = await chat({
-    adapter,
-    messages: chatMessages,
-    systemPrompts,
-    stream: false,
-    modelOptions: {
-      // `enabled: true` is no longer part of OpenRouter's reasoning options
-      // (sending the effort config IS the opt-in) — see buildModelOptions.
-      reasoning: { effort: PROMPT_REASONING.effort },
-      maxCompletionTokens: Math.floor(getContextWindow(modelId) * 0.5),
-    },
-    outputSchema: motionPromptSchema,
-    debug: false,
-  });
-
-  return motionPromptSchema.parse(result);
 }
 
 // ---------------------------------------------------------------------------
@@ -524,14 +334,12 @@ async function assertAssetExists(url: string, label: string): Promise<void> {
 
 async function processStyle(
   style: StyleTemplate,
-  llmKey: LlmKeyInfo,
   promptsOnly: boolean,
   collector: PromptRecord[],
   modelOverride: ImageToVideoModel | null
 ): Promise<void> {
   const slug = styleSlug(style.name);
   const scene = sceneFor(style);
-  const visionUrl = visionSourceUrl(style);
   const motionUrl = motionSourceUrl(style);
 
   // --model wins over the template's recommendation (used to retry a style on a
@@ -551,8 +359,8 @@ async function processStyle(
     await assertAssetExists(motionUrl, `Motion source (${scene}.webp)`);
   }
 
-  const motionPrompt = await generateMotionPrompt(style, visionUrl, llmKey);
-  const assembled = assembleMotionPrompt({
+  const motionPrompt = generateMotionPrompt(style);
+  const assembled = buildMotionShotPrompt({
     motionPrompt,
     model,
     characterTags: [],
@@ -632,14 +440,6 @@ async function main(): Promise<void> {
     modelOverride = modelArg;
   }
 
-  const llmKey = getPlatformLlmKey();
-  if (!llmKey) {
-    console.error(
-      '❌ No LLM key. Set OPENROUTER_KEY (or FAL_KEY to route via fal).'
-    );
-    process.exit(1);
-  }
-
   let styles = DEFAULT_STYLE_TEMPLATES;
   if (filter) {
     styles = styles.filter(
@@ -664,7 +464,7 @@ async function main(): Promise<void> {
   const { failures } = await mapWithConcurrency(
     [...styles],
     concurrency,
-    (style) => processStyle(style, llmKey, promptsOnly, prompts, modelOverride)
+    (style) => processStyle(style, promptsOnly, prompts, modelOverride)
   );
 
   if (prompts.length > 0) {

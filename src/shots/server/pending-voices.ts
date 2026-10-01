@@ -8,25 +8,7 @@
 
 import { ttsModelForVoice, voicedDialogueLines } from '@/motion/dialogue-tts';
 import type { VoicedDialogueLine } from '@/motion/dialogue-tts';
-
-/** The plan fields a designed voice is written back onto. */
-type PendingVoicePlan = {
-  characterVoices: {
-    name: string;
-    voiceId: string;
-    voiceOnly?: boolean;
-  }[];
-  dialogueRecording: {
-    scenes: readonly {
-      voiced: readonly (VoicedDialogueLine & { shotId: string })[];
-    }[];
-  } | null;
-  targets: {
-    shotId: string;
-    dialogue: Parameters<typeof voicedDialogueLines>[0];
-    dialogueContext: readonly (VoicedDialogueLine & { shotId: string })[];
-  }[];
-};
+import type { UpdateStalePlan } from './update-stale-plan';
 
 const PENDING_VOICE_PREFIX = 'pending-voice:';
 
@@ -66,10 +48,10 @@ function bindLines<L extends VoicedDialogueLine>(
  * whole: it is one conversation, and recording it without a speaker would
  * hand every shot in it the wrong audio.
  */
-export function bindPendingVoices<P extends PendingVoicePlan>(
-  plan: P,
+export function bindPendingVoices(
+  plan: UpdateStalePlan,
   designed: Readonly<Record<string, string>>
-): { plan: P; unvoicedShotIds: Set<string> } {
+): { plan: UpdateStalePlan; unvoicedShotIds: Set<string> } {
   const unvoicedShotIds = new Set<string>();
   const characterVoices = plan.characterVoices.flatMap((character) => {
     if (!character.voiceId.startsWith(PENDING_VOICE_PREFIX)) return [character];
@@ -77,7 +59,7 @@ export function bindPendingVoices<P extends PendingVoicePlan>(
       designed[character.voiceId.slice(PENDING_VOICE_PREFIX.length)];
     return voiceId ? [{ ...character, voiceId }] : [];
   });
-  const scenes = (plan.dialogueRecording?.scenes ?? []).flatMap((job) => {
+  const scenes = (plan.dialogueSpeech?.scenes ?? []).flatMap((job) => {
     const voiced = bindLines(job.voiced, designed);
     if (voiced) return [{ ...job, voiced }];
     for (const line of job.voiced) unvoicedShotIds.add(line.shotId);
@@ -98,16 +80,15 @@ export function bindPendingVoices<P extends PendingVoicePlan>(
   });
 
   return {
-    // Intersection with P keeps every field the caller passed. A spread of
-    // the generic is not assignable back to P.
-    plan: Object.assign({}, plan, {
+    plan: {
+      ...plan,
       characterVoices,
-      dialogueRecording:
-        plan.dialogueRecording && scenes.length > 0
-          ? Object.assign({}, plan.dialogueRecording, { scenes })
+      dialogueSpeech:
+        plan.dialogueSpeech && scenes.length > 0
+          ? { ...plan.dialogueSpeech, scenes }
           : null,
       targets,
-    }),
+    },
     unvoicedShotIds,
   };
 }

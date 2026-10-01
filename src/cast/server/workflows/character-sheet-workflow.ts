@@ -29,7 +29,8 @@ import type {
   CharacterSheetWorkflowInput,
   CharacterSheetWorkflowResult,
 } from '@/platform/server/workflow/types';
-import { reportParkedCharacterSheet } from './sheet-divergence';
+import { landSheetRun } from './sheet-divergence';
+import type { SheetRunOutcome } from './sheet-divergence';
 import { characterSheetHashMatchesStored } from './sheet-snapshots';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { getLogger } from '@/platform/logger';
@@ -60,10 +61,6 @@ type CharacterSheetDb = {
   >;
 };
 
-type SheetLanding =
-  | { kind: 'convergent'; versionId: string | null }
-  | { kind: 'divergent' };
-
 /**
  * Land the sheet through the claim the trigger took (#1113): select it only
  * while the claim still names it, else park it as divergent and tell the UI.
@@ -75,7 +72,7 @@ async function landSheet(
   input: CharacterSheetWorkflowInput,
   stored: { url: string; path: string; model: string },
   workflowRunId: string
-): Promise<SheetLanding> {
+): Promise<SheetRunOutcome> {
   const sequenceId = input.sequenceId;
   if (!sequenceId) {
     throw new Error(
@@ -86,34 +83,30 @@ async function landSheet(
   const claimed = Boolean(input.sheetVersionId);
   // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a run queued before #1113 has no claim
   const versionId = input.sheetVersionId ?? generateId();
-  const landing = await scopedDb.characterSheetVariants.promoteIfPending({
-    characterId: input.characterDbId,
-    versionId,
-    claimed,
-    url: stored.url,
-    storagePath: stored.path,
-    inputHash: input.snapshotInputHash,
-    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload queued before #1600
-    bibleVersionId: input.bibleVersionId ?? null,
-    model: stored.model,
-    workflowRunId,
-  });
-  if (landing === 'promoted') {
-    return { kind: 'convergent', versionId };
-  }
-  logger.warn('[CharacterSheetWorkflow:cf] claim moved; sheet parked', {
-    characterDbId: input.characterDbId,
-    versionId,
-    claimed,
-    storagePath: stored.path,
-  });
-  await reportParkedCharacterSheet({
+  return landSheetRun({
+    land: () =>
+      scopedDb.characterSheetVariants.promoteIfPending({
+        characterId: input.characterDbId,
+        versionId,
+        claimed,
+        url: stored.url,
+        storagePath: stored.path,
+        inputHash: input.snapshotInputHash,
+        // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload queued before #1600
+        bibleVersionId: input.bibleVersionId ?? null,
+        model: stored.model,
+        workflowRunId,
+      }),
+    logger,
+    logTag: '[CharacterSheetWorkflow:cf]',
     sequenceId,
-    characterId: input.characterDbId,
+    entityType: 'character',
+    entityId: input.characterDbId,
     versionId,
+    claimed,
+    storagePath: stored.path,
     snapshotInputHash: input.snapshotInputHash,
   });
-  return { kind: 'divergent' };
 }
 
 async function persistReusedTalentSheet(params: {

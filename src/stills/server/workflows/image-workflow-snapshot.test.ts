@@ -32,6 +32,7 @@ const baseScene: ShotImageSceneSnapshot = {
 
 const baseInput: ImageWorkflowInput = {
   userId: 'u1',
+  variantOnly: false,
   teamId: 't1',
   sequenceId: 'seq1',
   shotId: 'f1',

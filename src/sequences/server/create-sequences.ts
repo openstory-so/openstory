@@ -403,8 +403,6 @@ export const createSequences = createServerOnlyFn(
               // continue-from-DAG uses them on the next stage.
               videoModel: primaryVideoModel,
               musicModel: primaryAudioModel,
-              autoGenerateMotion,
-              autoGenerateMusic,
               generationStopAt: stopAt,
               generateStartFrames,
               generateVoices,

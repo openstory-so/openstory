@@ -1,5 +1,5 @@
 /**
- * Shot dialogue readings (#1657): the time ranges of recordings that spoke a
+ * Shot dialogue readings (#1657): the time ranges of speeches that spoke a
  * shot's lines.
  *
  * Picking a reading cuts its file and puts that clip on the shot — the clip
@@ -124,9 +124,9 @@ export const listShotDialogueSectionsFn = createServerFn({ method: 'GET' })
       selected: section.selectedAt != null,
       fromSeconds: section.fromSeconds,
       toSeconds: section.toSeconds,
-      recordingUrl: section.recordingUrl,
+      speechUrl: section.speechUrl,
       // Every turn of a call runs on one model; the first says which.
-      model: section.recordingTurns[0]?.ttsModel ?? DIALOGUE_TTS_MODEL,
+      model: section.speechTurns[0]?.ttsModel ?? DIALOGUE_TTS_MODEL,
       createdAt: section.createdAt,
       matchesCurrentLines:
         currentKey !== '' && section.sourceKey === currentKey,
@@ -174,8 +174,8 @@ export const selectShotDialogueSectionFn = createServerFn({ method: 'POST' })
     });
 
     const cut = await cutAudioSection({
-      storageKey: section.recording.storageKey,
-      recordingId: section.recordingId,
+      storageKey: section.speech.storageKey,
+      speechId: section.speechId,
       teamId: sequence.teamId,
       sequenceId: sequence.id,
       fromSeconds: section.fromSeconds,
@@ -272,7 +272,7 @@ export const selectShotDialogueVersionFn = createServerFn({ method: 'POST' })
  * "Regenerate dialogue": another reading of this shot's lines, on demand. The same
  * per-scene recorder every batch uses — the whole conversation is spoken so
  * the turn is acted in context — with this shot forced to adopt even though
- * its clip still matches. It lands through a claim like any other recording,
+ * its clip still matches. It lands through a claim like any other speech,
  * so the panel shows "Generating…" with Cancel.
  */
 export const regenerateShotDialogueFn = createServerFn({ method: 'POST' })
@@ -283,7 +283,7 @@ export const regenerateShotDialogueFn = createServerFn({ method: 'POST' })
     const [shots, characters, versions, sceneContext] = await Promise.all([
       scopedDb.shots.listBySequence(sequence.id),
       scopedDb.characters.list(sequence.id),
-      // The rows, not just the lines: a recording names the version it spoke.
+      // The rows, not just the lines: a speech names the version it spoke.
       scopedDb.shotDialogue.getSelectedBySequence(sequence.id),
       loadSceneContextBySequence(scopedDb, sequence.id),
     ]);
@@ -371,7 +371,7 @@ export const discardShotDialogueSectionFn = createServerFn({ method: 'POST' })
     return { sectionId: data.sectionId };
   });
 
-/** This shot's dialogue recordings in flight (#1657) — the "Generating…" rows. */
+/** This shot's dialogue speeches in flight (#1657) — the "Generating…" rows. */
 export const listShotDialogueClaimsFn = createServerFn({ method: 'GET' })
   .middleware([shotAccessMiddleware])
   .validator(zodValidator(shotInput))
@@ -388,7 +388,7 @@ export const listShotDialogueClaimsFn = createServerFn({ method: 'GET' })
   });
 
 /**
- * Stop a recording in flight from becoming this shot's audio. The run is not
+ * Stop a speech in flight from becoming this shot's audio. The run is not
  * terminated — it records the scene for other shots too — and its reading for
  * this shot lands in the list, unselected.
  */

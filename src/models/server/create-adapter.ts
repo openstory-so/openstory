@@ -121,13 +121,6 @@ export const CATALOG_LAG_MODELS = [
     input: ['text', 'image'],
     features: ['reasoning', 'structured_outputs'],
   }),
-  // Bridged by the model-freshness routine (#792): the installed
-  // @tanstack/ai-openrouter catalog snapshot predates claude-opus-5.5.
-  // Prune when a Dependabot catalog bump ships the id (catalog-lag.test.ts).
-  createModel('anthropic/claude-opus-5.5', {
-    input: ['text', 'image'],
-    features: ['reasoning', 'structured_outputs'],
-  }),
 ] as const;
 
 const openRouterTextExtended = extendAdapter(
@@ -155,7 +148,7 @@ const createGrokTextExtended = extendAdapter(
 );
 
 /** {@link CATALOG_LAG_MODELS} for the native Gemini adapter.
- *  `@tanstack/ai-gemini@0.31.2` now ships `gemini-3.8-flash` natively —
+ *  `@tanstack/ai-gemini@0.34.1` ships `gemini-3.8-flash` natively —
  *  nothing currently lags. Prune is the Gemini block in `catalog-lag.test.ts`. */
 export const GEMINI_CATALOG_LAG_MODELS = [] as const;
 

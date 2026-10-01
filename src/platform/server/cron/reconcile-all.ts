@@ -27,6 +27,7 @@ import {
   shotPromptVersions,
   shotVariants,
   sequenceElements,
+  sequenceMusicVariants,
   sequences,
   shotDialogueClaims,
   characterVoiceVersions,
@@ -68,8 +69,8 @@ export async function reconcileAllStuckJobs(): Promise<ReconcileCounts> {
   const counts: ReconcileCounts = {};
 
   const passes: Array<[string, () => Promise<number>]> = [
-    // Image lives on frames / frame_variants now (#989).
-    ['frames.image', () => reconcileFramesImagePass(db)],
+    // Image lives on frame_variants now (#989); a frame's status is its
+    // newest primary row's (#1942), so sweeping the rows covers it.
     ['frame_variants.status', () => reconcileFrameVariantsPass(db)],
     // Pending artifact claims (#1085): a dead run must not leave rows that
     // read as "a job is fixing this" forever.
@@ -82,7 +83,7 @@ export async function reconcileAllStuckJobs(): Promise<ReconcileCounts> {
       () => reconcilePromptClaimsPass(db, 'shot'),
     ],
     ['frame_variants.claims', () => reconcileImageClaimsPass(db)],
-    // Dialogue recordings in flight (#1657): same rule, same reason.
+    // Dialogue speeches in flight (#1657): same rule, same reason.
     ['shot_dialogue_claims', () => reconcileDialogueClaimsPass(db)],
     // Video versions live on video_variants now (#990) — without this pass a
     // dead motion run leaves a permanent "generating" chip on the Video tab
@@ -98,8 +99,8 @@ export async function reconcileAllStuckJobs(): Promise<ReconcileCounts> {
       () => reconcileShotVariantsPass(db, 'shotVariant'),
     ],
     ['sequences.status', () => reconcileSequencesPass(db)],
-    ['sequences.music', () => blindFailPass(db, 'sequencesMusic')],
-    ['sequence_elements.vision', () => blindFailPass(db, 'sequenceElements')],
+    ['sequence_music_variants.claims', () => reconcileMusicClaimsPass(db)],
+    ['sequence_elements.vision', () => blindFailSequenceElementsPass(db)],
     // Direct model runs (#458) — verified pass plus an orphan pass for rows
     // whose trigger died before a workflowRunId was ever persisted.
     ['generated_assets.status', () => reconcileGeneratedAssetsPass(db)],
@@ -147,35 +148,6 @@ export async function reconcileAllStuckJobs(): Promise<ReconcileCounts> {
 // status column. The on-load reconciler doesn't have this issue because it
 // collects all stale entries from in-memory data before writing.
 /**
- * Reconcile stuck anchor-frame image generation (#989 — the old
- * `shots.thumbnail*` pass). Frame image status with a known workflow run id.
- */
-async function reconcileFramesImagePass(db: Database): Promise<number> {
-  const staleCutoff = new Date(Date.now() - STALE_THRESHOLD_MS);
-  const stuck = await db
-    .select({ id: frames.id, runId: frames.imageWorkflowRunId })
-    .from(frames)
-    .where(
-      and(
-        eq(frames.imageStatus, 'generating'),
-        lt(frames.updatedAt, staleCutoff)
-      )
-    )
-    .limit(MAX_ROWS_PER_PASS);
-  let updated = 0;
-  for (const row of stuck) {
-    const next = await resolveRunState(row.runId ?? '');
-    if (next === null || next === 'unknown') continue;
-    await db
-      .update(frames)
-      .set({ imageStatus: next })
-      .where(eq(frames.id, row.id));
-    updated++;
-  }
-  return updated;
-}
-
-/**
  * Reconcile stuck `frame_variants` versions (model re-rolls + the 3×3 grid /
  * upscaled framing tiles) — the image-variant analog of the retired
  * `shots.variant_image` pass.
@@ -183,7 +155,11 @@ async function reconcileFramesImagePass(db: Database): Promise<number> {
 async function reconcileFrameVariantsPass(db: Database): Promise<number> {
   const staleCutoff = new Date(Date.now() - STALE_THRESHOLD_MS);
   const stuck = await db
-    .select({ id: frameVariants.id, runId: frameVariants.workflowRunId })
+    .select({
+      id: frameVariants.id,
+      runId: frameVariants.workflowRunId,
+      kind: frameVariants.kind,
+    })
     .from(frameVariants)
     .where(
       and(
@@ -198,7 +174,17 @@ async function reconcileFrameVariantsPass(db: Database): Promise<number> {
     if (next === null || next === 'unknown') continue;
     await db
       .update(frameVariants)
-      .set({ status: next })
+      .set(
+        next === 'failed'
+          ? {
+              status: next,
+              error: 'Generation stopped without reporting',
+              // A dead upscale / grid tile leaves the good still standing, as
+              // the upscale's own onFailure does (#1942).
+              ...(row.kind === 'framing' ? { isPrimary: false } : {}),
+            }
+          : { status: next }
+      )
       .where(eq(frameVariants.id, row.id));
     // Drop auto-promote claim if this stuck version held it (#1070).
     if (next === 'failed') {
@@ -284,6 +270,77 @@ async function reconcileCharacterVoiceClaimsPass(
       )
     )
     .returning({ id: characterVoiceVersions.id });
+  for (const row of orphaned) await clearPointer(row.id);
+
+  return updated + orphaned.length;
+}
+
+/**
+ * Sweep music track rows a dead run left `pending` (#1115) — the voice-husk
+ * pass's twin. A row with a run id fails at 5 min once its instance is
+ * `completed` or `failed` (a live row on a terminal instance means the
+ * completion write never landed, so there is no track); a row the trigger
+ * opened whose run never stamped it blind-fails at 30 min. Either way the
+ * sequence's claim is cleared while it still names the row.
+ */
+async function reconcileMusicClaimsPass(db: Database): Promise<number> {
+  const staleCutoff = new Date(Date.now() - STALE_THRESHOLD_MS);
+  const blindCutoff = new Date(Date.now() - BLIND_FAIL_THRESHOLD_MS);
+  const died = {
+    status: 'failed' as const,
+    error: 'Generation died before completing',
+  };
+  const clearPointer = async (variantId: string) => {
+    await db
+      .update(sequences)
+      .set({ pendingPromoteMusicVariantId: null })
+      .where(eq(sequences.pendingPromoteMusicVariantId, variantId));
+  };
+
+  const stuck = await db
+    .select({
+      id: sequenceMusicVariants.id,
+      runId: sequenceMusicVariants.workflowRunId,
+    })
+    .from(sequenceMusicVariants)
+    .where(
+      and(
+        eq(sequenceMusicVariants.status, 'pending'),
+        isNotNull(sequenceMusicVariants.workflowRunId),
+        lt(sequenceMusicVariants.createdAt, staleCutoff)
+      )
+    )
+    .limit(MAX_ROWS_PER_PASS);
+  let updated = 0;
+  for (const row of stuck) {
+    const next = await resolveRunState(row.runId ?? '');
+    if (next === null || next === 'unknown') continue;
+    const transitioned = await db
+      .update(sequenceMusicVariants)
+      .set(died)
+      .where(
+        and(
+          eq(sequenceMusicVariants.id, row.id),
+          eq(sequenceMusicVariants.status, 'pending')
+        )
+      )
+      .returning({ id: sequenceMusicVariants.id });
+    if (transitioned.length === 0) continue;
+    await clearPointer(row.id);
+    updated++;
+  }
+
+  const orphaned = await db
+    .update(sequenceMusicVariants)
+    .set(died)
+    .where(
+      and(
+        eq(sequenceMusicVariants.status, 'pending'),
+        isNull(sequenceMusicVariants.workflowRunId),
+        lt(sequenceMusicVariants.createdAt, blindCutoff)
+      )
+    )
+    .returning({ id: sequenceMusicVariants.id });
   for (const row of orphaned) await clearPointer(row.id);
 
   return updated + orphaned.length;
@@ -416,7 +473,7 @@ async function reconcilePromptClaimsPass(
 }
 
 /**
- * Sweep dialogue-recording claims whose run died (#1657). The recorder fails
+ * Sweep dialogue-speech claims whose run died (#1657). The recorder fails
  * its own claims when it gives up; this covers the run that never got the
  * chance. Every claim carries a run id, so there is no blind-fail branch.
  */
@@ -701,10 +758,8 @@ async function failOrphanedGeneratedAssetsPass(db: Database): Promise<number> {
   return result.length;
 }
 
-type BlindFailPipeline = 'sequencesMusic' | 'sequenceElements';
-
 /**
- * Tables without a workflow_run_id column: we can't ask the engine what
+ * Element vision has no workflow_run_id column: we can't ask the engine what
  * happened.
  * After a longer threshold we mark them failed so the user can retry.
  *
@@ -716,27 +771,8 @@ type BlindFailPipeline = 'sequencesMusic' | 'sequenceElements';
  * id, success requires the workflow's own update step to have persisted, and
  * if that didn't happen the artifact URL won't be there either.
  */
-async function blindFailPass(
-  db: Database,
-  pipeline: BlindFailPipeline
-): Promise<number> {
+async function blindFailSequenceElementsPass(db: Database): Promise<number> {
   const staleCutoff = new Date(Date.now() - BLIND_FAIL_THRESHOLD_MS);
-
-  if (pipeline === 'sequencesMusic') {
-    const result = await db
-      .update(sequences)
-      .set({ musicStatus: 'failed' })
-      .where(
-        and(
-          eq(sequences.musicStatus, 'generating'),
-          lt(sequences.updatedAt, staleCutoff)
-        )
-      )
-      .returning({ id: sequences.id });
-    return result.length;
-  }
-
-  // sequenceElements
   const result = await db
     .update(sequenceElements)
     .set({ visionStatus: 'failed' })

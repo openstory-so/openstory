@@ -20,13 +20,10 @@ const mockLocationEntry: LocationBibleEntry = {
   locationId: 'loc_001',
   name: 'INT. OFFICE - DAY',
   type: 'interior',
-  timeOfDay: 'day',
   description:
     'A modern corporate office with glass walls and open floor plan.',
   architecturalStyle: 'Contemporary minimalist',
   keyFeatures: 'Floor-to-ceiling windows, standing desks, plants',
-  colorPalette: 'Neutral grays, whites, green accents from plants',
-  lightingSetup: 'Natural daylight streaming through windows',
   ambiance: 'Professional, focused, modern',
   consistencyTag: 'office_modern_glass',
   firstMention: {
@@ -234,9 +231,11 @@ describe('location-prompt', () => {
       );
     });
 
-    it('should include time of day in prompt', () => {
+    it('renders the place in neutral light without a time-of-day label', () => {
       const result = buildLocationSheetPrompt(mockLocationEntry);
-      expect(result.prompt).toContain('DAY');
+      expect(result.prompt).toContain('Neutral, even light');
+      expect(result.prompt).not.toContain('DAY - DAY');
+      expect(result.prompt).not.toContain('[COLOR PALETTE]');
     });
 
     it('should handle exterior locations', () => {

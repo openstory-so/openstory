@@ -38,6 +38,7 @@ type UpdateStalePreviewPlan = {
   };
   targets: readonly {
     shotId: string;
+    rewriteSpec?: boolean;
     regenVisual?: boolean;
     regenMotion?: boolean;
     regenImage?: boolean;
@@ -52,7 +53,7 @@ type UpdateStalePreviewPlan = {
     regenTrack: boolean;
     durationSeconds: number;
   } | null;
-  dialogueRecording: {
+  dialogueSpeech: {
     scenes: readonly {
       voiced: readonly { shotId: string; text: string; tone: string }[];
     }[];
@@ -106,7 +107,8 @@ export function buildUpdateStalePreview(
   const videos = plan.targets.filter((t) => t.regenVideo);
   const music = plan.music;
 
-  const promptsCost = estimateLLMCost(visual.length + motion.length);
+  const rewrites = plan.targets.filter((t) => t.rewriteSpec === true);
+  const promptsCost = estimateLLMCost(rewrites.length);
   const imagesCost = sum(
     images.map((t) =>
       estimateImageCost(t.imageModel, plan.aspectRatio, 1, {
@@ -139,12 +141,12 @@ export function buildUpdateStalePreview(
   // render records it. An upper bound — a scene whose clips still match its
   // lines is not recorded again.
   const dialogueShotIds = new Set(dialogues.map((t) => t.shotId));
-  const recordingChars = { dialogue: 0, video: 0 };
-  for (const job of plan.dialogueRecording?.scenes ?? []) {
+  const speechChars = { dialogue: 0, video: 0 };
+  for (const job of plan.dialogueSpeech?.scenes ?? []) {
     const level = job.voiced.some((line) => dialogueShotIds.has(line.shotId))
       ? 'dialogue'
       : 'video';
-    recordingChars[level] += ttsCharacterCount(job.voiced);
+    speechChars[level] += ttsCharacterCount(job.voiced);
   }
   const videosCost = sum(
     videos.map((t) =>
@@ -186,12 +188,12 @@ export function buildUpdateStalePreview(
       prompts: promptsCost,
       images: addMaybe(imagesCost, sheetsCost),
       dialogue:
-        recordingChars.dialogue > 0
-          ? estimateTtsCost(recordingChars.dialogue)
+        speechChars.dialogue > 0
+          ? estimateTtsCost(speechChars.dialogue)
           : ZERO_MICROS,
       video:
-        recordingChars.video > 0
-          ? addMaybe(videosCost, estimateTtsCost(recordingChars.video))
+        speechChars.video > 0
+          ? addMaybe(videosCost, estimateTtsCost(speechChars.video))
           : videosCost,
       music: musicCost,
     },

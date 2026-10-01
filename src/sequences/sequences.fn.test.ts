@@ -11,11 +11,10 @@
 import { describe, expect, it } from 'vitest';
 import type { Frame, FrameVariant, Shot } from '@/platform/server/db/schema';
 import { frameVariantFixture } from '@/mocks/frame-fixtures';
-import { toShotView, type ShotView } from '@/shots/shot-view';
+import { toShotView, type ImageStatus, type ShotView } from '@/shots/shot-view';
 import {
   assertModelNotAlreadyAdded,
   buildAddAudioMusicInput,
-  musicWithoutMotion,
   resolveUnarchiveRestore,
   selectEligibleVideoShots,
 } from './sequences.fn';
@@ -24,14 +23,15 @@ import { sumShotDurationsSeconds } from '@/sequences/server/shot-durations';
 const NOW = new Date('2026-06-03T00:00:00.000Z');
 
 // The shot read path returns `ShotView` (#1067): a Shot plus the rows its
-// still/video resolve from. Image readiness is the frame's `imageStatus` and
-// the selected version's `url`, so those are what the fixtures vary.
+// still/video resolve from. Image readiness is the frame's newest primary
+// still render (#1942) and the selected version's `url`, so those are what
+// the fixtures vary. A `pending` still has no selection.
 function makeShot({
   imageStatus = 'completed',
   imageUrl = 'https://cdn/thumb.jpg',
   ...overrides
 }: Partial<Shot> & {
-  imageStatus?: Frame['imageStatus'];
+  imageStatus?: ImageStatus;
   imageUrl?: FrameVariant['url'];
 } = {}): ShotView {
   const id = overrides.id ?? 'shot-1';
@@ -44,6 +44,8 @@ function makeShot({
     durationMs: 3000,
     useStartFrame: null,
     selectedMotionPromptVersionId: null,
+    selectedSpecVersionId: null,
+    pendingSpecVersionId: null,
     audioClips: null,
     renderSegmentId: null,
     deletedAt: null,
@@ -57,10 +59,7 @@ function makeShot({
     sequenceId,
     orderIndex: 0,
     role: 'first',
-    imageStatus,
-    imageWorkflowRunId: null,
-    imageError: null,
-    selectedImageVersionId: 'fv-1',
+    selectedImageVersionId: imageStatus === 'pending' ? null : 'fv-1',
     selectedImagePromptVersionId: null,
     pendingPromoteVersionId: null,
     createdAt: NOW,
@@ -69,13 +68,25 @@ function makeShot({
   // These fixtures exercise the IMAGE-readiness helpers only, so the shot's
   // segment has no render at all (#1067).
   return toShotView(shot, frame, {
-    image: frameVariantFixture({
-      frameId: frame.id,
-      sequenceId,
-      url: imageUrl,
-    }),
+    image:
+      imageStatus === 'pending'
+        ? null
+        : frameVariantFixture({
+            frameId: frame.id,
+            sequenceId,
+            url: imageUrl,
+          }),
     preview: null,
     imagePromptVersion: null,
+    primaryImage:
+      imageStatus === 'generating' || imageStatus === 'failed'
+        ? frameVariantFixture({
+            frameId: frame.id,
+            sequenceId,
+            status: imageStatus,
+            url: null,
+          })
+        : null,
     video: null,
     primaryVideo: null,
   });
@@ -228,7 +239,7 @@ describe('buildAddAudioMusicInput (#547)', () => {
       model: 'elevenlabs_music',
     });
     // The regression guard: the music workflow defaults isPrimary to true, which
-    // would clobber the live sequences.music* columns on success AND failure.
+    // would repoint the sequence's track on success and fail its music on failure.
     expect(input.isPrimary).toBe(false);
   });
 
@@ -250,48 +261,6 @@ describe('buildAddAudioMusicInput (#547)', () => {
       model: 'elevenlabs_music',
       isPrimary: false,
     });
-  });
-});
-
-describe('musicWithoutMotion (#823)', () => {
-  const flags = (autoGenerateMusic: boolean, autoGenerateMotion: boolean) => ({
-    autoGenerateMusic,
-    autoGenerateMotion,
-  });
-
-  it('rejects an update that sets music on while motion is off', () => {
-    expect(musicWithoutMotion(flags(true, false), flags(false, false))).toBe(
-      true
-    );
-  });
-
-  it('rejects music set alone onto a motion-off sequence', () => {
-    expect(
-      musicWithoutMotion({ autoGenerateMusic: true }, flags(false, false))
-    ).toBe(true);
-  });
-
-  it('rejects motion turned off while music stays on', () => {
-    expect(
-      musicWithoutMotion({ autoGenerateMotion: false }, flags(true, true))
-    ).toBe(true);
-  });
-
-  it('accepts music set alone when motion is already on', () => {
-    expect(
-      musicWithoutMotion({ autoGenerateMusic: true }, flags(false, true))
-    ).toBe(false);
-  });
-
-  it('accepts an update that leaves both flags untouched', () => {
-    expect(musicWithoutMotion({}, flags(false, false))).toBe(false);
-    expect(musicWithoutMotion({}, flags(true, true))).toBe(false);
-  });
-
-  it('accepts turning music off regardless of motion', () => {
-    expect(
-      musicWithoutMotion({ autoGenerateMusic: false }, flags(true, false))
-    ).toBe(false);
   });
 });
 

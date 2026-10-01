@@ -16,6 +16,7 @@ import type { ReferenceImageDescription } from '@/stills/reference-image-prompt'
 /** Sheet fields a reference image is built from. A `CharacterMinimal` stays assignable. */
 type CharacterReferenceSource = {
   id: string;
+  characterId: string;
   name: string;
   sheetImageUrl: string | null;
   voiceOnly?: boolean;
@@ -62,6 +63,9 @@ export const buildCharacterReferenceImages = (
   // from before it was reclassified must not ride along as a reference.
   return characters
     .filter((c) => c.sheetImageUrl && !c.voiceOnly)
+    .sort((a, b) =>
+      a.characterId < b.characterId ? -1 : a.characterId > b.characterId ? 1 : 0
+    )
     .map((c) => ({
       referenceImageUrl: c.sheetImageUrl ?? '',
       description: buildCharacterDescription(c),

@@ -193,7 +193,7 @@ describe('Pattern 3 childIds are CF-valid after sanitization', () => {
     'character-sheet:recast:01KS23',
     'regenerate-shots:character:01KS23',
     'music-prompt:01KS23',
-    'motion-prompts-batch:01KS23',
+    'shot-spec-rewrite:01KS23',
   ];
 
   for (const id of realCallsiteIds) {

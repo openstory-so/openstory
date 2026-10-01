@@ -7,7 +7,7 @@
  * writing the primary as before.
  */
 
-import { QueryClient } from '@tanstack/react-query';
+import { QueryClient, QueryObserver } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { promptVariantKeys } from '@/shots/ui/use-prompt-variants';
@@ -17,7 +17,11 @@ import { sequenceCharacterKeys } from '@/cast/ui/use-sequence-characters';
 import { sequenceElementKeys } from '@/cast/ui/use-sequence-elements';
 import { sequenceLocationKeys } from '@/cast/ui/use-sequence-locations';
 import { shotKeys } from '@/shots/ui/use-shots';
-import type { Frame, Shot, VideoVariant } from '@/platform/server/db/schema';
+import type {
+  FrameVariant,
+  Shot,
+  VideoVariant,
+} from '@/platform/server/db/schema';
 import {
   frameFixture,
   frameVariantFixture,
@@ -48,7 +52,8 @@ const render = (overrides: Partial<VideoVariant> = {}) =>
 // video actually live on.
 function makeShot(
   params: {
-    frame?: Partial<Frame>;
+    /** The newest primary still render (#1942); none by default. */
+    primary?: Partial<FrameVariant>;
     sources?: Partial<ShotViewSources>;
   } = {}
 ): ShotView {
@@ -60,6 +65,8 @@ function makeShot(
     durationMs: 3000,
     useStartFrame: null,
     selectedMotionPromptVersionId: null,
+    selectedSpecVersionId: null,
+    pendingSpecVersionId: null,
     audioClips: null,
     renderSegmentId: 'seg-1',
     deletedAt: null,
@@ -69,8 +76,6 @@ function makeShot(
   const frame = frameFixture({
     shotId: shot.id,
     sequenceId: SEQ,
-    imageStatus: 'completed',
-    ...params.frame,
   });
   const video = render();
   return toShotView(shot, frame, {
@@ -81,6 +86,13 @@ function makeShot(
     }),
     preview: null,
     imagePromptVersion: null,
+    primaryImage: params.primary
+      ? frameVariantFixture({
+          frameId: frame.id,
+          sequenceId: SEQ,
+          ...params.primary,
+        })
+      : null,
     video,
     // That same render is the segment's primary, so the shot reads `completed`.
     primaryVideo: video,
@@ -121,7 +133,7 @@ describe('updateQueryCacheFromEvent — variant-only guard (#547)', () => {
       // Primary shot is NOT repointed to the added model's output.
       const shot = getCachedShot(qc);
       expect(shot?.image?.url).toBe(OLD_THUMB);
-      expect(shot?.frame.imageStatus).toBe('completed');
+      expect(shot?.imageStatus).toBe('completed');
 
       // The per-model variant + model-list queries still refresh so the added
       // model appears in the dropdown (debounced — flush the timer).
@@ -175,7 +187,7 @@ describe('updateQueryCacheFromEvent — variant-only guard (#547)', () => {
 
       const shot = getCachedShot(qc);
       expect(shot?.image?.url).toBe(NEW_URL);
-      expect(shot?.frame.imageStatus).toBe('completed');
+      expect(shot?.imageStatus).toBe('completed');
     });
 
     it('variant-only completion does not clear the upscale overlay', () => {
@@ -198,9 +210,9 @@ describe('updateQueryCacheFromEvent — variant-only guard (#547)', () => {
       expect(shot?.pendingUpscaleUrl).toBe('/r2/thumbnails/crop.png');
     });
 
-    it('primary failure writes the reason onto frame.imageError so the banner shows it live (#881)', () => {
+    it('primary failure writes the reason onto imageError so the banner shows it live (#881)', () => {
       qc.setQueryData(shotKeys.list(SEQ), [
-        makeShot({ frame: { imageStatus: 'generating', imageError: null } }),
+        makeShot({ primary: { status: 'generating', error: null } }),
       ]);
 
       updateQueryCacheFromEvent(qc, SEQ, 'generation.image:progress', {
@@ -211,8 +223,8 @@ describe('updateQueryCacheFromEvent — variant-only guard (#547)', () => {
       });
 
       const shot = getCachedShot(qc);
-      expect(shot?.frame.imageStatus).toBe('failed');
-      expect(shot?.frame.imageError).toBe('Blocked by content filter');
+      expect(shot?.imageStatus).toBe('failed');
+      expect(shot?.imageError).toBe('Blocked by content filter');
     });
 
     it('primary completion clears the persisted upscale overlay so it does not stick after SSE', () => {
@@ -220,7 +232,7 @@ describe('updateQueryCacheFromEvent — variant-only guard (#547)', () => {
         shotKeys.list(SEQ),
         [
           makeShot({
-            frame: { imageStatus: 'generating' },
+            primary: { status: 'generating' },
             sources: { pendingUpscaleUrl: '/r2/thumbnails/crop.png' },
           }),
         ].map((s) => ({ ...s, pendingUpscaleIndex: 4 }))
@@ -237,9 +249,9 @@ describe('updateQueryCacheFromEvent — variant-only guard (#547)', () => {
       expect(shot?.pendingUpscaleIndex).toBeNull();
     });
 
-    it('a fresh generating attempt clears a stale frame.imageError', () => {
+    it('a fresh generating attempt clears a stale imageError', () => {
       qc.setQueryData(shotKeys.list(SEQ), [
-        makeShot({ frame: { imageStatus: 'failed', imageError: 'old error' } }),
+        makeShot({ primary: { status: 'failed', error: 'old error' } }),
       ]);
 
       updateQueryCacheFromEvent(qc, SEQ, 'generation.image:progress', {
@@ -248,7 +260,7 @@ describe('updateQueryCacheFromEvent — variant-only guard (#547)', () => {
         model: 'nano_banana_2',
       });
 
-      expect(getCachedShot(qc)?.frame.imageError).toBeNull();
+      expect(getCachedShot(qc)?.imageError).toBeNull();
     });
 
     it('variant-only failure refreshes the model/variant queries so the coverage marker leaves the spinner', () => {
@@ -264,7 +276,7 @@ describe('updateQueryCacheFromEvent — variant-only guard (#547)', () => {
       // The failed alternate must not flip the primary thumbnail to failed.
       const shot = getCachedShot(qc);
       expect(shot?.image?.url).toBe(OLD_THUMB);
-      expect(shot?.frame.imageStatus).toBe('completed');
+      expect(shot?.imageStatus).toBe('completed');
 
       // ...but the per-model queries must refresh so the added model's marker
       // shows `failed` instead of spinning `generating` until staleTime lapses.
@@ -428,6 +440,41 @@ describe('updateQueryCacheFromEvent — variant-only guard (#547)', () => {
         expect(invalidate.mock.calls.map((c) => c[0]?.queryKey)).toContainEqual(
           shotKeys.list(SEQ)
         );
+      }
+    );
+
+    it.each(['generation.complete', 'generation.failed'])(
+      '%s recovers scenes when creation events predate the subscription',
+      async (eventName) => {
+        const sceneList = sceneKeys.list(SEQ);
+        const script = sceneKeys.composedScript(SEQ);
+        qc.setQueryData(sceneList, []);
+        qc.setQueryData(script, { script: '' });
+        const scenesObserver = new QueryObserver(qc, {
+          queryKey: sceneList,
+          queryFn: async () => [{ id: 'persisted-scene' }],
+          staleTime: Infinity,
+        });
+        const scriptObserver = new QueryObserver(qc, {
+          queryKey: script,
+          queryFn: async () => ({ script: 'Persisted scene script' }),
+          staleTime: Infinity,
+        });
+        const unsubscribeScenes = scenesObserver.subscribe(() => {});
+        const unsubscribeScript = scriptObserver.subscribe(() => {});
+        try {
+          updateQueryCacheFromEvent(qc, SEQ, eventName, {});
+          await vi.advanceTimersByTimeAsync(0);
+          expect(qc.getQueryData(sceneList)).toEqual([
+            { id: 'persisted-scene' },
+          ]);
+          expect(qc.getQueryData(script)).toEqual({
+            script: 'Persisted scene script',
+          });
+        } finally {
+          unsubscribeScenes();
+          unsubscribeScript();
+        }
       }
     );
 

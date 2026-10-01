@@ -1,141 +1,127 @@
 /**
- * Scoped Sequence Variants Sub-module
- * CRUD for sequence-level music variants. Promotion writes back to the matching
- * `sequences.*` columns so existing UI keeps reading those.
+ * Scoped Sequence Variants Sub-module — music tracks (#1115).
  *
- * Divergence routing: `writeMusicVariant` compares the incoming `inputHash`
- * against the existing primary (if any) and routes to `insertDivergentMusic`
- * when the hashes differ. This preserves the previous primary instead of
- * silently replacing it.
+ * `sequence_music_variants` is append-only: every generation, upload and
+ * add-model run is its own row. The sequence plays the row
+ * `sequences.selectedMusicVariantId` points at, and a primary run's result
+ * reaches that pointer only through the claim
+ * `sequences.pendingPromoteMusicVariantId` (#1130):
+ *
+ *   claimMusic → (stampMusicRun) → completeMusicClaim | failMusicClaim
+ *
+ * `selectMusic` is the user's selector. The newest `isPrimary` row's lifecycle
+ * is the sequence's music status (projected by `sequenceColumns`).
  */
 
 import type { Database } from '@/platform/server/db/client';
+import { generateId } from '@/platform/id';
 import { sequenceMusicVariants, sequences } from '@/platform/server/db/schema';
 import { selectSequencesFrom } from '@/sequences/server/db/sequences';
 import type {
-  NewSequenceMusicVariant,
   Sequence,
   SequenceMusicVariant,
 } from '@/platform/server/db/schema';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import type { SQL } from 'drizzle-orm';
 import { pageOf } from '@/platform/server/db/read-page';
 import type { VersionListOptions } from '@/platform/server/db/read-page';
-import { insertDivergentRaceTolerant } from '@/platform/server/db/scoped/divergent-insert';
 import type { SequenceMusicInputHash } from '@/shots/input-hash';
 
-export type WriteVariantResult<T> = { variant: T; divergent: boolean };
+/** What a music run is asked to make — stamped on its row. */
+type MusicRunInputs = {
+  model: string;
+  prompt: string | null;
+  tags: string | null;
+  durationSeconds: number | null;
+};
+
+export type ClaimMusicInput = MusicRunInputs & {
+  sequenceId: string;
+  /**
+   * A primary run takes the pointer claim with its row; an added model's run
+   * (#547) only opens its row.
+   */
+  isPrimary: boolean;
+  workflowRunId: string | null;
+  /**
+   * Compare-and-swap on the claim: take it only while it still names this
+   * (null = no primary run in flight). Omitted = last kickoff wins (#1070).
+   */
+  ifPendingIs?: string | null;
+  /**
+   * The row id, minted in an earlier durable step so a retried claim step
+   * finds its own row rather than a busy claim. Omitted = a fresh id.
+   */
+  id?: string;
+};
+
+export type CompleteMusicClaimInput = {
+  sequenceId: string;
+  url: string;
+  storagePath: string;
+  durationSeconds: number;
+  inputHash: SequenceMusicInputHash;
+};
+
+export type FailMusicClaimInput = {
+  sequenceId: string;
+  /** The row the trigger opened, when there is one. */
+  variantId?: string;
+  /** The row the run opened itself. */
+  workflowRunId?: string;
+  /**
+   * When neither names a row — the run died before opening one — append a
+   * terminal failed primary row for this model, so the failure is a record
+   * the sequence reads, not a gap.
+   */
+  recordIfMissing?: { model: string };
+};
+
+const nowSeconds = () => Math.floor(Date.now() / 1000);
 
 export function createSequenceVariantsMethods(db: Database) {
-  const getMusicPrimary = async (
-    sequenceId: string,
-    model: string
+  const getMusicById = async (
+    variantId: string
   ): Promise<SequenceMusicVariant | null> => {
     const result = await db
       .select()
       .from(sequenceMusicVariants)
-      .where(
-        and(
-          eq(sequenceMusicVariants.sequenceId, sequenceId),
-          eq(sequenceMusicVariants.model, model),
-          sql`${sequenceMusicVariants.divergedAt} IS NULL`
-        )
-      );
-    if (result.length > 1) {
-      throw new Error(
-        `[sequenceVariants] Multiple primary music variants found for sequence ${sequenceId} model ${model} — partial unique index violated`
-      );
-    }
+      .where(eq(sequenceMusicVariants.id, variantId));
     return result.at(0) ?? null;
   };
 
-  const upsertMusicPrimary = async (
-    data: NewSequenceMusicVariant
-  ): Promise<SequenceMusicVariant> => {
-    const result = await db
-      .insert(sequenceMusicVariants)
-      .values(data)
-      .onConflictDoUpdate({
-        target: [sequenceMusicVariants.sequenceId, sequenceMusicVariants.model],
-        targetWhere: sql`${sequenceMusicVariants.divergedAt} IS NULL`,
-        set: {
-          url: sql.raw(`excluded."url"`),
-          storagePath: sql.raw(`excluded."storage_path"`),
-          prompt: sql.raw(`excluded."prompt"`),
-          tags: sql.raw(`excluded."tags"`),
-          durationSeconds: sql.raw(`excluded."duration_seconds"`),
-          status: sql.raw(`excluded."status"`),
-          workflowRunId: sql.raw(`excluded."workflow_run_id"`),
-          generatedAt: sql.raw(`excluded."generated_at"`),
-          error: sql.raw(`excluded."error"`),
-          inputHash: sql.raw(`excluded."input_hash"`),
-          updatedAt: new Date(),
-        },
-      })
-      .returning();
-    const variant = result.at(0);
-    if (!variant) {
-      throw new Error('upsertMusicPrimary returned no row');
-    }
-    return variant;
+  const readSequence = async (sequenceId: string): Promise<Sequence> => {
+    const [row] = await selectSequencesFrom(db).where(
+      eq(sequences.id, sequenceId)
+    );
+    if (!row) throw new Error(`Sequence ${sequenceId} not found`);
+    return row;
   };
 
-  /**
-   * Vacate a model's live primary slot by stamping `divergedAt`, so a fresh
-   * row can take it while the old one survives as a promotable alternate
-   * (#1108). Needed for user uploads: every upload shares the
-   * `USER_UPLOAD_MODEL` slot, so `upsertMusicPrimary` would UPDATE the previous
-   * upload's row in place and destroy the only pointer to those bytes —
-   * versions are append-only, and product delete is never silent. Generated
-   * tracks don't need this: each model owns its own slot.
-   *
-   * Returns the retired row, or null when the slot was already empty.
-   */
-  const retireMusicPrimary = async (
-    sequenceId: string,
-    model: string
-  ): Promise<SequenceMusicVariant | null> => {
-    const existing = await getMusicPrimary(sequenceId, model);
-    if (!existing) return null;
-    const now = new Date();
-    const [retired] = await db
-      .update(sequenceMusicVariants)
-      .set({ divergedAt: now, updatedAt: now })
-      .where(eq(sequenceMusicVariants.id, existing.id))
-      .returning();
-    return retired ?? null;
-  };
-
-  const insertDivergentMusic = async (
-    data: NewSequenceMusicVariant & {
-      inputHash: SequenceMusicInputHash;
-      divergedAt: Date;
-    }
-  ): Promise<SequenceMusicVariant> => {
-    const findExisting = () =>
-      db
-        .select()
-        .from(sequenceMusicVariants)
-        .where(
-          and(
-            eq(sequenceMusicVariants.sequenceId, data.sequenceId),
-            eq(sequenceMusicVariants.model, data.model),
-            eq(sequenceMusicVariants.inputHash, data.inputHash),
-            sql`${sequenceMusicVariants.divergedAt} IS NOT NULL`
-          )
-        );
-    return insertDivergentRaceTolerant({
-      findExisting,
-      insert: () => db.insert(sequenceMusicVariants).values(data).returning(),
-      errorMessage: 'insertDivergentMusic returned no row',
+  /** A terminal failed primary row: the failure the sequence reads. */
+  const recordMusicFailure = async (input: {
+    sequenceId: string;
+    model: string;
+    error: string;
+    workflowRunId: string | null;
+  }): Promise<void> => {
+    await db.insert(sequenceMusicVariants).values({
+      sequenceId: input.sequenceId,
+      model: input.model,
+      status: 'failed',
+      error: input.error,
+      isPrimary: true,
+      workflowRunId: input.workflowRunId,
     });
   };
 
   return {
-    // ── Music variants ────────────────────────────────────────────────────
+    // ── Reads ─────────────────────────────────────────────────────────────
     /**
-     * Every music variant of a sequence. Unlike the other version lists this
-     * one has always returned discarded rows too, so `includeDiscarded`
-     * defaults to true here; pass `false` to drop them.
+     * Every music track of a sequence, oldest first (id order — callers take
+     * a model's newest from the end). Unlike the other version
+     * lists this one has always returned discarded rows too, so
+     * `includeDiscarded` defaults to true here; pass `false` to drop them.
      */
     listMusicBySequence: async (
       sequenceId: string,
@@ -150,13 +136,14 @@ export function createSequenceVariantsMethods(db: Database) {
             : isNull(sequenceMusicVariants.discardedAt)
         ),
         sequenceMusicVariants.id,
-        options?.page
+        options?.page,
+        asc(sequenceMusicVariants.id)
       );
     },
 
     /**
-     * Distinct audio models that have a primary (non-divergent) variant for
-     * this sequence (#546). Drives the header audio-model dropdown.
+     * Distinct audio models with a track that is not parked (#546). Drives
+     * the header audio-model dropdown.
      */
     listMusicModels: async (sequenceId: string): Promise<string[]> => {
       const result = await db
@@ -165,83 +152,352 @@ export function createSequenceVariantsMethods(db: Database) {
         .where(
           and(
             eq(sequenceMusicVariants.sequenceId, sequenceId),
-            sql`${sequenceMusicVariants.divergedAt} IS NULL`
+            isNull(sequenceMusicVariants.divergedAt)
           )
         );
       return result.map((r) => r.model);
     },
 
-    getMusicPrimary,
-    upsertMusicPrimary,
-    retireMusicPrimary,
-    insertDivergentMusic,
+    getMusicById,
 
+    // ── The claim lifecycle (#1130) ───────────────────────────────────────
     /**
-     * Write a completed music variant. Routes to a divergent alternate when an
-     * existing completed primary has a different `inputHash`. Otherwise upserts
-     * the primary in place. Callers should skip live `sequences.music*` updates
-     * when `divergent` is true.
+     * Open a track run's row, `pending`, before anything is spent. A primary
+     * run also takes the pointer claim — in one batch whose INSERT only lands
+     * if the claim does, so a lost compare-and-swap (`ifPendingIs`) opens
+     * nothing. Returns the new row's id, or null when the claim was busy.
+     * Idempotent per `id`: a row already open under it is returned as is.
      */
-    writeMusicVariant: async (
-      data: NewSequenceMusicVariant & { inputHash: SequenceMusicInputHash }
-    ): Promise<WriteVariantResult<SequenceMusicVariant>> => {
-      const existing = await getMusicPrimary(data.sequenceId, data.model);
-      const isDivergent =
-        existing !== null &&
-        existing.status === 'completed' &&
-        existing.inputHash !== null &&
-        existing.inputHash !== data.inputHash;
-      if (isDivergent) {
-        const variant = await insertDivergentMusic({
-          ...data,
-          divergedAt: new Date(),
-        });
-        return { variant, divergent: true };
+    claimMusic: async (input: ClaimMusicInput): Promise<string | null> => {
+      const id = input.id ?? generateId();
+      const at = new Date();
+      const opened = db
+        .select({ id: sequenceMusicVariants.id })
+        .from(sequenceMusicVariants)
+        .where(eq(sequenceMusicVariants.id, id));
+      if (!input.isPrimary) {
+        await db
+          .insert(sequenceMusicVariants)
+          .values({
+            id,
+            sequenceId: input.sequenceId,
+            model: input.model,
+            prompt: input.prompt,
+            tags: input.tags,
+            durationSeconds: input.durationSeconds,
+            status: 'pending',
+            isPrimary: false,
+            workflowRunId: input.workflowRunId,
+            createdAt: at,
+            updatedAt: at,
+          })
+          .onConflictDoNothing();
+        return id;
       }
-      const variant = await upsertMusicPrimary(data);
-      return { variant, divergent: false };
+      const casGuard: SQL | undefined =
+        input.ifPendingIs === undefined
+          ? undefined
+          : input.ifPendingIs === null
+            ? isNull(sequences.pendingPromoteMusicVariantId)
+            : eq(sequences.pendingPromoteMusicVariantId, input.ifPendingIs);
+      const bound = (value: string | number | null, name: string) =>
+        sql`${value}`.as(name);
+      // A retried step with the same id finds its row already open: the
+      // pointer statement skips (it must not take back a claim a newer
+      // kickoff moved since), the insert is a no-op, and the row answers.
+      const [, , rows] = await db.batch([
+        db
+          .update(sequences)
+          .set({ pendingPromoteMusicVariantId: id, updatedAt: at })
+          .where(
+            and(
+              eq(sequences.id, input.sequenceId),
+              casGuard,
+              sql`not exists ${opened}`
+            )
+          ),
+        db
+          .insert(sequenceMusicVariants)
+          .select(
+            db
+              .select({
+                id: bound(id, 'id'),
+                sequenceId: sequences.id,
+                model: bound(input.model, 'model'),
+                prompt: bound(input.prompt, 'prompt'),
+                tags: bound(input.tags, 'tags'),
+                durationSeconds: bound(
+                  input.durationSeconds,
+                  'duration_seconds'
+                ),
+                status: bound('pending', 'status'),
+                isPrimary: bound(1, 'is_primary'),
+                workflowRunId: bound(input.workflowRunId, 'workflow_run_id'),
+                createdAt: bound(nowSeconds(), 'created_at'),
+                updatedAt: bound(nowSeconds(), 'updated_at'),
+              })
+              .from(sequences)
+              .where(
+                and(
+                  eq(sequences.id, input.sequenceId),
+                  eq(sequences.pendingPromoteMusicVariantId, id)
+                )
+              )
+          )
+          .onConflictDoNothing(),
+        opened,
+      ]);
+      return rows.length > 0 ? id : null;
     },
 
     /**
-     * Flip an EXISTING primary (non-divergent) music variant row to `failed`
-     * (#547). Update-only: it never inserts — a primary model's first generation
-     * has no pre-stamped row — and never overwrites a `completed` alternate.
-     * Mirrors the image/motion `onFailure` variant write so an added audio model
-     * whose generation fails leaves `pending` and becomes re-addable instead of
-     * spinning `generating` forever.
+     * A run adopts the row its trigger opened: stamps its instance id and the
+     * inputs it actually renders (a regeneration's prompt is only known once
+     * its prompt child ran). Only while the row is still pending.
      */
-    markMusicFailed: async (
-      sequenceId: string,
-      model: string,
-      error: string
+    stampMusicRun: async (
+      variantId: string,
+      input: MusicRunInputs & { workflowRunId: string }
     ): Promise<void> => {
       await db
         .update(sequenceMusicVariants)
-        .set({ status: 'failed', error, updatedAt: new Date() })
+        .set({ ...input, updatedAt: new Date() })
         .where(
           and(
-            eq(sequenceMusicVariants.sequenceId, sequenceId),
-            eq(sequenceMusicVariants.model, model),
-            sql`${sequenceMusicVariants.divergedAt} IS NULL`,
-            sql`${sequenceMusicVariants.status} != 'completed'`
+            eq(sequenceMusicVariants.id, variantId),
+            eq(sequenceMusicVariants.status, 'pending')
           )
         );
     },
 
-    getMusicById: async (
-      variantId: string
-    ): Promise<SequenceMusicVariant | null> => {
-      const result = await db
-        .select()
-        .from(sequenceMusicVariants)
-        .where(eq(sequenceMusicVariants.id, variantId));
-      return result.at(0) ?? null;
+    /**
+     * Land a track in place and consume the claim in one batch. The row is
+     * parked (`divergedAt`) when it is primary and the claim no longer names
+     * it — decided before the pointer statement, which moves the pointer only
+     * while the claim still does. Replay-safe: a completed row and a consumed
+     * claim make both statements no-ops. Returns the landed row.
+     */
+    completeMusicClaim: async (
+      variantId: string,
+      input: CompleteMusicClaimInput
+    ): Promise<SequenceMusicVariant> => {
+      const now = new Date();
+      const claimMissed = sql`(select ${sequences.pendingPromoteMusicVariantId} from ${sequences} where ${sequences.id} = ${input.sequenceId}) is not ${variantId}`;
+      await db.batch([
+        db
+          .update(sequenceMusicVariants)
+          .set({
+            status: 'completed',
+            error: null,
+            url: input.url,
+            storagePath: input.storagePath,
+            durationSeconds: input.durationSeconds,
+            inputHash: input.inputHash,
+            generatedAt: now,
+            divergedAt: sql`CASE WHEN ${sequenceMusicVariants.isPrimary} = 1 AND ${claimMissed} THEN ${Math.floor(now.getTime() / 1000)} END`,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(sequenceMusicVariants.id, variantId),
+              sql`${sequenceMusicVariants.status} != 'completed'`
+            )
+          ),
+        db
+          .update(sequences)
+          .set({
+            selectedMusicVariantId: variantId,
+            pendingPromoteMusicVariantId: null,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(sequences.id, input.sequenceId),
+              eq(sequences.pendingPromoteMusicVariantId, variantId)
+            )
+          ),
+      ]);
+      const landed = await getMusicById(variantId);
+      if (!landed)
+        throw new Error(`SequenceMusicVariant ${variantId} not found`);
+      return landed;
     },
 
     /**
-     * Aggregate divergent music-variant counts across a team's sequences.
-     * Powers the corner-dot indicator on the sequence dashboard — a single
-     * round-trip keyed by `teamId` instead of N per-sequence calls.
+     * Fail a run's still-pending row and clear the claim only while it names
+     * that row (rule 5). Matches by the trigger's row id and/or the run's
+     * instance id. `recordIfMissing` appends a terminal failed row when no row
+     * of this run exists at all.
+     */
+    failMusicClaim: async (
+      input: FailMusicClaimInput,
+      error: string
+    ): Promise<void> => {
+      const ofRun = or(
+        input.variantId
+          ? eq(sequenceMusicVariants.id, input.variantId)
+          : undefined,
+        input.workflowRunId
+          ? eq(sequenceMusicVariants.workflowRunId, input.workflowRunId)
+          : undefined
+      );
+      if (!ofRun) throw new Error('failMusicClaim needs a variantId or run id');
+      const mine = and(
+        eq(sequenceMusicVariants.sequenceId, input.sequenceId),
+        ofRun
+      );
+      const now = new Date();
+      await db.batch([
+        db
+          .update(sequences)
+          .set({ pendingPromoteMusicVariantId: null, updatedAt: now })
+          .where(
+            and(
+              eq(sequences.id, input.sequenceId),
+              inArray(
+                sequences.pendingPromoteMusicVariantId,
+                db
+                  .select({ id: sequenceMusicVariants.id })
+                  .from(sequenceMusicVariants)
+                  .where(and(mine, eq(sequenceMusicVariants.status, 'pending')))
+              )
+            )
+          ),
+        db
+          .update(sequenceMusicVariants)
+          .set({ status: 'failed', error, updatedAt: now })
+          .where(and(mine, eq(sequenceMusicVariants.status, 'pending'))),
+      ]);
+      if (!input.recordIfMissing) return;
+      const [existing] = await db
+        .select({ id: sequenceMusicVariants.id })
+        .from(sequenceMusicVariants)
+        .where(mine)
+        .limit(1);
+      if (existing) return;
+      await recordMusicFailure({
+        sequenceId: input.sequenceId,
+        model: input.recordIfMissing.model,
+        error,
+        workflowRunId: input.workflowRunId ?? null,
+      });
+    },
+
+    recordMusicFailure,
+
+    /**
+     * The user's pick (Set Music, Promote): point the sequence at a finished
+     * track, un-park it, clear any claim — a run still in flight then finds
+     * its claim gone and lands parked (rule 4) — and retire failed primary
+     * runs from the status, so the sequence reads completed.
+     */
+    selectMusic: async (
+      sequenceId: string,
+      variantId: string
+    ): Promise<Sequence> => {
+      const variant = await getMusicById(variantId);
+      if (!variant || variant.sequenceId !== sequenceId) {
+        throw new Error(`SequenceMusicVariant ${variantId} not found`);
+      }
+      if (variant.status !== 'completed' || !variant.url) {
+        throw new Error(
+          `SequenceMusicVariant ${variantId} is '${variant.status}' with no track — cannot select`
+        );
+      }
+      const now = new Date();
+      await db.batch([
+        db
+          .update(sequences)
+          .set({
+            selectedMusicVariantId: variantId,
+            pendingPromoteMusicVariantId: null,
+            updatedAt: now,
+          })
+          .where(eq(sequences.id, sequenceId)),
+        db
+          .update(sequenceMusicVariants)
+          .set({ divergedAt: null, updatedAt: now })
+          .where(eq(sequenceMusicVariants.id, variantId)),
+        // A failure the user answered by picking a track no longer speaks
+        // for the sequence: its failed runs leave the status race, so the
+        // music reads completed (as the old copy-onto-the-sequence did) and
+        // smart retry does not pay for a new track. The rows stay history.
+        db
+          .update(sequenceMusicVariants)
+          .set({ isPrimary: false, updatedAt: now })
+          .where(
+            and(
+              eq(sequenceMusicVariants.sequenceId, sequenceId),
+              eq(sequenceMusicVariants.isPrimary, true),
+              eq(sequenceMusicVariants.status, 'failed')
+            )
+          ),
+      ]);
+      return readSequence(sequenceId);
+    },
+
+    /**
+     * An uploaded score (#1108): a completed primary row, selected, with any
+     * claim cleared — one batch. The earlier uploads are parked
+     * (`divergedAt`), so the alternates banner still offers them back —
+     * Set Music only reaches a model's newest track. `inputHash` is null: the
+     * user chose this exact track, so no prompt edit reads it stale.
+     */
+    appendUploadedMusic: async (input: {
+      sequenceId: string;
+      model: string;
+      url: string;
+      storagePath: string;
+      prompt: string | null;
+      tags: string | null;
+      durationSeconds: number | null;
+    }): Promise<SequenceMusicVariant> => {
+      const id = generateId();
+      const now = new Date();
+      const [, rows] = await db.batch([
+        db
+          .update(sequenceMusicVariants)
+          .set({ divergedAt: now, updatedAt: now })
+          .where(
+            and(
+              eq(sequenceMusicVariants.sequenceId, input.sequenceId),
+              eq(sequenceMusicVariants.model, input.model),
+              eq(sequenceMusicVariants.status, 'completed'),
+              isNull(sequenceMusicVariants.divergedAt)
+            )
+          ),
+        db
+          .insert(sequenceMusicVariants)
+          .values({
+            ...input,
+            id,
+            status: 'completed',
+            isPrimary: true,
+            generatedAt: now,
+            inputHash: null,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .returning(),
+        db
+          .update(sequences)
+          .set({
+            selectedMusicVariantId: id,
+            pendingPromoteMusicVariantId: null,
+            updatedAt: now,
+          })
+          .where(eq(sequences.id, input.sequenceId)),
+      ]);
+      const variant = rows[0];
+      if (!variant) throw new Error('appendUploadedMusic returned no row');
+      return variant;
+    },
+
+    // ── Divergent (parked) tracks ─────────────────────────────────────────
+    /**
+     * Aggregate parked-track counts across a team's sequences. Powers the
+     * corner-dot indicator on the sequence dashboard — a single round-trip
+     * keyed by `teamId` instead of N per-sequence calls.
      */
     listDivergentByTeam: async (
       teamId: string
@@ -308,118 +564,6 @@ export function createSequenceVariantsMethods(db: Database) {
       if (result.length === 0) {
         throw new Error(`SequenceMusicVariant ${variantId} not found`);
       }
-    },
-
-    /**
-     * Atomically promote a music variant: copies prompt/tags/url/path/model
-     * onto the live `sequences.music*` columns AND soft-deletes the variant
-     * row in a single libSQL batch.
-     */
-    promoteMusicVariant: async (
-      variantId: string
-    ): Promise<{ sequence: Sequence; discardedAt: Date }> => {
-      const variantRows = await db
-        .select()
-        .from(sequenceMusicVariants)
-        .where(eq(sequenceMusicVariants.id, variantId));
-      const variant = variantRows.at(0);
-      if (!variant) {
-        throw new Error(`SequenceMusicVariant ${variantId} not found`);
-      }
-      const [existingSequence] = await db
-        .select({ id: sequences.id })
-        .from(sequences)
-        .where(eq(sequences.id, variant.sequenceId));
-      if (!existingSequence) {
-        throw new Error(`Sequence ${variant.sequenceId} not found`);
-      }
-
-      const now = new Date();
-      const updateSequence = db
-        .update(sequences)
-        .set({
-          musicUrl: variant.url,
-          musicPath: variant.storagePath,
-          musicPrompt: variant.prompt,
-          musicTags: variant.tags,
-          musicModel: variant.model,
-          musicStatus: 'completed',
-          musicGeneratedAt: variant.generatedAt ?? now,
-          musicError: null,
-          updatedAt: now,
-        })
-        .where(eq(sequences.id, variant.sequenceId))
-        .returning({ id: sequences.id });
-      const discardVariant = db
-        .update(sequenceMusicVariants)
-        .set({ discardedAt: now, updatedAt: now })
-        .where(eq(sequenceMusicVariants.id, variantId))
-        .returning();
-      const [sequenceRows, variantRows2] = await db.batch([
-        updateSequence,
-        discardVariant,
-      ]);
-      const [promotedSequence] = sequenceRows[0]
-        ? await selectSequencesFrom(db).where(
-            eq(sequences.id, variant.sequenceId)
-          )
-        : [];
-      if (!promotedSequence) {
-        throw new Error(
-          `Sequence ${variant.sequenceId} disappeared during promote`
-        );
-      }
-      if (variantRows2.length === 0) {
-        throw new Error(
-          `SequenceMusicVariant ${variantId} disappeared during promote`
-        );
-      }
-      return { sequence: promotedSequence, discardedAt: now };
-    },
-
-    /**
-     * Copy a model's completed variant onto the sequence's live primary
-     * (`sequences.music*`) WITHOUT discarding the variant row — the
-     * non-destructive "Set Music" used to switch which model's track is the
-     * sequence primary (#546). Mirrors `setVideoFromVariant`. Contrast
-     * `promoteMusicVariant`, which consumes a divergent alternate.
-     */
-    setMusicFromVariant: async (variantId: string): Promise<Sequence> => {
-      const variantRows = await db
-        .select()
-        .from(sequenceMusicVariants)
-        .where(eq(sequenceMusicVariants.id, variantId));
-      const variant = variantRows.at(0);
-      if (!variant) {
-        throw new Error(`SequenceMusicVariant ${variantId} not found`);
-      }
-      const now = new Date();
-      const [updated] = await db
-        .update(sequences)
-        .set({
-          musicUrl: variant.url,
-          musicPath: variant.storagePath,
-          musicPrompt: variant.prompt,
-          musicTags: variant.tags,
-          musicModel: variant.model,
-          musicStatus: 'completed',
-          musicGeneratedAt: variant.generatedAt ?? now,
-          musicError: null,
-          updatedAt: now,
-        })
-        .where(eq(sequences.id, variant.sequenceId))
-        .returning({ id: sequences.id });
-      const [resolved] = updated
-        ? await selectSequencesFrom(db).where(
-            eq(sequences.id, variant.sequenceId)
-          )
-        : [];
-      if (!resolved) {
-        throw new Error(
-          `Sequence ${variant.sequenceId} disappeared during set-music`
-        );
-      }
-      return resolved;
     },
   };
 }

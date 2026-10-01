@@ -45,6 +45,14 @@ updates:
           - '@tanstack/ai-openrouter'
           - '@tanstack/react-ai-devtools'
         update-types: ['minor', 'patch']
+      # `@logtape/pretty` (dev) imports from `@logtape/logtape` (prod) and
+      # needs the matching release; split across production / development, a
+      # bump of one without the other breaks the build (#1906). Same
+      # first-match rule: keep this above `production` / `development`.
+      logtape:
+        patterns:
+          - '@logtape/*'
+        update-types: ['minor', 'patch']
       production:
         dependency-type: production
         update-types: ['minor', 'patch']

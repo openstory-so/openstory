@@ -36,6 +36,7 @@ const PLAN_KIND_STAGE = {
   'sheet:location': 'references',
   'ref:element': 'references',
   voice: 'references',
+  spec: 'references',
   'prompt:visual': 'references',
   still: 'images',
   'prompt:motion': 'images',
@@ -104,6 +105,11 @@ export function artifactVerdict(args: {
 
 export type PlanShot = {
   id: string;
+  /** The shot's spec: missing when it has none (#1923). */
+  spec: ArtifactVerdict;
+  /** A user-written prompt is not rebuilt from the spec. */
+  visualWritten: boolean;
+  motionWritten: boolean;
   /** `usesStartFrame(shot, sequence)` — the mode is per shot. */
   usesStartFrame: boolean;
   /** Entities the shot's still (or reference-only clip) is rendered from. */
@@ -165,9 +171,15 @@ const SHOT_UNITS: ReadonlyArray<{
   requires: (shot: PlanShot) => PlanUnitRef[];
 }> = [
   {
+    kind: 'spec',
+    verdict: (s) => s.spec,
+    requires: () => [],
+  },
+  {
     kind: 'prompt:visual',
     verdict: (s) => (s.usesStartFrame ? s.visualPrompt : null),
-    requires: () => [],
+    requires: (s) =>
+      s.visualWritten || !s.usesStartFrame ? [] : [ref('spec', s.id)],
   },
   {
     kind: 'still',
@@ -177,7 +189,7 @@ const SHOT_UNITS: ReadonlyArray<{
   {
     kind: 'prompt:motion',
     verdict: (s) => s.motionPrompt,
-    requires: (s) => (s.usesStartFrame ? [ref('still', s.id)] : []),
+    requires: (s) => (s.motionWritten ? [] : [ref('spec', s.id)]),
   },
   {
     kind: 'dialogue',
@@ -326,13 +338,13 @@ export function firstStageWithWork(
 }
 
 /**
- * A switch whose units exist cannot be turned off (#1780 §2): Start frames
- * once a shot has a still, Voices once a shot has a recording. Turning either
- * ON is always allowed — it only adds units. Draft first is changeable at the
+ * Voices cannot be turned off once a shot has a recording (#1780 §2): the
+ * recording would still ride the clip. Start frames can always turn off — the
+ * stills stay, shots render from references, and their motion prompts go
+ * stale. Turning either ON is always allowed — it only adds units. Draft first is changeable at the
  * Motion step and read-only after: once every clip exists.
  */
 export function switchLocks(plan: readonly PlanUnit[]): {
-  startFrames: boolean;
   voices: boolean;
   draft: boolean;
 } {
@@ -344,7 +356,6 @@ export function switchLocks(plan: readonly PlanUnit[]): {
     plan.some((u) => u.kind === kind && exists(u));
   const clips = plan.filter((u) => u.kind === 'clip');
   return {
-    startFrames: made('still'),
     voices: made('dialogue'),
     draft: clips.length > 0 && clips.every(exists),
   };
@@ -355,6 +366,7 @@ const KIND_NOUN: Record<PlanUnitKind, [one: string, many: string]> = {
   'sheet:location': ['reference', 'references'],
   'ref:element': ['reference', 'references'],
   voice: ['voice', 'voices'],
+  spec: ['shot rewrite', 'shot rewrites'],
   'prompt:visual': ['prompt', 'prompts'],
   still: ['image', 'images'],
   'prompt:motion': ['prompt', 'prompts'],
@@ -364,8 +376,11 @@ const KIND_NOUN: Record<PlanUnitKind, [one: string, many: string]> = {
   music: ['music track', 'music tracks'],
 };
 
-/** `2 references, 12 prompts, 12 images` — counts per noun, in plan order. */
-function countNouns(units: readonly PlanUnitRef[]): string {
+/**
+ * `2 references, 12 prompts, 12 images` — counts per noun, in plan order.
+ * Shown under the button, which stays one word so it never overflows.
+ */
+export function planWorkSummary(units: readonly PlanUnitRef[]): string {
   const counts = new Map<string, { n: number; noun: [string, string] }>();
   for (const unit of units) {
     const noun = KIND_NOUN[unit.kind];
@@ -378,11 +393,25 @@ function countNouns(units: readonly PlanUnitRef[]): string {
     .join(', ');
 }
 
-/** Footer button: `Generate 2 references, 12 prompts, 12 images`. */
+/**
+ * The line under the continue button. When the run both makes new work and
+ * redoes stale work, the redo is named apart — `8 videos · redo 8 images` —
+ * so moving the thumb forward never hides a re-roll inside `Generate`.
+ */
+export function planWorkLine(work: readonly PlanUnit[]): string {
+  const fresh = work.filter((u) => u.state !== 'stale');
+  const redo = work.filter((u) => u.state === 'stale');
+  if (fresh.length === 0 || redo.length === 0) return planWorkSummary(work);
+  return `${planWorkSummary(fresh)} · redo ${planWorkSummary(redo)}`;
+}
+
+/**
+ * Footer button: `Generate`, or `Regenerate` when every unit already exists
+ * and is only out of date. {@link planWorkLine} says what.
+ */
 export function planWorkLabel(work: readonly PlanUnit[]): string {
-  return work.length === 0
-    ? 'Nothing to generate'
-    : `Generate ${countNouns(work)}`;
+  if (work.length === 0) return 'Nothing to generate';
+  return work.every((u) => u.state === 'stale') ? 'Regenerate' : 'Generate';
 }
 
 /**
@@ -418,9 +447,9 @@ export function blockedLines(
     }
     const reasons = [
       ...named,
-      ...(counted.length ? [countNouns(counted)] : []),
+      ...(counted.length ? [planWorkSummary(counted)] : []),
     ];
-    return `${countNouns(units)} blocked: ${
+    return `${planWorkSummary(units)} blocked: ${
       reasons.length ? `waiting on ${reasons.join(', ')}` : 'couldn’t check'
     }`;
   });
@@ -447,7 +476,7 @@ const REFERENCE_KINDS = new Set<PlanUnitKind>([
 
 /** What each Update-all depth reaches, cumulatively (#1819). */
 const UPDATE_ALL_KINDS: Record<UpdateStaleDepth, readonly PlanUnitKind[]> = {
-  prompts: ['prompt:visual', 'prompt:motion'],
+  prompts: ['spec', 'prompt:visual', 'prompt:motion'],
   images: ['sheet:character', 'sheet:location', 'ref:element', 'still'],
   dialogue: ['dialogue'],
   video: ['clip'],
@@ -459,9 +488,11 @@ const UPDATE_ALL_KINDS: Record<UpdateStaleDepth, readonly PlanUnitKind[]> = {
  * continue runs, through the same executor — sheets included, which it
  * could not touch before. Up to `depth`; narrowed to `shotIds` when a scene
  * or shot is in scope, taking along the sheets those shots are made from.
- * Music stays sequence-wide. One `missing` kind rides along: a shot with
+ * Music stays sequence-wide. Two `missing` kinds ride along: a shot with
  * voiced lines and every speaker's voice made, but no reading yet, records
- * its first one (#1780 §6).
+ * its first one (#1780 §6); a taken prompt whose spec was never written
+ * (a shot from before specs) takes that rewrite so the prompts have
+ * something to rebuild from (#1945).
  */
 export function updateAllUnits(
   plan: readonly PlanUnit[],
@@ -484,7 +515,17 @@ export function updateAllUnits(
         (u.state === 'missing' &&
           u.kind === 'dialogue' &&
           u.requires.every((r) => byKey.get(key(r))?.state === 'done')));
-    if (take) taken.add(key(u));
+    if (take) {
+      taken.add(key(u));
+      // A prompt stale on its own still requires a spec. A missing one is a
+      // rewrite, priced as one LLM call; a done spec rebuilds for free.
+      for (const req of u.requires) {
+        if (req.kind !== 'spec') continue;
+        const spec = byKey.get(key(req));
+        if (spec?.state === 'missing' && kinds.has('spec'))
+          taken.add(key(spec));
+      }
+    }
   }
   const wanted = (u: PlanUnit) => taken.has(key(u));
   const picked = new Map<string, PlanUnitRef>();
@@ -510,8 +551,10 @@ export function updateAllUnits(
 /**
  * Going back never redoes finished work (#1780 §3): a switch turned on stops
  * the run at its own step — Voices at Dialogue, Start frames at Images (the
- * later of the two when both). Clips rendered from the old inputs then read
- * stale, for Update all to re-render with its cost shown.
+ * later of the two when both) — when something past that step already exists
+ * (done or stale). With nothing later made, the thumb can still run on to
+ * Motion. Clips rendered from the old inputs then read stale, for Update all
+ * to re-render with its cost shown.
  */
 type PlanSwitches = { generateStartFrames: boolean; generateVoices: boolean };
 
@@ -519,6 +562,12 @@ export function switchStopAt(args: {
   saved: PlanSwitches;
   requested: PlanSwitches;
   stopAt: GenerationStage;
+  /**
+   * The plan this click would owe. Omit it and the cap always applies.
+   * Pass it and the cap applies only when a later unit is already done or
+   * stale — a missing clip is work this run may still include.
+   */
+  plan?: readonly PlanUnit[];
 }): GenerationStage {
   const backTo: GenerationStage | null =
     !args.saved.generateVoices && args.requested.generateVoices
@@ -526,7 +575,18 @@ export function switchStopAt(args: {
       : !args.saved.generateStartFrames && args.requested.generateStartFrames
         ? 'images'
         : null;
-  return backTo && stageIndex(args.stopAt) > stageIndex(backTo)
-    ? backTo
-    : args.stopAt;
+  if (!backTo || stageIndex(args.stopAt) <= stageIndex(backTo)) {
+    return args.stopAt;
+  }
+  if (
+    args.plan &&
+    !args.plan.some(
+      (unit) =>
+        (unit.state === 'done' || unit.state === 'stale') &&
+        stageIndex(PLAN_KIND_STAGE[unit.kind]) > stageIndex(backTo)
+    )
+  ) {
+    return args.stopAt;
+  }
+  return backTo;
 }

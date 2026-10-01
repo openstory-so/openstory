@@ -18,7 +18,9 @@ import {
   scenes,
   sceneScriptVersions,
   shots,
+  shotDialogueVersions,
   shotPromptVersions,
+  shotSpecVersions,
   sequenceElements,
   sequences,
   videoVariants,
@@ -27,6 +29,7 @@ import {
   buildShotRenameDeltas,
   replaceTokenInText,
   renameTokenInContinuity,
+  renameTokenInSpec,
 } from '@/cast/cascade-rename';
 import {
   loadSceneContextBySequenceFromDb,
@@ -34,10 +37,23 @@ import {
 } from '@/shots/server/scene-script';
 import { matchElementsToShotImage } from '@/shots/scene-matching';
 import { promoteLegacyMotionDialogue } from '@/shots/server/db/shot-prompt-versions';
+import { shotPromptDialogueResolver } from '@/shots/server/shot-dialogue';
+import { hashShotSpecInput } from '@/shots/shot-spec-currency';
+import { canonicalStoredShotSpec } from '@/shots/shot-list.schema';
 import { generateId } from '@/platform/id';
 import { sceneNarrativeOf } from '@/shots/scene-narrative';
 import { joinSelectedScript, sceneColumns } from '@/shots/server/db/scenes';
-import { and, eq, inArray, isNull, like, ne, or, sql } from 'drizzle-orm';
+import {
+  and,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  like,
+  ne,
+  or,
+  sql,
+} from 'drizzle-orm';
 import { pageOf } from '@/platform/server/db/read-page';
 import type { PageOptions } from '@/platform/server/db/read-page';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
@@ -258,8 +274,9 @@ export function createSequenceElementsMethods(db: Database) {
      * Rename an element's token and rewrite every reference to the old token
      * across the sequence: `sequences.script`, the selected
      * `scene_script_versions` extract and continuity (one `renamed` row,
-     * #1600), the anchor frame's `imagePrompt` and the selected
-     * `shot_prompt_versions` motion text.
+     * #1600), the selected shot spec (`source: 'rename'`), the anchor
+     * frame's `imagePrompt` and the selected `shot_prompt_versions` motion
+     * text. Prompt rows are `source: 'renamed'`.
      *
      * All writes (element row, script, shot deltas) run in a single
      * `db.batch()` — one transaction — so a mid-cascade failure can't leave
@@ -459,6 +476,99 @@ export function createSequenceElementsMethods(db: Database) {
         }
       );
 
+      const dialogueRows = await db
+        .select({
+          shotId: shotDialogueVersions.shotId,
+          lines: shotDialogueVersions.lines,
+        })
+        .from(shotDialogueVersions)
+        .innerJoin(shots, eq(shots.id, shotDialogueVersions.shotId))
+        .where(
+          and(
+            eq(shots.sequenceId, sequenceId),
+            isNotNull(shotDialogueVersions.selectedAt)
+          )
+        );
+      const selectedSpecs = await db
+        .select({ version: shotSpecVersions })
+        .from(shots)
+        .innerJoin(
+          shotSpecVersions,
+          eq(shotSpecVersions.id, shots.selectedSpecVersionId)
+        )
+        .where(eq(shots.sequenceId, sequenceId));
+      const promptDialogueOf = shotPromptDialogueResolver({
+        linesByShotId: new Map(
+          dialogueRows.map((row) => [row.shotId, row.lines])
+        ),
+        shots: allShots,
+        legacyDialogueOf: (shotId) =>
+          selectedMotionVersionByShot.get(shotId)?.dialogue ?? null,
+        scriptDialogueOf: (sceneId) =>
+          selectedScriptRows.find((row) => row.sceneId === sceneId)?.version
+            .content.dialogue,
+      });
+      const sceneRowById = new Map<string, (typeof selectedScriptRows)[number]>(
+        selectedScriptRows.map((row) => [row.sceneId, row])
+      );
+      const specIdByShot = new Map<string, string>();
+      const specStatements = [];
+      for (const { version } of selectedSpecs) {
+        const shot = allShots.find((row) => row.id === version.shotId);
+        const sceneRow = shot?.sceneId
+          ? sceneRowById.get(shot.sceneId)
+          : undefined;
+        if (!shot || !sceneRow) continue;
+        const extract = sceneRow.version.content.extract;
+        const rewrittenExtract = extract
+          ? replaceTokenInText(extract, oldToken, newToken)
+          : extract;
+        const continuity = sceneRow.scene.continuity
+          ? (renameTokenInContinuity(
+              sceneRow.scene.continuity,
+              oldToken,
+              newToken
+            ) ?? sceneRow.scene.continuity)
+          : null;
+        const nextSpec = renameTokenInSpec(version.spec, oldToken, newToken);
+        const lines = promptDialogueOf(shot).dialogue.lines.map((line) => ({
+          character: line.character,
+          line: line.line,
+          tone: line.tone,
+        }));
+        const inputHash = await hashShotSpecInput({
+          scriptExtract: rewrittenExtract ?? '',
+          lines,
+          characterTags: continuity?.characterTags ?? [],
+          elementTags: continuity?.elementTags ?? [],
+          environmentTag: continuity?.environmentTag ?? '',
+        });
+        const textUnchanged =
+          JSON.stringify(canonicalStoredShotSpec(nextSpec)) ===
+          JSON.stringify(canonicalStoredShotSpec(version.spec));
+        if (textUnchanged && version.inputHash === inputHash) continue;
+        const id = generateId();
+        specIdByShot.set(version.shotId, id);
+        specStatements.push(
+          db.insert(shotSpecVersions).values({
+            id,
+            shotId: version.shotId,
+            spec: nextSpec,
+            source: 'rename',
+            inputHash,
+          }),
+          db
+            .update(shots)
+            .set({ selectedSpecVersionId: id, updatedAt: now })
+            .where(
+              and(
+                eq(shots.id, version.shotId),
+                eq(shots.selectedSpecVersionId, version.id)
+              )
+            )
+        );
+      }
+
       // A pre-#1657 shot keeps its lines only on the selected motion row;
       // lift them to the dialogue node before a new row takes the selection.
       for (const delta of deltas) {
@@ -488,6 +598,8 @@ export function createSequenceElementsMethods(db: Database) {
                   audio: motion.audio,
                   usesStartFrame: motion.usesStartFrame,
                   source: 'renamed',
+                  specVersionId:
+                    specIdByShot.get(motion.shotId) ?? motion.specVersionId,
                   inputHash: motion.inputHash,
                   analysisModel: motion.analysisModel,
                 }),
@@ -513,6 +625,8 @@ export function createSequenceElementsMethods(db: Database) {
                   text: delta.imagePrompt,
                   components: image.components,
                   source: 'renamed',
+                  specVersionId:
+                    specIdByShot.get(delta.shotId) ?? image.specVersionId,
                   inputHash: image.inputHash,
                   analysisModel: image.analysisModel,
                 }),
@@ -549,6 +663,7 @@ export function createSequenceElementsMethods(db: Database) {
         elementUpdate,
         ...scriptStatements,
         ...sceneScriptStatements,
+        ...specStatements,
         ...shotStatements,
       ]);
       const element = elementRows[0];

@@ -771,6 +771,7 @@ describe('estimatePlanCost (#1817)', () => {
     'sheet:location': 0,
     'ref:element': 0,
     voice: 0,
+    spec: 0,
     'prompt:visual': 0,
     still: 0,
     'prompt:motion': 0,
@@ -831,8 +832,7 @@ describe('estimatePlanCost (#1817)', () => {
     expect(plan({ dialogue: 4 })).toBe(
       Number(estimateTtsCost(4 * TYPICAL_DIALOGUE_CHARS_PER_SHOT))
     );
-    expect(plan({ 'prompt:visual': 2, 'prompt:motion': 1 })).toBe(
-      Number(estimateLLMCost(3))
-    );
+    expect(plan({ 'prompt:visual': 2, 'prompt:motion': 1 })).toBe(0);
+    expect(plan({ spec: 1 })).toBe(Number(estimateLLMCost(1)));
   });
 });

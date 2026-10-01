@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { dbSceneId } from '@/shots/scene-id';
 import { migrateStyleConfigV1ToV2 } from '@/look/style-config';
-import { deriveShots } from './shot-list.derive';
-import type { ShotListPassResult, ShotSpec } from './shot-list.schema';
+import { deriveMotionPrompt, deriveStillPrompt } from './shot-list.derive';
+import {
+  storedShotSpec,
+  type ShotListPassResult,
+  type ShotSpec,
+} from './shot-list.schema';
 import type { SceneSplittingScene } from '@/sequences/server/streaming-scene-parser';
 import {
   allocateSceneShots,
@@ -67,6 +71,7 @@ const twoShotSpec = (n: number): ShotSpec => ({
     move: n === 1 ? 'static' : 'push-in',
     pacing: 'slow',
   },
+  direction: '',
   soundCue: n === 1 ? 'latch click' : 'echo',
   dialogue:
     n === 1
@@ -571,17 +576,22 @@ describe('derive from attached shots — acceptance fixture', () => {
       referenceFilms: [],
       colorGrading: 'teal and orange',
     });
-    const derived = deriveShots(buildSceneWithShots(scene), styleConfig);
-    expect(derived).toHaveLength(2);
-    for (const shot of derived) {
-      expect(shot.visualPrompt.fullPrompt).toContain('INT. HALLWAY - NIGHT');
-      expect(shot.visualPrompt.fullPrompt).toContain('single overhead bulb');
-    }
-    expect(derived[0]?.visualPrompt.fullPrompt).toContain('wide');
-    expect(derived[1]?.visualPrompt.fullPrompt).toContain('close-up');
-    expect(derived[0]?.motionPrompt.fullPrompt).toContain('She opens the door');
-    expect(derived[1]?.motionPrompt.fullPrompt).toContain(
-      'Cut to the hallway beyond'
+    const built = buildSceneWithShots(scene);
+    expect(built.shots).toHaveLength(2);
+    const stills = built.shots.map((spec) =>
+      deriveStillPrompt(storedShotSpec(spec), built, styleConfig)
     );
+    const motions = built.shots.map(
+      (spec) =>
+        deriveMotionPrompt(storedShotSpec(spec), { referenceOnly: false }).text
+    );
+    for (const still of stills) {
+      expect(still).toContain('INT. HALLWAY - NIGHT');
+      expect(still).toContain('single overhead bulb');
+    }
+    expect(stills[0]).toContain('wide');
+    expect(stills[1]).toContain('close-up');
+    expect(motions[0]).toContain('She opens the door');
+    expect(motions[1]).toContain('Cut to the hallway beyond');
   });
 });

@@ -158,7 +158,7 @@ describe('estimateVideoCost', () => {
 
 describe('isBatchMotionEligible', () => {
   const refOnlyShot = {
-    frame: { imageStatus: 'pending' as const },
+    imageStatus: 'pending' as const,
     image: null,
     videoStatus: 'pending' as const,
   };
@@ -174,7 +174,7 @@ describe('isBatchMotionEligible', () => {
   it('still requires a completed still on the image-to-video path', () => {
     expect(
       isBatchMotionEligible(
-        { ...refOnlyShot, frame: { imageStatus: 'completed' }, image: null },
+        { ...refOnlyShot, imageStatus: 'completed', image: null },
         false
       )
     ).toBe(false);
@@ -182,7 +182,7 @@ describe('isBatchMotionEligible', () => {
       isBatchMotionEligible(
         {
           ...refOnlyShot,
-          frame: { imageStatus: 'completed' },
+          imageStatus: 'completed',
           image: { url: 'https://x/a.png' },
         },
         false

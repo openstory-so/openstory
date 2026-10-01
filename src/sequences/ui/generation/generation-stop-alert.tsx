@@ -1,4 +1,4 @@
-import { ActionCost } from '@/billing/ui/action-cost';
+import { InButtonCost } from '@/billing/ui/action-cost';
 import { GenerationStopSlider } from './generation-stop-slider';
 import {
   AlertDialog,
@@ -15,6 +15,7 @@ import {
   useDraftGenerationEstimate,
   type DraftGenerationEstimateInput,
 } from '@/sequences/ui/use-draft-generation-estimate';
+import { includesStage } from '@/sequences/pipeline';
 import type { GenerationStage } from '@/sequences/pipeline';
 import { useVoiceDesignAvailable } from '@/cast/ui/use-voice-design-available';
 import { useEffect, useState, type FC } from 'react';
@@ -140,25 +141,26 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
             Don't ask again
           </label>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
-          {/* Cost sits under the CTA, as under every other generate button. */}
-          <div className="flex flex-col gap-1">
-            <AlertDialogAction
-              onClick={() =>
-                onConfirm({
-                  stopAt: draftStopAt,
-                  generateStartFrames: draftStartFrames,
-                  generateVoices: voices,
-                  draftMotion: draftDraftFirst,
-                  remember: draftRemember,
-                })
+          <AlertDialogAction
+            onClick={() =>
+              onConfirm({
+                stopAt: draftStopAt,
+                generateStartFrames: draftStartFrames,
+                generateVoices: voices,
+                draftMotion: draftDraftFirst,
+                remember: draftRemember,
+              })
+            }
+          >
+            <InButtonCost
+              estimate={estimate}
+              amountWidth={
+                includesStage(draftStopAt, 'motion') ? 'double' : 'single'
               }
             >
               {confirmLabel}
-            </AlertDialogAction>
-            <div className="min-h-4">
-              <ActionCost estimate={estimate} align="end" />
-            </div>
-          </div>
+            </InButtonCost>
+          </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

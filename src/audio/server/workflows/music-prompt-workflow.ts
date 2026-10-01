@@ -13,6 +13,7 @@ import { musicDesignResultSchema } from '@/sequences/response-schemas';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { reinforceInstrumentalTags } from '@/audio/server/music-prompt';
 import { getGenerationChannel } from '@/platform/realtime';
+import { DEFAULT_MUSIC_MODEL } from '@/models/models';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import type {
   MusicPromptWorkflowInput,
@@ -62,10 +63,9 @@ export class MusicPromptWorkflow extends OpenStoryWorkflowEntrypoint<MusicPrompt
         );
       }
 
-      // The variants helper appends a row tagged 'ai-generated' /
-      // 'regenerated' and updates the cached `musicPrompt` / `musicTags` /
-      // `musicPromptInputHash` on `sequences`. The two writes are
-      // sequential, not transactional — see the helper docstring.
+      // The versions helper appends a row tagged 'ai-generated' /
+      // 'regenerated' and selects it — no claim (pinned in
+      // claim-discipline.test.ts).
       const inputHash = await computeMusicPromptInputHash({
         sceneSummaries,
         analysisModel: analysisModelId,
@@ -107,12 +107,33 @@ export class MusicPromptWorkflow extends OpenStoryWorkflowEntrypoint<MusicPrompt
   }): Promise<void> {
     const input = event.payload;
     if (input.sequenceId) {
-      const failSeq = scopedDb.sequence(input.sequenceId);
-
-      await failSeq.updateMusicFields({
-        musicStatus: 'failed',
-        musicError: error,
-      });
+      // A failed prompt is a failed track (#1115): the track claim a parent
+      // took for it fails, or — with no claim — a failed primary row records
+      // it, so the sequence reads `failed`, never a silent `pending`.
+      // Recorded before the event, but never in its way: a failed write
+      // must not leave the UI spinning on a run that is over.
+      try {
+        if (input.musicVariantId) {
+          await scopedDb.sequenceVariants.failMusicClaim(
+            { sequenceId: input.sequenceId, variantId: input.musicVariantId },
+            error
+          );
+        } else {
+          await scopedDb.sequenceVariants.recordMusicFailure({
+            sequenceId: input.sequenceId,
+            // The default only labels the failed row of a payload queued
+            // before #1115, which carried no model.
+            model: input.musicModel ?? DEFAULT_MUSIC_MODEL,
+            error,
+            workflowRunId: event.instanceId,
+          });
+        }
+      } catch (recordError) {
+        logger.error(
+          `[MusicPromptWorkflow:cf] Failed to record the music failure for sequence ${input.sequenceId}:`,
+          { err: recordError }
+        );
+      }
 
       try {
         await getGenerationChannel(input.sequenceId).emit(

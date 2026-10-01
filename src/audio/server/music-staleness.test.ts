@@ -75,9 +75,9 @@ describe('readMusicPromptStaleness (#1783)', () => {
     const scopedDb = asScopedDb({
       shots: { listBySequence: () => Promise.resolve(shotRows) },
       scenes: { listBySequence: () => Promise.resolve(sceneRows) },
-      sequenceVariants: { getMusicPrimary: () => Promise.resolve(null) },
+      sequenceVariants: { getMusicById: () => Promise.resolve(null) },
       sequenceMusicPromptVersions: {
-        getLatest: () => Promise.resolve({ analysisModel: 'm' }),
+        getSelected: () => Promise.resolve({ analysisModel: 'm' }),
       },
     });
     const read = (musicPromptInputHash: string) =>
@@ -86,7 +86,7 @@ describe('readMusicPromptStaleness (#1783)', () => {
         asSequence({
           id: 'seq',
           status: 'completed',
-          musicModel: null,
+          selectedMusicVariantId: null,
           musicPromptInputHash,
           analysisModel: 'm',
         })

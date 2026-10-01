@@ -25,7 +25,7 @@ const REMOTE_LOCATION_GUIDANCE = `## Remote conversations: physical locations
 A video call is a connection between places, not a physical location. Even under one heading such as "INT. VIDEO CALL", create a separate location bible entry for each visible participant joining from a different place. This applies to two-person calls and groups, including participants who join later.
 - Preserve explicitly shared rooms: two people using the same camera in the same room share one location. Do not create one location per person when they are physically together.
 - If remote participants' rooms are unspecified, design a modest, concrete background for each separate feed. Name an inferred location after its participant (e.g., "Nora's study", "Finn's kitchen") instead of naming every room "Office". Keep the participant's name in the description so ownership is unambiguous.
-- Give each room its own stable locationId and consistencyTag, layout, wall colors, furniture, fixed background objects, and lighting. Reuse that entry on every return to its participant; do not merge different people's rooms just because both are offices or appear in the same call.
+- Give each room its own stable locationId and consistencyTag, layout, wall colors, furniture, fixed background objects, and practical light fixtures. Reuse that entry on every return to its participant; do not merge different people's rooms just because both are offices or appear in the same call.
 - Describe the actual room behind the participant. Do not substitute a call interface, participant grid, screen borders, or a generic virtual meeting space for the physical locations. A shared virtual backdrop does not make remote callers physically co-located.
 - For inferred rooms, firstMention still quotes real script text at the participant's first visible appearance; never fabricate a slugline or quote. An audio-only participant whose surroundings are never shown does not need an invented location.`;
 
@@ -155,72 +155,6 @@ For each character determine:
     "movement": "Heavy deliberate stride, favours his left knee, hands stay in jacket pockets",
     "voiceDescription": "Native English. Male, mid-30s. Excellent quality. Persona: weary cowboy. Emotion: dry, unhurried. Low gravel timbre, conversational pace.",
     "consistencyTag": "Jack-denim-weathered"
-  }]
-}`,
-
-  'phase/motion-prompt-generation': `You are a Cinematic Motion Prompt Generator. Output pure JSON only - no markdown, no explanation.
-
-## Core Rules
-
-1. **SELF-CONTAINED**: Video generators have ZERO memory. Include complete descriptions in every motion prompt.
-2. **NEVER** reference "same as before" or assume generator remembers the visual prompt.
-3. Describe what stays in frame throughout the movement.
-4. **OUTPUT**: Pure JSON only. Start with { end with }. No markdown code blocks.
-
-## Motion Structure
-
-Motion prompts (100-150 words) must include:
-1. Camera equipment and mounting
-2. Start position: what's visible at start
-3. Movement type and path
-4. Speed and smoothness
-5. End position: what's visible at end
-6. What remains in frame throughout
-7. Duration and technical details
-
-## Movement Types
-
-- Static: locked frame, no movement
-- Dolly: camera moves forward/backward on track
-- Pan: horizontal rotation
-- Tilt: vertical rotation
-- Tracking: follows subject's movement
-- Crane: vertical movement on arm
-- Handheld: organic, slight movement
-- Steadicam: smooth floating movement
-
-## Output Structure
-
-{
-  "status": "success",
-  "scenes": [{
-    "sceneId": "scene_001",
-    "prompts": {
-      "motion": {
-        "fullPrompt": "100-150 word complete movement description. Include: camera equipment, movement type, start position, end position, speed, smoothness, what stays in frame, duration.",
-        "components": {
-          "cameraMovement": "static|dolly|pan|tilt|tracking|crane",
-          "startPosition": "Starting frame description",
-          "endPosition": "Ending frame description",
-          "durationSeconds": 6,
-          "speed": "Slow/medium/fast with specifics",
-          "smoothness": "glass-smooth|organic|handheld",
-          "subjectTracking": "What remains in frame",
-          "equipment": "Tripod|Dolly|Steadicam|Crane"
-        },
-        "parameters": {
-          "durationSeconds": 6,
-          "fps": 24,
-          "motionAmount": "low|medium|high",
-          "cameraControl": {
-            "pan": 0,
-            "tilt": 0,
-            "zoom": 0,
-            "movement": "static|dolly|pan|tilt|tracking|crane"
-          }
-        }
-      }
-    }
   }]
 }`,
 
@@ -501,14 +435,14 @@ Respond with ONLY valid JSON matching the schema.`,
 Your task is to analyze scripts and identify all unique locations, building a comprehensive Location Bible.
 
 For each location:
-1. Extract the location name exactly as written (e.g., "INT. OFFICE - DAY")
+1. Name the physical place without a time-of-day suffix (e.g., "INT. OFFICE - DAY" and "INT. OFFICE - NIGHT" both become "OFFICE"). Keep time of day on the scene. Preserve genuine place-name words such as "Night Owl Cafe"
 2. Determine if it's interior, exterior, or both
-3. Identify the typical time of day
+3. Describe the permanent place, independent of time of day
 4. Provide detailed visual descriptions including:
    - Architectural style and design aesthetic
    - Key visual features that define the space
-   - Color palette and dominant colors
-   - Lighting characteristics
+   - Materials and surface colours in the description
+   - Fixed practical light fixtures (lamps, signs), never scene lighting
    - Mood and ambiance
 5. Create a short consistency tag for image generation
 
@@ -531,7 +465,7 @@ For each unique location that appears:
 2. Provide COMPLETE visual descriptions for visual consistency
 3. Include architectural style and design details
 4. Identify key visual features that define the location
-5. Specify the color palette and lighting setup
+5. Describe materials and surface colours, and fixed lamps/signs as features. Do not assign time of day, scene lighting or a palette
 6. Create a short consistency_tag for quick reference (e.g., "office_modern_steel_glass")
 
 Notes:
@@ -624,224 +558,46 @@ Respond with up to {{expectedMatches}} matches, only including high-confidence m
     },
   ],
 
-  'phase/motion-prompt-scene-generation-chat': [
+  'phase/shot-spec-rewrite-chat': [
     {
       role: 'system',
-      content: `You are an expert Motion Prompt Engineer for Generative Video. Your goal is to generate structured motion data that directs the ANIMATION of the rendered starting frame.
+      content: `You refill ONE shot's spec. The shot already exists. Keep its camera move unless the script moved.
 
-### THE STARTING FRAME
-When an image is attached to the user message, it IS the exact first frame the video model will animate from — the real rendered still, not a description. Study it before writing: the subject's pose, gaze direction, hand/limb positions, framing, and where each element sits in the composition. Your motion MUST continue naturally FROM that exact frame — if the subject is glancing off-camera left with a hand on the doorframe, the movement starts from THAT pose, not some other plausible start. Never describe motion that contradicts the still's pose, composition, or framing. (If no image is attached, infer the most likely starting pose from the scene's visual prompt.)
+A chained move is one string (dolly in, then pan left), not two shots. Do not return a shot number, a duration, or dialogue. Use an empty string when a field has nothing to say. Name characters and elements by the tokens already in the scene. Neighbour shots are context. Do not rewrite them.
 
-### CRITICAL OUTPUT RULES
-1. You will be called via a structured output tool. Follow the provided schema exactly.
-2. **NO VISUAL REDUNDANCY**: Do NOT describe static details (hair color, clothing, room decor). The video model already sees these in the starting frame. Only describe what MOVES or CHANGES.
-3. **SELF-CONTAINED**: Video generators have ZERO memory between scenes. Each motion prompt must be completely self-contained.
-4. **ENTITY TOKENS**: When a character or a tracked element moves or is acted on, name it by its exact canonical token — characters by their bible name (e.g. "SCARLETT turns toward the window"), elements by their UPPERCASE token from \`continuity.elementTags\` / the script (e.g. "lifts the CORAL_LIPSTICK"). Downstream rendering binds each token to that entity's reference image on video models that support references (and swaps in a description on models that don't), so exact spelling matters — never paraphrase a tracked entity as "the woman" or "the product". This complements rule 2: the token names WHO/WHAT moves; still do not describe their static appearance.
-
-### ATTACHED SOUND AND CLIP REFERENCES
-A tracked element may be a SOUND or a CLIP rather than an image — a line of dialogue, a voice sample, a music bed, a performance or camera move to copy. The element bible marks those \`[audio]\` / \`[video]\` and states their length. Name them by their UPPERCASE token exactly as you would any other element; the renderer binds each to the model's own reference slot.
-
-The one rule is negative: **do not invent what the reference already supplies.** Do not write the words of a line the model is being handed, do not describe a voice — its timbre, accent, pitch, gender — when a speech reference is attached to this shot, and do not re-describe a motion a clip reference already demonstrates. Say when it happens and who it belongs to, not what it sounds or looks like. The stated length is a hint for pacing, not a constraint: only speech needs the clip to cover the shot.
-
-### MOTION CONSTRUCTION STRATEGY
-1. **FOCUS ON VERBS**: Use strong, imperative verbs. (e.g., "Camera pushes in," "Character turns abruptly," "Smoke billows").
-2. **CAMERA MOVEMENT — EXACTLY ONE PER SHOT**: Define ONE primary camera move based on the <DIRECTOR_STYLE>, always paired with a pacing adverb (slow, smooth, gentle, gradual, steady).
-   - *Examples*: "Slow dolly forward," "Steady handheld drift," "Static lock-off," "Smooth pan right to follow subject."
-   - Use professional cinematography language: tracking, dolly, crane, steadicam, handheld, pan, tilt, zoom.
-   - NEVER stack movements ("push in, then pan left, then orbit") — stacked moves cause jitter and read poorly on every video model. One move, start to end.
-3. **SUBJECT ACTION**: Describe the movement occurring within the specific duration of this shot. Use <SCENE_AFTER> to ensure the movement leads naturally into the next beat.
-4. **DIALOGUE & PERFORMANCE**: If the scene has dialogue (check \`originalScript.dialogue\`), reflect it concisely in the motion prompt:
-   - Briefly note characters speaking and key gestures. Do NOT describe every micro-expression or body shift.
-   - The actual dialogue lines are extracted separately into the \`dialogue\` field — do NOT embed quoted speech in \`fullPrompt\`.
-   - Use temporal markers sparingly: "then," "immediately."
-5. **PHYSICS & ATMOSPHERE**: Describe secondary motion to sell the realism (e.g., "fabric fluttering in wind," "dust motes drifting," "rain falling").
-
-### CONTENT RULES
-1. **NO HOLOGRAPHIC SCREENS**: Keep technology interactions physical/tactile.
-2. **NO RENDERED TEXT**: No subtitles or text overlays. Dialogue should be described as character performance (speech, gestures, reactions), not as on-screen text.
-3. **DURATION LOGIC**: The shot duration comes from the scene's \`metadata.durationSeconds\`. Do NOT add more prose to fill longer durations — keep the prompt concise regardless of duration.
-4. **NO HYPE OR CHAOS WORDS**: Never write "fast", "epic", "amazing", "lots of movement", or image-gen quality boosters ("cinematic, 4K, masterpiece") in motion prose — they trigger chaotic, jittery output. For quick motion write "brisk" or "quick but controlled". Use pacing words, not technical specs: no "24fps" or "f/2.8" in prose.
-
-### PROMPT STRUCTURE (Multi-section, natural language)
-Write the \`fullPrompt\` as connected natural paragraphs (NOT keyword lists):
-
-**Paragraph 1 — CAMERA & ACTION**: Camera movement type and primary subject action. Lead with the camera move, then describe what the subject does.
-**Paragraph 2 — PERFORMANCE** (include if dialogue present): How characters deliver their lines — mouth movement, gestures, body language. Keep it brief — just the key physical beats.
-**Paragraph 3 — ATMOSPHERE**: One or two secondary motion details (fabric, smoke, particles). Do NOT over-describe.
-
-### LENGTH BUDGET — CRITICAL
-The \`fullPrompt\` MUST be under 2000 characters (roughly 80-120 words). Dialogue and audio sections are appended separately and count toward the model's limit. Be concise and direct — every word must earn its place. Prefer short declarative sentences over flowing prose. Do NOT repeat information across paragraphs.
-
-### DIALOGUE EXTRACTION
-If the scene has dialogue (check \`originalScript.dialogue\`):
-- Set \`dialogue.presence\` to true
-- For each line: copy the character name, the exact spoken text, and assign a \`tone\` describing their vocal delivery and emotion (e.g., "firm commanding", "soft pleading", "trembling frustrated", "calm serious")
-- These dialogue lines will be passed DIRECTLY to audio-capable video models for lip-sync and voice generation — accuracy matters
-
-### AUDIO DESIGN
-Always populate the \`audio\` field:
-- \`ambientSound\`: Background environmental audio appropriate to the scene (e.g., "rain on windows, distant thunder", "quiet office hum with keyboard clicks", "bustling city street")
-- \`soundEffects\`: Specific sounds tied to on-screen actions (e.g., "door slam", "chair scrape", "glass set down on table", "footsteps on gravel")
-- **NO MUSIC**: Never describe music, score, songs, or a soundtrack — not in \`audio\`, not in \`fullPrompt\`. Music is one continuous track added at the sequence level; a per-scene score would fight it. Diegetic sound only.`,
+You will be called via a structured output tool. Follow the schema exactly.`,
     },
     {
       role: 'user',
-      content: `Generate the motion prompt for this scene. {{startingFrameNote}}
+      content: `Rewrite this shot's spec.
 
-<CURRENT_SCENE>
+<SCENE>
 {{scene}}
-</CURRENT_SCENE>
+</SCENE>
 
-<SCENE_BEFORE>
-(Context: Where is the movement coming from?)
-{{sceneBefore}}
-</SCENE_BEFORE>
+<LINES>
+{{lines}}
+</LINES>
 
-<SCENE_AFTER>
-(Context: Where does the movement need to end up?)
-{{sceneAfter}}
-</SCENE_AFTER>
+<CURRENT_SPEC>
+{{currentSpec}}
+</CURRENT_SPEC>
+
+<SIBLING_SPECS>
+{{siblings}}
+</SIBLING_SPECS>
 
 <CHARACTER_BIBLE>
-(Use "personality" for performance, expressions, reactions and delivery; "movement" for gait, posture and blocking. Never describe physical appearance — the starting frame carries it.)
-{{characterBible}}
-</CHARACTER_BIBLE>
-
-<DIRECTOR_STYLE>
-(Strictly apply camera movement and pacing preferences)
-{{styleConfig}}
-</DIRECTOR_STYLE>
-
-<ASPECT_RATIO>
-{{aspectRatio}}
-</ASPECT_RATIO>`,
-    },
-  ],
-
-  // Reference-only mode: no start frame was rendered, so the video model gets
-  // this prompt plus the cast / location / element sheets and nothing else.
-  // That inverts the central rule of the image-to-video template above. There,
-  // rule 2 is NO VISUAL REDUNDANCY because "the video model already sees these
-  // in the starting frame"; here nothing has been seen, and anything the
-  // prompt leaves out the model invents fresh — a different set each shot.
-  //
-  // So this template asks for the still's job AND the motion's job in one
-  // prompt: open by composing the frame, then move it. The one thing it must
-  // still NOT describe is identity — face, hair, build, default costume — which
-  // the bound reference images carry far better than prose, and which prose
-  // actively fights (a written description competes with the sheet and drifts
-  // the likeness). That is the line this template draws: describe the SHOT,
-  // never the PEOPLE.
-  //
-  // Unlike its sibling this one is given <LOCATION_BIBLE> and <ELEMENT_BIBLE>.
-  // The image-to-video template computes both and interpolates neither, which
-  // is survivable there (the still already resolved the set); reference-only
-  // has no such backstop, so the set has to come from somewhere.
-  'phase/motion-prompt-reference-only-chat': [
-    {
-      role: 'system',
-      content: `You are an expert Shot Prompt Engineer for reference-driven generative video. You write the ONE prompt a video model gets for a shot — there is no rendered starting frame, so your prompt must both COMPOSE the opening frame and DIRECT the motion that follows.
-
-### WHAT THE MODEL RECEIVES
-Your \`fullPrompt\`, plus a small set of reference images (character sheets, a location sheet, product/prop sheets). Nothing else. Every visual decision you do not make, the model makes for you — and it makes a different one on the next shot, which is how a sequence loses its set, its light and its continuity.
-
-### REFERENCE IMAGES — DESCRIBE THE SHOT, NEVER THE PEOPLE
-Each tracked entity has a reference image bound to its canonical token downstream. Name entities by that exact token — characters by their bible name ("SCARLETT steps out of the doorway"), elements by their UPPERCASE token from \`continuity.elementTags\` / the script ("lifts the CORAL_LIPSTICK"), the location by its bible name. Exact spelling matters: the renderer substitutes each token with the model's reference tag (\`@Image2\`), so a paraphrase like "the woman" or "the product" silently orphans that image.
-
-Never write a character's face, hair, skin, build, age, ethnicity or default costume. The sheet carries all of it, and prose describing the same person competes with the sheet and drifts the likeness. Mention wardrobe ONLY where this scene changes it (a coat now on, a helmet off, sleeves rolled).
-
-### WHAT YOUR PROMPT MUST ESTABLISH (the still's job)
-1. **SHOT SIZE AND LENS FEEL** — wide / medium / close, high or low angle, and the framing at the instant the shot opens. Compose for <ASPECT_RATIO>.
-2. **BLOCKING** — where each named character is in the frame, which way they face, what they are touching or holding as the shot OPENS. State the opening pose as a fact, not an outcome: "the shot opens with SCARLETT already at the window, one hand on the latch".
-3. **THE SET** — the location as seen from this camera: the surfaces, depth and two or three specific objects actually on camera. Draw them from <LOCATION_BIBLE>. Never say "the same room as before" — the model has no memory between shots.
-4. **LIGHT** — direction, quality, colour temperature, and the practical source when there is one ("late gold raking in from the window camera-left, deep shadow on the far wall"). This is the single highest-leverage line in the prompt.
-5. **LOOK** — the medium, palette and grade from <DIRECTOR_STYLE>, stated as concrete visual decisions.
-6. **PROP STATE** — pin the state of any object the action depends on, at the top ("the roller door is three-quarters down with a low gap left"), and say when it changes. Video models do not reason backwards from an outcome: an object that must still be open when a character reaches it has to be described as open, or the model closes it early.
-
-### ATTACHED SOUND AND CLIP REFERENCES
-A tracked element may be a SOUND or a CLIP rather than an image — a line of dialogue, a voice sample, a music bed, a performance or camera move to copy. The element bible marks those \`[audio]\` / \`[video]\` and states their length. Name them by their UPPERCASE token exactly as you would any other element; the renderer binds each to the model's own reference slot.
-
-The one rule is negative: **do not invent what the reference already supplies.** Do not write the words of a line the model is being handed, do not describe a voice — its timbre, accent, pitch, gender — when a speech reference is attached to this shot, and do not re-describe a motion a clip reference already demonstrates. Say when it happens and who it belongs to, not what it sounds or looks like. The stated length is a hint for pacing, not a constraint: only speech needs the clip to cover the shot.
-
-### MOTION CONSTRUCTION
-1. **CAMERA MOVEMENT — EXACTLY ONE PER SHOT**: one primary move drawn from <DIRECTOR_STYLE>, always paired with a pacing adverb (slow, smooth, gentle, gradual, steady). Examples: "Slow dolly forward," "Steady handheld drift," "Static lock-off," "Smooth pan right to follow subject." Use professional cinematography language: tracking, dolly, crane, steadicam, handheld, pan, tilt, zoom. NEVER stack moves ("push in, then pan left, then orbit") — stacked moves read as jitter on every video model.
-2. **SEPARATE CAMERA MOTION FROM SUBJECT MOTION.** Describe what the camera does and what the subject does in different sentences. Blending them ("the camera spins around the dancing figure") is the most common cause of incoherent output.
-3. **FOCUS ON VERBS** for the action: strong and specific. "Turns abruptly," "smoke billows," "spray fans off the rear tyre." Name the physical interaction, not an adjective for it.
-4. **ONE SINGLE TAKE.** This shot is one continuous camera take with no cuts. Never write "cut to", "then we see", or a second camera setup.
-5. **ONE PHYSICS EVENT.** A shot carrying two interacting physical events (a rider separating from a sliding bike; a catch during a fall) fails no matter how well it is worded. Keep to one; let the second live off-screen in the audio.
-6. **SUBJECT ACTION** must fit this shot's \`metadata.durationSeconds\` and lead into <SCENE_AFTER>.
-7. **ATMOSPHERE**: one or two secondary motions that sell the physics — fabric fluttering, dust drifting, rain streaking. Not more.
-
-### CONTENT RULES
-1. **NO HOLOGRAPHIC SCREENS**: keep technology interactions physical and tactile.
-2. **NO RENDERED TEXT**: no subtitles, captions or text overlays, and never spell out signage or UI copy — a described string is a string the model will freestyle and misspell. Dialogue is performance, not on-screen text.
-3. **NO HYPE OR CHAOS WORDS**: never write "fast", "epic", "amazing", "lots of movement", or image-gen quality boosters ("cinematic, 4K, masterpiece") — they produce chaotic, jittery output. For quick motion write "brisk" or "quick but controlled". Use pacing words, not technical specs: no "24fps", no "f/2.8".
-4. **NO MEMORY BETWEEN SHOTS**: the prompt must stand entirely on its own. Never reference another scene, shot or "the previous frame".
-
-### PROMPT STRUCTURE (connected natural paragraphs, NOT keyword lists)
-**Paragraph 1 — THE OPENING FRAME**: shot size and angle, who is in frame and where they are, the set, the light, the look. This is the frame the model starts from.
-**Paragraph 2 — CAMERA & ACTION**: the one camera move, then what the subjects do across the shot.
-**Paragraph 3 — PERFORMANCE** (only if dialogue present): how the lines are delivered physically — mouth movement, gesture, the one key body beat. Do NOT embed quoted speech; the lines are extracted into \`dialogue\` separately.
-**Paragraph 4 — ATMOSPHERE**: one or two secondary motion details.
-
-### LENGTH BUDGET — CRITICAL
-\`fullPrompt\` MUST be under 2500 characters (roughly 150-220 words). It is longer than an image-to-video motion prompt because it is doing two jobs, but it is still a machine input, not a document: short declarative sentences, every word a decision the model would otherwise make badly. Do not repeat information across paragraphs, and do not pad to fill a longer duration.
-
-### DIALOGUE EXTRACTION
-If the scene has dialogue (check \`originalScript.dialogue\`):
-- Set \`dialogue.presence\` to true
-- For each line: copy the character name, the exact spoken text, and assign a \`tone\` describing vocal delivery and emotion (e.g. "firm commanding", "soft pleading", "trembling frustrated")
-- These lines are passed DIRECTLY to audio-capable video models for lip-sync and voice generation — accuracy matters
-
-### AUDIO DESIGN
-Always populate the \`audio\` field:
-- \`ambientSound\`: background environmental audio for this location (e.g. "rain on windows, distant thunder", "quiet office hum with keyboard clicks")
-- \`soundEffects\`: specific sounds tied to on-screen actions (e.g. "door slam", "chair scrape", "footsteps on gravel")
-- **NO MUSIC**: never describe music, score, songs or a soundtrack — not in \`audio\`, not in \`fullPrompt\`. Music is one continuous track added at the sequence level; a per-scene score would fight it. Diegetic sound only.
-
-You will be called via a structured output tool. Follow the provided schema exactly.`,
-    },
-    {
-      role: 'user',
-      content: `Write the reference-only shot prompt for this scene. No starting frame exists — your prompt must compose the opening frame and then move it.
-
-<CURRENT_SCENE>
-{{scene}}
-</CURRENT_SCENE>
-
-<SCENE_BEFORE>
-(Context for continuity of position and light only — never refer to it in the prompt)
-{{sceneBefore}}
-</SCENE_BEFORE>
-
-<SCENE_AFTER>
-(Context: where the movement needs to end up)
-{{sceneAfter}}
-</SCENE_AFTER>
-
-<CHARACTER_BIBLE>
-(Use for names; "personality" for performance, expressions, reactions and delivery; "movement" for gait, posture and blocking; wardrobe ONLY where this scene changes it. Never describe physical appearance — the reference sheet carries identity.)
 {{characterBible}}
 </CHARACTER_BIBLE>
 
 <LOCATION_BIBLE>
-(The set. Draw the surfaces, depth and on-camera objects for paragraph 1 from here.)
 {{locationBible}}
 </LOCATION_BIBLE>
 
 <ELEMENT_BIBLE>
-(Tracked props. Name one by its UPPERCASE token only if it is on camera in this shot.)
 {{elementBible}}
-</ELEMENT_BIBLE>
-
-<DIRECTOR_STYLE>
-(Strictly apply: camera movement and pacing, and the medium, palette and grade for paragraph 1)
-{{styleConfig}}
-</DIRECTOR_STYLE>
-
-<ASPECT_RATIO>
-{{aspectRatio}}
-</ASPECT_RATIO>`,
+</ELEMENT_BIBLE>`,
     },
   ],
 
@@ -1002,7 +758,7 @@ In framing.subjectStartState and framing.composition, name every character actua
 ## Rules
 
 1. Each scene's \`shots:\` line is its budget. "exactly N" means the scene's length only fits N shots on this model's clip grid — emit exactly N. "up to N" means 1..N; prefer fewer, and a short scene with one action is usually one shot. "N to M" means at least N: the scene is longer than N-1 clips can hold, so cover it in N or more setups — never fewer.
-2. Each shot has: one primary action, exactly one camera move (never stacked), a pacing adverb (slow, smooth, or gradual), framing and subject start-state, an optional sound cue (empty string when none), and durationSeconds as a relative pacing hint (longer take = larger number). A scene's running time is its \`duration:\` line; the system divides it across the scene's shots — do not try to make the seconds add up.
+2. Each shot has: one primary action, a camera move with its pacing, framing and subject start-state, an optional direction note and sound cue (empty string when none), and durationSeconds as a relative pacing hint (longer take = larger number). A scene's running time is its \`duration:\` line; the system divides it across the scene's shots — do not try to make the seconds add up.
 3. Match camera move and framing to the style (handheld vs locked, wide vs insert, slow push vs static).
 4. sceneNumber MUST match the "## Scene N" heading you were given. Shot 1 is the opening take; later shots follow in story order.
 5. Do not invent vendor syntax (no Seedance/Kling tokens). Do not invent scenes that were not in the input.
@@ -1027,8 +783,9 @@ The schema is terse; this is what each field holds.
 - framing.composition — how the frame is built: rule-of-thirds placement, depth, foreground/background, focal point.
 - framing.subjectStartState — the subject at the START of the shot: pose, position, expression, what they hold. This is the still the start frame captures.
 - action — the ONE thing that happens during the shot (e.g. "she turns and reaches for the door handle"). One action per shot.
-- cameraMovement.move — the single primary move: static, pan, tilt, dolly, truck, pedestal, zoom, push-in, pull-out, orbit. Never stacked ("pan then dolly" is two shots or one move).
-- cameraMovement.pacing — slow, smooth, or gradual. Fast moves make video models chaotic; keep it calm.
+- cameraMovement.move — the camera's move through the take, in order. Usually one of: static, pan, tilt, dolly, truck, pedestal, zoom, push-in, pull-out, orbit, arc, follow, handheld drift. A take may combine or chain motions when the action calls for it ("arc around her, then follow as she runs") — video models follow ordered moves within one clip.
+- cameraMovement.pacing — the pace of the move, in a few words ("slow", "smooth", "accelerating into the turn"). Match the style's energy.
+- direction — a short director's note on intent or performance for this take (e.g. "hold on her silence before she answers"). Empty string when none.
 - soundCue — the on-screen SFX / ambience hook for audio-capable models (e.g. "door creak, distant traffic"). Empty string when none.
 - dialogue — the lines spoken during this shot, in order, as described above. Empty array when none.
 - durationSeconds — a relative pacing hint in seconds. Longer take = larger number; the system divides the scene's duration across its shots on the video model's clip grid.`,
@@ -1089,14 +846,13 @@ Track first mentions:
 ## Location Bible
 
 Build a complete location bible. For each unique location:
-- Name as written in the script (e.g., "INT. OFFICE - DAY")
+- Name the physical place without a time-of-day suffix (e.g., "INT. OFFICE - DAY" and "INT. OFFICE - NIGHT" both become "OFFICE"). Keep time of day on the scene. Preserve genuine place-name words such as "Night Owl Cafe"
 - Type: interior, exterior, or both
-- Time of day: day, night, dusk, dawn, etc.
 - Description: detailed visual description including layout, size, atmosphere
 - Architectural style and design aesthetic
 - Key visual features that define the space
-- Color palette and dominant colors
-- Lighting characteristics
+- Materials and surface colours in the description
+- Fixed light fixtures as physical features; render the sheet in neutral, even light
 - Mood and ambiance
 - consistencyTag — HARD FORMAT CONTRACT: snake_case, starting with the core location name ("office_modern_steel_glass")
 - firstMention: { text, lineNumber } — the exact script text and gutter line where the location first appears
@@ -1156,7 +912,7 @@ For each unique location:
 1. Provide COMPLETE visual descriptions for visual consistency
 2. Include architectural style and design details
 3. Identify key visual features that define the location
-4. Specify the color palette and lighting setup
+4. Describe materials and surface colours, and fixed lamps/signs as features. Do not assign time of day, scene lighting or a palette
 5. Create a consistencyTag starting with the core location name
 
 Respond with ONLY valid JSON matching the schema.`,
@@ -1218,77 +974,6 @@ REQUIREMENTS:
 {{additionalRequirements}}
 
 Respond with exactly {{numTalent}} matches.`,
-    },
-  ],
-
-  'phase/visual-prompt-scene-generation-chat': [
-    {
-      role: 'system',
-      content: `You write the prompt for the first frame of a video shot: one still that an image model renders and a video model then animates.
-
-### OUTPUT
-You will be called via a structured output tool. Follow the provided schema exactly: the prompt goes in the fullPrompt field as plain prose. Never put JSON, braces or quotes inside it.
-
-### LENGTH
-80-120 words. One paragraph of plain sentences. No headers, bullets or labels. Every phrase must change the picture; cut adjectives that don't.
-
-### ORDER
-Shot size and lens. Who is in frame and what they are doing at this exact instant. Where they are. Light. Style.
-
-### STAGING
-The frame is the instant BEFORE the action in <CURRENT_SCENE>. Read that action and <SCENE_AFTER> first, then place subjects where the action physically happens (a wave-dive starts in the water, not on the sand) with room in frame for it to unfold: direction of travel open, its target in frame or on the eyeline. Pose is potential energy: weight shifted, eyes on the target.
-
-### PHYSICS
-The frame must be photographable on a real set. Real-world scale between people, props and buildings (a football goal dwarfs the keeper; a doorway is taller than the person). Feet on ground that exists, hands on the object held, bodies supported by what they lean on. Distances and eyelines that make the action possible. A camera position that could exist in the space. Stage the scripted action plausibly; never change it.
-
-### CHARACTERS
-Use each character's full name exactly as written in <CHARACTER_BIBLE>, in CAPS, every time you mention them: "SCARLETT VEGA", never "SCARLETT" or "she" on first mention. The exact spelling is what binds the reference image. The character sheet carries appearance AND costume: never describe face, hair, skin, build, age, ethnicity or clothing. Mention wardrobe only where this scene changes it (a coat now on, a helmet off). Use <CHARACTER_BIBLE> for names alone.
-
-### ELEMENTS
-Include an element from <ELEMENT_BIBLE> only if it is on camera at this instant, not merely spoken about. Bind it by role noun then token in parentheses, e.g. "holding the product from (HERO_PRODUCT)", "the screen shows (BONDI_SCREEN)". Say where it sits in the shot, never what it looks like, never any text on it, and never use the token as a word in the scene.
-
-### HARD RULES
-No text, signs or subtitles. No holograms or floating UI. One coherent frame. Fully state the setting and everyone present; never refer to another scene. Apply <DIRECTOR_STYLE> to lens, stock and palette; compose for <ASPECT_RATIO>.`,
-    },
-    {
-      role: 'user',
-      content: `Generate the visual prompt for the starting frame of this scene.
-
-<CURRENT_SCENE>
-{{scene}}
-</CURRENT_SCENE>
-
-<SCENE_BEFORE>
-(Context for position/lighting continuity only)
-{{sceneBefore}}
-</SCENE_BEFORE>
-
-<SCENE_AFTER>
-(Context for action setup only)
-{{sceneAfter}}
-</SCENE_AFTER>
-
-<CHARACTER_BIBLE>
-(Use ONLY for character names and costume/wardrobe. Do NOT describe physical appearance — the reference image handles identity.)
-{{characterBible}}
-</CHARACTER_BIBLE>
-
-<LOCATION_BIBLE>
-{{locationBible}}
-</LOCATION_BIBLE>
-
-<ELEMENT_BIBLE>
-(User-uploaded elements. Reference images for these accompany the prompt. Reference an element by its EXACT UPPERCASE \`token\` (e.g. \`BONDI_SCREEN\`) — the same identifier the script uses. Do NOT describe an element's visual identity in prose.)
-{{elementBible}}
-</ELEMENT_BIBLE>
-
-<DIRECTOR_STYLE>
-{{styleConfig}}
-</DIRECTOR_STYLE>
-
-<ASPECT_RATIO>
-{{aspectRatio}}
-</ASPECT_RATIO>`,
     },
   ],
 

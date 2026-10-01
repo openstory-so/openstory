@@ -1,21 +1,16 @@
 /**
  * Sequence Music Variants Schema
- * Stores alternate music tracks for a sequence so that divergent results from
- * `music-workflow` are kept rather than overwriting the live `sequences.musicUrl`.
  *
- * Promotion of a variant updates the matching `sequences.music*` columns
- * in place; existing UI keeps reading those columns.
+ * Append-only music tracks (#1115): every generation, upload and add-model run
+ * is its own row, opened `pending` before anything is spent and landed in
+ * place. The sequence plays whichever row `sequences.selectedMusicVariantId`
+ * points at; a primary run reaches that pointer only through the claim
+ * `sequences.pendingPromoteMusicVariantId`. The newest `isPrimary` row's
+ * lifecycle IS the sequence's music status.
  */
 
-import { sql, type InferInsertModel, type InferSelectModel } from 'drizzle-orm';
-import {
-  index,
-  integer,
-  real,
-  snakeCase,
-  text,
-  uniqueIndex,
-} from 'drizzle-orm/sqlite-core';
+import type { InferInsertModel, InferSelectModel } from 'drizzle-orm';
+import { index, integer, real, snakeCase, text } from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/platform/id';
 import { sequences } from './sequences';
 
@@ -65,8 +60,15 @@ export const sequenceMusicVariants = snakeCase.table(
     generatedAt: integer({ mode: 'timestamp' }),
     error: text(),
 
+    // A primary track run (the sequence's own generation, a regeneration, an
+    // upload) — its lifecycle is the sequence's music status. False for an
+    // added audio model's track (#547), which never touches the pointer.
+    isPrimary: integer({ mode: 'boolean' }).default(true).notNull(),
+
     // Staleness detection
     inputHash: text(),
+    // Set when a primary run completed after its claim had moved (a newer
+    // run, or the user's pick): the track is parked, offered by the banner.
     divergedAt: integer({ mode: 'timestamp' }),
     // Soft-delete marker for divergent alternates the user has dismissed.
     // Mirrors `shot_variants.discarded_at` so the toast Undo flow can clear
@@ -82,14 +84,6 @@ export const sequenceMusicVariants = snakeCase.table(
   },
   (table) => [
     index('idx_sequence_music_variants_sequence').on(table.sequenceId),
-    // Primary slot: at most one non-divergent row per (sequence, model).
-    uniqueIndex('sequence_music_variants_primary_key')
-      .on(table.sequenceId, table.model)
-      .where(sql`${table.divergedAt} IS NULL`),
-    // Divergent alternates keyed by input_hash.
-    uniqueIndex('sequence_music_variants_divergent_key')
-      .on(table.sequenceId, table.model, table.inputHash)
-      .where(sql`${table.divergedAt} IS NOT NULL`),
   ]
 );
 

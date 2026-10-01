@@ -1,3 +1,7 @@
+import { creditsShortStatusError } from '@/billing/credits-short';
+import { microsToUsd } from '@/billing/money';
+import { freezeFreshGenerationPlan } from '@/sequences/server/freeze-fresh-generation-plan';
+import { gateStoryboardRenders } from '@/billing/server/storyboard-render-gate';
 /**
  * The `generateStoryboardWorkflow` durable workflow.
  *
@@ -36,6 +40,7 @@ import {
   type UpdateStaleShotsResult,
 } from '@/shots/server/workflows/update-stale-shots-workflow';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
+import { NonRetryableError } from 'cloudflare:workflows';
 import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'storyboard']);
@@ -179,47 +184,9 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
       });
     }
 
-    // A continue (#1818) runs the plan's units — only those, through the
-    // per-shot executor Update all uses — instead of the stage-shaped script
-    // run. The banner still moves: the executor announces its phases.
-    let continueFailure: string | null = null;
-    if (input.plan) {
-      const result = await spawnAndAwaitChild<
-        UpdateStaleShotsWorkflowInput,
-        UpdateStaleShotsResult
-      >(step, {
-        binding: this.env.UPDATE_STALE_SHOTS_WORKFLOW,
-        parentBindingName: 'STORYBOARD_WORKFLOW',
-        parentInstanceId: event.instanceId,
-        childId: `continue:${sequenceId}:${event.instanceId}`,
-        childPayload: {
-          userId: input.userId,
-          teamId: input.teamId,
-          sequenceId,
-          reservationId: input.reservationId,
-          plan: input.plan,
-          announcePhases: true,
-          leftoverGrokShotIds: input.leftoverGrokShotIds,
-        },
-        spawnStepName: 'spawn-continue',
-        awaitStepName: 'await-continue',
-        readOutput: readUpdateStaleShotsResult,
-        // Sheets (30m) then prompts + stills + clips per shot (90m each,
-        // in parallel), plus notify lag under a burst.
-        timeout: '4 hours',
-      });
-      // The executor records a unit's failure and carries on; the run as a
-      // whole did not finish what was asked, so it ends failed, not
-      // completed, and sends no "ready" email.
-      const [first] = result.failures;
-      if (first) {
-        continueFailure =
-          result.failures.length === 1
-            ? first.error
-            : `${result.failures.length} steps failed. First: ${first.error}`;
-      }
-    } else
-      // Spawn the analyze-script child and block until it returns. Pattern 3.
+    let plan = input.plan;
+    if (!plan) {
+      // Analysis only writes the script/cast and first derived prompt versions.
       await spawnAndAwaitChild<AnalyzeScriptWorkflowInput, unknown>(step, {
         binding: this.env.ANALYZE_SCRIPT_WORKFLOW,
         parentBindingName: 'STORYBOARD_WORKFLOW',
@@ -261,16 +228,97 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
         spawnStepName: 'spawn-analyze-script',
         awaitStepName: 'await-analyze-script',
         readOutput: readUnknown,
-        // Must exceed the child's own await budget: analyze-script's phases run
-        // sequentially — scene-split (45m) + matching (45m) + bibles/visual
-        // prompts (60m) + shot-images (90m) + motion-batch (90m) ≈ 5.5 hours
-        // worst case — a shorter parent wait here times out first and leaves
-        // the still-running child notifying a terminal parent
-        // (`instance.in_finite_state`, the #801/#839 burst failures).
-        // Completion notifies early, so this ceiling costs nothing in the
-        // common case.
-        timeout: '6 hours',
+        // Scene splitting and parallel cast/location matching each allow 45m.
+        timeout: '2 hours',
       });
+
+      const frozen = await step.do('freeze-generation-plan', async () => {
+        const result = await freezeFreshGenerationPlan(
+          scopedDb.generationPlanning,
+          { ...input, sequenceId }
+        );
+        const gate = await gateStoryboardRenders({
+          scopedDb,
+          reservationId: input.reservationId,
+          remainingWork: result.remainingCost,
+          sceneCount: result.plan.targets.length,
+          sequenceId,
+        });
+        // The gate already zeroed the leftover, so a retry can only fail again:
+        // report the shortfall once, outside the step.
+        if (!gate.spawnRenders)
+          return {
+            plan: null,
+            short: {
+              sceneCount: result.plan.targets.length,
+              neededMicros: gate.neededMicros,
+              remainingMicros: gate.remainingMicros,
+            },
+          };
+        return { plan: JSON.stringify(result.plan), short: null };
+      });
+      const { short } = frozen;
+      if (short) {
+        const message = creditsShortStatusError(short);
+        await step.do('emit-reservation-short', async () => {
+          await seq.updateStatus('failed', message);
+          // A top-up prompt, not a failure toast (#1328).
+          await getGenerationChannel(sequenceId).emit(
+            'generation.reservation:short',
+            {
+              neededUsd: microsToUsd(short.neededMicros),
+              remainingUsd: microsToUsd(short.remainingMicros),
+              sceneCount: short.sceneCount,
+            }
+          );
+        });
+        throw new NonRetryableError(message);
+      }
+      if (!frozen.plan) throw new NonRetryableError('Fresh plan missing');
+      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- exact checkpoint above
+      plan = JSON.parse(frozen.plan) as NonNullable<
+        StoryboardWorkflowInput['plan']
+      >;
+    }
+    // Fresh and continue share the same durable execution path.
+    let continueFailure: string | null = null;
+    if (input.plan || plan.targets.length || plan.references || plan.music) {
+      const result = await spawnAndAwaitChild<
+        UpdateStaleShotsWorkflowInput,
+        UpdateStaleShotsResult
+      >(step, {
+        binding: this.env.UPDATE_STALE_SHOTS_WORKFLOW,
+        parentBindingName: 'STORYBOARD_WORKFLOW',
+        parentInstanceId: event.instanceId,
+        childId: `continue:${sequenceId}:${event.instanceId}`,
+        childPayload: {
+          userId: input.userId,
+          teamId: input.teamId,
+          sequenceId,
+          reservationId: input.reservationId,
+          plan,
+          freshRun: !input.plan,
+          announcePhases: true,
+          leftoverGrokShotIds: input.leftoverGrokShotIds,
+        },
+        spawnStepName: 'spawn-continue',
+        awaitStepName: 'await-continue',
+        readOutput: readUpdateStaleShotsResult,
+        // Sheets (30m) then prompts + stills + clips per shot (90m each,
+        // in parallel), plus notify lag under a burst.
+        timeout: '4 hours',
+      });
+      // The executor records a unit's failure and carries on; the run as a
+      // whole did not finish what was asked, so it ends failed, not
+      // completed, and sends no "ready" email.
+      const [first] = result.failures;
+      if (first) {
+        continueFailure =
+          result.failures.length === 1
+            ? first.error
+            : `${result.failures.length} steps failed. First: ${first.error}`;
+      }
+    }
 
     const reservationId = input.reservationId;
     if (reservationId) {

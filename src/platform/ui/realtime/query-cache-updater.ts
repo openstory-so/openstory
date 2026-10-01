@@ -104,8 +104,8 @@ function isValidMusicStatus(
 
 // Narrows to the statuses image emits carry. 'cancelled' (#1108) is
 // deliberately absent HERE: only VIDEO carries it (see isValidVideoStatus) —
-// image cancels settle the frame to completed/pending server-side. This base
-// union is assignable to the nullable `frame.imageStatus`.
+// a cancelled image row reads as the frame's selection (#1942). This base
+// union is the shot's `imageStatus`.
 type LiveEmitStatus = 'pending' | 'generating' | 'completed' | 'failed';
 function isValidShotStatus(status: unknown): status is LiveEmitStatus {
   return (
@@ -260,21 +260,18 @@ export function updateQueryCacheFromEvent(
                     status === 'completed' || status === 'failed'
                       ? null
                       : f.pendingUpscaleIndex,
-                  frame: {
-                    ...f.frame,
-                    imageStatus: isValidShotStatus(status)
-                      ? status
-                      : f.frame.imageStatus,
-                    // Surface the failure reason live (#881): set on `failed`,
-                    // clear when a new attempt starts/succeeds, and leave
-                    // untouched for status-less emits (e.g. preview-url).
-                    imageError:
-                      status === 'failed'
-                        ? (errorMessage ?? f.frame.imageError)
-                        : isValidShotStatus(status)
-                          ? null
-                          : f.frame.imageError,
-                  },
+                  imageStatus: isValidShotStatus(status)
+                    ? status
+                    : f.imageStatus,
+                  // Surface the failure reason live (#881): set on `failed`,
+                  // clear when a new attempt starts/succeeds, and leave
+                  // untouched for status-less emits (e.g. preview-url).
+                  imageError:
+                    status === 'failed'
+                      ? (errorMessage ?? f.imageError)
+                      : isValidShotStatus(status)
+                        ? null
+                        : f.imageError,
                 }
               : f
           )
@@ -537,23 +534,14 @@ export function updateQueryCacheFromEvent(
         invalidateGenerationPlan(queryClient, sequenceId);
       }
       const audioUrl = getOptionalString(data, 'audioUrl');
-      const model = getOptionalString(data, 'model');
-      if (isValidMusicStatus(status)) {
+      if (isValidMusicStatus(status) && data.primary !== false) {
         queryClient.setQueryData<Sequence>(
           sequenceKeys.detail(sequenceId),
           (old) => {
+            // A secondary model's run (#546) emits only to refresh the
+            // per-model queries below; applying it here would clobber the
+            // sequence's own track.
             if (!old) return old;
-            // Only the primary model owns the live `sequences.music*` columns.
-            // In a multi-model fan-out (#546) secondary models emit model-scoped
-            // events purely to refresh the per-model queries below — applying
-            // their status/url here would clobber the primary (last-writer-wins,
-            // and a secondary failure would mask a working primary track). The
-            // primary's `set-generating-status` writes `musicModel` first, so
-            // match against it; a missing `model` (single-model / legacy
-            // emitters) is treated as the primary.
-            if (model && old.musicModel && model !== old.musicModel) {
-              return old;
-            }
             return {
               ...old,
               musicStatus: status,
@@ -813,6 +801,14 @@ export function updateQueryCacheFromEvent(
       void queryClient.invalidateQueries({
         queryKey: shotKeys.dialogueSectionsAll(),
       });
+      // Fast analysis can finish before the client subscribes to scene/shot
+      // creation events. Reconcile the scene spine and script at completion too.
+      void queryClient.invalidateQueries({
+        queryKey: sceneKeys.list(sequenceId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: sceneKeys.composedScript(sequenceId),
+      });
       // Final catch-all so the cast, location and element lists — and the
       // per-scene membership the tabs filter by — reflect the finished run
       // even if an intermediate event was missed.
@@ -852,7 +848,7 @@ export function updateQueryCacheFromEvent(
             f.id === shotId
               ? {
                   ...f,
-                  frame: { ...f.frame, imageStatus: 'failed' },
+                  imageStatus: 'failed',
                   videoStatus: 'failed',
                 }
               : f

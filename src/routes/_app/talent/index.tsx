@@ -1,4 +1,5 @@
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
+import { SignInButton } from '@/platform/ui/auth/sign-in-button';
 import { AddTalentDialog } from '@/cast/ui/talent-library/add-talent-dialog';
 import { TalentLibraryFilters } from '@/cast/ui/talent-library/talent-library-filters';
 import { TalentLibraryList } from '@/cast/ui/talent-library/talent-library-list';
@@ -58,7 +59,7 @@ function TalentPage() {
                 ? 'Add talent to your library to maintain visual consistency across your sequences.'
                 : 'Check back soon, or sign in to build your own talent library.'
             }
-            action={addAction}
+            action={isAuthenticated ? addAction : <SignInButton />}
           />
         ) : (
           <TalentLibraryList

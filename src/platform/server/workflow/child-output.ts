@@ -8,16 +8,6 @@
  */
 
 import type { MotionAudioClip } from '@/platform/server/db/schema/shot-prompt-versions';
-import {
-  SHEET_STATUSES,
-  type CharacterMinimal,
-  type SheetStatus,
-} from '@/platform/server/db/schema/characters';
-import {
-  REFERENCE_STATUSES,
-  type ReferenceStatus,
-  type SequenceLocationMinimal,
-} from '@/platform/server/db/schema/sequence-locations';
 import type {
   CharacterSheetWorkflowResult,
   CharacterVoiceWorkflowResult,
@@ -25,7 +15,6 @@ import type {
   LocationSheetWorkflowResult,
   MotionWorkflowResult,
   MusicWorkflowResult,
-  ShotImagesWorkflowResult,
 } from '@/platform/server/workflow/types';
 
 export function readUnknown(value: unknown): unknown {
@@ -154,20 +143,6 @@ export function readArray<T>(
   return value.map((item) => readItem(item));
 }
 
-function readNullableStrings(value: unknown, label: string): (string | null)[] {
-  return readArray(
-    value,
-    (item) => {
-      if (item === null) return null;
-      if (typeof item !== 'string') {
-        throw new Error(`${label} entries must be strings or null`);
-      }
-      return item;
-    },
-    label
-  );
-}
-
 export function withOptional<K extends string, V>(
   key: K,
   value: V | undefined
@@ -238,19 +213,6 @@ export function readLocationSheetWorkflowResult(
   };
 }
 
-export function readShotImagesWorkflowResult(
-  value: unknown
-): ShotImagesWorkflowResult {
-  const record = recordOf(value, 'shot images result');
-  const frameVersionIds = has(record, 'frameVersionIds')
-    ? readNullableStrings(record.frameVersionIds, 'frameVersionIds')
-    : undefined;
-  return {
-    imageUrls: readNullableStrings(record.imageUrls, 'imageUrls'),
-    ...withOptional('frameVersionIds', frameVersionIds),
-  };
-}
-
 function readSpokenLine(value: unknown): { index: number; text: string } {
   const record = recordOf(value, 'spoken line');
   return {
@@ -271,6 +233,7 @@ function readMotionAudioClip(value: unknown): MotionAudioClip {
     durationSeconds: nullableNumber(record, 'durationSeconds'),
     ...withOptional('sourceKey', optionalString(record, 'sourceKey')),
     ...withOptional('spokenLines', spokenLines),
+    ...withOptional('speechId', optionalString(record, 'speechId')),
     ...withOptional('recordingId', optionalString(record, 'recordingId')),
   };
 }
@@ -289,60 +252,6 @@ export function readDialogueAudioWorkflowResult(
     );
   }
   return { clipsByShotId };
-}
-
-function readSheetStatus(value: unknown): SheetStatus {
-  return stringEnum(value, SHEET_STATUSES, 'sheetStatus');
-}
-
-function readReferenceStatus(value: unknown): ReferenceStatus {
-  return stringEnum(value, REFERENCE_STATUSES, 'referenceStatus');
-}
-
-function readCharacterMinimal(value: unknown): CharacterMinimal {
-  const record = recordOf(value, 'character');
-  return {
-    id: requiredString(record, 'id'),
-    characterId: requiredString(record, 'characterId'),
-    name: requiredString(record, 'name'),
-    sheetImageUrl: nullableString(record, 'sheetImageUrl'),
-    sheetStatus: readSheetStatus(record.sheetStatus),
-    sheetInputHash: nullableString(record, 'sheetInputHash'),
-    selectedSheetVersionId: nullableString(record, 'selectedSheetVersionId'),
-    physicalDescription: nullableString(record, 'physicalDescription'),
-    voiceOnly: requiredBoolean(record, 'voiceOnly'),
-    isPerson: requiredBoolean(record, 'isPerson'),
-    consistencyTag: nullableString(record, 'consistencyTag'),
-    ...withOptional('voiceId', optionalNullableString(record, 'voiceId')),
-  };
-}
-
-export function readCharacterMinimals(value: unknown): CharacterMinimal[] {
-  return readArray(value, readCharacterMinimal, 'characters');
-}
-
-function readSequenceLocationMinimal(value: unknown): SequenceLocationMinimal {
-  const record = recordOf(value, 'location');
-  return {
-    id: requiredString(record, 'id'),
-    locationId: requiredString(record, 'locationId'),
-    name: requiredString(record, 'name'),
-    referenceImageUrl: nullableString(record, 'referenceImageUrl'),
-    referenceStatus: readReferenceStatus(record.referenceStatus),
-    referenceInputHash: nullableString(record, 'referenceInputHash'),
-    selectedReferenceVersionId: nullableString(
-      record,
-      'selectedReferenceVersionId'
-    ),
-    description: nullableString(record, 'description'),
-    consistencyTag: nullableString(record, 'consistencyTag'),
-  };
-}
-
-export function readSequenceLocationMinimals(
-  value: unknown
-): SequenceLocationMinimal[] {
-  return readArray(value, readSequenceLocationMinimal, 'locations');
 }
 
 function readStringEntry(value: unknown, label: string): string {

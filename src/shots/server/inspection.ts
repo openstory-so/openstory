@@ -29,9 +29,8 @@ export function serializeShot(
     anchorFrame: anchorFrameId
       ? {
           id: anchorFrameId,
-          status: shot.frame.imageStatus ?? 'pending',
-          error:
-            shot.frame.imageStatus === 'failed' ? shot.frame.imageError : null,
+          status: shot.imageStatus,
+          error: shot.imageError,
           selectedImage: {
             versionId: selectedImageId,
             usable: read.selectedImageUsable,

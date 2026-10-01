@@ -74,6 +74,7 @@ describe('createSequencesMethods style snapshot', () => {
     const style = await insertStyle('Noir', V1_A);
     const methods = createSequencesMethods(db, teamId, userId);
     const sequence = await methods.create({
+      generationStopAt: 'images',
       title: 'S',
       styleId: style.id,
       analysisModel: 'anthropic/claude-haiku-4.5',
@@ -88,6 +89,7 @@ describe('createSequencesMethods style snapshot', () => {
     const style = await insertStyle('Noir', V1_A);
     const methods = createSequencesMethods(db, teamId, userId);
     const sequence = await methods.create({
+      generationStopAt: 'images',
       title: 'S',
       styleId: style.id,
       analysisModel: 'anthropic/claude-haiku-4.5',
@@ -107,6 +109,7 @@ describe('createSequencesMethods style snapshot', () => {
     const styleB = await insertStyle('Product', V1_B);
     const methods = createSequencesMethods(db, teamId, userId);
     const sequence = await methods.create({
+      generationStopAt: 'images',
       title: 'S',
       styleId: styleA.id,
       analysisModel: 'anthropic/claude-haiku-4.5',
@@ -124,6 +127,7 @@ describe('createSequencesMethods style snapshot', () => {
     const styleB = await insertStyle('Product', V1_B);
     const methods = createSequencesMethods(db, teamId, userId);
     const sequence = await methods.create({
+      generationStopAt: 'images',
       title: 'S',
       styleId: styleA.id,
       analysisModel: 'anthropic/claude-haiku-4.5',
@@ -146,6 +150,7 @@ describe('createSequencesMethods style snapshot', () => {
     const style = await insertStyle('Auto', V1_A);
     const methods = createSequencesMethods(db, teamId, userId);
     const sequence = await methods.create({
+      generationStopAt: 'images',
       title: 'S',
       styleId: style.id,
       deferStyleSnapshot: true,

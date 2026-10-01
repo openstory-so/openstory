@@ -20,11 +20,10 @@ import {
 } from '@/platform/server/workflow/child-output';
 import type {
   ElementSheetWorkflowResult,
-  FramePromptBatchWorkflowResult,
   LocationMatchingWorkflowOutput,
-  MotionMusicPromptsWorkflowResult,
   MusicPromptWorkflowResult,
   SceneSplitWorkflowResult,
+  ShotSpecRewriteWorkflowResult,
   TalentCharacterMatch,
   TalentMatchingWorkflowOutput,
 } from '@/platform/server/workflow/types';
@@ -33,13 +32,9 @@ import {
   readCharacterBibleEntry,
   readElementBibleEntry,
   readLocationBibleEntry,
-  readMotionPrompt,
-  readVisualPrompt,
   sceneSchema,
   storedDialogueLineSchema,
-  type MotionPrompt,
   type Scene,
-  type VisualPrompt,
 } from '@/shots/scene-analysis.schema';
 import { shotSpecSchema } from '@/shots/shot-list.schema';
 
@@ -134,9 +129,10 @@ export function readSceneSplitWorkflowResult(
 
 function readTalentMatch(value: unknown): TalentCharacterMatch {
   const record = recordOf(value, 'talent match');
-  const sheetMetadata = Object.hasOwn(record, 'sheetMetadata')
-    ? readCharacterBibleEntry(record.sheetMetadata)
-    : undefined;
+  const sheetMetadata =
+    record.sheetMetadata === undefined
+      ? undefined
+      : readCharacterBibleEntry(record.sheetMetadata);
   return {
     characterId: requiredString(record, 'characterId'),
     talentId: requiredString(record, 'talentId'),
@@ -198,100 +194,6 @@ function readLibraryLocationMatch(
   };
 }
 
-function readMotionPromptRecord(
-  value: unknown,
-  label: string
-): Record<string, MotionPrompt> {
-  const record = recordOf(value, label);
-  const out: Record<string, MotionPrompt> = {};
-  for (const [key, item] of Object.entries(record))
-    out[key] = readMotionPrompt(item);
-  return out;
-}
-
-function readVisualPromptRecord(
-  value: unknown,
-  label: string
-): Record<string, VisualPrompt> {
-  const record = recordOf(value, label);
-  const out: Record<string, VisualPrompt> = {};
-  for (const [key, item] of Object.entries(record))
-    out[key] = readVisualPrompt(item);
-  return out;
-}
-
-function readNullableStringRecord(
-  value: unknown,
-  label: string
-): Record<string, string | null> {
-  const record = recordOf(value, label);
-  const out: Record<string, string | null> = {};
-  for (const [key, item] of Object.entries(record)) {
-    if (item === null) out[key] = null;
-    else if (typeof item === 'string') out[key] = item;
-    else throw new Error(`${label}.${key} must be a string or null`);
-  }
-  return out;
-}
-
-function optionalRecord<T>(
-  record: Record<string, unknown>,
-  key: string,
-  read: (value: unknown, label: string) => T
-): T | undefined {
-  if (!Object.hasOwn(record, key) || record[key] === undefined)
-    return undefined;
-  return read(record[key], key);
-}
-
-export function readMotionMusicPromptsWorkflowResult(
-  value: unknown
-): MotionMusicPromptsWorkflowResult {
-  const record = recordOf(value, 'motion music prompts result');
-  return {
-    completeScenes: readScenes(record.completeScenes, 'completeScenes'),
-    motionPromptsBySceneId: readMotionPromptRecord(
-      record.motionPromptsBySceneId,
-      'motionPromptsBySceneId'
-    ),
-    ...withOptional(
-      'motionPromptsByShotId',
-      optionalRecord(record, 'motionPromptsByShotId', readMotionPromptRecord)
-    ),
-    ...withOptional(
-      'motionPromptVersionIdsBySceneId',
-      optionalRecord(
-        record,
-        'motionPromptVersionIdsBySceneId',
-        readNullableStringRecord
-      )
-    ),
-    ...withOptional(
-      'motionPromptVersionIdsByShotId',
-      optionalRecord(
-        record,
-        'motionPromptVersionIdsByShotId',
-        readNullableStringRecord
-      )
-    ),
-    musicPrompt: requiredString(record, 'musicPrompt'),
-    musicTags: requiredString(record, 'musicTags'),
-  };
-}
-
-export function readFramePromptBatchWorkflowResult(
-  value: unknown
-): FramePromptBatchWorkflowResult {
-  const record = recordOf(value, 'frame prompt batch result');
-  return {
-    scenes: readScenes(record.scenes, 'scenes'),
-    visualPromptsBySceneId: readVisualPromptRecord(
-      record.visualPromptsBySceneId,
-      'visualPromptsBySceneId'
-    ),
-  };
-}
-
 function readSequenceElement(value: unknown): SequenceElementMinimal {
   const record = recordOf(value, 'element');
   return {
@@ -318,4 +220,15 @@ export function readMusicPromptWorkflowResult(
   value: unknown
 ): MusicPromptWorkflowResult {
   return musicDesignResultSchema.parse(value);
+}
+
+export function readShotSpecRewriteWorkflowResult(
+  value: unknown
+): ShotSpecRewriteWorkflowResult {
+  const record = recordOf(value, 'shot spec rewrite result');
+  return {
+    specVersionId: nullableString(record, 'specVersionId'),
+    visualVersionId: nullableString(record, 'visualVersionId'),
+    motionVersionId: nullableString(record, 'motionVersionId'),
+  };
 }

@@ -23,6 +23,7 @@ import {
   user,
 } from '@/platform/server/db/schema';
 import type {
+  PromptVariantSource,
   ShotPromptType,
   ShotPromptVersion,
   ShotPromptVersionComponents,
@@ -160,6 +161,14 @@ export type WriteShotPromptVersionInput = WriteShotPromptVersionBase &
         source: 'restored' | 'softened' | 'shortened';
         inputHash: string | null;
         analysisModel: string | null;
+      }
+    | {
+        // Built from a shot spec (#1915). A restore copies this id. A
+        // derived row with no spec is rejected by the type.
+        source: 'derived';
+        inputHash: string | null;
+        analysisModel: string | null;
+        specVersionId: string;
       }
   );
 
@@ -338,6 +347,8 @@ export function createShotPromptVersionsMethods(db: Database) {
             audio: input.audio,
             usesStartFrame: input.usesStartFrame,
             source: input.source,
+            specVersionId:
+              input.source === 'derived' ? input.specVersionId : null,
             inputHash: nextHash,
             analysisModel,
             createdBy: input.createdBy ?? null,
@@ -511,7 +522,15 @@ export function createShotPromptVersionsMethods(db: Database) {
        * verify digest captured at trigger (#1616).
        */
       inputHash?: MotionPromptInputHash;
+      /**
+       * Wins over the claim hash. Rewrite shot passes the digest of the new
+       * spec; the claim was stamped from the spec the run replaced (#1923).
+       */
+      stampHash?: MotionPromptInputHash;
       analysisModel: string;
+      /** Rebuild sets `derived` and the spec the text came from (#1923). */
+      source?: PromptVariantSource;
+      specVersionId?: string | null;
     }): Promise<ShotPromptVersion | null> => {
       await promoteLegacyMotionDialogue(db, input.shotId);
       const [claim] = await db
@@ -529,7 +548,8 @@ export function createShotPromptVersionsMethods(db: Database) {
           `ShotPromptVersion ${input.versionId} not found for shot ${input.shotId}`
         );
       }
-      const inputHash = claim.pendingInputHash ?? input.inputHash;
+      const inputHash =
+        input.stampHash ?? claim.pendingInputHash ?? input.inputHash;
       if (!inputHash) {
         throw new Error(
           `ShotPromptVersion ${input.versionId} has no pendingInputHash; cannot complete`
@@ -583,6 +603,10 @@ export function createShotPromptVersionsMethods(db: Database) {
           inputHash,
           analysisModel: input.analysisModel,
           status: 'completed',
+          ...(input.source !== undefined ? { source: input.source } : {}),
+          ...(input.specVersionId !== undefined
+            ? { specVersionId: input.specVersionId }
+            : {}),
         })
         .where(
           and(

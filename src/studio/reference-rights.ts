@@ -14,6 +14,9 @@ export function studioReferenceImages(input: StudioCreateInput): string[] {
       return [input.startImageUrl, input.endImageUrl].filter(
         (url): url is string => Boolean(url)
       );
+    // The source of an edit is a clip this team generated, not an upload;
+    // clips are not likeness-gated (`referenceVideos` are not either).
+    case 'edit':
     case 'text':
       return [];
     default:

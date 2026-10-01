@@ -51,13 +51,7 @@ async function q(sql: string): Promise<Row[]> {
 const camel = (s: string) => s.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
 
 // SQLite stores these as 0/1; the typed shapes want real booleans.
-const BOOL_COLS = new Set([
-  'auto_generate_motion',
-  'auto_generate_music',
-  'include_music',
-  'is_public',
-  'is_template',
-]);
+const BOOL_COLS = new Set(['include_music', 'is_public', 'is_template']);
 
 // Sentinels we string-replace into real expressions after JSON.stringify.
 const dateMark = (iso: string) => ({ __date__: iso });
@@ -106,8 +100,16 @@ function requireRow(rows: Row[], what: string): Row {
   return row;
 }
 
+// The music prompt is the sequence's SELECTED prompt version (#1115).
 const seqRow = requireRow(
-  await q(`SELECT * FROM sequences WHERE id='${SEQ}'`),
+  await q(
+    `SELECT s.*, p.prompt AS music_prompt, p.tags AS music_tags,
+       p.input_hash AS music_prompt_input_hash
+     FROM sequences s
+     LEFT JOIN sequence_music_prompt_versions p
+       ON p.id = s.selected_music_prompt_version_id
+     WHERE s.id='${SEQ}'`
+  ),
   'sequence'
 );
 const styleRow = requireRow(
@@ -123,13 +125,23 @@ const sceneRows = await q(
    LEFT JOIN scene_script_versions v ON v.id = s.selected_script_version_id
    WHERE s.sequence_id='${SEQ}' ORDER BY s.order_index`
 );
+// A shot's place is `(scenes.order_index, shots.shot_number)` — shots have
+// no order column of their own (#1107).
 const shotRows = await q(
-  `SELECT * FROM shots WHERE sequence_id='${SEQ}' ORDER BY order_index`
+  `SELECT sh.* FROM shots sh LEFT JOIN scenes sc ON sc.id = sh.scene_id
+   WHERE sh.sequence_id='${SEQ}' ORDER BY sc.order_index, sh.shot_number`
 );
 
 const sequence = mapRow(seqRow);
 if (sequence.posterUrl) sequence.posterUrl = null;
-if (sequence.musicUrl) sequence.musicUrl = null;
+// The track's media is stripped like the poster's, so the fixture has none.
+Object.assign(sequence, {
+  musicUrl: null,
+  musicPath: null,
+  musicGeneratedAt: null,
+  musicStatus: 'pending',
+  musicError: null,
+});
 
 const style = mapRow(styleRow);
 if (style.previewUrl) style.previewUrl = null;

@@ -1,4 +1,4 @@
-import { ActionCost } from '@/billing/ui/action-cost';
+import { InButtonCost, costButtonClassName } from '@/billing/ui/action-cost';
 import { GenerationStopSlider } from '@/sequences/ui/generation/generation-stop-slider';
 import { MotionModelSelector } from '@/models/ui/pickers/motion-model-selector';
 import { MusicModelSelector } from '@/models/ui/pickers/music-model-selector';
@@ -7,6 +7,8 @@ import { Checkbox } from '@/ui/shadcn/checkbox';
 import { ScrollArea } from '@/ui/shadcn/scroll-area';
 import {
   DEFAULT_GENERATION_STOP_AT,
+  includesStage,
+  sliderCommittedStop,
   stageIndex,
   type GenerationStage,
 } from '@/sequences/pipeline';
@@ -15,6 +17,7 @@ import {
   firstStageWithWork,
   planWork,
   planWorkLabel,
+  planWorkLine,
   switchLocks,
   switchStopAt,
   type PlanUnitRef,
@@ -66,17 +69,7 @@ import {
   type ShotView,
 } from '@/shots/shot-view';
 import { cn } from '@/ui/utils';
-import {
-  CirclePlay,
-  FileText,
-  Images,
-  Loader2,
-  Mic,
-  Music,
-  PanelLeftClose,
-  Plus,
-  Video,
-} from 'lucide-react';
+import { CirclePlay, PanelLeftClose } from 'lucide-react';
 import {
   memo,
   useCallback,
@@ -90,15 +83,6 @@ import { toast } from 'sonner';
 import { SceneGroup, sumShotSeconds } from './scene-group';
 import { TargetDurationChip } from '@/sequences/ui/target-duration-chip';
 import { SceneListItem } from './scene-list-item';
-
-const CONTINUE_ICON = {
-  script: FileText,
-  references: Images,
-  images: Images,
-  dialogue: Mic,
-  motion: Video,
-  music: Music,
-} as const;
 
 /**
  * Center `el` in the nearest Radix ScrollArea viewport. Returns false when
@@ -492,16 +476,23 @@ const SceneListComponent: React.FC<SceneListProps> = ({
       generateVoices: voices,
     },
     stopAt: 'music',
+    plan: footerPlan,
   });
   const cappedStopAt =
     stageIndex(continueStopAt) > stageIndex(maxStage)
       ? maxStage
       : continueStopAt;
-  const continueStopAtClamped =
+  const raisedStop =
     minStage && stageIndex(cappedStopAt) < stageIndex(minStage)
       ? minStage
       : cappedStopAt;
-  const ContinueIcon = CONTINUE_ICON[continueStopAtClamped];
+  // Price and run the stop the slider actually shows. A hidden Images stop
+  // paints on Motion & Music; leaving it as Images quotes only the music prompt.
+  const continueStopAtClamped = sliderCommittedStop(
+    raisedStop,
+    !draftStartFrames,
+    voices
+  );
   const showButton = showMotionFooter;
   const continueWork = planWork(footerPlan, continueStopAtClamped);
   const continueLabel = planWorkLabel(continueWork);
@@ -552,9 +543,10 @@ const SceneListComponent: React.FC<SceneListProps> = ({
 
   // Batch cost = sum of per-shot motion at the selected video model
   // (+ optional music track) (#1140). Matches server `data.model` override.
-  const { pricing: falPricing } = useFalPricing();
-  const batchCostEstimate = useMemo((): Microdollars | null => {
-    if (!falPricing || notStartedShots.length === 0) return null;
+  const { pricing: falPricing, isPending: pricingPending } = useFalPricing();
+  const batchCostEstimate = useMemo((): Microdollars | null | undefined => {
+    if (notStartedShots.length === 0) return null;
+    if (!falPricing) return pricingPending ? undefined : null;
     let total: Microdollars = ZERO_MICROS;
     let anyHonest = false;
     for (const shot of notStartedShots) {
@@ -602,6 +594,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     videoModel,
     resolution,
     generateStartFrames,
+    pricingPending,
   ]);
 
   // Selected drafts (#1756): selection is approval. Finished and inside
@@ -629,8 +622,12 @@ const SceneListComponent: React.FC<SceneListProps> = ({
         soonest === null ? null : (draftExpirySuffix(soonest)?.trim() ?? null),
     };
   }, [segments]);
-  const draftFinalCostEstimate = useMemo((): Microdollars | null => {
-    if (!falPricing || draftSegments.length === 0) return null;
+  const draftFinalCostEstimate = useMemo(():
+    | Microdollars
+    | null
+    | undefined => {
+    if (draftSegments.length === 0) return null;
+    if (!falPricing) return pricingPending ? undefined : null;
     let total: Microdollars = ZERO_MICROS;
     let anyHonest = false;
     for (const segment of draftSegments) {
@@ -656,7 +653,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
       total = addMicros(total, perSegment);
     }
     return anyHonest ? total : null;
-  }, [draftSegments, falPricing, shots, videoModel]);
+  }, [draftSegments, falPricing, pricingPending, shots, videoModel]);
   const handleRenderDrafts = async () => {
     if (!onRenderDraftsAtQuality) return;
     await runFooterAction('Failed to render at quality', () =>
@@ -672,15 +669,20 @@ const SceneListComponent: React.FC<SceneListProps> = ({
       {draftSegments.length > 0 && (
         <Button
           variant={showButton ? 'outline' : 'default'}
-          className="w-full"
+          className={costButtonClassName}
           onClick={() => void handleRenderDrafts()}
           disabled={isGenerating}
         >
-          Render {draftSegments.length}{' '}
-          {draftSegments.length === 1 ? 'final' : 'finals'}
+          <InButtonCost
+            estimate={draftFinalCostEstimate}
+            onPrimary={!showButton}
+            amountWidth="double"
+          >
+            Render {draftSegments.length}{' '}
+            {draftSegments.length === 1 ? 'final' : 'finals'}
+          </InButtonCost>
         </Button>
       )}
-      <ActionCost estimate={draftFinalCostEstimate} />
       {(soonestDraftExpiry || expiredDrafts > 0) && (
         <p className="text-xs text-muted-foreground">
           {[
@@ -719,7 +721,6 @@ const SceneListComponent: React.FC<SceneListProps> = ({
         onChange={setContinueStopAt}
         minStage={minStage ?? undefined}
         maxStage={maxStage}
-        startFramesLocked={locks.startFrames}
         voicesLocked={locks.voices}
         generateStartFrames={draftStartFrames}
         onGenerateStartFramesChange={setDraftStartFrames}
@@ -736,28 +737,31 @@ const SceneListComponent: React.FC<SceneListProps> = ({
         <>
           <Button
             variant="default"
-            className="w-full"
+            className={costButtonClassName}
             onClick={() => void handleContinue()}
             disabled={isGenerating || planLoading || continueWork.length === 0}
           >
-            {isGenerating ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Generating…
-              </>
-            ) : (
-              <>
-                <ContinueIcon className="mr-2 h-4 w-4" />
-                {continueLabel}
-              </>
-            )}
+            <InButtonCost
+              estimate={continueCostEstimate}
+              amountWidth={
+                includesStage(continueStopAtClamped, 'motion')
+                  ? 'double'
+                  : 'single'
+              }
+            >
+              {isGenerating ? 'Generating…' : continueLabel}
+            </InButtonCost>
           </Button>
+          {continueWork.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {planWorkLine(continueWork)}
+            </p>
+          )}
           {continueBlocked.map((line) => (
             <p key={line} className="text-xs text-muted-foreground">
               {line}
             </p>
           ))}
-          <ActionCost estimate={continueCostEstimate} />
         </>
       )}
     </>
@@ -978,11 +982,6 @@ const SceneListComponent: React.FC<SceneListProps> = ({
               onClick={handleAddScene}
               disabled={!isHydrated || createScene.isPending}
             >
-              {createScene.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Plus className="mr-2 h-4 w-4" />
-              )}
               {createScene.isPending ? 'Adding scene…' : 'Add scene'}
             </Button>
           )}
@@ -1024,36 +1023,26 @@ const SceneListComponent: React.FC<SceneListProps> = ({
               <div className="flex flex-col gap-1">
                 <Button
                   variant="default"
-                  className="w-full"
+                  className={costButtonClassName}
                   onClick={() => void handleGenerateMotion()}
                   disabled={isButtonDisabled}
                 >
-                  {isGenerating ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Generating…
-                    </>
-                  ) : !motionPromptsReady ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Writing motion prompts…
-                    </>
-                  ) : includeMusic && !musicPromptsReady ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Composing music…
-                    </>
-                  ) : (
-                    <>
-                      <Video className="mr-2 h-4 w-4" />
-                      Generate {notStartedShots.length} / {totalShots}{' '}
-                      {totalShots === 1 ? 'shot' : 'shots'}
-                    </>
-                  )}
+                  <InButtonCost
+                    estimate={batchCostEstimate}
+                    amountWidth="double"
+                  >
+                    {isGenerating
+                      ? 'Generating…'
+                      : !motionPromptsReady
+                        ? 'Writing motion prompts…'
+                        : includeMusic && !musicPromptsReady
+                          ? 'Composing music…'
+                          : `Generate ${notStartedShots.length} / ${totalShots} ${totalShots === 1 ? 'shot' : 'shots'}`}
+                  </InButtonCost>
                 </Button>
-                <ActionCost estimate={batchCostEstimate} />
               </div>
-              {offerDraftFirst && (
+              {/* The steps carry the Draft first switch; one control at a time. */}
+              {offerDraftFirst && !showSteps && (
                 <label
                   htmlFor="batch-draft-motion"
                   className="flex items-center gap-2 text-sm text-muted-foreground"
@@ -1091,22 +1080,11 @@ const SceneListComponent: React.FC<SceneListProps> = ({
                 onClick={() => void handleGenerateMusicClick()}
                 disabled={isGenerating || !musicPromptsReady}
               >
-                {isGenerating ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Generating…
-                  </>
-                ) : !musicPromptsReady ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Composing music…
-                  </>
-                ) : (
-                  <>
-                    <Music className="mr-2 h-4 w-4" />
-                    Generate Music
-                  </>
-                )}
+                {isGenerating
+                  ? 'Generating…'
+                  : !musicPromptsReady
+                    ? 'Composing music…'
+                    : 'Generate Music'}
               </Button>
               {renderDraftsButton}
             </div>

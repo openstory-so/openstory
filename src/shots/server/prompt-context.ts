@@ -52,18 +52,16 @@ export type ShotPromptContextSequence = {
  * them in, turning an O(shots) read pattern into O(1).
  */
 export type ShotPromptContextRefs = {
-  characters: Awaited<ReturnType<ScopedDb['characters']['listWithSheets']>>;
-  locations: Awaited<
-    ReturnType<ScopedDb['sequenceLocations']['listWithReferences']>
-  >;
+  characters: Awaited<ReturnType<ScopedDb['characters']['list']>>;
+  locations: Awaited<ReturnType<ScopedDb['sequenceLocations']['list']>>;
   elements: Awaited<ReturnType<ScopedDb['sequenceElements']['list']>>;
   style: Awaited<ReturnType<ScopedDb['styles']['getById']>> | null;
 };
 
 /** The four reads a prompt-context load makes. A full `ScopedDb` assigns. */
 export type PromptContextReadDb = {
-  characters: Pick<ScopedDb['characters'], 'listWithSheets'>;
-  sequenceLocations: Pick<ScopedDb['sequenceLocations'], 'listWithReferences'>;
+  characters: Pick<ScopedDb['characters'], 'list'>;
+  sequenceLocations: Pick<ScopedDb['sequenceLocations'], 'list'>;
   sequenceElements: Pick<ScopedDb['sequenceElements'], 'list'>;
   styles: Pick<ScopedDb['styles'], 'getById'>;
 };
@@ -103,8 +101,8 @@ export async function loadShotPromptContext(args: {
   const [characters, locations, elements, style] = refs
     ? [refs.characters, refs.locations, refs.elements, refs.style]
     : await Promise.all([
-        scopedDb.characters.listWithSheets(sequence.id),
-        scopedDb.sequenceLocations.listWithReferences(sequence.id),
+        scopedDb.characters.list(sequence.id),
+        scopedDb.sequenceLocations.list(sequence.id),
         scopedDb.sequenceElements.list(sequence.id),
         hasSnapshot || !sequence.styleId
           ? Promise.resolve(null)

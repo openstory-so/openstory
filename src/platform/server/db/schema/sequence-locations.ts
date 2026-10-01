@@ -16,7 +16,7 @@ import type { LocationBible } from './bible-versions';
 import { locationLibrary } from './location-library';
 import { sequences } from './sequences';
 
-export const REFERENCE_STATUSES = [
+const REFERENCE_STATUSES = [
   'pending',
   'generating',
   'completed',
@@ -52,12 +52,9 @@ export const sequenceLocations = snakeCase.table(
     // version, written only where NOT NULL forces it. See the `characters` twin.
     legacyName: text('name', { length: 255 }).notNull(),
     legacyType: text('type'),
-    legacyTimeOfDay: text('time_of_day'),
     legacyDescription: text('description'),
     legacyArchitecturalStyle: text('architectural_style'),
     legacyKeyFeatures: text('key_features'),
-    legacyColorPalette: text('color_palette'),
-    legacyLightingSetup: text('lighting_setup'),
     legacyAmbiance: text('ambiance'),
     legacyConsistencyTag: text('consistency_tag'),
     // First appearance in script
@@ -112,12 +109,9 @@ export type SequenceLocationRow = InferSelectModel<typeof sequenceLocations>;
 export type LegacyLocationBibleColumn =
   | 'legacyName'
   | 'legacyType'
-  | 'legacyTimeOfDay'
   | 'legacyDescription'
   | 'legacyArchitecturalStyle'
   | 'legacyKeyFeatures'
-  | 'legacyColorPalette'
-  | 'legacyLightingSetup'
   | 'legacyAmbiance'
   | 'legacyConsistencyTag';
 

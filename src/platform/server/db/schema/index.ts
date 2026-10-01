@@ -67,7 +67,8 @@ import {
   locationBibleVersions,
 } from './bible-versions';
 import { shotDialogueVersions } from './shot-dialogue-versions';
-import { dialogueRecordings } from './dialogue-recordings';
+import { shotSpecVersions } from './shot-spec-versions';
+import { dialogueSpeeches } from './dialogue-speeches';
 import { shotDialogueSections } from './shot-dialogue-sections';
 import { shotDialogueClaims } from './shot-dialogue-claims';
 
@@ -178,7 +179,8 @@ export type {
 export { shots };
 export {
   shotDialogueVersions,
-  dialogueRecordings,
+  shotSpecVersions,
+  dialogueSpeeches,
   shotDialogueSections,
   shotDialogueClaims,
 };
@@ -188,11 +190,9 @@ export type {
   ShotDialogueSource,
   ShotDialogueVersion,
 } from './shot-dialogue-versions';
-export type {
-  DialogueRecording,
-  DialogueRecordingTurn,
-} from './dialogue-recordings';
+export type { DialogueSpeech, DialogueSpeechTurn } from './dialogue-speeches';
 export type { ShotDialogueSection } from './shot-dialogue-sections';
+export type { ShotSpecSource, ShotSpecVersion } from './shot-spec-versions';
 export type { ShotDialogueClaim } from './shot-dialogue-claims';
 
 export type { NewShot, Shot } from './shots';
@@ -359,6 +359,7 @@ export type {
   CharacterWithSheet,
   Character,
   CharacterRow,
+  CharacterVoice,
   LegacyCharacterBibleColumn,
   CharacterMinimal,
   CharacterWithTalent,
@@ -531,7 +532,7 @@ export const schema = {
   sceneScriptVersions,
   shots,
   shotDialogueVersions,
-  dialogueRecordings,
+  dialogueSpeeches,
   shotDialogueSections,
   shotDialogueClaims,
   shotVariants,

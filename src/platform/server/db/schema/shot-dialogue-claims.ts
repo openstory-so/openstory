@@ -1,13 +1,13 @@
 /**
- * In-flight dialogue recordings, one claim per shot about to take new audio
+ * In-flight dialogue speeches, one claim per shot about to take new audio
  * (#1657) — the same lifecycle every other generation has (#1085, see
  * `frame_prompt_versions`), in its own table because a reading cannot be its
- * own placeholder: a `shot_dialogue_sections` row needs a recording and a
+ * own placeholder: a `shot_dialogue_sections` row needs a speech and a
  * time range, and neither exists until the call returns.
  *
  * - **Claim.** The recorder inserts a `generating` row per adopting shot
  *   before it spends anything. The live unique index makes a second run for
- *   the same shot and the same words stand down instead of recording twice.
+ *   the same shot and the same words stand down instead of generating twice.
  * - **Demote.** `pendingSourceKey` is the live key. Anything the user does
  *   that should win — picking a reading, changing or restoring the lines —
  *   nulls it. The run still finishes; it just no longer holds the right to

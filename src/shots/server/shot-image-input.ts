@@ -91,6 +91,11 @@ export function getSceneLocationReferenceImages(
 /** Reads a still's prompt, model, and credit gate. A full `ScopedDb` assigns. */
 type ShotImagePrepareDb = PreflightScopedDb &
   PromptContextReadDb & {
+    characters: Pick<ScopedDb['characters'], 'listWithSheets'>;
+    sequenceLocations: Pick<
+      ScopedDb['sequenceLocations'],
+      'listWithReferences'
+    >;
     framePromptVersions: Pick<
       ScopedDb['framePromptVersions'],
       'getSelected' | 'write'
@@ -134,6 +139,7 @@ export async function prepareShotImageWorkflowInput(args: {
    */
   promptVersionOverride?: string | null;
   modelOverride?: ImageWorkflowInput['model'];
+  reservationId?: string;
   /** True only when `promptOverride` came from a user edit (drives rescan upstream). */
   userEditedPrompt?: boolean;
   /**
@@ -273,7 +279,10 @@ export async function prepareShotImageWorkflowInput(args: {
       }),
       { model, operation: 'shot-image' }
     ),
-    { errorMessage: 'Insufficient credits for image generation' }
+    {
+      errorMessage: 'Insufficient credits for image generation',
+      reservationId: args.reservationId,
+    }
   );
 
   // Build a per-scene snapshot so the image workflow records a non-null
@@ -310,6 +319,7 @@ export async function prepareShotImageWorkflowInput(args: {
 
   return {
     userId,
+    variantOnly: false,
     teamId: sequence.teamId,
     prompt,
     model,

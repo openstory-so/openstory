@@ -29,9 +29,7 @@ import {
 } from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/platform/id';
 import { sequences } from './sequences';
-import { SHOT_GENERATION_STATUSES, shots } from './shots';
-
-type FrameGenerationStatus = (typeof SHOT_GENERATION_STATUSES)[number];
+import { shots } from './shots';
 
 /** Where a frame sits in its shot's keyframe sequence. @public consumed from #988+ */
 export const FRAME_ROLES = ['first', 'last', 'key'] as const;
@@ -64,12 +62,8 @@ export const frames = snakeCase.table(
 
     // The still lives on the SELECTED `frame_variants` row, never here — and
     // since #1101 the pre-prompt stand-in lives on a `kind: 'preview'` row
-    // there too. What remains is frame-owned: the primary render's in-flight
-    // lifecycle.
-    // DB-Audit: KEEP (re-confirmed) — these three look derivable from the pointers, but a failed primary CLEARS `pendingPromoteVersionId`, so no pointer survives to carry 'failed' or its error message.
-    imageStatus: text().$type<FrameGenerationStatus>().default('pending'),
-    imageWorkflowRunId: text(),
-    imageError: text(),
+    // there too. Its lifecycle does as well: the image status and error are
+    // the newest primary `frame_variants` row's (#1942), like video's.
 
     // Selection pointers (soft references — plain columns, no FK — to avoid a
     // cycle with frame_variants/frame_prompt_versions, which both reference

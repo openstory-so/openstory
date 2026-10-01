@@ -2,6 +2,7 @@
  * The `generateMusicWorkflow` durable workflow.
  */
 
+import { generateId } from '@/platform/id';
 import { computeSequenceMusicInputHash } from '@/shots/input-hash';
 import { DEFAULT_MUSIC_MODEL } from '@/models/models';
 import { uploadAudioToStorage } from '@/audio/server/audio-storage';
@@ -43,28 +44,58 @@ export class MusicWorkflow extends OpenStoryWorkflowEntrypoint<MusicWorkflowInpu
 
     const { sequenceId, teamId } = input;
     const model = input.model || DEFAULT_MUSIC_MODEL;
-    // Only the primary model owns the live `sequences.music*` columns. In a
-    // multi-model fan-out (#546) secondary models persist only their own
-    // variant row and emit model-scoped events; writing the shared sequence row
-    // would make `musicStatus`/`musicUrl` last-writer-wins across siblings.
+    // Only the primary model's track may take the sequence's pointer (#546).
+    // In a multi-model fan-out secondary models open their own row and emit
+    // model-scoped events; the pointer and the music status stay the
+    // primary's.
     const isPrimary = input.isPrimary ?? true;
 
-    if (sequenceId && isPrimary) {
-      await step.do('set-generating-status', async () => {
-        await scopedDb.sequence(sequenceId).updateMusicFields({
-          musicStatus: 'generating',
-          musicModel: model,
-          musicError: null,
+    // Row before result (#1130): the trigger opened this run's row with its
+    // claim, or — a pipeline child, a payload from before the claim — the run
+    // opens it here. Nothing is spent before it exists.
+    let variantId: string | null = null;
+    if (sequenceId) {
+      // Minted in its own step so a retried open step finds the row it
+      // already opened (and stamped with this run's id) instead of opening
+      // a second one.
+      const mintedId = input.variantId
+        ? null
+        : await step.do('mint-music-variant-id', async () => generateId());
+      variantId = await step.do('open-music-variant', async () => {
+        const inputs = {
+          model,
+          prompt,
+          tags,
+          durationSeconds: duration,
+        };
+        if (input.variantId) {
+          await scopedDb.sequenceVariants.stampMusicRun(input.variantId, {
+            ...inputs,
+            workflowRunId: event.instanceId,
+          });
+          return input.variantId;
+        }
+        return scopedDb.sequenceVariants.claimMusic({
+          id: mintedId ?? undefined,
+          sequenceId,
+          ...inputs,
+          isPrimary,
+          workflowRunId: event.instanceId,
         });
-
-        await getGenerationChannel(sequenceId).emit(
-          'generation.audio:progress',
-          {
-            status: 'generating',
-            model,
-          }
-        );
       });
+      if (variantId === null) {
+        throw new WorkflowValidationError(
+          `Sequence ${sequenceId} not found — no track generated`
+        );
+      }
+      if (isPrimary) {
+        await step.do('emit-generating', async () => {
+          await getGenerationChannel(sequenceId).emit(
+            'generation.audio:progress',
+            { status: 'generating', model }
+          );
+        });
+      }
     }
 
     const audioResult = await step.do('generate-music', async () => {
@@ -173,20 +204,22 @@ export class MusicWorkflow extends OpenStoryWorkflowEntrypoint<MusicWorkflowInpu
         audioModel: model,
       });
 
-      const writeResult = await step.do('write-music-variant', async () => {
-        return scopedDb.sequenceVariants.writeMusicVariant({
-          sequenceId,
-          url: audioUrl,
-          storagePath,
-          prompt,
-          tags,
-          durationSeconds: actualDuration,
-          model,
-          status: 'completed',
-          generatedAt: new Date(),
-          error: null,
-          inputHash,
-        });
+      if (!variantId) {
+        throw new Error('Music variant row missing for a sequence run');
+      }
+      const openedId = variantId;
+      const landed = await step.do('complete-music-variant', async () => {
+        const row = await scopedDb.sequenceVariants.completeMusicClaim(
+          openedId,
+          {
+            sequenceId,
+            url: audioUrl,
+            storagePath,
+            durationSeconds: actualDuration,
+            inputHash,
+          }
+        );
+        return { diverged: row.divergedAt !== null };
       });
 
       await step.do('record-provenance', async () => {
@@ -194,7 +227,7 @@ export class MusicWorkflow extends OpenStoryWorkflowEntrypoint<MusicWorkflowInpu
           teamId,
           userId: input.userId,
           assetKind: 'music_variant',
-          assetId: writeResult.variant.id,
+          assetId: openedId,
           storageKey: buildR2Key(STORAGE_BUCKETS.AUDIO, storagePath),
           provider: model === 'elevenlabs_music' ? 'elevenlabs' : 'fal',
           model,
@@ -205,64 +238,34 @@ export class MusicWorkflow extends OpenStoryWorkflowEntrypoint<MusicWorkflowInpu
         });
       });
 
-      if (writeResult.divergent) {
-        // Divergent run: prior primary on `sequences.music*` stays
-        // authoritative. For the primary model, reset musicStatus from
-        // 'generating' (set above) back to 'completed'; secondary models never
-        // touched the shared row. Either way emit a terminal event so the UI
-        // doesn't hang on a spinner. The alternate is preserved in
-        // `sequence_music_variants` for future surfacing.
-        const divergedVariantId = writeResult.variant.id;
-        await step.do('update-sequence-music-divergent', async () => {
-          if (isPrimary) {
-            await scopedDb.sequence(sequenceId).updateMusicFields({
-              musicStatus: 'completed',
-              musicError: null,
-            });
-          }
-
-          // No `audioUrl`: this run's track is the alternate, and the surviving
-          // primary's URL is whatever the client already holds — re-reading it
-          // here raced a concurrent promote/set-music. Omitting the field
-          // leaves the cached `musicUrl` untouched and the client refetches.
+      if (landed.diverged) {
+        // The claim moved while this run was in flight (a newer run, or the
+        // user's pick): the track is parked, the pointer untouched. Emit a
+        // terminal event so the UI doesn't hang on a spinner, plus the parked
+        // row for the banner.
+        await step.do('emit-music-diverged', async () => {
           const channel = getGenerationChannel(sequenceId);
           await channel.emit('generation.audio:progress', {
             status: 'completed',
             model,
+            primary: isPrimary,
           });
           await channel.emit('generation.stale:detected', {
             entityType: 'sequence',
             entityId: sequenceId,
             artifact: 'music',
             snapshotInputHash: inputHash,
-            divergedVariantId,
+            divergedVariantId: openedId,
           });
         });
         logger.info(
-          `[MusicWorkflow:cf] Diverged music result for sequence ${sequenceId}; preserved as alternate (variant=${divergedVariantId})`
+          `[MusicWorkflow:cf] Music claim for sequence ${sequenceId} moved; parked as alternate (variant=${openedId})`
         );
       } else {
-        await step.do('update-sequence-music', async () => {
-          // Primary owns the live columns; secondary models only emit a
-          // model-scoped event so the per-model audio queries refresh without
-          // clobbering the primary's `sequences.music*`.
-          if (isPrimary) {
-            await scopedDb.sequence(sequenceId).updateMusicFields({
-              musicUrl: audioUrl,
-              musicPath: storagePath,
-              musicStatus: 'completed',
-              musicGeneratedAt: new Date(),
-              musicError: null,
-            });
-          }
-
+        await step.do('emit-music-completed', async () => {
           await getGenerationChannel(sequenceId).emit(
             'generation.audio:progress',
-            {
-              status: 'completed',
-              audioUrl: audioUrl,
-              model,
-            }
+            { status: 'completed', audioUrl, model, primary: isPrimary }
           );
         });
       }
@@ -286,30 +289,23 @@ export class MusicWorkflow extends OpenStoryWorkflowEntrypoint<MusicWorkflowInpu
     const model = input.model || DEFAULT_MUSIC_MODEL;
     const isPrimary = input.isPrimary ?? true;
     if (input.sequenceId) {
-      // Only the primary model owns the live music status — a secondary model's
-      // failure must not clobber a successful primary track (#546). Secondary
-      // failures still emit a model-scoped event so per-model queries refresh.
-      if (isPrimary) {
-        await scopedDb.sequence(input.sequenceId).updateMusicFields({
-          musicStatus: 'failed',
-          musicError: error,
-        });
-      }
-
-      // Flip this model's own variant row to `failed` regardless of `isPrimary`
-      // (#547). An added (secondary) model's row was pre-stamped `pending`; left
-      // alone it would spin `generating` forever and block re-adding the model.
-      // Update-only — never inserts a row for a primary that never had one.
-      await scopedDb.sequenceVariants.markMusicFailed(
-        input.sequenceId,
-        model,
+      // Fail this run's row (the trigger's, or the one it opened) and clear
+      // the claim only while it still names it (#1130 rule 5). A primary run
+      // that died before any row existed records the failure as one.
+      await scopedDb.sequenceVariants.failMusicClaim(
+        {
+          sequenceId: input.sequenceId,
+          variantId: input.variantId,
+          workflowRunId: event.instanceId,
+          recordIfMissing: isPrimary ? { model } : undefined,
+        },
         error
       );
 
       try {
         await getGenerationChannel(input.sequenceId).emit(
           'generation.audio:progress',
-          { status: 'failed', model }
+          { status: 'failed', model, primary: isPrimary }
         );
       } catch (emitError) {
         logger.error(

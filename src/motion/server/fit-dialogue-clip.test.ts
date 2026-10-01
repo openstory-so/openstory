@@ -1,6 +1,6 @@
 /**
  * The rewrite rung of the dialogue fit ladder (#1651). The ladder itself —
- * measure, rewrite, re-record, refuse — is `recordDialogue`'s, and is tested
+ * measure, rewrite, re-record, refuse — is `generateDialogueSpeech`'s, and is tested
  * there; this pins the one property the rung owns: a rewrite is merged BY
  * INDEX, so it can change words and nothing else.
  */

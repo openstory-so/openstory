@@ -4,7 +4,7 @@
  * The lines live per SHOT on `shot_dialogue_versions`, one selected row per
  * shot, and that is the only place they are written. Every reader — render
  * triggers, the staleness read, the prompt preview, the UI's shot view —
- * resolves through `shotDialogueResolver`, so the recording, the prompt text
+ * resolves through `shotDialogueResolver`, so the speech, the prompt text
  * and the panel cannot disagree. `shot_prompt_versions.dialogue` is no longer
  * written; it is read only as the resolver's second rung, for rows from
  * before the node existed.
@@ -26,7 +26,7 @@ import type { MotionAudioClip } from '@/platform/server/db/schema';
 import { NotFoundError, ValidationError } from '@/platform/errors';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type {
-  BatchDialogueRecording,
+  BatchDialogueSpeech,
   DialogueAudioSceneJob,
 } from '@/platform/server/workflow/types';
 import type {
@@ -174,13 +174,13 @@ export async function loadShotDialogueResolver(
 }
 
 /**
- * The conversation to record around one shot (`dialogueContext` on its motion
- * payload): the scene's live shots in shot order, each saying what
+ * The conversation to record around one shot: the scene's live shots in shot
+ * order, each saying what
  * `dialogueOf` resolves for it, windowed around `shot`. The same resolver
  * built the payload's `voicedLines`, so the section that gets recorded keys
  * the words the render asks for.
  *
- * Undefined unless the run has to record: voiced lines and no matching clip.
+ * Undefined unless this shot's voiced lines need a new speech.
  */
 export function dialogueContextFor(input: {
   shot: { id: string };
@@ -210,9 +210,9 @@ export function dialogueContextFor(input: {
 }
 
 /**
- * One recording job per scene that holds a shot needing audio (#1657) — what a
+ * One speech job per scene that holds a shot needing audio (#1657) — what a
  * batch trigger snapshots so the batch records each scene ONCE before it fans
- * out, instead of every clip-less child recording its own window of it.
+ * out, instead of every clip-less child generating its own window of it.
  *
  * A job is the scene's WHOLE conversation: every live shot, in shot order,
  * saying what `dialogueOf` resolves. The recorder decides who adopts
@@ -281,9 +281,8 @@ export function sceneDialogueJobs(input: {
  * Everything a batch-style trigger has to say about dialogue, in one call
  * (#1657) — so no trigger can send the prompt and forget the audio:
  *
- * - per shot: its `voicedLines`, the clips that still match them, and the
- *   `dialogueContext` its run falls back to if it has to record alone;
- * - `dialogueRecording`: one job per scene that needs audio, which the batch
+ * - per shot: its `voicedLines` and the clips that still match them;
+ * - `dialogueSpeech`: one job per scene that needs audio, which the batch
  *   records ONCE before it fans out;
  * - `ttsChars`: what to reserve — a scene is one call over its whole
  *   conversation; only a shot with no scene is priced on its own lines.
@@ -310,10 +309,9 @@ export function snapshotBatchDialogue<
     {
       voicedLines: VoicedDialogueLine[];
       audioClips: MotionAudioClip[];
-      dialogueContext: SceneVoicedLine[] | undefined;
     }
   >;
-  dialogueRecording: BatchDialogueRecording | undefined;
+  dialogueSpeech: BatchDialogueSpeech | undefined;
   ttsChars: number;
 } {
   const byShotId = new Map(
@@ -327,19 +325,6 @@ export function snapshotBatchDialogue<
         {
           voicedLines,
           audioClips,
-          dialogueContext: dialogueContextFor({
-            shot,
-            voicedLines,
-            audioClips,
-            sceneShots: input.shots.filter(
-              (other) =>
-                shot.sceneId !== null &&
-                other.sceneId === shot.sceneId &&
-                !other.deletedAt
-            ),
-            dialogueOf: input.dialogueOf,
-            characters: input.characters,
-          }),
         },
       ] as const;
     })
@@ -372,7 +357,7 @@ export function snapshotBatchDialogue<
   const models = [...new Set(needing.map((shot) => input.modelOf(shot)))];
   return {
     byShotId,
-    dialogueRecording:
+    dialogueSpeech:
       scenes.length > 0
         ? {
             scenes,
@@ -394,10 +379,10 @@ export function snapshotBatchDialogue<
 
 /**
  * May this reading become the shot's current one? Refuses another shot's row
- * (the only thing between a caller and a cut of someone else's recording —
+ * (the only thing between a caller and a cut of someone else's speech —
  * `getSectionById` is unscoped), a discarded one, one recorded for lines that
  * have since changed, and one longer than the shot can carry. Measures the
- * raw section; `recordDialogue` measures the padded file, so a reading at
+ * raw section; `generateDialogueSpeech` measures the padded file, so a reading at
  * the provider's floor can pass there and still be padded here.
  */
 export function requireSelectableSection<

@@ -67,13 +67,15 @@ const SYSTEM_PROMPT = `You are a talent reference analyst for a film/video produ
 
 First classify WHAT the subject is. Do NOT default to human.
 
-- "human": a real person. A photograph or photoreal render of a person, OR any depiction of an identifiable real person — a celebrity, actor, public figure, or anyone whose face is recognisably theirs — in any medium or art style.
-- "animated": illustration, cartoon, anime, 3D/CGI character, robot, puppet, or other clearly non-photographic character that is original or fictional, not a real person's likeness.
+- "human": EITHER a photographic or photoreal human face — real, fictional, or AI-generated, including a photoreal character sheet — OR any depiction of an identifiable real person — a celebrity, actor, public figure, or anyone whose face is recognisably theirs — in any medium or art style.
+- "animated": illustration, cartoon, anime, stylized 3D/CGI character, robot, puppet, or other clearly non-photoreal character that is original or fictional, not a real person's likeness.
 - "other": animal, creature, mascot, object, or anything that is not a human likeness and not a stylized character.
 
-Judge WHO is shown, not HOW it is drawn. A painting, drawing, caricature, poster, or stylized render of a real, recognisable person is "human" — a likeness belongs to the person, not the medium. If you can name the real person, or the face is clearly modelled on a real person, answer "human". An actor shown as a character they played is still that actor: "human".
+A photoreal face is "human" even when the person is invented: if it could pass for a photograph of a real human, answer "human".
 
-An original drawing, character-design sheet, robot, or stylized CGI figure that is not a real person's likeness is never "human".
+For a non-photoreal image, judge WHO is shown, not HOW it is drawn. A painting, drawing, caricature, poster, or stylized render of a real, recognisable person is "human" — a likeness belongs to the person, not the medium. If you can name the real person, or the face is clearly modelled on a real person, answer "human". An actor shown as a character they played is still that actor: "human".
+
+An original, non-photoreal drawing, illustrated character-design sheet, robot, or stylized CGI figure that is not a real person's likeness is never "human".
 
 Then decide whether the image (or any of the images) is already a CHARACTER SHEET / TALENT SHEET, and describe the subject so a later image model can reproduce them.
 

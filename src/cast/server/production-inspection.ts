@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { createSelectSchema } from 'drizzle-orm/zod';
 import {
   characterBibleVersions,
+  characterVoiceVersions,
   characters,
   locationBibleVersions,
   sequenceLocations,
@@ -28,14 +29,13 @@ const referenceSchema = z.object({
   inputHash: z.string().nullable(),
   generatedAt: readDate.nullable(),
 });
+const characterVoiceSchema = createSelectSchema(characterVoiceVersions);
 export const characterReadSchema = createSelectSchema(characters)
   .pick({
     id: true,
     sequenceId: true,
     characterId: true,
     talentId: true,
-    voiceId: true,
-    voiceDescription: true,
     useVoice: true,
     firstMentionSceneId: true,
     firstMentionText: true,
@@ -60,6 +60,11 @@ export const characterReadSchema = createSelectSchema(characters)
       consistencyTag: true,
     }).shape
   )
+  // The voice lives on its version row (#1788).
+  .extend({
+    voiceId: characterVoiceSchema.shape.voiceId,
+    voiceDescription: characterVoiceSchema.shape.description,
+  })
   .extend({
     createdAt: readDate,
     updatedAt: readDate,
@@ -93,12 +98,9 @@ export const locationReadSchema = createSelectSchema(sequenceLocations)
     createSelectSchema(locationBibleVersions).pick({
       name: true,
       type: true,
-      timeOfDay: true,
       description: true,
       architecturalStyle: true,
       keyFeatures: true,
-      colorPalette: true,
-      lightingSetup: true,
       ambiance: true,
       consistencyTag: true,
     }).shape

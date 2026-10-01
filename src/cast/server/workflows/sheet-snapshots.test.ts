@@ -92,12 +92,9 @@ describe('location-sheet hash', () => {
       locationId: 'docks',
       name: 'Docks',
       type: 'exterior',
-      timeOfDay: '',
       description: 'Foggy waterfront',
       architecturalStyle: '',
       keyFeatures: '',
-      colorPalette: '',
-      lightingSetup: '',
       ambiance: '',
       consistencyTag: 'docks',
       firstMention: { sceneId: '', text: '', lineNumber: 0 },
@@ -112,7 +109,7 @@ describe('location-sheet hash', () => {
       ...baseInput,
       locationMetadata: {
         ...baseInput.locationMetadata,
-        lightingSetup: 'neon',
+        keyFeatures: 'neon sign',
       },
     });
     const relinked = await computeLocationSheetHashFromDto({

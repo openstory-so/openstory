@@ -34,7 +34,7 @@ import {
   frameVariantFixture,
   videoVariantFixture,
 } from '@/mocks/frame-fixtures';
-import { toShotView, type ShotView } from '@/shots/shot-view';
+import { toShotView, type ImageStatus, type ShotView } from '@/shots/shot-view';
 import { estimateImageCost, gateEstimate } from '@/billing/cost-estimation';
 import { ZERO_MICROS } from '@/billing/money';
 
@@ -98,7 +98,18 @@ function makeSequence(overrides: Partial<Sequence> = {}): Sequence {
     createdBy: 'u1',
     updatedBy: 'u1',
     styleId: 'style_1',
-    styleConfig: null,
+    styleConfig: {
+      version: 2,
+      look: {
+        mood: 'quiet',
+        artStyle: 'watercolour',
+        lighting: 'soft light',
+        colorPalette: ['silver', 'blue'],
+        colorGrading: 'cool shadows',
+      },
+      motion: { camera: 'locked' },
+      references: [],
+    },
     selectedStyleVersionId: null,
     aspectRatio: '16:9',
     resolution: '720p',
@@ -119,11 +130,12 @@ function makeSequence(overrides: Partial<Sequence> = {}): Sequence {
     musicTags: null,
     musicPromptInputHash: null,
     includeMusic: true,
+    selectedMusicVariantId: null,
+    selectedMusicPromptVersionId: null,
+    pendingPromoteMusicVariantId: null,
     posterUrl: null,
     readyEmailSentAt: null,
-    autoGenerateMotion: false,
-    autoGenerateMusic: false,
-    generationStopAt: null,
+    generationStopAt: 'images',
     generateStartFrames: true,
     generateVoices: false,
     draftMotion: false,
@@ -142,7 +154,8 @@ function makeSequence(overrides: Partial<Sequence> = {}): Sequence {
  * `ShotView` the real read path would.
  */
 type ShotFixtureOptions = Partial<Shot> & {
-  imageStatus?: Frame['imageStatus'];
+  /** Carried by the frame's newest primary still render (#1942). */
+  imageStatus?: ImageStatus;
   imageUrl?: FrameVariant['url'];
   imagePrompt?: string | null;
   videoStatus?: VideoVariant['status'] | null;
@@ -165,6 +178,8 @@ function makeShot({
     durationMs: 3000,
     useStartFrame: null,
     selectedMotionPromptVersionId: null,
+    selectedSpecVersionId: null,
+    pendingSpecVersionId: null,
     audioClips: null,
     renderSegmentId: null,
     deletedAt: null,
@@ -179,7 +194,6 @@ function makeShot({
     id: frameId,
     shotId: shot.id,
     sequenceId: shot.sequenceId,
-    imageStatus,
     selectedImageVersionId: imageUrl === null ? null : `${frameId}-v1`,
     selectedImagePromptVersionId: imagePrompt === null ? null : `${frameId}-ip`,
     createdAt: NOW,
@@ -198,6 +212,16 @@ function makeShot({
           }),
     imagePromptVersion:
       imagePrompt === null ? null : promptVersionFixture(frameId, imagePrompt),
+    primaryImage:
+      imageStatus === 'generating' || imageStatus === 'failed'
+        ? frameVariantFixture({
+            id: `${frameId}-primary`,
+            frameId,
+            sequenceId: shot.sequenceId,
+            status: imageStatus,
+            url: null,
+          })
+        : null,
     // Selection only ever points at a completed render; these fixtures drive
     // the lifecycle through the primary render instead.
     video: null,
@@ -242,6 +266,7 @@ function promptVersionFixture(
     text,
     components: null,
     source: 'ai-generated',
+    specVersionId: null,
     inputHash: null,
     analysisModel: null,
     status: 'completed',
@@ -268,6 +293,7 @@ function motionVersionFixture(
     audioClips: null,
     usesStartFrame: true,
     source: 'ai-generated',
+    specVersionId: null,
     inputHash: null,
     analysisModel: null,
     status: 'completed',
@@ -296,7 +322,7 @@ function makeContext(
   selectedModels: SelectedModels = {}
 ) {
   const updateStatus = vi.fn();
-  const updateMusicFields = vi.fn();
+  const claimMusic = vi.fn(async (): Promise<string | null> => 'music_row_1');
   const listBySequence = vi.fn(async () => shots);
   const ensureAnchorFrames = vi.fn(async () => {});
   // The source re-assembles each `ShotView` from these reads, so serve back the
@@ -371,6 +397,14 @@ function makeContext(
       listSelectedModelsBySequence: listSelectedImageModels,
       listLastFailedModelsBySequence: listFailedImageModels,
       getSelectedByFrameIds,
+      getPrimaryByFrameIds: vi.fn(
+        async () =>
+          new Map(
+            shots.flatMap((s) =>
+              s.primaryImage ? [[s.frame.id, s.primaryImage]] : []
+            )
+          )
+      ),
     },
     videoVariants: {
       listSelectedModelsBySequence: listSelectedVideoModels,
@@ -392,7 +426,8 @@ function makeContext(
     // No shot dialogue rows: the retry reads the motion row's mirror (#1657).
     shotDialogue: { getSelectedBySequence: vi.fn(async () => []) },
     shotPromptVersions: { getSelectedMotionByShots },
-    sequence: vi.fn(() => ({ updateStatus, updateMusicFields })),
+    sequence: vi.fn(() => ({ updateStatus })),
+    sequenceVariants: { claimMusic, failMusicClaim: vi.fn(async () => {}) },
     teamManagement: {
       getMemberEmail: vi.fn(async () => 'owner@example.com'),
     },
@@ -405,7 +440,7 @@ function makeContext(
     updateStatus,
     listBySequence,
     listWithSheets,
-    updateMusicFields,
+    claimMusic,
     createReservation: stub.billing.createReservation,
   };
 }
@@ -427,7 +462,7 @@ describe('executeSmartRetry — music credits', () => {
   test('blocks native music for a fal BYOK team with insufficient credits', async () => {
     resetMocks();
     reserveRunCreditsMock.mockImplementation(realPreflight.reserveRunCredits);
-    const { context, createReservation, updateMusicFields } = makeContext(
+    const { context, createReservation, claimMusic } = makeContext(
       makeSequence({ musicStatus: 'failed', musicModel: 'elevenlabs_music' }),
       [makeShot({ videoStatus: 'completed' })]
     );
@@ -436,7 +471,7 @@ describe('executeSmartRetry — music credits', () => {
       'Insufficient credits to retry failed items'
     );
     expect(createReservation).toHaveBeenCalledTimes(1);
-    expect(updateMusicFields).not.toHaveBeenCalled();
+    expect(claimMusic).not.toHaveBeenCalled();
     expect(triggerWorkflowMock).not.toHaveBeenCalled();
   });
 
@@ -462,8 +497,32 @@ describe('executeSmartRetry — music credits', () => {
         model: 'elevenlabs_music',
         reservationId: 'res_music',
         ownsReservation: true,
+        variantId: 'music_row_1',
       })
     );
+  });
+
+  test('a retry that lost the music claim starts no run and frees its credits', async () => {
+    resetMocks();
+    reserveRunCreditsMock.mockResolvedValue('res_music');
+    const { context, claimMusic } = makeContext(
+      makeSequence({ musicStatus: 'failed', musicModel: 'elevenlabs_music' }),
+      [makeShot({ videoStatus: 'completed' })]
+    );
+    claimMusic.mockResolvedValue(null);
+    const zeroReservation = vi.fn(async () => {});
+    Object.assign(context.scopedDb.billing, { zeroReservation });
+
+    await executeSmartRetry(context);
+
+    expect(claimMusic).toHaveBeenCalledWith(
+      expect.objectContaining({ isPrimary: true, ifPendingIs: null })
+    );
+    expect(triggerWorkflowMock).not.toHaveBeenCalledWith(
+      '/music',
+      expect.anything()
+    );
+    expect(zeroReservation).toHaveBeenCalledWith('res_music');
   });
 
   test('keeps fal BYOK for ACE-Step and retries the model that was priced', async () => {
@@ -754,7 +813,7 @@ describe('executeSmartRetry — partial retry status reset', () => {
     expect(triggerWorkflowMock).toHaveBeenCalledWith(
       '/motion-batch',
       expect.objectContaining({
-        dialogueRecording: expect.objectContaining({
+        dialogueSpeech: expect.objectContaining({
           scenes: [
             expect.objectContaining({
               voiced: expect.arrayContaining([

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   contextWindow,
   deriveShotDialogueLines,
-  recordingKey,
+  speechKey,
   sceneConversation,
   shotDialogue,
   voicedShotIds,
@@ -165,19 +165,19 @@ describe('sceneConversation', () => {
   });
 });
 
-describe('recordingKey', () => {
+describe('speechKey', () => {
   const byShot = {
     'shot-a': [line('Maya', 'One')],
     'shot-b': [line('Ari', 'Two')],
   };
 
   it('is null when nothing is voiced', () => {
-    expect(recordingKey(conversation(byShot, []))).toBeNull();
-    expect(recordingKey([])).toBeNull();
+    expect(speechKey(conversation(byShot, []))).toBeNull();
+    expect(speechKey([])).toBeNull();
   });
 
   it('moves when a line, a tone, a voice or a shot assignment changes', () => {
-    const base = recordingKey(conversation(byShot));
+    const base = speechKey(conversation(byShot));
     expect(base).not.toBeNull();
     const moved = [
       conversation({ ...byShot, 'shot-b': [line('Ari', 'Changed')] }),
@@ -191,7 +191,7 @@ describe('recordingKey', () => {
       ]),
       conversation({ 'shot-a': [line('Maya', 'One'), line('Ari', 'Two')] }),
     ];
-    for (const voiced of moved) expect(recordingKey(voiced)).not.toBe(base);
+    for (const voiced of moved) expect(speechKey(voiced)).not.toBe(base);
   });
 
   it('holds still when only an unvoiced line changes around it', () => {
@@ -202,8 +202,8 @@ describe('recordingKey', () => {
         line('Nobody', 'Not spoken by anyone cast'),
       ],
     };
-    expect(recordingKey(conversation(withExtra))).toBe(
-      recordingKey(conversation(byShot))
+    expect(speechKey(conversation(withExtra))).toBe(
+      speechKey(conversation(byShot))
     );
   });
 
@@ -212,7 +212,7 @@ describe('recordingKey', () => {
       { id: 'shot-b' },
       { id: 'shot-a' },
     ]);
-    expect(recordingKey(swapped)).not.toBe(recordingKey(conversation(byShot)));
+    expect(speechKey(swapped)).not.toBe(speechKey(conversation(byShot)));
   });
 });
 

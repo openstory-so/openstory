@@ -18,7 +18,14 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import { DEFAULT_STYLE_TEMPLATES } from '@/look/style-templates';
+import { getVariantImagePrompt } from '@/stills/server/variant-image';
+import { deriveStillPrompt } from '@/shots/shot-list.derive';
+import { sceneWithShotsSchema, storedShotSpec } from '@/shots/shot-list.schema';
+import { buildShotImageReferenceImages } from '@/motion/server/build-motion-references';
+import { buildReferenceImagePrompt } from '@/stills/reference-image-prompt';
 import { DEFAULT_VIDEO_MODEL } from '@/models/models';
+import { buildLocationMatchingPromptVariables } from '@/cast/server/location-matching-prompt';
 import { durationGridForModel } from '@/motion/model-capabilities';
 import { getChatPrompt } from '@/platform/server/ai/prompts-index';
 import { formatScenesForShotListPrompt } from '@/shots/shot-list-pass';
@@ -125,4 +132,144 @@ describe('recorded krea preview fixtures (#1642)', () => {
     }
     expect(missing).toEqual([]);
   });
+});
+
+describe('recorded location matching fixture', () => {
+  it('matches the physical location descriptions parsed from the recorded bibles', () => {
+    const { locationBible } = replayRecordedE2eScenes();
+    const { locationsDescription } = buildLocationMatchingPromptVariables(
+      locationBible,
+      []
+    );
+    const recorded = loadOpenrouterStage('location-match')
+      .flatMap((file) => file.fixtures)
+      .find((fixture) =>
+        fixture.match.userMessage.includes('downtown_apartment_bathroom')
+      )?.match.userMessage;
+    expect(recorded).toBeDefined();
+    expect(recorded).toContain(
+      `EXTRACTED LOCATIONS FROM SCRIPT (${locationBible.length} total):\n${locationsDescription}\n\nLIBRARY LOCATIONS TO MATCH`
+    );
+    expect(recorded).not.toContain('Time of Day:');
+  });
+});
+
+describe('recorded derived still fixtures', () => {
+  it.each(['original', 'current'] as const)(
+    '%s recording matches canonical scene direction and reference bindings',
+    (recording) => {
+      const replay = replayRecordedE2eScenes(recording);
+      const style = DEFAULT_STYLE_TEMPLATES.find(
+        (entry) => entry.name === 'Product Ad'
+      )?.config;
+      if (!style) throw new Error('Missing Product Ad style');
+      // Use canonical bible identity order, independent of SQL row order.
+      // Fixture identities stand in for generated URLs; text depends on tokens/order, not URLs.
+      const characters: Parameters<
+        typeof buildShotImageReferenceImages
+      >[0]['characters'] = replay.characterBible
+        .slice()
+        .sort((a, b) =>
+          a.characterId < b.characterId
+            ? -1
+            : a.characterId > b.characterId
+              ? 1
+              : 0
+        )
+        .map((entry) => ({
+          ...entry,
+          id: entry.characterId,
+          sheetImageUrl: `https://fixture/${entry.characterId}`,
+          sheetInputHash: null,
+          selectedSheetVersionId: null,
+          sheetStatus: 'completed',
+        }));
+      const locations: Parameters<
+        typeof buildShotImageReferenceImages
+      >[0]['locations'] = replay.locationBible
+        .slice()
+        .sort((a, b) =>
+          a.locationId < b.locationId ? -1 : a.locationId > b.locationId ? 1 : 0
+        )
+        .map((entry) => ({
+          ...entry,
+          id: entry.locationId,
+          referenceImageUrl: `https://fixture/${entry.locationId}`,
+          referenceInputHash: null,
+          selectedReferenceVersionId: null,
+          referenceStatus: 'completed',
+        }));
+      const elements: Parameters<
+        typeof buildShotImageReferenceImages
+      >[0]['elements'] = replay.elementBible
+        .slice()
+        .sort((a, b) => (a.token < b.token ? -1 : a.token > b.token ? 1 : 0))
+        .map((entry) => ({
+          ...entry,
+          id: entry.token,
+          imageUrl: `https://fixture/${entry.token}`,
+          kind: 'image',
+          durationSeconds: null,
+        }));
+      const dir = resolve(
+        dirname(fileURLToPath(import.meta.url)),
+        '../../../e2e/fixtures/recorded/xai'
+      );
+      const schema = z.object({
+        fixtures: z.array(
+          z.object({ match: z.object({ userMessage: z.string() }) })
+        ),
+      });
+      const requests = readdirSync(dir)
+        .filter((name) => name.endsWith('.json'))
+        .flatMap((name) =>
+          schema
+            .parse(JSON.parse(readFileSync(resolve(dir, name), 'utf8')))
+            .fixtures.map((fixture) => fixture.match.userMessage)
+        );
+      let count = 0;
+      for (const rawScene of replay.scenes) {
+        const scene = sceneWithShotsSchema.parse({
+          ...rawScene,
+          dialoguePresent: false,
+          continuousFromPrevious: false,
+          continuity: {
+            ...rawScene.continuity,
+            elementTags: rawScene.continuity?.elementTags ?? [],
+          },
+        });
+        for (const spec of scene.shots) {
+          const visualPrompt = deriveStillPrompt(
+            storedShotSpec(spec),
+            scene,
+            style
+          );
+          const refs = buildShotImageReferenceImages({
+            scene,
+            visualPrompt,
+            characters,
+            locations,
+            elements,
+          });
+          const prompt = buildReferenceImagePrompt(visualPrompt, refs).prompt;
+          expect(requests).toContain(prompt);
+          const grid = buildReferenceImagePrompt(
+            getVariantImagePrompt('landscape_16_9', visualPrompt),
+            [
+              {
+                referenceImageUrl: 'https://fixture/primary',
+                description:
+                  'Primary source scene — generate 9 variant shots from this image',
+                role: 'primary',
+              },
+              ...refs,
+            ]
+          ).prompt;
+          expect(requests).toContain(grid);
+          count++;
+        }
+      }
+      expect(count).toBe(10);
+    }
+  );
 });

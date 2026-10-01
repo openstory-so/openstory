@@ -1,3 +1,5 @@
+import { loadSequenceStyle } from '@/look/server/sequence-style';
+import { packedSceneFromScene } from '@/motion/server/build-motion-render';
 /**
  * Smart-retry orchestration (#1257: moved out of `functions/smart-retry.ts`).
  * Detects what failed in a sequence and only retries those parts.
@@ -58,6 +60,7 @@ import type {
   Shot,
 } from '@/platform/server/db/schema';
 import { analyzeFailures } from '@/sequences/failure-analysis';
+import { flagsFromStopAt, resolveStopAt } from '@/sequences/pipeline';
 import {
   motionPromptFromVersion,
   resolveMotionPromptFromVersion,
@@ -143,6 +146,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
     selectedPromptByFrame,
     selectedVideoByShot,
     primaryVideoByShot,
+    primaryImageByFrame,
     selectedMotionByShot,
     dialogueLinesByShotId,
     sceneContext,
@@ -155,6 +159,9 @@ export async function executeSmartRetry(context: SmartRetryContext) {
     ),
     context.scopedDb.videoVariants.getSelectedByShotIds(shots.map((s) => s.id)),
     context.scopedDb.videoVariants.getPrimaryByShotIds(shots.map((s) => s.id)),
+    context.scopedDb.frameVariants.getPrimaryByFrameIds(
+      [...anchorsByShot.values()].map((fr) => fr.id)
+    ),
     context.scopedDb.shotPromptVersions.getSelectedMotionByShots(
       shots.map((s) => s.id)
     ),
@@ -180,6 +187,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
         // pre-prompt stand-in (#1101) is not resolved.
         preview: null,
         imagePromptVersion: selectedPromptByFrame.get(frame.id) ?? null,
+        primaryImage: primaryImageByFrame.get(frame.id) ?? null,
         video: selectedVideoByShot.get(shot.id) ?? null,
         primaryVideo: primaryVideoByShot.get(shot.id) ?? null,
         motionPrompt: selectedMotion
@@ -210,6 +218,9 @@ export async function executeSmartRetry(context: SmartRetryContext) {
       DEFAULT_VIDEO_MODEL
     );
 
+    const stopAt = resolveStopAt({
+      generationStopAt: sequence.generationStopAt,
+    });
     const reservationId = await reserveRunCredits(
       context.scopedDb,
       estimateStoryboardPreflightCost({
@@ -217,9 +228,8 @@ export async function executeSmartRetry(context: SmartRetryContext) {
         imageModel,
         aspectRatio: sequence.aspectRatio,
         resolution: sequence.resolution,
-        autoGenerateMotion: sequence.autoGenerateMotion,
+        stopAt,
         videoModels: [videoModel],
-        autoGenerateMusic: sequence.autoGenerateMusic,
         audioModels: [safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)],
         referenceOnly: !sequence.generateStartFrames,
         generateVoices: sequence.generateVoices,
@@ -249,8 +259,8 @@ export async function executeSmartRetry(context: SmartRetryContext) {
           aiProvider: 'openrouter',
           regenerateAll: true,
         },
-        autoGenerateMotion: sequence.autoGenerateMotion,
-        autoGenerateMusic: sequence.autoGenerateMusic,
+        ...flagsFromStopAt(stopAt),
+        stopAt,
       })
     );
 
@@ -290,9 +300,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
     });
 
   // Collect failed items and estimate costs
-  const failedImageShots = shotViews.filter(
-    (f) => f.frame.imageStatus === 'failed'
-  );
+  const failedImageShots = shotViews.filter((f) => f.imageStatus === 'failed');
   // Reference-only shots have no still by design, so requiring one here made
   // every failed reference-only clip invisible to retry — and the empty result
   // reported "none of the failed items can be retried", pushing the user at a
@@ -355,6 +363,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
 
       const workflowInput: ImageWorkflowInput = {
         userId: user.id,
+        variantOnly: false,
         teamId,
         reservationId,
         ownsReservation: true,
@@ -384,6 +393,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
   // 2. Retry failed motion — one batch so a scene is recorded ONCE (#1703),
   // the same shape Generate all motion / Update Stale already use.
   if (failedMotionShots.length > 0) {
+    const styleConfig = await loadSequenceStyle(context.scopedDb, sequence);
     const { snapDuration } = await import('@/motion/snap-duration');
     // Match normal motion generation: cast and element references also keep
     // identity consistent when animating a start frame. Only location sheets
@@ -447,6 +457,9 @@ export async function executeSmartRetry(context: SmartRetryContext) {
       batchShots.push({
         shotId: shot.id,
         sceneId: shot.sceneId,
+        packedScene: packedSceneFromScene(scene, styleConfig),
+        attachSceneHeader:
+          shots.filter((row) => row.sceneId === shot.sceneId).length > 1,
         sequenceTitle: sequence.title,
         imageUrl: referenceOnly ? undefined : (imageUrl ?? undefined),
         referenceOnly,
@@ -468,7 +481,6 @@ export async function executeSmartRetry(context: SmartRetryContext) {
         duration: shot.durationMs ? shot.durationMs / 1000 : undefined,
         voicedLines,
         audioClips: audioClips.length > 0 ? audioClips : undefined,
-        dialogueContext: spoken?.dialogueContext,
         motionPrompt: selectedMotion
           ? motionPromptFromVersion(selectedMotion, shotDialogue)
           : undefined,
@@ -496,8 +508,8 @@ export async function executeSmartRetry(context: SmartRetryContext) {
         ownsReservation: true,
         sequenceId: sequence.id,
         includeMusic: false,
-        ...(batchDialogue.dialogueRecording
-          ? { dialogueRecording: batchDialogue.dialogueRecording }
+        ...(batchDialogue.dialogueSpeech
+          ? { dialogueSpeech: batchDialogue.dialogueSpeech }
           : {}),
         shots: batchShots,
       };
@@ -527,26 +539,47 @@ export async function executeSmartRetry(context: SmartRetryContext) {
           })
         : undefined;
 
-    const musicInput: MusicWorkflowInput = {
-      userId: user.id,
-      teamId,
+    const musicTags = sequence.musicTags ?? '';
+    // Row + claim before the run (#1130), compare-and-swapped on the claim
+    // this request saw: a concurrent retry that already claimed wins and this
+    // one starts nothing.
+    const variantId = await context.scopedDb.sequenceVariants.claimMusic({
       sequenceId: sequence.id,
-      reservationId,
-      ownsReservation: true,
-      prompt: sequence.musicPrompt,
       model: musicModel,
-      tags: sequence.musicTags ?? '',
-      duration: totalDuration,
-    };
-
-    await context.scopedDb.sequence(sequence.id).updateMusicFields({
-      musicStatus: 'generating',
-      musicError: null,
+      prompt: sequence.musicPrompt,
+      tags: musicTags,
+      durationSeconds: totalDuration,
+      isPrimary: true,
+      workflowRunId: null,
+      ifPendingIs: sequence.pendingPromoteMusicVariantId,
     });
-
-    await releaseReservationOnThrow(context.scopedDb, reservationId, () =>
-      triggerWorkflow('/music', musicInput)
-    );
+    if (variantId) {
+      const musicInput: MusicWorkflowInput = {
+        userId: user.id,
+        teamId,
+        sequenceId: sequence.id,
+        reservationId,
+        ownsReservation: true,
+        prompt: sequence.musicPrompt,
+        model: musicModel,
+        tags: musicTags,
+        duration: totalDuration,
+        variantId,
+      };
+      try {
+        await releaseReservationOnThrow(context.scopedDb, reservationId, () =>
+          triggerWorkflow('/music', musicInput)
+        );
+      } catch (error) {
+        await context.scopedDb.sequenceVariants.failMusicClaim(
+          { sequenceId: sequence.id, variantId },
+          error instanceof Error ? error.message : String(error)
+        );
+        throw error;
+      }
+    } else if (reservationId) {
+      await context.scopedDb.billing.zeroReservation(reservationId);
+    }
 
     retried.push('music');
   }
@@ -576,6 +609,7 @@ export async function executeSmartRetry(context: SmartRetryContext) {
       duration: totalDuration,
       // This branch only runs when the sequence has no music prompt at all.
       promptSource: 'ai-generated',
+      musicModel: safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL),
     });
 
     retried.push('music prompt');

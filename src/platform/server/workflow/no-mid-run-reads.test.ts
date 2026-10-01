@@ -34,9 +34,9 @@ const WORKFLOW_PATHS = [
     (f) => !f.endsWith('.test.ts')
   ),
   'src/models/server/llm-call-helper.ts',
-  // A workflow-step helper, not a workflow: dialogue recording spends the
+  // A workflow-step helper, not a workflow: dialogue speech spends the
   // ElevenLabs key inside the step it drives (#1651, #1657).
-  'src/motion/server/record-dialogue.ts',
+  'src/motion/server/generate-dialogue-speech.ts',
 ].sort();
 
 const WORKFLOW_PATH_BY_BASE: Record<string, string> = (() => {
@@ -234,7 +234,7 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       why: 'Re-resolved inside each step that talks to fal, because a replayed step may run in a fresh isolate with an unconfigured singleton.',
     },
   ],
-  'record-dialogue.ts': [
+  'generate-dialogue-speech.ts': [
     {
       read: 'resolveKey',
       bucket: 'CREDENTIAL',
@@ -261,13 +261,6 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
     },
   ],
   'element-vision-workflow.ts': [
-    {
-      read: 'resolveLlmKey',
-      bucket: 'CREDENTIAL',
-      why: 'Resolved inside the step that spends it.',
-    },
-  ],
-  'frame-prompt-workflow.ts': [
     {
       read: 'resolveLlmKey',
       bucket: 'CREDENTIAL',
@@ -478,25 +471,16 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
     },
   ],
   // compute-plan now runs at the trigger, so the plan arrives on the payload.
-  // The three TRIGGER-SNAPSHOT reads below stayed deliberately: they are the
-  // `load-render-refs` step, which is kept OUT of the payload because the
-  // combined plan + scene-context + refs would put a user-supplied input
-  // (script length) against the same 1 MiB cap as everything else.
   'update-stale-shots-workflow.ts': [
     {
-      read: 'characters.listWithSheets',
-      bucket: 'TRIGGER-SNAPSHOT',
-      why: 'load-render-refs, once at run start: this workflow re-renders stale artifacts against CURRENT sheets, and the plan hashed those same rows moments earlier.',
+      read: 'compliance.listEnforcementFor',
+      bucket: 'BILLING-GUARD',
+      why: 'Spawn-time enforcement for independent fresh-run framing grids, as in ShotImagesWorkflow.',
     },
     {
-      read: 'sequenceLocations.listWithReferences',
-      bucket: 'TRIGGER-SNAPSHOT',
-      why: 'Same load-render-refs step.',
-    },
-    {
-      read: 'sequenceElements.list',
-      bucket: 'TRIGGER-SNAPSHOT',
-      why: 'Same load-render-refs step.',
+      read: 'apiKeys.hasUsableKey',
+      bucket: 'BILLING-GUARD',
+      why: 'The references wave bills only platform sheets when fal BYOK is unavailable; voices always spend platform funds.',
     },
     {
       read: 'shots.getById',
@@ -532,11 +516,6 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       read: 'videoVariants.listBySegment',
       bucket: 'BILLING-GUARD',
       why: 'Same guard: a segment already rendering is producing the fix.',
-    },
-    {
-      read: 'sequences.getById',
-      bucket: 'BILLING-GUARD',
-      why: 'The music twin: musicPromptInputHash / musicStatus are the only in-flight signal, since music has no claim rows either.',
     },
   ],
   'upscale-shot-variant-workflow.ts': [
@@ -591,7 +570,7 @@ type Has<T, K extends string> = K extends keyof T ? true : false;
 const _frameReadRemoved: Has<WorkflowScopedDb['frames'], 'getById'> = false;
 const _frameWriteKept: Has<
   WorkflowScopedDb['frames'],
-  'setImageGenerationStatus'
+  'setPendingPromoteVersionId'
 > = true;
 const _liveReadKeepsIt: Has<WorkflowScopedDb['liveRead']['frames'], 'getById'> =
   true;
@@ -677,6 +656,15 @@ describe('workflows read no unsanctioned mutable DB state mid-run', () => {
       'Only update-stale-shots-workflow.ts may use scopedDb.stalenessPlanning. ' +
         'Everything else snapshots at the trigger or goes through scopedDb.liveRead.'
     ).toEqual(['update-stale-shots-workflow.ts']);
+  });
+
+  test('generation planning is restricted to the storyboard handoff', () => {
+    const users = workflowSourceFiles().filter((file) =>
+      stripCommentLines(readFileSync(workflowPath(file), 'utf8')).includes(
+        'generationPlanning'
+      )
+    );
+    expect(users).toEqual(['storyboard-workflow.ts']);
   });
 
   test('each read comes through the hatch its bucket requires', () => {

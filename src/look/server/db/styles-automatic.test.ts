@@ -77,6 +77,7 @@ async function createAutoSequence() {
     draft: placeholderAutoStyleDraft(),
   });
   const sequence = await sequencesDb.create({
+    generationStopAt: 'images',
     id: sequenceId,
     title: 'S',
     styleId: style.id,

@@ -66,7 +66,7 @@ const schema = z.object({
 const callConfig = {
   name: 'visual-prompts',
   phase: { number: 3, name: 'Visual prompts' },
-  promptName: 'phase/visual-prompt-scene-generation-chat',
+  promptName: 'phase/shot-spec-rewrite-chat',
   promptVariables: {},
   modelId: 'x-ai/grok-4.6' as const,
   responseSchema: schema,

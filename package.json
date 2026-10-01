@@ -121,14 +121,14 @@
     "@posthog/react": "^1.11.0",
     "@react-email/components": "^1.0.12",
     "@tailwindcss/typography": "^0.5.20",
-    "@tanstack/ai": "^0.58.0",
-    "@tanstack/ai-byteplus": "^0.4.2",
-    "@tanstack/ai-elevenlabs": "^0.6.1",
-    "@tanstack/ai-fal": "^0.14.4",
-    "@tanstack/ai-gemini": "^0.31.2",
-    "@tanstack/ai-grok": "^0.18.10",
-    "@tanstack/ai-openai": "^0.23.1",
-    "@tanstack/ai-openrouter": "^0.19.16",
+    "@tanstack/ai": "^0.63.0",
+    "@tanstack/ai-byteplus": "^0.5.1",
+    "@tanstack/ai-elevenlabs": "^0.6.6",
+    "@tanstack/ai-fal": "^0.15.3",
+    "@tanstack/ai-gemini": "^0.34.1",
+    "@tanstack/ai-grok": "^0.20.3",
+    "@tanstack/ai-openai": "^0.25.1",
+    "@tanstack/ai-openrouter": "^0.20.1",
     "@tanstack/highlight": "0.0.10",
     "@tanstack/markdown": "0.0.13",
     "@tanstack/react-query": "^5.102.8",
@@ -220,7 +220,7 @@
   },
   "overrides": {
     "@better-auth/core": "1.7.2",
-    "@tanstack/ai-devtools-core": "0.5.5",
+    "@tanstack/ai-devtools-core": "0.5.22",
     "@tiptap/core": "3.31.0",
     "@tiptap/pm": "3.31.0",
     "prosemirror-model": "1.25.11",
@@ -258,8 +258,5 @@
     "workerDirectory": [
       "public"
     ]
-  },
-  "patchedDependencies": {
-    "@tanstack/ai-grok@0.18.10": "patches/@tanstack%2Fai-grok@0.18.10.patch"
   }
 }

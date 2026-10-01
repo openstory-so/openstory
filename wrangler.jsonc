@@ -202,14 +202,9 @@
       "class_name": "UpscaleShotVariantWorkflow",
     },
     {
-      "name": "frame-prompt-workflow",
-      "binding": "FRAME_PROMPT_WORKFLOW",
-      "class_name": "FramePromptWorkflow",
-    },
-    {
-      "name": "motion-prompt-workflow",
-      "binding": "MOTION_PROMPT_WORKFLOW",
-      "class_name": "MotionPromptWorkflow",
+      "name": "shot-spec-rewrite-workflow",
+      "binding": "SHOT_SPEC_REWRITE_WORKFLOW",
+      "class_name": "ShotSpecRewriteWorkflow",
     },
     {
       "name": "music-prompt-workflow",
@@ -245,16 +240,6 @@
       "name": "location-bible-workflow",
       "binding": "LOCATION_BIBLE_WORKFLOW",
       "class_name": "LocationBibleWorkflow",
-    },
-    {
-      "name": "frame-prompt-batch-workflow",
-      "binding": "FRAME_PROMPT_BATCH_WORKFLOW",
-      "class_name": "FramePromptBatchWorkflow",
-    },
-    {
-      "name": "motion-prompt-batch-workflow",
-      "binding": "MOTION_PROMPT_BATCH_WORKFLOW",
-      "class_name": "MotionPromptBatchWorkflow",
     },
     {
       "name": "motion-music-prompts-workflow",
@@ -508,14 +493,9 @@
           "class_name": "UpscaleShotVariantWorkflow",
         },
         {
-          "name": "frame-prompt-workflow",
-          "binding": "FRAME_PROMPT_WORKFLOW",
-          "class_name": "FramePromptWorkflow",
-        },
-        {
-          "name": "motion-prompt-workflow",
-          "binding": "MOTION_PROMPT_WORKFLOW",
-          "class_name": "MotionPromptWorkflow",
+          "name": "shot-spec-rewrite-workflow",
+          "binding": "SHOT_SPEC_REWRITE_WORKFLOW",
+          "class_name": "ShotSpecRewriteWorkflow",
         },
         {
           "name": "music-prompt-workflow",
@@ -551,16 +531,6 @@
           "name": "location-bible-workflow",
           "binding": "LOCATION_BIBLE_WORKFLOW",
           "class_name": "LocationBibleWorkflow",
-        },
-        {
-          "name": "frame-prompt-batch-workflow",
-          "binding": "FRAME_PROMPT_BATCH_WORKFLOW",
-          "class_name": "FramePromptBatchWorkflow",
-        },
-        {
-          "name": "motion-prompt-batch-workflow",
-          "binding": "MOTION_PROMPT_BATCH_WORKFLOW",
-          "class_name": "MotionPromptBatchWorkflow",
         },
         {
           "name": "motion-music-prompts-workflow",
@@ -829,14 +799,9 @@
           "class_name": "UpscaleShotVariantWorkflow",
         },
         {
-          "name": "frame-prompt-workflow",
-          "binding": "FRAME_PROMPT_WORKFLOW",
-          "class_name": "FramePromptWorkflow",
-        },
-        {
-          "name": "motion-prompt-workflow",
-          "binding": "MOTION_PROMPT_WORKFLOW",
-          "class_name": "MotionPromptWorkflow",
+          "name": "shot-spec-rewrite-workflow",
+          "binding": "SHOT_SPEC_REWRITE_WORKFLOW",
+          "class_name": "ShotSpecRewriteWorkflow",
         },
         {
           "name": "music-prompt-workflow",
@@ -872,16 +837,6 @@
           "name": "location-bible-workflow",
           "binding": "LOCATION_BIBLE_WORKFLOW",
           "class_name": "LocationBibleWorkflow",
-        },
-        {
-          "name": "frame-prompt-batch-workflow",
-          "binding": "FRAME_PROMPT_BATCH_WORKFLOW",
-          "class_name": "FramePromptBatchWorkflow",
-        },
-        {
-          "name": "motion-prompt-batch-workflow",
-          "binding": "MOTION_PROMPT_BATCH_WORKFLOW",
-          "class_name": "MotionPromptBatchWorkflow",
         },
         {
           "name": "motion-music-prompts-workflow",

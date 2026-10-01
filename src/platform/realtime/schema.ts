@@ -177,6 +177,10 @@ export const realtimeSchema = {
       // content-flagged (#1272). Invalidates the per-model variant list so the
       // fallback still shows up, and toasts the swap.
       modelFallback: z.boolean().optional(),
+      // A failed upscale's reason (#1942). The shot keeps its still and reads
+      // `completed`, so this is the only signal the user gets; the client
+      // toasts it.
+      upscaleError: z.string().optional(),
     }),
 
     // Fast preview shots replaced by AI-analyzed shots
@@ -234,12 +238,13 @@ export const realtimeSchema = {
       shotId: z.string().optional(),
       status: z.enum(['pending', 'generating', 'completed', 'failed']),
       audioUrl: z.string().optional(),
-      // Which audio model produced this update. Optional for backward compat
-      // with emitters that predate multi-model audio (#546). The cache updater
-      // uses it to scope live `sequences.music*` writes to the primary model
-      // (so a secondary model can't clobber the primary) and to refresh the
+      // Which audio model produced this update (#546) — refreshes the
       // per-model audio queries.
       model: z.string().optional(),
+      // False for an added model's track run (#546, #1115): it never touches
+      // the sequence's music, so the cache updater leaves the sequence alone.
+      // Absent = the sequence's own track (every other emitter).
+      primary: z.boolean().optional(),
     }),
 
     // Character sheet generation progress (during recasting)

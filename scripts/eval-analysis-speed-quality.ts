@@ -26,16 +26,11 @@ import {
   talentMatchResponseSchema,
 } from '@/sequences/response-schemas';
 import {
-  motionPromptSchema,
-  visualPromptResultSchema,
-} from '@/shots/scene-analysis.schema';
-import {
   SCRIPT_ANALYSIS_MODELS,
   getAnalysisModelById,
   isSelectableAnalysisModelId,
 } from '@/models/models.config';
 import { addLineGutter } from '@/sequences/boundary-split';
-import { narrowShotPromptContext } from '@/shots/server/prompt-context';
 import { buildMatchingPromptVariables } from '@/cast/server/talent-matching-prompt';
 import { buildLocationMatchingPromptVariables } from '@/cast/server/location-matching-prompt';
 import { musicSceneSummariesFromAnalysis } from '@/audio/server/workflows/music-scene-summaries';
@@ -52,7 +47,6 @@ import {
 } from './eval-analysis/fixtures';
 import {
   EFFORTS,
-  attachVision,
   timedStructuredCall,
   type Effort,
 } from './eval-analysis/caller';
@@ -63,11 +57,9 @@ import {
   scoreAutoStyle,
   scoreBibles,
   scoreLocation,
-  scoreMotion,
   scoreMusic,
   scoreSceneSplit,
   scoreTalent,
-  scoreVisual,
 } from './eval-analysis/score';
 import { writeReport, type EvalRow } from './eval-analysis/report';
 
@@ -568,113 +560,24 @@ async function runCall(
   }
 
   if (job.call === 'visual' || job.call === 'motion') {
-    const narrowed = narrowShotPromptContext({
-      scene: gold.focusScene,
-      styleConfig: gold.styleConfig,
-      characterBible: gold.characterBible,
-      locationBible: gold.locationBible,
-      elementBible: gold.elementBible,
-      aspectRatio: gold.aspectRatio,
-      analysisModel: model,
-    });
-    const promptName =
-      job.call === 'visual'
-        ? 'phase/visual-prompt-scene-generation-chat'
-        : 'phase/motion-prompt-scene-generation-chat';
-    const variables: Record<string, string> = {
-      scene: JSON.stringify(gold.focusScene, null, 2),
-      sceneBefore: gold.sceneBefore
-        ? JSON.stringify(gold.sceneBefore, null, 2)
-        : '(none)',
-      sceneAfter: gold.sceneAfter
-        ? JSON.stringify(gold.sceneAfter, null, 2)
-        : '(none)',
-      characterBible: JSON.stringify(narrowed.characterBible, null, 2),
-      locationBible: JSON.stringify(narrowed.locationBible, null, 2),
-      elementBible: JSON.stringify(narrowed.elementBible, null, 2),
-      styleConfig: JSON.stringify(gold.styleConfig, null, 2),
-      aspectRatio: gold.aspectRatio,
+    return {
+      structural: 0,
+      judge: undefined,
+      details: {
+        skipped:
+          'Still and motion prompts are derived from the shot spec (#1923).',
+      },
+      call: {
+        ok: false,
+        parsed: undefined,
+        error: 'retired',
+        ttftMs: undefined,
+        totalMs: 0,
+        promptTokens: undefined,
+        completionTokens: undefined,
+        costUsd: undefined,
+      },
     };
-    if (job.call === 'motion') {
-      variables.startingFrameNote = job.model.vision
-        ? 'The rendered starting frame is attached below as an image — animate strictly from it.'
-        : 'No rendered starting frame exists yet — derive the motion strictly from the scene data below.';
-    }
-    const { messages: raw } = await getChatPrompt(promptName, variables);
-    const messages =
-      job.call === 'motion' && job.model.vision
-        ? attachVision(raw, gold.startingFrameDataUri)
-        : raw;
-    if (job.call === 'visual') {
-      const call = await timedStructuredCall({
-        model,
-        messages,
-        schema: visualPromptResultSchema,
-        effort: job.effort,
-        observationName: 'eval-analysis-visual',
-        timeoutMs,
-      });
-      if (!call.ok || !call.parsed) {
-        return {
-          structural: 0,
-          judge: undefined,
-          details: { error: call.error },
-          call,
-        };
-      }
-      const parsed = call.parsed;
-      const scored = scoreVisual(parsed.visual.fullPrompt, 'SCARLETT VEGA');
-      const judge = skipJudge
-        ? undefined
-        : await judgeText({
-            title:
-              'Starting-frame image prompt for a one-shot lipstick-ad scene.',
-            rubric:
-              '10: 80–120 words, shot size+lens first, SCARLETT VEGA in CAPS, no face/hair/clothing invented, photographable physics, Product Ad style. 0: identity leakage, on-screen text, or unshootable staging.',
-            payload: parsed.visual.fullPrompt,
-          });
-      return {
-        structural: scored.quality,
-        judge,
-        details: scored.details,
-        call,
-      };
-    }
-    const call = await timedStructuredCall({
-      model,
-      messages,
-      schema: motionPromptSchema,
-      effort: job.effort,
-      observationName: 'eval-analysis-motion',
-      timeoutMs,
-    });
-    if (!call.ok || !call.parsed) {
-      return {
-        structural: 0,
-        judge: undefined,
-        details: { error: call.error },
-        call,
-      };
-    }
-    const parsed = call.parsed;
-    const hasDialogue = gold.focusScene.originalScript.dialogue.length > 0;
-    const scored = scoreMotion(
-      parsed.fullPrompt,
-      hasDialogue,
-      parsed.dialogue?.presence
-    );
-    const judge = skipJudge
-      ? undefined
-      : await judgeText({
-          title: job.model.vision
-            ? 'Motion prompt that must continue FROM an attached starting still (woman at a kitchen counter reaching for a coral lipstick box).'
-            : 'Motion prompt (text-only, no still).',
-          rubric: job.model.vision
-            ? '10: continues the exact reach/pose, exactly one camera move with a pacing adverb, verbs not appearance, no music, dialogue performance if lines exist. 0: contradicts the still, stacked camera moves, or static description.'
-            : '10: one camera move, verbs, no appearance recap, no music. 0: stacked moves or static recap.',
-          payload: parsed.fullPrompt,
-        });
-    return { structural: scored.quality, judge, details: scored.details, call };
   }
 
   if (job.call === 'music') {

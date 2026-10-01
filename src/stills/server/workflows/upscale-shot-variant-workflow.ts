@@ -124,6 +124,7 @@ export async function bindUpscaleVersion(params: {
     promptVersionId,
     status: 'generating',
     workflowRunId,
+    isPrimary: true,
   });
   await scopedDb.frames.setPendingPromoteVersionId(frameId, version.id);
   return version.id;
@@ -134,7 +135,6 @@ export type PersistUpscaleScopedDb = {
     ScopedDb['frameVariants'],
     'update' | 'selectIfPendingPromoteIs'
   >;
-  frames: Pick<ScopedDb['frames'], 'setImageGenerationStatus'>;
   liveRead: {
     frames: Pick<WorkflowScopedDb['liveRead']['frames'], 'getById'>;
   };
@@ -223,23 +223,11 @@ export async function persistUpscaleSelection(params: {
     logger.info(
       `[UpscaleShotVariantWorkflow] Promote claim on frame ${frameId} moved; upscale ${versionId} stays in history`
     );
-    // Kickoff flipped imageStatus to generating. If a newer run owns the
-    // claim, leave the spinner — that run is still in flight. If the claim
-    // is gone (history select), settle back to the selected still, never
-    // `failed` — the old still is still good.
+    // The completed row reads as the selection (#1942). If a newer run owns
+    // the claim, its row is the newer primary and keeps the spinner; if the
+    // claim is gone (history select), tell the client the still settled.
     const frameNow = await scopedDb.liveRead.frames.getById(frameId);
     if (frameNow && !frameNow.pendingPromoteVersionId) {
-      await scopedDb.frames.setImageGenerationStatus(
-        frameId,
-        {
-          imageStatus: frameNow.selectedImageVersionId
-            ? 'completed'
-            : 'pending',
-          imageWorkflowRunId: null,
-          imageError: null,
-        },
-        { throwOnMissing: false }
-      );
       await emit({ shotId, status: 'completed' });
     }
     return { promoted: false };
@@ -299,21 +287,6 @@ export class UpscaleShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<Upsc
         );
         return null;
       }
-
-      // Same primary-busy flag image gen uses. Trigger already flipped this
-      // when it minted the version; stamp the run id here so legacy payloads
-      // and a race before the trigger's post-create write still show busy.
-      // Failure/claim-miss settle back to `completed` (the old still stays
-      // selected — never `failed`).
-      await scopedDb.frames.setImageGenerationStatus(
-        frame.id,
-        {
-          imageStatus: 'generating',
-          imageWorkflowRunId: workflowRunId,
-          imageError: null,
-        },
-        { throwOnMissing: false }
-      );
 
       await getGenerationChannel(sequenceId).emit('generation.image:progress', {
         shotId,
@@ -482,10 +455,11 @@ export class UpscaleShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<Upsc
     );
     if (!input.shotId || !input.teamId) return;
 
-    // Mark the in-flight framing version failed; the frame's PRIOR selection is
-    // untouched, so revert the UI to the real selected still rather than showing
-    // a false failure on a good image. Prefer the snapshotted version id so a
-    // run that dies before `workflowRunId` is stamped still settles.
+    // Mark the in-flight framing version failed AND out of the status race
+    // (#1942): the frame's PRIOR selection is untouched, so the shot reads the
+    // real selected still rather than a false failure on a good image. Prefer
+    // the snapshotted version id so a run that dies before `workflowRunId` is
+    // stamped still settles.
     if (input.versionId) {
       const minted = await scopedDb.claims.frameVariants.getById(
         input.versionId
@@ -493,13 +467,15 @@ export class UpscaleShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<Upsc
       if (minted?.status === 'generating' || minted?.status === 'pending') {
         await scopedDb.frameVariants.update(input.versionId, {
           status: 'failed',
+          isPrimary: false,
           error,
         });
       }
     } else {
       await scopedDb.frameVariants.markFailedByWorkflowRun(
         event.instanceId,
-        error
+        error,
+        { isPrimary: false }
       );
     }
 
@@ -517,20 +493,6 @@ export class UpscaleShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<Upsc
         );
       }
     }
-    // Settle the primary-busy flag only if this run set it. A newer upscale
-    // owns `imageWorkflowRunId` / the spinner; don't wipe that. Never `failed`
-    // — the selected still is still good.
-    if (frame?.imageWorkflowRunId === event.instanceId) {
-      await scopedDb.frames.setImageGenerationStatus(
-        frame.id,
-        {
-          imageStatus: frame.selectedImageVersionId ? 'completed' : 'pending',
-          imageWorkflowRunId: null,
-          imageError: null,
-        },
-        { throwOnMissing: false }
-      );
-    }
 
     if (input.sequenceId) {
       // A failed upscale never promoted, so the frame still points at whatever
@@ -546,6 +508,7 @@ export class UpscaleShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<Upsc
           shotId: input.shotId,
           status: 'completed',
           ...(thumbnailUrl ? { thumbnailUrl } : {}),
+          upscaleError: error,
         }
       );
     }

@@ -32,7 +32,6 @@ import {
   generateMusicFn,
   getSequencesFn,
 } from '@/sequences/sequences.fn';
-import { flagsFromStopAt } from '@/sequences/pipeline';
 import { firstStageWithWork } from '@/sequences/generation-plan';
 import {
   generationPlanKeys,
@@ -472,15 +471,11 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   const phaseConfig = useMemo<GenerationPhaseConfig>(
     () => ({
       stopAt: sequence?.generationStopAt ?? undefined,
-      autoGenerateMotion: sequence?.autoGenerateMotion ?? false,
-      autoGenerateMusic: sequence?.autoGenerateMusic ?? false,
       referenceOnly: !(sequence?.generateStartFrames ?? false),
       generateVoices: sequence?.generateVoices ?? false,
     }),
     [
       sequence?.generationStopAt,
-      sequence?.autoGenerateMotion,
-      sequence?.autoGenerateMusic,
       sequence?.generateStartFrames,
       sequence?.generateVoices,
     ]
@@ -1173,10 +1168,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     if (!shots) return;
 
     for (const shot of shots) {
-      if (
-        regeneratingImages.has(shot.id) &&
-        isTerminalStatus(shot.frame.imageStatus)
-      )
+      if (regeneratingImages.has(shot.id) && isTerminalStatus(shot.imageStatus))
         handleRegenerateEnd(shot.id, 'image');
       if (regeneratingMotion.has(shot.id) && isTerminalStatus(shot.videoStatus))
         handleRegenerateEnd(shot.id, 'motion');
@@ -1395,15 +1387,10 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       // processing write and hide the chip for a frame (#1641).
       await queryClient.cancelQueries({ queryKey: key });
       const previous = queryClient.getQueryData<Sequence>(key);
-      const { autoGenerateMotion, autoGenerateMusic } = flagsFromStopAt(
-        args.stopAt
-      );
       // Reset the stream before the status flip so the chip's first paint is
       // a new run, not the leftover COMPLETE that would exit it (#1641).
       resetGenerationStream({
         stopAt: args.stopAt,
-        autoGenerateMotion,
-        autoGenerateMusic,
         referenceOnly: !args.generateStartFrames,
         generateVoices: args.generateVoices,
       });
@@ -1416,8 +1403,6 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
               status: 'processing',
               updatedAt: new Date(),
               generationStopAt: args.stopAt,
-              autoGenerateMotion,
-              autoGenerateMusic,
               generateStartFrames: args.generateStartFrames,
               generateVoices: args.generateVoices,
               draftMotion: args.draftMotion,
@@ -1806,6 +1791,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                       }
                       facetShotIds={facetShotIds}
                       musicEditable={scope === 'sequence'}
+                      sceneScope={scope === 'scenes'}
                       scene={scriptScene}
                       scopeShots={scopeShots}
                       filmSeconds={shots ? sumShotSeconds(shots) : undefined}

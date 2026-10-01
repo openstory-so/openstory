@@ -26,31 +26,29 @@ export function musicRequestDurationSeconds(
 }
 
 /**
- * Live read behind {@link musicTrackStaleness}: the completed primary music
- * variant for the model that produced `sequences.musicUrl`, compared against
- * the sequence's current prompt / tags / shot durations (#1657).
- *
- * The model is not a lever here — a model switch writes its own primary row
- * per (sequence, model), so there is never a track stamped with a model the
- * sequence no longer selects.
+ * Live read behind {@link musicTrackStaleness}: the selected track (#1115),
+ * compared against the sequence's current prompt / tags / shot durations
+ * (#1657). The track's own model is the lever it was rendered with.
  */
 async function readMusicTrackStaleness(
   scopedDb: Pick<ScopedDb, 'sequenceVariants'>,
-  sequence: Pick<Sequence, 'id' | 'musicModel' | 'musicPrompt' | 'musicTags'>,
+  sequence: Pick<
+    Sequence,
+    'selectedMusicVariantId' | 'musicPrompt' | 'musicTags'
+  >,
   shots: ReadonlyArray<Pick<Shot, 'durationMs'>>
 ): Promise<MusicTrackStaleness> {
-  if (!sequence.musicModel) return 'untracked';
-  const primary = await scopedDb.sequenceVariants.getMusicPrimary(
-    sequence.id,
-    sequence.musicModel
+  if (!sequence.selectedMusicVariantId) return 'untracked';
+  const track = await scopedDb.sequenceVariants.getMusicById(
+    sequence.selectedMusicVariantId
   );
-  if (!primary || primary.status !== 'completed') return 'untracked';
+  if (!track || track.status !== 'completed') return 'untracked';
   return await musicTrackStaleness({
-    storedInputHash: primary.inputHash,
+    storedInputHash: track.inputHash,
     prompt: sequence.musicPrompt,
     tags: sequence.musicTags,
     requestDurationSeconds: musicRequestDurationSeconds(shots),
-    audioModel: primary.model,
+    audioModel: track.model,
   });
 }
 
@@ -72,7 +70,7 @@ export async function readMusicPromptStaleness(
   }
 
   // Track staleness is INDEPENDENT of the prompt's (#1657): a hand-edited
-  // prompt nulls `musicPromptInputHash` — so the prompt reads 'untracked' —
+  // prompt selects a row with no hash — so the prompt reads 'untracked' —
   // while leaving the track stale against the text it was rendered from.
   const shots = await scopedDb.shots.listBySequence(sequence.id);
   const musicTrack = await readMusicTrackStaleness(scopedDb, sequence, shots);
@@ -93,11 +91,11 @@ export async function readMusicPromptStaleness(
       return { musicPrompt: 'untracked' as const, musicTrack };
     }
 
-    const latest = await scopedDb.sequenceMusicPromptVersions.getLatest(
+    const selected = await scopedDb.sequenceMusicPromptVersions.getSelected(
       sequence.id
     );
     const analysisModel =
-      latest?.analysisModel ??
+      selected?.analysisModel ??
       getAnalysisModelById(sequence.analysisModel)?.id ??
       DEFAULT_ANALYSIS_MODEL;
 

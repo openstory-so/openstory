@@ -149,6 +149,7 @@ export class RegenerateShotsWorkflow extends OpenStoryWorkflowEntrypoint<Regener
 
         const childPayload: ImageWorkflowInput = {
           userId: input.userId,
+          variantOnly: false,
           teamId,
           sequenceId,
           shotId: snapshot.shotId,

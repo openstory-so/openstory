@@ -40,6 +40,7 @@ import { createScenesMethods } from '@/shots/server/db/scenes';
 import { createProductionReadMethods } from '@/shots/server/db/production-reads';
 import { createSceneScriptVersionsMethods } from '@/shots/server/db/scene-script-versions';
 import { createShotDialogueMethods } from '@/shots/server/db/shot-dialogue';
+import { createShotSpecVersionsMethods } from '@/shots/server/db/shot-spec-versions';
 import { createSequenceEventsMethods } from '@/sequences/server/db/sequence-events';
 import { createShotPromptVersionsMethods } from '@/shots/server/db/shot-prompt-versions';
 import { createRenderSegmentsMethods } from '@/motion/server/db/render-segments';
@@ -449,6 +450,8 @@ export function createScopedDb(teamId: string, userId: string) {
     renderSegments: createRenderSegmentsMethods(db),
     videoVariants: createVideoVariantsMethods(db),
     shotPromptVersions: createShotPromptVersionsMethods(db),
+    // #1915 — the structured shot spec its prompts are derived from.
+    shotSpecVersions: createShotSpecVersionsMethods(db),
     // SSF redesign (#988) — frames are the IMAGE unit (still keyframes per
     // shot); frame_variants the flat image versions; frame_prompt_versions the
     // visual-prompt history; sequence_events the append-only activity log.

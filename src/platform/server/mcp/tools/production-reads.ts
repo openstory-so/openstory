@@ -11,6 +11,7 @@ import {
   musicReadSchema,
   inspectMusic,
   frameReadSchema,
+  withImageAttempts,
   segmentReadSchema,
   shotMembershipSchema,
   exportReadSchema,
@@ -113,15 +114,20 @@ export function registerProductionReads(
     server,
     context,
     'get_sequence_music',
-    'Inspect current sequence music, enabled state, prompt, tags and generation result. Use list_versions kind music or music_prompt for histories; music selection is matched by output URL and model, not a stored version pointer.',
+    'Inspect current sequence music, enabled state, prompt, tags and generation result. model is the one the selected track was made with; variantId and promptVersionId are the selected rows in list_versions kind music and music_prompt.',
     sequenceInput,
     z.object({ music: musicReadSchema }),
-    async (input, { scopedDb, origin }) => ({
-      music: inspectMusic(
-        await productionAccess(scopedDb).sequence(input.sequenceId),
-        origin
-      ),
-    })
+    async (input, { scopedDb, origin }) => {
+      const sequence = await productionAccess(scopedDb).sequence(
+        input.sequenceId
+      );
+      const track = sequence.selectedMusicVariantId
+        ? await scopedDb.sequenceVariants.getMusicById(
+            sequence.selectedMusicVariantId
+          )
+        : null;
+      return { music: inspectMusic(sequence, track, origin) };
+    }
   );
   registerProductionRead(
     server,
@@ -138,7 +144,7 @@ export function registerProductionReads(
         (next) => scopedDb.frames.listByShot(input.shotId, next)
       );
       return {
-        frames: page.items.map((row) =>
+        frames: (await withImageAttempts(scopedDb, page.items)).map((row) =>
           projectRead(frameReadSchema, row, origin)
         ),
         nextCursor: page.nextCursor,
@@ -152,13 +158,13 @@ export function registerProductionReads(
     'Inspect a frame by database frameId, including role, selections, pending promotion and current image attempt.',
     sequenceInput.extend({ frameId: ulidSchema }),
     z.object({ frame: frameReadSchema }),
-    async (input, { scopedDb, origin }) => ({
-      frame: projectRead(
-        frameReadSchema,
+    async (input, { scopedDb, origin }) => {
+      const [frame] = await withImageAttempts(scopedDb, [
         await productionAccess(scopedDb).frame(input.sequenceId, input.frameId),
-        origin
-      ),
-    })
+      ]);
+      if (!frame) throw new Error(`Frame ${input.frameId} not found`);
+      return { frame: projectRead(frameReadSchema, frame, origin) };
+    }
   );
   registerProductionRead(
     server,

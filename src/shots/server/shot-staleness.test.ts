@@ -24,6 +24,7 @@ vi.doMock('@/shots/input-hash', () => ({
   motionPromptInputHashMatches: vi.fn(
     async (stored: string | null) => stored === (await hashMotionPromptInput())
   ),
+  sha256Hex: realInputHash.sha256Hex,
 }));
 
 const { computeShotStaleness, loadShotStalenessReads } =
@@ -58,6 +59,7 @@ function makeScopedDb(overrides: {
   motionFallbackHash?: string | null;
   /** `inputHash` of the shot's SELECTED motion version — the reference hash. */
   motionSelectedHash?: string | null;
+  motionSource?: string;
   /** Text + `inputHash` of the frame's SELECTED visual version. */
   visualSelected?: { text?: string | null; inputHash?: string | null } | null;
   /** Live visual claim for the 'updating' overlay (#1085). */
@@ -82,13 +84,13 @@ function makeScopedDb(overrides: {
 }) {
   return asStub<ScopedDb>({
     characters: {
-      listWithSheets: vi.fn().mockResolvedValue([]),
+      list: vi.fn().mockResolvedValue([]),
       listBibleVersionsBySequence: vi
         .fn()
         .mockResolvedValue(overrides.characterBibleVersions ?? []),
     },
     sequenceLocations: {
-      listWithReferences: vi.fn().mockResolvedValue([]),
+      list: vi.fn().mockResolvedValue([]),
       listBibleVersionsBySequence: vi
         .fn()
         .mockResolvedValue(overrides.locationBibleVersions ?? []),
@@ -137,6 +139,7 @@ function makeScopedDb(overrides: {
       getLatest: vi.fn().mockResolvedValue(null),
       getSelectedMotion: vi.fn().mockResolvedValue({
         inputHash: overrides.motionSelectedHash ?? null,
+        source: overrides.motionSource ?? 'ai-generated',
         createdAt: overrides.motionSelectedAt,
       }),
       getLatestWithInputHash: vi
@@ -154,6 +157,9 @@ function makeScopedDb(overrides: {
       listLiveClaims: vi
         .fn()
         .mockResolvedValue(overrides.imageLiveClaims ?? []),
+    },
+    shotSpecVersions: {
+      getSelected: vi.fn().mockResolvedValue(null),
     },
   });
 }
@@ -193,11 +199,13 @@ describe('computeShotStaleness', () => {
       motionPrompt: 'stale',
     });
     // Thumbnail branch never produced a hash (it threw); prompts did.
-    expect(result.liveHashes).toEqual({
+    expect(result.liveHashes).toMatchObject({
       thumbnail: null,
       visualPrompt: 'visual-stored',
       motionPrompt: 'motion-moved',
     });
+    expect(result.liveHashes.spec).toMatch(/^[0-9a-f]{64}$/);
+    expect(result.spec).toBe('untracked');
   });
 
   it('falls back to the latest version hash when the selected one has none', async () => {
@@ -304,7 +312,13 @@ describe('computeShotStaleness', () => {
       thumbnail: 'generating',
       visualPrompt: 'generating',
       motionPrompt: 'generating',
-      liveHashes: { thumbnail: null, visualPrompt: null, motionPrompt: null },
+      spec: 'generating',
+      liveHashes: {
+        thumbnail: null,
+        visualPrompt: null,
+        motionPrompt: null,
+        spec: null,
+      },
       causes: [],
     });
     // Short-circuits before any work: the batch fn runs this for every shot in
@@ -732,6 +746,80 @@ describe('per-shot start-frame override', () => {
     });
   });
 
+  it('derived direction remains fresh when its first still lands, but keeps scene/style invalidation', async () => {
+    const db = makeScopedDb({
+      motionSelectedHash: 'motion-stored',
+      motionSource: 'derived',
+    });
+    const args = {
+      dialogue: NO_LINES,
+      scopedDb: db,
+      sequence,
+      shot,
+      frame,
+      scene,
+    };
+    expect(
+      (await computeShotStaleness({ ...args, selectedImage: null }))
+        .motionPrompt
+    ).toBe('fresh');
+    expect(
+      (await computeShotStaleness({ ...args, selectedImage: still }))
+        .motionPrompt
+    ).toBe('fresh');
+    expect(motionContextArgs()).toMatchObject({ startingFrameImageUrl: null });
+    hashMotionPromptInput.mockResolvedValue('scene-style-changed');
+    expect(
+      (await computeShotStaleness({ ...args, selectedImage: still }))
+        .motionPrompt
+    ).toBe('stale');
+  });
+
+  it('stamps the next LLM version over a derived one with the still it will see', async () => {
+    loadNarrowShotPromptContext.mockImplementation(
+      async (args: { startingFrameImageUrl?: string | null }) => ({
+        frameUrl: args.startingFrameImageUrl ?? null,
+      })
+    );
+    hashMotionPromptInput.mockImplementation(
+      async (ctx: { frameUrl: string | null }) =>
+        ctx.frameUrl ? 'with-still' : 'motion-stored'
+    );
+    const result = await computeShotStaleness({
+      dialogue: NO_LINES,
+      scopedDb: makeScopedDb({
+        motionSelectedHash: 'motion-stored',
+        motionSource: 'derived',
+      }),
+      sequence,
+      shot,
+      frame,
+      scene,
+      selectedImage: still,
+    });
+    // Rebuild does not condition on the still. The live digest leaves the URL out.
+    expect(result.motionPrompt).toBe('fresh');
+    expect(result.liveHashes.motionPrompt).toBe('motion-stored');
+  });
+
+  it('a later LLM version again consumes the rendered still', async () => {
+    await computeShotStaleness({
+      dialogue: NO_LINES,
+      scopedDb: makeScopedDb({
+        motionSelectedHash: 'motion-stored',
+        motionSource: 'regenerated',
+      }),
+      sequence,
+      shot,
+      frame,
+      scene,
+      selectedImage: still,
+    });
+    expect(motionContextArgs()).toMatchObject({
+      startingFrameImageUrl: stillUrl,
+    });
+  });
+
   it('judges the motion prompt of a shot with no anchor frame', async () => {
     const scopedDb = makeScopedDb({ motionSelectedHash: 'motion-stored' });
     const result = await computeShotStaleness({
@@ -847,6 +935,9 @@ describe('loadShotStalenessReads (#1795)', () => {
     const sequenceEvents = {
       listBySequence: vi.fn().mockResolvedValue([]),
     };
+    const shotSpecVersions = {
+      getSelectedByShotIds: vi.fn().mockResolvedValue(new Map()),
+    };
 
     await loadShotStalenessReads(
       asStub<Parameters<typeof loadShotStalenessReads>[0]>({
@@ -854,6 +945,7 @@ describe('loadShotStalenessReads (#1795)', () => {
         shotPromptVersions,
         frameVariants,
         sequenceEvents,
+        shotSpecVersions,
         shotDialogue: {
           getSelectedBySequence: vi.fn().mockResolvedValue([]),
         },

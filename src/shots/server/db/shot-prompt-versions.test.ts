@@ -21,6 +21,7 @@
  */
 
 import type { Database } from '@/platform/server/db/client';
+import { selectSequencesFrom } from '@/sequences/server/db/sequences';
 import { generateId } from '@/platform/id';
 import {
   motionPromptInputHash,
@@ -1212,17 +1213,17 @@ describe('shotPromptVersions.completePendingAiVersion', () => {
 });
 
 describe('sequence_music_prompt_variants helper', () => {
-  it('user-edit clears musicPromptInputHash and overwrites the cached prompt/tags', async () => {
+  it('user-edit selects a row with no hash and its prompt/tags', async () => {
     const methods = createSequenceMusicPromptVersionsMethods(db);
 
-    await db
-      .update(sequences)
-      .set({
-        musicPrompt: 'AI music v1',
-        musicTags: 'epic,cinematic',
-        musicPromptInputHash: 'music-hash-1',
-      })
-      .where(eq(sequences.id, sequenceId));
+    await methods.write({
+      sequenceId,
+      prompt: 'AI music v1',
+      tags: 'epic,cinematic',
+      source: 'ai-generated',
+      inputHash: musicPromptInputHash('music-hash-1'),
+      analysisModel: 'anthropic/claude-haiku-4.5',
+    });
 
     const variant = await methods.write({
       sequenceId,
@@ -1233,10 +1234,9 @@ describe('sequence_music_prompt_variants helper', () => {
 
     expect(variant.source).toBe('user-edit');
 
-    const [refreshed] = await db
-      .select()
-      .from(sequences)
-      .where(eq(sequences.id, sequenceId));
+    const [refreshed] = await selectSequencesFrom(db).where(
+      eq(sequences.id, sequenceId)
+    );
     if (!refreshed) throw new Error('test setup: refresh failed');
     expect(refreshed.musicPrompt).toBe('User edited music prompt');
     expect(refreshed.musicTags).toBe('rock,fast');
@@ -1246,7 +1246,7 @@ describe('sequence_music_prompt_variants helper', () => {
   it('ai-generated → regenerated chain on music variants mirrors the music-prompt workflow flow', async () => {
     const methods = createSequenceMusicPromptVersionsMethods(db);
 
-    const previousBeforeFirst = await methods.getLatest(sequenceId);
+    const previousBeforeFirst = await methods.getSelected(sequenceId);
     expect(previousBeforeFirst).toBeNull();
     const firstSource = previousBeforeFirst ? 'regenerated' : 'ai-generated';
 
@@ -1259,7 +1259,7 @@ describe('sequence_music_prompt_variants helper', () => {
       analysisModel: 'anthropic/claude-haiku-4.5',
     });
 
-    const previousBeforeSecond = await methods.getLatest(sequenceId);
+    const previousBeforeSecond = await methods.getSelected(sequenceId);
     expect(previousBeforeSecond?.source).toBe('ai-generated');
     const secondSource = previousBeforeSecond ? 'regenerated' : 'ai-generated';
 
@@ -1278,10 +1278,9 @@ describe('sequence_music_prompt_variants helper', () => {
       'ai-generated',
     ]);
 
-    const [refreshed] = await db
-      .select()
-      .from(sequences)
-      .where(eq(sequences.id, sequenceId));
+    const [refreshed] = await selectSequencesFrom(db).where(
+      eq(sequences.id, sequenceId)
+    );
     if (!refreshed) throw new Error('test setup: refresh failed');
     expect(refreshed.musicPrompt).toBe('AI music v2');
     expect(refreshed.musicPromptInputHash).toBe('music-hash-v2');
@@ -1309,6 +1308,7 @@ describe('sequence_music_prompt_variants helper', () => {
     });
 
     expect(retried.id).toBe(first.id);
+    expect((await methods.getSelected(sequenceId))?.id).toBe(first.id);
 
     const history = await methods.listBySequence(sequenceId);
     expect(history).toHaveLength(1);
@@ -1326,10 +1326,9 @@ describe('sequence_music_prompt_variants helper', () => {
       analysisModel: 'anthropic/claude-haiku-4.5',
     });
 
-    const [refreshed] = await db
-      .select()
-      .from(sequences)
-      .where(eq(sequences.id, sequenceId));
+    const [refreshed] = await selectSequencesFrom(db).where(
+      eq(sequences.id, sequenceId)
+    );
     if (!refreshed) throw new Error('test setup: refresh failed');
     expect(refreshed.musicPrompt).toBe('AI music v2');
     expect(refreshed.musicPromptInputHash).toBe('music-context-hash');
@@ -1417,10 +1416,9 @@ describe('sequence_music_prompt_variants helper', () => {
       'ai-generated',
     ]);
 
-    const [refreshed] = await db
-      .select()
-      .from(sequences)
-      .where(eq(sequences.id, sequenceId));
+    const [refreshed] = await selectSequencesFrom(db).where(
+      eq(sequences.id, sequenceId)
+    );
     if (!refreshed) throw new Error('test setup: refresh failed');
     expect(refreshed.musicPrompt).toBe('AI music v1');
     expect(refreshed.musicPromptInputHash).toBe('music-hash-v1');

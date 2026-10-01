@@ -92,6 +92,7 @@ const STAGE_PREFIXES: ReadonlyArray<readonly [string, string]> = [
   ['Split the script within the USER_SCRIPT', 'script-analyze'],
   ['Extract a complete character bible', 'script-bibles'],
   ['Cover each scene.', 'script-shot-list'],
+  ["Rewrite this shot's spec.", 'shot-spec-rewrite'],
   ['Match the following library locations', 'location-match'],
   ['Cast the following talent', 'talent-cast'],
   ['Generate the visual prompt for the starting frame', 'visual-prompts'],

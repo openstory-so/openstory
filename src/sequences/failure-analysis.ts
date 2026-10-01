@@ -181,7 +181,7 @@ export function analyzeLoadedFailures(
 }
 
 export function analyzeFailures(
-  // The still's lifecycle lives on the anchor frame (#989) and the video's on
+  // The still's lifecycle is the anchor frame's primary row (#1942) and the video's on
   // the segment's primary render (#1067).
   shots: ShotView[],
   sequence: Sequence,
@@ -204,9 +204,7 @@ export function analyzeFailures(
   }
 
   // Failed images
-  const failedImageShots = shots.filter(
-    (f) => f.frame.imageStatus === 'failed'
-  );
+  const failedImageShots = shots.filter((f) => f.imageStatus === 'failed');
   if (failedImageShots.length > 0) {
     groups.push({
       category: 'image',
@@ -215,7 +213,7 @@ export function analyzeFailures(
         shotId: f.id,
         sceneNumber: sceneNumberOf(f, scenesById),
         sceneTitle: getSceneTitle(f, scenesById),
-        error: f.frame.imageError,
+        error: f.imageError,
       })),
     });
   }
@@ -244,7 +242,7 @@ export function analyzeFailures(
 
   // Detect missing motion prompts (images completed but no motion prompt)
   const shotsWithImageButNoMotionPrompt = shots.filter(
-    (f) => f.frame.imageStatus === 'completed' && !f.motionPrompt?.fullPrompt
+    (f) => f.imageStatus === 'completed' && !f.motionPrompt?.fullPrompt
   );
   if (
     shotsWithImageButNoMotionPrompt.length > 0 &&

@@ -207,7 +207,7 @@ export function flaggedInputs(rejection: string): {
   audio: boolean;
   /**
    * Ark's input-side audio moderation (`InputAudioSensitiveContentDetected`,
-   * #1756): the reference audio itself — a dialogue recording, or a studio
+   * #1756): the reference audio itself — a dialogue speech, or a studio
    * audio clip — was refused. Neither a reseed nor a softer prompt changes
    * the bytes that were sent; only different audio does.
    */
@@ -269,7 +269,7 @@ export function clipContentRejectionMessage(args: {
   // it, so say what the audio is and the ways to send different audio.
   if (flags.audioInput) {
     const audio = args.inputs?.audio ?? {
-      name: 'the dialogue recording',
+      name: 'the generated dialogue',
       fix: "Set the shot's dialogue audio to Video model, regenerate the dialogue for another reading, or change the lines in the script",
     };
     return `Content checker rejected ${audio.name} (${tried}). ${audio.fix}.`;

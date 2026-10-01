@@ -672,6 +672,7 @@ function shotSpec(shotNumber: number, action: string) {
     },
     action,
     cameraMovement: { move: 'static', pacing: 'slow' as const },
+    direction: '',
     soundCue: '',
     dialogue: [] as Array<{ character: string; line: string; tone: string }>,
     durationSeconds: 4,

@@ -536,7 +536,8 @@ export function useSelectFrameImageVersion() {
                 ? {
                     ...f,
                     image: f.image ? { ...f.image, url } : null,
-                    frame: { ...f.frame, imageStatus: 'completed' as const },
+                    imageStatus: 'completed' as const,
+                    imageError: null,
                     video: null,
                     videoStatus: 'pending' as const,
                   }

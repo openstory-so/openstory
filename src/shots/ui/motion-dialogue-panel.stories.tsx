@@ -8,7 +8,7 @@ import {
   ShotDialogueBlock,
   ShotDialogueHistory,
   ShotReadingsList,
-  ShotRecordingsInFlight,
+  ShotSpeechesInFlight,
   type ShotDialogueReading,
 } from './motion-dialogue-panel';
 
@@ -42,11 +42,11 @@ const reading = (
   over: Partial<ShotDialogueReading>
 ): ShotDialogueReading => ({
   id,
-  source: 'recorded',
+  source: 'generated',
   selected: false,
   fromSeconds: 0,
   toSeconds: 2.4,
-  recordingUrl: AUDIO_URL,
+  speechUrl: AUDIO_URL,
   model: 'eleven_v3',
   createdAt: '2026-09-18T10:00:00Z',
   matchesCurrentLines: true,
@@ -252,9 +252,9 @@ export const NoLinesYet: Story = {
 };
 
 /** A recording in flight, and one the user has already overruled. */
-export const RecordingsInFlight: Story = {
+export const SpeechesInFlight: Story = {
   render: () => (
-    <ShotRecordingsInFlight
+    <ShotSpeechesInFlight
       claims={[
         { id: 'c1', willBecomeCurrent: true },
         { id: 'c2', willBecomeCurrent: false },

@@ -103,8 +103,8 @@ describe('workflowNameFromRunId', () => {
       workflowNameFromRunId('motion_01KYH2HK_01KYH2K9_seedance_v2_ro0648u')
     ).toBe('motion');
     expect(
-      workflowNameFromRunId('frame-prompt_01KVEQFF_01KVEQG7_rw1yxay')
-    ).toBe('frame-prompt');
+      workflowNameFromRunId('shot-spec-rewrite_01KVEQFF_01KVEQG7_rw1yxay')
+    ).toBe('shot-spec-rewrite');
   });
 
   test('prefers segment[1] so top-level ids are never misread as child ids', () => {
@@ -220,7 +220,7 @@ describe('triggerCfWorkflow', () => {
       await expect(
         triggerCfWorkflow({
           binding,
-          triggerPath: '/frame-prompt',
+          triggerPath: '/shot-spec-rewrite',
           body,
           env,
           deduplicationId: 'prompt-visual-f1-h4sh',

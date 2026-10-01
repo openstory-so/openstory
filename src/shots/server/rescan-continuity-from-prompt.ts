@@ -3,11 +3,8 @@
  * character / element / location tags and additively merge them into a
  * shot's `metadata.continuity`.
  *
- * Lives here — not inline in `updateShotFn` — because the auto-link feature
- * (#683) needs to fire from both the explicit save path AND the regenerate
- * paths (`generateShotImageFn`, `generateShotMotionFn`). In practice the
- * regenerate paths are the only ones the UI actually calls today, so without
- * this helper the auto-link is dead code.
+ * Prompt-edit writers call this before persisting their upstream hash, so
+ * every later render sees the same saved reference tags.
  *
  * Pure with respect to the database: callers are responsible for persisting
  * the returned continuity if `changed === true`.
