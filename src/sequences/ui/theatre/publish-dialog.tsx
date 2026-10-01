@@ -59,6 +59,7 @@ import {
   useQuery,
   useSuspenseQuery,
 } from '@tanstack/react-query';
+import { errorMessage } from '@/platform/errors';
 import { CatchBoundary } from '@tanstack/react-router';
 import { Suspense, useId, useState, useSyncExternalStore } from 'react';
 
@@ -150,7 +151,7 @@ export function PublishDialog(props: PublishDialogProps) {
                 errorComponent={({ error, reset }) => (
                   <div className="flex flex-col gap-4">
                     <p role="alert" className="text-sm text-destructive">
-                      {error.message}
+                      {errorMessage(error)}
                     </p>
                     <DialogFooter>
                       <Button type="button" variant="outline" onClick={onClose}>
@@ -602,7 +603,7 @@ function PublishTracking({
       </p>
       {error && (
         <p role="alert" className="text-sm text-destructive">
-          Couldn't check progress: {error.message}
+          Couldn't check progress: {errorMessage(error)}
         </p>
       )}
       {status && status.results.length > 0 && (
