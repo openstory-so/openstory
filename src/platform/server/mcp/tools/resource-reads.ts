@@ -16,7 +16,6 @@ export const MCP_RESOURCE_TEMPLATES = [
     name: 'sequence-summary',
     title: 'Sequence summary',
     uriTemplate: 'openstory://sequences/{sequenceId}/summary',
-    params: ['sequenceId'],
     listed: true,
     read: ((db, ids, origin) =>
       readSequenceSummary(db, ids.sequenceId ?? '', origin)) satisfies Read,
@@ -25,7 +24,6 @@ export const MCP_RESOURCE_TEMPLATES = [
     name: 'sequence-bible',
     title: 'Production bible',
     uriTemplate: 'openstory://sequences/{sequenceId}/bible',
-    params: ['sequenceId'],
     listed: true,
     read: ((db, ids, origin) =>
       readProductionBible(db, ids.sequenceId ?? '', origin)) satisfies Read,
@@ -34,7 +32,6 @@ export const MCP_RESOURCE_TEMPLATES = [
     name: 'scene',
     title: 'Scene',
     uriTemplate: 'openstory://sequences/{sequenceId}/scenes/{sceneId}',
-    params: ['sequenceId', 'sceneId'],
     listed: false,
     read: ((db, ids, origin) =>
       readSceneDetail(

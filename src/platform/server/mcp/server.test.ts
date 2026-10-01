@@ -495,6 +495,20 @@ describe('resources routing (#1462)', () => {
     });
   });
 
+  it('refuses resources/list without sequences:read as a request error, before any db', async () => {
+    const createDb = vi.spyOn(dbModule, 'createScopedDb');
+    const { body } = await rpc(
+      'resources/list',
+      {},
+      { ...auth, kind: 'oauth', scopes: [] }
+    );
+    expect(body.error).toMatchObject({
+      code: -32600,
+      message: 'This token requires the sequences:read scope.',
+    });
+    expect(createDb).not.toHaveBeenCalled();
+  });
+
   it('refuses a read without sequences:read, before any db', async () => {
     const createDb = vi.spyOn(dbModule, 'createScopedDb');
     const { body } = await rpc(

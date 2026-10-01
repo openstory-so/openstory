@@ -2297,15 +2297,56 @@ describe('production-context resources (#1462)', () => {
     ).toEqual(await data('get_scene', { sequenceId, sceneId }));
   });
 
-  it('serves the bible with its limits and explicit truncation', async () => {
+  it('serves the bible with explicit truncation, equal to its tool', async () => {
     const { body } = await read(`openstory://sequences/${sequenceId}/bible`);
     expect(body).toMatchObject({
       sequenceId,
       charactersTruncated: null,
       scenesTruncated: null,
-      limits: { entities: 50, scenes: 100, excerptChars: 400 },
     });
     expect(body).toEqual(await data('get_production_bible', { sequenceId }));
+  });
+
+  it('shrinks an over-budget bible to fit, with a real cursor to continue', async () => {
+    await db.insert(characters).values(
+      Array.from({ length: 30 }, (_, i) => ({
+        id: generateId(),
+        sequenceId,
+        characterId: `char_${i}`,
+        legacyName: `C${i}`,
+        legacyPersonality: 'x'.repeat(8000),
+      }))
+    );
+    const bible = z
+      .object({
+        characters: z.array(z.unknown()),
+        charactersTruncated: z.object({
+          continueWith: z.literal('list_characters'),
+          cursor: z.string(),
+        }),
+      })
+      .parse(await data('get_production_bible', { sequenceId }));
+    expect(bible.characters).toHaveLength(5);
+    expect(
+      await data('list_characters', {
+        sequenceId,
+        cursor: bible.charactersTruncated.cursor,
+        limit: 5,
+      })
+    ).toMatchObject({ characters: expect.any(Array) });
+  });
+
+  it('drops a deleted scene from the bible', async () => {
+    const before = z
+      .object({ totalScenes: z.number() })
+      .parse((await read(`openstory://sequences/${sequenceId}/bible`)).body);
+    await db
+      .update(scenes)
+      .set({ deletedAt: new Date() })
+      .where(eq(scenes.id, dbSceneId(sceneId)));
+    expect(
+      (await read(`openstory://sequences/${sequenceId}/bible`)).body
+    ).toMatchObject({ totalScenes: before.totalScenes - 1 });
   });
 
   it('rejects malformed URIs, shot ids, wrong-sequence, deleted and foreign scenes', async () => {
@@ -2323,7 +2364,10 @@ describe('production-context resources (#1462)', () => {
       `openstory://sequences/${otherSequence}/scenes/${sceneId}`,
       `openstory://sequences/${sequenceId}/scenes/${sceneId}/extra`,
     ]) {
-      expect((await read(uri)).error, uri).toBeDefined();
+      expect((await read(uri)).error, uri).toMatchObject({
+        code: -32602,
+        data: { uri },
+      });
     }
     await db
       .update(scenes)
@@ -2334,8 +2378,11 @@ describe('production-context resources (#1462)', () => {
         .error
     ).toMatchObject({ code: -32602 });
     scopedDb = createScopedDb(generateId(), actorId);
-    expect(
-      (await read(`openstory://sequences/${sequenceId}/summary`)).error
-    ).toMatchObject({ code: -32602 });
+    for (const path of ['summary', 'bible', `scenes/${sceneId}`]) {
+      expect(
+        (await read(`openstory://sequences/${sequenceId}/${path}`)).error,
+        path
+      ).toMatchObject({ code: -32602 });
+    }
   });
 });

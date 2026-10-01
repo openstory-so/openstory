@@ -22,7 +22,8 @@ import {
 import { getLogger, toErrorPayload } from '@/platform/logger';
 import { OpenStoryError } from '@/platform/errors';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
-import { MCP_RESPONSE_BYTES, type OpenStoryMcpContext } from './tool-context';
+import type { ScopedDb } from '@/platform/server/db/scoped';
+import { overResponseCap, type OpenStoryMcpContext } from './tool-context';
 import { MCP_RESOURCE_TEMPLATES } from './tools/resource-reads';
 
 const logger = getLogger(['openstory', 'mcp', 'resources']);
@@ -41,7 +42,7 @@ function parseIds(
   variables: Variables
 ): Record<string, string> {
   const ids: Record<string, string> = {};
-  for (const param of template.params) {
+  for (const [, param = ''] of template.uriTemplate.matchAll(/\{(\w+)\}/g)) {
     const parsed = ulidSchema.safeParse(variables[param]);
     if (!parsed.success) throw new ResourceNotFoundError(uri.href);
     ids[param] = parsed.data;
@@ -54,23 +55,29 @@ function parseIds(
 
 function buildResourceServer(context: OpenStoryMcpContext) {
   const server = new McpServer({ name: 'openstory', version: '0.1.0' });
-  // Same scope as the tools; checked per call so discovery needs none.
+  // Same scope as the tools on list and read; templates/list needs none.
   const scoped = () => context.scoped('sequences:read');
+  // One query per resources/list, shared by the listed templates.
+  let listing: ReturnType<ScopedDb['sequences']['listPage']> | undefined;
   for (const template of MCP_RESOURCE_TEMPLATES) {
     const list = template.listed
       ? async () => {
-          const { scopedDb } = scoped();
-          const rows = await scopedDb.sequences.listPage({
-            limit: LISTED_SEQUENCES,
-            cursor: null,
-          });
-          return {
-            resources: rows.slice(0, LISTED_SEQUENCES).map((sequence) => ({
-              uri: expand(template.uriTemplate, { sequenceId: sequence.id }),
-              name: `${template.title}: ${sequence.title}`,
-              mimeType: JSON_MIME,
-            })),
-          };
+          try {
+            listing ??= scoped().scopedDb.sequences.listPage({
+              limit: LISTED_SEQUENCES,
+              cursor: null,
+            });
+            const rows = await listing;
+            return {
+              resources: rows.slice(0, LISTED_SEQUENCES).map((sequence) => ({
+                uri: expand(template.uriTemplate, { sequenceId: sequence.id }),
+                name: `${template.title}: ${sequence.title}`,
+                mimeType: JSON_MIME,
+              })),
+            };
+          } catch (error) {
+            throw resourceError('resources/list', error);
+          }
         }
       : undefined;
     server.registerResource(
@@ -84,7 +91,7 @@ function buildResourceServer(context: OpenStoryMcpContext) {
           const text = JSON.stringify(
             await template.read(scopedDb, ids, origin)
           );
-          if (new TextEncoder().encode(text).length > MCP_RESPONSE_BYTES) {
+          if (overResponseCap(text)) {
             throw new ProtocolError(
               ProtocolErrorCode.InvalidRequest,
               'Resource exceeds 256 KiB. Use the matching tool and its list tools to page it.'
@@ -94,7 +101,7 @@ function buildResourceServer(context: OpenStoryMcpContext) {
             contents: [{ uri: uri.href, mimeType: JSON_MIME, text }],
           };
         } catch (error) {
-          throw resourceError(uri, error);
+          throw resourceError(uri.href, error);
         }
       }
     );
@@ -103,16 +110,16 @@ function buildResourceServer(context: OpenStoryMcpContext) {
 }
 
 /** A foreign, deleted or wrong-type id is not found; other refusals keep their code. */
-function resourceError(uri: URL, error: unknown): Error {
+function resourceError(uri: string, error: unknown): Error {
   if (error instanceof ProtocolError) return error;
   if (error instanceof OpenStoryError) {
-    if (error.statusCode === 404) return new ResourceNotFoundError(uri.href);
+    if (error.statusCode === 404) return new ResourceNotFoundError(uri);
     if (error.statusCode < 500) {
       return new ProtocolError(ProtocolErrorCode.InvalidRequest, error.message);
     }
   }
   logger.error('MCP resource read failed {uri}', {
-    uri: uri.href,
+    uri,
     err: toErrorPayload(error),
   });
   return new ProtocolError(
