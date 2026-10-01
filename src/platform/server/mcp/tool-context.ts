@@ -22,6 +22,8 @@ export type ReadToolContext = {
  */
 export type OpenStoryMcpContext = {
   caller: McpCallerIdentity;
+  /** The host the request reached; media URLs and view CSP use it. */
+  origin: string;
   scoped: (scope: OAuthApiScope) => ReadToolContext;
 };
 export type OpenStoryToolContext = MCPToolContext<OpenStoryMcpContext>;

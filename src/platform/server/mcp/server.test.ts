@@ -522,3 +522,49 @@ describe('resources routing (#1462)', () => {
     expect(createDb).not.toHaveBeenCalled();
   });
 });
+
+describe('MCP Apps views (#1673)', () => {
+  it('links get_sequence to its view and leaves every other tool as it was', async () => {
+    const { body } = await rpc('tools/list');
+    const tools = z
+      .array(
+        z.object({
+          name: z.string(),
+          _meta: z.record(z.string(), z.unknown()).optional(),
+        })
+      )
+      .parse(z.object({ tools: z.unknown() }).parse(body.result).tools);
+    const viewed = tools.filter((t) => t._meta?.ui);
+    expect(viewed.map((t) => t.name)).toEqual(['openstory.get_sequence']);
+    expect(viewed[0]?._meta).toMatchObject({
+      ui: { resourceUri: 'ui://openstory/sequence-card.html' },
+      'ui/resourceUri': 'ui://openstory/sequence-card.html',
+    });
+  });
+
+  it('serves the view as one self-contained MCP App page with its media origins', async () => {
+    const { body } = await rpc('resources/read', {
+      uri: 'ui://openstory/sequence-card.html',
+    });
+    const [content] = z
+      .array(
+        z.object({
+          mimeType: z.string(),
+          text: z.string(),
+          _meta: z.object({
+            ui: z.object({
+              csp: z.object({ resourceDomains: z.array(z.string()) }),
+            }),
+          }),
+        })
+      )
+      .parse(z.object({ contents: z.unknown() }).parse(body.result).contents);
+    expect(content?.mimeType).toBe('text/html;profile=mcp-app');
+    expect(content?._meta.ui.csp.resourceDomains).toContain(
+      'https://openstory.test'
+    );
+    expect(content?.text).toContain('ui/initialize');
+    expect(content?.text).not.toMatch(/<script[^>]+src=/);
+    expect(content?.text).not.toContain('innerHTML');
+  });
+});

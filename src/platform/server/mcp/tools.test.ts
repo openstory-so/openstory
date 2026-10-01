@@ -2239,6 +2239,7 @@ describe('production-context resources (#1462)', () => {
           teamId,
           teamName: 'T',
         },
+        origin: 'https://openstory.test',
         scoped: () => ({
           scopedDb,
           origin: 'https://openstory.test',
@@ -2282,6 +2283,7 @@ describe('production-context resources (#1462)', () => {
       .parse((await resourceRpc('resources/list', {})).result?.resources)
       .map((r) => r.uri);
     expect(listed).toEqual([
+      'ui://openstory/sequence-card.html',
       `openstory://sequences/${sequenceId}/summary`,
       `openstory://sequences/${sequenceId}/bible`,
     ]);

@@ -19,6 +19,7 @@ import { createScopedDb } from '@/platform/server/db/scoped';
 import type { McpAuthContext } from './auth';
 import { serveResourceRequest } from './resources';
 import { MCP_RESOURCE_TEMPLATES } from './tools/resource-reads';
+import { SEQUENCE_CARD_URI } from './ui/sequence-card';
 import type { OpenStoryMcpContext, OpenStoryToolContext } from './tool-context';
 import { listSequences } from './tools/list-sequences';
 import { getSequence } from './tools/get-sequence';
@@ -131,6 +132,7 @@ function mcpToolContext(
 ): OpenStoryMcpContext {
   return {
     caller: { user: auth.user, teamId: auth.teamId, teamName: auth.teamName },
+    origin,
     scoped: (scope) => {
       if (auth.kind === 'oauth' && !auth.scopes.includes(scope)) {
         throw new InsufficientScopeError(scope);
@@ -148,7 +150,7 @@ function mcpToolContext(
  * Serve one authenticated MCP request; media URLs use the host it reached.
  * `method` is the JSON-RPC body's: `resources/*` goes to resources.ts.
  */
-export function serveMcpRequest(
+export async function serveMcpRequest(
   request: Request,
   auth: McpAuthContext,
   method: string | null
@@ -157,5 +159,50 @@ export function serveMcpRequest(
   if (method?.startsWith('resources/')) {
     return serveResourceRequest(request, context);
   }
-  return mcpServer.handle(request, { context });
+  const response = await mcpServer.handle(request, { context });
+  return method === 'tools/list' ? withToolViews(response) : response;
+}
+
+/** MCP Apps views (#1673): tool name → its `ui://` resource. */
+const TOOL_VIEWS: Record<string, string> = {
+  'openstory.get_sequence': SEQUENCE_CARD_URI,
+};
+
+const toolsListSchema = z.looseObject({
+  result: z.looseObject({
+    tools: z.array(
+      z.looseObject({
+        name: z.string(),
+        _meta: z.record(z.string(), z.unknown()).optional(),
+      })
+    ),
+  }),
+});
+
+/**
+ * Links each viewed tool to its view: `_meta.ui.resourceUri`, plus the
+ * deprecated flat key older hosts read. ai-mcp 0.6.0 drops a tool's `_meta`,
+ * so it is added to the listed tools here; clients without MCP Apps ignore it.
+ */
+async function withToolViews(response: Response): Promise<Response> {
+  if (!response.headers.get('content-type')?.includes('application/json')) {
+    return response;
+  }
+  const parsed = toolsListSchema.safeParse(await response.clone().json());
+  if (!parsed.success) return response;
+  for (const tool of parsed.data.result.tools) {
+    const resourceUri = TOOL_VIEWS[tool.name];
+    if (!resourceUri) continue;
+    tool._meta = {
+      ...tool._meta,
+      ui: { resourceUri },
+      'ui/resourceUri': resourceUri,
+    };
+  }
+  const headers = new Headers(response.headers);
+  headers.delete('content-length');
+  return new Response(JSON.stringify(parsed.data), {
+    status: response.status,
+    headers,
+  });
 }

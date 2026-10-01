@@ -133,6 +133,17 @@ Shot duration and starting-frame mode (`shots.fn.ts`), prompts (`prompt-variants
 - Every resource also has a tool, so a host that does not hand resource content to the agent loses nothing.
 - **Why a second server.** `@tanstack/ai-mcp` 0.6.0's resource `read()` gets no URI variables, no request context and no `list`, so it cannot serve a scoped template. `serveMcpRequest` sends `resources/*` (by the JSON-RPC body's method) to an SDK `McpServer` in `src/platform/server/mcp/resources.ts` that holds only these templates; the ai-mcp server registers the same templates so `initialize` advertises the capability. Fold it back into `createMCPServer` once ai-mcp passes the URI, variables and context.
 
+## MCP Apps views (#1673)
+
+| Tool           | View                                | Shows                                               |
+| -------------- | ----------------------------------- | --------------------------------------------------- |
+| `get_sequence` | `ui://openstory/sequence-card.html` | Poster, title, status, style, aspect, counts, music |
+
+- A view is a `ui://` resource (`text/html;profile=mcp-app`) in `resources/list` and `resources/read`, needing no scope. The page is one self-contained HTML string (`src/platform/server/mcp/ui/sequence-card.ts`): no bundle, no SDK, no external script. It speaks the MCP Apps postMessage protocol directly (`ui/initialize`, `ui/notifications/initialized`, `ui/notifications/tool-result`, `host-context-changed`, `size-changed`), renders with `textContent` only, follows the host's theme and CSS variables, calls no tools and writes nothing.
+- The resource's `_meta.ui.csp.resourceDomains` lists where media loads from: the app origin (`/r2/…`), `R2_PUBLIC_STORAGE_DOMAIN` when set, and `fal.media` for older rows.
+- `tools/list` links a tool to its view with `_meta.ui.resourceUri` (and the deprecated flat `ui/resourceUri`). ai-mcp 0.6.0 drops a tool's `_meta`, so `withToolViews` in `server.ts` adds it to the listed tools. The tool's result is unchanged, so a client without MCP Apps sees exactly what it did before.
+- Not yet: the latest export as a player (it needs `get_export_status` called from the view through the host, which is unverified against the `/mcp` Origin allowlist), the shot grid (`list_shots` / `get_scene`) and the character/location sheet viewers.
+
 ## Authorization and read-only behavior
 
 The MCP server is a request composition boundary. Its narrow `no-scoped-factory` exception permits `createScopedDb(auth.teamId, auth.user.id)` after checking the tool's OAuth scope. It has no raw-DB or SQL exception. Discovery and `whoami` do not create a scoped DB.
