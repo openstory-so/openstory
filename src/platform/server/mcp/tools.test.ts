@@ -38,7 +38,12 @@ import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import { desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { mcpServer } from './server';
+import { mcpServer, serveMcpRequest } from './server';
+import {
+  Client as McpClient,
+  StreamableHTTPClientTransport,
+} from '@modelcontextprotocol/client';
+import type { McpAuthContext } from './auth';
 import { serveResourceRequest } from './resources';
 import { asStub } from '@/test/as-stub';
 import type { User } from '@/platform/server/auth/config';
@@ -2386,5 +2391,182 @@ describe('production-context resources (#1462)', () => {
         path
       ).toMatchObject({ code: -32602 });
     }
+  });
+});
+
+/**
+ * #1463: the official MCP client (pinned to our server's SDK revision) over
+ * Streamable HTTP, against the real server and migrated SQLite. Only the
+ * network hop is replaced: the transport's fetch calls serveMcpRequest.
+ */
+describe('official MCP client transport (#1463)', () => {
+  async function connect(
+    scopes: readonly string[] | null,
+    mode: 'auto' | 'legacy' = 'auto'
+  ) {
+    const auth = asStub<McpAuthContext>({
+      user: asStub<User>({ id: actorId, email: 'a@b.c', name: 'A' }),
+      teamId,
+      teamName: 'T',
+      kind: scopes ? 'oauth' : 'api_key',
+      keyHint: 'osk_…test',
+      clientId: 'vitest',
+      scopes: scopes ?? [],
+      session: null,
+      oauth: null,
+    });
+    const transport = new StreamableHTTPClientTransport(
+      new URL('https://openstory.test/mcp'),
+      {
+        fetch: async (input, init) => {
+          const request = new Request(input, init);
+          const body = z.object({ method: z.string().optional() }).safeParse(
+            await request
+              .clone()
+              .json()
+              .catch(() => ({}))
+          );
+          return serveMcpRequest(
+            request,
+            auth,
+            body.success ? (body.data.method ?? null) : null
+          );
+        },
+      }
+    );
+    const mcp = new McpClient(
+      { name: 'vitest-client', version: '1' },
+      { versionNegotiation: { mode } }
+    );
+    await mcp.connect(transport);
+    return mcp;
+  }
+  const structured = (result: unknown) =>
+    z
+      .object({ structuredContent: z.record(z.string(), z.unknown()) })
+      .parse(result).structuredContent;
+
+  it('discovers the read tools and resources, and navigates sequence → shot → scene', async () => {
+    const mcp = await connect(null);
+    const names = (await mcp.listTools()).tools.map((t) => t.name);
+    for (const name of [
+      'list_sequences',
+      'get_sequence',
+      'get_sequence_status',
+      'list_scenes',
+      'get_scene',
+      'list_shots',
+      'get_shot',
+    ]) {
+      expect(names).toContain(`openstory.${name}`);
+    }
+    expect(
+      (await mcp.listResourceTemplates()).resourceTemplates.map(
+        (t) => t.uriTemplate
+      )
+    ).toContain('openstory://sequences/{sequenceId}/bible');
+
+    expect(
+      structured(
+        await mcp.callTool({ name: 'openstory.list_sequences', arguments: {} })
+      )
+    ).toMatchObject({ sequences: [{ id: sequenceId }] });
+    const page = z
+      .object({
+        shots: z.array(z.object({ id: z.string(), sceneId: z.string() })),
+      })
+      .parse(
+        structured(
+          await mcp.callTool({
+            name: 'openstory.list_shots',
+            arguments: { sequenceId, limit: 1 },
+          })
+        )
+      );
+    const [first] = page.shots;
+    if (!first) throw new Error('no shot');
+    expect(
+      structured(
+        await mcp.callTool({
+          name: 'openstory.get_shot',
+          arguments: { sequenceId, shotId: first.id },
+        })
+      )
+    ).toMatchObject({ id: first.id });
+    expect(
+      structured(
+        await mcp.callTool({
+          name: 'openstory.get_scene',
+          arguments: { sequenceId, sceneId: first.sceneId },
+        })
+      )
+    ).toMatchObject({ id: first.sceneId });
+
+    // Scene and shot ids are not interchangeable.
+    expect(
+      await mcp.callTool({
+        name: 'openstory.get_scene',
+        arguments: { sequenceId, sceneId: shotId },
+      })
+    ).toMatchObject({ isError: true });
+    expect(
+      await mcp.callTool({
+        name: 'openstory.get_shot',
+        arguments: { sequenceId, shotId: sceneId },
+      })
+    ).toMatchObject({ isError: true });
+
+    const read = await mcp.readResource({
+      uri: `openstory://sequences/${sequenceId}/summary`,
+    });
+    expect(read.contents[0]).toMatchObject({ mimeType: 'application/json' });
+    await mcp.close();
+  });
+
+  it('refuses a 2025-only client: -32022 naming the supported revision', async () => {
+    await expect(connect(null, 'legacy')).rejects.toThrow(
+      /Unsupported protocol version: 2025-11-25/
+    );
+  });
+
+  it('refuses a stale scene edit and a missing scope with actionable errors', async () => {
+    const mcp = await connect(null);
+    expect(
+      await mcp.callTool({
+        name: 'openstory.update_scene',
+        arguments: {
+          sequenceId,
+          sceneId,
+          expectedScriptVersionId: generateId(),
+          title: 'New',
+        },
+      })
+    ).toMatchObject({
+      isError: true,
+      structuredContent: { error: { code: 'CONFLICT' } },
+    });
+    await mcp.close();
+
+    const readOnly = await connect(['sequences:read']);
+    expect(
+      await readOnly.callTool({
+        name: 'openstory.update_scene',
+        arguments: {
+          sequenceId,
+          sceneId,
+          expectedScriptVersionId: generateId(),
+          title: 'New',
+        },
+      })
+    ).toMatchObject({
+      isError: true,
+      structuredContent: {
+        error: {
+          code: 'INSUFFICIENT_SCOPE',
+          details: { scope: 'sequences:write' },
+        },
+      },
+    });
+    await readOnly.close();
   });
 });
