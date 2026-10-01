@@ -1,176 +1,134 @@
-import { registerLibraryReads } from './tools/library-reads';
-import { registerCastReads } from './tools/cast-reads';
-import { registerProductionReads } from './tools/production-reads';
-import { registerContextReads } from './tools/context-reads';
 /**
- * MCP server construction (#1457): name/version, tools capability, and the
- * `whoami` connectivity tool and read-only production tools (#1458).
+ * MCP server (#1457, #1948): `createMCPServer` from `@tanstack/ai-mcp/server`
+ * over the `whoami` connectivity tool and the read-only production tools
+ * (#1458), each a `toolDefinition().server()`.
+ *
+ * Auth is ours (`handle.ts` → `authenticateMcpRequest`, Bearer JWT + `osk_`
+ * keys), so no `auth` option: the verified identity arrives per request
+ * through `server.handle(request, { authInfo, context })`. The validator is
+ * the SDK default, which is `CfWorkerJsonSchemaValidator` under the `workerd`
+ * export condition (workerd cannot run Ajv codegen).
  */
 
-import {
-  createMcpHandler,
-  McpServer,
-  type AuthInfo,
-  type McpHttpHandler,
-} from '@modelcontextprotocol/server';
-import { CfWorkerJsonSchemaValidator } from '@modelcontextprotocol/server/validators/cf-worker';
-import { getLogger, toErrorPayload } from '@/platform/logger';
+import type { AuthInfo } from '@modelcontextprotocol/server';
+import { toolDefinition } from '@tanstack/ai';
+import { createMCPServer } from '@tanstack/ai-mcp/server';
 import { z } from 'zod';
 import { AuthenticationError } from '@/platform/errors';
 import { createScopedDb } from '@/platform/server/db/scoped';
-import type { ReadToolContextFactory } from './tool-context';
-import { registerListSequences } from './tools/list-sequences';
-import { registerGetSequence } from './tools/get-sequence';
-import { registerGetSequenceStatus } from './tools/get-sequence-status';
-import { registerListScenes } from './tools/list-scenes';
-import { registerGetScene } from './tools/get-scene';
-import { registerListShots } from './tools/list-shots';
-import { registerGetShot } from './tools/get-shot';
-import { isMcpCallerIdentity, type McpCallerIdentity } from './auth';
-
-const logger = getLogger(['openstory', 'mcp']);
+import type { McpCallerIdentity } from './auth';
+import type { OpenStoryMcpContext, OpenStoryToolContext } from './tool-context';
+import { listSequences } from './tools/list-sequences';
+import { getSequence } from './tools/get-sequence';
+import { getSequenceStatus } from './tools/get-sequence-status';
+import { listScenes } from './tools/list-scenes';
+import { getScene } from './tools/get-scene';
+import { listShots } from './tools/list-shots';
+import { getShot } from './tools/get-shot';
+import { castReadTools } from './tools/cast-reads';
+import { productionReadTools } from './tools/production-reads';
+import { contextReadTools } from './tools/context-reads';
+import { libraryReadTools } from './tools/library-reads';
 
 export const MCP_SERVER_NAME = 'openstory';
 export const MCP_SERVER_VERSION = '0.1.0';
 
-const MCP_AUTH_EXTRA = 'openstory';
-
-const whoamiOutputSchema = z.object({
-  user: z.object({
-    id: z.string(),
-    email: z.string(),
-    name: z.string(),
+const whoami = toolDefinition({
+  name: 'whoami',
+  description:
+    "Return the authenticated caller's user and team. Use this as a connectivity check before calling other OpenStory tools.",
+  inputSchema: z.object({}),
+  outputSchema: z.object({
+    user: z.object({
+      id: z.string(),
+      email: z.string(),
+      name: z.string(),
+    }),
+    team: z.object({
+      id: z.string(),
+      name: z.string(),
+    }),
   }),
-  team: z.object({
-    id: z.string(),
-    name: z.string(),
-  }),
+  metadata: { title: 'Who am I' },
+}).server<OpenStoryToolContext>((_input, ctx) => {
+  const { caller } = ctx.context;
+  return {
+    user: {
+      id: caller.user.id,
+      email: caller.user.email,
+      name: caller.user.name,
+    },
+    team: { id: caller.teamId, name: caller.teamName },
+  };
 });
 
-function authFromInfo(info: AuthInfo | undefined): McpCallerIdentity {
-  const extra = info?.extra?.[MCP_AUTH_EXTRA];
-  if (!isMcpCallerIdentity(extra)) {
-    throw new Error('MCP request is missing auth context');
-  }
-  return extra;
-}
+export const mcpServer = createMCPServer({
+  name: MCP_SERVER_NAME,
+  version: MCP_SERVER_VERSION,
+  tools: [
+    whoami,
+    listSequences,
+    getSequence,
+    getSequenceStatus,
+    listScenes,
+    getScene,
+    listShots,
+    getShot,
+    ...castReadTools,
+    ...productionReadTools,
+    ...contextReadTools,
+    ...libraryReadTools,
+  ],
+  // Many Worker isolates: a 2025 session opened here is not found on the
+  // next request, so 2025 clients get the SDK rejection, as before.
+  sessions: 'reject',
+});
 
-/** Media URLs are made absolute against the host the caller reached. */
-function originFromRequest(request: { url: string } | undefined): string {
-  if (!request) throw new Error('MCP request is missing request info');
-  return new URL(request.url).origin;
-}
+type McpCaller = McpCallerIdentity & {
+  kind: 'oauth' | 'api_key';
+  keyHint: string;
+  clientId: string;
+  scopes: readonly string[];
+};
 
-export function toMcpAuthInfo(
-  auth: McpCallerIdentity & {
-    kind: 'oauth' | 'api_key';
-    keyHint: string;
-    clientId: string;
-    scopes: readonly string[];
-  }
-): AuthInfo {
+function toMcpAuthInfo(auth: McpCaller): AuthInfo {
   return {
     token: auth.keyHint,
     clientId: auth.clientId,
     scopes: [...auth.scopes],
-    extra: {
-      authKind: auth.kind,
-      [MCP_AUTH_EXTRA]: {
-        user: auth.user,
-        teamId: auth.teamId,
-        teamName: auth.teamName,
-      } satisfies McpCallerIdentity,
-    },
+    extra: { authKind: auth.kind },
   };
 }
 
-export function createOpenStoryMcpServer(
-  auth: McpCallerIdentity,
-  options: { origin: string; scopes?: string[] }
-): McpServer {
-  const server = new McpServer(
-    { name: MCP_SERVER_NAME, version: MCP_SERVER_VERSION },
-    { jsonSchemaValidator: new CfWorkerJsonSchemaValidator() }
-  );
-
-  server.registerTool(
-    'whoami',
-    {
-      title: 'Who am I',
-      description:
-        "Return the authenticated caller's user and team. Use this as a connectivity check before calling other OpenStory tools.",
-      inputSchema: z.object({}),
-      outputSchema: whoamiOutputSchema,
-    },
-    async () => {
-      const output = {
-        user: {
-          id: auth.user.id,
-          email: auth.user.email,
-          name: auth.user.name,
-        },
-        team: { id: auth.teamId, name: auth.teamName },
-      };
+/**
+ * Per-request tool context. API keys are unscoped; OAuth tokens must carry
+ * `sequences:read`, checked when a production tool runs so discovery and
+ * `whoami` work without it.
+ */
+function mcpToolContext(auth: McpCaller, origin: string): OpenStoryMcpContext {
+  return {
+    caller: { user: auth.user, teamId: auth.teamId, teamName: auth.teamName },
+    readContext: () => {
+      if (auth.kind === 'oauth' && !auth.scopes.includes('sequences:read')) {
+        throw new AuthenticationError(
+          'This token requires the sequences:read scope.'
+        );
+      }
       return {
-        content: [{ type: 'text' as const, text: JSON.stringify(output) }],
-        structuredContent: output,
+        scopedDb: createScopedDb(auth.teamId, auth.user.id),
+        origin,
       };
-    }
-  );
-
-  // Construct the DB only when a production tool runs; discovery/whoami need none.
-  const context: ReadToolContextFactory = () => {
-    if (options.scopes && !options.scopes.includes('sequences:read')) {
-      throw new AuthenticationError(
-        'This token requires the sequences:read scope.'
-      );
-    }
-    return {
-      scopedDb: createScopedDb(auth.teamId, auth.user.id),
-      origin: options.origin,
-    };
+    },
   };
-  registerListSequences(server, context);
-  registerGetSequence(server, context);
-  registerGetSequenceStatus(server, context);
-  registerListScenes(server, context);
-  registerGetScene(server, context);
-  registerListShots(server, context);
-  registerGetShot(server, context);
-  registerCastReads(server, context);
-  registerProductionReads(server, context);
-  registerContextReads(server, context);
-  registerLibraryReads(server, context);
-  return server;
 }
 
-let handler: McpHttpHandler | undefined;
-
-export function getMcpHttpHandler(): McpHttpHandler {
-  handler ??= createMcpHandler(
-    (ctx) =>
-      createOpenStoryMcpServer(authFromInfo(ctx.authInfo), {
-        origin: originFromRequest(ctx.requestInfo),
-        // API keys are unscoped; OAuth tokens must carry sequences:read.
-        scopes:
-          ctx.authInfo?.extra?.authKind === 'api_key'
-            ? undefined
-            : (ctx.authInfo?.scopes ?? []),
-      }),
-    {
-      legacy: 'reject',
-      onerror: (error) => {
-        logger.error('MCP handler error: {message}', {
-          message: error.message,
-          err: toErrorPayload(error),
-        });
-      },
-    }
-  );
-  return handler;
-}
-
-/** Test hook: drop the per-isolate handler so a suite can rebuild it. */
-export function resetMcpHttpHandler(): void {
-  handler = undefined;
+/** Serve one authenticated MCP request; media URLs use the host it reached. */
+export function serveMcpRequest(
+  request: Request,
+  auth: McpCaller
+): Promise<Response> {
+  return mcpServer.handle(request, {
+    authInfo: toMcpAuthInfo(auth),
+    context: mcpToolContext(auth, new URL(request.url).origin),
+  });
 }

@@ -2,14 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as dbModule from '@/platform/server/db/scoped';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { z } from 'zod';
-import {
-  createOpenStoryMcpServer,
-  getMcpHttpHandler,
-  MCP_SERVER_NAME,
-  MCP_SERVER_VERSION,
-  resetMcpHttpHandler,
-  toMcpAuthInfo,
-} from './server';
+import { MCP_SERVER_NAME, MCP_SERVER_VERSION, serveMcpRequest } from './server';
 import type { User } from '@/platform/server/auth/config';
 import { asStub } from '@/test/as-stub';
 
@@ -107,27 +100,14 @@ function mcpPost(
 async function rpc(
   method: string,
   params?: Record<string, unknown>,
-  caller: Parameters<typeof toMcpAuthInfo>[0] = auth
+  caller: Parameters<typeof serveMcpRequest>[1] = auth
 ) {
-  resetMcpHttpHandler();
-  const res = await getMcpHttpHandler().fetch(mcpPost(method, { params }), {
-    authInfo: toMcpAuthInfo(caller),
-  });
+  const res = await serveMcpRequest(mcpPost(method, { params }), caller);
   return {
     status: res.status,
     body: rpcEnvelope.parse(await res.json()),
   };
 }
-
-describe('createOpenStoryMcpServer', () => {
-  it('names the server openstory', () => {
-    expect(MCP_SERVER_NAME).toBe('openstory');
-    expect(MCP_SERVER_VERSION).toBe('0.1.0');
-    expect(
-      createOpenStoryMcpServer(auth, { origin: 'https://openstory.so' })
-    ).toBeDefined();
-  });
-});
 
 describe('tools/list and whoami', () => {
   it('lists whoami and all production read tools with input/output schemas', async () => {
@@ -189,40 +169,26 @@ describe('tools/list and whoami', () => {
         readOnlyHint: true,
         destructiveHint: false,
       });
+    // MCP input schemas are object-rooted, so the kind/parentId union is
+    // advertised flat and enforced by the handler (tools.test.ts).
     for (const name of [
       'openstory.list_library_resources',
       'openstory.get_library_resource',
     ]) {
       const libraryResourceSchema = z
         .object({
-          oneOf: z.array(
-            z.object({
-              properties: z.object({
-                kind: z.object({ enum: z.array(z.string()) }),
-              }),
-              required: z.array(z.string()),
-            })
-          ),
+          type: z.literal('object'),
+          properties: z.object({
+            kind: z.object({ enum: z.array(z.string()) }),
+            parentId: z.object({ type: z.literal('string') }),
+          }),
+          required: z.array(z.string()),
         })
         .parse(tools.find((tool) => tool.name === name)?.inputSchema);
-      expect(
-        libraryResourceSchema.oneOf
-          .filter((entry) =>
-            entry.properties.kind.enum.some(
-              (kind) => kind !== 'audio' && kind !== 'vfx'
-            )
-          )
-          .every((entry) => entry.required.includes('parentId'))
-      ).toBe(true);
-      expect(
-        libraryResourceSchema.oneOf
-          .filter((entry) =>
-            entry.properties.kind.enum.every(
-              (kind) => kind === 'audio' || kind === 'vfx'
-            )
-          )
-          .every((entry) => !entry.required.includes('parentId'))
-      ).toBe(true);
+      expect(libraryResourceSchema.properties.kind.enum).toEqual(
+        expect.arrayContaining(['talent_sheet', 'audio', 'vfx'])
+      );
+      expect(libraryResourceSchema.required).not.toContain('parentId');
     }
   });
 
@@ -262,8 +228,7 @@ describe('tools/list and whoami', () => {
   });
 
   it('rejects a 2025-era initialize (legacy: reject)', async () => {
-    resetMcpHttpHandler();
-    const res = await getMcpHttpHandler().fetch(
+    const res = await serveMcpRequest(
       new Request('https://openstory.test/mcp', {
         method: 'POST',
         headers: {
@@ -281,7 +246,7 @@ describe('tools/list and whoami', () => {
           },
         }),
       }),
-      { authInfo: toMcpAuthInfo(auth) }
+      auth
     );
     expect(res.status).toBeGreaterThanOrEqual(400);
   });

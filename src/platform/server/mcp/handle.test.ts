@@ -17,7 +17,6 @@ vi.doMock('./auth', async () => {
 
 const { handleMcpGet, handleMcpOptions, handleMcpPost, mcpMethodNotAllowed } =
   await import('./handle');
-const { resetMcpHttpHandler } = await import('./server');
 const { Route } = await import('@/routes/mcp');
 
 type Handler = (ctx: { request: Request }) => Response | Promise<Response>;
@@ -84,7 +83,6 @@ function toolsList(headers: Record<string, string> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  resetMcpHttpHandler();
   limit.mockResolvedValue({ success: true });
   authenticateMcpRequest.mockResolvedValue(auth);
 });

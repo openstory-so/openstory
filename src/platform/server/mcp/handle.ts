@@ -8,7 +8,7 @@ import { getLogger, toErrorPayload } from '@/platform/logger';
 import { authenticateMcpRequest, type McpAuthContext } from './auth';
 import { mcpJsonRpcError } from './json-rpc';
 import { mcpOriginRejection } from './origin';
-import { getMcpHttpHandler, toMcpAuthInfo } from './server';
+import { serveMcpRequest } from './server';
 
 const logger = getLogger(['openstory', 'mcp']);
 
@@ -149,7 +149,7 @@ export async function handleMcpPost(request: Request): Promise<Response> {
 
   let parsedBody: unknown;
   try {
-    parsedBody = await request.json();
+    parsedBody = await request.clone().json();
   } catch {
     const res = mcpJsonRpcError(400, 'Invalid JSON body', { code: -32700 });
     return withCors(res, origin);
@@ -174,10 +174,7 @@ export async function handleMcpPost(request: Request): Promise<Response> {
   });
 
   try {
-    const response = await getMcpHttpHandler().fetch(request, {
-      authInfo: toMcpAuthInfo(auth),
-      parsedBody,
-    });
+    const response = await serveMcpRequest(request, auth);
     const durationMs = Math.round(performance.now() - start);
     const outcome = response.ok ? 'ok' : `http_${response.status}`;
     reqLogger.info('MCP {method} {outcome} {durationMs}ms', {

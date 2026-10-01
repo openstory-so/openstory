@@ -12,7 +12,6 @@ import {
 } from '@/platform/server/db/schema';
 import { listFilesPage } from '#storage';
 vi.mock('#storage', () => ({ listFilesPage: vi.fn() }));
-import { registerLibraryReads } from './tools/library-reads';
 import {
   characters,
   characterSheetVariants,
@@ -24,9 +23,6 @@ import {
   sequenceMusicPromptVersions,
   sequenceEvents,
 } from '@/platform/server/db/schema';
-import { registerCastReads } from './tools/cast-reads';
-import { registerProductionReads } from './tools/production-reads';
-import { registerContextReads } from './tools/context-reads';
 /** MCP wire tests backed by the real scoped repositories and migrated SQLite schema. */
 import {
   afterAll,
@@ -42,8 +38,7 @@ import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
-import { CfWorkerJsonSchemaValidator } from '@modelcontextprotocol/server/validators/cf-worker';
+import { mcpServer } from './server';
 // oxlint-disable-next-line boundaries/no-raw-db -- substitute the isolated in-memory DB at the factory boundary
 import { getDb } from '#db-client';
 import type { Database } from '@/platform/server/db/client';
@@ -72,13 +67,6 @@ import {
   sceneDetailSchema,
 } from '@/shots/inspection.schema';
 import { serializeShot } from '@/shots/server/inspection';
-import { registerListSequences } from './tools/list-sequences';
-import { registerGetSequence } from './tools/get-sequence';
-import { registerGetSequenceStatus } from './tools/get-sequence-status';
-import { registerListScenes } from './tools/list-scenes';
-import { registerGetScene } from './tools/get-scene';
-import { registerListShots } from './tools/list-shots';
-import { registerGetShot } from './tools/get-shot';
 
 vi.mock('#db-client', () => ({ getDb: vi.fn() }));
 let client: Client;
@@ -93,33 +81,8 @@ let imageId: string;
 let videoId: string;
 let scopedDb: ReturnType<typeof createScopedDb>;
 const queries: string[] = [];
-const registrations = [
-  registerLibraryReads,
-  registerCastReads,
-  registerProductionReads,
-  registerContextReads,
-  registerListSequences,
-  registerGetSequence,
-  registerGetSequenceStatus,
-  registerListScenes,
-  registerGetScene,
-  registerListShots,
-  registerGetShot,
-];
-const handler = createMcpHandler(
-  () => {
-    const server = new McpServer(
-      { name: 'test', version: '1' },
-      { jsonSchemaValidator: new CfWorkerJsonSchemaValidator() }
-    );
-    for (const register of registrations)
-      register(server, () => ({ scopedDb, origin: 'https://openstory.test' }));
-    return server;
-  },
-  { legacy: 'reject' }
-);
 async function call(name: string, args: Record<string, unknown> = {}) {
-  const response = await handler.fetch(
+  const response = await mcpServer.handle(
     new Request('https://openstory.test/mcp', {
       method: 'POST',
       headers: {
@@ -146,7 +109,12 @@ async function call(name: string, args: Record<string, unknown> = {}) {
           },
         },
       }),
-    })
+    }),
+    {
+      context: {
+        readContext: () => ({ scopedDb, origin: 'https://openstory.test' }),
+      },
+    }
   );
   const envelope = z
     .object({
