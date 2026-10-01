@@ -21,6 +21,8 @@ const auth = {
   user,
   teamId: 'team_1',
   teamName: "Ada's Team",
+  session: null,
+  oauth: null,
   kind: 'api_key' as const,
   keyHint: 'osk_…XXXX',
   clientId: 'api_key',

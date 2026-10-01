@@ -5,18 +5,17 @@
  *
  * Auth is ours (`handle.ts` → `authenticateMcpRequest`, Bearer JWT + `osk_`
  * keys), so no `auth` option: the verified identity arrives per request
- * through `server.handle(request, { authInfo, context })`. The validator is
+ * through `server.handle(request, { context })`. The validator is
  * the SDK default, which is `CfWorkerJsonSchemaValidator` under the `workerd`
  * export condition (workerd cannot run Ajv codegen).
  */
 
-import type { AuthInfo } from '@modelcontextprotocol/server';
 import { toolDefinition } from '@tanstack/ai';
 import { createMCPServer } from '@tanstack/ai-mcp/server';
 import { z } from 'zod';
 import { AuthenticationError } from '@/platform/errors';
 import { createScopedDb } from '@/platform/server/db/scoped';
-import type { McpCallerIdentity } from './auth';
+import type { McpAuthContext } from './auth';
 import type { OpenStoryMcpContext, OpenStoryToolContext } from './tool-context';
 import { listSequences } from './tools/list-sequences';
 import { getSequence } from './tools/get-sequence';
@@ -84,28 +83,15 @@ export const mcpServer = createMCPServer({
   sessions: 'reject',
 });
 
-type McpCaller = McpCallerIdentity & {
-  kind: 'oauth' | 'api_key';
-  keyHint: string;
-  clientId: string;
-  scopes: readonly string[];
-};
-
-function toMcpAuthInfo(auth: McpCaller): AuthInfo {
-  return {
-    token: auth.keyHint,
-    clientId: auth.clientId,
-    scopes: [...auth.scopes],
-    extra: { authKind: auth.kind },
-  };
-}
-
 /**
  * Per-request tool context. API keys are unscoped; OAuth tokens must carry
  * `sequences:read`, checked when a production tool runs so discovery and
  * `whoami` work without it.
  */
-function mcpToolContext(auth: McpCaller, origin: string): OpenStoryMcpContext {
+function mcpToolContext(
+  auth: McpAuthContext,
+  origin: string
+): OpenStoryMcpContext {
   return {
     caller: { user: auth.user, teamId: auth.teamId, teamName: auth.teamName },
     readContext: () => {
@@ -125,10 +111,9 @@ function mcpToolContext(auth: McpCaller, origin: string): OpenStoryMcpContext {
 /** Serve one authenticated MCP request; media URLs use the host it reached. */
 export function serveMcpRequest(
   request: Request,
-  auth: McpCaller
+  auth: McpAuthContext
 ): Promise<Response> {
   return mcpServer.handle(request, {
-    authInfo: toMcpAuthInfo(auth),
     context: mcpToolContext(auth, new URL(request.url).origin),
   });
 }
