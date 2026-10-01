@@ -55,7 +55,7 @@ export type PartsCheck =
       scriptStartSeconds: number;
       /** The lines not found, each with the share of its letters heard. */
       doubtful: { line: number; heardShare: number }[];
-      /** The lowest share of any line — which failed take is the best. */
+      /** The lowest share of any doubtful line — which failed take is the best. */
       worstShare: number;
     };
 

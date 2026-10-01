@@ -24,7 +24,6 @@ import {
 } from './bible-field';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
-import { terminateSingleArtifactRun } from '@/platform/server/workflow/run-outcome';
 import type {
   CharacterSheetWorkflowInput,
   RecastCharacterWorkflowInput,
@@ -271,8 +270,10 @@ export const generateCharacterVoiceFn = createServerFn({ method: 'POST' })
 
 /**
  * Cancel a voice still generating: the husk fails as cancelled and the
- * character keeps the voice it had. The run is terminated best-effort; one
- * that lands anyway finds its claim no longer live and promotes nothing.
+ * character keeps the voice it had. Data-only: the run is not terminated
+ * (it may be a parent's awaited child, and a stop between save-voice and
+ * persist-voice would leak the provider voice). It lands, finds its claim
+ * no longer live, releases the voice and promotes nothing.
  */
 export const cancelCharacterVoiceFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
@@ -281,15 +282,12 @@ export const cancelCharacterVoiceFn = createServerFn({ method: 'POST' })
     const character = await requireCharacter(context.scopedDb, data);
     const versionId = character.pendingPromoteVoiceVersionId;
     if (!versionId) return { cancelled: false };
-    const version =
-      await context.scopedDb.characters.getVoiceVersionById(versionId);
     const failed = await context.scopedDb.characters.markVoiceClaimTerminal(
       versionId,
       'failed',
       'Cancelled'
     );
     if (!failed) return { cancelled: false };
-    await terminateSingleArtifactRun(version?.workflowRunId ?? null);
     try {
       await getGenerationChannel(character.sequenceId).emit(
         'generation.character-voice:progress',

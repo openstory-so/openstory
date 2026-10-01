@@ -44,8 +44,13 @@ export class DialogueTakeWorkflow extends OpenStoryWorkflowEntrypoint<DialogueTa
       await emit();
       return claims[input.shotId] ?? null;
     });
-    // Another run is recording these very words for this shot.
-    if (!claimId) return { promoted: false };
+    // Another run holds the shot's claim; the fn refuses this up front, so
+    // only a race lands here — fail it where the user can see it.
+    if (!claimId) {
+      throw new NonRetryableError(
+        "This shot's dialogue is already being recorded. Try the take again when it lands."
+      );
+    }
 
     try {
       const take = await step.do('record-take', async () => {
@@ -64,8 +69,29 @@ export class DialogueTakeWorkflow extends OpenStoryWorkflowEntrypoint<DialogueTa
           takeStorageKey: input.takeStorageKey,
           base: input.base,
         });
+        // Minted with the recording so the clip and the row agree on a retry.
+        return { ...made, sectionId: generateId() };
+      });
+
+      // The provider measures the file, so padding counts.
+      const fileSeconds = Math.max(
+        take.durationSeconds,
+        input.minDurationSeconds + AUDIO_MIN_PAD_SLACK_SECONDS
+      );
+      const { limitSeconds } = dialogueFitBudget({
+        maxSeconds: input.maxDurationSeconds,
+      });
+      if (fileSeconds > limitSeconds) {
+        throw new NonRetryableError(
+          `With this take the shot's dialogue runs ${fileSeconds.toFixed(1)}s and has to fit ${limitSeconds.toFixed(1)}s. Record it a little faster, or pick a video model that takes longer audio.`
+        );
+      }
+
+      // Billed only once the take fits: one that cannot be used costs the
+      // team nothing, as for a Seed take that failed its check.
+      await step.do('charge', async () => {
         const callKey = `${workflowRunId}:dialogue-take`;
-        for (const charge of made.charges) {
+        for (const charge of take.charges) {
           await deductWorkflowCredits({
             scopedDb,
             costMicros: charge.costMicros,
@@ -81,26 +107,7 @@ export class DialogueTakeWorkflow extends OpenStoryWorkflowEntrypoint<DialogueTa
             workflowName: 'DialogueTakeWorkflow',
           });
         }
-        // Minted with the recording so the clip and the row agree on a retry.
-        return { ...made, sectionId: generateId() };
       });
-
-      // The provider measures the file, so padding counts.
-      const fileSeconds =
-        input.minDurationSeconds == null
-          ? take.durationSeconds
-          : Math.max(
-              take.durationSeconds,
-              input.minDurationSeconds + AUDIO_MIN_PAD_SLACK_SECONDS
-            );
-      const { limitSeconds } = dialogueFitBudget({
-        maxSeconds: input.maxDurationSeconds,
-      });
-      if (fileSeconds > limitSeconds) {
-        throw new NonRetryableError(
-          `With this take the shot's dialogue runs ${fileSeconds.toFixed(1)}s and has to fit ${limitSeconds.toFixed(1)}s. Record it a little faster, or pick a video model that takes longer audio.`
-        );
-      }
 
       const spokenLines =
         input.base?.spokenLines?.filter(
@@ -112,8 +119,9 @@ export class DialogueTakeWorkflow extends OpenStoryWorkflowEntrypoint<DialogueTa
         sourceKey: input.sourceKey,
         spokenLines: spokenLines.length > 0 ? spokenLines : null,
         source: 'mic' as const,
-        // A mic take is the user's own: nothing in it is doubtful.
-        speechTurns: [],
+        // The taken line is clean; the shot's other lines keep any doubt
+        // the reading they came from had.
+        speechTurns: take.turns,
         shotId: input.shotId,
       };
       const cut = await step.do('cut', () =>

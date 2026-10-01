@@ -6,9 +6,9 @@
  *
  *  - **ElevenLabs voice** → Voice Changer (Speech to Speech). Timing, pitch
  *    and emotion come from the take; the voice from the character.
- *  - **Seed voice** → Seed Audio with the take as a second reference, a
- *    guide read whose delivery Seed copies (Seed copies a reference's
- *    delivery as well as its voice), checked by Scribe like every Seed take.
+ *  - **Seed voice** → Seed Audio with the take as a second reference,
+ *    checked by Scribe like every Seed take. The prompt is experimental
+ *    (Record is behind `MIC_TAKES_ENABLED` until it is reliable).
  *
  * A shot's audio is one range of one speech, and it must speak all of the
  * shot's lines. So the converted line is SPLICED into the shot's current
@@ -18,9 +18,10 @@
  * with no current reading takes a mic line only when it has one voiced line,
  * and the line is then the whole speech.
  *
- * Bytes never cross a step (#1645): this runs inside one `step.do`, reads
- * only the shot's section of the base speech (ranged), and returns the
- * small record.
+ * Bytes never cross a step (#1645): this runs inside one `step.do` and
+ * returns the small record. The base speech is never held: the section either
+ * side of the line streams from R2 into the upload. Only the converted take
+ * (≤ 30 s) is in memory, because its speech has to be found in it.
  */
 
 import {
@@ -44,10 +45,12 @@ import { DIALOGUE_STS_MODEL } from '@/motion/dialogue-tts';
 import { generateId } from '@/platform/id';
 import type { DialogueSpeechTurn } from '@/platform/server/db/schema';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
-import { readStorageObject, uploadFile } from '#storage';
+import { uploadResponse } from '@/platform/server/storage/upload-response';
+import { readStorageObject, readStorageStream } from '#storage';
 import { NonRetryableError } from 'cloudflare:workflows';
 import {
   honestDataSize,
+  isSilentWav,
   parseWavHeader,
   trimmedEndSeconds,
   trimmedStartSeconds,
@@ -57,7 +60,7 @@ import {
   type WavFormat,
 } from './pad-dialogue-audio';
 
-/** Seed takes per mic line before it fails, as for a scene. */
+/** Seed takes per mic line before it fails. */
 const SEED_TAKE_ATTEMPTS = 3;
 /** Enough for any header a provider writes. */
 const HEADER_PROBE_BYTES = 4096;
@@ -130,7 +133,9 @@ export async function recordDialogueTake(input: {
         );
 
   const takeFmt = parseWavHeader(converted.wav);
-  if (!takeFmt) throw new Error('The converted take is not a PCM WAV');
+  if (!takeFmt) {
+    throw new NonRetryableError('The converted take is not a PCM WAV');
+  }
   const takeMath = wavFrameMath(
     takeFmt,
     Math.min(takeFmt.dataSize, converted.wav.length - takeFmt.dataStart)
@@ -147,21 +152,21 @@ export async function recordDialogueTake(input: {
 
   const { before, after, fmt } = input.base
     ? await baseAround(input.base, takeFmt)
-    : { before: EMPTY, after: EMPTY, fmt: takeFmt };
+    : { before: null, after: null, fmt: takeFmt };
   const bytesPerSecond = takeMath.bytesPerSecond;
-  const dataSize = before.length + spoken.length + after.length;
-  const wav = new Uint8Array(44 + dataSize);
-  wav.set(wavHeader(dataSize, fmt));
-  wav.set(before, 44);
-  wav.set(spoken, 44 + before.length);
-  wav.set(after, 44 + before.length + spoken.length);
+  const beforeBytes = before?.size ?? 0;
+  const dataSize = beforeBytes + spoken.length + (after?.size ?? 0);
+  const header = wavHeader(dataSize, fmt);
 
   const speechId = generateId();
-  const uploaded = await uploadFile(
+  // workerd's r2.put() needs the length of a stream (#738); it is exact here.
+  const uploaded = await uploadResponse(
+    new Response(joinedStream([header, before?.body, spoken, after?.body]), {
+      headers: { 'content-length': String(header.length + dataSize) },
+    }),
     STORAGE_BUCKETS.AUDIO,
     `${input.teamId}/${input.sequenceId}/dialogue-speeches/${speechId}.wav`,
-    wav,
-    { contentType: 'audio/wav', upsert: true }
+    { contentType: 'audio/wav' }
   );
   const durationSeconds = dataSize / bytesPerSecond;
   return {
@@ -174,7 +179,7 @@ export async function recordDialogueTake(input: {
       line: input.line,
       ttsModel: converted.ttsModel,
       base: input.base,
-      lineStartSeconds: before.length / bytesPerSecond,
+      lineStartSeconds: beforeBytes / bytesPerSecond,
       takeSeconds: spoken.length / bytesPerSecond,
       durationSeconds,
     }),
@@ -182,13 +187,20 @@ export async function recordDialogueTake(input: {
   };
 }
 
-const EMPTY = new Uint8Array(0);
+type SampleStream = { body: ReadableStream<Uint8Array>; size: number };
 
-/** The base section's samples either side of the line — two ranged reads. */
+/**
+ * The base section's samples either side of the line, as two ranged STREAMS
+ * — the base speech is never read into the worker.
+ */
 async function baseAround(
   base: DialogueTakeBase,
   takeFmt: WavFormat
-): Promise<{ before: Uint8Array; after: Uint8Array; fmt: WavFormat }> {
+): Promise<{
+  before: SampleStream | null;
+  after: SampleStream | null;
+  fmt: WavFormat;
+}> {
   const probe = await readStorageObject(base.storageKey, {
     offset: 0,
     length: HEADER_PROBE_BYTES,
@@ -209,29 +221,72 @@ async function baseAround(
       `The take (${takeFmt.sampleRate} Hz, ${takeFmt.channels} ch) does not match the reading it goes into (${fmt.sampleRate} Hz, ${fmt.channels} ch)`
     );
   }
+  // The line must sit in the section: a clamp would splice beside it.
+  if (
+    base.lineEndSeconds <= base.fromSeconds ||
+    base.lineStartSeconds >= base.toSeconds
+  ) {
+    throw new NonRetryableError(
+      'The line does not sit in the reading it goes into'
+    );
+  }
   const { snap } = wavFrameMath(fmt, fmt.dataSize);
   const from = snap(base.fromSeconds);
   const to = Math.max(from, snap(base.toSeconds));
   const lineStart = Math.min(to, Math.max(from, snap(base.lineStartSeconds)));
   const lineEnd = Math.min(to, Math.max(lineStart, snap(base.lineEndSeconds)));
   const read = async (start: number, end: number) => {
-    if (end <= start) return EMPTY;
-    const got = await readStorageObject(base.storageKey, {
+    if (end <= start) return null;
+    const got = await readStorageStream(base.storageKey, {
       offset: fmt.dataStart + start,
       length: end - start,
     });
-    if (!got || got.bytes.length !== end - start) {
+    if (!got || got.size !== end - start) {
+      await got?.body.cancel();
       throw new NonRetryableError(
         'The current reading is shorter than its header says'
       );
     }
-    return got.bytes;
+    return got;
   };
-  const [before, after] = await Promise.all([
-    read(from, lineStart),
-    read(lineEnd, to),
-  ]);
+  const before = await read(from, lineStart);
+  const after = await read(lineEnd, to).catch(async (error: unknown) => {
+    await before?.body.cancel();
+    throw error;
+  });
   return { before, after, fmt };
+}
+
+/** The parts in order, each stream read only once the one before is done. */
+function joinedStream(
+  parts: readonly (Uint8Array | ReadableStream<Uint8Array> | undefined)[]
+): ReadableStream<Uint8Array> {
+  let at = 0;
+  let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      for (;;) {
+        if (at >= parts.length) return controller.close();
+        const part = parts[at];
+        if (!part || part instanceof Uint8Array) {
+          at++;
+          if (part && part.length > 0) return controller.enqueue(part);
+          continue;
+        }
+        reader ??= part.getReader();
+        const { done, value } = await reader.read();
+        if (!done) return controller.enqueue(value);
+        reader = null;
+        at++;
+      }
+    },
+    async cancel(reason) {
+      await reader?.cancel(reason);
+      for (const part of parts.slice(at + 1)) {
+        if (part instanceof ReadableStream) await part.cancel(reason);
+      }
+    },
+  });
 }
 
 /**
@@ -291,7 +346,10 @@ async function convertWithVoiceChanger(
   take: Uint8Array<ArrayBuffer>,
   apiKey: string
 ): Promise<ConvertedTake> {
-  const takeSeconds = wavDurationSeconds(take) ?? 0;
+  const takeSeconds = wavDurationSeconds(take);
+  if (takeSeconds == null) {
+    throw new NonRetryableError('The recorded take is not a PCM WAV');
+  }
   const client = await createElevenLabsSdk(apiKey);
   const stream = await client.speechToSpeech.convert(line.voiceId, {
     audio: new Blob([take], { type: 'audio/wav' }),
@@ -302,12 +360,17 @@ async function convertWithVoiceChanger(
   });
   const wav = new Uint8Array(await new Response(stream).arrayBuffer());
   if (wav.byteLength === 0) {
-    throw new Error('Voice Changer returned an empty audio body');
+    throw new NonRetryableError('Voice Changer returned an empty audio body');
   }
   honestDataSize(wav);
   const durationSeconds = wavDurationSeconds(wav);
   if (durationSeconds == null) {
-    throw new Error('Voice Changer returned audio that is not a PCM WAV');
+    throw new NonRetryableError(
+      'Voice Changer returned audio that is not a PCM WAV'
+    );
+  }
+  if (isSilentWav(wav)) {
+    throw new NonRetryableError('No speech was heard in the take');
   }
   const speechFrom = trimmedStartSeconds(wav, 0, durationSeconds);
   return {
@@ -361,7 +424,9 @@ async function convertWithSeed(
     });
     const durationSeconds = wavDurationSeconds(made.wav);
     if (durationSeconds == null) {
-      throw new Error('Seed Audio returned audio that is not a PCM WAV');
+      throw new NonRetryableError(
+        'Seed Audio returned audio that is not a PCM WAV'
+      );
     }
     const span = made.check.ok ? made.check.spans[0] : undefined;
     if (!made.check.ok || !span) {
@@ -395,7 +460,7 @@ async function convertWithSeed(
       ],
     };
   }
-  // ponytail: failed takes are not billed to the team, as for a scene.
+  // ponytail: failed takes are not billed to the team.
   throw new NonRetryableError(
     `Seed Audio did not say the line in ${SEED_TAKE_ATTEMPTS} takes (last: ${lastProblem}). Try the take again.`
   );

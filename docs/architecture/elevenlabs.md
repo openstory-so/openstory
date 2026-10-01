@@ -330,13 +330,13 @@ that is the whole change: every reader follows the pointer. The current
 reading stops matching (the next render records), and a reading of the
 restored wording becomes usable again — `sourceKey` finds it.
 
-`shot_dialogue_versions` is the authored node. The shot-list pass seeds a `prompt` row per shot; the prompt
-editor appends `user-edit` (`scopedDb.shotDialogue.write`, which returns the
+`shot_dialogue_versions` is the authored node. The shot-list pass seeds a `prompt` row per shot; a line edit
+appends `user-edit` (`scopedDb.shotDialogue.write`, which returns the
 selected row unchanged when the lines are identical). The lines are edited in
 place (#1773) — character, words, tone — in the shot's dialogue under its
 video and,
-for every shot of the scene, under the Script tab (`ShotDialogueLines`,
-`saveShotDialogueFn`): the edit writes only that shot's version, never the
+for every shot of the scene, under the Script tab and the sequence player
+(`DialogueLineRows`, `saveShotDialogueFn`): the edit writes only that shot's version, never the
 motion prompt. History labels a version whose words match the one before it
 "Audio source changed", not "Edited": only the voice binding moved. The save touches one
 shot's row, so it cannot drop a concurrent edit to another shot — the
@@ -468,20 +468,23 @@ needs no motion prompt), readings and history are in
 `ShotDialogueUnderVideo`; the Video tab has none of it. Every list of lines
 — the shot's, the Script tab's, and `SequenceDialogueLines` under the
 player with a sequence or scenes on the canvas — is `DialogueLineRows`
-(`dialogue-lines.tsx`): speaker and words, with Record beside each voiced
-line and Edit beside every line. The tone shows only in the edit form. Play
-dialogue (`useDialoguePlayer`) plays the shot's audio, or a scene's shots'
+(`dialogue-lines.tsx`): speaker and words, with Edit beside every line (and
+Record beside each voiced one, once `MIC_TAKES_ENABLED`). The tone shows only
+in the edit form. Play dialogue (`useDialoguePlayer`) plays the shot's audio,
+a scene's one speech when the scene is one take, or else its shots'
 `audioClips` back to back, and marks the shot being heard. Per shot, not per
 word — no word timings are stored.
 
-**A line at the mic (#1802).** Record beside a line records it in the browser, plays it back, and on "Use"
+**A line at the mic (#1802).** Record is behind `MIC_TAKES_ENABLED` (off)
+until the Seed voice-change prompt is reliable; the server fn and workflow
+ship. Record beside a line records it in the browser, plays it back, and on "Use"
 sends it as 16-bit mono PCM (`recordShotDialogueLineFn`, parked in R2 under
 `dialogue-takes/`). `DialogueTakeWorkflow` turns it into the speaker's voice
 with the user's delivery kept: an ElevenLabs voice goes through **Voice
 Changer** (`eleven_multilingual_sts_v2`, `removeBackgroundNoise`, $0.12/min
 on the card as `elevenlabs-voice-changer`); a Seed voice is sent to Seed
-Audio with the take as `@Audio2`, a guide read to copy the delivery of (see
-`seed-voices.md`). The converted line is **spliced into the shot's current
+Audio with the take as `@Audio2` (see `seed-voices.md`; the prompt is still
+experimental). The converted line is **spliced into the shot's current
 reading** — that line's turn window is replaced, the shot's other lines keep
 their delivery — and the file is its own `dialogue_speeches` row
 (`inputHash: mic:<id>`), only this shot's turns re-timed onto it. Provider
@@ -492,6 +495,11 @@ reading that still matches its lines; a one-line shot without one takes the
 line as the whole recording. The take is trimmed to its speech at both ends
 (`trimmedStartSeconds` / `trimmedEndSeconds`, Scribe's span for Seed), and a
 result over `dialogueFitBudget`'s limit fails rather than being rewritten.
+`recordShotDialogueLineFn` refuses, before reserving credits, a silent take
+(`isSilentWav`), a shot with a live dialogue claim (the take's claim would
+collide with it), and a take whose estimated length cannot fit. The run
+charges only after its own fit check, and its unclear-line flags follow the
+spliced speech's turns: the taken line is clean, the others keep theirs.
 
 Out of scope here: voice cloning from an uploaded sample, realtime/agents.
 

@@ -103,7 +103,9 @@ line` in order.
   a doubtful line is placed in the gap between the lines that were found,
   its turn carries `heardShare`, and the shot's clip lists it in
   `unclearLines`, so the line list flags it ("May not be said clearly") for
-  the user to record or regenerate. Character voice samples stay strict. Seed's own subtitles are not used: they run adjacent
+  the user to record or regenerate. A best take with a line under a quarter
+  heard (`SEED_KEEP_MIN_SHARE`) is a miss, not a doubt: the speech fails.
+  Character voice samples stay strict. Seed's own subtitles are not used: they run adjacent
   lines together into one timed word, so a line break is lost (up to 2.3 s
   off in testing).
 - Takes thrown away are not billed to the team; a kept one is.
@@ -116,9 +118,9 @@ line` in order.
 ## A line at the mic (#1802)
 
 A user's take of one line goes to Seed Audio as a second reference
-(`@Audio2`) next to the speaker's normal clip (`@Audio1`): the prompt asks for
-@Audio1's voice and @Audio2's timing, pauses, emphasis and emotion — Seed
-copies a reference's delivery. It is checked by Scribe against the line like
+(`@Audio2`) next to the speaker's normal clip (`@Audio1`). The prompt
+(`seedGuidedPrompt`) is experimental and not yet reliable, which is why
+Record is hidden behind `MIC_TAKES_ENABLED`. The take is checked by Scribe against the line like
 every take (3 takes, then the line fails) and trimmed to Scribe's span.
 Spliced into the shot's reading like an ElevenLabs Voice Changer take — see
 `elevenlabs.md`.

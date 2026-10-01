@@ -191,6 +191,20 @@ export function trimmedStartSeconds(
 }
 
 /**
+ * True when a 16-bit PCM WAV holds no sample above {@link SILENCE_THRESHOLD}
+ * (#1802): the trims keep a silent window whole, so a take with nothing in it
+ * must be caught before it replaces a line. Other formats are never silent.
+ */
+export function isSilentWav(bytes: Uint8Array): boolean {
+  const fmt = parseWavHeader(bytes);
+  if (!fmt) throw new Error('Dialogue trim expected a PCM WAV');
+  if (fmt.bitsPerSample !== 16) return false;
+  const available = Math.min(fmt.dataSize, bytes.length - fmt.dataStart);
+  const frame = fmt.channels * 2;
+  return lastLoudByte(bytes, fmt.dataStart, 0, available, frame) === null;
+}
+
+/**
  * Byte offset (relative to the data chunk) just past the last audible frame
  * of `[from, to)`, or null when the whole window is silent.
  */

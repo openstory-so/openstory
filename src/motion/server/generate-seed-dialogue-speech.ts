@@ -13,7 +13,8 @@
  *    turn is found in what Scribe heard, in order (`checkParts`). Speech
  *    before the script is cut off (the first shot's range starts at the
  *    script); a take where a turn cannot be found is a retake, up to
- *    {@link SEED_TAKE_ATTEMPTS}.
+ *    {@link SEED_TAKE_ATTEMPTS}. When none is clean the best is kept and its
+ *    doubtful lines flagged, unless a line was barely heard at all.
  */
 
 import {
@@ -55,8 +56,17 @@ import {
 
 const logger = getLogger(['openstory', 'workflow', 'seed-dialogue']);
 
-/** Takes per call before the speech fails (#1765: 1 of 6 scenes needed a retake). */
+/**
+ * Takes per call (#1765: 1 of 6 scenes needed a retake). When none is clean
+ * the best is kept and its doubtful lines flagged (#1802).
+ */
 const SEED_TAKE_ATTEMPTS = 3;
+
+/**
+ * Below this share of a line's letters heard, the line was not said at all: a
+ * best take with such a line fails rather than being kept and flagged.
+ */
+const SEED_KEEP_MIN_SHARE = 0.25;
 
 export type SeedReference = { voiceId: string; mood: SeedVoiceMood };
 
@@ -189,6 +199,12 @@ export async function generateSeedDialogueSpeech(input: {
     }
   }
   if (!best) throw new Error('Seed Audio made no take');
+  if (best.worstShare < SEED_KEEP_MIN_SHARE) {
+    const problem = best.take.check.ok ? '' : best.take.check.problem;
+    throw new NonRetryableError(
+      `Seed Audio did not say the lines in ${SEED_TAKE_ATTEMPTS} takes: ${problem}`
+    );
+  }
   return keep(best.take);
 
   async function keep(take: Take) {

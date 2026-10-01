@@ -1,8 +1,8 @@
-import { toast } from 'sonner';
 /**
  * Hook for fetching sequence characters
  */
 
+import { toast } from 'sonner';
 import {
   useMutation,
   useQuery,
@@ -141,7 +141,6 @@ function invalidateAfterVoiceChange(
   void queryClient.invalidateQueries({ queryKey: shotStalenessNamespace });
 }
 
-/** Voice design (#1553): the workflow's realtime events refresh the list. */
 /** Cancel a voice still generating; the character keeps the voice it had. */
 export function useCancelCharacterVoice() {
   const queryClient = useQueryClient();
@@ -165,6 +164,7 @@ export function useCancelCharacterVoice() {
   });
 }
 
+/** Voice design (#1553): the workflow's realtime events refresh the list. */
 export function useGenerateCharacterVoice() {
   const queryClient = useQueryClient();
   return useMutation({

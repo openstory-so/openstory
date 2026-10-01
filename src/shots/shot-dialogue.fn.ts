@@ -15,6 +15,8 @@ import { voiceProviderOf } from '@/cast/seed-voice';
 import { isElevenLabsConfigured } from '@/models/server/elevenlabs-config';
 import { isSeedVoiceConfigured } from '@/models/server/seed-speech-config';
 import {
+  AUDIO_MIN_PAD_SLACK_SECONDS,
+  isSilentWav,
   pcmToWav,
   wavDurationSeconds,
 } from '@/motion/server/pad-dialogue-audio';
@@ -461,8 +463,9 @@ const TAKE_MAX_BASE64_CHARS = Math.ceil((10 * 1024 * 1024 * 4) / 3);
  * through a claim like every speech, as a `mic` reading.
  *
  * The take arrives as the browser's 16-bit mono PCM; it is wrapped as a WAV
- * and parked in R2 here
- * so the run carries only its key.
+ * and parked in R2 here so the run carries only its key. Everything that
+ * would fail the run — a silent take, a live claim, a take too long to fit —
+ * is refused here, before any credit is reserved.
  */
 export const recordShotDialogueLineFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
@@ -488,12 +491,23 @@ export const recordShotDialogueLineFn = createServerFn({ method: 'POST' })
         `A take runs ${TAKE_MIN_SECONDS}–${TAKE_MAX_SECONDS}s; this one is ${takeSeconds.toFixed(1)}s`
       );
     }
+    if (isSilentWav(take)) {
+      throw new Error('No sound was heard in the take — check the microphone');
+    }
 
-    const [{ key: sourceKey, voiced }, version, sections] = await Promise.all([
-      currentSourceKeys(scopedDb, shot.id, sequence.id),
-      scopedDb.shotDialogue.getSelected(shot.id),
-      scopedDb.shotDialogue.listSections(shot.id),
-    ]);
+    const [{ key: sourceKey, voiced }, version, sections, liveClaims] =
+      await Promise.all([
+        currentSourceKeys(scopedDb, shot.id, sequence.id),
+        scopedDb.shotDialogue.getSelected(shot.id),
+        scopedDb.shotDialogue.listSections(shot.id),
+        scopedDb.shotDialogue.listLiveClaims(shot.id),
+      ]);
+    // The take's claim would collide with the running one and be dropped.
+    if (liveClaims.length > 0) {
+      throw new Error(
+        "This shot's dialogue is being recorded — try the take again when it lands"
+      );
+    }
     const line = voiced.find((row) => row.index === data.lineIndex);
     if (!line) {
       throw new Error('This line has no voice to record it in');
@@ -534,6 +548,27 @@ export const recordShotDialogueLineFn = createServerFn({ method: 'POST' })
     }
 
     const model = safeImageToVideoModel(sequence.videoModel);
+    // The run checks the converted file; the raw take is close to it (Voice
+    // Changer keeps its timing), so a take that cannot fit is refused now.
+    const minDurationSeconds = dialogueAudioMinSeconds([model]);
+    const maxDurationSeconds = dialogueAudioMaxSeconds([model]);
+    const keptSeconds = base
+      ? base.toSeconds -
+        base.fromSeconds -
+        (base.lineEndSeconds - base.lineStartSeconds)
+      : 0;
+    const fileSeconds = Math.max(
+      keptSeconds + takeSeconds,
+      minDurationSeconds + AUDIO_MIN_PAD_SLACK_SECONDS
+    );
+    const { limitSeconds } = dialogueFitBudget({
+      maxSeconds: maxDurationSeconds,
+    });
+    if (fileSeconds > limitSeconds) {
+      throw new Error(
+        `With this take the shot's dialogue runs ${fileSeconds.toFixed(1)}s and has to fit ${limitSeconds.toFixed(1)}s. Record it a little faster, or pick a video model that takes longer audio.`
+      );
+    }
     const reservationId = await reserveRunCredits(
       scopedDb,
       estimateDialogueTakeCost(takeSeconds, provider),
@@ -567,8 +602,8 @@ export const recordShotDialogueLineFn = createServerFn({ method: 'POST' })
         sourceKey,
         dialogueVersionId: version?.id ?? null,
         base,
-        minDurationSeconds: dialogueAudioMinSeconds([model]),
-        maxDurationSeconds: dialogueAudioMaxSeconds([model]),
+        minDurationSeconds,
+        maxDurationSeconds,
       };
       return {
         workflowRunId: await triggerWorkflow('/dialogue-take', input),

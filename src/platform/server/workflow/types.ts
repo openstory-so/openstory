@@ -571,7 +571,8 @@ export interface DialogueAudioWorkflowInput extends UserWorkflowContext {
  * One line performed at the mic, in the speaker's voice (#1802). Everything
  * the run needs is snapshotted here: the line, the key of the shot's lines,
  * and the shot's current reading the line is spliced into (null: the shot
- * has one voiced line and no reading, so the take is the whole recording).
+ * has one voiced line and no current reading that matches its lines, so the
+ * take is the whole recording).
  */
 export interface DialogueTakeWorkflowInput extends UserWorkflowContext {
   sequenceId: string;
@@ -589,7 +590,7 @@ export interface DialogueTakeWorkflowInput extends UserWorkflowContext {
       })
     | null;
   /** Provider per-file floor (H3 Max 2s). */
-  minDurationSeconds?: number;
+  minDurationSeconds: number;
   /** Longest clip the sequence's model carries (`dialogueAudioMaxSeconds`). */
   maxDurationSeconds: number;
 }
