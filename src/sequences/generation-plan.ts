@@ -488,9 +488,11 @@ const UPDATE_ALL_KINDS: Record<UpdateStaleDepth, readonly PlanUnitKind[]> = {
  * continue runs, through the same executor — sheets included, which it
  * could not touch before. Up to `depth`; narrowed to `shotIds` when a scene
  * or shot is in scope, taking along the sheets those shots are made from.
- * Music stays sequence-wide. One `missing` kind rides along: a shot with
+ * Music stays sequence-wide. Two `missing` kinds ride along: a shot with
  * voiced lines and every speaker's voice made, but no reading yet, records
- * its first one (#1780 §6).
+ * its first one (#1780 §6); a taken prompt whose spec was never written
+ * (a shot from before specs) takes that rewrite so the prompts have
+ * something to rebuild from (#1945).
  */
 export function updateAllUnits(
   plan: readonly PlanUnit[],
@@ -513,7 +515,17 @@ export function updateAllUnits(
         (u.state === 'missing' &&
           u.kind === 'dialogue' &&
           u.requires.every((r) => byKey.get(key(r))?.state === 'done')));
-    if (take) taken.add(key(u));
+    if (take) {
+      taken.add(key(u));
+      // A prompt stale on its own still requires a spec. A missing one is a
+      // rewrite, priced as one LLM call; a done spec rebuilds for free.
+      for (const req of u.requires) {
+        if (req.kind !== 'spec') continue;
+        const spec = byKey.get(key(req));
+        if (spec?.state === 'missing' && kinds.has('spec'))
+          taken.add(key(spec));
+      }
+    }
   }
   const wanted = (u: PlanUnit) => taken.has(key(u));
   const picked = new Map<string, PlanUnitRef>();
