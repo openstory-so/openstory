@@ -22,6 +22,7 @@
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { chromium, type BrowserContext, type Page } from 'playwright';
+import WebSocket from 'ws';
 import { z } from 'zod';
 
 const { values: args } = parseArgs({
@@ -44,24 +45,28 @@ const cookie = readCookie(args.cookie);
 const studioCookie = readCookie(args['studio-cookie']);
 
 // --- CDP over the wrangler inspector proxy ---------------------------------
-// The proxy rejects a connection with no Origin.
-// Bun's WebSocket takes headers; the DOM type does not know it.
-// oxlint-disable-next-line typescript/no-unsafe-type-assertion
+// The proxy rejects a connection with no Origin. `ws` is the client that
+// can set that header; the DOM WebSocket constructor cannot.
 const ws = new WebSocket(args.inspector, {
   headers: { Origin: 'http://localhost' },
-} as unknown as string[]);
-await new Promise((resolve, reject) => {
-  ws.addEventListener('open', resolve, { once: true });
-  ws.addEventListener('error', reject, { once: true });
 });
-ws.addEventListener('close', (event) => {
-  throw new Error(`inspector closed: ${event.code} ${event.reason}`);
+await new Promise<void>((resolve, reject) => {
+  ws.once('open', () => resolve());
+  ws.once('error', reject);
+});
+ws.on('close', (code, reason) => {
+  throw new Error(`inspector closed: ${code} ${String(reason)}`);
 });
 let nextId = 1;
 const pending = new Map<number, (result: unknown) => void>();
 let snapshotChunks: string[] = [];
-ws.addEventListener('message', (event) => {
-  const msg = JSON.parse(String(event.data));
+function messageText(data: WebSocket.RawData): string {
+  if (Array.isArray(data)) return Buffer.concat(data).toString('utf8');
+  if (Buffer.isBuffer(data)) return data.toString('utf8');
+  return Buffer.from(data).toString('utf8');
+}
+ws.on('message', (data) => {
+  const msg = JSON.parse(messageText(data));
   if (msg.method === 'HeapProfiler.addHeapSnapshotChunk') {
     snapshotChunks.push(msg.params.chunk);
   } else if (msg.id && pending.has(msg.id)) {

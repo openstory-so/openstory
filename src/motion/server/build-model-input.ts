@@ -13,24 +13,26 @@ import {
   type ImageToVideoModel,
   videoModelSupportsAudio,
 } from '@/models/models';
+import { pickVideoResolution } from '@/models/resolutions';
+import { resolveMotionEndpoint } from '@/motion/resolve-motion-endpoint';
+import {
+  inlineReferenceDescription,
+  substituteReferenceTags,
+} from '@/stills/reference-legend';
 import type { z } from 'zod';
 import {
   bindableReferences,
   buildReferenceVideoPrompt,
 } from './build-reference-video-prompt';
 import {
-  inlineReferenceDescription,
-  substituteReferenceTags,
-} from '@/stills/reference-legend';
-import { pickVideoResolution } from '@/models/resolutions';
-import {
+  applyMotionTransform,
+  MOTION_INPUT_SCHEMAS,
   MOTION_JSON_SCHEMAS,
-  MOTION_TRANSFORMS,
   type MotionEndpointId,
+  type MotionTransform,
 } from './endpoint-map';
-import { hasStartFrameField } from './motion-transform';
-import { resolveMotionEndpoint } from '@/motion/resolve-motion-endpoint';
 import type { GenerateMotionOptions } from './motion-generation';
+import { hasStartFrameField } from './motion-transform';
 
 /** Intentional deviations from API defaults */
 const QUALITY_OVERRIDES: Partial<
@@ -89,25 +91,16 @@ const NO_MUSIC_NEGATIVE_PROMPTS: Partial<Record<ImageToVideoModel, string>> = {
     'blur, distort, and low quality, background music, musical score, soundtrack',
 };
 
-type ModelOutputMap = {
-  [K in ImageToVideoModel]: z.output<
-    (typeof MOTION_TRANSFORMS)[(typeof IMAGE_TO_VIDEO_MODELS)[K]['id']]
-  >;
-};
+type MotionOutputFor<T extends ImageToVideoModel> = z.output<
+  (typeof MOTION_INPUT_SCHEMAS)[(typeof IMAGE_TO_VIDEO_MODELS)[T]['id']]
+>;
 
 export function buildModelInput<T extends ImageToVideoModel>(
   options: GenerateMotionOptions,
   modelConfig: (typeof IMAGE_TO_VIDEO_MODELS)[T],
   modelKey: T
-): ModelOutputMap[T] {
+): MotionOutputFor<T> {
   const endpointId: (typeof IMAGE_TO_VIDEO_MODELS)[T]['id'] = modelConfig.id;
-  const transform = MOTION_TRANSFORMS[endpointId];
-  // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- defensive guard for exhaustiveness
-  if (!transform) {
-    throw new Error(
-      `No motion transform registered for endpoint: ${endpointId}`
-    );
-  }
   // This builder is the image-to-video path: a start frame is required, and
   // reference images are not attached here. Models with a dedicated
   // reference-to-video sibling (Seedance, H3 Max, Kling O3, Omni Flash) are
@@ -126,8 +119,7 @@ export function buildModelInput<T extends ImageToVideoModel>(
         ).prompt
       : options.prompt;
 
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion safe to cast here because we know the transform is valid
-  const result = transform.parse({
+  const result = applyMotionTransform(endpointId, {
     prompt: promptForSchema(prompt, options.multiPrompt),
     duration: options.duration,
     // Every endpoint reaching this builder requires a start frame;
@@ -150,7 +142,7 @@ export function buildModelInput<T extends ImageToVideoModel>(
         multi_prompt: options.multiPrompt,
         shot_type: 'customize',
       }),
-  }) as ModelOutputMap[T];
+  });
 
   return applyKlingMultiPrompt(result, options.multiPrompt);
 }
@@ -200,9 +192,7 @@ function applyKlingMultiPrompt<T extends { prompt?: unknown }>(
 /** Output of any registered fal transform: the reference-to-video and
  *  text-to-video rows `MOTION_REFERENCE_ENDPOINTS` names are typed
  *  `MotionEndpointId`, so this can never drift from the map. */
-type RegisteredMotionOutput = z.output<
-  (typeof MOTION_TRANSFORMS)[MotionEndpointId]
->;
+type RegisteredMotionOutput = ReturnType<MotionTransform<MotionEndpointId>>;
 
 /**
  * Resolve the endpoint and build the exact fal request body for a motion run
@@ -253,7 +243,7 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
   modelKey: T
 ): {
   endpointId: string;
-  input: ModelOutputMap[T] | RegisteredMotionOutput;
+  input: MotionOutputFor<T> | RegisteredMotionOutput;
 } {
   const modelConfig = IMAGE_TO_VIDEO_MODELS[modelKey];
   // "Has references" means references this endpoint can actually carry
@@ -280,7 +270,7 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
       );
     }
     const { endpointId } = endpoint;
-    const input = MOTION_TRANSFORMS[endpointId].parse({
+    const input = applyMotionTransform(endpointId, {
       prompt: promptForSchema(options.prompt, options.multiPrompt),
       duration: options.duration,
       aspectRatio: options.aspectRatio,
@@ -317,7 +307,6 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
   }
 
   const endpointId = endpoint.referenceConfig.endpointId;
-  const transform = MOTION_TRANSFORMS[endpointId];
 
   if (!options.imageUrl && !options.referenceOnly) {
     // The reference-to-video endpoint accepts a request with no still, so a
@@ -345,7 +334,7 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
   const config = endpoint.referenceConfig;
   const imageField = config.imageField ?? 'image_urls';
 
-  const input = transform.parse({
+  const input = applyMotionTransform(endpointId, {
     prompt: promptForSchema(prompt, options.multiPrompt),
     duration: options.duration,
     aspectRatio: options.aspectRatio,

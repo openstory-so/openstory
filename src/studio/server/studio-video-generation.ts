@@ -57,7 +57,7 @@ import type { AspectRatio } from '@/models/aspect-ratios';
 import type { Resolution } from '@/models/resolutions';
 import type { ResolvedApiKey } from '@/models/server/db/api-keys';
 import type { CredentialScopedDb } from '@/platform/server/db/scoped-workflow';
-import { MOTION_TRANSFORMS } from '@/motion/server/endpoint-map';
+import { applyMotionTransform } from '@/motion/server/endpoint-map';
 import {
   ensureExternallyFetchableUrls,
   toDataOrCdnUrl,
@@ -220,7 +220,6 @@ async function buildStudioImageModeInput(
   // against (`MOTION_TRANSFORMS`), so field names, duration encoding and
   // prompt limits come from the generated schemas.
   const endpointId = IMAGE_TO_VIDEO_MODELS[modelKey].id;
-  const transform = MOTION_TRANSFORMS[endpointId];
   const stored = [options.startImageUrl, options.endImageUrl].filter(
     (url): url is string => Boolean(url)
   );
@@ -228,7 +227,7 @@ async function buildStudioImageModeInput(
   const resolution = studioVideoResolution(modelKey, options.resolution);
   const snapped = snapStudioVideoDuration(options.duration, modelKey);
   const duration = studioBillableSeconds(snapped, modelKey);
-  const { prompt, ...modelOptions } = transform.parse({
+  const { prompt, ...modelOptions } = applyMotionTransform(endpointId, {
     prompt: options.prompt,
     duration,
     aspectRatio: options.aspectRatio,
