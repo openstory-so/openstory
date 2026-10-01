@@ -143,7 +143,7 @@
     "@tiptap/starter-kit": "^3.31.3",
     "@tiptap/suggestion": "^3.31.3",
     "@unpic/react": "^1.0.2",
-    "@videojs/media": "10.0.0-beta.32",
+    "@videojs/media": "10.0.0-rc.4",
     "@videojs/react": "^10.0.0-beta.26",
     "better-auth": "1.7.6",
     "class-variance-authority": "^0.7.1",
