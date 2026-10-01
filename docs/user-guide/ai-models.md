@@ -13,7 +13,7 @@ These LLM models analyze your script, extract scenes, characters, and locations,
 
 | Model              | Vendor    | Context Window | License                   |
 | ------------------ | --------- | -------------- | ------------------------- |
-| **GPT-5.6 Luna**   | OpenAI    | 1M tokens      | Proprietary (default)     |
+| **GPT-6 Luna**     | OpenAI    | 1M tokens      | Proprietary (default)     |
 | Claude Fable 5     | Anthropic | 1M tokens      | Proprietary               |
 | Claude Opus 5      | Anthropic | 1M tokens      | Proprietary (scene-split) |
 | Claude Opus 5 Fast | Anthropic | 1M tokens      | Proprietary               |

@@ -340,7 +340,7 @@ function tolerantUserMessageRegex(userMessage: string): RegExp {
 // Recording mode keeps the exact model so a re-record captures Luna.
 const FIXTURE_MODEL_ALIASES: Record<string, RegExp> = {
   'anthropic/claude-opus-5':
-    /^(anthropic\/claude-(opus-5(?:\.5)?|fable-5)|openai\/gpt-5\.6-luna)$/,
+    /^(anthropic\/claude-(opus-5(?:\.5)?|fable-5)|openai\/gpt-6-luna)$/,
 };
 
 function tolerateRuntimeIds(fixtures: Fixture[]): Fixture[] {

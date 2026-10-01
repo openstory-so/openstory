@@ -189,7 +189,7 @@ describe('isTurboAnalysisModel / isTurboImageModel / isTurboVideoModel', () => {
   });
 
   it('flags Luna, not Fable or Astra', () => {
-    expect(isTurboAnalysisModel('openai/gpt-5.6-luna')).toBe(true);
+    expect(isTurboAnalysisModel('openai/gpt-6-luna')).toBe(true);
     expect(isTurboAnalysisModel('anthropic/claude-fable-5.1')).toBe(false);
     expect(isTurboAnalysisModel('openai/gpt-6-astra')).toBe(false);
     expect(isSelectableAnalysisModelId('openai/gpt-6-astra')).toBe(true);

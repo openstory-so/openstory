@@ -49,6 +49,7 @@ export const LLMTR_BASE_URL = 'https://llmtr.com/v1';
  */
 export const LLMTR_UNMAPPED_MODEL_IDS = [
   'anthropic/claude-opus-5.5', // LLMTR support and pricing not yet verified.
+  'openai/gpt-6-luna', // LLMTR support and pricing not yet verified.
   'anthropic/claude-opus-5-fast',
   'deepseek/deepseek-v3.2',
   'bytedance-seed/seed-2.0-mini',
@@ -83,7 +84,6 @@ export const LLMTR_TEXT_MODELS = {
   'deepseek/deepseek-v4-pro-0813': 'deepseek/deepseek-v4-pro-0813',
   'anthropic/claude-sonnet-5': 'anthropic/claude-sonnet-5',
   'x-ai/grok-4.6': 'xai/grok-4.6',
-  'openai/gpt-5.6-luna': 'openai/gpt-5.6-luna',
   'openai/gpt-5.4-mini': 'openai/gpt-5.4-mini',
   'openai/gpt-5.4-nano': 'openai/gpt-5.4-nano',
   'mistralai/mistral-small-2603': 'mistral/mistral-small-latest',
@@ -183,7 +183,6 @@ const LLMTR_TEXT_RATES: Record<
   'deepseek/deepseek-v4-pro-0813': { input: 1.32, output: 3.96 },
   'anthropic/claude-sonnet-5': { input: 2, output: 10 },
   'xai/grok-4.6': { input: 2, output: 6 },
-  'openai/gpt-5.6-luna': { input: 0.2, output: 1.2 },
   'openai/gpt-5.4-mini': { input: 0.75, output: 4.5 },
   'openai/gpt-5.4-nano': { input: 0.2, output: 1.25 },
   'mistral/mistral-small-latest': { input: 0.15, output: 0.6 },
