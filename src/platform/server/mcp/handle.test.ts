@@ -183,6 +183,9 @@ describe('handleMcpPost Origin and auth gates', () => {
       'openstory.plan_generation',
       'openstory.execute_generation',
       'openstory.get_operation_status',
+      'openstory.retry_failed_work',
+      'openstory.plan_export',
+      'openstory.start_export',
     ]);
   });
 

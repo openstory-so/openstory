@@ -1,5 +1,5 @@
 /**
- * Agent plan → execute → status (#1460) on migrated SQLite, so sequence,
+ * Agent plan → execute → status (#1460, #1461) on migrated SQLite, so sequence,
  * scene and shot access is the real team scope. The editor's planners,
  * pricing, credit check and launchers are mocked: their behaviour has its
  * own tests; these pin the contract around them.
@@ -91,8 +91,20 @@ vi.doMock('./continue-plan', () => ({
   })),
 }));
 
-const { executeGeneration, getOperationStatus, planGeneration } =
-  await import('./generation-operations');
+const executeSmartRetry = vi.fn();
+vi.doMock('./smart-retry', () => ({ executeSmartRetry }));
+const resolveExportCut = vi.fn();
+const previewExport = vi.fn();
+const startExport = vi.fn();
+vi.doMock('./export', () => ({ resolveExportCut, previewExport, startExport }));
+
+const {
+  executeGeneration,
+  getOperationStatus,
+  planExport,
+  planGeneration,
+  startExportOperation,
+} = await import('./generation-operations');
 
 let client: Client;
 let db: Database;
@@ -512,5 +524,142 @@ describe('get_operation_status', () => {
       terminal: true,
       error: 'boom; bang',
     });
+  });
+});
+
+describe('planned retry (#1461)', () => {
+  const retryPlan = {
+    retryType: 'smart',
+    images: [{ shotId: 'shot-a', model: 'nano_banana_2' }],
+    motion: [{ shotId: 'shot-b', model: 'wan_i2v' }],
+    music: false,
+    musicPrompt: false,
+    estimateMicros: 900_000,
+  };
+  const retry = { mode: 'retry' as const, retry: 'smart' as const };
+
+  it('plans by dry run and launches under the plan key, reporting every run', async () => {
+    executeSmartRetry.mockResolvedValue({ planned: retryPlan });
+    const plan = await planGeneration(scoped(), actor(), sequenceId, retry);
+    expect(executeSmartRetry).toHaveBeenLastCalledWith(expect.anything(), {
+      dryRun: true,
+      smartOnly: true,
+    });
+    expect(plan.work).toMatchObject({
+      retryType: 'smart',
+      images: retryPlan.images,
+    });
+    expect(plan.estimate.micros).toBe(900_000);
+
+    executeSmartRetry.mockImplementation(
+      async (
+        _ctx,
+        opts: { dryRun?: boolean; onLaunched?: (id: string) => Promise<void> }
+      ) => {
+        if (!opts.dryRun) {
+          await opts.onLaunched?.('image-run');
+          await opts.onLaunched?.('motion-run');
+        }
+        return { planned: retryPlan };
+      }
+    );
+    expect(await execute(plan.planToken)).toMatchObject({
+      workflowRunIds: ['image-run', 'motion-run'],
+    });
+    const launch = executeSmartRetry.mock.calls.find(
+      ([, opts]) => !opts.dryRun
+    );
+    expect(launch?.[1]).toMatchObject({
+      smartOnly: true,
+      runKey: expect.stringMatching(
+        new RegExp(`^${sequenceId}-plan-[0-9a-f]{12}$`)
+      ),
+    });
+  });
+
+  it('names the runs that did start when a launch throws part-way', async () => {
+    executeSmartRetry.mockImplementation(
+      async (
+        _ctx,
+        opts: { dryRun?: boolean; onLaunched?: (id: string) => Promise<void> }
+      ) => {
+        if (!opts.dryRun) {
+          await opts.onLaunched?.('image-run');
+          throw new Error('motion trigger failed');
+        }
+        return { planned: retryPlan };
+      }
+    );
+    const plan = await planGeneration(scoped(), actor(), sequenceId, {
+      mode: 'retry',
+      retry: 'full_if_required',
+    });
+    await expect(execute(plan.planToken)).rejects.toMatchObject({
+      code: 'LAUNCH_INCOMPLETE',
+      message: expect.stringContaining('motion trigger failed'),
+      details: { workflowRunIds: ['image-run'] },
+    });
+  });
+
+  it('refuses a retry whose failures changed since planning, and one while a run is live', async () => {
+    executeSmartRetry.mockResolvedValueOnce({ planned: retryPlan });
+    const plan = await planGeneration(scoped(), actor(), sequenceId, retry);
+    executeSmartRetry.mockResolvedValueOnce({
+      planned: { ...retryPlan, images: [] },
+    });
+    await expect(execute(plan.planToken)).rejects.toMatchObject({
+      details: { code: 'PLAN_CHANGED' },
+    });
+    executeSmartRetry.mockRejectedValueOnce(
+      new realLaunchers.GenerationInProgressError()
+    );
+    await expect(execute(plan.planToken)).rejects.toMatchObject({
+      code: 'GENERATION_IN_PROGRESS',
+    });
+  });
+});
+
+describe('export (#1461)', () => {
+  const cut = { scenes: [], musicUrl: null, sourceShotsHash: 'cut-1' };
+
+  it('previews the cut and starts the export through the shared service', async () => {
+    resolveExportCut.mockResolvedValue(cut);
+    previewExport.mockResolvedValue({ action: 'render', exportId: null });
+    expect(await planExport(scoped(), sequenceId)).toEqual({
+      sequenceId,
+      sourceShotsHash: 'cut-1',
+      action: 'render',
+      exportId: null,
+    });
+    expect(startExport).not.toHaveBeenCalled();
+
+    const exportId = generateId();
+    startExport.mockResolvedValue({
+      row: { id: exportId, status: 'processing' },
+      workflowRunId: 'export-run',
+    });
+    expect(await startExportOperation(scoped(), actor(), sequenceId)).toEqual({
+      sequenceId,
+      exportId,
+      status: 'processing',
+      action: 'render',
+      workflowRunId: 'export-run',
+    });
+    expect(startExport).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ sequenceId, cut })
+    );
+  });
+
+  it('refuses to start while an earlier cut renders', async () => {
+    resolveExportCut.mockResolvedValue(cut);
+    previewExport.mockResolvedValue({
+      action: 'busy_other_cut',
+      exportId: 'old',
+    });
+    await expect(
+      startExportOperation(scoped(), actor(), sequenceId)
+    ).rejects.toMatchObject({ code: 'EXPORT_BUSY' });
+    expect(startExport).not.toHaveBeenCalled();
   });
 });

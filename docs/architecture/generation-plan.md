@@ -364,7 +364,22 @@ agent hands back, and the launched runs are the operation.
   (never inferred from each other). `missing` is Continue
   (`continueFromPlan` → `computePlan`) up to a stop, for the whole sequence
   only, under the sequence's current switches and models. Anything else is
-  refused with an actionable `VALIDATION_ERROR`. Failed-item retry is #1461.
+  refused with an actionable `VALIDATION_ERROR`.
+- **Retry (#1461).** `retry_failed_work` plans with a `dryRun` of
+  `executeSmartRetry`, so the plan and the launch run one code path (same
+  failure analysis, models, costs). `smart` refuses when recovery needs a
+  full storyboard; `full_if_required` plans that storyboard and shows its
+  cost. It launches only through `execute_generation`. Retry planning throws
+  `GENERATION_IN_PROGRESS` on a live run rather than reporting a blocker:
+  the dry run reads the same mutex. The editor's own smart retry is
+  unchanged.
+- **Export (#1461).** Exports spend no credits and `startExport` (the REST
+  route's service) already reuses a ready MP4 of the cut or joins its live
+  render, so there is no plan to approve: `plan_export` is a read
+  (`previewExport`: `reuse_ready` / `join_in_flight` / `busy_other_cut` /
+  `render`) and `start_export` starts directly, refusing only
+  `busy_other_cut` with `EXPORT_BUSY` (REST joins it; an agent would hand
+  back an MP4 without the latest edits). Poll `get_export_status`.
 - **No side effects.** Planning prices with the editor's preview/estimate
   and reports insufficient credits, a running sequence or nothing-to-do as
   `blockers`; it starts nothing and writes nothing (bar `computePlan`'s

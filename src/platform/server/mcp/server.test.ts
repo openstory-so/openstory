@@ -168,12 +168,17 @@ describe('tools/list and whoami', () => {
       'openstory.plan_generation',
       'openstory.execute_generation',
       'openstory.get_operation_status',
+      'openstory.retry_failed_work',
+      'openstory.plan_export',
+      'openstory.start_export',
     ]);
     expect(tools[0]?.description).toMatch(/user and team/i);
     const writes = new Set([
       'openstory.update_scene',
       'openstory.plan_generation',
       'openstory.execute_generation',
+      'openstory.retry_failed_work',
+      'openstory.start_export',
     ]);
     for (const tool of tools.slice(1))
       expect(tool.annotations, tool.name).toMatchObject({
@@ -384,14 +389,16 @@ describe('write tool authorization', () => {
 });
 
 describe('generation tool authorization', () => {
-  it.each(['plan_generation', 'execute_generation'])(
+  it.each(['plan_generation', 'execute_generation', 'retry_failed_work'])(
     'refuses %s for an OAuth token without generate, before any db',
     async (name) => {
       const createDb = vi.spyOn(dbModule, 'createScopedDb');
       const args =
         name === 'plan_generation'
           ? { mode: 'stale', depth: 'images' }
-          : { planToken: 'opaque', confirm: true };
+          : name === 'retry_failed_work'
+            ? {}
+            : { planToken: 'opaque', confirm: true };
       const { body } = await rpc(
         'tools/call',
         {
@@ -438,5 +445,29 @@ describe('generation tool authorization', () => {
         isError: true,
       });
     }
+  });
+});
+
+describe('export tool authorization', () => {
+  it('refuses start_export without sequences:write, before any db', async () => {
+    const createDb = vi.spyOn(dbModule, 'createScopedDb');
+    const { body } = await rpc(
+      'tools/call',
+      {
+        name: 'openstory.start_export',
+        arguments: { sequenceId: '01J00000000000000000000000' },
+      },
+      { ...auth, kind: 'oauth', scopes: ['sequences:read', 'generate'] }
+    );
+    expect(body.result).toMatchObject({
+      isError: true,
+      structuredContent: {
+        error: {
+          code: 'INSUFFICIENT_SCOPE',
+          details: { scope: 'sequences:write' },
+        },
+      },
+    });
+    expect(createDb).not.toHaveBeenCalled();
   });
 });

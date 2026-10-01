@@ -2170,3 +2170,33 @@ describe('update_scene continuity (#1459)', () => {
     expect(Object.keys(event?.data?.prevState ?? {})).toEqual(['continuity']);
   });
 });
+
+describe('get_export_status without an exportId (#1461)', () => {
+  it('returns null with no exports, then the newest, and refuses a foreign id', async () => {
+    expect(await data('get_export_status', { sequenceId })).toEqual({
+      export: null,
+    });
+    const older = generateId();
+    const newer = generateId();
+    for (const [id, status] of [
+      [older, 'ready'],
+      [newer, 'failed'],
+    ] as const) {
+      await db.insert(sequenceExports).values({
+        id,
+        sequenceId,
+        url: `/r2/openstory-videos/${id}.mp4`,
+        storagePath: `${id}.mp4`,
+        status,
+        createdAt: new Date(Date.now() + (id === newer ? 1000 : 0)),
+      });
+    }
+    expect(await data('get_export_status', { sequenceId })).toMatchObject({
+      export: { id: newer, status: 'failed' },
+    });
+    expect(
+      (await call('get_export_status', { sequenceId, exportId: generateId() }))
+        .isError
+    ).toBe(true);
+  });
+});

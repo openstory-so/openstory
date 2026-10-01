@@ -5,8 +5,10 @@ import { GENERATION_STAGES } from '@/sequences/pipeline';
 import {
   executeGeneration,
   getOperationStatus,
-  generationWorkSchema,
+  planExport,
   planGeneration,
+  planWorkSchema,
+  startExportOperation,
   type GenerationRequest,
 } from '@/sequences/server/generation-operations';
 import {
@@ -30,7 +32,7 @@ const planOutput = z.object({
     micros: z.number().nullable(),
     usd: z.number().nullable(),
   }),
-  work: generationWorkSchema,
+  work: planWorkSchema,
   blockers: z.array(z.object({ code: z.string(), message: z.string() })),
 });
 
@@ -44,7 +46,7 @@ const planToken = z
   .string()
   .min(1)
   .max(4096)
-  .describe('The planToken from plan_generation.');
+  .describe('The planToken from plan_generation or retry_failed_work.');
 
 function planSummary(plan: z.output<typeof planOutput>) {
   const cost =
@@ -52,7 +54,7 @@ function planSummary(plan: z.output<typeof planOutput>) {
   const blocked = plan.blockers.length
     ? `; blocked: ${plan.blockers.map((b) => b.code).join(', ')}`
     : '';
-  return `Plan: ${plan.work.targetShotIds.length} shots, estimate ${cost}${blocked}. Show it to the user before starting it.`;
+  return `Plan: estimate ${cost}${blocked}. Show it to the user before starting it.`;
 }
 
 const planInput = sequenceInput
@@ -125,10 +127,31 @@ export const planGenerationTool = openstoryTool({
   },
 });
 
+export const retryFailedWorkTool = openstoryTool({
+  name: 'retry_failed_work',
+  description:
+    'Plan a retry of failed images, videos and music without starting it (the same plan contract as plan_generation). mode smart retries only the failed items and refuses when recovery needs a full storyboard; full_if_required plans that storyboard run and shows its cost. Start the plan with execute_generation.',
+  scope: 'generate',
+  annotations: writeAnnotations,
+  inputSchema: sequenceInput.extend({
+    mode: z.enum(['smart', 'full_if_required']).default('smart'),
+  }),
+  outputSchema: planOutput,
+  run: async (input, { scopedDb, userId }) => {
+    const plan = await planGeneration(
+      scopedDb,
+      { userId, teamId: scopedDb.teamId },
+      input.sequenceId,
+      { mode: 'retry', retry: input.mode }
+    );
+    return { data: plan, summary: planSummary(plan) };
+  },
+});
+
 export const executeGenerationTool = openstoryTool({
   name: 'execute_generation',
   description:
-    'Start an approved plan from plan_generation. confirm: true asserts the user approved that plan; the server still re-plans, refuses a plan whose work or cost changed (PLAN_CHANGED) and rechecks credits. Safe to call again after a timeout: a repeat returns the same runs and never charges twice; PLAN_CHANGED or GENERATION_IN_PROGRESS on a repeat means the earlier call started it — check get_sequence_status. Poll get_operation_status with the workflowRunIds.',
+    'Start an approved plan from plan_generation or retry_failed_work. confirm: true asserts the user approved that plan; the server still re-plans, refuses a plan whose work or cost changed (PLAN_CHANGED) and rechecks credits. Safe to call again after a timeout: a repeat returns the same runs and never charges twice; PLAN_CHANGED or GENERATION_IN_PROGRESS on a repeat means the earlier call started it — check get_sequence_status. Poll get_operation_status with the workflowRunIds.',
   scope: 'generate',
   annotations: {
     ...writeAnnotations,
@@ -180,6 +203,60 @@ export const getOperationStatusTool = readToolDefinition({
     return {
       data: status,
       summary: `Operation: ${status.state}${status.terminal ? '' : `; poll again in ${status.pollAfterSeconds}s`}.`,
+    };
+  },
+});
+
+const exportActions = z.enum([
+  'reuse_ready',
+  'join_in_flight',
+  'busy_other_cut',
+  'render',
+]);
+
+export const planExportTool = readToolDefinition({
+  name: 'plan_export',
+  description:
+    'Preview a server MP4 export of the current cut: the cut hash and what start_export will do — reuse_ready (an MP4 of this exact cut exists), join_in_flight (a render of this cut is running), busy_other_cut (a render of an earlier cut is running; start_export refuses with EXPORT_BUSY) or render. Starts nothing; renders use no credits.',
+  inputSchema: sequenceInput,
+  outputSchema: z.object({
+    sequenceId: z.string(),
+    sourceShotsHash: z.string(),
+    action: exportActions,
+    exportId: z.string().nullable(),
+  }),
+  run: async (input, { scopedDb }) => {
+    const plan = await planExport(scopedDb, input.sequenceId);
+    return {
+      data: plan,
+      summary: `Export of cut ${plan.sourceShotsHash}: ${plan.action}.`,
+    };
+  },
+});
+
+export const startExportTool = openstoryTool({
+  name: 'start_export',
+  description:
+    'Render the current cut to an MP4 on the server. A ready MP4 of this exact cut is reused and nothing renders; a running render of it is joined; EXPORT_BUSY while an earlier cut renders. Safe to repeat. Uses no credits. Poll get_export_status with the exportId.',
+  scope: 'sequences:write',
+  annotations: { ...writeAnnotations, idempotentHint: true },
+  inputSchema: sequenceInput,
+  outputSchema: z.object({
+    sequenceId: z.string(),
+    exportId: z.string(),
+    status: z.string(),
+    action: exportActions,
+    workflowRunId: z.string().nullable(),
+  }),
+  run: async (input, { scopedDb, userId }) => {
+    const started = await startExportOperation(
+      scopedDb,
+      { userId, teamId: scopedDb.teamId },
+      input.sequenceId
+    );
+    return {
+      data: started,
+      summary: `Export ${started.exportId}: ${started.status} (${started.action}). Poll get_export_status.`,
     };
   },
 });

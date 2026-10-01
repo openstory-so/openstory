@@ -290,12 +290,17 @@ export const productionReadTools = [
   ),
   productionRead(
     'get_export_status',
-    'Inspect one existing export by exportId, with its status, source cut, duration and media URL. Does not start or reconcile an export.',
-    sequenceInput.extend({ exportId: ulidSchema }),
-    z.object({ export: exportReadSchema }),
+    'Inspect one export by exportId (from start_export), or the newest export when exportId is omitted (null when there is none): processing/ready/failed, error, source cut, duration and media URL. Use list_exports to page older ones. Does not start or reconcile an export.',
+    sequenceInput.extend({ exportId: ulidSchema.optional() }),
+    z.object({ export: exportReadSchema.nullable() }),
     async (input, { scopedDb, origin }) => {
       await productionAccess(scopedDb).sequence(input.sequenceId);
-      const row = await scopedDb.sequenceExports.getById(input.exportId);
+      const row = input.exportId
+        ? await scopedDb.sequenceExports.getById(input.exportId)
+        : ((
+            await scopedDb.sequenceExports.listAllBySequence(input.sequenceId)
+          )[0] ?? null);
+      if (!input.exportId && !row) return { export: null };
       if (row?.sequenceId !== input.sequenceId)
         throw new NotFoundError('Export not found in this sequence.');
       return { export: projectRead(exportReadSchema, row, origin) };

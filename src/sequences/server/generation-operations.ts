@@ -1,12 +1,14 @@
 /**
- * Agent generation plans, replay-safe execution and operation status
- * (#1460). The MCP tools are thin adapters over these three functions.
+ * Agent plans, replay-safe execution and operation status (#1460, #1461).
+ * The MCP tools are thin adapters over these functions.
  *
  * Planning reuses the editor's planners with no generation side effects:
  * - `stale`: Update all (`planUpdateAll`) up to a depth, for the sequence, a
  *   list of scenes or a list of shots. Never a first render.
  * - `missing`: Continue (`continueFromPlan` → `computePlan`) up to a stop,
  *   for the whole sequence, with its current switches and models.
+ * - `retry`: smart retry of failed work (`executeSmartRetry` dry run), or the
+ *   full storyboard it falls back to when that is the only way to recover.
  *
  * Nothing is stored. A plan is a token the agent hands back: the request, a
  * digest of what will run and what it costs, and a random key. Execute
@@ -57,6 +59,8 @@ import {
   triggerContinue,
 } from './launchers';
 import { readProductionStatus } from './production-status';
+import { executeSmartRetry } from './smart-retry';
+import { previewExport, resolveExportCut, startExport } from './export';
 
 /** Suggested polling interval for get_operation_status. */
 const OPERATION_POLL_SECONDS = 15;
@@ -76,6 +80,10 @@ const requestSchema = z.discriminatedUnion('mode', [
     mode: z.literal('missing'),
     stopAt: z.enum(GENERATION_STAGES),
     target: targetSchema,
+  }),
+  z.object({
+    mode: z.literal('retry'),
+    retry: z.enum(['smart', 'full_if_required']),
   }),
 ]);
 export type GenerationRequest = z.infer<typeof requestSchema>;
@@ -116,7 +124,7 @@ function decodePlanToken(encoded: string, sequenceId: string): PlanToken {
   const token = planTokenSchema.safeParse(parsed);
   if (!token.success) {
     throw new ValidationError(
-      'Not a plan token. Pass the planToken from plan_generation.'
+      'Not a plan token. Pass the planToken from plan_generation or retry_failed_work.'
     );
   }
   if (token.data.sequenceId !== sequenceId) {
@@ -128,8 +136,8 @@ function decodePlanToken(encoded: string, sequenceId: string): PlanToken {
 type Actor = { userId: string; teamId: string };
 
 const shotList = z.array(z.string());
-/** What a plan does, per stage — shown for approval. */
-export const generationWorkSchema = z.object({
+/** What a stale/missing plan does, per stage. */
+const generationWorkSchema = z.object({
   targetShotIds: shotList,
   stages: z.object({
     visualPrompts: shotList,
@@ -149,7 +157,17 @@ export const generationWorkSchema = z.object({
     perShotImage: z.record(z.string(), z.string()),
   }),
 });
-type GenerationWork = z.infer<typeof generationWorkSchema>;
+/** What a retry plan starts; `full` is the storyboard fallback, made visible. */
+const retryWorkSchema = z.object({
+  retryType: z.enum(['smart', 'full']),
+  images: z.array(z.object({ shotId: z.string(), model: z.string() })),
+  motion: z.array(z.object({ shotId: z.string(), model: z.string() })),
+  music: z.boolean(),
+  musicPrompt: z.boolean(),
+});
+/** Every plan's work. */
+export const planWorkSchema = z.union([generationWorkSchema, retryWorkSchema]);
+type PlanWork = z.infer<typeof planWorkSchema>;
 
 /**
  * One request, prepared: what it would do and cost, and how to launch it.
@@ -163,7 +181,7 @@ type Prepared = {
   /** What the balance must cover: the known parts, never skipped. */
   creditCheckMicros: Microdollars;
   hasWork: boolean;
-  work: () => Promise<GenerationWork>;
+  work: () => Promise<PlanWork>;
   /**
    * Start the work under `runKey` (deduplication id), reporting each run as
    * it starts so a throw part-way still names the runs that did.
@@ -204,10 +222,7 @@ async function oneImageFloor(sequence: Sequence): Promise<Microdollars> {
   );
 }
 
-function summarize(
-  plan: UpdateStalePlan,
-  inFlightShotIds: string[]
-): GenerationWork {
+function summarize(plan: UpdateStalePlan, inFlightShotIds: string[]) {
   const shots = (flag: keyof UpdateStalePlan['targets'][number]) =>
     plan.targets.filter((t) => t[flag] === true).map((t) => t.shotId);
   return {
@@ -266,14 +281,13 @@ function hasWork(plan: UpdateStalePlan) {
   );
 }
 
-/** Freeze the plan and price it, exactly as the editor would. */
-async function prepare(
+/** Update all / Continue: freeze the plan and price it as the editor does. */
+async function prepareGeneration(
   scopedDb: ScopedDb,
   actor: Actor,
-  sequenceId: string,
-  request: GenerationRequest
+  sequence: Sequence,
+  request: Extract<GenerationRequest, { mode: 'stale' | 'missing' }>
 ): Promise<Prepared> {
-  const sequence = await productionAccess(scopedDb).sequence(sequenceId);
   const shotIds = await shotIdsFor(scopedDb, sequence.id, request.target);
   const inFlight = async () => [
     ...new Set(
@@ -377,29 +391,36 @@ async function prepare(
   };
 }
 
-/**
- * Binds the request, what runs, its estimate. Dates are left out and
- * `undefined` optionals dropped, so a touched timestamp does not change it.
- * Live pricing is in the estimate, so a price change fails the compare too.
- */
-function digestOf(request: GenerationRequest, prepared: Prepared) {
-  const material = JSON.stringify(
-    {
-      request,
-      material: prepared.digestMaterial,
-      estimateMicros: prepared.estimateMicros,
-    },
-    function (this: Record<string, unknown>, key: string, value: unknown) {
-      return this[key] instanceof Date ? undefined : value;
-    }
-  );
-  return sha256Hex(JSON.parse(material));
-}
-
-function checkCredits(scopedDb: ScopedDb, prepared: Prepared) {
-  return requireCredits(scopedDb, prepared.creditCheckMicros, {
-    providers: ['fal', 'openrouter'],
+/** Smart retry, planned by a dry run of the same code that launches it. */
+async function prepareRetry(
+  scopedDb: ScopedDb,
+  actor: Actor,
+  sequence: Sequence,
+  request: Extract<GenerationRequest, { mode: 'retry' }>
+): Promise<Prepared> {
+  const context = {
+    sequence,
+    user: { id: actor.userId },
+    teamId: actor.teamId,
+    scopedDb,
+  };
+  const smartOnly = request.retry === 'smart';
+  const { planned } = await executeSmartRetry(context, {
+    dryRun: true,
+    smartOnly,
   });
+  const { estimateMicros, ...work } = planned;
+  return {
+    sequence,
+    digestMaterial: planned,
+    estimateMicros,
+    creditCheckMicros: estimateMicros,
+    hasWork: true,
+    work: async () => work,
+    launch: async (runKey, onLaunched) => {
+      await executeSmartRetry(context, { smartOnly, onLaunched, runKey });
+    },
+  };
 }
 
 /** The mutex refusals are plain Errors; give them a code the agent can act on. */
@@ -429,6 +450,45 @@ async function rejectActiveRun(scopedDb: ScopedDb, sequenceId: string) {
       409
     );
   }
+}
+
+async function prepare(
+  scopedDb: ScopedDb,
+  actor: Actor,
+  sequenceId: string,
+  request: GenerationRequest
+): Promise<Prepared> {
+  const sequence = await productionAccess(scopedDb).sequence(sequenceId);
+  return withRunCodes(() =>
+    request.mode === 'retry'
+      ? prepareRetry(scopedDb, actor, sequence, request)
+      : prepareGeneration(scopedDb, actor, sequence, request)
+  );
+}
+
+/**
+ * Binds the request, what runs, its estimate. Dates are left out and
+ * `undefined` optionals dropped, so a touched timestamp does not change it.
+ * Live pricing is in the estimate, so a price change fails the compare too.
+ */
+function digestOf(request: GenerationRequest, prepared: Prepared) {
+  const material = JSON.stringify(
+    {
+      request,
+      material: prepared.digestMaterial,
+      estimateMicros: prepared.estimateMicros,
+    },
+    function (this: Record<string, unknown>, key: string, value: unknown) {
+      return this[key] instanceof Date ? undefined : value;
+    }
+  );
+  return sha256Hex(JSON.parse(material));
+}
+
+function checkCredits(scopedDb: ScopedDb, prepared: Prepared) {
+  return requireCredits(scopedDb, prepared.creditCheckMicros, {
+    providers: ['fal', 'openrouter'],
+  });
 }
 
 export async function planGeneration(
@@ -575,9 +635,9 @@ export async function getOperationStatus(
       error: errors.join('; '),
     };
   }
-  // Update all reports its own per-shot outcome. A Continue run reports
-  // run-level success; what is failed on the sequence now is listed so the
-  // agent can plan a retry for it.
+  // Update all reports its own per-shot outcome. Continue and retry runs
+  // report run-level success; what is failed on the sequence now is listed
+  // so the agent can plan a retry for it.
   const results = runs.flatMap((r) => ('result' in r ? [r.result] : []));
   const failures =
     results.length > 0
@@ -600,5 +660,51 @@ export async function getOperationStatus(
     failures,
     skipped,
     ...(errors.length > 0 ? { error: errors.join('; ') } : {}),
+  };
+}
+
+/**
+ * Export (#1461): what starting an export of the current cut would do, and
+ * starting it. Exports spend no credits and `startExport` already reuses a
+ * ready MP4 of the cut or joins its live render, so there is no plan to
+ * approve — only a live render of a DIFFERENT cut is refused here (REST
+ * joins it), since joining it would hand back an MP4 without the latest
+ * edits.
+ */
+export async function planExport(scopedDb: ScopedDb, sequenceId: string) {
+  const cut = await resolveExportCut(scopedDb, sequenceId);
+  return {
+    sequenceId,
+    sourceShotsHash: cut.sourceShotsHash,
+    ...(await previewExport(scopedDb, sequenceId, cut)),
+  };
+}
+
+export async function startExportOperation(
+  scopedDb: ScopedDb,
+  actor: Actor,
+  sequenceId: string
+) {
+  const cut = await resolveExportCut(scopedDb, sequenceId);
+  const preview = await previewExport(scopedDb, sequenceId, cut);
+  if (preview.action === 'busy_other_cut') {
+    throw new OpenStoryError(
+      'An export of an earlier cut is rendering; start this one after it finishes.',
+      'EXPORT_BUSY',
+      409
+    );
+  }
+  const { row, workflowRunId } = await startExport(scopedDb, {
+    userId: actor.userId,
+    teamId: actor.teamId,
+    sequenceId,
+    cut,
+  });
+  return {
+    sequenceId,
+    exportId: row.id,
+    status: row.status,
+    action: preview.action,
+    workflowRunId,
   };
 }
