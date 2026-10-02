@@ -1,7 +1,5 @@
 import { usesStartFrame } from './use-start-frame';
-import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/models/models';
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
-import { estimateImageCost, gateEstimate } from '@/billing/cost-estimation';
 import { requireCredits } from '@/billing/server/preflight';
 import type { NewShot } from '@/platform/server/db/schema';
 import {
@@ -23,6 +21,9 @@ import {
 import { planUpdateAll } from '@/shots/server/update-stale-plan';
 import {
   launchUpdateStale,
+  findRunningUpdateStale,
+  prepareUpdateStale,
+  UPDATE_STALE_CREDIT_PROVIDERS,
   readUpdateStaleRun,
 } from '@/shots/server/update-stale-run';
 import {
@@ -69,7 +70,6 @@ import {
   requireShotInSequence,
   setShotUseStartFrame,
 } from '@/shots/server/structure-edit';
-import { ValidationError } from '@/platform/errors';
 
 import { getLogger } from '@/platform/logger';
 
@@ -918,47 +918,20 @@ export const updateStaleShotsFn = createServerFn({ method: 'POST' })
   )
   .handler(async ({ data, context }) => {
     const { sequence, teamId, user, scopedDb } = context;
-    const depth = data.depth ?? DEFAULT_UPDATE_STALE_DEPTH;
-    // Never race the pipeline (#1121). While a storyboard run owns the
-    // sequence it is rewriting these artifacts anyway, so an Update all run
-    // would bill for work that is about to be overwritten. Staleness reads
-    // 'generating' during this window, so the UI offers no action to get
-    // here — this is the guard for a stale tab or a direct API call.
-    if (sequence.status === 'processing') {
-      throw new ValidationError(
-        'This sequence is still generating — wait for the run to finish before updating out-of-date shots.'
-      );
-    }
-    // Deliberately before the plan: this is a floor, not a quote — a run that
-    // can't afford even one artifact of its most expensive level should never
-    // start, and there's no point planning a whole sequence to tell the user
-    // that. 'prompts' has no render cost; LLM spend is deducted inside the
-    // workflow as always.
-    if (depth !== 'prompts') {
-      const model = safeTextToImageModel(
-        sequence.imageModel,
-        DEFAULT_IMAGE_MODEL
-      );
-      await requireCredits(
-        scopedDb,
-        gateEstimate(
-          estimateImageCost(model, sequence.aspectRatio, 1, {
-            pricing: await getEffectiveFalPricing(),
-            resolution: sequence.resolution,
-          }),
-          { model, operation: 'update-stale-shots' }
-        ),
-        { errorMessage: 'Insufficient credits to update out-of-date shots' }
-      );
-    }
-    const plan = await planUpdateAll({
+    const { plan, creditFloorMicros } = await prepareUpdateStale({
       scopedDb,
-      sequenceId: sequence.id,
+      userId: user.id,
+      sequence,
+      depth: data.depth ?? DEFAULT_UPDATE_STALE_DEPTH,
       sceneId: data.sceneId,
       shotId: data.shotId,
-      depth,
-      userId: user.id,
     });
+    if (creditFloorMicros > 0) {
+      await requireCredits(scopedDb, creditFloorMicros, {
+        providers: [...UPDATE_STALE_CREDIT_PROVIDERS],
+        errorMessage: 'Insufficient credits to update out-of-date shots',
+      });
+    }
     // launchUpdateStale → triggerWorkflow, which runs the generation gate.
     const workflowRunId = await launchUpdateStale({
       userId: user.id,
@@ -995,6 +968,15 @@ export const getUpdateStaleShotsRunFn = createServerFn({ method: 'GET' })
     // so the reader requires the right workflow and sequence first.
     readUpdateStaleRun(context.sequence.id, data.workflowRunId)
   );
+
+/**
+ * The Update all run still in flight on this sequence, whoever started it
+ * (editor, another tab, MCP), so an editor opened mid-run shows it.
+ */
+export const getRunningUpdateStaleShotsFn = createServerFn({ method: 'GET' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(zodValidator(z.object({ sequenceId: ulidSchema })))
+  .handler(async ({ context }) => findRunningUpdateStale(context.sequence.id));
 
 /**
  * Get a signed download URL for a shot's video.
