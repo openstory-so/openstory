@@ -35,6 +35,7 @@ import {
   getTableColumns,
   gte,
   inArray,
+  isNotNull,
   isNull,
   sql,
 } from 'drizzle-orm';
@@ -248,6 +249,14 @@ export function createScenesMethods(db: Database) {
       const result = await selectScenes().where(eq(scenes.id, sceneId));
       return result[0] ?? null;
     },
+
+    /** Soft-deleted scenes of a sequence, most recently deleted first. */
+    listDeletedBySequence: async (sequenceId: string): Promise<SceneRow[]> =>
+      await selectScenes()
+        .where(
+          and(eq(scenes.sequenceId, sequenceId), isNotNull(scenes.deletedAt))
+        )
+        .orderBy(desc(scenes.deletedAt)),
 
     listBySequence: async (
       sequenceId: string,

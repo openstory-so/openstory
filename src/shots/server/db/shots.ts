@@ -13,7 +13,18 @@ import {
 import { dbSceneId } from '@/shots/scene-id';
 import type { NewFrame, Shot, NewShot } from '@/platform/server/db/schema';
 import type { Sequence } from '@/platform/server/db/schema/sequences';
-import { and, asc, desc, eq, gt, gte, inArray, isNull, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  sql,
+} from 'drizzle-orm';
 import type { PageOptions } from '@/platform/server/db/read-page';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
 
@@ -329,6 +340,16 @@ export function createShotsMethods(db: Database) {
       ]);
       return deletedAt;
     },
+
+    /** Soft-deleted shots of a sequence, most recently deleted first. */
+    listDeletedBySequence: async (sequenceId: string): Promise<Shot[]> =>
+      await db
+        .select()
+        .from(shots)
+        .where(
+          and(eq(shots.sequenceId, sequenceId), isNotNull(shots.deletedAt))
+        )
+        .orderBy(desc(shots.deletedAt)),
 
     /**
      * Undo a shot soft-delete. Refuses while the parent scene is itself

@@ -30,7 +30,11 @@ import {
   setShotUseStartFrame,
 } from '@/shots/server/structure-edit';
 import type { Sequence } from '@/platform/server/db/schema';
-import { openstoryTool } from '../tool-context';
+import {
+  openstoryTool,
+  productionRead,
+  readToolDefinition,
+} from '../tool-context';
 
 const writeAnnotations = {
   readOnlyHint: false,
@@ -573,7 +577,92 @@ const restoreShotTool = openstoryTool({
   },
 });
 
+const listArchivedSequences = readToolDefinition({
+  name: 'list_archived_sequences',
+  description:
+    'List your team’s archived sequences (archive_sequence hides them from list_sequences). Restore one with unarchive_sequence.',
+  inputSchema: z.strictObject({}),
+  outputSchema: z.object({
+    sequences: z.array(
+      z.object({ id: z.string(), title: z.string(), updatedAt: z.string() })
+    ),
+  }),
+  run: async (_input, { scopedDb }) => {
+    const rows = await scopedDb.sequences.listArchived();
+    return {
+      data: {
+        sequences: rows.map((row) => ({
+          id: row.id,
+          title: row.title,
+          updatedAt: row.updatedAt.toISOString(),
+        })),
+      },
+      summary: `${rows.length} archived sequence(s).`,
+    };
+  },
+});
+
+const listDeleted = productionRead(
+  'list_deleted',
+  'List a sequence’s deleted scenes and shots, most recently deleted first, so they can be restored with restore_scene / restore_shot. A shot deleted with its scene comes back with restore_scene.',
+  z.strictObject({ sequenceId }),
+  z.object({
+    scenes: z.array(
+      z.object({
+        id: z.string(),
+        title: z.string().nullable(),
+        deletedAt: z.string(),
+      })
+    ),
+    shots: z.array(
+      z.object({
+        id: z.string(),
+        sceneId: z.string().nullable(),
+        shotNumber: z.number().nullable(),
+        deletedAt: z.string(),
+      })
+    ),
+  }),
+  async (input, { scopedDb }) => {
+    const sequence = await productionAccess(scopedDb).sequence(
+      input.sequenceId
+    );
+    const [scenes, shots] = await Promise.all([
+      scopedDb.scenes.listDeletedBySequence(sequence.id),
+      scopedDb.shots.listDeletedBySequence(sequence.id),
+    ]);
+    return {
+      // The queries select deleted rows only; the type still says nullable.
+      scenes: scenes.flatMap((scene) =>
+        scene.deletedAt
+          ? [
+              {
+                id: scene.id,
+                title: scene.title,
+                deletedAt: scene.deletedAt.toISOString(),
+              },
+            ]
+          : []
+      ),
+      shots: shots.flatMap((shot) =>
+        shot.deletedAt
+          ? [
+              {
+                id: shot.id,
+                sceneId: shot.sceneId,
+                shotNumber: shot.shotNumber,
+                deletedAt: shot.deletedAt.toISOString(),
+              },
+            ]
+          : []
+      ),
+    };
+  }
+);
+
 export const structureEditTools = [
+  listArchivedSequences,
+  listDeleted,
   createSequenceTool,
   updateSequenceTool,
   regenerateStoryboardTool,

@@ -181,6 +181,8 @@ describe('handleMcpPost Origin and auth gates', () => {
       'openstory.get_generated_asset',
       'openstory.list_studio_uploads',
       'openstory.update_scene',
+      'openstory.list_archived_sequences',
+      'openstory.list_deleted',
       'openstory.create_sequence',
       'openstory.update_sequence',
       'openstory.regenerate_storyboard',

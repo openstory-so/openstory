@@ -2223,6 +2223,9 @@ describe('structure edits (#1979)', () => {
     expect(await data('archive_sequence', { sequenceId })).toMatchObject({
       status: 'archived',
     });
+    expect(await data('list_archived_sequences', {})).toMatchObject({
+      sequences: [{ id: sequenceId, title: 'Test sequence' }],
+    });
     expect(await data('unarchive_sequence', { sequenceId })).toMatchObject({
       status: 'completed',
     });
@@ -2271,7 +2274,15 @@ describe('structure edits (#1979)', () => {
     expect(await call('get_shot', { sequenceId, shotId })).toMatchObject({
       isError: true,
     });
+    expect(await data('list_deleted', { sequenceId })).toMatchObject({
+      scenes: [{ id: sceneId }],
+      shots: [{ id: shotId, sceneId }],
+    });
     await data('restore_scene', { sequenceId, sceneId });
+    expect(await data('list_deleted', { sequenceId })).toEqual({
+      scenes: [],
+      shots: [],
+    });
     expect(await data('get_shot', { sequenceId, shotId })).toMatchObject({
       sceneId,
     });
