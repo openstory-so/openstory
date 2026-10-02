@@ -154,6 +154,21 @@ export function toShareableUrl(url: string, origin: string): string {
   return url;
 }
 
+/**
+ * The stored `/r2/<key>` form of a URL `toShareableUrl` handed out (origin or
+ * CDN), so a URL an agent read back can be used where a stored one is
+ * expected. Anything else comes back unchanged.
+ */
+export function fromShareableUrl(url: string): string {
+  const key = r2KeyFromUrl(url);
+  if (key !== null) return `${R2_SERVE_PREFIX}${key}`;
+  const domain = getEnv().R2_PUBLIC_STORAGE_DOMAIN;
+  const cdn = domain ? `https://${domain}/` : null;
+  return cdn && url.startsWith(cdn)
+    ? `${R2_SERVE_PREFIX}${url.slice(cdn.length)}`
+    : url;
+}
+
 export function getPathFromUrl(url: string, bucket: StorageBucket): string {
   const key = r2KeyFromUrl(url);
   const bucketPrefix = `${bucket}/`;

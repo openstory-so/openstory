@@ -34,6 +34,7 @@ import { shotContentTools } from './tools/shot-content-edits';
 import { castMusicTools } from './tools/cast-music-edits';
 import { generationUploadTools } from './tools/generation-uploads';
 import { castAudioGenerationTools } from './tools/cast-audio-generation';
+import { studioTools } from './tools/studio';
 import {
   executeGenerationTool,
   getOperationStatusTool,
@@ -103,6 +104,7 @@ export const mcpServer = createMCPServer({
     ...castMusicTools,
     ...generationUploadTools,
     ...castAudioGenerationTools,
+    ...studioTools,
     planGenerationTool,
     executeGenerationTool,
     getOperationStatusTool,

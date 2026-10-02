@@ -265,6 +265,13 @@ describe('tools/list and whoami', () => {
       'openstory.regenerate_shot_dialogue',
       'openstory.cancel_shot_dialogue',
       'openstory.cancel_pending_shot_artifact',
+      'openstory.create_studio_assets',
+      'openstory.edit_studio_asset',
+      'openstory.render_studio_asset_at_quality',
+      'openstory.set_studio_asset_favorite',
+      'openstory.delete_studio_asset',
+      'openstory.draft_studio_prompt',
+      'openstory.get_studio_edit_history',
       'openstory.plan_generation',
       'openstory.execute_generation',
       'openstory.get_operation_status',
@@ -352,6 +359,12 @@ describe('tools/list and whoami', () => {
       'openstory.regenerate_shot_dialogue',
       'openstory.cancel_shot_dialogue',
       'openstory.cancel_pending_shot_artifact',
+      'openstory.create_studio_assets',
+      'openstory.edit_studio_asset',
+      'openstory.render_studio_asset_at_quality',
+      'openstory.set_studio_asset_favorite',
+      'openstory.delete_studio_asset',
+      'openstory.draft_studio_prompt',
       'openstory.plan_generation',
       'openstory.execute_generation',
       'openstory.retry_failed_work',
@@ -369,6 +382,7 @@ describe('tools/list and whoami', () => {
       'openstory.discard_location_sheet_version',
       'openstory.delete_element',
       'openstory.discard_music_track',
+      'openstory.delete_studio_asset',
     ]);
     for (const tool of tools.slice(1))
       expect(tool.annotations, tool.name).toMatchObject({
@@ -719,6 +733,18 @@ describe('generation and upload tool authorization (#1979)', () => {
     ['generate_music', { sequenceId }],
     ['rewrite_music_prompt', { sequenceId }],
     ['regenerate_shot_dialogue', { sequenceId, shotId, scope: 'shot' }],
+    [
+      'create_studio_assets',
+      {
+        activity: 'image',
+        prompt: 'A lighthouse',
+        imageModel: 'nano_banana_2',
+        aspectRatio: '16:9',
+      },
+    ],
+    ['edit_studio_asset', { id: otherId, prompt: 'Make it night' }],
+    ['render_studio_asset_at_quality', { id: otherId }],
+    ['draft_studio_prompt', { activity: 'image' }],
   ])(
     'refuses %s for an OAuth token with sequences:write but not generate',
     async (name, args) => {
@@ -766,6 +792,9 @@ describe('generation and upload tool authorization (#1979)', () => {
       'cancel_pending_shot_artifact',
       { sequenceId, shotId, versionId: otherId, artifact: 'image' },
     ],
+    ['upload_media', { use: 'studio', data: 'AA==', mimeType: 'image/png' }],
+    ['set_studio_asset_favorite', { id: otherId, isFavorite: true }],
+    ['delete_studio_asset', { id: otherId }],
   ])(
     'refuses %s for an OAuth token without sequences:write, before any db',
     async (name, args) => {

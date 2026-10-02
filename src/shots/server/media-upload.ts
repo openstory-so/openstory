@@ -60,6 +60,7 @@ import {
   responseContentType,
 } from '@/platform/server/api-v1/safe-fetch';
 import { generateId } from '@/platform/id';
+import { teamUserUploadStoragePath } from '@/cast/server/team-user-upload';
 import type { PortraitAttestation } from '@/cast/upload-rights';
 
 const logger = getLogger(['openstory', 'shots', 'media-upload']);
@@ -702,6 +703,7 @@ export const UPLOAD_USES = [
   'character_sheet',
   'location_sheet',
   'element',
+  'studio',
 ] as const;
 export type UploadUse = (typeof UPLOAD_USES)[number];
 
@@ -736,6 +738,8 @@ const USE_EXTENSIONS: Record<UploadUse, readonly string[]> = {
   shot_video: ['mp4', 'webm', 'mov'],
   music: ['mp3', 'wav', 'ogg', 'm4a'],
   element: ['jpg', 'png', 'webp', 'gif', 'mp3', 'wav', 'mp4', 'mov'],
+  // A Studio reference, start/end frame or clip; the same types as elements.
+  studio: ['jpg', 'png', 'webp', 'gif', 'mp3', 'wav', 'mp4', 'mov'],
 };
 
 const IMAGE_EXTENSIONS = new Set(['jpg', 'png', 'webp', 'gif']);
@@ -749,10 +753,20 @@ const MAX_URL_MEDIA_BYTES = 500 * 1024 * 1024;
 function uploadTarget(
   use: UploadUse,
   teamId: string,
-  sequenceId: string,
+  sequenceId: string | null,
   ext: string
 ): { bucket: StorageBucket; path: string } {
   const id = generateId();
+  if (use === 'studio') {
+    // The composer's key (`presignTalentUploadFn`), which list_studio_uploads reads.
+    return {
+      bucket: STORAGE_BUCKETS.TALENT,
+      path: teamUserUploadStoragePath(teamId, id, ext),
+    };
+  }
+  if (!sequenceId) {
+    throw new ValidationError(`A ${use} upload needs sequenceId.`);
+  }
   const inSequence = `teams/${teamId}/sequences/${sequenceId}`;
   switch (use) {
     case 'shot_image':
@@ -802,16 +816,17 @@ function extensionFor(use: UploadUse, mediaType: string): string {
 export type UploadSource = { url: string } | { data: string; mimeType: string };
 
 /**
- * Store an agent's file for `use` in this sequence and check it for a real
- * person (images only, as every editor surface does): the classifier's verdict
- * is recorded on the likeness ledger, and a real person needs the portrait
- * sign-off, which is recorded here. Returns the stored `/r2/` URL the attach
- * functions take.
+ * Store an agent's file for `use` in this sequence (or the team's Studio) and
+ * check it for a real person (images only, as every editor surface does): the
+ * classifier's verdict is recorded on the likeness ledger, and a real person
+ * needs the portrait sign-off, which is recorded here. Returns the stored
+ * `/r2/` URL the attach functions take.
  */
 export async function storeUpload(args: {
   scopedDb: ScopedDb;
   userId: string;
-  sequenceId: string;
+  /** Null only for a Studio upload, which belongs to the team. */
+  sequenceId: string | null;
   use: UploadUse;
   source: UploadSource;
   filename?: string;

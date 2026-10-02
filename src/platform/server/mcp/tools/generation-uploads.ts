@@ -18,9 +18,22 @@ import {
   AUDIO_MODELS,
   IMAGE_MODELS,
   IMAGE_TO_VIDEO_MODELS,
+  isValidTextToImageModel,
   supportsDraftMode,
+  supportsReferenceImages,
   type ImageToVideoModel,
 } from '@/models/models';
+import {
+  STUDIO_VIDEO_MODES,
+  studioAudioLimit,
+  studioReferenceLimit,
+  studioSupportsAutoDuration,
+  studioSupportsEndFrame,
+  studioSupportsMode,
+  studioVideoDurations,
+  studioVideoRefLimit,
+  studioVideoSupportsAudio,
+} from '@/studio/text-to-video';
 import {
   cancelVideoRender,
   generateShotMotion,
@@ -103,11 +116,16 @@ function storedDuration(upload: string): Promise<number | null> {
 
 const listModels = productionRead(
   'list_models',
-  'List the image, video and music models generation tools accept, by the id they take. draftMode marks video models that can render an Ark draft first (generate_shot_video draft). The sequence defaults are in get_sequence_settings.',
+  'List the image, video and music models generation tools accept, by the id they take. draftMode marks video models that can render an Ark draft first (generate_shot_video draft, create_studio_assets draft). studio is what create_studio_assets takes from the model, null when the Studio does not offer it. The sequence defaults are in get_sequence_settings.',
   z.strictObject({}),
   z.object({
     image: z.array(
-      z.object({ model: z.string(), name: z.string(), vendor: z.string() })
+      z.object({
+        model: z.string(),
+        name: z.string(),
+        vendor: z.string(),
+        studio: z.object({ referenceImages: z.boolean() }).nullable(),
+      })
     ),
     video: z.array(
       z.object({
@@ -116,6 +134,17 @@ const listModels = productionRead(
         vendor: z.string(),
         supportsAudio: z.boolean(),
         draftMode: z.boolean(),
+        studio: z
+          .object({
+            modes: z.array(z.enum(STUDIO_VIDEO_MODES)),
+            durations: z.array(z.union([z.number(), z.literal('auto')])),
+            maxReferenceImages: z.number(),
+            maxReferenceVideos: z.number(),
+            maxReferenceAudio: z.number(),
+            endFrame: z.boolean(),
+            generateAudio: z.boolean(),
+          })
+          .nullable(),
       })
     ),
     music: z.array(
@@ -128,15 +157,45 @@ const listModels = productionRead(
         model,
         name: config.name,
         vendor: config.vendor,
+        studio:
+          'hidden' in config
+            ? null
+            : {
+                referenceImages:
+                  isValidTextToImageModel(model) &&
+                  supportsReferenceImages(model),
+              },
       })),
-      video: Object.entries(IMAGE_TO_VIDEO_MODELS).map(([model, config]) => ({
-        model,
-        name: config.name,
-        vendor: config.vendor,
-        supportsAudio: 'supportsAudio' in config && config.supportsAudio,
+      video: Object.entries(IMAGE_TO_VIDEO_MODELS).map(([key, config]) => {
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.entries loses the key type of the catalog
-        draftMode: supportsDraftMode(model as ImageToVideoModel),
-      })),
+        const model = key as ImageToVideoModel;
+        return {
+          model,
+          name: config.name,
+          vendor: config.vendor,
+          supportsAudio: 'supportsAudio' in config && config.supportsAudio,
+          draftMode: supportsDraftMode(model),
+          studio:
+            'hidden' in config
+              ? null
+              : {
+                  modes: STUDIO_VIDEO_MODES.filter((mode) =>
+                    studioSupportsMode(model, mode)
+                  ),
+                  durations: [
+                    ...(studioSupportsAutoDuration(model)
+                      ? (['auto'] as const)
+                      : []),
+                    ...studioVideoDurations(model),
+                  ],
+                  maxReferenceImages: studioReferenceLimit(model),
+                  maxReferenceVideos: studioVideoRefLimit(model),
+                  maxReferenceAudio: studioAudioLimit(model),
+                  endFrame: studioSupportsEndFrame(model),
+                  generateAudio: studioVideoSupportsAudio(model),
+                },
+        };
+      }),
       music: Object.entries(AUDIO_MODELS).map(([model, config]) => ({
         model,
         name: config.name,
@@ -425,12 +484,14 @@ const selectSequenceModelTool = openstoryTool({
 
 const uploadMediaTool = openstoryTool({
   name: 'upload_media',
-  description: `Upload a file (for example one the user attached in chat) to use in a sequence. Send url (a public http(s) link) or data (base64, at most ${MAX_INLINE_UPLOAD_BYTES / 1024 / 1024} MB decoded; larger files need a url) with mimeType. use says what it is for: shot_image, character_sheet, location_sheet (JPEG, PNG, WebP, GIF), shot_video (MP4, WebM, MOV), music (MP3, WAV, OGG, M4A) or element (an image, MP3/WAV or MP4/MOV). Images are checked for a real person; one who is needs portraitAttestation, the uploader’s confirmation they hold the rights to that likeness. Returns upload, which the set_*_from_upload and element tools take. Uploading changes nothing in the sequence.`,
+  description: `Upload a file (for example one the user attached in chat) to use in a sequence or the Studio. Send url (a public http(s) link) or data (base64, at most ${MAX_INLINE_UPLOAD_BYTES / 1024 / 1024} MB decoded; larger files need a url) with mimeType. use says what it is for: shot_image, character_sheet, location_sheet (JPEG, PNG, WebP, GIF), shot_video (MP4, WebM, MOV), music (MP3, WAV, OGG, M4A) or element (an image, MP3/WAV or MP4/MOV), or studio (the same types as element; no sequenceId) for a Studio reference, start or end frame. Images are checked for a real person; one who is needs portraitAttestation, the uploader’s confirmation they hold the rights to that likeness. Returns upload, which the set_*_from_upload, element and Studio tools take. Uploading changes nothing in the sequence or the Studio.`,
   scope: 'sequences:write',
   annotations: writeAnnotations,
   inputSchema: z
     .strictObject({
-      sequenceId,
+      sequenceId: sequenceId
+        .optional()
+        .describe('The sequence the file is for; omit for use studio.'),
       use: z.enum(UPLOAD_USES),
       url: z.url().max(2048).optional(),
       data: z
@@ -460,6 +521,9 @@ const uploadMediaTool = openstoryTool({
     })
     .refine((i) => i.data === undefined || i.mimeType !== undefined, {
       message: 'data needs mimeType.',
+    })
+    .refine((i) => (i.use === 'studio') === (i.sequenceId === undefined), {
+      message: 'Send sequenceId, except for use studio.',
     }),
   outputSchema: z.object({
     upload: z.string(),
@@ -470,13 +534,13 @@ const uploadMediaTool = openstoryTool({
     rights: z.enum(['cleared', 'signed', 'not_checked']),
   }),
   run: async (input, { scopedDb, userId, origin, request }) => {
-    const sequence = await productionAccess(scopedDb).sequence(
-      input.sequenceId
-    );
+    const sequence = input.sequenceId
+      ? await productionAccess(scopedDb).sequence(input.sequenceId)
+      : null;
     const stored = await storeUpload({
       scopedDb,
       userId,
-      sequenceId: sequence.id,
+      sequenceId: sequence?.id ?? null,
       use: input.use,
       source:
         input.data !== undefined && input.mimeType !== undefined

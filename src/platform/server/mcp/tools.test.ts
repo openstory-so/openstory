@@ -1964,10 +1964,14 @@ describe('Studio, Gallery and library reads', () => {
       .parse(await data('list_studio_uploads', { limit: 1 }));
     expect(first.uploads).toEqual([]);
     await data('list_studio_uploads', { limit: 1, cursor: first.nextCursor });
-    expect(listFilesPage).toHaveBeenLastCalledWith('talent', `${teamId}/temp`, {
-      limit: 1,
-      cursor: 'r2-next',
-    });
+    expect(listFilesPage).toHaveBeenLastCalledWith(
+      'talent',
+      `${teamId}/uploads`,
+      {
+        limit: 1,
+        cursor: 'r2-next',
+      }
+    );
     scopedDb = createScopedDb(foreignTeamId, generateId());
     expect(
       (await call('list_studio_uploads', { cursor: first.nextCursor })).isError
@@ -3209,6 +3213,247 @@ describe('generation and uploads (#1979)', () => {
       music: { variantId },
     });
     expect(vi.mocked(analyzeTalentMediaForTeam)).not.toHaveBeenCalled();
+  });
+});
+
+describe('Studio create and edit (#1985)', () => {
+  const refusal = (code: string) => ({
+    isError: true,
+    structuredContent: { error: { code } },
+  });
+  const png =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  const started = z.object({
+    assets: z.array(z.object({ id: z.string(), workflowRunId: z.string() })),
+  });
+  beforeEach(() => {
+    // Seedance 2.5 (the edit model) is offered on the BytePlus via only.
+    vi.stubEnv('ARK_API_KEY', 'ark-test');
+    vi.mocked(triggerWorkflow).mockReset().mockResolvedValue('run-1');
+    vi.mocked(uploadFile)
+      .mockReset()
+      .mockImplementation((bucket, path) =>
+        Promise.resolve({
+          path,
+          publicUrl: `/r2/${bucket}/${path}`,
+          fullPath: `${bucket}/${path}`,
+        })
+      );
+    vi.mocked(analyzeTalentMediaForTeam)
+      .mockReset()
+      .mockResolvedValue(asStub({ subjectKind: 'other' }));
+  });
+  async function fund() {
+    await db
+      .insert(credits)
+      .values({ teamId, balance: 100_000_000 })
+      .onConflictDoUpdate({
+        target: credits.teamId,
+        set: { balance: 100_000_000 },
+      });
+  }
+  async function studioVideo(
+    input: Record<string, unknown>,
+    extra: Partial<typeof generatedAssets.$inferInsert> = {}
+  ) {
+    const id = generateId();
+    await db.insert(generatedAssets).values({
+      id,
+      teamId,
+      userId: actorId,
+      source: 'studio',
+      provider: 'fal',
+      activity: 'video',
+      modelName: 'Seedance 2.5',
+      endpointId: 'test/video',
+      input: {
+        prompt: 'A whale',
+        aspectRatio: '16:9',
+        videoModel: 'seedance_v2_5',
+        duration: 'auto',
+        mode: 'text',
+        ...input,
+      },
+      outputs: [{ url: `/r2/videos/${id}.mp4`, contentType: 'video/mp4' }],
+      status: 'completed',
+      ...extra,
+    });
+    return id;
+  }
+
+  it('uploads a Studio reference and generates images from it', async () => {
+    const stored = z.object({ upload: z.string(), url: z.string() }).parse(
+      await data('upload_media', {
+        use: 'studio',
+        data: png,
+        mimeType: 'image/png',
+      })
+    );
+    expect(stored.upload).toMatch(
+      new RegExp(`^/r2/talent/${teamId}/uploads/\\w+\\.png$`)
+    );
+    const args = {
+      activity: 'image',
+      prompt: 'A lighthouse like @Image1',
+      imageModel: 'nano_banana_2',
+      aspectRatio: '16:9',
+      count: 2,
+      // The shareable URL read back is accepted as the stored one.
+      referenceImages: [stored.url],
+    };
+    expect(await call('create_studio_assets', args)).toMatchObject(
+      refusal('INSUFFICIENT_CREDITS')
+    );
+    await fund();
+    const { assets } = started.parse(await data('create_studio_assets', args));
+    expect(assets).toHaveLength(2);
+    expect(vi.mocked(triggerWorkflow)).toHaveBeenCalledWith(
+      '/studio',
+      expect.objectContaining({
+        teamId,
+        input: expect.objectContaining({ referenceImages: [stored.upload] }),
+      }),
+      expect.anything()
+    );
+    const [first] = await db
+      .select()
+      .from(generatedAssets)
+      .where(eq(generatedAssets.id, assets[0]?.id ?? ''));
+    expect(first).toMatchObject({ source: 'studio', status: 'queued' });
+  });
+
+  it('refuses a bad request before starting anything', async () => {
+    await fund();
+    const image = {
+      activity: 'image',
+      prompt: 'A lighthouse',
+      imageModel: 'nano_banana_2',
+      aspectRatio: '16:9',
+    };
+    for (const args of [
+      { ...image, duration: 5 },
+      { ...image, imageModel: 'no_such_model' },
+      { ...image, activity: 'video', videoModel: 'seedance_v2' },
+      { use: 'studio', sequenceId, data: png, mimeType: 'image/png' },
+      { use: 'shot_image', data: png, mimeType: 'image/png' },
+    ])
+      expect(
+        await call(
+          'use' in args ? 'upload_media' : 'create_studio_assets',
+          args
+        ),
+        JSON.stringify(args)
+      ).toMatchObject(refusal('VALIDATION_ERROR'));
+    expect(vi.mocked(triggerWorkflow)).not.toHaveBeenCalled();
+  });
+
+  it('edits a clip and reads its edit history', async () => {
+    await fund();
+    const original = await studioVideo({});
+    const { assets } = started.parse(
+      await data('edit_studio_asset', {
+        id: original,
+        prompt: 'Make it night',
+      })
+    );
+    const edit = assets[0]?.id ?? '';
+    expect(await data('get_studio_edit_history', { id: edit })).toMatchObject({
+      history: [
+        { id: original, prompt: 'A whale', edit: false },
+        { id: edit, prompt: 'Make it night', edit: true },
+      ],
+    });
+  });
+
+  it('refuses edits and finals of the wrong asset', async () => {
+    await fund();
+    const notDraft = await studioVideo({});
+    const queued = await studioVideo({}, { status: 'queued' });
+    expect(
+      await call('render_studio_asset_at_quality', { id: notDraft })
+    ).toMatchObject(refusal('VALIDATION_ERROR'));
+    expect(
+      await call('edit_studio_asset', { id: queued, prompt: 'x' })
+    ).toMatchObject(refusal('VALIDATION_ERROR'));
+    expect(
+      await call('edit_studio_asset', { id: generateId(), prompt: 'x' })
+    ).toMatchObject(refusal('NOT_FOUND'));
+    expect(vi.mocked(triggerWorkflow)).not.toHaveBeenCalled();
+  });
+
+  it('renders a draft at quality', async () => {
+    await fund();
+    const draft = await studioVideo(
+      { draft: true, resolution: '480p', duration: 5 },
+      { draftTaskId: 'cgt-1' }
+    );
+    started.parse(await data('render_studio_asset_at_quality', { id: draft }));
+    expect(vi.mocked(triggerWorkflow)).toHaveBeenCalledWith(
+      '/studio',
+      expect.objectContaining({ finalFromDraftTaskId: 'cgt-1' }),
+      expect.anything()
+    );
+  });
+
+  it('favourites and deletes only this team’s Studio assets', async () => {
+    const id = await studioVideo({});
+    expect(
+      await data('set_studio_asset_favorite', { id, isFavorite: true })
+    ).toEqual({ id, isFavorite: true });
+    expect(
+      await data('list_generated_assets', { favoritesOnly: true })
+    ).toMatchObject({ items: [{ id }] });
+    expect(await data('delete_studio_asset', { id })).toEqual({ id });
+    expect(await call('delete_studio_asset', { id })).toMatchObject(
+      refusal('NOT_FOUND')
+    );
+    const otherTeam = generateId();
+    await db
+      .insert(teams)
+      .values({ id: otherTeam, name: 'O', slug: otherTeam });
+    const foreign = generateId();
+    await db.insert(generatedAssets).values({
+      id: foreign,
+      teamId: otherTeam,
+      userId: actorId,
+      source: 'studio',
+      provider: 'fal',
+      activity: 'image',
+      modelName: 'Test',
+      endpointId: 'test/image',
+      input: { prompt: 'x' },
+      status: 'completed',
+    });
+    expect(
+      await call('set_studio_asset_favorite', { id: foreign, isFavorite: true })
+    ).toMatchObject(refusal('NOT_FOUND'));
+  });
+
+  it('lists the Studio’s capabilities per model', async () => {
+    expect(await data('list_models', {})).toMatchObject({
+      video: expect.arrayContaining([
+        expect.objectContaining({
+          model: 'seedance_v2_5',
+          studio: expect.objectContaining({
+            modes: expect.arrayContaining(['text', 'edit']),
+            durations: expect.arrayContaining(['auto']),
+          }),
+        }),
+      ]),
+      image: expect.arrayContaining([
+        expect.objectContaining({
+          model: 'nano_banana_2',
+          studio: { referenceImages: true },
+        }),
+      ]),
+    });
+  });
+
+  it('refuses a prompt draft the team cannot pay for', async () => {
+    vi.stubEnv('OPENROUTER_KEY', 'or-test');
+    expect(
+      await call('draft_studio_prompt', { activity: 'image' })
+    ).toMatchObject(refusal('INSUFFICIENT_CREDITS'));
   });
 });
 
