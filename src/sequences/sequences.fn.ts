@@ -23,7 +23,6 @@ import {
   updateSequenceSchema,
 } from '@/sequences/server/sequence.schemas';
 import {
-  getSequenceRejectingActiveRun,
   triggerContinue,
   triggerStoryboard,
 } from '@/sequences/server/launchers';
@@ -37,8 +36,9 @@ import {
 import { planWork } from './generation-plan';
 import { computeGenerationPlan } from '@/sequences/server/generation-plan';
 import {
-  continueFromPlan,
+  CONTINUE_CREDIT_PROVIDERS,
   estimateContinueCost,
+  prepareContinue,
 } from '@/sequences/server/continue-plan';
 import { switchStopAt } from '@/sequences/generation-plan';
 import type { StoryboardTriggerInput } from '@/platform/server/workflow/types';
@@ -171,44 +171,24 @@ export const continueGenerationFn = createServerFn({ method: 'POST' })
   )
   .handler(async ({ data, context }) => {
     const { sequence, scopedDb } = context;
-    // Refuse before anything saves: the switches below are written onto the
-    // row the trigger snapshots, so a click on a running sequence must not
-    // touch it (the trigger's own mutex would refuse only after the write).
-    await getSequenceRejectingActiveRun(scopedDb, sequence.id);
-    const saved = {
-      generateStartFrames: sequence.generateStartFrames,
-      generateVoices: sequence.generateVoices,
-    };
     const requested = {
       generateStartFrames: data.generateStartFrames,
       generateVoices: data.generateVoices,
     };
-    const current = await computeGenerationPlan(scopedDb, sequence.id);
-    const next =
-      saved.generateStartFrames === requested.generateStartFrames &&
-      saved.generateVoices === requested.generateVoices
-        ? current
-        : await computeGenerationPlan(scopedDb, sequence.id, requested);
-    const { work, stopAt } = continueFromPlan({
-      current,
-      next,
-      saved,
-      requested,
-      stopAt: data.stopAt,
-    });
-    const shots = await scopedDb.shots.listBySequence(sequence.id);
-    const estimate = await estimateContinueCost({
+    // Refuses a running sequence before anything saves: the switches below
+    // are written onto the row the trigger snapshots.
+    const { work, stopAt, estimate } = await prepareContinue({
+      scopedDb,
       sequence,
-      shots,
-      work,
-      generateStartFrames: requested.generateStartFrames,
+      stopAt: data.stopAt,
+      requested,
       draftMotion: data.draftMotion,
     });
     // A balance check, not a hold: the run's per-shot children each
     // preflight their own spend against the balance (as Update all's do) and
     // never draw from a reservation, so a hold would refuse them (#1818).
     await requireCredits(scopedDb, estimate.micros, {
-      providers: ['fal', 'openrouter'],
+      providers: [...CONTINUE_CREDIT_PROVIDERS],
       errorMessage: 'Insufficient credits to continue generation',
     });
 

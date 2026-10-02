@@ -19,6 +19,9 @@ import {
 import { resolveShotDuration } from '@/motion/resolve-shot-duration';
 import { ValidationError } from '@/platform/errors';
 import type { Sequence, Shot } from '@/platform/server/db/schema';
+import type { ScopedDb } from '@/platform/server/db/scoped';
+import { computeGenerationPlan } from './generation-plan';
+import { getSequenceRejectingActiveRun } from './launchers';
 import {
   planCounts,
   planWork,
@@ -107,3 +110,49 @@ export async function estimateContinueCost(args: {
   });
   return { micros, priced };
 }
+
+/**
+ * The one gate and work list for Continue, shared by the editor and MCP. The
+ * sequence must not be running a storyboard (the switches a click saves are
+ * snapshotted by the trigger). `requested` is the start-frame and voice
+ * switches the run uses; an agent passes the saved ones. The caller checks
+ * `estimate.micros` against the balance (a check, not a hold, #1818).
+ */
+export async function prepareContinue(args: {
+  scopedDb: ScopedDb;
+  sequence: Sequence;
+  stopAt: GenerationStage;
+  requested: { generateStartFrames: boolean; generateVoices: boolean };
+  draftMotion: boolean;
+}) {
+  const { scopedDb, sequence, requested } = args;
+  await getSequenceRejectingActiveRun(scopedDb, sequence.id);
+  const saved = {
+    generateStartFrames: sequence.generateStartFrames,
+    generateVoices: sequence.generateVoices,
+  };
+  const current = await computeGenerationPlan(scopedDb, sequence.id);
+  const next =
+    saved.generateStartFrames === requested.generateStartFrames &&
+    saved.generateVoices === requested.generateVoices
+      ? current
+      : await computeGenerationPlan(scopedDb, sequence.id, requested);
+  const { work, stopAt } = continueFromPlan({
+    current,
+    next,
+    saved,
+    requested,
+    stopAt: args.stopAt,
+  });
+  const estimate = await estimateContinueCost({
+    sequence,
+    shots: await scopedDb.shots.listBySequence(sequence.id),
+    work,
+    generateStartFrames: requested.generateStartFrames,
+    draftMotion: args.draftMotion,
+  });
+  return { work, stopAt, estimate };
+}
+
+/** Whose keys waive Continue's balance check (script analysis + renders). */
+export const CONTINUE_CREDIT_PROVIDERS = ['fal', 'openrouter'] as const;
