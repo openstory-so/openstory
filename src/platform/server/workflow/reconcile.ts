@@ -11,6 +11,7 @@
 import { getEnv } from '#env';
 import { getCfBindingForRunId } from './trigger-bindings';
 import { disposeRpcStub } from './rpc-dispose';
+import { isInstanceNotFoundError } from './errors';
 import type { CloudflareEnv } from './types';
 
 import { getLogger } from '@/platform/logger';
@@ -26,12 +27,13 @@ export const STALE_THRESHOLD_MS = 5 * 60 * 1000;
  *   - 'failed'    when the runId is empty, or doesn't resolve to a known
  *                 workflow binding (e.g. a legacy QStash run id from before the
  *                 cutover — the row is already stale, so fail it for retry),
- *                 or the instance reports `errored` / `terminated`.
+ *                 the instance no longer exists (`instance.not_found`: it
+ *                 cannot be running), or it reports `errored` / `terminated`.
  *   - 'completed' when the instance reports `complete`.
  *   - null        when the instance is genuinely still in flight
  *                 (queued/running/paused/waiting).
- *   - 'unknown'   when the status lookup itself threw (transient API blip or
- *                 evicted instance) — we can't say whether a run is live.
+ *   - 'unknown'   when the status lookup itself threw for any other reason
+ *                 (transient API blip) — we can't say whether a run is live.
  *                 Errors are logged, not propagated.
  *
  * Both `null` and `'unknown'` mean "don't write a terminal status", but
@@ -62,6 +64,9 @@ export async function resolveRunState(
       disposeRpcStub(instance);
     }
   } catch (error) {
+    // A missing instance is not running. Treating it as unknown locked the
+    // sequence for good: the generation mutex refuses on unknown.
+    if (isInstanceNotFoundError(error)) return 'failed';
     logger.error(`Failed to check workflow ${runId}:`, {
       data: error instanceof Error ? error.message : error,
     });

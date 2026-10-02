@@ -79,6 +79,16 @@ describe('resolveRunState', () => {
     expect(await resolveRunState('local_image_5')).toBe('unknown');
   });
 
+  test("returns 'failed' when the instance no longer exists (not running)", async () => {
+    // Retention ran out, or the run was in another dev server. Reading it as
+    // 'unknown' locked the sequence: the generation mutex refuses on unknown.
+    getInstanceMock.mockRejectedValueOnce(
+      new Error('(instance.not_found) Instance does not exist')
+    );
+    const { resolveRunState } = await import('./reconcile');
+    expect(await resolveRunState('local_image_8')).toBe('failed');
+  });
+
   test('disposes the instance RPC stub after a successful status read (#933)', async () => {
     statusMock.mockResolvedValueOnce({ status: 'complete' });
     const { resolveRunState } = await import('./reconcile');
