@@ -41,8 +41,8 @@ describe('llmtrTextModel', () => {
   });
 
   it('passes through the ids LLMTR spells the same way', () => {
-    expect(llmtrTextModel('anthropic/claude-sonnet-5')).toBe(
-      'anthropic/claude-sonnet-5'
+    expect(llmtrTextModel('anthropic/claude-fable-5.1')).toBe(
+      'anthropic/claude-fable-5.1'
     );
     expect(llmtrTextModel('google/gemini-3-flash-preview')).toBe(
       'google/gemini-3-flash-preview'
@@ -62,6 +62,7 @@ describe('llmtrTextModel', () => {
 
   it('leaves upgrades with unverified LLMTR support on OpenRouter/fal', () => {
     expect(llmtrTextModel('anthropic/claude-opus-5.5')).toBeUndefined();
+    expect(llmtrTextModel('anthropic/claude-sonnet-5.5')).toBeUndefined();
   });
 
   it('returns undefined for an id that is not in the registry at all', () => {
@@ -101,7 +102,7 @@ describe('llmtrTextModel', () => {
     expect(llmtrCompatibleApi('openai/gpt-6-luna')).toBe('responses');
     expect(llmtrCompatibleApi('openai/gpt-5.4-mini')).toBe('responses');
     expect(llmtrCompatibleApi('x-ai/grok-4.20')).toBe('responses');
-    expect(llmtrCompatibleApi('anthropic/claude-sonnet-5')).toBe(
+    expect(llmtrCompatibleApi('anthropic/claude-fable-5.1')).toBe(
       'chat-completions'
     );
     const catalogIds = new Set(Object.values(LLMTR_TEXT_MODELS));
@@ -113,13 +114,13 @@ describe('llmtrTextModel', () => {
 
 describe('llmtrTextCostFromUsage', () => {
   it('prices a call from the catalog rates', () => {
-    // claude-sonnet-5: $2/M in, $10/M out.
+    // claude-fable-5.1: $10/M in, $50/M out.
     const cost = llmtrTextCostFromUsage(
       usage(500_000, 100_000),
-      'anthropic/claude-sonnet-5'
+      'anthropic/claude-fable-5.1'
     );
     expect(cost).toBeDefined();
-    expect(microsToUsd(cost ?? ZERO_MICROS)).toBeCloseTo(2, 6);
+    expect(microsToUsd(cost ?? ZERO_MICROS)).toBeCloseTo(10, 6);
   });
 
   it('prices a renamed model under its registry id, not its LLMTR id', () => {
@@ -150,7 +151,7 @@ describe('llmtrTextCostFromUsage', () => {
     // The caller reports these as missing costs; a guessed rate would be
     // indistinguishable from a real charge in the ledger.
     expect(
-      llmtrTextCostFromUsage(undefined, 'anthropic/claude-sonnet-5')
+      llmtrTextCostFromUsage(undefined, 'anthropic/claude-fable-5.1')
     ).toBeUndefined();
     expect(
       llmtrTextCostFromUsage(usage(10, 10), 'anthropic/claude-opus-5-fast')

@@ -82,7 +82,7 @@ const SPEED_SWEEP_MODELS = [
   'openai/gpt-5.6-luna',
   'z-ai/glm-5.3-flash',
   'bytedance-seed/seed-2.0-mini',
-  'anthropic/claude-sonnet-5',
+  'anthropic/claude-sonnet-5.5',
 ] as const;
 
 const CANDIDATES: Array<{

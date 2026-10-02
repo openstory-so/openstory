@@ -96,8 +96,8 @@ export const OPENROUTER_PRICING: Record<string, OpenRouterPricing> = {
     promptPerMillionTokens: 1.32,
     completionPerMillionTokens: 3.9600000000000004,
   },
-  'anthropic/claude-sonnet-5': {
-    name: 'Anthropic: Claude Sonnet 5',
+  'anthropic/claude-sonnet-5.5': {
+    name: 'Anthropic: Claude Sonnet 5.5',
     promptPerMillionTokens: 2,
     completionPerMillionTokens: 10,
     webSearchPerQuery: 0.01,

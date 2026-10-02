@@ -122,7 +122,7 @@ describe('requireCredits BYOK coverage', () => {
     await expect(
       requireCredits(db, COST, {
         providers: ['openrouter'],
-        llmModel: 'anthropic/claude-sonnet-5',
+        llmModel: 'anthropic/claude-fable-5.1',
       })
     ).resolves.toBeUndefined();
   });
