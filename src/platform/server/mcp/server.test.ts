@@ -178,6 +178,20 @@ describe('tools/list and whoami', () => {
       'openstory.get_generated_asset',
       'openstory.list_studio_uploads',
       'openstory.update_scene',
+      'openstory.create_sequence',
+      'openstory.update_sequence',
+      'openstory.regenerate_storyboard',
+      'openstory.archive_sequence',
+      'openstory.unarchive_sequence',
+      'openstory.create_scene',
+      'openstory.reorder_scenes',
+      'openstory.delete_scene',
+      'openstory.restore_scene',
+      'openstory.create_shot',
+      'openstory.update_shot',
+      'openstory.reorder_shots',
+      'openstory.delete_shot',
+      'openstory.restore_shot',
       'openstory.plan_generation',
       'openstory.execute_generation',
       'openstory.get_operation_status',
@@ -188,15 +202,35 @@ describe('tools/list and whoami', () => {
     expect(tools[0]?.description).toMatch(/user and team/i);
     const writes = new Set([
       'openstory.update_scene',
+      'openstory.create_sequence',
+      'openstory.update_sequence',
+      'openstory.regenerate_storyboard',
+      'openstory.archive_sequence',
+      'openstory.unarchive_sequence',
+      'openstory.create_scene',
+      'openstory.reorder_scenes',
+      'openstory.delete_scene',
+      'openstory.restore_scene',
+      'openstory.create_shot',
+      'openstory.update_shot',
+      'openstory.reorder_shots',
+      'openstory.delete_shot',
+      'openstory.restore_shot',
       'openstory.plan_generation',
       'openstory.execute_generation',
       'openstory.retry_failed_work',
       'openstory.start_export',
     ]);
+    const destructive = new Set([
+      'openstory.regenerate_storyboard',
+      'openstory.archive_sequence',
+      'openstory.delete_scene',
+      'openstory.delete_shot',
+    ]);
     for (const tool of tools.slice(1))
       expect(tool.annotations, tool.name).toMatchObject({
         readOnlyHint: !writes.has(tool.name),
-        destructiveHint: false,
+        destructiveHint: destructive.has(tool.name),
       });
     // MCP input schemas are object-rooted, so the kind/parentId union is
     // advertised flat and enforced by the handler (tools.test.ts).
@@ -402,6 +436,66 @@ describe('write tool authorization', () => {
     });
     expect(createDb).not.toHaveBeenCalled();
   });
+});
+
+describe('structure edit authorization', () => {
+  const ids = {
+    sequenceId: '01J00000000000000000000000',
+    sceneId: '01J00000000000000000000001',
+    shotId: '01J00000000000000000000002',
+  };
+  it.each([
+    ['update_sequence', { sequenceId: ids.sequenceId, title: 'x' }],
+    ['archive_sequence', { sequenceId: ids.sequenceId }],
+    ['create_scene', { sequenceId: ids.sequenceId }],
+    ['delete_scene', { sequenceId: ids.sequenceId, sceneId: ids.sceneId }],
+    [
+      'update_shot',
+      { sequenceId: ids.sequenceId, shotId: ids.shotId, durationSeconds: 4 },
+    ],
+    ['delete_shot', { sequenceId: ids.sequenceId, shotId: ids.shotId }],
+  ])(
+    'refuses %s for an OAuth token without sequences:write, before any db',
+    async (name, args) => {
+      const createDb = vi.spyOn(dbModule, 'createScopedDb');
+      const { body } = await rpc(
+        'tools/call',
+        { name: `openstory.${name}`, arguments: args },
+        { ...auth, kind: 'oauth', scopes: ['sequences:read'] }
+      );
+      expect(body.result).toMatchObject({
+        isError: true,
+        structuredContent: { error: { code: 'INSUFFICIENT_SCOPE' } },
+      });
+      expect(createDb).not.toHaveBeenCalled();
+    }
+  );
+  it.each([
+    ['create_sequence', { script: 'A lighthouse keeper befriends a whale.' }],
+    [
+      'regenerate_storyboard',
+      { sequenceId: ids.sequenceId, aspectRatio: '9:16' },
+    ],
+  ])(
+    'refuses %s for an OAuth token with sequences:write but not generate',
+    async (name, args) => {
+      const createDb = vi.spyOn(dbModule, 'createScopedDb');
+      const { body } = await rpc(
+        'tools/call',
+        { name: `openstory.${name}`, arguments: args },
+        {
+          ...auth,
+          kind: 'oauth',
+          scopes: ['sequences:read', 'sequences:write'],
+        }
+      );
+      expect(body.result).toMatchObject({
+        isError: true,
+        structuredContent: { error: { code: 'INSUFFICIENT_SCOPE' } },
+      });
+      expect(createDb).not.toHaveBeenCalled();
+    }
+  );
 });
 
 describe('generation tool authorization', () => {

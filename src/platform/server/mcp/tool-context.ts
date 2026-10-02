@@ -6,6 +6,7 @@ import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { OpenStoryError } from '@/platform/errors';
 import { getLogger, toErrorPayload } from '@/platform/logger';
 import type { ScopedDb } from '@/platform/server/db/scoped';
+import type { LikenessRequestContext } from '@/cast/server/upload-rights';
 import type { McpCallerIdentity } from './auth';
 import type { OAuthApiScope } from '@/platform/server/auth/oauth-scopes';
 
@@ -13,6 +14,8 @@ export type ReadToolContext = {
   scopedDb: ScopedDb;
   origin: string;
   userId: string;
+  /** Recorded on any portrait sign-off a write carries. */
+  request: LikenessRequestContext;
 };
 
 /**

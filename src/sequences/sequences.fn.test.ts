@@ -15,9 +15,9 @@ import { toShotView, type ImageStatus, type ShotView } from '@/shots/shot-view';
 import {
   assertModelNotAlreadyAdded,
   buildAddAudioMusicInput,
-  resolveUnarchiveRestore,
   selectEligibleVideoShots,
 } from './sequences.fn';
+import { resolveUnarchiveRestore } from '@/sequences/server/sequence-edit';
 import { sumShotDurationsSeconds } from '@/sequences/server/shot-durations';
 
 const NOW = new Date('2026-06-03T00:00:00.000Z');

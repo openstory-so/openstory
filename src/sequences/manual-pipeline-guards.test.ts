@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { assertSingleShotSegmentForVideoUpload } from '@/shots/media-upload.fn';
-import { requireWritableScene } from '@/shots/shots.fn';
+import { requireWritableScene } from '@/shots/server/structure-edit';
 import { NotFoundError, ValidationError } from '@/platform/errors';
 
 describe('requireWritableScene', () => {

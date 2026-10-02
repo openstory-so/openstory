@@ -48,6 +48,7 @@ const SEQUENCE_LEVEL_BY_DESIGN: Record<string, string> = {
   // between two similarly-priced routes; the envelope is an estimate.
   'src/sequences/server/smart-retry.ts': 'whole-run credit estimate',
   'src/sequences/sequences.fn.ts': 'whole-run credit estimate',
+  'src/sequences/server/sequence-edit.ts': 'whole-run credit estimate',
   'src/stills/shot-image.fn.ts': 'whole-run credit estimate',
   'src/billing/pricing.fn.ts': 'whole-run credit estimate',
   'src/sequences/ui/use-draft-generation-estimate.ts':

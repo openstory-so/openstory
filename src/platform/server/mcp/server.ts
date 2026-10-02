@@ -29,6 +29,7 @@ import { getScene } from './tools/get-scene';
 import { listShots } from './tools/list-shots';
 import { getShot } from './tools/get-shot';
 import { updateSceneTool } from './tools/update-scene';
+import { structureEditTools } from './tools/structure-edits';
 import {
   executeGenerationTool,
   getOperationStatusTool,
@@ -93,6 +94,7 @@ export const mcpServer = createMCPServer({
     ...contextReadTools,
     ...libraryReadTools,
     updateSceneTool,
+    ...structureEditTools,
     planGenerationTool,
     executeGenerationTool,
     getOperationStatusTool,
@@ -128,8 +130,9 @@ export const mcpServer = createMCPServer({
  */
 function mcpToolContext(
   auth: McpAuthContext,
-  origin: string
+  request: Request
 ): OpenStoryMcpContext {
+  const origin = new URL(request.url).origin;
   return {
     caller: { user: auth.user, teamId: auth.teamId, teamName: auth.teamName },
     origin,
@@ -141,6 +144,10 @@ function mcpToolContext(
         scopedDb: createScopedDb(auth.teamId, auth.user.id),
         origin,
         userId: auth.user.id,
+        request: {
+          ipAddress: request.headers.get('cf-connecting-ip'),
+          userAgent: request.headers.get('user-agent'),
+        },
       };
     },
   };
@@ -155,7 +162,7 @@ export async function serveMcpRequest(
   auth: McpAuthContext,
   method: string | null
 ): Promise<Response> {
-  const context = mcpToolContext(auth, new URL(request.url).origin);
+  const context = mcpToolContext(auth, request);
   if (method?.startsWith('resources/')) {
     return serveResourceRequest(request, context);
   }

@@ -24,11 +24,11 @@ Every tool name has the `openstory.` prefix (`openstory.get_scene`); this guide 
 
 ### Scopes (OAuth only)
 
-| Scope             | Grants                                                                                          |
-| ----------------- | ----------------------------------------------------------------------------------------------- |
-| `sequences:read`  | Every read tool and resource.                                                                   |
-| `sequences:write` | `update_scene`, `plan_export`, `start_export`.                                                  |
-| `generate`        | `plan_generation`, `execute_generation`, `retry_failed_work` — anything that can spend credits. |
+| Scope             | Grants                                                                                                                                                                         |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `sequences:read`  | Every read tool and resource.                                                                                                                                                  |
+| `sequences:write` | `update_scene`, `update_sequence`, `archive_sequence`, `unarchive_sequence`, scene and shot create / reorder / delete / restore, `update_shot`, `plan_export`, `start_export`. |
+| `generate`        | `create_sequence`, `regenerate_storyboard`, `plan_generation`, `execute_generation`, `retry_failed_work` — anything that can spend credits.                                    |
 
 A missing scope is a tool error with code `INSUFFICIENT_SCOPE` and `details.scope` naming what to re-authorize with. Tool discovery and `whoami` need no scope.
 
@@ -64,8 +64,10 @@ For hosts that attach context rather than call tools:
 
 This is the loop an agent should follow. It is also the procedure to put in an agent skill.
 
+0. **Create (optional).** `create_sequence` with a script starts a new sequence (same input as `POST /api/v1/sequences`); poll `get_sequence_status` until the storyboard is done. `regenerate_storyboard` replaces a sequence's whole script, style or aspect ratio and rebuilds every scene, so ask first.
 1. **Inspect.** `get_sequence_status` for what is ready and what failed. `get_production_bible` for the story and cast. `get_scene` for the scene you will touch — note `script.id`.
 2. **Edit.** `update_scene` with `sequenceId`, `sceneId`, `expectedScriptVersionId` (the `script.id` you read) and only the fields you change (`scriptExtract`, `title`, `location`, `timeOfDay`, `storyBeat`, `continuity`). A `CONFLICT` means the scene changed since you read it — possibly your own edit whose reply was lost (`details.selectedScriptVersionId` is the current version): read it again and redo the edit only if it is still needed. `changed: false` means nothing differed.
+   Structure: `create_scene` (optionally with its script), `reorder_scenes`, `delete_scene` / `restore_scene`, `create_shot`, `reorder_shots`, `delete_shot` / `restore_shot`, `update_shot` (length, start frame on/off), `update_sequence` (title, target length, music on/off, default video model). Deletes are soft and undoable. None of these starts generation.
 3. **See the effect.** The edit returns the scene and its first shots' staleness. `list_shot_staleness` pages the rest. Editing starts no generation.
 4. **Plan.** `plan_generation` with `mode: "stale"` and a `depth` (`prompts`, `images`, `dialogue`, `video` or `music`: how far to update what the edit made stale; whole sequence, `sceneIds` or `shotIds`) or `mode: "missing"` with `stopAt` (continue an unfinished sequence, whole sequence only), or `retry_failed_work` after failures. A plan starts nothing. It returns per-stage shot ids, skipped shots, models, an estimate in USD (`null` when a component has no price) and `blockers`.
 5. **Ask for approval.** Show the user the concrete work and the cost from the plan. Do not execute without a yes.
@@ -75,9 +77,8 @@ This is the loop an agent should follow. It is also the procedure to put in an a
 
 ## Not available through MCP yet
 
-- Creating a sequence — use `POST /api/v1/sequences`.
-- Choosing a shot's starting frame, uploading media, or selecting an older version of a still or clip.
-- Editing characters, locations, elements, shot prompts or sequence settings.
+- Uploading media, or selecting an older version of a still or clip.
+- Editing characters, locations, elements or shot prompts.
 - Cancelling a running operation.
 
 ## Client compatibility

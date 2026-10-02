@@ -125,6 +125,7 @@ async function call(name: string, args: Record<string, unknown> = {}) {
           scopedDb,
           origin: 'https://openstory.test',
           userId: actorId,
+          request: {},
         }),
       },
     }
@@ -2179,6 +2180,175 @@ describe('update_scene continuity (#1459)', () => {
   });
 });
 
+describe('structure edits (#1979)', () => {
+  it('update_sequence renames with an event and writes only the sent settings', async () => {
+    const updated = await data('update_sequence', {
+      sequenceId,
+      title: 'Renamed',
+      includeMusic: false,
+      targetDurationSeconds: 30,
+    });
+    expect(updated).toMatchObject({
+      sequenceId,
+      title: 'Renamed',
+      includeMusic: false,
+      targetDurationSeconds: 30,
+      status: 'completed',
+    });
+    const [event] = await db
+      .select()
+      .from(sequenceEvents)
+      .where(eq(sequenceEvents.kind, 'sequence.renamed'));
+    expect(event).toMatchObject({ actorId, targetId: sequenceId });
+    expect(
+      await data('update_sequence', { sequenceId, targetDurationSeconds: null })
+    ).toMatchObject({ title: 'Renamed', targetDurationSeconds: null });
+  });
+
+  it('refuses an empty update and another team’s sequence', async () => {
+    expect(await call('update_sequence', { sequenceId })).toMatchObject({
+      isError: true,
+      structuredContent: { error: { code: 'VALIDATION_ERROR' } },
+    });
+    expect(
+      await call('update_sequence', { sequenceId: generateId(), title: 'x' })
+    ).toMatchObject({ isError: true });
+    expect(await call('regenerate_storyboard', { sequenceId })).toMatchObject({
+      isError: true,
+      structuredContent: { error: { code: 'VALIDATION_ERROR' } },
+    });
+  });
+
+  it('archive_sequence then unarchive_sequence restores the prior status', async () => {
+    expect(await data('archive_sequence', { sequenceId })).toMatchObject({
+      status: 'archived',
+    });
+    expect(await data('unarchive_sequence', { sequenceId })).toMatchObject({
+      status: 'completed',
+    });
+  });
+
+  it('create_scene appends a scene with its first shot and script', async () => {
+    const created = z.object({ sceneId: z.string(), shotId: z.string() }).parse(
+      await data('create_scene', {
+        sequenceId,
+        title: 'Finale',
+        scriptExtract: 'The whale swims away.',
+      })
+    );
+    const scene = z
+      .object({
+        title: z.string().nullable(),
+        script: z.object({ content: z.object({ extract: z.string() }) }),
+      })
+      .parse(await data('get_scene', { sequenceId, sceneId: created.sceneId }));
+    expect(scene.title).toBe('Finale');
+    expect(scene.script.content.extract).toBe('The whale swims away.');
+    const scenesPage = z
+      .object({ scenes: z.array(z.object({ id: z.string() })) })
+      .parse(await data('list_scenes', { sequenceId }));
+    expect(scenesPage.scenes.map((row) => row.id)).toEqual([
+      sceneId,
+      created.sceneId,
+    ]);
+    expect(
+      await data('get_shot', { sequenceId, shotId: created.shotId })
+    ).toMatchObject({ sceneId: created.sceneId });
+  });
+
+  it('reorders, deletes and restores scenes', async () => {
+    const second = await addScene(1);
+    await data('reorder_scenes', { sequenceId, sceneIds: [second, sceneId] });
+    const order = z
+      .object({ scenes: z.array(z.object({ id: z.string() })) })
+      .parse(await data('list_scenes', { sequenceId }));
+    expect(order.scenes.map((row) => row.id)).toEqual([second, sceneId]);
+
+    expect(await data('delete_scene', { sequenceId, sceneId })).toEqual({
+      sceneId,
+      deletedShotIds: [shotId],
+    });
+    expect(await call('get_shot', { sequenceId, shotId })).toMatchObject({
+      isError: true,
+    });
+    await data('restore_scene', { sequenceId, sceneId });
+    expect(await data('get_shot', { sequenceId, shotId })).toMatchObject({
+      sceneId,
+    });
+  });
+
+  it('creates, edits, reorders, deletes and restores shots', async () => {
+    const created = z
+      .object({ shotId: z.string(), shotNumber: z.number() })
+      .parse(
+        await data('create_shot', { sequenceId, sceneId, durationSeconds: 5 })
+      );
+    expect(created.shotNumber).toBe(2);
+    expect(
+      await data('update_shot', {
+        sequenceId,
+        shotId: created.shotId,
+        durationSeconds: 6.5,
+      })
+    ).toMatchObject({ durationSeconds: 6.5 });
+    // No still yet: turning the start frame on must not start a generation.
+    expect(
+      await call('update_shot', {
+        sequenceId,
+        shotId: created.shotId,
+        useStartFrame: true,
+      })
+    ).toMatchObject({
+      isError: true,
+      structuredContent: { error: { code: 'VALIDATION_ERROR' } },
+    });
+    expect(
+      await data('update_shot', { sequenceId, shotId, useStartFrame: true })
+    ).toMatchObject({ useStartFrame: true });
+
+    await data('reorder_shots', {
+      sequenceId,
+      sceneId,
+      shotIds: [created.shotId, shotId],
+    });
+    const page = z
+      .object({ shots: z.array(z.object({ id: z.string() })) })
+      .parse(await data('list_shots', { sequenceId }));
+    expect(page.shots.map((row) => row.id)).toEqual([created.shotId, shotId]);
+
+    await data('delete_shot', { sequenceId, shotId: created.shotId });
+    expect(
+      await call('get_shot', { sequenceId, shotId: created.shotId })
+    ).toMatchObject({ isError: true });
+    await data('restore_shot', { sequenceId, shotId: created.shotId });
+    expect(
+      await data('get_shot', { sequenceId, shotId: created.shotId })
+    ).toMatchObject({ sceneId });
+  });
+
+  it('refuses a shot of another sequence', async () => {
+    const otherSequence = generateId();
+    const [fixture] = await db
+      .select({ styleId: sequences.styleId })
+      .from(sequences)
+      .where(eq(sequences.id, sequenceId));
+    if (!fixture) throw new Error('Missing fixture sequence');
+    await db.insert(sequences).values({
+      id: otherSequence,
+      teamId,
+      title: 'Other',
+      styleId: fixture.styleId,
+      status: 'completed',
+    });
+    expect(
+      await call('delete_shot', { sequenceId: otherSequence, shotId })
+    ).toMatchObject({ isError: true });
+    expect(
+      await call('create_shot', { sequenceId: otherSequence, sceneId })
+    ).toMatchObject({ isError: true });
+  });
+});
+
 describe('get_export_status without an exportId (#1461)', () => {
   it('returns null with no exports, then the newest, and refuses a foreign id', async () => {
     expect(await data('get_export_status', { sequenceId })).toEqual({
@@ -2249,6 +2419,7 @@ describe('production-context resources (#1462)', () => {
           scopedDb,
           origin: 'https://openstory.test',
           userId: actorId,
+          request: {},
         }),
       }
     );

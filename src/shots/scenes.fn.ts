@@ -1,12 +1,15 @@
 import { dbSceneId } from './scene-id';
 import { sceneNarrativeFieldsSchema } from './scene-narrative';
-import { NotFoundError } from '@/platform/errors';
 import {
   composeSequenceScriptFromDb,
   loadSceneContextBySequence,
 } from '@/shots/server/scene-script';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { updateScene } from '@/shots/server/scene-edit';
+import {
+  createScene,
+  requireSceneInSequence,
+} from '@/shots/server/structure-edit';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
@@ -109,48 +112,14 @@ export const createSceneFn = createServerFn({ method: 'POST' })
     )
   )
   .handler(async ({ context, data }) => {
-    const { scopedDb, sequence, user } = context;
-    const orderIndex =
-      (await scopedDb.scenes.getMaxOrderIndex(sequence.id)) + 1;
-    const scene = await scopedDb.scenes.create(
-      { sequenceId: sequence.id, orderIndex },
-      {
-        title: data.title ?? null,
-        location: data.location ?? null,
-        timeOfDay: data.timeOfDay ?? null,
-        storyBeat: data.storyBeat ?? null,
-        continuity: null,
-      },
-      { createdBy: user.id }
+    const { sequenceId: _sequenceId, withShot, ...narrative } = data;
+    return await createScene(
+      context.scopedDb,
+      { userId: context.user.id },
+      context.sequence.id,
+      narrative,
+      withShot !== false
     );
-    await scopedDb.sequenceEvents.record({
-      sequenceId: sequence.id,
-      actorId: user.id,
-      kind: 'scene.created',
-      targetType: 'scene',
-      targetId: scene.id,
-      summary: `Added scene ${data.title ?? ''}`.trim(),
-      data: { orderIndex },
-    });
-
-    let shotId: string | null = null;
-    if (data.withShot !== false) {
-      const shot = await scopedDb.shots.create({
-        sequenceId: sequence.id,
-        sceneId: scene.id,
-        shotNumber: 1,
-      });
-      shotId = shot.id;
-      await scopedDb.sequenceEvents.record({
-        sequenceId: sequence.id,
-        actorId: user.id,
-        kind: 'shot.created',
-        targetType: 'shot',
-        targetId: shot.id,
-        data: { sceneId: scene.id, shotNumber: 1 },
-      });
-    }
-    return { scene, shotId };
   });
 
 /**
@@ -210,10 +179,11 @@ export const softDeleteSceneFn = createServerFn({ method: 'POST' })
   .validator(zodValidator(sceneIdInput))
   .handler(async ({ context, data }) => {
     const sceneId = dbSceneId(data.sceneId);
-    const existing = await context.scopedDb.scenes.getById(sceneId);
-    if (!existing || existing.sequenceId !== context.sequence.id) {
-      throw new NotFoundError('Scene not found in this sequence');
-    }
+    await requireSceneInSequence(
+      context.scopedDb,
+      context.sequence.id,
+      data.sceneId
+    );
     const result = await context.scopedDb.scenes.softDeleteCascade(sceneId, {
       actorId: context.user.id,
     });
@@ -228,10 +198,11 @@ export const restoreSceneFn = createServerFn({ method: 'POST' })
   )
   .handler(async ({ context, data }) => {
     const sceneId = dbSceneId(data.sceneId);
-    const existing = await context.scopedDb.scenes.getById(sceneId);
-    if (!existing || existing.sequenceId !== context.sequence.id) {
-      throw new NotFoundError('Scene not found in this sequence');
-    }
+    await requireSceneInSequence(
+      context.scopedDb,
+      context.sequence.id,
+      data.sceneId
+    );
     return await context.scopedDb.scenes.restoreCascade(sceneId, {
       actorId: context.user.id,
       restoreShots: data.restoreShots,

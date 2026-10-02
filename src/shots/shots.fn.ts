@@ -1,8 +1,4 @@
 import { usesStartFrame } from './use-start-frame';
-import { canRenderReferenceOnly } from '@/motion/server/motion-generation';
-import { resolveVideoModel } from '@/models/resolve-asset-models';
-import { toWorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
-import { REFERENCE_ONLY_MODEL_ERROR } from '@/sequences/server/sequence.schemas';
 import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/models/models';
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import { estimateImageCost, gateEstimate } from '@/billing/cost-estimation';
@@ -55,7 +51,6 @@ import {
   updateShotSchema,
 } from '@/shots/server/shot.schemas';
 import { dbSceneId } from './scene-id';
-import { NotFoundError } from '@/platform/errors';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { typedFromEntries } from '@/platform/typed-object';
 import { resolveSceneForShot } from '@/shots/server/scene-script';
@@ -68,6 +63,12 @@ import {
   sequenceAccessMiddleware,
 } from '@/platform/middleware.fn';
 import { shotAccessMiddleware } from '@/shots/shot-access.fn';
+import {
+  createShot,
+  requireSceneInSequence,
+  requireShotInSequence,
+  setShotUseStartFrame,
+} from '@/shots/server/structure-edit';
 import { ValidationError } from '@/platform/errors';
 
 import { getLogger } from '@/platform/logger';
@@ -449,44 +450,17 @@ export const getSequenceSelectedModelsFn = createServerFn({ method: 'GET' })
     };
   });
 
-/** Live shot may only land in a live scene of this sequence. Exported for tests. */
-export function requireWritableScene(
-  scene: { sequenceId: string; deletedAt: Date | null } | null,
-  sequenceId: string
-): void {
-  if (!scene || scene.sequenceId !== sequenceId || scene.deletedAt !== null) {
-    throw new NotFoundError('Scene not found in this sequence');
-  }
-}
-
 export const createShotFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(singleShotSchema.extend({ sequenceId: ulidSchema })))
   .handler(async ({ data, context }) => {
-    if (data.sceneId) {
-      const scene = await context.scopedDb.scenes.getById(
-        dbSceneId(data.sceneId)
-      );
-      requireWritableScene(scene, context.sequence.id);
-    }
-    // Auto-number within the scene when the caller didn't pick a slot (#1108):
-    // max over ALL rows (deleted keep their slots) + 1, so a manual add never
-    // collides with the `(sceneId, shotNumber)` unique index.
-    const shotNumber =
-      data.shotNumber ??
-      (data.sceneId
-        ? (await context.scopedDb.shots.getMaxShotNumber(data.sceneId)) + 1
-        : null);
-    const shot = await context.scopedDb.shots.create({ ...data, shotNumber });
-    await context.scopedDb.sequenceEvents.record({
-      sequenceId: data.sequenceId,
-      actorId: context.user.id,
-      kind: 'shot.created',
-      targetType: 'shot',
-      targetId: shot.id,
-      data: { sceneId: shot.sceneId ?? null, shotNumber: shot.shotNumber },
-    });
-    return shot;
+    const { sequenceId: _sequenceId, ...shot } = data;
+    return await createShot(
+      context.scopedDb,
+      { userId: context.user.id },
+      context.sequence.id,
+      shot
+    );
   });
 
 export const createShotsBulkFn = createServerFn({ method: 'POST' })
@@ -631,36 +605,11 @@ export const setShotUseStartFrameFn = createServerFn({ method: 'POST' })
   .validator(zodValidator(setShotUseStartFrameSchema))
   .handler(async ({ data, context }) => {
     const { shot, frame, sequence, scopedDb } = context;
-    if (data.useStartFrame === true) {
-      const still = await scopedDb.frameVariants.getSelected(frame.id);
-      if (!still?.url) {
-        throw new ValidationError(
-          'This shot has no start frame yet. Generate one first.'
-        );
-      }
-    }
-    if (!usesStartFrame({ useStartFrame: data.useStartFrame }, sequence)) {
-      // Same via-aware question the render path asks, so the checkbox cannot
-      // accept a state the Generate button then refuses.
-      const selectedVersion = await scopedDb.videoVariants.getSelectedByShot(
-        shot.id
-      );
-      const model = resolveVideoModel({
-        selectedVersionModel: selectedVersion?.model,
-        sequenceModel: sequence.videoModel,
-      });
-      if (
-        !(await canRenderReferenceOnly(
-          model,
-          toWorkflowScopedDb(scopedDb).credentials
-        ))
-      ) {
-        throw new ValidationError(REFERENCE_ONLY_MODEL_ERROR);
-      }
-    }
-    const updated = await scopedDb.shots.update(shot.id, {
-      useStartFrame: data.useStartFrame,
-    });
+    const updated = await setShotUseStartFrame(
+      scopedDb,
+      { shot, frameId: frame.id, sequence },
+      data.useStartFrame
+    );
     return updated ?? shot;
   });
 
@@ -720,10 +669,11 @@ export const restoreShotFn = createServerFn({ method: 'POST' })
     // sequenceAccessMiddleware (not shotAccessMiddleware): the shot-scoped
     // middleware resolves scene context a hidden shot doesn't need, and this
     // must work on exactly the rows the default reads hide.
-    const shot = await context.scopedDb.shots.getById(data.shotId);
-    if (!shot || shot.sequenceId !== context.sequence.id) {
-      throw new NotFoundError('Shot not found in this sequence');
-    }
+    await requireShotInSequence(
+      context.scopedDb,
+      context.sequence.id,
+      data.shotId
+    );
     return await context.scopedDb.shots.restore(data.shotId, {
       actorId: context.user.id,
     });
@@ -745,12 +695,11 @@ export const reorderShotsFn = createServerFn({ method: 'POST' })
     )
   )
   .handler(async ({ data, context }) => {
-    const scene = await context.scopedDb.scenes.getById(
-      dbSceneId(data.sceneId)
+    await requireSceneInSequence(
+      context.scopedDb,
+      context.sequence.id,
+      data.sceneId
     );
-    if (!scene || scene.sequenceId !== context.sequence.id) {
-      throw new NotFoundError('Scene not found in this sequence');
-    }
     await context.scopedDb.shots.reorderInScene(data.sceneId, data.shotIds, {
       actorId: context.user.id,
     });
