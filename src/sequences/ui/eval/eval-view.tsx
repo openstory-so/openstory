@@ -30,7 +30,10 @@ import {
   getAllAdminSequencesFn,
 } from '@/platform/admin-support.fn';
 import type { Sequence } from '@/platform/server/db/schema';
-import type { ShotView } from '@/shots/shot-view';
+import {
+  sequenceListShotFromView,
+  type SequenceListShot,
+} from '@/shots/shot-view';
 
 const EvalMatrix = lazy(() =>
   import('./eval-matrix').then((m) => ({ default: m.EvalMatrix }))
@@ -97,8 +100,9 @@ function useAdminAllSequencesWithShots(
     queries: (enabled && loadShots ? allSequences : []).map(
       (seq: Sequence) => ({
         queryKey: adminSupportKeys.shots(seq.id),
-        queryFn: async (): Promise<ShotView[]> => {
-          return getAdminShotsFn({ data: { sequenceId: seq.id } });
+        queryFn: async (): Promise<SequenceListShot[]> => {
+          const shots = await getAdminShotsFn({ data: { sequenceId: seq.id } });
+          return shots.map(sequenceListShotFromView);
         },
         staleTime: 60_000,
         enabled: allSequences.length > 0,

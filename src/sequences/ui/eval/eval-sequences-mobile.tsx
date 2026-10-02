@@ -346,7 +346,7 @@ const SequencePosterCell: React.FC<SequencePosterCellProps> = ({
     'aria-label': `Open ${sequence.title || 'sequence'}`,
   } as const;
 
-  const previewUrl = sequence.shots[0]?.image?.url ?? sequence.posterUrl;
+  const previewUrl = sequence.shots[0]?.imageUrl ?? sequence.posterUrl;
 
   if (previewUrl) {
     return (

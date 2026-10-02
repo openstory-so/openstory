@@ -57,7 +57,7 @@ export const EvalSequenceRow: React.FC<EvalSequenceRowProps> = ({
     return map;
   }, [scenes]);
 
-  const previewUrl = sequence.shots[0]?.image?.url ?? sequence.posterUrl;
+  const previewUrl = sequence.shots[0]?.imageUrl ?? sequence.posterUrl;
 
   return (
     <>

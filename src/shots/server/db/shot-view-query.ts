@@ -102,9 +102,9 @@ export function selectShotViewRows(
       // pointers and the ORDER BY, never read. The 8-table walk reached 104
       // columns and every shot read in prod started failing.
       //
-      // Naming the tables also caps the cost of a caller's own join:
-      // `listShotsByIds` adds `sequences` for its team filter, and under a bare
-      // select that pushed the same query another ~12 columns wider.
+      // Naming the tables also caps the cost of a caller's own join. Under a
+      // bare select, joining `sequences` for a team filter pushed the same
+      // query another ~12 columns wider.
       .select({
         shots,
         frames,

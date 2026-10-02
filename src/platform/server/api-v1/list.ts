@@ -6,7 +6,7 @@
  * sequence status document, minus the per-shot array) plus a `counts` block
  * and a HAL `self` link to its full status document. Counts are derived from a
  * single batched shot query across the whole page, so listing N sequences
- * costs one shots round-trip rather than N (see `listShotsByIds`).
+ * costs one shots round-trip rather than N (see `listShotReadinessByIds`).
  */
 
 import { base64ToBytes, bytesToBase64 } from '@/platform/base64';

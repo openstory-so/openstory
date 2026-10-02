@@ -114,11 +114,11 @@ const EMPTY: Record<Exclude<Source, 'audio'>, string> = {
 function shotReferences(sequence: SequenceWithShots): StudioReference[] {
   return sequence.shots.flatMap((shot, index) => {
     const label = `${sequence.title} · shot ${index + 1}`;
-    const still = shot.image?.url;
+    const still = shot.imageUrl;
     const stillOk = still && isBrowserDisplayableStillUrl(still);
     const refs: StudioReference[] = [];
     if (stillOk) refs.push({ url: still, label, kind: 'image' });
-    const clip = shot.video?.url;
+    const clip = shot.videoUrl;
     if (clip && shot.videoStatus === 'completed') {
       refs.push({
         url: clip,

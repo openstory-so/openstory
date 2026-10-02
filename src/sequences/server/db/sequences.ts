@@ -9,23 +9,22 @@ import { DEFAULT_IMAGE_MODEL, DEFAULT_VIDEO_MODEL } from '@/models/models';
 import { type AspectRatio, DEFAULT_ASPECT_RATIO } from '@/models/aspect-ratios';
 import { DEFAULT_RESOLUTION, type Resolution } from '@/models/resolutions';
 import type { Database } from '@/platform/server/db/client';
-import {
-  assembleShotViews,
-  selectShotViewRows,
-  shotHierarchicalOrder,
-} from '@/shots/server/db/shot-view-query';
+import { shotHierarchicalOrder } from '@/shots/server/db/shot-view-query';
 import {
   characterBibleVersions,
   characters,
+  framePromptVersions,
   frames,
   frameVariants,
   locationBibleVersions,
   renderSegments,
+  scenes,
   sequenceLocations,
   sequenceMusicPromptVersions,
   sequenceMusicVariants,
   sequenceStyleVersions,
   sequences,
+  shotPromptVersions,
   shots,
   styles,
   user,
@@ -47,9 +46,10 @@ import type { GenerationStage } from '@/sequences/pipeline';
 import { parseStyleConfig } from '@/look/style-config';
 import {
   type ImageStatus,
+  type SequenceListShot,
   type ShotReadiness,
-  type ShotView,
   readinessImageStatus,
+  readinessVideoStatus,
 } from '@/shots/shot-view';
 import {
   getLatestPreviewByFrameIds,
@@ -326,43 +326,131 @@ function createSequencesReadMethods(db: Database, teamId: string) {
      * applied via the join so caller-supplied ids from another team simply
      * return nothing rather than leak.
      */
-    listShotsByIds: async (sequenceIds: string[]): Promise<ShotView[]> => {
+    listShotsByIds: async (
+      sequenceIds: string[]
+    ): Promise<SequenceListShot[]> => {
       if (sequenceIds.length === 0) return [];
       // Chunk the ids to stay under D1's bound-parameter ceiling. Each chunk
       // holds all of a sequence's shots (we split on sequence boundaries), so
-      // per-sequence orderIndex ordering is preserved; cross-sequence ordering
-      // is irrelevant — callers regroup by sequence id.
-      const batches: string[][] = [];
+      // per-sequence order is preserved; callers regroup by sequence id.
+      // Batches run one at a time so a team-wide list does not hold every
+      // raw page at once (#1897).
+      const shotsOut: SequenceListShot[] = [];
       for (let i = 0; i < sequenceIds.length; i += SHOTS_BY_IDS_BATCH) {
-        batches.push(sequenceIds.slice(i, i + SHOTS_BY_IDS_BATCH));
-      }
-      const results = await Promise.all(
-        batches.map((batch) =>
-          selectShotViewRows(db)
-            // teamId is filtered through the join, so caller-supplied ids from
-            // another team return nothing rather than leak.
-            .innerJoin(sequences, eq(shots.sequenceId, sequences.id))
-            .where(
-              and(
-                inArray(shots.sequenceId, batch),
-                eq(sequences.teamId, teamId),
-                // Soft-deleted shots stay out of list views (#1108).
-                isNull(shots.deletedAt)
-              )
+        const batch = sequenceIds.slice(i, i + SHOTS_BY_IDS_BATCH);
+        const rows = await db
+          .select({
+            id: shots.id,
+            sequenceId: shots.sequenceId,
+            sceneId: shots.sceneId,
+            frameId: frames.id,
+            imageUrl: frameVariants.url,
+            visualPrompt: framePromptVersions.text,
+            motionPrompt: shotPromptVersions.text,
+            videoId: videoVariants.id,
+            videoUrl: videoVariants.url,
+          })
+          .from(shots)
+          .innerJoin(sequences, eq(shots.sequenceId, sequences.id))
+          .leftJoin(
+            frames,
+            and(
+              eq(frames.shotId, shots.id),
+              eq(frames.orderIndex, 0),
+              eq(frames.sequenceId, shots.sequenceId)
             )
-            .orderBy(asc(shots.sequenceId), ...shotHierarchicalOrder)
-            .then((rows) => assembleShotViews(db, rows))
-        )
-      );
-      return results.flat();
+          )
+          .leftJoin(
+            frameVariants,
+            and(
+              eq(frameVariants.id, frames.selectedImageVersionId),
+              eq(frameVariants.frameId, frames.id),
+              isNull(frameVariants.discardedAt)
+            )
+          )
+          .leftJoin(
+            framePromptVersions,
+            and(
+              eq(framePromptVersions.id, frames.selectedImagePromptVersionId),
+              eq(framePromptVersions.frameId, frames.id)
+            )
+          )
+          .leftJoin(
+            shotPromptVersions,
+            and(
+              eq(shotPromptVersions.id, shots.selectedMotionPromptVersionId),
+              eq(shotPromptVersions.shotId, shots.id)
+            )
+          )
+          .leftJoin(
+            renderSegments,
+            and(
+              eq(renderSegments.id, shots.renderSegmentId),
+              eq(renderSegments.sequenceId, shots.sequenceId)
+            )
+          )
+          .leftJoin(
+            videoVariants,
+            and(
+              eq(videoVariants.id, renderSegments.selectedVideoVersionId),
+              eq(videoVariants.renderSegmentId, renderSegments.id),
+              isNull(videoVariants.discardedAt)
+            )
+          )
+          .leftJoin(scenes, eq(scenes.id, shots.sceneId))
+          .where(
+            and(
+              inArray(shots.sequenceId, batch),
+              eq(sequences.teamId, teamId),
+              isNull(shots.deletedAt)
+            )
+          )
+          .orderBy(asc(shots.sequenceId), ...shotHierarchicalOrder);
+
+        const frameIds = rows.flatMap((row) =>
+          row.frameId ? [row.frameId] : []
+        );
+        const [primaryByShot, primaryImageByFrame] = await Promise.all([
+          getPrimaryVideoByShotIds(
+            db,
+            rows.map((row) => row.id)
+          ),
+          getPrimaryImageByFrameIds(db, frameIds),
+        ]);
+
+        for (const row of rows) {
+          const primaryImage = row.frameId
+            ? primaryImageByFrame.get(row.frameId)
+            : undefined;
+          const selectedImageUrl = row.imageUrl ?? null;
+          shotsOut.push({
+            id: row.id,
+            sequenceId: row.sequenceId,
+            sceneId: row.sceneId,
+            imageUrl: selectedImageUrl,
+            imageStatus: readinessImageStatus({
+              selectedImageUrl,
+              primaryImageStatus: primaryImage?.status ?? null,
+            }),
+            videoUrl: row.videoUrl ?? null,
+            videoStatus: readinessVideoStatus({
+              hasSelectedVideo: row.videoId !== null,
+              primaryVideoStatus: primaryByShot.get(row.id)?.status ?? null,
+            }),
+            visualPrompt: row.visualPrompt ?? null,
+            motionPrompt: row.motionPrompt ?? null,
+          });
+        }
+      }
+      return shotsOut;
     },
 
     /**
      * Readiness-only twin of {@link listShotsByIds}, for callers that report
      * `counts` and never touch a shot's content.
      *
-     * `listShotsByIds` projects ~100 columns per shot — `shots.metadata`, the
-     * visual prompt, the motion prompt, both variant rows. `GET
+     * `listShotsByIds` is the compare-view card (urls, statuses, prompt text).
+     * `GET
      * /api/v1/sequences` paged up to 100 sequences through it to compute four
      * integers each, and the shots-per-sequence fan-out is unbounded, so the
      * page's peak footprint had no ceiling — one of the reads that reached the

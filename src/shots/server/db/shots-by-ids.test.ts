@@ -142,16 +142,31 @@ describe('listShotsByIds', () => {
 
     expect(result).toHaveLength(250 * 3);
     // Every requested sequence is represented with all 3 of its shots.
+    const numbers = await db
+      .select({ id: shots.id, shotNumber: shots.shotNumber })
+      .from(shots);
+    const numberById = new Map(numbers.map((row) => [row.id, row.shotNumber]));
     const bySeq = new Map<string, number[]>();
     for (const shot of result) {
       const existing = bySeq.get(shot.sequenceId) ?? [];
-      existing.push(shot.shotNumber ?? 0);
+      existing.push(numberById.get(shot.id) ?? 0);
       bySeq.set(shot.sequenceId, existing);
     }
     expect(bySeq.size).toBe(250);
     for (const seqId of seqIds) {
       expect(bySeq.get(seqId)).toEqual([1, 2, 3]);
     }
+    expect(Object.keys(result[0] ?? {}).sort()).toEqual([
+      'id',
+      'imageStatus',
+      'imageUrl',
+      'motionPrompt',
+      'sceneId',
+      'sequenceId',
+      'videoStatus',
+      'videoUrl',
+      'visualPrompt',
+    ]);
   });
 
   it('never leaks shots from another team', async () => {

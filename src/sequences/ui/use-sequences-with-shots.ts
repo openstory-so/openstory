@@ -3,10 +3,10 @@ import { useQuery } from '@tanstack/react-query';
 import { useSequences } from './use-sequences';
 import { getShotsForSequencesFn } from '@/shots/shots.fn';
 import type { Sequence } from '@/platform/server/db/schema';
-import type { ShotView } from '@/shots/shot-view';
+import type { SequenceListShot } from '@/shots/shot-view';
 
 export type SequenceWithShots = Sequence & {
-  shots: ShotView[];
+  shots: SequenceListShot[];
   // Present only when fetched via the admin/support endpoint. Optional on the
   // base type so components render a single CreatorIdentity regardless of source.
   creatorName?: string | null;
@@ -35,12 +35,12 @@ export function useSequencesWithShots({
     error: shotsError,
   } = useQuery({
     queryKey: ['shots', 'by-sequences', [...sequenceIds].sort()],
-    queryFn: async (): Promise<Map<string, ShotView[]>> => {
+    queryFn: async (): Promise<Map<string, SequenceListShot[]>> => {
       if (sequenceIds.length === 0) return new Map();
       const allShots = await getShotsForSequencesFn({
         data: { sequenceIds },
       });
-      const map = new Map<string, ShotView[]>();
+      const map = new Map<string, SequenceListShot[]>();
       for (const shot of allShots) {
         const existing = map.get(shot.sequenceId) ?? [];
         existing.push(shot);

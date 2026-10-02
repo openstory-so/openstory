@@ -209,6 +209,9 @@ export const getShotsFn = createServerFn({ method: 'GET' })
  *
  * Team scoping is enforced by the join inside `sequences.listShotsByIds`,
  * so caller-supplied ids from another team return nothing rather than leak.
+ * The row is a {@link SequenceListShot}: still and clip urls, their statuses,
+ * and the two prompt strings. A full shot view (metadata, variant rows,
+ * dialogue) is what crashed this call on the 128 MB isolate (#1897).
  * `listShotsByIds` chunks the ids to respect D1's bound-parameter limit, so
  * the cap here is only an abuse guard on request size — a team's full sequence
  * list (which the sequences/eval pages send) used to overflow the old 500 cap

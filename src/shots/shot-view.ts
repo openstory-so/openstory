@@ -202,6 +202,42 @@ export type ShotView = Shot & {
 };
 
 /**
+ * What `/sequences` compare views and the Studio reference picker read
+ * (#1897). A full {@link ShotView} carries shot and frame metadata plus both
+ * variant rows; listing every shot of every sequence on that shape peaked
+ * near the 128 MB isolate ceiling.
+ */
+export type SequenceListShot = {
+  id: string;
+  sequenceId: string;
+  sceneId: string | null;
+  /** Selected still url. Null while the anchor frame has no selected image. */
+  imageUrl: string | null;
+  imageStatus: ImageStatus;
+  /** Selected clip url. Null while the segment has no selected video file. */
+  videoUrl: string | null;
+  videoStatus: VideoVariant['status'];
+  /** Selected visual-prompt text. */
+  visualPrompt: string | null;
+  /** Selected motion-prompt text (`shot_prompt_versions.text`). */
+  motionPrompt: string | null;
+};
+
+export function sequenceListShotFromView(shot: ShotView): SequenceListShot {
+  return {
+    id: shot.id,
+    sequenceId: shot.sequenceId,
+    sceneId: shot.sceneId,
+    imageUrl: shot.image?.url ?? null,
+    imageStatus: shot.imageStatus,
+    videoUrl: shot.video?.url ?? null,
+    videoStatus: shot.videoStatus,
+    visualPrompt: shot.imagePromptVersion?.text || null,
+    motionPrompt: shot.motionPrompt?.fullPrompt || null,
+  };
+}
+
+/**
  * Assemble a shot whose anchor frame row is absent. Every shot should own one
  * (migration backfill + `shots.ensureAnchorFrames`), but a batch read that
  * left-joins must not DROP a frameless shot — that would make it vanish from
